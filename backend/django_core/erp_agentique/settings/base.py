@@ -383,6 +383,7 @@ INSTALLED_APPS = [
     # seuils des scorers purs `core/*.py` par société (registre + feature
     # store léger). N'importe aucune app métier.
     'apps.mlops',
+    'apps.taches',
 ]
 
 MIDDLEWARE = [
@@ -2140,3 +2141,6 @@ GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
 CMI_ENABLED = (
     os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
 CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
+
+# taches — lien du raccourci Siri (vide = non proposé).
+TACHES_RACCOURCI_SIRI_URL = os.environ.get('TACHES_RACCOURCI_SIRI_URL', '')

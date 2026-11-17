@@ -1421,6 +1421,11 @@ FICHES_TECHNIQUES = {
         'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
         'ond_rendement_euro_pct': Decimal('97.8'),
         'ond_isc_max_mppt_a': Decimal('22.0'),
+        # Fondateur 17/11/2026 — « Recommended max. PV power » du SUN2000-5KTL-L1 :
+        # 7 500 Wp. https://solar.huawei.com/en/professionals/all-products/
+        # SUN2000-3-4-5-6KTL-L1/specs (ligne « Recommended max. PV power »,
+        # colonne SUN2000-5KTL-L1, lue le 17/11/2026).
+        'ond_dc_max_kwc': Decimal('7.5'),
     },
     'OND-R-HUA-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
@@ -1428,6 +1433,10 @@ FICHES_TECHNIQUES = {
         'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('13.5'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.1'),
+        # Fondateur 17/11/2026 — « Recommended max. PV power » du SUN2000-10KTL-M1 :
+        # 15 000 Wp. https://solar.huawei.com/en/products/sun2000-3-4-5-6-8-10ktl-m1/specs/
+        # (ligne « Recommended max. PV power », colonne SUN2000-10KTL-M1).
+        'ond_dc_max_kwc': Decimal('15.0'),
     },
     'OND-R-HUA-15T': {
         # PVOND (2026-08-18, ordre fondateur « ne laisse rien griser ») —
@@ -1442,6 +1451,12 @@ FICHES_TECHNIQUES = {
         'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.0'),
+        # Fondateur 17/11/2026 — « Recommended max. PV power » SUN2000-15KTL-M5 :
+        # 22 500 Wp (fiche SUN2000-12/15/17/20/25KTL-M5, Version 03-202403,
+        # https://solar.huawei.com/download?p=%2F-%2Fmedia%2FSolar%2Fdatasheet%2F
+        # SUN2000-12_15_17_20_25KTL-M5.pdf, ligne « Recommended max. PV power »,
+        # colonne 15KTL-M5).
+        'ond_dc_max_kwc': Decimal('22.5'),
     },
     'OND-R-HUA-20T': {
         # PVOND — nombre de MPPT SOURCÉ : la fiche FAMILLE
@@ -1455,6 +1470,12 @@ FICHES_TECHNIQUES = {
         'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.1'),
+        # Fondateur 17/11/2026 — « Recommended max. PV power » SUN2000-20KTL-M5 :
+        # 30 000 Wp (fiche SUN2000-12/15/17/20/25KTL-M5, Version 03-202403,
+        # https://solar.huawei.com/download?p=%2F-%2Fmedia%2FSolar%2Fdatasheet%2F
+        # SUN2000-12_15_17_20_25KTL-M5.pdf, ligne « Recommended max. PV power »,
+        # colonne 20KTL-M5).
+        'ond_dc_max_kwc': Decimal('30.0'),
     },
     'OND-R-HUA-25T': {
         # PVOND — 2 trackers, même fiche famille 12-25KTL-M5 que ci-dessus.
@@ -1465,6 +1486,12 @@ FICHES_TECHNIQUES = {
         'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
         'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('98.2'),
+        # Fondateur 17/11/2026 — « Recommended max. PV power » SUN2000-25KTL-M5 :
+        # 37 500 Wp (fiche SUN2000-12/15/17/20/25KTL-M5, Version 03-202403,
+        # https://solar.huawei.com/download?p=%2F-%2Fmedia%2FSolar%2Fdatasheet%2F
+        # SUN2000-12_15_17_20_25KTL-M5.pdf, ligne « Recommended max. PV power »,
+        # colonne 25KTL-M5).
+        'ond_dc_max_kwc': Decimal('37.5'),
     },
     'OND-R-HUA-50T': {
         # PVOND (2026-08-18, ordre fondateur) — édition présumée M3 (gamme
@@ -1631,6 +1658,17 @@ FICHES_TECHNIQUES = {
         'ond_v_demarrage_v': Decimal('160.0'), 'ond_isc_max_mppt_a': Decimal('39.0'),
         'ond_bat_max_charge_kw': Decimal('10.75'),
         'ond_bat_max_decharge_kw': Decimal('10.75'),
+        # Fondateur 17/11/2026 — la borne panneaux d'un hybride est la
+        # « Max. PV access power » de la fiche : 20 000 W pour le SUN-10K
+        # (datasheet SUN-3/4/5/6/8/10/12K-SG05LP3-EU-SM2, 2026-09-11,
+        # https://www.deyeinverter.com/deyeinverter/2026/09/14/
+        # BDatasheetSUN-3-12K-SG05LP3-EU-SM220260911en.pdf, ligne « Max. PV
+        # access power (W) », colonne SUN-10K-SG05LP3-EU-SM2). Même fiche,
+        # ligne « No. of MPP Trackers / No. of Strings MPP Tracker » : 2/2+2
+        # (2 chaînes par MPPT) -> ond_chaines_max_par_mppt (la fiche ne dit
+        # pas le nombre de connecteurs : ond_entrees_par_mppt reste vide).
+        'ond_dc_max_kwc': Decimal('20.0'),
+        'ond_chaines_max_par_mppt': 2,
     },
     # PVLV2 (fondateur 21/08/2026, DÉFINITIF) — ces deux SKU sont les modèles
     # BASSE TENSION SUN-15K/20K-SG05LP3-EU-SM2 (« i only know 15 and 20kw on
@@ -1645,6 +1683,10 @@ FICHES_TECHNIQUES = {
     # Euro 97,0 % · plage batterie 40-60 V (cf. PLAGE_BATTERIE_ONDULEUR).
     # La migration stock 0126 recale les fiches des bases existantes (champ
     # par champ, uniquement là où la valeur est encore l'ancienne seedée).
+    # FONDATEUR 17/11/2026 : les 15/20 kW vendus sont la révision de
+    # sept. 2026 de cette fiche — courant PV 36 A et Isc 54 A sur LES DEUX
+    # trackers (la règle « tracker faible 20 A / 30 A » ci-dessus est
+    # remplacée) ; la migration stock 0182 recale les bases existantes.
     # L-DECH (24/08/2026) — MÊME datasheet 14-20K, bloc « Battery Input
     # Data » : charge = décharge, mais les DEUX COLONNES DIFFÈRENT — 280 A
     # pour le SUN-15K, 350 A pour le SUN-20K. Aucune valeur n'est reportée de
@@ -1652,24 +1694,40 @@ FICHES_TECHNIQUES = {
     'OND-H-DEY-15T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
-        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
+        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('36.0'),
         'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
-        'ond_isc_max_mppt_a': Decimal('30.0'),
+        'ond_isc_max_mppt_a': Decimal('54.0'),
         'ond_bat_max_charge_kw': Decimal('14.34'),
         'ond_bat_max_decharge_kw': Decimal('14.34'),
+        # Fondateur 17/11/2026 — RÉVISION ACTUELLE du 15/20 kW vendu :
+        # datasheet SUN-14/15/16/18/20K-SG05LP3-EU-SM2 du 2026-09-11
+        # (https://www.deyeinverter.com/deyeinverter/2026/09/14/
+        # BDatasheetSUN-14-20K-SG05LP3-EU-SM220260911en.pdf) : « Max. Operating
+        # PV Input Current (A) » 36+36, « Max. Input Short-Circuit Current (A) »
+        # 54+54, « No. of MPP Trackers / No. of Strings MPP Tracker » 2/2+2 —
+        # donc 36 A / 54 A par MPPT (les 20 A / 30 A de l'ancienne règle
+        # venaient de la fiche de juin 2024, 36+20 / 54+30). « Max. PV access
+        # power (W) », colonne SUN-15K : 30 000 W.
+        'ond_dc_max_kwc': Decimal('30.0'),
+        'ond_chaines_max_par_mppt': 2,
     },
     'OND-H-DEY-20T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
         'ond_mppt_v_min': Decimal('160.0'), 'ond_mppt_v_max': Decimal('650.0'),
-        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('20.0'),
+        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('36.0'),
         'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
         'ond_rendement_euro_pct': Decimal('97.0'),
         'ond_v_demarrage_v': Decimal('160.0'),
-        'ond_isc_max_mppt_a': Decimal('30.0'),
+        'ond_isc_max_mppt_a': Decimal('54.0'),
         'ond_bat_max_charge_kw': Decimal('17.92'),
         'ond_bat_max_decharge_kw': Decimal('17.92'),
+        # Fondateur 17/11/2026 — mêmes lignes que le 15T ci-dessus (36+36 A,
+        # 54+54 A, 2/2+2) ; « Max. PV access power (W) », colonne SUN-20K :
+        # 40 000 W.
+        'ond_dc_max_kwc': Decimal('40.0'),
+        'ond_chaines_max_par_mppt': 2,
     },
     # ── PVG4 — Batteries Dyness ──
     'BAT-DEY-5': {

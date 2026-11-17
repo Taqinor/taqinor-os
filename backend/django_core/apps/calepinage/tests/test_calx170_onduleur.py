@@ -185,6 +185,23 @@ class OmissionsNommeesTest(unittest.TestCase):
                      electrique={'chainage': dict(ELECTRIQUE['chainage'])}))
         self.assertIn('puissance nominale', etape['motif_omission'])
 
+    def test_ac_kw_prime_sur_dc_max_kwc_pour_la_nominale(self):
+        """17/11/2026 : ``dc_max_kwc`` = puissance PV maximale raccordable
+        (le double de l'AC sur un hybride Deye), jamais la nominale : la
+        courbe se pose sur ``ac_kw``, ``dc_max_kwc`` n'est qu'un repli."""
+        _, etape = onduleur.appliquer(
+            SERIE,
+            contexte(fiche={'ac_kw': 5.0, 'dc_max_kwc': 10.0,
+                            'rendement_par_charge': COURBE}))
+        self.assertEqual(etape['entree']['puissance_nominale_kw'], 5.0)
+        self.assertIn('ac_kw', etape['entree']['base_puissance_nominale'])
+        _, repli = onduleur.appliquer(
+            SERIE,
+            contexte(fiche={'dc_max_kwc': 10.0,
+                            'rendement_par_charge': COURBE}))
+        self.assertEqual(repli['entree']['puissance_nominale_kw'], 10.0)
+        self.assertIn('dc_max_kwc', repli['entree']['base_puissance_nominale'])
+
     def test_serie_sans_colonne_d_energie_est_omise(self):
         _, etape = onduleur.appliquer({'points': [{'t2m_c': 21.0}]},
                                       contexte(fiche={'ac_kw': 5.0}))

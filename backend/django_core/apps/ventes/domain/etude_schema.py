@@ -395,6 +395,12 @@ SCHEMA = {
                                'contenances du toit, phrase « limitée par le toit »), relu au '
                                'rafraîchissement tant que les lignes et le toit n\'ont pas '
                                'changé ; copié avec les lignes (V2, copie).'),
+    'banque_recommandee': _cle((dict,), MOTEUR_CI, DERIVEE,
+                               'D4 (17/11/2026) — {produit, nom, quantite} : la banque de '
+                               'l\'option « avec » RECOMMANDÉE à la création du devis automatique ; '
+                               'quand le vendeur en chiffre moins, l\'étude sert '
+                               '`option_avec.batterie.quantite_recommandee` / `ajout_possible` ; '
+                               'copiée avec les lignes (V2, copie).'),
 
     # ── Clé HISTORIQUE sans écrivain ─────────────────────────────────────────
     'payback_annees': _cle(

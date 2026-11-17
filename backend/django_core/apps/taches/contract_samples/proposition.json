@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/taches/rythme/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « forme PROPOSITION · consommateurs : cartes, bilan, plan ». Source : docs/taches/reference/api.md annexe A (`proposition.json`), recopié mot pour mot.",
+  "exemple": {
+    "id": 41,
+    "type": "proposition_palier",
+    "cle": "monter",
+    "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+    "donnees": {
+      "N": 5,
+      "N1": 6,
+      "tenus": 7
+    },
+    "boutons": [
+      {
+        "reponse": "oui",
+        "libelle": "Monter à 6"
+      },
+      {
+        "reponse": "pas_maintenant",
+        "libelle": "Pas maintenant"
+      }
+    ],
+    "expire_le": "2026-11-24"
+  }
+}

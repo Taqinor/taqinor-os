@@ -1,0 +1,89 @@
+{
+  "endpoint": "GET /api/django/taches/supprimees/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET supprimees/ · consommateurs : Supprimées récemment ». Source : docs/taches/reference/api.md annexe A (`supprimees.json`), recopié mot pour mot.",
+  "exemple": {
+    "projets": [
+      {
+        "projet": {
+          "id": 11,
+          "nom": "Ancien salon",
+          "objectif": "Fini quand les 4 devis sont signés",
+          "icone": "",
+          "couleur": "vert",
+          "priorite": 3,
+          "statut": "actif",
+          "statut_depuis": "2026-10-01T09:00:00+01:00",
+          "domaine": "",
+          "date_debut": null,
+          "echeance": "2026-12-15",
+          "termine_le": null,
+          "issue": "",
+          "bilan": "",
+          "planification_le": "2026-10-01T09:05:00+01:00",
+          "rang": 2048,
+          "confidentiel": false,
+          "affichage": {
+            "vue": "liste",
+            "tri": "manuel",
+            "groupe": "section",
+            "montrer_faites": false
+          },
+          "a_planifier": false,
+          "compteurs": {
+            "ouvertes": 8,
+            "faites": 12
+          },
+          "sante": [],
+          "focus_semaine": false,
+          "updated_at": "2026-11-16T18:00:00+01:00",
+          "lock_version": 4
+        },
+        "taches_nb": 25,
+        "deleted_at": "2026-11-15T10:00:00+01:00"
+      }
+    ],
+    "taches": [
+      {
+        "item": {
+          "type": "tache",
+          "id": 42,
+          "titre": "Timbres",
+          "statut": "a_faire",
+          "projet": null,
+          "section": null,
+          "parent_id": null,
+          "priorite": 0,
+          "jour_prevu": "2026-11-17",
+          "moment": "",
+          "heure_debut": null,
+          "echeance": null,
+          "echeance_heure": null,
+          "quelque_jour": false,
+          "estimation_minutes": 15,
+          "reports": 0,
+          "rang": null,
+          "motif": null,
+          "raison": null,
+          "explication": "prévue aujourd'hui",
+          "rappel": null,
+          "lien": null,
+          "checklist": null,
+          "sous_taches": null,
+          "recurrente": false,
+          "routine": false,
+          "jalon": false,
+          "bloquee_par": null,
+          "en_attente_de": "",
+          "essentielle": false,
+          "prevue_au_plan": true,
+          "confidentiel": false,
+          "confidentielle": false,
+          "source": "manuel",
+          "peut_cloturer": true,
+          "lock_version": 1
+        },
+        "deleted_at": "2026-11-16T11:00:00+01:00"
+      }
+    ]
+  }
+}

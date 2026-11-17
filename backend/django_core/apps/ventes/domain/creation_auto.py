@@ -117,7 +117,8 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci,
         verdict_taille_creation)
     from apps.ventes.domain.creation import devise_par_defaut
-    from apps.ventes.domain.etude_ci_batterie import lignes_des_options
+    from apps.ventes.domain.etude_ci_batterie import (
+        CLE_BANQUE_RECOMMANDEE, banque_recommandee, lignes_des_options)
     from apps.ventes.domain.suppositions_ci import alertes_pour_la_commerciale
     from apps.ventes.models import Devis
 
@@ -155,6 +156,11 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         entrees[CLE_TAILLE_CREATION] = verdict
     if scenario:
         entrees['scenario'] = scenario
+        # D4 (17/11/2026) — la banque recommandée reste connue du devis quand le
+        # vendeur en chiffre moins (« prêt pour plus »).
+        recommandee = banque_recommandee(etude)
+        if recommandee:
+            entrees[CLE_BANQUE_RECOMMANDEE] = recommandee
         if scenario == SCENARIO_LES_DEUX:
             # CORC9 (27/10/2026) — CIQ302 (convention 5) : un C&I à deux
             # options MET EN AVANT l'offre réseau (``options.

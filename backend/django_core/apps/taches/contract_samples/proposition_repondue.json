@@ -1,0 +1,108 @@
+{
+  "endpoint": "POST /api/django/taches/rythme/propositions/{id}/repondre/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST rythme/propositions/{id}/repondre/ · consommateurs : carte du moment, Mon rythme ». Source : docs/taches/reference/api.md annexe A (`proposition_repondue.json`), recopié mot pour mot.",
+  "exemple": {
+    "proposition": {
+      "id": 41,
+      "type": "proposition_palier",
+      "cle": "monter",
+      "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+      "donnees": {
+        "N": 5,
+        "N1": 6,
+        "tenus": 7
+      },
+      "boutons": [],
+      "expire_le": "2026-11-24"
+    },
+    "rythme": {
+      "mode": "pousser",
+      "comprendre_mon_rythme": true,
+      "objectif": {
+        "nb": 5,
+        "source": "accepte",
+        "mode": "pousser",
+        "zone": null
+      },
+      "trace": "5 faites ou plus 7 jours sur 10",
+      "bloc": {
+        "jours": 7,
+        "tenus": 5,
+        "sur": 10
+      },
+      "tenir": null,
+      "proposition": {
+        "id": 41,
+        "type": "proposition_palier",
+        "cle": "monter",
+        "texte": "Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?",
+        "donnees": {
+          "N": 5,
+          "N1": 6,
+          "tenus": 7
+        },
+        "boutons": [
+          {
+            "reponse": "oui",
+            "libelle": "Monter à 6"
+          },
+          {
+            "reponse": "pas_maintenant",
+            "libelle": "Pas maintenant"
+          }
+        ],
+        "expire_le": "2026-11-24"
+      },
+      "serie": [
+        {
+          "jour": "2026-11-16",
+          "statut_jour": "evalue",
+          "faites": 5,
+          "objectif": 5,
+          "essentiel_faites": 1,
+          "essentiel_prevues": 1,
+          "plan_tenues": 4,
+          "plan_lignes": 5
+        }
+      ],
+      "constats": [
+        {
+          "id": 44,
+          "type": "constat",
+          "cle": "C3",
+          "texte": "Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.",
+          "donnees": {
+            "jour": 4,
+            "m1": 3.1,
+            "m2": 5.2
+          },
+          "boutons": [
+            {
+              "reponse": "oui",
+              "libelle": "Oui"
+            },
+            {
+              "reponse": "pas_maintenant",
+              "libelle": "Pas maintenant"
+            }
+          ],
+          "expire_le": "2026-11-24"
+        }
+      ],
+      "repere": {
+        "p60": 5.5,
+        "jours": 9
+      },
+      "preferences": [
+        {
+          "cle": "heure_limite",
+          "valeur": "19:00",
+          "source": "copilote",
+          "dite_le": "2026-11-17T09:00:00+01:00"
+        }
+      ],
+      "geste_id": 91
+    },
+    "geste_id": 91
+  }
+}

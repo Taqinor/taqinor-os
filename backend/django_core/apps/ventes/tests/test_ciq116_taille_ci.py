@@ -597,6 +597,94 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertNotIn('inclinaison_retenue_deg',
                          imposer(30.53, 43, True, toit={'kwc': 21.3, 'source': 's'}))
 
+    def test_d4_moins_de_batteries_au_depart_pret_pour_plus(self):
+        # D4 (fondateur 17/11/2026) — l'option des LIGNES à 1 batterie sur 3
+        # recommandées : même champ, mêmes hybrides ; l'économie suit la batterie
+        # CHIFFRÉE ; ``ajout_possible`` = 2 (même article), sinon ``None``.
+        from apps.ventes.domain.etude_ci_batterie import option_avec_de_l_etude
+        hybrides = _hybrides_bt()
+
+        def imposer(quantite, recommandee):
+            imposee = {'kwc': 30.53, 'nb_panneaux': 43, 'investissement': None, 'empreinte': [],
+                       'banque': dict(BATTERIES[1], quantite=quantite), 'hybrides': hybrides,
+                       'recommandee': recommandee,
+                       'onduleurs': {'combinaison': [dict(hybrides[2], quantite=2)]}}
+            return option_avec_de_l_etude(
+                {}, None, choix=None, lead=None, imposee=imposee, charge=self.charge,
+                production=self.prod, tension='bt', revente_choisie=False,
+                valoriser=_valoriser(self.charge), taux_tva_pct=20, phase='tri', ps_kva=None,
+                composer=_composer, borne_toit={'kwc': 35.5, 'source': 's'})['bloc']
+        reco = {'produit': 951, 'nom': 'Batterie Dyness 10 kWh', 'quantite': 3}
+        une, trois = imposer(1, reco), imposer(3, reco)
+        self.assertEqual((une['batterie']['quantite_recommandee'], une['batterie']['ajout_possible']),
+                         (3, 2))
+        self.assertEqual(trois['batterie']['ajout_possible'], 0)
+        self.assertEqual((une['kwc'], une['onduleurs']['combinaison']),
+                         (trois['kwc'], trois['onduleurs']['combinaison']))
+        self.assertLess(une['bilan']['batterie']['capacite_utile_kwh'],
+                        trois['bilan']['batterie']['capacite_utile_kwh'])
+        self.assertLess(une['economie_annuelle_mad'], trois['economie_annuelle_mad'])
+        for autre in (None, dict(reco, produit=952)):
+            b = imposer(1, autre)['batterie']
+            self.assertEqual((b['quantite_recommandee'], b['ajout_possible']), (None, None))
+
+    def _avec_cablage(self, n_bas, n_haut):
+        """Fondateur 17/11/2026 — hybrides Deye 15/20 kW aux fiches D1 (36 A,
+        Isc 54 A, 2 chaînes par MPPT, 30 / 40 kWc), module 715 Wc ; le champ
+        est tenu entre ``n_bas`` et ``n_haut`` panneaux (toit)."""
+        from apps.ventes.moteur_ci.batterie import dimensionner_option_avec
+        from apps.ventes.tests.test_ciq111_combinaison_onduleurs import (
+            _hybrides_deye_fiche, _module_715)
+        hybrides = [dict(h, plage_batterie_v=[40, 60], bat_max_charge_kw=port)
+                    for h, port in zip(_hybrides_deye_fiche(), (14.34, 17.92))]
+        return dimensionner_option_avec(
+            kwc_depart=n_bas * 0.715, pmax_wc=715, kwc_max=n_haut * 0.715, charge=self.charge,
+            production=self.prod, tension='bt', revente_choisie=False,
+            combiner=partial(combiner_onduleurs, candidats=hybrides, phase='tri',
+                             module=_module_715(), max_appareils=10, homogene=True,
+                             fiche_fait_foi=True),
+            composer=_composer, valoriser=_valoriser(self.charge), batteries=BATTERIES[:1],
+            simuler=self.simuler, hybrides=hybrides, taux_tva_pct=20)
+
+    def test_un_panneau_de_plus_quand_il_evite_un_hybride(self):
+        # 49 × 715 Wc : sous les 40 kWc de la fiche du 20 kW, mais 2 entrées ×
+        # 2 chaînes égales n'en câblent jamais un nombre impair ⇒ 50 panneaux
+        # sur UN 20 kW, dit en clair ; 48 : déjà câblable, rien ne change.
+        r = self._avec_cablage(49, 50)
+        e = r['evaluation']
+        self.assertEqual(round(e['kwc'] * 1000 / 715), 50)
+        self.assertEqual([(x['kw_ac'], x['quantite']) for x in e['onduleurs']['combinaison']],
+                         [(20.0, 1)])
+        self.assertEqual(e['batterie']['panneaux_ajoutes'], 1)
+        (hyp,) = [h for h in r['hypotheses'] if h['cle'] == 'panneau_ajoute_cablage']
+        self.assertEqual(hyp['valeur'], 50)
+        self.assertIn('1 panneau ajouté (49 → 50) : un seul onduleur hybride câblable au lieu de 2',
+                      hyp['source'])
+        self.assertNotIn('ajout_cablage', e)
+        r48 = self._avec_cablage(48, 48)
+        self.assertEqual(round(r48['evaluation']['kwc'] * 1000 / 715), 48)
+        self.assertEqual(sum(x['quantite'] for x in r48['evaluation']['onduleurs']['combinaison']),
+                         1)
+        self.assertFalse([h for h in r48['hypotheses'] if h['cle'] == 'panneau_ajoute_cablage'])
+        # La règle elle-même : +1 seulement s'il réduit le nombre d'appareils.
+        from apps.ventes.moteur_ci.batterie import _n_cablable
+        from apps.ventes.tests.test_ciq111_combinaison_onduleurs import (
+            _hybrides_deye_fiche, _module_715)
+        comb = partial(combiner_onduleurs, candidats=_hybrides_deye_fiche(), phase='tri',
+                       module=_module_715(), max_appareils=10, homogene=True, fiche_fait_foi=True)
+        self.assertEqual(_n_cablable(49, 60, 715, comb, None)[2], (49, 50, 2, 1))
+        for n, n_haut in ((48, 60), (50, 60), (49, 49)):
+            n2, _ond, ajout = _n_cablable(n, n_haut, 715, comb, None)
+            self.assertEqual((n2, ajout), (n, None), (n, n_haut))
+
+    def test_panneau_de_cablage_jamais_au_dela_du_toit(self):
+        # Toit à 49 panneaux : le champ reste à 49, sur deux appareils.
+        r = self._avec_cablage(49, 49)
+        e = r['evaluation']
+        self.assertEqual(round(e['kwc'] * 1000 / 715), 49)
+        self.assertEqual(sum(x['quantite'] for x in e['onduleurs']['combinaison']), 2)
+        self.assertFalse([h for h in r['hypotheses'] if h['cle'] == 'panneau_ajoute_cablage'])
+
     def test_p2_production_de_par_champ(self):
         # R1 (P2) — chaque champ « avec » est évalué avec la production de la
         # pose qui le loge : ``production_de(kwc)`` est appelée au kWc du champ.

@@ -81,8 +81,8 @@ MOTIF_SERIE_ILLISIBLE = (
     "puissance continue à convertir. Étape OMISE.")
 
 MOTIF_SANS_PUISSANCE_NOMINALE = (
-    "La puissance nominale de l'onduleur n'est pas connue (ni « dc_max_kwc "
-    "» ni « ac_kw » sur la fiche, ou aucun nombre d'onduleurs au bloc « "
+    "La puissance nominale de l'onduleur n'est pas connue (ni « ac_kw » "
+    "ni « dc_max_kwc » sur la fiche, ou aucun nombre d'onduleurs au bloc « "
     "electrique.onduleurs ») : la courbe η(P) n'a pas d'abscisse sur "
     "laquelle se poser. Étape OMISE.")
 
@@ -111,7 +111,7 @@ def appliquer(serie, contexte):
         if nominale is None:
             return serie, etapes.etape_omise(
                 LIBELLE, MOTIF_SANS_PUISSANCE_NOMINALE,
-                champ='fiche_onduleur.dc_max_kwc')
+                champ='fiche_onduleur.ac_kw')
         return _convertir_par_courbe(serie, colonne, courbe, nominale)
 
     euro = _nombre(fiche_onduleur.get('rendement_euro_pct'))
@@ -246,14 +246,23 @@ def _interpoler(courbe, charge_pct):
 # ── lectures de contexte ─────────────────────────────────────────────────
 
 def _puissance_nominale_kw(contexte, fiche_onduleur):
-    """La puissance nominale de l'ENSEMBLE des onduleurs, et sa base."""
+    """La puissance nominale de l'ENSEMBLE des onduleurs, et sa base.
+
+    Décision fondateur 17/11/2026 : ``dc_max_kwc`` est la puissance PV
+    maximale RACCORDABLE (« Max. PV access power » d'un hybride Deye, soit
+    le double de sa puissance AC ; « Recommended max. PV power » Huawei),
+    jamais une puissance nominale. La nominale de la courbe η(P) est donc
+    ``ac_kw`` d'abord ; ``dc_max_kwc`` ne sert que de repli quand ``ac_kw``
+    est absent.
+    """
     nombre = _nombre_d_onduleurs(contexte)
     if nombre is None:
         return None
-    for cle, base in (('dc_max_kwc', 'puissance continue maximale de la '
-                                     'fiche (dc_max_kwc)'),
-                      ('ac_kw', 'puissance alternative nominale de la fiche '
-                                '(ac_kw)')):
+    for cle, base in (('ac_kw', 'puissance alternative nominale de la fiche '
+                                '(ac_kw)'),
+                      ('dc_max_kwc', 'puissance continue maximale de la '
+                                     'fiche (dc_max_kwc), repli faute '
+                                     "d'ac_kw")):
         unitaire = _nombre(fiche_onduleur.get(cle))
         if unitaire and unitaire > 0.0:
             return {'valeur_kw': unitaire * nombre, 'base': base,

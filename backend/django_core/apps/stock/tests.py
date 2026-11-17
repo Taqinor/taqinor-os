@@ -256,10 +256,12 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_mppt_v_min, Decimal('160.0'))
         self.assertEqual(fiche.ond_mppt_v_max, Decimal('650.0'))
         self.assertEqual(fiche.ond_v_max_abs, Decimal('800.0'))
-        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
+        # Fondateur 17/11/2026 — révision actuelle de la fiche (2026-09-11) :
+        # 36+36 A / 54+54 A, 2 chaînes par MPPT, PV max raccordable 40 kWc.
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('36.0'))
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
         self.assertEqual(fiche.ond_v_demarrage_v, Decimal('160.0'))
-        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('30.0'))
+        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('54.0'))
 
     def test_pvlv2_les_doublons_basse_tension_ne_renaissent_jamais(self):
         """PVLV2 — les SKU « Basse Tension » du 18/08 étaient des DOUBLONS nés
@@ -434,12 +436,13 @@ class TestSeedCatalogue(TestCase):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
             self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
-        # « 36+20 A » (SG05LP3 14-20K, PVLV2 — les 15/20 kW SONT cette
-        # famille basse tension) → 20 A.
+        # SG05LP3 14-20K : la fiche de juin 2024 disait « 36+20 A » (→ 20 A) ;
+        # fondateur 17/11/2026 — unités de la révision COURANTE (fiche du
+        # 2026-09-11) : 36 A sur les DEUX trackers, plus aucune asymétrie.
         for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
-            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('36.0'), sku)
 
         p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
         f15t = FicheTechnique.objects.get(produit=p15t)
@@ -767,10 +770,11 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(fiche.ond_ac_kw, Decimal('15'))
         self.assertEqual(fiche.ond_phases, 3)
         self.assertEqual(fiche.ond_rendement_euro_pct, Decimal('97.0'))
-        # Courant asymétrique 36/20 A sur 2 trackers : valeur retenue = le
-        # tracker LE PLUS FAIBLE (20 A) ; Isc maxi 54/30 A → 30 A, même règle.
-        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'))
-        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('30.0'))
+        # Fondateur 17/11/2026 — révision actuelle (datasheet 2026-09-11) :
+        # 36 A / Isc 54 A sur les DEUX trackers (la règle « tracker faible
+        # 20 A / 30 A » de la fiche de juin 2024 est remplacée).
+        self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('36.0'))
+        self.assertEqual(fiche.ond_isc_max_mppt_a, Decimal('54.0'))
 
     # ── PVG4 — Batterie Dyness haute tension, 16 kWh (décision fondateur
     # 2026-08-18) ───────────────────────────────────────────────────────

@@ -1,0 +1,92 @@
+# Tâches et agenda personnels + Copilote — dossier de la fonctionnalité
+
+## Ce que c'est (en 8 lignes)
+
+1. Une nouvelle application de l'ERP, « Tâches », pour que chaque personne gère SES tâches et SON agenda, en privé.
+2. L'écran du jour s'appelle **Aujourd'hui** : ce qu'il faut faire, ce qui est proposé, les rendez-vous, un bilan le soir.
+3. Les tâches se rangent par **projets** ; on colle ou on dicte une liste, le logiciel propose le rangement, on valide.
+4. Les visites, activités et suggestions de l'ERP apparaissent dans la journée, sans rien recopier.
+5. Le **Copilote** (l'assistant de l'ERP) sait planifier, prioriser et ranger ; tout marche aussi sans clé d'IA.
+6. Sur iPhone : icône, pastille, notifications, calendrier abonné, dictée Siri, grande tuile Scriptable.
+7. Personne d'autre ne voit vos tâches : espace privé, pas de projet partagé dans cette première construction.
+8. Le module est **invisible** au début : il s'allume d'abord pour l'Administrateur seul, puis plus largement sur votre parole.
+
+Plan de construction : `docs/plans/PLAN_TACHES.md` (174 tâches, `TCH1` à `TCH174`).
+Décisions de Reda : `docs/claude-memory/taches-decisions-fondateur.md`.
+
+## Ce que contient chaque sous-dossier
+
+- **`reference/`** — la vérité. Données (`donnees.md`), routes d'API (`api.md`), règles et algorithmes (`regles.md`),
+  mots affichés à l'écran (`textes.md`). En cas de doute, c'est ce dossier qui fait foi.
+- **`conception/`** — le pourquoi. `socle.md` (décisions de Reda et architecture), `arbitrages.md` (les 18 choix
+  tranchés pendant la conception), `spec-2` à `spec-8` (saisie, journée et agenda, projets, rythme, assistant, ERP,
+  iPhone, écrans, langage visuel), `consignes-construction.md` (comment construire sous Windows).
+- **`maquettes/`** — le contrat visuel : les écrans dessinés en HTML, avec leurs feuilles de style et `SCENARIO.md`
+  (la journée d'exemple et ses chiffres).
+
+### Ouvrir une maquette
+
+Double-cliquez sur un fichier `.html` de `docs/taches/maquettes/` (par exemple `ecran-aujourdhui-matin.html`) : il
+s'ouvre dans le navigateur, sans serveur. Ajoutez `?vue=iphone` ou `?vue=bureau` à la fin de l'adresse pour choisir la
+taille, et `?theme=sombre` pour le mode sombre.
+
+### Relancer les outils des maquettes
+
+Ils sont dans `docs/taches/maquettes/outils/` et utilisent Playwright du dossier `frontend/node_modules` du dépôt
+principal (variable `PLAYWRIGHT_DIR` pour pointer ailleurs). Depuis la racine du dépôt :
+
+- `node docs/taches/maquettes/outils/capturer.cjs docs/taches/maquettes/<fichier>.html` — fabrique les captures PNG
+  (iPhone et bureau, clair et sombre) ; sans second argument elles vont dans un dossier `captures/` à côté de la
+  maquette. Ce dossier n'est jamais versionné.
+- `node docs/taches/maquettes/outils/verifier.cjs` — contrôle toutes les maquettes (icônes, contraste, cibles de 44 px,
+  éléments recouverts, mots interdits) ; il échoue au premier défaut. On peut lui donner un seul fichier.
+
+## Les quatre fusions et ce que chacune rend utilisable
+
+- **F1 — le socle, invisible.** Modèles, contrats, moteurs de calcul. Rien n'est visible : personne n'a le droit
+  d'ouvrir l'app, sauf les comptes techniques.
+- **F2 — le cœur complet.** Saisie, Aujourd'hui, agenda, projets, rythme, réglages, liens ERP, hors ligne. Activé à
+  la fin pour le SEUL rôle Administrateur : c'est la première fois que vous pouvez l'essayer.
+- **F3 — iPhone et Copilote.** Pastille, notifications, calendrier abonné, Siri, tuile, écran « Mon iPhone », Copilote
+  qui planifie et range.
+- **F4 — l'avancé replié.** Étiquettes, vues enregistrées, planification de projets avancée ; puis l'ouverture aux
+  autres rôles, seulement quand vous le dites (tâche `TCH168`).
+
+## Essayer le cœur (après la fusion F2)
+
+1. Lancer la pile locale (`docker compose up`, voir le fichier `CLAUDE.md` à la racine).
+2. Charger la journée d'exemple : `python manage.py seed_taches_demo` (commande créée par la tâche `TCH169`, absente
+   avant F2) ; elle crée le compte de démonstration `demo_taches`.
+3. Se connecter avec un compte au rôle **Administrateur** (ou `demo_taches`) et ouvrir `/taches/aujourdhui`.
+
+Avant F2 seuls un superutilisateur et `demo_taches` atteignent l'app ; après, l'Administrateur.
+
+## À essayer par Reda sur son iPhone
+
+Aucune tâche du plan ne prouve ces points : ils demandent votre vrai téléphone, vos comptes ou la production. Dans
+l'ordre d'arrivée :
+
+- **Essayer le cœur** (après F2) — utiliser Aujourd'hui quelques jours, au bureau et sur l'iPhone. C'est vous seul qui
+  savez si cela vous convient.
+- **Activer les notifications** — l'iPhone doit autoriser les notifications de l'ERP installé sur l'écran d'accueil ;
+  seul votre téléphone peut accepter cette demande. Côté production, vérifier aussi que la clé `VITE_VAPID_PUBLIC_KEY`
+  est présente au montage du front et que `NOTIFICATIONS_TOUJOURS_IMMEDIATES` contient `taches_rappel` : ce sont des
+  réglages du serveur que Claude ne touche pas.
+- **S'abonner au calendrier « Tâches Taqinor »** — ajoute vos tâches au Calendrier d'Apple par un lien d'abonnement ;
+  l'abonnement se fait dans les réglages de VOTRE compte iCloud.
+- **Créer le raccourci Siri « Nouvelle tâche »** — suivre la recette de l'écran « Mon iPhone », le partager par iCloud
+  et coller son lien dans `TACHES_RACCOURCI_SIRI_URL` du `.env` de production : le raccourci vit dans votre compte
+  Apple, et le `.env` de production est un geste de serveur qui vous revient.
+- **Installer Scriptable et la grande tuile** — Scriptable est une application gratuite de l'App Store ; l'installer
+  et poser la tuile sur l'écran d'accueil demande votre appareil et votre identifiant Apple.
+- **Choisir Aujourd'hui comme accueil** — réglage personnel de l'ERP sur votre téléphone : c'est votre goût qui tranche.
+- **Régler le fournisseur et la clé d'IA de production** — pour que le Copilote réponde en production ; c'est un secret
+  et un abonnement payant qui ne passent jamais par Claude.
+- **Dire si vous ouvrez Tâches aux autres rôles** (F4) — le plan attend votre parole.
+
+## Une précision honnête
+
+Les rapports de vérification (`verif-*.md`), les recherches (`recherche-*.md`) et les autres pièces de travail de la
+phase de conception ne sont PAS sur `main` : ils restent sur la branche de travail `claude/erp-task-manager-ai-f8db1b`.
+Certains documents de `conception/` citent donc des fichiers `verif-*.md` ou `recherche-*.md` absents d'ici ; leurs
+conclusions utiles sont reprises dans `arbitrages.md` et dans `reference/`.

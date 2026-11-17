@@ -1422,7 +1422,8 @@ def _traces_du_compte(compte):
     return ', '.join(
         f'{role} {n} {(m._meta.verbose_name if n == 1 else m._meta.verbose_name_plural)}'.lower()
         for (role, m), n in sorted(comptes.items(), key=lambda e: (e[0][0], e[0][1]._meta.label))
-        if n and m not in exclus)
+        # TCH18 : les données de `taches` suivent le compte (CASCADE), jamais des traces.
+        if n and m not in exclus and m._meta.app_label != 'taches')
 
 
 # ── Gestion des entreprises (superuser uniquement) ─────────────
