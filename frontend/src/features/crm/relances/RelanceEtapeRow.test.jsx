@@ -849,11 +849,12 @@ describe('Groupes « Pas joint » et « Plus tard… » — première réponse d
   })
 })
 
-describe('« Autre réponse » — les cinq réponses secondaires, rien de choisi d’avance', () => {
-  it('révèle Question de prix, Devis modifié, les deux décisions à plusieurs et Ne plus me contacter', () => {
+describe('« Autre réponse » — les réponses secondaires, rien de choisi d’avance', () => {
+  it('révèle Question de prix, Devis modifié, les deux décisions à plusieurs, Numéro invalide et Ne plus me contacter', () => {
     ouvrirFait(ETAPE_APRES_DEVIS)
     for (const nom of ['Question de prix — veut négocier', 'Demande un devis modifié',
-      'Décision à plusieurs — en famille', 'Décision à plusieurs — le propriétaire', 'Ne plus me contacter']) {
+      'Décision à plusieurs — en famille', 'Décision à plusieurs — le propriétaire',
+      'Numéro invalide / pas sur WhatsApp', 'Ne plus me contacter']) {
       expect(screen.queryByRole('button', { name: nom })).not.toBeInTheDocument()
     }
     fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
@@ -861,10 +862,19 @@ describe('« Autre réponse » — les cinq réponses secondaires, rien de chois
     expect([...sous.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
       'Question de prix — veut négocier', 'Demande un devis modifié',
       'Décision à plusieurs — en famille', 'Décision à plusieurs — le propriétaire',
-      'Ne plus me contacter'])
+      'Numéro invalide / pas sur WhatsApp', 'Ne plus me contacter'])
     // Aucune n'est choisie d'avance (une opposition légale ne se présélectionne pas).
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
     expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Choisissez une réponse.')
+  })
+
+  it('17/11/2026 — message : « Numéro invalide / pas sur WhatsApp » part en « non joint » avec sa note', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait({ ...ETAPE_APRES_DEVIS, message_ouvert_le: '2026-11-17T09:00:00Z' }, { onFait })
+    cliquerDans('Autre réponse', 'Numéro invalide / pas sur WhatsApp')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APRES_DEVIS.id, { outcome: 'non_joint', note: 'Numéro invalide' }))
   })
 
   it('même avec UNE seule réponse secondaire, elle reste derrière « Autre réponse » (premier contact)', () => {

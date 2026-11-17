@@ -83,8 +83,12 @@ export function reponseComplete(entree, segment = '') {
  *  `visite_prevue` : une visite est déjà planifiée sur le lead (`visite_prevue_le`,
  *  servie sur toute touche) — « Visite acceptée » / « Visite d'abord » n'ont plus
  *  de sens. */
-const CONTEXTES_MASQUANTS = {
+export const CONTEXTES_MASQUANTS = {
   visite_prevue: (etape) => Boolean(etape?.visite_prevue_le),
+  // 17/11/2026 — la touche est un APPEL : une réponse « message seulement »
+  // (« Numéro invalide / pas sur WhatsApp » de l'étape générique, que ses
+  // `reponses_appel` proposent déjà sur un appel) se retire.
+  touche_appel: (etape) => familleCanal(etape?.canal) === 'appel',
 }
 
 /** Le segment par défaut d'un lead sans segment : résidentiel. */

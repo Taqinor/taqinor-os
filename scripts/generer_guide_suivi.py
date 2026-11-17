@@ -324,6 +324,13 @@ def valider_table(table: dict) -> None:
         for cle in ('id', 'famille', 'nom', 'question', 'reponses'):
             if not etape.get(cle):
                 erreur(f'Table : l’étape « {etape.get("id", "?")} » n’a pas de champ « {cle} ».')
+        for r in reponses_resolues(table, etape):
+            contextes = [r.get('masquee_si')] if r.get('masquee_si') else []
+            contextes += list(r.get('variantes_contexte') or {})
+            for contexte in contextes:
+                if contexte not in MASQUEE_SI:
+                    erreur(f'Table : l’étape « {etape["id"]} » cite un contexte inconnu du guide : '
+                           f'{contexte!r}.')
     for section, champs in (('gestes', ('label', 'effet')), ('evenements', ('quand', 'effet'))):
         for element in table[section]:
             for cle in champs:
@@ -920,6 +927,15 @@ def mention_raisons(r: dict) -> str:
     return f'<br><span class="note">{esc_ecran(texte)}</span>'
 
 
+#: Les contextes ``masquee_si`` de la table (``CONTEXTES_MASQUANTS`` de ``parcours.js``)
+#: dits en clair dans le guide ; un contexte inconnu fait échouer la génération.
+MASQUEE_SI = {
+    'visite_prevue': 'absente si une visite est déjà prévue',
+    'touche_appel': 'sur un message seulement',
+    'sans_devis': 'absente si aucun devis n’a été envoyé',
+}
+
+
 def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
     """Une ligne « Ta réponse / Ce qui se passe ensuite » du guide."""
     pastilles = ''
@@ -937,8 +953,8 @@ def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
         pastilles += '<span class="pastille">ouvre « Pièce reçue »</span>'
     elif r.get('geste'):
         pastilles += '<span class="pastille">ouvre la planification</span>'
-    if r.get('masquee_si') == 'visite_prevue':
-        pastilles += '<span class="pastille">absente si une visite est déjà prévue</span>'
+    if r.get('masquee_si'):
+        pastilles += f'<span class="pastille">{esc(MASQUEE_SI[r["masquee_si"]])}</span>'
     if r.get('confirmation'):
         pastilles += f'<span class="pastille">case à cocher : « {esc(r["confirmation"])} »</span>'
     avertissement = ''

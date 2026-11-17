@@ -372,8 +372,10 @@ REPONSES_PAR_TYPE = {
     TYPE_REVEIL_MESSAGE: (
         'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'attente_accord', 'refuse', 'ne_plus_contacter'),
+    # 17/11/2026 — « Numéro invalide / pas sur WhatsApp » (issue « non
+    # joint ») servi aussi sur une étape générique MESSAGE.
     TYPE_GENERIQUE: (
-        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse', 'non_joint',
         'ne_plus_contacter'),
 }
 

@@ -222,16 +222,37 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
       .toEqual(['Ne plus me contacter'])
   })
 
-  it('après devis (appel) : 6 pastilles ; Numéro invalide et A bloqué n’y sont plus', () => {
+  it('après devis (appel) : 6 pastilles ; Numéro invalide dans « Pas joint », A bloqué absent', () => {
     const items = sur('suivi_appel', { canal: 'appel' })
     expect(etiquettes(items)).toEqual([
       'Client joint', 'Visite acceptée', 'Pas joint', 'Plus tard…', 'Refuse la proposition', 'Autre réponse'])
     expect(items.find((i) => i.cle === 'pas_joint').membres.map((m) => m.reponse.label))
-      .toEqual(['Pas de réponse', 'Répondeur', 'Occupé'])
+      .toEqual(['Pas de réponse', 'Répondeur', 'Occupé', 'Numéro invalide'])
     expect(items.find((i) => i.genre === 'autre').membres).toHaveLength(5)
     const ids = reponsesDeLEtape(type('suivi_appel'), TOUCHE).map((r) => r.id)
-    expect(ids).not.toContain('numero_invalide')
+    expect(ids).toContain('numero_invalide')
     expect(ids).not.toContain('bloque')
+  })
+
+  it('17/11/2026 — « Numéro invalide » : dans « Pas joint » sur chaque appel, sous « Autre réponse » sur chaque message', () => {
+    for (const id of ['contact_appel', 'suivi_appel', 'reveil_appel', 'appel_apres_reponse',
+      'dernier_appel', 'rappel_convenu', 'debrief']) {
+      const items = sur(id, { canal: 'appel', visite_prevue_le: null })
+      const pasJoint = items.find((i) => i.cle === 'pas_joint')
+      expect(pasJoint?.membres.map((m) => m.reponse.id), id).toContain('numero_invalide')
+      expect(etiquettes(items), id).not.toContain('Numéro invalide')
+    }
+    for (const id of ['contact_message', 'suivi_message', 'reveil_message', 'generique']) {
+      const items = sur(id, { canal: 'whatsapp', visite_prevue_le: null })
+      const autre = items.find((i) => i.genre === 'autre')
+      const membre = autre.membres.find((m) => m.reponse.id === 'numero_invalide')
+      expect(membre?.reponse.label, id).toBe('Numéro invalide / pas sur WhatsApp')
+      expect(membre.reponse.junk, id).toBe('Numéro invalide')
+      expect(items.find((i) => i.cle === 'pas_joint'), id).toBeUndefined()
+    }
+    // Étape générique sur un APPEL : une seule « Numéro invalide », celle de « Pas joint ».
+    const appel = reponsesDeLEtape(type('generique'), { ...TOUCHE, canal: 'appel' })
+    expect(appel.filter((r) => r.id === 'numero_invalide').map((r) => r.label)).toEqual(['Numéro invalide'])
   })
 
   it('un groupe d’un seul membre n’est pas groupé : pastille ordinaire, libellé propre', () => {
