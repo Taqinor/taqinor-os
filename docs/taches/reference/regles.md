@@ -1,8 +1,8 @@
-# Référence des RÈGLES — `apps/taches` (modules de code pur)
+# Référence des RÈGLES — `apps/taches` (modules de code pur) — révision 2
 
-Fait foi sur tout algorithme. Les NOMS (champs, valeurs, routes, fonctions) sont ceux de `donnees.md` et `api.md` ;
-les MOTS montrés sont ceux de `textes.md`. Primauté appliquée : socle §0/§8 → A1-A15 → référence données/API (noms)
-→ spec-7 r2 → vérifications → specs. Chaque règle est déterministe, sans base, bibliothèque standard seule, fonctions
+Fait foi sur tout algorithme. Les NOMS (champs, valeurs, routes, fonctions) sont ceux de `donnees.md` et `api.md`
+révision 2 ; les MOTS montrés sont ceux de `textes.md`. Primauté appliquée : socle §0/§8 → A1-A17 → référence
+données/API (noms) → spec-7 r3.1 → vérifications → specs. Chaque règle est déterministe, sans base, bibliothèque standard seule, fonctions
 ≤ 60 lignes logiques (`forme_code/fonction_neuve.py`).
 
 ## 0. Conventions communes
@@ -41,8 +41,8 @@ garde `’`, les accents et la casse), espaces fusionnés en une espace ASCII, b
 2. Un nombre nu (« Rapport 2026 », « le 5 »), un mois sans quantième (« novembre »), « daily / weekly / monthly »
    seuls, `!` seul (« Karim ! »), `!!!!` (quatre ou plus), `#` ou `%` suivis d'un chiffre (« facture #12 », « 10% »).
 3. Un jeton qui n'est pas sur des frontières de mot (`demainx`, `p12`).
-4. Une date impossible (« 31/11 », « 30 février ») : elle reste du texte, sans alerte (IR4).
-5. Une durée hors [5, 960] minutes (« 2 min », « 20h de route ») : reste du texte.
+4. Une date impossible (« 31/11 », « 30 février ») : elle reste du texte, alerte `date_invalide` (IR4).
+5. Une durée hors [5, 960] minutes (« 2 min », « 20h de route ») : reste du texte, alerte `duree_hors_bornes`.
 6. Un jeton listé dans `ignorer = [{type, source}]` (effet du × sur sa puce).
 7. Les mots d'un titre qui ne sont pas en position de jeton : voir les règles de contexte §1.4 (moments, midi).
 8. Porte `capture` : les types interdits par A1 (§1.8) restent du texte.
@@ -130,20 +130,21 @@ heure ; « pour / for » + durée = durée, + date ou heure = échéance (« pou
 | Porte | Types lus | Effets propres |
 |---|---|---|
 | `rapide` (`saisie-rapide/`) | tous | nouveau projet, étape, étiquette créés ; aperçu sans écriture |
-| `capture` (`capture/`, jeton) | `jour`, `heure`, `moment`, `echeance`, `priorite`, `duree`, `projet` EXISTANT (A1) | jamais de création de projet, d'étape, d'étiquette, de récurrence, de rappel ; « un jour / en réserve » non lu (A15) ; `#inconnu` reste du texte ; rien reconnu → À trier |
+| `capture` (`capture/`, jeton) | `jour`, `heure`, `moment`, `echeance`, `priorite`, `duree`, `projet` EXISTANT (A1) — par `#nom` ou par « projet <nom> » / « project <nom> » EN TÊTE (le plus long nom de projet existant qui suit, comparé par `cle_nom`) | jamais de création de projet, d'étape, d'étiquette, de récurrence, de rappel ; « un jour / en réserve » non lu (A15) ; `#inconnu` et « projet <inconnu> » restent du texte ; rien reconnu → À trier |
 | `assistant` (lignes du Copilote) | la ligne SOURCE est analysée en `rapide` ; le `titre` envoyé par le modèle est ignoré | ≤ 3 écritures par tour ; contenu non fiable → carte à valider (A5) |
 
-Réponse de la capture : `dans` = `journee` si un jour ou une échéance est posé, `projet` si seul un projet l'est,
-`a_trier` sinon ; message lu par Siri : `textes.md` §7.
+Réponse de la capture : `dans` = `journee` si un jour est posé (quel qu'il soit), `projet` si un projet sans jour,
+`a_trier` sinon — une échéance seule laisse la tâche dans À trier (invariant 1) ; message lu par Siri : `textes.md` §7.
 
 ### 1.9 Projet par la saisie
 
 - `#nom` : comparaison par `cle_nom` aux projets `actif` et `en_pause` du propriétaire. Plusieurs → premier par
   `rang`, alerte `plusieurs_projets`. Un `termine`/`archive` → puce « Projet archivé : X », tâche À trier sauf tap
   « Réactiver X » (alerte `projet_archive`).
-- Aucun (porte `rapide`) → « Nouveau projet : X » : le projet naît avec la tâche, `priorite` 0, couleur d'office =
-  première couleur de la palette absente des projets actifs, sinon la moins utilisée, égalité → ordre de la palette
-  (spec-4 §A, IR6) ; `rang` en fin des actifs de priorité ≥ 0. Annuler la saisie supprime la tâche ET le projet né
+- Aucun (porte `rapide`) → « Nouveau projet : X » : le projet naît avec la tâche, `priorite` 2 « Moyenne » (A16-M3,
+  A17-M3 : puce modifiable dans l'aperçu et dans la liste), couleur d'office = première clé de `Couleur` (10 clés,
+  A15) absente des projets actifs, sinon la moins utilisée, égalité → ordre de l'énumération (spec-4 §A, IR6) ;
+  `rang` au milieu entre le dernier actif de priorité ≥ 2 et le suivant (spec-4 §A). Annuler la saisie supprime la tâche ET le projet né
   vide (`soft_delete(record=False)`).
 - Étape `/nom` : `get_or_create` par (`projet`, `nom_cle`) (contrainte `taches_section_nom_uniq`).
 
@@ -154,13 +155,15 @@ Réponse de la capture : `dans` = `journee` si un jour ou une échéance est pos
 3. `[x] [X] ✓ ✔ ☑` en tête → ligne « déjà faite », décochée dans l'aperçu.
 4. **Titre de groupe** : ligne finissant par « : » suivie d'au moins une ligne → pas une tâche ; les lignes
    suivantes, jusqu'au titre suivant, prennent ce projet (§1.9) sauf `#` propre.
-5. **Première ligne = projet (A14-M9)**, par collage : la première ligne retenue est proposée comme projet commun
-   (`projet_commun.source = "premiere_ligne"`) si (a) elle n'est pas un titre de groupe, (b) elle n'avait ni puce
+5. **Première ligne = projet (A14-M9)**, PAR collage (`textes[i]` → l'élément de `projets_communs[]` d'index
+   `collage = i`, champ `collage` sur chaque ligne de l'aperçu) : la première ligne retenue est proposée comme projet
+   commun de son collage (`source = "premiere_ligne"`, `priorite` 2) si (a) elle n'est pas un titre de groupe, (b) elle n'avait ni puce
    ni case, (c) aucun jeton n'y est reconnu, (d) ≤ 60 caractères, (e) au moins deux lignes la suivent. Projet
    existant par `cle_nom` → `nouveau:false`, sinon « Nouveau projet : … ». Un tap la rend tâche.
 6. **Retrait** : ligne plus en retrait que la précédente (≥ 2 espaces de plus) → point de check-list de la dernière
    ligne non en retrait (bascule « En faire des sous-tâches »).
-7. Chaque ligne passe par `analyser` (porte `rapide`) ; le projet commun vaut pour les lignes sans projet.
+7. Chaque ligne passe par `analyser` (porte `rapide`) ; le projet commun de SON collage vaut pour ses lignes sans
+   projet.
 8. **Doublon** : `cle_nom(titre)` égale à celle d'une tâche ouverte du propriétaire (`doublon_de` = son id) ou d'une
    autre ligne du collage → décochée.
 9. **Projet suggéré sans IA** : exactement un nom de projet actif (≥ 4 caractères) contenu comme mot entier dans le
@@ -204,8 +207,8 @@ Prio · Autre. Repère §0. Les lignes **en gras** sont corrigées par rapport �
 | **A25** | Changer filtre tous les 3 mois après fait | Changer filtre | 17/11 | | | | 0 | mensuel n=3 apres_fait |
 | A26 | Water plants every! 3 days | Water plants | 17/11 | | | | 0 | quotidien n=3 apres_fait |
 | A27 | Acheter câbles #Maison /Achats %magasin | Acheter câbles | | | | 5 (étape 8) | 0 | étiquette « magasin » (créée si absente) |
-| A28 | Maquette #SiteWeb !! | Maquette | | | | nouveau « SiteWeb » | 2 | |
-| A29 | Plan lancement #Nouveau_site p1 | Plan lancement | | | | nouveau « Nouveau site » | 3 | |
+| A28 | Maquette #SiteWeb !! | Maquette | | | | nouveau « SiteWeb » (projet priorité 2) | 2 | |
+| A29 | Plan lancement #Nouveau_site p1 | Plan lancement | | | | nouveau « Nouveau site » (projet priorité 2) | 3 | |
 | A30 | Lire « Demain dès l'aube » | Lire « Demain dès l'aube » | | | | | 0 | guillemets : rien lu |
 | A31 | Rappeler Ali 5/6 | Rappeler Ali | 05/06/2027 | | | | 0 | sam. 5 juin 2027 |
 | A32 | Meeting 3/1 | Meeting | 03/01/2027 | | | | 0 | |
@@ -248,21 +251,23 @@ Prio · Autre. Repère §0. Les lignes **en gras** sont corrigées par rapport �
 | P14 | Appel 1h30 | Appel | | | | | 0 | durée 90 |
 | P15 | Appeler aujourd’hui *(U+2019)* | Appeler | 17/11 | | | | 0 | |
 | P16 | Payer le 1er décembre | Payer | 01/12 | | | | 0 | |
-| P17 | Payer facture le 31/11 | Payer facture le 31/11 | | | | | 0 | date impossible : texte |
+| P17 | Payer facture le 31/11 | Payer facture le 31/11 | | | | | 0 | date impossible : texte, `date_invalide` |
 | P18 | Point 10 h 30 demain | Point | 18/11 | 10:30 · matin | | | 0 | |
 | P19 | Facture #12 pour demain | Facture #12 | | | 18/11 | | 0 | |
 | P20 | Karim ! demain | Karim ! | 18/11 | | | | 0 | |
 | P21 | Appeler demain et vendredi | Appeler et vendredi | 18/11 | | | | 0 | `deux_jour` |
 | P22 | Déjeuner à midi | Déjeuner | 17/11 | 12:00 · apres_midi | | | 0 | |
-| P23 | Trier emails 2 min | Trier emails 2 min | | | | | 0 | durée < 5 : texte |
+| P23 | Trier emails 2 min | Trier emails 2 min | | | | | 0 | durée < 5 : texte, `duree_hors_bornes` |
 | P24 | Appeler 3pm demain | Appeler | 18/11 | 15:00 · apres_midi | | | 0 | |
 | P25 | Call May 5 | Call | 05/05/2027 | | | | 0 | |
 | C1 | *capture* Lait demain #Maison %magasin rappel 9h | Lait %magasin rappel | 18/11 | 09:00 · matin | | 5 | 0 | `%`, rappel non lus ; `dans:"journee"` |
 | C2 | *capture* Appeler Karim un jour | Appeler Karim un jour | | | | | 0 | « un jour » non lu ; `dans:"a_trier"` |
 | C3 | *capture* Maquette #SiteWeb | Maquette #SiteWeb | | | | | 0 | projet inconnu : texte ; `a_trier` |
 | C4 | *capture* appeler le fournisseur demain 10 h | appeler le fournisseur | 18/11 | 10:00 · matin | | | 0 | Siri : « Ajouté pour demain 10 h : appeler le fournisseur » |
+| C5 | *capture* projet Maison acheter du lait demain | acheter du lait | 18/11 | | | 5 | 0 | « projet <nom> » en tête ; `dans:"journee"` |
+| C6 | *capture* Rapport pour vendredi | Rapport | | | 20/11 | | 0 | échéance seule : `dans:"a_trier"` |
 
-Total : 39 (annexe A, dont 5 corrigées) + 16 anglaises et mixtes + 25 pièges + 4 captures = **84 phrases**.
+Total : 39 (annexe A, dont 5 corrigées) + 16 anglaises et mixtes + 25 pièges + 6 captures = **86 phrases**.
 
 ### 1.12 Découpage du code (≤ 60 lignes logiques par fonction)
 
@@ -334,9 +339,10 @@ session) — repris tels quels.** Fériés injectés 18/11/2026 et 01/01/2027.
 ### 3.1 Les deux usages
 
 1. **Ordre dans une section** du jour (Essentiel, Prévu, Ce soir, À revoir) : clé `(rang_jour est nul, rang_jour,
-   cle_tri(item))` — `rang_jour` s'il est posé, sinon le moteur (verif-specs-2-3 M13). `reordonner` numérote toute la
-   section par pas de 1 024. Dans **Prévu**, les éléments à heure (tâches à `heure_debut`, obligations à `heure`)
-   passent d'abord, par heure croissante (A14-M1).
+   cle_tri(item))` — `rang_jour` s'il est posé, sinon le moteur (invariant 32). `reordonner` numérote toute la section
+   par pas de 1 024. Dans **Prévu**, les tâches à `heure_debut` (blocs) passent d'abord, par heure croissante ; les
+   `obligations` (visites, poses, interventions : date seule) sont dans la bande « Toute la journée » au-dessus de
+   Prévu (A16-N4).
 2. **Proposé pour aujourd'hui** : `proposer_plan()` sur le pool §3.4, trié par `cle_tri`.
 
 ### 3.2 `cle_tri(item, J, n_ouvres)` — ordre total strict
@@ -386,8 +392,8 @@ triées, aucune ligne de plan, aucun `rang_jour`).
 Ordres attendus à l'écran : **Prévu** = 12, 101, 15, 42, 43, 44 (aucun à heure) ; **À revoir** = 7, 20, 21, 40, 50,
 41 (`cle_tri` ; 50 a la priorité 1 de l'échantillon `aujourdhui.json`, bande 3 sans échéance : k3 la place avant
 41) ; **Proposé**, objectif 5, aucune faite, capacité 240 :
-places = 5 − 0 − 6 = 0 → `pour_objectif` vide, `reste_nb` = 2 (30, 31). Même jeu sans les 6 du jour : places 5 →
-`pour_objectif` = 30, 31. Critère inchangé : 41 (corvée en retard, prio 0) reste derrière 20 (échéance client proche).
+places = 5 − 0 − 6 = 0 → `pour_objectif` vide, `reste_nb` = 2 (30, 31), aucune carte `garder`. Même jeu sans les 6
+du jour : places 5 → `pour_objectif` = 30, 31, carte `garder` `{"n":2,"objectif":5}`. Critère inchangé : 41 (corvée en retard, prio 0) reste derrière 20 (échéance client proche).
 
 ### 3.4 Pool de Proposé et `proposer_plan(pool, objectif, capacite, exclure, inclure)`
 
@@ -399,18 +405,24 @@ sous-tâches (A11).
 **Algorithme** :
 1. `cible` = `objectif.nb` ; mode `libre` : 5 (taille de liste, jamais montrée comme objectif) ; mode `tenir` en
    surchauffe : ≤ ⌊R + b⌋.
-2. `places = max(0, cible − progression.faites − ouverts_du_jour)`, `ouverts_du_jour` = éléments ouverts
-   d'Essentiel, Prévu, Ce soir (tâches ET activités). Journée **allégée** ce jour-là (§4.5) : `places = 0`.
+2. `places = max(0, cible − progression.faites − ouverts_du_jour)`, `ouverts_du_jour` = éléments ouverts GARDÉS
+   d'Essentiel, Prévu, Ce soir (tâches ET activités). Le matin (`faites` = 0) c'est « N = objectif − gardées ouvertes »
+   de spec-7 r3.1 ; dans la journée les faites comptent aussi (A11 : « ce qu'il faut pour atteindre l'objectif »,
+   IR19). `plan.allege_le` posé ce jour-là (§4.5) : `places = 0` et `propose.replie = true`.
 3. `minutes` = Σ `estimation_minutes` des tâches ouvertes d'Essentiel et de Prévu (Ce soir compte en nombre, jamais
    en minutes ; sans estimation = 0, jamais imputé).
 4. `inclure` d'abord (dans l'ordre reçu, même au-delà des places), puis le pool par `cle_tri`, sans `exclure` :
    tant que `places > 0` ; une tâche estimée qui ferait dépasser `capacite × 1,10` est SAUTÉE (la suivante est
-   essayée) ; prise → `places −= 1`, `minutes += estimation`.
-5. Sortie : `pour_objectif` (lignes cochées), `reste` = pool non pris → `reste_nb` ; déplié (`?tout=1`), `suite_par_
-   projet` groupe le reste par projet (projets par priorité décroissante puis `rang`, tâches par `rang_projet` puis
+   essayée) ; prise → `places −= 1`, `minutes += estimation_minutes`.
+5. Sortie : `pour_objectif` (lignes cochées), `reste` = pool non pris → `reste_nb` ; déplié (`?tout=1`),
+   `suite_par_projet` groupe le reste par projet (projets par priorité décroissante puis `rang`, tâches par `rang_projet` puis
    `id` ; « Sans projet » en dernier).
 6. `charge` : `minutes_estimees` (prévues + proposées), `sans_estimation` (nombre), `surcharge` = minutes >
-   capacité, `non_calculable` = plus de la moitié des lignes sans estimation ; phrase : `textes.md` §2.2.
+   capacité, `non_calculable` = plus de la moitié des lignes sans estimation ; `propose.charge` = {`minutes_estimees`,
+   `capacite_minutes`, `surcharge`}, montrée à côté de « Garder ces N » ; phrase : `textes.md` §2.2.
+7. **Planifier ma semaine** (A16-N3) : `agenda/?vue=semaine` sert `mes_projets` = ce même pool, même `cle_tri`, groupé
+   par projet ; toucher une tâche puis un jour = `planifier(jour_prevu=jour)` (premier jour posé : 0 report). La revue
+   de la semaine finit par ce geste (`/taches/agenda?vue=semaine&placer=1`).
 
 ### 3.5 `explication(item)` — trois faits au plus, joints par « · »
 
@@ -437,20 +449,21 @@ moyenne ». Hors bande : « prévue aujourd'hui », « prévue {jour court} », 
 
 | # | Bloc (clé) | Contenu | Replié |
 |---|---|---|---|
-| 1 | `progression` | « faites sur OBJECTIF » + essentiel (A14-M2) ; le reste (plan tenu, temps, capacité) au toucher | — |
-| 2 | `cartes_coach` | UNE carte au plus : retour > proposition de rythme > pause > révélation ; le soir « Faire le bilan » | — |
+| 1 | `progression` | « faites sur OBJECTIF » + essentiel (A14-M2) ; le reste (gardées faites, temps, capacité) au toucher | — |
+| 2 | `carte_du_moment` | UN objet au plus, choisi par le serveur (§4.10) ; le navigateur insère le brouillon devant et l'astuce derrière | — |
 | 3 | `essentiel` | lignes du plan de J marquées `essentielle` (≤ 3), encore ouvertes ou faites aujourd'hui | non |
-| 4 | `journee` (« Prévu ») | du jour, hors soir : heures fixes en tête, puis tâches, activités ERP et `obligations` mêlées ; > 3 activités sans heure → une ligne repliable ; ligne « Suivi des relances : n » | non |
+| 4a | `obligations` (« Toute la journée ») | visites, poses, interventions du jour (date seule, A16-N4) ; `touches` → ligne « Suivi des relances : n » dans Prévu | non |
+| 4b | `journee` (« Prévu ») | gardées du jour, hors soir : blocs à leur heure en tête, puis tâches et activités ERP mêlées ; > 3 activités sans heure → une ligne repliable | non |
 | 5 | `ce_soir` | du jour, `moment = soir` | non |
-| 6 | `propose` | `pour_objectif` + « Voir toutes les tâches de mes projets » (`reste_nb`) ; bouton unique « Garder ces N » | non |
+| 6 | `propose` | `pour_objectif` + « Voir tout » (`reste_nb`) ; « Garder ces N » ; `charge` ; `replie` après Alléger | replié après Alléger |
 | 7 | `a_decider` (« À revoir ») | motifs §4.2 ; lot « Tout en réserve » | oui |
 | 8 | `en_attente` | `en_attente` datées ≤ J ; + compte `a_trier.bloquees` | oui |
 | 9 | `faites` | faites aujourd'hui (`fait_le` local = J) | oui |
 | 10 | Ailleurs dans l'ERP | route paresseuse `aujourdhui/ailleurs/` | oui |
 
-Une section vide est absente. La première tâche est visible sans défiler (estimé, spec-7). Aujourd'hui n'est jamais
-vide tant qu'un projet actif a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins « Voir
-toutes les tâches de mes projets ».
+Une section vide est absente (sauf l'invite ★ après « Garder »). La première tâche est visible sans défiler (spec-7
+§6 critère 5, texte à 130 %). Aujourd'hui n'est jamais vide tant qu'un projet actif a une tâche ouverte (A11) : à
+défaut de toute ligne, Proposé montre au moins « Voir tout ».
 
 ### 4.2 Placement d'une tâche (préfiltre invariant 10, puis premier cas vrai)
 
@@ -466,26 +479,32 @@ toutes les tâches de mes projets ».
 8. Sinon absente (prévue plus tard, En réserve, À trier…).
 
 Activité ERP (`activites_ouvertes_pour`, si `erp_dans_journee`) : due J → `journee` ; due < J → `a_decider` motif
-`jour_passe`. `obligations` (visites, interventions, touches) : chacune une fois, famille en échec absente.
+`activite_passee`. `obligations` (`FamilleObligation` : `visite`, `pose`, `intervention`, `touches`) : chacune une
+fois, famille en échec absente. Cocher une activité = `POST records/activities/{id}/done/` (close dans l'ERP, sans
+`geste_id`, donc sans « Annuler »). « Lier une tâche » (`taches/lier-activite/`) crée une tâche à `activite_origine`
+(source `activite`) et laisse l'activité ouverte (invariant 30).
 
 ### 4.3 Ce qui compte comme un report (invariant 4)
 
 `reports += 1` ⇔ ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou « En réserve ». Ne comptent jamais :
 futur → futur, avancer, poser un premier jour, `decaler`, `instancier`, Alléger, « Les remettre dans Proposé », le
-passage de minuit. Comptent : Reporter, Choisir un jour plus tard, « Le reste → … » du bilan, « Tout en réserve »,
-le lot `planifier`. `trancher` avec une décision qui garde la tâche pose `reports_tranches = reports` (la question
-revient 3 reports plus tard ; tâche en retard gardée aujourd'hui : c'est un report de plus, verif-specs-2-3 m8).
+passage de minuit. Comptent : Reporter, Choisir un jour plus tard, « Tout reporter » et « Reporter à … » du bilan, « Tout en réserve »,
+le lot `planifier`. `trancher` (`Decision` : `aujourdhui`, `garder` = sa date si ≥ J, sinon J, `jour`, `un_jour`,
+`abandonner`) : `aujourdhui`, `garder` ou `jour` posent `reports_tranches = reports` (la question revient 3 reports
+plus tard ; tâche en retard gardée aujourd'hui : c'est un report de plus, verif-specs-2-3 m8).
 
 ### 4.4 « Garder ces N » (`journee/planifier/` `mode:"express"`) et gestes sur Proposé
 
+- Le seul mode est `express` ; le triage d'À revoir n'est jamais exigé (A17-T2). Le matin, tant que rien n'est
+  gardé, la carte du moment `garder` porte le bouton (A17-M1) ; il figure aussi en tête de Proposé.
 - N = nombre de lignes cochées de `pour_objectif` (toutes par défaut). Le geste : `planifier(J)` pour chacune
   (0 report : premier jour posé) ; `PlanJour` créé si absent, `planifie_le` = maintenant (la 1re fois),
   `objectif_du_jour` = `objectif.nb` ; une `LignePlanJour(prevue_au_plan=True)` pour chaque élément ouvert
   d'Essentiel, Prévu, Ce soir (tâches et activités vérifiées par `activites_ouvertes_pour`) et chaque ligne gardée.
   Revalider n'ajoute que des lignes (invariant 18).
-- ★ sur une ligne (Proposé ou du jour) : `journee/essentiel/` ; une ligne de Proposé est d'abord mise à J ; ligne
-  `essentielle` créée, `prevue_au_plan = True` si le plan n'est pas encore validé, sinon `False` (ajout). 4e ★ → 400
-  « 3 au plus. ».
+- ★ seulement sur Essentiel et Prévu, JAMAIS sur Proposé (spec-7 r3.1 §9) : `journee/essentiel/` ; ligne
+  `essentielle` créée (`prevue_au_plan = True` si le plan n'est pas validé, sinon `False`). 4e ★ → 400 « 3 au plus. ».
+  Après « Garder ces N », l'invite « Touche ★ pour ton essentiel » s'affiche et le focus va sur « Prévu ».
 - Un geste « Aujourd'hui » sur une ligne proposée : `planifier(J)` ; plan validé → ligne ajoutée (`prevue_au_plan =
   False`).
 - Cocher une ligne proposée : `terminer` → faite aujourd'hui, comptée ; plan validé → ligne `prevue_au_plan = False,
@@ -494,22 +513,25 @@ revient 3 reports plus tard ; tâche en retard gardée aujourd'hui : c'est un re
 
 ### 4.5 « Alléger ma journée » (`journee/alleger/`)
 
-Il coche ce qu'il garde (rien n'est coché d'avance). Les AUTRES tâches à `jour_prevu = J` sans échéance ≤ J
-reviennent à `jour_prevu` nul par `planifier(…, compter_report=False)` ; leurs lignes de plan (essentielles
-comprises) sont retirées ; activités ERP, obligations et tâches à échéance ≤ J restent. Le reste de la journée,
-**Proposé ne se remplit plus** (`places = 0`, IR10) : sinon les tâches renvoyées reviendraient aussitôt.
+Il coche ce qu'il garde parmi les lignes de Prévu (rien n'est coché d'avance). Les AUTRES tâches à `jour_prevu = J`
+sans échéance ≤ J retournent à leurs projets (`jour_prevu` nul) par `planifier(…, compter_report=False)` ; leurs
+lignes de plan (essentielles comprises) sont retirées ; activités ERP, obligations et tâches à échéance ≤ J restent.
+`PlanJour.allege_le` est posé (remis à nul par l'annulation du geste) : jusqu'au lendemain, Proposé est **replié et
+vide** (`replie: true`, `places = 0`, A16-N6).
 
 ### 4.6 Bilan du soir (`journee/cloture/`, `journee/cloturer/`)
 
-- `restes` = tâches ouvertes d'Essentiel, Prévu, Ce soir + tâches `reportee_3_fois` à `jour_prevu = J` ; activités
+- `restes` = tâches ouvertes d'Essentiel, Prévu, Ce soir ; `a_trancher` = tâches `reportee_3_fois` à `jour_prevu = J` ; activités
   ERP ouvertes à part (`activites_a_clore`, « à clore dans l'ERP »). Faites = `fait_le` local = J.
-- Choix par reste : `demain` (J+1, même non travaillé), `jour` (+ date), `un_jour` (En réserve), `abandonner` ; le
-  bouton « Le reste → {prochain jour travaillé} » (`le_reste: true`) applique `prochain_jour_ouvre` aux restes non
-  nommés, SAUF les `reportee_3_fois`, qui doivent être nommées (400 sinon, au champ `choix.<id>`).
+- Choix par reste (`Decision`) : `prochain_jour_ouvre` (« Reporter à {jour} »), `jour` (+ date), `un_jour` (En
+  réserve), `abandonner` ; « Demain » n'est jamais un bouton de report (spec-7 r3). « Tout reporter »
+  (`le_reste: true`) applique `prochain_jour_ouvre` aux restes non nommés. Les `a_trancher` sont marquées « À revoir » : non
+  nommées, elles RESTENT en place (jamais de 400, parcours 8 de spec-7).
 - Effets : `planifier()` (reports comptés, §4.3), lignes `reportee = True`, `cloture_le` = maintenant, `reflexion`
   (≤ 280). Possible jusqu'à J+1 12:00 (`possible_jusqua`) ; « demain » est relatif au jour clos.
-- Contenu affiché : le bilan (quatre faits, §6.4), « plan tenu {x} sur {y} » s'il y a un plan, UN constat au plus
-  (A14-M4, §6.6). Sauté : rien ne bouge, aucune trace négative.
+- Contenu affiché : « N sur OBJECTIF » en première ligne, « gardées faites » en seconde (A16-M2), UN constat au plus
+  (A14-M4, §6.9). Sauté : rien ne bouge, aucune trace négative. **Bilan d'hier** : `journee/cloture/?jour=` J−1 reste
+  ouvert jusqu'à J 12:00 ; la carte du moment `bilan_hier` le propose si hier a des restes et `cloture_le` est nul.
 
 ### 4.7 Passage à minuit
 
@@ -526,19 +548,46 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
   préfiltre à `jour_prevu` dans [dernière ouverture + 1, J − 1].
 - « Les remettre dans Proposé » → ces tâches à `jour_prevu` nul, `compter_report=False` (elles gardent leur échéance
   et peuvent donc tomber dans À revoir) ; « Les voir une par une » → À revoir déplié. Aucun report compté. La
-  notification du matin ne compte que les tâches du jour.
+  notification du matin ne compte que les tâches du jour. Ce jour-là, `progression.reprise = true` : la ligne de
+  progression dit « Reprise » au lieu de « 0 sur 5 ». La carte `retour` n'est créée par `POST vu/` que si
+  `ReglagesRythme` existe (invariant 29).
 
 ### 4.9 Capacité, progression, pastille
 
 - **Capacité** : §3.6. `minutes_prevues` = Σ estimations des tâches (ouvertes et faites aujourd'hui) d'Essentiel et
   de Prévu.
-- **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts
-  d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` = lignes `prevue_au_plan` faites / lignes `prevue_au_plan`
-  (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger n'y sont plus).
-- **Pastille (UNE définition)** : `n` = éléments ouverts d'Essentiel + Prévu + Ce soir (tâches ET activités ERP) +
-  lignes de `propose.pour_objectif`, plafonné à 99 ; 0 → `clearAppBadge`. Jamais À revoir, En attente, la suite
-  dépliée de Proposé, À trier, ni les obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et
-  `notify(badge=n)`.
+- **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
+  d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` (« gardées faites ») = lignes `prevue_au_plan` faites /
+  lignes `prevue_au_plan` (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger
+  n'y sont plus). Partout l'écran montre « N sur OBJECTIF » ; les gardées faites sont une seconde donnée (A17-M2).
+- **Pastille (UNE définition, invariant 11)** : `n` = éléments OUVERTS et GARDÉS d'Essentiel + Prévu + Ce soir
+  (tâches ET activités ERP), plafonné à 99 ; JAMAIS Proposé (A16-N5) ; peut valoir 0 (→ `clearAppBadge`). Ni À revoir,
+  En attente, À trier, ni obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et `notify(badge=n)`.
+
+### 4.10 La carte du moment (`carte_du_moment`, valeurs de `CarteDuMoment`)
+
+Une seule, la première vraie dans cet ordre (spec-7 r3.1 §4) ; le navigateur insère « Reprendre » (brouillon de
+saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation `mon_iphone`.
+
+| Type | Vraie si | `donnees` |
+|---|---|---|
+| `retour` | carte `retour` du jour non répondue (§4.8) | PROPOSITION |
+| `bilan_hier` | avant 12:00, hier a des restes et le `cloture_le` d'hier est nul | `{"jour"}` |
+| `garder` | rien n'est encore gardé (`planifie_le` nul) et `pour_objectif` non vide | `{"n","objectif"}` |
+| `alleger` | à partir de `relance_jour`, `allege_le` nul, ≥ 1 gardée ouverte et `faites` < objectif / 2 (le seuil de la dérive, §7) | `{"faites","prevues"}` |
+| `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite | `{}` |
+| `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`), sinon une carte `pause` | PROPOSITION |
+| `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres | PROPOSITION |
+
+### 4.11 Hors ligne et conflit entre appareils
+
+- **Hors ligne (A16-N11, `api.md` §5)** : trois gestes en file — ajouter (`saisie-rapide/`, `client_id`), cocher
+  (`terminer/`), reporter (`planifier/`, `lock_version` du cache) ; chaque op porte `proprietaire_attendu` ; 409
+  `autre_compte` → op jetée ; tout autre geste est grisé (« Possible une fois connecté ») ; la saisie en cours est
+  gardée ; le Copilote dit une phrase.
+- **Conflit (A16-N8)** : un 409 `conflit_version` n'écrase jamais la saisie en cours ; le bandeau propose « Garder la
+  mienne » (renvoi avec `actuel.lock_version`) ou « Prendre l'autre » (affiche `actuel`) ; l'heure vient de
+  `actuel.updated_at`. La liste est relue au retour du focus.
 
 ## 5. La santé d'un projet — `apps/taches/moteur/sante.py`
 
@@ -607,20 +656,23 @@ totaux, jamais dans un bloc. Statut posé par la tâche nocturne sur le `PlanJou
 ### 6.4 Journée réussie et les quatre faits
 
 `journee_reussie(compte, objectif, choisis, faits)` = compte ≥ objectif ET (aucun essentiel choisi OU ≥ 1 fait) ;
-`None` sans objectif. Toujours montrée par ses quatre faits (compte, objectif, essentiel, plan tenu), jamais par le
+`None` sans objectif. Toujours montrée par ses quatre faits (compte, objectif, essentiel, gardées faites), jamais par le
 mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le compte seul).
 
 ### 6.5 POUSSER — l'objectif déclaré prime (A2)
 
 1. **Objectif dit** (`objectif_dit(etat, nombre, sens)`, `POST rythme/`, Copilote) : s'applique **tout de suite**,
    au `PlanJour` de J s'il n'est pas clos : `palier` = nombre (1-12, sinon 400) ou ±1 depuis l'objectif affiché
-   (plancher 1, plafond 12) ; `palier_source = dit` ; mode passe à `pousser` ; `refus_montee`, `blocs_a_sauter`,
-   `baisse_refusee`, `essai_restant` remis à zéro ; nouveau bloc dès J+1 (`bloc_debut`) sauf en démarrage à froid ;
-   `Preference.objectif_dit` garde la trace (retirée quand une proposition est ensuite acceptée).
+   (plancher 1, plafond 12) ; `palier_source = dit` ; le mode passe à `pousser` par la même route (`POST rythme/`,
+   seul chemin du mode) ; `refus_montee`, `blocs_a_sauter`, `baisse_refusee`, `essai_restant` remis à zéro ; nouveau
+   bloc dès J+1 (`bloc_debut`) sauf en démarrage à froid. `ReglagesRythme.palier` est la SEULE source (aucune clé
+   `Preference` pour l'objectif, I17).
 2. **Démarrage à froid** ⇔ `bloc_debut` nul : objectif 5 « valeur par défaut » (ou le nombre dit). Au 10e jour
-   évalué : journée type = `arrondir(min(médiane, moyenne))`, plancher 1 ; sans objectif dit elle devient le palier
-   (`calcule`, carte `premier`) ; avec objectif dit il est gardé et la carte `journee_type` la propose. `bloc_debut`
-   = lendemain. Pas de proposition de rythme avant ces 10 jours (spec-7 §7).
+   évalué : journée type = `arrondir(min(médiane, moyenne))`, plancher 1 ; `bloc_debut` = lendemain. **Rien n'est
+   imposé, ni baisse ni hausse** : sans objectif dit, si la journée type ≠ 5, la carte `premier` la propose
+   ([Oui, {type}] `oui` → `palier` = type, `accepte` ; [Garder 5] `garder` → `palier` = 5, `accepte`) ; sans réponse
+   en 7 jours elle expire et l'objectif reste 5 (`palier` nul) ; avec objectif dit, il est gardé et la carte
+   `journee_type` propose le type. Pas de proposition de rythme avant ces 10 jours (spec-7 §8).
 3. **Bloc** = 10 jours évalués au même palier (≈ 2 semaines travaillées), évalué à sa clôture puis remis à zéro ;
    une proposition au plus par bloc ; le bloc partiel est conservé pendant un congé.
 4. **Proposer +1** si jours à N ou plus **≥ 5/10**, N < 12, aucun bloc à sauter, garde de taille passée, et N+1 n'est
@@ -674,25 +726,26 @@ par bilan du soir** (le plus récent jamais montré, puis par numéro), la liste
 
 | # | Formule | Minimum | Action proposée |
 |---|---|---|---|
-| C1 | plan tenu par créneau de la ligne (< 12 h, 12-16 h, ≥ 16 h), écart ≥ 25 points | 30 lignes par créneau | `essentiel_le_matin` (Preference, source `carte`) |
-| C2 | essentiel fait quand il est 1er du plan vs ailleurs, écart ≥ 30 points | 15 jours chacun | `essentiel_le_matin` |
+| C1 | gardées faites par `LignePlanJour.creneau` (`matin`, `apres_midi`, `fin_journee`, figé à la création), écart ≥ 25 points | 30 lignes par créneau | `essentiel_le_matin` (Preference, source `carte`) |
+| C2 | essentiel fait quand il est 1er du plan (`LignePlanJour.rang` minimal) vs ailleurs, écart ≥ 30 points | 15 jours chacun | `essentiel_le_matin` |
 | C3 | moyenne d'un jour de semaine ≤ moyenne générale − 1 | 8 jours de ce jour | ajouter le jour à `jours_courts` |
-| C4 | prévues − faites ≥ 2 sur ≥ 60 % des plans | 10 plans | bouton « plan à médiane faite + 1 » au prochain plan, sans mémoire (I13) |
+| C4 | gardées − gardées faites ≥ 2 sur ≥ 60 % des plans | 10 plans | « Garder ces N » limité à médiane faite + 1 tant que la carte acceptée est la dernière de C4 (I13) |
 | C5 | part des tâches finies par tranche de 2 h (heure de `fait_le`) | 30 tâches | aucune (information) |
-| C6 | réel / estimé médian par projet hors [0,8 ; 1,25] | 5 tâches estimées ET mesurées du projet | budget corrigé automatiquement à l'estimation suivante (I13) |
+| C6 | réel / estimé médian par projet hors [0,8 ; 1,25] | 5 tâches estimées ET mesurées du projet | durée corrigée (minutes × ratio) dans `charge` tant que la carte acceptée est la dernière de C6 (I13) |
 | C7 | tâches reportées 3 fois ou plus (ouvertes) | 1 | ouvrir À revoir |
-| C8 | `neglige()` non vide (projet de plus haute priorité) | — | une de ses tâches actionnables dans Proposé de demain (`inclure`) |
+| C8 | `neglige()` non vide (projet de plus haute priorité) | — | une de ses tâches actionnables dans Proposé de demain (`inclure`), lue sur la carte acceptée (I13) |
 
 Chaque nombre d'une phrase figure dans `IncitationCoach.donnees` (ids, jamais de titres ; noms rendus à la lecture
 par `nom_pour`).
 
-### 6.10 Exemples chiffrés — 49 de spec-5a §7 + 12 de A2, RECALCULÉS
+### 6.10 Exemples chiffrés — 49 de spec-5a §7 + 12 de A2 + 4 de la révision 2, RECALCULÉS
 
 Recalculés par le script jetable `docs/taches/travail/integ2/recalcul.py` (bibliothèque standard, règles finales :
-seuil 5/10, demie vers le bas, plafonnement, objectif dit), lancé dans cette session : **61/61 conformes**. Les 49
-d'origine restent vrais au nouveau seuil (leurs blocs font 7/10 et 2/10) ; deux libellés d'entrée sont rendus
-recalculables (dérive « 11 × 3 + 3 × 4 », moyenne 3,21, au lieu de « moyenne 3,2 » inatteignable ; bascules
-réécrites sans la variante « plancher »).
+seuil 5/10, demie vers le bas, plafonnement, objectif dit, premier objectif proposé et jamais imposé, semaine
+courte), relancé en révision 2 : **65/65 conformes**. Les 49 d'origine restent vrais au nouveau seuil (leurs blocs
+font 7/10 et 2/10) ; `palier_initial` rend désormais (palier appliqué, journée type, carte), d'où les sorties 10-12
+réécrites ; deux libellés d'entrée sont rendus recalculables (dérive « 11 × 3 + 3 × 4 », moyenne 3,21 ; bascules sans
+la variante « plancher »).
 
 | # | Fonction | Entrée | Sortie |
 |---|---|---|---|
@@ -705,9 +758,9 @@ réécrites sans la variante « plancher »).
 | 7 | `journee_reussie` | (6, 5, 1 choisi, 1 fait) | vrai |
 | 8 | `journee_reussie` | (6, 5, 2 choisis, 0 fait) | faux |
 | 9 | `journee_reussie` | (4, 5, 0, 0) | faux |
-| 10 | `palier_initial` | [5,4,6,5,3,7,5,6,4,5], rien dit | (5, 5) |
-| 11 | `palier_initial` | [9,10,9,1,2,1,2,9,10,9] (rafales) | (6, 6) |
-| 12 | `palier_initial` | [3,3,2,4,3,3,2,3,4,3], dit 5 | (5, 3) — carte `journee_type` |
+| 10 | `palier_initial` | [5,4,6,5,3,7,5,6,4,5], rien dit | (aucun, 5, aucune carte) : l'objectif 5 reste |
+| 11 | `palier_initial` | [9,10,9,1,2,1,2,9,10,9] (rafales) | (aucun, 6, carte `premier`) : proposé, pas imposé |
+| 12 | `palier_initial` | [3,3,2,4,3,3,2,3,4,3], dit 5 | (5, 3, carte `journee_type`) |
 | 13 | `evaluer_bloc` | N 5, (5,6,5,4,7,5,3,6,5,4) : 7/10 | `monter` |
 | 14 | `evaluer_bloc` | N 6, (5,4,6,5,3,5,6,4,5,4) : 2/10 | `baisser` |
 | 15 | `evaluer_bloc` | 7/10, médiane des tailles 20, référence 40 | `taille` |
@@ -757,14 +810,18 @@ réécrites sans la variante « plancher »).
 | 59 | `objectif_dit` | palier 5, dit 7 | palier 7, source `dit`, aujourd'hui |
 | 60 | `objectif_dit` | « plus » sur 5 ; « moins » sur 1 | 6 ; 1 (plancher) |
 | 61 | `objectif_dit` | dit 15 | 400 `{"objectif":["Entre 1 et 12."]}` |
+| 62 | réponse `premier` | type 3, [Oui, 3] | palier 3, `accepte` |
+| 63 | réponse `premier` | type 3, [Garder 5] | palier 5, `accepte` |
+| 64 | `semaine_courte` | 2 jours `evalue` + 3 `sans_donnees` | vrai (revue sans chiffres) |
+| 65 | `semaine_courte` | 3 `evalue` + 2 `sans_donnees` | faux |
 
 Signatures : `compte_du_jour(taches, activites) -> (int, dict)` · `statut_jour(ouvre, conge, compte, plan, app) ->
-str` · `journee_reussie(compte, objectif, choisis, faits) -> bool | None` · `palier_initial(comptes10, dit) -> (int,
-int)` · `plafonner_jours(comptes) -> list` · `evaluer_bloc(etat, jour) -> str | None` · `clore_bloc(etat, jour,
+str` · `journee_reussie(compte, objectif, choisis, faits) -> bool | None` · `palier_initial(comptes10, dit) -> (palier | None, journee_type, carte | None)` · `plafonner_jours(comptes) -> list` · `evaluer_bloc(etat, jour) -> str | None` · `clore_bloc(etat, jour,
 decision, reponse) -> etat` · `objectif_dit(etat, nombre, sens) -> etat` · `reference_tenir(comptes) -> float | None`
 · `bande_tenir(R) -> (float, float)` · `derive_tenir(R, comptes, jour, silence) -> str | None` ·
-`objectif_affiche(etat) -> (int | None, str)` · `basculer(etat, mode, jour) -> etat` · `arrondir(x) -> int` ·
-`constats(donnees) -> list` · `retour_absence(jours, taches) -> dict | None`. `etat` = valeurs de `ReglagesRythme` +
+`objectif_affiche(etat) -> (int | None, str, zone | None)` · `basculer(etat, mode, jour) -> etat` · `arrondir(x) ->
+int` · `constats(donnees) -> list` · `retour_absence(jours, taches) -> dict | None` · `semaine_courte(statuts) -> bool`
+(≥ 3 jours `sans_donnees` dans la semaine → `semaine_courte`, `bilan_semaine` nul, A16-N9). `etat` = valeurs de `ReglagesRythme` +
 comptes du bloc (dataclass gelée, jamais l'ORM).
 
 ## 7. Les sollicitations — `apps/taches/moteur/sollicitations.py`
@@ -779,7 +836,7 @@ comptes du bloc (dataclass gelée, jamais l'ORM).
 - **Dû** (`due(type, maintenant, prefs, fenetre)`) : tick du balayage dans [heure, heure + 15 min).
 - **Sauté, jamais différé** si l'une est vraie : fenêtre de la société fermée ; maintenant ≥ `heure_limite` (20:00) ;
   jour non travaillé pour lui ; congé ; type `off` ou dans `pauses_sollicitations` ; compte inactif ou non interne ;
-  module éteint ; **compte sans `ReglagesRythme` OU qui n'a jamais créé de tâche** (`Tache.all_objects`, A15, I8) ;
+  module éteint ; compte sans `ReglagesRythme` (elle ne naît qu'à la première tâche créée, invariant 29, A15) ;
   plafond atteint.
 - **Plafond** (`plafond_atteint(journal)`) : 3 ENVOIS push par jour au plus (matin, soir ou revue, UN en journée) ;
   seuls les envois comptent (une sollicitation sautée ne compte pas) ; les cartes à l'écran (canal `ecran`), les
@@ -794,14 +851,18 @@ comptes du bloc (dataclass gelée, jamais l'ORM).
   (`etat_decroissance`) : type ajouté à `pauses_sollicitations` + carte `pause` ; « Le réactiver » le retire ; une
   ouverture remet la série à zéro.
 - **Rotation** : `variante(J.toordinal())` = `% 3` (17/11/2026 → 2).
-- **Liens** : `plan_matin` → `/taches/aujourdhui` ; `relance` → `/taches/aujourdhui` (A15, et non `?ouvrir=alleger`) ;
-  `bilan_soir` → `/taches/aujourdhui?ouvrir=bilan` ; `revue_semaine` → `/taches/revue` ; rappel →
-  `/taches/aujourdhui?tache=<id>`.
+- **Liens** (`api.md` §7, R20) : `plan_matin`, `relance`, `bilan_soir` → `/taches/aujourdhui` (la carte du moment y
+  porte Garder, Alléger ou le bilan) ; `revue_semaine` → `/taches/revue` ; rappel → `/taches/aujourdhui?tache=<id>`
+  (fiche avec « Encore 10 min · 1 h · Demain 9 h » en tête) ; test → `/taches/reglages/iphone`.
 - **Rappels posés par l'utilisateur** : hors plafond, à l'heure demandée même hors fenêtre, après l'heure limite et
   en congé (`NOTIFICATIONS_TOUJOURS_IMMEDIATES`) ; groupés par minute ; dus = `jour < J` ou (`jour = J` ∧ `heure ≤`
   maintenant) ; retard > 2 h → `manque`, jamais envoyé ; tâche close, abandonnée ou supprimée → `annule` ; ≤ 5 en
   attente par tâche, ≤ 100 par utilisateur ; posé hors fenêtre → avertissement `hors_fenetre` (par le Copilote :
   carte-écho, verif-securite m9) ; ancré : `jour` recalculé quand l'ancre bouge, ancre effacée → `annule`.
+- **Question du premier rappel (A17-T4)** : à la pose d'un rappel tant que `titres_notifications_demande_le` est nul,
+  la réponse porte `question_titres: true` ; l'écran demande « Montrer le titre sur l'écran verrouillé ? » ; la
+  réponse passe par `PATCH reglages/` (`titres_notifications`, qui pose `titres_notifications_demande_le`) ; sans
+  réponse : sans titre (socle §2.8). Même question à l'étape 1 de Mon iPhone.
 - **Idempotence** : sollicitation = `get_or_create` du marqueur `IncitationCoach` (unicité `taches_incit_uniq`) +
   `notify` dans la même transaction ; rappel = `UPDATE … WHERE statut='en_attente'` (1 ligne = à moi) puis `notify`
   dans la même transaction. Rejouer le balayage n'envoie rien de plus.
@@ -811,7 +872,7 @@ comptes du bloc (dataclass gelée, jamais l'ORM).
 ## 8. La confidentialité — `apps/taches/confidentialite.py`
 
 - `Tache.est_confidentielle()` = `confidentiel` ∨ `projet.confidentiel` ∨ `parent.confidentiel` ∨
-  `parent.projet.confidentiel` (invariant 8, A6) ; `Projet.est_confidentiel()` = `confidentiel`.
+  `parent.projet.confidentiel` (invariant 8, A6) ; un projet est confidentiel par son seul drapeau `confidentiel`.
 - `nom_pour(obj, usage)` — le SEUL chemin d'un titre ou d'un nom vers un texte servi :
 
 | Usage | Tâche ordinaire | Tâche confidentielle | Projet confidentiel | Notes, check-list, `en_attente_de`, lien ERP d'une confidentielle |
@@ -843,7 +904,7 @@ changement) appellent `nom_pour` pour CHAQUE objet cité, avec l'usage de la rou
 | `visite_validee` (éteinte) | `visite_validee` (`visite, lead_id`) | responsable du lead | « Préparer le devis : visite validée » | `visite_validee:<visite.pk>` | `crm.lead` |
 
 - **Conditions** : destinataire actif, interne, `taches_voir`, module actif, possède une `ReglagesRythme` (a déjà
-  utilisé Tâches), famille allumée dans `familles_suggestions`, ET cible visible par lui via le sélecteur de l'app
+  créé une tâche, invariant 29), famille allumée dans `familles_suggestions`, ET cible visible par lui via le sélecteur de l'app
   cible (A3 ; sinon rien, sans trace). `suggestions_societe` (administrateur, AVANCÉ) : l'administrateur reçoit en plus
   sa propre ligne, mêmes contrôles.
 - **Anti-doublon** : `get_or_create` sur (`company`, `proprietaire`, `cle`) ; refusée ou acceptée = jamais reproposée.
@@ -869,14 +930,14 @@ changement) appellent `nom_pour` pour CHAQUE objet cité, avec l'usage de la rou
   obligations. `DESCRIPTION` vide, jamais de notes ; `SUMMARY` = `nom_pour(t, 'flux')` ; `calname` « Tâches
   Taqinor » ; `Cache-Control: no-store` ; jeton inconnu ou révoqué → 404.
 
-**Tuile** (`GET tuile/`, mêmes règles de sélection que l'écran) :
+**Tuile** (`GET tuile/`, `tuile_pure(…)`, mêmes règles de sélection que l'écran) :
 - `faites`, `prevues` = `progression` ; `objectif` = `objectif.nb` (`null` en `libre`, `arrondir(R)` en `tenir`) ;
   `essentiel` = {`faites`, `prevues`}.
-- `top` ≤ 6 TÂCHES ouvertes dans l'ordre de l'écran : Essentiel, Prévu (heures fixes en tête), Ce soir, puis lignes
-  de `propose.pour_objectif` ; les activités ERP comptent dans `prevues` et `reste` mais ne sont jamais titrées sur la
-  tuile (IR15). `reste` = éléments ouverts non montrés (pastille − montrés). `prochaine_echeance` = tâche ouverte du
+- `top` ≤ 6 TÂCHES ouvertes GARDÉES dans l'ordre de l'écran : Essentiel, Prévu (blocs à leur heure en tête), Ce soir
+  — jamais Proposé (comme la pastille, A16-N5) ; les activités ERP comptent dans `prevues` et `reste` mais ne sont
+  jamais titrées sur la tuile (IR15). `reste` = pastille − montrés. `prochaine_echeance` = tâche ouverte du
   préfiltre à plus petite (`echeance`, `echeance_heure`) ≥ J. Titres par `nom_pour(…, 'tuile')`, jamais de notes.
-- `lien` = `https://<hôte de la requête>/taches/aujourdhui`. Débit 120/h ; jeton refusé → 401 neutre.
+- `lien` = `https://<hôte>/taches/aujourdhui` (hôte de la requête). Débit 120/h ; jeton refusé → 401 neutre.
 
 ## Décisions de l'intégrateur
 
@@ -886,85 +947,84 @@ changement) appellent `nom_pour` pour CHAQUE objet cité, avec l'usage de la rou
   du matin », « Pause de midi » restent des titres.
 - **IR3** Normalisation caractère par caractère sans changement de longueur (traits d'union insécables, minuscules
   à longueur fixe).
-- **IR4** Date impossible (« 31/11 ») : laissée en texte sans alerte, faute de code d'alerte dans la référence.
+- **IR4** (rév. 2) Date impossible et durée hors bornes : laissées en texte, avec `date_invalide` /
+  `duree_hors_bornes` (`AlerteSaisie`).
 - **IR5** « Nh » nu ≤ 6 = durée, ≥ 7 = heure (spec) ; « NhMM » nu ≤ 4 = durée, ≥ 5 = heure (« Train 6h30 » est une
   heure). « pendant / durée / during » admettent une durée jusqu'à 16 h ; « pour / for » restent limités à 6 h.
-- **IR6** Couleur d'office d'un projet né par `#` : règle de spec-4 §A (absente des actifs, sinon la moins utilisée)
-  plutôt que « la suivante après le dernier créé » (spec-2) : évite deux projets actifs de même couleur.
+- **IR6** Couleur d'office d'un projet né par `#` ou par un collage : règle de spec-4 §A (absente des actifs, sinon la
+  moins utilisée) sur les 10 clés de `Couleur`.
 - **IR7** « en réserve » en fin de ligne est lu comme « un jour » (le mot de l'écran, A14-M10) ; jamais à la capture.
 - **IR8** `apres_fait` hebdomadaire = premier jour du masque ≥ fait + 7n − 6 ; seul `jours_ouvres` lit les fériés.
-- **IR9** Proposé : `places = cible − faites − ouverts du jour` ; « jusqu'à l'objectif » se lit ainsi, sinon Proposé
-  proposerait cinq tâches à quelqu'un qui en a déjà six de prévues.
-- **IR10** Une journée allégée ne remplit plus Proposé ce jour-là (sinon le geste se défait tout seul).
-- **IR11** Les tâches `reportee_3_fois` du jour sont des restes du bilan et doivent être nommées.
-- **IR12** Objectif dit : `ReglagesRythme.palier` fait foi, `Preference.objectif_dit` en est la trace (retirée à la
-  prochaine proposition acceptée) ; « froid » ⇔ `bloc_debut` nul.
+- **IR9** (rév. 2) La capture lit aussi « projet <nom> » en tête (`donnees.md` §7) : Siri ne dit pas « dièse ».
+- **IR10** Une journée allégée ne remplit plus Proposé ce jour-là (`allege_le`, A16-N6).
+- **IR11** (rév. 2) Les `reportee_3_fois` du bilan sont marquées, jamais bloquantes : non nommées, elles restent.
+- **IR12** (rév. 2) « Froid » ⇔ `bloc_debut` nul ; l'objectif vit dans `palier` seul ; le premier objectif calculé est
+  PROPOSÉ (`premier` : oui / garder), jamais appliqué d'office, à la hausse comme à la baisse.
 - **IR13** La relance « projet négligé » ne vise pas le même projet plus d'une fois en 7 jours (lu dans
-  `IncitationCoach.donnees.projet_id`) : sinon la même phrase sonnerait chaque jour à 15 h.
-- **IR14** Suggestions réservées aux comptes qui ont une `ReglagesRythme` (même raison que I8 et A15).
+  `IncitationCoach.donnees.projet_id`).
+- **IR14** Suggestions réservées aux comptes qui ont une `ReglagesRythme` (invariant 29).
 - **IR15** La tuile ne titre pas les activités ERP (titres de clients sur l'écran d'accueil) ; elles restent comptées.
 - **IR16** `sans_prochaine_action` garde la règle de la référence (≥ 1 ouverte, 0 actionnable) ; seule la phrase
   change selon la cause.
-- **IR17** Sous l'en-tête assistant, une tâche confidentielle ne correspond à aucune recherche par son titre (sinon la
-  recherche révèle le contenu par oui ou non).
+- **IR17** Sous l'en-tête assistant, une tâche confidentielle ne correspond à aucune recherche par son titre
+  (`filtrer_q(assistant=True)`).
 - **IR18** Q nommé dans la phrase « négligé » = le projet moins prioritaire le plus avancé (verif-specs-4-6 m11).
+- **IR19** (rév. 2) `places = objectif − faites − gardées ouvertes` : identique au « N = objectif − gardées
+  ouvertes » de spec-7 r3.1 le matin ; dans la journée, A11 (« ce qu'il faut pour atteindre l'objectif ») prime.
+- **IR20** (rév. 2) Carte `alleger` : même seuil que la relance de dérive (faites < objectif / 2 à partir de l'heure du
+  Message de 15 h) ; carte `pause` portée par la valeur `rythme` de `CarteDuMoment` (qui n'a pas de valeur `pause`).
 
-## Manques de la référence données/API
+## Manques de la référence données/API (révision 2)
 
-1. **Rétention de `PlanJour`** : `donnees.md` §9 et I11 disent 90 jours ; A15 (postérieur, prime) dit 400 jours pour
-   les compteurs du jour (le rythme et les constats ont besoin de recul). §9 doit passer `PlanJour` à 400 jours ;
-   `LignePlanJour` et `IncitationCoach` restent à 90.
-2. **Palette** : `Couleur` a 8 clés (`bleu`, `vert`, `orange`, `violet`, `rose`, `jaune`, `cyan`, `gris`) ; A15 impose
-   les 10 de `spec-8-langage-visuel.md` §3 : `terre`, `ambre`, `olive`, `vert`, `menthe`, `ciel`, `bleu`, `indigo`,
-   `prune`, `rose`. `Etiquette.couleur` a pour défaut `gris`, absent de cette palette : défaut à choisir (proposition :
-   `ciel`).
-3. **Lien de la relance** : `api.md` §6 envoie `relance` vers `/taches/aujourdhui?ouvrir=alleger` ; A15 dit « ouvre
-   l'écran Aujourd'hui ». À corriger en `/taches/aujourdhui`.
-4. **Journée allégée** : aucun champ ne mémorise qu'une journée a été allégée. Proposé : `PlanJour.allege_le`
-   (`DateTimeField`, nul), posé par `journee/alleger/`, remis à nul par l'annulation du geste. À défaut, la règle lit
-   les `GesteAnnulable` de type `allegement` non annulés du jour (plus lent, purgés à 7 jours).
-5. **Mode « Garder ce rythme » à l'écran** : `OBJECTIF` (`aujourdhui/`, `journee/proposition/`) n'a pas la zone ;
-   la ligne de progression « ton rythme : 4 à 6 » en a besoin. Proposé : `OBJECTIF.zone` = `[bas, haut]` (entiers
-   arrondis) en mode `tenir`, `null` sinon.
-6. **Constat C1** : `LignePlanJour` ne fige pas le créneau prévu ; lire `Tache.heure_debut`/`moment` actuels fait
-   dériver le constat si la tâche a été déplacée. Proposé : `LignePlanJour.creneau` (`''`/`matin`/`apres_midi`/
-   `fin_journee`), posé à la création de la ligne.
-7. **Constat C2** : « essentiel en tête du plan » exige l'ordre des lignes au plan ; `LignePlanJour` n'a pas de rang.
-   Proposé : `LignePlanJour.rang` (`IntegerField`, nul).
-8. **`MotifRevoir`** n'a pas de valeur pour « activité ERP due avant J » (invariant 3 la range dans À revoir) : je
-   prends `jour_passe` ; à confirmer ou ajouter `activite_passee`.
-9. **Collages multiples** : `saisie-rapide/` accepte `textes[]` (≤ 10) mais l'aperçu n'a qu'un `projet_commun`. La
-   règle « première ligne = projet » vaut par collage : il faut `projets_communs[]` (un par collage) ou un index de
-   collage sur chaque ligne de l'aperçu.
-10. **Planification collée** : aucune fonction pure n'est nommée pour la grammaire de `planification/apercu/`
-    (`donnees.md` §7) ; je la range dans `saisie.py` sous `decouper_plan`.
-11. **Tuile** : aucun module pur n'est nommé pour `top`, `reste`, `prochaine_echeance` ; je les range dans
-    `moteur/flux.py` (`tuile_pure(…)`).
-12. **Alertes de saisie** : pas de code pour une date impossible ni une durée hors bornes (IR4) ; si l'on veut les
-    dire : `date_invalide`, `duree_hors_bornes`.
-13. **I8 contre A15** : `ReglagesRythme` est aussi créée par `POST vu/` ; un compte qui a seulement ouvert l'app en
-    aurait une et recevrait le plan du matin. La règle §7 exige les deux conditions ; I8 doit dire « ET a créé au moins
-    une tâche ».
-14. **Erreur d'objectif** : `POST rythme/` n'a pas d'erreur décrite pour un objectif hors 1-12 : `{"objectif":["Entre 1
-    et 12."]}` (et le même message pour `Preference.objectif_dit`).
-15. **`capture/` `dans`** : la référence ne dit pas quelle valeur rendre pour une tâche datée d'un autre jour ; je
-    rends `journee` dès qu'un jour ou une échéance est posé.
+Les 15 manques de la révision 1 sont repris par `donnees.md` et `api.md` révision 2 (`allege_le`, `zone`, `creneau`,
+`rang`, `activite_passee`, `projets_communs[]`, `decouper_plan`, `tuile_pure`, `date_invalide`, `duree_hors_bornes`,
+`ReglagesRythme` née à la première tâche, erreur d'objectif, `capture.dans`, rétention, palette) ou rendus sans objet
+(`Preference.objectif_dit` retirée). Restent :
+
+1. **Lien du bilan** : spec-7 r3.1 §2 garde « sauf le bilan (`?ouvrir=bilan`) » ; `api.md` §7 (R20) a retiré le
+   paramètre `ouvrir`. Je suis `api.md` (la carte `faire_bilan` est en haut d'Aujourd'hui) ; à confirmer par
+   l'orchestrateur.
+2. **`CarteDuMoment`** n'a pas de valeur pour la carte `pause` (spec-7 r3.1 §4 la place entre rythme et astuce) : je la
+   sers sous `rythme` (IR20). Ajouter `pause` si l'ordre exact doit être tenu côté serveur.
+3. **Semaine courte** : `api.md` compte les seuls jours `sans_donnees` ; une semaine de congé n'est donc jamais
+   « courte » et sa revue montre « 0 tâche ». La revue n'est pas envoyée en congé (§7), mais l'écran peut s'ouvrir : à
+   trancher (compter aussi `conge`).
 
 ## Ce que je n'ai pas repris, et pourquoi
 
 - « Arrondi inférieur » (spec-5a §3.4, §3.7) et le seuil 6/10 → « demie vers le bas », 5/10 (A2, verif-spec-5a
   constats 1 et 3).
-- Proposer la journée type à chaque baisse quand l'écart ≥ 3 (verif-spec-5a constat 7) : comportement non mesuré
-  (déjà écarté par `donnees.md`).
+- Proposer la journée type à chaque baisse quand l'écart ≥ 3 (verif-spec-5a constat 7) : comportement non mesuré.
+- Le premier palier appliqué d'office (spec-5a §3.4) → proposé (A2.2, tour 3, confirmation de l'orchestrateur).
 - La capture « toujours dans la Boîte, sans analyse » (spec-2 §3.4, spec-6b §5, C3) → A1.
-- « Demain » = prochain jour ouvré (spec-3 §10) → Demain = J+1, Reporter = prochain jour travaillé (spec-7 §3).
-- Le triage obligatoire au plan du matin et le choix obligatoire par reste sans bouton « Le reste → » (spec-3 §3.10) →
-  « Garder ces N », lot « Tout en réserve », « Le reste → … » (A11, A14).
-- La pastille « section Aujourd'hui seule » (spec-6b §2) et « tâches seulement » (spec-6a) → définition §4.9 (spec-7
-  r2).
+- « Demain » = prochain jour ouvré (spec-3 §10) et le choix `demain` au bilan → Demain = J+1, jamais un bouton de
+  report ; « Reporter à lun. 23 » (spec-7 r3).
+- Le triage obligatoire au plan du matin, le mode `complet` et le 400 sur les reportées 3 fois (spec-3 §3.10, ma
+  rév. 1) → « Garder ces N » express, reportées marquées (A17-T2).
+- La pastille avec Proposé (spec-7 r2, ma rév. 1) → gardées seules (A16-N5).
+- Les obligations « à leur heure » (A14-M8, ma rév. 1) → bande « Toute la journée », date seule (A16-N4).
+- La ★ sur une ligne de Proposé (ma rév. 1) → Essentiel et Prévu seulement (spec-7 r3.1 §9).
 - Le classement « bande 1 entière » du plan du matin (spec-3 §3.4 étape 2) : les éléments de bande 1 sont désormais
   déjà dans Prévu ou dans À revoir ; le pool de Proposé n'en contient plus.
-- Le respect de l'ordre manuel du projet (`rang_projet`) dans `cle_tri` : non demandé par la spec testée ; il sert
-  seulement l'ordre de la suite dépliée par projet.
+- Le respect de `rang_projet` dans `cle_tri` : non demandé par la spec testée ; il sert l'ordre de la suite dépliée.
 - Le pré-calcul d'un instant UTC pour les rappels : heure murale seule (invariant 14).
 - « Visites de maintenance », auto-planification, rappel de lieu (ÉCARTÉ par spec-3).
+
+## Révision 2 : ce qui a changé
+
+1. Primauté A1-A17, spec-7 r3.1, référence données/API rév. 2 ; noms vérifiés par script (zéro écart, voir le retour).
+2. Pastille et tuile : tâches gardées et ouvertes seules, jamais Proposé (A16-N5).
+3. `carte_du_moment` remplace `cartes_coach` ; ordre et conditions des 7 cartes (§4.10).
+4. Proposé : `N = objectif − faites − gardées ouvertes` ; replié et vide après Alléger (`allege_le`) ; ★ hors Proposé.
+5. Toute la journée (visites, poses, interventions sans heure) ; activité ERP en retard → `activite_passee` ; lier une
+   tâche à une activité.
+6. Bilan : `prochain_jour_ouvre` · `jour` · `un_jour` · `abandonner`, « Tout reporter », `a_trancher` jamais bloquant,
+   bilan d'hier jusqu'à 12 h ; « N sur OBJECTIF » puis gardées faites.
+7. Trancher : décision `garder` ; « Demain » n'est plus un report.
+8. Objectif : `palier` seule source ; premier objectif proposé (oui / garder) ; `semaine_courte` ; Reprise.
+9. Saisie : `projets_communs[]` par collage, projet né priorité 2, « projet <nom> » en tête à la capture, échéance
+   seule → `a_trier`, alertes `date_invalide` / `duree_hors_bornes`.
+10. Constats C1, C2 sur `creneau` et `rang` ; C4, C6, C8 lus sur la carte acceptée.
+11. Hors ligne (ajouter, cocher, reporter) et conflit « Garder la mienne / Prendre l'autre » (§4.11).
+12. Question du premier rappel ; liens des notifications vers Aujourd'hui ; Planifier ma semaine.
+13. Recalculs relancés : rythme 65/65, récurrence 25/25, classement 300/300 ; analyseur 86 phrases.
