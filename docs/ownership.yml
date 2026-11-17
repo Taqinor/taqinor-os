@@ -885,6 +885,17 @@ owners:
     titre: "Site public YanBow (apps/yanbow-web) : sa session PLAN_YANBOW_WEB, Worker Cloudflare propre"
     fallback:
       - apps/yanbow-web/**
+  taches:
+    plan: docs/plans/PLAN_TACHES.md
+    titre: "Tâches et agenda personnels + Copilote (apps/taches) : sa session PLAN_TACHES"
+    paths:
+      - backend/django_core/apps/taches/**
+      - frontend/src/features/taches/**
+      - frontend/src/pages/taches/**
+      - frontend/src/api/tachesApi*
+      - frontend/src/styles/taches/**
+      - frontend/e2e/taches-*
+      - frontend/e2e/acceptation/tch.spec.js
   parked:
     plan: docs/backlog/PHASE2_PLAN.md
     titre: "Coquilles des 47 apps parquées (liste lue dans core/parked.py, jamais recopiée) et miroirs parked/"
@@ -1056,3 +1067,4 @@ plans:
   docs/plans/PLAN_VEILLE.md: acquisition
   docs/plans/PLAN_YANBOW_WEB.md: [yanbow-web, acquisition, deploy]
   docs/plans/PLAN_CRM_VENTES.md: [acquisition, lead, crm, devis, facturation, moteur, generateur, calepinage]
+  docs/plans/PLAN_TACHES.md: [taches, deploy, securite, parametres, analyse, lead, crm]

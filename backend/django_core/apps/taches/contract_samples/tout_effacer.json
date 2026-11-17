@@ -1,0 +1,11 @@
+{
+  "endpoint": "POST /api/django/taches/tout-effacer/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST tout-effacer/ · consommateurs : Réglages → Mes données ». Source : docs/taches/reference/api.md annexe A (`tout_effacer.json`), recopié mot pour mot.",
+  "exemple": {
+    "effacees": {
+      "tache": 40,
+      "projet": 3,
+      "plan_jour": 12
+    }
+  }
+}

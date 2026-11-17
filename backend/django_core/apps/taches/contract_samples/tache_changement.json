@@ -1,0 +1,54 @@
+{
+  "endpoint": "POST /api/django/taches/taches/{id}/changement/apercu/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST taches/{id}/changement/apercu/ · consommateurs : carte `tache` (écho) ». Source : docs/taches/reference/api.md annexe A (`tache_changement.json`), recopié mot pour mot.",
+  "exemple": {
+    "tache": {
+      "type": "tache",
+      "id": 20,
+      "titre": "Devis Settat",
+      "statut": "a_faire",
+      "projet": {
+        "id": 3,
+        "nom": "Ventes",
+        "couleur": "vert",
+        "priorite": 3
+      },
+      "section": null,
+      "parent_id": null,
+      "priorite": 2,
+      "jour_prevu": "2026-11-17",
+      "moment": "matin",
+      "heure_debut": "10:00",
+      "echeance": "2026-11-19",
+      "echeance_heure": null,
+      "quelque_jour": false,
+      "estimation_minutes": 60,
+      "reports": 0,
+      "rang": 1024,
+      "motif": null,
+      "raison": null,
+      "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+      "rappel": null,
+      "lien": null,
+      "checklist": null,
+      "sous_taches": null,
+      "recurrente": false,
+      "routine": false,
+      "jalon": false,
+      "bloquee_par": null,
+      "en_attente_de": "",
+      "essentielle": true,
+      "prevue_au_plan": true,
+      "confidentiel": false,
+      "confidentielle": false,
+      "source": "rapide",
+      "peut_cloturer": true,
+      "lock_version": 4
+    },
+    "proposition": {
+      "geste": "renommer",
+      "avant": "Devis Settat",
+      "apres": "Devis Settat — relance"
+    }
+  }
+}

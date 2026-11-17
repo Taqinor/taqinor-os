@@ -1,0 +1,159 @@
+{
+  "endpoint": "PATCH /api/django/taches/taches/{id}/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « toute écriture d'une tâche · consommateurs : carte `tache`, toasts, conflit ». Source : docs/taches/reference/api.md annexe A (`tache_ecrite.json`), recopié mot pour mot.",
+  "exemple": {
+    "tache": {
+      "type": "tache",
+      "id": 20,
+      "titre": "Devis Settat",
+      "statut": "a_faire",
+      "projet": {
+        "id": 3,
+        "nom": "Ventes",
+        "couleur": "vert",
+        "priorite": 3
+      },
+      "section": null,
+      "parent_id": null,
+      "priorite": 2,
+      "jour_prevu": "2026-11-17",
+      "moment": "matin",
+      "heure_debut": "10:00",
+      "echeance": "2026-11-19",
+      "echeance_heure": null,
+      "quelque_jour": false,
+      "estimation_minutes": 60,
+      "reports": 0,
+      "rang": 1024,
+      "motif": null,
+      "raison": null,
+      "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+      "rappel": {
+        "jour": "2026-11-17",
+        "heure": "09:45"
+      },
+      "lien": {
+        "cible": "ventes.devis",
+        "id": 512,
+        "libelle": "DEV-2026-11-0042",
+        "url": "/ventes/devis?devis=512",
+        "etat": "ok"
+      },
+      "checklist": {
+        "faits": 1,
+        "total": 1
+      },
+      "sous_taches": {
+        "faites": 0,
+        "total": 1
+      },
+      "recurrente": false,
+      "routine": false,
+      "jalon": false,
+      "bloquee_par": null,
+      "en_attente_de": "",
+      "essentielle": true,
+      "prevue_au_plan": true,
+      "confidentiel": false,
+      "confidentielle": false,
+      "source": "rapide",
+      "peut_cloturer": true,
+      "lock_version": 4,
+      "notes": "Appeler avant 11 h.",
+      "etiquettes": [
+        {
+          "id": 2,
+          "nom": "magasin",
+          "couleur": "ciel"
+        }
+      ],
+      "elements_checklist": [
+        {
+          "id": 71,
+          "libelle": "Prix",
+          "fait": true,
+          "rang": 1024
+        }
+      ],
+      "enfants": [
+        {
+          "type": "tache",
+          "id": 22,
+          "titre": "Relire les quantités",
+          "statut": "a_faire",
+          "projet": {
+            "id": 3,
+            "nom": "Ventes",
+            "couleur": "vert",
+            "priorite": 3
+          },
+          "section": null,
+          "parent_id": 20,
+          "priorite": 0,
+          "jour_prevu": null,
+          "moment": "",
+          "heure_debut": null,
+          "echeance": null,
+          "echeance_heure": null,
+          "quelque_jour": false,
+          "estimation_minutes": null,
+          "reports": 0,
+          "rang": 1024,
+          "motif": null,
+          "raison": null,
+          "explication": "dans Ventes",
+          "rappel": null,
+          "lien": null,
+          "checklist": null,
+          "sous_taches": null,
+          "recurrente": false,
+          "routine": false,
+          "jalon": false,
+          "bloquee_par": null,
+          "en_attente_de": "",
+          "essentielle": false,
+          "prevue_au_plan": false,
+          "confidentiel": false,
+          "confidentielle": false,
+          "source": "rapide",
+          "peut_cloturer": true,
+          "lock_version": 0
+        }
+      ],
+      "recurrence": null,
+      "rappels": [
+        {
+          "id": 31,
+          "jour": "2026-11-17",
+          "heure": "09:45",
+          "ancre": "",
+          "decalage_jours": 0,
+          "statut": "en_attente"
+        }
+      ],
+      "triee_le": "2026-11-16T18:02:00+01:00",
+      "premier_jour_prevu": "2026-11-17",
+      "reports_tranches": 0,
+      "duree_reelle_minutes": null,
+      "fait_le": null,
+      "annule_le": null,
+      "occurrence_du": null,
+      "activite_origine_id": null,
+      "lien_verifie_le": "2026-11-17T09:12:00+01:00",
+      "created_at": "2026-11-16T18:02:00+01:00",
+      "updated_at": "2026-11-17T10:42:00+01:00"
+    },
+    "suivante": null,
+    "projet_cree": null,
+    "rappel": null,
+    "question_titres": false,
+    "avertissements": [
+      {
+        "code": "prevue_apres_echeance",
+        "message": "Prévue après l'échéance."
+      }
+    ],
+    "progression": null,
+    "geste_id": 77
+  }
+}

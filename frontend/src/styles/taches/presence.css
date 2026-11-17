@@ -1,0 +1,3 @@
+/* Tâches — zone « presence » (TCH41) : Présence dans le reste de l'ERP : carte du cockpit, créer une tâche depuis ici (TCH102, TCH103).
+   Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
+   couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */

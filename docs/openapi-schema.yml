@@ -9,10 +9,11 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4992, operations: 7784, components: 3663}
+counts: {paths: 5164, operations: 7996, components: 4101}
 securitySchemes:
 - bearerJWT
 - cookieJWT
+- jetonTaches
 - publicApiKey
 - publicApiOAuth2
 - publicApiQueryToken
@@ -3517,6 +3518,112 @@ operations:
 - post /api/django/stock/vagues-picking/{id}/configurer-liberation/ -> django_stock_vagues_picking_configurer_liberation_create
 - post /api/django/stock/vagues-picking/{id}/lancer/ -> django_stock_vagues_picking_lancer_create
 - post /api/django/stock/vagues-picking/{id}/lignes/{ligne_id}/prelever/ -> django_stock_vagues_picking_lignes_prelever_create
+- get /api/django/taches/agenda/ -> django_taches_agenda_retrieve
+- get /api/django/taches/agendas-externes/ -> django_taches_agendas_externes_retrieve
+- post /api/django/taches/agendas-externes/ -> django_taches_agendas_externes_create
+- delete /api/django/taches/agendas-externes/{id}/ -> django_taches_agendas_externes_destroy
+- patch /api/django/taches/agendas-externes/{id}/ -> django_taches_agendas_externes_partial_update
+- post /api/django/taches/agendas-externes/{id}/rafraichir/ -> django_taches_agendas_externes_rafraichir_create
+- get /api/django/taches/aujourdhui/ -> django_taches_aujourdhui_retrieve
+- get /api/django/taches/aujourdhui/ailleurs/ -> django_taches_aujourdhui_ailleurs_retrieve
+- get /api/django/taches/badge/ -> django_taches_badge_retrieve
+- post /api/django/taches/capture/ -> django_taches_capture_create
+- post /api/django/taches/checklist/ -> django_taches_checklist_create
+- delete /api/django/taches/checklist/{id}/ -> django_taches_checklist_destroy
+- patch /api/django/taches/checklist/{id}/ -> django_taches_checklist_partial_update
+- post /api/django/taches/checklist/{id}/reordonner/ -> django_taches_checklist_reordonner_create
+- get /api/django/taches/coach/entete/ -> django_taches_coach_entete_retrieve
+- post /api/django/taches/convertir-activite/ -> django_taches_convertir_activite_create
+- get /api/django/taches/etiquettes/ -> django_taches_etiquettes_retrieve
+- post /api/django/taches/etiquettes/ -> django_taches_etiquettes_create
+- delete /api/django/taches/etiquettes/{id}/ -> django_taches_etiquettes_destroy
+- patch /api/django/taches/etiquettes/{id}/ -> django_taches_etiquettes_partial_update
+- get /api/django/taches/flux/{jeton}.ics -> django_taches_flux_.ics_retrieve
+- get /api/django/taches/gestes/ -> django_taches_gestes_retrieve
+- post /api/django/taches/gestes/{id}/annuler/ -> django_taches_gestes_annuler_create
+- get /api/django/taches/jetons/ -> django_taches_jetons_retrieve
+- post /api/django/taches/jetons/ -> django_taches_jetons_create
+- post /api/django/taches/jetons/{id}/revoquer/ -> django_taches_jetons_revoquer_create
+- post /api/django/taches/journee/alleger/ -> django_taches_journee_alleger_create
+- get /api/django/taches/journee/cloture/ -> django_taches_journee_cloture_retrieve
+- post /api/django/taches/journee/cloturer/ -> django_taches_journee_cloturer_create
+- post /api/django/taches/journee/essentiel/ -> django_taches_journee_essentiel_create
+- post /api/django/taches/journee/planifier/ -> django_taches_journee_planifier_create
+- get /api/django/taches/journee/point/ -> django_taches_journee_point_retrieve
+- get /api/django/taches/journee/priorites/ -> django_taches_journee_priorites_retrieve
+- get /api/django/taches/journee/proposition/ -> django_taches_journee_proposition_retrieve
+- get /api/django/taches/mes-donnees/ -> django_taches_mes_donnees_retrieve
+- get /api/django/taches/modeles/ -> django_taches_modeles_list
+- delete /api/django/taches/modeles/{id}/ -> django_taches_modeles_destroy
+- get /api/django/taches/modeles/{id}/ -> django_taches_modeles_retrieve
+- patch /api/django/taches/modeles/{id}/ -> django_taches_modeles_partial_update
+- post /api/django/taches/modeles/{id}/instancier/ -> django_taches_modeles_instancier_create
+- post /api/django/taches/mon-iphone/test-notification/ -> django_taches_mon_iphone_test_notification_create
+- post /api/django/taches/preferences/ -> django_taches_preferences_create
+- delete /api/django/taches/preferences/{cle}/ -> django_taches_preferences_destroy
+- get /api/django/taches/projets/ -> django_taches_projets_list
+- post /api/django/taches/projets/ -> django_taches_projets_create
+- post /api/django/taches/projets/trier-par-priorite/ -> django_taches_projets_trier_par_priorite_create
+- delete /api/django/taches/projets/{id}/ -> django_taches_projets_destroy
+- get /api/django/taches/projets/{id}/ -> django_taches_projets_retrieve
+- patch /api/django/taches/projets/{id}/ -> django_taches_projets_partial_update
+- post /api/django/taches/projets/{id}/decaler/ -> django_taches_projets_decaler_create
+- post /api/django/taches/projets/{id}/dupliquer/ -> django_taches_projets_dupliquer_create
+- post /api/django/taches/projets/{id}/enregistrer-modele/ -> django_taches_projets_enregistrer_modele_create
+- post /api/django/taches/projets/{id}/planification/ -> django_taches_projets_planification_create
+- post /api/django/taches/projets/{id}/planification/apercu/ -> django_taches_projets_planification_apercu_create
+- post /api/django/taches/projets/{id}/reordonner/ -> django_taches_projets_reordonner_create
+- post /api/django/taches/projets/{id}/restaurer/ -> django_taches_projets_restaurer_create
+- post /api/django/taches/projets/{id}/rouvrir/ -> django_taches_projets_rouvrir_create
+- post /api/django/taches/projets/{id}/terminer/ -> django_taches_projets_terminer_create
+- get /api/django/taches/projets/{id}/vue/ -> django_taches_projets_vue_retrieve
+- delete /api/django/taches/rappels/{id}/ -> django_taches_rappels_destroy
+- post /api/django/taches/rappels/{id}/repeter/ -> django_taches_rappels_repeter_create
+- get /api/django/taches/recherche/ -> django_taches_recherche_retrieve
+- patch /api/django/taches/recurrences/{id}/ -> django_taches_recurrences_partial_update
+- get /api/django/taches/reglages-societe/ -> django_taches_reglages_societe_retrieve
+- patch /api/django/taches/reglages-societe/ -> django_taches_reglages_societe_partial_update
+- get /api/django/taches/reglages/ -> django_taches_reglages_retrieve
+- patch /api/django/taches/reglages/ -> django_taches_reglages_partial_update
+- get /api/django/taches/revue/projets/ -> django_taches_revue_projets_retrieve
+- put /api/django/taches/revue/projets/{projet_id}/ -> django_taches_revue_projets_update
+- get /api/django/taches/rythme/ -> django_taches_rythme_retrieve
+- post /api/django/taches/rythme/ -> django_taches_rythme_create
+- post /api/django/taches/rythme/propositions/{id}/repondre/ -> django_taches_rythme_propositions_repondre_create
+- post /api/django/taches/saisie-rapide/ -> django_taches_saisie_rapide_create
+- post /api/django/taches/sections/ -> django_taches_sections_create
+- delete /api/django/taches/sections/{id}/ -> django_taches_sections_destroy
+- patch /api/django/taches/sections/{id}/ -> django_taches_sections_partial_update
+- post /api/django/taches/sections/{id}/reordonner/ -> django_taches_sections_reordonner_create
+- get /api/django/taches/suggestions/ -> django_taches_suggestions_retrieve
+- post /api/django/taches/suggestions/{id}/accepter/ -> django_taches_suggestions_accepter_create
+- post /api/django/taches/suggestions/{id}/refuser/ -> django_taches_suggestions_refuser_create
+- get /api/django/taches/supprimees/ -> django_taches_supprimees_retrieve
+- get /api/django/taches/taches/ -> django_taches_taches_list
+- post /api/django/taches/taches/ -> django_taches_taches_create
+- post /api/django/taches/taches/lier-activite/ -> django_taches_taches_lier_activite_create
+- post /api/django/taches/taches/lot/ -> django_taches_taches_lot_create
+- delete /api/django/taches/taches/{id}/ -> django_taches_taches_destroy
+- get /api/django/taches/taches/{id}/ -> django_taches_taches_retrieve
+- patch /api/django/taches/taches/{id}/ -> django_taches_taches_partial_update
+- post /api/django/taches/taches/{id}/attendre/ -> django_taches_taches_attendre_create
+- post /api/django/taches/taches/{id}/changement/apercu/ -> django_taches_taches_changement_apercu_create
+- post /api/django/taches/taches/{id}/planifier/ -> django_taches_taches_planifier_create
+- post /api/django/taches/taches/{id}/rappels/ -> django_taches_taches_rappels_create
+- post /api/django/taches/taches/{id}/recu/ -> django_taches_taches_recu_create
+- post /api/django/taches/taches/{id}/reordonner/ -> django_taches_taches_reordonner_create
+- post /api/django/taches/taches/{id}/restaurer/ -> django_taches_taches_restaurer_create
+- post /api/django/taches/taches/{id}/rouvrir/ -> django_taches_taches_rouvrir_create
+- post /api/django/taches/taches/{id}/sauter/ -> django_taches_taches_sauter_create
+- post /api/django/taches/taches/{id}/terminer/ -> django_taches_taches_terminer_create
+- post /api/django/taches/taches/{id}/trancher/ -> django_taches_taches_trancher_create
+- post /api/django/taches/tout-effacer/ -> django_taches_tout_effacer_create
+- get /api/django/taches/tuile/ -> django_taches_tuile_retrieve
+- post /api/django/taches/vu/ -> django_taches_vu_create
+- get /api/django/taches/vues/ -> django_taches_vues_retrieve
+- post /api/django/taches/vues/ -> django_taches_vues_create
+- delete /api/django/taches/vues/{id}/ -> django_taches_vues_destroy
+- patch /api/django/taches/vues/{id}/ -> django_taches_vues_partial_update
 - get /api/django/tiers/tiers/ -> django_tiers_tiers_list
 - post /api/django/tiers/tiers/ -> django_tiers_tiers_create
 - get /api/django/tiers/tiers/doublons/ -> django_tiers_tiers_doublons_retrieve
@@ -7416,6 +7523,112 @@ operations:
 - post /api/v1/stock/vagues-picking/{id}/configurer-liberation/ -> v1_stock_vagues_picking_configurer_liberation_create
 - post /api/v1/stock/vagues-picking/{id}/lancer/ -> v1_stock_vagues_picking_lancer_create
 - post /api/v1/stock/vagues-picking/{id}/lignes/{ligne_id}/prelever/ -> v1_stock_vagues_picking_lignes_prelever_create
+- get /api/v1/taches/agenda/ -> v1_taches_agenda_retrieve
+- get /api/v1/taches/agendas-externes/ -> v1_taches_agendas_externes_retrieve
+- post /api/v1/taches/agendas-externes/ -> v1_taches_agendas_externes_create
+- delete /api/v1/taches/agendas-externes/{id}/ -> v1_taches_agendas_externes_destroy
+- patch /api/v1/taches/agendas-externes/{id}/ -> v1_taches_agendas_externes_partial_update
+- post /api/v1/taches/agendas-externes/{id}/rafraichir/ -> v1_taches_agendas_externes_rafraichir_create
+- get /api/v1/taches/aujourdhui/ -> v1_taches_aujourdhui_retrieve
+- get /api/v1/taches/aujourdhui/ailleurs/ -> v1_taches_aujourdhui_ailleurs_retrieve
+- get /api/v1/taches/badge/ -> v1_taches_badge_retrieve
+- post /api/v1/taches/capture/ -> v1_taches_capture_create
+- post /api/v1/taches/checklist/ -> v1_taches_checklist_create
+- delete /api/v1/taches/checklist/{id}/ -> v1_taches_checklist_destroy
+- patch /api/v1/taches/checklist/{id}/ -> v1_taches_checklist_partial_update
+- post /api/v1/taches/checklist/{id}/reordonner/ -> v1_taches_checklist_reordonner_create
+- get /api/v1/taches/coach/entete/ -> v1_taches_coach_entete_retrieve
+- post /api/v1/taches/convertir-activite/ -> v1_taches_convertir_activite_create
+- get /api/v1/taches/etiquettes/ -> v1_taches_etiquettes_retrieve
+- post /api/v1/taches/etiquettes/ -> v1_taches_etiquettes_create
+- delete /api/v1/taches/etiquettes/{id}/ -> v1_taches_etiquettes_destroy
+- patch /api/v1/taches/etiquettes/{id}/ -> v1_taches_etiquettes_partial_update
+- get /api/v1/taches/flux/{jeton}.ics -> v1_taches_flux_.ics_retrieve
+- get /api/v1/taches/gestes/ -> v1_taches_gestes_retrieve
+- post /api/v1/taches/gestes/{id}/annuler/ -> v1_taches_gestes_annuler_create
+- get /api/v1/taches/jetons/ -> v1_taches_jetons_retrieve
+- post /api/v1/taches/jetons/ -> v1_taches_jetons_create
+- post /api/v1/taches/jetons/{id}/revoquer/ -> v1_taches_jetons_revoquer_create
+- post /api/v1/taches/journee/alleger/ -> v1_taches_journee_alleger_create
+- get /api/v1/taches/journee/cloture/ -> v1_taches_journee_cloture_retrieve
+- post /api/v1/taches/journee/cloturer/ -> v1_taches_journee_cloturer_create
+- post /api/v1/taches/journee/essentiel/ -> v1_taches_journee_essentiel_create
+- post /api/v1/taches/journee/planifier/ -> v1_taches_journee_planifier_create
+- get /api/v1/taches/journee/point/ -> v1_taches_journee_point_retrieve
+- get /api/v1/taches/journee/priorites/ -> v1_taches_journee_priorites_retrieve
+- get /api/v1/taches/journee/proposition/ -> v1_taches_journee_proposition_retrieve
+- get /api/v1/taches/mes-donnees/ -> v1_taches_mes_donnees_retrieve
+- get /api/v1/taches/modeles/ -> v1_taches_modeles_list
+- delete /api/v1/taches/modeles/{id}/ -> v1_taches_modeles_destroy
+- get /api/v1/taches/modeles/{id}/ -> v1_taches_modeles_retrieve
+- patch /api/v1/taches/modeles/{id}/ -> v1_taches_modeles_partial_update
+- post /api/v1/taches/modeles/{id}/instancier/ -> v1_taches_modeles_instancier_create
+- post /api/v1/taches/mon-iphone/test-notification/ -> v1_taches_mon_iphone_test_notification_create
+- post /api/v1/taches/preferences/ -> v1_taches_preferences_create
+- delete /api/v1/taches/preferences/{cle}/ -> v1_taches_preferences_destroy
+- get /api/v1/taches/projets/ -> v1_taches_projets_list
+- post /api/v1/taches/projets/ -> v1_taches_projets_create
+- post /api/v1/taches/projets/trier-par-priorite/ -> v1_taches_projets_trier_par_priorite_create
+- delete /api/v1/taches/projets/{id}/ -> v1_taches_projets_destroy
+- get /api/v1/taches/projets/{id}/ -> v1_taches_projets_retrieve
+- patch /api/v1/taches/projets/{id}/ -> v1_taches_projets_partial_update
+- post /api/v1/taches/projets/{id}/decaler/ -> v1_taches_projets_decaler_create
+- post /api/v1/taches/projets/{id}/dupliquer/ -> v1_taches_projets_dupliquer_create
+- post /api/v1/taches/projets/{id}/enregistrer-modele/ -> v1_taches_projets_enregistrer_modele_create
+- post /api/v1/taches/projets/{id}/planification/ -> v1_taches_projets_planification_create
+- post /api/v1/taches/projets/{id}/planification/apercu/ -> v1_taches_projets_planification_apercu_create
+- post /api/v1/taches/projets/{id}/reordonner/ -> v1_taches_projets_reordonner_create
+- post /api/v1/taches/projets/{id}/restaurer/ -> v1_taches_projets_restaurer_create
+- post /api/v1/taches/projets/{id}/rouvrir/ -> v1_taches_projets_rouvrir_create
+- post /api/v1/taches/projets/{id}/terminer/ -> v1_taches_projets_terminer_create
+- get /api/v1/taches/projets/{id}/vue/ -> v1_taches_projets_vue_retrieve
+- delete /api/v1/taches/rappels/{id}/ -> v1_taches_rappels_destroy
+- post /api/v1/taches/rappels/{id}/repeter/ -> v1_taches_rappels_repeter_create
+- get /api/v1/taches/recherche/ -> v1_taches_recherche_retrieve
+- patch /api/v1/taches/recurrences/{id}/ -> v1_taches_recurrences_partial_update
+- get /api/v1/taches/reglages-societe/ -> v1_taches_reglages_societe_retrieve
+- patch /api/v1/taches/reglages-societe/ -> v1_taches_reglages_societe_partial_update
+- get /api/v1/taches/reglages/ -> v1_taches_reglages_retrieve
+- patch /api/v1/taches/reglages/ -> v1_taches_reglages_partial_update
+- get /api/v1/taches/revue/projets/ -> v1_taches_revue_projets_retrieve
+- put /api/v1/taches/revue/projets/{projet_id}/ -> v1_taches_revue_projets_update
+- get /api/v1/taches/rythme/ -> v1_taches_rythme_retrieve
+- post /api/v1/taches/rythme/ -> v1_taches_rythme_create
+- post /api/v1/taches/rythme/propositions/{id}/repondre/ -> v1_taches_rythme_propositions_repondre_create
+- post /api/v1/taches/saisie-rapide/ -> v1_taches_saisie_rapide_create
+- post /api/v1/taches/sections/ -> v1_taches_sections_create
+- delete /api/v1/taches/sections/{id}/ -> v1_taches_sections_destroy
+- patch /api/v1/taches/sections/{id}/ -> v1_taches_sections_partial_update
+- post /api/v1/taches/sections/{id}/reordonner/ -> v1_taches_sections_reordonner_create
+- get /api/v1/taches/suggestions/ -> v1_taches_suggestions_retrieve
+- post /api/v1/taches/suggestions/{id}/accepter/ -> v1_taches_suggestions_accepter_create
+- post /api/v1/taches/suggestions/{id}/refuser/ -> v1_taches_suggestions_refuser_create
+- get /api/v1/taches/supprimees/ -> v1_taches_supprimees_retrieve
+- get /api/v1/taches/taches/ -> v1_taches_taches_list
+- post /api/v1/taches/taches/ -> v1_taches_taches_create
+- post /api/v1/taches/taches/lier-activite/ -> v1_taches_taches_lier_activite_create
+- post /api/v1/taches/taches/lot/ -> v1_taches_taches_lot_create
+- delete /api/v1/taches/taches/{id}/ -> v1_taches_taches_destroy
+- get /api/v1/taches/taches/{id}/ -> v1_taches_taches_retrieve
+- patch /api/v1/taches/taches/{id}/ -> v1_taches_taches_partial_update
+- post /api/v1/taches/taches/{id}/attendre/ -> v1_taches_taches_attendre_create
+- post /api/v1/taches/taches/{id}/changement/apercu/ -> v1_taches_taches_changement_apercu_create
+- post /api/v1/taches/taches/{id}/planifier/ -> v1_taches_taches_planifier_create
+- post /api/v1/taches/taches/{id}/rappels/ -> v1_taches_taches_rappels_create
+- post /api/v1/taches/taches/{id}/recu/ -> v1_taches_taches_recu_create
+- post /api/v1/taches/taches/{id}/reordonner/ -> v1_taches_taches_reordonner_create
+- post /api/v1/taches/taches/{id}/restaurer/ -> v1_taches_taches_restaurer_create
+- post /api/v1/taches/taches/{id}/rouvrir/ -> v1_taches_taches_rouvrir_create
+- post /api/v1/taches/taches/{id}/sauter/ -> v1_taches_taches_sauter_create
+- post /api/v1/taches/taches/{id}/terminer/ -> v1_taches_taches_terminer_create
+- post /api/v1/taches/taches/{id}/trancher/ -> v1_taches_taches_trancher_create
+- post /api/v1/taches/tout-effacer/ -> v1_taches_tout_effacer_create
+- get /api/v1/taches/tuile/ -> v1_taches_tuile_retrieve
+- post /api/v1/taches/vu/ -> v1_taches_vu_create
+- get /api/v1/taches/vues/ -> v1_taches_vues_retrieve
+- post /api/v1/taches/vues/ -> v1_taches_vues_create
+- delete /api/v1/taches/vues/{id}/ -> v1_taches_vues_destroy
+- patch /api/v1/taches/vues/{id}/ -> v1_taches_vues_partial_update
 - get /api/v1/tiers/tiers/ -> v1_tiers_tiers_list
 - post /api/v1/tiers/tiers/ -> v1_tiers_tiers_create
 - get /api/v1/tiers/tiers/doublons/ -> v1_tiers_tiers_doublons_retrieve
@@ -8531,6 +8744,19 @@ query_params:
   get /api/django/stock/unites-logistiques/{id}/etiquette-pdf/: sortie symbology
   get /api/django/stock/unites-logistiques/{id}/export-asn/: telecharger
   get /api/django/stock/vagues-picking/: ordering page page_size search statut
+  get /api/django/taches/agenda/: au du projet vue
+  get /api/django/taches/aujourdhui/: jour tout
+  post /api/django/taches/capture/: reponse
+  get /api/django/taches/etiquettes/: page page_size
+  get /api/django/taches/journee/cloture/: jour
+  get /api/django/taches/journee/priorites/: jour
+  get /api/django/taches/journee/proposition/: exclure inclure jour tout
+  get /api/django/taches/modeles/: page page_size
+  get /api/django/taches/projets/: page page_size statut
+  get /api/django/taches/projets/{id}/vue/: vue
+  get /api/django/taches/recherche/: limite q
+  get /api/django/taches/revue/projets/: semaine
+  get /api/django/taches/taches/: cible cible_id etiquette groupe inclure_faites ouvertes page page_size periode priorite_min projet q section statut tri vue
   get /api/django/tiers/tiers/: ordering page page_size search
   get /api/django/tiers/tiers/verifier-doublon/: email ice
   get /api/django/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
@@ -9338,6 +9564,19 @@ query_params:
   get /api/v1/stock/unites-logistiques/{id}/etiquette-pdf/: sortie symbology
   get /api/v1/stock/unites-logistiques/{id}/export-asn/: telecharger
   get /api/v1/stock/vagues-picking/: ordering page page_size search statut
+  get /api/v1/taches/agenda/: au du projet vue
+  get /api/v1/taches/aujourdhui/: jour tout
+  post /api/v1/taches/capture/: reponse
+  get /api/v1/taches/etiquettes/: page page_size
+  get /api/v1/taches/journee/cloture/: jour
+  get /api/v1/taches/journee/priorites/: jour
+  get /api/v1/taches/journee/proposition/: exclure inclure jour tout
+  get /api/v1/taches/modeles/: page page_size
+  get /api/v1/taches/projets/: page page_size statut
+  get /api/v1/taches/projets/{id}/vue/: vue
+  get /api/v1/taches/recherche/: limite q
+  get /api/v1/taches/revue/projets/: semaine
+  get /api/v1/taches/taches/: cible cible_id etiquette groupe inclure_faites ouvertes page page_size periode priorite_min projet q section statut tri vue
   get /api/v1/tiers/tiers/: ordering page page_size search
   get /api/v1/tiers/tiers/verifier-doublon/: email ice
   get /api/v1/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
@@ -11966,6 +12205,17 @@ components:
 - PatchedStatutConfigRequest
 - PatchedSubventionDossierRequest
 - PatchedTacheReapproInterneRequest
+- PatchedTachesCorpsAgendaExternePatchRequest
+- PatchedTachesCorpsChecklistElementRequest
+- PatchedTachesCorpsEtiquettePatchRequest
+- PatchedTachesCorpsModelePatchRequest
+- PatchedTachesCorpsProjetPatchRequest
+- PatchedTachesCorpsRecurrenceRequest
+- PatchedTachesCorpsReglagesRequest
+- PatchedTachesCorpsReglagesSocieteRequest
+- PatchedTachesCorpsSectionPatchRequest
+- PatchedTachesCorpsTachePatchRequest
+- PatchedTachesCorpsVuePatchRequest
 - PatchedTagRequest
 - PatchedTaggedItemRequest
 - PatchedTamponSocieteRequest
@@ -12796,6 +13046,433 @@ components:
 - TacheReapproInterne
 - TacheReapproInterneRequest
 - TacheReapproInterneStatutEnum
+- TachesAffichage
+- TachesAvertissement
+- TachesCompteChecklist
+- TachesCompteSousTaches
+- TachesComptesProjet
+- TachesConflitProjet
+- TachesConflitTache
+- TachesCorpsAgendaExterneRequest
+- TachesCorpsCaptureRequest
+- TachesCorpsChecklistRequest
+- TachesCorpsConvertirActiviteRequest
+- TachesCorpsDecalerRequest
+- TachesCorpsDupliquerRequest
+- TachesCorpsEnregistrerModeleRequest
+- TachesCorpsEtiquetteRequest
+- TachesCorpsJetonRequest
+- TachesCorpsJourneeAllegerRequest
+- TachesCorpsJourneeCloturerRequest
+- TachesCorpsJourneeCloturer_Choix_ElementRequest
+- TachesCorpsJourneeEssentielRequest
+- TachesCorpsJourneePlanifierRequest
+- TachesCorpsJourneePlanifier_Lignes_ElementRequest
+- TachesCorpsLierActiviteRequest
+- TachesCorpsLotRequest
+- TachesCorpsModeleInstancierRequest
+- TachesCorpsPlanificationActionRequest
+- TachesCorpsPlanificationApercuRequest
+- TachesCorpsPlanificationRequest
+- TachesCorpsPlanificationSectionRequest
+- TachesCorpsPlanificationTacheRequest
+- TachesCorpsPlanifierRequest
+- TachesCorpsPreferenceRequest
+- TachesCorpsProjetRequest
+- TachesCorpsProjetTerminerRequest
+- TachesCorpsProprietaireAttenduRequest
+- TachesCorpsRappelRequest
+- TachesCorpsReordonnerRequest
+- TachesCorpsRepeterRequest
+- TachesCorpsRepondrePropositionRequest
+- TachesCorpsRevueDecisionRequest
+- TachesCorpsRythmeRequest
+- TachesCorpsSaisieRapideRequest
+- TachesCorpsSectionRequest
+- TachesCorpsSuggestionAccepterRequest
+- TachesCorpsTacheAttendreRequest
+- TachesCorpsTacheChangementApercuRequest
+- TachesCorpsTacheRequest
+- TachesCorpsToutEffacerRequest
+- TachesCorpsTrancherRequest
+- TachesCorpsVuRequest
+- TachesCorpsVueRequest
+- TachesDetailProgression
+- TachesEchAgenda
+- TachesEchAgendaExterne
+- TachesEchAgenda_APlacer_Element
+- TachesEchAgenda_APlacer_Element_Projet
+- TachesEchAgenda_Jours_Element
+- TachesEchAgenda_Jours_Element_Blocs_Element
+- TachesEchAgenda_Jours_Element_Blocs_Element_Projet
+- TachesEchAgenda_Jours_Element_Echeances_Element
+- TachesEchAgenda_Jours_Element_Echeances_Element_Projet
+- TachesEchAgenda_Jours_Element_Externes_Element
+- TachesEchAgenda_Jours_Element_SansHeure_Element
+- TachesEchAgenda_Jours_Element_TouteLaJournee_Element
+- TachesEchAgenda_MesProjets_Element
+- TachesEchAgenda_MesProjets_Element_Items_Element
+- TachesEchAgenda_MesProjets_Element_Items_Element_Projet
+- TachesEchAgenda_MesProjets_Element_Items_Element_Raison
+- TachesEchAgenda_MesProjets_Element_Projet
+- TachesEchAgendasExternes
+- TachesEchAgendasExternes_Results_Element
+- TachesEchAilleurs
+- TachesEchAujourdhui
+- TachesEchAujourdhui_ADecider_Element
+- TachesEchAujourdhui_ADecider_Element_Projet
+- TachesEchAujourdhui_ATrier
+- TachesEchAujourdhui_CarteDuMoment
+- TachesEchAujourdhui_CarteDuMoment_Proposition
+- TachesEchAujourdhui_CarteDuMoment_Proposition_Boutons_Element
+- TachesEchAujourdhui_CarteDuMoment_Proposition_Donnees
+- TachesEchAujourdhui_CeSoir_Element
+- TachesEchAujourdhui_CeSoir_Element_Projet
+- TachesEchAujourdhui_EnAttente_Element
+- TachesEchAujourdhui_Essentiel_Element
+- TachesEchAujourdhui_Essentiel_Element_Projet
+- TachesEchAujourdhui_Faites_Element
+- TachesEchAujourdhui_Faites_Element_Projet
+- TachesEchAujourdhui_Journee_Element
+- TachesEchAujourdhui_Journee_Element_Lien
+- TachesEchAujourdhui_Objectif
+- TachesEchAujourdhui_Obligations_Element
+- TachesEchAujourdhui_Plan
+- TachesEchAujourdhui_Progression
+- TachesEchAujourdhui_Progression_Detail
+- TachesEchAujourdhui_Propose
+- TachesEchAujourdhui_Propose_Charge
+- TachesEchAujourdhui_Propose_PourObjectif_Element
+- TachesEchAujourdhui_Propose_PourObjectif_Element_Projet
+- TachesEchAujourdhui_Propose_PourObjectif_Element_Raison
+- TachesEchAujourdhui_Propose_SuiteParProjet_Element
+- TachesEchAujourdhui_Propose_SuiteParProjet_Element_Items_Element
+- TachesEchAujourdhui_Propose_SuiteParProjet_Element_Items_Element_Projet
+- TachesEchAujourdhui_Propose_SuiteParProjet_Element_Items_Element_Raison
+- TachesEchAujourdhui_Propose_SuiteParProjet_Element_Projet
+- TachesEchAujourdhui_RendezVous_Element
+- TachesEchBadge
+- TachesEchCapture
+- TachesEchCoachEntete
+- TachesEchConvertirActivite
+- TachesEchConvertirActivite_Converties_Element
+- TachesEchConvertirActivite_Refusees_Element
+- TachesEchDecalage
+- TachesEchDecalage_Changements_Element
+- TachesEchEtiquettes
+- TachesEchEtiquettes_Results_Element
+- TachesEchGesteAnnuler
+- TachesEchGesteAnnuler_Conflits_Element
+- TachesEchGesteAnnuler_Restaurees_Element
+- TachesEchGestes
+- TachesEchGestes_Results_Element
+- TachesEchJeton
+- TachesEchJetonsListe
+- TachesEchJetonsListe_Results_Element
+- TachesEchJourneeCloture
+- TachesEchJourneeCloture_ATrancher_Element
+- TachesEchJourneeCloture_ATrancher_Element_Projet
+- TachesEchJourneeCloture_ActivitesAClore_Element
+- TachesEchJourneeCloture_ActivitesAClore_Element_Lien
+- TachesEchJourneeCloture_Bilan
+- TachesEchJourneeCloture_Constat
+- TachesEchJourneeCloture_Constat_Boutons_Element
+- TachesEchJourneeCloture_Constat_Donnees
+- TachesEchJourneeCloture_Faites_Element
+- TachesEchJourneeCloture_Faites_Element_Projet
+- TachesEchJourneeCloture_Restes_Element
+- TachesEchJourneeCloturee
+- TachesEchJourneeCloturee_Plan
+- TachesEchJourneeEcrite
+- TachesEchJourneeEcrite_Aujourdhui
+- TachesEchJourneeEcrite_Aujourdhui_ADecider_Element
+- TachesEchJourneeEcrite_Aujourdhui_ADecider_Element_Projet
+- TachesEchJourneeEcrite_Aujourdhui_ATrier
+- TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment
+- TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition
+- TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition_Boutons_Element
+- TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition_Donnees
+- TachesEchJourneeEcrite_Aujourdhui_CeSoir_Element
+- TachesEchJourneeEcrite_Aujourdhui_CeSoir_Element_Projet
+- TachesEchJourneeEcrite_Aujourdhui_EnAttente_Element
+- TachesEchJourneeEcrite_Aujourdhui_Essentiel_Element
+- TachesEchJourneeEcrite_Aujourdhui_Essentiel_Element_Projet
+- TachesEchJourneeEcrite_Aujourdhui_Faites_Element
+- TachesEchJourneeEcrite_Aujourdhui_Faites_Element_Projet
+- TachesEchJourneeEcrite_Aujourdhui_Journee_Element
+- TachesEchJourneeEcrite_Aujourdhui_Journee_Element_Lien
+- TachesEchJourneeEcrite_Aujourdhui_Objectif
+- TachesEchJourneeEcrite_Aujourdhui_Obligations_Element
+- TachesEchJourneeEcrite_Aujourdhui_Plan
+- TachesEchJourneeEcrite_Aujourdhui_Progression
+- TachesEchJourneeEcrite_Aujourdhui_Progression_Detail
+- TachesEchJourneeEcrite_Aujourdhui_Propose
+- TachesEchJourneeEcrite_Aujourdhui_Propose_Charge
+- TachesEchJourneeEcrite_Aujourdhui_Propose_PourObjectif_Element
+- TachesEchJourneeEcrite_Aujourdhui_Propose_PourObjectif_Element_Projet
+- TachesEchJourneeEcrite_Aujourdhui_Propose_PourObjectif_Element_Raison
+- TachesEchJourneeEcrite_Aujourdhui_RendezVous_Element
+- TachesEchJourneeProposition
+- TachesEchJourneeProposition_ADecider_Element
+- TachesEchJourneeProposition_ADecider_Element_Projet
+- TachesEchJourneeProposition_Capacite
+- TachesEchJourneeProposition_Charge
+- TachesEchJourneeProposition_Objectif
+- TachesEchJourneeProposition_Proposition_Element
+- TachesEchJourneeProposition_Proposition_Element_Item
+- TachesEchJourneeProposition_Proposition_Element_Item_Projet
+- TachesEchJourneeProposition_Proposition_Element_Item_Raison
+- TachesEchJourneeProposition_Rythme
+- TachesEchJourneeProposition_Rythme_Boutons_Element
+- TachesEchJourneeProposition_Rythme_Donnees
+- TachesEchJourneeProposition_SuiteParProjet_Element
+- TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element
+- TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element_Projet
+- TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element_Raison
+- TachesEchJourneeProposition_SuiteParProjet_Element_Projet
+- TachesEchLierActivite
+- TachesEchLierActivite_Tache
+- TachesEchLierActivite_Tache_Checklist
+- TachesEchLierActivite_Tache_ElementsChecklist_Element
+- TachesEchLierActivite_Tache_Enfants_Element
+- TachesEchLierActivite_Tache_Enfants_Element_Projet
+- TachesEchLierActivite_Tache_Etiquettes_Element
+- TachesEchLierActivite_Tache_Lien
+- TachesEchLierActivite_Tache_Projet
+- TachesEchLierActivite_Tache_Rappel
+- TachesEchLierActivite_Tache_Rappels_Element
+- TachesEchLierActivite_Tache_SousTaches
+- TachesEchLot
+- TachesEchLot_Refusees_Element
+- TachesEchMesDonnees
+- TachesEchMesDonnees_AgendaExterne_Element
+- TachesEchMesDonnees_JetonAcces_Element
+- TachesEchMesDonnees_Projet_Element
+- TachesEchMesDonnees_Projet_Element_Affichage
+- TachesEchMesDonnees_Projet_Element_Compteurs
+- TachesEchMesDonnees_Projet_Element_Sante_Element
+- TachesEchMesDonnees_Projet_Element_Sante_Element_Donnees
+- TachesEchMesDonnees_ReglagesRythme_Element
+- TachesEchMesDonnees_Tache_Element
+- TachesEchMesDonnees_Tache_Element_Checklist
+- TachesEchMesDonnees_Tache_Element_ElementsChecklist_Element
+- TachesEchMesDonnees_Tache_Element_Enfants_Element
+- TachesEchMesDonnees_Tache_Element_Enfants_Element_Projet
+- TachesEchMesDonnees_Tache_Element_Etiquettes_Element
+- TachesEchMesDonnees_Tache_Element_Lien
+- TachesEchMesDonnees_Tache_Element_Projet
+- TachesEchMesDonnees_Tache_Element_Rappel
+- TachesEchMesDonnees_Tache_Element_Rappels_Element
+- TachesEchMesDonnees_Tache_Element_SousTaches
+- TachesEchModele
+- TachesEchModeleInstancier
+- TachesEchModeleInstancier_Projet
+- TachesEchModeleInstancier_Sections_Element
+- TachesEchModeleInstancier_Taches_Element
+- TachesEchModele_Contenu
+- TachesEchModele_Contenu_Sections_Element
+- TachesEchModele_Contenu_Taches_Element
+- TachesEchModelesListe
+- TachesEchModelesListe_Results_Element
+- TachesEchPlanification
+- TachesEchPlanificationApercu
+- TachesEchPlanificationApercu_Sections_Element
+- TachesEchPlanificationApercu_Sections_Element_Taches_Element
+- TachesEchPlanification_Creees_Element
+- TachesEchPlanification_Creees_Element_Checklist
+- TachesEchPlanification_Creees_Element_ElementsChecklist_Element
+- TachesEchPlanification_Creees_Element_Enfants_Element
+- TachesEchPlanification_Creees_Element_Enfants_Element_Projet
+- TachesEchPlanification_Creees_Element_Etiquettes_Element
+- TachesEchPlanification_Creees_Element_Lien
+- TachesEchPlanification_Creees_Element_Projet
+- TachesEchPlanification_Creees_Element_Rappel
+- TachesEchPlanification_Creees_Element_Rappels_Element
+- TachesEchPlanification_Creees_Element_SousTaches
+- TachesEchPlanification_Projet
+- TachesEchPlanification_Projet_Affichage
+- TachesEchPlanification_Projet_Compteurs
+- TachesEchPlanification_Projet_Sante_Element
+- TachesEchPlanification_Projet_Sante_Element_Donnees
+- TachesEchPoint
+- TachesEchPoint_CarteDuMoment
+- TachesEchPoint_CarteDuMoment_Donnees
+- TachesEchPoint_EssentielRestant_Element
+- TachesEchPoint_EssentielRestant_Element_Projet
+- TachesEchPoint_Objectif
+- TachesEchPoint_Prochaine
+- TachesEchPoint_Progression
+- TachesEchPoint_Progression_Detail
+- TachesEchPriorites
+- TachesEchPriorites_Lignes_Element
+- TachesEchPriorites_Lignes_Element_Item
+- TachesEchPriorites_Lignes_Element_Item_Projet
+- TachesEchPriorites_Lignes_Element_Item_Raison
+- TachesEchPriorites_Objectif
+- TachesEchProjetEcrit
+- TachesEchProjetEcrit_Projet
+- TachesEchProjetEcrit_Projet_Affichage
+- TachesEchProjetEcrit_Projet_Compteurs
+- TachesEchProjetVue
+- TachesEchProjetVue_Avancement
+- TachesEchProjetVue_Burnup_Element
+- TachesEchProjetVue_ProchainJalon
+- TachesEchProjetVue_ProchainJalon_Projet
+- TachesEchProjetVue_ProchaineAction
+- TachesEchProjetVue_ProchaineAction_Projet
+- TachesEchProjetVue_Projet
+- TachesEchProjetVue_Projet_Affichage
+- TachesEchProjetVue_Projet_Compteurs
+- TachesEchProjetVue_Projet_Sante_Element
+- TachesEchProjetVue_Projet_Sante_Element_Donnees
+- TachesEchProjetVue_SansSection_Element
+- TachesEchProjetVue_Sections_Element
+- TachesEchProjetVue_Sections_Element_Taches_Element
+- TachesEchProjetVue_Sections_Element_Taches_Element_Projet
+- TachesEchProjetsListe
+- TachesEchProjetsListe_Constat
+- TachesEchProjetsListe_Results_Element
+- TachesEchProjetsListe_Results_Element_Affichage
+- TachesEchProjetsListe_Results_Element_Compteurs
+- TachesEchProjetsListe_Results_Element_Sante_Element
+- TachesEchProjetsListe_Results_Element_Sante_Element_Donnees
+- TachesEchPropositionRepondue
+- TachesEchPropositionRepondue_Proposition
+- TachesEchPropositionRepondue_Proposition_Donnees
+- TachesEchPropositionRepondue_Rythme
+- TachesEchPropositionRepondue_Rythme_Bloc
+- TachesEchPropositionRepondue_Rythme_Constats_Element
+- TachesEchPropositionRepondue_Rythme_Constats_Element_Boutons_Element
+- TachesEchPropositionRepondue_Rythme_Constats_Element_Donnees
+- TachesEchPropositionRepondue_Rythme_Objectif
+- TachesEchPropositionRepondue_Rythme_Preferences_Element
+- TachesEchPropositionRepondue_Rythme_Proposition
+- TachesEchPropositionRepondue_Rythme_Proposition_Boutons_Element
+- TachesEchPropositionRepondue_Rythme_Proposition_Donnees
+- TachesEchPropositionRepondue_Rythme_Repere
+- TachesEchPropositionRepondue_Rythme_Serie_Element
+- TachesEchRappelRepeter
+- TachesEchRappelRepeter_Rappel
+- TachesEchRecherche
+- TachesEchRecherche_Projets_Element
+- TachesEchRecherche_Taches_Element
+- TachesEchRecherche_Taches_Element_Projet
+- TachesEchReglages
+- TachesEchReglagesSociete
+- TachesEchReglages_FenetreSociete
+- TachesEchReglages_PausesSollicitations_Element
+- TachesEchReglages_Sollicitations
+- TachesEchRevueDecision
+- TachesEchRevueDecision_Projet
+- TachesEchRevueDecision_Projet_Affichage
+- TachesEchRevueDecision_Projet_Compteurs
+- TachesEchRevueDecision_Projet_Sante_Element
+- TachesEchRevueDecision_Projet_Sante_Element_Donnees
+- TachesEchRevueDecision_Revue
+- TachesEchRevueProjets
+- TachesEchRevueProjets_BilanSemaine
+- TachesEchRevueProjets_BilanSemaine_Donnees
+- TachesEchRevueProjets_Cartes_Element
+- TachesEchRevueProjets_Cartes_Element_Bloquees_Element
+- TachesEchRevueProjets_Cartes_Element_Bloquees_Element_Attend
+- TachesEchRevueProjets_Cartes_Element_FaitesSemaine_Element
+- TachesEchRevueProjets_Cartes_Element_ProchaineAction
+- TachesEchRevueProjets_Cartes_Element_ProchaineAction_Projet
+- TachesEchRevueProjets_Cartes_Element_Projet
+- TachesEchRevueProjets_Cartes_Element_Projet_Affichage
+- TachesEchRevueProjets_Cartes_Element_Projet_Compteurs
+- TachesEchRevueProjets_Cartes_Element_Projet_Sante_Element
+- TachesEchRevueProjets_Cartes_Element_Projet_Sante_Element_Donnees
+- TachesEchRevueProjets_Cartes_Element_Revue
+- TachesEchRythme
+- TachesEchRythme_Bloc
+- TachesEchRythme_Constats_Element
+- TachesEchRythme_Constats_Element_Boutons_Element
+- TachesEchRythme_Constats_Element_Donnees
+- TachesEchRythme_Objectif
+- TachesEchRythme_Preferences_Element
+- TachesEchRythme_Proposition
+- TachesEchRythme_Proposition_Boutons_Element
+- TachesEchRythme_Proposition_Donnees
+- TachesEchRythme_Repere
+- TachesEchRythme_Serie_Element
+- TachesEchSaisieApercu
+- TachesEchSaisieApercu_Lignes_Element
+- TachesEchSaisieApercu_Lignes_Element_Champs
+- TachesEchSaisieApercu_Lignes_Element_Champs_NouveauProjet
+- TachesEchSaisieApercu_Lignes_Element_Jetons_Element
+- TachesEchSaisieApercu_ProjetsCommuns_Element
+- TachesEchSaisieApercu_ProjetsNouveaux_Element
+- TachesEchSaisieRapide
+- TachesEchSaisieRapide_Creees_Element
+- TachesEchSaisieRapide_Creees_Element_Checklist
+- TachesEchSaisieRapide_Creees_Element_ElementsChecklist_Element
+- TachesEchSaisieRapide_Creees_Element_Enfants_Element
+- TachesEchSaisieRapide_Creees_Element_Enfants_Element_Projet
+- TachesEchSaisieRapide_Creees_Element_Etiquettes_Element
+- TachesEchSaisieRapide_Creees_Element_Lien
+- TachesEchSaisieRapide_Creees_Element_Projet
+- TachesEchSaisieRapide_Creees_Element_Rappel
+- TachesEchSaisieRapide_Creees_Element_Rappels_Element
+- TachesEchSaisieRapide_Creees_Element_SousTaches
+- TachesEchSaisieRapide_ProjetsCrees_Element
+- TachesEchSuggestionRefusee
+- TachesEchSuggestions
+- TachesEchSuggestions_Results_Element
+- TachesEchSuggestions_Results_Element_Lien
+- TachesEchSupprimees
+- TachesEchSupprimees_Projets_Element
+- TachesEchSupprimees_Projets_Element_Projet
+- TachesEchSupprimees_Projets_Element_Projet_Affichage
+- TachesEchSupprimees_Projets_Element_Projet_Compteurs
+- TachesEchSupprimees_Taches_Element
+- TachesEchSupprimees_Taches_Element_Item
+- TachesEchTacheChangement
+- TachesEchTacheChangement_Proposition
+- TachesEchTacheChangement_Tache
+- TachesEchTacheChangement_Tache_Projet
+- TachesEchToutEffacer
+- TachesEchToutEffacer_Effacees
+- TachesEchTuile
+- TachesEchTuile_Essentiel
+- TachesEchTuile_ProchaineEcheance
+- TachesEchTuile_Top_Element
+- TachesEchVu
+- TachesEchVu_CarteDuMoment
+- TachesEchVu_CarteDuMoment_Proposition
+- TachesEchVu_CarteDuMoment_Proposition_Boutons_Element
+- TachesEchVu_CarteDuMoment_Proposition_Donnees
+- TachesEchVues
+- TachesEchVues_Results_Element
+- TachesEchVues_Results_Element_Filtres
+- TachesElementChecklistForme
+- TachesErreurCode
+- TachesErreurDetail
+- TachesEtiquetteCourte
+- TachesEtiquetteEcrite
+- TachesGeste
+- TachesItem
+- TachesLien
+- TachesLigneLienRequest
+- TachesLigneNouveauProjetRequest
+- TachesLigneNouvelleSectionRequest
+- TachesLigneRequest
+- TachesPageItems
+- TachesProgression
+- TachesProjet
+- TachesProjetCourt
+- TachesRaison
+- TachesRappel
+- TachesRappelCourt
+- TachesRappelEcrit
+- TachesRecurrence
+- TachesSante
+- TachesSection
+- TachesSectionCourte
+- TachesTache
+- TachesTacheCourte
+- TachesTacheEcrite
+- TachesVueEnregistree
 - Tag
 - TagRequest
 - TaggedItem

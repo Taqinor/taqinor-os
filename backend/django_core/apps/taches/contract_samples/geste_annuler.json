@@ -1,0 +1,20 @@
+{
+  "endpoint": "POST /api/django/taches/gestes/{id}/annuler/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST gestes/{id}/annuler/ · consommateurs : toast, cartes ». Source : docs/taches/reference/api.md annexe A (`geste_annuler.json`), recopié mot pour mot.",
+  "exemple": {
+    "restaurees": [
+      {
+        "objet": "tache",
+        "id": 41
+      }
+    ],
+    "conflits": [
+      {
+        "objet": "tache",
+        "id": 12,
+        "raison": "modifiee_depuis"
+      }
+    ],
+    "deja": false
+  }
+}

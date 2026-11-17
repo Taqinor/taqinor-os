@@ -1,0 +1,47 @@
+{
+  "endpoint": "GET /api/django/taches/projets/{id}/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET projets/{id}/ · consommateurs : Un projet (en-tête) ». Source : docs/taches/reference/api.md annexe A (`projet.json`), recopié mot pour mot.",
+  "exemple": {
+    "id": 3,
+    "nom": "Ventes",
+    "objectif": "Fini quand les 4 devis sont signés",
+    "icone": "",
+    "couleur": "vert",
+    "priorite": 3,
+    "statut": "actif",
+    "statut_depuis": "2026-10-01T09:00:00+01:00",
+    "domaine": "",
+    "date_debut": null,
+    "echeance": "2026-12-15",
+    "termine_le": null,
+    "issue": "",
+    "bilan": "",
+    "planification_le": "2026-10-01T09:05:00+01:00",
+    "rang": 2048,
+    "confidentiel": false,
+    "affichage": {
+      "vue": "liste",
+      "tri": "manuel",
+      "groupe": "section",
+      "montrer_faites": false
+    },
+    "a_planifier": false,
+    "compteurs": {
+      "ouvertes": 8,
+      "faites": 12
+    },
+    "sante": [
+      {
+        "code": "a_l_arret",
+        "phrase": "Rien de fait depuis 10 jours travaillés.",
+        "donnees": {
+          "jours": 10,
+          "depuis": "2026-11-03"
+        }
+      }
+    ],
+    "focus_semaine": false,
+    "updated_at": "2026-11-16T18:00:00+01:00",
+    "lock_version": 4
+  }
+}

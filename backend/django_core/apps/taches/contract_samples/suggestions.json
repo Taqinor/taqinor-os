@@ -1,0 +1,21 @@
+{
+  "endpoint": "GET /api/django/taches/suggestions/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET suggestions/ (non paginé, ≤ 20) · consommateurs : À trier « Suggéré par l'ERP » ». Source : docs/taches/reference/api.md annexe A (`suggestions.json`), recopié mot pour mot.",
+  "exemple": {
+    "results": [
+      {
+        "id": 5,
+        "famille": "devis_accepte",
+        "titre": "Préparer le chantier du devis accepté",
+        "lien": {
+          "cible": "ventes.devis",
+          "id": 512,
+          "libelle": "DEV-2026-11-0042",
+          "url": "/ventes/devis?devis=512",
+          "etat": "ok"
+        },
+        "created_at": "2026-11-17T08:00:00+01:00"
+      }
+    ]
+  }
+}

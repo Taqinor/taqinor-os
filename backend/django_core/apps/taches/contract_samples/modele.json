@@ -1,0 +1,35 @@
+{
+  "endpoint": "GET /api/django/taches/modeles/{id}/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET modeles/{id}/ · consommateurs : Modèles ». Source : docs/taches/reference/api.md annexe A (`modele.json`), recopié mot pour mot.",
+  "exemple": {
+    "id": 2,
+    "nom": "Salon",
+    "created_at": "2026-11-10T09:00:00+01:00",
+    "contenu": {
+      "v": 1,
+      "objectif": "Stand monté",
+      "priorite": 2,
+      "sections": [
+        {
+          "nom": "Préparation",
+          "decalage_debut": 0,
+          "decalage_fin": 14
+        }
+      ],
+      "taches": [
+        {
+          "titre": "Réserver le stand",
+          "section_index": 0,
+          "priorite": 3,
+          "jalon": false,
+          "decalage_jour": 0,
+          "decalage_echeance": 5,
+          "parent_index": null,
+          "bloquee_par_index": null,
+          "checklist": [],
+          "notes": ""
+        }
+      ]
+    }
+  }
+}
