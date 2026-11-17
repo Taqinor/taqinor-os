@@ -27,6 +27,10 @@ const pw = require(process.env.PLAYWRIGHT_DIR || 'C:/dev/taqinor-os/frontend/nod
       await page.goto('file:///' + fichier.split(path.sep).join('/') + '?vue=' + cle + '&theme=' + theme);
       await page.evaluate((t) => document.documentElement.classList.toggle('dark', t === 'sombre'), theme);
       await page.waitForTimeout(250);
+      // refuse un écran sans icône : chaque <use href="#…"> doit viser un <symbol> non vide (icones.js)
+      const absents = await page.evaluate(() => [...document.querySelectorAll('use')].map((u) => u.getAttribute('href'))
+        .filter((h) => h && h.startsWith('#') && !(document.getElementById(h.slice(1)) || {}).firstElementChild));
+      if (absents.length) throw new Error(`${nom} : icônes absentes ${[...new Set(absents)].join(' ')} (relancer outils/icones-generer.cjs)`);
       const cible = path.join(sortie, `${nom}-${cle}-${theme}.png`);
       await page.screenshot({ path: cible, fullPage: false });
       console.log(cible);

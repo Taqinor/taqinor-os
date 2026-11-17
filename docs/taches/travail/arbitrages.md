@@ -187,3 +187,53 @@ il reste à réaligner la référence, puis à la vérifier une dernière fois.
   la navigation arrivent dans la DERNIÈRE vague.
 - **Tutoiement** : l'app Tâches et le Copilote disent « tu » (espace personnel, ton du coach) ; les composants
   partagés de l'ERP gardent leurs textes.
+
+## A18 — Critique finale avant construction (`critique-finale.md` : 1 bloquant, 8 majeurs ; verdict « prêt après corrections »)
+Toutes les corrections sont ADOPTÉES. Ce qu'elles changent :
+- **B1 — les sources des tâches restent lisibles.** Le plan cite `docs/taches/travail/…` dans 119 tâches : ces pièces
+  ne peuvent pas être supprimées avant la construction. Sur `main` vivent : `docs/taches/reference/` (fait foi),
+  `docs/taches/conception/` (socle, arbitrages, spec-2 à spec-8, consignes de construction — déplacés depuis
+  `travail/`), `docs/taches/maquettes/` (sans les captures) et `docs/taches/README.md`. Les recherches, rapports de
+  vérification, critiques et scripts jetables restent sur la branche de travail, pas sur `main`.
+- **M1 — « Proposé » fait tourner les projets.** Demande du fondateur : « toutes les tâches de mes projets
+  apparaissent dans mon to-do quotidien ». Règle : pour chaque projet actif, la PROCHAINE ACTION est sa première
+  tâche ouverte dans l'ordre du projet (`rang_projet`), non bloquée, non « En réserve ». Proposé prend d'abord la
+  prochaine action de chaque projet, dans l'ordre de priorité des projets (puis leur rang), puis la deuxième de
+  chaque projet, et ainsi de suite, jusqu'à N = objectif − faites − gardées ouvertes. Un projet ne monopolise jamais
+  la proposition. « Voir toutes les tâches de mes projets » déplie la suite, groupée par projet.
+- **M2 — ce qui presse passe devant.** Une tâche prévue un jour passé (retard de la veille) ou dont l'échéance tombe
+  dans les 2 jours travaillés à venir est proposée EN TÊTE de Proposé, avant le tour des projets, avec sa raison
+  (« prévue hier », « échéance jeudi »). « À revoir » ne garde que ce qui demande une vraie décision : les tâches
+  reportées 3 fois et les retards de plus de 7 jours.
+- **M3 — le Copilote aide vraiment à prioriser, même sans modèle de langage.** (a) Les quatre demandes prêtes
+  (« Planifie ma journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? ») sont servies par des
+  routes DÉTERMINISTES de `taches` et rendent leurs cartes sans appel à un modèle : elles marchent sans clé d'IA et
+  sous n'importe quel fournisseur. (b) « Aide-moi à prioriser » rend une carte dédiée : toutes les tâches ouvertes
+  classées, chacune avec sa raison en une ligne, et trois gestes par ligne (Essentiel · Aujourd'hui · Plus tard dans
+  la semaine) plus « Garder ces N ». (c) Une action `taches.tache.modifier` (priorité, échéance, projet) sur demande
+  explicite, annulable. (d) Les réglages d'IA de la production (fournisseur, clé) restent un geste de Reda, dit dans
+  le README.
+- **M4 — l'agenda montre ses rendez-vous.** La lecture d'agendas externes par adresse ICS devient ESSENTIELLE :
+  jusqu'à 3 adresses (Microsoft 365, Google, iCloud), lues côté serveur avec les gardes de sécurité d'une adresse
+  externe (https seulement, adresses publiques seulement, taille et durée bornées, cache, jamais de redirection
+  vers une adresse privée), affichées en lecture seule dans l'agenda et dans Aujourd'hui, et leur durée est
+  retranchée du temps disponible du jour. Construite dans la fusion du cœur, par une lane au modèle le plus sûr.
+- **M5 — un cœur essayable tôt.** Quatre fusions au lieu de trois : **F1** socle (invisible) ; **F2** le CŒUR
+  complet et utilisable — saisie, À trier, fiche, projets et planification, Aujourd'hui, agenda (avec agendas
+  externes), bilan, revue, Mon rythme, Réglages, recherche, hors ligne — activé pour les seuls Administrateurs à la
+  fin de F2, après acceptation en direct : Reda peut l'essayer pendant que la suite se construit ; **F3** iPhone
+  (pastille, notifications, calendrier abonné, Siri, tuile) et Copilote ; **F4** tout ce qui est AVANCÉ et replié
+  (modèles de projet, tableau, chronologie, vues enregistrées, étiquettes, suggestions de l'ERP…), puis
+  l'ouverture aux autres rôles internes.
+- **M6 — une seule vérité sur l'hôte** : Python 3.13 de ce poste a Django (`makemigrations`, `check`, tests sans
+  base tournent localement avec `PYTHONPATH=C:\dev\wpstub`) ; les tests qui ont besoin de la base ne tournent qu'en
+  CI. Le plan et les consignes de construction disent la même chose.
+- **M7 — ce qui ne se prouve que sur un vrai iPhone** (pastille, notifications en production, tuile, Siri,
+  calendrier abonné) est construit et testé autant qu'un navigateur le permet, puis listé comme « à essayer par Reda
+  sur son iPhone » : aucune tâche ne prétend l'avoir prouvé.
+- **M8 — activation prudente** : d'abord le rôle Administrateur seul ; un réglage coupe-circuit arrête le balayage
+  des sollicitations et des rappels sans redéploiement.
+- Vie privée (restes) : l'en-tête qui marque un tour « Tâches » pour le relais de l'assistant échoue FERMÉ (sans
+  lui, pas de titre dans le journal) avec un test côté relais ; un test vérifie que les tables de `taches` ne sont
+  pas dans la liste des tables que l'agent SQL peut interroger ; Siri ne lit jamais le nom d'un projet
+  confidentiel ; le texte « Vie privée » dit les trois silences relevés.

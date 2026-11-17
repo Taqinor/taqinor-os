@@ -222,18 +222,6 @@ svg.i-24 { width: 24px; height: 24px; }
 .copilote::after, .segmente button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .puce .retirer::after { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); }
 
-/* Résumé du jour (anneau) */
-.resume { display: flex; align-items: center; gap: 12px; padding: 12px var(--tch-gouttiere) 4px; text-align: left; }
-.anneau { width: 40px; height: 40px; flex: none; position: relative; }
-.anneau svg { width: 40px; height: 40px; transform: rotate(-90deg); }
-.anneau .piste { fill: none; stroke: var(--tch-piste); stroke-width: 4; }
-.anneau .avance { fill: none; stroke: var(--tch-fait); stroke-width: 4; stroke-linecap: round;
-  transition: stroke-dashoffset var(--motion-slow) var(--tch-ease-entree); }
-.anneau.plein .avance { stroke-dashoffset: 0 !important; }
-.resume-texte { display: flex; flex-direction: column; }
-.resume-compte { font-size: 0.9375rem; font-weight: 600; }
-.resume-detail { font-size: 0.8125rem; color: var(--tch-texte-doux); }
-
 /* ── Sections de liste ───────────────────────────────────────────────────── */
 .section { margin-top: 20px; }
 .section-titre { display: flex; align-items: baseline; justify-content: space-between;
@@ -408,12 +396,6 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-wi
 .os.l2 { height: 10px; margin-top: 9px; }
 
 /* ── Projets ─────────────────────────────────────────────────────────────── */
-.camembert { position: relative; width: 22px; height: 22px; border-radius: 999px;
-  box-shadow: inset 0 0 0 1.75px var(--tch-point); }
-.camembert::after { content: ""; position: absolute; inset: 4px; border-radius: 999px;
-  background: conic-gradient(var(--tch-point) calc(var(--avance) * 1turn), transparent 0); }
-.camembert-cadre { width: 44px; height: 44px; display: grid; place-items: center;
-  margin-block: calc((var(--tch-tache-lh) - 44px) / 2); }
 .ligne.projet .titre { font-weight: 600; }
 .etiquette { font-size: 0.8125rem; font-weight: 600; line-height: 1.5rem; padding: 0 10px; border-radius: var(--tch-rayon-puce);
   color: var(--tch-texte); box-shadow: inset 0 0 0 1px var(--tch-trait); white-space: nowrap; }
@@ -444,7 +426,8 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-wi
   background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-md); }
 .fab svg { width: 26px; height: 26px; stroke-width: 2.25; }
 .toast-place { position: absolute; left: 16px; right: 16px; bottom: calc(var(--tch-onglets-h) + var(--tch-zone-sure-bas) + 12px); }
-.toast-place + .fab { bottom: calc(var(--tch-onglets-h) + var(--tch-zone-sure-bas) + 72px); }
+/* iPhone : le toast se pose À CÔTÉ du bouton flottant ; ni le bouton ni la liste ne bougent */
+@media (max-width: 767px) { .toast-place { right: 84px; bottom: calc(var(--tch-onglets-h) + var(--tch-zone-sure-bas) + 20px); } }
 
 /* ── Feuille du bas à crans ──────────────────────────────────────────────── */
 .voile { position: absolute; inset: 0; background: var(--tch-voile); }
@@ -466,13 +449,13 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-wi
 
 /* Sélecteur Quand */
 .quand-tuiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.tuile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; padding: 10px 12px;
+.quand-tuile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 64px; padding: 10px 12px;
   border-radius: 14px; background: var(--tch-panneau); text-align: left; }
-.tuile b { font-size: 0.9375rem; font-weight: 600; }
-.tuile span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
-.tuile small { font-size: 0.75rem; color: var(--tch-texte-doux); }
-.tuile[aria-checked="true"] { background: var(--tch-accent-doux); box-shadow: inset 0 0 0 2px var(--tch-accent); }
-.tuile[aria-checked="true"] span { color: var(--tch-texte); }
+.quand-tuile b { font-size: 0.9375rem; font-weight: 600; }
+.quand-tuile span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.quand-tuile small { font-size: 0.75rem; color: var(--tch-texte-doux); }
+.quand-tuile[aria-checked="true"] { background: var(--tch-accent-doux); box-shadow: inset 0 0 0 2px var(--tch-accent); }
+.quand-tuile[aria-checked="true"] span { color: var(--tch-texte); }
 .reglages { margin-top: 12px; }
 .reglage { display: flex; align-items: center; justify-content: space-between; min-height: 52px;
   font-size: 1rem; box-shadow: inset 0 -1px 0 var(--tch-trait); }
@@ -528,7 +511,7 @@ svg.i.etoile { color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-wi
   .ecran { background: var(--background); }
   .page { display: grid; grid-template-columns: minmax(0, 720px) 400px; justify-content: center; margin: 0 auto; padding: 0; }
   .col-liste { background: var(--tch-surface); padding: 20px 16px 40px; }
-  .col-liste .entete, .col-liste .resume { padding-inline: 24px; }
+  .col-liste .entete { padding-inline: 24px; }
   .col-agenda { padding: 30px 24px 24px 28px; }
   .toast-place { left: auto; right: 32px; bottom: 32px; width: 360px; }
   .saisie-bureau { display: flex; align-items: center; gap: 12px; margin: 16px 8px 0; padding: 0 16px; min-height: 48px;
@@ -622,7 +605,6 @@ svg.i.plein { fill: currentColor; }
 .ligne.projet .barre-avance { margin-top: 8px; }
 .point-projet { width: var(--tch-cible); height: var(--tch-tache-lh); display: grid; place-items: center; }
 .point-projet::before { content: ""; width: 12px; height: 12px; border-radius: 999px; background: var(--tch-point); }
-/* (.anneau et .camembert restent définis le temps que chaque lane migre ; ne plus les employer) */
 
 /* Titre compact au défilement (iPhone) : 44 px, titre 17 px 600, filet */
 .titre-compact { position: absolute; left: 0; right: 0; top: 47px; z-index: 5; height: 44px; display: none; align-items: center;
@@ -695,7 +677,7 @@ svg.i.plein { fill: currentColor; }
 .bande-journee svg { color: var(--tch-texte-doux); }
 @media (min-width: 768px) { .col-liste .bande-journee { margin-inline: 24px; } }
 
-/* ── Bureau : trois colonnes fixes (barre latérale 240 · liste · agenda ou panneau), x de la liste identique partout ── */
+/* ── Bureau : trois colonnes fixes (barre latérale 256 · liste · agenda ou panneau), x de la liste identique partout ── */
 .barre-laterale { padding: 24px 12px 24px 16px; }
 .barre-laterale .nom-app { margin: 0 12px 12px; font-family: var(--tch-font-titre); font-size: 1.0625rem; font-weight: 700; }
 .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px;
@@ -766,3 +748,22 @@ svg.i.plein { fill: currentColor; }
 .titre-barre.au-defilement { visibility: hidden; }
 .defilee .titre-barre.au-defilement { visibility: visible; }
 .defilee .entete-barre:has(.au-defilement) { box-shadow: inset 0 -1px 0 var(--tch-trait); }
+
+/* ══ Unification (L3 n°8) : reports des quatre lots ═════════════════════════ */
+/* Coque : « Nouveau projet » en azur avec dossier-plus (coque.js), partout */
+.nav-item.nouveau, .nav-item.nouveau svg { color: var(--tch-accent); }
+.nav-item[data-p][aria-current="page"] { background: var(--tch-selection); font-weight: 650; }
+/* Agenda : le trait « maintenant » passe SOUS les blocs (point et heure restent dans la gouttière) ; un bloc fait est
+   opaque (sinon le trait le barre) */
+.maintenant { z-index: 0; }
+.bloc { z-index: 1; }
+.bloc.fait-bloc { background: var(--tch-surface); }
+/* Segments pleine largeur (Mon rythme, tuile) */
+.segments.plein { display: flex; width: 100%; gap: 5px; }
+.segments.plein i { flex: 1; width: auto; height: 10px; }
+/* Échéance rouge sur une ligne sélectionnée, en sombre : 4,49:1 → relevée */
+.dark .ligne.selectionnee .meta .alerte { color: color-mix(in oklch, var(--destructive) 72%, var(--foreground)); }
+/* Bouton indisponible : neutre (l'or atténué vire au brun en sombre) */
+.bouton[aria-disabled="true"] { background: var(--tch-panneau); color: var(--tch-texte-doux); box-shadow: none; }
+/* Bureau : panneau droit au jeton de la barre latérale (--background), jamais blanc ni vide */
+@media (min-width: 768px) { .page.trois > .col-agenda, .page.trois > .es-panneau { background: var(--background); box-shadow: none; } }

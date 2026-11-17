@@ -6,13 +6,15 @@
 <title>Tâches · Un projet, vue Chronologie</title>
 <link rel="stylesheet" href="taches.css">
 <link rel="stylesheet" href="ecrans-projets.css">
+<script src="icones.js" defer></script>
+<script src="coque.js" defer></script>
 </head>
-<body>
-<!-- sprite:debut --><!-- sprite:fin -->
+<body data-heure="8:30" data-onglet="projets" data-projet="ambre">
+
 <div class="ep-ecran">
-  <div class="barre-statut" aria-hidden="true"><span class="chiffres">15:02</span><span class="glyphes"><svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.6 5.7 9a3.3 3.3 0 0 1 4.6 0zM8 4.3a7.4 7.4 0 0 1 5.2 2.1l1.3-1.4A9.3 9.3 0 0 0 8 2.4 9.3 9.3 0 0 0 1.5 5l1.3 1.4A7.4 7.4 0 0 1 8 4.3zM8 0a11.6 11.6 0 0 1 8 3.2l-1 1.1A10.2 10.2 0 0 0 8 1.5 10.2 10.2 0 0 0 1 4.3L0 3.2A11.6 11.6 0 0 1 8 0z"/></svg><svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" style="fill:none;stroke:currentColor;opacity:.4"/><rect x="2" y="2" width="18" height="9" rx="2"/><path d="M25 4.5v4a2 2 0 0 0 0-4z" style="opacity:.4"/></svg></span></div><div class="titre-compact mobile-seul" aria-hidden="true">Aujourd&#39;hui</div>
+  <div data-coque="statut"></div><div class="titre-compact mobile-seul" aria-hidden="true">Aujourd&#39;hui</div>
   <div class="page trois deux">
-    <nav class="barre-laterale bureau-seul" aria-label="Tâches"><p class="nom-app">Tâches</p><a class="nav-item"><svg class="i i-16"><use href="#i-sun"/></svg>Aujourd'hui</a><a class="nav-item"><svg class="i i-16"><use href="#i-inbox"/></svg>À trier<span class="compte chiffres">5</span></a><a class="nav-item"><svg class="i i-16"><use href="#i-folder"/></svg>Projets</a><a class="nav-item"><svg class="i i-16"><use href="#i-calendar"/></svg>Agenda</a><p class="nav-titre">Mes projets</p><a class="nav-item" aria-current="page" data-p="ambre"><i class="point"></i><span>Chantier Benali 9 kWc</span><span class="compte chiffres">6</span></a><a class="nav-item" data-p="indigo"><i class="point"></i><span>Salon Solaire Expo</span><span class="compte chiffres">8</span></a><a class="nav-item" data-p="vert"><i class="point"></i><span>Recrutement technicien</span><span class="compte chiffres">5</span></a><a class="nav-item" data-p="prune"><i class="point"></i><span>Administratif</span><span class="compte chiffres">3</span></a><a class="nav-item" data-p="ciel"><i class="point"></i><span>Site web</span><span class="compte chiffres">4</span></a><button class="nav-item nouveau"><svg class="i i-16"><use href="#i-folder-plus"/></svg>Nouveau projet</button></nav>
+    <nav data-coque="laterale"></nav>
     <div class="col-liste ep-projet-col ep-vue-large" data-p="ambre">
       <div class="ep-barre mobile-seul">
         <button class="ep-retour"><svg class="i"><use href="#i-chevron-left"/></svg>Projets</button>
@@ -58,13 +60,7 @@
     </div>
   </div>
   <button class="fab mobile-seul" aria-label="Ajouter une tâche"><svg class="i"><use href="#i-plus"/></svg></button>
-  <nav class="onglets mobile-seul" aria-label="Tâches">
-    <a class="onglet"><svg class="i"><use href="#i-sun"/></svg>Aujourd'hui</a>
-    <a class="onglet"><svg class="i"><use href="#i-inbox"/></svg>À trier<span class="pastille chiffres">5</span></a>
-    <a class="onglet" aria-current="page"><svg class="i"><use href="#i-folder"/></svg>Projets</a>
-    <a class="onglet"><svg class="i"><use href="#i-calendar"/></svg>Agenda</a>
-    <a class="onglet"><svg class="i"><use href="#i-layout-grid"/></svg>Apps</a>
-  </nav>
+  <nav data-coque="onglets"></nav>
   <span class="accueil-indic" aria-hidden="true"></span>
 </div>
 </body>
