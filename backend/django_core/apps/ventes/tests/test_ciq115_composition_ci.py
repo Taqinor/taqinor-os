@@ -119,16 +119,41 @@ class CompositionTests(TestCase):
         self.assertEqual(ac['quantite'], 30)
 
     def test_longueur_non_declaree_estimee_jamais_vide(self):
-        # Fondateur 26/10/2026 — devis préliminaire : 30 m par onduleur,
+        # Fondateur 26/10 puis 17/11/2026 — devis préliminaire : 10 m par onduleur,
         # chiffré, ajusté après la visite (jamais une ligne vide).
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50,
                                 'quantite': 1}]}
         comp = composer_ci(60, self.cat, onduleurs=ond,
                            entrees=_entrees(longueur_ac_m=None), forfaits={})
         ac = self._lignes(comp, 'cable_ac')[0]
-        self.assertEqual(ac['quantite'], 30.0)
+        self.assertEqual(ac['quantite'], 10.0)
         self.assertTrue(ac['a_confirmer_visite'])
         self.assertFalse(ac.get('a_chiffrer_visite'))
+
+    def test_cable_ac_jamais_sous_10_mm2(self):
+        # Fondateur 17/11/2026 — « je n'utilise que du 10 mm² » derrière un
+        # onduleur de 5, 10 ou 15 kW : plancher commercial, que le calcul
+        # dépasse dès que l'échauffement ou la chute de tension l'exigent.
+        def section(kw, **entrees):
+            ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': kw, 'quantite': 1}]}
+            comp = composer_ci(kw * 1.2, self.cat, onduleurs=ond,
+                               entrees=_entrees(**entrees), forfaits={})
+            ac = self._lignes(comp, 'cable_ac')[0]
+            hyp = next(h for h in comp['hypotheses'] if h['cle'].startswith('section_ac_'))
+            return hyp['valeur'], hyp['source'], ac
+
+        for kw in (5, 10, 15):
+            valeur, source, ac = section(kw, longueur_ac_m=None)
+            self.assertEqual(valeur, 10.0, kw)
+            self.assertIn('plancher AC 10 mm²', source, kw)
+            self.assertEqual(ac['quantite'], 10.0, kw)
+        # Au-dessus du plancher, le calcul garde la main (et son critère).
+        valeur, source, _ac = section(50, longueur_ac_m=None)
+        self.assertGreater(valeur, 10.0)
+        self.assertNotIn('plancher', source)
+        valeur, source, _ac = section(15, longueur_ac_m=120)
+        self.assertGreater(valeur, 10.0)
+        self.assertIn('chute de tension', source)
 
     def test_cable_dc_et_structure_estimes_avant_visite(self):
         # Chaînes non calculées : 1 chaîne / 12 panneaux, 2 × chaînes × 30 m ;

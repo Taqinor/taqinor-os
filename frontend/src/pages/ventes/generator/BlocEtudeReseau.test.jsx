@@ -317,6 +317,29 @@ describe('R1 — inclinaison retenue par le moteur et taille limitée par le toi
   })
 })
 
+describe('longueurs de câble saisies à l’écran (fondateur 17/11/2026)', () => {
+  it('deux champs, aide « vide : … supposés », décimale gardée telle quelle, vide ⇒ null', () => {
+    let profil = null
+    const { container } = render(<Harnais onProfil={(p) => { profil = p }} />)
+    const ac = container.querySelector('#gen-ci-longueur-ac')
+    const dc = container.querySelector('#gen-ci-longueur-dc')
+    expect(ac).not.toBeNull()
+    expect(dc).not.toBeNull()
+    expect(ac.getAttribute('step')).toBe('any')
+    expect(screen.getByTestId('gen-ci-longueur-ac-aide')).toHaveTextContent('10 m supposés')
+    expect(screen.getByTestId('gen-ci-longueur-dc-aide')).toHaveTextContent('30 m supposés')
+    const corps = (pr) => corpsCiDepuisProfil(poserProfilCi(pr, 'tailleExplicite', '20'), { mode: 'commercial' })
+    expect(corps(profil).contraintes.longueur_ac_m).toBeNull()
+    fireEvent.change(ac, { target: { value: '12.5' } })
+    fireEvent.change(dc, { target: { value: '42' } })
+    expect(profil.longueurAcM).toBe('12.5')
+    expect(profil.longueurDcM).toBe('42')
+    expect(ac.value).toBe('12.5')
+    expect(corps(profil).contraintes.longueur_ac_m).toBe(12.5)
+    expect(corps(profil).contraintes.longueur_dc_m).toBe(42)
+  })
+})
+
 describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous « Affiner l’étude »', () => {
   const rendre = (extra = {}) => render(
     <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}} errors={{}}
@@ -366,5 +389,48 @@ describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous �
     rendre({ errors: { tarifDeclare: { base_tarifs: 'Base des prix obligatoire.' } } })
     expect(screen.getByTestId('ci-affiner').open).toBe(true)
     expect(screen.getByTestId('erreur-tarif-base_tarifs')).toBeInTheDocument()
+  })
+})
+
+describe('D 17/11/2026 — carte résultat : option avec batterie + pointeur vers la fiche', () => {
+  const ECO = exempleContrat('ventes', 'economie_ci')
+  const donnees = (extra = {}) => ({ ...EXEMPLE, economie_ci: ECO, ...extra })
+  const AVEC = {
+    kwc: 12.5, cout_vente_ht: 200000, economie_annuelle_mad: 31000, retour_simple_ans: 7.3,
+    batterie: { nom: 'Dyness 10', quantite: 2, capacite_utile_kwh: 18 },
+  }
+
+  it('option_avec présente : second groupe titré, chiffres, premier groupe étiqueté', () => {
+    render(<CarteResultatCi donnees={donnees({ option_avec: AVEC })} />)
+    const g = screen.getByTestId('ci-option-avec')
+    expect(g).toHaveTextContent('Option avec batterie')
+    expect(g).toHaveTextContent('2 × Dyness 10')
+    expect(g).toHaveTextContent('12,50 kWc')
+    expect(g).toHaveTextContent('Économie estimée / an (HT)')
+    expect(g).toHaveTextContent('7,3 ans')
+    expect(screen.getByText('Option sans batterie')).toBeInTheDocument()
+  })
+
+  it('valeur nulle omise ; sans option_avec aucun groupe ni étiquette', () => {
+    const { rerender } = render(<CarteResultatCi donnees={donnees({
+      option_avec: { ...AVEC, retour_simple_ans: null } })} />)
+    expect(screen.queryByTestId('ci-avec-retour')).toBeNull()
+    expect(screen.getByTestId('ci-avec-economie-an')).toBeInTheDocument()
+    rerender(<CarteResultatCi donnees={donnees({ option_avec: null })} />)
+    expect(screen.queryByTestId('ci-option-avec')).toBeNull()
+    expect(screen.queryByText('Option sans batterie')).toBeNull()
+  })
+
+  it('alerte avec champ_lead : « À compléter sur la fiche » + libellé ; sans : rien', () => {
+    const base = EXEMPLE.alertes[0]
+    render(<CarteResultatCi donnees={donnees({ alertes: [
+      { ...base, champ_lead: 'equipements_hors_horaires' },
+      { ...base, code: 'AUTRE', message: 'Autre', champ_lead: 'colonne_inconnue' },
+      { ...base, code: 'SANS', message: 'Sans pointeur', champ_lead: undefined },
+    ] })} />)
+    const p = screen.getAllByTestId('alerte-champ-lead')
+    expect(p).toHaveLength(1)
+    expect(p[0]).toHaveTextContent('À compléter sur la fiche : Équipements hors horaires')
+    expect(screen.getByTestId('ci-alertes')).not.toHaveTextContent('colonne_inconnue')
   })
 })

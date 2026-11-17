@@ -13,6 +13,7 @@
 // « Autres » du détail.
 import { formatNumber } from '../../../lib/format'
 import { alertesAffichables } from '../../../features/ventes/etudeCiPreview'
+import { PointeurChampLead } from '../../crm/leads/AlertesDevisAuto'
 import {
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
 } from '../../../features/ventes/solar'
@@ -119,11 +120,13 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
   }
   // Appelé comme une fonction (pas un composant) : `autres` doit être complet avant le rendu.
   const profilType = ArchetypeEtSansEffet({ profil: donnees.profil_charge, autres })
+  const optionAvec = donnees.option_avec || null
   const economieAn = eco.statut !== 'omis' ? eco.economie_annee1?.total_mad : null
   const retour = eco.statut !== 'omis' ? eco.indicateurs?.retour_ans : null
   return (
     <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4 grid gap-3"
          data-testid="ci-resultat">
+      {optionAvec && <p className="text-xs font-semibold">Option sans batterie</p>}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="ci-synthese">
         <Chiffre id="ci-taille-retenue" libelle="Taille retenue"
                  valeur={t.retenue_kwc != null ? `${n(t.retenue_kwc, 2)} kWc` : 'aucune'}
@@ -135,6 +138,30 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
           <Chiffre id="ci-retour" libelle="Retour sur investissement" valeur={`${n(retour, 1)} ans`} />
         )}
       </div>
+      {optionAvec && (
+        <div className="grid gap-2" data-testid="ci-option-avec">
+          <p className="text-xs font-semibold">Option avec batterie</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {optionAvec.batterie && (
+              <Chiffre id="ci-avec-batterie" libelle="Batterie"
+                       valeur={`${n(optionAvec.batterie.quantite, 0)} × ${optionAvec.batterie.nom || 'batterie'}`}
+                       complement={optionAvec.batterie.capacite_utile_kwh != null
+                         ? `${n(optionAvec.batterie.capacite_utile_kwh, 1)} kWh utiles` : null} />
+            )}
+            {optionAvec.kwc != null && (
+              <Chiffre id="ci-avec-taille" libelle="Taille" valeur={`${n(optionAvec.kwc, 2)} kWc`} />
+            )}
+            {optionAvec.economie_annuelle_mad != null && (
+              <Chiffre id="ci-avec-economie-an" libelle="Économie estimée / an (HT)"
+                       valeur={mad(optionAvec.economie_annuelle_mad)} />
+            )}
+            {optionAvec.retour_simple_ans != null && (
+              <Chiffre id="ci-avec-retour" libelle="Retour sur investissement"
+                       valeur={`${n(optionAvec.retour_simple_ans, 1)} ans`} />
+            )}
+          </div>
+        </div>
+      )}
       {donnees.sous_reserve_visite?.valeur && (
         <p className="text-xs text-warning">
           Estimation sous réserve de visite{donnees.sous_reserve_visite.motif ? ` — ${donnees.sous_reserve_visite.motif}` : ''}
@@ -165,6 +192,7 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
                 className={a.niveau === 'bloquant' ? 'text-destructive' : 'text-warning'}>
               {a.interne && <strong>Vendeur seulement — </strong>}
               {a.message}
+              <PointeurChampLead champLead={a.champ_lead} />
             </li>
           ))}
         </ul>

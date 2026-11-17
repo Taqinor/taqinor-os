@@ -2125,6 +2125,7 @@
     "alertes": [
       {
         "code": "puissance_souscrite_inconnue",
+        "champ_lead": "compteur_puissance_kva",
         "champ": "puissance_souscrite_kva",
         "message": "Puissance souscrite non déclarée : la borne réseau n'est pas vérifiée (à relever à la visite).",
         "niveau": "alerte",
@@ -2132,6 +2133,7 @@
       },
       {
         "code": "prix_a_renseigner",
+        "champ_lead": null,
         "champ": "composition.lignes",
         "message": "3 articles C&I sans prix de vente : devis incomplet.",
         "niveau": "alerte",
@@ -2749,6 +2751,7 @@
     "alertes": [
       {
         "code": "cos_phi_degrade",
+        "champ_lead": null,
         "champ": "consommation.registres_mt",
         "message": "Le PV réduit l'actif sans réduire le réactif : cos φ à surveiller (question de visite) — jamais un chiffre client.",
         "niveau": "alerte",
@@ -2875,6 +2878,7 @@
     "alertes": [
       {
         "code": "profil_estime",
+        "champ_lead": "jours_ouverture",
         "champ": "rythme",
         "message": "Profil horaire estimé (archétype) : déclarer jours et heures d'ouverture pour un chiffre déclaré.",
         "niveau": "info",
@@ -2938,6 +2942,7 @@
     "alertes": [
       {
         "code": "prix_manquants",
+        "champ_lead": null,
         "champ": "taille",
         "message": "Aucune tranche chiffrable : prix de vente manquants sur la composition C&I — taille non proposée.",
         "niveau": "bloquant",
