@@ -48,7 +48,7 @@ function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
   const alertes = (ligne.alertes ?? []).map(phraseAlerte).filter(Boolean)
   const jetons = (ligne.jetons ?? []).filter((j) => j.type !== 'projet' || !j.valeur?.nouveau)
   return (
-    <div className={`apercu-ligne${coche ? '' : ' decochee'}`} role="listitem">
+    <div className={`apercu-ligne${coche ? '' : ' decochee'}`}>
       <CocheCarree coche={coche} titre={titre} onBasculer={onCocher} />
       <div>
         <input
@@ -73,7 +73,7 @@ function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
 function PointsDeListe({ points, sousTaches, titre, onSousTaches }) {
   return (
     <>
-      <div className="apercu-ligne retrait" role="listitem">
+      <div className="apercu-ligne retrait">
         <span />
         <div>
           <ul className="apercu-note" aria-label={`Points de « ${titre} »`}>

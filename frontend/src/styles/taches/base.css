@@ -365,6 +365,9 @@
 .tch .puce::after {
   content: ""; position: absolute; inset: -5px 0;
 }
+.tch span.puce::after {
+  content: none;
+}
 @media (hover: hover) {
   .tch .puce:hover {
     background: color-mix(in oklch, var(--muted) 70%, var(--foreground) 6%);
