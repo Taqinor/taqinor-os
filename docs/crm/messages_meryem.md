@@ -51,7 +51,7 @@ dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 
 **Forme e-mail (CIQ502, 05/10/2026).** Les sept touches WhatsApp du suivi après devis (`j1_pdf`, `dimanche_famille`, `j4_preuve`, `j6_garanties`, `j9_validite`, `j13_dernier`, `j14_pause`) et `reveil_a2`/`reveil_a3` ont aussi une forme e-mail : ligne `E-MAIL OBJET : ` (l'objet) et ligne `E-MAIL : ` (le corps) sous leur clé. En français, NEUTRE de segment (un particulier sur fixe avec e-mail la reçoit aussi), mêmes placeholders, même omission MRY13 ; ni « WhatsApp », ni « STOP », ni « ici », ni « famille », ni « toit », ni « chez vous », ni aucun mot interdit aux textes B2B. La porte de sortie (CAD110) devient « si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail ». `j1_pdf` et `j9_validite` rappellent que la proposition est jointe. `vocal_j3` et la cadence contact n'en ont pas (appels avec script). ✎ À valider par Reda.
 
-## Cadence « contact » (Protocole v3, chapitre 5)
+## Cadence « contact » (protocole v4 : 5 appels + 3 WhatsApp sur 7 jours — D-CADV-1)
 
 ### identite — J0, WhatsApp, dans les cinq minutes (M1)
 FR : Bonjour {civilite} [Prénom], je suis [Conseiller] de [Marque]. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange. Répondez STOP et je n'insiste plus.
@@ -109,7 +109,7 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de votre demande solaire. Je vous ai envoyé un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
 DARIJA RETIRÉE (17/11/2026, à reformuler) : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
 
-### appel_relance — Appel 3, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
+### appel_relance — 3e appel, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
 Avant CAD67, `repondeur` partait aussi ici (ordre 4), à ~20 h du premier envoi (ordre 3) — contraire au document
 ci-dessus qui le réserve aux appels 2 et 4. Script court dédié, comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`.
 CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
@@ -117,7 +117,7 @@ CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous pour votre demande solaire — vous avez deux minutes maintenant ?
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص الطلب ديالكم — عندكم جوج دقايق دابا؟
 
-### valeur_j1 — J1, WhatsApp de valeur (M2)
+### valeur_j1 — J2 17 h 45, WhatsApp de valeur (M2)
 FR : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ? Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟ جاوبو STOP وما نلحوش عليكم.
 POMPAGE : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment vous arrange pour un appel de cinq minutes ? Répondez STOP et je n'insiste plus.
@@ -125,11 +125,11 @@ POMPAGE DARIJA : السلام عليكم {civilite} [الاسم]، حاولت ن
 B2B : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Je prépare l'étude solaire de [société]. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ? Répondez STOP et je n'insiste plus.
 B2B DARIJA : السلام عليكم {civilite} [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. كنوجد الدراسة ديال الطاقة الشمسية ديال [société]. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟ جاوبو STOP وما نلحوش عليكم.
 
-### vocal_j3 — J3, vocal WhatsApp de trente secondes (M3, script à dire)
+### vocal_j3 — vocal WhatsApp de trente secondes (M3, script à dire) — ancien protocole, retiré (J3 : aucune étape ne le porte plus)
 FR : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque]. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée. Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك. جاوبو STOP وما نلحوش عليكم.
 
-### appel_dimanche — 5e appel, le dimanche 16 h–19 h, pour les injoignables (A3)
+### appel_dimanche — le dimanche 16 h–19 h, pour les injoignables (A3) — ancien protocole, retiré (aucune étape ne le porte plus)
 CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 + loi 09-08 art. 5 §3), sur le second script d'appel
 EN DIRECT (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des ouvertures de conversation).
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?
@@ -145,13 +145,13 @@ portent le plus loin (J7, J14, fin d'après-devis, tous les réveils) ; pas les 
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Sans nouvelle de votre part, je mets votre demande de côté. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.
 
-### appel_dernier — Appel 6 (dernier), J10, avant clôture (CAD67, 21/09/2026)
+### appel_dernier — 5e appel (dernier), J4 11 h, avant la clôture « Je classe ? » (CAD67, 21/09/2026)
 Le dernier appel avant `cloture_j14` — celui qui décide du classement du lead — n'avait aucune phrase d'ouverture.
 CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟
 
-### cloture_j14 — J14, WhatsApp de clôture, passage en Froid (M5)
+### cloture_j14 — WhatsApp de clôture, passage en Froid (M5) — ancien protocole, retiré (J14 : la clôture est « Je classe ? » à J7)
 CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`).
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.
@@ -200,7 +200,7 @@ une question. ✎ Textes à valider par le fondateur ; darija pas encore relue p
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de la proposition solaire que je vous ai envoyée : avez-vous pu la regarder ? Dites-moi ce qui vous paraît clair et ce qui mérite une explication.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.
 
-### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
+### j4_preuve — WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable) — ancien protocole, retiré du défaut (J4 : plus de barreau livré ; une société peut le poser)
 FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
 DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. جاوبو STOP وما نلحوش عليكم.
 POMPAGE : Voici une station de pompage solaire que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
@@ -223,7 +223,7 @@ Avant les garanties fabricants (J10) : on cherche ce qui freine encore la décis
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous au sujet de votre proposition solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou le calendrier, on le regarde ensemble.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، نشوفوها مع بعضياتنا.
 
-### j9_validite — J9, WhatsApp
+### j9_validite — WhatsApp — ancien protocole, retiré (la validité se dit au J28, `appel_validite`)
 FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. Répondez STOP et je n'insiste plus.
 DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح. جاوبو STOP وما نلحوش عليكم.
 E-MAIL OBJET : Validité de votre proposition [référence]
@@ -243,7 +243,7 @@ DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] م
 E-MAIL OBJET : Votre projet solaire — [Marque]
 E-MAIL : Bonjour {civilite} [Prénom], je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — [Conseiller], [Marque]
 
-### j14_pause — J14, WhatsApp, passage en Froid
+### j14_pause — WhatsApp, passage en Froid — ancien protocole, retiré (aucune étape ne le porte plus)
 CAD110 — porte de sortie (voir note, section `je_classe_j7`).
 FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.
 DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.
@@ -781,7 +781,7 @@ ajoutée, aucun chiffre, aucune traduction automatique).
 ## Sur quoi la DENSITÉ du protocole se discute — et sur quoi elle ne se discute pas (CAD89, 21/09/2026)
 
 Cette note existe pour qu'aucun futur audit ne recalibre le nombre de touches sur un chiffre qui n'en est pas un.
-Le protocole (6 appels + 5 WhatsApp sur 14 jours, 10 touches après devis, 2 réveils) n'est PAS dérivé des repères
+Le protocole (5 appels + 3 WhatsApp sur 7 jours, 9 touches après devis de J1 à J90, 2 réveils) n'est PAS dérivé des repères
 ci-dessous, et il ne doit pas l'être.
 
 **Le chiffre à ne plus jamais citer : « 80 % des ventes se font après 5 relances ».** Omniprésent dans le secteur,
