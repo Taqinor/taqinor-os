@@ -11,15 +11,20 @@ d'autre — jamais d'exception à l'écran) :
    la connexion est faite VERS l'adresse vérifiée (nom gardé pour le TLS) : pas de seconde
    résolution qu'un DNS changeant pourrait détourner ;
 3. 3 redirections au plus, chacune revérifiée (étapes 1-2) ;
-4. corps ≤ 2 Mo, délai total ≤ 10 s (`trop_grande`, `delai`) ;
+4. corps ≤ 2 Mo, délai total ≤ 10 s (`trop_grande`, `delai`) — une ÉCHÉANCE ABSOLUE, revérifiée
+   avant chaque envoi et chaque `recv` (connexion, TLS, en-têtes, corps et redirections compris :
+   `SocketBorne`), jamais un délai par appel qu'un serveur au goutte-à-goutte prolongerait ;
 5. `BEGIN:VCALENDAR` présent (`illisible`) ;
 6. succès : texte mis en cache 15 minutes par adresse, `dernier_chargement_le`, `ok`.
 
 L'URL vaut une clé : jamais rendue, jamais journalisée (seul `hote` et l'id sont écrits au journal).
-Les événements ne vont jamais en base. Un échec efface le cache de l'adresse.
+Les événements ne vont jamais en base. Un échec est RETENU dans le cache de l'adresse 15 minutes,
+comme un succès (regles.md §11) : l'adresse n'est pas relue pendant ce temps, ses rendez-vous sont
+absents et son état reste dit ; `rafraichir` (Réessayer, nouvel enregistrement) relit aussitôt.
 """
 import hashlib
 import http.client
+import io
 import ipaddress
 import logging
 import socket
@@ -41,6 +46,8 @@ PREFIXE_WEBCAL = 'webcal://'
 PORT_HTTPS = 443
 CORPS_MAX = 2 * 1024 * 1024  # 2 Mo
 DELAI_MAX = 10.0  # secondes, lecture entière
+#: Budget réseau d'UNE requête d'écran pour tous les agendas du compte (3 au plus, lus en série).
+DELAI_ECRAN = DELAI_MAX
 REDIRECTIONS_MAX = 3
 CACHE_SECONDES = 15 * 60
 MORCEAU = 64 * 1024
@@ -116,38 +123,109 @@ def _cible(url):
 
 # --- Connexion épinglée sur l'adresse vérifiée -----------------------------------------------------
 
-class ConnexionEpinglee(http.client.HTTPSConnection):
-    """HTTPS vers `ip` (déjà vérifiée), le nom `hote` servant au TLS (SNI et certificat)."""
-
-    def __init__(self, hote, ip, port, timeout):
-        super().__init__(hote, port, timeout=timeout, context=ssl.create_default_context())
-        self.ip = ip
-
-    def connect(self):
-        brut = socket.create_connection((self.ip, self.port), self.timeout)
-        self.sock = self._context.wrap_socket(brut, server_hostname=self.host)
-
-
-def _ouvrir(hote, ip, port, timeout):
-    return ConnexionEpinglee(hote, ip, port, timeout)
+#: L'horloge des échéances (remplacée dans les tests, avec le transport `_connecter`).
+horloge = time.monotonic
 
 
 def _reste(fin):
-    reste = fin - time.monotonic()
+    reste = fin - horloge()
     if reste <= 0:
         raise Echec(EtatAgendaExterne.DELAI)
     return reste
 
 
+def _connecter(ip, port, hote, contexte, fin):
+    """Le socket TLS vers `ip`, connexion puis poignée TLS bornées chacune par ce qui reste."""
+    brut = socket.create_connection((ip, port), _reste(fin))
+    try:
+        brut.settimeout(_reste(fin))
+        return contexte.wrap_socket(brut, server_hostname=hote)
+    except BaseException:
+        brut.close()
+        raise
+
+
+class SocketBorne:
+    """Le socket d'une lecture : AVANT chaque envoi et chaque `recv`, son délai devient ce qui reste
+    jusqu'à l'échéance ABSOLUE `fin` ; échéance passée → `TimeoutError` (état `delai`). Le délai
+    d'un socket ne vaut que pour UN appel : sans cela, un octet toutes les 9 s tiendrait sans fin.
+    `makefile` (en-têtes et corps de `http.client`) lit par ce même `recv_into`."""
+
+    def __init__(self, sock, fin):
+        self._sock, self._fin, self._fichiers, self._ferme = sock, fin, 0, False
+
+    def _borner(self):
+        reste = self._fin - horloge()
+        if reste <= 0:
+            raise TimeoutError('délai total de lecture épuisé')
+        self._sock.settimeout(reste)
+
+    def sendall(self, donnees, *args):
+        self._borner()
+        return self._sock.sendall(donnees, *args)
+
+    def recv_into(self, tampon):
+        self._borner()
+        return self._sock.recv_into(tampon)
+
+    def makefile(self, mode='rb', *args, **kwargs):
+        self._fichiers += 1
+        return io.BufferedReader(_LectureBornee(self))
+
+    def _fichier_ferme(self):
+        self._fichiers -= 1
+        if self._ferme and self._fichiers <= 0:
+            self._sock.close()
+
+    def close(self):
+        # Comme un vrai socket : fermé pour de bon quand le dernier fichier ouvert dessus l'est.
+        self._ferme = True
+        if self._fichiers <= 0:
+            self._sock.close()
+
+
+class _LectureBornee(io.RawIOBase):
+    def __init__(self, sock):
+        super().__init__()
+        self._borne = sock
+
+    def readable(self):
+        return True
+
+    def readinto(self, tampon):
+        return self._borne.recv_into(tampon)
+
+    def close(self):
+        if not self.closed:
+            super().close()
+            self._borne._fichier_ferme()
+
+
+class ConnexionEpinglee(http.client.HTTPSConnection):
+    """HTTPS vers `ip` (déjà vérifiée), le nom `hote` servant au TLS (SNI et certificat) ; tout
+    échange est borné par l'échéance absolue `fin` (`SocketBorne`)."""
+
+    def __init__(self, hote, ip, port, timeout, fin=None):
+        super().__init__(hote, port, timeout=timeout, context=ssl.create_default_context())
+        self.ip = ip
+        self.fin = horloge() + timeout if fin is None else fin
+
+    def connect(self):
+        self.sock = SocketBorne(_connecter(self.ip, self.port, self.host, self._context, self.fin), self.fin)
+
+
+def _ouvrir(hote, ip, port, fin):
+    return ConnexionEpinglee(hote, ip, port, _reste(fin), fin=fin)
+
+
 def _lire_corps(reponse, connexion, fin):
-    """Le corps, borné à 2 Mo et au délai total."""
+    """Le corps, borné à 2 Mo et au délai total (chaque `recv` est borné par `SocketBorne`)."""
     longueur = reponse.getheader('Content-Length')
     if longueur and longueur.isdigit() and int(longueur) > CORPS_MAX:
         raise Echec(EtatAgendaExterne.TROP_GRANDE)
     morceaux, total = [], 0
     while True:
-        if connexion.sock is not None:
-            connexion.sock.settimeout(_reste(fin))
+        _reste(fin)
         morceau = reponse.read(MORCEAU)
         if not morceau:
             return b''.join(morceaux)
@@ -161,7 +239,8 @@ def _une_requete(url, fin):
     """(statut, adresse de redirection, corps) d'UN saut, garde complète avant la connexion."""
     hote, port, chemin = _cible(url)
     ip = _adresses_publiques(hote, port)[0]
-    connexion = _ouvrir(hote, ip, port, _reste(fin))
+    _reste(fin)
+    connexion = _ouvrir(hote, ip, port, fin)
     try:
         connexion.request('GET', chemin, headers=ENTETES)
         reponse = connexion.getresponse()
@@ -172,9 +251,10 @@ def _une_requete(url, fin):
         connexion.close()
 
 
-def telecharger(url, *, delai=DELAI_MAX):
-    """Le texte ICS d'une adresse, sous la garde de l'invariant 33 ; lève `Echec(etat)`."""
-    fin = time.monotonic() + delai
+def telecharger(url, *, delai=DELAI_MAX, fin=None):
+    """Le texte ICS d'une adresse, sous la garde de l'invariant 33 ; lève `Echec(etat)`. `fin` :
+    échéance absolue imposée par l'appelant (budget d'un écran), jamais plus loin que `delai`."""
+    fin = min(horloge() + delai, fin if fin is not None else float('inf'))
     try:
         for _saut in range(REDIRECTIONS_MAX + 1):
             statut, suivante, corps = _une_requete(url, fin)
@@ -219,19 +299,32 @@ def _poser_etat(agenda, etat, maintenant=None):
     agenda.save(update_fields=champs)
 
 
-def lire_agenda_externe(agenda, du, au, *, rafraichir=False):
+#: Clé de la valeur mise en cache à la place du texte quand une lecture a échoué.
+CLE_ECHEC = 'echec'
+
+
+def lire_agenda_externe(agenda, du, au, *, rafraichir=False, fin=None):
     """Rendez-vous de l'agenda pour [du, au] (tuple, vide sur un échec) ; `dernier_etat` dit
-    l'issue. Le texte est relu du cache (15 min) sauf `rafraichir` ; rien n'est écrit en base sur
-    un cache trouvé."""
+    l'issue. Le texte — ou l'échec — est relu du cache (15 min) sauf `rafraichir` ; rien n'est écrit
+    en base ni lu du réseau sur un cache trouvé. `fin` : échéance absolue de l'écran appelant ;
+    passée, l'agenda non encore en cache n'est pas lu (rien de retenu : la prochaine requête le lira)."""
     cle = cle_cache(agenda)
     texte = None if rafraichir else cache.get(cle)
+    if isinstance(texte, dict):  # échec retenu : pas de réseau, aucun ancien rendez-vous
+        return ()
     lu_du_reseau = texte is None
+    # L'écran coupe plus d'une seconde sur les 10 de l'agenda : un `delai` ne dit alors rien de lui.
+    ecran_plus_court = fin is not None and fin < horloge() + DELAI_MAX - 1.0
+    if lu_du_reseau and fin is not None and fin - horloge() <= 0:
+        return ()
     try:
         if lu_du_reseau:
-            texte = telecharger(agenda.url)
+            texte = telecharger(agenda.url, fin=fin)
         evenements = evenements_du_texte(texte, agenda.pk, du, au)
     except Echec as echec:
-        cache.delete(cle)
+        if ecran_plus_court and echec.etat == EtatAgendaExterne.DELAI:
+            return ()
+        cache.set(cle, {CLE_ECHEC: echec.etat}, CACHE_SECONDES)
         logger.info('taches : agenda externe %s (%s) en échec : %s', agenda.pk, agenda.hote, echec.etat)
         _poser_etat(agenda, echec.etat)
         return ()
