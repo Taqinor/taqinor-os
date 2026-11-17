@@ -174,7 +174,8 @@ sortie(u.id)`)
   return { p, ctx, username }
 }
 test.afterEach(async () => {
-  for (const c of ouverts.splice(0)) await c.close().catch(() => undefined)
+  // Contexte navigateur (close) ou contexte de requêtes API (dispose).
+  for (const c of ouverts.splice(0)) await (typeof c.dispose === 'function' ? c.dispose() : c.close()).catch(() => undefined)
   for (const u of comptes.splice(0)) {
     await py(`U.objects.filter(username=${J(u)}).update(is_active=False)
 sortie(1)`).catch(() => null)
