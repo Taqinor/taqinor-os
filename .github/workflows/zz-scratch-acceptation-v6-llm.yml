@@ -174,6 +174,7 @@ jobs:
           E2E_IA_URL: http://127.0.0.1:8100
           E2E_IA_PYTHON: /tmp/venv-ia/bin/python
           E2E_PG_LOG: /tmp/pg.log
+          E2E_IA_LOG: /tmp/uvicorn.log
           E2E_DJANGO_ACCESS_LOG: /tmp/gunicorn-access.log
           DJANGO_INTERNAL_URL: http://127.0.0.1:8000
           # Fournisseur reel (D2 : Sonnet 5.5 effort low, Groq en repli AIC4) ; interrupteurs ASSISTANT_* a leur defaut du merge.

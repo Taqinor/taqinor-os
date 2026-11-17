@@ -133,7 +133,8 @@ except Exception as exc: print('nettoyage', exc)
 sortie(1)`).catch(() => null)
 
 // ═══ P7.1 — AIC91 : question à trois outils, téléphone à connexion bridée ⇒ trois étapes affichées avant la réponse ═══
-etape('P7.1-AIC91-progression', ['AIC91'], async ({ context, suivi, testInfo }) => {
+etape('P7.1-AIC91-progression', ['AIC91'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du téléphone, pas l'onglet vide du projet
   const m = marque()
   const a = await administrateur(context, suivi, testInfo, 'aic91')
   const api = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
@@ -169,12 +170,6 @@ etape('P7.1-AIC91-progression', ['AIC91'], async ({ context, suivi, testInfo }) 
       })
     const vues = await a.p.evaluate(() => { clearInterval(window.__collecte); return window.__etapesVues })
     console.log(`[AIC91] étapes affichées : ${J(vues)} ; sondages : ${J(sondages)}`)
-    await expect(a.p.getByTestId('etape-en-cours'), 'la bulle d\'attente (et son étape) s\'arrête à la réponse').toHaveCount(0)
-    const distinctes = [...new Set(vues.map((v) => v.libelle))]
-    expect(distinctes.length, `trois étapes distinctes affichées avant la réponse (vues : ${J(distinctes)})`).toBeGreaterThanOrEqual(3)
-    // Libellés du REGISTRE (jamais un argument d'outil ni une donnée personnelle) : jamais le nom du lead.
-    for (const l of distinctes) expect(l, 'libellé sans donnée du lead').not.toContain(nom)
-    expect(sondages.length, 'l\'écran a sondé la progression').toBeGreaterThan(0)
     // Persistance : la clé Redis `assistant:progression:<utilisateur>:<id>` relue ⇒ les étapes dans l'ordre, fini.
     expect(requete.progression_id, 'identifiant de progression envoyé avec la question').toMatch(/^[A-Za-z0-9_-]{8,64}$/)
     const cle = `assistant:progression:${a.id}:${requete.progression_id}`
@@ -183,6 +178,12 @@ r = redis.Redis(host=os.environ.get('REDIS_HOST', 'redis'), port=int(os.environ.
 v = r.get(${J(cle)})
 sortie(dict(etat=json.loads(v) if v else None, ttl=r.ttl(${J(cle)})))`)
     console.log(`[AIC91] Redis ${cle} : ${J(redis)}`)
+    await expect(a.p.getByTestId('etape-en-cours'), 'la bulle d\'attente (et son étape) s\'arrête à la réponse').toHaveCount(0)
+    const distinctes = [...new Set(vues.map((v) => v.libelle))]
+    // Libellés du REGISTRE (jamais un argument d'outil ni une donnée personnelle) : jamais le nom du lead.
+    for (const l of distinctes) expect(l, 'libellé sans donnée du lead').not.toContain(nom)
+    expect(sondages.length, 'l\'écran a sondé la progression').toBeGreaterThan(0)
+    expect(distinctes.length, `trois étapes distinctes affichées avant la réponse (vues : ${J(distinctes)} ; publiées : ${J(redis.etat?.etapes || [])})`).toBeGreaterThanOrEqual(3)
     expect(redis.etat, 'clé de progression en Redis').toBeTruthy()
     const enBase = redis.etat.etapes.map((e) => e.libelle)
     expect(enBase.length, 'au moins trois étapes publiées').toBeGreaterThanOrEqual(3)
@@ -204,7 +205,8 @@ sortie(dict(etat=json.loads(v) if v else None, ttl=r.ttl(${J(cle)})))`)
 })
 
 // ═══ P8.1 — AIC94 : préparer une touche HORS des heures d'envoi (horloge de la pile) ⇒ bandeau, bouton actif ═══
-etape('P8.1-AIC94-touche-hors-fenetre', ['AIC94'], async ({ context, suivi, testInfo }) => {
+etape('P8.1-AIC94-touche-hors-fenetre', ['AIC94'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du téléphone, pas l'onglet vide du projet
   const m = marque()
   const a = await administrateur(context, suivi, testInfo, 'aic94t')
   const api = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
@@ -235,11 +237,19 @@ sortie(dict(local=horaires._local(maintenant, e.company).isoformat(), dans=horai
     await expect(bandeau).toContainText(horloge.hf.raison)
     await expect(bandeau).toContainText("Hors des heures d'envoi")
     await expect(carte.getByTestId('touche-texte'), 'le message validé reste rendu').toBeVisible()
-    const wa = carte.getByRole('button', { name: /WhatsApp/ }).first()
-    await expect(wa, 'le bouton WhatsApp reste ACTIF : elle décide').toBeEnabled()
-    // Le bandeau est AU-DESSUS du bouton.
-    const [bb, bw] = [await bandeau.boundingBox(), await wa.boundingBox()]
-    expect(bb.y, 'bandeau au-dessus du bouton').toBeLessThan(bw.y)
+    await expect(carte.getByRole('button', { name: /WhatsApp/ }).first(), 'bouton WhatsApp présent').toBeVisible()
+    // Le bandeau est AU-DESSUS du bouton WhatsApp, qui reste ACTIF (elle décide) : ordre du document + positions
+    // lues dans le MÊME instant (le tiroir défile en douceur entre deux mesures séparées).
+    const pos = await carte.evaluate((c) => {
+      const b = c.querySelector('[data-testid="touche-hors-fenetre"]')
+      const haut = b.getBoundingClientRect().top
+      return [...c.querySelectorAll('button')].filter((x) => /WhatsApp/.test(x.textContent || '')).map((x) => ({
+        texte: (x.textContent || '').trim(), actif: !x.disabled, apres: !!(b.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING),
+        dessous: x.getBoundingClientRect().top > haut,
+      }))
+    })
+    console.log(`[AIC94] boutons WhatsApp de la carte : ${J(pos)}`)
+    expect(pos.some((x) => x.apres && x.dessous && x.actif), 'un bouton WhatsApp ACTIF sous le bandeau').toBe(true)
   } finally {
     await api.dispose().catch(() => undefined)
     await nettoyerLead(lead.id)
@@ -247,7 +257,8 @@ sortie(dict(local=horaires._local(maintenant, e.company).isoformat(), dans=horai
 })
 
 // ═══ P8.2 — AIC94 : « Mon matin » avec une visite du jour ⇒ la rangée (lead) et « Ouvrir la fiche » ═══
-etape('P8.2-AIC94-matin-visite', ['AIC94'], async ({ context, suivi, testInfo }) => {
+etape('P8.2-AIC94-matin-visite', ['AIC94'], async ({ page, context, suivi, testInfo }) => {
+  await page.close() // la capture d'étape prend le navigateur du téléphone, pas l'onglet vide du projet
   const m = marque()
   const a = await administrateur(context, suivi, testInfo, 'aic94m')
   const api = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
@@ -271,7 +282,8 @@ sortie(dict(id=v.id, date=v.date_prevue.isoformat()))`)
     const carte = panneau.getByTestId('carte-matin').last()
     await expect(carte, 'carte matin affichée').toBeVisible({ timeout: 30_000 })
     await expect(carte, 'bloc Visites (total)').toContainText(/Visites \(\d+\)/)
-    const rangee = carte.locator('li').filter({ hasText: nom })
+    // Le lead neuf a aussi sa première touche dans le bloc « Relances » : la rangée de VISITE porte « prévue le ».
+    const rangee = carte.locator('li').filter({ hasText: nom }).filter({ hasText: 'prévue le' })
     await expect(rangee, 'une rangée pour la visite du jour (lead)').toHaveCount(1)
     await expect(rangee, 'date prévue de la rangée').toContainText('prévue le')
     await expect(rangee, 'ville de la rangée').toContainText('Kénitra')
