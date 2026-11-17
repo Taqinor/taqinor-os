@@ -99,6 +99,25 @@ test('enregistrer → rouvrir → enregistrer sans toucher = objet serveur ident
   }
 })
 
+test('longueurs de câble saisies : écran → étude → écran, vide = null, une visite n’est pas effacée', () => {
+  const etudeDe = (p) => entreesCiV2(p, { mode: 'commercial' })
+  let p = poserProfilCi(poserProfilCi(profilSaisi(), 'longueurAcM', '12.5'), 'longueurDcM', '40')
+  assert.equal(etudeDe(p).contraintes.longueur_ac_m, 12.5)
+  assert.equal(etudeDe(p).contraintes.longueur_dc_m, 40)
+  // vides ⇒ null, comme avant
+  const vides = etudeDe(profilSaisi()).contraintes
+  assert.equal(vides.longueur_ac_m, null)
+  assert.equal(vides.longueur_dc_m, null)
+  // étude enregistrée avec des longueurs (venues d'une visite) ⇒ champs semés ⇒ mêmes feuilles
+  const etude = { ...etudeDe(profilSaisi()), contraintes: { longueur_ac_m: 25, longueur_dc_m: 60.5 } }
+  const rouvert = profilDepuisEtude(etude)
+  assert.equal(rouvert.longueurAcM, '25')
+  assert.equal(rouvert.longueurDcM, '60.5')
+  const c = etudeDe(rouvert).contraintes
+  assert.equal(Number(c.longueur_ac_m), 25)
+  assert.equal(Number(c.longueur_dc_m), 60.5)
+})
+
 test('factures MAD et total annuel : aller-retour exact', () => {
   let p = poserProfilCi(profilCiVide(), 'saisieConso', 'factures')
   p = poserProfilCi(p, 'factures', [{ mois: '2026-01', montant_ttc: '4200,5', kwh: '' }])

@@ -64,6 +64,8 @@ export const PROFIL_CI_VIDE = Object.freeze({
   // CMP5 / R1 — l'inclinaison réelle des panneaux (toit plat) : saisie, elle
   // l'emporte sur le défaut 30° et sur le basculement rasante du moteur.
   penteDeg: '',
+  longueurAcM: '',
+  longueurDcM: '',
   couverture: '',
   tension: '',
   phases: '',
@@ -217,8 +219,8 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
     contraintes: {
       revente_choisie: p.tension === 'mt' ? Boolean(p.revente) : false,
       nb_points_raccordement: sContraintes.nb_points_raccordement ?? null,
-      longueur_dc_m: sContraintes.longueur_dc_m ?? null,
-      longueur_ac_m: sContraintes.longueur_ac_m ?? null,
+      longueur_dc_m: vide(p.longueurDcM) ? null : p.longueurDcM,
+      longueur_ac_m: vide(p.longueurAcM) ? null : p.longueurAcM,
       besoin_cellule_mt: sContraintes.besoin_cellule_mt ?? null,
     },
     tva_recuperable: ctx.tvaRecuperable ?? null,
@@ -305,6 +307,8 @@ export function profilDepuisEtude(e) {
   p.typePose = texte(t.type_pose)
   p.surfaceUtile = texte(t.surface_utile_m2)
   p.penteDeg = texte(t.pente_deg)
+  p.longueurAcM = texte(etude.contraintes?.longueur_ac_m)
+  p.longueurDcM = texte(etude.contraintes?.longueur_dc_m)
   p.couverture = texte(t.couverture)
   p.tension = texte(etude.tension)
   p.phases = texte(etude.phases)

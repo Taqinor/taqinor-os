@@ -317,6 +317,29 @@ describe('R1 — inclinaison retenue par le moteur et taille limitée par le toi
   })
 })
 
+describe('longueurs de câble saisies à l’écran (fondateur 17/11/2026)', () => {
+  it('deux champs, aide « vide : … supposés », décimale gardée telle quelle, vide ⇒ null', () => {
+    let profil = null
+    const { container } = render(<Harnais onProfil={(p) => { profil = p }} />)
+    const ac = container.querySelector('#gen-ci-longueur-ac')
+    const dc = container.querySelector('#gen-ci-longueur-dc')
+    expect(ac).not.toBeNull()
+    expect(dc).not.toBeNull()
+    expect(ac.getAttribute('step')).toBe('any')
+    expect(screen.getByTestId('gen-ci-longueur-ac-aide')).toHaveTextContent('10 m supposés')
+    expect(screen.getByTestId('gen-ci-longueur-dc-aide')).toHaveTextContent('30 m supposés')
+    const corps = (pr) => corpsCiDepuisProfil(poserProfilCi(pr, 'tailleExplicite', '20'), { mode: 'commercial' })
+    expect(corps(profil).contraintes.longueur_ac_m).toBeNull()
+    fireEvent.change(ac, { target: { value: '12.5' } })
+    fireEvent.change(dc, { target: { value: '42' } })
+    expect(profil.longueurAcM).toBe('12.5')
+    expect(profil.longueurDcM).toBe('42')
+    expect(ac.value).toBe('12.5')
+    expect(corps(profil).contraintes.longueur_ac_m).toBe(12.5)
+    expect(corps(profil).contraintes.longueur_dc_m).toBe(42)
+  })
+})
+
 describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous « Affiner l’étude »', () => {
   const rendre = (extra = {}) => render(
     <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}} errors={{}}
