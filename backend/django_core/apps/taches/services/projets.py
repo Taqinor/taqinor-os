@@ -19,8 +19,8 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.taches.choix import Source, StatutProjet, StatutRappel, StatutTache
-from apps.taches.models.projets import Projet, Section
+from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
+from apps.taches.models.projets import Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler
 from apps.taches.saisie.normalisation import cle_nom
@@ -528,3 +528,63 @@ def decaler_projet(user, projet_id, delta, *, apercu=True):
             return changements, None
         ops = _appliquer_decalage(user, projet, sections, taches, changements)
         return changements, _geste(user, 'decalage', 'Dates décalées', ops)
+
+
+# --- Revue de la semaine -------------------------------------------------------------------------
+
+def _autre_focus(user, projet, semaine):
+    """Le projet déjà « de la semaine » (autre que `projet`), ou `None` (invariant 25)."""
+    revue = (RevueProjet.objects.filter(company_id=user.company_id, proprietaire=user, semaine=semaine, focus=True)
+             .exclude(projet=projet).select_related('projet').first())
+    return revue.projet if revue is not None else None
+
+
+def _prochaine_action_du_projet(user, projet, action_id):
+    if action_id is None:
+        return None
+    tache = taches_de(user).filter(pk=action_id, projet=projet).first()
+    if tache is None:
+        raise Http404(MESSAGE_INTROUVABLE)
+    return tache
+
+
+def _enregistrer_revue(user, projet, semaine, donnees, ops):
+    """Crée ou met à jour la `RevueProjet` de la semaine ; une création est annulable."""
+    action = _prochaine_action_du_projet(user, projet, donnees.get('prochaine_action_id'))
+    revue = RevueProjet.objects.select_for_update().filter(
+        company_id=user.company_id, proprietaire=user, projet=projet, semaine=semaine).first()
+    fin = semaine + datetime.timedelta(days=6)
+    faites = taches_de(user).filter(projet=projet, statut=StatutTache.FAIT,
+                                    fait_le__date__range=(semaine, fin)).count()
+    champs = {'intention': donnees.get('intention', ''), 'prochaine_action': action,
+              'decision': donnees['decision'], 'focus': bool(donnees.get('focus')), 'faites_semaine': faites}
+    if revue is None:
+        revue = RevueProjet.objects.create(company_id=user.company_id, proprietaire=user, projet=projet,
+                                           semaine=semaine, **champs)
+        ops.append(op_creation('revue_projet', revue))
+    else:
+        for champ, valeur in champs.items():
+            setattr(revue, champ, valeur)
+        revue.save()
+    return revue
+
+
+def decider_revue(user, projet_id, donnees):
+    """La décision d'une carte de revue : `garder` ne touche à rien, `pause` met le projet en pause,
+    `terminer` passe par `terminer_projet` (exige `issue`), `passe` saute. Un seul projet « de la semaine »."""
+    semaine = donnees['semaine'] - datetime.timedelta(days=donnees['semaine'].weekday())
+    with transaction.atomic():
+        projet = _verrouiller_projet(user, projet_id)
+        autre = _autre_focus(user, projet, semaine) if donnees.get('focus') else None
+        if autre is not None:
+            raise serializers.ValidationError({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
+        ops = []
+        revue = _enregistrer_revue(user, projet, semaine, donnees, ops)
+        geste = None
+        if donnees['decision'] == DecisionRevue.PAUSE and projet.statut == StatutProjet.ACTIF:
+            _ecrire('projet', projet, {'statut': StatutProjet.EN_PAUSE, 'statut_depuis': timezone.now()}, ops)
+        elif donnees['decision'] == DecisionRevue.TERMINER:
+            geste = terminer_projet(user, projet.pk, issue=donnees['issue'], taches_ouvertes='boite').geste
+            projet.refresh_from_db()
+        geste = geste or _geste(user, 'revue', 'Revue enregistrée', ops)
+    return revue, projet, geste

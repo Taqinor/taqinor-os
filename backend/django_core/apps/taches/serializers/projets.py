@@ -10,7 +10,8 @@ jamais recopiées ; ce que ces formes ne calculent pas seules (santé, compteurs
 from django.db.models import F
 from rest_framework import serializers
 
-from apps.taches.choix import Couleur, IssueProjet, Priorite, StatutProjet, StatutTache
+from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
+from apps.taches.confidentialite import nom_pour
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import projets as lecture
@@ -206,6 +207,23 @@ class DecalerSerializer(serializers.Serializer):
     apercu = serializers.BooleanField(required=False, default=True)
 
 
+class RevueDecisionSerializer(serializers.Serializer):
+    """PUT revue/projets/{projet_id}/ — la décision d'une carte (`terminer` exige `issue`)."""
+
+    semaine = serializers.DateField(error_messages=_messages())
+    intention = _texte(200, required=False, allow_blank=True)
+    prochaine_action_id = serializers.IntegerField(required=False, allow_null=True)
+    decision = serializers.ChoiceField(choices=[c for c in DecisionRevue.values if c], error_messages=_messages())
+    focus = serializers.BooleanField(required=False, default=False)
+    issue = serializers.ChoiceField(choices=ISSUES, required=False,
+                                    allow_null=True, allow_blank=True, error_messages=_messages())
+
+    def validate(self, donnees):
+        if donnees['decision'] == DecisionRevue.TERMINER and not donnees.get('issue'):
+            raise serializers.ValidationError({'issue': [ATTEINT_OU_ABANDONNE]})
+        return donnees
+
+
 class VueProjetSerializer(serializers.Serializer):
     """GET projets/{id}/vue/?vue= — la vue demandée (les trois servent le même contenu)."""
 
@@ -302,3 +320,47 @@ def vue_du_projet(user, projet, etat, ctx, jour):
         'faites_nb': etat.calculs[('projet', projet.pk)]['compteurs']['faites'],
         'burnup': points, 'burnup_legende': legende,
     }
+
+
+def _titre(tache, ctx):
+    return nom_pour(tache, 'assistant' if ctx['assistant'] else 'ecran', ctx['reglages'])
+
+
+def _carte_de_revue(carte, ctx, prochaines):
+    revue = carte.revue
+    return {
+        'projet': forme_projet(carte.projet, ctx),
+        'faites_semaine': [{'id': t.pk, 'titre': _titre(t, ctx)} for t in carte.faites[:3]],
+        'faites_nb': len(carte.faites),
+        'bloquees': [{'id': t.pk, 'titre': _titre(t, ctx),
+                      'attend': {'id': t.bloquee_par_id, 'titre': _titre(t.bloquee_par, ctx)}} for t in carte.bloquees],
+        'prochaine_action': _item_de_revue(carte.prochaine_id, ctx, prochaines),
+        'revue': {'intention': revue.intention if revue else '', 'decision': revue.decision if revue else '',
+                  'focus': revue.focus if revue else False},
+    }
+
+
+def _item_de_revue(pk, ctx, prochaines):
+    tache = prochaines.get(pk)
+    return ItemSerializer(tache, context=ctx).data if tache is not None else None
+
+
+def revue_des_projets(user, etat, ctx, lundi):
+    """`revue_projets.json` : bilan de la semaine (ou Semaine courte), projet « de la semaine » et une carte
+    par projet actif."""
+    cartes = lecture.cartes_de_revue(user, etat, lundi)
+    ids = [c.prochaine_id for c in cartes if c.prochaine_id is not None]
+    prochaines = {t.pk: t for t in charger_items(taches_de(user).filter(pk__in=ids))}
+    mode = etat.reglages.mode if etat.reglages else 'pousser'
+    courte, bilan = lecture.bilan_de_semaine(user, lundi, mode)
+    focus = next((c.projet.pk for c in cartes if c.revue is not None and c.revue.focus), None)
+    return {'semaine': lundi.isoformat(), 'semaine_courte': courte, 'bilan_semaine': bilan,
+            'focus_projet_id': focus, 'cartes': [_carte_de_revue(c, ctx, prochaines) for c in cartes]}
+
+
+def decision_rendue(revue, projet, geste, ctx):
+    """`revue_decision.json` : la revue enregistrée, le projet après la décision et le geste."""
+    return {'revue': {'semaine': revue.semaine.isoformat(), 'intention': revue.intention,
+                      'decision': revue.decision, 'focus': revue.focus,
+                      'prochaine_action_id': revue.prochaine_action_id},
+            'projet': forme_projet(projet, ctx), 'geste_id': geste.pk if geste is not None else None}

@@ -4,6 +4,7 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon la forme PROJET partagée ;
 `GESTE` et `REORDONNER` viennent de `views/taches.py` (déclarés une fois).
 """
+import datetime
 import json
 
 from django.http import Http404
@@ -446,7 +447,13 @@ class RevueProjetsVue(APIView):
     @extend_schema(parameters=[parametre('semaine', OpenApiTypes.DATE, 'Lundi de la semaine ; défaut : courante.')],
                    responses=reponses(forme_echantillon('revue_projets'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        brut = request.query_params.get('semaine')
+        try:
+            semaine = datetime.date.fromisoformat(brut) if brut else timezone.localdate()
+        except ValueError:
+            raise serializers.ValidationError({'semaine': ['Date attendue (AAAA-MM-JJ).']})
+        etat, ctx = _etat(request)
+        return Response(formes_projets.revue_des_projets(request.user, etat, ctx, lecture.lundi_de(semaine)))
 
 
 class RevueDecisionVue(APIView):
@@ -463,4 +470,7 @@ class RevueDecisionVue(APIView):
         'issue': serializers.CharField(required=False, allow_null=True),
     }), responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404)))
     def put(self, request, projet_id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.RevueDecisionSerializer, request.data)
+        revue, projet, geste = ecriture.decider_revue(request.user, projet_id, donnees)
+        _, ctx = _etat(request)
+        return Response(formes_projets.decision_rendue(revue, projet, geste, ctx))

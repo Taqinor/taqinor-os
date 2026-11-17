@@ -13,12 +13,15 @@ from dataclasses import dataclass, field
 
 from django.utils import timezone
 
-from apps.taches.choix import StatutProjet, StatutTache
+from apps.taches.choix import StatutJour, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
+from apps.taches.models.journee import PlanJour
 from apps.taches.models.projets import RevueProjet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.moteur import sante
 from apps.taches.moteur.classement import ItemPur, prochaine_action
+from apps.taches.moteur.gabarits import texte as gabarit_texte
+from apps.taches.moteur.rythme import journee_reussie, semaine_courte
 from apps.taches.selectors.base import jours_travailles_de, projets_de, sections_de, taches_de
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
@@ -265,3 +268,110 @@ def burnup_de(taches, jour):
     points = [{'semaine': (p.fin - datetime.timedelta(days=6)).isoformat(), 'total': p.total, 'faites': p.faites}
               for p in rendu.points]
     return points, rendu.legende
+
+
+# --- La revue de la semaine ----------------------------------------------------------------------
+
+CHARGEMENT_TITRE = ('projet', 'parent', 'parent__projet')
+CHARGEMENT_ATTENTE = CHARGEMENT_TITRE + ('bloquee_par', 'bloquee_par__projet', 'bloquee_par__parent',
+                                         'bloquee_par__parent__projet')
+
+
+@dataclass
+class CarteRevue:
+    """Ce que lit une carte de revue : le projet, ses tâches faites cette semaine, ses tâches qui en
+    attendent une autre, l'identifiant de sa prochaine action et sa `RevueProjet` de la semaine."""
+    projet: object
+    faites: list = field(default_factory=list)
+    bloquees: list = field(default_factory=list)
+    prochaine_id: int | None = None
+    revue: object = None
+
+
+def _par_projet(taches):
+    rendu = {}
+    for tache in taches:
+        rendu.setdefault(tache.projet_id, []).append(tache)
+    return rendu
+
+
+def _faites_de_la_semaine(user, projets, lundi):
+    fin = lundi + datetime.timedelta(days=6)
+    return _par_projet(
+        taches_de(user).filter(projet__in=projets, statut=StatutTache.FAIT, fait_le__date__range=(lundi, fin))
+        .select_related(*CHARGEMENT_TITRE).order_by('-fait_le', 'id'))
+
+
+def _bloquees_ouvertes(user, projets):
+    return _par_projet(
+        taches_de(user).filter(projet__in=projets, statut__in=OUVERTS, bloquee_par__isnull=False,
+                               bloquee_par__is_deleted=False)
+        .exclude(bloquee_par__statut__in=CLOS).select_related(*CHARGEMENT_ATTENTE).order_by('rang_projet', 'id'))
+
+
+def _prochaine_choisie(etat, projet, revue):
+    """L'id de l'action choisie à la revue si elle est encore ouverte dans ce projet, sinon la première
+    à faire du projet."""
+    taches = etat.taches_de(projet.pk)
+    if revue is not None and revue.prochaine_action_id is not None:
+        choisie = next((t for t in taches if t.id == revue.prochaine_action_id), None)
+        if choisie is not None and choisie.statut in OUVERTS:
+            return choisie.id
+    return prochaine_action_id(taches)
+
+
+def cartes_de_revue(user, etat, lundi):
+    """Une `CarteRevue` par projet ACTIF (priorité décroissante, puis rang) pour la semaine de `lundi`."""
+    actifs = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF),
+                    key=lambda p: (-p.priorite, p.rang, p.pk))
+    faites, bloquees = _faites_de_la_semaine(user, actifs, lundi), _bloquees_ouvertes(user, actifs)
+    revues = {r.projet_id: r for r in RevueProjet.objects.filter(
+        company_id=user.company_id, proprietaire=user, semaine=lundi, projet__in=actifs)}
+    return [CarteRevue(projet=p, faites=faites.get(p.pk, []), bloquees=bloquees.get(p.pk, []),
+                       prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk))
+            for p in actifs]
+
+
+def _semaine_de_plans(plans, lundi):
+    return [p for p in plans if lundi <= p.jour <= lundi + datetime.timedelta(days=6)]
+
+
+def _jours_evalues(plans):
+    return [p for p in plans if p.statut_jour == StatutJour.EVALUE]
+
+
+def _faites_et_jours(plans):
+    evalues = _jours_evalues(plans)
+    return sum(p.compte_rythme for p in evalues), len(evalues)
+
+
+def _jours_reussis(evalues):
+    """Nombre de jours « objectif atteint » (`None` si aucun jour n'avait d'objectif)."""
+    verdicts = [journee_reussie(p.compte_rythme, p.objectif_du_jour, p.essentiels_choisis, p.essentiels_faits)
+                for p in evalues]
+    verdicts = [v for v in verdicts if v is not None]
+    return sum(1 for v in verdicts if v) if verdicts else None
+
+
+def bilan_de_semaine(user, lundi, mode):
+    """`(semaine_courte, bilan)` de la semaine de `lundi`, lus dans les `PlanJour` clos (jamais un titre).
+    `bilan` = `{texte, donnees:{faites, jours, prec}}` ou `None` (semaine courte, ou aucun jour évalué)."""
+    plans = list(PlanJour.objects.filter(
+        company_id=user.company_id, proprietaire=user,
+        jour__range=(lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6))))
+    semaine = _semaine_de_plans(plans, lundi)
+    if semaine_courte([p.statut_jour for p in semaine]):
+        return True, None
+    faites, jours = _faites_et_jours(semaine)
+    if jours == 0:
+        return False, None
+    prec_faites, prec_jours = _faites_et_jours(_semaine_de_plans(plans, lundi - datetime.timedelta(days=7)))
+    prec = prec_faites if prec_jours else None
+    evalues = _jours_evalues(semaine)
+    texte = gabarit_texte('revue', 'entete', {
+        'debut': lundi, 'fin': lundi + datetime.timedelta(days=4), 'faites': faites, 'jours': jours,
+        'prec': prec, 'oa': _jours_reussis(evalues), 'mode': mode,
+        'e': sum(p.essentiels_faits for p in evalues), 'je': sum(p.essentiels_choisis for p in evalues),
+        'pt': sum(p.plan_faites for p in evalues), 'pl': sum(p.plan_prevues for p in evalues),
+        'non_travailles': sum(1 for p in semaine if p.statut_jour in (StatutJour.CONGE, StatutJour.NON_OUVRE))})
+    return False, {'texte': texte, 'donnees': {'faites': faites, 'jours': jours, 'prec': prec}}
