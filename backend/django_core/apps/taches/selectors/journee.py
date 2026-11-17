@@ -473,9 +473,27 @@ def obligations_du_jour(user, jour):
 
 # --- Rendez-vous des agendas externes (donnees.md invariant 35, TCH122) ---------------------------
 
+FENETRE_CACHE_SECONDES = 15 * 60
+
+
 def fenetre_de_travail(company, jour):
-    """Heures de travail de la société le jour `jour` (`crm.horaires.fenetre_du_jour`, la fenêtre
-    des messages que lit aussi `notifications`) ; repli 08:30-19:00 de `notifications.selectors`."""
+    """Heures de travail de la société le jour `jour`, mises en cache 15 minutes par (société, jour)
+    comme les rendez-vous qu'elles bornent (0 requête de plus à chaud)."""
+    from django.core.cache import cache
+
+    from apps.taches.moteur.ics import Fenetre
+    cle = f'taches:fenetre:{getattr(company, "pk", None)}:{jour.isoformat()}'
+    connue = cache.get(cle)
+    if connue is None:
+        fenetre = _fenetre_lue(company, jour)
+        cache.set(cle, (fenetre.debut.isoformat(), fenetre.fin.isoformat()), FENETRE_CACHE_SECONDES)
+        return fenetre
+    return Fenetre(datetime.time.fromisoformat(connue[0]), datetime.time.fromisoformat(connue[1]))
+
+
+def _fenetre_lue(company, jour):
+    """`crm.horaires.fenetre_du_jour` (la fenêtre des messages que lit aussi `notifications`) ;
+    repli 08:30-19:00 de `notifications.selectors`."""
     from apps.notifications.selectors import REPLI_FERMETURE, REPLI_OUVERTURE
     from apps.taches.moteur.ics import Fenetre
     try:

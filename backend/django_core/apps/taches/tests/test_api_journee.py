@@ -454,6 +454,7 @@ class AujourdhuiTests(_Base):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         self.tache(jour_prevu=J)
+        self.get()  # chauffe l'index des agendas externes (en cache, TCH122)
         with CaptureQueriesContext(connection) as peu:
             self.get()
         for _ in range(12):
