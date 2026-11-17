@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { CloudOff, Ellipsis, Plus, Search } from 'lucide-react'
+import { CloudOff, Ellipsis, Plus, Search, X } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
 import Fiche from '../fiche/Fiche'
 import FeuilleSaisie from '../saisie/FeuilleSaisie'
+import { annulerToast, fermerToast, pauserToast, reprendreToast, useEtatGestes } from '../lib/gestes'
+import BandeauConflit from '../ui/BandeauConflit'
 import BarreSelection from '../ui/BarreSelection'
 import BoutonCopilote from '../ui/BoutonCopilote'
 import FeuilleACrans from '../ui/FeuilleACrans'
@@ -61,9 +63,44 @@ function MenuPlus({ actionsEcran, navigate }) {
   )
 }
 
+/**
+ * TCH46 — annonces et toast : la région `role=status` (lue par le lecteur d'écran) et LE toast
+ * « … · Annuler » (8 s, en pause au survol et au focus ; « Messages sans délai » : jusqu'à
+ * fermeture). Lus dans `lib/gestes.js`, jamais posés ailleurs.
+ */
+export function ZoneAnnonces() {
+  const { annonce, rang, toast, sansDelai } = useEtatGestes()
+  return (
+    <>
+      <div className="annonce" role="status" aria-live="polite" aria-atomic="true">
+        {annonce ? `${annonce}${rang % 2 ? '' : ' '}` : ''}
+      </div>
+      {toast ? (
+        <div className="toast-place">
+          <div
+            className="toast"
+            role="group"
+            aria-label="Geste effectué"
+            onMouseEnter={() => pauserToast('survol')}
+            onMouseLeave={() => reprendreToast('survol')}
+            onFocus={() => pauserToast('focus')}
+            onBlur={() => reprendreToast('focus')}
+          >
+            <span>{toast.message}</span>
+            {toast.onAnnuler ? <button type="button" onClick={annulerToast}>{toast.libelle}</button> : null}
+            {sansDelai ? (
+              <button type="button" aria-label="Fermer" onClick={fermerToast}><X className="i" aria-hidden="true" /></button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 export default function CoquilleTaches({
   ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
-  feuille = null, selecteurProjet = null, selection = null, copilote = {}, children,
+  feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, children,
 }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -126,6 +163,8 @@ export default function CoquilleTaches({
           <kbd aria-hidden="true">n</kbd>
         </button>
 
+        {conflit ? <BandeauConflit {...conflit} /> : null}
+
         {children}
       </div>
 
@@ -140,6 +179,7 @@ export default function CoquilleTaches({
       {tacheId ? <Fiche id={tacheId} onFermer={fermerFiche} /> : null}
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />
       {feuille ? <FeuilleACrans {...feuille} /> : null}
+      <ZoneAnnonces />
       {selecteurProjet ? (
         <FeuilleACrans
           ouverte={Boolean(selecteurProjet.ouverte)}

@@ -133,6 +133,7 @@ describe('TCH43 — useEnLigne', () => {
     const etat = vi.spyOn(window.navigator, 'onLine', 'get')
     etat.mockReturnValue(false)
     monter('/taches/aujourdhui')
-    expect(await screen.findByRole('status')).toHaveTextContent('Hors ligne')
+    const message = await screen.findByText(/Hors ligne/)
+    expect(message.closest('[role="status"]')).not.toBeNull()
   })
 })
