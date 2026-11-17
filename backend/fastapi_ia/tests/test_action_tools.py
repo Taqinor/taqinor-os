@@ -1823,5 +1823,37 @@ class CatalogueTachesTch114Tests(unittest.TestCase):
             _ctx(role="admin"), creer, {"titre": "x", "lien": {"cible": "crm.lead", "id": 1}}))
 
 
+class EnteteEchoueFermeTch163Tests(unittest.TestCase):
+    """Invariant 37 : aucun appel `taches.*` ne quitte le relais sans l'en-tête assistant — vérifié sur
+    la requête HTTP réellement construite (`_django_call` non moqué, client httpx factice)."""
+
+    def test_requete_http_de_chaque_action_taches_porte_l_entete(self):
+        envoyees = []
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def request(self, verb, url, **kw):
+                envoyees.append((url, kw["headers"]))
+                return _FakeResp(200, {})
+
+        with mock.patch.object(at, "DJANGO_INTERNAL_URL", "http://dj:8000"), \
+                mock.patch.object(at.httpx, "Client", _Client):
+            for methode in ("GET", "POST"):
+                for action in _cat_taches(methode)[:-1]:
+                    at.run_catalogue_action(_ctx(role="admin"), action, {})
+        self.assertEqual(len(envoyees), 2 * len(_CLES_TACHES))
+        for url, entetes in envoyees:
+            self.assertEqual(entetes.get("X-Taqinor-Assistant"), "1", url)
+            self.assertEqual(entetes.get("Authorization"), "Bearer jwt-xyz")
+
+
 if __name__ == "__main__":
     unittest.main()
