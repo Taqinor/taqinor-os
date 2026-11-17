@@ -100,11 +100,11 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-### État au 17/11/2026, quota à 95 % (dernière mise à jour de la session du portable)
+### État au 17/11/2026, quota à 96 % (dernière mise à jour de la session du portable)
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `e90a5167e` (6 tours de corrections CI pliés ; au run d'avant tout était vert SAUF `e2e-shard (2)` : 43 specs passées, 15 échouées, toutes traitées au tour 6 — résultat à lire sur le run de `e90a5167e`). **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `7c50012ee` (8 tours de corrections CI pliés ; tout est vert SAUF `e2e-shard (2)` : au run d'avant 55 specs Tâches passées sur 58, les 3 dernières traitées au tour 8 — lire le run de `7c50012ee`)` : 43 specs passées, 15 échouées, toutes traitées au tour 6 — résultat à lire sur le run de `e90a5167e`). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
@@ -147,6 +147,10 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 - **À vérifier avant le merge** : `taches.nocturne` (03:00) parcourt TOUTES les sociétés actives où le module est
   actif, donc toutes dès le premier soir ; s'assurer qu'elle n'écrit RIEN (ni `PlanJour`, ni carte, ni
   `ReglagesRythme`) pour un compte qui n'a jamais utilisé le module (test à ajouter dans `tests/test_nocturne.py`).
+- **E2E, tours 7 et 8 (pliés)** : le bout en bout a trouvé deux VRAIS défauts d'écran, corrigés : au bureau le bouton
+  « Actions » d'une ligne recouvrait l'étoile (padding droit de `.ligne` ≥ 768 px, `base.css`) ; la carte
+  « Brouillon » restait après une création (brouillon effacé avant l'événement, `FeuilleSaisie.jsx` — test unitaire
+  de garde à ajouter). Aide `garderParApi` (route `journee/planifier/`) pour valider un plan dans les specs.
 - **E2E, tour 6 (plié)** : les specs journée lisent l'état réel du compte (`etatJournee` dans `taches-aides.js`) au
   lieu de coder « 4 » et « 0 sur 5 » (`demo_admin` a 3 activités ERP closes du jour) ; vrais écarts d'écran
   corrigés : feuille plus haute que la fenêtre au bureau (`max-height` sur `.feuille.dialogue-bureau`), créneaux de
