@@ -191,6 +191,12 @@ def reponses_meta_du_lead(lead, *, masquer_pii=False):
     from .models import WebsiteLeadPayload
     if lead is None or not getattr(lead, 'pk', None):
         return None
+    # Aucune requête pour un lead qui ne vient pas de Meta (le détail du lead
+    # a un budget de requêtes fixe) : la provenance est déjà sur ses colonnes.
+    origine = WebsiteLeadPayload.Source.META_LEAD_ADS
+    if not (getattr(lead, 'source', None) == origine or getattr(lead, 'external_system', None) == origine
+            or getattr(lead, 'meta_form_id', None)):
+        return None
     lignes = (WebsiteLeadPayload.objects
               .filter(company_id=lead.company_id, lead=lead,
                       source=WebsiteLeadPayload.Source.META_LEAD_ADS)
