@@ -336,8 +336,8 @@ Pas de `titre_fige` (I6).
 | `erp_dans_journee` | `BooleanField` | `True` | s6a |
 | `pauses_sollicitations` | `JSONField` | `default=list` | types push en pause (I7) |
 
-Contrainte `taches_reglages_uniq` (company, proprietaire). Créée UNIQUEMENT par `creer_taches()` (première tâche, A15,
-A17) ; `vu/` ne la crée jamais.
+Contrainte `taches_reglages_uniq` (company, proprietaire). Créée par `creer_taches()` (première tâche, A15,
+A17), ou au premier `POST rythme/` / `PATCH reglages/` (`services.rythme._reglages_a_ecrire`) ; `vu/` ne la crée jamais.
 
 ### 2.11 `Preference` (`TenantModel`) — ce qu'il a DIT
 
