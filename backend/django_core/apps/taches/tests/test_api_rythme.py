@@ -199,3 +199,136 @@ class RythmeEcritureTests(BaseRythme):
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 6}, format='json')
         self.assertEqual(reponse.status_code, 404)
         self.assertFalse(ReglagesRythme.objects.exists())
+
+
+class RepondreTests(BaseRythme):
+    """TCH67 — `propositions/{id}/repondre/` : réponses permises par clé, 409, refus sous verrou."""
+
+    def repondre(self, carte_, reponse):
+        return self.api.post(f'{URL}propositions/{carte_.pk}/repondre/', {'reponse': reponse}, format='json')
+
+    def monter(self, refus=1, **champs):
+        return carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'monter',
+                     {'N': 5, 'N1': 6, 'tenus': 7, 'refus': refus}, **champs)
+
+    def test_monter_oui_un_cran_et_forme_repondue(self):
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        reponse = self.repondre(carte_, 'oui')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('proposition_repondue')))
+        self.assertEqual(corps['proposition']['boutons'], [])
+        self.assertEqual(corps['geste_id'], corps['rythme']['geste_id'])
+        reglages.refresh_from_db()
+        carte_.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.palier_source, reglages.essai_restant),
+                         (6, SourceObjectif.ACCEPTE, True))
+        self.assertEqual(carte_.reponse, 'oui')
+        self.assertIsNotNone(carte_.repondu_le)
+
+    def test_refus_1_2_puis_4_blocs_sautes(self):
+        reglages = self.reglages(palier=5, bloc_debut=J)
+        for rang, attendu in ((1, 1), (2, 2), (3, 4)):
+            self.repondre(self.monter(refus=rang, jour=J - datetime.timedelta(days=10 * (3 - rang))),
+                          'pas_maintenant')
+            reglages.refresh_from_db()
+            self.assertEqual((reglages.refus_montee, reglages.blocs_a_sauter, reglages.palier), (rang, attendu, 5))
+
+    def test_garder_ce_rythme_seulement_au_3e_refus(self):
+        reglages = self.reglages(palier=5, refus_montee=2)
+        tot = self.monter(refus=1, jour=J - datetime.timedelta(days=1))
+        reponse = self.repondre(tot, 'garder_ce_rythme')
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'reponse': ['Réponse inconnue.']}))
+        self.assertEqual(self.repondre(self.monter(refus=3), 'garder_ce_rythme').status_code, 200)
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.mode, ModeRythme.TENIR)
+
+    def test_baisse_jamais_imposee(self):
+        reglages = self.reglages(palier=6, palier_source=SourceObjectif.ACCEPTE)
+        baisser = carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'baisser', {'N': 6, 'N_1': 5, 'tenus': 2})
+        self.repondre(baisser, 'garder')
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.baisse_refusee), (6, True))
+        autre = carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'baisser', {'N': 6, 'N_1': 5, 'tenus': 1},
+                      jour=J - datetime.timedelta(days=1))
+        self.repondre(autre, 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.palier, 5)
+
+    def test_premier_oui_prend_la_journee_type(self):
+        reglages = self.reglages(bloc_debut=J)
+        self.repondre(carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'premier', {'type': 3}), 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.palier_source), (3, SourceObjectif.ACCEPTE))
+
+    def test_vaut_le_jour_meme_avant_le_plan_sinon_le_lendemain(self):
+        self.reglages(palier=5, bloc_debut=J)
+        plan = fabriques.plan(self.u1, J, objectif_du_jour=5)
+        self.repondre(self.monter(), 'oui')
+        plan.refresh_from_db()
+        self.assertEqual(plan.objectif_du_jour, 6)
+        plan.planifie_le = datetime.datetime(2026, 11, 17, 8, 0, tzinfo=datetime.timezone.utc)
+        plan.save(update_fields=['planifie_le'])
+        self.repondre(self.monter(jour=J - datetime.timedelta(days=1)), 'oui')
+        plan.refresh_from_db()
+        self.assertEqual(plan.objectif_du_jour, 6)
+
+    def test_reponse_inconnue_ou_reservee_a_la_nuit_400(self):
+        self.reglages()
+        carte_ = self.monter()
+        for reponse in ('expiree', 'ignoree', 'peut-etre', 'garder'):
+            with self.subTest(reponse=reponse):
+                self.assertEqual(self.repondre(carte_, reponse).json(), {'reponse': ['Réponse inconnue.']})
+        carte_.refresh_from_db()
+        self.assertEqual(carte_.reponse, '')
+
+    def test_expiree_ou_deja_repondue_409(self):
+        reglages = self.reglages(palier=5)
+        expiree = self.monter(expire_le=J - datetime.timedelta(days=1))
+        reponse = self.repondre(expiree, 'pas_maintenant')
+        self.assertEqual((reponse.status_code, reponse.json()['code']), (409, 'proposition_expiree'))
+        ouverte = self.monter(jour=J - datetime.timedelta(days=1))
+        self.assertEqual(self.repondre(ouverte, 'pas_maintenant').status_code, 200)
+        self.assertEqual(self.repondre(ouverte, 'pas_maintenant').status_code, 409)
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.refus_montee, 1)  # le second refus n'est jamais compté
+
+    def test_carte_d_un_autre_compte_404(self):
+        self.reglages()
+        etrangere = carte(self.ailleurs, TypeIncitationEcran.PROPOSITION_PALIER, 'monter',
+                          {'N': 5, 'N1': 6, 'tenus': 7})
+        self.assertEqual(self.repondre(etrangere, 'oui').status_code, 404)
+        etrangere.refresh_from_db()
+        self.assertEqual(etrangere.reponse, '')
+
+    def test_constat_c3_oui_ajoute_le_jour_court(self):
+        self.reglages()
+        constat = carte(self.u1, TypeIncitationEcran.CONSTAT, 'C3', {'jour': 4, 'm1': 3.1, 'm2': 5.2})
+        self.repondre(constat, 'oui')
+        corps = self.api.get(URL).json()
+        self.assertEqual([(p['cle'], p['valeur'], p['source']) for p in corps['preferences']],
+                         [('jours_courts', [4], 'carte')])
+        self.assertEqual(corps['constats'], [])
+
+    def test_c5_n_admet_que_ok(self):
+        self.reglages()
+        c5 = carte(self.u1, TypeIncitationEcran.CONSTAT, 'C5', {'p': 40, 'n': 30, 'h1': 10, 'h2': 12})
+        self.assertEqual(self.repondre(c5, 'oui').status_code, 400)
+        self.assertEqual(self.repondre(c5, 'ok').status_code, 200)
+
+    def test_pause_reactiver_retire_le_type(self):
+        reglages = self.reglages(pauses_sollicitations=[{'type': 'plan_matin', 'ignorees': 14}])
+        pause = carte(self.u1, TypeIncitationEcran.PAUSE, 'plan_matin', {'type_pause': 'plan_matin', 'ignorees': 14})
+        self.repondre(pause, 'reactiver')
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.pauses_sollicitations, [])
+
+    def test_annuler_la_reponse_rouvre_la_carte_et_le_palier(self):
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        geste_id = self.repondre(carte_, 'oui').json()['geste_id']
+        annuler_geste(self.u1, geste_id)
+        reglages.refresh_from_db()
+        carte_.refresh_from_db()
+        self.assertEqual((reglages.palier, carte_.reponse, carte_.repondu_le), (5, '', None))

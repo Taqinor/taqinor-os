@@ -10,7 +10,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.serializers.rythme import forme_rythme
+from apps.taches.serializers.rythme import forme_proposition, forme_rythme, projets_cites
 from apps.taches.services import rythme as service
 from apps.taches.views.base import (
     ERREUR_CODE, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, reponses,
@@ -18,6 +18,9 @@ from apps.taches.views.base import (
 
 RYTHME = forme_echantillon('rythme')
 INTROUVABLE = 'Introuvable.'
+#: 409 d'une carte qui n'est plus ouverte (contract_samples/erreurs.json `proposition_expiree`).
+DETAIL_EXPIREE = 'Proposition expirée.'
+CODE_EXPIREE = 'proposition_expiree'
 
 
 def rythme_de(request, *, geste=None):
@@ -60,7 +63,19 @@ class RepondrePropositionVue(APIView):
                    responses=reponses(forme_echantillon('proposition_repondue'), erreurs=(400, 404),
                                       conflit=ERREUR_CODE))
     def post(self, request, id):
-        raise PasEncore()
+        try:
+            carte, geste = service.repondre_carte(request.user, id, request.data.get('reponse'),
+                                                  service.aujourdhui())
+        except service.ErreursRythme as exc:
+            return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
+        except (service.Introuvable, service.SansReglages):
+            raise NotFound(INTROUVABLE)
+        except service.PropositionExpiree:
+            return Response({'detail': DETAIL_EXPIREE, 'code': CODE_EXPIREE}, status=status.HTTP_409_CONFLICT)
+        assistant = est_assistant(request)
+        projets = projets_cites(request.user, [carte])
+        return Response({'proposition': forme_proposition(carte, assistant=assistant, projets=projets),
+                         'rythme': rythme_de(request, geste=geste), 'geste_id': geste.pk})
 
 
 class PreferencesVue(APIView):
