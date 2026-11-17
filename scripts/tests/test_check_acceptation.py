@@ -426,6 +426,24 @@ class AcceptationTests(unittest.TestCase):
         self.assertEqual(code, 1, sortie)
         self.assertIn("échoue aussi à la base", sortie)
 
+    def test_ecart_dont_le_corps_a_echoue_pass_refuse(self):
+        """ASUP65 : une étape en écart (base FAIL) dont le CORPS a levé (run Playwright rouge)
+        porte `corps: FAIL` ⇒ un enregistrement PASS qui la porte est refusé ; l'écart dont
+        seuls les oracles échouent (`corps: PASS`) reste admis."""
+        self.depot.plan(ligne("x", "ATST1"), ligne("x", "ATST2"))
+        oracles = dict(etape()["oracles"], **{"3": "FAIL"})
+        ecart = etape("P1.13", ("ATST2",), verdict="FAIL", base="FAIL", oracles=oracles,
+                      corps="PASS")
+        self.depot.enregistrement(couvre=("ATST1", "ATST2"), ecart=("ATST2",),
+                                  etapes=[etape(corps="PASS"), ecart])
+        code, sortie = self.lancer()
+        self.assertEqual(code, 0, sortie)
+        self.depot.enregistrement(couvre=("ATST1", "ATST2"), ecart=("ATST2",),
+                                  etapes=[etape(corps="PASS"), dict(ecart, corps="FAIL")])
+        code, sortie = self.lancer()
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("P1.13 : son corps a échoué", sortie)
+
     def test_enregistrement_spec_exemple_mutant_etape_vide_echoue(self):
         """Mutant : une etape sans oracles ni trace ⇒ la garde DOIT echouer."""
         self.ecrire_exemple_adep(vider_etape=2)

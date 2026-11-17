@@ -42,7 +42,7 @@ const SUGGESTIONS = [
 export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
-  const { messages, agentLoading, agentError, etapeEnCours } = useSelector((s) => s.ia)
+  const { messages, agentLoading, agentError, etapes } = useSelector((s) => s.ia)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -231,7 +231,7 @@ export default function CopilotPanel() {
                 <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
                   <Bot className="size-3.5" aria-hidden="true" />
                 </span>
-                <BulleAttente etape={etapeEnCours} bulleClassName="px-3 py-2.5" />
+                <BulleAttente etapes={etapes} bulleClassName="px-3 py-2.5" />
               </div>
             )}
 

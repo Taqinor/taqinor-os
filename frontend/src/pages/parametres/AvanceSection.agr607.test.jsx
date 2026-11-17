@@ -7,10 +7,43 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
    quelle (jamais arrondie) ; le 400 du serveur s'affiche SOUS le champ ;
    enregistrer → rouvrir → enregistrer sans toucher = même PATCH. */
 
-import { EcartRecettePompageField } from './AvanceSection'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import AvanceSection, { EcartRecettePompageField } from './AvanceSection'
 import { CHAMP_ECART_RECETTE, nombreOuNull } from './peConstants'
 
 afterEach(() => cleanup())
+
+/* ALEC49 — sections chantiers montées seulement avec la lecture du module
+   chantiers (les routes serveur sont gardées `LectureDuModule`). */
+vi.mock('./EquipeTerrainSection', () => ({ default: () => <div>SECTION-EQUIPES</div> }))
+vi.mock('./FicheInterventionModelesSection', () => ({ default: () => <div>SECTION-MODELES</div> }))
+vi.mock('./SettingsAuditFeed', () => ({ default: () => null }))
+
+describe('ALEC49 — sections chantiers selon le droit', () => {
+  const rendreAvance = (auth) => {
+    const store = configureStore({ reducer: { auth: (s = auth) => s } })
+    return render(
+      <Provider store={store}>
+        <AvanceSection form={{}} set={vi.fn()} typesItv={[]} checklistEtapes={[]} cfDefs={[]}
+          newCf={{ libelle: '', type: 'text' }} setNewCf={vi.fn()} newType="" newEtape="" />
+      </Provider>,
+    )
+  }
+  it('Commercial responsable (aucun code installation_*) : ni équipes ni modèles', () => {
+    rendreAvance({
+      role: 'responsable', role_nom: 'Commercial responsable', user: { portee: 'interne' },
+      permissions: ['devis_voir', 'devis_gerer'],
+    })
+    expect(screen.queryByText('SECTION-EQUIPES')).toBeNull()
+    expect(screen.queryByText('SECTION-MODELES')).toBeNull()
+  })
+  it('Directeur (admin interne) : les deux sections', () => {
+    rendreAvance({ role: 'admin', role_nom: 'Directeur', user: { portee: 'interne' }, permissions: [] })
+    expect(screen.getByText('SECTION-EQUIPES')).toBeInTheDocument()
+    expect(screen.getByText('SECTION-MODELES')).toBeInTheDocument()
+  })
+})
 
 const champ = () => screen.getByLabelText('Écart de recette pompage toléré (%)')
 

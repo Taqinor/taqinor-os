@@ -5,6 +5,7 @@ import qualiteApi from '../../../features/stock/api/qualiteApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
 import { Section, Vide } from './ElementsEcran'
 import useGesteEcran from './useGesteEcran'
+import { useCanLireInterventions } from '../../../hooks/useHasPermission'
 import usePeutEcrireStock from '../usePeutEcrireStock'
 import { SELECT_CLS, enListe, champDe } from './constantesEcran'
 
@@ -25,6 +26,7 @@ const CLASSES_DANGER = {
 export default function QualitePage() {
   // ADRG35 — écritures d'entrepôt : `stock_mouvement`, comme le serveur.
   const peutMouvement = usePeutEcrireStock('stock_mouvement')
+  const peutLireCasiers = useCanLireInterventions()  // ALEC48 — `installations/bin-locations/` exige le module chantiers
   // ADRG36 — référentiels (rappels, plans d'échantillonnage, hazmat) : `stock_modifier`.
   const peutReferentiel = usePeutEcrireStock()
   const [rappels, setRappels] = useState([])
@@ -56,9 +58,9 @@ export default function QualitePage() {
   useEffect(() => {
     Promise.resolve().then(charger)
     qualiteApi.listProduits().then((r) => setProduits(enListe(r.data))).catch(() => {})
-    qualiteApi.listCasiers().then((r) => setCasiers(enListe(r.data))).catch(() => {})
+    if (peutLireCasiers) qualiteApi.listCasiers().then((r) => setCasiers(enListe(r.data))).catch(() => {})
     qualiteApi.listCategories().then((r) => setCategories(enListe(r.data))).catch(() => {})
-  }, [charger])
+  }, [charger, peutLireCasiers])
 
   const { occupe, geste } = useGesteEcran(charger, setErreur, setInfo)
 

@@ -9,6 +9,7 @@ vi.mock('../../../api/crmApi', () => ({
   default: {
     getAppointments: vi.fn(),
     updateAppointment: vi.fn(() => Promise.resolve({ data: {} })),
+    createAppointment: vi.fn(),
   },
 }))
 vi.mock('../../../utils/fetchAllPages', () => ({
@@ -41,5 +42,35 @@ describe('AppointmentBooker — AERR105', () => {
     await waitFor(() => expect(crmApi.updateAppointment)
       .toHaveBeenCalledWith(5, { statut: 'annule' }))
     expect(crmApi.updateAppointment).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AERR176 — refus des notes sous les notes', () => {
+  const planifier = async (refus) => {
+    fetchAllPages.mockResolvedValue([])
+    crmApi.createAppointment.mockRejectedValue({ response: { status: 400, data: refus } })
+    render(<AppointmentBooker leadId={9} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Planifier/ }))
+    fireEvent.change(document.getElementById('appt-scheduled-at'), { target: { value: '2030-11-14T10:00' } })
+    fireEvent.change(document.getElementById('appt-notes'), { target: { value: 'x' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await screen.findByRole('alert')
+  }
+
+  it('400 {notes} : #appt-notes invalide relié au message, la date reste valide', async () => {
+    await planifier({ notes: ['Texte trop long.'] })
+    const notes = document.getElementById('appt-notes')
+    expect(notes).toHaveAttribute('aria-invalid', 'true')
+    expect(notes).toHaveAttribute('aria-describedby', 'appt-error')
+    expect(screen.getByRole('alert')).toHaveTextContent('Notes : Texte trop long.')
+    const date = document.getElementById('appt-scheduled-at')
+    expect(date).not.toHaveAttribute('aria-invalid', 'true')
+    expect(date).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('400 {scheduled_at} : la date seule est marquée', async () => {
+    await planifier({ scheduled_at: ['Date invalide.'] })
+    expect(document.getElementById('appt-scheduled-at')).toHaveAttribute('aria-invalid', 'true')
+    expect(document.getElementById('appt-notes')).not.toHaveAttribute('aria-invalid', 'true')
   })
 })

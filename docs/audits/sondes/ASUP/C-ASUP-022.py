@@ -30,9 +30,15 @@ def lire_etapes():  # STAGES.py lu par ast : aucune étape écrite ici
 def sonde(ctx=None):
     st = lire_etapes()
     journal = []
-    lead = Obj(pk=1, stage=st.CONVERSION_STAGE, perdu=False, is_archived=False, archived_by=None, archived_at=None,
+    class ConflitEtat(Exception): pass
+    # ASUP48 : archiver_lead consulte la suite des devis signés (apps.ventes, hors hôte) : on la simule avec une facture
+    # existante (la « pièce active » du constat) ; la garde de archiver_lead reste le VRAI code.
+    devis = Obj(pk=7)
+    ventes_sel = types.ModuleType("apps.ventes.selectors"); ventes_sel.devis_signes_en_vigueur = lambda c, lead_ids=None: [devis]
+    ventes_srv = types.ModuleType("apps.ventes.services"); ventes_srv.raison_blocage_annulation_acceptation = lambda d: "une facture existe"
+    lead = Obj(pk=1, company=Obj(pk=1), stage=st.CONVERSION_STAGE, perdu=False, is_archived=False, archived_by=None, archived_at=None,
                save=lambda update_fields=None: journal.append(("save", update_fields)))
-    ns = {"stage_mod": st, "timezone": types.SimpleNamespace(now=lambda: 0),
+    ns = {"ConflitEtat": ConflitEtat, "stage_mod": st, "timezone": types.SimpleNamespace(now=lambda: 0),
           "activity": types.SimpleNamespace(log_archive=lambda l, u: journal.append("chatter"), log_bulk_note=lambda *a: None),
           "annuler_rendez_vous_sur_arret": lambda l, u, cause: journal.append("rdv_annules"),
           "status": types.SimpleNamespace(HTTP_409_CONFLICT=409), "Response": lambda d=None, status=200: Obj(data=d, status_code=status),
@@ -42,8 +48,9 @@ def sonde(ctx=None):
         def __enter__(s): return s
         def __exit__(s, *a): return False
     db.transaction = types.SimpleNamespace(atomic=lambda: Tx())
-    avant = {n: sys.modules.get(n) for n in ("django", "django.db")}
-    sys.modules.update({"django": dj, "django.db": db})
+    avant = {n: sys.modules.get(n) for n in ("django", "django.db", "apps", "apps.ventes", "apps.ventes.selectors", "apps.ventes.services")}
+    sys.modules.update({"django": dj, "django.db": db, "apps": types.ModuleType("apps"), "apps.ventes": types.ModuleType("apps.ventes"),
+                        "apps.ventes.selectors": ventes_sel, "apps.ventes.services": ventes_srv})
     try:
         exec(extraire("apps/crm/fiche_bulk.py", "archiver_lead"), ns)
         exec(extraire("apps/crm/portee_selectors.py", "est_lead_signe"), ns)

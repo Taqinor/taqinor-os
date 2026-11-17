@@ -93,3 +93,25 @@ describe('ACAL203 — fondCarte : la tuile du fournisseur de la société', () =
       .toContain('tile.openstreetmap.org')
   })
 })
+
+describe('AERR112 — CalageToitPage : lecture en panne', () => {
+  const monter = () => render(
+    <MemoryRouter initialEntries={['/visites/5/calage']}>
+      <Routes><Route path="/visites/:id/calage" element={<CalageToitPage />} /></Routes>
+    </MemoryRouter>,
+  )
+
+  it('500 : Lecture impossible + Réessayer, jamais « introuvable »', async () => {
+    getVisite.mockRejectedValueOnce({ response: { status: 500 } })
+    const { findByText, queryByText, getByRole } = monter()
+    expect(await findByText('Lecture impossible.')).toBeTruthy()
+    expect(getByRole('button', { name: 'Réessayer' })).toBeTruthy()
+    expect(queryByText('Visite introuvable.')).toBeNull()
+  })
+
+  it('404 : Visite introuvable.', async () => {
+    getVisite.mockRejectedValueOnce({ response: { status: 404 } })
+    const { findByText } = monter()
+    expect(await findByText('Visite introuvable.')).toBeTruthy()
+  })
+})

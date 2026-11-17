@@ -24,7 +24,7 @@ import {
 } from './reglagesCi'
 // VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
 import SettingsAuditFeed from './SettingsAuditFeed'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useCanLireInterventions } from '../../hooks/useHasPermission'
 // WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
 import EquipeTerrainSection from './EquipeTerrainSection'
 // WIR114 (ZFSM3) — modèles de fiche d'intervention (champs de compte-rendu).
@@ -180,6 +180,7 @@ export default function AvanceSection({
 }) {
   // ALEC28 (D-ALEC-3) — le journal des réglages exige `journal_activite_voir`.
   const voitJournal = useHasPermission('journal_activite_voir')
+  const lireChantiers = useCanLireInterventions()
   // L787 — impact inline de l'économie : production annuelle d'1 kWc valorisée
   // au tarif ONEE, recalculée en direct à l'édition (repère pédagogique ;
   // autoconsommation/payback restent sur l'écran devis). AMOT64 (D-AMOT-3 = a)
@@ -397,10 +398,11 @@ export default function AvanceSection({
       </CarteContenu>
 
       {/* WIR112 — Chantiers — Équipes terrain canoniques (DC40), à côté des types. */}
-      <EquipeTerrainSection assignables={assignables} />
+      {/* ALEC49 — ces deux lectures exigent la lecture du module chantiers. */}
+      {lireChantiers && <EquipeTerrainSection assignables={assignables} />}
 
       {/* WIR114 — Modèles de fiche d'intervention (ZFSM3), à côté des types. */}
-      <FicheInterventionModelesSection />
+      {lireChantiers && <FicheInterventionModelesSection />}
 
       {/* Chantiers — Checklist d'exécution */}
       <CarteContenu contenu="pt-4 sm:pt-5">

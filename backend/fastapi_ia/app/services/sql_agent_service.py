@@ -585,6 +585,11 @@ class SQLSecurityError(Exception):
     """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
 
 
+class RefusDeDroit(SQLSecurityError):
+    """ALEC51 — refus d'un DROIT de l'appelant (portee, module, colonne
+    confidentielle, donnee personnelle) : son motif part au modele."""
+
+
 # Noeuds qui ne doivent apparaitre NULLE PART dans une requete de lecture.
 _NOEUDS_INTERDITS = tuple(
     cls for cls in (
@@ -973,6 +978,9 @@ _UNSAFE_QUERY_REPLY = (
     "Reformule ta question."
 )
 
+# ALEC51 — refus de droit : le motif (sans detail de l'analyseur) part au modele.
+_REFUS_DE_DROIT_PREFIXE = "Erreur : acces refuse. "
+
 
 def _select_sources(select: exp.Select) -> list:
     """Sources DIRECTES (FROM + JOIN) d'un SELECT."""
@@ -1089,11 +1097,12 @@ def _verifier_module_et_portee(sql: str, permissions) -> None:
         for prefixe, exiges in _MODULE_DES_TABLES:
             if nom.startswith(prefixe) and not any(
                     c.startswith(exiges) for c in codes):
-                raise SQLSecurityError(
-                    f"Table {nom} : droit du module manquant — lecture refusee.")
+                raise RefusDeDroit(
+                    f"Table {nom} : droit du module {prefixe[:-1]} manquant — "
+                    "lecture refusee.")
     if (any(c.startswith("records_scope_") for c in codes)
             and noms & _TABLES_A_PROPRIETAIRE):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Portee restreinte : lecture refusee (utilisez l'ecran).")
 
 
@@ -1114,17 +1123,17 @@ def _validate_and_secure(sql: str, company_id: int,
     a l'agent sans jamais executer la requete."""
     _enforce_single_select(sql)
     if _references_secret_column(sql):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
             "— lecture refusee."
         )
     if not allow_price and _references_forbidden_column(sql):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Colonne confidentielle (prix d'achat / marge) — lecture refusee."
         )
     if not allow_pii and _references_forbidden_column(
             sql, allow_price=True, allow_pii=False):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
     _verifier_module_et_portee(sql, permissions)
     return _inject_company_filter(sql, company_id)
@@ -1219,6 +1228,10 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
                 secured = _validate_and_secure(
                     query, _cid, allow_price=_allow_price,
                     allow_pii=_allow_pii, permissions=_permissions)
+            except RefusDeDroit as exc:
+                logger.warning("SECURITE: refus de droit (%s).", exc)
+                return (_REFUS_DE_DROIT_PREFIXE + str(exc)
+                        + " Dis ce motif a l'utilisateur, sans reessayer.")
             except SQLSecurityError as exc:
                 logger.warning(
                     "SECURITE: requete refusee (%s). SQL: %s",
@@ -1527,13 +1540,18 @@ class SQLAgentService:
         15 s). NTPLT4 — pose app.current_company sur les connexions de CE
         moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
         from langchain_community.utilities import SQLDatabase
+        from sqlalchemy import inspect as sa_inspect
         from app.core import database as _database
-        relevant_tables = [
-            t for t in self._get_relevant_tables(question)
-            if t in _ALLOWED_TABLES
-        ] or list(_ALLOWED_TABLES)
+        engine = _database.create_sql_agent_engine()
+        permises = list(_ALLOWED_TABLES)
+        try:  # AIC102 — table absente (base neuve sans RUN_DB_DDL) : retiree
+            presentes = set(sa_inspect(engine).get_table_names())
+            permises = [t for t in permises if t in presentes] or permises
+        except Exception as exc:  # inspection impossible : regle d'avant
+            logger.warning("Tables de la base non inspectees (%s).", exc)
+        relevant_tables = [t for t in self._get_relevant_tables(question) if t in permises] or permises
         db = SQLDatabase(
-            _database.create_sql_agent_engine(),
+            engine,
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )

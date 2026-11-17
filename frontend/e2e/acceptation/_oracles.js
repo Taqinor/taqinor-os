@@ -98,7 +98,7 @@ export class Suivi {
  *  l'étape échouait déjà à la base (`base_verdict`), ses tâches vont dans
  *  `couvre_avec_ecart` (et restent dans `couvre`). Seuls ses ORACLES peuvent
  *  alors échouer sans faire tomber le test ; une assertion de son corps qui
- *  échoue le fait toujours tomber. */
+ *  échoue le fait toujours tomber, écrit `corps: 'FAIL'` et l'enregistrement est FAIL. */
 export function groupe(nom, couvre) {
   const etapes = []
   const ecarts = new Set()
@@ -130,7 +130,8 @@ export function groupe(nom, couvre) {
       if (ouverte) await ouverte.screenshot({ path: absolu, type: 'jpeg', quality: 60 }).catch(() => undefined)
       const ok = !erreur && !Object.values(oracles).includes('FAIL')
       etapes.push({
-        id, taches, verdict: ok ? 'PASS' : 'FAIL', base_verdict: ecart ? ecart.base : null, trace, oracles,
+        // ASUP65 : `corps` distingue un corps qui lève (run rouge, jamais admis) d'un oracle en écart.
+        id, taches, verdict: ok ? 'PASS' : 'FAIL', base_verdict: ecart ? ecart.base : null, corps: erreur ? 'FAIL' : 'PASS', trace, oracles,
         notes: [ecart ? `écart accepté (base FAIL) : ${ecart.raison}` : '',
           erreur ? `erreur : ${String(erreur.message).replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '').split('\n')[0]}` : '',
           ...suivi.incidents.map((i) => `oracle ${i.oracle} — ${i.texte}`)].filter(Boolean).join(' ; '),

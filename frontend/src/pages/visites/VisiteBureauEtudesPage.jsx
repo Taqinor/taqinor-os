@@ -8,7 +8,7 @@
 // ville, statut, date_prevue, complet, manquants_count) : le filtre
 // `terminee` est donc appliqué sur des données déjà renvoyées par le
 // serveur, jamais une invention de paramètre de requête hors contrat.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
@@ -460,6 +460,7 @@ export default function VisiteBureauEtudesPage() {
   const [loading, setLoading] = useState(true)
   const [detailId, setDetailId] = useState(null)
   const [detail, setDetail] = useState(null)
+  const detailIdRef = useRef(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -481,7 +482,16 @@ export default function VisiteBureauEtudesPage() {
 
   const ouvrir = (id) => {
     setDetailId(id)
-    visitesApi.getVisite(id).then((res) => setDetail(res.data)).catch(() => toast.error('Visite introuvable.'))
+    detailIdRef.current = id
+    // AERR112 — la dernière visite demandée l'emporte (réponse d'une ancienne ignorée) ;
+    // « introuvable » seulement sur un 404.
+    visitesApi.getVisite(id)
+      .then((res) => { if (detailIdRef.current === id) setDetail(res.data) })
+      .catch((err) => {
+        if (detailIdRef.current !== id) return
+        toast.error(err?.response?.status === 404
+          ? 'Visite introuvable.' : 'Lecture impossible. Réessayez.')
+      })
   }
 
   const surChangement = () => {
@@ -494,7 +504,7 @@ export default function VisiteBureauEtudesPage() {
       <div className="page max-w-[760px]">
         <DetailVisite
           visite={detail}
-          onRetour={() => { setDetailId(null); setDetail(null) }}
+          onRetour={() => { detailIdRef.current = null; setDetailId(null); setDetail(null) }}
           onChanged={surChangement}
         />
       </div>
