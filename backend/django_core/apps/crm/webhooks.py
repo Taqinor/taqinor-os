@@ -1528,7 +1528,7 @@ def _map_payload_to_fields(data: dict) -> dict:
         puissance_kva = questionnaire.get('puissance_kva')
         if (puissance_kva is not None
                 and 'compteur_puissance_kva' not in fields
-                and 0 <= puissance_kva <= 99999.99):
+                and 0 < puissance_kva <= 99999.99):
             fields['compteur_puissance_kva'] = questionnaire.pop('puissance_kva')
         surface_toit = questionnaire.get('surface_toiture_m2')
         if (surface_toit is not None
@@ -1657,7 +1657,7 @@ def _quest_declencheur(raw):
 
 
 def _quest_compteur_puissance_kva(raw):
-    return _clean_decimal(raw, lo=0, hi=100_000)
+    return _clean_decimal(raw, lo=0.01, hi=100_000)  # la fiche refuse 0 (vide = non déclarée)
 
 
 def _quest_chauffage_electrique_hiver(raw):

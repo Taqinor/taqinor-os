@@ -810,6 +810,19 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertEqual(retour_marginal_batterie(0, 0, 136000, 10000, 50000, None), 13.6)
         self.assertIsNone(retour_marginal_batterie(0, 10000, 100000, 10000))
 
+    def test_puissance_souscrite_non_positive_lue_non_declaree(self):
+        # Lead « CPE Go Plus » (17/11/2026) : −12 kVA saisi par erreur. La
+        # taille l'ignorait, l'option « avec » la lisait comme une borne et
+        # refusait toute combinaison d'hybrides. Même lecture des deux côtés.
+        reference = self._avec()['evaluation']
+        self.assertIsNotNone(reference)
+        for fautive in (-12, 0, Decimal('-12.00')):
+            r = self._avec(ps_kva=fautive)
+            self.assertIsNotNone(r['evaluation'], (fautive, r['motif']))
+            self.assertEqual(r['evaluation']['kwc'], reference['kwc'], fautive)
+            self.assertEqual(r['evaluation']['batterie']['quantite'],
+                             reference['batterie']['quantite'], fautive)
+
     def test_aucune_batterie_tarifee_motif_et_prix_nommes(self):
         sans_prix = [dict(b, prix=None) for b in BATTERIES]
         r = self._avec(batteries=sans_prix)
