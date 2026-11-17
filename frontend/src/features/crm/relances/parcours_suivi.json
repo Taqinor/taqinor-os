@@ -1,6 +1,6 @@
 {
   "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
-  "version": "1.6",
+  "version": "1.7",
   "maj": "2026-11-17",
   "legende_suite": {
     "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
