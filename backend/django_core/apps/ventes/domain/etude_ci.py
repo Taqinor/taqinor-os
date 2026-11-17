@@ -189,6 +189,14 @@ def _num(valeur):
         return None
 
 
+def _ps_kva(res):
+    """Puissance souscrite EXPLOITABLE (kVA > 0), sinon ``None`` : une valeur
+    nulle ou négative est une saisie fautive, lue « non déclarée » partout —
+    la même lecture que ``moteur_ci.taille`` (``_pos``), jamais une borne."""
+    valeur = _num(res.valeur('puissance_souscrite_kva'))
+    return valeur if valeur is not None and valeur > 0 else None
+
+
 def _json(valeur):
     if isinstance(valeur, Decimal):
         return int(valeur) if valeur == valeur.to_integral_value() else float(valeur)
@@ -1033,7 +1041,7 @@ def _sous_reserve_visite(res, lead, niveau_donnees):
             motifs.append('site MT : visite avant le devis final (D-CIQ-5)')
         elif tension in (None, 'inconnue'):
             motifs.append('tension de raccordement inconnue')
-        if _num(res.valeur('puissance_souscrite_kva')) is None:
+        if _ps_kva(res) is None:
             motifs.append('puissance souscrite inconnue')
         if _num(res.valeur('surface_utile_m2')) is None:
             motifs.append('surface disponible inconnue')
@@ -1446,7 +1454,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         # ADEV87 — module et fiches onduleur passés : les chaînes se calculent.
         return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase,
                                   module=catalogue.get('module_spec'),
-                                  ac_max_kw=_num(res.valeur('puissance_souscrite_kva')))
+                                  ac_max_kw=_ps_kva(res))
 
     def composer(kwc, onduleurs, extra=()):
         return _completer_prix(composer_ci(kwc, catalogue['elements'] + list(extra), onduleurs=onduleurs,
@@ -1496,7 +1504,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         catalogue, None if onduleurs_imposes else evaluation, choix=res.valeur('batterie_souhaitee'),
         lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
         revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
-        phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
+        phase=phase, ps_kva=_ps_kva(res), composer=composer,
         borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B))  # D-CI-BATTERIE-NON-RENTABLE
