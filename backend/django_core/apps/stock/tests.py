@@ -436,12 +436,13 @@ class TestSeedCatalogue(TestCase):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
             self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
-        # « 36+20 A » (SG05LP3 14-20K, PVLV2 — les 15/20 kW SONT cette
-        # famille basse tension) → 20 A.
+        # SG05LP3 14-20K : la fiche de juin 2024 disait « 36+20 A » (→ 20 A) ;
+        # fondateur 17/11/2026 — unités de la révision COURANTE (fiche du
+        # 2026-09-11) : 36 A sur les DEUX trackers, plus aucune asymétrie.
         for sku in ('OND-H-DEY-15T', 'OND-H-DEY-20T'):
             fiche = FicheTechnique.objects.get(
                 produit=Produit.objects.get(company=self.company, sku=sku))
-            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('20.0'), sku)
+            self.assertEqual(fiche.ond_i_max_mppt_a, Decimal('36.0'), sku)
 
         p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
         f15t = FicheTechnique.objects.get(produit=p15t)
