@@ -210,9 +210,7 @@ def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
         rang = rang_initial + decalage
         if etape.template_cle in _REVEIL_CLES_SEEDEES and rang < len(cles):
             etape.template_cle = cles[rang]
-            # 17/11/2026 — un réveil posé en APPEL (le J30) lit le script
-            # d'appel, pas le WhatsApp ; un réveil passé en WhatsApp garde
-            # `reveil_a1`/`reveil_a2`.
+            # 17/11/2026 — un réveil en APPEL lit le script d'appel.
             if etape.canal == RelanceEtape.Canal.APPEL:
                 etape.template_cle = CLE_APPEL_PAR_CLE_REVEIL.get(
                     etape.template_cle, etape.template_cle)
@@ -1211,9 +1209,7 @@ def _poser_touche_avant_froid(lead, user, cadence, *, libelle=LIBELLE_TOUCHE_AVA
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     canal = _canal_touche_de_plus(lead)
     quand = quand or _creneau_dans(lead, 1)
-    # 17/11/2026 — l'appel à tracer avant le Froid lit le script du dernier
-    # appel (`appel_dernier`) ; l'appel trimestriel d'un pro (CADV102) n'a pas
-    # de script validé, et un WhatsApp n'en lit pas un d'appel.
+    # 17/11/2026 — script `appel_dernier` ; pas le trimestriel pro (CADV102).
     template_cle = ('appel_dernier' if canal == RelanceEtape.Canal.APPEL
                     and libelle == LIBELLE_TOUCHE_AVANT_FROID else '')
     # Le suivi d'un devis garde son devis, comme ``materialiser_touche_suivante``.
