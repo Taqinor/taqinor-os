@@ -216,3 +216,69 @@ class CanariTests(TestCase):
         action = next(a for a in agent_actions.ACTIONS if a.key == 'taches.journee.lire')
         reponse = _appeler(_client(self.compte), action, {})
         self.assertIn('Canari-titre-0', reponse.content.decode('utf-8'))
+
+
+# --- TCH164 : `taches.tache.modifier` (A18-M3 c ; regles.md §12) ----------------------------------
+
+MODIFIER = next(a for a in agent_actions.ACTIONS if a.key == 'taches.tache.modifier')
+
+
+class ModifierSansBaseTests(SimpleTestCase):
+    def test_trois_champs_seulement_et_verrou_requis(self):
+        self.assertEqual(agent_actions.CHAMPS_MODIFIABLES, ('priorite', 'echeance', 'projet_id'))
+        self.assertEqual(set(MODIFIER.inputs['properties']),
+                         {'id', 'lock_version', *agent_actions.CHAMPS_MODIFIABLES})
+        self.assertEqual(set(MODIFIER.inputs['required']), {'id', 'lock_version'})
+        self.assertEqual((MODIFIER.method, MODIFIER.endpoint), ('PATCH', '/api/django/taches/taches/{id}/'))
+
+    def test_sur_demande_explicite_et_jamais_sous_un_texte_tiers(self):
+        # Écriture : comptée dans les trois par tour, et rendue en carte-écho par le relais dès qu'un
+        # texte tiers est entré dans le tour (A5) — jamais exécutée sur ce texte.
+        self.assertIn(MODIFIER.key, agent_actions.ECRITURES)
+        self.assertNotIn(MODIFIER.key, agent_actions.ECHOS)
+        self.assertEqual(MODIFIER.carte, 'tache')
+        self.assertIn('demande explicite', MODIFIER.description)
+        self.assertIn('jamais sur un texte lu ou collé', MODIFIER.description)
+
+
+class ModifierTests(TestCase):
+    """PATCH à verrou : `lock_version` requis, version périmée refusée, geste annulable."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.compte = fabriques.compte(fabriques.societe('modifier'))
+        fabriques.reglages(cls.compte)
+        cls.admin = fabriques.projet(cls.compte, nom='Admin', priorite=1)
+        cls.ventes = fabriques.projet(cls.compte, nom='Ventes', priorite=3)
+        cls.tva = fabriques.tache(cls.compte, projet=cls.admin, titre='Déclaration TVA')
+
+    def _modifier(self, **entrees):
+        entrees.setdefault('id', self.tva.pk)
+        return _appeler(_client(self.compte), MODIFIER, entrees, HTTP_X_TAQINOR_ASSISTANT='1')
+
+    def test_sans_verrou_400_rien_ecrit(self):
+        avant = empreinte()
+        reponse = self._modifier(priorite=3)
+        self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+        self.assertEqual(empreinte(), avant)
+
+    def test_version_perimee_409_rien_ecrit(self):
+        avant = empreinte()
+        reponse = self._modifier(priorite=3, lock_version=self.tva.lock_version + 5)
+        self.assertEqual(reponse.status_code, 409, reponse.content[:300])
+        self.assertEqual(empreinte(), avant)
+
+    def test_modifiee_puis_annulee(self):
+        from apps.taches.models.taches import Tache
+        echeance = timezone.localdate() + datetime.timedelta(days=2)
+        reponse = self._modifier(priorite=3, echeance=_iso(echeance), projet_id=self.ventes.pk,
+                                 lock_version=self.tva.lock_version)
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        geste_id = reponse.json()['geste_id']
+        self.assertIsNotNone(geste_id)
+        tva = Tache.objects.get(pk=self.tva.pk)
+        self.assertEqual((tva.priorite, tva.echeance, tva.projet_id), (3, echeance, self.ventes.pk))
+        annule = _client(self.compte).post(f'/api/django/taches/gestes/{geste_id}/annuler/', {}, format='json')
+        self.assertEqual(annule.status_code, 200, annule.content[:300])
+        tva.refresh_from_db()
+        self.assertEqual((tva.priorite, tva.echeance, tva.projet_id), (0, None, self.admin.pk))
