@@ -70,10 +70,11 @@ def caviarder_lead_anonymise(*, company, crm_lead_id):
     corbeille (loi 09-08) ; l'entrée reste restaurable. Content type ``crm.lead`` par libellé, sans import crm."""
     if company is None or not crm_lead_id:
         return 0
-    return ElementSupprime.objects.filter(
-        company=company, content_type__app_label='crm', content_type__model='lead',
-        object_id=crm_lead_id, restaure_le__isnull=True,
-    ).update(libelle_snapshot='Lead anonymisé', donnees_snapshot={}, updated_at=timezone.now())
+    from core.models import DeletionRecord  # ASUP68 — fondation, import local (évite les cycles)
+    cible = dict(company=company, content_type__app_label='crm', content_type__model='lead', object_id=crm_lead_id)
+    DeletionRecord.objects.filter(**cible).update(label='Lead anonymisé')  # le journal d'undo fige str(lead)
+    return ElementSupprime.objects.filter(**cible).update(  # ASUP68 — entrées restaurées comprises
+        libelle_snapshot='Lead anonymisé', donnees_snapshot={}, updated_at=timezone.now())
 
 
 def _restauration_generique(element):
