@@ -171,6 +171,10 @@ const crmApi = {
   // Actions EN MASSE sur une sélection de leads (liste + kanban). Le corps
   // porte {ids, action, …paramètres} ; la règle métier vit côté serveur.
   bulkLeads: (payload) => api.post('/crm/leads/bulk/', payload),
+  // « Déléguer mes dossiers » (17/11/2026) — contrat `lead_deleguer.json` :
+  // GET = l'aperçu (dossiers / étapes ouvertes / en retard), POST = l'écriture.
+  apercuDelegation: (params) => api.get('/crm/leads/deleguer/', { params }),
+  deleguerDossiers: (payload) => api.post('/crm/leads/deleguer/', payload),
   // Export Excel (.xlsx) d'une sélection — réponse binaire (blob).
   exportLeadsXlsx: (ids) =>
     api.post('/crm/leads/export-xlsx/', { ids }, { responseType: 'blob' }),

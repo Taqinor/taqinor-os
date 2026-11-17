@@ -73,6 +73,12 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'all' })
   })
 
+  it('porte le bouton « Déléguer mes dossiers » (droit crm_reassign, testé par le bouton)', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    expect(screen.getByTestId('bouton-deleguer-dossiers')).toHaveTextContent('Déléguer mes dossiers')
+  })
+
   it('WhatsApp ouvre la modale avec le message rendu puis marque la touche au clic « Ouvrir WhatsApp »', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
     mount()
