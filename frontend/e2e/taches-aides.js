@@ -39,6 +39,29 @@ export async function jourServeur(page) {
   return (await json(await page.request.get(`${API}/aujourdhui/`), 'aujourdhui')).jour
 }
 
+/** L'état de la journée tel que le SERVEUR le rend (`aujourdhui/`) : le jour, l'objectif, le compte « faites »
+ *  (tâches faites ce jour + activités ERP closes, que `tout-effacer/` ne touche pas : jamais 0 par hypothèse) et
+ *  les tâches proposées (`propose.pour_objectif`) — les tests lisent ces nombres, ils ne les devinent pas. */
+export async function etatJournee(page) {
+  const corps = await json(await page.request.get(`${API}/aujourdhui/`), 'aujourdhui')
+  const lignes = corps.propose?.pour_objectif ?? []
+  return {
+    jour: corps.jour,
+    objectif: corps.objectif?.nb,
+    faites: corps.progression?.faites ?? 0,
+    lignes: lignes.length,
+    taches: lignes.filter((l) => l.type === 'tache').map((l) => l.id),
+  }
+}
+
+/** Le bouton de progression : « {faites} sur {objectif} faites{suite}. Détail de la journée ». */
+export const progression = (page, { faites, objectif }, suite = '') => page.getByRole('button', {
+  name: new RegExp(`^${faites} sur ${objectif} faites${suite}\\. Détail de la journée$`),
+})
+
+/** Le bouton « Garder ces N » (ou « Garder celle-ci » quand il n'en reste qu'une) de la liste proposée. */
+export const boutonGarder = (page, n) => page.getByRole('button', { name: n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci', exact: true }).first()
+
 /** Crée un projet ; rend l'objet projet (`{id, nom, …}`). */
 export async function creerProjet(page, nom, priorite = 0) {
   const corps = await json(
