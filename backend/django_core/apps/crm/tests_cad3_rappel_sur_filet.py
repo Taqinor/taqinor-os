@@ -158,8 +158,15 @@ class RappelSurFiletTests(_Base):
         from apps.crm.cadence_filet import (
             CLE_PIECES_RECUES, assurer_prochaine_etape_apres_succes)
 
+        from apps.crm.models import LeadActivity
+
         self.lead.type_installation = Lead.TypeInstallation.INDUSTRIEL
         self.lead.save(update_fields=['type_installation'])
+        # « Joint » : l'historique du client (17/11/2026 — sans lui, le filet
+        # poserait « Décider la suite » au lieu du devis).
+        LeadActivity.objects.bulk_create([LeadActivity(
+            company=self.lead.company, lead=self.lead,
+            kind=LeadActivity.Kind.NOTE, outcome='joint', body='Joint.')])
         premiere = assurer_prochaine_etape_apres_succes(
             self.lead, self.acteur, canal_touche='appel')
         self.assertEqual(premiere.cle, CLE_PIECES_RECUES)

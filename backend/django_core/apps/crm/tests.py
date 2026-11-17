@@ -670,6 +670,7 @@ class TestAssignableUsers(TestCase):
         collegue = next(
             u for u in resp.data if u['username'] == 'assign_collegue')
         self.assertEqual(collegue['poste'], 'Technicien')
+        self.assertIn('first_name', collegue)
 
     def test_reassign_owner_is_logged(self):
         from apps.crm.models import LeadActivity

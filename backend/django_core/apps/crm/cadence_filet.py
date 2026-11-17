@@ -27,6 +27,7 @@ from .cadence_config import (
     q_etape,
 )
 from .cadence_plan import (
+    _a_un_historique_client,
     _lead_premier_argument,
     _recaler_file,
     _sous_verrou_du_lead,
@@ -64,6 +65,27 @@ NOTE_RELEVE_POINT_EAU = (
 
 #: AGR530 — les gestes de VISITE : après eux, la reprise pose le devis.
 _CLES_GESTES_VISITE = (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF)
+
+
+#: Fondateur, 17/11/2026 — les marches de l'escalier « Après l'appel » qui
+#: n'existent que parce que le client a communiqué (il a répondu par message,
+#: ou demandé qu'on le rappelle).
+CLES_ESCALIER_REPONSE = (CLE_APPEL_APRES_REPONSE, CLE_MESSAGE_CRENEAU,
+                         CLE_DERNIER_APPEL, CLE_RAPPEL_CONVENU)
+
+
+def q_traces_de_reponse():
+    """Les étapes (tout statut) qui prouvent que le client a parlé : une visite
+    (il l'a acceptée) ou une marche de ``CLES_ESCALIER_REPONSE``."""
+    return q_visite() | q_etape(*CLES_ESCALIER_REPONSE)
+
+
+def client_a_deja_repondu(lead):
+    """Fondateur, 17/11/2026 — joint ou chiffré (``_a_un_historique_client``), ou
+    une étape ``q_traces_de_reponse`` déjà posée : son devis reste la suite du
+    filet. Lu en lot par la promesse (``suite_touche.LecteurParcage``)."""
+    return (_a_un_historique_client(lead)
+            or lead.relance_etapes.filter(q_traces_de_reponse()).exists())
 
 
 def _poser_releve_point_eau(lead, user):
@@ -162,6 +184,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
     if suivi is not None:
         return suivi
     # PARAM-CADENCE — l'étape à poser est une CLÉ (défaut : le devis).
+    par_defaut = not cle and not libelle and canal_touche is None
     cle = (cle or (cle_de(RelanceEtape(libelle=libelle)) if libelle else '')
            or CLE_DEVIS)
     cle_close = (cle_touche_close if cle_touche_close is not None
@@ -209,6 +232,14 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         visite = _poser_releve_point_eau(lead, user)
         if visite is not None:
             return visite
+    # Fondateur, 17/11/2026 — le filet ne réclame jamais le devis d'un client
+    # qui n'a jamais répondu (``client_a_deja_repondu``) : « Décider la suite ».
+    # Sauf suite demandée par l'appelant (clé, libellé ou canal d'une réponse),
+    # « à rappeler » (il a parlé), geste de visite, ou « Décider la suite » close.
+    if (cle == CLE_DEVIS and par_defaut and issue_touche_close != 'rappel'
+            and cle_close not in _CLES_GESTES_VISITE + (CLE_DECIDER_SUITE,)
+            and not client_a_deja_repondu(lead)):
+        cle = CLE_DECIDER_SUITE
     config = cadence_config.config_cle(lead.company, cle)
     # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale
     # sur la fenêtre des messages, un appel sur celle des appels (la pause du
