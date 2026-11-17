@@ -284,6 +284,7 @@ class PiecesRecuesRendUnMessageTests(_Base):
                 self.assertIn('STOP', texte)
                 self.assertNotIn('{', texte)
 
+
 class AppelOuvertureSuitLOrigineTests(_Base):
     """17/11/2026 — « Vous venez de remplir notre formulaire » se disait aussi AU
     TÉLÉPHONE : l'appel d'ouverture suit l'origine comme `identite`, avec les
@@ -564,4 +565,3 @@ class LeReveilJ30EnAppelLitLeScriptDAppelTests(_Base):
             self._reveil(lead, 2, 'reveil_a2', 'appel'),
             user=self.acteur)['message']
         self.assertIn('vous renseigniez sur le pompage solaire', sans)
-

@@ -636,7 +636,8 @@ class LeadIntakeActionsMixin:
             sd.param_entier_ou_vide('de', "Propriétaire actuel ; défaut : l'appelant.")],
         responses=sd.OBJ)
     @action(detail=False, methods=['get', 'post'], url_path='deleguer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('crm_reassign')])
     def deleguer(self, request):
         """17/11/2026 — « Déléguer mes dossiers » : les leads encore à travailler
         d'un responsable passent à un collègue (voir ``delegation.py``).

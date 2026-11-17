@@ -44,7 +44,7 @@ export function DelegationDialog({ open, onOpenChange, de = null, deNom = '', on
     if (!open) return undefined
     let actif = true
     crmApi.getAssignableUsers()
-      .then((r) => { if (actif) setUsers(r.data?.results ?? r.data ?? []) })
+      .then((r) => { if (actif) setUsers(Array.isArray(r.data) ? r.data : []) })
       .catch(() => { if (actif) setFromResponse(null, { fallbackField: 'vers', fallback: 'Liste des collègues indisponible pour le moment.' }) })
     return () => { actif = false }
   }, [open, setFromResponse])
