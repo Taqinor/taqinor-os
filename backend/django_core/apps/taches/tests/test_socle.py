@@ -1,6 +1,9 @@
-"""TCH4 — socle de l'app `taches` : manifeste collecté, non installable, sans base."""
+"""TCH4 — socle de l'app `taches` : manifeste collecté, non installable, sans base ; TCH5 — `taches_voir`
+porté par aucun rôle système (catalogue, et en base après `init_roles`)."""
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.test import SimpleTestCase, TestCase
 
 from core.modules import collect_manifests
 
@@ -45,3 +48,22 @@ class DroitTachesVoirTests(SimpleTestCase):
         porteurs = [nom for nom, permissions in CANONICAL_SYSTEM_ROLES
                     if 'taches_voir' in permissions]
         self.assertEqual(porteurs, [])
+
+
+class InitRolesSansTachesVoirTests(TestCase):
+    """Mineur 2 de la revue F1 — après `init_roles` (rôles système semés, comptes hérités et
+    superutilisateur rattachés), AUCUNE ligne `Role` en base ne porte `taches_voir`."""
+
+    def test_aucun_role_en_base_ne_le_porte(self):
+        from apps.roles.models import Role
+        from authentication.models import Company
+        societe = Company.objects.create(nom='Init rôles tâches', slug='taches-init-roles')
+        utilisateurs = get_user_model().objects
+        for palier in ('admin', 'responsable', 'normal'):
+            utilisateurs.create_user(username=f'{palier}@taches-init-roles', password=None,
+                                     company=societe, role_legacy=palier)
+        utilisateurs.create_superuser(username='su@taches-init-roles', password=None, company=societe)
+        call_command('init_roles', verbosity=0)
+        roles = list(Role.objects.filter(company=societe))
+        self.assertTrue(roles, 'init_roles n\'a semé aucun rôle')
+        self.assertEqual([r.nom for r in roles if 'taches_voir' in (r.permissions or [])], [])
