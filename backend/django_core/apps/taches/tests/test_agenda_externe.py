@@ -173,6 +173,158 @@ class GardeDeLectureTests(SimpleTestCase):
         self.assertEqual((connexion.host, connexion.ip, connexion.port), ('agenda.example', PUBLIQUE, 443))
 
 
+class Horloge:
+    """Horloge simulée (secondes), avancée par le faux transport et les tests."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+class SocketGoutte:
+    """Faux socket TLS : rend chaque segment (octets, secondes par octet) UN octet par `recv_into`,
+    en avançant l'horloge ; respecte `settimeout` comme un vrai socket (un octet plus lent que le
+    délai d'appel → l'horloge avance du délai et `socket.timeout`)."""
+
+    def __init__(self, horloge, *segments):
+        self.horloge, self.timeout = horloge, None
+        self.octets = [(octet, pas) for donnees, pas in segments for octet in donnees]
+
+    def settimeout(self, valeur):
+        self.timeout = valeur
+
+    def sendall(self, donnees, *args):
+        pass
+
+    def recv_into(self, tampon):
+        if not self.octets:
+            return 0
+        octet, pas = self.octets[0]
+        if self.timeout is not None and pas > self.timeout:
+            self.horloge.t += self.timeout
+            raise socket.timeout('lent')
+        self.horloge.t += pas
+        self.octets.pop(0)
+        tampon[0] = octet
+        return 1
+
+    def close(self):
+        pass
+
+
+class FauxCache:
+    """Cache en mémoire dont l'expiration suit l'horloge simulée."""
+
+    def __init__(self, horloge):
+        self.horloge, self.valeurs = horloge, {}
+
+    def get(self, cle):
+        valeur, expire = self.valeurs.get(cle, (None, 0))
+        return valeur if self.horloge() < expire else None
+
+    def set(self, cle, valeur, duree):
+        self.valeurs[cle] = (valeur, self.horloge() + duree)
+
+    def delete(self, cle):
+        self.valeurs.pop(cle, None)
+
+
+class EcheanceAbsolueTests(SimpleTestCase):
+    """Revue F2 #5/#6 : le délai total d'une lecture est une ÉCHÉANCE (pas un délai par `recv`), un
+    écran borne ses 3 agendas ensemble, et un échec est retenu 15 min — sans réseau ni base."""
+
+    DU, AU = datetime.date(2026, 11, 16), datetime.date(2026, 11, 18)
+
+    def setUp(self):
+        self.h = Horloge()
+        self.sockets, self.etats = [], []
+        self.cache = FauxCache(self.h)
+        reseau = Reseau({'agenda.example': [PUBLIQUE]}, [])
+        patchs = [mock.patch.object(lecteur, 'horloge', self.h),
+                  mock.patch.object(lecteur, 'cache', self.cache),
+                  mock.patch.object(lecteur, '_connecter', self.connecter),
+                  mock.patch.object(lecteur, '_poser_etat', lambda agenda, etat: self.etats.append((agenda.pk, etat))),
+                  mock.patch.object(lecteur.socket, 'getaddrinfo', reseau.getaddrinfo)]
+        for p in patchs:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def connecter(self, ip, port, hote, contexte, fin):
+        return self.sockets.pop(0)
+
+    def agenda(self, pk):
+        from apps.taches.models.agenda import AgendaExterne
+        return AgendaExterne(pk=pk, company_id=1, proprietaire_id=1, url=f'https://agenda.example/{pk}.ics',
+                             hote='agenda.example', libelle=f'A{pk}', actif=True)
+
+    def test_en_tetes_au_goutte_a_goutte_abandonnes_dans_le_delai_total(self):
+        # Un octet toutes les 9 s : sous le délai PAR appel (10 s), la lecture ne finirait jamais.
+        self.sockets.append(SocketGoutte(self.h, (b'HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nBEGIN', 9)))
+        debut = self.h.t
+        with self.assertRaises(lecteur.Echec) as refus:
+            lecteur.telecharger('https://agenda.example/a.ics')
+        self.assertEqual(refus.exception.etat, Etat.DELAI)
+        self.assertLessEqual(self.h.t - debut, lecteur.DELAI_MAX + 1e-6)
+
+    def test_redirection_puis_corps_lent_bornes_ensemble(self):
+        saut = b'HTTP/1.1 302 Found\r\nLocation: /b.ics\r\nContent-Length: 0\r\n\r\n'
+        entetes = f'HTTP/1.1 200 OK\r\nContent-Length: {len(ICS.encode())}\r\n\r\n'.encode()
+        self.sockets += [SocketGoutte(self.h, (saut, 0.05)),
+                         SocketGoutte(self.h, (entetes, 0), (ICS.encode(), 2))]
+        debut = self.h.t
+        with self.assertRaises(lecteur.Echec) as refus:
+            lecteur.telecharger('https://agenda.example/a.ics')
+        self.assertEqual(refus.exception.etat, Etat.DELAI)
+        self.assertEqual(self.sockets, [])  # les deux sauts ont été faits
+        self.assertLessEqual(self.h.t - debut, lecteur.DELAI_MAX + 1e-6)
+
+    def test_lecture_rapide_toujours_lue(self):
+        corps = ICS.encode()
+        self.sockets.append(SocketGoutte(self.h, (f'HTTP/1.1 200 OK\r\nContent-Length: {len(corps)}\r\n\r\n'
+                                                  .encode() + corps, 0.001)))
+        self.assertIn('BEGIN:VCALENDAR', lecteur.telecharger('https://agenda.example/a.ics'))
+
+    def test_echec_retenu_15_minutes_sans_seconde_lecture(self):
+        agenda = self.agenda(1)
+        with mock.patch.object(lecteur, 'telecharger', side_effect=lecteur.Echec(Etat.DELAI)) as lecture:
+            self.assertEqual(lecteur.lire_agenda_externe(agenda, self.DU, self.AU), ())
+            self.h.t += lecteur.CACHE_SECONDES - 1
+            self.assertEqual(lecteur.lire_agenda_externe(agenda, self.DU, self.AU), ())
+            self.assertEqual(lecture.call_count, 1)
+            self.assertEqual(self.etats, [(1, Etat.DELAI)])  # aucune écriture en base pendant l'échec retenu
+            self.h.t += 2
+            lecteur.lire_agenda_externe(agenda, self.DU, self.AU)
+            self.assertEqual(lecture.call_count, 2)
+            lecteur.lire_agenda_externe(agenda, self.DU, self.AU, rafraichir=True)  # Réessayer
+            self.assertEqual(lecture.call_count, 3)
+
+    def test_echec_remplace_les_anciens_rendez_vous(self):
+        agenda = self.agenda(1)
+        with mock.patch.object(lecteur, 'telecharger', return_value=ICS):
+            self.assertEqual(len(lecteur.lire_agenda_externe(agenda, self.DU, self.AU)), 1)
+        with mock.patch.object(lecteur, 'telecharger', side_effect=lecteur.Echec(Etat.INJOIGNABLE)):
+            self.assertEqual(lecteur.lire_agenda_externe(agenda, self.DU, self.AU, rafraichir=True), ())
+            self.assertEqual(lecteur.lire_agenda_externe(agenda, self.DU, self.AU), ())
+
+    def test_trois_agendas_lents_temps_total_borne(self):
+        from types import SimpleNamespace
+
+        from apps.taches.selectors.journee import rendez_vous_pour
+        lent = b'HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nBEGIN'
+        self.sockets += [SocketGoutte(self.h, (lent, 9)) for _ in range(3)]
+        agendas = [self.agenda(pk) for pk in (1, 2, 3)]
+        debut = self.h.t
+        with mock.patch.object(lecteur, 'agendas_actifs', return_value=agendas):
+            evenements, libelles = rendez_vous_pour(SimpleNamespace(company_id=1, pk=1), self.DU, self.AU)
+        self.assertEqual(evenements, ())
+        self.assertEqual(set(libelles), {1, 2, 3})
+        self.assertLessEqual(self.h.t - debut, lecteur.DELAI_ECRAN + 1e-6)
+        self.assertEqual(len(self.sockets), 2)  # seul le 1er a été lu ; les autres attendent la requête suivante
+        self.assertEqual(self.etats, [(1, Etat.DELAI)])
+
+
 class RoutesAgendasExternesTests(TestCase):
     """Les 5 routes `agendas-externes/` : ≤ 3 par compte, URL jamais rendue, état lisible."""
 
@@ -250,7 +402,7 @@ class RoutesAgendasExternesTests(TestCase):
         rendu = self.client_.post(f'{self.URL}{agenda.pk}/rafraichir/').json()
         self.assertEqual(rendu['dernier_etat'], 'delai')
 
-    def test_cache_15_minutes_et_echec_qui_l_efface(self):
+    def test_cache_15_minutes_et_echec_retenu(self):
         agenda = fabriques.agenda_externe(self.u)
         du, au = datetime.date(2026, 11, 16), datetime.date(2026, 11, 18)
         premiers = lecteur.lire_agenda_externe(agenda, du, au)
@@ -259,7 +411,16 @@ class RoutesAgendasExternesTests(TestCase):
         self.assertEqual([r.titre for r in premiers], ['Réunion banque'])
         self.telecharger.side_effect = lecteur.Echec(Etat.INJOIGNABLE)
         self.assertEqual(lecteur.lire_agenda_externe(agenda, du, au, rafraichir=True), ())
-        self.assertIsNone(cache.get(lecteur.cle_cache(agenda)))
+        # L'échec REMPLACE le texte (jamais d'anciens rendez-vous) et n'est pas relu avant 15 min.
+        self.assertEqual(cache.get(lecteur.cle_cache(agenda)), {lecteur.CLE_ECHEC: Etat.INJOIGNABLE})
+        self.assertEqual(lecteur.lire_agenda_externe(agenda, du, au), ())
+        self.assertEqual(self.telecharger.call_count, 2)
+        agenda.refresh_from_db()
+        self.assertEqual(agenda.dernier_etat, Etat.INJOIGNABLE)
+        # Réessayer (rafraichir/) relit aussitôt.
+        self.telecharger.side_effect = None
+        self.assertEqual(len(lecteur.lire_agenda_externe(agenda, du, au, rafraichir=True)), 1)
+        self.assertEqual(self.telecharger.call_count, 3)
 
     def test_url_jamais_journalisee(self):
         agenda = fabriques.agenda_externe(self.u, url='https://agenda.example/jeton-tres-secret.ics')

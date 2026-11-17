@@ -761,6 +761,38 @@ class PlanifierJourneeTests(_Base):
         self.assertIsNone(a.jour_prevu)
         self.assertFalse(PlanJour.objects.filter(proprietaire=self.u, jour=J).exists())
 
+    def test_annuler_le_plan_garde_ce_que_les_gestes_suivants_ont_pose(self):
+        """Revue F2 #3 : plan gardé (G1) → ★ sur une 4e tâche (G2) → bilan (G3) → annuler G1 : le plan,
+        la ligne de G2 et le bilan restent ; la réponse dit le conflit sur le plan."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services.gestes import annuler_geste
+        gardee, quatrieme = self.tache(), self.tache(jour_prevu=J)
+        g1 = services.planifier_express(self.u, J, maintenant_a(9), lignes=[{'type': 'tache', 'id': gardee.pk}])
+        services.marquer_essentielle(self.u, quatrieme.pk, True, maintenant_a(11))
+        services.cloturer(self.u, J, maintenant_a(18), reflexion='Bonne journée')
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        lignes_avant = set(plan.ligneplanjour_set.values_list('tache_id', 'essentielle'))
+        rendu = annuler_geste(self.u, g1['geste_id'])
+        self.assertIn({'objet': 'plan_jour', 'id': plan.pk, 'raison': 'modifiee_depuis'}, rendu['conflits'])
+        plan.refresh_from_db()
+        self.assertIsNotNone(plan.planifie_le)
+        self.assertIsNotNone(plan.cloture_le)
+        self.assertEqual(plan.reflexion, 'Bonne journée')
+        self.assertEqual(set(plan.ligneplanjour_set.values_list('tache_id', 'essentielle')), lignes_avant)
+        self.assertIn((quatrieme.pk, True), lignes_avant)
+
+    def test_annuler_le_plan_garde_les_compteurs_de_la_nuit(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services.gestes import annuler_geste
+        geste_id = self.poster(self.corps(self.tache()))['geste_id']
+        PlanJour.objects.filter(proprietaire=self.u, jour=J).update(statut_jour='evalue', compte_rythme=4)
+        rendu = annuler_geste(self.u, geste_id)
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        self.assertEqual((plan.statut_jour, plan.compte_rythme), ('evalue', 4))
+        self.assertEqual([c['objet'] for c in rendu['conflits']], ['plan_jour'])
+        self.assertEqual(plan.ligneplanjour_set.count(), 1)
+
 
 class EssentielTests(_Base):
     """POST journee/essentiel/ (★) : ligne essentielle du plan du jour, 3 au plus."""

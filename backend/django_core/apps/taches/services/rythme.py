@@ -10,6 +10,7 @@ champs changés et enregistre le geste annulable (reference/donnees.md §4).
   dérive, constats, révélation `revue`, cartes expirées, push ignorés, pauses (TCH70).
 """
 import datetime
+import logging
 import re
 from dataclasses import fields, replace
 from decimal import Decimal
@@ -64,6 +65,8 @@ from apps.taches.services.gestes import (
     op_suppression_dure,
 )
 from apps.taches.services.planification import planifier
+
+logger = logging.getLogger(__name__)
 
 VALEUR_INCONNUE = 'Valeur inconnue.'
 #: Extras de l'`EtatRythme` calculés ici (pas des colonnes de `ReglagesRythme`).
@@ -1078,4 +1081,11 @@ def etapes_nocturnes(company_id, jour):
     lignes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
               .select_related('proprietaire').order_by('pk'))
     for reglages in lignes:
-        _nuit_du_compte(reglages, jour)
+        # Revue F2 #2 : un compte en échec (savepoint défait) n'arrête pas les autres ; journal sans donnée
+        # personnelle (id du compte et classe de l'erreur).
+        try:
+            with transaction.atomic():
+                _nuit_du_compte(reglages, jour)
+        except Exception as erreur:  # noqa: BLE001
+            logger.error('taches.nocturne : rythme en échec pour le compte %s (%s)',
+                         reglages.proprietaire_id, type(erreur).__name__)

@@ -573,13 +573,15 @@ def touche_le_jour(rdv, jour):
 def rendez_vous_pour(user, du, au):
     """(rendez-vous de [du, au] dans l'ordre de début, {agenda_id: libellé}) des agendas ACTIFS de
     `user`, lus par `agenda_externe` (texte en cache 15 min, index des agendas en cache : 0 requête
-    de plus une fois le cache chaud). Un agenda en échec n'apporte rien (son état est dit ailleurs)."""
+    de plus une fois le cache chaud). Un agenda en échec n'apporte rien (son état est dit ailleurs).
+    Tous les agendas partagent UNE échéance réseau (`DELAI_ECRAN`) : 3 agendas lents ne coûtent pas 30 s."""
     from apps.taches import agenda_externe
     agendas = agenda_externe.agendas_actifs(user)
     evenements = []
+    fin = agenda_externe.horloge() + agenda_externe.DELAI_ECRAN
     for agenda in agendas:
         try:
-            evenements.extend(agenda_externe.lire_agenda_externe(agenda, du, au))
+            evenements.extend(agenda_externe.lire_agenda_externe(agenda, du, au, fin=fin))
         except Exception:  # noqa: BLE001 — un agenda illisible ne casse jamais la journée
             logger.warning('taches : agenda externe %s illisible', agenda.pk, exc_info=True)
     libelles = {agenda.pk: agenda.libelle or agenda.hote for agenda in agendas}

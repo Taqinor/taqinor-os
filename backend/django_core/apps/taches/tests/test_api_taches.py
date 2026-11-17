@@ -138,6 +138,16 @@ class CreationTachesTests(BaseApi):
         self.assertEqual(champs(reponse.json()), {'titre': [TITRE_VIDE]})
         self.assertEqual(Tache.objects.count(), 0)
 
+    def test_une_recurrence_invalide_est_refusee_sous_le_champ(self):
+        """Revue F2 #8 : `jour_du_mois: 0` levait `ValueError` au calcul de l'occurrence (500)."""
+        for regle, champ in (({'frequence': 'mensuel', 'jour_du_mois': 0}, 'jour_du_mois'),
+                             ({'frequence': 'quotidien', 'intervalle': 'x'}, 'intervalle')):
+            with self.subTest(regle=regle):
+                reponse = self._post('taches/', {'titre': 'Payer le loyer', 'recurrence': regle})
+                self.assertEqual((reponse.status_code, champs(reponse.json())),
+                                 (400, {'recurrence': {champ: ['Valeur inconnue.']}}))
+        self.assertEqual((Tache.objects.count(), RegleRecurrence.objects.count()), (0, 0))
+
     def test_un_rejeu_du_meme_client_id_rend_la_tache_deja_creee(self):
         corps = {'titre': 'Appeler Karim', 'client_id': 'abc'}
         premier = self._post('taches/', corps)

@@ -327,6 +327,10 @@ def _regle_neuve(ctx, spec, jour):
     mode = spec.get('mode') or ModeRecurrence.CALENDRIER
     if frequence not in Frequence.values or mode not in ModeRecurrence.values:
         raise serializers.ValidationError({'recurrence': ['Valeur inconnue.']})
+    # Revue F2 #8 : revérifiée comme au PATCH (400 sous le champ, jamais un 500 au calcul de l'occurrence) ;
+    # import local, `services.taches` important ce module. `None` = la valeur par défaut, comme ci-dessous.
+    from apps.taches.services.taches import _valeurs_regle
+    _valeurs_regle({champ: valeur for champ, valeur in spec.items() if valeur is not None}, 'recurrence')
     debut = _date(spec.get('date_debut'), 'recurrence') or jour or ctx.aujourdhui
     return RegleRecurrence.objects.create(
         company_id=ctx.user.company_id, proprietaire=ctx.user, frequence=frequence,

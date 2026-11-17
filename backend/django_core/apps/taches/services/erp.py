@@ -12,6 +12,8 @@
 Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`) ; les suggestions
 arrivent avec TCH71-TCH72.
 """
+import logging
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
@@ -27,6 +29,8 @@ from apps.taches.selectors.liens import libelle_de_cible
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.gestes import enregistrer_geste
 from core.conflit_etat import ConflitEtat
+
+logger = logging.getLogger(__name__)
 
 #: Raisons d'un refus de conversion (reference/api.md §4, textes.md « Refus de conversion »).
 INTROUVABLE = 'introuvable'
@@ -194,13 +198,27 @@ def reverifier_liens(company_id, jour, *, maintenant=None):
                              object_id__isnull=False)
         .exclude(lien_etat=LienEtat.EFFACE)
         .select_related('content_type', 'proprietaire', 'proprietaire__company'))
-    verdicts = {}
+    verdicts, revues = {}, []
     for tache in taches:
         cle = (tache.proprietaire_id, tache.content_type_id, tache.object_id)
         if cle not in verdicts:
-            cible = f'{tache.content_type.app_label}.{tache.content_type.model}'
-            verdicts[cle] = _verdict(tache.proprietaire, cible, tache.object_id)
+            verdicts[cle] = _verdict_isole(tache)
+        if verdicts[cle] is None:
+            continue  # revue F2 #2 : ce lien reste tel quel, les autres comptes sont revérifiés
         tache.lien_etat, tache.lien_libelle = verdicts[cle]
         tache.lien_verifie_le = maintenant
-    Tache.objects.bulk_update(taches, ['lien_etat', 'lien_libelle', 'lien_verifie_le'], batch_size=500)
-    return len(taches)
+        revues.append(tache)
+    Tache.objects.bulk_update(revues, ['lien_etat', 'lien_libelle', 'lien_verifie_le'], batch_size=500)
+    return len(revues)
+
+
+def _verdict_isole(tache):
+    """`_verdict` d'une tâche, ou `None` s'il lève (journal sans donnée personnelle : ids et classe)."""
+    cible = f'{tache.content_type.app_label}.{tache.content_type.model}'
+    try:
+        with transaction.atomic():
+            return _verdict(tache.proprietaire, cible, tache.object_id)
+    except Exception as erreur:  # noqa: BLE001 — un lien illisible n'arrête pas la nuit des autres comptes
+        logger.error('taches.nocturne : lien de la tâche %s (compte %s) non revérifié (%s)',
+                     tache.pk, tache.proprietaire_id, type(erreur).__name__)
+        return None
