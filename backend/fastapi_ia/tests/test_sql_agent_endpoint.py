@@ -434,6 +434,33 @@ class RelevantTableSelectionTests(unittest.TestCase):
         self.assertLessEqual(len(tables), 5)
         self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
 
+    def test_table_absente_retiree_des_tables_candidates(self):
+        """AIC102 — base SANS `ia_ocr_document` (RUN_DB_DDL non pose) : la
+        table absente est retiree des tables candidates (jamais « not found ») ;
+        une question OCR retombe sur les tables presentes ; table presente =>
+        comportement inchange."""
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.pool import StaticPool
+        from app.core import database as _database
+        from app.services.sql_agent_service import SQLAgentService
+        engine = create_engine("sqlite://", poolclass=StaticPool,
+                               connect_args={"check_same_thread": False})
+        with engine.begin() as conn:
+            for table in ("crm_client", "ventes_facture"):
+                conn.execute(text(f"CREATE TABLE {table} (id INTEGER, company_id INTEGER)"))
+        service = SQLAgentService()
+
+        def tables(candidates):
+            with mock.patch.object(_database, "create_sql_agent_engine", lambda: engine), \
+                    mock.patch.object(service, "_get_relevant_tables", lambda q: candidates):
+                return sorted(service._base_sql("question", 7).get_usable_table_names())
+        self.assertEqual(tables(["ventes_facture", "ia_ocr_document"]), ["ventes_facture"])
+        self.assertEqual(tables(["ia_ocr_document"]), ["crm_client", "ventes_facture"])
+        self.assertEqual(tables([]), ["crm_client", "ventes_facture"])
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE ia_ocr_document (id INTEGER, company_id INTEGER)"))
+        self.assertEqual(tables(["ia_ocr_document"]), ["ia_ocr_document"])
+
 
 def _llm_simule(reponses):
     """LLM simule (frontiere externe) : rend `reponses` (AIMessage, appels
