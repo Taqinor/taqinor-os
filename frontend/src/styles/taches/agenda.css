@@ -8,8 +8,9 @@
   --ag-repos: color-mix(in srgb, var(--muted) 50%, var(--card));
   --ag-cible: var(--tch-selection);
 }
-.tch .ag-vues { display: flex; align-items: center; gap: 8px; margin: 6px var(--tch-gouttiere) 0; }
-.tch .ag-vues .segmente { flex: 1 1 auto; max-width: 360px; margin: 0; }
+.tch .ag-vues { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px var(--tch-gouttiere) 0; }
+/* base 280 px : les 4 segments gardent chacun ≥ 44 px de large ; « Planifier ma semaine » passe à la ligne sur iPhone */
+.tch .ag-vues .segmente { flex: 1 1 280px; max-width: 360px; margin: 0; min-width: 0; }
 .tch .ag-nav { display: flex; align-items: center; gap: 4px; margin: 2px 4px 0; min-height: 44px; }
 .tch .ag-nav b { flex: 1; text-align: center; font-size: 1rem; font-weight: 650; }
 .tch .bande-jours [aria-current="date"] small { color: var(--tch-accent); font-weight: 650; }

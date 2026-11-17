@@ -90,17 +90,19 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvr
         className={classes}
         disabled={passe}
         aria-current={jour.jour === aujourdhui ? 'date' : undefined}
-        aria-label={choisie && !passe ? `${nom} · ${texte} · placer ${choisie.titre}` : `${nom} · ${texte}`}
         onClick={poser}
         onDragOver={(e) => { if (!passe) e.preventDefault() }}
         onDrop={(e) => { e.preventDefault(); if (!passe && choisie) onPoser(choisie, jour.jour) }}
       >
-        <span className="j">{nom}</span>
-        <span className="n">{texte}</span>
+        {/* Le nom accessible est porté par `.sr` ; le texte visible est masqué au lecteur d'écran : le nom
+            ne peut donc pas contredire ce qui se voit (axe `label-content-name-mismatch`). */}
+        <span className="sr">{choisie && !passe ? `${nom} · ${texte} · placer ${choisie.titre}` : `${nom} · ${texte}`}</span>
+        <span className="j" aria-hidden="true">{nom}</span>
+        <span className="n" aria-hidden="true">{texte}</span>
         {charge ? <BarreCharge {...charge} /> : null}
         <CartesDuJour jour={jour} />
         {posee ? (
-          <span className="ag-pj-ajout" data-p={posee.projet?.couleur || undefined}>
+          <span className="ag-pj-ajout" aria-hidden="true" data-p={posee.projet?.couleur || undefined}>
             <i className="point" aria-hidden="true" />{posee.titre}
           </span>
         ) : null}
