@@ -815,6 +815,26 @@ describe('Groupes « Pas joint » et « Plus tard… » — première réponse d
     expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Choisissez une réponse.')
   })
 
+  it('17/11/2026 — la réponse choisie survit à un nouveau filtrage (retenue par son identifiant)', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    const sans = { ...ETAPE_APPEL, visite_prevue_le: null }
+    const { rerender } = render(
+      <RelanceEtapeRow etape={sans} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Client refuse' }))
+    // Une visite est planifiée pendant que le panneau est ouvert : « Visite acceptée »
+    // disparaît et les positions se décalent — le choix, lui, ne bouge pas.
+    rerender(
+      <RelanceEtapeRow etape={{ ...sans, visite_prevue_le: '2099-01-05' }} onFait={onFait}
+        onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Visite acceptée' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, { outcome: 'refuse' }))
+  })
+
   it('choisir une pastille ordinaire referme la seconde rangée', () => {
     ouvrirFait(ETAPE_APPEL)
     fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))

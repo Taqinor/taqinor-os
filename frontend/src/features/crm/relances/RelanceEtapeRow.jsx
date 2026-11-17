@@ -468,7 +468,11 @@ export default function RelanceEtapeRow({
   // '' | 'sauter' | 'fait' | 'reporter' — un seul panneau ouvert à la fois.
   const [panel, setPanel] = useState(brouillon ? 'fait' : '')
   const [note, setNote] = useState(brouillon?.note ?? '')
-  const [reponseIdx, setReponseIdx] = useState(null)
+  // 17/11/2026 — la réponse choisie est retenue par son IDENTIFIANT (le modèle
+  // de la table), jamais par sa position : un nouveau filtrage de la liste
+  // panneau ouvert (visite planifiée, touche relue…) décalait les positions et
+  // pouvait faire « choisir » une autre réponse que celle cliquée.
+  const [reponseId, setReponseId] = useState(null)
   const [rappelLe, setRappelLe] = useState('')
   const [rappelHeure, setRappelHeure] = useState('')
   const [reportDate, setReportDate] = useState('')
@@ -514,7 +518,7 @@ export default function RelanceEtapeRow({
   const [erreurRaison, setErreurRaison] = useState('')
   // Le GROUPE de réponses déplié (« Pas joint », « Plus tard… », « Autre réponse »)
   // : sa clé, '' quand aucune seconde rangée n'est ouverte. Présentation seule —
-  // la réponse choisie reste `reponseIdx`, avec sa clé serveur.
+  // la réponse choisie reste `reponseId`, avec sa clé serveur.
   const [groupeOuvert, setGroupeOuvert] = useState('')
   // RLC3 — la confirmation explicite « marquer faite sans avoir ouvert le
   // message ? ». Jamais un blocage : la case est TOUJOURS disponible (la
@@ -597,7 +601,7 @@ export default function RelanceEtapeRow({
 
   const fermer = () => {
     setPanel('')
-    setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
+    setNote(''); setReponseId(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
     setSansOuverture(false); setConfirmationCochee(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif(''); setMotifPerte('')
@@ -642,8 +646,8 @@ export default function RelanceEtapeRow({
   const estTacheLibre = estTache(type)
   const estTacheSansAppel = estTacheSansAppel_(type)
   const reponsesDisponibles = reponsesDeLEtape(type, etape)
-  const reponseChoisie = reponseIdx == null
-    ? null : reponsesDisponibles[reponseIdx]
+  const reponseChoisie = reponseId == null
+    ? null : (reponsesDisponibles.find((r) => r.id === reponseId) ?? null)
   // Les réponses telles que l'écran les PROPOSE : pastilles ordinaires, groupes
   // (« Pas joint », « Plus tard… ») et « Autre réponse » (`parcours.js`).
   const affichageReponses = organiserReponses(reponsesDisponibles)
@@ -651,9 +655,10 @@ export default function RelanceEtapeRow({
     (it) => it.genre !== 'reponse' && it.cle === groupeOuvert) ?? null
   // CAD10/CAD11 — choisir une réponse charge les motifs quand elle en demande.
   const choisirReponse = (idx, basculer = true) => {
-    setReponseIdx((cur) => (basculer && cur === idx ? null : idx)); setErreurOutcome('')
-    setErreurMotif(''); setErreurRaison(''); setConfirmationCochee(false)
     const r = reponsesDisponibles[idx]
+    if (!r) return
+    setReponseId((cur) => (basculer && cur === r.id ? null : r.id)); setErreurOutcome('')
+    setErreurMotif(''); setErreurRaison(''); setConfirmationCochee(false)
     if (r && (r.outcome === 'refuse' || r.junk || r.motif_perte)) chargerMotifs()
   }
   // Un groupe se déplie avec son PREMIER membre déjà choisi (Confirmer marche
@@ -661,12 +666,12 @@ export default function RelanceEtapeRow({
   // groupe le referme et vide le choix.
   const cliquerGroupe = (item) => {
     if (groupeOuvert === item.cle) {
-      setGroupeOuvert(''); setReponseIdx(null); setErreurOutcome('')
+      setGroupeOuvert(''); setReponseId(null); setErreurOutcome('')
       return
     }
     setGroupeOuvert(item.cle)
     if (item.genre === 'autre') {
-      setReponseIdx(null); setErreurOutcome(''); setErreurMotif(''); setErreurRaison('')
+      setReponseId(null); setErreurOutcome(''); setErreurMotif(''); setErreurRaison('')
       return
     }
     choisirReponse(item.membres[0].idx, false)
@@ -1361,7 +1366,7 @@ export default function RelanceEtapeRow({
             {affichageReponses.map((item) => (item.genre === 'reponse' ? (
               <Button
                 key={`reponse-${item.idx}`} type="button" size="sm"
-                variant={reponseIdx === item.idx ? 'default' : 'outline'}
+                variant={reponseId === item.reponse.id ? 'default' : 'outline'}
                 onClick={() => { setGroupeOuvert(''); choisirReponse(item.idx) }}
               >
                 {item.reponse.label}
@@ -1392,8 +1397,8 @@ export default function RelanceEtapeRow({
                 {groupeActif.membres.map(({ idx, reponse }) => (
                   <Button
                     key={`membre-${idx}`} type="button" size="sm"
-                    aria-pressed={reponseIdx === idx}
-                    variant={reponseIdx === idx ? 'default' : 'outline'}
+                    aria-pressed={reponseId === reponse.id}
+                    variant={reponseId === reponse.id ? 'default' : 'outline'}
                     onClick={() => choisirReponse(idx, false)}
                   >
                     {reponse.label}
