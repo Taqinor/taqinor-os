@@ -17,6 +17,7 @@ from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers
 
 from apps.taches.choix import StatutTache
+from apps.taches.confidentialite import ASSISTANT, ECRAN, nom_pour
 from apps.taches.saisie.analyseur import analyser
 from apps.taches.saisie.collage import (
     MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, decouper_collage, erreurs_limites, marquer_doublons,
@@ -26,7 +27,8 @@ from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, projets_de, sections_de, taches_de,
 )
 from apps.taches.serializers.formes import (
-    TacheEcriteSerializer, TacheSerializer, charger_taches, contexte, projet_court, tache_ecrite,
+    ItemSerializer, ProjetSerializer, TacheEcriteSerializer, TacheSerializer, charger_taches, contexte,
+    projet_court, tache_ecrite,
 )
 from apps.taches.services.taches import est_ouvre_de, verifier_lien
 from core.conflit_etat import ConflitEtat
@@ -466,3 +468,40 @@ def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, p
         projet_cree=projet_cree, rappel=rappel, question_titres=question_titres,
         avertissements=avertissements, geste_id=geste.pk if geste is not None else None)
     return TacheEcriteSerializer(instance, context=contexte(assistant=assistant)).data
+
+
+# --- Recherche, supprimées récemment, derniers gestes ------------------------------------------------
+
+_INSTANT = serializers.DateTimeField()
+
+
+def reponse_recherche(projets, taches, *, assistant=False):
+    """Forme de `recherche.json` : `projets` (id, nom, couleur, statut, priorité) et `taches` (ITEM)."""
+    usage = ASSISTANT if assistant else ECRAN
+    return {
+        'projets': [{'id': p.pk, 'nom': nom_pour(p, usage), 'couleur': p.couleur, 'statut': p.statut,
+                     'priorite': p.priorite} for p in projets],
+        'taches': ItemSerializer(taches, many=True, context=contexte(assistant=assistant)).data,
+    }
+
+
+def reponse_supprimees(projets, compteurs, taches, *, assistant=False):
+    """Forme de `supprimees.json` : un projet = une ligne (`projet`, `taches_nb`, `deleted_at`), puis les
+    tâches supprimées seules (`item`, `deleted_at`). Les compteurs du projet sont CALCULÉS de ses tâches."""
+    calculs = {('projet', p.pk): {'compteurs': {'ouvertes': compteurs[p.pk]['ouvertes'],
+                                                'faites': compteurs[p.pk]['faites']}} for p in projets}
+    ctx = contexte(assistant=assistant, calculs=calculs)
+    return {
+        'projets': [{'projet': ProjetSerializer(p, context=ctx).data, 'taches_nb': compteurs[p.pk]['total'],
+                     'deleted_at': _INSTANT.to_representation(p.deleted_at)} for p in projets],
+        'taches': [{'item': ItemSerializer(t, context=ctx).data,
+                    'deleted_at': _INSTANT.to_representation(t.deleted_at)} for t in taches],
+    }
+
+
+def reponse_gestes(gestes):
+    """Forme de `gestes.json` : `{"results": […]}` ; `annulable` tant que le geste n'est pas annulé."""
+    return {'results': [{'id': g.pk, 'type': g.type, 'message': g.message,
+                         'created_at': _INSTANT.to_representation(g.created_at),
+                         'annule_le': _INSTANT.to_representation(g.annule_le) if g.annule_le else None,
+                         'annulable': g.annule_le is None} for g in gestes]}

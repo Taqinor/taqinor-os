@@ -15,7 +15,8 @@ from dataclasses import dataclass
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.db.models import F, Max, Q
+from django.db.models import Case, Count, F, IntegerField, Max, Q, Value, When
+from django.db.models.functions import Lower
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
@@ -24,15 +25,18 @@ from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
 from apps.taches.confidentialite import ECRAN, nom_pour
+from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
 from apps.taches.moteur.gabarits import format_heure, format_jour
 from apps.taches.moteur.recurrence import prochaine_occurrence
 from apps.taches.selectors.base import (
-    TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, jours_travailles_de, projets_de, rappels_de, sections_de,
-    taches_de,
+    TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, gestes_de, jours_travailles_de, projets_de, rappels_de,
+    sections_de, taches_de,
 )
+from apps.taches.selectors.base import _normalise as normalise_sql
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
+from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
@@ -1242,3 +1246,89 @@ def reordonner_element(user, pk, avant_id=None, apres_id=None):
         for rang, identifiant in enumerate(ids, start=1):
             par_id[identifiant].rang = rang * PAS_RANG
         ElementChecklist.objects.bulk_update(list(par_id.values()), ['rang'])
+
+
+# --- Recherche, supprimées récemment, derniers gestes ------------------------------------------------
+
+LIMITE_RECHERCHE_DEFAUT = 25
+LIMITE_RECHERCHE_MAX = 100
+FENETRE_CORBEILLE = datetime.timedelta(days=30)
+FENETRE_GESTES = datetime.timedelta(days=7)
+PLAFOND_LISTE = 200
+
+
+def _limite(params):
+    brut = params.get('limite')
+    if brut in (None, ''):
+        return LIMITE_RECHERCHE_DEFAUT
+    try:
+        limite = int(brut)
+    except (TypeError, ValueError):
+        limite = 0
+    if not 1 <= limite <= LIMITE_RECHERCHE_MAX:
+        raise serializers.ValidationError({'limite': [MESSAGE_VALEUR_INCONNUE]})
+    return limite
+
+
+def _projets_trouves(user, termes, limite, assistant):
+    """Les projets du compte dont le nom porte TOUS les mots (sans accents si la base le permet) ; jamais un
+    projet confidentiel pour l'assistant."""
+    from apps.stock.selectors import recherche_sans_accents_disponible
+    sans_accents = recherche_sans_accents_disponible()
+    qs = projets_de(user).alias(_nom_q=normalise_sql(Lower('nom'), sans_accents))
+    if assistant:
+        qs = qs.filter(confidentiel=False)
+    for terme in termes:
+        qs = qs.filter(_nom_q__contains=normalise_sql(Value(terme.lower()), sans_accents))
+    return list(qs.order_by('rang', 'id')[:limite])
+
+
+def rechercher(user, params, *, assistant=False):
+    """`GET recherche/?q=&limite=` → `(projets, taches)` : les projets et les tâches qui portent TOUS les mots
+    (`q` est requis ; `limite` = 25 par défaut, 100 au plus, pour CHAQUE liste). Les tâches ouvertes
+    passent avant les closes ; l'assistant ne reçoit ni note ni objet confidentiel."""
+    q = str(params.get('q') or '').strip()
+    if not q:
+        raise serializers.ValidationError({'q': [MESSAGE_REQUIS]})
+    limite = _limite(params)
+    projets = _projets_trouves(user, q.split(), limite, assistant)
+    ouverte_d_abord = Case(When(statut__in=OUVERTES, then=0), default=1, output_field=IntegerField())
+    taches = (filtrer_q(taches_de(user), q, assistant=assistant)
+              .order_by(ouverte_d_abord, '-updated_at', 'id'))
+    return projets, charger_items(taches)[:limite]
+
+
+def _compteurs_par_projet(user, projets):
+    """`{projet_id: {"ouvertes", "faites", "total"}}` des tâches supprimées de chaque projet (une requête)."""
+    compteurs = {p.pk: {'ouvertes': 0, 'faites': 0, 'total': 0} for p in projets}
+    lignes = (Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, is_deleted=True,
+                                       projet__in=projets).values('projet_id', 'statut').annotate(n=Count('pk')))
+    for ligne in lignes:
+        compteur = compteurs[ligne['projet_id']]
+        compteur['total'] += ligne['n']
+        if ligne['statut'] in OUVERTES:
+            compteur['ouvertes'] += ligne['n']
+        elif ligne['statut'] == StatutTache.FAIT:
+            compteur['faites'] += ligne['n']
+    return compteurs
+
+
+def supprimees_recentes(user, *, maintenant=None):
+    """`GET supprimees/` : ce que le compte a supprimé depuis moins de 30 jours. Un projet supprimé = UNE ligne
+    (ses tâches n'y sont pas répétées), une sous-tâche supprimée avec son parent n'a pas sa ligne. Plus
+    récent d'abord, 200 lignes au plus par liste. → `(projets, compteurs, taches)`."""
+    depuis = (maintenant or timezone.now()) - FENETRE_CORBEILLE
+    commun = {'company_id': user.company_id, 'proprietaire': user, 'is_deleted': True}
+    projets = list(Projet.all_objects.filter(**commun, deleted_at__gte=depuis)
+                   .order_by('-deleted_at', '-pk')[:PLAFOND_LISTE])
+    projets_morts = Projet.all_objects.filter(**commun).values('pk')
+    taches = (Tache.all_objects.filter(**commun, deleted_at__gte=depuis)
+              .exclude(projet__in=projets_morts).exclude(parent__is_deleted=True)
+              .order_by('-deleted_at', '-pk'))
+    return projets, _compteurs_par_projet(user, projets), charger_items(taches)[:PLAFOND_LISTE]
+
+
+def derniers_gestes(user, *, maintenant=None):
+    """`GET gestes/` : les gestes annulables des 7 derniers jours, le plus récent d'abord (200 au plus)."""
+    depuis = (maintenant or timezone.now()) - FENETRE_GESTES
+    return list(gestes_de(user).filter(created_at__gte=depuis).order_by('-created_at', '-pk')[:PLAFOND_LISTE])

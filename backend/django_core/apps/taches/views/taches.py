@@ -26,16 +26,19 @@ from apps.taches.serializers.saisie import (
     ElementChecklistEntreeSerializer, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
     ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
     ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
-    TacheCreationSerializer, taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
+    reponse_gestes, reponse_recherche, reponse_supprimees, TacheCreationSerializer, taches_chargees,
+    TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
 )
 from apps.taches.services.creation import creer_taches
+from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
     ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
-    liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache, rappel_a_la_creation,
-    recevoir_tache, reordonner_element, reordonner_tache, restaurer_tache, retirer_element, reverifier_lien,
-    rouvrir_tache, sauter_occurrence, supprimer_tache, tache_du_compte, terminer_tache, trancher_tache,
+    derniers_gestes, liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache,
+    rappel_a_la_creation, recevoir_tache, rechercher, reordonner_element, reordonner_tache, restaurer_tache,
+    retirer_element, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimees_recentes, supprimer_tache,
+    tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
     ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
@@ -118,7 +121,9 @@ class RechercheVue(APIView):
                                parametre('limite', OpenApiTypes.INT)],
                    responses=reponses(forme_echantillon('recherche'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        assistant = est_assistant(request)
+        projets, taches = rechercher(request.user, request.query_params, assistant=assistant)
+        return Response(reponse_recherche(projets, taches, assistant=assistant))
 
 
 class TachesVue(IdempotentCreateMixin, APIView):
@@ -565,7 +570,8 @@ class SupprimeesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('supprimees')))
     def get(self, request):
-        raise PasEncore()
+        projets, compteurs, taches = supprimees_recentes(request.user)
+        return Response(reponse_supprimees(projets, compteurs, taches, assistant=est_assistant(request)))
 
 
 class GestesVue(APIView):
@@ -575,7 +581,7 @@ class GestesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):
-        raise PasEncore()
+        return Response(reponse_gestes(derniers_gestes(request.user)))
 
 
 class GesteAnnulerVue(APIView):
@@ -585,4 +591,4 @@ class GesteAnnulerVue(APIView):
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('geste_annuler'), erreurs=(404,)))
     def post(self, request, id):
-        raise PasEncore()
+        return Response(annuler_geste(request.user, id))

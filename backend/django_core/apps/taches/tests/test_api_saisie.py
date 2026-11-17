@@ -572,3 +572,213 @@ class ChecklistTests(BaseApi):
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {})
         self.assertEqual((reponse.status_code, reponse.json()), (400, {'avant_id': ['Requis.']}))
         self.assertEqual(self._ordre(tache), ['a', 'b'])
+
+
+# --- TCH53 : recherche, supprimées récemment, derniers gestes, annuler un geste ------------------------
+
+class RechercheTests(BaseApi):
+    def _chercher(self, requete, compte=None, **entetes):
+        return self._get(f'recherche/?{requete}', compte, **entetes)
+
+    def test_projets_et_taches_a_les_cles_de_l_echantillon(self):
+        projet = fabriques.projet(self.u1, nom='Devis Settat')
+        fabriques.tache(self.u1, titre='Relancer le devis', projet=projet)
+        reponse = self._chercher('q=devis')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        modele = exemple('recherche')
+        self.assertEqual(list(corps), list(modele))
+        self.assertEqual(list(corps['projets'][0]), list(modele['projets'][0]))
+        self.assertEqual(list(corps['taches'][0]), list(modele['taches'][0]))
+        self.assertEqual([p['id'] for p in corps['projets']], [projet.pk])
+        self.assertEqual(len(corps['taches']), 1)
+
+    def test_tous_les_mots_sont_requis_sans_tenir_compte_de_la_casse(self):
+        fabriques.tache(self.u1, titre='Devis Settat')
+        fabriques.tache(self.u1, titre='Devis Casablanca')
+        self.assertEqual([t['titre'] for t in self._chercher('q=DEVIS+settat').json()['taches']],
+                         ['Devis Settat'])
+        self.assertEqual(self._chercher('q=devis+rabat').json(), {'projets': [], 'taches': []})
+
+    def test_une_recherche_ne_lit_que_ses_propres_objets(self):
+        fabriques.tache(self.u2, titre='Devis du collègue')
+        fabriques.projet(self.u2, nom='Devis du collègue')
+        fabriques.tache(self.ext, titre='Devis ailleurs')
+        self.assertEqual(self._chercher('q=devis').json(), {'projets': [], 'taches': []})
+
+    def test_q_est_requis(self):
+        for requete in ('', 'q=', 'q=+'):
+            with self.subTest(requete=requete):
+                reponse = self._chercher(requete)
+                self.assertEqual((reponse.status_code, reponse.json()), (400, {'q': ['Requis.']}))
+
+    def test_limite_borne_chaque_liste_et_doit_etre_lisible(self):
+        for rang in range(3):
+            fabriques.tache(self.u1, titre=f'Devis {rang}')
+            fabriques.projet(self.u1, nom=f'Devis projet {rang}')
+        corps = self._chercher('q=devis&limite=2').json()
+        self.assertEqual((len(corps['projets']), len(corps['taches'])), (2, 2))
+        for limite in ('0', 'abc', '101'):
+            with self.subTest(limite=limite):
+                reponse = self._chercher(f'q=devis&limite={limite}')
+                self.assertEqual((reponse.status_code, list(reponse.json())), (400, ['limite']))
+
+    def test_les_taches_ouvertes_passent_avant_les_faites(self):
+        faite = fabriques.tache(self.u1, titre='Devis faite', statut=StatutTache.FAIT, fait_le=timezone.now())
+        ouverte = fabriques.tache(self.u1, titre='Devis ouverte')
+        self.assertEqual([t['id'] for t in self._chercher('q=devis').json()['taches']], [ouverte.pk, faite.pk])
+
+    def test_les_notes_sont_cherchees_pour_l_ecran_jamais_pour_l_assistant(self):
+        fabriques.tache(self.u1, titre='Appeler', notes='parler du budget')
+        self.assertEqual(len(self._chercher('q=budget').json()['taches']), 1)
+        self.assertEqual(self._chercher('q=budget', **ASSISTANT).json()['taches'], [])
+
+    def test_l_assistant_ne_recoit_aucun_objet_confidentiel(self):
+        fabriques.tache(self.u1, titre='Devis secret', confidentiel=True)
+        fabriques.projet(self.u1, nom='Devis confidentiel', confidentiel=True)
+        fabriques.tache(self.u1, titre='Devis public')
+        corps = self._chercher('q=devis', **ASSISTANT).json()
+        self.assertEqual(([t['titre'] for t in corps['taches']], corps['projets']), (['Devis public'], []))
+        self.assertEqual(len(self._chercher('q=devis').json()['taches']), 2)
+
+    def test_sans_le_droit_403(self):
+        sans = fabriques.compte(self.a, voir=False, nom='sans')
+        self.assertEqual(self._chercher('q=devis', sans).status_code, 403)
+
+
+class SupprimeesTests(BaseApi):
+    def _supprimees(self, compte=None):
+        return self._get('supprimees/', compte)
+
+    def test_un_projet_supprime_est_une_ligne_et_ses_taches_ne_sont_pas_repetees(self):
+        projet = fabriques.projet(self.u1, nom='Ancien salon')
+        taches = [fabriques.tache(self.u1, projet=projet) for _ in range(2)]
+        taches.append(fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=timezone.now()))
+        for tache in taches:
+            tache.soft_delete(self.u1, record=False)
+        projet.soft_delete(self.u1, record=False)
+        reponse = self._supprimees()
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        modele = exemple('supprimees')
+        self.assertEqual(list(corps), list(modele))
+        ligne = corps['projets'][0]
+        self.assertEqual(list(ligne), list(modele['projets'][0]))
+        self.assertEqual(list(ligne['projet']), list(modele['projets'][0]['projet']))
+        self.assertEqual((len(corps['projets']), ligne['projet']['id'], ligne['taches_nb']), (1, projet.pk, 3))
+        self.assertEqual(ligne['projet']['compteurs'], {'ouvertes': 2, 'faites': 1})
+        self.assertEqual(corps['taches'], [])
+
+    def test_une_tache_supprimee_seule_est_listee_avec_son_item(self):
+        tache = fabriques.tache(self.u1, titre='Timbres')
+        enfant = fabriques.tache(self.u1, parent=tache)
+        self._api().delete(f'{URL}taches/{tache.pk}/')
+        corps = self._supprimees().json()
+        modele = exemple('supprimees')
+        self.assertEqual([ligne['item']['id'] for ligne in corps['taches']], [tache.pk])
+        self.assertEqual(list(corps['taches'][0]), list(modele['taches'][0]))
+        self.assertEqual(list(corps['taches'][0]['item']), list(modele['taches'][0]['item']))
+        self.assertTrue(_relue(enfant).is_deleted)
+
+    def test_au_dela_de_30_jours_rien_n_est_liste(self):
+        tache = fabriques.tache(self.u1)
+        tache.soft_delete(self.u1, record=False)
+        Tache.all_objects.filter(pk=tache.pk).update(deleted_at=timezone.now() - datetime.timedelta(days=31))
+        projet = fabriques.projet(self.u1)
+        projet.soft_delete(self.u1, record=False)
+        Projet.all_objects.filter(pk=projet.pk).update(deleted_at=timezone.now() - datetime.timedelta(days=31))
+        self.assertEqual(self._supprimees().json(), {'projets': [], 'taches': []})
+
+    def test_les_suppressions_d_un_collegue_ne_sont_pas_visibles(self):
+        tache = fabriques.tache(self.u2)
+        tache.soft_delete(self.u2, record=False)
+        projet = fabriques.projet(self.ext)
+        projet.soft_delete(self.ext, record=False)
+        self.assertEqual(self._supprimees().json(), {'projets': [], 'taches': []})
+
+    def test_restaurer_retire_la_ligne(self):
+        tache = fabriques.tache(self.u1)
+        self._api().delete(f'{URL}taches/{tache.pk}/')
+        self.assertEqual(len(self._supprimees().json()['taches']), 1)
+        self._post(f'taches/{tache.pk}/restaurer/')
+        self.assertEqual(self._supprimees().json()['taches'], [])
+
+    def test_sans_le_droit_403(self):
+        sans = fabriques.compte(self.a, voir=False, nom='sans')
+        self.assertEqual(self._supprimees(sans).status_code, 403)
+
+
+class GestesTests(BaseApi):
+    def _geste(self, titre='Après'):
+        """Un geste réel : un PATCH de titre ; rend `(tache, geste_id)`."""
+        tache = fabriques.tache(self.u1, titre='Avant')
+        corps = {'titre': titre, 'lock_version': _relue(tache).lock_version}
+        reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
+        return tache, reponse.json()['geste_id']
+
+    def test_les_derniers_gestes_ont_les_cles_de_l_echantillon(self):
+        _tache, geste = self._geste()
+        reponse = self._get('gestes/')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        modele = exemple('gestes')
+        self.assertEqual(list(corps), list(modele))
+        self.assertEqual(list(corps['results'][0]), list(modele['results'][0]))
+        self.assertEqual((corps['results'][0]['id'], corps['results'][0]['type'], corps['results'][0]['message'],
+                          corps['results'][0]['annulable']), (geste, 'modification', 'Modifiée', True))
+
+    def test_le_plus_recent_d_abord_et_seulement_7_jours(self):
+        _t1, ancien = self._geste()
+        _t2, recent = self._geste()
+        _t3, vieux = self._geste()
+        GesteAnnulable.objects.filter(pk=ancien).update(created_at=timezone.now() - datetime.timedelta(days=1))
+        GesteAnnulable.objects.filter(pk=vieux).update(created_at=timezone.now() - datetime.timedelta(days=8))
+        self.assertEqual([g['id'] for g in self._get('gestes/').json()['results']], [recent, ancien])
+
+    def test_les_gestes_d_un_collegue_ne_sont_pas_visibles(self):
+        tache = fabriques.tache(self.u2)
+        corps = {'titre': 'x', 'lock_version': _relue(tache).lock_version}
+        self._api(self.u2).patch(f'{URL}taches/{tache.pk}/', corps, format='json')
+        self.assertEqual(self._get('gestes/').json(), {'results': []})
+
+    def test_annuler_un_geste_rend_les_objets_restaures(self):
+        tache, geste = self._geste()
+        reponse = self._post(f'gestes/{geste}/annuler/')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertEqual(list(corps), list(exemple('geste_annuler')))
+        self.assertEqual((corps['restaurees'], corps['conflits'], corps['deja']),
+                         ([{'objet': 'tache', 'id': tache.pk}], [], False))
+        self.assertEqual(_relue(tache).titre, 'Avant')
+        self.assertFalse(self._get('gestes/').json()['results'][0]['annulable'])
+        self.assertIsNotNone(self._get('gestes/').json()['results'][0]['annule_le'])
+
+    def test_annuler_deux_fois_est_idempotent(self):
+        _tache, geste = self._geste()
+        self._post(f'gestes/{geste}/annuler/')
+        second = self._post(f'gestes/{geste}/annuler/')
+        self.assertEqual((second.status_code, second.json()), (200, {'restaurees': [], 'conflits': [], 'deja': True}))
+
+    def test_un_objet_modifie_depuis_est_un_conflit_en_200_partiel(self):
+        tache, premier = self._geste('Premier')
+        corps = {'titre': 'Second', 'lock_version': _relue(tache).lock_version}
+        self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
+        reponse = self._post(f'gestes/{premier}/annuler/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()['conflits'], [{'objet': 'tache', 'id': tache.pk, 'raison': 'modifiee_depuis'}])
+        self.assertEqual(_relue(tache).titre, 'Second')
+
+    def test_le_geste_d_un_collegue_ou_de_plus_de_7_jours_repond_comme_inconnu(self):
+        tache = fabriques.tache(self.u2)
+        corps = {'titre': 'x', 'lock_version': _relue(tache).lock_version}
+        geste_collegue = self._api(self.u2).patch(f'{URL}taches/{tache.pk}/', corps, format='json').json()['geste_id']
+        self.assertEqual(self._post(f'gestes/{geste_collegue}/annuler/').status_code, 404)
+        self.assertEqual(_relue(tache).titre, 'x')
+        _t, vieux = self._geste()
+        GesteAnnulable.objects.filter(pk=vieux).update(created_at=timezone.now() - datetime.timedelta(days=8))
+        self.assertEqual(self._post(f'gestes/{vieux}/annuler/').status_code, 404)
+
+    def test_sans_le_droit_403(self):
+        sans = fabriques.compte(self.a, voir=False, nom='sans')
+        self.assertEqual(self._get('gestes/', sans).status_code, 403)
+        self.assertEqual(self._post('gestes/1/annuler/', compte=sans).status_code, 403)
