@@ -1,7 +1,6 @@
 # Maquettes de l'Agenda (L3 n°8)
 
-8 fichiers `maquettes/agenda-*.html`, `maquettes/ecrans-agenda.css`, 32 captures. Dernière mesure par script (fond
-composité, `::after` compté) : 0 texte sous 4,5:1, 0 cible sous 44 px, sur 8 fichiers × 4 rendus.
+8 fichiers `maquettes/agenda-*.html`, `maquettes/ecrans-agenda.css`, 32 captures. Dernière mesure par script : 0 texte sous 4,5:1, 0 cible sous 44 px (8 fichiers × 4 rendus).
 
 ## Jour (3 tours)
 Une heure = 88 px sur iPhone : la demi-heure fait 44 px. Bande « Toute la journée » en 2 × 2 : gris + icône = ERP,
@@ -22,8 +21,8 @@ Consigne « ↑ Touche un jour… » en tête du volet, sous la tâche choisie ;
 pose (fantôme, ambre au-delà de 4 h, « → 5 h 15 »). Après : toast à la place de la consigne, jeudi s'allonge du titre,
 la tâche quitte le volet.
 Corrigé : flèche vers l'en-tête, six « Poser » criards, cartes cassées, fantôme sur la mauvaise colonne.
-**Verdict « toucher puis poser » : évident grâce à la consigne et au contour, et seulement grâce à eux.** Plus sûr que
-glisser au doigt, moins direct. À éprouver sur un vrai iPhone.
+**Verdict « toucher puis poser » : évident grâce à la consigne et au contour, et seulement grâce à eux.** Plus sûr que glisser
+au doigt, moins direct. À éprouver sur un vrai iPhone.
 
 ## Mois (3 tours)
 Points par projet (3, puis « – »), aujourd'hui cerclé, jour choisi plein, liste dessous, « Férié » le 18.
@@ -37,8 +36,7 @@ Déplaît : sur iPhone, les repliés sont sous la ligne de flottaison.
 
 ## Placer à une heure (4 tours, 2 états)
 Tâche choisie dans le tiroir, pastilles « + 12:00 » sur les demi-heures libres, consigne en bas. Après : un panneau
-« Placée à 14:00 · Annuler » + 30 min / 1 h / 2 h. Bureau : bloc soulevé, poignée, bulle, origine pointillée ; puis
-poignée tirée « 15:30 · 1 h 30 ».
+« Placée à 14:00 · Annuler » + 30 min / 1 h / 2 h. Bureau : bloc soulevé avec poignée, puis poignée tirée.
 Corrigé : 10 cadres pleine largeur (tableur), puce choisie hors champ, bloc caché par le panneau.
 Déplaît : les pastilles ne montrent pas la durée.
 
@@ -46,7 +44,7 @@ Déplaît : les pastilles ne montrent pas la durée.
 1. 88 px/h sur iPhone : la demi-heure reste une cible.
 2. Case dans les blocs, sauf blocs étroits et colonnes de semaine.
 3. Planifier ma semaine en mode plein écran (« Terminer »), pas en volet de la vue Semaine : 7 cibles + volet
-   demandent toute la hauteur ; gestes inchangés (3 + 2 par tâche).
+   demandent toute la hauteur ; mêmes gestes.
 4. Charge projetée : ajout, dérivée des estimations et des 4 h par défaut (spec 3).
 5. Mois sur bureau : titres plutôt que points.
 6. Aucun férié réel du 23 au 29 : montré en Mois seulement.
