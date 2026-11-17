@@ -749,10 +749,19 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
   await page.setViewportSize({ width: 1600, height: 1000 })
   await page.goto(`/calepinage/${cal.id}`)
   await expect(page.getByRole('button', { name: 'Enregistrer le calepinage' }), 'atelier booté (scène hydratée)').toBeEnabled({ timeout: 180_000 })
-  // Dessin d'un obstacle : mode obstacle puis glisser sur la carte ⇒ l'obstacle est sélectionné.
-  await page.locator('#rp9-obstacle').click()
   const cv = page.locator('canvas.maplibregl-canvas').first()
   const bb = await cv.boundingBox()
+  // Le bloc « Obstacles » n'est montré qu'une fois le toit fermé : si l'hydratation ne l'a pas ouvert, on trace un toit
+  // (4 sommets puis fermeture sur le 1er).
+  if (!(await page.locator('#rp9-obstacle').isVisible())) {
+    const pts = [[0.35, 0.35], [0.65, 0.35], [0.65, 0.65], [0.35, 0.65]]
+    for (const [fx, fy] of pts) await page.mouse.click(bb.x + bb.width * fx, bb.y + bb.height * fy)
+    await page.mouse.click(bb.x + bb.width * pts[0][0], bb.y + bb.height * pts[0][1])
+    await page.waitForTimeout(1500)
+  }
+  console.log(`[AERR114] bloc Obstacles visible : ${await page.locator('#rp9-obstacle').isVisible()}`)
+  // Dessin d'un obstacle : mode obstacle puis glisser sur la carte ⇒ l'obstacle est sélectionné.
+  await page.locator('#rp9-obstacle').click({ timeout: 20_000 })
   const x = bb.x + bb.width * 0.5
   const y = bb.y + bb.height * 0.5
   await page.mouse.move(x, y)
