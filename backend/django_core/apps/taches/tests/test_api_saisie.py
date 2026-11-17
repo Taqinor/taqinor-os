@@ -126,8 +126,8 @@ class ApercuTests(BaseApi):
     def test_plus_de_200_lignes_refuse_sous_texte(self):
         reponse = self._apercu(['x\n' * 201])
         self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'texte': ['Liste trop longue : 200 lignes au plus (ici 201). '
-                                                           'Colle-la en deux fois.']})
+        self.assertEqual(champs(reponse.json()), {'texte': [
+            'Liste trop longue : 200 lignes au plus (ici 201). Colle-la en deux fois.']})
 
     def test_plus_de_20000_caracteres_refuse_sous_texte(self):
         reponse = self._apercu(['a' * 20_001])
