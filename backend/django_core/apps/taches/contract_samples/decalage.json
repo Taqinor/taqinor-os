@@ -1,0 +1,16 @@
+{
+  "endpoint": "POST /api/django/taches/projets/{id}/decaler/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST projets/{id}/decaler/ · consommateurs : Décaler les dates ». Source : docs/taches/reference/api.md annexe A (`decalage.json`), recopié mot pour mot.",
+  "exemple": {
+    "changements": [
+      {
+        "objet": "tache",
+        "id": 41,
+        "champ": "jour_prevu",
+        "avant": "2026-11-20",
+        "apres": "2026-11-27"
+      }
+    ],
+    "geste_id": null
+  }
+}

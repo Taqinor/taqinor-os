@@ -1761,3 +1761,180 @@ class Enf11Records2eTourTests(TestCase):
              'snooze_trigger_event': 'devis_signed:1' + chr(0)},
             format='json')
         self.assertEqual(r.status_code, 400, r.content)
+
+
+# ── TCH16 — sélecteurs lus par l'app Tâches (records/selectors.py) ──────────
+class TestSelecteursTaches(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.co = Company.objects.create(nom='TCH16 Co', slug='tch16-co')
+        cls.co2 = Company.objects.create(nom='TCH16 Autre', slug='tch16-autre')
+        cls.type = ActivityType.objects.create(company=cls.co, nom='Appel')
+        cls.a = User.objects.create_user(
+            username='tch16_a', password='x', role_legacy='responsable',
+            company=cls.co)
+        cls.b = User.objects.create_user(
+            username='tch16_b', password='x', role_legacy='responsable',
+            company=cls.co)
+        cls.c = User.objects.create_user(
+            username='tch16_c', password='x', role_legacy='responsable',
+            company=cls.co2)
+        cls.lead = Lead.objects.create(company=cls.co, nom='Vivant')
+        cls.lead_archive = Lead.objects.create(
+            company=cls.co, nom='Archivé', is_archived=True)
+
+    def _act(self, **champs):
+        champs.setdefault('company', self.co)
+        champs.setdefault('activity_type', self.type)
+        champs.setdefault('assigned_to', self.b)
+        champs.setdefault('created_by', self.b)
+        return Activity.objects.create(**champs)
+
+    def _cible(self, lead):
+        return {'content_type': ContentType.objects.get_for_model(Lead),
+                'object_id': lead.pk}
+
+    def test_meme_lignes_que_mine_moins_les_a_faire_d_un_autre(self):
+        from apps.records.selectors import activites_ouvertes_pour
+        from apps.records.services import log_note
+        j = date.today()
+        attendues = {
+            self._act(summary='jour', due_date=j).pk,
+            self._act(summary='retard', due_date=j - timedelta(days=2)).pk,
+            self._act(summary='sans type', activity_type=None, due_date=j).pk,
+            self._act(summary='report échu', due_date=j - timedelta(days=1),
+                      snoozed_until=j - timedelta(days=3)).pk,
+            self._act(summary='lead vivant', due_date=j, **self._cible(self.lead)).pk,
+            self._act(summary='perso à moi', personnelle=True, due_date=j).pk,
+        }
+        etranger = self._act(summary='perso de A', personnelle=True,
+                             created_by=self.a, due_date=j)
+        self._act(summary='demain', due_date=j + timedelta(days=1))
+        self._act(summary='sans date', due_date=None)
+        self._act(summary='reporté', due_date=j - timedelta(days=1),
+                  snoozed_until=j + timedelta(days=3))
+        self._act(summary='faite', due_date=j, done=True)
+        self._act(summary='à A', due_date=j, assigned_to=self.a)
+        self._act(summary='lead archivé', due_date=j,
+                  **self._cible(self.lead_archive))
+        self._act(company=self.co2, activity_type=None, summary='autre société',
+                  due_date=j)
+        note = log_note(self.lead, self.b, 'Note de chatter')
+        self.assertIsNone(note.activity_type_id)
+        rendues = set(activites_ouvertes_pour(self.b).values_list('pk', flat=True))
+        self.assertEqual(rendues, attendues)
+        # Oracle : `mine` (en retard + aujourd'hui) rend les mêmes lignes, plus
+        # l'à-faire que A a créé et assigné à B (constat XKB4, spec-6a §10).
+        mine = auth(self.b).get('/api/django/records/activities/mine/')
+        self.assertEqual(mine.status_code, 200, mine.data)
+        ids_mine = {x['id'] for k in ('en_retard', 'aujourdhui')
+                    for x in mine.data[k]}
+        self.assertEqual(ids_mine, attendues | {etranger.pk})
+        self.assertNotIn(etranger.pk, rendues)
+        self.assertNotIn(note.pk, rendues | ids_mine)
+
+    def test_a_faire_de_a_assigne_a_b_jamais_rendu_a_b(self):
+        from apps.records.selectors import (
+            activites_ouvertes_pour, nb_a_faire_personnels)
+        j = date.today()
+        self._act(summary='perso de A', personnelle=True, created_by=self.a,
+                  due_date=j)
+        self.assertFalse(activites_ouvertes_pour(self.b).exists())
+        self.assertFalse(activites_ouvertes_pour(
+            self.b, jusquau=j + timedelta(days=30)).exists())
+        self.assertEqual(nb_a_faire_personnels(self.b), 0)
+        self.assertEqual(nb_a_faire_personnels(self.a), 0)  # assigné à B
+
+    def test_jusquau_et_societe(self):
+        from apps.records.selectors import activites_ouvertes_pour
+        j = date.today()
+        demain = self._act(summary='demain', due_date=j + timedelta(days=1))
+        self.assertFalse(activites_ouvertes_pour(self.b).exists())
+        self.assertEqual(list(activites_ouvertes_pour(
+            self.b, jusquau=j + timedelta(days=1))), [demain])
+        # B dans une autre société ne voit rien des lignes de la première.
+        self.assertFalse(activites_ouvertes_pour(
+            self.c, jusquau=j + timedelta(days=1)).exists())
+        sans_societe = SimpleNamespace(pk=self.b.pk, company_id=None)
+        self.assertFalse(activites_ouvertes_pour(sans_societe).exists())
+
+    def test_nb_a_faire_personnels(self):
+        from apps.records.selectors import nb_a_faire_personnels
+        j = date.today()
+        self._act(summary='p1', personnelle=True)
+        self._act(summary='p2 reporté', personnelle=True,
+                  snoozed_until=j + timedelta(days=5))
+        self._act(summary='p3 faite', personnelle=True, done=True)
+        self._act(summary='p4 pour A', personnelle=True, assigned_to=self.a)
+        self._act(summary='pas perso', due_date=j)
+        self._act(company=self.co2, summary='autre société', personnelle=True,
+                  activity_type=None)
+        self.assertEqual(nb_a_faire_personnels(self.b), 2)
+        self.assertEqual(nb_a_faire_personnels(self.c), 0)
+
+    def test_peut_cloturer_egale_post_done_par_role_systeme(self):
+        from apps.records.selectors import peut_cloturer_activites
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        vus = set()
+        for nom, permissions in CANONICAL_SYSTEM_ROLES:
+            role = Role.objects.create(company=self.co, nom=nom, est_systeme=True,
+                                       permissions=list(permissions))
+            user = User.objects.create_user(
+                username=f'tch16-{nom}', password='x', company=self.co, role=role)
+            act = self._act(summary=nom, personnelle=True, activity_type=None,
+                            assigned_to=user, created_by=user)
+            api = APIClient()
+            api.force_authenticate(user)
+            r = api.post(f'/api/django/records/activities/{act.pk}/done/', {},
+                         format='json')
+            attendu = r.status_code != 403
+            self.assertEqual(peut_cloturer_activites(user), attendu,
+                             (nom, r.status_code))
+            vus.add(attendu)
+        self.assertEqual(vus, {True, False})  # la grille distingue bien
+
+    # ── TCH17 — clôture / réouverture d'un à-faire personnel (services) ─────
+    def test_cloture_idempotente_puis_reouverture(self):
+        from apps.records.services import (
+            cloturer_a_faire_personnel, rouvrir_a_faire_personnel)
+        act = self._act(summary='perso', personnelle=True, activity_type=None)
+        self.assertIs(cloturer_a_faire_personnel(act, self.b), act)
+        act.refresh_from_db()
+        self.assertTrue(act.done)
+        self.assertEqual(act.done_by, self.b)
+        premiere = act.done_at
+        self.assertIsNotNone(premiere)
+        cloturer_a_faire_personnel(act, self.b)  # idempotent : rien ne bouge
+        act.refresh_from_db()
+        self.assertEqual((act.done, act.done_at), (True, premiere))
+        rouvrir_a_faire_personnel(act, self.b)
+        act.refresh_from_db()
+        self.assertEqual((act.done, act.done_at, act.done_by), (False, None, None))
+        rouvrir_a_faire_personnel(act, self.b)  # idempotent aussi
+        act.refresh_from_db()
+        self.assertFalse(act.done)
+
+    def test_cloture_refusee_hors_createur(self):
+        from apps.records.services import (
+            cloturer_a_faire_personnel, rouvrir_a_faire_personnel)
+        perso_de_a = self._act(summary='de A pour B', personnelle=True,
+                               created_by=self.a)
+        perso_pour_a = self._act(summary='de B pour A', personnelle=True,
+                                 assigned_to=self.a)
+        pas_perso = self._act(summary='ERP', due_date=date.today())
+        autre = self._act(company=self.co2, activity_type=None, summary='co2',
+                          personnelle=True, created_by=self.c, assigned_to=self.c)
+        fait = self._act(summary='faite par A', personnelle=True,
+                         created_by=self.a, assigned_to=self.a, done=True)
+        refus = [(perso_de_a, self.b), (perso_de_a, self.a), (perso_pour_a, self.b),
+                 (pas_perso, self.b), (autre, self.b), (autre, self.a)]
+        for act, user in refus:
+            with self.assertRaises(Activity.DoesNotExist, msg=(act.summary, user)):
+                cloturer_a_faire_personnel(act, user)
+            act.refresh_from_db()
+            self.assertFalse(act.done, act.summary)
+        with self.assertRaises(Activity.DoesNotExist):
+            rouvrir_a_faire_personnel(fait, self.b)
+        fait.refresh_from_db()
+        self.assertTrue(fait.done)

@@ -144,6 +144,28 @@ class TestMigrationSafety(unittest.TestCase):
                          _check(INDEX_NAME_DRIFT, model_names=retires))
         self.assertIn("INDEX_NAME_DRIFT", _check(INDEX_NAME_DRIFT))
 
+    def test_noms_declares_dans_un_paquet_models(self):
+        """Un nom déclaré dans un PAQUET ``apps/<app>/models/*.py`` (disposition de
+        l'app ``taches``) compte comme déclaré ; un nom absent reste inconnu."""
+        from unittest import mock
+        meta = ("from django.db import models\n"
+                "class T(models.Model):\n"
+                "    class Meta:\n"
+                "        indexes = [models.Index(fields=['a'], name='paquet_rang_idx')]\n")
+        with tempfile.TemporaryDirectory() as dossier:
+            racine = Path(dossier)
+            paquet = racine / "apps" / "monapp" / "models"
+            paquet.mkdir(parents=True)
+            (paquet / "__init__.py").write_text("", encoding="utf-8")
+            (paquet / "sujet.py").write_text(meta, encoding="utf-8")
+            with mock.patch.object(cms, "DJANGO_CORE", racine), \
+                    mock.patch.object(cms, "APPS_DIR", racine / "apps"):
+                noms = cms._model_declared_names()
+        self.assertIn("paquet_rang_idx", noms)
+        src = INDEX_NAME_DRIFT.replace("handwritten_idx", "paquet_rang_idx")
+        self.assertNotIn("INDEX_NAME_DRIFT", _check(src, model_names=noms))
+        self.assertIn("INDEX_NAME_DRIFT", _check(INDEX_NAME_DRIFT, model_names=noms))
+
 
 if __name__ == "__main__":
     unittest.main()

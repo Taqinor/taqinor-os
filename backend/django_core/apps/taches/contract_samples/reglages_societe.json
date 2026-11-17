@@ -1,0 +1,9 @@
+{
+  "endpoint": "GET /api/django/taches/reglages-societe/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET/PATCH reglages-societe/ (administrateur) · consommateurs : Réglages → Avancé (admin) ». Source : docs/taches/reference/api.md annexe A (`reglages_societe.json`), recopié mot pour mot.",
+  "exemple": {
+    "balayage_actif": true,
+    "modifie_par": null,
+    "modifie_le": null
+  }
+}

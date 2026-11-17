@@ -1,0 +1,16 @@
+{
+  "endpoint": "POST /api/django/taches/jetons/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST jetons/ · consommateurs : Mon iPhone ». Source : docs/taches/reference/api.md annexe A (`jeton.json`), recopié mot pour mot.",
+  "exemple": {
+    "id": 3,
+    "usage": "flux",
+    "prefixe": "tqf_Ab12",
+    "libelle": "",
+    "created_at": "2026-11-17T09:00:00+01:00",
+    "dernier_usage_le": null,
+    "revoque_le": null,
+    "jeton": "tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw",
+    "url": "https://erp.example/api/django/taches/flux/tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw.ics",
+    "webcal": "webcal://erp.example/api/django/taches/flux/tqf_Ab12xYz0123456789abcdefghijklmnopqrstuvw.ics"
+  }
+}

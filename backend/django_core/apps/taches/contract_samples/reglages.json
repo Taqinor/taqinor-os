@@ -1,0 +1,40 @@
+{
+  "endpoint": "GET /api/django/taches/reglages/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET/PATCH reglages/ · consommateurs : Réglages, Mon iPhone ». Source : docs/taches/reference/api.md annexe A (`reglages.json`), recopié mot pour mot.",
+  "exemple": {
+    "titres_notifications": false,
+    "titres_notifications_demande": false,
+    "titres_calendrier": true,
+    "titres_tuile": true,
+    "messages_sans_delai": false,
+    "rappel_avant_bloc_min": null,
+    "projet_arret_jours": 10,
+    "familles_suggestions": [
+      "devis_accepte",
+      "chantier_receptionne",
+      "chantier_annule"
+    ],
+    "suggestions_societe": false,
+    "erp_dans_journee": true,
+    "comprendre_mon_rythme": true,
+    "pauses_sollicitations": [
+      {
+        "type": "plan_matin",
+        "ignorees": 14
+      }
+    ],
+    "sollicitations": {
+      "heure_matin": "08:30",
+      "relance_jour": "15:00",
+      "heure_soir": "18:00",
+      "heure_limite": "20:00",
+      "revue_semaine": "auto"
+    },
+    "fenetre_societe": {
+      "debut": "08:30",
+      "fin": "19:00"
+    },
+    "raccourci_siri_url": null,
+    "est_admin": false
+  }
+}

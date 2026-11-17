@@ -1,0 +1,26 @@
+---
+name: taches-decisions-fondateur
+description: 17/11/2026 — Tâches et agenda personnels + Copilote (apps/taches) : cinq décisions fondateur D-TCH-1 à D-TCH-5, consigne « ne plus poser de question », 18 arbitrages A1-A18 de l'orchestrateur, où vivent plan, référence, conception et maquettes, quatre fusions, activation par étapes, gestes qui restent à Reda
+metadata:
+  type: project
+---
+
+Nouvelle app « Tâches » (gestionnaire de tâches et agenda PERSONNELS de chaque utilisateur, Copilote par-dessus) : plan `docs/plans/PLAN_TACHES.md` (174 tâches `TCH<n>`), propriétaire `taches` au registre `docs/ownership.yml`. Reda a tranché le 17/11/2026 (copie de `docs/taches/conception/socle.md` §0, ne jamais reposer) :
+
+- **D-TCH-1** Espace PRIVÉ par utilisateur. Ni délégation ni projet partagé dans cette construction. Le schéma garde la porte ouverte, rien n'est construit.
+- **D-TCH-2** iPhone : tout — icône qui ouvre « Ma journée », pastille, notifications, tâches dans le widget Calendrier d'Apple (flux abonné), dictée Siri, ET la grande tuile Scriptable (app tierce gratuite acceptée) : v1.
+- **D-TCH-3** Sollicitations par défaut : plan du matin + bilan du soir + AU PLUS UNE relance en journée. Réglable.
+- **D-TCH-4** Démarrage : il colle ou dicte ses listes, l'IA propose le rangement par projet, il valide. Pas d'import Odoo.
+- **D-TCH-5** (message du 17/11) « la meilleure agenda possible » : toutes les fonctions nécessaires et utiles ET simple à utiliser. Chaque fonction est classée ESSENTIEL (visible d'emblée) / AVANCÉ (présent mais replié, découvert au besoin) / ÉCARTÉ (avec la raison). Rien d'utile n'est écarté pour « faire simple » : on le replie.
+
+**Consigne de la nuit du 17/11 :** Reda a demandé qu'on ne lui pose plus AUCUNE question. Tous les autres choix ont été tranchés par l'orchestrateur et consignés dans `docs/taches/conception/arbitrages.md` :
+
+- A1 la dictée Siri comprend les dates (même analyseur que la saisie rapide, jamais de création de projet par jeton) · A2 le rythme pousse vraiment (l'objectif déclaré prime tout de suite ; les blocs de 10 jours ne servent qu'à proposer la suite) · A3 liens ERP seulement vers les cibles dont la visibilité est vérifiable (lead, client, devis) · A4 suggestions venues de l'ERP sans nom de client, destinataire strict · A5 l'assistant n'écrit sans tap que sur une demande sûre (contenu non fiable → carte à valider, 3 écritures max) · A6 « Confidentiel » hérité et gardé par un test canari · A7 Annuler = un seul mécanisme côté serveur (`GesteAnnulable`) · A8 un fichier d'un autre propriétaire = tâche à part, en ajout seulement · A9 la vérité vie privée dite mot pour mot dans Réglages · A10 raccourcis clavier (`g j`, `c t`, pas `g t` pris par le SAV) · A11 Aujourd'hui n'est jamais vide tant qu'un projet actif a une tâche ouverte (section « Proposé pour aujourd'hui ») · A12 le Copilote est visible, avec quatre demandes prêtes · A13 l'écran du jour s'appelle « Aujourd'hui » · A14 corrections du premier essai d'écrans (retour de congé en une carte, etc.) · A15 palette de 10 couleurs de projet et durées de conservation · A16 second essai d'écrans (planifier sa semaine, fonctions orphelines placées) · A17 troisième essai d'écrans et réalignement de la référence · A18 critique finale avant construction (sources du plan lisibles sur `main`, quatre fusions, gestes du fondateur en README).
+
+**Où vit quoi (sur `main`, après l'atterrissage) :** plan `docs/plans/PLAN_TACHES.md` ; vérité `docs/taches/reference/` (donnees, api, regles, textes ; fait foi) ; pourquoi `docs/taches/conception/` (socle, arbitrages, spec-2 à spec-8, consignes-construction) ; contrat visuel `docs/taches/maquettes/` + `SCENARIO.md` + `outils/` ; mode d'emploi `docs/taches/README.md`. Les rapports de vérification et de recherche de la conception restent sur la branche `claude/erp-task-manager-ai-f8db1b`, pas sur `main`.
+
+**État (18/11/2026) :** plan atterri, construction en cours. Découpage : atterrissage (docs) puis quatre fusions vers `main` — F1 socle invisible (48 tâches) ; F2 le cœur complet, activé pour le SEUL rôle Administrateur à la fin ; F3 iPhone et Copilote ; F4 l'avancé replié puis ouverture aux autres rôles (TCH168, sur décision de Reda).
+
+**Règle d'activation par étapes :** le droit `taches_voir` est déclaré en F1 mais accordé à aucun rôle (exclu du Directeur, donc de l'Administrateur) ; manifeste `installable: False`, aucune navigation. Fin de F2 : Administrateur seul. F4 : Directeur puis les autres rôles internes, jamais un rôle portail, uniquement sur la parole de Reda.
+
+**Gestes qui reviennent à Reda** (aucune tâche ne les prouve) : essayer le cœur après F2 (compte Administrateur, bureau et iPhone, quelques jours) ; vérifier en production `VITE_VAPID_PUBLIC_KEY` au build du front et que `NOTIFICATIONS_TOUJOURS_IMMEDIATES` du `.env` contient `taches_rappel` ; après F3 créer le raccourci Siri « Nouvelle tâche », le partager par iCloud et coller son lien dans `TACHES_RACCOURCI_SIRI_URL` du `.env` de production ; installer Scriptable et la grande tuile ; s'abonner au calendrier « Tâches Taqinor » ; régler le fournisseur et la clé d'IA de production pour le Copilote ; essayer sur son vrai iPhone la liste du README ; en F4, dire s'il ouvre Tâches au Directeur et aux autres rôles internes.

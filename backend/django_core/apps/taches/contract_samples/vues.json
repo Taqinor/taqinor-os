@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/taches/vues/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET vues/ (non paginé, ≤ 30) · consommateurs : Recherche ». Source : docs/taches/reference/api.md annexe A (`vues.json`), recopié mot pour mot.",
+  "exemple": {
+    "results": [
+      {
+        "id": 4,
+        "nom": "Haute cette semaine",
+        "rang": 1024,
+        "filtres": {
+          "priorite_min": 3,
+          "projets": [
+            3
+          ],
+          "inclure_faites": false
+        }
+      }
+    ]
+  }
+}

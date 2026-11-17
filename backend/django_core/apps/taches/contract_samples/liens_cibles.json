@@ -1,0 +1,9 @@
+{
+  "endpoint": "GET /api/django/taches/taches/{id}/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « carte des URL de cibles (fichier, pas une route) · consommateurs : `selectors.url_de_cible`, `cibleEcran.js` ». Source : docs/taches/reference/api.md annexe A (`liens_cibles.json`), recopié mot pour mot.",
+  "exemple": {
+    "crm.lead": "/crm/leads?lead={id}",
+    "crm.client": "/crm?id={id}",
+    "ventes.devis": "/ventes/devis?devis={id}"
+  }
+}

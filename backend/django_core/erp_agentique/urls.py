@@ -113,6 +113,7 @@ _APP_URLS = [
     # patron que `apps.sav`/`apps.ventes` : un `permission_classes` par vue,
     # pas un préfixe `api/django/public/` séparé — cf. NTOBS1).
     path('statuspage/', include('apps.statuspage.urls')),
+    path('taches/', include('apps.taches.urls')),
 ]
 
 
