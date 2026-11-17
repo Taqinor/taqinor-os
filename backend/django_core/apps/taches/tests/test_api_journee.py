@@ -573,3 +573,194 @@ class AilleursTests(TestCase):
         self.assertEqual(set(rendu), set(exemple('ailleurs')))
         self.assertEqual(rendu['chantiers'], 1)
         self.assertEqual(rendu['lien'], '/activites')
+
+
+# --- TCH57 : proposition, « Garder ces N », ★ ------------------------------------------------------
+
+J24 = datetime.date(2026, 11, 24)  # SCENARIO.md : mardi 24 novembre 2026
+
+
+class PropositionTests(TestCase):
+    """GET journee/proposition/ (invariant 34) sur la matinée du 24/11 de SCENARIO.md (08:30)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.societe = fabriques.societe('a')
+        cls.u = fabriques.compte(cls.societe, nom='u1')
+        u = cls.u
+        benali = fabriques.projet(u, nom='Chantier Benali 9 kWc', priorite=3, rang=1024)
+        salon = fabriques.projet(u, nom='Salon Solaire Expo', priorite=3, rang=2048)
+        recrutement = fabriques.projet(u, nom='Recrutement technicien', priorite=2, rang=3072)
+        admin = fabriques.projet(u, nom='Administratif', priorite=1, rang=4096)
+        site = fabriques.projet(u, nom='Site web', priorite=2, rang=5120)
+        cls.devis = fabriques.tache(u, projet=benali, titre='Envoyer le devis révisé', priorite=3, jour_prevu=J24,
+                                    echeance=J24 + datetime.timedelta(days=1))
+        cls.rails = fabriques.tache(u, projet=benali, titre='Commander les rails de fixation')
+        cls.stand = fabriques.tache(u, projet=salon, titre='Confirmer la réservation du stand', echeance=J24)
+        cls.fournisseur = fabriques.tache(u, projet=salon, titre='Appeler le fournisseur', priorite=3)
+        fabriques.tache(u, projet=recrutement, titre='Trier les CV reçus', jour_prevu=J24 + datetime.timedelta(days=1))
+        cls.fiche = fabriques.tache(u, projet=recrutement, titre='Rédiger la fiche de poste')
+        cls.contrat = fabriques.tache(u, projet=admin, titre='Relire le contrat de maintenance')
+        fabriques.tache(u, projet=site, titre='Lister les pages du site')
+        plan = fabriques.plan(u, J24)
+        for essentielle in (cls.devis, cls.stand):
+            ligne(plan, tache=essentielle, essentielle=True, prevue_au_plan=False)
+
+    def get(self, **params):
+        params.setdefault('jour', J24.isoformat())
+        reponse = client_de(self.u).get('/api/django/taches/journee/proposition/', params)
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.json()
+
+    def test_les_3_proposees_du_matin(self):
+        # objectif 5 − 0 faite − 2 gardées ouvertes = 3 : prochaine action de chaque projet.
+        rendu = self.get()
+        ids = [ligne['item']['id'] for ligne in rendu['proposition']]
+        self.assertEqual(ids, [self.rails.pk, self.fournisseur.pk, self.fiche.pk])
+        self.assertNotIn(self.contrat.pk, ids)
+        self.assertEqual([ligne['item']['raison']['code'] for ligne in rendu['proposition']],
+                         ['prochaine_action'] * 3)
+        self.assertEqual(rendu['proposition'][0]['item']['raison']['texte'],
+                         'prochaine action de Chantier Benali 9 kWc')
+        self.assertTrue(all(ligne['cochee'] and not ligne['deja_prevue'] for ligne in rendu['proposition']))
+
+    def test_forme_de_l_echantillon(self):
+        modele, rendu = exemple('journee_proposition'), self.get(tout='1')
+        self.assertEqual(set(rendu), set(modele))
+        self.assertEqual(set(rendu['capacite']), set(modele['capacite']))
+        self.assertEqual(set(rendu['charge']), set(modele['charge']))
+        self.assertEqual(set(rendu['proposition'][0]), set(modele['proposition'][0]))
+        self.assertEqual(set(rendu['proposition'][0]['item']), CLES_ITEM)
+        self.assertEqual(set(rendu['suite_par_projet'][0]), set(modele['suite_par_projet'][0]))
+
+    def test_exclure_inclure(self):
+        ids = [ligne['item']['id'] for ligne in self.get(exclure=str(self.rails.pk))['proposition']]
+        self.assertNotIn(self.rails.pk, ids)
+        ids = [ligne['item']['id'] for ligne in self.get(inclure=str(self.contrat.pk))['proposition']]
+        self.assertEqual(ids[0], self.contrat.pk)
+
+    def test_ids_etrangers_ignores(self):
+        autre = fabriques.compte(self.societe, nom='u2')
+        etrangere = fabriques.tache(autre, projet=fabriques.projet(autre))
+        sans = self.get()
+        avec = self.get(exclure=f'{etrangere.pk},x', inclure=str(etrangere.pk))
+        self.assertEqual(avec['proposition'], sans['proposition'])
+
+
+class PlanifierJourneeTests(_Base):
+    """POST journee/planifier/ (« Garder ces N », mode express) — invariants 9, 18."""
+
+    URL = '/api/django/taches/journee/planifier/'
+
+    def poster(self, corps, statut=200):
+        reponse = client_de(self.u).post(self.URL, corps, format='json')
+        self.assertEqual(reponse.status_code, statut, reponse.content[:300])
+        return reponse.json()
+
+    def corps(self, *taches, essentielles=()):
+        return {'jour': J.isoformat(), 'mode': 'express',
+                'lignes': [{'type': 'tache', 'id': t.pk} for t in taches], 'essentielles': [t.pk for t in essentielles]}
+
+    def test_garder_ces_n(self):
+        from apps.taches.models.journee import PlanJour
+        du_jour = self.tache(jour_prevu=J)
+        a, b = self.tache(), self.tache()
+        rendu = self.poster(self.corps(a, b, essentielles=[du_jour]))
+        self.assertEqual(set(rendu), set(exemple('journee_ecrite')))
+        self.assertIsNotNone(rendu['geste_id'])
+        for t in (a, b):
+            t.refresh_from_db()
+            self.assertEqual((t.jour_prevu, t.reports), (J, 0))
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        self.assertIsNotNone(plan.planifie_le)
+        self.assertEqual(plan.objectif_du_jour, 5)
+        lignes = {lig.tache_id: lig for lig in plan.ligneplanjour_set.all()}
+        self.assertEqual(set(lignes), {du_jour.pk, a.pk, b.pk})
+        self.assertTrue(all(lig.prevue_au_plan for lig in lignes.values()))
+        self.assertTrue(lignes[du_jour.pk].essentielle)
+
+    def test_revalider_n_ajoute_que_des_lignes(self):
+        from apps.taches.models.journee import PlanJour
+        a, b = self.tache(), self.tache()
+        self.poster(self.corps(a))
+        premier = PlanJour.objects.get(proprietaire=self.u, jour=J).planifie_le
+        self.poster(self.corps(b))
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        self.assertEqual(plan.planifie_le, premier)
+        self.assertEqual(plan.ligneplanjour_set.count(), 2)
+
+    def test_4e_essentielle_400(self):
+        taches = [self.tache(jour_prevu=J) for _ in range(4)]
+        rendu = self.poster(self.corps(essentielles=taches), statut=400)
+        self.assertEqual(rendu, {'essentielles': ['3 au plus.']})
+
+    def test_mode_inconnu_400(self):
+        corps = self.corps(self.tache())
+        corps['mode'] = 'complet'
+        self.assertEqual(self.poster(corps, statut=400), {'mode': ['Valeur inconnue.']})
+
+    def test_id_etranger_404_rien_ecrit(self):
+        from apps.taches.models.journee import PlanJour
+        autre = fabriques.compte(self.societe, nom='u2')
+        etrangere = fabriques.tache(autre, projet=fabriques.projet(autre))
+        self.poster(self.corps(self.tache(), etrangere), statut=404)
+        self.assertFalse(PlanJour.objects.filter(proprietaire=self.u).exists())
+
+    def test_annuler_defait_le_geste(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services.gestes import annuler_geste
+        a = self.tache()
+        geste_id = self.poster(self.corps(a))['geste_id']
+        annuler_geste(self.u, geste_id)
+        a.refresh_from_db()
+        self.assertIsNone(a.jour_prevu)
+        self.assertFalse(PlanJour.objects.filter(proprietaire=self.u, jour=J).exists())
+
+
+class EssentielTests(_Base):
+    """POST journee/essentiel/ (★) : ligne essentielle du plan du jour, 3 au plus."""
+
+    URL = '/api/django/taches/journee/essentiel/'
+
+    def setUp(self):
+        self.jour = timezone.localdate()
+
+    def etoile(self, tache, essentielle=True, statut=200):
+        reponse = client_de(self.u).post(self.URL, {'tache_id': tache.pk, 'essentielle': essentielle}, format='json')
+        self.assertEqual(reponse.status_code, statut, reponse.content[:300])
+        return reponse.json()
+
+    def ligne_de(self, tache):
+        from apps.taches.models.journee import LignePlanJour as Ligne
+        return Ligne.objects.filter(plan__proprietaire=self.u, plan__jour=self.jour, tache=tache).first()
+
+    def test_etoile_sur_plan_non_valide(self):
+        t = self.tache(jour_prevu=self.jour)
+        rendu = self.etoile(t)
+        self.assertEqual(set(rendu), set(exemple('tache_ecrite')))
+        self.assertIsNotNone(rendu['geste_id'])
+        lig = self.ligne_de(t)
+        self.assertTrue(lig.essentielle)
+        self.assertTrue(lig.prevue_au_plan)
+
+    def test_etoile_sur_plan_valide_n_est_pas_au_plan(self):
+        fabriques.plan(self.u, self.jour, planifie_le=timezone.now())
+        t = self.tache(jour_prevu=self.jour)
+        self.etoile(t)
+        self.assertFalse(self.ligne_de(t).prevue_au_plan)
+
+    def test_retirer_l_etoile(self):
+        t = self.tache(jour_prevu=self.jour)
+        self.etoile(t)
+        self.etoile(t, essentielle=False)
+        self.assertFalse(self.ligne_de(t).essentielle)
+
+    def test_4e_etoile_400(self):
+        for _ in range(3):
+            self.etoile(self.tache(jour_prevu=self.jour))
+        rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=400)
+        self.assertEqual(rendu, {'essentielle': ['3 au plus.']})
+
+    def test_tache_d_un_autre_404(self):
+        autre = fabriques.compte(self.societe, nom='u2')
+        self.etoile(fabriques.tache(autre, projet=fabriques.projet(autre)), statut=404)

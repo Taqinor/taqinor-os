@@ -6,15 +6,18 @@ construites lisent le jour (`?jour=`, défaut : aujourd'hui) et l'heure murale, 
 `services/journee.py`.
 """
 import datetime
+from contextlib import contextmanager
 
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.serializers.formes import TacheEcriteSerializer
+from apps.taches.serializers.formes import TacheEcriteSerializer, contexte
+from apps.taches.serializers.journee import PLAFOND_LIGNES
 from apps.taches.services import journee as services
 from apps.taches.views.base import (
     PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses)
@@ -47,6 +50,51 @@ def maintenant():
 
 def drapeau(request, champ):
     return (request.query_params.get(champ) or '').lower() in VRAI
+
+
+def ids_de(request, champ):
+    """`?exclure=41,42` → [41, 42] ; un morceau qui n'est pas un nombre est ignoré (lecture seule)."""
+    morceaux = (request.query_params.get(champ) or '').split(',')
+    return [int(m) for m in (m.strip() for m in morceaux) if m.isdigit()]
+
+
+def par_compte(request):
+    """Espace de clés d'idempotence propre au compte (deux comptes, même clé : deux gestes)."""
+    return f'compte-{request.user.pk}'
+
+
+def valide(classe, donnees):
+    serializer = classe(data=donnees)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+@contextmanager
+def refus_en_400():
+    """`services.journee.Refus` → 400 au champ nommé."""
+    try:
+        yield
+    except services.Refus as exc:
+        raise ValidationError(exc.erreurs)
+
+
+class LigneCorps(serializers.Serializer):
+    type = serializers.ChoiceField(choices=(services.TACHE, services.ACTIVITE))
+    id = serializers.IntegerField(min_value=1)
+
+
+class PlanifierCorps(serializers.Serializer):
+    jour = serializers.DateField()
+    mode = serializers.CharField()
+    lignes = serializers.ListField(child=LigneCorps(), max_length=PLAFOND_LIGNES)
+    essentielles = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
+                                         default=list)
+    triage = serializers.ListField(required=False, default=list)
+
+
+class EssentielCorps(serializers.Serializer):
+    tache_id = serializers.IntegerField(min_value=1)
+    essentielle = serializers.BooleanField()
 
 
 class AujourdhuiVue(APIView):
@@ -93,7 +141,10 @@ class PropositionJourneeVue(APIView):
         parametre('inclure', OpenApiTypes.STR, 'Ids de tâches ajoutées, séparés par des virgules.'),
     ], responses=reponses(forme_echantillon('journee_proposition'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        heure = maintenant()
+        return Response(services.proposition_du_jour(
+            request.user, jour_de(request), heure, exclure=ids_de(request, 'exclure'),
+            inclure=ids_de(request, 'inclure'), tout=drapeau(request, 'tout'), assistant=est_assistant(request)))
 
 
 class PrioritesVue(APIView):
@@ -126,7 +177,14 @@ class PlanifierJourneeVue(IdempotentCreateMixin, APIView):
         'essentielles': [20], 'triage': [],
     }, requis=('jour', 'mode', 'lignes')), responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._planifier(request), suffixe=par_compte(request))
+
+    def _planifier(self, request):
+        corps_ = valide(PlanifierCorps, request.data)
+        with refus_en_400():
+            return Response(services.planifier_express(
+                request.user, corps_['jour'], maintenant(), lignes=corps_['lignes'],
+                essentielles=corps_['essentielles'], mode=corps_['mode'], assistant=est_assistant(request)))
 
 
 class EssentielVue(APIView):
@@ -138,7 +196,12 @@ class EssentielVue(APIView):
                                  requis=('tache_id', 'essentielle')),
                    responses=reponses(TacheEcriteSerializer, erreurs=(400, 404)))
     def post(self, request):
-        raise PasEncore()
+        corps_ = valide(EssentielCorps, request.data)
+        with refus_en_400():
+            ecrite = services.marquer_essentielle(request.user, corps_['tache_id'], corps_['essentielle'],
+                                                  maintenant())
+        contexte_ = contexte(assistant=est_assistant(request))
+        return Response(TacheEcriteSerializer(ecrite, context=contexte_).data)
 
 
 class AllegerVue(IdempotentCreateMixin, APIView):

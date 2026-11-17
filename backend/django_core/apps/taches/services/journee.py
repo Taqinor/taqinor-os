@@ -14,13 +14,14 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 from django.db.models import Q
+from django.http import Http404
 from django.utils import timezone
 
 from apps.taches.choix import (
     CanalIncitation, CarteDuMoment, ClePreference, SectionJournee, StatutSuggestion, StatutTache,
     TypeIncitationEcran)
 from apps.taches.models.erp import SuggestionTache
-from apps.taches.models.journee import PlanJour
+from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach
 from apps.taches.moteur import classement, gabarits
 from apps.taches.moteur.rythme import RETOUR_JOURS_TRAVAILLES
@@ -28,7 +29,9 @@ from apps.taches.moteur.sollicitations import HEURE_RELANCE_DEFAUT, HEURE_SOIR_D
 from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, taches_de
 from apps.taches.serializers import journee as formes_journee
-from apps.taches.serializers.formes import charger_items
+from apps.taches.serializers.formes import charger_items, charger_taches, tache_ecrite
+from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
+from apps.taches.services.planification import planifier
 
 logger = logging.getLogger(__name__)
 
@@ -460,6 +463,186 @@ def vu(user, jour, maintenant):
         reponse='').first()
     forme = proposition(ouverte) if ouverte is not None else None
     return {'carte_du_moment': _carte(CarteDuMoment.RETOUR, proposition_=forme) if forme else None}
+
+
+# --- `journee/proposition/` (regles.md « Pool de Proposé », TCH57) --------------------------------
+
+def proposition_du_jour(user, jour, maintenant, *, exclure=(), inclure=(), tout=False, assistant=False):
+    """GET journee/proposition/ : Proposé par projets, sans écriture ; un id étranger dans
+    `exclure`/`inclure` est simplement ignoré (invariant 9, exception de lecture)."""
+    ctx = lire_contexte(user, jour, maintenant, assistant=assistant)
+    plan_propose = proposer(ctx, exclure=exclure, inclure=inclure)
+    rendu = formes_journee.Rendu(ctx.journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer)
+    raisons = formes_journee.raisons_du_tour(plan_propose)
+    cles = [(TACHE, item.id) for item, _ in plan_propose.pour_objectif]
+    lignes = [{'item': forme, 'deja_prevue': ctx.journee.items[cle].jour_prevu is not None, 'cochee': True}
+              for cle, forme in zip(cles, rendu.items(cles, raisons))]
+    rythme = _carte_proposition(ctx, CarteDuMoment.RYTHME, TYPES_RYTHME)
+    capacite, source = ctx.capacite
+    return {
+        'jour': jour.isoformat(), 'objectif': dict(ctx.objectif),
+        'capacite': {'minutes': capacite, 'source': source, 'rendez_vous_minutes': ctx.rendez_vous_minutes,
+                     'disponible_minutes': classement.temps_disponible(capacite, ctx.rendez_vous_minutes)},
+        'a_decider': rendu.items(ctx.journee.sections.get(SectionJournee.A_DECIDER, [])),
+        'proposition': lignes, 'charge': dict(plan_propose.charge),
+        'rythme': rythme['proposition'] if rythme else None,
+        'suite_par_projet': formes_journee.suite_par_projet(rendu, plan_propose, raisons) if tout else None,
+    }
+
+
+# --- Le plan du jour : « Garder ces N » et ★ (regles.md « Garder ces N », TCH57) -----------------
+
+MESSAGE_ESSENTIELS = '3 au plus.'
+MESSAGE_MODE = 'Valeur inconnue.'
+MODE_EXPRESS = 'express'
+CHAMPS_LIGNE = ('prevue_au_plan', 'faite', 'reportee', 'essentielle', 'creneau', 'rang')
+
+
+class Refus(Exception):
+    """Corps refusé : `erreurs` = {champ: [message]} (la vue répond 400)."""
+
+    def __init__(self, erreurs):
+        super().__init__(erreurs)
+        self.erreurs = erreurs
+
+
+def _plan_verrouille(user, jour, ops):
+    """Le `PlanJour` du jour sous verrou (créé si absent : une opération de création)."""
+    plan, cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=jour)
+    plan = PlanJour.objects.select_for_update().get(pk=plan.pk)
+    if cree:
+        ops.append(op_creation('plan_jour', plan))
+    return plan, cree
+
+
+def _valider_plan(plan, cree, maintenant, objectif, ops):
+    """Première validation : `planifie_le` = maintenant, `objectif_du_jour` = l'objectif en vigueur."""
+    if plan.planifie_le is not None:
+        return
+    avant = {'planifie_le': plan.planifie_le, 'objectif_du_jour': plan.objectif_du_jour}
+    plan.planifie_le = maintenant
+    plan.objectif_du_jour = objectif if objectif is not None else plan.objectif_du_jour
+    plan.save(update_fields=['planifie_le', 'objectif_du_jour', 'updated_at'])
+    if not cree:
+        ops.extend(op_champ('plan_jour', plan, champ, valeur) for champ, valeur in avant.items()
+                   if getattr(plan, champ) != valeur)
+
+
+def _taches_du_compte(user, ids):
+    """Les tâches `ids` de `user` ; 404 si une seule n'est pas à lui (invariant 9)."""
+    ids = set(ids)
+    taches = {t.pk: t for t in taches_de(user).filter(pk__in=ids)}
+    if set(taches) != ids:
+        raise Http404('Introuvable.')
+    return taches
+
+
+def _activites_du_compte(user, ids, jour):
+    """Les activités ERP ouvertes `ids` de `user` (`activites_ouvertes_pour`) ; 404 sinon."""
+    ids = set(ids)
+    if not ids:
+        return set()
+    from apps.records.selectors import activites_ouvertes_pour
+    trouvees = set(activites_ouvertes_pour(user, jusquau=jour).filter(pk__in=ids).values_list('pk', flat=True))
+    if trouvees != ids:
+        raise Http404('Introuvable.')
+    return trouvees
+
+
+def _creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
+    ligne = LignePlanJour.objects.create(company_id=plan.company_id, plan=plan, tache_id=tache_id,
+                                         activite_id=activite_id, **champs)
+    ops.append(op_creation('ligne_plan_jour', ligne))
+    return ligne
+
+
+def _remplacer_ligne(ligne, ops, **changements):
+    """Une ligne n'a pas de champ restaurable (§4) : la changer = la supprimer (opération dure,
+    restaurée à l'identique) et en créer une neuve — l'annulation défait les deux."""
+    valeurs = {'plan': ligne.plan_id, 'tache': ligne.tache_id, 'activite_id': ligne.activite_id,
+               **{champ: getattr(ligne, champ) for champ in CHAMPS_LIGNE}}
+    ops.append(op_suppression_dure('ligne_plan_jour', ligne, valeurs))
+    plan = ligne.plan
+    ligne.delete()
+    champs = {champ: valeurs[champ] for champ in CHAMPS_LIGNE}
+    champs.update(changements)
+    return _creer_ligne(plan, ops, tache_id=valeurs['tache'], activite_id=valeurs['activite_id'], **champs)
+
+
+def _poser_au_jour(user, taches, jour, ops):
+    """`planifier(J)` pour chaque tâche gardée qui n'est pas déjà du jour (report compté selon
+    l'invariant 4 : 0 pour un premier jour posé)."""
+    for tache in taches.values():
+        if tache.jour_prevu == jour or tache.echeance == jour:
+            continue
+        planifier(tache, acteur=user, jour_prevu=jour, collecte=ops)
+
+
+def _lignes_du_plan(user, plan, cles, essentielles, ops):
+    """Une ligne `prevue_au_plan` par clé sans ligne (revalider n'ajoute que des lignes, invariant
+    18) ; ★ posées sur les tâches `essentielles`."""
+    existantes = {(TACHE, lig.tache_id) if lig.tache_id else (ACTIVITE, lig.activite_id): lig
+                  for lig in plan.ligneplanjour_set.all()}
+    for cle in cles:
+        type_, pk = cle
+        if cle in existantes:
+            ligne = existantes[cle]
+            if type_ == TACHE and pk in essentielles and not ligne.essentielle:
+                _remplacer_ligne(ligne, ops, essentielle=True)
+            continue
+        champs = {'tache_id': pk} if type_ == TACHE else {'activite_id': pk}
+        _creer_ligne(plan, ops, prevue_au_plan=True, essentielle=type_ == TACHE and pk in essentielles, **champs)
+
+
+def _verifier_essentiels(plan, essentielles, champ='essentielles'):
+    deja = {lig.tache_id for lig in plan.ligneplanjour_set.all() if lig.essentielle}
+    if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
+        raise Refus({champ: [MESSAGE_ESSENTIELS]})
+
+
+def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=MODE_EXPRESS, assistant=False):
+    """POST journee/planifier/ (« Garder ces N », seul mode `express`, A17-T2) → journee_ecrite."""
+    if mode != MODE_EXPRESS:
+        raise Refus({'mode': [MESSAGE_MODE]})
+    ids_taches = [ligne['id'] for ligne in lignes if ligne['type'] == TACHE]
+    ids_activites = [ligne['id'] for ligne in lignes if ligne['type'] == ACTIVITE]
+    with transaction.atomic():
+        taches = _taches_du_compte(user, set(ids_taches) | set(essentielles))
+        _activites_du_compte(user, ids_activites, jour)
+        ops = []
+        plan, cree = _plan_verrouille(user, jour, ops)
+        _verifier_essentiels(plan, essentielles)
+        _poser_au_jour(user, {pk: taches[pk] for pk in ids_taches}, jour, ops)
+        _valider_plan(plan, cree, maintenant, sel.objectif_du_jour(sel.reglages_de(user))['nb'], ops)
+        journee = sel.lire_journee(user, jour)
+        cles = list(dict.fromkeys(sel.gardes_ouverts(journee) + [(TACHE, pk) for pk in ids_taches]
+                                  + [(ACTIVITE, pk) for pk in ids_activites]
+                                  + [(TACHE, pk) for pk in essentielles]))
+        _lignes_du_plan(user, plan, cles, set(essentielles), ops)
+        geste = enregistrer_geste(user, 'plan_du_jour', f'{len(lignes)} gardées', ops)
+    return {'aujourdhui': aujourdhui(user, jour, maintenant, assistant=assistant), 'renvoyees': [],
+            'geste_id': geste.pk}
+
+
+def marquer_essentielle(user, tache_id, essentielle, maintenant):
+    """POST journee/essentiel/ (★) : ligne `essentielle` du plan de J (`prevue_au_plan` = vrai tant que
+    le plan n'est pas validé) ; 4e ★ → 400 « 3 au plus. »."""
+    jour = maintenant.date()
+    with transaction.atomic():
+        tache = _taches_du_compte(user, [tache_id])[tache_id]
+        ops = []
+        plan, _cree = _plan_verrouille(user, jour, ops)
+        ligne = plan.ligneplanjour_set.filter(tache_id=tache.pk).first()
+        if essentielle:
+            _verifier_essentiels(plan, [tache.pk], champ='essentielle')
+        if ligne is not None and ligne.essentielle != essentielle:
+            _remplacer_ligne(ligne, ops, essentielle=essentielle)
+        elif ligne is None and essentielle:
+            _creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True,
+                         prevue_au_plan=plan.planifie_le is None)
+        geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
+    tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
+    return tache_ecrite(tache, geste_id=geste.pk if geste else None)
 
 
 def clore_jour_precedent(company_id, jour):
