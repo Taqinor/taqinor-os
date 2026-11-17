@@ -69,14 +69,11 @@ def lier_activite(user, *, activite_id, titre='', jour_prevu=None):
     activite = activites_ouvertes_pour(user, jusquau=datetime.date.max).filter(pk=activite_id).first()
     if activite is None:
         raise Http404('Introuvable.')
-    lien, libelle = _lien_de_l_activite(user, activite)
+    lien, _libelle = _lien_de_l_activite(user, activite)
     ligne = {'titre': (titre or '').strip() or (activite.summary or '').strip(), 'jour_prevu': jour_prevu}
-    with transaction.atomic():
-        resultat = creer_taches(user, [ligne], source=Source.ACTIVITE, porte='lien_activite',
-                                lien=lien, activite=activite)
-        if libelle and resultat.creees:
-            Tache.objects.filter(pk=resultat.creees[0].pk).update(lien_libelle=libelle)
-    return resultat
+    # `creer_taches` pose le libellé du lien à la liaison (même porte `selectors/liens`).
+    return creer_taches(user, [ligne], source=Source.ACTIVITE, porte='lien_activite', lien=lien,
+                        activite=activite)
 
 
 # --- Convertir les à-faire personnels ---------------------------------------------------------

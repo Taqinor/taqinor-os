@@ -110,6 +110,29 @@ class ConvertirTests(_Base):
         activite.refresh_from_db()
         self.assertFalse(activite.done)
 
+    def test_annuler_la_conversion_rouvre_l_a_faire(self):
+        from apps.taches.services.gestes import annuler_geste
+        activite = fabriques.activite(self.u1, summary='Rappeler Lydec')
+        rendu = convertir_activites(self.u1, ids=[activite.pk])
+        activite.refresh_from_db()
+        self.assertTrue(activite.done)
+        bilan = annuler_geste(self.u1, rendu['geste_id'])
+        self.assertEqual(bilan['conflits'], [])
+        activite.refresh_from_db()
+        self.assertFalse(activite.done)
+        self.assertIsNone(activite.done_at)
+        self.assertFalse(Tache.objects.filter(activite_origine=activite).exists())
+
+    def test_annuler_un_autre_geste_ne_rouvre_rien(self):
+        from apps.taches.services.gestes import annuler_geste
+        activite = self._faite(fabriques.activite(self.u1, summary='Close à la main'))
+        tache = fabriques.tache(self.u1, titre='Liée', activite_origine=activite)
+        geste = GesteAnnulable.objects.create(company=self.a, proprietaire=self.u1, type='creation', message='x',
+                                              operations=[{'op': 'creation', 'objet': 'tache', 'id': tache.pk}])
+        annuler_geste(self.u1, geste.pk)
+        activite.refresh_from_db()
+        self.assertTrue(activite.done)
+
     def test_corps_sans_ids_400_au_champ(self):
         reponse = self._api().post(CONVERTIR, {}, format='json')
         self.assertEqual(reponse.status_code, 400)
