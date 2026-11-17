@@ -1325,7 +1325,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | DELETE | `/api/django/taches/vues/{id}/` | supprimer | S | — | N | Recherche | s2 |
 | GET | `/api/django/taches/supprimees/` | Supprimées récemment (un projet = une ligne) | S | — | — | Supprimées récemment | s2, A16-N7 |
 | GET | `/api/django/taches/gestes/` | Derniers gestes (7 j) | S | — | — | Supprimées récemment | s2 |
-| POST | `/api/django/taches/gestes/{id}/annuler/` | Annuler (200 partiel) | S | — | N | toast, cartes | A7, C2 |
+| POST | `/api/django/taches/gestes/{id}/annuler/` | Annuler (200 partiel ; porte `progression`, forme de TACHE_ECRITE, pour recaler la ligne du jour) | S | — | N | toast, cartes | A7, C2 |
 | GET | `/api/django/taches/suggestions/` | ≤ 20 proposées (< 7 j) | S | — | — | À trier « Suggéré par l'ERP » | s6a, A4 |
 | POST | `/api/django/taches/suggestions/{id}/accepter/` | Ajouter | S | — | N | À trier | s6a |
 | POST | `/api/django/taches/suggestions/{id}/refuser/` | Pas utile | S | — | N | À trier | s6a |
@@ -1766,7 +1766,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`geste_annuler.json`** — POST gestes/{id}/annuler/ · consommateurs : toast, cartes
 ```json
-{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false}
+{"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false,"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false}}
 ```
 
 **`gestes.json`** — GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes

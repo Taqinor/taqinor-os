@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from apps.taches.choix import Source
 from apps.taches.confidentialite import ASSISTANT, ECRAN
 from apps.taches.selectors.base import taches_de
+from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
 )
@@ -591,4 +592,6 @@ class GesteAnnulerVue(APIView):
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('geste_annuler'), erreurs=(404,)))
     def post(self, request, id):
-        return Response(annuler_geste(request.user, id))
+        bilan = annuler_geste(request.user, id)
+        # La progression du jour (même calcul que TACHE_ECRITE) : l'écran recale sa ligne après « Annuler ».
+        return Response({**bilan, 'progression': progression_courante(request.user, timezone.localdate())})
