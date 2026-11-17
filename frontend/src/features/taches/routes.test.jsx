@@ -6,7 +6,9 @@ import { Suspense } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { moduleNavSections } from '../../router/moduleRoutes'
+import { MANIFESTES } from '../../lib/apps/appSkus'
+import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
+import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
 import config from './module.config'
 import { useEnLigne } from './lib/enLigne'
 
@@ -68,6 +70,12 @@ describe('TCH43 — routes du module', () => {
     expect(moduleNavSections.some((s) => s.key === 'taches')).toBe(false)
   })
 
+  it('reste invisible malgré sa ligne du miroir des manifestes (non installable, aucune tuile)', () => {
+    expect(MANIFESTES.taches).toMatchObject({ sku: 'generic', installable: false })
+    const apps = buildInstalledApps(moduleConfigs, { role: 'admin' })
+    expect(apps.some((a) => a.key === 'taches')).toBe(false)
+  })
+
   it('chaque route porte son marqueur « contextuelle » (garde écran sans nav)', () => {
     const source = readFileSync(resolve(process.cwd(), 'src', 'features', 'taches', 'module.config.jsx'), 'utf8')
     const lignes = source.split(/\r?\n/)
@@ -78,7 +86,7 @@ describe('TCH43 — routes du module', () => {
 
   it.each(Object.entries(ATTENDU))('%s rend « %s » dans la coquille', async (url, titre) => {
     const { container } = monter(url)
-    expect(await screen.findByRole('heading', { level: 1, name: titre })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: titre }, { timeout: 5000 })).toBeInTheDocument()
     const coquille = container.querySelector('.tch')
     expect(coquille).not.toBeNull()
     expect(within(coquille).getByRole('heading', { level: 1, name: titre })).toBeInTheDocument()

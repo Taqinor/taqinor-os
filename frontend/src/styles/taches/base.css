@@ -110,8 +110,10 @@
   width: 44px; height: 44px; border-radius: 999px; display: inline-grid; place-items: center;
   color: var(--tch-texte); transition: background-color var(--motion-fast) var(--ease-standard);
 }
-.tch .bouton-icone:hover {
-  background: var(--tch-survol);
+@media (hover: hover) {
+  .tch .bouton-icone:hover {
+    background: var(--tch-survol);
+  }
 }
 .tch .copilote {
   display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px 0 11px;
@@ -165,7 +167,11 @@
 .tch .ligne:has(.meta) {
   padding-block: 10px;
 }
-.tch .ligne:hover,
+@media (hover: hover) {
+  .tch .ligne:hover {
+    background: var(--tch-survol);
+  }
+}
 .tch .ligne.survol {
   background: var(--tch-survol);
 }
@@ -244,7 +250,11 @@
   width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset var(--motion-base) var(--tch-ease-entree);
 }
-.tch .case:hover .rond,
+@media (hover: hover) {
+  .tch .case:hover .rond {
+    border-color: var(--tch-texte); background: var(--tch-survol);
+  }
+}
 .tch .case.survol .rond {
   border-color: var(--tch-texte); background: var(--tch-survol);
 }
@@ -355,8 +365,10 @@
 .tch .puce::after {
   content: ""; position: absolute; inset: -5px 0;
 }
-.tch .puce:hover {
-  background: color-mix(in oklch, var(--muted) 70%, var(--foreground) 6%);
+@media (hover: hover) {
+  .tch .puce:hover {
+    background: color-mix(in oklch, var(--muted) 70%, var(--foreground) 6%);
+  }
 }
 .tch .puce .doux {
   color: var(--tch-texte-doux);
@@ -417,8 +429,10 @@
 .tch .bouton.discret {
   color: var(--tch-texte);
 }
-.tch .bouton.discret:hover {
-  background: var(--tch-survol);
+@media (hover: hover) {
+  .tch .bouton.discret:hover {
+    background: var(--tch-survol);
+  }
 }
 .tch .bouton.lien {
   padding: 0 8px; color: var(--tch-accent);
@@ -682,7 +696,7 @@
   text-decoration: line-through;
 }
 .tch .maintenant {
-  position: absolute; left: -4px; right: 0; height: 2px; background: var(--tch-accent); z-index: 2;
+  position: absolute; left: -4px; right: 0; height: 2px; background: var(--tch-accent); z-index: calc(var(--z-base) + 2);
 }
 .tch .maintenant::before {
   content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 999px; background: var(--tch-accent);
@@ -1009,7 +1023,7 @@
   visibility: hidden;
 }
 .tch .maintenant {
-  z-index: 0;
+  z-index: var(--z-base);
 }
 .tch .bloc {
   z-index: 1;
@@ -1036,12 +1050,14 @@
 .tch .ligne-corps-bouton { position: static; display: block; width: 100%; text-align: left; }
 .tch .ligne-corps-bouton::after { content: ""; position: absolute; inset: 0; }
 .tch .ligne .case, .tch .ligne .garder, .tch .ligne-fin button { position: relative; z-index: 1; }
-.tch .ligne-actions { z-index: 2; }
+.tch .ligne-actions { z-index: calc(var(--z-base) + 2); }
 /* Étoile interactive : cible de 44 px, alignée sur la première ligne du titre */
 .tch .etoile-bouton { width: var(--tch-cible); height: var(--tch-cible); border-radius: 999px; display: grid; place-items: center;
   margin: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2) -12px calc((var(--tch-tache-lh) - var(--tch-cible)) / 2) 0;
   color: var(--tch-texte-doux); }
-.tch .etoile-bouton:hover { background: var(--tch-survol); }
+@media (hover: hover) {
+  .tch .etoile-bouton:hover { background: var(--tch-survol); }
+}
 .tch .etoile-bouton.active { color: var(--tch-etoile); }
 .tch button.garder { border: 0; }
 
@@ -1050,14 +1066,16 @@
 .tch .feuille .poignee { background: none; border: 0; }
 /* Bouton Copilote : la phrase (hors ligne, sans clé) se pose dessous, lue par role=status */
 .tch .copilote-groupe { position: relative; display: inline-flex; }
-.tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: 3; width: min(320px, 80vw); padding: 12px 14px;
+.tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-base) + 3); width: min(320px, 80vw); padding: 12px 14px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); color: var(--tch-texte);
   font-size: 0.875rem; line-height: 1.35; box-shadow: var(--shadow-md); }
 .tch .copilote[aria-disabled="true"] { opacity: 0.6; }
 
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
 .tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
-.tch .saisie-bureau:hover { background: var(--tch-survol); }
+@media (hover: hover) {
+  .tch .saisie-bureau:hover { background: var(--tch-survol); }
+}
 
 /* Focus visible partout (en dernier : bat les ombres propres aux boutons) */
 .tch :focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -1091,14 +1109,19 @@
   box-shadow: var(--shadow-lg); }
 .tch .barre-selection .compte { margin-right: auto; font-weight: 600; font-size: 0.9375rem; }
 .tch .barre-selection .bouton { background: transparent; color: inherit; height: 44px; padding: 0 12px; box-shadow: none; }
-.tch .barre-selection .bouton:hover { background: color-mix(in srgb, var(--tch-inverse-texte) 14%, transparent); }
+@media (hover: hover) {
+  .tch .barre-selection .bouton:hover { background: color-mix(in srgb, var(--tch-inverse-texte) 14%, transparent); }
+}
 @media (min-width: 768px) { .tch .barre-selection { left: 50%; right: auto; width: 560px; transform: translateX(-50%); bottom: 24px; } }
 /* Sélecteur de projet */
 .tch .selecteur-projet { display: block; }
 .tch .selecteur-projet-liste { list-style: none; margin: 8px 0 0; padding: 0; max-height: 40vh; overflow-y: auto; }
 .tch .selecteur-projet-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 12px;
   border-radius: 10px; font-size: 1rem; text-align: left; }
-.tch .selecteur-projet-item:hover, .tch .selecteur-projet-item[aria-selected="true"] { background: var(--tch-survol); }
+@media (hover: hover) {
+  .tch .selecteur-projet-item:hover { background: var(--tch-survol); }
+}
+.tch .selecteur-projet-item[aria-selected="true"] { background: var(--tch-survol); }
 .tch .selecteur-projet-item[aria-checked="true"] { background: var(--tch-selection); font-weight: 600; }
 .tch .selecteur-projet-nouveau { color: var(--tch-accent); font-weight: 600; border-top: 1px solid var(--tch-trait); border-radius: 0 0 10px 10px; }
 .tch .champ { display: block; width: 100%; height: 48px; padding: 0 14px; border-radius: var(--tch-rayon-champ);

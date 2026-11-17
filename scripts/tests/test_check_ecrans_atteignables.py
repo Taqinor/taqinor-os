@@ -720,7 +720,8 @@ class DepotReelTests(unittest.TestCase):
         # du MVP solaire (49 apps hors-MVP), leurs module.config.jsx partent
         # avec (SOLMVP40) ; 19 est le compte REEL mesure sur ce depot a cette
         # date, jamais un plancher arbitraire.
-        self.assertEqual(stats["configs"], 19)
+        # 19 -> 20 : app Tâches (features/taches/module.config.jsx, routes seules, sans nav).
+        self.assertEqual(stats["configs"], 20)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182

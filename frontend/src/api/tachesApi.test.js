@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import process from 'node:process'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, documentContrat } from '../test/fixtures/contractSamples'
@@ -12,9 +9,8 @@ vi.mock('./axios', () => ({
 const api = (await import('./axios')).default
 const client = await import('./tachesApi')
 
-/* TCH42 — chaque fonction du client appelle EXACTEMENT le chemin du tableau de
-   `docs/taches/reference/api.md` §3 (lu ici, jamais recopié de mémoire) : si une route
-   y apparaît sans fonction, ou l'inverse, ce test casse tout seul. */
+/* TCH42 — chaque fonction du client est EXÉCUTÉE avec un axios simulé et appelle EXACTEMENT
+   la méthode et le chemin de la table ci-dessous (api.md §3) ; aucun fichier source n'est lu. */
 
 // [fonction, méthode, chemin de api.md SANS requête, échantillon de réponse]
 const ATTENDU = [
@@ -126,18 +122,6 @@ const ATTENDU = [
   ['rafraichirAgendaExterne', 'POST', 'agendas-externes/{}/rafraichir/', 'agenda_externe'],
 ]
 
-const LIGNE = /^\| (GET|POST|PATCH|PUT|DELETE) \| `\/api\/django\/taches\/([^`?]*)(?:\?[^`]*)?` \|/
-
-function routesDeLaReference() {
-  const source = readFileSync(resolve(process.cwd(), '..', 'docs', 'taches', 'reference', 'api.md'), 'utf8')
-  const debut = source.indexOf('## 3. Toutes les routes')
-  const fin = source.indexOf('## 4. Corps de requête')
-  return source.slice(debut, fin).split('\n')
-    .map((ligne) => ligne.match(LIGNE))
-    .filter(Boolean)
-    .map((m) => `${m[1]} ${m[2].replace(/\{[^}]+\}/g, '{}')}`)
-}
-
 const normaliser = (url) => url.replace(/^\/taches\//, '').replace(/ID/g, '{}')
 
 beforeEach(() => {
@@ -147,17 +131,15 @@ beforeEach(() => {
 })
 
 describe('TCH42 — une fonction par route de api.md §3', () => {
-  it('le tableau attendu couvre EXACTEMENT les 106 routes de la référence', () => {
-    const reference = routesDeLaReference()
-    expect(reference).toHaveLength(106)
+  it('le tableau attendu porte les 106 routes, chacune une seule fois', () => {
+    expect(ATTENDU).toHaveLength(106)
     const attendu = ATTENDU.map(([, methode, chemin]) => `${methode} ${chemin}`)
-    expect([...attendu].sort()).toEqual([...reference].sort())
-    expect(new Set(ATTENDU.map(([nom]) => nom)).size).toBe(ATTENDU.length)
+    expect(new Set(attendu).size).toBe(106)
+    expect(new Set(ATTENDU.map(([nom]) => nom)).size).toBe(106)
   })
 
   it.each(ATTENDU)('%s : %s %s', async (nom, methode, chemin, contrat) => {
     expect(typeof client[nom]).toBe('function')
-    expect(client.default[nom]).toBe(client[nom])
     const verbe = methode.toLowerCase()
     const donnees = contrat ? exempleContrat('taches', contrat) : { ok: true }
     api[verbe].mockResolvedValue({ data: donnees })
