@@ -103,3 +103,21 @@ les écarts qu'elles ont DÉCLARÉS dans leurs rapports. Elle sert de consigne �
   l'assistant ne lit pas sa liste. », « Requis. », libellés des préférences (`ClePreference`).
 - Noms privés du moteur appelés par le service du rythme (`_apres_decision`, `_maj`, `_moyenne_plafonnee`,
   `_essentiels_classes`) : à rendre publics.
+
+## H. Ajouts après la lane journée
+
+- Mots des raisons : servis selon textes.md §2.2 (« échéance jeu. 19 », « suite de Équipe ») ; `aujourdhui.json`
+  montre « échéance jeudi », « puis dans Équipe » : aligner l'échantillon sur textes.md.
+- `propose.charge` : 3 clés sur `aujourdhui/`, 4 sur `journee/proposition/` (chacune selon son échantillon).
+- « Ailleurs dans l'ERP » : `approbations`, `mentions`, `activites_closes` valent 0 faute de porte publique
+  → ne PAS afficher un compteur à 0 inventé : l'écran doit omettre ces trois familles tant qu'elles ne sont pas lues.
+- Famille `pose` des obligations absente (`reporting.calendar.evenements_assignes` n'existe pas).
+- Carte `revelation` non servie par `aujourdhui/` (gabarits dans `serializers/rythme.py`, lane rythme) : à brancher.
+- Titre d'une intervention = celui de l'ERP, pas « Intervention — {référence} ».
+- Heures de travail lues dans `crm.horaires.fenetre_du_jour` (repli 08:30-19:00) — même source que la lane rythme.
+- Ligne de plan : changer ★ = suppression puis recréation (annulation défait les deux).
+- Agenda : « Toute la journée » rempli pour aujourd'hui seulement ; `triage` de `journee/planifier/` ignoré.
+- Plafonds de requêtes d'api.md §10 non mesurés (estimation 27-30 sur `aujourdhui/` pour un plafond de 25/31).
+- `AilleursVue.get` (`views/erp.py`) rempli par la lane journée : conflit possible avec la lane erp au pli.
+- Brancher `progression` de la journée dans les TACHE_ECRITE (lane saisie : `null`) et `explication / essentielle /
+  prevue_au_plan` dans les vues projets/revue.
