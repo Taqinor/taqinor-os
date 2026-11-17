@@ -4681,6 +4681,18 @@ decisions:
     source: "Reda, question interactive, 17/11/2026 (session loop work on all plans) ; avant : vague d'acceptation 6 (16-17/11/2026, relecture adverse du rejeu d'ASUP60) : grep des lecteurs front des clés servies : 0 hors `approbations` ; non posée (option recommandée en premier)"
     taches: [ASUP64]
 
+  - id: D-ASUP-8
+    question: "Faut-il refuser l'anonymisation d'un client qui a une créance ouverte ou un contentieux ? Aujourd'hui elle est acceptée, et la lettre de relance comme le dossier contentieux sortent « anonymisés »."
+    options:
+      - cle: refuser
+        texte: "Refuser « Anonymiser (RGPD) » (et l'effacement d'une demande de droit) tant que le client doit encore de l'argent sur une facture émise ou porte un contentieux ouvert, avec un message qui dit pourquoi et quoi faire (solder ou clore d'abord)"
+      - cle: autoriser
+        texte: "Laisser anonymiser comme aujourd'hui : relances et dossier contentieux sortent au nom « anonymisé », sans adresse"
+    reponse: refuser
+    date: "2026-11-17"
+    source: "Reda, question interactive, 17/11/2026 (session loop audit) ; avant : contre-visites ASUP du 14/11 (docs/audits/2026-11-14-suppression-archivage-verifie.md §5) et du 17/11 (docs/audits/2026-11-17-suppression-archivage-verifie.md §5) : une seule garde d'effacement (`pieces_legales_sans_identite_figee`), aucune sur la créance"
+    taches: [ASUP70]
+
   - id: D-ADCG-4
     question: "La preuve d'ADCG14 attend « (unhealthy) » dans `docker compose ps` après `docker compose pause redis`, mais Docker affiche « (Paused) » (la santé y passe bien à unhealthy, visible par `docker inspect`) ; un gel par SIGSTOP donne « (unhealthy) » en ~76 s. Que change-t-on ?"
     options:
