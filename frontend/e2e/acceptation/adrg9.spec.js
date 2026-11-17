@@ -1,7 +1,8 @@
 // Preuves en direct du groupe ADRG, lot 9 (vague d'acceptation 6, runner GitHub, 16/11/2026) : rejeu sur `main`
 // des tâches « code livré, preuve en direct due » ADRG4, 5, 20, 21, 22, 37, 40, 47, 63 (parcours PF4 « droits de la
 // grille », dossier docs/audits/2026-11-10-parcours-PF4.md). Les étapes reprennent celles des lots 1-3 (13/11) SANS
-// leurs écarts : les lectures refusées qui les motivaient ont été retirées depuis (ADRG113-115, 124-137). Comptes
+// leurs anciens écarts (lectures refusées retirées depuis, ADRG113-115, 124-137) ; seul ADRG63 déclare un écart
+// (garde d'écran antérieure, hors de ses Files — relecture adverse du 16/11). Comptes
 // d'essai aux rôles SYSTÈME du registre (`init_roles`, relus par leur nom dans la société de demo_admin — jamais un
 // rôle fabriqué), connectés par la vraie route `/token/` ; chaque écran est rendu dans un navigateur à part (aucun
 // cookie de demo_admin). Données propres créées par l'API ou le shell Django ; persistance = relecture en base
@@ -242,7 +243,15 @@ sortie(1)`)
       if (passeRe) await p.reload()
       const picker = p.locator('.lw-rail-triade .ap-trigger')
       await expect(picker, `${passeRe}${nomRole} : rail de la fiche rendu`).toBeVisible(V)
-      await expect(picker, `${passeRe}${nomRole} : sélecteur « Responsable » inerte`).toBeDisabled()
+      await expect(picker, `${passeRe}${nomRole} : sélecteur « Responsable » du rail inerte`).toBeDisabled()
+      // Section « Suivi commercial » (SectionPipeline, #lf-owner) : même sélecteur, rendu désactivé (crm_reassign absent).
+      const owner = p.locator('#lf-owner .ap-trigger')
+      if (!(await owner.isVisible().catch(() => false))) {
+        await p.getByRole('button', { name: /Suivi commercial/ }).first().click().catch(() => undefined)
+      }
+      await owner.scrollIntoViewIfNeeded()
+      await expect(owner, `${passeRe}${nomRole} : sélecteur « Responsable » de la section Suivi commercial rendu`).toBeVisible(V)
+      await expect(owner, `${passeRe}${nomRole} : sélecteur « Responsable » de la section Suivi commercial inerte`).toBeDisabled()
       await p.getByRole('button', { name: /Plus d'actions/ }).first().click()
       const menu = p.getByRole('menu')
       await expect(menu).toBeVisible({ timeout: 30_000 })
@@ -304,11 +313,25 @@ sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
       for (const geste of ['Mettre à jour', 'Annuler le chantier', 'Marquer réceptionné']) {
         await expect(fiche.getByRole('button', { name: geste }), `${passeRe}Commercial : pas de « ${geste} »`).toHaveCount(0)
       }
-      await expect(pc.getByRole('button', { name: /Exporter Excel/ }), `${passeRe}Commercial : aucun « Exporter Excel »`).toHaveCount(0)
+    }
+    // Liste /chantiers SANS fiche ouverte (sinon la feuille modale masque la page aux rôles ARIA) : le chantier est
+    // listé, aucun « Exporter Excel » au Commercial ; témoin : le Technicien responsable (installation_export) l'a.
+    async function liste(p) {
+      await p.goto('/chantiers')
+      await expect(p.getByText(ids.ref).first(), 'liste des chantiers : le chantier est listé').toBeVisible(V)
+      await expect(p.getByRole('dialog'), 'liste sans fiche ouverte').toHaveCount(0)
+    }
+    for (const passeRe of ['', 'relu après rechargement : ']) {
+      if (passeRe) await pc.reload()
+      await liste(pc)
+      await expect(pc.getByRole('button', { name: /Exporter Excel/ }), `${passeRe}Commercial : aucun « Exporter Excel » sur la liste`).toHaveCount(0)
     }
     const pt = await ecranDe(page, suivi, testInfo, te)
     await pt.goto(`/chantiers?id=${ids.chantier}`)
-    await expect(pt.getByRole('dialog').getByRole('button', { name: 'Mettre à jour' }), 'Technicien (installation_gerer) : gestes de la fiche présents').toBeVisible(V)
+    // Témoin (installation_gerer, chantier « installé ») : les trois gestes de la fiche sont offerts.
+    for (const geste of ['Mettre à jour', 'Annuler le chantier', 'Marquer réceptionné']) {
+      await expect(pt.getByRole('dialog').getByRole('button', { name: geste }).first(), `Technicien : « ${geste} » présent`).toBeVisible(V)
+    }
     await pt.goto('/planification')
     for (const passeRe of ['', 'relu après rechargement : ']) {
       if (passeRe) await pt.reload()
@@ -320,6 +343,8 @@ sortie(dict(chantier=i.pk, ref=i.reference, iv=iv.pk))`)
     const pr = await ecranDe(page, suivi, testInfo, tr)
     await pr.goto('/planification')
     await expect(pr.getByTestId(`iv-${ids.iv}`).getByRole('button', { name: /Déplacer l'intervention/ }), 'Technicien responsable : carte glissable').toBeVisible(V)
+    await liste(pr)
+    await expect(pr.getByRole('button', { name: /Exporter Excel/ }), 'Technicien responsable (installation_export) : « Exporter Excel » présent').toBeVisible(V)
   } finally {
     await py(`from apps.installations.models import Installation, Intervention
 Intervention.objects.filter(pk=${ids.iv}).delete()
@@ -513,6 +538,21 @@ if inst is None:
 Installation.objects.filter(pk=inst.pk).update(statut=Installation.Statut.RECEPTIONNE, parc_actif=True, annule=False)
 MonitoringConfig.objects.get_or_create(company_id=inst.company_id, installation=inst, defaults=dict(provider='noop'))
 sortie(dict(id=inst.pk, ref=inst.reference))`)
+  // Given complet : relevé, nettoyage, garantie, abonnement, certificat carbone et alerte de sous-performance ouverte
+  // sur ce système (API demo_admin, service et ORM pour le certificat et l'alerte).
+  const hier = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  await lireJson(await admin.post(`${API}/monitoring/readings/`, { ...T, data: { installation: inst.id, date: hier, energy_kwh: '12.50', period_days: 1 } }), 'relevé')
+  await lireJson(await admin.post(`${API}/monitoring/cleanings/`, { ...T, data: { installation: inst.id, date: hier } }), 'nettoyage')
+  await lireJson(await admin.post(`${API}/monitoring/warranties/`, { ...T, data: { installation: inst.id, guaranteed_year1_kwh: '5000', degradation_pct_per_year: '0.5', start_year: new Date().getFullYear(), tolerance_pct: '5', compensation_mad_per_kwh: '1' } }), 'garantie')
+  await lireJson(await admin.post(`${API}/monitoring/abonnements/`, { ...T, data: { installation_id: inst.id, periodicite: 'mensuel', montant: '150' } }), 'abonnement')
+  await py(`from decimal import Decimal
+from apps.monitoring.models import UnderperformanceFlag
+from apps.monitoring.services import emettre_certificat_carbone
+from authentication.models import Company
+UnderperformanceFlag.objects.filter(installation_id=${inst.id}, is_open=True).delete()
+UnderperformanceFlag.objects.create(company_id=${SOC}, installation_id=${inst.id}, ratio_pct=Decimal('55.00'))
+emettre_certificat_carbone(Company.objects.get(pk=${SOC}), installation_id=${inst.id}, periode_debut=datetime.date(2025, 1, 1), periode_fin=datetime.date(2025, 12, 31), tco2_evitees=Decimal('1.234'))
+sortie(1)`)
   const choix = new RegExp(`${echapper(inst.ref)}|#${inst.id}\\b`)
   async function systeme(p) {
     const s = p.getByRole('combobox', { name: /Choisir un système (supervisé|installé)/ }).first()
@@ -520,33 +560,75 @@ sortie(dict(id=inst.pk, ref=inst.reference))`)
     await s.click()
     await p.getByRole('option', { name: choix }).first().click()
   }
-  const ECRITURES = [/Synchroniser maintenant/, /Saisir un relevé/, /Enregistrer un nettoyage/, /Nouvelle garantie/]
-  async function supervision(p, c, attendu, passeRe) {
+  const calmeP = (p) => p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined)
+  /** Les 8 écrans du Then ; renvoie [écran, geste, nombre de boutons offerts]. `ferme` : /sav/monitoring refusé. */
+  async function supervision(p, c, passeRe) {
     const vus = []
+    const compte = async (ecranNom, geste, loc) => vus.push([ecranNom, geste, await loc.count()])
+    // Production : synchroniser, saisir un relevé, supprimer un relevé, fournisseur / activation (enregistrer).
     await ouvrir(p, '/production', /\/installations\/chantiers\/?$/)
     await systeme(p)
-    await expect(p.getByText('Supervision automatique').first(), `${passeRe}${c.nomRole} : production du système lisible`).toBeVisible(V)
-    await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined)
-    for (const n of ECRITURES.slice(0, 2)) vus.push([String(n), await p.getByText(n).count()])
+    await expect(p.getByText('Supervision automatique').first(), `${passeRe}${c.nomRole} : Production lisible`).toBeVisible(V)
+    await calmeP(p)
+    await compte('Production', 'Synchroniser maintenant', bouton(p, /Synchroniser maintenant/))
+    await compte('Production', 'Saisir un relevé', p.getByText('Saisir un relevé', { exact: true }))
+    await compte('Production', 'Supprimer (relevé)', bouton(p, 'Supprimer'))
+    await compte('Production', 'Fournisseur modifiable', p.getByRole('combobox', { name: 'Fournisseur de supervision' }).and(p.locator(':enabled')))
+    // Nettoyages : enregistrer, supprimer.
     await ouvrir(p, '/production/nettoyages', /\/monitoring\/configs\/?$/)
     await systeme(p)
-    await p.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined)
-    vus.push([String(ECRITURES[2]), await p.getByText(ECRITURES[2]).count()])
+    await calmeP(p)
+    await compte('Nettoyages', 'Enregistrer un nettoyage', p.getByText('Enregistrer un nettoyage', { exact: true }))
+    await compte('Nettoyages', 'Supprimer (nettoyage)', bouton(p, 'Supprimer'))
+    // Garanties : ajouter, modifier, supprimer.
     await ouvrir(p, '/production/garanties', /\/monitoring\/warranties\/?$/)
-    vus.push([String(ECRITURES[3]), await bouton(p, ECRITURES[3]).count()])
-    console.log(`[ADRG47] ${passeRe}${c.nomRole} : ${J(vus)}`)
-    for (const [n, k] of vus) {
-      if (attendu) expect(k, `${passeRe}${c.nomRole} : « ${n} » présent`).toBeGreaterThan(0)
-      else expect(k, `${passeRe}${c.nomRole} : « ${n} » absent`).toBe(0)
+    await calmeP(p)
+    await compte('Garanties', 'Nouvelle garantie', bouton(p, /Nouvelle garantie/))
+    await compte('Garanties', 'Modifier (garantie)', bouton(p, 'Modifier'))
+    await compte('Garanties', 'Supprimer (garantie)', bouton(p, 'Supprimer'))
+    // Flotte : l'alerte du système est listée ; classer.
+    await p.goto('/production/parc')
+    const alertes = p.getByRole('region', { name: 'Alertes de sous-performance' })
+    await expect(alertes.getByRole('listitem').filter({ hasText: choix }).first(), `${passeRe}${c.nomRole} : Flotte, alerte du système listée`).toBeVisible(V)
+    await compte('Flotte', 'Classer', alertes.getByRole('button', { name: 'Classer', exact: true }))
+    // Rapport O&M : rapport du système rendu ; envoyer.
+    await ouvrir(p, '/production/rapports', /\/monitoring\/configs\/?$/)
+    await systeme(p)
+    await expect(p.getByTestId('om-report'), `${passeRe}${c.nomRole} : Rapport O&M rendu`).toBeVisible(V)
+    await compte('Rapport O&M', 'Envoyer par e-mail', bouton(p, /Envoyer par e-mail/))
+    // Abonnements, SLA de disponibilité, Certificats carbone (écran SAV → Monitoring).
+    await p.goto('/sav/monitoring')
+    await calmeP(p)
+    let ferme = false
+    if (/\/403/.test(p.url())) {
+      ferme = true
+    } else {
+      await expect(p.getByRole('heading', { name: 'Monitoring', exact: true }), `${passeRe}${c.nomRole} : SAV → Monitoring rendu`).toBeVisible(V)
+      await compte('Abonnements', "Créer l'abonnement", bouton(p, "Créer l'abonnement"))
+      await compte('Abonnements', 'Résilier', bouton(p, 'Résilier'))
+      await compte('SLA de disponibilité', 'Enregistrer le SLA', bouton(p, 'Enregistrer le SLA'))
+      await compte('Certificats carbone', 'Émettre le certificat', bouton(p, 'Émettre le certificat'))
+      await compte('Certificats carbone', 'Annuler', p.getByRole('button', { name: 'Annuler', exact: true }))
     }
+    console.log(`[ADRG47] ${passeRe}${c.nomRole} : ${J(vus)} ; /sav/monitoring ${ferme ? 'refusé (/403)' : 'rendu'}`)
+    return { vus, ferme }
   }
   const pc = await ecranDe(page, suivi, testInfo, co)
-  await supervision(pc, co, false, '')
-  await pc.reload()
-  await supervision(pc, co, false, 'relu après rechargement : ')
-  await supervision(await ecranDe(page, suivi, testInfo, di), di, true, '')
-  await py(`from apps.monitoring.models import MonitoringConfig
+  for (const passeRe of ['', 'relu après rechargement : ']) {
+    if (passeRe) await pc.reload()
+    const { vus, ferme } = await supervision(pc, co, passeRe)
+    for (const [e, g, k] of vus) expect(k, `${passeRe}Commercial : ${e} — « ${g} » absent`).toBe(0)
+    // Route `/sav/monitoring` réservée au palier responsable/admin : le Commercial n'y entre pas (aucun bouton).
+    expect(ferme, `${passeRe}Commercial : SAV → Monitoring (Abonnements, SLA, Certificats) refusé`).toBe(true)
+    await expect(pc.getByRole('button', { name: /Créer l'abonnement|Résilier|Enregistrer le SLA|Émettre le certificat/ }), `${passeRe}Commercial : aucun geste SAV → Monitoring`).toHaveCount(0)
+  }
+  const { vus: vusD, ferme: fermeD } = await supervision(await ecranDe(page, suivi, testInfo, di), di, '')
+  expect(fermeD, 'Directeur : SAV → Monitoring rendu').toBe(false)
+  expect(vusD.length, 'Directeur : les gestes des 8 écrans relevés').toBe(16)
+  for (const [e, g, k] of vusD) expect(k, `Directeur : ${e} — « ${g} » présent`).toBeGreaterThan(0)
+  await py(`from apps.monitoring.models import MonitoringConfig, UnderperformanceFlag
 from apps.installations.models import Installation
+UnderperformanceFlag.objects.filter(installation_id=${inst.id}).delete()
 MonitoringConfig.objects.filter(installation_id=${inst.id}).delete(); Installation.objects.filter(pk=${inst.id}).update(parc_actif=False)
 sortie(1)`).catch(() => null)
 })
@@ -624,4 +706,7 @@ except Exception:
     pass
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: {
+  base: 'FAIL',
+  raison: "« Importer » de /stock est gardé par stock_modifier (frontend/src/pages/stock/StockList.jsx, canWrite = useHasPermission('stock_modifier'), depuis 41c6ab405 du 10/07/2026, ARC47) : le Commercial responsable de la clause (stock_creer, sans stock_modifier) n'atteint pas l'aperçu à l'écran. Garde antérieure à ADRG63 et hors de ses Files (backend dataimport seul) ; l'étape affirme le dry-run de ce compte (ni champ ni valeur prix_achat), l'absence d'« Importer », et l'aperçu à l'écran joué par le Responsable (stock_modifier, sans prix_achat_voir).",
+} })

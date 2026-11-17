@@ -377,7 +377,10 @@ sortie(Kit.objects.filter(company_id=${SOC}, nom=${J(nomKit)}).count())`)
   await expect(pr.getByRole('heading', { name: "Paramétrage des kits d'assemblage" }), 'Technicien responsable : écran rendu').toBeVisible(V)
   await expect(pr.getByRole('button', { name: 'Nouveau kit' }), 'Technicien responsable : « Nouveau kit »').toBeVisible(V)
   await xtr.delete(`${API}/installations/kits/${kit.id}/`, T).catch(() => null)
-})
+}, { ecart: {
+  base: 'FAIL',
+  raison: "/atelier/kits est réservé au palier responsable/admin (frontend/src/features/installations/module.config.jsx:107, depuis 2db39a7c2 du 08/08/2026, PACT61) : le Technicien (palier normal) est renvoyé sur /403, l'écran « Paramétrage des kits sans boutons d'écriture » de la clause n'est donc pas rendu pour lui. Garde de route antérieure à ADRG41 et hors de ses Files ; l'étape affirme la redirection sans aucun bouton, les 11 routes (Technicien 403 qui nomme stock_modifier) et le témoin Technicien responsable.",
+} })
 
 // ── ADRG43 — clôture d'une session de comptage chantier (ajustements de stock) : administrateur seul ──────────────
 etape('PF4.2-ADRG43-comptage', ['ADRG43'], async ({ testInfo }) => {
@@ -537,7 +540,7 @@ sortie(1)`)
       if (passeRe) await p.reload(); else await p.goto('/dashboard')
       await expect(p.locator('main').first(), `${passeRe}Technicien : accueil rendu`).toBeVisible(V)
       await calme(p)
-      await expect(p.getByText('Rapport indisponible'), `${passeRe}Technicien : aucune carte en erreur`).toHaveCount(0)
+      expect(lus, `${passeRe}Technicien : l'accueil ne tente aucune lecture ventes/CRM`).toEqual([])
     }
     await p.goto('/reporting')
     await calme(p)
@@ -550,4 +553,7 @@ sortie(1)`)
 Client.objects.filter(pk=${cl}).delete()
 sortie(1)`).catch(() => null)
   }
-})
+}, { ecart: {
+  base: 'FAIL',
+  raison: "/reporting est réservé au palier responsable/admin (frontend/src/features/reporting/module.config.jsx:142, roles RESPONSABLE_ADMIN, depuis ee7df19b4 du 10/07/2026) : le Technicien y est renvoyé sur /403, l'écran « /reporting sans donnée de vente » de la clause n'est donc pas rendu pour lui. Garde de route antérieure à ADRG70 et hors de ses Files (backend reporting seul) ; l'étape affirme la redirection, l'accueil sans aucune lecture ventes/CRM et les 11 routes (Technicien 403, Commercial 200).",
+} })
