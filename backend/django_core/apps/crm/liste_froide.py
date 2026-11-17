@@ -181,7 +181,12 @@ def _poser_appel(lead, user, groupe, quand):
     from .activity import journal_systeme
     from .cadence_plan import _recaler_file
     from .models import LeadActivity, RelanceEtape
+    from .portee_selectors import peut_contacter
 
+    if not peut_contacter(lead, RelanceEtape.Canal.APPEL):
+        # ACRM50 — l'opposition est relue au moment d'écrire (déjà écartée par
+        # ``motif_hors_liste``, la garde unique tient malgré tout).
+        return None
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='reveil',
         ordre=LISTE_FROIDE_ORDRE, cle=CLE_LISTE_FROIDE,
@@ -238,6 +243,8 @@ def prendre_dossiers(company, user, nombre):
                                 statut=RelanceEtape.Statut.A_FAIRE).exists()):
                         continue
                     etape = _poser_appel(verrouille, user, groupe, quand)
+                    if etape is None:
+                        continue
             except Exception:  # noqa: BLE001 — un dossier en échec n'arrête pas les autres (D-ENF22-BLE001)
                 logger.warning('Liste froide : appel non posé (lead #%s)',
                                lead.pk, exc_info=True)
