@@ -36,12 +36,13 @@ CLES_PAR_ORDRE = {2: 'appel_suivi_j2', 6: 'appel_suivi_j7',
 NOUVELLES_CLES = list(CLES_PAR_ORDRE.values())
 
 #: Les trois barreaux AVANT CAD98 (référence figée) : seul `template_cle`
-#: a le droit de changer.
+#: a le droit de changer (17/11/2026 : les deux libellés disent leur jour,
+#: « Appel de suivi J+2 » / « J+7 », comme en production).
 _AVANT = {
     2: {'delai_jours': 2, 'delai_minutes': 0, 'heure_cible': CRENEAU_APPEL,
-        'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi'},
+        'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi J+2'},
     6: {'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': CRENEAU_APPEL,
-        'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi'},
+        'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi J+7'},
 }
 #: CADV24 — l'ordre 8 (J11) devient l'appel de décision J14 : seuls les
 #: ordres 2 (J2) et 6 (J7) gardent jour/heure/libellé d'avant CAD98.

@@ -95,9 +95,10 @@ class AvecRealisationTests(_Base):
                       '[mois]', '[ville]'):
             self.assertNotIn(jeton, message)
 
-    def test_la_phrase_de_suivi_reste(self):
-        self.assertIn('Le suivi de production est en temps réel',
-                      self._rendu()['message'])
+    def test_la_phrase_de_suivi_en_temps_reel_est_retiree(self):
+        """17/11/2026 — rien ne vérifie ce suivi : la phrase est partie du
+        défaut résidentiel, comme des variantes pompage et B2B."""
+        self.assertNotIn('temps réel', self._rendu()['message'])
 
     def test_sans_video_la_phrase_video_est_omise_seule(self):
         """CAD95 — `lien_video` est vide par défaut : la phrase vidéo tombe
@@ -156,8 +157,8 @@ class SansRealisationTests(_Base):
         self.assertNotIn('installation comparable', rendu['message'])
         self.assertNotIn('{', rendu['message'])
         self.assertNotIn('[', rendu['message'])
-        self.assertIn('Le suivi de production est en temps réel',
-                      rendu['message'])
+        # 17/11/2026 — plus de phrase de suivi : il ne reste que la ligne STOP.
+        self.assertNotIn('temps réel', rendu['message'])
 
     def test_les_placeholders_manquants_sont_nommes(self):
         # CAD95 (21/09/2026) — `lien_video_preuve` s'ajoute à la liste : sans

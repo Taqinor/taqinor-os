@@ -88,9 +88,17 @@ class MentionAppelCommercialTests(SimpleTestCase):
     MENTION = 'appel commercial'
 
     def test_les_deux_scripts_portent_la_mention_fr(self):
-        for cle in CLES_APPEL_DIRECT:
-            with self.subTest(cle=cle):
-                self.assertIn(self.MENTION, MESSAGE_TEMPLATE_DEFAULTS[cle])
+        """17/11/2026 (fondateur) — `appel_ouverture` (le lead a REMPLI le
+        formulaire : il a demandé à être appelé) n'a plus la mention ; elle
+        reste sur `appel_dimanche` et sur les ouvertures par origine."""
+        self.assertIn(self.MENTION, MESSAGE_TEMPLATE_DEFAULTS['appel_dimanche'])
+        self.assertNotIn(self.MENTION,
+                         MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture'])
+        self.assertNotIn('اتصال تجاري',
+                         MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_ouverture'])
+        self.assertTrue(MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture'].startswith(
+            'Bonjour {civilite} {prenom}, {conseiller} de {marque}. Vous '
+            'venez de remplir notre formulaire pour le solaire ; vous '))
 
     def test_les_deux_scripts_portent_lorigine_des_coordonnees_fr(self):
         """loi 09-08 art. 5 §3 : où exercer le droit de savoir d'où
@@ -145,8 +153,15 @@ class AppelsDOuvertureParOrigineTests(SimpleTestCase):
                               '. '.join(reste))
 
     def test_seule_la_phrase_d_origine_differe_de_appel_ouverture(self):
-        base = MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture']
-        base_da = MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_ouverture']
+        # Les variantes par origine GARDENT la mention que la base a perdue
+        # (17/11/2026) : on la remet sur la base avant de comparer.
+        base = MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture'].replace(
+            '{marque}. Vous venez',
+            "{marque} — c'est un appel commercial. Vous venez")
+        base_da = MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_ouverture'].replace(
+            '{marque}. عمرتو', '{marque} — هادا اتصال تجاري. عمرتو')
+        self.assertIn('appel commercial', base)
+        self.assertIn('اتصال تجاري', base_da)
         origine_fr = {
             'appel_ouverture_reference': ('identite_reference',
                                           '{prescripteur} nous a parlé de vous pour le solaire'),
