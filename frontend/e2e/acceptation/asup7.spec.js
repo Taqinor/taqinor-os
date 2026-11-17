@@ -143,6 +143,8 @@ sortie(DataSubjectRequest.objects.create(company_id=${SOC}, subject_identifier=$
   await expect(histo, 'le Journal liste les lignes du client').toBeVisible({ timeout: 60_000 })
   await histo.click()
   const dlg = page.getByRole('dialog').filter({ hasText: 'Historique à cette date' })
+  // « Date de référence » vaut minuit (Casablanca) du jour choisi : pour voir les lignes d'aujourd'hui, on choisit demain.
+  await dlg.locator('#journal-as-of-date').fill(new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10))
   await expect(dlg.getByRole('cell', { name: 'telephone', exact: true }), 'écran : champ telephone reconstruit').toBeVisible({ timeout: 60_000 })
   await expect(dlg, 'écran : « [effacé] » affiché').toContainText('[effacé]')
   for (const v of [pii.tel, neuf.tel, pii.cin, neuf.cin, pii.ice, neuf.ice]) await expect(dlg, `écran : « ${v} » absent`).not.toContainText(v)

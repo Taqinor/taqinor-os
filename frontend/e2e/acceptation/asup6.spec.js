@@ -328,6 +328,16 @@ sortie(e.pk if e else None)`)
   await expect(pt.getByText(noms[0], { exact: true }), 'après restauration : toujours absent du planning').toHaveCount(0, { timeout: 60_000 })
   await auRepos(suivi)
   await montrer(page)
+}, {
+  // Run 43984054895 (17/11) : corps VERT (toutes les assertions d'ASUP44 passées, suppression À L'ÉCRAN), seuls les oracles 2/3
+  // tombent. Le 403 de la coquille sur /stock/produits/?page_size=1 a disparu (ADRG110) ; il en reste UN autre, pour le compte
+  // « Commercial terrain » : GET /reporting/reports/kpi-federes/?vue=badges → 403 (badges de la coquille), antérieur et hors d'ASUP44.
+  ecart: {
+    base: 'FAIL',
+    raison: 'coquille du compte Commercial terrain : GET /reporting/reports/kpi-federes/?vue=badges → 403 à chaque page '
+      + '(badges de la barre latérale), défaut antérieur hors ASUP44, à classer chez le propriétaire du shell frontend ; '
+      + 'l\'ancien 403 /stock/produits/?page_size=1 a disparu (ADRG110)',
+  },
 })
 
 // ═══ PF10.3 — ASUP48 : « Archiver » sur un lead signé à facture ⇒ 409 nommé sans rien écrire ; en masse : sauté avec la raison ═══
