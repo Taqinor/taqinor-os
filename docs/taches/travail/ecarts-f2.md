@@ -121,3 +121,20 @@ les écarts qu'elles ont DÉCLARÉS dans leurs rapports. Elle sert de consigne �
 - `AilleursVue.get` (`views/erp.py`) rempli par la lane journée : conflit possible avec la lane erp au pli.
 - Brancher `progression` de la journée dans les TACHE_ECRITE (lane saisie : `null`) et `explication / essentielle /
   prevue_au_plan` dans les vues projets/revue.
+
+## I. Ajouts après la lane ERP et agenda
+
+- 409 `deja_lie` : textes.md §2.16 dit « Cette activité a déjà sa tâche. » ; `erreurs.json` et `creation.py` disent
+  « Une tâche est déjà liée à cette activité. » → textes.md fait foi : aligner l'échantillon et le code.
+- `creer_taches` ne pose pas `lien_libelle` à la liaison (posé seulement par `lier_activite`).
+- DÉFAUT : annuler une conversion d'à-faire laisse l'activité ERP close (`rouvrir_a_faire_personnel` n'a aucun
+  appelant) → `annuler_geste` d'un geste « conversion » doit rouvrir la source par `records.services`.
+- `lier_activite` refuse (404) une activité sans échéance ou reportée (passe par `activites_ouvertes_pour`) : élargir
+  par une porte `records` dédiée si la référence permet de lier toute activité ouverte du compte.
+- Export « Mes données » : `reglages_rythme` rendu en entier (l'échantillon n'en montre que 2 clés) ; `sante`,
+  `a_planifier`, `focus_semaine` des projets aux valeurs par défaut.
+- Agenda : « {h} pour {cap} » et la barre de charge omis (capacité non servie par `agenda.json` alors que la journée
+  la calcule : la servir) ; invitation « Ajoute ton agenda… » absente ; premier échec « Pas à jour » sans heure ;
+  « Planifier ma semaine » au bureau = sept lignes (la maquette montre des colonnes à cartes).
+- Titre d'un à-faire sans résumé ni note : « À-faire personnel » (sans source).
+- `records/selectors.py` : nouvelle porte `a_faire_personnels_de(user, ids)`.
