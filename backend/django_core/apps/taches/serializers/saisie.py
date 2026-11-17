@@ -11,8 +11,6 @@ Sorties : `apercu_saisie` (analyse et collage → forme de `saisie_apercu.json`,
 testés dans `saisie/` : ce module les BRANCHE, il ne les réécrit pas. Un texte collé ou dicté est
 une DONNÉE, jamais une consigne.
 """
-import datetime
-
 from django.http import Http404
 from django.utils import timezone
 from drf_spectacular.utils import inline_serializer
@@ -25,18 +23,17 @@ from apps.taches.saisie.collage import (
 )
 from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import (
-    TACHE_CONFIDENTIELLE, etiquettes_de, jours_travailles_de, projets_de, sections_de, taches_de,
+    TACHE_CONFIDENTIELLE, etiquettes_de, projets_de, sections_de, taches_de,
 )
 from apps.taches.serializers.formes import (
     TacheEcriteSerializer, TacheSerializer, charger_taches, contexte, projet_court, tache_ecrite,
 )
-from apps.taches.services.taches import verifier_lien
+from apps.taches.services.taches import est_ouvre_de, verifier_lien
 from core.conflit_etat import ConflitEtat
 
 OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 #: Un collage venu du Copilote tient en 2 000 caractères (api.md §4).
 MAX_CARACTERES_ASSISTANT = 2_000
-HORIZON_OUVRES = 400
 MESSAGE_AUTRE_COMPTE = "Une action d'un autre compte a été retirée de la file."
 MESSAGE_TROP_DE_CARACTERES_ASSISTANT = '2 000 caractères au plus.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
@@ -193,14 +190,6 @@ def _taches_ouvertes(user, assistant):
     return tuple(ouvertes.values_list('pk', 'titre'))
 
 
-def _est_ouvre(user, aujourdhui):
-    """`est_ouvre(date)` de la récurrence « jours ouvrés » : les jours TRAVAILLÉS du compte sur 400 jours
-    (au-delà : lundi-vendredi)."""
-    fin = aujourdhui + datetime.timedelta(days=HORIZON_OUVRES)
-    travailles = jours_travailles_de(user, aujourdhui, fin)
-    return lambda jour: (jour in travailles) if jour <= fin else jour.weekday() < 5
-
-
 def _relire_ignorees(lignes, ignorer, base):
     """Le × d'une puce : chaque ligne qui portait un jeton refusé est relue SANS lui (le projet hérité
     d'un titre de groupe ou de la première ligne est gardé)."""
@@ -242,7 +231,7 @@ def apercu_saisie(user, donnees, *, assistant=False, aujourdhui=None, maintenant
                if donnees.get('projet_id') is not None else None)
     if donnees.get('lien'):
         verifier_lien(user, donnees['lien'])
-    est_ouvre = _est_ouvre(user, aujourdhui)
+    est_ouvre = est_ouvre_de(user, aujourdhui)
     apercu = decouper_collage(
         textes, aujourdhui, maintenant, projets=connus['projets'], sections=connus['sections'],
         etiquettes=connus['etiquettes'], taches_ouvertes=_taches_ouvertes(user, assistant),
@@ -356,6 +345,38 @@ def valider_patch(donnees):
     if erreurs:
         raise serializers.ValidationError(erreurs)
     return dict(entree.validated_data)
+
+
+def lire_corps(classe, donnees):
+    """Le corps validé d'une action (`{}` si absent) ; 400 nommé sinon."""
+    entree = classe(data=donnees if donnees is not None else {})
+    entree.is_valid(raise_exception=True)
+    return dict(entree.validated_data)
+
+
+class ProprietaireEntreeSerializer(serializers.Serializer):
+    """Corps facultatif de `terminer/` et `rouvrir/` : le compte qui a mis l'op en file (invariant 31)."""
+
+    proprietaire_attendu = serializers.IntegerField(required=False)
+
+
+class PlanifierEntreeSerializer(ProprietaireEntreeSerializer):
+    """Corps de `planifier/` : le jour, l'heure, le moment ou « En réserve » ; `lock_version` requis."""
+
+    jour_prevu = serializers.DateField(required=False, allow_null=True)
+    moment = serializers.CharField(required=False, allow_blank=True)
+    heure_debut = serializers.CharField(required=False, allow_null=True)
+    quelque_jour = serializers.BooleanField(required=False)
+    lock_version = serializers.IntegerField(min_value=0, error_messages={'required': MESSAGE_REQUIS})
+
+
+class TrancherEntreeSerializer(serializers.Serializer):
+    choix = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
+    jour = serializers.DateField(required=False, allow_null=True)
+
+
+class AttendreEntreeSerializer(serializers.Serializer):
+    en_attente_de = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, projet_cree=None,

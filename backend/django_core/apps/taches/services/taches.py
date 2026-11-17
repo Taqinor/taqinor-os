@@ -20,19 +20,23 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.taches.choix import CibleLiable, LienEtat, Priorite, StatutRappel, StatutTache
-from apps.taches.models.rythme import ReglagesRythme
-from apps.taches.models.taches import EtiquetteTache, Tache
-from apps.taches.selectors.base import (
-    TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, projets_de, rappels_de, sections_de, taches_de,
-)
+from apps.taches.choix import CibleLiable, LienEtat, Priorite, Source, StatutRappel, StatutTache
 from apps.taches.confidentialite import ECRAN, nom_pour
+from apps.taches.models.rythme import ReglagesRythme
+from apps.taches.models.taches import ElementChecklist, EtiquetteTache, Tache
+from apps.taches.moteur.gabarits import format_jour
+from apps.taches.moteur.recurrence import prochaine_occurrence
+from apps.taches.selectors.base import (
+    TACHE_CONFIDENTIELLE, etiquettes_de, filtrer_q, jours_travailles_de, projets_de, rappels_de, sections_de,
+    taches_de,
+)
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
+from apps.taches.services.creation import creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
 )
 from apps.taches.services.planification import (
-    MESSAGE_CONFLIT, _actuel as etat_minimal, _avertissements as avertissements_du_jour,
+    MESSAGE_CONFLIT, planifier, _actuel as etat_minimal, _avertissements as avertissements_du_jour,
 )
 from apps.taches.services.rappels import _hors_fenetre as hors_fenetre
 from apps.taches.services.rappels import annuler_rappels, recalculer_ancres
@@ -41,6 +45,7 @@ from core.verrou_optimiste import CHAMP_VERSION, CODE_CONFLIT_VERSION, ConflitVe
 OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 PAS_RANG = 1024
 MAX_MAILLONS = 50
+HORIZON_OUVRES = 400
 VUES = ('boite', 'quelque_jour')
 PERIODES = ('aujourdhui', 'semaine', 'retard')
 TRIS = ('rang', 'echeance', 'priorite')
@@ -62,6 +67,7 @@ class ResultatEcriture:
     tache: object
     geste: object = None
     avertissements: tuple = ()
+    suivante: object = None
 
 
 # --- Lire ---------------------------------------------------------------------------------------
@@ -458,3 +464,257 @@ def supprimer_tache(user, pk):
             t.soft_delete(user, record=False)
             ops.append(op_suppression_douce('tache', t))
         return enregistrer_geste(user, 'suppression', 'Supprimée', ops)
+
+
+# --- Actions d'état : terminer, rouvrir, sauter, trancher, attendre, reçu, restaurer ---------------
+
+#: `lock_version` d'une occurrence au sortir de `creer_taches` (insertion 0, puis `planifier` 1) : au-delà,
+#: quelqu'un l'a touchée et « Rouvrir » ne la supprime plus (regles.md « La récurrence »).
+VERSION_OCCURRENCE_NEUVE = 1
+CHOIX_TRANCHER = ('aujourdhui', 'garder', 'jour', 'un_jour', 'abandonner')
+MESSAGE_ATTENTE_VIDE = 'Dis de qui ou de quoi tu attends.'
+MESSAGE_ATTENTE_LONGUE = '200 caractères au plus.'
+MESSAGE_PAS_RECURRENTE = 'Cette tâche ne se répète pas.'
+MESSAGE_JOUR_REQUIS = 'Requis.'
+FENETRE_SUPPRESSION_GROUPEE = datetime.timedelta(seconds=5)
+CHAMPS_STATUT = ('statut', 'fait_le', 'annule_le', 'triee_le')
+
+
+def est_ouvre_de(user, aujourdhui):
+    """`est_ouvre(date)` des séries « jours ouvrés » : les jours TRAVAILLÉS du compte sur 400 jours
+    (au-delà : lundi-vendredi)."""
+    fin = aujourdhui + datetime.timedelta(days=HORIZON_OUVRES)
+    travailles = jours_travailles_de(user, aujourdhui, fin)
+    return lambda jour: (jour in travailles) if jour <= fin else jour.weekday() < 5
+
+
+def _poser_statut(t, statut, maintenant, ops):
+    """Pose `statut` (`fait` ⇔ `fait_le`, `annule` ⇔ `annule_le` : invariant 16) et ajoute les opérations ;
+    clore une tâche la sort d'À trier (`triee_le`, invariant 1)."""
+    avant = {champ: getattr(t, champ) for champ in CHAMPS_STATUT}
+    t.statut = statut
+    t.fait_le = maintenant if statut == StatutTache.FAIT else None
+    t.annule_le = maintenant if statut == StatutTache.ANNULE else None
+    if t.triee_le is None and statut in (StatutTache.FAIT, StatutTache.ANNULE):
+        t.triee_le = maintenant
+    t.save(update_fields=[*CHAMPS_STATUT, 'updated_at'])
+    ops.extend(op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
+               if getattr(t, champ) != valeur)
+
+
+def _ligne_de_la_suivante(t, jour, etiquettes, checklist):
+    return {'titre': t.titre, 'notes': t.notes, 'priorite': t.priorite, 'jalon': t.jalon,
+            'confidentiel': t.confidentiel, 'estimation_minutes': t.estimation_minutes,
+            'projet_id': t.projet_id, 'section_id': t.section_id, 'jour_prevu': jour,
+            'heure_debut': t.heure_debut, 'recurrence': t.recurrence_id, 'occurrence_du': jour,
+            'etiquettes': etiquettes, 'checklist': checklist}
+
+
+def _occurrence_suivante(user, t, maintenant, aujourdhui, *, apres_fait):
+    """L'occurrence qui naît quand `t` est close (terminer ou sauter) : une seule ouverte par règle
+    (invariant 5). Rend la tâche née, ou `None` (série arrêtée ou close : la règle s'éteint)."""
+    regle = t.recurrence if t.recurrence_id else None
+    if regle is None or not regle.actif:
+        return None
+    jour = prochaine_occurrence(
+        regle, t.occurrence_du, aujourdhui, fait_le=timezone.localtime(maintenant) if apres_fait else None,
+        est_ouvre=est_ouvre_de(user, aujourdhui))
+    if jour is None:
+        regle.actif = False
+        regle.save(update_fields=['actif', 'updated_at'])
+        return None
+    etiquettes = list(EtiquetteTache.objects.filter(tache=t).values_list('etiquette_id', flat=True))
+    checklist = list(ElementChecklist.objects.filter(tache=t).order_by('rang', 'pk').values_list('libelle', flat=True))
+    resultat = creer_taches(user, [_ligne_de_la_suivante(t, jour, etiquettes, checklist)],
+                            source=Source.RECURRENCE, porte='recurrence')
+    return resultat.creees[0]
+
+
+def _clore(user, t, statut, maintenant, ops, *, enfants):
+    """Ferme `t` (et, si `enfants`, ses sous-tâches ouvertes : invariant 7) ; ses rappels en attente
+    sont annulés (invariant 19)."""
+    _poser_statut(t, statut, maintenant, ops)
+    annuler_rappels(t, collecte=ops)
+    if enfants:
+        for enfant in taches_de(user).select_for_update().filter(parent=t, statut__in=OUVERTES):
+            _poser_statut(enfant, statut, maintenant, ops)
+            annuler_rappels(enfant, collecte=ops)
+
+
+def _fin_de_serie(user, t, maintenant, aujourdhui, ops, *, apres_fait):
+    suivante = _occurrence_suivante(user, t, maintenant, aujourdhui, apres_fait=apres_fait)
+    if suivante is not None:
+        ops.append(op_creation('tache', suivante))
+    return suivante
+
+
+def terminer_tache(user, pk, *, maintenant=None, aujourdhui=None):
+    """Coche `pk` : fait, sous-tâches ouvertes faites, rappels annulés, occurrence suivante née (série) —
+    en UN geste annulable. Déjà faite : rien ne bouge (idempotent)."""
+    maintenant, aujourdhui = maintenant or timezone.now(), aujourdhui or timezone.localdate()
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        if t.statut == StatutTache.FAIT:
+            return ResultatEcriture(t)
+        ops = []
+        _clore(user, t, StatutTache.FAIT, maintenant, ops, enfants=True)
+        suivante = _fin_de_serie(user, t, maintenant, aujourdhui, ops, apres_fait=True)
+        message = 'Faite'
+        if suivante is not None:
+            message += f' · prochaine {format_jour(suivante.jour_prevu, aujourdhui)}'
+        geste = enregistrer_geste(user, 'terminaison', message, ops)
+    return ResultatEcriture(t, geste, suivante=suivante)
+
+
+def sauter_occurrence(user, pk, *, maintenant=None, aujourdhui=None):
+    """Saute l'occurrence ouverte d'une série : elle est abandonnée et la suivante naît (400 si la tâche
+    ne se répète pas). Déjà close : rien ne bouge."""
+    maintenant, aujourdhui = maintenant or timezone.now(), aujourdhui or timezone.localdate()
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        if t.recurrence_id is None:
+            raise serializers.ValidationError({'recurrence': [MESSAGE_PAS_RECURRENTE]})
+        if t.statut not in OUVERTES:
+            return ResultatEcriture(t)
+        ops = []
+        _clore(user, t, StatutTache.ANNULE, maintenant, ops, enfants=False)
+        suivante = _fin_de_serie(user, t, maintenant, aujourdhui, ops, apres_fait=False)
+        message = 'Sautée'
+        if suivante is not None:
+            message += f' · prochaine {format_jour(suivante.jour_prevu, aujourdhui)}'
+        geste = enregistrer_geste(user, 'terminaison', message, ops)
+    return ResultatEcriture(t, geste, suivante=suivante)
+
+
+def _supprimer_la_suivante(user, t, ops):
+    """Rouvrir supprime l'occurrence née de la clôture si personne n'y a touché (invariant 5)."""
+    if t.recurrence_id is None or t.occurrence_du is None:
+        return
+    suivante = (taches_de(user).select_for_update()
+                .filter(recurrence_id=t.recurrence_id, statut__in=OUVERTES, occurrence_du__gt=t.occurrence_du)
+                .order_by('occurrence_du').first())
+    if suivante is not None and suivante.lock_version <= VERSION_OCCURRENCE_NEUVE:
+        suivante.soft_delete(user, record=False)
+        ops.append(op_suppression_douce('tache', suivante))
+
+
+def rouvrir_tache(user, pk, *, maintenant=None):
+    """Décoche : `fait_le` et `annule_le` repartent à nul ; l'occurrence suivante intacte disparaît."""
+    maintenant = maintenant or timezone.now()
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        if t.statut in OUVERTES:
+            return ResultatEcriture(t)
+        ops = []
+        _poser_statut(t, StatutTache.A_FAIRE, maintenant, ops)
+        _supprimer_la_suivante(user, t, ops)
+        geste = enregistrer_geste(user, 'reouverture', 'Rouverte', ops)
+    return ResultatEcriture(t, geste)
+
+
+def _attente(valeur):
+    texte = str(valeur or '').strip()
+    if not texte:
+        raise serializers.ValidationError({'en_attente_de': [MESSAGE_ATTENTE_VIDE]})
+    if len(texte) > 200:
+        raise serializers.ValidationError({'en_attente_de': [MESSAGE_ATTENTE_LONGUE]})
+    return texte
+
+
+def attendre_tache(user, pk, texte):
+    """« En attente de… » quelqu'un ou quelque chose (une autre tâche passe par `PATCH bloquee_par_id`)."""
+    texte = _attente(texte)
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        if t.statut not in OUVERTES:
+            raise serializers.ValidationError({'statut': [MESSAGE_VALEUR_INCONNUE]})
+        avant = {'statut': t.statut, 'en_attente_de': t.en_attente_de}
+        t.statut, t.en_attente_de = StatutTache.EN_ATTENTE, texte
+        t.save(update_fields=['statut', 'en_attente_de', 'updated_at'])
+        ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
+               if getattr(t, champ) != valeur]
+        geste = enregistrer_geste(user, 'modification', f'En attente de : {texte}', ops) if ops else None
+    return ResultatEcriture(t, geste)
+
+
+def recevoir_tache(user, pk):
+    """« Reçu » : la tâche en attente redevient à faire (`en_attente_de` vidé)."""
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        if t.statut != StatutTache.EN_ATTENTE:
+            return ResultatEcriture(t)
+        avant = {'statut': t.statut, 'en_attente_de': t.en_attente_de}
+        t.statut, t.en_attente_de = StatutTache.A_FAIRE, ''
+        t.save(update_fields=['statut', 'en_attente_de', 'updated_at'])
+        ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()]
+        geste = enregistrer_geste(user, 'modification', 'Reçue', ops)
+    return ResultatEcriture(t, geste)
+
+
+def _jour_a_poser(t, choix, jour, aujourdhui):
+    """`(jour_prevu, quelque_jour)` d'une décision de `trancher` (regles.md §4.3)."""
+    if choix == 'aujourdhui':
+        return aujourdhui, False
+    if choix == 'garder':
+        return (t.jour_prevu if t.jour_prevu is not None and t.jour_prevu >= aujourdhui else aujourdhui), False
+    if choix == 'jour':
+        if jour is None:
+            raise serializers.ValidationError({'jour': [MESSAGE_JOUR_REQUIS]})
+        return jour, False
+    return None, True
+
+
+def _message_tranche(choix, t, aujourdhui):
+    if choix == 'aujourdhui':
+        return "Mise à aujourd'hui"
+    if choix == 'un_jour':
+        return 'En réserve'
+    return f'Prévue {format_jour(t.jour_prevu, aujourdhui)}'
+
+
+def trancher_tache(user, pk, choix, jour=None, *, maintenant=None, aujourdhui=None):
+    """« À revoir » : `aujourdhui`, `garder`, `jour` (une date), `un_jour` (En réserve) ou `abandonner`.
+    `aujourdhui`, `garder` et `jour` posent `reports_tranches = reports` : la question ne revient que
+    3 reports plus tard (invariant 4). Un seul geste."""
+    if choix not in CHOIX_TRANCHER:
+        raise serializers.ValidationError({'choix': [MESSAGE_VALEUR_INCONNUE]})
+    maintenant, aujourdhui = maintenant or timezone.now(), aujourdhui or timezone.localdate()
+    with transaction.atomic():
+        t = tache_du_compte(user, pk, verrou=True)
+        ops = []
+        if choix == 'abandonner':
+            _clore(user, t, StatutTache.ANNULE, maintenant, ops, enfants=False)
+            return ResultatEcriture(t, enregistrer_geste(user, 'decision', 'Abandonnée', ops))
+        jour_a_poser, reserve = _jour_a_poser(t, choix, jour, aujourdhui)
+        t = planifier(t, acteur=user, jour_prevu=jour_a_poser, quelque_jour=reserve, collecte=ops).tache
+        if choix != 'un_jour' and t.reports_tranches != t.reports:
+            avant = t.reports_tranches
+            t.reports_tranches = t.reports
+            t.save(update_fields=['reports_tranches', 'updated_at'])
+            ops.append(op_champ('tache', t, 'reports_tranches', avant))
+        geste = enregistrer_geste(user, 'decision', _message_tranche(choix, t, aujourdhui), ops) if ops else None
+    return ResultatEcriture(t, geste, tuple(avertissements_du_jour(user, t, aujourdhui)))
+
+
+def restaurer_tache(user, pk):
+    """Restaure une tâche supprimée (et les sous-tâches supprimées avec elle). Si son projet reste
+    supprimé, elle revient dans À trier (invariant 27)."""
+    with transaction.atomic():
+        morte = (Tache.all_objects.select_for_update()
+                 .filter(company_id=user.company_id, proprietaire=user, pk=pk, is_deleted=True).first())
+        if morte is None:
+            raise Http404('Introuvable.')
+        groupe = [morte, *Tache.all_objects.select_for_update().filter(
+            company_id=user.company_id, proprietaire=user, parent=morte, is_deleted=True,
+            deleted_at__gte=morte.deleted_at - FENETRE_SUPPRESSION_GROUPEE,
+            deleted_at__lte=morte.deleted_at + FENETRE_SUPPRESSION_GROUPEE)]
+        sans_projet = bool(morte.projet_id) and not projets_de(user).filter(pk=morte.projet_id).exists()
+        if sans_projet:
+            Tache.all_objects.filter(pk__in=[t.pk for t in groupe]).update(projet=None, section=None, triee_le=None)
+        ops = []
+        for t in groupe:
+            t.restore()
+            ops.append(op_creation('tache', t))
+        message = 'Restaurée dans À trier' if sans_projet else 'Restaurée'
+        geste = enregistrer_geste(user, 'restauration', message, ops)
+    return ResultatEcriture(tache_du_compte(user, pk), geste)

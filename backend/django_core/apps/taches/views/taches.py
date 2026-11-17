@@ -22,12 +22,16 @@ from apps.taches.serializers.formes import (
     ItemSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
 )
 from apps.taches.serializers.saisie import (
-    TacheCreationSerializer, reponse_ecrite, taches_chargees, valider_patch, verifier_proprietaire,
+    AttendreEntreeSerializer, PlanifierEntreeSerializer, ProprietaireEntreeSerializer, TacheCreationSerializer,
+    TrancherEntreeSerializer, lire_corps, reponse_ecrite, taches_chargees, valider_patch,
+    verifier_proprietaire,
 )
 from apps.taches.services.creation import creer_taches
+from apps.taches.services.planification import planifier
 from apps.taches.services.taches import (
-    avertissements_du_jour, liste_taches, modifier_tache, rappel_a_la_creation, reverifier_lien,
-    supprimer_tache,
+    attendre_tache, avertissements_du_jour, liste_taches, modifier_tache, rappel_a_la_creation,
+    recevoir_tache, restaurer_tache, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimer_tache,
+    terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
     ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
@@ -66,6 +70,21 @@ ETIQUETTE_ECRITE = inline_serializer('TachesEtiquetteEcrite', {
     'id': serializers.IntegerField(), 'nom': serializers.CharField(), 'couleur': serializers.CharField(),
     'geste_id': serializers.IntegerField(allow_null=True),
 })
+
+
+def _reponse(request, resultat):
+    """La TACHE_ECRITE d'une action (`tache`, `suivante`, `geste_id`, avertissements)."""
+    return Response(reponse_ecrite(
+        request.user, resultat.tache, assistant=est_assistant(request), geste=resultat.geste,
+        suivante=getattr(resultat, 'suivante', None), avertissements=resultat.avertissements))
+
+
+def _conflit_complet(request, exc, pk):
+    """409 `conflit_version` : `actuel` devient la forme TACHE COMPLÈTE (le bandeau de conflit la lit)."""
+    exc.detail['actuel'] = TacheSerializer(
+        taches_chargees(request.user, [pk])[0], context=contexte(assistant=est_assistant(request))).data
+    return exc
+
 
 FILTRES_LISTE = [
     parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (En réserve)…'),
@@ -189,12 +208,8 @@ class TacheVue(APIView):
             resultat = modifier_tache(request.user, id, donnees, version=version,
                                       usage=ASSISTANT if assistant else ECRAN)
         except ConflitVersion as exc:
-            exc.detail['actuel'] = TacheSerializer(
-                taches_chargees(request.user, [id])[0], context=contexte(assistant=assistant)).data
-            raise
-        return Response(reponse_ecrite(
-            request.user, resultat.tache, assistant=assistant, geste=resultat.geste,
-            avertissements=resultat.avertissements))
+            raise _conflit_complet(request, exc, id)
+        return _reponse(request, resultat)
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
@@ -216,7 +231,16 @@ class TachePlanifierVue(APIView):
         'proprietaire_attendu': serializers.IntegerField(required=False),
     }), responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(PlanifierEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        try:
+            resultat = planifier(
+                id, acteur=request.user, jour_prevu=donnees.get('jour_prevu'), moment=donnees.get('moment', ''),
+                heure_debut=donnees.get('heure_debut'), quelque_jour=donnees.get('quelque_jour', False),
+                version=donnees['lock_version'])
+        except ConflitVersion as exc:
+            raise _conflit_complet(request, exc, id)
+        return _reponse(request, resultat)
 
 
 class TacheTerminerVue(APIView):
@@ -226,7 +250,9 @@ class TacheTerminerVue(APIView):
 
     @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        return _reponse(request, terminer_tache(request.user, id))
 
 
 class TacheRouvrirVue(APIView):
@@ -236,7 +262,9 @@ class TacheRouvrirVue(APIView):
 
     @extend_schema(request=PROPRIETAIRE_ATTENDU, responses=ECRITE_AVEC_COMPTE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(ProprietaireEntreeSerializer, request.data)
+        verifier_proprietaire(request.user, donnees.get('proprietaire_attendu'))
+        return _reponse(request, rouvrir_tache(request.user, id))
 
 
 class TacheTrancherVue(APIView):
@@ -249,7 +277,8 @@ class TacheTrancherVue(APIView):
         'jour': serializers.DateField(required=False, allow_null=True),
     }), responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(TrancherEntreeSerializer, request.data)
+        return _reponse(request, trancher_tache(request.user, id, donnees['choix'], donnees.get('jour')))
 
 
 class TacheSauterVue(APIView):
@@ -259,7 +288,7 @@ class TacheSauterVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, sauter_occurrence(request.user, id))
 
 
 class TacheAttendreVue(APIView):
@@ -270,7 +299,8 @@ class TacheAttendreVue(APIView):
     @extend_schema(request=corps('TacheAttendre', {'en_attente_de': 'Lydec'}, requis=('en_attente_de',)),
                    responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(AttendreEntreeSerializer, request.data)
+        return _reponse(request, attendre_tache(request.user, id, donnees['en_attente_de']))
 
 
 class TacheRecuVue(APIView):
@@ -280,7 +310,7 @@ class TacheRecuVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, recevoir_tache(request.user, id))
 
 
 class TacheReordonnerVue(APIView):
@@ -300,7 +330,7 @@ class TacheRestaurerVue(APIView):
 
     @extend_schema(request=None, responses=ECRITE)
     def post(self, request, id):
-        raise PasEncore()
+        return _reponse(request, restaurer_tache(request.user, id))
 
 
 class TacheRappelsVue(APIView):
