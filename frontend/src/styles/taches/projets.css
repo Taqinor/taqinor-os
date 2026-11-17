@@ -36,3 +36,26 @@
 .tch .ep-erreur { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
 .tch .ep-modeles-lien { align-self: flex-start; }
 .tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
+
+/* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
+.tch .ep-barre { display: flex; align-items: center; min-height: 44px; padding: 0 var(--tch-gouttiere); }
+.tch .ep-retour { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px 0 0; font-size: 1.0625rem; font-weight: 500; color: var(--tch-accent); }
+.tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
+.tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
+.tch .ep-ligne-info { display: flex; align-items: center; gap: 10px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .ep-avance { display: flex; flex-direction: column; gap: 6px; }
+.tch .ep-barre-avance { height: 6px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
+.tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-losange { color: var(--tch-point); }
+.tch .ep-sante-ligne { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 600; }
+.tch .ep-details { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); align-self: flex-start; font-size: 0.9375rem; }
+.tch .ep-details-corps { display: flex; flex-direction: column; gap: 4px; font-size: 0.9375rem; }
+.tch .ep-details-corps p { margin: 0; }
+.tch .ep-etape { margin-top: 8px; }
+.tch .ep-faites { display: flex; align-items: center; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-weight: 600; }
+.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-accent); font-size: 0.9375rem; font-weight: 600; }
+.tch .ep-ajout { padding: 4px var(--tch-gouttiere) 8px; display: flex; flex-direction: column; gap: 6px; }
+@media (hover: hover) {
+  .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
+}
