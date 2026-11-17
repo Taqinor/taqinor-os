@@ -197,6 +197,15 @@ class CreationTests(TestCase):
         autre = self._creer(_ligne(client_id='abc:0'), user=self.voisin)
         self.assertEqual(len(autre.creees), 1)
 
+    def test_client_id_long_coupe_la_base_jamais_le_suffixe(self):
+        """63 caractères + `:0`…`:11` : couper le tout à 64 confondait `:1` et `:10` (une ligne perdue)."""
+        resultat = self._creer(*(_ligne(f'ligne {n}') for n in range(12)), client_id='c' * 63)
+        self.assertEqual((len(resultat.creees), resultat.deja_creees), (12, []))
+        cles = list(Tache.objects.filter(proprietaire=self.u1).values_list('client_id', flat=True))
+        self.assertEqual(len(set(cles)), 12)
+        self.assertTrue(all(len(cle) <= 64 for cle in cles))
+        self.assertIn('c' * 61 + ':10', cles)
+
     def test_course_relue_apres_integrity_error(self):
         """Fenêtre de la course forcée : la lecture préalable ne voit pas encore la tâche que l'autre
         envoi vient d'écrire ; l'`IntegrityError` est relue → déjà créée, aucune seconde tâche."""

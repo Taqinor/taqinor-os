@@ -177,13 +177,17 @@ def _champs_simples(ligne):
 
 
 def _client_id(ligne, client_id, rang, nombre):
-    """`client_id` de la ligne, sinon celui de l'envoi (`:<n>` par ligne d'un envoi multi-lignes)."""
+    """`client_id` de la ligne, sinon celui de l'envoi (`:<n>` par ligne d'un envoi multi-lignes).
+    Une base trop longue est coupée, JAMAIS le suffixe `:<n>` (sinon `:1` et `:10` se confondraient)."""
     propre = ligne.get('client_id')
     if propre:
         return str(propre)[:64]
     if not client_id:
         return None
-    return str(client_id)[:64] if nombre == 1 else f'{client_id}:{ligne.get("index", rang)}'[:64]
+    if nombre == 1:
+        return str(client_id)[:64]
+    suffixe = f':{ligne.get("index", rang)}'
+    return (str(client_id)[:max(0, 64 - len(suffixe))] + suffixe)[:64]
 
 
 # --- Identifiants reçus, revérifiés (invariant 9) ---------------------------------------------
