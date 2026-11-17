@@ -4676,9 +4676,9 @@ decisions:
         texte: "Les retirer de la réponse (aucun lecteur ; « Ma file » compte déjà les mêmes paniers à l'écran) ; ASUP60 devient caduque et se clôt avec"
       - cle: brancher
         texte: "Les afficher : une tuile « à faire » (en retard / aujourd'hui) sur l'accueil, lue de cette route ; ASUP60 garde son sens"
-    reponse: ouverte
+    reponse: retirer
     date: "2026-11-17"
-    source: "vague d'acceptation 6 (16-17/11/2026, relecture adverse du rejeu d'ASUP60) : grep des lecteurs front des clés servies : 0 hors `approbations` ; non posée (option recommandée en premier)"
+    source: "Reda, question interactive, 17/11/2026 (session loop work on all plans) ; avant : vague d'acceptation 6 (16-17/11/2026, relecture adverse du rejeu d'ASUP60) : grep des lecteurs front des clés servies : 0 hors `approbations` ; non posée (option recommandée en premier)"
     taches: [ASUP64]
 
   - id: D-ADCG-4
@@ -4688,7 +4688,7 @@ decisions:
         texte: "Garder le geste `docker compose pause redis` et lire la santé par `docker inspect --format {{.State.Health.Status}}` (unhealthy)"
       - cle: sigstop
         texte: "Garder la lecture `docker compose ps` et changer le geste : geler redis-server par SIGSTOP (`kill -STOP 1` dans le conteneur), attendre ~80 s"
-    reponse: ouverte
+    reponse: lire_state_health
     date: "2026-11-17"
-    source: "enregistrement docs/audits/acceptation/ADCG/2026-11-13-8c4a0a109.md (ADCG14 FAIL hors couvre, l. 51) ; vague d'acceptation 6 (16-17/11/2026) : non posée (option recommandée en premier)"
+    source: "Reda, question interactive, 17/11/2026 (session loop work on all plans) ; avant : enregistrement docs/audits/acceptation/ADCG/2026-11-13-8c4a0a109.md (ADCG14 FAIL hors couvre, l. 51) ; vague d'acceptation 6 (16-17/11/2026) : non posée (option recommandée en premier)"
     taches: [ADCG119]
