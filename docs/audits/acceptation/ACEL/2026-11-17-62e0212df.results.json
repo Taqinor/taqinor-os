@@ -1,0 +1,57 @@
+{
+  "sha": "62e0212dfcc597c2de5c78e4c84116aead91a11d",
+  "date": "2026-11-17",
+  "groupe": "ACEL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACEL1",
+    "ACEL101"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF11.sonde.ACEL1-C-ACEL-001",
+      "taches": [
+        "ACEL1"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-17/ACEL1-sonde-C-ACEL-001.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "sonde docs/audits/sondes/ACEL/C-ACEL-001.py rejouee sur dev-all-acc6 (beat reporting-email-saved-reports a crontab(minute=0, hour='6-23'), expires 3600) : repro False ; un rapport regle a 7/8/9 h n'est du qu'a son heure, sans heure ou a 3 h il part a 6 h, aucun ne part deux fois le meme jour (repro True sur origin/main c47427837, rejeu du constructeur)"
+    },
+    {
+      "id": "PF11.registre.ACEL101-du",
+      "taches": [
+        "ACEL101"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-17/ACEL101-du.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "audit_registre.py --du rejoue sur le depot reel : avant les coches de la vague (faits: 66 au compte rendu du 16/11, 66 cochees) ACEL n'est pas annonce (rejeu du constructeur sur 365fa0d99) ; apres les coches ACEL1/ACEL101 (68/69) la contre-visite est annoncee — une coche nouvelle depuis le compte rendu, comme le veut la tache"
+    }
+  ]
+}

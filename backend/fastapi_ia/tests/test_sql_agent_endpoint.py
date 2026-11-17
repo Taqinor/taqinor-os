@@ -918,7 +918,8 @@ class MoteurNatifCop6Tests(unittest.TestCase):
         ecritures = []
 
         def django(ctx, path, method="POST", payload=None, **k):
-            ecritures.append(path)
+            if not path.endswith("/agent/evenements/budget/"):  # AIC90 : lecture du budget, pas une écriture
+                ecritures.append(path)
             return {"ok": False, "status": 0, "error": "Service indisponible."}
 
         def executer(**kw):

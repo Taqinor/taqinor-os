@@ -1,0 +1,16 @@
+# Lecture seule de la production par l'orchestrateur (accord permanent prod-read-access), 16/11/2026 ~23:40 UTC
+# 1) GET https://api.taqinor.ma/api/django/core/health/ready/
+{"status":"ready","dernier_demarrage":{"ts":1794736681.4950972,"sha":"daed8f767cbaae0636cf795f4caa83cf3f66c9ec"},"dernier_tri_problemes":null}
+# => ADCG19 : dernier_demarrage.sha non null (= daed8f767, commit deploye par l'auto-deploy du 15/11)
+# 2) journalctl -u taqinor-autodeploy --since 2026-11-11 (filtre migrate / Container django_core / Restarting), deploy du 15/11 04:13 :
+2026-11-15T04:13:30+00:00 auto-deploy.sh[1246632]: Operations to perform:
+2026-11-15T04:13:38+00:00 auto-deploy.sh[1246632]: Running migrations:
+2026-11-15T04:13:38+00:00 auto-deploy.sh[1246632]:   No migrations to apply.
+2026-11-15T04:13:52+00:00 auto-deploy.sh[1247074]:  Container erp-agentique-django_core-1 Recreate
+2026-11-15T04:14:03+00:00 auto-deploy.sh[1247074]:  Container erp-agentique-django_core-1 Recreated
+2026-11-15T04:14:14+00:00 auto-deploy.sh[1247074]:  Container erp-agentique-django_core-1 Started
+2026-11-15T04:14:15+00:00 auto-deploy.sh[1247705]:  Container erp-agentique-django_core-1 Restarting
+2026-11-15T04:14:26+00:00 auto-deploy.sh[1247705]:  Container erp-agentique-django_core-1 Started
+# meme ordre aux deploys de 06:21, 08:19 et 09:53 le 15/11
+# => ADCG2 : en prod, migrate (run --rm) AVANT up -d (Recreate) AVANT restart ; le banc (scripts/tests/test_auto_deploy.py, etape PF3.deploy.ADCG2 du run 43976149687) couvre l'echec de migrate
+# Non prouve en prod : ADCG3 (aucune ligne ECHEC depuis le 11/11 : aucun echec reel a observer), ADCG4 (sonde C-ADCG-004 non rejouee)

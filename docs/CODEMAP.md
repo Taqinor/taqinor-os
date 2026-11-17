@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 6cb320728e219a2c87e89b56a6336ee7970df2368e891153a503a340fdc139f1
+Structure fingerprint: b732399826126950a154c39ac1c5858882f958d93aa4f4f0493b458f8028f1a4
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -385,7 +385,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 ### agent / crm / ventes / reporting / fastapi_ia / frontend ia — Copilote commercial (14/11/2026, tâches AIC60-AIC99, dossier `docs/assistant-copilote.md`)
 
 - **Deux interrupteurs** (éteints pour l'équipe au merge) : Django `ASSISTANT_COPILOTE` = `aucun` | `admins` (défaut) | `tous` (qui reçoit les actions du lot `copilote`) ; FastAPI `ASSISTANT_MOTEUR` = `langchain` (défaut) | `natif`.
-- **agent** : `registry.py` — `AgentAction.carte` (catalogue fermé `CARTES`), `.lot` (`copilote` / `herite`), `.objets` ; `copilote_allume_pour(user)` filtre `for_user` ET la confirmation ; `GET agent/libelles/` (`views.py::LibellesObjetsView` : nom lisible d'un lead / devis / touche / facture / client, dans la portée et le droit de lire le module) ; journal `AssistantEvent` : `tokens.cache_write` compté au coût (`services.py::PRIX_MTOK_USD`), `erreur.request_id` et `erreur.diagnostic` bornés (`borner_erreur`). Contrats : `contract_samples/assistant_{reponse,document,libelles,evenement,stats}.json`.
+- **agent** : `registry.py` — `AgentAction.carte` (catalogue fermé `CARTES`), `.lot` (`copilote` / `herite`), `.objets` ; `copilote_allume_pour(user)` filtre `for_user` ET la confirmation ; `GET agent/libelles/` (`views.py::LibellesObjetsView` : nom lisible d'un lead / devis / touche / facture / client, dans la portée et le droit de lire le module) ; journal `AssistantEvent` : `tokens.cache_write` compté au coût (`services.py::PRIX_MTOK_USD`), `erreur.request_id` et `erreur.diagnostic` bornés (`borner_erreur`). `GET agent/evenements/budget/` (`AssistantBudgetView`, AIC90 : coût du jour de l'appelant vs `ASSISTANT_PLAFOND_JOUR_USD`, lu par le relais FastAPI qui passe au repli au plafond). Contrats : `contract_samples/assistant_{reponse,document,libelles,evenement,stats,budget}.json`.
 - **crm** : `assistant_touches.py` (`GET crm/assistant/touches/<id>/` = touche prête + texte validé ; `?geste=fait|reporter|sauter` = carte-écho : le serveur VALIDE sans écrire et rend `proposition {geste, libelle, effet, corps}` postée telle quelle au vrai geste `relance-etapes/<id>/…`), `views_assistant.py` (recherche de leads, file, matin, fiche, message de visite, aperçu d'envoi de devis avec `lead_id` / `devis_ids` / `langue`), `selectors_libelles.py`, actions `crm.*` dans `agent_actions.py` (jamais `SIGNED` ni `COLD` par l'assistant).
 - **ventes** : actions de devis à confirmer (remise, lignes), `ventes.devis.generer_pdf` → carte `document` (lien `/proposal`, règle #4), `selectors_libelles.py`.
 - **reporting** : `assistant_diagnostic.py` — `GET reporting/assistant/diagnostic/` (administrateur, borné à la société ; `plateforme` au super-utilisateur seulement).

@@ -1,0 +1,25 @@
+# C-APUB-038 rejouÃ©e sur dev-all-acc6 3ca777856 le 2026-11-17T00:30:55Z
+  "cookies _set_auth_cookies": {
+   "noms": [
+    "access_token",
+    "refresh_token"
+   ],
+   "SameSite": "Lax",
+   "domain posé": false
+  },
+  "CookieJWTAuthentication": {
+   "méthodes": [
+    "authenticate",
+    "authenticate_header"
+   ],
+   "contrôle CSRF": false
+  },
+  "site : CSP connect-src autorise l'ERP": true,
+  "site : fetch credentials:'include' (besoin réel)": 0,
+  "effet": "un script exécuté sur taqinor.ma (balise Google Tag, tiers compromis, XSS) lit/écrit l'API avec la session de l'employé connecté ; exige un script hostile sur le site (S2)"
+ }
+}
+# CI : Ã©tape Â« settings.prod â€¦ (ASEC48) Â» verte, run merge_group 43700475747 (job backend-openapi, sha daed8f767)
+run 43700475747 : merge_group success daed8f767cbaae0636cf795f4caa83cf3f66c9ec
+# prod.py et scripts/tests/test_settings_prod_asec48.py inchangÃ©s depuis daed8f767 :
+(vide = inchangÃ©s)

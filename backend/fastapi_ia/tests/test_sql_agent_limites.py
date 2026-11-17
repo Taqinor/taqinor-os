@@ -345,6 +345,49 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertEqual((out["answer"], out["repli"]), ("Reponse du repli.", True))
         self.assertEqual(construits, ["claude", "groq"])
 
+    def test_plafond_du_jour_passe_au_repli_sans_appel_claude(self):
+        """AIC90 (D-COP-1) — budget du jour atteint : le tour part sur le repli,
+        aucun client Claude construit, aucun moteur natif, message d'information."""
+        _refuse, _credit_nul, groq = _llm_factices()
+
+        def claude_interdit():
+            raise AssertionError("Claude ne doit pas etre appele au plafond")
+        construits = self._poser(claude_interdit, groq)
+        with mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                               staticmethod(lambda ctx: True)), \
+                mock.patch("app.services.relais_copilote.tour_natif") as natif:
+            out = self._question()
+        natif.assert_not_called()
+        self.assertEqual(construits, ["groq"])
+        self.assertTrue(out["repli"])
+        self.assertTrue(out["answer"].startswith(self.svc.MESSAGE_BUDGET_ATTEINT))
+        self.assertIn("Reponse du repli.", out["answer"])
+
+    def test_plafond_sans_repli_distinct_reste_sur_claude(self):
+        """Repli vide : jamais d'arret, le tour reste sur Claude + avertissement."""
+        _refuse, _credit_nul, groq = _llm_factices()
+        construits = self._poser(groq, groq)
+        with mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                               staticmethod(lambda ctx: True)), \
+                mock.patch.object(self.svc, "SQL_AGENT_FALLBACK_PROVIDER", ""):
+            with self.assertLogs(self.svc.logger, level="WARNING") as logs:
+                out = self._question()
+        self.assertEqual(construits, ["claude"])
+        self.assertFalse(out["repli"])
+        self.assertTrue(any("Budget du jour" in m for m in logs.output))
+
+    def test_budget_illisible_ou_non_atteint_reste_sur_claude(self):
+        from app.services import action_tools as at
+        ctx = mock.Mock()
+        with mock.patch.object(at, "actions_available", return_value=False):
+            self.assertFalse(self.svc.SQLAgentService._budget_atteint(ctx))
+        with mock.patch.object(at, "actions_available", return_value=True):
+            for res, attendu in (({"ok": True, "data": {"atteint": True}}, True),
+                                 ({"ok": True, "data": {"atteint": False}}, False),
+                                 ({"ok": False, "error": "x"}, False)):
+                with mock.patch.object(at, "_django_call", return_value=res):
+                    self.assertIs(self.svc.SQLAgentService._budget_atteint(ctx), attendu)
+
     def test_pas_de_repli_sur_erreur_outil(self):
         refuse, _credit_nul, groq = _llm_factices()
         construits = self._poser(
