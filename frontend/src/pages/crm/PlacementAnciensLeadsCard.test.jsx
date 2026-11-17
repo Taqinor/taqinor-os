@@ -22,6 +22,8 @@ vi.mock('../../hooks/useHasPermission', () => ({
 vi.mock('../../api/crmApi', () => ({
   default: {
     placerAnciensLeads: vi.fn(),
+    getListeFroide: vi.fn(),
+    prendreListeFroide: vi.fn(),
   },
 }))
 
@@ -36,6 +38,7 @@ vi.mock('../../ui/confirm', () => ({
 import crmApi from '../../api/crmApi'
 import { toast } from '../../ui/confirm'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
+import ListeFroideCard from './ListeFroideCard'
 
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(true)
@@ -219,5 +222,77 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
     expect(await screen.findByText(/Aucun ancien lead à placer/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
+  })
+})
+
+/* Liste froide (fondateur, 17/11/2026) — la carte sœur, pour les leads au Froid :
+   la commerciale PREND ses appels. Charges utiles = les exemples COMMITTÉS de
+   `apps/crm/contract_samples/liste_froide.json` (PACT10) ; chaque chiffre de la
+   carte vient du GET, jamais d'un recompte écran. */
+describe('ListeFroideCard (liste froide, 17/11/2026)', () => {
+  it('se tait quand le vivier est vide et qu’aucun appel n’est ouvert', async () => {
+    crmApi.getListeFroide.mockResolvedValue(reponseContrat('crm', 'liste_froide', 'exemple_vide'))
+    const { container } = render(<ListeFroideCard />)
+    await waitFor(() => expect(crmApi.getListeFroide).toHaveBeenCalled())
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('se tait aussi quand la lecture échoue', async () => {
+    crmApi.getListeFroide.mockRejectedValue(new Error('network'))
+    const { container } = render(<ListeFroideCard />)
+    await waitFor(() => expect(crmApi.getListeFroide).toHaveBeenCalled())
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('dit le vivier et les appels ouverts avec les chiffres du serveur', async () => {
+    const etat = exempleContrat('crm', 'liste_froide', 'exemple_apercu')
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    render(<ListeFroideCard />)
+    expect(await screen.findByTestId('liste-froide-vivier')).toHaveTextContent(
+      `${etat.dossiers_chiffres} dossiers déjà chiffrés et ${etat.demandes_sans_reponse} `
+      + 'demandes sans réponse attendent un appel.')
+    expect(screen.getByTestId('liste-froide-ouverts'))
+      .toHaveTextContent(`${etat.appels_ouverts} / ${etat.plafond_appels_ouverts}`)
+    expect(screen.getByRole('button', { name: `Prendre ${etat.prise_max} dossiers` })).not.toBeDisabled()
+  })
+
+  it('bouton désactivé avec la raison du serveur quand la prise est refusée', async () => {
+    const etat = exempleContrat('crm', 'liste_froide')
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    render(<ListeFroideCard />)
+    const bouton = await screen.findByRole('button', { name: 'Prendre des dossiers' })
+    expect(bouton).toBeDisabled()
+    expect(bouton).toHaveAttribute('aria-describedby', 'liste-froide-motif')
+    expect(screen.getByText(etat.raison)).toHaveAttribute('id', 'liste-froide-motif')
+  })
+
+  it('une prise réussie dit combien d’appels sont ajoutés et prévient la page', async () => {
+    const etat = exempleContrat('crm', 'liste_froide', 'exemple_apercu')
+    const prise = { ...exempleContrat('crm', 'liste_froide'), du_jour: true }
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    crmApi.prendreListeFroide.mockResolvedValue({ data: prise })
+    const onPris = vi.fn()
+    render(<ListeFroideCard onPris={onPris} />)
+    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+    expect(await screen.findByTestId('liste-froide-succes'))
+      .toHaveTextContent(`${prise.nombre_places} appels ajoutés à vos étapes du jour.`)
+    expect(crmApi.prendreListeFroide).toHaveBeenCalledWith(etat.prise_max)
+    expect(onPris).toHaveBeenCalledWith(prise)
+    // L'état servi par le POST remplace celui du GET (plafond atteint : bouton désactivé).
+    expect(screen.getByRole('button', { name: 'Prendre des dossiers' })).toBeDisabled()
+  })
+
+  it('un refus du serveur s’affiche SOUS le bouton qui l’a causé', async () => {
+    const etat = exempleContrat('crm', 'liste_froide', 'exemple_apercu')
+    const refus = exempleContrat('crm', 'liste_froide', 'exemple_refus')
+    crmApi.getListeFroide.mockResolvedValue({ data: etat })
+    crmApi.prendreListeFroide.mockRejectedValue({ response: { status: 409, data: refus } })
+    render(<ListeFroideCard />)
+    fireEvent.click(await screen.findByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(refus.detail)
+    expect(alerte).toHaveAttribute('id', 'liste-froide-motif')
+    expect(screen.getByRole('button', { name: `Prendre ${etat.prise_max} dossiers` }))
+      .toHaveAttribute('aria-describedby', 'liste-froide-motif')
   })
 })
