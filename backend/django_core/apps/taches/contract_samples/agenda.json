@@ -263,6 +263,10 @@
           }
         ]
       }
-    ]
+    ],
+    "capacite": {
+      "minutes": 240,
+      "source": "defaut"
+    }
   }
 }
