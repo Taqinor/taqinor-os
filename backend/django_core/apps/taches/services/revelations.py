@@ -7,7 +7,7 @@ Une par jour au plus, une seule fois chacune :
 - `apres_creation` — le crochet que `creer_taches` appelle, dans sa transaction, après chaque création
   réussie : `planifier_projet` (1er projet créé) puis `ranger_copilote` (À trier ≥ 5) ; `mon_iphone`
   (1er collage créé) est branché par TCH109.
-- `revelation_revue` — étape de la nuit (`services/rythme.nuit_du_compte`) : fin de la 1re semaine.
+- `revelation_revue` — étape de la nuit (`services/rythme._nuit_du_compte`) : fin de la 1re semaine.
 """
 import datetime
 
@@ -32,13 +32,13 @@ def _revelations(user):
     return cartes_de(user).filter(type=TypeIncitationEcran.REVELATION, canal=CanalIncitation.ECRAN)
 
 
-def peut_reveler(user, cle, jour):
+def _peut_reveler(user, cle, jour):
     """Une seule fois chacune, une par jour au plus."""
     revelations = _revelations(user)
     return not revelations.filter(cle=cle).exists() and not revelations.filter(jour=jour).exists()
 
 
-def nb_a_trier(user):
+def _nb_a_trier(user):
     """Invariant 1 : vivantes, sans parent, sans projet, jamais triées, à faire ou en attente."""
     return taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
                                   statut__in=(StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)).count()
@@ -56,10 +56,10 @@ def apres_creation(user, creees, projets_crees, *, porte):
     """Après la création de `creees` (et des `projets_crees`) par `user`, par la porte `porte`."""
     jour = timezone.localdate()
     projet = _premier_projet(user, list(projets_crees))
-    if projet is not None and peut_reveler(user, PLANIFIER_PROJET, jour):
+    if projet is not None and _peut_reveler(user, PLANIFIER_PROJET, jour):
         return creer_carte(user, TypeIncitationEcran.REVELATION, PLANIFIER_PROJET, jour, {'projet_id': projet.pk})
-    if creees and peut_reveler(user, RANGER_COPILOTE, jour):
-        n = nb_a_trier(user)
+    if creees and _peut_reveler(user, RANGER_COPILOTE, jour):
+        n = _nb_a_trier(user)
         if n >= A_TRIER_MIN:
             return creer_carte(user, TypeIncitationEcran.REVELATION, RANGER_COPILOTE, jour, {'n': n})
     return None
@@ -69,6 +69,6 @@ def revelation_revue(user, reglages, jour):
     """Nuit du `jour` : la révélation `revue` une fois la première semaine écoulée."""
     if reglages.created_at is None or timezone.localtime(reglages.created_at).date() + PREMIERE_SEMAINE > jour:
         return None
-    if not peut_reveler(user, REVUE, jour):
+    if not _peut_reveler(user, REVUE, jour):
         return None
     return creer_carte(user, TypeIncitationEcran.REVELATION, REVUE, jour, {})

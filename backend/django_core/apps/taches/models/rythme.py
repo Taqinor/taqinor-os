@@ -2,7 +2,7 @@
 (reference/donnees.md §2.10-§2.12).
 
 `ReglagesRythme` naît à la première tâche (`creer_taches()`, invariant 29) OU au premier geste qui
-l'écrit (`POST rythme/`, `PATCH reglages/` : `services.rythme.reglages_a_ecrire`) ; une lecture
+l'écrit (`POST rythme/`, `PATCH reglages/` : `services.rythme._reglages_a_ecrire`) ; une lecture
 (`vu/`, `aujourdhui/`, `reglages/`) ne la crée jamais.
 """
 from django.conf import settings

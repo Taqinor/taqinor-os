@@ -98,7 +98,7 @@ def effacer_cibles(company_id, *, leads=(), clients=()):
 
 # --- Mes données --------------------------------------------------------------------------------
 
-def lignes_du_compte(cle, user):
+def _lignes_du_compte(cle, user):
     """Toutes les lignes du modèle `cle` appartenant à `user` dans sa société (supprimées comprises)."""
     modele = MODELES[cle]
     if getattr(user, 'company_id', None) is None or getattr(user, 'pk', None) is None:
@@ -130,7 +130,7 @@ def _ligne(cle, instance):
 
 def _projets(user):
     """Forme PROJET de chaque projet (compteurs calculés sur ses tâches vivantes)."""
-    projets = list(lignes_du_compte('projet', user).order_by('pk'))
+    projets = list(_lignes_du_compte('projet', user).order_by('pk'))
     comptes = (Tache.objects.filter(company_id=user.company_id, proprietaire=user, projet__in=projets)
                .values('projet_id')
                .annotate(ouvertes=Count('pk', filter=Q(statut__in=OUVERTES)),
@@ -142,7 +142,7 @@ def _projets(user):
 
 
 def _taches(user):
-    taches = charger_taches(lignes_du_compte('tache', user).order_by('pk'))
+    taches = charger_taches(_lignes_du_compte('tache', user).order_by('pk'))
     return TacheSerializer(taches, many=True, context=contexte()).data
 
 
@@ -156,7 +156,7 @@ def exporter(user, *, maintenant=None):
         elif cle == 'tache':
             donnees[cle] = _taches(user)
         else:
-            donnees[cle] = [_ligne(cle, instance) for instance in lignes_du_compte(cle, user).order_by('pk')]
+            donnees[cle] = [_ligne(cle, instance) for instance in _lignes_du_compte(cle, user).order_by('pk')]
     return donnees
 
 
@@ -169,11 +169,11 @@ def tout_effacer(user):
     effacees = Counter()
     with transaction.atomic():
         for cle in ORDRE_EFFACEMENT:
-            _total, par_modele = lignes_du_compte(cle, user).delete()
+            _total, par_modele = _lignes_du_compte(cle, user).delete()
             for label, nombre in par_modele.items():
                 if nombre and label in _CLE_DU_MODELE:
                     effacees[_CLE_DU_MODELE[label]] += nombre
-        traces = lignes_du_compte('reglages_societe', user).update(modifie_par=None)
+        traces = _lignes_du_compte('reglages_societe', user).update(modifie_par=None)
         if traces:
             effacees['reglages_societe'] += traces
     return {'effacees': dict(effacees)}

@@ -188,9 +188,9 @@ endpoints:
     note: "TCH129 : cible ; route pas encore construite."
 
   - path: /api/django/taches/agenda/
-    budget: 35
+    budget: 28
     enforced: true
-    note: "TCH129 : l'agenda (vue semaine)."
+    note: "TCH129 : l'agenda (vue semaine) ; F2 : une seule lecture préchargée pour toute la fenêtre."
 
   - path: /api/django/taches/taches/
     budget: 12

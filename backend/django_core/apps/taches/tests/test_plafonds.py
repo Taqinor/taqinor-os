@@ -104,8 +104,25 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
 
     def test_agenda(self):
         self._lire(URL_AGENDA)
-        with self.assertMaxQueries(35):
+        with self.assertMaxQueries(28):
             self._lire(URL_AGENDA)
+
+    def _requetes(self, url):
+        self._lire(url)
+        with CaptureQueriesContext(connection) as capture:
+            self._lire(url)
+        return len(capture)
+
+    def test_agenda_ne_grandit_ni_avec_les_taches_ni_avec_les_jours(self):
+        """Une seule lecture préchargée pour toute la fenêtre : 7 ou 42 jours, 6 ou 12 tâches du jour,
+        le même nombre de requêtes."""
+        court = f'{URL_AGENDA}?du={self.jour.isoformat()}&au={(self.jour + datetime.timedelta(days=6)).isoformat()}'
+        long = f'{URL_AGENDA}?du={self.jour.isoformat()}&au={(self.jour + datetime.timedelta(days=41)).isoformat()}'
+        avant_court, avant_long = self._requetes(court), self._requetes(long)
+        self.assertEqual(avant_court, avant_long)
+        _peupler(self.compte, self.projets, self.etiquette, self.jour + datetime.timedelta(days=2), 6, depart=100)
+        self.assertEqual(self._requetes(court), avant_court)
+        self.assertEqual(self._requetes(long), avant_long)
 
     def test_liste_des_taches(self):
         self._lire(URL_TACHES)

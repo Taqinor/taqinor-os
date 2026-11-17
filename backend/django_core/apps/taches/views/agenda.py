@@ -7,7 +7,7 @@ donne À placer et Mes projets : aucune règle de classement n'est réécrite ic
 """
 import datetime
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -86,6 +86,18 @@ def taches_de_la_periode(user, du, au, projet_id=None):
     return qs.filter(projet_id=projet_id) if projet_id is not None else qs
 
 
+def taches_journee_et_periode(user, J, du, au, projet_id=None):
+    """UN chargement préchargé pour toute la fenêtre : les tâches du préfiltre de la journée `J`
+    ET celles de la période, lues d'un seul tenant (`dans_journee` / `dans_periode` : appartenance,
+    sans seconde lecture des rappels, check-lists et sous-tâches). → (tâches de J, tâches de la période)."""
+    dans_j = Exists(sel.taches_de_la_journee(user, J).filter(pk=OuterRef('pk')))
+    dans_p = Exists(taches_de_la_periode(user, du, au, projet_id).filter(pk=OuterRef('pk')))
+    qs = taches_de(user).annotate(dans_journee=dans_j, dans_periode=dans_p).filter(
+        Q(dans_journee=True) | Q(dans_periode=True))
+    toutes = list(charger_items(qs))
+    return ([t for t in toutes if t.dans_journee], [t for t in toutes if t.dans_periode])
+
+
 def _ajouter_periode(journee, taches, focus):
     """Ajoute les tâches de la période à la journée lue (mêmes objets, mêmes `ItemPur`)."""
     cles = []
@@ -118,15 +130,24 @@ def candidates_du_tour(journee, projet_id=None):
     return [item for item in candidates if projet_id is None or item.projet_id == projet_id]
 
 
+def _travailles_de(user, autour, J, du, au):
+    """Jours travaillés de [du, au] : tirés de ceux déjà lus autour d'aujourd'hui quand la fenêtre y
+    tient (`travailles_autour` : J − 28 .. J + 60), sinon lus."""
+    if du >= J - datetime.timedelta(days=sel.JOURS_AVANT) and au <= J + datetime.timedelta(days=sel.JOURS_APRES):
+        return {jour for jour in autour if du <= jour <= au}
+    return jours_travailles_de(user, du, au)
+
+
 def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=False):
     """La forme `agenda.json` de `user` pour [du, au]."""
     J = maintenant_.date()
     reglages = sel.reglages_de(user)
-    journee = sel.lire_journee(user, J, charger=charger_items, reglages=reglages,
-                               travailles=sel.travailles_autour(user, J))
-    taches = charger_items(taches_de_la_periode(user, du, au, projet_id))
-    cles = _ajouter_periode(journee, taches, sel.projets_de_la_semaine(user, J))
-    travailles = jours_travailles_de(user, du, au)
+    focus = sel.projets_de_la_semaine(user, J)
+    du_jour, de_periode = taches_journee_et_periode(user, J, du, au, projet_id)
+    journee = sel.lire_journee(user, J, reglages=reglages, travailles=sel.travailles_autour(user, J),
+                               taches=du_jour, focus=focus)
+    cles = _ajouter_periode(journee, de_periode, focus)
+    travailles = _travailles_de(user, journee.travailles, J, du, au)
     ouvres = set(jours_ouvres_entre(user.company, du, au))
     obligations = sel.obligations_du_jour(user, J) if journee.erp and du <= J <= au else sel.Obligations()
     rendez_vous, agendas = sel.rendez_vous_pour(user, du, au)

@@ -54,7 +54,7 @@ from apps.taches.services import journee, rythme
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.planification import planifier
 from apps.taches.services.projets import creer_projet, modifier_projet
-from apps.taches.services.taches import modifier_tache, terminer_tache, trancher_tache
+from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache, trancher_tache
 
 #: Société de démonstration et compte du semis (jamais une société réelle : `est_demo=True` exigé).
 SLUG_SOCIETE = 'demo-taches'
@@ -112,7 +112,7 @@ TACHES = (
     (BENALI, 'Matériel', 'Valider le plan de calepinage', None,
      {'est': 60, 'prevu': ((11, 25), '09:00'), 'echeance': (11, 26)}),
     (BENALI, 'Matériel', 'Réceptionner les 16 panneaux', None, {'est': 60, 'prevu': ((11, 26), '09:00')}),
-    (BENALI, 'Pose', 'Poser la structure', None, {'est': 480}),
+    (BENALI, 'Pose', 'Poser la structure', None, {'est': 480, 'prevu': ((11, 23), None)}),
     (BENALI, 'Pose', 'Mise en service', None, {'jalon': True, 'echeance': (12, 3)}),
     (SALON, 'Stand', 'Réserver le stand', (3, None), {}),
     (SALON, 'Stand', 'Confirmer la réservation du stand', None,
@@ -152,16 +152,22 @@ TACHES = (
     (SITE, None, 'Photographier trois chantiers', None, {'est': 60}),
 )
 #: (tâche bloquée, prérequis) : la puce « attend : {titre} », dans le même projet (§2).
-ATTENTES = (('Poser la structure', 'Réceptionner les 16 panneaux'),
-            ('Planifier les entretiens', 'Trier les CV reçus'),
+ATTENTES = (('Planifier les entretiens', 'Trier les CV reçus'),
             ('Appeler les candidats retenus', 'Planifier les entretiens'))
+#: (tâche, attendu) : « En attente 1 » (§1) par `attendre_tache` (le texte « attend : … » est `en_attente_de`) ; la
+#: tâche est datée (lun. 23) : une tâche en attente n'entre dans la section qu'avec un jour prévu ou une échéance ≤ J.
+EN_ATTENTE = (('Poser la structure', 'Réceptionner les 16 panneaux'),)
 #: Titres, jour et heure du jour du scénario dont l'heure d'étape est dite en §3.
 DEVIS, STAND, RAILS = 'Envoyer le devis révisé', 'Confirmer la réservation du stand', 'Commander les rails de fixation'
 FOURNISSEUR, FICHE = 'Appeler le fournisseur', 'Rédiger la fiche de poste'
 CONTRAT = 'Relire le contrat de maintenance'
 A_REVOIR = ('Mettre à jour le planning des poses', 'Rappeler le bureau de contrôle')
-#: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres NEUTRES.
-RESERVE_ANONYME = tuple(f'Tâche en réserve {n}' for n in range(2, TAILLE_RESERVE + 1))
+#: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
+RESERVE_ANONYME = (
+    'Étudier une assurance pour la flotte de véhicules', "Tester un logiciel de devis concurrent",
+    "Rédiger un guide d'entretien pour les clients", "Visiter le showroom d'un fournisseur d'onduleurs",
+    'Imaginer une offre de maintenance annuelle', "Écrire un article sur l'autoconsommation")
+assert len(RESERVE_ANONYME) == TAILLE_RESERVE - 1
 ACTIVITE_APPEL = 'Rappeler pour le devis'
 ACTIVITE_FACTURE = "Envoyer la facture d'acompte"
 TITRE_ICS = 'tests/donnees/agenda.ics'
@@ -278,6 +284,9 @@ class Scenario:
             with horloge(self.instant(self.date(11, 2), '09:30')):
                 modifier_tache(self.user, tache.pk, {'bloquee_par_id': self.taches[prerequis].pk},
                                version=tache.lock_version)
+        for titre, attendu in EN_ATTENTE:
+            with horloge(self.instant(self.date(11, 2), '09:45')):
+                attendre_tache(self.user, self.taches[titre].pk, attendu)
 
     def reservoir(self):
         """Les tâches sans projet faites chaque jour : le total du scénario moins celles des projets."""
@@ -412,6 +421,11 @@ class Scenario:
     def activite_du_jour(self):
         with horloge(self.instant(self.jour, '08:00')):
             self.rappel = self._activite(summary=ACTIVITE_APPEL, personnelle=False, due_date=self.jour)
+        # Le rappel PORTE la tâche « Envoyer le devis révisé » : règle du serveur (regles.md §6.1, `selectors.
+        # journee.activites_closes_du_jour`), une activité close qui porte une tâche ne compte pas, et la
+        # progression de 15 h dit « 3 sur 5 ». Écrit directement : `services.erp.lier_activite` CRÉE une tâche
+        # liée, il ne rattache pas une tâche existante du scénario.
+        Tache.objects.filter(pk=self.taches[DEVIS].pk).update(activite_origine=self.rappel)
 
     def jour_du_scenario(self):
         self.activite_du_jour()

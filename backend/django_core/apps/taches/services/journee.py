@@ -93,7 +93,7 @@ def _cartes_ouvertes(user, jour):
         .order_by('jour', 'pk'))
 
 
-def lire_contexte(user, jour, maintenant, *, assistant=False):
+def _lire_contexte(user, jour, maintenant, *, assistant=False):
     """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`."""
     reglages = sel.reglages_de(user)
     travailles = sel.travailles_autour(user, jour)
@@ -267,7 +267,7 @@ TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_garder, _carte_alleger,
                 _carte_rythme, _carte_pause, _carte_revelation)
 
 
-def carte_du_moment(ctx, propose):
+def _carte_du_moment(ctx, propose):
     """UNE carte au plus : la première vraie dans l'ordre (regles.md §4.10)."""
     for test in TESTS_CARTES:
         carte = test(ctx, propose)
@@ -337,7 +337,7 @@ def _propose(ctx, rendu, plan_propose, cles_propose, *, tout):
     }
 
 
-def forme_aujourdhui(ctx, *, tout=False):
+def _forme_aujourdhui(ctx, *, tout=False):
     """Le contrat de la journée (api.md §2), clés dans l'ordre vertical."""
     journee = ctx.journee
     plan_propose = proposer(ctx)
@@ -349,7 +349,7 @@ def forme_aujourdhui(ctx, *, tout=False):
     listes, tronque = formes_journee.plafonner(
         [journee.sections.get(s, []) for s in ordre] + [propose] + [journee.sections.get(s, []) for s in replies])
     forme = _entete(ctx)
-    forme['carte_du_moment'] = carte_du_moment(ctx, plan_propose)
+    forme['carte_du_moment'] = _carte_du_moment(ctx, plan_propose)
     forme['essentiel'] = rendu.items(listes[0])
     forme['obligations'] = list(ctx.obligations.lignes)
     forme['rendez_vous'] = _rendez_vous(ctx, rendu)
@@ -366,7 +366,7 @@ def forme_aujourdhui(ctx, *, tout=False):
 
 def aujourdhui(user, jour, maintenant, *, tout=False, assistant=False):
     """GET aujourdhui/ : la journée de `user` (jour `jour`, heure murale `maintenant`)."""
-    return forme_aujourdhui(lire_contexte(user, jour, maintenant, assistant=assistant), tout=tout)
+    return _forme_aujourdhui(_lire_contexte(user, jour, maintenant, assistant=assistant), tout=tout)
 
 
 def badge(user, jour):
@@ -505,7 +505,7 @@ def vu(user, jour, maintenant):
 def proposition_du_jour(user, jour, maintenant, *, exclure=(), inclure=(), tout=False, assistant=False):
     """GET journee/proposition/ : Proposé par projets, sans écriture ; un id étranger dans
     `exclure`/`inclure` est simplement ignoré (invariant 9, exception de lecture)."""
-    ctx = lire_contexte(user, jour, maintenant, assistant=assistant)
+    ctx = _lire_contexte(user, jour, maintenant, assistant=assistant)
     plan_propose = proposer(ctx, exclure=exclure, inclure=inclure)
     rendu = formes_journee.Rendu(ctx.journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer)
     raisons = formes_journee.raisons_du_tour(plan_propose)
@@ -725,14 +725,14 @@ MESSAGE_CHOIX = 'Valeur inconnue.'
 CHOIX_BILAN = (Decision.PROCHAIN_JOUR_OUVRE, Decision.JOUR, Decision.UN_JOUR, Decision.ABANDONNER)
 
 
-def possible_jusqua(jour):
+def _possible_jusqua(jour):
     """Le bilan d'un jour reste possible jusqu'au lendemain midi (heure murale)."""
     return timezone.make_aware(datetime.datetime.combine(jour + datetime.timedelta(days=1), MIDI))
 
 
-def verifier_jour_du_bilan(jour, maintenant):
+def _verifier_jour_du_bilan(jour, maintenant):
     """J, ou J − 1 jusqu'à midi ; sinon 400 au champ `jour`."""
-    if jour > maintenant.date() or maintenant >= possible_jusqua(jour):
+    if jour > maintenant.date() or maintenant >= _possible_jusqua(jour):
         raise Refus({'jour': [MESSAGE_BILAN_FERME]})
 
 
@@ -763,8 +763,8 @@ def _restes_et_a_trancher(journee):
 def cloture(user, jour, maintenant, *, assistant=False):
     """GET journee/cloture/ : faites, restes, à trancher (marquées, jamais refusées), activités ERP à
     clore à part, bilan en deux lignes, UN constat au plus."""
-    verifier_jour_du_bilan(jour, maintenant)
-    ctx = lire_contexte(user, jour, maintenant, assistant=assistant)
+    _verifier_jour_du_bilan(jour, maintenant)
+    ctx = _lire_contexte(user, jour, maintenant, assistant=assistant)
     journee, prog = ctx.journee, progression(ctx)
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer)
     restes, a_trancher = _restes_et_a_trancher(journee)
@@ -777,7 +777,7 @@ def cloture(user, jour, maintenant, *, assistant=False):
         'prochain_jour_ouvre': prochain.isoformat() if prochain else None,
         'bilan': _bilan_chiffres(ctx, prog), 'constat': constat['proposition'] if constat else None,
         'activites_a_clore': rendu.items(activites),
-        'possible_jusqua': possible_jusqua(jour).isoformat(),
+        'possible_jusqua': _possible_jusqua(jour).isoformat(),
     }
 
 
@@ -829,7 +829,7 @@ def _marquer_reportees(plan, ids, ops):
 def cloturer(user, jour, maintenant, *, choix=(), le_reste=False, reflexion=''):
     """POST journee/cloturer/ : choix par reste (reports comptés, invariant 4), lignes `reportee`,
     `cloture_le` et `reflexion` ; un geste « bilan_du_soir » annulable."""
-    verifier_jour_du_bilan(jour, maintenant)
+    _verifier_jour_du_bilan(jour, maintenant)
     prochain = prochain_jour_travaille(user, jour)
     with transaction.atomic():
         a_traiter = _choix_du_bilan(user, jour, list(choix), le_reste)

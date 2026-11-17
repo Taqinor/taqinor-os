@@ -789,6 +789,7 @@ class GestesTests(BaseApi):
         self.assertEqual(list(corps), list(exemple('geste_annuler')))
         self.assertEqual((corps['restaurees'], corps['conflits'], corps['deja']),
                          ([{'objet': 'tache', 'id': tache.pk}], [], False))
+        self.assertEqual(list(corps['progression']), list(exemple('geste_annuler')['progression']))
         self.assertEqual(_relue(tache).titre, 'Avant')
         self.assertFalse(self._get('gestes/').json()['results'][0]['annulable'])
         self.assertIsNotNone(self._get('gestes/').json()['results'][0]['annule_le'])
@@ -797,7 +798,10 @@ class GestesTests(BaseApi):
         _tache, geste = self._geste()
         self._post(f'gestes/{geste}/annuler/')
         second = self._post(f'gestes/{geste}/annuler/')
-        self.assertEqual((second.status_code, second.json()), (200, {'restaurees': [], 'conflits': [], 'deja': True}))
+        corps = second.json()
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual((corps['restaurees'], corps['conflits'], corps['deja']), ([], [], True))
+        self.assertEqual(list(corps['progression']), list(exemple('geste_annuler')['progression']))
 
     def test_un_objet_modifie_depuis_est_un_conflit_en_200_partiel(self):
         tache, premier = self._geste('Premier')

@@ -71,7 +71,7 @@ BASELINE_PATH = ROOT / "scripts" / "services_appeles_allow.txt"
 # Les apps dont les services sont surveilles. En ajouter une = une chaine de
 # plus ici (ou `--app <nom>`) : la garde ne connait aucun nom de fonction, et
 # n'encode donc jamais l'etendue de la maladie qu'elle mesure.
-APPS_SURVEILLEES = ("calepinage", "crm")
+APPS_SURVEILLEES = ("calepinage", "crm", "taches")
 
 # ALEA44 — au-dela du paquet `apps/<app>/services/`, les modules-FICHIERS de
 # service sont lus eux aussi : `apps/<app>/services.py` pour toute app
