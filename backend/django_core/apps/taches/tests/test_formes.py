@@ -1,10 +1,13 @@
 """TCH14 — formes partagées (`serializers/formes.py`) contre leurs échantillons de contrat.
 
-`FormesContreEchantillonsTests` (SimpleTestCase, sans base) : des objets en mémoire, chargés comme
-`charger_taches` les charge (caches de préchargement), rendent EXACTEMENT l'`exemple` de `item.json`,
-`tache.json`, `tache_ecrite.json`, `projet.json`, `proposition.json`, `rendez_vous.json` — clés,
-ordre et valeurs. `ChargementTests` (TestCase, CI) : le rendu d'une liste ne coûte pas une requête
-par ligne.
+`TachesChargeesContreEchantillonsTests` (TestCase, CI) : des lignes posées par les fabriques aux
+identifiants de l'annexe A, chargées par le VRAI chemin (`charger_items` / `charger_taches`),
+rendent EXACTEMENT l'`exemple` de `item.json`, `tache.json`, `tache_ecrite.json` — clés, ordre et
+valeurs. `FormesContreEchantillonsTests` (SimpleTestCase, sans base) : les formes qui ne lisent
+aucune relation (`projet.json`, `proposition.json`, `rendez_vous.json`, LIEN, activité ERP), sur des
+objets en mémoire — jamais de cache de préchargement fabriqué à la main (nplusone, actif en CI,
+attend un QuerySet). `ChargementTests` (TestCase, CI) : le rendu d'une liste ne coûte pas une
+requête par ligne.
 """
 import datetime
 import json
@@ -62,12 +65,6 @@ def instant(jour, heure, minute):
     return datetime.datetime(2026, *jour, heure, minute, tzinfo=CASABLANCA)
 
 
-def _precharge(objet, **listes):
-    objet._prefetched_objects_cache = {
-        'rappel_set': [], 'elementchecklist_set': [], 'enfants': [], 'etiquettetache_set': [], **listes}
-    return objet
-
-
 def projet_ventes():
     return Projet(
         pk=3, nom='Ventes', objectif='Fini quand les 4 devis sont signés', icone='', couleur='vert',
@@ -78,27 +75,10 @@ def projet_ventes():
         updated_at=instant((11, 16), 18, 0), lock_version=4)
 
 
-def tache_settat(projet):
-    """La tâche 20 de l'annexe A, son enfant 22, son rappel, son point de check-list, son étiquette."""
-    devis = ContentType(pk=901, app_label='ventes', model='devis')
-    tache = Tache(
-        pk=20, titre='Devis Settat', statut='a_faire', projet=projet, priorite=2, jour_prevu=J,
-        moment='matin', heure_debut=datetime.time(10, 0), echeance=datetime.date(2026, 11, 19),
-        quelque_jour=False, estimation_minutes=60, reports=0, rang_projet=1024, jalon=False,
-        en_attente_de='', confidentiel=False, source='rapide', lock_version=4,
-        notes='Appeler avant 11 h.', content_type=devis, object_id=512,
-        lien_libelle='DEV-2026-11-0042', lien_etat='ok', triee_le=instant((11, 16), 18, 2),
-        premier_jour_prevu=J, reports_tranches=0, lien_verifie_le=instant((11, 17), 9, 12),
-        created_at=instant((11, 16), 18, 2), updated_at=instant((11, 17), 10, 42))
-    enfant = _precharge(Tache(
-        pk=22, titre='Relire les quantités', statut='a_faire', projet=projet, parent=tache,
-        priorite=0, rang_projet=1024, source='rapide', lock_version=0))
-    rappel = Rappel(pk=31, tache=tache, jour=J, heure=datetime.time(9, 45), ancre='',
-                    decalage_jours=0, statut='en_attente')
-    magasin = EtiquetteTache(etiquette=Etiquette(pk=2, nom='magasin', nom_cle='magasin', couleur='ciel'))
-    point = ElementChecklist(pk=71, tache=tache, libelle='Prix', fait=True, rang=1024)
-    return _precharge(tache, rappel_set=[rappel], elementchecklist_set=[point], enfants=[enfant],
-                      etiquettetache_set=[magasin])
+def tache_liee_en_memoire():
+    """La tâche 20 de l'annexe A réduite à son lien (LIEN ne lit aucune relation préchargée)."""
+    return Tache(pk=20, titre='Devis Settat', content_type=ContentType(pk=901, app_label='ventes', model='devis'),
+                 object_id=512, lien_libelle='DEV-2026-11-0042', lien_etat='ok')
 
 
 CALCULS_SETTAT = {
@@ -108,24 +88,76 @@ CALCULS_SETTAT = {
 }
 
 
-class FormesContreEchantillonsTests(SimpleTestCase):
+class TachesChargeesContreEchantillonsTests(TestCase):
+    """La tâche 20 de l'annexe A, son enfant 22, son rappel 31, son point de check-list 71, son
+    étiquette 2, dans le projet 3 : posés par les fabriques, relus par `charger_taches`."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.compte = fabriques.compte(fabriques.societe('formes'))
+        projet = fabriques.projet(cls.compte, pk=3, nom='Ventes', couleur='vert', priorite=3)
+        tache = fabriques.tache(
+            cls.compte, projet=projet, pk=20, titre='Devis Settat', priorite=2, jour_prevu=J,
+            moment='matin', heure_debut=datetime.time(10, 0), echeance=datetime.date(2026, 11, 19),
+            estimation_minutes=60, rang_projet=1024, source='rapide', notes='Appeler avant 11 h.',
+            content_type=ContentType.objects.get_by_natural_key('ventes', 'devis'), object_id=512,
+            lien_libelle='DEV-2026-11-0042', lien_etat='ok', triee_le=instant((11, 16), 18, 2),
+            premier_jour_prevu=J, lien_verifie_le=instant((11, 17), 9, 12))
+        fabriques.tache(cls.compte, projet=projet, parent=tache, pk=22, titre='Relire les quantités',
+                        rang_projet=1024, source='rapide')
+        Rappel.objects.create(pk=31, company=tache.company, proprietaire=cls.compte, tache=tache,
+                              jour=J, heure=datetime.time(9, 45))
+        ElementChecklist.objects.create(pk=71, company=tache.company, tache=tache, libelle='Prix',
+                                        fait=True, rang=1024)
+        magasin = Etiquette.objects.create(pk=2, company=tache.company, proprietaire=cls.compte,
+                                           nom='magasin', couleur='ciel')
+        EtiquetteTache.objects.create(company=tache.company, tache=tache, etiquette=magasin)
+        # `lock_version` et les horodatages auto de l'annexe A (un `update()` ne les recalcule pas).
+        Tache.objects.filter(pk=20).update(
+            lock_version=4, created_at=instant((11, 16), 18, 2), updated_at=instant((11, 17), 10, 42))
+
     def setUp(self):
-        self.projet = projet_ventes()
-        self.tache = tache_settat(self.projet)
         self.contexte = formes.contexte(calculs=CALCULS_SETTAT)
 
+    def _tache(self, charger=formes.charger_taches):
+        return charger(taches_de(self.compte).filter(pk=20)).get()
+
     def test_tache_rend_exactement_tache_json(self):
-        rendu = formes.TacheSerializer(self.tache, context=self.contexte).data
+        rendu = formes.TacheSerializer(self._tache(), context=self.contexte).data
         self.assertEqual(list(rendu), list(exemple('tache')))
         self.assertEqual(rendu_json(rendu), heure_murale(exemple('tache')))
 
     def test_item_d_une_tache_a_les_cles_d_item_json(self):
-        rendu = formes.ItemSerializer(self.tache, context=self.contexte).data
+        rendu = formes.ItemSerializer(self._tache(formes.charger_items), context=self.contexte).data
         self.assertEqual(list(rendu), list(exemple('item')))
         attendu = {**exemple('item'), 'rappel': {'jour': '2026-11-17', 'heure': '09:45'},
                    'lien': exemple('tache')['lien'], 'checklist': {'faits': 1, 'total': 1},
                    'sous_taches': {'faites': 0, 'total': 1}}
         self.assertEqual(rendu_json(rendu), heure_murale(attendu))
+
+    def test_tache_ecrite_rend_exactement_tache_ecrite_json(self):
+        instance = formes.tache_ecrite(
+            self._tache(), avertissements=[{'code': 'prevue_apres_echeance', 'message': "Prévue après l'échéance."}],
+            geste_id=77)
+        rendu = formes.TacheEcriteSerializer(instance, context=self.contexte).data
+        self.assertEqual(list(rendu), list(exemple('tache_ecrite')))
+        self.assertEqual(rendu_json(rendu), heure_murale(exemple('tache_ecrite')))
+
+    def test_assistant_ni_notes_ni_titre_confidentiel(self):
+        Projet.objects.filter(pk=3).update(confidentiel=True)
+        rendu = formes.TacheSerializer(self._tache(), context=formes.contexte(assistant=True)).data
+        self.assertEqual(rendu['notes'], '')
+        self.assertEqual(rendu['titre'], 'Tâche confidentielle')
+        self.assertEqual(rendu['projet']['nom'], 'Projet confidentiel')
+        self.assertTrue(rendu['confidentielle'])
+        self.assertNotIn('Devis Settat', json.dumps(rendu, ensure_ascii=False))
+        self.assertNotIn('Ventes', json.dumps(rendu, ensure_ascii=False))
+
+
+class FormesContreEchantillonsTests(SimpleTestCase):
+    def setUp(self):
+        self.projet = projet_ventes()
+        self.tache = tache_liee_en_memoire()
 
     def test_item_d_une_activite_rend_la_ligne_activite_d_aujourdhui(self):
         attendu = next(i for i in exemple('aujourdhui')['journee'] if i['type'] == 'activite')
@@ -136,14 +168,6 @@ class FormesContreEchantillonsTests(SimpleTestCase):
         rendu = formes.ItemSerializer(activite, context=contexte).data
         self.assertEqual(list(rendu), list(exemple('item')))
         self.assertEqual(rendu_json(rendu), heure_murale(attendu))
-
-    def test_tache_ecrite_rend_exactement_tache_ecrite_json(self):
-        instance = formes.tache_ecrite(
-            self.tache, avertissements=[{'code': 'prevue_apres_echeance', 'message': "Prévue après l'échéance."}],
-            geste_id=77)
-        rendu = formes.TacheEcriteSerializer(instance, context=self.contexte).data
-        self.assertEqual(list(rendu), list(exemple('tache_ecrite')))
-        self.assertEqual(rendu_json(rendu), heure_murale(exemple('tache_ecrite')))
 
     def test_projet_rend_exactement_projet_json(self):
         contexte = formes.contexte(calculs={('projet', 3): {
@@ -179,16 +203,6 @@ class FormesContreEchantillonsTests(SimpleTestCase):
                          {'cible': 'ventes.devis', 'id': 512, 'libelle': '', 'url': None, 'etat': 'inaccessible'})
         self.tache.lien_etat = 'efface'
         self.assertEqual(formes.lien_de_tache(self.tache)['libelle'], 'Lead effacé')
-
-    def test_assistant_ni_notes_ni_titre_confidentiel(self):
-        self.projet.confidentiel = True
-        rendu = formes.TacheSerializer(self.tache, context=formes.contexte(assistant=True)).data
-        self.assertEqual(rendu['notes'], '')
-        self.assertEqual(rendu['titre'], 'Tâche confidentielle')
-        self.assertEqual(rendu['projet']['nom'], 'Projet confidentiel')
-        self.assertTrue(rendu['confidentielle'])
-        self.assertNotIn('Devis Settat', json.dumps(rendu, ensure_ascii=False))
-        self.assertNotIn('Ventes', json.dumps(rendu, ensure_ascii=False))
 
     def test_rendez_vous_titre_neutre_pour_l_assistant(self):
         rdv = RendezVousPur('2-x', 2, 'Médecin', datetime.datetime(2026, 11, 17, 11, 0),
