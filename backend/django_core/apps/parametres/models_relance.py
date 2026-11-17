@@ -272,13 +272,16 @@ CADENCE_APRES_DEVIS_DEFAUT = [
 # `_adapter_gabarits_reveil` pose le script d'appel (`appel_reveil_devis` /
 # `appel_reveil_sans_devis`) et le rendu traduit les touches déjà ouvertes : un
 # J30 passé en WhatsApp garde `reveil_a1`/`reveil_a2`.
+# 17/11/2026 — la clé SEEDÉE du J60 est « reveil_a3 » (elle valait « reveil_a2 »,
+# que le moteur écrasait toujours : Paramètres annonçait un texte qui ne partait
+# jamais) ; migration 0145 pour les lignes existantes.
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
      'template_cle': 'reveil_a1', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 60, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J60',
-     'template_cle': 'reveil_a2', 'dimanche_ok': False},
+     'template_cle': 'reveil_a3', 'dimanche_ok': False},
 ]
 
 # CAD128 (21/09/2026) — DEUXIÈME AFFAIRE : un client SIGNÉ qui redemande un

@@ -474,6 +474,42 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
             company=company, cadence=Cadence.REVEIL, ordre=1).canal,
             'whatsapp')
 
+    def test_le_j60_seede_porte_la_cle_que_le_moteur_lui_donne(self):
+        """17/11/2026 — `_adapter_gabarits_reveil` donne TOUJOURS `reveil_a3` au
+        J60 : le gabarit livré ne dit plus `reveil_a2`."""
+        from apps.crm.cadence_plan import _REVEIL_GABARITS
+
+        self.assertEqual(_REVEIL_GABARITS[True][1], _REVEIL_GABARITS[False][1])
+        self.assertEqual(CADENCE_REVEIL_DEFAUT[1]['template_cle'],
+                         _REVEIL_GABARITS[True][1])
+
+    def test_0145_aligne_le_j60_seede_sans_toucher_un_reglage_de_la_societe(self):
+        from importlib import import_module
+
+        module = import_module(
+            'apps.parametres.migrations.0145_reveil_j60_reveil_a3')
+        company = _company('reveil-a3-prod')
+        perso = _company('reveil-a3-perso')
+        appel = _company('reveil-a3-appel')
+        for societe in (company, perso, appel):
+            self._reveil_seed_0609(societe)
+        reveil = CadenceRelanceEtape.objects.filter(cadence=Cadence.REVEIL)
+        reveil.filter(company=perso, ordre=2).update(template_cle='reveil_b')
+        reveil.filter(company=appel, ordre=2).update(canal='appel')
+        module.poser_reveil_a3(self._RegistreSimule, None)
+        lues = {
+            c.slug: reveil.get(company=c, ordre=2).template_cle
+            for c in (company, perso, appel)}
+        self.assertEqual(lues, {
+            'reveil-a3-prod': 'reveil_a3', 'reveil-a3-perso': 'reveil_b',
+            'reveil-a3-appel': 'reveil_a2'})
+        # Le J30 n'est jamais touché, la 2e application ne change rien.
+        self.assertEqual(reveil.get(company=company, ordre=1).template_cle,
+                         'reveil_a1')
+        module.poser_reveil_a3(self._RegistreSimule, None)
+        self.assertEqual(reveil.get(company=company, ordre=2).template_cle,
+                         'reveil_a3')
+
     def _module_rattrapage(self):
         from importlib import import_module
         return import_module(
