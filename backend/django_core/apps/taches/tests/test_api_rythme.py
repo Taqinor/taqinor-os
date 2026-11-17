@@ -307,6 +307,7 @@ class RepondreTests(BaseRythme):
         expiree = self.monter(expire_le=J - datetime.timedelta(days=1))
         reponse = self.repondre(expiree, 'pas_maintenant')
         self.assertEqual((reponse.status_code, reponse.json()['code']), (409, 'proposition_expiree'))
+        self.assertEqual(reponse.json()['detail'], exemple_de('erreurs')['proposition_expiree']['detail'])
         ouverte = self.monter(jour=J - datetime.timedelta(days=1))
         self.assertEqual(self.repondre(ouverte, 'pas_maintenant').status_code, 200)
         self.assertEqual(self.repondre(ouverte, 'pas_maintenant').status_code, 409)
@@ -370,6 +371,10 @@ class PreferencesTests(BaseRythme):
         self.assertEqual([(p['cle'], p['valeur'], p['source']) for p in corps['preferences']],
                          [('heure_limite', '19:00', 'ecran')])
         self.assertIsNotNone(corps['geste_id'])
+        from apps.taches.models.gestes import GesteAnnulable
+        # textes.md §2.15 : « Noté : {phrase de la préférence} · Annuler ».
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         "Noté : sollicitations jusqu'à 19:00")
 
     def test_sous_l_entete_assistant_la_source_est_le_copilote(self):
         self.poser('heure_limite', '19:00', HTTP_X_TAQINOR_ASSISTANT='1')

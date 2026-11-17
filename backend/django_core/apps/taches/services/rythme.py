@@ -584,7 +584,15 @@ def poser_preference(user, cle, valeur, source):
         operations = ecrire_preference(user, cle, valeur, source)
         if not operations:
             return None
-        return enregistrer_geste(user, 'preference', ClePreference(cle).label, operations)
+        return enregistrer_geste(user, 'preference', f'Noté : {phrase_preference(cle, valeur)}', operations)
+
+
+def phrase_preference(cle, valeur):
+    """La phrase d'une préférence dite (toast « Noté : {phrase} · Annuler », textes.md §2.15) : celle de
+    l'en-tête du Copilote ; une note libre n'est jamais recopiée (son seul libellé)."""
+    if cle == ClePreference.NOTE_LIBRE:
+        return ClePreference(cle).label.lower()
+    return _dite(cle, valeur)
 
 
 def retirer_preference(user, cle):
@@ -599,7 +607,7 @@ def retirer_preference(user, cle):
         operation = op_suppression_dure('preference', preference, {
             'cle': preference.cle, 'valeur': preference.valeur, 'source': preference.source})
         preference.delete()
-        return enregistrer_geste(user, 'preference', ClePreference(cle).label, [operation])
+        return enregistrer_geste(user, 'preference', f'Retirée : {ClePreference(cle).label.lower()}', [operation])
 
 
 def faites_aujourdhui(user, jour):

@@ -185,7 +185,8 @@ class LierTests(_Base):
         self.assertEqual(api.post(LIER, {'activite_id': activite.pk}, format='json').status_code, 201)
         reponse = api.post(LIER, {'activite_id': activite.pk, 'titre': 'Encore'}, format='json')
         self.assertEqual(reponse.status_code, 409)
-        self.assertEqual(reponse.json()['code'], 'deja_lie')
+        attendu = exemple_de('erreurs')['deja_lie']  # textes.md §2.16
+        self.assertEqual((reponse.json()['code'], reponse.json()['detail']), (attendu['code'], attendu['detail']))
         self.assertEqual(Tache.objects.filter(activite_origine=activite).count(), 1)
         activite.refresh_from_db()
         self.assertFalse(activite.done)

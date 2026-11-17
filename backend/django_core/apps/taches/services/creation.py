@@ -67,7 +67,7 @@ MESSAGE_TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
 MESSAGE_LIEN_INTROUVABLE = 'Élément introuvable ou hors de ta portée.'
 MESSAGE_LIEN_TYPE = "Ce type d'élément ne peut pas être lié à une tâche."
-MESSAGE_DEJA_LIE = 'Une tâche est déjà liée à cette activité.'
+MESSAGE_DEJA_LIE = 'Cette activité a déjà sa tâche.'  # textes.md §2.16, 409 `deja_lie`
 
 
 @dataclass(frozen=True)
