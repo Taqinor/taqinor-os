@@ -567,6 +567,60 @@ class MigrationEtiquetteGeneriqueTests(TestCase):
             company=perso, cadence=Cadence.APRES_DEVIS,
             ordre=2).template_cle, '')
 
+    # ── 17/11/2026 — les heures des trois touches après devis (0143) ────────
+
+    def _module_heures_apres_devis(self):
+        from importlib import import_module
+        return import_module(
+            'apps.parametres.migrations.0143_apres_devis_heures_cibles')
+
+    def test_0143_pose_l_heure_du_gabarit_sur_les_touches_sans_heure(self):
+        """Constat prod du 17/11 : ordres 1, 2 et 6 à `heure_cible` NULL (la
+        touche partait à l'heure de l'envoi du devis) ; libellés de la prod
+        « Appel de suivi J+2 » / « J+7 » — le libellé n'est pas un critère."""
+        company = _company('heures-apres-devis')
+        _v3_apres_devis(company)
+        suivi = CadenceRelanceEtape.objects.filter(
+            company=company, cadence=Cadence.APRES_DEVIS)
+        suivi.filter(ordre__in=(1, 2, 6)).update(heure_cible=None)
+        suivi.filter(ordre=2).update(libelle='Appel de suivi J+2')
+        suivi.filter(ordre=6).update(libelle='Appel de suivi J+7')
+        autres_avant = list(suivi.exclude(ordre__in=(1, 2, 6)).order_by(
+            'ordre').values_list('ordre', 'heure_cible', 'libelle'))
+        module = self._module_heures_apres_devis()
+        module.poser_les_heures(self._RegistreSimule, None)
+        self.assertEqual(
+            list(suivi.filter(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible', 'libelle')),
+            [(1, datetime.time(9, 30), "Le PDF s'ouvre bien ?"),
+             (2, datetime.time(18, 0), 'Appel de suivi J+2'),
+             (6, datetime.time(18, 0), 'Appel de suivi J+7')])
+        self.assertEqual(
+            list(suivi.exclude(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible', 'libelle')),
+            autres_avant)
+        # Idempotence.
+        etat = _etat_apres_devis(company)
+        module.poser_les_heures(self._RegistreSimule, None)
+        self.assertEqual(_etat_apres_devis(company), etat)
+
+    def test_0143_laisse_un_barreau_regle_par_la_societe(self):
+        """Heure saisie, délai déplacé ou clé changée : jamais touchés."""
+        perso = _company('heures-apres-devis-perso')
+        _v3_apres_devis(perso)
+        suivi = CadenceRelanceEtape.objects.filter(
+            company=perso, cadence=Cadence.APRES_DEVIS)
+        suivi.filter(ordre=1).update(heure_cible=datetime.time(11, 15))
+        suivi.filter(ordre=2).update(heure_cible=None, delai_jours=4)
+        suivi.filter(ordre=6).update(
+            heure_cible=None, template_cle='appel_suivi_j11')
+        self._module_heures_apres_devis().poser_les_heures(
+            self._RegistreSimule, None)
+        self.assertEqual(
+            list(suivi.filter(ordre__in=(1, 2, 6)).order_by('ordre')
+                 .values_list('ordre', 'heure_cible')),
+            [(1, datetime.time(11, 15)), (2, None), (6, None)])
+
     # ── 17/11/2026 — les textes que le code livre désormais par défaut ──────
 
     def _module_textes_1711(self):
