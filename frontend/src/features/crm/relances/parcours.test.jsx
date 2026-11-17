@@ -306,6 +306,15 @@ describe('organiserReponses — pastilles, groupes et « Autre réponse »', () 
     expect(DEBRIEF).toHaveProperty('lead_devis_envoye')
   })
 
+  it('17/11/2026 — confirmation de la veille : « Pas de réponse » dit que la visite reste prévue', () => {
+    const confirmation = PARCOURS.etapes.find((t) => t.id === 'confirmation')
+    const r = reponsesDeLEtape(confirmation, { ...TOUCHE, canal: 'whatsapp' })
+      .find((x) => x.id === 'sans_reponse')
+    expect(r.label).toBe('Pas de réponse — la visite reste prévue')
+    expect(r.outcome).toBe('non_joint')
+    expect(r.suite).toEqual({ type: 'inchange' })
+  })
+
   it('raisons d’attente : résidentiel (ou sans segment) = financement seul ; pros = les six', () => {
     const raisons = (lead_segment) => reponsesDeLEtape(type('contact_appel'), { ...TOUCHE, canal: 'appel', lead_segment })
       .find((r) => r.id === 'attente_accord').raisons.map((r) => r.valeur)

@@ -503,7 +503,7 @@
       "question": "Le rendez-vous est-il confirmé ?",
       "reponses": [
         { "modele": "joint", "label": "Confirmé — le rendez-vous tient", "effet": "La confirmation est gardée dans l’historique. Rien d’autre ne bouge : le « Débrief visite » attend le lendemain de la visite.", "suite": { "type": "inchange" } },
-        { "modele": "sans_reponse", "effet": "« Pas de réponse » est gardé dans l’historique. La visite reste prévue et le « Débrief visite » attend.", "suite": { "type": "inchange" } },
+        { "modele": "sans_reponse", "label": "Pas de réponse — la visite reste prévue", "effet": "« Pas de réponse » est gardé dans l’historique ; rien n’est relancé. La visite reste prévue et le « Débrief visite » attend.", "suite": { "type": "inchange" } },
         { "modele": "replanifier", "effet": "La planification s’ouvre : la visite existante est déplacée à la nouvelle date, la confirmation et le débrief suivent. Cette étape reste ouverte, à la veille de la nouvelle date.", "suite": { "type": "visite_planifiee" } },
         { "modele": "visite_abandonnee", "label": "Annule le rendez-vous", "effet": "Le rendez-vous est annulé (le technicien est prévenu), la confirmation et le débrief sont retirés. Le suivi continue sans visite : le suivi de proposition reprend s’il était pendant, sinon « Préparer et envoyer le devis » est posée.", "suite": { "type": "reprise" } },
         { "modele": "refus", "label": "Ne veut plus du projet", "effet": "Toutes les relances s’arrêtent, le rendez-vous est annulé ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
