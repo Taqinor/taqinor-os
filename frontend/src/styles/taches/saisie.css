@@ -1,3 +1,116 @@
 /* Tâches — zone « saisie » (TCH41) : Feuille de saisie, aperçu d'une liste collée, fiche d'une tâche (TCH82-TCH85).
    Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
    couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+
+/* TCH82 — champ de saisie : un <textarea> natif (iPhone), 16 px mini pour que Safari ne zoome pas */
+.tch .champ-saisie { display: flex; flex-direction: column; gap: 10px; }
+.tch .saisie-champ {
+  display: block; width: 100%; min-height: 56px; padding: 4px 0; border: 0; border-radius: 0; resize: none;
+  background: transparent; color: var(--tch-texte); font: inherit; font-size: 1.0625rem; line-height: 1.6;
+  caret-color: var(--tch-accent); outline: none;
+}
+.tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
+.tch .puces.saisie { margin-top: 2px; }
+.tch .erreur-champ { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
+.tch .alertes-saisie {
+  margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
+  font-size: 0.8125rem; color: var(--tch-texte-doux);
+}
+.tch .feuille-saisie { display: flex; flex-direction: column; gap: 12px; }
+.tch .champ-etiquette { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.tch .champ-etiquette > span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .aide-champ { margin: 4px 0 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .selecteur-quand { margin-top: 4px; }
+
+/* TCH83 — aperçu d'une liste collée (port de docs/taches/maquettes/ecrans-coeur.css) */
+.tch .feuille-pied {
+  display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
+  padding: 12px var(--tch-gouttiere); background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait);
+}
+.tch .feuille-pied .bouton.large { flex: 1; }
+.tch .apercu-liste { display: flex; flex-direction: column; }
+.tch .apercu-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 2px; }
+.tch .apercu-entete .feuille-titre { text-align: left; font-size: 1.25rem; margin: 0; }
+.tch .apercu-source { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .apercu-groupe { margin-top: 18px; }
+.tch .apercu-projet {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 48px; padding: 4px 4px 4px 12px;
+  border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); color: var(--tch-texte);
+  font-size: 0.9375rem; font-weight: 600;
+}
+.tch .apercu-projet .nom { flex: 1; min-width: 0; text-align: left; }
+.tch .apercu-projet .nom small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--tch-texte-doux); }
+.tch .apercu-ligne { display: grid; grid-template-columns: 44px 1fr; align-items: start; min-height: 48px; margin-left: -11px; }
+.tch .apercu-ligne.retrait { padding-left: 28px; }
+.tch .apercu-ligne .coche-carree { margin-top: 2px; }
+.tch .apercu-ligne .titre-ligne {
+  display: block; width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; font-size: 1rem; outline: none;
+}
+.tch .apercu-ligne .titre-ligne:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
+.tch .apercu-ligne.decochee .titre-ligne { color: var(--tch-texte-doux); }
+.tch .apercu-ligne .puces { margin-bottom: 6px; }
+.tch .apercu-note { margin: 0 0 6px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .coche-carree { width: 44px; height: 44px; display: grid; place-items: center; }
+.tch .coche-carree span {
+  width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  background: transparent; box-shadow: inset 0 0 0 1.5px var(--tch-case); color: transparent;
+}
+.tch .coche-carree[aria-checked="true"] span { background: var(--tch-jeton); box-shadow: none; color: var(--tch-accent); }
+.tch .coche-carree svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+/* TCH84 — fiche d'une tâche (port de docs/taches/maquettes/ecran-fiche.html) */
+.tch .fiche { display: contents; }
+.tch .fiche-corps { display: flex; flex-direction: column; gap: 4px; }
+.tch .fiche-titre-champ {
+  display: block; width: 100%; min-height: 48px; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; font-size: 1.25rem; font-weight: 650; outline: none;
+}
+.tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
+.tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
+.tch .fiche-ligne {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; width: 100%; text-align: left;
+}
+.tch .fiche-etiquette { font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .fiche-valeur { font-size: 1rem; color: var(--tch-texte); text-align: right; }
+.tch .champ-discret {
+  min-height: 44px; padding: 0; border: 0; background: transparent; color: var(--tch-texte); font: inherit; font-size: 1rem; outline: none;
+}
+.tch .champ-discret:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
+.tch .fiche-notes { min-height: 84px; }
+.tch .fiche-checklist { display: flex; flex-direction: column; }
+.tch .fiche-point { display: flex; align-items: center; gap: 4px; min-height: 48px; }
+.tch .fiche-point .titre { flex: 1; font-size: 1rem; }
+.tch .fiche-point .titre.faite { color: var(--tch-texte-doux); text-decoration: line-through; }
+.tch .fiche-ajout { display: flex; align-items: center; gap: 8px; min-height: 48px; color: var(--tch-texte-doux); }
+.tch .fiche-ajout input { flex: 1; }
+.tch .fiche-rappel { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.tch .fiche-question {
+  padding: 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); margin-bottom: 8px;
+}
+.tch .fiche-question p { margin: 0 0 8px; }
+
+/* TCH85 — fiche → Plus (ecran-fiche-plus.html) */
+.tch .fiche-plus { display: flex; flex-direction: column; gap: 4px; }
+.tch .fiche-bloc { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 12px; box-shadow: inset 0 -1px 0 var(--tch-trait); }
+.tch .fiche-bloc-titre { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--tch-texte-doux); }
+.tch .fiche-rappel-ligne { display: flex; align-items: center; justify-content: space-between; margin: 0; min-height: 44px; }
+.tch .fiche-lien { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; }
+.tch .fiche-lien a { color: var(--tch-accent); }
+.tch .bouton.destructif { color: var(--destructive); }
+
+/* TCH86 — écran À trier (ecran-a-trier.html) */
+.tch .atrier-ligne {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 0; min-height: 52px; box-shadow: inset 0 -1px 0 var(--tch-trait);
+}
+.tch .atrier-titre { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.tch .atrier-titre .titre { font-size: var(--tch-tache); }
+.tch .atrier-repere { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .atrier-ligne .puces { align-items: center; }
+.tch .atrier-carte {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 12px;
+  border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
+}
+.tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
+.tch .atrier-compteur { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .bandeau .bouton.discret { height: 44px; }
