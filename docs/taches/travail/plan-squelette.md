@@ -1,5 +1,7 @@
 # Plan de construction — SQUELETTE (`apps/taches`, `features/taches`, plan `docs/plans/PLAN_TACHES.md`, tâches `TCH<n>`) — révision 2
 
+> **Révision 3 (17/11) — ce squelette n'est plus la source.** Le plan exécutable est `docs/plans/PLAN_TACHES.md` (174 tâches, atterrissage + 4 fusions, sources vers `docs/taches/reference/` et `docs/taches/conception/`). Les tables ci-dessous décrivent la révision 2 ; la correspondance avec la révision 3 est en fin de fichier.
+
 Statut : squelette ARCHITECTE, révision 2 (toutes les corrections de `verif-squelette.md` appliquées, référence 2.1,
 maquettes du dossier au 17/11). **152 tâches** : 4 à l'atterrissage du plan (PR docs), 139 de construction
 (F1 47, F2 47, F3 45), 9 acceptations en direct (3 en F2, 6 en F3). 30 lanes de construction + `orchestrateur` +
@@ -741,3 +743,17 @@ Trous restants (à remonter) :
 | Acceptations | TCH136-TCH138 sans hors ligne, pastille, notification ni Planifier ma semaine ; ces étapes → TCH139-TCH141 ; parcours 11 → TCH140, parcours 18 → TCH144 |
 | En-tête | `[GATED]` F2/F3 et réservation du plan (B4) ; APIView nues (M9) ; pas de modèle en F2 ; sous-vagues (M5) ; réservations `file:` (M10) |
 | Maquettes | chaque écran rattaché à ses maquettes, écrans secondaires et états compris |
+
+## Révision 3 : correspondance des tâches (critique finale A18 + construction à blanc)
+
+| Changement | Tâches |
+|---|---|
+| Fusions | F1 socle 48 · F2 cœur 64 + 6 acceptations (activé pour l'Administrateur) · F3 iPhone + Copilote 29 + 3 · F4 avancé 18 + 2 · atterrissage 4 |
+| Ajoutées | TCH153 lecture ICS pure · TCH154 `cibles_du_sujet` (crm) · TCH155 coupe-circuit (route) · TCH156 étiquettes et vues (serveur) · TCH157 écran Modèles · TCH158 balayage étendu F3-F4 · TCH159 « + À faire » de `/activites` · TCH160 Réglages → Notifications + coupe-circuit · TCH161 routes `priorites`/`point` · TCH162 test `_ALLOWED_TABLES` · TCH163 en-tête qui échoue fermé · TCH164 `taches.tache.modifier` · TCH165 cartes 2/2 (`priorites`, `point`) · TCH166 étiquettes/vues (écran) · TCH167 suggestions (écran) · TCH168 ouverture aux autres rôles (GATED décision) · TCH169 `seed_taches_demo` · TCH170 `classer_priorites` · TCH171-TCH172 acceptations · TCH173 régénération F4 · TCH174 balayage chaque minute |
+| Remplacée | TCH150 : déplacement vers `docs/taches/conception/` au lieu d'une suppression |
+| Déplacées vers F2 | TCH99 (nocturne + beat), TCH100 hors ligne, TCH104-TCH108, TCH119, TCH121-TCH122 (agendas externes ESSENTIELS, lane `journee`), TCH19, TCH128-TCH134, TCH151 (après ses appelants) |
+| Déplacées vers F3 | TCH20-TCH21 (notifications), TCH95-TCH98, TCH101, TCH109-TCH110, TCH111-TCH118, TCH120, TCH124, TCH127 |
+| Déplacées vers F4 | TCH64, TCH71-TCH72, TCH90, TCH102-TCH103, TCH123, TCH125-TCH126, TCH152 (bureau d'Aujourd'hui) |
+| Scindées | TCH52 (lot + check-list ; étiquettes et vues → TCH156) · TCH85, TCH86, TCH87, TCH89, TCH92, TCH108 (parts avancées → TCH157, TCH160, TCH166, TCH167) · TCH117 (→ TCH165) · TCH99 (nuit F2 / minute TCH174 F3) |
+| Corrigées (construction à blanc) | TCH5 exclusion du Directeur · TCH4 réglage déclaré, fichiers du gabarit supprimés · TCH13-TCH14 `@after` contrats, lane `socle-liens`, `selectors/liens.py` · TCH18 `@after` TCH9 · TCH41 CSS préfixé `.tch` · TCH114 `headers=` du relais, `catalogue_du_tour` étendu · TCH110 faux runtime Scriptable · TCH117 rendu direct · TCH2-TCH3 60 échantillons objets · TCH38 lignes obligatoires listées · TCH9 fabriques · TCH33-TCH36 signatures · régénérations sans `--check`, sans `rbac-endpoint-inventory.md` |
+| Acceptations | réécrites avec compte `demo_taches`, commande de semis, étapes numérotées, oracle, enregistrement |

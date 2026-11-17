@@ -607,8 +607,8 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
     (fusionnés s'ils se chevauchent ; bornés aux heures de travail de la société), jamais négatif.
 36. Aucune table de `taches` dans `_ALLOWED_TABLES` de l'agent SQL (`backend/fastapi_ia/app/services/sql_agent_service.py:64`)
     ; un test le garde.
-37. **En-tête de tour « Tâches » fermé par défaut** : le relais pose `X-Taqinor-Assistant: 1` sur TOUT appel vers Django
-    (`internal_headers()`, test côté `fastapi_ia`) ; le journal de l'assistant masque la question dès qu'un doute
+37. **En-tête de tour « Tâches » fermé par défaut** : le relais pose `X-Taqinor-Assistant: 1` sur chaque appel vers une route `taches`
+    (paramètre `headers=` de `_django_call`, `api.md` §0 fait foi ; test côté `fastapi_ia`) ; le journal de l'assistant masque la question dès qu'un doute
     existe (outil `taches.*`, écran `/taches…`, ou en-tête absent sur un appel `taches`).
 38. **Siri** : la réponse de `capture/` passe le nom de projet par `nom_pour(projet, 'siri')` : un projet confidentiel
     est dit « un projet », jamais nommé.
