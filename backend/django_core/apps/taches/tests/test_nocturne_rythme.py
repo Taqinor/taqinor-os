@@ -223,12 +223,12 @@ class RevelationsCreationTests(TestCase):
 
     def test_ranger_copilote_a_5_a_trier(self):
         taches = [fabriques.tache(self.u1) for _ in range(4)]
-        self.assertIsNone(revelations.apres_creation(self.u1, taches, [], porte='saisie'))
+        self.assertIsNone(revelations.apres_creation(self.u1, taches, [], porte='ecran'))
         taches.append(fabriques.tache(self.u1))
-        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie')
+        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='ecran')
         self.assertEqual((carte.type, carte.cle, carte.donnees, carte.jour, carte.expire_le),
                          ('revelation', 'ranger_copilote', {'n': 5}, J, J7))
-        self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie'))  # une fois
+        self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='ecran'))  # une fois
 
     def test_planifier_le_premier_projet_seulement(self):
         premier = fabriques.projet(self.u1)
@@ -239,6 +239,21 @@ class RevelationsCreationTests(TestCase):
         second = fabriques.projet(self.u1)
         self.assertIsNone(revelations.apres_creation(self.u1, [], [second], porte='saisie'))
 
+    def test_mon_iphone_au_premier_creer_de_la_saisie_3_jours_seulement(self):
+        tache = fabriques.tache(self.u1)
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='ecran'))
+        carte = revelations.apres_creation(self.u1, [tache], [], porte='saisie')
+        self.assertEqual((carte.type, carte.cle, carte.donnees, carte.jour, carte.expire_le),
+                         ('revelation', 'mon_iphone', {}, J, J + datetime.timedelta(days=3)))
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='saisie'))  # une fois
+
+    def test_mon_iphone_passe_apres_les_autres_revelations(self):
+        premier = fabriques.projet(self.u1)
+        tache = fabriques.tache(self.u1, projet=premier)
+        carte = revelations.apres_creation(self.u1, [tache], [premier], porte='saisie')
+        self.assertEqual(carte.cle, 'planifier_projet')
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='saisie'))  # une par jour
+
     def test_une_revelation_par_jour(self):
         premier = fabriques.projet(self.u1)
         taches = [fabriques.tache(self.u1) for _ in range(5)]
@@ -248,6 +263,6 @@ class RevelationsCreationTests(TestCase):
     def test_par_creer_taches(self):
         from apps.taches.services.creation import creer_taches
         lignes = [{'titre': f'Idée {n}'} for n in range(5)]
-        creer_taches(self.u1, lignes, source='rapide', porte='saisie')
+        creer_taches(self.u1, lignes, source='rapide', porte='ecran')
         self.assertEqual(list(IncitationCoach.objects.filter(proprietaire=self.u1).values_list('cle', flat=True)),
                          ['ranger_copilote'])
