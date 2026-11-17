@@ -897,4 +897,11 @@ def clore_jour_precedent(company_id, jour):
     reglages = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
                 .select_related('proprietaire', 'proprietaire__company'))
     for ligne in reglages:
-        _clore_pour(ligne.proprietaire, hier)
+        # Revue F2 #2 : un compte en échec (savepoint défait) n'arrête pas les autres ; journal sans donnée
+        # personnelle (id du compte et classe de l'erreur).
+        try:
+            with transaction.atomic():
+                _clore_pour(ligne.proprietaire, hier)
+        except Exception as erreur:  # noqa: BLE001
+            logger.error('taches.nocturne : clôture de la veille en échec pour le compte %s (%s)',
+                         ligne.proprietaire_id, type(erreur).__name__)

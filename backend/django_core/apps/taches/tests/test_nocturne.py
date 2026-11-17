@@ -76,6 +76,37 @@ class NocturneTests(TestCase):
             nocturne.executer(self.a.pk, JOUR)
         self.assertEqual(list(GesteAnnulable.objects.values_list('message', flat=True)), ['gardé'])
 
+    def test_un_compte_en_echec_n_arrete_pas_les_autres(self):
+        """Revue F2 #2 : l'exception d'UN compte (clôture de la veille, rythme) est isolée dans son
+        savepoint ; les autres comptes de la société sont traités, le journal ne porte que l'id."""
+        from apps.taches.models.journee import PlanJour
+        u2 = fabriques.compte(self.a, nom='u2')
+        for compte in (self.u1, u2):
+            fabriques.reglages(compte)
+        vrai_clore, vraie_nuit, vus = journee._clore_pour, rythme._nuit_du_compte, []
+
+        def clore(user, hier):
+            if user.pk == self.u1.pk:
+                raise RuntimeError('panne')
+            return vrai_clore(user, hier)
+
+        def nuit(reglages, jour):
+            if reglages.proprietaire_id == self.u1.pk:
+                raise RuntimeError('panne')
+            vus.append(reglages.proprietaire_id)
+            return vraie_nuit(reglages, jour)
+        with mock.patch.object(journee, '_clore_pour', side_effect=clore), \
+                mock.patch.object(rythme, '_nuit_du_compte', side_effect=nuit), \
+                self.assertLogs('apps.taches.services', level='ERROR') as journal:
+            rendu = nocturne.executer(self.a.pk, JOUR)
+        self.assertTrue(rendu['clore_jour_precedent'] and rendu['etapes_nocturnes'])
+        hier = JOUR - datetime.timedelta(days=1)
+        self.assertTrue(PlanJour.objects.filter(proprietaire=u2, jour=hier).exists())
+        self.assertFalse(PlanJour.objects.filter(proprietaire=self.u1, jour=hier).exists())
+        self.assertEqual(vus, [u2.pk])
+        self.assertEqual(len(journal.output), 2)
+        self.assertTrue(all(f'compte {self.u1.pk} (RuntimeError)' in ligne for ligne in journal.output))
+
     def test_rejeu_idempotent_avec_les_vraies_etapes(self):
         tache = fabriques.tache(self.u1, jour_prevu=JOUR)
         premier = nocturne.executer(self.a.pk, JOUR)
