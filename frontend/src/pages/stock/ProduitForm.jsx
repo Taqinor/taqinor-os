@@ -1055,6 +1055,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved, champIni
         }
       }
       onSaved?.()
+      if (isEdit) toast.success('Produit mis à jour.')  // AERR177
       // VX92 — « Créer un autre » (uniquement à la création) : on vide le
       // formulaire et on refocalise le champ 1 au lieu de fermer le dialog.
       if (!isEdit && creerUnAutre) {

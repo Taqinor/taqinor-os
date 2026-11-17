@@ -45,6 +45,7 @@ vi.mock('../../ui', async (importActual) => {
 
 import ProduitForm from './ProduitForm.jsx'
 import stockApi from '../../api/stockApi'
+import { toast } from '../../ui'
 import { wrapperProduitForm, espionsStock } from '../../test/fixtures/produitFormHarness.jsx'
 
 const BATTERIE = {
@@ -252,5 +253,16 @@ describe('ADRG142 — prix fournisseurs selon le droit', () => {
     const lire = await ouvrirAvec(['stock_voir', 'stock_modifier', 'prix_achat_voir'])
     await waitFor(() => expect(lire).toHaveBeenCalled())
     lire.mockRestore()
+  })
+})
+
+describe('AERR177 — toast de mise à jour', () => {
+  it('l’enregistrement d’une modification dit Produit mis à jour', async () => {
+    const succes = vi.spyOn(toast, 'success')
+    await ouvrir()
+    fireEvent.change(screen.getByLabelText(/Prix de vente HT/), { target: { value: '7300' } })
+    enregistrer()
+    await waitFor(() => expect(succes).toHaveBeenCalledWith('Produit mis à jour.'))
+    succes.mockRestore()
   })
 })
