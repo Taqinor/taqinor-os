@@ -59,7 +59,8 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
     // Toit non fermé par l'hydratation : 4 sommets puis fermeture sur le 1er.
     const pts = [[0.35, 0.35], [0.65, 0.35], [0.65, 0.65], [0.35, 0.65]]
     for (const [fx, fy] of pts) await page.mouse.click(bb.x + bb.width * fx, bb.y + bb.height * fy)
-    await page.mouse.click(bb.x + bb.width * pts[0][0], bb.y + bb.height * pts[0][1])
+    await page.getByRole('button', { name: 'Terminer le tracé' }).click({ timeout: 30_000 })
+    await expect(bouton, 'tracé du toit fermé : le bloc « Obstacles » est montré').toBeVisible({ timeout: 30_000 })
     await bouton.dispatchEvent('click')
   }
   console.log(`[AERR114] statut après « obstacle » : ${(await statutAtelier()).slice(0, 200)}`)

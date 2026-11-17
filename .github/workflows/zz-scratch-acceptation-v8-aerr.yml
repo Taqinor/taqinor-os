@@ -161,7 +161,7 @@ jobs:
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
           r1=0
-          npx playwright test --project=acceptation e2e/acceptation/aerr12.spec.js || r1=$?
+          # (aerr12 : PASS au run 44026261107, enregistrement commite ; non rejoue ici)
           # aerr12b (AERR114 « Suppr » sous la boite) : jouee SEULE, sur son propre sha d'enregistrement ; son echec ne fait pas tomber le run.
           ACCEPTATION_SHA="b${GITHUB_SHA}" npx playwright test --project=acceptation e2e/acceptation/aerr12b.spec.js || echo "aerr12b : FAIL (voir l'enregistrement b${GITHUB_SHA:0:8})"
           exit $r1

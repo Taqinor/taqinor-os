@@ -1,0 +1,225 @@
+{
+  "sha": "02bafff623e47ad72cf38bd255a0a6cc9ed24ad5",
+  "date": "2026-11-17",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR69",
+    "AERR112",
+    "AERR132",
+    "AERR176",
+    "AERR177",
+    "AERR178",
+    "AERR179"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF12.178-AERR178",
+      "taches": [
+        "AERR178"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.178-AERR178.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.179-AERR179",
+      "taches": [
+        "AERR179"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.179-AERR179.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.69-AERR69",
+      "taches": [
+        "AERR69"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.69-AERR69.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.177-AERR177",
+      "taches": [
+        "AERR177"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.177-AERR177.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.132-AERR132",
+      "taches": [
+        "AERR132"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.132-AERR132.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.176-AERR176",
+      "taches": [
+        "AERR176"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.176-AERR176.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.112-AERR112-lead",
+      "taches": [
+        "AERR112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.112-AERR112-lead.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.112-AERR112-visite",
+      "taches": [
+        "AERR112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.112-AERR112-visite.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF12.112-AERR112-calage",
+      "taches": [
+        "AERR112"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-AERR-PF12.112-AERR112-calage.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
