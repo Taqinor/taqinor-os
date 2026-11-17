@@ -121,9 +121,9 @@
           "url": "/visites"
         },
         {
-          "famille": "pose",
-          "id": 42,
-          "titre": "Pose — INS-0042",
+          "famille": "intervention",
+          "id": null,
+          "titre": "Intervention Pose — Karim Benali",
           "jour": "2026-11-17",
           "url": "/chantiers?id=42"
         },

@@ -409,12 +409,27 @@ def _items_ailleurs(user):
     return items
 
 
+def _mentions(user):
+    """Mentions non lues (`notifications.selectors.mentions_non_lues`, la porte que lit `ma_file`) ;
+    `None` si la source est illisible (famille absente, jamais un 0 inventé)."""
+    from apps.notifications.selectors import mentions_non_lues
+    try:
+        return mentions_non_lues(user, user.company).count()
+    except Exception:  # noqa: BLE001 — une source ERP en échec ne casse jamais la journée
+        logger.warning('taches : mentions illisibles pour « Ailleurs »', exc_info=True)
+        return None
+
+
 def ailleurs(user):
-    """GET aujourdhui/ailleurs/ : compteurs par famille (forme `ailleurs.json`). Les approbations et
-    les mentions (blocs 2-3 de `ma_file`) n'ont pas de porte publique lisible d'ici : 0."""
+    """GET aujourdhui/ailleurs/ : compteurs par famille (forme `ailleurs.json`). Les approbations
+    (bloc 2 de `ma_file`) n'ont AUCUNE porte publique (`reporting.approbations` n'expose que des
+    internes) : la famille est ABSENTE de la réponse, jamais un compteur inventé à 0."""
     kinds = [item.get('kind') for item in _items_ailleurs(user)]
     compteurs = {cle: kinds.count(kind) for cle, kind in KINDS_AILLEURS.items()}
-    return {**compteurs, 'approbations': 0, 'mentions': 0, 'lien': LIEN_AILLEURS}
+    mentions = _mentions(user)
+    if mentions is not None:
+        compteurs['mentions'] = mentions
+    return {**compteurs, 'lien': LIEN_AILLEURS}
 
 
 # --- `vu/` : ouverture du jour, carte de retour (regles.md « Retour d'absence ») -----------------

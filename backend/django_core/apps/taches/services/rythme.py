@@ -41,6 +41,7 @@ from apps.taches.moteur.gabarits import CONSTANTES, texte
 from apps.taches.moteur.sante import NEGLIGE_JOURS, ProjetSante, neglige
 from apps.taches.moteur.sollicitations import ETAT_PAUSE, HEURE_RELANCE_DEFAUT, etat_decroissance
 from apps.taches.selectors.base import _du_compte, projets_de, taches_de
+from apps.taches.selectors.journee import activites_closes_du_jour
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
     bornes_du_jour,
@@ -602,13 +603,14 @@ def retirer_preference(user, cle):
 
 
 def faites_aujourdhui(user, jour):
-    """Le compte du rythme du `jour` (tâches) : `moteur.compte_du_jour` sur les tâches faites ce
-    jour, une routine (quotidienne ou jours ouvrés, intervalle 1) comptée 0."""
+    """Le compte du rythme du `jour` : `moteur.compte_du_jour` sur les tâches faites ce jour (une
+    routine — quotidienne ou jours ouvrés, intervalle 1 — comptée 0) et les activités ERP closes par
+    lui ce jour (`selectors.journee.activites_closes_du_jour`, le même compte qu'`aujourdhui/`)."""
     taches = [SimpleNamespace(statut=t.statut, parent_id=t.parent_id, estimation_minutes=t.estimation_minutes,
                               routine=bool(t.recurrence_id and t.recurrence.frequence in FREQUENCES_ROUTINE
                                            and t.recurrence.intervalle == 1))
               for t in taches_faites_le(user, jour)]
-    return moteur.compte_du_jour(taches, ())[0]
+    return moteur.compte_du_jour(taches, activites_closes_du_jour(user, jour))[0]
 
 
 #: En-tête de tour (textes.md « Boutons des cartes ») : deux lignes, 300 caractères au plus.

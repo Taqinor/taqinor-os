@@ -139,6 +139,24 @@ class ConvertirTests(_Base):
         self.assertEqual(reponse.json()['activite_ids'], ['Requis.'])
 
 
+class ActivitesClosesTests(_Base):
+    """regles.md §6.1 : « activité ERP close par lui ce jour = 1 » — jamais deux fois (une activité qui
+    porte une tâche, convertie ou liée, ne compte pas : la conversion la clôt sans que rien soit fait)."""
+
+    def test_close_par_lui_compte_convertie_non(self):
+        from django.utils import timezone
+
+        from apps.taches.selectors.journee import compte_faites
+        close = fabriques.activite(self.u1, personnelle=False, created_by=self.u2, summary='Appel')
+        close.done, close.done_by, close.done_at = True, self.u1, timezone.now()
+        close.save(update_fields=['done', 'done_by', 'done_at'])
+        convertie = fabriques.activite(self.u1, summary='À-faire')
+        convertir_activites(self.u1, ids=[convertie.pk])
+        compte, detail = compte_faites(self.u1, timezone.localdate())
+        self.assertEqual((compte, detail['activites_closes']), (1, 1))
+        self.assertEqual(compte_faites(self.u2, timezone.localdate())[0], 0)
+
+
 class LierTests(_Base):
     def _activite_erp(self, **champs):
         """Activité ERP (pas un à-faire personnel) créée par u2, assignée à u1."""
@@ -171,6 +189,19 @@ class LierTests(_Base):
         self.assertEqual(Tache.objects.filter(activite_origine=activite).count(), 1)
         activite.refresh_from_db()
         self.assertFalse(activite.done)
+
+    def test_une_activite_sans_date_ou_reportee_se_lie(self):
+        import datetime
+
+        from django.utils import timezone
+        sans_date = self._activite_erp(summary='Sans date', due_date=None)
+        reportee = self._activite_erp(summary='Reportée',
+                                      snoozed_until=timezone.localdate() + datetime.timedelta(days=3))
+        for activite in (sans_date, reportee):
+            with self.subTest(activite=activite.summary):
+                reponse = self._api().post(LIER, {'activite_id': activite.pk}, format='json')
+                self.assertEqual(reponse.status_code, 201, reponse.content)
+                self.assertTrue(Tache.objects.filter(activite_origine=activite).exists())
 
     def test_404_hors_de_ses_activites_ouvertes(self):
         a_u2 = fabriques.activite(self.u2, summary='À u2', personnelle=False)
