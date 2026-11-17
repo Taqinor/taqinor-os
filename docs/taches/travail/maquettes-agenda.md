@@ -1,51 +1,49 @@
-# Maquettes de l'Agenda (L3 n°8)
+# Maquettes de l'Agenda (L3 n°8) — tour 2
 
-8 fichiers `maquettes/agenda-*.html`, `maquettes/ecrans-agenda.css`, 32 captures. Dernière mesure par script : 0 texte sous 4,5:1, 0 cible sous 44 px (8 fichiers × 4 rendus).
+8 fichiers `maquettes/agenda-*.html` (régénérés d'une seule source de données), `maquettes/ecrans-agenda.css` (réécrit,
+sans les rustines du tour 1), 32 captures re-rendues après la dernière version de `taches.css` (06:10). Mesure par
+script, 8 fichiers × 4 rendus : 0 texte sous 4,5:1, 0 cible sous 44 px. Aucune couleur littérale.
 
-## Jour (3 tours)
-Une heure = 88 px sur iPhone : la demi-heure fait 44 px. Bande « Toute la journée » en 2 × 2 : gris + icône = ERP,
-teinte + case = tâche. Tiroir « À placer » au pouce.
-Corrigé : libellé sur 3 lignes, « 10:00 » sous « 10:05 », bloc étroit tronqué (sans case, 13 px sur 2 lignes), tiroir
-transparent, bloc fait boueux en sombre.
-Déplaît : 4,7 h visibles ; le + mord le bloc de 11:30.
+## Scénario (SCENARIO.md)
+Mardi 24, 09:41 (heure de la tuile, « 1 sur 5 »). Toute la journée : « Visite technique à Témara » + « Confirmer la
+réservation du stand » ★. Blocs : rails 08:30 (fait), devis 09:00-11:00 ★, fournisseur 10:00, « Rappeler pour le devis »
+10:30 (ERP). Les 5 gardées pèsent 4 h 15 : durées de « Confirmer… » (30 min) et « Relire… » (45 min) = estimations posées
+par moi. À trier 5. Recrutement en vert.
 
-## Semaine (4 tours)
-iPhone : 7 lignes (jour, « 3 tâches · 2 h 30 », barre de charge, 2 titres) ; week-end en 2 demi-lignes. Bureau :
-7 colonnes, jour teinté, heure courante dans la gouttière.
-Corrigé : points absents, heure courante dans lundi, blocs d'1 h coupés, week-end à 33 px, teintes invisibles en sombre.
-**Verdict iPhone : bonne vue d'ensemble, pas de travail** ; les heures sont au Jour (toucher la ligne).
-Déplaît : titres tronqués en colonnes.
+## Corrections appliquées (critique tour 2)
+- **P1** charge vraie : échelle de 6 h, repère à 4 h, fantôme non plafonné, ambre au-delà ; tournure unique « X pour 4 h »
+  (Planifier, Semaine, Mois). Jeudi est le seul jour où la tâche tient (4 h pour 4 h).
+- **P2/P3** Planifier iPhone : jours à plat, cibles sur `--tch-selection`, sans « + » ; seule la tâche choisie est
+  cerclée ; week-end en une rangée de deux cibles. **P4** « Placée jeu. 26 · Annuler » dans le volet.
+- **S1** jour courant sans fond ; **S2/M2/P5** non travaillé vide à 64 px (bureau) ; non travaillé = `--muted` 50 % partout.
+- **J1** bande « Toute la journée » sur une rangée défilante, sans ligne de date. **J4/J5** blocs faits sans fond ;
+  ouverture à l'heure − 30 min, calée sur l'heure pleine (09:00).
+- **T4** le bouton Ajouter est au bout de la barre « À placer », dans les 4 vues : il ne recouvre plus rien.
+- **V1** À venir bureau : liste à gauche, « À placer » à droite. **V2-V4** segments fixes, une espace, échéances masquées.
+- **S3-S7, M1, M3, H1-H4** : « +3 » au bout de la 2ᵉ ligne, barre retirée de Semaine, pas de drapeau, Mes projets
+  replié en Jour / déplié en Semaine, « +2 » en texte, aujourd'hui choisi en Mois, « + 11:00 – 11:30 », consigne dans le
+  flux, défilement sur l'heure pleine, « Placée à 13:00 · Annuler » sur bureau.
+- **T1** en-tête loupe · Copilote · ⋯ ; barre d'état et barre latérale de 240 px reprises de `taches.css`.
 
-## Planifier ma semaine (3 tours, 2 états)
-Consigne « ↑ Touche un jour… » en tête du volet, sous la tâche choisie ; « + » discret par jour ; barre = charge après
-pose (fantôme, ambre au-delà de 4 h, « → 5 h 15 »). Après : toast à la place de la consigne, jeudi s'allonge du titre,
-la tâche quitte le volet.
-Corrigé : flèche vers l'en-tête, six « Poser » criards, cartes cassées, fantôme sur la mauvaise colonne.
-**Verdict « toucher puis poser » : évident grâce à la consigne et au contour, et seulement grâce à eux.** Plus sûr que glisser
-au doigt, moins direct. À éprouver sur un vrai iPhone.
+## Tours
+Passe A (tout régénéré), B (libellé de bande, puces de la barre, cascade, fantômes), C (barre latérale, `--tch-heure-h`
+partagé, week-end sombre, Planifier en mode sans barre latérale, week-end sur une rangée), puis re-rendu final. Clair et
+sombre, iPhone et bureau regardés à chaque passe.
 
-## Mois (3 tours)
-Points par projet (3, puis « – »), aujourd'hui cerclé, jour choisi plein, liste dessous, « Férié » le 18.
-Corrigé : cellules à 44 px, en-tête géant sur bureau, passé barré partout (atténué), jours hors mois à 2,32:1.
-
-## À venir (3 tours)
-« Demain · mer. 25 », « jeu. 26 »… ; vides repliés (« Rien du mer. 2 au ven. 4 », « sam. 28 – dim. 29 · jours non
-travaillés »).
-Corrigé : page centrée verticalement sur bureau, « 1 er » décollé.
-Déplaît : sur iPhone, les repliés sont sous la ligne de flottaison.
-
-## Placer à une heure (4 tours, 2 états)
-Tâche choisie dans le tiroir, pastilles « + 12:00 » sur les demi-heures libres, consigne en bas. Après : un panneau
-« Placée à 14:00 · Annuler » + 30 min / 1 h / 2 h. Bureau : bloc soulevé avec poignée, puis poignée tirée.
-Corrigé : 10 cadres pleine largeur (tableur), puce choisie hors champ, bloc caché par le panneau.
-Déplaît : les pastilles ne montrent pas la durée.
-
-## Écarts assumés (spec 7)
-1. 88 px/h sur iPhone : la demi-heure reste une cible.
+## Écarts assumés
+1. 88 px/h (désormais le jeton partagé).
 2. Case dans les blocs, sauf blocs étroits et colonnes de semaine.
-3. Planifier ma semaine en mode plein écran (« Terminer »), pas en volet de la vue Semaine : 7 cibles + volet
-   demandent toute la hauteur ; mêmes gestes.
-4. Charge projetée : ajout, dérivée des estimations et des 4 h par défaut (spec 3).
-5. Mois sur bureau : titres plutôt que points.
-6. Aucun férié réel du 23 au 29 : montré en Mois seulement.
-7. Toast en haut (Planifier) ; toast + durée fusionnés (Placer).
+3. Planifier plein écran ; sur bureau, c'est un mode : la barre latérale s'efface.
+4. Semaine bureau : les chevauchements passent en **cascade** (le second bloc part à 28 %). Côte à côte, chaque bloc
+   faisait 64 px. En Jour, ils restent côte à côte. Les deux restent visibles, aucun n'est masqué (spec 3).
+5. Mois bureau : des titres. 6. Férié en Mois seulement.
+
+## Ce qui déplaît encore
+- La barre d'état coûte 47 pt : Jour iPhone montre environ 4,5 h, pas 5,6.
+- Bureau à 3 colonnes : en Semaine, les titres sont coupés (« Appeler le f… »).
+- Les titres passés du Mois bureau se répètent (le réservoir est petit).
+- À venir iPhone : les jours repliés sont sous la ligne de flottaison.
+- Non vérifié sur un vrai iPhone.
+
+**« Toucher puis poser »** se lit sans la consigne : les jours s'éclairent, une seule tâche est cerclée, et chaque jour
+dit sa charge. La consigne reste comme filet.

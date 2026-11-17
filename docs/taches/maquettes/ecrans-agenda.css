@@ -79,7 +79,6 @@
 .ag .bloc.etroit b { white-space: normal; -webkit-line-clamp: 2; display: -webkit-box; font-size: 0.8125rem; line-height: 1rem; }
 .ag .bloc.etroit small { display: none; }
 /* Fait : pas de fond ; filet et titre barré en gris */
-.ag .bloc.fait-bloc b { text-decoration: line-through; text-decoration-thickness: 1px; }
 .ag .bloc.erp .ag-bi { flex: none; color: var(--tch-texte-doux); margin-top: 1px; }
 .ag .bloc.erp.etroit .ag-bi { margin-top: 0; }
 

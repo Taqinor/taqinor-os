@@ -1,54 +1,60 @@
 # Maquettes rendues — Projets, Rythme, Copilote, tuile (L3 n°8)
 
-`docs/taches/maquettes/` : 12 écrans HTML + `ecrans-projets.css` (jetons existants seulement), 48 PNG dans `captures/`.
-Mesure (couleurs calculées, partie visible, 48 vues) : 0 texte sous 4,5:1, 0 sous 12 px, 0 cible sous 44 px ; fond
-voilé sous un dialogue exclu.
+`docs/taches/maquettes/` : 12 écrans HTML + `ecrans-projets.css` (jetons existants seulement, réécrite au tour 4) ;
+48 PNG dans `captures/`. Chiffres et formes : `SCENARIO.md` (mardi 24 novembre). Dernier rendu fait sur le
+`taches.css` corrigé par sa lane. Mesure (couleurs calculées, partie visible, 48 vues) : 0 texte sous 4,5:1,
+0 sous 12 px, 0 cible sous 44 px ; le fond voilé sous un dialogue n'est pas mesuré.
 
-## Écrans (3 tours chacun : écrire → rendre → regarder → corriger)
-- **projets-liste** — projet = ligne à plat : camembert couleur, « 12 sur 18 · échéance », puce de priorité (barres + mot,
-  Basse en contour, jamais une teinte), « À planifier » en puce azur, « ⚠ à surveiller » en méta ; « Nouveau projet » en
-  rangée de 56 px à mi-écran. T2 : alignements bureau ; T3 : panneau bureau = vrai projet.
-- **projet-liste** — nom + point, priorité, échéance, barre couleur, prochain jalon, phrase de santé de la spec 4 ; ⋯
-  ouvert au bureau. T2 : « Fini quand… » en aperçu replié, losange plein.
-- **projet-tableau** — iPhone : puces d'étapes, une colonne + bord de la suivante. T2 : bureau élargi, méta qui
-  débordait ; T3 : en-tête compact, « 2 faites » dans la colonne.
-- **projet-chronologie** — iPhone : frise verticale (étapes, jalons, aujourd'hui, échéance) ; bureau : 3 semaines,
-  deux traits, aucune dépendance. T2 : étiquettes superposées ; T3 : toute la frise tient sans défiler.
-- **projet-planifier**, **-2** — pas 1 : fini quand…, échéance en puces, priorité en 3 tuiles ; pas 2 : première
-  action, « Découper avec le Copilote », carte à valider (même ligne, ×), « Plus » replié. T2 : dialogue sous le voile,
-  carte hors écran ; T3 : sélection unifiée.
-- **rythme** — anneau « 3 sur 5 », source, proposition, 10 barres fines, week-end absent, objectif pointillé. T2 :
-  chiffres sur le trait, bureau étroit ; T3 : phrase de source cohérente avec la règle +1.
-- **revue-semaine** — 4 faits, carte projet en pile, 4 décisions, « Planifier ma semaine » au pouce. T2-T3 : textes trop
-  longs, icône collée.
-- **copilote** — 4 demandes, carte « Proposé pour aujourd'hui » avec la `.ligne` de l'écran, une raison par ligne.
-  T2 : icône en ligne (libellés cassés) ; T3 : annulé.
-- **mon-iphone** — « 2 sur 5 », étape en cours dépliée, interrupteurs. T2 : textes centrés ; T3 : boutons.
-- **tuile** — moyenne : « 2 sur 5 » en 34 px, 3 lignes pleine largeur, échéance, « maj 09:41 » ; grande : 6 lignes.
-  T2 : titres coupés → bandeau en tête ; T3 : 11 → 12 px.
-- **cockpit-carte** — carte bordée parmi des squelettes ERP. T2 : ⋯ retiré ; T3 : vérifiée sans changement.
+## Tour 4 (critique visuelle + scénario unique), écran par écran
+- **projets-liste** — point de couleur sur la 1re ligne, barre fine `.barre-avance`, puce de priorité alignée ;
+  `folder-plus` devant « Nouveau projet » (seul « + » : le bouton flottant). Bureau : `.page.trois` (barre latérale ·
+  projets · projet ouvert), « Nouveau projet » vit dans la barre latérale.
+- **projet-liste** — santé sur une ligne sans fond (« À ce rythme : 15 jours travaillés, il en reste 8 », 8 = jours
+  travaillés du 25/11 au 4/12) ; « Fini quand… ⌄ » seul ; ⋯ sans le groupe Vue, Terminer = `circle-check`.
+- **projet-tableau** — iPhone : colonne = largeur − 48, titres sur une ligne, plus de titre de colonne ni de points,
+  puce d'étape azur. Bureau : barre latérale fixe, colonnes de 264 px, tableau défilant.
+- **projet-chronologie** — bureau : une seule piste, étapes bout à bout avec leur nom dedans, détail dessous, Études
+  ouverte « ← 2 nov. », jalon au-dessus, aucun numéro de semaine : plus un Gantt.
+- **planifier** — « pas N sur 2 », 2 segments ; « En réserve » ; une seule sélection (azur plein, puces et tuiles) ;
+  la carte du Copilote n'est plus plus sombre que la feuille.
+- **rythme** — segments (plus d'anneau), « Les 10 derniers jours travaillés » du 9 au 23 (mer. 18 férié, sans
+  barre), 6 jours sur 10, 48 faites ; « Passer à 6 » en bouton plein ; un constat avant le choix du mode.
+- **revue-semaine** — 21 faites en 4 jours, 3 sur 4 ; Garder · Pause · Terminer en segmenté, Garder présélectionné ;
+  « Suivant » et « 1 sur 5 » sur iPhone seulement ; étoile pour « Projet de la semaine » ; intertitres en casse normale.
+- **copilote** — posé sur l'Aujourd'hui du matin ; 4 demandes en puces texte ; « Garder ces 3 » et la MÊME ligne
+  proposée que l'écran (puce « Garder » en tête de méta).
+- **mon-iphone** — « Installer le raccourci » pleine largeur, la manière manuelle repliée ; `.interrupteur` partagé.
+- **tuile** — 1 sur 5 à 09:41, point de projet au lieu de la case, visite « journée », « + 3 autres », « maj 09:41 »
+  au pied, échéance en `calendar-clock`.
+- **cockpit-carte** — segments, « 3 sur 5 · 2 à faire », 2 à faire + 1 faite.
+
+Tours de ce passage : 3 rendus regardés (tour 4, 4b, 4c), puis un rendu final après le nouveau `taches.css`.
+Cassé par lui puis corrigé : double décalage de la barre d'état (déjà posé par `.barre-statut ~ .page`), classe
+`.tuile` du sélecteur Quand qui écrasait mes segments de tuile.
+
+## Retiré de `ecrans-projets.css` (devenu partagé)
+Barre d'état et indicateur maison, segments, mini-barre, point de projet, interrupteur, style de puce choisie,
+mise en page bureau à deux colonnes, anneau et camembert, toutes les surcouches des tours 1 à 3.
 
 ## Ce qui me déplaît encore
-- Projet en Liste sur iPhone : la santé (3 lignes) repousse « Clôture » et « Faites » sous le pli.
-- Tableau iPhone : « Matériel » répété (puce et tête de colonne).
-- Ambre en sombre tire au brun ; vide sous « Priorité » au pas 1 ; deux « + » sur Projets.
-- Non vérifié : vrai iPhone, Scriptable réel (SF, pas Hanken), daltonisme.
+- iPhone, projet en Liste : « Clôture » et « Faites » restent sous le pli.
+- Chronologie iPhone : le point « Aujourd'hui » vient après Matériel (tri par début), alors qu'il tombe dedans.
+- Tableau bureau : la dernière colonne est coupée (défilement voulu, mais sans indice).
+- Non vérifié : vrai iPhone, Scriptable réel (SF au lieu de Hanken), daltonisme.
 
 ## Écarts assumés
-1. « Fini quand… » en aperçu replié (spec 7 : Détails replié) ; jalon visible.
-2. « Après… » écrit « attend : … » (§3 interdit « après »).
-3. Revue : « Suivant » par carte (spec 7) ; « Passer » quitte la revue.
-4. « Proposé pour aujourd'hui », « objectif atteint », « gardées faites » (termes interdits évités).
-5. Rythme : proposition au-dessus du graphique (visible sans défiler).
-6. Tableau : la tâche y est une tuile (`--card` sur `--muted`, sans trait) — seul endroit.
-7. Vues avancées : en-tête compact, santé en puce.
+1. « Fini quand… » replié (Détails, spec 7).
+2. « Après « … » » au lieu de « attend : » : consigne du coordinateur et `SCENARIO.md`. **Contradiction** :
+   `spec-7-ecrans.md` §3 ligne 90 dit encore « puce « attend : Visite » » et interdit « après » — à trancher dans la spec.
+3. Revue : « Suivant » par carte sur iPhone seulement ; « Passer » quitte la revue.
+4. « Proposé pour aujourd'hui », « objectif atteint » (termes interdits évités).
+5. Rythme : proposition au-dessus du graphique.
+6. Tableau : la tâche y est une tuile, titre sur une ligne.
+7. Vues avancées : en-tête compact.
 8. Mon iPhone, étape 5 « Ouvrir sur Aujourd'hui » (A13).
-9. Cockpit : « 2 sur 5 · 4 à faire » (format spec 7).
+9. Site web « 0 sur 4 » et « À planifier » : le scénario prime, la spec 4 veut « À planifier » ⇔ 0 ouverte.
 10. Un fichier par pas de Planifier.
 
 ## À reporter dans `taches.css`
-- `svg.i { fill: none }` éteint tout remplissage à une classe : prévoir `.i.plein`.
-- `--tch-surveiller` sur `--tch-panneau` = 4,46:1 en clair : avertissement seulement sur `--card`.
-- `.puce[aria-checked="true"]` non stylé : l'aligner sur `.puce.active`.
-- Planche 7 : « 0 sur 4 » + « À planifier » contredit la spec 4 (À planifier ⇔ 0 ouverte).
-- `.ligne.projet` : `align-items: center` quand la méta passe à 2 lignes.
+- La classe `.tuile` (sélecteur Quand) est trop générique : elle a écrasé une autre classe. Préférer `.quand-tuile`.
+- Ajouter une modification « pleine largeur » pour `.segments` (Mon rythme, tuile) au lieu de mon `.ep-plein`.
