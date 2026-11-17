@@ -9,7 +9,7 @@
 // tests sont indépendants de l'ordre et rejouables.
 import { test, expect } from '@playwright/test'
 import {
-  annonce, attendreAujourdhui, boutonGarder, creerProjet, creerTaches, etatJournee, jourServeur, ligne, lireTache, ouvrirActions,
+  annonce, attendreAujourdhui, boutonGarder, creerProjet, creerTaches, etatJournee, garderParApi, jourServeur, ligne, lireTache, ouvrirActions,
   progression, reinitialiser, section, titreUnique, toast,
 } from './taches-aides'
 
@@ -21,8 +21,8 @@ async function journeeDeQuatre(page, { gardees = false } = {}) {
   const projet = await creerProjet(page, titreUnique('Chantier'))
   const titres = ['Appeler le fournisseur', 'Commander les rails', 'Relire le contrat', 'Envoyer le devis']
     .map((t) => titreUnique(t))
-  const commun = gardees ? { projet_id: projet.id, jour_prevu: await jourServeur(page) } : { projet_id: projet.id }
-  const taches = await creerTaches(page, titres, commun)
+  const taches = await creerTaches(page, titres, { projet_id: projet.id })
+  if (gardees) await garderParApi(page, taches)
   return { projet, titres, taches, base: await etatJournee(page) }
 }
 

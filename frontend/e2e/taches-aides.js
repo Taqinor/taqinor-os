@@ -85,6 +85,17 @@ export async function creerTaches(page, titres, commun = {}) {
   })
 }
 
+/** « Garder » la journée par la vraie route `journee/planifier/` (celle que « Garder ces N » appelle) : les tâches
+ *  passent dans Prévu ET le plan du jour est validé (`plan.planifie_le`) — sans quoi l'écran n'offre pas la ★ sur
+ *  Prévu (invite « Touche ★ pour ton essentiel » seulement après un Garder). */
+export async function garderParApi(page, taches) {
+  const jour = await jourServeur(page)
+  await json(await page.request.post(`${API}/journee/planifier/`, {
+    data: { jour, mode: 'express', lignes: taches.map((t) => ({ type: 'tache', id: t.id })), essentielles: [], triage: [] },
+    headers: cle(),
+  }), 'garder la journée')
+}
+
 /** La tâche complète (forme TACHE : `lock_version`, `statut`, `jour_prevu`, `projet`, `reports`…). */
 export async function lireTache(page, id) {
   return json(await page.request.get(`${API}/taches/${id}/`), `lire la tâche ${id}`)
