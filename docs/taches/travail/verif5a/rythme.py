@@ -93,12 +93,12 @@ def echec_bloque(N, jour, echec, meilleur):
     return jour < le + 42 * n
 
 
-def evaluer_bloc(etat, jour):
+def evaluer_bloc(etat, jour, seuils=(SEUIL_HAUT, SEUIL_BAS)):
     """etat : dict(N, comptes[10] (deja contre l'objectif du jour: liste de bool tenu), essai, skip,
     baisse_refusee, echec, meilleur, ref, ref_n, tailles). -> 'monter'|'baisser'|'taille'|None"""
     N = etat["N"]
     tenus = sum(etat["tenus"])
-    if tenus >= SEUIL_HAUT and N < PLAFOND:
+    if tenus >= seuils[0] and N < PLAFOND:
         if etat.get("skip", 0) > 0:
             return None
         if echec_bloque(N, jour, etat.get("echec"), etat.get("meilleur", 0)):
@@ -106,7 +106,7 @@ def evaluer_bloc(etat, jour):
         if not garde_taille_ok(etat.get("ref"), etat.get("ref_n", 0), etat.get("tailles", [])):
             return "taille"
         return "monter"
-    if tenus <= SEUIL_BAS and N > 1:
+    if tenus <= seuils[1] and N > 1:
         if etat.get("baisse_refusee"):
             return None
         if etat.get("essai") and tenus > 1:
@@ -148,6 +148,15 @@ def clore_bloc(etat, jour, decision, reponse):
     e["tenus"] = []
     e["tailles"] = []
     return e
+
+
+def rogner(comptes):
+    """correction proposee : chaque jour plafonne a 2 x mediane + 1 (fenetre de 14 jours)."""
+    w = comptes[-14:]
+    if len(w) < 14:
+        return comptes
+    cap = 2 * statistics.median(w) + 1
+    return [min(c, cap) for c in comptes]
 
 
 def reference_tenir(comptes):
@@ -231,6 +240,7 @@ class Etat:
         self.cold = []
         self.cold_est = []
         self.tenus = []
+        self.blocc = []
         self.tailles = []
         self.ref = None
         self.ref_n = 0
@@ -249,6 +259,7 @@ class Etat:
         self.events = []
         self.journal_prop = []  # (jour, type, reponse)
         self.libre_depuis = None
+        self.cfg = dict(B=BLOC, haut=SEUIL_HAUT, bas=SEUIL_BAS, double=None, arrondi_type="floor")
 
     # -- objectif
     def N(self):
@@ -324,6 +335,9 @@ class Etat:
             self.cold_est += [x for x in est if x is not None]
             if len(self.cold) == 10:
                 pal, typ = palier_initial(self.cold, self.dit)
+                if self.cfg["arrondi_type"] == "round":
+                    typ = max(1, arrondi(min(statistics.median(self.cold), statistics.mean(self.cold))))
+                    pal = self.dit if self.dit else typ
                 self.froid = False
                 if len(self.cold_est) >= 10:
                     self.ref = statistics.median(self.cold_est)
@@ -340,8 +354,10 @@ class Etat:
                 self.tailles = []
             return ev
         self.tenus.append(tenu)
+        self.blocc.append(compte)
         self.tailles += [x for x in est if x is not None]
-        if len(self.tenus) < BLOC:
+        B = self.cfg["B"]
+        if len(self.tenus) < B:
             return ev
         # cloture du bloc
         N = self.palier
@@ -354,7 +370,10 @@ class Etat:
         st = dict(N=N, tenus=list(self.tenus), essai=self.essai, skip=self.skip,
                   baisse_refusee=self.baisse_refusee, echec=self.echec, meilleur=self.meilleur,
                   ref=self.ref, ref_n=self.ref_n, tailles=list(self.tailles))
-        dec = evaluer_bloc(st, jour)
+        dec = evaluer_bloc(st, jour, (self.cfg["haut"], self.cfg["bas"]))
+        if dec in ("monter", "taille") and self.cfg.get("garde_moy") is not None and statistics.mean(self.blocc) < N - self.cfg["garde_moy"]:
+            dec = None
+        self.blocc = []
         # compteurs de cloture communs
         if self.skip > 0:
             self.skip -= 1
@@ -367,7 +386,8 @@ class Etat:
         self.tenus = []
         self.tailles = []
         if dec in ("monter", "baisser"):
-            self.pending = Proposition(dec, jour, N=N, n_tenus=n_tenus)
+            step = 2 if (dec == "monter" and self.cfg["double"] and n_tenus >= self.cfg["double"] and N + 2 <= PLAFOND) else 1
+            self.pending = Proposition(dec, jour, N=N, n_tenus=n_tenus, step=step, garder=(dec == "monter" and self.refus >= 2))
             ev.append((dec, N))
         elif dec == "taille":
             self.pending = Proposition("garde_taille", jour, med=med, ref=self.ref)
@@ -378,7 +398,7 @@ class Etat:
         N = self.palier
         if p.type == "monter":
             if oui:
-                self.palier = min(PLAFOND, N + 1)
+                self.palier = min(PLAFOND, N + getattr(p, "step", 1))
                 self.essai = True
                 self.refus = 0
                 self.skip = 0
@@ -404,8 +424,9 @@ class Etat:
     def _tenir(self, jour):
         ev = []
         last = [h for h in self.hist if jour - h["jour"] <= 42]
+        rg = rogner if self.cfg.get("rogner") else (lambda x: x)
         if self.R_fixe is None:
-            r = reference_tenir([h["compte"] for h in last])
+            r = reference_tenir(rg([h["compte"] for h in last]))
             if r is not None:
                 self.R = r
                 self.R_fixe = jour
@@ -413,7 +434,7 @@ class Etat:
         since = [h for h in self.hist if h["jour"] > self.R_fixe and jour - h["jour"] <= 42]
         if len(since) < 14:
             return ev
-        comptes = [h["compte"] for h in since]
+        comptes = rg([h["compte"] for h in since])
         res = derive_tenir(self.R, comptes, jour, self.silence)
         if res:
             m = sum(comptes[-14:]) / 14.0

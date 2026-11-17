@@ -1,0 +1,114 @@
+# B progresse (ouvre 90 %) — graine 4 — 8 semaines (dates fictives, lundi 16/11/2026)
+[Mon 16/11 08:30] Bonjour. 8 tâches t'attendent ; objectif du jour : 5.
+[Mon 16/11 15:00] 1 faites sur 5 ; ton essentiel est encore ouvert.
+[Mon 16/11 18:00] Journée close ? 6 tâches faites.
+[Tue 17/11 08:30] Plan du jour : choisis ton essentiel (objectif 5).
+[Tue 17/11 15:00] 2 faites sur 5 ; ton essentiel est encore ouvert.
+[Tue 17/11 18:00] 5 faites, 0 à placer.
+[Wed 18/11 08:30] Ta journée : 6 tâches prévues ou en retard. Objectif 5.
+[Wed 18/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Wed 18/11 18:00] Bilan : 7 faites sur 7 prévues.
+[Thu 19/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Thu 19/11 18:00] Journée close ? 6 tâches faites.  (ignorée)
+[Fri 20/11 08:30] Plan du jour : choisis ton essentiel (objectif 5).
+[Fri 20/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Fri 20/11 18:00] Du 16/11 au 20/11 : 30 tâches en 5 jours. Journées réussies 5 sur 5.
+[Sat 21/11] —
+[Sun 22/11] —
+[Mon 23/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Mon 23/11 18:00] 7 faites, 0 à placer.
+[Tue 24/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Tue 24/11 18:00] Bilan : 5 faites sur 5 prévues.
+[Wed 25/11 08:30] Bonjour. 5 tâches t'attendent ; objectif du jour : 5.
+[Wed 25/11 15:00] Échéance aujourd'hui : 1 tâche encore ouverte.
+[Wed 25/11 18:00] Journée close ? 8 tâches faites.
+[Thu 26/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Thu 26/11 18:00] 5 faites, 0 à placer.  (ignorée)
+[Fri 27/11 08:30] Ta journée : 6 tâches prévues ou en retard. Objectif 6.
+[Fri 27/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Fri 27/11 18:00] Du 23/11 au 27/11 : 31 tâches en 5 jours. Journées réussies 3 sur 5.
+[Sat 28/11] —
+[Sun 29/11] —
+[Mon 30/11 08:30] Ta journée : 9 tâches prévues ou en retard. Objectif 6.
+[Mon 30/11 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Tue 01/12 08:30] Bonjour. 9 tâches t'attendent ; objectif du jour : 6.
+[Tue 01/12 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Tue 01/12 18:00] Journée close ? 7 tâches faites.
+[Wed 02/12 08:30] Plan du jour : choisis ton essentiel (objectif 6).
+[Wed 02/12 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Wed 02/12 18:00] 8 faites, 0 à placer.
+[Thu 03/12 08:30] Ta journée : 6 tâches prévues ou en retard. Objectif 6.
+[Thu 03/12 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Thu 03/12 18:00] Bilan : 6 faites sur 6 prévues.
+[Fri 04/12 08:30] Bonjour. 8 tâches t'attendent ; objectif du jour : 6.
+[Fri 04/12 15:00] Ton projet prioritaire n'a pas avancé depuis 14 jours.
+[Fri 04/12 18:00] Du 30/11 au 04/12 : 30 tâches en 4 jours. Journées réussies 3 sur 4.
+[Sat 05/12] —
+[Sun 06/12] —
+[Mon 07/12 08:30] Bonjour. 7 tâches t'attendent ; objectif du jour : 6.
+[Mon 07/12 18:00] Journée close ? 8 tâches faites.
+[Tue 08/12 08:30] Plan du jour : choisis ton essentiel (objectif 6).
+[Tue 08/12 18:00] 7 faites, 0 à placer.
+[Wed 09/12] —
+[Thu 10/12 08:30] Bonjour. 9 tâches t'attendent ; objectif du jour : 6.
+[Thu 10/12 18:00] Journée close ? 6 tâches faites.
+[Fri 11/12 15:00] Avant ce soir : 1 tâche à échéance.
+[Fri 11/12 18:00] Du 07/12 au 11/12 : 30 tâches en 4 jours. Journées réussies 4 sur 4.
+[Sat 12/12] —
+[Sun 13/12] —
+[Mon 14/12 08:30] Plan du jour : choisis ton essentiel (objectif 6).
+[Mon 14/12 18:00] 7 faites, 0 à placer.  (ignorée)
+[Tue 15/12] (carte fin de jour) proposition monter: {'d': 29, 'type': 'monter', 'N': 6, 'n_tenus': 10}
+[Tue 15/12 08:30] Ta journée : 9 tâches prévues ou en retard. Objectif 6.
+[Tue 15/12 18:00] Bilan : 8 faites sur 8 prévues.
+[Wed 16/12] reponse monter -> oui
+[Wed 16/12 08:30] Bonjour. 9 tâches t'attendent ; objectif du jour : 7.
+[Wed 16/12 18:00] Journée close ? 7 tâches faites.
+[Thu 17/12 08:30] Plan du jour : choisis ton essentiel (objectif 7).
+[Thu 17/12 18:00] 6 faites, 1 à placer.  (ignorée)
+[Fri 18/12 08:30] Ta journée : 8 tâches prévues ou en retard. Objectif 7.
+[Fri 18/12 15:00] 1 tâche a son échéance aujourd'hui.
+[Fri 18/12 18:00] Du 14/12 au 18/12 : 35 tâches en 5 jours. Journées réussies 4 sur 5.
+[Sat 19/12] —
+[Sun 20/12] —
+[Mon 21/12 08:30] Ta journée : 7 tâches prévues ou en retard. Objectif 7.
+[Mon 21/12 15:00] 1 tâche a son échéance aujourd'hui.
+[Mon 21/12 18:00] Bilan : 7 faites sur 7 prévues.
+[Tue 22/12 08:30] Bonjour. 7 tâches t'attendent ; objectif du jour : 7.
+[Tue 22/12 18:00] Journée close ? 8 tâches faites.
+[Wed 23/12 18:00] 8 faites, 0 à placer.
+[Thu 24/12 08:30] Ta journée : 7 tâches prévues ou en retard. Objectif 7.
+[Thu 24/12 15:00] 3 faites sur 7 ; ton essentiel est encore ouvert.
+[Thu 24/12 18:00] Bilan : 7 faites sur 7 prévues.
+[Fri 25/12 08:30] Bonjour. 8 tâches t'attendent ; objectif du jour : 7.
+[Fri 25/12 15:00] 3 faites sur 7 ; ton essentiel est encore ouvert.
+[Fri 25/12 18:00] Du 21/12 au 25/12 : 38 tâches en 5 jours. Journées réussies 4 sur 5.
+[Sat 26/12] —
+[Sun 27/12] —
+[Mon 28/12 08:30] Bonjour. 7 tâches t'attendent ; objectif du jour : 7.
+[Mon 28/12 18:00] Journée close ? 10 tâches faites.
+[Tue 29/12] (carte fin de jour) proposition monter: {'d': 43, 'type': 'monter', 'N': 7, 'n_tenus': 9}
+[Tue 29/12 08:30] Plan du jour : choisis ton essentiel (objectif 7).
+[Tue 29/12 18:00] 7 faites, 0 à placer.
+[Wed 30/12] reponse monter -> oui
+[Wed 30/12 08:30] Ta journée : 10 tâches prévues ou en retard. Objectif 8.
+[Wed 30/12 18:00] Bilan : 7 faites sur 8 prévues.
+[Thu 31/12 08:30] Bonjour. 8 tâches t'attendent ; objectif du jour : 8.
+[Fri 01/01 08:30] Plan du jour : choisis ton essentiel (objectif 8).
+[Fri 01/01 15:00] Avant ce soir : 1 tâche à échéance.
+[Sat 02/01] —
+[Sun 03/01] —
+[Mon 04/01 08:30] Plan du jour : choisis ton essentiel (objectif 8).
+[Mon 04/01 18:00] 9 faites, 0 à placer.
+[Tue 05/01 08:30] Ta journée : 9 tâches prévues ou en retard. Objectif 8.
+[Tue 05/01 15:00] 1 tâche a son échéance aujourd'hui.
+[Tue 05/01 18:00] Bilan : 8 faites sur 8 prévues.
+[Wed 06/01 08:30] Bonjour. 8 tâches t'attendent ; objectif du jour : 8.
+[Wed 06/01 18:00] Journée close ? 9 tâches faites.
+[Thu 07/01 08:30] Plan du jour : choisis ton essentiel (objectif 8).
+[Thu 07/01 18:00] 9 faites, 0 à placer.
+[Fri 08/01 08:30] Ta journée : 9 tâches prévues ou en retard. Objectif 8.  (ignorée)
+[Fri 08/01 15:00] 1 tâche a son échéance aujourd'hui.
+[Fri 08/01 18:00] Du 04/01 au 08/01 : 46 tâches en 5 jours. Journées réussies 5 sur 5.  (ignorée)
+[Sat 09/01] —
+[Sun 10/01] —
