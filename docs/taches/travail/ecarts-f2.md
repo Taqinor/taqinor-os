@@ -138,3 +138,15 @@ les écarts qu'elles ont DÉCLARÉS dans leurs rapports. Elle sert de consigne �
   « Planifier ma semaine » au bureau = sept lignes (la maquette montre des colonnes à cartes).
 - Titre d'un à-faire sans résumé ni note : « À-faire personnel » (sans source).
 - `records/selectors.py` : nouvelle porte `a_faire_personnels_de(user, ids)`.
+
+## J. Semis de démonstration (TCH169) — à reprendre à l'acceptation en direct
+
+- ERP du 24 non semés (visite à Témara, lead Ouazzani, « Suivi des relances : 5 → 2 ») : aucune porte de service
+  pour créer lead / visite / cadence sans importer des modèles métier. À semer par `seed_demo` de l'ERP ou par des
+  fabriques de service ajoutées dans les apps propriétaires ; `records.Activity` n'a pas d'heure (10:30 impossible).
+- « En attente 1 » : le moteur ne range en « En attente » que `statut=en_attente` avec jour passé, sans `bloquee_par` ;
+  le semis pose `bloquee_par` (puce « attend : … »). Poser UNE tâche par `attendre_tache` pour retrouver le compte.
+- Six tâches « En réserve » portent un titre neutre (« Tâche en réserve 2 »…) : leur donner de vrais titres.
+- Contrat de maintenance présent dès le matin (SCENARIO §7 vs §3) ; agenda de démonstration générique, non décalé
+  par `--jour` ; `--jour` décale sans recaler sur les jours ouvrés.
+- « 3 proposées » à vérifier contre le moteur réel en CI (`SemisTests`).
