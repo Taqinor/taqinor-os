@@ -102,9 +102,12 @@ def lire_contexte(user, jour, maintenant, *, assistant=False):
     preferences = sel.preferences_de(user)
     compte, detail = sel.compte_faites(user, jour)
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
+    rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
                     preferences=preferences, objectif=sel.objectif_du_jour(reglages), compte=compte,
-                    detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant)
+                    detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant,
+                    rendez_vous=rendez_vous, agendas=agendas,
+                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous))
 
 
 def _gardees_ouvertes(ctx):
@@ -302,9 +305,12 @@ def _instant(valeur):
 
 
 def _rendez_vous(ctx, rendu):
+    """RENDEZ_VOUS du jour (lecture seule, jamais une tâche) : horodatés à leur heure, journée entière
+    signalée par `journee_entiere` (le front les range dans « Toute la journée ») ; titrés
+    « Rendez-vous » sous l'en-tête assistant (forme RENDEZ_VOUS)."""
     from apps.taches.serializers.formes import RendezVousSerializer
-    horodates = [r for r in ctx.rendez_vous if not r.journee_entiere]
-    return list(RendezVousSerializer(horodates, many=True, context=rendu.contexte()).data)
+    du_jour = [r for r in ctx.rendez_vous if sel.touche_le_jour(r, ctx.jour)]
+    return list(RendezVousSerializer(du_jour, many=True, context=rendu.contexte()).data)
 
 
 def _propose(ctx, rendu, plan_propose, cles_propose, *, tout):

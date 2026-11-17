@@ -129,13 +129,16 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     travailles = jours_travailles_de(user, du, au)
     ouvres = set(jours_ouvres_entre(user.company, du, au))
     obligations = sel.obligations_du_jour(user, J) if journee.erp and du <= J <= au else sel.Obligations()
-    rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=obligations.peut_cloturer)
+    rendez_vous, agendas = sel.rendez_vous_pour(user, du, au)
+    rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=obligations.peut_cloturer,
+                                 agendas=agendas)
     jours = []
     for n in range((au - du).days + 1):
         jour = du + datetime.timedelta(days=n)
         jours.append(formes_journee.jour_d_agenda(
             rendu, jour, ouvre=jour in travailles, ferie=jour.weekday() < 5 and jour not in ouvres,
-            cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else ()))
+            cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else (),
+            externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
     semaine = vue == VUE_SEMAINE
     return {
         'du': du.isoformat(), 'au': au.isoformat(), 'jours': jours,

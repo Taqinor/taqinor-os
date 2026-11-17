@@ -469,3 +469,54 @@ def obligations_du_jour(user, jour):
             logger.warning('taches : famille %s illisible pour le compte %s', famille, user.pk, exc_info=True)
             echecs.append(str(famille))
     return Obligations(lignes=tuple(lignes), echecs=tuple(echecs), peut_cloturer=_peut_cloturer(user))
+
+
+# --- Rendez-vous des agendas externes (donnees.md invariant 35, TCH122) ---------------------------
+
+def fenetre_de_travail(company, jour):
+    """Heures de travail de la société le jour `jour` (`crm.horaires.fenetre_du_jour`, la fenêtre
+    des messages que lit aussi `notifications`) ; repli 08:30-19:00 de `notifications.selectors`."""
+    from apps.notifications.selectors import REPLI_FERMETURE, REPLI_OUVERTURE
+    from apps.taches.moteur.ics import Fenetre
+    try:
+        from apps.crm import horaires
+        plage = horaires.fenetre_du_jour(jour, company, canal='whatsapp')
+    except Exception:  # noqa: BLE001 — horaires illisibles : la fenêtre de repli, jamais une erreur
+        logger.warning('taches : heures de travail illisibles (société %s)', getattr(company, 'pk', '?'),
+                       exc_info=True)
+        plage = None
+    if not plage:
+        return Fenetre(REPLI_OUVERTURE, REPLI_FERMETURE)
+    return Fenetre(plage[0], plage[1])
+
+
+def touche_le_jour(rdv, jour):
+    """Le rendez-vous occupe-t-il une partie du jour local `jour` ?"""
+    debut = datetime.datetime.combine(jour, datetime.time.min)
+    fin = debut + datetime.timedelta(days=1)
+    return rdv.debut < fin and (rdv.fin > debut or rdv.debut >= debut)
+
+
+def rendez_vous_pour(user, du, au):
+    """(rendez-vous de [du, au] dans l'ordre de début, {agenda_id: libellé}) des agendas ACTIFS de
+    `user`, lus par `agenda_externe` (texte en cache 15 min, index des agendas en cache : 0 requête
+    de plus une fois le cache chaud). Un agenda en échec n'apporte rien (son état est dit ailleurs)."""
+    from apps.taches import agenda_externe
+    agendas = agenda_externe.agendas_actifs(user)
+    evenements = []
+    for agenda in agendas:
+        try:
+            evenements.extend(agenda_externe.lire_agenda_externe(agenda, du, au))
+        except Exception:  # noqa: BLE001 — un agenda illisible ne casse jamais la journée
+            logger.warning('taches : agenda externe %s illisible', agenda.pk, exc_info=True)
+    libelles = {agenda.pk: agenda.libelle or agenda.hote for agenda in agendas}
+    return tuple(sorted(evenements, key=lambda r: (r.debut, r.cle))), libelles
+
+
+def minutes_de_rendez_vous(user, jour, evenements):
+    """Minutes de rendez-vous horodatés de `jour`, unies et bornées aux heures de travail
+    (`moteur.ics.minutes_rendez_vous`) — retranchées de la capacité (invariant 35)."""
+    from apps.taches.moteur.ics import minutes_rendez_vous
+    if not evenements:
+        return 0
+    return minutes_rendez_vous(evenements, jour, fenetre_de_travail(user.company, jour))

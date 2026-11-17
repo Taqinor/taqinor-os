@@ -266,3 +266,83 @@ class RoutesAgendasExternesTests(TestCase):
         with self.assertLogs('apps.taches.agenda_externe', 'INFO') as journal:
             lecteur.lire_agenda_externe(agenda, datetime.date(2026, 11, 16), datetime.date(2026, 11, 18))
         self.assertNotIn('jeton-tres-secret', '\n'.join(journal.output))
+
+
+# --- TCH122 : rendez-vous servis dans aujourdhui/ et agenda/ ---------------------------------------
+
+def ics_du_jour(jour, debut='110000', fin='120000', titre='Réunion banque'):
+    return ('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:rdv-1\r\n'
+            f'DTSTART;TZID=Africa/Casablanca:{jour:%Y%m%d}T{debut}\r\n'
+            f'DTEND;TZID=Africa/Casablanca:{jour:%Y%m%d}T{fin}\r\n'
+            f'SUMMARY:{titre}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n')
+
+
+class RendezVousServisTests(TestCase):
+    """Invariant 35 : temps disponible = capacité − rendez-vous ; RENDEZ_VOUS dans Aujourd'hui et
+    l'Agenda, « Rendez-vous » sous l'en-tête assistant, jamais dans la pastille ; cache chaud = 0
+    requête de plus."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.societe = fabriques.societe('a')
+        cls.u = fabriques.compte(cls.societe, nom='u1')
+        cls.sans_agenda = fabriques.compte(cls.societe, nom='u2')
+
+    def setUp(self):
+        from django.utils import timezone
+        cache.clear()
+        self.T = timezone.localdate()
+        self.patch = mock.patch.object(lecteur, 'telecharger', return_value=ics_du_jour(self.T))
+        self.telecharger = self.patch.start()
+        self.agenda = fabriques.agenda_externe(self.u, libelle='Microsoft 365')
+
+    def tearDown(self):
+        self.patch.stop()
+
+    def get(self, compte, chemin, entetes=None, **params):
+        client = APIClient()
+        client.force_authenticate(compte)
+        reponse = client.get(f'/api/django/taches/{chemin}', params, **(entetes or {}))
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.json()
+
+    def test_aujourdhui_retranche_l_heure_de_reunion(self):
+        rendu = self.get(self.u, 'aujourdhui/')
+        self.assertEqual(len(rendu['rendez_vous']), 1)
+        rdv = rendu['rendez_vous'][0]
+        self.assertEqual(set(rdv), set(exemple('rendez_vous')['results'][0]))
+        self.assertEqual((rdv['titre'], rdv['agenda'], rdv['journee_entiere']),
+                         ('Réunion banque', 'Microsoft 365', False))
+        progression = rendu['progression']
+        self.assertEqual((progression['capacite_minutes'], progression['rendez_vous_minutes'],
+                          progression['disponible_minutes']), (240, 60, 180))
+        self.assertEqual(rendu['propose']['charge']['disponible_minutes'], 180)
+
+    def test_sous_l_entete_assistant_le_titre_est_masque(self):
+        rendu = self.get(self.u, 'aujourdhui/', entetes={'HTTP_X_TAQINOR_ASSISTANT': '1'})
+        self.assertEqual(rendu['rendez_vous'][0]['titre'], 'Rendez-vous')
+
+    def test_agenda_externes_du_jour(self):
+        rendu = self.get(self.u, 'agenda/', du=self.T.isoformat(), au=self.T.isoformat(), vue='jour')
+        externes = rendu['jours'][0]['externes']
+        self.assertEqual([r['titre'] for r in externes], ['Réunion banque'])
+
+    def test_jamais_dans_la_pastille(self):
+        self.assertEqual(self.get(self.u, 'badge/')['n'], 0)
+
+    def test_agenda_inactif_ne_compte_pas(self):
+        self.agenda.actif = False
+        self.agenda.save()
+        self.assertEqual(self.get(self.u, 'aujourdhui/')['progression']['rendez_vous_minutes'], 0)
+
+    def test_cache_chaud_zero_requete_de_plus(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        mesures = {}
+        for compte in (self.u, self.sans_agenda):
+            self.get(compte, 'aujourdhui/')  # chauffe : index des agendas et texte ICS en cache
+            with CaptureQueriesContext(connection) as requetes:
+                self.get(compte, 'aujourdhui/')
+            mesures[compte.pk] = len(requetes)
+        self.assertEqual(mesures[self.u.pk], mesures[self.sans_agenda.pk])
+        self.assertEqual(self.telecharger.call_count, 1)
