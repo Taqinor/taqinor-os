@@ -4,6 +4,8 @@
    « Comprendre mon rythme » (réglage `comprendre_mon_rythme`) et le lien « Mes données ».
    ========================================================================== */
 
+import InterrupteurRythme from '../ui/InterrupteurRythme'
+
 const TITRE_VIE_PRIVEE = 'Ce que tu dois savoir sur tes tâches'
 
 const PARAGRAPHES_VIE_PRIVEE = [
@@ -30,14 +32,7 @@ export default function ViePrivee({ allume, onBasculer, onMesDonnees, erreur = '
       <div className="es-reglages">
         <div className="es-reglage">
           <span className="txt"><b>Comprendre mon rythme</b></span>
-          <button
-            type="button"
-            className="interrupteur"
-            role="switch"
-            aria-checked={allume}
-            aria-label="Comprendre mon rythme"
-            onClick={() => onBasculer(!allume)}
-          />
+          <InterrupteurRythme allume={allume} onBasculer={onBasculer} />
         </div>
         {erreur ? <p className="es-erreur" role="alert">{erreur}</p> : null}
       </div>

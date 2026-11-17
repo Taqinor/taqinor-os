@@ -16,7 +16,7 @@ function datesEntre(du, au) {
   const [b, n, k] = au.split('-').map(Number)
   const fin = Date.UTC(b, n - 1, k)
   const dates = []
-  for (let t = Date.UTC(a, m - 1, j); t <= fin; t += 86400000) dates.push(new Date(t).toISOString().slice(0, 10))
+  for (let t = Date.UTC(a, m - 1, j); t <= fin; t += 86400000) dates.push(new Date(t).toISOString().split('T')[0])
   return dates
 }
 
