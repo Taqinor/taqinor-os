@@ -219,7 +219,7 @@ class RoutesSansBaseTests(SimpleTestCase):
 
 
 #: Modules de vues dont chaque opération porte son schéma complet (TCH145-TCH147).
-MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp')
+MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp', 'projets')
 #: Échantillons qui ne sont la réponse ENTIÈRE d'aucune route : sous-objet d'une autre réponse
 #: (ITEM d'une liste paginée, carte du moment, rendez-vous, proposition), formes d'erreur, ou
 #: carte de fichier (gabarits des liens).
