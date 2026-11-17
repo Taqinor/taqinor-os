@@ -129,6 +129,9 @@ presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous 
   commits sont complets (TCH96 et TCH97 touchent toutes deux `tests/test_routes.py` et
   `tests/test_meme_proprietaire.py` : garder les lignes des deux), cocher les tâches, régénérer OpenAPI + empreinte.
   Toute lane absente de la liste des branches pliées ci-dessous est à relancer.
+  PLIÉES depuis : `lane/f3-restes` (révélation `mon_iphone` = fin de TCH109, garde de test du brouillon, tests « ne
+  grandit pas » pour la proposition et la vue d'un projet, `badge/` sert `a_trier` → pastille en une requête,
+  `docs/api-contracts.md` régénéré). À faire sur `dev-taches-f3` : régénérer l'instantané OpenAPI (réponse de `badge/`).
 - **MISE À JOUR (dernière action de la session) : TCH95 est FINIE, pliée et cochée sur `dev-taches-f3`** (11 tâches F3,
   126 cochées sur 174). Cause des 7 échecs : un seul nom de schéma de sécurité OpenAPI pour trois classes de jeton
   (corrigé : `jetonCapture`, `jetonTuile`, `jetonFlux`). À faire à la reprise sur `dev-taches-f3` : régénérer
