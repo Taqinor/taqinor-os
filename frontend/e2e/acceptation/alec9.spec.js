@@ -152,6 +152,12 @@ const REFUS = /refus|pas autoris|non autoris|ne (peux|pouvez|suis) pas|impossibl
 // Renvoi à l'écran dans une réponse UTILISATEUR (le Directeur, accepté, ne doit pas en recevoir).
 const UTILISEZ_ECRAN = /utilise[zr]?\s+(plut[ôo]t\s+|directement\s+|donc\s+)?l['’]\s?[ée]cran/i
 const QUESTION_LIGNES = 'Liste les lignes de mes factures.'
+// Question de la clause d'ALEC46, complétée vers les statistiques publicitaires enregistrées (description de
+// adsengine_insightsnapshot) pour que l'agent tente la lecture PAR LE SQL — run 44027858129 : sans ce complément
+// l'Admin Ventes n'a tenté aucune requête (outil KPI hebdomadaire), la garde n'avait rien à refuser. Posée telle
+// quelle aux deux rôles : le refus et le témoin passent par le même chemin.
+const QUESTION_PUB = 'Combien ai-je dépensé en publicité ce mois ? Additionne la dépense des statistiques publicitaires '
+  + 'enregistrées ce mois (performance publicitaire datée : somme de spend dans adsengine_insightsnapshot).'
 const motifPortee = (ia) => ia.filter((l) => REFUS_DROIT.test(l) && /Portee restreinte/.test(l))
 
 /** Une facture émise de la société (devis accepté → facture complète) : le Directeur a des lignes à lire. */
@@ -227,7 +233,7 @@ etape('PF6-ALEC51-raison-du-refus', ['ALEC51'], async ({ page, context, suivi, t
   // Module manquant ⇒ le nom du module dans le motif rendu (Admin Ventes livré, sans code adsengine_).
   const av = await sous(context, suivi, testInfo, 'alec51v', 'Admin Ventes')
   expect(av.codes.filter((x) => x.startsWith('adsengine_')), 'Given : Admin Ventes sans code adsengine_').toEqual([])
-  const a = await demander(av.p, 'Admin Ventes', 'Combien ai-je dépensé en publicité ce mois ?')
+  const a = await demander(av.p, 'Admin Ventes', QUESTION_PUB)
   const module = a.ia.filter((l) => REFUS_DROIT.test(l) && /adsengine_/.test(l))
   console.log(`[ALEC51] Admin Ventes : motifs rendus au modèle : ${J(module)}`)
   expect(module.length, 'Admin Ventes : un refus de droit sur un miroir adsengine_').toBeGreaterThan(0)
@@ -257,7 +263,7 @@ sortie(dict(campagne=c.pk, total=str(tot), societe=${SOC}))`)
   try {
     const av = await sous(context, suivi, testInfo, 'alec46v', 'Admin Ventes')
     expect(av.codes.filter((x) => x.startsWith('adsengine_')), 'Given : Admin Ventes du registre sans code adsengine_').toEqual([])
-    const a = await demander(av.p, 'Admin Ventes', 'Combien ai-je dépensé en publicité ce mois ?')
+    const a = await demander(av.p, 'Admin Ventes', QUESTION_PUB)
     expect(lectures(a.instr, 'adsengine_insightsnapshot'), 'Admin Ventes : aucune requête exécutée sur adsengine_insightsnapshot').toEqual([])
     for (const f of formes) expect(sansEspace(a.corps.answer), 'Admin Ventes : le montant n\'est pas servi').not.toContain(f)
     expect(a.corps.answer || '', 'Admin Ventes : refus').toMatch(REFUS)
@@ -268,9 +274,8 @@ sortie(dict(campagne=c.pk, total=str(tot), societe=${SOC}))`)
 
     const dir = await sous(context, suivi, testInfo, 'alec46d', 'Directeur')
     expect(dir.codes.some((x) => x.startsWith('adsengine_')), 'Given : Directeur du registre porte le droit du module publicitaire').toBe(true)
-    // Témoin sur le chemin CORRIGÉ (le SQL de l'agent) : question reformulée vers les statistiques publicitaires
-    // enregistrées (la description de adsengine_insightsnapshot), pour que l'agent la lise PAR LE SQL.
-    const b = await demander(dir.p, 'Directeur', 'Additionne la dépense des statistiques publicitaires enregistrées ce mois (performance publicitaire datée : somme de spend dans adsengine_insightsnapshot).')
+    // Témoin sur le chemin CORRIGÉ (le SQL de l'agent) : MÊME question que l'Admin Ventes.
+    const b = await demander(dir.p, 'Directeur', QUESTION_PUB)
     const lu = lectures(b.instr, 'adsengine_insightsnapshot')
     expect(lu.length, 'Directeur (témoin) : la lecture SQL de adsengine_insightsnapshot est exécutée').toBeGreaterThan(0)
     expect(lu.every((s) => new RegExp(`company_id\\s*=\\s*${pose.societe}\\b`).test(s)), `Directeur : SQL exécuté réécrit sur company_id = ${pose.societe}`).toBe(true)
