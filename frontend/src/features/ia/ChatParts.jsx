@@ -64,15 +64,15 @@ export function TypingDots() {
 }
 
 // AIC91 — bulle d'attente partagée (panneau et page) : points + dernière étape du tour.
-export function BulleAttente({ etape, bulleClassName }) {
+export function BulleAttente({ etapes = [], bulleClassName }) {
   return (
     <div className="flex flex-col gap-1">
       <div className={`flex items-center gap-1 rounded-xl bg-muted ${bulleClassName}`}>
         <TypingDots />
       </div>
-      {etape && (
-        <p className="text-xs text-muted-foreground" data-testid="etape-en-cours" aria-live="polite">{etape}</p>
-      )}
+      {etapes.map((e, i) => (
+        <p key={`${i}-${e}`} className="text-xs text-muted-foreground" data-testid="etape-en-cours" aria-live="polite">{e}</p>
+      ))}
     </div>
   )
 }

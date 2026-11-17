@@ -38,6 +38,8 @@ export default function AppointmentBooker({ leadId }) {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // AERR176 — champ fautif du refus : 'notes' ou la date (défaut) ; jamais les deux.
+  const [champNotes, setChampNotes] = useState(false)
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   // LW6 — id du RDV en cours d'annulation (bouton désactivé pendant la
@@ -69,6 +71,7 @@ export default function AppointmentBooker({ leadId }) {
     if (!scheduledAt) { setError('La date et heure sont requises.'); return }
     setSaving(true)
     setError(null)
+    setChampNotes(false)
     try {
       await crmApi.createAppointment({ lead: leadId, scheduled_at: scheduledAt, notes })
       setOpen(false)
@@ -77,6 +80,7 @@ export default function AppointmentBooker({ leadId }) {
       load()
     } catch (err) {
       const notes = err?.response?.data?.notes
+      setChampNotes(!err?.response?.data?.detail && !err?.response?.data?.scheduled_at?.[0] && Array.isArray(notes))
       setError(
         err?.response?.data?.detail
         || err?.response?.data?.scheduled_at?.[0]
@@ -268,8 +272,8 @@ export default function AppointmentBooker({ leadId }) {
               type="datetime-local"
               value={scheduledAt}
               onChange={e => setScheduledAt(e.target.value)}
-              invalid={!!error}
-              aria-describedby={error ? 'appt-error' : undefined}
+              invalid={!!error && !champNotes}
+              aria-describedby={error && !champNotes ? 'appt-error' : undefined}
               required
             />
           </div>
@@ -280,6 +284,8 @@ export default function AppointmentBooker({ leadId }) {
               type="text"
               value={notes}
               onChange={e => setNotes(e.target.value)}
+              invalid={!!error && champNotes}
+              aria-describedby={error && champNotes ? 'appt-error' : undefined}
               placeholder="Objet de la visite…"
             />
           </div>
@@ -292,7 +298,7 @@ export default function AppointmentBooker({ leadId }) {
             <Button type="button" variant="default" size="sm" disabled={saving} onClick={handleBook}>
               {saving ? 'Enregistrement…' : 'Confirmer'}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => { setOpen(false); setError(null) }}>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setOpen(false); setError(null); setChampNotes(false) }}>
               Annuler
             </Button>
           </div>

@@ -99,8 +99,9 @@ describe('QuoteToCashPage (WIR84 — consommateur des agrégateurs ventes)', () 
    15 factures} ne rend ni « 150 % » ni taux recalculé ; le seul pourcentage est
    `conversion.taux_acceptation_pct` SERVI. Données CHARGÉES du contrat partagé. */
 
+const fetchDashboardMock = vi.fn(() => ({ type: 'reporting/noop' }))
 vi.mock('../../features/reporting/store/reportingSlice', () => ({
-  fetchDashboard: () => ({ type: 'reporting/noop' }),
+  fetchDashboard: (...a) => fetchDashboardMock(...a),
   default: (s = null) => s,
 }))
 vi.mock('../../api/reportingApi', () => ({
@@ -143,5 +144,28 @@ describe('Reporting — tunnel de conversion', () => {
     carte.querySelectorAll('[role="progressbar"]').forEach((el) => {
       expect(Number(el.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(100)
     })
+  })
+})
+
+describe('Reporting — tableau selon la lecture des ventes (ADRG145)', () => {
+  const rendre = (auth) => {
+    fetchDashboardMock.mockClear()
+    const store = configureStore({
+      reducer: { reporting: () => ({ data: contrat, loading: false, error: null }), auth: (s = auth) => s },
+    })
+    render(<Provider store={store}><MemoryRouter><Reporting /></MemoryRouter></Provider>)
+  }
+
+  it("Admin RH : aucun appel du tableau, message, pas d'Exporter Excel", () => {
+    rendre({ role: 'responsable', role_nom: 'Admin RH', permissions: ['reporting_voir', 'rh_gerer'] })
+    expect(fetchDashboardMock).not.toHaveBeenCalled()
+    expect(screen.getByText(/Tableau réservé aux rôles des ventes/)).toBeInTheDocument()
+    expect(screen.queryByText(/Exporter Excel/)).not.toBeInTheDocument()
+  })
+
+  it('Directeur : tableau chargé et bouton Exporter Excel', () => {
+    rendre({ role: 'responsable', role_nom: 'Directeur', permissions: ['reporting_voir', 'reporting_export', 'ventes_voir'] })
+    expect(fetchDashboardMock).toHaveBeenCalled()
+    expect(screen.getByText(/Exporter Excel/)).toBeInTheDocument()
   })
 })
