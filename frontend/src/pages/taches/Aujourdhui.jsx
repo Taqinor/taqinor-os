@@ -4,6 +4,7 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
 } from '../../features/taches/aujourdhui/Sections'
+import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
 import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
 import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
 import Propose from '../../features/taches/aujourdhui/Propose'
@@ -415,8 +416,42 @@ export default function Aujourdhui() {
   }, [])
 
   const jourFeuille = donnees?.jour ?? aujourdhuiIso()
+
+  // Bilan du soir : ouvert par la carte du moment, ou par `?ouvrir=bilan` (notification du soir)
+  const bilanDemande = feuille?.type === 'bilan' || params.get('ouvrir') === 'bilan'
+  const fermerBilan = () => {
+    setFeuille(null)
+    setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.delete('ouvrir'); return suite }, { replace: true })
+  }
+  const bilanEnregistre = (data) => {
+    fermerBilan()
+    setDonnees((d) => ({ ...d, carte_du_moment: null, plan: { ...d.plan, cloture_le: data.plan?.cloture_le ?? d.plan?.cloture_le } }))
+    proposerAnnuler({
+      message: 'Bilan enregistré',
+      onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
+    })
+    charger()
+  }
+
   let laFeuille = null
-  if (feuille?.type === 'jour') {
+  if (bilanDemande && donnees) {
+    laFeuille = {
+      ouverte: true,
+      titre: feuille?.jour && feuille.jour !== donnees.jour ? "Bilan d'hier" : 'Bilan du soir',
+      cranInitial: '85',
+      onFermer: fermerBilan,
+      children: (
+        <FeuilleBilan
+          jour={feuille?.type === 'bilan' ? feuille.jour : null}
+          aujourdhui={donnees.jour}
+          maintenant={donnees.maintenant}
+          enLigne={enLigne}
+          onValide={bilanEnregistre}
+          onPasser={fermerBilan}
+        />
+      ),
+    }
+  } else if (feuille?.type === 'jour') {
     laFeuille = {
       ouverte: true,
       titre: 'Choisir un jour',

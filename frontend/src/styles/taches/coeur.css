@@ -66,6 +66,41 @@
 .tch .demo-balayage span { position: absolute; inset: 0 auto 0 0; width: calc(100% - 92px); display: flex; align-items: center; gap: 8px;
   padding: 0 10px; white-space: nowrap; overflow: hidden; background: var(--tch-surface); color: var(--tch-texte); font-size: 0.875rem; font-weight: 400; }
 .tch .demo-balayage span i { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); flex: none; }
+/* ── TCH80 · Bilan du soir (port de ecrans-coeur.css « Bilan du soir » + tour 2) ──────────────── */
+.tch .bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
+.tch .bilan-tete .bilan-compte { grid-column: 1 / -1; font-size: 1.375rem; font-weight: 700; line-height: 1.2; }
+.tch .bilan-essentiel { font-size: 1rem; font-weight: 500; color: var(--tch-texte-doux); }
+.tch .bilan-second { font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .bilan-section { margin-top: 22px; }
+.tch .bilan-section .fiche-label { margin-bottom: 0; }
+.tch .fiche-label { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 4px;
+  font-size: 0.9375rem; font-weight: 650; color: var(--tch-texte-doux); }
+.tch .fiche-label .compte { font-size: var(--tch-chiffre); font-weight: 500; }
+.tch .reste { display: grid; grid-template-columns: 44px 1fr; column-gap: 0; padding: 8px 0; margin-left: -11px; }
+.tch .reste .case { margin-block: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2); }
+.tch .reste .titre { font-size: 1rem; line-height: 1.375rem; }
+.tch .reste .meta { margin-top: 1px; }
+.tch .reste-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.tch .reste-choix .puce { height: 34px; }
+.tch .reste-choix .puce.choisi { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+.tch .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.tch .restes-tete .fiche-label { margin: 0; }
+.tch .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
+.tch .bouton.petit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.tch .lien-bloc { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 0.875rem; font-weight: 600; color: var(--tch-accent); text-align: left; }
+.tch .constat { display: flex; gap: 12px; margin-top: 22px; padding: 14px 14px 6px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .constat .bandeau-icone { width: 32px; height: 32px; color: var(--tch-accent); }
+.tch .constat p { margin: 4px 0 0; font-size: 0.9375rem; line-height: 1.45; }
+.dark .tch .constat { background: color-mix(in oklch, var(--muted) 88%, var(--foreground)); }
+.tch .un-mot { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px;
+  font-size: 1rem; color: var(--tch-texte-doux); text-align: left; box-shadow: inset 0 1px 0 var(--tch-trait); }
+.tch .un-mot svg:last-child { margin-left: auto; }
+.tch .champ-mot { width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font: inherit; font-size: 1rem; color: var(--tch-texte); resize: vertical; }
+.tch .erreur-champ { margin: 10px 0 0; font-size: 0.875rem; color: var(--destructive); }
+.tch .bilan .feuille-pied .bouton.discret { flex: none; min-width: 72px; }
+.tch .bilan .vide-phrase { margin: 22px 0 0; max-width: none; text-align: center; }
+
 /* ── TCH79 · Menu ⋯ : modes Réorganiser / Sélectionner, feuille « Alléger ma journée » ────────── */
 .tch .mode-ecran { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 8px var(--tch-gouttiere) 0;
   padding: 0 4px 0 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.9375rem; font-weight: 600; }
