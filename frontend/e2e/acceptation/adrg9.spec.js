@@ -644,7 +644,10 @@ from apps.installations.models import Installation
 UnderperformanceFlag.objects.filter(installation_id=${inst.id}).delete()
 MonitoringConfig.objects.filter(installation_id=${inst.id}).delete(); Installation.objects.filter(pk=${inst.id}).update(parc_actif=False)
 sortie(1)`).catch(() => null)
-})
+}, { ecart: {
+  base: 'FAIL',
+  raison: "/sav/monitoring est réservé au palier responsable/admin (frontend/src/features/sav/module.config.jsx:133, roles RESPONSABLE_ADMIN, depuis 49dd53cf1 du 11/10/2026, ASAV100) : le Commercial y est renvoyé sur /403, les trois écrans Abonnements, Certificats carbone et SLA de disponibilité de la clause ne sont donc pas « lisibles » pour lui. Garde de route antérieure à ADRG47 et hors de ses Files ; l'étape affirme les 5 autres écrans lisibles sans aucun des 11 gestes au Commercial, la redirection /403 sans bouton, et les 16 gestes des 8 écrans au Directeur.",
+} })
 
 // ── ADRG63 — aperçu d'import de produits sans `prix_achat_voir` : ni le champ `prix_achat` ni sa valeur ────────────
 etape('PF4.3-ADRG63-apercu-import', ['ADRG63'], async ({ page, suivi, testInfo }) => {
