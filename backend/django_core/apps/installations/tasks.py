@@ -173,27 +173,57 @@ def _marquer_rappel_traite(interv):
         rappel_j1_traite_le=timezone.now())
 
 
+def _jours_cibles(company, aujourdhui):
+    """AMSG72 (D-AMSG-1) — poses rappelées par le balayage d'``aujourdhui`` : aucune un jour non ouvré ; sinon
+    du lendemain au jour ouvré suivant inclus (vendredi → samedi, dimanche et lundi)."""
+    from datetime import timedelta
+    from apps.notifications.calendar_utils import is_jour_ouvre, prochain_jour_ouvre
+    if not is_jour_ouvre(aujourdhui, company):
+        return []
+    demain = aujourdhui + timedelta(days=1)
+    return [demain + timedelta(days=i) for i in range((prochain_jour_ouvre(demain, company) - demain).days + 1)]
+
+
 @shared_task(name='installations.rappel_rdv_j1')
-def rappel_rdv_j1():
-    """XFSM6 — sweep quotidien : cible EXACTEMENT les interventions planifiées
-    DEMAIN (Africa/Casablanca) non confirmées (``rdv_confirme=False``), génère
+def rappel_rdv_j1(company_id=None, jours_cibles=None):
+    """XFSM6 — sweep quotidien : cible les interventions planifiées DEMAIN
+    (AMSG72 : jusqu'au jour ouvré suivant, un jour ouvré, dans la fenêtre des
+    messages de la société — sinon reprise à son ouverture) non confirmées (``rdv_confirme=False``), génère
     le brouillon WhatsApp responsable + envoie l'email client. Ne pose que le
     marqueur ``rappel_j1_traite_le`` (AMSG76 — jamais deux rappels le même
     jour ; le brouillon WhatsApp n'est jamais auto-envoyé). Renvoie un
     compte {cibles, wa_generes, emails_envoyes} pour observabilité/tests."""
     from datetime import timedelta
+    from django.conf import settings
+    from django.utils import timezone
     from authentication.selectors import active_companies
+    from apps.notifications.selectors import fenetre_notifications
     from .models import Intervention
 
-    demain = casablanca_today() + timedelta(days=1)
+    aujourdhui = casablanca_today()
+    demain = aujourdhui + timedelta(days=1)
 
     cibles = 0
     wa_generes = 0
     emails_envoyes = 0
-    for company in active_companies():  # ACHT51 — pas les suspendus
+    societes = active_companies()  # ACHT51 — pas les suspendus
+    for company in (societes if company_id is None else societes.filter(pk=company_id)):
+        jours = jours_cibles  # AMSG72 — reprise à l'ouverture : jours figés par le balayage
+        if jours is None:
+            jours = _jours_cibles(company, aujourdhui)
+            if not jours:  # jour non ouvré : rien
+                continue
+            fenetre = fenetre_notifications(company)
+            if not fenetre.ouverte:  # 07:45 : reprise à l'ouverture (08:30 par défaut)
+                if (fenetre.prochaine_ouverture - timezone.now()).total_seconds() < (
+                        settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout']):  # AMSG98
+                    rappel_rdv_j1.apply_async(kwargs={
+                        'company_id': company.pk, 'jours_cibles': [str(j) for j in jours]},
+                        eta=fenetre.prochaine_ouverture)
+                continue
         # ACHT51 — jamais d'intervention annulée (rien n'est annoncé).
         qs = (Intervention.objects.actives()
-              .filter(company=company, date_prevue=demain,
+              .filter(company=company, date_prevue__in=jours,
                       rdv_confirme=False)
               .select_related('installation', 'installation__client',
                               'installation__technicien_responsable'))

@@ -115,6 +115,29 @@ class JournalisationTests(CorbeilleBase):
         archiver(self.lead)
         self.assertEqual(ElementSupprime.objects.count(), 1)
 
+    def test_lead_anonymise_libelle_caviarde(self):
+        """ASUP67 — l'anonymisation (« Anonymiser (RGPD) ») caviarde l'entrée de corbeille du lead : ni nom ni
+        téléphone dans le libellé, le snapshot ni ``GET trash/`` ; l'entrée reste restaurable."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        lead = Lead.objects.create(company=self.co_a, nom='Karim', prenom='B.', telephone='0612345678')
+        lead.soft_delete(user=self.directeur, donnees={'telephone': '0612345678', 'nom': 'Karim'})
+        archiver(self.lead)
+        autre = ElementSupprime.objects.get(object_id=self.lead.pk)
+        self.assertIn('Karim', ElementSupprime.objects.get(object_id=lead.pk).libelle_snapshot)
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(self.co_a, Lead.all_objects.get(pk=lead.pk), motif='essai ASUP67')
+        element = ElementSupprime.objects.get(object_id=lead.pk)  # persistance : relu en base
+        self.assertEqual(element.libelle_snapshot, 'Lead anonymisé')
+        self.assertEqual(element.donnees_snapshot, {})
+        self.assertIsNone(element.restaure_le)
+        autre.refresh_from_db()
+        self.assertEqual(autre.libelle_snapshot, str(self.lead))  # le lead voisin n'est pas touché
+        corps = auth(self.directeur).get(self.BASE).content.decode()
+        self.assertNotIn('Karim', corps)
+        self.assertNotIn('0612345678', corps)
+        restaurer(element, user=self.directeur)
+        self.assertFalse(Lead.all_objects.get(pk=lead.pk).is_deleted)
+
     def test_emission_sans_company_est_ignoree(self):
         record_soft_deleted.send(sender=Lead, instance=None, company=None)
         self.assertEqual(ElementSupprime.objects.count(), 0)
