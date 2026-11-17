@@ -100,6 +100,17 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
+### Reprise par une session cloud — 17/11/2026, 23 h 40 UTC (la suite s'écrit ICI, au-dessus de l'état du portable)
+
+- Vérifié sur GitHub avant tout travail : `main` = `6b4435c2a` (4 commits de docs en avance sur `dev-taches-f2`) ;
+  PR #1454 ouverte, brouillon, tête `7c50012ee`, état « clean » ; `dev-taches-f3` = `53c6d4443` (138 cochées sur 174,
+  44 commits devant `dev-taches-f2`, jamais passée en CI) ; `origin/lane/f2-revue` porte 6 commits NON pliés (les 4
+  majeurs de la relecture F2 + les mineurs #2, #7, #8) ; `lane/f3-assistant`, `lane/f3-restes`, `lane/f3-tch97` sont
+  déjà entièrement dans `dev-taches-f3`. Aucune réservation de plan tenue par un autre poste.
+- Machine : conteneur Linux (4 cœurs, 15 Go), pas de docker qui tourne ; PostgreSQL 16, Redis, Node 22 et Python 3.13
+  présents → la pile locale des acceptations sera montée SANS docker (Postgres + Redis + Django + front construit).
+
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
