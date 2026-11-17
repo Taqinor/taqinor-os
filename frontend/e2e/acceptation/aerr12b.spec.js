@@ -75,7 +75,7 @@ Calepinage.objects.filter(pk=${cal.id}).delete()`))
   const supprimerObs = page.locator('#rp9-obs-delete')
   await expect(supprimerObs, 'un obstacle est sélectionné (bouton « Supprimer » de l\'obstacle visible)').toBeVisible({ timeout: 20_000 })
   // Boîte Radix par-dessus : la palette ⌘K ; le focus quitte son champ de saisie.
-  await bouton.dispatchEvent('click') // quitte le mode dessin sans toucher à l'obstacle
+  // (Le bouton « Ajouter un obstacle » n'est PAS rebasculé : son gestionnaire désélectionne l'obstacle.)
   await page.keyboard.press('Control+k')
   const palette = page.getByRole('dialog', { name: 'Recherche rapide' })
   await expect(palette, 'boîte posée par-dessus l\'atelier').toBeVisible({ timeout: 30_000 })
