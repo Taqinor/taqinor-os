@@ -102,12 +102,33 @@ jobs:
             jouer "docs/audits/acceptation/$G/traces/$D/$G-sondes.txt" --toutes "$G"
           done
           jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006.txt" ACNC/C-ACNC-006
-          # Mutant ACNC77 : retrait de l'atomic de la vue ProduitViewSet.bulk
+          # Rejeu DIRECT (hors sonde.py) : les sondes sont des scripts qui lisent l'arbre (RACINE = parents[4] de __file__) ;
+          # on monte l'arbre du depot dans le conteneur (backend/django_core -> /app) et on les execute comme `python C-X.py`.
+          docker exec "$C" mkdir -p /tmp/racine
+          tar --exclude=.git -cf - . | docker exec -i "$C" tar -xf - -C /tmp/racine
+          docker exec "$C" sh -c 'rm -rf /tmp/racine/backend/django_core && ln -s /app /tmp/racine/backend/django_core'
+          direct() { # $1 = groupe, $2 = trace, reste = sondes
+            local G="$1" T="$2"; shift 2
+            { echo "# rejeu DIRECT sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}, conteneur $C ; arbre du depot sous /tmp/racine, backend/django_core -> /app"
+              echo "# commande : docker exec -w /app -e PYTHONPATH=/app <django_core> python /tmp/racine/docs/audits/sondes/$G/<sonde>.py"; echo; } > "$T"
+            for s in "$@"; do
+              echo "== $s (direct)" >> "$T"
+              timeout 300 docker exec -w /app -e PYTHONPATH=/app -e PYTHONDONTWRITEBYTECODE=1 "$C" python "/tmp/racine/docs/audits/sondes/$G/$s.py" >> "$T" 2>&1
+              echo "code : $?" >> "$T"; echo >> "$T"
+            done
+          }
+          direct ASUP "docs/audits/acceptation/ASUP/traces/$D/ASUP-direct.txt" C-ASUP-003 C-ASUP-022
+          direct ALEC "docs/audits/acceptation/ALEC/traces/$D/ALEC-direct.txt" C-ALEC-016 C-ALEC-020 C-ALEC-024 C-ALEC-025 C-ALEC-VER1-102
+          direct AMSG "docs/audits/acceptation/AMSG/traces/$D/AMSG-direct.txt" C-AMSG-003 C-AMSG-007 C-AMSG-009
+          direct ACNC "docs/audits/acceptation/ACNC/traces/$D/ACNC-direct.txt" C-ACNC-006
+          direct AERR "docs/audits/acceptation/AERR/traces/$D/AERR-direct.txt" C-AERR-001 C-AERR-044
+          direct APUB "docs/audits/acceptation/APUB/traces/$D/APUB-direct.txt" C-APUB-004 C-APUB-007
+          # Mutant ACNC77 : retrait de l'atomic de la vue ProduitViewSet.bulk (le conteneur voit le fichier : /app est monte)
           F=backend/django_core/apps/stock/views/produit.py
           grep -c 'transaction.atomic(apply_product_bulk)(' "$F"
           sed -i 's/transaction\.atomic(apply_product_bulk)(/(apply_product_bulk)(/' "$F"
           git diff --stat
-          jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006-mutant.txt" ACNC/C-ACNC-006 --sans-fraicheur
+          direct ACNC "docs/audits/acceptation/ACNC/traces/$D/ACNC-direct-mutant.txt" C-ACNC-006
           git diff "$F" > "docs/audits/acceptation/ACNC/traces/$D/ACNC-mutant.diff"
           git checkout -- "$F"
           git status --short | head
@@ -140,6 +161,18 @@ jobs:
                       out[cur].append(ligne)
               return out
 
+          def blocs_directs(chemin):
+              out, cur = {}, None
+              if not os.path.exists(chemin):
+                  return out
+              for ligne in open(chemin, encoding='utf-8', errors='replace').read().splitlines():
+                  m = re.match(r'== (C-[A-Z0-9-]+) \(direct\)', ligne)
+                  if m:
+                      cur = m.group(1); out[cur] = []
+                  elif cur:
+                      out[cur].append(ligne)
+              return out
+
           def juger(lignes):
               texte = '\n'.join(lignes)
               m = re.search(r'^verdict : (\S+)', texte, re.M)
@@ -148,9 +181,8 @@ jobs:
               erreur = bool(re.search(r'ERREUR :|AUCUN RÉSULTAT|REFUSÉE', texte)) or verdict is None
               repro = None
               for l in obs.splitlines():
-                  l = l.strip()
                   try:
-                      d = json.loads(l)
+                      d = json.loads(l.strip())
                   except ValueError:
                       continue
                   if isinstance(d, dict) and 'repro' in d:
@@ -159,44 +191,69 @@ jobs:
                   m2 = re.search(r'"repro": (true|false)', obs)
                   repro = {'true': True, 'false': False}.get(m2.group(1)) if m2 else None
               base = 'base inchangée : oui' in texte
-              return {'verdict': verdict, 'erreur': erreur, 'repro': repro, 'base': base,
-                      'extrait': re.sub(r'\s+', ' ', obs)[:220]}
+              nom = re.search(r'(NameError|ImportError|ModuleNotFoundError|AttributeError|ImproperlyConfigured|IndexError)[^\n]*', texte)
+              return {'verdict': verdict, 'erreur': erreur, 'repro': repro, 'base': base, 'cause': nom.group(0)[:160] if nom else ''}
 
+          def juger_direct(lignes):
+              texte = '\n'.join(lignes)
+              code = re.search(r'^code : (\d+)', texte, re.M)
+              corps = texte.split('\ncode :', 1)[0]
+              erreur = 'Traceback' in corps or not code or code.group(1) != '0'
+              repro = None
+              try:
+                  d = json.loads(corps[corps.index('{'):])
+                  repro = d.get('repro') if isinstance(d, dict) else None
+              except ValueError:
+                  m2 = re.search(r'"repro": (true|false)', corps)
+                  repro = {'true': True, 'false': False}.get(m2.group(1)) if m2 else None
+              nom = re.search(r'(\w*Error|ImproperlyConfigured)[^\n]*', corps)
+              return {'erreur': erreur, 'repro': repro, 'code': code.group(1) if code else '?', 'cause': nom.group(0)[:160] if nom else ''}
+
+          GENERAL = 'runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue)'
           for G, taches in TACHES.items():
               dossier = f'docs/audits/acceptation/{G}'
-              trace = f'{dossier}/traces/{date}/' + ('ACNC-sonde-006.txt' if G == 'ACNC' else f'{G}-sondes.txt')
-              b = blocs(trace)
-              tous = {k: juger(v) for k, v in b.items()}
-              etapes, couvre, tout_pass = [], [], True
-              hors = [k for k, v in tous.items() if v['erreur'] or v['repro'] is not False]
+              tr = f'{dossier}/traces/{date}'
+              trace1 = f'{tr}/' + ('ACNC-sonde-006.txt' if G == 'ACNC' else f'{G}-sondes.txt')
+              trace2 = f'{tr}/{G}-direct.txt'
+              b1, b2 = blocs(trace1), blocs_directs(trace2)
+              etapes, couvre = [], []
               for tache, sondes in taches.items():
                   couvre.append(tache)
-                  details, ok = [], True
+                  d1, ok1 = [], True
                   for s in sondes:
-                      r = tous.get(s)
+                      r = juger(b1[s]) if s in b1 else None
                       bon = bool(r) and not r['erreur'] and r['repro'] is False and r['base'] and r['verdict'] in ('ÉCART', 'ECART')
-                      ok = ok and bon
-                      details.append(f"{s} : " + ('absente du rejeu' if not r else
-                          f"verdict {r['verdict']}, repro {r['repro']}, erreur {'oui' if r['erreur'] else 'non'}, base inchangée {'oui' if r['base'] else 'non'}"
-                          + ('' if bon else ' [REFUS]')))
+                      ok1 = ok1 and bon
+                      d1.append(f"{s} : " + ('absente du rejeu' if not r else f"verdict {r['verdict']}, repro {r['repro']}, erreur {'oui' if r['erreur'] else 'non'}"
+                                + (f" ({r['cause']})" if r['cause'] else '') + f", base inchangée {'oui' if r['base'] else 'non'}") + ('' if bon else ' [REFUS]'))
+                  n_tous = len(b1)
+                  n_ko = sum(1 for k in b1 if juger(b1[k])['erreur'])
+                  cmd = 'python scripts/sonde.py ACNC/C-ACNC-006' if G == 'ACNC' else f'python scripts/sonde.py --toutes {G}'
+                  defaut = '' if ok1 else (" ; DÉFAUT : scripts/sonde.py exécute la source de la sonde avec exec() dans un espace sans `__file__` : toute sonde qui calcule "
+                                           "RACINE = Path(__file__).resolve().parents[4] lève NameError avant de rien juger, et le conteneur ne monte que backend/django_core sous /app (pas docs/ ni le reste du dépôt)")
+                  etapes.append({'id': f'SONDES.sonde-py.{tache}', 'taches': [tache], 'verdict': 'PASS' if ok1 else 'FAIL', 'base_verdict': None, 'trace': trace1,
+                                 'oracles': {str(i): 'NA' for i in range(1, 11)},
+                                 'notes': f"{GENERAL} ; clause jouée telle qu'écrite : {cmd} ; sortie 1 attendue quand repro est faux (verdict ÉCART) ; " + ' ; '.join(d1)
+                                          + f" ; sondes du groupe en erreur dans ce rejeu : {n_ko}/{n_tous}" + defaut})
+                  d2, ok2 = [], True
+                  for s in sondes:
+                      r = juger_direct(b2[s]) if s in b2 else None
+                      bon = bool(r) and not r['erreur'] and r['repro'] is False
+                      ok2 = ok2 and bon
+                      d2.append(f"{s} : " + ('absente du rejeu' if not r else f"code {r['code']}, repro {r['repro']}, erreur {'oui' if r['erreur'] else 'non'}" + (f" ({r['cause']})" if r['cause'] else '')) + ('' if bon else ' [REFUS]'))
                   note_mut = ''
                   if G == 'ACNC':
-                      mt = blocs(f'{dossier}/traces/{date}/ACNC-sonde-006-mutant.txt')
-                      rm = juger(mt.get('C-ACNC-006', [])) if mt else None
+                      mt = blocs_directs(f'{tr}/ACNC-direct-mutant.txt')
+                      rm = juger_direct(mt['C-ACNC-006']) if 'C-ACNC-006' in mt else None
                       mut_ok = bool(rm) and not rm['erreur'] and rm['repro'] is True
-                      ok = ok and mut_ok
-                      note_mut = (f" ; mutant (retrait de `transaction.atomic(...)` dans `ProduitViewSet.bulk`, diff traces/{date}/ACNC-mutant.diff,"
-                                  f" trace traces/{date}/ACNC-sonde-006-mutant.txt) : repro {rm['repro'] if rm else 'illisible'}, erreur {'oui' if rm and rm['erreur'] else 'non'}"
-                                  f" => {'repro devient vrai' if mut_ok else 'REFUS : repro ne change pas'}")
-                  tout_pass = tout_pass and ok
-                  notes = ('runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_catalogue + seed_demo) ; '
-                           + ('python scripts/sonde.py ACNC/C-ACNC-006' if G == 'ACNC' else f'python scripts/sonde.py --toutes {G}')
-                           + ' ; sortie 1 de sonde.py attendue quand repro est faux (verdict ÉCART) ; ' + ' ; '.join(details) + note_mut
-                           + ('' if G == 'ACNC' else f" ; autres sondes du groupe non nommées par la tâche, sans erreur et repro faux : "
-                              f"{len(tous) - len(hors)}/{len(tous)}" + (f" ; à lire (erreur ou repro non faux) : {', '.join(h for h in hors if h not in sondes)}" if [h for h in hors if h not in sondes] else '')))
-                  etapes.append({'id': f'SONDES.rejeu.{tache}', 'taches': [tache], 'verdict': 'PASS' if ok else 'FAIL', 'base_verdict': None,
-                                 'trace': trace, 'oracles': {str(i): 'NA' for i in range(1, 11)}, 'notes': notes})
-              verdict = 'PASS' if tout_pass else 'FAIL'
+                      ok2 = ok2 and mut_ok
+                      note_mut = (f" ; mutant (retrait de `transaction.atomic(...)` dans `ProduitViewSet.bulk`, diff {tr}/ACNC-mutant.diff, trace {tr}/ACNC-direct-mutant.txt) : "
+                                  f"repro {rm['repro'] if rm else 'illisible'}, erreur {'oui' if rm and rm['erreur'] else 'non'} => " + ('repro devient vrai' if mut_ok else 'REFUS : repro ne devient pas vrai'))
+                  etapes.append({'id': f'SONDES.direct.{tache}', 'taches': [tache], 'verdict': 'PASS' if ok2 else 'FAIL', 'base_verdict': None, 'trace': trace2,
+                                 'oracles': {str(i): 'NA' for i in range(1, 11)},
+                                 'notes': f"{GENERAL} ; rejeu DIRECT hors sonde.py : arbre du dépôt copié sous /tmp/racine du conteneur (backend/django_core -> /app), `python /tmp/racine/docs/audits/sondes/{G}/<sonde>.py` ; "
+                                          + ' ; '.join(d2) + note_mut})
+              verdict = 'PASS' if all(e['verdict'] == 'PASS' for e in etapes) else 'FAIL'
               res = {'sha': sha, 'date': date, 'groupe': G, 'verdict': verdict, 'couvre': couvre, 'couvre_avec_ecart': [], 'etapes': etapes}
               base = f'{dossier}/{date}-{sha[:9]}'
               json.dump(res, open(base + '.results.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)
@@ -204,7 +261,7 @@ jobs:
               for e in etapes:
                   md += [f"  - id: {e['id']}", f"    tache: [{', '.join(e['taches'])}]", f"    verdict: {e['verdict']}"]
               md += ['---', '', f'# Acceptation {G} — {date} ({sha[:9]})', '',
-                     "Écrit à la main par le job d'acceptation (preuves hors navigateur : `scripts/sonde.py` rejoué sur runner GitHub dans la pile compose) ; le",
+                     "Écrit à la main par le job d'acceptation (preuves hors navigateur : `scripts/sonde.py` rejoué sur runner GitHub dans la pile compose, puis rejeu direct) ; le",
                      '`.results.json` frère fait foi ; relu par `python scripts/check_acceptation.py`. Oracles = qa-explorer 1-10 (`_format.md`), tous NA (aucun écran).', '',
                      '| Étape | Tâches | Verdict | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | Trace |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|']
               for e in etapes:
