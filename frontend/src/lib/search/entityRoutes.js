@@ -35,6 +35,8 @@ export const ROUTE = {
   produit: () => '/stock',
   // ACAL199 — le calepinage s'ouvre sur son atelier (/calepinage/:id).
   calepinage: (id) => `/calepinage/${id}`,
+  // TCH119 — une tâche s'ouvre sur sa fiche dans Aujourd'hui (`?tache=`, api.md §7).
+  tache: (id) => `/taches/aujourdhui?tache=${id}`,
 }
 
 // Route de LISTE par type, filtrée par la requête (lien « voir tout »). On reste
@@ -50,6 +52,7 @@ export const LIST_ROUTE = {
   bon_commande: (q) => `/ventes/bons-commande?q=${encodeURIComponent(q)}`,
   contrat: (q) => `/sav/contrats?q=${encodeURIComponent(q)}`,
   calepinage: (q) => `/calepinage?q=${encodeURIComponent(q)}`,
+  tache: (q) => `/taches/recherche?q=${encodeURIComponent(q)}`,
 }
 
 // Libellé de groupe par type d'entité (utilisé par CommandPalette pour les
@@ -64,6 +67,7 @@ export const TYPE_LABEL = {
   ticket: 'SAV',
   produit: 'Produit',
   calepinage: 'Calepinage',
+  tache: 'Tâche',
 }
 
 // VX13 — pastille d'accent du module d'origine (VX8 : une des 7 clés
