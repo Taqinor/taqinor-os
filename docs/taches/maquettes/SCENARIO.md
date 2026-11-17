@@ -54,3 +54,11 @@ Faites : 5 + 4 + 7 + 5 = **21** · objectif atteint **3 jours sur 4** · essenti
 - Vocabulaire : `docs/taches/travail/spec-7-ecrans.md` §3 et `docs/taches/reference/textes.md` §1 font foi.
   Interdits vus dans les maquettes : « Plus tard », « Après… », « plan 3/5 » comme chiffre principal. Une tâche qui
   en attend une autre porte la puce « attend : {titre} » (terme « En attente de… »).
+
+## Avancement des projets selon le moment (ajout après le second tour de critique)
+Les avancements du haut de ce fichier valent le **mardi 24 à 15 h**. La Revue de la semaine porte sur la semaine
+du 16 au 20 : elle montre l'état du **vendredi 20 au soir** — Chantier Benali 10 sur 18 · Salon Solaire Expo 2 sur
+11 · Recrutement technicien 4 sur 9 · Administratif 7 sur 10 · Site web 0 sur 4.
+Recrutement : faites cette semaine-là « Définir le profil recherché » et « Publier l'annonce » ; ouvertes « Trier
+les CV reçus » puis « Rédiger la fiche de poste » (reportée au jeu. 26) et « Planifier les entretiens », qui porte
+la puce « attend : Trier les CV reçus ». Une tâche donnée comme faite dans la revue ne peut pas être ouverte le 24.

@@ -1,0 +1,104 @@
+# Lane plan for docs/taches/travail/essai-plan/essai-F2.md  (max-lanes=8)
+Portée : --group 'Fusion F2' — 47 tâche(s) ouverte(s) retenue(s) sur 97 (50 hors portée, invisibles aux portes SCA3 / PACT11 / @after externe)
+
+47 buildable task(s) across 9 independent lane(s) -> 7 wave(s), up to 8 in parallel.
+0 gated (auto-gating is OFF — every category builds; this stays 0 by design), 0 unassigned (need a @lane:/@files: tag).
+Model mix (auto-routed; `@model:` tag overrides): 1 haiku / 39 sonnet / 7 opus — dispatch each lane's Agent with the lane's `model=` below (founder rule: never inherit the session model).
+
+## Workers (8 time-balanced agents — dispatch ONE per row; each drains its lanes in sequence)
+Effort is bin-packed (LPT) so all agents finish together: makespan ~20 vs total 132 (size cost S=1/M=2/L=4/XL=6; untagged=M).
+File-disjoint: 0 lane-pair(s) merged on a shared declared file, so every worker folds clean (append-only surfaces like index.css exempt).
+- **Agent 1** (model=sonnet, cost~20, 6 task(s)): taches/ecran-saisie[TCH82/TCH83/TCH84/TCH85/TCH86/TCH87]
+- **Agent 2** (model=sonnet, cost~20, 6 task(s)): taches/saisie[TCH48/TCH49/TCH50/TCH51/TCH52/TCH53]
+- **Agent 3** (model=sonnet, cost~18, 6 task(s)): taches/ecran-aujourdhui[TCH76/TCH77/TCH78/TCH79/TCH80/TCH81]
+- **Agent 4** (model=opus, cost~18, 6 task(s)): taches/journee[TCH54/TCH55/TCH56/TCH57/TCH58/TCH59]
+- **Agent 5** (model=sonnet, cost~16, 6 task(s)): taches/ecran-projets[TCH88/TCH89/TCH90/TCH91/TCH92/TCH93]
+- **Agent 6** (model=sonnet, cost~14, 6 task(s)): taches/projets[TCH60/TCH61/TCH62/TCH63/TCH64/TCH65]
+- **Agent 7** (model=opus, cost~14, 5 task(s)): taches/rythme[TCH66/TCH67/TCH68/TCH69/TCH70]
+- **Agent 8** (model=opus, cost~12, 6 task(s)): taches/erp[TCH71/TCH72/TCH73/TCH74/TCH75], taches/orchestrateur[TCH94]
+
+## Pipelined merge-batches (2 wave(s) of ~80 tasks — build wave K+1 while wave K tests/CIs; waves are mutually file-disjoint so they never collide)
+Dispatch wave 1's agents now; when any agent finishes, work-steal the heaviest not-yet-started lane of the next wave (keeps the pipeline full and successive waves length-balanced).
+- **Wave 1** (46 tasks, 8 agents):
+    - agent 1 (model=sonnet, cost~20, 6 task(s)): taches/ecran-saisie
+    - agent 2 (model=sonnet, cost~20, 6 task(s)): taches/saisie
+    - agent 3 (model=sonnet, cost~18, 6 task(s)): taches/ecran-aujourdhui
+    - agent 4 (model=opus, cost~18, 6 task(s)): taches/journee
+    - agent 5 (model=sonnet, cost~16, 6 task(s)): taches/ecran-projets
+    - agent 6 (model=sonnet, cost~14, 6 task(s)): taches/projets
+    - agent 7 (model=opus, cost~14, 5 task(s)): taches/rythme
+    - agent 8 (model=opus, cost~11, 5 task(s)): taches/erp
+- **Wave 2** (1 tasks, 1 agents):
+    - agent 1 (model=haiku, cost~1, 1 task(s)): taches/orchestrateur
+
+## Waves (each row builds in parallel; one task per lane)
+- **Wave 1** (8 parallel):
+    - `TCH76`  [taches/ecran-aujourdhui] (sonnet)  after TCH15,TCH46
+    - `TCH88`  [taches/ecran-projets] (sonnet)  after TCH15,TCH46
+    - `TCH82`  [taches/ecran-saisie] (sonnet)  after TCH15,TCH46
+    - `TCH54`  [taches/journee] (sonnet)  after TCH23,TCH25,TCH37
+    - `TCH60`  [taches/projets] (sonnet)  after TCH15,TCH31,TCH36
+    - `TCH48`  [taches/saisie] (sonnet)  after TCH15,TCH36,TCH40
+    - `TCH71`  [taches/erp] (opus)  after TCH13,TCH36
+    - `TCH66`  [taches/rythme] (sonnet)  after TCH28,TCH30,TCH37
+- **Wave 2** (8 parallel):
+    - `TCH77`  [taches/ecran-aujourdhui] (sonnet)  after TCH76
+    - `TCH89`  [taches/ecran-projets] (sonnet)  after TCH88
+    - `TCH83`  [taches/ecran-saisie] (sonnet)  after TCH82
+    - `TCH55`  [taches/journee] (opus)  after TCH16,TCH54
+    - `TCH61`  [taches/projets] (sonnet)  after TCH60
+    - `TCH49`  [taches/saisie] (sonnet)  after TCH48
+    - `TCH72`  [taches/erp] (opus)  after TCH71
+    - `TCH67`  [taches/rythme] (sonnet)  after TCH66
+- **Wave 3** (8 parallel):
+    - `TCH78`  [taches/ecran-aujourdhui] (sonnet)  after TCH77
+    - `TCH90`  [taches/ecran-projets] (sonnet)  after TCH89
+    - `TCH84`  [taches/ecran-saisie] (sonnet)  after TCH83
+    - `TCH56`  [taches/journee] (sonnet)  after TCH30,TCH55
+    - `TCH62`  [taches/projets] (sonnet)  after TCH61
+    - `TCH50`  [taches/saisie] (sonnet)  after TCH49
+    - `TCH73`  [taches/erp] (opus)  after TCH17,TCH72
+    - `TCH68`  [taches/rythme] (sonnet)  after TCH67
+- **Wave 4** (8 parallel):
+    - `TCH79`  [taches/ecran-aujourdhui] (sonnet)  after TCH78
+    - `TCH91`  [taches/ecran-projets] (sonnet)  after TCH90
+    - `TCH85`  [taches/ecran-saisie] (sonnet)  after TCH84
+    - `TCH57`  [taches/journee] (sonnet)  after TCH56
+    - `TCH63`  [taches/projets] (sonnet)  after TCH32,TCH40,TCH62
+    - `TCH51`  [taches/saisie] (sonnet)  after TCH50
+    - `TCH74`  [taches/erp] (opus)  after TCH73
+    - `TCH69`  [taches/rythme] (opus)  after TCH68
+- **Wave 5** (8 parallel):
+    - `TCH80`  [taches/ecran-aujourdhui] (sonnet)  after TCH79
+    - `TCH92`  [taches/ecran-projets] (sonnet)  after TCH91
+    - `TCH86`  [taches/ecran-saisie] (sonnet)  after TCH85
+    - `TCH58`  [taches/journee] (sonnet)  after TCH28,TCH57
+    - `TCH64`  [taches/projets] (sonnet)  after TCH63
+    - `TCH52`  [taches/saisie] (sonnet)  after TCH51
+    - `TCH75`  [taches/erp] (opus)  after TCH74
+    - `TCH70`  [taches/rythme] (sonnet)  after TCH29,TCH69
+- **Wave 6** (6 parallel):
+    - `TCH81`  [taches/ecran-aujourdhui] (sonnet)  after TCH80
+    - `TCH93`  [taches/ecran-projets] (sonnet)  after TCH92
+    - `TCH87`  [taches/ecran-saisie] (sonnet)  after TCH86
+    - `TCH59`  [taches/journee] (sonnet)  after TCH56
+    - `TCH65`  [taches/projets] (sonnet)  after TCH64
+    - `TCH53`  [taches/saisie] (sonnet)  after TCH52
+- **Wave 7** (1 parallel):
+    - `TCH94`  [taches/orchestrateur] (haiku)  after TCH53,TCH59,TCH65,TCH70,TCH75
+
+## Lanes (tasks inside a lane run in sequence; model = lane's max tier)
+- **taches/ecran-aujourdhui** (6, model=sonnet, owners=deploy): TCH76, TCH77, TCH78, TCH79, TCH80, TCH81
+- **taches/ecran-projets** (6, model=sonnet, owners=deploy): TCH88, TCH89, TCH90, TCH91, TCH92, TCH93
+- **taches/ecran-saisie** (6, model=sonnet, owners=deploy): TCH82, TCH83, TCH84, TCH85, TCH86, TCH87
+- **taches/journee** (6, model=opus): TCH54, TCH55, TCH56, TCH57, TCH58, TCH59
+- **taches/projets** (6, model=sonnet): TCH60, TCH61, TCH62, TCH63, TCH64, TCH65
+- **taches/saisie** (6, model=sonnet): TCH48, TCH49, TCH50, TCH51, TCH52, TCH53
+- **taches/erp** (5, model=opus): TCH71, TCH72, TCH73, TCH74, TCH75
+- **taches/rythme** (5, model=opus): TCH66, TCH67, TCH68, TCH69, TCH70
+- **taches/orchestrateur** (1, model=haiku): TCH94
+
+## Acceptation (orchestrateur) — jamais en lane ni refusée, jouée sur la pile locale avant le push (règle 3-bis, AMET89)
+- `TCH136` : TCH — 47/144 cochées, couverture n/d
+- `TCH137` : TCH — 47/144 cochées, couverture n/d
+- `TCH138` : TCH — 47/144 cochées, couverture n/d
