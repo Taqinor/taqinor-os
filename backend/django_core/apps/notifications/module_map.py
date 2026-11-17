@@ -62,6 +62,11 @@ EVENT_TYPE_MODULE = {
     # APAR58 — alertes du moteur de publicité.
     'adsengine_alert': 'adsengine',
     'portail_demande_client': 'portail',  # ASOC46
+    # TCH20 — gestionnaire de tâches personnel.
+    'taches_plan_du_jour': 'taches',
+    'taches_bilan_soir': 'taches',
+    'taches_relance': 'taches',
+    'taches_rappel': 'taches',
 }
 
 

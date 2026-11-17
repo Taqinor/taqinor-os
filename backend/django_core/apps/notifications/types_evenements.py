@@ -498,3 +498,9 @@ class EventType(models.TextChoices):
     # balayage ``core.balayer_travaux_orphelins`` (transverse : aucun module).
     TRAVAIL_DE_FOND_ECHOUE = (
         'travail_de_fond_echoue', 'Travail de fond interrompu')
+    # TCH20 — gestionnaire de tâches personnel (module ``taches``) : push +
+    # in-app seuls (défauts génériques : e-mail et WhatsApp coupés).
+    TACHES_PLAN_DU_JOUR = ('taches_plan_du_jour', 'Tâches : plan du jour')
+    TACHES_BILAN_SOIR = ('taches_bilan_soir', 'Tâches : bilan du soir')
+    TACHES_RELANCE = ('taches_relance', 'Tâches : relance')
+    TACHES_RAPPEL = ('taches_rappel', 'Tâches : rappel')
