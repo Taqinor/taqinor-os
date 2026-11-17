@@ -12,6 +12,9 @@
 // Règle de preuve : les gestes sont joués sous le rôle LIVRÉ « Directeur » (compte d'essai du registre) ; l'API est appelée
 // sous ce rôle, les écrans par un navigateur à froid du même compte ; la base est relue par le shell Django.
 import { test, expect } from '@playwright/test'
+import { spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+import { RACINE } from './_enregistrement.js'
 import { groupe } from './_oracles.js'
 import { py } from './_django.js'
 import { lireJson } from '../helpers.js'
@@ -480,6 +483,22 @@ sortie(True)`)
   const r4 = await bulk(`b4-${m}`)
   expect(r4.status(), 'après réparation, un envoi neuf s\'applique').toBe(200)
   expect(await prixDe(x), 'envoi neuf : 1 210 et 2 420').toEqual(['1210.00', '2420.00'])
+  // Sonde C-ACNC-006 REJOUÉE (hôte) : elle n'extrait que `apply_product_bulk` avec un ORM factice ; le `transaction.atomic`
+  // est posé dans la VUE (unique appelant) : son verdict est donc nommé, jamais compté comme preuve.
+  const sonde = spawnSync(process.env.E2E_PYTHON || 'python', ['-I', '-c',
+    'import runpy, sys, json; ns = runpy.run_path(sys.argv[1]); print("@@S" + json.dumps(ns["sonde"](), default=str))',
+    join(RACINE, 'docs', 'audits', 'sondes', 'ACNC', 'C-ACNC-006.py')],
+  { cwd: RACINE, encoding: 'utf8', maxBuffer: 20_000_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } })
+  const ligne = (sonde.stdout || '').split('\n').find((l) => l.startsWith('@@S'))
+  const verdictSonde = ligne ? J(JSON.parse(ligne.slice(3))).slice(0, 500) : `sonde illisible : ${(sonde.stderr || '').slice(-300)}`
+  console.log(`[ACNC24] sonde C-ACNC-006 rejouée : ${verdictSonde}`)
+  note(testInfo, 'sonde C-ACNC-006 rejouée', verdictSonde)
+}, {
+  ecart: {
+    base: 'FAIL',
+    raison: 'sonde insensible : atomic posé dans la vue, unique appelant ; tout-ou-rien prouvé par la panne déterministe sur la vraie route '
+      + '(C-ACNC-006 rejouée : repro:true car elle extrait `apply_product_bulk` avec un ORM factice, sans la vue qui porte `transaction.atomic`)',
+  },
 })
 
 etape('PF9.4-ACNC24-ecran', ['ACNC24'], async ({ page, suivi, testInfo }) => {
