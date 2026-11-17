@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, FolderPlus } from 'lucide-react'
 import { creerProjet, listerProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
@@ -76,7 +76,16 @@ export default function Projets() {
   const [charge, setCharge] = useState(false)
   const [erreur, setErreur] = useState('')
   const [pauseOuverte, setPauseOuverte] = useState(false)
-  const [nouveau, setNouveau] = useState(false)
+  // « Nouveau projet » de la palette arrive par `?nouveau=1` : la feuille s'ouvre, le paramètre part à la fermeture
+  const [params, setParams] = useSearchParams()
+  const demandeNouveau = params.get('nouveau') === '1'
+  const [nouveau, setNouveauLocal] = useState(demandeNouveau)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- l'adresse demande la feuille alors que l'écran est déjà monté (palette) (D-ENF22)
+  useEffect(() => { if (demandeNouveau) setNouveauLocal(true) }, [demandeNouveau])
+  const setNouveau = (ouvert) => {
+    setNouveauLocal(ouvert)
+    if (!ouvert && params.get('nouveau')) setParams((p) => { const s = new URLSearchParams(p); s.delete('nouveau'); return s }, { replace: true })
+  }
   const [asupprimer, setAsupprimer] = useState(null)
 
   const lire = useCallback(async () => {

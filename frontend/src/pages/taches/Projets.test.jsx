@@ -196,3 +196,19 @@ describe('TCH88 — Projets : Nouveau projet et navigation', () => {
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/3')
   })
 })
+
+describe('Raccord F2 — Projets : « Nouveau projet » de la palette', () => {
+  it('`?nouveau=1` ouvre la feuille « Nouveau projet » ; la fermer retire le paramètre', async () => {
+    render(
+      <MemoryRouter initialEntries={['/taches/projets?nouveau=1']}>
+        <Routes>
+          <Route path="/taches/projets" element={<><Projets /><Lieu /></>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const feuille = await screen.findByRole('dialog', { name: 'Nouveau projet' })
+    expect(within(feuille).getByLabelText('Nom du projet')).toBeInTheDocument()
+    await userEvent.setup().click(within(feuille).getByRole('button', { name: 'Fermer' }))
+    await waitFor(() => expect(screen.getByTestId('lieu')).toHaveTextContent(/^\/taches\/projets$/))
+  })
+})

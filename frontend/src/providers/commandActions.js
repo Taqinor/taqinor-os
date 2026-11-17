@@ -55,6 +55,31 @@ export function filterCreateActions(query) {
   )
 }
 
+// Raccord F2 (Tâches) — entrées de la palette SANS raccourci clavier propre (textes.md §2.1 « Palette ») : la
+// recherche dans les tâches, Nouveau projet, Faire le bilan et les onglets. Toutes sont des routes réelles de
+// `features/taches/module.config.jsx` ; la palette les filtre par `isPathVisible` comme les autres (module masqué
+// pour le compte → aucune entrée). « Aujourd'hui » vient déjà de « g j » (NAV_ACTIONS).
+export const TACHES_ACTIONS = [
+  { id: 'taches-nouveau-projet', label: 'Nouveau projet', to: '/taches/projets?nouveau=1', keys: '' },
+  { id: 'taches-bilan', label: 'Faire le bilan', to: '/taches/aujourdhui?ouvrir=bilan', keys: '' },
+  { id: 'taches-a-trier', label: 'À trier', to: '/taches/a-trier', keys: '' },
+  { id: 'taches-projets', label: 'Projets', to: '/taches/projets', keys: '' },
+  { id: 'taches-agenda', label: 'Agenda', to: '/taches/agenda', keys: '' },
+]
+
+/**
+ * filterTachesActions — TACHES_ACTIONS filtrées comme filterActions, précédées de la recherche : à vide
+ * « Chercher dans mes tâches », sinon « Chercher « {q} » dans mes tâches » (la requête part dans `?q=`).
+ */
+export function filterTachesActions(query) {
+  const brut = (query || '').trim()
+  const q = brut.toLowerCase()
+  const chercher = brut
+    ? { id: 'taches-chercher', label: `Chercher « ${brut} » dans mes tâches`, to: `/taches/recherche?q=${encodeURIComponent(brut)}`, keys: '' }
+    : { id: 'taches-chercher', label: 'Chercher dans mes tâches', to: '/taches/recherche', keys: '' }
+  return [chercher, ...TACHES_ACTIONS.filter((a) => !q || a.label.toLowerCase().includes(q))]
+}
+
 /**
  * filterContextActions — LW26 : filtre une liste d'actions CONTEXTUELLES
  * arbitraires (posées par un écran de détail tant qu'il est monté — ex.

@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
 import {
-  filterActions, filterCreateActions, filterContextActions, readRecentEntities, pushRecentEntity,
+  filterActions, filterCreateActions, filterContextActions, filterTachesActions, readRecentEntities, pushRecentEntity,
 } from './commandActions'
 // NTUX9 — actions contextuelles résolues par ÉCRAN (route active), au-delà de
 // la fiche LeadWorkspace montée (LW26 ci-dessous) : « Générer le PDF du devis
@@ -138,8 +138,10 @@ export function CommandPalette() {
   // ODY27 — une commande de navigation vers une app absente est RETIRÉE (pas
   // grisée) : la palette ne propose jamais une destination qui répondrait
   // « App non activée ». Un chemin transverse (hors app) reste toujours offert.
+  // Raccord F2 — les entrées de Tâches sans raccourci (Chercher dans mes tâches, Nouveau projet, Faire le bilan,
+  // À trier, Projets, Agenda) rejoignent « Actions », filtrées par la même visibilité de module.
   const actions = useMemo(
-    () => filterActions(term).filter((a) => isPathVisible(a.to)),
+    () => [...filterActions(term), ...filterTachesActions(term)].filter((a) => isPathVisible(a.to)),
     [term, isPathVisible],
   )
   // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
