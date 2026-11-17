@@ -196,7 +196,7 @@ for sql in a['sql']:
     except s.SQLSecurityError as e:
         c['sans_permissions_refus'] = str(e)
     out = outil._run(sql)
-    c['outil_refuse'] = out in refus
+    c['outil_refuse'] = out in refus or str(out).startswith(s._REFUS_DE_DROIT_PREFIXE)  # ALEC51 : refus de droit motivé
     c['outil'] = str(out)[:300]
     res['cas'][sql] = c
 print('@@' + json.dumps(res, default=str))
