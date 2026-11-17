@@ -250,10 +250,21 @@ def _carte_pause(ctx, propose):
     return _carte_proposition(ctx, CarteDuMoment.PAUSE, (TypeIncitationEcran.PAUSE,))
 
 
-#: Ordre de `CarteDuMoment`. `revelation` : ses textes (textes.md §2.18) n'ont pas encore de gabarit
-#: (`moteur/gabarits.py`) — la carte reste absente tant qu'il manque (jamais un texte inventé).
+def _carte_revelation(ctx, propose):
+    """La révélation ouverte la plus récente (I14), rendue par les textes de `serializers/rythme.py`
+    (`TEXTES_REVELATION`, un seul bouton « OK ») ; dernière de l'ordre : elle ne passe jamais devant
+    une autre carte (regles.md §4.10)."""
+    from apps.taches.serializers.rythme import TEXTES_REVELATION, forme_proposition  # la forme lit le rythme
+    ouvertes = [c for c in ctx.cartes if c.type == TypeIncitationEcran.REVELATION and c.reponse == ''
+                and c.cle in TEXTES_REVELATION]
+    if not ouvertes:
+        return None
+    return _carte(CarteDuMoment.REVELATION, proposition_=forme_proposition(ouvertes[-1], assistant=ctx.assistant))
+
+
+#: Ordre de `CarteDuMoment` (regles.md §4.10).
 TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_garder, _carte_alleger, _carte_faire_bilan,
-                _carte_rythme, _carte_pause)
+                _carte_rythme, _carte_pause, _carte_revelation)
 
 
 def carte_du_moment(ctx, propose):
@@ -435,16 +446,18 @@ def _est_un_retour(user, jour, derniere, preferences):
 
 
 def _carte_retour_creee(user, jour, derniere, maintenant):
-    """Crée la carte `retour` du jour (une fois : `taches_incit_uniq`) si des tâches attendaient."""
+    """Crée la carte `retour` du jour (une fois : `taches_incit_uniq`) si des tâches attendaient ; ses
+    `donnees.ids` sont ces tâches (« Les remettre dans Proposé » les lit, `services.rythme`)."""
     debut = (derniere or jour) + datetime.timedelta(days=1)
-    attendues = (sel.taches_de_la_journee(user, jour)
-                 .filter(statut=StatutTache.A_FAIRE, jour_prevu__gte=debut, jour_prevu__lt=jour).count())
-    if attendues == 0:
+    ids = list(sel.taches_de_la_journee(user, jour)
+               .filter(statut=StatutTache.A_FAIRE, jour_prevu__gte=debut, jour_prevu__lt=jour)
+               .order_by('pk').values_list('pk', flat=True))
+    if not ids:
         return
     jours = (jour - derniere).days if derniere is not None else 0
     IncitationCoach.objects.get_or_create(
         company_id=user.company_id, proprietaire=user, type=TypeIncitationEcran.RETOUR, jour=jour, cle='',
-        defaults={'canal': CanalIncitation.ECRAN, 'donnees': {'jours': jours, 'taches': attendues},
+        defaults={'canal': CanalIncitation.ECRAN, 'donnees': {'jours': jours, 'taches': len(ids), 'ids': ids},
                   'montre_le': maintenant, 'expire_le': jour + DUREE_CARTE_RETOUR})
 
 
