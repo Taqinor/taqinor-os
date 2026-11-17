@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronLeft, Diamond, TriangleAlert } from 'lucide-react'
 import {
   annulerGeste, classerErreur, creerTache, lireVueProjet, modifierProjet, nouvelleCle, restaurerProjet, rouvrirProjet,
-  rouvrirTache, supprimerTache, restaurerTache, terminerTache,
+  rouvrirTache, terminerTache,
 } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -11,6 +11,7 @@ import { PuchePriorite, avancementDe } from '../../features/taches/projets/Ligne
 import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
 
@@ -31,6 +32,29 @@ const jjmm = (iso) => {
 function remplacerTache(vue, tache) {
   const maj = (liste) => (liste ?? []).map((t) => (t.id === tache.id ? { ...t, ...tache } : t))
   return { ...vue, sections: (vue.sections ?? []).map((s) => ({ ...s, taches: maj(s.taches) })), sans_section: maj(vue.sans_section) }
+}
+
+/** Où est la tâche (étape, rang) : de quoi la remettre à sa place après un « Annuler ». */
+function placeDe(vue, id) {
+  for (const s of vue.sections ?? []) {
+    const rang = (s.taches ?? []).findIndex((t) => t.id === id)
+    if (rang >= 0) return { sectionId: s.id, rang, tache: s.taches[rang] }
+  }
+  const rang = (vue.sans_section ?? []).findIndex((t) => t.id === id)
+  return rang >= 0 ? { sectionId: null, rang, tache: vue.sans_section[rang] } : null
+}
+
+const sansTache = (vue, id) => ({
+  ...vue,
+  sections: (vue.sections ?? []).map((s) => ({ ...s, taches: (s.taches ?? []).filter((t) => t.id !== id) })),
+  sans_section: (vue.sans_section ?? []).filter((t) => t.id !== id),
+})
+
+function remettreTache(vue, place) {
+  if (!place) return vue
+  const inserer = (liste) => { const suite = [...(liste ?? [])]; suite.splice(Math.min(place.rang, suite.length), 0, place.tache); return suite }
+  if (place.sectionId == null) return { ...vue, sans_section: inserer(vue.sans_section) }
+  return { ...vue, sections: (vue.sections ?? []).map((s) => (s.id === place.sectionId ? { ...s, taches: inserer(s.taches) } : s)) }
 }
 
 function Entete({ vue, aujourdhui, onPriorite }) {
@@ -140,22 +164,18 @@ export default function Projet() {
     }
   }
 
-  const supprimer = async (item) => {
-    await supprimerTache(item.id)
-    setVue((v) => ({
-      ...v,
-      sections: v.sections.map((s) => ({ ...s, taches: s.taches.filter((t) => t.id !== item.id) })),
-      sans_section: (v.sans_section ?? []).filter((t) => t.id !== item.id),
-    }))
-    proposerAnnuler({
-      message: 'Supprimée',
-      onAnnuler: async () => { await restaurerTache(item.id); await charger() },
-    })
-  }
-
-  const surAction = (code, item) => {
-    if (code === 'supprimer') supprimer(item).catch((err) => setErreur(frenchError(err, 'La tâche n\'a pas été supprimée. Réessaie.')))
-  }
+  // Raccord F2 — le gestionnaire commun des actions de ligne (Choisir un jour, En réserve, Déplacer, En attente de,
+  // Priorité, ★, Supprimer) : optimiste, annulable, sans relire la vue. Déplacée hors du projet, la ligne part.
+  const actions = useActionsLigne({
+    aujourdhui,
+    maj: (id, champs) => setVue((v) => (v ? remplacerTache(v, { id, ...champs }) : v)),
+    retirer: (item) => {
+      let place = null
+      setVue((v) => { place = v ? placeDe(v, item.id) : null; return v ? sansTache(v, item.id) : v })
+      return () => setVue((v) => (v ? remettreTache(v, place) : v))
+    },
+    sortApres: (code, item, valeurs) => code === 'deplacer' && valeurs.projet_id !== Number(id),
+  })
 
   const poserPriorite = async (projet, valeur) => {
     if (valeur === projet.priorite) return
@@ -244,7 +264,8 @@ export default function Projet() {
   ] : []
 
   return (
-    <CoquilleTaches ecran="projet" titre={projet?.nom ?? 'Projet'} actionsEcran={actionsEcran}>
+    <CoquilleTaches ecran="projet" titre={projet?.nom ?? 'Projet'} actionsEcran={actionsEcran}
+      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}>
       <div className="ep-barre">
         <button type="button" className="ep-retour" onClick={() => navigate('/taches/projets')}>
           <ChevronLeft className="i" aria-hidden="true" />Projets
@@ -264,7 +285,7 @@ export default function Projet() {
             aujourdhui={aujourdhui}
             onTerminer={terminer}
             onOuvrir={(t) => setParams((p) => { const s = new URLSearchParams(p); s.set('tache', String(t.id)); return s })}
-            onAction={surAction}
+            onAction={actions.surAction}
             onAjouter={ajouter}
             onAnnonce={annoncer}
           />

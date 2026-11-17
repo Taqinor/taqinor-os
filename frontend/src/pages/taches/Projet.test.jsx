@@ -15,6 +15,11 @@ vi.mock('../../api/tachesApi', async (original) => ({
   rouvrirTache: vi.fn(),
   supprimerTache: vi.fn(),
   restaurerTache: vi.fn(),
+  traiterLot: vi.fn(),
+  planifierTache: vi.fn(),
+  listerTousLesProjets: vi.fn(),
+  annulerGeste: vi.fn(),
+  attendreTache: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -171,6 +176,78 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
     expect(await screen.findByText('En pause')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
+  })
+})
+
+describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gestionnaire commun', () => {
+  const ouvrirMenu = async (user, titre) => {
+    const etape = await screen.findByRole('region', { name: 'Études' })
+    await user.click(within(etape).getByRole('button', { name: `Actions pour « ${titre} »` }))
+    return etape
+  }
+  beforeEach(() => {
+    api.annulerGeste.mockResolvedValue({ data: { restaurees: [], conflits: [], deja: false } })
+    api.listerTousLesProjets.mockResolvedValue([
+      { id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3 }, { id: 5, nom: 'Site web', couleur: 'ciel', priorite: 2 },
+    ])
+  })
+
+  it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 91 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('option', { name: 'Site web' }))
+    expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'deplacer', valeurs: { projet_id: 5 } })
+    await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Déplacée dans « Site web »')
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(api.annulerGeste).toHaveBeenCalledWith(91)
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+  })
+
+  it('Priorité → Basse passe par le lot `prioriser` ; En réserve par `planifier/` avec le lock_version', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 92 } })
+    api.planifierTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 93 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Priorité' }))
+    await user.click(await screen.findByRole('radio', { name: 'Basse' }))
+    expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'prioriser', valeurs: { priorite: 1 } })
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Priorité basse')
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ quelque_jour: true, jour_prevu: null, lock_version: expect.any(Number) }))
+  })
+
+  it('Supprimer demande confirmation, retire la ligne ; Annuler la restaure à sa place', async () => {
+    api.supprimerTache.mockResolvedValue({ data: { geste_id: 94 } })
+    api.restaurerTache.mockResolvedValue({ data: tacheEcrite() })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Supprimer' })
+    expect(dialogue).toHaveTextContent('Supprimer « Devis Settat » ?')
+    await user.click(within(dialogue).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
+    expect(api.supprimerTache).toHaveBeenCalledWith(20)
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(api.restaurerTache).toHaveBeenCalledWith(20)
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+  })
+
+  it('un refus du serveur remet la ligne et le dit', async () => {
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [], refusees: [{ id: 20, raison: 'close' }], geste_id: null } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const etape = await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('option', { name: 'Site web' }))
+    expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
   })
 })
 

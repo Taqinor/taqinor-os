@@ -12,6 +12,7 @@ import {
 } from '../../features/taches/lib/textes'
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
 import { frenchError } from '../../lib/frenchError'
 
@@ -126,6 +127,19 @@ function deplacerVers(donnees, item, jour, heureDebut) {
   return {
     ...donnees,
     jours: jours.map((j) => (j.jour === jour ? { ...j, [cible]: [...j[cible], posee] } : j)),
+    a_placer: sans(donnees.a_placer),
+    mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
+  }
+}
+
+/** Raccord F2 — la tâche quitte l'agenda chargé (supprimée, ou prévue ailleurs : elle reparaît au relu). */
+function sansItem(donnees, id) {
+  if (!donnees) return donnees
+  const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === id))
+  return {
+    ...donnees,
+    jours: (donnees.jours ?? []).map((j) => Object.fromEntries(
+      Object.entries(j).map(([cle, val]) => [cle, LISTES_JOUR.includes(cle) ? sans(val) : val]))),
     a_placer: sans(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
   }
@@ -267,7 +281,7 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
       <div className="liste" role="list">
         {uniques.map((t) => (
           <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
-            onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} />
+            onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} onAction={gestes.action} />
         ))}
       </div>
     </>
@@ -297,7 +311,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
           <div className="liste" role="list">
             {jour.sans_heure.map((t) => (
               <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
-                onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} />
+                onTerminer={gestes.basculer} onOuvrir={gestes.ouvrir} onAction={gestes.action} />
             ))}
           </div>
         </section>
@@ -558,6 +572,17 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const gestes = useGestes(setDonnees, setParams)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
+  // Raccord F2 — le gestionnaire commun des actions de ligne (menu ⋯) ; prévue un autre jour, la ligne part
+  const actions = useActionsLigne({
+    aujourdhui,
+    maj: (id, champs) => setDonnees((d) => avecItem(d, id, (it) => ({ ...it, ...champs }))),
+    retirer: (item) => {
+      let avant = null
+      setDonnees((d) => { avant = d; return sansItem(d, item.id) })
+      return () => setDonnees((d) => avant ?? d)
+    },
+    sortApres: (code) => code === 'planifier',
+  })
 
   useEffect(() => {
     derniere.current += 1
@@ -589,6 +614,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const jours = dates.map((iso) => parJour[iso] ?? jourVide(iso))
   const gestesEcran = {
     ...gestes,
+    action: actions.surAction,
     cocher: (item) => {
       setErreurGeste('')
       gestes.basculer(item, item.statut !== 'fait').catch((err) => setErreurGeste(frenchError(err)))
@@ -635,7 +661,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   }
 
   return (
-    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}>
+    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
+      feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
         {vue === 'semaine' ? (

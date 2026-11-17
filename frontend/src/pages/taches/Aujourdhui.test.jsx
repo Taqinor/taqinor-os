@@ -250,6 +250,25 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
+  it('Raccord F2 — ⋯ → En attente de… pose l\'attente sans ouvrir la fiche ; la ligne quitte la journée, Annuler la remet', async () => {
+    servir(donnees())
+    api.post.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/attendre/') ? { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 88 } : {} }))
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'En attente de…' }))
+    const feuille = await screen.findByRole('dialog', { name: 'En attente de…' })
+    await userEvent.type(within(feuille).getByLabelText('De qui ou de quoi ?'), 'Lydec')
+    await userEvent.click(within(feuille).getByRole('button', { name: 'En attente' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/attendre/', { en_attente_de: 'Lydec' }))
+    expect(screen.queryByText('Timbres')).toBeNull()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('En attente de : Lydec')
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/88/annuler/', {}))
+    expect(await screen.findByText('Timbres')).toBeInTheDocument()
+    expect(api.get).toHaveBeenCalledTimes(1)
+  })
+
   it('une activité ERP cochée close dans l\'ERP, sans Annuler', async () => {
     const d = donnees()
     d.journee.find((i) => i.type === 'activite').peut_cloturer = true

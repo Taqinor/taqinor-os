@@ -12,6 +12,7 @@ import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhu
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
@@ -181,15 +182,6 @@ function ChoisirJour({ item, minimum, onChoisir }) {
   )
 }
 
-function ConfirmerSuppression({ item, onConfirmer }) {
-  return (
-    <div className="choisir-jour">
-      <p className="carte-texte">{`Supprimer « ${item.titre} » ?`}</p>
-      <button type="button" className="bouton plein large" onClick={onConfirmer}>Supprimer</button>
-    </div>
-  )
-}
-
 export default function Aujourdhui() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -329,24 +321,16 @@ export default function Aujourdhui() {
     }
   }, [garde, setDonnees])
 
-  const supprimer = useCallback(async (item) => {
-    setFeuille(null)
-    try { garde() } catch { return }
-    try {
-      const { suite, ...origine } = retirer(donnees, cleDe(item))
-      await client.supprimerTache(item.id)
-      setDonnees(suite)
-      proposerAnnuler({
-        message: 'Supprimée',
-        onAnnuler: async () => {
-          await client.restaurerTache(item.id)
-          setDonnees((d) => remettre(d, origine))
-        },
-      })
-    } catch (err) {
-      annoncer(frenchError(err))
-    }
-  }, [garde, donnees, setDonnees])
+  /** Sort une ligne de sa section ; rend la fonction qui la remet à sa place (Annuler, refus du serveur). */
+  const sortirLigne = useCallback((item) => {
+    const origine = {}
+    setDonnees((d) => {
+      const r = retirer(d, cleDe(item))
+      Object.assign(origine, r)
+      return r.suite
+    })
+    return () => setDonnees((d) => remettre(d, origine))
+  }, [setDonnees])
 
   const garder = useCallback(async (items) => {
     try { garde() } catch { return }
@@ -411,18 +395,30 @@ export default function Aujourdhui() {
     setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.set('tache', String(id)); return suite })
   }, [setParams])
 
+  // Raccord F2 — le gestionnaire commun des actions de ligne ; Aujourd'hui garde son ★ (la ligne change de section),
+  // son Reporter / Choisir un jour (estampille « → jeu. 19 ») et « Lier une tâche » des activités ERP.
+  const actionsPropres = useMemo(() => ({
+    essentiel: (item) => basculerEssentiel(item, !item.essentielle),
+    choisir_jour: (item) => setFeuille({ type: 'jour', item }),
+    reporter,
+    lier: (item) => setFeuille({ type: 'lier', item }),
+  }), [basculerEssentiel, reporter])
+  const actions = useActionsLigne({
+    aujourdhui: donnees?.jour,
+    prochainJourOuvre: donnees?.prochain_jour_ouvre,
+    maj: (id, champs) => patcher(`tache:${id}`, (it) => ({ ...it, ...champs })),
+    retirer: sortirLigne,
+    // en réserve ou en attente, la tâche quitte la journée (elle revient au relu, dans « En attente »)
+    sortApres: (code, item, valeurs) => (code === 'planifier' && Boolean(valeurs.quelque_jour)) || code === 'attente',
+    actionsPropres,
+  })
+
   const geste = useMemo(() => ({
     terminer,
     reporter,
     choisirJour: (item) => setFeuille({ type: 'jour', item }),
     ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : null) : ouvrirFiche(item.id)),
-    action: (code, item) => {
-      if (code === 'essentiel') basculerEssentiel(item, !item.essentielle)
-      else if (code === 'choisir_jour') setFeuille({ type: 'jour', item })
-      else if (code === 'supprimer') setFeuille({ type: 'supprimer', item })
-      else if (code === 'lier') setFeuille({ type: 'lier', item })
-      else ouvrirFiche(item.id)
-    },
+    action: actions.surAction,
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
     deplacer: modes.deplacer,
     selectionner: modes.selectionner,
@@ -439,7 +435,7 @@ export default function Aujourdhui() {
     refusEssentiel: () => annoncer('3 au plus.'),
     annoncer,
     naviguer: (url) => navigate(url),
-  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner])
+  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])
 
   const contexte = useMemo(() => ({
     donnees,
@@ -463,8 +459,9 @@ export default function Aujourdhui() {
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)
     else if (action === 'descendre') modes.deplacer(item, 1)
-    else if (item.type === 'tache' && ['renommer', 'deplacer', 'heure'].includes(action)) ouvrirFiche(item.id)
-  }, { actif: !feuille })
+    else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item)
+    else if (item.type === 'tache' && ['renommer', 'heure'].includes(action)) ouvrirFiche(item.id)
+  }, { actif: !feuille && !actions.feuille && !actions.selecteurProjet })
 
   const ouvrirSaisie = useCallback((detail) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail }))
@@ -547,13 +544,6 @@ export default function Aujourdhui() {
         />
       ),
     }
-  } else if (feuille?.type === 'supprimer') {
-    laFeuille = {
-      ouverte: true,
-      titre: 'Supprimer',
-      onFermer: () => setFeuille(null),
-      children: <ConfirmerSuppression item={feuille.item} onConfirmer={() => supprimer(feuille.item)} />,
-    }
   }
 
   const sousTitre = donnees && donnees.jour_ouvre === false ? 'Jour non travaillé' : jourLong(donnees?.jour)
@@ -578,8 +568,9 @@ export default function Aujourdhui() {
       titre="Aujourd'hui"
       sousTitre={sousTitre}
       derniereSynchro={derniere}
-      conflit={conflit}
-      feuille={laFeuille}
+      conflit={conflit ?? actions.conflit}
+      feuille={laFeuille ?? actions.feuille}
+      selecteurProjet={actions.selecteurProjet}
       actionsEcran={actionsEcran}
       selection={barreSelection}
     >

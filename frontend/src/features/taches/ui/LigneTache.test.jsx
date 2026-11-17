@@ -94,7 +94,7 @@ describe('TCH44 — clavier : Tab → Actions → item (sans balayage ni glisser
     const menu = await screen.findByRole('menu')
     const libelles = within(menu).getAllByRole('menuitem').map((el) => el.textContent)
     expect(libelles).toEqual([
-      'Reporter à lun. 23', 'Choisir un jour', 'Déplacer…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+      'Reporter à lun. 23', 'Choisir un jour', 'En réserve', 'Déplacer…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
     ])
     await user.click(within(menu).getByRole('menuitem', { name: 'Choisir un jour' }))
     expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 }))

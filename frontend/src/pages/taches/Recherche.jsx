@@ -5,12 +5,12 @@ import { Search } from 'lucide-react'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
 import {
-  annulerGeste, listerTaches, listerToutesLesEtiquettes, listerTousLesProjets, rechercher, rouvrirTache, supprimerTache,
-  restaurerTache, terminerTache,
+  annulerGeste, listerTaches, listerToutesLesEtiquettes, listerTousLesProjets, rechercher, rouvrirTache, terminerTache,
 } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
+import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 
 /* ============================================================================
@@ -179,19 +179,21 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       })
     }
   }
-  const action = async (code, item) => {
-    if (code !== 'supprimer') { ouvrirFiche(item); return }
-    try {
-      await supprimerTache(item.id)
-      setResultat((r) => ({ ...r, taches: r.taches.filter((t) => t.id !== item.id) }))
-      proposerAnnuler({
-        message: 'Supprimée',
-        onAnnuler: async () => { await restaurerTache(item.id); setResultat((r) => ({ ...r, taches: [item, ...r.taches] })) },
+  // Raccord F2 — le gestionnaire commun des actions de ligne : chaque geste change la ligne sur place, sans relire.
+  const actions = useActionsLigne({
+    aujourdhui,
+    maj: majLigne,
+    retirer: (item) => {
+      let rang = -1
+      setResultat((r) => { rang = r.taches.findIndex((t) => t.id === item.id); return { ...r, taches: r.taches.filter((t) => t.id !== item.id) } })
+      return () => setResultat((r) => {
+        const taches = [...r.taches]
+        taches.splice(rang < 0 ? 0 : Math.min(rang, taches.length), 0, item)
+        return { ...r, taches }
       })
-    } catch (err) {
-      setErreur(frenchError(err))
-    }
-  }
+    },
+  })
+  const action = actions.surAction
 
   const basculerPuce = (cle) => setPuces((l) => (l.includes(cle) ? l.filter((c) => c !== cle) : [...l, cle]))
   const projetChoisi = projets.find((p) => p.id === projetId)
@@ -201,7 +203,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     <CoquilleTaches
       ecran="recherche"
       titre="Recherche"
-      selecteurProjet={{
+      feuille={actions.feuille}
+      conflit={actions.conflit}
+      selecteurProjet={actions.selecteurProjet ?? {
         ouverte: selecteur, onFermer: () => setSelecteur(false), projets, sansProjet: false,
         onChoisir: (id) => { setProjetId(id); setSelecteur(false) },
         onNouveau: () => setSelecteur(false),
