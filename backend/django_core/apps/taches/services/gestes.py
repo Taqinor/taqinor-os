@@ -243,14 +243,17 @@ def _poser_lien(user, tache, lien):
         tache.content_type, tache.object_id = None, None
         tache.lien_etat, tache.lien_libelle = '', ''
         return ['content_type', 'object_id', 'lien_etat', 'lien_libelle']
-    from apps.records.serializers import resolve_target
+    # Revérifié par la porte unique de visibilité (portée CRM/ventes du compte, invariant 23) :
+    # un lien sorti de sa portée depuis le geste n'est jamais reposé.
+    from apps.taches.selectors.liens import cible_visible, identifiant
     if not isinstance(lien, dict) or lien.get('cible') not in CibleLiable.values:
         raise _Refus()
-    try:
-        ct, _cible = resolve_target(lien.get('cible'), lien.get('id'), user.company, user=user)
-    except (ValueError, AttributeError):
+    objet_id = identifiant(lien.get('id'))
+    if objet_id is None or not cible_visible(user, lien['cible'], objet_id):
         raise _Refus()
-    tache.content_type, tache.object_id = ct, lien.get('id')
+    app_label, modele = lien['cible'].split('.', 1)
+    ct = ContentType.objects.get_by_natural_key(app_label, modele)
+    tache.content_type, tache.object_id = ct, objet_id
     tache.lien_etat, tache.lien_libelle, tache.lien_verifie_le = 'ok', '', timezone.now()
     return ['content_type', 'object_id', 'lien_etat', 'lien_libelle', 'lien_verifie_le']
 
