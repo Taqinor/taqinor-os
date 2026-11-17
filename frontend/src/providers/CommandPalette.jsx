@@ -113,7 +113,7 @@ export function CommandPalette() {
     const apply = () => crmApi.updateLead(leadId, { stage: next })
     if (next !== CONVERSION_STAGE) {
       await mutateWithUndo({ kind: 'lead_stage', message, apply,
-        revert: () => crmApi.updateLead(leadId, { stage: lead.stage }) })
+        revert: () => crmApi.updateLead(leadId, { stage: lead.stage, undo: true }) })
       return
     }
     const ok = await confirm({ title: `Passer « ${lead.nom || 'ce lead'} » en « ${STAGE_LABELS[next]} » ?`,

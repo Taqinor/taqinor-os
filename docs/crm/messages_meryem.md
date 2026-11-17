@@ -104,15 +104,17 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel c
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
 
 ### repondeur — appels 2 et 4, message sur répondeur (R1)
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
+17/11/2026 — approuvé par le fondateur : « Je vous envoie un message WhatsApp » devient « Je vous ai envoyé un message WhatsApp » (FR). Darija inchangée, à reformuler par un locuteur natif.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de votre demande solaire. Je vous ai envoyé un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
 
 ### appel_relance — Appel 3, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
 Avant CAD67, `repondeur` partait aussi ici (ordre 4), à ~20 h du premier envoi (ordre 3) — contraire au document
 ci-dessus qui le réserve aux appels 2 et 4. Script court dédié, comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`.
 CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?
-DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟
+17/11/2026 — approuvé par le fondateur : « d'hier » retiré (FR) et « ديال البارح » (darija) — mots supprimés seulement.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous pour votre demande solaire — vous avez deux minutes maintenant ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص الطلب ديالكم — عندكم جوج دقايق دابا؟
 
 ### valeur_j1 — J1, WhatsApp de valeur (M2)
 FR : Bonjour {civilite} [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ? Répondez STOP et je n'insiste plus.
@@ -138,8 +140,9 @@ CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; l
 CAD110 (21/09/2026) — porte de sortie (loi 09-08 art. 10 al. 5 : opposition possible + coordonnées valables pour
 faire cesser — l'envoi manuel ne protège de rien, l'article vise le MOYEN et le consentement) sur les touches qui
 portent le plus loin (J7, J14, fin d'après-devis, tous les réveils) ; pas les trois premiers messages.
-FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.
-DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.
+17/11/2026 — approuvé par le fondateur : « dans une semaine » retiré (FR) et « من هنا لأسبوع » (darija) — aucune date promise ; mots supprimés seulement.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Sans nouvelle de votre part, je mets votre demande de côté. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.
 
 ### appel_dernier — Appel 6 (dernier), J10, avant clôture (CAD67, 21/09/2026)
 Le dernier appel avant `cloture_j14` — celui qui décide du classement du lead — n'avait aucune phrase d'ouverture.
@@ -206,15 +209,16 @@ B2B DARIJA : هادي تجهيزة مهنية ركبناها ف [mois] ف [ville
 E-MAIL OBJET : Une installation réalisée par [Marque]
 E-MAIL : Bonjour {civilite} [Prénom], je vous présente une installation que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Une courte vidéo du chantier : [lien vidéo]. — [Conseiller], [Marque]
 
-### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
+### j6_garanties — J10, WhatsApp (avec les certificats de garantie des fabricants)
 **APAR50 (08/10/2026)** : la phrase « ce qui est couvert… » et son lien vers la page garanties du site du fondateur sont RETIRÉS des textes par défaut (servis à toutes les sociétés) — la marque et le lien du fondateur ne partent plus chez le client d'une autre société.
-FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Répondez STOP et je n'insiste plus.
-DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. جاوبو STOP وما نلحوش عليكم.
+17/11/2026 — approuvé par le fondateur : salutation standard ajoutée ; première phrase = celle de la forme e-mail déjà validée (FR) ; darija : salutation standard + texte existant.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. جاوبو STOP وما نلحوش عليكم.
 E-MAIL OBJET : Les garanties de votre proposition [référence]
 E-MAIL : Bonjour {civilite} [Prénom], les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : [lien de votre proposition]. — [Conseiller], [Marque]
 
 ### appel_suivi_j7 — J7, script de l'« Appel de suivi » (CAD98, 23/09/2026)
-Après la preuve (J4) et les garanties (J6) : on cherche ce qui freine encore la décision. ✎ À valider (voir J2).
+Avant les garanties fabricants (J10) : on cherche ce qui freine encore la décision. ✎ À valider (voir J2).
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous au sujet de votre proposition solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou le calendrier, on le regarde ensemble.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، نشوفوها مع بعضياتنا.
 
@@ -224,16 +228,17 @@ DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصن�
 E-MAIL OBJET : Validité de votre proposition [référence]
 E-MAIL : Bonjour {civilite} [Prénom], je vous joins de nouveau votre proposition. Elle est valable jusqu'au [date]. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. — [Conseiller], [Marque]
 
-### appel_suivi_j11 — J11, script de l'« Appel de suivi » (CAD98, 23/09/2026)
-Le point d'étape avant le dernier message (J13). Ni date d'échéance ni « dernier appel » : la validité est dite par
-`j9_validite`, et le réveil J30 est encore un appel (CAD74). ✎ À valider (voir J2).
+### appel_suivi_j11 — J14, script de l'« Appel de décision » (CAD98, 23/09/2026)
+Le point d'étape avant l'appel de validité (J28) et le dernier message (J60). Ni date d'échéance ni « dernier appel » :
+la validité est dite par `appel_validite` (J28), et le réveil J30 est encore un appel (CAD74). ✎ À valider (voir J2).
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je fais le point avec vous sur votre proposition solaire : où en est votre réflexion ? S'il vous faut plus de temps ou d'autres informations, dites-le-moi simplement.
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. بغيت نديرو النقطة معاكم على العرض ديال الطاقة الشمسية ديالكم: فين وصلتو ف التفكير؟ إلا خاصكم شي وقت زايد ولا شي معلومات أخرى، غير قولوها ليا بلا حرج.
 
-### j13_dernier — J13, WhatsApp
+### j13_dernier — J60, WhatsApp
 CAD110 — porte de sortie (voir note, section `je_classe_j7`) : les deux DERNIÈRES touches après-devis.
-FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.
-DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.
+17/11/2026 — approuvé par le fondateur : salutation standard ajoutée, le reste inchangé (FR et darija).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.
 E-MAIL OBJET : Votre projet solaire — [Marque]
 E-MAIL : Bonjour {civilite} [Prénom], je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — [Conseiller], [Marque]
 
@@ -331,6 +336,82 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je viens d'essayer 
 ### reactivation_k6_p2 — K6 palier 2, depuis la demande d'origine (interrupteur `REACTIVATION_K6_PALIER2`)
 FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je reviens vers vous suite à votre demande de [mois du dossier] sur [plateforme]. Êtes-vous toujours à la recherche d'une solution solaire pour votre maison à {ville} ? Si oui, une photo de votre dernière facture, et je vous envoie l'estimation. Répondez STOP et je n'insiste plus.
 
+### relance_pieces — étape « Relancer le client pour ses pièces » (lead professionnel joint, aucune facture reçue)
+16/11/2026 (décision fondateur) — l'étape du moteur `pieces_recues` (CADV29, D-CADV-10) porte désormais son message : composé de phrases déjà validées de `valeur_j1` (B2B) ; darija non relue par un locuteur natif. Retirées de `valeur_j1` : « je n'ai pas réussi à vous joindre » (le client est joint) et la question d'appel de cinq minutes. Texte pro seulement (l'étape n'existe que pour un lead commercial/industriel).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je prépare l'étude solaire de [société]. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنوجد الدراسة ديال الطاقة الشمسية ديال [société]. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. جاوبو STOP وما نلحوش عليكم.
+
+## Corrections de textes du 17/11/2026 (approuvées par le fondateur)
+
+Textes COMPOSÉS de phrases déjà validées (aucun mot nouveau, aucun chiffre). Salutation standard : « Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. » (darija : celle de `je_classe_j7`). Les clés d'APPEL ne portent pas la ligne STOP (un script se dit à voix haute) ; `message_creneau`, écrit, la porte. Entrées modifiées plus haut : `je_classe_j7`, `repondeur`, `appel_relance`, `j6_garanties`, `j13_dernier` (une ligne datée chacune).
+
+Darija à formuler par un locuteur natif : `repondeur` (nouvelle phrase FR), `appel_rappel_convenu`, `appel_planifier_visite`.
+
+### appel_ouverture_reference — script d'appel d'ouverture, lead venu par recommandation (canal « Référence »)
+17/11/2026 — approuvé par le fondateur : l'appel d'ouverture suit l'origine du lead comme `identite_reference` ; seule la phrase d'origine change (copiée de `identite_reference`), la mention légale de `appel_ouverture` (CAD109) reste dans sa propre phrase : sans prescripteur, la phrase d'origine est omise (MRY13) et la mention part quand même.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. [prescripteur] nous a parlé de vous pour le solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. [prescripteur] هضر لينا عليكم بخصوص الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+
+### appel_ouverture_telephone — script d'appel d'ouverture, lead venu par téléphone ou en boutique (canaux « Téléphone », « Visite/Walk-in »)
+17/11/2026 — approuvé par le fondateur : phrase d'origine copiée de `identite_telephone`.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Suite à notre échange au sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. بعد الهضرة ديالنا على الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+
+### appel_ouverture_whatsapp_entrant — script d'appel d'ouverture, lead né d'un message entrant (canal « WhatsApp/CTWA »)
+17/11/2026 — approuvé par le fondateur : phrase d'origine copiée de `identite_whatsapp_entrant`.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Merci pour votre message au sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+
+### appel_ouverture_ancien_dossier — script d'appel d'ouverture, fiche ouverte un mois antérieur, reprise aujourd'hui
+17/11/2026 — approuvé par le fondateur : phrase d'origine copiée de `identite_ancien_dossier` (sans mois du dossier, elle est omise).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Vous nous aviez consultés en [mois du dossier] au sujet du solaire. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. كنتو سولتونا ف [mois du dossier] على الطاقة الشمسية. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+
+### appel_ouverture_deuxieme_affaire — script d'appel d'ouverture, client déjà signé qui revient (cadence `deuxieme_affaire`, étape 2)
+17/11/2026 — approuvé par le fondateur : phrase d'origine copiée de `deuxieme_affaire` ; posé comme gabarit par défaut de l'étape 2 de sa cadence.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Nous avons déjà travaillé ensemble sur votre première installation. Vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم. تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
+
+### appel_validite — J28, script de l'« Appel de validité » (après devis)
+17/11/2026 — approuvé par le fondateur : le J28 réutilisait le script du J14 ; les deux premières phrases viennent de `j9_validite`, la dernière de `appel_suivi_j11`. Sans date de validité connue, la phrase qui la porte est omise (MRY13).
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. Où en est votre réflexion ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح. فين وصلتو ف التفكير؟
+
+### appel_dernier_suivi — J90, script du « Dernier appel » (après devis)
+17/11/2026 — approuvé par le fondateur : la première phrase vient de `j13_dernier`, « je vous envoie l'estimation à jour » de `reveil_a2` ; variantes de segment : le mot de la variante `reveil_a2`/`reveil_a1` du segment.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie l'estimation à jour.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. إلا رجع المشروع كيهمكم، غادي نصيفط ليكم التقدير الجديد.
+POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie le chiffrage à jour.
+B2B : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si le projet reprend, je vous envoie l'étude à jour.
+
+### appel_reveil_devis — J30, script de l'appel de réveil, dormant avec devis (le réveil J30 est un appel)
+17/11/2026 — approuvé par le fondateur : le réveil J30 lisait le WhatsApp `reveil_a1` (« je vous l'envoie ici… Répondez STOP »). Phrases de `reveil_a1` (et de sa variante de segment), « — c'est un appel commercial » de `appel_ouverture`, question de `reveil_b`. Un J30 passé en WhatsApp garde `reveil_a1`.
+FR : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque] — c'est un appel commercial. Vous aviez reçu un devis solaire chez nous. On peut maintenant vous montrer vos panneaux posés sur votre toit, en 3D, avec l'estimation à jour de vos économies — c'est gratuit, sans engagement. Votre projet est-il toujours d'actualité ?
+DARIJA : السلام عليكم {civilite} [الاسم]، أنا [المستشار] من [Marque] — هادا اتصال تجاري. كنتو توصلتو بعرض للطاقة الشمسية عندنا. دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم — بلاش، بلا ما تلتزمو بوالو. واش المشروع ديالكم مازال كيهمكم؟
+POMPAGE : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque] — c'est un appel commercial. Vous aviez reçu un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans engagement. Votre projet est-il toujours d'actualité ?
+POMPAGE DARIJA : السلام عليكم {civilite} [الاسم]، أنا [المستشار] من [Marque] — هادا اتصال تجاري. كنتو توصلتو بعرض ديال الضخ بالطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما تلتزمو بوالو. واش المشروع ديالكم مازال كيهمكم؟
+B2B : Bonjour {civilite} [Prénom], c'est [Conseiller] de [Marque] — c'est un appel commercial. Vous aviez reçu une étude solaire chez nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est gratuit, sans engagement. Votre projet est-il toujours d'actualité ?
+B2B DARIJA : السلام عليكم {civilite} [الاسم]، أنا [المستشار] من [Marque] — هادا اتصال تجاري. كنتو توصلتو بدراسة ديال الطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الدراسة محينة — بلاش، بلا ما تلتزمو بوالو. واش المشروع ديالكم مازال كيهمكم؟
+
+### appel_reveil_sans_devis — J30, script de l'appel de réveil, lead jamais chiffré
+17/11/2026 — approuvé par le fondateur : phrase de `reveil_a2`, mention d'appel commercial, question de `reveil_b`. Un J30 passé en WhatsApp garde `reveil_a2`.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Il y a un mois, vous vous renseigniez sur le solaire. Votre projet est-il toujours d'actualité ?
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. هادي شهر كنتو كتسولو على الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟
+POMPAGE : Bonjour {civilite} [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Il y a un mois, vous vous renseigniez sur le pompage solaire. Votre projet est-il toujours d'actualité ?
+POMPAGE DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. هادي شهر كنتو كتسولو على الضخ بالطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟
+
+### message_creneau — étape « Message — proposer un créneau pour l'appel » (WhatsApp, après l'appel)
+17/11/2026 — approuvé par le fondateur : l'étape n'avait aucun texte ; les deux phrases viennent de `valeur_j1`. Ligne STOP posée par le mécanisme commun.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je n'ai pas réussi à vous joindre. Quel moment vous arrange pour un appel de cinq minutes ? Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. حاولت نعيط ليكم ولكن ما لقيتكمش. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟ جاوبو STOP وما نلحوش عليكم.
+
+### appel_rappel_convenu — étape « Rappeler le client — rappel convenu » (appel)
+17/11/2026 — approuvé par le fondateur : l'étape n'avait aucun texte. FR seulement : la darija est à formuler par un locuteur natif, le repli français sert d'ici là.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous rappelle comme convenu — vous avez deux minutes maintenant ?
+
+### appel_planifier_visite — étape « Planifier la visite technique convenue » (appel)
+17/11/2026 — approuvé par le fondateur : l'étape n'avait aucun texte. FR seulement : la darija est à formuler par un locuteur natif, le repli français sert d'ici là.
+FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle pour fixer la date de la visite technique.
 ## Dossiers institutionnels, par segment (CAD125, 21/09/2026)
 
 Ces deux textes ne sont PAS des barreaux de cadence : ils sont posés comme TÂCHE d'un playbook conditionné sur

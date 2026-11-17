@@ -562,6 +562,24 @@
  },
  {
   "actions_map": {
+   "get": "deleguer",
+   "post": "deleguer"
+  },
+  "motif": "^leads/deleguer/$",
+  "nom": "lead-deleguer",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
+   "get": "deleguer",
+   "post": "deleguer"
+  },
+  "motif": "^leads/deleguer\\.(?P<format>[a-z0-9]+)/?$",
+  "nom": "lead-deleguer",
+  "vue": "LeadViewSet"
+ },
+ {
+  "actions_map": {
    "get": "doublons"
   },
   "motif": "^leads/doublons/$",

@@ -10,8 +10,11 @@ export const isAdminOrResponsableMock = vi.fn(() => false)
 vi.mock('../hooks/useHasPermission', () => ({
   useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
 }))
-vi.mock('react-redux', () => ({
+vi.mock('react-redux', async () => ({
   useSelector: (sel) => sel({ auth: { user: { id: 42 } } }),
+  // `useDroitMetier` (bouton « Déléguer ») lit le store par son contexte : sans
+  // store, le geste reste visible, comme dans un rendu isolé.
+  ReactReduxContext: (await import('react')).createContext(null),
 }))
 
 /** `crmApi` de base de l'écran ; `surcharge` remplace/ajoute des méthodes. */

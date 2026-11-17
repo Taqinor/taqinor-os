@@ -41,19 +41,21 @@ def ecrivains():
 
 
 def scenario():
-    tz = types.ModuleType("django.utils.timezone"); tz.now = lambda: MAINTENANT; tz.localdate = lambda: MAINTENANT.date()
+    tz = types.ModuleType("django.utils.timezone"); tz.now = lambda: MAINTENANT; tz.localdate = lambda d=None: (d or MAINTENANT).date()
     class HttpResponse(dict):
         def __init__(s, contenu=b"", content_type=None): super().__init__(); s.status_code, s.contenu = 200, contenu
     def mod(nom, **a):
         m = types.ModuleType(nom); m.__path__ = []; m.__dict__.update(a); sys.modules[nom] = m; return m
     mod("django"); mod("django.http", HttpResponse=HttpResponse); mod("django.utils", timezone=tz); sys.modules["django.utils.timezone"] = tz
-    att = types.SimpleNamespace(file_key="k/photo.jpg", mime="image/jpeg")
+    att = types.SimpleNamespace(pk=1, file_key="k/photo.jpg", mime="image/jpeg")
     class QS(list):
         def filter(s, **k): return QS(s)
         def select_related(s, *a): return s
         def first(s): return s[0] if s else None
     sel = mod("apps.installations.selectors", intervention_rapport_public_payload=lambda i, r: {"photos": 3, "signataire": "X"})
-    fs = mod("apps.installations.field_services", intervention_photos=lambda i: QS([att]))
+    # APUB30 : la photo n'est servie que si son créneau est ACTIF (photos_by_slot / active_shotlist, ORM hors hôte : bouchonnés)
+    fs = mod("apps.installations.field_services", intervention_photos=lambda i: QS([att]), photos_by_slot=lambda i: {"avant": [att]},
+             active_shotlist=lambda c: [types.SimpleNamespace(cle="avant")])
     pdf = mod("apps.installations.intervention_pdf", compte_rendu_pdf=lambda i: b"%PDF")
     mod("apps"); mod("apps.installations", selectors=sel, field_services=fs, intervention_pdf=pdf)
     mod("apps.records"); mod("apps.records.storage", fetch_attachment=lambda k: (b"JPG", None))
@@ -82,8 +84,9 @@ def scenario():
     vsrc = (DJ / "apps/installations/public_views.py").read_text(encoding="utf-8")
     arbre = ast.parse(vsrc)
     ns = {"__name__": "apps.installations.public_views", "__package__": "apps.installations", "Intervention": Intervention,
-          "Response": Response, "status": types.SimpleNamespace(HTTP_404_NOT_FOUND=404, HTTP_410_GONE=410), "timezone": tz}
-    morceaux = [n for n in arbre.body if isinstance(n, ast.FunctionDef) and n.name == "_rapport_publiable"]
+          "datetime": datetime, "Response": Response, "status": types.SimpleNamespace(HTTP_404_NOT_FOUND=404, HTTP_410_GONE=410), "timezone": tz}
+    morceaux = [n for n in arbre.body if (isinstance(n, ast.FunctionDef) and n.name == "_rapport_publiable")
+                or (isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "DUREE_LIEN_RAPPORT_JOURS")]  # APUB7 : 90 jours
     gardes = {}
     for n in arbre.body:
         if isinstance(n, ast.ClassDef) and n.name in VUES:
@@ -97,6 +100,8 @@ def scenario():
     for nom in VUES:
         args = (jeton, 1) if "Photo" in nom else (jeton,)
         try: statuts[nom] = ns[nom]().get(types.SimpleNamespace(), *args).status_code
+        except (NameError, AttributeError, ImportError, TypeError) as e:  # sonde cassée : jamais lue comme « refusé »
+            raise RuntimeError(f"sonde cassée ({nom}) : {type(e).__name__}: {e}") from e
         except Exception as e: statuts[nom] = type(e).__name__  # noqa: BLE001 — un refus levé = non servi
     return {"jeton_stable_a_la_recloture": jeton == jeton2, "ecritures_save": iv.ecritures,
             "pose_il_y_a": "5 ans (statut validée)", "statut_par_vue": statuts, "gardes_vues": gardes}

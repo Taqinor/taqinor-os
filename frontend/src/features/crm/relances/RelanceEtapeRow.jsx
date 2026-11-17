@@ -18,6 +18,7 @@ import PlanifierVisiteModal from './PlanifierVisiteModal'
 import { suiteAnnoncee, suiteDuSaut } from './suite'
 import {
   typeEtape, reponsesDeLEtape, estTache, estTacheSansAppel as estTacheSansAppel_,
+  organiserReponses, proposerDarija, confirmationMessageExigee, gesteVisible,
 } from './parcours'
 import { refusConflit } from '../../../lib/apiError'
 import BasculeReplie from './BasculeReplie'
@@ -107,11 +108,11 @@ const CADENCE_TONE = {
 //     l'étape planifier), `replanification` (déplacer la visite existante) ;
 //   · `message` : l'accusé PROPOSÉ juste après (aperçu + clic humain, D5).
 
-// Les deux types d'étape de la table qui portent un bouton de plus à côté de
-// « Fait » : « Créer le devis » + « Planifier la visite » (devis), et
-// « Planifier la visite » (planifier). Identifiants de `parcours_suivi.json`.
+// Le type d'étape de la table qui porte un bouton de plus à côté de « Fait » :
+// « Créer le devis » (devis). Identifiant de `parcours_suivi.json`. « Planifier
+// la visite » n'est plus un bouton : les réponses « Oui, la date est calée » et
+// « Visite d'abord » l'ouvrent ET clôturent l'étape (le bouton, lui, ne clôturait rien).
 const CLE_ETAPE_DEVIS = 'devis'
-const CLE_ETAPE_PLANIFIER = 'planifier'
 
 /** SUIVI-BLOCAGE — le message d'un refus qui n'est PAS une erreur de champ :
  *  le rôle (403), une touche déjà traitée, un serveur ou un réseau en panne.
@@ -511,6 +512,10 @@ export default function RelanceEtapeRow({
   // table du parcours, obligatoire) et le refus du serveur sous son champ.
   const [raisonAttente, setRaisonAttente] = useState('')
   const [erreurRaison, setErreurRaison] = useState('')
+  // Le GROUPE de réponses déplié (« Pas joint », « Plus tard… », « Autre réponse »)
+  // : sa clé, '' quand aucune seconde rangée n'est ouverte. Présentation seule —
+  // la réponse choisie reste `reponseIdx`, avec sa clé serveur.
+  const [groupeOuvert, setGroupeOuvert] = useState('')
   // RLC3 — la confirmation explicite « marquer faite sans avoir ouvert le
   // message ? ». Jamais un blocage : la case est TOUJOURS disponible (la
   // commerciale peut avoir écrit depuis son téléphone) — elle rend seulement le geste
@@ -591,7 +596,7 @@ export default function RelanceEtapeRow({
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
     setSansOuverture(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif(''); setMotifPerte('')
-    setRaisonAttente(''); setErreurRaison('')
+    setRaisonAttente(''); setErreurRaison(''); setGroupeOuvert('')
     setPerduJunk(false); setMotifJunk('')
     setQueDarija(false); setErreurLangue('')
     setTypePiece(''); setFichierPiece(null); setErreurPiece('')
@@ -621,11 +626,9 @@ export default function RelanceEtapeRow({
   // PARAM-CADENCE E8), puis libellé par défaut, puis cadence + canal.
   const type = typeEtape(etape)
   const questionsTouche = { question: type.question, aide: type.aide }
-  // VISCAD6-B — l'étape de filet « devis parti » porte deux actions de plus
-  // (« Créer le devis », « Planifier la visite ») ; et l'étape « Planifier la
-  // visite » son bouton de planification.
+  // VISCAD6-B — l'étape de filet « devis parti » porte une action de plus
+  // (« Créer le devis »).
   const estEtapeDevis = type.id === CLE_ETAPE_DEVIS
-  const estEtapePlanifier = type.id === CLE_ETAPE_PLANIFIER
   const estToucheVisite = type.famille === 'Visite technique'
   // SUIVI-BLOCAGE — une TÂCHE (préparer le devis, décider la suite, planifier
   // la visite, devis modifié, question de prix) n'est jamais verrouillée « à
@@ -636,6 +639,33 @@ export default function RelanceEtapeRow({
   const reponsesDisponibles = reponsesDeLEtape(type, etape)
   const reponseChoisie = reponseIdx == null
     ? null : reponsesDisponibles[reponseIdx]
+  // Les réponses telles que l'écran les PROPOSE : pastilles ordinaires, groupes
+  // (« Pas joint », « Plus tard… ») et « Autre réponse » (`parcours.js`).
+  const affichageReponses = organiserReponses(reponsesDisponibles)
+  const groupeActif = affichageReponses.find(
+    (it) => it.genre !== 'reponse' && it.cle === groupeOuvert) ?? null
+  // CAD10/CAD11 — choisir une réponse charge les motifs quand elle en demande.
+  const choisirReponse = (idx, basculer = true) => {
+    setReponseIdx((cur) => (basculer && cur === idx ? null : idx)); setErreurOutcome('')
+    setErreurMotif(''); setErreurRaison('')
+    const r = reponsesDisponibles[idx]
+    if (r && (r.outcome === 'refuse' || r.junk || r.motif_perte)) chargerMotifs()
+  }
+  // Un groupe se déplie avec son PREMIER membre déjà choisi (Confirmer marche
+  // tout de suite) ; « Autre réponse » ne choisit rien d'avance. Re-cliquer le
+  // groupe le referme et vide le choix.
+  const cliquerGroupe = (item) => {
+    if (groupeOuvert === item.cle) {
+      setGroupeOuvert(''); setReponseIdx(null); setErreurOutcome('')
+      return
+    }
+    setGroupeOuvert(item.cle)
+    if (item.genre === 'autre') {
+      setReponseIdx(null); setErreurOutcome(''); setErreurMotif(''); setErreurRaison('')
+      return
+    }
+    choisirReponse(item.membres[0].idx, false)
+  }
   // RLC3 — cette touche consiste-t-elle à écrire, et le message a-t-il été
   // ouvert ? `message_ouvert_le` vient du SERVEUR (activité « WhatsApp
   // ouvert », contrat `relance_etape_v2`) — jamais une mémoire d'écran, qui
@@ -646,9 +676,19 @@ export default function RelanceEtapeRow({
   // SUIVI-PARCOURS — la question « avez-vous ouvert le message ? » ne vaut
   // que pour une réponse qui parle du MESSAGE : « Client joint au téléphone »
   // dit justement qu'on a appelé à la place.
+  // « Oui — pièce reçue » (geste `piece`) n'envoie rien : le client a écrit de lui-même.
   const reponseParTelephone = reponseChoisie?.id === 'joint_telephone'
+    || reponseChoisie?.geste === 'piece'
+  // La case ne bloque pas non plus un REFUS ni un « Ne plus me contacter » : le
+  // client ne demande rien d'un message qu'on aurait dû ouvrir.
   const confirmationOuvertureRequise = (
-    toucheMessage && !messageOuvertLe && !sansOuverture && !reponseParTelephone)
+    toucheMessage && !messageOuvertLe && !sansOuverture
+    && confirmationMessageExigee(reponseChoisie))
+  // Le libellé de la case — la raison grisée de « Confirmer » le CITE tel quel.
+  const libelleSansOuverture = `Vous n’avez pas ouvert de message ${CANAL_LABELS[etape.canal] ?? etape.canal} pour cette touche — c’est normal si vous avez appelé à la place.`
+  // La case « ne parle que darija » : seulement une fois le client JOINT, jamais
+  // sur une tâche (`parcours.js`).
+  const afficherDarija = etape.lead_langue !== 'darija' && proposerDarija(type, reponseChoisie)
   // SUIVI-BLOCAGE (30/09/2026) — le verrou « à venir » (CAD44 : on ne coche
   // pas un geste qui n'a pas eu lieu) ne doit jamais empêcher de DIRE un geste
   // qui A eu lieu. Trois cas ouvrent donc « Fait » avant l'échéance :
@@ -674,7 +714,11 @@ export default function RelanceEtapeRow({
     : '')
   // CIQ509 — le message SOUS le champ « Raison de l'attente » : le refus du
   // serveur, sinon l'invite tant qu'aucune raison n'est choisie.
-  const messageRaison = erreurRaison || (reponseChoisie?.raison && !raisonAttente
+  // Une seule raison possible pour ce segment : elle est déjà choisie.
+  const raisonsDuSegment = reponseChoisie?.raisons ?? []
+  const raisonEffective = raisonAttente
+    || (raisonsDuSegment.length === 1 ? raisonsDuSegment[0].valeur : '')
+  const messageRaison = erreurRaison || (reponseChoisie?.raison && !raisonEffective
     ? '« Raison de l’attente » : choisissez la raison de l’attente.'
     : '')
   // CAD11 — les motifs JUNK de la société ; celui proposé par défaut est le
@@ -753,8 +797,8 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.date && !rappelLe) return 'Indiquez la date convenue.'
     if (reponseChoisie.date && rappelPasse) return 'La date est déjà passée.'
     if (reponseChoisie.motif_perte && !motifPerte) return 'Choisissez le motif de perte.'
-    if (reponseChoisie.raison && !raisonAttente) return 'Choisissez la raison de l’attente.'
-    if (confirmationOuvertureRequise) return 'Cochez la case « message non ouvert » ci-dessus.'
+    if (reponseChoisie.raison && !raisonEffective) return 'Choisissez la raison de l’attente.'
+    if (confirmationOuvertureRequise) return `Cochez la case « ${libelleSansOuverture} » ci-dessus.`
     return ''
   })()
 
@@ -769,6 +813,12 @@ export default function RelanceEtapeRow({
     //   · planification_seule (« la date est calée ») : seule la date clôt
     //     l'étape planifier ;
     //   · replanification : la visite existante est déplacée, la touche reste.
+    //   · piece (« Oui — pièce reçue », étape « Relancer le client pour ses
+    //     pièces ») : le panneau « Pièce reçue » s'ouvre, rien ne part d'ici.
+    if (reponseChoisie.geste === 'piece') {
+      setPanel('piece')
+      return
+    }
     if (reponseChoisie.geste) {
       setGestePlanification(reponseChoisie.geste)
       setPlanifierOuvert(true)
@@ -804,7 +854,7 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.motif_perte && motifPerte) payload.motif_perte = motifPerte
     // CIQ509 — « En attente d'un accord » : la raison de l'attente part avec
     // la réponse (liste fermée du serveur, valeur lue dans la table).
-    if (reponseChoisie.raison && raisonAttente) payload.raison_attente = raisonAttente
+    if (reponseChoisie.raison && raisonEffective) payload.raison_attente = raisonEffective
     // CAD11 — « perdu, motif junk » seulement si la case est COCHÉE.
     if (reponseChoisie.junk && perduJunk && motifJunkEffectif) {
       payload.perdu_junk = motifJunkEffectif
@@ -816,7 +866,7 @@ export default function RelanceEtapeRow({
     }
     // CAD63 — « ne parle que darija » : la langue part AVEC la réponse ; le
     // serveur ne la pose sur la fiche que si la touche est enregistrée.
-    if (queDarija) payload.langue = 'darija'
+    if (queDarija && afficherDarija) payload.langue = 'darija'
     setErreurOutcome(''); setErreurLangue('')
     return payload
   }
@@ -1129,20 +1179,24 @@ export default function RelanceEtapeRow({
           {/* CAD101 — le client a envoyé sa facture / son adresse / sa
               localisation : UN geste, sur toute touche ouverte (même à
               venir — c'est un événement réel, pas une coche anticipée). */}
-          <Button
-            size="sm" variant="outline" disabled={busy}
-            onClick={() => setPanel('piece')}
-          >
-            <Paperclip className="size-3.5" /> Pièce reçue
-          </Button>
+          {/* « Pièce reçue » : retiré des types listés par le geste `piece_recue`
+              de la table (`masque_sur` : suivi après devis, tâches qui ne
+              l'attendent pas). */}
+          {gesteVisible('piece_recue', type) && (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setPanel('piece')}
+            >
+              <Paperclip className="size-3.5" /> Pièce reçue
+            </Button>
+          )}
           {/* VISCAD6-B (fondateur 24/09/2026) — sur l'étape de filet « devis
-              parti » SEULE, deux actions RENDENT la touche actionnable au
+              parti » SEULE, « Créer le devis » rend la touche actionnable au
               lieu de la laisser en texte inerte : créer le devis tout de
               suite (même chemin que `LeadWorkspace.jsx` — `navigate` peut
               manquer en mode compact/frise, l'ancre `href` reste un repli
-              qui navigue vraiment), ou planifier la visite (même modale
-              PARTAGÉE que le CTA de coaching et l'issue « Visite acceptée »
-              ci-dessous, VISCAD6). */}
+              qui navigue vraiment). La visite se planifie par les réponses
+              « Visite d'abord » / « Oui, la date est calée ». */}
           {estEtapeDevis && (
             <Button asChild size="sm" variant="outline">
               <a
@@ -1155,19 +1209,6 @@ export default function RelanceEtapeRow({
               >
                 Créer le devis
               </a>
-            </Button>
-          )}
-          {(estEtapeDevis || estEtapePlanifier) && (
-            <Button
-              size="sm" variant="outline" disabled={busy}
-              onClick={() => {
-                // Sur l'étape « Planifier la visite », le bouton vaut la
-                // réponse « la date est calée » : la planification clôt l'étape.
-                if (estEtapePlanifier) setGestePlanification('planification_seule')
-                setPlanifierOuvert(true)
-              }}
-            >
-              Planifier la visite
             </Button>
           )}
           {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
@@ -1274,7 +1315,7 @@ export default function RelanceEtapeRow({
               >
                 Marquer le devis{etape.devis_reference ? ` ${etape.devis_reference}` : ''} accepté
               </a>
-              {' '}: le dossier passe en Signé, toutes les relances s’arrêtent et deux appels vous restent (confirmer la signature à J+2, rappeler l’acompte à J+7).
+              {' '}: le dossier passe en Signé et les relances s’arrêtent.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
@@ -1305,28 +1346,61 @@ export default function RelanceEtapeRow({
                   la question ne présume plus qu'un message devait partir.
                   Même mécanisme (case à cocher, jamais un blocage), formulation
                   neutre. */}
-              <span>
-                Vous n’avez pas ouvert de message {CANAL_LABELS[etape.canal] ?? etape.canal} pour
-                cette touche — c’est normal si vous avez appelé à la place. Cochez
-                pour confirmer.
-              </span>
+              <span>{libelleSansOuverture}</span>
             </label>
           )}
           <div className="flex flex-wrap gap-1.5" role="group" aria-label={questionsTouche.question}>
-            {reponsesDisponibles.map((r, idx) => (
+            {affichageReponses.map((item) => (item.genre === 'reponse' ? (
               <Button
-                key={r.label} type="button" size="sm"
-                variant={reponseIdx === idx ? 'default' : 'outline'}
-                onClick={() => {
-                  setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('')
-                  setErreurMotif(''); setErreurRaison('')
-                  if (r.outcome === 'refuse' || r.junk || r.motif_perte) chargerMotifs()
-                }}
+                key={`reponse-${item.idx}`} type="button" size="sm"
+                variant={reponseIdx === item.idx ? 'default' : 'outline'}
+                onClick={() => { setGroupeOuvert(''); choisirReponse(item.idx) }}
               >
-                {r.label}
+                {item.reponse.label}
               </Button>
-            ))}
+            ) : (
+              <Button
+                key={`groupe-${item.cle}`} type="button" size="sm"
+                data-testid={`groupe-${item.cle}`}
+                aria-expanded={groupeOuvert === item.cle}
+                variant={groupeOuvert === item.cle ? 'default' : 'outline'}
+                onClick={() => cliquerGroupe(item)}
+              >
+                {item.label}
+              </Button>
+            )))}
           </div>
+          {/* La SECONDE rangée du groupe déplié : « Pas joint » (précision
+              facultative, la première est déjà choisie), « Plus tard… » ou
+              « Autre réponse » (rien de choisi d'avance). Chaque membre garde
+              sa clé serveur : seul l'accès change. */}
+          {groupeActif && (
+            <div className="flex flex-col gap-1" data-testid={`sous-reponses-${groupeActif.cle}`}>
+              {groupeActif.titre && (
+                <p className="text-xs text-muted-foreground">{groupeActif.titre}</p>
+              )}
+              <div className="flex flex-wrap gap-1.5" role="group"
+                   aria-label={groupeActif.titre || groupeActif.label}>
+                {groupeActif.membres.map(({ idx, reponse }) => (
+                  <Button
+                    key={`membre-${idx}`} type="button" size="sm"
+                    aria-pressed={reponseIdx === idx}
+                    variant={reponseIdx === idx ? 'default' : 'outline'}
+                    onClick={() => choisirReponse(idx, false)}
+                  >
+                    {reponse.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Un avertissement DÉCLARÉ par la table sur la réponse choisie (ex.
+              « Ne plus me contacter » : opposition légale, irréversible). */}
+          {reponseChoisie?.avertissement && (
+            <p className="text-xs font-medium text-danger" data-testid="avertissement-reponse">
+              {reponseChoisie.avertissement}
+            </p>
+          )}
           {/* CAD17 — la suite annoncée vient du SERVEUR (`etape.suites`,
               dérivée du moteur) : jamais une phrase écrite par cadence.
               CAD11 — la case « perdu, motif junk » cochée change la suite
@@ -1385,7 +1459,7 @@ export default function RelanceEtapeRow({
               <select
                 id={`raison-attente-${etape.id}`}
                 className={messageRaison ? 'form-select is-invalid' : 'form-select'}
-                value={raisonAttente}
+                value={raisonEffective}
                 onChange={(e) => { setRaisonAttente(e.target.value); setErreurRaison('') }}
               >
                 <option value="">— Choisir la raison —</option>
@@ -1501,7 +1575,7 @@ export default function RelanceEtapeRow({
           )}
           {/* CAD63 — la langue se découvre au téléphone : la poser ICI, sans
               quitter la touche ni rouvrir la fiche. Jamais cochée d'office. */}
-          {etape.lead_langue !== 'darija' && (
+          {afficherDarija && (
             <div className="flex flex-col gap-1">
               <label className="flex items-center gap-1.5 text-xs" data-testid="ne-parle-que-darija">
                 <input

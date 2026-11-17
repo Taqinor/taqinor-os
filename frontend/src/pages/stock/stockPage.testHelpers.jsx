@@ -7,13 +7,13 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import authReducer from '../../features/auth/store/authSlice'
 
 export function makeAuthStore({
-  role = 'admin', permissions = ['stock_modifier', 'stock_voir'], reducers = {},
+  role = 'admin', permissions = ['stock_modifier', 'stock_voir'], reducers = {}, user = { id: 1 },
 } = {}) {
   return configureStore({
     reducer: { auth: authReducer, ...reducers },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role, role_nom: role, permissions,
+        user, role, role_nom: role, permissions,
         isAuthenticated: true, loading: false,
       },
     },

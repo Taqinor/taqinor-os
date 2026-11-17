@@ -40,6 +40,9 @@ export function codesConnus() {
 export function cleSuite(reponse) {
   if (!reponse) return null
   if (reponse.reponse) return reponse.reponse
+  // « Oui — pièce reçue » : un geste (panneau « Pièce reçue »), sans clé servie —
+  // jamais la suite de « Relance envoyée » (`sans_issue`).
+  if (reponse.geste === 'piece') return null
   const issue = reponse.outcome ?? ''
   if (issue === '') return CLE_SANS_ISSUE
   // « intéressé » et « joint » ont le MÊME effet moteur (même table d'arrêt

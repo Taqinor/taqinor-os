@@ -279,6 +279,44 @@ def reponses_resolues(table: dict, etape: dict) -> list:
     return out
 
 
+def groupe_de(table: dict, modele: dict):
+    """Le groupe d'une réponse (``groupe`` du modèle) : ``(id, définition)`` ou ``None``."""
+    gid = modele.get('groupe')
+    if not gid:
+        return None
+    definition = (table.get('groupes') or {}).get(gid)
+    if definition is None:
+        erreur(f'Table : le groupe « {gid} » n\u2019est pas déclaré dans « groupes ».')
+    return gid, definition
+
+
+def organiser_reponses(table: dict, reponses: list) -> list:
+    """Comment l'écran PROPOSE les réponses (même règle que ``parcours.js``) :
+    ``('reponse', r)``, ``('groupe', id, définition, [membres])`` (au moins deux
+    membres sur l'étape ; un groupe d'un seul membre est une réponse ordinaire) et,
+    en dernier, ``('autre', [membres])`` pour les réponses ``rang: autre``."""
+    membres_par_groupe: dict = {}
+    for r in reponses:
+        g = groupe_de(table, r) if r.get('rang') != 'autre' else None
+        if g:
+            membres_par_groupe.setdefault(g[0], []).append(r)
+    sortie, autres, vus = [], [], set()
+    for r in reponses:
+        if r.get('rang') == 'autre':
+            autres.append(r)
+            continue
+        g = groupe_de(table, r)
+        if g and len(membres_par_groupe[g[0]]) >= 2:
+            if g[0] not in vus:
+                vus.add(g[0])
+                sortie.append(('groupe', g[0], g[1], membres_par_groupe[g[0]]))
+            continue
+        sortie.append(('reponse', r))
+    if autres:
+        sortie.append(('autre', autres))
+    return sortie
+
+
 def valider_table(table: dict) -> None:
     """Refuse (message en français) une table dont il manquerait un champ que
     le guide affiche — plutôt qu'un guide troué ou une trace Python."""
@@ -700,6 +738,8 @@ table.touches td:nth-child(3) { width: 17%; }
 .pastille { display: inline-block; font-size: 7.5pt; font-weight: 400; color: #555; border: 0.4pt solid #aaa; \
 border-radius: 2mm; padding: 0 1.6mm; margin: 0.4mm 0 0 1.4mm; white-space: nowrap; }
 .note { font-size: 9pt; color: #555; margin: 1.5mm 0 0; }
+tr.groupe td { background: #f0f6f3; border-top: 0.8pt solid #0b3d2e; }
+td.membre { padding-left: 6mm; }
 .pied { margin-top: 8mm; padding-top: 2mm; border-top: 0.5pt solid #bbb; font-size: 9pt; color: #666; break-inside: \
 avoid; page-break-inside: avoid; }
 """
@@ -816,9 +856,14 @@ def html_regles() -> str:
 def html_boutons(table: dict) -> str:
     lignes = ['<h2>3. Les boutons d\u2019une étape</h2>', '<table>',
               '<tr><th style="width:24%">Bouton</th><th>Ce qu\u2019il fait</th></tr>']
+    noms_etapes = {e['id']: e['nom'] for e in table['etapes']}
     for g in table['gestes']:
+        absent = ''
+        if g.get('masque_sur'):
+            noms = ' \u00b7 '.join(f'\u00ab {noms_etapes.get(i, i)} \u00bb' for i in g['masque_sur'])
+            absent = f'<br><span class="note">{esc_ecran("Bouton absent des étapes : " + noms + ".")}</span>'
         lignes.append(f'<tr><td><strong>{esc(g["label"])}</strong></td>'
-                      f'<td>{esc_ecran(adapter(g["effet"]))}{mention_segments(g)}</td></tr>')
+                      f'<td>{esc_ecran(adapter(g["effet"]))}{mention_segments(g)}{absent}</td></tr>')
     lignes.append('</table>')
     return '\n'.join(lignes)
 
@@ -862,6 +907,54 @@ def protocole_de_famille(etapes: list) -> str | None:
     return None
 
 
+def mention_raisons(r: dict) -> str:
+    """Les raisons d'attente que l'écran propose, par segment (``raisons[].segments`` de
+    la table ; un lead sans segment est traité comme résidentiel) — jamais retapées ici."""
+    if not r.get('raisons'):
+        return ''
+    par_segment = []
+    for segment in ('residentiel', 'agricole', 'commercial', 'industriel'):
+        libelles = [x['libelle'] for x in r['raisons'] if segment in x.get('segments', (segment,))]
+        par_segment.append(f'{NOMS_SEGMENT.get(segment, segment)} : ' + ' ; '.join(libelles))
+    texte = 'Raisons proposées \u2014 ' + ' \u00b7 '.join(par_segment) + '. Une seule raison possible : elle est déjà choisie.'
+    return f'<br><span class="note">{esc_ecran(texte)}</span>'
+
+
+def ligne_reponse(r: dict, membre: bool = False, autre: bool = False) -> str:
+    """Une ligne « Ta réponse / Ce qui se passe ensuite » du guide."""
+    pastilles = ''
+    if r.get('_sur_appel'):
+        pastilles += '<span class="pastille">sur un appel</span>'
+    if autre:
+        pastilles += '<span class="pastille">autre réponse</span>'
+    if r.get('date'):
+        pastilles += '<span class="pastille">date à saisir</span>'
+    if r.get('motif_perte'):
+        pastilles += '<span class="pastille">motif à choisir</span>'
+    if r.get('motif_refus'):
+        pastilles += '<span class="pastille">motif de refus, facultatif</span>'
+    if r.get('geste') == 'piece':
+        pastilles += '<span class="pastille">ouvre « Pièce reçue »</span>'
+    elif r.get('geste'):
+        pastilles += '<span class="pastille">ouvre la planification</span>'
+    if r.get('masquee_si') == 'visite_prevue':
+        pastilles += '<span class="pastille">absente si une visite est déjà prévue</span>'
+    avertissement = ''
+    if r.get('avertissement'):
+        texte_avertissement = 'Avertissement à l\u2019écran : ' + r['avertissement']
+        avertissement = f'<br><span class="note">{esc_ecran(texte_avertissement)}</span>'
+    classe = ' class="membre"' if membre else ''
+    return (f'<tr><td{classe}><strong>{esc(r["label"])}</strong>{pastilles}</td>'
+            f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}{mention_raisons(r)}{avertissement}</td></tr>')
+
+
+def ligne_groupe(nom: str, explication: str, nombre: int) -> str:
+    """La ligne d'en-tête d'un groupe de réponses (le nom de la pastille, puis ses membres)."""
+    return (f'<tr class="groupe"><td colspan="2"><strong>{esc(nom)}</strong>'
+            f'<span class="pastille">{esc(explication)}</span> '
+            f'<span class="note">{pluriel(nombre, "réponse", "réponses")} :</span></td></tr>')
+
+
 def html_fiche(table: dict, etape: dict) -> str:
     tete = ['<div class="fiche">', '<div class="fiche-tete">']
     badge = '<span class="badge">Tâche : possible dès maintenant</span>' if etape.get('tache') else ''
@@ -874,10 +967,11 @@ def html_fiche(table: dict, etape: dict) -> str:
         tete.append(f'<p class="aide">{esc_ecran(adapter(etape["aide"]))}</p>')
     tete.append('</div>')
     lignes = tete + ['<table>', '<tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>']
-    # Les réponses d'APPEL décrites par la table (étape générique) : des lignes à part
+    # Les réponses d'APPEL décrites par la table (étape générique) : des réponses à part
     # entière, insérées après la première réponse comme à l'écran ; celles sans effet
     # restent une simple mention.
-    lignes_appel, sans_effet = [], []
+    resolues = reponses_resolues(table, etape)
+    reponses_appel_decrites, sans_effet = [], []
     for entree in etape.get('reponses_appel', ()):
         entree = entree if isinstance(entree, dict) else {'modele': entree}
         modele = table['modeles'].get(entree['modele'])
@@ -885,28 +979,30 @@ def html_fiche(table: dict, etape: dict) -> str:
             continue
         r = {**modele, **entree}
         if r.get('effet'):
-            lignes_appel.append(
-                f'<tr><td><strong>{esc(r["label"])}</strong>'
-                '<span class="pastille">sur un appel</span></td>'
-                f'<td>{esc_ecran(adapter(r["effet"]))}</td></tr>')
+            reponses_appel_decrites.append({**r, '_sur_appel': True})
         else:
             sans_effet.append(r['label'])
-    for rang, r in enumerate(reponses_resolues(table, etape)):
-        if rang == 1:
-            lignes.extend(lignes_appel)
-        pastilles = ''
-        if r.get('date'):
-            pastilles += '<span class="pastille">date à saisir</span>'
-        if r.get('motif_perte'):
-            pastilles += '<span class="pastille">motif à choisir</span>'
-        if r.get('motif_refus'):
-            pastilles += '<span class="pastille">motif de refus, facultatif</span>'
-        if r.get('geste'):
-            pastilles += '<span class="pastille">ouvre la planification</span>'
-        lignes.append(f'<tr><td><strong>{esc(r["label"])}</strong>{pastilles}</td>'
-                      f'<td>{esc_ecran(adapter(r["effet"]))}{mention_segments(r)}</td></tr>')
-    if len(lignes_appel) and len(reponses_resolues(table, etape)) < 2:
-        lignes.extend(lignes_appel)
+    a_afficher = list(resolues)
+    a_afficher[1:1] = reponses_appel_decrites
+    # Comme à l'écran : les groupes (« Pas joint », « Plus tard… ») ouvrent leurs
+    # réponses sous UNE pastille, « Autre réponse » range les réponses secondaires.
+    for element in organiser_reponses(table, a_afficher):
+        if element[0] == 'reponse':
+            lignes.append(ligne_reponse(element[1]))
+        elif element[0] == 'groupe':
+            _, _gid, definition, membres = element
+            lignes.append(ligne_groupe(
+                definition['label'],
+                'une seule pastille à l\u2019écran : ses réponses s\u2019ouvrent dessous, la première est '
+                'déjà choisie', len(membres)))
+            lignes.extend(ligne_reponse(m, membre=True) for m in membres)
+        else:
+            membres = element[1]
+            lignes.append(ligne_groupe(
+                (table.get('autre_reponse') or {}).get('label', 'Autre réponse'),
+                'une seule pastille à l\u2019écran : ses réponses s\u2019ouvrent dessous, aucune n\u2019est '
+                'choisie d\u2019avance', len(membres)))
+            lignes.extend(ligne_reponse(m, membre=True, autre=True) for m in membres)
     lignes.append('</table>')
     if sans_effet:
         liste = ' · '.join(sans_effet)

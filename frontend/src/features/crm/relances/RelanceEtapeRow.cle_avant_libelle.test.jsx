@@ -32,9 +32,11 @@ describe('PARAM-CADENCE — E8, la clé prime sur le libellé', () => {
     // `LIBELLES_ETAPE_DEVIS` connus — seule `cle` permet encore de
     // reconnaître l'étape « devis parti ».
     ligne({ ...GENERIQUE, cle: 'devis', libelle: 'Faire le devis' })
-    // Les deux actions de l'étape « devis parti » restent proposées.
+    // L'action de l'étape « devis parti » reste proposée. « Planifier la visite »
+    // n'est plus un bouton : les réponses « Visite d'abord » / « la date est calée »
+    // l'ouvrent ET close l'étape (17/11/2026).
     expect(screen.getByRole('link', { name: 'Créer le devis' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Planifier la visite' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Planifier la visite' })).not.toBeInTheDocument()
     // « Fait » reformule l'issue neutre en « Devis envoyé… », jamais
     // « Fait — passer à la suite » (qui mentirait sur l'effet réel).
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
@@ -49,7 +51,7 @@ describe('PARAM-CADENCE — E8, la clé prime sur le libellé', () => {
     ligne({ ...DEBRIEF, cle: 'debrief', libelle: 'Rappeler après la visite (renommé)' })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     expect(screen.getByText(QUESTION_DEBRIEF)).toBeInTheDocument()
-    expect(screen.queryByText('Réponse du client sur la proposition ?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Avez-vous eu le client ?')).not.toBeInTheDocument()
   })
 
   it('une ancienne touche sans `cle`, au libellé par défaut, se comporte comme avant', () => {

@@ -1,5 +1,5 @@
 # Audit PF5 « accès publics et à lien » — 2026-11-11 — L2
-<!-- dossier-v3 | groupe: APUB | base: ae5a7ae | fraicheur: 1ea772d | constats: 38 | taches: 48 | decisions: 5 -->
+<!-- dossier-v3 | groupe: APUB | base: ae5a7ae | fraicheur: 1ea772d | constats: 38 | taches: 49 | decisions: 5 -->
 
 ## 1. Charte
 | Champ | Valeur |

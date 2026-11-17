@@ -121,8 +121,10 @@ def sonde(ctx=None):
             intr.append(nom); continue
         n = len(re.findall(r"dispatch\(\s*fetchFactures\(\s*\)\s*\)", t))
         det[nom + ".dispatch_fetchFactures"] = n
-        if n:
-            rest.append("%s::%d relecture(s) totale(s)" % (nom, n))
+        # La relecture totale n'est un défaut que si elle PEUT remplacer la liste par le squelette : le retour « chargement » de la
+        # fiche ne porte pas de condition sur les lignes (corrigé : `loading && !showForm && factures.length === 0`).
+        if n and "length" not in det.get("retour_chargement", {}).get("condition", "length"):
+            rest.append("%s::%d relecture(s) totale(s) sous squelette" % (nom, n))
     rem, pai = lire("pages/ventes/RemisesEncaissementPage.jsx"), lire("pages/ventes/PaiementsPage.jsx")
     if rem is None or pai is None:
         intr.append("RemisesEncaissementPage.jsx ou PaiementsPage.jsx")
@@ -130,7 +132,10 @@ def sonde(ctx=None):
         if any("setRows([])" in c for c in catchs(rem)):
             rest.append("RemisesEncaissementPage::charger vide la liste (setRows([])) en échec")
         n = len(re.findall(r"setLoading\(true\)\s*;?\s*await chargerPaiements\(\)", pai))
-        if n:
+        # idem : le squelette ne remplace les lignes que si le rendu ne teste pas `rows.length` (corrigé : `loading && rows.length === 0`)
+        rendus = [x for x in re.findall(r"\{\s*loading\s*(?:&&|\?)\s*([^\n]*)", pai) if not x.startswith("rows.length")]
+        det["PaiementsPage.rendu_squelette_sans_condition_lignes"] = len(rendus)
+        if n and rendus:
             rest.append("PaiementsPage::%d geste(s) relisent tout sous squelette" % n)
     return rendu(rest, intr, defaut_encore_present=rest, **det)
 

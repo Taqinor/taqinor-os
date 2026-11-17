@@ -108,6 +108,89 @@ class MentionAppelCommercialTests(SimpleTestCase):
                 self.assertNotIn(self.MENTION, MESSAGE_TEMPLATE_DEFAULTS[cle])
 
 
+class AppelsDOuvertureParOrigineTests(SimpleTestCase):
+    """17/11/2026 — l'appel d'ouverture par ORIGINE garde la mention légale
+    (appel commercial + d'où viennent les coordonnées), en FR et en darija :
+    elle vit dans sa PROPRE phrase, donc survit à l'omission de la phrase
+    d'origine (MRY13) quand le prescripteur ou le mois manque."""
+
+    CLES = ['appel_ouverture_reference', 'appel_ouverture_telephone',
+            'appel_ouverture_whatsapp_entrant',
+            'appel_ouverture_ancien_dossier',
+            'appel_ouverture_deuxieme_affaire']
+
+    def test_chaque_variante_porte_la_mention_fr_et_darija(self):
+        for cle in self.CLES:
+            with self.subTest(cle=cle):
+                fr = MESSAGE_TEMPLATE_DEFAULTS[cle]
+                self.assertIn('appel commercial', fr)
+                self.assertIn("d'où viennent vos coordonnées", fr)
+                self.assertIn('هادا اتصال تجاري',
+                              MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle])
+                self.assertIn('منين جاو المعلومات ديالكم',
+                              MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle])
+
+    def test_la_phrase_d_origine_omise_laisse_la_mention_legale(self):
+        for cle in ('appel_ouverture_reference',
+                    'appel_ouverture_ancien_dossier'):
+            fr = MESSAGE_TEMPLATE_DEFAULTS[cle]
+            phrases = fr.split('. ')
+            # La phrase qui porte le placeholder d'origine est seule : la
+            # retirer laisse salutation, mention légale et question.
+            reste = [p for p in phrases
+                     if '{prescripteur}' not in p and '{mois_dossier}' not in p]
+            with self.subTest(cle=cle):
+                self.assertEqual(len(reste), len(phrases) - 1)
+                self.assertIn("d'où viennent vos coordonnées",
+                              '. '.join(reste))
+
+    def test_seule_la_phrase_d_origine_differe_de_appel_ouverture(self):
+        base = MESSAGE_TEMPLATE_DEFAULTS['appel_ouverture']
+        base_da = MESSAGE_TEMPLATE_DEFAULTS_DARIJA['appel_ouverture']
+        origine_fr = {
+            'appel_ouverture_reference': ('identite_reference',
+                                          '{prescripteur} nous a parlé de vous pour le solaire'),
+            'appel_ouverture_telephone': ('identite_telephone',
+                                          'Suite à notre échange au sujet du solaire'),
+            'appel_ouverture_whatsapp_entrant': ('identite_whatsapp_entrant',
+                                                 'Merci pour votre message au sujet du solaire'),
+            'appel_ouverture_ancien_dossier': ('identite_ancien_dossier',
+                                               'Vous nous aviez consultés en {mois_dossier} au sujet du solaire'),
+            'appel_ouverture_deuxieme_affaire': ('deuxieme_affaire',
+                                                 'Nous avons déjà travaillé ensemble sur votre première installation'),
+        }
+        origine_da = {
+            'appel_ouverture_reference': '{prescripteur} هضر لينا عليكم بخصوص الطاقة الشمسية',
+            'appel_ouverture_telephone': 'بعد الهضرة ديالنا على الطاقة الشمسية',
+            'appel_ouverture_whatsapp_entrant': 'شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية',
+            'appel_ouverture_ancien_dossier': 'كنتو سولتونا ف {mois_dossier} على الطاقة الشمسية',
+            'appel_ouverture_deuxieme_affaire': 'خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم',
+        }
+        for cle, (source, phrase) in origine_fr.items():
+            with self.subTest(cle=cle, langue='fr'):
+                # La phrase d'origine est copiée MOT POUR MOT de la clé source.
+                self.assertIn(phrase, MESSAGE_TEMPLATE_DEFAULTS[source])
+                self.assertEqual(
+                    MESSAGE_TEMPLATE_DEFAULTS[cle],
+                    base.replace(
+                        'Vous venez de remplir notre formulaire pour le '
+                        'solaire ; vous pouvez',
+                        phrase + '. Vous pouvez'))
+            with self.subTest(cle=cle, langue='darija'):
+                self.assertIn(origine_da[cle],
+                              MESSAGE_TEMPLATE_DEFAULTS_DARIJA[source])
+                self.assertEqual(
+                    MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle],
+                    base_da.replace(
+                        'عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو',
+                        origine_da[cle] + '. تقدرو'))
+        # Anti-faux-vert : la phrase remplacée est bien dans le texte de base.
+        self.assertIn('Vous venez de remplir notre formulaire pour le solaire ; '
+                      'vous pouvez', base)
+        self.assertIn('عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو',
+                      base_da)
+
+
 class FideliteALaSourceTests(SimpleTestCase):
     """Les deux scripts complétés COPIENT `docs/crm/messages_meryem.md`,
     jamais retapés."""

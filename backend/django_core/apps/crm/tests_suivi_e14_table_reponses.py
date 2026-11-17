@@ -101,6 +101,12 @@ def _representants(etape_table):
     reconnaissance = etape_table['reconnaissance']
     if 'cles' in reconnaissance:
         for cle in reconnaissance['cles']:
+            if cle not in CADENCE_DE_LA_CLE:
+                # Étape du MOTEUR hors gabarit (``pieces_recues``) : elle n'existe
+                # que posée DEPUIS sa clé, jamais sous un libellé par défaut.
+                yield _etape('generique', 1, 'whatsapp', 'Libellé renommé',
+                             cle=cle)
+                continue
             gabarit = CADENCE_DE_LA_CLE[cle]
             defaut = barreau_par_defaut(gabarit, cle)
             visite = gabarit == Cadence.VISITE

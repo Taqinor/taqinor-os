@@ -34,8 +34,9 @@ function brancher() {
 }
 
 // ADRG35 — les gestes d'entrepôt suivent `stock_mouvement` : le store de test le porte.
-const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement']) =>
-  renderStockPage(QualitePage, makeAuthStore({ permissions }))
+// ALEC48 — les casiers (installations/bin-locations/) ne se lisent qu'avec un droit du module installations.
+const monter = (permissions = ['stock_voir', 'stock_modifier', 'stock_mouvement', 'installation_voir']) =>
+  renderStockPage(QualitePage, makeAuthStore({ permissions, user: { id: 1, portee: 'interne' } }))
 
 beforeEach(() => { vi.clearAllMocks(); brancher() })
 afterEach(() => { cleanup() })

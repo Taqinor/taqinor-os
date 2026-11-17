@@ -64,6 +64,17 @@ def cout_des_agregats(par_modele) -> float:
         cle: g[f't_{cle}'] or 0 for cle in CHAMPS_TOKENS}) for g in par_modele)
 
 
+def cout_du_jour_utilisateur(company, user, maintenant=None) -> float:
+    """AIC90 — coût estimé (USD) des événements de ``user`` depuis minuit à
+    Casablanca (même calcul que les statistiques, via ``cout_des_agregats``)."""
+    from core.dates import TZ_METIER, aujourd_hui_local
+    minuit = datetime.datetime.combine(
+        aujourd_hui_local(maintenant), datetime.time.min, tzinfo=TZ_METIER)
+    qs = AssistantEvent.objects.filter(
+        company=company, user=user, created_at__gte=minuit)
+    return cout_des_agregats(agregats_par_modele(qs))
+
+
 def resume_assistant(company, depuis, *, limite_signalements=20) -> dict:
     """COP-G6 — l'assistant depuis ``depuis`` pour ``company`` (``None`` =
     toutes, super-utilisateur sans société) : questions, erreurs, part de repli,

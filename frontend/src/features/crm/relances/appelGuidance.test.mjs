@@ -375,6 +375,11 @@ test('CAD151 — SCRIPTS_TOUCHES couvre les cinq touches vides, le réveil et le
   const attendues = [
     'repondeur', 'appel_dernier', 'appel_suivi_j2', 'appel_suivi_j7',
     'appel_suivi_j11', 'reveil_a1', 'debrief_visite',
+    // 17/11/2026 — un script par appel après devis (J28, J90), le réveil J30
+    // en appel et les deux appels du moteur qui n'avaient rien à dire.
+    'appel_validite', 'appel_dernier_suivi', 'appel_reveil_devis',
+    'appel_reveil_sans_devis', 'appel_rappel_convenu',
+    'appel_planifier_visite',
   ]
   assert.deepEqual(Object.keys(SCRIPTS_TOUCHES).sort(), [...attendues].sort())
   for (const cle of attendues) {
@@ -389,12 +394,45 @@ test('CAD151 — SCRIPTS_TOUCHES couvre les cinq touches vides, le réveil et le
   assert.equal(scriptTouche(undefined), null)
 })
 
-test('CAD151 — seuls le débrief est manuel (hors cadence) ; les six autres sont sur un barreau', () => {
+test('CAD151 — seuls le débrief est manuel (hors cadence) ; les autres sont sur un barreau', () => {
   assert.equal(scriptTouche('debrief_visite').manuel, true)
   for (const cle of ['repondeur', 'appel_dernier', 'appel_suivi_j2',
-    'appel_suivi_j7', 'appel_suivi_j11', 'reveil_a1']) {
+    'appel_suivi_j7', 'appel_suivi_j11', 'reveil_a1', 'appel_validite',
+    'appel_dernier_suivi', 'appel_reveil_devis', 'appel_reveil_sans_devis',
+    'appel_rappel_convenu', 'appel_planifier_visite']) {
     assert.equal(scriptTouche(cle).manuel, false, cle)
   }
+})
+
+test('17/11/2026 — les titres du panneau d’appel (décision fondateur)', () => {
+  const titres = {
+    appel_dernier: 'Dernier appel avant clôture',
+    appel_suivi_j11: 'Appel de décision',
+    appel_validite: 'Appel de validité',
+    appel_dernier_suivi: 'Dernier appel de suivi',
+    appel_reveil_devis: 'Appel de réveil',
+    appel_reveil_sans_devis: 'Appel de réveil',
+    appel_rappel_convenu: 'Rappel convenu',
+    appel_planifier_visite: 'Planifier la visite',
+  }
+  for (const [cle, titre] of Object.entries(titres)) {
+    assert.equal(scriptTouche(cle).titre, titre, cle)
+  }
+})
+
+test('17/11/2026 — l’appel d’ouverture par origine est un appel 1, comme `appel_ouverture`', () => {
+  const ouvertures = [
+    'appel_ouverture_reference', 'appel_ouverture_telephone',
+    'appel_ouverture_whatsapp_entrant', 'appel_ouverture_ancien_dossier',
+    'appel_ouverture_deuxieme_affaire',
+  ]
+  for (const cle of ouvertures) {
+    assert.ok(CLES_TOUCHES_APPEL_1.includes(cle), cle)
+    assert.equal(estToucheDeRappel({ template_cle: cle }), false, cle)
+    // Même titre que `appel_ouverture` : aucun (la structure d'écran est celle de l'appel 1).
+    assert.equal(scriptTouche(cle), scriptTouche('appel_ouverture'), cle)
+  }
+  assert.equal(scriptTouche('appel_ouverture'), null)
 })
 
 test('CAD151 — la phase déclarée par touche correspond exactement à estToucheDeRappel', () => {

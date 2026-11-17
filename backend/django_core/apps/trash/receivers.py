@@ -5,7 +5,7 @@
 enregistrement, et la corbeille s'y abonne ici (câblé depuis `apps.py`
 `ready()`), exactement comme `crm` s'abonne à `devis_accepted`.
 """
-from core.events import record_soft_deleted, record_soft_restored
+from core.events import lead_erased, record_soft_deleted, record_soft_restored
 
 
 def on_record_soft_deleted(sender, **kwargs):
@@ -42,9 +42,16 @@ def on_record_soft_restored(sender, instance=None, **kwargs):
         restaure_le__isnull=True).update(restaure_le=maintenant, updated_at=maintenant)
 
 
+def on_lead_erased(sender, company=None, crm_lead_id=None, **kwargs):
+    """ASUP67 — l'anonymisation d'un lead caviarde son entrée de corbeille (nom, téléphone)."""
+    from .services import caviarder_lead_anonymise
+    return caviarder_lead_anonymise(company=company, crm_lead_id=crm_lead_id)
+
+
 def connect():
     """Câble les récepteurs (appelé par `TrashConfig.ready`)."""
     record_soft_deleted.connect(
         on_record_soft_deleted, dispatch_uid='trash.on_record_soft_deleted')
     record_soft_restored.connect(
         on_record_soft_restored, dispatch_uid='trash.on_record_soft_restored')
+    lead_erased.connect(on_lead_erased, dispatch_uid='trash.on_lead_erased')

@@ -1,0 +1,270 @@
+{
+  "sha": "0f9c78d362612889d7b80c51e04a861a885bcd53",
+  "date": "2026-11-17",
+  "groupe": "ALEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEC6",
+    "ALEC16",
+    "ALEC18",
+    "ALEC42",
+    "ALEC43",
+    "ALEC22",
+    "ALEC23",
+    "ALEC24",
+    "ALEC28",
+    "ALEC29"
+  ],
+  "couvre_avec_ecart": [
+    "ALEC18",
+    "ALEC22",
+    "ALEC23",
+    "ALEC24",
+    "ALEC28",
+    "ALEC29"
+  ],
+  "etapes": [
+    {
+      "id": "PF6.1-ALEC6-transporteurs",
+      "taches": [
+        "ALEC6"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.1-ALEC6-transporteurs.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.4-ALEC16-agent-sql-module-portee",
+      "taches": [
+        "ALEC16"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.4-ALEC16-agent-sql-module-portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.3-ALEC18-ged-documents",
+      "taches": [
+        "ALEC18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.3-ALEC18-ged-documents.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel"
+    },
+    {
+      "id": "PF6.3-ALEC42-ged-demandes-signature",
+      "taches": [
+        "ALEC42"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.3-ALEC42-ged-demandes-signature.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.3-ALEC43-ged-coordonnees-signataires",
+      "taches": [
+        "ALEC43"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.3-ALEC43-ged-coordonnees-signataires.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.2-ALEC22-reporting-portee",
+      "taches": [
+        "ALEC22"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.2-ALEC22-reporting-portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel"
+    },
+    {
+      "id": "PF6.2-ALEC23-quote-to-cash-portee",
+      "taches": [
+        "ALEC23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.2-ALEC23-quote-to-cash-portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel"
+    },
+    {
+      "id": "PF6.2-ALEC24-objectifs-portee",
+      "taches": [
+        "ALEC24"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.2-ALEC24-objectifs-portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel"
+    },
+    {
+      "id": "PF6.4-ALEC28-journal-reglages",
+      "taches": [
+        "ALEC28"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.4-ALEC28-journal-reglages.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : défaut ANTÉRIEUR hors du geste de la tâche : l'onglet Paramètres › Avancé monte les sections « Équipe terrain » (WIR112, 5a664f3e8 du 19/07/2026, EquipeTerrainSection.jsx) et « Modèles de fiche d'intervention » (WIR114) qui lisent `installations/equipes/` et `installations/fiche-intervention-templates/` ; le Commercial responsable (sans code installation_*) reçoit 403 (oracles 2 et 3). ALEC28 (343b58dc3) ne fait que masquer la carte « Journal des modifications » ; témoin sans 403 : étape PF6.4-ALEC28-ecran-administrateur. AvanceSection.jsx figure dans les Files d'ALEC28 : légitimité de l'écart à trancher en relecture. ; oracle 2 — GET http://localhost:4173/api/django/installations/equipes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/equipes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/equipes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/equipes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/equipes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/equipes/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/fiche-intervention-templates/?page=1) ; oracle 2 — GET http://localhost:4173/api/django/installations/equipes/?page=1 → 403 ; oracle 3 — console.error : Failed to load resource: the server responded with a status of 403 (Forbidden) (http://localhost:4173/api/django/installations/equipes/?page=1)"
+    },
+    {
+      "id": "PF6.4-ALEC28-ecran-administrateur",
+      "taches": [
+        "ALEC28"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.4-ALEC28-ecran-administrateur.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6.2-ALEC29-calepinage-portee",
+      "taches": [
+        "ALEC29"
+      ],
+      "verdict": "PASS",
+      "base_verdict": "FAIL",
+      "trace": "docs/qa-explorer/captures/2026-11-17/ACCEPTATION-ALEC-PF6.2-ALEC29-calepinage-portee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "écart accepté (base FAIL) : sonde périmée depuis ATST13 d611254e2 : registre des permissions enregistré sur une copie runpy ; 016/020/025 extraient le corps corrigé sans ses imports — rejeu Given/When/Then réel"
+    }
+  ]
+}

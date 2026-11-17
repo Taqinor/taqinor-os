@@ -40,7 +40,16 @@ CLES_PORTE_DE_SORTIE = [
 CLES_SCRIPTS_A_VOIX_HAUTE = [
     'appel_ouverture', 'repondeur', 'appel_relance', 'appel_dernier',
     'appel_dimanche', 'appel_suivi_j2', 'appel_suivi_j7', 'appel_suivi_j11',
+    # 17/11/2026 — l'appel d'ouverture par origine, un script par appel après
+    # devis (J28, J90) et les deux appels de réveil J30.
+    'appel_ouverture_reference', 'appel_ouverture_telephone',
+    'appel_ouverture_whatsapp_entrant', 'appel_ouverture_ancien_dossier',
+    'appel_ouverture_deuxieme_affaire', 'appel_validite',
+    'appel_dernier_suivi', 'appel_reveil_devis', 'appel_reveil_sans_devis',
 ]
+
+#: 17/11/2026 — deux scripts d'appel FR seulement (darija à formuler).
+CLES_SCRIPTS_FR_SEULEMENT = ['appel_rappel_convenu', 'appel_planifier_visite']
 
 #: CADV34 — les 8 clés de CAD110 + les 14 que CADV34 complète : TOUT message
 #: WhatsApp écrit des cadences contact, après-devis, deuxième affaire, visite.
@@ -166,9 +175,24 @@ class ToutMessageEcritPorteLaPorteDeSortieTests(SimpleTestCase):
                 self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS[cle])
                 self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS_DARIJA[cle])
 
+    def test_les_scripts_fr_seulement_ne_portent_pas_stop_non_plus(self):
+        for cle in CLES_SCRIPTS_FR_SEULEMENT:
+            with self.subTest(cle=cle):
+                self.assertNotIn('STOP', MESSAGE_TEMPLATE_DEFAULTS[cle])
+                self.assertNotIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+
+    def test_le_message_de_creneau_ecrit_porte_la_porte_de_sortie(self):
+        """17/11/2026 — `message_creneau` est un WhatsApp : il rejoint la liste
+        CADV34 (la garde ci-dessus le vérifie en FR et en darija)."""
+        self.assertIn('message_creneau', CLES_PORTE_DE_SORTIE_CADV34)
+        self.assertTrue(MESSAGE_TEMPLATE_DEFAULTS['message_creneau'].endswith(
+            PHRASE_STOP_FR))
+
     def test_aucun_chevauchement_entre_ecrites_et_scripts(self):
         self.assertEqual(
             set(CLES_ECRITES_CADV34) & set(CLES_SCRIPTS_A_VOIX_HAUTE), set())
+        self.assertEqual(
+            set(CLES_ECRITES_CADV34) & set(CLES_SCRIPTS_FR_SEULEMENT), set())
 
     def test_les_cles_cadv34_sont_au_catalogue(self):
         for cle in CLES_PORTE_DE_SORTIE_CADV34:

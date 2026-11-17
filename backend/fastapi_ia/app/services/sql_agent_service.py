@@ -585,6 +585,11 @@ class SQLSecurityError(Exception):
     """Levee quand une requete ne peut PAS etre prouvee sure (echec ferme)."""
 
 
+class RefusDeDroit(SQLSecurityError):
+    """ALEC51 — refus d'un DROIT de l'appelant (portee, module, colonne
+    confidentielle, donnee personnelle) : son motif part au modele."""
+
+
 # Noeuds qui ne doivent apparaitre NULLE PART dans une requete de lecture.
 _NOEUDS_INTERDITS = tuple(
     cls for cls in (
@@ -973,6 +978,9 @@ _UNSAFE_QUERY_REPLY = (
     "Reformule ta question."
 )
 
+# ALEC51 — refus de droit : le motif (sans detail de l'analyseur) part au modele.
+_REFUS_DE_DROIT_PREFIXE = "Erreur : acces refuse. "
+
 
 def _select_sources(select: exp.Select) -> list:
     """Sources DIRECTES (FROM + JOIN) d'un SELECT."""
@@ -1089,11 +1097,12 @@ def _verifier_module_et_portee(sql: str, permissions) -> None:
         for prefixe, exiges in _MODULE_DES_TABLES:
             if nom.startswith(prefixe) and not any(
                     c.startswith(exiges) for c in codes):
-                raise SQLSecurityError(
-                    f"Table {nom} : droit du module manquant — lecture refusee.")
+                raise RefusDeDroit(
+                    f"Table {nom} : droit du module {prefixe[:-1]} manquant — "
+                    "lecture refusee.")
     if (any(c.startswith("records_scope_") for c in codes)
             and noms & _TABLES_A_PROPRIETAIRE):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Portee restreinte : lecture refusee (utilisez l'ecran).")
 
 
@@ -1114,17 +1123,17 @@ def _validate_and_secure(sql: str, company_id: int,
     a l'agent sans jamais executer la requete."""
     _enforce_single_select(sql)
     if _references_secret_column(sql):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Colonne confidentielle de compte (mot de passe / 2FA / privileges) "
             "— lecture refusee."
         )
     if not allow_price and _references_forbidden_column(sql):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Colonne confidentielle (prix d'achat / marge) — lecture refusee."
         )
     if not allow_pii and _references_forbidden_column(
             sql, allow_price=True, allow_pii=False):
-        raise SQLSecurityError(
+        raise RefusDeDroit(
             "Donnee personnelle du client (client_pii_voir) — lecture refusee.")
     _verifier_module_et_portee(sql, permissions)
     return _inject_company_filter(sql, company_id)
@@ -1133,48 +1142,35 @@ def _validate_and_secure(sql: str, company_id: int,
 # ── NTPLT4 — GUC tenant sur la connexion du SQL-agent (defense en profondeur) ─
 
 
-def _rls_enabled() -> bool:
-    """True si POSTGRES_RLS_ENABLED=1 (defaut OFF)."""
-    import os
-    return os.environ.get("POSTGRES_RLS_ENABLED", "0") == "1"
+def _apply_tenant_guc(cible, company_id: int) -> None:
+    """NTPLT4 / ALEC52 — pose app.current_company a CHAQUE transaction du moteur
+    du SQL-agent (``cible`` : le moteur ou une SQLDatabase).
 
-
-def _apply_tenant_guc(db, company_id: int) -> None:
-    """NTPLT4 — pose app.current_company sur les connexions du moteur du SQL-agent.
-
-    Meme une requete SQL ECRITE PAR LE LLM ne peut alors PHYSIQUEMENT pas lire
-    un autre tenant : les policies RLS Postgres (NTPLT2) filtrent sur ce GUC.
-    C'est une defense en profondeur qui s'AJOUTE a l'injection company_id
-    applicative existante (_inject_company_filter), jamais un remplacement.
-
-    Sur : le moteur ``SQLDatabase.from_uri`` est CREE A CHAQUE requete de
-    l'agent et n'est scope qu'a UNE seule societe (company_id). On enregistre
-    donc un listener ``connect`` qui pose le GUC des l'ouverture de chaque
-    connexion physique de CE moteur — jamais partage entre societes. Le SQL-agent
-    est en LECTURE SEULE (role dedie ERR3), donc un SET de session est acceptable
-    ici (moteur mono-societe, ephemere) ; on reste conservateur en repoussant
-    le GUC a chaque connexion neuve.
-
-    No-op total quand RLS est desactive (defaut) OU sans company_id : aucun SET
-    n'est emis, comportement byte-identique a aujourd'hui.
+    Les policies RLS (AUD422, FORCE sur ventes_devis/facture/paiement) filtrent
+    sur ce GUC et s'appliquent au role ``sql_agent_ro`` quel que soit
+    POSTGRES_RLS_ENABLED (reglage Django, eteint en prod) : sans GUC, 0 ligne.
+    La valeur est la societe de l'APPELANT (JWT, ``require_company_id``), jamais
+    une entree du modele (``set_config`` hors liste blanche, AANA3). Listener
+    ``begin`` pose AVANT toute connexion (l'inspection de ``_base_sql`` en ouvre
+    une) ; ``set_config(..., true)`` = local a la transaction : rien ne survit
+    au commit/rollback d'une connexion rendue au pool. Hors Postgres : no-op.
     """
-    if not _rls_enabled() or not company_id:
+    engine = getattr(cible, "_engine", cible)
+    if engine is None or not company_id:
         return
-    engine = getattr(db, "_engine", None)
-    if engine is None:
+    if getattr(getattr(engine, "dialect", None), "name", "") != "postgresql":
         return
     from sqlalchemy import event
 
     cid = int(company_id)
 
-    @event.listens_for(engine, "connect")
-    def _set_current_company(dbapi_connection, connection_record):  # noqa: ANN001 — exception documentée (D-ENF22)
-        # set_config(..., false) == SET de session sur CETTE connexion physique ;
-        # le moteur etant mono-societe et ephemere, aucune fuite inter-tenant.
-        cursor = dbapi_connection.cursor()
+    @event.listens_for(engine, "begin")
+    def _set_current_company(conn):  # noqa: ANN001 — exception documentée (D-ENF22)
+        # Curseur brut : executer via `conn` relancerait l'auto-begin.
+        cursor = conn.connection.dbapi_connection.cursor()
         try:
             cursor.execute(
-                "SELECT set_config('app.current_company', %s, false)",
+                "SELECT set_config('app.current_company', %s, true)",
                 (str(cid),),
             )
         finally:
@@ -1219,6 +1215,10 @@ def _make_secure_query_tool(db, company_id: int, allow_purchase_price: bool = Fa
                 secured = _validate_and_secure(
                     query, _cid, allow_price=_allow_price,
                     allow_pii=_allow_pii, permissions=_permissions)
+            except RefusDeDroit as exc:
+                logger.warning("SECURITE: refus de droit (%s).", exc)
+                return (_REFUS_DE_DROIT_PREFIXE + str(exc)
+                        + " Dis ce motif a l'utilisateur, sans reessayer.")
             except SQLSecurityError as exc:
                 logger.warning(
                     "SECURITE: requete refusee (%s). SQL: %s",
@@ -1300,6 +1300,10 @@ def _modele_effectif(provider: str) -> str:
     if not model or model.startswith("claude"):
         return MODELE_REPLI_DEFAUT
     return model
+
+
+MESSAGE_BUDGET_ATTEINT = ("Budget du jour de l'assistant atteint : réponses par "
+                          "le modèle de secours jusqu'à demain.")
 
 
 class _RefusFournisseur(Exception):
@@ -1520,20 +1524,24 @@ class SQLAgentService:
         sample_rows_in_table_info=0 : aucune ligne reelle dans le contexte du
         LLM (sinon fuite incidente inter-tenant). ERR3 — connexion DEDIEE
         LECTURE SEULE ; AANA5 — moteur de app.core.database (statement_timeout
-        15 s). NTPLT4 — pose app.current_company sur les connexions de CE
-        moteur quand RLS est actif (no-op sans POSTGRES_RLS_ENABLED)."""
+        15 s). ALEC52 — GUC societe pose sur CE moteur avant sa 1re connexion."""
         from langchain_community.utilities import SQLDatabase
+        from sqlalchemy import inspect as sa_inspect
         from app.core import database as _database
-        relevant_tables = [
-            t for t in self._get_relevant_tables(question)
-            if t in _ALLOWED_TABLES
-        ] or list(_ALLOWED_TABLES)
+        engine = _database.create_sql_agent_engine()
+        _apply_tenant_guc(engine, company_id)
+        permises = list(_ALLOWED_TABLES)
+        try:  # AIC102 — table absente (base neuve sans RUN_DB_DDL) : retiree
+            presentes = set(sa_inspect(engine).get_table_names())
+            permises = [t for t in permises if t in presentes] or permises
+        except Exception as exc:  # inspection impossible : regle d'avant
+            logger.warning("Tables de la base non inspectees (%s).", exc)
+        relevant_tables = [t for t in self._get_relevant_tables(question) if t in permises] or permises
         db = SQLDatabase(
-            _database.create_sql_agent_engine(),
+            engine,
             include_tables=relevant_tables,
             sample_rows_in_table_info=0,
         )
-        _apply_tenant_guc(db, company_id)
         return db
 
     @staticmethod
@@ -1807,6 +1815,18 @@ class SQLAgentService:
             logger.warning("Journal de l'assistant en echec : %s", exc)
             return None
 
+    @staticmethod
+    def _budget_atteint(action_ctx) -> bool:
+        """AIC90 — le cout du jour de l'appelant a-t-il atteint le plafond ?
+        Lecture Django (contrat assistant_budget.json) ; illisible => faux."""
+        from app.services import action_tools as at
+        if not at.actions_available(action_ctx):
+            return False
+        res = at._django_call(action_ctx, "/api/django/agent/evenements/budget/",
+                              method="GET")
+        data = res.get("data") if res.get("ok") else None
+        return bool(isinstance(data, dict) and data.get("atteint") is True)
+
     async def _query(
         self,
         question: str,
@@ -1823,6 +1843,20 @@ class SQLAgentService:
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
+            # AIC90 (D-COP-1) — budget du jour atteint : tout le tour part sur le
+            # repli, sans moteur natif ni appel a Claude (jamais un arret).
+            if await asyncio.to_thread(self._budget_atteint, action_ctx):
+                repli = (SQL_AGENT_FALLBACK_PROVIDER or "").lower()
+                if repli and repli != SQL_AGENT_PROVIDER.lower():
+                    out = await asyncio.to_thread(
+                        self._run_agent, question, company_id or 0, user_id or 0,
+                        action_ctx, repli, contexte, copilote,
+                    )
+                    return {**out, "repli": True, "modele": _modele_effectif(repli),
+                            "answer": f"{MESSAGE_BUDGET_ATTEINT}\n\n{out.get('answer') or ''}".rstrip()}
+                logger.warning("Budget du jour atteint mais aucun repli distinct "
+                               "configure (%r) : le tour reste sur %s", repli,
+                               SQL_AGENT_PROVIDER)
             natif = await asyncio.to_thread(
                 relais.tour_natif, self, question, company_id or 0,
                 user_id or 0, action_ctx, contexte, catalogue)

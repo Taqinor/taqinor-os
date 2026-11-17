@@ -30,6 +30,13 @@ import { toastError } from '../../../../lib/toast'
 import CadenceFrise from './CadenceFrise'
 import { ouvrirPlanificationVisite } from '../../../../test/parcoursVisiteAcceptee'
 
+// Une réponse rangée derrière un groupe (« Pas joint », « Plus tard… ») ou derrière
+// « Autre réponse » : on ouvre d'abord son groupe, puis on clique la réponse.
+function cliquerDans(groupe, nom) {
+  fireEvent.click(screen.getByRole('button', { name: groupe }))
+  fireEvent.click(screen.getByRole('button', { name: nom }))
+}
+
 const jour = (decalage) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(Date.now() + decalage * 24 * 3600 * 1000))
@@ -95,7 +102,7 @@ describe('SUIVI-BLOCAGE — frise de la fiche', () => {
     render(<Fiche />)
     await waitFor(() => expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    cliquerDans('Plus tard…', 'À rappeler le…')
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: jour(1) } })
     // Le serveur déplace la MÊME touche à demain : la frise la relit ouverte.
     crmApi.getRelanceEtapesLead.mockResolvedValue({

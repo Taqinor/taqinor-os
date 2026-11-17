@@ -498,6 +498,8 @@ export default function LeadWorkspace({
       // vit hors SectionPipeline, son compteur local `friseReload` ne peut
       // donc pas le voir — sans ce bump la frise de la fiche (CadenceFrise)
       // restait figée après un geste pris ICI.
+      // Geste fait ailleurs (recontact d'un lead Froid) : recharge fiche + frise.
+      case 'cadence-refresh': draft.refreshServer(); setRelanceVersion((n) => n + 1); return undefined
       case 'relance-cadence': {
         if (!leadId) return undefined
         return toastPromise(

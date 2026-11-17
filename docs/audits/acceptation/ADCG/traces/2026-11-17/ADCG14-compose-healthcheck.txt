@@ -1,0 +1,452 @@
+# ADCG14 (clause ADCG119, D-ADCG-4 = lire_state_health) rejoue sur runner GitHub (2026-11-17T05:58:34Z), sha 9c157f12bab27d858f69e30e3f007f5960a3fabe ; .env = .env.example
+# pile complete : docker compose up -d (job ubuntu-latest separe)
+ Image redis:7.4-alpine Pulling 
+ Image pgvector/pgvector:pg16 Pulling 
+ Image redis:7.4-alpine Pulling 
+ c8474e93cf43 Pulling fs layer 0B
+ dd051e1b8c92 Pulling fs layer 0B
+ eee1703e0e36 Pulling fs layer 0B
+ 03a9acd43566 Pulling fs layer 0B
+ d66fa994cd3b Pulling fs layer 0B
+ 53b079a925c4 Pulling fs layer 0B
+ 85320d1bc048 Pulling fs layer 0B
+ bbc81ca93e43 Pulling fs layer 0B
+ dacdcfbc697e Pulling fs layer 0B
+ 88d6e4059ddb Pulling fs layer 0B
+ 85a95895b814 Pulling fs layer 0B
+ 705db54eb6f9 Pulling fs layer 0B
+ 02082338f6fc Pulling fs layer 0B
+ ae3b39dd856e Pulling fs layer 0B
+ 40a1c034d098 Pulling fs layer 0B
+ a0c21698d159 Pulling fs layer 0B
+ 03a9acd43566 Downloading 4.534MB
+ 02082338f6fc Downloading 171B
+ 53b079a925c4 Downloading 10.02kB
+ 85320d1bc048 Downloading 1.25MB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 03a9acd43566 Downloading 4.534MB
+ d66fa994cd3b Downloading 20.97MB
+ bbc81ca93e43 Downloading 128B
+ 02082338f6fc Downloading 171B
+ dd051e1b8c92 Downloading 13.63MB
+ 53b079a925c4 Downloading 10.02kB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 03a9acd43566 Downloading 4.534MB
+ d66fa994cd3b Downloading 42.99MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 02082338f6fc Downloading 171B
+ dd051e1b8c92 Downloading 28.25MB
+ 53b079a925c4 Downloading 10.02kB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 705db54eb6f9 Downloading 1.196MB
+ 03a9acd43566 Downloading 4.534MB
+ d66fa994cd3b Downloading 65.01MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 02082338f6fc Downloading 171B
+ dd051e1b8c92 Downloading 28.25MB
+ 53b079a925c4 Downloading 10.02kB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 705db54eb6f9 Download complete 0B
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ 03a9acd43566 Downloading 4.534MB
+ d66fa994cd3b Downloading 87.03MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ 02082338f6fc Downloading 171B
+ dd051e1b8c92 Downloading 28.25MB
+ 4a603bc2424c Pulling fs layer 0B
+ 710f3da1112f Pulling fs layer 0B
+ f55179448640 Pulling fs layer 0B
+ 0e50696bc150 Pulling fs layer 0B
+ 6c0bde7286d0 Pulling fs layer 0B
+ 4f4fb700ef54 Pulling fs layer 0B
+ ad83137ff0b2 Pulling fs layer 0B
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ 03a9acd43566 Downloading 4.534MB
+ d66fa994cd3b Downloading 114.3MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ 02082338f6fc Downloading 171B
+ dd051e1b8c92 Downloading 28.25MB
+ 53b079a925c4 Downloading 10.02kB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ 4f4fb700ef54 Already exists 0B
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ 02082338f6fc Download complete 0B
+ dd051e1b8c92 Downloading 28.25MB
+ 53b079a925c4 Download complete 0B
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ dd051e1b8c92 Downloading 28.25MB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ dd051e1b8c92 Downloading 28.25MB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ c8474e93cf43 Downloading 950.3kB
+ eee1703e0e36 Downloading 1.167kB
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ 03a9acd43566 Download complete 0B
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Downloading 128B
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ c8474e93cf43 Download complete 0B
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ dd051e1b8c92 Downloading 28.25MB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Downloading 128B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ dd051e1b8c92 Downloading 28.25MB
+ 85320d1bc048 Downloading 1.25MB
+ ae3b39dd856e Downloading 132.9kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ d66fa994cd3b Downloading 118MB
+ bbc81ca93e43 Download complete 0B
+ dacdcfbc697e Downloading 8.066MB
+ 88d6e4059ddb Downloading 6.11kB
+ 85a95895b814 Downloading 185B
+ dd051e1b8c92 Downloading 28.25MB
+ ae3b39dd856e Downloading 132.9kB
+ eee1703e0e36 Download complete 0B
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ dd051e1b8c92 Downloading 28.25MB
+ 85320d1bc048 Download complete 0B
+ ae3b39dd856e Download complete 0B
+ 40a1c034d098 Downloading 116B
+ a0c21698d159 Downloading 3.142kB
+ d66fa994cd3b Downloading 118MB
+ dacdcfbc697e Download complete 0B
+ 88d6e4059ddb Download complete 0B
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ 85a95895b814 Download complete 0B
+ dfed3a5d50b9 Downloading 24.69kB
+ 5864e364268f Downloading 463.4kB
+ 4a603bc2424c Pulling fs layer 0B
+ 4f4fb700ef54 Pulling fs layer 0B
+ f55179448640 Pulling fs layer 0B
+ ad83137ff0b2 Pulling fs layer 0B
+ 6c0bde7286d0 Pulling fs layer 0B
+ 0e50696bc150 Pulling fs layer 0B
+ 710f3da1112f Pulling fs layer 0B
+ dd051e1b8c92 Download complete 0B
+ 40a1c034d098 Download complete 0B
+ a0c21698d159 Download complete 0B
+ d66fa994cd3b Downloading 118MB
+ dfed3a5d50b9 Download complete 0B
+ ad83137ff0b2 Downloading 200.3kB
+ 4f4fb700ef54 Already exists 0B
+ 5864e364268f Download complete 0B
+ 4a603bc2424c Downloading 600B
+ dfed3a5d50b9 Download complete 0B
+ 5864e364268f Download complete 0B
+ 4a603bc2424c Downloading 600B
+ ad83137ff0b2 Downloading 200.3kB
+ dd051e1b8c92 Extracting 1B
+ d66fa994cd3b Download complete 0B
+ 4a603bc2424c Downloading 600B
+ 0e50696bc150 Downloading 99B
+ f55179448640 Downloading 12.42MB
+ ad83137ff0b2 Downloading 200.3kB
+ 710f3da1112f Downloading 3.794MB
+ 6c0bde7286d0 Downloading 948B
+ 6c0bde7286d0 Downloading 948B
+ ad83137ff0b2 Downloading 200.3kB
+ 4a603bc2424c Downloading 600B
+ 710f3da1112f Downloading 3.794MB
+ f55179448640 Downloading 12.42MB
+ 0e50696bc150 Downloading 99B
+ dd051e1b8c92 Extracting 1B
+ 710f3da1112f Downloading 3.794MB
+ f55179448640 Downloading 12.42MB
+ 0e50696bc150 Downloading 99B
+ 6c0bde7286d0 Downloading 948B
+ ad83137ff0b2 Downloading 200.3kB
+ 0e50696bc150 Downloading 99B
+ f55179448640 Downloading 12.42MB
+ ad83137ff0b2 Downloading 200.3kB
+ 710f3da1112f Downloading 3.794MB
+ 6c0bde7286d0 Downloading 948B
+ dd051e1b8c92 Extracting 1B
+ ad83137ff0b2 Download complete 0B
+ 710f3da1112f Download complete 0B
+ 4a603bc2424c Download complete 0B
+ 6c0bde7286d0 Download complete 0B
+ 4a603bc2424c Download complete 0B
+ 710f3da1112f Download complete 0B
+ 0e50696bc150 Download complete 0B
+ f55179448640 Download complete 0B
+ 0e50696bc150 Download complete 0B
+ 6c0bde7286d0 Download complete 0B
+ ad83137ff0b2 Download complete 0B
+ f55179448640 Download complete 0B
+ 710f3da1112f Extracting 1B
+ 710f3da1112f Extracting 1B
+ dd051e1b8c92 Extracting 1B
+ 837ceb5aa9a0 Download complete 0B
+ 710f3da1112f Extracting 1B
+ 710f3da1112f Extracting 1B
+ dd051e1b8c92 Extracting 1B
+ 710f3da1112f Extracting 1B
+ 710f3da1112f Extracting 1B
+ dd051e1b8c92 Extracting 1B
+ 710f3da1112f Pull complete 0B
+ 710f3da1112f Pull complete 0B
+ 6c0bde7286d0 Pull complete 0B
+ 6c0bde7286d0 Pull complete 0B
+ dd051e1b8c92 Extracting 1B
+ ad83137ff0b2 Extracting 1B
+ ad83137ff0b2 Extracting 1B
+ dd051e1b8c92 Extracting 1B
+ ad83137ff0b2 Pull complete 0B
+ ad83137ff0b2 Pull complete 0B
+ dd051e1b8c92 Extracting 1B
+ f55179448640 Extracting 1B
+ f55179448640 Extracting 1B
+ dd051e1b8c92 Extracting 1B
+ f55179448640 Extracting 1B
+ f55179448640 Extracting 1B
+ dd051e1b8c92 Extracting 2B
+ 4f4fb700ef54 Extracting 1B
+ 4f4fb700ef54 Extracting 1B
+ f55179448640 Pull complete 0B
+ 0e50696bc150 Pull complete 0B
+ f55179448640 Pull complete 0B
+ 0e50696bc150 Pull complete 0B
+ dd051e1b8c92 Extracting 2B
+ 4f4fb700ef54 Extracting 1B
+ 4f4fb700ef54 Extracting 1B
+ dd051e1b8c92 Extracting 2B
+ 4f4fb700ef54 Pull complete 0B
+ 4f4fb700ef54 Pull complete 0B
+ 4a603bc2424c Pull complete 0B
+ 4a603bc2424c Pull complete 0B
+ 03a9acd43566 Extracting 1B
+ eee1703e0e36 Pull complete 0B
+ dd051e1b8c92 Pull complete 0B
+ Image redis:7.4-alpine Pulled 
+ Image redis:7.4-alpine Pulled 
+ 03a9acd43566 Pull complete 0B
+ 85320d1bc048 Pull complete 0B
+ dacdcfbc697e Extracting 1B
+ dacdcfbc697e Extracting 1B
+ 705db54eb6f9 Pull complete 0B
+ dacdcfbc697e Pull complete 0B
+ 40a1c034d098 Pull complete 0B
+ a0c21698d159 Pull complete 0B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 1B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ d66fa994cd3b Extracting 2B
+ 53b079a925c4 Pull complete 0B
+ d66fa994cd3b Pull complete 0B
+ 02082338f6fc Pull complete 0B
+ bbc81ca93e43 Pull complete 0B
+ ae3b39dd856e Pull complete 0B
+ 88d6e4059ddb Pull complete 0B
+ 85a95895b814 Pull complete 0B
+ c8474e93cf43 Pull complete 0B
+ Image pgvector/pgvector:pg16 Pulled 
+ Network erp-agentique_default Creating 
+ Network erp-agentique_default Created 
+ Volume erp-agentique_redis_data Creating 
+ Volume erp-agentique_redis_data Created 
+ Volume erp-agentique_hf_cache Creating 
+ Volume erp-agentique_hf_cache Created 
+ Volume erp-agentique_minio_data Creating 
+ Volume erp-agentique_minio_data Created 
+ Volume erp-agentique_pg_data Creating 
+ Volume erp-agentique_pg_data Created 
+ Container erp-agentique-redis_cache-1 Creating 
+ Container erp-agentique-db-1 Creating 
+ Container erp-agentique-redis-1 Creating 
+ Container erp-agentique-minio-1 Creating 
+ Container erp-agentique-minio-1 Created 
+ Container erp-agentique-redis-1 Created 
+ Container erp-agentique-db-1 Created 
+ Container erp-agentique-fastapi_ia-1 Creating 
+ Container erp-agentique-redis_cache-1 Created 
+ Container erp-agentique-django_core-1 Creating 
+ Container erp-agentique-fastapi_ia-1 Created 
+ Container erp-agentique-django_core-1 Created 
+ Container erp-agentique-celery_worker-1 Creating 
+ Container erp-agentique-celery_beat-1 Creating 
+ Container erp-agentique-celery_worker_interactive-1 Creating 
+ Container erp-agentique-frontend-1 Creating 
+ Container erp-agentique-celery_beat-1 Created 
+ Container erp-agentique-frontend-1 Created 
+ Container erp-agentique-nginx-1 Creating 
+ Container erp-agentique-celery_worker_interactive-1 Created 
+ Container erp-agentique-celery_worker-1 Created 
+ Container erp-agentique-nginx-1 Created 
+ Container erp-agentique-minio-1 Starting 
+ Container erp-agentique-redis_cache-1 Starting 
+ Container erp-agentique-redis-1 Starting 
+ Container erp-agentique-db-1 Starting 
+ Container erp-agentique-redis-1 Started 
+ Container erp-agentique-minio-1 Started 
+ Container erp-agentique-db-1 Started 
+ Container erp-agentique-fastapi_ia-1 Starting 
+ Container erp-agentique-redis_cache-1 Started 
+ Container erp-agentique-redis-1 Waiting 
+ Container erp-agentique-db-1 Waiting 
+ Container erp-agentique-fastapi_ia-1 Started 
+ Container erp-agentique-redis-1 Healthy 
+ Container erp-agentique-db-1 Healthy 
+ Container erp-agentique-django_core-1 Starting 
+ Container erp-agentique-django_core-1 Started 
+ Container erp-agentique-celery_beat-1 Starting 
+ Container erp-agentique-frontend-1 Starting 
+ Container erp-agentique-celery_worker-1 Starting 
+ Container erp-agentique-celery_worker_interactive-1 Starting 
+ Container erp-agentique-celery_worker_interactive-1 Started 
+ Container erp-agentique-celery_worker-1 Started 
+ Container erp-agentique-frontend-1 Started 
+ Container erp-agentique-nginx-1 Starting 
+ Container erp-agentique-celery_beat-1 Started 
+ Container erp-agentique-nginx-1 Started 
+
+== docker compose ps apres up -d (attente ~15 s ; db=healthy redis=healthy django_core=healthy)
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED          STATUS                    PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 20 seconds ago   Up 13 seconds             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'exec celery …"   celery_worker               20 seconds ago   Up 13 seconds             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   20 seconds ago   Up 13 seconds             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          27 seconds ago   Up 19 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 20 seconds ago   Up 13 seconds (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  20 seconds ago   Up 19 seconds             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    20 seconds ago   Up 13 seconds             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       27 seconds ago   Up 19 seconds             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       20 seconds ago   Up 12 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       27 seconds ago   Up 19 seconds (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 27 seconds ago   Up 19 seconds             6379/tcp
+
+== conteneur redis : /erp-agentique-redis-1
+ Container erp-agentique-redis-1 Paused 
+
+== docker inspect --format '{{.State.Health.Status}}' /erp-agentique-redis-1 apres docker compose pause redis (depuis 0 s) => unhealthy
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED          STATUS                    PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 20 seconds ago   Up 14 seconds             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'exec celery …"   celery_worker               20 seconds ago   Up 14 seconds             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   20 seconds ago   Up 14 seconds             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          27 seconds ago   Up 20 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 20 seconds ago   Up 14 seconds (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  20 seconds ago   Up 19 seconds             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    20 seconds ago   Up 14 seconds             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       27 seconds ago   Up 20 seconds             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       20 seconds ago   Up 13 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       27 seconds ago   Up 20 seconds (Paused)    0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 27 seconds ago   Up 20 seconds             6379/tcp
+nginx : GET http://localhost/ pendant la pause de redis => HTTP 200
+ Container erp-agentique-redis-1 Unpaused 
+
+== docker inspect --format '{{.State.Health.Status}}' apres docker compose unpause redis => healthy
+NAME                                        IMAGE                       COMMAND                  SERVICE                     CREATED          STATUS                    PORTS
+erp-agentique-celery_beat-1                 erp-agentique-django_core   "celery -A erp_agent…"   celery_beat                 31 seconds ago   Up 24 seconds             8000/tcp
+erp-agentique-celery_worker-1               erp-agentique-django_core   "sh -c 'exec celery …"   celery_worker               31 seconds ago   Up 24 seconds             8000/tcp
+erp-agentique-celery_worker_interactive-1   erp-agentique-django_core   "celery -A erp_agent…"   celery_worker_interactive   31 seconds ago   Up 24 seconds             8000/tcp
+erp-agentique-db-1                          pgvector/pgvector:pg16      "docker-entrypoint.s…"   db                          38 seconds ago   Up 30 seconds (healthy)   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+erp-agentique-django_core-1                 erp-agentique-django_core   "gunicorn erp_agenti…"   django_core                 31 seconds ago   Up 24 seconds (healthy)   8000/tcp
+erp-agentique-fastapi_ia-1                  erp-agentique-fastapi_ia    "uvicorn app.main:ap…"   fastapi_ia                  31 seconds ago   Up 30 seconds             8001/tcp
+erp-agentique-frontend-1                    erp-agentique-frontend      "/docker-entrypoint.…"   frontend                    31 seconds ago   Up 24 seconds             80/tcp
+erp-agentique-minio-1                       erp-agentique-minio         "/usr/bin/docker-ent…"   minio                       38 seconds ago   Up 30 seconds             0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
+erp-agentique-nginx-1                       erp-agentique-nginx         "/docker-entrypoint.…"   nginx                       31 seconds ago   Up 24 seconds             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 127.0.0.1:8090->8090/tcp
+erp-agentique-redis-1                       redis:7.4-alpine            "docker-entrypoint.s…"   redis                       38 seconds ago   Up 30 seconds (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+erp-agentique-redis_cache-1                 redis:7.4-alpine            "docker-entrypoint.s…"   redis_cache                 38 seconds ago   Up 30 seconds             6379/tcp
+
+VERDICT ADCG14 : PASS 

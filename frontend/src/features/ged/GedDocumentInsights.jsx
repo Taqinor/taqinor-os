@@ -90,12 +90,15 @@ export default function GedDocumentInsights({ document, onClose }) {
       .then((r) => setTimeline(toArray(r.data)))
       .catch(() => setTimeline([]))
     reloadAcl()
+    // ADRG143 — utilisateurs et rôles ne servent qu'à l'éditeur d'ACL (`peutGouverner`) :
+    // sans ce droit, `users/` et `roles/` répondraient 403.
+    if (!peutGouverner) return
     // Toutes les pages : /users/ et /roles/ sont paginés (50), jamais la page 1 seule.
     toutesLesPages(gedApi.getUsers).then((r) => setUsers(r.data))
       .catch(() => setUsers([]))
     toutesLesPages(rolesApi.getRoles).then((r) => setRoles(r.data))
       .catch(() => setRoles([]))
-  }, [document, reloadAcl])
+  }, [document, reloadAcl, peutGouverner])
 
   const addAcl = async () => {
     if (!draft.principalId) {

@@ -1128,8 +1128,12 @@ class SuppositionsDitesTests(SimpleTestCase):
                             ('supposition_azimut_deg', 'orientation')):
             self.assertEqual(par_code[code]['champ_lead'], champ, code)
         # Une alerte qui ne tient à aucune réponse de la fiche reste telle quelle.
-        self.assertNotIn('champ_lead', par_code['longueurs_non_relevees'])
-        self.assertEqual(par_code['longueurs_non_relevees'], self.ETUDE['alertes'][2])
+        self.assertIsNone(par_code['longueurs_non_relevees']['champ_lead'])
+        self.assertEqual(par_code['longueurs_non_relevees'],
+                         dict(self.ETUDE['alertes'][2], champ_lead=None))
+        # Contrat de l'aperçu : les MÊMES clés sur chaque alerte servie.
+        self.assertEqual({frozenset(a) for a in self._dites()},
+                         {frozenset({'code', 'champ', 'champ_lead', 'niveau', 'interne', 'message'})})
         # Une hypothèse sourcée (pas une estimation) n'est pas une supposition.
         self.assertNotIn('supposition_pas_kwc', par_code)
 

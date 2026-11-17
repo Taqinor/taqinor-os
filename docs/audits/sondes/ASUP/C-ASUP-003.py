@@ -55,8 +55,10 @@ def sonde(ctx=None):
     fn.decorator_list = []
     module = ast.Module([ast.ClassDef(name="UserViewSet", bases=[ast.Name("Parent", ast.Load())], keywords=[], body=[fn],
                                       decorator_list=[], type_params=[])], [])
-    ns = {"Response": Resp, "Parent": Parent,
-          "status": type("S", (), {"HTTP_400_BAD_REQUEST": 400, "HTTP_403_FORBIDDEN": 403})}
+    # ASUP5 : destroy appelle désormais _traces_du_compte (collecteur Django, hors hôte) : on lui donne la réponse
+    # d'un compte qui a laissé des traces (c'est le constat : des centaines de liens d'auteur) ; le corps de destroy reste le VRAI.
+    ns = {"Response": Resp, "Parent": Parent, "_traces_du_compte": lambda c: "auteur de 12 paiements",
+          "status": type("S", (), {"HTTP_400_BAD_REQUEST": 400, "HTTP_403_FORBIDDEN": 403, "HTTP_409_CONFLICT": 409})}
     exec(compile(ast.fix_missing_locations(module), "destroy", "exec"), ns)
 
     def jouer(cible):
@@ -66,10 +68,11 @@ def sonde(ctx=None):
         except ProtectedError: return 409
     actif, avec_calepinage = jouer(Compte()), jouer(Compte(protege=True))
     cascade, set_null, protect = _liens_entrants()
-    repro = actif == 204 and "is_active" not in ast.unparse(fn) and len(cascade) > 10
+    # défaut = le compte AVEC traces part en dur (204) ; corrigé : 409 compte_avec_traces (False sur le code livré)
+    repro = actif == 204 and len(cascade) > 10
     return {"repro": repro, "observe": {
         "compte_actif_ordinaire": actif, "compte_responsable_de_calepinage": avec_calepinage,
-        "destroy_lit_is_active": "is_active" in ast.unparse(fn),
+        "destroy_appelle_traces": "_traces_du_compte" in ast.unparse(fn),
         "modeles_emportes_en_cascade": len(cascade), "exemples": sorted(cascade)[:8],
         "liens_mis_a_null": set_null, "liens_protect": protect,
         "geste": "Administration > Utilisateurs > Supprimer (UsersManagement)"}}

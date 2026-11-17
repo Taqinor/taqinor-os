@@ -112,6 +112,34 @@
   ]
  },
  {
+  "action": "deleguer",
+  "methode": "GET",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_reassign"
+   }
+  ]
+ },
+ {
+  "action": "deleguer",
+  "methode": "POST",
+  "permissions": [
+   {
+    "attrs": {},
+    "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_reassign"
+   }
+  ]
+ },
+ {
   "action": "desepingler",
   "methode": "POST",
   "permissions": [

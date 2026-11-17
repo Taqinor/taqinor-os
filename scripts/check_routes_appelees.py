@@ -84,8 +84,6 @@ A_CORRIGER: dict[str, str] = {
     "crm/clients/<>/engagement": _SANS_ECRAN,
     "crm/forecast/historique": _SANS_ECRAN,
     "crm/partenaires": _SANS_ECRAN,
-    "crm/partenaires/<pk>": _SANS_ECRAN,
-    "crm/partenaires/<>/provisionner-acces": _SANS_ECRAN,
     "crm/plans-compte/<>/chatter/historique": _SANS_ECRAN,
     "crm/plans-compte/<>/chatter/noter": _SANS_ECRAN,
 }

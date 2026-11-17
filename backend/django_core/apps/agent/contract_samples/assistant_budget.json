@@ -1,0 +1,11 @@
+{
+  "endpoint": "GET /api/django/agent/evenements/budget/",
+  "forme_serveur": "complete",
+  "pourquoi": "AIC90 (D-COP-1 = repli_groq_seul, PACT10) — plafond de dépense de l'assistant par jour et par commercial, SANS arrêt. Avant chaque tour, le relais FastAPI relit ici (JWT de l'appelant relayé) le coût du jour de l'APPELANT : Σ des événements de l'utilisateur depuis minuit à Casablanca, même calcul que `assistant_stats.json` (`cout_des_agregats`, aucun second calcul de prix ; un tour servi par le repli n'ajoute rien de facturé Claude). `plafond_usd` = réglage `ASSISTANT_PLAFOND_JOUR_USD` (null si vide ⇒ aucune borne, `atteint` toujours faux). `atteint` = plafond posé ET `cout_jour_usd` ≥ plafond ; alors le relais sert le tour sur `SQL_AGENT_FALLBACK_PROVIDER` (événement `repli: true`, `modele` du repli), sans moteur natif ni appel à Claude, et place `message` en tête de la réponse. Repli vide ou égal au fournisseur principal ⇒ le tour reste sur Claude, avertissement journalisé, jamais d'arrêt. Lecture illisible côté relais ⇒ le tour reste sur Claude. Appelants : `SQLAgentService._query` (relais).",
+  "exemple": {
+    "plafond_usd": 2.0,
+    "cout_jour_usd": 2.1,
+    "atteint": true,
+    "message": "Budget du jour de l'assistant atteint : réponses par le modèle de secours jusqu'à demain."
+  }
+}

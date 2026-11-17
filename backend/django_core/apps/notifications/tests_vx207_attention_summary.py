@@ -4,9 +4,9 @@
 les autres surfaces (badge sidebar via `useApprobationsCount`, en-tête « Ma
 file »), en réutilisant les MÊMES fonctions/sélecteurs — jamais une
 dérivation client parallèle. Ce test force 5 approbations en attente et
-vérifie que le champ `approbations` (et `actions_dues`, qui les inclut)
-valent bien 5 — la même donnée que consomme `reporting.approbations_en_
-attente` et `records.views.ActivityViewSet.ma_file`.
+vérifie que le champ `approbations` vaut bien 5 — la même donnée que consomme
+`reporting.approbations_en_attente` et `records.views.ActivityViewSet.ma_file`.
+ASUP64 (D-ASUP-7 = retirer) : la route ne sert plus QUE `approbations`.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -58,7 +58,6 @@ class Vx207AttentionSummaryTests(TestCase):
         resp = self.api.get('/api/django/notifications/attention-summary/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['approbations'], 5)
-        self.assertEqual(resp.data['actions_dues'], 5)
 
         # 2) La même donnée que l'agrégateur `reporting.approbations_en_
         #    attente` (badge sidebar / carte Dashboard / rangée cloche VX86).
@@ -74,48 +73,35 @@ class Vx207AttentionSummaryTests(TestCase):
     def test_zero_when_nothing_pending(self):
         resp = self.api.get('/api/django/notifications/attention-summary/')
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(resp.data['approbations'], 0)
-        self.assertEqual(resp.data['actions_dues'], 0)
-        self.assertEqual(resp.data['en_retard'], 0)
-        self.assertEqual(resp.data['aujourdhui'], 0)
-        self.assertEqual(resp.data['mentions_non_lues'], 0)
+        self.assertEqual(resp.data, {'approbations': 0})
 
-    def test_a_faire_d_un_lead_archive_ou_supprime_non_compte(self):
-        """ASUP60 — à-faire en retard sur un lead archivé, du jour sur un lead
-        à la corbeille, du jour sur un lead vivant : le résumé compte comme
-        « Ma file » (0 / 1), puis (1 / 2) une fois les deux leads restaurés."""
+    def test_seules_les_cles_lues_sont_servies(self):
+        """ASUP64 — un Commercial avec un à-faire en retard, un du jour et une
+        approbation en attente : la réponse ne porte plus que `approbations`
+        (= 1, le chiffre du badge et de la cloche) ; « Ma file » garde ses
+        paniers d'à-faire (le survivant)."""
         import datetime
 
         from django.contrib.contenttypes.models import ContentType
 
+        from apps.automation.models import AutomationApproval
         from apps.crm.models import Lead
         from apps.records.models import Activity
 
-        commercial = _make_user(self.company, 'asup60_commercial')
+        commercial = _make_user(self.company, 'asup64_commercial')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(commercial)}')
-        ct = ContentType.objects.get_for_model(Lead)
+        lead = Lead.objects.create(company=self.company, nom='ASUP64')
         today = datetime.date.today()
-        hier = today - datetime.timedelta(days=1)
-        archive, corbeille, vivant = (
-            Lead.objects.create(company=self.company, nom=f'ASUP60 {n}')
-            for n in ('archivé', 'corbeille', 'vivant'))
-        for lead, due in ((archive, hier), (corbeille, today), (vivant, today)):
+        for due in (today - datetime.timedelta(days=1), today):
             Activity.objects.create(
-                company=self.company, content_type=ct, object_id=lead.pk,
-                summary=lead.nom, assigned_to=commercial, due_date=due)
-        Lead.objects.filter(pk=archive.pk).update(is_archived=True)
-        corbeille.soft_delete()
+                company=self.company, content_type=ContentType.objects.get_for_model(Lead),
+                object_id=lead.pk, summary='Rappeler', assigned_to=commercial, due_date=due)
+        AutomationApproval.objects.create(
+            company=self.company, rule=self._make_rule(), description='Action', requested_by=self.requester)
 
-        def _comptes():
-            resume = api.get('/api/django/notifications/attention-summary/').data
-            file = api.get('/api/django/records/activities/ma-file/').data['resume']
-            self.assertEqual(
-                (resume['en_retard'], resume['aujourdhui']),
-                (file['en_retard'], file['aujourdhui']))
-            return resume['en_retard'], resume['aujourdhui']
-
-        self.assertEqual(_comptes(), (0, 1))
-        Lead.objects.filter(pk=archive.pk).update(is_archived=False)
-        Lead.all_objects.get(pk=corbeille.pk).restore()
-        self.assertEqual(_comptes(), (1, 2))
+        resp = api.get('/api/django/notifications/attention-summary/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data, {'approbations': 1})
+        file = api.get('/api/django/records/activities/ma-file/').data['resume']
+        self.assertEqual((file['en_retard'], file['aujourdhui']), (1, 1))

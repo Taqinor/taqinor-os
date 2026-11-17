@@ -78,9 +78,32 @@ export function reponseComplete(entree, segment = '') {
   return appliquerVarianteSegment({ id: entree.modele, ...modele, ...entree }, segment)
 }
 
+/** Les contextes qu'une réponse peut nommer (`masquee_si` dans la table) pour
+ *  se retirer de l'écran : ce qui se LIT sur la touche, jamais ce qui s'envoie.
+ *  `visite_prevue` : une visite est déjà planifiée sur le lead (`visite_prevue_le`,
+ *  servie sur toute touche) — « Visite acceptée » / « Visite d'abord » n'ont plus
+ *  de sens. */
+const CONTEXTES_MASQUANTS = {
+  visite_prevue: (etape) => Boolean(etape?.visite_prevue_le),
+}
+
+/** Le segment par défaut d'un lead sans segment : résidentiel. */
+export const SEGMENT_PAR_DEFAUT = 'residentiel'
+
+/** Les raisons d'attente qui valent pour ce segment (`segments` de chaque
+ *  raison dans la table ; un lead sans segment est traité comme résidentiel).
+ *  Une raison sans `segments` vaut pour tous. */
+export function raisonsDuSegment(raisons, segment = '') {
+  const lu = segment || SEGMENT_PAR_DEFAUT
+  return (raisons || []).filter((r) => !r.segments || r.segments.includes(lu))
+}
+
 /** Les réponses que la ligne PROPOSE sur cette touche, dans l'ordre de la
  *  table. Sur le type générique, les précisions d'appel (Répondeur, Occupé,
- *  Numéro invalide, A bloqué) s'ajoutent quand la touche est un appel. */
+ *  Numéro invalide, A bloqué) s'ajoutent quand la touche est un appel.
+ *  Les filtres de CONTEXTE sont déclarés dans la table (`masquee_si`,
+ *  `raisons[].segments`), jamais écrits par étape : la clé envoyée au serveur
+ *  de chaque réponse ne change pas. */
 export function reponsesDeLEtape(type, etape) {
   const segment = etape?.lead_segment || ''
   const reponses = (type.reponses || []).map((entree) => reponseComplete(entree, segment))
@@ -94,6 +117,89 @@ export function reponsesDeLEtape(type, etape) {
     reponses.splice(1, 0, ...extras)
   }
   return reponses
+    .filter((r) => !(r.masquee_si && CONTEXTES_MASQUANTS[r.masquee_si]?.(etape)))
+    .map((r) => (r.raisons ? { ...r, raisons: raisonsDuSegment(r.raisons, segment) } : r))
+}
+
+/** Le NOM d'un groupe de la table (« Pas joint », « Plus tard… ») et le titre
+ *  de sa seconde rangée. */
+export function groupeDeLaTable(id) {
+  return PARCOURS.groupes?.[id] ?? null
+}
+
+/** La façon dont l'écran PROPOSE les réponses d'une touche (présentation
+ *  seulement — chaque réponse garde sa clé serveur) :
+ *   · `{ genre: 'reponse', idx, reponse }` — une pastille ordinaire ;
+ *   · `{ genre: 'groupe', cle, label, titre, membres }` — UNE pastille qui ouvre
+ *     la rangée de ses membres (au moins deux sur cette touche : un groupe d'un
+ *     seul membre est une pastille ordinaire, avec son propre libellé) ;
+ *   · `{ genre: 'autre', cle: 'autre', label, membres }` — « Autre réponse »,
+ *     toujours en dernier, qui range les réponses `rang: 'autre'` (même seules).
+ *  `idx` est la position dans `reponses` (la liste de `reponsesDeLEtape`). */
+export function organiserReponses(reponses) {
+  const parGroupe = {}
+  reponses.forEach((reponse, idx) => {
+    if (reponse.groupe && reponse.rang !== 'autre') {
+      if (!parGroupe[reponse.groupe]) parGroupe[reponse.groupe] = []
+      parGroupe[reponse.groupe].push({ idx, reponse })
+    }
+  })
+  const items = []
+  const autres = []
+  const vus = new Set()
+  reponses.forEach((reponse, idx) => {
+    if (reponse.rang === 'autre') {
+      autres.push({ idx, reponse })
+      return
+    }
+    const membres = reponse.groupe ? parGroupe[reponse.groupe] : null
+    if (membres && membres.length >= 2) {
+      if (vus.has(reponse.groupe)) return
+      vus.add(reponse.groupe)
+      const def = groupeDeLaTable(reponse.groupe) ?? {}
+      items.push({
+        genre: 'groupe', cle: reponse.groupe, label: def.label ?? reponse.groupe,
+        titre: def.titre ?? '', membres,
+      })
+      return
+    }
+    items.push({ genre: 'reponse', idx, reponse })
+  })
+  if (autres.length) {
+    items.push({
+      genre: 'autre', cle: 'autre', label: PARCOURS.autre_reponse?.label ?? 'Autre réponse',
+      titre: '', membres: autres,
+    })
+  }
+  return items
+}
+
+/** Les réponses qui disent « le client a été JOINT » : seules elles proposent
+ *  d'enregistrer sa langue (darija) sur la fiche. */
+const REPONSES_CLIENT_JOINT = ['joint', 'a_repondu', 'joint_telephone', 'visite']
+
+/** La case « le client ne parle que darija » : seulement une fois une réponse
+ *  « client joint » choisie, et jamais sur une TÂCHE (préparer le devis, décider
+ *  la suite…) — on n'a pas le client au bout du fil. */
+export function proposerDarija(type, reponse) {
+  return Boolean(reponse) && !estTache(type) && REPONSES_CLIENT_JOINT.includes(reponse.id)
+}
+
+/** « Vous n'avez pas ouvert le message » n'a pas de sens quand la réponse n'a rien
+ *  à voir avec lui : le client a été eu au téléphone (`joint_telephone`), a écrit
+ *  de lui-même (geste `piece`), refuse, ou demande à ne plus être contacté. */
+export function confirmationMessageExigee(reponse) {
+  if (!reponse) return true
+  return !(reponse.id === 'joint_telephone' || reponse.geste === 'piece'
+    || reponse.outcome === 'refuse' || reponse.reponse === 'ne_plus_contacter')
+}
+
+/** Un geste du panneau (`gestes` de la table) est-il proposé sur ce TYPE
+ *  d'étape ? `masque_sur` liste les types où il est retiré (ex. « Pièce reçue »
+ *  sur le suivi après devis). */
+export function gesteVisible(id, type) {
+  const geste = (PARCOURS.gestes || []).find((g) => g.id === id)
+  return !(geste?.masque_sur || []).includes(type?.id)
 }
 
 /** Une TÂCHE de la commerciale (préparer le devis, décider la suite, planifier

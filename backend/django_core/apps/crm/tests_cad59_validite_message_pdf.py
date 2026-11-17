@@ -71,6 +71,51 @@ class _Base(TestCase):
         return message_pour_etape(etape, user=self.acteur)
 
 
+class LAppelDeValiditeTests(_Base):
+    """17/11/2026 — le J28 a SON script (`appel_validite`) : la date de validité
+    est remplie par la MÊME règle que `j9_validite` (le rendu lit le
+    placeholder du texte, pas la clé), et la phrase est omise — jamais un blanc
+    — quand aucune date n'est connue ou qu'elle est passée."""
+    slug = 'cad59-appel'
+
+    def _message(self, devis):
+        jour = (ENVOI + datetime.timedelta(days=28)).date()
+        etape = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='apres_devis',
+            ordre=9, due_at=ENVOI + datetime.timedelta(days=28),
+            due_date=jour, canal='appel', libelle='Appel de validité',
+            template_cle='appel_validite', devis=devis)
+        return message_pour_etape(etape, user=self.acteur)
+
+    def test_la_date_de_validite_est_dite_comme_au_pdf(self):
+        saisie = aujourd_hui_local() + datetime.timedelta(days=30)
+        rendu = self._message(self._devis(date_validite=saisie))
+        self.assertIn(
+            f"Votre proposition est valable jusqu'au "
+            f"{saisie.strftime('%d/%m/%Y')}.", rendu['message'])
+        self.assertTrue(rendu['message'].endswith(
+            'Où en est votre réflexion ?'))
+        self.assertNotIn('STOP', rendu['message'])
+        self.assertNotIn('date_validite', rendu['placeholders_manquants'])
+
+    def test_sans_date_saisie_le_repli_du_pdf_s_applique(self):
+        devis = self._devis(date_validite=None, reference='DEV-CAD59-APPEL')
+        attendue = date_expiration(devis)
+        rendu = self._message(devis)
+        self.assertIn(attendue.strftime('%d/%m/%Y'), rendu['message'])
+
+    def test_une_validite_passee_omet_la_phrase_sans_jamais_la_laisser_vide(self):
+        passee = aujourd_hui_local() - datetime.timedelta(days=3)
+        rendu = self._message(self._devis(
+            date_validite=passee, reference='DEV-CAD59-APPEL-PASSEE'))
+        message = rendu['message']
+        self.assertNotIn("valable jusqu'au", message)
+        self.assertNotIn('{', message)
+        self.assertNotIn("jusqu'au .", message)
+        self.assertIn('date_validite', rendu['placeholders_manquants'])
+        self.assertTrue(message.endswith('Où en est votre réflexion ?'))
+
+
 class LaMemeRegleTests(_Base):
     slug = 'cad59-regle'
 

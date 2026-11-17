@@ -13,6 +13,7 @@ import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { familleCanal } from '../../features/crm/relances/parcours'
 import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import ToucheMessageDialog from './ToucheMessageDialog'
+import BoutonDeleguerDossiers from '../../features/crm/relances/DelegationDialog'
 import { toastError } from '../../lib/toast'
 import { formatNumber } from '../../lib/format'
 import { pl } from './controleSuiviTexte'
@@ -392,9 +393,13 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
         {/* MRY31 — porte vers l'écran « Suivi des relances » (tous jours,
             tous statuts, filtre Responsable) — ce widget reste volontairement
             limité à la file d'action. */}
-        <Link to="/crm/relances" className="shrink-0 text-xs font-medium text-primary hover:underline">
-          Voir le suivi
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Link to="/crm/relances" className="text-xs font-medium text-primary hover:underline">
+            Voir le suivi
+          </Link>
+          {/* 17/11/2026 — confier ses dossiers (et leurs touches) à un collègue. */}
+          <BoutonDeleguerDossiers onDone={() => { charger(); signaler() }} />
+        </div>
       </CardHeader>
       <CardContent>
         <Segmented

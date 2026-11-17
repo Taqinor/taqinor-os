@@ -275,7 +275,7 @@
       "heure_cible": "10:30"
     },
     "script": {
-      "message": "Bonjour, je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
+      "message": "Bonjour, je reviens vers vous pour votre demande solaire — vous avez deux minutes maintenant ?",
       "langue": "fr",
       "placeholders_manquants": []
     },

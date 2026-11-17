@@ -276,7 +276,9 @@ describe('CAD152 — « Appeler » ouvre le panneau AVANT de composer', () => {
     fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
     expect(await screen.findByTestId('consigne-issue')).toHaveTextContent(CONSIGNE_ISSUE)
     fireEvent.click(screen.getByRole('button', { name: /Saisir l’issue/ }))
-    // Le panneau « Fait » de la ligne, avec son vocabulaire (jamais refait ici).
+    // Le panneau « Fait » de la ligne, avec son vocabulaire (jamais refait ici) :
+    // « Pas joint » range Pas de réponse et Répondeur.
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
     expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Répondeur' })).toBeInTheDocument()
   })
@@ -291,7 +293,7 @@ describe('CAD152 — « Appeler » ouvre le panneau AVANT de composer', () => {
     fireEvent.click(bouton)
     // Le panneau « Fait » s'ouvre bien sur une touche à venir, et DIT que la
     // réponse sera datée d'aujourd'hui.
-    expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pas joint' })).toBeInTheDocument()
     expect(screen.getByTestId('reponse-en-avance')).toHaveTextContent(/traitée en avance/)
   })
 })

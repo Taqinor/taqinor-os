@@ -228,9 +228,11 @@ etapeCR('PF12.2-AERR101', ['AERR101'], async ({ page, suivi, testInfo }) => {
   // Panne de la relecture : file et contrôle répondent 500.
   suivi.attendre(/\/api\/django\/crm\/relance-etapes\/(controle\/)?\?/, 500)
   const retablir = await couperLecture(p, (ch) => ch === `${API}/crm/relance-etapes/` || ch === `${API}/crm/relance-etapes/controle/`)
-  // Geste : « Fait » sur la 1re touche, réponse « Répondeur », confirmer.
+  // Geste : « Fait » sur la 1re touche, réponse « Répondeur » (rangée derrière
+  // « Pas joint » depuis le 17/11/2026), confirmer.
   const l1 = ligne(libelles[0])
   await l1.getByRole('button', { name: 'Fait', exact: true }).click()
+  await l1.getByRole('button', { name: 'Pas joint', exact: true }).click()
   await l1.getByRole('button', { name: 'Répondeur', exact: true }).click()
   const fait = p.waitForResponse((r) => /\/crm\/relance-etapes\/\d+\/fait\/$/.test(r.url()), T)
   await l1.getByRole('button', { name: 'Confirmer', exact: true }).click()

@@ -33,7 +33,8 @@ flux `[a, b]`, mappings en bloc, jamais de `{…}` ni de `#` dans une valeur) :
   ---
 results.json = {"sha", "date", "groupe", "verdict": "PASS"|"FAIL", "couvre": [ids],
 "couvre_avec_ecart": [ids], "etapes": [{"id": "P1.1", "taches": ["ADEP16"],
-"verdict": "PASS"|"FAIL", "base_verdict": "PASS"|"FAIL"|null, "trace": "<chemin>",
+"verdict": "PASS"|"FAIL", "base_verdict": "PASS"|"FAIL"|null, "corps": "PASS"|"FAIL"
+(ASUP65, absent = ancien format toléré), "trace": "<chemin>",
 "oracles": {"1": "PASS"|"FAIL"|"NA", …, "10": …}}]} — oracles = qa-explorer 1-10.
 Règles : nom == date + sha[:9], dossier == groupe ; en-tête == results.json (sha,
 date, groupe, verdict, couvre, couvre_avec_ecart, ids d'étapes) ; chaque étape a
@@ -42,7 +43,8 @@ id, ≥ 1 tâche, verdict, les 10 oracles et une trace (sinon « étape vide »)
 couvre_avec_ecart ⊆ couvre ; dans un enregistrement PASS, une étape FAIL n'est
 admise que si toutes ses tâches sont dans couvre_avec_ecart ET `base_verdict:
 FAIL` (la même étape rejouée sur la base échoue aussi : défaut préexistant, pas
-une régression). Seul un PASS couvre (un FAIL reste une trace) ; un rejeu de
+une régression) et que son corps n'a pas échoué (`corps: FAIL` = run rouge, ASUP65).
+Seul un PASS couvre (un FAIL reste une trace) ; un rejeu de
 parcours couvre des ids de tout groupe. Les dossiers dont le nom n'est pas un
 groupe (ex. la capture brute `2026-10-07-adoc171/`) sont ignorés.
 
@@ -230,6 +232,9 @@ def _verifier_etape(n: int, e, verdict, ecart: set, err):
         err(f"étape {e['id']} FAIL dans un enregistrement PASS : seul un écart "
             "accepté (couvre_avec_ecart) qui échoue aussi à la base "
             "(base_verdict: FAIL) est admis")
+    if e.get("corps") == "FAIL" and verdict == "PASS":
+        err(f"étape {e['id']} : son corps a échoué (corps: FAIL, run Playwright rouge) "
+            "dans un enregistrement PASS — un écart accepté n'excuse que les oracles")
     return taches
 
 

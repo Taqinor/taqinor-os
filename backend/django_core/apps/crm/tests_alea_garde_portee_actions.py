@@ -59,6 +59,8 @@ _RECHERCHE = {'q': NOM_HORS, 'search': NOM_HORS, 'telephone': TEL_HORS,
 SONDES_LEAD = {
     'check_duplicates': [('get', 'leads/check-duplicates/', _RECHERCHE)],
     'doublons': [('get', 'leads/doublons/', {})],
+    # Aperçu de délégation : des compteurs sur SES dossiers, jamais un lead.
+    'deleguer': [('get', 'leads/deleguer/', {})],
     'relances': [('get', 'leads/relances/', {'scope': 'today'}),
                  ('get', 'leads/relances/', {'scope': 'overdue'}),
                  ('get', 'leads/relances/', {'scope': 'all'})],

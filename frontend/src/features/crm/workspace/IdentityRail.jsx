@@ -26,6 +26,7 @@ import { STATUT_DEVIS_LABELS as STATUT_DEVIS } from '../../ventes/devisStatuts'
 import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
 import BadgeParcage from './BadgeParcage'
+import RecontactFroid from './RecontactFroid'
 import { catalogueCiBloque, raisonCatalogueCi } from './devisTabLogique'
 // CAD152 — le panneau d'appel guidé : « Appeler » l'ouvre AVANT de composer.
 import PanneauScriptAppel from '../relances/PanneauScriptAppel'
@@ -532,6 +533,8 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       />
 
       <BadgeParcage lead={server} />
+      {/* Le client d'un lead au Froid répond : un bouton, le serveur rouvre le dossier. */}
+      <RecontactFroid lead={server} onDone={() => onAction('cadence-refresh')} />
       {/* Score expliqué (LW17) : popover des raisons (score_reasons). */}
       {hasScore && (
         <div className="lw-rail-score">

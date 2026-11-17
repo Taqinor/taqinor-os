@@ -98,11 +98,20 @@ const DOT = {
 }
 
 // Lien profond vers l'enregistrement parent de l'activité.
+// AMSG102 — le brouillon WhatsApp d'une tâche automatique (livraison, SAV,
+// règles) vit dans la note : on en extrait le premier lien wa.me.
+const waLienDeNote = (note) => {
+  const m = typeof note === 'string' ? note.match(/https:\/\/wa\.me\/[^\s<>"')]+/) : null
+  return m ? m[0] : null
+}
+
 const targetLink = (a) => {
   if (a.target_model === 'crm.lead') return `/crm/leads?lead=${a.object_id}`
   if (a.target_model === 'crm.client') return '/crm'
   if (a.target_model === 'installations.installation') return '/chantiers'
   if (a.target_model === 'sav.ticket') return '/sav'
+  if (a.target_model === 'installations.livraison') return '/chantiers'
+  if (a.target_model === 'installations.intervention') return '/interventions'
   return null
 }
 
@@ -572,7 +581,7 @@ export default function MesActivitesPage() {
                     aria-label={label}
                     getRowKey={(a) => a.id}
                     columns={[
-                      { key: 'type', header: 'Type', cell: (a) => `${a.activity_type_icone} ${a.activity_type_nom}` },
+                      { key: 'type', header: 'Type', cell: (a) => [a.activity_type_icone, a.activity_type_nom].filter(Boolean).join(' ') || '—' },
                       { key: 'summary', header: 'Résumé', cell: (a) => a.summary || '—' },
                       { key: 'due_date', header: 'Échéance', cellClassName: 'tabular-nums', cell: (a) => a.due_date || '—' },
                       {
@@ -596,7 +605,7 @@ export default function MesActivitesPage() {
                         header: '',
                         cell: (a) => {
                           const tel = telHref(a.target_phone)
-                          const wa = waHref(a.target_phone)
+                          const wa = waHref(a.target_phone) || waLienDeNote(a.note)
                           if (!tel && !wa) return null
                           return (
                             <span className="inline-flex items-center gap-2">

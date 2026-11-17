@@ -347,7 +347,7 @@ describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le l
     expect(libelleReponse('generique', 'non_joint')).not.toBe(partagees[0].label)
   })
 
-  it('les types d\'appel dont `non_joint` est partagée disent « Pas de réponse » (même quand la première est « Sans réponse »)', () => {
+  it('les types d\'appel dont `non_joint` est partagée disent « Pas de réponse » (comme leur première réponse : un seul libellé depuis le 17/11/2026)', () => {
     ;['contact_appel', 'appel_apres_reponse', 'dernier_appel', 'rappel_convenu',
       'suivi_appel', 'debrief', 'reveil_appel'].forEach((typeId) => {
       expect(porteuses(typeId, 'non_joint').length).toBeGreaterThan(1)
@@ -355,16 +355,19 @@ describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le l
     })
   })
 
-  it('un type de MESSAGE où une seule réponse porte `non_joint` garde SON libellé (« Sans réponse »)', () => {
+  it('un type où une seule réponse porte la clé garde SON libellé (« Pas encore — à rappeler le… » pour le devis)', () => {
+    expect(porteuses('devis', 'rappel')).toHaveLength(1)
+    expect(libelleReponse('devis', 'rappel')).toBe('Pas encore — à rappeler le…')
+    expect(libelleReponse('devis', 'rappel')).not.toBe(LIBELLES_ISSUE.rappel)
+    // Sur un message, « Pas de réponse » est seule de son issue : un seul libellé pour les deux modèles.
     expect(porteuses('suivi_message', 'non_joint')).toHaveLength(1)
-    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
-    expect(libelleReponse('suivi_message', 'non_joint')).not.toBe(LIBELLES_ISSUE.non_joint)
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
   })
 
   it('accepte dans `reponses_appel` des identifiants de modèle (chaînes) comme des objets', () => {
     const type = typeDeLaTable('suivi_message')
     expect(type.reponses_appel).toBeUndefined()
-    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
     type.reponses_appel = ['repondeur', 'occupe'] // identifiants de modèle, sans objet
     try {
       // Trois réponses partagent maintenant `non_joint` : le générique l'emporte.
@@ -373,7 +376,7 @@ describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le l
     } finally {
       delete type.reponses_appel
     }
-    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
   })
 
   it('propriété sur TOUTE la table : clé partagée → générique (ou 1er libellé sans générique), clé seule → son libellé', () => {

@@ -1,6 +1,7 @@
 // VISCAD6-B (E2, fondateur 24/09/2026) — l'étape de filet « devis parti »
 // sort du texte inerte : deux actions la rendent ACTIONNABLE (« Créer le
-// devis », « Planifier la visite »), et l'étiquette « Fait » dit honnêtement
+// devis » ; 17/11/2026 : « Planifier la visite » n'est plus un bouton — la
+// réponse « Visite d'abord » l'ouvre ET close l'étape), et l'étiquette « Fait » dit honnêtement
 // son effet serveur réel (CAD17 « jamais un effet caché ») — cocher FAIT
 // cette étape SANS issue vaut « devis parti » côté serveur
 // (`touche_envoi_devis`, `apps/crm/services.py`) : le lead passe « Devis
@@ -42,14 +43,14 @@ describe.each([
   ['libellé actuel', ETAPE_DEVIS],
   ['ancien libellé — leads créés avant le renommage', ETAPE_DEVIS_ANCIEN_LIBELLE],
 ])('VISCAD6-B — étape « devis parti » (%s)', (_nom, etapeDevis) => {
-  it('« Créer le devis » et « Planifier la visite » sont proposés à côté des boutons existants', () => {
+  it('« Créer le devis » est proposé à côté des boutons existants ; « Planifier la visite » n’est plus un bouton', () => {
     render(
       <RelanceEtapeRow
         etape={etapeDevis} onFait={noop} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
       />,
     )
     expect(screen.getByRole('link', { name: 'Créer le devis' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Planifier la visite' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Planifier la visite' })).not.toBeInTheDocument()
     // Les boutons EXISTANTS restent tous là (jamais un remplacement).
     expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Fait$/ })).toBeInTheDocument()
@@ -71,14 +72,30 @@ describe.each([
     expect(navigate).toHaveBeenCalledWith(`/ventes/devis/nouveau?lead=${etapeDevis.lead}`)
   })
 
-  it('« Planifier la visite » ouvre la MÊME modale que l’issue « Visite acceptée » (VISCAD6/E1)', async () => {
+  it('« Visite d’abord » ouvre la MÊME modale que l’issue « Visite acceptée » (VISCAD6/E1), avant tout envoi', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
     render(
       <RelanceEtapeRow
-        etape={etapeDevis} onFait={noop} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
+        etape={etapeDevis} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Planifier la visite' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Visite d’abord' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    expect(onFait).not.toHaveBeenCalled()
+  })
+
+  it('une visite déjà prévue sur le lead : « Visite d’abord » n’est plus proposée', () => {
+    render(
+      <RelanceEtapeRow
+        etape={{ ...etapeDevis, visite_prevue_le: '2099-01-05' }} onFait={noop} onSauter={noop}
+        onReporter={noop} onOuvrirMessage={noop}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    expect(screen.getByRole('button', { name: 'Devis envoyé — passer à la suite' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Visite d’abord' })).not.toBeInTheDocument()
   })
 
   it('« Fait » propose « Devis envoyé — passer à la suite » (jamais « Fait — passer à la suite »)', () => {

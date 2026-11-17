@@ -66,6 +66,19 @@ class LaCadenceCourteTests(SimpleTestCase):
                          'deuxieme_affaire')
         self.assertIn('deuxieme_affaire', MESSAGE_TEMPLATE_DEFAULTS)
 
+    def test_le_second_barreau_ne_dit_plus_formulaire(self):
+        """17/11/2026 — l'appel d'ouverture d'un client déjà signé cite leur
+        première installation (`appel_ouverture_deuxieme_affaire`), jamais
+        « vous venez de remplir notre formulaire »."""
+        cle = CADENCE_DEUXIEME_AFFAIRE_DEFAUT[1]['template_cle']
+        self.assertEqual(cle, 'appel_ouverture_deuxieme_affaire')
+        self.assertEqual(CADENCE_CONTACT_DEFAUT[1]['template_cle'],
+                         'appel_ouverture')
+        texte = MESSAGE_TEMPLATE_DEFAULTS[cle]
+        self.assertIn('Nous avons déjà travaillé ensemble sur votre première '
+                      'installation', texte)
+        self.assertNotIn('formulaire', texte)
+
     def test_le_protocole_contact_n_est_PAS_modifie(self):
         """La seconde affaire ne touche PAS le protocole de contact : il garde
         ses huit touches du gabarit v4 (CADV23) et son premier message."""

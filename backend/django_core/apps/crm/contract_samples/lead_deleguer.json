@@ -1,0 +1,42 @@
+{
+  "endpoint": "POST /api/django/crm/leads/deleguer/",
+  "pourquoi": "17/11/2026 (fondateur : « mes leads deviennent ceux de Meryem, avec un bouton pour déléguer ») — LE contrat du geste « Déléguer mes dossiers » : une touche de relance n'a pas de responsable propre, elle suit le responsable de son lead ; confier les leads d'un responsable à un collègue déplace donc leurs touches ouvertes. Le GET du même chemin (`?vers=<id>&de=<id>`) est l'APERÇU que la boîte de dialogue affiche AVANT d'écrire : mêmes trois chiffres que le POST, calculés par la même requête (`delegation.leads_a_deleguer`), donc la phrase annoncée = ce que l'écriture fait. Périmètre = les leads de `de` (société et portée de l'appelant) qui peuvent encore produire une tâche : ni perdus, ni archivés, ni opposés (`ne_plus_contacter`), ni supprimés, étape ≠ SIGNED (clé de STAGES.py) ; les leads Froid suivent donc, avec ou sans touche ouverte. Chaque lead passe par `reattribuer_lead` (jamais un update brut), dans UNE transaction, avec la ligne d'Historique « en masse » de la réattribution en lot. `prevenir_clients=false` saute la SEULE touche de passation (« prévenir le client du changement de conseiller ») ; le nouveau responsable est notifié dans tous les cas. Droit `crm_reassign` (GET compris). Déléguer les dossiers d'un AUTRE (`de` ≠ appelant) exige que `de` soit dans la portée de visibilité de l'appelant (`core.scoping.visible_user_ids`) : sinon 403 sous `de`. Cible = utilisateur ACTIF de la société, différent de `de` : sinon 400 sous `vers`. La société et l'acteur viennent toujours du serveur.",
+  "forme_serveur": "partielle",
+  "corps": {
+    "vers": 12,
+    "de": 3,
+    "prevenir_clients": true
+  },
+  "exemple": {
+    "de": 3,
+    "vers": 12,
+    "vers_nom": "Meryem",
+    "dossiers": 26,
+    "etapes_ouvertes": 41,
+    "etapes_en_retard": 40,
+    "confies": 26,
+    "passations_posees": 19
+  },
+  "exemple_apercu": {
+    "de": 3,
+    "vers": 12,
+    "vers_nom": "Meryem",
+    "dossiers": 26,
+    "etapes_ouvertes": 41,
+    "etapes_en_retard": 40
+  },
+  "exemple_refus": {
+    "vers": ["Ce collègue est désactivé : choisissez un compte actif."],
+    "detail": "Ce collègue est désactivé : choisissez un compte actif."
+  },
+  "notes": {
+    "de": "Facultatif au POST (défaut : l'appelant). Toujours renvoyé : le propriétaire dont les dossiers ont été (ou seraient) confiés.",
+    "vers_nom": "Prénom du collègue, à défaut son identifiant : l'écran écrit « passeront à <prénom> » et le toast « N dossiers confiés à <prénom> ».",
+    "dossiers": "Nombre de leads concernés — le MÊME au GET et au POST.",
+    "etapes_ouvertes": "Touches `a_faire` de ces leads.",
+    "etapes_en_retard": "Parmi elles, celles dont l'échéance est antérieure au seuil de retard de la société (`controle_suivi.seuil_retard`, jours ouvrés).",
+    "confies": "POST seulement : leads réellement réattribués (égal à `dossiers`).",
+    "passations_posees": "POST seulement : touches de passation posées (0 si `prevenir_clients` est faux ; seul un dossier déjà contacté en reçoit une).",
+    "forme_serveur": "`partielle` : le POST et le GET servent deux formes (le POST ajoute `confies` et `passations_posees`) ; la garde de forme ne compare donc rien ici, l'exemple sert l'écran."
+  }
+}

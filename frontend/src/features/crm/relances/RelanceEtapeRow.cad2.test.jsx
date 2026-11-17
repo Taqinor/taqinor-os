@@ -73,6 +73,9 @@ describe('CAD2 — « Débrief visite » pose SA question, jamais celle du suivi
 
   it('les réponses du CLIENT de la cadence après-devis restent proposées (question de prix, devis modifié…)', () => {
     ouvrirFait(ETAPE_DEBRIEF)
+    // Rangées derrière « Autre réponse » : pas au premier regard.
+    expect(screen.queryByRole('button', { name: 'Question de prix — veut négocier' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Question de prix — veut négocier' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Demande un devis modifié' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
@@ -104,9 +107,22 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   })
 
   it('une touche du suivi de proposition ORDINAIRE (barreau) garde son jeu de questions par cadence', () => {
-    const barreau = { ...ETAPE_DEBRIEF, cle: '', libelle: 'Preuve — installation comparable' }
+    // Sans visite déjà prévue sur le lead : « Visite acceptée » est proposée.
+    const barreau = {
+      ...ETAPE_DEBRIEF, cle: '', libelle: 'Preuve — installation comparable', visite_prevue_le: null,
+    }
     ouvrirFait(barreau)
-    expect(screen.getByText('Réponse du client sur la proposition ?')).toBeInTheDocument()
+    expect(screen.getByText('Avez-vous eu le client ?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
+  })
+
+  it('… et elle disparaît quand une visite est déjà prévue sur le lead', () => {
+    const barreau = {
+      ...ETAPE_DEBRIEF, cle: '', libelle: 'Preuve — installation comparable', visite_prevue_le: '2099-01-05',
+    }
+    ouvrirFait(barreau)
+    expect(screen.getByText('Avez-vous eu le client ?')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Visite acceptée' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Client joint' })).toBeInTheDocument()
   })
 })

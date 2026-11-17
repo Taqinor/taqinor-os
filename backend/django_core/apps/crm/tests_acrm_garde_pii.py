@@ -89,7 +89,11 @@ SERVENT_UN_NUMERO = {
 #: GET qui répondent légitimement non 2xx au rôle témoin — une ligne par
 #: raison (patron ``EXCLUES``). Aucun aujourd'hui : un GET non 2xx est un état
 #: de fixture oublié, pas une réponse sûre.
-NON_2XX = {}
+NON_2XX = {
+    ('LeadViewSet', 'deleguer'):
+        "aperçu de délégation réservé au droit `crm_reassign` : le rôle témoin "
+        "ne l'a pas (403) ; la réponse ne porte que des compteurs, aucun numéro",
+}
 
 
 class _Annule(Exception):

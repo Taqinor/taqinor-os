@@ -87,8 +87,10 @@ def alertes_pour_la_commerciale(etude):
     for alerte in etude.get('alertes') or []:
         alerte = dict(alerte)
         champ = CHAMP_LEAD_PAR_CODE.get(alerte.get('code'))
+        # Clé TOUJOURS servie (contrat ``etude_ci_preview.json`` : mêmes clés sur
+        # chaque alerte) ; ``None`` = aucun champ de la fiche ne la lève.
+        alerte['champ_lead'] = champ
         if champ:
-            alerte['champ_lead'] = champ
             alerte['message'] = MESSAGES_PAR_CODE.get(alerte.get('code'), alerte.get('message'))
             champs_dits.add(champ)
         alertes.append(alerte)

@@ -200,6 +200,17 @@ class Qx11BeatReachabilityTests(SimpleTestCase):
                             f'{nom} : expires={expires}, période={periode}')
         self.assertGreaterEqual(frequentes, 27)
 
+    def test_rapports_programmes_passent_chaque_heure(self):
+        """ACEL1 — les rapports programmés passent à chaque heure pile de 6 h à 23 h."""
+        from erp_agentique.celery import app
+        entrees = [e for e in app.conf.beat_schedule.values()
+                   if e['task'] == 'reporting.email_saved_reports']
+        self.assertEqual(len(entrees), 1)
+        self.assertEqual(entrees[0]['schedule'].hour, set(range(6, 24)))
+        self.assertEqual(entrees[0]['schedule'].minute, {0})
+        expires = (entrees[0].get('options') or {}).get('expires')
+        self.assertTrue(expires and 0 < expires <= 3600, expires)
+
     def test_visibility_timeout_depasse_toute_limite_dure(self):
         """ACEL7 — aucun message d'une tâche planifiée n'est re-livré pendant qu'elle tourne."""
         from django.conf import settings
