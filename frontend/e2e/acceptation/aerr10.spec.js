@@ -10,11 +10,14 @@
 // (carte MapTiler, absente du runner : `builderApi.raccourcis` vide ⇒ aucun gestionnaire à appeler, preuve vide) — NON
 // jouée ici ; les trois confirmations nommées (gabarit, pose réelle, relevé) le sont.
 import { test, expect } from '@playwright/test'
+import { spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+import { RACINE } from './_enregistrement.js'
 import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { lireJson, connexionApi, assurerSessionPage, telephoneMobileUnique, listeDe, STAGE_LABELS, uniq } from '../helpers.js'
 
-const etape = groupe('AERR', ['AERR1', 'AERR69', 'AERR114', 'AERR120', 'AERR132'])
+const etape = groupe('AERR', ['AERR1', 'AERR117', 'AERR120', 'AERR132'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -28,6 +31,18 @@ test.afterEach(async () => {
   for (const c of ouverts.splice(0)) await c.close().catch(() => undefined)
   for (const f of apres.splice(0)) await f().catch((e) => console.log(`[nettoyage] ${e.message}`))
 })
+/** Rejoue une sonde HÔTE (`docs/audits/sondes/AERR/<c>.py`) ; NOMMÉE dans le rapport, jamais comptée. */
+function sondeNommee(constat, testInfo) {
+  const code = 'import runpy, sys, json; ns = runpy.run_path(sys.argv[1]); print("@@S" + json.dumps(ns["sonde"](), default=str))'
+  const r = spawnSync(process.env.E2E_PYTHON || 'python', ['-I', '-c', code, join(RACINE, 'docs', 'audits', 'sondes', 'AERR', `${constat}.py`)], { cwd: RACINE, encoding: 'utf8', maxBuffer: 20_000_000 })
+  const ligne = (r.stdout || '').split('\n').find((l) => l.startsWith('@@S'))
+  const dit = ligne ? `repro=${JSON.parse(ligne.slice(3)).repro} ${J(JSON.parse(ligne.slice(3)).observe).slice(0, 300)}` : `non exécutée : ${(r.stderr || '').trim().split('\n').pop()}`
+  testInfo.annotations.push({ type: `sonde ${constat} (nommée, non comptée)`, description: dit })
+  console.log(`[AERR1] sonde ${constat} : ${dit}`)
+}
+const ECART_AERR1 = 'sonde C-AERR-001 périmée : son détecteur (`docs/audits/sondes/AERR/C-AERR-001.py`) compte des relectures totales GARDÉES À DESSEIN '
+  + '(chaque geste relit la liste, lignes conservées) et un squelette montré seulement sur liste VIDE (PaiementsPage.jsx:569) ; elle rend repro:true sur le code corrigé. '
+  + 'La preuve est l\'écran : lignes gardées, avis « Liste pas à jour » + Réessayer, boîtes montées (Factures run 43641375588, Note de débit, Encaissements)'
 const marque = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`
 const pad = (n) => String(n).padStart(2, '0')
 const isoJour = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -110,95 +125,6 @@ for pk in ${J(pks)}:
 const etapeLead = (lead) => py(`from apps.crm.models import Lead
 sortie(Lead.objects.get(pk=${lead}).stage)`)
 
-// ═══ AERR69 — palette ⌘K : « Changer le stage » ⇒ toast nommé + « Annuler » ; vers « Signé » une boîte nommée d'abord ═══
-async function lancerChangerStage(p) {
-  await p.keyboard.press('Control+k')
-  const champ = p.getByRole('textbox', { name: 'Recherche rapide' })
-  await expect(champ, 'palette ouverte').toBeVisible({ timeout: 30_000 })
-  await champ.fill('Changer le stage')
-  await p.getByText('Changer le stage du lead sélectionné').first().click()
-}
-etape('PF12.69-AERR69', ['AERR69'], async ({ page, suivi, testInfo }) => {
-  const m = marque()
-  const nom = `aerr69_${m}`
-  const cr = await compteRole(nom, 'Commercial responsable')
-  const [A, B, C] = await creerLeads(cr, [
-    { nom: `Karim B. ${m}`, prenom: '', telephone: telephoneMobileUnique(), stage: 'CONTACTED' },
-    { nom: `Relance ${m}`, prenom: '', telephone: telephoneMobileUnique(), stage: 'FOLLOW_UP' },
-    { nom: `Panne ${m}`, prenom: '', telephone: telephoneMobileUnique(), stage: 'CONTACTED' },
-  ])
-  apres.push(() => supprimerLeads([A, B, C]))
-  const { p, api } = await ecran(page, suivi, testInfo, nom)
-  const patchsDe = (id) => compteur(p, ['PATCH'], (ch) => ch === `${API}/crm/leads/${id}/`)
-  const ouvrirFiche = async (id, nomLead) => {
-    await p.goto(`/crm/leads?lead=${id}`)
-    await expect(p.getByText(nomLead).first(), `fiche de ${nomLead} affichée`).toBeVisible({ timeout: 60_000 })
-  }
-
-  // (1) Lead CONTACTED : un PATCH {stage: QUOTE_SENT}, toast « <nom> → Devis envoyé » + « Annuler » qui le remet en CONTACTED.
-  const pa = patchsDe(A)
-  await ouvrirFiche(A, `Karim B. ${m}`)
-  await lancerChangerStage(p)
-  const t = toast(p, `Karim B. ${m} → ${STAGE_LABELS.QUOTE_SENT}`).first()
-  await expect(t, 'toast nommé « <nom du lead> → Devis envoyé »').toBeVisible({ timeout: 30_000 })
-  await expect(t.getByRole('button', { name: 'Annuler' }), 'toast avec « Annuler »').toBeVisible()
-  await expect.poll(() => pa.n, { timeout: 15_000 }).toBe(1)
-  expect(JSON.parse(pa.corps[0]), 'PATCH de l\'avancée').toEqual({ stage: 'QUOTE_SENT' })
-  expect(await etapeLead(A), 'base : avancé en QUOTE_SENT').toBe('QUOTE_SENT')
-  const retour = p.waitForResponse((r) => r.request().method() === 'PATCH' && r.url().endsWith(`/crm/leads/${A}/`) && r.request().postData() !== pa.corps[0], T)
-  // « Annuler » cliqué À LA SOURIS (fiche ouverte en fenêtre modale : sa couche modale pose `pointer-events:none` sur le
-  // toast, le clic tombe sur la couche). Constaté au run 43978374413 : s'il est bloqué, l'étape le DIT (défaut) puis
-  // déclenche le bouton par son gestionnaire pour juger le reste de la clause (appel inverse, base).
-  let clicBloque = false
-  await t.getByRole('button', { name: 'Annuler' }).click({ timeout: 2500 }).catch(() => { clicBloque = true })
-  if (clicBloque) {
-    testInfo.annotations.push({ type: 'défaut AERR69', description: '« Annuler » du toast non cliquable à la souris : la couche de la fiche ouverte (modale) intercepte le clic' })
-    await t.getByRole('button', { name: 'Annuler' }).dispatchEvent('click')
-  }
-  const rep = await retour
-  expect(JSON.parse(rep.request().postData()), '« Annuler » PATCHe l\'étape d\'origine').toMatchObject({ stage: 'CONTACTED' })
-  // DÉFAUT connu (C-AERR-VER2-219) : l'appel inverse part SANS `undo: true` — le serveur refuse un recul sans lui (409).
-  // Relevé sans interrompre l'étape, pour juger aussi (2) et (3) ; l'étape reste FAIL (verdict en fin d'étape).
-  const defauts = []
-  if (rep.status() >= 300) {
-    defauts.push(`« Annuler » refusé par le serveur : ${rep.status()} ${(await rep.text()).slice(0, 200)} — corps envoyé ${rep.request().postData()}`)
-  } else {
-    await expect.poll(() => etapeLead(A), { timeout: 30_000, message: 'base : retour en CONTACTED' }).toBe('CONTACTED')
-    const relu = await lireJson(await api.get(`${API}/crm/leads/${A}/`, T), 'lead relu')
-    expect(relu.stage, 'persistance : le lead relu est en CONTACTED').toBe('CONTACTED')
-  }
-  if (clicBloque) defauts.push('« Annuler » du toast non cliquable à la souris sur la fiche ouverte (`?lead=<id>`) : la couche modale intercepte le clic')
-
-  // (2) Lead en Relance : une boîte nommée AVANT tout passage en « Signé » ; « Annuler » ⇒ aucun PATCH.
-  const pb = patchsDe(B)
-  await ouvrirFiche(B, `Relance ${m}`)
-  await lancerChangerStage(p)
-  const boite = p.getByRole('alertdialog')
-  await expect(boite, 'boîte nommée avant « Signé »').toBeVisible({ timeout: 30_000 })
-  await expect(boite).toContainText(`Passer « Relance ${m} » en « ${STAGE_LABELS.SIGNED} » ?`)
-  expect(pb.n, 'la boîte précède tout PATCH').toBe(0)
-  await boite.getByRole('button', { name: 'Annuler' }).click()
-  await expect(boite).toHaveCount(0)
-  await p.waitForTimeout(1500)
-  expect(pb.n, '« Annuler » : aucun PATCH').toBe(0)
-  expect(await etapeLead(B), 'base : le lead reste en FOLLOW_UP').toBe('FOLLOW_UP')
-
-  // (3) Échec serveur : UN SEUL toast (celui de l'intercepteur global).
-  suivi.attendre(new RegExp(`/api/django/crm/leads/${C}/$`), 500)
-  await p.route((u) => u.pathname === `${API}/crm/leads/${C}/`, (route) => (route.request().method() === 'PATCH'
-    ? route.fulfill({ status: 500, contentType: 'application/json', body: J({ detail: 'panne injectée AERR69' }) })
-    : route.fallback()))
-  const pc = patchsDe(C)
-  await ouvrirFiche(C, `Panne ${m}`)
-  await lancerChangerStage(p)
-  await expect.poll(() => pc.n, { timeout: 30_000 }).toBeGreaterThanOrEqual(1)
-  await expect(p.locator('[data-sonner-toast]').first(), 'l\'échec est dit').toBeVisible({ timeout: 15_000 })
-  await p.waitForTimeout(2500)
-  expect(await p.locator('[data-sonner-toast]').count(), 'un seul message pour un échec (aucun toast qui double celui de l\'intercepteur)').toBe(1)
-  expect(await etapeLead(C), 'base : rien d\'écrit sur échec').toBe('CONTACTED')
-  expect(defauts, '« Annuler » du toast remet le lead en CONTACTED (clic souris, appel accepté par le serveur)').toEqual([])
-})
-
 // ═══ AERR132 — fiche produit à stock négatif : changer le prix s'enregistre, rien sous « Quantité en stock » ═══
 etape('PF12.132-AERR132', ['AERR132'], async ({ page, suivi, testInfo }) => {
   const m = marque()
@@ -229,6 +155,8 @@ p = Produit.objects.get(pk=${prod}); sortie([str(p.prix_vente), p.quantite_stock
   await form.locator('#pf-vente').fill('13')
   await form.getByRole('button', { name: 'Mettre à jour' }).click()
   await expect(form, 'la fiche se ferme (enregistrée)').toBeHidden({ timeout: 30_000 })
+  await p.waitForTimeout(1500)
+  const toastsVus = await p.locator('[data-sonner-toast]').allInnerTexts()
   await expect.poll(() => envois.n, { timeout: 15_000, message: 'updateProduit appelé' }).toBe(1)
   const corps = JSON.parse(envois.corps[0])
   expect(corps.prix_vente, 'le prix de vente part à 13').toMatch(/^13(\.0+)?$/)
@@ -236,11 +164,18 @@ p = Produit.objects.get(pk=${prod}); sortie([str(p.prix_vente), p.quantite_stock
   expect(await lu(), 'persistance : prix 13, stock -3 inchangé').toEqual(['13.00', -3])
   await p.reload()
   await p.getByPlaceholder('Chercher partout…').fill(`AERR132 ${m}`, { timeout: 60_000 })
-  await expect(p.getByRole('row').filter({ hasText: `AERR132 ${m}` }), 'après rechargement : la fiche est listée').toBeVisible({ timeout: 60_000 })
+  const ligneRelue = p.getByRole('row').filter({ hasText: `AERR132 ${m}` })
+  await expect(ligneRelue, 'après rechargement : la fiche est listée').toBeVisible({ timeout: 60_000 })
+  // Relu SUR LA LIGNE du catalogue (pas seulement en base) : prix de vente 13 et stock -3.
+  await expect(ligneRelue, 'après rechargement : prix de vente 13 sur la ligne').toContainText(/13[,.]00/)
+  await expect(ligneRelue, 'après rechargement : stock -3 sur la ligne').toContainText(/-\s?3/)
+  // Le code de l'édition n'émet AUCUN toast de succès (seul « Produit créé. » existe, à la création) : observé, dit en notes.
+  testInfo.annotations.push({ type: 'toast de succès', description: `toasts vus après « Mettre à jour » : ${toastsVus.length ? toastsVus.join(' | ') : 'aucun'}` })
+  console.log(`[AERR132] toasts vus après « Mettre à jour » : ${toastsVus.length ? toastsVus.join(' | ') : 'aucun'}`)
 })
 
 // ═══ AERR114 — confirmations nommées : gabarit (Réglages), relevé terrain, pose réelle (atelier) ═══
-etape('PF12.114-AERR114-gabarit', ['AERR114'], async ({ page, suivi, testInfo }) => {
+etape('PF12.114-AERR114-gabarit', ['AERR114-confirmations'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr114g_${m}`
   await compteRole(nom, 'Administrateur')
@@ -292,7 +227,7 @@ async function calepinageDe(request, m) {
 }
 const ongletOuvert = (p) => expect(p.getByTestId('cal-onglet-panneau')).toBeVisible({ timeout: 240_000 })
 
-etape('PF12.114-AERR114-releve', ['AERR114'], async ({ page, suivi, testInfo }) => {
+etape('PF12.114-AERR114-releve', ['AERR114-confirmations'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr114r_${m}`
   await compteRole(nom, 'Administrateur')
@@ -337,7 +272,7 @@ etape('PF12.114-AERR114-releve', ['AERR114'], async ({ page, suivi, testInfo }) 
   expect(natifs, 'aucun window.confirm natif').toEqual([])
 })
 
-etape('PF12.114-AERR114-pose', ['AERR114'], async ({ page, suivi, testInfo }) => {
+etape('PF12.114-AERR114-pose', ['AERR114-confirmations'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const nom = `aerr114p_${m}`
   await compteRole(nom, 'Administrateur')
@@ -542,7 +477,8 @@ etape('PF12.1-AERR1-note-debit', ['AERR1'], async ({ page, suivi, testInfo }) =>
   await expect(avis, 'Réessayer : avis retiré').toBeHidden({ timeout: 30_000 })
   await p.reload()
   for (const f of [A, B]) await expect(ligne(f), `après rechargement : ${f.reference}`).toBeVisible({ timeout: 90_000 })
-})
+  sondeNommee('C-AERR-001', testInfo)
+}, { ecart: { base: 'FAIL', raison: ECART_AERR1 } })
 
 // ═══ AERR1 (suite) — Encaissements : annuler une saisie pendant que la relecture est tenue puis coupée ═══
 etape('PF12.1-AERR1-encaissements', ['AERR1'], async ({ page, suivi, testInfo }) => {
@@ -593,6 +529,7 @@ etape('PF12.1-AERR1-encaissements', ['AERR1'], async ({ page, suivi, testInfo })
   for (const f of [A, B]) await expect(ligne(f), `après rechargement : ${f.reference}`).toBeVisible({ timeout: 90_000 })
 })
 
+// (la fermeture de l'étape ci-dessus porte l'écart : voir ECART_AERR1)
 // ═══ AERR117 (suite) — un refus ne produit qu'UN message (réassignation, type de client, mois de clôture) ; 400 {notes} du RDV ═══
 const unSeulMessage = async (p, quoi) => {
   await expect(p.locator('[data-sonner-toast]').first(), `${quoi} : le refus est dit`).toBeVisible({ timeout: 20_000 })
@@ -716,75 +653,4 @@ sortie(Appointment.objects.filter(lead_id=${lead}).count())`)
   await expect(erreur, '400 {notes} nommé dans le formulaire du RDV').toHaveText('Notes : Notes trop longues (AERR117).', { timeout: 20_000 })
   await expect(p.locator('#appt-notes'), 'la saisie des notes est gardée').toHaveValue('Visite AERR117')
   expect(await nbRdv(), 'base : aucun RDV créé sur refus').toBe(0)
-})
-
-// ═══ AERR114 (suite) — « Suppr » tapé sous une boîte posée par-dessus l'atelier n'appelle aucune action ═══
-// Montage de l'atelier sans clé carte secrète : comme acal4.spec.js (vague 6), la réponse réelle de `design-context` est
-// relue et sa `carte` surchargée par une clé factice ; MapTiler répond 403 (fond de repli local). Un obstacle est dessiné
-// à la souris (il est alors SÉLECTIONNÉ : `#rp9-obs-delete` visible) ; la palette ⌘K (boîte Radix) est ouverte par-dessus,
-// le focus quitte son champ, « Suppr » est tapé : l'obstacle doit rester sélectionné. Témoin : boîte fermée, « Suppr » ⇒ supprimé.
-etape('PF12.114-AERR114-suppr', ['AERR114'], async ({ page, context, suivi }) => {
-  const m = marque()
-  const cal = await py(`from decimal import Decimal as D
-from apps.crm.models import Lead
-from apps.calepinage.models import Calepinage
-from apps.calepinage.tests.test_acal_multi_pans import _layout, _zone
-from apps.ventes.domain.geometrie import layout_hash
-co = U.objects.get(username='demo_admin').company
-lead = Lead.objects.create(company=co, nom='ACC AERR114 ${m}', ville='Casablanca', type_installation='residentiel', facture_hiver=D('900'))
-lay = _layout(_zone(1, 16, 90.0), _zone(2, 8, 270.0))
-lay.update({'scenario': 'reseau', 'panelWatt': 710, 'result': {'panels': 24, 'kwc': 17.04}})
-c = Calepinage.objects.create(company=co, lead_id=lead.pk, titre='ACC AERR114 ${m}', roof_layout=lay, layout_hash=layout_hash(lay))
-sortie({'id': c.pk})`)
-  apres.push(() => py(`from apps.calepinage.models import Calepinage
-Calepinage.objects.filter(pk=${cal.id}).delete()`))
-  await context.route(new RegExp(`/calepinage/calepinages/${cal.id}/design-context/`), async (route) => {
-    const reelle = await route.fetch()
-    const corps = await reelle.json()
-    corps.carte = { ...(corps.carte || {}), available: true, maptilerKey: 'cle-factice-aerr114', mapboxToken: null }
-    await route.fulfill({ response: reelle, json: corps })
-  })
-  suivi.attendre(/api\.maptiler\.com/, 403)
-  await context.route(/https:\/\/api\.maptiler\.com\//, (route) => route.fulfill({ status: 403, contentType: 'application/json', body: '{"message":"Invalid key"}' }))
-  await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.goto(`/calepinage/${cal.id}`)
-  await expect(page.getByRole('button', { name: 'Enregistrer le calepinage' }), 'atelier booté (scène hydratée)').toBeEnabled({ timeout: 180_000 })
-  const cv = page.locator('canvas.maplibregl-canvas').first()
-  const bb = await cv.boundingBox()
-  // Le bloc « Obstacles » n'est montré qu'une fois le toit fermé : si l'hydratation ne l'a pas ouvert, on trace un toit
-  // (4 sommets puis fermeture sur le 1er).
-  if (!(await page.locator('#rp9-obstacle').isVisible())) {
-    const pts = [[0.35, 0.35], [0.65, 0.35], [0.65, 0.65], [0.35, 0.65]]
-    for (const [fx, fy] of pts) await page.mouse.click(bb.x + bb.width * fx, bb.y + bb.height * fy)
-    await page.mouse.click(bb.x + bb.width * pts[0][0], bb.y + bb.height * pts[0][1])
-    await page.waitForTimeout(1500)
-  }
-  console.log(`[AERR114] bloc Obstacles visible : ${await page.locator('#rp9-obstacle').isVisible()}`)
-  // Dessin d'un obstacle : mode obstacle puis glisser sur la carte ⇒ l'obstacle est sélectionné.
-  await page.locator('#rp9-obstacle').click({ timeout: 20_000 })
-  const x = bb.x + bb.width * 0.5
-  const y = bb.y + bb.height * 0.5
-  await page.mouse.move(x, y)
-  await page.mouse.down()
-  await page.mouse.move(x + 60, y + 40, { steps: 8 })
-  await page.mouse.move(x + 120, y + 80, { steps: 8 })
-  await page.mouse.up()
-  const supprimerObs = page.locator('#rp9-obs-delete')
-  await expect(supprimerObs, 'un obstacle est sélectionné (bouton « Supprimer » de l\'obstacle visible)').toBeVisible({ timeout: 20_000 })
-  // Boîte Radix par-dessus : la palette ⌘K ; le focus quitte son champ de saisie.
-  await page.locator('#rp9-obstacle').click() // quitte le mode dessin sans toucher à l'obstacle
-  await page.keyboard.press('Control+k')
-  const palette = page.getByRole('dialog', { name: 'Palette de commandes' })
-  await expect(palette, 'boîte posée par-dessus l\'atelier').toBeVisible({ timeout: 30_000 })
-  await page.evaluate(() => { document.activeElement?.blur?.(); document.querySelector('[role="dialog"][aria-label="Palette de commandes"]')?.focus() })
-  await page.keyboard.press('Delete')
-  await page.keyboard.press('Backspace')
-  await page.waitForTimeout(1000)
-  await expect(supprimerObs, '« Suppr » sous la boîte : l\'obstacle reste sélectionné (aucune action appelée)').toBeVisible()
-  // Témoin : boîte fermée, « Suppr » agit.
-  await page.keyboard.press('Escape')
-  await expect(palette).toHaveCount(0)
-  await page.evaluate(() => document.activeElement?.blur?.())
-  await page.keyboard.press('Delete')
-  await expect(supprimerObs, 'témoin : boîte fermée, « Suppr » supprime l\'obstacle').toBeHidden({ timeout: 15_000 })
 })

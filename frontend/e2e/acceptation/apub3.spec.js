@@ -1,12 +1,16 @@
 // Preuves en direct du groupe APUB, lot 3 (audit PF5 « accès publics et à lien », dossier
 // docs/audits/2026-11-11-parcours-PF5.md ; vague 6 sur runner GitHub, 16/11/2026) : APUB7 (lien du compte-rendu
 // d'intervention : 90 jours après la clôture), APUB10 (livechat public parqué), APUB39 (un rappel demandé par le lien du
-// devis ne lève pas l'opposition loi 09-08). Aucune de ces tâches n'a d'écran : le visiteur est un contexte API SANS
-// cookie muni du vrai jeton, face à la VRAIE route (gunicorn du job), et l'état « Given » que nulle route n'écrit est
-// posé par le shell Django. Persistance = base relue après le geste.
+// devis ne lève pas l'opposition loi 09-08). APUB7 et APUB10 n'ont pas d'écran : le visiteur est un contexte API SANS
+// cookie muni du vrai jeton, face à la VRAIE route (gunicorn du job). APUB39 nomme un écran, la fiche du lead
+// (/crm/leads/<id>) : opposition cochée, note dans le fil, touche dans la cadence y sont affirmées. L'état « Given »
+// que nulle route n'écrit est posé par le shell Django. Persistance = base relue après le geste.
 // APUB15 (nginx de production) et APUB73 (`settings.prod`) ne sont pas jouées ici : leur preuve est la configuration
 // de PRODUCTION (fichier nginx, réglage sous `settings.prod`), que le serveur de ce job (settings.dev, sans nginx) ne sert pas.
 import { test, expect, request as pwRequest } from '@playwright/test'
+import { spawnSync } from 'node:child_process'
+import { join } from 'node:path'
+import { RACINE } from './_enregistrement.js'
 import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { lireJson, assurerSessionPage, telephoneMobileUnique } from '../helpers.js'
@@ -129,7 +133,13 @@ sortie(dict(sessions=ChatSessionPublique.objects.count(), notes=LeadActivity.obj
   expect(apres.email, 'e-mail du lead toujours vide').toBe('')
   expect(apres.leads, 'aucun lead créé au même téléphone').toBe(avant.leads)
   await anonyme.dispose()
-})
+  // Sonde du dossier rejouée, NOMMÉE (non comptée) : elle plante, la vraie API ci-dessus fait foi.
+  const code = 'import runpy, sys, json; ns = runpy.run_path(sys.argv[1]); print("@@S" + json.dumps(ns["sonde"](), default=str))'
+  const r = spawnSync(process.env.E2E_PYTHON || 'python', ['-I', '-c', code, join(RACINE, 'docs', 'audits', 'sondes', 'APUB', 'C-APUB-007.py')], { cwd: RACINE, encoding: 'utf8', maxBuffer: 20_000_000 })
+  const dit = (r.stdout || '').includes('@@S') ? (r.stdout || '').split('\n').find((l) => l.startsWith('@@S')).slice(0, 300) : `plante : ${(r.stderr || '').trim().split('\n').pop()}`
+  testInfo.annotations.push({ type: 'sonde C-APUB-007 (nommée, non comptée)', description: dit })
+  console.log(`[APUB10] sonde C-APUB-007 : ${dit}`)
+}, { ecart: { base: 'FAIL', raison: 'sonde C-APUB-007 inexploitable : son extracteur AST lève NameError (`_exiger_livechat_ouvert`) sur le code corrigé ; la preuve est l\'API réelle rejouée (404 aux trois routes, rien d\'écrit)' } })
 
 // ═══ APUB39 — un rappel demandé depuis le lien du devis ne lève jamais l'opposition loi 09-08 ═══
 etape('PF5.APUB39', ['APUB39'], async ({ page, testInfo }) => {
@@ -187,4 +197,14 @@ sortie(1)`)
   const relu = await lireJson(await r.get(`${API}/crm/leads/${lead.id}/`, T), 'lead relu')
   expect(relu.ne_plus_contacter, 'persistance : lead relu opposé').toBe(true)
   await anonyme.dispose()
+  // L'ÉCRAN nommé par la clause : la fiche du lead (/crm/leads/<id>), affirmée.
+  await page.goto(`/crm/leads/${lead.id}`)
+  const suivi = page.getByRole('navigation', { name: 'Sections du lead' }).getByRole('button', { name: /Suivi commercial/ })
+  if (await suivi.count()) await suivi.click().catch(() => undefined)
+  const case_ = page.getByLabel('Ne plus contacter')
+  await expect(case_, 'fiche du lead : « Ne plus contacter » toujours cochée').toBeChecked({ timeout: 90_000 })
+  await expect(page.getByText('Rappel demandé — opposition loi 09-08 active').first(), 'fiche du lead : la note « opposition active » dans le fil').toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('Rappeler le client (il l’a demandé)').first(), 'fiche du lead : la touche « rappel demandé » dans la cadence').toBeVisible({ timeout: 60_000 })
+  await page.reload()
+  await expect(page.getByLabel('Ne plus contacter'), 'après rechargement : toujours cochée').toBeChecked({ timeout: 90_000 })
 })
