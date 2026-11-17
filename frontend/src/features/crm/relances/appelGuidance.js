@@ -161,6 +161,10 @@ export const CLES_TOUCHES_APPEL_1 = Object.freeze([
   'identite_whatsapp_entrant', 'identite_ancien_dossier', 'deuxieme_affaire',
   'appel_ouverture', 'repondeur', 'appel_relance', 'valeur_j1', 'vocal_j3',
   'appel_dimanche', 'je_classe_j7', 'appel_dernier', 'cloture_j14',
+  // 17/11/2026 — l'appel d'ouverture suit l'origine du lead (comme l'identité).
+  'appel_ouverture_reference', 'appel_ouverture_telephone',
+  'appel_ouverture_whatsapp_entrant', 'appel_ouverture_ancien_dossier',
+  'appel_ouverture_deuxieme_affaire',
 ])
 
 /** La touche en cours est-elle un RAPPEL (après la première conversation) ? */
@@ -586,7 +590,7 @@ export const SCRIPTS_TOUCHES = Object.freeze({
     titre: 'Appel 2 / Appel 4 — répondeur', phase: 'appel_1', manuel: false,
   }),
   appel_dernier: Object.freeze({
-    titre: 'Appel 6 — dernier avant clôture', phase: 'appel_1', manuel: false,
+    titre: 'Dernier appel avant clôture', phase: 'appel_1', manuel: false,
   }),
   appel_suivi_j2: Object.freeze({
     titre: 'Appel de suivi — J2', phase: 'rappel', manuel: false,
@@ -595,7 +599,27 @@ export const SCRIPTS_TOUCHES = Object.freeze({
     titre: 'Appel de suivi — J7', phase: 'rappel', manuel: false,
   }),
   appel_suivi_j11: Object.freeze({
-    titre: 'Appel de suivi — J11', phase: 'rappel', manuel: false,
+    titre: 'Appel de décision', phase: 'rappel', manuel: false,
+  }),
+  // 17/11/2026 — un script par appel après devis (J28, J90), le réveil J30 en
+  // appel, et les appels du moteur qui n'avaient rien à dire.
+  appel_validite: Object.freeze({
+    titre: 'Appel de validité', phase: 'rappel', manuel: false,
+  }),
+  appel_dernier_suivi: Object.freeze({
+    titre: 'Dernier appel de suivi', phase: 'rappel', manuel: false,
+  }),
+  appel_reveil_devis: Object.freeze({
+    titre: 'Appel de réveil', phase: 'rappel', manuel: false,
+  }),
+  appel_reveil_sans_devis: Object.freeze({
+    titre: 'Appel de réveil', phase: 'rappel', manuel: false,
+  }),
+  appel_rappel_convenu: Object.freeze({
+    titre: 'Rappel convenu', phase: 'rappel', manuel: false,
+  }),
+  appel_planifier_visite: Object.freeze({
+    titre: 'Planifier la visite', phase: 'rappel', manuel: false,
   }),
   reveil_a1: Object.freeze({
     titre: 'Réveil — J30', phase: 'rappel', manuel: false,

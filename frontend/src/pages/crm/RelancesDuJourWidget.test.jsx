@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '../../test/relancesWidgetHarness'
-import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent, render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* MRY14 — Cockpit « Relances du jour » v2 : message prêt + WhatsApp (aperçu-
@@ -29,14 +29,21 @@ const DEMAIN = new Intl.DateTimeFormat('en-CA', {
 }).format(new Date(Date.now() + 24 * 3600 * 1000))
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMocks')).crmApiFrise({
+  getAssignableUsers: vi.fn(),
+  apercuDelegation: vi.fn(),
+  deleguerDossiers: vi.fn(),
 }))
 // F2 — le helper toast (lib/toast) est mocké pour PROUVER qu'un échec réseau
 // prévient l'agent (jamais le catch muet d'avant), sans dépendre du rendu
 // visuel réel de sonner.
-vi.mock('../../lib/toast', () => ({ toastError: vi.fn() }))
+vi.mock('../../lib/toast', () => ({ toastError: vi.fn(), toastSuccess: vi.fn() }))
+// « Déléguer mes dossiers » — le droit crm_reassign est un mock réassignable.
+const droit = vi.fn(() => true)
+vi.mock('../../features/sav/useDroitMetier', () => ({ default: (code) => droit(code) }))
 
 import crmApi from '../../api/crmApi'
-import { toastError } from '../../lib/toast'
+import { toastError, toastSuccess } from '../../lib/toast'
+import BoutonDeleguerDossiers from '../../features/crm/relances/DelegationDialog'
 
 // Les tests d'ACTION n'affichent qu'UNE ligne (sinon `getByRole('button')`
 // tombe sur deux boutons homonymes) ; la ligne reste celle du contrat, jamais
@@ -236,5 +243,103 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('radio', { name: '7 jours' }))
     await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'week' }))
+  })
+})
+
+/* « Déléguer mes dossiers » — l'aperçu et le résultat viennent de l'exemple
+   COMMITTÉ `lead_deleguer.json` (PACT10), jamais d'un objet retapé. */
+const APERCU = exempleContrat('crm', 'lead_deleguer', 'exemple_apercu')
+const RESULTAT = exempleContrat('crm', 'lead_deleguer')
+
+async function ouvrirEtChoisir() {
+  fireEvent.click(screen.getByRole('button', { name: /Déléguer mes dossiers/ }))
+  const select = await screen.findByLabelText('Collègue')
+  await screen.findByRole('option', { name: 'meryem' })
+  fireEvent.change(select, { target: { value: '12' } })
+}
+
+describe('Déléguer mes dossiers (17/11/2026)', () => {
+  beforeEach(() => {
+    droit.mockReturnValue(true)
+    crmApi.getAssignableUsers.mockResolvedValue({ data: [
+      { id: 3, username: 'reda' }, { id: 12, username: 'meryem' },
+    ] })
+    crmApi.apercuDelegation.mockResolvedValue({ data: APERCU })
+    crmApi.deleguerDossiers.mockResolvedValue({ data: RESULTAT })
+  })
+
+  it('le widget porte le bouton', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    expect(screen.getByTestId('bouton-deleguer-dossiers')).toHaveTextContent('Déléguer mes dossiers')
+  })
+
+  it('reste caché sans le droit crm_reassign', () => {
+    droit.mockReturnValue(false)
+    mount()
+    expect(droit).toHaveBeenCalledWith('crm_reassign')
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it("annonce l'aperçu du serveur puis délègue, prévenir les clients coché par défaut", async () => {
+    const onDone = vi.fn()
+    render(<BoutonDeleguerDossiers onDone={onDone} />)
+    await ouvrirEtChoisir()
+    expect(crmApi.apercuDelegation).toHaveBeenCalledWith({ vers: '12' })
+    expect(await screen.findByTestId('delegation-apercu')).toHaveTextContent(
+      '26 dossiers, dont 41 étapes ouvertes (40 en retard), passeront à Meryem.')
+    expect(screen.getByRole('checkbox')).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+    await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
+      { vers: 12, prevenir_clients: true }))
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(
+      '26 dossiers confiés à Meryem.'))
+    expect(onDone).toHaveBeenCalledWith(RESULTAT)
+  })
+
+  it('décocher la passation est transmis au serveur', async () => {
+    mount()
+    await ouvrirEtChoisir()
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+    await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
+      { vers: 12, prevenir_clients: false }))
+  })
+
+  it('agit sur un autre responsable avec `de`', async () => {
+    render(<BoutonDeleguerDossiers de={3} deNom="reda" />)
+    fireEvent.click(screen.getByRole('button', { name: /Déléguer les dossiers de reda/ }))
+    const select = await screen.findByLabelText('Collègue')
+    await screen.findByRole('option', { name: 'meryem' })
+    // le propriétaire des dossiers n'est pas proposé comme cible
+    expect(screen.queryByRole('option', { name: 'reda' })).toBeNull()
+    fireEvent.change(select, { target: { value: '12' } })
+    await waitFor(() => expect(crmApi.apercuDelegation).toHaveBeenCalledWith(
+      { vers: '12', de: 3 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+    await waitFor(() => expect(crmApi.deleguerDossiers).toHaveBeenCalledWith(
+      { vers: 12, prevenir_clients: true, de: 3 }))
+  })
+
+  it('un refus du serveur s’affiche sous le champ, sans toast', async () => {
+    crmApi.deleguerDossiers.mockRejectedValue({
+      response: { status: 409, data: exempleContrat('crm', 'lead_deleguer', 'exemple_refus') },
+    })
+    mount()
+    await ouvrirEtChoisir()
+    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('Ce collègue est désactivé')
+    expect(screen.getByLabelText('Collègue')).toHaveAttribute('aria-invalid', 'true')
+    expect(toastSuccess).not.toHaveBeenCalled()
+  })
+
+  it('sans collègue choisi, la consigne s’affiche sous le champ et rien n’est écrit', async () => {
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Déléguer mes dossiers/ }))
+    await screen.findByLabelText('Collègue')
+    fireEvent.click(screen.getByRole('button', { name: 'Déléguer' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choisissez le collègue')
+    expect(crmApi.deleguerDossiers).not.toHaveBeenCalled()
   })
 })

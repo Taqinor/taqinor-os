@@ -1083,7 +1083,8 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
         décision D-CADV tranchée le 01/11, testée chez elle dans
         `apps/parametres/tests_mry4_cadence_v2.py`) : neuf barreaux sur 90
         jours, le trou d'ordre 4-5 gardé (barreaux désactivés, jamais
-        supprimés), J14 / J28 / J90 réutilisent `appel_suivi_j11`."""
+        supprimés), J14 garde `appel_suivi_j11`, J28 et J90 ont leur propre script
+        (17/11/2026 : `appel_validite`, `appel_dernier_suivi`)."""
         from apps.parametres.models_relance import CADENCE_APRES_DEVIS_DEFAUT
 
         self.assertEqual(
@@ -1092,8 +1093,8 @@ class DeploiementSansEffetTests(VisiteCadenceBase):
             [(1, 1, 'j1_pdf'), (2, 2, 'appel_suivi_j2'),
              (3, 3, 'dimanche_famille'),
              (6, 7, 'appel_suivi_j7'), (7, 10, 'j6_garanties'),
-             (8, 14, 'appel_suivi_j11'), (9, 28, 'appel_suivi_j11'),
-             (10, 60, 'j13_dernier'), (11, 90, 'appel_suivi_j11')])
+             (8, 14, 'appel_suivi_j11'), (9, 28, 'appel_validite'),
+             (10, 60, 'j13_dernier'), (11, 90, 'appel_dernier_suivi')])
 
     def test_les_textes_historiques_sont_byte_identiques(self):
         """Les deux clés de visite sont ADDITIVES : rien d'existant ne change.

@@ -285,7 +285,8 @@ def _notifier_touches_heritees(lead, nouveau_responsable):
         return None
 
 
-def reattribuer_lead(lead, user, nouveau_responsable):
+def reattribuer_lead(lead, user, nouveau_responsable, *,
+                     prevenir_client=True):
     """CAD54 — LE geste de réattribution, effets compris.
 
     Trois choses, dans cet ordre :
@@ -300,6 +301,9 @@ def reattribuer_lead(lead, user, nouveau_responsable):
     L'ancien responsable ne reçoit plus rien : les notifications de relance
     visent les owners, et il ne l'est plus. Renvoie la touche de passation
     posée, ou ``None``.
+
+    ``prevenir_client=False`` (délégation en bloc, 17/11/2026) saute la SEULE
+    touche de passation ; le nouveau responsable reste notifié.
     """
     if nouveau_responsable is None:
         return None
@@ -308,14 +312,16 @@ def reattribuer_lead(lead, user, nouveau_responsable):
         return None
     lead.owner = nouveau_responsable
     lead.save(update_fields=['owner'])
-    return effets_reattribution(lead, user, ancien)
+    return effets_reattribution(lead, user, ancien,
+                                prevenir_client=prevenir_client)
 
 
-def effets_reattribution(lead, user, ancien):
+def effets_reattribution(lead, user, ancien, *, prevenir_client=True):
     """ACVI31 — ce qui suit l'écriture de l'``owner`` (lot, dispatch, PATCH) :
     le nouveau responsable est notifié, la passation posée, la file recalée."""
     _notifier_touches_heritees(lead, lead.owner)
-    etape = _poser_touche_passation(lead, user, ancien_responsable=ancien)
+    etape = (_poser_touche_passation(lead, user, ancien_responsable=ancien)
+             if prevenir_client else None)
     _recaler_file(lead, user)
     return etape
 

@@ -177,6 +177,7 @@ describe('carte touche — WhatsApp (RELANCE-WA)', () => {
     crmApi.marquerRelanceEtapeFait.mockResolvedValue({ data: { ...TOUCHE_WA_OUVERTE, statut: 'fait', prochaine_touche: null } })
     monter(DONNEES_WA_OUVERTE)
     await userEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     await userEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
     await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(TOUCHE_WA.id, 'stop_contact'))

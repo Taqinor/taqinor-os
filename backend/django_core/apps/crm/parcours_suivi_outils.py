@@ -152,7 +152,11 @@ def refus_variantes_segment(objet):
 #: Les gestes qu'une réponse peut ouvrir à la place d'un envoi direct.
 GESTES_PLANIFICATION = frozenset({'planification', 'planification_seule', 'replanification'})
 #: Les gestes SANS envoi propre : ils n'ont pas de clé de réponse (E14).
-GESTES_SANS_CLE = frozenset({'planification_seule', 'replanification'})
+#: 16/11/2026 — le geste « Oui — pièce reçue » (étape « Relancer le client pour ses
+#: pièces ») : l'écran ouvre le panneau « Pièce reçue » (CAD101) au lieu d'envoyer un
+#: « fait » ; la garde le rejoue par ``relance-etapes/<id>/piece-recue/``.
+GESTES_PIECE = frozenset({'piece'})
+GESTES_SANS_CLE = frozenset({'planification_seule', 'replanification', 'piece'})
 #: AGR530 — ``agricole_sans_releve_eau`` : le lead est un pompage dont le
 #: point d'eau est inconnu (groupe hydraulique manquant) — la suite annoncée
 #: « devis » devient « Planifier la visite — relevé du point d'eau ».
@@ -160,8 +164,13 @@ CONTEXTE_AGRICOLE_SANS_RELEVE_EAU = 'agricole_sans_releve_eau'
 #: Les contextes où la touche amenée est rendue DERNIÈRE de sa cadence.
 CONTEXTES_DERNIERE_TOUCHE = ('derniere_touche', 'derniere_touche_appels_manquants',
                              'derniere_touche_pro')
+#: 16/11/2026 — ``seconde_relance_pieces`` : la première relance « Relancer le client
+#: pour ses pièces » est déjà faite sans pièce, la touche amenée est la SECONDE — sa
+#: clôture rend la main à l'étape devis.
+CONTEXTE_SECONDE_RELANCE_PIECES = 'seconde_relance_pieces'
 CONTEXTES_VARIANTE = frozenset({*CONTEXTES_DERNIERE_TOUCHE, 'perdu_junk',
-                                CONTEXTE_AGRICOLE_SANS_RELEVE_EAU})
+                                CONTEXTE_AGRICOLE_SANS_RELEVE_EAU,
+                                CONTEXTE_SECONDE_RELANCE_PIECES})
 JOURS = frozenset({'aujourdhui', 'demain', 'date_choisie'})
 ETATS_FIN = frozenset({'froid', 'perdu', 'ne_plus_contacter'})
 #: La clé serveur de la réponse « Fait — passer à la suite » (aucune issue).
@@ -214,7 +223,7 @@ CHEMINS = {
     'debrief': ('confirmation', 'joint', {}),
 }
 CHEMINS_SPECIAUX = frozenset({'contact_message', 'suivi_message', 'reveil_appel',
-                              'reveil_message', 'generique'})
+                              'reveil_message', 'generique', 'pieces_recues'})
 
 # ── Le temps et les données de la société ──────────────────────────────────────────────────
 
@@ -634,6 +643,11 @@ class ParcoursBase(TestCase):
         fait = f'/api/django/crm/relance-etapes/{etape.pk}/fait/'
         if sans_date:
             url, corps = fait, {'outcome': reponse['outcome']}
+        elif geste in GESTES_PIECE:
+            # « Oui — pièce reçue » : le panneau « Pièce reçue » (CAD101) enregistre le geste.
+            url = f'/api/django/crm/relance-etapes/{etape.pk}/piece-recue/'
+            corps = {'type_piece': 'facture',
+                     'note': f'Garde de parcours — {reponse["label"]}'}
         elif geste in GESTES_PLANIFICATION:
             url = f'/api/django/crm/leads/{etape.lead_id}/visites/planifier/'
             corps = {'date_prevue': date.isoformat(), 'etape': etape.pk,
@@ -763,6 +777,14 @@ class ParcoursBase(TestCase):
             lead, _devis = self.amener('devis')
             self.envoyer_devis(lead)
             return lead, self.unique(lead, 'suivi_message')
+        if type_id == 'pieces_recues':
+            # CADV29 (D-CADV-10) — un client PROFESSIONNEL joint par appel, sans aucune
+            # pièce reçue : « Relancer le client pour ses pièces » passe avant le devis.
+            lead, appel = self.amener('contact_appel')
+            Lead.objects.filter(pk=lead.pk).update(type_installation='industriel')
+            lead.refresh_from_db()
+            self.jouer(lead, appel, 'joint')
+            return lead, self.unique(lead, 'pieces_recues')
         if type_id == 'generique':
             lead, _suivi = self.amener('suivi_message')
             self.reattribuer(lead)
@@ -1114,6 +1136,10 @@ class ParcoursBase(TestCase):
             # inconnu (aucune donnée hydraulique) : la seule différence.
             Lead.objects.filter(pk=lead.pk).update(type_installation='agricole')
             lead.refresh_from_db()
+        if cas.contexte == CONTEXTE_SECONDE_RELANCE_PIECES:
+            # La première relance est faite sans pièce : la touche amenée est la seconde.
+            self.jouer(lead, etape, 'fait')
+            etape = self.unique(lead, 'pieces_recues')
         avant = self.photo(lead, etape)
         reponse = cas.reponse
         resp, envoye = self.repondre(

@@ -163,6 +163,11 @@ ETAPE_APPEL_TRIMESTRIEL = 'etape_appel_trimestriel'
 # « Pièces reçues ? » d'abord (``cadence_filet.pieces_ci_dues``), jamais le devis.
 ETAPE_PIECES_RECUES = 'etape_pieces_recues'
 ETAPE_PIECES_RECUES_SAUF_SUIVI = 'etape_pieces_recues_sauf_suivi'
+# Décision fondateur du 16/11/2026 — le DERNIER réveil sans réponse sur un lead
+# HORS Froid : un suivi de devis pas allé au bout reprend, sinon le dossier part
+# au Froid et rien n'est posé (``cadence_filet.cloturer_reveils_sans_reponse``) ;
+# avant, « Préparer et envoyer le devis » demain (``etape_devis_demain_sauf_suivi``).
+FROID_APRES_REVEILS_SAUF_SUIVI = 'froid_apres_reveils_sauf_suivi'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -182,6 +187,7 @@ CODES = frozenset({
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
     ETAPE_PLANIFIER_DEMAIN, ETAPE_APPEL_AVANT_FROID, ETAPE_APPEL_TRIMESTRIEL,
     ETAPE_PIECES_RECUES, ETAPE_PIECES_RECUES_SAUF_SUIVI,
+    FROID_APRES_REVEILS_SAUF_SUIVI,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -239,6 +245,9 @@ TYPE_DEVIS_MODIFIE = 'devis_modifie'
 TYPE_REVEIL_APPEL = 'reveil_appel'
 TYPE_REVEIL_MESSAGE = 'reveil_message'
 TYPE_GENERIQUE = 'generique'
+#: 16/11/2026 — « Relancer le client pour ses pièces » : l'étape du moteur de
+#: clé ``pieces_recues`` (CADV29), née du type générique. Même nom que sa clé.
+TYPE_PIECES_RECUES = 'pieces_recues'
 
 #: COCKPIT-CONTRÔLE (30/09/2026) — les types de la table, DANS L'ORDRE DE LA
 #: TABLE (miroir de ``parcours_suivi.json`` ``etapes[].id`` : le serveur ne
@@ -248,7 +257,8 @@ TYPE_GENERIQUE = 'generique'
 TYPES_ORDONNES = (
     TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE, TYPE_DEVIS,
     TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU, TYPE_DERNIER_APPEL,
-    TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE, TYPE_SUIVI_APPEL,
+    TYPE_RAPPEL_CONVENU, TYPE_PIECES_RECUES, TYPE_DECIDER_SUITE,
+    TYPE_SUIVI_APPEL,
     TYPE_SUIVI_MESSAGE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER, TYPE_CONFIRMATION,
     TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE, TYPE_REVEIL_APPEL, TYPE_REVEIL_MESSAGE,
     TYPE_GENERIQUE,
@@ -259,6 +269,7 @@ _TYPES_PAR_CLE = frozenset({
     TYPE_DEVIS, TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU,
     TYPE_DERNIER_APPEL, TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE,
     TYPE_PLANIFIER, TYPE_CONFIRMATION, TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE,
+    TYPE_PIECES_RECUES,
 })
 
 #: Cadence de protocole → (type de l'APPEL, type du MESSAGE). La deuxième
@@ -322,6 +333,11 @@ REPONSES_PAR_TYPE = {
         'ne_plus_contacter'),
     TYPE_RAPPEL_CONVENU: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    # 16/11/2026 — la 1re réponse de la table (« Oui — pièce reçue ») est un
+    # geste SANS envoi propre : aucune clé servie pour elle.
+    TYPE_PIECES_RECUES: (
+        'sans_issue', 'rappel', 'visite_acceptee', 'refuse',
         'ne_plus_contacter'),
     TYPE_DECIDER_SUITE: (
         'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
@@ -664,10 +680,11 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
             return [ETAPE_APPEL_TRIMESTRIEL]
         return [DERNIERE_FROID_REVEILS]
     if cadence == 'reveil':
-        # La cadence réveil ne se clôture jamais elle-même, et le filet ne
-        # pose rien sur un dossier au Froid (CAD16).
+        # La cadence réveil ne pose jamais d'autre réveil ; au Froid rien ne
+        # change (CAD16) ; hors Froid, le dossier y part sans rien poser, sauf
+        # suivi de devis repris (décision fondateur du 16/11/2026).
         return ([DERNIER_REVEIL] if au_froid
-                else [ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
+                else [FROID_APRES_REVEILS_SAUF_SUIVI])
     # Générique : aucune clôture, le filet pose sa suite.
     return [ETAPE_DEVIS_DEMAIN]
 

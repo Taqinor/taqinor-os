@@ -7,12 +7,19 @@
 // résultat du contrat COMMITTÉ `relance_etape_v2.json` (canal appel) —
 // jamais un objet retapé à la main.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn() }))
 import { toastInfo } from '../../../lib/toast'
+
+// Une réponse rangée derrière un groupe (« Pas joint », « Plus tard… ») ou derrière
+// « Autre réponse » : on ouvre d'abord son groupe, puis on clique la réponse.
+function cliquerDans(groupe, nom) {
+  fireEvent.click(screen.getByRole('button', { name: groupe }))
+  fireEvent.click(screen.getByRole('button', { name: nom }))
+}
 
 // CAD10 — la liste des motifs de perte (Paramètres → CRM), lue au premier
 // refus choisi. Forme du `MotifPerteSerializer` (id, nom, archived, est_junk).
@@ -35,12 +42,16 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 function noop() {}
 
 describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
-  it('un canal appel propose Joint/Pas de réponse (existants) ET Répondeur/Occupé (ajoutés)', () => {
+  it('un canal appel propose « Client joint » et « Pas joint », qui range Pas de réponse, Répondeur, Occupé', () => {
     render(
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     expect(screen.getByRole('button', { name: 'Client joint' })).toBeInTheDocument()
+    // Au premier regard : ni Répondeur ni Occupé — ils sont derrière « Pas joint ».
+    expect(screen.queryByRole('button', { name: 'Répondeur' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Occupé' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
     expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Répondeur' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Occupé' })).toBeInTheDocument()
@@ -60,7 +71,7 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
+    cliquerDans('Pas joint', 'Répondeur')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_APPEL.id, { outcome: 'non_joint', note: 'Répondeur' }))
@@ -73,7 +84,7 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
+    cliquerDans('Pas joint', 'Répondeur')
     fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
       { target: { value: '  sonne dans le vide, à retenter le soir  ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
@@ -90,7 +101,7 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
       { target: { value: 'rappel prévu jeudi' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
@@ -122,7 +133,7 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(toastInfo).toHaveBeenCalled())
     expect(toastInfo.mock.calls[0][0]).toMatch(/Prochain appel programmé le/)
@@ -180,6 +191,7 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
     expect(DERNIER_REVEIL.cadence).toBe('reveil')
     expect(DERNIER_REVEIL.ordre).toBe(2)
     ouvrirFait(DERNIER_REVEIL)
+    // Touche message de réveil : « Pas de réponse » est seule de son groupe — pastille ordinaire.
     fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
     const suite = screen.getByTestId('suite-reponse')
     expect(suite).toHaveTextContent(
@@ -192,7 +204,7 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   // touche est close et « Rappeler le client — rappel convenu » est posée à cette date.
   it('« À rappeler le… » sur le dernier réveil annonce le rappel convenu posé à la date', () => {
     ouvrirFait(DERNIER_REVEIL)
-    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    cliquerDans('Plus tard…', 'À rappeler le…')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/rappel convenu/)
     expect(screen.getByTestId('suite-reponse'))
       .not.toHaveTextContent(/n’est reportée sur aucune relance/)
@@ -271,14 +283,14 @@ describe('CAD46 RelanceEtapeRow — le report fait glisser tout le suivi', () =>
 
   it('la phrase est présente sous « À rappeler le… »', () => {
     ouvrirFait(ETAPE_APPEL)
-    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    cliquerDans('Plus tard…', 'À rappeler le…')
     expect(screen.getByLabelText('Rappeler le')).toBeInTheDocument()
     expect(screen.getByTestId('glissement-plan')).toHaveTextContent(GLISSEMENT)
   })
 
   it('« Plus tard » (la veille) garde SA suite, sans cette phrase', () => {
     ouvrirFait(ETAPE_APPEL)
-    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    cliquerDans('Plus tard…', 'Plus tard — pas maintenant')
     expect(screen.queryByTestId('glissement-plan')).not.toBeInTheDocument()
   })
 })
@@ -373,7 +385,7 @@ describe('CAD12 RelanceEtapeRow — le client accepte', () => {
   it('sans devis dans l’ERP, l’aide d’origine reste (aucun lien inventé)', () => {
     ouvrirFait({ ...ETAPE_APRES_DEVIS, devis: null, devis_reference: '' })
     expect(screen.queryByRole('link', { name: /Marquer le devis/ })).not.toBeInTheDocument()
-    expect(screen.getByText(/Marquez le devis ACCEPTÉ/)).toBeInTheDocument()
+    expect(screen.getByText(/Marquez le devis accepté dans Ventes/)).toBeInTheDocument()
   })
 })
 
@@ -419,16 +431,19 @@ function ouvrirFait(etape, props = {}) {
 describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
   it('la réponse est proposée sur une touche de prise de contact ET sur le suivi de proposition', () => {
     ouvrirFait(ETAPE_APPEL)
+    expect(screen.queryByRole('button', { name: 'Ne plus me contacter' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
     cleanup()
     ouvrirFait(ETAPE_APRES_DEVIS)
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
   })
 
   it('envoie la CLÉ de réponse (jamais une issue inventée côté écran)', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/sans étape de décision/)
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
@@ -439,7 +454,7 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait(ETAPE_APPEL, { onFait, onOuvrirMessage })
-    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onOuvrirMessage).toHaveBeenCalledWith(
       { ...ETAPE_APPEL, message_cle: 'stop_contact' }))
@@ -451,7 +466,7 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
     }
     const onFait = vi.fn(() => Promise.reject(erreur))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-outcome'))
       .toHaveTextContent('Cette touche est déjà traitée.')
@@ -465,9 +480,12 @@ describe('CAD6 RelanceEtapeRow — « Plus tard — pas maintenant »', () => {
 
   it('est proposée sur la prise de contact ET le suivi de proposition', () => {
     ouvrirFait(ETAPE_APPEL)
+    expect(screen.queryByRole('button', { name: 'Plus tard — pas maintenant' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
     expect(screen.getByRole('button', { name: 'Plus tard — pas maintenant' })).toBeInTheDocument()
     cleanup()
     ouvrirFait(ETAPE_APRES_DEVIS)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
     expect(screen.getByRole('button', { name: 'Plus tard — pas maintenant' })).toBeInTheDocument()
   })
 
@@ -477,7 +495,7 @@ describe('CAD6 RelanceEtapeRow — « Plus tard — pas maintenant »', () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait(ETAPE_APPEL, { onFait, onOuvrirMessage })
-    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    cliquerDans('Plus tard…', 'Plus tard — pas maintenant')
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
@@ -494,10 +512,14 @@ describe('CAD6 RelanceEtapeRow — « Plus tard — pas maintenant »', () => {
 describe('CAD7 RelanceEtapeRow — « Question de prix — veut négocier »', () => {
   it('n’existe que sur le suivi de proposition', () => {
     ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.queryByRole('button', { name: 'Question de prix — veut négocier' }))
       .not.toBeInTheDocument()
     cleanup()
     ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.queryByRole('button', { name: 'Question de prix — veut négocier' }))
+      .not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Question de prix — veut négocier' }))
       .toBeInTheDocument()
   })
@@ -506,7 +528,7 @@ describe('CAD7 RelanceEtapeRow — « Question de prix — veut négocier »', (
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait(ETAPE_APRES_DEVIS, { onFait, onOuvrirMessage })
-    fireEvent.click(screen.getByRole('button', { name: 'Question de prix — veut négocier' }))
+    cliquerDans('Autre réponse', 'Question de prix — veut négocier')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/aucun message ne part/)
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
@@ -520,17 +542,19 @@ describe('CAD7 RelanceEtapeRow — « Question de prix — veut négocier »', (
 describe('CAD8 RelanceEtapeRow — « Demande un devis modifié »', () => {
   it('est proposée sur le suivi de proposition, jamais en prise de contact', () => {
     ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.queryByRole('button', { name: 'Demande un devis modifié' }))
       .not.toBeInTheDocument()
     cleanup()
     ouvrirFait(ETAPE_APRES_DEVIS)
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Demande un devis modifié' })).toBeInTheDocument()
   })
 
   it('envoie la clé de réponse', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APRES_DEVIS, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Demande un devis modifié' }))
+    cliquerDans('Autre réponse', 'Demande un devis modifié')
     expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/Préparer le devis modifié/)
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
@@ -543,6 +567,7 @@ describe('CAD8 RelanceEtapeRow — « Demande un devis modifié »', () => {
 describe('CAD9 RelanceEtapeRow — « Décision à plusieurs »', () => {
   it('propose la famille ET le propriétaire sur le suivi de proposition', () => {
     ouvrirFait(ETAPE_APRES_DEVIS)
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
     expect(screen.getByRole('button', { name: 'Décision à plusieurs — en famille' }))
       .toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Décision à plusieurs — le propriétaire' }))
@@ -552,7 +577,7 @@ describe('CAD9 RelanceEtapeRow — « Décision à plusieurs »', () => {
   it('envoie la clé de la nuance choisie', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APRES_DEVIS, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Décision à plusieurs — le propriétaire' }))
+    cliquerDans('Autre réponse', 'Décision à plusieurs — le propriétaire')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_APRES_DEVIS.id, { reponse: 'decision_proprietaire' }))
@@ -587,7 +612,7 @@ describe('CAD10 RelanceEtapeRow — motif de refus facultatif', () => {
 
   it('aucune liste n’est proposée hors refus', () => {
     ouvrirFait(ETAPE_APPEL)
-    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    cliquerDans('Pas joint', 'Pas de réponse')
     expect(screen.queryByLabelText('Motif du refus (facultatif)')).not.toBeInTheDocument()
   })
 })
@@ -598,6 +623,7 @@ describe('CAD10 RelanceEtapeRow — motif de refus facultatif', () => {
 describe('CAD11 RelanceEtapeRow — numéro invalide et junk', () => {
   it('le raccourci apparaît sur une touche appel, pas sur un WhatsApp', () => {
     ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
     expect(screen.getByRole('button', { name: 'Numéro invalide' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'A bloqué / signalé' })).toBeInTheDocument()
     cleanup()
@@ -608,7 +634,7 @@ describe('CAD11 RelanceEtapeRow — numéro invalide et junk', () => {
   it('sans la case, seule l’issue non_joint + la note typée partent', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Numéro invalide' }))
+    cliquerDans('Pas joint', 'Numéro invalide')
     await screen.findByTestId('proposition-perdu-junk')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
@@ -618,7 +644,7 @@ describe('CAD11 RelanceEtapeRow — numéro invalide et junk', () => {
   it('la case cochée propose « perdu, motif junk » en un clic', async () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'Numéro invalide' }))
+    cliquerDans('Pas joint', 'Numéro invalide')
     await screen.findByTestId('proposition-perdu-junk')
     fireEvent.click(screen.getByRole('checkbox', { name: /Marquer le lead perdu/ }))
     // Seuls les motifs JUNK de la liste sont proposés.
@@ -702,7 +728,7 @@ describe('CAD26 RelanceEtapeRow — décaler ou mettre en veille', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
     ouvrirFait(ETAPE_APPEL)
-    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    cliquerDans('Plus tard…', 'À rappeler le…')
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-09-22' } })
     expect(screen.getByTestId('erreur-rappel-le')).toHaveTextContent('« Rappeler le »')
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
@@ -719,7 +745,7 @@ describe('CAD26 RelanceEtapeRow — décaler ou mettre en veille', () => {
       response: { status: 400, data: { erreurs: { rappel_le: refus } } },
     }))
     ouvrirFait(ETAPE_APPEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    cliquerDans('Plus tard…', 'À rappeler le…')
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-09-24' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-rappel-le')).toHaveTextContent(refus)
@@ -733,5 +759,165 @@ describe('CAD26 RelanceEtapeRow — décaler ou mettre en veille', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
       ETAPE_APPEL.id, { rappel_le: '2026-10-14', rappel_heure: '09:00' }))
+  })
+})
+
+// ── SIMPLIFICATION DES RÉPONSES (17/11/2026) — groupes, « Autre réponse »,
+// avertissement, cases à cocher. Présentation seulement : chaque réponse envoie
+// EXACTEMENT ce qu'elle envoyait avant (mêmes clés serveur). ───────────────────
+describe('Groupes « Pas joint » et « Plus tard… » — première réponse déjà choisie', () => {
+  const MEMBRES_PAS_JOINT = [
+    ['Pas de réponse', { outcome: 'non_joint' }],
+    ['Répondeur', { outcome: 'non_joint', note: 'Répondeur' }],
+    ['Occupé', { outcome: 'non_joint', note: 'Occupé' }],
+    ['Numéro invalide', { outcome: 'non_joint', note: 'Numéro invalide' }],
+    ['A bloqué / signalé', { outcome: 'non_joint', note: 'A bloqué / signalé' }],
+  ]
+
+  it('« Pas joint » : sa seconde rangée a son titre, la première réponse est choisie et Confirmer envoie le même corps qu’avant', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
+    const sous = screen.getByTestId('sous-reponses-pas_joint')
+    expect(sous).toHaveTextContent('Précision (facultatif)')
+    expect(screen.getByRole('button', { name: 'Pas de réponse' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Répondeur' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, { outcome: 'non_joint' }))
+  })
+
+  it.each(MEMBRES_PAS_JOINT)('« Pas joint » → « %s » envoie le même corps qu’avant le regroupement', async (nom, corps) => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    cliquerDans('Pas joint', nom)
+    expect(screen.getByRole('button', { name: nom })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, corps))
+  })
+
+  it('re-cliquer « Pas joint » referme la rangée et vide le choix', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
+    expect(screen.queryByTestId('sous-reponses-pas_joint')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Choisissez une réponse.')
+  })
+
+  it('choisir une pastille ordinaire referme la seconde rangée', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    expect(screen.queryByTestId('sous-reponses-pas_joint')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Répondeur' })).not.toBeInTheDocument()
+  })
+
+  const DATE = '2099-10-14'
+  it.each([
+    ['À rappeler le…', { outcome: 'rappel', rappel_le: DATE }],
+    ['Plus tard — pas maintenant', { reponse: 'plus_tard', rappel_le: DATE }],
+    ["En attente d'un accord (DPA / banque)",
+      { reponse: 'attente_accord', rappel_le: DATE, raison_attente: 'financement' }],
+  ])('« Plus tard… » → « %s » envoie le même corps qu’avant', async (nom, corps) => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    cliquerDans('Plus tard…', nom)
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: DATE } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, corps))
+  })
+
+  it('« Plus tard… » préselectionne « À rappeler le… » : Confirmer attend seulement la date', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
+    expect(screen.getByRole('button', { name: 'À rappeler le…' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Indiquez la date convenue.')
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2099-10-14' } })
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+  })
+})
+
+describe('« Autre réponse » — les cinq réponses secondaires, rien de choisi d’avance', () => {
+  it('révèle Question de prix, Devis modifié, les deux décisions à plusieurs et Ne plus me contacter', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    for (const nom of ['Question de prix — veut négocier', 'Demande un devis modifié',
+      'Décision à plusieurs — en famille', 'Décision à plusieurs — le propriétaire', 'Ne plus me contacter']) {
+      expect(screen.queryByRole('button', { name: nom })).not.toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
+    const sous = screen.getByTestId('sous-reponses-autre')
+    expect([...sous.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'Question de prix — veut négocier', 'Demande un devis modifié',
+      'Décision à plusieurs — en famille', 'Décision à plusieurs — le propriétaire',
+      'Ne plus me contacter'])
+    // Aucune n'est choisie d'avance (une opposition légale ne se présélectionne pas).
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    expect(screen.getByTestId('raison-confirmer')).toHaveTextContent('Choisissez une réponse.')
+  })
+
+  it('même avec UNE seule réponse secondaire, elle reste derrière « Autre réponse » (étape devis)', () => {
+    const devis = { ...ETAPE_APPEL, cle: 'devis', libelle: 'Préparer et envoyer le devis (ou fixer un rappel)', cadence: 'generique' }
+    ouvrirFait(devis)
+    expect(screen.queryByRole('button', { name: 'Ne plus me contacter' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
+    expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
+  })
+
+  it('« Ne plus me contacter » affiche l’avertissement d’opposition légale, et lui seul', () => {
+    const AVERTISSEMENT = 'Opposition légale : ce client ne pourra plus jamais être relancé. À choisir seulement s’il l’a demandé.'
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.queryByTestId('avertissement-reponse')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Autre réponse' }))
+    expect(screen.queryByTestId('avertissement-reponse')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    expect(screen.getByTestId('avertissement-reponse')).toHaveTextContent(AVERTISSEMENT)
+    // Une autre réponse (Refus) : plus d'avertissement.
+    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    expect(screen.queryByTestId('avertissement-reponse')).not.toBeInTheDocument()
+  })
+})
+
+describe('Case « message non ouvert » — ne bloque pas un refus ni une opposition', () => {
+  const NON_OUVERT = { ...ETAPE_APRES_DEVIS, message_ouvert_le: null }
+
+  it('le motif grisé de Confirmer CITE le libellé réel de la case', () => {
+    ouvrirFait(NON_OUVERT)
+    fireEvent.click(screen.getByRole('button', { name: 'Le client a répondu' }))
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    const libelle = screen.getByTestId('confirmer-sans-ouverture').textContent.trim()
+    expect(libelle).toMatch(/^Vous n’avez pas ouvert de message WhatsApp/)
+    expect(screen.getByTestId('raison-confirmer')).toHaveTextContent(`Cochez la case « ${libelle} » ci-dessus.`)
+    fireEvent.click(within(screen.getByTestId('confirmer-sans-ouverture')).getByRole('checkbox'))
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+  })
+
+  it('« Refuse la proposition » : Confirmer est actif sans cocher, le corps part comme avant', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    ouvrirFait(NON_OUVERT, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Refuse la proposition' }))
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+    expect(screen.queryByTestId('raison-confirmer')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(NON_OUVERT.id, {
+      outcome: 'refuse', body: 'Marquée faite sans ouverture du message depuis l’ERP.' }))
+  })
+
+  it('« Ne plus me contacter » : Confirmer est actif sans cocher', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    ouvrirFait(NON_OUVERT, { onFait })
+    cliquerDans('Autre réponse', 'Ne plus me contacter')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(NON_OUVERT.id, {
+      reponse: 'ne_plus_contacter', body: 'Marquée faite sans ouverture du message depuis l’ERP.' }))
+  })
+
+  it('une autre réponse (« Pas de réponse ») garde l’exigence de la case', () => {
+    ouvrirFait(NON_OUVERT)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
   })
 })

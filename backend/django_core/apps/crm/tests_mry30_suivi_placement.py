@@ -589,8 +589,10 @@ class DecisionDormantTests(_PlacementBase):
     def test_le_dormant_jamais_chiffre_garde_les_gabarits_sans_devis(self):
         lead = self._joint(self._lead('Dormant', stage=stages.NEW, jours=60))
         self._placer()
+        # 17/11/2026 — le J30 est un appel : son script d'appel remplace le
+        # WhatsApp `reveil_a2` ; le J60 garde `reveil_a3`.
         self.assertEqual([e.template_cle for e in self._reveils(lead)],
-                         ['reveil_a2', 'reveil_a3'])
+                         ['appel_reveil_sans_devis', 'reveil_a3'])
 
     def test_le_dormant_devis_parle_bien_dune_proposition_recue(self):
         """Ces leads ONT reçu un devis — dans Odoo — même sans devis ERP :

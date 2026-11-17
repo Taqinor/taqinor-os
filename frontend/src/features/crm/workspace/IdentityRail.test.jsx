@@ -34,8 +34,13 @@ vi.mock('../../../api/crmApi', () => ({
     // aucune touche ouverte ici → le script seul, comme avant.
     getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { results: [] } })),
     getLeadVisites: vi.fn(() => Promise.resolve({ data: { visites: [] } })),
+    recontacterLead: vi.fn(),
   },
 }))
+vi.mock('../../../ui/confirm', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toast: { ...actual.toast, success: vi.fn() } }
+})
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
 // AssigneePicker mocké en bouton cliquable pour tester le PATCH du responsable.
 vi.mock('../../../components/AssigneePicker', () => ({
@@ -735,5 +740,56 @@ describe('ADRG20 — droits de la fiche lead', () => {
     for (const nom of [/Convertir en client/, /^Archiver$/, /Relancer la cadence/, /Arrêter la cadence/]) {
       expect(screen.getByRole('menuitem', { name: nom })).toHaveAttribute('aria-disabled', 'true')
     }
+  })
+})
+
+describe('Recontact d’un lead Froid — « Le client a répondu »', () => {
+  afterEach(() => { droitsRefuses.clear() })
+  const FROID = { stage: 'COLD' }
+  const rendre = (over = {}, onAction = vi.fn()) => {
+    render(<IdentityRail state={makeState({ ...FROID, ...over })} onAction={onAction} users={[]} />)
+    return onAction
+  }
+
+  it('absent hors Froid, ou perdu / archivé / ne plus contacter', () => {
+    for (const over of [{ stage: 'CONTACTED' }, { perdu: true }, { is_archived: true }, { ne_plus_contacter: true }]) {
+      cleanup()
+      rendre(over)
+      expect(screen.queryByTestId('recontact-ouvrir')).toBeNull()
+    }
+  })
+
+  it('présent au Froid', () => {
+    rendre()
+    expect(screen.getByTestId('recontact-ouvrir')).toBeInTheDocument()
+  })
+
+  it('absent sans le droit crm_modifier', () => {
+    droitsRefuses.add('crm_modifier')
+    rendre()
+    expect(screen.queryByTestId('recontact-ouvrir')).toBeNull()
+  })
+
+  it('Au téléphone + Rouvrir : envoie le corps du contrat et rafraîchit', async () => {
+    crmApi.recontacterLead.mockResolvedValue(reponseContrat('crm', 'lead_recontact'))
+    const onAction = rendre()
+    fireEvent.click(screen.getByTestId('recontact-ouvrir'))
+    fireEvent.click(screen.getByLabelText('Au téléphone'))
+    fireEvent.change(screen.getByLabelText(/Note/), { target: { value: 'Rappelle ce soir' } })
+    fireEvent.click(screen.getByText('Rouvrir le dossier'))
+    await waitFor(() => expect(crmApi.recontacterLead).toHaveBeenCalledWith(
+      7, { canal: 'appel', note: 'Rappelle ce soir' }, { suppressErrorToast: true }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('cadence-refresh'))
+  })
+
+  it('un 409 affiche la phrase du serveur dans le panneau', async () => {
+    const detail = 'Ce dossier n’est pas au Froid.'
+    crmApi.recontacterLead.mockRejectedValue({ response: { status: 409, data: { detail } } })
+    const onAction = rendre()
+    fireEvent.click(screen.getByTestId('recontact-ouvrir'))
+    fireEvent.click(screen.getByLabelText('Sur WhatsApp'))
+    fireEvent.click(screen.getByText('Rouvrir le dossier'))
+    expect(await screen.findByTestId('recontact-erreur')).toHaveTextContent(detail)
+    expect(onAction).not.toHaveBeenCalled()
   })
 })

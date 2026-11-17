@@ -21,6 +21,12 @@ const RAISONS = exempleContrat('crm', 'relance_etape_v2', 'ajout_ciq10_raison_at
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.useRealTimers() })
 
+// Les réponses d'attente sont rangées derrière « Plus tard… » (17/11/2026).
+function choisirAttente(libelle) {
+  fireEvent.click(screen.getByRole('button', { name: 'Plus tard…' }))
+  fireEvent.click(screen.getByRole('button', { name: libelle }))
+}
+
 function ouvrirFait(etape, props = {}) {
   const r = render(
     <RelanceEtapeRow
@@ -38,7 +44,7 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
   it('sans raison : message SOUS le champ, Confirmer désactivé, aucun POST', () => {
     const onFait = vi.fn(() => Promise.resolve({}))
     ouvrirFait(INDUSTRIEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: "En attente d'un accord" }))
+    choisirAttente("En attente d'un accord")
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2099-10-14' } })
     const champ = screen.getByLabelText('Raison de l’attente')
     expect(screen.getByTestId('erreur-raison-attente')).toHaveTextContent('Raison de l’attente')
@@ -52,7 +58,7 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
 
   it('les raisons proposées sont celles de la table (liste du contrat CIQ10)', () => {
     ouvrirFait(INDUSTRIEL)
-    fireEvent.click(screen.getByRole('button', { name: "En attente d'un accord" }))
+    choisirAttente("En attente d'un accord")
     const options = [...screen.getByLabelText('Raison de l’attente').querySelectorAll('option')]
       .map((o) => o.value).filter(Boolean)
     expect(options).toEqual(RAISONS.raisons)
@@ -64,7 +70,7 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait(INDUSTRIEL, { onFait, onOuvrirMessage })
-    fireEvent.click(screen.getByRole('button', { name: "En attente d'un accord" }))
+    choisirAttente("En attente d'un accord")
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
     fireEvent.change(screen.getByLabelText('Raison de l’attente'), {
       target: { value: RAISONS.corps_fait.raison_attente } })
@@ -84,14 +90,37 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
     const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
     const onOuvrirMessage = vi.fn()
     ouvrirFait({ ...ETAPE_APPEL, lead_segment: 'residentiel' }, { onFait, onOuvrirMessage })
-    fireEvent.click(screen.getByRole('button', { name: "En attente d'un accord (DPA / banque)" }))
+    choisirAttente("En attente d'un accord (DPA / banque)")
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
-    fireEvent.change(screen.getByLabelText('Raison de l’attente'), { target: { value: 'administration' } })
+    // Une seule raison vaut pour un lead résidentiel (le financement) : déjà choisie.
+    expect(screen.getByLabelText('Raison de l’attente')).toHaveValue('financement')
+    expect(screen.queryByTestId('erreur-raison-attente')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, {
-      reponse: 'attente_accord', rappel_le: '2026-10-14', raison_attente: 'administration',
+      reponse: 'attente_accord', rappel_le: '2026-10-14', raison_attente: 'financement',
     }))
     expect(onOuvrirMessage).not.toHaveBeenCalled()
+  })
+
+  it('les raisons proposées dépendent du segment : une seule (présélectionnée) pour un lead sans segment', () => {
+    const raisons = (segment) => {
+      const { unmount } = ouvrirFait({ ...ETAPE_APPEL, lead_segment: segment })
+      choisirAttente(segment === 'commercial' || segment === 'industriel'
+        ? "En attente d'un accord" : "En attente d'un accord (DPA / banque)")
+      const champ = screen.getByLabelText('Raison de l’attente')
+      const valeurs = [...champ.querySelectorAll('option')].map((o) => o.value).filter(Boolean)
+      const choisie = champ.value
+      unmount()
+      return { valeurs, choisie }
+    }
+    expect(raisons('')).toEqual({ valeurs: ['financement'], choisie: 'financement' })
+    expect(raisons('residentiel')).toEqual({ valeurs: ['financement'], choisie: 'financement' })
+    expect(raisons('agricole')).toEqual({ valeurs: ['financement', 'administration'], choisie: '' })
+    for (const s of ['commercial', 'industriel']) {
+      const { valeurs, choisie } = raisons(s)
+      expect(valeurs).toEqual(RAISONS.raisons)
+      expect(choisie).toBe('')
+    }
   })
 
   it('un refus serveur sur raison_attente s’affiche SOUS le champ', async () => {
@@ -101,7 +130,7 @@ describe('CIQ509 — la raison de l’attente est obligatoire', () => {
     const onFait = vi.fn(() => Promise.reject({
       response: { status: 400, data: { erreurs: { raison_attente: message } } } }))
     ouvrirFait(INDUSTRIEL, { onFait })
-    fireEvent.click(screen.getByRole('button', { name: "En attente d'un accord" }))
+    choisirAttente("En attente d'un accord")
     fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
     fireEvent.change(screen.getByLabelText('Raison de l’attente'), { target: { value: 'direction' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
