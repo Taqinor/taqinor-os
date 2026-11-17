@@ -182,7 +182,10 @@ class ProjetReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=SANS_CORPS)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
+        ecriture.reordonner_projet(request.user, id, avant_id=donnees.get('avant_id'),
+                                   apres_id=donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class TrierParPrioriteVue(APIView):
@@ -192,7 +195,8 @@ class TrierParPrioriteVue(APIView):
 
     @extend_schema(request=None, responses=reponses(None, statut=204))
     def post(self, request):
-        raise PasEncore()
+        ecriture.trier_par_priorite(request.user)
+        return Response(status=204)
 
 
 class ProjetAffichageVue(APIView):
@@ -269,7 +273,9 @@ class ProjetTerminerVue(APIView):
         'projet_cible_id': serializers.IntegerField(required=False, allow_null=True),
     }), responses=reponses(PROJET_ECRIT, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.TerminerSerializer, request.data)
+        resultat = ecriture.terminer_projet(request.user, id, **donnees)
+        return _ecrit(request, resultat)
 
 
 class ProjetRouvrirVue(APIView):
@@ -279,7 +285,7 @@ class ProjetRouvrirVue(APIView):
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,)))
     def post(self, request, id):
-        raise PasEncore()
+        return _ecrit(request, ecriture.rouvrir_projet(request.user, id))
 
 
 class ProjetRestaurerVue(APIView):
@@ -289,7 +295,7 @@ class ProjetRestaurerVue(APIView):
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,), conflit=ERREUR_CODE))
     def post(self, request, id):
-        raise PasEncore()
+        return _ecrit(request, ecriture.restaurer_projet(request.user, id))
 
 
 class DupliquerVue(IdempotentCreateMixin, APIView):

@@ -88,6 +88,32 @@ class ProjetModificationSerializer(serializers.Serializer):
         return valeur
 
 
+class TerminerSerializer(serializers.Serializer):
+    """POST projets/{id}/terminer/ — `issue` obligatoire ; sort des tâches ouvertes."""
+
+    issue = serializers.ChoiceField(choices=ISSUES,
+                                    error_messages={**_messages(), 'required': ATTEINT_OU_ABANDONNE,
+                                                    'null': ATTEINT_OU_ABANDONNE, 'blank': ATTEINT_OU_ABANDONNE,
+                                                    'invalid_choice': ATTEINT_OU_ABANDONNE})
+    bilan = _texte(280, required=False, allow_blank=True)
+    taches_ouvertes = serializers.ChoiceField(choices=['boite', 'annuler', 'deplacer'], required=False,
+                                              error_messages=_messages())
+    projet_cible_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, donnees):
+        if donnees.get('taches_ouvertes') == 'deplacer' and donnees.get('projet_cible_id') is None:
+            raise serializers.ValidationError({'projet_cible_id': [REQUIS]})
+        return donnees
+
+
+class ReordonnerSerializer(serializers.Serializer):
+    """POST …/reordonner/ — la place entre deux voisins (`avant_id` : juste avant lui ; `apres_id` : juste après)."""
+
+    avant_id = serializers.IntegerField(required=False, allow_null=True)
+    apres_id = serializers.IntegerField(required=False, allow_null=True)
+    liste = serializers.CharField(required=False, allow_blank=True)  # sans objet pour un projet ou une étape
+
+
 # --- Réponses ------------------------------------------------------------------------------------
 
 def _iso(valeur):

@@ -7,13 +7,16 @@ CLÉS de son échantillon de `contract_samples/` ; chaque état est relu en base
 """
 import datetime
 
-from django.test import TestCase
+from django.http import Http404
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.test import APIClient
 
 from apps.taches.models.projets import Projet
 from apps.taches.models.taches import Tache
 from apps.taches.services.gestes import annuler_geste
+from apps.taches.services.projets import _rangs_apres_insertion
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
 
@@ -27,6 +30,37 @@ def _j(delta):
 
 def _url(chemin):
     return PREFIXE + chemin
+
+
+class OrdreSansBaseTests(SimpleTestCase):
+    """`_rangs_apres_insertion` : où va l'élément déplacé (pas de base)."""
+
+    ORDRE = [(1, 1024), (2, 2048), (3, 3072)]
+
+    def test_avant_le_premier(self):
+        self.assertEqual(_rangs_apres_insertion(self.ORDRE, 9, 1, None), {9: 0})
+
+    def test_apres_le_dernier(self):
+        self.assertEqual(_rangs_apres_insertion(self.ORDRE, 9, None, 3), {9: 4096})
+
+    def test_entre_deux_voisins(self):
+        self.assertEqual(_rangs_apres_insertion(self.ORDRE, 9, 3, None), {9: 2560})
+
+    def test_sans_place_toute_la_liste_est_renumerotee(self):
+        rangs = _rangs_apres_insertion([(1, 5), (2, 6)], 9, 2, None)
+        self.assertEqual(rangs, {1: 1024, 9: 2048, 2: 3072})
+
+    def test_voisin_inconnu_404(self):
+        with self.assertRaises(Http404):
+            _rangs_apres_insertion(self.ORDRE, 9, 42, None)
+
+    def test_sans_voisin_400(self):
+        with self.assertRaises(serializers.ValidationError):
+            _rangs_apres_insertion(self.ORDRE, 9, None, None)
+
+    def test_seul_dans_la_liste(self):
+        with self.assertRaises(Http404):
+            _rangs_apres_insertion([], 9, None, 7)
 
 
 class _Base(TestCase):
@@ -328,3 +362,181 @@ class SupprimerProjetTests(_Base):
         projet = fabriques.projet(self.voisin)
         self.assertEqual(self._api(self.u1).delete(_url(f'projets/{projet.pk}/')).status_code, 404)
         self.assertFalse(Projet.all_objects.get(pk=projet.pk).is_deleted)
+
+
+class RestaurerProjetTests(_Base):
+    def test_restaurer_rend_seulement_les_taches_supprimees_avec_lui(self):
+        projet, ouverte, faite = self._projet_avec_taches()
+        avant = fabriques.tache(self.u1, projet=projet)
+        avant.soft_delete(self.u1, record=False)
+        api = self._api(self.u1)
+        api.delete(_url(f'projets/{projet.pk}/'))
+        reponse = api.post(_url(f'projets/{projet.pk}/restaurer/'))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()['restaurees'], 2)
+        self.assertFalse(Projet.all_objects.get(pk=projet.pk).is_deleted)
+        self.assertFalse(Tache.all_objects.get(pk=ouverte.pk).is_deleted)
+        self.assertFalse(Tache.all_objects.get(pk=faite.pk).is_deleted)
+        self.assertTrue(Tache.all_objects.get(pk=avant.pk).is_deleted)
+
+    def test_restaurer_409_nom_pris_quand_un_projet_actif_porte_le_nom(self):
+        projet, _, _ = self._projet_avec_taches()
+        api = self._api(self.u1)
+        api.delete(_url(f'projets/{projet.pk}/'))
+        fabriques.projet(self.u1, nom='À supprimer')
+        reponse = api.post(_url(f'projets/{projet.pk}/restaurer/'))
+        self.assertEqual(reponse.status_code, 409)
+        self.assertEqual(reponse.json()['code'], 'nom_pris')
+        self.assertTrue(Projet.all_objects.get(pk=projet.pk).is_deleted)
+
+    def test_restaurer_un_projet_d_un_autre_compte_404(self):
+        projet = fabriques.projet(self.voisin)
+        projet.soft_delete(self.voisin, record=False)
+        self.assertEqual(self._api(self.u1).post(_url(f'projets/{projet.pk}/restaurer/')).status_code, 404)
+
+
+class OrdreEtClotureTests(_Base):
+    def _ordre(self):
+        return list(Projet.objects.filter(proprietaire=self.u1).order_by('rang', 'id').values_list('pk', flat=True))
+
+    def test_mettre_en_haut(self):
+        un, deux, trois = (fabriques.projet(self.u1, rang=r) for r in (1024, 2048, 3072))
+        reponse = self._api(self.u1).post(_url(f'projets/{trois.pk}/reordonner/'), {'avant_id': un.pk}, format='json')
+        self.assertEqual(reponse.status_code, 204)
+        self.assertEqual(self._ordre(), [trois.pk, un.pk, deux.pk])
+
+    def test_apres_un_voisin(self):
+        un, deux, trois = (fabriques.projet(self.u1, rang=r) for r in (1024, 2048, 3072))
+        self._api(self.u1).post(_url(f'projets/{un.pk}/reordonner/'), {'apres_id': deux.pk}, format='json')
+        self.assertEqual(self._ordre(), [deux.pk, un.pk, trois.pk])
+
+    def test_reordonner_ne_touche_ni_a_la_version_ni_au_nom(self):
+        un, deux = fabriques.projet(self.u1, rang=1024), fabriques.projet(self.u1, rang=2048)
+        self._api(self.u1).post(_url(f'projets/{deux.pk}/reordonner/'), {'avant_id': un.pk}, format='json')
+        deux.refresh_from_db()
+        self.assertEqual(deux.lock_version, 0)
+
+    def test_voisin_d_un_autre_compte_404_et_sans_voisin_400(self):
+        un = fabriques.projet(self.u1)
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        self.assertEqual(api.post(_url(f'projets/{un.pk}/reordonner/'), {'avant_id': etranger.pk},
+                                  format='json').status_code, 404)
+        self.assertEqual(api.post(_url(f'projets/{un.pk}/reordonner/'), {}, format='json').status_code, 400)
+
+    def test_trier_par_priorite(self):
+        basse = fabriques.projet(self.u1, priorite=1, rang=1024)
+        haute = fabriques.projet(self.u1, priorite=3, rang=2048)
+        moyenne = fabriques.projet(self.u1, priorite=2, rang=3072)
+        reponse = self._api(self.u1).post(_url('projets/trier-par-priorite/'))
+        self.assertEqual(reponse.status_code, 204)
+        self.assertEqual(self._ordre(), [haute.pk, moyenne.pk, basse.pk])
+
+    def test_terminer_exige_atteint_ou_abandonne(self):
+        projet = fabriques.projet(self.u1)
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), {}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.json()['issue'], ['Atteint ou abandonné ?'])
+        projet.refresh_from_db()
+        self.assertEqual(projet.statut, 'actif')
+
+    def test_terminer_remet_les_taches_ouvertes_dans_a_trier(self):
+        projet = fabriques.projet(self.u1)
+        ouverte = fabriques.tache(self.u1, projet=projet)
+        faite = self._fait(self.u1, projet)
+        corps = {'issue': 'atteint', 'bilan': 'Signé', 'taches_ouvertes': 'boite'}
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), corps, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        rendu = reponse.json()
+        self.assertEqual(set(rendu), set(exemple_de('projet_ecrit')))
+        self.assertEqual((rendu['projet']['statut'], rendu['projet']['issue'], rendu['deplacees']),
+                         ('termine', 'atteint', 1))
+        projet.refresh_from_db()
+        self.assertEqual((projet.bilan, projet.statut), ('Signé', 'termine'))
+        self.assertIsNotNone(projet.termine_le)
+        ouverte.refresh_from_db()
+        faite.refresh_from_db()
+        self.assertIsNone(ouverte.projet_id)
+        self.assertIsNone(ouverte.triee_le)
+        self.assertEqual(faite.projet_id, projet.pk)
+
+    def test_terminer_abandonne_les_taches_ouvertes(self):
+        projet = fabriques.projet(self.u1)
+        ouverte = fabriques.tache(self.u1, projet=projet)
+        corps = {'issue': 'abandonne', 'taches_ouvertes': 'annuler'}
+        self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), corps, format='json')
+        ouverte.refresh_from_db()
+        self.assertEqual(ouverte.statut, 'annule')
+        self.assertIsNotNone(ouverte.annule_le)
+        self.assertEqual(ouverte.projet_id, projet.pk)
+
+    def test_terminer_deplace_vers_un_autre_projet(self):
+        projet, cible = fabriques.projet(self.u1), fabriques.projet(self.u1)
+        deja = fabriques.tache(self.u1, projet=cible)
+        ouverte = fabriques.tache(self.u1, projet=projet)
+        corps = {'issue': 'atteint', 'taches_ouvertes': 'deplacer', 'projet_cible_id': cible.pk}
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), corps, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        ouverte.refresh_from_db()
+        self.assertEqual(ouverte.projet_id, cible.pk)
+        self.assertGreater(ouverte.rang_projet, deja.rang_projet)
+
+    def test_deplacer_exige_une_cible_du_compte(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.tache(self.u1, projet=projet)
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        sans = api.post(_url(f'projets/{projet.pk}/terminer/'),
+                        {'issue': 'atteint', 'taches_ouvertes': 'deplacer'}, format='json')
+        self.assertEqual(sans.json()['projet_cible_id'], ['Requis.'])
+        autre = api.post(_url(f'projets/{projet.pk}/terminer/'),
+                         {'issue': 'atteint', 'taches_ouvertes': 'deplacer', 'projet_cible_id': etranger.pk},
+                         format='json')
+        self.assertEqual(autre.status_code, 400)
+        self.assertEqual(autre.json()['projet_cible_id'], ['Projet inexistant.'])
+        projet.refresh_from_db()
+        self.assertEqual(projet.statut, 'actif')
+
+    def test_terminer_avec_des_ouvertes_exige_leur_sort(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.tache(self.u1, projet=projet)
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), {'issue': 'atteint'},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.json()['taches_ouvertes'], ['Requis.'])
+
+    def test_annuler_la_cloture_rend_projet_et_taches(self):
+        projet = fabriques.projet(self.u1)
+        ouverte = fabriques.tache(self.u1, projet=projet)
+        corps = {'issue': 'atteint', 'taches_ouvertes': 'boite'}
+        geste = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), corps, format='json').json()['geste_id']
+        bilan = annuler_geste(self.u1, geste)
+        self.assertEqual(bilan['conflits'], [])
+        projet.refresh_from_db()
+        ouverte.refresh_from_db()
+        self.assertEqual((projet.statut, projet.issue), ('actif', ''))
+        self.assertIsNone(projet.termine_le)
+        self.assertEqual(ouverte.projet_id, projet.pk)
+
+    def test_terminer_un_projet_termine_ne_fait_rien(self):
+        projet = fabriques.projet(self.u1, statut='termine', issue='atteint')
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), {'issue': 'abandonne'},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.json()['geste_id'])
+        projet.refresh_from_db()
+        self.assertEqual(projet.issue, 'atteint')
+
+    def test_rouvrir(self):
+        projet = fabriques.projet(self.u1, statut='termine', issue='atteint', bilan='Bravo',
+                                  termine_le=timezone.now())
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/rouvrir/'))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()['projet']['statut'], 'actif')
+        projet.refresh_from_db()
+        self.assertEqual((projet.issue, projet.bilan), ('', 'Bravo'))
+        self.assertIsNone(projet.termine_le)
+
+    def test_rouvrir_un_projet_d_un_autre_compte_404(self):
+        projet = fabriques.projet(self.voisin, statut='archive')
+        self.assertEqual(self._api(self.u1).post(_url(f'projets/{projet.pk}/rouvrir/')).status_code, 404)
