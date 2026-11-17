@@ -43,12 +43,13 @@ def activites_ouvertes_pour(user, jusquau=None):
         jusquau = timezone.localdate()
     qs = _activites_de(user).select_related(
         'activity_type', 'content_type').filter(
-        assigned_to=user, done=False, due_date__lte=jusquau)
+        assigned_to_id=user.pk, done=False, due_date__lte=jusquau)
     # Règle de report de ``mine`` (views.py, VX85(a)) : échu = réapparu.
     qs = qs.filter(
         models.Q(snoozed_until__isnull=True)
         | models.Q(snoozed_until__lte=timezone.now().date()))
-    qs = qs.exclude(models.Q(personnelle=True) & ~models.Q(created_by=user))
+    qs = qs.exclude(
+        models.Q(personnelle=True) & ~models.Q(created_by_id=user.pk))
     return sans_cibles_archivees(qs)
 
 
@@ -57,7 +58,7 @@ def nb_a_faire_personnels(user):
     assignés à lui, non faits (un à-faire assigné à un collègue reste dans
     Activités, D-TCH-1)."""
     return _activites_de(user).filter(
-        personnelle=True, created_by=user, assigned_to=user,
+        personnelle=True, created_by_id=user.pk, assigned_to_id=user.pk,
         done=False).count()
 
 
