@@ -596,6 +596,35 @@ class OptionBatterieCITests(_Base):
                          servi if servi and servi > 0 else None)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
 
+    def test_d4_banque_recommandee_gardee_quand_le_vendeur_en_chiffre_moins(self):
+        """D4 (fondateur 17/11/2026) — la banque composée à la création reste
+        connue du devis (``banque_recommandee``) ; une ligne batterie baissée
+        à 1 garde panneaux et hybrides, l'étude suit la batterie CHIFFRÉE et
+        sert ``ajout_possible`` = recommandée − chiffrée."""
+        devis = self._auto(self._boulangerie())
+        option = devis.etude_params['etude_ci']['option_avec']
+        reco = devis.etude_params['banque_recommandee']
+        self.assertEqual(reco['produit'], option['batterie']['produit'])
+        self.assertEqual(reco['quantite'], option['batterie']['quantite'])
+        self.assertEqual(option['batterie']['quantite_recommandee'], reco['quantite'])
+        self.assertEqual(option['batterie']['ajout_possible'], 0)
+        ligne = devis.lignes.get(produit_id=reco['produit'])
+        panneaux_avant = option['nb_panneaux']
+        ligne.quantite = 1
+        ligne.save(update_fields=['quantite'])
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            etude_ci.rafraichir_etude_ci_devis(devis)
+        devis.refresh_from_db()
+        apres = devis.etude_params['etude_ci']['option_avec']
+        self.assertEqual(devis.etude_params['banque_recommandee'], reco)
+        self.assertEqual(apres['batterie']['quantite'], 1)
+        self.assertEqual(apres['batterie']['quantite_recommandee'], reco['quantite'])
+        self.assertEqual(apres['batterie']['ajout_possible'], reco['quantite'] - 1)
+        self.assertEqual(apres['nb_panneaux'], panneaux_avant)
+        if reco['quantite'] > 1:
+            self.assertLess(apres['batterie']['capacite_utile_kwh'],
+                            option['batterie']['capacite_utile_kwh'])
+
     def test_r1_b2_option_avec_des_lignes_dans_sa_pose_serie_rasante_figee(self):
         # R1 (B2, arbitrage coordinatrice) — l'option « avec » STOCKÉE (lignes,
         # rafraîchisseur) porte la pose qui LA loge ; quand « sans » reste à 30°
@@ -800,6 +829,78 @@ class DesignationOptionAvecTests(SimpleTestCase):
                          'Onduleur hybride Deye 20kW')
         self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
                          'Batterie Dyness PowerBrick SC 16 kWh')
+
+
+class BanqueRecommandeeD4Tests(SimpleTestCase):
+    """D4 (fondateur 17/11/2026) — « moins de batteries au départ, prêt pour
+    plus » : la recommandation de la création, les deux clés ADDITIVES du bloc
+    ``option_avec.batterie`` sur chaque chemin, la clé au schéma."""
+
+    def test_banque_recommandee_de_l_etude(self):
+        from apps.ventes.domain.etude_ci_batterie import banque_recommandee
+        etude = {'option_avec': {'batterie': {'produit': 7, 'nom': 'Dyness 10', 'quantite': 3,
+                                              'capacite_utile_kwh': 27.66}}}
+        self.assertEqual(banque_recommandee(etude),
+                         {'produit': 7, 'nom': 'Dyness 10', 'quantite': 3})
+        for vide in ({}, {'option_avec': None}, {'option_avec': {'batterie': {'produit': 7}}}):
+            self.assertIsNone(banque_recommandee(vide))
+
+    def test_ajout_possible_meme_article_seulement(self):
+        from apps.ventes.domain.etude_ci_batterie import avec_recommandation
+        reco = {'produit': 7, 'nom': 'Dyness 10', 'quantite': 3}
+        for chiffre, ajout in ((1, 2), (3, 0), (4, 0)):
+            b = avec_recommandation({'produit': 7, 'quantite': chiffre}, reco)
+            self.assertEqual((b['quantite_recommandee'], b['ajout_possible']), (3, ajout))
+        for autre in (None, dict(reco, produit=8), {'produit': 7, 'quantite': 'x'}):
+            b = avec_recommandation({'produit': 7, 'quantite': 1}, autre)
+            self.assertEqual((b['quantite_recommandee'], b['ajout_possible']), (None, None))
+        source = {'produit': 7, 'quantite': 1}
+        avec_recommandation(source, reco)
+        self.assertEqual(source, {'produit': 7, 'quantite': 1})        # jamais muté
+
+    def test_option_composee_est_la_recommandation(self):
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = {'kwc': 35.0, 'cout': 300000.0, 'economie': 90000.0,
+                      'batterie': {'produit': 7, 'nom': 'Dyness 10', 'quantite': 3},
+                      'bilan': {}, 'composition': None, 'onduleurs': {'combinaison': []}}
+        resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 7}]}}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat):
+            sortie = m.option_avec_de_l_etude(
+                catalogue, {'kwc': 30, 'cout': 250000.0, 'economie': 70000.0}, choix='les_deux',
+                lead=None, tva_recuperable={'valeur': 'inconnu'}, regles_3010b=False)
+        batterie = sortie['bloc']['batterie']
+        self.assertEqual((batterie['quantite_recommandee'], batterie['ajout_possible']), (3, 0))
+
+    def test_option_des_lignes_lit_la_recommandation_du_devis(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.etude_ci_batterie import option_imposee_des_lignes
+        devis = SimpleNamespace(etude_params={'banque_recommandee': {
+            'produit': 7, 'nom': 'Dyness 10', 'quantite': 3}}, option_acceptee='')
+        lignes = [SimpleNamespace(type_ligne='produit', optionnelle=False, variante='avec',
+                                  produit_id=pid, quantite=q, devis=devis)
+                  for pid, q in ((5, 1), (7, 1))]
+        catalogue = {'batterie': {'hybrides': [{'produit': 5, 'kw_ac': 20}],
+                                  'batteries': [{'produit': 7, 'kwh_utile': 9.22}]}}
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._investissement_des_lignes',
+                        return_value=None):
+            imposee = option_imposee_des_lignes(lignes, catalogue, 35.0)
+            self.assertEqual(imposee['recommandee']['quantite'], 3)
+            self.assertNotIn('recommandee', repr(imposee['empreinte']))
+            devis.etude_params = {}
+            self.assertIsNone(option_imposee_des_lignes(lignes, catalogue, 35.0)['recommandee'])
+
+    def test_cle_au_schema_et_dans_l_empreinte(self):
+        from apps.ventes.domain import etude_schema as es
+        regle = es.SCHEMA['banque_recommandee']
+        self.assertEqual((regle['proprietaire'], regle['nature']), (es.MOTEUR_CI, es.DERIVEE))
+        self.assertNotIn('banque_recommandee', etude_ci.cles_hors_empreinte())
+        from apps.ventes.domain.etudes import etude_params_pour_copie
+        copie = etude_params_pour_copie({'mode': 'commercial', 'banque_recommandee': {'quantite': 3}})
+        self.assertEqual(copie['banque_recommandee'], {'quantite': 3})
 
 
 class RetourOptionAvecFluxTests(SimpleTestCase):

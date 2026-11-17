@@ -1,6 +1,6 @@
 {
   "ast": {
-    "FicheTechniqueSerializer": "3b5d8bc41f82f8afc7fe681cc43c613c9157e4f5"
+    "FicheTechniqueSerializer": "61eb730b2135ef7792faf61b010860f6f6f1dde1"
   },
   "champs": [
     "id",
@@ -56,6 +56,7 @@
     "ond_rendement_max_pct",
     "ond_rendement_cec_pct",
     "ond_conso_nuit_w",
+    "ond_dc_max_kwc",
     "bat_c_rate_charge",
     "bat_c_rate_decharge",
     "bat_chimie",
@@ -166,6 +167,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -285,6 +287,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -406,6 +409,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -525,6 +529,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -644,6 +649,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -763,6 +769,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -900,6 +907,7 @@
           "rendement_pct": 97
         }
       ],
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",
@@ -1019,6 +1027,7 @@
       "ond_cos_phi_max": null,
       "ond_cos_phi_min": null,
       "ond_courbe_rendement": null,
+      "ond_dc_max_kwc": null,
       "ond_i_max_mppt_a": null,
       "ond_isc_max_mppt_a": null,
       "ond_limitation_export": "",

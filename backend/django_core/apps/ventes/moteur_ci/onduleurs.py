@@ -11,7 +11,9 @@ total est minimal et qui peut porter le champ :
 * chaque appareil porte au plus ``min(kW AC × borne haute DC/AC,
   dc_max_kwc publié)`` kWc ; la combinaison est valide si la somme couvre le
   kWc demandé (``dc_max_kwc`` non publié ⇒ seule la borne DC/AC s'applique,
-  dit dans ``hypotheses``) ;
+  dit dans ``hypotheses``) ; D1 (fondateur 17/11/2026) : pour un HYBRIDE
+  (``fiche_fait_foi``), ``dc_max_kwc`` publié EST la capacité, nommé dans
+  ``hypotheses`` ;
 * borne haute = ``bornes_dc_ac`` (réglages société CALX213, sinon
   « convention atelier, non sourcée », publiée telle quelle) ; borne basse non
   saisie = aucun contrôle bas (« non saisie ») ;
@@ -133,21 +135,31 @@ def _vivier(candidats, phase, alertes):
     return retenus, exclus
 
 
-def _capacite_kwc(c, borne_haute, module=None):
-    """kWc DC qu'un appareil peut porter : borne DC/AC, ``dc_max_kwc`` et —
-    CMP2, module + fiche connus — ce que ses entrées raccordent (entrées ×
-    chaînes par entrée × longueur maxi × Wc). Rend ``(cap, dc_max,
-    borne_entrees)`` ; ``borne_entrees`` est le kWc câblable ou ``None``."""
-    cap = c['kw_ac'] * borne_haute
+def _dc_max_fiche(c):
+    """La puissance PV maximale lue sur la fiche du candidat (kWc, telle
+    quelle), ou ``None`` ; seule une valeur > 0 compte comme publiée."""
     dc_max = c.get('dc_max_kwc')
     if dc_max is None and c.get('spec') is not None:
         dc_max = getattr(c['spec'], 'dc_max_kwc', None)
     try:
-        dc_max = float(dc_max) if dc_max is not None else None
+        return float(dc_max) if dc_max is not None else None
     except (TypeError, ValueError):
-        dc_max = None
+        return None
+
+
+def _capacite_kwc(c, borne_haute, module=None):
+    """kWc DC qu'un appareil peut porter : borne DC/AC, ``dc_max_kwc`` et —
+    CMP2, module + fiche connus — ce que ses entrées raccordent (entrées ×
+    chaînes par entrée × longueur maxi × Wc). Rend ``(cap, dc_max,
+    borne_entrees)`` ; ``borne_entrees`` est le kWc câblable ou ``None``.
+
+    D1 (fondateur 17/11/2026) — candidat marqué ``_fiche_fait_foi`` (hybrides
+    de l'option « avec ») : la puissance PV maximale publiée EST la capacité,
+    au-delà de la borne DC/AC ; sans valeur publiée, la borne DC/AC reste."""
+    cap = c['kw_ac'] * borne_haute
+    dc_max = _dc_max_fiche(c)
     if dc_max is not None and dc_max > 0:
-        cap = min(cap, dc_max)
+        cap = dc_max if c.get('_fiche_fait_foi') else min(cap, dc_max)
     cable = None
     if module is not None and c.get('spec') is not None:
         nb = capacite_modules(module, c['spec'], c.get('chaines_max_par_mppt'))
@@ -428,8 +440,33 @@ def _combiner_homogene(kwc, candidats, **kw):
     return r
 
 
+#: D1 (fondateur 17/11/2026, lead « CPE Go Plus ») — la limite de panneaux
+#: d'un hybride est la puissance PV maximale de SA fiche (Deye SG05LP3 basse
+#: tension triphasé : « Max. PV access power », deux fois la puissance AC).
+SOURCE_FICHE_FAIT_FOI = ('décision fondateur du 17/11/2026 (D1) — la puissance PV maximale de '
+                         'la fiche fait foi pour un hybride, au-delà de la borne DC/AC')
+
+
+def _hypotheses_fiche(retenus):
+    """D1 — l'hypothèse qui NOMME la puissance PV maximale retenue, par
+    candidat dont la fiche la publie."""
+    return [{'cle': 'dc_max_kwc', 'valeur': dc, 'statut': 'source',
+             'source': 'puissance PV maximale de la fiche : %g kWc (%s) — %s' % (
+                 dc, c.get('nom') or c.get('produit'), SOURCE_FICHE_FAIT_FOI)}
+            for c in retenus for dc in [_dc_max_fiche(c)] if dc is not None and dc > 0]
+
+
+def _haute_fiche(retenus, quantites):
+    """D1 — le ratio DC/AC que la fiche autorise au plus sur la combinaison
+    (puissance PV maximale ÷ kW AC), ``None`` sans fiche qui fait foi."""
+    ratios = [_dc_max_fiche(retenus[i]) / retenus[i]['kw_ac'] for i in quantites
+              if retenus[i].get('_fiche_fait_foi') and (_dc_max_fiche(retenus[i]) or 0) > 0]
+    return round(max(ratios), 3) if ratios else None
+
+
 def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
-                       module=None, ac_max_kw=None, max_appareils=None, homogene=False):
+                       module=None, ac_max_kw=None, max_appareils=None, homogene=False,
+                       fiche_fait_foi=False):
     """La combinaison d'onduleurs au coût de vente minimal pour ``kwc``.
 
     ``candidats`` : ``[{produit, nom, kw_ac, prix (vente HT), triphase,
@@ -444,6 +481,10 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     ``max_appareils`` (CMP3) : nombre maxi d'appareils en parallèle (fiche) ;
     au-delà, ``combinaison`` None + motif nommé. ``homogene`` (CMP11) : un
     seul modèle dans la combinaison (hybrides en parallèle).
+    ``fiche_fait_foi`` (D1, hybrides seulement) : la puissance PV maximale
+    publiée EST la capacité d'un appareil (``_capacite_kwc``) ; la combinaison
+    sert alors ``ratio_dc_ac.bornes.haute_fiche`` (clé ADDITIVE). Faux par
+    défaut : les onduleurs réseau gardent la règle d'avant.
 
     Rend ``{combinaison, ratio_dc_ac, chaines, exclus, prix_vente_total_ht,
     motif, alertes, hypotheses}`` ; ``combinaison`` None ⇒ ``motif`` nommé.
@@ -451,7 +492,7 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     if homogene:
         return _combiner_homogene(kwc, candidats, phase=phase, bornes_dc_ac=bornes_dc_ac,
                                   module=module, ac_max_kw=ac_max_kw,
-                                  max_appareils=max_appareils)
+                                  max_appareils=max_appareils, fiche_fait_foi=fiche_fait_foi)
     alertes, hypotheses = [], []
     bornes = bornes_dc_ac if bornes_dc_ac is not None else _bornes_par_defaut()
     haute = bornes.borne_usuelle
@@ -472,6 +513,9 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
                            'source': 'non saisie — aucun contrôle bas'})
 
     retenus, exclus = _vivier(candidats, phase, alertes)
+    if fiche_fait_foi:
+        retenus = [dict(c, _fiche_fait_foi=True) for c in retenus]
+        hypotheses.extend(_hypotheses_fiche(retenus))
     vide = {
         'combinaison': None,
         'ratio_dc_ac': {'valeur': None, 'bornes': bornes_publiees,
@@ -555,6 +599,10 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
                    for i, q in sorted(quantites.items(),
                                       key=lambda kv: (-retenus[kv[0]]['kw_ac'],
                                                       kv[0]))]
+    haute_fiche = _haute_fiche(retenus, quantites) if fiche_fait_foi else None
+    if haute_fiche is not None:
+        bornes_publiees = dict(bornes_publiees, haute_fiche=haute_fiche,
+                               source_haute_fiche=SOURCE_FICHE_FAIT_FOI)
     return {
         'combinaison': combinaison,
         'ratio_dc_ac': {'valeur': round(ratio, 3) if ratio else None,

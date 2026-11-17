@@ -177,6 +177,37 @@ class PoseDuReveilSaisonnierTests(_Base):
                              project_timeline=Lead.ProjectTimeline.MOINS_3_MOIS)
         self.assertEqual(seaux_reactivation(self.company)['K6_p1'], [lead.pk])
 
+    def test_une_seule_definition_de_joint_chiffre_et_palier_1(self):
+        """Liste froide (17/11/2026) — les seaux lisent « joint » et « chiffré »
+        comme CADV25 : « visite acceptée » saisie par une PERSONNE vaut joint, un
+        devis refusé sorti du brouillon vaut chiffré, une issue SYSTÈME ne compte
+        pas ; la facture d'ÉTÉ ≥ 2 000 MAD met au palier 1."""
+        from apps.crm.cadence_selectors import seaux_reactivation
+        from apps.crm.models import Client, LeadActivity, RelanceEtape
+        from apps.ventes.models import Devis
+
+        juin = datetime.date(2026, 6, 15)
+        ete = self._meta_du(juin, nom='Ete', facture_hiver=600, facture_ete=2400)
+        visite = self._meta_du(juin, nom='Visite')
+        systeme = self._meta_du(juin, nom='Systeme', facture_hiver=2400)
+        LeadActivity.objects.create(
+            company=self.company, lead=visite, user=self.acteur,
+            kind=LeadActivity.Kind.APPEL, outcome='visite_acceptee', body='Visite.')
+        LeadActivity.objects.create(
+            company=self.company, lead=systeme, user=None,
+            kind=LeadActivity.Kind.NOTE, outcome='joint', body='Ligne système.')
+        for lead, statut in ((visite, Devis.Statut.REFUSE), (systeme, Devis.Statut.ENVOYE)):
+            Devis.objects.create(
+                company=self.company, reference=f'DEV-LF-{lead.pk}', lead=lead,
+                client=Client.objects.create(company=self.company, nom=lead.nom),
+                statut=statut, taux_tva=20)
+        RelanceEtape.objects.filter(lead__in=[visite, systeme]).delete()
+        Lead.objects.filter(pk__in=[visite.pk, systeme.pk]).update(stage=stages.COLD)
+
+        seaux = seaux_reactivation(self.company)
+        self.assertEqual(seaux['K3'], [visite.pk])
+        self.assertEqual(seaux['K6_p1'], [ete.pk, systeme.pk])
+
     def test_motif_exclu_ne_depend_pas_de_la_saison(self):
         from apps.crm.cadence_reveil_saison import motif_exclu_du_contact
         self.assertIsNone(motif_exclu_du_contact(self._dormant()))
