@@ -1,3 +1,148 @@
 /* Tâches — zone « agenda » (TCH41) : Agenda, Planifier ma semaine, volet À placer (TCH104-TCH106).
-   Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
-   couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+   Toutes les règles sous `.tch` (jamais un sélecteur nu), couleurs par jetons de l'ERP ou --tch-*
+   uniquement. Port des maquettes : docs/taches/maquettes/ecrans-agenda.css (préfixe `ag-`) ; la
+   grille, les blocs, la Semaine et la bande des jours viennent de base.css (`.agenda`, `.bloc`…). */
+
+/* ── TCH104 — écran Agenda ─────────────────────────────────────────────── */
+.tch[data-ecran="agenda"] {
+  --ag-repos: color-mix(in srgb, var(--muted) 50%, var(--card));
+  --ag-cible: var(--tch-selection);
+}
+.tch .ag-vues { display: flex; align-items: center; gap: 8px; margin: 6px var(--tch-gouttiere) 0; }
+.tch .ag-vues .segmente { flex: 1 1 auto; max-width: 360px; margin: 0; }
+.tch .ag-nav { display: flex; align-items: center; gap: 4px; margin: 2px 4px 0; min-height: 44px; }
+.tch .ag-nav b { flex: 1; text-align: center; font-size: 1rem; font-weight: 650; }
+.tch .bande-jours [aria-current="date"] small { color: var(--tch-accent); font-weight: 650; }
+
+/* « Toute la journée » : UNE rangée de puces */
+.tch .ag-tj {
+  display: grid; grid-template-columns: 52px 1fr; align-items: center; min-height: 52px;
+  padding: 6px 0 8px; box-shadow: inset 0 -1px 0 var(--tch-trait);
+}
+.tch .ag-tj-label {
+  padding-right: 10px; text-align: right; font-size: 0.75rem; line-height: 0.9375rem; font-weight: 600;
+  color: var(--tch-texte-doux);
+}
+.tch .ag-tj-items { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; padding-right: var(--tch-gouttiere); }
+.tch .ag-tj-item {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 36px;
+  padding: 0 12px 0 10px; border-radius: var(--tch-rayon-bloc); background: var(--tch-bloc-fond);
+  color: var(--tch-bloc-texte); box-shadow: inset 3px 0 0 var(--tch-point); font-size: 0.8125rem;
+  font-weight: 600; white-space: nowrap; text-decoration: none;
+}
+.tch .ag-tj-item.erp { background: var(--tch-bloc-erp); color: var(--tch-texte); box-shadow: none; }
+.tch .ag-tj-item.erp svg { color: var(--tch-texte-doux); }
+.tch .ag-semtj {
+  display: grid; grid-template-columns: 56px repeat(7, 1fr); align-items: start; min-height: 44px;
+  padding: 6px 0; box-shadow: inset 0 -1px 0 var(--tch-trait);
+}
+.tch .ag-semtj > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 2px; }
+.tch .ag-semtj .repos-fond { background: var(--ag-repos); border-radius: 8px; min-height: 36px; }
+.tch .ag-ferie { display: block; font-size: 0.6875rem; font-weight: 500; color: var(--tch-texte-doux); }
+
+/* Grille : créneaux vides (« Ajouter à 09:00 »), blocs à case, rendez-vous externes */
+.tch .grille-agenda { margin: 10px var(--tch-gouttiere) 0 8px; }
+.tch .ag-creneau-vide {
+  position: absolute; left: 0; right: 0; display: flex; align-items: center; padding: 0 10px;
+  border-radius: var(--tch-rayon-bloc); font-size: 0.8125rem; font-weight: 600; color: var(--tch-accent);
+}
+.tch .ag-creneau-vide span { opacity: 0; }
+.tch .ag-creneau-vide:focus-visible { outline: 2px solid var(--tch-accent); outline-offset: -2px; }
+.tch .ag-creneau-vide:focus-visible span { opacity: 1; }
+@media (hover: hover) {
+  .tch .ag-creneau-vide:hover { background: color-mix(in srgb, var(--tch-accent) 7%, var(--tch-surface)); }
+  .tch .ag-creneau-vide:hover span { opacity: 1; }
+}
+.tch .ag-creneau-vide.cible { box-shadow: inset 0 0 0 1px var(--tch-trait); }
+.tch .ag-creneau-vide.cible span { opacity: 1; }
+.tch .ag-colonne .bloc { display: flex; align-items: flex-start; gap: 8px; }
+.tch .ag-colonne .bloc.court { align-items: center; }
+.tch .ag-bt { flex: 1; min-width: 0; text-align: left; }
+.tch .ag-bt small { margin-top: 1px; }
+.tch .ag-bc {
+  position: relative; flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 999px;
+  border: 1.5px solid currentColor; display: grid; place-items: center; color: inherit;
+}
+.tch .ag-bc::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%);
+}
+.tch .ag-bc svg { width: 12px; height: 12px; stroke-width: 3; opacity: 0; }
+.tch .ag-bc[aria-checked="true"] { background: var(--tch-fait); border-color: var(--tch-fait); color: var(--tch-fait-texte); }
+.tch .ag-bc[aria-checked="true"] svg { opacity: 1; }
+.tch .ag-plus {
+  position: absolute; right: 4px; bottom: 2px; font-size: 0.75rem; font-weight: 700; color: var(--tch-texte-doux);
+}
+.tch .ag-externe { text-align: left; cursor: default; }
+.tch button.ag-externe { cursor: pointer; }
+.tch .ag-agenda {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--tch-rayon-puce);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 0.6875rem; font-weight: 600; color: var(--tch-texte-doux);
+}
+.tch .ag-bulle {
+  position: absolute; left: 8px; right: 8px; z-index: calc(var(--z-base) + 3); margin: 0; padding: 6px 10px;
+  border-radius: 8px; background: var(--tch-inverse-fond); color: var(--tch-inverse-texte);
+  font-size: 0.8125rem; font-weight: 600; box-shadow: var(--shadow-md);
+}
+.tch .ag-externe-ligne {
+  display: flex; align-items: center; gap: 6px; margin: 6px var(--tch-gouttiere) 0; font-size: 0.875rem;
+}
+
+/* Semaine (iPhone) : sept jours à plat */
+.tch .ag-sem { padding: 4px 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.tch .ag-sj {
+  display: grid; grid-template-columns: 52px 1fr; column-gap: 6px; padding: 7px 10px 7px 2px;
+  border-radius: 14px; text-align: left; width: 100%; min-height: 44px;
+}
+.tch .ag-sj-date { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tch .ag-sj-date small { font-size: 0.75rem; font-weight: 500; color: var(--tch-texte-doux); line-height: 1rem; }
+.tch .ag-sj-date b {
+  width: 34px; height: 34px; border-radius: 999px; display: grid; place-items: center; font-size: 1.0625rem; font-weight: 650;
+}
+.tch .ag-sj.auj .ag-sj-date b { background: var(--tch-accent); color: var(--tch-accent-texte); }
+.tch .ag-sj.auj .ag-sj-date small { color: var(--tch-accent); font-weight: 650; }
+.tch .ag-sj-corps { min-width: 0; }
+.tch .ag-sj-tete { display: block; min-height: 20px; font-size: 0.8125rem; line-height: 1.125rem; color: var(--tch-texte-doux); }
+.tch .ag-sj-l {
+  display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 3px; font-size: 0.9375rem; line-height: 1.3125rem;
+}
+.tch .ag-sj-l .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tch .ag-sj-l .h { flex: none; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux); width: 38px; }
+.tch .ag-sj-l.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; text-decoration-thickness: 1px; }
+
+/* Mois */
+.tch .ag-mois { display: grid; grid-template-columns: repeat(7, 1fr); padding: 0 8px; margin-top: 2px; }
+.tch .ag-mois-ligne { display: contents; }
+.tch .ag-mois .jsem {
+  height: 26px; display: grid; place-items: center; font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux);
+}
+.tch .ag-mj { position: relative; height: 48px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding-top: 2px; }
+.tch .ag-mj b {
+  width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; font-size: 0.9375rem; font-weight: 550;
+}
+.tch .ag-mj .pts { display: flex; gap: 3px; height: 8px; align-items: center; }
+.tch .ag-mj .pts i { width: 5px; height: 5px; border-radius: 999px; background: var(--tch-point, var(--tch-texte-doux)); }
+.tch .ag-mj .pts i.erp { background: var(--tch-texte-doux); }
+.tch .ag-mj .pts em { font-style: normal; font-size: 0.75rem; line-height: 8px; font-weight: 600; color: var(--tch-texte-doux); }
+.tch .ag-mj .pts.ferie { height: 12px; font-size: 0.75rem; line-height: 12px; font-weight: 500; color: var(--tch-texte-doux); }
+.tch .ag-mj.repos { background: var(--ag-repos); }
+.tch .ag-mj.repos b, .tch .ag-mj.hors b { color: var(--tch-texte-doux); }
+.tch .ag-mj.hors b { font-weight: 400; }
+.tch .ag-mj.auj b { color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent); font-weight: 700; }
+.tch .ag-mj.choisi b { background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 700; box-shadow: none; }
+.tch .ag-jour-tete {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px var(--tch-gouttiere) 0;
+  box-shadow: inset 0 1px 0 var(--tch-trait); margin-top: 8px;
+}
+.tch .ag-jour-tete b { font-size: var(--tch-section); font-weight: 650; }
+
+/* À venir, états d'un jour, erreurs */
+.tch .ag-av-tete {
+  display: flex; align-items: baseline; gap: 6px; padding: 14px var(--tch-gouttiere) 0; margin: 0;
+  font-size: var(--tch-section); font-weight: 650; line-height: 1.4;
+}
+.tch .ag-av-vide {
+  display: flex; align-items: center; min-height: 44px; margin: 6px var(--tch-gouttiere) 0; padding: 0 14px;
+  border-radius: 12px; font-size: 0.875rem; color: var(--tch-texte-doux);
+}
+.tch .ag-av-vide.repos { background: var(--ag-repos); }
+.tch .ag-erreur, .tch .ag-chargement { margin: 8px var(--tch-gouttiere) 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
