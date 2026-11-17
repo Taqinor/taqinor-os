@@ -1,15 +1,30 @@
 """Rythme, cartes à réponse, préférences dites et en-tête du Copilote (reference/api.md §3.4, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
-schéma OpenAPI est celui de leur échantillon de `contract_samples/`.
+Toute donnée est celle de `request.user` (société ET propriétaire, `selectors/rythme.py`) ; le jour
+est `services.rythme.aujourdhui()`. Une route pas encore construite lève `PasEncore` (501) ; le schéma
+OpenAPI de chacune est celui de son échantillon de `contract_samples/`.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers
+from rest_framework import serializers, status
+from rest_framework.exceptions import NotFound
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.views.base import ERREUR_CODE, PERMISSIONS, PasEncore, corps, forme_echantillon, reponses
+from apps.taches.serializers.rythme import forme_rythme
+from apps.taches.services import rythme as service
+from apps.taches.views.base import (
+    ERREUR_CODE, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, reponses,
+)
 
 RYTHME = forme_echantillon('rythme')
+INTROUVABLE = 'Introuvable.'
+
+
+def rythme_de(request, *, geste=None):
+    """La réponse RYTHME de l'utilisateur de `request` (relue après une écriture)."""
+    reglages = service.reglages_ou_defauts(request.user)
+    return forme_rythme(request.user, reglages, service.aujourdhui(), assistant=est_assistant(request),
+                        geste_id=geste.pk if geste is not None else None)
 
 
 class RythmeVue(APIView):
@@ -19,15 +34,21 @@ class RythmeVue(APIView):
 
     @extend_schema(responses=reponses(RYTHME))
     def get(self, request):
-        raise PasEncore()
+        return Response(rythme_de(request))
 
     @extend_schema(request=inline_serializer('TachesCorpsRythme', {
         'mode': serializers.CharField(),
         'objectif': serializers.IntegerField(required=False),
         'sens': serializers.CharField(required=False),
-    }), responses=reponses(RYTHME, erreurs=(400,)))
+    }), responses=reponses(RYTHME, erreurs=(400, 404)))
     def post(self, request):
-        raise PasEncore()
+        try:
+            _reglages, geste = service.regler_rythme(request.user, request.data, service.aujourdhui())
+        except service.ErreursRythme as exc:
+            return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
+        except service.SansReglages:
+            raise NotFound(INTROUVABLE)
+        return Response(rythme_de(request, geste=geste))
 
 
 class RepondrePropositionVue(APIView):
