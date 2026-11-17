@@ -1,0 +1,5 @@
+# audit_registre.py --du sur dev-all-acc6 62e0212df le 2026-11-17T00:23:25Z
+Vérifie dû : 1 groupe(s)
+  ACEL (PF11 taches-planifiees) : 98 % cochées (68/69) — vérifie dû, contre-visite des correctifs (écarts S1-S2 du 2026-11-16 tous cochés)
+Décisions ouvertes : 0
+Dette d'acceptation : voir `python scripts/check_acceptation.py`
