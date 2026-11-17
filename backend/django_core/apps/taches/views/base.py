@@ -31,7 +31,8 @@ from rest_framework.permissions import BasePermission
 from authentication.permissions import IsAuthenticatedInterne
 
 DROIT = 'taches_voir'
-ENTETE_ASSISTANT = 'HTTP_X_TAQINOR_ASSISTANT'
+#: En-tête posé par le relais de l'assistant (`fastapi_ia/.../action_tools.py`, `headers=`).
+ENTETE_ASSISTANT = 'X-Taqinor-Assistant'
 PREFIXE_BEARER = 'Bearer '
 DETAIL_PAS_ENCORE = 'Pas encore construit.'
 DETAIL_NON_AUTHENTIFIE = 'Authentification requise.'
@@ -62,10 +63,10 @@ PERMISSIONS = [IsAuthenticatedInterne, PermissionTaches]
 
 def est_assistant(request):
     """Vrai si la requête vient du relais de l'assistant (en-tête OU Bearer) — échec fermé."""
-    meta = getattr(request, 'META', {})
-    if ENTETE_ASSISTANT in meta:
+    entetes = getattr(request, 'headers', {})
+    if ENTETE_ASSISTANT in entetes:
         return True
-    return meta.get('HTTP_AUTHORIZATION', '').startswith(PREFIXE_BEARER)
+    return (entetes.get('Authorization') or '').startswith(PREFIXE_BEARER)
 
 
 class JetonPasEncoreLivre(BaseAuthentication):
