@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { ROUTE, LIST_ROUTE, TYPE_LABEL, TYPE_ACCENT, pathForType, useEntitySearch } from './entityRoutes'
 import reportingApi from '../../api/reportingApi'
 import { readFileSync } from 'node:fs'
-import { fichierContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, fichierContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/reportingApi', () => ({
   default: { search: vi.fn() },
@@ -138,6 +138,16 @@ describe('ACAL199 — types de recherche serveur et ROUTE', () => {
       (t) => !ROUTE[t] && !SANS_ROUTE_CONNUS.includes(t),
     )
     expect(sansRoute, `types sans ROUTE : ${sansRoute.join(', ')}`).toEqual([])
+  })
+
+  it('TCH119 — tache : fiche dans Aujourd’hui, liste par la recherche des Tâches, libellé', () => {
+    const item = exempleContrat('taches', 'item')
+    expect(ROUTE.tache(item.id)).toBe(`/taches/aujourdhui?tache=${item.id}`)
+    expect(LIST_ROUTE.tache('devis settat')).toBe('/taches/recherche?q=devis%20settat')
+    expect(TYPE_LABEL.tache).toBe('Tâche')
+    expect(pathForType('tache').startsWith('/taches/')).toBe(true)
+    // invariant 26 : aucune tâche dans la recherche globale du serveur
+    expect(types).not.toContain('tache')
   })
 
   it('calepinage : route, liste, libellé et accent ; pathForType non vide', () => {

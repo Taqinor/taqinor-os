@@ -76,6 +76,23 @@ export const FOCUSED_RECORD_SHORTCUTS = {
       { key: 'a', label: 'Générer le PDF' },
     ],
   },
+  // TCH119 — écrans de Tâches (textes.md « Aide des touches ») ; tous les profils
+  // (outil personnel). Aucune touche seule ne fait disparaître une ligne.
+  taches: {
+    title: 'Tâches',
+    roles: ['commercial', 'sav', 'general'],
+    items: [
+      { key: 'n', label: 'Ajouter ici' },
+      { key: '/', label: 'Chercher' },
+      { key: ' ', label: 'Fait' },
+      { key: 'e', label: 'Renommer' },
+      { key: 'd', label: 'Quand' },
+      { key: 'm', label: 'Déplacer' },
+      { key: 'x', label: 'Sélectionner' },
+      { key: 'h', label: 'Heure' },
+      { key: '*', label: 'Essentiel' },
+    ],
+  },
 }
 
 /**

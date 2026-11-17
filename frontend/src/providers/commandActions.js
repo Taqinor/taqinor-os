@@ -24,7 +24,9 @@ export const NAV_ACTIONS = GOTO_SHORTCUTS.filter((s) => !!s.to).map((s) => ({
 // VX220(b) — actions de CRÉATION (lead/devis/client), même source unique que
 // NAV_ACTIONS (dérivées de CREATE_SHORTCUTS) : la palette les affiche dans
 // leur PROPRE section « Créer », jamais mélangées à la navigation.
-export const CREATE_ACTIONS = CREATE_SHORTCUTS.map((s) => ({
+// TCH119 — même règle que NAV_ACTIONS : une entrée à `event` (« c t », feuille de
+// saisie de Tâches en overlay) n'est pas une navigation ; seules les routables.
+export const CREATE_ACTIONS = CREATE_SHORTCUTS.filter((s) => !!s.to).map((s) => ({
   id: s.keys.replace(/\s+/g, '-'), // ex. 'c-l'
   label: s.label, // ex. 'Créer un lead'
   to: s.to,

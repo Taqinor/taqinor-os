@@ -1484,6 +1484,8 @@ CELERY_TASK_ROUTES = {
     'parametres.purge_audit_retention': {'queue': 'scheduled'},
     # ACEL11 — balayage des travaux de fond orphelins (toutes les 15 min).
     'core.balayer_travaux_orphelins': {'queue': 'scheduled'},
+    # TCH99 — nuit des tâches personnelles (beat 03:00).
+    'taches.nocturne': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
