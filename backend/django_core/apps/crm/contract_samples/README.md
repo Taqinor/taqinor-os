@@ -32,6 +32,7 @@ ce dossier s'écarte du cas nominal.
 | `assistant_digest_matin.json` (COP2) | le digest du matin servi à l'assistant (AIC35) : `relances.lignes` = lignes de la file (avec `touche_id`), `devis_sans_reponse.lignes[].devis_id` |
 | `assistant_lead_resume.json` (COP2) | le résumé d'un lead servi à l'assistant (AIC31) : `devis[].id`, `prochaine_touche.touche_id` + `libelle` |
 | `assistant_brouillon_suivi.json` (COP2) | le brouillon de suivi (AIC32) : `wa_url` lu par la carte, aucune phrase de repli sans modèle société |
+| `lead_deleguer.json` | « Déléguer mes dossiers » : l'aperçu (GET) et l'écriture (POST) de `leads/deleguer/` (17/11/2026) |
 
 ## Écart 1 — un échantillon peut ne PAS décrire une réponse
 

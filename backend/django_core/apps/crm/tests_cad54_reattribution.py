@@ -24,6 +24,8 @@ import datetime
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from rest_framework.test import APIClient
+
 from authentication.models import Company
 from testkit.time import frozen
 
@@ -32,8 +34,11 @@ from apps.crm.models import Lead, LeadActivity, RelanceEtape
 from apps.crm.cadence_reperes import PASSATION_LIBELLE
 from apps.crm.cadence_reponses import PASSATION_TEMPLATE_CLE, reattribuer_lead
 from apps.crm.leads_socle import lead_notification_recipients
+from apps.crm.cadence_selectors import relance_etapes_dues
 from apps.crm.fiche_bulk import apply_bulk_action
 from apps.parametres.models import CompanyProfile
+from apps.roles.models import Role
+from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 
 User = get_user_model()
 
@@ -219,3 +224,180 @@ class ReattributionEnMasseTests(_Base):
             op='reassign', params={'owner': self.nouveau.pk})
         self.assertTrue(
             LeadActivity.objects.filter(lead=lead).exists())
+
+
+class DelegationDesDossiersTests(_Base):
+    """17/11/2026 — « Déléguer mes dossiers » : ``POST/GET leads/deleguer/``."""
+
+    slug = 'cad54-deleguer'
+    URL = '/api/django/crm/leads/deleguer/'
+
+    def setUp(self):
+        super().setUp()
+        role = Role.objects.create(
+            company=self.company, nom='Commercial délégant',
+            permissions=list(COMMERCIAL_PERMISSIONS) + ['crm_reassign'])
+        self.moi = User.objects.create_user(
+            username=f'{self.slug}-moi', password='x', company=self.company,
+            role=role)
+        self.api = APIClient()
+        self.api.force_authenticate(self.moi)
+        self._n = 0
+
+    def _mien(self, nom='Mien', **extra):
+        self._n += 1
+        return Lead.objects.create(
+            company=self.company, nom=nom, owner=self.moi,
+            stage=extra.pop('stage', stages.CONTACTED),
+            telephone=f'+21266100{5400 + self._n}',
+            first_contacted_at=MARDI, **extra)
+
+    def _jeu(self):
+        """Un lead suivi (une touche en retard, une à venir), un Froid sans
+        touche, puis ceux qui NE partent PAS (perdu, archivé, opposé, signé,
+        supprimé) et celui d'un collègue."""
+        suivi = self._mien('Suivi')
+        self._touche(suivi, jours=-3)
+        self._touche(suivi, jours=2, libelle='Appel plus tard')
+        froid = self._mien('Froid', stage=stages.COLD)
+        restent = [
+            self._mien('Perdu', perdu=True),
+            self._mien('Archive', is_archived=True),
+            self._mien('Oppose', ne_plus_contacter=True),
+            self._mien('Signe', stage=stages.SIGNED),
+        ]
+        supprime = self._mien('Supprime')
+        Lead.all_objects.filter(pk=supprime.pk).update(is_deleted=True)
+        restent.append(supprime)
+        autre = Lead.objects.create(
+            company=self.company, nom='Du collègue', owner=self.ancien,
+            stage=stages.CONTACTED)
+        return suivi, froid, restent, autre
+
+    def test_apercu_puis_ecriture_donnent_les_memes_chiffres(self):
+        suivi, froid, restent, autre = self._jeu()
+        apercu = self.api.get(self.URL, {'vers': self.nouveau.pk})
+        self.assertEqual(apercu.status_code, 200, apercu.content)
+        self.assertEqual(apercu.data['dossiers'], 2)  # suivi + froid
+        self.assertEqual(apercu.data['etapes_ouvertes'], 2)
+        self.assertEqual(apercu.data['etapes_en_retard'], 1)
+        res = self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        for cle in ('dossiers', 'etapes_ouvertes', 'etapes_en_retard'):
+            self.assertEqual(res.data[cle], apercu.data[cle], cle)
+        self.assertEqual(res.data['confies'], 2)
+        for lead in (suivi, froid):
+            lead.refresh_from_db()
+            self.assertEqual(lead.owner_id, self.nouveau.pk)
+        for lead in restent:
+            lead_bd = Lead.all_objects.get(pk=lead.pk)
+            self.assertEqual(lead_bd.owner_id, self.moi.pk, lead.nom)
+        autre.refresh_from_db()
+        self.assertEqual(autre.owner_id, self.ancien.pk)
+
+    def test_les_touches_deviennent_visibles_pour_la_cible(self):
+        suivi, _froid, _restent, _autre = self._jeu()
+        ouvertes = set(suivi.relance_etapes.values_list('id', flat=True))
+        self.assertTrue(ouvertes)
+
+        def vues(utilisateur):
+            return {e.id for e in relance_etapes_dues(
+                self.company, utilisateur, scope='all')}
+
+        self.assertFalse(ouvertes & vues(self.nouveau))
+        self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertTrue(ouvertes <= vues(self.nouveau))
+        self.assertFalse(ouvertes & vues(self.moi))
+
+    def test_passation_posee_par_defaut_sautee_sans_prevenir(self):
+        suivi, _f, _r, _a = self._jeu()
+        self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertEqual(
+            suivi.relance_etapes.filter(libelle=PASSATION_LIBELLE).count(), 1)
+        sans_prevenir = self._mien('Sans prevenir')
+        res = self.api.post(
+            self.URL, {'vers': self.ancien.pk, 'prevenir_clients': False},
+            format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        sans_prevenir.refresh_from_db()
+        self.assertEqual(sans_prevenir.owner_id, self.ancien.pk)
+        self.assertFalse(sans_prevenir.relance_etapes.filter(
+            libelle=PASSATION_LIBELLE).exists())
+        self.assertEqual(res.data['passations_posees'], 0)
+
+    def test_chatter_en_masse_de_la_reattribution(self):
+        suivi, _f, _r, _a = self._jeu()
+        self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=suivi, field='owner', bulk=True).exists())
+
+    def test_cible_autre_societe_desactivee_ou_identique_refusee(self):
+        self._jeu()
+        autre = Company.objects.create(nom='Autre', slug=f'{self.slug}-autre')
+        etranger = User.objects.create_user(
+            username=f'{self.slug}-etranger', password='x', company=autre,
+            role_legacy='commercial')
+        res = self.api.post(self.URL, {'vers': etranger.pk}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('vers', res.data)
+        self.nouveau.is_active = False
+        self.nouveau.save(update_fields=['is_active'])
+        res = self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('désactivé', res.data['vers'][0])
+        res = self.api.post(self.URL, {'vers': self.moi.pk}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('vers', res.data)
+        self.assertFalse(Lead.objects.filter(
+            owner__in=[etranger, self.nouveau]).exists())
+
+    def test_les_leads_d_une_autre_societe_ne_bougent_pas(self):
+        autre = Company.objects.create(nom='Autre2', slug=f'{self.slug}-a2')
+        etranger = User.objects.create_user(
+            username=f'{self.slug}-e2', password='x', company=autre,
+            role_legacy='commercial')
+        lead_etranger = Lead.objects.create(
+            company=autre, nom='Etranger', owner=etranger,
+            stage=stages.CONTACTED)
+        self._jeu()
+        res = self.api.post(
+            self.URL, {'vers': self.nouveau.pk, 'de': etranger.pk},
+            format='json')
+        self.assertEqual(res.status_code, 400)
+        lead_etranger.refresh_from_db()
+        self.assertEqual(lead_etranger.owner_id, etranger.pk)
+
+    def test_sans_crm_reassign_403(self):
+        self._jeu()
+        prive = User.objects.create_user(
+            username=f'{self.slug}-prive', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Commercial simple',
+                permissions=list(COMMERCIAL_PERMISSIONS)))
+        api = APIClient()
+        api.force_authenticate(prive)
+        res = api.get(self.URL, {'vers': self.nouveau.pk})
+        self.assertEqual(res.status_code, 403, res.content)
+        res = api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
+        self.assertEqual(res.status_code, 403, res.content)
+        self.assertFalse(Lead.objects.filter(owner=self.nouveau).exists())
+
+    def test_dossiers_d_un_collegue_hors_portee_403_puis_admin_200(self):
+        Lead.objects.create(
+            company=self.company, nom='Du collègue', owner=self.ancien,
+            stage=stages.CONTACTED)
+        res = self.api.post(
+            self.URL, {'vers': self.nouveau.pk, 'de': self.ancien.pk},
+            format='json')
+        self.assertEqual(res.status_code, 403, res.content)
+        self.assertIn('de', res.data)
+        admin = User.objects.create_user(
+            username=f'{self.slug}-admin', password='x', company=self.company,
+            role_legacy='admin')
+        api = APIClient()
+        api.force_authenticate(admin)
+        res = api.post(
+            self.URL, {'vers': self.nouveau.pk, 'de': self.ancien.pk},
+            format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['confies'], 1)

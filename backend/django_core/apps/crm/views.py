@@ -795,6 +795,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             'noter', 'archiver', 'restaurer',
             'synchroniser_client',
             'bulk',
+            'deleguer',  # 17/11/2026 — confier ses dossiers à un collègue
             'log_interaction',
             # GPS7 — même motif : sans cette ligne, resoudre-gps
             # retomberait sur IsAdminRole et la Commerciale serait
@@ -811,6 +812,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 self, create=[DroitDeLaGrille('crm_creer')],  # ASEC76
                 bulk=[DroitDeLaGrille('crm_reassign', operation='reassign'),
                       DroitDeLaGrille('crm_supprimer', operation='delete')],
+                deleguer=[DroitDeLaGrille('crm_reassign')],
                 update=[DroitDeLaGrille('crm_reassign', champ='owner')],
                 partial_update=[DroitDeLaGrille('crm_reassign', champ='owner')])
         elif self.action == 'destroy':
@@ -1470,6 +1472,49 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                             status=status.HTTP_404_NOT_FOUND if isinstance(
                                 exc, ReferenceInconnue) else status.HTTP_400_BAD_REQUEST)
         return Response(result)
+
+    @extend_schema(
+        request=sd.corps(
+            'CrmDeleguerRequest',
+            vers=serializers.IntegerField(),
+            de=serializers.IntegerField(required=False, allow_null=True),
+            prevenir_clients=serializers.BooleanField(required=False)),
+        parameters=[
+            sd.param_entier_ou_vide('vers', 'Collègue qui reçoit (aperçu GET).'),
+            sd.param_entier_ou_vide('de', "Propriétaire actuel ; défaut : l'appelant.")],
+        responses=sd.OBJ)
+    @action(detail=False, methods=['get', 'post'], url_path='deleguer',
+            permission_classes=[IsResponsableOrAdmin])
+    def deleguer(self, request):
+        """17/11/2026 — « Déléguer mes dossiers » : les leads encore à travailler
+        d'un responsable passent à un collègue (voir ``delegation.py``).
+
+        GET ``?vers=&de=`` = l'aperçu (dossiers, touches ouvertes, en retard) ;
+        POST ``{vers, de?, prevenir_clients?}`` = l'écriture. Société et acteur
+        viennent du serveur ; droit ``crm_reassign`` (get_permissions)."""
+        from .delegation import (
+            DelegationRefusee, apercu_delegation, deleguer_dossiers,
+            resoudre_delegation)
+        ecriture = request.method == 'POST'
+        corps = corps_objet(request) if ecriture else request.query_params
+        try:
+            de, vers = resoudre_delegation(request.user, corps)
+            nom = vers.first_name or vers.username
+            if not ecriture:
+                return Response({
+                    'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
+                    **apercu_delegation(request.user, de)})
+            prevenir = corps.get('prevenir_clients', True)
+            if not isinstance(prevenir, bool):
+                raise DelegationRefusee(
+                    'prevenir_clients', 'Vrai ou faux attendu.')
+            resultat = deleguer_dossiers(
+                request.user, de, vers, prevenir_clients=prevenir)
+        except DelegationRefusee as refus:
+            return Response({refus.champ: [refus.message],
+                             'detail': refus.message}, status=refus.statut)
+        return Response({'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
+                         **resultat})
 
     @extend_schema(request=sd.corps('CrmLeadsExportRequest', ids=sd.ids_requis()), responses=sd.EXPORT_XLSX)
     @action(detail=False, methods=['post'], url_path='export-xlsx',
