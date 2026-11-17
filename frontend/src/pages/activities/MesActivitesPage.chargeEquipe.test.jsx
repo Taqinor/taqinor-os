@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -47,6 +47,8 @@ afterEach(() => {
   mine.value = { en_retard: [], aujourdhui: [], a_venir: [] }
 })
 
+const Lieu = () => <span data-testid="lieu">{useLocation().pathname}</span>
+
 const rendre = () => {
   const store = configureStore({
     reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
@@ -73,6 +75,34 @@ describe('AMSG102 — brouillon WhatsApp de la note', () => {
     const lien = await screen.findByTitle('Ouvrir WhatsApp')
     expect(lien).toHaveAttribute('href', WA)
     expect(screen.getAllByTitle('Ouvrir WhatsApp')).toHaveLength(1)
+  })
+})
+
+describe('AMSG103 — lien des tâches de chantier', () => {
+  it('mène une tâche de livraison à /chantiers et une d’intervention à /interventions', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Livr', target_model: 'installations.livraison', target_label: 'Livraison L1' },
+        { id: 2, summary: 'Interv', target_model: 'installations.intervention', target_label: 'Intervention I1' },
+      ],
+    }
+    const store = configureStore({
+      reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <MesActivitesPage />
+          <Lieu />
+        </MemoryRouter>
+      </Provider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /Livraison L1/ }))
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/chantiers')
+    fireEvent.click(screen.getByRole('button', { name: /Intervention I1/ }))
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/interventions')
   })
 })
 

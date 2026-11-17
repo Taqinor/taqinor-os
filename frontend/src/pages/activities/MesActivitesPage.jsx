@@ -110,6 +110,8 @@ const targetLink = (a) => {
   if (a.target_model === 'crm.client') return '/crm'
   if (a.target_model === 'installations.installation') return '/chantiers'
   if (a.target_model === 'sav.ticket') return '/sav'
+  if (a.target_model === 'installations.livraison') return '/chantiers'
+  if (a.target_model === 'installations.intervention') return '/interventions'
   return null
 }
 
