@@ -1,5 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react'
 
+import { frenchError } from '../../../lib/frenchError'
+
 /* ============================================================================
    TCH46 — Gestes et annonces de l'app Tâches : UN petit magasin (sans dépendance) lu par
    la coquille. Deux sorties, jamais confondues :
@@ -99,8 +101,9 @@ export async function annulerToast() {
   try {
     await toast.onAnnuler?.()
     annoncer('Annulé')
-  } catch {
-    // l'échec de l'annulation est dit par l'appelant (message d'erreur du serveur) ; rien ne se perd ici
+  } catch (err) {
+    // l'échec de l'annulation est DIT (message du serveur, en français) — jamais avalé
+    proposerAnnuler({ message: frenchError(err, "L'annulation a échoué. Réessayez.") })
   }
 }
 

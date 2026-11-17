@@ -66,6 +66,15 @@ describe('TCH46 — (1) annonces lues par role=status', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Annulé')
     expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
   })
+
+  it('une annulation refusée par le serveur est DITE en français, jamais avalée', async () => {
+    const onAnnuler = vi.fn().mockRejectedValue({ response: { status: 400, data: { detail: 'Tâche verrouillée.' }, headers: {} } })
+    monter(h('p', null, 'x'))
+    act(() => { proposerAnnuler({ message: 'Faite', onAnnuler }) })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(toastTexte()).toBe('Tâche verrouillée.')
+  })
 })
 
 describe('TCH46 — (2) le toast dure 8 s, en pause au survol ou au focus', () => {
