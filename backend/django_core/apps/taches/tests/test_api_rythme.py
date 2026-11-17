@@ -8,12 +8,14 @@ import datetime
 from unittest import mock
 
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.choix import (
-    CanalIncitation, ModeRythme, SourceObjectif, StatutJour, TypeIncitationEcran,
+    CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
+from apps.taches.models.taches import RegleRecurrence
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
@@ -332,3 +334,118 @@ class RepondreTests(BaseRythme):
         reglages.refresh_from_db()
         carte_.refresh_from_db()
         self.assertEqual((reglages.palier, carte_.reponse, carte_.repondu_le), (5, '', None))
+
+
+class PreferencesTests(BaseRythme):
+    """TCH68 — `preferences/` : 11 clés validées, anciens noms refusés, retirer, annuler."""
+
+    URL_PREF = '/api/django/taches/preferences/'
+
+    def poser(self, cle, valeur, **entetes):
+        return self.api.post(self.URL_PREF, {'cle': cle, 'valeur': valeur}, format='json', **entetes)
+
+    def test_poser_rend_rythme_avec_la_preference(self):
+        self.reglages()
+        reponse = self.poser('heure_limite', '19:00')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('rythme')))
+        self.assertEqual([(p['cle'], p['valeur'], p['source']) for p in corps['preferences']],
+                         [('heure_limite', '19:00', 'ecran')])
+        self.assertIsNotNone(corps['geste_id'])
+
+    def test_sous_l_entete_assistant_la_source_est_le_copilote(self):
+        self.poser('heure_limite', '19:00', HTTP_X_TAQINOR_ASSISTANT='1')
+        self.assertEqual(self.api.get(URL).json()['preferences'][0]['source'], 'copilote')
+
+    def test_les_onze_cles_et_leurs_valeurs(self):
+        valeurs = {
+            'capacite_jour_min': 300, 'jours_travailles': '1111100', 'jours_courts': [4],
+            'conges': [{'du': '2026-12-20', 'au': '2027-01-03'}], 'heure_matin': 'off',
+            'relance_jour': '15:30', 'heure_soir': '18:00', 'heure_limite': '20:00', 'revue_semaine': 'auto',
+            'essentiel_le_matin': True, 'note_libre': ['Pas de rendez-vous le lundi matin'],
+        }
+        for cle, valeur in valeurs.items():
+            with self.subTest(cle=cle):
+                self.assertEqual(self.poser(cle, valeur).status_code, 200)
+        dites = {p['cle']: p['valeur'] for p in self.api.get(URL).json()['preferences']}
+        self.assertEqual(dites, valeurs)
+
+    def test_heure_attendue(self):
+        for valeur in ('19h', '25:00', 7, ''):
+            with self.subTest(valeur=valeur):
+                reponse = self.poser('heure_limite', valeur)
+                self.assertEqual((reponse.status_code, reponse.json()),
+                                 (400, {'valeur': ['Heure attendue (HH:MM).']}))
+        self.assertEqual(self.poser('heure_limite', 'off').status_code, 400)  # la limite ne s'éteint pas
+
+    def test_anciens_noms_refuses(self):
+        for cle in ('jours_off', 'vendredi', 'conges_du', 'conges_au', 'heure_plan_matin', 'rappel_journee',
+                    'heure_bilan_soir', 'heure_limite_rappels', 'semaine_revue', 'mode', 'palier'):
+            with self.subTest(cle=cle):
+                self.assertEqual(self.poser(cle, '19:00').json(), {'cle': ['Clé inconnue.']})
+
+    def test_bornes_des_valeurs(self):
+        cas = (('capacite_jour_min', 20, 'Entre 30 et 720 minutes.'),
+               ('conges', [{'du': '2026-12-20', 'au': '2026-12-01'}], 'La date de fin précède la date de début.'),
+               ('jours_travailles', '0000000', 'Garde au moins un jour travaillé.'),
+               ('note_libre', ['x'] * 11, '10 phrases au plus.'),
+               ('note_libre', ['x' * 201], '200 caractères au plus.'),
+               ('revue_semaine', 'lundi', 'Choisis un jour, Auto ou Éteinte.'))
+        for cle, valeur, message in cas:
+            with self.subTest(cle=cle, valeur=valeur):
+                self.assertEqual(self.poser(cle, valeur).json(), {'valeur': [message]})
+        self.assertEqual(self.api.get(URL).json()['preferences'], [])
+
+    def test_retirer_puis_annuler(self):
+        self.poser('heure_limite', '19:00')
+        reponse = self.api.delete(f'{self.URL_PREF}heure_limite/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json()['preferences'], [])
+        self.assertEqual(self.api.delete(f'{self.URL_PREF}heure_limite/').status_code, 404)
+        self.assertEqual(self.api.delete(f'{self.URL_PREF}jours_off/').status_code, 404)
+        annuler_geste(self.u1, reponse.json()['geste_id'])
+        self.assertEqual([p['valeur'] for p in self.api.get(URL).json()['preferences']], ['19:00'])
+
+    def test_le_mode_ne_passe_jamais_par_une_preference(self):
+        reglages = self.reglages()
+        self.poser('mode', 'libre')
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.mode, ModeRythme.POUSSER)
+
+
+class EnteteCoachTests(BaseRythme):
+    """TCH68 — `coach/entete/` : deux lignes, 300 caractères au plus, aucune note ni titre."""
+
+    URL_ENTETE = '/api/django/taches/coach/entete/'
+    URL_PREF = '/api/django/taches/preferences/'
+
+    def test_deux_lignes_calculees(self):
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE)
+        fait_le = timezone.make_aware(datetime.datetime(2026, 11, 17, 10, 0))
+        fabriques.tache(self.u1, titre='Titre secret', statut=StatutTache.FAIT, fait_le=fait_le)
+        regle = RegleRecurrence.objects.create(company=self.a, proprietaire=self.u1, frequence='quotidien',
+                                               date_debut=J)
+        fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=fait_le, recurrence=regle)  # routine : 0
+        for cle, valeur in (('heure_limite', '19:00'), ('jours_courts', [4]), ('note_libre', ['Note privée'])):
+            self.api.post(self.URL_PREF, {'cle': cle, 'valeur': valeur}, format='json')
+        corps = self.api.get(self.URL_ENTETE).json()
+        self.assertEqual(set(corps), set(exemple_de('coach_entete')))
+        self.assertEqual(corps['lignes'], [
+            'Rythme : En faire plus · objectif 5 (accepté) · 1 sur 5',
+            "Préférences dites : sollicitations jusqu'à 19:00 · jour court : vendredi"])
+        self.assertNotIn('Note privée', ''.join(corps['lignes']))
+        self.assertNotIn('Titre secret', ''.join(corps['lignes']))
+
+    def test_trois_cents_caracteres_au_plus(self):
+        self.reglages()
+        conges = [{'du': f'2027-0{m}-01', 'au': f'2027-0{m}-02'} for m in range(1, 10)]
+        self.api.post(self.URL_PREF, {'cle': 'conges', 'valeur': conges}, format='json')
+        self.api.post(self.URL_PREF, {'cle': 'jours_travailles', 'valeur': '1111111'}, format='json')
+        lignes = self.api.get(self.URL_ENTETE).json()['lignes']
+        self.assertLessEqual(sum(len(ligne) for ligne in lignes), 300)
+        self.assertEqual(len(lignes), 2)
+
+    def test_sans_preference_une_ligne(self):
+        self.assertEqual(self.api.get(self.URL_ENTETE).json()['lignes'],
+                         ['Rythme : En faire plus · objectif 5 (par défaut) · 0 sur 5'])

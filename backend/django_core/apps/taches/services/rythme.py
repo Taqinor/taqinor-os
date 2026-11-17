@@ -9,8 +9,10 @@ champs changés et enregistre le geste annulable (reference/donnees.md §4).
 - `etapes_nocturnes` : étape de nuit appelée par `nocturne.executer` (TCH37) ; remplie par TCH70.
 """
 import datetime
+import re
 from dataclasses import fields, replace
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.db import transaction
 from django.utils import timezone
@@ -20,6 +22,7 @@ from apps.taches.choix import (
     ClePreference,
     ModeRythme,
     ReponseIncitation,
+    SourceObjectif,
     SourcePreference,
     StatutJour,
     TypeIncitationEcran,
@@ -35,9 +38,18 @@ from apps.taches.selectors.rythme import (
     plan_du_jour,
     plans_du_rythme,
     preference_de,
+    preferences_de,
     reglages_de,
+    taches_faites_le,
 )
-from apps.taches.services.gestes import LISTE_BLANCHE, enregistrer_geste, op_champ, op_creation
+from apps.taches.serializers.formes import FREQUENCES_ROUTINE
+from apps.taches.services.gestes import (
+    LISTE_BLANCHE,
+    enregistrer_geste,
+    op_champ,
+    op_creation,
+    op_suppression_dure,
+)
 from apps.taches.services.planification import planifier
 
 VALEUR_INCONNUE = 'Valeur inconnue.'
@@ -423,6 +435,207 @@ def repondre_carte(user, carte_id, reponse, jour):
                        op_champ('incitation_coach', carte, 'repondu_le', avant_le)]
         geste = enregistrer_geste(user, 'decision', message, operations)
     return carte, geste
+
+
+# --- POST/DELETE preferences/, GET coach/entete/ (TCH68) -------------------------------------
+
+CLE_INCONNUE = 'Clé inconnue.'
+HEURE_ATTENDUE = 'Heure attendue (HH:MM).'
+CAPACITE_HORS_BORNES = 'Entre 30 et 720 minutes.'
+CONGES_A_L_ENVERS = 'La date de fin précède la date de début.'
+UN_JOUR_AU_MOINS = 'Garde au moins un jour travaillé.'
+NOTE_TROP_LONGUE = '200 caractères au plus.'
+NOTES_TROP_NOMBREUSES = '10 phrases au plus.'
+REVUE_INVALIDE = 'Choisis un jour, Auto ou Éteinte.'
+CAPACITE_MIN, CAPACITE_MAX = 30, 720
+NOTE_LONGUEUR_MAX, NOTES_MAX = 200, 10
+JOURS_SEMAINE = 7
+ETEINT, AUTO = 'off', 'auto'
+_HEURE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+
+
+def _invalide(message):
+    raise ErreursRythme({'valeur': [message]})
+
+
+def _entier_borne(valeur, bas, haut, message):
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or not bas <= valeur <= haut:
+        _invalide(message)
+    return valeur
+
+
+def _heure_ou_off(valeur):
+    if valeur == ETEINT or (isinstance(valeur, str) and _HEURE.match(valeur)):
+        return valeur
+    return _invalide(HEURE_ATTENDUE)
+
+
+def _heure_seule(valeur):
+    if isinstance(valeur, str) and _HEURE.match(valeur):
+        return valeur
+    return _invalide(HEURE_ATTENDUE)
+
+
+def _jours_travailles(valeur):
+    if not (isinstance(valeur, str) and len(valeur) == JOURS_SEMAINE and set(valeur) <= {'0', '1'}) \
+            or '1' not in valeur:
+        _invalide(UN_JOUR_AU_MOINS)
+    return valeur
+
+
+def _jours_courts(valeur):
+    if not isinstance(valeur, list):
+        _invalide(VALEUR_INCONNUE)
+    return sorted({_entier_borne(v, 0, JOURS_SEMAINE - 1, VALEUR_INCONNUE) for v in valeur})
+
+
+def _conges(valeur):
+    if not isinstance(valeur, list):
+        _invalide(VALEUR_INCONNUE)
+    periodes = []
+    for periode in valeur:
+        try:
+            du = datetime.date.fromisoformat(periode['du'])
+            au = datetime.date.fromisoformat(periode['au'])
+        except (KeyError, TypeError, ValueError):
+            _invalide(VALEUR_INCONNUE)
+        if au < du:
+            _invalide(CONGES_A_L_ENVERS)
+        periodes.append({'du': du.isoformat(), 'au': au.isoformat()})
+    return periodes
+
+
+def _revue(valeur):
+    if valeur in (AUTO, ETEINT):
+        return valeur
+    return _entier_borne(valeur, 0, JOURS_SEMAINE - 1, REVUE_INVALIDE)
+
+
+def _booleen(valeur):
+    if not isinstance(valeur, bool):
+        _invalide(VALEUR_INCONNUE)
+    return valeur
+
+
+def _notes(valeur):
+    if not isinstance(valeur, list) or not all(isinstance(v, str) for v in valeur):
+        _invalide(VALEUR_INCONNUE)
+    if len(valeur) > NOTES_MAX:
+        _invalide(NOTES_TROP_NOMBREUSES)
+    if any(len(v) > NOTE_LONGUEUR_MAX for v in valeur):
+        _invalide(NOTE_TROP_LONGUE)
+    return valeur
+
+
+#: Une validation par clé (reference/donnees.md §2.11) ; une clé absente d'ici (anciens noms
+#: `jours_off`, `heure_plan_matin`…) est « Clé inconnue. ».
+VALIDATIONS = {
+    ClePreference.CAPACITE_JOUR_MIN: lambda v: _entier_borne(v, CAPACITE_MIN, CAPACITE_MAX, CAPACITE_HORS_BORNES),
+    ClePreference.JOURS_TRAVAILLES: _jours_travailles,
+    ClePreference.JOURS_COURTS: _jours_courts,
+    ClePreference.CONGES: _conges,
+    ClePreference.HEURE_MATIN: _heure_ou_off,
+    ClePreference.RELANCE_JOUR: _heure_ou_off,
+    ClePreference.HEURE_SOIR: _heure_ou_off,
+    ClePreference.HEURE_LIMITE: _heure_seule,
+    ClePreference.REVUE_SEMAINE: _revue,
+    ClePreference.ESSENTIEL_LE_MATIN: _booleen,
+    ClePreference.NOTE_LIBRE: _notes,
+}
+
+
+def valider_preference(cle, valeur):
+    """La valeur normalisée de `cle`, ou `ErreursRythme` (`cle` inconnue, `valeur` hors règle)."""
+    validation = VALIDATIONS.get(cle)
+    if validation is None:
+        raise ErreursRythme({'cle': [CLE_INCONNUE]})
+    return validation(valeur)
+
+
+def poser_preference(user, cle, valeur, source):
+    """`POST preferences/` : pose ce que `user` a DIT (`source` = `copilote` sous l'en-tête assistant,
+    sinon `ecran`) → geste annulable (ou `None` si rien n'a changé)."""
+    valeur = valider_preference(cle, valeur)
+    with transaction.atomic():
+        reglages_de(user, verrou=True)  # sérialise les écritures du compte
+        operations = ecrire_preference(user, cle, valeur, source)
+        if not operations:
+            return None
+        return enregistrer_geste(user, 'preference', ClePreference(cle).label, operations)
+
+
+def retirer_preference(user, cle):
+    """`DELETE preferences/{cle}/` : la clé revient à son défaut → geste annulable ; `Introuvable` si
+    la clé est inconnue ou n'a jamais été dite."""
+    if cle not in VALIDATIONS:
+        raise Introuvable()
+    with transaction.atomic():
+        preference = preference_de(user, cle, verrou=True)
+        if preference is None:
+            raise Introuvable()
+        operation = op_suppression_dure('preference', preference, {
+            'cle': preference.cle, 'valeur': preference.valeur, 'source': preference.source})
+        preference.delete()
+        return enregistrer_geste(user, 'preference', ClePreference(cle).label, [operation])
+
+
+def faites_aujourdhui(user, jour):
+    """Le compte du rythme du `jour` (tâches) : `moteur.compte_du_jour` sur les tâches faites ce
+    jour, une routine (quotidienne ou jours ouvrés, intervalle 1) comptée 0."""
+    taches = [SimpleNamespace(statut=t.statut, parent_id=t.parent_id, estimation_minutes=t.estimation_minutes,
+                              routine=bool(t.recurrence_id and t.recurrence.frequence in FREQUENCES_ROUTINE
+                                           and t.recurrence.intervalle == 1))
+              for t in taches_faites_le(user, jour)]
+    return moteur.compte_du_jour(taches, ())[0]
+
+
+#: En-tête de tour (textes.md « Boutons des cartes ») : deux lignes, 300 caractères au plus.
+ENTETE_MAX = 300
+_JOURS_NOMS = ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche')
+_JOURS_ABREGES = ('lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.')
+
+
+def _ligne_rythme(etat, faites, objectif):
+    nb, source, _zone = moteur.objectif_affiche(etat)
+    tete = f'Rythme : {ModeRythme(etat.mode).label}'
+    if nb is None:
+        return f'{tete} · {faites} faite' + ('s' if faites > 1 else '')
+    return f'{tete} · objectif {nb} ({SourceObjectif(source).label.lower()}) · {faites} sur {objectif}'
+
+
+def _dite(cle, valeur):
+    """Une préférence dite, en clair et sans contenu libre (jamais `note_libre`)."""
+    if cle == ClePreference.HEURE_LIMITE:
+        return f"sollicitations jusqu'à {valeur}"
+    if cle == ClePreference.JOURS_COURTS:
+        noms = ', '.join(_JOURS_NOMS[j] for j in valeur)
+        return f"jour{'s' if len(valeur) > 1 else ''} court{'s' if len(valeur) > 1 else ''} : {noms}"
+    libelle = ClePreference(cle).label.lower()
+    if cle == ClePreference.JOURS_TRAVAILLES:
+        valeur = ' '.join(_JOURS_ABREGES[i] for i, c in enumerate(valeur) if c == '1')
+    elif cle == ClePreference.CONGES:
+        valeur = ', '.join(f"du {p['du']} au {p['au']}" for p in valeur)
+    elif cle == ClePreference.REVUE_SEMAINE and isinstance(valeur, int):
+        valeur = _JOURS_NOMS[valeur]
+    elif cle == ClePreference.ESSENTIEL_LE_MATIN:
+        valeur = 'oui' if valeur else 'non'
+    return f'{libelle} : {"éteint" if valeur == ETEINT else valeur}'
+
+
+def entete_coach(user, jour):
+    """`GET coach/entete/` : la ligne du rythme et, s'il en a dit, ses préférences — 300 caractères
+    au plus pour les deux, formées depuis des clés fermées (jamais un titre, une note, un projet)."""
+    reglages = reglages_ou_defauts(user)
+    etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
+    lignes = [_ligne_rythme(etat, faites_aujourdhui(user, jour), objectif_du_jour(etat, jour, jours_courts(user)))]
+    dites = [_dite(p.cle, p.valeur) for p in preferences_de(user) if p.cle != ClePreference.NOTE_LIBRE]
+    if dites:
+        lignes.append('Préférences dites : ' + ' · '.join(dites))
+    reste, sortie = ENTETE_MAX, []
+    for ligne in lignes:
+        sortie.append(ligne[:reste])
+        reste -= len(sortie[-1])
+    return [ligne for ligne in sortie if ligne]
 
 
 def etapes_nocturnes(company_id, jour):

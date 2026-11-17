@@ -1,8 +1,8 @@
 """Rythme, cartes à réponse, préférences dites et en-tête du Copilote (reference/api.md §3.4, §4).
 
 Toute donnée est celle de `request.user` (société ET propriétaire, `selectors/rythme.py`) ; le jour
-est `services.rythme.aujourdhui()`. Une route pas encore construite lève `PasEncore` (501) ; le schéma
-OpenAPI de chacune est celui de son échantillon de `contract_samples/`.
+est `services.rythme.aujourdhui()`. Le schéma OpenAPI de chaque route est celui de son échantillon de
+`contract_samples/`.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -10,10 +10,11 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.choix import SourcePreference
 from apps.taches.serializers.rythme import forme_proposition, forme_rythme, projets_cites
 from apps.taches.services import rythme as service
 from apps.taches.views.base import (
-    ERREUR_CODE, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, reponses,
+    ERREUR_CODE, PERMISSIONS, corps, est_assistant, forme_echantillon, reponses,
 )
 
 RYTHME = forme_echantillon('rythme')
@@ -88,7 +89,13 @@ class PreferencesVue(APIView):
         'valeur': serializers.JSONField(),
     }), responses=reponses(RYTHME, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        source = SourcePreference.COPILOTE if est_assistant(request) else SourcePreference.ECRAN
+        try:
+            geste = service.poser_preference(request.user, request.data.get('cle'), request.data.get('valeur'),
+                                             source)
+        except service.ErreursRythme as exc:
+            return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(rythme_de(request, geste=geste))
 
 
 class PreferenceVue(APIView):
@@ -98,7 +105,11 @@ class PreferenceVue(APIView):
 
     @extend_schema(request=None, responses=reponses(RYTHME, erreurs=(404,)))
     def delete(self, request, cle):
-        raise PasEncore()
+        try:
+            geste = service.retirer_preference(request.user, cle)
+        except service.Introuvable:
+            raise NotFound(INTROUVABLE)
+        return Response(rythme_de(request, geste=geste))
 
 
 class CoachEnteteVue(APIView):
@@ -108,4 +119,4 @@ class CoachEnteteVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('coach_entete')))
     def get(self, request):
-        raise PasEncore()
+        return Response({'lignes': service.entete_coach(request.user, service.aujourdhui())})
