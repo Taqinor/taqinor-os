@@ -4,7 +4,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   PARCOURS, typeEtape, reponsesDeLEtape, reponseComplete, estTache, estTacheSansAppel,
   familleCanal, gestes, organiserReponses, raisonsDuSegment, gesteVisible,
-  proposerDarija, confirmationMessageExigee,
+  proposerDarija, confirmationMessageExigee, CONTEXTES_MASQUANTS,
 } from './parcours'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -110,6 +110,30 @@ describe('parcours.js — la table est saine', () => {
     expect(parGroupe.plus_tard).toEqual(['rappel', 'plus_tard', 'attente_accord'])
     expect(autres).toEqual([
       'ne_plus_contacter', 'question_prix', 'devis_modifie', 'decision_famille', 'decision_proprietaire'])
+  })
+
+  it('17/11/2026 — chaque contexte cité (`masquee_si`, `variantes_contexte`) existe dans CONTEXTES_MASQUANTS', () => {
+    // Une faute de frappe était ignorée sans bruit : la réponse ne se masquait jamais.
+    const cites = []
+    const lire = (objet, ou) => {
+      if (objet.masquee_si !== undefined) cites.push([ou, objet.masquee_si])
+      for (const c of Object.keys(objet.variantes_contexte || {})) cites.push([`${ou} (variante)`, c])
+    }
+    for (const [id, modele] of Object.entries(PARCOURS.modeles)) lire(modele, `modèle ${id}`)
+    for (const type of PARCOURS.etapes) {
+      for (const entree of [...type.reponses, ...(type.reponses_appel || [])]) {
+        if (typeof entree !== 'string') lire(entree, `${type.id}/${entree.modele}`)
+      }
+    }
+    expect(cites.length).toBeGreaterThan(0) // anti-faux-vert : la table en cite
+    for (const [ou, contexte] of cites) {
+      expect(typeof CONTEXTES_MASQUANTS[contexte], `${ou} : contexte « ${contexte} » inconnu`).toBe('function')
+    }
+    // Et chaque contexte connu sert au moins une fois (aucun prédicat mort).
+    const servis = new Set(cites.map(([, c]) => c))
+    for (const contexte of Object.keys(CONTEXTES_MASQUANTS)) {
+      expect(servis.has(contexte), `contexte « ${contexte} » jamais cité par la table`).toBe(true)
+    }
   })
 
   it('un seul libellé « Pas de réponse » pour pas_de_reponse ET sans_reponse (même issue serveur)', () => {
