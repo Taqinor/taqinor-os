@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 
 #: Plafond d'appels de la liste froide OUVERTS par personne : elle ne prend
 #: que ce qu'elle va appeler.
-PLAFOND_APPELS_OUVERTS = 5
-#: Au plus ce nombre de dossiers par prise (corps ``nombre``, 1..5).
-PRISE_MAX = 5
+PLAFOND_APPELS_OUVERTS = 10
+#: Au plus ce nombre de dossiers par prise (corps ``nombre``, 1..10).
+PRISE_MAX = 10
 #: Deux tentatives par dossier, jamais plus ; la seconde un autre jour.
 TENTATIVES_MAX = 2
 #: Les issues après lesquelles le dossier revient dans le vivier : « pas de
@@ -209,7 +209,7 @@ def _poser_appel(lead, user, groupe, quand):
 
 def prendre_dossiers(company, user, nombre):
     """POST du contrat : pose UN appel, au prochain créneau d'appel, sur chacun
-    des ``nombre`` (1..5) prochains dossiers du vivier de ``user``, sans jamais
+    des ``nombre`` (1..10) prochains dossiers du vivier de ``user``, sans jamais
     dépasser ``PLAFOND_APPELS_OUVERTS`` appels ouverts. Une transaction par
     dossier, relu sous verrou (une course ne pose jamais deux étapes). Lève
     ``PriseRefusee`` quand rien ne peut être pris."""

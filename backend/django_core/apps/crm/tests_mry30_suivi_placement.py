@@ -1432,7 +1432,7 @@ class ListeFroideTests(TestCase):
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.data, {
             'dossiers_chiffres': 1, 'demandes_sans_reponse': 3, 'appels_ouverts': 0,
-            'plafond_appels_ouverts': 5, 'prise_max': 4, 'peut_prendre': True,
+            'plafond_appels_ouverts': 10, 'prise_max': 4, 'peut_prendre': True,
             'raison': ''})
 
     def test_la_prise_pose_un_appel_par_dossier_dans_l_ordre(self):
@@ -1460,24 +1460,24 @@ class ListeFroideTests(TestCase):
         b.refresh_from_db()
         self.assertIsNone(b.first_contacted_at)
 
-    def test_plafond_de_cinq_appels_ouverts(self):
-        for i in range(7):
+    def test_plafond_de_dix_appels_ouverts(self):
+        for i in range(12):
             self._froid(f'B{i}', jours=i + 1)
         self.assertEqual(self._prendre(3)['nombre_places'], 3)
-        self.assertEqual(self._prendre(5)['nombre_places'], 2, 'au plus 5 ouverts au total')
+        self.assertEqual(self._prendre(10)['nombre_places'], 7, 'au plus 10 ouverts au total')
         etat = self.api.get(LISTE_FROIDE_URL).data
         self.assertEqual((etat['appels_ouverts'], etat['prise_max'], etat['peut_prendre']),
-                         (5, 0, False))
-        self.assertIn('5 appels', etat['raison'])
+                         (10, 0, False))
+        self.assertIn('10 appels', etat['raison'])
         refus = self.api.post(LISTE_FROIDE_URL, {'nombre': 1}, format='json')
         self.assertEqual(refus.status_code, 409, refus.content)
         self.assertEqual(refus.data['nombre'], [etat['raison']])
         self.assertEqual(RelanceEtape.objects.filter(
-            company=self.company, statut=A_FAIRE).count(), 5)
+            company=self.company, statut=A_FAIRE).count(), 10)
 
     def test_nombre_invalide_400(self):
         self._froid('B')
-        for nombre in (0, 6, '3', True, None, 2.5):
+        for nombre in (0, 11, '3', True, None, 2.5):
             res = self.api.post(LISTE_FROIDE_URL, {'nombre': nombre}, format='json')
             self.assertEqual(res.status_code, 400, (nombre, res.content))
             self.assertIn('nombre', res.data)
