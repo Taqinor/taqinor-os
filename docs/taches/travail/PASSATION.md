@@ -104,7 +104,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
-- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `d5e4173e1`. **63 des 64 tâches de la fusion 2 sont
+- `dev-taches-f2` (PR brouillon #1454, Auto-fix allumé) : tête `de17e63b5` (3e tour de corrections CI plié). **63 des 64 tâches de la fusion 2 sont
   pliées et cochées** (115 tâches cochées sur 174 au total). Tout le code de la fusion 2 y est : serveur, écrans,
   raccords des deux côtés, semis, sécurité, plafonds, activation Administrateur seul, bout en bout Playwright.
 - Aucune lane en cours, aucune branche de lane non pliée. Rien d'important ne vit seulement sur le portable.
@@ -139,6 +139,20 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
   **N+1 probable à corriger**, lots répétés tâche + rappel + check-list), `projets/{id}/vue/` 20, `recherche/` 10.
 
 **Défauts connus à reprendre (aucun n'est en production)**
+- **À VÉRIFIER AVANT DE DIRE À REDA « c'est activé » : son propre compte.** `taches_voir` est donné au RÔLE
+  Administrateur ; un compte « hérité » (palier admin SANS rôle fin) ne l'a pas — c'est voulu (jamais de repli), et
+  c'est ce qui a fait échouer les 57 specs e2e (`demo_admin` de `seed_demo` est un compte hérité → 403). Regarder en
+  lecture seule sur la prod (accord permanent) si le compte de Reda est superutilisateur ou porte le rôle
+  Administrateur ; sinon son geste est : Paramètres → Utilisateurs → se donner le rôle « Administrateur » (à écrire
+  dans `docs/taches/README.md` et dans le rapport final).
+- E2E : le 3e tour a levé le 403 en passant `demo_admin` superutilisateur DANS LE SHARD 2 de la CI seulement
+  (6 lignes de `.github/workflows/ci.yml`). Les 57 tests n'ont donc ENCORE JAMAIS atteint leur vrai contenu : le
+  prochain run dira les vrais écarts (sélecteurs, écrans, accessibilité). Si ce passage en superutilisateur gêne
+  d'autres specs du shard 2, repli plus propre : semer `seed_taches_demo` dans ce shard et connecter les specs
+  Tâches avec `demo_taches` (rôle de test portant `taches_voir`).
+- Plafonds de requêtes posés à la mesure de la CI (tour 3) : aperçu de saisie 11, aujourdhui sans familles 26,
+  badge 13, liste des projets 14, proposition 27, recherche 12, vue d'un projet 22, agenda 28 (à confirmer). Seul
+  l'agenda a un test « ne grandit pas » : en ajouter un pour proposition et vue d'un projet avant de s'y fier.
 - Semis de démonstration : à 15 h il rend « 4 sur 5 » (l'activité ERP close compte) alors que les maquettes et
   `SCENARIO.md` disent « 3 sur 5 » → changer le semis (lier l'activité à une tâche), pas le calcul. Société de
   démonstration = `demo-taches` (séparée de `taqinor-demo`). Voir `ecarts-f2.md` §J pour le reste.
