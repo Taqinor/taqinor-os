@@ -189,7 +189,9 @@ MOBILE_HOME_ALLOWED_ROUTES = frozenset(
     # ALEA31 — les accueils d'équipe (NTMOB25/26), suggérés par
     # `default_mobile_home_route` : sans eux, leur persistance était refusée.
     {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit', '/visites',
-     '/mobile/equipe-commerciale', '/mobile/equipe-terrain'})
+     '/mobile/equipe-commerciale', '/mobile/equipe-terrain',
+     # TCH132 — « En faire mon accueil » d'Aujourd'hui (Tâches, api.md §7).
+     '/taches/aujourdhui'})
 
 
 def refus_societe_non_demo(slug):

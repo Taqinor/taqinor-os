@@ -165,3 +165,31 @@ class MobileHomeRouteApiTests(TestCase):
         self.assertIn(res.status_code, (200, 405))  # RetrieveAPIView : pas de PATCH
         self.alice.refresh_from_db()
         self.assertIsNone(self.alice.mobile_home_route)
+
+
+class AccueilTachesAujourdhuiTests(TestCase):
+    """TCH132 — « En faire mon accueil » (Tâches, api.md §7) : `/taches/aujourdhui` est une route
+    d'accueil mobile acceptée ; la liste blanche reste stricte (une variante voisine est refusée)."""
+
+    def setUp(self):
+        company = _make_company('TachesAccueil Co', 'taches-accueil-co')
+        self.admin = _make_user(company, 'tch132_admin', role_nom='Administrateur')
+        self.api = APIClient()
+        self.api.force_authenticate(self.admin)
+
+    def test_la_route_d_aujourdhui_est_acceptee(self):
+        res = self.api.post(
+            '/api/django/auth/mobile-home-route/',
+            {'route': '/taches/aujourdhui'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['mobile_home_route'], '/taches/aujourdhui')
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.mobile_home_route, '/taches/aujourdhui')
+
+    def test_une_variante_hors_liste_reste_refusee(self):
+        for route in ('/taches/aujourdhui/', '/taches', '/taches/a-trier'):
+            res = self.api.post(
+                '/api/django/auth/mobile-home-route/', {'route': route}, format='json')
+            self.assertEqual(res.status_code, 400, route)
+        self.admin.refresh_from_db()
+        self.assertIsNone(self.admin.mobile_home_route)
