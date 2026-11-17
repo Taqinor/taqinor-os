@@ -10,7 +10,6 @@ from dataclasses import dataclass, field, replace
 DEFAUT = 5            # objectif affiché tant qu'aucun palier personnel n'existe (« valeur par défaut »)
 JOURS_INITIAUX = 10   # jours évalués avant le premier palier personnel
 BLOC = 10             # jours évalués par bloc d'évaluation (≈ 2 semaines ouvrées)
-SEUIL_MONTER = 7      # jours tenus sur 10 pour proposer N+1
 SEUIL_BAISSER = 3     # jours tenus sur 10 (ou moins) pour proposer N-1
 PLAFOND = 12          # au-delà, plus de proposition de montée
 MICRO_MIN = 10        # une tâche estimée <= 10 min est une micro-tâche
@@ -22,8 +21,12 @@ ATTENTE_REFUS = (0, 1, 2, 4)   # blocs sautés après 0, 1, 2, >=3 refus de mont
 TENIR_N = 14          # jours évalués pour la référence et la dérive de TENIR
 TENIR_SILENCE = 28    # jours calendaires de silence après une alerte TENIR
 # variantes testées par le banc (valeurs retenues ci-dessous)
-BORNE = 'p60'         # 'aucune' | 'p60' : N+1 <= ceil(P60 du bloc) (règle publiée = borne de vraisemblance)
+BORNE = 'aucune'      # 'aucune' | 'p60' : N+1 <= ceil(P60 du bloc). Testé : 'p60' étouffe la montée -> repère affiché
+SEUIL_MONTER = 6      # retenu après itération (7 testé : pousse moins le profil qui progresse)
 ESSAI = 1             # blocs après une montée acceptée pendant lesquels aucune baisse n'est proposée
+INITIAL = 'min_med_moy'   # 'mediane' | 'min_med_moy'
+TENU_ESSENTIEL = False    # le jour « à N ou plus » des PALIERS compte les tâches seules (l'essentiel est affiché à part)
+BAISSE_MOYENNE = False    # testé (moyenne du bloc < N - 0,5) : aucun effet mesuré -> écarté pour la simplicité
 
 
 def round_half_down(x):
@@ -82,6 +85,8 @@ def jour_tenu(compte, objectif, essentiels_choisis, essentiels_faits):
     """Tenu = compte >= objectif ET (au moins un essentiel fait, ou aucun choisi)."""
     if objectif is None:
         return False
+    if not TENU_ESSENTIEL:
+        return compte >= objectif
     return compte >= objectif and (essentiels_choisis == 0 or essentiels_faits >= 1)
 
 
@@ -125,10 +130,18 @@ def palier_initial(comptes, objectif_dit=None):
     S'il a DIT un objectif, on le garde et on renvoie la journée type comme simple repère."""
     if len(comptes) < JOURS_INITIAUX:
         return None, None
-    type_ = max(1, round_half_down(statistics.median(comptes)))
+    base = statistics.median(comptes)
+    if INITIAL == 'min_med_moy':
+        base = min(base, statistics.mean(comptes))   # une journée en rafales ne gonfle pas le départ
+    type_ = max(1, round_half_down(base))
     if objectif_dit:
         return objectif_dit, type_
     return type_, type_
+
+
+def reference_taille(tailles):
+    """Médiane des estimations des tâches faites (None si moins de TAILLE_N_MIN tâches estimées)."""
+    return statistics.median(tailles) if len(tailles) >= TAILLE_N_MIN else None
 
 
 def garde_taille(ref, tailles):
@@ -149,7 +162,8 @@ def evaluer_bloc(e, jour):
     if tenus >= SEUIL_MONTER and N < PLAFOND:
         if e.blocs_a_sauter > 0:
             return None, ch
-        if e.echec and e.echec[0] == N + 1 and N + 1 > e.meilleur_tenu and jour - e.echec[1] < ATTENTE_ECHEC:
+        if e.echec and e.echec[0] == N + 1 and N + 1 > e.meilleur_tenu and \
+                jour - e.echec[1] < ATTENTE_ECHEC * e.echec[2]:
             return None, ch
         if BORNE == 'p60' and N + 1 > ch['p60']:   # borne de vraisemblance (règle publiée WalkIT)
             return None, ch
@@ -157,7 +171,9 @@ def evaluer_bloc(e, jour):
             ch['taille_med'] = statistics.median(e.tailles_bloc)
             return 'taille', ch
         return 'monter', ch
-    if tenus <= SEUIL_BAISSER and N > 1 and not e.baisse_refusee and e.essai_restant == 0:
+    essai_bloque = e.essai_restant > 0 and tenus > 1   # bloc d'essai : baisse seulement si 0 ou 1 jour tenu
+    if tenus <= SEUIL_BAISSER and N > 1 and not e.baisse_refusee and not essai_bloque and \
+            (not BAISSE_MOYENNE or statistics.mean(comptes) < N - 0.5):
         return 'baisser', ch
     return None, ch
 
@@ -188,30 +204,40 @@ def clore_bloc(e, jour, decision, reponse):
         if reponse == 'oui':
             e2.palier = max(1, N - 1)
             if N > e2.meilleur_tenu:
-                e2.echec = (N, jour)
+                n_echecs = e.echec[2] + 1 if (e.echec and e.echec[0] == N) else 1
+                e2.echec = (N, jour, n_echecs)   # 6 semaines × nombre d'échecs à ce niveau
         else:
             e2.baisse_refusee = True
     return e2
 
 
 # ---------------------------------------------------------------- 4. TENIR
+TENIR_ROGNER = 2      # on retire les 2 plus hauts et les 2 plus bas des 14 jours (moyenne rognée)
+
+
+def moyenne_rognee(comptes):
+    s = sorted(comptes)
+    k = TENIR_ROGNER if len(s) > 2 * TENIR_ROGNER else 0
+    return statistics.mean(s[k:len(s) - k])
+
+
 def bande_tenir(R):
     b = max(1.0, 0.2 * R)
     return R - b, R + b
 
 
 def reference_tenir(comptes):
-    """Moyenne non arrondie des TENIR_N derniers jours évalués, ou None s'il en manque."""
+    """Moyenne rognée non arrondie des TENIR_N derniers jours évalués, ou None s'il en manque."""
     if len(comptes) < TENIR_N:
         return None
-    return statistics.mean(comptes[-TENIR_N:])
+    return moyenne_rognee(comptes[-TENIR_N:])
 
 
 def derive_tenir(R, comptes_depuis_R, jour, silence_jusqua):
     """'sous' | 'au_dessus' | None. Exige TENIR_N jours évalués DEPUIS la fixation de R."""
     if R is None or len(comptes_depuis_R) < TENIR_N or jour < silence_jusqua:
         return None
-    m = statistics.mean(comptes_depuis_R[-TENIR_N:])
+    m = moyenne_rognee(comptes_depuis_R[-TENIR_N:])
     lo, hi = bande_tenir(R)
     if m < lo:
         return 'sous'
@@ -249,11 +275,11 @@ def jour_tenir(e, compte, jour):
     e2 = replace(e, R_jours=e.R_jours + [compte])
     if e2.R is None:
         if len(e2.R_jours) >= TENIR_N:
-            e2.R = statistics.mean(e2.R_jours[-TENIR_N:])
+            e2.R = reference_tenir(e2.R_jours)
             e2.R_jours = []
         return e2, None, None
     a = derive_tenir(e2.R, e2.R_jours, jour, e2.silence_jusqua)
-    m = statistics.mean(e2.R_jours[-TENIR_N:]) if len(e2.R_jours) >= TENIR_N else None
+    m = moyenne_rognee(e2.R_jours[-TENIR_N:]) if len(e2.R_jours) >= TENIR_N else None
     if a:
         e2.silence_jusqua = jour + TENIR_SILENCE
     return e2, a, m

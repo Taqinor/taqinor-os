@@ -21,6 +21,7 @@ def jour(rng, nb, ouvre=True, p_plan=0.85, p_ouvre=0.95, p_ess=0.85, taille=40, 
         e = sum(1 for _ in range(k) if rng.random() < p)
         e = min(e, nb)
     micro = sum(1 for _ in range(nb) if rng.random() < part_micro)
+    taille = taille * math.exp(rng.gauss(0, 0.3))   # taille médiane du jour : bruit log-normal 30 %
     return dict(nb=nb, micro=micro, taille=taille, k=k, e=e, plan=plan, ouvert=ouvert, conge=False,
                 travaille=(nb > 0 and not ouvre))
 
@@ -57,6 +58,22 @@ def progresse(h0=4.5, c=0.5, sd=0.9, gain=0.1, Kmax=10):
         r, h, T = ctx['rng'], st['h'], ctx['T']
         nb = clip(round(h + pousse(T, h, c) + r.gauss(0, sd)), 0, Kmax)
         if T is not None and T >= h + 0.5:
+            st['h'] = min(Kmax, h + gain)
+        return jour(r, nb)
+    return f
+
+
+def progresse_v(h0=4.5, c=0.5, sd=0.9, gain=0.1, Kmax=10, seuil=0.5):
+    """Variante de robustesse : il progresse dès que l'objectif dépasse son habitude de `seuil`."""
+    st = dict(h=h0)
+
+    def f(ctx):
+        ctx['etat']['h'] = st['h']
+        if not ctx['ouvre']:
+            return repos(ctx['rng'])
+        r, h, T = ctx['rng'], st['h'], ctx['T']
+        nb = clip(round(h + pousse(T, h, c) + r.gauss(0, sd)), 0, Kmax)
+        if T is not None and T > h + seuil:
             st['h'] = min(Kmax, h + gain)
         return jour(r, nb)
     return f
