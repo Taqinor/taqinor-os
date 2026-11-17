@@ -9,6 +9,8 @@ sélecteurs du compte (société ET propriétaire) ; un id reçu d'un autre comp
   de la revue passent par elle.
 - Une tâche ne change de jour que par `planifier()` (invariant 15) : `decaler_projet` l'appelle.
 """
+import datetime
+from bisect import bisect_right
 from dataclasses import dataclass, field
 
 from django.db import IntegrityError, transaction
@@ -17,17 +19,18 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.taches.choix import StatutProjet, StatutRappel, StatutTache
+from apps.taches.choix import Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.taches import Tache
+from apps.taches.moteur.decalage import decaler
 from apps.taches.saisie.normalisation import cle_nom
-from apps.taches.selectors.base import projets_de, rappels_de, sections_de, taches_de
-from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office
+from apps.taches.selectors.base import jours_travailles_de, projets_de, rappels_de, sections_de, taches_de
+from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office, creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
 )
-from apps.taches.services.planification import MESSAGE_CONFLIT
-from apps.taches.services.rappels import annuler_rappels
+from apps.taches.services.planification import MESSAGE_CONFLIT, planifier
+from apps.taches.services.rappels import annuler_rappels, recalculer_ancres
 from core.conflit_etat import ConflitEtat
 from core.verrou_optimiste import CHAMP_VERSION, CODE_CONFLIT_VERSION, ConflitVersion
 
@@ -394,3 +397,134 @@ def reordonner_section(user, section_id, *, avant_id=None, apres_id=None):
         ordre = list(Section.objects.filter(projet=section.projet).exclude(pk=section.pk)
                      .order_by('rang', 'id').values_list('pk', 'rang'))
         _ecrire_rangs(Section, _rangs_apres_insertion(ordre, section.pk, avant_id, apres_id))
+
+
+# --- Planifier le projet -------------------------------------------------------------------------
+
+def _etapes_du_plan(user, projet, sections, ops):
+    """`{nom d'étape: id}` : les étapes du plan, reprises si elles existent, créées sinon."""
+    ids = {}
+    dernier = Section.objects.filter(projet=projet).aggregate(m=Max('rang'))['m'] or 0
+    for bloc in sections:
+        nom = bloc.get('nom')
+        if not nom or nom in ids:
+            continue
+        section = Section.objects.filter(projet=projet, nom_cle=cle_nom(nom)).first()
+        if section is None:
+            dernier += PAS_RANG
+            section = Section.objects.create(company_id=user.company_id, projet=projet, nom=nom, rang=dernier)
+            ops.append(op_creation('section', section))
+        ids[nom] = section.pk
+    return ids
+
+
+def _lignes_du_plan(projet, donnees, etapes, jour):
+    """Les LIGNES de `creer_taches` : les tâches de chaque étape, puis les premières actions."""
+    lignes, parents = [], []
+    for bloc in donnees.get('sections', ()):
+        for tache in bloc.get('taches', ()):
+            lignes.append({'titre': tache['titre'], 'projet_id': projet.pk, 'section_id': etapes.get(bloc.get('nom')),
+                           'jalon': bool(tache.get('jalon'))})
+            parents.append(tache.get('sous_taches') or [])
+    quand = {'aujourdhui': jour, 'demain': jour + datetime.timedelta(days=1)}
+    for action in donnees.get('actions', ()):
+        lignes.append({'titre': action['titre'], 'projet_id': projet.pk,
+                       'jour_prevu': quand.get(action.get('quand'))})
+        parents.append([])
+    return lignes, parents
+
+
+def _creer_le_plan(user, projet, lignes, parents, assistant):
+    """Crée tâches puis sous-tâches (même transaction, aucun geste propre : l'appelant en rend UN)."""
+    source = Source.ASSISTANT if assistant else Source.MANUEL
+    creees = creer_taches(user, lignes, source=source, porte='modele').creees if lignes else []
+    tout = list(creees)
+    for tache, titres in zip(creees, parents):
+        if titres:
+            tout += creer_taches(user, [{'titre': t} for t in titres], source=source, porte='modele',
+                                 parent=tache).creees
+    return tout
+
+
+def planifier_projet(user, projet_id, donnees, *, version, assistant=False):
+    """« Planifier le projet » : objectif, échéance, priorité, risque, étapes, tâches, jalons, premières
+    actions — tout ou rien, UN geste (`creation`). `lock_version` périmée → 409. `planification_le` posé."""
+    jour = timezone.localdate()
+    with transaction.atomic():
+        projet = _verrouiller_projet(user, projet_id, version)
+        ops = []
+        valeurs = {c: donnees[c] for c in ('priorite', 'objectif', 'echeance', 'risque') if c in donnees}
+        valeurs['planification_le'] = timezone.now()
+        _ecrire('projet', projet, valeurs, ops)
+        etapes = _etapes_du_plan(user, projet, donnees.get('sections', ()), ops)
+        lignes, parents = _lignes_du_plan(projet, donnees, etapes, jour)
+        creees = _creer_le_plan(user, projet, lignes, parents, assistant)
+        ops.extend(op_creation('tache', t) for t in creees)
+        n = len(creees)
+        geste = enregistrer_geste(user, 'creation', f'{n} tâches créées' if n > 1 else 'Ajoutée', ops)
+    return ResultatProjet(projet, geste=geste, creees=creees)
+
+
+# --- Décaler les dates ---------------------------------------------------------------------------
+
+def _dates_du_projet(projet, sections, taches):
+    dates = [projet.date_debut, projet.echeance]
+    for section in sections:
+        dates += [section.date_debut, section.date_fin]
+    for tache in taches:
+        if tache.statut in OUVERTS:
+            dates += [tache.jour_prevu, tache.echeance]
+    return [d for d in dates if d is not None]
+
+
+def _prochain_ouvre(user, dates, delta):
+    """`prochain_ouvre(d)` : `d` s'il est travaillé, sinon le prochain jour travaillé (une seule lecture)."""
+    bas = min(dates) + datetime.timedelta(days=min(delta, 0))
+    haut = max(dates) + datetime.timedelta(days=max(delta, 0) + HORIZON_OUVRES)
+    travailles = sorted(jours_travailles_de(user, bas, haut))
+
+    def prochain(jour):
+        place = bisect_right(travailles, jour - datetime.timedelta(days=1))
+        return travailles[place] if place < len(travailles) else jour
+    return prochain
+
+
+def _appliquer_decalage(user, projet, sections, taches, changements):
+    """Écrit les changements : dates du projet et des étapes, `echeance` des tâches, puis les jours par
+    `planifier()` (sans report). Rend les opérations du geste."""
+    ops, par_objet = [], {}
+    for c in changements:
+        par_objet.setdefault((c['objet'], c['id']), {})[c['champ']] = datetime.date.fromisoformat(c['apres'])
+    for projet_cible in (projet, *sections):
+        objet = 'projet' if isinstance(projet_cible, Projet) else 'section'
+        _ecrire(objet, projet_cible, par_objet.get((objet, projet_cible.pk), {}), ops)
+    for tache in taches:
+        valeurs = par_objet.get(('tache', tache.pk), {})
+        if 'echeance' in valeurs and _ecrire('tache', tache, {'echeance': valeurs['echeance']}, ops):
+            recalculer_ancres(tache, ops)
+        if 'jour_prevu' in valeurs:
+            planifier(tache, acteur=user, jour_prevu=valeurs['jour_prevu'], moment=tache.moment,
+                      heure_debut=tache.heure_debut, compter_report=False, collecte=ops)
+    return ops
+
+
+def decaler_projet(user, projet_id, delta, *, apercu=True):
+    """Décale de `delta` jours les dates du projet, de ses étapes et de ses tâches ouvertes. `apercu` : rien
+    n'est écrit. Refus (une tâche passerait avant aujourd'hui) → 400 sur `delta_jours`. Rend
+    `(changements, geste ou None)`."""
+    jour = timezone.localdate()
+    with transaction.atomic():
+        projet = _verrouiller_projet(user, projet_id)
+        sections = list(sections_de(user).filter(projet=projet))
+        taches = list(taches_de(user).select_for_update().filter(projet=projet).order_by('id'))
+        dates = _dates_du_projet(projet, sections, taches)
+        if not dates:
+            return [], None
+        resultat = decaler(delta, jour, projet, sections, taches, _prochain_ouvre(user, dates, delta))
+        if resultat.refus:
+            raise serializers.ValidationError({'delta_jours': [resultat.refus]})
+        changements = list(resultat.changements)
+        if apercu or not changements:
+            return changements, None
+        ops = _appliquer_decalage(user, projet, sections, taches, changements)
+        return changements, _geste(user, 'decalage', 'Dates décalées', ops)

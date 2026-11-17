@@ -11,10 +11,12 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.utils.encoders import JSONEncoder
 from rest_framework.views import APIView
 
+from apps.taches.confidentialite import est_confidentielle
 from apps.taches.selectors import projets as lecture
 from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
@@ -222,7 +224,11 @@ class PlanificationApercuVue(APIView):
                                  requis=('texte',)),
                    responses=reponses(forme_echantillon('planification_apercu'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        projet = _projet_ou_404(request, id)
+        if est_assistant(request) and est_confidentielle(projet):
+            raise PermissionDenied("Ce projet est confidentiel : l'assistant ne lit pas sa liste.")
+        donnees = _valider(formes_projets.ApercuPlanSerializer, request.data)
+        return Response(formes_projets.apercu_du_plan(donnees['texte']))
 
 
 class PlanificationVue(IdempotentCreateMixin, APIView):
@@ -250,7 +256,16 @@ class PlanificationVue(IdempotentCreateMixin, APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(forme_echantillon('planification'), erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = dict(_valider(formes_projets.PlanificationSerializer, request.data))
+        version = donnees.pop('lock_version')
+        assistant = est_assistant(request)
+
+        def creer():
+            resultat = _avec_conflit_projet(request, lambda: ecriture.planifier_projet(
+                request.user, id, donnees, version=version, assistant=assistant))
+            _, ctx = _etat(request)
+            return Response(_json(formes_projets.planification_rendue(request.user, resultat, ctx)), status=201)
+        return self._avec_idempotence(request, creer, suffixe=f'u{request.user.pk}')
 
 
 class DecalerVue(IdempotentCreateMixin, APIView):
@@ -261,7 +276,13 @@ class DecalerVue(IdempotentCreateMixin, APIView):
     @extend_schema(request=corps('Decaler', {'delta_jours': 7, 'apercu': True}, requis=('delta_jours',)),
                    responses=reponses(forme_echantillon('decalage'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.DecalerSerializer, request.data)
+
+        def decaler():
+            changements, geste = ecriture.decaler_projet(
+                request.user, id, donnees['delta_jours'], apercu=donnees['apercu'])
+            return Response(_json(formes_projets.decalage_rendu(changements, geste)))
+        return self._avec_idempotence(request, decaler, suffixe=f'u{request.user.pk}')
 
 
 class ProjetTerminerVue(APIView):

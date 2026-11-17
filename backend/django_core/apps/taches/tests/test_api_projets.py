@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.taches import Tache
+from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.projets import _rangs_apres_insertion
 from apps.taches.tests import fabriques
@@ -683,3 +684,210 @@ class VueEtEtapesTests(_Base):
         self.assertEqual(reponse.status_code, 204)
         ordre = list(Section.objects.filter(projet=projet).order_by('rang', 'id').values_list('pk', flat=True))
         self.assertEqual(ordre, [trois.pk, un.pk, deux.pk])
+
+
+class PlanificationTests(_Base):
+    TEXTE = 'Études :\nVisite\n- photos\n◆ Mise en service'
+
+    def test_apercu_rend_exactement_l_echantillon_sans_rien_ecrire(self):
+        projet = fabriques.projet(self.u1)
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/apercu/'),
+                                          {'texte': self.TEXTE}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(reponse.json(), exemple_de('planification_apercu'))
+        self.assertEqual(Tache.objects.count(), 0)
+        self.assertEqual(Section.objects.count(), 0)
+
+    def test_apercu_limites_et_projet_etranger(self):
+        projet = fabriques.projet(self.u1)
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        trop = api.post(_url(f'projets/{projet.pk}/planification/apercu/'), {'texte': 'a\n' * 201}, format='json')
+        self.assertEqual(trop.status_code, 400)
+        self.assertEqual(trop.json()['texte'],
+                         ['Liste trop longue : 200 lignes au plus (ici 201). Colle-la en deux fois.'])
+        self.assertEqual(api.post(_url(f'projets/{projet.pk}/planification/apercu/'), {},
+                                  format='json').status_code, 400)
+        self.assertEqual(api.post(_url(f'projets/{etranger.pk}/planification/apercu/'), {'texte': 'a'},
+                                  format='json').status_code, 404)
+
+    def test_apercu_403_sous_l_en_tete_assistant_pour_un_projet_confidentiel(self):
+        secret = fabriques.projet(self.u1, confidentiel=True)
+        ordinaire = fabriques.projet(self.u1)
+        assistant = self._api(self.u1, assistant=True)
+        refus = assistant.post(_url(f'projets/{secret.pk}/planification/apercu/'), {'texte': 'a'}, format='json')
+        self.assertEqual(refus.status_code, 403)
+        ok = assistant.post(_url(f'projets/{ordinaire.pk}/planification/apercu/'), {'texte': 'a'}, format='json')
+        self.assertEqual(ok.status_code, 200)
+        ecran = self._api(self.u1).post(_url(f'projets/{secret.pk}/planification/apercu/'), {'texte': 'a'},
+                                        format='json')
+        self.assertEqual(ecran.status_code, 200)
+
+    def _plan(self, projet, **plus):
+        corps = {
+            'priorite': 3, 'objectif': 'Stand monté', 'echeance': _j(40).isoformat(), 'risque': 'Retard transport',
+            'sections': [{'nom': 'Études', 'taches': [
+                {'titre': 'Visite', 'jalon': False, 'sous_taches': ['photos']},
+                {'titre': 'Mise en service', 'jalon': True, 'sous_taches': []}]}],
+            'actions': [{'titre': 'Réserver le stand', 'quand': 'aujourdhui'}],
+            'lock_version': projet.lock_version, **plus}
+        return corps
+
+    def test_cree_tout_en_un_et_rend_l_echantillon(self):
+        projet = fabriques.projet(self.u1)
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/'), self._plan(projet),
+                                          format='json')
+        self.assertEqual(reponse.status_code, 201)
+        corps = reponse.json()
+        exemple = exemple_de('planification')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['projet']), set(exemple['projet']))
+        self.assertEqual(set(corps['creees'][0]), set(exemple['creees'][0]))
+        self.assertEqual(len(corps['creees']), 4)
+        projet.refresh_from_db()
+        self.assertEqual((projet.priorite, projet.objectif, projet.risque), (3, 'Stand monté', 'Retard transport'))
+        self.assertEqual(projet.echeance, _j(40))
+        self.assertIsNotNone(projet.planification_le)
+        etape = Section.objects.get(projet=projet, nom='Études')
+        visite = Tache.objects.get(projet=projet, titre='Visite')
+        self.assertEqual(visite.section_id, etape.pk)
+        self.assertTrue(Tache.objects.get(projet=projet, titre='Mise en service').jalon)
+        photos = Tache.objects.get(projet=projet, titre='photos')
+        self.assertEqual((photos.parent_id, photos.projet_id, photos.section_id), (visite.pk, projet.pk, etape.pk))
+        action = Tache.objects.get(projet=projet, titre='Réserver le stand')
+        self.assertEqual((action.jour_prevu, action.section_id), (_j(0), None))
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 4)
+        self.assertFalse(corps['projet']['a_planifier'])
+
+    def test_une_etape_existante_est_reprise(self):
+        projet = fabriques.projet(self.u1)
+        existante = fabriques.section(projet, nom='études')
+        self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/'), self._plan(projet), format='json')
+        self.assertEqual(Section.objects.filter(projet=projet).count(), 1)
+        self.assertEqual(Tache.objects.get(projet=projet, titre='Visite').section_id, existante.pk)
+
+    def test_un_geste_annule_tout(self):
+        projet = fabriques.projet(self.u1)
+        geste = self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/'), self._plan(projet),
+                                        format='json').json()['geste_id']
+        bilan = annuler_geste(self.u1, geste)
+        self.assertEqual(bilan['conflits'], [])
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 0)
+        self.assertEqual(Section.objects.filter(projet=projet).count(), 0)
+        projet.refresh_from_db()
+        self.assertEqual((projet.priorite, projet.objectif), (0, ''))
+        self.assertIsNone(projet.planification_le)
+
+    def test_version_requise_et_perimee(self):
+        projet = fabriques.projet(self.u1)
+        api = self._api(self.u1)
+        sans = self._plan(projet)
+        del sans['lock_version']
+        self.assertEqual(api.post(_url(f'projets/{projet.pk}/planification/'), sans, format='json').json()
+                         ['lock_version'], ['Requis.'])
+        perimee = api.post(_url(f'projets/{projet.pk}/planification/'), self._plan(projet, lock_version=7),
+                           format='json')
+        self.assertEqual(perimee.status_code, 409)
+        self.assertEqual(perimee.json()['code'], 'conflit_version')
+        self.assertEqual(perimee.json()['actuel']['id'], projet.pk)
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 0)
+
+    def test_tout_ou_rien_sur_une_erreur(self):
+        projet = fabriques.projet(self.u1)
+        corps = self._plan(projet, actions=[{'titre': 'x' * 300}])
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/'), corps, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 0)
+        self.assertEqual(Section.objects.filter(projet=projet).count(), 0)
+
+    def test_rejeu_avec_la_meme_cle(self):
+        projet = fabriques.projet(self.u1)
+        api = self._api(self.u1)
+        corps = self._plan(projet)
+        api.post(_url(f'projets/{projet.pk}/planification/'), corps, format='json', HTTP_IDEMPOTENCY_KEY='plan-1')
+        api.post(_url(f'projets/{projet.pk}/planification/'), corps, format='json', HTTP_IDEMPOTENCY_KEY='plan-1')
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 4)
+
+    def test_planification_d_un_projet_etranger_404(self):
+        etranger = fabriques.projet(self.voisin)
+        reponse = self._api(self.u1).post(_url(f'projets/{etranger.pk}/planification/'), self._plan(etranger),
+                                          format='json')
+        self.assertEqual(reponse.status_code, 404)
+
+
+class DecalerTests(_Base):
+    def _projet_date(self):
+        projet = fabriques.projet(self.u1, echeance=_j(20))
+        section = fabriques.section(projet, date_fin=_j(15))
+        tache = fabriques.tache(self.u1, projet=projet, section=section, jour_prevu=_j(3), echeance=_j(6))
+        faite = self._fait(self.u1, projet, jour_prevu=_j(2))
+        return projet, section, tache, faite
+
+    def test_apercu_ne_change_rien(self):
+        projet, section, tache, faite = self._projet_date()
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                          {'delta_jours': 7, 'apercu': True}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        exemple = exemple_de('decalage')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['changements'][0]), set(exemple['changements'][0]))
+        self.assertIsNone(corps['geste_id'])
+        objets = {(c['objet'], c['id'], c['champ']) for c in corps['changements']}
+        self.assertEqual(objets, {('projet', projet.pk, 'echeance'), ('section', section.pk, 'date_fin'),
+                                  ('tache', tache.pk, 'jour_prevu'), ('tache', tache.pk, 'echeance')})
+        self.assertEqual(Tache.objects.get(pk=tache.pk).jour_prevu, _j(3))
+        self.assertEqual(Projet.objects.get(pk=projet.pk).echeance, _j(20))
+
+    def test_sans_apercu_rien_n_est_ecrit_non_plus(self):
+        projet, _, tache, _ = self._projet_date()
+        self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'), {'delta_jours': 7}, format='json')
+        self.assertEqual(Tache.objects.get(pk=tache.pk).jour_prevu, _j(3))
+
+    def test_applique_sur_des_jours_travailles_et_laisse_les_faites_intactes(self):
+        projet, section, tache, faite = self._projet_date()
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                          {'delta_jours': 7, 'apercu': False}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNotNone(reponse.json()['geste_id'])
+        tache.refresh_from_db()
+        projet.refresh_from_db()
+        section.refresh_from_db()
+        for date, avant in ((tache.jour_prevu, _j(3)), (tache.echeance, _j(6)), (projet.echeance, _j(20)),
+                            (section.date_fin, _j(15))):
+            self.assertGreaterEqual(date, avant + datetime.timedelta(days=7))
+            self.assertEqual(jours_travailles_de(self.u1, date, date), {date})
+        self.assertEqual(Tache.objects.get(pk=faite.pk).jour_prevu, _j(2))
+        self.assertEqual(Tache.objects.get(pk=tache.pk).reports, 0)
+
+    def test_refus_quand_une_tache_passerait_avant_aujourd_hui(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.tache(self.u1, projet=projet, jour_prevu=_j(0))
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                          {'delta_jours': -3, 'apercu': False}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.json()['delta_jours'], ["1 tâche passerait avant aujourd'hui."])
+
+    def test_le_geste_annule_le_decalage(self):
+        projet, section, tache, _ = self._projet_date()
+        geste = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                        {'delta_jours': 7, 'apercu': False}, format='json').json()['geste_id']
+        bilan = annuler_geste(self.u1, geste)
+        self.assertEqual(bilan['conflits'], [])
+        tache.refresh_from_db()
+        self.assertEqual((tache.jour_prevu, tache.echeance), (_j(3), _j(6)))
+        self.assertEqual(Projet.objects.get(pk=projet.pk).echeance, _j(20))
+        self.assertEqual(Section.objects.get(pk=section.pk).date_fin, _j(15))
+
+    def test_projet_sans_date_ni_changement(self):
+        projet = fabriques.projet(self.u1)
+        reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/decaler/'),
+                                          {'delta_jours': 7, 'apercu': False}, format='json')
+        self.assertEqual(reponse.json(), {'changements': [], 'geste_id': None})
+
+    def test_delta_requis_et_projet_etranger(self):
+        projet, etranger = fabriques.projet(self.u1), fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        self.assertEqual(api.post(_url(f'projets/{projet.pk}/decaler/'), {}, format='json').status_code, 400)
+        self.assertEqual(api.post(_url(f'projets/{etranger.pk}/decaler/'), {'delta_jours': 7},
+                                  format='json').status_code, 404)

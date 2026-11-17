@@ -11,10 +11,13 @@ from django.db.models import F
 from rest_framework import serializers
 
 from apps.taches.choix import Couleur, IssueProjet, Priorite, StatutProjet, StatutTache
-from apps.taches.saisie.collage import MAX_LIGNES
+from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
+from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import projets as lecture
 from apps.taches.selectors.base import sections_de, taches_de
-from apps.taches.serializers.formes import AFFICHAGE_DEFAUT, ItemSerializer, ProjetSerializer, charger_items, contexte
+from apps.taches.serializers.formes import (
+    AFFICHAGE_DEFAUT, ItemSerializer, ProjetSerializer, TacheSerializer, charger_items, charger_taches, contexte,
+)
 
 REQUIS = 'Requis.'
 VALEUR_INCONNUE = 'Valeur inconnue.'
@@ -147,6 +150,62 @@ def _dates_ordonnees(donnees):
     return donnees
 
 
+class ApercuPlanSerializer(serializers.Serializer):
+    """POST projets/{id}/planification/apercu/ — `{texte}`, jamais écrit."""
+
+    texte = serializers.CharField(trim_whitespace=False, error_messages=_messages())
+
+    def validate_texte(self, texte):
+        erreurs = erreurs_limites(texte)
+        if erreurs:
+            raise serializers.ValidationError(erreurs['texte'])
+        return texte
+
+
+class _TachePlanSerializer(serializers.Serializer):
+    titre = _texte(280)
+    jalon = serializers.BooleanField(required=False, default=False)
+    sous_taches = serializers.ListField(child=_texte(280), required=False)
+
+
+class _EtapePlanSerializer(serializers.Serializer):
+    nom = _texte(120, required=False, allow_null=True, allow_blank=True)
+    taches = _TachePlanSerializer(many=True)
+
+
+class _ActionPlanSerializer(serializers.Serializer):
+    titre = _texte(280)
+    quand = serializers.ChoiceField(choices=['aujourdhui', 'demain', 'plus_tard', ''], required=False,
+                                    allow_blank=True, error_messages=_messages())
+
+
+class PlanificationSerializer(serializers.Serializer):
+    """POST projets/{id}/planification/ — tout créer, priorité comprise (verrou 409)."""
+
+    priorite = serializers.ChoiceField(choices=Priorite.values, required=False, error_messages=_messages())
+    objectif = serializers.CharField(required=False, allow_blank=True, error_messages=_messages())
+    echeance = serializers.DateField(required=False, allow_null=True)
+    risque = _texte(280, required=False, allow_blank=True)
+    sections = _EtapePlanSerializer(many=True, required=False)
+    actions = _ActionPlanSerializer(many=True, required=False)
+    lock_version = _version()
+
+    def validate(self, donnees):
+        nombre = sum(1 + len(t.get('sous_taches', ())) for s in donnees.get('sections', ()) for t in s['taches'])
+        nombre += len(donnees.get('actions', ()))
+        if nombre > MAX_TACHES_DU_PLAN:
+            raise serializers.ValidationError({'sections': [MESSAGE_TROP_DE_LIGNES.format(n=nombre)]})
+        return donnees
+
+
+class DecalerSerializer(serializers.Serializer):
+    """POST projets/{id}/decaler/ — `{delta_jours, apercu}` (sans `apercu`, rien n'est écrit)."""
+
+    delta_jours = serializers.IntegerField(min_value=-3650, max_value=3650, error_messages=_messages(
+        min_value=VALEUR_INCONNUE, max_value=VALEUR_INCONNUE))
+    apercu = serializers.BooleanField(required=False, default=True)
+
+
 class VueProjetSerializer(serializers.Serializer):
     """GET projets/{id}/vue/?vue= — la vue demandée (les trois servent le même contenu)."""
 
@@ -184,6 +243,24 @@ def section_ecrite(section, geste):
     return {'id': section.pk, 'projet_id': section.projet_id, 'nom': section.nom, 'rang': section.rang,
             'date_debut': _iso(section.date_debut), 'date_fin': _iso(section.date_fin),
             'geste_id': geste.pk if geste is not None else None}
+
+
+def apercu_du_plan(texte):
+    """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit."""
+    return decouper_plan(texte)
+
+
+def planification_rendue(user, resultat, ctx):
+    """`planification.json` : le projet, les tâches créées (forme TACHE) et le geste."""
+    ids = [t.pk for t in resultat.creees]
+    creees = {t.pk: t for t in charger_taches(taches_de(user).filter(pk__in=ids))}
+    return {'projet': forme_projet(resultat.projet, ctx),
+            'creees': TacheSerializer([creees[i] for i in ids], many=True, context=ctx).data,
+            'geste_id': geste_de(resultat)}
+
+
+def decalage_rendu(changements, geste):
+    return {'changements': changements, 'geste_id': geste.pk if geste is not None else None}
 
 
 def _item(user, pk, ctx, chargees):
