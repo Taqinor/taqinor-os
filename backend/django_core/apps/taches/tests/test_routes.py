@@ -2,9 +2,10 @@
 
 Sans base (SimpleTestCase) : les 106 couples méthode × chemin de reference/api.md §3 résolvent,
 chaque chemin sert EXACTEMENT ses méthodes, chaque vue lève `PasEncore` (501) et porte la
-permission STRICTE ; `est_assistant`, la permission et le bouchon des routes à jeton.
+permission STRICTE ; `est_assistant`, la permission et l'authentification des routes à jeton (chacune
+celle de SON usage, TCH95).
 Avec base (TestCase, CI) : 403 sans `taches_voir` pour tout compte (y compris un compte hérité
-« responsable » sans rôle fin), 501 avec, 401 neutre sur capture, flux et tuile.
+« responsable » sans rôle fin), 501 avec, refus neutre sur capture et tuile (401), flux (404).
 """
 import inspect
 import json
@@ -15,15 +16,14 @@ from types import SimpleNamespace
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import resolve
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, NotFound
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.roles.models import Role
+from apps.taches.auth_jeton import JetonAccesAuthentication, JetonCapture, JetonFlux, JetonTuile
 from apps.taches.tests import fabriques
-from apps.taches.views.base import (
-    AUTH_JETON, JetonPasEncoreLivre, PasEncore, PermissionTaches, est_assistant,
-)
+from apps.taches.views.base import PasEncore, PermissionTaches, est_assistant
 
 PREFIXE = '/api/django/taches/'
 API_MD = Path(__file__).resolve().parents[5] / 'docs' / 'taches' / 'reference' / 'api.md'
@@ -139,8 +139,12 @@ DELETE agendas-externes/{id}/
 POST agendas-externes/{id}/rafraichir/
 """
 ROUTES = [tuple(ligne.split(' ', 1)) for ligne in ROUTES_TEXTE.strip().splitlines()]
-#: Routes à jeton (J:x) : authentifiées par le bouchon tant que le jeton n'est pas livré.
-ROUTES_A_JETON = {('POST', 'capture/'), ('GET', 'tuile/'), ('GET', 'flux/{jeton}.ics')}
+#: Routes à jeton (J:x) → l'authentification de LEUR usage (et elle seule).
+AUTH_PAR_ROUTE = {('POST', 'capture/'): JetonCapture, ('GET', 'tuile/'): JetonTuile,
+                  ('GET', 'flux/{jeton}.ics'): JetonFlux}
+ROUTES_A_JETON = set(AUTH_PAR_ROUTE)
+#: Statut du refus neutre : 404 pour le flux (le jeton est dans l'adresse), 401 sinon.
+STATUT_REFUS = {('GET', 'flux/{jeton}.ics'): 404}
 #: Routes réservées à un administrateur (`IsAdminRole`).
 ROUTES_ADMIN = {('GET', 'reglages-societe/'), ('PATCH', 'reglages-societe/')}
 VALEURS = {'{id}': '7', '{projet_id}': '3', '{cle}': 'heure_limite', '{jeton}': 'tqf_abcdef'}
@@ -209,8 +213,12 @@ class RoutesSansBaseTests(SimpleTestCase):
             with self.subTest(methode=methode, chemin=chemin):
                 vue = resolve(concret(chemin)).func.view_class
                 self.assertIn(PermissionTaches, vue.permission_classes)
-                jeton = (methode, chemin) in ROUTES_A_JETON
-                self.assertEqual(list(vue.authentication_classes) == AUTH_JETON, jeton)
+                a_jeton = [a for a in vue.authentication_classes if issubclass(a, JetonAccesAuthentication)]
+                attendue = AUTH_PAR_ROUTE.get((methode, chemin))
+                if attendue is None:
+                    self.assertEqual(a_jeton, [])
+                else:
+                    self.assertEqual(list(vue.authentication_classes), [attendue])
 
     def test_chaque_vue_leve_pas_encore(self):
         for methode, chemin in ROUTES:
@@ -357,16 +365,25 @@ class AssistantEtBouchonTests(SimpleTestCase):
         requete.COOKIES['access_token'] = 'abc.def'
         self.assertFalse(est_assistant(requete))
 
-    def test_bouchon_refuse_tout_en_401(self):
-        bouchon = JetonPasEncoreLivre()
-        for requete in (self.usine.get('/'), self.usine.get('/', HTTP_AUTHORIZATION='Bearer tqc_x')):
-            with self.assertRaises(AuthenticationFailed):
-                bouchon.authenticate(requete)
-        self.assertTrue(bouchon.authenticate_header(self.usine.get('/')).startswith('Bearer'))
+    def test_jeton_absent_ou_mal_forme_refuse_sans_lire_la_base(self):
+        """Sans base : aucun en-tête, un autre schéma, un préfixe d'un autre usage ou un clair trop
+        court sont refusés AVANT toute requête (le refus neutre ne dépend que de la forme)."""
+        for classe in (JetonCapture, JetonTuile):
+            for entete in ('', 'Basic abc', 'Bearer tqf_' + 'a' * 43, 'Bearer tqc_x', 'Bearer'):
+                with self.subTest(classe=classe.__name__, entete=entete[:12]):
+                    requete = self.usine.get('/', HTTP_AUTHORIZATION=entete) if entete else self.usine.get('/')
+                    with self.assertRaises(AuthenticationFailed):
+                        classe().authenticate(requete)
+            self.assertTrue(classe().authenticate_header(self.usine.get('/')).startswith('Bearer'))
+        flux = JetonFlux()
+        for clair in ('', 'tqc_' + 'a' * 43, 'tqf_court'):
+            requete = SimpleNamespace(parser_context={'kwargs': {'jeton': clair}})
+            with self.subTest(clair=clair[:6]), self.assertRaises(NotFound):
+                flux.authenticate(requete)
 
-    def test_routes_a_jeton_405_avant_le_bouchon(self):
-        """api-fuzz « Unsupported methods » : TRACE/PUT (non servies) → 405 avant le bouchon ;
-        la méthode servie reste un 401 neutre."""
+    def test_routes_a_jeton_405_avant_le_jeton(self):
+        """api-fuzz « Unsupported methods » : TRACE/PUT (non servies) → 405 avant l'authentification ;
+        la méthode servie reste un refus neutre (401, 404 pour le flux)."""
         usine = APIRequestFactory()
         for methode, chemin in sorted(ROUTES_A_JETON):
             correspondance = resolve(concret(chemin))
@@ -378,12 +395,13 @@ class AssistantEtBouchonTests(SimpleTestCase):
                     self.assertNotIn('WWW-Authenticate', reponse)
             with self.subTest(chemin=chemin, methode=methode):
                 reponse = vue(usine.generic(methode, concret(chemin)), **correspondance.kwargs)
-                self.assertEqual(reponse.status_code, 401)
-                self.assertIn('WWW-Authenticate', reponse)
+                refus = STATUT_REFUS.get((methode, chemin), 401)
+                self.assertEqual(reponse.status_code, refus)
+                self.assertEqual('WWW-Authenticate' in reponse, refus == 401)
 
 
 class AccesTests(TestCase):
-    """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, 401 sur les jetons."""
+    """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, refus neutre sur les jetons."""
 
     @classmethod
     def setUpTestData(cls):
@@ -439,11 +457,12 @@ class AccesTests(TestCase):
         faux.credentials(HTTP_AUTHORIZATION='Bearer tqc_inconnu')
         for methode, chemin in sorted(ROUTES_A_JETON):
             corps = []
+            refus = STATUT_REFUS.get((methode, chemin), 401)
             for client in (APIClient(), jwt, faux):
                 reponse = self._appel(client, methode, chemin)
                 with self.subTest(methode=methode, chemin=chemin):
-                    self.assertEqual(reponse.status_code, 401)
-                    self.assertIn('WWW-Authenticate', reponse)
+                    self.assertEqual(reponse.status_code, refus)
+                    self.assertEqual('WWW-Authenticate' in reponse, refus == 401)
                 corps.append(reponse.json()['detail'])
             self.assertEqual(len(set(corps)), 1, 'un refus ne dit jamais pourquoi')
 

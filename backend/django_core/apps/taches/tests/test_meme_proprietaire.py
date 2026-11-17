@@ -256,6 +256,7 @@ CAS_DETAILS = (
     Cas('DELETE', 'agendas-externes/{id}/', 'chemin', ('AG',), lambda m, x: (f'agendas-externes/{x.AG.pk}/', None)),
     Cas('POST', 'agendas-externes/{id}/rafraichir/', 'chemin', ('AG',),
         lambda m, x: (f'agendas-externes/{x.AG.pk}/rafraichir/', None)),
+    Cas('POST', 'jetons/{id}/revoquer/', 'chemin', ('J',), lambda m, x: (f'jetons/{x.J.pk}/revoquer/', None)),
 )
 
 CAS_PROJETS = (
@@ -328,6 +329,8 @@ SANS_ID = {
     ('POST', 'tout-effacer/'): lambda m: ('tout-effacer/', {'confirmation': 'EFFACER'}),
     ('GET', 'agendas-externes/'): lambda m: ('agendas-externes/', None),
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
+    ('GET', 'jetons/'): lambda m: ('jetons/', None),
+    ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
@@ -373,6 +376,7 @@ def _monde(compte, jour):
     Preference.objects.create(company=societe, proprietaire=compte, cle=ClePreference.HEURE_LIMITE, valeur='19:00')
     m.A = fabriques.activite(compte)
     m.AG = fabriques.agenda_externe(compte, actif=False)
+    m.J, _clair = fabriques.jeton(compte, 'flux')
     return m
 
 

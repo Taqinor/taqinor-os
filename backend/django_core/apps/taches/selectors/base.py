@@ -14,6 +14,7 @@ from django.db.models.functions import Lower
 from apps.notifications.calendar_utils import jours_ouvres_entre
 from apps.taches.choix import ClePreference
 from apps.taches.models.gestes import GesteAnnulable
+from apps.taches.models.presence import JetonAcces
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import Preference
 from apps.taches.models.taches import Etiquette, EtiquetteTache, Rappel, Tache
@@ -65,6 +66,11 @@ def rappels_de(user):
 
 def gestes_de(user):
     return _du_compte(GesteAnnulable.objects, user)
+
+
+def jetons_de(user):
+    """Jetons d'accès de `user` dans sa société (révoqués compris)."""
+    return _du_compte(JetonAcces.objects, user)
 
 
 def _preferences(user, *cles):
