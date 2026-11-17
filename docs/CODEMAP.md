@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: b732399826126950a154c39ac1c5858882f958d93aa4f4f0493b458f8028f1a4
+Structure fingerprint: 51d7a8359393762962469363579e5b74423a57b89b0c4bc8eb700ca122c3d6df
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -166,7 +166,7 @@ taqinor-os/
 |  |  |                           parked.py (the 47-label registry), calepinage + electrique pure engines, reglementaire/ (82-21)
 |  |  +- app_template/            Scaffold source for `manage.py startapp_erp`
 |  |  +- authentication/          Tenant root: Company + CustomUser, JWT, registration (NOT under apps/)
-|  |  +- apps/                    39 kept apps — see §4
+|  |  +- apps/                    40 kept apps — see §4
 |  +- parked/                     SOLMVP37 source mirror of the 47 shelled apps (pre-shell code, no
 |  |                              migrations); refreshed from the archive tag by parquer_miroir.py;
 |  |                              core_calepinage/ = parked core.calepinage rives/etude (ACAL)
@@ -176,9 +176,9 @@ taqinor-os/
 |
 +- frontend/                      React/Vite SPA
 |  +- src/router/                 Route table + moduleRoutes.jsx module registry + moduleGating
-|  +- src/pages/                  22 page folders (see §5)
-|  +- src/features/               27 feature folders: Redux slices, domain logic, module.config.jsx
-|  +- src/api/                    39 axios clients; resource.js shared CRUD factory
+|  +- src/pages/                  23 page folders (see §5)
+|  +- src/features/               28 feature folders: Redux slices, domain logic, module.config.jsx
+|  +- src/api/                    40 axios clients; resource.js shared CRUD factory
 |  +- src/components/ hooks/ store/ utils/   layout, offline, sav + cross-cutting helpers
 |  +- src/design/ lib/ ui/        Design system (tokens/theme, format utils, primitives, DataTable)
 |  +- src/i18n/                   fr/en/ar, RTL, hijri display
@@ -213,7 +213,7 @@ statuspage's SLA/uptime models). Full story, families, PHASE 2 return order and 
 
 ## 4. Backend, app by app
 
-39 apps under `backend/django_core/apps/` plus two top-level packages (`core`,
+40 apps under `backend/django_core/apps/` plus two top-level packages (`core`,
 `authentication`). Every app is served at `/api/django/<prefix>/` **and** at the identical
 `/api/v1/<prefix>/` alias (`_APP_URLS` is mounted twice in `erp_agentique/urls.py`); public
 tokenized channels sit outside that list under `/api/django/public/…` and `/api/public/…`.
@@ -244,7 +244,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `identity` | `identity/` | 7 | SSO/SCIM, network & session policies, trusted devices, break-glass (NTSEC). |
 | `accessreview` | `accessreview/` | 3 | Access-review campaigns, attestation, SoD rules. |
 | `audit` | `audit/` | 1 | `AuditLog` activity trail. |
-| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses). |
+| `records` | `records/` | 7 | Generic chatter: `Activity`, `Comment`, `Follower`, `Tag`, `Attachment` (ContentType-based; `file_key` indexé, registre des détenteurs de clés `cles_stockage.py`, ADOC193) + `platform_guards.py` (the pure guard logic `scripts/check_platform.py` reuses) ; `selectors.py` / `services.py` (lecture et écriture des historiques pour `taches`, sans importer ses modèles). |
 | `customfields` | `custom-fields/` | 4 | Admin-defined fields and custom objects, registry fed by the platform manifests. |
 | `dataimport` | `imports/` | 4 | Two-step CSV/XLSX import (dry-run + commit), registry-driven targets, `ExternalRef`. |
 | `tiers` | `tiers/` | 1 | Unified party directory (`res.partner` equivalent), bridged additively from crm/stock. **Foundation layer** under an import-linter contract. |
@@ -259,6 +259,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `offlinesync` | `offlinesync/` | 1 | Single offline write outbox (`OfflineOperation`), one `operations/batch/` sync point. |
 | `onboarding` | `onboarding/` | 4 | « Premiers pas » checklist + product tours, auto-completed via `core.events`. `GET onboarding/progress/resume/` (ApiKey scope `read:licence`, pourcentage seul — NTDMO35) ; textes CSV `onboarding/export-textes.csv` / `import-textes.csv` (`textes_csv.py`, NTDMO36) ; webhook `onboarding.item_complete` (NTDMO34). |
 | `statuspage` | `statuspage/` | 6 | Public status page: components, incidents, 90-day uptime buckets, subscribers. `core` reads its models for SLA/uptime. |
+| `taches` | `taches/` | 21 | Gestionnaire de tâches et agenda personnel PRIVÉ par utilisateur : projets, tâches, plan du jour, rythme, rappels, agendas externes ; module INVISIBLE tant que le droit `taches_voir` n'est accordé à aucun rôle ; modules purs `moteur/` et `saisie/` ; dossier `docs/taches/README.md`. |
 | `contact` | `contact/` | 0 | Public landing contact form — **PARKED by flag** (`CONTACT_FORM_ENABLED=0` -> 404, no email). No models. |
 | `core` | `core/` | ~53 | **Foundation, NOT under apps/**: `drf_compat.py` (DRF 3.18 ramené au comportement 3.15 au `ready()` — ADCG61), abstract bases (`TenantModel`, `SoftDeleteModel`), `CompanyScopedModelViewSet`, numbering, `pdf.render_pdf`, `events.py` signal bus, platform registry + `platform_coverage.py` drift matrix, `documents` kit, workflow/BPM engine, `parked.py`, pure `calepinage`/`electrique` engines, jobs, quotas, DSR/PII registries, reliability settings (`views_fiabilite.py`, `/api/django/core/fiabilite/reglages/`, NTOBS21). Outbox durable des effets (`enqueue_durable`, `dispatch_outbox.livrer_maintenant`, NTPLT11) ; `archive_union.py` (`?archive=1`, NTPLT38) ; `verrou_optimiste.py` + `champs_plateforme.VerrouOptimisteMixin` (`lock_version`, 409, NTPLT17) ; `recherche_fts.py` + commande `rebuild_search_index` (NTPLT32). Garde propriétaire des tableaux/requêtes (`proprietaire_seul.py`, APUB14) ; `couper-lien` des exports de réversibilité (APUB2). |
 
@@ -468,7 +469,9 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `tiers` | `/tiers` |
 | `ia` | `/ia` |
 
-### Features (`frontend/src/features`) — 27 folders
+| `taches` | `/taches` (→ `/taches/aujourdhui`), `/taches/aujourdhui`, `/taches/a-trier`, `/taches/projets`, `/taches/projets/archive`, `/taches/projets/modeles`, `/taches/projets/:id`, `/taches/agenda`, `/taches/revue`, `/taches/rythme`, `/taches/recherche`, `/taches/supprimees`, `/taches/reglages/:rubrique?` — sans entrée de nav (module invisible, garde `taches_voir`) |
+
+### Features (`frontend/src/features`) — 28 folders
 
 - **auth** — session/JWT (`authSlice.js`).
 - **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
@@ -485,19 +488,20 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 - **portail** — client-portal administration + the client-facing portal screens.
 - **admin / adminops / entites / audit / uxviews / tiers / notifications / onboarding / core** — administration, audit log, saved views, party directory, notification prefs, « Premiers pas », the « Données » explorer.
 - **ia** — AI assistant chat (registry-driven actions with propose->confirm + typed result cards in `cartes/`, voice input, hands-free mode) + OCR; `iaSlice.js`, `voice/`, `cartes/`.
+- **taches** — gestionnaire de tâches personnel (module.config-registered, 13 routes, aucune entrée de nav) : `coquille/`, `fiche/`, `lib/`, `saisie/`, `ui/`, client `api/tachesApi.js`, pages `pages/taches/`.
 - **offlinesync** — mobile-first role homes under `/mobile/*` + `readCache.js`, `AFaireAujourdhui.jsx`.
 - **pwa** — auto-update service worker UI, `appLock.js` + `AppLockGate.jsx`.
 - **kanban / queue** — shared libraries **deliberately kept** (consumed by CRM and notifications), not modules.
 - **`frontend/parked/`** — the 37 shelled modules' features/pages/api/components, moved by `git mv`, excluded from ESLint, Vitest, Docker and the repo check scripts. See its `README.md`.
 
-### Pages (`frontend/src/pages`) — 22 folders
+### Pages (`frontend/src/pages`) — 23 folders
 
 `crm/` (ClientList, LeadsPage, ParrainagePage + `leads/`), `ventes/` (DevisList,
 DevisGenerator, FactureList, FactureForm, AvoirsPage, RelancesPage,
 BonCommandeList), `stock/`, `installations/`, `interventions/`, `outillage/`, `sav/`,
 `monitoring/`, `ged/`, `reporting/`, `approbations/`, `activities/`, `admin/`,
 `parametres/`, `preferences/`, `onboarding/`, `aide/`, `tiers/`, `visites/`, `ia/`,
-`home/`, `ui/`. Top-level: `Dashboard.jsx`, `Journal.jsx`, `CalendarPage.jsx`,
+`taches/`, `home/`, `ui/`. Top-level: `Dashboard.jsx`, `Journal.jsx`, `CalendarPage.jsx`,
 `CartePage.jsx`, `Landing.jsx`, `Login.jsx`, `RegisterCompany.jsx`, `Reporting.jsx`,
 `Rapports.jsx`.
 
@@ -579,7 +583,7 @@ All verified against source, not prose.
 
 Each line is a place a prose doc says something the **code contradicts**. Code wins.
 
-1. **App inventory.** `CLAUDE.md`'s repo-facts lists "authentication, stock, crm, ventes, reporting, parametres, roles, contact" and `README.md` frames the system as "five core modules + extras". The code has **39 apps under `apps/`** plus the top-level `authentication` and `core` packages — including `installations`, `sav`, `ged`, `portail`, `adsengine`, `calepinage`, `visites`, `achats`, `facturation`, `records`, `customfields`, `documents`, `dataimport`, which the headline lists omit. 47 further apps exist only as migration shells (§3).
+1. **App inventory.** `CLAUDE.md`'s repo-facts lists "authentication, stock, crm, ventes, reporting, parametres, roles, contact" and `README.md` frames the system as "five core modules + extras". The code has **40 apps under `apps/`** plus the top-level `authentication` and `core` packages — including `installations`, `sav`, `ged`, `portail`, `adsengine`, `calepinage`, `visites`, `achats`, `facturation`, `records`, `customfields`, `documents`, `dataimport`, which the headline lists omit. 47 further apps exist only as migration shells (§3).
 2. **`authentication` and `core` are not under `apps/`.** They live at `backend/django_core/{authentication,core}/`, which is why the backend-tests command runs `test apps authentication` specifically.
 3. **Quote engine swap already landed.** `README.md` says the quote-generation logic is "slated for replacement by an external tool". In the code the swap is **done**: the premium engine is vendored at `apps/ventes/quote_engine/` and `/proposal` is the canonical path (CLAUDE.md rule #4 is current; the README line is stale).
 4. **CI has 16 jobs, not four.** CLAUDE.md and README describe four checks. The four named ones are still the policy merge gate, but the workflow defines 16 (§7) subject to per-job path filtering.
