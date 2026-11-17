@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -30,9 +30,11 @@ function paginer(params = {}) {
   }
 }
 
+const mine = vi.hoisted(() => ({ value: { en_retard: [], aujourdhui: [], a_venir: [] } }))
+
 vi.mock('../../api/recordsApi', () => ({
   default: {
-    getMyActivities: () => Promise.resolve({ data: { en_retard: [], aujourdhui: [], a_venir: [] } }),
+    getMyActivities: () => Promise.resolve({ data: mine.value }),
     getMaFile: () => Promise.resolve({ data: { items: [], total: 0, resume: {} } }),
     getActivities: (model, id, extra) => Promise.resolve({ data: paginer(extra) }),
   },
@@ -40,7 +42,87 @@ vi.mock('../../api/recordsApi', () => ({
 
 import MesActivitesPage from './MesActivitesPage'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  mine.value = { en_retard: [], aujourdhui: [], a_venir: [] }
+})
+
+const Lieu = () => <span data-testid="lieu">{useLocation().pathname}</span>
+
+const rendre = () => {
+  const store = configureStore({
+    reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
+  })
+  return render(
+    <Provider store={store}>
+      <MemoryRouter><MesActivitesPage /></MemoryRouter>
+    </Provider>,
+  )
+}
+
+describe('AMSG102 — brouillon WhatsApp de la note', () => {
+  const WA = 'https://wa.me/212612345678?text=Bonjour%20Sami'
+  it('montre « Ouvrir WhatsApp » vers le lien de la note, sans target_phone', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Envoyer ce WhatsApp', target_model: 'installations.livraison', target_phone: null, note: `Bonjour Sami\n\n${WA}` },
+        { id: 2, summary: 'Sans lien', target_model: 'installations.livraison', target_phone: null, note: 'Rien à envoyer' },
+      ],
+    }
+    rendre()
+    const lien = await screen.findByTitle('Ouvrir WhatsApp')
+    expect(lien).toHaveAttribute('href', WA)
+    expect(screen.getAllByTitle('Ouvrir WhatsApp')).toHaveLength(1)
+  })
+})
+
+describe('AMSG103 — lien des tâches de chantier', () => {
+  it('mène une tâche de livraison à /chantiers et une d’intervention à /interventions', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Livr', target_model: 'installations.livraison', target_label: 'Livraison L1' },
+        { id: 2, summary: 'Interv', target_model: 'installations.intervention', target_label: 'Intervention I1' },
+      ],
+    }
+    const store = configureStore({
+      reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <MesActivitesPage />
+          <Lieu />
+        </MemoryRouter>
+      </Provider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /Livraison L1/ }))
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/chantiers')
+    fireEvent.click(screen.getByRole('button', { name: /Intervention I1/ }))
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/interventions')
+  })
+})
+
+describe('AMSG104 — type absent', () => {
+  it('affiche « — » sans « null », et garde l’icône et le nom d’une tâche typée', async () => {
+    mine.value = {
+      en_retard: [],
+      a_venir: [],
+      aujourdhui: [
+        { id: 1, summary: 'Sans type', activity_type_icone: null, activity_type_nom: null },
+        { id: 2, summary: 'Typée', activity_type_icone: '📞', activity_type_nom: 'Appel' },
+      ],
+    }
+    rendre()
+    await screen.findByText('Sans type')
+    expect(document.body.textContent).not.toMatch(/null|undefined/)
+    expect(screen.getByText('📞 Appel')).toBeTruthy()
+    expect(screen.getByText('Sans type').closest('tr')).toHaveTextContent('—')
+  })
+})
 
 describe('ALEA20 — Charge de l’équipe sur toutes les activités ouvertes', () => {
   it('somme 70 (et non 50) sur 2 responsables', async () => {
