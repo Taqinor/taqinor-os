@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tâches · Agenda, vue Semaine</title>
+<link rel="stylesheet" href="taches.css">
+<link rel="stylesheet" href="ecrans-agenda.css">
+</head>
+<body>
+<!-- SPRITE -->
+<div class="ecran ag">
+
+  <!-- ═════════════ iPhone : 7 lignes ═════════════ -->
+  <div class="page ag-page mobile-seul">
+    <header class="entete ag-entete">
+      <div class="entete-haut">
+        <div><div class="entete-date">Novembre 2026</div><h1 class="entete-titre">Agenda</h1></div>
+        <div class="entete-actions">
+          <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+          <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+          <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+        </div>
+      </div>
+    </header>
+    <div class="ag-vues">
+      <div class="segmente" role="radiogroup" aria-label="Vue">
+        <button role="radio" aria-checked="false">Jour</button><button role="radio" aria-checked="true">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+      </div>
+      <button class="bouton lien">Aujourd'hui</button>
+    </div>
+    <div class="ag-semnav">
+      <button class="bouton-icone" aria-label="Semaine précédente"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+      <b class="chiffres">23 – 29 novembre</b>
+      <button class="bouton-icone" aria-label="Semaine suivante"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+    </div>
+
+    <div class="ag-sem chiffres">
+      <button class="ag-sj passe">
+        <span class="ag-sj-date"><small>lun.</small><b>23</b></span>
+        <span class="ag-sj-corps">
+          <span class="ag-sj-tete"><span>3 tâches · 3 h 30</span><span class="ag-charge"><i style="--c:88%"></i></span></span>
+          <span class="ag-sj-l faite" data-p="ambre"><span class="h">09:00</span><i class="point"></i><span class="t">Envoyer le devis révisé</span></span>
+          <span class="ag-sj-l faite" data-p="menthe"><span class="h">11:00</span><i class="point"></i><span class="t">Rédiger la fiche de poste</span></span>
+        </span>
+      </button>
+      <button class="ag-sj auj" aria-current="date">
+        <span class="ag-sj-date"><small>mar.</small><b>24</b></span>
+        <span class="ag-sj-corps">
+          <span class="ag-sj-tete"><span>6 tâches · 4 h · 2 activités ERP</span><span class="ag-charge"><i style="--c:100%"></i></span></span>
+          <span class="ag-sj-l"><span class="h">10:30</span><span data-p="ambre"><i class="point"></i></span><span class="t">Appeler le fournisseur de rails</span></span>
+          <span class="ag-sj-l"><span class="h"></span><svg class="i i-14"><use href="#i-map-pin"/></svg><span class="t">Visite technique — Bouskoura</span></span>
+        </span>
+      </button>
+      <button class="ag-sj">
+        <span class="ag-sj-date"><small>mer.</small><b>25</b></span>
+        <span class="ag-sj-corps">
+          <span class="ag-sj-tete"><span>3 tâches · 2 h 30</span><span class="ag-charge"><i style="--c:63%"></i></span></span>
+          <span class="ag-sj-l"><span class="h">09:00</span><span data-p="indigo"><i class="point"></i></span><span class="t">Préparer la démo onduleur</span></span>
+          <span class="ag-sj-l"><span class="h">14:00</span><span data-p="menthe"><i class="point"></i></span><span class="t">Publier l'annonce</span></span>
+        </span>
+      </button>
+      <button class="ag-sj">
+        <span class="ag-sj-date"><small>jeu.</small><b>26</b></span>
+        <span class="ag-sj-corps">
+          <span class="ag-sj-tete"><span>3 tâches · 3 h 15</span><span class="ag-charge"><i style="--c:81%"></i></span></span>
+          <span class="ag-sj-l"><span class="h">09:00</span><span data-p="indigo"><i class="point"></i></span><span class="t">Imprimer les kakémonos</span></span>
+          <span class="ag-sj-l"><span class="h">14:00</span><span data-p="menthe"><i class="point"></i></span><span class="t">Préparer l'entretien</span></span>
+        </span>
+      </button>
+      <button class="ag-sj">
+        <span class="ag-sj-date"><small>ven.</small><b>27</b></span>
+        <span class="ag-sj-corps">
+          <span class="ag-sj-tete"><span>3 tâches · 2 h</span><span class="ag-charge"><i style="--c:50%"></i></span></span>
+          <span class="ag-sj-l"><span class="h">10:00</span><span data-p="ambre"><i class="point"></i></span><span class="t">Vérifier le PV de réception</span></span>
+          <span class="ag-sj-l"><span class="h"></span><span data-p="prune"><i class="point"></i></span><span class="t">Payer l'assurance du camion</span></span>
+        </span>
+      </button>
+      <div class="ag-repos-duo">
+        <button class="ag-sj repos"><span class="ag-sj-date"><small>sam.</small><b>28</b><em>non travaillé</em></span></button>
+        <button class="ag-sj repos"><span class="ag-sj-date"><small>dim.</small><b>29</b><em>non travaillé</em></span></button>
+      </div>
+    </div>
+
+    <div class="ag-tiroir ag-tiroir-sem">
+      <div class="ag-tiroir-titre">À placer<span class="chiffres">9 tâches</span></div>
+      <button class="bouton second ag-planifier"><svg class="i i-16"><use href="#i-calendar-check"/></svg>Planifier ma semaine</button>
+    </div>
+  </div>
+
+  <!-- ═════════════ Bureau : 7 colonnes horaires ═════════════ -->
+  <div class="ag-bureau bureau-seul">
+    <header class="ag-btete">
+      <div class="ag-btete-g">
+        <h1 class="entete-titre">Agenda</h1>
+        <button class="bouton-icone" aria-label="Semaine précédente"><svg class="i"><use href="#i-chevron-left"/></svg></button>
+        <button class="bouton discret">Aujourd'hui</button>
+        <button class="bouton-icone" aria-label="Semaine suivante"><svg class="i"><use href="#i-chevron-right"/></svg></button>
+        <div class="ag-periode chiffres">23 – 29 novembre <span>2026</span></div>
+      </div>
+      <div class="ag-btete-d">
+        <div class="segmente" role="radiogroup" aria-label="Vue">
+          <button role="radio" aria-checked="false">Jour</button><button role="radio" aria-checked="true">Semaine</button><button role="radio" aria-checked="false">Mois</button><button role="radio" aria-checked="false">À venir</button>
+        </div>
+        <button class="bouton-icone" aria-label="Chercher"><svg class="i"><use href="#i-search"/></svg></button>
+        <button class="bouton-icone" aria-label="Plus d'actions"><svg class="i"><use href="#i-ellipsis"/></svg></button>
+        <button class="copilote"><svg class="i i-16"><use href="#i-sparkles"/></svg>Copilote</button>
+      </div>
+    </header>
+    <div class="ag-bcorps">
+      <div class="ag-bmain">
+        <div class="ag-semgrille chiffres">
+          <div class="ag-semtete">
+            <div></div>
+            <div>lun. <b>23</b></div><div aria-current="date">mar. <b>24</b></div><div>mer. <b>25</b></div><div>jeu. <b>26</b></div><div>ven. <b>27</b></div>
+            <div class="repos">sam. <b>28</b></div><div class="repos">dim. <b>29</b></div>
+          </div>
+          <div class="ag-semtj">
+            <div class="ag-tj-label">Toute la journée</div>
+            <div></div>
+            <div>
+              <span class="ag-tj-item erp"><svg class="i i-14"><use href="#i-map-pin"/></svg><span>Visite technique — Bouskoura</span></span>
+              <span class="ag-tj-item erp"><svg class="i i-14"><use href="#i-wrench"/></svg><span>Pose — Benali</span></span>
+              <span class="ag-tj-plus">+ 2 tâches</span>
+            </div>
+            <div><span class="ag-tj-item" data-p="prune"><span>Classer les factures fournisseurs</span></span></div>
+            <div></div>
+            <div><span class="ag-tj-item" data-p="prune"><svg class="i i-14"><use href="#i-flag"/></svg><span>échéance · Payer l'assurance du camion</span></span></div>
+            <div class="repos-fond"></div>
+            <div class="repos-fond"></div>
+          </div>
+        </div>
+        <div class="ag-semfen">
+          <div class="ag-semgrille chiffres" style="--ag-depart:0">
+            <div class="ag-heures"><span style="--t:8">08:00</span><span style="--t:9">09:00</span><span class="cache" style="--t:10">10:00</span><span style="--t:11">11:00</span><span style="--t:12">12:00</span><span style="--t:13">13:00</span><span style="--t:14">14:00</span><span style="--t:15">15:00</span><span style="--t:16">16:00</span><span style="--t:17">17:00</span><span style="--t:18">18:00</span><span style="--t:19">19:00</span><span style="--t:20">20:00</span></div>
+            <div class="ag-semcol">
+              <div class="bloc fait-bloc" data-p="ambre" style="--t:9;--l:1.5"><div class="ag-bt"><b>Envoyer le devis révisé</b><small>09:00 – 10:30</small></div></div>
+              <div class="bloc fait-bloc" data-p="menthe" style="--t:11;--l:1"><div class="ag-bt"><b>Rédiger la fiche de poste</b><small>11:00 – 12:00</small></div></div>
+              <div class="bloc fait-bloc" data-p="indigo" style="--t:14;--l:1"><div class="ag-bt"><b>Appeler l'organisateur du salon</b><small>14:00 – 15:00</small></div></div>
+            </div>
+            <div class="ag-semcol">
+              <div class="bloc fait-bloc" data-p="ambre" style="--t:8;--l:2"><div class="ag-bt"><b>Préparer la liste de matériel</b><small>08:00 – 10:00</small></div></div>
+              <div class="bloc court" data-p="ambre" style="--t:10.5;--l:.5"><div class="ag-bt"><b>Appeler le fournisseur de rails</b></div></div>
+              <div class="bloc g1" data-p="indigo" style="--t:11;--l:1"><div class="ag-bt"><b>Réserver le stand</b><small>11:00</small></div></div>
+              <div class="bloc g2" data-p="menthe" style="--t:11.5;--l:.5;padding-top:3px"><div class="ag-bt"><b>Appeler un candidat</b></div></div>
+              <div class="maintenant" style="--t:10.083"><span class="maintenant-heure">10:05</span></div>
+            </div>
+            <div class="ag-semcol">
+              <div class="bloc" data-p="indigo" style="--t:9;--l:1.5"><div class="ag-bt"><b>Préparer la démo onduleur</b><small>09:00 – 10:30</small></div></div>
+              <div class="bloc court" data-p="menthe" style="--t:14;--l:.5"><div class="ag-bt"><b>Publier l'annonce</b></div></div>
+            </div>
+            <div class="ag-semcol">
+              <div class="bloc" data-p="indigo" style="--t:9;--l:1"><div class="ag-bt"><b>Imprimer les kakémonos</b><small>09:00 – 10:00</small></div></div>
+              <div class="bloc" data-p="menthe" style="--t:14;--l:1.5"><div class="ag-bt"><b>Préparer l'entretien</b><small>14:00 – 15:30</small></div></div>
+              <div class="bloc" data-p="prune" style="--t:16;--l:.75"><div class="ag-bt"><b>Relire le contrat de maintenance</b></div></div>
+            </div>
+            <div class="ag-semcol">
+              <div class="bloc" data-p="ambre" style="--t:10;--l:1"><div class="ag-bt"><b>Vérifier le PV de réception</b><small>10:00 – 11:00</small></div></div>
+              <div class="bloc court" data-p="indigo" style="--t:15;--l:.5"><div class="ag-bt"><b>Confirmer le transport du matériel</b></div></div>
+            </div>
+            <div class="ag-semcol repos-fond"></div>
+            <div class="ag-semcol repos-fond"></div>
+          </div>
+        </div>
+      </div>
+      <aside class="ag-aside" aria-label="À placer">
+        <div class="ag-aside-tete"><h2>À placer</h2><span class="chiffres">9</span></div>
+        <div class="ag-groupe"><span class="projet-nom">À revoir</span><span class="compte chiffres">2</span></div>
+        <button class="ag-lp" data-p="prune"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Mettre à jour le planning des poses<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <button class="ag-lp" data-p="ambre"><span class="pt"><svg class="i i-16"><use href="#i-grip"/></svg></span><span class="t">Rappeler le bureau de contrôle<small>jour passé · lun. 23</small></span><span class="d chiffres">30 min</span></button>
+        <button class="ag-groupe ag-groupe-replie"><span>Mes projets</span><span class="compte chiffres">7</span><svg class="i i-16"><use href="#i-chevron-down"/></svg></button>
+        <div class="ag-aside-action"><button class="bouton second"><svg class="i i-16"><use href="#i-calendar-check"/></svg>Planifier ma semaine</button></div>
+      </aside>
+    </div>
+  </div>
+
+  <nav class="onglets mobile-seul" aria-label="Tâches">
+    <a class="onglet"><svg class="i"><use href="#i-sun"/></svg>Aujourd'hui</a>
+    <a class="onglet"><svg class="i"><use href="#i-inbox"/></svg>À trier<span class="pastille chiffres">3</span></a>
+    <a class="onglet"><svg class="i"><use href="#i-folder"/></svg>Projets</a>
+    <a class="onglet" aria-current="page"><svg class="i"><use href="#i-calendar"/></svg>Agenda</a>
+    <a class="onglet"><svg class="i"><use href="#i-layout-grid"/></svg>Apps</a>
+  </nav>
+</div>
+</body>
+</html>

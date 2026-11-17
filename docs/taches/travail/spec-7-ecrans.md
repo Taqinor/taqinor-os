@@ -29,7 +29,7 @@ Sélectionner, En faire mon accueil), puis Revue · Mon rythme · Supprimées r�
 **Copilote** : bouton global (`components/layout/Header.jsx:210-219`, iPhone non vérifié), 4 demandes : « Planifie ma
 journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? » ; sans clé ou hors ligne, une phrase.
 **Ajouter** : bouton flottant (`ui/FloatingActionButton.jsx:6`), seul bouton plein. Fiche `?tache=<id>` ; notifications
-→ Aujourd'hui (A15). **Pastille (N5)** : gardées encore ouvertes (Essentiel, Prévu, Ce soir), jamais Proposé ; peut valoir 0.
+→ Aujourd'hui (A15), sauf le bilan (`?ouvrir=bilan`) et un rappel (sa fiche). **Pastille (N5)** : gardées encore ouvertes (Essentiel, Prévu, Ce soir), jamais Proposé ; peut valoir 0.
 
 Comptes **atteindre / accomplir**, identiques au §7.
 
@@ -38,13 +38,13 @@ Comptes **atteindre / accomplir**, identiques au §7.
 | Ajouter (texte, collage, dictée) | bouton flottant → Retour | 1 / 2 |
 | Cocher · Reporter (ou ligne → Reporter) · Choisir un jour | case · balayage gauche · balayage → Choisir → jour | 1 / 1 · 1 / 1 (2 / 2) · 2 / 3 |
 | Garder, essentiel · fiche | « Garder ces N », puis ★ · ligne | 1 / 1 (+1 par ★) · 1 / 1 |
-| Heure, rappel | ligne → Quand → Heure ou Rappel → choix | 3 / 4 (rappel préréglé 3) |
+| Heure, rappel · répéter un rappel reçu | ligne → Quand → Heure ou Rappel → choix · notification → fiche → « Encore 1 h » | 3 / 4 (préréglé 3) · 1 / 2 |
 | Répéter, étiquettes, durée, en attente de, jalon, lié à, confidentielle, découper | ligne → Plus → champ | 3 / 4 |
 | Déplacer, en attente, priorité, essentiel | appui long → choix → valeur (ou ligne → champ) | 2 / 3 |
 | Réorganiser · Sélectionner | ⋯ → choix | 2 / 2 + déplacements |
 | Alléger ma journée | carte de 15 h (ou ⋯) → cocher k → Garder ces k | 1 (2) / 2 (3) + k |
 | Copilote | bouton global → demande (→ Adopter) | 1 / 2 (3) |
-| Lier une tâche à une activité ERP | appui long sur l'activité → choix → Ajouter | 2 / 3 |
+| Lier une tâche à une activité ERP | appui long sur l'activité → Lier une tâche → Ajouter (la tâche garde `activite_origine`, l'activité reste ouverte) | 2 / 3 |
 | Trier, suggestions, à-faire à convertir | À trier → bouton (Projet… : + projet) | 1 / 2 (3) |
 | Trier une par une | À trier → ⋯ → choix | 3 / 3 |
 | Un projet · En réserve · En pause | Projets → ligne | 2 / 2 |
@@ -57,7 +57,7 @@ Comptes **atteindre / accomplir**, identiques au §7.
 | Revue de la semaine | ⋯ → Revue (ou notification) | 2 / 2 + 1 par projet |
 | Recherche, filtres, vues | loupe → Filtres → Enregistrer | 1 · 2 · 3 |
 | Mon rythme · mode | toucher la progression · → mode | 1 · 2 |
-| Congés, jours courts, temps disponible | progression → Mes jours → champ | 3 / 4 (Copilote 1) |
+| Congés, jours courts, temps disponible | progression → Mes jours (replié) → champ → valeur | **4** / 5 (Copilote 1) |
 | Supprimées récemment · En faire mon accueil | ⋯ → choix (→ Restaurer) | 2 / 3 · 2 / 2 |
 | Notifications, Mon iPhone, Vie privée, ERP me suggère | ⋯ → Réglages → rubrique | 3 / 4 |
 | Exporter, Tout effacer, Avancé (messages sans délai, ICS) | ⋯ → Réglages → rubrique → bouton | **4** / 4-5 |
@@ -108,22 +108,25 @@ Jours « travaillés » (jamais « ouvrés »).
 
 Partout : squelette après 1 s, jamais sur une liste affichée ; erreur : liste gardée, « Pas à jour · Réessayer » ;
 relecture au retour du focus. **Carte du moment**, une seule : retour > brouillon (« Reprendre ») > bilan d'hier (avant
-12 h) > « 1 sur 6 à 15 h · Alléger » > « Faire le bilan » > rythme > Mon iPhone > astuce. **Hors ligne (N11)** : ajouter,
-cocher, reporter en file (6b §8) ; le reste grisé, « Possible une fois connecté » ; saisie gardée.
+12 h) > le matin tant que rien n'est gardé « 5 proposées pour ton objectif · Garder ces 5 » (M1) > « 1 sur 5 à 15 h · Alléger »
+> « Faire le bilan » > rythme > pause d'un rappel ignoré (5a §3.9) > astuce > Mon iPhone (3 jours au plus, puis Réglages seuls, T3). **Hors ligne (N11)** : ajouter,
+cocher, reporter en file (6b §8) ; le reste grisé, « Possible une fois connecté » ; saisie gardée. Vides : En réserve « Rien en
+réserve » ; À placer « Tout est placé » ; Trier une par une « Tout est trié » ; Archive « Aucun projet archivé » ; Modèles
+« Aucun modèle ».
 
 **Aujourd'hui, de haut en bas** : titre, loupe, ⋯ → (1) progression « 1 sur 5 · essentiel 0/2 » (« Reprise » au
 retour ; toucher → Mon rythme) → (2) carte du moment → (3) Essentiel → (4) Toute la journée, puis **Prévu** : blocs à
 leur heure, tâches et activités ERP mêlées (> 3 sans heure : une ligne repliable), « Suivi des relances : 5 » → (5) Ce
 soir → (6) **Proposé pour aujourd'hui** jusqu'à l'objectif, 1re ligne expliquée (« échéance jeudi · projet prioritaire
 Ventes »), « Garder ces N » (contour), surcharge à côté (« 5 h 10 pour 4 h »), « Voir tout » ; replié jusqu'au lendemain après « Alléger » → (7) repliés : À revoir (« Tout en réserve »), En attente,
-Faites, Ailleurs dans l'ERP. Après « Garder » : « Touche ★ pour ton essentiel », focus sur « Prévu ». Jamais vide tant
-qu'un projet actif a une tâche ouverte (A11).
+Faites, Ailleurs dans l'ERP. N = objectif − gardées ouvertes. Après « Garder » : « Touche ★ pour ton essentiel », focus
+sur « Prévu ». Section vide masquée (sauf l'invite ★). Jamais vide tant qu'un projet actif a une tâche ouverte (A11).
 
 | Écran | Action principale | Visible d'emblée | Replié | Vide · hors ligne |
 |---|---|---|---|---|
 | Aujourd'hui | Ajouter | ci-dessus | ci-dessus | sans projet : « Colle ou dicte tes listes » + Coller · file |
 | Saisie, aperçu | Ajouter / Créer N | champ, puces (×), Quand · Projet · Priorité | Coller encore, Ranger | « Aucune ligne lisible » · file |
-| Fiche | Fait | Quand · Échéance · Projet · Priorité, ★, notes, check-list, Reporter | Plus ; confier = activité ERP | — · saisie gardée |
+| Fiche | Fait | Quand · Échéance · Projet · Priorité, ★, notes, check-list, Reporter ; ouverte par un rappel : « Encore 10 min · 1 h · Demain 9 h » en tête | Plus ; confier = activité ERP | — · saisie gardée |
 | À trier | (par ligne) | Suggéré par l'ERP ; Aujourd'hui · Demain · Projet… · ⋯ | En réserve, une par une, Copilote | « Rien à trier » · file |
 | Agenda | Ajouter (créneau vide = son heure) | 4 vues, ← Aujourd'hui →, Toute la journée, À placer (Semaine : + « Mes projets ») | affichage, « Férié » (nom v1.1) | « Rien ce jour-là » · lecture |
 | Projets | Ajouter | puce de priorité, nom, 12 sur 20, à surveiller, À planifier ; Nouveau projet ; En réserve | En pause ; Archive, Modèles, Trier | « Aucun projet » + Coller · lecture |
@@ -134,7 +137,7 @@ qu'un projet actif a une tâche ouverte (A11).
 | Revue | Terminer → Planifier ma semaine | 4 faits (ou « Semaine courte, on reprend lundi ») ; par projet : Garder · Pause · Terminer · Suivant | intention, projet de la semaine | « Aucun projet actif » · grisé |
 | Mon rythme | (mode) | aujourd'hui, 3 modes, 14 jours, proposition | constats, Mes jours, Comprendre mon rythme | « 3 jours sur 10 » · lecture |
 | Recherche | — | champ ; Faites aussi · Projet ▾ · Priorité haute | 7 filtres, tri, Enregistrer | « Rien pour « … » » · dernière liste |
-| Réglages, Mon iPhone | — · l'étape en cours | 5 rubriques · 5 étapes (6b §9) | Avancé · jetons | — · lecture |
+| Réglages, Mon iPhone | — · le réglage en cours | 5 rubriques · 5 réglages (6b §9) ; 1er : « Montrer le titre sur l'écran verrouillé ? » | Avancé · jetons | — · lecture |
 | Supprimées récemment | Restaurer | 30 jours ; un projet = une ligne (projet + tâches) | Derniers gestes | « Rien de supprimé » · grisé |
 | Copilote | la demande | 4 demandes | — | sans clé, hors ligne : une phrase |
 | Carte cockpit | Ouvrir | « 1 sur 5 », 3 lignes | — | « Rien de gardé » · lecture |
@@ -198,17 +201,17 @@ par Tab → Actions → item ; (5) texte à 130 %, 390 × 844 → 1re tâche d'A
 | 5 | Choisir un autre jour | balayage · Choisir · jour = 3 | survol 2 ; `d` · jour · Entrée 3 | 3 / 2 |
 | 6 | Déplacer dans un projet | appui long · Déplacer · projet = 3 | `m` · Entrée = 2 | 3 / 2 |
 | 7 | Garder sa journée, 2 essentielles | notification · Garder ces 5 · ★★ = 4 | 4 | 2 + ★ |
-| 8 | Bilan du soir | notification · Tout reporter · Valider = 3 | 3 | 3 |
+| 8 | Bilan du soir | notification · Tout reporter · Valider = 3 (reportée 3 fois : marquée « à revoir », jamais bloquante) | 3 | 3 |
 | 9 | Vider À trier (3 projets, 2 dates) | 1 + 3×2 + 2 = 9 ; Copilote 3 | 9 | 1 + 2 / tâche |
 | 10 | Créer et planifier un projet | Projets · Nouveau · Créer · priorité · Suivant · puce · Terminer = 7 | 7 | 7 |
 | 11 | Rappel | ligne · Quand · préréglé = 3 (heure précise 4, tapé 0) | 3 | 3 |
-| 12 | Copilote, prioriser | bouton · demande · Adopter = 3 | Ctrl K · Entrée · Adopter = 3 | 3 |
+| 12 | Copilote, prioriser | bouton · demande · Garder ces N (carte en mode express, T2) = 3 | Ctrl K · Entrée · Garder = 3 | 3 |
 | 13 | Retour de 10 jours de congé | ouvrir · Les remettre · Garder ces 5 = 3 | 3 | 3 |
 | 14 | 1re ouverture, 4 notes Apple | 8 + 3 × 7 (Coller encore) + Créer = 30, dont 24 d'iOS | ≈ 3 / note | — |
-| 15 | 15 h, 1 sur 6, alléger | notification · Alléger · 2 · Garder ces 2 = 5 | ⋯ · Alléger · 2 · Garder = 5 | 5 |
+| 15 | 15 h, 1 sur 5, alléger | notification · Alléger · 2 · Garder ces 2 = 5 | ⋯ · Alléger · 2 · Garder = 5 | 5 |
 | 16 | **Planifier ma semaine**, 15 tâches | fin de Revue · bouton · 15 × (tâche · jour) = 31 (onglet : 33) | 15 glissers | 1 + 2 / tâche |
 | 17 | 4 tâches à une heure | Agenda · 4 × (tâche · créneau) = 9 | 4 glissers | 1 + 2 / tâche |
-| 18 | Clavier : 3 ajouts, 2 cochées, 2 reportées, 2 déplacées, Copilote | — | ≈ 19 touches (`g j`, `n`, `j`, Espace, `d`, `m`, Ctrl K) | — |
+| 18 | Clavier : 3 ajouts, 2 cochées, 2 reportées, 2 déplacées, Copilote | — | ≈ 27 touches (`g j` 2 ; `n` + 3 Entrée + Échap 5 ; 2 × `j` Espace 4 ; 2 × `j d` Entrée 6 ; 2 × `j m` Entrée 6 ; palette 4) | — |
 | 19 | Projet de 25 : ouvrir, réordonner 3, Tableau | 2 · 9 · 2 (mémorisée) | 2 · 6 · 2 | — |
 | 20 | Brouillon · récurrente cochée à tort · projet supprimé à tort | 2 · 1 · 1 (Supprimées : 3) | idem | — |
 | 21 | 4 jours absents, ven. 17 h | ouvrir · Les remettre · Garder ces 3 = 3 ; 18 h Semaine courte · Passer 1 | 4 | — |
@@ -219,8 +222,10 @@ Cibles 1-6 : R7 §3. Au-dessus : le 4 au clavier (règle maison) ; le 14, par iO
 ## 8. Première utilisation
 
 Pas de visite. Aujourd'hui sans projet : « Colle ou dicte tes listes. » + **Coller mes listes** (D-TCH-4) → aperçu
-(1re ligne suivie de ≥ 2 lignes = « Nouveau projet : … » ; Coller encore) → **Créer N tâches** → carte Mon iPhone ; le
-lendemain Proposé est rempli et la notification sonne (A15). Objectif 5 « valeur par défaut », aucune proposition de
+(1re ligne suivie de ≥ 2 lignes = « Nouveau projet : … » avec puce Haute · Moyenne · Basse, Moyenne par défaut, M3 ;
+Coller encore) → **Créer N tâches** → carte Mon iPhone ; Proposé est rempli aussitôt, la notification sonne le lendemain
+(A15). À la pose du 1er rappel, une seule question : « Montrer le titre sur l'écran verrouillé ? Oui · Non » (sans
+réponse : sans titre, socle §2.8 ; T4). Objectif 5 « valeur par défaut », aucune proposition de
 rythme avant 10 jours. Une révélation par jour : `#`, balayage, Copilote, Planifier, Revue, « J'ai 10 jours de toi », `n`/`?`.
 
 ## 9. Arbitrage final (E essentiel · A avancé · X écarté)
@@ -234,7 +239,7 @@ rythme avant 10 jours. Une révélation par jour : `#`, balayage, Copilote, Plan
 | Ajouter, cocher, reporter hors ligne | **E** | N11 (spec 3 : X) |
 | Glisser-déposer | E bureau, A iPhone | N10 |
 | Progression sur objectif, Reprise ; Essentiel, Prévu, Ce soir, Toute la journée, activités ERP (lier une tâche), Suivi des relances | E | M2, N4, N9 |
-| Proposé + Garder ces N + surcharge ; Alléger puis Proposé replié ; À revoir + Tout en réserve ; retour en une carte | E | A11, M7, N6, B1 |
+| Proposé + Garder ces N (carte du matin, carte du Copilote en express) + surcharge ; Alléger puis Proposé replié ; À revoir + Tout en réserve ; retour en une carte | E | A11, M1, M7, N6, B1, T2 |
 | Bilan (4 sur 5, gardées faites, Tout reporter, un constat), bilan d'hier jusqu'à 12 h ; rappel « Encore 10 min… » | E | M2, M4, spec 3 |
 | Agenda 4 vues, blocs, rappels posés, Planifier ma semaine | E | N3 |
 | 3 jours, n° de semaine, jours travaillés seuls, échéances dans l'agenda, rappel avant bloc, nom du férié (v1.1), agenda externe ICS | A | M8 |
@@ -254,7 +259,7 @@ rythme avant 10 jours. Une révélation par jour : `#`, balayage, Copilote, Plan
 | « Installer le raccourci », raccourci de manifeste, messages sans délai | A | — |
 
 **Replié davantage** (R7 §1, règle 12) : constat, vues iPhone, minutes, 7 filtres, heure et rappel, glisser iPhone,
-détails d'un projet, ★. **Déplié** : objectif, Proposé, Copilote, priorité des projets, Tout reporter, Planifier ma semaine.
+détails d'un projet ; ★ sur Essentiel et Prévu, jamais sur Proposé. **Déplié** : objectif, Proposé, Copilote, priorité des projets, Tout reporter, Planifier ma semaine.
 
 ## 10. Composants (`features/taches/ui/` ; vers `ui/`, unité deploy `docs/ownership.yml:805`, au 2e usage)
 
@@ -294,3 +299,9 @@ iOS ; Siri = geste de Reda ; pas de rétroplanning ; Copilote iPhone, Dynamic Ty
 4. Semaine courte, Reprise, cartes (N9) ; §6 (N10).
 5. Hors ligne étendu (N11) ; Siri sans jeton (N12) ; « 4 sur 5 » au bilan ; projet `#` = moyenne.
 6. Orphelines placées, états par écran, comptes alignés, parcours 16-22.
+
+## Révision 3.1
+
+1. T2 carte du Copilote en express ; T3 Mon iPhone 3 jours au plus, après les astuces ; T4 question du titre au 1er rappel.
+2. M1 « Garder ces N » dans la carte du matin ; M2 « 1 sur 5 » partout ; M3 puce de priorité dans l'aperçu ; fiche ouverte par un rappel ; Lier une tâche par route.
+3. Restes du tour 3 §4 : ★, notifications du bilan, Mes jours 4/5, 27 touches, « 5 réglages », carte de pause, Proposé aussitôt, sections vides, N = objectif − gardées.

@@ -562,3 +562,11 @@
 .ep-sep-section { height: 8px; }
 .ep-entre { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .ep-mt8 { margin-top: 8px; } .ep-mt16 { margin-top: 16px; } .ep-mt24 { margin-top: 24px; }
+
+/* Détails d'un projet (replié) : « Fini quand… » en aperçu d'une ligne */
+.ep-details { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 6px; text-align: left;
+  font-size: 0.9375rem; color: var(--tch-texte); }
+.ep-details-texte { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-details-texte b { font-weight: 600; color: var(--tch-texte-doux); }
+.ep-details svg { color: var(--tch-texte-doux); }
+svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
