@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: zz-scratch-acceptation-1711
-  cancel-in-progress: true
+  cancel-in-progress: false  # un essai en cours (sondes ~25 min) finit avant le suivant
 
 jobs:
   ci-image-check:
