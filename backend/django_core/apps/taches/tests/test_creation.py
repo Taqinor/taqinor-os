@@ -279,6 +279,15 @@ class CreationTests(TestCase):
         with self.assertRaises(Http404):
             self._creer(_ligne(), porte='lien_activite', source='activite', activite=activite)
 
+    def test_a_faire_personnel_d_un_collegue_assigne_a_moi_404(self):
+        """Un à-faire `personnelle=True` créé par un collègue, même assigné au compte, est
+        introuvable (même réponse qu'une activité d'autrui) ; rien n'est écrit."""
+        activite = fabriques.activite(self.u1, created_by=self.voisin)
+        with self.assertRaises(Http404) as ctx:
+            self._creer(_ligne(), porte='lien_activite', source='activite', activite=activite)
+        self.assertEqual(str(ctx.exception), 'Introuvable.')
+        self.assertFalse(Tache.all_objects.filter(activite_origine_id=activite.pk).exists())
+
     # --- Geste, messages, portes ---------------------------------------------------------------
 
     def test_annuler_la_saisie_supprime_tache_et_projet_ne(self):

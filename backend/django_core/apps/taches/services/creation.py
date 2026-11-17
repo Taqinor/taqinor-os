@@ -204,14 +204,16 @@ def _parent_verifie(user, parent):
 
 def _activite_verifiee(user, activite, nombre):
     """L'activité ERP à convertir ou à lier : de la société, assignée au compte (ou à-faire personnel
-    sans assigné qu'il a créé), pas encore liée à une tâche vivante (409 `deja_lie`)."""
+    sans assigné qu'il a créé), pas encore liée à une tâche vivante (409 `deja_lie`). L'à-faire
+    personnel d'un collègue (XKB4 : invisible au compte, même assigné) est introuvable."""
     if activite is None:
         return None
     if nombre != 1:
         raise ValueError("creer_taches : une activité ne se lie qu'à une seule ligne.")
     a_lui = (activite.assigned_to_id == user.pk
              or (activite.assigned_to_id is None and activite.created_by_id == user.pk))
-    if activite.company_id != user.company_id or not a_lui:
+    prive_d_autrui = activite.personnelle and activite.created_by_id != user.pk
+    if activite.company_id != user.company_id or not a_lui or prive_d_autrui:
         raise Http404('Introuvable.')
     if Tache.objects.filter(company_id=user.company_id, activite_origine_id=activite.pk).exists():
         raise ConflitEtat({'detail': MESSAGE_DEJA_LIE, 'code': 'deja_lie'})
