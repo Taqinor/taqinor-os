@@ -80,7 +80,7 @@ def q_traces_de_reponse():
     return q_visite() | q_etape(*CLES_ESCALIER_REPONSE)
 
 
-def client_a_deja_repondu(lead):
+def _client_a_deja_repondu(lead):
     """Fondateur, 17/11/2026 — joint ou chiffré (``_a_un_historique_client``), ou
     une étape ``q_traces_de_reponse`` déjà posée : son devis reste la suite du
     filet. Lu en lot par la promesse (``suite_touche.LecteurParcage``)."""
@@ -233,12 +233,12 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if visite is not None:
             return visite
     # Fondateur, 17/11/2026 — le filet ne réclame jamais le devis d'un client
-    # qui n'a jamais répondu (``client_a_deja_repondu``) : « Décider la suite ».
+    # qui n'a jamais répondu (``_client_a_deja_repondu``) : « Décider la suite ».
     # Sauf suite demandée par l'appelant (clé, libellé ou canal d'une réponse),
     # « à rappeler » (il a parlé), geste de visite, ou « Décider la suite » close.
     if (cle == CLE_DEVIS and par_defaut and issue_touche_close != 'rappel'
             and cle_close not in _CLES_GESTES_VISITE + (CLE_DECIDER_SUITE,)
-            and not client_a_deja_repondu(lead)):
+            and not _client_a_deja_repondu(lead)):
         cle = CLE_DECIDER_SUITE
     config = cadence_config.config_cle(lead.company, cle)
     # CAD102 — le recalage suit le CANAL de l'étape posée : un message se cale

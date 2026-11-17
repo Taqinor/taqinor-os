@@ -33,10 +33,12 @@ _HEURES = (
 def poser_les_heures(apps, schema_editor):
     Etape = apps.get_model('parametres', 'CadenceRelanceEtape')
     for ordre, canal, jours, cle, heure in _HEURES:
-        Etape.objects.filter(
+        for ligne in Etape.objects.filter(
             cadence='apres_devis', ordre=ordre, canal=canal,
             delai_jours=jours, template_cle=cle, heure_cible__isnull=True,
-        ).update(heure_cible=heure)
+        ).iterator():
+            ligne.heure_cible = heure
+            ligne.save(update_fields=['heure_cible'])
 
 
 class Migration(migrations.Migration):

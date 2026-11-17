@@ -176,7 +176,7 @@
       "id": "contact_appel",
       "famille": "Prise de contact",
       "nom": "Appel de prise de contact",
-      "exemples": ["Appel d’ouverture", "Appel 2 (répondeur)", "Appel 3", "Appel 4 (répondeur)", "Appel 5 (dernier)"],
+      "exemples": ["Appel d’ouverture", "2e appel — laisser un message vocal", "3e appel — le lendemain", "4e appel — laisser un message vocal", "5e appel — dernier essai par téléphone"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["appel"] },
       "question": "Résultat de l’appel ?",
       "reponses": [
@@ -243,7 +243,7 @@
       "id": "contact_message",
       "famille": "Prise de contact",
       "nom": "Message de prise de contact",
-      "exemples": ["Message d’identité", "WhatsApp de valeur", "« Je classe ? »"],
+      "exemples": ["Message d’identité", "WhatsApp de valeur", "WhatsApp de clôture — « Je classe ? »"],
       "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "reponses": [
@@ -409,7 +409,7 @@
       "id": "suivi_appel",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Appel de suivi de la proposition",
-      "exemples": ["Appel de suivi (J+2, J+7)", "Appel de décision (J+14)", "Appel de validité (J+28)", "Dernier appel (J+90)"],
+      "exemples": ["Appel de suivi (J+2, J+7)", "Appel de décision (J+14)", "Appel de validité (J+28)", "Dernier appel à 3 mois"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
       "question": "Avez-vous eu le client ?",
       "aide": "Le client accepte ? Marquez le devis accepté dans Ventes → Devis : le dossier passe en Signé et les relances s’arrêtent.",
@@ -450,7 +450,7 @@
       "id": "suivi_message",
       "famille": "Suivi de proposition (après devis)",
       "nom": "Message de suivi de la proposition",
-      "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Garanties fabricants", "Dernier message"],
+      "exemples": ["Le PDF s’ouvre bien ?", "WhatsApp — décision en famille", "Garanties fabricants", "WhatsApp à 2 mois"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "aide": "Le client accepte ? Marquez le devis accepté dans Ventes → Devis : le dossier passe en Signé et les relances s’arrêtent.",
@@ -557,7 +557,7 @@
       "id": "reveil_appel",
       "famille": "Réveil (dossier au Froid)",
       "nom": "Appel de réveil",
-      "exemples": ["Réveil J30"],
+      "exemples": ["Appel de réveil à 1 mois"],
       "reconnaissance": { "cadences": ["reveil"], "canaux": ["appel"] },
       "question": "Résultat du réveil ?",
       "reponses": [
@@ -578,7 +578,7 @@
       "id": "reveil_message",
       "famille": "Réveil (dossier au Froid)",
       "nom": "Message de réveil",
-      "exemples": ["Réveil J60"],
+      "exemples": ["WhatsApp de réveil à 2 mois"],
       "reconnaissance": { "cadences": ["reveil"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
       "reponses": [

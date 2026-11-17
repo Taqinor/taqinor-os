@@ -897,7 +897,7 @@ class LecteurParcage:
         self._historique = {}
 
     def historique(self, lead):
-        """``cadence_filet.client_a_deja_repondu``, en lot. Un lead non
+        """``cadence_filet._client_a_deja_repondu``, en lot. Un lead non
         enregistré (contrôles purs) garde le cas général : vrai."""
         from apps.ventes.selectors import leads_ayant_recu_un_devis
 

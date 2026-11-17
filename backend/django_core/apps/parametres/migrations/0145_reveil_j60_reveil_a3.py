@@ -17,10 +17,12 @@ from django.db import migrations
 
 def poser_reveil_a3(apps, schema_editor):
     Etape = apps.get_model('parametres', 'CadenceRelanceEtape')
-    Etape.objects.filter(
+    for ligne in Etape.objects.filter(
         cadence='reveil', ordre=2, canal='whatsapp', delai_jours=60,
         template_cle='reveil_a2',
-    ).update(template_cle='reveil_a3')
+    ).iterator():
+        ligne.template_cle = 'reveil_a3'
+        ligne.save(update_fields=['template_cle'])
 
 
 class Migration(migrations.Migration):

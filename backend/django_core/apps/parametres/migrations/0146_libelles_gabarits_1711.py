@@ -38,9 +38,11 @@ _RENOMMAGES = (
 def renommer(apps, schema_editor):
     Etape = apps.get_model('parametres', 'CadenceRelanceEtape')
     for cadence, ordre, ancien, nouveau in _RENOMMAGES:
-        Etape.objects.filter(
+        for ligne in Etape.objects.filter(
             cadence=cadence, ordre=ordre, libelle=ancien,
-        ).update(libelle=nouveau)
+        ).iterator():
+            ligne.libelle = nouveau
+            ligne.save(update_fields=['libelle'])
 
 
 class Migration(migrations.Migration):

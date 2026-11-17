@@ -158,7 +158,7 @@ Après la dernière touche sans réponse : le dossier part au Froid (étiquette 
 
 ### 5.2 Après l'envoi du devis : J1 à J90
 
-J1 (9 h 30) WhatsApp « Le PDF s'ouvre bien ? » → J2 appel de suivi → « Dimanche famille » (WhatsApp, le premier dimanche à 16 h après J3, seulement pour un lead étiqueté « Décision à plusieurs ») → J7 appel de suivi → J10 WhatsApp « Garanties fabricants » → J14 appel de décision → J28 appel de validité → J60 WhatsApp « Dernier message » → J90 dernier appel.
+J1 (9 h 30) WhatsApp « Le PDF s'ouvre bien ? » → J2 appel de suivi → « WhatsApp — décision en famille » (WhatsApp, le premier dimanche à 16 h après J3, seulement pour un lead étiqueté « Décision à plusieurs ») → J7 appel de suivi → J10 WhatsApp « Garanties fabricants » → J14 appel de décision → J28 appel de validité → J60 « WhatsApp à 2 mois » → J90 « Dernier appel à 3 mois ».
 
 La validité d'un devis est de 30 jours depuis l'envoi ; elle ne dépend plus de la dernière touche. J28 est le point de prolongation : un devis « expiré » ne se prolonge pas, il se révise. Après la dernière touche sans réponse : Froid (« Devis sans suite »), sauf client commercial ou industriel (attente puis « Appel trimestriel »). Sur la dernière touche avec réponse : étape « Décider la suite » pour demain.
 
@@ -218,7 +218,7 @@ Cette section résume la table unique du suivi commercial (écran, garde de test
 
 ### Famille « Prise de contact »
 
-**Appel de prise de contact** — question : « Résultat de l’appel ? ». Touches : Appel d'ouverture ; Appel 2 ; Appel 3 ; Appel 4 ; Appel 5 (dernier).
+**Appel de prise de contact** — question : « Résultat de l’appel ? ». Touches : Appel d'ouverture ; 2e appel — laisser un message vocal ; 3e appel — le lendemain ; 4e appel — laisser un message vocal ; 5e appel — dernier essai par téléphone.
 - Client joint : La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant. Pompage au point d’eau inconnu (HMT/niveau ou débit manquants) : « Planifier la visite — relevé du point d’eau » à la place du devis.
 
 **Message de prise de contact** — question : « Le message est parti — le client a-t-il répondu ? ». Touches : Message d'identité ; WhatsApp de valeur ; « Je classe ? ».
@@ -267,7 +267,7 @@ Cette section résume la table unique du suivi commercial (écran, garde de test
 - Décision à plusieurs — en famille : L’étiquette « Décision à plusieurs » est posée (le « dimanche famille » rejoint le plan) ; la touche suivante est programmée. Sur la dernière touche du suivi : l’étiquette est posée, puis « Décider la suite » pour demain (aucune étape devis).
 - Décision à plusieurs — le propriétaire : L’étiquette « Décision à plusieurs » est posée, la note dit qu’il faut joindre le propriétaire ; la touche suivante est programmée. Sur la dernière touche du suivi : l’étiquette est posée, puis « Décider la suite » pour demain (aucune étape devis).
 
-**Message de suivi de la proposition** — question : « Le message est parti — le client a-t-il répondu ? ». Touches : « Le PDF s'ouvre bien ? » (J1) ; Dimanche famille (J3, seulement « Décision à plusieurs ») ; Garanties fabricants (J10) ; Dernier message (J60).
+**Message de suivi de la proposition** — question : « Le message est parti — le client a-t-il répondu ? ». Touches : « Le PDF s'ouvre bien ? » (J1) ; WhatsApp — décision en famille (J3, seulement « Décision à plusieurs ») ; Garanties fabricants (J10) ; WhatsApp à 2 mois (J60).
 - Le client a répondu : Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain (le devis est déjà parti : aucune étape devis).
 - Client joint au téléphone : Client eu au téléphone : même suite, l’historique garde un appel abouti. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain.
 - Question de prix — veut négocier : Pause : étape « Question de prix » pour demain.
@@ -312,10 +312,10 @@ Cette section résume la table unique du suivi commercial (écran, garde de test
 
 ### Famille « Réveil (dossier au Froid) »
 
-**Appel de réveil** — question : « Résultat du réveil ? ». Touches : Réveil J30.
+**Appel de réveil** — question : « Résultat du réveil ? ». Touches : Appel de réveil à 1 mois.
 - Client joint : Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Préparer et envoyer le devis » est posée pour demain.
 
-**Message de réveil** — question : « Le message est parti — le client a-t-il répondu ? ». Touches : Réveil J60.
+**Message de réveil** — question : « Le message est parti — le client a-t-il répondu ? ». Touches : WhatsApp de réveil à 2 mois.
 - Le client a répondu : Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Appeler le client — il a répondu au message » est posée.
 - Client joint au téléphone : Client eu au téléphone : le dossier sort du Froid ; un suivi pas allé au bout reprend, sinon « Préparer et envoyer le devis » est posée pour demain.
 
