@@ -86,9 +86,14 @@ def sonde(ctx=None):
     if b is None:
         return rendu(False, ["pages/crm/leads/LeadsPage.jsx::LeadsPage"])
     remplace = re.search(r"if\s*\(\s*error\s*\)\s*(?:\{\s*)?return\s*\(?\s*<StateBlock", b)
+    # AERR : `error` est désormais DÉRIVÉ (`leadsError && leads.length === 0 ? leadsError : null`) : le retour anticipé ne démonte plus une
+    # liste déjà chargée. Le défaut n'est présent que si `error` ne porte aucune condition sur la liste.
+    derive = re.search(r"const\s+error\s*=\s*([^\n;]*)", b)
+    garde_liste = bool(derive and "length" in derive.group(1))
+    remplace = remplace if remplace and not garde_liste else None
     onsaved = re.search(r"\bonSaved\s*=\s*\(\s*\)\s*=>\s*refetch\s*\(\s*\)", b)
     return rendu(remplace or onsaved, [],
-                 erreur_remplace_liste_et_fiche_sans_garde_leads=bool(remplace),
+                 erreur_remplace_liste_et_fiche_sans_garde_leads=bool(remplace), erreur_derivee_gardee_par_la_liste=garde_liste,
                  onSaved_relit_toute_la_liste=bool(onsaved),
                  onRetry_dans_StateBlock="onRetry" in (b[remplace.start():remplace.start() + 300] if remplace else ""))
 
