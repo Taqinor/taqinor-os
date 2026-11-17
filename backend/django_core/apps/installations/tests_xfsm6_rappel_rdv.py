@@ -15,7 +15,7 @@ Run :
     python manage.py test apps.installations.tests_xfsm6_rappel_rdv -v2
 """
 import itertools
-from datetime import date, datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest import mock
 
@@ -276,29 +276,34 @@ class TestRappelRdvJ1(TestCase):
         à 08:30 pour les poses de samedi, dimanche et lundi (pas mardi) ;
         samedi et dimanche : 0 envoi, 0 brouillon, 0 reprise. Sans le
         ``ouvrir_la_fenetre`` du module (vraie fenêtre, horloge figée)."""
+        from zoneinfo import ZoneInfo
+
         from freezegun import freeze_time
 
         from apps.records.models import Activity
+        # Heures LOCALES de Casablanca, jamais un UTC codé en dur : l'écart à UTC
+        # change (tzdata 2026f : +00:00 dès octobre 2026, +01:00 avant).
+        casa = ZoneInfo('Africa/Casablanca')
         vendredi = date(2026, 10, 16)
         poses = {n: Intervention.objects.create(
             company=self.company, installation=self.inst, type_intervention='pose',
             created_by=self.user, date_prevue=vendredi + timedelta(days=n),
             rdv_confirme=False) for n in (1, 2, 3, 4)}
         with AVEC_CLE, mock.patch.object(rappel_rdv_j1, 'apply_async') as differee:
-            with freeze_time('2026-10-16 06:45:00'):  # vendredi 07:45 Casablanca
+            with freeze_time(datetime(2026, 10, 16, 7, 45, tzinfo=casa)):  # vendredi 07:45
                 self.assertEqual(rappel_rdv_j1()['cibles'], 0)
             differee.assert_called_once_with(
                 kwargs={'company_id': self.company.pk,
                         'jours_cibles': ['2026-10-17', '2026-10-18', '2026-10-19']},
-                eta=datetime(2026, 10, 16, 7, 30, tzinfo=dt_timezone.utc))  # 08:30 Casablanca
+                eta=datetime(2026, 10, 16, 8, 30, tzinfo=casa))  # ouverture des messages
             differee.reset_mock()
-            for week_end in ('2026-10-17 06:45:00', '2026-10-18 06:45:00'):
-                with freeze_time(week_end):
+            for week_end in (17, 18):
+                with freeze_time(datetime(2026, 10, week_end, 7, 45, tzinfo=casa)):
                     self.assertEqual(rappel_rdv_j1()['cibles'], 0)
             differee.assert_not_called()
             self.assertEqual(len(mail.outbox), 0)
             self.assertFalse(Activity.objects.filter(summary='Envoyer ce WhatsApp').exists())
-            with freeze_time('2026-10-16 07:30:00'):  # la reprise, à l'ouverture
+            with freeze_time(datetime(2026, 10, 16, 8, 30, tzinfo=casa)):  # la reprise, à l'ouverture
                 res = rappel_rdv_j1(company_id=self.company.pk,
                                     jours_cibles=['2026-10-17', '2026-10-18', '2026-10-19'])
         self.assertEqual((res['cibles'], res['emails_envoyes']), (3, 3))
