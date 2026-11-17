@@ -163,14 +163,14 @@ endpoints:
     note: "TCH129 : la pastille."
 
   - path: /api/django/taches/tuile/
-    budget: 10
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite (jeton tuile)."
+    budget: 14
+    enforced: true
+    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, plafond estimé à ramener à la mesure."
 
   - path: /api/django/taches/flux/{jeton}.ics
-    budget: 8
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite (jeton flux)."
+    budget: 10
+    enforced: true
+    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, plafond estimé à ramener à la mesure."
 
   - path: /api/django/taches/journee/proposition/
     budget: 27

@@ -8,20 +8,36 @@ authentifiés par `JetonAccesAuthentication` de LEUR usage (`auth_jeton.py`) ; l
 chemin est masqué pour les journaux et ses réponses d'erreur ne sont jamais réécrites par
 `django.request`. Une route pas encore construite lève
 `PasEncore` (501).
+
+Tuile et flux (TCH97, regles.md §10) : la société et le propriétaire sont ceux du JETON (posés sur
+`request.user` par l'authentification) ; la sélection est celle de l'écran — le préfiltre et la
+journée de `selectors/journee.py`, les règles PURES de `moteur/flux.py` — et chaque titre passe par
+`nom_pour(…, 'tuile' | 'flux')` : jamais de notes, de check-list, de lien ERP, de nom de projet, de
+titre d'activité ERP ni de rendez-vous externe. Le flux est écrit par `reporting.calendar.build_ics`
+(CRLF, lignes pliées à 75 octets, échappement, UID `tache-<id>@taqinor`, heures en UTC).
 """
+import datetime
 import re
 
 from django.db.models import F
+from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import NotFound
+from rest_framework.negotiation import BaseContentNegotiation
 from rest_framework.permissions import BasePermission
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
 from apps.taches.auth_jeton import JetonFlux, JetonTuile, emettre_jeton, revoquer_jeton
+from apps.taches.choix import StatutTache
+from apps.taches.confidentialite import nom_pour
+from apps.taches.moteur import flux as moteur_flux
+from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jetons_de
 from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSerializer, forme_jeton_cree
 from apps.taches.throttles import ThrottleFlux, ThrottleTuile
@@ -37,6 +53,92 @@ DEBITS = list(api_settings.DEFAULT_THROTTLE_CLASSES)
 #: Le segment du flux qui porte le jeton, et ce qu'en voient les journaux.
 MOTIF_CHEMIN_FLUX = re.compile(r'/flux/[^/]+\.ics$')
 CHEMIN_FLUX_MASQUE = '/flux/<jeton>.ics'
+#: Le calendrier abonné (textes.md §8) et son type servi.
+NOM_CALENDRIER = 'Tâches Taqinor'
+TYPE_ICS = 'text/calendar; charset=utf-8'
+#: Toucher la tuile ouvre Aujourd'hui : l'hôte de la requête suivi de ce chemin (regles.md §10).
+CHEMIN_AUJOURDHUI = '/taches/aujourdhui'
+#: La tuile ne sert ni la capacité ni le temps disponible : `progression_du_jour` les calcule sur
+#: ce neutre (aucune lecture de plus), seuls `faites`, `prevues` et l'Essentiel sont servis.
+CAPACITE_HORS_TUILE = (0, '')
+CHARGEMENT_ITEM = ('projet', 'recurrence', 'parent', 'parent__projet', 'bloquee_par')
+
+
+def _titre_de(taches):
+    """Le `nom_pour` des modules purs (appelé sur un `ItemPur`) branché sur la `Tache` lue, chargée
+    avec `projet`, `parent` et `parent__projet` : aucune requête par titre."""
+    def titre(item, usage, reglages):
+        return nom_pour(taches[item.id], usage, reglages)
+    return titre
+
+
+# --- La tuile ------------------------------------------------------------------------------------
+
+def _corps_tuile(user, jour, maintenant, lien):
+    """`tuile.json` : la journée lue comme l'écran (`lire_journee`), `faites` par `compte_faites`,
+    `prevues` et l'Essentiel par `progression_du_jour`, puis `moteur.flux.tuile_pure`."""
+    reglages = sel.reglages_de(user)
+    journee = sel.lire_journee(user, jour, reglages=reglages)
+    faites, detail = sel.compte_faites(user, jour)
+    progression = sel.progression_du_jour(journee, faites=faites, detail=detail, capacite=CAPACITE_HORS_TUILE)
+    taches = {pk: objet for (type_, pk), objet in journee.objets.items() if type_ == sel.TACHE}
+    corps = moteur_flux.tuile_pure(
+        list(journee.items.values()), jour, journee.plan_pur, sel.objectif_du_jour(reglages)['nb'],
+        progression, reglages, _titre_de(taches), journee.travailles)
+    return {'jour': jour.isoformat(), 'maj': maintenant.isoformat(timespec='seconds'), **corps, 'lien': lien}
+
+
+# --- Le flux de calendrier -----------------------------------------------------------------------
+
+def _evenement_ics(evenement):
+    """Forme d'appel de `reporting.calendar.build_ics` : journée entière (`date`) ou horodatée
+    (`start_dt`/`end_dt` AWARE : l'heure murale de la société, écrite en UTC) ; `DESCRIPTION` vide."""
+    forme = {'uid': evenement.uid, 'summary': evenement.titre, 'description': ''}
+    if evenement.journee_entiere:
+        forme['date'] = evenement.debut
+    else:
+        forme['start_dt'] = timezone.make_aware(evenement.debut)
+        forme['end_dt'] = timezone.make_aware(evenement.fin)
+    return forme
+
+
+def ics_du_flux(evenements):
+    """Le texte `.ics` des `EvenementFlux` (`moteur.flux.evenements_flux`), calendrier « Tâches
+    Taqinor » — `build_ics` en import local (app de fondation, aucune édition de `calendar.py`)."""
+    from apps.reporting.calendar import build_ics
+    return build_ics(None, [_evenement_ics(e) for e in evenements], calname=NOM_CALENDRIER)
+
+
+def _taches_du_flux(user, jour):
+    """Le préfiltre de la journée (invariant 10), réduit aux tâches à faire prévues dans
+    [J, J + 14] — `evenements_flux` décide du reste. Une requête, quel que soit leur nombre."""
+    fin = jour + datetime.timedelta(days=moteur_flux.FENETRE_JOURS)
+    return list(sel.taches_de_la_journee(user, jour)
+                .filter(statut=StatutTache.A_FAIRE, jour_prevu__gte=jour, jour_prevu__lte=fin)
+                .select_related(*CHARGEMENT_ITEM))
+
+
+def _corps_flux(user, jour):
+    reglages = sel.reglages_de(user)
+    travailles = sel.travailles_autour(user, jour)
+    focus = sel.projets_de_la_semaine(user, jour)
+    taches = _taches_du_flux(user, jour)
+    items = [sel.item_de_tache(tache, focus) for tache in taches]
+    evenements = moteur_flux.evenements_flux(
+        items, jour, reglages, _titre_de({tache.pk: tache for tache in taches}), travailles)
+    return ics_du_flux(evenements)
+
+
+class SansNegociation(BaseContentNegotiation):
+    """Le flux répond au client d'abonnement quel que soit son `Accept` (un `Accept: text/calendar`
+    ne doit jamais valoir un 406 avant le gestionnaire) : succès en `text/calendar` écrit par la vue,
+    refus et erreurs en JSON."""
+
+    def select_parser(self, request, parsers):
+        return parsers[0] if parsers else None
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        return renderers[0], renderers[0].media_type
 
 
 class HorsAssistant(BasePermission):
@@ -104,7 +206,11 @@ class TuileVue(MethodeAvantJeton, APIView):
 
     @extend_schema(responses={200: forme_echantillon('tuile'), 401: ERREUR_DETAIL, 429: ERREUR_DETAIL})
     def get(self, request):
-        raise PasEncore()
+        corps = _corps_tuile(request.user, timezone.localdate(), timezone.localtime(),
+                             request.build_absolute_uri(CHEMIN_AUJOURDHUI))
+        reponse = Response(corps)
+        reponse['Cache-Control'] = 'no-store'
+        return reponse
 
 
 class FluxVue(MethodeAvantJeton, APIView):
@@ -113,6 +219,8 @@ class FluxVue(MethodeAvantJeton, APIView):
     authentication_classes = [JetonFlux]
     permission_classes = PERMISSIONS
     throttle_classes = [*DEBITS, ThrottleFlux]
+    renderer_classes = [JSONRenderer]
+    content_negotiation_class = SansNegociation
 
     def initialize_request(self, request, *args, **kwargs):
         """Le chemin porte le jeton : `request.path` (lu par les journaux, dont celui d'un 500) est
@@ -135,4 +243,5 @@ class FluxVue(MethodeAvantJeton, APIView):
         (429, 'application/json'): ERREUR_DETAIL,
     })
     def get(self, request, jeton):
-        raise PasEncore()
+        # `jeton` a déjà servi à l'authentification ; il n'est ni relu, ni journalisé, ni rendu.
+        return HttpResponse(_corps_flux(request.user, timezone.localdate()), content_type=TYPE_ICS)
