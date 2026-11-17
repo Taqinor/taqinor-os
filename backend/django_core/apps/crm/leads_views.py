@@ -651,11 +651,13 @@ class LeadIntakeActionsMixin:
         ecriture = request.method == 'POST'
         corps = corps_objet(request) if ecriture else request.query_params
         try:
-            de, vers = resoudre_delegation(request.user, corps)
-            nom = vers.first_name or vers.username
+            de, vers = resoudre_delegation(
+                request.user, corps, exiger_vers=ecriture)
+            nom = (vers.first_name or vers.username) if vers else ''
             if not ecriture:
                 return Response({
-                    'de': de.pk, 'vers': vers.pk, 'vers_nom': nom,
+                    'de': de.pk, 'vers': vers.pk if vers else None,
+                    'vers_nom': nom,
                     **apercu_delegation(request.user, de)})
             prevenir = corps.get('prevenir_clients', True)
             if not isinstance(prevenir, bool):

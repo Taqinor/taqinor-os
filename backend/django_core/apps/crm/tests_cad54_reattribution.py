@@ -72,10 +72,10 @@ class _Base(TestCase):
             owner=self.ancien, telephone='+212661005401',
             first_contacted_at=MARDI if contacte else None)
 
-    def _touche(self, lead, *, jours=1, libelle='Appel de suivi'):
+    def _touche(self, lead, *, jours=1, libelle='Appel de suivi', ordre=2):
         quand = MARDI + datetime.timedelta(days=jours)
         return RelanceEtape.objects.create(
-            company=self.company, lead=lead, cadence='contact', ordre=2,
+            company=self.company, lead=lead, cadence='contact', ordre=ordre,
             due_at=quand,
             due_date=quand.astimezone(horaires.CASABLANCA).date(),
             canal=RelanceEtape.Canal.APPEL, libelle=libelle,
@@ -258,7 +258,7 @@ class DelegationDesDossiersTests(_Base):
         supprimé) et celui d'un collègue."""
         suivi = self._mien('Suivi')
         self._touche(suivi, jours=-3)
-        self._touche(suivi, jours=2, libelle='Appel plus tard')
+        self._touche(suivi, jours=2, libelle='Appel plus tard', ordre=3)
         froid = self._mien('Froid', stage=stages.COLD)
         restent = [
             self._mien('Perdu', perdu=True),
@@ -338,15 +338,15 @@ class DelegationDesDossiersTests(_Base):
             username=f'{self.slug}-etranger', password='x', company=autre,
             role_legacy='commercial')
         res = self.api.post(self.URL, {'vers': etranger.pk}, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
         self.assertIn('vers', res.data)
         self.nouveau.is_active = False
         self.nouveau.save(update_fields=['is_active'])
         res = self.api.post(self.URL, {'vers': self.nouveau.pk}, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
         self.assertIn('désactivé', res.data['vers'][0])
         res = self.api.post(self.URL, {'vers': self.moi.pk}, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
         self.assertIn('vers', res.data)
         self.assertFalse(Lead.objects.filter(
             owner__in=[etranger, self.nouveau]).exists())
@@ -363,7 +363,7 @@ class DelegationDesDossiersTests(_Base):
         res = self.api.post(
             self.URL, {'vers': self.nouveau.pk, 'de': etranger.pk},
             format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
         lead_etranger.refresh_from_db()
         self.assertEqual(lead_etranger.owner_id, etranger.pk)
 
