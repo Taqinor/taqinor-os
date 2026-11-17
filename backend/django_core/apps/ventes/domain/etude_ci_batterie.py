@@ -202,6 +202,17 @@ def catalogue_batterie_ci(objets):
             'ecartees': ecartees}
 
 
+def elements_socle_ci(objets):
+    """D-SOC-1 (fondateur, 17/11/2026) — les socles de lestage du C&I, à la
+    forme des éléments ``produits_ci`` (rôle de devis ``socle``) : LE même
+    article que le résidentiel, reconnu par LE même classifieur
+    (``catalogue._is_socle``), sans aucun rôle C&I — comme panneaux, hybrides et
+    batteries. Lecture seule ; jamais ``prix_achat``."""
+    from .catalogue import _is_socle
+    return [_element(produit, 'socle', {}) for produit in objets
+            if _is_socle(getattr(produit, 'nom', '') or '')]
+
+
 def batteries_compatibles(batteries, hybrides):
     """Les batteries dont la tension nominale entre dans la plage d'AU MOINS
     un hybride retenu (règle PVOND : la tension mesurée prouve l'appairage)."""

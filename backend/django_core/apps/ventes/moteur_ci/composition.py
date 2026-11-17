@@ -19,7 +19,8 @@ prix_connu, motif, a_confirmer_visite}``.
   fiche (calibre / pôles / section / type de pose — posés par CIQ103), sinon
   ligne « prix à renseigner » nommée (patron PV47).
 * Structure : rôle ``structure_ci`` du ``type_pose`` du toit, jamais le
-  bouton acier/alu résidentiel.
+  bouton acier/alu résidentiel. Toit plat lesté (déclaré ou supposé) : en
+  plus, 2 socles par panneau (ligne ``socle_ci``, article « Socles », D-SOC-1).
 * Protections DC et parafoudres DC : une par CHAÎNE (R3, 28/10/2026) ;
   disjoncteur et parafoudre AC 4P derrière un triphasé, 2P sinon ; mise à la
   terre seulement quand la visite la dit nécessaire.
@@ -55,6 +56,7 @@ from core.electrique.cables import (
 )
 from core.electrique.protections import calibre_disjoncteur, courant_emploi_ac
 from core.pricing_paliers import MODE_VOLUME, calculer_prix_paliers
+from core.product_roles import SOCLES_PAR_PANNEAU
 
 #: Prestations C&I réglées par société (``CompanyProfile.forfaits_ci``).
 PRESTATIONS_CI = (
@@ -125,6 +127,10 @@ CRITERE_PLANCHER_AC = 'plancher AC 10 mm² (décision fondateur 17/11/2026)'
 DISTANCE_DC_DEFAUT_M = 30.0         # champ → onduleur ; câble = 2 × chaînes × distance
 PANNEAUX_PAR_CHAINE_DEFAUT = 12     # chaînes non calculées (fiches muettes)
 TYPE_POSE_DEFAUT = 'toit_plat_leste'
+#: D-SOC-1 (17/11/2026) — la seule pose qui porte des socles de lestage, et le
+#: rôle de LIGNE de ces socles (l'article, lui, n'a aucun rôle C&I).
+POSE_AVEC_SOCLES = 'toit_plat_leste'
+ROLE_SOCLE_CI = 'socle_ci'
 MOTIF_PRELIMINAIRE = 'estimation préliminaire (%s) : ajustée après la visite'
 
 
@@ -826,6 +832,20 @@ def _prestation(cle, libelle, forfait, article, kwc, nb_panneaux):
     return ligne
 
 
+def _socles(catalogue, nb_panneaux, declare, lignes):
+    """D-SOC-1 (fondateur, 17/11/2026) — toit plat LESTÉ (déclaré, ou pose
+    supposée faute de déclaration) : DEUX socles de lestage par panneau, en
+    plus de la structure, sur leur propre ligne. L'article est celui du
+    résidentiel (« Socles », classé ``socle`` par le classifieur partagé ; voir
+    ``etude_ci_batterie.elements_socle_ci``) ; absent ou sans prix ⇒ « prix à
+    renseigner » nommé « Socles », jamais omis ni à 0."""
+    lignes.append(_ligne(ROLE_SOCLE_CI, _du_role(catalogue, 'socle'), 'Socles',
+                         nb_panneaux * SOCLES_PAR_PANNEAU, 'u', a_confirmer=not declare))
+    if not declare:
+        lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
+            'type de pose non déclaré : %s' % TYPE_POSE_DEFAUT)
+
+
 def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     """La composition C&I serveur (forme ``composition`` du contrat).
 
@@ -932,6 +952,8 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     if not declare:
         lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
             'type de pose non déclaré : %s' % TYPE_POSE_DEFAUT)
+    if type_pose == POSE_AVEC_SOCLES:
+        _socles(catalogue, nb_panneaux, declare, lignes)
 
     # ── Comptage / limitation, logger, coffret AC
     _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs,

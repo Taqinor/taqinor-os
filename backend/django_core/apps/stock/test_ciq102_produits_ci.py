@@ -296,6 +296,18 @@ class PretDevisCiTests(TestCase):
         self.assertEqual(postes['structure_ci:bac_acier']['statut'], 'ok')
         self.assertFalse(postes['structure_ci:bac_acier']['obligatoire'])
 
+    def test_socles_sans_prix_a_completer_par_le_classifieur(self):
+        # D-SOC-1 — l'article « Socles » du résidentiel (aucun rôle C&I),
+        # reconnu par son nom ; sans prix de vente : « à compléter », nommé.
+        socles = Produit.objects.create(company=self.company, nom='Socles',
+                                        sku='SOC-STD', prix_vente=0)
+        _res, postes = self._postes()
+        poste = postes['socle:toit_plat_leste']
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertEqual(poste['articles'], [{
+            'id': socles.id, 'nom': 'Socles', 'motif': 'prix de vente non saisi'}])
+        self.assertEqual(poste['action']['lien'], '/stock')
+
     def test_forfait_non_regle_est_absent(self):
         from apps.parametres.models import CompanyProfile
         CompanyProfile.objects.filter(company=self.company).update(
@@ -378,7 +390,14 @@ class PretDevisCiTests(TestCase):
         Produit.objects.create(
             company=co, nom='Structure toit plat lesté', role_ci='structure_ci',
             type_pose='toit_plat_leste', prix_vente=Decimal('50'))
+        # D-SOC-1 — sans « Socles » chiffré, la pose par défaut n'est pas prête.
+        _r, postes = self._postes(co)
+        self.assertEqual(postes['socle:toit_plat_leste']['statut'], 'absent')
+        self.assertTrue(postes['socle:toit_plat_leste']['obligatoire'])
+        Produit.objects.create(company=co, nom='Socles', sku='SOC-STD',
+                               prix_vente=Decimal('67'))
         res, postes = self._postes(co)
+        self.assertEqual(postes['socle:toit_plat_leste']['statut'], 'ok')
         obligatoires = {c: p['statut'] for c, p in postes.items()
                         if p['obligatoire']}
         self.assertEqual(

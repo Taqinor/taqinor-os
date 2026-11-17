@@ -102,6 +102,8 @@ class _Base(TestCase):
                      prix_vente=Decimal('11'))
         cls._produit(cls.co, 'Structure toit plat lestée', role_ci='structure_ci',
                      type_pose='toit_plat_leste', prix_vente=Decimal('450'))
+        # D-SOC-1 (17/11/2026) — 2 socles par panneau sur ce toit (sans rôle C&I).
+        cls._produit(cls.co, 'Socles', prix_vente=Decimal('67'))
         for section in SECTIONS_MM2_CI:
             cable = cls._produit(cls.co, 'Câble AC cuivre 5×%g mm² (au mètre)' % section,
                                  role_ci='cable_ac',

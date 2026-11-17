@@ -37,6 +37,15 @@
         "action": {"texte": "Créer l'article en Stock", "lien": "/stock"}
       },
       {
+        "cle": "socle:toit_plat_leste",
+        "libelle": "Socles (toit plat lesté)",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {"texte": "Ouvrir le catalogue Stock", "lien": "/stock"}
+      },
+      {
         "cle": "forfait:pose_modules",
         "libelle": "Prestation « Pose des modules »",
         "groupe": "prestation",

@@ -53,6 +53,13 @@ Décisions de Reda du 17/11/2026, prises sur le lead « CPE Go Plus » (1742, in
   devis ; l'écran dit combien pourront s'ajouter ; les économies sont celles des batteries réellement devisées.
   La recommandation est mémorisée à la création (`etude_params.banque_recommandee`).
 
+- **D-SOC-1 — socles sur les devis C&I (17/11/2026).** « Why the calculator don't add socles, they should be
+  added to the quote. » Le moteur C&I n'avait aucune règle de socles (le résidentiel en pose 2 par panneau).
+  Retenu : 2 socles par panneau quand la pose est un toit plat LESTÉ, et aussi quand le type de toit n'est pas
+  encore déclaré (le moteur suppose déjà cette pose) ; aucun socle sur bac acier, toiture inclinée, sol,
+  ombrière ni toit plat fixé. Les socles s'AJOUTENT à la structure « toit plat lestée C&I » (450 MAD par
+  panneau, inchangée), sur leur propre ligne, avec l'article « Socles » du catalogue.
+
 **Why:** Reda a découvert les 6 batteries sans qu'aucun écran dise sur quoi elles reposaient, puis n'a vu que
 les chiffres de l'offre réseau en ouvrant le devis. Le même jour, une puissance souscrite saisie à −12 kVA
 bloquait l'option batterie avec un message accusant le catalogue (PR #1442).

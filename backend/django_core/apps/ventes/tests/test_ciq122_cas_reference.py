@@ -50,6 +50,11 @@ MODULE = {'produit': 9001, 'designation': 'Panneau Jinko 710W', 'pmax_wc': 710,
 STRUCTURE = {'id': 9002, 'nom': 'Structure bac acier (test)', 'role_ci': 'structure_ci',
              'role_devis': '', 'type_pose': 'bac_acier', 'fiche': {}, 'prix_connu': True,
              'eligible_ci': True, 'prix_vente_ht': _prix_seed('STR-ACIER')}
+#: D-SOC-1 (17/11/2026) — toit plat lesté (pose supposée quand le toit n'est
+#: pas déclaré) : 2 socles par panneau, l'article « Socles » SEEDÉ du résidentiel.
+SOCLES = {'id': 9004, 'nom': 'Socles', 'role_ci': '', 'role_devis': 'socle', 'type_pose': '',
+          'fiche': {}, 'prix_connu': True, 'eligible_ci': True,
+          'prix_vente_ht': _prix_seed('SOC-BET')}
 #: ADEV79 (D-ACI-6=a) — coffrets DC et disjoncteurs AC sont des rôles de
 #: TAILLE : sans prix, aucune taille. Articles de TEST tarifés, un disjoncteur
 #: par calibre des onduleurs Huawei seedés (16 → 250 A).
@@ -75,11 +80,12 @@ CABLES = [{'id': 9200, 'nom': 'Câble solaire 6 mm² (test)', 'role_ci': 'cable_
      'prix_vente_ht': Decimal(str(round(10 * s + 30, 2)))}
     for i, s in enumerate(SECTIONS_MM2_CI)]
 CATALOGUE_TEST = {
-    'elements': [STRUCTURE, COFFRET_DC] + DISJONCTEURS + CABLES,
+    'elements': [STRUCTURE, SOCLES, COFFRET_DC] + DISJONCTEURS + CABLES,
     'onduleurs': _catalogue_huawei(),
     'module': MODULE,
     'prix_par_id': {MODULE['produit']: MODULE['prix_vente_ht'],
                     STRUCTURE['id']: STRUCTURE['prix_vente_ht'],
+                    SOCLES['id']: SOCLES['prix_vente_ht'],
                     COFFRET_DC['id']: COFFRET_DC['prix_vente_ht'],
                     **{d['id']: d['prix_vente_ht'] for d in DISJONCTEURS + CABLES}},
 }
@@ -207,14 +213,35 @@ class CasReferenceTests(unittest.TestCase):
     def test_usine_90000_saut_onduleur_amorti_sur_un_long_groupe(self):
         # CLD8 — saut 340 kWc (1×150+1×100 → 2×150, ≈ 33 ans seul) amorti par
         # le groupe 335 → 405 (≈ 9,9 ans ≤ 10) : l'ancienne fenêtre de 4
-        # paliers retenait 335.
+        # paliers retenait 335. D-SOC-1 (17/11/2026) — toit DÉCLARÉ bac acier :
+        # le cas mesure le saut d'onduleur, sans les socles du toit plat lesté
+        # supposé (+2 × 66,67 MAD HT par panneau, qui retiennent 335,12 kWc).
         e = _etudier(mode='industriel', tension='mt', tarif={'contrat': 'mt_general'},
                      consommation={'kwh_mensuels': [90000] * 12},
                      rythme={'jours_ouverts': [True] * 6 + [False], 'equipes': '2x8',
-                             'debut_equipe_h': 6})
+                             'debut_equipe_h': 6},
+                     toit={'type_pose': 'bac_acier', 'surface_utile_m2': None})
         # CLD9 — publié au kWc POSÉ (panneaux entiers × 710 Wc), palier 400.
         self.assertAlmostEqual(e['taille']['retenue_kwc'], e['taille']['nb_panneaux'] * 0.71, places=2)
         self.assertGreater(e['taille']['retenue_kwc'], 395)
+
+    def test_toit_plat_leste_suppose_deux_socles_par_panneau(self):
+        # D-SOC-1 (fondateur, 17/11/2026) — toit non déclaré ⇒ pose supposée
+        # « toit plat lesté » ⇒ 2 socles par panneau, en plus de la structure,
+        # chiffrés et comptés dans la taille ; toit déclaré bac acier ⇒ aucun.
+        e = _etudier(rythme={'categorie_commerciale': 'bureau'})
+        lignes = e['composition']['lignes']
+        socles = [li for li in lignes if li['role'] == 'socle_ci']
+        self.assertEqual(len(socles), 1)
+        self.assertEqual(socles[0]['produit'], SOCLES['id'])
+        self.assertEqual(socles[0]['quantite'], 2 * e['taille']['nb_panneaux'])
+        self.assertTrue(socles[0]['prix_connu'] and socles[0]['a_confirmer_visite'])
+        self.assertIn('toit_plat_leste', socles[0]['motif'])
+        self.assertTrue([li for li in lignes if li['role'] == 'structure_ci'])
+        self.assertNotIn('Socles', e['composition']['prix_a_renseigner'])
+        e = _etudier(rythme={'categorie_commerciale': 'bureau'},
+                     toit={'type_pose': 'bac_acier', 'surface_utile_m2': None})
+        self.assertFalse([li for li in e['composition']['lignes'] if li['role'] == 'socle_ci'])
 
 
 if __name__ == '__main__':

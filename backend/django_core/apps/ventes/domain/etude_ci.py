@@ -786,11 +786,13 @@ def lire_catalogue_ci(company):
         }
         # ADEV87 — la fiche électrique du module retenu (chaînes).
         module_spec = specs_module(specs, produit.nom)[0] if specs else None
+    # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec » ;
+    # D-SOC-1 (17/11/2026) — l'article « Socles » du résidentiel (toit plat lesté).
+    from .etude_ci_batterie import catalogue_batterie_ci, elements_socle_ci
+    elements += elements_socle_ci(objets.values())
     prix_par_id = {e['id']: e['prix_vente_ht'] for e in elements if e.get('prix_vente_ht')}
     if module and module.get('prix_vente_ht'):
         prix_par_id[module['produit']] = module['prix_vente_ht']
-    # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec ».
-    from .etude_ci_batterie import catalogue_batterie_ci
     return {'elements': elements, 'onduleurs': onduleurs, 'module': module,
             'module_spec': module_spec, 'prix_par_id': prix_par_id,
             'batterie': catalogue_batterie_ci(objets.values())}

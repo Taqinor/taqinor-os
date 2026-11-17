@@ -148,6 +148,12 @@ ROLES_ONDULEUR_CI = tuple(PHASES_ONDULEUR_CI)
 #: saisi vaut prix connu (stock) ; la composition C&I en fait le prix.
 ROLES_CI_BAREME_COFFRET = ('coffret_dc', 'coffret_ac')
 
+#: PVSTR (fondateur, 18/08/2026) — DEUX socles de lestage par panneau. Source
+#: UNIQUE, ici pour que le moteur C&I PUR (``moteur_ci.composition``, sans
+#: ``apps.*``) la lise ; ``ventes.domain.catalogue`` la ré-expose. D-SOC-1
+#: (17/11/2026) : le C&I en pose aussi deux par panneau sur toit plat lesté.
+SOCLES_PAR_PANNEAU = 2
+
 #: Tension maximale (V) du port batterie d'un onduleur hybride de l'option
 #: « avec batterie » C&I (basse tension) : au-delà, hybride haute tension, hors
 #: option. MIROIR de ``apps.ventes.moteur_ci.batterie.TENSION_PORT_BT_MAX_V``

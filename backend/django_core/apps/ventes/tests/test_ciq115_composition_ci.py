@@ -775,6 +775,70 @@ class CompositionTests(TestCase):
                                delta=Decimal('0.01') * nb_ond)
         self.assertFalse(any('Coffret' in d for d in comp['prix_a_renseigner']))
 
+    # ── D-SOC-1 (fondateur 17/11/2026) : socles du toit plat lesté ──────────
+
+    @staticmethod
+    def _socles(prix='66.67'):
+        # L'article « Socles » du résidentiel, sans rôle C&I (forme de
+        # ``etude_ci_batterie.elements_socle_ci``).
+        article = {'id': 8000, 'nom': 'Socles', 'marque': '', 'role_devis': 'socle',
+                   'role_ci': '', 'type_pose': '', 'fiche': {}, 'prix_connu': prix is not None,
+                   'eligible_ci': True, 'motif_exclusion': None}
+        if prix is not None:
+            article['prix_vente_ht'] = Decimal(prix)
+        return article
+
+    def test_toit_plat_leste_deux_socles_par_panneau_en_plus_de_la_structure(self):
+        from apps.ventes.moteur_ci.taille import ROLES_DE_TAILLE, cout_vente_ht
+        cat = self.cat + [self._socles()]
+        comp = composer_ci(100, cat, onduleurs=_onduleurs(cat, 100),
+                           entrees=_entrees(type_pose='toit_plat_leste'), forfaits={})
+        nb_pan = math.ceil(100000 / 710)
+        roles = [ligne['role'] for ligne in comp['lignes']]
+        self.assertEqual(roles.index('socle_ci'), roles.index('structure_ci') + 1)
+        socles = self._lignes(comp, 'socle_ci')[0]
+        self.assertEqual((socles['produit'], socles['designation'], socles['quantite'],
+                          socles['unite']), (8000, 'Socles', 2 * nb_pan, 'u'))
+        self.assertTrue(socles['prix_connu'])
+        self.assertIsNone(socles['motif'])
+        self.assertFalse(socles['a_confirmer_visite'])
+        self.assertNotIn('Socles', comp['prix_a_renseigner'])
+        self.assertIn('socle_ci', ROLES_DE_TAILLE)
+        sans = {'lignes': [li for li in comp['lignes'] if li['role'] != 'socle_ci']}
+        ond = _onduleurs(cat, 100)
+        self.assertEqual(cout_vente_ht(comp, ond) - cout_vente_ht(sans, ond),
+                         Decimal('66.67') * 2 * nb_pan)
+        self.assertIsNone(groupe_client_du_role(''))   # comme la structure : aucun groupe
+
+    def test_pose_non_declaree_socles_a_confirmer_apres_visite(self):
+        cat = self.cat + [self._socles()]
+        comp = composer_ci(40, cat, onduleurs=_onduleurs(cat, 40),
+                           entrees=_entrees(type_pose=''), forfaits={})
+        socles = self._lignes(comp, 'socle_ci')[0]
+        self.assertEqual(socles['quantite'], 2 * math.ceil(40000 / 710))
+        self.assertTrue(socles['a_confirmer_visite'])
+        self.assertIn('type de pose non déclaré : toit_plat_leste', socles['motif'])
+        self.assertFalse(socles.get('a_chiffrer_visite'))
+
+    def test_aucun_socle_sur_les_autres_poses(self):
+        cat = self.cat + [self._socles()]
+        for pose in ('bac_acier', 'toiture_inclinee', 'sol', 'ombriere', 'toit_plat_fixe'):
+            comp = composer_ci(100, cat, onduleurs=_onduleurs(cat, 100),
+                               entrees=_entrees(type_pose=pose), forfaits={})
+            self.assertEqual(self._lignes(comp, 'socle_ci'), [], pose)
+
+    def test_socles_absents_ou_sans_prix_prix_a_renseigner_nomme(self):
+        from apps.ventes.moteur_ci.taille import _prix_manquants
+        for cat in (self.cat, self.cat + [self._socles(prix=None)]):
+            comp = composer_ci(100, cat, onduleurs=_onduleurs(cat, 100),
+                               entrees=_entrees(type_pose='toit_plat_leste'), forfaits={})
+            socles = self._lignes(comp, 'socle_ci')[0]
+            self.assertFalse(socles['prix_connu'])
+            self.assertEqual(socles['designation'], 'Socles')
+            self.assertNotIn('prix_unitaire_ht', socles)
+            self.assertIn('Socles', comp['prix_a_renseigner'])
+            self.assertIn('Socles', _prix_manquants(comp, _onduleurs(cat, 100))[0])
+
     def test_aucune_cle_prix_achat(self):
         comp = composer_ci(100, self.cat, onduleurs=_onduleurs(self.cat, 100),
                            entrees=_entrees(), forfaits={})
