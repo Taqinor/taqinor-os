@@ -120,7 +120,13 @@ presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous 
   l'étape 2) et TCH110 (script Scriptable de la grande tuile) pliées et cochées. Reste de TCH109 : brancher la
   révélation `mon_iphone` (J+3) dans `services/revelations.py` (serveur). Le script suit le contrat `tuile.json`
   (`faites`, `essentiel.prevues`), pas l'annexe A de la spec ; vrai Scriptable jamais essayé.
-- **TCH95, version la plus avancée : `docs/taches/travail/tch95-wip/tch95-v2-complet.diff`** (1 173 lignes, contient
+- **MISE À JOUR (dernière action de la session) : TCH95 est FINIE, pliée et cochée sur `dev-taches-f3`** (11 tâches F3,
+  126 cochées sur 174). Cause des 7 échecs : un seul nom de schéma de sécurité OpenAPI pour trois classes de jeton
+  (corrigé : `jetonCapture`, `jetonTuile`, `jetonFlux`). À faire à la reprise sur `dev-taches-f3` : régénérer
+  `docs/openapi-schema.yml` (`check_openapi_schema.py --write`, non fait), puis continuer la lane présence à TCH96
+  (capture Siri), TCH97 (flux et tuile), TCH155, TCH98, TCH174. `tests/test_jetons.py` (à base) n'a jamais tourné.
+  Les deux points de sécurité ci-dessous restent ouverts. Le paragraphe suivant est l'historique.
+- **(historique) TCH95, version la plus avancée : `docs/taches/travail/tch95-wip/tch95-v2-complet.diff`** (1 173 lignes, contient
   aussi les 4 fichiers neufs dont `tests/test_jetons.py`) : `git apply` sur `dev-taches-f3`. NON committée parce que
   7 tests sans base échouent encore (`test_routes` RoutesSansBaseTests / AssistantEtBouchonTests / SchemaTests et
   `test_meme_proprietaire.ListeFermeeTests`, dont « True is not false ») : cause non lue. Deux points de sécurité
