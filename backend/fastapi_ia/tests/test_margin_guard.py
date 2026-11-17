@@ -192,11 +192,8 @@ class MarginGuardTests(unittest.TestCase):
         module), sans execution ; ecriture / SQL illisible : refus generique
         inchange ; Directeur : execution, filtree par societe."""
         import importlib.util
-        try:
-            from langchain_community.utilities import SQLDatabase
-            from sqlalchemy import create_engine, text
-        except Exception as exc:  # pragma: no cover - deps IA absentes
-            self.skipTest(f"langchain indisponible : {exc}")
+        from langchain_community.utilities import SQLDatabase
+        from sqlalchemy import create_engine, text
         chemin = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__)))),
