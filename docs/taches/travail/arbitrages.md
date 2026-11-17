@@ -71,3 +71,23 @@ franchement au fondateur » de `verif-securite-specs.md` : court, sans jargon, s
 ## A10 — Raccourcis clavier
 `g t` est pris par le SAV : l'écran du jour utilise la lettre déclarée dans `module.config` (proposition `g j`),
 et `c t` ouvre la saisie par l'événement unique `taqinor:taches:saisir`.
+
+## A11 — « Toutes les tâches de mes projets apparaissent dans mon to-do quotidien » (demande mot pour mot)
+L'écran Aujourd'hui n'est JAMAIS vide tant qu'un projet actif a une tâche ouverte. Sous les tâches choisies pour le
+jour, une section **« Proposé pour aujourd'hui »** montre, classées par le moteur (priorité du projet, priorité de
+la tâche, échéance), les prochaines tâches de TOUS ses projets : d'abord ce qu'il faut pour atteindre l'objectif du
+jour, puis « Voir toutes les tâches de mes projets » qui déplie la suite, groupée par projet. Un geste sur une ligne
+proposée la met à aujourd'hui ; cocher directement une ligne proposée la compte comme faite aujourd'hui. « Faire le
+plan » n'est que cette même proposition, validée en lot avec le choix de l'essentiel : le rituel reste facultatif,
+la liste du jour marche sans lui. Les tâches « Un jour », « En attente de… », « Après… » non débloquées et celles
+des projets en pause n'y figurent pas.
+
+## A12 — Le Copilote est visible, pas replié
+Le fondateur veut « the AI agent in there ». Depuis Aujourd'hui, le Copilote s'ouvre en UN geste (le bouton global
+du panneau existant), et, ouvert depuis un écran Tâches, il montre d'emblée quatre demandes prêtes à toucher :
+« Planifie ma journée », « Aide-moi à prioriser », « Range ma liste », « Où j'en suis ? ». Les boutons
+« … avec le Copilote » des écrans (plan, À trier, fiche, Mon rythme) restent là où `spec-7-ecrans.md` les place.
+Sans clé d'IA, le bouton explique en une phrase pourquoi il est indisponible ; tout le reste marche.
+
+## A13 — Le nom de l'écran du jour
+« Aujourd'hui » (et non « Ma journée », déjà pris deux fois dans l'ERP). Les routes d'API ne changent pas.
