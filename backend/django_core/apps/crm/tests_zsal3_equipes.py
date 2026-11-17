@@ -192,6 +192,55 @@ class TestStatsEquipe(AssertQueryBudgetMixin, TestCase):
         peupler(10)
         self.assertEqual(self._mesure_acvi95(api, url), n)
 
+    def test_commercial_ne_lit_pas_les_montants_des_autres_equipes(self):
+        """ALEC56 (D-ALEC-2 = portee_du_role) — un Commercial du registre lit
+        son équipe complète ; une équipe dont un membre est hors de sa portée
+        garde ``nom``/``nb_membres`` mais ses cinq montants à null ; le
+        Directeur lit tout."""
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import (
+            COMMERCIAL_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+
+        def compte(nom, role_nom, perms):
+            role, _ = Role.objects.get_or_create(
+                company=self.company, nom=role_nom,
+                defaults={'permissions': list(perms)})
+            return User.objects.create_user(
+                username=nom, password='x', company=self.company, role=role)
+        a = compte('alec56_a', 'Commercial', COMMERCIAL_PERMISSIONS)
+        b = compte('alec56_b', 'Commercial', COMMERCIAL_PERMISSIONS)
+        directeur = compte('alec56_dir', 'Directeur', DIRECTEUR_PERMISSIONS)
+        e1 = EquipeCommerciale.objects.create(company=self.company, nom='E1')
+        e1.membres.set([a])
+        e2 = EquipeCommerciale.objects.create(company=self.company, nom='E2')
+        e2.membres.set([b])
+        lead_b = Lead.objects.create(company=self.company, nom='LB', owner=b,
+                                     stage=stage_mod.SIGNED)
+        make_devis(self.company, self.client_obj, lead_b,
+                   Devis.Statut.ACCEPTE, 4800, date_acceptation=self.today)
+        montants = ('ca_signe_mois', 'cible_ca_signe_mois',
+                    'pipeline_ouvert_valeur', 'pipeline_pondere',
+                    'avancement_pct')
+        url = '/api/django/crm/equipes/statistiques/'
+
+        def lire(user):
+            api = APIClient()
+            api.force_authenticate(user)
+            resp = api.get(url)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            return {e['id']: e for e in resp.json()['equipes']}
+
+        vue_a = lire(a)
+        self.assertEqual(Decimal(vue_a[e1.pk]['ca_signe_mois']), Decimal('0'))
+        self.assertIsNotNone(vue_a[e1.pk]['pipeline_ouvert_valeur'])
+        self.assertEqual(vue_a[e2.pk]['nom'], 'E2')
+        self.assertEqual(vue_a[e2.pk]['nb_membres'], 1)
+        self.assertEqual([vue_a[e2.pk][c] for c in montants], [None] * 5)
+        vue_dir = lire(directeur)
+        self.assertEqual(Decimal(vue_dir[e2.pk]['ca_signe_mois']),
+                         Decimal('4800'))
+        self.assertIsNotNone(vue_dir[e2.pk]['cible_ca_signe_mois'])
+
 
 class TestStatsEquipeMultiTenant(TestCase):
     def test_cross_company_isolation(self):

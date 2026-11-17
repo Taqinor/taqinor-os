@@ -1268,11 +1268,11 @@ class LeadClientsActionsMixin:
         'responsable': serializers.CharField(allow_null=True),
         'nb_membres': serializers.IntegerField(),
         'pipeline_ouvert_count': serializers.IntegerField(),
-        'pipeline_ouvert_valeur': serializers.CharField(),
-        'pipeline_pondere': serializers.CharField(),
+        'pipeline_ouvert_valeur': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
+        'pipeline_pondere': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
         'activites_en_retard': serializers.IntegerField(),
-        'ca_signe_mois': serializers.CharField(),
-        'cible_ca_signe_mois': serializers.CharField(),
+        'ca_signe_mois': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
+        'cible_ca_signe_mois': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
         'avancement_pct': serializers.FloatField(allow_null=True),
     })),
 }))
@@ -1288,7 +1288,7 @@ def equipes_statistiques(request):
             return Response({'equipes': []})
         return Response({'equipes': []})
     from .selectors import stats_equipe
-    return Response({'equipes': stats_equipe(user.company)})
+    return Response({'equipes': stats_equipe(user.company, user)})
 
 
 class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
