@@ -167,8 +167,7 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "question.",
     'j4_preuve':
         "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. "
-        "Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous "
-        "montrer. Petite vidéo du chantier : {lien_video_preuve}.",
+        "Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
     # 17/11/2026 (fondateur) — salutation standard + phrase d'ouverture déjà
     # validée dans sa forme e-mail (`MESSAGE_TEMPLATE_FORMES_EMAIL`).
     'j6_garanties':
@@ -443,7 +442,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.",
     'j4_preuve':
         "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: "
-        "{puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
+        "{puissance_preuve} kWc.",
     'j6_garanties':
         "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو "
         "صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.",

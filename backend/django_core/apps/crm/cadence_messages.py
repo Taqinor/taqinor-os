@@ -854,8 +854,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # placeholders manquants) — sans catalogue, la phrase est OMISE.
     # CAD70 — sans AUCUNE réalisation utilisable (le cas PAR DÉFAUT d'une
     # société qui n'a rien publié), les phrases de preuve sautent toutes et il
-    # ne reste qu'une phrase orpheline (« Le suivi de production est en temps
-    # réel… ») : la touche ne doit alors PAS proposer ce message. Le drapeau
+    # ne reste qu'une phrase orpheline (avant le 17/11/2026 « Le suivi de
+    # production est en temps réel… », aujourd'hui la seule ligne STOP) : la
+    # touche ne doit alors PAS proposer ce message. Le drapeau
     # `preuve_manquante` le dit à l'aperçu (et le POST `whatsapp/` le refuse).
     preuve_manquante = False
     if any(t in (corps or '') for t in _PLACEHOLDERS_PREUVE):

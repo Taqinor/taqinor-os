@@ -200,8 +200,8 @@ FR : Bonjour {civilite} [Prénom], [Conseiller] de [Marque]. Je vous appelle au 
 DARIJA : السلام عليكم {civilite} [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
-FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
-DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم. جاوبو STOP وما نلحوش عليكم.
+FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
+DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. جاوبو STOP وما نلحوش عليكم.
 POMPAGE : Voici une station de pompage solaire que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
 POMPAGE DARIJA : هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. فيديو صغير ديال الشانطي: [lien vidéo]. جاوبو STOP وما نلحوش عليكم.
 B2B : Voici une installation professionnelle que nous avons posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Petite vidéo du chantier : [lien vidéo]. Répondez STOP et je n'insiste plus.
