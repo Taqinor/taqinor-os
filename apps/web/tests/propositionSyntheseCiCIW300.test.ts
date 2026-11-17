@@ -571,7 +571,7 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     expect(plein.colonnes[1]!.lignes.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'retour']);
   });
   it('D-ONDULEUR-EXTENSION : phrase servie affichée telle quelle (fr, langue propre, repli fr) ; absente/nulle/malformée = rien', () => {
-    const EXT = { textes: { fr: 'Onduleur hybride 20 kW retenu pour l'extension.', en: 'Hybrid inverter kept for the extension.', ar: 'AR-EXT' }, retenu_kw: 20, suffisant_kw: 15 };
+    const EXT = { textes: { fr: "Onduleur hybride 20 kW retenu pour l'extension.", en: 'Hybrid inverter kept for the extension.', ar: 'AR-EXT' }, retenu_kw: 20, suffisant_kw: 15 };
     const ext = (extension: unknown) => ob({ ...PLEIN, extension });
     const ligne = (c: ReturnType<typeof comparaisonBatterieCi>) => c!.colonnes[1]!.lignes.find((l) => l.cle === 'extension_onduleur');
     const l = ligne(comparaisonBatterieCi(ext(EXT), 78000, 114000))!;
