@@ -52,7 +52,8 @@
       "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
       "cle": "devis"
     },
-    "lead_segment": ""
+    "lead_segment": "",
+    "lead_devis_envoye": false
   },
   "notes": {
     "corps": "multipart (avec fichier) ou JSON : `type_piece` (`facture` | `adresse` | `localisation`, OBLIGATOIRE), `fichier` (facultatif), `note` (facultative).",
@@ -60,6 +61,7 @@
     "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT).",
     "param_cadence": "PARAM-CADENCE (25/09/2026) — les quatre champs ADDITIFS de `relance_etape_v2` (`cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible`) sont servis ici aussi : la réponse EST la touche (forme `relance_etape_v2`) plus `prochaine_touche`.",
     "prochaine_touche": "SUIVI E9 (30/09/2026) — `prochaine_touche` NOMME l'étape annoncée (ADDITIF) : `libelle` (celui de l'étape, tel que la société l'a réglé dans Paramètres) et `cle` (clé moteur de l'étape — `devis`, `appel_apres_reponse`, `planifier`… —, retrouvée aussi pour une étape posée avant la clé ; '' pour un barreau du protocole). Même forme dans les réponses de `fait` / `sauter` (contrat `relance_etape_v2` + `prochaine_touche`) : l'écran n'annonce plus « prochain appel » pour une étape de préparation du devis. `null` quand plus rien n'est ouvert.",
-    "lead_segment": "AGR531 — Valeur = `crm.Lead.type_installation` du lead de la touche ; chaîne vide si non renseigné. Lecture seule, additive."
+    "lead_segment": "AGR531 — Valeur = `crm.Lead.type_installation` du lead de la touche ; chaîne vide si non renseigné. Lecture seule, additive.",
+    "lead_devis_envoye": "17/11/2026 — `true` si le lead a déjà reçu un devis (stade « Devis envoyé » ou au-delà, sinon un devis sorti du brouillon) ; lecture seule, additive (même champ que `relance_etape_v2`)."
   }
 }
