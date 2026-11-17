@@ -23,20 +23,20 @@ from apps.taches.services import erp, journee, purge, rythme
 
 logger = logging.getLogger(__name__)
 
-#: (module, fonction) dans l'ordre de la nuit ; résolus à l'appel (une étape remplie plus tard par
-#: sa tâche garde sa place sans toucher ce fichier).
+#: (nom, étape) dans l'ordre de la nuit. Chaque étape lit sa fonction AU MOMENT de l'appel : une étape
+#: remplie plus tard par sa tâche garde sa place sans toucher ce fichier.
 ETAPES = (
-    (journee, 'clore_jour_precedent'),
-    (rythme, 'etapes_nocturnes'),
-    (erp, 'reverifier_liens'),
-    (purge, 'purger'),
+    ('clore_jour_precedent', lambda company_id, jour: journee.clore_jour_precedent(company_id, jour)),
+    ('etapes_nocturnes', lambda company_id, jour: rythme.etapes_nocturnes(company_id, jour)),
+    ('reverifier_liens', lambda company_id, jour: erp.reverifier_liens(company_id, jour)),
+    ('purger', lambda company_id, jour: purge.purger(company_id, jour)),
 )
 
 
-def _executer_etape(module, nom, company_id, jour):
+def _executer_etape(nom, etape, company_id, jour):
     try:
         with transaction.atomic():
-            getattr(module, nom)(company_id, jour)
+            etape(company_id, jour)
     except Exception:  # noqa: BLE001 — une étape en échec n'arrête pas la nuit (journalisée)
         logger.exception('taches.nocturne : étape %s en échec pour la société %s (%s)', nom, company_id, jour)
         return False
@@ -45,4 +45,4 @@ def _executer_etape(module, nom, company_id, jour):
 
 def executer(company_id, jour):
     """Les étapes de la nuit pour la société `company_id` → `{nom de l'étape: réussie}`, dans l'ordre."""
-    return {nom: _executer_etape(module, nom, company_id, jour) for module, nom in ETAPES}
+    return {nom: _executer_etape(nom, etape, company_id, jour) for nom, etape in ETAPES}
