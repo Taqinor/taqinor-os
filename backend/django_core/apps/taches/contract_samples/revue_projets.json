@@ -1,0 +1,129 @@
+{
+  "endpoint": "GET /api/django/taches/revue/projets/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET revue/projets/ · consommateurs : Revue, carte `revue_semaine` ». Source : docs/taches/reference/api.md annexe A (`revue_projets.json`), recopié mot pour mot.",
+  "exemple": {
+    "semaine": "2026-11-16",
+    "semaine_courte": false,
+    "bilan_semaine": {
+      "texte": "Du 16 au 20/11 : 26 tâches en 5 jours (précédente : 23).",
+      "donnees": {
+        "faites": 26,
+        "jours": 5,
+        "prec": 23
+      }
+    },
+    "focus_projet_id": 3,
+    "cartes": [
+      {
+        "projet": {
+          "id": 3,
+          "nom": "Ventes",
+          "objectif": "Fini quand les 4 devis sont signés",
+          "icone": "",
+          "couleur": "vert",
+          "priorite": 3,
+          "statut": "actif",
+          "statut_depuis": "2026-10-01T09:00:00+01:00",
+          "domaine": "",
+          "date_debut": null,
+          "echeance": "2026-12-15",
+          "termine_le": null,
+          "issue": "",
+          "bilan": "",
+          "planification_le": "2026-10-01T09:05:00+01:00",
+          "rang": 2048,
+          "confidentiel": false,
+          "affichage": {
+            "vue": "liste",
+            "tri": "manuel",
+            "groupe": "section",
+            "montrer_faites": false
+          },
+          "a_planifier": false,
+          "compteurs": {
+            "ouvertes": 8,
+            "faites": 12
+          },
+          "sante": [
+            {
+              "code": "a_l_arret",
+              "phrase": "Rien de fait depuis 10 jours travaillés.",
+              "donnees": {
+                "jours": 10,
+                "depuis": "2026-11-03"
+              }
+            }
+          ],
+          "focus_semaine": false,
+          "updated_at": "2026-11-16T18:00:00+01:00",
+          "lock_version": 4
+        },
+        "faites_semaine": [
+          {
+            "id": 12,
+            "titre": "Dossier subvention"
+          }
+        ],
+        "faites_nb": 4,
+        "bloquees": [
+          {
+            "id": 44,
+            "titre": "Pose",
+            "attend": {
+              "id": 43,
+              "titre": "Livraison"
+            }
+          }
+        ],
+        "prochaine_action": {
+          "type": "tache",
+          "id": 20,
+          "titre": "Devis Settat",
+          "statut": "a_faire",
+          "projet": {
+            "id": 3,
+            "nom": "Ventes",
+            "couleur": "vert",
+            "priorite": 3
+          },
+          "section": null,
+          "parent_id": null,
+          "priorite": 2,
+          "jour_prevu": "2026-11-17",
+          "moment": "matin",
+          "heure_debut": "10:00",
+          "echeance": "2026-11-19",
+          "echeance_heure": null,
+          "quelque_jour": false,
+          "estimation_minutes": 60,
+          "reports": 0,
+          "rang": 1024,
+          "motif": null,
+          "raison": null,
+          "explication": "échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes",
+          "rappel": null,
+          "lien": null,
+          "checklist": null,
+          "sous_taches": null,
+          "recurrente": false,
+          "routine": false,
+          "jalon": false,
+          "bloquee_par": null,
+          "en_attente_de": "",
+          "essentielle": true,
+          "prevue_au_plan": true,
+          "confidentiel": false,
+          "confidentielle": false,
+          "source": "rapide",
+          "peut_cloturer": true,
+          "lock_version": 4
+        },
+        "revue": {
+          "intention": "",
+          "decision": "",
+          "focus": false
+        }
+      }
+    ]
+  }
+}

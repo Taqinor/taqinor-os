@@ -1,0 +1,65 @@
+{
+  "endpoint": "POST /api/django/taches/saisie-rapide/",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST saisie-rapide/ apercu:true · consommateurs : Saisie, collage, carte `capture_apercu`, « Range ma liste » ». Source : docs/taches/reference/api.md annexe A (`saisie_apercu.json`), recopié mot pour mot.",
+  "exemple": {
+    "projets_communs": [
+      {
+        "collage": 0,
+        "id": null,
+        "nom": "Courses",
+        "nouveau": true,
+        "priorite": 2,
+        "source": "premiere_ligne"
+      }
+    ],
+    "lignes": [
+      {
+        "index": 0,
+        "collage": 0,
+        "tache_id": null,
+        "titre": "Appeler Karim",
+        "cochee": true,
+        "doublon_de": null,
+        "etape_de": null,
+        "alertes": [],
+        "jetons": [
+          {
+            "type": "jour",
+            "source": "demain",
+            "debut": 14,
+            "fin": 20,
+            "valeur": "2026-11-18",
+            "libelle": "mer. 18 nov."
+          },
+          {
+            "type": "projet",
+            "source": "#SiteWeb",
+            "debut": 21,
+            "fin": 29,
+            "valeur": {
+              "id": null,
+              "nom": "SiteWeb",
+              "nouveau": true,
+              "priorite": 2
+            },
+            "libelle": "Nouveau projet : SiteWeb"
+          }
+        ],
+        "champs": {
+          "jour_prevu": "2026-11-18",
+          "nouveau_projet": {
+            "nom": "SiteWeb",
+            "priorite": 2
+          },
+          "priorite": 0
+        }
+      }
+    ],
+    "projets_nouveaux": [
+      {
+        "nom": "SiteWeb",
+        "priorite": 2
+      }
+    ]
+  }
+}

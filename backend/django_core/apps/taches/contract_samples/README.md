@@ -7,3 +7,7 @@ Pour les formes qui ne sont pas une route (`carte_du_moment`, `item`, `propositi
 ## 1/2 — agenda → planification (TCH2)
 
 `agenda`, `agenda_externe`, `agendas_externes`, `ailleurs`, `aujourdhui`, `badge`, `capture`, `carte_du_moment`, `coach_entete`, `convertir_activite`, `decalage`, `erreurs`, `etiquettes`, `geste_annuler`, `gestes`, `item`, `jeton`, `jetons_liste`, `journee_cloture`, `journee_cloturee`, `journee_ecrite`, `journee_proposition`, `liens_cibles`, `lier_activite`, `lot`, `mes_donnees`, `modele`, `modele_instancier`, `modeles_liste`, `planification`.
+
+## 2/2 — planification_apercu → vues (TCH3)
+
+`planification_apercu`, `point`, `priorites`, `projet`, `projet_ecrit`, `projet_vue`, `projets_liste`, `proposition`, `proposition_repondue`, `rappel_repeter`, `recherche`, `reglages`, `reglages_societe`, `rendez_vous`, `revue_decision`, `revue_projets`, `rythme`, `saisie_apercu`, `saisie_rapide`, `suggestion_refusee`, `suggestions`, `supprimees`, `tache`, `tache_changement`, `tache_ecrite`, `tache_recurrente_ecrite`, `tout_effacer`, `tuile`, `vu`, `vues`.
