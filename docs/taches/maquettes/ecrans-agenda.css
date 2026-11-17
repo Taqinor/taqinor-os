@@ -430,3 +430,74 @@
 .ag-pj-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .ag-pj-duo .ag-pj { grid-template-columns: auto 1fr; padding-right: 12px; }
 .ag-jours.cibles .ag-pj-duo .ag-pj { background: var(--ag-cible); }
+
+/* ══ Tour 3 (critique tour 2) ════════════════════════════════════════════ */
+/* N1 : le trait « maintenant » passe SOUS les blocs ; le point et l'heure restent dans la gouttière */
+.ag .maintenant { z-index: 0; }
+.ag .bloc { z-index: 1; }
+.ag .bloc.choisi, .ag .bloc.souleve { z-index: 3; }
+.ag .bloc.fait-bloc { background: var(--tch-surface); }   /* sans teinte, mais opaque : le trait ne le barre pas */
+
+/* N3 : en sombre, le fond neutre de terre/ambre/olive se mélange en sRGB (en OKLCH il vire au mauve) */
+.dark .ag [data-p="terre"], .dark .ag [data-p="ambre"], .dark .ag [data-p="olive"] {
+  --tch-bloc-fond: color-mix(in srgb, var(--muted) 88%, var(--tch-point)); }
+
+/* m5 : la surcharge se dit aussi en mots */
+.ag .sur { color: var(--tch-surveiller); font-weight: 650; }
+.ag-charge i.g { background: var(--tch-accent); }
+.ag-charge i.gp { background: var(--tch-surveiller); }
+
+/* N2 : Planifier — chiffres actuels sur la 2ᵉ ligne, « + 2 h » en tête de ligne (azur ; ambre au-delà de 4 h) */
+.ag-pj { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; row-gap: 3px; min-height: 56px; padding: 7px 12px 7px 14px; }
+.ag-pj .n { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.ag-pj .n > span:not(.sur) { color: var(--tch-texte-doux); }
+.ag-pj .ag-charge { align-self: center; }
+.ag-pj .ajout-h { justify-self: end; font-size: 0.9375rem; font-weight: 700; color: var(--tch-accent); }
+.ag-pj .ajout-h.plus { color: var(--tch-surveiller); }
+.ag-pj-ajout { grid-column: 1 / -1; padding: 2px 0 0; }
+.ag-jours { gap: 4px; }
+/* P6 : le week-end garde le fond du non travaillé, même quand une tâche est choisie (dépôt permis, sans appel) */
+.ag-jours.cibles .ag-pj.repos, .ag-jours.cibles .ag-pj-duo .ag-pj { background: var(--ag-repos); }
+.ag-pj-duo .ag-pj { grid-template-rows: auto; grid-template-columns: auto 1fr; min-height: 48px; }
+.ag-pj-duo .ag-pj .n { text-align: right; }
+/* Volet ancré sous les jours, marge basse pour l'indicateur d'accueil */
+.ag-volet { position: relative; flex: 1 1 auto; height: auto; min-height: 0; margin-top: 12px; padding-bottom: 34px; }
+
+/* m1 : créneaux = même forme que les cibles de Planifier (fond de sélection, sans +) */
+.ag-creneau { background: var(--ag-cible); color: var(--tch-texte); padding: 0 14px; font-weight: 600; }
+
+/* J3 : « Toute la journée » aligné sur la colonne des heures (même bord gauche) */
+.ag-tj { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 5px 0 6px 12px; }
+.ag-tj-label { flex: none; padding: 0; text-align: left; }
+.ag-tj-item { height: 34px; }
+.ag-tj-items { flex: 1; }
+/* J1 : ruban un peu plus bas → une heure de grille de plus à l'écran */
+.ag .bande-jours button { height: 50px; }
+.ag .ag-fleche { height: 50px; }
+
+@media (min-width: 768px) {
+  .ag-bmain .ag-tj { padding-left: 21px; }
+  /* Semaine bureau : puces de la journée sur 2 lignes, blocs qui se chevauchent presque pleine largeur, sans icône */
+  .ag-semtj .ag-tj-item { height: auto; min-height: 26px; padding-block: 3px; white-space: normal; line-height: 1rem; }
+  .ag-semtj .ag-tj-item span { -webkit-line-clamp: 2; display: -webkit-box; -webkit-box-orient: vertical; white-space: normal; }
+  .ag-semcol .bloc.g2 { left: 10%; }
+  .ag-semcol .bloc.etroit .ag-bi { display: none; }
+  .ag-semcol .bloc.etroit { padding-left: 8px; }
+  /* m4 + S2 : barre latérale sur les jetons d'Aujourd'hui ; rail d'icônes de 64 px en Semaine et Mois */
+  .ag-bureau > .barre-laterale { background: var(--background); }
+  .ag-aside { background: var(--background); }
+  .ag-bureau.ag-rail { grid-template-columns: 64px minmax(0, 1fr); }
+  .ag-rail > .barre-laterale { padding: 18px 10px; }
+  .ag-rail > .barre-laterale .nom-app, .ag-rail > .barre-laterale .nav-titre, .ag-rail > .barre-laterale .compte,
+  .ag-rail > .barre-laterale .nouveau, .ag-rail > .barre-laterale .nav-item > span { display: none; }
+  .ag-rail > .barre-laterale .nav-item { font-size: 0; width: 44px; padding: 0; justify-content: center; }
+  .ag-rail > .barre-laterale .nav-item .point { margin: 0; width: 10px; height: 10px; }
+  .ag-rail > .barre-laterale .nav-item[data-p]:first-of-type { margin-top: 18px; }
+  /* P5 : le nom du projet entier sur les cartes */
+  .ag-carte .m { white-space: normal; align-items: flex-start; }
+  .ag-carte .m .point { margin-top: 5px; }
+  .ag-carte .m svg { margin-top: 2px; }
+  .ag-pcol-tete .ajout-h { color: var(--tch-accent); font-weight: 700; }
+}
+.ag-volet::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: var(--tch-surface-haute); }
+@media (max-width: 767px) { .ag-tj-item::after { top: -5px; bottom: -5px; } }

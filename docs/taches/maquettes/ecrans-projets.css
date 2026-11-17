@@ -539,3 +539,12 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
 .ep-tuile.grande .ep-t-haut > div:first-child { flex: 1; }
 .ep-t-jour-maj { display: flex; justify-content: space-between; align-items: baseline; }
 .ep-t-jour-maj .ep-t-maj { font-weight: 400; }
+.ep-tuile.grande { position: relative; }
+.ep-t-jour-maj .ep-t-maj { position: absolute; top: 18px; right: 16px; }
+.ep-t-ech .t + .chiffres { margin-left: -2px; }
+@media (min-width: 768px) { .ep-col .ligne { grid-template-columns: 40px 1fr auto; column-gap: 4px; } }
+@media (max-width: 767px) { .ep-faits { grid-template-columns: 1fr 1fr; } .ep-faits .ep-fait:first-child { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; } .ep-faits .ep-fait:first-child span { margin: 0; } }
+/* Séparateurs : l’écart de flex porte l’espace, le point est en tête du fait suivant ; rien devant un signal */
+.ep-projets .meta, .ep-cp-ligne { column-gap: 8px; }
+.ep-projets .meta > span + span::before, .ep-cp-ligne > span + span::before { margin: 0 8px 0 0; }
+.ep-projets .meta > .ep-sante::before, .ep-projets .meta > .ep-aplanifier::before, .ep-cp-ligne > .ep-sante::before, .ep-cp-ligne > .ep-aplanifier::before { content: none; }

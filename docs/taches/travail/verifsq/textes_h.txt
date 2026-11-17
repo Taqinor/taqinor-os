@@ -1,0 +1,43 @@
+8:## 0. Conventions d'écriture
+28:## 1. Lexique final
+77:## 2. Libellés des écrans
+79:### 2.1 Coquille, navigation, palette
+96:### 2.2 Aujourd'hui
+141:### 2.3 Saisie et aperçu d'une liste
+159:### 2.4 Fiche d'une tâche, Quand, Rappel
+181:### 2.5 À trier
+195:### 2.6 Projets, Un projet, Planifier le projet
+238:### 2.7 Revue de la semaine
+249:### 2.8 Agenda et Planifier ma semaine
+259:### 2.9 Bilan du soir (et d'hier jusqu'à midi)
+276:### 2.10 Alléger ma journée
+282:### 2.11 Mon rythme
+298:### 2.12 Recherche
+304:### 2.13 Supprimées récemment et derniers gestes
+311:### 2.14 Réglages
+323:### 2.15 Toasts (un seul à la fois, 8 s, en pause au survol ou au focus ; « Messages sans délai » : jusqu'à fermeture)
+348:### 2.16 Messages d'erreur (sous le champ nommé ; un bandeau le nomme)
+377:### 2.17 La carte du moment (une à la fois, en haut d'Aujourd'hui, ordre `regles.md` §4.10)
+391:### 2.18 Révélations (une par jour au plus, une seule fois chacune)
+403:### 2.19 Accessibilité : annonces lues (`role=status`) et noms accessibles (A16-N10)
+423:## 3. Notifications
+452:## 4. Phrases du rythme et des constats
+456:### 4.1 Confirmations de geste (Mon rythme, Copilote)
+467:### 4.2 Cartes à réponse (`PROPOSITION.texte` et boutons)
+486:### 4.3 Bilan (`bilan.texte`) — deux lignes, parties sans objet omises
+498:### 4.4 Constats (Mon rythme ; un seul au bilan)
+511:### 4.5 Retour d'absence
+516:### 4.6 Revue de la semaine (en tête)
+523:## 5. Le Copilote
+525:### 5.1 Consignes (texte exact — 278 mots, 0 chiffre, 10 clés `taches.*`, mesuré en révision 1, inchangé)
+559:### 5.2 Les quatre demandes prêtes (A12), montrées d'emblée depuis un écran Tâches et dans la palette
+570:### 5.3 Boutons « … avec le Copilote » (AVANCÉ, `envoyer: true`)
+581:### 5.4 Boutons des cartes
+591:## 6. Réglages → Vie privée (texte exact, A9 ; écrit à partir de `verif-securite-specs.md` §6)
+626:## 7. L'écran « Mon iPhone » (`/taches/reglages/iphone`)
+699:## 8. La tuile et le flux de calendrier
+717:## 9. Clés de traduction (`frontend/src/i18n/catalogs/{fr,en,ar}.json`)
+732:## Décisions de l'intégrateur
+757:## Manques de la référence données/API
+768:## Ce que je n'ai pas repris, et pourquoi
+781:## Révision 2 : ce qui a changé

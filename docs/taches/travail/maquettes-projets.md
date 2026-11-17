@@ -32,6 +32,20 @@ Tours de ce passage : 3 rendus regardés (tour 4, 4b, 4c), puis un rendu final a
 Cassé par lui puis corrigé : double décalage de la barre d'état (déjà posé par `.barre-statut ~ .page`), classe
 `.tuile` du sélecteur Quand qui écrasait mes segments de tuile.
 
+## Tour 5 (second critique : 8 écrans prêts, 4 repris)
+- **projets-liste** (M1) : « Nouveau projet » azur + dossier-plus dans la barre latérale, et la rangée de l'iPhone en
+  fin de liste dans la colonne du milieu ; séparateur « · » dans la méta ; « Basse » au même fond.
+- **tuile** (M2) : moyenne = une rangée d'en-tête (« Aujourd'hui » · « 1 sur 5 » · segments), 16 pt partout, pied
+  « + 3 autres · maj 09:41 » décollé ; une icône (repère, téléphone) pour les lignes de l'ERP, plus d'anneau ; grande :
+  « maj » en haut à droite, « Valider le plan de calepinage · échéance jeu. 26 » au pied, remplissage retiré.
+- **revue-semaine** (M3) : état du ven. 20 au soir (Benali 10 sur 18, Salon 2 sur 11) ; Recrutement : faites « Définir
+  le profil recherché » et « Publier l'annonce », en attente « Planifier les entretiens · attend : Trier les CV reçus »,
+  prochaine « Trier les CV reçus » ; trois chiffres, le férié en note ; cartes non étirées au bureau.
+- **projet-tableau** : colonnes en 1fr (Études 180 px), retrait du titre réduit : titres sur une ligne au bureau.
+- Mineurs : méta du cockpit sur une ligne ; « 6 jours sur 10 » dit une seule fois (carte du rythme).
+- « attend : … » rétabli partout (spec 7 §3, `textes.md` §1).
+Trois tours rendus et regardés ; contrôle : 0 contraste faible, 0 texte sous 12 px, 0 cible sous 44 px (48 vues).
+
 ## Retiré de `ecrans-projets.css` (devenu partagé)
 Barre d'état et indicateur maison, segments, mini-barre, point de projet, interrupteur, style de puce choisie,
 mise en page bureau à deux colonnes, anneau et camembert, toutes les surcouches des tours 1 à 3.

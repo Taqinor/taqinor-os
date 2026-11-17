@@ -1,49 +1,59 @@
-# Maquettes de l'Agenda (L3 n°8) — tour 2
+# Maquettes de l'Agenda (L3 n°8) — état après le tour 3
 
-8 fichiers `maquettes/agenda-*.html` (régénérés d'une seule source de données), `maquettes/ecrans-agenda.css` (réécrit,
-sans les rustines du tour 1), 32 captures re-rendues après la dernière version de `taches.css` (06:10). Mesure par
-script, 8 fichiers × 4 rendus : 0 texte sous 4,5:1, 0 cible sous 44 px. Aucune couleur littérale.
+8 fichiers `maquettes/agenda-*.html` (une seule source de données, alignée sur SCENARIO.md), `maquettes/ecrans-agenda.css`,
+32 captures re-rendues à 06:32, après le `taches.css` du 06:29. Mesure par script (8 fichiers × 4 rendus) : 0 texte
+visible sous 4,5:1, 0 cible sous 44 px. Seule exception : les libellés du rail du bureau, mis à 0 px exprès (ils
+restent lus par le lecteur d'écran). Aucune couleur littérale.
 
-## Scénario (SCENARIO.md)
-Mardi 24, 09:41 (heure de la tuile, « 1 sur 5 »). Toute la journée : « Visite technique à Témara » + « Confirmer la
-réservation du stand » ★. Blocs : rails 08:30 (fait), devis 09:00-11:00 ★, fournisseur 10:00, « Rappeler pour le devis »
-10:30 (ERP). Les 5 gardées pèsent 4 h 15 : durées de « Confirmer… » (30 min) et « Relire… » (45 min) = estimations posées
-par moi. À trier 5. Recrutement en vert.
+## Scénario
+Mardi 24, 09:41 (« 1 sur 5 » de la tuile). Toute la journée : « Visite technique à Témara » et « Confirmer la
+réservation du stand · 30 min ». Les 5 gardées pèsent 4 h 15, ce que dit « 4 h 15 pour 4 h », en ambre. Les durées
+sont affichées partout où elles comptent (cartes de Planifier, puces de la Semaine) : mer. 2 h 30 et ven. 2 h 30 se
+recomptent. À placer : 10 partout (2 à revoir + 8 dans les projets).
 
-## Corrections appliquées (critique tour 2)
-- **P1** charge vraie : échelle de 6 h, repère à 4 h, fantôme non plafonné, ambre au-delà ; tournure unique « X pour 4 h »
-  (Planifier, Semaine, Mois). Jeudi est le seul jour où la tâche tient (4 h pour 4 h).
-- **P2/P3** Planifier iPhone : jours à plat, cibles sur `--tch-selection`, sans « + » ; seule la tâche choisie est
-  cerclée ; week-end en une rangée de deux cibles. **P4** « Placée jeu. 26 · Annuler » dans le volet.
-- **S1** jour courant sans fond ; **S2/M2/P5** non travaillé vide à 64 px (bureau) ; non travaillé = `--muted` 50 % partout.
-- **J1** bande « Toute la journée » sur une rangée défilante, sans ligne de date. **J4/J5** blocs faits sans fond ;
-  ouverture à l'heure − 30 min, calée sur l'heure pleine (09:00).
-- **T4** le bouton Ajouter est au bout de la barre « À placer », dans les 4 vues : il ne recouvre plus rien.
-- **V1** À venir bureau : liste à gauche, « À placer » à droite. **V2-V4** segments fixes, une espace, échéances masquées.
-- **S3-S7, M1, M3, H1-H4** : « +3 » au bout de la 2ᵉ ligne, barre retirée de Semaine, pas de drapeau, Mes projets
-  replié en Jour / déplié en Semaine, « +2 » en texte, aujourd'hui choisi en Mois, « + 11:00 – 11:30 », consigne dans le
-  flux, défilement sur l'heure pleine, « Placée à 13:00 · Annuler » sur bureau.
-- **T1** en-tête loupe · Copilote · ⋯ ; barre d'état et barre latérale de 240 px reprises de `taches.css`.
-
-## Tours
-Passe A (tout régénéré), B (libellé de bande, puces de la barre, cascade, fantômes), C (barre latérale, `--tch-heure-h`
-partagé, week-end sombre, Planifier en mode sans barre latérale, week-end sur une rangée), puis re-rendu final. Clair et
-sombre, iPhone et bureau regardés à chaque passe.
+## Tour 3 : corrections (critique tour 2)
+- **N1** : le trait « maintenant » passe SOUS les blocs ; seuls le point et « 09:41 » restent dans la gouttière. Le bloc
+  fait est opaque, couleur de la surface.
+- **N2** : en Planifier, chaque jour montre ses chiffres actuels (« 2 tâches · 2 h pour 4 h »). Quand une tâche est
+  choisie, « + 2 h » s'affiche en tête de ligne : en azur s'il reste de la place, en `--tch-surveiller` au-delà de 4 h.
+  Sur bureau, la colonne survolée fait de même.
+- **N3** : en sombre, le fond de terre, ambre et olive se mélange en sRGB (gris neutre), par surcharge.
+- **J1** : ouverture à 08:30, quand un bloc commence dans la demi-heure ; ruban de 50 px ; bande de 46 px. Environ 4,8 h
+  visibles : la barre d'état partagée coûte 47 pt.
+- **J3** : « Toute la journée » a le bord gauche des heures, sur iPhone et sur bureau.
+- **S2** : rail d'icônes de 64 px en Semaine et Mois. Colonnes d'environ 165 px ; chevauchement en cascade à 10 % ; puces
+  sur 2 lignes. Plus aucun titre coupé dans les blocs.
+- **P5** : nom du projet entier sur les cartes.
+- **P6** : le week-end garde le fond du non travaillé ; il reste touchable.
+- **Volet** ancré sous les jours, avec une marge pour l'indicateur d'accueil.
+- **m1** : les créneaux ont la forme des cibles (fond de sélection, sans +).
+- **m2** : « À placer · 10 » partout ; « +4 » comme le Mois.
+- **m4** : barre latérale et panneau sur `--background`.
+- **m5** : la surcharge se dit aussi en mots ; fantôme opaque.
+- **Placer** : la pose est à 12:00, visible avec le titre du devis.
 
 ## Écarts assumés
-1. 88 px/h (désormais le jeton partagé).
+1. 88 px/h (le jeton partagé).
 2. Case dans les blocs, sauf blocs étroits et colonnes de semaine.
-3. Planifier plein écran ; sur bureau, c'est un mode : la barre latérale s'efface.
-4. Semaine bureau : les chevauchements passent en **cascade** (le second bloc part à 28 %). Côte à côte, chaque bloc
-   faisait 64 px. En Jour, ils restent côte à côte. Les deux restent visibles, aucun n'est masqué (spec 3).
-5. Mois bureau : des titres. 6. Férié en Mois seulement.
+3. Planifier est un mode : plein écran sur iPhone, sans barre latérale sur bureau.
+4. Semaine bureau en cascade ; Jour en côte à côte.
+5. Mois bureau avec titres.
+6. Férié en Mois seulement.
+7. Rail de 64 px en Semaine et Mois, barre latérale entière ailleurs.
+8. m3 non tranché : la bande garde les tâches sans heure (spec 3 §3.7). La spec 7 §3 dit « visites et poses » : à aligner
+   dans la spec.
+
+## À reporter dans taches.css
+- `taches.css:148` : `.dark [data-p="terre"|"ambre"|"olive"]` mélange `in oklch` → `in srgb` (sinon le fond vire au mauve).
+- `.maintenant` au z-index 2 passe au-dessus des blocs : le mettre sous les blocs (point et heure dans la gouttière).
+- `.bloc.fait-bloc` transparent : le trait « maintenant » le barre ; le mettre sur `--tch-surface`.
+- Rail d'icônes de la barre latérale (64 px) à verser dans `.page.trois` pour les vues larges.
 
 ## Ce qui déplaît encore
-- La barre d'état coûte 47 pt : Jour iPhone montre environ 4,5 h, pas 5,6.
-- Bureau à 3 colonnes : en Semaine, les titres sont coupés (« Appeler le f… »).
+- Jour iPhone à 4,8 h visibles, pas 5,6.
 - Les titres passés du Mois bureau se répètent (le réservoir est petit).
-- À venir iPhone : les jours repliés sont sous la ligne de flottaison.
+- Sur iPhone, les jours repliés d'À venir restent sous la ligne de flottaison.
 - Non vérifié sur un vrai iPhone.
 
-**« Toucher puis poser »** se lit sans la consigne : les jours s'éclairent, une seule tâche est cerclée, et chaque jour
-dit sa charge. La consigne reste comme filet.
+**« Toucher puis poser »** : sans la consigne, chaque jour annonce « + 2 h » et dit s'il déborde, et une seule tâche est
+cerclée. La consigne reste comme filet.

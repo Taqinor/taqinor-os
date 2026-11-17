@@ -22,9 +22,19 @@ Données : `maquettes/SCENARIO.md` (mardi 24 novembre 2026, objectif 5).
   rythme du scénario, panneau droit au bureau.
 - Script de contrôle : + intersection bouton flottant / cibles. 0 défaut sur toutes les vues rendues.
 
+## Tour 3 (critique 2 : 15 h, saisie, À trier, bilan)
+- **15 h** : « Rappeler pour le devis » faite, barrée à 10:30 dans Prévu ; comptes de Mes projets du scénario (4 · 7).
+- **Saisie** (mardi 24) : « relancer l'imprimeur jeudi #Salon Solaire Expo !!! » → jeu. 26 · Priorité haute ·
+  Salon Solaire Expo (existant) ; variante `ecran-saisie-nouveau` : « #Stand partenaire » = nouveau projet. Matin :
+  plus de 10:00 sur la proposée (« En tête : priorité haute. »), « échéance mer. 25 » sur le devis, champ d'ajout
+  sous la progression.
+- **À trier** : agenda du jour en 3e colonne au bureau ; bord droit de la liste identique partout (panneaux à 420 px) ;
+  « échéance ven. 27 » en couleur de texte ; `a-trier-bas` retiré (la liste ne défile pas).
+- **Bilan** : liste de fond = celle de 15 h + stand barré ; comptes 4 · 6 ; titre « Bilan du soir » dans la barre
+  une fois défilé ; quatre choix visibles par reste ; carte de rythme et puces lisibles en sombre.
+
 ## Ce qui déplaît encore
 - Le bouton flottant ne couvre plus de cible, mais il cache encore du texte de méta en bas de pli.
-- À trier au bureau : 300 px vides à droite de la liste.
 - La carte de retour reste haute (3 lignes de texte + 2 boutons empilés sur iPhone).
 - Clavier en bloc gris ; titre compact sur fond à 94 % : un fantôme reste perceptible.
 
