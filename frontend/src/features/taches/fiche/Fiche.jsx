@@ -9,6 +9,7 @@ import {
 import { proposerAnnuler } from '../lib/gestes'
 import { aujourdhuiIso, heure, jourCourt, jourNomme } from '../lib/textes'
 import BandeauConflit from '../ui/BandeauConflit'
+import FichePlus from './FichePlus'
 import CaseRonde from '../ui/CaseRonde'
 import Etoile from '../ui/Etoile'
 import FeuilleACrans from '../ui/FeuilleACrans'
@@ -158,6 +159,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const [ouvert, setOuvert] = useState('')
   const [projets, setProjets] = useState(null)
   const [questionTitres, setQuestionTitres] = useState(false)
+  const [plusOuvert, setPlusOuvert] = useState(false)
   const courant = useRef(id)
 
   // lecture (et relecture après un « Annuler ») : la réponse n'est gardée que pour la fiche encore ouverte
@@ -178,11 +180,12 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   }, [])
 
   /** Un enregistrement : `appel(lock_version)` ; 400 → sous le champ, 409 → bandeau, la saisie reste. */
-  const ecrire = useCallback(async (appel, champ, lock) => {
+  const ecrire = useCallback(async (appel, champ, lock, relire = false) => {
     try {
       const { data } = await appel(lock ?? tache.lock_version)
       erreur(champ, '')
       setConflit(null)
+      if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
       return { data, geste: appliquer(data) }
     } catch (err) {
       const classee = classerErreur(err)
@@ -195,7 +198,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
       }
       return null
     }
-  }, [tache, erreur, appliquer])
+  }, [tache, erreur, appliquer, charger])
 
   const annulable = (message, geste) => proposerAnnuler({
     message,
@@ -397,6 +400,22 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
               <Erreur message={erreurs.checklist} />
             </div>
 
+            <button type="button" className="fiche-ligne" aria-expanded={plusOuvert} onClick={() => setPlusOuvert((v) => !v)}>
+              <span className="fiche-etiquette">Plus</span>
+            </button>
+            {plusOuvert ? (
+              <FichePlus
+                tache={tache}
+                aujourdhui={aujourdhui}
+                ecrire={ecrire}
+                patcher={patcher}
+                erreur={erreur}
+                erreurs={erreurs}
+                annulable={annulable}
+                charger={charger}
+                onFermer={onFermer}
+              />
+            ) : null}
             <Erreur message={erreurs.general} />
           </div>
         ) : null}
