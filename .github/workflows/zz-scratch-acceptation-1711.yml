@@ -1,0 +1,464 @@
+name: zz scratch - acceptation 17/11 (preuves en direct, TEMPORAIRE)
+
+# ESSAI (17/11/2026, vague « work on all plans » de la session cloud, METHODE §C.4 point 7) : preuves en direct des
+# tâches construites sur cette branche — pages (specs adrg14, adrg15, alec11, asup9), assistant réel (alec12, secrets
+# CLAUDE_API_KEY / GROQ_API_KEY du dépôt, même montage que zz-scratch-acceptation-v9-alec52) et sondes (pile compose,
+# `scripts/sonde.py` réparé par AMET109). Chaque job COMMITE lui-même son enregistrement sur la branche (session cloud :
+# l'hôte des artefacts n'y est pas joignable) — une poussée faite avec GITHUB_TOKEN ne relance aucun workflow.
+# Jamais la production. Déclenché seulement par un push sur la branche de la vague ; supprimé au dernier commit.
+on:
+  push:
+    branches: [claude/all-plans-loop-work-5l08a9]
+
+concurrency:
+  group: zz-scratch-acceptation-1711
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente : $ref"; echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE : $ref"; echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  pages:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: Migrate + seed demo + roles du registre
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+          python manage.py init_roles
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Playwright chromium (deja dans l'image)
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build frontend (sans service worker)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Django + specs d'acceptation (adrg14, adrg15, alec11, asup9)
+        working-directory: backend/django_core
+        env:
+          E2E_ACCEPTATION: '1'
+          E2E_SONDE_LOCALE: '1'
+          ACCEPTATION_SHA: ${{ github.sha }}
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log --capture-output &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "Django pret (HTTP $code)"; break; fi
+            echo "Attente Django ($i)"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+          export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
+          cd ../../frontend
+          rc=0
+          for s in adrg14 adrg15 alec11 asup9; do
+            [ -f "e2e/acceptation/$s.spec.js" ] || { echo "spec $s absente"; rc=1; continue; }
+            npx playwright test --project=acceptation "e2e/acceptation/$s.spec.js" || rc=1
+          done
+          exit $rc
+      - name: Queue des journaux gunicorn (diagnostic)
+        if: ${{ !cancelled() }}
+        run: tail -n 120 /tmp/gunicorn-error.log || true
+      - name: Commiter les enregistrements sur la branche
+        if: ${{ !cancelled() }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash .github/zz-acceptation-commit.sh "pages (adrg14, adrg15, alec11, asup9)"
+      - name: Upload rapport Playwright
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-1711-pages-rapport
+          path: frontend/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  assistant:
+    needs: [ci-image-check, pages]
+    if: ${{ !cancelled() && needs.ci-image-check.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    permissions:
+      contents: write
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: Migrate + seed demo + roles du registre
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+          python manage.py init_roles
+      - name: Role Postgres lecture seule de l'agent (sql_agent_ro) + journal de ses requetes
+        run: |
+          set -euo pipefail
+          PSQL="/usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -v ON_ERROR_STOP=1 -q"
+          { sed -n '/^-- 4) AANA30/,$p' backend/db/rls_roles.sql; echo "ALTER ROLE sql_agent_ro PASSWORD 'ci-sql-agent-ro';"; } | $PSQL
+          $PSQL -c "ALTER ROLE sql_agent_ro SET log_statement = 'all';"
+          $PSQL -c "ALTER SYSTEM SET log_line_prefix = '%m [%p] %u ';"
+          $PSQL -c "SELECT pg_reload_conf();"
+      - name: Venv FastAPI (service IA reel)
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/venv-ia
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check --upgrade pip
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu || echo "torch CPU indisponible : wheel par defaut"
+          grep -vE '^faster-whisper' backend/fastapi_ia/requirements.txt > /tmp/req-ia.txt
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check -r /tmp/req-ia.txt
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Playwright chromium (deja dans l'image)
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build frontend (sans service worker)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Reprendre l'enregistrement ALEC du job pages (meme sha et meme jour, il le complete)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch -q origin "${GITHUB_REF_NAME}"
+          git checkout -q "origin/${GITHUB_REF_NAME}" -- docs/audits/acceptation/ALEC 2>/dev/null || true
+          git status --short | head -5
+      - name: Django + service IA reel + spec alec12 (ALEC53)
+        working-directory: backend/django_core
+        env:
+          E2E_ACCEPTATION: '1'
+          E2E_SONDE_LOCALE: '1'
+          ACCEPTATION_SHA: ${{ github.sha }}
+          E2E_IA_URL: http://127.0.0.1:8100
+          E2E_IA_PYTHON: /tmp/venv-ia/bin/python
+          E2E_PG_LOG: /tmp/pg.log
+          E2E_IA_LOG: /tmp/uvicorn.log
+          E2E_DJANGO_ACCESS_LOG: /tmp/gunicorn-access.log
+          DJANGO_INTERNAL_URL: http://127.0.0.1:8000
+          SQL_AGENT_PROVIDER: claude
+          SQL_AGENT_MODEL: claude-sonnet-5-5
+          SQL_AGENT_EFFORT: low
+          SQL_AGENT_FALLBACK_PROVIDER: groq
+          SQL_AGENT_DB_USER: sql_agent_ro
+          SQL_AGENT_DB_PASSWORD: ci-sql-agent-ro
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -n "$CLAUDE_API_KEY" ]; then echo "Cle Claude : presente"; else echo "Cle Claude : ABSENTE"; fi
+          if [ -n "$GROQ_API_KEY" ]; then echo "Cle Groq : presente"; else echo "Cle Groq : ABSENTE"; fi
+          unset POSTGRES_RLS_ENABLED
+          gunicorn erp_agentique.wsgi:application --bind 127.0.0.1:8000 --workers 4 --timeout 300 --worker-class sync \
+            --access-logfile /tmp/gunicorn-access.log --error-logfile /tmp/gunicorn-error.log --capture-output &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then echo "Django pret (HTTP $code)"; break; fi
+            sleep 2; [ "$i" = "30" ] && { echo "Django indisponible"; exit 1; }
+          done
+          ( cd ../fastapi_ia && RUN_DB_DDL=1 /tmp/venv-ia/bin/uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 1 > /tmp/uvicorn.log 2>&1 & )
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8100/health || true)
+            if [ "$code" = "200" ]; then echo "Service IA pret"; break; fi
+            sleep 2; [ "$i" = "60" ] && { echo "Service IA indisponible"; tail -n 60 /tmp/uvicorn.log; exit 1; }
+          done
+          { sed -n '/^-- 4) AANA30/,$p' ../../backend/db/rls_roles.sql; } | /usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -v ON_ERROR_STOP=1 -q
+          export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
+          cd ../../frontend
+          npx playwright test --project=acceptation e2e/acceptation/alec12.spec.js
+      - name: Journaux (cles masquees)
+        if: ${{ !cancelled() }}
+        run: |
+          tail -n 80 /tmp/gunicorn-error.log || true
+          tail -n 120 /tmp/uvicorn.log 2>/dev/null | sed -E 's/(sk-ant-|gsk_)[A-Za-z0-9_-]+/MASQUE/g' || true
+          grep -a ' sql_agent_ro ' /tmp/pg.log | grep -av 'pg_catalog' | tail -n 60 || true
+      - name: Commiter l'enregistrement sur la branche
+        if: ${{ !cancelled() }}
+        run: bash .github/zz-acceptation-commit.sh "assistant (alec12)"
+
+  sondes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberer de la place disque
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+      - name: .env de la pile = copie de .env.example
+        run: cp .env.example .env
+      - name: Construire l'image django_core
+        run: |
+          set -o pipefail
+          if ! docker compose build django_core > /tmp/compose-build.log 2>&1; then tail -n 150 /tmp/compose-build.log; exit 1; fi
+      - name: Base deja migree - dump du cache (accelerateur, hors preuve)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          restore-keys: |
+            v8sondes-db-
+            testdb-v1-
+      - name: Demarrer db puis y restaurer le dump
+        run: |
+          set -euo pipefail
+          docker compose up -d db
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          docker compose exec -T db psql -U erp_user -d erp_db -c "ALTER SYSTEM SET fsync=off" -c "ALTER SYSTEM SET synchronous_commit=off" -c "SELECT pg_reload_conf()"
+          if [ -f /tmp/testdb.dump ]; then
+            id=$(docker compose ps -q db)
+            docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
+            docker compose exec -T db pg_restore -U erp_user -d erp_db --no-owner -j 4 /tmp/testdb.dump || echo "pg_restore : avertissements"
+          fi
+      - name: Monter django_core, migrer, amorcer la demo
+        run: |
+          set -uo pipefail
+          docker compose up -d django_core
+          C=$(docker compose ps -q django_core)
+          for i in $(seq 1 60); do docker exec "$C" python manage.py check >/dev/null 2>&1 && break; sleep 3; done
+          docker exec "$C" python manage.py migrate --noinput > /tmp/migrate.log 2>&1 || { tail -n 60 /tmp/migrate.log; exit 1; }
+          docker exec "$C" python manage.py seed_demo > /tmp/seed2.log 2>&1 || tail -n 20 /tmp/seed2.log
+          docker exec "$C" python manage.py seed_catalogue > /tmp/seed1.log 2>&1 || tail -n 20 /tmp/seed1.log
+          echo "$C" > /tmp/conteneur.txt
+      - name: Rejouer les sondes comme les clauses le disent
+        run: |
+          set +e
+          C=$(cat /tmp/conteneur.txt)
+          D="$(date -u +%F)"; echo "D=$D" >> "$GITHUB_ENV"
+          jouer() { # $1 = trace, reste = arguments de sonde.py
+            local T="$1"; shift
+            mkdir -p "$(dirname "$T")"
+            { echo "# rejeu sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA}, conteneur $C (pile compose, .env = .env.example)"
+              echo "# commande : python scripts/sonde.py $* --conteneur <django_core>"; echo; } > "$T"
+            python3 scripts/sonde.py "$@" --conteneur "$C" >> "$T" 2>&1; rc=$?
+            echo "# code de sortie de sonde.py : $rc (1 est attendu quand repro est faux : verdict ECART)" >> "$T"
+          }
+          for G in ASUP ALEC AMSG AERR APUB; do
+            jouer "docs/audits/acceptation/$G/traces/$D/$G-sondes.txt" --toutes "$G"
+          done
+          jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006.txt" ACNC/C-ACNC-006
+          jouer "docs/audits/acceptation/AMET/traces/$D/AMET109-sonde-ACNC-006.txt" ACNC/C-ACNC-006
+          # ACNC77 — mutant : retrait de l'atomic de la vue ProduitViewSet.bulk (/app est monte : le conteneur le voit)
+          F=backend/django_core/apps/stock/views/produit.py
+          grep -c 'transaction.atomic(apply_product_bulk)(' "$F"
+          sed -i 's/transaction\.atomic(apply_product_bulk)(/(apply_product_bulk)(/' "$F"
+          git diff "$F" > "docs/audits/acceptation/ACNC/traces/$D/ACNC-mutant.diff"
+          jouer "docs/audits/acceptation/ACNC/traces/$D/ACNC-sonde-006-mutant.txt" ACNC/C-ACNC-006
+          git checkout -- "$F"
+          # ASUP69 — sonde HOTE VER2-101 (arbre monte par sonde.py sous /tmp/racine_sonde), puis son mutant (avoir.html relit avoir.client)
+          T="docs/audits/acceptation/ASUP/traces/$D/ASUP69-sonde-VER2-101.txt"
+          { echo "# rejeu sur runner GitHub ($(date -u +%FT%TZ)), sha ${GITHUB_SHA} ; commande : python docs/audits/sondes/ASUP/C-ASUP-VER2-101.py (arbre du depot monte par scripts/sonde.py)"; echo; } > "$T"
+          docker exec -w /app -e PYTHONPATH=/app "$C" python /tmp/racine_sonde/docs/audits/sondes/ASUP/C-ASUP-VER2-101.py >> "$T" 2>&1; echo "code : $?" >> "$T"
+          A=backend/django_core/templates/pdf/avoir.html
+          sed -i 's/{% set acheteur = acheteur or avoir.client %}/{% set acheteur = avoir.client %}/' "$A"
+          git diff "$A" > "docs/audits/acceptation/ASUP/traces/$D/ASUP69-mutant.diff"
+          T2="docs/audits/acceptation/ASUP/traces/$D/ASUP69-sonde-VER2-101-mutant.txt"
+          { echo "# MUTANT (avoir.html : {% set acheteur = avoir.client %}) sur runner GitHub, sha ${GITHUB_SHA}"; echo; } > "$T2"
+          docker exec -w /app -e PYTHONPATH=/app "$C" python /tmp/racine_sonde/docs/audits/sondes/ASUP/C-ASUP-VER2-101.py >> "$T2" 2>&1; echo "code : $?" >> "$T2"
+          git checkout -- "$A"
+          git status --short | head
+      - name: Garder les traces pour le job d'ecriture
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-1711-sondes-traces
+          path: docs/audits/acceptation/*/traces/
+          retention-days: 7
+      - name: Afficher les traces
+        if: ${{ !cancelled() }}
+        run: for f in docs/audits/acceptation/*/traces/${D}/*.txt; do echo "##### $f"; cat "$f"; done
+
+  ecrire-sondes:
+    needs: [pages, assistant, sondes]
+    if: ${{ !cancelled() && needs.sondes.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: acceptation-1711-sondes-traces
+          path: docs/audits/acceptation
+      - name: Juger les traces et completer les enregistrements du jour
+        env:
+          ACCEPTATION_SHA: ${{ github.sha }}
+        run: |
+          git pull -q --rebase origin "${GITHUB_REF_NAME}" || true
+          D=$(ls -d docs/audits/acceptation/*/traces/* | head -1 | xargs basename)
+          echo "date des traces : $D"
+          python3 .github/zz-acceptation-sondes.py "$D"
+          for f in /tmp/etapes-*.json; do
+            G=$(basename "$f" .json | sed 's/^etapes-//')
+            node frontend/e2e/acceptation/_enregistrement.js "$G" --etapes-supplementaires "$f"
+          done
+          python3 scripts/check_acceptation.py --rapport | tail -20 || true
+      - name: Commiter les enregistrements sur la branche
+        run: bash .github/zz-acceptation-commit.sh "sondes (AMET109, ASUP69, ASUP66, ALEC50, AMSG105, ACNC77, AERR180, APUB75)"
