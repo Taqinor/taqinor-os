@@ -67,12 +67,25 @@ NOTE_RELEVE_POINT_EAU = (
 _CLES_GESTES_VISITE = (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF)
 
 
+#: Fondateur, 17/11/2026 — les marches de l'escalier « Après l'appel » qui
+#: n'existent que parce que le client a communiqué (il a répondu par message,
+#: ou demandé qu'on le rappelle).
+CLES_ESCALIER_REPONSE = (CLE_APPEL_APRES_REPONSE, CLE_MESSAGE_CRENEAU,
+                         CLE_DERNIER_APPEL, CLE_RAPPEL_CONVENU)
+
+
+def q_traces_de_reponse():
+    """Les étapes (tout statut) qui prouvent que le client a parlé : une visite
+    (il l'a acceptée) ou une marche de ``CLES_ESCALIER_REPONSE``."""
+    return q_visite() | q_etape(*CLES_ESCALIER_REPONSE)
+
+
 def client_a_deja_repondu(lead):
     """Fondateur, 17/11/2026 — joint ou chiffré (``_a_un_historique_client``), ou
-    une étape de visite déjà posée (il l'a acceptée) : son devis reste la suite
-    du filet. Lu en lot par la promesse (``suite_touche.LecteurParcage``)."""
+    une étape ``q_traces_de_reponse`` déjà posée : son devis reste la suite du
+    filet. Lu en lot par la promesse (``suite_touche.LecteurParcage``)."""
     return (_a_un_historique_client(lead)
-            or lead.relance_etapes.filter(q_visite()).exists())
+            or lead.relance_etapes.filter(q_traces_de_reponse()).exists())
 
 
 def _poser_releve_point_eau(lead, user):

@@ -303,6 +303,8 @@ class LesNoOpDeliberesTests(_Base):
         """CADV25 — pas de réveil pour lui ; QJ-INVARIANT : une étape, jamais rien."""
         lead = self._lead_perdu(perdu=False)
         lead.activites.all().delete()
+        # Ni issue « joint », ni devis, ni visite, ni marche d'escalier.
+        self.assertFalse(lead.relance_etapes.exists())
         etapes = cadence_touche.reprendre_cadence_apres_reouverture(
             lead, self.acteur)
         self.assertTrue(etapes)

@@ -21,7 +21,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages, cadence_reperes
 from apps.crm import suite_touche as st
-from apps.crm.models import Lead, LeadActivity, RelanceEtape
+from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
     CADENCES_DEFAUT, Cadence, CadenceRelanceEtape,
@@ -142,23 +142,10 @@ class PalierDesactivePromesseEtEffetTests(TestCase):
 
     def test_les_deux_paliers_desactives(self):
         self._desactiver('message_creneau', 'dernier_appel')
-        # Il a répondu au message (prémisse de l'étape) : un historique.
-        LeadActivity.objects.bulk_create([LeadActivity(
-            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
-            outcome='joint', body='A répondu au message.')])
         codes, [etape] = self._promesse_puis_effet(
             self._appel_apres_reponse(), 'non_joint')
         self.assertEqual(codes, [st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
         self.assertEqual(etape.cle, 'devis')
-
-    def test_les_deux_paliers_desactives_sans_reponse_du_client(self):
-        """Fondateur, 17/11/2026 — jamais joint ni chiffré : la promesse et
-        l'effet disent « Décider la suite », jamais le devis."""
-        self._desactiver('message_creneau', 'dernier_appel')
-        codes, [etape] = self._promesse_puis_effet(
-            self._appel_apres_reponse(), 'non_joint')
-        self.assertEqual(codes, [st.ETAPE_DECIDER_SUITE])
-        self.assertEqual(etape.cle, 'decider_suite')
 
     def test_message_repondu_appel_desactive(self):
         self._desactiver('appel_apres_reponse')

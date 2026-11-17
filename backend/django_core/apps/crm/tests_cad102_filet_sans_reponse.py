@@ -31,7 +31,7 @@ from authentication.models import Company
 from testkit.time import frozen
 
 from apps.crm import horaires, stages
-from apps.crm.models import Lead, LeadActivity, RelanceEtape
+from apps.crm.models import Lead, RelanceEtape
 from apps.crm.cadence_touche import marquer_etape_relance
 from apps.crm.cadence_reperes import (
     FILET_APPEL_LIBELLE,
@@ -65,11 +65,6 @@ class _Base(TestCase):
         self.lead = Lead.objects.create(
             company=self.company, nom='Aziz', stage=stages.CONTACTED,
             owner=self.acteur, telephone='+212661010201')
-        # Le client a répondu par écrit au message d'identité (prémisse du
-        # module) : un historique, sans passer par les récepteurs.
-        LeadActivity.objects.bulk_create([LeadActivity(
-            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
-            outcome='joint', body='A répondu au message.')])
 
     def _filet(self, libelle, canal=RelanceEtape.Canal.APPEL):
         return RelanceEtape.objects.create(
@@ -134,16 +129,23 @@ class EscalierSansReponseTests(_Base):
         # Après le dernier essai, le filet reprend son cours : on chiffre.
         self.assertEqual(suite.libelle, FILET_JOINT_LIBELLE)
 
-    def test_sans_aucune_reponse_l_escalier_se_termine_sur_decider_la_suite(self):
-        """Fondateur, 17/11/2026 — jamais le devis d'un client qui n'a jamais
-        répondu (ni joint, ni chiffré) : « Décider la suite »."""
-        from apps.crm.cadence_config import CLE_DECIDER_SUITE
-        self.lead.activites.all().delete()
-        etape = self._filet(FILET_DERNIER_APPEL_LIBELLE)
+    def test_repondu_par_message_jamais_joint_l_escalier_finit_sur_le_devis(self):
+        """Fondateur, 17/11/2026 — un client qui a répondu par message a parlé :
+        sans aucune issue « joint » au chatter, l'escalier entier, jamais
+        décroché, se termine sur le devis (« dernier essai avant de chiffrer »),
+        jamais sur « Décider la suite »."""
+        self.assertFalse(self.lead.activites.filter(outcome='joint').exists())
+        appel = self._filet(FILET_APPEL_LIBELLE)
         marquer_etape_relance(
-            etape, self.acteur, RelanceEtape.Statut.FAIT,
-            outcome='non_joint')
-        self.assertEqual(self._seule_ouverte().cle, CLE_DECIDER_SUITE)
+            appel, self.acteur, RelanceEtape.Statut.FAIT, outcome='non_joint')
+        message = self._seule_ouverte()
+        marquer_etape_relance(
+            message, self.acteur, RelanceEtape.Statut.FAIT, outcome='')
+        dernier = self._seule_ouverte()
+        self.assertEqual(dernier.libelle, FILET_DERNIER_APPEL_LIBELLE)
+        marquer_etape_relance(
+            dernier, self.acteur, RelanceEtape.Statut.FAIT, outcome='non_joint')
+        self.assertEqual(self._seule_ouverte().libelle, FILET_JOINT_LIBELLE)
 
     def test_aucun_barreau_n_est_ajoute_a_une_cadence(self):
         etape = self._filet(FILET_APPEL_LIBELLE)

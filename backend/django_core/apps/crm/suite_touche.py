@@ -897,8 +897,8 @@ class LecteurParcage:
         enregistré (contrôles purs) garde le cas général : vrai."""
         from apps.ventes.selectors import leads_ayant_recu_un_devis
 
+        from .cadence_filet import q_traces_de_reponse
         from .cadence_plan import ISSUES_CLIENT_JOINT
-        from .cadence_reperes import q_visite
         from .models import LeadActivity, RelanceEtape
 
         if lead is None or lead.pk is None:
@@ -910,7 +910,7 @@ class LecteurParcage:
             ).values_list('lead_id', flat=True))
             vus |= leads_ayant_recu_un_devis(lead.company_id, list(ids))
             vus |= set(RelanceEtape.objects.filter(lead_id__in=ids).filter(
-                q_visite()).values_list('lead_id', flat=True))
+                q_traces_de_reponse()).values_list('lead_id', flat=True))
             self._historique.update({i: i in vus for i in ids})
         return self._historique[lead.pk]
 

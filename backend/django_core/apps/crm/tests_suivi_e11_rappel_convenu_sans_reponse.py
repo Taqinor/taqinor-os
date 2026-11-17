@@ -27,7 +27,7 @@ from apps.crm import cadence_reponses
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import (
     CLE_DERNIER_APPEL, CLE_DEVIS, CLE_RAPPEL_CONVENU, q_etape)
-from apps.crm.models import Lead, LeadActivity, RelanceEtape
+from apps.crm.models import Lead, RelanceEtape
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import (
     CADENCES_DEFAUT, Cadence, CadenceRelanceEtape)
@@ -134,11 +134,6 @@ class RappelConvenuSansReponseTests(TestCase):
         CadenceRelanceEtape.objects.filter(
             company=self.company, cadence=Cadence.APRES_CONTACT,
             cle=CLE_DERNIER_APPEL).update(actif=False)
-        # Un client déjà joint : sans historique, le filet poserait « Décider
-        # la suite » au lieu du devis (fondateur, 17/11/2026).
-        LeadActivity.objects.bulk_create([LeadActivity(
-            company=self.company, lead=self.lead, kind=LeadActivity.Kind.NOTE,
-            outcome='joint', body='Joint.')])
         self._sans_reponse()
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_DERNIER_APPEL)).exists())
