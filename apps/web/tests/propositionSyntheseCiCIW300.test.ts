@@ -570,6 +570,27 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     expect(plein.colonnes[1]!.titre).toEqual(LBL_COMPARAISON_CI.titre);
     expect(plein.colonnes[1]!.lignes.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'retour']);
   });
+  it('D-ONDULEUR-EXTENSION : phrase servie affichée telle quelle (fr, langue propre, repli fr) ; absente/nulle/malformée = rien', () => {
+    const EXT = { textes: { fr: 'Onduleur hybride 20 kW retenu pour l'extension.', en: 'Hybrid inverter kept for the extension.', ar: 'AR-EXT' }, retenu_kw: 20, suffisant_kw: 15 };
+    const ext = (extension: unknown) => ob({ ...PLEIN, extension });
+    const ligne = (c: ReturnType<typeof comparaisonBatterieCi>) => c!.colonnes[1]!.lignes.find((l) => l.cle === 'extension_onduleur');
+    const l = ligne(comparaisonBatterieCi(ext(EXT), 78000, 114000))!;
+    expect(l.textes).toEqual({ fr: EXT.textes.fr, en: EXT.textes.en, ar: 'AR-EXT' });
+    expect(comparaisonBatterieCi(ext(EXT), 78000, 114000)!.colonnes[1]!.lignes.at(-1)!.cle).toBe('extension_onduleur');
+    expect(comparaisonBatterieCi(ext(EXT), 78000, 114000)!.colonnes[0]!.lignes.map((x) => x.cle)).toEqual(['total_ttc']);
+    // Langue sans texte propre ou vide : repli sur le français.
+    const rep = ligne(comparaisonBatterieCi(ext({ textes: { fr: 'FR seul', en: '', ar: null } }), 78000, 114000))!;
+    expect(rep.textes).toEqual({ fr: 'FR seul', en: 'FR seul', ar: 'FR seul' });
+    // Absente / nulle / vide / malformée : rien, le reste du bloc inchangé.
+    const base = comparaisonBatterieCi(ob(PLEIN), 78000, 114000);
+    for (const x of [undefined, null, {}, { textes: {} }, { textes: { fr: '  ' } }, { textes: 'x' }, 'x', 3, { textes: { fr: 5 } }]) {
+      const c = comparaisonBatterieCi(ext(x), 78000, 114000);
+      expect(ligne(c)).toBeUndefined();
+      expect(c).toEqual(base);
+    }
+    const comp = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/ComparaisonBatterieCi.astro', import.meta.url)), 'utf-8');
+    expect(comp).toContain('data-testid="ci-extension-onduleur"');
+  });
   it('libellés = ceux du PDF (blocs.py LIBELLES_OPTION_AVEC, i18n_labels total_ttc)', () => {
     const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/blocs.py', import.meta.url)), 'utf-8');
     const enc = (t: string) => t.replace(/É/g, '&Eacute;').replace(/à/g, '&agrave;');

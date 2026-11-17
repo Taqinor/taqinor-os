@@ -1058,6 +1058,175 @@ class OptionAvecBatterieTests(unittest.TestCase):
                                                   horizon=H + 2)['kwc'],
                            29 * PANNEAU_WC / 1000.0)
 
+    # ── D-HYB-4 / D-HYB-5 (fondateur 17/11/2026, après-midi) ────────────────
+
+    @staticmethod
+    def _deye_d1():
+        """Hybrides Deye 15 / 20 kW aux fiches D1 (30 / 40 kWc), module 715 Wc :
+        ``(hybrides, combiner libre, combiner forcé)`` — ceux de l'orchestrateur
+        (``etude_ci_batterie._dimensionner`` : homogène, fiche qui fait foi)."""
+        from apps.ventes.moteur_ci.onduleurs import combiner_impose
+        from apps.ventes.tests.test_ciq111_combinaison_onduleurs import (
+            _hybrides_deye_fiche, _module_715)
+        hybrides = [dict(h, plage_batterie_v=[40, 60], bat_max_charge_kw=port)
+                    for h, port in zip(_hybrides_deye_fiche(), (14.34, 17.92))]
+        libre = partial(combiner_onduleurs, candidats=hybrides, phase='tri', module=_module_715(),
+                        max_appareils=10, homogene=True, fiche_fait_foi=True)
+
+        def force(kwc, produit, quantite):
+            return combiner_impose(kwc, hybrides, produit, quantite, phase='tri',
+                                   module=_module_715(), fiche_fait_foi=True)
+        return hybrides, libre, force
+
+    def _hotel(self, modules_choisis=None):
+        """Hôtel 4 500 kWh/mois, banque PowerBrick 16 kWh, hybrides D1 : la
+        banque complète tient sur un 20 kW ; une seule batterie, sur un 15 kW."""
+        from apps.ventes.moteur_ci.batterie import dimensionner_option_avec
+        cls = type(self)
+        if not hasattr(cls, '_sans_hotel'):
+            cls._charge_hotel = _charge('hotel', 4500)
+            cls._sans_hotel = dimensionner_ci(
+                charge_jours_types=cls._charge_hotel, production_jours_types=self.prod,
+                tension='bt', combiner=partial(combiner_onduleurs, candidats=_catalogue_huawei(),
+                                               phase='tri'),
+                composer=_composer, valoriser=_valoriser(cls._charge_hotel),
+                taux_tva_pct=20)['evaluation']
+        hybrides, libre, force = self._deye_d1()
+        return dimensionner_option_avec(
+            kwc_depart=cls._sans_hotel['kwc'], pmax_wc=715, charge=cls._charge_hotel,
+            production=self.prod, tension='bt', revente_choisie=False, combiner=libre,
+            composer=_composer, valoriser=_valoriser(cls._charge_hotel), batteries=BATTERIES[2:],
+            simuler=self.simuler, hybrides=hybrides, taux_tva_pct=20,
+            cout_depart=cls._sans_hotel['cout'], economie_depart=cls._sans_hotel['economie'],
+            modules_choisis=modules_choisis, combiner_impose=force)
+
+    def test_d_hyb_4_une_batterie_panneaux_reduits_onduleur_garde(self):
+        # « the number of panels to be reduced if we use only one battery …
+        # Inverter for the maximum » : N = 1 sur R calculées ⇒ moins de
+        # panneaux (jamais sous l'offre réseau), même hybride, R − 1 à ajouter.
+        import math
+        from apps.ventes.domain.etude_ci_batterie import avec_recommandation
+        plein, une = self._hotel(), self._hotel(1)
+        e_plein, e1 = plein['evaluation'], une['evaluation']
+        maxi = e_plein['batterie']['quantite']
+        self.assertGreaterEqual(maxi, 2)
+        self.assertEqual(une['banque_max'], {'produit': 952, 'nom': BATTERIES[2]['nom'],
+                                             'quantite': maxi})
+        self.assertEqual(e1['batterie']['quantite'], 1)
+        self.assertLess(e1['kwc'], e_plein['kwc'])
+        n_bas = math.ceil(self._sans_hotel['kwc'] * 1000 / 715 - 1e-9)
+        self.assertGreaterEqual(round(e1['kwc'] * 1000 / 715), n_bas)
+        self.assertEqual(e1['batterie']['panneaux_retires'], 0)
+        self.assertEqual(e1['onduleurs']['combinaison'], e_plein['onduleurs']['combinaison'])
+        self.assertEqual([(x['kw_ac'], x['quantite']) for x in e1['onduleurs']['combinaison']],
+                         [(20.0, 1)])
+        servie = avec_recommandation(e1['batterie'], une['banque_max'])
+        self.assertEqual((servie['quantite_recommandee'], servie['ajout_possible']),
+                         (maxi, maxi - 1))
+        # D-HYB-5 — un 15 kW suffirait au départ : dit, faits servis seulement.
+        self.assertEqual(e1['onduleur_extension'], {
+            'retenu': {'produit': 12, 'nom': e1['onduleurs']['combinaison'][0]['nom'],
+                       'kw_ac': 20.0, 'quantite': 1},
+            'suffisant': {'produit': 11, 'nom': e1['onduleur_extension']['suffisant']['nom'],
+                          'kw_ac': 15.0, 'quantite': 1},
+            'batteries_max': maxi})
+        (hyp,) = [h for h in une['hypotheses'] if h['cle'] == 'batteries_choisies']
+        self.assertIn('1 batterie choisie sur %d calculées : panneaux redimensionnés pour '
+                      '1 batterie, onduleur gardé pour %d' % (maxi, maxi), hyp['source'])
+        self.assertIn('décision fondateur du 17/11/2026', hyp['source'])
+        self.assertIsNone(e_plein['onduleur_extension'])
+        # Le coût suit la banque de N avec l'onduleur gardé, l'économie aussi.
+        self.assertLess(e1['cout'], e_plein['cout'])
+        self.assertLess(e1['economie'], e_plein['economie'])
+
+    def test_d_hyb_4_sans_choix_ou_banque_complete_inchangee(self):
+        plein = self._hotel()
+        maxi = plein['evaluation']['batterie']['quantite']
+        for n in (maxi, maxi + 4):
+            with self.subTest(n=n):
+                r = self._hotel(n)
+                self.assertEqual(r['evaluation'], plein['evaluation'])
+                self.assertEqual(r['hypotheses'], plein['hypotheses'])
+                self.assertEqual(r['banque_max'], plein['banque_max'])
+        self.assertFalse([h for h in plein['hypotheses'] if h['cle'] == 'batteries_choisies'])
+        # Sans ``combiner_impose`` (appelant d'avant) : la banque calculée.
+        self.assertEqual(self._avec(modules_choisis=1)['evaluation'], self._avec()['evaluation'])
+
+    def test_d_hyb_5_meme_onduleur_aucune_extension(self):
+        # Boulangerie : avec une batterie, le champ (≈ 40 kWc) demande encore
+        # 2 × 15 kW — l'onduleur gardé EST le plus petit : rien à dire.
+        hybrides, libre, force = self._deye_d1()
+        r = self._avec(pmax_wc=715, combiner=libre, hybrides=hybrides, combiner_impose=force,
+                       modules_choisis=1)
+        plein = self._avec(pmax_wc=715, combiner=libre, hybrides=hybrides)
+        e = r['evaluation']
+        self.assertEqual(e['batterie']['quantite'], 1)
+        self.assertGreater(plein['evaluation']['batterie']['quantite'], 1)
+        self.assertEqual(e['onduleurs']['combinaison'], plein['evaluation']['onduleurs']['combinaison'])
+        self.assertLess(e['kwc'], plein['evaluation']['kwc'])
+        self.assertIsNone(e['onduleur_extension'])
+
+    def test_d_hyb_5_option_des_lignes_extension(self):
+        # Rafraîchisseur : l'option des LIGNES à 1 batterie sous une banque
+        # recommandée de 3 (même article) compare ses hybrides (2 × 20 kW) à
+        # la combinaison libre de son kWc ; banque complète ⇒ null (forme uniforme).
+        from apps.ventes.domain.etude_ci_batterie import option_avec_de_l_etude
+        hybrides = _hybrides_bt()
+
+        def imposer(quantite):
+            imposee = {'kwc': 30.53, 'nb_panneaux': 43, 'investissement': None, 'empreinte': [],
+                       'banque': dict(BATTERIES[1], quantite=quantite), 'hybrides': hybrides,
+                       'recommandee': {'produit': 951, 'nom': 'x', 'quantite': 3},
+                       'onduleurs': {'combinaison': [dict(hybrides[2], quantite=2)]}}
+            return option_avec_de_l_etude(
+                {}, None, choix=None, lead=None, imposee=imposee, charge=self.charge,
+                production=self.prod, tension='bt', revente_choisie=False,
+                valoriser=_valoriser(self.charge), taux_tva_pct=20, phase='tri', ps_kva=None,
+                composer=_composer, borne_toit={'kwc': 35.5, 'source': 's'})['bloc']
+        libre = combiner_onduleurs(30.53, hybrides, phase='tri', max_appareils=10,
+                                   homogene=True, fiche_fait_foi=True)['combinaison']
+        une, trois = imposer(1), imposer(3)
+        self.assertIn('onduleur_extension', trois)
+        self.assertIsNone(trois['onduleur_extension'])
+        self.assertEqual(une['onduleur_extension']['retenu'],
+                         {'produit': 902, 'nom': hybrides[2]['nom'], 'kw_ac': 20.0, 'quantite': 2})
+        self.assertEqual(une['onduleur_extension']['batteries_max'], 3)
+        self.assertEqual((une['onduleur_extension']['suffisant']['produit'],
+                          une['onduleur_extension']['suffisant']['quantite']),
+                         (libre[0]['produit'], libre[0]['quantite']))
+
+    def test_d_hyb_5_onduleur_extension_regle(self):
+        from apps.ventes.moteur_ci.batterie import onduleur_extension
+
+        def comb(*items):
+            return {'combinaison': [{'produit': p, 'nom': 'H%d' % p, 'kw_ac': kw, 'quantite': q}
+                                    for p, kw, q in items]}
+        garde = comb((12, 20.0, 2))
+        self.assertIsNone(onduleur_extension(garde, comb((12, 20.0, 2)), 3))     # le même
+        self.assertIsNone(onduleur_extension(garde, comb((13, 25.0, 2)), 3))     # pas plus petit
+        self.assertIsNone(onduleur_extension(garde, comb((11, 15.0, 1), (12, 20.0, 1)), 3))
+        self.assertIsNone(onduleur_extension(garde, {'combinaison': None}, 3))
+        self.assertEqual(onduleur_extension(garde, comb((11, 15.0, 2)), 3), {
+            'retenu': {'produit': 12, 'nom': 'H12', 'kw_ac': 20.0, 'quantite': 2},
+            'suffisant': {'produit': 11, 'nom': 'H11', 'kw_ac': 15.0, 'quantite': 2},
+            'batteries_max': 3})
+        self.assertEqual(onduleur_extension(garde, comb((12, 20.0, 1)), 3)['suffisant']['quantite'], 1)
+
+    def test_d_hyb_4_combinaison_forcee_au_modele_garde(self):
+        from apps.ventes.moteur_ci.onduleurs import combiner_impose
+        hybrides, libre, force = self._deye_d1()
+        self.assertEqual([(x['produit'], x['quantite']) for x in libre(25.0)['combinaison']],
+                         [(11, 1)])
+        forcee = force(25.0, 12, 2)            # 2 × 20 kW gardés pour 25 kWc
+        self.assertEqual([(x['produit'], x['quantite']) for x in forcee['combinaison']],
+                         [(12, 2)])
+        self.assertEqual(forcee['prix_vente_total_ht'],
+                         str((hybrides[1]['prix'] * 2).quantize(Decimal('0.01'))))
+        self.assertEqual(forcee['ratio_dc_ac']['valeur'], round(25.0 / 40.0, 3))
+        self.assertIsNone(force(70.0, 12, 1)['combinaison'])      # 1 × 20 kW ne porte pas 70
+        self.assertIsNone(combiner_impose(25.0, hybrides, 999, 1, phase='tri')['combinaison'])
+        self.assertEqual(force(25.0, 11, 1)['combinaison'], libre(25.0)['combinaison'])
+
 
 class PoseRasanteR1Tests(unittest.TestCase):
     """R1 — décision fondateur du 28/10/2026 (toit plat SANS pente déclarée) :

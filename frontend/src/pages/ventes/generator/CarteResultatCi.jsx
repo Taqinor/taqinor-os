@@ -12,6 +12,7 @@
 // clé interne n'est affichée brute : un libellé français, sinon la ligne
 // « Autres » du détail.
 import { formatNumber } from '../../../lib/format'
+import { phraseOnduleurExtension } from '../../../features/ventes/calc/batteriesDepart.js'
 import { alertesAffichables } from '../../../features/ventes/etudeCiPreview'
 import { PointeurChampLead } from '../../crm/leads/AlertesDevisAuto'
 import {
@@ -164,6 +165,12 @@ export default function CarteResultatCi({ donnees, chargement, erreur }) {
           {optionAvec.batterie?.ajout_possible > 0 && (
             <p className="text-xs text-muted-foreground" data-testid="ci-avec-ajout">
               + {n(optionAvec.batterie.ajout_possible, 0)} batterie{optionAvec.batterie.ajout_possible > 1 ? 's' : ''} possible{optionAvec.batterie.ajout_possible > 1 ? 's' : ''} plus tard
+            </p>
+          )}
+          {/* 17/11/2026 — onduleur dimensionné pour l'extension alors qu'un plus petit suffit au départ. */}
+          {phraseOnduleurExtension(optionAvec.onduleur_extension, optionAvec.batterie?.quantite) && (
+            <p className="text-xs text-muted-foreground" data-testid="ci-avec-onduleur-extension">
+              {phraseOnduleurExtension(optionAvec.onduleur_extension, optionAvec.batterie?.quantite)}
             </p>
           )}
         </div>

@@ -536,6 +536,17 @@ def textes_non_rentable(valeur, lg):
     return dans("textes_badge"), dans("textes_non_rentable")
 
 
+def texte_extension(d, lg):
+    """D-HYB-5 — la phrase (échappée) de l'onduleur gardé pour l'extension
+    dans la langue ``lg`` (``mentions.extension_option_avec``), '' quand
+    l'étude n'en sert pas : rendu inchangé."""
+    import html
+
+    from .mentions import extension_option_avec
+    textes = (extension_option_avec(d) or {}).get("textes") or {}
+    return html.escape(str(textes.get(lg) or textes.get("fr") or ""), quote=False)
+
+
 def bloc_option_avec(d, L, fmt_mad, couleurs):
     """Fondateur 26/10/2026 — un C&I à DEUX options imprime, sous le tableau
     de l'offre réseau, l'option « avec batterie » comme le résidentiel : ses
@@ -579,6 +590,11 @@ def bloc_option_avec(d, L, fmt_mad, couleurs):
         # D-CI-BATTERIE-NON-RENTABLE — la raison, sous les chiffres réels.
         lignes_valeur += (f'<tr><td colspan="2" style="font-weight:400;font-size:7.5pt;'
                           f'color:{muted};white-space:normal;">{ligne_nr}</td></tr>')
+    ligne_ext = texte_extension(d, lg)
+    if ligne_ext:
+        # D-HYB-5 — l'onduleur gardé pour l'extension, même petit texte.
+        lignes_valeur += (f'<tr><td colspan="2" style="font-weight:400;font-size:7.5pt;'
+                          f'color:{muted};white-space:normal;">{ligne_ext}</td></tr>')
     titre = t("titre") + (f' &mdash; <span style="font-weight:400;">{badge}</span>'
                           if badge else "")
     return (

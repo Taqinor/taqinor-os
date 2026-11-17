@@ -366,7 +366,10 @@ SCHEMA = {
     'courbe_mesuree': _cle((dict,), ECRAN, ENTREE),
     'toit': _cle((dict,), ECRAN, ENTREE),
     'contraintes': _cle((dict,), ECRAN, ENTREE),
-    'options': _cle((dict,), ECRAN, ENTREE),
+    'options': _cle((dict,), ECRAN, ENTREE,
+                    'CIQ117 — {batterie_souhaitee, om, nb_batteries} ; nb_batteries '
+                    '(D-HYB-4, 17/11/2026) : entier 1 ≤ N ≤ banque calculée, posé par '
+                    '`etude-ci/recomposer-batteries/` (panneaux pour N, onduleur pour R).'),
     'taille_explicite_kwc': _cle((int, float), ECRAN, ENTREE,
                                  'CIQ117 — souveraine (D-QJR5-13).'),
     # CIQ203 — le tarif DÉCLARÉ du client (contrat CIQ11 `tarifs_ci.json`) :

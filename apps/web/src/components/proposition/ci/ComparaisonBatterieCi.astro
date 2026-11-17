@@ -22,7 +22,9 @@ const comparaison = comparaisonBatterieCi(ci, sansTtc, avecTtc);
       <h3 class="tech-label text-lune-faint" data-i18n data-fr={col.titre.fr} data-en={col.titre.en} data-ar={col.titre.ar}>{col.titre.fr}</h3>
       <div class="mt-3 space-y-2 text-sm text-lune-soft">
         {col.lignes.map((l) => (
-          l.textes ? (
+          l.cle === 'extension_onduleur' && l.textes ? (
+            <p class="text-xs text-lune-faint" data-testid="ci-extension-onduleur" data-ci-ligne={l.cle} data-i18n data-fr={l.textes.fr} data-en={l.textes.en} data-ar={l.textes.ar}>{l.textes.fr}</p>
+          ) : l.textes ? (
             <p data-ci-ligne={l.cle} data-i18n data-fr={l.textes.fr} data-en={l.textes.en} data-ar={l.textes.ar}>{l.textes.fr}</p>
           ) : (
             <div class="flex flex-wrap items-baseline justify-between gap-x-3" data-ci-ligne={l.cle}>

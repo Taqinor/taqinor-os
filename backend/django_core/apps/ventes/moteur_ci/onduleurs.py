@@ -614,3 +614,38 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
         'alertes': alertes,
         'hypotheses': hypotheses,
     }
+
+
+def combiner_impose(kwc, candidats, produit, quantite, **kw):
+    """D-HYB-4 (fondateur 17/11/2026) — LA combinaison FORCÉE à ``quantite``
+    appareils du modèle ``produit`` (l'onduleur gardé pour la banque
+    maximale) pour porter ``kwc``. La recherche se restreint à ce seul modèle
+    (:func:`combiner_onduleurs`, mêmes bornes, mêmes chaînes) ; quand elle en
+    demande MOINS, les chaînes sont conçues sur les ``quantite`` appareils
+    (``_essayer_chaines`` : un bloquant de découpe y est servi tel quel).
+    ``combinaison`` None + motif nommé quand le modèle manque ou que
+    ``quantite`` appareils ne portent pas ``kwc``. ``kw`` : ceux de
+    :func:`combiner_onduleurs` (``homogene`` sans objet : un seul modèle)."""
+    kw = {k: v for k, v in kw.items() if k not in ('homogene', 'max_appareils')}
+    modele = [c for c in candidats or [] if c.get('produit') == produit]
+    base = combiner_onduleurs(kwc, modele, **kw)
+    unites = sum(int(x['quantite']) for x in base.get('combinaison') or [])
+    if not base.get('combinaison') or unites == quantite:
+        return base
+    if unites > quantite:
+        return dict(base, combinaison=None, chaines=None, prix_vente_total_ht=None, motif=(
+            '%.1f kWc demandent %d appareils, au-delà des %d gardés' % (
+                float(kwc), unites, quantite)))
+    alertes = [a for a in base.get('alertes') or [] if not a['code'].startswith('OND_CHAINES')]
+    retenus, _exclus = _vivier(modele, kw.get('phase'), [])
+    if kw.get('fiche_fait_foi'):
+        retenus = [dict(c, _fiche_fait_foi=True) for c in retenus]
+    sorties, alertes_chaines, _ko = _essayer_chaines(
+        float(kwc), kw.get('module'), {0: quantite}, retenus)
+    c = retenus[0]
+    ratio = float(kwc) / (c['kw_ac'] * quantite)
+    return dict(base, combinaison=[{'produit': c.get('produit'), 'nom': c.get('nom') or '',
+                                    'kw_ac': c['kw_ac'], 'quantite': quantite}],
+                ratio_dc_ac=dict(base['ratio_dc_ac'], valeur=round(ratio, 3)),
+                chaines=sorties, alertes=alertes + alertes_chaines,
+                prix_vente_total_ht=str((c['prix'] * quantite).quantize(Decimal('0.01'))))

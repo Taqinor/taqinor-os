@@ -4,9 +4,10 @@
 // moteur est lu par `corpsCiDepuisProfil` — aucun calcul simulé.
 //
 // Run : npx vitest run src/pages/ventes/generator/BlocEtudeReseau.test.jsx
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import BlocEtudeReseau, {
   MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture, CarteProfilCi,
@@ -24,6 +25,24 @@ import {
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
 } from '../../../features/ventes/quote/etudeMarcheBloc'
 import { saisieDepuisTarifDeclare } from '../../../features/ventes/quote/reouverture'
+
+const { ventesApiMock, confirmMock } = vi.hoisted(() => ({
+  ventesApiMock: { recomposerBatteriesCi: vi.fn() },
+  confirmMock: vi.fn(),
+}))
+vi.mock('../../../api/ventesApi', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, default: { ...m.default, ...ventesApiMock } }
+})
+vi.mock('../../../ui/confirm', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, useConfirmDialog: () => ({ confirm: confirmMock }) }
+})
+beforeEach(() => {
+  ventesApiMock.recomposerBatteriesCi.mockReset()
+  confirmMock.mockReset()
+  confirmMock.mockResolvedValue(true)
+})
 
 const EXEMPLE = exempleContrat('ventes', 'etude_ci_preview')
 
@@ -456,45 +475,116 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
     }
   })
 
-  const LIGNES = () => withKeys([
+  const LIGNES = (q = 3) => withKeys([
     { produit: '1', designation: 'Panneau 550 Wc', quantite: 20, prix_unit_ttc: 1000, variante: '' },
-    { produit: '7', designation: 'Batterie Dyness 10 kWh', quantite: 6, prix_unit_ttc: 9000, variante: 'avec', role_devis: 'batterie' },
+    { produit: '7', designation: 'Batterie Dyness 10 kWh', quantite: q, prix_unit_ttc: 9000, variante: 'avec', role_devis: 'batterie' },
   ])
-  function HarnaisBatteries({ initial = LIGNES(), banque = { produit: 7, nom: 'Dyness 10', quantite: 6 }, apercu = null }) {
-    const [lines, setLines] = useState(initial)
-    return (
-      <ControleBatteriesDepart lines={lines} produits={[]} banque={banque} apercuBatterie={apercu}
-        onQuantiteChange={(key, q) => setLines(ls => ls.map(l => (l._key === key ? { ...l, quantite: q } : l)))} />
-    )
+  const DEVIS = (extra = {}) => ({
+    id: 42, modifiable: true, is_active: true,
+    etude_params: { banque_recommandee: { produit: 7, nom: 'Dyness 10', quantite: 3 } }, ...extra,
+  })
+  const EXT = {
+    retenu: { produit: 5, nom: 'Deye hybride 30 kW', kw_ac: 15, quantite: 2 },
+    suffisant: { produit: 4, nom: 'Deye hybride 12 kW', kw_ac: 12, quantite: 1 },
+    batteries_max: 3,
+  }
+  const REPONSE = { devis_id: 42, nb_batteries: 1, quantite_recommandee: 3, nb_panneaux_avec: 14, kwc_avec: 7.7, lignes_changees: true, onduleur_extension: EXT, alertes: [] }
+  const ecranDe = (extra = {}) => ({ editDevis: DEVIS(), dirty: false, recharger: vi.fn(), optionAvec: null, ...extra })
+  const choisir = async (nom) => {
+    await userEvent.click(screen.getByTestId('gen-batteries-depart'))
+    await userEvent.click(await screen.findByRole('option', { name: nom }))
   }
 
-  it('saisie libre ; « N à ajouter plus tard » sous la recommandation ; au-delà : note neutre', () => {
-    render(<HarnaisBatteries />)
-    const champ = screen.getByTestId('gen-batteries-depart')
-    expect(champ).toHaveValue(6)
-    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('Recommandé : 6')
-    expect(screen.getByTestId('gen-batteries-depart-reco')).not.toHaveTextContent('à ajouter')
-    fireEvent.change(champ, { target: { value: '2' } })
-    expect(screen.getByTestId('gen-batteries-depart-reco'))
-      .toHaveTextContent('Recommandé : 6 — 4 à ajouter plus tard (panneaux et onduleur déjà dimensionnés pour 6)')
-    fireEvent.change(champ, { target: { value: '9' } })
-    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('au-delà de la recommandation (6)')
-    fireEvent.change(champ, { target: { value: '' } })
-    expect(champ).toHaveValue(null)
+  it('le choix liste 1…maximum calculé ; la valeur courante est la quantité de la ligne', async () => {
+    render(<ControleBatteriesDepart lines={LIGNES(2)} produits={[]} ecran={ecranDe()} />)
+    expect(screen.getByTestId('gen-batteries-depart')).toHaveTextContent('2 batteries')
+    expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('Recommandé : 3 — 1 à ajouter plus tard')
+    await userEvent.click(screen.getByTestId('gen-batteries-depart'))
+    const noms = (await screen.findAllByRole('option')).map(o => o.textContent)
+    expect(noms).toEqual(['1 batterie', '2 batteries', '3 batteries (maximum calculé)'])
   })
 
-  it('recommandation inconnue ou autre produit : pas de texte ; repli sur l’aperçu ; 2 batteries ou aucune : rien', () => {
-    const { rerender } = render(<HarnaisBatteries banque={null} />)
-    expect(screen.getByTestId('gen-batteries-depart')).toBeInTheDocument()
+  it('choisir 1 : appelle l’API (id du devis, 1), relit le devis, confirme sous le choix', async () => {
+    ventesApiMock.recomposerBatteriesCi.mockResolvedValue({ data: REPONSE })
+    const ecran = ecranDe()
+    render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+    await choisir('1 batterie')
+    expect(ventesApiMock.recomposerBatteriesCi).toHaveBeenCalledWith(42, 1)
+    expect(ecran.recharger).toHaveBeenCalledTimes(1)
+    expect(await screen.findByTestId('gen-batteries-depart-ok'))
+      .toHaveTextContent('1 batterie sur 3 — panneaux de l’option batterie : 14 (7,70 kWc)')
+  })
+
+  it('refus 409 puis 400 : le message du serveur est affiché, aucune relecture, choix inchangé', async () => {
+    const ecran = ecranDe()
+    render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+    ventesApiMock.recomposerBatteriesCi.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Ce devis n’est plus un brouillon.' } } })
+    await choisir('2 batteries')
+    expect(await screen.findByTestId('gen-batteries-depart-refus')).toHaveTextContent('Ce devis n’est plus un brouillon.')
+    ventesApiMock.recomposerBatteriesCi.mockRejectedValueOnce({ response: { status: 400, data: { nb_batteries: ['Au plus 3 batteries.'] } } })
+    await choisir('1 batterie')
+    expect(await screen.findByText('Au plus 3 batteries.')).toBeInTheDocument()
+    expect(ecran.recharger).not.toHaveBeenCalled()
+    expect(screen.getByTestId('gen-batteries-depart')).toHaveTextContent('3 batteries')
+  })
+
+  it('brouillon local modifié : confirmation d’abord ; refusée ⇒ aucun appel', async () => {
+    ventesApiMock.recomposerBatteriesCi.mockResolvedValue({ data: REPONSE })
+    confirmMock.mockResolvedValueOnce(false)
+    render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecranDe({ dirty: true })} />)
+    await choisir('1 batterie')
+    expect(confirmMock.mock.calls[0][0].description).toBe(
+      "Les lignes de l'option batterie vont être recalculées pour 1 batterie. "
+      + 'Les modifications non enregistrées des lignes seront perdues.')
+    expect(ventesApiMock.recomposerBatteriesCi).not.toHaveBeenCalled()
+    confirmMock.mockResolvedValueOnce(true)
+    await choisir('2 batteries')
+    expect(ventesApiMock.recomposerBatteriesCi).toHaveBeenCalledWith(42, 2)
+  })
+
+  it('désactivé avec sa raison : devis non enregistré, devis envoyé', () => {
+    const { rerender } = render(<ControleBatteriesDepart lines={LIGNES()} produits={[]} ecran={ecranDe({ editDevis: null })} />)
+    expect(screen.getByTestId('gen-batteries-depart')).toBeDisabled()
+    expect(screen.getByTestId('gen-batteries-depart-raison')).toHaveTextContent('Enregistrez le devis pour choisir le nombre de batteries')
+    rerender(<ControleBatteriesDepart lines={LIGNES()} produits={[]} ecran={ecranDe({ editDevis: DEVIS({ modifiable: false }) })} />)
+    expect(screen.getByTestId('gen-batteries-depart')).toBeDisabled()
+    expect(screen.getByTestId('gen-batteries-depart-raison')).toHaveTextContent('Devis envoyé : utilisez Réviser')
+  })
+
+  it('maximum inconnu : note + choix 1…quantité courante ; repli sur l’aperçu ; deux batteries ou aucune : rien', async () => {
+    const sansBanque = ecranDe({ editDevis: DEVIS({ etude_params: {} }) })
+    const { rerender } = render(<ControleBatteriesDepart lines={LIGNES(2)} produits={[]} ecran={sansBanque} />)
+    expect(screen.getByTestId('gen-batteries-depart-inconnu')).toHaveTextContent('Maximum calculé inconnu sur ce devis — choisir un nombre le recalcule')
     expect(screen.queryByTestId('gen-batteries-depart-reco')).toBeNull()
-    rerender(<HarnaisBatteries banque={{ produit: 99, quantite: 6 }} />)
-    expect(screen.queryByTestId('gen-batteries-depart-reco')).toBeNull()
-    rerender(<HarnaisBatteries banque={null} apercu={{ quantite_recommandee: 5 }} />)
+    await userEvent.click(screen.getByTestId('gen-batteries-depart'))
+    expect((await screen.findAllByRole('option')).map(o => o.textContent)).toEqual(['1 batterie', '2 batteries'])
+    rerender(<ControleBatteriesDepart key="apercu" lines={LIGNES(2)} produits={[]}
+      ecran={{ ...sansBanque, optionAvec: { batterie: { quantite_recommandee: 5 } } }} />)
     expect(screen.getByTestId('gen-batteries-depart-reco')).toHaveTextContent('Recommandé : 5')
     const deux = [...LIGNES(), ...withKeys([{ produit: '8', designation: 'Batterie Deye', quantite: 1, prix_unit_ttc: 1, variante: 'avec', role_devis: 'batterie' }])]
-    rerender(<HarnaisBatteries key="deux" initial={deux} />)
+    rerender(<ControleBatteriesDepart key="deux" lines={deux} produits={[]} ecran={ecranDe()} />)
     expect(screen.queryByTestId('gen-batteries-depart')).toBeNull()
-    rerender(<HarnaisBatteries key="aucune" initial={LIGNES().slice(0, 1)} />)
+    rerender(<ControleBatteriesDepart key="aucune" lines={LIGNES().slice(0, 1)} produits={[]} ecran={ecranDe()} />)
     expect(screen.queryByTestId('gen-batteries-depart')).toBeNull()
+  })
+
+  it('onduleur d’extension : phrase « 2 × 15 kW » depuis le devis chargé ; absente si null', () => {
+    const avecExt = ecranDe({ editDevis: DEVIS({ etude_params: { banque_recommandee: { produit: 7, quantite: 3 }, etude_ci: { option_avec: { onduleur_extension: EXT } } } }) })
+    const { rerender } = render(<ControleBatteriesDepart lines={LIGNES(1)} produits={[]} ecran={avecExt} />)
+    expect(screen.getByTestId('gen-onduleur-extension')).toHaveTextContent(
+      "Onduleur hybride 2 × 15 kW retenu pour l'extension : jusqu'à 3 batteries (2 à ajouter plus tard). "
+      + "Un onduleur de 12 kW suffirait pour l'installation de départ.")
+    rerender(<ControleBatteriesDepart lines={LIGNES(1)} produits={[]} ecran={ecranDe({ optionAvec: { onduleur_extension: null } })} />)
+    expect(screen.queryByTestId('gen-onduleur-extension')).toBeNull()
+  })
+
+  it('carte résultat : phrase sous la tuile batterie quand l’aperçu la sert (kW sans « ,0 »), sinon absente', () => {
+    const { rerender } = render(<CarteResultatCi donnees={avec({ ...AVEC.batterie, quantite: 1 })} />)
+    expect(screen.queryByTestId('ci-avec-onduleur-extension')).toBeNull()
+    const donnees = { ...avec({ ...AVEC.batterie, quantite: 1 }) }
+    donnees.option_avec = { ...donnees.option_avec, onduleur_extension: { ...EXT, retenu: { ...EXT.retenu, quantite: 1 } } }
+    rerender(<CarteResultatCi donnees={donnees} />)
+    expect(screen.getByTestId('ci-avec-onduleur-extension')).toHaveTextContent(
+      "Onduleur hybride 15 kW retenu pour l'extension : jusqu'à 3 batteries (2 à ajouter plus tard). Un onduleur de 12 kW suffirait")
   })
 })
