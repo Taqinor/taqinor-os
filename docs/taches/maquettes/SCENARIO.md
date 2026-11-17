@@ -33,7 +33,7 @@ racontent désormais LA MÊME journée. Un chiffre affiché doit pouvoir se reco
 - Carte du cockpit à 15 h : **3 sur 5 · 2 à faire**.
 
 ## Le soir — bilan
-- **4 sur 5 · essentiel 2/2 · plan tenu 4 sur 5.** Reste 1 : « Relire le contrat de maintenance » → proposé
+- **4 sur 5 · essentiel 2/2**, puis en seconde ligne « 4 des 5 gardées ». Reste 1 : « Relire le contrat de maintenance » → proposé
   « mer. 25 ». Bouton du lot : « Tout reporter à mer. 25 ».
 - Un constat (un seul) : « Tu finis plus souvent ton essentiel quand il est placé avant midi. »
 
@@ -62,3 +62,10 @@ du 16 au 20 : elle montre l'état du **vendredi 20 au soir** — Chantier Benali
 Recrutement : faites cette semaine-là « Définir le profil recherché » et « Publier l'annonce » ; ouvertes « Trier
 les CV reçus » puis « Rédiger la fiche de poste » (reportée au jeu. 26) et « Planifier les entretiens », qui porte
 la puce « attend : Trier les CV reçus ». Une tâche donnée comme faite dans la revue ne peut pas être ouverte le 24.
+
+## Comptes de « Mes projets » (barre latérale du bureau) au fil de la journée
+Nombre de tâches OUVERTES par projet : le matin Chantier Benali 6 · Salon Solaire Expo 8 · Recrutement 5 ·
+Administratif 3 · Site web 4 ; à 15 h Chantier Benali 4 · Salon 7 ; au bilan Chantier Benali 4 · Salon 6. Une
+activité de l'ERP faite reste visible, barrée, à son heure dans Prévu. La saisie d'exemple vise un projet EXISTANT
+(« relancer l'imprimeur jeudi #Salon Solaire Expo !!! ») ; la création d'un projet par `#` se montre avec un nom
+absent de la barre latérale (« #Stand partenaire »).

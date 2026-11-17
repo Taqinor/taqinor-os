@@ -119,7 +119,7 @@ retour ; toucher → Mon rythme) → (2) carte du moment → (3) Essentiel → (
 leur heure, tâches et activités ERP mêlées (> 3 sans heure : une ligne repliable), « Suivi des relances : 5 » → (5) Ce
 soir → (6) **Proposé pour aujourd'hui** jusqu'à l'objectif, 1re ligne expliquée (« échéance jeudi · projet prioritaire
 Ventes »), « Garder ces N » (contour), surcharge à côté (« 5 h 10 pour 4 h »), « Voir tout » ; replié jusqu'au lendemain après « Alléger » → (7) repliés : À revoir (« Tout en réserve »), En attente,
-Faites, Ailleurs dans l'ERP. N = objectif − gardées ouvertes. Après « Garder » : « Touche ★ pour ton essentiel », focus
+Faites, Ailleurs dans l'ERP. N = objectif − faites − gardées ouvertes (jamais négatif). Après « Garder » : « Touche ★ pour ton essentiel », focus
 sur « Prévu ». Section vide masquée (sauf l'invite ★). Jamais vide tant qu'un projet actif a une tâche ouverte (A11).
 
 | Écran | Action principale | Visible d'emblée | Replié | Vide · hors ligne |
@@ -304,4 +304,4 @@ iOS ; Siri = geste de Reda ; pas de rétroplanning ; Copilote iPhone, Dynamic Ty
 
 1. T2 carte du Copilote en express ; T3 Mon iPhone 3 jours au plus, après les astuces ; T4 question du titre au 1er rappel.
 2. M1 « Garder ces N » dans la carte du matin ; M2 « 1 sur 5 » partout ; M3 puce de priorité dans l'aperçu ; fiche ouverte par un rappel ; Lier une tâche par route.
-3. Restes du tour 3 §4 : ★, notifications du bilan, Mes jours 4/5, 27 touches, « 5 réglages », carte de pause, Proposé aussitôt, sections vides, N = objectif − gardées.
+3. Restes du tour 3 §4 : ★, notifications du bilan, Mes jours 4/5, 27 touches, « 5 réglages », carte de pause, Proposé aussitôt, sections vides, N = objectif − faites − gardées ouvertes.

@@ -487,3 +487,55 @@ svg.i.ep-losange { color: var(--tch-point); fill: var(--tch-point); }
   .ep-cockpit-grille > * { margin-top: 0; }
 }
 @media (max-width: 767px) { .ep-cockpit-grille > .bureau-seul { display: none; } }
+
+/* ── Tour 5 (second critique) ───────────────────────────────────────────── */
+/* M1 : « Nouveau projet » azur avec dossier-plus dans la barre latérale (comme Aujourd'hui),
+   et la rangée de l'iPhone gardée en fin de liste dans la colonne du milieu */
+.barre-laterale .nav-item.nouveau, .barre-laterale .nav-item.nouveau svg { color: var(--tch-accent); }
+@media (min-width: 768px) {
+  .ep-panneau-projet .col-liste .ep-nouveau { display: flex; width: calc(100% - 16px); margin: 6px 8px 0; }
+}
+/* Séparateur « · » entre les faits d'une méta (sauf avant un signal) */
+.ep-projets .meta, .ep-cp-ligne { column-gap: 0; }
+.ep-projets .meta > span + span::before, .ep-cp-ligne > span + span::before { content: "·"; margin: 0 7px; color: var(--tch-texte-doux); }
+.ep-projets .meta > .ep-sante::before, .ep-projets .meta > .ep-aplanifier::before,
+.ep-cp-ligne > .ep-sante::before, .ep-cp-ligne > .ep-aplanifier::before { content: ""; margin: 0 5px; }
+/* « Basse » : même fond que les autres, seules les barres pâlissent */
+.ep-prio.basse { background: var(--tch-panneau); box-shadow: none; }
+
+/* M2 : tuile moyenne — une rangée d'en-tête, 16 pt de marge partout, pied décollé du bord */
+.ep-tuile.moyenne, .ep-tuile.grande { padding: 16px; }
+.ep-tuile.moyenne .ep-t-entete { display: flex; align-items: center; gap: 10px; min-height: 22px; }
+.ep-tuile.moyenne .ep-t-jour { flex: 1; margin: 0; font-size: 0.9375rem; }
+.ep-t-compte-m { font-size: 0.875rem; font-weight: 600; color: var(--tch-texte-doux); white-space: nowrap; }
+.ep-t-compte-m b { font-size: 1.25rem; font-weight: 700; color: var(--tch-texte); }
+.ep-tuile.moyenne .ep-t-liste { margin-top: 10px; }
+.ep-tuile.moyenne .ep-t-liste li { min-height: 22px; }
+.ep-tuile.moyenne .ep-t-pied { margin-top: auto; }
+.ep-t-liste li .pt-erp { width: 12px; height: 12px; margin-left: -2px; color: var(--tch-texte-doux); stroke-width: 2; }
+.ep-t-liste li { grid-template-columns: 10px 1fr auto; }
+.ep-tuile.grande .ep-t-haut .ep-t-sous { align-self: flex-end; margin: 0 0 4px; }
+.ep-tuile.grande .ep-t-pied { gap: 12px; }
+.ep-tuile.grande .ep-t-pied .ep-t-ech { flex: 1; min-width: 0; }
+.ep-t-ech .chiffres { white-space: nowrap; }
+
+/* M3 : revue — trois chiffres, le férié en note ; cartes non étirées au bureau */
+.ep-faits { grid-template-columns: repeat(3, 1fr); }
+.ep-faits-note { margin: 8px var(--tch-gouttiere) 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+@media (min-width: 768px) { .ep-faits { grid-template-columns: repeat(3, 1fr); } .ep-revue-grille { align-items: start; } }
+
+/* Tableau au bureau : colonnes en 1fr, retrait du titre réduit → titres sur une ligne */
+@media (min-width: 768px) {
+  .ep-tableau { gap: 10px; }
+  .ep-col { flex: 1 1 0; min-width: 0; }
+  .ep-col .ligne { grid-template-columns: 34px 1fr auto; column-gap: 2px; padding-left: 0; }
+  .ep-col .titre { font-size: 0.9375rem; }
+  .ep-col.bureau-seul { flex: 0 0 180px; }
+}
+
+/* Cockpit : méta sur une ligne */
+.ep-carte-cockpit .meta { flex-wrap: nowrap; overflow: hidden; }
+.ep-carte-cockpit .meta > span:last-child { min-width: 0; overflow: hidden; }
+.ep-tuile.grande .ep-t-haut > div:first-child { flex: 1; }
+.ep-t-jour-maj { display: flex; justify-content: space-between; align-items: baseline; }
+.ep-t-jour-maj .ep-t-maj { font-weight: 400; }
