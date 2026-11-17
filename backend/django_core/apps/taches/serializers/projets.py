@@ -28,7 +28,6 @@ ATTEINT_OU_ABANDONNE = 'Atteint ou abandonné ?'
 DATES_INVERSEES = 'La date de fin précède la date de début.'
 VUES = ('liste', 'tableau', 'chronologie')
 ISSUES = tuple(valeur for valeur in IssueProjet.values if valeur)  # atteint, abandonne
-MAX_TACHES_DU_PLAN = MAX_LIGNES
 
 
 def _messages(longueur=None, **plus):
@@ -194,7 +193,7 @@ class PlanificationSerializer(serializers.Serializer):
     def validate(self, donnees):
         nombre = sum(1 + len(t.get('sous_taches', ())) for s in donnees.get('sections', ()) for t in s['taches'])
         nombre += len(donnees.get('actions', ()))
-        if nombre > MAX_TACHES_DU_PLAN:
+        if nombre > MAX_LIGNES:
             raise serializers.ValidationError({'sections': [MESSAGE_TROP_DE_LIGNES.format(n=nombre)]})
         return donnees
 
