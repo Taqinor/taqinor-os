@@ -303,7 +303,11 @@ def _restaurer_champs(user, etape, bilan):
         ecrites = _poser(user, instance, avant)
     except (_Refus, FieldDoesNotExist, TypeError, ValueError):
         return bilan.conflit(objet, pk, CONFLIT_INTROUVABLE)
-    instance.save(update_fields=ecrites)
+    try:
+        with transaction.atomic():
+            instance.save(update_fields=ecrites)
+    except IntegrityError:  # nom repris par un autre projet, étape ou étiquette depuis le geste
+        return bilan.conflit(objet, pk, CONFLIT_NOM_PRIS if 'nom' in ecrites else CONFLIT_MODIFIEE)
     bilan.restauree(objet, pk)
 
 

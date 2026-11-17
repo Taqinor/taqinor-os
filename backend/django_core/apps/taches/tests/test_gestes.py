@@ -121,6 +121,17 @@ class GesteTests(TestCase):
         self.assertEqual(rendu['restaurees'], [{'objet': 'tache', 'id': une.pk}])
         self.assertEqual([c['id'] for c in rendu['conflits']], [deux.pk])
 
+    def test_nom_repris_depuis_est_un_conflit(self):
+        projet = fabriques.projet(self.u1, nom='Alpha')
+        projet.nom = 'Beta'
+        projet.save(update_fields=['nom'])
+        geste = enregistrer_geste(self.u1, 'modification', 'Modifié', [op_champ('projet', projet, 'nom', 'Alpha')])
+        fabriques.projet(self.u1, nom='alpha')
+        rendu = annuler_geste(self.u1, geste.pk)
+        projet.refresh_from_db()
+        self.assertEqual(projet.nom, 'Beta')
+        self.assertEqual(rendu['conflits'], [{'objet': 'projet', 'id': projet.pk, 'raison': 'nom_pris'}])
+
     def test_objet_disparu_est_un_conflit(self):
         tache = fabriques.tache(self.u1, titre='Avant')
         geste = enregistrer_geste(self.u1, 'modification', 'Modifiée', [self._renommer(tache, 'Après')])
