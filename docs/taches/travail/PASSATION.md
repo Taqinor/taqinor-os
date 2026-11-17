@@ -100,7 +100,7 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-### État FINAL de la session du portable — 17/11/2026, quota à 97 % (arrêt volontaire, marge de sécurité)
+### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
 - `main` : fusion 1 mergée (#1447).
@@ -115,7 +115,17 @@ fusion 3). Les lanes F3 pliées y sont cochées dans SON plan ; à la reprise, a
 opus), presence (8, opus), cartes (3), ecran-iphone (3), etranger-coquille-F3 (1), etranger-deploy-F3 (1),
 presence-front (1), final-F3 (1), orchestrateur (1). Voir le journal ci-dessous pour celles qui sont faites.
 
-**Journal de la fusion 3 (branche `dev-taches-f3`, tête `222b97433`, PAS de PR ouverte, CI jamais jouée dessus)**
+**Journal de la fusion 3 (branche `dev-taches-f3`, PAS de PR ouverte, CI jamais jouée dessus) — 10 tâches pliées, 125 cochées sur 174**
+- Ajout de fin de session : TCH109 (écran « Mon iPhone », 5 étapes, jetons montrés une fois, agendas externes à
+  l'étape 2) et TCH110 (script Scriptable de la grande tuile) pliées et cochées. Reste de TCH109 : brancher la
+  révélation `mon_iphone` (J+3) dans `services/revelations.py` (serveur). Le script suit le contrat `tuile.json`
+  (`faites`, `essentiel.prevues`), pas l'annexe A de la spec ; vrai Scriptable jamais essayé.
+- **TCH95, version la plus avancée : `docs/taches/travail/tch95-wip/tch95-v2-complet.diff`** (1 173 lignes, contient
+  aussi les 4 fichiers neufs dont `tests/test_jetons.py`) : `git apply` sur `dev-taches-f3`. NON committée parce que
+  7 tests sans base échouent encore (`test_routes` RoutesSansBaseTests / AssistantEtBouchonTests / SchemaTests et
+  `test_meme_proprietaire.ListeFermeeTests`, dont « True is not false ») : cause non lue. Deux points de sécurité
+  ouverts à trancher : les journaux d'accès nginx/gunicorn voient l'adresse du flux avec son jeton ; un jeton
+  refusé ne consomme aucun débit. (L'ancien `tch95.diff` + 3 fichiers du même dossier = version antérieure.)
 - Pliées et cochées (8 tâches, 123 cochées sur 174) : TCH117, TCH165, TCH118 (cartes Tâches du Copilote, 4 demandes
   prêtes), TCH101, TCH124 (pastille du jour et « À trier »), TCH120 (badge au push, raccourci de l'app), TCH20
   (4 types de notification, migration `notifications/0079`), TCH21 (`notify(badge=n)`).
