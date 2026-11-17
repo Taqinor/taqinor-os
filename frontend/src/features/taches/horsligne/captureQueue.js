@@ -124,6 +124,16 @@ export function remplacerFile(autre = null) {
   jetees.length = 0
 }
 
+// Revue F2 #4 — la file PERSISTÉE est vidée à toute déconnexion par `providers/session-bridge.js`, même hors
+// des écrans Tâches ; ici, le module chargé oublie aussi sa copie EN MÉMOIRE (relue du magasin au prochain accès).
+if (typeof window !== 'undefined') {
+  window.addEventListener(EVENEMENT_DECONNEXION, () => {
+    file = null
+    conflits.clear()
+    jetees.length = 0
+  })
+}
+
 async function enfiler(type, donnees, cible, f = fileTaches()) {
   if (!compte) throw new Error('Aucun compte connecté : l\'action ne peut pas être mise en file.')
   const payload = { type, ...donnees, userId: compte.userId, companyId: compte.companyId }

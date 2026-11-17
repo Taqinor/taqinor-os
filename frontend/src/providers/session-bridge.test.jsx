@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  AUTH_LOGOUT_EVENT, SESSION_EXPIRED_EVENT, SW_MEDIA_CACHE, brancherSourceDeSession,
+  AUTH_LOGOUT_EVENT, PREFIXES_VIDES_A_LA_DECONNEXION, SESSION_EXPIRED_EVENT, SW_MEDIA_CACHE, brancherSourceDeSession,
   emitAuthLogout, emitSessionExpired, sessionEstActive,
 } from './session-bridge'
 
@@ -56,6 +56,36 @@ describe('session-bridge — emitAuthLogout', () => {
       expect(() => emitAuthLogout()).not.toThrow()
     } finally {
       vi.unstubAllGlobals()
+    }
+  })
+
+  // Revue F2 #4 — aucun écran /taches/* monté (le module n'est même pas importé ici) : la journée en cache,
+  // les brouillons et la file hors ligne du module Tâches partent quand même à la déconnexion.
+  it('emitAuthLogout hors des écrans Tâches vide les clés taches:* et la file taches', async () => {
+    const { createModuleOutboxStore } = await import('../lib/offlineStore')
+    const magasin = window.localStorage
+    magasin.clear()
+    magasin.setItem('taches:aujourdhui:7:2026-11-17', '{"donnees":{"titre":"Canari confidentiel"}}')
+    magasin.setItem('taches:brouillon:1:7', '{"texte":"Relancer"}')
+    magasin.setItem('taqinor:draft:taches:plan-projet:3', '{}')
+    magasin.setItem('taqinor:draft:devis:9', '{}')
+    await createModuleOutboxStore('taches').save([{ client_op_id: 'op-1', op_type: 'ajouter', payload: { userId: 7 } }])
+    try {
+      emitAuthLogout()
+      await vi.waitFor(async () => expect(await createModuleOutboxStore('taches').load()).toEqual([]))
+      const restantes = Array.from({ length: magasin.length }, (_, i) => magasin.key(i))
+      expect(restantes.filter((c) => c.startsWith('taches:') || c.startsWith('taqinor:draft:taches:'))).toEqual([])
+      expect(magasin.getItem('taqinor:draft:devis:9')).toBe('{}')
+    } finally {
+      magasin.clear()
+    }
+  })
+
+  it('les préfixes vidés couvrent ceux du module Tâches (cache de journée, brouillon)', async () => {
+    const { PREFIXE_CACHE } = await import('../features/taches/horsligne/cacheJournee')
+    const { PREFIXE_BROUILLON } = await import('../features/taches/saisie/FeuilleSaisie')
+    for (const prefixe of [PREFIXE_CACHE, PREFIXE_BROUILLON]) {
+      expect(PREFIXES_VIDES_A_LA_DECONNEXION.some((p) => prefixe.startsWith(p))).toBe(true)
     }
   })
 
