@@ -18,12 +18,14 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.taches.choix import StatutProjet, StatutRappel, StatutTache
-from apps.taches.models.projets import Projet
+from apps.taches.models.projets import Projet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.saisie.normalisation import cle_nom
-from apps.taches.selectors.base import projets_de, rappels_de, taches_de
+from apps.taches.selectors.base import projets_de, rappels_de, sections_de, taches_de
 from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office
-from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_douce
+from apps.taches.services.gestes import (
+    enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
+)
 from apps.taches.services.planification import MESSAGE_CONFLIT
 from apps.taches.services.rappels import annuler_rappels
 from core.conflit_etat import ConflitEtat
@@ -86,6 +88,10 @@ def _verrouiller_projet(user, pk, version=None):
 
 def _nom_pris(nom):
     return serializers.ValidationError({'nom': [f'Un projet « {nom} » existe déjà.']})
+
+
+def _etape_prise(nom):
+    return serializers.ValidationError({'nom': [f'Une étape « {nom} » existe déjà.']})
 
 
 def _geste(user, type_, message, ops):
@@ -321,3 +327,70 @@ def trier_par_priorite(user):
     with transaction.atomic():
         projets = list(projets_de(user).select_for_update().order_by('-priorite', 'rang', 'id'))
         _ecrire_rangs(Projet, _renumeroter([p.pk for p in projets]))
+
+
+# --- Étapes (sections) ---------------------------------------------------------------------------
+
+def _section_du_compte(user, pk, *, verrou=False):
+    sections = sections_de(user)
+    section = (sections.select_for_update() if verrou else sections).select_related('projet').filter(pk=pk).first()
+    if section is None:
+        raise Http404(MESSAGE_INTROUVABLE)
+    return section
+
+
+def creer_section(user, *, projet_id, nom, date_debut=None, date_fin=None):
+    """Ajoute une étape à la fin du projet ; nom repris dans ce projet → 400."""
+    with transaction.atomic():
+        projet = projets_de(user).select_for_update().filter(pk=projet_id).first()
+        if projet is None:
+            raise serializers.ValidationError({'projet_id': ['Projet inexistant.']})
+        if Section.objects.filter(projet=projet, nom_cle=cle_nom(nom)).exists():
+            raise _etape_prise(nom)
+        dernier = Section.objects.filter(projet=projet).aggregate(m=Max('rang'))['m']
+        try:
+            with transaction.atomic():
+                section = Section.objects.create(
+                    company_id=user.company_id, projet=projet, nom=nom, rang=(dernier or 0) + PAS_RANG,
+                    date_debut=date_debut, date_fin=date_fin)
+        except IntegrityError:
+            raise _etape_prise(nom)
+        geste = enregistrer_geste(user, 'creation', 'Étape ajoutée', [op_creation('section', section)])
+    return section, geste
+
+
+def modifier_section(user, section_id, donnees):
+    """Renomme une étape ou change ses dates (champs reçus seuls)."""
+    with transaction.atomic():
+        section = _section_du_compte(user, section_id, verrou=True)
+        valeurs = dict(donnees)
+        if 'nom' in valeurs and cle_nom(valeurs['nom']) != section.nom_cle \
+                and Section.objects.filter(projet=section.projet, nom_cle=cle_nom(valeurs['nom'])).exists():
+            raise _etape_prise(valeurs['nom'])
+        ops = []
+        _ecrire('section', section, valeurs, ops)
+        geste = _geste(user, 'modification', 'Étape modifiée', ops)
+    return section, geste
+
+
+def supprimer_section(user, section_id):
+    """Supprime l'étape ; ses tâches passent « Sans étape » (annulable : elles y retournent)."""
+    with transaction.atomic():
+        section = _section_du_compte(user, section_id, verrou=True)
+        ops = []
+        for tache in taches_de(user).select_for_update().filter(section=section):
+            _ecrire('tache', tache, {'section': None}, ops)
+        valeurs = {'projet': section.projet_id, 'nom': section.nom, 'rang': section.rang,
+                   'date_debut': section.date_debut, 'date_fin': section.date_fin}
+        ops.append(op_suppression_dure('section', section, valeurs))
+        section.delete()
+        return enregistrer_geste(user, 'suppression', 'Étape supprimée', ops)
+
+
+def reordonner_section(user, section_id, *, avant_id=None, apres_id=None):
+    """Place l'étape dans l'ordre de son projet. Aucun geste."""
+    with transaction.atomic():
+        section = _section_du_compte(user, section_id, verrou=True)
+        ordre = list(Section.objects.filter(projet=section.projet).exclude(pk=section.pk)
+                     .order_by('rang', 'id').values_list('pk', 'rang'))
+        _ecrire_rangs(Section, _rangs_apres_insertion(ordre, section.pk, avant_id, apres_id))

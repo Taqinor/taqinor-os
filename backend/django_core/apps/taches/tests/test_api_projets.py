@@ -13,7 +13,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.test import APIClient
 
-from apps.taches.models.projets import Projet
+from apps.taches.models.projets import Projet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.projets import _rangs_apres_insertion
@@ -540,3 +540,146 @@ class OrdreEtClotureTests(_Base):
     def test_rouvrir_un_projet_d_un_autre_compte_404(self):
         projet = fabriques.projet(self.voisin, statut='archive')
         self.assertEqual(self._api(self.u1).post(_url(f'projets/{projet.pk}/rouvrir/')).status_code, 404)
+
+
+class VueEtEtapesTests(_Base):
+    def test_vue_forme_de_l_echantillon(self):
+        projet = fabriques.projet(self.u1)
+        etape = fabriques.section(projet, nom='Études')
+        fabriques.tache(self.u1, projet=projet, section=etape)
+        fabriques.tache(self.u1, projet=projet)
+        reponse = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/?vue=tableau'))
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        exemple = exemple_de('projet_vue')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['sections'][0]), set(exemple['sections'][0]))
+        self.assertEqual(set(corps['sections'][0]['taches'][0]), set(exemple_de('item')))
+        self.assertEqual(len(corps['sections'][0]['taches']), 1)
+        self.assertEqual(len(corps['sans_section']), 1)
+        self.assertEqual(corps['avancement'], {'faites': 0, 'total': 2, 'derniere_faite_le': None})
+
+    def test_vue_inconnue_400_et_projet_etranger_404(self):
+        projet = fabriques.projet(self.u1)
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        self.assertEqual(api.get(_url(f'projets/{projet.pk}/vue/?vue=zzz')).status_code, 400)
+        self.assertEqual(api.get(_url(f'projets/{etranger.pk}/vue/')).status_code, 404)
+
+    def test_avancement_et_faites_nb(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.tache(self.u1, projet=projet)
+        self._fait(self.u1, projet)
+        self._fait(self.u1, projet)
+        fabriques.tache(self.u1, projet=projet, statut='annule', annule_le=timezone.now())
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        self.assertEqual(corps['avancement']['faites'], 2)
+        self.assertEqual(corps['avancement']['total'], 3)
+        self.assertEqual(corps['avancement']['derniere_faite_le'], timezone.localdate().isoformat())
+        self.assertEqual(corps['faites_nb'], 2)
+
+    def test_les_faites_ne_sont_servies_que_si_montrer_faites(self):
+        projet = fabriques.projet(self.u1)
+        ouverte = fabriques.tache(self.u1, projet=projet)
+        faite = self._fait(self.u1, projet)
+        api = self._api(self.u1)
+
+        def ids():
+            corps = api.get(_url(f'projets/{projet.pk}/vue/')).json()
+            return {t['id'] for t in corps['sans_section']}
+        self.assertEqual(ids(), {ouverte.pk})
+        Projet.objects.filter(pk=projet.pk).update(affichage={'montrer_faites': True})
+        self.assertEqual(ids(), {ouverte.pk, faite.pk})
+
+    def test_prochain_jalon_et_prochaine_action(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.tache(self.u1, projet=projet, quelque_jour=True)
+        action = fabriques.tache(self.u1, projet=projet)
+        fabriques.tache(self.u1, projet=projet, jalon=True, echeance=_j(30))
+        proche = fabriques.tache(self.u1, projet=projet, jalon=True, echeance=_j(10))
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        self.assertEqual(corps['prochain_jalon']['id'], proche.pk)
+        self.assertEqual(corps['prochaine_action']['id'], action.pk)
+
+    def test_sans_jalon_ni_action_les_deux_sont_nuls(self):
+        projet = fabriques.projet(self.u1)
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        self.assertIsNone(corps['prochain_jalon'])
+        self.assertIsNone(corps['prochaine_action'])
+        self.assertEqual((corps['burnup'], corps['burnup_legende']), ([], ''))
+
+    def test_burnup_par_semaine_close_avec_sa_legende(self):
+        projet = fabriques.projet(self.u1)
+        ancienne = fabriques.tache(self.u1, projet=projet)
+        Tache.objects.filter(pk=ancienne.pk).update(created_at=timezone.now() - datetime.timedelta(days=20))
+        corps = self._api(self.u1).get(_url(f'projets/{projet.pk}/vue/')).json()
+        self.assertGreaterEqual(len(corps['burnup']), 2)
+        self.assertEqual(set(corps['burnup'][0]), {'semaine', 'total', 'faites'})
+        self.assertEqual(datetime.date.fromisoformat(corps['burnup'][0]['semaine']).weekday(), 0)
+        self.assertEqual(corps['burnup_legende'], 'reconstruit depuis les dates actuelles')
+
+    # --- Étapes ------------------------------------------------------------------------------
+
+    def test_creer_une_etape(self):
+        projet = fabriques.projet(self.u1)
+        corps = {'projet_id': projet.pk, 'nom': 'Études', 'date_fin': '2026-11-30'}
+        reponse = self._api(self.u1).post(_url('sections/'), corps, format='json')
+        self.assertEqual(reponse.status_code, 201)
+        self.assertEqual(set(reponse.json()), {'id', 'projet_id', 'nom', 'rang', 'date_debut', 'date_fin', 'geste_id'})
+        section = Section.objects.get(pk=reponse.json()['id'])
+        self.assertEqual((section.projet_id, section.company_id, section.nom), (projet.pk, self.a.pk, 'Études'))
+        self.assertEqual(section.date_fin, datetime.date(2026, 11, 30))
+
+    def test_etape_nom_pris_dates_inversees_et_projet_etranger(self):
+        projet = fabriques.projet(self.u1)
+        fabriques.section(projet, nom='Études')
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        pris = api.post(_url('sections/'), {'projet_id': projet.pk, 'nom': 'études'}, format='json')
+        self.assertEqual(pris.status_code, 400)
+        self.assertEqual(pris.json()['nom'], ['Une étape « études » existe déjà.'])
+        inversees = api.post(_url('sections/'), {'projet_id': projet.pk, 'nom': 'Pose', 'date_debut': '2026-12-02',
+                                                 'date_fin': '2026-12-01'}, format='json')
+        self.assertEqual(inversees.json()['date_fin'], ['La date de fin précède la date de début.'])
+        autre = api.post(_url('sections/'), {'projet_id': etranger.pk, 'nom': 'Pose'}, format='json')
+        self.assertEqual(autre.status_code, 400)
+        self.assertEqual(autre.json()['projet_id'], ['Projet inexistant.'])
+
+    def test_renommer_une_etape(self):
+        section = fabriques.section(fabriques.projet(self.u1), nom='Avant')
+        reponse = self._api(self.u1).patch(_url(f'sections/{section.pk}/'), {'nom': 'Après'}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        section.refresh_from_db()
+        self.assertEqual((section.nom, section.nom_cle), ('Après', 'apres'))
+
+    def test_etape_d_un_autre_compte_404(self):
+        section = fabriques.section(fabriques.projet(self.voisin))
+        api = self._api(self.u1)
+        self.assertEqual(api.patch(_url(f'sections/{section.pk}/'), {'nom': 'X'}, format='json').status_code, 404)
+        self.assertEqual(api.delete(_url(f'sections/{section.pk}/')).status_code, 404)
+        self.assertEqual(api.post(_url(f'sections/{section.pk}/reordonner/'), {'avant_id': 1},
+                                  format='json').status_code, 404)
+
+    def test_supprimer_une_etape_laisse_ses_taches_sans_etape_et_s_annule(self):
+        projet = fabriques.projet(self.u1)
+        section = fabriques.section(projet)
+        tache = fabriques.tache(self.u1, projet=projet, section=section)
+        reponse = self._api(self.u1).delete(_url(f'sections/{section.pk}/'))
+        self.assertEqual(reponse.status_code, 200)
+        self.assertFalse(Section.objects.filter(pk=section.pk).exists())
+        tache.refresh_from_db()
+        self.assertIsNone(tache.section_id)
+        bilan = annuler_geste(self.u1, reponse.json()['geste_id'])
+        self.assertEqual(bilan['conflits'], [])
+        tache.refresh_from_db()
+        self.assertEqual(tache.section_id, section.pk)
+        self.assertEqual(Section.objects.get(pk=section.pk).nom, section.nom)
+
+    def test_reordonner_les_etapes(self):
+        projet = fabriques.projet(self.u1)
+        un, deux, trois = (fabriques.section(projet, rang=r) for r in (1024, 2048, 3072))
+        reponse = self._api(self.u1).post(_url(f'sections/{trois.pk}/reordonner/'), {'avant_id': un.pk},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 204)
+        ordre = list(Section.objects.filter(projet=projet).order_by('rang', 'id').values_list('pk', flat=True))
+        self.assertEqual(ordre, [trois.pk, un.pk, deux.pk])

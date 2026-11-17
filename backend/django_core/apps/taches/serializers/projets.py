@@ -7,11 +7,14 @@ sous le champ fautif) et des CONSTRUCTEURS de réponse, qui rendent EXACTEMENT l
 jamais recopiées ; ce que ces formes ne calculent pas seules (santé, compteurs…) vient de
 `selectors/projets.etat_projets` par `contexte(calculs=…)`.
 """
+from django.db.models import F
 from rest_framework import serializers
 
-from apps.taches.choix import Couleur, IssueProjet, Priorite, StatutProjet
+from apps.taches.choix import Couleur, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.saisie.collage import MAX_LIGNES
-from apps.taches.serializers.formes import AFFICHAGE_DEFAUT, ProjetSerializer, contexte
+from apps.taches.selectors import projets as lecture
+from apps.taches.selectors.base import sections_de, taches_de
+from apps.taches.serializers.formes import AFFICHAGE_DEFAUT, ItemSerializer, ProjetSerializer, charger_items, contexte
 
 REQUIS = 'Requis.'
 VALEUR_INCONNUE = 'Valeur inconnue.'
@@ -114,6 +117,42 @@ class ReordonnerSerializer(serializers.Serializer):
     liste = serializers.CharField(required=False, allow_blank=True)  # sans objet pour un projet ou une étape
 
 
+class SectionCreationSerializer(serializers.Serializer):
+    """POST sections/ — `{projet_id, nom, date_debut?, date_fin?}`."""
+
+    projet_id = serializers.IntegerField(error_messages=_messages())
+    nom = _texte(120)
+    date_debut = serializers.DateField(required=False, allow_null=True)
+    date_fin = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, donnees):
+        return _dates_ordonnees(donnees)
+
+
+class SectionModificationSerializer(serializers.Serializer):
+    """PATCH sections/{id}/ — renommer, dates."""
+
+    nom = _texte(120, required=False)
+    date_debut = serializers.DateField(required=False, allow_null=True)
+    date_fin = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, donnees):
+        return _dates_ordonnees(donnees)
+
+
+def _dates_ordonnees(donnees):
+    debut, fin = donnees.get('date_debut'), donnees.get('date_fin')
+    if debut is not None and fin is not None and fin < debut:
+        raise serializers.ValidationError({'date_fin': [DATES_INVERSEES]})
+    return donnees
+
+
+class VueProjetSerializer(serializers.Serializer):
+    """GET projets/{id}/vue/?vue= — la vue demandée (les trois servent le même contenu)."""
+
+    vue = serializers.ChoiceField(choices=VUES, required=False, error_messages=_messages())
+
+
 # --- Réponses ------------------------------------------------------------------------------------
 
 def _iso(valeur):
@@ -138,3 +177,51 @@ def projet_ecrit(resultat, ctx):
     """`projet_ecrit.json` : le projet et ce que l'écriture a déplacé, rendu, supprimé."""
     return {'projet': forme_projet(resultat.projet, ctx), 'deplacees': resultat.deplacees,
             'restaurees': resultat.restaurees, 'supprimees': resultat.supprimees, 'geste_id': geste_de(resultat)}
+
+
+def section_ecrite(section, geste):
+    """La réponse de `sections/` : l'étape écrite et son geste."""
+    return {'id': section.pk, 'projet_id': section.projet_id, 'nom': section.nom, 'rang': section.rang,
+            'date_debut': _iso(section.date_debut), 'date_fin': _iso(section.date_fin),
+            'geste_id': geste.pk if geste is not None else None}
+
+
+def _item(user, pk, ctx, chargees):
+    """L'ITEM de la tâche `pk` (déjà chargée, sinon lue) ou `None`."""
+    if pk is None:
+        return None
+    tache = chargees.get(pk) or charger_items(taches_de(user).filter(pk=pk)).first()
+    return ItemSerializer(tache, context=ctx).data if tache is not None else None
+
+
+def _sections_de_la_vue(user, projet, taches, ctx):
+    """Les étapes du projet (avec leurs ITEM) et les ITEM « sans étape »."""
+    par_etape = {}
+    for tache in taches:
+        par_etape.setdefault(tache.section_id, []).append(tache)
+    etapes = [{'id': s.pk, 'nom': s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
+               'date_fin': _iso(s.date_fin),
+               'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data}
+              for s in sections_de(user).filter(projet=projet).order_by('rang', 'id')]
+    return etapes, ItemSerializer(par_etape.get(None, []), many=True, context=ctx).data
+
+
+def vue_du_projet(user, projet, etat, ctx, jour):
+    """`projet_vue.json` : en-tête PROJET, avancement, prochain jalon, prochaine action, étapes, tâches sans
+    étape, nombre de faites, burn-up. Les tâches faites ne sont servies que si `affichage.montrer_faites`."""
+    pures = etat.taches_de(projet.pk)
+    montrer = bool((projet.affichage or {}).get('montrer_faites'))
+    statuts = lecture.OUVERTS + ((StatutTache.FAIT,) if montrer else ())
+    taches = list(charger_items(taches_de(user).filter(projet=projet, parent__isnull=True, statut__in=statuts)
+                                .order_by(F('rang_projet').asc(nulls_last=True), 'id')))
+    chargees = {t.pk: t for t in taches}
+    etapes, sans_etape = _sections_de_la_vue(user, projet, taches, ctx)
+    points, legende = lecture.burnup_de(pures, jour)
+    return {
+        'projet': forme_projet(projet, ctx), 'avancement': lecture.avancement_de(pures),
+        'prochain_jalon': _item(user, lecture.prochain_jalon_id(pures), ctx, chargees),
+        'prochaine_action': _item(user, lecture.prochaine_action_id(pures), ctx, chargees),
+        'sections': etapes, 'sans_section': sans_etape,
+        'faites_nb': etat.calculs[('projet', projet.pk)]['compteurs']['faites'],
+        'burnup': points, 'burnup_legende': legende,
+    }

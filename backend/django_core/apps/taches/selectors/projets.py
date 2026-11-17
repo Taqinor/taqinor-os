@@ -18,6 +18,7 @@ from apps.taches.confidentialite import nom_pour
 from apps.taches.models.projets import RevueProjet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.moteur import sante
+from apps.taches.moteur.classement import ItemPur, prochaine_action
 from apps.taches.selectors.base import jours_travailles_de, projets_de, sections_de, taches_de
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
@@ -222,3 +223,45 @@ def projets_filtres(user, statut=None):
 def projet_de(user, pk):
     """Le projet vivant `pk` de `user`, ou `None` (l'id d'un autre compte répond comme un id inconnu)."""
     return projets_de(user).filter(pk=pk).first()
+
+
+# --- La vue d'un projet --------------------------------------------------------------------------
+
+def _item_pur(tache):
+    """Le `ItemPur` d'une `TachePure` (ce que lit `classement.prochaine_action`)."""
+    return ItemPur(type='tache', id=tache.id, statut=tache.statut, parent_id=tache.parent_id,
+                   rang_projet=tache.rang_projet, quelque_jour=tache.quelque_jour, bloquee_par=tache.bloquee_par)
+
+
+def prochaine_action_id(taches):
+    """Id de la prochaine action d'un projet (première tâche à faire, non bloquée, hors réserve, dans
+    l'ordre du projet) ou `None`."""
+    choisie = prochaine_action([_item_pur(t) for t in taches])
+    return choisie.id if choisie is not None else None
+
+
+def prochain_jalon_id(taches):
+    """Id du jalon ouvert de plus petite date (`echeance`, sinon `jour_prevu` ; sans date en dernier)."""
+    jalons = [t for t in taches if t.jalon and t.statut in OUVERTS]
+    if not jalons:
+        return None
+
+    def cle(t):
+        date = t.echeance or t.jour_prevu
+        return (date is None, date or datetime.date.max, t.id)
+    return min(jalons, key=cle).id
+
+
+def avancement_de(taches):
+    """`{faites, total, derniere_faite_le}` (« 12 sur 20 » ; 0 comptée : total 0)."""
+    rendu = sante.avancement(taches)
+    return {'faites': rendu.faites, 'total': rendu.total,
+            'derniere_faite_le': rendu.derniere_faite.isoformat() if rendu.derniere_faite else None}
+
+
+def burnup_de(taches, jour):
+    """`([{semaine (lundi), total, faites}], légende)` par semaine close."""
+    rendu = sante.burnup(taches, jour)
+    points = [{'semaine': (p.fin - datetime.timedelta(days=6)).isoformat(), 'total': p.total, 'faites': p.faites}
+              for p in rendu.points]
+    return points, rendu.legende

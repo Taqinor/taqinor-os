@@ -207,7 +207,10 @@ class ProjetAffichageVue(APIView):
     @extend_schema(parameters=[parametre('vue', OpenApiTypes.STR, 'liste, tableau ou chronologie.')],
                    responses=reponses(forme_echantillon('projet_vue'), erreurs=(400, 404)))
     def get(self, request, id):
-        raise PasEncore()
+        _valider(formes_projets.VueProjetSerializer, {k: v for k, v in request.query_params.items() if k == 'vue'})
+        projet = _projet_ou_404(request, id)
+        etat, ctx = _etat(request)
+        return Response(formes_projets.vue_du_projet(request.user, projet, etat, ctx, etat.jour))
 
 
 class PlanificationApercuVue(APIView):
@@ -333,7 +336,9 @@ class SectionsVue(APIView):
         'date_fin': serializers.DateField(required=False, allow_null=True),
     }), responses=reponses(SECTION, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = _valider(formes_projets.SectionCreationSerializer, request.data)
+        section, geste = ecriture.creer_section(request.user, **donnees)
+        return Response(formes_projets.section_ecrite(section, geste), status=201)
 
 
 class SectionVue(APIView):
@@ -347,11 +352,14 @@ class SectionVue(APIView):
         'date_fin': serializers.DateField(required=False, allow_null=True),
     }), responses=reponses(SECTION, erreurs=(400, 404)))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.SectionModificationSerializer, request.data)
+        section, geste = ecriture.modifier_section(request.user, id, donnees)
+        return Response(formes_projets.section_ecrite(section, geste))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        geste = ecriture.supprimer_section(request.user, id)
+        return Response({'geste_id': geste.pk})
 
 
 class SectionReordonnerVue(APIView):
@@ -361,7 +369,10 @@ class SectionReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=SANS_CORPS)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
+        ecriture.reordonner_section(request.user, id, avant_id=donnees.get('avant_id'),
+                                    apres_id=donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class ModelesVue(APIView):
