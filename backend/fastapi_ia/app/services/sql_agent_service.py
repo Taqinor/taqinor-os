@@ -1302,7 +1302,7 @@ def _modele_effectif(provider: str) -> str:
     return model
 
 
-MESSAGE_BUDGET_ATTEINT = ("Budget du jour de l'assistant atteint : reponses par "
+MESSAGE_BUDGET_ATTEINT = ("Budget du jour de l'assistant atteint : réponses par "
                           "le modèle de secours jusqu'à demain.")
 
 
