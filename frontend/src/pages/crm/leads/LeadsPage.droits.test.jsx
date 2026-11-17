@@ -10,15 +10,11 @@ import { PIPELINE_STAGES } from '../../../features/crm/stages'
 // ADRG152 — `/crm/leads` ne laisse aux vues que les gestes que la route accepte :
 // « Responsable » = `crm_reassign` ; champs, étape, « Perdu », glisser = `crm_modifier`.
 const dnd = vi.hoisted(() => ({ onDragEnd: null }))
+// Le vrai DndContext, dont on garde le gestionnaire de dépôt pour le rejouer à la main.
 vi.mock('@dnd-kit/core', async (original) => {
   const reel = await original()
-  return {
-    ...reel,
-    DndContext: (props) => {
-      dnd.onDragEnd = props.onDragEnd
-      return <reel.DndContext {...props} />
-    },
-  }
+  const DndContext = (props) => { dnd.onDragEnd = props.onDragEnd; return <reel.DndContext {...props} /> }
+  return { ...reel, DndContext }
 })
 vi.mock('../../../api/crmApi', () => {
   const vide = () => Promise.resolve({ data: [] })
