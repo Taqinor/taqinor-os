@@ -164,6 +164,10 @@ def _model_declared_names():
             for m in sorted(app_dir.glob("models*.py")):
                 if m.is_file():
                     files.append(m)
+            # TCH — même faux positif pour un PAQUET `apps/<app>/models/*.py` (app `taches`) :
+            # ses Meta comptent aussi, jamais un allowlistage.
+            if (app_dir / "models").is_dir():
+                files.extend(sorted((app_dir / "models").glob("*.py")))
     for f in files:
         if not f.is_file():
             continue
