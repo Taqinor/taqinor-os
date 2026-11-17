@@ -106,7 +106,7 @@ const crmApi = {
   // MRY9/MRY15 — arrête la ou les cadences en cours du lead. `motif`
   // OBLIGATOIRE côté serveur (400 sinon) ; `cadences` optionnel (liste).
   // CADV35 — le client d'un lead au Froid recontacte (`lead_recontact.json`).
-  recontacterLead: (leadId, payload) => api.post(`/crm/leads/${leadId}/recontact/`, payload),
+  recontacterLead: (leadId, payload, config) => api.post(`/crm/leads/${leadId}/recontact/`, payload, config),
   arreterCadence: (leadId, payload) =>
     api.post(`/crm/leads/${leadId}/relance/arreter/`, payload),
   // MRY14 — `payload` accepte soit une simple note (compat historique), soit
