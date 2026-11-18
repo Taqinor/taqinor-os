@@ -1,4 +1,4 @@
-# rejeu sur runner GitHub (2026-11-18T02:04:40Z), sha ed9668a67ba1359ad572c028e4b9ab13f0a869ef, conteneur faeafc50f4ca0194d288f84f1a20525ec2642304b3a5961b3cae2d2d7b433c45 (pile compose, .env = .env.example)
+# rejeu sur runner GitHub (2026-11-18T04:53:06Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
 # commande : python scripts/sonde.py --toutes AMSG --conteneur <django_core>
 
 == C-AMSG-001 (sha 3acfee471)
@@ -60,12 +60,7 @@ verdict : ÉCART
 base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
 == C-AMSG-009 (sha 3acfee471)
 attendu : chaque emplacement dit « envoyé » (emails_envoyes=1, email_sent=True, True) alors que rien ne part ; le brouillon WhatsApp du rappel J-1 est compté puis jeté
-observé : ERREUR : Traceback (most recent call last):
-  File "<string>", line 51, in _rejouer
-  File "sonde", line 94, in sonde
-  File "apps.installations.tasks", line 216, in rappel_rdv_j1
-  File "apps.notifications.selectors", line 104, in fenetre_notifications
-NameError: name 'timezone' is not defined
+observé : {"repro": false, "observe": {"methode": "exécution des 5 vraies fonctions d'envoi (modules réels, noms résolus paresseusement, ORM bouchonné), send_mail = backend console", "is_email_configured": false, "messages_imprimes_par_le_backend_console": 0, "taches_whatsapp_creees": 2, "emplacements_qui_disent_envoye": [], "retours": {"installations/tasks.py::rappel_rdv_j1": {"retour": {"jour_cible": "2026-11-12", "cibles": 1, "wa_generes": 1, "emails_envoyes": 0}, "brouillon_whatsapp_compte_puis_jete": true}, "installations/livraison_client_notify.py::notify_livraison_transition": {"sent": true, "wa_draft_url": "https://wa.me/212600000000?text=…", "email_sent": false, "tache_whatsapp": true}, "sav/notifications_client.py::notify_ticket_transition": {"sent": true, "wa_draft_url": "https://wa.me/212600000000?text=…", "email_sent": false, "wa_corps": "Bonjour"}, "portail/services.py::_envoyer_identifiants_portail": false, "stock/services.py::_envoyer_identifiants_portail_fournisseur": false}}}
 verdict : ÉCART
 base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
 == C-AMSG-010 (sha 3acfee471)

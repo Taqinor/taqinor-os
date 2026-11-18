@@ -1,4 +1,4 @@
-# rejeu sur runner GitHub (2026-11-18T02:03:00Z), sha ed9668a67ba1359ad572c028e4b9ab13f0a869ef, conteneur faeafc50f4ca0194d288f84f1a20525ec2642304b3a5961b3cae2d2d7b433c45 (pile compose, .env = .env.example)
+# rejeu sur runner GitHub (2026-11-18T04:50:55Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
 # commande : python scripts/sonde.py --toutes ASUP --conteneur <django_core>
 
 == C-ASUP-001 (sha 3acfee471)
