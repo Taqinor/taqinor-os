@@ -59,7 +59,8 @@ test('addDaysIso : format YYYY-MM-DD et delta correct', () => {
 // ── TCH159 — « une seule saisie » : le comportement est joué par MesActivitesPage.chargeEquipe.test.jsx
 //    (rendu réel) ; ici, la garde de forme : l'événement unique part AVANT toute création d'activité. ──
 test('TCH159 : avec taches_voir, addTodo émet taqinor:taches:saisir (via cibleEcran) et rend la main avant createActivity', () => {
-  assert.match(SRC, /useHasPermission\('taches_voir'\)/)
+  // F4 revue #15 : le droit ET le module actif, par la fonction unique des montages de Tâches
+  assert.match(SRC, /const peutTaches = useTachesActives\(\)/)
   assert.match(SRC, /EVENEMENT_SAISIR[^\n]*from '..\/..\/features\/taches\/presence\/cibleEcran'/)
   const corps = SRC.slice(SRC.indexOf('const addTodo = async'), SRC.indexOf('const openResched'))
   assert.ok(corps.indexOf('if (peutTaches)') !== -1 && corps.indexOf('if (peutTaches)') < corps.indexOf('recordsApi.createActivity('))
