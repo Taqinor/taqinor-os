@@ -124,8 +124,10 @@ class TestModuleToggleGating(TestCase):
             self.assertNotIn(key, keys, key)
         # Une action LEGACY non attribuée (crm, hors manifeste) reste
         # visible : le gatage ne porte QUE sur le module adsengine désactivé,
-        # jamais globalement.
-        self.assertIn('crm.lead.create', keys)
+        # jamais globalement. (COP2-C : ``crm.lead.create`` est du lot
+        # « herite », masqué au superuser par l'interrupteur du copilote ;
+        # ``crm.lead.note`` est sans lot.)
+        self.assertIn('crm.lead.note', keys)
 
     def test_module_off_does_not_hide_legacy_actions(self):
         """Non-régression : crm OFF ne retire PAS les actions crm historiques
@@ -133,7 +135,7 @@ class TestModuleToggleGating(TestCase):
         ModuleToggle.objects.create(
             company=self.company, module='crm', actif=False)
         keys = {a.key for a in registry.for_user(self.su)}
-        self.assertIn('crm.lead.create', keys)
+        self.assertIn('crm.lead.creer', keys)
         # (crm.lead.list est du lot « herite », masqué au superuser par
         # l'interrupteur du copilote — COP-G1 ; on prend une action sans lot.)
         self.assertIn('crm.lead.note', keys)
