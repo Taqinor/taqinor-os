@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Calendar, X } from 'lucide-react'
 import { ReactReduxContext } from 'react-redux'
 
@@ -150,10 +150,17 @@ function lireContexte(detail) {
     projetId,
     projetNom: projetId != null && typeof detail.projet_nom === 'string' ? detail.projet_nom : '',
     sectionId: projetId != null && Number.isInteger(detail.section_id) ? detail.section_id : null,
+    // TCH102 — « Nouvelle tâche liée » : l'objet de l'écran d'où part la saisie (`{cible, id, libelle?}`), retirable
+    lien: typeof detail?.lien?.cible === 'string' && Number.isInteger(detail.lien.id)
+      ? { cible: detail.lien.cible, id: detail.lien.id, libelle: typeof detail.lien.libelle === 'string' ? detail.lien.libelle : '' }
+      : null,
   }
 }
 
-function avecContexte(ligne, contexte) {
+function avecContexte(origine, contexte) {
+  const ligne = contexte?.lien && origine.lien == null
+    ? { ...origine, lien: { cible: contexte.lien.cible, id: contexte.lien.id } }
+    : origine
   if (contexte?.projetId == null || ligne.projet_id != null || ligne.nouveau_projet) return ligne
   return { ...ligne, projet_id: contexte.projetId, ...(contexte.sectionId != null ? { section_id: contexte.sectionId } : {}) }
 }
@@ -164,7 +171,7 @@ function lignesBrutes(textes, { cid, quand }) {
     .map((titre, index) => ({ index, client_id: `${cid}:${index}`, titre, ...(quand ?? {}) }))
 }
 
-export default function FeuilleSaisie({ ouverte, onFermer }) {
+export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null }) {
   const { societe, compte } = useCompte()
   const cle = cleBrouillon(societe, compte)
   const [initial] = useState(() => lireBrouillon(societe, compte))
@@ -204,12 +211,15 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   // « Coller mes listes » (état vide d'Aujourd'hui) : l'événement de la coquille peut porter `liste` ou `texte` ;
   // Raccord F2 : il porte aussi le contexte de l'écran (`projet_id`, `projet_nom`, `section_id`, `jour_prevu`, `heure_debut`)
+  const lienDefaut = useRef(lienParDefaut)
+  useEffect(() => { lienDefaut.current = lienParDefaut })
   useEffect(() => {
     const surSaisir = (e) => {
       const detail = e?.detail ?? {}
       if (typeof detail.texte === 'string') setTexte(detail.texte)
       if (detail.liste || detail.coller) setChampOuvert(true)
-      setContexte(lireContexte(detail))
+      // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
+      setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
       if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
         setQuand({ jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false })
       }
@@ -377,8 +387,15 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
                 ) : null}
                 {contexte.projetId != null && contexte.projetNom ? (
                   <button type="button" className="puce lue" aria-label={`Retirer « ${contexte.projetNom} »`}
-                    onClick={() => setContexte(lireContexte(null))}>
+                    onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
                     <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
+                    <X className="i i-14" aria-hidden="true" />
+                  </button>
+                ) : null}
+                {contexte.lien ? (
+                  <button type="button" className="puce lue" aria-label={`Retirer le lien « ${contexte.lien.libelle || 'cette fiche'} »`}
+                    onClick={() => setContexte((c) => ({ ...c, lien: null }))}>
+                    <span>{`Lié à : ${contexte.lien.libelle || 'cette fiche'}`}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : null}
