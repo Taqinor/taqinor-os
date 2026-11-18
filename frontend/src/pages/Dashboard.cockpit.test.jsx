@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { render, screen } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { MemoryRouter } from 'react-router-dom'
+import { configureStore } from '@reduxjs/toolkit'
+import { exempleContrat } from '../test/fixtures/contractSamples'
 import {
+  Component as Dashboard,
   cockpitProfile,
   leadsARelancer,
   devisQuiExpirent,
@@ -10,6 +16,24 @@ import {
   ticketsSlaEnRetard,
   lecturesAccueil,
 } from './Dashboard.jsx'
+
+// TCH125 — la carte lit `taches/aujourdhui/` : client mocké, jamais le réseau ; le reste de l'écran est neutralisé.
+const tachesApiMock = vi.hoisted(() => ({ lireAujourdhui: vi.fn() }))
+vi.mock('../api/tachesApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  lireAujourdhui: tachesApiMock.lireAujourdhui,
+}))
+vi.mock('../api/axios', () => ({ default: { get: vi.fn(() => Promise.resolve({ data: [] })), post: vi.fn(() => Promise.resolve({ data: {} })) } }))
+vi.mock('../api/ventesApi', () => ({ default: { getDashboardQuoteToCash: vi.fn(() => Promise.resolve({ data: {} })) } }))
+vi.mock('../api/reportingApi', () => ({ default: { getDashboard: vi.fn(() => Promise.resolve({ data: {} })) } }))
+vi.mock('../components/ActivityFeedWidget', () => ({ default: () => null }))
+vi.mock('../components/MesEquipesCard', () => ({ default: () => null }))
+vi.mock('../components/ApprobationsAttentionCard', () => ({ default: () => null }))
+vi.mock('../components/PremiersPasWidget', () => ({ default: () => null }))
+vi.mock('../components/DemoResumeWidget', () => ({ default: () => null }))
+vi.mock('../features/uxviews/RecentEntitiesWidget', () => ({ default: () => null }))
+vi.mock('../features/uxviews/FavorisWidget', () => ({ default: () => null }))
+vi.mock('../features/reporting/SlaBadgeCard', () => ({ default: () => null }))
 
 /* VX27 — Cockpit du matin : layout par rôle + bandeau « aujourd'hui ».
    On teste les fonctions PURES qui décident CE QUE chaque rôle voit (le
@@ -138,5 +162,48 @@ describe('cartes gardées IsResponsableOrAdmin : accueil du Lecteur (ERR-ACC-ACC
   it('les deux lectures coupent le toast global sur 403', () => {
     expect(lire('../api/monitoringApi.js')).toMatch(/co2-fleet\/', \{ params, suppressErrorToast: true \}/)
     expect(lire('../api/crmApi.js')).toMatch(/equipes\/statistiques\/', \{ suppressErrorToast: true \}/)
+  })
+})
+
+/* ── TCH125 — la carte « Tâches · Aujourd'hui » du tableau de bord ───────── */
+describe('Dashboard — TCH125 : carte des tâches avec taches_voir seulement', () => {
+  const aujourdhui = exempleContrat('taches', 'aujourdhui')
+  const vide = (s = { items: [], loading: false, error: null }) => s
+  const monter = (permissions) => {
+    const auth = { user: { id: 42, username: 'reda' }, role: 'admin', role_nom: 'Administrateur', permissions }
+    const store = configureStore({
+      reducer: {
+        auth: (s = auth) => s,
+        stock: (s = { produits: [], loading: false, error: null }) => s,
+        crm: (s = { clients: [], leads: [], loading: false, error: null }) => s,
+        ventes: (s = { devis: [], factures: [], loading: false, error: null }) => s,
+        installations: (s = vide()) => s,
+        tickets: (s = vide()) => s,
+        parametres: (s = { profile: null }) => s,
+      },
+    })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/dashboard']}><Dashboard /></MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  it('avec taches_voir : la carte lit taches/aujourdhui/ et s\'affiche', async () => {
+    tachesApiMock.lireAujourdhui.mockReset()
+    tachesApiMock.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
+    monter(['taches_voir'])
+    expect(await screen.findByRole('region', { name: /Tâches, aujourd'hui/ })).toBeInTheDocument()
+    expect(tachesApiMock.lireAujourdhui).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans taches_voir : aucune carte, aucune requête Tâches', async () => {
+    tachesApiMock.lireAujourdhui.mockReset()
+    tachesApiMock.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
+    monter([])
+    expect(await screen.findByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()
+    expect(tachesApiMock.lireAujourdhui).not.toHaveBeenCalled()
   })
 })
