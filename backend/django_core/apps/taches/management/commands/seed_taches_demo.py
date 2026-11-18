@@ -169,6 +169,8 @@ A_REVOIR = ('Mettre à jour le planning des poses', 'Rappeler le bureau de contr
 JOURS_A_REVOIR = ((11, 17), (11, 19), (11, 20), (11, 23))
 CREATION_A_REVOIR = ((11, 16), '08:30')
 HEURE_DU_REPORT = '18:00'
+#: S2 : le bilan de la veille (lun. 23), fait le soir par la vraie route (`journee.cloturer`, « Tout reporter »).
+HEURE_BILAN_VEILLE = '18:20'
 #: La journée du 24 (§3), dans l'ordre : (heure, geste). Un geste n'est semé que si son heure est PASSÉE (`--heure`).
 #: « Lier une tâche » sur « Rappeler pour le devis » (parcours TCH137 étape 4) n'a pas d'heure dans SCENARIO.md
 #: (ERR-SCENARIO) : 10:30, l'heure de l'activité, avant sa clôture de 10:40 — sans ce lien la clôture compterait 1
@@ -395,6 +397,16 @@ class Scenario:
             plan.essentiels_choisis, plan.essentiels_faits = choisis, faits
             plan.save(update_fields=['essentiels_choisis', 'essentiels_faits', 'updated_at'])
 
+    def bilan_de_la_veille(self):
+        """S2 : le bilan du lun. 23 est fait le soir même (`journee.cloturer`, « Tout reporter » : ses deux
+        À revoir, reportées 3 fois, restent en place, regles.md §4.6) ; la veille est close et la carte du
+        moment du 24 au matin est « Garder ces 3 », plus « Le bilan d'hier… » (§4.10). La nuit du 24
+        (`nuit_du_jour`) clôt ensuite le 23 comme les autres jours."""
+        veille = self.date(11, 23)
+        instant = self.instant(veille, HEURE_BILAN_VEILLE)
+        with horloge(instant):
+            journee.cloturer(self.user, veille, instant, le_reste=True)
+
     def nuit_du_jour(self):
         """La nuit qui ouvre le 24 : clôt le 23 et pose les cartes du rythme (« Monter à 6 »)."""
         avant = self.instant(self.jour, '03:00')
@@ -575,6 +587,7 @@ class Command(BaseCommand):
         scenario.a_trier()
         scenario.reglages()
         scenario.jours_passes()
+        scenario.bilan_de_la_veille()
         scenario.nuit_du_jour()
         scenario.jour_du_scenario()
         if options['rendez_vous']:
