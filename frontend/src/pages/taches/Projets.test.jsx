@@ -60,6 +60,16 @@ describe('TCH88 — Projets : rendu du contrat', () => {
     expect(within(ligne).queryByText('À planifier')).toBeNull()
   })
 
+  it('passe visuelle n° 39 — puce de priorité : trois barres croissantes allumées depuis la gauche (« Moyenne » : 2 sur 3)', async () => {
+    const liste = projets()
+    liste.results[0].priorite = 2
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    const puce = within(ligne).getByRole('button', { name: 'Priorité moyenne, changer' })
+    expect([...puce.querySelectorAll('.barres i')].map((i) => i.className)).toEqual(['', '', 'eteinte'])
+  })
+
   it('le constat est calculé du serveur : « 7 projets actifs, 3 ont avancé ces 7 jours »', async () => {
     monter()
     expect(await screen.findByText('7 projets actifs, 3 ont avancé ces 7 jours')).toBeInTheDocument()

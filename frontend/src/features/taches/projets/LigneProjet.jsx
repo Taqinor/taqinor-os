@@ -36,7 +36,8 @@ export function avancementDe(projet) {
 export function PuchePriorite({ projet, onChoisir }) {
   const courante = prioriteDe(projet.priorite)
   const nom = courante.valeur === 0 ? 'aucune' : courante.libelle.toLowerCase()
-  const barres = [3, 2, 1]
+  // trois barres croissantes, allumées depuis la gauche (« Moyenne » : deux allumées, la plus haute éteinte)
+  const barres = [1, 2, 3]
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

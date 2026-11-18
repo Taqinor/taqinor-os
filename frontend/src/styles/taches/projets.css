@@ -4,23 +4,37 @@
 
 /* ── Liste Projets (TCH88) ───────────────────────────────────────────────── */
 .tch .ep-constat { margin: 4px var(--tch-gouttiere) 8px; font-size: 0.875rem; color: var(--tch-texte-doux); }
-.tch .ligne.projet .ligne-fin { margin-right: var(--tch-cible); gap: 8px; }
+/* Passe visuelle n° 39 — la ligne de projets-liste.html : point · nom sur une ligne · « 12 sur 18 · échéance … »,
+   barre fine dessous, puce de priorité sur la 1re ligne À DROITE (le bouton « Actions » est posé en absolu par base.css,
+   la ligne ne lui réserve plus de marge). */
+.tch .ligne.projet .ligne-fin { height: var(--tch-tache-lh); align-items: center; }
+/* `.tch .ligne-fin button { position: relative }` (base.css) remettait le bouton « Actions » dans le flux : 52 px vides */
+.tch .ligne.projet .ligne-fin .ligne-actions { position: absolute; }
+.tch .ligne.projet .barre-avance { max-width: 120px; margin-top: 7px; }
+.tch .ligne.projet .meta { column-gap: 8px; }
+.tch .ligne.projet .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
+.tch .ligne.projet .meta > .ep-sante::before, .tch .ligne.projet .meta > .ep-aplanifier::before,
+.tch .ligne.projet .meta > .fort::before { content: none; }
+/* Puce de priorité : glyphe + mot, jamais une teinte (ecrans-projets.css) ; cible de 44 px par son ::after */
 .tch .ep-prio {
-  display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); padding: 0 8px;
-  font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte); border-radius: var(--tch-rayon-puce);
+  position: relative; display: inline-flex; align-items: center; gap: 5px; height: 28px; min-height: 0; padding: 0 10px 0 9px;
+  border-radius: var(--tch-rayon-puce); background: var(--tch-panneau); color: var(--tch-texte);
+  font-size: 0.8125rem; font-weight: 600; white-space: nowrap;
 }
-.tch .ep-prio .barres { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
-.tch .ep-prio .barres i { display: block; width: 3px; border-radius: 1px; background: var(--tch-texte); }
-.tch .ep-prio .barres i:nth-child(1) { height: 12px; }
-.tch .ep-prio .barres i:nth-child(2) { height: 9px; }
-.tch .ep-prio .barres i:nth-child(3) { height: 6px; }
-.tch .ep-prio .barres i.eteinte { background: var(--tch-segment-vide); }
-.tch .ep-prio.aucune { color: var(--tch-texte-doux); }
+.tch .ep-prio::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--tch-cible)); height: var(--tch-cible); transform: translate(-50%, -50%); }
+.tch .ep-prio.moyenne, .tch .ep-prio.basse, .tch .ep-prio.aucune { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .ep-prio .barres { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+.tch .ep-prio .barres i { display: block; width: 3px; border-radius: 1px; background: currentColor; }
+.tch .ep-prio .barres i:nth-child(1) { height: 5px; }
+.tch .ep-prio .barres i:nth-child(2) { height: 8px; }
+.tch .ep-prio .barres i:nth-child(3) { height: 11px; }
+.tch .ep-prio .barres i.eteinte { background: var(--tch-piste); }
 @media (hover: hover) {
   .tch .ep-prio:hover { background: var(--tch-survol); }
 }
-.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; }
-.tch .ep-aplanifier { font-weight: 600; color: var(--tch-accent); }
+.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-surveiller); font-weight: 500; }
+.tch .ep-aplanifier { font-size: var(--tch-chiffre); font-weight: 600; line-height: 1.375rem; padding: 0 9px; border-radius: var(--tch-rayon-puce);
+  color: var(--tch-accent); background: var(--tch-accent-doux); }
 .tch .ep-nouveau {
   display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 48px;
   margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: 1rem; font-weight: 600; color: var(--tch-accent);
