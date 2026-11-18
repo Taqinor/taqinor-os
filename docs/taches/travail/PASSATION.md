@@ -156,6 +156,48 @@ NON pliés ; les trois autres lanes F3 du portable étaient déjà entièrement 
   cache sans société, « Annuler » après « Fait » sans lire les conflits, activité liée à la tâche d'un collègue) :
   NON corrigés (durcissement, cas hypothétiques) ; ils restent listés dans `revue-code-f2.md`.
 
+**Trouvé par la CI de la nuit du 17 au 18/11 et corrigé (à savoir pour toute lane future)**
+- **Tests qui dépendent de l'heure ou du jour** (ils passaient le 17/11 après-midi, jour où ils ont été écrits, et
+  cassent la CI de tout le monde ensuite) : (1) `tests/test_plafonds.py` — `aujourdhui/` coûte 2 requêtes de plus AVANT
+  MIDI (carte « bilan d'hier ») ; plafonds mesurés horloge vivante l'après-midi → rouges la nuit et le matin. Corrigé :
+  classe figée (`testkit.time.frozen`, mardi 15:00) + mesure du matin (28 et 33) ; manifeste et `api.md` §10 mis à
+  jour. (2) `pages/taches/Aujourdhui.test.jsx` « ouvert sans réseau… » — le cache est par JOUR et l'échantillon dit
+  `2026-11-17` : le test ne passait que ce jour-là. Corrigé : `Date` figée au jour de l'échantillon + un test « le
+  cache d'un autre jour n'est jamais montré ». RÈGLE : aucun test ne lit l'horloge vivante ; un plafond de requêtes
+  d'une route qui passe par la journée se mesure matin ET après-midi. Balayage fait : la suite `apps.taches` (1 427
+  tests) et la suite vitest Tâches rejouées sous des dates simulées par `faketime` (samedi matin, dimanche 23:58,
+  31/12 23:50, vendredi 16:00, nuit, 01/03/2027).
+- `apps.calepinage.tests.test_releve_terrain` (2 tests, AUTRE module) casse quand un shard de CI passe minuit
+  (`DEMAIN` calculé à l'import) : pas touché ici, tâche suggérée à Reda (carte « Fix midnight flake… »). Un rouge de
+  ce genre sur #1454/#1462 vers minuit UTC n'est pas à nous : relancer la CI.
+- **Fusion 3, première CI (#1462)** : `check_liste_page1` (liste des jetons) et les 2 tests de la pastille
+  (`BottomTabBar.test.jsx`, encore écrits pour deux requêtes) corrigés par l'orchestrateur ; FUITE de confidentialité
+  réelle `taches.projet.lire` (nom d'étape d'un projet confidentiel servi à l'assistant) → lane copilote ; « Mes
+  agendas » de l'écran Agenda menait à Réglages → Avancé où la section n'est plus (déplacée dans Mon iPhone) → lane
+  écran-iphone, avec les 3 specs e2e ; plafonds `badge/` (14) et `journee/point/` → lane copilote, horloge figée.
+
+**Lanes de cette session (branches LOCALES ; ce qui est plié est dit « plié »)**
+- F2 : `lane/f2-restes` PLIÉE dans `dev-taches-f2` (mineurs #1 et #9, garde de la nuit ; la relecture de
+  l'orchestrateur y a trouvé et fait corriger une régression : annuler la suppression d'un parent détachait ses
+  sous-tâches). `lane/f2-acceptation` (spec `frontend/e2e/acceptation/tch.spec.js`) EN COURS. Seconde relecture
+  adverse du code serveur non relu par la première (`revue-code-f2-tour2-serveur.md`) EN COURS.
+- F3 : `lane/f3-presence2` PLIÉE dans `dev-taches-f3` (TCH155, TCH98, TCH174 cochées ; 141 sur 174) ;
+  `lane/f3-copilote-restes`, `lane/f3-ecran-iphone2` (TCH160), `lane/f3-canari` (TCH127) EN COURS.
+- F4 (branche locale `dev-taches-f4`, partie de `dev-taches-f3`, plan dé-gelé là seulement) :
+  `lane/f4-presence-front` RENDUE, pas encore pliée (TCH102, TCH103 ; à plier AVEC la lane de montage TCH123/125/126,
+  sinon `check_ecrans_atteignables` rougit) ; `lane/f4-erp-avance` (TCH71, TCH72) EN COURS.
+
+**Décisions de plus**
+- TCH174 : `taches.balayer` routée sur la file `scheduled` (api.md §9 fait foi sur le « rien d'autre » de la tâche).
+- Jetons (suites de TCH95) : (a) un jeton refusé ne consomme pas de débit — LAISSÉ tel quel : 256 bits d'aléa, et un
+  débit par adresse IP couperait Siri/flux/tuile de tous les abonnés d'une même adresse partagée ; (b) le jeton du
+  calendrier abonné est dans le chemin de l'adresse (imposé par Apple) : Django le masque déjà dans ses journaux,
+  nginx NON. `backend/nginx/nginx.conf` n'est pas touché par ce chantier (fichier de production d'un autre
+  propriétaire, erreur = site coupé) : c'est un GESTE DE SERVEUR à proposer à Reda dans le rapport final (ligne `map`
+  prête dans le rapport de la lane présence).
+- Base RAPIDE pour les lanes et la mise au point des specs (tables créées depuis les modèles en 18 s) en attendant
+  la base migrée (≈ 3 h à froid) ; l'enregistrement d'acceptation final se joue sur la base migrée.
+
 **Ce qui reste, dans l'ordre** (mis à jour à chaque étape)
 - Fusion 2 : CI verte sur `85c186783` → plier `lane/f2-restes` → acceptations en direct TCH136-140, TCH144 (spec
   `frontend/e2e/acceptation/tch.spec.js` + enregistrement `docs/audits/acceptation/TCH/`) → corriger ce qu'elles
