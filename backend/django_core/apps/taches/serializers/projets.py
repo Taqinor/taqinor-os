@@ -12,7 +12,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.confidentialite import est_confidentielle, nom_pour
-from apps.taches.entrees import DateBornee, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, DateBornee, sans_nul
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
@@ -214,7 +214,7 @@ class DupliquerSerializer(serializers.Serializer):
     """POST projets/{id}/dupliquer/ — `{nom, date_debut?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
-    date_debut = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
     apercu = serializers.BooleanField(required=False, default=True)
 
 
@@ -235,7 +235,7 @@ class ModeleInstancierSerializer(serializers.Serializer):
     """POST modeles/{id}/instancier/ — `{nom, date_lancement?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
-    date_lancement = serializers.DateField(required=False, allow_null=True)
+    date_lancement = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
     apercu = serializers.BooleanField(required=False, default=True)
 
 

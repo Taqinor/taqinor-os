@@ -1143,6 +1143,48 @@ class ModelesTests(_Base):
         self.assertEqual(ecran.get(_url(f'modeles/{modele}/')).json()['contenu']['taches'][0]['notes'],
                          'Appeler Lydec')
 
+    def test_une_date_hors_plage_rend_400_sous_son_champ_jamais_500(self):
+        """Revue F4 #4 : `date_lancement` et `date_debut` hors de 2000-01-01 → 2100-12-31 rendent 400 sous leur
+        champ, aperçu compris ; rien n'est écrit."""
+        projet, _, _ = self._source()
+        modele = self._enregistrer(projet).json()['id']
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for date in ('9999-12-31', '9999-12-01', '0001-01-01', '2101-01-01', '1999-12-31'):
+            for apercu in (True, False):
+                with self.subTest(date=date, apercu=apercu):
+                    instancier = api.post(_url(f'modeles/{modele}/instancier/'),
+                                          {'nom': f'I {date}', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((instancier.status_code, instancier.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+                    dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                                         {'nom': f'D {date}', 'date_debut': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
+    def test_un_ecart_qui_sort_de_la_plage_rend_400_jamais_500(self):
+        """Revue F4 #4 : une date reçue dans la plage, mais qu'un écart du modèle ferait sortir (au-delà du
+        2100-12-31, ou au-delà de ce que Python sait dater), rend 400 sous `date_lancement` ; rien n'est écrit."""
+        projet, _, _ = self._source()  # « Montage » : échéance à J + 20 du lancement
+        modele = self._enregistrer(projet).json()['id']
+        enorme = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom='Écart énorme', contenu={
+            'v': 1, 'confidentiel': False, 'sections': [], 'taches': [
+                {'titre': 'Loin', 'section_index': None, 'priorite': 0, 'jalon': False, 'decalage_jour': 3_000_000,
+                 'decalage_echeance': None, 'parent_index': None, 'bloquee_par_index': None, 'checklist': []}]})
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for pk, date in ((modele, '2100-12-25'), (enorme.pk, '2030-01-07')):
+            for apercu in (True, False):
+                with self.subTest(pk=pk, apercu=apercu):
+                    reponse = api.post(_url(f'modeles/{pk}/instancier/'),
+                                       {'nom': 'Trop loin', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((reponse.status_code, reponse.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                             {'nom': 'Trop loin', 'date_debut': '2100-12-25', 'apercu': True}, format='json')
+        self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                         (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
     def _modele_secret(self, nom):
         """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
         secret = fabriques.projet(self.u1, nom=nom, confidentiel=True)

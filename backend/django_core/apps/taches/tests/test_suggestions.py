@@ -357,6 +357,17 @@ class AccepterTests(_Routes):
         self.assertEqual(self._api().post(self._url(), {}, format='json').status_code, 404)
         self.assertFalse(Tache.objects.exists())
 
+    def test_jour_hors_plage_400_jamais_500(self):
+        """Revue F4 #4 : `jour_prevu` hors de 2000-01-01 → 2100-12-31 rend 400 sous le champ ; rien n'est écrit."""
+        for jour in ('9999-12-31', '0001-01-01', '2101-01-01'):
+            with self.subTest(jour=jour):
+                reponse = self._api().post(self._url(), {'jour_prevu': jour}, format='json')
+                self.assertEqual((reponse.status_code, reponse.json()['jour_prevu']),
+                                 (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertFalse(Tache.objects.exists())
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.statut, StatutSuggestion.PROPOSEE)
+
     def test_titre_trop_long_400(self):
         reponse = self._api().post(self._url(), {'titre': 'x' * 281}, format='json')
         self.assertEqual(reponse.status_code, 400)
