@@ -298,7 +298,8 @@ function useJetons() {
   useEffect(() => {
     let vivant = true
     listerJetons()
-      .then((reponse) => { if (vivant) { setJetons(reponse.data.results); setPret(true) } })
+      // liste fermée, plafonnée par le serveur (une fiche par usage) : jamais de page suivante
+      .then((reponse) => { if (vivant) { const { results } = reponse.data; setJetons(results); setPret(true) } })
       .catch(() => { if (vivant) { setEchec(true); setPret(true) } })
     return () => { vivant = false }
   }, [])

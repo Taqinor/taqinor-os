@@ -199,11 +199,8 @@ describe('ODY6 — hors de toute app, aucune barre', () => {
 })
 
 describe('TCH124 — pastille « À trier » de l’app Tâches (masquée à 0)', () => {
-  const journee = (boite) => {
-    const donnees = structuredClone(exempleContrat('taches', 'aujourdhui'))
-    donnees.a_trier.boite_reception = boite
-    return { data: donnees }
-  }
+  // F3 — `badge/` porte `a_trier` : la pastille se lit en UNE requête (plus de lecture d'Aujourd'hui).
+  const badge = (aTrier) => ({ data: { ...exempleContrat('taches', 'badge'), a_trier: aTrier } })
   const taches = { role: 'admin', permissions: ['taches_voir'] }
 
   beforeEach(() => {
@@ -213,10 +210,12 @@ describe('TCH124 — pastille « À trier » de l’app Tâches (masquée à 0)'
   })
 
   it('affiche le nombre À trier sur l’onglet, lu par le lecteur d’écran dans le nom du lien', async () => {
-    tachesApi.lireAujourdhui.mockResolvedValue(journee(7))
+    tachesApi.lireBadge.mockResolvedValue(badge(7))
     renderBar('/taches/aujourdhui', taches)
     const pastille = await screen.findByTestId('pastille-a-trier')
     expect(pastille).toHaveTextContent('7')
+    expect(tachesApi.lireBadge).toHaveBeenCalledTimes(1)
+    expect(tachesApi.lireAujourdhui).not.toHaveBeenCalled()
     const lien = screen.getByRole('link', { name: /À trier/ })
     expect(lien).toHaveAttribute('href', '/taches/a-trier')
     expect(lien).toHaveAccessibleName('À trier, 7 à trier')
@@ -225,9 +224,9 @@ describe('TCH124 — pastille « À trier » de l’app Tâches (masquée à 0)'
   })
 
   it('masquée à 0', async () => {
-    tachesApi.lireAujourdhui.mockResolvedValue(journee(0))
+    tachesApi.lireBadge.mockResolvedValue(badge(0))
     renderBar('/taches/aujourdhui', taches)
-    await waitFor(() => expect(tachesApi.lireAujourdhui).toHaveBeenCalled())
+    await waitFor(() => expect(tachesApi.lireBadge).toHaveBeenCalled())
     expect(screen.queryByTestId('pastille-a-trier')).toBeNull()
     expect(screen.getByRole('link', { name: 'À trier' })).toBeInTheDocument()
   })
