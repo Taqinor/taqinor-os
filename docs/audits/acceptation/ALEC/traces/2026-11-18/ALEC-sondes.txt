@@ -1,0 +1,230 @@
+# rejeu sur runner GitHub (2026-11-18T02:03:48Z), sha ed9668a67ba1359ad572c028e4b9ab13f0a869ef, conteneur faeafc50f4ca0194d288f84f1a20525ec2642304b3a5961b3cae2d2d7b433c45 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes ALEC --conteneur <django_core>
+
+== C-ALEC-001 (sha ae5a7ae4c)
+attendu : jeton/lien servi sans masque à tous les rôles internes (même sans code ged) ; le jeton global d'une demande à 2 destinataires OTP la passe à « signe » (destinataires non signés, otp_valide faux) ; voie destinataire sans OTP refusée ; rejeu refusé
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 117, in sonde
+  File "sonde", line 111, in appel_public
+  File "apps/ged/services.py", line 3271, in resolve_signature_publique
+    if demande is None or demande.signataires.exists():
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'QS' object has no attribute 'exists'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-002 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir ni marge_voir lisent la structure d'un kit AVEC cout_total_roll_up, marge et cout_unitaire/cout_total par composant
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 82, in sonde
+  File "apps/stock/views/kit.py", line 154, in structure
+    peut_voir_cout = PeutVoirPrixAchat().has_permission(request, self)
+                     ^^^^^^^^^^^^^^^^^
+NameError: name 'PeutVoirPrixAchat' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-003 (sha ae5a7ae4c)
+attendu : le commentaire de révision porte prix_achat_unitaire ; la liste sans cible exclut leads/modules refusés mais JAMAIS achats : 10 rôles livrés sans prix_achat_voir le lisent
+observé : {"repro": true, "observe": {"methode": "VRAIES get_permissions, pieces_visibles et module_refuse exécutées ; _log_revision_change exécutée sur Comment bouchonné", "ecrivain": {"commentaire_sur": "BonCommandeFournisseur", "corps": "Révision 2 :\nLigne 9 — prix_achat_unitaire : Decimal('100.00') → Decimal('120.00')", "champ_prix_valide_par_reviser_bcf": true, "frais_annexes_ecrivent_le_PMP": true}, "bcf_dans_app_label": "achats", "cibles_declarees_achats": [], "route": "GET records/comments/ (sans model/id)", "code_attendu": "prix_achat_voir", "app_labels_exclus_par_role": {"Admin RH": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Admin Ventes": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Administrateur": [], "Commercial": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Commercial responsable": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Commercial terrain": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Directeur": [], "Responsable": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Technicien": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Technicien responsable": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Utilisateur": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"], "Viewer": ["calepinage", "crm", "entites", "facturation", "ged", "installations", "outillage", "sav", "stock", "ventes"]}, "roles_livres_qui_lisent_le_prix_sans_le_code": ["Admin RH", "Admin Ventes", "Commercial", "Commercial responsable", "Commercial terrain", "Responsable", "Technicien", "Technicien responsable", "Utilisateur", "Viewer"]}}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-004 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir obtiennent le tarif_base du transporteur (offres[].cout et tarif_base), alors que cout_reel est masqué par le même mécanisme ailleurs
+observé : {"repro": false, "observe": {"methode": "VRAIES get_permissions + VRAIE comparer_tarifs_transporteurs exécutées (ORM bouchonné) ; sérialiseur Transporteur lu par ast", "emplacements_controles": 2, "stock_tarifs": {"route": "GET stock/expeditions/tarifs/?unite_logistique=", "garde": ["LectureDuModule"], "cout_servi": "350.00", "masque_dans_la_vue_ou_le_selecteur": true, "roles_livres_sans_le_code_qui_lisent": ["Admin Ventes", "Commercial", "Commercial responsable", "Responsable", "Technicien", "Technicien responsable", "Utilisateur", "Viewer"]}, "installations_transporteurs": {"route": "GET installations/transporteurs/", "tarif_base_servi_sans_masque": false, "roles_livres_sans_le_code_qui_lisent": ["Responsable", "Technicien", "Technicien responsable", "Utilisateur", "Viewer"]}, "code_attendu": "prix_achat_voir (selon D-ALEC-1 : le tarif est-il un prix d'achat ?)"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-005 (sha ae5a7ae4c)
+attendu : le masque retire seuil_ca_achat et montant_fixe mais taux_pct (la remise fournisseur) sort en clair pour les rôles livrés sans prix_achat_voir
+observé : {"repro": false, "observe": {"methode": "VRAIE get_permissions + VRAI mixin de masque exécutés ; champs du sérialiseur lus par ast", "route": "GET stock/accords-rfa-fournisseur/", "garde": ["IsResponsableOrAdmin"], "champs_masques": ["seuil_ca_achat", "taux_pct", "montant_fixe"], "champ_qui_reste": "taux_pct", "code_attendu": "prix_achat_voir", "roles_livres_qui_voient_taux_pct_sans_le_code": [], "dont_masque_actif_sur_montant_fixe_et_seuil": []}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-006 (sha ae5a7ae4c)
+attendu : des rôles livrés sans prix_achat_voir lisent montant_approuve (total d'achat HT du BCF) ; le même total est masqué ailleurs (MasqueMontantsAchatMixin sur le BCF)
+observé : {"repro": false, "observe": {"methode": "VRAIE get_permissions exécutée ; sérialiseur lu par ast (methode ast pour la sortie)", "route": "GET installations/approbations-bcf/", "garde": ["LectureDuModule"], "champ_servi": "montant_approuve", "bases_du_serializer": ["MasqueMontantApprouve", "SameCompanyFKSerializerMixin", "serializers.ModelSerializer"], "masque_present": true, "valeur_figee_via_bcf_montant_achat": true, "code_attendu": "prix_achat_voir", "roles_livres_sans_le_code_qui_lisent": ["Responsable", "Technicien", "Technicien responsable", "Utilisateur", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-007 (sha ae5a7ae4c)
+attendu : tout rôle interne obtient reste_categorie / reste_total (budget d'achat restant) ; synthese rend les enveloppes budget/engagé sans masque aux rôles livrés sans prix_achat_voir
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 72, in sonde
+  File "sonde", line 72, in <listcomp>
+KeyError: 'PeutVoirPrixAchat'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-008 (sha ae5a7ae4c)
+attendu : cout_soustraitance rend cout_composite à des rôles livrés sans prix_achat_voir ; depuis_devis rend cout_prevu (somme des prix d'achat) faute de context
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 72, in sonde
+  File "sonde", line 61, in gardes
+  File "apps/installations/views/kitting.py", line 460, in get_permissions
+    return [IsResponsableOrAdmin(), PeutVoirPrixAchat()]
+                                    ^^^^^^^^^^^^^^^^^
+NameError: name 'PeutVoirPrixAchat' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-009 (sha ae5a7ae4c)
+attendu : avec une seule expédition du jour, expeditions_du_jour[0].cout_total = son cout_reel exact, servi à des rôles livrés sans prix_achat_voir
+observé : {"repro": false, "observe": {"methode": "permission_classes du décorateur lu par ast et exécuté ; VRAI cockpit_entrepot exécuté (ORM bouchonné, 1 expédition à cout_reel=412.50)", "route": "GET stock/entrepot/cockpit/", "garde": ["IsResponsableOrAdmin"], "expeditions_du_jour": [{"transporteur": "transporteur-a", "nb": 1, "cout_total": "412.5"}], "masque_dans_la_vue_ou_le_selecteur": true, "code_attendu": "prix_achat_voir", "roles_livres_sans_le_code_qui_lisent": ["Admin Ventes", "Commercial", "Commercial responsable", "Responsable", "Technicien", "Technicien responsable"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-010 (sha ae5a7ae4c)
+attendu : le GET rend le champ token en clair à des rôles livrés sans prix_achat_voir ; ce jeton ouvre sans authentification la route publique des documents fournisseur (factures, solde)
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 71, in sonde
+  File "sonde", line 61, in gardes
+  File "apps/stock/views/fournisseur.py", line 96, in get_permissions
+    return [HasPermissionOrLegacy('stock_modifier')(), PeutVoirPrixAchat()]
+                                                       ^^^^^^^^^^^^^^^^^
+NameError: name 'PeutVoirPrixAchat' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-011 (sha ae5a7ae4c)
+attendu : le corps de la notification (in-app et e-mail) contient « Montant estimé : 1640.00 DH » pour des destinataires manager sans prix_achat_voir
+observé : {"repro": false, "observe": {"methode": "VRAIES demande_achat_post_save et est_manager exécutées (notify capturé, ORM absent) ; montant_estime fixé à 1640.00", "evenement": "réquisition soumise (notification in-app + e-mail)", "code_attendu": "prix_achat_voir (jumeau d'ACHT16 / D-ACHT-90 : installations/services.py n'écrit le montant que si tous les destinataires le voient)", "corps_exemple": "La réquisition DA-2611-0001 attend votre approbation.\nMontant estimé : 1640.00 DH.\nObjet : Câbles", "destinataires_managers": ["Admin RH", "Admin Ventes", "Administrateur", "Commercial responsable", "Directeur", "Responsable", "Technicien responsable"], "roles_livres_sans_le_code_qui_recoivent_le_montant": []}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-012 (sha ae5a7ae4c)
+attendu : le créateur du devis (Commercial, sans marge_voir) lit, par object_history, un détail « marge_snapshot : — → 4000.00 » : le diff générique ne rédige que les secrets
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 80, in sonde
+  File "apps/audit/serializers.py", line 70, in get_detail
+    caches = champs_caches(obj, getattr(self.context.get('request'), 'user', None))  # ALEC14
+             ^^^^^^^^^^^^^
+NameError: name 'champs_caches' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-013 (sha ae5a7ae4c)
+attendu : SELECT cout FROM sav_ticket, SELECT donnees_structurees FROM ia_ocr_document et SELECT email, telephone FROM crm_client ne sont pas refusés ; les rôles livrés sans prix_achat_voir / sans client_pii_voir passent
+observé : {"repro": false, "observe": {"methode": "ast (sqlglot absent : _references_forbidden_column non exécutée ; règle relue sur le fichier réel)", "fonction": "backend/fastapi_ia/app/services/sql_agent_service.py::_references_forbidden_column", "constantes_consultees_par_la_fonction": ["_FORBIDDEN_COLUMNS", "_PRICE_TABLES", "_SECRET_COLUMNS", "_SECRET_TABLES"], "colonnes_interdites_sans_prix_achat_voir": ["cout", "cout_unitaire", "is_staff", "is_superuser", "last_login", "lien_client_token", "lien_rapport_token", "marge", "marge_snapshot", "password", "phone_key", "prix_achat", "prix_achat_ht", "prix_achat_unitaire", "prix_revendeur", "totp_recovery_codes", "totp_secret"], "tables_a_ligne_entiere": ["authentication_customuser", "sav_ticket", "stock_mouvementstock", "stock_produit", "ventes_devis"], "tables_dans__ALLOWED_TABLES": {"sav_ticket": true, "ia_ocr_document": true, "crm_client": true}, "verdicts_refus": {"sav_ticket.cout": [["SELECT cout FROM sav_ticket", true], ["SELECT * FROM sav_ticket", true]], "ia_ocr_document": [["SELECT donnees_structurees, texte_brut FROM ia_ocr_document", false], ["SELECT * FROM ia_ocr_document", false]], "crm_client PII": [["SELECT email, telephone FROM crm_client", false], ["SELECT * FROM crm_client", false]]}, "temoin_marge_snapshot_refuse": true, "trou_ouvert_par_famille": {"sav_ticket.cout": false, "ia_ocr_document": true, "crm_client PII": true}, "code_client_pii_lu_dans_service_ou_endpoint": true, "roles_internes_livres_sans_prix_achat_voir": ["Commercial responsable", "Commercial", "Commercial terrain", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Utilisateur", "Admin RH", "Admin Ventes"], "roles_internes_livres_sans_client_pii_voir": ["Commercial terrain", "Admin RH"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-014 (sha ae5a7ae4c)
+attendu : _validate_and_secure(sql, company_id, allow_price) ne reçoit ni module ni portée ; le service ne lit que prix_achat_voir ; des rôles sans code du module d'une table, et des rôles à portée, lisent la table société entière
+observé : {"repro": false, "observe": {"methode": "ast (sqlglot absent : _validate_and_secure non exécutée ; signature, appels et littéraux relus sur le fichier réel)", "fonction": "backend/fastapi_ia/app/services/sql_agent_service.py::_validate_and_secure", "parametres_validate_and_secure": ["sql", "company_id", "allow_price", "allow_pii", "permissions"], "appels_directs": ["RefusDeDroit", "_enforce_single_select", "_inject_company_filter", "_references_forbidden_column", "_references_secret_column", "_verifier_module_et_portee"], "parametres_inject_company_filter": ["sql", "company_id"], "codes_de_droit_lus_par_service_et_routeur": ["client_pii_voir", "prix_achat_voir"], "garde_du_routeur": true, "roles_internes_livres_sans_aucun_code_du_module_de_la_table_mais_qui_la_lisent": {"crm_client": ["Commercial terrain", "Technicien responsable", "Technicien", "Admin RH"], "ventes_facture": ["Commercial terrain", "Technicien responsable", "Technicien", "Admin RH"], "stock_produit": ["Commercial terrain", "Admin RH"], "sav_ticket": ["Commercial terrain", "Admin RH", "Admin Ventes"], "installations_installation": ["Commercial responsable", "Commercial", "Commercial terrain", "Admin RH", "Admin Ventes"]}, "roles_livres_a_portee_dont_la_portee_est_ignoree": {"Commercial responsable": ["records_scope_sous_arbre"], "Commercial": ["records_scope_soi"], "Technicien responsable": ["records_scope_sous_arbre"], "Technicien": ["records_scope_equipe"], "Viewer": ["records_scope_equipe"]}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-016 (sha ae5a7ae4c)
+attendu : list/retrieve/recherche/... et DepotPublicViewSet list : des rôles livrés sans aucun code ged_* ou sans client_pii_voir franchissent la garde ; le sélecteur n'a ni droit de module ni portée
+observé : {"repro": false, "observe": {"methode": "exécution du vrai get_permissions (ast + bouchons DRF) puis des vraies classes de permission ; sélecteur lu par ast", "emplacements_controles": 8, "emplacements": {"DocumentViewSet.list": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.retrieve": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.recherche": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.semantique": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.historique": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.timeline": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}, "DocumentViewSet.docqa": {"gardes": ["LectureDuModule"], "rôles_qui_passent": 10}}, "DepotPublicViewSet.list": {"rôles_qui_passent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Admin RH", "Admin Ventes"]}, "code_attendu": "ged_voir (module) + client_pii_voir (coordonnées) + records_scope_* (portée)", "roles_livres_qui_passent_sans_aucun_code_ged": [], "roles_livres_qui_passent_sans_client_pii_voir": ["Admin RH"], "selecteur_filtres": ["coffre__isnull", "coffre__proprietaire_id", "company_id", "created_by_id__in", "custom_data__has_key", "pk__in", "supprime_le__isnull"], "selecteur_references_portee_ou_droit": ["can_view_client_pii"], "roles_a_portee_servis_sur_toute_la_societe": ["Commercial", "Commercial responsable", "Technicien", "Technicien responsable", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-017 (sha ae5a7ae4c)
+attendu : Commercial terrain et Admin RH (sans installation_voir ni client_pii_voir) franchissent les 4 vues PDF de chantier
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 101, in sonde
+  File "sonde", line 101, in <listcomp>
+KeyError: 'LectureChantiersOuVentes'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-018 (sha ae5a7ae4c)
+attendu : list/retrieve des tiers franchis par tous les rôles internes ; cin, telephone, email, adresse servis sans client_pii_voir ni portée ; le miroir Client => Tiers recopie ces champs
+observé : {"repro": false, "observe": {"methode": "exécution du vrai ScopedPermission.has_permission (ast) ; vue, sérialiseur et miroir lus par ast", "route": "apps/tiers/views.py::TiersViewSet (GET /api/django/tiers/tiers/)", "read_permission": null, "surcharges_get_queryset_ou_get_permissions": ["get_permissions", "get_queryset"], "to_representation_dans_TiersSerializer": ["to_representation"], "champs_personnels_servis": ["telephone", "email", "adresse", "cin", "rib"], "champs_recopies_par_le_miroir": ["adresse", "cin", "company", "email", "ice", "identifiant_fiscal", "nom", "prenom", "raison_sociale", "rc", "roles", "telephone", "tiers_existant", "type_tiers"], "roles_qui_lisent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Commercial terrain", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Utilisateur", "Admin RH", "Admin Ventes"], "code_attendu": "client_pii_voir (+ records_scope_* pour les clients des collègues)", "roles_qui_lisent_sans_client_pii_voir": ["Admin RH", "Commercial terrain"], "roles_a_portee_qui_lisent_tout": ["Commercial", "Commercial responsable", "Technicien", "Technicien responsable", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-019 (sha ae5a7ae4c)
+attendu : les rôles livrés à portée (Commercial, Commercial responsable, Technicien(s), Viewer) lisent le journal de toute la société ; get_queryset ne filtre pas sur l'utilisateur ; payload et resultat sont servis
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie classe IsAnyRole ; permission_classes, get_queryset et champs du sérialiseur lus par ast", "route": "apps/offlinesync/views.py::OfflineOperationViewSet (GET /api/django/offlinesync/operations/)", "garde": ["IsAnyRole"], "declaree_dans": "OfflineOperationViewSet", "filtres_de_get_queryset": ["module", "statut", "user"], "references_utilisateur_ou_portee_dans_get_queryset": ["user"], "champs_sensibles_servis": ["payload", "resultat", "erreur"], "roles_qui_lisent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Commercial terrain", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Utilisateur", "Admin RH", "Admin Ventes"], "roles_a_portee_qui_lisent_les_ops_des_autres": ["Commercial", "Commercial responsable", "Technicien", "Technicien responsable", "Viewer"], "roles_qui_alimentent_le_journal_par_batch": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Commercial terrain", "Technicien responsable", "Technicien", "Responsable", "Admin RH", "Admin Ventes"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-020 (sha ae5a7ae4c)
+attendu : des rôles livrés à portée (Commercial soi, Commercial responsable sous-arbre, Technicien équipe, Viewer) franchissent les 3 gardes et les corps de fonction n'appliquent aucune portée
+observé : {"repro": false, "observe": {"methode": "exécution des vraies gardes (get_permissions extrait par ast, LectureFactures reconstruite d'après le fichier) ; corps de fonction lus par ast", "emplacements_controles": 3, "emplacements": {"reporting.dashboard": {"garde": ["IsResponsableOrAdmin", "lecture_source('ventes')", "DroitDeLaGrille('reporting_export', export=('xlsx',))"], "portee_dans_le_corps": ["borner_portee", "portee_du_role"], "passent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Responsable", "Admin Ventes"]}, "ventes.dashboard_quote_to_cash": {"garde": ["LectureFactures"], "module_fige": "ventes", "chaine_de_classes_confirmee": true, "portee_dans_le_corps": ["_portee_devis", "visibles"], "passent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Viewer", "Responsable", "Utilisateur", "Admin Ventes"]}, "crm.ObjectifCommercialViewSet.attainment_list": {"garde": ["LectureDuModule"], "portee_dans_attainment_list_et_get_queryset": ["masquer_objectifs_hors_portee"], "passent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Viewer", "Responsable", "Utilisateur", "Admin Ventes"]}}, "roles_livres_a_portee": ["Commercial responsable", "Commercial", "Technicien responsable", "Technicien", "Viewer"], "roles_a_portee_qui_passent_par_emplacement": {"reporting.dashboard": ["Commercial", "Commercial responsable"], "ventes.dashboard_quote_to_cash": ["Commercial", "Commercial responsable", "Viewer"], "crm.ObjectifCommercialViewSet.attainment_list": ["Commercial", "Commercial responsable", "Viewer"]}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-021 (sha ae5a7ae4c)
+attendu : Commercial, Commercial responsable et Viewer lisent les lignes de toutes les factures de la société ; le get_queryset des lignes n'applique aucune portée alors que celui des factures le fait
+observé : {"repro": false, "observe": {"methode": "exécution du vrai get_permissions (ast) + vraies classes de permission ; get_queryset lus par ast", "route": "apps/facturation/views/ligne_facture.py::LigneFactureViewSet.get_permissions", "emplacements_controles": 2, "routes_montees": ["apps/ventes/urls.py", "apps/facturation/urls.py"], "garde_lecture": ["LectureFactures"], "module_fige": "ventes", "filtres_get_queryset_lignes": ["facture__company"], "portee_dans_get_queryset_lignes": ["scope_queryset"], "portee_dans_get_queryset_FactureViewSet(jumeau)": ["scope_queryset"], "roles_qui_lisent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Viewer", "Responsable", "Utilisateur", "Admin Ventes"], "code_attendu": "records_scope_* appliqué comme sur les factures", "roles_a_portee_qui_lisent_toutes_les_lignes": ["Commercial", "Commercial responsable", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-022 (sha ae5a7ae4c)
+attendu : des rôles livrés à portée (Commercial, Commercial responsable, Technicien(s), Viewer) franchissent LectureDuModule(sav) ; tournee_preventive ne reçoit que la société et rend client_nom, gps_lat, gps_lng, technicien
+observé : {"repro": false, "observe": {"methode": "exécution du vrai get_permissions (ast) + vraie LectureDuModule ; tournee_preventive lue par ast", "route": "GET /api/django/sav/contrats-maintenance/tournee/ (ContratMaintenanceViewSet.tournee)", "garde": ["LectureDuModule"], "parametres_tournee_preventive": ["company", "origin_lat", "origin_lng", "user"], "argument_passe_par_l_action": "request.user.company", "filtres_ticket": ["annule", "company", "statut__in", "type"], "portee_dans_tournee_preventive": 1, "portee_du_jumeau__tickets_visibles": ["scope_queryset"], "champs_nominatifs_rendus": ["client_nom", "gps_lat", "gps_lng", "technicien"], "roles_qui_lisent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Utilisateur"], "roles_a_portee_qui_voient_toute_la_societe": ["Commercial", "Commercial responsable", "Technicien", "Technicien responsable", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-023 (sha ae5a7ae4c)
+attendu : le rôle Technicien franchit la garde ; le corps ne lit de request.user que la société et n'applique aucune portée alors que la docstring promet « jamais visible par le technicien lui-même »
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie IsResponsableOrAdmin ; décorateur, corps et docstring lus par ast", "route": "GET /api/django/reporting/insights/technicien-scorecard/?technicien=<id>", "gardes_declarees": ["IsResponsableOrAdmin", "IsAdminOrResponsableTier", "lecture_source('installations')", "DroitDeLaGrille('reporting_export', export=('xlsx',))"], "docstring_promet_jamais_visible_par_le_technicien": true, "attributs_lus_sur_request.user": ["company", "visible_user_ids"], "comparaisons_avec_l_appelant": [], "portee_dans_le_corps": ["visible_user_ids", "visibles"], "roles_qui_passent": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Technicien responsable", "Technicien", "Responsable", "Admin RH", "Admin Ventes"], "techniciens_a_portee_qui_lisent_un_collegue": ["Technicien", "Technicien responsable"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-024 (sha ae5a7ae4c)
+attendu : des rôles livrés sans journal_activite_voir (Commercial responsable, Technicien responsable, Responsable, Admin RH, Admin Ventes) franchissent la garde de settings_audit_log et settings_audit_sections
+observé : {"repro": false, "observe": {"methode": "exécution du vrai IsAdminOrResponsableTier.has_permission (ast) ; décorateurs lus par ast", "decision_en_attente": "D-ALEC-3 (le journal des réglages = Journal d'activité ?) : la sonde ne tranche pas", "emplacements_controles": 2, "gardes_declarees": {"settings_audit_log": ["IsAdminOrResponsableTier", "CanViewActivityLog"], "settings_audit_sections": ["IsAdminOrResponsableTier", "CanViewActivityLog"]}, "code_journal_lu_dans_views_audit": true, "temoin_audit_CanViewActivityLog_lit_can_view_activity_log": true, "roles_qui_passent": ["Directeur", "Administrateur", "Commercial responsable", "Technicien responsable", "Responsable", "Admin RH", "Admin Ventes"], "roles_qui_passent_sans_journal_activite_voir": ["Admin RH", "Admin Ventes", "Administrateur", "Commercial responsable", "Responsable", "Technicien responsable"], "dont_palier_responsable_hors_administrateur": ["Admin RH", "Admin Ventes", "Commercial responsable", "Responsable", "Technicien responsable"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-025 (sha ae5a7ae4c)
+attendu : réglage éteint : aucun filtre pour Commercial, Commercial responsable, Viewer ; réglage allumé : filtre responsable|cree_par sans portée de rôle ; nom et ville du lead servis
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie restreindre_aux_siens (ast + bouchons Q / queryset / _user_has_or_legacy réel) ; serializers lus par ast", "decision_en_attente": "D-ALEC-4 ; réglage vue_restreinte_au_responsable en prod NON LU : la sonde montre les deux états", "roles_qui_lisent_le_calepinage": ["Directeur", "Administrateur", "Commercial responsable", "Commercial", "Viewer", "Responsable", "Utilisateur", "Admin Ventes"], "filtre_reglage_eteint": {"Directeur": "aucun filtre", "Administrateur": "aucun filtre", "Commercial responsable": "client__in|cree_par|lead_id__in|lead_id__isnull|responsable", "Commercial": "client__in|cree_par|lead_id__in|lead_id__isnull|responsable", "Viewer": "client__in|cree_par|lead_id__in|lead_id__isnull|responsable", "Responsable": "aucun filtre", "Utilisateur": "aucun filtre", "Admin Ventes": "aucun filtre"}, "filtre_reglage_allume": {"Directeur": "aucun filtre", "Administrateur": "aucun filtre", "Commercial responsable": "cree_par|responsable", "Commercial": "cree_par|responsable", "Viewer": "cree_par|responsable", "Responsable": "cree_par|responsable", "Utilisateur": "cree_par|responsable", "Admin Ventes": "cree_par|responsable"}, "references_a_la_portee_dans_la_fonction": ["scope_client_queryset", "visible_user_ids"], "cles_du_lead_servies_par__lead_apercu": ["id", "nom", "supprime", "ville"], "roles_a_portee_servis_sans_filtre_si_reglage_eteint": [], "roles_a_portee_filtres_par_responsable_seulement_si_reglage_allume": ["Commercial", "Commercial responsable", "Viewer"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-VER1-101 (sha d64fa1e4e4)
+attendu : Commercial (records_scope_soi) : SELECT ... FROM ventes_lignefacture passe module + portée (aucun refus), alors que SELECT ... FROM ventes_facture est refusé « Portée restreinte »
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 79, in sonde
+  File "sonde", line 79, in <dictcomp>
+  File "sonde", line 58, in joue
+  File "/tmp/racine_sonde/backend/fastapi_ia/app/services/sql_agent_service.py", line 1108, in _verifier_module_et_portee
+    raise RefusDeDroit(
+          ^^^^^^^^^^^^
+NameError: name 'RefusDeDroit' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-VER1-102 (sha d64fa1e4e4)
+attendu : Commercial terrain (aucun code ged_*) et Admin RH (sans client_pii_voir) franchissent la lecture des demandes de signature et des signataires ; la vue documents refuse le Commercial terrain
+observé : {"repro": false, "observe": {"methode": "exécution du vrai get_permissions / permission_classes et des vraies classes de permission ; sérialiseurs et sélecteur lus par ast", "par_role": {"Commercial terrain": {"codes_ged": [], "client_pii_voir": false, "demandes-signature list": false, "demandes-signature pdf_signe": false, "signataires-demande list": false, "temoin documents list": false}, "Admin RH": {"codes_ged": ["ged_gerer", "ged_voir"], "client_pii_voir": false, "demandes-signature list": true, "demandes-signature pdf_signe": true, "signataires-demande list": true, "temoin documents list": true}, "Directeur": {"codes_ged": ["ged_gerer", "ged_gouvernance", "ged_voir"], "client_pii_voir": true, "demandes-signature list": true, "demandes-signature pdf_signe": true, "signataires-demande list": true, "temoin documents list": true}}, "SignataireDemandeSerializer_champs_personnels": ["adresse_ip", "email", "telephone", "user_agent"], "DemandeSignatureDocumentSerializer_champs_personnels": ["adresse_ip", "signataire_email", "user_agent"], "to_representation_consulte_client_pii": {"SignataireDemandeSerializer": false, "DemandeSignatureDocumentSerializer": false}, "selecteur_ne_retire_aux_sans_pii_que_les_documents_produits": true}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-VER2-201 (sha a12f40f821)
+attendu : Commercial (records_scope_soi) : SELECT phone_key, crm_lead_id FROM adsengine_metaleadmirror passe module + portée (témoin crm_client refusé « Portée restreinte ») ; Commercial terrain et Admin RH (ni client_pii_voir ni adsengine_view) passent aussi ; phone_key hors de toute liste de colonnes gardées ; la clé est le numéro
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 87, in sonde
+  File "sonde", line 65, in joue
+  File "/tmp/racine_sonde/backend/fastapi_ia/app/services/sql_agent_service.py", line 1108, in _verifier_module_et_portee
+    raise RefusDeDroit(
+          ^^^^^^^^^^^^
+NameError: name 'RefusDeDroit' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ALEC-VER3-301 (sha 0d834aa12f)
+attendu : Utilisateur (installation_voir, aucune portée, aucun code d'écriture) : SELECT des deux jetons sur installations_intervention passe module + portée alors que l'action lien-rapport lui est refusée ; jetons et adresse_siege hors de toute liste gardée
+observé : {"repro": false, "observe": {"methode": "exécution du vrai _verifier_module_et_portee (ast, parseur bouchonné) ; codes des rôles livrés ; listes gardées relues sur leurs constantes", "par_role": {"Utilisateur": {"assistant": "passe", "action_lien_rapport_permise": false}, "Responsable": {"assistant": "passe", "action_lien_rapport_permise": true}, "Directeur": {"assistant": "passe", "action_lien_rapport_permise": true}, "Commercial": {"assistant": "refus : Table installations_intervention : droit du module installations manquant — lecture refusee.", "action_lien_rapport_permise": true}, "Technicien": {"assistant": "refus : Portee restreinte : lecture refusee (utilisez l'ecran).", "action_lien_rapport_permise": true}}, "jetons_dans_une_liste_gardee": ["lien_client_token", "lien_rapport_token"], "ligne_entiere_intervention_refusee": true, "adresse_siege_gardee": true, "pii_colonnes": ["email", "telephone", "adresse", "cin", "adresse_siege"], "ecran_intervention_sans_jetons_ALEC37": true, "ecran_client_masque_adresse_siege_ALEC31": true}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan ALEC : 1/28 OK
+  C-ALEC-001.py    ÉCART (échec)
+  C-ALEC-002.py    ÉCART (échec)
+  C-ALEC-003.py    REPRO
+  C-ALEC-004.py    ÉCART (échec)
+  C-ALEC-005.py    ÉCART (échec)
+  C-ALEC-006.py    ÉCART (échec)
+  C-ALEC-007.py    ÉCART (échec)
+  C-ALEC-008.py    ÉCART (échec)
+  C-ALEC-009.py    ÉCART (échec)
+  C-ALEC-010.py    ÉCART (échec)
+  C-ALEC-011.py    ÉCART (échec)
+  C-ALEC-012.py    ÉCART (échec)
+  C-ALEC-013.py    ÉCART (échec)
+  C-ALEC-014.py    ÉCART (échec)
+  C-ALEC-016.py    ÉCART (échec)
+  C-ALEC-017.py    ÉCART (échec)
+  C-ALEC-018.py    ÉCART (échec)
+  C-ALEC-019.py    ÉCART (échec)
+  C-ALEC-020.py    ÉCART (échec)
+  C-ALEC-021.py    ÉCART (échec)
+  C-ALEC-022.py    ÉCART (échec)
+  C-ALEC-023.py    ÉCART (échec)
+  C-ALEC-024.py    ÉCART (échec)
+  C-ALEC-025.py    ÉCART (échec)
+  C-ALEC-VER1-101.py ÉCART (échec)
+  C-ALEC-VER1-102.py ÉCART (échec)
+  C-ALEC-VER2-201.py ÉCART (échec)
+  C-ALEC-VER3-301.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

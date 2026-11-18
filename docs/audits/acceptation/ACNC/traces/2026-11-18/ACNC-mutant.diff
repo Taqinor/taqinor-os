@@ -1,0 +1,13 @@
+diff --git a/backend/django_core/apps/stock/views/produit.py b/backend/django_core/apps/stock/views/produit.py
+index 155c3af0..1f05e50d 100644
+--- a/backend/django_core/apps/stock/views/produit.py
++++ b/backend/django_core/apps/stock/views/produit.py
+@@ -611,7 +611,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
+                 status=status.HTTP_403_FORBIDDEN)
+         try:
+             # ACNC24 — tout-ou-rien (une transaction) et rejouable sans cumul (Idempotency-Key).
+-            reponse = self._avec_idempotence(request, lambda: Response(transaction.atomic(apply_product_bulk)(
++            reponse = self._avec_idempotence(request, lambda: Response((apply_product_bulk)(
+                 company=request.user.company, user=request.user, ids=ids, op=op, params=_params_bulk(donnees))),
+                 suffixe='bulk')
+         except IntrouvableMetier as exc:  # catégorie inconnue : ressource absente (404)

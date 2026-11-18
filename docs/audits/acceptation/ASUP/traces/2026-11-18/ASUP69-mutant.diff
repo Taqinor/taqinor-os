@@ -1,0 +1,13 @@
+diff --git a/backend/django_core/templates/pdf/avoir.html b/backend/django_core/templates/pdf/avoir.html
+index a385285a..e1531b69 100644
+--- a/backend/django_core/templates/pdf/avoir.html
++++ b/backend/django_core/templates/pdf/avoir.html
+@@ -123,7 +123,7 @@
+       <div class="partie-label">{{ _L("Avoir au profit de") }}</div>
+       {# ASUP57 — l'acheteur figé de la facture d'origine (``generate_avoir_pdf``) ;
+          rendu direct du gabarit sans ce contexte : le client de la pièce. #}
+-      {% set acheteur = acheteur or avoir.client %}
++      {% set acheteur = avoir.client %}
+       {% if acheteur.type_client == 'entreprise' %}
+       <div class="partie-nom">{{ acheteur.nom }}</div>
+       {% else %}

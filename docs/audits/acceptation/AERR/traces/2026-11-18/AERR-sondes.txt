@@ -1,0 +1,336 @@
+# rejeu sur runner GitHub (2026-11-18T02:05:08Z), sha ed9668a67ba1359ad572c028e4b9ab13f0a869ef, conteneur faeafc50f4ca0194d288f84f1a20525ec2642304b3a5961b3cae2d2d7b433c45 (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes AERR --conteneur <django_core>
+
+== C-AERR-001 (sha 3acfee471)
+attendu : FactureList : `if (loading && !showForm)` et `if (error)` sans condition sur factures.length (ni Réessayer) ; gestes qui relancent fetchFactures() ; Remises .catch avec setRows([])
+observé : {"repro": false, "observe": {"introuvable": [], "defaut_encore_present": [], "retour_chargement": {"condition": "loading && !showForm && factures.length === 0", "bouton_reessayer": false}, "retour_erreur": {"condition": "error && factures.length === 0", "bouton_reessayer": true}, "FactureList.dispatch_fetchFactures": 4, "useFactureGestes.dispatch_fetchFactures": 1, "useFactureLot.dispatch_fetchFactures": 0, "useFactureDocuments.dispatch_fetchFactures": 1, "PaiementsPage.rendu_squelette_sans_condition_lignes": 0}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-002 (sha 3acfee471)
+attendu : DevisList : `if (loading)` / `if (error)` sans devis.length ; dispatch(fetchDevis()) dans handleDelete/submitVariante/submitGamme et dans le catch de rafraichirDevis
+observé : {"repro": true, "observe": {"introuvable": [], "defaut_encore_present": ["DevisList::handleDelete relit toute la liste", "DevisList::submitVariante relit toute la liste", "DevisList::submitGamme relit toute la liste", "ventesSlice::rafraichirDevis (repli du catch) relit toute la liste"], "retour_chargement": {"condition": "loading && devis.length === 0", "garde_sur_les_lignes": true}, "retour_erreur": {"condition": "error && devis.length === 0", "garde_sur_les_lignes": true}}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-003 (sha 3acfee471)
+attendu : un seul appel fetchFacturesKpis(), dans un useEffect de montage `[dispatch]`, et un seul réducteur qui écrit state.facturesKpis
+observé : {"repro": false, "observe": {"introuvable": [], "appels": ["pages/ventes/FactureList.jsx", "pages/ventes/factureList/useFactureGestes.js"], "appels_en_effet_de_montage": 1, "ecritures_de_facturesKpis": ["features/ventes/store/ventesSlice.js"], "lecture": "tuiles relues ou mises à jour par un geste"}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-004 (sha 3acfee471)
+attendu : load : .catch sans aucun set*(...) ; rendu `rows.length === 0 ? (` sans variable d'erreur dans la chaîne de conditions
+observé : {"repro": false, "observe": {"introuvable": [], "catch_vide_dans_load": [false], "erreur_dans_la_chaine_de_rendu": true, "changerFile": "setFileFilter(v); load(v)", "garde_d_ordre_dans_load": false}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-005 (sha 3acfee471)
+attendu : setAcceptTarget(null) situé avant `ventesApi.accepterDevis(` dans submitAccept ; `champ` jamais lu
+observé : {"repro": true, "observe": {"introuvable": [], "ferme_avant_la_reponse": true, "position_fermeture": 236, "position_appel": 516, "champ_lu_dans_submitAccept": true}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-006 (sha 3acfee471)
+attendu : setFromResponse(err) (argument exact = la variable du catch) dans handleSubmit ; aucun rendu de errors.date_echeance / taux_tva / remise_globale
+observé : {"repro": false, "observe": {"introuvable": [], "setFromResponse_argument_brut": [], "champs_d_erreur_rendus": ["bon_commande", "client", "conditions_paiement", "date_echeance", "date_livraison", "lines", "note", "reference_commande_client", "remise_globale", "submit", "taux_tva"], "champs_jamais_rendus": []}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-007 (sha 3acfee471)
+attendu : corps de handleBulkAction sans confirm* et aucun appel de la barre précédé d'une confirmation
+observé : {"repro": false, "observe": {"introuvable": [], "corps_avec_confirmation": true, "appels_dans_FactureList_precedes_d_une_confirmation": [false]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-009 (sha 3acfee471)
+attendu : catch réduit à console.warn(...) puis toast.success(...) plus loin dans la même fonction (3 fonctions)
+observé : {"repro": false, "observe": {"introuvable": [], "fonctions_ou_le_succes_suit_un_catch_muet": []}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-011 (sha 3acfee471)
+attendu : clear() dans rechargerDevisRecompose sans dirty/confirm ; ajouter et creer sans dirty/confirm
+observé : {"repro": false, "observe": {"introuvable": [], "efface_le_brouillon": true, "garde_dans_rechargerDevisRecompose": false, "garde_dans_les_appelants": {"AjouterBoqElectrique.jsx::ajouter": true, "LotsMultiSites.jsx::creer": true}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-021 (sha 3acfee471)
+attendu : branche key === 'a' qui appelle approve( sans confirm/dialog
+observé : {"repro": false, "observe": {"introuvable": [], "approuve_sur_la_touche_seule": true, "confirmation_dans_la_branche": true, "branche": "if (!canApprove) return const current = liste[focusedIndexRef.current] if (!current || actionResultKey(current) === 'approuve') return if (dialogueParDessus(roo"}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-022 (sha 3acfee471)
+attendu : corps de onKey sans dialogueParDessus( ni aucune autre garde de dialogue/boîte
+observé : {"repro": false, "observe": {"introuvable": [], "gardes_de_boite_dans_onKey": ["dialoguepardessus"], "gardes_presentes": ["altKey", "ctrlKey", "isTypingTarget", "metaKey"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-024 (sha 3acfee471)
+attendu : `message: fieldErrors[firstKey]` nu (sans libellé de champ) dans getApiError
+observé : {"repro": false, "observe": {"introuvable": [], "messages_nus_sans_libelle": [], "expressions_message": ["MESSAGE_ECRITURE_EXPIREE", "'La connexion a expiré. Vérifiez votre connexion et réessayez.'", "voice.networkError", "'Trop de requêtes — patientez un instant avant de réessayer.'", "status >= 500", "data", "data.detail", "String(data.non_field_errors[0])", "`${libelleChamp(firstKey)", "'Erreur serveur. Réessayez ou contactez le support si le problème persiste.'", "fallback"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-027 (sha 3acfee471)
+attendu : .catch du chargement sans drapeau d'échec (ni setForm(null)) dans les 5 composants
+observé : {"repro": false, "observe": {"introuvable": [], "composants_ou_un_chargement_rate_ouvre_un_formulaire_enregistrable": [], "DocumentsSection": {"catch_pose_un_drapeau_d_echec": true, "catch": "() => setLectureEchouee(true)", "save_teste_un_drapeau": true}, "TarificationSection": {"catch_pose_un_drapeau_d_echec": true, "catch": "() => setLectureEchouee(true)", "save_teste_un_drapeau": true}, "BanniereTab": {"catch_pose_un_drapeau_d_echec": true, "catch": "() => setLectureEchouee(true)", "save_teste_un_drapeau": true}, "ReliabilitySettingsPage": {"catch_pose_un_drapeau_d_echec": true, "catch": "(err) => { if (active) setLectureEchouee(true) toast.error(frErr(err, 'Chargement des régl", "save_teste_un_drapeau": false}, "UxParametresPage": {"catch_pose_un_drapeau_d_echec": true, "catch": "() => { if (active) setLectureEchouee(true) toast.error('Chargement des réglages UX imposs", "save_teste_un_drapeau": false}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-028 (sha 3acfee471)
+attendu : branche `{error ? (` avec <EmptyState sans action= / onRetry
+observé : {"repro": false, "observe": {"introuvable": ["ui/datatable/DataTable.jsx::DataTable branche `{error ? (`"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-029 (sha 3acfee471)
+attendu : au moins un .catch contenant setItems([])
+observé : {"repro": false, "observe": {"introuvable": [], "catch_qui_vident_la_liste": 0, "catch_total": 5}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-031 (sha 3acfee471)
+attendu : dans load, .catch sans aucun appel set*( (donc pas d'état d'erreur)
+observé : {"repro": false, "observe": {"introuvable": [], "catch_dans_load": 1, "catch_sans_etat_d_erreur": [false], "etat_initial_vide": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-033 (sha 3acfee471)
+attendu : removeRule / remove (2) sans confirm* dans leur corps ni avant leurs appels
+observé : {"repro": false, "observe": {"introuvable": [], "suppressions_sans_confirmation": [], "SecuriteIdentitePage.jsx::ReseauTab.removeRule": {"confirmation_dans_le_corps": true, "appels_precedes_d_une_confirmation": [false]}, "SecuriteIdentitePage.jsx::ServiceAccountsTab.remove": {"confirmation_dans_le_corps": true, "appels_precedes_d_une_confirmation": [false]}, "GouvernanceAccesPage.jsx::SodTab.remove": {"confirmation_dans_le_corps": true, "appels_precedes_d_une_confirmation": [false]}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-034 (sha 3acfee471)
+attendu : markSigned et cancelSignature sans confirm* dans leur corps ni avant leurs appels
+observé : {"repro": false, "observe": {"introuvable": [], "gestes_sans_confirmation": [], "markSigned": {"confirmation_dans_le_corps": true, "appels_precedes_d_une_confirmation": [false]}, "cancelSignature": {"confirmation_dans_le_corps": true, "appels_precedes_d_une_confirmation": [false]}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-038 (sha 3acfee471)
+attendu : updateLead( dans changeLeadStage sans confirm* ni mutateWithUndo
+observé : {"repro": false, "observe": {"introuvable": [], "ecrit_le_stage": true, "gardes_trouvees": ["confirm", "confirmlabel", "mutatewithundo"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-044 (sha 3acfee471)
+attendu : retour anticipé `if (error) return <StateBlock …>` sans condition sur la liste, OU `const onSaved = () => refetch()`
+observé : {"repro": false, "observe": {"introuvable": [], "erreur_remplace_liste_et_fiche_sans_garde_leads": false, "erreur_derivee_gardee_par_la_liste": true, "onSaved_relit_toute_la_liste": false, "onRetry_dans_StateBlock": false}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-045 (sha 3acfee471)
+attendu : Widget : setError(true) sans jamais setError(false) ET `error ? (` à la place de la file ; Panneau : catch avec donnees: null
+observé : {"repro": false, "observe": {"introuvable": [], "emplacements_ou_le_motif_subsiste": []}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-046 (sha 3acfee471)
+attendu : catch contenant setLeadLu(leadId) et setEtapes([]), et l'effet qui appelle onEtapes( ne regarde pas `erreur`
+observé : {"repro": false, "observe": {"introuvable": [], "catch_qui_publie_une_liste_vide": 0, "effet_onEtapes_lit_erreur": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-047 (sha 3acfee471)
+attendu : logInteraction( et updateLead( dans le même bloc try de submit + littéral « L'appel n'a pas pu être journalisé — réessayez. »
+observé : {"repro": true, "observe": {"introuvable": [], "journal_et_report_dans_le_meme_try": true, "message_unique_present": true}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-048 (sha 3acfee471)
+attendu : ni useServerFieldErrors ni fieldErrors dans le fichier, et le littéral « Erreur lors de la création du lead. »
+observé : {"repro": false, "observe": {"introuvable": [], "erreurs_de_champ_rattachees": true, "message_generique_present": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-049 (sha 3acfee471)
+attendu : handleCancel appelle updateAppointment(... 'annule') sans confirm( / ConfirmDialog / mutateWithUndo, corps ou site d'appel
+observé : {"repro": false, "observe": {"introuvable": [], "annule_le_rdv_dans_le_corps": true, "confirmation_dans_le_corps": true, "sites_d_appel": 1, "sites_d_appel_confirmes": 0}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-050 (sha 3acfee471)
+attendu : supprimer (dans SlotTile) appelle deleteVisitePhoto( sans confirm( / ConfirmDialog / mutateWithUndo / undo, corps ou site d'appel
+observé : {"repro": true, "observe": {"introuvable": [], "supprime_la_photo": true, "confirmation_dans_le_corps": false, "sites_d_appel": 1, "sites_d_appel_confirmes": 0}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-051 (sha 3acfee471)
+attendu : recharger : .catch(() => setErreur(...)) sans condition sur une visite déjà chargée ; rendu `if (erreur || !visite) return`
+observé : {"repro": false, "observe": {"introuvable": [], "catch_pose_erreur_sans_condition": 0, "retour_anticipe_sur_erreur_demonte_l_ecran": false, "erreur_remise_a_zero": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-052 (sha 3acfee471)
+attendu : useLeadDraft.js sans useNavigationGuard/useBlocker et aucun nettoyage d'effet qui appelle flush
+observé : {"repro": false, "observe": {"introuvable": [], "garde_de_navigation": [], "nettoyages_d_effet": 2, "nettoyages_qui_envoient": 1, "useDirtyGuard_seul": true, "onOpenDuplicate_bascule_sans_leaveGuard": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-053 (sha 3acfee471)
+attendu : load contient un .catch qui appelle setEvents([])
+observé : {"repro": true, "observe": {"introuvable": [], "catch_qui_vident_les_evenements": 1, "etat_d_erreur": false}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-063 (sha 3acfee471)
+attendu : TicketDetail : useState(ticket) sans effet de réinitialisation ET <TicketDetail ticket={detailTicket} sans key=
+observé : {"repro": false, "observe": {"introuvable": [], "etat_copie_de_la_prop": false, "effet_de_reinitialisation": [], "sites_de_rendu": 1, "sites_sans_key": 1, "clic_ligne_change_la_selection": false}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-064 (sha 3acfee471)
+attendu : bloc onKey contenant 'Escape' et fermerDetail()/closeDetail() sans dialogueParDessus/confirmLeaveIfDirty/defaultPrevented
+observé : {"repro": false, "observe": {"introuvable": [], "echap_ferme_la_fiche": true, "gardes_trouvees": ["defaultPrevented", "dialogueParDessus", "[role=", "[role=", "[role=", "confirmLeaveIfDirty"], "jk_change_la_selection": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-065 (sha 3acfee471)
+attendu : handleDragEnd appelle onChangeStatus( sans confirmation avant l'appel, le parent aussi, et cloture/receptionne atteignables en un dépôt
+observé : {"repro": false, "observe": {"introuvable": [], "depot_appelle_onChangeStatus_sans_confirmation": true, "parent_sans_confirmation": false, "statuts_atteignables_d_un_depot": ["installe", "receptionne", "cloture"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-066 (sha 3acfee471)
+attendu : handleDragEnd -> onChangeStatus( sans confirmation, patchStatus sans confirmation ni Annuler
+observé : {"repro": false, "observe": {"introuvable": [], "depot_appelle_onChangeStatus_sans_confirmation": true, "patchStatus_sans_confirmation_ni_annuler": false, "contrainte_de_pas_dans_handleDragEnd": false}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-069 (sha 3acfee471)
+attendu : loading ? … : error ? … sans test sur les lignes, et onSaved={reload}
+observé : {"repro": false, "observe": {"introuvable": [], "defaut_encore_present": [], "pages/sav/TicketsPage.jsx": {"conditions": ["loading && items.length === 0", "error && items.length === 0"], "sans_test_sur_les_lignes": [], "onSaved_reload": true}, "pages/sav/EquipementsPage.jsx": {"conditions": ["loading && items.length === 0", "error && items.length === 0"], "sans_test_sur_les_lignes": [], "onSaved_reload": true}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-070 (sha 3acfee471)
+attendu : if (error) return <EmptyState …> dont la condition ne teste pas les lignes (actifs.length)
+observé : {"repro": false, "observe": {"introuvable": [], "condition": "error && produits.length === 0", "teste_les_lignes": true, "bouton_reessayer": false, "relectures_fetchProduits": 13}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-071 (sha 3acfee471)
+attendu : .catch(() => setError( dans fetchData et if (error) return sans test sur items/filtered
+observé : {"repro": false, "observe": {"introuvable": [], "catch_pose_setError": true, "condition": "error && items.length === 0", "teste_les_lignes": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-072 (sha 3acfee471)
+attendu : .catch(() => setItems([])) dans le reload des deux fichiers
+observé : {"repro": false, "observe": {"introuvable": [], "defaut_encore_present": []}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-073 (sha 3acfee471)
+attendu : load : chemin d'échec setRows([]) sans setError/setErreur, rendu EmptyState « Aucune intervention aujourd'hui »
+observé : {"repro": false, "observe": {"introuvable": [], "chemins_setRows_vide": 2, "etat_erreur_pose": ["setErreur(", "setErreur(", "setErreur(", "setErreur("], "rendu_aucune_intervention": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-074 (sha 3acfee471)
+attendu : onOpenChange qui appelle onClose() sans confirmLeaveIfDirty ni garde (3 dialogues)
+observé : {"repro": false, "observe": {"introuvable": [], "dialogues_sans_garde": [], "dialogues_controles": 2}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-075 (sha 3acfee471)
+attendu : onOpenChange qui appelle onClose() sans confirmLeaveIfDirty ni garde
+observé : {"repro": false, "observe": {"introuvable": [], "gestionnaires": ["(o) => { if (!o) confirmLeaveIfDirty(dirty).then((ok) => ok && onClose()) }"], "gardes_trouvees": ["confirmLeaveIfDirty", "confirmLeaveIfDirty"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-077 (sha 3acfee471)
+attendu : onClick={valider} et validerConsommation( dans valider sans confirmation
+observé : {"repro": false, "observe": {"introuvable": [], "bouton_relie_directement_a_valider": true, "valider_appelle_validerConsommation": true, "confirmation_dans_valider": ["confirm", "confirm", "Annuler"]}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-078 (sha 3acfee471)
+attendu : .catch(() => setRows([])) sans état d'erreur dans les 4 panneaux
+observé : {"repro": false, "observe": {"introuvable": [], "defaut_encore_present": [], "panneaux_controles": 4}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-091 (sha 3acfee471)
+attendu : le bloc <LeadWorkspace de LeadDetailPage sans onSigneRefuse= alors que LeadWorkspace.jsx appelle onSigneRefuse?.(
+observé : {"repro": false, "observe": {"introuvable": [], "workspace_appelle_onSigneRefuse": true, "page_passe_onSigneRefuse": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-092 (sha 3acfee471)
+attendu : suppressErrorToast + .catch(() => []) + « Rien d'urgent » sans variable d'erreur ; CommercialHome .catch avec setLeads([])/setEvents([])
+observé : {"repro": false, "observe": {"introuvable": [], "ecrans_ou_une_panne_ressemble_a_un_vide": [], "AFaireAujourdhui": {"catch_vide": false, "lectures_silencieuses": true, "message_rien_d_urgent": true, "sans_variable_d_erreur": false}, "CommercialHome": {"catch_qui_vide_la_liste": 0}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-093 (sha 3acfee471)
+attendu : dans chargerMotifs, .catch qui pose setMotifs([]) sans remettre motifsDemandes.current à false
+observé : {"repro": false, "observe": {"introuvable": [], "catch_dans_chargerMotifs": 1, "catch_qui_vide_la_liste": [false], "catch_qui_remet_la_garde_a_faux": [true], "garde_remise_a_faux_ailleurs": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-095 (sha 3acfee471)
+attendu : .catch du chargement sans drapeau d'échec et submit non conditionné (Gammes) ; `if (!id) return` sans message (Achats)
+observé : {"repro": true, "observe": {"introuvable": [], "emplacements_fautifs": ["AchatsParametresPage.submit"], "GammesMarquesPage": {"catch_pose_un_drapeau_d_echec": true, "submit_garde_par_le_drapeau": false, "catch": "() => { if (active) setEchecLecture(true) }"}, "AchatsParametresPage.submit": {"retour_muet_sans_message": true}}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER1-100 (sha 47f925be1)
+attendu : catch sans setNotes + alerte masquée si notes non vide + boîte montée en permanence sans key ni remise à zéro de notes
+observé : {"repro": false, "observe": {"introuvable": [], "catch_vide_notes": false, "remise_a_zero_a_l_ouverture": true, "setNotes_vide_ailleurs": 1, "alerte_seulement_si_notes_vide": true, "boite_montee_en_permanence_sans_key": true, "then_lit": "(r) => r.data"}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER1-140 (sha 47f925be1)
+attendu : erreursEntiersProduit({quantite_stock: '-3', ...}) non vide ET validate() l'applique en édition ET l'input pf-qte est disabled={isEdit}
+observé : {"repro": false, "observe": {"introuvable": [], "erreurs_js_stock_moins_3": null, "validate_applique_erreursEntiersProduit": false, "exemption_en_edition": true, "champ_pf_qte_desactive_en_edition": true}, "methode": "lecture + exécution node de validationEntiers.js"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER1-160 (sha 47f925be1)
+attendu : au moins une section autonome à brouillon local encore rendue par `tab === … &&` (hors SectionGardee)
+observé : {"repro": false, "observe": {"introuvable": [], "sections_gardees": ["clients", "documents", "tarification", "donnees", "statuts", "monitoring", "automatisations", "notifications", "email", "traductions", "confidentialite", "referentiels", "realisations", "modeles_brandes", "exports_planifies"], "sections_autonomes_demontees_avec_brouillon": [], "sections_sans_source_locale": []}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER1-161 (sha 47f925be1)
+attendu : catch de reassign sans throw + apply: () => onReassign(...) dans mutateWithUndo + onReassign: reassign
+observé : {"repro": false, "observe": {"introuvable": [], "catch_reassign": 1, "catch_sans_throw": false, "kanban_apply_onReassign": true, "leadspage_transmet_reassign": false}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER2-200 (sha d986bb9bc)
+attendu : remise à faux seulement dans reset + reset appelé seulement au succès + aucune remise à la fermeture ni au changement de lead
+observé : {"repro": false, "observe": {"composant_trouve": true, "remises_a_faux": 0, "remise_dans_reset": false, "appels_reset": 2, "dont_dans_submit": 1, "setOpen_remet_a_zero": false, "useEffect_dans_le_composant": 0, "reprise_saute_logInteraction": true, "toast_relance_planifiee_sur_reprise": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER2-201 (sha d986bb9bc)
+attendu : bloc de remise à zéro sans cleEnvoi/motif/montant + clé remise à null au seul succès + endpoint serveur sans id de facture + survivant PaiementDialog
+observé : {"repro": false, "observe": {"bloc_remise_a_zero_trouve": true, "bloc_remet": {"cleEnvoi": false, "motif": true, "montant": true, "erreur": false}, "remises_de_la_cle_dans_le_fichier": 2, "serveur_cle_note_debit_par_vue": true, "endpoint_idempotence": "f'{self.__class__.__module__}.{self.__class__.__qualname__}'", "endpoint_sans_id_facture": true, "PaiementDialog_remet_sa_cle_au_changement_de_facture": true}, "methode": "lecture écran + serveur"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER2-202 (sha d986bb9bc)
+attendu : email et monitoring rendus par tab === … && hors SectionGardee + brouillon local à sauvegarde explicite dans les deux sections
+observé : {"repro": false, "observe": {"SectionGardee_existe": true, "rendu_conditionnel_demonte": {"email": false, "monitoring": false}, "sous_SectionGardee": {"email": true, "monitoring": true}, "email_corps_modifiable_en_local": true, "email_sauvegarde_explicite": true, "monitoring_modifiable_en_local": true, "monitoring_sauvegarde_explicite": true}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER2-203 (sha d986bb9bc)
+attendu : noteBody, interv, pieceForm, retirerForm, motif déclarés mais absents du dirty + un seul useDirtyGuard + selectionner gardé par isAnyFormDirty
+observé : {"repro": true, "observe": {"TicketDetailCorps_trouve": true, "brouillons_declares": {"noteBody": true, "interv": true, "pieceForm": true, "retirerForm": true, "motif": true}, "brouillons_dans_dirty": {"noteBody": false, "interv": false, "pieceForm": false, "retirerForm": false, "motif": false}, "useDirtyGuard_dans_la_fiche": 1, "selectionner_garde_par_isAnyFormDirty": true}, "methode": "lecture écran"}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AERR-VER2-204 (sha d986bb9bc)
+attendu : garde sur onOpenChange + bouton Fermer à onClick={onClose} nu dans RecettePompageDialog et TicketsPage
+observé : {"repro": false, "observe": {"pages/installations/RecettePompageDialog.jsx": {"garde_sur_la_fermeture_de_la_boite": false, "boutons_Fermer_onClose_nu": 0}, "pages/sav/TicketsPage.jsx": {"garde_sur_la_fermeture_de_la_boite": false, "boutons_Fermer_onClose_nu": 0}}, "methode": "lecture écran"}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan AERR : 7/55 OK
+  C-AERR-001.py    ÉCART (échec)
+  C-AERR-002.py    REPRO
+  C-AERR-003.py    ÉCART (échec)
+  C-AERR-004.py    ÉCART (échec)
+  C-AERR-005.py    REPRO
+  C-AERR-006.py    ÉCART (échec)
+  C-AERR-007.py    ÉCART (échec)
+  C-AERR-009.py    ÉCART (échec)
+  C-AERR-011.py    ÉCART (échec)
+  C-AERR-021.py    ÉCART (échec)
+  C-AERR-022.py    ÉCART (échec)
+  C-AERR-024.py    ÉCART (échec)
+  C-AERR-027.py    ÉCART (échec)
+  C-AERR-028.py    ÉCART (échec)
+  C-AERR-029.py    ÉCART (échec)
+  C-AERR-031.py    ÉCART (échec)
+  C-AERR-033.py    ÉCART (échec)
+  C-AERR-034.py    ÉCART (échec)
+  C-AERR-038.py    ÉCART (échec)
+  C-AERR-044.py    ÉCART (échec)
+  C-AERR-045.py    ÉCART (échec)
+  C-AERR-046.py    ÉCART (échec)
+  C-AERR-047.py    REPRO
+  C-AERR-048.py    ÉCART (échec)
+  C-AERR-049.py    ÉCART (échec)
+  C-AERR-050.py    REPRO
+  C-AERR-051.py    ÉCART (échec)
+  C-AERR-052.py    ÉCART (échec)
+  C-AERR-053.py    REPRO
+  C-AERR-063.py    ÉCART (échec)
+  C-AERR-064.py    ÉCART (échec)
+  C-AERR-065.py    ÉCART (échec)
+  C-AERR-066.py    ÉCART (échec)
+  C-AERR-069.py    ÉCART (échec)
+  C-AERR-070.py    ÉCART (échec)
+  C-AERR-071.py    ÉCART (échec)
+  C-AERR-072.py    ÉCART (échec)
+  C-AERR-073.py    ÉCART (échec)
+  C-AERR-074.py    ÉCART (échec)
+  C-AERR-075.py    ÉCART (échec)
+  C-AERR-077.py    ÉCART (échec)
+  C-AERR-078.py    ÉCART (échec)
+  C-AERR-091.py    ÉCART (échec)
+  C-AERR-092.py    ÉCART (échec)
+  C-AERR-093.py    ÉCART (échec)
+  C-AERR-095.py    REPRO
+  C-AERR-VER1-100.py ÉCART (échec)
+  C-AERR-VER1-140.py ÉCART (échec)
+  C-AERR-VER1-160.py ÉCART (échec)
+  C-AERR-VER1-161.py ÉCART (échec)
+  C-AERR-VER2-200.py ÉCART (échec)
+  C-AERR-VER2-201.py ÉCART (échec)
+  C-AERR-VER2-202.py ÉCART (échec)
+  C-AERR-VER2-203.py REPRO
+  C-AERR-VER2-204.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

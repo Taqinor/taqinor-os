@@ -1,0 +1,4 @@
+# rejeu sur runner GitHub (2026-11-18T02:07:09Z), sha ed9668a67ba1359ad572c028e4b9ab13f0a869ef ; commande : python docs/audits/sondes/ASUP/C-ASUP-VER2-101.py (arbre du depot monte par scripts/sonde.py)
+
+{'repro': False, 'observe': {'geste': 'Anonymiser (RGPD) sur la fiche client, puis Créer un avoir / Annuler un avoir / Créer ou annuler une note de débit', 'temoin_ice_imprime_avant_anonymisation': True, 'facture_d_origine_figee': {'nom': 'SARL Exemple', 'ice': '000000000000001'}, 'avoir_html': {'nom_anonymise_imprime': False, 'ice_d_origine_imprime': True, 'if_imprime': True, 'rc_imprime': True}, 'note_debit_html': {'nom_anonymise_imprime': False, 'ice_d_origine_imprime': True, 'if_imprime': True, 'rc_imprime': True}, 'contexte_generate_avoir_pdf': ['acheteur', 'avoir'], 'contexte_generate_note_debit_pdf': ['acheteur', 'note_debit']}}
+code : 0
