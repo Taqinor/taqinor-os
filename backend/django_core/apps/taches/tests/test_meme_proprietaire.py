@@ -44,6 +44,7 @@ from rest_framework.test import APIClient
 from apps.records.models import Activity
 from apps.taches import agenda_externe as lecteur
 from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran
+from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import IncitationCoach, Preference
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence
@@ -257,6 +258,10 @@ CAS_DETAILS = (
     Cas('POST', 'agendas-externes/{id}/rafraichir/', 'chemin', ('AG',),
         lambda m, x: (f'agendas-externes/{x.AG.pk}/rafraichir/', None)),
     Cas('POST', 'jetons/{id}/revoquer/', 'chemin', ('J',), lambda m, x: (f'jetons/{x.J.pk}/revoquer/', None)),
+    # TCH72 — suggestions venues de l'ERP.
+    Cas('POST', 'suggestions/{id}/accepter/', 'chemin', ('SG',),
+        lambda m, x: (f'suggestions/{x.SG.pk}/accepter/', {})),
+    Cas('POST', 'suggestions/{id}/refuser/', 'chemin', ('SG',), lambda m, x: (f'suggestions/{x.SG.pk}/refuser/', None)),
 )
 
 CAS_PROJETS = (
@@ -341,6 +346,7 @@ SANS_ID = {
     ('GET', 'flux/{jeton}.ics'): lambda m: ('flux/tqf_force.ics', None),  # idem : le jeton de l'adresse n'est pas lu
     ('GET', 'journee/priorites/'): lambda m: ('journee/priorites/', None),
     ('GET', 'journee/point/'): lambda m: ('journee/point/', None),
+    ('GET', 'suggestions/'): lambda m: ('suggestions/', None),  # TCH72 : les suggestions du compte
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
@@ -387,6 +393,9 @@ def _monde(compte, jour):
     m.A = fabriques.activite(compte)
     m.AG = fabriques.agenda_externe(compte, actif=False)
     m.J, _clair = fabriques.jeton(compte, 'flux')
+    m.SG = SuggestionTache.objects.create(  # TCH72 : une suggestion proposée, sans cible
+        company=societe, proprietaire=compte, famille='chantier_annule', cle='chantier_annule:1',
+        titre_propose="Comprendre l'annulation du chantier")
     return m
 
 

@@ -42,3 +42,8 @@ class TachesConfig(AppConfig):
         # `lead_erased` (abonné à l'import de `receivers`) et le fournisseur DSR `taches`.
         from apps.taches import dsr, receivers  # noqa: F401
         dsr.register()
+        #
+        # TCH71 — suggestions venues de l'ERP (reference/regles.md §9) : le même import de
+        # `receivers` abonne `devis_accepted`, `devis_acceptation_annulee`, `chantier_receptionne`,
+        # `chantier_annule` et `visite_validee` (aucun signal neuf ; chaque abonné best-effort, son
+        # `dispatch_uid` en `taches.*`). Rien d'autre à poser ici.

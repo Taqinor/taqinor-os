@@ -13,10 +13,14 @@ from rest_framework.views import APIView
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.selectors.base import taches_de
 from apps.taches.selectors.journee import progression_courante
+from apps.taches.serializers.erp import SuggestionSerializer
 from apps.taches.serializers.formes import TacheEcriteSerializer, charger_taches, contexte, tache_ecrite
-from apps.taches.services.erp import PLAFOND_CONVERSION, convertir_activites, lier_activite
+from apps.taches.services.erp import (
+    PLAFOND_CONVERSION, accepter_suggestion, convertir_activites, lier_activite, refuser_suggestion,
+    suggestions_de,
+)
 from apps.taches.views.base import (
-    ERREUR_CODE, PERMISSIONS, PasEncore, est_assistant, forme_echantillon, reponses,
+    ERREUR_CODE, PERMISSIONS, est_assistant, forme_echantillon, reponses,
 )
 from apps.taches.views.journee import par_compte
 from core.idempotency import IdempotentCreateMixin
@@ -44,6 +48,13 @@ class _CorpsConvertir(serializers.Serializer):
         if not attrs.get('toutes') and not attrs.get('activite_ids'):
             raise serializers.ValidationError({'activite_ids': [MESSAGE_REQUIS]})
         return attrs
+
+
+class _CorpsAccepter(serializers.Serializer):
+    """Corps de `suggestions/{id}/accepter/` : `{"titre","jour_prevu"}`, champs facultatifs (api.md §4)."""
+
+    titre = serializers.CharField(required=False, allow_blank=True, max_length=280)
+    jour_prevu = serializers.DateField(required=False, allow_null=True)
 
 
 def _tache_ecrite(request, tache_id, geste):
@@ -121,7 +132,9 @@ class SuggestionsVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('suggestions')))
     def get(self, request):
-        raise PasEncore()
+        suggestions = suggestions_de(request.user, timezone.localdate())
+        return Response({'results': SuggestionSerializer(
+            suggestions, many=True, context={'user': request.user}).data})
 
 
 class SuggestionAccepterVue(APIView):
@@ -134,7 +147,12 @@ class SuggestionAccepterVue(APIView):
         'jour_prevu': serializers.DateField(required=False, allow_null=True),
     }), responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        corps = _CorpsAccepter(data=request.data)
+        corps.is_valid(raise_exception=True)
+        donnees = corps.validated_data
+        tache_id, geste = accepter_suggestion(request.user, id, titre=donnees.get('titre', ''),
+                                              jour_prevu=donnees.get('jour_prevu'))
+        return Response(_tache_ecrite(request, tache_id, geste), status=status.HTTP_201_CREATED)
 
 
 class SuggestionRefuserVue(APIView):
@@ -144,4 +162,4 @@ class SuggestionRefuserVue(APIView):
 
     @extend_schema(request=None, responses=reponses(forme_echantillon('suggestion_refusee'), erreurs=(404,)))
     def post(self, request, id):
-        raise PasEncore()
+        return Response(refuser_suggestion(request.user, id))
