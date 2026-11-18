@@ -16,7 +16,8 @@ import { cibleDepuisEcran, EVENEMENT_SAISIR, libelleDeCible } from './cibleEcran
    - Hors `/taches` seulement : la coquille de Tâches porte déjà sa propre feuille et reçoit le même événement.
    - Sans le droit `taches_voir` (lu dans `state.auth.permissions`, jamais un repli) : rien n'est monté,
      rien n'écoute, `c t` ne fait rien.
-   La feuille est chargée à part (`lazy`) : l'ERP des comptes sans Tâches ne paie pas son poids.
+   L'hôte lui-même est petit et importé en dur par la coquille (il doit écouter dès le premier écran) ; la
+   feuille, elle, est chargée à part (`lazy`) : l'ERP des comptes sans Tâches ne paie pas son poids.
    - Parce qu'elle est chargée à part, c'est L'HÔTE qui écoute l'événement et qui REMET la demande à la feuille
      (`demandes.abonner` : la feuille s'abonne à son montage et reçoit aussitôt la demande arrivée pendant son
      chargement) : un geste fait à ce moment-là ne perd ni la phrase tapée ni le lien de l'écran (acceptation de la

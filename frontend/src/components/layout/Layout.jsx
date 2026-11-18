@@ -21,6 +21,11 @@ import coreApi from '../../api/coreApi'
 import { reabonnerPushSiAutorise } from '../../features/pwa/pushSubscribe'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 import { useTachesActives } from '../../features/taches/presence/useTachesActives'
+// TCH123 — hôte « Créer une tâche » (c t, palette, ✓+). Il est importé EN DUR (une soixantaine de lignes, sans
+// dépendance neuve) et monté seulement pour un compte qui a Tâches : il doit écouter dès que l'écran est là — chargé
+// à part, un « c t » tapé pendant son chargement ne faisait rien (acceptation de la fusion 4, P142.3). Ce qui pèse,
+// la feuille de saisie, reste chargé à part PAR lui.
+import TachesPresence from '../../features/taches/presence/TachesPresence'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
@@ -35,9 +40,6 @@ const COLLAPSE_KEY = 'taqinor.sidebar.collapsed'
 // démontage sur fermeture, pour ne pas perdre l'état de la conversation).
 const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 
-// TCH123 — hôte « Créer une tâche » (c t, palette, ✓+) : chargé à part, et seulement
-// pour un compte qui a `taches_voir` (sans le droit : aucun morceau demandé, rien monté).
-const TachesPresence = lazy(() => import('../../features/taches/presence/TachesPresence'))
 
 // NTIDE9 — CTA « Suggérer une amélioration » (Intercom-style), chargé
 // paresseusement comme le copilote : n'ajoute rien au chemin froid pour un
@@ -193,11 +195,7 @@ export default function Layout({ children }) {
           ciblés / une fois vu. */}
       <ProductTour />
       {/* TCH123 — hôte des Tâches (saisie depuis n'importe quel écran) : rien sans `taches_voir`. */}
-      {peutTaches && (
-        <Suspense fallback={null}>
-          <TachesPresence />
-        </Suspense>
-      )}
+      {peutTaches && <TachesPresence />}
       {/* NTIDE9/NTIDE37 — ORDRE FONDATEUR 2026-08-04 : les deux boutons
           flottants (« Suggérer une amélioration », « Envoyer un retour »)
           quittent l'écran — leurs modales vivent désormais dans le menu
