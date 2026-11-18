@@ -109,6 +109,15 @@ class ReglagesTests(TestCase):
                 self.assertEqual(self.patch(corps).status_code, 400)
         self.assertEqual(self.patch({'projet_arret_jours': 30, 'rappel_avant_bloc_min': 10}).status_code, 200)
 
+    def test_listes_mal_formees_400_jamais_500(self):
+        """Revue F2 tour 2 #12 : une liste ou un objet là où une chaîne est attendue → 400 au champ."""
+        fabriques.reglages(self.u1, pauses_sollicitations=[{'type': 'relance', 'ignorees': 14}])
+        for champ, valeur in (('pauses_sollicitations', [['relance']]), ('pauses_sollicitations', [{'type': []}]),
+                              ('familles_suggestions', [['devis_accepte']]), ('familles_suggestions', [{}])):
+            with self.subTest(champ=champ, valeur=valeur):
+                reponse = self.patch({champ: valeur})
+                self.assertEqual((reponse.status_code, reponse.json().get(champ)), (400, ['Valeur inconnue.']))
+
     def test_enregistrer_rouvrir_enregistrer_sans_toucher(self):
         fabriques.reglages(self.u1)
         self.patch({'messages_sans_delai': True, 'projet_arret_jours': 12,

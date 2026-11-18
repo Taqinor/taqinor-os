@@ -161,6 +161,12 @@ class RythmeEcritureTests(BaseRythme):
         reglages.refresh_from_db()
         self.assertEqual(reglages.palier, 5)
 
+    def test_objectif_hors_des_flottants_400(self):
+        """Revue F2 tour 2 #12 : `1e400` (lu comme l'infini) → 400 au champ, jamais 500."""
+        self.reglages()
+        reponse = self.api.post(URL, '{"mode": "pousser", "objectif": 1e400}', content_type='application/json')
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'objectif': ['Entre 1 et 12.']}))
+
     def test_mode_inconnu_400(self):
         self.reglages()
         reponse = self.api.post(URL, {'mode': 'turbo'}, format='json')
@@ -214,6 +220,25 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual(ReglagesRythme.objects.filter(proprietaire=self.u1).count(), 1)
         self.assertEqual(self.api.get(aujourdhui, {'jour': J.isoformat()}).json()['objectif']['nb'], 6)
 
+    def test_garder_ce_rythme_sous_un_par_jour_jamais_zero(self):
+        """Revue F2 tour 2 #9 : 4 tâches en 14 jours évalués → objectif 1 (0 à 1) partout : `rythme/`,
+        le toast, le plan du jour, Aujourd'hui et l'en-tête du Copilote — jamais « 0 » ni « -1 »."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages()
+        plan = fabriques.plan(self.u1, J)
+        jours_evalues(self.u1, [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1])
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 1, 'source': 'calcule', 'mode': 'tenir', 'zone': [0, 1]})
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         'Garder ce rythme : environ 1 tâche par jour (0 à 1). '
+                         "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes.")
+        plan.refresh_from_db()
+        self.assertEqual(plan.objectif_du_jour, 1)
+        jour = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual((jour['objectif']['nb'], jour['objectif']['zone']), (1, [0, 1]))
+        self.assertIn('objectif 1 (calculé) · 0 sur 1',
+                      self.api.get('/api/django/taches/coach/entete/').json()['lignes'][0])
+
     def test_corps_refuse_ne_cree_pas_les_reglages(self):
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 40}, format='json')
         self.assertEqual(reponse.status_code, 400)
@@ -226,9 +251,9 @@ class RepondreTests(BaseRythme):
     def repondre(self, carte_, reponse):
         return self.api.post(f'{URL}propositions/{carte_.pk}/repondre/', {'reponse': reponse}, format='json')
 
-    def monter(self, refus=1, **champs):
+    def monter(self, refus=1, n=5, **champs):
         return carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'monter',
-                     {'N': 5, 'N1': 6, 'tenus': 7, 'refus': refus}, **champs)
+                     {'N': n, 'N1': n + 1, 'tenus': 7, 'refus': refus}, **champs)
 
     def test_monter_oui_un_cran_et_forme_repondue(self):
         reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
@@ -282,16 +307,18 @@ class RepondreTests(BaseRythme):
         self.assertEqual((reglages.palier, reglages.palier_source), (3, SourceObjectif.ACCEPTE))
 
     def test_vaut_le_jour_meme_avant_le_plan_sinon_le_lendemain(self):
-        self.reglages(palier=5, bloc_debut=J)
+        reglages = self.reglages(palier=5, bloc_debut=J)
         plan = fabriques.plan(self.u1, J, objectif_du_jour=5)
         self.repondre(self.monter(), 'oui')
         plan.refresh_from_db()
         self.assertEqual(plan.objectif_du_jour, 6)
         plan.planifie_le = datetime.datetime(2026, 11, 17, 8, 0, tzinfo=datetime.timezone.utc)
         plan.save(update_fields=['planifie_le'])
-        self.repondre(self.monter(jour=J - datetime.timedelta(days=1)), 'oui')
+        # Une carte calculée depuis le palier courant (6 → 7) : le palier monte, le plan validé de J garde 6.
+        self.assertEqual(self.repondre(self.monter(n=6, jour=J - datetime.timedelta(days=1)), 'oui').status_code, 200)
         plan.refresh_from_db()
-        self.assertEqual(plan.objectif_du_jour, 6)
+        reglages.refresh_from_db()
+        self.assertEqual((plan.objectif_du_jour, reglages.palier), (6, 7))
 
     def test_reponse_inconnue_ou_reservee_a_la_nuit_400(self):
         self.reglages()
@@ -301,6 +328,15 @@ class RepondreTests(BaseRythme):
                 self.assertEqual(self.repondre(carte_, reponse).json(), {'reponse': ['Réponse inconnue.']})
         carte_.refresh_from_db()
         self.assertEqual(carte_.reponse, '')
+
+    def test_reponse_liste_ou_objet_400(self):
+        """Revue F2 tour 2 #12 : `reponse` liste ou objet → 400 « Réponse inconnue. », jamais 500."""
+        self.reglages()
+        carte_ = self.monter()
+        for reponse in (['oui'], {'oui': 1}):
+            with self.subTest(reponse=reponse):
+                self.assertEqual((self.repondre(carte_, reponse).status_code, self.repondre(carte_, reponse).json()),
+                                 (400, {'reponse': ['Réponse inconnue.']}))
 
     def test_expiree_ou_deja_repondue_409(self):
         reglages = self.reglages(palier=5)
@@ -343,6 +379,62 @@ class RepondreTests(BaseRythme):
         self.repondre(pause, 'reactiver')
         reglages.refresh_from_db()
         self.assertEqual(reglages.pauses_sollicitations, [])
+
+    def test_objectif_dit_puis_monter_ne_saute_jamais_deux_crans(self):
+        """Revue F2 tour 2 #5 : l'objectif dit (8) abandonne la carte « Monter à 6 » ; répondue quand
+        même (écran périmé), elle ne change rien — jamais 9."""
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        corps = self.api.post(URL, {'mode': 'pousser', 'objectif': 8}, format='json').json()
+        self.assertIsNone(corps['proposition'])
+        self.assertEqual(self.repondre(carte_, 'oui').status_code, 409)  # abandonnée, comme à une bascule
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.palier_source), (8, SourceObjectif.DIT))
+
+    def test_moins_puis_descendre_un_seul_cran(self):
+        """#5 : « − » (6 → 5) puis le bouton « Descendre à 5 » d'une carte calculée à 6 : palier 5,
+        jamais 4 (§6.5 « jamais plus d'un cran »)."""
+        reglages = self.reglages(palier=6, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        baisser = carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'baisser', {'N': 6, 'N_1': 5, 'tenus': 2})
+        self.api.post(URL, {'mode': 'pousser', 'sens': 'moins'}, format='json')
+        self.repondre(baisser, 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.palier, 5)
+
+    def test_apres_plus_la_carte_n_est_plus_servie(self):
+        """#5 (a) : « + » abandonne la proposition de palier ouverte : ni `rythme/` ni la carte du moment."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        self.assertEqual(self.api.get(URL).json()['proposition']['id'], carte_.pk)
+        self.api.post(URL, {'mode': 'pousser', 'sens': 'plus'}, format='json')
+        self.assertIsNone(self.api.get(URL).json()['proposition'])
+        moment = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()['carte_du_moment']
+        self.assertFalse(moment and (moment.get('proposition') or {}).get('id') == carte_.pk)
+
+    def test_oui_repart_le_bloc(self):
+        """#8 : « Oui » six jours après la carte : les jours faits à 5 ne comptent pas contre 6."""
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE,
+                                 bloc_debut=J - datetime.timedelta(days=6))
+        jours_evalues(self.u1, [5] * 6)
+        self.assertEqual(self.api.get(URL).json()['bloc'], {'jours': 6, 'tenus': 6, 'sur': 10})
+        self.repondre(self.monter(jour=J - datetime.timedelta(days=6)), 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.essai_restant, reglages.bloc_debut),
+                         (6, True, J + datetime.timedelta(days=1)))
+        self.assertEqual(self.api.get(URL).json()['bloc'], {'jours': 0, 'tenus': 0, 'sur': 10})
+
+    def test_carte_perimee_close_sans_changer_le_palier(self):
+        """#5 (b) : une carte calculée d'un autre palier que le courant (5 → 6, palier déjà 7) est close
+        par la réponse ; « Oui » n'applique jamais un autre nombre que celui de la carte."""
+        reglages = self.reglages(palier=7, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        reponse = self.repondre(carte_, 'oui')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.json()['rythme']['proposition'])
+        reglages.refresh_from_db()
+        carte_.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.essai_restant), (7, False))
+        self.assertEqual(carte_.reponse, 'oui')
 
     def test_annuler_la_reponse_rouvre_la_carte_et_le_palier(self):
         reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
@@ -406,6 +498,13 @@ class PreferencesTests(BaseRythme):
                     'heure_bilan_soir', 'heure_limite_rappels', 'semaine_revue', 'mode', 'palier'):
             with self.subTest(cle=cle):
                 self.assertEqual(self.poser(cle, '19:00').json(), {'cle': ['Clé inconnue.']})
+
+    def test_cle_liste_ou_objet_400(self):
+        """Revue F2 tour 2 #12 : `cle` liste ou objet → 400 « Clé inconnue. », jamais 500."""
+        for cle in (['heure_soir'], {'heure_soir': 1}):
+            with self.subTest(cle=cle):
+                reponse = self.poser(cle, '19:00')
+                self.assertEqual((reponse.status_code, reponse.json()), (400, {'cle': ['Clé inconnue.']}))
 
     def test_bornes_des_valeurs(self):
         cas = (('capacite_jour_min', 20, 'Entre 30 et 720 minutes.'),
