@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Diamond } from 'lucide-react'
 import { elementsChronologie } from '../lib/projets'
 import { ecartJours, jourNomme } from '../lib/textes'
+import { jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH90 — La vue Chronologie d'un projet, et son burn-up « Avancement par semaine ».
@@ -22,7 +23,7 @@ function EtiquetteDate({ element, aujourdhui }) {
     if (element.debut && element.fin) return `${jourNomme(element.debut, aujourdhui)} → ${jourNomme(element.fin, aujourdhui)}`
     return jourNomme(element.debut ?? element.fin, aujourdhui)
   }
-  return jourNomme(element.date, aujourdhui)
+  return jourProjet(element.date, aujourdhui) // passe visuelle n° 40 : jalon et échéance, la date d'un projet
 }
 
 function FriseVerticale({ elements, aujourdhui }) {
@@ -62,7 +63,7 @@ function FriseHorizontale({ elements, aujourdhui }) {
           {jalons.map((j) => (
             <span key={j.id}>
               <Diamond className="i ep-fh-losange" style={style(pct(j.date))} aria-hidden="true" />
-              <span className="ep-fh-etiquette" style={style(pct(j.date))}>{`${j.nom} · ${jourNomme(j.date, aujourdhui)}`}</span>
+              <span className="ep-fh-etiquette" style={style(pct(j.date))}>{`${j.nom} · ${jourProjet(j.date, aujourdhui)}`}</span>
             </span>
           ))}
         </div>
@@ -80,7 +81,7 @@ function FriseHorizontale({ elements, aujourdhui }) {
         })}
         <div className="ep-fh-trait auj" style={style(pct(aujourdhui))}><span>{`Aujourd'hui · ${jourNomme(aujourdhui, aujourdhui)}`}</span></div>
         {echeance ? (
-          <div className="ep-fh-trait fin" style={style(pct(echeance.date))}><span>{`Échéance · ${jourNomme(echeance.date, aujourdhui)}`}</span></div>
+          <div className="ep-fh-trait fin" style={style(pct(echeance.date))}><span>{`Échéance · ${jourProjet(echeance.date, aujourdhui)}`}</span></div>
         ) : null}
       </div>
     </div>
