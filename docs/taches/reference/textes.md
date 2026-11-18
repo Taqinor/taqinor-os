@@ -435,6 +435,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | 409 `autre_compte` | « Une action d'un autre compte a été retirée de la file. » |
 | 409 `conflit_version` | bandeau de conflit §2.2 |
 | `lock_version` | « Requis. » (jamais montré : le front l'envoie toujours) |
+| 403 sous l'assistant (`api.md` §0 ; jamais montré à l'écran, lu par le seul relais) | `reglages/`, `reglages-societe/` : « L'assistant ne touche pas à tes réglages. » · `jetons/` : « L'assistant ne gère pas les jetons. » · `mes-donnees/` : « L'assistant ne lit pas l'export de tes données. » · `tout-effacer/` : « L'assistant n'efface jamais tes données. » · `agendas-externes/` : « L'assistant ne gère pas tes agendas. » |
 
 ### 2.17 La carte du moment (une à la fois, en haut d'Aujourd'hui, ordre `regles.md` §4.10)
 

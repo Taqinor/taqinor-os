@@ -295,7 +295,7 @@ def poser_calculs_d_items(user, taches, etat, ctx):
         ctx['calculs'][('tache', tache.pk)] = {
             **ctx['calculs'].get(('tache', tache.pk), {}),
             'explication': texte_explication(item, tache, nom_du_projet(tache, usage, ctx['reglages']), etat.jour,
-                                             etat.travailles_journee),
+                                             etat.travailles_journee, usage),
             'essentielle': bool(ligne and ligne.essentielle),
             'prevue_au_plan': bool(ligne and ligne.prevue_au_plan)}
 

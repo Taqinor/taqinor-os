@@ -12,15 +12,22 @@ from rest_framework.views import APIView
 
 from apps.taches.services.donnees import exporter, tout_effacer
 from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
+from apps.taches.views.presence import HorsAssistant
 
 CONFIRMATION = 'EFFACER'
 MESSAGE_CONFIRMATION = 'Tape EFFACER pour confirmer.'
 
 
-class MesDonneesVue(APIView):
-    """GET mes-donnees/ — export JSON des modèles de l'app."""
+class ExportHorsAssistant(HorsAssistant):
+    """403 sous l'en-tête assistant (api.md §0) : l'export porte tout, le contenu confidentiel compris."""
 
-    permission_classes = PERMISSIONS
+    message = "L'assistant ne lit pas l'export de tes données."
+
+
+class MesDonneesVue(APIView):
+    """GET mes-donnees/ — export JSON des modèles de l'app ; jamais servi au relais de l'assistant."""
+
+    permission_classes = [*PERMISSIONS, ExportHorsAssistant]
 
     @extend_schema(responses=reponses(forme_echantillon('mes_donnees')))
     def get(self, request):
@@ -29,10 +36,16 @@ class MesDonneesVue(APIView):
         return reponse
 
 
-class ToutEffacerVue(APIView):
-    """POST tout-effacer/ — `{"confirmation":"EFFACER"}`, suppression DURE."""
+class EffacementHorsAssistant(HorsAssistant):
+    """403 sous l'assistant (api.md §0) : le relais du Copilote n'efface jamais les données d'un compte."""
 
-    permission_classes = PERMISSIONS
+    message = "L'assistant n'efface jamais tes données."
+
+
+class ToutEffacerVue(APIView):
+    """POST tout-effacer/ — `{"confirmation":"EFFACER"}`, suppression DURE ; jamais par l'assistant."""
+
+    permission_classes = [*PERMISSIONS, EffacementHorsAssistant]
 
     @extend_schema(request=corps('ToutEffacer', {'confirmation': 'EFFACER'}, requis=('confirmation',)),
                    responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,)))
