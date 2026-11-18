@@ -111,6 +111,36 @@ class AbonnementDashboardTests(TestCase):
             EnvoiRapport.objects.filter(saved_report=rapport,
                                         statut='envoye').count(), 1)
 
+    def test_proprietaire_desactive_rien_ne_part(self):
+        """ADRG156 — propriétaire désactivé : aucun envoi (journal ``echec``
+        motivé, ``last_sent_at`` nul) et lien public 404 ; réactivé ⇒ envoi."""
+        from apps.reporting.diffusion_views import make_report_token
+        rapport = self._rapport(cible_id=self._dashboard().pk)
+        self.user.is_active = False
+        self.user.save(update_fields=['is_active'])
+        envoyer = mock.Mock(return_value=True)
+        with frozen(LUNDI_06H), \
+                mock.patch.object(scheduled_reports, '_is_email_configured',
+                                  return_value=True), \
+                mock.patch.object(scheduled_reports, '_send_report_email',
+                                  envoyer), \
+                mock.patch('core.pdf.render_pdf', return_value=b'%PDF faux'):
+            self.assertEqual(scheduled_reports.email_saved_reports(), 0)
+            envoyer.assert_not_called()
+            envois = EnvoiRapport.objects.filter(saved_report=rapport)
+            self.assertEqual(list(envois.values_list('statut', 'erreur')), [(
+                'echec', 'Propriétaire du rapport désactivé : envoi suspendu.')])
+            rapport.refresh_from_db()
+            self.assertIsNone(rapport.last_sent_at)
+            resp = self.client.get('/api/django/reporting/rapports-partages/'
+                                   f'{make_report_token(rapport)}/')
+            self.assertEqual(resp.status_code, 404)
+            self.assertEqual(resp.json()['detail'], 'Rapport indisponible.')
+            self.user.is_active = True
+            self.user.save(update_fields=['is_active'])
+            EnvoiRapport.objects.filter(saved_report=rapport).delete()
+            self.assertEqual(scheduled_reports.email_saved_reports(), 1)
+
     def test_pas_envoye_un_autre_jour(self):
         dashboard = self._dashboard()
         self._rapport(cible_id=dashboard.pk)

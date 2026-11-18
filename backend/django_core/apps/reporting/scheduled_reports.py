@@ -308,6 +308,13 @@ def _rendre_legacy(report):
         return None, None, None, None
 
 
+CAUSE_PROPRIETAIRE_INACTIF = 'Propriétaire du rapport désactivé : envoi suspendu.'  # ADRG156
+
+
+def _proprietaire_inactif(report):
+    return report.owner_id is not None and not report.owner.is_active
+
+
 def rendre_rapport(report):
     """NTDATA37 — rend N'IMPORTE QUELLE cible : ``(bytes, titre, nom, mime)``.
 
@@ -318,7 +325,7 @@ def rendre_rapport(report):
     from .models import SavedReport
 
     # AANA27 — un rapport sans société n'a AUCUN rendu (ni e-mail, ni lien).
-    if getattr(report, 'company_id', None) is None:
+    if getattr(report, 'company_id', None) is None or _proprietaire_inactif(report):
         return None, None, None, None
     if report.target_kind == SavedReport.TargetKind.DASHBOARD:
         return _rendre_dashboard(report)
@@ -496,6 +503,11 @@ def email_saved_reports():
             # NTDATA38 — fenêtre fine (heure d'envoi, jour du mois, anti-doublon
             # mensuel) par-dessus la sélection grossière par cadence.
             if not _rapport_est_du(report, now):
+                continue
+            if _proprietaire_inactif(report):  # ADRG156 — avant tout canal
+                canal = getattr(report, 'canal', 'email')
+                journaliser_envoi(report, canal, report.whatsapp_list() if canal == 'whatsapp'
+                                  else report.recipient_list(), 'echec', CAUSE_PROPRIETAIRE_INACTIF)
                 continue
             # NTDATA39 — canal WhatsApp : un LIEN tokenisé, jamais la pièce
             # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.
