@@ -174,6 +174,22 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete').textContent).not.toMatch(/pour/)
   })
 
+  it('Passe visuelle n° 34 — Semaine : « Planifier ma semaine » en pied avec « À placer · n » (iPhone) et au bas du volet À placer (bureau), plus en haut', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem')).not.toBeNull())
+    expect(within(container.querySelector('.ag-vues')).queryByRole('button', { name: 'Planifier ma semaine' })).toBeNull()
+    // contrat : a_placer (1) + Mes projets (1) = 2, le même nombre que le volet
+    const barre = container.querySelector('.ag-barre')
+    expect(barre).toHaveClass('mobile-seul')
+    expect(barre.querySelector('.ag-barre-titre')).toHaveTextContent('À placer · 2')
+    const volet = screen.getByRole('complementary', { name: 'À placer' })
+    expect(within(volet).getByRole('heading', { name: 'À placer · 2' })).toBeInTheDocument()
+    expect(volet.querySelector('.ag-aside-action')).toContainElement(within(volet).getByRole('button', { name: 'Planifier ma semaine' }))
+    fireEvent.click(within(barre).getByRole('button', { name: 'Planifier ma semaine' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())

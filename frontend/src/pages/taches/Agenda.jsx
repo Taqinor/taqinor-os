@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { CalendarCheck, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
 import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
@@ -371,29 +371,52 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   )
 }
 
-function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, onChoisir }) {
+function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, volet = null, onChoisir }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   return (
     <>
-      <div className="ag-semtj bureau-seul" role="group" aria-label="Toute la journée">
-        <div className="ag-tj-label">Toute la journée</div>
-        {jours.map((j) => (
-          <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
-            {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
-            {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
-              <PuceJournee key={`ext:${e.cle}`} element={e} />
+      <div className="ag-corps bureau-seul">
+        <div className="ag-principal">
+          <div className="ag-semtj" role="group" aria-label="Toute la journée">
+            <div className="ag-tj-label">Toute la journée</div>
+            {jours.map((j) => (
+              <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
+                {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
+                {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
+                  <PuceJournee key={`ext:${e.cle}`} element={e} />
+                ))}
+              </div>
             ))}
           </div>
-        ))}
-      </div>
-      <div className="bureau-seul">
-        <GrilleAgenda
-          jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
-          placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
-        />
+          <GrilleAgenda
+            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
+            placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
+          />
+        </div>
+        {volet}
       </div>
       <SemaineListe jours={jours} aujourdhui={aujourdhui} capacite={capacite} onChoisir={onChoisir} />
     </>
+  )
+}
+
+/** Passe visuelle n° 34 — pied de la Semaine sur iPhone (maquette agenda-semaine.html `.ag-barre`) : « À placer · {n} »
+ *  (le même nombre que le volet, textes.md §2.8) et **Planifier ma semaine**. */
+function BarreAPlacer({ total, onPlanifier }) {
+  return (
+    <div className="ag-barre mobile-seul">
+      <div className="ag-barre-titre">À placer <span className="chiffres">{`· ${total}`}</span></div>
+      <BoutonPlanifier onClick={onPlanifier} />
+    </div>
+  )
+}
+
+function BoutonPlanifier({ onClick }) {
+  return (
+    <button type="button" className="bouton second" onClick={onClick}>
+      <CalendarCheck className="i i-16" aria-hidden="true" />
+      Planifier ma semaine
+    </button>
   )
 }
 
@@ -656,6 +679,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     },
   }
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
+  const planifierSemaine = () => changer({ placer: '1' })
   const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
   const choisie = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
@@ -705,11 +729,6 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
-        {vue === 'semaine' ? (
-          <button type="button" className="bouton second" onClick={() => changer({ placer: '1' })}>
-            Planifier ma semaine
-          </button>
-        ) : null}
       </div>
       <Navigation
         vue={vue} titre={titrePeriode(vue, jour, periode)}
@@ -730,8 +749,18 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
       ) : null}
       {donnees && vue === 'semaine' ? (
-        <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour} />
+        <>
+          <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
+            placement={placementGrille} capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour}
+            volet={(
+              <VoletAPlacer
+                aPlacer={donnees.a_placer ?? []} mesProjets={donnees.mes_projets ?? []} aujourdhui={aujourdhui}
+                choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+                projetsOuverts aide="Touche une tâche, puis un jour." action={<BoutonPlanifier onClick={planifierSemaine} />}
+              />
+            )} />
+          <BarreAPlacer total={tousAPlacer.length} onPlanifier={planifierSemaine} />
+        </>
       ) : null}
       {donnees && vue === 'mois' ? (
         <>
