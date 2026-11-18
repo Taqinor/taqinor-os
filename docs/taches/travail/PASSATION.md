@@ -687,6 +687,28 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
   `/api/django/core/health/ready/` → `ready`, **dernier démarrage le 17/11 à 12 h 31 UTC** : rien de ce qui a été
   fusionné aujourd'hui n'est en ligne. Après le déploiement de Reda, ce même appel doit montrer un démarrage neuf.
 
+**ÉTAT FINAL DE LA SESSION CLOUD — 18/11/2026, 09 h 00 UTC : LES TROIS FUSIONS SONT SUR `main`**
+
+- **Fusion 2** (#1454) fusionnée à 06 h 12 UTC ; **fusion 3** (#1462) à 06 h 40 ; **fusion 4** (#1464) à 08 h 59 :
+  `main` = `2fbc707761`. Plan `docs/plans/PLAN_TACHES.md` sur `main` : 178 tâches cochées, UNE ouverte — **TCH168**
+  (ouvrir Tâches au Directeur et aux autres rôles), GATED sur la parole de Reda. Aucun fichier temporaire sur `main`.
+- **Preuves sur `main`** (`docs/audits/acceptation/TCH/`) : `2026-11-18-eb9458741` (fusion 2, 36 étapes),
+  `2026-11-18-8847dec04` (fusion 3, 17 étapes, vrai assistant), `2026-11-18-844f5f291` (fusion 4 + fusion 2 rejouée,
+  44 étapes), `2026-11-18-60c17af83` (fusion 3 rejouée sur la fusion 4, vrai assistant, 17 étapes). Tous PASS.
+- **RIEN N'EST EN LIGNE** : la production a démarré pour la dernière fois le 17/11 à 12 h 31 UTC (lu sur
+  `/api/django/core/health/ready/`). Reda a demandé le déploiement ; il ne peut partir que de son PC :
+  `powershell -File scripts\deploy-prod.ps1` (un seul lancement pour les trois fusions).
+- **Ce qui reste à Reda** : déployer ; ouvrir l'ERP avec un compte au rôle Administrateur (Paramètres → Utilisateurs
+  si la tuile « Tâches » n'apparaît pas) ; les réglages du `.env` de production et les gestes iPhone listés dans
+  `docs/taches/README.md` ; `run the assistant-manuel skill` après le déploiement ; la carte « tâche suggérée »
+  (masquer le jeton du calendrier dans les journaux de nginx) ; dire s'il ouvre aux autres rôles (TCH168) et, avant
+  d'ouvrir à un commercial, laquelle des deux lignes de relance garder ; trancher les écarts d'apparence du README.
+- **Ce qu'une prochaine session peut faire sans lui** : rien d'obligatoire. Si Reda donne sa parole : TCH168, puis la
+  correction des relances en double. Les branches `dev-taches-f2/f3/f4` peuvent être supprimées ; la branche de
+  travail `claude/erp-task-manager-ai-f8db1b` garde ce journal, les rapports de relecture et l'outillage cloud.
+- **Non vérifié, à dire tel quel** : rien n'a tourné sur un vrai iPhone ; le rôle du compte de Reda en production ;
+  la production elle-même tant qu'elle n'est pas déployée.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
