@@ -1,0 +1,59 @@
+{
+  "sha": "ed9668a67ba1359ad572c028e4b9ab13f0a869ef",
+  "date": "2026-11-18",
+  "groupe": "ALEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEC55",
+    "ALEC56"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6-ALEC55-compteurs-periode",
+      "taches": [
+        "ALEC55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ALEC-PF6-ALEC55-compteurs-periode.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF6-ALEC56-mes-equipes",
+      "taches": [
+        "ALEC56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ALEC-PF6-ALEC56-mes-equipes.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
