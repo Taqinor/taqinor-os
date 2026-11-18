@@ -337,6 +337,40 @@ class AbonnementDashboardTests(TestCase):
                       'refusé.</p>', html)
         self.assertIn('NTDATA37 SA', html)  # l'autre widget reste rendu
 
+    def test_widget_metrique_stock_exige_stock_export(self):
+        """ADRG157 — un widget de MÉTRIQUE nommée lit le jeu de sa définition :
+        programmer ou rendre le tableau exige son code d'export (403 sinon)."""
+        from apps.semantic.models import MetricDefinition
+        from apps.stock.models import Produit
+        MetricDefinition.objects.create(
+            company=self.company, cle='stock_qte', libelle='Stock',
+            dataset='stock_produits',
+            mesure={'field': 'quantite_stock', 'agg': 'sum'})
+        Produit.objects.create(company=self.company, nom='Onduleur ADRG157',
+                               sku='ADRG157-P', prix_vente=100,
+                               quantite_stock=3)
+        dashboard = self._dashboard(partage=True, layout={'widgets': [{
+            'id': 'm', 'titre': 'Stock', 'type': 'metrique',
+            'metrique': 'stock_qte', 'group_by': ['nom']}]})
+        url = '/api/django/reporting/saved-reports/'
+        corps = {'name': 'Stock', 'target_kind': 'dashboard',
+                 'cible_id': dashboard.pk, 'schedule': 'weekly',
+                 'recipients': 'x@exemple.ma'}
+        commercial, api_c = self._api_role('Commercial responsable')
+        resp = api_c.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(str(resp.data['detail']),
+                         'Accès au jeu de données refusé.')
+        self.assertFalse(SavedReport.objects.filter(owner=commercial).exists())
+        _directeur, api_d = self._api_role('Directeur')
+        resp = api_d.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        rapport = self._rapport(owner=commercial, cible_id=dashboard.pk)
+        html = scheduled_reports.rendre_dashboard_html(rapport, dashboard)
+        self.assertNotIn('Onduleur ADRG157', html)
+        self.assertIn('<h2>Stock</h2><p class="erreur">Accès au jeu de '
+                      'données refusé.</p>', html)
+
     def test_patch_destinataires_d_une_requete_stock_exige_stock_export(self):
         """ADRG147 — l'export du jeu est exigé à CHAQUE écriture d'un rapport
         ``query``, PATCH partiel compris : réorienter l'envoi stock d'un

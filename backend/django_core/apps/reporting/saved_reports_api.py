@@ -108,10 +108,12 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                 elif kind == SavedReport.TargetKind.DASHBOARD:
                     # ADRG146 — programmer un tableau de bord = exporter le jeu de
                     # CHAQUE widget, à chaque écriture (jeu inconnu : rendu en erreur).
+                    from .scheduled_reports import jeu_du_widget
                     for widget in (cible_obj.layout or {}).get('widgets') or []:
-                        if isinstance(widget, dict) and widget.get('dataset'):
+                        jeu = jeu_du_widget(widget, company) if isinstance(widget, dict) else None
+                        if jeu:  # ADRG157 — widget de métrique : le jeu de sa définition
                             try:
-                                data_explorer.exiger_export_dataset(widget['dataset'], requete.user)
+                                data_explorer.exiger_export_dataset(jeu, requete.user)
                             except data_explorer.DatasetInconnu:
                                 pass
         return attrs

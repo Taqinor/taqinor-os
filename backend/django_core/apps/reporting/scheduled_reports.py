@@ -154,6 +154,18 @@ def _echappe(valeur):
     return escape('' if valeur is None else str(valeur))
 
 
+def jeu_du_widget(widget, company):
+    """ADRG157 — jeu lu par un widget : celui de sa métrique nommée (même
+    priorité que ``core.dashboard_data``), sinon son ``dataset``."""
+    if widget.get('type') != 'metrique' and not widget.get('metrique'):
+        return widget.get('dataset')
+    from apps.semantic.services import MetriqueInconnue, get_metric
+    try:
+        return get_metric(company, widget.get('metrique') or widget.get('cle')).dataset
+    except MetriqueInconnue:
+        return None
+
+
 def rendre_dashboard_html(report, dashboard):
     """Le HTML du PDF d'un tableau de bord (fonction PURE, testable seule).
 
@@ -175,16 +187,17 @@ def rendre_dashboard_html(report, dashboard):
     widgets_purges = []
     refus = {}  # ADRG146 — widget dont le propriétaire n'a pas l'export du jeu
     for index, widget in enumerate(layout.get('widgets') or []):
-        if isinstance(widget, dict) and widget.get('dataset'):
+        jeu = jeu_du_widget(widget, report.company) if isinstance(widget, dict) else None
+        if jeu:
             try:
-                exiger_export_dataset(widget['dataset'], report.owner)
+                exiger_export_dataset(jeu, report.owner)
             except (DatasetNonAutorise, DatasetInconnu) as exc:
                 ident = widget.get('id') or f'widget-{index}'
                 refus[ident] = str(exc)  # non exécuté : bloc d'erreur, jamais tu
                 widget = {'id': ident, 'titre': widget.get('titre', '')}
             else:
                 widget = {**widget, 'spec': spec_sans_champs_gated(
-                    widget['dataset'], widget.get('spec'))}
+                    jeu, widget.get('spec'))}
         widgets_purges.append(widget)
     layout['widgets'] = widgets_purges
     donnees = executer_dashboard(
