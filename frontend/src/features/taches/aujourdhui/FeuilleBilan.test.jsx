@@ -152,7 +152,13 @@ describe('TCH80 — Valider', () => {
     servir()
     monter()
     const f = await feuille()
-    const reste = await waitFor(() => f.querySelector('[data-ligne="tache:42"]'))
+    // `waitFor` ne réessaie que si la fonction LÈVE : rendre `null` passait tout de suite quand la ligne n'était pas
+    // encore là (échec intermittent sous charge : `within(null)`)
+    const reste = await waitFor(() => {
+      const ligne = f.querySelector('[data-ligne="tache:42"]')
+      expect(ligne).not.toBeNull()
+      return ligne
+    })
     await userEvent.click(within(reste).getByRole('button', { name: 'Abandonner' }))
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'false')
     await userEvent.click(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' }))

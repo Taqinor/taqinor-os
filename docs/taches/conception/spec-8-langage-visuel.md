@@ -19,7 +19,8 @@ donc jamais d'Archivo pour une heure. Sora : chargée par l'ERP, non utilisée i
 
 ## 2. Ligne de tâche, rayons, élévations
 - Ligne : 52 px mini (bureau 44), 65 px avec méta ; gouttière 16 px (bureau 24) ; case ronde 22 px (trait 1,75 px)
-  centrée dans une cible de 44 px, alignée sur la PREMIÈRE ligne du titre ; colonne de fin = heure, ★ ou drapeau.
+  centrée dans une cible de 44 px, alignée sur la PREMIÈRE ligne du titre ; colonne de fin = heure, ★ ou drapeau (une essentielle de priorité haute montre ★ seule ; le
+  drapeau, quand il y en a un, se place avant l'heure).
 - Aucun trait entre lignes, aucune ombre ; survol = `--muted` à 70 % ; bureau : survol arrondi 10 px, inset 8 px.
 - Sections titrées : Essentiel, Prévu (spec 7 rév. 3), Ce soir, Proposé pour aujourd'hui ; repliés « À revoir 2 ⌄ ».
   « Toute la journée » (visites, poses) = une pastille avant Prévu, jamais une ligne à heure.

@@ -146,7 +146,7 @@ function Corps({ donnees, choix, enLigne, aujourdhui, fixer, constat, repondreCo
       {(donnees.faites ?? []).length > 0 ? (
         <div className="bilan-section">
           <p className="fiche-label">Faites <span className="compte chiffres">{donnees.faites.length}</span></p>
-          <div role="list">
+          <div role="list" className="bilan-faites">
             {donnees.faites.map((item) => (
               <div key={`${item.type}:${item.id}`} className="ligne-courte" role="listitem">
                 <CaseRonde coche titre={item.titre} desactivee onBasculer={() => {}} />

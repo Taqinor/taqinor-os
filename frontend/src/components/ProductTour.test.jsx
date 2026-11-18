@@ -187,7 +187,13 @@ describe('ProductTour (NTDMO15)', () => {
     // même classe de flake « rendu à froid sous charge CI parallèle » déjà
     // documentée par `testTimeout: 20000` dans vitest.config.js — `waitFor`
     // a son propre délai, non couvert par ce réglage.
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'ferme' }), { timeout: 15000 })
+    // 18/11/2026 (PR #1464, frontend-vitest-shard 4, run 44262353060) : rouge encore, 0 appel après 15 s — le
+    // `pointerDown` unique ci-dessus pouvait partir AVANT que l'écouteur du tour soit posé, exactement la course déjà
+    // corrigée pour Échap (#847, #1262). Le geste est donc renvoyé à chaque essai du `waitFor` jusqu'à l'appel vu/.
+    await waitFor(() => {
+      if (!api.post.mock.calls.length) fireEvent.pointerDown(document.body)
+      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/', { issue: 'ferme' })
+    }, { timeout: 15000 })
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 

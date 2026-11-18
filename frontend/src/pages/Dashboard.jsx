@@ -25,6 +25,8 @@ const FavorisWidget = lazy(() => import('../features/uxviews/FavorisWidget'))
 // NTOBS3), lien vers le rapport complet /parametres/sla. Dégrade en silence
 // tant qu'aucun snapshot n'existe encore.
 const SlaBadgeCard = lazy(() => import('../features/reporting/SlaBadgeCard'))
+// TCH125 — carte « Tâches · Aujourd'hui » : chargée à part, et seulement avec `taches_voir`.
+const CarteMesTaches = lazy(() => import('../features/taches/presence/CarteMesTaches'))
 import { useDispatch, useSelector } from 'react-redux'
 import { Navigate, useNavigate } from 'react-router-dom'
 // NTMOB6 — sélecteur de démarrage par rôle : Dashboard est le SEUL point
@@ -49,6 +51,7 @@ import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
 import { useDeviseTenant } from '../hooks/useDeviseTenant'
 import { useCanLireVentes, useCanLireEquipesCrm, useCanLireTableauDeBord } from '../hooks/useHasPermission'
+import { useTachesActives } from '../features/taches/presence/useTachesActives'
 import useDroitMetier from '../features/sav/useDroitMetier'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
@@ -480,6 +483,7 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const peutLireVentes = useCanLireVentes()
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   const peutLireEquipes = useCanLireEquipesCrm()
   const lectures = lecturesAccueil({
     peutLireVentes, peutLireCrm: useDroitMetier('crm_voir'), peutLireTableau: useCanLireTableauDeBord(),
@@ -901,6 +905,15 @@ export function Component() {
           <ApprobationsAttentionCard />
         </Suspense>
       </div>
+
+      {/* TCH125 — « Tâches · Aujourd'hui » : rien sans `taches_voir`. */}
+      {peutTaches && (
+        <div className="mb-4 sm:mb-5">
+          <Suspense fallback={null}>
+            <CarteMesTaches />
+          </Suspense>
+        </div>
+      )}
 
       {showError ? (
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »

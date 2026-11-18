@@ -528,3 +528,65 @@ def reponse_gestes(gestes, masques=frozenset()):
                          'created_at': _INSTANT.to_representation(g.created_at),
                          'annule_le': _INSTANT.to_representation(g.annule_le) if g.annule_le else None,
                          'annulable': g.annule_le is None} for g in gestes]}
+
+
+# --- Étiquettes et vues enregistrées (TCH156) ----------------------------------------------------------
+
+_REQUIS = {'required': MESSAGE_REQUIS, 'null': MESSAGE_REQUIS}
+MESSAGE_INCONNU = 'Valeur inconnue.'
+
+
+class EtiquetteEntreeSerializer(serializers.Serializer):
+    """Corps de `POST etiquettes/` : `nom` (longueur et doublon jugés par le service) et `couleur` (une des
+    couleurs de l'application, sinon celle d'office)."""
+
+    nom = serializers.CharField(allow_blank=True, error_messages=_REQUIS)
+    couleur = serializers.CharField(required=False, allow_blank=True)
+
+
+class EtiquettePatchSerializer(serializers.Serializer):
+    nom = serializers.CharField(required=False, allow_blank=True, error_messages={'null': MESSAGE_REQUIS})
+    couleur = serializers.CharField(required=False, error_messages={'null': MESSAGE_INCONNU})
+
+
+#: `VueEnregistree.rang` est un `IntegerField` : l'entier signé 32 bits de la base (au-delà, 500 « integer out of
+#: range » ; revue F4 #5).
+RANG_MIN, RANG_MAX = -2 ** 31, 2 ** 31 - 1
+
+
+def _rang_de_vue():
+    return serializers.IntegerField(required=False, min_value=RANG_MIN, max_value=RANG_MAX, error_messages={
+        'invalid': MESSAGE_INCONNU, 'min_value': MESSAGE_INCONNU, 'max_value': MESSAGE_INCONNU})
+
+
+class VueEntreeSerializer(serializers.Serializer):
+    """Corps de `POST vues/` : `filtres` est jugé (clés fermées) par le service."""
+
+    nom = serializers.CharField(allow_blank=True, error_messages=_REQUIS)
+    filtres = serializers.JSONField(required=False)
+    rang = _rang_de_vue()
+
+
+class VuePatchSerializer(serializers.Serializer):
+    nom = serializers.CharField(required=False, allow_blank=True, error_messages={'null': MESSAGE_REQUIS})
+    filtres = serializers.JSONField(required=False)
+    rang = _rang_de_vue()
+
+
+def forme_etiquette(etiquette):
+    """Une ligne de `etiquettes.json` : `{id, nom, couleur}`."""
+    return {'id': etiquette.pk, 'nom': etiquette.nom, 'couleur': etiquette.couleur}
+
+
+def reponse_etiquette(etiquette, geste):
+    """Écriture d'une étiquette : sa forme + `geste_id` (null si rien n'a changé)."""
+    return {**forme_etiquette(etiquette), 'geste_id': geste.pk if geste is not None else None}
+
+
+def forme_vue(vue):
+    """Une vue de `vues.json` : `{id, nom, rang, filtres}`."""
+    return {'id': vue.pk, 'nom': vue.nom, 'rang': vue.rang, 'filtres': vue.filtres}
+
+
+def reponse_vue(vue, geste):
+    return {**forme_vue(vue), 'geste_id': geste.pk if geste is not None else None}

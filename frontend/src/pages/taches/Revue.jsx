@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TriangleAlert } from 'lucide-react'
+import { Star, TriangleAlert } from 'lucide-react'
 import { deciderRevue, lireRevue, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
-import { avancementDe } from '../../features/taches/projets/LigneProjet'
+import { avancementDe, echeanceProjet } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, echeanceTexte } from '../../features/taches/lib/textes'
+import { aujourdhuiIso } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH93 — Écran Revue de la semaine (`/taches/revue`). Maquette : docs/taches/maquettes/revue-semaine.html.
@@ -55,7 +55,7 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
   const [change, setChange] = useState(false)
   const [terminer, setTerminer] = useState(false)
   const { texte } = avancementDe(projet)
-  const ech = projet.echeance ? echeanceTexte(projet.echeance, aujourdhui) : null
+  const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const faites = (carte.faites_semaine ?? []).slice(0, 3)
   const corps = (decision, issue = null) => ({
     intention, prochaine_action_id: action?.id ?? null, decision, focus: focusId === projet.id, issue,
@@ -99,7 +99,9 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
         <input id={`rv-intention-${projet.id}`} className="champ" value={intention} onChange={(e) => setIntention(e.target.value)} />
       </div>
       <div className="ep-groupe">
-        <label className="ep-case">
+        {/* Passe visuelle n° 45 — « Projet de la semaine » : l'étoile de revue-semaine.html (`.ep-focus`), plus une case
+            carrée ; la case native reste dessous (clavier, lecteur d'écran, `aria-invalid`). */}
+        <label className="ep-case ep-focus">
           <input
             type="checkbox"
             checked={focusId === projet.id}
@@ -107,6 +109,7 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
             aria-invalid={erreurs.focus ? 'true' : undefined}
             aria-describedby={erreurs.focus ? 'rv-focus-err' : undefined}
           />
+          <Star className="i i-16" aria-hidden="true" />
           Projet de la semaine
         </label>
         {erreurs.focus ? <p id="rv-focus-err" className="ep-erreur" role="alert">{erreurs.focus}</p> : null}

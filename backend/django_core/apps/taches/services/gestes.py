@@ -37,6 +37,7 @@ from apps.taches.models.taches import (
     Rappel,
     RegleRecurrence,
     Tache,
+    VueEnregistree,
 )
 from apps.taches.selectors.base import etiquettes_de, gestes_de, projets_de, sections_de, taches_de
 
@@ -72,6 +73,9 @@ LISTE_BLANCHE = {
         'tenir_silence_jusquau', 'pauses_sollicitations'}),
     'suggestion_tache': frozenset({'statut', 'tache', 'decidee_le'}),
     'incitation_coach': frozenset({'reponse', 'repondu_le'}),
+    # TCH156 : une étiquette et une vue enregistrée rendent leur `geste_id` (api.md §0).
+    'etiquette': frozenset({'nom', 'couleur'}),
+    'vue_enregistree': frozenset({'nom', 'filtres', 'rang'}),
 }
 #: Objets dont seules la création et la suppression s'annulent.
 SANS_CHAMP = frozenset({'etiquette_tache', 'ligne_plan_jour', 'revue_projet'})
@@ -81,7 +85,7 @@ MODELES = {
     'etiquette_tache': EtiquetteTache, 'ligne_plan_jour': LignePlanJour, 'revue_projet': RevueProjet,
     'plan_jour': PlanJour, 'rappel': Rappel, 'preference': Preference,
     'reglages_rythme': ReglagesRythme, 'suggestion_tache': SuggestionTache,
-    'incitation_coach': IncitationCoach,
+    'incitation_coach': IncitationCoach, 'etiquette': Etiquette, 'vue_enregistree': VueEnregistree,
 }
 #: Chemin du propriétaire d'un objet qui n'en porte pas lui-même.
 CHEMIN_PROPRIETAIRE = {
@@ -315,13 +319,15 @@ def _restaurer_champs(user, etape, bilan):
 
 
 def _encore_utilise(objet, instance):
-    """Un projet, une étape ou une tâche qui a reçu d'autres tâches vivantes depuis le geste."""
+    """Un projet, une étape, une tâche ou une étiquette qui a reçu d'autres tâches depuis le geste."""
     if objet == 'projet':
         return Tache.objects.filter(projet=instance).exists()
     if objet == 'section':
         return Tache.objects.filter(section=instance).exists()
     if objet == 'tache':
         return Tache.objects.filter(parent=instance).exists()
+    if objet == 'etiquette':  # posée sur une tâche depuis le geste : la défaire la retirerait de cette tâche
+        return EtiquetteTache.objects.filter(etiquette=instance).exists()
     return False
 
 

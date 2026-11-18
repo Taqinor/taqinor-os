@@ -11,6 +11,13 @@ vi.mock('react-router-dom', async (orig) => ({
   useNavigate: () => navigateMock,
 }))
 
+// TCH123 — le bouton ✓+ lit les tâches liées : le client est mocké, jamais le réseau.
+const tachesApiMock = vi.hoisted(() => ({ listerTaches: vi.fn() }))
+vi.mock('../../api/tachesApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  listerTaches: tachesApiMock.listerTaches,
+}))
+
 // Les cloches font des appels API au montage : on les neutralise.
 vi.mock('./NotificationBell', () => ({ default: () => null }))
 vi.mock('./GlobalSearch', () => ({ default: () => null }))
@@ -26,6 +33,7 @@ vi.mock('../../design/theme-context', () => ({
   useTheme: () => ({ theme: 'system', setTheme: vi.fn() }),
 }))
 
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 import Header from './Header'
 
 function makeStore() {
@@ -184,5 +192,49 @@ describe('Header — U3 layout mobile : rangée plate sans chevauchement', () =>
     // Aucun <header> imbriqué (cela créerait deux landmarks header).
     const headers = container.querySelectorAll('header')
     expect(headers.length).toBe(1)
+  })
+})
+
+/* ── TCH123 — pastille ✓+ des tâches liées à la fiche ─────────────────── */
+describe('Header — TCH123 : ✓+ visible avec taches_voir seulement', () => {
+  const item = exempleContrat('taches', 'item')
+  const rendreAvec = (permissions, chemin, modulesDesactives = []) => {
+    const etat = { user: { username: 'reda', email: 'r@x.ma' }, permissions, modulesDesactives }
+    const store = configureStore({ reducer: { auth: (s = etat) => s } })
+    return render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={[chemin]}>
+          <Header onMenu={() => {}} />
+        </MemoryRouter>
+      </Provider>,
+    )
+  }
+  beforeEach(() => {
+    tachesApiMock.listerTaches.mockReset()
+    tachesApiMock.listerTaches.mockResolvedValue({ data: { count: 1, next: null, results: [{ ...item, id: 20 }] } })
+  })
+
+  it('avec taches_voir, sur la fiche d\'un lead : la pastille ✓+ et le compte des tâches ouvertes liées', async () => {
+    rendreAvec(['taches_voir'], '/crm/leads/5')
+    expect(await screen.findByRole('button', { name: /Tâches liées à cette fiche/ })).toBeInTheDocument()
+    expect(tachesApiMock.listerTaches).toHaveBeenCalledWith({ cible: 'crm.lead', cible_id: 5, ouvertes: 1 })
+  })
+
+  it('sans taches_voir : aucune pastille, aucune requête Tâches, le reste de l\'en-tête est là', async () => {
+    const { container } = rendreAvec([], '/crm/leads/5')
+    expect(screen.getByRole('button', { name: 'Toutes les apps' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('button', { name: /Tâches liées à cette fiche/ })).toBeNull()
+    expect(tachesApiMock.listerTaches).not.toHaveBeenCalled()
+    expect(container.querySelector('.tch-ici')).toBeNull()
+  })
+
+  it('F4 revue #15 — avec taches_voir mais le module Tâches éteint pour la société : aucune pastille, aucune requête Tâches', async () => {
+    const { container } = rendreAvec(['taches_voir'], '/crm/leads/5', ['taches'])
+    expect(screen.getByRole('button', { name: 'Toutes les apps' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('button', { name: /Tâches liées à cette fiche/ })).toBeNull()
+    expect(tachesApiMock.listerTaches).not.toHaveBeenCalled()
+    expect(container.querySelector('.tch-ici')).toBeNull()
   })
 })

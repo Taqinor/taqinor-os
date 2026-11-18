@@ -9,6 +9,7 @@ import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captur
 import { reinitialiserGestes } from '../lib/gestes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
+import { morceauxSurlignes } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -75,6 +76,28 @@ describe('TCH82 — feuille de saisie', () => {
       expect(dernier.ignorer).toEqual([{ type: 'jour', source: 'demain' }])
     })
     expect(champ()).toHaveValue(PHRASE)
+  })
+
+  it('passe visuelle n° 32 — les jetons lus sont SURLIGNÉS dans le texte (calque derrière le champ natif)', async () => {
+    const user = userEvent.setup()
+    const { container } = monter()
+    await user.type(champ(), PHRASE)
+    await screen.findByText('mer. 18 nov.', {}, { timeout: 3000 })
+    const calque = container.querySelector('.saisie-miroir')
+    expect(calque).toHaveAttribute('aria-hidden', 'true')
+    expect([...calque.querySelectorAll('.jeton')].map((s) => [s.className, s.textContent])).toEqual([
+      ['jeton', 'demain'], ['jeton nouveau', '#SiteWeb'],
+    ])
+    expect(calque.textContent.replace('​', '')).toBe(PHRASE) // le texte du calque = le texte tapé, à l'identique
+    expect(champ()).toHaveValue(PHRASE)
+  })
+
+  it('passe visuelle n° 32 — un jeton dont la source ne tombe pas à sa place n\'est jamais surligné', () => {
+    expect(morceauxSurlignes('Appeler Karim demain', [{ type: 'jour', source: 'demain', debut: 0, fin: 6 }]))
+      .toEqual([{ texte: 'Appeler Karim demain' }])
+    expect(morceauxSurlignes('demain !!', [
+      { type: 'jour', source: 'demain', debut: 0, fin: 6 }, { type: 'priorite', source: '!!', debut: 7, fin: 9 },
+    ]).map((m) => [m.texte, Boolean(m.jeton)])).toEqual([['demain', true], [' ', false], ['!!', true]])
   })
 
   it('« Ajouter » envoie la ligne lue (Entrée aussi, voir plus bas), avec la priorité choisie du nouveau projet, puis vide le champ et RESTE ouverte (chaîne, spec-2 §1)', async () => {
@@ -199,6 +222,87 @@ describe('TCH82 — feuille de saisie', () => {
     expect(lireBrouillon(7, 42)).toBeNull()
   })
 
+  it('passe visuelle n° 33 — une liste COLLÉE (même ouverte par « Coller mes listes ») : l\'aperçu seul, le champ replié ; « Coller encore » le rouvre', async () => {
+    const liste = {
+      projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+      lignes: ['lait', 'pain'].map((titre, index) => ({
+        ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Courses', priorite: 2 } },
+      })),
+      projets_nouveaux: [{ nom: 'Courses', priorite: 2 }],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { coller: true } })) })
+    // un collage, comme le navigateur le fait : l'événement `paste` (texte collé) puis la nouvelle valeur
+    fireEvent.paste(champ(), { clipboardData: { getData: () => 'Courses\nlait\npain' } })
+    fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+    expect(await screen.findByText('Nouveau projet : Courses', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Ajouter une tâche' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Coller encore' }))
+    expect(champ()).toHaveValue('')
+  })
+
+  const listeMenage = () => ({
+    projets_communs: [{ collage: 0, id: null, nom: 'Ménage', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+    lignes: ['Aspirer', 'Laver les vitres'].map((titre, index) => ({
+      ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Ménage', priorite: 2 } },
+    })),
+    projets_nouveaux: [{ nom: 'Ménage', priorite: 2 }],
+  })
+
+  it('relecture adverse F4 n° 3 — champ ouvert (« Coller mes listes ») : une suggestion du clavier ou un mot collé dans une liste ne le replie pas', async () => {
+    const liste = listeMenage()
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { coller: true } })) })
+    await user.type(champ(), 'Ménage{Shift>}{Enter}{/Shift}Aspirer{Shift>}{Enter}{/Shift}')
+    expect(await screen.findByText('Nouveau projet : Ménage', {}, { timeout: 3000 })).toBeInTheDocument()
+    // une suggestion QuickType (ou une dictée) pose plusieurs caractères d'un coup, dans un texte qui a déjà un saut de ligne
+    fireEvent.change(champ(), { target: { value: 'Ménage\nAspirer\nLaver les' } })
+    // un seul mot collé (sans saut de ligne) : ce n'est pas une liste collée
+    fireEvent.paste(champ(), { clipboardData: { getData: () => ' vitres' } })
+    fireEvent.change(champ(), { target: { value: 'Ménage\nAspirer\nLaver les vitres' } })
+    await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].texte).toBe('Ménage\nAspirer\nLaver les vitres'))
+    await screen.findByText('Nouveau projet : Ménage')
+    expect(champ()).toHaveValue('Ménage\nAspirer\nLaver les vitres')
+  })
+
+  it('relecture adverse F4 n° 3 — une liste TAPÉE à la main (Maj+Entrée) garde le champ et son focus quand l\'aperçu arrive', async () => {
+    const liste = listeMenage()
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Ménage{Shift>}{Enter}{/Shift}Aspirer')
+    expect(await screen.findByText('Nouveau projet : Ménage', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(champ()).toHaveFocus()
+    expect(champ()).toHaveValue('Ménage\nAspirer')
+  })
+
+  it('relecture adverse F4 n° 5 — Échap ferme le menu de priorité de l\'aperçu, PAS la feuille', async () => {
+    const liste = {
+      projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+      lignes: ['lait', 'pain'].map((titre, index) => ({
+        ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Courses', priorite: 2 } },
+      })),
+      projets_nouveaux: [{ nom: 'Courses', priorite: 2 }],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    const { onFermer } = monter()
+    fireEvent.paste(champ(), { clipboardData: { getData: () => 'Courses\nlait\npain' } })
+    fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+    await user.click(await screen.findByRole('button', { name: 'Priorité du projet Courses : moyenne' }, { timeout: 3000 }))
+    expect(await screen.findByRole('menuitemradio', { name: 'Moyenne' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menuitemradio', { name: 'Moyenne' })).toBeNull())
+    expect(onFermer).not.toHaveBeenCalled()
+    // menu fermé : Échap ferme maintenant la feuille, comme avant
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalled()
+  })
+
   it('Raccord F2 — le contexte de l\'écran (projet courant) part avec la ligne qui n\'en nomme pas', async () => {
     const user = userEvent.setup()
     mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({
@@ -227,6 +331,29 @@ describe('TCH82 — feuille de saisie', () => {
     })
     expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /10:00/ })).toBeInTheDocument()
+  })
+
+  it('Acceptation F4 — remise par l\'hôte : la demande arrivée AVANT le montage de la feuille lui est remise entière (phrase, jour, lien)', () => {
+    // la feuille est chargée à part hors de /taches : elle s'abonne à l'hôte, qui lui remet ce que l'écran a demandé entre-temps
+    const desabonner = vi.fn()
+    const abonner = vi.fn((lire) => { lire({ texte: 'Rappeler le fournisseur', jour_prevu: '2026-11-20' }); return desabonner })
+    const { unmount } = monter({ lienParDefaut: { cible: 'crm.lead', id: 9, libelle: 'Lead' }, demandes: { abonner } })
+    expect(champ()).toHaveValue('Rappeler le fournisseur')
+    expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer le lien « Lead »' })).toBeInTheDocument()
+    unmount()
+    expect(desabonner).toHaveBeenCalled()
+  })
+
+  it('Acceptation F4 — remise par l\'hôte : la feuille n\'écoute plus l\'événement elle-même (un seul chemin, jamais deux lectures)', () => {
+    let lire
+    monter({ demandes: { abonner: (f) => { lire = f; return () => {} } } })
+    act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { texte: 'Phrase que seul l\'hôte remet' } }))
+    })
+    expect(champ()).toHaveValue('')
+    act(() => { lire({ texte: 'Remise par l\'hôte' }) })
+    expect(champ()).toHaveValue('Remise par l\'hôte')
   })
 
   describe('Raccord F2 — hors ligne', () => {

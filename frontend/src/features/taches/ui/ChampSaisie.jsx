@@ -12,7 +12,7 @@ import { X } from 'lucide-react'
      · l'erreur du champ, SOUS le champ (textes.md §2.16).
    iPhone : `<textarea>` natif (pas de contenteditable), 16 px mini (pas de zoom à la mise au point),
    `enterKeyHint="send"`. Entrée envoie quand le texte tient sur une ligne ; Maj+Entrée ou le
-   collage d'une liste gardent les retours à la ligne.
+   collage d'une liste gardent les retours à la ligne. `onColle(texte collé)` dit un VRAI collage à la feuille.
    Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html.
    ========================================================================== */
 
@@ -46,6 +46,49 @@ export function phraseAlerte(alerte) {
     case 'duree_hors_bornes': return `Une durée va de 5 min à 16 h : ${nom ? cite : 'le texte'} reste dans le titre.`
     default: return ''
   }
+}
+
+/**
+ * Le texte tapé, découpé en morceaux dont les jetons lus sont SURLIGNÉS (ecran-saisie.html : « jeudi »,
+ * « #Salon Solaire Expo », « !!! »). Un jeton n'est surligné que si `valeur.slice(debut, fin)` est bien sa `source`
+ * (une analyse d'un autre texte ne surligne rien) ; les chevauchements sont ignorés.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé directement (D-ENF22)
+export function morceauxSurlignes(valeur, jetons) {
+  const texte = String(valeur ?? '')
+  const lus = [...(jetons ?? [])]
+    .filter((j) => Number.isInteger(j.debut) && Number.isInteger(j.fin) && j.fin > j.debut && texte.slice(j.debut, j.fin) === j.source)
+    .sort((a, b) => a.debut - b.debut)
+  const morceaux = []
+  let curseur = 0
+  lus.forEach((j) => {
+    if (j.debut < curseur) return
+    if (j.debut > curseur) morceaux.push({ texte: texte.slice(curseur, j.debut) })
+    morceaux.push({ texte: texte.slice(j.debut, j.fin), jeton: j })
+    curseur = j.fin
+  })
+  if (curseur < texte.length) morceaux.push({ texte: texte.slice(curseur) })
+  return morceaux
+}
+
+function classeJeton(jeton) {
+  if (jeton.type !== 'projet') return 'jeton'
+  return jeton.valeur?.nouveau ? 'jeton nouveau' : 'jeton pj'
+}
+
+/** Le calque des surlignages, DERRIÈRE le `<textarea>` natif (même police, même retour à la ligne) : le champ reste
+ *  un vrai champ iPhone, le texte n'est jamais réécrit. */
+function Surlignage({ valeur, jetons }) {
+  const morceaux = morceauxSurlignes(valeur, jetons)
+  if (!morceaux.some((m) => m.jeton)) return null
+  return (
+    <div className="saisie-miroir" aria-hidden="true">
+      {morceaux.map((m, i) => (m.jeton
+        ? <span key={i} className={classeJeton(m.jeton)} data-p={m.jeton.valeur?.couleur}>{m.texte}</span>
+        : <span key={i}>{m.texte}</span>))}
+      {'​'}
+    </div>
+  )
 }
 
 function PuceJeton({ jeton, onIgnorer }) {
@@ -87,6 +130,7 @@ export function PrioriteProjet({ nom, valeur, onChoisir }) {
 export default function ChampSaisie({
   valeur,
   onChange,
+  onColle,
   jetons = [],
   alertes = [],
   erreur = '',
@@ -117,22 +161,26 @@ export default function ChampSaisie({
 
   return (
     <div className="champ-saisie">
-      <textarea
-        className="saisie-champ"
-        aria-label="Ajouter une tâche"
-        aria-invalid={erreur ? true : undefined}
-        aria-describedby={erreur ? idErreur : undefined}
-        placeholder={indication}
-        rows={2}
-        enterKeyHint="send"
-        autoComplete="off"
-        autoCapitalize="sentences"
-        spellCheck="true"
-        ref={champ}
-        value={valeur}
-        onChange={(e) => onChange?.(e.target.value)}
-        onKeyDown={surTouche}
-      />
+      <div className="saisie-zone">
+        <Surlignage valeur={valeur} jetons={jetons} />
+        <textarea
+          className="saisie-champ"
+          aria-label="Ajouter une tâche"
+          aria-invalid={erreur ? true : undefined}
+          aria-describedby={erreur ? idErreur : undefined}
+          placeholder={indication}
+          rows={2}
+          enterKeyHint="send"
+          autoComplete="off"
+          autoCapitalize="sentences"
+          spellCheck="true"
+          ref={champ}
+          value={valeur}
+          onChange={(e) => onChange?.(e.target.value)}
+          onPaste={(e) => onColle?.(e.clipboardData?.getData('text') ?? '')}
+          onKeyDown={surTouche}
+        />
+      </div>
       {erreur ? <p id={idErreur} className="erreur-champ" role="alert">{erreur}</p> : null}
       {jetons.length > 0 ? (
         <div className="puces saisie" aria-label="Ce que j'ai lu">

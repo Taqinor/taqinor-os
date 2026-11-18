@@ -11,12 +11,16 @@ from pathlib import Path
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.test import APIClient
 
 from apps.taches.choix import StatutTache
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.projets import Projet
-from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
+from apps.taches.models.taches import (
+    ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache, VueEnregistree,
+)
+from apps.taches.services import etiquettes as service_etiquettes
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.tests import fabriques
 
@@ -858,3 +862,303 @@ class GestesTests(BaseApi):
         sans = fabriques.compte(self.a, voir=False, nom='sans')
         self.assertEqual(self._get('gestes/', sans).status_code, 403)
         self.assertEqual(self._post('gestes/1/annuler/', compte=sans).status_code, 403)
+
+
+class EtiquettesTests(BaseApi):
+    """TCH156 — étiquettes : liste paginée, création, renommage, suppression annulable."""
+
+    def _etiquette(self, nom, compte=None, **plus):
+        compte = compte or self.u1
+        return Etiquette.objects.create(company=compte.company, proprietaire=compte, nom=nom, **plus)
+
+    def _patch(self, chemin, corps, compte=None):
+        return self._api(compte).patch(URL + chemin, corps, format='json')
+
+    def _delete(self, chemin, compte=None):
+        return self._api(compte).delete(URL + chemin)
+
+    def test_la_liste_a_la_forme_de_l_echantillon_et_ne_montre_que_les_miennes(self):
+        magasin, appels = self._etiquette('magasin'), self._etiquette('appels', couleur='ambre')
+        self._etiquette('collegue', self.u2)
+        self._etiquette('autre societe', self.ext)
+        corps = self._get('etiquettes/').json()
+        modele = exemple('etiquettes')
+        self.assertEqual(list(corps), list(modele))
+        self.assertEqual(list(corps['results'][0]), list(modele['results'][0]))
+        self.assertEqual((corps['count'], corps['next'], corps['previous']), (2, None, None))
+        self.assertEqual([(e['id'], e['nom'], e['couleur']) for e in corps['results']],
+                         [(appels.pk, 'appels', 'ambre'), (magasin.pk, 'magasin', 'ciel')])
+
+    def test_sous_l_assistant_une_etiquette_des_seules_confidentielles_n_est_pas_servie(self):
+        """regles.md §8 (test canari) : le nom d'une étiquette portée par des tâches dont AUCUNE n'est vivante et
+        ordinaire ne sort pas vers l'assistant ; une étiquette aussi portée par une tâche ordinaire, ou portée par
+        aucune tâche, est servie ; l'écran les voit toutes."""
+        secrete, mixte, libre = self._etiquette('dossier-prive'), self._etiquette('magasin'), self._etiquette('zzz')
+        prive = fabriques.projet(self.u1, nom='Privé', confidentiel=True)
+        confidentielle = fabriques.tache(self.u1, projet=prive, titre='Cachée')
+        ordinaire = fabriques.tache(self.u1, titre='Visible')
+        for tache, etiquette in ((confidentielle, secrete), (confidentielle, mixte), (ordinaire, mixte)):
+            EtiquetteTache.objects.create(company=self.u1.company, tache=tache, etiquette=etiquette)
+        ecran = [e['nom'] for e in self._get('etiquettes/').json()['results']]
+        assistant = [e['nom'] for e in self._get('etiquettes/', **ASSISTANT).json()['results']]
+        self.assertEqual(ecran, ['dossier-prive', 'magasin', 'zzz'])
+        self.assertEqual(assistant, ['magasin', 'zzz'])
+        self.assertEqual(self._get('etiquettes/', **ASSISTANT).json()['count'], 2)
+        self.assertIsNotNone(libre.pk)
+
+    def test_la_liste_est_paginee(self):
+        for n in range(3):
+            self._etiquette(f'e{n}')
+        page = self._get('etiquettes/?page_size=2').json()
+        self.assertEqual((page['count'], len(page['results'])), (3, 2))
+        self.assertIsNotNone(page['next'])
+
+    def test_creer_rend_201_la_forme_et_un_geste_qui_defait_la_creation(self):
+        reponse = self._post('etiquettes/', {'nom': ' magasin ', 'couleur': 'ambre'})
+        self.assertEqual(reponse.status_code, 201)
+        corps = reponse.json()
+        self.assertEqual(list(corps), ['id', 'nom', 'couleur', 'geste_id'])
+        self.assertEqual((corps['nom'], corps['couleur']), ('magasin', 'ambre'))
+        creee = Etiquette.objects.get(pk=corps['id'])
+        self.assertEqual((creee.company_id, creee.proprietaire_id), (self.a.pk, self.u1.pk))
+        self.assertEqual(self._post(f'gestes/{corps["geste_id"]}/annuler/').json()['conflits'], [])
+        self.assertFalse(Etiquette.objects.filter(pk=corps['id']).exists())
+
+    def test_la_couleur_d_office_est_ciel_et_le_corps_ne_pose_ni_societe_ni_proprietaire(self):
+        corps = self._post('etiquettes/', {'nom': 'x', 'company': self.b.pk, 'proprietaire': self.u2.pk}).json()
+        creee = Etiquette.objects.get(pk=corps['id'])
+        self.assertEqual((creee.couleur, creee.company_id, creee.proprietaire_id), ('ciel', self.a.pk, self.u1.pk))
+
+    def test_un_nom_deja_pris_meme_cle_est_refuse(self):
+        self._etiquette('Magasin')
+        reponse = self._post('etiquettes/', {'nom': 'magasin'})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(champs(reponse.json()), {'nom': ['Une étiquette « magasin » existe déjà.']})
+        self.assertEqual(self._post('etiquettes/', {'nom': 'magasin'}, compte=self.u2).status_code, 201)
+
+    def test_les_erreurs_sont_nommees_sous_leur_champ(self):
+        self.assertEqual(champs(self._post('etiquettes/', {}).json()), {'nom': ['Requis.']})
+        self.assertEqual(champs(self._post('etiquettes/', {'nom': '  '}).json()), {'nom': ['Requis.']})
+        self.assertEqual(champs(self._post('etiquettes/', {'nom': 'x' * 41}).json()),
+                         {'nom': ['40 caractères au plus.']})
+        self.assertEqual(champs(self._post('etiquettes/', {'nom': 'x', 'couleur': 'fuchsia'}).json()),
+                         {'couleur': ['Valeur inconnue.']})
+        self.assertEqual(Etiquette.objects.count(), 0)
+
+    def test_renommer_et_recolorer_puis_annuler(self):
+        etiquette = self._etiquette('magasin')
+        reponse = self._patch(f'etiquettes/{etiquette.pk}/', {'nom': 'bureau', 'couleur': 'rose'})
+        corps = reponse.json()
+        self.assertEqual((reponse.status_code, corps['nom'], corps['couleur']), (200, 'bureau', 'rose'))
+        relue = Etiquette.objects.get(pk=etiquette.pk)
+        self.assertEqual((relue.nom, relue.nom_cle), ('bureau', 'bureau'))
+        self.assertEqual(self._post(f'gestes/{corps["geste_id"]}/annuler/').json()['conflits'], [])
+        relue = Etiquette.objects.get(pk=etiquette.pk)
+        self.assertEqual((relue.nom, relue.nom_cle, relue.couleur), ('magasin', 'magasin', 'ciel'))
+
+    def test_renommer_vers_le_nom_d_une_autre_est_refuse_mais_pas_vers_le_sien(self):
+        un, deux = self._etiquette('magasin'), self._etiquette('bureau')
+        refus = self._patch(f'etiquettes/{deux.pk}/', {'nom': 'MAGASIN'})
+        self.assertEqual(refus.status_code, 400)
+        self.assertEqual(champs(refus.json()), {'nom': ['Une étiquette « MAGASIN » existe déjà.']})
+        self.assertEqual(self._patch(f'etiquettes/{un.pk}/', {'nom': 'Magasin'}).status_code, 200)
+
+    def test_un_patch_sans_changement_ne_rend_pas_de_geste(self):
+        etiquette = self._etiquette('magasin')
+        corps = self._patch(f'etiquettes/{etiquette.pk}/', {'nom': 'magasin'}).json()
+        self.assertIsNone(corps['geste_id'])
+        self.assertEqual(GesteAnnulable.objects.count(), 0)
+
+    def test_l_etiquette_d_un_collegue_ou_d_une_autre_societe_repond_comme_inconnue(self):
+        autre = self._etiquette('privee', self.u2)
+        etrangere = self._etiquette('exterieure', self.ext)
+        for cible in (autre, etrangere):
+            self.assertEqual(self._patch(f'etiquettes/{cible.pk}/', {'nom': 'x'}).status_code, 404)
+            self.assertEqual(self._delete(f'etiquettes/{cible.pk}/').status_code, 404)
+        self.assertEqual(Etiquette.objects.get(pk=autre.pk).nom, 'privee')
+
+    def test_supprimer_retire_l_etiquette_de_ses_taches_et_annuler_les_rend(self):
+        etiquette = self._etiquette('magasin')
+        t1, t2 = fabriques.tache(self.u1), fabriques.tache(self.u1)
+        for tache in (t1, t2):
+            EtiquetteTache.objects.create(company=self.a, tache=tache, etiquette=etiquette)
+        reponse = self._delete(f'etiquettes/{etiquette.pk}/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(list(reponse.json()), ['geste_id'])
+        self.assertEqual((Etiquette.objects.count(), EtiquetteTache.objects.count()), (0, 0))
+        corps = self._post(f'gestes/{reponse.json()["geste_id"]}/annuler/').json()
+        self.assertEqual(corps['conflits'], [])
+        self.assertEqual(Etiquette.objects.get(pk=etiquette.pk).nom, 'magasin')
+        self.assertEqual(set(EtiquetteTache.objects.values_list('tache_id', flat=True)), {t1.pk, t2.pk})
+
+    def test_annuler_une_creation_deja_posee_sur_une_tache_est_un_conflit(self):
+        geste = self._post('etiquettes/', {'nom': 'magasin'}).json()
+        tache = fabriques.tache(self.u1)
+        EtiquetteTache.objects.create(company=self.a, tache=tache, etiquette_id=geste['id'])
+        corps = self._post(f'gestes/{geste["geste_id"]}/annuler/').json()
+        self.assertEqual(corps['conflits'], [{'objet': 'etiquette', 'id': geste['id'], 'raison': 'modifiee_depuis'}])
+        self.assertTrue(Etiquette.objects.filter(pk=geste['id']).exists())
+
+    def test_lot_etiqueter_pose_une_etiquette_creee_ici(self):
+        etiquette = Etiquette.objects.get(pk=self._post('etiquettes/', {'nom': 'magasin'}).json()['id'])
+        tache = fabriques.tache(self.u1)
+        reponse = self._post('taches/lot/', {'ids': [tache.pk], 'action': 'etiqueter',
+                                             'valeurs': {'ajouter': [etiquette.pk]}})
+        self.assertEqual(reponse.status_code, 200)
+        self.assertTrue(EtiquetteTache.objects.filter(tache=tache, etiquette=etiquette).exists())
+
+    def test_sans_le_droit_403(self):
+        sans = fabriques.compte(self.a, voir=False, nom='sans')
+        self.assertEqual(self._get('etiquettes/', sans).status_code, 403)
+        self.assertEqual(self._post('etiquettes/', {'nom': 'x'}, compte=sans).status_code, 403)
+
+
+class VuesEnregistreesTests(BaseApi):
+    """TCH156 — vues enregistrées : filtres à clés fermées, 30 au plus, jamais celles d'un collègue."""
+
+    def _vue(self, nom, compte=None, **plus):
+        compte = compte or self.u1
+        return VueEnregistree.objects.create(company=compte.company, proprietaire=compte, nom=nom, **plus)
+
+    def _patch(self, chemin, corps, compte=None):
+        return self._api(compte).patch(URL + chemin, corps, format='json')
+
+    def _delete(self, chemin, compte=None):
+        return self._api(compte).delete(URL + chemin)
+
+    def test_la_liste_a_la_forme_de_l_echantillon_dans_l_ordre_du_rang_sans_celles_des_autres(self):
+        seconde = self._vue('Seconde', rang=2048)
+        premiere = self._vue('Haute cette semaine', rang=1024, filtres=exemple('vues')['results'][0]['filtres'])
+        self._vue('collegue', self.u2)
+        self._vue('autre societe', self.ext)
+        corps = self._get('vues/').json()
+        modele = exemple('vues')
+        self.assertEqual(list(corps), ['results'])
+        self.assertEqual(list(corps['results'][0]), list(modele['results'][0]))
+        self.assertEqual([v['id'] for v in corps['results']], [premiere.pk, seconde.pk])
+        self.assertEqual(corps['results'][0]['filtres'], modele['results'][0]['filtres'])
+
+    def test_enregistrer_puis_rouvrir_rend_les_memes_filtres(self):
+        projet = fabriques.projet(self.u1)
+        etiquette = Etiquette.objects.create(company=self.a, proprietaire=self.u1, nom='magasin')
+        filtres = {'q': 'devis', 'projets': [projet.pk], 'etiquettes': [etiquette.pk], 'priorite_min': 3,
+                   'statuts': ['a_faire'], 'periode': 'semaine', 'echeance': True, 'tri': 'priorite',
+                   'groupe': 'projet', 'inclure_faites': True}
+        reponse = self._post('vues/', {'nom': 'Haute', 'filtres': filtres})
+        self.assertEqual(reponse.status_code, 201)
+        corps = reponse.json()
+        self.assertEqual(list(corps), ['id', 'nom', 'rang', 'filtres', 'geste_id'])
+        self.assertEqual(corps['filtres'], filtres)
+        self.assertEqual(self._get('vues/').json()['results'][0]['filtres'], filtres)
+        self.assertEqual(VueEnregistree.objects.get(pk=corps['id']).filtres, filtres)
+
+    def test_le_rang_d_une_vue_neuve_suit_la_derniere(self):
+        un = self._post('vues/', {'nom': 'un'}).json()
+        deux = self._post('vues/', {'nom': 'deux'}).json()
+        self.assertEqual((un['rang'], deux['rang']), (1024, 2048))
+        self.assertEqual(un['filtres'], {})
+
+    def test_une_cle_de_filtre_inconnue_est_un_400_nomme_et_rien_n_est_ecrit(self):
+        reponse = self._post('vues/', {'nom': 'x', 'filtres': {'couleur': 'rouge', 'tri': 'priorite'}})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(champs(reponse.json()), {'filtres': {'couleur': ['Valeur inconnue.']}})
+        self.assertEqual(VueEnregistree.objects.count(), 0)
+
+    def test_une_valeur_de_filtre_inconnue_est_nommee(self):
+        etranger = fabriques.projet(self.u2)
+        corps = self._post('vues/', {'nom': 'x', 'filtres': {
+            'tri': 'hasard', 'periode': 'jamais', 'priorite_min': 9, 'projets': [etranger.pk],
+            'statuts': ['perdu'], 'inclure_faites': 'oui', 'echeance': 'demain', 'etiquettes': [999999]}}).json()
+        self.assertEqual(champs(corps)['filtres'], {
+            'tri': ['Valeur inconnue.'], 'periode': ['Valeur inconnue.'], 'priorite_min': ['Valeur inconnue.'],
+            'projets': ['Projet inexistant.'], 'statuts': ['Valeur inconnue.'],
+            'inclure_faites': ['Valeur inconnue.'], 'echeance': ['Valeur inconnue.'],
+            'etiquettes': ['Étiquette inexistante.']})
+
+    def test_des_filtres_qui_ne_sont_pas_un_objet_sont_refuses(self):
+        reponse = self._post('vues/', {'nom': 'x', 'filtres': ['tri']})
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'filtres': ['Valeur inconnue.']}))
+
+    def test_la_trente_et_unieme_vue_est_refusee_et_une_autre_personne_garde_ses_trente(self):
+        for n in range(30):
+            self._vue(f'v{n}', rang=n)
+        reponse = self._post('vues/', {'nom': 'de trop'})
+        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'nom': ['30 au plus.']}))
+        self.assertEqual(len(self._get('vues/').json()['results']), 30)
+        self.assertEqual(self._post('vues/', {'nom': 'de trop'}, compte=self.u2).status_code, 201)
+
+    def test_un_nom_deja_pris_est_refuse_et_le_nom_est_requis_et_borne(self):
+        self._vue('Haute')
+        refus = self._post('vues/', {'nom': 'Haute'})
+        self.assertEqual(refus.status_code, 400)
+        self.assertEqual(champs(refus.json()), {'nom': ['Une vue « Haute » existe déjà.']})
+        self.assertEqual(champs(self._post('vues/', {}).json()), {'nom': ['Requis.']})
+        self.assertEqual(champs(self._post('vues/', {'nom': 'x' * 61}).json()), {'nom': ['60 caractères au plus.']})
+
+    def test_modifier_nom_filtres_rang_puis_annuler(self):
+        vue = self._vue('Haute', filtres={'tri': 'priorite'}, rang=1024)
+        corps = self._patch(f'vues/{vue.pk}/', {'nom': 'Urgent', 'filtres': {'periode': 'retard'}, 'rang': 5}).json()
+        self.assertEqual((corps['nom'], corps['filtres'], corps['rang']), ('Urgent', {'periode': 'retard'}, 5))
+        self.assertEqual(self._post(f'gestes/{corps["geste_id"]}/annuler/').json()['conflits'], [])
+        relue = VueEnregistree.objects.get(pk=vue.pk)
+        self.assertEqual((relue.nom, relue.filtres, relue.rang), ('Haute', {'tri': 'priorite'}, 1024))
+
+    def test_un_caractere_nul_ou_un_rang_hors_plage_est_un_400_nomme_jamais_500(self):
+        """Revue F4 #5 : `filtres.q` avec un caractère nul (refusé par PostgreSQL en JSONB) et un `rang` hors de
+        l'entier de la base rendent 400 sous leur champ, à la création comme au PATCH ; rien n'est écrit."""
+        vue = self._vue('Haute', filtres={'tri': 'priorite'}, rang=1024)
+        refus = (({'filtres': {'q': 'a\x00b'}}, {'filtres': {'q': ['Valeur inconnue.']}}),
+                 ({'rang': 10 ** 12}, {'rang': ['Valeur inconnue.']}),
+                 ({'rang': -(10 ** 12)}, {'rang': ['Valeur inconnue.']}),
+                 ({'rang': 2 ** 31}, {'rang': ['Valeur inconnue.']}))
+        for corps, attendu in refus:
+            with self.subTest(corps=corps):
+                cree = self._post('vues/', {'nom': 'Neuve', **corps})
+                self.assertEqual((cree.status_code, champs(cree.json())), (400, attendu))
+                modifie = self._patch(f'vues/{vue.pk}/', corps)
+                self.assertEqual((modifie.status_code, champs(modifie.json())), (400, attendu))
+        nul = self._post('vues/', {'nom': 'a\x00b'})
+        self.assertEqual((nul.status_code, list(champs(nul.json()))), (400, ['nom']))
+        self.assertEqual(list(VueEnregistree.objects.values_list('nom', 'filtres', 'rang')),
+                         [('Haute', {'tri': 'priorite'}, 1024)])
+        bornes = self._post('vues/', {'nom': 'Bornes', 'rang': 2 ** 31 - 1})
+        self.assertEqual((bornes.status_code, bornes.json()['rang']), (201, 2 ** 31 - 1))
+
+    def test_le_service_refuse_un_nom_a_caractere_nul_d_une_etiquette_ou_d_une_vue(self):
+        """Revue F4 #5 : la porte d'écriture elle-même (pas seulement le sérialiseur de la route) refuse `\\x00`."""
+        vue = self._vue('Haute')
+        for appel in (lambda: service_etiquettes.creer_etiquette(self.u1, nom='a\x00b'),
+                      lambda: service_etiquettes.creer_vue(self.u1, nom='a\x00b'),
+                      lambda: service_etiquettes.modifier_vue(self.u1, vue.pk, {'nom': 'a\x00b'})):
+            with self.assertRaises(serializers.ValidationError) as refus:
+                appel()
+            self.assertEqual(refus.exception.detail, {'nom': ['Valeur inconnue.']})
+
+    def test_un_patch_de_filtres_inconnus_ne_change_rien(self):
+        vue = self._vue('Haute', filtres={'tri': 'priorite'})
+        reponse = self._patch(f'vues/{vue.pk}/', {'filtres': {'zzz': 1}})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(champs(reponse.json()), {'filtres': {'zzz': ['Valeur inconnue.']}})
+        self.assertEqual(VueEnregistree.objects.get(pk=vue.pk).filtres, {'tri': 'priorite'})
+
+    def test_supprimer_puis_annuler_recree_la_vue_au_meme_id(self):
+        vue = self._vue('Haute', filtres={'tri': 'priorite'}, rang=1024)
+        reponse = self._delete(f'vues/{vue.pk}/')
+        self.assertEqual((reponse.status_code, list(reponse.json())), (200, ['geste_id']))
+        self.assertFalse(VueEnregistree.objects.filter(pk=vue.pk).exists())
+        self.assertEqual(self._post(f'gestes/{reponse.json()["geste_id"]}/annuler/').json()['conflits'], [])
+        relue = VueEnregistree.objects.get(pk=vue.pk)
+        self.assertEqual((relue.nom, relue.filtres, relue.rang, relue.proprietaire_id),
+                         ('Haute', {'tri': 'priorite'}, 1024, self.u1.pk))
+
+    def test_la_vue_d_un_collegue_ou_d_une_autre_societe_repond_comme_inconnue(self):
+        autre, etrangere = self._vue('privee', self.u2), self._vue('exterieure', self.ext)
+        for cible in (autre, etrangere):
+            self.assertEqual(self._patch(f'vues/{cible.pk}/', {'nom': 'x'}).status_code, 404)
+            self.assertEqual(self._delete(f'vues/{cible.pk}/').status_code, 404)
+        self.assertEqual(VueEnregistree.objects.get(pk=autre.pk).nom, 'privee')
+
+    def test_sans_le_droit_403(self):
+        sans = fabriques.compte(self.a, voir=False, nom='sans')
+        self.assertEqual(self._get('vues/', sans).status_code, 403)
+        self.assertEqual(self._post('vues/', {'nom': 'x'}, compte=sans).status_code, 403)

@@ -186,7 +186,9 @@ def _gabarit(incitation):
     if type_ == TypeIncitationEcran.DERIVE_TENIR:
         return 'carte', f'derive.{cle}', f'derive.{cle}'
     if type_ == TypeIncitationEcran.CONSTAT:
-        return 'constat', cle, 'constat'
+        # C5 = information : [OK] seul (textes.md §4.2), la seule réponse que `repondre/` admet pour lui
+        information = cle in service_rythme.CONSTATS_INFORMATION
+        return 'constat', cle, 'constat.information' if information else 'constat'
     return 'carte', str(type_), str(type_)
 
 

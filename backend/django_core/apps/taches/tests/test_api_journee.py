@@ -149,6 +149,28 @@ class SectionsEtOrdreTests(_Base):
         self.assertEqual(self.section_de(journee, prevue), S.JOURNEE)
         self.assertEqual(self.section_de(journee, attente), S.EN_ATTENTE)
 
+    def test_essentielle_faite_reste_dans_essentiel_et_dans_faites(self):
+        """D-V1 (passe visuelle) — regles.md §4.1 ligne 3 (« ouvertes ou faites aujourd'hui ») et §4.2-1 (« et reste
+        dans essentiel si sa ligne y est ») : barrée à sa place dans Essentiel ET repliée dans Faites ; une faite sans
+        ★ n'est que dans Faites ; la pastille et la progression la comptent une seule fois."""
+        faite = self.tache(jour_prevu=J, heure_debut=datetime.time(9, 0), statut=StatutTache.FAIT, fait_le=a(J, 10))
+        ouverte = self.tache(jour_prevu=J)
+        simple = self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 11))
+        plan = fabriques.plan(self.u, J)
+        ligne(plan, tache=faite, essentielle=True)
+        ligne(plan, tache=ouverte, essentielle=True)
+        ligne(plan, tache=simple)
+        journee = self.journee()
+        self.assertEqual([o.pk for o in journee.objets_de(S.ESSENTIEL)], [faite.pk, ouverte.pk])
+        self.assertEqual(sorted(o.pk for o in journee.objets_de(S.FAITES)), sorted([faite.pk, simple.pk]))
+        self.assertEqual(sel.compter_journee(self.u, J, journee), 1)
+        reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual([(i['id'], i['statut']) for i in reponse['essentiel']],
+                         [(faite.pk, 'fait'), (ouverte.pk, 'a_faire')])
+        self.assertEqual(sorted(i['id'] for i in reponse['faites']), sorted([faite.pk, simple.pk]))
+        self.assertEqual((reponse['progression']['faites'], reponse['progression']['essentiel_faites'],
+                          reponse['progression']['essentiel_prevues']), (2, 1, 2))
+
     def test_prevu_a_l_heure_d_abord_puis_rang_jour_puis_cle_tri(self):
         sans = self.tache(jour_prevu=J, priorite=3)
         rangee = self.tache(jour_prevu=J, rang_jour=1024)
@@ -942,6 +964,20 @@ class BilanTests(_Base):
         self.assertFalse(rendu['bilan']['objectif_atteint'])
         from apps.taches.services.journee import _possible_jusqua
         self.assertEqual(rendu['possible_jusqua'], _possible_jusqua(J).isoformat())
+
+    def test_constat_c5_d_information_n_offre_que_ok(self):
+        """Passe visuelle n° 25 — textes.md §4.2 : un constat d'information (C5) n'a qu'un bouton [OK] ; le bilan
+        servait [Oui] [Pas maintenant], que `repondre/` refuse (400) pour C5."""
+        from apps.taches.choix import CanalIncitation, TypeIncitationEcran
+        from apps.taches.models.rythme import IncitationCoach
+        self.scenario()
+        IncitationCoach.objects.create(
+            company=self.u.company, proprietaire=self.u, type=TypeIncitationEcran.CONSTAT, cle='C5',
+            canal=CanalIncitation.ECRAN, donnees={'p': 57, 'n': 51, 'h1': 10, 'h2': 12},
+            jour=J, expire_le=J + datetime.timedelta(days=7))
+        constat = self.cloture()['constat']
+        self.assertEqual(constat['texte'], '57 % de tes 51 tâches finies entre 10 h et 12 h.')
+        self.assertEqual(constat['boutons'], [{'reponse': 'ok', 'libelle': 'OK'}])
 
     def test_bilan_d_hier_jusqu_a_midi(self):
         from apps.taches.services.journee import Refus

@@ -457,6 +457,16 @@
 .tch[data-hors-ligne] [data-necessite-reseau] {
   opacity: 0.5; cursor: default;
 }
+/* Passe visuelle n° 64 (etat-hors-ligne.html, `.entete-date.es-hors-ligne`) : « Hors ligne · dernière synchro à
+   {HH:MM} » tient sur UNE ligne au-dessus du titre, icône et texte côte à côte ; sur iPhone le Copilote, qui a besoin
+   du réseau, lui cède sa place. La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
+.tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) {
+  display: flex; align-items: center; gap: 6px; color: var(--tch-texte);
+}
+.tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) > span { white-space: nowrap; }
+@media (max-width: 767px) {
+  .tch[data-hors-ligne] .entete-actions .copilote-groupe { display: none; }
+}
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
   min-height: 64px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
@@ -920,6 +930,23 @@
 .route-fade:has(> .tch) {
   animation-fill-mode: backwards;
 }
+/* Passe visuelle n° 52 — iPhone : le module va bord à bord comme les maquettes (390 px, gouttière 16) ; le
+   rembourrage de 0,9 rem du scrolleur de l'ERP (12-progression-mobile.css) le posait dans un cadre de 361 px, et un
+   titre de ligne qui tient sur une ligne en passait sur deux. Même idiome `:has()` que /apps (31-menu-apps.css) ;
+   le bas (barre d'onglets) et les zones sûres restent ceux de l'ERP.
+   Même seuil que la coquille de l'ERP (768 px), écrit `screen and (…)` : les gardes de la coquille
+   (mobile-foundation.test.mjs, menu.layout.test.mjs) lisent le PREMIER bloc « @media (max-width: 768px) » d'index.css
+   comme étant le sien, et nos feuilles sont importées avant lui. */
+@media screen and (max-width: 768px) {
+  .layout-content:has(> .route-fade > .tch) {
+    padding-top: 0;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+/* …et le « filet noir de 1 px » autour du module était l'anneau de focus du scrolleur `main#contenu` (tabIndex −1,
+   focalisé par l'ERP à chaque navigation) : un conteneur non interactif ne montre pas d'anneau ; le focus y reste. */
+.layout-content:has(> .route-fade > .tch):focus { outline: none; }
 .tch .puce.icone {
   width: 44px; padding: 0; justify-content: center;
 }
@@ -1080,6 +1107,10 @@
 .tch .ligne { touch-action: pan-y; }
 .tch .ligne-corps-bouton { position: static; display: block; width: 100%; text-align: left; }
 .tch .ligne-corps-bouton::after { content: ""; position: absolute; inset: 0; }
+/* Passe visuelle n° 13 — au toucher, l'ERP pose `min-height: 44px` sur TOUT bouton (01-base.css, pointer: coarse) :
+   le titre, centré dans 44 px, tombait sous la case et l'heure, et la puce Garder grossissait. Leur cible tactile
+   est déjà ≥ 44 px par leur ::after (la ligne entière ; 44 px autour de la puce). */
+.tch .ligne-corps-bouton, .tch .ligne .garder { min-height: 0; }
 .tch .ligne .case, .tch .ligne .garder, .tch .ligne-fin button { position: relative; z-index: 1; }
 .tch .ligne-actions { z-index: calc(var(--z-base) + 2); }
 /* Étoile interactive : cible de 44 px, alignée sur la première ligne du titre */
@@ -1095,6 +1126,10 @@
 /* Feuille à crans : le corps défile, la poignée et l'en-tête restent */
 .tch .feuille-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 4px; }
 .tch .feuille .poignee { background: none; border: 0; }
+/* Passe visuelle n° 26 — au clavier, l'anneau de la poignée entoure la barre seule, jamais la cible de 88 × 44 px qui
+   déborde au-dessus de la feuille sur l'écran du dessous */
+.tch .feuille .poignee:focus-visible { box-shadow: none; }
+.tch .feuille .poignee:focus-visible::before { box-shadow: var(--focus-ring); }
 /* Bouton Copilote : la phrase (hors ligne, sans clé) se pose dessous, lue par role=status */
 .tch .copilote-groupe { position: relative; display: inline-flex; }
 .tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-base) + 3); width: min(320px, 80vw); padding: 12px 14px;

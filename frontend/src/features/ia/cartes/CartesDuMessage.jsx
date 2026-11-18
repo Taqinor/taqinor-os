@@ -24,6 +24,11 @@ import CartesTaches from '../../taches/cartes/CartesTaches'
 const VARIANTES = {
   copilot: { proposition: 'copilot-proposal-card', resultat: 'copilot-result-card', pad: 'p-2.5' },
   page: { proposition: 'proposal-card', resultat: 'result-card', pad: 'p-3' },
+  // Passe visuelle n° 50 — le tiroir ouvert depuis un écran Tâches (copilote.html) : une carte Tâches y est UNE carte
+  // pleine largeur, sans cadre ambre ni vert autour (`cadreTaches` : la seule marge) ; le reste comme `copilot`.
+  copilot_taches: {
+    proposition: 'copilot-proposal-card', resultat: 'copilot-result-card', pad: 'p-2.5', cadreTaches: 'mt-2',
+  },
 }
 
 const CLASSE_PROPOSITION = 'mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 text-foreground'
@@ -97,11 +102,10 @@ export function CarteResultat({ carte, index, carteIdx, variant = 'page' }) {
   // F3 acceptation ERR 5 (a) — une carte Tâches choisit son cadre : « proposition » tant qu'elle attend le doigt
   // (carte à valider, Proposé non gardé…), « résultat » pour une lecture ou une fois faite, neutre si laissée.
   if (Composant === CartesTaches) {
-    return (
-      <CartesTaches carte={carte} testId={`carte-${carte.carte}`} cadre={{
-        attente: `${CLASSE_PROPOSITION} ${v.pad}`, fait: className, laisse: `mt-2 rounded-md border border-border ${v.pad}`,
-      }} />
-    )
+    const cadre = v.cadreTaches
+      ? { attente: v.cadreTaches, fait: v.cadreTaches, laisse: v.cadreTaches }
+      : { attente: `${CLASSE_PROPOSITION} ${v.pad}`, fait: className, laisse: `mt-2 rounded-md border border-border ${v.pad}` }
+    return <CartesTaches carte={carte} testId={`carte-${carte.carte}`} cadre={cadre} />
   }
   return (
     <div className={className} data-testid={`carte-${carte.carte}`}>

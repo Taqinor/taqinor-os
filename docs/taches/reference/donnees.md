@@ -445,7 +445,7 @@ Contrainte `taches_vue_nom_uniq` (company, proprietaire, nom). 30 au plus.
 |---|---|---|---|
 | `proprietaire` | `FK(AUTH_USER_MODEL, CASCADE)` | — | `# on_delete: données personnelles` |
 | `nom` | `CharField(120)` | — | s4 |
-| `contenu` | `JSONField` | `default=dict` | `{"v":1,"objectif","priorite","sections":[{"nom","decalage_debut","decalage_fin"}],"taches":[{"titre","section_index","priorite","jalon","decalage_jour","decalage_echeance","parent_index","bloquee_par_index","checklist":[],"notes"}]}` ; `notes` seulement si `inclure_notes` |
+| `contenu` | `JSONField` | `default=dict` | `{"v":1,"objectif","priorite","sections":[{"nom","decalage_debut","decalage_fin"}],"taches":[{"titre","section_index","priorite","jalon","decalage_jour","decalage_echeance","parent_index","bloquee_par_index","checklist":[],"notes"}]}` ; `notes` seulement si `inclure_notes` ; `confidentiel` (bool, la confidentialité du projet figée à l'enregistrement ; absent = ancien modèle, ordinaire seulement si le projet d'origine existe, vivant et ordinaire) et `confidentielles_non_reprises` (int) — deux clés jamais servies dans `contenu` |
 | `cree_depuis` | `FK(Projet, SET_NULL, null)` | `null` | `# on_delete: le modèle survit au projet` |
 
 Contrainte `taches_modele_nom_uniq` (company, proprietaire, nom).

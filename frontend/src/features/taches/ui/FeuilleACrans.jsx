@@ -113,14 +113,18 @@ export default function FeuilleACrans({
     // (`data-focus-initial`) : Entrée la valide aussitôt ; sinon le premier élément focalisable (la poignée)
     const voulu = feuille.current?.querySelector('[data-focus-initial]')
     const premier = voulu ?? feuille.current?.querySelector(FOCALISABLES)
-    premier?.focus()
+    // passe visuelle n° 26 — posé d'office sur la poignée, le focus ne dessine pas d'anneau (« poignée discrète »,
+    // ecran-bilan.html) : il chevauchait l'écran du dessous. Tab le rend visible ; une action désignée garde le sien.
+    if (voulu) premier.focus()
+    else premier?.focus({ focusVisible: false })
     return () => origine.current?.focus?.()
   }, [ouverte])
 
   if (!ouverte) return null
 
   const surTouche = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); onFermer?.(); return }
+    // relecture adverse F4 n° 5 — un menu ouvert dans la feuille (Radix) a déjà pris Échap pour lui (`preventDefault`)
+    if (e.key === 'Escape') { if (!e.defaultPrevented) { e.stopPropagation(); onFermer?.() } return }
     if (e.key !== 'Tab') return
     const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])]
     if (liste.length === 0) return

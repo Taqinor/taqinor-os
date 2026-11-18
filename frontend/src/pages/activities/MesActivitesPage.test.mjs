@@ -55,3 +55,17 @@ test('addDaysIso : format YYYY-MM-DD et delta correct', () => {
   const diffDays = Math.round((plus7 - base) / 86400000)
   assert.equal(diffDays, 7)
 })
+
+// ── TCH159 — « une seule saisie » : le comportement est joué par MesActivitesPage.chargeEquipe.test.jsx
+//    (rendu réel) ; ici, la garde de forme : l'événement unique part AVANT toute création d'activité. ──
+test('TCH159 : avec taches_voir, addTodo émet taqinor:taches:saisir (via cibleEcran) et rend la main avant createActivity', () => {
+  // F4 revue #15 : le droit ET le module actif, par la fonction unique des montages de Tâches
+  assert.match(SRC, /const peutTaches = useTachesActives\(\)/)
+  assert.match(SRC, /EVENEMENT_SAISIR[^\n]*from '..\/..\/features\/taches\/presence\/cibleEcran'/)
+  const corps = SRC.slice(SRC.indexOf('const addTodo = async'), SRC.indexOf('const openResched'))
+  assert.ok(corps.indexOf('if (peutTaches)') !== -1 && corps.indexOf('if (peutTaches)') < corps.indexOf('recordsApi.createActivity('))
+  assert.match(corps, /new CustomEvent\(EVENEMENT_SAISIR/)
+  // la phrase ne quitte le champ que si l'hôte de Tâches l'a prise (événement annulable = « reçu ») : jamais perdue
+  assert.match(corps, /cancelable: true/)
+  assert.match(corps, /if \(recue\) \{\s*setTodoText\(''\)/)
+})

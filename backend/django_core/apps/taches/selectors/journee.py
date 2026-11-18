@@ -278,6 +278,10 @@ def _ranger(journee):
             continue
         journee.placements[cle] = placement
         par_section.setdefault(placement.section, []).append(item)
+        # regles.md §4.1 ligne 3 et §4.2-1 (D-V1) : une faite du jour portée par une ligne ★ reste AUSSI dans
+        # Essentiel, barrée à sa place ; son placement reste `faites` (pastille, progression : comptée une fois)
+        if placement.section == SectionJournee.FAITES and placement.essentielle:
+            par_section.setdefault(SectionJournee.ESSENTIEL, []).append(item)
     for section, items in par_section.items():
         items.sort(key=_cle_affichage(section, journee.jour, journee.travailles))
         journee.sections[section] = [(item.type, item.id) for item in items]

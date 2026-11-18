@@ -56,7 +56,9 @@ aucun marqueur).
   `nom_pour(…,'assistant')`, `notes` jamais servies, `filtrer_q(assistant=True)`, rendez-vous externes titrés
   « Rendez-vous », 403 sur `reglages/`, `reglages-societe/`, `jetons/`, `mes-donnees/`, `tout-effacer/`,
   `agendas-externes/` et sur `planification/apercu/` d'un projet confidentiel. Un en-tête absent ne sert donc jamais
-  du clair au relais.
+  du clair au relais. Sous l'en-tête assistant, un modèle confidentiel est absent de `modeles/` et son id répond 404
+  « Introuvable. » (fiche, renommer, supprimer, instancier) ; les notes des tâches d'un modèle ne sont jamais servies à
+  l'assistant.
 - **OpenAPI** : `@extend_schema(request=, responses=, parameters=)` partout ; paramètres de requête déclarés ; types
   `text/calendar` (flux) et `text/plain` (capture) déclarés.
 - **Pagination** : `StandardPagination` (50, enveloppe `{"count","next","previous","results"}`, lue avec
@@ -1474,7 +1476,9 @@ RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` 
 qu'il aurait appliqué ; rien n'est écrit). **`dupliquer/`** `{"nom":"Salon 2027","date_debut":"2027-03-01","apercu":true}`
 → `modele_instancier.json`. **`enregistrer-modele/`** `{"nom":"Salon","inclure_notes":false}` → `modele.json`.
 **`modeles/{id}/instancier/`** `{"nom":"Salon","date_lancement":"2026-11-23","apercu":true}` → `modele_instancier.json`
-(`apercu:false` → 201 `projet_ecrit.json`). **`sections/`** POST `{"projet_id":3,"nom":"Études","date_debut":null,"date_fin":null}`.
+(`apercu:false` → 201 `projet_ecrit.json`). Une date hors plage (`dupliquer/`, `modeles/{id}/instancier/`,
+`suggestions/{id}/accepter/`) répond 400 « Date attendue (AAAA-MM-JJ). » sous son champ, jamais 500. **`vues/`** (POST, PATCH) : un nom ou une valeur de filtre portant un caractère nul répond 400
+« Valeur inconnue. » ; `rang` est borné à un entier 32 bits. **`sections/`** POST `{"projet_id":3,"nom":"Études","date_debut":null,"date_fin":null}`.
 **`checklist/`** POST `{"tache_id":20,"libelle":"Prix"}`, PATCH `{"libelle":"Prix TTC","fait":true}`.
 **`revue/projets/{projet_id}/`** PUT `{"semaine":"2026-11-16","intention":"Signer Settat","prochaine_action_id":20,"decision":"garder","focus":true,"issue":null}`
 (`terminer` exige `issue`) → `revue_decision.json` ; 400 `{"focus":["Déjà « A » cette semaine."]}`.
@@ -1852,13 +1856,15 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`modele.json`** — GET modeles/{id}/ · consommateurs : Modèles
 ```json
-{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","contenu":{"v":1,"objectif":"Stand monté","priorite":2,"sections":[{"nom":"Préparation","decalage_debut":0,"decalage_fin":14}],"taches":[{"titre":"Réserver le stand","section_index":0,"priorite":3,"jalon":false,"decalage_jour":0,"decalage_echeance":5,"parent_index":null,"bloquee_par_index":null,"checklist":[],"notes":""}]}}
+{"id":2,"nom":"Salon","created_at":"2026-11-10T09:00:00+01:00","contenu":{"v":1,"objectif":"Stand monté","priorite":2,"sections":[{"nom":"Préparation","decalage_debut":0,"decalage_fin":14}],"taches":[{"titre":"Réserver le stand","section_index":0,"priorite":3,"jalon":false,"decalage_jour":0,"decalage_echeance":5,"parent_index":null,"bloquee_par_index":null,"checklist":[],"notes":""}]},"confidentielles_non_reprises":0}
 ```
 
 **`modele_instancier.json`** — POST modeles/{id}/instancier/ · consommateurs : Depuis un modèle
 ```json
-{"projet":{"nom":"Salon"},"sections":[{"nom":"Préparation","date_debut":"2026-11-23","date_fin":"2026-12-07"}],"taches":[{"titre":"Réserver le stand","jour_prevu":"2026-11-23","echeance":"2026-11-30"}],"geste_id":null}
+{"projet":{"nom":"Salon"},"sections":[{"nom":"Préparation","date_debut":"2026-11-23","date_fin":"2026-12-07"}],"taches":[{"titre":"Réserver le stand","jour_prevu":"2026-11-23","echeance":"2026-11-30"}],"confidentielles_non_reprises":0,"geste_id":null}
 ```
+
+`confidentielles_non_reprises` : le nombre de tâches confidentielles laissées de côté par la copie (dupliquer, enregistrer comme modèle, instancier) ; servi aussi sous l'en-tête de l'assistant (un nombre, jamais un contenu).
 
 **`modeles_liste.json`** — GET modeles/ (paginé) · consommateurs : Modèles, Depuis un modèle
 ```json
