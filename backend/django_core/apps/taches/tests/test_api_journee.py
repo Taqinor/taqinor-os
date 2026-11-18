@@ -943,6 +943,20 @@ class BilanTests(_Base):
         from apps.taches.services.journee import _possible_jusqua
         self.assertEqual(rendu['possible_jusqua'], _possible_jusqua(J).isoformat())
 
+    def test_constat_c5_d_information_n_offre_que_ok(self):
+        """Passe visuelle n° 25 — textes.md §4.2 : un constat d'information (C5) n'a qu'un bouton [OK] ; le bilan
+        servait [Oui] [Pas maintenant], que `repondre/` refuse (400) pour C5."""
+        from apps.taches.choix import CanalIncitation, TypeIncitationEcran
+        from apps.taches.models.rythme import IncitationCoach
+        self.scenario()
+        IncitationCoach.objects.create(
+            company=self.u.company, proprietaire=self.u, type=TypeIncitationEcran.CONSTAT, cle='C5',
+            canal=CanalIncitation.ECRAN, donnees={'p': 57, 'n': 51, 'h1': 10, 'h2': 12},
+            jour=J, expire_le=J + datetime.timedelta(days=7))
+        constat = self.cloture()['constat']
+        self.assertEqual(constat['texte'], '57 % de tes 51 tâches finies entre 10 h et 12 h.')
+        self.assertEqual(constat['boutons'], [{'reponse': 'ok', 'libelle': 'OK'}])
+
     def test_bilan_d_hier_jusqu_a_midi(self):
         from apps.taches.services.journee import Refus
         self.cloture(jour=jours(-1), heure=11, jour_heure=J)
