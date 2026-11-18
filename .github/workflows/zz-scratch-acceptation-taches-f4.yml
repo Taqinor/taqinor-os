@@ -1,0 +1,245 @@
+name: zz scratch - acceptation Taches F4 (vrai assistant, TEMPORAIRE)
+
+# ESSAI (18/11/2026) : REJEU SUR LA FUSION 4 de l'acceptation en direct de la fusion 3 du module « Tâches » (TCH141, TCH171, TCH143 ;
+# `frontend/e2e/acceptation/tch2.spec.js`) avec le VRAI assistant : service d'IA FastAPI réel, clés du dépôt
+# (secrets CLAUDE_API_KEY / GROQ_API_KEY), jamais affichées. Django (gunicorn) et le service d'IA tournent sous la MÊME
+# horloge figée (libfaketime) posée par `.github/zz-taches-pile.sh`, la commande de pile que la spec appelle
+# (E2E_TACHES_PILE). Le job COMMITE lui-même son enregistrement sur la branche. Jamais la production.
+# Déclenché seulement par un push sur dev-taches-f4 ; retiré par l'orchestrateur après l'essai.
+on:
+  push:
+    branches: [dev-taches-f4]
+
+concurrency:
+  group: zz-scratch-acceptation-taches-f4
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente : $ref"; echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE : $ref"; echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  taches-f4:
+    needs: [ci-image-check]
+    if: ${{ !cancelled() && needs.ci-image-check.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    permissions:
+      contents: write
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'false'
+      - name: libfaketime (horloge figee de Django et du service d'IA)
+        run: |
+          set -euo pipefail
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends libfaketime
+          ls /usr/lib/*/faketime/libfaketime.so.1
+      - name: Secrets d'essai tires au sort (mot de passe de demo_taches, preuve HMAC du journal de l'assistant)
+        run: |
+          set -euo pipefail
+          mdp=$(python -c "import secrets; print(secrets.token_urlsafe(24))")
+          hmac=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
+          echo "::add-mask::$mdp"; echo "::add-mask::$hmac"
+          { echo "TACHES_DEMO_PASSWORD=$mdp"; echo "AGENT_HMAC_SECRET=$hmac"; } >> "$GITHUB_ENV"
+      - name: Migrate + seed demo + roles du registre + role Administrateur de demo_admin
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+          python manage.py init_roles
+          python manage.py shell <<'PY'
+          from authentication.models import CustomUser
+          from apps.roles.models import Role
+          from apps.roles.permissions_registre import ALL_PERMISSIONS, SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF
+          u = CustomUser.objects.get(username='demo_admin')
+          perms = [p for p in ALL_PERMISSIONS if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF)]
+          if 'taches_voir' not in perms:
+              perms.append('taches_voir')
+          role, _ = Role.objects.get_or_create(company=u.company, nom='Administrateur')
+          role.permissions = perms
+          role.save(update_fields=['permissions'])
+          u.is_superuser = True
+          u.role = role
+          u.save(update_fields=['is_superuser', 'role'])
+          print('demo_admin role', role.pk, 'taches_voir' in role.permissions)
+          PY
+      - name: Role Postgres lecture seule de l'agent (sql_agent_ro)
+        run: |
+          set -euo pipefail
+          PSQL="/usr/lib/postgresql/16/bin/psql -h localhost -U erp_user -d erp_db -v ON_ERROR_STOP=1 -q"
+          { sed -n '/^-- 4) AANA30/,$p' backend/db/rls_roles.sql; echo "ALTER ROLE sql_agent_ro PASSWORD 'ci-sql-agent-ro';"; } | $PSQL
+      - name: Venv FastAPI (service IA reel)
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/venv-ia
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check --upgrade pip
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check torch --index-url https://download.pytorch.org/whl/cpu || echo "torch CPU indisponible : wheel par defaut"
+          grep -vE '^faster-whisper' backend/fastapi_ia/requirements.txt > /tmp/req-ia.txt
+          /tmp/venv-ia/bin/pip install -q --disable-pip-version-check -r /tmp/req-ia.txt
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Playwright chromium (deja dans l'image)
+        working-directory: frontend
+        run: npx playwright install chromium
+      - name: Build frontend (sans service worker)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      - name: Django + service IA reel (horloge figee) + spec tch2 (TCH141, TCH171, TCH143)
+        env:
+          E2E_ACCEPTATION: '1'
+          ACCEPTATION_SHA: ${{ github.sha }}
+          E2E_IA_URL: http://127.0.0.1:8100
+          E2E_IA_PYTHON: /tmp/venv-ia/bin/python
+          E2E_IA_LOG: /tmp/uvicorn.log
+          E2E_TACHES_PILE: ${{ github.workspace }}/.github/zz-taches-pile.sh
+          E2E_TACHES_CAPTURES: /tmp/captures-f4
+          ZZ_RACINE: ${{ github.workspace }}
+          ZZ_VENV_IA: /tmp/venv-ia
+          ZZ_JOURNAUX: /tmp
+          DJANGO_INTERNAL_URL: http://127.0.0.1:8000
+          SQL_AGENT_PROVIDER: claude
+          SQL_AGENT_MODEL: claude-sonnet-5-5
+          SQL_AGENT_EFFORT: low
+          SQL_AGENT_FALLBACK_PROVIDER: groq
+          SQL_AGENT_DB_USER: sql_agent_ro
+          SQL_AGENT_DB_PASSWORD: ci-sql-agent-ro
+          ASSISTANT_COPILOTE: admins
+          ASSISTANT_MOTEUR: langchain
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          if [ -n "$CLAUDE_API_KEY" ]; then echo "Cle Claude : presente"; else echo "Cle Claude : ABSENTE"; fi
+          if [ -n "$GROQ_API_KEY" ]; then echo "Cle Groq : presente"; else echo "Cle Groq : ABSENTE"; fi
+          unset POSTGRES_RLS_ENABLED
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          mkdir -p "$E2E_TACHES_CAPTURES"
+          bash .github/zz-taches-pile.sh horloge reel
+          export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
+          cd frontend
+          npx playwright test --project=acceptation e2e/acceptation/tch2.spec.js --workers 1
+      - name: Journaux (cles masquees)
+        if: ${{ !cancelled() }}
+        run: |
+          tail -n 120 /tmp/gunicorn-error.log 2>/dev/null || true
+          tail -n 200 /tmp/uvicorn.log 2>/dev/null | sed -E 's/(sk-ant-|gsk_)[A-Za-z0-9_-]+/MASQUE/g' || true
+      - name: Commiter l'enregistrement sur la branche
+        if: ${{ !cancelled() }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash .github/zz-acceptation-commit.sh "taches-f4 (tch2 rejoué sur la fusion 4)"
+      - name: Rapport Playwright, captures et journaux
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-taches-f4
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            /tmp/captures-f4
+            /tmp/gunicorn-error.log
+          retention-days: 7
