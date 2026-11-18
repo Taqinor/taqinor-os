@@ -84,6 +84,9 @@ def sonde(ctx=None):
          "build_wa_url": lambda p, m: f"https://wa.me/{p.lstrip('+')}?text=…",
          "MessageTemplate": NS(get_corps=lambda c, cle, lg: "Bonjour {nom}, votre rendez-vous {reference} est demain."),
          "EmailTemplate": NS(render=lambda c, cle, lg, **ctx: {"sujet": "Votre livraison", "corps": "Bonjour"}),
+         "timezone": NS(now=lambda: dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc), is_naive=lambda d: d.tzinfo is None,
+                        make_aware=lambda d, tz=None: d.replace(tzinfo=tz or dt.timezone.utc), localtime=lambda d=None: d or dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc),
+                        localdate=lambda d=None: (d or dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc)).date()),  # django.utils.timezone (notifications/selectors.py)
          "casablanca_today": lambda: dt.date(2026, 11, 11), "active_companies": lambda: [co], "Intervention": NS(objects=QS([interv])),
          "_livraison_lien": lambda l, request=None: "https://erp.example.invalid/portail/client/livraisons",
          "SavSlaSettings": NS(get=lambda c: NS(notifications_client_sav=True)),
