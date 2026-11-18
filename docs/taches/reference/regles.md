@@ -984,7 +984,7 @@ l'explication d'une confidentielle omet le fait « en attente de : {qui} », et 
   créé une tâche, invariant 29), famille allumée dans `familles_suggestions`, ET cible visible par lui via le sélecteur de l'app
   cible (A3 ; sinon rien, sans trace). `suggestions_societe` (administrateur, AVANCÉ) : l'administrateur reçoit en plus
   sa propre ligne, mêmes contrôles.
-- **Anti-doublon** : `get_or_create` sur (`company`, `proprietaire`, `cle`) ; refusée ou acceptée = jamais reproposée.
+- **Anti-doublon** : `get_or_create` sur (`company`, `proprietaire`, `cle`) ; refusée ou acceptée = jamais reproposée ; retirée (annulation de l'événement) = reproposée, comme neuve, quand l'événement se reproduit ; accepter une suggestion dont la cible n'est plus lisible crée la tâche sans lien.
   `devis_acceptation_annulee` → suggestion `proposee` du devis → `retiree`.
 - **Vie** : visible 7 jours (`suggestions/` ≤ 20, les plus récentes), purgée à 30 ; aucun push, hors plafond. Accepter
   → `creer_taches(source='suggestion', lien=cible)` avec `titre_propose` (ou le titre édité) ; Refuser → `refusee`.
