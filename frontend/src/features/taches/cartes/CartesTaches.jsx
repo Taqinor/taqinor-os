@@ -385,10 +385,16 @@ function changementDit(c, corps) {
  * dans au moins une ligne ; `titre` est dit par la tête de la carte quand aucune tâche n'est visée.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, lu par la garde du test
-export function lignesDuCorps(corps, changements = [], { titreEnTete = false, titreTache = '' } = {}) {
+export function lignesDuCorps(corps, changements = [], { titreEnTete = false, titreTache = '', projet = null } = {}) {
   const lignes = []
   const dits = new Set(CHAMPS_TECHNIQUES)
   if (titreEnTete) dits.add('titre')
+  // Relecture finale n° 2 — le relais nomme le projet d'une création (`proposition.projet {id, nom}`) : « Projet :
+  // {nom} » (textes.md §2.3) seulement si c'est bien le projet du corps ; sinon `projet_id` reste dit tel quel.
+  if (Number.isInteger(corps.projet_id) && projet?.id === corps.projet_id && estTexte(projet?.nom)) {
+    dits.add('projet_id')
+    lignes.push({ cles: ['projet_id'], texte: `Projet : ${projet.nom}`, brut: false })
+  }
   for (const c of changements) {
     const cle = CHAMP_DU_CHANGEMENT[c.champ]
     const exact = changementDit(c, corps)
@@ -417,7 +423,9 @@ function CarteAValider({ tache, proposition }) {
   const [corps] = useState(() => proposition.corps ?? {})
   const titreEnTete = !tache && estTexte(corps.titre)
   const titre = tache?.titre ?? (titreEnTete ? corps.titre : proposition.libelle)
-  const lignes = lignesDuCorps(corps, proposition.changements ?? [], { titreEnTete, titreTache: tache?.titre ?? '' })
+  const lignes = lignesDuCorps(corps, proposition.changements ?? [], {
+    titreEnTete, titreTache: tache?.titre ?? '', projet: proposition.projet,
+  })
   return (
     <div role="group" aria-label={titre}>
       <Tete titre={titre} />

@@ -506,6 +506,26 @@ describe('A5 — la carte à valider montre tout ce qu’elle écrit (revue F3 n
     expect(api.post.mock.calls[0][1]).toEqual({ titre: 'Appeler Ali', projet_id: 7, zz_inconnu: { a: 1 } })
   })
 
+  it('relecture finale n° 2 — création rangée dans un projet : « Projet : {nom} » servi par le relais, pas « projet_id »', async () => {
+    const donnees = structuredClone(exempleContrat('taches', 'ecriture_a_valider', 'exemple_creation'))
+    monter('tache', donnees)
+    const racine = screen.getByTestId('carte-taches-tache')
+    expect(racine.textContent).toContain('Projet : Ventes')
+    expect(racine.textContent).not.toContain('projet_id')
+    await userEvent.click(within(racine).getByRole('button', { name: 'Ajouter une tâche' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1]).toEqual(donnees.proposition.corps)
+  })
+
+  it('relecture finale n° 2 — un projet servi qui n’est PAS celui du corps : l’id reste montré tel quel', () => {
+    const donnees = structuredClone(exempleContrat('taches', 'ecriture_a_valider', 'exemple_creation'))
+    donnees.proposition.projet = { id: 99, nom: 'Autre' }
+    monter('tache', donnees)
+    const racine = screen.getByTestId('carte-taches-tache')
+    expect(racine.textContent).toContain('projet_id : 3')
+    expect(racine.textContent).not.toContain('Projet : Autre')
+  })
+
   it('une heure ou un jour mal formés ne sont pas « arrangés » : ils se montrent tels quels', async () => {
     const donnees = donneesDe('taches.rappel.poser', { tache: true, corps: { jour: 'bientôt', heure: '08:30\n' } })
     monter('tache', donnees)
