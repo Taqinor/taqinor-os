@@ -685,14 +685,17 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
           onAujourdhui={() => changer({ jour: null })}
         />
         {etats}
-        <PlanifierSemaine
-          jours={jours} aujourdhui={aujourdhui} capacite={donnees?.capacite?.minutes ?? null} aPlacer={donnees?.a_placer ?? []}
-          mesProjets={donnees?.mes_projets ?? []} choisie={choisie} posees={placement.posees}
-          onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
-          onPoser={(item, iso) => placement.poser(item, iso, null)}
-          onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-          onTerminer={() => changer({ placer: null, vue: 'semaine' })}
-        />
+        {/* Passe visuelle n° 6 — rien de lu : aucun jour ni compte (« 0 tâche », « Tout est placé » seraient faux) */}
+        {donnees ? (
+          <PlanifierSemaine
+            jours={jours} aujourdhui={aujourdhui} capacite={donnees.capacite?.minutes ?? null} aPlacer={donnees.a_placer ?? []}
+            mesProjets={donnees.mes_projets ?? []} choisie={choisie} posees={placement.posees}
+            onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+            onPoser={(item, iso) => placement.poser(item, iso, null)}
+            onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
+            onTerminer={() => changer({ placer: null, vue: 'semaine' })}
+          />
+        ) : null}
       </CoquilleTaches>
     )
   }
