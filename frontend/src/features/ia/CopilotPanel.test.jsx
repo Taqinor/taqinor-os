@@ -32,7 +32,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/tachesApi', () => ({
   proposerJournee: vi.fn(), lirePriorites: vi.fn(), lirePoint: vi.fn(), saisieRapide: vi.fn(),
-  listerToutesLesTaches: vi.fn(),
+  listerToutesLesTaches: vi.fn(), lireAujourdhui: vi.fn(),
 }))
 
 /* Nouveau fichier car : aucun module vitest n'héberge le panneau Copilote
@@ -222,7 +222,57 @@ describe('CopilotPanel — les quatre demandes prêtes de Tâches (A12, TCH118)'
     tachesApi.lirePoint.mockResolvedValue(contrat('point'))
     tachesApi.saisieRapide.mockResolvedValue(contrat('saisie_apercu'))
     tachesApi.listerToutesLesTaches.mockResolvedValue([exempleContrat('taches', 'tache')])
+    tachesApi.lireAujourdhui.mockResolvedValue(contrat('aujourdhui'))
     iaApi.getSuggestions.mockRejectedValue(new Error('service IA injoignable'))
+  })
+
+  // F3 acceptation ERR 3 — textes du panneau ouvert depuis un écran Tâches (textes.md §5.2), mot pour mot.
+  it('ERR 3 — sur /taches : sous-titre « ouvert depuis {écran} » et champ « Écris ou dicte… »', async () => {
+    window.history.pushState({}, '', '/taches/a-trier')
+    monterAvecDroits(['taches_voir'])
+    await screen.findByRole('group', { name: 'Demandes prêtes' })
+    expect(screen.getByText('ouvert depuis À trier')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Écris ou dicte…')).toBeTruthy()
+    expect(screen.queryByText(/Posez une question sur vos données/)).toBeNull()
+  })
+
+  it('ERR 3 — hors /taches, rien ne change (sous-titre et champ de l’ERP)', async () => {
+    window.history.pushState({}, '', '/crm/relances')
+    iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 ?'] })
+    monterAvecDroits(['taches_voir'])
+    await screen.findByRole('button', { name: 'Q1 ?' })
+    expect(screen.getByText('Posez une question sur vos données — réponses en temps réel.')).toBeTruthy()
+    expect(screen.getByPlaceholderText('Posez votre question en français…')).toBeTruthy()
+    expect(screen.queryByText(/ouvert depuis/)).toBeNull()
+  })
+
+  it('ERR 3 — « Planifie ma journée » répond « Tu as gardé {e} essentielles… » avec les nombres du serveur', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    const user = userEvent.setup()
+    const store = monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Planifie ma journée' }))
+    await screen.findByTestId('carte-taches-plan_propose')
+    // aujourdhui.json : essentiel_prevues 1 ; journee_proposition.json : objectif 5, 2 lignes.
+    const attendu = 'Tu as gardé 1 essentielle. Pour atteindre 5, voici 2 tâches de plus, dans cet ordre. '
+      + 'Rien ne change tant que tu ne gardes pas.'
+    expect(store.getState().ia.messages[1].content).toBe(attendu)
+    expect(screen.getByText(attendu)).toBeTruthy()
+  })
+
+  it('ERR 3 — sans clé d’IA, la ligne « Écris ou dicte… » devient la phrase de §5.2 ; hors /taches rien ne change', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    iaApi.queryAgent.mockResolvedValue({ data: {
+      answer: "L'assistant n'est pas disponible pour le moment (réglage du serveur). Le problème est signalé à "
+        + "l'administrateur ; réessaie plus tard.", evenement_id: null } })
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    await user.type(screen.getByPlaceholderText('Écris ou dicte…'), 'bonjour')
+    await user.click(screen.getByRole('button', { name: 'Envoyer' }))
+    expect(await screen.findByText(
+      "La conversation libre n'est pas branchée sur ce serveur. Les quatre demandes ci-dessus marchent sans elle.",
+    )).toBeTruthy()
+    expect(screen.queryByPlaceholderText('Écris ou dicte…')).toBeNull()
+    for (const q of DEMANDES) expect(screen.getByRole('button', { name: q })).toBeTruthy()
   })
 
   afterEach(() => { window.history.pushState({}, '', '/') })

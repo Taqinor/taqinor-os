@@ -27,6 +27,10 @@ import { ajouterMessageLocal } from './store/iaSlice'
 import {
   DEMANDES_PRETES_TACHES, demandePreteTaches, estEcranTaches, lancerDemandePrete,
 } from './copilotMessages'
+// F3 acceptation ERR 3 — textes du panneau ouvert depuis un écran Tâches (textes.md §5.2).
+import {
+  CHAMP_TACHES, PHRASE_SANS_CONVERSATION, conversationLibreAbsente, nomEcranTaches,
+} from './copilotMessages'
 import * as tachesApi from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 
@@ -65,6 +69,8 @@ export default function CopilotPanel() {
   const [demandeEnCours, setDemandeEnCours] = useState(false)
   const demandesTaches = open && Array.isArray(permissions) && permissions.includes('taches_voir')
     && estEcranTaches(routeNormalisee(window.location.pathname))
+  // ERR 3 — sans clé d'IA (dit par la réponse du service), le champ laisse la place à la phrase de §5.2.
+  const sansConversationTaches = demandesTaches && conversationLibreAbsente(messages)
 
   useEffect(() => {
     if (open && !historyLoadedRef.current) {
@@ -174,7 +180,9 @@ export default function CopilotPanel() {
             Copilote
           </SheetTitle>
           <SheetDescription>
-            Posez une question sur vos données — réponses en temps réel.
+            {demandesTaches
+              ? `ouvert depuis ${nomEcranTaches(routeNormalisee(window.location.pathname))}`
+              : 'Posez une question sur vos données — réponses en temps réel.'}
           </SheetDescription>
           <Button
             variant="outline" size="sm" className="min-h-10 self-start"
@@ -292,8 +300,12 @@ export default function CopilotPanel() {
               </Button>
             </div>
           )}
+          {sansConversationTaches ? (
+            <p className="text-sm text-muted-foreground" role="status">{PHRASE_SANS_CONVERSATION}</p>
+          ) : (
           <QuestionForm onSubmit={handleSubmit} inputRef={inputRef} input={input} setInput={setInput}
-              onKeyDown={handleKeyDown} disabled={agentLoading}>
+              onKeyDown={handleKeyDown} disabled={agentLoading}
+              {...(demandesTaches ? { placeholder: CHAMP_TACHES } : {})}>
             <IconButton
               type="submit"
               variant="default"
@@ -303,6 +315,7 @@ export default function CopilotPanel() {
               <Send />
             </IconButton>
           </QuestionForm>
+          )}
           <p className="mt-2 text-center text-xs text-muted-foreground">
             L'agent peut faire des erreurs. Vérifiez les informations importantes.
           </p>

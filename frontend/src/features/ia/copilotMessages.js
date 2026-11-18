@@ -10,6 +10,8 @@
 // n'invente pas les extensions — sa chaîne d'imports doit rester résolvable
 // par Node comme par Vite.
 import { frenchError } from '../../lib/frenchError.js'
+// Accord des nombres de l'app Tâches (0 et 1 au singulier) : le formateur pur de `features/taches/lib`.
+import { accord } from '../taches/lib/textes.js'
 
 // Message FR clair quand la fonctionnalité est key-gated (GROQ_API_KEY absente
 // côté service IA). Le backend renvoie alors un texte d'erreur de configuration
@@ -158,6 +160,51 @@ export const PHRASE_PLAN_PROPOSE = 'Rien ne change tant que tu ne gardes pas.'
 
 export const estEcranTaches = (ecran) => typeof ecran === 'string' && /^\/taches(\/|$)/.test(ecran)
 
+// F3 acceptation ERR 3 — le panneau ouvert depuis un écran Tâches (textes.md §5.2, mot pour mot) : sous-titre
+// « ouvert depuis {écran} » (noms d'écran de textes.md §2.1 : onglets et ⋯), champ « Écris ou dicte… », et sans
+// conversation libre la phrase qui remplace ce champ. Hors des écrans Tâches, rien de ceci n'est lu.
+const ECRANS_TACHES = [
+  ['/taches/aujourdhui', 'Aujourd\'hui'], ['/taches/a-trier', 'À trier'], ['/taches/projets', 'Projets'],
+  ['/taches/agenda', 'Agenda'], ['/taches/revue', 'Revue de la semaine'], ['/taches/rythme', 'Mon rythme'],
+  ['/taches/supprimees', 'Supprimées récemment'], ['/taches/reglages', 'Réglages'],
+]
+export const CHAMP_TACHES = 'Écris ou dicte…'
+export const PHRASE_SANS_CONVERSATION = 'La conversation libre n\'est pas branchée sur ce serveur. '
+  + 'Les quatre demandes ci-dessus marchent sans elle.'
+// Début du message que le service d'IA rend quand son fournisseur n'est pas réglé (clé absente :
+// `relais_copilote.MESSAGE_CONFIGURATION`) ; le texte « clé manquante » plus ancien est lu par `isConfigMissing`.
+const DEBUT_MESSAGE_CONFIGURATION = 'L\'assistant n\'est pas disponible pour le moment (réglage du serveur)'
+
+/** Le nom de l'écran Tâches de `ecran` (route normalisée) ; « Tâches » pour un écran sans nom propre. */
+export function nomEcranTaches(ecran) {
+  const route = typeof ecran === 'string' ? ecran : ''
+  const trouve = ECRANS_TACHES.find(([prefixe]) => route === prefixe || route.startsWith(`${prefixe}/`))
+  return trouve ? trouve[1] : 'Tâches'
+}
+
+/** Vrai quand une réponse de la conversation a dit que le fournisseur d'IA n'est pas réglé (aucune clé). */
+export function conversationLibreAbsente(messages) {
+  return (Array.isArray(messages) ? messages : []).some((m) => m?.role === 'agent' && typeof m.content === 'string'
+    && (isConfigMissing(m.content) || m.content.startsWith(DEBUT_MESSAGE_CONFIGURATION)))
+}
+
+/**
+ * La réponse de « Planifie ma journée » (textes.md §5.2) : « Tu as gardé {e} essentielles. Pour atteindre
+ * {objectif}, voici {n} tâches de plus, dans cet ordre. Rien ne change tant que tu ne gardes pas. » ; aucune
+ * essentielle : « Pour atteindre {objectif}, voici {n} tâches, dans cet ordre. … ». Tous les nombres viennent du
+ * serveur (`journee/proposition/` : objectif et lignes ; `aujourdhui/` : `progression.essentiel_prevues`) ; un
+ * nombre absent (mode sans objectif, journée illisible, rien proposé) : la seule phrase sans chiffre.
+ */
+export function phrasePlanPropose(proposition, journee) {
+  const n = Array.isArray(proposition?.proposition) ? proposition.proposition.length : 0
+  const objectif = proposition?.objectif?.nb
+  const e = journee?.progression?.essentiel_prevues
+  if (!Number.isInteger(objectif) || objectif <= 0 || n === 0 || !Number.isInteger(e) || e < 0) return PHRASE_PLAN_PROPOSE
+  if (e === 0) return `Pour atteindre ${objectif}, voici ${accord(n, 'tâche')}, dans cet ordre. ${PHRASE_PLAN_PROPOSE}`
+  return `Tu as gardé ${accord(e, 'essentielle')}. Pour atteindre ${objectif}, voici ${accord(n, 'tâche')} de plus, `
+    + `dans cet ordre. ${PHRASE_PLAN_PROPOSE}`
+}
+
 /** La demande prête dite par `question` (texte exact du bouton), ou `null`. */
 export function demandePreteTaches(question) {
   const t = typeof question === 'string' ? question.trim() : ''
@@ -173,15 +220,23 @@ export async function lancerDemandePrete(question, { client, ids = [] } = {}) {
   const demande = demandePreteTaches(question)
   if (!demande || !client) return null
   let reponse
+  let journee = null
   if (demande.lire === 'saisieRapide') {
     if (!Array.isArray(ids) || ids.length === 0) return null
     reponse = await client.saisieRapide({ ids, apercu: true })
+  } else if (demande.carte === 'plan_propose' && typeof client.lireAujourdhui === 'function') {
+    // ERR 3 — {e} de la réponse = les essentielles gardées, lues sur la journée au même moment. Une journée
+    // illisible ne prive pas de la carte : la réponse retombe sur sa seule phrase sans chiffre.
+    const [lue, jour] = await Promise.allSettled([client[demande.lire](), client.lireAujourdhui()])
+    if (lue.status === 'rejected') throw lue.reason
+    reponse = lue.value
+    journee = jour.status === 'fulfilled' ? jour.value?.data : null
   } else {
     reponse = await client[demande.lire]()
   }
   return {
     role: 'agent',
-    content: demande.carte === 'plan_propose' ? PHRASE_PLAN_PROPOSE : '',
+    content: demande.carte === 'plan_propose' ? phrasePlanPropose(reponse.data, journee) : '',
     cartes: [{
       type: 'resultat', action_key: demande.cle, libelle: demande.question,
       carte: demande.carte, donnees: reponse.data,

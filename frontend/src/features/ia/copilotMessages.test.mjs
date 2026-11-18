@@ -24,6 +24,9 @@ import {
   demandePreteTaches,
   estEcranTaches,
   lancerDemandePrete,
+  nomEcranTaches,
+  conversationLibreAbsente,
+  phrasePlanPropose,
 } from './copilotMessages.js'
 
 test('isConfigMissing reconnaît une réponse « clé API manquante »', () => {
@@ -172,4 +175,30 @@ test('« Range ma liste » sans tâche À trier, ou une question libre : rien n\
   assert.equal(await lancerDemandePrete('Range ma liste', { client: c, ids: [] }), null)
   assert.equal(await lancerDemandePrete('Dis-moi bonjour', { client: c }), null)
   assert.equal(c.appels.length, 0)
+})
+
+// F3 acceptation ERR 3 — textes du panneau ouvert depuis Tâches (textes.md §5.2).
+test('ERR 3 — « Planifie ma journée » : les deux phrases de §5.2, accordées, et la phrase seule sans nombre', () => {
+  const proposition = exempleContrat('taches', 'journee_proposition') // objectif 5, 2 lignes
+  const journee = (e) => ({ progression: { essentiel_prevues: e } })
+  const fin = 'Rien ne change tant que tu ne gardes pas.'
+  assert.equal(phrasePlanPropose(proposition, journee(2)),
+    `Tu as gardé 2 essentielles. Pour atteindre 5, voici 2 tâches de plus, dans cet ordre. ${fin}`)
+  assert.equal(phrasePlanPropose(proposition, journee(0)), `Pour atteindre 5, voici 2 tâches, dans cet ordre. ${fin}`)
+  const une = { ...proposition, proposition: proposition.proposition.slice(0, 1) }
+  assert.equal(phrasePlanPropose(une, journee(1)),
+    `Tu as gardé 1 essentielle. Pour atteindre 5, voici 1 tâche de plus, dans cet ordre. ${fin}`)
+  assert.equal(phrasePlanPropose({ ...proposition, objectif: { nb: null, mode: 'libre' } }, journee(1)), PHRASE_PLAN_PROPOSE)
+  assert.equal(phrasePlanPropose(proposition, null), PHRASE_PLAN_PROPOSE)
+})
+
+test('ERR 3 — nom de l\'écran Tâches et conversation libre absente', () => {
+  assert.equal(nomEcranTaches('/taches/aujourdhui'), 'Aujourd\'hui')
+  assert.equal(nomEcranTaches('/taches/projets/12'), 'Projets')
+  assert.equal(nomEcranTaches('/taches'), 'Tâches')
+  assert.equal(conversationLibreAbsente([{ role: 'agent', content: 'Voici.' }]), false)
+  assert.equal(conversationLibreAbsente([{ role: 'agent',
+    content: 'L\'assistant n\'est pas disponible pour le moment (réglage du serveur). Réessaie.' }]), true)
+  assert.equal(conversationLibreAbsente([{ role: 'agent', content: 'GROQ_API_KEY manquante dans le .env' }]), true)
+  assert.equal(conversationLibreAbsente([{ role: 'user', content: 'GROQ_API_KEY manquante' }]), false)
 })
