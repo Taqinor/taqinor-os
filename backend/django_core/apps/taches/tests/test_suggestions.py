@@ -357,6 +357,31 @@ class AccepterTests(_Routes):
         self.assertEqual(self._api().post(self._url(), {}, format='json').status_code, 404)
         self.assertFalse(Tache.objects.exists())
 
+    def _ajoutee_sans_lien(self, reponse):
+        """« Ajouter » a réussi, la tâche est née SANS lien, rien de la cible n'est servi, la suggestion est partie."""
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('tache_ecrite')))
+        self.assertIsNone(corps['tache']['lien'])
+        self.assertNotIn('DEV-TCH71', reponse.content.decode())
+        tache = Tache.objects.get(pk=corps['tache']['id'])
+        self.assertEqual((tache.titre, tache.content_type_id, tache.object_id, tache.lien_libelle),
+                         (TITRE_DEVIS, None, None, ''))
+        self.suggestion.refresh_from_db()
+        self.assertEqual((self.suggestion.statut, self.suggestion.tache_id), (StatutSuggestion.ACCEPTEE, tache.pk))
+        self.assertEqual(self._api().get(LISTE).json(), {'results': []})
+
+    def test_cible_sortie_de_la_portee_la_tache_nait_sans_lien(self):
+        """Revue F4 #12 : droit `ventes_voir` retiré — « Ajouter » ne doit pas échouer à chaque fois."""
+        self.commercial.role.permissions = ['taches_voir', 'crm_voir', 'records_scope_soi']
+        self.commercial.role.save(update_fields=['permissions'])
+        self._ajoutee_sans_lien(self._api().post(self._url(), {}, format='json'))
+
+    def test_cible_supprimee_la_tache_nait_sans_lien(self):
+        """Revue F4 #12 : le devis a disparu — même règle."""
+        self.Devis.objects.filter(pk=self.devis.pk).delete()
+        self._ajoutee_sans_lien(self._api().post(self._url(), {}, format='json'))
+
     def test_jour_hors_plage_400_jamais_500(self):
         """Revue F4 #4 : `jour_prevu` hors de 2000-01-01 → 2100-12-31 rend 400 sous le champ ; rien n'est écrit."""
         for jour in ('9999-12-31', '0001-01-01', '2101-01-01'):

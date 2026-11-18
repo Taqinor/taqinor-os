@@ -322,6 +322,20 @@ def _decider(suggestion, statut, tache=None):
     return [op_champ('suggestion_tache', suggestion, champ, valeur) for champ, valeur in avant.items()]
 
 
+def _lien_encore_a_portee(user, suggestion):
+    """`{"cible","id"}` de la cible de `suggestion` si `user` la lit ENCORE (porte unique `libelle_de_cible`, droits
+    du moment), sinon `None` : la tâche naît alors sans lien, comme celle d'une activité dont la cible n'est pas
+    visible (`_lien_de_l_activite`). Une cible sortie de sa portée (droit retiré, objet supprimé) ne fait donc plus
+    échouer « Ajouter » à chaque fois, et rien d'elle n'est servi (revue F4 #12)."""
+    if suggestion.content_type_id is None or suggestion.object_id is None:
+        return None
+    content_type = ContentType.objects.get_for_id(suggestion.content_type_id)
+    cible = f'{content_type.app_label}.{content_type.model}'
+    if libelle_de_cible(user, cible, suggestion.object_id) is None:
+        return None
+    return {'cible': cible, 'id': suggestion.object_id}
+
+
 def accepter_suggestion(user, suggestion_id, *, titre='', jour_prevu=None):
     """« Ajouter » → (id de la tâche née, geste) : `creer_taches(source='suggestion', lien=cible)` avec
     le titre édité, sinon `titre_propose` (regles.md §9) ; la suggestion passe `acceptee` dans le MÊME
@@ -334,12 +348,9 @@ def accepter_suggestion(user, suggestion_id, *, titre='', jour_prevu=None):
             return suggestion.tache_id, None
         if suggestion.statut != StatutSuggestion.PROPOSEE:
             raise Http404('Introuvable.')
-        lien = None
-        if suggestion.content_type_id is not None and suggestion.object_id is not None:
-            content_type = ContentType.objects.get_for_id(suggestion.content_type_id)
-            lien = {'cible': f'{content_type.app_label}.{content_type.model}', 'id': suggestion.object_id}
         ligne = {'titre': (titre or '').strip() or suggestion.titre_propose, 'jour_prevu': jour_prevu}
-        resultat = creer_taches(user, [ligne], source=Source.SUGGESTION, porte='suggestion', lien=lien)
+        resultat = creer_taches(user, [ligne], source=Source.SUGGESTION, porte='suggestion',
+                                lien=_lien_encore_a_portee(user, suggestion))
         tache = resultat.creees[0]
         operations = [*resultat.geste.operations, *_decider(suggestion, StatutSuggestion.ACCEPTEE, tache)]
         # UN geste (création + décision) : celui de `creer_taches` est remplacé, comme `_un_seul_geste`.
