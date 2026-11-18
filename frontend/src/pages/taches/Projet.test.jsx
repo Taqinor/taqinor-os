@@ -377,5 +377,25 @@ describe('F4 revue — Tableau : déplacer, Annuler, redéplacer', () => {
     expect(document.body.textContent).not.toContain('Modifiée ailleurs')
   })
 
+  it('les compteurs des colonnes bougent avec la carte, et reviennent avec Annuler', async () => {
+    fauxServeur()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 5', '8 sur 15'])
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 4', '8 sur 16']))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 5', '8 sur 15']))
+  })
 
+  it('cocher une carte met à jour le compteur de SA colonne', async () => {
+    api.terminerTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 92 } })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    await user.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    await waitFor(() => expect(compte('Études')).toBe('5 sur 5'))
+  })
 })

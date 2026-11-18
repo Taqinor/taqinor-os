@@ -18,7 +18,7 @@ import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronol
 import FeuilleACrans from '../../features/taches/ui/FeuilleACrans'
 import SelecteurVue from '../../features/taches/ui/SelecteurVue'
 import Tableau from '../../features/taches/ui/Tableau'
-import { CODES_VUES, etapesDuProjet } from '../../features/taches/lib/projets'
+import { CODES_VUES, compteursApresDeplacement, compteursApresStatut, etapesDuProjet } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -71,9 +71,13 @@ function remettreTache(vue, place) {
 
 /** Place la tâche `item` à la fin de l'étape `sectionId` (null : « Sans étape »), où qu'elle soit. */
 function versEtape(vue, item, sectionId) {
+  const origine = placeDe(vue, item.id)
   const sans = sansTache(vue, item.id)
-  if (sectionId == null) return { ...sans, sans_section: [...(sans.sans_section ?? []), item] }
-  return { ...sans, sections: (sans.sections ?? []).map((s) => (s.id === sectionId ? { ...s, taches: [...(s.taches ?? []), item] } : s)) }
+  const place = sectionId == null
+    ? { ...sans, sans_section: [...(sans.sans_section ?? []), item] }
+    : { ...sans, sections: (sans.sections ?? []).map((s) => (s.id === sectionId ? { ...s, taches: [...(s.taches ?? []), item] } : s)) }
+  // les compteurs des deux étapes suivent la carte (règle du serveur : lib/projets.js `compteursApresDeplacement`)
+  return origine ? compteursApresDeplacement(place, origine.tache, origine.sectionId, sectionId) : place
 }
 
 function Entete({ vue, aujourdhui, onPriorite }) {
@@ -175,12 +179,18 @@ export default function Projet() {
   }
 
   const majTache = (tache) => setVue((v) => (v ? remplacerTache(v, tache) : v))
-  const ajusterFaites = (delta) => setVue((v) => (v ? { ...v, avancement: { ...v.avancement, faites: v.avancement.faites + delta } } : v))
+  // L'avancement du projet ET le compteur de l'étape de la carte suivent le geste (même règle que le serveur).
+  const ajusterFaites = (delta, item) => setVue((v) => {
+    if (!v) return v
+    const suite = { ...v, avancement: { ...v.avancement, faites: v.avancement.faites + delta } }
+    const place = item ? placeDe(v, item.id) : null
+    return place ? compteursApresStatut(suite, place.tache, place.sectionId, delta > 0) : suite
+  })
 
   const terminer = async (item, suivant) => {
     const { data } = suivant ? await terminerTache(item.id) : await rouvrirTache(item.id)
     majTache(data.tache ?? { ...item, statut: suivant ? 'fait' : 'a_faire' })
-    ajusterFaites(suivant ? 1 : -1)
+    ajusterFaites(suivant ? 1 : -1, item)
     if (suivant) {
       proposerAnnuler({
         message: 'Faite',
@@ -188,7 +198,7 @@ export default function Projet() {
         onAnnuler: async () => {
           const retour = await rouvrirTache(item.id)
           majTache(retour.data.tache ?? { ...item, statut: 'a_faire' })
-          ajusterFaites(-1)
+          ajusterFaites(-1, item)
         },
       })
     }
