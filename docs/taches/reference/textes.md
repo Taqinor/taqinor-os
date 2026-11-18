@@ -20,6 +20,9 @@ référence données/API.
   « {abr}. {jj} {mois abr} » (« mar. 1 déc. »), autre année « {jj}/{mm}/{aaaa} » ; passé : « {abr}. {jj}/{mm} » (« jeu.
   12/11 »). Abréviations : lun., mar., mer., jeu., ven., sam., dim. ; janv., févr., mars, avr., mai, juin, juil., août,
   sept., oct., nov., déc. Le premier du mois : « 1 déc. » à l'écran, « 1er décembre » dans une phrase lue.
+  **Échéance et jalon d'un PROJET** (liste, en-tête, revue, chronologie) : toujours avec le mois, « {abr}. {jj} {mois
+  abr} » même dans les 13 jours (« ven. 4 déc. ») ; l'année seulement au-delà de 12 mois (« ven. 15 janv. 2028 ») ;
+  « aujourd'hui », « demain » et le passé inchangés.
 - **Heures** : « 10:00 » sur une puce, une ligne, une tuile ; « 10 h », « 10 h 30 » dans une phrase lue ou dite (Siri,
   notification, titre « Message de 15 h »).
 - **Durées** : « 45 min », « 1 h », « 3 h 10 ».
@@ -222,7 +225,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | ⋯ | Trier par priorité · Archive · Modèles |
 | Vide | « Aucun projet » · **Coller mes listes** |
 | Nouveau projet | « Nom du projet » · Créer · « Depuis un modèle » ; aussitôt : Planifier le projet |
-| En-tête d'un projet | « {nom} » + puce de priorité · « {faites} sur {total} · échéance {jj/mm} » · santé si signal · « Prochain jalon : {titre} · {jour} » ; Détails : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
+| En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
 | Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
 | ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
@@ -310,7 +313,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 
 | Élément | Texte |
 |---|---|
-| Aujourd'hui | « {faites} sur {objectif} aujourd'hui » · « essentiel {ef}/{ep} » |
+| Aujourd'hui | « {faites} sur {objectif} aujourd'hui » · « essentiel {ef}/{ep} » — lus dans la progression du jour (`aujourdhui/`), le jour courant n'étant pas dans `RYTHME.serie` ; absents si cette lecture échoue |
 | Objectif | « Objectif du jour : {objectif} ({source}) » ; `libre` : « Sans objectif » ; `tenir` : « Ton rythme : environ {R} tâches ({bas} à {haut}) » |
 | Modes | « En faire plus » — « Un objectif, et je te propose d'aller plus loin quand tu le tiens. » · « Garder ce rythme » — « Je ne te pousse plus ; je te préviens si tu t'en éloignes. » · « Sans objectif » — « Pas de nombre visé ; tes faites restent affichées. » |
 | Changer d'objectif | « Plus » · « Moins » · « Choisir un nombre (1 à 12) » |
@@ -358,6 +361,9 @@ Libellés des préférences (`ClePreference`, phrases du Copilote et messages ci
 bilan du soir » · « Heure limite » · « Jour de la revue de semaine » · « Choisir l'essentiel le matin » · « Notes libres ».
 
 ### 2.14 Réglages
+
+Sur iPhone une rubrique s'ouvre en SOUS-PAGE : son nom en titre, « ‹ Réglages » pour revenir, la liste des rubriques
+cachée. Au bureau, la liste reste à gauche et le panneau de droite porte le nom de la rubrique.
 
 Rubriques et leur résumé (liste de Réglages) : Notifications « Plan du matin, message de 15 h, bilan du soir » · Mon
 iPhone « {k} sur 5 » · Vie privée « Ce qui part au Copilote, qui peut lire » · L'ERP me suggère « {k} suggestions sur 4 »
