@@ -330,12 +330,14 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
 
 /** En-tête d'un jour de la Semaine (iPhone) : un jour ouvert à venir dit sa charge « {n} tâches · {h} pour {cap} »
  *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
- *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé ou non travaillé garde son libellé. */
-function teteJour(j, aujourdhui, capacite, n) {
+ *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé dit ce qui y a été fait, « {n} faites » (maquette
+ *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
+function teteJour(j, aujourdhui, capacite, taches) {
   if (j.ferie) return 'Férié'
   if (!j.ouvre) return 'Jour non travaillé'
   if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  return n >= 2 ? `${n} tâches` : `${n} tâche`
+  const faites = taches.filter((t) => t.statut === 'fait').length
+  return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
@@ -344,7 +346,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
       {jours.map((j) => {
         const taches = [...(j.blocs ?? []), ...(j.sans_heure ?? [])]
         return (
-          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : 'ag-sj'}
+          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : j.jour < aujourdhui ? 'ag-sj passe' : 'ag-sj'}
             aria-current={j.jour === aujourdhui ? 'date' : undefined} onClick={() => onChoisir(j.jour)}>
             <span className="ag-sj-date">
               <small>{ABR_JOURS[new Date(versUtc(j.jour)).getUTCDay()]}</small>
@@ -352,7 +354,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite, taches.length)}
+                {teteJour(j, aujourdhui, capacite, taches)}
               </span>
               {taches.slice(0, 3).map((t) => (
                 <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
