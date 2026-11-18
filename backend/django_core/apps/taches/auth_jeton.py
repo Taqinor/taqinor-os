@@ -46,7 +46,7 @@ DETAIL_REFUS = 'Authentification requise.'
 DETAIL_FLUX = 'Introuvable.'
 PREFIXES = {UsageJeton.CAPTURE: 'tqc_', UsageJeton.FLUX: 'tqf_', UsageJeton.TUILE: 'tqt_'}
 #: Forme d'un clair : préfixe d'usage + au moins 20 caractères url-safe (un clair émis en a 43).
-FORME_CLAIR = re.compile(r'^tq[cft]_[A-Za-z0-9_-]{20,100}$')
+FORME_CLAIR = re.compile(r'^tq[cft]_[A-Za-z0-9_-]{20,100}\Z')  # `\Z` : `$` accepterait un « \n » final
 LONGUEUR_PREFIXE = 8
 #: Ce que voit une sortie d'observabilité à la place d'un jeton.
 MASQUE = '<masqué>'

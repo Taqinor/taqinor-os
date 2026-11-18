@@ -231,6 +231,13 @@ class JetonsApiTests(_Base):
         with self.assertRaises(NotFound):
             refus.authenticate(SimpleNamespace(parser_context={'kwargs': {'jeton': premier['jeton']}}))
 
+    def test_clair_suivi_d_un_saut_de_ligne_refuse_sans_lecture(self):
+        """Revue F3 #8 (jumeau de `_HEURE`) : `FORME_CLAIR` finissait par `$`, qui accepte un saut de
+        ligne final (`…%0A.ics` dans l'adresse du flux) : refusé par sa FORME, avant toute lecture."""
+        _jeton, clair = fabriques.jeton(self.u1, 'flux')
+        with self.assertNumQueries(0), self.assertRaises(NotFound):
+            JetonFlux().authenticate(SimpleNamespace(parser_context={'kwargs': {'jeton': clair + '\n'}}))
+
     def test_revoquer(self):
         jeton, clair = fabriques.jeton(self.u1, 'tuile')
         url = f'{URL_JETONS}{jeton.pk}/revoquer/'

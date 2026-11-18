@@ -519,6 +519,14 @@ class PreferencesTests(BaseRythme):
                                  (400, {'valeur': ['Heure attendue (HH:MM).']}))
         self.assertEqual(self.poser('heure_limite', 'off').status_code, 400)  # la limite ne s'éteint pas
 
+    def test_heure_suivie_d_un_saut_de_ligne_refusee(self):
+        """Revue F3 #8 : `$` acceptait un saut de ligne final (« 08:30\\n ») que le balayage ne sait pas lire."""
+        for cle in ('heure_matin', 'relance_jour', 'heure_soir', 'heure_limite'):
+            with self.subTest(cle=cle):
+                reponse = self.poser(cle, '08:30\n')
+                self.assertEqual((reponse.status_code, reponse.json()),
+                                 (400, {'valeur': ['Heure attendue (HH:MM).']}))
+
     def test_anciens_noms_refuses(self):
         for cle in ('jours_off', 'vendredi', 'conges_du', 'conges_au', 'heure_plan_matin', 'rappel_journee',
                     'heure_bilan_soir', 'heure_limite_rappels', 'semaine_revue', 'mode', 'palier'):

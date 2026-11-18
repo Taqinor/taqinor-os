@@ -507,7 +507,8 @@ CAPACITE_MIN, CAPACITE_MAX = 30, 720
 NOTE_LONGUEUR_MAX, NOTES_MAX = 200, 10
 JOURS_SEMAINE = 7
 ETEINT, AUTO = 'off', 'auto'
-_HEURE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+#: `\Z`, jamais `$` (qui accepte un saut de ligne final : « 08:30\n » stocké, illisible au balayage).
+_HEURE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d\Z')
 
 
 def _invalide(message):
