@@ -169,6 +169,14 @@
 .tch .ep-carte-ia .section-sous { padding-inline: 14px; }
 .tch .ep-carte-ia-pied { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;
   padding: 10px 12px 12px; box-shadow: inset 0 1px 0 var(--tch-trait); }
+/* Passe visuelle n° 49 — les quatre demandes prêtes du panneau ouvert depuis Tâches (maquette copilote.html,
+   `.ep-demandes` d'ecrans-projets.css) : puces teintées de 36 px, cible tactile de 44 px, l'envoyée cernée d'accent. */
+.tch .ep-demandes { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.tch .ep-demandes button { position: relative; display: inline-flex; align-items: center; height: 36px; padding: 0 14px;
+  border-radius: 999px; background: var(--tch-panneau); font-size: 0.875rem; font-weight: 600; }
+.tch .ep-demandes button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.tch .ep-demandes button.envoyee { background: var(--tch-accent-doux); box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
+.tch .ep-demandes button:disabled { cursor: default; }
 
 /* ── TCH152 · Aujourd'hui au bureau (≥ 1024 px) : « Mes projets » · la liste · l'Agenda du jour ────────────────
    Maquette docs/taches/maquettes/ecran-aujourdhui-matin.html (`.col-agenda`, liste de projets comptés) ; l'ERP fournit
