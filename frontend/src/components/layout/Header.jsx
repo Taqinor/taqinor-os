@@ -1,6 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 // VX154 — mot-symbole soleil-éclair de la marque (remplace le <Zap> générique).
 import TaqinorMark from '../../ui/TaqinorMark'
 import {
@@ -25,6 +25,7 @@ import CompanySwitcher from './CompanySwitcher'
 // que l'utilisateur n'a pas accès à 2 entités ou plus).
 import EntiteSwitcher from '../../features/entites/EntiteSwitcher'
 import NotificationBell from './NotificationBell'
+import { useHasPermission } from '../../hooks/useHasPermission'
 import BackgroundJobsBell from './BackgroundJobsBell'
 import SyncStatusBadge from './SyncStatusBadge'
 import Breadcrumbs from './Breadcrumbs'
@@ -50,6 +51,9 @@ import { initPreferences } from '../../pages/preferences/prefs'
 
 // SCA24 — marque produit neutre par défaut (build-time), écrasée par le
 // `nom_affichage` du TenantTheme de la société quand il est renseigné.
+// TCH123 — pastille ✓+ « tâches liées à cette fiche » : chargée à part, et seulement avec `taches_voir`.
+const BoutonTachesIci = lazy(() => import('../../features/taches/presence/BoutonTachesIci'))
+
 const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 
 // I35 — Déclenche la palette de commandes (⌘K) construite par l'autre lane,
@@ -76,6 +80,7 @@ export default function Header({ onMenu }) {
   },
   // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : ne se redéclenche QUE si l'id utilisateur change (jamais sur un changement d'identité de l'objet `user` qui laisse le même id) — même convention que VisiteursPage.jsx. (D-ENF22)
   [user?.id])
+  const peutTaches = useHasPermission('taches_voir')
   const t = useT()
   // VX181 — le ThemeToggle segmenté disparaît sous md (voir plus bas) ; ces 3
   // options du menu utilisateur restent le SEUL accès au thème sur mobile.
@@ -217,6 +222,12 @@ export default function Header({ onMenu }) {
           >
             <Bot size={19} aria-hidden="true" />
           </button>
+          {/* TCH123 — ✓+ : tâches liées à la fiche affichée (rien sans `taches_voir`). */}
+          {peutTaches && (
+            <Suspense fallback={null}>
+              <BoutonTachesIci />
+            </Suspense>
+          )}
           {/* NTMOB3 — statut de synchro de l'outbox terrain, visible partout
               (masqué quand tout est synchronisé et le réseau présent). */}
           <SyncStatusBadge />
