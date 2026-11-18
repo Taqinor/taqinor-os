@@ -758,11 +758,82 @@ def _libelles_objets(
             if isinstance(data.get(genre), str) and data[genre].strip()}
 
 
+#: Copilote v2 (F3) — libellé humain des entrées courantes d'une proposition
+#: (repli : `title` du schéma, sinon la clé lisible).
+LIBELLES_ENTREES = {
+    "nom": "Nom", "prenom": "Prénom", "societe": "Société", "telephone": "Téléphone",
+    "whatsapp": "WhatsApp", "email": "E-mail", "ville": "Ville", "adresse": "Adresse",
+    "type_installation": "Type d'installation", "raccordement": "Raccordement",
+    "batterie_souhaitee": "Batterie souhaitée", "taille_souhaitee_kwc": "Taille souhaitée (kWc)",
+    "note": "Note", "creer_quand_meme": "Créer même si un lead existe",
+    "perdu": "Perdu", "motif_perte": "Motif de perte", "tags": "Étiquettes",
+    "owner": "Responsable", "lead": "Lead", "lead_id": "Lead", "client": "Client",
+    "nb_panneaux": "Nombre de panneaux", "panneau_produit_id": "Panneau (produit)",
+    "onduleur_produit_id": "Onduleur (produit)", "onduleur_kw": "Onduleur (kW)",
+    "onduleur_phase": "Phase de l'onduleur", "batterie_produit_id": "Batterie (produit)",
+    "batterie_kwh": "Batterie (kWh)", "taux_tva": "Taux de TVA", "jours": "Jours",
+}
+#: Texte libre d'une entrée (une note, un message) tronqué dans l'aperçu.
+APERCU_TEXTE_MAX = 200
+
+
+def _libelle_entree(action: dict[str, Any], cle: str) -> str:
+    spec = ((action.get("inputs") or {}).get("properties") or {}).get(cle)
+    titre = spec.get("title") if isinstance(spec, dict) else None
+    if isinstance(titre, str) and titre.strip():
+        return titre.strip()
+    if cle in LIBELLES_ENTREES:
+        return LIBELLES_ENTREES[cle]
+    lisible = cle.replace("_", " ").strip()
+    return lisible[:1].upper() + lisible[1:]
+
+
+def _valeur_apercu(valeur: Any) -> str:
+    """Valeur lisible sur UNE ligne : jamais un repr Python d'une liste ou d'un
+    dict ; texte replié sur une ligne et tronqué à `APERCU_TEXTE_MAX`."""
+    if isinstance(valeur, bool):
+        return "oui" if valeur else "non"
+    if isinstance(valeur, float) and valeur.is_integer():
+        return str(int(valeur))
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(_valeur_apercu(v) for v in valeur if v is not None)
+    if isinstance(valeur, dict):
+        return " ; ".join(f"{k} : {_valeur_apercu(v)}" for k, v in valeur.items()
+                          if v is not None)
+    texte = " ".join(str(valeur).split())
+    if len(texte) > APERCU_TEXTE_MAX:
+        texte = texte[:APERCU_TEXTE_MAX - 1].rstrip() + "…"
+    return texte
+
+
+def _apercu_multiligne(action: dict[str, Any], inputs: dict[str, Any],
+                       libelles: dict[str, str] | None) -> str:
+    """Copilote v2 (F3) — première ligne : l'action (et le NOM des objets
+    désignés) ; puis UNE ligne par autre entrée, « Libellé : valeur »."""
+    summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    lignes = [(action.get("label") or summary) + " — " + " ; ".join(libelles.values())
+              if libelles else summary]
+    proprietes = list(((action.get("inputs") or {}).get("properties") or {}))
+    ordre = [c for c in proprietes if c in inputs] + sorted(c for c in inputs if c not in proprietes)
+    for cle in ordre:
+        if libelles and cle in libelles:
+            continue
+        valeur = _valeur_apercu(inputs[cle])
+        if valeur:
+            lignes.append(f"{_libelle_entree(action, cle)} : {valeur}")
+    return "\n".join(lignes)
+
+
 def _human_preview(action: dict[str, Any], inputs: dict[str, Any],
-                   libelles: dict[str, str] | None = None) -> str:
+                   libelles: dict[str, str] | None = None,
+                   multiligne: bool = False) -> str:
     """Texte court montre a l'utilisateur avant confirmation. Avec des
     libelles (COP-A5) : « Label — <libelle(s)> (autres entrees k=v) », les
-    entrees deja nommees n'etant pas repetees ; sinon la forme historique."""
+    entrees deja nommees n'etant pas repetees ; sinon la forme historique.
+    `multiligne` (copilote allume, F3) : une ligne par entree, libelles
+    humains, texte libre tronque."""
+    if multiligne:
+        return _apercu_multiligne(action, inputs, libelles)
     summary = action.get("confirm_summary") or action.get("label") or action["key"]
     if libelles:
         texte = (action.get("label") or summary) + " — " + " ; ".join(libelles.values())
@@ -1053,7 +1124,9 @@ def run_catalogue_action(
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
-        preview = _human_preview(action, inputs, _libelles_objets(ctx, action, inputs))
+        preview = _human_preview(
+            action, inputs, _libelles_objets(ctx, action, inputs),
+            multiligne=prompt_copilote.copilote_allume(getattr(ctx, "catalogue_tour", None)))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",

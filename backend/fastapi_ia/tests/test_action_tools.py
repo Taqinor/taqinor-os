@@ -1760,6 +1760,53 @@ class ApercuNommeCop5Tests(_AvecPropositions):
         self.assertEqual(appels, [])
         self.assertEqual(apercu, "Suppression irréversible du produit. (id=3)")
 
+    def _proposer_copilote(self, action, entrees, reponse):
+        collector: list = []
+        ctx = _ctx(role="admin")
+        ctx.catalogue_tour = [dict(action, lot="copilote")]
+        with mock.patch.object(at, "_django_call", lambda *a, **k: reponse):
+            at.run_catalogue_action(ctx, action, entrees, collector)
+        return collector[0]["human_preview"]
+
+    def test_apercu_une_ligne_par_entree_copilote_allume(self):
+        """Copilote v2 (F3) — une ligne par entrée, libellé humain, note longue
+        tronquée, jamais le repr Python d'une liste ; l'objet nommé garde la
+        forme du contrat."""
+        creer = {
+            "key": "crm.lead.creer", "label": "Créer un lead",
+            "endpoint": "/api/django/crm/assistant/leads/creer/", "method": "POST",
+            "inputs": {"type": "object", "properties": {
+                "nom": {"type": "string"}, "prenom": {"type": "string"},
+                "telephone": {"type": "string"}, "tags": {"type": "array"},
+                "note": {"type": "string"}, "creer_quand_meme": {"type": "boolean"},
+                "taille_souhaitee_kwc": {"type": "number"}},
+                "required": ["nom"]},
+            "risk": "outward"}
+        note = "Demande : 10 panneaux,\nonduleur triphasé 10 kW. " + "x" * 400
+        apercu = self._proposer_copilote(creer, {
+            "nom": "Alami", "prenom": "Karim", "telephone": "0661007731",
+            "tags": ["villa", "batterie"], "note": note, "creer_quand_meme": False,
+            "taille_souhaitee_kwc": 7.0}, {"ok": True, "status": 200, "data": {}})
+        lignes = apercu.split("\n")
+        self.assertEqual(lignes[:6], [
+            "Créer un lead", "Nom : Alami", "Prénom : Karim", "Téléphone : 0661007731",
+            "Étiquettes : villa, batterie",
+            lignes[5]])
+        self.assertTrue(lignes[5].startswith("Note : Demande : 10 panneaux, onduleur triphasé 10 kW. x"))
+        self.assertLessEqual(len(lignes[5]), len("Note : ") + at.APERCU_TEXTE_MAX)
+        self.assertTrue(lignes[5].endswith("…"))
+        self.assertEqual(lignes[6:], ["Créer même si un lead existe : non",
+                                      "Taille souhaitée (kWc) : 7"])
+        self.assertNotIn("[", apercu)
+        # Objet nommé : la première ligne reste celle du contrat.
+        attendu = _contrat_agent("assistant_reponse.json")["exemple_deux_propositions"]["cartes"][0]["apercu"]
+        self.assertEqual(self._proposer_copilote(
+            _CAT_ACCEPTER, {"id": 45}, {"ok": True, "status": 200, "data": self.libelles["exemple"]}), attendu)
+        reporter = self._proposer_copilote(
+            _CAT_TOUCHE_REPORTER, {"touche_id": 412, "lead_id": 1489, "jours": 3},
+            {"ok": True, "status": 200, "data": self.libelles["exemple"]})
+        self.assertEqual(reporter.split("\n")[1:], ["Jours : 3"])
+
 
 # ── COP-A6 — sorties d'outils bornées pour le modèle ──────────────────────────
 
