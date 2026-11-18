@@ -113,7 +113,7 @@ référence données/API.
 | En-têtes repliés | « À revoir ({n}) » · « En attente ({n}) » + « · {b} en attente d'une autre tâche » · « Faites ({n}) » |
 | Toute la journée | « Visite — {nom} » · « Pose — {reference} » · « Intervention — {reference} » ; chacune « Ouvrir » |
 | Prévu | « Suivi des relances : {nb} » ; repli « {n} activités ERP » ; bloc à heure « {HH:MM} » ; rendez-vous externe « {HH:MM}–{HH:MM} {titre} » + puce « {agenda} », sans case ni geste (lecture seule) |
-| Ligne proposée | puce « Garder » à droite de chaque ligne (la garde seule) ; sous l'en-tête : « En tête : {raison de la 1re ligne}. » (prochaine action d'un projet de priorité haute : « En tête : priorité haute. ») |
+| Ligne proposée | puce « Garder » à droite de chaque ligne (la garde seule ; le mot seul, sans icône ni « + ») ; sous l'en-tête : « En tête : {raison de la 1re ligne}. » (prochaine action d'un projet de priorité haute : « En tête : priorité haute. ») |
 | Proposé | bouton à contour « Garder ces {n} » (n = 1 : « Garder celle-ci ») ; « Voir tout ({reste}) » / « Masquer » ; « Voir toutes les tâches de mes projets ({reste}) » / « Masquer », déplié par projet : « ● {projet} », « Sans projet », une tâche prévue plus tard dit « prévue {jour} » ; objectif déjà couvert et rien qui presse : « Objectif couvert par ce que tu as gardé. » |
 | Raison de chaque ligne de Proposé (`RaisonPropose`) | `retard` « prévue hier » (sinon « prévue {jour passé} ») · `echeance_passee` « échéance dépassée le {jj/mm} » · `echeance_proche` « échéance {jour} » · `prochaine_action` « prochaine action de {projet} » (sans projet : « sans projet ») · `action_suivante` « suite de {projet} » |
 | Proposé après Alléger | en-tête replié « Proposé pour aujourd'hui · revient demain » |
@@ -156,10 +156,12 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Champ (indication) | « Ajouter une tâche… demain, 10 h, #projet, !! » |
 | Bouton | Ajouter |
 | Menu `#` | projets filtrés, puis « Créer « {nom} » » |
+| Dans le champ | chaque jeton lu est surligné à sa place dans le texte (un nouveau projet : en pointillé) ; un jeton dont la source ne tombe pas exactement à sa place n'est pas surligné |
 | Puces de jetons (× pour annuler) | jour « {jour} » · heure « {HH:MM} » · moment « Matin » / « Après-midi » / « Ce soir » · échéance « échéance {jour} [· {HH:MM}] » · « En réserve » · projet « ● {projet} » · nouveau « Nouveau projet : {nom} » (pointillé) avec sa puce « Haute · Moyenne · Basse » (Moyenne par défaut) · archivé « Projet archivé : {nom} » + « Réactiver {nom} » · étape « Étape : {nom} » · priorité « Priorité haute » / « moyenne » / « basse » · étiquette « {nom} » · durée « {durée} » · répétition « {libellé de la règle} » · rappel « Rappel {jour} {HH:MM} » · suggéré « Projet suggéré : {nom} » |
 | Alertes (`AlerteSaisie`) | `deux_<type>` « Deux {type lu} lus : le second reste dans le titre. » · `date_passee` « Date passée : {jj/mm/aaaa}. » · `heure_passee` « {heure} est passée : prévue {jour}. » · `plusieurs_projets` « Plusieurs projets s'appellent « {nom} » : le premier est choisi. » · `projet_archive` « « {nom} » est archivé : la tâche ira dans À trier. » · `date_invalide` « « {texte} » n'est pas une date : laissé dans le titre. » · `duree_hors_bornes` « Une durée va de 5 min à 16 h : « {texte} » reste dans le titre. » |
 | Aperçu (titre) | Aperçu de ta liste |
-| Projet de chaque collage | « Nouveau projet : {nom} » + puce Haute · Moyenne · Basse, ou « Projet : {nom} » ; bascule « En faire une tâche » |
+| Projet de chaque collage | en-tête sur une ligne « Nouveau projet : {nom} » (ou « Projet : {nom} »), puis « {n} tâches · En faire une tâche », et la priorité du nouveau projet en puce « {niveau} ⌄ » (un toucher ouvre Haute · Moyenne · Basse ; Moyenne par défaut) |
+| Liste collée d'un coup | le champ se replie : la feuille montre l'aperçu seul, en grand ; « Coller encore » rouvre le champ |
 | Par ligne | case ; titre modifiable ; puces ; « Déjà faite » (décochée) ; « Déjà dans « {projet} » » / « Déjà dans À trier » (décochée) ; « En double dans cette liste » (décochée) ; points de check-list en retrait ; « En faire des sous-tâches » |
 | Boutons | **Créer {n} tâches** (« Créer 1 tâche ») · Coller encore · Ranger avec le Copilote (si disponible) |
 | Vide | « Aucune ligne lisible. » |
@@ -174,10 +176,11 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 |---|---|
 | Bouton principal | **Fait** (faite : « Rouvrir ») |
 | Ouverte par un rappel (en tête) | Encore 10 min · Encore 1 h · Demain 9 h |
-| Champs visibles | Quand je la fais · Échéance · Projet · Priorité · ★ Essentielle · Notes · Check-list (« Ajouter un point ») |
-| Plus | Heure · Rappel · Répéter · Étiquettes · Durée · En attente de… · Jalon · Lié à · Confidentielle · Découper · Sous-tâches |
+| En-tête | × · un seul titre (celui de la tâche) · ☆ / ★ Essentielle · ⋯ (Abandonner · Supprimer — les mêmes gestes que dans Plus) |
+| Champs visibles | en puces, un toucher ouvre le champ sous la puce : Quand je la fais · Échéance · Projet · Priorité (une puce sans valeur reste vide ; une erreur se lit sous le champ) ; puis Notes et Check-list (« Ajouter un point », compte « {faits}/{n} ») en blocs titrés |
+| Plus | replié, avec l'indice « Répéter, durée, étiquettes, en attente de… » : Heure · Rappel · Répéter · Étiquettes · Durée · En attente de… · Jalon · Lié à · Confidentielle · Découper · Sous-tâches |
 | En attente de… | « Quelqu'un ou quelque chose » (champ « De qui ou de quoi ? ») · « Une autre tâche » |
-| Pied | Reporter à {jour} · Abandonner · Supprimer ; Supprimer demande « Supprimer « {titre} » ? » [Supprimer « {titre} »] |
+| Pied | Reporter à {jour} · **✓ Fait** (vert) ; Abandonner · Supprimer sont dans Plus et dans le ⋯ de l'en-tête ; Supprimer demande « Supprimer « {titre} » ? » [Supprimer « {titre} »] |
 | Priorité (champ) | Haute · Moyenne · Basse (même ordre partout) |
 | Découper | champ « Découper » (une sous-tâche par ligne) |
 | Aide repliée | « Confier à quelqu'un : crée une activité dans l'ERP, sur la fiche concernée. » |
@@ -196,15 +199,15 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 
 | Élément | Texte |
 |---|---|
-| Titre | À trier |
+| Titre | À trier ; sous-titre « {n} sans jour ni projet » (le compte de la boîte ; omis quand elle est vide) |
 | Section en tête | « Suggéré par l'ERP » ; ligne `{titre_propose}` + « Lié à : {libellé} » ; « Ajouter » · « Pas utile » |
-| Bandeau | « {n} à-faire personnels dans Activités · Tout convertir · Voir » |
-| Par ligne | Aujourd'hui · Demain · Projet… · ⋯ (Choisir un jour · En réserve · Garder sans projet · Supprimer) |
+| Bandeau | « {n} à-faire personnel(s) dans Activités », seule sur sa ligne ; dessous, en liens : Tout convertir · Voir |
+| Par ligne | case ronde (cocher = faite, toast « Faite ») · titre · mentions servies (« Suggéré par l'ERP », lien, échéance) · gestes en liens : Aujourd'hui · Demain · Projet… · ⋯ (Choisir un jour · En réserve · Garder sans projet · Supprimer) |
 | ⋯ de l'écran | Trier une par une · Ranger avec le Copilote (≥ 5 lignes) |
 | Trier une par une | une carte : titre, Aujourd'hui · Demain · Projet… · En réserve · Supprimer · Suivant ; fin : « Tout est trié » |
 | Vide | « Rien à trier » · Voir mes projets |
 | Refus de conversion | `assignee_a_un_collegue` « Assigné à un collègue : reste dans Activités. » · `deja_convertie` « Déjà convertie. » · `close` « Déjà faite dans Activités. » · `introuvable` « Introuvable. » |
-| Liste En réserve | titre « En réserve » ; vide « Rien en réserve » |
+| Liste En réserve | repliée EN BAS de la liste : « En réserve {n} ⌄ » (aucun commutateur en haut ; une tâche mise en réserve la rejoint aussitôt, avec son projet) ; vide « Rien en réserve » |
 
 ### 2.6 Projets, Un projet, Planifier le projet
 
