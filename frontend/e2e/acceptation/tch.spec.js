@@ -455,14 +455,15 @@ etape('P138.3', ['TCH138', 'TCH92', 'TCH87', 'TCH60', 'TCH61', 'TCH53'], async (
 })
 
 etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
-  const instant = scenario(['--jour', '2026-11-20', '--heure', '17:40'], '2026-11-20 17:40')
+  // Plan TCH138 étape 4 (corrigé) : semis par défaut (`--jour 2026-11-24`), horloge du serveur ET du navigateur au
+  // ven. 20 à 17:40 (semer au 20 décalait toute l'histoire de 4 jours : « 9 tâches en 2 jours »)
+  const instant = scenario(['--jour', J24], '2026-11-20 17:40')
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/revue', 'revue')
   await expect(p.locator('.ep-constat').first()).toBeVisible()
   await capturer(p, 'revue')
-  // Oracle : Revue « 21 faites en 4 jours » — mots de textes.md §4.5 : « Du {lun.} au {ven.} : {faites} tâches en
-  // {jours} jours … » (le plan et SCENARIO disent « faites » : ERR-PLAN de vocabulaire, le chiffre est l'oracle)
-  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 (faites|tâches) en 4 jours/)
+  // Oracle (plan corrigé) : Revue « 21 tâches en 4 jours » — mots de textes.md §4.5
+  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 tâches en 4 jours/)
   // décisions : une carte par projet actif, « Garder » chacune
   for (let n = 0; n < 10; n += 1) {
     const fin = p.locator('.ep-revue-fin')
