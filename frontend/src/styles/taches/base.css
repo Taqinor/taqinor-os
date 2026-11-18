@@ -1113,6 +1113,10 @@
 /* Feuille à crans : le corps défile, la poignée et l'en-tête restent */
 .tch .feuille-corps { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-top: 4px; }
 .tch .feuille .poignee { background: none; border: 0; }
+/* Passe visuelle n° 26 — au clavier, l'anneau de la poignée entoure la barre seule, jamais la cible de 88 × 44 px qui
+   déborde au-dessus de la feuille sur l'écran du dessous */
+.tch .feuille .poignee:focus-visible { box-shadow: none; }
+.tch .feuille .poignee:focus-visible::before { box-shadow: var(--focus-ring); }
 /* Bouton Copilote : la phrase (hors ligne, sans clé) se pose dessous, lue par role=status */
 .tch .copilote-groupe { position: relative; display: inline-flex; }
 .tch .copilote-phrase { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-base) + 3); width: min(320px, 80vw); padding: 12px 14px;
