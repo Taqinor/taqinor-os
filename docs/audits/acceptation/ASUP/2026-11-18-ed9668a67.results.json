@@ -2,9 +2,11 @@
   "sha": "ed9668a67ba1359ad572c028e4b9ab13f0a869ef",
   "date": "2026-11-18",
   "groupe": "ASUP",
-  "verdict": "PASS",
+  "verdict": "FAIL",
   "couvre": [
-    "ASUP68"
+    "ASUP68",
+    "ASUP66",
+    "ASUP69"
   ],
   "couvre_avec_ecart": [],
   "etapes": [
@@ -30,6 +32,50 @@
         "10": "NA"
       },
       "notes": ""
+    },
+    {
+      "id": "SONDES.ASUP66-sonde-py",
+      "taches": [
+        "ASUP66"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASUP/traces/2026-11-18/ASUP-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue), run https://github.com/Taqinor/taqinor-os/actions/runs/44209948217 ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes ASUP ; C-ASUP-003 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-ASUP-022 : verdict ÉCART, repro False, erreur non, base inchangée oui"
+    },
+    {
+      "id": "SONDES.ASUP69-sonde-hote-mutant",
+      "taches": [
+        "ASUP69"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ASUP/traces/2026-11-18/ASUP69-sonde-VER2-101.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue), run https://github.com/Taqinor/taqinor-os/actions/runs/44209948217 ; python docs/audits/sondes/ASUP/C-ASUP-VER2-101.py (arbre monté par scripts/sonde.py) : repro None (code 0) ; MUTANT avoir.html `{% set acheteur = avoir.client %}` (diff docs/audits/acceptation/ASUP/traces/2026-11-18/ASUP69-mutant.diff, trace docs/audits/acceptation/ASUP/traces/2026-11-18/ASUP69-sonde-VER2-101-mutant.txt) : repro None (code 0) [REFUS]"
     }
   ]
 }
