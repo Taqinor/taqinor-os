@@ -71,27 +71,38 @@ function disposer(liste) {
   })
 }
 
-function position(ev, debutGrille, finGrille) {
+/** Passe visuelle n° 7 — dans la Semaine (`cascade`), les colonnes sont étroites : deux blocs qui se chevauchent ne se
+ *  partagent plus la largeur (le premier, réduit à une pilule, perdait son titre) ; le second se pose en cascade sur
+ *  le premier, décalé de 10 % (maquette agenda-semaine.html `.ag-semcol .bloc.g2`). Le Jour garde les deux moitiés. */
+function position(ev, debutGrille, finGrille, cascade = false) {
   const debut = Math.max(ev.debut, debutGrille * 60)
   const fin = Math.min(ev.fin, finGrille * 60)
   const style = {
     top: `calc(var(--tch-heure-h) * ${(debut - debutGrille * 60) / 60} + 1px)`,
     height: `calc(var(--tch-heure-h) * ${Math.max(fin - debut, 15) / 60} - 2px)`,
   }
-  if (ev.voies >= 2) {
+  if (ev.voies >= 2 && cascade) {
+    if (ev.voie > 0) style.left = '10%'
+  } else if (ev.voies >= 2) {
     if (ev.voie === 0) style.right = 'calc(50% + 1px)'
     else style.left = 'calc(50% + 1px)'
   }
   return style
 }
 
-function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
+/** Classes de hauteur et de cascade d'un bloc : `court` (≤ 30 min), `h1` (≤ 1 h), `g2` (second d'un chevauchement). */
+const classesBloc = (ev, cascade) => [
+  ev.fin - ev.debut <= COURT ? 'court' : (ev.fin - ev.debut <= 60 ? 'h1' : ''),
+  cascade && ev.voies >= 2 && ev.voie > 0 ? 'g2' : '',
+]
+
+function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
   const { item } = ev
   const fait = item.statut === 'fait'
   const plage = ev.sansDuree
     ? `${heure(item.heure_debut)} · durée non estimée`
     : `${enHeure(ev.debut)} – ${enHeure(ev.fin)}`
-  const classes = ['bloc', ev.fin - ev.debut <= COURT ? 'court' : '', fait ? 'fait-bloc' : '', choisi ? 'choisi' : '']
+  const classes = ['bloc', ...classesBloc(ev, cascade), fait ? 'fait-bloc' : '', choisi ? 'choisi' : '']
     .filter(Boolean).join(' ')
   return (
     <div className={classes} data-p={item.projet?.couleur || undefined} style={style} data-bloc={item.id}>
@@ -115,10 +126,10 @@ function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
   )
 }
 
-function BlocExterne({ ev, style, ouvert, onBasculer }) {
+function BlocExterne({ ev, style, cascade, ouvert, onBasculer }) {
   const { item } = ev
   const plage = `${enHeure(ev.debut)}–${enHeure(ev.fin)}`
-  const classes = ['bloc', 'erp', 'ag-externe', ev.fin - ev.debut <= COURT ? 'court' : ''].filter(Boolean).join(' ')
+  const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev, cascade)].filter(Boolean).join(' ')
   return (
     <>
       <button
@@ -195,17 +206,18 @@ function Colonne({ jour, nomJour, props }) {
         placement={placement} onCreneau={onCreneau}
       />
       {disposer(evenements(jour)).filter((ev) => ev.voie < VOIES_VISIBLES).map((ev) => {
-        const style = position(ev, debut, fin)
+        const cascade = Boolean(props.plusieurs)
+        const style = position(ev, debut, fin, cascade)
         if (ev.type === 'externe') {
           return (
             <BlocExterne
-              key={ev.cle} ev={ev} style={style} ouvert={ouvert === ev.cle}
+              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle}
               onBasculer={() => setOuvert((actuel) => (actuel === ev.cle ? null : ev.cle))}
             />
           )
         }
         return (
-          <BlocTache key={ev.cle} ev={ev} style={style} choisi={choisi === ev.item.id}
+          <BlocTache key={ev.cle} ev={ev} style={style} cascade={cascade} choisi={choisi === ev.item.id}
             onCocher={onCocher} onOuvrir={onOuvrir} />
         )
       })}

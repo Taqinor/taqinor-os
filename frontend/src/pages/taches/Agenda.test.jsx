@@ -212,6 +212,21 @@ describe('TCH104 — vues et navigation', () => {
       .toBe('68px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
   })
 
+  it('Passe visuelle n° 7 — Semaine au bureau : bloc d\'une heure marqué `h1`, chevauchement en cascade (le premier garde sa largeur)', async () => {
+    const d = semaineAvecRepos()
+    const devis = d.jours[0].blocs[0]
+    d.jours[0].blocs.push({ ...devis, id: 77, titre: 'Appel fournisseur', heure_debut: '10:30', estimation_minutes: 30 })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const blocDevis = grille(container).querySelector('[data-bloc="20"]')
+    const blocAppel = grille(container).querySelector('[data-bloc="77"]')
+    expect(blocDevis).toHaveClass('h1')
+    expect(blocDevis.style.right).toBe('')
+    expect(blocAppel).toHaveClass('g2')
+    expect(blocAppel.style.left).toBe('10%')
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
