@@ -616,6 +616,29 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
   fichiers de `9e2a7bead6`, changer `branches: [dev-taches-f4]`) → fusionner son enregistrement, retirer les trois
   fichiers, pousser → CI → `draft=false` + `enable_pr_auto_merge(MERGE)`.
 
+**Point de 07 h 20 UTC (18/11) — fusion 4 : cinq lanes visuelles pliées sur six, relecture adverse du delta lancée**
+
+- **Pliées dans `dev-taches-f4`** (tête locale `81b8edaaca`, poussée jusqu'à `a7df0b07bf` ; CI de `a7df0b07bf` en cours à
+  07 h 20) : V-A (12 corrections), V-B (10), V-E (3 : recherche, Supprimées, hors ligne), V-C1 (9 : agenda et Planifier),
+  V-D (5 : Copilote ouvert depuis Tâches, cartes, Mon iPhone, champs date et heure en français dans les captures).
+  **Reste V-C2** (projets, rythme, revue, réglages — pile n° 3, agent `a69a61cda2faaf007`).
+- **Trouvé et corrigé par l'orchestrateur après les plis** : (1) frontend-static rouge : bloc `@media (max-width: 768px)`
+  de Tâches placé avant celui de la coquille → `screen and (…)` ; (2) e2e rouge (2 tests de `taches-saisie`) : la ligne
+  « Ajouter une tâche » du bureau avait disparu sur une journée vide → rendue dans tous les états ; (3) vu sur les
+  captures : au bureau, sans projet, la liste glissait dans la piste de 216 px → chaque colonne placée dans SA piste ;
+  (4) test intermittent du bilan (`waitFor` qui rendait `null`) ; (5) test des suggestions resserré.
+- **Outillage** : `env.sh` remettait `REDIS_PORT=6379` à chaque relecture par `pile.sh` → toutes les piles partageaient
+  le cache 6379 (débits croisés ; 429 « disponible dans 528 758 secondes » après une horloge figée). Corrigé
+  (`${REDIS_PORT:-6379}`). Les lanceurs locaux posent `TENANT_RATE_LIMIT=0 LOGIN_RATE_LIMIT=1000/minute`, comme le job
+  e2e de la CI. Rejeu local des 5 specs e2e chromium de Tâches (`<scratchpad>/jouer-e2e-f4.sh`, pile n° 4) : 64 sur 64.
+- **En cours à 07 h 20** : relecture adverse (opus, lecture seule, `ab9d7c5a2032877e8`) du delta
+  `b95a46a99f..81b8edaaca` ; ESSAI (pas l'officiel) de `tch.spec.js` + `tch3.spec.js` sur la pile n° 1 avec la base
+  migrée (`<scratchpad>/jouer-f4-essai-pile1.sh`, sortie `f4-essai-1.log`) pour voir tôt les étapes cassées par les
+  changements de structure. **Connu : P139.6 cherche « Adresse de l'agenda » dans Réglages → Avancé ; depuis la fusion 3
+  « Mes agendas » vit dans `/taches/reglages/iphone?etape=calendrier` → corriger le chemin dans la spec (pas l'oracle).**
+- Mesuré : en bas de « Mon iPhone » le dernier interrupteur passe bien au-dessus du « + » flottant (y=500 contre 720) :
+  la capture de la lane était prise en cours de défilement, ce n'est pas un défaut.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
