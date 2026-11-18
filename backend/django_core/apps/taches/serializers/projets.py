@@ -92,7 +92,7 @@ class ProjetModificationSerializer(serializers.Serializer):
         if 'montrer_faites' in valeur and not isinstance(valeur['montrer_faites'], bool):
             raise serializers.ValidationError(VALEUR_INCONNUE)
         for cle in ('tri', 'groupe'):
-            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20:
+            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20):
                 raise serializers.ValidationError(VALEUR_INCONNUE)
         return valeur
 
