@@ -258,8 +258,9 @@ export function DialogueTerminer({ projet, onFait, onFermer }) {
    ========================================================================== */
 
 /** La clé que le serveur ajoute à l'APERÇU d'une copie : le nombre de tâches confidentielles NON reprises (jamais copiées
- *  dans un modèle ni dans un double). Absente ou nulle : rien n'est dit. Nom attendu, à confirmer avec le serveur. */
-const CLE_CONFIDENTIELLES = 'nb_confidentielles_non_reprises'
+ *  dans un modèle ni dans un double). Absente ou nulle : rien n'est dit. Servie par `modele.json` et
+ *  `modele_instancier.json`. */
+const CLE_CONFIDENTIELLES = 'confidentielles_non_reprises'
 
 function NonReprises({ apercu }) {
   const n = apercu?.[CLE_CONFIDENTIELLES]

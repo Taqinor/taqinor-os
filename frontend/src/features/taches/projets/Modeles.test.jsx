@@ -246,8 +246,8 @@ describe('TCH157 — Enregistrer comme modèle', () => {
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(modeleServi()))
   })
 
-  it('F4 revue #11 — des tâches confidentielles non reprises sont dites quand le serveur en compte (clé `nb_confidentielles_non_reprises`)', async () => {
-    api.dupliquerProjet.mockResolvedValue({ data: { ...apercuServi(), nb_confidentielles_non_reprises: 2 } })
+  it('F4 revue #11 — des tâches confidentielles non reprises sont dites quand le serveur en compte (clé `confidentielles_non_reprises`)', async () => {
+    api.dupliquerProjet.mockResolvedValue({ data: { ...apercuServi(), confidentielles_non_reprises: 2 } })
     render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
     expect(await within(dialogue).findByText('2 tâches confidentielles non reprises')).toBeInTheDocument()
@@ -333,7 +333,7 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
   })
 
   it('F4 revue #11 — Dupliquer dit les tâches confidentielles non reprises quand l\'aperçu du serveur en compte', async () => {
-    api.dupliquerProjet.mockImplementation(async () => ({ data: { ...apercuServi(), nb_confidentielles_non_reprises: 1 } }))
+    api.dupliquerProjet.mockImplementation(async () => ({ data: { ...apercuServi(), confidentielles_non_reprises: 1 } }))
     const user = utilisateur()
     monterProjet()
     await ouvrirMenu(user, 'Dupliquer')
