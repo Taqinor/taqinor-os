@@ -1,0 +1,21 @@
+# Environnement local de la session cloud (Postgres + Redis natifs, Python 3.11 comme la CI).
+export PATH=/opt/venv-erp/bin:$PATH
+export DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev
+export DJANGO_SECRET_KEY=cloud-dev-only-secret-key-not-used-in-production
+export DJANGO_DEBUG=True
+export DB_NAME=${DB_NAME:-erp_db}
+export DB_USER=erp_user
+export DB_PASSWORD=erp_password
+export DB_HOST=localhost
+export DB_PORT=5432
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
+export DB_STATEMENT_TIMEOUT_MS=600000
+export MINIO_ENDPOINT=localhost:9000
+export MINIO_ROOT_USER=erp_admin
+export MINIO_ROOT_PASSWORD=erp_minio_password
+export MINIO_BUCKET_PDF=erp-pdf
+export MINIO_BUCKET_UPLOADS=erp-uploads
+export PYTHONIOENCODING=utf-8
+export PGPASSWORD=erp_password
+export PYTHONTZPATH=""
