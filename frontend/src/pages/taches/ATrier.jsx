@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Ellipsis, Link as LienIcone, Sparkles } from 'lucide-react'
+import { ChevronDown, Ellipsis, Link as LienIcone, Sparkles } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { SuggereParLErp } from '../../features/taches/atrier/Suggestions'
@@ -95,8 +95,11 @@ function LigneATrier({ tache, propose, reserve, actions, aujourdhui, onChoisirJo
 
 export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const navigate = useNavigate()
-  const [vue, setVue] = useState('boite')
   const [lignes, setLignes] = useState([])
+  const [reserveLignes, setReserveLignes] = useState([])
+  const [reserveLue, setReserveLue] = useState(false)
+  const [reserveOuverte, setReserveOuverte] = useState(false)
+  const [echecReserve, setEchecReserve] = useState('')
   const [charge, setCharge] = useState(false)
   const [echec, setEchec] = useState('')
   const [erreur, setErreur] = useState('')
@@ -109,16 +112,18 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const [propositions, setPropositions] = useState(null)
   const [uneParUne, setUneParUne] = useState(false)
 
-  // une autre liste : on ne montre jamais les lignes de l'ancienne le temps de la lecture
-  const changerVue = (nom) => { if (nom !== vue) { setLignes([]); setCharge(false); setPropositions(null); setVue(nom) } }
-
-  const lire = useCallback((nom) => listerToutesLesTaches({ vue: nom })
+  const lire = useCallback(() => listerToutesLesTaches({ vue: 'boite' })
     .then((taches) => { setLignes(taches); setEchec(''); setCharge(true) })
     .catch((err) => { setEchec(frenchError(err)); setCharge(true) }), [])
+  // « En réserve {n} » est replié en bas de la liste (ecran-a-trier.html) : son compte se lit dès l'ouverture ;
+  // une lecture en échec laisse les lignes déjà lues (jamais une fausse réserve vide)
+  const lireReserve = useCallback(() => listerToutesLesTaches({ vue: 'quelque_jour' })
+    .then((taches) => { setReserveLignes(taches); setReserveLue(true); setEchecReserve('') })
+    .catch((err) => setEchecReserve(frenchError(err))), [])
 
-  useEffect(() => { lire(vue) }, [vue, lire])
-  // une création ailleurs (saisie, collage, file rejouée) : la liste se relit une fois, sans recharger la page
-  useApresCreation(useCallback(() => { lire(vue) }, [vue, lire]))
+  useEffect(() => { lire(); lireReserve() }, [lire, lireReserve])
+  // une création ailleurs (saisie, collage, file rejouée) : les listes se relisent une fois, sans recharger la page
+  useApresCreation(useCallback(() => { lire(); lireReserve() }, [lire, lireReserve]))
 
   useEffect(() => {
     lireAujourdhui({ jour: aujourdhui })
@@ -130,17 +135,25 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     if (projets.length === 0) listerTousLesProjets().then((l) => setProjets(l)).catch((err) => setErreur(frenchError(err)))
   }, [projets.length])
 
-  /** Un geste sur une ligne : elle part TOUT DE SUITE, revient à sa place si le serveur refuse. */
+  /** Un geste sur une ligne (de la boîte ou de la réserve dépliée) : elle part TOUT DE SUITE, revient à sa place si
+   *  le serveur refuse ; mise en réserve depuis la boîte, elle rejoint aussitôt « En réserve ». */
   const appliquer = useCallback(async (tache, action, valeurs, message) => {
-    const index = lignes.findIndex((l) => l.id === tache.id)
+    const enReserve = reserveLignes.some((l) => l.id === tache.id)
+    const setSource = enReserve ? setReserveLignes : setLignes
+    const index = (enReserve ? reserveLignes : lignes).findIndex((l) => l.id === tache.id)
+    const versReserve = !enReserve && action === 'planifier' && Boolean(valeurs?.quelque_jour)
     setErreur('')
-    setLignes((liste) => liste.filter((l) => l.id !== tache.id))
-    const remettre = () => setLignes((liste) => {
-      if (liste.some((l) => l.id === tache.id)) return liste
-      const suite = [...liste]
-      suite.splice(Math.max(index, 0), 0, tache)
-      return suite
-    })
+    setSource((liste) => liste.filter((l) => l.id !== tache.id))
+    if (versReserve) setReserveLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, { ...tache, quelque_jour: true }]))
+    const remettre = () => {
+      if (versReserve) setReserveLignes((liste) => liste.filter((l) => l.id !== tache.id))
+      setSource((liste) => {
+        if (liste.some((l) => l.id === tache.id)) return liste
+        const suite = [...liste]
+        suite.splice(Math.max(index, 0), 0, tache)
+        return suite
+      })
+    }
     try {
       const { data } = await traiterLot({ ids: [tache.id], action, valeurs })
       if ((data?.refusees ?? []).some((r) => r.id === tache.id)) { remettre(); setErreur('Cette tâche a changé : elle est restée dans la liste.'); return }
@@ -152,7 +165,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       remettre()
       setErreur(classerErreur(err).code === 'reseau' ? 'Possible une fois connecté' : frenchError(err))
     }
-  }, [lignes])
+  }, [lignes, reserveLignes])
 
   const actions = {
     aujourdhui: (t) => appliquer(t, 'planifier', { jour_prevu: aujourdhui }, 'Mise à aujourd\'hui'),
@@ -185,10 +198,10 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       setRefus([...new Set((data.refusees ?? []).map((r) => REFUS_CONVERSION[r.raison]).filter(Boolean))])
       setAConvertir((c) => Math.max(c - n, 0))
       if (n > 0) {
-        await lire(vue)
+        await lire()
         proposerAnnuler({
           message: n > 1 ? `${n} tâches créées` : 'Ajoutée',
-          onAnnuler: data.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(vue) } : undefined,
+          onAnnuler: data.geste_id ? async () => { await annulerGeste(data.geste_id); await lire() } : undefined,
         })
       }
     } catch (err) {
@@ -222,7 +235,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       const n = data?.appliquees?.length ?? ids.length
       proposerAnnuler({
         message: n >= 2 ? `${n} tâches rangées` : `${n} tâche rangée`, // accord sur le même nombre que l'affiché
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(vue) } : undefined,
+        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire() } : undefined,
       })
     } catch (err) {
       setLignes(avant)
@@ -242,10 +255,21 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
 
   const actionsEcran = []
   if (lignes.length > 0) actionsEcran.push({ libelle: 'Trier une par une', onSelect: () => { chargerProjets(); setUneParUne(true) } })
-  if (lignes.length >= SEUIL_COPILOTE && vue === 'boite') actionsEcran.push({ libelle: 'Ranger avec le Copilote', onSelect: rangerAvecCopilote })
+  if (lignes.length >= SEUIL_COPILOTE) actionsEcran.push({ libelle: 'Ranger avec le Copilote', onSelect: rangerAvecCopilote })
 
   const proposees = propositions ? Object.keys(propositions).length : 0
-  const reserve = vue === 'quelque_jour'
+  const ligneDe = (tache, reserve) => (
+    <LigneATrier
+      key={tache.id}
+      tache={tache}
+      reserve={reserve}
+      propose={!reserve && propositions ? (propositions[tache.id] ?? null) : undefined}
+      actions={actions}
+      aujourdhui={aujourdhui}
+      onChoisirJour={choisirJour}
+      onProjet={ouvrirProjet}
+    />
+  )
 
   return (
     <CoquilleTaches
@@ -271,13 +295,9 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       ) : null}
       {refus.map((phrase) => <p key={phrase} className="apercu-note" role="status">{phrase}</p>)}
 
-      <div className="segmente" role="radiogroup" aria-label="Liste">
-        <button type="button" role="radio" aria-checked={!reserve} onClick={() => changerVue('boite')}>À trier</button>
-        <button type="button" role="radio" aria-checked={reserve} onClick={() => changerVue('quelque_jour')}>En réserve</button>
-      </div>
-
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
       {echec ? <p className="erreur-champ" role="alert">{echec}</p> : null}
+      {echecReserve && !echec ? <p className="erreur-champ" role="alert">{echecReserve}</p> : null}
       <ChargementTardif actif={!charge} />
 
       {uneParUne ? (
@@ -296,7 +316,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
         </div>
       ) : null}
 
-      {!uneParUne && !reserve ? (
+      {!uneParUne ? (
         <SuggereParLErp
           onAjoutee={(tache) => setLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, tache]))}
           onRetiree={(id) => setLignes((liste) => liste.filter((l) => l.id !== id))}
@@ -304,29 +324,32 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       ) : null}
 
       {!uneParUne ? (
-        <section className="section" aria-label={reserve ? 'En réserve' : 'À trier'}>
-          {reserve ? <h2 className="section-titre"><span>En réserve</span></h2> : null}
-          <div className="liste" role="list">
-            {lignes.map((tache) => (
-              <LigneATrier
-                key={tache.id}
-                tache={tache}
-                reserve={reserve}
-                propose={propositions ? (propositions[tache.id] ?? null) : undefined}
-                actions={actions}
-                aujourdhui={aujourdhui}
-                onChoisirJour={choisirJour}
-                onProjet={ouvrirProjet}
-              />
-            ))}
-          </div>
+        <section className="section premiere" aria-label="À trier">
+          <div className="liste" role="list">{lignes.map((tache) => ligneDe(tache, false))}</div>
           {charge && !echec && lignes.length === 0 ? (
             <div className="vide-etat">
-              <p className="vide-phrase">{reserve ? 'Rien en réserve' : 'Rien à trier'}</p>
-              {reserve ? null : <button type="button" className="bouton second" onClick={() => navigate('/taches/projets')}>Voir mes projets</button>}
+              <p className="vide-phrase">Rien à trier</p>
+              <button type="button" className="bouton second" onClick={() => navigate('/taches/projets')}>Voir mes projets</button>
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {/* « En réserve {n} ⌄ » replié EN BAS de la liste (ecran-a-trier.html), jamais un commutateur en tête */}
+      {!uneParUne && reserveLue && (reserveLignes.length > 0 || reserveOuverte) ? (
+        <div className="replies">
+          <button type="button" className="replie" aria-expanded={reserveOuverte} onClick={() => setReserveOuverte((v) => !v)}>
+            <span>En réserve</span>
+            <span className="compte chiffres">{reserveLignes.length}</span>
+            <ChevronDown className="i i-16" aria-hidden="true" />
+          </button>
+          {reserveOuverte ? (
+            <section className="section" aria-label="En réserve">
+              <div className="liste" role="list">{reserveLignes.map((tache) => ligneDe(tache, true))}</div>
+              {reserveLignes.length === 0 ? <div className="vide-etat"><p className="vide-phrase">Rien en réserve</p></div> : null}
+            </section>
+          ) : null}
+        </div>
       ) : null}
     </CoquilleTaches>
   )
