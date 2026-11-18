@@ -3,6 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
+import { annulerEtRecaler, versionDe } from '../lib/versions'
 import { accord, jourNomme } from '../lib/textes'
 import { Ligne } from './Sections'
 import { Ailleurs } from './LignesErp'
@@ -45,10 +46,10 @@ export function useARevoir({ donnees, setDonnees, garde, charger }) {
       proposerAnnuler({
         message,
         onAnnuler: async () => {
-          await client.annulerGeste(data.geste_id)
+          const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
           setDonnees((d) => ({
             ...d,
-            a_decider: [item, ...(d.a_decider ?? [])],
+            a_decider: [{ ...item, lock_version: versionDe(retour, item.id, item.lock_version) }, ...(d.a_decider ?? [])],
             journee: (d.journee ?? []).filter((it) => cleDe(it) !== cleDe(item)),
           }))
         },

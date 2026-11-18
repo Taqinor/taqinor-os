@@ -23,6 +23,7 @@ import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cach
 import { MESSAGE_EN_FILE as TOAST_EN_FILE, enfilerCoche, enfilerReport } from '../../features/taches/horsligne/captureQueue'
 import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
+import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import recordsApi from '../../api/recordsApi'
 import { frenchError } from '../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
@@ -270,8 +271,8 @@ export default function Aujourdhui() {
       message: prochaine ? `Faite · prochaine ${jourNomme(prochaine, donnees?.jour)}` : 'Faite',
       annonce: `Fait : ${item.titre}`,
       onAnnuler: async () => {
-        await client.annulerGeste(data.geste_id)
-        patcher(cle, (it) => ({ ...it, statut: 'a_faire' }))
+        const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
+        patcher(cle, (it) => ({ ...it, statut: 'a_faire', lock_version: versionDe(retour, item.id, it.lock_version) }))
         poserProgression(avant)
       },
     })
@@ -300,8 +301,9 @@ export default function Aujourdhui() {
       proposerAnnuler({
         message,
         onAnnuler: async () => {
-          await client.annulerGeste(data.geste_id)
+          const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
           setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+          patcher(cle, (it) => ({ ...it, lock_version: versionDe(retour, item.id, it.lock_version) }))
         },
       })
     } catch (err) {
@@ -339,11 +341,11 @@ export default function Aujourdhui() {
       proposerAnnuler({
         message: suivant ? 'Essentielle' : 'Plus essentielle',
         onAnnuler: async () => {
-          await client.annulerGeste(data.geste_id)
+          const rendu = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
           setDonnees((d) => {
             const { suite, item: trouve } = retirer(d, cleDe(item))
             if (!trouve) return d
-            const retour = { ...trouve, essentielle: !suivant }
+            const retour = { ...trouve, essentielle: !suivant, lock_version: versionDe(rendu, item.id, trouve.lock_version) }
             return suivant ? { ...suite, journee: [retour, ...(suite.journee ?? [])] } : { ...suite, essentiel: [...(suite.essentiel ?? []), retour] }
           })
         },

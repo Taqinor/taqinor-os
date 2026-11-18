@@ -316,7 +316,42 @@ describe('TCH76 — gestes optimistes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/88/annuler/', {}))
     expect(await screen.findByText('Timbres')).toBeInTheDocument()
-    expect(api.get).toHaveBeenCalledTimes(1)
+    // la journée n'est jamais relue ; seule la tâche remise l'est (sa version change à l'annulation, F4 revue #7)
+    expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
+  })
+
+  it('F4 revue #7 — Reporter, « Annuler », reporter encore : la requête porte la version RENDUE par le serveur (jamais « Cette tâche a changé »)', async () => {
+    const d = donnees()
+    const serveur = { verrou: d.journee.find((i) => i.id === 42).lock_version }
+    api.get.mockImplementation((url) => {
+      if (url === '/taches/aujourdhui/') return Promise.resolve({ data: d })
+      if (url === '/taches/taches/42/') return Promise.resolve({ data: { ...exempleContrat('taches', 'tache_ecrite').tache, id: 42, lock_version: serveur.verrou } })
+      return Promise.reject(new Error(`appel inattendu : GET ${url}`))
+    })
+    api.post.mockImplementation((url, corps) => {
+      if (url === '/taches/taches/42/planifier/') {
+        if (corps.lock_version !== serveur.verrou) return Promise.reject(Object.assign(new Error('http'), { response: { status: 409, data: { code: 'conflit_version', detail: 'Modifiée ailleurs.' } } }))
+        serveur.verrou += 1
+        const ecrite = exempleContrat('taches', 'tache_ecrite')
+        return Promise.resolve({ data: { ...ecrite, tache: { ...ecrite.tache, id: 42, lock_version: serveur.verrou }, geste_id: 60 } })
+      }
+      if (url === '/taches/gestes/60/annuler/') { serveur.verrou += 1; return Promise.resolve({ data: { restaurees: [{ objet: 'tache', id: 42 }], conflits: [], deja: false } }) }
+      return Promise.resolve({ data: {} })
+    })
+    monter()
+    await screen.findByText('Devis Settat')
+    const reporter = async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    }
+    await reporter()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/60/annuler/', {}))
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/taches/42/'))
+    await reporter()
+    await waitFor(() => expect(api.post.mock.calls.filter(([url]) => url.endsWith('/planifier/'))).toHaveLength(2))
+    expect(api.post.mock.calls.filter(([url]) => url.endsWith('/planifier/'))[1][1].lock_version).toBe(3) // version 1 → écriture 2 → annulation 3
+    expect(screen.queryByText(/Cette tâche a changé/)).toBeNull()
   })
 
   it('Raccord F2 — la `progression` rendue par une écriture (reporter) met la progression à jour sans relire la journée', async () => {

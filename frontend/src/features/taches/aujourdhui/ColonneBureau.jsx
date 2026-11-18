@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { frenchError } from '../../../lib/frenchError'
-import { annulerGeste, classerErreur, lireAgenda, listerTousLesProjets, planifierTache } from '../../../api/tachesApi'
+import { classerErreur, lireAgenda, listerTousLesProjets, planifierTache } from '../../../api/tachesApi'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
+import { annulerEtRecaler, versionDe } from '../lib/versions'
 import { jourNomme } from '../lib/textes'
 import GrilleAgenda from '../ui/GrilleAgenda'
 import { BandeauPasAJour } from './Sections'
@@ -109,9 +110,10 @@ export default function ColonneBureau({ jour, maintenant = '', glisse = null, on
     proposerAnnuler({
       message: `Placée à ${heure}`,
       onAnnuler: async () => {
-        if (data?.geste_id) await annulerGeste(data.geste_id)
+        // « Annuler » change la version de la tâche côté serveur : la ligne rendue garde celle que le serveur rend
+        const retour = data?.geste_id ? await annulerEtRecaler(data.geste_id, [item.id]) : null
         setAgenda(avant)
-        onRetiree?.(item)
+        onRetiree?.({ ...item, lock_version: versionDe(retour, item.id, item.lock_version) })
       },
     })
   }

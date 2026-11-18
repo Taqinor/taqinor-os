@@ -208,6 +208,46 @@ describe('TCH152 — la page Aujourd\'hui, au bureau et sur iPhone', () => {
     expect(await within(agenda).findByRole('button', { name: 'Ajouter à 14:00' })).toBeInTheDocument()
   })
 
+  it('F4 revue #7 — glisser sur 14:00, « Annuler », reglisser sur 15:00 : la requête porte la version RENDUE par le serveur', async () => {
+    window.matchMedia = media(true)
+    const serveur = { verrou: 1 }
+    api.post.mockImplementation((url, corps) => {
+      if (url === '/taches/taches/42/planifier/') {
+        if (corps.lock_version !== serveur.verrou) return Promise.reject(erreurHttp({ code: 'conflit_version', detail: 'Modifiée ailleurs.' }, 409))
+        serveur.verrou += 1
+        const ecrite = exemple('tache_ecrite')
+        return Promise.resolve({ data: { ...ecrite, tache: { ...ecrite.tache, id: 42, heure_debut: corps.heure_debut, lock_version: serveur.verrou }, geste_id: 91 } })
+      }
+      if (url === '/taches/gestes/91/annuler/') { serveur.verrou += 1; return Promise.resolve({ data: { restaurees: [{ objet: 'tache', id: 42 }], conflits: [], deja: false } }) }
+      return Promise.resolve({ data: {} })
+    })
+    api.get.mockImplementation((url) => {
+      if (url === '/taches/taches/42/') return Promise.resolve({ data: { ...exemple('tache_ecrite').tache, id: 42, lock_version: serveur.verrou } })
+      if (url === '/taches/agenda/') return Promise.resolve({ data: exemple('agenda') })
+      if (url === '/taches/projets/') return Promise.resolve({ data: exemple('projets_liste') })
+      if (url === '/taches/aujourdhui/') return Promise.resolve({ data: exemple('aujourdhui') })
+      return Promise.reject(new Error(`appel inattendu : GET ${url}`))
+    })
+    const { container } = monterPage()
+    const agenda = await screen.findByRole('complementary', { name: 'Agenda du jour' })
+    const ligne = () => container.querySelector('[data-ligne="tache:42"]')
+    await waitFor(() => expect(ligne()).not.toBeNull())
+    const glisserSur = async (heure) => {
+      fireEvent.dragStart(ligne(), { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+      fireEvent.drop(await within(agenda).findByRole('button', { name: `Placer à ${heure}` }))
+    }
+    await glisserSur('14:00')
+    await waitFor(() => expect(ligne().querySelector('.heure')).toHaveTextContent('14:00'))
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(serveur.verrou).toBe(3))
+    await waitFor(() => expect(ligne().querySelector('.heure')).toBeNull())
+    await glisserSur('15:00')
+    await waitFor(() => expect(api.post.mock.calls.filter(([url]) => url.includes('/planifier/'))).toHaveLength(2))
+    expect(api.post.mock.calls.filter(([url]) => url.includes('/planifier/'))[1][1].lock_version).toBe(3)
+    await waitFor(() => expect(ligne().querySelector('.heure')).toHaveTextContent('15:00'))
+    expect(document.body.textContent).not.toContain('Cette tâche a changé')
+  })
+
   it('un glisser abandonné (aucun dépôt) referme les créneaux et n\'écrit rien', async () => {
     window.matchMedia = media(true)
     const { container } = monterPage()

@@ -3,6 +3,7 @@ import api from '../../../api/axios'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
+import { annulerEtRecaler } from '../lib/versions'
 import { accord, jourCourt, jourNomme } from '../lib/textes'
 import { PHRASE_HORS_LIGNE } from './Sections'
 
@@ -53,8 +54,10 @@ function recomposer(liste, taches) {
   return liste.map((item) => (item.type === 'tache' ? suite.shift() : item))
 }
 
-function mapStatut(donnees, ids, statut) {
-  const fn = (item) => (item.type === 'tache' && ids.has(item.id) ? { ...item, statut } : item)
+function mapStatut(donnees, ids, statut, versions = null) {
+  const fn = (item) => (item.type === 'tache' && ids.has(item.id)
+    ? { ...item, statut, ...(versions?.[item.id] != null ? { lock_version: versions[item.id] } : {}) }
+    : item)
   const propose = donnees.propose
     ? { ...donnees.propose, pour_objectif: (donnees.propose.pour_objectif ?? []).map(fn) }
     : donnees.propose
@@ -119,8 +122,10 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
       proposerAnnuler({
         message: code === 'terminer' ? accord(appliquees.size, 'faite') : `Prévues ${jourCourt(valeurs?.jour_prevu, donnees.jour)}`,
         onAnnuler: async () => {
-          await client.annulerGeste(data.geste_id)
-          if (code === 'terminer') setDonnees((d) => mapStatut(d, appliquees, 'a_faire'))
+          // « Annuler » change la version de chaque tâche remise : on garde celle que le serveur rend
+          const retour = await annulerEtRecaler(data.geste_id, [...appliquees])
+          const versions = Object.fromEntries(Object.entries(retour.taches).map(([id, t]) => [id, t.lock_version]))
+          if (code === 'terminer') setDonnees((d) => mapStatut(d, appliquees, 'a_faire', versions))
           else setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
         },
       })
