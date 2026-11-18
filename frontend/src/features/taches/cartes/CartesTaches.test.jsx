@@ -124,6 +124,30 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(within(carte).getAllByRole('link', { name: 'Ouvrir' })[0]).toHaveAttribute('href', '/taches/aujourdhui?tache=20')
   })
 
+  it('relecture adverse F4 n° 4 — ma_journee : retoucher une case cochée ROUVRE la tâche (jamais « terminer » une faite) ; un échec la remet cochée', async () => {
+    const donnees = contrat('aujourdhui')
+    donnees.essentiel = [{ ...donnees.faites[0], essentielle: true }, ...donnees.essentiel]
+    monter('ma_journee', donnees)
+    const carte = screen.getByRole('group', { name: 'Ma journée' })
+    const caseFaite = () => within(carte).getByRole('checkbox', { name: 'Marquer « Dossier subvention » comme faite' })
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/12/rouvrir/', {}))
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/12/terminer/', expect.anything())
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'false')
+
+    // recochée : elle est terminée à nouveau
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/12/terminer/', expect.objectContaining({ lock_version: 5 })))
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'true')
+
+    // le serveur refuse la réouverture : la case revient cochée, elle ne ment pas
+    api.post.mockRejectedValueOnce(Object.assign(new Error('http'), { response: { status: 500, data: {} } }))
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(caseFaite()).toHaveAttribute('aria-checked', 'true'))
+  })
+
   it('liste_taches : projets et tâches, chaque « Ouvrir » mène à sa fiche', () => {
     monter('liste_taches', contrat('recherche'))
     const carte = screen.getByRole('group', { name: 'Tes tâches' })

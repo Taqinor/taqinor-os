@@ -181,7 +181,8 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [collages, setCollages] = useState(() => (Array.isArray(initial?.collages) ? initial.collages : []))
   const [quand, setQuand] = useState(() => initial?.quand ?? null)
   const [quandOuvert, setQuandOuvert] = useState(false)
-  const [champOuvert, setChampOuvert] = useState(false)
+  // replié par un VRAI collage d'une liste (aperçu seul) ; une liste reprise du brouillon montre l'aperçu seul, comme avant
+  const [champReplie, setChampReplie] = useState(() => (initial?.collages?.length ?? 0) > 0 || String(initial?.texte ?? '').includes('\n'))
   const [ignorer, setIgnorer] = useState([])
   const [priorites, setPriorites] = useState({})
   const [apercu, setApercu] = useState(null)
@@ -201,7 +202,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   }, [cle, texte, collages, quand])
 
   const remettreAZero = useCallback(() => {
-    setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampOuvert(false); setIgnorer([])
+    setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampReplie(false); setIgnorer([])
     setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null)); setQuandDepart(null)
   }, [])
 
@@ -225,7 +226,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   /** Ce qu'une demande de saisie porte (le `detail` de `taqinor:taches:saisir`) arrive dans la feuille. */
   const recevoir = useCallback((detail) => {
     if (typeof detail.texte === 'string') setTexte(detail.texte)
-    if (detail.liste || detail.coller) setChampOuvert(true)
+    if (detail.liste || detail.coller) setChampReplie(false)
     // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
     setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
     if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
@@ -245,10 +246,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
   }, [demandes, recevoir])
 
-  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste)
+  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste) — sauf l'Échap qu'un menu
+  // ouvert (puce de priorité de l'aperçu) a pris pour se fermer, lui (`preventDefault` de Radix)
   useEffect(() => {
     if (!ouverte) return undefined
-    const surTouche = (e) => { if (e.key === 'Escape') onFermer?.() }
+    const surTouche = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) onFermer?.() }
     document.addEventListener('keydown', surTouche)
     return () => document.removeEventListener('keydown', surTouche)
   }, [ouverte, onFermer])
@@ -279,17 +281,16 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     [frais, priorites],
   )
 
-  const surTexte = (valeur) => {
-    // une LISTE collée d'un coup (plusieurs lignes arrivées ensemble) : le champ se replie dès que l'aperçu est là,
-    // la feuille montre l'aperçu seul (premier-usage-1-apercu.html) ; « Coller encore » le rouvre
-    if (valeur.includes('\n') && valeur.length - texte.length > 1) setChampOuvert(false)
-    setTexte(valeur); setErreur('')
-  }
+  const surTexte = (valeur) => { setTexte(valeur); setErreur('') }
+  // une LISTE COLLÉE (le texte collé porte un saut de ligne) : le champ se replie dès que l'aperçu est là, la feuille
+  // montre l'aperçu seul (premier-usage-1-apercu.html) ; « Coller encore » le rouvre. Relecture adverse F4 n° 3 : seul
+  // un vrai collage replie — une suggestion du clavier, une dictée ou un mot collé grandissent aussi le texte d'un coup
+  const surColle = (colle) => { if (colle.includes('\n')) setChampReplie(true) }
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
     if (texte.trim()) setCollages((liste) => [...liste, texte])
-    setTexte(''); setChampOuvert(true); setErreur('')
+    setTexte(''); setChampReplie(false); setErreur('')
   }
 
   /** Hors ligne (TCH100) : les lignes partent dans la file, la feuille se ferme, le texte n'est jamais perdu. */
@@ -362,10 +363,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   return (
     <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
       <div className="feuille-saisie">
-        {!(modeListe && donneesListe) || champOuvert ? (
+        {!(modeListe && donneesListe) || !champReplie ? (
           <ChampSaisie
             valeur={texte}
             onChange={surTexte}
+            onColle={surColle}
             jetons={modeListe ? [] : ligne?.jetons ?? []}
             alertes={modeListe ? [] : ligne?.alertes ?? []}
             nouveauxProjets={modeListe ? [] : nouveauxProjets}
