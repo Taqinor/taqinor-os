@@ -18,6 +18,7 @@ from rest_framework.utils.encoders import JSONEncoder
 from rest_framework.views import APIView
 
 from apps.taches.confidentialite import est_confidentielle
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.selectors import projets as lecture
 from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
@@ -511,7 +512,9 @@ class RevueProjetsVue(APIView):
         try:
             semaine = datetime.date.fromisoformat(brut) if brut else timezone.localdate()
         except ValueError:
-            raise serializers.ValidationError({'semaine': ['Date attendue (AAAA-MM-JJ).']})
+            raise serializers.ValidationError({'semaine': [MESSAGE_DATE]})
+        if not jour_dans_bornes(semaine):
+            raise serializers.ValidationError({'semaine': [MESSAGE_DATE]})
         etat, ctx = _etat(request)
         return Response(formes_projets.revue_des_projets(request.user, etat, ctx, lecture.lundi_de(semaine)))
 

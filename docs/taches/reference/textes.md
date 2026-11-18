@@ -310,7 +310,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 | Modes | « En faire plus » — « Un objectif, et je te propose d'aller plus loin quand tu le tiens. » · « Garder ce rythme » — « Je ne te pousse plus ; je te préviens si tu t'en éloignes. » · « Sans objectif » — « Pas de nombre visé ; tes faites restent affichées. » |
 | Changer d'objectif | « Plus » · « Moins » · « Choisir un nombre (1 à 12) » |
 | 10 jours | « Les 10 derniers jours travaillés » (la fenêtre de la proposition de rythme) ; en tête « {total} faites » · « obj. {objectif} » ; une barre par jour travaillé ; un jour férié ou en congé n'a pas de barre et se dit sous la trace (« mer. 18 : férié ») ; jour sans données : barre vide |
-| Trace | « {N} faites ou plus {tenus} jours sur {sur} » (+ « · {jour} : férié ») |
+| Trace | « {N} faites ou plus {tenus} jour{s} sur {sur} » (« jour » à 0 ou 1 ; + « · {jour} : férié ») |
 | Avant 10 jours | « {n} jours sur 10 : il m'en faut 10 pour comprendre ton rythme. » |
 | Ce que j'ai remarqué | liste des constats (§4.4) ; vide « Rien de remarqué pour l'instant. » |
 | Repère (AVANCÉ) | « Repère : 6 de tes journées sur 10 sont à {p60} tâches ou moins (sur {jours} jours). » |
@@ -521,6 +521,7 @@ Bandeau de l'Agenda en cas d'échec : « « {libellé} » : {texte de l'état} �
 | Aide | « Éteint : plus aucun message ni rappel de Tâches n'est envoyé dans la société, jusqu'à ce que tu le rallumes. Rien d'autre ne change. » |
 | Dialogue d'extinction | « Couper tous les messages et rappels de Tâches pour la société ? » [Couper] [Fermer] ; toast « Messages et rappels coupés · Annuler » |
 | Bandeau quand c'est coupé (administrateurs) | « Messages et rappels de Tâches coupés pour la société depuis le {jj/mm} à {HH:MM}. » [Rallumer] |
+| « Envoyer un test » (Mon iPhone) quand c'est coupé | refus 409 `envoi_coupe` : « Messages et rappels de Tâches coupés pour la société. » (montré sous le bouton ; rien n'est envoyé) |
 | Activation | « Tâches est ouvert aux administrateurs. Pour l'ouvrir à un autre rôle : dans l'éditeur des rôles, coche « Tâches ». » |
 
 ## 3. Notifications

@@ -14,6 +14,7 @@ from apps.taches import nocturne
 from apps.taches.choix import (
     CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
+from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.services import revelations, rythme
 from apps.taches.tests import fabriques
@@ -113,6 +114,34 @@ class NuitRythmeTests(TestCase):
         self.assertAlmostEqual(carte.donnees['moyenne'], 3.2143, places=4)
         self.rejouer_sans_effet()
 
+    def test_derive_jamais_vers_zero_ni_borne_negative(self):
+        """Revue F2 tour 2 #9 : `m` plancher 1, bas de zone plancher 0, `R` montré comme l'objectif."""
+        fixee = J - datetime.timedelta(days=14)
+        reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=3, tenir_fixee_le=fixee)
+        jours(self.u1, [0] * 13 + [1])  # moyenne 0,07 → sous, arrondie 0
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR)
+        self.assertEqual((carte.donnees['m'], carte.donnees['R'], carte.donnees['bas']), (1, 3, 2.0))
+        IncitationCoach.objects.all().delete()
+        reglages.tenir_reference, reglages.tenir_silence_jusquau = 0.29, None
+        reglages.save(update_fields=['tenir_reference', 'tenir_silence_jusquau'])
+        PlanJour.objects.filter(proprietaire=self.u1).update(compte_rythme=2)  # moyenne 2 → au-dessus de 1,29
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR)
+        self.assertEqual((carte.cle, carte.donnees['m'], carte.donnees['R'], carte.donnees['bas']),
+                         ('au_dessus', 2, 1, 0))
+
+    def test_derive_sans_carte_quand_rien_a_proposer(self):
+        """#9 : R 1,4 (objectif 1) et 0,1 tâche par jour : « Garder 1, ou descendre à 1 » ne propose rien —
+        pas de carte, pas de silence (aucune carte dont le bouton ne fait rien)."""
+        fixee = J - datetime.timedelta(days=14)
+        reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=1.4, tenir_fixee_le=fixee)
+        jours(self.u1, [0] * 12 + [1, 1])
+        self.nuit()
+        self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR), [])
+        reglages.refresh_from_db()
+        self.assertIsNone(reglages.tenir_silence_jusquau)
+
     def test_tenir_provisoire_fixee_apres_14_jours(self):
         reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=5)
         jours(self.u1, [5] * 13 + [8])  # n° 37 : R 5,21
@@ -132,6 +161,37 @@ class NuitRythmeTests(TestCase):
         reglages.save(update_fields=['comprendre_mon_rythme'])
         self.nuit()
         self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.CONSTAT), [])
+
+    def test_constats_hors_premiere_livraison_jamais_crees(self):
+        """Revue F2 tour 2 #7 : C4 et C8 (leur « Oui » ne change rien) et C1, C2 (leurs lignes ne sont
+        écrites par rien) ne naissent pas, même quand leurs données y sont."""
+        fabriques.reglages(self.u1)
+        for d in range(1, 11):  # 10 plans à 5 gardées dont 2 faites : C4 serait vrai
+            fabriques.plan(self.u1, J - datetime.timedelta(days=d), statut_jour=StatutJour.EVALUE, compte_rythme=2,
+                           plan_prevues=5, plan_faites=2)
+        projet = fabriques.projet(self.u1)
+        with mock.patch.object(rythme, '_projet_neglige', return_value=projet.pk):
+            self.nuit()
+        self.assertEqual([c.cle for c in cartes(self.u1, type=TypeIncitationEcran.CONSTAT)
+                          if c.cle in ('C1', 'C2', 'C4', 'C8')], [])
+
+    def test_c7_compte_les_lignes_d_a_revoir(self):
+        """#7 : C7 compte les lignes « Reportée 3 fois » d'À revoir, que son bouton ouvre — jamais une
+        tâche déjà tranchée ni une tâche de la réserve."""
+        from apps.taches.services.journee import aujourdhui
+        fabriques.reglages(self.u1)
+        fabriques.tache(self.u1, reports=3, reports_tranches=3, jour_prevu=J + datetime.timedelta(days=2))
+        fabriques.tache(self.u1, reports=4, reports_tranches=4, quelque_jour=True)
+        self.nuit()
+        self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.CONSTAT, cle='C7'), [])
+        fabriques.tache(self.u1, reports=3, jour_prevu=J - datetime.timedelta(days=1))
+        fabriques.tache(self.u1, reports=5, reports_tranches=2, jour_prevu=J)
+        IncitationCoach.objects.all().delete()
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.CONSTAT, cle='C7')
+        maintenant = timezone.make_aware(datetime.datetime(2026, 11, 18, 9, 0))
+        a_revoir = aujourdhui(self.u1, J, maintenant)['a_decider']
+        self.assertEqual((carte.donnees, len(a_revoir)), ({'n': 2}, 2))
 
     def test_constat_c3_les_autres_jours(self):
         fabriques.reglages(self.u1)
@@ -229,6 +289,25 @@ class RevelationsCreationTests(TestCase):
         self.assertEqual((carte.type, carte.cle, carte.donnees, carte.jour, carte.expire_le),
                          ('revelation', 'ranger_copilote', {'n': 5}, J, J7))
         self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='ecran'))  # une fois
+
+    def test_ranger_copilote_dit_le_compte_courant(self):
+        """Revue F2 tour 2 #10 : « N tâches à trier » rendu À LA LECTURE, le même nombre que le compteur
+        À trier (`a_trier.boite_reception`) ; sous 5, la carte se tait."""
+        from apps.taches.models.taches import Tache
+        from apps.taches.serializers.rythme import forme_proposition
+        from apps.taches.services.journee import a_trier
+        taches = [fabriques.tache(self.u1) for _ in range(6)]
+        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie')
+        self.assertEqual(carte.donnees, {'n': 6})
+        Tache.objects.filter(pk=taches[0].pk).update(projet=fabriques.projet(self.u1), triee_le=timezone.now())
+        forme = forme_proposition(carte)
+        self.assertEqual(a_trier(self.u1, J)['boite_reception'], 5)
+        self.assertEqual((forme['donnees'], forme['texte']),
+                         ({'n': 5}, '5 tâches à trier : le Copilote peut les ranger dans tes projets.'))
+        Tache.objects.filter(pk=taches[1].pk).update(triee_le=timezone.now())
+        self.assertIsNone(forme_proposition(carte))  # 4 à trier : sous le seuil, la carte se tait
+        carte.reponse = 'ok'
+        self.assertEqual(forme_proposition(carte)['boutons'], [])  # répondue : rendue, sans boutons
 
     def test_planifier_le_premier_projet_seulement(self):
         premier = fabriques.projet(self.u1)

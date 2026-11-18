@@ -17,7 +17,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 
-from django.db.models import Q
+from django.db.models import BooleanField, ExpressionWrapper, Q
 from django.utils import timezone
 
 from apps.taches.choix import (
@@ -81,14 +81,17 @@ def _du_compte(modele, user):
 
 def taches_de_la_journee(user, jour):
     """Tâches du préfiltre de la journée de `user` au jour `jour` : vivantes, `parent` nul, non
-    bloquées, projet actif (ou sans projet et triées), et ouvertes hors « En réserve » ou faites ce
-    jour-là (heure locale)."""
+    bloquées, et soit ouvertes hors « En réserve » d'un projet actif (ou sans projet et triées), soit
+    faites ce jour-là (heure locale) QUEL QUE SOIT l'état de leur projet : une faite du jour reste dans
+    « Faites », l'essentiel et les gardées faites même si son projet est terminé ou mis en pause le
+    jour même — comme `compte_faites` la compte (revue F2 tour 2 #1). Une faite est toujours triée
+    (clore pose `triee_le`)."""
     debut, fin = bornes_du_jour(jour)
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
     ouverte = Q(statut__in=OUVERTS, quelque_jour=False)
     faite = Q(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
-    return (taches_de(user).filter(parent__isnull=True).filter(rattachee).filter(ouverte | faite)
+    return (taches_de(user).filter(parent__isnull=True).filter((rattachee & ouverte) | faite)
             .exclude(BLOQUEE))
 
 
@@ -135,7 +138,8 @@ def item_d_activite(activite):
 
 
 def plan_pur(plan, lignes):
-    """`PlanPur` d'un `PlanJour` (ou None) et de ses lignes."""
+    """`PlanPur` d'un `PlanJour` (ou None) et de ses lignes (lues par `lignes_du_plan`) ; une ★ n'y est
+    `essentielle` que si elle compte (`ligne_essentielle`)."""
     if plan is None:
         return None
     return classement.PlanPur(
@@ -143,7 +147,7 @@ def plan_pur(plan, lignes):
         allege_le=plan.allege_le, objectif_du_jour=plan.objectif_du_jour,
         lignes=tuple(classement.LignePure(
             tache_id=ligne.tache_id, activite_id=ligne.activite_id, prevue_au_plan=ligne.prevue_au_plan,
-            faite=ligne.faite, reportee=ligne.reportee, essentielle=ligne.essentielle,
+            faite=ligne.faite, reportee=ligne.reportee, essentielle=ligne_essentielle(ligne),
             creneau=ligne.creneau, rang=ligne.rang) for ligne in lignes))
 
 
@@ -191,9 +195,24 @@ def plan_du_jour(user, jour):
     return _du_compte(PlanJour, user).filter(jour=jour).first()
 
 
+#: LA règle d'une ★ qui compte (progression, nuit, « 3 au plus. ») : ligne `essentielle` dont la tâche est
+#: vivante et non abandonnée — une tâche supprimée ou abandonnée après sa ★ ne laisse pas un « essentiel 0
+#: sur 1 » fantôme ni ne prend une des 3 places (revue F2 tour 2 #11).
+ESSENTIELLE_VIVANTE = Q(essentielle=True, tache__is_deleted=False) & ~Q(tache__statut=StatutTache.ANNULE)
+
+
 def lignes_du_plan(plan):
-    """Les lignes d'un plan (une requête ; aucune sans plan)."""
-    return list(plan.ligneplanjour_set.all()) if plan is not None else []
+    """Les lignes d'un plan, chacune annotée `essentielle_vivante` (`ESSENTIELLE_VIVANTE`) — une requête ;
+    aucune sans plan."""
+    if plan is None:
+        return []
+    vivante = ExpressionWrapper(ESSENTIELLE_VIVANTE, output_field=BooleanField())
+    return list(plan.ligneplanjour_set.annotate(essentielle_vivante=vivante))
+
+
+def ligne_essentielle(ligne):
+    """La ligne (lue par `lignes_du_plan`) est-elle une ★ qui compte (`ESSENTIELLE_VIVANTE`) ?"""
+    return bool(ligne.essentielle_vivante)
 
 
 def lignes_de_taches_du_jour(user, jour):
@@ -309,12 +328,21 @@ def etat_rythme(reglages):
                       tenir_reference=float(tenir) if tenir is not None else None)
 
 
-def objectif_du_jour(reglages):
-    """Forme OBJECTIF `{nb, source, mode, zone}` (`moteur.rythme.objectif_affiche`)."""
+def objectif_en_vigueur(reglages):
+    """Forme OBJECTIF `{nb, source, mode, zone}` de l'objectif EN VIGUEUR (`moteur.rythme.
+    objectif_affiche`), sans le jour court : l'objectif d'UN jour, le seul servi, est
+    `services.journee.objectif_du_jour` (revue F2 tour 2 #3)."""
     etat = etat_rythme(reglages)
     nb, source, zone = objectif_affiche(etat)
     return {'nb': nb, 'source': str(source), 'mode': str(etat.mode),
             'zone': list(zone) if zone is not None else None}
+
+
+def objectif_atteint(compte, objectif):
+    """« Objectif atteint » (textes.md, lexique : compte ≥ objectif) : le bilan du soir d'un jour ET la
+    revue de la semaine qui le compte (revue F2 tour 2 #4) ; `None` sans objectif. Jamais la « journée
+    réussie » (essentiel compris, `moteur.rythme.journee_reussie`)."""
+    return None if objectif is None else compte >= objectif
 
 
 def preferences_de(user):
@@ -365,15 +393,22 @@ def activites_closes_du_jour(user, jour):
     return list(activites_closes_par(user, debut, fin).exclude(pk__in=portees).values_list('pk', flat=True))
 
 
-def compte_faites(user, jour):
+def compte_faites(user, jour, closes=None):
     """(`compte`, `detail`) de `compte_du_jour` : tâches faites ce jour et activités ERP closes par
-    lui ce jour (regles.md §6.1)."""
-    return compte_du_jour(faites_du_jour(user, jour), activites_closes_du_jour(user, jour))
+    lui ce jour (regles.md §6.1). `closes` : `activites_closes_du_jour` déjà lu par l'appelant (il
+    le passe aussi à `progression_du_jour`) — aucune lecture de plus."""
+    closes = activites_closes_du_jour(user, jour) if closes is None else closes
+    return compte_du_jour(faites_du_jour(user, jour), closes)
 
 
-def _ligne_faite(journee, ligne):
+def ligne_faite(journee, ligne, closes=()):
+    """LA règle d'une ligne de plan faite (progression, nuit, donc revue) : `faite` posée, ou sa tâche
+    faite aujourd'hui, ou son activité ERP close par lui aujourd'hui (`closes` =
+    `activites_closes_du_jour`, la même lecture que le compte : revue F2 tour 2 #2)."""
     if ligne.faite:
         return True
+    if ligne.activite_id is not None:
+        return ligne.activite_id in closes
     item = journee.items.get((TACHE, ligne.tache_id)) if ligne.tache_id else None
     return item is not None and item.statut == StatutTache.FAIT
 
@@ -391,19 +426,21 @@ def _minutes_prevues(journee):
     return sum(i.estimation_minutes or 0 for i in taches), sum(1 for i in taches if i.estimation_minutes is None)
 
 
-def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False):
+def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
-    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan`."""
-    essentielles = [ligne for ligne in journee.lignes if ligne.essentielle]
+    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
+    activités ERP closes du jour, lues pour `faites`)."""
+    essentielles = [ligne for ligne in journee.lignes if ligne_essentielle(ligne)]
     au_plan = [ligne for ligne in journee.lignes if ligne.prevue_au_plan]
     minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
     activites = [cle for cle in journee.sections.get(SectionJournee.JOURNEE, ()) if cle[0] == ACTIVITE]
+    closes = frozenset(closes)
     return {
         'faites': faites, 'detail': dict(detail), 'prevues': faites + len(gardes_ouverts(journee)),
-        'essentiel_faites': sum(1 for ligne in essentielles if _ligne_faite(journee, ligne)),
+        'essentiel_faites': sum(1 for ligne in essentielles if ligne_faite(journee, ligne, closes)),
         'essentiel_prevues': len(essentielles),
-        'plan_tenues': sum(1 for ligne in au_plan if _ligne_faite(journee, ligne)),
+        'plan_tenues': sum(1 for ligne in au_plan if ligne_faite(journee, ligne, closes)),
         'plan_lignes': len(au_plan), 'minutes_prevues': minutes, 'sans_estimation': sans,
         'capacite_minutes': capacite_minutes, 'capacite_source': capacite_source,
         'rendez_vous_minutes': rendez_vous_minutes,
@@ -430,12 +467,13 @@ def progression_courante(user, jour):
     reglages = reglages_de(user)
     travailles = travailles_autour(user, jour)
     journee = lire_journee(user, jour, reglages=reglages, travailles=travailles)
-    compte, detail = compte_faites(user, jour)
+    closes = activites_closes_du_jour(user, jour)
+    compte, detail = compte_faites(user, jour, closes)
     capacite = capacite_du_jour(user, jour, reglages, preferences_de(user), travailles)
     rendez_vous, _libelles = rendez_vous_pour(user, jour, jour)
     return progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite,
                                rendez_vous_minutes=minutes_de_rendez_vous(user, jour, rendez_vous),
-                               reprise=reprise_du_jour(user, jour))
+                               reprise=reprise_du_jour(user, jour), closes=closes)
 
 
 # --- Les obligations du jour (donnees.md §5 `obligations_du_jour`, TCH55) ------------------------

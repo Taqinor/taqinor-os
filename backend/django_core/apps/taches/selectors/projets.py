@@ -22,9 +22,9 @@ from apps.taches.models.taches import ElementChecklist
 from apps.taches.moteur import sante
 from apps.taches.moteur.classement import ItemPur, prochaine_action
 from apps.taches.moteur.gabarits import texte as gabarit_texte
-from apps.taches.moteur.rythme import journee_reussie, semaine_courte
+from apps.taches.moteur.rythme import semaine_courte
 from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
-from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT
+from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, objectif_atteint
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
@@ -32,6 +32,9 @@ CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
 HORIZON_JOURS = 800
 #: Fenêtre de la journée autour de J (la même que celle d'`aujourdhui/`).
 JOURNEE_AVANT, JOURNEE_APRES = JOURS_AVANT, JOURS_APRES
+#: Semaines lues avant et après celle de la revue pour savoir quels jours de la semaine il travaille
+#: d'habitude (« Jours non travaillés »).
+SEMAINES_HABITUDE = 4
 CHAMPS_TACHE = (
     'id', 'projet_id', 'parent_id', 'statut', 'quelque_jour', 'jour_prevu', 'echeance', 'fait_le',
     'created_at', 'annule_le', 'bloquee_par_id', 'bloquee_par__statut', 'bloquee_par__is_deleted',
@@ -400,12 +403,32 @@ def _faites_et_jours(plans):
     return sum(p.compte_rythme for p in evalues), len(evalues)
 
 
-def _jours_reussis(evalues):
-    """Nombre de jours « objectif atteint » (`None` si aucun jour n'avait d'objectif)."""
-    verdicts = [journee_reussie(p.compte_rythme, p.objectif_du_jour, p.essentiels_choisis, p.essentiels_faits)
-                for p in evalues]
+def _jours_objectif_atteint(evalues):
+    """X de « Objectif atteint X jours sur N » : jours jugés où le compte a atteint l'objectif du jour
+    (`objectif_atteint`, la définition du bilan du soir du même jour ; la nuit pose l'objectif de chaque
+    jour jugé) ; `None` si aucun jour jugé n'avait d'objectif (`libre`). Revue F2 tour 2 #4."""
+    verdicts = [objectif_atteint(p.compte_rythme, p.objectif_du_jour) for p in evalues]
     verdicts = [v for v in verdicts if v is not None]
     return sum(1 for v in verdicts if v) if verdicts else None
+
+
+def _jours_de_semaine_travailles(user, lundi):
+    """Jours de la semaine (0 = lundi … 6 = dimanche) qu'il travaille d'HABITUDE : ceux où tombe au moins
+    un de ses jours travaillés (`jours_travailles_de`, la source de toute l'app) dans les semaines autour
+    de celle de la revue — un férié ou un congé retire une date, jamais un jour de la semaine de toutes."""
+    ecart = datetime.timedelta(weeks=SEMAINES_HABITUDE)
+    return {d.weekday() for d in jours_travailles_de(user, lundi - ecart, lundi + datetime.timedelta(days=6) + ecart)}
+
+
+def _non_travailles(user, lundi, semaine):
+    """« Jours non travaillés : n » : jours de la semaine en congé ou fériés (`conge`, `non_ouvre`) qu'il
+    travaille d'habitude — jamais le samedi ni le dimanche d'un compte qui ne les travaille pas : la même
+    semaine dit la même chose le vendredi soir et le lundi (revue F2 tour 2 #4)."""
+    repos = [p for p in semaine if p.statut_jour in (StatutJour.CONGE, StatutJour.NON_OUVRE)]
+    if not repos:
+        return 0
+    habituels = _jours_de_semaine_travailles(user, lundi)
+    return sum(1 for p in repos if p.jour.weekday() in habituels)
 
 
 def bilan_de_semaine(user, lundi, mode):
@@ -425,8 +448,8 @@ def bilan_de_semaine(user, lundi, mode):
     evalues = _jours_evalues(semaine)
     texte = gabarit_texte('revue', 'entete', {
         'debut': lundi, 'fin': lundi + datetime.timedelta(days=4), 'faites': faites, 'jours': jours,
-        'prec': prec, 'oa': _jours_reussis(evalues), 'mode': mode,
+        'prec': prec, 'oa': _jours_objectif_atteint(evalues), 'mode': mode,
         'e': sum(p.essentiels_faits for p in evalues), 'je': sum(p.essentiels_choisis for p in evalues),
         'pt': sum(p.plan_faites for p in evalues), 'pl': sum(p.plan_prevues for p in evalues),
-        'non_travailles': sum(1 for p in semaine if p.statut_jour in (StatutJour.CONGE, StatutJour.NON_OUVRE))})
+        'non_travailles': _non_travailles(user, lundi, semaine)})
     return False, {'texte': texte, 'donnees': {'faites': faites, 'jours': jours, 'prec': prec}}

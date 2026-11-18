@@ -1378,7 +1378,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | GET | `/api/django/taches/jetons/` | lister (sans empreinte) | S | — | — | Mon iPhone | s6b §1 |
 | POST | `/api/django/taches/jetons/` | créer `{usage}` (clair rendu UNE fois ; révoque l'ancien) | S | — | — | Mon iPhone | s6b |
 | POST | `/api/django/taches/jetons/{id}/revoquer/` | révoquer | S | — | N | Mon iPhone | s6b |
-| POST | `/api/django/taches/mon-iphone/test-notification/` | push `TACHES_RAPPEL`, hors plafond | S | — | — | Mon iPhone étape 1 | s6b §9, C43 |
+| POST | `/api/django/taches/mon-iphone/test-notification/` | push `TACHES_RAPPEL`, hors plafond ; part tout de suite (jamais différé), aucune borne de débit ; coupe-circuit allumé : 409 `envoi_coupe`, rien n'est envoyé | S | — | — | Mon iPhone étape 1 | s6b §9, C43 |
 | GET | `/api/django/taches/tuile/` | tuile Scriptable | J:tuile | — | — | Scriptable | s6b §6 |
 | GET | `/api/django/taches/flux/{jeton}.ics` | calendrier abonné (`text/calendar`, `no-store`) | J:flux (URL) | — | — | Calendrier d'Apple | s6b §4 |
 | GET | `/api/django/taches/coach/entete/` | 2 lignes ≤ 300 car. | S | — | — | relais du Copilote | s5b §5 |

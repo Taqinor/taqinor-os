@@ -19,6 +19,7 @@ from rest_framework import serializers
 
 from apps.notifications.selectors import fenetre_notifications
 from apps.taches.choix import AncreRappel, SourceRappel, StatutRappel, StatutTache
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Rappel
 from apps.taches.moteur.gabarits import format_duree, format_heure, format_jour
@@ -52,9 +53,12 @@ def _jour(valeur):
     if valeur is None or isinstance(valeur, datetime.date):
         return valeur
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
-        raise serializers.ValidationError({'jour': ['Date attendue (AAAA-MM-JJ).']})
+        raise serializers.ValidationError({'jour': [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise serializers.ValidationError({'jour': [MESSAGE_DATE]})
+    return jour
 
 
 def _jour_du_rappel(tache, jour, ancre, decalage_jours):
