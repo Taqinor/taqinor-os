@@ -35,7 +35,7 @@ from apps.taches.models.taches import Rappel, Tache
 from apps.taches.serializers.formes import LIBELLE_LEAD_EFFACE, lien_de_tache
 from apps.taches.services.donnees import MODELES, exporter, _lignes_du_compte
 from apps.taches.services.erp import reverifier_liens
-from apps.taches.services.gestes import enregistrer_geste
+from apps.taches.services.gestes import annuler_geste, enregistrer_geste, op_suppression_douce
 from apps.taches.services.purge import purger
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
@@ -286,6 +286,17 @@ class PurgeTests(_Base):
         self.assertEqual((premier['taches_supprimees'], premier['projets_supprimes']), (1, 1))
         self.assertFalse(DeletionRecord.objects.filter(content_type__app_label='taches').exists())  # inv. 26
         self.assertEqual(set(purger(self.a.pk, JOUR).values()), {0})
+
+    def test_la_purge_du_parent_n_emporte_pas_la_sous_tache_restauree_detachee(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        enfant.soft_delete(self.u1, record=False)
+        geste = enregistrer_geste(self.u1, 'suppression', 'Supprimée', [op_suppression_douce('tache', enfant)])
+        self._supprimee(parent, 31)
+        annuler_geste(self.u1, geste.pk)
+        purger(self.a.pk, JOUR)
+        self.assertFalse(Tache.all_objects.filter(pk=parent.pk).exists())
+        self.assertTrue(Tache.objects.filter(pk=enfant.pk, parent__isnull=True).exists())
 
     def test_la_nuit_appelle_les_vraies_etapes(self):
         from apps.taches import nocturne
