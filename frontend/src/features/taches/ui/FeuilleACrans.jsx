@@ -41,6 +41,23 @@ function useClavier(actif) {
   return actif ? clavier : 0
 }
 
+/** Vrai entre `naviguerApresFeuille` et la fermeture de la feuille qu'elle remplace (voir ci-dessous). */
+let navigationVoulue = false
+
+/**
+ * F2 acceptation (P138.3) — naviguer en fermant une feuille (supprimer un projet → la liste, créer → le projet…).
+ * Le `history.back()` qui retire l'entrée de la feuille est ASYNCHRONE : lancé à la fermeture, il annulait la
+ * navigation demandée dans le même geste (on revenait sur le projet supprimé : « Ce projet n'existe plus. »). Ici la
+ * navigation REMPLACE l'entrée marquée (aucun retour arrière, l'historique reste propre : le retour mène à l'écran
+ * d'avant la feuille). Sans feuille ouverte, navigation ordinaire.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé avec l'entrée d'historique qu'il remplace (D-ENF22)
+export function naviguerApresFeuille(navigate, vers, options = {}) {
+  const marquee = typeof window !== 'undefined' && Boolean(window.history?.state?.tchFeuille)
+  if (marquee) navigationVoulue = true
+  navigate(vers, marquee ? { ...options, replace: true } : options)
+}
+
 /**
  * Raccord F2 — le retour arrière du navigateur (geste de l'iPhone) ferme la feuille au lieu de quitter l'écran :
  * à l'ouverture, une entrée d'historique MARQUÉE est posée (sans changer l'adresse) ; un retour qui la retire ferme
@@ -66,7 +83,10 @@ function useRetourFerme(actif, onFermer) {
     return () => {
       clearTimeout(minuteur)
       window.removeEventListener('popstate', surRetour)
-      if (posee && !parRetour && window.history.state?.tchFeuille === marque) window.history.back()
+      const voulue = navigationVoulue
+      navigationVoulue = false
+      // une navigation demandée en fermant remplace l'entrée marquée : surtout pas de retour arrière qui l'annulerait
+      if (posee && !parRetour && !voulue && window.history.state?.tchFeuille === marque) window.history.back()
     }
   }, [actif])
 }

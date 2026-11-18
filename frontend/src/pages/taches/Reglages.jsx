@@ -5,6 +5,7 @@ import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { configurerGestes } from '../../features/taches/lib/gestes'
 import ListeRubriques, { Avance, MesDonnees } from '../../features/taches/reglages/Rubriques'
+import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import ViePrivee from '../../features/taches/reglages/ViePrivee'
 
 /* ============================================================================
@@ -32,7 +33,7 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
       />
     )
   }
-  if (rubrique === 'donnees') return <MesDonnees onEfface={() => navigate('/taches/aujourdhui')} />
+  if (rubrique === 'donnees') return <MesDonnees onEfface={() => naviguerApresFeuille(navigate, '/taches/aujourdhui')} />
   if (rubrique === 'avance') {
     return (
       <Avance
