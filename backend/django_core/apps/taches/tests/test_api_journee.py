@@ -1023,6 +1023,12 @@ URL_PRIORITES = '/api/django/taches/journee/priorites/'
 URL_POINT = '/api/django/taches/journee/point/'
 
 
+#: Plafonds de requêtes mesurés horloge figée sur J (le Maroc est à UTC+0) : (moment -> plafond).
+MATIN_J, APRES_MIDI_J = '2026-11-17 09:00:00', '2026-11-17 15:00:00'
+PLAFONDS_PRIORITES = {MATIN_J: 15, APRES_MIDI_J: 15}
+PLAFONDS_POINT = {MATIN_J: 20, APRES_MIDI_J: 18}
+
+
 def requetes_de(client, url, params=None):
     """Nombre de requêtes d'un GET, une fois les caches du processus chauds (agendas, calendrier)."""
     from django.db import connection
@@ -1111,13 +1117,22 @@ class PrioritesTests(_Base):
         self.assertIn('jour', reponse.json())
 
     def test_plafond_de_requetes(self):
+        """Horloge FIGÉE sur J (mardi) aux deux moments — le matin, la journée relit aussi le plan de la
+        veille et ses restes — chacun à son plafond mesuré (cible api.md §10 : 20) ; ne grandit pas."""
+        from testkit.time import frozen
         self.scenario()
-        peu = requetes_de(client_de(self.u), URL_PRIORITES, {'jour': J.isoformat()})
-        self.assertLessEqual(peu, 20)
+        params = {'jour': J.isoformat()}
+        peu = {}
+        for moment, plafond in PLAFONDS_PRIORITES.items():
+            with self.subTest(moment=moment), frozen(moment):
+                peu[moment] = requetes_de(client_de(self.u), URL_PRIORITES, params)
+                self.assertLessEqual(peu[moment], plafond)
         for _ in range(10):
             self.tache()
             self.tache(echeance=jours(1), estimation_minutes=30)
-        self.assertEqual(requetes_de(client_de(self.u), URL_PRIORITES, {'jour': J.isoformat()}), peu)
+        for moment in PLAFONDS_PRIORITES:
+            with self.subTest(moment=moment), frozen(moment):
+                self.assertEqual(requetes_de(client_de(self.u), URL_PRIORITES, params), peu[moment])
 
     def test_canari_jamais_servi_a_l_assistant(self):
         canari(self.u, J)
@@ -1184,15 +1199,23 @@ class PointTests(_Base):
         self.assertEqual(self.point(10, 30)['prochaine']['id'], self.passee.pk)
 
     def test_route_et_plafond_de_requetes(self):
-        aujourdhui = timezone.localdate()
-        self.tache(jour_prevu=aujourdhui, estimation_minutes=30)
-        rendu = client_de(self.u).get(URL_POINT).json()
+        """Horloge FIGÉE sur J (mardi) aux deux moments — le matin, la journée relit aussi le plan de la
+        veille et ses restes — chacun à son plafond mesuré (cible api.md §10 : 18) ; ne grandit pas."""
+        from testkit.time import frozen
+        self.tache(jour_prevu=J, estimation_minutes=30)
+        with frozen(APRES_MIDI_J):
+            rendu = client_de(self.u).get(URL_POINT).json()
         self.assertEqual(list(rendu), list(exemple('point')))
-        peu = requetes_de(client_de(self.u), URL_POINT)
-        self.assertLessEqual(peu, 18)
+        peu = {}
+        for moment, plafond in PLAFONDS_POINT.items():
+            with self.subTest(moment=moment), frozen(moment):
+                peu[moment] = requetes_de(client_de(self.u), URL_POINT)
+                self.assertLessEqual(peu[moment], plafond)
         for _ in range(10):
-            self.tache(jour_prevu=aujourdhui)
-        self.assertEqual(requetes_de(client_de(self.u), URL_POINT), peu)
+            self.tache(jour_prevu=J)
+        for moment in PLAFONDS_POINT:
+            with self.subTest(moment=moment), frozen(moment):
+                self.assertEqual(requetes_de(client_de(self.u), URL_POINT), peu[moment])
 
     def test_canari_jamais_servi_a_l_assistant(self):
         canari(self.u, timezone.localdate())

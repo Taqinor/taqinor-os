@@ -22,6 +22,13 @@ import {
 } from './copilotMessages'
 import { instantaneDiagnostic } from '../../lib/tamponDiagnostic'
 import { signalerPanneauMonte, prendreEnAttente } from './ecouteurOuverture'
+// TCH118 / A12 — les quatre demandes prêtes de Tâches, sans modèle de langage.
+import { ajouterMessageLocal } from './store/iaSlice'
+import {
+  DEMANDES_PRETES_TACHES, demandePreteTaches, estEcranTaches, lancerDemandePrete,
+} from './copilotMessages'
+import * as tachesApi from '../../api/tachesApi'
+import { frenchError } from '../../lib/frenchError'
 
 // FG350 — Copilote in-app : tiroir conversationnel GLOBAL câblé sur l'agent
 // FastAPI (SQL + actions) déjà exposé par `iaApi`/`iaSlice` (POST
@@ -51,6 +58,13 @@ export default function CopilotPanel() {
   const [suggestions, setSuggestions] = useState(SUGGESTIONS)
   // COP-F7 — « Signaler un bug » : une phrase libre, puis le tampon technique.
   const [signalement, setSignalement] = useState(null)
+  // A12 (TCH118) — sur un écran `/taches…`, pour un compte qui a le module (`taches_voir`, la garde
+  // de ses routes), les quatre demandes prêtes appellent DIRECTEMENT la route déterministe : ni
+  // modèle de langage ni clé d'IA ; ailleurs, rien ne change.
+  const permissions = useSelector((s) => s.auth?.permissions)
+  const [demandeEnCours, setDemandeEnCours] = useState(false)
+  const demandesTaches = open && Array.isArray(permissions) && permissions.includes('taches_voir')
+    && estEcranTaches(routeNormalisee(window.location.pathname))
 
   useEffect(() => {
     if (open && !historyLoadedRef.current) {
@@ -94,6 +108,7 @@ export default function CopilotPanel() {
   // AIC9 — trois questions du manifeste pour l'écran, conversation vide.
   useEffect(() => {
     if (!open || messages.length > 0) return undefined
+    if (demandesTaches) return undefined // les quatre demandes prêtes sont déjà là, service ou pas
     let actif = true
     Promise.resolve(iaApi.getSuggestions?.(routeNormalisee(window.location.pathname)))
       .then((res) => {
@@ -102,7 +117,25 @@ export default function CopilotPanel() {
       })
       .catch(() => {})
     return () => { actif = false }
-  }, [open, messages.length])
+  }, [open, messages.length, demandesTaches])
+
+  // « Range ma liste » range les tâches À trier : leurs ids viennent de l'API Tâches, jamais devinés.
+  const lancerDemandeTaches = async (question) => {
+    const demande = demandePreteTaches(question)
+    if (!demande || agentLoading || demandeEnCours) return
+    dispatch(ajouterMessageLocal({ role: 'user', content: question }))
+    setDemandeEnCours(true)
+    try {
+      const ids = demande.lire === 'saisieRapide'
+        ? ((await tachesApi.listerToutesLesTaches({ vue: 'boite' })) ?? []).map((t) => t.id) : []
+      const msg = await lancerDemandePrete(question, { client: tachesApi, ids })
+      dispatch(ajouterMessageLocal(msg ? { ...msg, local: true } : { role: 'agent', content: 'Rien à trier', local: true }))
+    } catch (err) {
+      dispatch(ajouterMessageLocal({ role: 'agent', content: frenchError(err), local: true }))
+    } finally {
+      setDemandeEnCours(false)
+    }
+  }
 
   const envoyerSignalement = () => {
     const phrase = (signalement || '').trim()
@@ -167,6 +200,16 @@ export default function CopilotPanel() {
 
         {/* ── Zone messages ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
+          {demandesTaches && (
+            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Demandes prêtes">
+              {DEMANDES_PRETES_TACHES.map((d) => (
+                <Button key={d.question} variant="outline" size="sm" className="min-h-11"
+                  disabled={agentLoading || demandeEnCours} onClick={() => lancerDemandeTaches(d.question)}>
+                  {d.question}
+                </Button>
+              ))}
+            </div>
+          )}
           {messages.length === 0 && !agentLoading && (
             <EmptyState
               icon={MessageSquare}

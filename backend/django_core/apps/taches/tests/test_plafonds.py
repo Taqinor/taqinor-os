@@ -140,7 +140,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
 
     def test_badge(self):
         self._lire(URL_BADGE)
-        with self.assertMaxQueries(13):
+        with self.assertMaxQueries(14):  # mesuré 14 depuis que `badge/` porte `a_trier` (PlafondsFigesTests)
             self._lire(URL_BADGE)
 
     def test_proposition_du_jour(self):
@@ -284,3 +284,95 @@ class PlafondsConstantsTests(TestCase):
         avant = self._compter(lambda: self.api.get(url))
         _peupler(self.compte, self.projets[:1], self.etiquette, self.jour, 12, depart=400)
         self.assertEqual(self._compter(lambda: self.api.get(url)), avant)
+
+
+# ── F3 · Copilote et iPhone : plafonds à HORLOGE FIGÉE, posés à la mesure ─────────────────────────────
+# Un mardi ordinaire (le Maroc est à UTC+0). Avant midi, la journée lit en plus le plan de la veille et
+# ses restes (`services/journee._carte_bilan_hier`) : toute route qui passe par la journée est mesurée
+# AUX DEUX MOMENTS, chacun avec son plafond (mesurés le 18/11/2026 sur la base de la lane).
+JOUR_FIGE = datetime.date(2026, 11, 24)
+MATIN, APRES_MIDI = '2026-11-24 09:00:00', '2026-11-24 15:00:00'
+URL_PRIORITES = '/api/django/taches/journee/priorites/'
+URL_POINT = '/api/django/taches/journee/point/'
+#: route : (plafond à 09:00, plafond à 15:00).
+PLAFONDS_FIGES = {
+    URL_PRIORITES: (21, 21),   # TCH161 « Aide-moi à prioriser » ; cible api.md §10 : 20
+    URL_POINT: (26, 24),       # TCH161 « Où j'en suis ? » ; cible api.md §10 : 18
+    URL_BADGE: (14, 14),       # la pastille (porte `a_trier`)
+    URL_TUILE: (14, 14),       # TCH97, jeton tuile, authentification comprise ; cible 10
+    URL_FLUX: (9, 9),          # TCH97, jeton flux dans l'adresse, authentification comprise ; cible 8
+}
+
+
+def _fige(moment):
+    """L'horloge figée de la maison (freezegun)."""
+    from testkit.time import frozen
+    return frozen(moment)
+
+
+class PlafondsFigesTests(AssertQueryBudgetMixin, TestCase):
+    """Copilote (`journee/priorites/`, `journee/point/`), pastille, tuile et flux : régime permanent (un
+    appel de chauffe d'abord), horloge figée à 09:00 puis 15:00 ; les deux routes du Copilote ne
+    grandissent pas avec les tâches."""
+
+    @classmethod
+    def setUpTestData(cls):
+        with _fige(APRES_MIDI):
+            cls.compte = fabriques.compte(fabriques.societe('plafonds-figes'), nom='plafonds')
+            fabriques.reglages(cls.compte)
+            cls.projets = [fabriques.projet(cls.compte, priorite=priorite) for priorite in (3, 2, 0)]
+            fabriques.section(cls.projets[0])
+            cls.etiquette = Etiquette.objects.create(company=cls.compte.company, proprietaire=cls.compte,
+                                                     nom='magasin')
+            fabriques.activite(cls.compte)
+            _peupler(cls.compte, cls.projets, cls.etiquette, JOUR_FIGE, 6)
+            cls.jeton_tuile = fabriques.jeton(cls.compte, 'tuile')[1]
+            cls.jeton_flux = fabriques.jeton(cls.compte, 'flux')[1]
+
+    def _appel(self, url):
+        if url == URL_TUILE:
+            return lambda: _porteur(self.jeton_tuile).get(URL_TUILE)
+        if url == URL_FLUX:
+            return lambda: APIClient().get(URL_FLUX.format(jeton=self.jeton_flux))
+        api = APIClient()
+        api.cookies['access_token'] = str(AccessToken.for_user(self.compte))
+        return lambda: api.get(url)
+
+    def _compter(self, url):
+        appel = self._appel(url)
+        self.assertEqual(appel().status_code, 200)
+        with CaptureQueriesContext(connection) as capture:
+            reponse = appel()
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return len(capture)
+
+    def test_plafonds_aux_deux_moments(self):
+        for url, plafonds in PLAFONDS_FIGES.items():
+            for moment, plafond in zip((MATIN, APRES_MIDI), plafonds):
+                with self.subTest(url=url, moment=moment), _fige(moment):
+                    appel = self._appel(url)
+                    self.assertEqual(appel().status_code, 200)
+                    with self.assertMaxQueries(plafond):
+                        self.assertEqual(appel().status_code, 200)
+
+    def test_le_manifeste_porte_le_plus_haut_plafond_mesure(self):
+        """`docs/query-budgets.yml` garde chaque route au plus haut de ses deux plafonds mesurés."""
+        import yaml
+        from pathlib import Path
+        manifeste = Path(__file__).resolve().parents[5] / 'docs' / 'query-budgets.yml'
+        budgets = {e['path']: e for e in yaml.safe_load(manifeste.read_text(encoding='utf-8'))['endpoints']}
+        for url, plafonds in PLAFONDS_FIGES.items():
+            with self.subTest(url=url):
+                self.assertEqual((budgets[url]['budget'], budgets[url]['enforced']), (max(plafonds), True))
+
+    def test_priorites_et_point_ne_grandissent_pas(self):
+        """6 puis 18 tâches du jour (et autant de candidates sans jour) : le même nombre, à chaque moment."""
+        avant = {}
+        for moment in (MATIN, APRES_MIDI):
+            with _fige(moment):
+                avant[moment] = [self._compter(URL_PRIORITES), self._compter(URL_POINT)]
+        with _fige(APRES_MIDI):
+            _peupler(self.compte, self.projets, self.etiquette, JOUR_FIGE, 12, depart=500)
+        for moment in (MATIN, APRES_MIDI):
+            with self.subTest(moment=moment), _fige(moment):
+                self.assertEqual([self._compter(URL_PRIORITES), self._compter(URL_POINT)], avant[moment])

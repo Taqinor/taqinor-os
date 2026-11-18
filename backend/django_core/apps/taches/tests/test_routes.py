@@ -240,8 +240,10 @@ MODULES_SCHEMATISES = ('journee', 'agenda', 'saisie', 'taches', 'erp', 'projets'
                        'presence', 'donnees', 'agenda_externe')
 #: Échantillons qui ne sont la réponse ENTIÈRE d'aucune route : sous-objet d'une autre réponse
 #: (ITEM d'une liste paginée, carte du moment, rendez-vous, proposition), formes d'erreur, ou
-#: carte de fichier (gabarits des liens).
-ECHANTILLONS_PARTIELS = {'item', 'carte_du_moment', 'rendez_vous', 'proposition', 'erreurs', 'liens_cibles'}
+#: carte de fichier (gabarits des liens) ; `ecriture_a_valider` = `donnees` d'une carte posée par le
+#: relais du Copilote (A5).
+ECHANTILLONS_PARTIELS = {'item', 'carte_du_moment', 'rendez_vous', 'proposition', 'erreurs', 'liens_cibles',
+                         'ecriture_a_valider'}
 ECHANTILLONS = Path(__file__).resolve().parents[1] / 'contract_samples'
 
 

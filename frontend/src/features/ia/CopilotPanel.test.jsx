@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -25,6 +25,15 @@ import { EVENEMENT_OUVRIR } from './copilotMessages'
 import {
   installerEcouteurOuverture, reinitialiserEcouteurOuverture,
 } from './ecouteurOuverture'
+// TCH118 / A12 — les quatre demandes prêtes de Tâches (client Tâches mocké sur les contrats committés).
+import { MemoryRouter } from 'react-router-dom'
+import * as tachesApi from '../../api/tachesApi'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
+
+vi.mock('../../api/tachesApi', () => ({
+  proposerJournee: vi.fn(), lirePriorites: vi.fn(), lirePoint: vi.fn(), saisieRapide: vi.fn(),
+  listerToutesLesTaches: vi.fn(),
+}))
 
 /* Nouveau fichier car : aucun module vitest n'héberge le panneau Copilote
    (copilotMessages.test.mjs est un test node pur, sans DOM). */
@@ -189,5 +198,92 @@ describe('CopilotPanel — « Signaler un bug » (COP-F7)', () => {
     await user.click(screen.getByRole('button', { name: 'Envoyer' }))
     await waitFor(() => expect(iaApi.queryAgent).toHaveBeenCalledTimes(2))
     expect(iaApi.queryAgent.mock.calls[1][1].diagnostic).toBeNull()
+  })
+})
+
+describe('CopilotPanel — les quatre demandes prêtes de Tâches (A12, TCH118)', () => {
+  const contrat = (nom) => ({ data: structuredClone(exempleContrat('taches', nom)) })
+  const DEMANDES = ['Planifie ma journée', 'Aide-moi à prioriser', 'Range ma liste', 'Où j\'en suis ?']
+
+  function monterAvecDroits(permissions) {
+    const initial = iaReducer(undefined, { type: '@@init' })
+    const store = configureStore({
+      reducer: { ia: iaReducer, auth: (etat = { permissions }) => etat },
+      preloadedState: { ia: { ...initial, copilotOpen: true } },
+    })
+    render(<Provider store={store}><MemoryRouter><CopilotPanel /></MemoryRouter></Provider>)
+    return store
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks() // appels comptés par test (les réponses posées plus haut restent)
+    tachesApi.proposerJournee.mockResolvedValue(contrat('journee_proposition'))
+    tachesApi.lirePriorites.mockResolvedValue(contrat('priorites'))
+    tachesApi.lirePoint.mockResolvedValue(contrat('point'))
+    tachesApi.saisieRapide.mockResolvedValue(contrat('saisie_apercu'))
+    tachesApi.listerToutesLesTaches.mockResolvedValue([exempleContrat('taches', 'tache')])
+    iaApi.getSuggestions.mockRejectedValue(new Error('service IA injoignable'))
+  })
+
+  afterEach(() => { window.history.pushState({}, '', '/') })
+
+  it('sur /taches, les quatre demandes sont là même si le service d\'IA ne répond pas', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    monterAvecDroits(['taches_voir'])
+    const liste = await screen.findByRole('group', { name: 'Demandes prêtes' })
+    for (const q of DEMANDES) expect(within(liste).getByRole('button', { name: q })).toBeTruthy()
+    expect(iaApi.getSuggestions).not.toHaveBeenCalled()
+  })
+
+  it('« Aide-moi à prioriser » appelle la route déterministe et rend la carte, sans modèle', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    const user = userEvent.setup()
+    const store = monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Aide-moi à prioriser' }))
+    await screen.findByTestId('carte-taches-priorites')
+    expect(tachesApi.lirePriorites).toHaveBeenCalledTimes(1)
+    expect(iaApi.queryAgent).not.toHaveBeenCalled()
+    const [question, reponse] = store.getState().ia.messages
+    expect(question).toEqual({ role: 'user', content: 'Aide-moi à prioriser' })
+    expect(reponse.cartes[0].donnees).toEqual(exempleContrat('taches', 'priorites'))
+  })
+
+  it('« Range ma liste » range les ids À trier lus à l\'API Tâches (jamais devinés)', async () => {
+    window.history.pushState({}, '', '/taches/a-trier')
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Range ma liste' }))
+    await screen.findByTestId('carte-taches-capture_apercu')
+    expect(tachesApi.listerToutesLesTaches).toHaveBeenCalledWith({ vue: 'boite' })
+    expect(tachesApi.saisieRapide).toHaveBeenCalledWith({
+      ids: [exempleContrat('taches', 'tache').id], apercu: true })
+    expect(iaApi.queryAgent).not.toHaveBeenCalled()
+  })
+
+  it('« Range ma liste » sans tâche À trier : « Rien à trier », aucun aperçu', async () => {
+    window.history.pushState({}, '', '/taches/a-trier')
+    tachesApi.listerToutesLesTaches.mockResolvedValue([])
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Range ma liste' }))
+    await screen.findByText('Rien à trier')
+    expect(tachesApi.saisieRapide).not.toHaveBeenCalled()
+  })
+
+  it('hors /taches : comportement identique (pas de demandes prêtes, suggestions du manifeste)', async () => {
+    window.history.pushState({}, '', '/crm/relances')
+    iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 ?', 'Q2 ?', 'Q3 ?'] })
+    monterAvecDroits(['taches_voir'])
+    await screen.findByRole('button', { name: 'Q1 ?' })
+    expect(iaApi.getSuggestions).toHaveBeenCalledWith('/crm/relances')
+    expect(screen.queryByRole('group', { name: 'Demandes prêtes' })).toBeNull()
+  })
+
+  it('sur /taches sans le droit taches_voir : pas de demandes prêtes', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 ?'] })
+    monterAvecDroits(['crm_voir'])
+    await screen.findByRole('button', { name: 'Q1 ?' })
+    expect(screen.queryByRole('group', { name: 'Demandes prêtes' })).toBeNull()
   })
 })

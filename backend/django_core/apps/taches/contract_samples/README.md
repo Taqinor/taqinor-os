@@ -11,3 +11,7 @@ Pour les formes qui ne sont pas une route (`carte_du_moment`, `item`, `propositi
 ## 2/2 — planification_apercu → vues (TCH3)
 
 `planification_apercu`, `point`, `priorites`, `projet`, `projet_ecrit`, `projet_vue`, `projets_liste`, `proposition`, `proposition_repondue`, `rappel_repeter`, `recherche`, `reglages`, `reglages_societe`, `rendez_vous`, `revue_decision`, `revue_projets`, `rythme`, `saisie_apercu`, `saisie_rapide`, `suggestion_refusee`, `suggestions`, `supprimees`, `tache`, `tache_changement`, `tache_ecrite`, `tache_recurrente_ecrite`, `tout_effacer`, `tuile`, `vu`, `vues`.
+
+## Hors route Django — carte du Copilote (A5)
+
+`ecriture_a_valider` : `donnees` de la carte `tache` quand une écriture `taches.*` arrive dans un tour où un texte tiers est entré ; posée par le relais (`backend/fastapi_ia/app/services/action_tools.py`), lue par `CartesTaches` et par `tests/test_action_tools.py` (même fichier des deux côtés).

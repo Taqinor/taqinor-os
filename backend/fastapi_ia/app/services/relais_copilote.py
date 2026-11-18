@@ -154,6 +154,53 @@ def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
     return ctx.catalogue_tour
 
 
+# ── A5 — un texte tiers est-il entré dans le tour ? (le SERVEUR le dit) ──────
+# Le marquage vit sur le contexte du tour ; `action_tools.garde_ecriture_taches`
+# le lit avant toute écriture `taches.*` : le modèle ne peut ni l'effacer ni
+# l'ignorer, il ne voit que la carte à valider.
+
+#: Au-delà, la question est un texte collé (fiche, page) : une tâche dite
+#: clairement tient dans un titre (280 caractères au plus, regles.md §1.7).
+QUESTION_COLLEE_CARACTERES = 300
+#: Une liste collée ou dictée : trois lignes (ou segments « / », « ; ») non vides.
+LISTE_COLLEE_SEGMENTS = 3
+_SEPARATEURS_LISTE = re.compile(r"\n|\s/\s|;")
+
+
+def question_porte_un_texte_tiers(question) -> bool:
+    texte = question.strip() if isinstance(question, str) else ""
+    if len(texte) > QUESTION_COLLEE_CARACTERES:
+        return True
+    segments = [s for s in _SEPARATEURS_LISTE.split(texte) if s.strip()]
+    return len(segments) >= LISTE_COLLEE_SEGMENTS
+
+
+def noter_question_du_tour(ctx, question) -> None:
+    """Une liste ou un texte collé dans la question marque le tour (A5)."""
+    if ctx is not None and question_porte_un_texte_tiers(question):
+        from app.services.action_tools import noter_contenu_tiers
+        noter_contenu_tiers(ctx, "question")
+
+
+def marquer_lectures_tierces(outils: list, ctx) -> list:
+    """La lecture SQL rend des lignes de l'ERP (leads, clients) : chaque appel
+    de `sql_db_query` marque le tour (A5), sous les deux moteurs (le moteur
+    natif l'appelle par `invoke`, qui passe par les mêmes rappels)."""
+    if ctx is None:
+        return outils
+    from langchain_core.callbacks import BaseCallbackHandler
+    from app.services.action_tools import noter_contenu_tiers
+
+    class _MarqueLectureTierce(BaseCallbackHandler):
+        def on_tool_start(self, serialized, input_str, **kwargs):
+            noter_contenu_tiers(ctx, "sql_db_query")
+
+    for outil in outils:
+        if getattr(outil, "name", None) == "sql_db_query":
+            outil.callbacks = [*(outil.callbacks or []), _MarqueLectureTierce()]
+    return outils
+
+
 # ── COP-B2 — identité de l'appelant, lue par le SERVEUR ───────────────────────
 
 
@@ -475,12 +522,14 @@ def _preparer(service, question: str, company_id: int, ctx,
     droits = service._droits_sql(ctx)
     lecture, schema = service._outils_sql(
         service._base_sql(question, company_id), company_id, droits)
+    marquer_lectures_tierces([lecture], ctx)  # A5
     outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
     outils += _outils_fixes(lecture, schema, collecteur)
     appeles: list = []
     contenu, present = svc._contenu_systeme(
         "claude", droits[0], copilote=True,
-        role=(getattr(ctx, "identite", None) or {}).get("role"))
+        role=(getattr(ctx, "identite", None) or {}).get("role"),
+        taches=prompt_copilote.taches_au_catalogue(catalogue))
     blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
     return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
             "manuel_present": present,

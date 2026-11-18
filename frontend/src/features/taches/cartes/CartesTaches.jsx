@@ -65,11 +65,12 @@ function Retour({ geste }) {
   )
 }
 
+/** Tête d'une carte du Copilote (maquette copilote.html : `.ep-carte-ia-tete`, styles/taches/coeur.css). */
 function Tete({ titre, chiffres = '' }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 pb-1">
-      <h3 className="m-0 text-base font-semibold">{titre}</h3>
-      {chiffres ? <span className="chiffres text-sm">{chiffres}</span> : null}
+    <div className="ep-carte-ia-tete">
+      <h3 className="seg-tete">{titre}</h3>
+      {chiffres ? <span className="chiffres">{chiffres}</span> : null}
     </div>
   )
 }
@@ -136,7 +137,7 @@ function CarteMaJournee({ donnees }) {
         </div>
       )}
       {ids.length > 0 && donnees.prochain_jour_ouvre ? (
-        <div className="propose-actions">
+        <div className="propose-actions ep-carte-ia-pied">
           <button type="button" className="bouton second" disabled={lot.occupe}
             onClick={() => lot.lancer(() => client.traiterLot({ ids, action: 'planifier', valeurs: { jour_prevu: donnees.prochain_jour_ouvre } }),
               `Reportées à ${jourNomme(donnees.prochain_jour_ouvre, donnees.jour)}`)}>
@@ -173,7 +174,7 @@ function CartePlanPropose({ donnees }) {
       {lignes.length === 0 ? <p className="section-sous">Objectif couvert par ce que tu as gardé.</p> : (
         <div className="liste" role="list">{lignes.map((it) => <LigneCarte key={cleItem(it)} item={it} />)}</div>
       )}
-      {lignes.length > 0 ? <div className="propose-actions"><BoutonGarder lignes={lignes} jour={donnees.jour} geste={geste} /></div> : null}
+      {lignes.length > 0 ? <div className="propose-actions ep-carte-ia-pied"><BoutonGarder lignes={lignes} jour={donnees.jour} geste={geste} /></div> : null}
       <Retour geste={geste} />
     </div>
   )
@@ -212,7 +213,7 @@ function CarteProjet({ donnees }) {
       {projet.objectif ? <p className="section-sous">{projet.objectif}</p> : null}
       {(projet.sante ?? []).map((s) => <p key={s.code} className="section-sous">{s.phrase}</p>)}
       {prochaine ? <div className="liste" role="list"><LigneCarte item={prochaine} /></div> : null}
-      <div className="propose-actions">
+      <div className="propose-actions ep-carte-ia-pied">
         <Link className="bouton second" to={`/taches/projets/${projet.id}`}>Ouvrir</Link>
       </div>
     </div>
@@ -235,7 +236,7 @@ function CarteRevueSemaine({ donnees }) {
           </div>
         ))}
       </div>
-      <div className="propose-actions"><Link className="bouton second" to="/taches/revue">Ouvrir la revue</Link></div>
+      <div className="propose-actions ep-carte-ia-pied"><Link className="bouton second" to="/taches/revue">Ouvrir la revue</Link></div>
     </div>
   )
 }
@@ -259,9 +260,62 @@ function CarteEcho({ tache, proposition }) {
         <p className="section-sous">{`${proposition.avant} → ${proposition.apres}`}</p>
       ) : null}
       {echo && !geste.fait && !laisse ? (
-        <div className="propose-actions">
+        <div className="propose-actions ep-carte-ia-pied">
           <button type="button" className="bouton second" disabled={geste.occupe}
             onClick={() => geste.lancer(() => echo.appel(tache, proposition), echo.fait)}>{echo.libelle}</button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+        </div>
+      ) : null}
+      {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+// A5 — une écriture du Copilote arrivée dans un tour où un texte tiers est entré : le relais n'a RIEN
+// écrit, la carte porte le corps de la requête (`proposition.corps`, contrat `ecriture_a_valider`) et le
+// doigt la valide. « Modifier » / « Laisser » : textes.md §5.5. Les autres écritures gardent le libellé
+// du registre de l'agent (`proposition.libelle`) sur leur bouton.
+const ECRITURES_A_VALIDER = {
+  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
+  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c) },
+  'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
+  'taches.tache.planifier': {
+    fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
+  },
+  'taches.rappel.poser': {
+    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
+  },
+  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c) },
+  'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },
+  'taches.preference.noter': { fait: () => '', appel: (t, c) => client.poserPreference(c) },
+}
+const PRIORITE_DITE = { 3: 'haute', 2: 'moyenne', 1: 'basse', 0: 'aucune' }
+
+function ligneDuChangement({ champ, avant, apres }, titre) {
+  if (champ === 'priorite') return `Priorité de « ${titre} » : ${PRIORITE_DITE[avant] ?? ''} → ${PRIORITE_DITE[apres] ?? ''}`
+  if (champ === 'echeance') return `Échéance : ${avant ? jourNomme(avant) : 'aucune'} → ${apres ? jourNomme(apres) : 'aucune'}`
+  return `Projet : ${avant?.nom ?? 'sans projet'} → ${apres?.nom ?? 'sans projet'}`
+}
+
+function CarteAValider({ tache, proposition }) {
+  const geste = useGeste()
+  const [laisse, setLaisse] = useState(false)
+  const ecriture = ECRITURES_A_VALIDER[proposition.action_key]
+  const corps = proposition.corps ?? {}
+  const titre = tache?.titre ?? proposition.libelle
+  return (
+    <div role="group" aria-label={titre}>
+      <Tete titre={titre} />
+      {(proposition.changements ?? []).map((c) => (
+        <p key={c.champ} className="section-sous">{ligneDuChangement(c, tache?.titre ?? '')}</p>
+      ))}
+      {ecriture && !geste.fait && !laisse ? (
+        <div className="propose-actions ep-carte-ia-pied">
+          <button type="button" className="bouton second" disabled={geste.occupe}
+            onClick={() => geste.lancer(() => ecriture.appel(tache, corps), ecriture.fait(corps) || proposition.libelle)}>
+            {ecriture.bouton ?? proposition.libelle}
+          </button>
           <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
         </div>
       ) : null}
@@ -274,6 +328,7 @@ function CarteEcho({ tache, proposition }) {
 function CarteTache({ donnees }) {
   const { tache, proposition, avertissements } = donnees
   const geste = useGeste(donnees.geste_id ? { message: 'Modifiée', geste: donnees.geste_id } : null)
+  if (proposition?.geste === 'ecrire') return <CarteAValider tache={tache} proposition={proposition} />
   if (proposition) return <CarteEcho tache={tache} proposition={proposition} />
   return (
     <div role="group" aria-label={tache.titre}>
@@ -316,7 +371,7 @@ function CarteCaptureApercu({ donnees }) {
         </div>
       )}
       {lignes.length > 0 ? (
-        <div className="propose-actions">
+        <div className="propose-actions ep-carte-ia-pied">
           <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null} onClick={ajouter}>
             {`Tout ajouter (${lignes.length})`}
           </button>
@@ -335,7 +390,7 @@ function CartePlanProjet({ donnees }) {
       <Tete titre="Le projet en étapes" chiffres={String(sections.length)} />
       {sections.map((s, i) => (
         <div key={s.nom}>
-          <p className="section-sous">{s.nom}</p>
+          <p className="ep-carte-ia-etape">{s.nom}</p>
           <div className="liste" role="list">
             {(s.taches ?? []).filter((t) => !retirees.includes(`${i}:${t.titre}`)).map((t) => (
               <div key={t.titre} className="ligne" role="listitem">
@@ -366,7 +421,7 @@ function BoutonsReponse({ proposition }) {
     <div>
       <p className="section-sous">{proposition.texte}</p>
       {geste.fait ? null : (
-        <div className="propose-actions">
+        <div className="propose-actions ep-carte-ia-pied">
           {(proposition.boutons ?? []).map((b) => (
             <button key={b.reponse} type="button" className="bouton second" disabled={geste.occupe}
               onClick={() => geste.lancer(() => client.repondreProposition(proposition.id, { reponse: b.reponse }), b.libelle)}>
@@ -466,7 +521,7 @@ function CartePriorites({ donnees }) {
       {!toutes && lignes.length > visibles.length ? (
         <button type="button" className="lien-plus" onClick={() => setToutes(true)}>{`Voir les ${lignes.length - visibles.length} suivantes`}</button>
       ) : null}
-      {n > 0 ? <div className="propose-actions"><BoutonGarder lignes={aGarder} jour={donnees.jour} geste={geste} /></div> : null}
+      {n > 0 ? <div className="propose-actions ep-carte-ia-pied"><BoutonGarder lignes={aGarder} jour={donnees.jour} geste={geste} /></div> : null}
       <Retour geste={geste} />
     </div>
   )
@@ -496,7 +551,7 @@ function CartePoint({ donnees }) {
       <ul className="m-0 list-none p-0">
         {lignesDuPoint(donnees).map((t) => <li key={t} className="section-sous">{t}</li>)}
       </ul>
-      <div className="propose-actions"><Link className="bouton second" to="/taches/aujourdhui">Ouvrir Aujourd&apos;hui</Link></div>
+      <div className="propose-actions ep-carte-ia-pied"><Link className="bouton second" to="/taches/aujourdhui">Ouvrir Aujourd&apos;hui</Link></div>
     </div>
   )
 }
@@ -521,7 +576,9 @@ export default function CartesTaches({ carte }) {
   if (!Composant || !carte.donnees) return null
   return (
     <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
-      <Composant donnees={carte.donnees} />
+      <div className="ep-carte-ia">
+        <Composant donnees={carte.donnees} />
+      </div>
     </div>
   )
 }

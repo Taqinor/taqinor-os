@@ -11,7 +11,7 @@ from django.db.models import F
 from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
-from apps.taches.confidentialite import nom_pour
+from apps.taches.confidentialite import est_confidentielle, nom_pour
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
@@ -314,12 +314,14 @@ def _item(user, pk, ctx, chargees, etat):
 
 def _sections_de_la_vue(user, projet, taches, ctx, pures):
     """Les étapes du projet (avec leurs ITEM et leur compte `{ouvertes, faites}`, calculé de TOUTES ses
-    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape »."""
+    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape ». Sous l'en-tête assistant,
+    le nom d'une étape d'un projet confidentiel n'est pas servi (vidé, comme l'étape d'un ITEM : regles.md §8)."""
+    masque = bool(ctx.get('assistant')) and est_confidentielle(projet)
     par_etape = {}
     for tache in taches:
         par_etape.setdefault(tache.section_id, []).append(tache)
     comptes = lecture.compteurs_par_etape(pures)
-    etapes = [{'id': s.pk, 'nom': s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
+    etapes = [{'id': s.pk, 'nom': '' if masque else s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
                'date_fin': _iso(s.date_fin),
                'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data,
                'compteurs': comptes.get(s.pk, {'ouvertes': 0, 'faites': 0})}
