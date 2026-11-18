@@ -788,6 +788,28 @@ README (relances en double avant d'ouvrir à un commercial, écarts d'apparence,
 - Reste : contrôle de la production après le deploy (adresse-témoin en 401, zéro page nue sur 30 appels,
   `dernier_demarrage.sha` non nul) ; la carte « Refuser un deploy qui ne redémarre pas Django » attend Reda.
 
+**18/11/2026, 16 h 45 UTC — INCIDENT DE PRODUCTION CLOS ; cause confirmée ; un second défaut corrigé (PR #1471)**
+
+- Reda a déployé une 2ᵉ fois à 16 h 14 UTC : même panne (site reconstruit, Django non redémarré). Il a alors collé une
+  LECTURE SEULE du serveur, qui a tranché en une minute : `deploy.log` sans aucune ligne du jour,
+  `last_deployed_commit` resté à la veille, `django_core : Up 28 hours` à côté de `frontend : Up 14 minutes`. Il l'a
+  confirmé : il déployait depuis son PORTABLE, dont `scripts/deploy-prod.ps1` date d'avant le 10/11 (ancienne séquence
+  manuelle, qui ne redémarre pas Django quand le front est reconstruit).
+- Séquence COURANTE lancée par la ligne `ssh` (validation Caddy d'abord) : `DEPLOY a0e492a1f8 — OK` à 16 h 34 UTC.
+  Relu de l'extérieur : 0 erreur sur 60 puis sur 30 appels, adresse-témoin en 401, `dernier_demarrage.sha` =
+  `a0e492a1f8`. Fusion 4 et `TCH168` sont EN LIGNE ; la tuile « Tâches » est visible du rôle Directeur.
+- **Second défaut, dans la séquence courante** : `fastapi_ia` resté « Up 28 hours » sous ce « DEPLOY — OK », journal
+  « rebuild ciblé : frontend » sans nginx. Cause : `echo "$CHANGES" | grep -q` sous `pipefail` (SIGPIPE quand `grep -q`
+  sort avant la fin de l'écriture ; toujours au-delà de 64 Ko de noms de fichiers). Reproduit ici (3 faux sur 400 sur
+  la liste du jour, 200 sur 200 sur la liste triplée), corrigé (`lot_contient()`), test de régression vu rouge puis
+  vert : PR Taqinor/taqinor-os#1471. Reda a reçu la ligne qui redémarre `fastapi_ia` à la main (non vérifiable de
+  l'extérieur : `/api/fastapi/health` ne dit pas depuis quand il tourne).
+- Leçon de méthode, la plus chère de la journée : devant un doute sur le SERVEUR, faire coller la lecture seule
+  (`git log -1`, `last_deployed_commit`, `docker ps` avec les durées, fin de `deploy.log`, première erreur de
+  `django_core`) AVANT de redonner une commande de deploy. Écrite dans `docs/claude-memory/deploy-manuel-1711.md`.
+- Reste à Reda : mettre à jour le script du portable (`git fetch origin main` puis
+  `git checkout origin/main -- scripts/deploy-prod.ps1`) avant d'y redéployer.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
