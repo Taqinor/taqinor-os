@@ -8,6 +8,7 @@
 
 Aucun nombre n'est écrit ici : tout vient des `PlanJour` clos et du moteur pur.
 """
+import copy
 import datetime
 
 from rest_framework import serializers
@@ -19,6 +20,7 @@ from apps.taches.moteur.gabarits import boutons, texte
 from apps.taches.selectors.base import projets_de
 from apps.taches.selectors.rythme import constats_ouverts, plans_du_rythme, preferences_de, proposition_ouverte
 from apps.taches.serializers.formes import PROPOSITION, PropositionSerializer, contexte
+from apps.taches.services import revelations
 from apps.taches.services.rythme import etat_rythme
 
 #: Jours TRAVAILLÉS (une barre, vide si `sans_donnees`) : la série de Mon rythme (regles.md §6.2).
@@ -76,11 +78,14 @@ def _variables(carte, projets):
     return donnees
 
 
+def _texte_revelation(carte, donnees):
+    return TEXTES_REVELATION[carte.cle].format(**donnees), list(BOUTONS_REVELATION)
+
+
 def rendre_carte(carte, *, assistant=False, projets=None):
     """(texte, boutons `[(libellé, réponse)]`) d'une carte, rendus à la lecture."""
     if carte.type == TypeIncitationEcran.REVELATION:
-        modele = TEXTES_REVELATION[carte.cle]
-        return modele.format(**(carte.donnees or {})), list(BOUTONS_REVELATION)
+        return _texte_revelation(carte, revelations.donnees_lues(carte)[0])
     type_, cle_texte, cle_boutons = _gabarit(carte, assistant)
     donnees = _variables(carte, projets)
     return (texte(type_, cle_texte, donnees, nom_pour=nom_pour),
@@ -94,8 +99,17 @@ def projets_cites(user, cartes):
 
 
 def forme_proposition(carte, *, assistant=False, projets=None):
-    """Une carte en forme PROPOSITION ; répondue, elle n'a plus de boutons."""
-    texte_, boutons_ = rendre_carte(carte, assistant=assistant, projets=projets)
+    """Une carte en forme PROPOSITION ; répondue, elle n'a plus de boutons. Une révélation est servie
+    avec ses nombres lus maintenant (`donnees` comprises) ; ouverte et sans plus rien à dire, `None`."""
+    if carte.type == TypeIncitationEcran.REVELATION:
+        donnees, vivante = revelations.donnees_lues(carte)
+        if not vivante and not carte.reponse:
+            return None
+        texte_, boutons_ = _texte_revelation(carte, donnees)
+        carte = copy.copy(carte)  # la ligne n'est pas réécrite : seule la forme servie porte le compte lu
+        carte.donnees = donnees
+    else:
+        texte_, boutons_ = rendre_carte(carte, assistant=assistant, projets=projets)
     if carte.reponse:
         boutons_ = []
     calculs = {(PROPOSITION, carte.pk): {'texte': texte_, 'boutons': boutons_}}

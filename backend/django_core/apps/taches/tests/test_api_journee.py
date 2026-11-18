@@ -520,12 +520,16 @@ class CarteDuMomentTests(_Base):
         fabriques.reglages(self.u)
         fabriques.plan(self.u, J, planifie_le=a(J, 8))
         IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=J, type='revelation',
-                                       cle='ranger_copilote', canal='ecran', donnees={'n': 5}, expire_le=jours(7))
+                                       cle='ranger_copilote', canal='ecran', donnees={'n': 7}, expire_le=jours(7))
+        a_trier = [fabriques.tache(self.u) for _ in range(5)]  # le nombre est lu à l'affichage (#10)
         carte = self.carte()
         self.assertEqual(carte['type'], 'revelation')
         self.assertEqual(carte['proposition']['texte'],
                          '5 tâches à trier : le Copilote peut les ranger dans tes projets.')
         self.assertEqual(carte['proposition']['boutons'], [{'reponse': 'ok', 'libelle': 'OK'}])
+        a_trier[0].statut = StatutTache.FAIT  # 4 à trier : la révélation n'a plus rien à dire
+        a_trier[0].save(update_fields=['statut'])
+        self.assertIsNone((self.carte() or {}).get('proposition'))
         # Une seule carte du moment : une proposition du rythme passe devant la révélation.
         IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=J, type='proposition_palier',
                                        cle='monter', canal='ecran', donnees={'N': 5, 'N1': 6, 'tenus': 7},

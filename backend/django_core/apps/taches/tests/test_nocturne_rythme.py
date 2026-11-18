@@ -259,6 +259,25 @@ class RevelationsCreationTests(TestCase):
                          ('revelation', 'ranger_copilote', {'n': 5}, J, J7))
         self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie'))  # une fois
 
+    def test_ranger_copilote_dit_le_compte_courant(self):
+        """Revue F2 tour 2 #10 : « N tâches à trier » rendu À LA LECTURE, le même nombre que le compteur
+        À trier (`a_trier.boite_reception`) ; sous 5, la carte se tait."""
+        from apps.taches.models.taches import Tache
+        from apps.taches.serializers.rythme import forme_proposition
+        from apps.taches.services.journee import a_trier
+        taches = [fabriques.tache(self.u1) for _ in range(6)]
+        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie')
+        self.assertEqual(carte.donnees, {'n': 6})
+        Tache.objects.filter(pk=taches[0].pk).update(projet=fabriques.projet(self.u1), triee_le=timezone.now())
+        forme = forme_proposition(carte)
+        self.assertEqual(a_trier(self.u1, J)['boite_reception'], 5)
+        self.assertEqual((forme['donnees'], forme['texte']),
+                         ({'n': 5}, '5 tâches à trier : le Copilote peut les ranger dans tes projets.'))
+        Tache.objects.filter(pk=taches[1].pk).update(triee_le=timezone.now())
+        self.assertIsNone(forme_proposition(carte))  # 4 à trier : sous le seuil, la carte se tait
+        carte.reponse = 'ok'
+        self.assertEqual(forme_proposition(carte)['boutons'], [])  # répondue : rendue, sans boutons
+
     def test_planifier_le_premier_projet_seulement(self):
         premier = fabriques.projet(self.u1)
         tache = fabriques.tache(self.u1, projet=premier)
