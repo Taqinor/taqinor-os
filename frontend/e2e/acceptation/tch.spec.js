@@ -26,7 +26,8 @@ import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { garderParApi, lireTache, section, toast } from '../taches-aides.js'
 import {
-  API, aller, appuiLong, balayer, capturer, connecter, itemsDe, lire, liste, ouvrir, pile, salir, scenario, tacheNommee,
+  API, aller, appuiLong, balayer, capturer, connecter, itemsDe, lire, liste, ouvrir, pile, poserVisiteTemara, salir, scenario,
+  tacheNommee,
 } from '../taches-acceptation.js'
 
 const PARCOURS = ['TCH136', 'TCH137', 'TCH138', 'TCH139', 'TCH140', 'TCH144']
@@ -47,7 +48,7 @@ const T = {
   rails: 'Commander les rails de fixation', fournisseur: 'Appeler le fournisseur', fiche: 'Rédiger la fiche de poste',
   contrat: 'Relire le contrat de maintenance', devis: 'Envoyer le devis révisé', stand: 'Confirmer la réservation du stand',
   demo: 'Préparer la démo onduleur hybride', planning: 'Mettre à jour le planning des poses', tva: 'Préparer la déclaration de TVA',
-  rappel: 'Rappeler pour le devis', facture: "Envoyer la facture d'acompte", visite: 'Visite technique à Témara',
+  rappel: 'Rappeler pour le devis', facture: "Envoyer la facture d'acompte", visite: 'Visite — Témara', // SCENARIO §0 errata 5 : une visite venue de l'ERP se nomme « Visite — {lead} »
 }
 const echapper = (texte) => texte.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const progression = (p) => p.locator('button.progression')
@@ -138,7 +139,9 @@ etape('P136.4', ['TCH136', 'TCH86', 'TCH49', 'TCH169'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/a-trier', 'a-trier')
   const lignes = p.locator('section.section[aria-label="À trier"] [data-ligne^="tache:"]')
-  await expect(lignes).toHaveCount(5) // SCENARIO §1 : À trier (5)
+  // Plan TCH136 étape 4 (corrigé) et SCENARIO §0 errata 2 : en fusion 2, À trier porte 4 lignes ; la facture
+  // d'acompte est l'à-faire du bandeau, convertie à l'étape 5.
+  await expect(lignes).toHaveCount(4)
   await capturer(p, 'a-trier')
   const parTitre = (titre) => p.locator('section.section[aria-label="À trier"] [data-ligne^="tache:"]')
     .filter({ has: p.locator('.titre', { hasText: new RegExp(`^${echapper(titre)}$`) }) })
@@ -147,9 +150,9 @@ etape('P136.4', ['TCH136', 'TCH86', 'TCH49', 'TCH169'], async (f) => {
   await expect(parTitre("Acheter des cartouches pour l'imprimante")).toHaveCount(0)
   await parTitre("Demander le devis d'assurance décennale").getByRole('button', { name: 'Demain', exact: true }).click()
   await expect(parTitre("Demander le devis d'assurance décennale")).toHaveCount(0)
-  // 3 projets
+  // 2 projets
   for (const [titre, projet] of [['Préparer le chantier du devis accepté', 'Chantier Benali 9 kWc'],
-    [T.facture, 'Administratif'], ['Filmer le chantier pour Instagram', 'Site web']]) {
+    ['Filmer le chantier pour Instagram', 'Site web']]) {
     await parTitre(titre).getByRole('button', { name: 'Projet…', exact: true }).click()
     await feuille(p, 'Projet').getByRole('option', { name: projet }).click()
     await expect(parTitre(titre)).toHaveCount(0)
@@ -312,6 +315,24 @@ etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   // Oracle : « 3 sur 5 · essentiel 1/2 », « Objectif couvert par ce que tu as gardé. »
   await expect(progression(p)).toContainText('3 sur 5 · essentiel 1/2')
   await expect(sectionPropose(p)).toContainText('Objectif couvert par ce que tu as gardé.')
+  // À 15:00 le scénario n'a qu'UNE tâche allégeable (le contrat ; le stand, dû aujourd'hui, reste par règle,
+  // regles.md §4.5) : pour jouer « Alléger en gardant 1 », on en pose une seconde par un vrai geste d'écran — la
+  // feuille de saisie d'un projet du scénario, une tâche pour aujourd'hui.
+  const ajoutee = 'Appeler la boite de location'
+  const recrutement = liste(await lire(p, 'projets/')).find((x) => x.nom === 'Recrutement technicien')
+  await aller(p, `/taches/projets/${recrutement.id}`, 'projet')
+  await expect(p.locator('h1.entete-titre')).toHaveText('Recrutement technicien') // la vue est lue : « + » porte le projet
+  await p.locator('.fab').click()
+  await expect(saisie(p).getByRole('button', { name: 'Retirer « Recrutement technicien »' })).toBeVisible()
+  await champSaisie(p).fill(`${ajoutee} aujourd'hui`)
+  await expect(saisie(p).locator('[data-jeton="jour"]')).toBeVisible()
+  await champSaisie(p).press('Enter')
+  // attendre la création SANS lever d'erreur dans le rappel (une erreur y arrête l'attente au premier essai)
+  await expect.poll(async () => liste(await lire(p, 'taches/', { q: ajoutee })).filter((t) => t.titre === ajoutee).length).toBe(1)
+  expect((await tacheNommee(p, ajoutee)).jour_prevu).toBe(J24)
+  expect((await tacheNommee(p, ajoutee)).projet?.nom).toBe('Recrutement technicien')
+  await p.keyboard.press('Escape')
+  await aujourdhui(p)
   // Alléger en gardant 1 → reste retourné sans report
   await p.getByRole('button', { name: "Plus d'actions" }).click()
   await p.getByRole('menuitem', { name: 'Alléger ma journée' }).click()
@@ -319,8 +340,8 @@ etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   const cases = leger.getByRole('checkbox', { name: /^Sélectionner : / })
   await expect(cases.first()).toBeVisible()
   const titres = (await cases.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).map((n) => n.replace('Sélectionner : ', ''))
-  expect(titres.length, 'au moins deux gardées ouvertes à alléger').toBeGreaterThanOrEqual(2)
-  const gardee = titres.includes(T.stand) ? T.stand : titres[0]
+  expect(titres, 'le contrat et la tâche ajoutée sont allégeables').toEqual(expect.arrayContaining([T.contrat, ajoutee]))
+  const gardee = T.contrat
   const avant = Object.fromEntries(await Promise.all(titres.map(async (t) => [t, await tacheNommee(p, t)])))
   await leger.getByRole('checkbox', { name: `Sélectionner : ${gardee}` }).click()
   await leger.getByRole('button', { name: 'Garder celle-ci' }).click()
@@ -377,10 +398,11 @@ etape('P138.1', ['TCH138', 'TCH60', 'TCH88', 'TCH169'], async (f) => {
   await expect(p.locator('.tch[data-ecran="projet"]')).toBeVisible()
   await capturer(p, 'projet')
   await aller(p, '/taches/projets', 'projets')
-  // Oracle : 5 projets, Benali « 12 sur 18 », Site web « À planifier »
+  // Oracle (plan TCH138 étape 1 corrigé, SCENARIO §0 errata 3) : 5 projets, Benali « 12 sur 18 », Site web « 0 sur 4 »
+  // (« À planifier » exige zéro tâche ouverte, regles.md)
   await expect(p.locator('[data-projet]')).toHaveCount(5)
   await expect(ligneProjet(p, 'Chantier Benali 9 kWc')).toContainText('12 sur 18')
-  await expect(ligneProjet(p, 'Site web')).toContainText('À planifier')
+  await expect(ligneProjet(p, 'Site web')).toContainText('0 sur 4')
 })
 
 etape('P138.2', ['TCH138', 'TCH88', 'TCH91', 'TCH63'], async (f) => {
@@ -452,14 +474,15 @@ etape('P138.3', ['TCH138', 'TCH92', 'TCH87', 'TCH60', 'TCH61', 'TCH53'], async (
 })
 
 etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
-  const instant = scenario(['--jour', '2026-11-20', '--heure', '17:40'], '2026-11-20 17:40')
+  // Plan TCH138 étape 4 (corrigé) : semis par défaut (`--jour 2026-11-24`), horloge du serveur ET du navigateur au
+  // ven. 20 à 17:40 (semer au 20 décalait toute l'histoire de 4 jours : « 9 tâches en 2 jours »)
+  const instant = scenario(['--jour', J24], '2026-11-20 17:40')
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/revue', 'revue')
   await expect(p.locator('.ep-constat').first()).toBeVisible()
   await capturer(p, 'revue')
-  // Oracle : Revue « 21 faites en 4 jours » — mots de textes.md §4.5 : « Du {lun.} au {ven.} : {faites} tâches en
-  // {jours} jours … » (le plan et SCENARIO disent « faites » : ERR-PLAN de vocabulaire, le chiffre est l'oracle)
-  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 (faites|tâches) en 4 jours/)
+  // Oracle (plan corrigé) : Revue « 21 tâches en 4 jours » — mots de textes.md §4.5
+  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 tâches en 4 jours/)
   // décisions : une carte par projet actif, « Garder » chacune
   for (let n = 0; n < 10; n += 1) {
     const fin = p.locator('.ep-revue-fin')
@@ -543,10 +566,16 @@ etape('P139.3', ['TCH139', 'TCH105'], async (f) => {
 
 etape('P139.4', ['TCH139', 'TCH55', 'TCH59', 'TCH104'], async (f) => {
   const instant = scenario(AGENDA, `${J24} 09:41`, { lecture: true })
+  // la visite vient de l'ERP : le harnais la pose par la porte des visites (SCENARIO §0 errata 7), avant l'écran
+  const posee = await poserVisiteTemara(J24)
+  expect(posee.erreurs, 'visite de Témara planifiée').toEqual({})
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/agenda', 'agenda')
-  // Oracle : visite de Témara en Toute la journée le 24
-  await expect(p.getByRole('group', { name: 'Toute la journée' }).first()).toContainText(T.visite)
+  // Oracle : visite de Témara en Toute la journée le 24 — SCENARIO §0 errata 7 : la bande ne porte QUE la visite
+  // (les relances sont une ligne de Prévu)
+  const bande = p.getByRole('group', { name: 'Toute la journée' }).first()
+  await expect(bande).toContainText(T.visite)
+  await expect(bande).not.toContainText('relances')
 })
 
 etape('P139.5', ['TCH139', 'TCH122', 'TCH121', 'TCH104'], async (f) => {
@@ -753,6 +782,23 @@ etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   let touches = 0
   const touche = async (k) => { touches += 1; await p.keyboard.press(k) }
   const ligneFocus = () => p.evaluate(() => document.activeElement?.closest?.('[data-ligne]')?.getAttribute('data-ligne') ?? '')
+  // `j` / `k` parcourent TOUTES les lignes visibles (spec-7 §5), dont celles de l'ERP sans case (« Suivi des relances :
+  // n », semis S3) : la personne descend (`j`, puis `k` une fois en bas) jusqu'à la tâche qu'elle vise — chaque touche
+  // est comptée, aucun rang n'est supposé.
+  const estTache = (cle) => /^tache:\d+$/.test(cle)
+  const ouverte = async (cle) => (await lireTache(p, Number(cle.split(':')[1]))).statut !== 'fait'
+  const prochaineTache = async (vise) => {
+    let sens = 'j'
+    let avant = await ligneFocus()
+    for (let essai = 0; essai < 30; essai += 1) {
+      await touche(sens)
+      const cle = await ligneFocus()
+      if (cle === avant) { if (sens === 'k') break; sens = 'k'; continue } // en bas de la liste : on remonte
+      avant = cle
+      if (estTache(cle) && (await vise(cle))) return cle
+    }
+    throw new Error('aucune tâche visée atteinte au clavier')
+  }
   // `g j` 2
   await touche('g'); await touche('j')
   await expect(p).toHaveURL(/\/taches\/aujourdhui/)
@@ -770,26 +816,29 @@ etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   }
   if (await saisie(p).isVisible()) await touche('Escape')
   await expect(saisie(p)).toHaveCount(0)
-  // 2 × `j` Espace 4
+  // 2 × `j` Espace 4 (+ une touche par ligne non visée traversée)
   const cochees = []
+  const reportees = []
+  const neuve = async (cle) => !cochees.includes(cle) && !reportees.includes(cle) && ouverte(cle)
   for (let n = 0; n < 2; n += 1) {
-    await touche('j'); const cle = await ligneFocus(); cochees.push(cle); await touche(' ')
+    const cle = await prochaineTache(neuve); cochees.push(cle); await touche(' ')
   }
   // 2 × `j d` Entrée 6
-  const reportees = []
   for (let n = 0; n < 2; n += 1) {
-    await touche('j'); reportees.push(await ligneFocus()); await touche('d'); await touche('Enter')
+    reportees.push(await prochaineTache(neuve)); await touche('d'); await touche('Enter')
   }
-  // 2 × `j m` Entrée 6
+  // 2 × `j m` Entrée 6 — à 10:45, Aujourd'hui n'a plus que 4 tâches ouvertes visibles (À revoir est replié) : les deux
+  // déplacées sont les deux reportées, toujours affichées (estampille « → mer. 25 ») jusqu'à la sortie de l'écran.
   const deplacees = []
   for (let n = 0; n < 2; n += 1) {
-    await touche('j')
-    const cle = await ligneFocus()
-    const avant = /^tache:\d+$/.test(cle) ? (await lireTache(p, Number(cle.split(':')[1]))).projet?.id ?? null : null
+    const cle = await prochaineTache(async (c) => reportees.includes(c) && !deplacees.some((d) => d.cle === c))
+    const avant = (await lireTache(p, Number(cle.split(':')[1]))).projet?.id ?? null
     deplacees.push({ cle, avant })
     await touche('m'); await touche('Enter')
   }
   // Oracle : 3 ajouts, 2 cochées, 2 reportées, 2 déplacées en ≈ 27 touches (parcours 18 ; 4 de palette hors F2)
+  console.log(`[P144.3] touches comptées : ${touches}`)
+  f.testInfo.annotations.push({ type: 'touches', description: String(touches) })
   expect(touches, 'touches comptées').toBeLessThanOrEqual(27)
   const id = (cle) => Number(String(cle).split(':')[1])
   for (const cle of cochees) {

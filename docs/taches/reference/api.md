@@ -1545,6 +1545,11 @@ Demandes prêtes (A18-M3, déterministes, sans modèle) : « Planifie ma journé
 `priorites`) · « Range ma liste » → POST `saisie-rapide/` `{"ids":[À trier],"apercu":true}` (carte `capture_apercu`,
 rangement par mots, sans modèle) · « Où j'en suis ? » → GET `journee/point/` (carte `point`).
 
+Écritures de l'assistant — garde A5 FERMÉE PAR DÉFAUT (`regles.md` §12) : après toute lecture dans la conversation
+(ou un texte collé dans la question), une écriture `taches.*` n'est pas exécutée par le relais : elle arrive en carte à
+valider (`ecriture_a_valider.json`, avec `projet {id, nom}` quand elle vise un projet) et c'est le doigt qui l'écrit,
+par l'écran (`X-Taqinor-Carte-Assistant: 1` sur une création, §0).
+
 | Clé | Méthode + route | Carte | Note |
 |---|---|---|---|
 | `taches.journee.lire` | GET `/api/django/taches/aujourdhui/` | `ma_journee` | « Tout au prochain jour travaillé » → `taches/lot/` |
