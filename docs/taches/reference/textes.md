@@ -114,6 +114,7 @@ référence données/API.
 | Toute la journée | « Visite — {nom} » · « Pose — {reference} » · « Intervention — {reference} » ; chacune « Ouvrir » |
 | Prévu | « Suivi des relances : {nb} » ; repli « {n} activités ERP » ; bloc à heure « {HH:MM} » ; rendez-vous externe « {HH:MM}–{HH:MM} {titre} » + puce « {agenda} », sans case ni geste (lecture seule) |
 | Ligne proposée | puce « Garder » à droite de chaque ligne (la garde seule ; le mot seul, sans icône ni « + ») ; sous l'en-tête : « En tête : {raison de la 1re ligne}. » (prochaine action d'un projet de priorité haute : « En tête : priorité haute. ») |
+| Bureau (≥ 1024 px) | ligne « Ajouter une tâche · n » sous la progression ; elle reste là dans tous les états, journée vide et chargement compris (c'est le « + » du bureau) ; colonnes « Mes projets » · la liste · « Agenda » du jour |
 | Proposé | bouton à contour « Garder ces {n} » (n = 1 : « Garder celle-ci ») ; « Voir tout ({reste}) » / « Masquer » ; « Voir toutes les tâches de mes projets ({reste}) » / « Masquer », déplié par projet : « ● {projet} », « Sans projet », une tâche prévue plus tard dit « prévue {jour} » ; objectif déjà couvert et rien qui presse : « Objectif couvert par ce que tu as gardé. » |
 | Raison de chaque ligne de Proposé (`RaisonPropose`) | `retard` « prévue hier » (sinon « prévue {jour passé} ») · `echeance_passee` « échéance dépassée le {jj/mm} » · `echeance_proche` « échéance {jour} » · `prochaine_action` « prochaine action de {projet} » (sans projet : « sans projet ») · `action_suivante` « suite de {projet} » |
 | Proposé après Alléger | en-tête replié « Proposé pour aujourd'hui · revient demain » |
@@ -328,13 +329,16 @@ Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes (
 revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
 (« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste. Bouton des repliés « Plus de
 filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
-étiquettes sont servies.
+étiquettes sont servies. Chaque résultat porte son statut en tête de méta : son jour, sinon « En réserve » ou
+« À trier » (ni jour, ni réserve, ni projet), puis « Suggéré par l'ERP » ; les mots cherchés sont en gras dans le
+titre (casse et accents ignorés). La loupe est dans le champ.
 
 ### 2.13 Supprimées récemment et derniers gestes
 
 « Supprimées récemment » — « Supprimées depuis moins de 30 jours. » — un projet = une ligne « « {projet} » et ses {n}
-tâches » · Restaurer ; vide « Rien de supprimé » ; « Derniers gestes » (7 jours) : `GesteAnnulable.message` + « Annuler »
-(ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
+tâches » · Restaurer ; une tâche = une ligne : Restaurer · {projet ou « Sans projet »} · {jour de suppression} ; vide
+« Rien de supprimé » ; « Derniers gestes » (7 jours), une rangée par geste : heure le jour même (sinon le jour),
+`GesteAnnulable.message` + « Annuler » (ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
 Restaurée dans À trier · Annuler ».
 
 Messages servis par le serveur (`GesteAnnulable.message`, raccord F2 : posés par les lanes, validés et inscrits ici ;
