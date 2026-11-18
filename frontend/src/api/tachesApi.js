@@ -1,4 +1,5 @@
-import api from './axios'
+import apiErp from './axios'
+import { errorMessageFrom, toastError } from '../lib/toast'
 import { fetchAllPages } from '../utils/fetchAllPages'
 
 /* ============================================================================
@@ -31,6 +32,43 @@ import { fetchAllPages } from '../utils/fetchAllPages'
 
 // ── Conventions ───────────────────────────────────────────────────────────────
 
+// ── Refus 409 nommés : dits par l'écran, jamais par le toast global (F2 acceptation) ──────────────────────────────
+// Le pont global de l'ERP (`axios.js`, L53, hors de ce module) toaste tout rejet sauf 401/404 : un 409 que l'écran
+// dit déjà (bandeau de conflit, erreur sous le champ) s'affichait deux fois. `api` ci-dessous enveloppe les 5 verbes
+// de l'instance de l'ERP : pendant l'appel (synchrone : axios fusionne `defaults` dès l'appel), un 409 RÉSOUT
+// (`validateStatus`), donc le pont ne le voit pas ; il est aussitôt rejeté ici avec la même forme d'erreur
+// (`response`, `config`) que lisent `classerErreur`, la file hors ligne et les écrans. Nommé (`CODES_409`) ou
+// `idempotency_en_cours` (que le pont ne toaste pas non plus) : silence ; tout autre 409 : le même toast que le pont.
+// Toute autre erreur (400, 5xx, délai, réseau) suit le pont exactement comme avant. Jamais `suppressErrorToast`.
+const garde409 = (statut) => (statut >= 200 && statut < 300) || statut === 409
+
+function refus409(reponse) {
+  const erreur = Object.assign(new Error('Request failed with status code 409'), {
+    name: 'AxiosError', code: 'ERR_BAD_REQUEST', isAxiosError: true, response: reponse, config: reponse.config,
+  })
+  const code = reponse.data?.code
+  if (!CODES_409.includes(code) && code !== 'idempotency_en_cours') toastError(errorMessageFrom(erreur))
+  return erreur
+}
+
+function appeler(verbe, args) {
+  const defauts = apiErp.defaults
+  const regle = defauts?.validateStatus
+  if (defauts) defauts.validateStatus = garde409
+  let promesse
+  try {
+    promesse = apiErp[verbe](...args)
+  } finally {
+    if (defauts) defauts.validateStatus = regle // l'instance de l'ERP retrouve sa règle dès l'appel parti
+  }
+  return Promise.resolve(promesse).then((reponse) => {
+    if (reponse?.status === 409) throw refus409(reponse)
+    return reponse
+  })
+}
+
+const api = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map((verbe) => [verbe, (...args) => appeler(verbe, args)]))
+
 let proprietaireAttendu = null
 
 /** Pose le compte qui écrit (`proprietaire_attendu`). `null` : ne rien envoyer. */
@@ -44,10 +82,16 @@ export function nouvelleCle() {
   return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
+/** F3 acceptation ERR 5 — une CRÉATION validée au doigt sur une carte du Copilote (`{ carteAssistant: true }`) :
+ *  le serveur la range `source='assistant'` (A5). Jamais `X-Taqinor-Assistant`, qui masquerait la réponse. */
+export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
+
 const avecCle = (options = {}) => {
-  const { cle } = options
-  if (cle === null) return undefined
-  return { headers: { 'Idempotency-Key': cle || nouvelleCle() } }
+  const { cle, carteAssistant } = options ?? {}
+  const headers = {}
+  if (cle !== null) headers['Idempotency-Key'] = cle || nouvelleCle()
+  if (carteAssistant) headers[ENTETE_CARTE_ASSISTANT] = '1'
+  return Object.keys(headers).length > 0 ? { headers } : undefined
 }
 
 const avecProprietaire = (corps, options = {}) => {

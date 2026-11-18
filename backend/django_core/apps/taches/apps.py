@@ -40,8 +40,10 @@ class TachesConfig(AppConfig):
         #
         # TCH74 — effacement 09-08, les DEUX portes (reference/donnees.md §5) : le récepteur
         # `lead_erased` (abonné à l'import de `receivers`) et le fournisseur DSR `taches`.
-        from apps.taches import dsr, receivers  # noqa: F401
+        from apps.taches import auth_jeton, dsr, receivers  # noqa: F401
         dsr.register()
+        # Le jeton du calendrier abonné est DANS l'adresse : aucune sortie d'observabilité ne le porte.
+        auth_jeton.declarer_chemins_sensibles()
         #
         # TCH71 — suggestions venues de l'ERP (reference/regles.md §9) : le même import de
         # `receivers` abonne `devis_accepted`, `devis_acceptation_annulee`, `chantier_receptionne`,

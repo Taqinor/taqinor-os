@@ -6,6 +6,7 @@ import {
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { DialogueSupprimer } from '../../features/taches/projets/Dialogues'
+import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import LigneProjet from '../../features/taches/projets/LigneProjet'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -218,7 +219,7 @@ export default function Projets() {
     const { data } = await creerProjet({ nom })
     const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
     setNouveau(false)
-    navigate(`/taches/projets/${cree.id}?planifier=1`)
+    naviguerApresFeuille(navigate, `/taches/projets/${cree.id}?planifier=1`)
   }
 
   const ouvrir = (projet) => navigate(`/taches/projets/${projet.id}`)
@@ -239,7 +240,7 @@ export default function Projets() {
         ouverte: nouveau,
         onFermer: () => setNouveau(false),
         titre: 'Nouveau projet',
-        children: <FormulaireNouveau onCreer={creer} onModeles={() => navigate('/taches/projets/modeles')} />,
+        children: <FormulaireNouveau onCreer={creer} onModeles={() => naviguerApresFeuille(navigate, '/taches/projets/modeles')} />,
       }}
     >
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}

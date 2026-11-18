@@ -1,7 +1,11 @@
 {
   "endpoint": "POST /api/django/taches/projets/{id}/planification/apercu/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST projets/{id}/planification/apercu/ · consommateurs : Planifier le projet, carte `plan_projet` ». Source : docs/taches/reference/api.md annexe A (`planification_apercu.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST projets/{id}/planification/apercu/ · consommateurs : Planifier le projet, carte `plan_projet` ». Source : docs/taches/reference/api.md annexe A (`planification_apercu.json`), recopié mot pour mot. Acceptation F3 (ERR 4) : `projet` {id, lock_version} joint — la carte `plan_projet` du Copilote n'a que cette réponse pour savoir OÙ écrire (« Tout ajouter » = `planification/` avec ce verrou).",
   "exemple": {
+    "projet": {
+      "id": 3,
+      "lock_version": 4
+    },
     "sections": [
       {
         "nom": "Études",

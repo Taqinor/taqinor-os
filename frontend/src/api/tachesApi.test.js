@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, documentContrat } from '../test/fixtures/contractSamples'
 
 vi.mock('./axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
+vi.mock('../lib/toast', async (original) => ({ ...(await original()), toastError: vi.fn() }))
 
 const api = (await import('./axios')).default
+const { toastError } = await import('../lib/toast')
 const client = await import('./tachesApi')
 
 /* TCH42 — chaque fonction du client est EXÉCUTÉE avec un axios simulé et appelle EXACTEMENT
@@ -170,6 +172,27 @@ describe('TCH42 — conventions', () => {
     expect(api.post.mock.calls[3]).toHaveLength(2)
   })
 
+  it('F3 acceptation ERR 5 — `carteAssistant` pose X-Taqinor-Carte-Assistant: 1 sur les créations, jamais X-Taqinor-Assistant', async () => {
+    const appels = [
+      () => client.creerTache({ titre: 'a' }, { carteAssistant: true }),
+      () => client.saisieRapide({ lignes: [] }, { carteAssistant: true }),
+      () => client.creerProjet({ nom: 'A' }, { carteAssistant: true }),
+      () => client.planifierProjet(3, { lock_version: 1 }, { carteAssistant: true }),
+    ]
+    for (const [i, appel] of appels.entries()) {
+      await appel()
+      const entetes = api.post.mock.calls[i][2].headers
+      expect(entetes['X-Taqinor-Carte-Assistant']).toBe('1')
+      expect(entetes['Idempotency-Key']).toMatch(/\S{8,}/)
+      expect(entetes).not.toHaveProperty('X-Taqinor-Assistant')
+    }
+    // Avec cle:null, l'en-tête de carte part seul ; sans l'option, rien ne change.
+    await client.creerProjet({ nom: 'A' }, { cle: null, carteAssistant: true })
+    expect(api.post.mock.calls[4][2]).toEqual({ headers: { 'X-Taqinor-Carte-Assistant': '1' } })
+    await client.creerTache({ titre: 'b' })
+    expect(api.post.mock.calls[5][2].headers).not.toHaveProperty('X-Taqinor-Carte-Assistant')
+  })
+
   it('proprietaire_attendu est posé au corps de saisie-rapide, planifier et terminer', async () => {
     client.definirProprietaire(7)
     await client.saisieRapide({ textes: ['a'], apercu: true })
@@ -232,6 +255,106 @@ describe('TCH42 — codes 409 distingués (erreurs.json)', () => {
     expect(client.classerErreur({ response: { status: 404, data: erreurs.introuvable } }).code).toBe('introuvable')
     expect(client.classerErreur({ response: { status: 429, data: {} } }).code).toBe('limite')
     expect(client.classerErreur(new Error('Network Error')).code).toBe('reseau')
+  })
+})
+
+describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le toast global de l\'ERP', () => {
+  const erreurs = documentContrat('taches', 'erreurs').exemple
+  // L'instance de l'ERP, simulée au plus près : `defaults.validateStatus` décide, AU MOMENT DE L'APPEL, si la réponse
+  // résout ou rejette ; un rejet passe par le pont global (axios.js L53), qui toaste tout sauf 401/404 et
+  // `idempotency_en_cours`.
+  const pont = (statut, corps) => (url) => {
+    const reponse = { status: statut, data: corps, headers: {}, config: { url } }
+    if (api.defaults.validateStatus(statut)) return Promise.resolve(reponse)
+    const err = Object.assign(new Error(`Request failed with status code ${statut}`), { response: reponse, config: reponse.config })
+    if (corps?.code !== 'idempotency_en_cours') toastError(`toast global : ${corps?.detail ?? statut}`)
+    return Promise.reject(err)
+  }
+  const valider = (statut) => statut >= 200 && statut < 300
+
+  beforeEach(() => {
+    api.defaults = { validateStatus: valider }
+    toastError.mockClear()
+  })
+  afterEach(() => { delete api.defaults })
+
+  it('409 `conflit_version` sur modifierTache : aucun toast global, l\'erreur garde son statut et son corps', async () => {
+    api.patch.mockImplementation(pont(409, erreurs.conflit_version))
+    const err = await client.modifierTache(20, { titre: 'x', lock_version: 4 }).catch((e) => e)
+    expect(toastError).not.toHaveBeenCalled()
+    expect(err.response.status).toBe(409)
+    expect(err.response.data).toEqual(erreurs.conflit_version)
+    expect(client.classerErreur(err)).toMatchObject({ code: 'conflit_version', lockVersion: 5 })
+    // l'instance de l'ERP retrouve sa règle aussitôt l'appel parti : les autres écrans ne sont pas touchés
+    expect(api.defaults.validateStatus).toBe(valider)
+  })
+
+  it.each(['deja_lie', 'nom_pris', 'proposition_expiree', 'autre_compte'])('409 `%s` : aucun toast global', async (code) => {
+    api.post.mockImplementation(pont(409, erreurs[code]))
+    const err = await client.lierActivite({ activite_id: 1, titre: 't' }).catch((e) => e)
+    expect(err.response.data.code).toBe(code)
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('409 sans code : le toast de l\'ERP reste (une seule fois), l\'erreur est rejetée', async () => {
+    api.patch.mockImplementation(pont(409, { detail: 'Conflit.' }))
+    const err = await client.modifierTache(20, { titre: 'x', lock_version: 4 }).catch((e) => e)
+    expect(err.response.status).toBe(409)
+    expect(toastError).toHaveBeenCalledTimes(1)
+  })
+
+  it('409 `idempotency_en_cours` : ni toast (le pont ne le toaste pas non plus) ni résolution', async () => {
+    api.post.mockImplementation(pont(409, { code: 'idempotency_en_cours', detail: 'En cours.' }))
+    const err = await client.planifierTache(20, { jour_prevu: '2026-11-25' }).catch((e) => e)
+    expect(client.classerErreur(err).code).toBe('idempotency_en_cours')
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('400 et 500 : le toast global de l\'ERP, exactement comme avant', async () => {
+    api.patch.mockImplementation(pont(400, erreurs.champ))
+    await client.modifierTache(20, { projet_id: 9 }).catch((e) => e)
+    api.patch.mockImplementation(pont(500, { detail: 'Erreur serveur.' }))
+    const err = await client.modifierTache(20, { titre: 'x' }).catch((e) => e)
+    expect(err.response.status).toBe(500)
+    expect(toastError).toHaveBeenCalledTimes(2)
+  })
+
+  it('la prémisse tient avec le VRAI axios : la règle posée pendant l\'appel est celle que la requête emporte', async () => {
+    // Le client pose sa règle sur l'instance le temps de l'appel puis la retire : cela ne vaut que si axios
+    // fusionne ses réglages DÈS l'appel (synchrone). Une vraie instance, un adaptateur qui applique la règle
+    // REÇUE par la requête : si une montée de version d'axios différait cette fusion, ce test rougirait.
+    const axios = (await vi.importActual('axios')).default
+    const recues = []
+    const instance = axios.create({
+      adapter: (config) => {
+        recues.push(config.validateStatus)
+        const reponse = { status: 409, statusText: 'Conflict', data: erreurs.conflit_version, headers: {}, config }
+        if (config.validateStatus(409)) return Promise.resolve(reponse)
+        return Promise.reject(Object.assign(new Error('Request failed with status code 409'), { response: reponse, config }))
+      },
+    })
+    const regleDeLInstance = instance.defaults.validateStatus
+    // témoin : hors du client, la même instance REJETTE un 409 par sa propre règle
+    await expect(instance.patch('/taches/taches/20/', {})).rejects.toMatchObject({ response: { status: 409 } })
+    expect(recues[0](409)).toBe(false)
+    vi.resetModules()
+    vi.doMock('./axios', () => ({ default: instance }))
+    try {
+      const reel = await import('./tachesApi')
+      const appel = reel.modifierTache(20, { titre: 'x', lock_version: 4 })
+      expect(instance.defaults.validateStatus).toBe(regleDeLInstance) // retirée dès l'appel parti
+      const err = await appel.catch((e) => e)
+      expect(recues).toHaveLength(2)
+      expect(recues[1](409)).toBe(true) // la requête du client, elle, a emporté la règle qui laisse passer le 409
+      expect(err.response.status).toBe(409)
+      expect(reel.classerErreur(err)).toMatchObject({ code: 'conflit_version', lockVersion: 5 })
+      // et une requête lancée APRÈS, hors du client, rejette de nouveau par la règle de l'instance
+      await expect(instance.patch('/taches/taches/20/', {})).rejects.toMatchObject({ response: { status: 409 } })
+      expect(recues[2](409)).toBe(false)
+    } finally {
+      vi.doUnmock('./axios')
+      vi.resetModules()
+    }
   })
 })
 

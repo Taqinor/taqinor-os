@@ -33,7 +33,7 @@ import { toast } from '../taches-aides.js'
 import { API, aller, lire, liste, ouvrir, pile, salir, scenario, tacheNommee } from '../taches-acceptation.js'
 import {
   VRAI_ASSISTANT_REQUIS, balayer, brancherIA, capturerF3, clientNu, demandePrete, demanderAuCopilote, deplier,
-  etapeOuverte, etapesIphone, jetonParEcran, notificationsDe, ouvrirCopilote, relancerIA, viderNotificationsTaches,
+  etapeOuverte, etapesIphone, jetonParEcran, notificationsDe, ouvrirCopilote, relancerIA, viderCloche,
 } from '../taches-acceptation-f3.js'
 
 const PARCOURS = ['TCH141', 'TCH171', 'TCH143']
@@ -276,7 +276,7 @@ etape('P141.5', ['TCH141', 'TCH132', 'TCH109'], async (f) => {
 async function matin171() {
   await rallumer()
   const instant = scenario(SEMIS_171, `${J24} 08:30`)
-  await viderNotificationsTaches()
+  await viderCloche()
   return instant
 }
 const notifsTaches = async () => (await notificationsDe()).filter((n) => n.type.startsWith('taches_'))
@@ -401,7 +401,7 @@ etape('P171.5', ['TCH171', 'TCH155', 'TCH160', 'TCH98'], async (f) => {
 etape('P171.6', ['TCH171', 'TCH98'], async () => {
   await rallumer()
   scenario(['--vide'], `${J24} 08:30`)
-  await viderNotificationsTaches()
+  await viderCloche()
   // Oracle (plan) : « compte `--vide` → rien »
   await balayer(`${J24}T08:30`)
   await balayer(`${J24}T15:00`)

@@ -1,6 +1,7 @@
 """NTPLT43 — contexte tenant + logs JSON structurés."""
 import json
 import logging
+import sys
 from unittest import mock
 
 from django.http import HttpResponse
@@ -106,3 +107,41 @@ class RequeteLenteSentryTests(SimpleTestCase):
         with ctx, gate:
             self._appel('/api/django/ventes/devis/1/')
         faux.capture_message.assert_not_called()
+
+
+class CheminsSensiblesJournauxTests(SimpleTestCase):
+    """Un secret porté par l'adresse (``core.chemins_sensibles``) : le contexte de requête, chaque
+    enregistrement de journal (fabrique) et le formateur JSON ne l'écrivent jamais."""
+
+    def setUp(self):
+        from core import chemins_sensibles
+        chemins_sensibles.enregistrer('test.secret', r'(/secret/)[^/?#.]+', r'\1<masqué>')
+        self.addCleanup(chemins_sensibles.retirer, 'test.secret')
+
+    def test_contexte_de_requete_masque(self):
+        vu = {}
+
+        def get_response(req):
+            vu['ctx'] = dict(observability.current_context())
+            return HttpResponse('ok')
+
+        RequestObservabilityMiddleware(get_response)(RequestFactory().get('/api/secret/s3cr3t.ics'))
+        self.assertEqual(vu['ctx']['path'], '/api/secret/<masqué>.ics')
+        self.assertEqual(RequestObservabilityMiddleware._route_normalisee(vu['ctx']['path']),
+                         '/api/secret/<masqué>.ics')
+
+    def test_enregistrement_et_formateur_json_masquent(self):
+        try:
+            raise RuntimeError('panne /secret/s3cr3t')
+        except RuntimeError:
+            exc_info = sys.exc_info()
+        record = logging.getLogger('test.secret').makeRecord(
+            'test.secret', logging.WARNING, __file__, 1, 'Not Found: %s', ('/api/secret/s3cr3t',), exc_info)
+        self.assertEqual(record.getMessage(), 'Not Found: /api/secret/<masqué>')
+        self.assertEqual(record.msg, 'Not Found: %s', 'un message sans secret garde son gabarit')
+        self.assertNotIn('s3cr3t', logging.Formatter().format(record))
+        brut = logging.LogRecord('x', logging.ERROR, __file__, 1, 'vu %(p)s', None, exc_info)
+        brut.args = {'p': '/secret/s3cr3t'}
+        ligne = JSONFormatter().format(brut)
+        self.assertNotIn('s3cr3t', ligne)
+        self.assertIn('/secret/<masqué>', json.loads(ligne)['exc'])

@@ -49,6 +49,24 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/5/annuler/', {}))
   })
 
+  it('F3 acceptation ERR 2 — plan_propose : les MÊMES lignes que le Proposé d’Aujourd’hui (pour_objectif), « déjà prévue » comprise', async () => {
+    // Le Proposé d'Aujourd'hui (`aujourdhui/` `propose.pour_objectif`, « Garder ces N » de l'écran) compte TOUTES les
+    // lignes du moteur ; `journee/proposition/` sert ces mêmes lignes et marque `deja_prevue` celles qui ont un jour
+    // prévu passé (« prévue hier ») : la carte ne les retire pas.
+    const donnees = contrat('journee_proposition')
+    const hier = structuredClone(donnees.proposition[0])
+    hier.item = { ...hier.item, id: 41, titre: 'Ranger le bureau', jour_prevu: '2026-11-16', raison: { code: 'retard', texte: 'prévue hier' } }
+    hier.deja_prevue = true
+    donnees.proposition.push(hier)
+    monter('plan_propose', donnees)
+    const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
+    expect(within(carte).getByText('3 · objectif 5')).toBeInTheDocument()
+    expect(within(carte).getByText('Ranger le bureau')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Garder ces 3' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1].lignes).toEqual([{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }, { type: 'tache', id: 41 }])
+  })
+
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
     api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
     monter('plan_propose', contrat('journee_proposition'))
@@ -193,6 +211,89 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Retirer' }))
     expect(screen.getByText('Rien à ajouter.')).toBeInTheDocument()
     expect(api.post).not.toHaveBeenCalled()
+  })
+
+  // F3 acceptation ERR 4 — boutons de textes.md §5.7 et projet proposé par le serveur.
+  const projetsServis = () => ({ data: contrat('projets_liste') })
+  const rangement = () => {
+    // « Range ma liste » (`saisie-rapide/` `ids`, serializers.saisie.apercu_ids) : lignes d'À trier, projet suggéré
+    // posé dans `champs.projet_id` (id seul) ; forme des lignes de saisie_apercu.json.
+    const base = contrat('saisie_apercu').lignes[0]
+    const ligne = (index, id, titre, champs) => ({
+      ...base, index, tache_id: id, titre, jetons: [], alertes: [], champs, cochee: 'projet_id' in champs,
+    })
+    return { projets_communs: [], projets_nouveaux: [], lignes: [
+      ligne(0, 41, 'Relancer les Ventes', { projet_id: 3 }), ligne(1, 42, 'Acheter des timbres', {}),
+    ] }
+  }
+
+  it('ERR 4 — capture_apercu (Range ma liste) : projet suggéré nommé, « Pas de projet évident », « Tout ranger (1) » par lot', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', rangement())
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    expect(await within(carte).findByText('Projet suggéré : Ventes')).toBeInTheDocument()
+    expect(within(carte).getByText('Pas de projet évident : choisis-le.')).toBeInTheDocument()
+    expect(within(carte).queryByRole('button', { name: /^Tout ajouter/ })).not.toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ranger (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0].slice(0, 2)).toEqual(['/taches/taches/lot/', {
+      ids: [41], action: 'deplacer', valeurs: { par_tache: { 41: { projet_id: 3 } } },
+    }])
+    expect(await within(carte).findByText(/1 tâche rangée/)).toBeInTheDocument()
+  })
+
+  it('ERR 4 — capture_apercu : « Changer de projet » choisit un projet existant ; le corps envoyé le porte', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', contrat('saisie_apercu'))
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    await userEvent.click(within(carte).getByRole('button', { name: 'Changer de projet' }))
+    await userEvent.click(await within(carte).findByRole('option', { name: 'Ventes' }))
+    expect(within(carte).getByText('Projet : Ventes')).toBeInTheDocument()
+    expect(within(carte).queryByText('Nouveau projet : SiteWeb')).not.toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    const ligne = api.post.mock.calls[0][1].lignes[0]
+    expect(ligne).toMatchObject({ titre: 'Appeler Karim', projet_id: 3 })
+    expect(ligne).not.toHaveProperty('nouveau_projet')
+  })
+
+  it('ERR 4 — capture_apercu (Range ma liste) : « Changer de projet » range aussi une ligne sans suggestion', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', rangement())
+    const ligne = screen.getByText('Acheter des timbres').closest('.ligne')
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Changer de projet' }))
+    await userEvent.click(await within(ligne).findByRole('option', { name: 'Ventes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ranger (2)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1].valeurs.par_tache).toEqual({ 41: { projet_id: 3 }, 42: { projet_id: 3 } })
+  })
+
+  it('ERR 4 — plan_projet : « Changer d’étape » déplace une tâche ; « Tout ajouter » absent sans projet servi', async () => {
+    const donnees = contrat('planification_apercu')
+    delete donnees.projet // une réponse plus ancienne : sans le projet où écrire, pas de « Tout ajouter »
+    donnees.sections.push({ nom: 'Pose', taches: [{ titre: 'Fixer les rails', jalon: false, sous_taches: [] }] })
+    monter('plan_projet', donnees)
+    const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
+    expect(within(carte).queryByRole('button', { name: 'Tout ajouter' })).not.toBeInTheDocument()
+    const visite = within(carte).getByText('Visite').closest('.ligne')
+    await userEvent.click(within(visite).getByRole('button', { name: "Changer d'étape" }))
+    await userEvent.click(within(visite).getByRole('button', { name: 'Pose' }))
+    const pose = within(carte).getByText('Pose').nextElementSibling
+    expect(within(pose).getByText('Visite')).toBeInTheDocument()
+  })
+
+  it('ERR 4 — plan_projet : avec le projet servi (id, lock_version), « Tout ajouter » crée les étapes gardées', async () => {
+    api.post.mockResolvedValue({ data: { ...contrat('planification'), geste_id: 85 } })
+    const donnees = contrat('planification_apercu') // le contrat sert `projet` {id: 3, lock_version: 4}
+    monter('plan_projet', donnees)
+    const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
+    await userEvent.click(within(carte).getAllByRole('button', { name: 'Retirer' })[1])
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0].slice(0, 2)).toEqual(['/taches/projets/3/planification/', {
+      sections: [{ nom: 'Études', taches: [{ titre: 'Visite', jalon: false, sous_taches: ['photos'] }] }], lock_version: 4,
+    }])
+    expect(await within(carte).findByText(/1 tâche créée/)).toBeInTheDocument()
   })
 
   it('rythme : la proposition et ses boutons répondent par la route des propositions', async () => {
@@ -411,5 +512,75 @@ describe('A5 — la carte à valider montre tout ce qu’elle écrit (revue F3 n
     const racine = screen.getByTestId('carte-taches-tache')
     expect(racine.textContent).toContain('jour : "bientôt"')
     expect(racine.textContent).toContain('heure : "08:30\\n"')
+  })
+})
+
+/* F3 acceptation ERR 5 — (a) une carte qui attend le doigt porte le cadre « proposition », le cadre
+   « résultat » une fois faite ; (b) une CRÉATION validée au doigt part avec `X-Taqinor-Carte-Assistant: 1`
+   (décision de l'orchestrateur, A5 : une écriture validée sur une carte du Copilote est de l'assistant). */
+describe('ERR 5 — cadre de la carte et en-tête des créations validées au doigt', () => {
+  const CADRE = { attente: 'cadre-proposition', fait: 'cadre-resultat', laisse: 'cadre-neutre' }
+  const monterCadre = (cle, donnees) => render(
+    <MemoryRouter><CartesTaches carte={{ type: 'resultat', carte: cle, donnees }} cadre={CADRE} testId={`carte-${cle}`} /></MemoryRouter>,
+  )
+  const ENTETE = 'X-Taqinor-Carte-Assistant'
+  const aValider = (action_key, corps) => ({ tache: null, proposition: { geste: 'ecrire', action_key, libelle: 'Écrire', corps } })
+
+  it('(a) plan_propose : « proposition » tant qu’il n’est pas gardé, « résultat » après « Garder ces 2 »', async () => {
+    monterCadre('plan_propose', contrat('journee_proposition'))
+    const cadre = screen.getByTestId('carte-plan_propose')
+    expect(cadre).toHaveClass('cadre-proposition')
+    await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
+    await waitFor(() => expect(cadre).toHaveClass('cadre-resultat'))
+  })
+
+  it('(a) carte à valider : « proposition », puis « résultat » au toucher, neutre si « Laisser »', async () => {
+    monterCadre('tache', contrat('ecriture_a_valider'))
+    expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-proposition')
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    await waitFor(() => expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-resultat'))
+  })
+
+  it('(a) carte à valider laissée : cadre neutre, jamais « résultat »', async () => {
+    monterCadre('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Laisser' }))
+    expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-neutre')
+  })
+
+  it('(a) une carte de lecture (point) garde le cadre « résultat »', () => {
+    monterCadre('point', contrat('point'))
+    expect(screen.getByTestId('carte-point')).toHaveClass('cadre-resultat')
+  })
+
+  it('(b) création de tâche et de projet validées sur une carte : l’en-tête de carte part', async () => {
+    const { unmount } = monter('tache', aValider('taches.tache.creer', { titre: 'Appeler Ali' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Écrire' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][2].headers[ENTETE]).toBe('1')
+    expect(api.post.mock.calls[0][2].headers).not.toHaveProperty('X-Taqinor-Assistant')
+    unmount()
+    monter('tache', aValider('taches.projet.creer', { nom: 'Salon' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Écrire' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2))
+    expect(api.post.mock.calls[1][0]).toBe('/taches/projets/')
+    expect(api.post.mock.calls[1][2].headers[ENTETE]).toBe('1')
+  })
+
+  it('(b) « Tout ajouter » (collage) et « Tout ajouter » (étapes) portent l’en-tête ; une modification non', async () => {
+    const { unmount } = monter('capture_apercu', contrat('saisie_apercu'))
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][0]).toBe('/taches/saisie-rapide/')
+    expect(api.post.mock.calls[0][2].headers[ENTETE]).toBe('1')
+    unmount()
+    const { unmount: fin2 } = monter('plan_projet', { ...contrat('planification_apercu'), projet: { id: 3, lock_version: 4 } })
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ajouter' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2))
+    expect(api.post.mock.calls[1][2].headers[ENTETE]).toBe('1')
+    fin2()
+    monter('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1))
+    expect(api.patch.mock.calls[0]).toHaveLength(2) // PATCH taches/{id}/ : une modification, pas une création
   })
 })

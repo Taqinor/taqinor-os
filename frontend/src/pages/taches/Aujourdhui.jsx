@@ -21,7 +21,7 @@ import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
 import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cacheJournee'
 import { MESSAGE_EN_FILE as TOAST_EN_FILE, enfilerCoche, enfilerReport } from '../../features/taches/horsligne/captureQueue'
-import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, heureDuConflit, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import recordsApi from '../../api/recordsApi'
@@ -189,18 +189,25 @@ function useBureau() {
   return bureau
 }
 
-/** « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). */
-function ChoisirJour({ item, minimum, onChoisir }) {
-  const [jour, setJour] = useState('')
+/**
+ * « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). Ouverte au clavier (`d`,
+ * spec-7 §5 « Quand (Entrée = Reporter au jour nommé) »), elle arrive sur `initial` — le prochain jour travaillé — et
+ * son bouton « Reporter à {jour} » a le focus : Entrée reporte. Entrée dans le champ date valide aussi (formulaire).
+ */
+function ChoisirJour({ item, minimum, onChoisir, initial = '', reporterA = null }) {
+  const [jour, setJour] = useState(initial ?? '')
+  const libelle = !jour ? 'Choisis un jour'
+    : jour === reporterA ? `Reporter à ${jourNomme(jour, minimum)}` : `Prévue ${jourCourt(jour, minimum)}`
+  const valider = (e) => { e.preventDefault(); if (jour) onChoisir(jour) }
   return (
-    <div className="choisir-jour">
+    <form className="choisir-jour" onSubmit={valider}>
       <p className="carte-source">{item.titre}</p>
       <label className="fiche-label" htmlFor="tch-choisir-jour">Jour</label>
       <input id="tch-choisir-jour" type="date" className="champ-date" min={minimum} value={jour} onChange={(e) => setJour(e.target.value)} />
-      <button type="button" className="bouton plein large" disabled={!jour} onClick={() => onChoisir(jour)}>
-        {jour ? `Prévue ${jourCourt(jour, minimum)}` : 'Choisis un jour'}
+      <button type="submit" className="bouton plein large" disabled={!jour} data-focus-initial={initial ? '' : undefined}>
+        {libelle}
       </button>
-    </div>
+    </form>
   )
 }
 
@@ -310,7 +317,7 @@ export default function Aujourdhui() {
       if (err?.response?.status === 409 && err.response.data?.code === 'conflit_version') {
         const actuel = err.response.data.actuel ?? {}
         setConflit({
-          heure: heureDe(actuel.updated_at),
+          heure: heureDuConflit(actuel),
           onGarder: () => poserJour(item, jour, message, err.response.data.lock_version ?? actuel.lock_version),
           onPrendre: () => { patcher(cle, (it) => ({ ...it, ...actuel })); setConflit(null) },
         })
@@ -399,6 +406,8 @@ export default function Aujourdhui() {
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.code === 'proposition_expiree') {
         setDonnees((d) => ({ ...d, carte_du_moment: null }))
+        // la carte part : le refus se VOIT (textes.md §2.16 « Cette proposition a expiré. »), pas seulement lu
+        proposerAnnuler({ message: frenchError(err) })
         return
       }
       annoncer(frenchError(err))
@@ -508,15 +517,16 @@ export default function Aujourdhui() {
   // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
   const racine = useClavierListe((action, { cle }) => {
     const item = cle ? chercher(donnees, cle) : null
+    actions.prechargerProjets() // au clavier, `m` puis Entrée doit trouver la liste des projets déjà lue
     if (action === 'annuler') annulerToast()
     else if (!item) return
     else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
     else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
-    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item })
+    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, initial: donnees?.prochain_jour_ouvre ?? '' })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)
     else if (action === 'descendre') modes.deplacer(item, 1)
-    else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item)
+    else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item, { clavier: true })
     else if (item.type === 'tache' && ['renommer', 'heure'].includes(action)) ouvrirFiche(item.id)
   }, { actif: !feuille && !actions.feuille && !actions.selecteurProjet })
 
@@ -569,7 +579,14 @@ export default function Aujourdhui() {
         <ChoisirJour
           item={feuille.item}
           minimum={jourFeuille}
-          onChoisir={(jour) => { setFeuille(null); poserJour(feuille.item, jour, `Prévue ${jourCourt(jour, jourFeuille)}`) }}
+          initial={feuille.initial}
+          reporterA={donnees?.prochain_jour_ouvre ?? null}
+          onChoisir={(jour) => {
+            setFeuille(null)
+            const message = jour === donnees?.prochain_jour_ouvre
+              ? `Reportée à ${jourNomme(jour, jourFeuille)}` : `Prévue ${jourCourt(jour, jourFeuille)}`
+            poserJour(feuille.item, jour, message)
+          }}
         />
       ),
     }
@@ -586,7 +603,13 @@ export default function Aujourdhui() {
       ouverte: true,
       titre: 'Lier une tâche',
       onFermer: () => setFeuille(null),
-      children: <FeuilleLier item={feuille.item} onLier={(titre) => { setFeuille(null); lier(feuille.item, titre) }} />,
+      children: (
+        <FeuilleLier item={feuille.item} onLier={async (titre) => {
+          const refus = await lier(feuille.item, titre)
+          if (!refus) setFeuille(null)
+          return refus
+        }} />
+      ),
     }
   } else if (feuille?.type === 'jour_lot') {
     laFeuille = {

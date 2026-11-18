@@ -51,7 +51,7 @@ Règles transverses (chaque modèle) :
 | `IssueProjet` | `''` · `atteint` · `abandonne` | s4 §I |
 | `Moment` | `''` · `matin` · `apres_midi` · `soir` « Ce soir » | socle |
 | `Creneau` (LignePlanJour, constat C1) | `''` · `matin` (< 12 h) · `apres_midi` (12-16 h) · `fin_journee` (≥ 16 h) | regles manque 6 |
-| `Source` | `manuel` · `rapide` · `assistant` (repère, A5) · `capture` · `activite` (conversion ET lien) · `recurrence` · `modele` · `suggestion` | C31 |
+| `Source` | `manuel` · `rapide` · `assistant` (repère, A5 : créée par le relais de l'assistant, ou validée au doigt sur une carte du Copilote, `X-Taqinor-Carte-Assistant: 1`) · `capture` · `activite` (conversion ET lien) · `recurrence` · `modele` · `suggestion` | C31 |
 | `Couleur` | `terre` · `ambre` · `olive` · `vert` · `menthe` · `ciel` · `bleu` · `indigo` · `prune` · `rose` | A15, spec-8 §3 |
 | `Visibilite` | `prive` | socle, D-TCH-1 |
 | `LienEtat` | `''` · `ok` · `archive` · `introuvable` · `inaccessible` · `efface` | s6a §3.2 |
@@ -567,7 +567,9 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
 22. ≤ 3 sollicitations par jour (rappels et push de test hors compte) ; aucune hors fenêtre, après `heure_limite`, en
     congé, un jour non travaillé, pour un compte inactif ; SAUTÉE, jamais différée.
 23. Lien ERP : cible ∈ `CibleLiable` ET visible (sélecteur de l'app cible) ; libellé servi vide hors `ok` (« Lead
-    effacé » si `efface`) ; la tâche nocturne revérifie les liens des tâches ouvertes.
+    effacé » si `efface`) ; la tâche nocturne revérifie les liens des tâches ouvertes. Un lien `efface` le RESTE,
+    la nuit comme à l'ouverture d'une fiche : le lead anonymisé se lit encore par la porte de crm pour qui a
+    `crm_voir` (« Anonymisé »), il ne redevient jamais un lien vivant.
 24. Objectif entre 1 et 12 ; une baisse n'est jamais imposée ; un cran au plus par proposition.
 25. Un seul projet de la semaine par propriétaire et par semaine.
 26. Aucun objet `taches` dans la corbeille de l'ERP, la recherche globale, `record_targets`, `_traces_du_compte`.

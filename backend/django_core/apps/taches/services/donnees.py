@@ -7,7 +7,8 @@
 - `exporter(user)` : « Mes données », les 21 modèles du compte (supprimés non purgés compris) ;
   jamais l'empreinte d'un jeton ni l'adresse d'un agenda externe (elle vaut une clé).
 - `tout_effacer(user)` : « Tout effacer », suppression DURE des lignes du couple (société,
-  utilisateur) ; les jetons disparaissent avec (révoqués).
+  utilisateur) ; les jetons disparaissent avec (révoqués), et les notifications de Tâches de la cloche
+  (`notifications.services.supprimer_notifications_du_compte` : une ligne peut porter un titre).
 """
 import datetime
 from collections import Counter
@@ -18,6 +19,8 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
+from apps.notifications.services import supprimer_notifications_du_compte
+from apps.notifications.types_evenements import EventType
 from apps.taches.choix import CibleLiable, LienEtat, StatutTache
 from apps.taches.models.agenda import AgendaExterne
 from apps.taches.models.erp import SuggestionTache
@@ -70,6 +73,9 @@ ORDRE_EFFACEMENT = (
     'vue_enregistree', 'agenda_externe')
 _CLE_DU_MODELE = {modele._meta.label: cle for cle, modele in MODELES.items()}
 OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
+#: Les notifications de Tâches (cloche de l'ERP) effacées avec le reste : leur ligne peut porter un titre.
+TYPES_NOTIFICATION = (EventType.TACHES_PLAN_DU_JOUR, EventType.TACHES_BILAN_SOIR, EventType.TACHES_RELANCE,
+                      EventType.TACHES_RAPPEL)
 
 
 # --- Effacement 09-08 ---------------------------------------------------------------------------
@@ -164,8 +170,9 @@ def exporter(user, *, maintenant=None):
 
 def tout_effacer(user):
     """Suppression DURE de toutes les lignes `taches` de `user` dans sa société (une transaction) →
-    `{"effacees": {clé: nombre}}` (`tout_effacer.json`, clés à zéro omises). Le réglage de la
-    société garde sa valeur ; seule la trace « modifié par » de `user` est retirée."""
+    `{"effacees": {clé: nombre}}` (`tout_effacer.json`, clés à zéro omises ; `notification` : les
+    lignes de la cloche de Tâches). Le réglage de la société garde sa valeur ; seule la trace
+    « modifié par » de `user` est retirée."""
     effacees = Counter()
     with transaction.atomic():
         for cle in ORDRE_EFFACEMENT:
@@ -176,4 +183,7 @@ def tout_effacer(user):
         traces = _lignes_du_compte('reglages_societe', user).update(modifie_par=None)
         if traces:
             effacees['reglages_societe'] += traces
+        notifications = supprimer_notifications_du_compte(user, user.company_id, TYPES_NOTIFICATION)
+        if notifications:
+            effacees['notification'] += notifications
     return {'effacees': dict(effacees)}

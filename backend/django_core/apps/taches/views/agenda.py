@@ -1,5 +1,5 @@
 """Agenda (reference/api.md §3.1, §4 `agenda/`) : jours (≤ 42), Toute la journée, sans heure, blocs,
-échéances, À placer, Mes projets (vue semaine), férié ; rendez-vous externes du jour.
+échéances, À placer, Mes projets (vues jour et semaine : le même volet), férié ; rendez-vous externes du jour.
 
 Le schéma OpenAPI est celui de l'échantillon `agenda.json`. Les tâches de la période sont chargées
 en une passe (`formes.charger_items`) ; la journée d'aujourd'hui (`selectors.journee.lire_journee`)
@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.notifications.calendar_utils import jours_ouvres_entre
-from apps.taches.choix import SectionJournee, StatutProjet, StatutTache
+from apps.taches.choix import FamilleObligation, SectionJournee, StatutProjet, StatutTache
 from apps.taches.moteur import classement
 from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, projets_de, taches_de
@@ -152,6 +152,9 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     travailles = _travailles_de(user, journee.travailles, J, du, au)
     ouvres = set(jours_ouvres_entre(user.company, du, au))
     obligations = sel.obligations_du_jour(user, J) if journee.erp and du <= J <= au else sel.Obligations()
+    # « Toute la journée » ne porte que les éléments de l'ERP SANS heure (visites, poses, interventions : textes.md
+    # §2, SCENARIO §4) ; « Suivi des relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda.
+    bande = tuple(ligne for ligne in obligations.lignes if ligne['famille'] != FamilleObligation.TOUCHES)
     rendez_vous, agendas = sel.rendez_vous_pour(user, du, au)
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=obligations.peut_cloturer,
                                  agendas=agendas)
@@ -160,14 +163,15 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         jour = du + datetime.timedelta(days=n)
         jours.append(formes_journee.jour_d_agenda(
             rendu, jour, ouvre=jour in travailles, ferie=jour.weekday() < 5 and jour not in ouvres,
-            cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else (),
+            cles_jour=cles, toute_la_journee=bande if jour == J else (),
             externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
-    semaine = vue == VUE_SEMAINE
+    # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
+    volet = vue in (VUE_JOUR, VUE_SEMAINE)
     minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)
     return {
         'du': du.isoformat(), 'au': au.isoformat(), 'jours': jours,
         'a_placer': rendu.items(a_placer(journee, projet_id)),
-        'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if semaine else [],
+        'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if volet else [],
         # La capacité d'un jour travaillé (« {h} pour {cap} ») : celle d'aujourd'hui, même calcul que la
         # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240).
         'capacite': {'minutes': minutes, 'source': source},

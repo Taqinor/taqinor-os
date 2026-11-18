@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
+import { ZoneAnnonces } from '../../features/taches/coquille/CoquilleTaches'
 
 vi.mock('../../api/tachesApi', async (original) => ({
   ...(await original()),
@@ -22,6 +23,8 @@ vi.mock('../../api/tachesApi', async (original) => ({
   attendreTache: vi.fn(),
   listerToutesLesTaches: vi.fn(),
   modifierTache: vi.fn(),
+  supprimerProjet: vi.fn(),
+  creerProjet: vi.fn(),
   lireTache: vi.fn(),
 }))
 
@@ -33,7 +36,10 @@ const { default: Projet } = await import('./Projet')
 
 const monter = (chemin = '/taches/projets/3') => render(
   <MemoryRouter initialEntries={[chemin]}>
-    <Routes><Route path="/taches/projets/:id" element={<Projet />} /></Routes>
+    <Routes>
+      <Route path="/taches/projets/:id" element={<Projet />} />
+      <Route path="/taches/projets" element={<div className="tch"><p>Liste des projets</p><ZoneAnnonces /></div>} />
+    </Routes>
   </MemoryRouter>,
 )
 const tacheEcrite = () => structuredClone(exempleContrat('taches', 'tache_ecrite'))
@@ -208,6 +214,26 @@ describe('TCH89 — Un projet : priorité', () => {
   })
 })
 
+describe('F2 acceptation (P138.3) — supprimer le projet ramène à la liste, toast « Annuler »', () => {
+  it('Supprimer le projet… → la liste des projets, sans retour arrière qui rouvrirait le projet supprimé', async () => {
+    const retour = vi.spyOn(window.history, 'back')
+    api.supprimerProjet.mockResolvedValueOnce({ data: { geste_id: 9 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20 · échéance 15/12')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer le projet…' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Supprimer le projet' })
+    await vi.waitFor(() => expect(window.history.state?.tchFeuille).toBeTruthy())
+    await user.click(within(dialogue).getByRole('button', { name: 'Supprimer', exact: true }))
+    expect(await screen.findByText('Liste des projets')).toBeInTheDocument()
+    expect(retour).not.toHaveBeenCalled()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » et ses')
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    retour.mockRestore()
+  })
+})
+
 describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gestionnaire commun', () => {
   const ouvrirMenu = async (user, titre) => {
     const etape = await screen.findByRole('region', { name: 'Études' })
@@ -219,6 +245,20 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     api.listerTousLesProjets.mockResolvedValue([
       { id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3 }, { id: 5, nom: 'Site web', couleur: 'ciel', priorite: 2 },
     ])
+  })
+
+  it('F2 acceptation (S5) — Déplacer… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
+    api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(api.traiterLot).not.toHaveBeenCalled()
   })
 
   it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {

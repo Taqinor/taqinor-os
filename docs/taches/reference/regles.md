@@ -901,6 +901,9 @@ comptes du bloc (dataclass gelée, jamais l'ORM).
 | `revue_semaine` | `heure_soir`, jour `revue_semaine` (« auto » = dernier jour travaillé de la semaine) | à la place du bilan, jamais en plus | `TACHES_BILAN_SOIR` |
 
 - **Dû** (`due(type, maintenant, prefs, fenetre)`) : tick du balayage dans [heure, heure + 15 min).
+- **Le droit, relu à chaque passage** (`views/base.a_le_droit`, LA garde du module) : un compte sans `taches_voir`
+  ne reçoit ni sollicitation ni rappel ; ses rappels dus ne partent pas et deviennent `manque` après 2 h ; la
+  nuit ne lui sert ni carte ni révélation.
 - **Sauté, jamais différé** si l'une est vraie : fenêtre de la société fermée ; maintenant ≥ `heure_limite` (20:00) ;
   jour non travaillé pour lui ; congé ; type `off` ou dans `pauses_sollicitations` ; compte inactif ou non interne ;
   module éteint ; compte sans `ReglagesRythme` (elle ne naît qu'à la première tâche créée, invariant 29, A15) ;

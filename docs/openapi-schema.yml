@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5166, operations: 7998, components: 4113}
+counts: {paths: 5166, operations: 7998, components: 4114}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13289,6 +13289,7 @@ components:
 - TachesEchModelesListe_Results_Element
 - TachesEchPlanification
 - TachesEchPlanificationApercu
+- TachesEchPlanificationApercu_Projet
 - TachesEchPlanificationApercu_Sections_Element
 - TachesEchPlanificationApercu_Sections_Element_Taches_Element
 - TachesEchPlanification_Creees_Element

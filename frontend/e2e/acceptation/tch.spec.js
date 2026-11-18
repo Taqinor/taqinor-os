@@ -702,7 +702,8 @@ etape('P144.1', ['TCH144', 'TCH84', 'TCH49'], async (f) => {
   await titreDe(b).fill('Préparer la déclaration de TVA de novembre')
   await titreDe(b).press('Enter')
   await expect.poll(async () => (await lireTache(b, id)).titre).toBe('Préparer la déclaration de TVA de novembre')
-  // l'iPhone écrit ensuite sur la version qu'il avait lue
+  // l'iPhone écrit ensuite sur la version qu'il avait lue : ce 409 est le SUJET de l'étape (seul excusé)
+  f.suivi.attendre(new RegExp(`/taches/taches/${id}/$`), 409)
   const mienne = 'Préparer la TVA avec le comptable'
   await titreDe(a).fill(mienne)
   await titreDe(a).press('Enter')

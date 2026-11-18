@@ -1948,10 +1948,10 @@ class EcrituresTachesA5Tests(unittest.TestCase):
         self.assertEqual(self._lancer(_A5_CREER, {"titre": "lait"}), at.MESSAGE_CARTE_A_VALIDER)
         self.assertEqual([a for a in self._ecritures() if a[1] != "/api/django/taches/saisie-rapide/"], [])
 
-    def test_tour_sur_ecrit_directement(self):
+    def test_tour_qui_n_a_rien_lu_ecrit_directement(self):
+        """Revue F3 #1 : plus de rangement d'À trier avant (il marque le tour, GardeA5LecturesTests)."""
         from app.services import relais_copilote as relais
         relais.noter_question_du_tour(self.ctx, "Passe la déclaration TVA en priorité haute.")
-        self._lancer(_A5_RANGER, {"apercu": True})  # À trier sans texte collé : rien de tiers
         self._lancer(_A5_MODIFIER, {"id": 21, "lock_version": 2, "priorite": 3})
         self._lancer(_A5_CREER, {"titre": "Rappeler la banque"})
         self.assertIn(("PATCH", "/api/django/taches/taches/21/"), self.appels)
@@ -1987,7 +1987,8 @@ class EcrituresTachesA5Tests(unittest.TestCase):
                          "x" * (relais.QUESTION_COLLEE_CARACTERES + 1)):
             self.assertTrue(relais.question_porte_un_texte_tiers(question), question[:40])
         for question in ("ajoute appeler le fournisseur demain 10h dans chantier benali",
-                         "Mets mon objectif à 7.", "Passe le 18/11 en priorité haute", "", None):
+                         "Mets mon objectif à 7.", "Passe le 18/11 en priorité haute", "", None,
+                         "Rappelle-moi d'appeler Ali demain, vers 10h.", "ajoute devis 1,5 et 2,5 kWc pour Ali"):
             self.assertFalse(relais.question_porte_un_texte_tiers(question), question)
 
 

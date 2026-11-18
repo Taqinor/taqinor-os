@@ -259,9 +259,10 @@ def _bon_outil(case: dict, reponse: dict) -> bool:
 
 
 def _sans_ecriture_hors_carte(case: dict, reponse: dict) -> bool:
-    """Ce qui NE doit PAS arriver : un outil `interdits` appele, ou une
+    """Ce qui NE doit PAS arriver : un outil `interdits` appele, une
     ecriture `a_confirmer` executee (carte `resultat`) au lieu d'etre
-    proposee (carte `proposition`)."""
+    proposee (carte `proposition`), ou une ecriture `a_valider` faite au
+    lieu de rester une carte-echo."""
     appeles = set(reponse.get("outils_appeles") or [])
     if appeles & set(case.get("interdits") or ()):
         return False
@@ -269,6 +270,13 @@ def _sans_ecriture_hors_carte(case: dict, reponse: dict) -> bool:
     for cle in case.get("a_confirmer") or ():
         genres = {c.get("type") for c in cartes if c.get("action_key") == cle}
         if "resultat" in genres or (cle in appeles and "proposition" not in genres):
+            return False
+    # A5 (revue F3) — `a_valider` : ecriture `taches.*` qui doit rester une
+    # carte-echo (`donnees.proposition`), jamais une ecriture faite.
+    for cle in case.get("a_valider") or ():
+        echos = [c for c in cartes if c.get("action_key") == cle]
+        if any("proposition" not in (c.get("donnees") or {}) for c in echos) \
+                or (cle in appeles and not echos):
             return False
     return True
 
@@ -349,6 +357,12 @@ def repondeur_reel(company_id: int, user_id: int, action_ctx=None):
     from app.services.sql_agent_service import sql_agent_service
 
     def repondre(case: dict) -> dict:
+        # Revue F3 #3 — `avant` : questions jouees d'abord, meme compte (la
+        # conversation relue au modele les porte) ; seule la derniere est jugee.
+        for question in case.get("avant") or ():
+            asyncio.run(sql_agent_service.query(
+                question, user_id=user_id, company_id=company_id,
+                action_ctx=action_ctx, contexte=case.get("contexte")))
         return asyncio.run(sql_agent_service.query(
             case["question"], user_id=user_id, company_id=company_id,
             action_ctx=action_ctx, contexte=case.get("contexte")))

@@ -14,4 +14,4 @@ Pour les formes qui ne sont pas une route (`carte_du_moment`, `item`, `propositi
 
 ## Hors route Django — carte du Copilote (A5)
 
-`ecriture_a_valider` : `donnees` de la carte `tache` quand une écriture `taches.*` arrive dans un tour où un texte tiers est entré ; posée par le relais (`backend/fastapi_ia/app/services/action_tools.py`), lue par `CartesTaches` et par `tests/test_action_tools.py` (même fichier des deux côtés).
+`ecriture_a_valider` : `donnees` de la carte `tache` quand une écriture `taches.*` arrive dans un tour où un texte tiers est entré ; posée par le relais (`backend/fastapi_ia/app/services/action_tools.py`), lue par `CartesTaches` et par `tests/test_action_tools.py` (même fichier des deux côtés). `exemple` : une modification ; `exemple_creation` : une création ; `proposition.projet` {id, nom} dès que le corps porte `projet_id`.

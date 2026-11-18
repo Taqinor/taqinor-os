@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
 import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
-import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
+import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -328,13 +328,25 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
   )
 }
 
-function SemaineListe({ jours, aujourdhui, onChoisir }) {
+/** En-tête d'un jour de la Semaine (iPhone) : un jour ouvert à venir dit sa charge « {n} tâches · {h} pour {cap} »
+ *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
+ *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé dit ce qui y a été fait, « {n} faites » (maquette
+ *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
+function teteJour(j, aujourdhui, capacite, taches) {
+  if (j.ferie) return 'Férié'
+  if (!j.ouvre) return 'Jour non travaillé'
+  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
+  const faites = taches.filter((t) => t.statut === 'fait').length
+  return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
+}
+
+function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
       {jours.map((j) => {
         const taches = [...(j.blocs ?? []), ...(j.sans_heure ?? [])]
         return (
-          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : 'ag-sj'}
+          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : j.jour < aujourdhui ? 'ag-sj passe' : 'ag-sj'}
             aria-current={j.jour === aujourdhui ? 'date' : undefined} onClick={() => onChoisir(j.jour)}>
             <span className="ag-sj-date">
               <small>{ABR_JOURS[new Date(versUtc(j.jour)).getUTCDay()]}</small>
@@ -342,7 +354,7 @@ function SemaineListe({ jours, aujourdhui, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {j.ferie ? 'Férié' : !j.ouvre ? 'Jour non travaillé' : taches.length >= 2 ? `${taches.length} tâches` : `${taches.length} tâche`}
+                {teteJour(j, aujourdhui, capacite, taches)}
               </span>
               {taches.slice(0, 3).map((t) => (
                 <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
@@ -359,7 +371,7 @@ function SemaineListe({ jours, aujourdhui, onChoisir }) {
   )
 }
 
-function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, onChoisir }) {
+function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, onChoisir }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   return (
     <>
@@ -380,7 +392,7 @@ function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, onChoisi
           placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
         />
       </div>
-      <SemaineListe jours={jours} aujourdhui={aujourdhui} onChoisir={onChoisir} />
+      <SemaineListe jours={jours} aujourdhui={aujourdhui} capacite={capacite} onChoisir={onChoisir} />
     </>
   )
 }
@@ -718,7 +730,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       ) : null}
       {donnees && vue === 'semaine' ? (
         <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          onChoisir={choisirJour} />
+          capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour} />
       ) : null}
       {donnees && vue === 'mois' ? (
         <>

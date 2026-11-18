@@ -731,7 +731,11 @@ class PlanificationTests(_Base):
         reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/planification/apercu/'),
                                           {'texte': self.TEXTE}, format='json')
         self.assertEqual(reponse.status_code, 200)
-        self.assertEqual(reponse.json(), exemple_de('planification_apercu'))
+        attendu = exemple_de('planification_apercu')
+        self.assertEqual(set(reponse.json()), set(attendu))
+        self.assertEqual(reponse.json()['sections'], attendu['sections'])
+        # le projet OÙ écrire et son verrou : la carte `plan_projet` du Copilote n'a que cette réponse
+        self.assertEqual(reponse.json()['projet'], {'id': projet.pk, 'lock_version': projet.lock_version})
         self.assertEqual(Tache.objects.count(), 0)
         self.assertEqual(Section.objects.count(), 0)
 

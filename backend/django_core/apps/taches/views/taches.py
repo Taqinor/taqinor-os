@@ -47,7 +47,7 @@ from apps.taches.services.taches import (
     tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, corps, est_assistant, forme_echantillon, page_de,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, carte_assistant, corps, est_assistant, forme_echantillon, page_de,
     parametre, reponses,
 )
 from apps.taches.views.saisie import CHAMPS_LIGNE
@@ -165,9 +165,11 @@ class TachesVue(IdempotentCreateMixin, APIView):
     def _creer(self, request, ligne, parent_id):
         """Une LIGNE → 201 `tache_ecrite.json` ; un rejeu du même `client_id` rend la tâche déjà créée (200)."""
         user, assistant = request.user, est_assistant(request)
+        # Une carte du Copilote validée au doigt : source `assistant`, porte de l'écran (ERR 5).
+        source = Source.ASSISTANT if assistant or carte_assistant(request) else Source.MANUEL
         with transaction.atomic():
             resultat = creer_taches(
-                user, [ligne], source=Source.ASSISTANT if assistant else Source.MANUEL,
+                user, [ligne], source=source,
                 porte='assistant' if assistant else 'ecran', parent=parent_id)
         if not resultat.creees:
             existante = taches_de(user).filter(client_id=ligne.get('client_id')).first()

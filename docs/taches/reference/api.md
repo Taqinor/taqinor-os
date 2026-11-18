@@ -38,6 +38,15 @@ aucun marqueur).
 - **Erreurs** (une forme, tutoiement, A17) : 400 `{"<champ>":["message"]}` ; par ligne ou id
   `{"lignes":{"3":{"titre":["…"]}}}`, `{"choix":{"53":["…"]}}` ; 401/404/429 `{"detail":"…"}`. L'id d'un autre
   propriétaire répond comme un id inconnu. Textes : `textes.md` §2.16. Échantillon : `erreurs.json`.
+- **Création validée au doigt sur une carte du Copilote** : le front pose `X-Taqinor-Carte-Assistant: 1` sur
+  `POST taches/` et `POST saisie-rapide/` (option `carteAssistant` de `tachesApi.js`) ; la tâche créée porte
+  `source = 'assistant'` (A5). La porte reste l'écran : ses validations, sa réponse en clair, aucun masquage,
+  aucun 403 ; toute autre valeur de l'en-tête est ignorée ; avec `X-Taqinor-Assistant`, le mode assistant
+  l'emporte. Même origine que la page (nginx) : aucun réglage CORS n'en dépend.
+- **Secret porté par une adresse** : le jeton du flux est DANS l'adresse (`…/taches/flux/<jeton>.ics`, imposé par
+  l'iPhone). L'app déclare ses motifs à `core.chemins_sensibles` (`auth_jeton.CHEMINS_SENSIBLES`, à `ready()`) :
+  les journaux de Django (JSON, accès, requêtes lentes, piles) et Sentry (erreurs et transactions) ne voient que
+  `…/flux/<masqué>.ics`. Le journal d'accès de nginx, lui, écrit encore l'adresse entière (réglage du serveur).
 - **Requête « assistant » — échec FERMÉ (A18, verif-plan B9)**. QUI pose l'en-tête : le relais du service IA,
   `backend/fastapi_ia/app/services/action_tools.py` `_django_call(…, headers={"X-Taqinor-Assistant": "1"})` (paramètre
   `headers=` de la fonction, `:151`) pour TOUT appel d'une action `taches.*` ; `internal_headers()` reste inchangé ; un
@@ -1407,9 +1416,9 @@ Moyenne (2) par défaut. Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide 
 409 `autre_compte`. Réponses : `saisie_apercu.json`, `saisie_rapide.json`.
 
 **`capture/`** (Bearer `tqc_…`) — `{"titre":"appeler le fournisseur demain 10 h","notes":"","client_id":"7d2e0a11"}`
-(titre ≤ 280, notes ≤ 2 000, client_id ≤ 64) → 201 `capture.json` ; `dans` ∈ `journee` (un jour posé), `projet`
+(titre ≤ 280, notes ≤ 2 000, client_id ≤ 64 ; trois TEXTES JSON : un nombre est refusé, 400) → 201 `capture.json` ; `dans` ∈ `journee` (un jour posé), `projet`
 (projet sans jour), `a_trier` (rien, ou une échéance seule) ; nom de projet dit par `nom_pour(projet,'siri')`
-(« un projet » si confidentiel, inv. 38) ; rejeu 200 `"deja":true` ; `?reponse=texte` → `text/plain`. 400
+(« un projet » si confidentiel, inv. 38) ; rejeu 200 `"deja":true` ; `?reponse=texte` → `text/plain` (un corps illisible s'y lit « Dis-moi quoi noter. »). 400
 `{"titre":["Dis-moi quoi noter."]}`.
 
 **`taches/`** POST — une LIGNE (+ `parent_id`) → 201 `tache_ecrite.json`. **PATCH `taches/{id}/`** —
@@ -1448,7 +1457,7 @@ ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/poi
 `{"jour":"2026-11-17","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}` (`choix` ∈
 `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter ») → `journee_cloturee.json`.
 **`agenda/`** `?du=2026-11-16&au=2026-11-22&vue=semaine&projet=3` → `agenda.json` ; 400 `{"au":["42 jours au plus."]}` ;
-`mes_projets` seulement en `vue=semaine` ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
+`mes_projets` en `vue=jour` et `vue=semaine` (le même volet « À placer », maquettes `agenda-jour` et `agenda-semaine` ; vide en `mois` et `a-venir`) ; `toute_la_journee` = les `obligations` du jour SANS la famille `touches` (la ligne « Suivi des relances » est une ligne de Prévu, textes.md §2 ; la bande ne porte que ce qui a une date sans heure) ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
 RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon
@@ -1456,7 +1465,8 @@ RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` 
 → `projet.json` ; `statut=termine` → 400 `{"statut":["Passe par « Terminer »."]}`. **DELETE**, **`terminer/`**
 `{"issue":"atteint","bilan":"","taches_ouvertes":"boite","projet_cible_id":null}` (400 `{"issue":["Atteint ou abandonné ?"]}`),
 **`restaurer/`** (409 `nom_pris`) → `projet_ecrit.json`. **`planification/apercu/`**
-`{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `planification_apercu.json`. **`planification/`**
+`{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `planification_apercu.json` (`projet` {id, lock_version} : où
+écrire et le verrou à renvoyer — la carte `plan_projet` n'a que cette réponse). **`planification/`**
 `{"priorite":3,"objectif":"Stand monté","echeance":"2026-12-29","risque":"","sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]}]}],"actions":[{"titre":"Réserver le stand","quand":"aujourdhui"}],"lock_version":4}`
 → `planification.json`. **`decaler/`** `{"delta_jours":7,"apercu":true}` (sans `apercu` : aperçu) → `decalage.json`
 (chaque ligne porte son `titre`, par `nom_pour`) ; 400
@@ -1486,7 +1496,8 @@ administrateur."]}`), `erp_dans_journee`, `comprendre_mon_rythme`, `pauses_solli
 `…/{id}/rafraichir/` (ignore le cache). 400 `{"url":["Adresse https publique attendue."]}`, `{"url":["3 agendas au plus."]}`,
 `{"url":["Cet agenda est déjà ajouté."]}` ; l'hôte est validé par `apps/publicapi/validators.py` à l'ajout puis
 revérifié à chaque lecture (`donnees.md` inv. 33). **`tout-effacer/`** `{"confirmation":"EFFACER"}` (400
-`{"confirmation":["Tape EFFACER pour confirmer."]}`) → `tout_effacer.json`.
+`{"confirmation":["Tape EFFACER pour confirmer."]}`) → `tout_effacer.json` ; efface aussi les notifications
+`taches_*` du compte dans la société (cloche de l'ERP : une ligne peut porter un titre), clé `notification`.
 
 ## 5. Hors ligne et brouillon (A16-N11)
 
@@ -1564,7 +1575,7 @@ production (fournisseur, clé) sont un geste de Reda (A18-M3 d).
 
 | Nom | Cadence | Fait | Idempotence |
 |---|---|---|---|
-| `taches.balayer` | chaque minute, `_expire_dans(60)` | `active_company_ids()` à module actif ET `ReglagesSociete.balayage_actif` (relu à chaque passage), comptes actifs ayant une `ReglagesRythme` : rappels dus → `TACHES_RAPPEL` groupés par minute (retard > 2 h → `manque`) ; sollicitations dues dans [heure, heure + 15 min) selon `regles.md` §7 — après SON PROPRE contrôle de fenêtre, `notify(…, respect_quiet_hours=False, badge=compter_journee())` (sinon `notify()` DIFFÈRE, `notifications/services.py:631-633`) | rappel pris par `UPDATE … WHERE statut='en_attente'` puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` + `notify` dans la même transaction |
+| `taches.balayer` | chaque minute, `_expire_dans(60)` | `active_company_ids()` à module actif ET `ReglagesSociete.balayage_actif` (relu à chaque passage), comptes actifs ayant une `ReglagesRythme` : rappels dus → `TACHES_RAPPEL` groupés par minute (retard > 2 h → `manque`) ; sollicitations dues dans [heure, heure + 15 min) selon `regles.md` §7 — après SON PROPRE contrôle de fenêtre, `notify(…, respect_quiet_hours=False, badge=compter_journee())` (sinon `notify()` DIFFÈRE, `notifications/services.py:631-633`) | rappel pris par `UPDATE … WHERE statut='en_attente'` puis `notify` dans la même transaction ; sollicitation : `get_or_create` du marqueur `IncitationCoach` + `notify` dans la même transaction. AUCUN appel réseau : les agendas externes sont lus du cache seulement (cache froid : sans rendez-vous, rien d'écrit). Un compte sans `taches_voir` ne reçoit rien (relu à chaque passage). Un compte en échec est journalisé (id du compte, classe de l'erreur, jamais le message) et n'arrête pas les suivants (bilan `comptes_en_echec`) |
 | `taches.nocturne` | 03:00 `Africa/Casablanca`, `_expire_dans(3600)` | clôt `PlanJour` d'hier ; rythme, cartes, constats (si « comprendre mon rythme ») ; révélation `revue` ; expire les cartes ; `ignoree` sur les push non ouverts en 3 h ; pauses ; revérifie les liens des tâches ouvertes ; purges `donnees.md` §8 | recalcul déterministe ; contrainte unique des cartes ; purges par date |
 
 Types (fin d'énum `notifications/types_evenements.py`, `module_map`/`module_gating` → `taches`, push + in-app seuls) :
@@ -1856,7 +1867,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`planification_apercu.json`** — POST projets/{id}/planification/apercu/ · consommateurs : Planifier le projet, carte `plan_projet`
 ```json
-{"sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]},{"titre":"Mise en service","jalon":true,"sous_taches":[]}]}]}
+{"projet":{"id":3,"lock_version":4},"sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]},{"titre":"Mise en service","jalon":true,"sous_taches":[]}]}]}
 ```
 
 **`point.json`** — GET journee/point/ · consommateurs : carte `point` (« Où j'en suis ? »)

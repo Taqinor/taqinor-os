@@ -12,6 +12,7 @@ import { PuchePriorite, avancementDe } from '../../features/taches/projets/Ligne
 import {
   DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
 } from '../../features/taches/projets/Dialogues'
+import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
 import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronologie'
@@ -330,7 +331,7 @@ export default function Projet() {
       message: `« ${vue.projet.nom} » terminé`,
       onAnnuler: async () => { await rouvrirProjet(vue.projet.id); await charger() },
     })
-    navigate('/taches/projets')
+    naviguerApresFeuille(navigate, '/taches/projets')
   }
 
   const supprime = () => {
@@ -340,7 +341,7 @@ export default function Projet() {
       message: `« ${nom} » et ses ${accord((vue.projet.compteurs?.ouvertes ?? 0) + (vue.projet.compteurs?.faites ?? 0), 'tâche')} supprimés`,
       onAnnuler: async () => { await restaurerProjet(projetId); navigate(`/taches/projets/${projetId}`) },
     })
-    navigate('/taches/projets')
+    naviguerApresFeuille(navigate, '/taches/projets')
   }
 
   const projet = vue?.projet
