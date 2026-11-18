@@ -3,6 +3,7 @@ import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
 import { installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import ventesApi from '../../../api/ventesApi'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import LeadWorkspace from './LeadWorkspace'
 
 /* PV22 — « Concevoir la toiture (3D) » depuis la fiche lead ne mène plus à un
@@ -98,15 +99,14 @@ describe('PV22 — résolution du devis à concevoir', () => {
 
   it('AUCUN brouillon : le Copilote en dimensionne un (jamais vide) puis l’ouvre', async () => {
     ventesApi.getDevis.mockResolvedValue({ data: { results: [] } })
-    ventesApi.creerDevisAuto.mockResolvedValue({
-      data: { id: 900, reference: 'DEV-2026-900', statut: 'brouillon' },
-    })
+    // COP2-W3 — la réponse vient de l'échantillon de contrat, jamais d'un littéral tapé ici.
+    ventesApi.creerDevisAuto.mockResolvedValue(reponseContrat('ventes', 'assistant_devis_cree'))
     rendre()
     cliquer()
     await waitFor(() => expect(ventesApi.creerDevisAuto)
       .toHaveBeenCalledWith({ lead: 88 }))
     await waitFor(() => expect(navigateMock)
-      .toHaveBeenCalledWith('/ventes/devis/900/design'))
+      .toHaveBeenCalledWith(`/ventes/devis/${exempleContrat('ventes', 'assistant_devis_cree').id}/design`))
   })
 
   it('409 : le message SERVEUR est affiché tel quel et renvoie au générateur', async () => {
