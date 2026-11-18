@@ -213,14 +213,14 @@ def rappel_rdv_j1(company_id=None, jours_cibles=None):
             jours = _jours_cibles(company, aujourdhui)
             if not jours:  # jour non ouvré : rien
                 continue
-            fenetre = fenetre_notifications(company)
-            if not fenetre.ouverte:  # 07:45 : reprise à l'ouverture (08:30 par défaut)
-                if (fenetre.prochaine_ouverture - timezone.now()).total_seconds() < (
-                        settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout']):  # AMSG98
-                    rappel_rdv_j1.apply_async(kwargs={
-                        'company_id': company.pk, 'jours_cibles': [str(j) for j in jours]},
-                        eta=fenetre.prochaine_ouverture)
-                continue
+        fenetre = fenetre_notifications(company)  # AMSG106 — la reprise relit aussi la fenêtre
+        if not fenetre.ouverte:  # 07:45 : reprise à l'ouverture (08:30 par défaut)
+            if timezone.localdate(fenetre.prochaine_ouverture) == timezone.localdate():
+                rappel_rdv_j1.apply_async(kwargs={  # AMSG98 : jamais au-delà du délai du broker
+                    'company_id': company.pk, 'jours_cibles': [str(j) for j in jours]},
+                    eta=min(fenetre.prochaine_ouverture, timezone.now() + timedelta(
+                        seconds=settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout'] - 600)))
+            continue
         # ACHT51 — jamais d'intervention annulée (rien n'est annoncé).
         qs = (Intervention.objects.actives()
               .filter(company=company, date_prevue__in=jours,

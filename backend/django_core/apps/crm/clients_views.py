@@ -982,7 +982,8 @@ class ClientViewSet(CompanyScopedModelViewSet):
         """FG26 — droit à l'effacement : scrube les PII du client tout en
         PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
         identité neutralisée). Admin uniquement, irréversible, idempotent."""
-        from .dsr_provider import LEAD_NOM_ANONYMISE, anonymiser_client, anonymiser_lead
+        from .dsr_provider import (LEAD_NOM_ANONYMISE, anonymiser_client, anonymiser_lead,
+                                   verifier_anonymisation_client)
         client = self.get_object()
         if client.is_anonymized:
             # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
@@ -998,8 +999,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         identifiants = [v for v in (client.email, client.telephone) if (v or '').strip()]
         figer_identite_acheteur_manquante(client.company, client_id=client.pk, appliquer=True)
         try:
-            for identifiant in identifiants:
-                dsr.verifier_gardes_effacement(client.company, identifiant)
+            verifier_anonymisation_client(client, identifiants)  # ASUP70 : créance puis gardes
         except dsr.EffacementBloque as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         for identifiant in identifiants:
@@ -1268,11 +1268,11 @@ class LeadClientsActionsMixin:
         'responsable': serializers.CharField(allow_null=True),
         'nb_membres': serializers.IntegerField(),
         'pipeline_ouvert_count': serializers.IntegerField(),
-        'pipeline_ouvert_valeur': serializers.CharField(),
-        'pipeline_pondere': serializers.CharField(),
+        'pipeline_ouvert_valeur': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
+        'pipeline_pondere': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
         'activites_en_retard': serializers.IntegerField(),
-        'ca_signe_mois': serializers.CharField(),
-        'cible_ca_signe_mois': serializers.CharField(),
+        'ca_signe_mois': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
+        'cible_ca_signe_mois': serializers.CharField(allow_null=True),  # ALEC56 — hors portée : null
         'avancement_pct': serializers.FloatField(allow_null=True),
     })),
 }))
@@ -1288,7 +1288,7 @@ def equipes_statistiques(request):
             return Response({'equipes': []})
         return Response({'equipes': []})
     from .selectors import stats_equipe
-    return Response({'equipes': stats_equipe(user.company)})
+    return Response({'equipes': stats_equipe(user.company, user)})
 
 
 class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):

@@ -1,0 +1,16 @@
+# ACEL8 — runner GitHub 2026-11-18T04:51:10Z, sha ca496bcf0157f86e28839a13de8cb45b3f034c93
+## docker compose exec celery_worker python manage.py shell -c 'recalculer_couverture_i18n_task()'
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+694 objects imported automatically (use -v 2 for details).
+
+snapshots ecrits : 1
+## relu :
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+694 objects imported automatically (use -v 2 for details).
+
+SNAP 2026-11-16 246 2.0
+## montages : /opt/scripts/extract_i18n_strings.py  

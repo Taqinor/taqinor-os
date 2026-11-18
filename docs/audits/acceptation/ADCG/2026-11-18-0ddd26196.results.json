@@ -1,0 +1,59 @@
+{
+  "sha": "0ddd26196c6b7474e906cd00449f41963a1603ac",
+  "date": "2026-11-18",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG3",
+    "ADCG4"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "BANC-ADCG3-echec-pas-rejoue",
+      "taches": [
+        "ADCG3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-18/ADCG-banc-auto-deploy.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "banc de scripts/tests/test_auto_deploy.py (clause « Preuve en direct » telle qu'écrite) : test_echec_meme_commit_pas_rejoue (deux cycles sur un commit dont migrate échoue : un seul migrate, commit_en_echec = B, une ligne ECHEC, un nouveau commit est tenté) et test_manuel_declenche_la_sequence_unique (le chemin manuel efface l'état et retente) PASSED ; 21 passed ; volet prod (journal en lecture seule) non joué depuis la session cloud"
+    },
+    {
+      "id": "BANC-ADCG4-sante-rouge",
+      "taches": [
+        "ADCG4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-18/ADCG-banc-auto-deploy.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "banc de scripts/tests/test_auto_deploy.py : test_sante_vide_ou_http_non_200_est_un_echec (sonde interne à sortie vide, showmigrations en échec, faux curl 502 : cycle ECHEC, last_deployed_commit inchangé ; sonde ok + 0 migration + 200 : OK) PASSED ; 21 passed ; volet prod (journal du deploy suivant, lecture seule) non joué depuis la session cloud"
+    }
+  ]
+}

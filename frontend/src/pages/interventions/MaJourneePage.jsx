@@ -72,6 +72,7 @@ import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useWakeLock from '../../hooks/useWakeLock'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import { todayLocalIso } from '../../lib/dateLocale'
 import IndicateurTirerPourActualiser from '../../ui/IndicateurTirerPourActualiser'
 
@@ -180,8 +181,10 @@ function mapsHref(interv) {
 }
 
 export default function MaJourneePage() {
+  // ADRG151 — `ma-tournee/` : lecture du module (LectureDuModule), sinon 403 : aucune lecture sans le droit.
+  const peutLire = useDroitMetier('installation_voir')
   const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(peutLire)
   // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
   const { showSpinner } = useDelayedLoading(loading)
   const [active, setActive] = useState(null)
@@ -221,7 +224,7 @@ export default function MaJourneePage() {
   const [cachedAt, setCachedAt] = useState(null)
   // AERR36 — tournée illisible SANS cache : le dire, jamais une journée vide.
   const [erreur, setErreur] = useState(false)
-  const load = useCallback(() => installationsApi
+  const load = useCallback(() => (!peutLire ? Promise.resolve([]) : installationsApi
     .getMaTournee(today)
     .then((r) => {
       // Réponse : { date, stops: [ {...intervention, itineraire_url} ] }.
@@ -264,7 +267,7 @@ export default function MaJourneePage() {
         return entree.data
       })
       .catch(() => { setRows([]); setErreur(true); return [] }))
-    .finally(() => setLoading(false)), [today])
+    .finally(() => setLoading(false))), [today, peutLire])
   useEffect(() => { load() }, [load])
 
   // ── EZ6 — les HORODATAGES font le statut ──────────────────────────────────

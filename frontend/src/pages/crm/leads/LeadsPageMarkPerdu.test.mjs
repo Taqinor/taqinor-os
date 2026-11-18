@@ -38,8 +38,8 @@ test('LB5 : viewProps transmet onMarkPerdu à toutes les vues', () => {
   // LB6 — viewProps est désormais useMemo (bug #4).
   const start = PAGE_SRC.indexOf('const viewProps = useMemo(() => ({')
   assert.ok(start > 0, 'viewProps introuvable')
-  const block = PAGE_SRC.slice(start, start + 500)
-  assert.match(block, /onMarkPerdu,/)
+  const block = PAGE_SRC.slice(start, start + 900)
+  assert.match(block, /onMarkPerdu: canWrite \? onMarkPerdu : undefined/)
 })
 
 test('LB5 : KanbanView forwarde onMarkPerdu → DraggableCard → LeadCard (aucun rupture de chaîne)', () => {

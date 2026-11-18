@@ -164,6 +164,7 @@ def rendre_dashboard_html(report, dashboard):
     from types import SimpleNamespace
 
     from core.dashboard_data import executer_dashboard
+    from core.data_explorer import DatasetInconnu, DatasetNonAutorise, exiger_export_dataset
 
     from .rapport_builder import sans_cles_interdites, spec_sans_champs_gated
 
@@ -172,10 +173,18 @@ def rendre_dashboard_html(report, dashboard):
     # retirés de sa spec AVANT exécution, puis de ses lignes.
     layout = dict(dashboard.layout or {})
     widgets_purges = []
-    for widget in layout.get('widgets') or []:
+    refus = {}  # ADRG146 — widget dont le propriétaire n'a pas l'export du jeu
+    for index, widget in enumerate(layout.get('widgets') or []):
         if isinstance(widget, dict) and widget.get('dataset'):
-            widget = {**widget, 'spec': spec_sans_champs_gated(
-                widget['dataset'], widget.get('spec'))}
+            try:
+                exiger_export_dataset(widget['dataset'], report.owner)
+            except (DatasetNonAutorise, DatasetInconnu) as exc:
+                ident = widget.get('id') or f'widget-{index}'
+                refus[ident] = str(exc)  # non exécuté : bloc d'erreur, jamais tu
+                widget = {'id': ident, 'titre': widget.get('titre', '')}
+            else:
+                widget = {**widget, 'spec': spec_sans_champs_gated(
+                    widget['dataset'], widget.get('spec'))}
         widgets_purges.append(widget)
     layout['widgets'] = widgets_purges
     donnees = executer_dashboard(
@@ -183,10 +192,11 @@ def rendre_dashboard_html(report, dashboard):
     blocs = []
     for widget in donnees['widgets']:
         titre = _echappe(widget.get('titre') or widget.get('id') or '')
-        if widget.get('erreur'):
+        erreur = refus.get(widget.get('id')) or widget.get('erreur')
+        if erreur:
             blocs.append(
                 '<section><h2>%s</h2><p class="erreur">%s</p></section>'
-                % (titre, _echappe(widget['erreur'])))
+                % (titre, _echappe(erreur)))
             continue
         lignes = sans_cles_interdites(
             widget.get('rows') or [], widget.get('dataset'))

@@ -53,6 +53,7 @@ const NIVEAU_OPTIONS = [
 ]
 
 export default function GedDocumentInsights({ document, onClose }) {
+  const peutGerer = useDroitMetier('ged_gerer') // ADRG153 — `permissions-effectives` = HasPermissionOrLegacy(GED_GERER)
   const peutGouverner = useDroitMetier('ged_gouvernance') // ADRG80 — écrire une ACL (D-ADRG-8)
   const [timeline, setTimeline] = useState(null)
   const [acl, setAcl] = useState(null)
@@ -75,14 +76,16 @@ export default function GedDocumentInsights({ document, onClose }) {
 
   const reloadAcl = useCallback(() => {
     if (!document) return
-    gedApi.getPermissionsEffectives(document.id)
-      .then((r) => setAcl(toArray(r.data)))
-      .catch(() => setAcl([]))
+    if (peutGerer) {
+      gedApi.getPermissionsEffectives(document.id)
+        .then((r) => setAcl(toArray(r.data)))
+        .catch(() => setAcl([]))
+    }
     // Toutes les pages (ERR-LISTES-PAGE1-17-SITES), jamais la seule page 1.
     toutesLesPages(gedApi.getAcls, { document: document.id })
       .then((r) => setEntries(toArray(r.data)))
       .catch(() => setEntries([]))
-  }, [document])
+  }, [document, peutGerer])
 
   useEffect(() => {
     if (!document) return
@@ -199,11 +202,13 @@ export default function GedDocumentInsights({ document, onClose }) {
           <TabsContent value="acl">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm text-muted-foreground">Qui voit ce document et pourquoi.</p>
-              <Button size="sm" variant="secondary" onClick={exportCsv}>
+              {peutGerer && <Button size="sm" variant="secondary" onClick={exportCsv}>
                 <Download size={14} /> CSV
-              </Button>
+              </Button>}
             </div>
-            {acl === null ? <Spinner /> : acl.length === 0 ? (
+            {!peutGerer ? (
+              <p className="text-sm text-muted-foreground">Rapport des accès réservé aux gestionnaires.</p>
+            ) : acl === null ? <Spinner /> : acl.length === 0 ? (
               <EmptyState title="Aucune règle d'accès" className="py-6" />
             ) : (
               <ul className="flex flex-col gap-1.5" data-testid="ged-acl">

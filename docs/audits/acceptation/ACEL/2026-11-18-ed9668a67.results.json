@@ -1,0 +1,59 @@
+{
+  "sha": "ed9668a67ba1359ad572c028e4b9ab13f0a869ef",
+  "date": "2026-11-18",
+  "groupe": "ACEL",
+  "verdict": "FAIL",
+  "couvre": [
+    "ACEL3",
+    "ACEL8"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "COMPOSE-ACEL3-warm-shutdown",
+      "taches": [
+        "ACEL3"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "corps": "FAIL",
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-18/ACEL3-celery-warm-shutdown.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (.env = .env.example), jamais la production ; tâche d'essai qui dort 150 s (ajoutée à core/tasks.py sur le seul checkout du runner, jamais commitée) en cours, puis `docker compose up -d --force-recreate celery_worker` : état final FAILURE, exécutions 0 ; /proc/1/cmdline avant « /usr/local/bin/python3.11 /usr/local/bin/celery -A erp_agent », après « /usr/local/bin/python3.11 /usr/local/bin/celery -A erp_agent » ; non-ré-exécution une heure plus tard non observable dans le temps du job (une seule exécution au journal)"
+    },
+    {
+      "id": "COMPOSE-ACEL8-i18n-celery-worker",
+      "taches": [
+        "ACEL8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-18/ACEL8-i18n-celery-worker.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (.env = .env.example), jamais la production ; `docker compose exec celery_worker python manage.py shell -c recalculer_couverture_i18n_task()` puis relu : I18nCoverageSnapshot semaine 2026-11-16, composants 246"
+    }
+  ]
+}

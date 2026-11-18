@@ -30,6 +30,7 @@ vi.mock('../../api/stockApi', () => ({
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -156,5 +157,23 @@ describe('TicketAdvancedPanel — XSAV27 prêts d\'équipement', () => {
       produit: '4', numero_serie: 'SN-777',
     })))
     expect(savApi.getPretsEquipement).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ADRG154 — Fusionner / Convertir / Nouveau prêt : routes `sav_gerer` (403 sinon).
+describe('TicketAdvancedPanel — ADRG154 droits', () => {
+  const GESTES = [/^Fusionner$/, /Convertir en opportunité CRM/, /Nouveau prêt/]
+  it('sans sav_gerer : ni Fusionner, ni Convertir, ni Nouveau prêt', async () => {
+    for (const permissions of [['sav_voir'], ['sav_voir', 'crm_voir']]) {
+      renderAvecAuth(<TicketAdvancedPanel ticket={{ id: 5 }} />, { role: 'normal', permissions })
+      await screen.findByRole('button', { name: /Suivre ce ticket/ })
+      for (const nom of GESTES) expect(screen.queryByRole('button', { name: nom })).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('Technicien responsable (sav_gerer) : les trois gestes restent présents', async () => {
+    renderAvecAuth(<TicketAdvancedPanel ticket={{ id: 5 }} />, { role: 'responsable', permissions: ['sav_voir', 'sav_gerer'] })
+    for (const nom of GESTES) expect(await screen.findByRole('button', { name: nom })).toBeInTheDocument()
   })
 })

@@ -1,0 +1,35 @@
+{
+  "sha": "d755807e3f5ee397ffacaca6dca108f60488e2be",
+  "date": "2026-11-18",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL377"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF-ACAL377-imagerie-repli",
+      "taches": [
+        "ACAL377"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ACAL-PF-ACAL377-imagerie-repli.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

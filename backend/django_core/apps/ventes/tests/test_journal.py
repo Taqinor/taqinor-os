@@ -256,7 +256,7 @@ class TestJournalExport(TestCase):
             identite_acheteur_courante)
         from apps.ventes.exports import (
             export_comptable_csv, export_grand_livre_csv, export_journal_ventes)
-        from apps.ventes.models import Avoir, LigneAvoir, NoteDebit
+        from apps.ventes.models import Avoir, LigneAvoir, NoteDebit, Paiement
         co = Company.objects.create(nom='JR ASUP63', slug='jr-asup63')
         admin = User.objects.create_user(
             username='jr_asup63', password='x', role_legacy='admin', company=co)
@@ -282,6 +282,9 @@ class TestJournalExport(TestCase):
             montant_tva=Decimal('20'), montant_ttc=Decimal('120'))
         api = APIClient()
         api.force_authenticate(admin)
+        # ASUP70 (D-ASUP-8) — le reste dû est encaissé avant le clic (Given d'origine gardé).
+        Paiement.objects.create(company=co, facture=fac, montant=Facture.objects.get(pk=fac.pk).montant_du,
+                                date_paiement=date.today(), mode='virement')
         r = api.post(f'/api/django/crm/clients/{c.id}/anonymize/')
         self.assertEqual(r.status_code, 200, getattr(r, 'data', r))
         c.refresh_from_db()

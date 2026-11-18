@@ -209,6 +209,38 @@ class TenantIsolationTests(unittest.TestCase):
                 "WHERE campaign_id = '123'", self.CID, permissions=codes)
             self.assertIn("company_id = 7", out)
 
+    def test_jetons_publics_et_siege_jamais_servis(self):
+        """ALEC53 (C-ALEC-VER3-301) — jetons des liens publics d'intervention
+        refuses, nommes ou par ligne entiere, a l'Utilisateur et au Directeur
+        du registre comme sans `permissions` ; `adresse_siege` refusee sans
+        `client_pii_voir` ; `reference, statut` accepte."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        appels = [None, list(roles["Utilisateur"]), list(roles["Directeur"])]
+        for sql in ("SELECT reference, lien_rapport_token FROM installations_intervention",
+                    "SELECT reference, lien_client_token FROM installations_intervention",
+                    "SELECT * FROM installations_intervention"):
+            for codes in appels:
+                with self.assertRaises(svc.RefusDeDroit):
+                    svc._validate_and_secure(sql, self.CID, permissions=codes)
+        for codes in appels:
+            out = svc._validate_and_secure(
+                "SELECT reference, statut FROM installations_intervention",
+                self.CID, permissions=codes)
+            self.assertIn("company_id = 7", out)
+        siege = "SELECT adresse_siege FROM crm_client"
+        with self.assertRaises(svc.RefusDeDroit):
+            svc._validate_and_secure(siege, self.CID, allow_pii=False)
+        self.assertIn("company_id = 7", svc._validate_and_secure(
+            siege, self.CID, allow_pii=True))
+
     def test_miroirs_publicitaires_sous_le_droit_du_module(self):
         """ALEC46 (C-ALEC-VER2-202) — miroirs `adsengine_` : Admin Ventes,
         Admin RH, Commercial terrain (sans `adsengine_*`) refuses « module » ;

@@ -16,6 +16,7 @@ import { escapeHtml } from '../../components/MapView'
 import installationsApi from '../../api/installationsApi'
 import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import crmApi from '../../api/crmApi'
+import { useCanListAssignableUsers } from '../../hooks/useHasPermission'
 import { useFilteredList } from '../../features/installations/chargementListe'
 import ListShell from '../../features/installations/ListeEtat'
 
@@ -641,8 +642,10 @@ function HistoriquePresenceTab() {
 
 export default function SuiviGpsPage() {
   const [techniciens, setTechniciens] = useState([])
+  const peutListerUtilisateurs = useCanListAssignableUsers()
 
   useEffect(() => {
+    if (!peutListerUtilisateurs) return undefined
     let alive = true
     crmApi.getAssignableUsers()
       .catch(() => ({ data: [] }))
@@ -651,7 +654,7 @@ export default function SuiviGpsPage() {
         setTechniciens(u.data?.results ?? u.data ?? [])
       })
     return () => { alive = false }
-  }, [])
+  }, [peutListerUtilisateurs])
 
   return (
     <div className="page flex flex-col gap-6">

@@ -47,7 +47,8 @@ test('LB12 : un déplacement RÉUSSI programme requestAnimationFrame → querySe
 
 test('LB12 : les sorties anticipées (pas de over / drop sur place / recul ANNULÉ) ne touchent PAS au focus — le nœud d’origine n’est jamais démonté', () => {
   const block = dragEndBody()
-  const guardIdx = block.indexOf('if (!lead || !over || over.id === lead.stage) return')
+  // ADRG152 — la garde porte aussi `!onChangeStage` (aucun dépôt sans `crm_modifier`).
+  const guardIdx = block.indexOf('if (!lead || !over || over.id === lead.stage || !onChangeStage) return')
   // ORDRE FONDATEUR 2026-08-01 — la 2ᵉ sortie anticipée n'est plus « recul
   // REFUSÉ » mais « recul ANNULÉ par l'utilisatrice » : même effet sur le
   // focus (la carte n'a jamais quitté sa colonne, rien n'est démonté).

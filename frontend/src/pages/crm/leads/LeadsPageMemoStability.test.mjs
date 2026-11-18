@@ -47,10 +47,10 @@ test('LB6→LB27 : viewProps est useMemo, placé AVANT useDelayedLoading et le r
 
 test('LB6 : viewProps embarque onMarkPerdu (LB5) et tous les callbacks stabilisés', () => {
   const start = PAGE_SRC.indexOf('const viewProps = useMemo(() => ({')
-  const block = PAGE_SRC.slice(start, start + 700)
+  const block = PAGE_SRC.slice(start, start + 900)
   for (const key of [
-    'onOpenLead', 'onChangeStage: changeStage', 'onAutoQuote', 'onPlanifierRelance',
-    'onRefetch: refetch', 'onReassign: reassign', 'onToggleSelect', 'onToggleAll',
+    'onOpenLead', 'onChangeStage: canWrite ? changeStage : undefined', 'onAutoQuote', 'onPlanifierRelance',
+    'onRefetch: refetch', 'onReassign: canReassign ? reassign : undefined', 'onToggleSelect', 'onToggleAll',
     'onInlineSave', 'onMarkPerdu',
   ]) {
     assert.match(block, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))

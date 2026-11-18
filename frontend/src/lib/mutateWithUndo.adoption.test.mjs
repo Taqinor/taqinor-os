@@ -53,7 +53,8 @@ test('EZ14 : les adoptions sont REELLEMENT cablees dans les deux vues', () => {
   // Kanban : reassignation + etape.
   assert.match(KANBAN, /kind: 'lead_owner'/)
   assert.doesNotMatch(KANBAN, /kind: 'lead_stage'/)
-  assert.match(KANBAN, /onReassign=\{reassignAvecUndo\}/)
+  // ADRG152 — le relais d'annulation n'est passé à la carte qu'avec le droit de réaffecter.
+  assert.match(KANBAN, /onReassign=\{onReassign \? reassignAvecUndo : undefined\}/)
   // Round 3 (balayage) : au doigt le StageMover n'est plus monté — l'undo reste câblé souris+clavier.
   // (l'adoption « étape au clavier » est morte avec le StageMover, ordre
   // fondateur 2026-08-02 — l'étape ne se change plus que par drag/fenêtre.)
