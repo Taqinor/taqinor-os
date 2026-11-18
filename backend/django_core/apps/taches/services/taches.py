@@ -191,16 +191,17 @@ def liste_taches(user, params, *, assistant=False, aujourdhui=None):
 
 def reverifier_lien(user, tache):
     """Revérifie le lien ERP de `tache` (invariant 23) : libellé et état relus par la porte de l'app cible.
-    Écrit SEULEMENT si quelque chose a changé, par `update()` : lire une fiche ne bouge pas `lock_version`."""
-    if tache.content_type_id is None or tache.object_id is None:
+    Écrit SEULEMENT si quelque chose a changé, par `update()` : lire une fiche ne bouge pas `lock_version`.
+    Un lien `efface` (lead effacé) le RESTE, comme la nuit (`erp.reverifier_liens`) : le lead anonymisé se lit
+    encore par la porte de crm (« Anonymisé ») pour qui a `crm_voir`, et ne redevient jamais un lien vivant."""
+    if tache.content_type_id is None or tache.object_id is None or tache.lien_etat == LienEtat.EFFACE:
         return tache
     cible = f'{tache.content_type.app_label}.{tache.content_type.model}'
     libelle = libelle_de_cible(user, cible, tache.object_id)
     if libelle is not None:
         etat = LienEtat.OK
     else:
-        etat = LienEtat.EFFACE if tache.lien_etat == LienEtat.EFFACE else LienEtat.INTROUVABLE
-        libelle = ''
+        etat, libelle = LienEtat.INTROUVABLE, ''
     if (etat, libelle) == (tache.lien_etat, tache.lien_libelle) and tache.lien_verifie_le is not None:
         return tache
     maintenant = timezone.now()
