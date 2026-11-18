@@ -26,7 +26,8 @@ import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
 import { garderParApi, lireTache, section, toast } from '../taches-aides.js'
 import {
-  API, aller, appuiLong, balayer, capturer, connecter, itemsDe, lire, liste, ouvrir, pile, salir, scenario, tacheNommee,
+  API, aller, appuiLong, balayer, capturer, connecter, itemsDe, lire, liste, ouvrir, pile, poserVisiteTemara, salir, scenario,
+  tacheNommee,
 } from '../taches-acceptation.js'
 
 const PARCOURS = ['TCH136', 'TCH137', 'TCH138', 'TCH139', 'TCH140', 'TCH144']
@@ -47,7 +48,7 @@ const T = {
   rails: 'Commander les rails de fixation', fournisseur: 'Appeler le fournisseur', fiche: 'Rédiger la fiche de poste',
   contrat: 'Relire le contrat de maintenance', devis: 'Envoyer le devis révisé', stand: 'Confirmer la réservation du stand',
   demo: 'Préparer la démo onduleur hybride', planning: 'Mettre à jour le planning des poses', tva: 'Préparer la déclaration de TVA',
-  rappel: 'Rappeler pour le devis', facture: "Envoyer la facture d'acompte", visite: 'Visite technique à Témara',
+  rappel: 'Rappeler pour le devis', facture: "Envoyer la facture d'acompte", visite: 'Visite — Témara', // SCENARIO §0 errata 5 : une visite venue de l'ERP se nomme « Visite — {lead} »
 }
 const echapper = (texte) => texte.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const progression = (p) => p.locator('button.progression')
@@ -547,10 +548,16 @@ etape('P139.3', ['TCH139', 'TCH105'], async (f) => {
 
 etape('P139.4', ['TCH139', 'TCH55', 'TCH59', 'TCH104'], async (f) => {
   const instant = scenario(AGENDA, `${J24} 09:41`, { lecture: true })
+  // la visite vient de l'ERP : le harnais la pose par la porte des visites (SCENARIO §0 errata 7), avant l'écran
+  const posee = await poserVisiteTemara(J24)
+  expect(posee.erreurs, 'visite de Témara planifiée').toEqual({})
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/agenda', 'agenda')
-  // Oracle : visite de Témara en Toute la journée le 24
-  await expect(p.getByRole('group', { name: 'Toute la journée' }).first()).toContainText(T.visite)
+  // Oracle : visite de Témara en Toute la journée le 24 — SCENARIO §0 errata 7 : la bande ne porte QUE la visite
+  // (les relances sont une ligne de Prévu)
+  const bande = p.getByRole('group', { name: 'Toute la journée' }).first()
+  await expect(bande).toContainText(T.visite)
+  await expect(bande).not.toContainText('relances')
 })
 
 etape('P139.5', ['TCH139', 'TCH122', 'TCH121', 'TCH104'], async (f) => {
