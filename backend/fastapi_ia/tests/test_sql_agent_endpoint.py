@@ -864,6 +864,26 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertTrue(ligne.startswith("Références : touche 5000 (lead 1000) ; "))
         self.assertEqual(relais.references_des_cartes([{"donnees": {}}]), "")
 
+    def test_references_des_nouvelles_cartes(self):
+        """Copilote v2 (F2) — devis composé, lead créé, lignes d'un devis : la
+        ligne « Références » nomme le nouveau lead et le nouveau devis (formes
+        des contrats ventes / crm)."""
+        from app.services import relais_copilote as relais
+        racine = os.path.join(os.path.dirname(__file__), "..", "..", "django_core", "apps")
+
+        def exemple(app, nom):
+            with open(os.path.join(racine, app, "contract_samples", nom), encoding="utf-8") as f:
+                return json.load(f)["exemple"]
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("ventes", "assistant_devis_cree.json")}]),
+            "Références : lead 1637 ; devis 451")
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("crm", "assistant_lead_creer.json")}]),
+            "Références : lead 1701")
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("ventes", "assistant_devis_lignes.json")}]),
+            "Références : devis 451")
+
 
 def _rendu_natif(answer="Natif.", outils=(), arret="fin"):
     return {"answer": answer, "outils_appeles": list(outils), "arret": arret,

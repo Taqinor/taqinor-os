@@ -1635,6 +1635,62 @@ class ErreursCop4Tests(unittest.TestCase):
         self.assertLessEqual(len(at._normalize_error(_FakeResp(409, long), long)["error"]), 300)
 
 
+def _contrat_app(app, nom):
+    chemin = os.path.join(_CONTRATS_AGENT, "..", "..", app, "contract_samples", nom)
+    with open(chemin, encoding="utf-8") as f:
+        return json.load(f)
+
+
+class RefusDetaillesF2Tests(unittest.TestCase):
+    """Copilote v2 (F2) — un refus métier garde ses candidats / son doublon
+    (liste blanche) ; le modèle ne les lit que copilote allumé."""
+
+    def test_choix_du_contrat_ventes(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        erreur = at._normalize_error(_FakeResp(409, corps), corps)
+        self.assertEqual(erreur["error"], corps["detail"])
+        self.assertEqual(erreur["details"]["field"], "batterie_produit_id")
+        self.assertEqual([c["produit_id"] for c in erreur["details"]["choix"]], [147, 152])
+        self.assertEqual(erreur["details"]["choix"][0], corps["choix"][0])
+
+    def test_doublon_du_contrat_crm(self):
+        corps = _contrat_app("crm", "assistant_lead_creer.json")["exemple_409_doublon"]
+        details = at._normalize_error(_FakeResp(409, corps), corps)["details"]
+        self.assertEqual(details, {"doublon": True, "archive": False,
+                                   "ne_plus_contacter": False, "lead_id": 1637})
+
+    def test_liste_blanche_et_bornes(self):
+        corps = {"detail": "Plusieurs.", "field": "x" * 200, "prix_achat": "1",
+                 "choix": [{"produit_id": i, "nom": "n" * 500, "prix_achat": "9",
+                            "marge": "3", "kw": {"brut": 1}} for i in range(15)]}
+        details = at._normalize_error(_FakeResp(409, corps), corps)["details"]
+        self.assertEqual(len(details["choix"]), at.CHOIX_MAX)
+        self.assertEqual(len(details["field"]), 64)
+        self.assertNotIn("prix_achat", json.dumps(details))
+        self.assertNotIn("marge", json.dumps(details))
+        self.assertLessEqual(len(details["choix"][0]["nom"]), 120)
+        self.assertIsNone(details["choix"][0]["kw"])
+        # Ni un 500 ni un refus sans clé connue ne portent `details`.
+        self.assertNotIn("details", at._normalize_error(_FakeResp(500, corps), corps))
+        self.assertNotIn("details", at._normalize_error(_FakeResp(409, {"detail": "Non."}),
+                                                        {"detail": "Non."}))
+
+    def test_relaye_au_modele_copilote_allume_seulement(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        refus = at._normalize_error(_FakeResp(409, corps), corps)
+        textes = {}
+        for lot in ("herite", "copilote"):
+            ctx = _ctx(role="admin")
+            ctx.catalogue_tour = [dict(_CAT_LEAD_LIST, lot=lot)]
+            with mock.patch.object(at, "_django_call", lambda *a, **k: dict(refus)):
+                textes[lot] = at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {}, [])
+        self.assertEqual(textes["herite"],
+                         f"L'action « {_CAT_LEAD_LIST['label']} » a echoue. {corps['detail']}")
+        self.assertTrue(textes["copilote"].startswith(textes["herite"] + " Détails du refus : "))
+        details = json.loads(textes["copilote"].split(" Détails du refus : ", 1)[1])
+        self.assertEqual([c["produit_id"] for c in details["choix"]], [147, 152])
+
+
 # ── COP-A5 — aperçu qui NOMME l'objet ─────────────────────────────────────────
 
 _CAT_ACCEPTER = {
