@@ -833,18 +833,14 @@ def _lire_pour_echo(ctx: ActionContext, gabarit: str, ident: Any) -> Optional[di
     return data if isinstance(data, dict) and data.get("id") is not None else None
 
 
-def _changements_demandes(ctx: ActionContext, tache: dict,
-                          inputs: dict[str, Any]) -> Optional[list[dict]]:
+def _changements_demandes(tache: dict, inputs: dict[str, Any],
+                          projet: Optional[dict]) -> list[dict]:
     """`taches.tache.modifier` : avant -> apres de chaque champ demande
-    (textes.md §5.5) ; None si le projet vise est illisible."""
+    (textes.md §5.5) ; `projet` = le projet vise, deja lu."""
     lignes = [{"champ": champ, "avant": tache.get(champ), "apres": inputs[champ]}
               for champ in ("priorite", "echeance") if champ in inputs]
-    if "projet_id" in inputs:
-        projet = _lire_pour_echo(ctx, _LECTURE_PROJET, inputs["projet_id"])
-        if projet is None:
-            return None
-        lignes.append({"champ": "projet", "avant": tache.get("projet"),
-                       "apres": {"id": projet["id"], "nom": projet.get("nom")}})
+    if projet is not None:
+        lignes.append({"champ": "projet", "avant": tache.get("projet"), "apres": projet})
     return lignes
 
 
@@ -852,7 +848,10 @@ def _ecriture_en_carte_echo(ctx: ActionContext, action: dict[str, Any],
                             inputs: dict[str, Any],
                             collector: Optional[list[dict[str, Any]]]) -> str:
     """✎ sous un texte tiers -> carte-echo `tache` portant le corps (A5) :
-    RIEN n'est ecrit ; le doigt de l'utilisateur valide sur la carte."""
+    RIEN n'est ecrit ; le doigt de l'utilisateur valide sur la carte. Un
+    corps qui porte `projet_id` (revue F3 #2) : la proposition porte aussi
+    `projet` {id, nom}, lu sous l'en-tete assistant (un projet confidentiel
+    reste « Projet confidentiel ») ; illisible ou d'un autre compte : refus."""
     cle = action["key"]
     try:
         _, corps = _build_path(action.get("endpoint", ""), inputs)
@@ -863,12 +862,18 @@ def _ecriture_en_carte_echo(ctx: ActionContext, action: dict[str, Any],
         tache = _lire_pour_echo(ctx, _LECTURE_TACHE, inputs.get("id"))
         if tache is None:
             return "Action refusée : tâche introuvable ; rien n'est écrit."
+    projet = None
+    if corps.get("projet_id") is not None:
+        lu = _lire_pour_echo(ctx, _LECTURE_PROJET, corps["projet_id"])
+        if lu is None:
+            return "Action refusée : projet introuvable ; rien n'est écrit."
+        projet = {"id": lu["id"], "nom": lu.get("nom")}
     proposition = {"geste": "ecrire", "action_key": cle, "libelle": _libelle_action(action),
                    "corps": _avec_lien_du_contexte(ctx, action, corps)}
+    if projet is not None:
+        proposition["projet"] = projet
     if cle == "taches.tache.modifier":
-        proposition["changements"] = _changements_demandes(ctx, tache, inputs)
-        if proposition["changements"] is None:
-            return "Action refusée : projet introuvable ; rien n'est écrit."
+        proposition["changements"] = _changements_demandes(tache, inputs, projet)
     if collector is not None:
         collector.append({"type": "result", "action_key": cle,
                           "libelle": _libelle_action(action), "carte": action.get("carte"),

@@ -1872,6 +1872,8 @@ _A5_RANGER = {"key": "taches.liste.ranger", "label": "Ranger une liste", "carte"
               "risk": "internal", "endpoint": "/api/django/taches/saisie-rapide/", "method": "POST",
               "inputs": {"type": "object", "properties": {"texte": {"type": "string"}, "apercu": {"type": "boolean"}}}}
 _A5_LEAD = {**_CAT_LEAD_LIST, "key": "crm.lead.chercher"}
+_A5_CREER_PROJET = {**_A5_CREER, "inputs": {"type": "object", "required": ["titre"], "properties": {
+    "titre": {"type": "string"}, "jour_prevu": {"type": "string"}, "projet_id": _ID}}}
 _A5_TACHES = {"carte": "tache", "risk": "internal", "lot": "copilote"}
 _A5_LIRE = {**_A5_TACHES, "key": "taches.journee.lire", "label": "Lire ma journée", "carte": "ma_journee",
             "endpoint": "/api/django/taches/aujourdhui/", "method": "GET",
@@ -1968,6 +1970,27 @@ class EcrituresTachesA5Tests(unittest.TestCase):
         self.assertEqual(carte["data"], self.exemple)
         from app.services import cartes as fabrique
         self.assertEqual(fabrique.carte_depuis_sortie(carte)["donnees"], self.exemple)
+
+    def test_creation_dans_un_projet_la_carte_nomme_le_projet(self):
+        """Revue F3 #2 (service) : la carte d'une création avec `projet_id` porte `projet` {id, nom} lu
+        sous l'en-tête assistant (forme `exemple_creation` du contrat) ; un projet confidentiel reste
+        « Projet confidentiel » ; un projet illisible ou d'un autre compte : refus, aucune carte."""
+        with open(_CONTRAT_A5, encoding="utf-8") as f:
+            attendu = json.load(f)["exemple_creation"]
+        at.noter_contenu_tiers(self.ctx, "test")
+        corps = attendu["proposition"]["corps"]
+        self.assertEqual(self._lancer(_A5_CREER_PROJET, corps), at.MESSAGE_CARTE_A_VALIDER)
+        self.assertEqual(self.cartes[-1]["data"], attendu)
+        self.assertIn(("GET", "/api/django/taches/projets/3/"), self.appels)
+        self.reponses[("GET", "/api/django/taches/projets/8/")] = {"ok": True, "status": 200, "data": {
+            "id": 8, "nom": "Projet confidentiel", "confidentiel": True}}
+        self._lancer(_A5_CREER_PROJET, {**corps, "projet_id": 8})
+        self.assertEqual(self.cartes[-1]["data"]["proposition"]["projet"], {"id": 8, "nom": "Projet confidentiel"})
+        self.reponses[("GET", "/api/django/taches/projets/99/")] = {"ok": False, "status": 404, "error": "x"}
+        nb = len(self.cartes)
+        self.assertEqual(self._lancer(_A5_CREER_PROJET, {**corps, "projet_id": 99}),
+                         "Action refusée : projet introuvable ; rien n'est écrit.")
+        self.assertEqual((len(self.cartes), self._ecritures()), (nb, []))
 
     def test_liste_passee_a_ranger_marque_le_tour(self):
         self._lancer(_A5_RANGER, {"texte": "lait\npain\noeufs", "apercu": True})
