@@ -10,7 +10,7 @@ Couvre :
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -180,6 +180,44 @@ class MarqueurDemarrageTests(TestCase):
             resp = health_ready(req)
         self.assertEqual(resp.data['dernier_tri_problemes'],
                          '2026-11-04T07:07:00+01:00')
+
+    def test_marqueur_seulement_pour_un_processus_qui_sert(self):
+        # Incident 18/11/2026 : les ``python -c`` du deploy (sonde interne,
+        # prechauffage) poussaient un marqueur et masquaient celui de gunicorn.
+        servent = (
+            ['/usr/local/bin/gunicorn', 'erp_agentique.wsgi:application', '--preload'],
+            ['/usr/local/lib/python3.12/site-packages/gunicorn/__main__.py'],
+            ['/usr/local/bin/celery', '-A', 'erp_agentique', 'worker', '-l', 'info'],
+            ['/usr/local/bin/celery', '-A', 'erp_agentique', 'beat'],
+            ['manage.py', 'runserver', '0.0.0.0:8000'],
+        )
+        ne_servent_pas = (
+            ['-c'], ['-'], [''], [],
+            ['manage.py', 'migrate', '--noinput'], ['manage.py', 'test'],
+            ['manage.py', 'shell'], ['/usr/local/bin/pytest'],
+            ['/usr/local/bin/celery', '-A', 'erp_agentique', 'inspect', 'ping'],
+        )
+        for argv in servent:
+            self.assertTrue(health.est_processus_serveur(argv), argv)
+        for argv in ne_servent_pas:
+            self.assertFalse(health.est_processus_serveur(argv), argv)
+
+
+class RoutesChargeesAuDemarrageTests(SimpleTestCase):
+    """Incident 18/11/2026 — ``erp_agentique/wsgi.py::charger_routes``."""
+
+    def test_routes_chargees_au_demarrage_du_serveur_web(self):
+        # Incident 18/11/2026 : routes importees au demarrage (memoire du maitre
+        # gunicorn --preload) ; un code incoherent fait echouer le demarrage,
+        # plus chaque requete d'un worker ne apres le changement des fichiers.
+        from erp_agentique import wsgi
+        self.assertTrue(wsgi.charger_routes().url_patterns)
+        casse = mock.Mock()
+        type(casse).url_patterns = mock.PropertyMock(
+            side_effect=ImportError("cannot import name 'x' from 'apps.ventes'"))
+        with mock.patch('django.urls.get_resolver', return_value=casse), \
+                self.assertRaises(ImportError):
+            wsgi.charger_routes()
 
 
 class StorageDiskCheckTests(TestCase):

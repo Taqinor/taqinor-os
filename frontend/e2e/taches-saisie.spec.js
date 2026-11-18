@@ -177,12 +177,13 @@ test.describe('Tâches — À trier', () => {
 
     await expect(page.getByText('Rien à trier')).toBeVisible()
 
-    // le serveur : les deux dates et les trois projets
+    // le serveur : les deux dates et les trois projets. La ligne quitte la liste AVANT la
+    // réponse du serveur (écran optimiste) : on attend l'écriture au lieu de lire une fois.
     const jour = await jourServeur(page)
-    expect((await lireTache(page, taches[0].id)).jour_prevu).toBe(jour)
-    expect((await lireTache(page, taches[1].id)).jour_prevu > jour).toBeTruthy()
+    await expect.poll(async () => (await lireTache(page, taches[0].id)).jour_prevu).toBe(jour)
+    await expect.poll(async () => (await lireTache(page, taches[1].id)).jour_prevu > jour).toBeTruthy()
     for (const [rang, projet] of projets.entries()) {
-      expect((await lireTache(page, taches[rang + 2].id)).projet?.id).toBe(projet.id)
+      await expect.poll(async () => (await lireTache(page, taches[rang + 2].id)).projet?.id).toBe(projet.id)
     }
   })
 })

@@ -34,7 +34,9 @@ case "$a" in
  "git worktree add --detach "*) mkdir -p "$4";;
  *"python -c"*health*) echo "${HEALTH-ok}";;
  *showmigrations*) printf '%b' "${SHOWMIG-}";;
- "curl "*) printf '%s' "${HTTP_CODE-200}";;
+ "curl "*"-w "*) printf '%s' "${HTTP_CODE-200}";;
+ "curl "*) if [ -n "${HEALTH_BODY+x}" ]; then printf '%s' "$HEALTH_BODY"; else
+   printf '{"status": "ready", "dernier_demarrage": {"ts": 1.5, "sha": "%s"}}' "$(cat "$BANC/origin")"; fi;;
  *pending_restart*) echo "${PENDING_RESTART-0}";;
 esac
 if [ -n "${FAIL:-}" ] && echo "$a" | grep -qE "$FAIL"; then exit 1; fi
@@ -380,6 +382,73 @@ class AutoDeployTests(unittest.TestCase):
         banc = self.banc("docs", changes="docs/CODEMAP.md\n")
         banc.jouer()
         self.assertIsNone(banc.index("DEPLOYED_SHA"))
+
+    def test_backend_reste_sur_l_ancien_code_le_deploy_echoue(self):
+        """Incident 18/11/2026 — Django démarré sur un commit, fichiers avancés sans
+        redémarrage : health/ready répond 200 mais `dernier_demarrage.sha` n'est pas
+        le commit déployé (ou nul) -> ECHEC avec la consigne en français."""
+        lot = "backend/django_core/apps/ventes/views.py\n"
+        cas = {"ancien": ('{"status":"ready","dernier_demarrage":{"ts":1.0,"sha":"%s"}}' % A, A),
+               "nul": ('{"status": "ready", "dernier_demarrage": null}', "nul")}
+        for nom, (corps, servi) in cas.items():
+            with self.subTest(nom):
+                banc = self.banc(nom, changes=lot)
+                rc, _ = banc.jouer(HEALTH_BODY=corps)
+                self.assertNotEqual(rc, 0, banc.journal)
+                self.assertIn(f"Django ne sert pas le commit déployé (health/ready dernier_demarrage.sha"
+                              f" = « {servi} », attendu {B[:9]})", banc.journal)
+                self.assertIn("git pull sur main", banc.journal)
+                self.assertIn("ECHEC", banc.journal)
+                self.assertEqual(banc.lire("last_deployed_commit"), A)
+                self.assertEqual(banc.compte(r"^curl -sS --resolve api\.taqinor\.ma:443:127\.0\.0\.1 "
+                                             r"https://api\.taqinor\.ma/api/django/core/health/ready/$"), 5)
+        # Le commit servi est le bon : vert.
+        banc = self.banc("vert", changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertEqual(banc.lire("last_deployed_commit"), B)
+
+    @unittest.skipUnless(shutil.which("git"), "git introuvable")
+    def test_garde_git_refuse_une_copie_ancienne_du_deploy_manuel(self):
+        """Incident 18/11/2026 — le crochet posé par la séquence refuse le `git reset
+        --hard origin/main` d'une vieille copie de deploy-prod.ps1 (avant tout build),
+        laisse passer `git fetch`, et la séquence elle-même (variable posée)."""
+        banc = self.banc(changes="docs/x.md\n")
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        crochet = banc.d / "repo/.git/hooks/reference-transaction"
+        self.assertTrue(os.access(crochet, os.X_OK), sortie)
+        # Un vrai dépôt git : origin (2 commits) et le « serveur » cloné au 1er.
+        d = Path(self._tmp.name) / "git"
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+        env.pop("TAQINOR_SEQUENCE_DEPLOY", None)
+
+        def git(*args, cwd=d, **extra):
+            return subprocess.run(["git", *args], cwd=cwd, env={**env, **extra},
+                                  capture_output=True, text=True, encoding="utf-8")
+        d.mkdir()
+        git("init", "-q", "-b", "main", "origin")
+        git("commit", "-q", "--allow-empty", "-m", "a", cwd=d / "origin")
+        git("clone", "-q", "origin", "srv")
+        git("commit", "-q", "--allow-empty", "-m", "b", cwd=d / "origin")
+        srv = d / "srv"
+        shutil.copy(crochet, srv / ".git/hooks/reference-transaction")
+        avant = git("rev-parse", "HEAD", cwd=srv).stdout
+        vieille_copie = "set -e\ngit fetch origin main\ngit reset --hard origin/main\necho BUILD\n"
+        r = subprocess.run([_bash(), "-c", vieille_copie], cwd=srv, env=env,
+                           capture_output=True, text=True, encoding="utf-8")
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("BUILD", r.stdout)
+        self.assertIn("REFUS", r.stderr)
+        self.assertIn("`git pull` sur main", r.stderr)
+        self.assertEqual(git("rev-parse", "HEAD", cwd=srv).stdout, avant)
+        self.assertNotEqual(git("rev-parse", "origin/main", cwd=srv).stdout, avant)  # fetch passé
+        # La séquence du serveur (variable posée) avance, arbre séparé compris.
+        self.assertEqual(git("reset", "-q", "--hard", "origin/main", cwd=srv,
+                             TAQINOR_SEQUENCE_DEPLOY="1").returncode, 0)
+        self.assertEqual(git("worktree", "add", "-q", "--detach", str(d / "arbre"), "HEAD",
+                             cwd=srv).returncode, 0)
 
     def test_publication_meryem_societe_designee_et_echec_journalise(self):
         """ACEL6 — `--company` passé, échec non bloquant mais journalisé (plus de `|| true`)."""

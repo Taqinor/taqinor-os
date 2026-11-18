@@ -49,16 +49,13 @@ class CoreConfig(AppConfig):
         monitoring.init_sentry()
 
         # BPQ2 - marqueur de demarrage (horodatage + sha deploye dans la liste
-        # Redis bornee ``erp:demarrages``) : jamais pour une commande de gestion
-        # (migrate, test, shell...), seulement pour un process serveur/worker.
+        # Redis bornee ``erp:demarrages``) : seulement pour un process qui SERT
+        # (gunicorn, worker/beat celery, runserver) — jamais pour une commande
+        # de gestion ni pour les ``python -c`` du deploy (incident 18/11/2026 :
+        # le deploy lit ce marqueur pour savoir quel commit Django sert).
         # Best-effort, no-op si Redis est injoignable.
-        import sys
-        argv = sys.argv
-        commande_gestion = (
-            len(argv) > 1 and argv[0].endswith('manage.py')
-            and argv[1] != 'runserver')
-        if not commande_gestion and 'test' not in argv[1:2]:
-            from .health import enregistrer_demarrage
+        from .health import enregistrer_demarrage, est_processus_serveur
+        if est_processus_serveur():
             enregistrer_demarrage()
 
         # SCA28 — hook signup « branding neutre » (thème + modèles brandés par

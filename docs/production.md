@@ -176,6 +176,43 @@ powershell -File scripts\deploy-prod.ps1
 (installe `scripts/auto-deploy.sh` d'`origin/main` puis lance l'unité
 `taqinor-autodeploy` : la même séquence que l'auto-déploiement de chaque fusion.)
 
+**Toujours depuis un dossier à jour : `git pull` sur `main` AVANT la commande.**
+Incident du 18/11/2026 : une copie de `deploy-prod.ps1` antérieure au 10/11 (ADCG1)
+embarquait sa propre séquence, qui ne redémarrait pas Django quand seul le front
+était reconstruit — le site montrait les écrans du jour, Django servait le code de
+la veille et ~47 % des appels recevaient la page nue « Internal Server Error » de
+gunicorn. Depuis, la séquence pose sur le serveur un crochet git
+(`.git/hooks/reference-transaction` de `/opt/taqinor-os`) qui refuse tout
+`git reset`/`git pull` hors d'elle : une vieille copie s'arrête à son
+`git reset --hard origin/main`, AVANT tout build, avec « REFUS : … faites `git pull`
+sur main ». Rien n'est alors modifié. Geste conscient sur le serveur, si un jour il
+faut avancer le dépôt à la main : `TAQINOR_SEQUENCE_DEPLOY=1 git …`.
+Pourquoi ce crochet et pas seulement une consigne : une vieille copie ne lit ni la
+documentation ni un fichier posé par la nouvelle séquence, mais elle passe forcément
+par `git reset --hard` sur le serveur — c'est le seul point qu'on maîtrise.
+
+### Le backend sert-il le commit déployé ?
+
+Un `health/ready` à 200 ne dit pas QUEL code Django sert. Deux garde-fous (18/11/2026) :
+
+- **Le deploy le vérifie.** Après la santé HTTP, l'étape `commit_servi` lit
+  `health/ready` → `dernier_demarrage.sha` (posé au démarrage par le maître
+  gunicorn avec `DEPLOYED_SHA`, `core/health.py::sha_deploye` ; les `python -c` du
+  deploy n'en posent plus) et exige le commit déployé (5 essais). Sinon : ÉCHEC,
+  retour arrière, et la ligne « Django ne sert pas le commit déployé … » au journal.
+  Si cela arrive avec la séquence courante : regarder `journalctl -u taqinor-autodeploy`,
+  puis `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs django_core`
+  (un démarrage en échec y montre l'erreur d'import), et relancer le deploy.
+- **Les routes sont chargées au démarrage** (`erp_agentique/wsgi.py::charger_routes`) :
+  sous `--preload`, le maître importe toutes les vues avant de créer les workers,
+  qui les partagent sans relire le disque. Un code incohérent fait échouer le
+  démarrage du conteneur (vu par le deploy) au lieu de chaque requête.
+
+Vérification de l'extérieur après un deploy (lecture seule) : (1) une adresse née du
+dernier merge backend répond 401 sans connexion, pas 404 ; (2) aucune page nue de
+gunicorn (141 octets, sans en-tête `x-request-id`) sur 30 appels à `health/ready` ;
+(3) `health/ready` → `dernier_demarrage.sha` = le commit déployé, jamais nul.
+
 **Ordre de la séquence (ADCG109, 10/11/2026).** Le code backend de production
 est *monté* dans les conteneurs (`/opt/taqinor-os/backend/django_core` → `/app`
 de django_core et des trois celery, `backend/fastapi_ia` → `/app` de fastapi_ia) :
@@ -192,7 +229,8 @@ neuf. Le dépôt n'avance donc plus en premier :
    (même projet `erp-agentique`, code neuf vu SEULEMENT par ces conteneurs jetables) ;
 5. **étape `code`** : `git reset --hard <commit>` de `/opt/taqinor-os` — c'est ici, et
    seulement si build et migrate ont réussi, que le code neuf devient visible ;
-6. `up -d`, redémarrages, `init_roles`, nginx, Caddy, préchauffage, santé ;
+6. `up -d`, redémarrages, `init_roles`, nginx, Caddy, préchauffage, santé, puis
+   **`commit_servi`** : `health/ready` → `dernier_demarrage.sha` = le commit déployé ;
 7. arbre retiré en fin de cycle (succès comme échec).
 
 Un échec aux étapes 3-4 laisse `/opt/taqinor-os` sur l'ancien commit. Le retour
