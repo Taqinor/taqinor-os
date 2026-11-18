@@ -207,12 +207,12 @@ etape('PF-AERR4-relances-lecture-ratee', ['AERR4'], async ({ page, suivi, testIn
   const rtardive = await tardive
   expect(rtardive.status(), 'la réponse « Mes relances » arrive en dernier').toBe(200)
   // Déterministe : la réponse tardive doit avoir été LIVRÉE ET TRAITÉE par la page avant de vérifier (sinon l'étape
-  // passerait sans la garde d'ordre). Corps reçu, réseau calme, puis deux images rendues + un tour de boucle : les
-  // `.then` d'axios et le rendu React qui en découle sont passés.
+  // passerait sans la garde d'ordre). Corps reçu, réseau calme, puis trois images rendues : les `.then` d'axios
+  // (microtâches, vidées avant chaque image) et le rendu React qui en découle sont passés.
   expect(await rtardive.json(), 'la réponse tardive est bien « Mes relances » : vide').toEqual([])
   await p.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => undefined)
   await p.evaluate(() => new Promise((fin) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(fin, 0)))
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => fin())))
   }))
   await expect(p.getByRole('combobox', { name: 'Filtrer la file de relance' })).toContainText('Toutes les factures')
   for (const f of fs) await expect(ligne(f), `seule la dernière demandée s'affiche : ${f.reference}`).toBeVisible()
