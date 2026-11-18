@@ -285,6 +285,15 @@ describe('TCH104 — vues et navigation', () => {
     expect(screen.getByTestId('adresse').textContent).toContain('jour=2026-11-18')
   })
 
+  it('Passe visuelle n° 58 (mineur) — Mois : « Novembre 2026 » et la charge du jour choisi à droite de son titre', async () => {
+    const { container } = monter('/taches/agenda?vue=mois')
+    await screen.findByRole('gridcell', { name: 'Mardi 17 novembre · 3 tâches' })
+    expect(container.querySelector('.ag-nav b')).toHaveTextContent(/^Novembre 2026$/)
+    const tete = container.querySelector('.ag-jour-tete')
+    expect(tete.querySelector('b')).toHaveTextContent('Mardi 17 novembre')
+    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+  })
+
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {
     monter('/taches/agenda?vue=a-venir')
     await waitFor(() => expect(dernierAppel()).toEqual({ du: '2026-11-17', au: '2026-11-30' }))

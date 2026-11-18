@@ -86,7 +86,10 @@ function pas(vue, jour, sens) {
 
 function titrePeriode(vue, jour, { du, au }) {
   if (vue === 'jour') return jourLong(jour)
-  if (vue === 'mois') return `${MOIS_LONGS[Number(jour.slice(5, 7)) - 1]} ${jour.slice(0, 4)}`
+  if (vue === 'mois') { // maquette agenda-mois.html : « Novembre 2026 »
+    const mois = MOIS_LONGS[Number(jour.slice(5, 7)) - 1]
+    return `${mois[0].toUpperCase()}${mois.slice(1)} ${jour.slice(0, 4)}`
+  }
   const [md, ma] = [Number(du.slice(5, 7)), Number(au.slice(5, 7))]
   const debut = md === ma ? `${Number(du.slice(8))}` : `${Number(du.slice(8))} ${ABR_MOIS[md - 1]}`
   return `${debut} – ${Number(au.slice(8))} ${MOIS_LONGS[ma - 1]}`
@@ -454,6 +457,19 @@ function BoutonPlanifier({ onClick }) {
   )
 }
 
+/** Passe visuelle n° 58 — Mois : le jour choisi dit sa charge à droite de son titre, par la règle de Planifier ma
+ *  semaine (« {n} tâches · {h} pour {cap} », textes.md §2.8 ; maquette agenda-mois.html) ; un jour non travaillé ou
+ *  férié n'en dit rien ici (« Jour non travaillé » / « Férié » suivent dessous). */
+function TeteJourChoisi({ jour, aujourdhui, capacite }) {
+  const r = resumeJour(jour, aujourdhui, capacite)
+  return (
+    <div className="ag-jour-tete">
+      <b>{jourLong(jour.jour)}</b>
+      {r.repos ? null : <span className="ag-jour-charge chiffres">{r.texte}</span>}
+    </div>
+  )
+}
+
 function VueAVenir({ jours, aujourdhui, gestes }) {
   return jours.map((j) => (
     <section key={j.jour} className="ag-av" aria-label={jourLong(j.jour)}>
@@ -801,7 +817,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
           <VueMois du={periode.du} au={periode.au} mois={jour.slice(0, 7)} jours={donnees?.jours}
             aujourdhui={aujourdhui} jourChoisi={jour} onChoisir={(iso) => changer({ jour: iso })} />
           <section className="ag-av" aria-label={jourLong(jour)}>
-            <div className="ag-jour-tete"><b>{jourLong(jour)}</b></div>
+            <TeteJourChoisi jour={parJour[jour] ?? jourVide(jour)} aujourdhui={aujourdhui}
+              capacite={donnees?.capacite?.minutes ?? null} />
             <EtatDuJour jour={parJour[jour] ?? jourVide(jour)} />
             <ListeDuJour jour={parJour[jour] ?? jourVide(jour)} aujourdhui={aujourdhui} gestes={gestesEcran} />
           </section>
