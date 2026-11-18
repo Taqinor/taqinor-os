@@ -65,7 +65,21 @@ class SemisTests(TestCase):
         return (get_user_model().objects.filter(username=commande.NOM_COMPTE).count(),
                 Projet.objects.filter(proprietaire=self.user).count(),
                 Tache.all_objects.filter(proprietaire=self.user).count(),
-                PlanJour.objects.filter(proprietaire=self.user).count())
+                PlanJour.objects.filter(proprietaire=self.user).count(), *self._compter_erp())
+
+    def _compter_erp(self):
+        """S3 : (leads, visites, touches) de la société de démonstration — 6 leads (Témara + 5 relances)."""
+        from apps.crm.models import Lead, RelanceEtape
+        from apps.visites.models import VisiteTerrain
+        societe = self.user.company_id
+        return (Lead.all_objects.filter(company_id=societe).count(),
+                VisiteTerrain.objects.filter(company_id=societe).count(),
+                RelanceEtape.objects.filter(company_id=societe, cadence='contact').count())
+
+    def test_les_objets_erp_du_scenario_restent_dans_la_societe_de_demonstration(self):
+        from apps.crm.models import Lead
+        self.assertEqual(self._compter_erp(), (6, 1, 5))
+        self.assertFalse(Lead.all_objects.exclude(company__est_demo=True).exists())
 
     def _aujourdhui(self, heure):
         return journee.aujourdhui(self.user, JOUR, _instant(heure))
@@ -74,6 +88,8 @@ class SemisTests(TestCase):
         self.assertTrue(self.user.company.est_demo)
         self.assertEqual(self.user.role.nom, commande.NOM_ROLE)
         self.assertTrue(self.user.has_erp_permission('taches_voir'))
+        # S3 : voir ses visites et ses relances (familles ERP de la journée) — rien de plus
+        self.assertEqual(sorted(self.user.role.permissions), ['crm_voir', 'roles_gerer', 'taches_voir', 'visites_voir'])
         self.assertFalse(self.user.has_usable_password())
 
     def test_deux_lancements_donnent_les_memes_comptes(self):
@@ -132,6 +148,7 @@ class SemisTests(TestCase):
         _semer('--reinitialiser', '--vide')
         self.assertEqual(Tache.all_objects.filter(proprietaire=self.user).count(), 0)
         self.assertEqual(Projet.all_objects.filter(proprietaire=self.user).count(), 0)
+        self.assertEqual(self._compter_erp(), (0, 0, 0))  # S3 : ni lead, ni visite, ni relance
 
     def test_le_rappel_n_a_aucune_tache_liee_le_matin(self):
         # S5 : « Lier une tâche » du parcours (TCH137 étape 4) doit répondre 201 à 08:30.
@@ -154,6 +171,8 @@ class SemisTests(TestCase):
 
 RAILS, FOURNISSEUR, FICHE = commande.RAILS, commande.FOURNISSEUR, commande.FICHE
 DEVIS, STAND, CONTRAT = commande.DEVIS, commande.STAND, commande.CONTRAT
+#: Le titre que la famille « visites » donne à une visite de l'ERP (`selectors.journee._visites`).
+TITRE_VISITE = 'Visite — Témara'
 
 
 def _instant_du(jour, heure):
@@ -180,6 +199,21 @@ class ScenarioTests(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
         return reponse.json()
 
+    def verifier_obligations(self, forme, instant, relances):
+        """S3 (SCENARIO §1, §3 ; errata §0.5) : la visite de Témara est la SEULE ligne « Toute la journée »
+        d'`aujourdhui/` et d'`agenda/` (vues Jour et Semaine, le 24 seulement) ; « Suivi des relances : n »
+        dans Prévu (5 le matin, 2 dès 11:30)."""
+        obligations = forme['obligations']
+        self.assertEqual([o['titre'] for o in obligations if o['famille'] == 'visite'], [TITRE_VISITE])
+        self.assertEqual([(o['titre'], o['nb'], o['en_retard']) for o in obligations if o['famille'] == 'touches'],
+                         [('Suivi des relances', relances, 0)])
+        self.assertEqual(len(obligations), 2, obligations)
+        jour = self.lire('agenda/', instant, du=JOUR.isoformat(), au=JOUR.isoformat(), vue='jour')
+        semaine = self.lire('agenda/', instant, du='2026-11-23', au='2026-11-29', vue='semaine')
+        self.assertEqual(_titres(jour['jours'][0]['toute_la_journee']), [TITRE_VISITE])
+        bandes = {j['jour']: _titres(j['toute_la_journee']) for j in semaine['jours']}
+        self.assertEqual(bandes, {j: ([TITRE_VISITE] if j == JOUR.isoformat() else []) for j in bandes})
+
     def matin(self):
         self.semer('--heure', '08:30', '--historique', '10')
         return self.lire('aujourdhui/', _instant('08:30'))
@@ -197,6 +231,7 @@ class ScenarioTests(TestCase):
         self.assertEqual(forme['carte_du_moment']['type'], 'garder')  # S2 : « Garder ces 3 »
         self.assertEqual(forme['carte_du_moment']['donnees'], {'n': 3, 'objectif': 5})
         self.assertEqual([i['titre'] for i in forme['journee'] if i['type'] == 'activite'], [commande.ACTIVITE_APPEL])
+        self.verifier_obligations(forme, _instant('08:30'), relances=5)  # S3 : visite · « Suivi des relances : 5 »
         # ERR-PLAN 3 / ERR-SCENARIO : la facture d'acompte est l'à-faire d'Activités (échéance ven. 27) que le
         # bandeau convertit (TCH136 étape 5) ; convertie, elle sera PRÉVUE ven. 27 (spec-2 §3.8) : À trier 4 + 1
         self.assertEqual((forme['a_trier']['boite_reception'], forme['a_trier']['a_convertir']), (4, 1))
@@ -229,16 +264,19 @@ class ScenarioTests(TestCase):
     def test_09h41_la_tuile_et_l_agenda(self):
         self.semer('--heure', '09:41', '--rendez-vous')
         instant = _instant('09:41')
-        p = self.lire('aujourdhui/', instant)['progression']
+        forme = self.lire('aujourdhui/', instant)
+        p = forme['progression']
         self.assertEqual((p['faites'], p['essentiel_faites'], p['essentiel_prevues']), (1, 0, 2))  # « 1 sur 5 »
+        self.verifier_obligations(forme, instant, relances=5)  # S3 : P139.4, la visite en Toute la journée
         jour = self.lire('agenda/', instant, du=JOUR.isoformat(), au=JOUR.isoformat(), vue='jour')
         semaine = self.lire('agenda/', instant, du='2026-11-23', au='2026-11-29', vue='semaine')
         # À placer : Aujourd'hui 3 (stand, fiche, contrat) + À revoir 2, LE MÊME dans les deux vues (api.md §4)
         self.assertEqual(sorted(_titres(jour['a_placer'])), sorted([STAND, FICHE, CONTRAT, *commande.A_REVOIR]))
         self.assertEqual(_titres(semaine['a_placer']), _titres(jour['a_placer']))
-        # « Mes projets » seulement en vue Semaine (api.md §4 `agenda/`) : ERR-SCENARIO « À placer · 12 (Jour et
-        # Semaine) »
-        self.assertEqual(jour['mes_projets'], [])
+        # SCENARIO §4 : « À placer · 12 (Jour et Semaine, 09:41) » — le MÊME volet dans les deux vues, « Mes
+        # projets » compris (maquettes `agenda-jour.html` et `agenda-semaine.html`) : 5 + 7 = 12.
+        self.assertEqual(jour['mes_projets'], semaine['mes_projets'])
+        self.assertEqual(len(jour['a_placer']) + sum(len(g['items']) for g in jour['mes_projets']), 12)
         mes_projets = {g['projet']['nom']: _titres(g['items']) for g in semaine['mes_projets']}
         self.assertEqual(sorted(mes_projets[commande.SALON]),
                          sorted(['Préparer la démo onduleur hybride', "Réserver l'hôtel du salon"]))
@@ -261,6 +299,9 @@ class ScenarioTests(TestCase):
         self.assertEqual((p['faites'], p['detail']['activites_closes'], p['essentiel_faites'],
                           p['essentiel_prevues']), (3, 0, 1, 2))
         self.assertEqual(forme['propose']['pour_objectif'], [])  # « Objectif couvert par ce que tu as gardé. »
+        # S3 : 3 relances faites à 11:30 → « Suivi des relances : 2 » ; une touche close n'est pas une activité ERP
+        # (regles.md §6.1) : `faites` reste 3 et `activites_closes` 0 (vérifiés plus haut).
+        self.verifier_obligations(forme, _instant('15:00'), relances=2)
         self.assertEqual(self.lire('badge/', _instant('15:02'))['n'], 2)  # cockpit « 2 à faire » (stand, contrat)
         self.assertNotIn(FICHE, _titres(forme['journee']))  # partie jeu. 26 à 14:10
         self.assertEqual(_titres(forme['ce_soir']), [CONTRAT])

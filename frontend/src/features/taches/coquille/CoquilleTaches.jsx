@@ -19,7 +19,7 @@ import { derniereSynchro as lireDerniereSynchro, viderCacheALaDeconnexion } from
 import {
   MESSAGE_AUTRE_COMPTE, brancherRejeu, definirCompteFile, etatFile, garderLaMienne, prendreLAutre, rejouerFile, useVersionFile,
 } from '../horsligne/captureQueue'
-import { heure as heureDe } from '../lib/textes'
+import { heureDuConflit } from '../lib/textes'
 import { MARQUE_FICHE } from '../lib/fiche'
 
 /* ============================================================================
@@ -197,7 +197,7 @@ export default function CoquilleTaches({
   const synchro = derniereSynchro ?? (userId === null ? null : lireDerniereSynchro(userId))
   const premierConflit = file.conflits[0]
   const conflitFile = premierConflit ? {
-    heure: heureDe(String(premierConflit.actuel?.updated_at ?? '').slice(11, 16)),
+    heure: heureDuConflit(premierConflit.actuel),
     onGarder: async () => { await garderLaMienne(premierConflit.opId); await rejouerFile() },
     onPrendre: () => prendreLAutre(premierConflit.opId),
   } : null
@@ -278,6 +278,8 @@ export default function CoquilleTaches({
             projets={selecteurProjet.projets}
             valeur={selecteurProjet.valeur}
             sansProjet={selecteurProjet.sansProjet}
+            chargement={selecteurProjet.chargement}
+            focusChamp={selecteurProjet.focusChamp}
             onChoisir={selecteurProjet.onChoisir}
             onNouveau={selecteurProjet.onNouveau}
           />

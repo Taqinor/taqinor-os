@@ -8,7 +8,7 @@ import { frenchError } from '../../../lib/frenchError'
 import { MESSAGE_EN_FILE, enfilerReport } from '../horsligne/captureQueue'
 import { estEnLigne } from '../lib/enLigne'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
-import { aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
+import { aujourdhuiIso, heureDuConflit, jourCourt, jourNomme } from '../lib/textes'
 import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
 /* ============================================================================
@@ -130,7 +130,7 @@ export function useActionsLigne({
       defaire()
       if (classee.code === 'conflit_version') {
         setConflit({
-          heure: String(classee.actuel?.updated_at ?? '').slice(11, 16),
+          heure: heureDuConflit(classee.actuel),
           onGarder: () => { setConflit(null); relancer.current?.(item, quand, message, classee.lockVersion ?? classee.actuel?.lock_version) },
           onPrendre: () => { if (classee.actuel) rappels.current.maj(item.id, classee.actuel); setConflit(null) },
         })
@@ -175,7 +175,8 @@ export function useActionsLigne({
       setProjets((liste) => (liste ? [...liste, cree] : liste))
       deplacer(item, cree)
     } catch (err) {
-      annoncer(classerErreur(err).champs?.nom?.[0] ?? frenchError(err))
+      // la feuille est déjà fermée : le refus (409 `nom_pris`, `nom` déjà pris…) se VOIT dans le toast, et il est lu
+      proposerAnnuler({ message: classerErreur(err).champs?.nom?.[0] ?? frenchError(err) })
     }
   }, [deplacer])
 
@@ -236,20 +237,36 @@ export function useActionsLigne({
     }
   }, [echec])
 
-  const ouvrirProjets = useCallback((item) => {
-    setFeuille({ type: 'projet', item })
-    if (!projets) listerTousLesProjets().then(setProjets).catch((err) => { setFeuille(null); annoncer(frenchError(err)) })
-  }, [projets])
+  // la liste des projets n'est lue qu'une fois ; `prechargerProjets` la lit d'avance (clavier : `m` puis Entrée
+  // tout de suite doit trouver la liste — F2 acceptation, P144.3)
+  const lectureProjets = useRef(null)
+  const lireProjets = useCallback(() => {
+    if (!lectureProjets.current) {
+      lectureProjets.current = listerTousLesProjets()
+        .then((liste) => { setProjets(liste); return liste })
+        .catch((err) => { lectureProjets.current = null; throw err })
+    }
+    return lectureProjets.current
+  }, [])
+  const prechargerProjets = useCallback(() => {
+    if (projets) return
+    lireProjets().catch((err) => { annoncer(frenchError(err)) })
+  }, [projets, lireProjets])
 
-  /** Le rappel `onAction(code, item)` de `LigneTache`. */
-  const surAction = useCallback((code, item) => {
+  const ouvrirProjets = useCallback((item, { clavier = false } = {}) => {
+    setFeuille({ type: 'projet', item, clavier })
+    if (!projets) lireProjets().catch((err) => { setFeuille(null); annoncer(frenchError(err)) })
+  }, [projets, lireProjets])
+
+  /** Le rappel `onAction(code, item)` de `LigneTache` ; `{ clavier: true }` quand une touche l'a demandé. */
+  const surAction = useCallback((code, item, options = {}) => {
     if (actionsPropres[code]) { actionsPropres[code](item); return }
     const reseau = code !== 'choisir_jour' && code !== 'reporter' && code !== 'reserve'
     if (reseau && !estEnLigne()) { annoncer(PHRASE_HORS_LIGNE); return }
     if (code === 'choisir_jour') setFeuille({ type: 'quand', item })
     else if (code === 'reporter') reporter(item)
     else if (code === 'reserve') planifier(item, { quelque_jour: true }, 'En réserve')
-    else if (code === 'deplacer') ouvrirProjets(item)
+    else if (code === 'deplacer') ouvrirProjets(item, options)
     else if (code === 'attente') setFeuille({ type: 'attente', item })
     else if (code === 'priorite') setFeuille({ type: 'priorite', item })
     else if (code === 'essentiel') essentiel(item)
@@ -294,11 +311,13 @@ export function useActionsLigne({
     onFermer: fermer,
     titre: 'Déplacer vers…',
     projets: projets ?? [],
+    chargement: projets === null,
+    focusChamp: Boolean(feuille.clavier),
     valeur: item.projet?.id ?? null,
     sansProjet: false,
     onChoisir: (projetId) => { const projet = (projets ?? []).find((p) => p.id === projetId); if (projet) deplacer(item, projet) },
     onNouveau: (nom) => nouveauProjet(item, nom),
   } : null
 
-  return { surAction, reporter, essentiel, feuille: feuilleProps, selecteurProjet, conflit }
+  return { surAction, reporter, essentiel, prechargerProjets, feuille: feuilleProps, selecteurProjet, conflit }
 }

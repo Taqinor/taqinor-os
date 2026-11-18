@@ -264,8 +264,8 @@ Santé (`sante[].phrase`) :
 ### 2.8 Agenda et Planifier ma semaine
 
 Vues « Jour · Semaine · Mois · À venir » ; « ← Aujourd'hui → » ; bande « Toute la journée » ; volet « À placer ({n}) »
-(vide : « Tout est placé ») ; en vue Semaine, le volet ajoute « Mes projets » (« ● {projet} ») et l'aide « Touche une
-tâche, puis un jour. » ; bloc sans durée « durée non estimée » ; chevauchement « +{n} » ; iPhone : bloc → « Déplacer »
+(vide : « Tout est placé ») ; le volet porte « Mes projets » (« ● {projet} ») en vue Jour comme en vue Semaine (le même
+nombre « À placer · {n} » dans les deux) ; en vue Semaine il ajoute l'aide « Touche une tâche, puis un jour. » ; bloc sans durée « durée non estimée » ; chevauchement « +{n} » ; iPhone : bloc → « Déplacer »
 → créneau ; ERP « Ouvrir dans le Calendrier » ; jour « Jour non travaillé » / « Férié » ; vide « Rien ce jour-là » ;
 créneau vide « Ajouter à {HH:MM} » ; erreur « 42 jours au plus. » ; rendez-vous externes (ESSENTIEL) : blocs en
 lecture seule, puce « {libellé de l'agenda} », journée entière dans « Toute la journée », toucher → « {titre} · {HH:MM}–

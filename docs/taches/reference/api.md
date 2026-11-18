@@ -1448,7 +1448,7 @@ ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/poi
 `{"jour":"2026-11-17","choix":[{"id":52,"choix":"jour","jour":"2026-11-23"}],"le_reste":true,"reflexion":""}` (`choix` ∈
 `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter ») → `journee_cloturee.json`.
 **`agenda/`** `?du=2026-11-16&au=2026-11-22&vue=semaine&projet=3` → `agenda.json` ; 400 `{"au":["42 jours au plus."]}` ;
-`mes_projets` seulement en `vue=semaine` ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
+`mes_projets` en `vue=jour` et `vue=semaine` (le même volet « À placer », maquettes `agenda-jour` et `agenda-semaine` ; vide en `mois` et `a-venir`) ; `toute_la_journee` = les `obligations` du jour SANS la famille `touches` (la ligne « Suivi des relances » est une ligne de Prévu, textes.md §2 ; la bande ne porte que ce qui a une date sans heure) ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
 RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon

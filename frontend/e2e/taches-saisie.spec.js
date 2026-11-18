@@ -45,8 +45,11 @@ test.describe('Tâches — saisie', () => {
     await expect(champSaisie(page)).toHaveValue(`${titre} demain #${nomProjet}`)
 
     await champSaisie(page).press('Enter')
-    await expect(feuilleSaisie(page)).toHaveCount(0)
+    // chaîne (spec-2 §1) : le champ se vide, la feuille reste ouverte pour la suivante ; Échap ferme
+    await expect(champSaisie(page)).toHaveValue('')
     await expect(toast(page)).toContainText('Ajoutée')
+    await page.keyboard.press('Escape')
+    await expect(feuilleSaisie(page)).toHaveCount(0)
 
     const jour = await jourServeur(page)
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
@@ -70,7 +73,7 @@ test.describe('Tâches — saisie', () => {
     await expect(puceJour).toHaveCount(0)
 
     await champSaisie(page).press('Enter')
-    await expect(feuilleSaisie(page)).toHaveCount(0)
+    await expect(champSaisie(page)).toHaveValue('')
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
     const [creee] = await chercherTaches(page, titre)
     const lue = await lireTache(page, creee.id)
@@ -265,5 +268,48 @@ test.describe('Tâches — la fiche et le conflit entre deux appareils', () => {
     await expect(bandeau).toHaveCount(0)
     // le serveur n'a pas bougé : c'est la version de l'autre appareil
     expect((await lireTache(page, tache.id)).titre).toBe(autre)
+  })
+})
+
+/** Ce que le doigt toucherait au CENTRE du bouton : le bouton lui-même (ou un de ses enfants), jamais la barre
+ *  d'onglets de l'ERP posée par-dessus (acceptation F2, P136.2 : « Coller encore » passait sous les onglets). */
+async function recoitLeDoigt(bouton) {
+  return bouton.evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    const touche = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+    return Boolean(touche) && (touche === el || el.contains(touche))
+  })
+}
+
+test.describe('Tâches — iPhone : le pied des feuilles passe au-dessus de la barre d\'onglets', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+  test('feuille de saisie : « Coller encore » et « Créer 3 tâches » reçoivent le doigt', async ({ page }) => {
+    await reinitialiser(page)
+    const nom = `Salon ${suffixe()}`
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await expect(page.locator('nav.bottom-tabbar'), "la barre d'onglets de l'ERP est là").toBeVisible()
+    await page.getByRole('button', { name: 'Coller mes listes' }).click()
+    await champSaisie(page).fill([nom, 'Réserver le stand', 'Imprimer les kakémonos', 'Préparer la démo'].join('\n'))
+    const encore = feuilleSaisie(page).getByRole('button', { name: 'Coller encore' })
+    const creer = feuilleSaisie(page).getByRole('button', { name: 'Créer 3 tâches' })
+    await expect(creer).toBeVisible()
+    await expect.poll(() => recoitLeDoigt(encore), '« Coller encore » sous le doigt').toBe(true)
+    await expect.poll(() => recoitLeDoigt(creer), '« Créer 3 tâches » sous le doigt').toBe(true)
+    await creer.tap()
+    await expect(feuilleSaisie(page)).toHaveCount(0)
+    expect((await listerProjets(page)).map((p) => p.nom)).toEqual([nom])
+  })
+
+  test('fiche : « Fait » reçoit le doigt', async ({ page }) => {
+    const { taches } = await journeeNonVide(page)
+    const tache = taches[0]
+    await ouvrirEcran(page, `/taches/aujourdhui?tache=${tache.id}`, 'aujourdhui')
+    const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+    const fait = fiche.getByRole('button', { name: 'Fait', exact: true })
+    await expect(fait).toBeVisible()
+    await expect.poll(() => recoitLeDoigt(fait), '« Fait » sous le doigt').toBe(true)
+    await fait.tap()
+    await expect.poll(async () => (await lireTache(page, tache.id)).statut).toBe('fait')
   })
 })

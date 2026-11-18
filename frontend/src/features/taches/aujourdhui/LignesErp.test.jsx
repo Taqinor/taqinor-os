@@ -152,6 +152,10 @@ describe('TCH81 — Lier une tâche', () => {
     await userEvent.click(within(await screen.findByRole('dialog', { name: 'Lier une tâche' })).getByRole('button', { name: 'Lier une tâche' }))
     await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Cette activité a déjà sa tâche.'))).toBe(true))
     expect(screen.queryByText("Préparer l'appel Benali")).toBeNull()
+    // F2 acceptation (S5) — le refus SE VOIT, sous le champ du geste (textes.md §2.16), la feuille reste ouverte
+    const feuille = screen.getByRole('dialog', { name: 'Lier une tâche' })
+    expect(within(feuille).getByRole('alert')).toHaveTextContent('Cette activité a déjà sa tâche.')
+    expect(within(feuille).getByLabelText('Titre de la tâche')).toHaveAttribute('aria-invalid', 'true')
   })
 })
 

@@ -27,6 +27,8 @@ import ColleListes, { construireLigne } from './ColleListes'
    TCH83 — plus d'une ligne collée (ou « Coller encore ») : la feuille montre l'aperçu de la liste
    (`ColleListes`) au lieu des puces d'une phrase ; l'événement `taqinor:taches:saisir` avec
    `detail.liste` ouvre directement ce mode (« Coller mes listes » de l'état vide d'Aujourd'hui).
+   CHAÎNE (spec-2 §1 « Après Entrée, le champ se vide et reste ouvert sur le même projet ; Échap ferme ») : une
+   phrase ajoutée vide le champ, la feuille reste ouverte sur le contexte de l'écran ; une LISTE créée la ferme.
    Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html,
    ecran-saisie-liste.html.
    ========================================================================== */
@@ -180,6 +182,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   const [envoi, setEnvoi] = useState(false)
   const [cid, setCid] = useState(() => nouvelleCle())
   const [contexte, setContexte] = useState(() => lireContexte(null))
+  const [quandDepart, setQuandDepart] = useState(null)
   const enLigne = useEnLigne()
 
   useEffect(() => { if (compte != null) definirProprietaire(compte) }, [compte])
@@ -192,8 +195,14 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   const remettreAZero = useCallback(() => {
     setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampOuvert(false); setIgnorer([])
-    setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null))
+    setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null)); setQuandDepart(null)
   }, [])
+
+  /** Chaîne : la phrase est partie, le champ se vide ; projet et jour de l'écran restent (spec-2 §1). */
+  const enchainer = useCallback(() => {
+    setTexte(''); setIgnorer([]); setApercu(null); setErreur(''); setCid(nouvelleCle())
+    setQuand(quandDepart); setQuandOuvert(false)
+  }, [quandDepart])
 
   // déconnexion : plus aucune trace de la phrase (écran, stockage)
   useEffect(() => {
@@ -211,7 +220,9 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
       if (detail.liste || detail.coller) setChampOuvert(true)
       setContexte(lireContexte(detail))
       if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
-        setQuand({ jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false })
+        const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+        setQuand(depart)
+        setQuandDepart(depart)
       }
     }
     window.addEventListener(EVENEMENT_SAISIR, surSaisir)
@@ -286,8 +297,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
       const geste = data?.geste_id
       // le brouillon part AVANT les événements : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas le revoir
       ecrireBrouillon(cle, null)
-      remettreAZero()
-      onFermer?.()
+      if (modeListe) { remettreAZero(); onFermer?.() } else enchainer()
       window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
       proposerAnnuler({
         message: n > 1 ? `${n} tâches créées` : 'Ajoutée',

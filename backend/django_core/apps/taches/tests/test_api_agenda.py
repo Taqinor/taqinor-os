@@ -97,12 +97,18 @@ class AgendaTests(TestCase):
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))
 
-    def test_mes_projets_en_vue_semaine_seulement(self):
+    def test_mes_projets_en_vue_jour_et_semaine_le_meme_volet(self):
+        """Le volet « À placer » est le MÊME en vue Jour et en vue Semaine (maquettes `agenda-jour.html` et
+        `agenda-semaine.html` : « À placer · 12 » dans les deux ; SCENARIO §4) : « Mes projets » y est servi
+        dans les deux vues, jamais en Mois ni À venir (pas de volet)."""
         self.tache()
-        self.assertEqual(self.periode(vue='jour', au=self.T.isoformat())['mes_projets'], [])
-        groupes = self.periode(vue='semaine')['mes_projets']
-        self.assertEqual(groupes[0]['projet']['id'], self.projet.pk)
-        self.assertEqual(groupes[0]['items'][0]['raison']['code'], 'prochaine_action')
+        jour = self.periode(vue='jour', au=self.T.isoformat())['mes_projets']
+        semaine = self.periode(vue='semaine')['mes_projets']
+        self.assertEqual(jour, semaine)
+        self.assertEqual(semaine[0]['projet']['id'], self.projet.pk)
+        self.assertEqual(semaine[0]['items'][0]['raison']['code'], 'prochaine_action')
+        self.assertEqual(self.get(vue='mois')['mes_projets'], [])
+        self.assertEqual(self.get(vue='a-venir')['mes_projets'], [])
 
     def test_a_placer_du_jour_sans_heure_et_a_revoir(self):
         sans = self.tache(jour_prevu=self.T)
@@ -124,6 +130,21 @@ class AgendaTests(TestCase):
 
     def test_rendez_vous_externes_vides_sans_agenda(self):
         self.assertTrue(all(j['externes'] == [] for j in self.periode()['jours']))
+
+    def test_toute_la_journee_sans_la_ligne_des_relances(self):
+        """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
+        relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""
+        from unittest import mock
+
+        from apps.taches.selectors import journee as sel
+        visite = {'famille': 'visite', 'id': 7, 'titre': 'Visite — Témara', 'jour': self.T.isoformat(),
+                  'url': '/visites'}
+        touches = {'famille': 'touches', 'id': None, 'titre': 'Suivi des relances', 'jour': self.T.isoformat(),
+                   'url': '/crm/relances', 'nb': 5, 'en_retard': 0}
+        with mock.patch.object(sel, 'obligations_du_jour', return_value=sel.Obligations(lignes=(visite, touches))):
+            rendu = self.periode(vue='semaine')
+        self.assertEqual(self.le_jour(rendu, self.T)['toute_la_journee'], [visite])
+        self.assertTrue(all(j['toute_la_journee'] == [] for j in rendu['jours'] if j['jour'] != self.T.isoformat()))
 
     def test_jamais_les_taches_d_un_autre(self):
         autre = fabriques.compte(fabriques.societe('b'), nom='u1')
