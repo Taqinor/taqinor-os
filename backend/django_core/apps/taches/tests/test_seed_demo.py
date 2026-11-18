@@ -237,6 +237,7 @@ class ScenarioTests(TestCase):
                          sorted(['Préparer la démo onduleur hybride', "Réserver l'hôtel du salon"]))
         self.assertEqual(mes_projets[commande.RECRUTEMENT], ["Préparer les questions d'entretien"])
         self.assertEqual(len(mes_projets[commande.SITE]), 4)
+        self.assertEqual(sum(len(titres) for titres in mes_projets.values()), 7, mes_projets)  # « Mes projets 7 » (§4)
         jeudi = next(j for j in semaine['jours'] if j['jour'] == '2026-11-26')
         taches = [i for i in jeudi['blocs'] + jeudi['sans_heure'] if i.get('type') == 'tache']
         self.assertEqual((len(taches), sum(i['estimation_minutes'] for i in taches)), (2, 120))  # « 2 tâches · 2 h »

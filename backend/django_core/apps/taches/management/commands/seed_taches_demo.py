@@ -114,7 +114,8 @@ TACHES = (
      {'est': 60, 'prevu': ((11, 25), '09:00'), 'echeance': (11, 26)}),
     (BENALI, 'Matériel', 'Réceptionner les 16 panneaux', None, {'est': 60, 'prevu': ((11, 26), '09:00')}),
     (BENALI, 'Pose', 'Poser la structure', None, {'est': 480, 'prevu': ((11, 23), None)}),
-    (BENALI, 'Pose', 'Mise en service', None, {'jalon': True, 'echeance': (12, 3)}),
+    # Jalon PRÉVU jeu. 3 déc. (§2, colonne « Jour ») : daté, il n'est pas « à placer » dans Mes projets (§4 : 7).
+    (BENALI, 'Pose', 'Mise en service', None, {'jalon': True, 'prevu': ((12, 3), None)}),
     (SALON, 'Stand', 'Réserver le stand', (3, None), {}),
     (SALON, 'Stand', 'Confirmer la réservation du stand', None,
      {'est': 30, 'prevu': ((11, 24), None), 'echeance': (11, 24)}),
