@@ -239,6 +239,36 @@ Tri de l'orchestrateur (aucune question à Reda) :
   réelle faite sur l'arbre final de la fusion 4, avec la ligne datée d'usage (précédents du 20/09 dans le fichier).
 - Machine cloud : 4 cœurs, 15 Go. Au plus 5 agents à la fois, un seul processus de test par lane.
 
+**Point de 02 h 40 UTC (18/11)**
+- CI : #1454 entièrement VERTE à `f3102c936f` (la relance unique du shard vitest est passée) ; #1462 entièrement
+  VERTE à `1fe6a6c76c`, puis `4f5352f7ce` poussé (tour 3 en cours). `main` a avancé d'un merge sans rapport (#1463,
+  le flaky de minuit du calepinage, la tâche que cette session avait suggérée) : aucun conflit avec la fusion 2.
+- `lane/f2-revue2-journee` RENDUE, relue (les sondes du relecteur rejouées dessus : jour court 4 partout, activité
+  close comptée, projet terminé le jour même 3/3 et 1/1, la nuit pose l'objectif) et PLIÉE : `dev-taches-f2` local =
+  `0b9d42664d`. Reste de ce constat à faire APRÈS le pli de la lane rythme (même fichier) : §6.5.6 « la réponse à une
+  carte de palier vaut le lendemain si le plan est déjà validé » → l'objectif du jour doit lire
+  `PlanJour.objectif_du_jour` quand il est posé (`services/journee.objectif_du_jour` et `entete_coach`).
+- `lane/f2-revue2-rythme` et `lane/f2-revue2-entrees` (sonnet : le reste du constat 12) EN COURS.
+- Fusion 4 : `lane/f4-projets-avances` (TCH64, 90, 157) et `lane/f4-etiquettes-avance` (TCH156, 166, 167, 152) RENDUES
+  et PLIÉES (`dev-taches-f4` local = `6c40a9de33`) ; batterie de vérification en cours ; restent TCH158 (opus), la
+  relecture adverse de la fusion 4, TCH173, les coches, les acceptations TCH142 et TCH172. À ajouter par
+  l'orchestrateur : `taches-bureau.spec.js` dans la liste des specs Tâches de `.github/workflows/ci.yml` ; les
+  libellés « sans source » des deux lanes dans `textes.md` ; `etiquette` et `vue_enregistree` dans `donnees.md` §4.
+- Pile n° 2 (fusion 3) DEBOUT : front :4174, Django :8001 (horloge 2026-11-24 08:30), base `erp_f3`, Redis :6380.
+  `lane/f3-acceptation` (opus) écrit `frontend/e2e/acceptation/tch2.spec.js` (TCH141, TCH171, TCH143).
+
+**Les clés d'IA (demande de Reda du 18/11 : « there is a key in the ERP use it », puis « find the keys yourself »)**
+- Cherché partout où cette session peut lire : conteneur (rien), serveur (SSH refusé depuis le cloud), poste de Reda
+  (non attaché), dépôt et son historique, CI, autres dépôts, Drive, Gmail. TROUVÉ : les vraies clés sont des SECRETS
+  DU DÉPÔT GitHub (`CLAUDE_API_KEY`, `GROQ_API_KEY`) ; des sessions précédentes (jusqu'au 17/11) ont joué des
+  acceptations « avec le vrai assistant » par un workflow TEMPORAIRE `zz-scratch-acceptation-*.yml`, supprimé après
+  l'essai (modèle : commit `02c6bd8d48`, recopié dans le scratchpad `precedent-1711/`).
+- Reda a REFUSÉ le formulaire de saisie de clé : ne plus le proposer. La session est passée sur l'environnement
+  cloud « taqinor-os » (hôte autorisé : `api.taqinor.ma`), approuvé par Reda.
+- DÉCISION : le parcours Copilote (TCH143) se joue sans clé ici pour tout ce qui est déterministe, et avec le VRAI
+  assistant sur un runner (workflow temporaire sur `dev-taches-f3`, à pousser par l'orchestrateur puis à retirer).
+  Aucun faux modèle. Mémoire partagée écrite : `docs/claude-memory/cles-ia-secrets-depot.md` (sur `dev-taches-f2`).
+
 **Ce qui reste, dans l'ordre** (mis à jour à chaque étape)
 - Fusion 2 : plier `lane/f2-revue2-journee` et `lane/f2-revue2-rythme` (relire chaque commit, suite `apps.taches`
   entière, gardes) → lane « entrées mal formées » → rafraîchir les deux lignes périmées de `docs/CODEMAP.md` de f2
