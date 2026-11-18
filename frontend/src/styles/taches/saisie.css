@@ -18,6 +18,10 @@
 .tch .feuille-saisie { display: flex; flex-direction: column; gap: 12px; }
 .tch .champ-etiquette { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
 .tch .champ-etiquette > span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+/* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
+.tch .recherche-replies { display: grid; gap: 10px; }
+.tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
+.tch .recherche-vue .bouton { flex: none; min-height: 44px; }
 .tch .aide-champ { margin: 4px 0 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .selecteur-quand { margin-top: 4px; }
 

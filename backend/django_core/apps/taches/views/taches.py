@@ -2,7 +2,7 @@
 fiche, actions d'une tâche, lot, rappels, récurrences, check-list, étiquettes, vues enregistrées,
 supprimées récemment, derniers gestes.
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction. Schémas :
+Routes toutes construites (TCH156 : étiquettes et vues enregistrées en dernier). Schémas :
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon une forme partagée
 (`serializers/formes.py`) ; `GESTE`, `CONFLIT_TACHE` et `REORDONNER` sont déclarés ici une fois.
 """
@@ -17,20 +17,25 @@ from rest_framework.views import APIView
 
 from apps.taches.choix import Source
 from apps.taches.confidentialite import ASSISTANT, ECRAN
-from apps.taches.selectors.base import taches_de
+from apps.taches.selectors.base import etiquettes_de, taches_de
 from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
 )
 from apps.taches.serializers.saisie import (
     AttendreEntreeSerializer, ChangementEntreeSerializer, ChecklistEntreeSerializer,
-    ElementChecklistEntreeSerializer, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
+    ElementChecklistEntreeSerializer, EtiquetteEntreeSerializer, EtiquettePatchSerializer, forme_etiquette,
+    forme_vue, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
     ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
     ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
-    reponse_gestes, reponse_recherche, reponse_supprimees, TacheCreationSerializer, taches_chargees,
-    TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
+    reponse_etiquette, reponse_gestes, reponse_recherche, reponse_supprimees, reponse_vue, TacheCreationSerializer,
+    taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire, VueEntreeSerializer,
+    VuePatchSerializer,
 )
 from apps.taches.services.creation import creer_taches
+from apps.taches.services.etiquettes import (
+    creer_etiquette, creer_vue, liste_vues, modifier_etiquette, modifier_vue, supprimer_etiquette, supprimer_vue,
+)
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
@@ -42,7 +47,7 @@ from apps.taches.services.taches import (
     tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, page_de,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, corps, est_assistant, forme_echantillon, page_de,
     parametre, reponses,
 )
 from apps.taches.views.saisie import CHAMPS_LIGNE
@@ -505,12 +510,17 @@ class EtiquettesVue(APIView):
 
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('etiquettes')))
     def get(self, request):
-        raise PasEncore()
+        paginateur = StandardPagination()
+        page = paginateur.paginate_queryset(etiquettes_de(request.user).order_by('nom_cle', 'id'), request,
+                                            view=self)
+        return paginateur.get_paginated_response([forme_etiquette(e) for e in page])
 
     @extend_schema(request=corps('Etiquette', {'nom': 'magasin', 'couleur': 'ciel'}, requis=('nom',)),
                    responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(EtiquetteEntreeSerializer, request.data)
+        etiquette, geste = creer_etiquette(request.user, nom=donnees['nom'], couleur=donnees.get('couleur'))
+        return Response(reponse_etiquette(etiquette, geste), status=201)
 
 
 class EtiquetteVue(APIView):
@@ -521,11 +531,13 @@ class EtiquetteVue(APIView):
     @extend_schema(request=corps('EtiquettePatch', {'nom': 'magasin', 'couleur': 'ciel'}),
                    responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404)))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(EtiquettePatchSerializer, request.data)
+        etiquette, geste = modifier_etiquette(request.user, id, donnees)
+        return Response(reponse_etiquette(etiquette, geste))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        return Response({'geste_id': supprimer_etiquette(request.user, id).pk})
 
 
 class VuesVue(APIView):
@@ -535,7 +547,7 @@ class VuesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('vues')))
     def get(self, request):
-        raise PasEncore()
+        return Response({'results': [forme_vue(v) for v in liste_vues(request.user)]})
 
     @extend_schema(request=inline_serializer('TachesCorpsVue', {
         'nom': serializers.CharField(max_length=60),
@@ -543,7 +555,10 @@ class VuesVue(APIView):
         'rang': serializers.IntegerField(required=False),
     }), responses=reponses(VUE_ENREGISTREE, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = lire_corps(VueEntreeSerializer, request.data)
+        vue, geste = creer_vue(request.user, nom=donnees['nom'], filtres=donnees.get('filtres'),
+                               rang=donnees.get('rang'))
+        return Response(reponse_vue(vue, geste), status=201)
 
 
 class VueEnregistreeVue(APIView):
@@ -557,11 +572,13 @@ class VueEnregistreeVue(APIView):
         'rang': serializers.IntegerField(required=False),
     }), responses=reponses(VUE_ENREGISTREE, erreurs=(400, 404)))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = lire_corps(VuePatchSerializer, request.data)
+        vue, geste = modifier_vue(request.user, id, donnees)
+        return Response(reponse_vue(vue, geste))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        return Response({'geste_id': supprimer_vue(request.user, id).pk})
 
 
 class SupprimeesVue(APIView):

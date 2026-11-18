@@ -20,6 +20,8 @@ import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/te
    Le composant ne parle jamais au serveur : il appelle les rappels du parent
    (`onTerminer` rejette → la case revient en arrière), et annonce par `onAnnonce(texte)`
    (le parent le relie à `role=status`, textes.md §2.19).
+   TCH152 — `glissable` (bureau seulement : `{ onDebut(item), onFin() }`) : une tâche ouverte se glisse vers une
+   heure de la colonne Agenda ; sans la prop, la ligne ne se glisse pas (iPhone : jamais de glisser, spec-7 §5).
    ========================================================================== */
 
 const DUREE_APPUI_LONG_MS = 500
@@ -138,6 +140,7 @@ export default function LigneTache({
   onGarder,
   onAction,
   onAnnonce,
+  glissable = null,
 }) {
   const cadre = useRef(null)
   const [menuOuvert, setMenuOuvert] = useState(false)
@@ -184,6 +187,13 @@ export default function LigneTache({
       role="listitem"
       aria-selected={selection?.actif ? Boolean(selection.selectionnee) : undefined}
       data-ligne={`${item.type}:${item.id}`}
+      draggable={glissable && item.type === 'tache' && !fait ? true : undefined}
+      onDragStart={glissable && item.type === 'tache' && !fait ? (e) => {
+        e.dataTransfer?.setData('text/plain', `tache:${item.id}`)
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+        glissable.onDebut(item)
+      } : undefined}
+      onDragEnd={glissable ? () => glissable.onFin() : undefined}
     >
       {aRevelation && (balayage.ouvert === 'droite' || balayage.dx > 0) ? (
         <div className="actions">

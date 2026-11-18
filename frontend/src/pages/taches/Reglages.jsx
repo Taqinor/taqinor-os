@@ -6,12 +6,14 @@ import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { configurerGestes } from '../../features/taches/lib/gestes'
 import ListeRubriques, { Avance, MesDonnees } from '../../features/taches/reglages/Rubriques'
 import ViePrivee from '../../features/taches/reglages/ViePrivee'
+import { ReglageSuggestions } from '../../features/taches/atrier/Suggestions'
+import { FAMILLES_SUGGESTIONS, accord } from '../../features/taches/lib/textes'
 import MonIphone from '../../features/taches/iphone/MonIphone'
 import Notifications, { CoupeCircuit } from '../../features/taches/reglages/Notifications'
 
 /* ============================================================================
    TCH108 — Écran « Réglages » (routes /taches/reglages et /taches/reglages/:rubrique ; atteignable
-   par le menu ⋯ de la coquille). Rubriques construites : `notifications`, `iphone`, `vie-privee`, `donnees`, `avance`.
+   par le menu ⋯ de la coquille). Rubriques construites : `notifications`, `iphone`, `vie-privee`, `suggestions` (TCH167), `donnees`, `avance`.
    Lecture : `GET reglages/` (`contract_samples/reglages.json`) ; chaque interrupteur envoie
    `PATCH reglages/` (liste blanche) et adopte la valeur rendue ; l'erreur du serveur s'affiche
    sous le réglage. Un échec de lecture dit « Pas à jour » et garde l'écran.
@@ -41,6 +43,7 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate, etape }) {
       />
     )
   }
+  if (rubrique === 'suggestions') return <ReglageSuggestions reglages={reglages} onReglage={basculer} erreur={erreur} />
   if (rubrique === 'donnees') return <MesDonnees onEfface={() => navigate('/taches/aujourdhui')} />
   if (rubrique === 'avance') {
     return (
@@ -99,7 +102,11 @@ export default function Reglages() {
         </div>
       ) : null}
       <div className="es-reglages-grille">
-        <ListeRubriques courante={rubrique} onOuvrir={(cle) => navigate(`/taches/reglages/${cle}`)} />
+        <ListeRubriques
+          courante={rubrique}
+          onOuvrir={(cle) => navigate(`/taches/reglages/${cle}`)}
+          resumes={reglages ? { suggestions: `${accord(reglages.familles_suggestions?.length ?? 0, 'suggestion')} sur ${FAMILLES_SUGGESTIONS.length}` } : undefined}
+        />
         <div>
           <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} etape={params.get('etape')} />
         </div>

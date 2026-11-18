@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Ellipsis } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
+import { SuggereParLErp } from '../../features/taches/atrier/Suggestions'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useApresCreation } from '../../features/taches/lib/fiche'
@@ -25,7 +26,7 @@ import SelecteurQuand, { ajouterJours } from '../../features/taches/ui/Selecteur
    rangement proposé ; « En réserve » = les tâches gardées sans jour.
    UN seul chemin d'écriture : `taches/lot/` (une action, `ids`), la ligne quitte la liste TOUT DE SUITE et
    revient à sa place si le serveur refuse ; la liste ne se vide jamais sur un échec de lecture et un geste ne
-   la relit pas. « Suggéré par l'ERP » vient en F4 (TCH167).
+   la relit pas. « Suggéré par l'ERP » (TCH167, `atrier/Suggestions.jsx`) ouvre la liste À trier : Ajouter / Pas utile.
    Maquette : docs/taches/maquettes/ecran-a-trier.html. Source : textes.md §2.5.
    ========================================================================== */
 
@@ -272,6 +273,13 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
         <div className="carte-actions">
           <button type="button" className="bouton plein" onClick={toutRanger}>Tout ranger</button>
         </div>
+      ) : null}
+
+      {!uneParUne && !reserve ? (
+        <SuggereParLErp
+          onAjoutee={(tache) => setLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, tache]))}
+          onRetiree={(id) => setLignes((liste) => liste.filter((l) => l.id !== id))}
+        />
       ) : null}
 
       {!uneParUne ? (

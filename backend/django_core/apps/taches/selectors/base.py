@@ -17,7 +17,7 @@ from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.presence import JetonAcces
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import Preference
-from apps.taches.models.taches import Etiquette, EtiquetteTache, Rappel, Tache
+from apps.taches.models.taches import Etiquette, EtiquetteTache, Rappel, Tache, VueEnregistree
 
 #: Fenêtre où `prochain_jour_travaille` cherche (au-delà : `None`).
 HORIZON_PROCHAIN_JOUR = 366
@@ -58,6 +58,11 @@ def sections_de(user):
 
 def etiquettes_de(user):
     return _du_compte(Etiquette.objects, user)
+
+
+def vues_de(user):
+    """Vues enregistrées de `user` (jamais celles d'un collègue)."""
+    return _du_compte(VueEnregistree.objects, user)
 
 
 def rappels_de(user):

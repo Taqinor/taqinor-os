@@ -10,7 +10,7 @@ import FeuilleACrans from '../ui/FeuilleACrans'
 /* ============================================================================
    TCH108 — Réglages (cœur) : la liste des rubriques, « Mes données » (Exporter, Tout effacer
    EFFACER) et « Avancé » (messages sans délai, agendas externes : 3 au plus). Notifications et
-   Mon iPhone viennent en F3, « L'ERP me suggère » en F4 : leurs lignes n'existent pas encore.
+   Mon iPhone (F3) et « L'ERP me suggère » (F4, TCH167) ont leur propre composant.
    Textes : textes.md §2.14, §2.20. Maquettes : reglages.html, reglages-donnees*.html.
    Une erreur s'affiche sous le champ fautif ; un geste n'a jamais besoin de relire la liste.
    ========================================================================== */
@@ -19,6 +19,7 @@ const RUBRIQUES = [
   ['notifications', 'Notifications', 'Plan du matin, message de 15 h, bilan du soir'],
   ['iphone', 'Mon iPhone', 'Cinq étapes, à faire une fois'],
   ['vie-privee', 'Vie privée', 'Ce qui part au Copilote, qui peut lire'],
+  ['suggestions', "L'ERP me suggère", ''], // le résumé « {k} suggestions sur 4 » vient des réglages lus (`resumes`)
   ['donnees', 'Mes données', 'Exporter, tout effacer'],
   ['avance', 'Avancé', 'Messages sans délai'],
 ]
@@ -53,7 +54,7 @@ function texteEtat(agenda) {
   return ETATS[agenda.dernier_etat ?? ''] ?? ETATS['']
 }
 
-export default function ListeRubriques({ courante, onOuvrir }) {
+export default function ListeRubriques({ courante, onOuvrir, resumes = {} }) {
   return (
     <div className="es-rubriques" role="list">
       {RUBRIQUES.map(([cle, titre, resume]) => (
@@ -64,7 +65,7 @@ export default function ListeRubriques({ courante, onOuvrir }) {
             aria-current={courante === cle ? 'page' : undefined}
             onClick={() => onOuvrir(cle)}
           >
-            <span><b>{titre}</b><span>{resume}</span></span>
+            <span><b>{titre}</b><span>{resumes[cle] ?? resume}</span></span>
             <ChevronRight className="i i-16" aria-hidden="true" />
           </button>
         </div>
