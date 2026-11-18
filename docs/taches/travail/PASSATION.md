@@ -553,6 +553,30 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
 - **Bundle fusion 4** : 3843,7 Ko mesurés après les correctifs (budget 3850) — les lanes visuelles peuvent le faire
   déborder : re-mesurer après leur pli et monter le budget par une note datée si besoin.
 
+**Point de 06 h 20 UTC (18/11) — FUSION 2 SUR `main` ; fusion 3 poussée propre ; fusion 4 poussée avec ses correctifs**
+
+- **FUSION 2 FUSIONNÉE** par la file de merge à 06 h 12 UTC : `main` = `7025e20b2d` (« Merge pull request #1454 »).
+  PR passée de brouillon à prête à 05 h 59, corps mis à jour (état, acceptation, gestes). **À DIRE À REDA : « mergé —
+  à déployer par toi : `scripts/deploy-prod.ps1`, ~2 min »** ; le module ne se voit qu'avec le rôle Administrateur.
+  NON VÉRIFIÉ (impossible depuis le cloud, pas d'accès au serveur) : que le compte de Reda porte bien ce rôle.
+- **Fusion 3** : `10e7af098b` poussé à 06 h 01 (workflow temporaire retiré, fusion 2 + `main` dedans, 4 tâches
+  cochées). Gardes locales avant le push : `backend-lint-fast` 59/59 ; `stage-names` : seul le test PowerShell des
+  scripts de nuit rougit (pas de `pwsh` ici) ; node : seul CAL224 (build local). CI de #1462 en cours. **Au vert :
+  corps de la PR à jour, `draft=false`, `enable_pr_auto_merge(MERGE)`.**
+- **Fusion 4** : `06e850adca` poussé à 06 h 12. Contient : README (TCH173, texte), mémoire partagée, TCH179 (spec
+  `tch3.spec.js` + tâche au plan), les correctifs d'acceptation, et la fusion 3 nettoyée (les fichiers `zz-*` n'y
+  sont plus). **La limite « `c t` avant que l'hôte n'écoute » est LEVÉE** (elle rendait P142.3 aléatoire : 1 échec
+  sur 4 jeux) : `Layout.jsx` importe maintenant l'hôte `TachesPresence` EN DUR (petit, sans dépendance neuve ; la
+  feuille reste chargée à part par lui). Rejoué 5 fois de suite : P142.3 et P142.4, 10 sur 10. Bundle 3842,0 Ko.
+  Jeu complet d'avant ce dernier correctif : 8 sur 9 (P142.3). **Reste pour la fusion 4** : plier V-A et V-B (en
+  cours), lancer V-C1 (agenda, Planifier — pile n° 1), V-C2 (projets, rythme, revue, réglages — pile n° 3) et V-D
+  (Copilote, rappel, Mon iPhone, `locale: 'fr-FR'` — pile n° 2) : briefs prêts dans
+  `<scratchpad>/briefs/v-c1.md`, `v-c2.md`, `v-d.md` (remplacer `@@BASE@@` par la tête de `dev-taches-f4` après le
+  pli) ; puis rejouer les TROIS specs d'acceptation sur la fusion 4 (base migrée `erp_f4_fidele`, prête, vérifiée
+  par `migrate --check`), enregistrement, cocher TCH142, TCH172, TCH173 ; note du budget du bundle à mettre à la
+  mesure finale ; deux jeux de gardes ; CI de #1464 ; file de merge après la fusion 3.
+- La CI d'une PR prend maintenant 13 à 18 minutes (cache des migrations chaud), pas 35.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
