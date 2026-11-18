@@ -70,11 +70,14 @@ sortie([dict(id=n.pk, type=n.event_type, titre=n.title, corps=n.body, lien=n.lin
         for n in Notification.objects.filter(recipient=u).order_by('pk')])`)
 }
 
-/** Efface les notifications « Tâches » de `demo_taches` (le semis ne les touche pas) : chaque étape part de zéro. */
-export async function viderNotificationsTaches(username = 'demo_taches') {
+/** Vide la cloche de `demo_taches` (le semis ne la touche pas) : chaque étape part de zéro. TOUTES ses notifications,
+ *  pas seulement celles de Tâches : chaque connexion d'un navigateur neuf en écrit une (« Nouvelle connexion depuis un
+ *  appareil inconnu »), et la cloche ne montre que sa première page — vingt connexions de la spec en chassaient la
+ *  notification que l'étape regarde. */
+export async function viderCloche(username = 'demo_taches') {
   return py(`from apps.notifications.models import Notification
 u = U.objects.get(username='${username}')
-sortie(Notification.objects.filter(recipient=u, event_type__startswith='taches_').delete()[0])`)
+sortie(Notification.objects.filter(recipient=u).delete()[0])`)
 }
 
 // --- Le service d'IA (FastAPI) sous /api/fastapi --------------------------------------------------------------------
