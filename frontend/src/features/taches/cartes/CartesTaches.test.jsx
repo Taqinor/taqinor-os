@@ -49,6 +49,24 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/5/annuler/', {}))
   })
 
+  it('F3 acceptation ERR 2 — plan_propose : les MÊMES lignes que le Proposé d’Aujourd’hui (pour_objectif), « déjà prévue » comprise', async () => {
+    // Le Proposé d'Aujourd'hui (`aujourdhui/` `propose.pour_objectif`, « Garder ces N » de l'écran) compte TOUTES les
+    // lignes du moteur ; `journee/proposition/` sert ces mêmes lignes et marque `deja_prevue` celles qui ont un jour
+    // prévu passé (« prévue hier ») : la carte ne les retire pas.
+    const donnees = contrat('journee_proposition')
+    const hier = structuredClone(donnees.proposition[0])
+    hier.item = { ...hier.item, id: 41, titre: 'Ranger le bureau', jour_prevu: '2026-11-16', raison: { code: 'retard', texte: 'prévue hier' } }
+    hier.deja_prevue = true
+    donnees.proposition.push(hier)
+    monter('plan_propose', donnees)
+    const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
+    expect(within(carte).getByText('3 · objectif 5')).toBeInTheDocument()
+    expect(within(carte).getByText('Ranger le bureau')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Garder ces 3' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1].lignes).toEqual([{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }, { type: 'tache', id: 41 }])
+  })
+
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
     api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
     monter('plan_propose', contrat('journee_proposition'))

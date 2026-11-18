@@ -165,7 +165,9 @@ function BoutonGarder({ lignes, jour, geste }) {
 
 function CartePlanPropose({ donnees }) {
   const geste = useGeste()
-  const lignes = (donnees.proposition ?? []).filter((l) => l.cochee !== false && !l.deja_prevue).map((l) => l.item)
+  // F3 acceptation ERR 2 — une seule règle : les lignes du Proposé (`proposition` = `pour_objectif` du moteur, celles
+  // que l'écran Aujourd'hui garde par « Garder ces N »), sans filtre propre à la carte.
+  const lignes = (donnees.proposition ?? []).map((l) => l.item)
   const objectif = donnees.objectif?.nb
   const chiffres = objectif ? `${lignes.length} · objectif ${objectif}` : `${lignes.length}`
   return (
