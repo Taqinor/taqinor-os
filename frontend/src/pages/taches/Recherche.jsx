@@ -290,20 +290,23 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         onNouveau: () => setSelecteur(false),
       }}
     >
-      <div className="recherche-champ">
-        <Search className="i i-16" aria-hidden="true" />
-        <input
-          type="search"
-          className="champ"
-          aria-label="Chercher dans mes tâches"
-          placeholder="Chercher dans mes tâches"
-          autoComplete="off"
-          value={saisie}
-          onChange={(e) => setSaisie(e.target.value)}
-        />
+      {/* recherche.html : la loupe DANS le champ, le champ aligné sur le contenu (gouttière), les filtres dessous */}
+      <div className="es-recherche">
+        <label className="es-champ">
+          <Search className="i" aria-hidden="true" />
+          <input
+            type="search"
+            className="valeur"
+            aria-label="Chercher dans mes tâches"
+            placeholder="Chercher dans mes tâches"
+            autoComplete="off"
+            value={saisie}
+            onChange={(e) => setSaisie(e.target.value)}
+          />
+        </label>
       </div>
 
-      <div className="puces" aria-label="Filtres">
+      <div className="puces es-filtres" aria-label="Filtres">
         <button type="button" className="puce" role="checkbox" aria-checked={faites} onClick={() => setFaites((v) => !v)}>Faites aussi</button>
         <button
           type="button"

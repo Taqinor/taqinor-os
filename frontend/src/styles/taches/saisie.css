@@ -28,6 +28,26 @@
 .tch .feuille-saisie { display: flex; flex-direction: column; gap: 12px; }
 .tch .champ-etiquette { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
 .tch .champ-etiquette > span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+/* Passe visuelle n° 46 — Recherche (recherche.html, ecrans-secondaires.css « Recherche ») : la loupe DANS le
+   champ, champ et filtres alignés sur la gouttière du contenu */
+.tch .es-recherche { display: flex; align-items: center; gap: 4px; padding: 6px var(--tch-gouttiere) 0; }
+.tch .es-recherche .es-champ {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 2px 0 12px;
+  font-size: 1.0625rem;
+}
+.tch .es-recherche .es-champ:focus-within { box-shadow: inset 0 0 0 2px var(--tch-accent); }
+.tch .es-recherche .es-champ > svg { flex: none; color: var(--tch-texte-doux); }
+.tch .es-recherche .valeur {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; outline: none;
+}
+.tch .es-recherche .valeur::placeholder { color: var(--tch-texte-doux); }
+/* l'anneau de focus est celui du champ entier (:focus-within ci-dessus), jamais un second cadre autour du texte */
+.tch .es-recherche .valeur:focus, .tch .es-recherche .valeur:focus-visible { outline: none; box-shadow: none; }
+.tch .es-filtres { padding: 12px var(--tch-gouttiere) 0; }
+.tch .es-filtres ~ .recherche-replies { margin: 10px var(--tch-gouttiere) 0; }
+.tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
+@media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
