@@ -89,7 +89,10 @@ export default function FeuilleACrans({
   useEffect(() => {
     if (!ouverte) return undefined
     origine.current = document.activeElement
-    const premier = feuille.current?.querySelector(FOCALISABLES)
+    // F2 acceptation (P144.3) — une feuille ouverte au clavier peut désigner son action par défaut
+    // (`data-focus-initial`) : Entrée la valide aussitôt ; sinon le premier élément focalisable (la poignée)
+    const voulu = feuille.current?.querySelector('[data-focus-initial]')
+    const premier = voulu ?? feuille.current?.querySelector(FOCALISABLES)
     premier?.focus()
     return () => origine.current?.focus?.()
   }, [ouverte])

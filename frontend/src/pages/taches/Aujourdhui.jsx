@@ -169,18 +169,25 @@ function remettre(donnees, { liste, rang, item }) {
   return { ...donnees, [liste]: suite }
 }
 
-/** « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). */
-function ChoisirJour({ item, minimum, onChoisir }) {
-  const [jour, setJour] = useState('')
+/**
+ * « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). Ouverte au clavier (`d`,
+ * spec-7 §5 « Quand (Entrée = Reporter au jour nommé) »), elle arrive sur `initial` — le prochain jour travaillé — et
+ * son bouton « Reporter à {jour} » a le focus : Entrée reporte. Entrée dans le champ date valide aussi (formulaire).
+ */
+function ChoisirJour({ item, minimum, onChoisir, initial = '', reporterA = null }) {
+  const [jour, setJour] = useState(initial ?? '')
+  const libelle = !jour ? 'Choisis un jour'
+    : jour === reporterA ? `Reporter à ${jourNomme(jour, minimum)}` : `Prévue ${jourCourt(jour, minimum)}`
+  const valider = (e) => { e.preventDefault(); if (jour) onChoisir(jour) }
   return (
-    <div className="choisir-jour">
+    <form className="choisir-jour" onSubmit={valider}>
       <p className="carte-source">{item.titre}</p>
       <label className="fiche-label" htmlFor="tch-choisir-jour">Jour</label>
       <input id="tch-choisir-jour" type="date" className="champ-date" min={minimum} value={jour} onChange={(e) => setJour(e.target.value)} />
-      <button type="button" className="bouton plein large" disabled={!jour} onClick={() => onChoisir(jour)}>
-        {jour ? `Prévue ${jourCourt(jour, minimum)}` : 'Choisis un jour'}
+      <button type="submit" className="bouton plein large" disabled={!jour} data-focus-initial={initial ? '' : undefined}>
+        {libelle}
       </button>
-    </div>
+    </form>
   )
 }
 
@@ -463,15 +470,16 @@ export default function Aujourdhui() {
   // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
   const racine = useClavierListe((action, { cle }) => {
     const item = cle ? chercher(donnees, cle) : null
+    actions.prechargerProjets() // au clavier, `m` puis Entrée doit trouver la liste des projets déjà lue
     if (action === 'annuler') annulerToast()
     else if (!item) return
     else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
     else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
-    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item })
+    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, initial: donnees?.prochain_jour_ouvre ?? '' })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)
     else if (action === 'descendre') modes.deplacer(item, 1)
-    else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item)
+    else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item, { clavier: true })
     else if (item.type === 'tache' && ['renommer', 'heure'].includes(action)) ouvrirFiche(item.id)
   }, { actif: !feuille && !actions.feuille && !actions.selecteurProjet })
 
@@ -524,7 +532,14 @@ export default function Aujourdhui() {
         <ChoisirJour
           item={feuille.item}
           minimum={jourFeuille}
-          onChoisir={(jour) => { setFeuille(null); poserJour(feuille.item, jour, `Prévue ${jourCourt(jour, jourFeuille)}`) }}
+          initial={feuille.initial}
+          reporterA={donnees?.prochain_jour_ouvre ?? null}
+          onChoisir={(jour) => {
+            setFeuille(null)
+            const message = jour === donnees?.prochain_jour_ouvre
+              ? `Reportée à ${jourNomme(jour, jourFeuille)}` : `Prévue ${jourCourt(jour, jourFeuille)}`
+            poserJour(feuille.item, jour, message)
+          }}
         />
       ),
     }

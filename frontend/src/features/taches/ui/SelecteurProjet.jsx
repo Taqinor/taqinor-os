@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 
 /* ============================================================================
@@ -7,6 +7,10 @@ import { Plus } from 'lucide-react'
    pas : « Créer « nom » » (textes.md §2.3). Pattern listbox : la flèche bas/haut déplace
    l'option active, Entrée la choisit. Un projet = un point (la palette, `data-p`) puis son nom,
    toujours — la couleur n'est jamais seule. Se pose dans une FeuilleACrans ou un popover.
+   F2 acceptation (P144.3, parcours 18 « `j m` Entrée ») : ouvert au clavier (`focusChamp`), le champ a le focus ;
+   (jamais au doigt : le clavier virtuel de l'iPhone sortirait sans qu'on l'ait demandé) ; l'option active de
+   départ est le premier projet AUTRE que celui de la tâche (Entrée déplace vraiment) ; une Entrée frappée pendant
+   le chargement de la liste (`chargement`) est gardée et jouée dès qu'elle arrive.
    Maquette : docs/taches/maquettes/composants-5.html, composants-6.html.
    ========================================================================== */
 
@@ -16,11 +20,14 @@ export default function SelecteurProjet({
   projets = [],
   valeur = null,
   sansProjet = false,
+  chargement = false,
+  focusChamp = false,
   onChoisir,
   onNouveau,
 }) {
   const [q, setQ] = useState('')
-  const [actif, setActif] = useState(0)
+  const [actif, setActif] = useState(null)
+  const entreeEnAttente = useRef(false)
   const idListe = useId()
 
   const options = useMemo(() => {
@@ -33,16 +40,27 @@ export default function SelecteurProjet({
     return liste
   }, [projets, q, sansProjet])
 
-  const courant = Math.min(actif, Math.max(options.length - 1, 0))
+  // tant que rien n'est tapé ni parcouru, l'option active est le premier projet qui n'est pas le sien
+  const parDefaut = Math.max(options.findIndex((o) => !(o.projet && o.projet.id === valeur) && !(o.cle === 'sans' && valeur === null)), 0)
+  const courant = Math.min(actif ?? parDefaut, Math.max(options.length - 1, 0))
   const choisir = (option) => {
     if (!option) return
     if (option.creer) onNouveau?.(option.creer)
     else onChoisir?.(option.projet ? option.projet.id : null)
   }
+  useEffect(() => {
+    if (chargement || !entreeEnAttente.current || options.length === 0) return
+    entreeEnAttente.current = false
+    choisir(options[courant])
+  })
   const surTouche = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActif(Math.min(courant + 1, options.length - 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActif(Math.max(courant - 1, 0)) }
-    else if (e.key === 'Enter') { e.preventDefault(); choisir(options[courant]) }
+    else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (chargement) entreeEnAttente.current = true
+      else choisir(options[courant])
+    }
   }
 
   return (
@@ -57,6 +75,7 @@ export default function SelecteurProjet({
         aria-label="Chercher un projet"
         placeholder="Chercher un projet"
         autoComplete="off"
+        data-focus-initial={focusChamp ? '' : undefined}
         value={q}
         onChange={(e) => { setQ(e.target.value); setActif(0) }}
         onKeyDown={surTouche}

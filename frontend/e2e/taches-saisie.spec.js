@@ -45,8 +45,11 @@ test.describe('Tâches — saisie', () => {
     await expect(champSaisie(page)).toHaveValue(`${titre} demain #${nomProjet}`)
 
     await champSaisie(page).press('Enter')
-    await expect(feuilleSaisie(page)).toHaveCount(0)
+    // chaîne (spec-2 §1) : le champ se vide, la feuille reste ouverte pour la suivante ; Échap ferme
+    await expect(champSaisie(page)).toHaveValue('')
     await expect(toast(page)).toContainText('Ajoutée')
+    await page.keyboard.press('Escape')
+    await expect(feuilleSaisie(page)).toHaveCount(0)
 
     const jour = await jourServeur(page)
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
@@ -70,7 +73,7 @@ test.describe('Tâches — saisie', () => {
     await expect(puceJour).toHaveCount(0)
 
     await champSaisie(page).press('Enter')
-    await expect(feuilleSaisie(page)).toHaveCount(0)
+    await expect(champSaisie(page)).toHaveValue('')
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
     const [creee] = await chercherTaches(page, titre)
     const lue = await lireTache(page, creee.id)

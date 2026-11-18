@@ -278,6 +278,8 @@ export default function CoquilleTaches({
             projets={selecteurProjet.projets}
             valeur={selecteurProjet.valeur}
             sansProjet={selecteurProjet.sansProjet}
+            chargement={selecteurProjet.chargement}
+            focusChamp={selecteurProjet.focusChamp}
             onChoisir={selecteurProjet.onChoisir}
             onNouveau={selecteurProjet.onNouveau}
           />

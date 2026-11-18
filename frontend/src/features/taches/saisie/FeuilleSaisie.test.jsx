@@ -77,14 +77,16 @@ describe('TCH82 — feuille de saisie', () => {
     expect(champ()).toHaveValue(PHRASE)
   })
 
-  it('« Ajouter » envoie la ligne lue (Entrée aussi, voir plus bas), avec la priorité choisie du nouveau projet, puis ferme et vide', async () => {
+  it('« Ajouter » envoie la ligne lue (Entrée aussi, voir plus bas), avec la priorité choisie du nouveau projet, puis vide le champ et RESTE ouverte (chaîne, spec-2 §1)', async () => {
     const user = userEvent.setup()
     const { onFermer } = monter()
     await user.type(champ(), PHRASE)
     await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
     await user.click(screen.getByRole('radio', { name: 'Haute' }))
     await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    await waitFor(() => expect(champ()).toHaveValue(''))
+    expect(onFermer).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeInTheDocument()
 
     const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
     expect(envoi.lignes).toHaveLength(1)
@@ -148,7 +150,8 @@ describe('TCH82 — feuille de saisie', () => {
     await user.click(screen.getByRole('button', { name: 'Quand' }))
     await user.click(screen.getByRole('radio', { name: 'En réserve' }))
     await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    await waitFor(() => expect(champ()).toHaveValue(''))
+    expect(onFermer).not.toHaveBeenCalled()
     const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
     expect(envoi.lignes[0]).toMatchObject({ quelque_jour: true, jour_prevu: null })
   })
@@ -188,9 +191,12 @@ describe('TCH82 — feuille de saisie', () => {
     await user.type(champ(), 'Appeler Karim demain')
     await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+    await waitFor(() => expect(champ()).toHaveValue(''))
+    expect(onFermer).not.toHaveBeenCalled()
     const envoi = mocks.saisieRapide.mock.calls.find(([corps]) => corps.apercu === false)[0]
     expect(envoi.lignes[0]).toMatchObject({ projet_id: 3, section_id: 8, jour_prevu: '2026-11-18' })
+    // la chaîne reste sur le même projet : la phrase suivante part encore dans « Ventes »
+    expect(screen.getByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
   })
 
   it('Raccord F2 — le jour de l\'Agenda devient le « Quand » de départ, retirable', async () => {
