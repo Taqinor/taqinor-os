@@ -24,6 +24,7 @@ from apps.taches.moteur.gabarits import format_heure
 from apps.taches.selectors.rythme import preferences_de
 from apps.taches.services import rythme as service
 from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
+from apps.taches.views.presence import HorsAssistant
 from authentication.permissions import IsAdminRole
 
 REGLAGES = forme_echantillon('reglages')
@@ -70,10 +71,16 @@ def forme_reglages(request, reglages):
     return forme
 
 
-class ReglagesVue(APIView):
-    """GET reglages/ · PATCH reglages/ (liste blanche)."""
+class ReglagesHorsAssistant(HorsAssistant):
+    """403 sous l'assistant (api.md §0) : le relais du Copilote ne lit ni ne change un réglage."""
 
-    permission_classes = PERMISSIONS
+    message = "L'assistant ne touche pas à tes réglages."
+
+
+class ReglagesVue(APIView):
+    """GET reglages/ · PATCH reglages/ (liste blanche) ; jamais servi au relais de l'assistant."""
+
+    permission_classes = [*PERMISSIONS, ReglagesHorsAssistant]
 
     @extend_schema(responses=reponses(REGLAGES))
     def get(self, request):
@@ -141,7 +148,7 @@ def ecrire_balayage(company, user, valeur):
 class ReglagesSocieteVue(APIView):
     """GET · PATCH reglages-societe/ `{"balayage_actif"}` — administrateur seulement."""
 
-    permission_classes = [*PERMISSIONS, IsAdminRole]
+    permission_classes = [*PERMISSIONS, IsAdminRole, ReglagesHorsAssistant]
 
     @extend_schema(responses=reponses(REGLAGES_SOCIETE))
     def get(self, request):

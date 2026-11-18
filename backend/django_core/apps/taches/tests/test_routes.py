@@ -507,3 +507,61 @@ class BearerSansEnteteTests(TestCase):
         client.cookies['access_token'] = str(AccessToken.for_user(self.compte))
         rendu = self._lire(client).json()
         self.assertEqual((rendu['titre'], rendu['notes']), ('Canari-titre', 'Canari-notes'))
+
+
+class FermeesALAssistantTests(TestCase):
+    """api.md §0 — en mode assistant (en-tête OU `Authorization: Bearer`), 403 sur `reglages/`,
+    `reglages-societe/`, `jetons/`, `mes-donnees/`, `tout-effacer/` et `agendas-externes/` : le relais du
+    Copilote ne lit ni ne change un réglage, un jeton ou un agenda, ne lit pas l'export et n'efface jamais
+    rien. Le navigateur (cookie) passe : le refus ne vient pas d'un droit manquant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.compte = fabriques.compte(fabriques.societe('ferme'), admin=True)
+        cls.agenda = fabriques.agenda_externe(cls.compte)
+        cls.jeton, _clair = fabriques.jeton(cls.compte, 'flux')
+        cls.tache = fabriques.tache(cls.compte, titre='À garder')
+
+    def _appels(self):
+        agenda, jeton = self.agenda.pk, self.jeton.pk
+        return (
+            ('get', 'reglages/', None), ('patch', 'reglages/', {}),
+            ('get', 'reglages-societe/', None), ('patch', 'reglages-societe/', {'balayage_actif': False}),
+            ('get', 'jetons/', None), ('post', 'jetons/', {'usage': 'tuile'}),
+            ('post', f'jetons/{jeton}/revoquer/', None),
+            ('get', 'mes-donnees/', None),
+            ('post', 'tout-effacer/', {'confirmation': 'EFFACER'}),
+            ('get', 'agendas-externes/', None),
+            ('post', 'agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
+            ('patch', f'agendas-externes/{agenda}/', {'libelle': 'Autre'}),
+            ('delete', f'agendas-externes/{agenda}/', None),
+            ('post', f'agendas-externes/{agenda}/rafraichir/', None),
+        )
+
+    def _relais(self):
+        entete = APIClient(HTTP_X_TAQINOR_ASSISTANT='1')
+        entete.force_authenticate(self.compte)
+        bearer = APIClient()
+        bearer.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.compte)}')
+        return (('en-tête', entete), ('bearer', bearer))
+
+    def test_403_sous_l_assistant_et_rien_n_est_ecrit(self):
+        for nom, client in self._relais():
+            for methode, chemin, corps in self._appels():
+                with self.subTest(relais=nom, route=f'{methode} {chemin}'):
+                    reponse = getattr(client, methode)(PREFIXE + chemin, corps, format='json')
+                    self.assertEqual(reponse.status_code, 403, reponse.content[:200])
+        self.tache.refresh_from_db()
+        self.agenda.refresh_from_db()
+        self.jeton.refresh_from_db()
+        self.assertEqual(self.agenda.libelle, '')
+        self.assertIsNone(self.jeton.revoque_le)
+        self.assertEqual(self.agenda.__class__.objects.count(), 1)
+        self.assertEqual(self.jeton.__class__.objects.count(), 1)
+
+    def test_le_navigateur_au_cookie_passe(self):
+        client = APIClient()
+        client.cookies['access_token'] = str(AccessToken.for_user(self.compte))
+        for chemin in ('reglages/', 'reglages-societe/', 'jetons/', 'mes-donnees/', 'agendas-externes/'):
+            with self.subTest(route=chemin):
+                self.assertEqual(client.get(PREFIXE + chemin).status_code, 200)

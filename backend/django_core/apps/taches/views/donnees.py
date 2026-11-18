@@ -36,10 +36,16 @@ class MesDonneesVue(APIView):
         return reponse
 
 
-class ToutEffacerVue(APIView):
-    """POST tout-effacer/ — `{"confirmation":"EFFACER"}`, suppression DURE."""
+class EffacementHorsAssistant(HorsAssistant):
+    """403 sous l'assistant (api.md §0) : le relais du Copilote n'efface jamais les données d'un compte."""
 
-    permission_classes = PERMISSIONS
+    message = "L'assistant n'efface jamais tes données."
+
+
+class ToutEffacerVue(APIView):
+    """POST tout-effacer/ — `{"confirmation":"EFFACER"}`, suppression DURE ; jamais par l'assistant."""
+
+    permission_classes = [*PERMISSIONS, EffacementHorsAssistant]
 
     @extend_schema(request=corps('ToutEffacer', {'confirmation': 'EFFACER'}, requis=('confirmation',)),
                    responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,)))

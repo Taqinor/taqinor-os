@@ -21,6 +21,7 @@ from apps.taches import agenda_externe as lecteur
 from apps.taches.models.agenda import AgendaExterne
 from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
 from apps.taches.views.journee import maintenant, par_compte
+from apps.taches.views.presence import HorsAssistant
 from core.idempotency import IdempotentCreateMixin
 
 AGENDA_EXTERNE = forme_echantillon('agenda_externe')
@@ -104,10 +105,16 @@ def ajouter(user, donnees):
     return lire_maintenant(agenda)
 
 
+class AgendasHorsAssistant(HorsAssistant):
+    """403 sous l'assistant (api.md §0) : le relais du Copilote ne lit ni ne change l'adresse d'un agenda."""
+
+    message = "L'assistant ne gère pas tes agendas."
+
+
 class AgendasExternesVue(IdempotentCreateMixin, APIView):
     """GET agendas-externes/ (`{"results":[…]}`, ≤ 3) · POST (une adresse ICS, lue aussitôt)."""
 
-    permission_classes = PERMISSIONS
+    permission_classes = [*PERMISSIONS, AgendasHorsAssistant]
 
     @extend_schema(responses=reponses(forme_echantillon('agendas_externes')))
     def get(self, request):
@@ -128,7 +135,7 @@ class AgendasExternesVue(IdempotentCreateMixin, APIView):
 class AgendaExterneVue(APIView):
     """PATCH (libellé, actif, rang) · DELETE agendas-externes/{id}/."""
 
-    permission_classes = PERMISSIONS
+    permission_classes = [*PERMISSIONS, AgendasHorsAssistant]
 
     @extend_schema(request=corps('AgendaExternePatch', {'libelle': 'Bureau', 'actif': False, 'rang': 2048}),
                    responses=reponses(AGENDA_EXTERNE, erreurs=(400, 404)))
@@ -158,7 +165,7 @@ class AgendaExterneVue(APIView):
 class AgendaExterneRafraichirVue(APIView):
     """POST agendas-externes/{id}/rafraichir/ — relire maintenant (ignore le cache)."""
 
-    permission_classes = PERMISSIONS
+    permission_classes = [*PERMISSIONS, AgendasHorsAssistant]
 
     @extend_schema(request=None, responses=reponses(AGENDA_EXTERNE, erreurs=(404,)))
     def post(self, request, id):

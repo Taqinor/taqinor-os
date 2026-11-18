@@ -940,7 +940,9 @@ comptes du bloc (dataclass gelée, jamais l'ORM).
 | rendez-vous externe (§11) | à l'écran : son titre ; sous l'en-tête assistant : « Rendez-vous » ; jamais au flux, à la tuile, en notification | — | — | — |
 
 Les phrases composées (explication, santé, constats, revue « attend X », « déjà dans X », bloquée par, aperçu de
-changement) appellent `nom_pour` pour CHAQUE objet cité, avec l'usage de la route.
+changement) appellent `nom_pour` pour CHAQUE objet cité, avec l'usage de la route. Hors de l'écran,
+l'explication d'une confidentielle omet le fait « en attente de : {qui} », et le message de geste
+« En attente de : {qui} » d'une confidentielle (`gestes/`) devient « En attente de… » (TCH127).
 - **Test canari** : un projet confidentiel « Canari-7Q9 » portant une tâche « Canari-X3K », une sous-tâche, et une
   tâche ordinaire bloquée par elle, toutes du jour, avec un rappel dû et `titres_notifications`, `titres_calendrier`,
   `titres_tuile` allumés ; on lit avec l'en-tête assistant `aujourdhui/`, `journee/proposition/`, `recherche/?q=Canari`,
