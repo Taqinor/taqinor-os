@@ -589,34 +589,36 @@ def leads_recherche(request):
 
 # ── COP2-C — créer un lead depuis une demande de client (message collé…) ────
 
-_CORPS_LEAD_CREER = sd.corps(
-    'CrmAssistantLeadCreerRequest',
-    nom=serializers.CharField(max_length=255),
-    prenom=serializers.CharField(
-        max_length=255, required=False, allow_blank=True),
-    societe=serializers.CharField(
-        max_length=255, required=False, allow_blank=True),
-    telephone=serializers.CharField(
-        max_length=50, required=False, allow_blank=True),
-    whatsapp=serializers.CharField(
-        max_length=50, required=False, allow_blank=True),
-    email=serializers.EmailField(
-        max_length=254, required=False, allow_blank=True),
-    ville=serializers.CharField(
-        max_length=120, required=False, allow_blank=True),
-    adresse=serializers.CharField(
-        max_length=500, required=False, allow_blank=True),
-    type_installation=ChoixDocumente(
-        Lead.TypeInstallation.values, required=False),
-    raccordement=ChoixDocumente(Lead.Raccordement.values, required=False),
-    batterie_souhaitee=ChoixDocumente(
-        Lead.BatterieSouhaitee.values, required=False),
-    taille_souhaitee_kwc=serializers.DecimalField(
-        max_digits=10, decimal_places=2, min_value=0, required=False),
-    note=serializers.CharField(
-        max_length=2000, required=False, allow_blank=True),
-    creer_quand_meme=serializers.BooleanField(required=False, default=False),
-)
+# ``sd.corps(nom, **champs)`` ne peut pas porter un champ nommé ``nom`` (il
+# heurte son premier paramètre) : le sérialiseur est décrit par un dict.
+_CORPS_LEAD_CREER = sd.inline_serializer(
+    'CrmAssistantLeadCreerRequest', dict(
+        nom=serializers.CharField(max_length=255),
+        prenom=serializers.CharField(
+            max_length=255, required=False, allow_blank=True),
+        societe=serializers.CharField(
+            max_length=255, required=False, allow_blank=True),
+        telephone=serializers.CharField(
+            max_length=50, required=False, allow_blank=True),
+        whatsapp=serializers.CharField(
+            max_length=50, required=False, allow_blank=True),
+        email=serializers.EmailField(
+            max_length=254, required=False, allow_blank=True),
+        ville=serializers.CharField(
+            max_length=120, required=False, allow_blank=True),
+        adresse=serializers.CharField(
+            max_length=500, required=False, allow_blank=True),
+        type_installation=ChoixDocumente(
+            Lead.TypeInstallation.values, required=False),
+        raccordement=ChoixDocumente(Lead.Raccordement.values, required=False),
+        batterie_souhaitee=ChoixDocumente(
+            Lead.BatterieSouhaitee.values, required=False),
+        taille_souhaitee_kwc=serializers.DecimalField(
+            max_digits=10, decimal_places=2, min_value=0, required=False),
+        note=serializers.CharField(
+            max_length=2000, required=False, allow_blank=True),
+        creer_quand_meme=serializers.BooleanField(required=False, default=False),
+    ))
 
 #: Entrées du corps qui ne sont PAS des champs du lead.
 _HORS_FICHE = ('note', 'creer_quand_meme')
