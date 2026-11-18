@@ -357,6 +357,12 @@ def repondeur_reel(company_id: int, user_id: int, action_ctx=None):
     from app.services.sql_agent_service import sql_agent_service
 
     def repondre(case: dict) -> dict:
+        # Revue F3 #3 — `avant` : questions jouees d'abord, meme compte (la
+        # conversation relue au modele les porte) ; seule la derniere est jugee.
+        for question in case.get("avant") or ():
+            asyncio.run(sql_agent_service.query(
+                question, user_id=user_id, company_id=company_id,
+                action_ctx=action_ctx, contexte=case.get("contexte")))
         return asyncio.run(sql_agent_service.query(
             case["question"], user_id=user_id, company_id=company_id,
             action_ctx=action_ctx, contexte=case.get("contexte")))

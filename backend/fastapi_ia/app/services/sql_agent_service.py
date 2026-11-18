@@ -1504,13 +1504,15 @@ class SQLAgentService:
 
     def _save_history(
         self, user_id: int, question: str, answer: str,
-        cartes: list | None = None,
+        cartes: list | None = None, contenu_tiers: bool = True,
     ) -> None:
         """Sauvegarde un echange dans Redis avec TTL 24h. COP-B1 : le message
-        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran)."""
+        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran). A5
+        (revue F3 #3) : et la marque `contenu_tiers` du tour (defaut : marque)."""
         self._ajouter_historique(user_id, [
             {"role": "user", "content": question},
-            {"role": "agent", "content": answer, "cartes": list(cartes or [])},
+            {"role": "agent", "content": answer, "cartes": list(cartes or []),
+             "contenu_tiers": bool(contenu_tiers)},
         ])
 
     def _ajouter_historique(self, user_id: int, messages: list[dict]) -> None:
@@ -1634,7 +1636,10 @@ class SQLAgentService:
         from app.services import relais_copilote as relais
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
-        lc_history = relais.historique_langchain(self._load_history(user_id), copilote)
+        # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
+        historique = self._load_history(user_id)
+        relais.noter_historique_du_tour(action_ctx, historique, copilote)
+        lc_history = relais.historique_langchain(historique, copilote)
 
         # 2. Base filtree (allowlist, moteur lecture seule, GUC RLS) ; 3. LLM ;
         # 4. outils SQL gardes (COP-B5 : lecture + schema seulement).
@@ -1731,7 +1736,8 @@ class SQLAgentService:
         intention, erreur = _intention_et_erreur(action_outputs, intention)
         # COP-B1 — TOUTES les sorties structurees du tour, dans l'ordre.
         cartes = construire_cartes(action_outputs)
-        self._save_history(user_id, question, answer, cartes)
+        self._save_history(user_id, question, answer, cartes,
+                           contenu_tiers=relais.marque_du_tour(action_ctx))
 
         # ERR84 — le SQL genere (avec les vrais noms de tables) reste cote
         # serveur (log de debug uniquement) et n'est JAMAIS renvoye au client :

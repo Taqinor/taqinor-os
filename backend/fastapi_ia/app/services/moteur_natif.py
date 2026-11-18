@@ -334,16 +334,18 @@ def _point_sur(messages: list) -> bool:
 
 
 def _ecrire(conversation: str, modele: str, empreinte: str,
-            messages: list) -> None:
+            messages: list, contenu_tiers: bool = True) -> None:
     """Écrit la conversation à un point SÛR seulement (jamais un ``tool_use``
-    sans son ``tool_result``), en une seule fois, en fin de tour."""
+    sans son ``tool_result``), en une seule fois, en fin de tour.
+    ``contenu_tiers`` : la marque A5 du tour, gardée avec la conversation."""
     if not conversation:
         return
     if not _point_sur(messages):
         logger.error("Moteur natif : conversation non gardée (point non sûr)")
         return
     donnees = json.dumps({"version": VERSION_CONVERSATION, "modele": modele,
-                          "empreinte_outils": empreinte, "messages": messages},
+                          "empreinte_outils": empreinte, "messages": messages,
+                          "contenu_tiers": bool(contenu_tiers)},
                          ensure_ascii=False)
     try:
         _redis().set(CLE_CONVERSATION % conversation, donnees,
@@ -519,12 +521,22 @@ def _jouer(client, tour: _Tour, max_iterations: int) -> tuple[str, str, str]:
 
 def _servir(*, question: str, etat: Optional[dict], conversation: str,
             systeme: list[dict], outils: list[OutilNatif], modele: str,
-            effort: str, max_tokens: int, max_iterations: int) -> dict:
+            effort: str, max_tokens: int, max_iterations: int,
+            noter_relu_tiers: Optional[Callable[[], None]] = None,
+            marque_du_tour: Optional[Callable[[], bool]] = None) -> dict:
     """Un tour sur la conversation ``etat`` (ou neuve), gardé à la fin.
-    Le passé n'est jamais réécrit : le tour AJOUTE ses messages."""
+    Le passé n'est jamais réécrit : le tour AJOUTE ses messages.
+
+    A5 (revue F3 #3) : si le passé relu (tel quel ou récapitulé) est marqué
+    — ou ne dit rien, conversation gardée avant la marque —,
+    ``noter_relu_tiers`` est appelé AVANT le modèle ; la marque gardée en fin
+    de tour est ``marque_du_tour()`` (sans crochet : marquée)."""
     client = _client()
     empreinte = _empreinte(systeme, outils)
     passe, recap = _preparer(etat, modele, empreinte)
+    if (noter_relu_tiers is not None and (passe or recap)
+            and (etat or {}).get("contenu_tiers") is not False):
+        noter_relu_tiers()
     blocs = ([{"type": "text", "text": recap}] if recap else []) + [
         {"type": "text", "text": question}]
     tour = _Tour(messages=passe + [{"role": "user", "content": blocs}],
@@ -532,7 +544,8 @@ def _servir(*, question: str, etat: Optional[dict], conversation: str,
                  corps=_corps(systeme, outils, modele, effort, max_tokens))
     arret, answer, garde = _jouer(client, tour, max_iterations)
     if garde == "tour":
-        _ecrire(conversation, modele, empreinte, tour.messages)
+        _ecrire(conversation, modele, empreinte, tour.messages,
+                True if marque_du_tour is None else bool(marque_du_tour()))
     elif garde == "effacer":
         effacer(conversation)
     return {"answer": answer, "outils_appeles": list(tour.appeles),
@@ -541,7 +554,9 @@ def _servir(*, question: str, etat: Optional[dict], conversation: str,
 
 def executer(*, question: str, systeme: list[dict], outils: list[OutilNatif],
              conversation: str, modele: str, effort: str = "low",
-             max_tokens: int = 4096, max_iterations: int = 10) -> dict[str, Any]:
+             max_tokens: int = 4096, max_iterations: int = 10,
+             noter_relu_tiers: Optional[Callable[[], None]] = None,
+             marque_du_tour: Optional[Callable[[], bool]] = None) -> dict[str, Any]:
     """Un tour complet. Rend ``{"answer": str, "outils_appeles": [nom, ...],
     "tokens": {"input", "output", "cache_read", "cache_write"},
     "arret": ARRET_*, "modele": str}``.
@@ -550,17 +565,20 @@ def executer(*, question: str, systeme: list[dict], outils: list[OutilNatif],
     (le moteur pose lui-même les points de cache). ``question`` : le texte de
     l'utilisateur précédé de l'en-tête de tour (``prompt_copilote.entete_tour``).
     Lève :class:`MoteurIndisponible` si le tour ne peut pas être servi du tout.
+    ``noter_relu_tiers`` / ``marque_du_tour`` : crochets A5 (:func:`_servir`).
     """
     return _servir(question=question, etat=_lire(conversation),
                    conversation=conversation, systeme=systeme, outils=outils,
                    modele=modele, effort=effort, max_tokens=max_tokens,
-                   max_iterations=max_iterations)
+                   max_iterations=max_iterations, noter_relu_tiers=noter_relu_tiers,
+                   marque_du_tour=marque_du_tour)
 
 
 def reprendre(*, conversation: str, message: str, systeme: list[dict],
               outils: list[OutilNatif], modele: str, effort: str = "low",
-              max_tokens: int = 4096,
-              max_iterations: int = 10) -> Optional[dict[str, Any]]:
+              max_tokens: int = 4096, max_iterations: int = 10,
+              noter_relu_tiers: Optional[Callable[[], None]] = None,
+              marque_du_tour: Optional[Callable[[], bool]] = None) -> Optional[dict[str, Any]]:
     """Après une confirmation : ajoute ``message`` (résultat de l'ERP sous
     enveloppe, rédigé par le relais) à la conversation et laisse le modèle
     continuer. Même retour qu':func:`executer`, ou ``None`` s'il n'y a aucune
@@ -574,7 +592,8 @@ def reprendre(*, conversation: str, message: str, systeme: list[dict],
     return _servir(question=message, etat=etat, conversation=conversation,
                    systeme=systeme, outils=outils, modele=modele,
                    effort=effort, max_tokens=max_tokens,
-                   max_iterations=max_iterations)
+                   max_iterations=max_iterations, noter_relu_tiers=noter_relu_tiers,
+                   marque_du_tour=marque_du_tour)
 
 
 def effacer(conversation: str) -> None:

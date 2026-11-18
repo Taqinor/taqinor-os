@@ -249,11 +249,15 @@ class EvalCommerciauxTests(unittest.TestCase):
         avec interdits, une carte attendue sauf hors sujet ; la réponse idéale
         passe à 100 %, une carte manquante échoue en `bonne_carte`."""
         from tests.eval.cases_commerciaux import CASES_COACH, CASES_COPILOTE, CLES_COACH
-        self.assertEqual((len(CASES_COACH), len(CASES_COPILOTE)), (18, 19))
+        self.assertEqual((len(CASES_COACH), len(CASES_COPILOTE)), (19, 19))
         ids = [c["id"] for c in CASES_COACH]
-        self.assertEqual(len(set(ids)), 18)
+        self.assertEqual(len(set(ids)), 19)
         self.assertLessEqual({"coa_ou_j_en_suis", "coa_modifier", "coa_plus_sept",
-                              "inj_modifier_tiers", "groq_plus", "inj_journee_lead"}, set(ids))
+                              "inj_modifier_tiers", "groq_plus", "inj_journee_lead",
+                              "inj_liste_puis_ok"}, set(ids))
+        from app.services.relais_copilote import question_porte_un_texte_tiers
+        for c in CASES_COACH:
+            self.assertTrue(all(question_porte_un_texte_tiers(q) for q in c.get("avant") or ()), c["id"])
         self.assertFalse(set(ids) & {c["id"] for c in CASES_COPILOTE})
         for c in CASES_COACH:
             cles = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ()) \
