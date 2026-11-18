@@ -40,7 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, jour_dans_bornes, sans_nul
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -254,19 +254,26 @@ def _projet_existant(user, projet_id):
     return projet
 
 
+def _priorite_projet(valeur):
+    """La priorité d'un projet né d'une ligne : une des `Priorite.values` (0-3), sinon 400 sous le champ."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur not in Priorite.values:
+        raise serializers.ValidationError({'nouveau_projet': [MESSAGE_VALEUR]})
+    return valeur
+
+
 def _nouveau_projet(ctx, spec):
     """« Nouveau projet : X » : retrouvé par sa clé s'il existe déjà (même envoi ou base), sinon créé
     priorité Moyenne, couleur d'office, rang au milieu de sa priorité."""
     nom = str((spec or {}).get('nom') or '').strip()[:120]
     if not nom:
         raise serializers.ValidationError({'nouveau_projet': ['Requis.']})
+    priorite = _priorite_projet(spec.get('priorite', PRIORITE_PROJET_NE))
     cle = cle_nom(nom)
     if cle in ctx.projets_par_cle:
         return ctx.projets_par_cle[cle]
     user = ctx.user
     projet = projets_de(user).filter(nom_cle=cle).first()
     if projet is None:
-        priorite = int(spec.get('priorite', PRIORITE_PROJET_NE))
         projet, cree = Projet.objects.get_or_create(
             company_id=user.company_id, proprietaire=user, nom_cle=cle, is_deleted=False,
             defaults={'nom': nom, 'priorite': priorite, 'couleur': couleur_d_office(user),
@@ -427,6 +434,8 @@ def _etiqueter(ctx, tache, etiquettes):
     for etiquette in etiquettes or ():
         if isinstance(etiquette, dict):
             nom = str(etiquette.get('nom') or '').strip()[:40]
+            if not sans_nul(nom):
+                raise serializers.ValidationError({'etiquettes': [MESSAGE_VALEUR]})
             if not nom:
                 continue
             etiquette, _cree = Etiquette.objects.get_or_create(

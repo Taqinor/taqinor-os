@@ -439,6 +439,19 @@ class EntreesMalFormeesTests(TestCase):
             ('post', 'saisie-rapide/', {'lignes': [{'titre': 'a', 'jour_prevu': jour}]}, None),
         ]
 
+    def _cas_base(self):
+        cas = []
+        for priorite in (4, -1, 99999, 2 ** 40):
+            cas.append(('post', 'taches/', {'titre': 'r', 'nouveau_projet': {'nom': 'N', 'priorite': priorite}}))
+        cas.append(('post', 'taches/', {'titre': 'r', 'etiquettes': [{'nom': 'a\x00b'}]}))
+        for cle in ('tri', 'groupe'):
+            cas.append(('patch', f'projets/{self.p.pk}/', {'affichage': {cle: 'a\x00b'},
+                                                           'lock_version': self.p.lock_version}))
+        cas.append(('post', 'saisie-rapide/', {'lignes': [{'titre': 'r', 'etiquettes': [{'nom': 'a\x00b'}]}]}))
+        cas.append(('post', 'saisie-rapide/', {'lignes': [{'titre': 'r',
+                                                           'nouveau_projet': {'nom': 'N', 'priorite': 7}}]}))
+        return cas
+
     def test_dates_hors_bornes_rendent_400_sans_ecriture(self):
         with frozen('2026-11-18 10:00:00'):
             for jour in self.HORS_BORNES:
@@ -470,6 +483,28 @@ class EntreesMalFormeesTests(TestCase):
         with frozen('2026-11-18 10:00:00'):
             reponse = self.api.get(PREFIXE + 'journee/proposition/', {'exclure': '12'})
             self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+
+    def test_priorite_et_caractere_nul_rendent_400_sans_ecriture(self):
+        with frozen('2026-11-18 10:00:00'):
+            for methode, chemin, entree in self._cas_base():
+                avant = self._ecritures()
+                with self.subTest(methode=methode, chemin=chemin, entree=entree):
+                    reponse = self._envoyer(methode, chemin, entree)
+                    self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+                    self.assertEqual(self._ecritures(), avant)
+
+    def test_temoins_priorite_et_nom_sans_caractere_nul(self):
+        with frozen('2026-11-18 10:00:00'):
+            temoins = [
+                ('post', 'taches/', {'titre': 'r', 'nouveau_projet': {'nom': 'Neuf', 'priorite': 2}}),
+                ('post', 'taches/', {'titre': 'r2', 'etiquettes': [{'nom': 'ok'}]}),
+                ('patch', f'projets/{self.p.pk}/', {'affichage': {'tri': 'manuel', 'groupe': 'section'},
+                                                    'lock_version': self.p.lock_version}),
+            ]
+            for methode, chemin, entree in temoins:
+                with self.subTest(methode=methode, chemin=chemin):
+                    reponse = self._envoyer(methode, chemin, entree)
+                    self.assertLess(reponse.status_code, 400, reponse.content[:300])
 
 
 class AccesTests(TestCase):

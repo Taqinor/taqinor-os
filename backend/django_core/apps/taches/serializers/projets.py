@@ -12,7 +12,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
-from apps.taches.entrees import DateBornee
+from apps.taches.entrees import DateBornee, sans_nul
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
@@ -92,7 +92,8 @@ class ProjetModificationSerializer(serializers.Serializer):
         if 'montrer_faites' in valeur and not isinstance(valeur['montrer_faites'], bool):
             raise serializers.ValidationError(VALEUR_INCONNUE)
         for cle in ('tri', 'groupe'):
-            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20):
+            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20
+                                      and sans_nul(valeur[cle])):
                 raise serializers.ValidationError(VALEUR_INCONNUE)
         return valeur
 
