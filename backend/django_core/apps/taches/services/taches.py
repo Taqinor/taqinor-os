@@ -25,6 +25,7 @@ from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
 from apps.taches.confidentialite import ECRAN, nom_pour
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
@@ -815,7 +816,6 @@ def apercu_changement(user, pk, geste, titre=None, *, usage=ECRAN):
 # --- Règle de récurrence ----------------------------------------------------------------------------
 
 MESSAGE_FIN_AVANT_DEBUT = 'La date de fin précède la date de début.'
-MESSAGE_DATE = 'Date attendue (AAAA-MM-JJ).'
 CHAMPS_REGLE = ('frequence', 'intervalle', 'jours_semaine', 'jour_du_mois', 'rang_dans_mois', 'mode',
                 'date_debut', 'date_fin')
 RANGS_DU_MOIS = (1, 2, 3, 4, -1)
@@ -825,9 +825,12 @@ def _date_de_regle(valeur):
     if valeur is None or isinstance(valeur, datetime.date):
         return valeur
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
         raise ValueError(MESSAGE_DATE)
+    if not jour_dans_bornes(jour):
+        raise ValueError(MESSAGE_DATE)
+    return jour
 
 
 def _entier_entre(valeur, bas, haut):

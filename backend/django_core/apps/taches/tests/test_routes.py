@@ -6,18 +6,21 @@ permission STRICTE ; `est_assistant`, la permission et le bouchon des routes à 
 Avec base (TestCase, CI) : 403 sans `taches_voir` pour tout compte (y compris un compte hérité
 « responsable » sans rôle fin), 501 avec, 401 neutre sur capture, flux et tuile.
 """
+import datetime
 import inspect
 import json
 import re
 from pathlib import Path
 from types import SimpleNamespace
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import resolve
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
+from testkit.time import frozen
 
 from apps.roles.models import Role
 from apps.taches.tests import fabriques
@@ -380,6 +383,128 @@ class AssistantEtBouchonTests(SimpleTestCase):
                 reponse = vue(usine.generic(methode, concret(chemin)), **correspondance.kwargs)
                 self.assertEqual(reponse.status_code, 401)
                 self.assertIn('WWW-Authenticate', reponse)
+
+
+class EntreesMalFormeesTests(TestCase):
+    """Revue F2 tour 2 #12 : une entrée mal formée répond 400 sous son champ, jamais 500, et rien n'est écrit.
+
+    Une table (route, méthode, entrée fabriquée) parcourue en `subTest` ; chaque famille a son cas témoin
+    (une entrée VALIDE proche passe toujours). Horloge figée : « aujourd'hui » est le 18/11/2026."""
+
+    HORS_BORNES = ('9999-12-31', '0001-01-01', '2101-01-01', '1999-12-31')
+    REGLE = {'frequence': 'hebdo', 'intervalle': 1, 'jours_semaine': '1000000', 'mode': 'calendrier'}
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.soc = fabriques.societe('a')
+        cls.u = fabriques.compte(cls.soc, nom='u1', admin=True)
+        fabriques.reglages(cls.u)
+        cls.p = fabriques.projet(cls.u, priorite=2)
+        cls.t = fabriques.tache(cls.u, projet=cls.p, jour_prevu=datetime.date(2026, 11, 18))
+
+    def setUp(self):
+        self.api = APIClient()
+        self.api.force_authenticate(self.u)
+        self.api.raise_request_exception = False
+
+    def _ecritures(self):
+        modeles = apps.get_app_config('taches').get_models()
+        return {m.__name__: m._base_manager.count() for m in modeles}
+
+    def _envoyer(self, methode, chemin, entree):
+        if methode == 'get':
+            return self.api.get(PREFIXE + chemin, entree)
+        return getattr(self.api, methode)(PREFIXE + chemin, entree, format='json')
+
+    def _cas_dates(self, jour):
+        p, t = self.p.pk, self.t.pk
+        return [
+            ('get', 'aujourdhui/', {'jour': jour}, 'jour'),
+            ('get', 'journee/proposition/', {'jour': jour}, 'jour'),
+            ('get', 'agenda/', {'du': jour, 'au': '2026-11-20'}, 'du'),
+            ('get', 'agenda/', {'du': '2026-11-18', 'au': jour}, 'au'),
+            ('get', 'revue/projets/', {'semaine': jour}, 'semaine'),
+            ('put', f'revue/projets/{p}/', {'semaine': jour, 'decision': 'garder'}, 'semaine'),
+            ('post', 'journee/planifier/', {'jour': jour, 'mode': 'express', 'lignes': [], 'essentielles': []}, 'jour'),
+            ('post', 'journee/alleger/', {'jour': jour, 'garder': [t]}, 'jour'),
+            ('post', 'journee/cloturer/', {'jour': '2026-11-17', 'choix': [{'id': t, 'choix': 'jour', 'jour': jour}]},
+             None),
+            ('post', 'taches/', {'titre': 'a', 'jour_prevu': jour}, 'jour_prevu'),
+            ('post', 'taches/', {'titre': 'a', 'echeance': jour}, 'echeance'),
+            ('post', 'taches/', {'titre': 'r', 'recurrence': {**self.REGLE, 'date_debut': jour}}, None),
+            ('post', 'taches/', {'titre': 'r', 'jour_prevu': '2026-11-20', 'rappel': {'jour': jour, 'heure': '09:00'}},
+             None),
+            ('post', 'saisie-rapide/', {'lignes': [{'titre': 'r', 'recurrence': {**self.REGLE, 'date_debut': jour}}]},
+             None),
+            ('post', 'saisie-rapide/', {'lignes': [{'titre': 'a', 'jour_prevu': jour}]}, None),
+        ]
+
+    def _cas_base(self):
+        cas = []
+        for priorite in (4, -1, 99999, 2 ** 40):
+            cas.append(('post', 'taches/', {'titre': 'r', 'nouveau_projet': {'nom': 'N', 'priorite': priorite}}))
+        cas.append(('post', 'taches/', {'titre': 'r', 'etiquettes': [{'nom': 'a\x00b'}]}))
+        for cle in ('tri', 'groupe'):
+            cas.append(('patch', f'projets/{self.p.pk}/', {'affichage': {cle: 'a\x00b'},
+                                                           'lock_version': self.p.lock_version}))
+        cas.append(('post', 'saisie-rapide/', {'lignes': [{'titre': 'r', 'etiquettes': [{'nom': 'a\x00b'}]}]}))
+        cas.append(('post', 'saisie-rapide/', {'lignes': [{'titre': 'r',
+                                                           'nouveau_projet': {'nom': 'N', 'priorite': 7}}]}))
+        return cas
+
+    def test_dates_hors_bornes_rendent_400_sans_ecriture(self):
+        with frozen('2026-11-18 10:00:00'):
+            for jour in self.HORS_BORNES:
+                for methode, chemin, entree, champ in self._cas_dates(jour):
+                    avant = self._ecritures()
+                    with self.subTest(jour=jour, methode=methode, chemin=chemin, entree=entree):
+                        reponse = self._envoyer(methode, chemin, entree)
+                        self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+                        if champ is not None:
+                            self.assertIn(champ, reponse.json())
+                        self.assertEqual(self._ecritures(), avant)
+
+    def test_temoin_dates_de_2026_passent(self):
+        with frozen('2026-11-18 10:00:00'):
+            jour = '2026-11-19'
+            for methode, chemin, entree, _champ in self._cas_dates(jour):
+                with self.subTest(methode=methode, chemin=chemin):
+                    reponse = self._envoyer(methode, chemin, entree)
+                    self.assertLess(reponse.status_code, 400, reponse.content[:300])
+
+    def test_exclure_non_numerique_est_ignore(self):
+        with frozen('2026-11-18 10:00:00'):
+            for valeur in ('²', '١', '9' * 5000, '1,²,3'):
+                with self.subTest(exclure=valeur[:12]):
+                    reponse = self.api.get(PREFIXE + 'journee/proposition/', {'exclure': valeur})
+                    self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+
+    def test_temoin_exclure_numerique(self):
+        with frozen('2026-11-18 10:00:00'):
+            reponse = self.api.get(PREFIXE + 'journee/proposition/', {'exclure': '12'})
+            self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+
+    def test_priorite_et_caractere_nul_rendent_400_sans_ecriture(self):
+        with frozen('2026-11-18 10:00:00'):
+            for methode, chemin, entree in self._cas_base():
+                avant = self._ecritures()
+                with self.subTest(methode=methode, chemin=chemin, entree=entree):
+                    reponse = self._envoyer(methode, chemin, entree)
+                    self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+                    self.assertEqual(self._ecritures(), avant)
+
+    def test_temoins_priorite_et_nom_sans_caractere_nul(self):
+        with frozen('2026-11-18 10:00:00'):
+            temoins = [
+                ('post', 'taches/', {'titre': 'r', 'nouveau_projet': {'nom': 'Neuf', 'priorite': 2}}),
+                ('post', 'taches/', {'titre': 'r2', 'etiquettes': [{'nom': 'ok'}]}),
+                ('patch', f'projets/{self.p.pk}/', {'affichage': {'tri': 'manuel', 'groupe': 'section'},
+                                                    'lock_version': self.p.lock_version}),
+            ]
+            for methode, chemin, entree in temoins:
+                with self.subTest(methode=methode, chemin=chemin):
+                    reponse = self._envoyer(methode, chemin, entree)
+                    self.assertLess(reponse.status_code, 400, reponse.content[:300])
 
 
 class AccesTests(TestCase):

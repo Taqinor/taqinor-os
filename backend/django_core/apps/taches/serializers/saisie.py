@@ -18,6 +18,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import StatutTache
 from apps.taches.confidentialite import ASSISTANT, ECRAN, nom_pour
+from apps.taches.entrees import DateBornee
 from apps.taches.saisie.analyseur import analyser
 from apps.taches.saisie.collage import (
     MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, decouper_collage, erreurs_limites, marquer_doublons,
@@ -73,10 +74,10 @@ CHAMPS_LIGNE = {
         'nom': serializers.CharField(max_length=120),
     }, required=False, allow_null=True),
     'priorite': _facultatif(serializers.IntegerField),
-    'jour_prevu': _facultatif(serializers.DateField, allow_null=True),
+    'jour_prevu': _facultatif(DateBornee, allow_null=True),
     'moment': _facultatif(serializers.CharField, allow_blank=True),
     'heure_debut': _facultatif(serializers.CharField, allow_null=True),
-    'echeance': _facultatif(serializers.DateField, allow_null=True),
+    'echeance': _facultatif(DateBornee, allow_null=True),
     'echeance_heure': _facultatif(serializers.CharField, allow_null=True),
     'quelque_jour': _facultatif(serializers.BooleanField),
     'estimation_minutes': _facultatif(serializers.IntegerField, allow_null=True),
@@ -333,7 +334,7 @@ class TachePatchSerializer(serializers.Serializer):
                                   error_messages={'max_length': '280 caractères au plus.'})
     notes = serializers.CharField(required=False, allow_blank=True)
     priorite = serializers.IntegerField(required=False)
-    echeance = serializers.DateField(required=False, allow_null=True)
+    echeance = DateBornee(required=False, allow_null=True)
     echeance_heure = serializers.TimeField(required=False, allow_null=True)
     estimation_minutes = serializers.IntegerField(required=False, allow_null=True)
     duree_reelle_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0)
@@ -382,7 +383,7 @@ class ProprietaireEntreeSerializer(serializers.Serializer):
 class PlanifierEntreeSerializer(ProprietaireEntreeSerializer):
     """Corps de `planifier/` : le jour, l'heure, le moment ou « En réserve » ; `lock_version` requis."""
 
-    jour_prevu = serializers.DateField(required=False, allow_null=True)
+    jour_prevu = DateBornee(required=False, allow_null=True)
     moment = serializers.CharField(required=False, allow_blank=True)
     heure_debut = serializers.CharField(required=False, allow_null=True)
     quelque_jour = serializers.BooleanField(required=False)
@@ -391,7 +392,7 @@ class PlanifierEntreeSerializer(ProprietaireEntreeSerializer):
 
 class TrancherEntreeSerializer(serializers.Serializer):
     choix = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
-    jour = serializers.DateField(required=False, allow_null=True)
+    jour = DateBornee(required=False, allow_null=True)
 
 
 class AttendreEntreeSerializer(serializers.Serializer):
@@ -414,7 +415,7 @@ class ChangementEntreeSerializer(serializers.Serializer):
 class RappelEntreeSerializer(serializers.Serializer):
     """Corps de `rappels/` : `{jour, heure}` ou `{ancre, decalage_jours, heure}`."""
 
-    jour = serializers.DateField(required=False)
+    jour = DateBornee(required=False)
     heure = serializers.CharField(error_messages={'required': MESSAGE_REQUIS})
     ancre = serializers.CharField(required=False, allow_blank=True)
     decalage_jours = serializers.IntegerField(required=False)
@@ -424,7 +425,7 @@ class RepeterEntreeSerializer(serializers.Serializer):
     """Corps de `repeter/` : `{dans_minutes}` ou `{jour, heure}`."""
 
     dans_minutes = serializers.IntegerField(required=False, min_value=1)
-    jour = serializers.DateField(required=False)
+    jour = DateBornee(required=False)
     heure = serializers.CharField(required=False)
 
     def validate(self, donnees):
@@ -442,8 +443,8 @@ class RecurrenceEntreeSerializer(serializers.Serializer):
     jour_du_mois = serializers.IntegerField(required=False, allow_null=True)
     rang_dans_mois = serializers.IntegerField(required=False, allow_null=True)
     mode = serializers.CharField(required=False)
-    date_debut = serializers.DateField(required=False)
-    date_fin = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False)
+    date_fin = DateBornee(required=False, allow_null=True)
     actif = serializers.BooleanField(required=False)
     appliquer_a_l_ouverte = serializers.BooleanField(required=False)
 

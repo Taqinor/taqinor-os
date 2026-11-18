@@ -16,6 +16,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, DateBornee, jour_dans_bornes
 from apps.taches.serializers.formes import TacheEcriteSerializer, contexte
 from apps.taches.serializers.journee import PLAFOND_LIGNES
 from apps.taches.services import journee as services
@@ -25,16 +26,18 @@ from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
 TOUT = parametre('tout', OpenApiTypes.BOOL, '1 : « Voir toutes les tâches de mes projets ».')
-MESSAGE_DATE = 'Date attendue (AAAA-MM-JJ).'
 VRAI = ('1', 'true', 'oui')
 
 
 def date_de(valeur, champ):
     """Une date AAAA-MM-JJ, ou 400 au champ nommé."""
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except (TypeError, ValueError):
         raise ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise ValidationError({champ: [MESSAGE_DATE]})
+    return jour
 
 
 def jour_de(request, champ='jour'):
@@ -55,7 +58,8 @@ def drapeau(request, champ):
 def ids_de(request, champ):
     """`?exclure=41,42` → [41, 42] ; un morceau qui n'est pas un nombre est ignoré (lecture seule)."""
     morceaux = (request.query_params.get(champ) or '').split(',')
-    return [int(m) for m in (m.strip() for m in morceaux) if m.isdigit()]
+    return [int(m) for m in (m.strip() for m in morceaux)
+            if m.isascii() and m.isdigit() and len(m) <= LONGUEUR_ID_MAX]
 
 
 def par_compte(request):
@@ -84,7 +88,7 @@ class LigneCorps(serializers.Serializer):
 
 
 class PlanifierCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     mode = serializers.CharField()
     lignes = serializers.ListField(child=LigneCorps(), max_length=PLAFOND_LIGNES)
     essentielles = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
@@ -98,18 +102,18 @@ class EssentielCorps(serializers.Serializer):
 
 
 class AllegerCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     garder = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=PLAFOND_LIGNES)
 
 
 class ChoixBilanCorps(serializers.Serializer):
     id = serializers.IntegerField(min_value=1)
     choix = serializers.CharField()
-    jour = serializers.DateField(required=False)
+    jour = DateBornee(required=False)
 
 
 class CloturerCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     choix = serializers.ListField(child=ChoixBilanCorps(), required=False, default=list,
                                   max_length=PLAFOND_LIGNES)
     le_reste = serializers.BooleanField(required=False, default=False)
