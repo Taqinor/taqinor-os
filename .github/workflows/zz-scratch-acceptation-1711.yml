@@ -456,7 +456,8 @@ jobs:
           cat >> backend/django_core/core/tasks.py <<'PYT'
 
 
-          @shared_task(name='core.acel3_essai_dormir')
+          # limites propres à la tâche d'essai : la limite douce globale (120 s) la tuerait avant 150 s
+          @shared_task(name='core.acel3_essai_dormir', soft_time_limit=170, time_limit=179)
           def acel3_essai_dormir(secondes=150):
               import time
               time.sleep(secondes)

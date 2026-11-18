@@ -10,6 +10,7 @@ dj() { docker compose exec -T django_core python manage.py shell -c "$1"; }
   echo "## tâche d'essai acel3_essai_dormir(150) envoyée : $ID"
   sleep 20
   echo "## état à t+20 s : $(dj "from celery.result import AsyncResult; print(AsyncResult('$ID').state)" | tail -1)"
+  ANCIEN=$(docker compose ps -q celery_worker); docker logs -f "$ANCIEN" > /tmp/acel3-ancien-worker.log 2>&1 &
   echo "## docker compose up -d --force-recreate celery_worker ($(date -u +%T))"
   docker compose up -d --force-recreate celery_worker 2>&1 | tail -3
   echo "## recréé à $(date -u +%T)"
@@ -17,8 +18,11 @@ dj() { docker compose exec -T django_core python manage.py shell -c "$1"; }
   for i in $(seq 1 40); do ETAT=$(dj "from celery.result import AsyncResult; print(AsyncResult('$ID').state)" | tail -1); [ "$ETAT" = SUCCESS ] && break; sleep 10; done
   echo "## état final : $ETAT ($(date -u +%T))"
   echo "## exécutions de la tâche dans les journaux (une seule attendue) :"
-  docker compose logs celery_worker 2>&1 | grep -c "acel3_essai_dormir.*succeeded" || true
-  docker compose logs celery_worker 2>&1 | grep -E "acel3_essai_dormir|Warm shutdown|worker: Warm" | tail -8
+  { cat /tmp/acel3-ancien-worker.log; docker compose logs --no-log-prefix celery_worker 2>&1; } | grep -c "acel3_essai_dormir.*succeeded" || true
+  echo "## journal de l'ANCIEN conteneur (capturé avant la recréation) :"
+  grep -E "acel3_essai_dormir|Warm shutdown|worker: Warm|SoftTimeLimit|WorkerLost" /tmp/acel3-ancien-worker.log | tail -8
+  echo "## journal du NOUVEAU conteneur :"
+  docker compose logs celery_worker 2>&1 | grep -E "acel3_essai_dormir\[|Warm shutdown|SoftTimeLimit|WorkerLost" | tail -8
   echo "## /proc/1/cmdline APRÈS"; docker compose exec -T celery_worker cat /proc/1/cmdline | tr '\0' ' '; echo
 } > "$L3" 2>&1
 { echo "# ACEL8 — runner GitHub $(date -u +%FT%TZ), sha ${GITHUB_SHA}"
