@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, Plus } from 'lucide-react'
 import LigneTache from '../ui/LigneTache'
+import { compteEtape } from '../lib/projets'
 
 /* ============================================================================
    TCH89 — La vue Liste d'un projet : les étapes (sections) dans l'ordre du serveur, puis « Sans étape »,
@@ -21,14 +22,6 @@ function AjouterTache({ sectionId, onAjouter }) {
       <Plus className="i i-16" aria-hidden="true" />Ajouter une tâche
     </button>
   )
-}
-
-/** « {faites} sur {total} » d'une étape — seulement si le serveur le sert (`sections[].compteurs`,
- * `sans_section_compteurs` : { ouvertes, faites }, comme `projet.compteurs`), jamais recompté ici. */
-function compteEtape(compteurs) {
-  const { faites, ouvertes } = compteurs ?? {}
-  const total = Number.isInteger(compteurs?.total) ? compteurs.total : (Number.isInteger(ouvertes) && Number.isInteger(faites) ? ouvertes + faites : null)
-  return Number.isInteger(faites) && Number.isInteger(total) && total > 0 ? `${faites} sur ${total}` : ''
 }
 
 function Etape({ nom, taches, sectionId, aujourdhui, poignees, compteurs = null }) {
