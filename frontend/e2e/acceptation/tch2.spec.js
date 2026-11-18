@@ -523,9 +523,21 @@ etape('P143.5', ['TCH143', 'TCH111', 'TCH117'], async (f) => {
   // Oracle (plan) : « « mets la priorité haute à X » → `taches.tache.modifier` »
   const corps = await demanderAuCopilote(p, panneau, `mets la priorité haute à ${T.tva}`)
   expect((corps.cartes || []).map((c) => c.action_key), JSON.stringify(corps.cartes || [])).toContain('taches.tache.modifier')
-  expect((await tacheNommee(p, T.tva)).priorite, 'priorité haute écrite').toBe(3)
+  const modif = (corps.cartes || []).filter((c) => c.action_key === 'taches.tache.modifier').at(-1)
   const carte = panneau.getByTestId('carte-taches-tache').last()
+  // Garde A5 (regles.md) : après une LECTURE dans la conversation (chercher la tâche), l'écriture de l'assistant
+  // devient une carte à valider (`proposition.geste: "ecrire"`, bouton « Modifier » de CartesTaches) : rien n'est
+  // écrit avant le doigt. Sans lecture préalable, elle s'écrit directement (« Modifiée » d'emblée). Le chemin pris est
+  // lu sur la carte SERVIE, jamais deviné : les deux mènent au même oracle.
+  if (modif.donnees?.proposition?.geste === 'ecrire') {
+    console.log('[P143.5] chemin : carte à valider')
+    expect((await tacheNommee(p, T.tva)).priorite, 'rien n\'est écrit avant le doigt').toBe(avant.priorite)
+    await carte.locator('.ep-carte-ia-pied').getByRole('button', { name: 'Modifier', exact: true }).click()
+  } else {
+    console.log('[P143.5] chemin : écriture directe')
+  }
   await expect(carte.getByRole('status')).toContainText('Modifiée')
+  expect((await tacheNommee(p, T.tva)).priorite, 'priorité haute écrite').toBe(3)
   // « Annuler → restauré »
   await carte.getByRole('button', { name: 'Annuler', exact: true }).click()
   await expect(carte.getByRole('status')).toContainText('Annulé')
