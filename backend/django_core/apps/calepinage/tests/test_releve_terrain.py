@@ -28,7 +28,6 @@ import datetime
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
@@ -46,12 +45,25 @@ from apps.crm.models import Lead
 from apps.roles.models import Role
 from apps.roles.permissions_registre import DIRECTEUR_PERMISSIONS
 from authentication.models import Company
+from testkit.time import frozen
 
 User = get_user_model()
 
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 40
-HIER = timezone.localdate() - datetime.timedelta(days=1)
-DEMAIN = timezone.localdate() + datetime.timedelta(days=1)
+
+#: L'HORLOGE DE CE MODULE EST FIGÉE et ses dates de référence sont des
+#: CONSTANTES — jamais ``timezone.localdate()`` lu à l'IMPORT. Un shard de CI
+#: importe ses modules puis les joue plusieurs minutes plus tard : importé à
+#: 23 h 57 et joué après minuit, le « DEMAIN » calculé à l'import était devenu
+#: « aujourd'hui », et la règle « date future refusée » ne se déclenchait plus
+#: (run 44203259355 du 18/11/2026 : 201 au lieu de 409, ``ReleveRefuse`` non
+#: levée). ``BaseReleve.setUp`` fige l'horloge sur ``MAINTENANT`` — MIDI UTC,
+#: donc le même jour à Casablanca que le Maroc soit à UTC+0 ou à UTC+1.
+MAINTENANT = datetime.datetime(2026, 11, 17, 12, 0,
+                               tzinfo=datetime.timezone.utc)
+AUJOURD_HUI = MAINTENANT.date()
+HIER = AUJOURD_HUI - datetime.timedelta(days=1)
+DEMAIN = AUJOURD_HUI + datetime.timedelta(days=1)
 
 #: Le cas de référence du relevé FRDISI : la profondeur de cage est la seule
 #: cote MANQUANTE, déduite par fermeture (8,82 quand le client annonçait 8,5).
@@ -143,6 +155,12 @@ class SolveurTest(SimpleTestCase):
 
 class BaseReleve(TestCase):
     def setUp(self):
+        # Figée AVANT la première écriture et jusqu'au dernier nettoyage :
+        # objets, jeton et requêtes lisent tous ``MAINTENANT``, donc ``HIER``
+        # est passé et ``DEMAIN`` est futur à n'importe quelle heure du run.
+        gel = frozen(MAINTENANT)
+        gel.start()
+        self.addCleanup(gel.stop)
         self.company = Company.objects.create(nom='Relevé Co',
                                               slug='releve-co-64')
         self.autre = Company.objects.create(nom='Voisine Relevé',

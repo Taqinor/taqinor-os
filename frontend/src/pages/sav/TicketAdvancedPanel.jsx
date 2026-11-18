@@ -218,8 +218,8 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
         </div>
       )}
 
-      {/* XSAV12 — fusionner un doublon */}
-      <div className="flex flex-col gap-1.5">
+      {/* XSAV12 — fusionner un doublon (ADRG154 : sav_gerer) */}
+      {peutGerer && <div className="flex flex-col gap-1.5">
         <span className="flex items-center gap-2 text-sm font-medium">
           <GitMerge className="size-4 text-muted-foreground" aria-hidden="true" />
           Fusionner un ticket doublon
@@ -232,10 +232,10 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
             Fusionner
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* ZSAV8 — conversion en lead CRM */}
-      <div className="flex items-center gap-2">
+      {peutGerer && <div className="flex items-center gap-2">
         {leadId ? (
           <Badge tone="success">Lead CRM #{leadId}</Badge>
         ) : (
@@ -243,7 +243,7 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
             <UserPlus2 /> Convertir en opportunité CRM
           </Button>
         )}
-      </div>
+      </div>}
 
       {/* WIR118 (XSAV27) — prêts d'équipement */}
       <div className="flex flex-col gap-1.5">
@@ -252,9 +252,9 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
             <PackagePlus className="size-4 text-muted-foreground" aria-hidden="true" />
             Prêts d'équipement
           </span>
-          <Button type="button" size="sm" variant="outline" onClick={() => setPretFormOpen((o) => !o)}>
+          {peutGerer && <Button type="button" size="sm" variant="outline" onClick={() => setPretFormOpen((o) => !o)}>
             {pretFormOpen ? 'Annuler' : 'Nouveau prêt'}
-          </Button>
+          </Button>}
         </div>
         {pretFormOpen && (
           <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">

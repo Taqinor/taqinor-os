@@ -21,14 +21,20 @@ from __future__ import annotations
 import argparse
 import ast
 import glob
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTENEUR = 'erp-agentique-django_core-1'
 MARQUE = '@@RESULT '
+# AMET109 : ce que les sondes lisent sous la racine du depot, monte dans le conteneur (jamais backend/django_core : /app).
+RACINE_CONTENEUR = '/tmp/racine_sonde'
+MONTES = ('docs/audits/sondes', 'frontend/src', 'scripts', 'backend/fastapi_ia', '.github', 'STAGES.py',
+          'docker-compose.yml')
 
 RUNNER = r'''
 import io, json, signal, socket, sys, traceback, contextlib
@@ -50,6 +56,7 @@ def _http(*a, **k):
 socket.create_connection = _http
 _SRC = __SRC__
 _ENTETE = __ENTETE__
+_FILE = __FILE__
 def _timeout(*a):
     raise TimeoutError('delai de la sonde depasse')
 def _comptes():
@@ -66,7 +73,7 @@ def _comptes():
             pass
     return out
 def _rejouer():
-    ns = {'__name__': '__sonde__'}
+    ns = {'__name__': '__sonde__', '__file__': _FILE}  # AMET109 : chemin de la sonde sous la racine montee
     exec(compile(_SRC, 'sonde', 'exec'), ns)
     ctx = {'celery': _CEL, 'racine': '.', 'args': None}
     tampon = io.StringIO()
@@ -171,8 +178,9 @@ def charger(chemin):
     return source, entete
 
 
-def programme(source, entete, timeout):
+def programme(source, entete, timeout, rel='docs/audits/sondes/_/sonde.py'):
     return (RUNNER.replace('__SRC__', ascii(source)).replace('__ENTETE__', repr(entete))
+            .replace('__FILE__', repr(RACINE_CONTENEUR + '/' + rel))
             .replace('__TIMEOUT__', str(int(timeout))).replace('__MARQUE__', MARQUE))
 
 
@@ -181,10 +189,35 @@ def executer_docker(cmd, prog, timeout):
     return r.returncode, r.stdout.decode('utf-8', 'replace'), r.stderr.decode('utf-8', 'replace')
 
 
+def archive_montes(racine):
+    """Octets tar des fichiers SUIVIS de MONTES, contenu de l'arbre de travail de `racine` (pur : ni docker, ni écriture)."""
+    noms = subprocess.run(['git', '-C', racine, 'ls-files', '-z', '--', *MONTES], capture_output=True,
+                          check=True).stdout.decode('utf-8').split('\0')
+    tampon = io.BytesIO()
+    with tarfile.open(fileobj=tampon, mode='w') as tar:
+        for nom in filter(None, noms):
+            if os.path.isfile(os.path.join(racine, nom)) and not os.path.islink(os.path.join(racine, nom)):
+                tar.add(os.path.join(racine, nom), arcname=nom, recursive=False)
+    return tampon.getvalue()
+
+
+def monter_docker(racine, conteneur, timeout):
+    """Pose l'archive sous RACINE_CONTENEUR (backend/django_core -> /app) ; lève ErreurSonde si docker échoue."""
+    r = RACINE_CONTENEUR
+    cmd = ['docker', 'exec', '-i', conteneur, 'sh', '-c', 'rm -rf %s && mkdir -p %s/backend && tar -xf - -C %s '
+           '&& ln -sfn /app %s/backend/django_core' % (r, r, r, r)]
+    res = subprocess.run(cmd, input=archive_montes(racine), capture_output=True, timeout=timeout + 60)
+    if res.returncode:
+        raise ErreurSonde('montage de l\'arbre du dépôt refusé (code %s) : %s' % (
+            res.returncode, res.stderr.decode('utf-8', 'replace').strip()[-300:]))
+
+
 def jouer(chemin, conteneur, timeout, executer, dry_run=False, note=''):
     """Rejoue UNE sonde ; renvoie (code, verdict). Imprime attendu / observe / verdict / base."""
     source, entete = charger(chemin)
-    prog = programme(source, entete, timeout)
+    rel = 'docs/audits/sondes/%s/%s' % (os.path.basename(os.path.dirname(os.path.abspath(chemin))),
+                                        os.path.basename(chemin))
+    prog = programme(source, entete, timeout, rel)
     if dry_run:
         print(prog)
         return 0, 'DRY'
@@ -208,7 +241,7 @@ def jouer(chemin, conteneur, timeout, executer, dry_run=False, note=''):
     return (0 if inchangee and verdict in ('REPRO', 'STATIQUE') else 1), verdict
 
 
-def main(argv=None, executer=executer_docker):
+def main(argv=None, executer=executer_docker, monter=None):
     p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     p.add_argument('sonde', nargs='?', help='ex. AMET/C-AMET-001')
     p.add_argument('--toutes', metavar='GROUPE', help='rejoue toutes les sondes du groupe, en série')
@@ -236,6 +269,12 @@ def main(argv=None, executer=executer_docker):
             print('REFUSÉE : le conteneur %s sert un autre code que %s (fichiers : %s) — relancer la pile '
                   'sur ce worktree, ou --sans-fraicheur' % (a.conteneur, a.racine, ecarts))
             return 3
+    if not a.dry_run and (monter or executer is executer_docker):
+        try:
+            (monter or monter_docker)(a.racine, a.conteneur, a.timeout)
+        except ErreurSonde as e:
+            print('REFUSÉE : %s' % e)
+            return 1
     bilan = []
     for chemin in chemins:
         try:

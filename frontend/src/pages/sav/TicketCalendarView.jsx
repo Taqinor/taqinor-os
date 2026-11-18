@@ -18,6 +18,7 @@ import {
 import { frError, formatDateFR } from './ticketsLogique'
 import ComboboxClient from '../../components/ComboboxClient'
 import { ChampTypeTicket } from './SavCommun'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 
 const CAL_WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const CAL_MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -86,11 +87,11 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
             : cellDate.getDate()}
         </span>
         {/* Création rapide d'un ticket depuis ce créneau. */}
-        <button type="button" title="Créer un ticket ce jour"
+        {onQuickCreate && <button type="button" title="Créer un ticket ce jour"
                 onClick={() => onQuickCreate(key)}
                 className="hidden size-4 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex">
           <Plus className="size-3" aria-hidden="true" />
-        </button>
+        </button>}
       </div>
       <div className="flex flex-col gap-1">
         {tickets.map((t) => (
@@ -189,6 +190,7 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
     () => ({ year: today.getFullYear(), month: today.getMonth() }))
   const [quickCreateDate, setQuickCreateDate] = useState(null)
   const [dragTicket, setDragTicket] = useState(null)
+  const peutGerer = useDroitMetier('sav_gerer') // ADRG154 — POST sav/tickets/ et replanifier
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -208,7 +210,7 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
     setDragTicket(null)
     const ticket = active?.data?.current?.ticket
     const targetDate = over?.data?.current?.date
-    if (!ticket || !targetDate || targetDate === ticket.date_tournee) return
+    if (!peutGerer || !ticket || !targetDate || targetDate === ticket.date_tournee) return
     // AERR31 — résultat nommé + « Annuler » (appel inverse) ; un refus ne
     // produit que le toast d'erreur global (axios), jamais un second message.
     try {
@@ -220,7 +222,7 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
       })
       onReload?.()
     } catch (err) { toastErreurNonAffichee(err, 'Replanification impossible.') }
-  }, [onReload])
+  }, [onReload, peutGerer])
 
   return (
     <div className="flex flex-col gap-3">
@@ -253,7 +255,7 @@ export function TicketCalendarView({ tickets, onSelect, onReload }) {
                 isToday={key === calYmd(today)}
                 tickets={byDay[key] || []}
                 onSelect={onSelect}
-                onQuickCreate={setQuickCreateDate}
+                onQuickCreate={peutGerer ? setQuickCreateDate : undefined}
               />
             )
           })}

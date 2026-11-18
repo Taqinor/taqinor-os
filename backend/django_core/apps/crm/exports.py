@@ -105,7 +105,7 @@ def lead_row(lead):
 #: ACRM4 — les colonnes PII retirées de l'export d'un rôle sans
 #: ``client_pii_voir`` (règle unique ``serializers.pii_masquee_pour``).
 LEAD_EXPORT_PII_HEADERS = ('Email', 'Téléphone', 'WhatsApp')
-CLIENT_EXPORT_PII_HEADERS = ('Email', 'Téléphone', 'Adresse')
+CLIENT_EXPORT_PII_HEADERS = ('Email', 'Téléphone', 'Adresse', 'CIN')
 
 
 def _sans_colonnes(headers, rows, retirees):

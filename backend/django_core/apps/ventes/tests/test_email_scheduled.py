@@ -246,7 +246,27 @@ class TestScheduledJobs(TestCase):
             self.assertEqual(beats[cle]['schedule'].day_of_week, semaine, cle)
         self.assertEqual(
             beats['ventes-releve-mensuel-reminders']['schedule'].day_of_month,
-            {1, 2, 3})
+            set(range(1, 8)))  # AMSG107 — réaligné (1-7)
+
+    def test_releve_premier_jour_ouvre_toujours_dans_le_beat(self):
+        """AMSG107 — pour chaque mois de 2026 à 2031, avec les fériés fixes du
+        1er janvier et du 1er mai, le premier jour ouvré tombe dans le
+        `day_of_month` et le `day_of_week` du beat du relevé mensuel (le
+        01/01/2027, vendredi férié, part le lundi 04/01). Mutant : rétablir
+        `day_of_month='1-3'` ⇒ échec."""
+        from apps.notifications.calendar_utils import prochain_jour_ouvre
+        from apps.notifications.models import Holiday
+        from erp_agentique.celery import app
+        for mois, nom in ((1, 'Nouvel an'), (5, 'Fête du travail')):
+            Holiday.objects.create(
+                company=self.company, date=date(2026, mois, 1), nom=nom,
+                recurrent_annuel=True)
+        plan = app.conf.beat_schedule['ventes-releve-mensuel-reminders']['schedule']
+        for annee in range(2026, 2032):
+            for mois in range(1, 13):
+                jour = prochain_jour_ouvre(date(annee, mois, 1), self.company)
+                self.assertIn(jour.day, plan.day_of_month, jour)
+                self.assertIn((jour.weekday() + 1) % 7, plan.day_of_week, jour)
 
     def test_envois_facturation_programmes_a_8h30(self):
         """AMSG44 (C-AMSG-032, D-AMSG-1 = fenetre_commerciale) — relances,

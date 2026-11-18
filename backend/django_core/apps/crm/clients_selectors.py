@@ -535,7 +535,7 @@ def nb_devis_envoyes_periode(company, membre_ids, start_dt, end_dt):
     return Decimal(nombre)
 
 
-def stats_equipe(company):
+def stats_equipe(company, user=None):
     """ZSAL3 — Tableau de bord « Mes équipes » : pour chaque
     ``crm.EquipeCommerciale`` actives de la société, agrège pipeline ouvert
     (count + valeur), valeur pondérée (FG362/XSAL15), activités en retard
@@ -543,14 +543,16 @@ def stats_equipe(company):
     (métrique ``ca_signe``) rattachée aux membres.
 
     Un commercial sans équipe n'apparaît dans AUCUNE carte (comportement
-    voulu — pas un dashboard global). Lecture seule, scopée société.
+    voulu — pas un dashboard global). Scopée société ; ALEC56 : montants hors portée de ``user`` à None.
     """
     from decimal import Decimal
     from django.db.models import Sum
     from .models import EquipeCommerciale, ObjectifCommercial
+    from core.scoping import visible_user_ids
     import datetime
 
     today = datetime.date.today()
+    visibles = visible_user_ids(user) if user is not None else None
     equipes = (EquipeCommerciale.objects
                .filter(company=company, actif=True)
                .prefetch_related('membres'))
@@ -586,6 +588,10 @@ def stats_equipe(company):
             'cible_ca_signe_mois': str(cible),
             'avancement_pct': avancement_pct,
         })
+        if visibles is not None and set(membre_ids) - visibles:
+            result[-1].update(dict.fromkeys((
+                'ca_signe_mois', 'cible_ca_signe_mois', 'pipeline_ouvert_valeur',
+                'pipeline_pondere', 'avancement_pct'), None))
     return result
 
 

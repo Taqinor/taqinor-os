@@ -506,7 +506,7 @@ const ListRow = memo(function ListRow({
         {/* LB21(fold) — le mini-flux « Marquer perdu » vit dans le composant
             PARTAGÉ PerduPopover (LB15) : une seule implémentation carte+liste,
             état interne (motifs lazy, busy, rejet garde la popover ouverte). */}
-        {!perdu && (
+        {!perdu && onMarkPerdu && (
           <PerduPopover
             lead={lead}
             onMarkPerdu={onMarkPerdu}
@@ -937,7 +937,7 @@ export default function ListView({
         onToggleSelect={onToggleSelect}
         onOpenLead={onOpenLead}
         armCallNudgeFor={armCallNudgeFor}
-        onInlineSave={inlineSaveAvecUndo}
+        onInlineSave={onInlineSave ? inlineSaveAvecUndo : undefined}
         users={users}
         onReassign={onReassign}
         onAutoQuote={onAutoQuote}

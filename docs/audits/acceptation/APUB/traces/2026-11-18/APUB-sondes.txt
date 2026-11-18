@@ -1,0 +1,115 @@
+# rejeu sur runner GitHub (2026-11-18T04:55:59Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes APUB --conteneur <django_core>
+
+== C-APUB-001 (sha ae5a7ae4c)
+attendu : 10 rôles internes livrés lisent le jeton sans pouvoir lancer l'export ; la vue publique sert un jeton du bucket uploads
+observé : {"repro": true, "observe": {"methode": "exécution (gardes, is_admin_role, _is_directeur_or_admin, resoudre_lien, vue publique extraites par ast)", "historique_permission_classes": ["IsAuthenticatedInterne"], "gardes_non_resolues": [], "surcharges": [], "get_queryset_filtre_lanceur": false, "serialiseur_expose_token": true, "roles_internes_livres": 12, "lisent_le_jeton_sans_pouvoir_lancer": ["Commercial responsable", "Commercial", "Commercial terrain", "Technicien responsable", "Technicien", "Viewer", "Responsable", "Utilisateur", "Admin RH", "Admin Ventes"], "vue_publique_statut_par_jeton": {"tok-revers": 200, "tok-stock": 404, "tok-expire": 404}, "objets_lus_minio": [["erp-reversibilite", "1/export.zip"]], "vue_publique_sert_autre_bucket": false}}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-002 (sha ae5a7ae4c)
+attendu : peut_gerer(directeur2, fondateur) = refus ; attester rétrograde quand même le fondateur protégé ; admins restants = []
+observé : {"repro": false, "observe": {"methode": "exécution (attester, remove_role_from_user, role_utilisateur, peut_gerer, méthodes CustomUser extraites par ast, registre vivant)", "roles_livres_IsAdminRole": ["Administrateur", "Directeur"], "peut_gerer_directeur2_vers_fondateur": [false, "rang_cible"], "attester_appelle_une_garde": false, "refus_leves_par_attester": {"fondateur": "PermissionDenied"}, "fondateur_apres_revue": {"role": "Directeur", "is_admin_role": true, "is_protected": true}, "directeur2_apres_revue": "Utilisateur", "admins_restants": ["fondateur"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-003 (sha ae5a7ae4c)
+attendu : 40 POST au même QR, textes p0..p39 → 40 tickets créés (numéros consommés) ; témoin : 40 POST au même texte → 1 ticket
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 100, in sonde
+  File "sonde", line 90, in jouer
+  File "apps/sav/public_views.py", line 374, in equipement_public_signaler
+    if (dernier := _ticket_si_plafond_atteint(equipement)) is not None:
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+NameError: name '_ticket_si_plafond_atteint' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-004 (sha ae5a7ae4c)
+attendu : page, photo et PDF rendent 200 sur un jeton de 5 ans ; 1 seule écriture de lien_rapport_token (la pose)
+observé : {"repro": false, "observe": {"methode": "exécution (3 vues get, _rapport_publiable, ensure_lien_rapport_token extraits par ast) + ast (écrivains)", "jeton_stable_a_la_recloture": true, "ecritures_save": 1, "pose_il_y_a": "5 ans (statut validée)", "statut_par_vue": {"InterventionRapportPublicView": 404, "InterventionRapportPhotoPublicView": 404, "InterventionRapportPdfPublicView": 404}, "gardes_vues": {"InterventionRapportPublicView": ["[AllowAny]", "[]"], "InterventionRapportPhotoPublicView": ["[]", "[AllowAny]"], "InterventionRapportPdfPublicView": ["[AllowAny]", "[]"]}, "servi_apres_5_ans": false, "ecrivains_lien_rapport_token": ["apps/installations/models_intervention.py:333 self.lien_rapport_token = token", "apps/installations/models_intervention.py:340 self.lien_rapport_token = None"], "revocation_ou_rotation": ["apps/installations/models_intervention.py:340 self.lien_rapport_token = None"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-005 (sha ae5a7ae4c)
+attendu : 10 POST au même lien, canal c0..c9 → 10 transmissions (notify_client_contact_request) ; témoin canal fixe ×10 → 1
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 63, in sonde
+  File "sonde", line 53, in jouer
+  File "apps/ventes/public/signature_views.py", line 172, in proposal_contact_request
+    if canal and canal not in CANAUX_CONTACT_PUBLIC:
+                              ^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'CANAUX_CONTACT_PUBLIC' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-007 (sha ae5a7ae4c)
+attendu : réponse 200 sans compte ; lead Signé : e-mail vide → e-mail du visiteur, note « Transcript livechat » ajoutée
+observé : {"repro": false, "observe": {"methode": "exécution (post_chat_message, _append_transcript, create_lead_from_livechat, doublon_a_reprendre, _froid_a_reprendre, normalize_phone, extract_livechat_qualification extraits par ast)", "route": "POST /api/django/crm/public/chat/sessions/<token>/messages/", "decorateurs": ["authentication_classes([])", "permission_classes([AllowAny])", "parser_classes([JSONParser])", "throttle_classes([PublicChatRateThrottle])"], "statut_http": 404, "lead_created_repondu": null, "lead_existant": {"pk": 41, "etape": "SIGNED", "email_apres": null, "saves": 0}, "notes_ecrites_sur": [], "leads_crees": 0, "session_rattachee_au_lead": null, "historique_du_lead_existant_ecrit": false, "ecrans_ou_site_appelants": []}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-008 (sha ae5a7ae4c)
+attendu : lead Signé → Froid par l'API publique : étape finale Froid, desaccepter_devis_du_lead appelé 0 fois ; témoin Signé → Contacté refusé
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 69, in sonde
+  File "sonde", line 53, in jouer
+  File "apps/crm/fiche_api_publique.py", line 135, in update_lead_from_public_api
+    with transaction.atomic():
+         ^^^^^^^^^^^
+NameError: name 'transaction' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-009 (sha ae5a7ae4c)
+attendu : Commercial, Technicien, Responsable (sans adsengine_flightplan_manage) passent POST/PATCH/DELETE ; Viewer refusé ; 0 route hors registre n'exige le code
+observé : {"repro": false, "observe": {"methode": "exécution (vraies ScopedPermission/_user_has_or_legacy/has_erp_permission + vraies classes de vue par ast ; rôles = CANONICAL_SYSTEM_ROLES du registre vivant)", "routes": "POST/PATCH/DELETE /api/django/adsengine/plans-vol/ et phases-vol/ (CRUD ModelViewSet)", "write_permission_effectif": {"FlightPlanViewSet": "adsengine_flightplan_manage", "FlightPhaseViewSet": "adsengine_flightplan_manage"}, "roles_livres_qui_ecrivent_sans_le_code": [], "matrice_par_role": {"Directeur": {"a_le_code": true, "ecrit": true}, "Administrateur": {"a_le_code": true, "ecrit": true}, "Commercial responsable": {"a_le_code": true, "ecrit": true}, "Commercial": {"a_le_code": false, "ecrit": false}, "Commercial terrain": {"a_le_code": false, "ecrit": false}, "Technicien responsable": {"a_le_code": true, "ecrit": true}, "Technicien": {"a_le_code": false, "ecrit": false}, "Viewer": {"a_le_code": false, "ecrit": false}, "Responsable": {"a_le_code": false, "ecrit": false}, "Utilisateur": {"a_le_code": false, "ecrit": false}, "Admin RH": {"a_le_code": false, "ecrit": false}, "Admin Ventes": {"a_le_code": false, "ecrit": false}}, "fichiers_hors_registre_et_tests_citant_le_code": ["apps/adsengine/views.py"], "regle_3": "aucun appel Meta sur ce chemin (CRUD pur, non rejoué ici)"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-010 (sha ae5a7ae4c)
+attendu : Viewer et Utilisateur passent POST/PATCH/DELETE sur les 3 viewsets ; alice modifie et supprime le tableau et la requête partagés de bob
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 83, in sonde
+  File "sonde", line 64, in charger
+  File "sonde", line 41, in executer
+  File "core/views.py", line 716, in <module>
+    class DashboardViewSet(ProprietaireSeulMixin, TenantMixin, viewsets.ModelViewSet):
+TypeError: __mro_entries__ must return a tuple
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-037 (sha ae5a7ae4c)
+attendu : jeton → None pour les 3 états ; compte → permission True, BCF servis, date confirmée écrite
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 85, in sonde
+  File "apps/stock/services.py", line 7890, in resoudre_token_portail_fournisseur
+    from .selectors import fournisseur_coupe_du_portail  # APUB70 : règle unique
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named '_sonde_stock.selectors'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-APUB-038 (sha ae5a7ae4c)
+attendu : origine https://taqinor.ma → ACAO=origine + ACAC=true sur /api/django/crm/leads/, cookie Lax joint
+observé : ERREUR : 1, in _rejouer
+  File "sonde", line 81, in sonde
+  File "sonde", line 64, in site_public
+  File "/usr/local/lib/python3.11/pathlib.py", line 1058, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/pathlib.py", line 1044, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/racine_sonde/apps/web/worker/headers.mjs'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan APUB : 1/11 OK
+  C-APUB-001.py    REPRO
+  C-APUB-002.py    ÉCART (échec)
+  C-APUB-003.py    ÉCART (échec)
+  C-APUB-004.py    ÉCART (échec)
+  C-APUB-005.py    ÉCART (échec)
+  C-APUB-007.py    ÉCART (échec)
+  C-APUB-008.py    ÉCART (échec)
+  C-APUB-009.py    ÉCART (échec)
+  C-APUB-010.py    ÉCART (échec)
+  C-APUB-037.py    ÉCART (échec)
+  C-APUB-038.py    ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

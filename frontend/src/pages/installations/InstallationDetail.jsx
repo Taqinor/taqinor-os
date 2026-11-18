@@ -289,7 +289,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [editIntervBusy, setEditIntervBusy] = useState(false)
   const [users, setUsers] = useState([])
   const peutListerUsers = useCanListAssignableUsers()
-  const [peutLireVentes, peutGerer, peutInterv, peutEquip] = [useCanLireVentes(), useHasPermission('installation_gerer'), useHasPermission('intervention_gerer'), useHasPermission('equipement_gerer')] // ADVS23 — jamais un lien vers un refus ; ADRG21 — gestes selon la grille
+  const [peutLireVentes, peutGerer, peutInterv, peutEquip, peutSav] = [useCanLireVentes(), useHasPermission('installation_gerer'), useHasPermission('intervention_gerer'), useHasPermission('equipement_gerer'), useHasPermission('sav_gerer')] // ADVS23 — jamais un lien vers un refus ; ADRG21 — gestes selon la grille
   const { confirm: confirmerMes } = useConfirmDialog()
   const startEditInterv = (iv) => setEditInterv({
     id: iv.id,
@@ -1780,7 +1780,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 </MiniTable>
               )}
               <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».</Hint>
-              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
+              {peutSav && <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
                 <FormField label="Type" htmlFor="tk-type">
                   <Select value={newTicket.type} onValueChange={(v) => setNewTicket(s => ({ ...s, type: v }))}>
                     <SelectTrigger id="tk-type"><SelectValue /></SelectTrigger>
@@ -1811,7 +1811,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <Button variant="outline" loading={ticketBusy} onClick={openTicket}>
                   Ouvrir un ticket
                 </Button>
-              </div>
+              </div>}
             </Section>
             {/* ── Suivi & maintenance (N10 — hub système installé) ── */}
             <Section

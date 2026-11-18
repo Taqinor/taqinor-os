@@ -138,6 +138,27 @@ class JournalisationTests(CorbeilleBase):
         restaurer(element, user=self.directeur)
         self.assertFalse(Lead.all_objects.get(pk=lead.pk).is_deleted)
 
+    def test_lead_anonymise_caviarde_restaurees_et_deletion_record(self):
+        """ASUP68 — supprimé, restauré, re-supprimé puis anonymisé : ni les entrées de corbeille (restaurées
+        comprises) ni les ``DeletionRecord`` du lead ne gardent son nom. Mutant : remettre le filtre
+        ``restaure_le__isnull=True`` ⇒ échec."""
+        from apps.crm.dsr_provider import anonymiser_lead
+        from core.models import DeletionRecord
+        lead = Lead.objects.create(company=self.co_a, nom='Karim', prenom='B.', telephone='0612345678')
+        lead.soft_delete(user=self.directeur, donnees={'nom': 'Karim'})
+        Lead.all_objects.get(pk=lead.pk).restore()
+        Lead.objects.get(pk=lead.pk).soft_delete(user=self.directeur, donnees={'nom': 'Karim'})
+        self.assertTrue(ElementSupprime.objects.filter(object_id=lead.pk, restaure_le__isnull=False).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            anonymiser_lead(self.co_a, Lead.all_objects.get(pk=lead.pk), motif='essai ASUP68')
+        elements = ElementSupprime.objects.filter(object_id=lead.pk)  # persistance : relu en base
+        self.assertGreaterEqual(elements.count(), 2)
+        self.assertEqual({e.libelle_snapshot for e in elements}, {'Lead anonymisé'})
+        records = DeletionRecord.objects.filter(company=self.co_a, object_id=lead.pk, content_type__model='lead')
+        self.assertTrue(records.exists())
+        self.assertEqual({r.label for r in records}, {'Lead anonymisé'})
+        self.assertFalse(elements.filter(restaure_le__isnull=True).exclude(libelle_snapshot='Lead anonymisé'))
+
     def test_emission_sans_company_est_ignoree(self):
         record_soft_deleted.send(sender=Lead, instance=None, company=None)
         self.assertEqual(ElementSupprime.objects.count(), 0)

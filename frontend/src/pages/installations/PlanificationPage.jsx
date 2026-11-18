@@ -17,6 +17,7 @@ import {
   useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
 import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
   Wrench, Gauge, GripVertical,
@@ -927,6 +928,8 @@ const TABS = [
 ]
 
 export default function PlanificationPage() {
+  // ADRG151 — calendrier, tournée et plan de charge : lecture du module (LectureDuModule), sinon 403.
+  const peutLire = useDroitMetier('installation_voir')
   return (
     <div className="page lp-page">
       <div className="page-header lp-header">
@@ -945,9 +948,9 @@ export default function PlanificationPage() {
             )
           })}
         </TabsList>
-        <TabsContent value="calendrier"><CalendrierTab /></TabsContent>
-        <TabsContent value="ma-tournee"><MaTourneeTab /></TabsContent>
-        <TabsContent value="charge"><ChargeTab /></TabsContent>
+        <TabsContent value="calendrier">{peutLire && <CalendrierTab />}</TabsContent>
+        <TabsContent value="ma-tournee">{peutLire && <MaTourneeTab />}</TabsContent>
+        <TabsContent value="charge">{peutLire && <ChargeTab />}</TabsContent>
         <TabsContent value="camionnettes"><CamionnettesTab /></TabsContent>
         <TabsContent value="outils"><OutilsChantierTab /></TabsContent>
       </Tabs>

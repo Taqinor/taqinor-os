@@ -142,6 +142,27 @@ describe('WIR70 GedDocumentInsights', () => {
     expect(screen.queryByRole('button', { name: /Retirer ce droit/ })).toBeNull()
   })
 
+  it('Viewer (ged_voir seul) : aucun GET permissions-effectives, pas de CSV (ADRG153)', async () => {
+    const user = userEvent.setup()
+    renderPanel({ role: 'normal', role_nom: 'Viewer', permissions: ['ged_voir'] })
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    // Les droits directs (`ged/acls/`, lecture ouverte) restent affichés.
+    expect(await screen.findByText('sami')).toBeInTheDocument()
+    expect(H.getPermissionsEffectives).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /CSV/ })).toBeNull()
+    expect(screen.queryByTestId('ged-acl')).toBeNull()
+    expect(screen.getByText(/réservé aux gestionnaires/)).toBeInTheDocument()
+  })
+
+  it('Commercial responsable (ged_gerer) : rapport chargé et CSV présent (ADRG153)', async () => {
+    const user = userEvent.setup()
+    renderPanel({ role: 'responsable', role_nom: 'Commercial', permissions: ['ged_voir', 'ged_gerer'] })
+    await waitFor(() => expect(H.getPermissionsEffectives).toHaveBeenCalledWith(42))
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    expect(await screen.findByText('Sami')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /CSV/ })).toBeInTheDocument()
+  })
+
   it('ERR-QAH-GED-DETAILS-CRASH-PERMISSIONS — {"lignes":[…]} ne fait jamais planter le panneau', async () => {
     const user = userEvent.setup()
     renderPanel()

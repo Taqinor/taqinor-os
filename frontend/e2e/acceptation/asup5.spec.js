@@ -71,6 +71,10 @@ av = Avoir.objects.create(company_id=CO, reference='AVO-ASUP63-${m}', facture=f,
 LigneAvoir.objects.create(avoir=av, designation='Retour', quantite=Decimal('1'), prix_unitaire=Decimal('200'), remise=Decimal('0'), taux_tva=Decimal('20'))
 nd = NoteDebit.objects.create(company_id=CO, reference='ND-ASUP63-${m}', facture=f, client=c, statut='emise', taux_tva=Decimal('20'),
     montant_ht=Decimal('100'), montant_tva=Decimal('20'), montant_ttc=Decimal('120'))
+# ASUP70 (D-ASUP-8) : le reste dû est encaissé avant le clic (une créance ouverte refuse l'anonymisation).
+import datetime
+from apps.ventes.models import Paiement
+Paiement.objects.create(company_id=CO, facture=f, montant=Facture.objects.get(pk=f.pk).montant_du, date_paiement=datetime.date.today(), mode='virement')
 f.refresh_from_db()
 sortie(dict(client=c.pk, refs=[f.reference, av.reference, nd.reference], fige=f.identite_acheteur, jour=str(f.date_emission)))`)
   expect([x.fige?.nom, x.fige?.ice], 'Given : acheteur figé sur la facture').toEqual([nomClient, ice])

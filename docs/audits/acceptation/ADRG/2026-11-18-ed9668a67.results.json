@@ -1,0 +1,205 @@
+{
+  "sha": "ed9668a67ba1359ad572c028e4b9ab13f0a869ef",
+  "date": "2026-11-18",
+  "groupe": "ADRG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADRG148",
+    "ADRG149",
+    "ADRG150",
+    "ADRG151",
+    "ADRG155",
+    "ADRG147",
+    "ADRG152",
+    "ADRG153",
+    "ADRG154"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF4-ADRG148-suivi-gps",
+      "taches": [
+        "ADRG148"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG148-suivi-gps.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG149-exports-chantiers",
+      "taches": [
+        "ADRG149"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG149-exports-chantiers.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG150-ticket-fiche-chantier",
+      "taches": [
+        "ADRG150",
+        "ADRG155"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG150-ticket-fiche-chantier.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG151-planification-ma-journee",
+      "taches": [
+        "ADRG151"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG151-planification-ma-journee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG147-envoi-requete-stock",
+      "taches": [
+        "ADRG147"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG147-envoi-requete-stock.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG152-leads-liste-kanban",
+      "taches": [
+        "ADRG152"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG152-leads-liste-kanban.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG153-ged-acces",
+      "taches": [
+        "ADRG153"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG153-ged-acces.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF4-ADRG154-sav-detail-calendrier",
+      "taches": [
+        "ADRG154"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ADRG-PF4-ADRG154-sav-detail-calendrier.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}

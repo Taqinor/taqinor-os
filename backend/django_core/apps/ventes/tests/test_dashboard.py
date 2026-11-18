@@ -169,6 +169,37 @@ class TestDashboardBasic(TestCase):
         self.assertEqual(ligne_b['devis_actifs'], 1)
         self.assertGreater(Decimal(ligne_b['valeur_pipeline']), 0)
 
+    def test_commercial_soi_compteurs_de_periode_bornes(self):
+        """ALEC55 — sans ``?mine=1``, envoyés / acceptés / taux de la période
+        du Quote-to-cash ET du tableau de bord reporting sont bornés à la
+        portée du rôle : un Commercial lit ses seuls devis, le Directeur toute
+        la société. Mutant : ``commercial_id = None`` hors ``?mine=1`` ⇒ échec."""
+        from django.core.management import call_command
+        from apps.roles.models import Role
+        call_command('init_roles', verbosity=0)
+        roles = {r.nom: r for r in Role.objects.filter(company=self.co)}
+        a, b, directeur = (
+            User.objects.create_user(
+                username=f'alec55-{nom}', password='x', role_legacy='normal',
+                role=roles[role], company=self.co)
+            for nom, role in (('a', 'Commercial'), ('b', 'Commercial'), ('dir', 'Directeur')))
+        envoi = timezone.now()
+        for auteur, statut, ref in ((b, 'envoye', 'D-ALEC55-B1'), (b, 'accepte', 'D-ALEC55-B2'),
+                                    (a, 'envoye', 'D-ALEC55-A1')):
+            Devis.objects.filter(pk=_devis(self.co, auteur, self.cli, statut=statut, ref=ref).pk
+                                 ).update(date_envoi=envoi)
+        for user, attendu in ((a, (1, 0, 0)), (directeur, (3, 1, 33.3))):
+            q2c = _auth(user).get(URL)
+            self.assertEqual(q2c.status_code, 200, q2c.data)
+            rep = _auth(user).get('/api/django/reporting/dashboard/')
+            self.assertEqual(rep.status_code, 200, rep.data)
+            d, c = q2c.data['devis'], rep.data['conversion']
+            with self.subTest(user=user.username):
+                self.assertEqual((d['envoyes_periode'], d['acceptes_periode'],
+                                  d['taux_acceptation_pct']), attendu)
+                self.assertEqual((c['nb_envoyes_periode'], c['nb_acceptes_periode'],
+                                  c['taux_acceptation_pct']), attendu)
+
     def test_periode_mal_formee_400(self):
         # ENF11 — start/end/month illisibles : 400 (ils finissaient en 500
         # dans ``date_creation__date__range``).

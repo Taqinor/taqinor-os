@@ -16,6 +16,8 @@ import io
 import json
 import os
 import socket
+import subprocess
+import tarfile
 import sys
 import tempfile
 import types
@@ -240,6 +242,87 @@ class SondeTests(unittest.TestCase):
         self.assertIs(res['base_inchangee'], True)
         self.assertIn('ligne imprimee', res['observe'])
         self.assertIn('42', res['observe'])
+
+    def test_une_sonde_qui_lit_file_s_execute_et_rend_son_repro(self):
+        # AMET109 : `__file__` pointe vers le chemin de la sonde dans un arbre de depot visible du programme.
+        src = ('SONDE = {"constat": "C-TST-002", "sha": "a", "attendu": "x"}\n'
+               'import pathlib\nRACINE = pathlib.Path(__file__).resolve().parents[4]\n'
+               'def sonde(ctx):\n    return {"repro": True, "fichier": __file__, "racine": str(RACINE)}\n')
+        programme = sonde.programme(src, {'constat': 'C-TST-002', 'sha': 'a', 'attendu': 'x'}, 30,
+                                    'docs/audits/sondes/TST/C-TST-002.py')
+        mod = types.ModuleType
+
+        class Atomic:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        db = mod('django.db')
+        db.transaction = types.SimpleNamespace(atomic=lambda: Atomic(), set_rollback=lambda v: None)
+        conf = mod('django.conf')
+        conf.settings = types.SimpleNamespace()
+        apps = mod('django.apps')
+        apps.apps = types.SimpleNamespace(get_models=lambda: [])
+        mail = mod('django.core.mail')
+        mail.outbox = []
+        task = mod('celery.app.task')
+        task.Task = type('Task', (), {})
+        faux = {'django': mod('django'), 'django.conf': conf, 'django.db': db, 'django.apps': apps,
+                'django.core': mod('django.core'), 'django.core.mail': mail, 'celery': mod('celery'),
+                'celery.app': mod('celery.app'), 'celery.app.task': task}
+        sortie = io.StringIO()
+        with mock.patch.dict(sys.modules, faux), mock.patch.object(socket, 'create_connection'), \
+                contextlib.redirect_stdout(sortie):
+            try:
+                exec(compile(programme, 'programme', 'exec'), {'__name__': '__sonde__'})
+            except SystemExit as e:
+                code = e.code
+        self.assertEqual(code, 0, sortie.getvalue())
+        ligne = [x for x in sortie.getvalue().splitlines() if x.startswith('@@RESULT ')][0]
+        res = json.loads(ligne[len('@@RESULT '):])
+        self.assertNotIn('NameError', res['observe'])
+        self.assertIn('"fichier": "%s/docs/audits/sondes/TST/C-TST-002.py"' % sonde.RACINE_CONTENEUR, res['observe'])
+        self.assertIn('"racine": "%s"' % sonde.RACINE_CONTENEUR, res['observe'])
+        self.assertNotIn('tempfile', programme)
+        self.assertEqual(res['verdict'], 'REPRO')
+
+    def test_archive_montes_contient_les_fichiers_suivis_de_l_arbre_de_travail(self):
+        d = _racine({'C-TST-001.py': ENTETE})
+        for rel, texte in (('STAGES.py', 'A = 1\n'), ('frontend/src/x.js', 'x\n'),
+                           ('backend/django_core/m.py', 'm\n'), ('frontend/src/non_suivi.js', 'n\n')):
+            os.makedirs(os.path.dirname(os.path.join(d, rel)), exist_ok=True)
+            with open(os.path.join(d, rel), 'w', encoding='utf-8') as f:
+                f.write(texte)
+        vcs = ['git', '-C', d, '-c', 'user.name=t', '-c', 'user.email=t@t']
+        subprocess.run(vcs + ['init', '-q'], check=True)
+        subprocess.run(vcs + ['add', '--', 'docs', 'STAGES.py', 'frontend/src/x.js', 'backend/django_core/m.py'],
+                       check=True)
+        subprocess.run(vcs + ['commit', '-q', '-m', 'x'], check=True)
+        with open(os.path.join(d, 'STAGES.py'), 'w', encoding='utf-8') as f:
+            f.write('A = 2\n')  # modifie, non commite : la sonde doit lire cela
+        with tarfile.open(fileobj=io.BytesIO(sonde.archive_montes(d))) as tar:
+            noms = tar.getnames()
+            contenu = tar.extractfile('STAGES.py').read()
+        self.assertEqual(contenu, b'A = 2\n')
+        for attendu in ('STAGES.py', 'frontend/src/x.js', 'docs/audits/sondes/TST/C-TST-001.py'):
+            self.assertIn(attendu, noms)
+        self.assertNotIn('frontend/src/non_suivi.js', noms)
+        self.assertFalse([n for n in noms if n.startswith('backend/django_core')])
+
+    def test_montage_injectable_une_fois_par_invocation_jamais_en_dry_run(self):
+        racine = _racine({'C-TST-001.py': ENTETE, 'C-TST-002.py': ENTETE.replace('C-TST-001', 'C-TST-002')})
+        appels = []
+        with contextlib.redirect_stdout(io.StringIO()):
+            sonde.main(['--toutes', 'TST', '--racine', racine, '--sans-fraicheur'], executer=FauxShell(),
+                       monter=lambda r, c, t: appels.append(r))
+            self.assertEqual(len(appels), 1)
+            sonde.main(['--toutes', 'TST', '--racine', racine, '--dry-run'], executer=FauxShell(),
+                       monter=lambda r, c, t: appels.append(r))
+            self.assertEqual(len(appels), 1)
+            with mock.patch.object(sonde, 'monter_docker') as reel:
+                sonde.main(['TST/C-TST-001', '--racine', racine, '--sans-fraicheur'], executer=FauxShell())
+            reel.assert_not_called()
 
 
 if __name__ == '__main__':

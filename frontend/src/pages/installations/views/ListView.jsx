@@ -293,6 +293,7 @@ export default function ListView({
         onRowClick={(row) => onOpen?.(row)}
         onExport={handleExport}
         exportName="chantiers"
+        codeExport="installation_export"
         pageSize={25}
         emptyTitle="Aucun chantier"
         emptyDescription="Aucun chantier ne correspond aux filtres."

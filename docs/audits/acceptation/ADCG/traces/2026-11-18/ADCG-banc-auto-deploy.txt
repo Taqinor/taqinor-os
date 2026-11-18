@@ -1,0 +1,34 @@
+# banc scripts/tests/test_auto_deploy.py rejoué par l'orchestrateur (session cloud, 2026-11-18T00:10:15Z), sha 0ddd26196c6b7474e906cd00449f41963a1603ac
+# commande : python -m pytest scripts/tests/test_auto_deploy.py -v
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python
+rootdir: /home/user/taqinor-os
+plugins: anyio-4.15.1
+collecting ... collected 21 items
+
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_caddy_invalide_fait_echouer_le_deploy 
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_caddy_invalide_fait_echouer_le_deploy PASSED [  4%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_code_neuf_visible_seulement_apres_migrate PASSED [  9%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_commit_deploye_passe_aux_conteneurs PASSED [ 14%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_echec_consigne_dans_redis PASSED [ 19%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_echec_meme_commit_pas_rejoue PASSED [ 23%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_echec_revient_au_dernier_commit_sain 
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_echec_revient_au_dernier_commit_sain PASSED [ 28%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_fetch_en_echec_consigne_une_fois PASSED [ 33%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_fichiers_embarques_declenchent_leur_service PASSED [ 38%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_manuel_declenche_la_sequence_unique PASSED [ 42%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_migrate_avant_tout_redemarrage PASSED [ 47%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_publication_meryem_societe_designee_et_echec_journalise PASSED [ 52%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_requirements_et_meryem_ne_sont_pas_des_docs PASSED [ 57%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_retour_arriere_jamais_dans_un_etat_melange PASSED [ 61%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_sante_vide_ou_http_non_200_est_un_echec 
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_sante_vide_ou_http_non_200_est_un_echec PASSED [ 66%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_worker_finit_sa_tache_au_redeploiement PASSED [ 71%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_worker_voit_l_extracteur_i18n PASSED [ 76%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_zero_downtime_drapeau_lu_puis_efface PASSED [ 80%]
+scripts/tests/test_auto_deploy.py::AutoDeployTests::test_zero_downtime_sans_commit_neuf_drapeau_consomme PASSED [ 85%]
+scripts/tests/test_auto_deploy.py::DumpAvantMigrateTests::test_dump_en_echec_ne_migre_pas PASSED [ 90%]
+scripts/tests/test_auto_deploy.py::DumpAvantMigrateTests::test_migrations_en_attente_dump_avant_migrate PASSED [ 95%]
+scripts/tests/test_auto_deploy.py::DumpAvantMigrateTests::test_un_seul_dump_par_commit PASSED [100%]
+
+==================== 21 passed, 7 subtests passed in 12.21s ====================
