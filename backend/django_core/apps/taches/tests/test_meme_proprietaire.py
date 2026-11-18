@@ -21,20 +21,31 @@ Le lien ERP (`lien`) suit la visibilité de l'app cible (invariant 23), pas le p
 `test_liens.py` et `test_erp.py` le prouvent. `proprietaire_attendu` (le compte de la file hors ligne,
 invariant 31) est essayé avec l'id d'un autre compte : 409 `autre_compte`, comme un id inconnu.
 
-Liste FERMÉE : `ListeFermeeTests` (sans base) compare la table aux routes que `test_routes.est_construite`
-voit construites — une route construite absente de la table fait échouer le test, comme une route
-encore bouchon qui y serait ; chaque route à id de chemin a son essai `chemin`.
+Liste FERMÉE : `ListeFermeeTests` (sans base) — chacun des 106 couples de reference/api.md §3
+(`test_routes.ROUTES`) est balayé (`CAS`, `SANS_ID`) ou inscrit dans `EXEMPTIONS` avec sa raison écrite ;
+la table balayée est EXACTEMENT l'ensemble des routes que `test_routes.est_construite` voit construites, et
+une exemption tombe dès que sa route est construite ; chaque route à id de chemin a son essai `chemin`.
+
+TCH158 — « ne voit jamais » : les textes des objets des DEUX autres comptes portent « Intrus-<prénom> »
+(`_marquer`) ; aucune réponse servie au compte qui appelle (essais par id, routes sans id) n'en porte un. Un
+TÉMOIN rejoue les routes sans id de `TEMOINS_MARQUE` par le compte marqué : il voit sa marque. Les routes à
+jeton (capture, tuile, flux) : un jeton d'un autre usage, d'un autre compte ou révoqué est refusé comme un
+jeton inconnu ; le bon jeton ne sert et n'écrit que chez son compte. `reglages-societe/` : un administrateur
+d'une autre société ne lit ni n'écrit celui de la société ; un non-administrateur de la même est refusé.
 
 Horloge : les vues lisent le jour de la société ; le monde est daté de ce jour-là (`timezone.localdate()`
 dans `setUpTestData`), comme dans `test_api_journee.py`. Aucun accès réseau : la lecture des agendas
 externes et la vérification d'adresse sont remplacées.
 """
 import datetime
+import json
+import re
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest import mock
 
 from django.apps import apps as django_apps
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
 from django.test import SimpleTestCase, TestCase
@@ -43,16 +54,20 @@ from rest_framework.test import APIClient
 
 from apps.records.models import Activity
 from apps.taches import agenda_externe as lecteur
-from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran
+from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran, UsageJeton
+from apps.taches.models.agenda import AgendaExterne
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
-from apps.taches.models.projets import ModeleProjet
-from apps.taches.models.rythme import IncitationCoach, Preference
+from apps.taches.models.journee import LignePlanJour
+from apps.taches.models.presence import JetonAcces, ReglagesSociete
+from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet, Section
+from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.models.taches import (
-    ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence, VueEnregistree,
+    ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence, Tache, VueEnregistree,
 )
 from apps.taches.services.donnees import MODELES, _lignes_du_compte
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_flux_tuile import _depliees
 from apps.taches.tests.test_routes import PREFIXE, ROUTES, est_construite
 
 #: Un id que personne n'a (borne des `IntegerField` de DRF et des clés `BigAutoField` respectée).
@@ -383,6 +398,27 @@ SANS_ID = {
 AUSSI_SANS_ID = (
     ('POST', 'convertir-activite/', lambda m: ('convertir-activite/', {'toutes': True})),
 )
+#: Couples de reference/api.md §3 NON balayés, chacun avec sa raison : une route qui ne reçoit ni id ni
+#: donnée d'un compte. Une exemption tombe dès que la route est construite (`ListeFermeeTests`).
+EXEMPTIONS = {
+    ('POST', 'mon-iphone/test-notification/'): (
+        "bouchon `PasEncore` (501) pour tout compte : ne reçoit aucun id, ne lit ni n'écrit aucune ligne ; "
+        "à balayer dans `SANS_ID` (push vers le seul compte appelant) dès sa construction."),
+}
+#: Routes sans id dont la réponse, appelée par le compte MARQUÉ lui-même, montre sa marque (témoin de
+#: `test_sans_id_aucun_objet_d_un_autre_compte_n_est_servi`) : toutes celles qui nomment un objet. Les autres
+#: (compteurs, réglages, rythme, créations, `coach/entete/`) ne servent aucun nom du monde ; elles sont
+#: balayées quand même.
+TEMOINS_MARQUE = frozenset({
+    ('GET', 'aujourdhui/'), ('GET', 'journee/cloture/'), ('GET', 'journee/priorites/'), ('GET', 'journee/point/'),
+    ('GET', 'recherche/'), ('GET', 'supprimees/'), ('GET', 'gestes/'), ('GET', 'projets/'), ('GET', 'modeles/'),
+    ('GET', 'revue/projets/'), ('GET', 'mes-donnees/'), ('GET', 'agendas-externes/'), ('GET', 'jetons/'),
+    ('GET', 'tuile/'), ('GET', 'flux/{jeton}.ics'), ('GET', 'suggestions/'), ('GET', 'etiquettes/'),
+    ('GET', 'vues/'),
+})
+#: Route à jeton → un AUTRE usage dont le jeton lui est présenté.
+AUTRE_USAGE = {'capture': 'tuile', 'tuile': 'flux', 'flux': 'capture'}
+MARQUE = re.compile(r'intrus-([a-z]+)')
 
 
 # --- Le monde d'un compte ------------------------------------------------------------------------
@@ -436,6 +472,45 @@ def _monde(compte, jour):
         company=societe, proprietaire=compte, famille='chantier_annule', cle='chantier_annule:1',
         titre_propose="Comprendre l'annulation du chantier")
     return m
+
+
+#: Les textes servables de chaque modèle du monde (lus par `_base_manager` : supprimés compris).
+TEXTES_MARQUES = (
+    (Projet, 'proprietaire', ('nom', 'objectif')), (Section, 'projet__proprietaire', ('nom',)),
+    (Tache, 'proprietaire', ('titre', 'notes')), (Etiquette, 'proprietaire', ('nom',)),
+    (VueEnregistree, 'proprietaire', ('nom',)), (ElementChecklist, 'tache__proprietaire', ('libelle',)),
+    (ModeleProjet, 'proprietaire', ('nom',)), (SuggestionTache, 'proprietaire', ('titre_propose',)),
+    (GesteAnnulable, 'proprietaire', ('message',)), (JetonAcces, 'proprietaire', ('libelle',)),
+    (AgendaExterne, 'proprietaire', ('libelle',)), (Activity, 'assigned_to', ('summary',)),
+)
+
+
+def _marquer(m):
+    """Chaque texte servable des objets du monde `m` commence par « Intrus-<prénom> » (par `save()` : les clés
+    de nom suivent), plus une revue de projet marquée. Seuls les mondes des AUTRES comptes le sont."""
+    marque = f'Intrus-{m.compte.first_name}'
+    for modele, champ, textes in TEXTES_MARQUES:
+        for objet in modele._base_manager.filter(**{champ: m.compte}):
+            for texte in textes:
+                setattr(objet, texte, f'{marque} {getattr(objet, texte)}'.strip())
+            objet.save()
+    RevueProjet.objects.create(company=m.compte.company, proprietaire=m.compte, projet=m.P, semaine=m.jour,
+                               intention=f'{marque} intention')
+    return m
+
+
+def texte_servi(reponse):
+    """Le corps tel qu'un lecteur le reçoit : JSON décodé, `.ics` déplié, texte brut sinon."""
+    if not reponse.content:
+        return ''
+    if 'json' in reponse.get('Content-Type', ''):
+        return json.dumps(reponse.json(), ensure_ascii=False)
+    return ''.join(_depliees(reponse.content.decode('utf-8')))
+
+
+def marques(reponse):
+    """Les prénoms des comptes dont la réponse porte la marque (« intrus-<prénom> », casse ignorée)."""
+    return set(MARQUE.findall(texte_servi(reponse).casefold()))
 
 
 # --- Empreintes, réponses ------------------------------------------------------------------------
@@ -496,6 +571,18 @@ class ListeFermeeTests(SimpleTestCase):
         self.assertEqual(sorted(construites - balayees), [], 'route construite absente du balayage')
         self.assertEqual(sorted(balayees - construites), [], 'route balayée mais pas construite ou inconnue')
 
+    def test_chacun_des_106_couples_est_balaye_ou_exempte_avec_sa_raison(self):
+        balayees = {(cas.methode, cas.chemin) for cas in CAS} | set(SANS_ID)
+        couples, exemptes = set(ROUTES), set(EXEMPTIONS)
+        self.assertEqual(len(couples), 106)
+        self.assertEqual(sorted(couples - balayees - exemptes), [], 'couple ni balayé ni exempté')
+        self.assertEqual(sorted(balayees & exemptes), [], 'couple balayé ET exempté')
+        self.assertEqual(sorted(exemptes - couples), [], "exemption d'un couple inconnu d'api.md §3")
+        for (methode, chemin), raison in EXEMPTIONS.items():
+            with self.subTest(methode=methode, chemin=chemin):
+                self.assertGreater(len(raison.strip()), 40, 'raison écrite exigée')
+                self.assertFalse(est_construite(methode, chemin), 'route construite : la balayer, plus d’exemption')
+
     def test_chaque_id_de_chemin_est_essaye(self):
         for methode, chemin in sorted(self._construites() - set(SANS_ID)):
             if '{' not in chemin:
@@ -522,25 +609,30 @@ class MemeProprietaireTests(TestCase):
         cls.jour = timezone.localdate()
         a, b = fabriques.societe('mp-a'), fabriques.societe('mp-b')
         cls.moi = _monde(fabriques.compte(a, nom='moi', admin=True), cls.jour)  # admin : reglages-societe/
-        cls.autre = _monde(fabriques.compte(a, nom='autre'), cls.jour)
-        cls.etranger = _monde(fabriques.compte(b, nom='etranger'), cls.jour)
+        cls.autre = _marquer(_monde(fabriques.compte(a, nom='autre'), cls.jour))
+        cls.etranger = _marquer(_monde(fabriques.compte(b, nom='etranger'), cls.jour))
 
     def setUp(self):
         for cible, valeur in (('lire_agenda_externe', ()), ('verifier_adresse', None)):
             remplacement = mock.patch.object(lecteur, cible, return_value=valeur)
             remplacement.start()
             self.addCleanup(remplacement.stop)
+        cache.clear()  # débits des routes à jeton
+        self.addCleanup(cache.clear)
         self.api = APIClient()
         self.api.force_authenticate(self.moi.compte)
 
     def _essais(self):
         return (('autre compte', self.autre), ('autre société', self.etranger), ('id inconnu', MONDE_INCONNU))
 
-    def _envoyer(self, methode, url, corps):
-        appel = getattr(self.api, methode.lower())
+    def _envoyer(self, methode, url, corps, api=None):
+        appel = getattr(api or self.api, methode.lower())
         if methode == 'GET':
             return appel(PREFIXE + url)
         return appel(PREFIXE + url, corps if corps is not None else {}, format='json')
+
+    def _instant(self, heure):
+        return timezone.make_aware(datetime.datetime.combine(self.jour, datetime.time(heure, 0)))
 
     def _rendu(self, reponse, ids=()):
         return reponse.status_code, _normalise(_contenu(reponse), ids)
@@ -564,6 +656,7 @@ class MemeProprietaireTests(TestCase):
                 reponse = self._envoyer(cas.methode, url, corps)
             rendus[nom] = self._rendu(reponse, _ids(cas, monde) if cas.echo else ())
             self.assertEqual(empreinte(), avant, f'{nom} : une écriture a eu lieu')
+            self.assertEqual(marques(reponse), set(), f"{nom} : un objet d'un autre compte est servi")
         self.assertEqual(rendus['autre compte'], rendus['id inconnu'])
         self.assertEqual(rendus['autre société'], rendus['id inconnu'])
         if cas.genre == LECTURE:
@@ -585,6 +678,7 @@ class MemeProprietaireTests(TestCase):
                 transaction.set_rollback(True)
             statuts.add(reponse.status_code)
             self.assertEqual(apres, avant, f'{nom} : une ligne d\'un autre compte a bougé')
+            self.assertEqual(marques(reponse), set(), f"{nom} : un objet d'un autre compte est servi")
         self.assertEqual(len(statuts), 1, statuts)
         self.assertTrue(200 <= statuts.pop() < 300)
 
@@ -596,16 +690,164 @@ class MemeProprietaireTests(TestCase):
                 else:
                     self._comparer(cas)
 
+    def _sans_id(self):
+        return [*((methode, chemin, requete) for (methode, chemin), requete in SANS_ID.items()), *AUSSI_SANS_ID]
+
+    def _defait(self, methode, url, corps, api=None, comptes=()):
+        """(réponse, empreinte de `comptes` après) — l'écriture éventuelle est défaite aussitôt."""
+        with transaction.atomic():
+            reponse = self._envoyer(methode, url, corps, api)
+            apres = empreinte_de(*comptes)
+            transaction.set_rollback(True)
+        return reponse, apres
+
     def test_sans_id_rien_n_est_ecrit_chez_un_autre_compte(self):
         autres = (self.autre.compte, self.etranger.compte)
         avant = empreinte_de(*autres)
-        essais = [(methode, chemin, requete) for (methode, chemin), requete in SANS_ID.items()]
-        for methode, chemin, requete in [*essais, *AUSSI_SANS_ID]:
+        for methode, chemin, requete in self._sans_id():
             with self.subTest(methode=methode, chemin=chemin):
-                url, corps = requete(self.moi)
-                with transaction.atomic():
-                    reponse = self._envoyer(methode, url, corps)
-                    apres = empreinte_de(*autres)
-                    transaction.set_rollback(True)
+                reponse, apres = self._defait(methode, *requete(self.moi), comptes=autres)
                 self.assertTrue(200 <= reponse.status_code < 300, f'{reponse.status_code} {_contenu(reponse)}')
                 self.assertEqual(apres, avant)
+
+    def test_sans_id_aucun_objet_d_un_autre_compte_n_est_servi(self):
+        """Ni un objet de l'autre compte de la société ni un de l'autre société dans la réponse ; témoin : le
+        compte marqué lui-même voit sa marque sur les routes de `TEMOINS_MARQUE`."""
+        lui, vues = APIClient(), set()
+        lui.force_authenticate(self.autre.compte)
+        for methode, chemin, requete in self._sans_id():
+            with self.subTest(methode=methode, chemin=chemin):
+                reponse, _ = self._defait(methode, *requete(self.moi))
+                self.assertEqual(marques(reponse), set(), texte_servi(reponse)[:300])
+                if (methode, chemin) in TEMOINS_MARQUE:
+                    temoin, _ = self._defait(methode, *requete(self.autre), api=lui)
+                    self.assertEqual(marques(temoin) - {'autre'}, set())
+                    if 'autre' in marques(temoin):
+                        vues.add((methode, chemin))
+        self.assertEqual(sorted(TEMOINS_MARQUE - vues), [], 'témoin : le compte marqué ne voit plus sa marque')
+
+    def test_une_route_exemptee_ne_lit_ni_n_ecrit_rien(self):
+        avant = empreinte()
+        for methode, chemin in EXEMPTIONS:
+            with self.subTest(methode=methode, chemin=chemin):
+                reponse = self._envoyer(methode, chemin, {})
+                self.assertEqual(reponse.status_code, 501)
+                self.assertEqual(empreinte(), avant)
+
+    # --- Routes à jeton : capture, tuile, flux --------------------------------------------------------
+
+    def _par_jeton(self, usage, clair):
+        """La route à jeton de `usage`, appelée avec `clair` (adresse du flux, `Bearer` sinon)."""
+        api = APIClient()
+        if usage == 'flux':
+            return api.get(f'{PREFIXE}flux/{clair}.ics')
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {clair}')
+        if usage == 'tuile':
+            return api.get(f'{PREFIXE}tuile/')
+        return api.post(f'{PREFIXE}capture/', {'titre': 'Appeler le fournisseur demain', 'client_id': 'mp-capture'},
+                        format='json')
+
+    def _jeton(self, compte, usage):
+        """Le clair d'un jeton neuf (un seul ACTIF par compte et usage : l'ancien est révoqué d'abord)."""
+        JetonAcces.objects.filter(proprietaire=compte, usage=usage, revoque_le__isnull=True).update(
+            revoque_le=self._instant(7))
+        return fabriques.jeton(compte, usage)[1]
+
+    def test_route_a_jeton_refuse_un_jeton_d_un_autre_usage_ou_revoque_comme_un_inconnu(self):
+        for usage, autre_usage in AUTRE_USAGE.items():
+            clair_revoque = self._jeton(self.moi.compte, usage)
+            clair = self._jeton(self.moi.compte, usage)  # révoque le précédent
+            essais = {
+                'autre usage, même compte': self._jeton(self.moi.compte, autre_usage),
+                'autre usage, même société': self._jeton(self.autre.compte, autre_usage),
+                'autre usage, autre société': self._jeton(self.etranger.compte, autre_usage),
+                'révoqué': clair_revoque,
+            }
+            inconnu = self._rendu(self._par_jeton(usage, fabriques.PREFIXES_JETON[UsageJeton(usage)] + 'x' * 40))
+            avant = empreinte()
+            for nom, essai in essais.items():
+                with self.subTest(usage=usage, essai=nom):
+                    self.assertEqual(self._rendu(self._par_jeton(usage, essai)), inconnu)
+                    self.assertEqual(empreinte(), avant)
+            with transaction.atomic():
+                temoin = self._par_jeton(usage, clair)
+                transaction.set_rollback(True)
+            self.assertTrue(200 <= temoin.status_code < 300, (usage, temoin.status_code))
+            self.assertNotEqual(self._rendu(temoin), inconnu)
+
+    def _titres_servis(self, monde):
+        """Titres permis partout et la tâche `T` gardée au plan du jour : la tuile et le flux la nomment."""
+        ReglagesRythme.objects.filter(proprietaire=monde.compte).update(titres_tuile=True, titres_calendrier=True)
+        plan = fabriques.plan(monde.compte, self.jour, planifie_le=self._instant(8))
+        LignePlanJour.objects.create(company=plan.company, plan=plan, tache=monde.T, prevue_au_plan=True)
+
+    def test_un_jeton_ne_sert_et_n_ecrit_que_chez_son_compte(self):
+        mondes = {'moi': self.moi, 'autre': self.autre, 'etranger': self.etranger}
+        for monde in mondes.values():
+            self._titres_servis(monde)
+        for nom, monde in mondes.items():
+            autres = [m.compte for n, m in mondes.items() if n != nom]
+            for usage in AUTRE_USAGE:
+                with self.subTest(compte=nom, usage=usage):
+                    clair = self._jeton(monde.compte, usage)
+                    avant = empreinte_de(*autres)
+                    with transaction.atomic():
+                        reponse = self._par_jeton(usage, clair)
+                        apres = empreinte_de(*autres)
+                        capturee = Tache.objects.filter(proprietaire=monde.compte, client_id='mp-capture').exists()
+                        transaction.set_rollback(True)
+                    self.assertTrue(200 <= reponse.status_code < 300, texte_servi(reponse)[:300])
+                    self.assertEqual(apres, avant, "une ligne d'un autre compte a bougé")
+                    self.assertEqual(marques(reponse) - {nom}, set(), texte_servi(reponse)[:300])
+                    if usage == 'capture':  # témoin : la capture écrit chez son compte
+                        self.assertTrue(capturee)
+                    else:  # témoin : la tuile et le flux nomment la tâche du compte
+                        self.assertIn(monde.T.titre.casefold(), texte_servi(reponse).casefold())
+
+    def test_capture_ne_range_jamais_dans_le_projet_d_un_autre_compte(self):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {self._jeton(self.moi.compte, "capture")}')
+        etrangers = set(Projet._base_manager.exclude(proprietaire=self.moi.compte).values_list('pk', flat=True))
+        autres = (self.autre.compte, self.etranger.compte)
+        for nom, monde in (('même société', self.autre), ('autre société', self.etranger)):
+            with self.subTest(projet=nom):
+                avant = empreinte_de(*autres)
+                nom_projet = Projet._base_manager.get(pk=monde.P.pk).nom  # marqué en base
+                corps = {'titre': f'projet {nom_projet} appeler demain', 'client_id': f'mp-{monde.compte.pk}'}
+                reponse = api.post(f'{PREFIXE}capture/', corps, format='json')
+                self.assertEqual(reponse.status_code, 201, texte_servi(reponse)[:300])
+                tache = Tache.objects.get(proprietaire=self.moi.compte, client_id=f'mp-{monde.compte.pk}')
+                self.assertNotIn(tache.projet_id, etrangers)
+                self.assertNotEqual(reponse.json()['dans'], 'projet')
+                self.assertEqual(empreinte_de(*autres), avant)
+
+    # --- reglages-societe/ : le coupe-circuit de la société de l'appelant -------------------------------
+
+    def _regsoc(self, compte, methode, corps=None):
+        api = APIClient()
+        api.force_authenticate(compte)
+        return self._envoyer(methode, 'reglages-societe/', corps, api)
+
+    def test_reglages_societe_d_une_autre_societe_jamais_lus_ni_ecrits(self):
+        """L'administrateur de l'AUTRE société lit et écrit le coupe-circuit de la sienne seulement."""
+        societe = self.moi.compte.company
+        self.assertEqual(self._regsoc(self.moi.compte, 'PATCH', {'balayage_actif': False}).status_code, 200)
+        celle_ci = list(ReglagesSociete.objects.filter(company=societe).values_list())
+        servie = self._regsoc(self.moi.compte, 'GET').json()
+        admin_ailleurs = fabriques.compte(self.etranger.compte.company, nom='adminailleurs', admin=True)
+        lu = self._regsoc(admin_ailleurs, 'GET')
+        self.assertEqual(lu.json(), {'balayage_actif': True, 'modifie_par': None, 'modifie_le': None})
+        ecrit = self._regsoc(admin_ailleurs, 'PATCH', {'balayage_actif': False})
+        self.assertEqual((ecrit.status_code, ecrit.json()['modifie_par']), (200, admin_ailleurs.pk))
+        self.assertEqual(ReglagesSociete.objects.filter(company=admin_ailleurs.company).count(), 1)
+        self.assertEqual(list(ReglagesSociete.objects.filter(company=societe).values_list()), celle_ci)
+        self.assertEqual(self._regsoc(self.moi.compte, 'GET').json(), servie)
+
+    def test_reglages_societe_refuses_a_un_non_administrateur_de_la_meme_societe(self):
+        avant = empreinte()
+        for methode, corps in (('GET', None), ('PATCH', {'balayage_actif': False})):
+            with self.subTest(methode=methode):
+                reponse = self._regsoc(self.autre.compte, methode, corps)
+                self.assertEqual(reponse.status_code, 403)
+                self.assertEqual(marques(reponse), set())
+                self.assertEqual(empreinte(), avant)
