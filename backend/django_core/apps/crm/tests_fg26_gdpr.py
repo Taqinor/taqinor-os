@@ -130,3 +130,75 @@ class FG26GdprTest(TestCase):
         r = api.post(
             f'/api/django/crm/clients/{self.client_obj.id}/anonymize/')
         self.assertEqual(r.status_code, 403)
+
+    def test_anonymisation_refusee_tant_qu_une_creance_est_ouverte(self):
+        """ASUP70 (D-ASUP-8) — « Anonymiser (RGPD) » (client avec ou sans
+        e-mail/téléphone) et l'effacement d'une demande de droit sur l'e-mail
+        de Jean rendent 409 tant que 1 080,00 MAD restent dus sur une facture
+        émise de 1 200,00 MAD TTC ; rien n'est effacé ; le reste encaissé, les
+        mêmes gestes rendent 200. Mutants : retirer le contrôle par client
+        (le client sans identifiant passe) ou ne pas enregistrer la garde
+        ``creance_ouverte`` (la demande est traitée) ⇒ échec."""
+        from decimal import Decimal
+        from django.core.management import call_command
+        from django.utils import timezone
+        from apps.crm.models import Lead
+        from apps.stock.models import Produit
+        from apps.ventes.domain.instantanes_facture import identite_acheteur_courante
+        from apps.ventes.models import Facture, LigneFacture, Paiement
+        from core.models import DataSubjectRequest
+        sans_contact = Client.objects.create(
+            company=self.company, nom='Sans Contact', cin='CD67890')
+        lead = Lead.objects.create(company=self.company, nom='Jean',
+                                   client=self.client_obj, email='jean@example.com')
+        produit = Produit.objects.create(company=self.company, nom='Kit', sku='FG26-A70',
+                                         prix_vente=Decimal('1000'))
+        factures = {}
+        for cl in (self.client_obj, sans_contact):
+            fac = Facture.objects.create(company=self.company, reference=f'FAC-A70-{cl.pk}',
+                                         client=cl, statut='emise', taux_tva=Decimal('20'))
+            LigneFacture.objects.create(
+                facture=fac, produit=produit, designation='Centrale', quantite=Decimal('1'),
+                prix_unitaire=Decimal('1000'), taux_tva=Decimal('20'))
+            Facture.objects.filter(pk=fac.pk).update(identite_acheteur=identite_acheteur_courante(fac))
+            Paiement.objects.create(company=self.company, facture=fac, montant=Decimal('120'),
+                                    date_paiement=timezone.now().date(), mode='virement')
+            factures[cl.pk] = fac
+        motif = ('Anonymisation refusée : ce client doit encore 1 080,00 MAD sur ses '
+                 'factures émises. Encaissez le solde, ou soldez-le par un avoir ou un '
+                 'abandon de créance, puis recommencez.')
+        demande = DataSubjectRequest.objects.create(
+            company=self.company, subject_identifier='jean@example.com',
+            kind=DataSubjectRequest.KIND_ERASURE)
+        call_command('init_roles', verbosity=0)
+        directeur = User.objects.create_user(
+            username='fg26_directeur', password='pw', company=self.company,
+            role=Role.objects.get(company=self.company, nom='Directeur'))
+        api_dir = APIClient()
+        api_dir.force_authenticate(directeur)
+        url_dsr = f'/api/django/core/dsr-requests/{demande.pk}/traiter/'
+        for cl in (self.client_obj, sans_contact):
+            with self.subTest(client=cl.nom):
+                r = self.api.post(f'/api/django/crm/clients/{cl.id}/anonymize/')
+                self.assertEqual((r.status_code, r.data.get('detail')), (409, motif))
+        r = api_dir.post(url_dsr)
+        self.assertEqual((r.status_code, r.data.get('detail')), (409, motif))
+        for cl, nom, email, cin in ((self.client_obj, 'Jean Soleil', 'jean@example.com', 'AB12345'),
+                                    (sans_contact, 'Sans Contact', None, 'CD67890')):
+            cl.refresh_from_db()
+            self.assertEqual((cl.nom, cl.email, cl.cin, cl.is_anonymized),
+                             (nom, email, cin, False))
+        lead.refresh_from_db()
+        self.assertEqual((lead.nom, lead.email), ('Jean', 'jean@example.com'))
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, DataSubjectRequest.STATUT_RECUE)
+        for fac in factures.values():
+            Paiement.objects.create(company=self.company, facture=fac, montant=Decimal('1080'),
+                                    date_paiement=timezone.now().date(), mode='virement')
+        r = self.api.post(f'/api/django/crm/clients/{sans_contact.id}/anonymize/')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = api_dir.post(url_dsr)
+        self.assertEqual(r.status_code, 200, r.content)
+        for cl in (self.client_obj, sans_contact):
+            cl.refresh_from_db()
+            self.assertTrue(cl.is_anonymized)

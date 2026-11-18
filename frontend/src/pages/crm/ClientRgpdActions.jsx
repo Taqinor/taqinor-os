@@ -19,6 +19,7 @@ import {
 export default function ClientRgpdActions({ client, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [refus, setRefus] = useState(null) // ASUP70 (D-ASUP-8) — motif du 409, gardé dans la boîte
 
   const palier = useIsAdminOrResponsable()
   const aCrmExport = useHasPermission('crm_export')
@@ -51,8 +52,8 @@ export default function ClientRgpdActions({ client, onChanged }) {
       setConfirmOpen(false)
       onChanged?.()
     } catch (err) {
-      toast.error(err?.response?.data?.detail
-        ?? 'Anonymisation impossible — réessayez.')
+      if (err?.response?.status === 409 && err.response.data?.detail) setRefus(err.response.data.detail)
+      else toast.error(err?.response?.data?.detail ?? 'Anonymisation impossible — réessayez.')
     } finally {
       setBusy(false)
     }
@@ -68,7 +69,7 @@ export default function ClientRgpdActions({ client, onChanged }) {
       )}
       {canAnonymize && !client.is_anonymized && (
         <Button type="button" variant="destructive" size="sm"
-                disabled={busy} onClick={() => setConfirmOpen(true)}>
+                disabled={busy} onClick={() => { setRefus(null); setConfirmOpen(true) }}>
           <ShieldOff /> Anonymiser (RGPD)
         </Button>
       )}
@@ -83,12 +84,14 @@ export default function ClientRgpdActions({ client, onChanged }) {
               Les données personnelles (nom, email, téléphone, adresse, CIN…)
               seront effacées définitivement. Les devis et factures sont
               conservés, rattachés à une identité neutralisée. Cette action est
-              irréversible.
+              irréversible. Elle est refusée tant que le client doit encore de
+              l'argent sur une facture émise.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {refus && <p role="alert" className="text-sm text-destructive">{refus}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel>Revenir</AlertDialogCancel>
-            <AlertDialogAction onClick={(e) => { e.preventDefault(); anonymiser() }}>
+            <AlertDialogAction disabled={!!refus} onClick={(e) => { e.preventDefault(); anonymiser() }}>
               Anonymiser définitivement
             </AlertDialogAction>
           </AlertDialogFooter>

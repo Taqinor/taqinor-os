@@ -322,6 +322,12 @@ sortie(1)`)
   const ligneF = facture.lignes[0]
   const ligneAvoir = { produit: ligneF.produit, designation: ligneF.designation, quantite: '0.5', prix_unitaire: ligneF.prix_unitaire, taux_tva: '20.00' }
   const avoir1 = await lireJson(await r.post(`${API}/ventes/factures/${facture.id}/creer-avoir/`, { ...T, data: { motif: 'ASUP57 avant', lignes: [ligneAvoir] } }), 'avoir 1')
+  // ASUP70 (D-ASUP-8) : le reste dû est encaissé avant le clic (une créance ouverte refuse l'anonymisation).
+  await py(`import datetime
+from apps.ventes.models import Facture, Paiement
+for f in Facture.objects.filter(client_id=${clientId}, statut__in=['emise', 'en_retard']):
+    if f.montant_du > 0: Paiement.objects.create(company_id=f.company_id, facture=f, montant=f.montant_du, date_paiement=datetime.date.today(), mode='virement')
+sortie(1)`)
   // When (ÉCRAN 1/3) : fiche client → « Anonymiser (RGPD) » → « Anonymiser définitivement ».
   await page.goto('/crm')
   await page.getByPlaceholder('Rechercher nom, email, tél, ICE, IF, RC, CIN…').fill(nomClient)
