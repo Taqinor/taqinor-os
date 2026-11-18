@@ -276,12 +276,17 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     servir(d)
     const ouverture = vi.fn()
     window.addEventListener('taqinor:taches:saisir', ouverture)
-    monter()
+    const { container } = monter()
     const phrase = await screen.findByText('Colle ou dicte tes listes : je les range par projet.')
     // passe visuelle n° 20 — espace INSÉCABLE avant « : » (maquette ecran-aujourdhui-vide.html) : jamais « : » en tête de ligne
     expect(phrase.textContent).toBe('Colle ou dicte tes listes : je les range par projet.')
     await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
     expect(ouverture).toHaveBeenCalledTimes(1)
+    // journée vide : le bureau garde sa ligne « Ajouter une tâche » (le « + » du bureau), et elle ouvre la saisie
+    const ligneBureau = container.querySelector('.saisie-bureau')
+    expect(ligneBureau).toHaveTextContent('Ajouter une tâche')
+    await userEvent.click(ligneBureau)
+    expect(ouverture).toHaveBeenCalledTimes(2)
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 

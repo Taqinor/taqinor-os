@@ -652,8 +652,10 @@ export default function Aujourdhui() {
       ) : null}
       {squelette ? <Squelette /> : null}
       {donnees && !journeeVide(donnees) ? <Progression donnees={donnees} onRythme={() => navigate('/taches/rythme')} /> : null}
-      {/* passe visuelle n° 15 — bureau : « Ajouter une tâche » sous la progression (maquette ecran-aujourdhui-matin.html) */}
-      {donnees && !journeeVide(donnees) ? <SaisieBureau onClick={() => ouvrirSaisie({})} /> : null}
+      {/* passe visuelle n° 15 — bureau : « Ajouter une tâche » sous la progression (maquette ecran-aujourdhui-matin.html).
+          Elle reste là quand la journée est vide ou encore en chargement : c'est le « + » du bureau (l'iPhone garde son
+          bouton flottant dans ces états-là aussi) — on ne retire jamais le moyen d'ajouter une tâche. */}
+      <SaisieBureau onClick={() => ouvrirSaisie({})} />
       {bandeau}
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment

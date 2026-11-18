@@ -177,7 +177,11 @@
 @media (min-width: 1024px) {
   .tch[data-ecran="aujourdhui"] .tch-page { max-width: 1320px; }
   .tch .tch-bureau { display: grid; grid-template-columns: 216px minmax(0, 1fr) 380px; column-gap: 20px; align-items: start; }
-  .tch .tch-bureau-liste { min-width: 0; }
+  /* chaque colonne garde SA piste : sans projet (premier usage, ou liste des projets pas encore lue) « Mes projets »
+     n'est pas rendue, et la liste glissait dans la piste de 216 px, l'agenda au milieu (état vide illisible au bureau) */
+  .tch .tch-bureau-projets { grid-column: 1; grid-row: 1; }
+  .tch .tch-bureau-liste { grid-column: 2; grid-row: 1; min-width: 0; }
+  .tch .tch-bureau-agenda { grid-column: 3; grid-row: 1; }
   .tch .tch-bureau-projets, .tch .tch-bureau-agenda {
     position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: none;
   }
