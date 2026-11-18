@@ -257,6 +257,40 @@ Tri de l'orchestrateur (aucune question à Reda) :
 - Pile n° 2 (fusion 3) DEBOUT : front :4174, Django :8001 (horloge 2026-11-24 08:30), base `erp_f3`, Redis :6380.
   `lane/f3-acceptation` (opus) écrit `frontend/e2e/acceptation/tch2.spec.js` (TCH141, TCH171, TCH143).
 
+**Point de 04 h 10 UTC (18/11) — LIRE AVANT TOUT : l'acceptation en direct de la fusion 2 a parlé**
+- Spec `frontend/e2e/acceptation/tch.spec.js` (+ aides `frontend/e2e/taches-acceptation.js`) écrite, jouée, PLIÉE dans
+  `dev-taches-f2`. Résultat sur l'arbre d'avant corrections : **20 étapes vertes, 15 rouges sur 35**. Rapport complet :
+  `docs/taches/travail/acceptation-f2-defauts.md`. Aucun oracle n'a été modifié.
+  - 7 défauts du PRODUIT : (1) BLOQUANT iPhone — le pied d'une feuille (« Créer N tâches », « Coller encore ») passe
+    SOUS la barre d'onglets, bouton incliquable ; (2) clavier `d` → « Choisir un jour » vide, Entrée sans effet ;
+    (3) après « Supprimer » un projet l'écran reste sur un projet mort (le `history.back()` de la feuille annule la
+    navigation) ; (4) vue Semaine iPhone sans « 2 h pour 4 h » ; (5) bandeau de conflit sans l'heure ; (6) bilan
+    « 4 des 6 gardées » (une tâche passée à un autre jour reste comptée) ; (7) vue Jour de l'agenda : volet « À
+    placer » sans « Mes projets ». Plus : le refus 409 « Cette activité a déjà sa tâche. » ne s'affiche pas.
+  - 5 défauts du SEMIS (`seed_taches_demo` ne reproduit pas SCENARIO.md : « À revoir » vide, bilan de la veille non
+    semé, deux éléments « toute la journée » absents, `--absence` sans dernière ouverture, tâche liée d'avance).
+  - 8 ERR-PLAN (le texte abrégé du plan contredit SCENARIO ou la référence) : à corriger DANS LE PLAN par
+    l'orchestrateur, après le retour de la lane serveur (elle vérifie les n° 3, 5, 6).
+- Lanes de réparation EN COURS : `lane/f2-acc-ecran` (opus ; a l'usage EXCLUSIF de la pile F2, qu'elle fait tourner
+  sur SON worktree par `TACHES_WT=…`) et `lane/f2-acc-serveur` (opus ; tests seulement). Ensuite : plier, rebuild du
+  front de f2, rejeu COMPLET de la spec par l'orchestrateur, puis rejeu FINAL sur la base migrée.
+- Seconde relecture de la fusion 2 : ENTIÈREMENT corrigée et pliée (`lane/f2-revue2-journee`, `-rythme`, `-entrees` +
+  3 petits correctifs de l'orchestrateur : « 1 jour » au singulier, plan validé = objectif du jour partout, note
+  libre avec caractère nul). `dev-taches-f2` local = `826802f3f7`, 1 459+ tests verts en mode rapide ; le fuzz du
+  relecteur : 5 605 requêtes, 16 routes en 500 → 0. Référence mise à jour (`regles.md` §6.5, §6.6, §6.9 ;
+  `textes.md` Trace). Batterie d'avant-push en cours, puis push et CI.
+- PIÈGE POUR LA FUSION F2 → F3 : `selectors/journee.objectif_du_jour(reglages)` a été RENOMMÉE `objectif_en_vigueur`
+  sur f2 ; la seule fonction servie est `services/journee.objectif_du_jour(reglages, jour, preferences, plan)`. Trois
+  appelants PROPRES à la fusion 3 l'appellent encore à l'ancien nom et casseront SANS conflit textuel :
+  `views/presence.py:86` (tuile), `views/journee.py:202` et `:230` (priorités, point). À corriger au moment du merge
+  (ils doivent rendre le MÊME objectif qu'Aujourd'hui : jour court, plan validé). Ne pas fusionner f2 dans le worktree
+  f3 tant que `lane/f3-acceptation` joue dessus (sa pile :8001 tourne sur ce worktree).
+- Fusion 4 : fuite trouvée par le canari dès le pli (`etiquettes/` servait à l'assistant le nom d'une étiquette des
+  seules tâches confidentielles) → fermée (`selectors.base.etiquettes_servies`), `dev-taches-f4` local = `be8624a8bf`.
+  Batterie : vitest 987 verts, eslint, 20 gardes, lint-imports verts ; Django vert après ce correctif. EN COURS :
+  `lane/f4-final` (TCH158, opus), relecture adverse de la fusion 4 (opus → `revue-code-f4.md`).
+- Passe Fable n° 2 du run EN COURS : critique adverse de la fusion 3 (jetons, balayage, assistant) → `revue-code-f3.md`.
+
 **Les clés d'IA (demande de Reda du 18/11 : « there is a key in the ERP use it », puis « find the keys yourself »)**
 - Cherché partout où cette session peut lire : conteneur (rien), serveur (SSH refusé depuis le cloud), poste de Reda
   (non attaché), dépôt et son historique, CI, autres dépôts, Drive, Gmail. TROUVÉ : les vraies clés sont des SECRETS
