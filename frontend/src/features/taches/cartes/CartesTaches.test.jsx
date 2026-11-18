@@ -213,6 +213,88 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 
+  // F3 acceptation ERR 4 — boutons de textes.md §5.7 et projet proposé par le serveur.
+  const projetsServis = () => ({ data: contrat('projets_liste') })
+  const rangement = () => {
+    // « Range ma liste » (`saisie-rapide/` `ids`, serializers.saisie.apercu_ids) : lignes d'À trier, projet suggéré
+    // posé dans `champs.projet_id` (id seul) ; forme des lignes de saisie_apercu.json.
+    const base = contrat('saisie_apercu').lignes[0]
+    const ligne = (index, id, titre, champs) => ({
+      ...base, index, tache_id: id, titre, jetons: [], alertes: [], champs, cochee: 'projet_id' in champs,
+    })
+    return { projets_communs: [], projets_nouveaux: [], lignes: [
+      ligne(0, 41, 'Relancer les Ventes', { projet_id: 3 }), ligne(1, 42, 'Acheter des timbres', {}),
+    ] }
+  }
+
+  it('ERR 4 — capture_apercu (Range ma liste) : projet suggéré nommé, « Pas de projet évident », « Tout ranger (1) » par lot', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', rangement())
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    expect(await within(carte).findByText('Projet suggéré : Ventes')).toBeInTheDocument()
+    expect(within(carte).getByText('Pas de projet évident : choisis-le.')).toBeInTheDocument()
+    expect(within(carte).queryByRole('button', { name: /^Tout ajouter/ })).not.toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ranger (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0].slice(0, 2)).toEqual(['/taches/taches/lot/', {
+      ids: [41], action: 'deplacer', valeurs: { par_tache: { 41: { projet_id: 3 } } },
+    }])
+    expect(await within(carte).findByText(/1 tâche rangée/)).toBeInTheDocument()
+  })
+
+  it('ERR 4 — capture_apercu : « Changer de projet » choisit un projet existant ; le corps envoyé le porte', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', contrat('saisie_apercu'))
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    await userEvent.click(within(carte).getByRole('button', { name: 'Changer de projet' }))
+    await userEvent.click(await within(carte).findByRole('option', { name: 'Ventes' }))
+    expect(within(carte).getByText('Projet : Ventes')).toBeInTheDocument()
+    expect(within(carte).queryByText('Nouveau projet : SiteWeb')).not.toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    const ligne = api.post.mock.calls[0][1].lignes[0]
+    expect(ligne).toMatchObject({ titre: 'Appeler Karim', projet_id: 3 })
+    expect(ligne).not.toHaveProperty('nouveau_projet')
+  })
+
+  it('ERR 4 — capture_apercu (Range ma liste) : « Changer de projet » range aussi une ligne sans suggestion', async () => {
+    api.get.mockResolvedValue(projetsServis())
+    monter('capture_apercu', rangement())
+    const ligne = screen.getByText('Acheter des timbres').closest('.ligne')
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Changer de projet' }))
+    await userEvent.click(await within(ligne).findByRole('option', { name: 'Ventes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ranger (2)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1].valeurs.par_tache).toEqual({ 41: { projet_id: 3 }, 42: { projet_id: 3 } })
+  })
+
+  it('ERR 4 — plan_projet : « Changer d’étape » déplace une tâche ; « Tout ajouter » absent sans projet servi', async () => {
+    const donnees = contrat('planification_apercu')
+    donnees.sections.push({ nom: 'Pose', taches: [{ titre: 'Fixer les rails', jalon: false, sous_taches: [] }] })
+    monter('plan_projet', donnees)
+    const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
+    expect(within(carte).queryByRole('button', { name: 'Tout ajouter' })).not.toBeInTheDocument()
+    const visite = within(carte).getByText('Visite').closest('.ligne')
+    await userEvent.click(within(visite).getByRole('button', { name: "Changer d'étape" }))
+    await userEvent.click(within(visite).getByRole('button', { name: 'Pose' }))
+    const pose = within(carte).getByText('Pose').nextElementSibling
+    expect(within(pose).getByText('Visite')).toBeInTheDocument()
+  })
+
+  it('ERR 4 — plan_projet : avec le projet servi (id, lock_version), « Tout ajouter » crée les étapes gardées', async () => {
+    api.post.mockResolvedValue({ data: { ...contrat('planification'), geste_id: 85 } })
+    const donnees = { ...contrat('planification_apercu'), projet: { id: 3, lock_version: 4 } }
+    monter('plan_projet', donnees)
+    const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
+    await userEvent.click(within(carte).getAllByRole('button', { name: 'Retirer' })[1])
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0].slice(0, 2)).toEqual(['/taches/projets/3/planification/', {
+      sections: [{ nom: 'Études', taches: [{ titre: 'Visite', jalon: false, sous_taches: ['photos'] }] }], lock_version: 4,
+    }])
+    expect(await within(carte).findByText(/1 tâche créée/)).toBeInTheDocument()
+  })
+
   it('rythme : la proposition et ses boutons répondent par la route des propositions', async () => {
     monter('rythme', contrat('rythme'))
     const carte = screen.getByRole('group', { name: 'Ton rythme' })
