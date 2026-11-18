@@ -22,6 +22,7 @@ import { CODES_VUES, etapesDuProjet } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
 
 /* ============================================================================
@@ -229,8 +230,10 @@ export default function Projet() {
       proposerAnnuler({
         message: `Déplacée dans « ${nom} »`,
         onAnnuler: async () => {
-          if (data.geste_id) await annulerGeste(data.geste_id)
-          setVue((v) => (v ? versEtape(v, item, placeDe(avant, item.id)?.sectionId ?? null) : v))
+          // « Annuler » change la version de la tâche côté serveur : la carte remise garde celle que le serveur rend
+          const retour = data.geste_id ? await annulerEtRecaler(data.geste_id, [item.id]) : null
+          const remise = { ...item, lock_version: versionDe(retour, item.id, item.lock_version) }
+          setVue((v) => (v ? versEtape(v, remise, placeDe(avant, item.id)?.sectionId ?? null) : v))
         },
       })
     } catch (err) {

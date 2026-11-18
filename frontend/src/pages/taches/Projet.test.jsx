@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,6 +21,8 @@ vi.mock('../../api/tachesApi', async (original) => ({
   annulerGeste: vi.fn(),
   attendreTache: vi.fn(),
   listerToutesLesTaches: vi.fn(),
+  modifierTache: vi.fn(),
+  lireTache: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -305,4 +307,75 @@ describe('TCH92 — Un projet : ⋯ ouvre Décaler, Terminer, Supprimer', () => 
     await user.click(within(menu).getByRole('menuitem', { name: 'Supprimer le projet…' }))
     expect(await screen.findByRole('dialog', { name: 'Supprimer le projet' })).toHaveTextContent('Supprimer « Ventes » et ses 20 tâches ?')
   })
+})
+
+/* F4 revue #6 + #8 — Tableau : « Annuler » rend la version du serveur (le geste suivant n'est pas refusé), et les
+   compteurs des colonnes suivent le déplacement, puis l'annulation (même règle que le serveur, `_compteurs`). */
+describe('F4 revue — Tableau : déplacer, Annuler, redéplacer', () => {
+  const rectsOriginaux = Element.prototype.getBoundingClientRect
+  beforeEach(() => {
+    // jsdom ne mesure rien : une colonne = 280 px de large tous les 300 px, une carte 264 × 60 dedans
+    Element.prototype.getBoundingClientRect = function rect() {
+      const colonne = this.matches?.('section.ep-col') ? this : this.closest?.('section.ep-col')
+      if (!colonne) return rectsOriginaux.call(this)
+      const rang = Array.from(colonne.parentElement.children).indexOf(colonne)
+      const carte = this.classList?.contains('ep-carte')
+      const gauche = rang * 300 + (carte ? 8 : 0)
+      const largeur = carte ? 264 : 280
+      const haut = carte ? 40 : 0
+      const hauteur = carte ? 60 : 400
+      return { x: gauche, y: haut, left: gauche, top: haut, right: gauche + largeur, bottom: haut + hauteur, width: largeur, height: hauteur, toJSON() { return this } }
+    }
+  })
+  afterEach(() => { Element.prototype.getBoundingClientRect = rectsOriginaux })
+
+  const touche = async (cible, code) => {
+    await act(async () => {
+      fireEvent.keyDown(cible, { code, key: code === 'Space' ? ' ' : code })
+      await new Promise((fin) => { setTimeout(fin, 15) })
+    })
+  }
+  const deplacer = async (nom, fleche) => {
+    const poignee = screen.getByRole('button', { name: `Déplacer « ${nom} »` })
+    poignee.focus()
+    await touche(poignee, 'Space')
+    await touche(document, fleche)
+    await touche(document, 'Space')
+  }
+  const compte = (nom) => within(screen.getByRole('region', { name: nom })).getByText(/^\d+ sur \d+$/).textContent
+  // un serveur qui verrouille la tâche 20 : chaque écriture et chaque « Annuler » changent sa version
+  const fauxServeur = () => {
+    const tache = { verrou: 4 }
+    api.modifierTache.mockImplementation(async (id, corps) => {
+      if (corps.lock_version !== tache.verrou) {
+        throw Object.assign(new Error('conflit'), { response: { status: 409, data: { code: 'conflit_version', detail: 'Modifiée ailleurs.' } } })
+      }
+      tache.verrou += 1
+      const ecrite = tacheEcrite()
+      ecrite.tache.lock_version = tache.verrou
+      return { data: { ...ecrite, geste_id: 91 } }
+    })
+    api.annulerGeste.mockImplementation(async () => { tache.verrou += 1; return { data: { restaurees: [{ objet: 'tache', id: 20 }], conflits: [], deja: false } } })
+    api.lireTache.mockImplementation(async (id) => ({ data: { ...tacheEcrite().tache, id, lock_version: tache.verrou } }))
+    return tache
+  }
+
+  it('après Annuler, la carte garde la version du serveur : le déplacement suivant n\'est pas refusé', async () => {
+    fauxServeur()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Études' })).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument())
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+    expect(api.modifierTache.mock.calls[1][1].lock_version).toBe(6) // 4 → écriture 5 → annulation 6
+    await act(async () => { await new Promise((fin) => { setTimeout(fin, 30) }) })
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('Modifiée ailleurs')
+  })
+
+
 })
