@@ -207,12 +207,13 @@ const PER_CHUNK_BUDGET_KB = 350
 // lazy du module + mode terrain/ombrière/horizon/course du soleil de l atelier) : 3760 -> 3815.
 // 18/11/2026 (module Tâches, fusion 3 : écran Mon iPhone, Réglages → Notifications, cartes Tâches du Copilote et
 // leurs cartes à valider, pastille) : mesure RÉELLE 3818,0 Ko sur le runner (job frontend-static du run 44235643878,
-// 3817,4 Ko sur l'arbre fusionné local). Gras prouvé absent : diff package.json vide. Budget monté au juste-dessus
-// de la mesure : 3815 -> 3820.
+// 3817,4 Ko sur l'arbre fusionné local), puis 3818,7 Ko en local après les corrections de la relecture finale (la
+// carte de collage montre ses puces et ses lignes décochées) — le runner mesure 0,6 Ko de plus que cette machine.
+// Gras prouvé absent : diff package.json vide. Budget monté au juste-dessus de la mesure : 3815 -> 3825.
 // 18/11/2026 (module Tâches, fusion 4 : vues Tableau et Chronologie d'un projet, écran Modèles, étiquettes et vues
 // enregistrées, « Suggéré par l'ERP », colonne de bureau d'Aujourd'hui, hôte de présence et carte du cockpit — une
 // quinzaine de chunks lazy neufs) : mesure RÉELLE 3835,7 Ko sur l'arbre fusionné dev-taches-f4. Gras prouvé absent :
-// diff package.json vide, bundle initial inchangé à 0,4 Ko près. Budget monté au juste-dessus de la mesure : 3820 -> 3850.
+// diff package.json vide, bundle initial inchangé à 0,4 Ko près. Budget monté au juste-dessus de la mesure : 3825 -> 3850.
 const TOTAL_BUDGET_KB = 3850
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
