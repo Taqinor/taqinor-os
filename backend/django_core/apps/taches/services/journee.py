@@ -21,7 +21,7 @@ from apps.taches.choix import (
     CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, StatutSuggestion,
     StatutTache, TypeIncitationEcran)
 from apps.taches.models.erp import SuggestionTache
-from apps.taches.models.journee import LignePlanJour, PlanJour
+from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.moteur import classement, gabarits
 from apps.taches.moteur.rythme import RETOUR_JOURS_TRAVAILLES, statut_jour
@@ -33,6 +33,9 @@ from apps.taches.serializers.formes import charger_items, charger_taches, tache_
 from apps.taches.services import rythme as service_rythme
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.planification import planifier
+from apps.taches.services.planification import creer_ligne as _creer_ligne
+from apps.taches.services.planification import remplacer_ligne as _remplacer_ligne
+from apps.taches.services.planification import valeurs_ligne as _valeurs_ligne
 from apps.taches.services.rappels import annuler_rappels
 
 logger = logging.getLogger(__name__)
@@ -561,7 +564,6 @@ def proposition_du_jour(user, jour, maintenant, *, exclure=(), inclure=(), tout=
 MESSAGE_ESSENTIELS = '3 au plus.'
 MESSAGE_MODE = 'Valeur inconnue.'
 MODE_EXPRESS = 'express'
-CHAMPS_LIGNE = ('prevue_au_plan', 'faite', 'reportee', 'essentielle', 'creneau', 'rang')
 
 
 class Refus(Exception):
@@ -613,25 +615,6 @@ def _activites_du_compte(user, ids, jour):
     if trouvees != ids:
         raise Http404('Introuvable.')
     return trouvees
-
-
-def _creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
-    ligne = LignePlanJour.objects.create(company_id=plan.company_id, plan=plan, tache_id=tache_id,
-                                         activite_id=activite_id, **champs)
-    ops.append(op_creation('ligne_plan_jour', ligne))
-    return ligne
-
-
-def _remplacer_ligne(ligne, ops, **changements):
-    """Une ligne n'a pas de champ restaurable (§4) : la changer = la supprimer (opération dure,
-    restaurée à l'identique) et en créer une neuve — l'annulation défait les deux."""
-    valeurs = _valeurs_ligne(ligne)
-    ops.append(op_suppression_dure('ligne_plan_jour', ligne, valeurs))
-    plan = ligne.plan
-    ligne.delete()
-    champs = {champ: valeurs[champ] for champ in CHAMPS_LIGNE}
-    champs.update(changements)
-    return _creer_ligne(plan, ops, tache_id=valeurs['tache'], activite_id=valeurs['activite_id'], **champs)
 
 
 def _poser_au_jour(user, taches, jour, ops):
@@ -744,11 +727,6 @@ def alleger(user, jour, maintenant, *, garder, assistant=False):
         geste = enregistrer_geste(user, 'allegement', f'{len(ids)} retournées aux projets', ops)
     return {'aujourdhui': aujourdhui(user, jour, maintenant, assistant=assistant),
             'renvoyees': sorted(ids), 'geste_id': geste.pk}
-
-
-def _valeurs_ligne(ligne):
-    return {'plan': ligne.plan_id, 'tache': ligne.tache_id, 'activite_id': ligne.activite_id,
-            **{champ: getattr(ligne, champ) for champ in CHAMPS_LIGNE}}
 
 
 # --- Bilan du soir (regles.md « Bilan du soir », TCH58) --------------------------------------------

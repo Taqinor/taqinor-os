@@ -54,7 +54,7 @@ from apps.taches.services import journee, rythme
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.planification import planifier
 from apps.taches.services.projets import creer_projet, modifier_projet
-from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache, trancher_tache
+from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache
 
 #: Société de démonstration et compte du semis (jamais une société réelle : `est_demo=True` exigé).
 SLUG_SOCIETE = 'demo-taches'
@@ -403,8 +403,9 @@ class Scenario:
             return lambda: self._terminer(T[titre], self.instant(J, self._fait_a[titre]))
 
         def fiche():
-            instant = self.instant(J, '14:10')
-            trancher_tache(self.user, T[FICHE].pk, 'jour', self.date(11, 26), maintenant=instant, aujourdhui=J)
+            # « Choisir un jour » (§3 14:10) : la route `taches/{id}/planifier/`, donc `planifier` — pas
+            # `trancher`, la décision d'À revoir (acceptation F2 défaut 6).
+            planifier(T[FICHE], acteur=self.user, jour_prevu=self.date(11, 26))
 
         self._fait_a = {RAILS: '08:52', FOURNISSEUR: '10:20', DEVIS: '10:50', STAND: '16:30'}
         return (('08:20', essentielles), ('08:31', garder), ('08:52', fait(RAILS)), ('09:10', contrat),

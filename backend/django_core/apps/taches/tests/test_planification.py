@@ -11,9 +11,13 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.taches.models.gestes import GesteAnnulable
+from apps.taches.models.journee import LignePlanJour
 from apps.taches.models.taches import Tache
 from apps.taches.services.gestes import annuler_geste
+from apps.taches.services.journee import alleger, cloturer
 from apps.taches.services.planification import planifier
+from apps.taches.services.projets import decaler_projet
+from apps.taches.services.taches import lot_taches, trancher_tache
 from apps.taches.tests import fabriques
 from core.verrou_optimiste import ConflitVersion
 
@@ -203,3 +207,81 @@ class PlanifierTests(TestCase):
         codes = [a['code'] for a in resultat.avertissements]
         self.assertEqual(codes, ['jour_non_travaille'])
         self.assertTrue(resultat.avertissements[0]['message'].endswith("n'est pas un jour travaillé."))
+
+
+class LigneDuPlanTests(TestCase):
+    """Acceptation F2, défaut 6 — LA règle d'une gardée qui change de jour (`suivre_les_lignes_du_plan`,
+    appelée par `planifier`, seul écrivain du jour) : sa ligne du plan du jour qu'elle quitte RESTE (une
+    gardée non tenue, comptée dans « x des y gardées » ; seul Alléger retire une ligne) et passe
+    `reportee` comme au bilan (regles.md §4.6, §4.9). Prouvée sur chaque chemin qui change le jour."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.a = fabriques.societe('a')
+        cls.u1 = fabriques.compte(cls.a, nom='u1')
+        cls.projet = fabriques.projet(cls.u1, nom='Chantier')
+
+    def setUp(self):
+        self.J = timezone.localdate()
+        self.plan = fabriques.plan(self.u1, self.J, planifie_le=timezone.now())
+        self.tache = fabriques.tache(self.u1, projet=self.projet, jour_prevu=self.J, triee_le=timezone.now())
+        LignePlanJour.objects.create(company=self.a, plan=self.plan, tache=self.tache, prevue_au_plan=True)
+
+    def ligne(self):
+        lignes = list(LignePlanJour.objects.filter(plan=self.plan, tache=self.tache))
+        self.assertEqual(len(lignes), 1, 'la gardée reste une ligne du plan du jour')
+        return lignes[0]
+
+    def gardees(self):
+        return LignePlanJour.objects.filter(plan=self.plan, prevue_au_plan=True).count()
+
+    def assertReportee(self, reportee=True):
+        self.assertEqual((self.ligne().reportee, self.ligne().prevue_au_plan, self.gardees()), (reportee, True, 1))
+
+    def test_choisir_un_jour_garde_la_ligne_et_la_marque_reportee(self):
+        planifier(self.tache, acteur=self.u1, jour_prevu=self.J + datetime.timedelta(days=2))
+        self.assertReportee()
+
+    def test_en_reserve_garde_la_ligne_et_la_marque_reportee(self):
+        planifier(self.tache, acteur=self.u1, jour_prevu=None, quelque_jour=True)
+        self.assertReportee()
+
+    def test_annuler_rend_la_ligne_d_avant(self):
+        geste = planifier(self.tache, acteur=self.u1, jour_prevu=self.J + datetime.timedelta(days=1)).geste
+        annuler_geste(self.u1, geste.pk)
+        self.assertReportee(False)
+
+    def test_revenue_au_jour_la_ligne_n_est_plus_reportee(self):
+        planifier(self.tache, acteur=self.u1, jour_prevu=self.J + datetime.timedelta(days=1))
+        planifier(self.tache, acteur=self.u1, jour_prevu=self.J)
+        self.assertReportee(False)
+
+    def test_placer_a_une_heure_le_meme_jour_ne_touche_pas_la_ligne(self):
+        planifier(self.tache, acteur=self.u1, jour_prevu=self.J, heure_debut=datetime.time(10, 0))
+        self.assertReportee(False)
+
+    def test_gardee_par_son_echeance_n_est_pas_reportee(self):
+        Tache.objects.filter(pk=self.tache.pk).update(echeance=self.J)
+        planifier(self.tache, acteur=self.u1, jour_prevu=self.J + datetime.timedelta(days=1))
+        self.assertReportee(False)
+
+    def test_trancher_un_jour(self):
+        trancher_tache(self.u1, self.tache.pk, 'jour', self.J + datetime.timedelta(days=3))
+        self.assertReportee()
+
+    def test_lot_planifier(self):
+        lot_taches(self.u1, [self.tache.pk], 'planifier',
+                   {'jour_prevu': (self.J + datetime.timedelta(days=1)).isoformat()})
+        self.assertReportee()
+
+    def test_decaler_le_projet(self):
+        decaler_projet(self.u1, self.projet.pk, 2, apercu=False)
+        self.assertReportee()
+
+    def test_bilan_tout_reporter(self):
+        cloturer(self.u1, self.J, timezone.now(), le_reste=True)
+        self.assertReportee()
+
+    def test_alleger_retire_la_ligne(self):
+        alleger(self.u1, self.J, timezone.now(), garder=[])
+        self.assertFalse(LignePlanJour.objects.filter(plan=self.plan, tache=self.tache).exists())
