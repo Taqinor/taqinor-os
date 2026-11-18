@@ -180,12 +180,15 @@ def conv_jour_decalage(m, ctx, texte):
     n, unite = int(m.group('n')), m.group('u')
     if n < 1:
         return None
-    if unite.startswith(('jour', 'day')):
-        d = ctx.aujourdhui + timedelta(days=n)
-    elif unite.startswith(('semaine', 'week')):
-        d = ctx.aujourdhui + timedelta(weeks=n)
-    else:
-        d = ajouter_mois_borne(ctx.aujourdhui, n)
+    try:
+        if unite.startswith(('jour', 'day')):
+            d = ctx.aujourdhui + timedelta(days=n)
+        elif unite.startswith(('semaine', 'week')):
+            d = ctx.aujourdhui + timedelta(weeks=n)
+        else:
+            d = ajouter_mois_borne(ctx.aujourdhui, n)
+    except (OverflowError, ValueError):  # au-delà de l'an 9999 : pas une date, la ligne garde son texte
+        return None
     return Lu(d, libelle_jour(d))
 
 

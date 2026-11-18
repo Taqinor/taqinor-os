@@ -161,6 +161,12 @@ class RythmeEcritureTests(BaseRythme):
         reglages.refresh_from_db()
         self.assertEqual(reglages.palier, 5)
 
+    def test_objectif_hors_des_flottants_400(self):
+        """Revue F2 tour 2 #12 : `1e400` (lu comme l'infini) → 400 au champ, jamais 500."""
+        self.reglages()
+        reponse = self.api.post(URL, '{"mode": "pousser", "objectif": 1e400}', content_type='application/json')
+        self.assertEqual((reponse.status_code, reponse.json()), (400, {'objectif': ['Entre 1 et 12.']}))
+
     def test_mode_inconnu_400(self):
         self.reglages()
         reponse = self.api.post(URL, {'mode': 'turbo'}, format='json')
@@ -323,6 +329,15 @@ class RepondreTests(BaseRythme):
         carte_.refresh_from_db()
         self.assertEqual(carte_.reponse, '')
 
+    def test_reponse_liste_ou_objet_400(self):
+        """Revue F2 tour 2 #12 : `reponse` liste ou objet → 400 « Réponse inconnue. », jamais 500."""
+        self.reglages()
+        carte_ = self.monter()
+        for reponse in (['oui'], {'oui': 1}):
+            with self.subTest(reponse=reponse):
+                self.assertEqual((self.repondre(carte_, reponse).status_code, self.repondre(carte_, reponse).json()),
+                                 (400, {'reponse': ['Réponse inconnue.']}))
+
     def test_expiree_ou_deja_repondue_409(self):
         reglages = self.reglages(palier=5)
         expiree = self.monter(expire_le=J - datetime.timedelta(days=1))
@@ -483,6 +498,13 @@ class PreferencesTests(BaseRythme):
                     'heure_bilan_soir', 'heure_limite_rappels', 'semaine_revue', 'mode', 'palier'):
             with self.subTest(cle=cle):
                 self.assertEqual(self.poser(cle, '19:00').json(), {'cle': ['Clé inconnue.']})
+
+    def test_cle_liste_ou_objet_400(self):
+        """Revue F2 tour 2 #12 : `cle` liste ou objet → 400 « Clé inconnue. », jamais 500."""
+        for cle in (['heure_soir'], {'heure_soir': 1}):
+            with self.subTest(cle=cle):
+                reponse = self.poser(cle, '19:00')
+                self.assertEqual((reponse.status_code, reponse.json()), (400, {'cle': ['Clé inconnue.']}))
 
     def test_bornes_des_valeurs(self):
         cas = (('capacite_jour_min', 20, 'Entre 30 et 720 minutes.'),

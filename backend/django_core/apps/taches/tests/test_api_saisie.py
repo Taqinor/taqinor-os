@@ -83,6 +83,19 @@ class ApercuTests(BaseApi):
         self.assertEqual(ligne['champs']['nouveau_projet'], {'nom': 'SiteWeb', 'priorite': 2})
         self.assertEqual(corps['projets_nouveaux'], [{'nom': 'SiteWeb', 'priorite': 2}])
 
+    def test_un_decalage_hors_du_calendrier_reste_du_texte(self):
+        """Revue F2 tour 2 #12 : « dans 999999 semaines » ne fait plus échouer l'aperçu de toute la liste
+        collée ; la ligne garde son texte, comme toute ligne sans date."""
+        reponse = self._apercu(['Courses\nAppeler Karim demain\nRanger dans 999999 semaines\n'
+                                'Payer dans 99999999999 jours\nRelire dans 99999999 mois'])
+        self.assertEqual(reponse.status_code, 200)
+        lignes = reponse.json()['lignes']
+        self.assertEqual([ligne['titre'] for ligne in lignes],
+                         ['Appeler Karim', 'Ranger dans 999999 semaines', 'Payer dans 99999999999 jours',
+                          'Relire dans 99999999 mois'])
+        self.assertEqual(lignes[0]['champs']['jour_prevu'], _j(1).isoformat())
+        self.assertEqual([ligne['champs'].get('jour_prevu') for ligne in lignes[1:]], [None, None, None])
+
     def test_un_apercu_n_ecrit_rien(self):
         self._apercu(['Appeler Karim demain #SiteWeb'])
         self.assertEqual((Tache.objects.count(), Projet.objects.count()), (0, 0))

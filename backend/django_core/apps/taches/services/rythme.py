@@ -202,7 +202,7 @@ def _entier(valeur):
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
     try:
         return int(valeur)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError : `1e400` lu comme l'infini (#12)
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
 
 
@@ -442,7 +442,7 @@ def _carte_a_repondre(user, carte_id, reponse, jour):
     carte = cartes_de(user).select_for_update().filter(pk=carte_id, canal=CanalIncitation.ECRAN).first()
     if carte is None:
         raise Introuvable()
-    if reponse not in _reponses_permises(carte):
+    if not isinstance(reponse, str) or reponse not in _reponses_permises(carte):
         raise ErreursRythme({'reponse': [REPONSE_INCONNUE]})
     if carte.reponse or carte.repondu_le is not None or (carte.expire_le is not None and carte.expire_le < jour):
         raise PropositionExpiree()
@@ -585,7 +585,7 @@ VALIDATIONS = {
 
 def _valider_preference(cle, valeur):
     """La valeur normalisée de `cle`, ou `ErreursRythme` (`cle` inconnue, `valeur` hors règle)."""
-    validation = VALIDATIONS.get(cle)
+    validation = VALIDATIONS.get(cle) if isinstance(cle, str) else None
     if validation is None:
         raise ErreursRythme({'cle': [CLE_INCONNUE]})
     return validation(valeur)
@@ -719,7 +719,7 @@ def _type_pause(pause):
 def _pauses(valeur, reglages):
     """« Réactiver » : la liste dite ne peut que RETIRER des types en pause (la nuit seule en ajoute)."""
     actuelles = list(reglages.pauses_sollicitations or [])
-    if not isinstance(valeur, list):
+    if not isinstance(valeur, list) or not all(isinstance(_type_pause(p), str) for p in valeur):
         raise ErreursRythme({'pauses_sollicitations': [VALEUR_INCONNUE]})
     gardes = {_type_pause(p) for p in valeur}
     if not gardes <= {_type_pause(p) for p in actuelles}:
@@ -744,7 +744,8 @@ def _valeur_reglage(champ, valeur, reglages):
             raise erreur
         return valeur
     if champ == 'familles_suggestions':
-        if not isinstance(valeur, list) or not set(valeur) <= set(FamilleSuggestion.values):
+        if not isinstance(valeur, list) or not all(isinstance(f, str) for f in valeur) \
+                or not set(valeur) <= set(FamilleSuggestion.values):
             raise erreur
         return [f for f in FamilleSuggestion.values if f in valeur]
     return _pauses(valeur, reglages)
