@@ -9,10 +9,10 @@ la mesure (caches du processus chauds : types de contenu, calendrier) : on mesur
 Les listes ne grandissent pas avec leurs lignes (motif 10 → 25 du manifeste) ; l'aperçu de la saisie
 rapide est constant en lignes (§10).
 
-Routes de §10 pas encore construites (`journee/priorites/`, `journee/point/`, `suggestions/`) :
-déclarées `enforced: false` dans le manifeste, sans test ici. `tuile/` et `flux/` (TCH97) sont mesurées
-par LEUR jeton, authentification comprise ; leurs plafonds sont une estimation (≈ badge mesuré + ce que
-lit la route de plus) au-dessus des cibles de §10 (10 et 8), à ramener à la mesure au premier vert.
+Route de §10 pas encore construite (`suggestions/`) : déclarée `enforced: false` dans le manifeste, sans
+test ici. `journee/priorites/` et `journee/point/` (TCH161) sont gardées ici à la MESURE (18/11 : 21 et 26,
+au-dessus des cibles 20 et 18) et ne grandissent pas avec les tâches. `tuile/` et `flux/` (TCH97) sont
+mesurées par LEUR jeton, authentification comprise (18/11 : 14 et 9, cibles 10 et 8).
 `saisie-rapide/` est un POST : le manifeste ne garde que des routes GET (`check_query_budgets._routes_get`),
 son plafond vit ici.
 """
@@ -42,6 +42,8 @@ URL_RYTHME = '/api/django/taches/rythme/'
 URL_RECHERCHE = '/api/django/taches/recherche/'
 URL_TUILE = '/api/django/taches/tuile/'
 URL_FLUX = '/api/django/taches/flux/{jeton}.ics'
+URL_PRIORITES = '/api/django/taches/journee/priorites/'
+URL_POINT = '/api/django/taches/journee/point/'
 
 
 def _porteur(clair):
@@ -171,17 +173,31 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
             self._lire(url)
 
     def test_tuile(self):
-        """TCH97 — jeton `tuile` (authentification comprise) ; cible d'api.md §10 : 10."""
+        """TCH97 — jeton `tuile` (authentification comprise) ; cible d'api.md §10 : 10, mesuré 14 (18/11)."""
         porteur = _porteur(fabriques.jeton(self.compte, 'tuile')[1])
         self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
         with self.assertMaxQueries(14):
             self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
 
+    def test_priorites(self):
+        """TCH161 (« Aide-moi à prioriser ») ; cible d'api.md §10 : 20, mesuré 21 (18/11)."""
+        self._lire(URL_PRIORITES)
+        with self.assertMaxQueries(21):
+            self._lire(URL_PRIORITES)
+
+    def test_point(self):
+        """TCH161 (« Où j'en suis ? ») ; cible d'api.md §10 : 18, mesuré 26 (18/11 : la lecture de la
+        journée entière — progression, carte du moment, rendez-vous — comme `aujourdhui/`)."""
+        self._lire(URL_POINT)
+        with self.assertMaxQueries(26):
+            self._lire(URL_POINT)
+
     def test_flux(self):
-        """TCH97 — jeton `flux` dans l'adresse (authentification comprise) ; cible d'api.md §10 : 8."""
+        """TCH97 — jeton `flux` dans l'adresse (authentification comprise) ; cible d'api.md §10 : 8,
+        mesuré 9 (18/11)."""
         url = URL_FLUX.format(jeton=fabriques.jeton(self.compte, 'flux')[1])
         self.assertEqual(APIClient().get(url).status_code, 200)
-        with self.assertMaxQueries(10):
+        with self.assertMaxQueries(9):
             self.assertEqual(APIClient().get(url).status_code, 200)
 
 
@@ -243,6 +259,14 @@ class PlafondsConstantsTests(TestCase):
         avant = self._compter(lambda: self.api.get(URL_PROPOSITION))
         _peupler(self.compte, self.projets, self.etiquette, self.jour, 12, depart=300)
         self.assertEqual(self._compter(lambda: self.api.get(URL_PROPOSITION)), avant)
+
+    def test_les_priorites_et_le_point_ne_grandissent_pas(self):
+        """TCH161 — 4 puis 16 tâches du jour (et autant de candidates sans jour) : même compte."""
+        avant_priorites = self._compter(lambda: self.api.get(URL_PRIORITES))
+        avant_point = self._compter(lambda: self.api.get(URL_POINT))
+        _peupler(self.compte, self.projets, self.etiquette, self.jour, 12, depart=500)
+        self.assertEqual(self._compter(lambda: self.api.get(URL_PRIORITES)), avant_priorites)
+        self.assertEqual(self._compter(lambda: self.api.get(URL_POINT)), avant_point)
 
     def test_la_vue_d_un_projet_ne_grandit_pas(self):
         """Plafond 22 : 4 puis 16 tâches du jour dans le projet, le même nombre de requêtes."""

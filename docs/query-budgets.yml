@@ -165,12 +165,12 @@ endpoints:
   - path: /api/django/taches/tuile/
     budget: 14
     enforced: true
-    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, plafond estimé à ramener à la mesure."
+    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, mesuré 14 (18/11)."
 
   - path: /api/django/taches/flux/{jeton}.ics
-    budget: 10
+    budget: 9
     enforced: true
-    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, plafond estimé à ramener à la mesure."
+    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, mesuré 9 (18/11)."
 
   - path: /api/django/taches/journee/proposition/
     budget: 27
@@ -178,14 +178,14 @@ endpoints:
     note: "TCH129 : la proposition du jour."
 
   - path: /api/django/taches/journee/priorites/
-    budget: 20
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 21
+    enforced: true
+    note: "TCH161 : « Aide-moi à prioriser » ; cible api.md §10 = 20, mesuré 21 (18/11) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/journee/point/
-    budget: 18
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 26
+    enforced: true
+    note: "TCH161 : « Où j'en suis ? » ; cible api.md §10 = 18, mesuré 26 (18/11) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/agenda/
     budget: 28
