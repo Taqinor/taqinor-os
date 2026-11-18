@@ -127,11 +127,12 @@ def _serie(plans):
 
 
 def _trace(nb, serie):
-    """« {N} faites ou plus {tenus} jours sur {sur} » sur la série ; `None` sans objectif ni série."""
+    """« {N} faites ou plus {tenus} jour(s) sur {sur} » sur la série (« jour » à 0 ou 1, comme la revue) ;
+    `None` sans objectif ni série."""
     if nb is None or not serie:
         return None
     tenus = sum(1 for jour in serie if jour['faites'] >= nb)
-    return f'{nb} faites ou plus {tenus} jours sur {len(serie)}'
+    return f"{nb} faites ou plus {tenus} jour{'s' if tenus > 1 else ''} sur {len(serie)}"
 
 
 def _bloc(etat):

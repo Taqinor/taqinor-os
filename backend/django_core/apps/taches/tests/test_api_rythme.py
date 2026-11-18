@@ -65,6 +65,17 @@ class RythmeLectureTests(BaseRythme):
         self.assertEqual(reponse.status_code, 200)
         self.assertEqual(set(reponse.json()), set(exemple_de('rythme')))
 
+    def test_trace_au_singulier_a_un_jour(self):
+        """« 1 jour sur 3 », jamais « 1 jours » (textes.md, Trace)."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J - datetime.timedelta(days=3))
+        jours_evalues(self.u1, [2, 6, 3])
+        self.assertEqual(self.api.get(URL).json()['trace'], '5 faites ou plus 1 jour sur 3')
+
+    def test_trace_au_singulier_a_zero_jour(self):
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J - datetime.timedelta(days=2))
+        jours_evalues(self.u1, [2, 3])
+        self.assertEqual(self.api.get(URL).json()['trace'], '5 faites ou plus 0 jour sur 2')
+
     def test_objectif_serie_trace_et_repere_calcules_des_plans(self):
         self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J - datetime.timedelta(days=8))
         jours_evalues(self.u1, [3, 4, 5, 5, 5, 6, 6, 7, 8])
