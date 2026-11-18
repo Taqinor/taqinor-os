@@ -457,6 +457,16 @@
 .tch[data-hors-ligne] [data-necessite-reseau] {
   opacity: 0.5; cursor: default;
 }
+/* Passe visuelle n° 64 (etat-hors-ligne.html, `.entete-date.es-hors-ligne`) : « Hors ligne · dernière synchro à
+   {HH:MM} » tient sur UNE ligne au-dessus du titre, icône et texte côte à côte ; sur iPhone le Copilote, qui a besoin
+   du réseau, lui cède sa place. La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
+.tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) {
+  display: flex; align-items: center; gap: 6px; color: var(--tch-texte);
+}
+.tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) > span { white-space: nowrap; }
+@media (max-width: 767px) {
+  .tch[data-hors-ligne] .entete-actions .copilote-groupe { display: none; }
+}
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
   min-height: 64px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
