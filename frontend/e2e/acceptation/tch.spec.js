@@ -379,10 +379,11 @@ etape('P138.1', ['TCH138', 'TCH60', 'TCH88', 'TCH169'], async (f) => {
   await expect(p.locator('.tch[data-ecran="projet"]')).toBeVisible()
   await capturer(p, 'projet')
   await aller(p, '/taches/projets', 'projets')
-  // Oracle : 5 projets, Benali « 12 sur 18 », Site web « À planifier »
+  // Oracle (plan TCH138 étape 1 corrigé, SCENARIO §0 errata 3) : 5 projets, Benali « 12 sur 18 », Site web « 0 sur 4 »
+  // (« À planifier » exige zéro tâche ouverte, regles.md)
   await expect(p.locator('[data-projet]')).toHaveCount(5)
   await expect(ligneProjet(p, 'Chantier Benali 9 kWc')).toContainText('12 sur 18')
-  await expect(ligneProjet(p, 'Site web')).toContainText('À planifier')
+  await expect(ligneProjet(p, 'Site web')).toContainText('0 sur 4')
 })
 
 etape('P138.2', ['TCH138', 'TCH88', 'TCH91', 'TCH63'], async (f) => {
