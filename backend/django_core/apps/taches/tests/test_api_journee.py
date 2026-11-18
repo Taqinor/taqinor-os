@@ -165,7 +165,8 @@ class SectionsEtOrdreTests(_Base):
         self.assertEqual(sorted(o.pk for o in journee.objets_de(S.FAITES)), sorted([faite.pk, simple.pk]))
         self.assertEqual(sel.compter_journee(self.u, J, journee), 1)
         reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
-        self.assertEqual([(i['id'], i['statut']) for i in reponse['essentiel']], [(faite.pk, 'fait'), (ouverte.pk, 'a_faire')])
+        self.assertEqual([(i['id'], i['statut']) for i in reponse['essentiel']],
+                         [(faite.pk, 'fait'), (ouverte.pk, 'a_faire')])
         self.assertEqual(sorted(i['id'] for i in reponse['faites']), sorted([faite.pk, simple.pk]))
         self.assertEqual((reponse['progression']['faites'], reponse['progression']['essentiel_faites'],
                           reponse['progression']['essentiel_prevues']), (2, 1, 2))
