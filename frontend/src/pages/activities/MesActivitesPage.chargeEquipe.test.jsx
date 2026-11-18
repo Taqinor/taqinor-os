@@ -156,7 +156,8 @@ describe('TCH159 — « + À faire » : une seule saisie', () => {
     const creer = vi.fn(() => Promise.resolve({ data: {} }))
     creations.fn = creer
     const recus = []
-    const ecouteur = (e) => recus.push(e.detail)
+    // l'hôte de Tâches répond « reçu » en annulant l'événement (TachesPresence) : ici, un écouteur qui fait de même
+    const ecouteur = (e) => { recus.push(e.detail); e.preventDefault() }
     window.addEventListener('taqinor:taches:saisir', ecouteur)
     rendre(['taches_voir'])
     await saisirTexte()
@@ -164,6 +165,15 @@ describe('TCH159 — « + À faire » : une seule saisie', () => {
     expect(recus).toEqual([{ texte: 'Appeler Settat' }])
     expect(creer).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Nouvelle tâche à faire')).toHaveValue('')
+  })
+
+  it('Acceptation F4 — avec taches_voir mais personne pour répondre « reçu » (l\'hôte de Tâches n\'est pas encore chargé) : la phrase RESTE dans le champ, rien n\'est créé', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    rendre(['taches_voir'])
+    await saisirTexte()
+    expect(creer).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Nouvelle tâche à faire')).toHaveValue('Appeler Settat')
   })
 
   it('sans taches_voir : ancien comportement (activité créée par le serveur), aucun événement', async () => {

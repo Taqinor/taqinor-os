@@ -9,6 +9,7 @@ import {
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
+import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import { DialogueRenommerModele, DialogueSupprimerModele, DialogueUtiliser } from '../../features/taches/projets/Dialogues'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { etapesDuModele } from '../../features/taches/lib/projets'
@@ -62,7 +63,8 @@ export default function ProjetsModeles() {
       message: 'Projet créé',
       onAnnuler: async () => { if (geste) await annulerGeste(geste); navigate('/taches/projets/modeles') },
     })
-    navigate(`/taches/projets/${reponse.projet.id}`)
+    // la feuille « Utiliser ce modèle » se ferme dans le même geste : la navigation remplace son entrée d'historique
+    naviguerApresFeuille(navigate, `/taches/projets/${reponse.projet.id}`)
   }
   const renomme = (modele) => {
     setDialogue(null)

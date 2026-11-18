@@ -229,6 +229,29 @@ describe('TCH82 — feuille de saisie', () => {
     expect(screen.getByRole('button', { name: /10:00/ })).toBeInTheDocument()
   })
 
+  it('Acceptation F4 — remise par l\'hôte : la demande arrivée AVANT le montage de la feuille lui est remise entière (phrase, jour, lien)', () => {
+    // la feuille est chargée à part hors de /taches : elle s'abonne à l'hôte, qui lui remet ce que l'écran a demandé entre-temps
+    const desabonner = vi.fn()
+    const abonner = vi.fn((lire) => { lire({ texte: 'Rappeler le fournisseur', jour_prevu: '2026-11-20' }); return desabonner })
+    const { unmount } = monter({ lienParDefaut: { cible: 'crm.lead', id: 9, libelle: 'Lead' }, demandes: { abonner } })
+    expect(champ()).toHaveValue('Rappeler le fournisseur')
+    expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retirer le lien « Lead »' })).toBeInTheDocument()
+    unmount()
+    expect(desabonner).toHaveBeenCalled()
+  })
+
+  it('Acceptation F4 — remise par l\'hôte : la feuille n\'écoute plus l\'événement elle-même (un seul chemin, jamais deux lectures)', () => {
+    let lire
+    monter({ demandes: { abonner: (f) => { lire = f; return () => {} } } })
+    act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { texte: 'Phrase que seul l\'hôte remet' } }))
+    })
+    expect(champ()).toHaveValue('')
+    act(() => { lire({ texte: 'Remise par l\'hôte' }) })
+    expect(champ()).toHaveValue('Remise par l\'hôte')
+  })
+
   describe('Raccord F2 — hors ligne', () => {
     let file
     beforeEach(async () => {

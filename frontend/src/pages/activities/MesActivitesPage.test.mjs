@@ -65,4 +65,7 @@ test('TCH159 : avec taches_voir, addTodo émet taqinor:taches:saisir (via cibleE
   const corps = SRC.slice(SRC.indexOf('const addTodo = async'), SRC.indexOf('const openResched'))
   assert.ok(corps.indexOf('if (peutTaches)') !== -1 && corps.indexOf('if (peutTaches)') < corps.indexOf('recordsApi.createActivity('))
   assert.match(corps, /new CustomEvent\(EVENEMENT_SAISIR/)
+  // la phrase ne quitte le champ que si l'hôte de Tâches l'a prise (événement annulable = « reçu ») : jamais perdue
+  assert.match(corps, /cancelable: true/)
+  assert.match(corps, /if \(recue\) \{\s*setTodoText\(''\)/)
 })

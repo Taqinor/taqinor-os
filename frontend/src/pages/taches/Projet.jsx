@@ -323,7 +323,8 @@ export default function Projet() {
       message: 'Projet créé',
       onAnnuler: async () => { if (reponse.geste_id) await annulerGeste(reponse.geste_id); navigate(`/taches/projets/${retour}`) },
     })
-    navigate(`/taches/projets/${reponse.projet.id}`)
+    // la feuille « Dupliquer » se ferme dans le même geste : la navigation remplace son entrée d'historique
+    naviguerApresFeuille(navigate, `/taches/projets/${reponse.projet.id}`)
   }
   const modeleEnregistre = (modele) => {
     setDialogue(null)

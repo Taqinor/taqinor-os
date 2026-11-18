@@ -173,7 +173,7 @@ function lignesBrutes(textes, { cid, quand }) {
     .map((titre, index) => ({ index, client_id: `${cid}:${index}`, titre, ...(quand ?? {}) }))
 }
 
-export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null }) {
+export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null, demandes = null }) {
   const { societe, compte } = useCompte()
   const cle = cleBrouillon(societe, compte)
   const [initial] = useState(() => lireBrouillon(societe, compte))
@@ -222,22 +222,28 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null 
   // Raccord F2 : il porte aussi le contexte de l'écran (`projet_id`, `projet_nom`, `section_id`, `jour_prevu`, `heure_debut`)
   const lienDefaut = useRef(lienParDefaut)
   useEffect(() => { lienDefaut.current = lienParDefaut })
-  useEffect(() => {
-    const surSaisir = (e) => {
-      const detail = e?.detail ?? {}
-      if (typeof detail.texte === 'string') setTexte(detail.texte)
-      if (detail.liste || detail.coller) setChampOuvert(true)
-      // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
-      setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
-      if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
-        const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
-        setQuand(depart)
-        setQuandDepart(depart)
-      }
+  /** Ce qu'une demande de saisie porte (le `detail` de `taqinor:taches:saisir`) arrive dans la feuille. */
+  const recevoir = useCallback((detail) => {
+    if (typeof detail.texte === 'string') setTexte(detail.texte)
+    if (detail.liste || detail.coller) setChampOuvert(true)
+    // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
+    setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
+    if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
+      const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+      setQuand(depart)
+      setQuandDepart(depart)
     }
+  }, [])
+  // Dans /taches la feuille est montée avec la coquille : elle écoute l'événement elle-même. Hors de /taches elle est
+  // chargée À PART par l'hôte `TachesPresence`, qui écoute pour elle : elle s'abonne à lui (`demandes.abonner`) et
+  // reçoit aussitôt la demande arrivée pendant son chargement — un événement émis avant son montage perdait sinon la
+  // phrase tapée et le lien de l'écran. Un seul chemin à la fois, jamais deux lectures de la même demande.
+  useEffect(() => {
+    if (demandes) return demandes.abonner(recevoir)
+    const surSaisir = (e) => recevoir(e?.detail ?? {})
     window.addEventListener(EVENEMENT_SAISIR, surSaisir)
     return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
-  }, [])
+  }, [demandes, recevoir])
 
   // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste)
   useEffect(() => {

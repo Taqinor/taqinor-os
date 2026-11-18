@@ -268,10 +268,17 @@ export default function MesActivitesPage() {
     const txt = todoText.trim()
     if (!txt) return
     if (peutTaches) {
-      // TCH159 — la phrase tapée part dans la feuille de saisie unique (`taqinor:taches:saisir`), l'échéance en « Quand »
-      window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { texte: txt, ...(todoDate ? { jour_prevu: todoDate } : {}) } }))
-      setTodoText('')
-      setTodoDate('')
+      // TCH159 — la phrase tapée part dans la feuille de saisie unique (`taqinor:taches:saisir`), l'échéance en « Quand ».
+      // L'hôte de Tâches (chargé à part) répond « reçu » en annulant l'événement : tant qu'il n'écoute pas encore, la
+      // phrase RESTE dans le champ — elle n'est jamais perdue.
+      const recue = !window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, {
+        cancelable: true,
+        detail: { texte: txt, ...(todoDate ? { jour_prevu: todoDate } : {}) },
+      }))
+      if (recue) {
+        setTodoText('')
+        setTodoDate('')
+      }
       return
     }
     setTodoBusy(true)

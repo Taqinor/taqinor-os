@@ -185,6 +185,25 @@ describe('TCH102 — hôte TachesPresence', () => {
     expect(screen.queryByRole('button', { name: /Retirer le lien/ })).toBeNull()
   })
 
+  it('Acceptation F4 — la phrase envoyée par un écran (Activités) arrive dans la feuille, et l\'hôte répond « reçu »', async () => {
+    monter('/activites', { enfants: <TachesPresence /> })
+    const evenement = new CustomEvent(EVENEMENT_SAISIR, { cancelable: true, detail: { texte: 'Rappeler le fournisseur', jour_prevu: '2026-11-20' } })
+    let recue
+    act(() => { recue = !window.dispatchEvent(evenement) })
+    // « reçu » : l'écran qui envoie peut vider son champ ; la feuille montre la phrase et le jour
+    expect(recue).toBe(true)
+    expect(await screen.findByRole('textbox', { name: 'Ajouter une tâche' })).toHaveValue('Rappeler le fournisseur')
+    expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+  })
+
+  it('Acceptation F4 — sans hôte qui écoute (pas le droit, ou pas encore chargé), personne ne répond « reçu » : la phrase reste à l\'écran qui l\'envoie', () => {
+    monter('/activites', { permissions: ['crm_voir'], enfants: <TachesPresence /> })
+    const evenement = new CustomEvent(EVENEMENT_SAISIR, { cancelable: true, detail: { texte: 'Rappeler le fournisseur' } })
+    let recue
+    act(() => { recue = !window.dispatchEvent(evenement) })
+    expect(recue).toBe(false)
+  })
+
   it('dans /taches la coquille a déjà sa feuille : l\'hôte ne monte rien (pas de feuille en double)', () => {
     monter('/taches/aujourdhui', { enfants: <TachesPresence /> })
     saisir()

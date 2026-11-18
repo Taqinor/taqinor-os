@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { cibleDepuisEcran, EVENEMENT_SAISIR, libelleDeCible } from './cibleEcran'
@@ -17,6 +17,12 @@ import { cibleDepuisEcran, EVENEMENT_SAISIR, libelleDeCible } from './cibleEcran
    - Sans le droit `taches_voir` (lu dans `state.auth.permissions`, jamais un repli) : rien n'est monté,
      rien n'écoute, `c t` ne fait rien.
    La feuille est chargée à part (`lazy`) : l'ERP des comptes sans Tâches ne paie pas son poids.
+   - Parce qu'elle est chargée à part, c'est L'HÔTE qui écoute l'événement et qui REMET la demande à la feuille
+     (`demandes.abonner` : la feuille s'abonne à son montage et reçoit aussitôt la demande arrivée pendant son
+     chargement) : un geste fait à ce moment-là ne perd ni la phrase tapée ni le lien de l'écran (acceptation de la
+     fusion 4, P142.3 et P142.4).
+   - Il répond « reçu » en annulant l'événement (`preventDefault`) : un écran qui envoie une phrase (Activités,
+     TCH159) ne vide son champ que si quelqu'un l'a prise.
    ========================================================================== */
 
 const QUICK_CREATE_EVENT = 'taqinor:quick-create'
@@ -34,6 +40,16 @@ function PresenceActive() {
   const ouverte = ouverteSur === lieu.pathname
   const cible = cibleDepuisEcran(lieu)
   const horsTaches = !dansTaches(lieu.pathname)
+  // ce que l'écran a demandé (le `detail` de l'événement) : remis à la feuille si elle écoute, gardé sinon
+  const boite = useRef({ lire: null, enAttente: null })
+  const demandes = useMemo(() => ({
+    abonner(lire) {
+      const { enAttente } = boite.current
+      boite.current = { lire, enAttente: null }
+      if (enAttente) lire(enAttente)
+      return () => { if (boite.current.lire === lire) boite.current.lire = null }
+    },
+  }), [])
 
   // la palette « Créer une tâche » rejoint l'événement de saisie (la feuille ouverte, qu'elle soit la nôtre ou celle de /taches)
   useEffect(() => {
@@ -45,7 +61,14 @@ function PresenceActive() {
   }, [])
 
   useEffect(() => {
-    const ouvrir = () => setOuverteSur(chemin.current)
+    const ouvrir = (e) => {
+      if (dansTaches(chemin.current)) return // dans /taches, la coquille a sa propre feuille, qui écoute elle-même
+      e?.preventDefault?.() // « reçu »
+      const detail = e?.detail ?? {}
+      if (boite.current.lire) boite.current.lire(detail)
+      else boite.current.enAttente = detail
+      setOuverteSur(chemin.current)
+    }
     window.addEventListener(EVENEMENT_SAISIR, ouvrir)
     return () => window.removeEventListener(EVENEMENT_SAISIR, ouvrir)
   }, [])
@@ -56,7 +79,7 @@ function PresenceActive() {
   return (
     <div className="tch" data-presence="taches">
       <Suspense fallback={null}>
-        <FeuilleSaisie ouverte={ouverte} onFermer={fermer} lienParDefaut={lienParDefaut} />
+        <FeuilleSaisie ouverte={ouverte} onFermer={fermer} lienParDefaut={lienParDefaut} demandes={demandes} />
         <ZoneAnnonces />
       </Suspense>
     </div>
