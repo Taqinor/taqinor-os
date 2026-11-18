@@ -745,6 +745,27 @@ ci-dessus répond 401, zéro page nue sur 30 appels à `health/ready`, `dernier_
 fusionnée → un deploy de plus → la tuile « Tâches » apparaît pour le compte de Reda ; (c) les points ouverts du
 README (relances en double avant d'ouvrir à un commercial, écarts d'apparence, gestes iPhone).
 
+**18/11/2026, 13 h 40 UTC — #1468 en file de merge ; ce que le rejeu en direct a encore appris**
+
+- Enregistrement `docs/audits/acceptation/TCH/2026-11-18-17234b11d.md` : 44 étapes sur 44 (P144.6 : le compte
+  propriétaire, rangé « Directeur » par `init_roles`, voit les quatre onglets). Mémoire partagée complétée
+  (`deploy-manuel-1711.md`, incident du 18/11).
+- **Piège payé (outillage de cette machine, pas le produit) : `faketime` sans `-m`.** L'étape P142.1 échouait une fois
+  sur deux sur un 502 du relais `vite preview` : le Django de la pile, lancé sous l'horloge simulée, plantait
+  (« Caught Segmentation fault » dans `logs/django-8002.log`) au moment où deux appels arrivaient ensemble sur un
+  serveur fraîchement relancé. `pile.sh` lance maintenant `faketime -m` (variante à plusieurs fils) : rejeu suivant
+  vert, zéro plantage. Pour le reconnaître : l'écran dit « Erreur serveur », le journal Django n'a AUCUNE trace
+  applicative, les appels directs répondent 200. Garder le journal d'une passe : `tail -F -n +1` sur le fichier AVANT
+  le rejeu (la pile le réécrit à chaque changement d'horloge).
+- `e2e-demo-admin.py` (qui remet `demo_admin` sur « Administrateur » après `init_roles`) était le MÊME piège que celui
+  de Reda, contourné le matin sans en tirer la conséquence : tout compte propriétaire ou superuser est rangé
+  « Directeur » à chaque déploiement.
+- Lanceurs ajoutés dans `cloud/lanceurs/` : `prod-local.sh` (gunicorn lancé comme en production : `--preload`,
+  3 workers × 4 fils, `settings.prod`) et `prod-local-stop.sh` ; `jouer-tch168*.sh` (rejeu officiel depuis le dossier
+  principal, les deux specs ou une seule).
+- Production à 13 h 35 UTC : TOUJOURS à moitié basculée (Reda n'a pas encore relancé la séquence ; notification
+  envoyée sur son téléphone à 13 h 03).
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
