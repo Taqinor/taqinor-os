@@ -35,7 +35,7 @@ const CONSTRUCTION = [
   'TCH36', 'TCH40', 'TCH48', 'TCH49', 'TCH50', 'TCH53', 'TCH54', 'TCH55', 'TCH56', 'TCH57', 'TCH58', 'TCH59', 'TCH60',
   'TCH61', 'TCH63', 'TCH65', 'TCH66', 'TCH67', 'TCH69', 'TCH73', 'TCH74', 'TCH76', 'TCH77', 'TCH78', 'TCH79', 'TCH80',
   'TCH81', 'TCH82', 'TCH83', 'TCH84', 'TCH86', 'TCH87', 'TCH88', 'TCH91', 'TCH92', 'TCH93', 'TCH100', 'TCH104', 'TCH105',
-  'TCH106', 'TCH107', 'TCH108', 'TCH119', 'TCH121', 'TCH122', 'TCH130', 'TCH131', 'TCH154', 'TCH169',
+  'TCH106', 'TCH107', 'TCH108', 'TCH119', 'TCH121', 'TCH122', 'TCH130', 'TCH131', 'TCH154', 'TCH168', 'TCH169',
 ]
 const etape = groupe('TCH', [...PARCOURS, ...CONSTRUCTION])
 test.describe.configure({ timeout: 600_000 })
@@ -920,26 +920,37 @@ sortie(erase_crm(Company.objects.get(pk=soc), '${email}'))`)
   expect(JSON.stringify(lue)).not.toContain('Lead Acceptation')
 })
 
-etape('P144.6', ['TCH144', 'TCH130', 'TCH131'], async (f) => {
+etape('P144.6', ['TCH144', 'TCH130', 'TCH131', 'TCH168'], async (f) => {
   scenario(VIE, 'reel')
-  const roles = await py(`from apps.roles.models import Role
+  // TCH168 — `acc_tch_proprio` est le compte du PROPRIÉTAIRE : posé « Administrateur », puis le geste de CHAQUE
+  // déploiement (`init_roles`) le range sur « Directeur » et réaligne les rôles système sur la politique du code.
+  const roles = await py(`from io import StringIO
+from django.core.management import call_command
+from apps.roles.models import Role
 r = {x.nom: x.pk for x in Role.objects.filter(company_id=1, nom__in=['Administrateur', 'Directeur', 'Commercial'])}
-for nom, cle in (('acc_tch_admin', 'Administrateur'), ('acc_tch_dir', 'Directeur'), ('acc_tch_com', 'Commercial')):
+for nom, cle in (('acc_tch_admin', 'Administrateur'), ('acc_tch_dir', 'Directeur'), ('acc_tch_com', 'Commercial'),
+                 ('acc_tch_proprio', 'Administrateur')):
     if cle in r:
         compte(nom, role=r[cle])
+U.objects.filter(username='acc_tch_proprio').update(is_protected=True)
+call_command('init_roles', verbosity=0, stdout=StringIO())
 from apps.crm.models import Client
 c = Client.objects.filter(company_id=1).order_by('pk').first()
-sortie({'roles': r, 'client': c.pk if c else None})`)
+p = U.objects.select_related('role').filter(username='acc_tch_proprio').first()
+sortie({'roles': r, 'client': c.pk if c else None, 'role_proprio': p.role.nom if p and p.role else None})`)
   expect(Object.keys(roles.roles).sort(), 'rôles Administrateur, Directeur, Commercial de la société 1').toEqual(['Administrateur', 'Commercial', 'Directeur'])
+  expect(roles.role_proprio, 'le déploiement range le propriétaire sur « Directeur »').toBe('Directeur')
   const ONGLETS = ['/taches/aujourdhui', '/taches/a-trier', '/taches/projets', '/taches/agenda']
   const MDP = 'Accept@2026!'
-  // Oracle : compte Administrateur → 4 onglets
-  const admin = await ouvrir(f, { vue: 'bureau', username: 'acc_tch_admin', password: MDP })
-  await admin.goto('/taches/aujourdhui')
-  for (const href of ONGLETS) await expect(admin.locator(`a[href="${href}"]`).first()).toBeVisible()
-  expect((await admin.request.get(`${API}/aujourdhui/`)).status()).toBe(200)
-  // Oracle : comptes Directeur, Commercial → aucun onglet, API 403
-  for (const nom of ['acc_tch_dir', 'acc_tch_com']) {
+  // Oracle : comptes Administrateur, Directeur et propriétaire (rangé « Directeur ») → 4 onglets, API 200
+  for (const nom of ['acc_tch_admin', 'acc_tch_dir', 'acc_tch_proprio']) {
+    const p = await ouvrir(f, { vue: 'bureau', username: nom, password: MDP })
+    await p.goto('/taches/aujourdhui')
+    for (const href of ONGLETS) await expect(p.locator(`a[href="${href}"]`).first(), `${nom} : ${href}`).toBeVisible()
+    expect((await p.request.get(`${API}/aujourdhui/`)).status(), `${nom} : API`).toBe(200)
+  }
+  // Oracle : compte Commercial → aucun onglet, API 403
+  for (const nom of ['acc_tch_com']) {
     const p = await ouvrir(f, { vue: 'bureau', username: nom, password: MDP })
     await p.goto('/apps')
     await expect(p.getByRole('heading', { name: 'Mes applications' })).toBeVisible()

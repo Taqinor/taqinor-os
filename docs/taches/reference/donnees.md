@@ -580,9 +580,13 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
     dérive du Directeur (`:985`) : la MÊME tâche ajoute `'taches_voir'` au tuple d'exclusion de `DIRECTEUR_PERMISSIONS`
     (commentaire `# taches — retiré à l'activation`) ; aucun rôle ne le porte alors, ni navigation ni `appSku`. Fin de
     F2, après acceptation en direct : `ADMIN_PERMISSIONS` reçoit `'taches_voir'` EXPLICITEMENT (le Directeur reste
-    exclu), navigation et `appSku` posés. F4, sur décision de Reda : l'exclusion du Directeur est retirée et les autres
-    rôles internes le reçoivent par l'éditeur de rôles ; jamais un rôle portail. Un test vérifie, à chaque étape, la
-    liste exacte des rôles système qui le portent.
+    exclu), navigation et `appSku` posés. TCH168 (construite le 18/11/2026) : l'exclusion du Directeur est retirée,
+    l'Administrateur l'hérite à la même place (liste stockée inchangée) ; les autres rôles internes le reçoivent par
+    l'éditeur de rôles ; jamais un rôle portail. Un test vérifie, à chaque étape, la liste exacte des rôles système
+    qui le portent. **Pourquoi TCH168 n'a pas attendu** : `init_roles`, relancé par chaque déploiement, range tout
+    propriétaire (`is_protected`) ou superuser d'une société sur « Directeur » ; tant que ce rôle était exclu, le
+    compte du fondateur ne voyait pas le module, et un changement de rôle à la main était défait au déploiement
+    suivant. Une activation « Administrateur seul » exclut donc toujours le propriétaire : à ne pas refaire.
 29. `ReglagesRythme` n'existe que pour un compte qui a créé au moins une tâche ; sans elle : aucune sollicitation,
     aucune suggestion (IR14), `vu/` n'écrit rien.
 30. Une activité ERP liée garde `activite_origine` et n'est PAS close ; seule la conversion d'un à-faire personnel
@@ -777,7 +781,7 @@ privée (A9) est dans `textes.md` §6.
 - **I21** (rév. 3) Répartition des modèles par fichier et signatures des services fixées ici (verif-plan M6-M8) ;
   `planifier(collecte=…)` permet un seul geste pour un lot.
 - **I22** (rév. 3) Activation : exclusion explicite du Directeur jusqu'à l'activation ; Administrateur reçu
-  explicitement à la fin de F2 (verif-plan B2, A18-M8).
+  explicitement à la fin de F2 (verif-plan B2, A18-M8) ; exclusion du Directeur retirée le 18/11/2026 (TCH168, inv. 28).
 - **I23** (rév. 3) Requête « assistant » reconnue aussi au JWT `Bearer` (le relais le relaie toujours) : l'en-tête
   absent ne sert jamais du clair (A18, échec fermé).
 
@@ -862,7 +866,8 @@ privée (A9) est dans `textes.md` §6.
    projets par prochaine action, `rang_projet` posé à la création (inv. 32, 34).
 4. `ReglagesSociete.balayage_actif` (coupe-circuit, administrateur) ; inv. 39.
 5. Vie privée : inv. 36 (`_ALLOWED_TABLES`), 37 (en-tête fermé), 38 (Siri) ; `nom_pour(…, reglages)`, usage `siri`.
-6. Activation : règle exacte de `permissions_registre.py` (Directeur exclu, Administrateur d'abord).
+6. Activation : règle exacte de `permissions_registre.py` (Directeur exclu, Administrateur d'abord ; Directeur
+   ouvert le 18/11/2026 par TCH168).
 7. Répartition des modèles par fichier ; `NomCleQuerySet` ; `ClePreference`.
 8. Signatures de `creer_taches`, `planifier`, `enregistrer_geste`/`annuler_geste` et des aides `op_*` ; fabriques.
 9. Portes de visibilité `libelles_crm`/`libelles_ventes` ; sources des obligations ; deux portes de l'effacement 09-08.

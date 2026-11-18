@@ -653,10 +653,11 @@ ALL_PERMISSIONS = [
     # catalogue) ; aucun autre rôle système. Fondation : volontairement absent
     # de ``PERMISSION_MODULE`` (jamais masquable par un toggle de module).
     'peut_reinitialiser_demo',
-    # ── TCH5 — tâches et agenda personnels (module `taches`) : déclaré, accordé
-    # à AUCUN rôle tant que le module n'est pas activé (exclu du Directeur
-    # ci-dessous, donc de l'Administrateur qui en dérive).
-    # TCH130 — activé : l'Administrateur SEUL le reçoit, explicitement.
+    # ── TCH5 — tâches et agenda personnels (module `taches`). TCH130 (fin de
+    # F2) l'avait accordé à l'Administrateur SEUL ; TCH168 (18/11/2026) l'ouvre
+    # au Directeur, dont l'Administrateur dérive. Aucun autre rôle système ; les
+    # autres rôles internes le reçoivent par l'éditeur de rôles, jamais un rôle
+    # portail.
     'taches_voir',
 ]
 
@@ -979,24 +980,25 @@ UTILISATEUR_PERMISSIONS = [
 
 # Directeur : accès total, prix d'achat/marges, et le Journal d'activité.
 # Aucun marqueur de portée → voit tous les enregistrements de la société.
+# TCH168 (18/11/2026) — `taches_voir` n'est plus exclu : `init_roles` (relancé
+# à chaque déploiement) range tout propriétaire ou superuser d'une société sur
+# le rôle « Directeur » ; l'exclusion posée en TCH5 privait donc de son propre
+# module le compte pour lequel il est construit.
 DIRECTEUR_PERMISSIONS = [
     p for p in ALL_PERMISSIONS
-    if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF,
-                 'taches_voir')  # taches — retiré à l'activation
+    if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF)
 ]
 
 # Administrateur (= « Admin ») : comme le Directeur, MAIS sans le Journal
 # d'activité par défaut (réservé Directeur, octroyable dans Paramètres) et,
 # depuis QG4, sans la création de produits (`stock_creer`) — réservée aux
 # rôles Directeur + Commercial responsable (décision Reda).
+# TCH168 — `taches_voir` (dernier code d'`ALL_PERMISSIONS`) est HÉRITÉ du
+# Directeur, à la même place qu'avec l'ajout explicite de TCH130 : la liste
+# stockée du rôle « Administrateur » ne change pas (aucune réécriture au déploiement).
 ADMIN_PERMISSIONS = [
     p for p in DIRECTEUR_PERMISSIONS
     if p not in ('journal_activite_voir', 'stock_creer')
-] + [
-    # TCH130 — activation de `taches` (fin de F2, donnees.md inv. 28) : accordé
-    # EXPLICITEMENT à l'Administrateur SEUL ; le Directeur reste exclu (tuple
-    # ci-dessus) jusqu'à la décision de Reda (F4).
-    'taches_voir',
 ]
 
 # Commercial responsable : CRM/Ventes/SAV complets, peut réassigner leads/
