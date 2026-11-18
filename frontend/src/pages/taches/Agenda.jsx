@@ -678,12 +678,10 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
 
   if (planifier) {
     return (
-      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}>
-        <Navigation
-          vue="semaine" titre={titrePeriode('semaine', jour, periode)}
-          onPas={(sens) => changer({ jour: pas('semaine', jour, sens) })}
-          onAujourdhui={() => changer({ jour: null })}
-        />
+      // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
+      // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
+      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}
+        saisieBureau={false}>
         {etats}
         {/* Passe visuelle n° 6 — rien de lu : aucun jour ni compte (« 0 tâche », « Tout est placé » seraient faux) */}
         {donnees ? (

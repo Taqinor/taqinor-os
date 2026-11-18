@@ -127,6 +127,16 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches · 1 h 15/ })).toBeInTheDocument()
   })
 
+  it('Passe visuelle n° 37 — un mode (agenda-semaine-planifier.html) : ni navigation qui répète la semaine, ni barre d\'ajout', async () => {
+    const { container } = monter()
+    expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Semaine précédente' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Semaine suivante' })).toBeNull()
+    expect(container.querySelector('.ag-nav')).toBeNull()
+    expect(container.querySelector('.saisie-bureau')).toBeNull()
+    expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))
+  })
+
   it('pose une tâche sur un jour sans ouvrir de fiche, puis Terminer', async () => {
     const { container } = monter()
     expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
