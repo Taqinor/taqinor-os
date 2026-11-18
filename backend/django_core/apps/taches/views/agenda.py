@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.notifications.calendar_utils import jours_ouvres_entre
-from apps.taches.choix import SectionJournee, StatutProjet, StatutTache
+from apps.taches.choix import FamilleObligation, SectionJournee, StatutProjet, StatutTache
 from apps.taches.moteur import classement
 from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, projets_de, taches_de
@@ -152,6 +152,9 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     travailles = _travailles_de(user, journee.travailles, J, du, au)
     ouvres = set(jours_ouvres_entre(user.company, du, au))
     obligations = sel.obligations_du_jour(user, J) if journee.erp and du <= J <= au else sel.Obligations()
+    # « Toute la journée » ne porte que les éléments de l'ERP SANS heure (visites, poses, interventions : textes.md
+    # §2, SCENARIO §4) ; « Suivi des relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda.
+    bande = tuple(ligne for ligne in obligations.lignes if ligne['famille'] != FamilleObligation.TOUCHES)
     rendez_vous, agendas = sel.rendez_vous_pour(user, du, au)
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=obligations.peut_cloturer,
                                  agendas=agendas)
@@ -160,7 +163,7 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         jour = du + datetime.timedelta(days=n)
         jours.append(formes_journee.jour_d_agenda(
             rendu, jour, ouvre=jour in travailles, ferie=jour.weekday() < 5 and jour not in ouvres,
-            cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else (),
+            cles_jour=cles, toute_la_journee=bande if jour == J else (),
             externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
     # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
     volet = vue in (VUE_JOUR, VUE_SEMAINE)
