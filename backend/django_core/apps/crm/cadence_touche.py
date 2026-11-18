@@ -732,31 +732,3 @@ def _issue_fait_naitre_la_suite(outcome, cadence):
     if issue == OUTCOME_VISITE_ACCEPTEE:
         return False
     return cadence not in CADENCES_ARRETEES_PAR_ISSUE.get(issue, ())
-
-
-# ── Semis de démonstration (`seed_taches_demo`, app Tâches) ───────────────────
-
-#: La touche d'un semis de démonstration : un APPEL de la prise de contact
-#: (barreau 1) — un rappel visuel, jamais un message sortant.
-LIBELLE_TOUCHE_DEMONSTRATION = 'Appeler le client'
-
-
-def poser_touche_demonstration(lead, *, due_at):
-    """Pose UNE touche d'appel ``a_faire`` due à ``due_at`` sur un lead d'une
-    société de démonstration (``seed_taches_demo``). Aucun envoi, aucun
-    recalage de la file : ``Lead.relance_date`` reste vide, donc aucune
-    activité « Relance commerciale » n'est créée (elle doublerait la touche
-    dans la journée de l'app Tâches). Refuse toute société réelle."""
-    if not getattr(lead.company, 'est_demo', False):
-        raise ValueError('Refus : touche de démonstration hors société de démonstration.')
-    return RelanceEtape.objects.create(
-        company=lead.company, lead=lead, cadence='contact', ordre=1,
-        canal=RelanceEtape.Canal.APPEL, libelle=LIBELLE_TOUCHE_DEMONSTRATION,
-        due_at=due_at, due_date=timezone.localtime(due_at).date())
-
-
-def marquer_touche_faite(etape, user, note=''):
-    """« Fait » sur une touche par la VRAIE clôture (``marquer_etape_relance`` :
-    trace, chatter, recalage de la file), SANS suite : l'appelant décide
-    qu'aucune touche ne naît après (``suite=False``). Rien n'est envoyé."""
-    return marquer_etape_relance(etape, user, RelanceEtape.Statut.FAIT, note=note, suite=False)

@@ -23,13 +23,14 @@ peuvent pas être produites par les règles de la référence ; elles se lisent 
 5. §3 et §4, « Visite technique à Témara » : une visite venue de l'ERP se nomme « Visite — {nom du lead} ».
 6. §6, retour du 7 décembre : seule la phrase de la carte (« Tu reviens après 10 jours… ») est reproduite ; les
    nombres de ce jour-là (18 tâches, 3 à trier, 12 relances) ne sont pas semés.
-7. §3 et §4, la visite et les relances de l'ERP : ce document ne dit ni quand elles ont été posées, ni sur quels
-   leads. Le semis fixe : visite « Visite — Témara » planifiée le ven. 20 à 10:00, sur un lead SANS responsable
-   (avec le compte pour responsable, l'ERP poserait en plus « Confirmer la visite » la veille, le débrief et une
-   activité « Relance commerciale » dans « À revoir ») ; 5 leads « Relance de démonstration 1 à 5 », leurs appels
-   posés le lun. 23 à 18:00 et dus le mar. 24 à 11:00, dont 3 faits à 11:30 (« Suivi des relances : 5 » le matin,
-   2 à 15:00). La bande « Toute la journée » de l'agenda ne porte que la visite : la ligne des relances est une
-   ligne de Prévu.
+7. §3 et §4, la visite et les relances de l'ERP : le semis `seed_taches_demo` ne pose NI lead, NI visite, NI relance (le
+   code de `crm` n'a aucune porte de démonstration). L'acceptation en direct pose la visite par son harnais : un lead
+   d'essai « Témara » SANS responsable, puis le vrai service de planification — elle se lit « Visite — Témara »,
+   seule dans la bande « Toute la journée » du mar. 24. Les lignes « Suivi des relances : 5 » puis « 2 » de ce
+   document ne sont donc pas rejouées ; quand elles existent, elles sont des lignes de Prévu, jamais de la bande.
+8. §3, 15:00, « Alléger ma journée » : une seule tâche est allégeable à cette heure (« Relire le contrat de
+   maintenance » ; le stand, dû aujourd'hui, reste par règle). Le parcours pose d'abord une seconde tâche pour
+   aujourd'hui, par la feuille de saisie, puis allège en gardant le contrat.
 
 ## 1. Le cadre
 - **Aujourd'hui = mardi 24 novembre 2026.** Semaine du lundi 23 au dimanche 29 (sam. 28 et dim. 29 non travaillés).

@@ -14,6 +14,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
+import { py } from './acceptation/_django.js'
 
 export const COMPTE = 'demo_taches'
 export const API = '/api/django/taches'
@@ -56,6 +57,26 @@ export function scenario(semis, horloge, { lecture = false } = {}) {
 
 /** Une étape a écrit hors de `scenario` (ou a échoué au milieu) : la suivante sèmera de nouveau. */
 export function salir() { etat.propre = false }
+
+/** SCENARIO §0 errata 7 — la visite technique du mar. 24 vient de l'ERP : le semis des Tâches ne la pose pas (les
+ *  fonctions de démonstration n'entrent pas dans `crm`) ; le HARNAIS la pose par la vraie porte des visites, sur un
+ *  lead « Témara » SANS responsable (avec un responsable, l'ERP poserait en plus ses activités de suivi). Idempotent :
+ *  un seul lead, une seule visite ce jour-là. Rend `{ visite, erreurs }`. */
+export async function poserVisiteTemara(jour = '2026-11-24') {
+  const [a, m, j] = jour.split('-').map(Number)
+  return py(`u = U.objects.get(username='demo_taches')
+from apps.crm.models import Lead
+from apps.visites.models import VisiteTerrain
+from apps.visites.services import planifier_visite
+lead = Lead.objects.filter(company_id=u.company_id, nom='Témara').first() or Lead.objects.create(company_id=u.company_id, nom='Témara')
+date = datetime.date(${a}, ${m}, ${j})
+deja = VisiteTerrain.objects.filter(lead=lead, date_prevue=date).first()
+if deja:
+    sortie({'visite': deja.pk, 'erreurs': {}})
+else:
+    visite, erreurs = planifier_visite(lead, u, date, commercial=u)
+    sortie({'visite': visite.pk if visite else None, 'erreurs': erreurs or {}})`)
+}
 
 // --- Pages connectées ---------------------------------------------------------------------------------------------
 
