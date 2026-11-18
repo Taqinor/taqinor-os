@@ -95,7 +95,8 @@ class SemisTests(TestCase):
                          (0, 0, 2))
         self.assertEqual(forme['objectif']['nb'], 5)
         self.assertEqual(len(forme['propose']['pour_objectif']), 3)
-        self.assertEqual(forme['a_trier']['boite_reception'], 5)
+        # ERR-PLAN 3 : la facture d'acompte convertie est prévue ven. 27 (spec-2 §3.8), hors d'À trier : 4, pas 5
+        self.assertEqual(forme['a_trier']['boite_reception'], 4)
 
     def test_une_tache_en_attente_et_des_reserves_aux_vrais_titres(self):
         attente = list(Tache.objects.filter(proprietaire=self.user, statut=StatutTache.EN_ATTENTE))

@@ -52,7 +52,7 @@ from apps.taches.models.taches import Tache
 from apps.taches.services import donnees as services_donnees
 from apps.taches.services import journee, rythme
 from apps.taches.services.creation import creer_taches
-from apps.taches.services.erp import lier_activite
+from apps.taches.services.erp import convertir_activites, lier_activite
 from apps.taches.services.planification import planifier
 from apps.taches.services.projets import creer_projet, modifier_projet
 from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache
@@ -319,7 +319,8 @@ class Scenario:
 
     # --- À trier, à revoir, en réserve (§1) -----------------------------------------------------------------------
     def a_trier(self):
-        """5 tâches À TRIER, nées par leur porte réelle (suggestion, activité, capture, saisie)."""
+        """4 tâches À TRIER nées par leur porte réelle (suggestion, capture, saisie), et l'à-faire d'Activités
+        converti par la vraie conversion — prévu ven. 27, donc hors d'À trier (ERR-PLAN 3)."""
         soir_23 = self.instant(self.date(11, 23), '17:30')
         suggeree = self._creer(self.instant(self.date(11, 23), '18:00'),
                                {'titre': 'Préparer le chantier du devis accepté'},
@@ -348,13 +349,12 @@ class Scenario:
                                        created_by=self.user, done=False, **champs)
 
     def _facture_d_acompte(self, instant):
-        """« À-faire d'Activités » converti comme `services.erp._convertir_une` : échéance ven. 27, À trier."""
-        from apps.records.services import cloturer_a_faire_personnel
+        """« À-faire d'Activités » (date due ven. 27) converti par LA conversion (`services.erp.
+        convertir_activites`, bandeau « Tout convertir ») : la date due devient le JOUR PRÉVU (spec-2 §3.8),
+        la tâche est donc prévue ven. 27, hors d'À trier (ERR-PLAN 3 / ERR-SCENARIO au rapport)."""
         with horloge(instant):
             activite = self._activite(summary=ACTIVITE_FACTURE, personnelle=True, due_date=self.date(11, 27))
-            creer_taches(self.user, [{'titre': ACTIVITE_FACTURE, 'echeance': self.date(11, 27)}],
-                         source=Source.ACTIVITE, porte='conversion', activite=activite)
-            cloturer_a_faire_personnel(activite, self.user)
+            convertir_activites(self.user, ids=[activite.pk])
 
     def a_revoir(self):
         """S1 : prévues lun. 23 après trois reports (`JOURS_A_REVOIR`), chacun par `planifier` le soir du
