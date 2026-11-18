@@ -104,6 +104,22 @@ class EffacementTests(_Base):
         self.assertFalse(SuggestionTache.objects.filter(pk=du_lead.pk).exists())
         self.assertEqual(set(SuggestionTache.objects.values_list('pk', flat=True)), {s.pk for s in gardees})
 
+    def test_lien_efface_reste_efface_quand_le_lead_anonymise_se_lit_encore(self):
+        """Acceptation F2 (P144.5) : un compte qui a `crm_voir` lit encore le lead ANONYMISÉ par la porte de crm.
+        Ouvrir la fiche ne ressuscite pas le lien (« Lié à : Anonymisé ») : il reste `efface`, « Lead effacé »
+        (invariant 23, comme la revérification de la nuit)."""
+        tache = _liee(self.u1, CibleLiable.LEAD, LEAD, titre='Appeler Karim')
+        lead_erased.send(sender=None, company=self.a, crm_lead_id=LEAD)
+        with mock.patch('apps.taches.services.taches.libelle_de_cible', return_value='Anonymisé') as porte:
+            reponse = self._api().get(f'{PREFIXE}taches/{tache.pk}/')
+        self.assertEqual(reponse.status_code, 200)
+        lien = reponse.json()['lien']
+        self.assertEqual((lien['etat'], lien['libelle'], lien['url']), (LienEtat.EFFACE, LIBELLE_LEAD_EFFACE, None))
+        self.assertNotIn('Anonymisé', reponse.content.decode())
+        porte.assert_not_called()  # un lien effacé ne se relit plus
+        tache.refresh_from_db()
+        self.assertEqual((tache.lien_libelle, tache.lien_etat), ('', LienEtat.EFFACE))
+
     def test_fournisseur_dsr_enregistre_avant_crm(self):
         fournisseur = registre_dsr._PROVIDERS[dsr.PROVIDER_NAME]
         self.assertIsNone(fournisseur['export'])
