@@ -30,10 +30,15 @@ const erreurHttp = (data, status) => Object.assign(new Error('http'), { response
 const monter = () => render(
   <MemoryRouter initialEntries={['/taches/a-trier']}><ATrier aujourdhui={AUJOURD} /></MemoryRouter>,
 )
-const lignes = () => within(screen.getByRole('list')).getAllByRole('listitem')
+const RESERVE = [
+  { ...ligne(51, 'Comparer deux devis'), projet: { id: 9, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 3 } },
+  ligne(52, 'Changer de banque'),
+].map((t) => ({ ...t, quelque_jour: true }))
+const lignes = () => within(screen.getAllByRole('list')[0]).getAllByRole('listitem')
+const appelsBoite = () => api.listerToutesLesTaches.mock.calls.filter(([f]) => f.vue === 'boite').length
 
 beforeEach(() => {
-  api.listerToutesLesTaches.mockResolvedValue(TACHES)
+  api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(vue === 'quelque_jour' ? RESERVE : TACHES))
   api.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
   api.traiterLot.mockImplementation((corps) => Promise.resolve({ data: { appliquees: corps.ids, refusees: [], geste_id: lot.geste_id } }))
   api.convertirActivites.mockResolvedValue({ data: conversion })
@@ -56,6 +61,51 @@ describe('TCH86 — écran À trier', () => {
     expect(bandeau).toHaveTextContent('7 à-faire personnels dans Activités')
     expect(within(bandeau).getByRole('button', { name: 'Tout convertir' })).toBeInTheDocument()
     expect(within(bandeau).getByRole('button', { name: 'Voir' })).toBeInTheDocument()
+  })
+
+  it('passe visuelle n° 24 — bandeau : la phrase seule sur sa ligne, « Tout convertir · Voir » en liens dessous', async () => {
+    api.lireAujourdhui.mockResolvedValue({ data: { ...aujourdhui, a_trier: { ...aujourdhui.a_trier, a_convertir: 1 } } })
+    monter()
+    const bandeau = await screen.findByRole('region', { name: 'Activités personnelles' })
+    const phrase = within(bandeau).getByText('1 à-faire personnel dans Activités')
+    expect(phrase).toHaveClass('bandeau-titre')
+    for (const nom of ['Tout convertir', 'Voir']) {
+      const geste = within(bandeau).getByRole('button', { name: nom })
+      expect(geste).toHaveClass('geste')
+      expect(phrase.contains(geste)).toBe(false)
+    }
+  })
+
+  it('passe visuelle n° 22 — une ligne = case ronde, titre, mentions servies, gestes en liens (pas en pilules)', async () => {
+    const user = userEvent.setup()
+    api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(
+      vue === 'quelque_jour' ? [] : [{ ...TACHES[0], source: 'suggestion' }, TACHES[1]],
+    ))
+    monter()
+    await screen.findByText('Timbres')
+    const [premiere, seconde] = lignes()
+    expect(premiere).toHaveClass('ligne', 'tri')
+    expect(within(premiere).getByText("Suggéré par l'ERP")).toBeInTheDocument()
+    expect(within(premiere).getByText(modele.lien.libelle)).toBeInTheDocument()
+    expect(within(premiere).getByText('échéance jeu. 19')).toBeInTheDocument()
+    expect(within(seconde).queryByText("Suggéré par l'ERP")).toBeNull()
+    for (const nom of ['Aujourd\'hui', 'Demain', 'Projet…']) {
+      const geste = within(premiere).getByRole('button', { name: nom })
+      expect(geste).toHaveClass('geste')
+      expect(geste).not.toHaveClass('puce')
+    }
+    await user.click(within(seconde).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    expect(api.traiterLot).toHaveBeenLastCalledWith({ ids: [42], action: 'terminer', valeurs: {} })
+    expect(screen.queryByText('Timbres')).toBeNull()
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
+  })
+
+  it('passe visuelle n° 21 — sous-titre « {n} sans jour ni projet », suit la boîte', async () => {
+    const user = userEvent.setup()
+    monter()
+    expect(await screen.findByText('3 sans jour ni projet')).toBeInTheDocument()
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Demain' }))
+    expect(await screen.findByText('2 sans jour ni projet')).toBeInTheDocument()
   })
 
   it('Aujourd\'hui : la ligne part tout de suite, le lot est écrit, « Annuler » la ramène à sa place', async () => {
@@ -134,17 +184,39 @@ describe('TCH86 — écran À trier', () => {
     expect(api.convertirActivites).toHaveBeenCalledWith({ toutes: true })
     expect(await screen.findByText('Assigné à un collègue : reste dans Activités.')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Activités personnelles' })).toHaveTextContent('6 à-faire personnels')
-    expect(api.listerToutesLesTaches).toHaveBeenCalledTimes(2)
+    expect(appelsBoite()).toBe(2)
   })
 
-  it('« En réserve » lit la vue quelque_jour ; vide : « Rien en réserve »', async () => {
+  it('passe visuelle n° 23 — « En réserve {n} » est replié EN BAS (vue quelque_jour), jamais un commutateur en tête', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByText('Appeler Karim')
-    api.listerToutesLesTaches.mockResolvedValue([])
-    await user.click(screen.getByRole('radio', { name: 'En réserve' }))
+    expect(screen.queryByRole('radiogroup', { name: 'Liste' })).toBeNull()
+    expect(api.listerToutesLesTaches).toHaveBeenCalledWith({ vue: 'quelque_jour' })
+    const replie = await screen.findByRole('button', { name: /^En réserve\s*2/ })
+    expect(replie).toHaveAttribute('aria-expanded', 'false')
+    // replié : sous la liste de la boîte, ses lignes cachées
+    expect(screen.getByRole('region', { name: 'À trier' }).compareDocumentPosition(replie) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByText('Comparer deux devis')).toBeNull()
+    await user.click(replie)
+    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    expect(within(reserve).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(within(reserve).getAllByRole('listitem')[0]).getByText('Salon Solaire Expo').closest('[data-p]')).toHaveAttribute('data-p', 'indigo')
+    // une ligne de la boîte mise en réserve la rejoint aussitôt
+    await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
+    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    expect(within(reserve).getAllByRole('listitem')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: /^En réserve\s*3/ })).toBeInTheDocument()
+  })
+
+  it('« En réserve » vide une fois déplié : « Rien en réserve »', async () => {
+    const user = userEvent.setup()
+    api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(vue === 'quelque_jour' ? RESERVE.slice(0, 1) : TACHES))
+    monter()
+    await user.click(await screen.findByRole('button', { name: /^En réserve\s*1/ }))
+    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    await user.click(within(reserve).getByRole('button', { name: 'Demain' }))
     expect(await screen.findByText('Rien en réserve')).toBeInTheDocument()
-    expect(api.listerToutesLesTaches).toHaveBeenLastCalledWith({ vue: 'quelque_jour' })
   })
 
   it('boîte vide : « Rien à trier » et « Voir mes projets »', async () => {

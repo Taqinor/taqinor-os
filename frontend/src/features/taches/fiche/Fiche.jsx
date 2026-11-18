@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import {
+  Calendar, CalendarClock, Check, ChevronDown, Ellipsis, Flag, Folder, Plus, X,
+} from 'lucide-react'
 
 import { frenchError } from '../../../lib/frenchError'
 import {
   ajouterPoint, annulerGeste, classerErreur, creerProjet, lireTache, listerTousLesProjets, marquerEssentiel,
   modifierPoint, modifierReglages, modifierTache, planifierTache, repeterRappel, retirerPoint, rouvrirTache, terminerTache,
+  trancherTache,
 } from '../../../api/tachesApi'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '../../../ui/DropdownMenu'
 import { proposerAnnuler } from '../lib/gestes'
-import { aujourdhuiIso, heure, heureDuConflit, jourCourt, jourNomme } from '../lib/textes'
+import {
+  aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
+} from '../lib/textes'
 import BandeauConflit from '../ui/BandeauConflit'
 import FichePlus from './FichePlus'
 import CaseRonde from '../ui/CaseRonde'
@@ -53,27 +61,43 @@ function erreursParChamp(champs) {
 
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
 
+const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : texte)
+
 const texteQuand = (t, aujourdhui) => {
   if (t.quelque_jour) return 'En réserve'
   if (!t.jour_prevu) return 'Sans jour'
-  const jour = t.moment === 'soir' ? 'ce soir' : jourCourt(t.jour_prevu, aujourdhui)
+  const jour = majuscule(t.moment === 'soir' ? 'ce soir' : jourCourt(t.jour_prevu, aujourdhui))
   return t.heure_debut ? `${jour} · ${heure(t.heure_debut)}` : jour
 }
+
+/** La puce d'échéance (ecran-fiche.html « échéance mer. 25 ») : le jour nommé dès demain, sinon la phrase de la ligne. */
+function texteEcheance(echeance, aujourdhui) {
+  if (ecartJours(echeance, aujourdhui) === 1) return `échéance ${jourNomme(echeance, aujourdhui)}`
+  return echeanceTexte(echeance, aujourdhui)?.texte ?? ''
+}
+
+const PRIORITE_NOMMEE = { 3: 'haute', 2: 'moyenne', 1: 'basse' }
 
 function Erreur({ id, message }) {
   return message ? <p id={id} className="erreur-champ" role="alert">{message}</p> : null
 }
 
-function Ligne({ etiquette, valeur, ouvert, onBasculer, erreur, idErreur, enfants }) {
+/** Une puce de la fiche (ecran-fiche.html) : un toucher ouvre le champ dessous ; le nom du champ (« Quand je la
+ *  fais », « Échéance »…) précède la valeur pour le lecteur d'écran ; son erreur est rattachée à la puce. */
+function PuceChamp({ nom, valeur, vide = false, ouvert, onBasculer, idErreur, erreur, icone, couleur, children }) {
   return (
-    <div className="fiche-champ">
-      <button type="button" className="fiche-ligne" aria-expanded={ouvert} aria-describedby={erreur ? idErreur : undefined} onClick={onBasculer}>
-        <span className="fiche-etiquette">{etiquette}</span>
-        <span className="fiche-valeur chiffres">{valeur}</span>
-      </button>
-      <Erreur id={idErreur} message={erreur} />
-      {ouvert ? enfants : null}
-    </div>
+    <button
+      type="button"
+      className={vide ? 'puce vide' : 'puce'}
+      data-p={couleur}
+      aria-label={`${nom} : ${valeur}`}
+      aria-expanded={ouvert}
+      aria-describedby={erreur ? idErreur : undefined}
+      onClick={onBasculer}
+    >
+      {icone}
+      {children ?? <span className="chiffres">{valeur}</span>}
+    </button>
   )
 }
 
@@ -115,17 +139,17 @@ function CheckList({ tache, onChange, onErreur }) {
   }
 
   return (
-    <div className="fiche-checklist">
+    <ul className="points">
       {points.map((point) => (
-        <div key={point.id} className="fiche-point">
+        <li key={point.id} className={point.fait ? 'point-liste fait' : 'point-liste'}>
           <CaseRonde coche={Boolean(point.fait)} libelle={`${point.fait ? 'Rouvrir' : 'Fait'} : ${point.libelle}`} onBasculer={(suivant) => basculer(point, suivant)} />
-          <span className={point.fait ? 'titre faite' : 'titre'}>{point.libelle}</span>
+          <span className="libelle">{point.libelle}</span>
           <button type="button" className="bouton-icone" aria-label={`Retirer le point : ${point.libelle}`} onClick={() => retirer(point)}>
             <X className="i i-16" aria-hidden="true" />
           </button>
-        </div>
+        </li>
       ))}
-      <label className="fiche-ajout">
+      <li className="point-liste ajout">
         <Plus className="i i-16" aria-hidden="true" />
         <input
           type="text"
@@ -136,8 +160,8 @@ function CheckList({ tache, onChange, onErreur }) {
           onChange={(e) => setNouveau(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter() } }}
         />
-      </label>
-    </div>
+      </li>
+    </ul>
   )
 }
 
@@ -163,6 +187,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const [projets, setProjets] = useState(null)
   const [questionTitres, setQuestionTitres] = useState(false)
   const [plusOuvert, setPlusOuvert] = useState(false)
+  const [supprimerDemande, setSupprimerDemande] = useState(0)
   const courant = useRef(id)
 
   // lecture (et relecture après un « Annuler ») : la réponse n'est gardée que pour la fiche encore ouverte
@@ -234,6 +259,13 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
     annulable(suivante ? `Faite · prochaine ${jourCourt(suivante, aujourdhui)}` : 'Faite', r.geste)
   }
   const rouvrir = async () => { await ecrire(() => rouvrirTache(id), 'general') }
+  // ⋯ de l'en-tête (textes.md §2.4 « Pied » : Abandonner · Supprimer) — les MÊMES gestes que dans « Plus »
+  const abandonner = async () => {
+    const r = await ecrire(() => trancherTache(id, { choix: 'abandonner' }), 'general', undefined, true)
+    if (r) { annulable('Abandonnée', r.data?.geste_id); onFermer?.() }
+  }
+  const demanderSuppression = () => { setPlusOuvert(true); setSupprimerDemande((n) => n + 1) }
+  const basculer = (champ) => setOuvert((o) => (o === champ ? '' : champ))
   const essentielle = async (suivant) => {
     await ecrire(() => marquerEssentiel({ tache_id: id, essentielle: suivant }), 'essentielle')
   }
@@ -271,6 +303,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const lendemain = ajouterJours(tache?.jour_prevu && tache.jour_prevu >= aujourdhui ? tache.jour_prevu : aujourdhui, 1)
   const titre = saisie.titre ?? tache?.titre ?? ''
   const notes = saisie.notes ?? tache?.notes ?? ''
+  const points = tache?.elements_checklist ?? []
 
   const enregistrerTexte = (champ) => {
     const valeur = saisie[champ]
@@ -299,6 +332,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
               </div>
             ) : null}
 
+            {/* UN seul titre : celui de la fiche, en grand (la barre de la feuille n'en répète aucun, saisie.css) */}
             <input
               type="text"
               className="fiche-titre-champ"
@@ -311,51 +345,94 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
             />
             <Erreur message={erreurs.titre} />
 
-            <Ligne
-              etiquette="Quand je la fais"
-              valeur={texteQuand(tache, aujourdhui)}
-              ouvert={ouvert === 'quand'}
-              onBasculer={() => setOuvert((o) => (o === 'quand' ? '' : 'quand'))}
-              erreur={erreurs.quand}
-              idErreur="fiche-err-quand"
-              enfants={(
+            {/* Quand je la fais · Échéance · Projet · Priorité : des PUCES (ecran-fiche.html) ; un toucher ouvre le champ dessous */}
+            <div className="puces fiche-champs">
+              <PuceChamp
+                nom="Quand je la fais"
+                valeur={texteQuand(tache, aujourdhui)}
+                ouvert={ouvert === 'quand'}
+                onBasculer={() => basculer('quand')}
+                idErreur="fiche-err-quand"
+                erreur={erreurs.quand}
+                icone={<Calendar className="i i-16" aria-hidden="true" />}
+              />
+              <PuceChamp
+                nom="Échéance"
+                valeur={tache.echeance ? texteEcheance(tache.echeance, aujourdhui).replace(/^échéance /, '') : 'aucune'}
+                vide={!tache.echeance}
+                ouvert={ouvert === 'echeance'}
+                onBasculer={() => basculer('echeance')}
+                idErreur="fiche-err-echeance"
+                erreur={erreurs.echeance}
+                icone={<CalendarClock className="i i-16" aria-hidden="true" />}
+              >
+                <span className="chiffres">{tache.echeance ? texteEcheance(tache.echeance, aujourdhui) : 'Échéance'}</span>
+              </PuceChamp>
+              <PuceChamp
+                nom="Projet"
+                valeur={tache.projet ? tache.projet.nom : 'Sans projet'}
+                vide={!tache.projet}
+                couleur={tache.projet?.couleur}
+                ouvert={ouvert === 'projet'}
+                onBasculer={ouvrirProjet}
+                idErreur="fiche-err-projet"
+                erreur={erreurs.projet}
+                icone={tache.projet ? <i className="point" aria-hidden="true" /> : <Folder className="i i-16" aria-hidden="true" />}
+              >
+                <span className="projet-nom">{tache.projet ? tache.projet.nom : 'Sans projet'}</span>
+              </PuceChamp>
+              <PuceChamp
+                nom="Priorité"
+                valeur={PRIORITE_NOMMEE[tache.priorite] ?? 'aucune'}
+                vide={!PRIORITE_NOMMEE[tache.priorite]}
+                ouvert={ouvert === 'priorite'}
+                onBasculer={() => basculer('priorite')}
+                idErreur="fiche-err-priorite"
+                erreur={erreurs.priorite}
+                icone={<Flag className="i i-16" aria-hidden="true" />}
+              >
+                <span>{PRIORITE_NOMMEE[tache.priorite] ? `Priorité ${PRIORITE_NOMMEE[tache.priorite]}` : 'Priorité'}</span>
+              </PuceChamp>
+            </div>
+
+            {ouvert === 'quand' ? (
+              <div className="fiche-editeur">
                 <SelecteurQuand
                   valeur={{ jour_prevu: tache.jour_prevu, moment: tache.moment, heure_debut: tache.heure_debut, quelque_jour: tache.quelque_jour }}
                   aujourdhui={aujourdhui}
                   reporterA={lendemain}
                   onChoisir={planifier}
                 />
-              )}
-            />
+              </div>
+            ) : null}
+            <Erreur id="fiche-err-quand" message={erreurs.quand} />
             {avertissements.map((a) => <p key={a.code} className="apercu-note">{a.message}</p>)}
 
-            <div className="fiche-champ">
-              <label className="fiche-ligne" htmlFor="fiche-echeance">
-                <span className="fiche-etiquette">Échéance</span>
-                <input
-                  id="fiche-echeance"
-                  type="date"
-                  className="champ-discret chiffres"
-                  value={tache.echeance ?? ''}
-                  onChange={(e) => patcher({ echeance: e.target.value || null }, 'echeance')}
-                />
-              </label>
-              <Erreur message={erreurs.echeance} />
-            </div>
+            {ouvert === 'echeance' ? (
+              <div className="fiche-editeur">
+                <label className="fiche-ligne" htmlFor="fiche-echeance">
+                  <span className="fiche-etiquette">Échéance</span>
+                  <input
+                    id="fiche-echeance"
+                    type="date"
+                    className="champ-discret chiffres"
+                    value={tache.echeance ?? ''}
+                    onChange={(e) => patcher({ echeance: e.target.value || null }, 'echeance')}
+                  />
+                </label>
+              </div>
+            ) : null}
+            <Erreur id="fiche-err-echeance" message={erreurs.echeance} />
 
-            <Ligne
-              etiquette="Projet"
-              valeur={tache.projet ? tache.projet.nom : 'Sans projet'}
-              ouvert={ouvert === 'projet'}
-              onBasculer={ouvrirProjet}
-              erreur={erreurs.projet}
-              idErreur="fiche-err-projet"
-              enfants={<SelecteurProjet projets={projets ?? []} valeur={tache.projet?.id ?? null} sansProjet onChoisir={choisirProjet} onNouveau={nouveauProjet} />}
-            />
+            {ouvert === 'projet' ? (
+              <div className="fiche-editeur">
+                <SelecteurProjet projets={projets ?? []} valeur={tache.projet?.id ?? null} sansProjet onChoisir={choisirProjet} onNouveau={nouveauProjet} />
+              </div>
+            ) : null}
+            <Erreur id="fiche-err-projet" message={erreurs.projet} />
 
-            <div className="fiche-champ">
-              <div className="fiche-ligne">
-                <span className="fiche-etiquette">Priorité</span>
+            {ouvert === 'priorite' ? (
+              <div className="fiche-editeur">
                 <div className="segmente" role="radiogroup" aria-label="Priorité">
                   {PRIORITES.map(([libelle, niveau]) => (
                     <button
@@ -370,23 +447,16 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
                   ))}
                 </div>
               </div>
-              <Erreur message={erreurs.priorite} />
-            </div>
+            ) : null}
+            <Erreur id="fiche-err-priorite" message={erreurs.priorite} />
+            <Erreur message={erreurs.essentielle} />
 
-            <div className="fiche-champ">
-              <div className="fiche-ligne">
-                <span className="fiche-etiquette">Essentielle</span>
-                <Etoile active={Boolean(tache.essentielle)} onBasculer={essentielle} titre={tache.titre} />
-              </div>
-              <Erreur message={erreurs.essentielle} />
-            </div>
-
-            <div className="fiche-champ">
-              <label className="fiche-etiquette" htmlFor="fiche-notes">Notes</label>
+            <div className="fiche-section">
+              <label className="fiche-label" htmlFor="fiche-notes">Notes</label>
               <textarea
                 id="fiche-notes"
                 className="saisie-champ fiche-notes"
-                rows={3}
+                rows={2}
                 aria-invalid={erreurs.notes ? true : undefined}
                 value={notes}
                 onChange={(e) => setSaisie((s) => ({ ...s, notes: e.target.value }))}
@@ -395,18 +465,24 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
               <Erreur message={erreurs.notes} />
             </div>
 
-            <div className="fiche-champ">
-              <span className="fiche-etiquette">Check-list</span>
+            <div className="fiche-section">
+              <p className="fiche-label">
+                <span>Check-list</span>
+                {points.length > 0 ? <span className="compte chiffres">{`${points.filter((p) => p.fait).length}/${points.length}`}</span> : null}
+              </p>
               <CheckList
                 tache={tache}
-                onChange={(points) => (points ? setTache((t) => ({ ...t, elements_checklist: points })) : charger())}
+                onChange={(liste) => (liste ? setTache((t) => ({ ...t, elements_checklist: liste })) : charger())}
                 onErreur={erreur}
               />
               <Erreur message={erreurs.checklist} />
             </div>
 
-            <button type="button" className="fiche-ligne" aria-expanded={plusOuvert} onClick={() => setPlusOuvert((v) => !v)}>
-              <span className="fiche-etiquette">Plus</span>
+            {/* « Plus » en gras, son indice et son chevron (ecran-fiche.html) ; le nom lu reste « Plus » */}
+            <button type="button" className="fiche-plus-bouton" aria-expanded={plusOuvert} onClick={() => setPlusOuvert((v) => !v)}>
+              Plus
+              <span className="indice" aria-hidden="true">Répéter, durée, étiquettes, en attente de…</span>
+              <ChevronDown className="i i-16" aria-hidden="true" />
             </button>
             {plusOuvert ? (
               <FichePlus
@@ -419,17 +495,36 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
                 annulable={annulable}
                 charger={charger}
                 onFermer={onFermer}
+                supprimerDemande={supprimerDemande}
               />
             ) : null}
             <Erreur message={erreurs.general} />
+
+            {/* ☆ et ⋯ dans l'en-tête de la feuille, à droite (ecran-fiche.html), posés par saisie.css */}
+            <div className="fiche-entete-actions">
+              <Etoile active={Boolean(tache.essentielle)} onBasculer={essentielle} titre={tache.titre} />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className="bouton-icone" aria-label="Actions">
+                    <Ellipsis className="i" aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={abandonner}>Abandonner</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem destructive onSelect={demanderSuppression}>Supprimer</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         ) : null}
         {tache ? (
           <div className="feuille-pied">
-            <button type="button" className="bouton second" onClick={() => reporter(lendemain)}>
+            <button type="button" className="bouton second accent" onClick={() => reporter(lendemain)}>
               {`Reporter à ${jourNomme(lendemain, aujourdhui)}`}
             </button>
-            <button type="button" className="bouton plein large" onClick={fait ? rouvrir : terminer}>
+            <button type="button" className={fait ? 'bouton second large' : 'bouton fait large'} onClick={fait ? rouvrir : terminer}>
+              {fait ? null : <Check className="i i-16" aria-hidden="true" />}
               {fait ? 'Rouvrir' : 'Fait'}
             </button>
           </div>

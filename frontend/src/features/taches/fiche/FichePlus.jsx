@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link as LienIcone, X } from 'lucide-react'
 
 import { frenchError } from '../../../lib/frenchError'
@@ -291,8 +291,11 @@ function SousTaches({ tache, charger, erreur }) {
   )
 }
 
-function Supprimer({ tache, onFermer, erreur }) {
-  const [confirmation, setConfirmation] = useState(false)
+/** `demande` > 0 : « Supprimer » choisi dans le ⋯ de l'en-tête — la question s'ouvre d'elle-même et se montre. */
+function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
+  const [confirmation, setConfirmation] = useState(demande > 0)
+  const question = useRef(null)
+  useEffect(() => { if (demande > 0) question.current?.scrollIntoView?.({ block: 'center' }) }, [demande])
   const nb = (tache.enfants ?? []).length
   const supprimer = async () => {
     try {
@@ -314,7 +317,7 @@ function Supprimer({ tache, onFermer, erreur }) {
     return <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>
   }
   return (
-    <div className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
+    <div ref={question} className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
       <p>{`Supprimer « ${tache.titre} » ?`}</p>
       {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
       <div className="carte-actions">
@@ -336,7 +339,9 @@ function Lien({ lien }) {
   )
 }
 
-export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer }) {
+export default function FichePlus({
+  tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer, supprimerDemande = 0,
+}) {
   const [duree2, setDuree] = useState(null)
   const minutes = duree2 ?? (tache.estimation_minutes ?? '')
 
@@ -403,7 +408,7 @@ export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, 
 
       <div className="carte-actions">
         <button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>
-        <Supprimer tache={tache} onFermer={onFermer} erreur={erreur} />
+        <Supprimer key={supprimerDemande} demande={supprimerDemande} tache={tache} onFermer={onFermer} erreur={erreur} />
       </div>
     </div>
   )

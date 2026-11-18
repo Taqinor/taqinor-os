@@ -70,7 +70,11 @@ describe('TCH167 — Suggéré par l\'ERP dans À trier', () => {
     await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(ecrite.geste_id))
     expect(await section()).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText(ecrite.tache.titre)).toBeNull())
-    expect(api.listerToutesLesTaches).toHaveBeenCalledTimes(1)
+    // « sans relecture » : la boîte est lue UNE fois à l'ouverture, la réserve repliée UNE fois (passe visuelle n° 23) ;
+    // ni « Ajouter » ni « Annuler » ne relisent l'une ou l'autre
+    const vues = api.listerToutesLesTaches.mock.calls.map(([params]) => params?.vue)
+    expect(vues.filter((vue) => vue === 'quelque_jour')).toHaveLength(1)
+    expect(vues.filter((vue) => vue !== 'quelque_jour')).toHaveLength(1)
     expect(api.listerSuggestions).toHaveBeenCalledTimes(1)
   })
 

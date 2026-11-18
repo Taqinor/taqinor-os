@@ -10,7 +10,17 @@
   caret-color: var(--tch-accent); outline: none;
 }
 .tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
-.tch .puces.saisie { margin-top: 2px; }
+/* Passe visuelle n° 32 (ecran-saisie.html, taches.css « .saisie-texte .jeton ») — les jetons lus surlignés DANS le
+   texte : un calque derrière le textarea (même police, même retour à la ligne), texte transparent */
+.tch .saisie-zone { position: relative; }
+.tch .saisie-zone .saisie-champ { position: relative; }
+.tch .saisie-miroir {
+  position: absolute; inset: 0; padding: 4px 0; overflow: hidden; pointer-events: none;
+  font: inherit; font-size: 1.0625rem; line-height: 1.6; color: transparent; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.tch .saisie-miroir .jeton { border-radius: 5px; background: var(--tch-jeton); box-shadow: 0 0 0 2px var(--tch-jeton); }
+.tch .saisie-miroir .jeton.pj { background: var(--tch-bloc-fond); box-shadow: 0 0 0 2px var(--tch-bloc-fond); }
+.tch .saisie-miroir .jeton.nouveau { background: transparent; box-shadow: none; outline: 1.5px dashed var(--tch-texte-doux); outline-offset: 1px; }.tch .puces.saisie { margin-top: 2px; }
 .tch .alertes-saisie {
   margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
   font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -18,6 +28,26 @@
 .tch .feuille-saisie { display: flex; flex-direction: column; gap: 12px; }
 .tch .champ-etiquette { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
 .tch .champ-etiquette > span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+/* Passe visuelle n° 46 — Recherche (recherche.html, ecrans-secondaires.css « Recherche ») : la loupe DANS le
+   champ, champ et filtres alignés sur la gouttière du contenu */
+.tch .es-recherche { display: flex; align-items: center; gap: 4px; padding: 6px var(--tch-gouttiere) 0; }
+.tch .es-recherche .es-champ {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 2px 0 12px;
+  font-size: 1.0625rem;
+}
+.tch .es-recherche .es-champ:focus-within { box-shadow: inset 0 0 0 2px var(--tch-accent); }
+.tch .es-recherche .es-champ > svg { flex: none; color: var(--tch-texte-doux); }
+.tch .es-recherche .valeur {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; outline: none;
+}
+.tch .es-recherche .valeur::placeholder { color: var(--tch-texte-doux); }
+/* l'anneau de focus est celui du champ entier (:focus-within ci-dessus), jamais un second cadre autour du texte */
+.tch .es-recherche .valeur:focus, .tch .es-recherche .valeur:focus-visible { outline: none; box-shadow: none; }
+.tch .es-filtres { padding: 12px var(--tch-gouttiere) 0; }
+.tch .es-filtres ~ .recherche-replies { margin: 10px var(--tch-gouttiere) 0; }
+.tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
+@media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
@@ -38,6 +68,18 @@
 }
 .tch .apercu-projet .nom { flex: 1; min-width: 0; text-align: left; }
 .tch .apercu-projet .nom small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--tch-texte-doux); }
+/* Passe visuelle n° 33 (premier-usage-1-apercu.html) — l'en-tête d'un projet tient sur une ligne : point de
+   couleur, nom, « {n} tâches · En faire une tâche », puis la puce de priorité « Moyenne ⌄ » */
+.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 650; }
+.tch .apercu-projet > .point { flex: none; }
+.tch .apercu-projet .nom-projet { display: block; overflow-wrap: anywhere; }
+.tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
+.tch .apercu-bascule::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
+.tch .apercu-bascule[aria-pressed="true"] { text-decoration: underline; }
+.tch .puce.prio { flex: none; height: 34px; gap: 4px; background: var(--tch-surface); color: var(--tch-texte); }
+.tch .puce.prio svg { color: var(--tch-texte-doux); }
+/* une liste collée : la feuille s'ouvre en grand (cran 85, comme la maquette), quel que soit son cran de départ */
+.tch .feuille.cran-50:has(.apercu-liste) { height: 85vh; }
 .tch .apercu-ligne { display: grid; grid-template-columns: 44px 1fr; align-items: start; min-height: 48px; margin-left: -11px; }
 .tch .apercu-ligne.retrait { padding-left: 28px; }
 .tch .apercu-ligne .coche-carree { margin-top: 2px; }
@@ -61,8 +103,51 @@
 .tch .fiche { display: contents; }
 .tch .fiche-corps { display: flex; flex-direction: column; gap: 4px; }
 .tch .fiche-titre-champ {
-  display: block; width: 100%; min-height: 48px; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
-  font: inherit; font-size: 1.25rem; font-weight: 650; outline: none;
+  display: block; width: 100%; min-height: 44px; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 650; letter-spacing: -0.01em; outline: none;
+}
+/* Passe visuelle (ecran-fiche.html, ecrans-coeur.css « Fiche ») — UN seul titre : la barre de la feuille n'en
+   répète aucun (l'en-tête garde ✕ à gauche, ☆ et ⋯ à droite) ; le nom du dialogue reste lu */
+.tch .fiche .feuille-entete .feuille-titre { visibility: hidden; }
+.tch .fiche-entete-actions {
+  position: absolute; top: 24px; right: calc(var(--tch-gouttiere) - 10px); display: flex; align-items: center; height: 44px;
+}
+.tch .fiche-entete-actions .etoile-bouton { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 999px; }
+.tch .fiche-champs { margin-top: 14px; }
+.tch .fiche-champs .puce { height: 36px; }
+.tch .fiche-champs .puce .projet-nom { max-width: 22ch; white-space: nowrap; }
+.tch .fiche-editeur { margin-top: 12px; }
+.tch .fiche-section { display: flex; flex-direction: column; margin-top: 22px; }
+.tch .fiche-section .fiche-notes { min-height: 0; padding: 0; font-size: 1rem; line-height: 1.5; }
+.tch .points { list-style: none; margin: 0; padding: 0; }
+.tch .point-liste { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -12px; }
+.tch .point-liste .case { margin: 0; }
+.tch .point-liste .rond { width: 18px; height: 18px; border-width: 1.5px; }
+.tch .point-liste .rond svg { width: 11px; height: 11px; }
+.tch .point-liste .libelle { font-size: 1rem; line-height: 1.375rem; }
+.tch .point-liste.fait .libelle { color: var(--tch-texte-doux); text-decoration: line-through; text-decoration-thickness: 1px; }
+.tch .point-liste.ajout { grid-template-columns: 44px 1fr; color: var(--tch-texte-doux); }
+.tch .point-liste.ajout svg { justify-self: center; }
+.tch .fiche-plus-bouton {
+  display: flex; align-items: center; gap: 8px; min-height: 52px; margin-top: 14px; width: 100%;
+  box-shadow: inset 0 1px 0 var(--tch-trait); font-size: 1rem; font-weight: 600; text-align: left; color: var(--tch-texte);
+}
+.tch .fiche-plus-bouton .indice {
+  flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 400; color: var(--tch-texte-doux);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tch .fiche-plus-bouton svg { color: var(--tch-texte-doux); transition: transform var(--motion-fast) var(--ease-standard); }
+.tch .fiche-plus-bouton[aria-expanded="true"] svg { transform: rotate(180deg); }
+.tch .bouton.fait { gap: 8px; background: var(--tch-fait); color: var(--tch-fait-texte); box-shadow: var(--shadow-xs); }
+.tch .bouton.second.accent { color: var(--tch-accent); }
+/* le conflit vit DANS la feuille (etat-conflit.html, .es-conflit : margin 10px 0 16px) — pas de seconde gouttière */
+.tch .fiche .conflit { margin-inline: 0; }
+/* le pied « Reporter · Fait » se pose en bas de la feuille, même quand la fiche est courte */
+.tch .fiche .feuille-corps { display: flex; flex-direction: column; }
+.tch .fiche .fiche-corps { flex: none; }
+.tch .fiche .feuille-pied { margin-top: auto; }
+@media (min-width: 768px) {
+  .tch .fiche .dialogue-bureau .fiche-entete-actions { top: 20px; right: 10px; }
 }
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
@@ -97,14 +182,37 @@
 .tch .fiche-lien a { color: var(--tch-accent); }
 .tch .bouton.destructif { color: var(--destructive); }
 
-/* TCH86 — écran À trier (ecran-a-trier.html) */
+/* TCH86 — écran À trier (ecran-a-trier.html, port de ecrans-coeur.css « À trier » + tour 2) : la ligne commune
+   (case ronde, titre, méta), les gestes en LIENS sous la méta — jamais de pilules, jamais de filet entre lignes */
+.tch .ligne.tri { padding-bottom: 10px; }
+.tch .tri-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: 0 22px; margin-top: 0; margin-bottom: -10px; }
+.tch .geste {
+  position: relative; display: inline-flex; align-items: center; min-height: 44px;
+  font-size: 0.9375rem; font-weight: 500; color: var(--tch-texte-doux);
+}
+@media (hover: hover) { .tch .geste:hover { color: var(--tch-accent); } }
+.tch .geste.icone { min-width: 44px; justify-content: center; margin-left: -12px; }
+.tch .marque-erp { display: inline-flex; align-items: center; gap: 5px; color: var(--tch-texte); font-weight: 550; }
+.tch .marque-erp svg { color: var(--tch-accent); }
+/* lignes « à plat » de Supprimées récemment et de « Suggéré par l'ERP » (inchangées) */
 .tch .atrier-ligne {
   display: flex; flex-direction: column; gap: 6px; padding: 10px 0; min-height: 52px; box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
 .tch .atrier-titre { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .tch .atrier-titre .titre { font-size: var(--tch-tache); }
 .tch .atrier-repere { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .meta .atrier-repere { font-size: inherit; }
 .tch .atrier-ligne .puces { align-items: center; }
+@media (min-width: 768px) {
+  .tch .ligne.tri { padding-bottom: 8px; }
+  .tch .ligne.tri .ligne-corps { display: grid; grid-template-columns: 1fr auto; column-gap: 24px; }
+  .tch .ligne.tri .titre, .tch .ligne.tri .meta { grid-column: 1; }
+  .tch .ligne.tri .tri-gestes {
+    grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 280px; justify-content: flex-start;
+    margin: 0; flex-wrap: nowrap; gap: 0 18px;
+  }
+  .tch .ligne.tri .geste { font-size: 0.875rem; }
+}
 .tch .atrier-carte {
   display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 12px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
@@ -112,3 +220,8 @@
 .tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
 .tch .atrier-compteur { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .bandeau .bouton.discret { height: 44px; }
+/* À trier : « 1 à-faire personnel dans Activités » sur une ligne, Tout convertir · Voir en liens dessous */
+.tch .atrier-bandeau { align-items: flex-start; padding-bottom: 6px; }
+.tch .atrier-bandeau .bandeau-icone { width: 32px; height: 32px; border-radius: 9px; color: var(--tch-accent); }
+.tch .atrier-bandeau .bandeau-titre { margin: 5px 0 0; }
+.tch .atrier-bandeau .tri-gestes { margin: 2px 0 0; }

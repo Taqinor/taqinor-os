@@ -72,6 +72,16 @@ describe('TCH87 — Recherche', () => {
     expect(within(screen.getByRole('region', { name: 'Faites (1)' })).getByText('Dossier subvention')).toBeInTheDocument()
   })
 
+  it('passe visuelle n° 46 — la loupe est DANS le champ (recherche.html), champ et filtres dans la rangée alignée', async () => {
+    monter()
+    const champ = screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    const boite = champ.closest('label.es-champ')
+    expect(boite).not.toBeNull()
+    expect(boite.querySelector('svg')).not.toBeNull()
+    expect(boite.closest('.es-recherche')).not.toBeNull()
+    expect(screen.getByLabelText('Filtres')).toHaveClass('es-filtres')
+  })
+
   it('rien pour « {q} » : la phrase, sans groupes', async () => {
     api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
     monter('/taches/recherche?q=zzz')
