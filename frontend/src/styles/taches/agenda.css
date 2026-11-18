@@ -33,12 +33,30 @@
 }
 .tch .ag-tj-item.erp { background: var(--tch-bloc-erp); color: var(--tch-texte); box-shadow: none; }
 .tch .ag-tj-item.erp svg { color: var(--tch-texte-doux); }
-.tch .ag-semtj {
-  display: grid; grid-template-columns: 56px repeat(7, 1fr); align-items: start; min-height: 44px;
-  padding: 6px 0; box-shadow: inset 0 -1px 0 var(--tch-trait);
+/* Passe visuelle n° 36 — Semaine au bureau : « Toute la journée » est une rangée DE la grille (`subgrid`), sous la
+   tête des jours (maquette agenda-semaine.html `.ag-semtj`) : une cellule par colonne, sam./dim. compris ; la puce
+   de la visite reste dans sa colonne (2 lignes au plus). */
+.tch .semaine .ag-semtj {
+  display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: stretch; min-height: 44px;
+  margin-bottom: 12px;
 }
-.tch .ag-semtj > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 2px; }
-.tch .ag-semtj .repos-fond { background: var(--ag-repos); border-radius: 8px; min-height: 36px; }
+.tch .ag-semtj > div {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 4px 3px 6px;
+  box-shadow: inset 1px 0 0 var(--tch-trait-grille), inset 0 -1px 0 var(--tch-trait);
+}
+.tch .ag-semtj > div:first-child { justify-content: center; box-shadow: inset 0 -1px 0 var(--tch-trait); }
+.tch .ag-semtj .ag-tj-label { padding: 0 8px 0 12px; text-align: left; }
+.tch .ag-semtj .repos-fond { background-color: var(--ag-repos); }
+.tch .ag-semtj .ag-tj-item {
+  height: auto; min-height: 26px; max-width: 100%; gap: 5px; padding: 3px 6px; overflow: hidden;
+  font-size: 0.75rem; line-height: 1rem; white-space: normal;
+}
+.tch .ag-semtj .ag-tj-item span {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0;
+}
+.tch .ag-semtj .ag-tj-item svg { flex: none; }
+.tch .semaine-tete .repos { flex-direction: column; align-items: center; gap: 0; padding-top: 4px; line-height: 1.1; }
+.tch .semaine-tete .repos b { font-size: 0.9375rem; }
 .tch .ag-ferie { display: block; font-size: 0.6875rem; font-weight: 500; color: var(--tch-texte-doux); }
 
 /* Grille : créneaux vides (« Ajouter à 09:00 »), blocs à case, rendez-vous externes */

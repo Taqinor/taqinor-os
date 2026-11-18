@@ -371,25 +371,33 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   )
 }
 
+/** Passe visuelle n° 36 — la rangée « Toute la journée » de la Semaine au bureau : une cellule par jour, posée par
+ *  GrilleAgenda sous la tête des jours (mêmes colonnes ; sam./dim. ne décalent plus rien). */
+function LigneJourneeSemaine({ jours }) {
+  return (
+    <div className="ag-semtj" role="group" aria-label="Toute la journée">
+      <div className="ag-tj-label">Toute la journée</div>
+      {jours.map((j) => (
+        <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
+          {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
+          {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
+            <PuceJournee key={`ext:${e.cle}`} element={e} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, volet = null, onChoisir }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   return (
     <>
       <div className="ag-corps bureau-seul">
         <div className="ag-principal">
-          <div className="ag-semtj" role="group" aria-label="Toute la journée">
-            <div className="ag-tj-label">Toute la journée</div>
-            {jours.map((j) => (
-              <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
-                {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
-                {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
-                  <PuceJournee key={`ext:${e.cle}`} element={e} />
-                ))}
-              </div>
-            ))}
-          </div>
           <GrilleAgenda
             jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
+            ligneJournee={<LigneJourneeSemaine jours={jours} />}
             placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
           />
         </div>

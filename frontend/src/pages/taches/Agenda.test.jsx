@@ -190,6 +190,28 @@ describe('TCH104 — vues et navigation', () => {
     expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
   })
 
+  const semaineAvecRepos = () => {
+    const d = agenda()
+    const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [] }
+    d.jours.push({ ...vide, jour: '2026-11-21', ouvre: false, ferie: false }, { ...vide, jour: '2026-11-22', ouvre: false, ferie: false })
+    return d
+  }
+
+  it('Passe visuelle n° 36 — Semaine au bureau : « Toute la journée » est une rangée DE la grille, sous les jours, jours non travaillés étroits', async () => {
+    lireAgenda.mockResolvedValue({ data: semaineAvecRepos() })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const tete = grille(container).querySelector('.semaine-tete')
+    const journee = grille(container).querySelector('.ag-semtj')
+    expect(journee).not.toBeNull()
+    expect(tete.nextElementSibling).toBe(journee)
+    expect(within(journee).getByRole('link', { name: /Visite — Karim Benali/ })).toBeInTheDocument()
+    // une cellule par jour sous chaque tête, gouttière comprise : sam./dim. restent dans leur colonne
+    expect(journee.children).toHaveLength(8)
+    expect(grille(container).style.gridTemplateColumns)
+      .toBe('68px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())

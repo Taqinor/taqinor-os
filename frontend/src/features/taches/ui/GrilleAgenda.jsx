@@ -220,20 +220,26 @@ function TeteJour({ nom }) {
   return reste.length ? <>{abr} <b>{reste.join(' ')}</b></> : <b>{abr}</b>
 }
 
+/** Passe visuelle n° 36 — colonnes de la Semaine (maquette agenda-semaine.html `.ag-semgrille`) : gouttière des heures
+ *  de 68 px, jours travaillés larges, jours non travaillés de 64 px ; la rangée « Toute la journée » suit les mêmes. */
+const colonnesSemaine = (jours) => ['68px', ...jours.map((j) => (j.ouvre === false ? '64px' : 'minmax(0, 1fr)'))].join(' ')
+
 /**
  * `jours` : les jours d'`agenda.json` ; `nomsJours` : `{iso: « mar. 17 »}` (tête de la Semaine) ;
- * `placement` : `{ onPoser(jour, 'HH:MM') }` pendant « Placer à une heure » (TCH105), sinon nul.
+ * `placement` : `{ onPoser(jour, 'HH:MM') }` pendant « Placer à une heure » (TCH105), sinon nul ;
+ * `ligneJournee` : la rangée « Toute la journée » de la Semaine, posée sous la tête des jours, dans la grille.
  */
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
-  placement = null, choisi = null, onCreneau, onCocher, onOuvrir,
+  placement = null, choisi = null, ligneJournee = null, onCreneau, onCocher, onOuvrir,
 }) {
   const plusieurs = jours.length > 1
   const heures = []
   for (let h = debut; h < fin; h += 1) heures.push(h)
   const props = { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir, plusieurs }
   return (
-    <div className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}>
+    <div className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}
+      style={plusieurs ? { gridTemplateColumns: colonnesSemaine(jours) } : undefined}>
       {plusieurs ? (
         <div className="semaine-tete">
           <div />
@@ -249,6 +255,7 @@ export default function GrilleAgenda({
           ))}
         </div>
       ) : null}
+      {plusieurs ? ligneJournee : null}
       <div className="agenda-heures" aria-hidden="true">
         {heures.map((h) => <div key={h}>{`${deux(h)}:00`}</div>)}
       </div>
