@@ -39,7 +39,8 @@ from apps.taches.selectors.liens import cible_visible, libelle_de_cible
 from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.gestes import (
-    enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
+    detacher_d_un_parent_supprime, enregistrer_geste, op_champ, op_creation, op_suppression_douce,
+    op_suppression_dure,
 )
 from apps.taches.services.planification import (
     MESSAGE_CONFLIT, planifier, etat_minimal, avertissements_du_jour,
@@ -739,6 +740,7 @@ def restaurer_tache(user, pk):
         sans_projet = bool(morte.projet_id) and not projets_de(user).filter(pk=morte.projet_id).exists()
         if sans_projet:
             Tache.all_objects.filter(pk__in=[t.pk for t in groupe]).update(projet=None, section=None, triee_le=None)
+        detacher_d_un_parent_supprime(morte)
         ops = []
         for t in groupe:
             t.restore()

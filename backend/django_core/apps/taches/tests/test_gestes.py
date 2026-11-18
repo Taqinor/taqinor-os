@@ -23,6 +23,7 @@ from apps.taches.services.gestes import (
     op_suppression_douce,
     op_suppression_dure,
 )
+from apps.taches.selectors.base import taches_de
 from apps.taches.tests import fabriques
 from core.models import DeletionRecord
 
@@ -323,6 +324,25 @@ class GesteTests(TestCase):
         annuler_geste(self.u1, geste.pk)
         tache = Tache.objects.get(pk=tache.pk)
         self.assertEqual((tache.projet_id, tache.triee_le), (None, None))
+
+    def test_sous_tache_restauree_dont_le_parent_reste_supprime_est_detachee(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        enfant.soft_delete(self.u1, record=False)
+        geste = enregistrer_geste(self.u1, 'suppression', 'Supprimée', [op_suppression_douce('tache', enfant)])
+        parent.soft_delete(self.u1, record=False)
+        annuler_geste(self.u1, geste.pk)
+        relue = Tache.objects.get(pk=enfant.pk)
+        self.assertIsNone(relue.parent_id)
+        self.assertIn(enfant.pk, [t.pk for t in taches_de(self.u1)])
+
+    def test_sous_tache_restauree_dont_le_parent_est_vivant_reste_attachee(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        enfant.soft_delete(self.u1, record=False)
+        geste = enregistrer_geste(self.u1, 'suppression', 'Supprimée', [op_suppression_douce('tache', enfant)])
+        annuler_geste(self.u1, geste.pk)
+        self.assertEqual(Tache.objects.get(pk=enfant.pk).parent_id, parent.pk)
 
     def test_defaire_une_suppression_dure_recree_au_meme_pk(self):
         tache = fabriques.tache(self.u1, jour_prevu=J)

@@ -348,6 +348,14 @@ def _sortir_d_un_projet_supprime(tache):
         tache.save(update_fields=['projet', 'section', 'triee_le', 'updated_at'])
 
 
+def detacher_d_un_parent_supprime(tache):
+    """Une sous-tâche restaurée dont le parent reste supprimé redevient une tâche ordinaire (sinon la
+    purge du parent l'emporterait en cascade) ; même règle que N7 pour le projet."""
+    if tache.parent_id and not Tache.objects.filter(pk=tache.parent_id).exists():
+        tache.parent_id = None
+        tache.save(update_fields=['parent', 'updated_at'])
+
+
 def _defaire_suppression_douce(user, op, bilan):
     objet, pk = op.get('objet'), op.get('id')
     if objet not in ('tache', 'projet'):
@@ -361,6 +369,7 @@ def _defaire_suppression_douce(user, op, bilan):
         with transaction.atomic():
             if objet == 'tache':
                 _sortir_d_un_projet_supprime(instance)
+                detacher_d_un_parent_supprime(instance)
             instance.restore()
     except IntegrityError:
         return bilan.conflit(objet, pk, CONFLIT_NOM_PRIS)
