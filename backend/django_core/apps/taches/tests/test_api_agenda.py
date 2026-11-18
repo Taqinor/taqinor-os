@@ -131,6 +131,21 @@ class AgendaTests(TestCase):
     def test_rendez_vous_externes_vides_sans_agenda(self):
         self.assertTrue(all(j['externes'] == [] for j in self.periode()['jours']))
 
+    def test_toute_la_journee_sans_la_ligne_des_relances(self):
+        """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
+        relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""
+        from unittest import mock
+
+        from apps.taches.selectors import journee as sel
+        visite = {'famille': 'visite', 'id': 7, 'titre': 'Visite — Témara', 'jour': self.T.isoformat(),
+                  'url': '/visites'}
+        touches = {'famille': 'touches', 'id': None, 'titre': 'Suivi des relances', 'jour': self.T.isoformat(),
+                   'url': '/crm/relances', 'nb': 5, 'en_retard': 0}
+        with mock.patch.object(sel, 'obligations_du_jour', return_value=sel.Obligations(lignes=(visite, touches))):
+            rendu = self.periode(vue='semaine')
+        self.assertEqual(self.le_jour(rendu, self.T)['toute_la_journee'], [visite])
+        self.assertTrue(all(j['toute_la_journee'] == [] for j in rendu['jours'] if j['jour'] != self.T.isoformat()))
+
     def test_jamais_les_taches_d_un_autre(self):
         autre = fabriques.compte(fabriques.societe('b'), nom='u1')
         fabriques.tache(autre, projet=fabriques.projet(autre), jour_prevu=self.T)

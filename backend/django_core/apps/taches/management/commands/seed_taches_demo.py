@@ -179,7 +179,18 @@ HEURE_BILAN_VEILLE = '18:20'
 GESTES_DU_JOUR = (
     ('08:20', 'ouvrir'), ('08:20', 'essentielles'), ('08:31', 'garder'), ('08:52', 'rails'), ('09:10', 'contrat'),
     ('10:20', 'fournisseur'), ('10:30', 'lier_rappel'), ('10:40', 'fermer_rappel'), ('10:50', 'devis'),
-    ('14:10', 'fiche'), ('16:30', 'stand'))
+    ('11:30', 'relances'), ('14:10', 'fiche'), ('16:30', 'stand'))
+#: S3 — les obligations ERP du 24 (§1, §3) : la visite « Toute la journée » et « Suivi des relances » (5, puis 2 dès
+#: 11:30). Créées par les SERVICES de `crm` et `visites`, dans la seule société de démonstration. Le titre est celui
+#: de la famille « visites » : « Visite — {nom du lead} » (errata §0.5) ; le lead s'appelle donc « Témara ».
+#: Non dits par SCENARIO.md (ERR-SCENARIO au rapport) : le jour où la visite a été calée, le jour où les relances ont
+#: été posées, leur heure d'échéance et les noms des 5 leads relancés.
+LEAD_VISITE = 'Témara'
+VISITE_CALEE = ((11, 20), '10:00')
+LEADS_RELANCES = tuple(f'Relance de démonstration {n}' for n in range(1, 6))
+RELANCES_POSEES = ((11, 23), '18:00')
+ECHEANCE_RELANCES = '11:00'
+RELANCES_FAITES = 3  # « 11:30 3 relances faites » (§3)
 #: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
 RESERVE_ANONYME = (
     'Étudier une assurance pour la flotte de véhicules', "Tester un logiciel de devis concurrent",
@@ -468,10 +479,38 @@ class Scenario:
         `trancher`, la décision d'À revoir (acceptation F2 défaut 6)."""
         planifier(self.taches[FICHE], acteur=self.user, jour_prevu=self.date(11, 26))
 
+    def _geste_relances(self, instant):
+        """S3 : « 11:30 3 relances faites » par la vraie clôture d'une touche (`crm.services.marquer_touche_faite`,
+        sans suite : aucune touche ne naît après, aucun message ne part)."""
+        from apps.crm.services import marquer_touche_faite
+        for touche in self.touches[:RELANCES_FAITES]:
+            marquer_touche_faite(touche, self.user)
+
     def activite_du_jour(self):
         """L'activité ERP du 24 « Rappeler pour le devis » (§1), sans tâche liée d'avance (S5)."""
         with horloge(self.instant(self.jour, '08:00')):
             self.rappel = self._activite(summary=ACTIVITE_APPEL, personnelle=False, due_date=self.jour)
+
+    def obligations_erp(self):
+        """S3 : la visite technique du 24, assignée au compte (commercial de la visite), par
+        `visites.services.planifier_visite` ; le lead de Témara n'a PAS de responsable — avec le compte pour
+        responsable, la visite poserait aussi « Confirmer la visite » (la veille) et le débrief dans SES relances,
+        et une activité « Relance commerciale » due le 23 dans « À revoir » (ERR-SCENARIO). Puis 5 leads du compte
+        et leurs touches d'appel dues le 24 (`crm.services`), sans aucun envoi."""
+        from apps.crm.services import creer_lead_demonstration, poser_touche_demonstration
+        from apps.visites.services import planifier_visite
+        societe = self.user.company
+        (mois, jour), heure = VISITE_CALEE
+        with horloge(self.instant(self.date(mois, jour), heure)):
+            lead = creer_lead_demonstration(societe, nom=LEAD_VISITE, ville=LEAD_VISITE)
+            _visite, erreurs = planifier_visite(lead, self.user, self.jour, commercial=self.user)
+        if erreurs:
+            raise CommandError(f'Visite de démonstration refusée : {erreurs}')
+        (mois, jour), heure = RELANCES_POSEES
+        echeance = self.instant(self.jour, ECHEANCE_RELANCES)
+        with horloge(self.instant(self.date(mois, jour), heure)):
+            self.touches = [poser_touche_demonstration(creer_lead_demonstration(societe, nom=nom, owner=self.user),
+                                                       due_at=echeance) for nom in LEADS_RELANCES]
 
     def jour_du_scenario(self):
         """Rejoue `GESTES_DU_JOUR` jusqu'à `--heure` incluse, horloge figée à l'heure de chaque geste."""
@@ -534,7 +573,8 @@ class Command(BaseCommand):
             slug=SLUG_SOCIETE, defaults={'nom': 'Société de démonstration', 'est_demo': True})
         # Rôle de TEST : `taches_voir` n'est accordé à aucun rôle système avant l'activation du module.
         role, _cree = Role.objects.get_or_create(company=societe, nom=NOM_ROLE)
-        role.permissions = ['taches_voir', 'roles_gerer']
+        # S3 : `crm_voir` et `visites_voir` pour VOIR ses relances et ses visites dans la journée (familles ERP).
+        role.permissions = ['taches_voir', 'roles_gerer', 'crm_voir', 'visites_voir']
         role.save(update_fields=['permissions'])
         utilisateur = CustomUser.objects.filter(username=NOM_COMPTE).first()
         cree = utilisateur is None
@@ -560,8 +600,10 @@ class Command(BaseCommand):
                 or Tache.all_objects.filter(company_id=utilisateur.company_id, proprietaire=utilisateur).exists())
 
     def _effacer(self, utilisateur):
+        from apps.crm.services import effacer_leads_demonstration
         from apps.records.models import Activity
         services_donnees.tout_effacer(utilisateur)
+        effacer_leads_demonstration(utilisateur.company)  # S3 : leads, visite et touches (société est_demo)
         Activity.objects.filter(company_id=utilisateur.company_id, created_by=utilisateur).delete()
 
     def handle(self, *args, **options):
@@ -595,6 +637,7 @@ class Command(BaseCommand):
         scenario.jours_passes()
         scenario.bilan_de_la_veille()
         scenario.nuit_du_jour()
+        scenario.obligations_erp()
         scenario.jour_du_scenario()
         if options['rendez_vous']:
             scenario.rendez_vous(utilisateur)
