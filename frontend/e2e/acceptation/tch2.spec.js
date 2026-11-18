@@ -20,6 +20,10 @@
 //     attend un datetime) ; l'étape joue la commande littérale, note son échec, puis joue le même instant en datetime
 //     AWARE du Maroc (`balayer`).
 //
+// Base de départ : celle du job (migrate, seed_demo, init_roles, rôle de demo_admin), SANS `demo_taches`. Chaque
+// étape sème son scénario AVANT tout `py()` qui lit le compte (`remettreAccueil`, `rallumer`, journal…) : elle se
+// joue seule (`-g`) sur une base neuve comme à la suite des autres.
+//
 // Le Copilote (TCH143) : les étapes 1 à 3 ne demandent aucun modèle (demandes prêtes, routes déterministes) ; les
 // étapes 4 à 6 parlent au VRAI assistant (`E2E_IA_URL`, clé du dépôt sur un runner) et, sans lui, échouent ROUGES
 // avec le message « vrai assistant requis : E2E_IA_URL + clé du dépôt » — jamais sautées, jamais simulées.
@@ -97,8 +101,8 @@ function forme(valeur) {
 // =====================================================================================================================
 
 etape('P141.1', ['TCH141', 'TCH109', 'TCH95'], async (f) => {
-  await remettreAccueil()
   const instant = scenario(SEMIS_141, `${J24} 09:41`)
+  await remettreAccueil() // APRÈS le semis : sur une base neuve, `demo_taches` n'existe qu'une fois semé
   const p = await ouvrir(f, { instant })
   await p.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(f.testInfo.project.use.baseURL).origin })
   await aller(p, '/taches/reglages/iphone', 'reglages')
@@ -129,8 +133,8 @@ etape('P141.1', ['TCH141', 'TCH109', 'TCH95'], async (f) => {
 })
 
 etape('P141.2', ['TCH141', 'TCH96', 'TCH95', 'TCH39'], async (f) => {
-  await remettreAccueil()
   const instant = scenario(SEMIS_141, `${J24} 09:41`)
+  await remettreAccueil() // APRÈS le semis : sur une base neuve, `demo_taches` n'existe qu'une fois semé
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/reglages/iphone', 'reglages')
   const capture = (await jetonParEcran(p, 3, 'Créer le jeton')).clair
@@ -177,8 +181,8 @@ etape('P141.2', ['TCH141', 'TCH96', 'TCH95', 'TCH39'], async (f) => {
 })
 
 etape('P141.3', ['TCH141', 'TCH97', 'TCH24', 'TCH11', 'TCH109'], async (f) => {
-  await remettreAccueil()
   const instant = scenario(SEMIS_141, `${J24} 09:41`)
+  await remettreAccueil() // APRÈS le semis : sur une base neuve, `demo_taches` n'existe qu'une fois semé
   const p = await ouvrir(f, { instant })
   // Les rendez-vous externes du compte (--rendez-vous) : servis ou non par `aujourdhui/`, c'est NOTÉ (une absence
   // rendrait « aucun rendez-vous externe » vrai d'office — dit au rapport), jamais un oracle de cette étape.
@@ -218,8 +222,8 @@ etape('P141.3', ['TCH141', 'TCH97', 'TCH24', 'TCH11', 'TCH109'], async (f) => {
 })
 
 etape('P141.4', ['TCH141', 'TCH97', 'TCH24', 'TCH109'], async (f) => {
-  await remettreAccueil()
   const instant = scenario(SEMIS_141, `${J24} 09:41`)
+  await remettreAccueil() // APRÈS le semis : sur une base neuve, `demo_taches` n'existe qu'une fois semé
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/reglages/iphone', 'reglages')
   const { clair } = await jetonParEcran(p, 4, 'Créer le jeton de la tuile')
@@ -244,8 +248,8 @@ etape('P141.4', ['TCH141', 'TCH97', 'TCH24', 'TCH109'], async (f) => {
 })
 
 etape('P141.5', ['TCH141', 'TCH132', 'TCH109'], async (f) => {
-  await remettreAccueil()
   const instant = scenario(SEMIS_141, `${J24} 09:41`)
+  await remettreAccueil() // APRÈS le semis : sur une base neuve, `demo_taches` n'existe qu'une fois semé
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/reglages/iphone', 'reglages')
   await deplier(p, 5)
@@ -274,8 +278,8 @@ etape('P141.5', ['TCH141', 'TCH132', 'TCH109'], async (f) => {
 
 /** Le scénario du matin (08:29 semé, serveur à 08:30), notifications Tâches effacées, coupe-circuit allumé. */
 async function matin171() {
-  await rallumer()
   const instant = scenario(SEMIS_171, `${J24} 08:30`)
+  await rallumer() // APRÈS le semis : sur une base neuve, `demo_taches` (et sa société) n'existe qu'une fois semé
   await viderCloche()
   return instant
 }
@@ -399,8 +403,8 @@ etape('P171.5', ['TCH171', 'TCH155', 'TCH160', 'TCH98'], async (f) => {
 })
 
 etape('P171.6', ['TCH171', 'TCH98'], async () => {
-  await rallumer()
   scenario(['--vide'], `${J24} 08:30`)
+  await rallumer() // APRÈS le semis (base neuve : le compte n'existe qu'une fois semé)
   await viderCloche()
   // Oracle (plan) : « compte `--vide` → rien »
   await balayer(`${J24}T08:30`)
