@@ -20,6 +20,7 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
@@ -125,18 +126,28 @@ TEXTE = 'text/plain; charset=utf-8'
 #: Le moment dit seul (« demain matin ») et le jour même (« ce soir »).
 MOMENT_DIT = {Moment.MATIN: 'matin', Moment.APRES_MIDI: 'après-midi', Moment.SOIR: 'soir'}
 MOMENT_DU_JOUR = {Moment.MATIN: 'ce matin', Moment.APRES_MIDI: 'cet après-midi', Moment.SOIR: 'ce soir'}
-_VIDE = {'required': MESSAGE_CAPTURE_VIDE, 'blank': MESSAGE_CAPTURE_VIDE, 'null': MESSAGE_CAPTURE_VIDE}
+_VIDE = {'required': MESSAGE_CAPTURE_VIDE, 'blank': MESSAGE_CAPTURE_VIDE, 'null': MESSAGE_CAPTURE_VIDE,
+         'invalid': MESSAGE_CAPTURE_VIDE}
+
+
+class _Texte(serializers.CharField):
+    """Un texte JSON seulement : un nombre n'est jamais converti (`1e400` deviendrait « inf », 12 « 12 »)."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
 
 
 class CaptureEntreeSerializer(serializers.Serializer):
-    """Corps de `capture/` (api.md §4) : titre ≤ 280, notes ≤ 2 000, client_id ≤ 64 — rien d'autre n'est
-    lu (ni société, ni propriétaire, ni projet par id)."""
+    """Corps de `capture/` (api.md §4) : titre ≤ 280, notes ≤ 2 000, client_id ≤ 64, des TEXTES — rien
+    d'autre n'est lu (ni société, ni propriétaire, ni projet par id)."""
 
-    titre = serializers.CharField(max_length=280, error_messages={**_VIDE, 'max_length': '280 caractères au plus.'})
-    notes = serializers.CharField(required=False, allow_blank=True, max_length=2_000,
-                                  error_messages={'max_length': '2 000 caractères au plus.'})
-    client_id = serializers.CharField(required=False, allow_blank=True, max_length=64,
-                                      error_messages={'max_length': '64 caractères au plus.'})
+    titre = _Texte(max_length=280, error_messages={**_VIDE, 'max_length': '280 caractères au plus.'})
+    notes = _Texte(required=False, allow_blank=True, max_length=2_000,
+                   error_messages={'max_length': '2 000 caractères au plus.'})
+    client_id = _Texte(required=False, allow_blank=True, max_length=64,
+                       error_messages={'max_length': '64 caractères au plus.'})
 
 
 def _ligne_capturee(user, titre, notes):
@@ -225,12 +236,16 @@ class CaptureVue(MethodeAvantJeton, APIView):
 
     def handle_exception(self, exc):
         """Un refus (400, 401, 403, 429) sous `?reponse=texte` : sa phrase en `text/plain`, même statut,
-        mêmes en-têtes `WWW-Authenticate`/`Retry-After` — toujours neutre, jamais le jeton."""
+        mêmes en-têtes `WWW-Authenticate`/`Retry-After` — toujours neutre, jamais le jeton. Un corps
+        illisible (`ParseError`) se lit « Dis-moi quoi noter. » (textes.md, « 400 titre vide »)."""
         reponse = super().handle_exception(exc)
         statut = reponse.status_code
         if not self._en_texte() or (statut != 400 and statut not in MESSAGES_TEXTE_PAR_STATUT):
             return reponse
-        texte = MESSAGES_TEXTE_PAR_STATUT.get(statut) or _premier_message(getattr(exc, 'detail', ''))
+        if isinstance(exc, ParseError):  # corps illisible : jamais l'anglais du lecteur JSON (textes.md)
+            texte = MESSAGE_CAPTURE_VIDE
+        else:
+            texte = MESSAGES_TEXTE_PAR_STATUT.get(statut) or _premier_message(getattr(exc, 'detail', ''))
         rendu = HttpResponse(texte, content_type=TEXTE, status=statut)
         for entete in ENTETES_GARDES:
             if entete in reponse:

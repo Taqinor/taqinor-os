@@ -183,6 +183,27 @@ class RefusLisiblesTests(_Base):
                 self.assertTrue(texte['Content-Type'].startswith('text/plain'))
         self.assertFalse(self._taches().exists())
 
+    def test_400_titre_qui_n_est_pas_un_texte(self):
+        """Revue F3 #11 : `{"titre": 1e400}` créait une tâche « inf » (201) ; un nombre, un booléen, une liste
+        ne sont jamais un titre : 400 « Dis-moi quoi noter. », rien de créé."""
+        for brut in ('{"titre": 1e400}', '{"titre": 12}', '{"titre": true}', '{"titre": ["lait"]}'):
+            with self.subTest(brut=brut):
+                reponse = self.siri.post(URL, data=brut, content_type='application/json')
+                self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'titre': [VIDE]}))
+                texte = self.siri.post(URL_TEXTE, data=brut, content_type='application/json')
+                self.assertEqual((texte.status_code, texte.content.decode('utf-8')), (400, VIDE))
+        self.assertFalse(self._taches().exists())
+
+    def test_400_corps_illisible_lu_en_francais_par_siri(self):
+        """Revue F3 #11 : un corps illisible sous `?reponse=texte` faisait lire à Siri « JSON parse error -
+        Expecting value… » ; il lit la phrase de textes.md (« 400 titre vide »)."""
+        for brut in ('pas du json', '{"titre": '):
+            with self.subTest(brut=brut):
+                texte = self.siri.post(URL_TEXTE, data=brut, content_type='application/json')
+                self.assertEqual((texte.status_code, texte.content.decode('utf-8')), (400, VIDE))
+                self.assertTrue(texte['Content-Type'].startswith('text/plain'))
+        self.assertFalse(self._taches().exists())
+
     def test_400_bornes(self):
         for corps, attendu in (({'titre': 'x' * 281}, {'titre': ['280 caractères au plus.']}),
                                ({'titre': 'Lait', 'notes': 'x' * 2001}, {'notes': ['2 000 caractères au plus.']}),
