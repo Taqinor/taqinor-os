@@ -528,7 +528,8 @@ def _preparer(service, question: str, company_id: int, ctx,
     appeles: list = []
     contenu, present = svc._contenu_systeme(
         "claude", droits[0], copilote=True,
-        role=(getattr(ctx, "identite", None) or {}).get("role"))
+        role=(getattr(ctx, "identite", None) or {}).get("role"),
+        taches=prompt_copilote.taches_au_catalogue(catalogue))
     blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
     return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
             "manuel_present": present,

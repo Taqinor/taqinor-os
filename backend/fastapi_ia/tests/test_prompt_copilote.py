@@ -162,6 +162,17 @@ class ConsignesTachesTests(unittest.TestCase):
                 "ni de récompenses", "demande s'il est d'accord"):
             self.assertIn(extrait, self.TEXTE)
 
+    def test_bloc_servi_seulement_avec_une_action_taches_au_catalogue(self):
+        """Un compte sans le module (aucune action `taches.*`, droit `taches_voir` absent) ne reçoit
+        que les consignes commerciales."""
+        sans = [{"key": "crm.lead.chercher", "lot": "copilote"}, None, "x"]
+        avec = sans + [{"key": "taches.journee.lire", "lot": "copilote"}]
+        self.assertFalse(pc.taches_au_catalogue(sans))
+        self.assertFalse(pc.taches_au_catalogue(None))
+        self.assertTrue(pc.taches_au_catalogue(avec))
+        self.assertEqual(pc.consignes_du_copilote(False), pc.CONSIGNES_COMMERCIALES)
+        self.assertEqual(pc.consignes_du_copilote(True), pc.CONSIGNES_COPILOTE)
+
 
 class EnteteTests(unittest.TestCase):
     def test_date_d_un_instant_fixe(self):
