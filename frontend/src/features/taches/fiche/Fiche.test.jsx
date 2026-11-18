@@ -112,6 +112,22 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await waitFor(() => expect(onFermer).toHaveBeenCalled())
   })
 
+  it('relecture adverse F4 n° 5 — Échap ferme le menu ⋯ de l\'en-tête, PAS la fiche', async () => {
+    const user = userEvent.setup()
+    const onFermer = vi.fn()
+    const { container } = monter({ onFermer })
+    await screen.findByRole('textbox', { name: 'Titre' })
+    const actions = container.querySelector('.fiche-entete-actions')
+    await user.click(within(actions).getByRole('button', { name: 'Actions' }))
+    expect(await screen.findByRole('menuitem', { name: 'Abandonner' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Abandonner' })).toBeNull())
+    expect(onFermer).not.toHaveBeenCalled()
+    // menu fermé : Échap ferme maintenant la fiche, comme avant
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalled()
+  })
+
   it('passe visuelle n° 29/56 — « ✓ Fait » vert (bouton fait) ; « Plus » avec indice et chevron, nom lu « Plus »', async () => {
     monter()
     await screen.findByRole('textbox', { name: 'Titre' })

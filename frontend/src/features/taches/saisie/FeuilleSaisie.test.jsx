@@ -280,6 +280,29 @@ describe('TCH82 — feuille de saisie', () => {
     expect(champ()).toHaveValue('Ménage\nAspirer')
   })
 
+  it('relecture adverse F4 n° 5 — Échap ferme le menu de priorité de l\'aperçu, PAS la feuille', async () => {
+    const liste = {
+      projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+      lignes: ['lait', 'pain'].map((titre, index) => ({
+        ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Courses', priorite: 2 } },
+      })),
+      projets_nouveaux: [{ nom: 'Courses', priorite: 2 }],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    const { onFermer } = monter()
+    fireEvent.paste(champ(), { clipboardData: { getData: () => 'Courses\nlait\npain' } })
+    fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+    await user.click(await screen.findByRole('button', { name: 'Priorité du projet Courses : moyenne' }, { timeout: 3000 }))
+    expect(await screen.findByRole('menuitemradio', { name: 'Moyenne' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menuitemradio', { name: 'Moyenne' })).toBeNull())
+    expect(onFermer).not.toHaveBeenCalled()
+    // menu fermé : Échap ferme maintenant la feuille, comme avant
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalled()
+  })
+
   it('Raccord F2 — le contexte de l\'écran (projet courant) part avec la ligne qui n\'en nomme pas', async () => {
     const user = userEvent.setup()
     mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({

@@ -123,7 +123,8 @@ export default function FeuilleACrans({
   if (!ouverte) return null
 
   const surTouche = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); onFermer?.(); return }
+    // relecture adverse F4 n° 5 — un menu ouvert dans la feuille (Radix) a déjà pris Échap pour lui (`preventDefault`)
+    if (e.key === 'Escape') { if (!e.defaultPrevented) { e.stopPropagation(); onFermer?.() } return }
     if (e.key !== 'Tab') return
     const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])]
     if (liste.length === 0) return

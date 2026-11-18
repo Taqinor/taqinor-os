@@ -246,10 +246,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
   }, [demandes, recevoir])
 
-  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste)
+  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste) — sauf l'Échap qu'un menu
+  // ouvert (puce de priorité de l'aperçu) a pris pour se fermer, lui (`preventDefault` de Radix)
   useEffect(() => {
     if (!ouverte) return undefined
-    const surTouche = (e) => { if (e.key === 'Escape') onFermer?.() }
+    const surTouche = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) onFermer?.() }
     document.addEventListener('keydown', surTouche)
     return () => document.removeEventListener('keydown', surTouche)
   }, [ouverte, onFermer])
