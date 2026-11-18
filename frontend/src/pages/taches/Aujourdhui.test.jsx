@@ -407,6 +407,10 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     d.faites = [faite]
     return d
   }
+  const ecrite = (id, lockVersion, gesteId) => {
+    const e = exempleContrat('taches', 'tache_ecrite')
+    return { data: { ...e, tache: { ...e.tache, id, lock_version: lockVersion }, geste_id: gesteId, progression: null } }
+  }
   const annulation = (id) => ({ data: { restaurees: [{ objet: 'tache', id }], conflits: [], deja: false } })
   const lignesDe = (zone, id) => (zone ? zone.querySelectorAll(`[data-ligne="tache:${id}"]`).length : 0)
   const zones = (container) => ({
@@ -441,6 +445,55 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     await ouvrirFaites()
     expect(lignesDe(zones(container).faites, 12)).toBe(1)
     expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(2)
+  })
+
+  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; Annuler remet l\'état d\'avant', async () => {
+    servir(journeeEssentielleFaite())
+    api.post.mockImplementation((url) => Promise.resolve(
+      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : url === '/taches/gestes/91/annuler/' ? annulation(12) : { data: {} },
+    ))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    await userEvent.click(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 12, essentielle: false }))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
+    // une faite sans ★ n'est QUE dans Faites (le serveur ne la sert jamais dans Prévu)
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(faite).not.toBeNull()
+    expect(within(faite).queryByRole('img', { name: 'Essentielle' })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/91/annuler/', {}))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    expect(within(zones(container).faites.querySelector('[data-ligne="tache:12"]')).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+  })
+
+  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; Annuler la rend à Faites seule', async () => {
+    servir(donnees())
+    api.post.mockImplementation((url) => Promise.resolve(
+      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : url === '/taches/gestes/92/annuler/' ? annulation(12) : { data: {} },
+    ))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Dossier subvention »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Essentielle' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 12, essentielle: true }))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
+    const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(faite).not.toBeNull()
+    expect(within(faite).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/92/annuler/', {}))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    const rendue = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(rendue).not.toBeNull()
+    expect(within(rendue).queryByRole('img', { name: 'Essentielle' })).toBeNull()
   })
 })
 
