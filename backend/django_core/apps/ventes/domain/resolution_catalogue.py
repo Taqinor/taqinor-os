@@ -298,7 +298,8 @@ def _conclure(retenues, *, nom_genre, nombre=1, alertes=None):
                        for e in retenues[:10])
     return Resolution(
         STATUT_AMBIGU, None, list(retenues),
-        raison='%d %s conviennent : %s. Lequel ?' % (len(retenues), nom_genre, noms),
+        raison='%d %s conviennent : %s. Précisez le produit.' % (
+            len(retenues), nom_genre, noms),
         alertes=list(alertes or []), nombre=nombre)
 
 

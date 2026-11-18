@@ -106,6 +106,38 @@ def _resume_devis_auto(devis):
     return resume
 
 
+def _reponse_devis_auto(devis, alertes):
+    """COP2-V3 — LA réponse de ``POST devis/auto/`` (création 201 ET rejeu
+    d'idempotence 200) : la bannière (ALEA51) + la carte ``devis_cree`` de
+    l'assistant — ``devis_id`` (alias de ``id``), ``lead_id`` et
+    ``composition`` (lignes TTC du devis créé, jamais un prix d'achat).
+    Contrat : ``contract_samples/assistant_devis_cree.json``."""
+    from ..models import ShareLink
+    from ..domain.composition_imposee import lignes_ttc
+    link = ShareLink.for_devis(devis)
+    resume = _resume_devis_auto(devis)
+    return {
+        'id': devis.id,
+        'devis_id': devis.id,
+        'lead_id': devis.lead_id,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'kwc': (devis.etude_params or {}).get('puissance_kwc'),
+        'nb_lignes': devis.lignes.count(),
+        'proposal_token': link.token,
+        'proposal_path': chemin_proposition(devis, link.token),
+        'alertes': list(alertes or []),
+        'total_ttc': resume['total_ttc'],
+        'economie_an_1_ht': resume['economie_an_1_ht'],
+        'retour_ans': resume['retour_ans'],
+        'economie_an_1_ht_avec': resume['economie_an_1_ht_avec'],
+        'retour_ans_avec': resume['retour_ans_avec'],
+        'kwc_avec': resume['kwc_avec'],
+        'postes_apres_visite': resume['postes_apres_visite'],
+        'composition': lignes_ttc(devis),
+    }
+
+
 def _idempotente(suffixe):
     """AGQ23 (C-AGQ-022) — pose le contrat ``Idempotency-Key`` de
     ``core.idempotency`` (``IdempotentCreateMixin._avec_idempotence``, LA
@@ -480,13 +512,42 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
             ville = ville_du_lead(lead_obj)
+        else:
+            lead_obj = None
+        # COP2-V3 — composition IMPOSÉE : même résolution et mêmes contrôles
+        # que ``POST devis/auto/`` (règle U3), rien n'est écrit.
+        from ..domain.composition_imposee import (
+            imposition_du_corps, preparer_imposition)
+        imposes = imposition_du_corps(corps)
+        impose = {}
+        alertes_imposees = []
         try:
+            if imposes:
+                if corps.get('kwc') is not None:
+                    raise AutoDevisError(
+                        'Composition imposée : la puissance (kwc) ne se '
+                        'combine pas avec un nombre de panneaux imposé.',
+                        field='kwc')
+                imposition, alertes_imposees, phase, hors_reseau = (
+                    preparer_imposition(
+                        company=company, lead=lead_obj, imposes=imposes,
+                        scenario=corps.get('scenario'), user=request.user,
+                        hors_reseau=hors_reseau))
+                nb_panneaux = Decimal(imposition.nb_panneaux)
+                panel_watt = Decimal(str(imposition.panel_watt))
+                impose = {
+                    'scenario': imposition.scenario, 'phase': phase,
+                    'modeles': [{'produit_id': imposition.panneau_id,
+                                 'watt': imposition.panel_watt,
+                                 'count': imposition.nb_panneaux}],
+                    'onduleur_impose': imposition.onduleur_impose,
+                    'batterie_imposee': imposition.batterie_imposee}
             resultat = composer_devis_residentiel(
                 company=company,
                 kwc=float(kwc) if kwc is not None else 0,
                 nb_panneaux=int(nb_panneaux),
                 panel_watt=float(panel_watt),
-                scenario=corps.get('scenario'),
+                scenario=impose.pop('scenario', corps.get('scenario')),
                 structure_type=str(structure),
                 structure_produit_id=structure_produit_id,
                 taux_tva=taux_tva,
@@ -494,21 +555,26 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 dimensionnement_avec=dimensionnement_avec,
                 hors_reseau=hors_reseau,
                 ville=ville,
+                **impose,
             )
         except AutoDevisError as exc:
             # CI #1003 fuzz — corps conforme au schéma : catalogue ou réglage
             # de la société qui s'y oppose (aucun onduleur autonome tarifé,
             # marque épinglée absente…) = refus d'ÉTAT, 409 — comme
             # ``/devis/auto/`` ; le message FRANÇAIS reste lu tel quel.
-            return Response(
-                {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_409_CONFLICT)
+            # COP2-V3 — ``choix`` quand un élément imposé est ambigu.
+            refus = {'detail': exc.message, 'field': exc.field}
+            if getattr(exc, 'choix', None) is not None:
+                refus['choix'] = exc.choix
+            return Response(refus, status=status.HTTP_409_CONFLICT)
+        for alerte in alertes_imposees:
+            resultat['avertissements'].append(alerte['message'])
         return Response(resultat, status=status.HTTP_200_OK)
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,
                               200: D.AutoDevisResponse,
-                              409: D.ErreurComposition},
+                              409: D.ErreurDevisAuto},
                    extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',  # ASEC87 — grille « Créer »
             permission_classes=[IsResponsableOrAdmin, DroitDeLaGrille('ventes_creer')])
@@ -538,7 +604,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         création) ; corps différent → 409. Sans en-tête : inchangé."""
         from decimal import Decimal
         from ..services import build_devis_auto, AutoDevisError
-        from ..models import ShareLink
+        from ..domain.composition_imposee import (
+            build_devis_auto_impose, imposition_du_corps)
         from apps.crm.selectors import (
             get_company_client, get_latest_lead_for_client, leads_visibles,
         )
@@ -604,6 +671,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         # normalisés (DataError 500 sinon).
         from ..utils.corps import nettoyer_json
         etude_extra = nettoyer_json(corps.get('etude_params'))
+        # COP2-V3 — les champs de composition IMPOSÉE présents (corps validé).
+        imposes = imposition_du_corps(corps)
         # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
@@ -637,26 +706,10 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                 pk=trace['id'], company=company, lead=lead_obj,
                 created_by=request.user).first()
             if deja is not None:
-                link = ShareLink.for_devis(deja)
-                resume = _resume_devis_auto(deja)
+                # COP2-V3 — le rejeu porte la MÊME forme que la création
+                # (composition, devis_id, lead_id compris).
                 return Response(
-                    {
-                        'id': deja.id,
-                        'reference': deja.reference,
-                        'statut': deja.statut,
-                        'kwc': (deja.etude_params or {}).get('puissance_kwc'),
-                        'nb_lignes': deja.lignes.count(),
-                        'proposal_token': link.token,
-                        'proposal_path': chemin_proposition(deja, link.token),
-                        'alertes': list(trace.get('alertes') or []),
-                        'total_ttc': resume['total_ttc'],
-                        'economie_an_1_ht': resume['economie_an_1_ht'],
-                        'retour_ans': resume['retour_ans'],
-                        'economie_an_1_ht_avec': resume['economie_an_1_ht_avec'],
-                        'retour_ans_avec': resume['retour_ans_avec'],
-                        'kwc_avec': resume['kwc_avec'],
-                        'postes_apres_visite': resume['postes_apres_visite'],
-                    },
+                    _reponse_devis_auto(deja, trace.get('alertes')),
                     status=status.HTTP_200_OK)
 
         cle_verrou = 'devis-auto:%s:%s' % (company.id, lead_obj.id)
@@ -671,19 +724,32 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                            'ce lead.'},
                 status=status.HTTP_409_CONFLICT)
         try:
-            devis = build_devis_auto(
-                lead=lead_obj, user=request.user, company=company,
-                taux_tva=taux_tva, remise_globale=remise,
-                target_kwc=request.data.get('target_kwc'),
-                scenario=request.data.get('scenario'),
-                etude_extra=etude_extra, journal_auto=journal)
+            if imposes:
+                # COP2-V3 — composition IMPOSÉE (résidentiel) : champs lus du
+                # corps VALIDÉ, résolus par le résolveur catalogue unique.
+                devis = build_devis_auto_impose(
+                    lead=lead_obj, user=request.user, company=company,
+                    imposes=imposes, taux_tva=taux_tva,
+                    remise_globale=remise, scenario=corps.get('scenario'),
+                    target_kwc=corps.get('target_kwc'),
+                    etude_extra=etude_extra, journal_auto=journal)
+            else:
+                devis = build_devis_auto(
+                    lead=lead_obj, user=request.user, company=company,
+                    taux_tva=taux_tva, remise_globale=remise,
+                    target_kwc=request.data.get('target_kwc'),
+                    scenario=request.data.get('scenario'),
+                    etude_extra=etude_extra, journal_auto=journal)
         except AutoDevisError as exc:
             # CI #997 fuzz — corps valide : donnée de la fiche manquante,
             # marché ou catalogue qui s'y oppose = refus d'ÉTAT, 409 (le
             # message FRANÇAIS du serveur reste lu tel quel par les écrans).
-            return Response(
-                {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_409_CONFLICT)
+            # COP2-V3 — un élément imposé à zéro ou plusieurs candidats porte
+            # ``choix`` (les produits nommés) : le serveur ne choisit jamais.
+            refus = {'detail': exc.message, 'field': exc.field}
+            if getattr(exc, 'choix', None) is not None:
+                refus['choix'] = exc.choix
+            return Response(refus, status=status.HTTP_409_CONFLICT)
         finally:
             if pose is True:
                 try:
@@ -696,27 +762,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
             cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
         except Exception:
             logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
-        link = ShareLink.for_devis(devis)
-        resume = _resume_devis_auto(devis)
-        return Response(
-            {
-                'id': devis.id,
-                'reference': devis.reference,
-                'statut': devis.statut,
-                'kwc': (devis.etude_params or {}).get('puissance_kwc'),
-                'nb_lignes': devis.lignes.count(),
-                'proposal_token': link.token,
-                'proposal_path': chemin_proposition(devis, link.token),
-                'alertes': alertes,
-                'total_ttc': resume['total_ttc'],
-                'economie_an_1_ht': resume['economie_an_1_ht'],
-                'retour_ans': resume['retour_ans'],
-                'economie_an_1_ht_avec': resume['economie_an_1_ht_avec'],
-                'retour_ans_avec': resume['retour_ans_avec'],
-                'kwc_avec': resume['kwc_avec'],
-                'postes_apres_visite': resume['postes_apres_visite'],
-            },
-            status=status.HTTP_201_CREATED)
+        return Response(_reponse_devis_auto(devis, alertes),
+                        status=status.HTTP_201_CREATED)
 
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
     @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,

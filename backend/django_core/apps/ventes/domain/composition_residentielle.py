@@ -145,8 +145,19 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               batterie_cible_kwh=None,
                               batterie_module_kwh=None,
                               hors_reseau=False, modeles=None,
-                              regles_2710=True):
+                              regles_2710=True, onduleur_impose=None,
+                              batterie_imposee=None):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    ``onduleur_impose`` / ``batterie_imposee`` (COP2-V3, composition IMPOSÉE
+    du devis automatique) — l'id ``stock.Produit`` de l'onduleur VENDU, et
+    ``{'produit_id', 'nombre'}`` de la banque de batteries. Déjà résolus par
+    ``domain/resolution_catalogue`` (jamais choisis ici) : l'onduleur imposé
+    remplace le choix « ≥ 80 % » de SA famille (quantité 1), la batterie
+    imposée remplace le choix économique. Une fiche introuvable ou non tarifée
+    n'est JAMAIS remplacée (le refus nommé est prononcé par
+    ``etape_composer.verifier``). Forme MONO-OPTION seulement (``ValueError``
+    en deux options). ``None`` (LE DÉFAUT) ⇒ composition byte-identique.
 
     ``modeles`` (ACAL63, C-ACAL-042) — les modèles POSÉS par le calepinage,
     ``[{produit_id, watt, count}]`` (``geometrie.modeles_designes``). Dès
@@ -373,6 +384,19 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         if categorie:
             par_type.setdefault(categorie, []).append(produit)
 
+    # ── COP2-V3 — LA COMPOSITION IMPOSÉE (mono-option seulement) ─────────────
+    impose = onduleur_impose is not None or isinstance(batterie_imposee, dict)
+    if impose and deux_options:
+        raise ValueError('Composition imposée : forme mono-option seulement.')
+    ond_impose = (tarifes_par_pk.get(_entier_ou_none(onduleur_impose))
+                  if onduleur_impose is not None else None)
+    bat_imposee = (tarifes_par_pk.get(_entier_ou_none(
+        batterie_imposee.get('produit_id')))
+        if isinstance(batterie_imposee, dict) else None)
+    categorie_imposee = ('onduleur_offgrid' if hors_reseau
+                         else ('onduleur_hybride' if avec_batterie
+                               else 'onduleur_reseau'))
+
     # ── PVMRQ (U3) — restriction par marque épinglée ────────────────────────
     # Miroir EXACT de ``_filtrerParMarque`` (solar.js) : sans préférence, le
     # vivier passe TEL QUEL ; avec une préférence sans aucun candidat, le
@@ -441,6 +465,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     refus_tri = {}
 
     def choisir_onduleur(categorie):
+        if onduleur_impose is not None and categorie == categorie_imposee:
+            # COP2-V3 — l'onduleur IMPOSÉ court-circuite le choix « ≥ 80 % » :
+            # ni repli de phase, ni marque épinglée, ni remplaçant.
+            replis_phase[categorie] = False
+            refus_tri[categorie] = False
+            if ond_impose is None:
+                return None, None
+            return ond_impose, _parse_kw(getattr(ond_impose, 'nom', ''))
         candidats = []
         # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
@@ -494,8 +526,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
 
     def quantite_onduleur(kw):
         """Un onduleur suffit dès qu'il couvre le seuil ; sinon on en met assez
-        pour absorber le champ (blocs entiers, jamais moins d'un)."""
-        if not kw or kw >= seuil:
+        pour absorber le champ (blocs entiers, jamais moins d'un). COP2-V3 :
+        un onduleur IMPOSÉ se vend à l'unité."""
+        if onduleur_impose is not None or not kw or kw >= seuil:
             return 1
         return max(1, int(math.ceil(kwp / kw)))
 
@@ -827,7 +860,20 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             if candidat is not None:
                 candidats.append(candidat)
 
-    if veut_batterie and not candidats:
+    if isinstance(batterie_imposee, dict):
+        # COP2-V3 — la banque IMPOSÉE (produit + nombre, déjà résolus) remplace
+        # le pin et le choix économique ; une fiche introuvable n'est jamais
+        # remplacée (refus nommé par ``etape_composer.verifier``).
+        candidats = []
+        if bat_imposee is not None:
+            candidats = [(0.0, max(1, int(batterie_imposee.get('nombre') or 1)),
+                          float(_parse_kwh(getattr(bat_imposee, 'nom', '')) or 0),
+                          bat_imposee)]
+        else:
+            _avertir('La batterie imposée (fiche produit #%s) est introuvable '
+                     'ou sans prix : aucune batterie composée.'
+                     % batterie_imposee.get('produit_id'))
+    if veut_batterie and not candidats and not isinstance(batterie_imposee, dict):
         # AUCUNE candidate — via le pin ou l'économie : la composition part
         # sans batterie (jamais une banque fabriquée), mais elle le DIT —
         # sinon le devis mentait par omission. C'est CETTE garde qui rend

@@ -20,8 +20,15 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                taux_tva=None, mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
-                               hors_reseau=False, ville=''):
+                               hors_reseau=False, ville='', modeles=None,
+                               onduleur_impose=None, batterie_imposee=None):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
+
+    ``modeles`` / ``onduleur_impose`` / ``batterie_imposee`` (COP2-V3) — la
+    composition IMPOSÉE, déjà résolue par
+    ``composition_imposee.preparer_imposition`` : le dry-run compose EXACTEMENT
+    le kit que ``POST devis/auto/`` créera (règle U3). ``None`` (LE DÉFAUT)
+    ⇒ dry-run strictement inchangé.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
     même fonction pure, les mêmes règles de gamme que ``build_devis_auto`` —
@@ -97,7 +104,9 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                   else (COMPOSITION_AVEC if avec_batterie
                         else COMPOSITION_SANS)),
         hors_reseau=hors_reseau,
-        gamme_nom_devis=gamme_nom_devis)) or ())
+        gamme_nom_devis=gamme_nom_devis, modeles=modeles,
+        onduleur_impose=onduleur_impose,
+        batterie_imposee=batterie_imposee)) or ())
     # QJR-OFFGRID — SEUL le hors réseau transforme cet avertissement en REFUS
     # (voir la docstring) : sans onduleur autonome tarifé, il n'y a rien à
     # composer et surtout rien à substituer.
@@ -131,6 +140,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         avertissements=avertissements,
         hors_reseau=hors_reseau,
         ville=ville or '',
+        # COP2-V3 — la composition imposée (``None`` ⇒ inchangé).
+        modeles=modeles,
+        onduleur_impose=onduleur_impose,
+        batterie_imposee=batterie_imposee,
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -202,6 +215,14 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     }
 
 
+def _modeles_imposes(imposition):
+    """COP2-V3 — le panneau IMPOSÉ, au format ACAL63 ``modeles`` (une fiche
+    désignée n'est jamais remplacée par la composition)."""
+    return [{'produit_id': imposition.panneau_id,
+             'watt': imposition.panel_watt,
+             'count': int(imposition.nb_panneaux)}]
+
+
 def _fmt_kwc_fr(valeur):
     """Un kWc à la française : virgule décimale, sans zéros inutiles."""
     texte = ('%.2f' % float(valeur)).rstrip('0').rstrip('.')
@@ -260,9 +281,18 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
                                   remise_globale=Decimal('0'), target_kwc=None,
                                   scenario=None, etude_extra=None, plafond_toit=None,
                                   journal_auto=None, origine=None,
-                                  structure_produit_id=None, structure_type=None):
+                                  structure_produit_id=None, structure_type=None,
+                                  imposition=None):
     """Le corps RÉSIDENTIEL de :func:`creation_auto.build_devis_auto`
-    (déplacé tel quel ; voir la docstring du dispatcher)."""
+    (déplacé tel quel ; voir la docstring du dispatcher).
+
+    ``imposition`` (COP2-V3, ``composition_imposee.Imposition``) — le kit
+    IMPOSÉ, déjà résolu et contrôlé par
+    :func:`composition_imposee.build_devis_auto_impose` : le compte de
+    panneaux est SOUVERAIN (ni moteur, ni taille demandée, ni arbitrage de
+    calepinage, ni plafond de toit), l'onduleur et la batterie imposés
+    voyagent dans la ``CibleDevis``, et le marqueur est posé. ``None`` (LE
+    DÉFAUT) ⇒ corps strictement inchangé."""
     # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
     # un kWh déclaré que les factures de la fiche contredisent n'est jamais
     # chiffré en silence : aucun devis tant que la fiche n'est pas corrigée.
@@ -318,9 +348,16 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # Une taille NULLE ou illisible sur la fiche ne « demande » rien : elle
     # laisse la main au moteur plutôt que de refuser un lead parfaitement
     # dimensionnable (``target_kwc``, lui, a déjà été validé plus haut).
-    if taille_demandee not in (None, ''):
+    if imposition is not None:
+        # COP2-V3 — le compte IMPOSÉ est souverain (alerte posée en amont).
+        panneaux = int(imposition.nb_panneaux)
+        watt_dimensionnement = float(imposition.panel_watt)
+        source_dimensionnement = 'composition_imposee'
+    elif taille_demandee not in (None, ''):
         panneaux = _residential_panel_count(taille_kwc=taille_demandee)
-    if panneaux > 0:
+    if imposition is not None:
+        pass  # COP2-V3 — dimensionné ci-dessus, aucun moteur consulté.
+    elif panneaux > 0:
         source_dimensionnement = 'taille_demandee'
         _alerter_taille_demandee(journal_auto, cible, taille_demandee)
     else:
@@ -482,6 +519,14 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
                   else (COMPOSITION_AVEC if wants_battery
                         else COMPOSITION_SANS)),
         hors_reseau=hors_reseau))
+    if imposition is not None:
+        # COP2-V3 — l'étape ``verifier`` juge les produits IMPOSÉS eux-mêmes.
+        refus_composition = verifier(IntentionComposition(
+            company=company, nb_panneaux=panneaux, kwc=kwc,
+            scenario=COMPOSITION_AVEC if wants_battery else COMPOSITION_SANS,
+            hors_reseau=hors_reseau, modeles=_modeles_imposes(imposition),
+            onduleur_impose=imposition.onduleur_impose,
+            batterie_imposee=imposition.batterie_imposee))
     if refus_composition:
         raise AutoDevisError(refus_composition[0], field='composition')
 
@@ -491,24 +536,29 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     structure_produit_id, structure_type = _structure_demandee(
         lead, structure_produit_id, structure_type)
 
-    apercu = composer_devis_residentiel(
-        company=company, nb_panneaux=panneaux,
-        panel_watt=watt_dimensionnement,
-        scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
-        phase=phase_client,
-        hors_reseau=hors_reseau,
-        # STKCAT8 — LA STRUCTURE DESCEND SUR LES DEUX POINTS DE COMPOSITION.
-        # Ce chemin en avait DEUX (ce dry-run, qui contrôle les marques, et
-        # l'``IntentionDevis`` finale qui écrit les lignes) et n'en informait
-        # AUCUN : le devis automatique composait toujours de l'acier. Les
-        # transmettre tous les deux est ce qui interdit à l'aperçu et au devis
-        # de diverger.
-        structure_produit_id=structure_produit_id,
-        structure_type=structure_type,
-        # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
-        # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
-        # n'est pas celui du devis.
-        dimensionnement_avec=optimum_avec)
+    # COP2-V3 — une composition IMPOSÉE a déjà été composée à blanc et
+    # contrôlée en amont (``composition_imposee._controle_a_blanc``) : ses
+    # produits imposés ne relèvent d'aucune marque épinglée.
+    apercu = {'marques_manquantes': []}
+    if imposition is None:
+        apercu = composer_devis_residentiel(
+            company=company, nb_panneaux=panneaux,
+            panel_watt=watt_dimensionnement,
+            scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
+            phase=phase_client,
+            hors_reseau=hors_reseau,
+            # STKCAT8 — LA STRUCTURE DESCEND SUR LES DEUX POINTS DE
+            # COMPOSITION. Ce chemin en avait DEUX (ce dry-run, qui contrôle
+            # les marques, et l'``IntentionDevis`` finale qui écrit les
+            # lignes) et n'en informait AUCUN : le devis automatique composait
+            # toujours de l'acier. Les transmettre tous les deux est ce qui
+            # interdit à l'aperçu et au devis de diverger.
+            structure_produit_id=structure_produit_id,
+            structure_type=structure_type,
+            # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera
+            # créée, fusion comprise : sans cela il contrôlerait les marques
+            # d'un kit qui n'est pas celui du devis.
+            dimensionnement_avec=optimum_avec)
     if apercu['marques_manquantes']:
         detail = ', '.join(
             '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
@@ -546,8 +596,11 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     from apps.ventes.models import Devis
 
     toiture = extract_roof_config(layout)
-    panneaux, kwc = _arbitrage_du_calepinage(
-        layout, panneaux, kwc, company=company)
+    if imposition is None:
+        # COP2-V3 — le compte IMPOSÉ ne passe pas par l'arbitrage : jamais un
+        # nombre de panneaux changé en silence.
+        panneaux, kwc = _arbitrage_du_calepinage(
+            layout, panneaux, kwc, company=company)
     layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
 
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
@@ -602,7 +655,12 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
             panel_watt=watt_dimensionnement,
             kwc=kwc,
             source=source_dimensionnement,
-            dimensionnement_avec=optimum_avec),
+            dimensionnement_avec=optimum_avec,
+            # COP2-V3 — le kit IMPOSÉ (``None`` partout hors imposition).
+            **({} if imposition is None else {
+                'modeles': _modeles_imposes(imposition),
+                'onduleur_impose': imposition.onduleur_impose,
+                'batterie_imposee': imposition.batterie_imposee})),
         scenario=(COMPOSITION_LES_DEUX if deux_options
                   else (COMPOSITION_AVEC if wants_battery
                         else COMPOSITION_SANS)),
@@ -639,6 +697,11 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # schéma sort ici, après le pipeline, en 422 NOMMÉ comme avant.
     if refus_extra:
         raise AutoDevisError(refus_extra[0], field='etude_params')
+    if imposition is not None:
+        # COP2-V3 — le MARQUEUR : les chemins qui recomposent ne défont pas
+        # ce que le commercial a imposé.
+        from apps.ventes.domain.composition_imposee import poser_marqueur
+        poser_marqueur(devis, dict(imposition.marqueur))
 
     # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
     # comme sur les chemins d'écriture du générateur (``atomic``,

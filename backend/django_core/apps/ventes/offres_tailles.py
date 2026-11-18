@@ -1456,7 +1456,12 @@ def deriver(devis, data):
     # la carte Recommandé d'un dossier dont l'optimum EST déjà le devis — le
     # cas le plus fréquent d'un devis bien dimensionné.
     offres, champs_vus = [], {}
-    for cle in ('recommande', 'eco', 'max'):
+    # COP2-V3 — un devis à composition IMPOSÉE ne sert que sa taille : les
+    # cartes Éco / Max composeraient un autre kit que celui imposé.
+    from apps.ventes.domain.composition_imposee import marqueur
+    cles_servies = (('recommande',) if marqueur(devis) is not None
+                    else ('recommande', 'eco', 'max'))
+    for cle in cles_servies:
         nb_panneaux = champs.get(cle)
         entree = stockees.get(cle) or {}
         config = entree.get('config') or {}
@@ -1717,6 +1722,10 @@ def regenerer_taille(devis, cle):
     """
     if cle not in CLES:
         raise ValueError('taille inconnue : %s' % cle)
+    # COP2-V3 — « régénérer depuis le moteur » est un geste commercial
+    # EXPLICITE : il rend la main au dimensionnement (marqueur retiré).
+    from apps.ventes.domain.composition_imposee import effacer_marqueur
+    effacer_marqueur(devis)
     stockees = dict(lire_config_stockee(devis))
     if cle not in stockees:
         return stockees
@@ -1875,6 +1884,11 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
         # première écriture du geste entier (resynchro + modules + matériel) ;
         # no-op (None) sur un brouillon.
         avant_geste = debut_de_geste_devis(devis, utilisateur)
+        # COP2-V3 — appliquer une taille est un geste commercial EXPLICITE :
+        # le marqueur de composition imposée est retiré AVANT la
+        # recomposition (sous la même transaction : un refus le rétablit).
+        from apps.ventes.domain.composition_imposee import effacer_marqueur
+        effacer_marqueur(devis)
         try:
             # ── QJR97 (M5, bascule 5/5a) — LE MODE « RÉCONCILIER » ───────────
             # Ce chemin appelait ``sync_devis_from_layout``, l'autre porte du

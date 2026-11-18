@@ -132,6 +132,44 @@ class LEtapeVerifierParleLesTroisScenarios(SimpleTestCase):
         self.assertEqual(erreurs, [etape_composer.MSG_AUCUN_PANNEAU])
 
 
+class LaVerificationImposeeJugeLesProduitsImposes(SimpleTestCase):
+    """COP2-V3 — composition IMPOSÉE : ``verifier`` contrôle les produits
+    imposés EUX-MÊMES (``refus_produits_imposes``), jamais le choix catalogue
+    qu'ils remplacent ; ce qui n'est pas imposé garde l'exigence ordinaire."""
+
+    def _verifier(self, *, fiches, batterie_imposee=True, **catalogue):
+        ancien = etape_composer._fiche_tarifee
+        etape_composer._fiche_tarifee = (
+            lambda company, pid: fiches.get(int(pid)) if pid else None)
+        try:
+            with _CatalogueFictif(**catalogue):
+                return etape_composer.verifier(
+                    etape_composer.IntentionComposition(
+                        company=object(), nb_panneaux=10, kwc=7.1,
+                        scenario='avec', onduleur_impose=88,
+                        batterie_imposee=({'produit_id': 147, 'nombre': 1}
+                                          if batterie_imposee else None)))
+        finally:
+            etape_composer._fiche_tarifee = ancien
+
+    def test_imposes_servables_meme_si_le_catalogue_n_en_choisirait_aucun(self):
+        self.assertIsNone(self._verifier(
+            fiches={88: object(), 147: object()}, hybride=False,
+            batterie=False))
+
+    def test_imposes_introuvables_sont_nommes(self):
+        erreurs = self._verifier(fiches={})
+        self.assertEqual(len(erreurs), 2)
+        self.assertIn('#88', erreurs[0])
+        self.assertIn('#147', erreurs[1])
+
+    def test_batterie_non_imposee_garde_l_exigence_ordinaire(self):
+        self.assertEqual(
+            self._verifier(fiches={88: object()}, batterie_imposee=False,
+                           batterie=False),
+            [etape_composer.MSG_SANS_BATTERIE])
+
+
 class LeScenarioSeLitDansLeLayout(SimpleTestCase):
     """L'adaptateur 3D traduit un layout dans le vocabulaire du pipeline."""
 
