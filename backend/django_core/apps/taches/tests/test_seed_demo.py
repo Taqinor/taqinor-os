@@ -26,6 +26,7 @@ from apps.taches.models.journee import PlanJour
 from apps.taches.models.projets import Projet
 from apps.taches.models.taches import Tache
 from apps.taches.services import journee
+from apps.taches.services.erp import convertir_activites
 from testkit.time import frozen
 
 JOUR = datetime.date(2026, 11, 24)
@@ -95,8 +96,9 @@ class SemisTests(TestCase):
                          (0, 0, 2))
         self.assertEqual(forme['objectif']['nb'], 5)
         self.assertEqual(len(forme['propose']['pour_objectif']), 3)
-        # ERR-PLAN 3 : la facture d'acompte convertie est prévue ven. 27 (spec-2 §3.8), hors d'À trier : 4, pas 5
-        self.assertEqual(forme['a_trier']['boite_reception'], 4)
+        # ERR-PLAN 3 : « Envoyer la facture d'acompte » est un à-faire d'Activités NON converti (le bandeau de
+        # TCH136 étape 5 le convertit) : À trier = 4 tâches + 1 à convertir
+        self.assertEqual((forme['a_trier']['boite_reception'], forme['a_trier']['a_convertir']), (4, 1))
 
     def test_une_tache_en_attente_et_des_reserves_aux_vrais_titres(self):
         attente = list(Tache.objects.filter(proprietaire=self.user, statut=StatutTache.EN_ATTENTE))
@@ -195,10 +197,15 @@ class ScenarioTests(TestCase):
         self.assertEqual(forme['carte_du_moment']['type'], 'garder')  # S2 : « Garder ces 3 »
         self.assertEqual(forme['carte_du_moment']['donnees'], {'n': 3, 'objectif': 5})
         self.assertEqual([i['titre'] for i in forme['journee'] if i['type'] == 'activite'], [commande.ACTIVITE_APPEL])
-        # ERR-PLAN 3 / ERR-SCENARIO : la facture d'acompte convertie est PRÉVUE ven. 27 (spec-2 §3.8) : 4, pas 5
-        self.assertEqual(forme['a_trier']['boite_reception'], 4)
+        # ERR-PLAN 3 / ERR-SCENARIO : la facture d'acompte est l'à-faire d'Activités (échéance ven. 27) que le
+        # bandeau convertit (TCH136 étape 5) ; convertie, elle sera PRÉVUE ven. 27 (spec-2 §3.8) : À trier 4 + 1
+        self.assertEqual((forme['a_trier']['boite_reception'], forme['a_trier']['a_convertir']), (4, 1))
+        self.assertFalse(Tache.all_objects.filter(proprietaire=self.user, titre=commande.ACTIVITE_FACTURE).exists())
+        with frozen(_instant('08:31')):
+            convertir_activites(self.user, toutes=True)  # « Tout convertir » (P136.5)
         facture = Tache.objects.get(proprietaire=self.user, titre=commande.ACTIVITE_FACTURE)
         self.assertEqual((facture.jour_prevu, facture.echeance), (datetime.date(2026, 11, 27), None))
+        self.assertEqual(self.lire('aujourdhui/', _instant('08:31'))['a_trier']['boite_reception'], 4)
 
     def test_08h30_la_veille_est_close_et_les_a_revoir_reportees_3_fois(self):
         self.matin()
@@ -244,8 +251,7 @@ class ScenarioTests(TestCase):
             charges[j['jour']] = (len(taches), sum(i['estimation_minutes'] or 0 for i in taches))
         self.assertEqual(charges['2026-11-25'], (3, 150))  # mer. 25 « 3 tâches · 2 h 30 »
         self.assertEqual(charges['2026-11-26'], (2, 120))  # jeu. 26 « 2 tâches · 2 h »
-        # ven. 27 : SCENARIO « 3 tâches · 2 h » ; la facture d'acompte convertie y est prévue (ERR-PLAN 3) : 4
-        self.assertEqual(charges['2026-11-27'], (4, 120))
+        self.assertEqual(charges['2026-11-27'], (3, 120))  # ven. 27 « 3 tâches · 2 h »
         self.assertEqual(semaine['capacite']['minutes'], 240)
 
     def test_15h00_3_sur_5_et_objectif_couvert(self):
