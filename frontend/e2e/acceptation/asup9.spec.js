@@ -9,7 +9,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, lireJson, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ASUP', ['ASUP68'])
+const etape = groupe('ASUP', ['ASUP68', 'ASUP70'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -197,6 +197,113 @@ ElementSupprime.objects.filter(content_type=ct, object_id=${ids.lead}).delete()
 DeletionRecord.objects.filter(content_type=ct, object_id=${ids.lead}).delete()
 Lead.all_objects.filter(pk=${ids.lead}).delete()
 Client.objects.filter(pk=${ids.client}).delete()
+sortie(1)`).catch(() => null)
+  }
+})
+
+// ── PF10 — ASUP70 : « Anonymiser (RGPD) » et l'effacement d'une demande de droit refusés (409) tant qu'une créance est ouverte ──
+etape('PF10-ASUP70-creance-ouverte', ['ASUP70'], async ({ page, suivi, testInfo }) => {
+  const m = marque()
+  const nom = `Jean Soleil ${m}`
+  const nom2 = `Fatima Reste ${m}`
+  const email2 = `asup70-${m}@asup.invalid`
+  const ad = await compteDe('Administrateur', 'asup70ad')
+  // Given : deux clients, chacun avec une facture ÉMISE de 1 200,00 MAD TTC dont 120,00 MAD encaissés (reste dû 1 080,00).
+  const recette = (n, email, tel, tag) => `c = Client.objects.create(company_id=CO, nom=${J(n)}, prenom='', type_client='particulier', telephone=${J(tel)}, email=${J(email)})
+p = Produit.objects.create(company_id=CO, nom='Kit ASUP70 ${tag}', sku='ASUP70-${tag}-${m}', prix_vente=Decimal('1000'))
+f = Facture.objects.create(company_id=CO, reference='FAC-ASUP70-${tag}-${m}', client=c, statut='emise', taux_tva=Decimal('20'))
+LigneFacture.objects.create(facture=f, produit=p, designation='Centrale', quantite=Decimal('1'), prix_unitaire=Decimal('1000'), remise=Decimal('0'), taux_tva=Decimal('20'))
+Facture.objects.filter(pk=f.pk).update(identite_acheteur=identite_acheteur_courante(f))
+Paiement.objects.create(company_id=CO, facture=f, montant=Decimal('120'), date_paiement=datetime.date.today(), mode='virement')
+`
+  const ids = await py(`import datetime
+from decimal import Decimal
+from apps.crm.models import Client
+from apps.stock.models import Produit
+from apps.ventes.models import Facture, LigneFacture, Paiement
+from apps.ventes.domain.instantanes_facture import identite_acheteur_courante
+CO = ${SOC}
+${recette(nom, `asup70-jean-${m}@asup.invalid`, telephoneMobileUnique(), 'A')}ca, fa = c.pk, f.pk
+${recette(nom2, email2, telephoneMobileUnique(), 'B')}sortie(dict(c1=ca, f1=fa, c2=c.pk, f2=f.pk, du1=str(Facture.objects.get(pk=fa).montant_du), du2=str(Facture.objects.get(pk=f.pk).montant_du)))`)
+  expect([ids.du1, ids.du2].map(Number), 'Given : reste dû 1 080,00 sur chaque facture émise').toEqual([1080, 1080])
+  const etat = (id) => py(`from apps.crm.models import Client
+c = Client.objects.get(pk=${id}); sortie([c.is_anonymized, c.nom, c.email])`)
+  const MOTIF = /Anonymisation refusée : ce client doit encore 1 080,00 MAD sur ses factures émises\. Encaissez le solde, ou soldez-le par un avoir ou un abandon de créance, puis recommencez\./
+  try {
+    const s = await ecranDe(page, suivi, testInfo, ad)
+    const p = s.p
+    const ouvrirFiche = async () => {
+      await p.goto('/crm')
+      await p.getByPlaceholder('Rechercher nom, email, tél, ICE, IF, RC, CIN…').fill(nom)
+      await p.getByRole('row').filter({ hasText: nom }).first().click({ timeout: 60_000 })
+      await expect(p.getByText(`Fiche client — ${nom}`), 'fiche du client ouverte').toBeVisible(V)
+    }
+    // (1) créance ouverte : 409 attendu, motif dans la boîte (pas un toast seul), client intact.
+    await ouvrirFiche()
+    await p.getByRole('button', { name: 'Anonymiser (RGPD)' }).click()
+    const dlg = p.getByRole('alertdialog')
+    await expect(dlg).toContainText('Anonymiser ce client ?')
+    suivi.attendre(/\/crm\/clients\/\d+\/anonymize\/$/, 409)
+    const r409 = p.waitForResponse((r) => /\/crm\/clients\/\d+\/anonymize\/$/.test(r.url()) && r.request().method() === 'POST', T)
+    await dlg.getByRole('button', { name: 'Anonymiser définitivement' }).click()
+    const rep = await r409
+    expect(rep.status(), `POST anonymize : ${(await rep.text()).slice(0, 300)}`).toBe(409)
+    expect((await rep.json()).detail, 'detail du 409').toMatch(MOTIF)
+    await expect(dlg.getByRole('alert'), 'motif visible dans la boîte').toContainText(MOTIF, V)
+    await expect(dlg, 'la boîte reste ouverte').toBeVisible()
+    expect(await etat(ids.c1), 'client intact en base').toEqual([false, nom, `asup70-jean-${m}@asup.invalid`])
+    // Persistance : fiche relue après rechargement, nom d'origine.
+    await p.reload()
+    await ouvrirFiche() // la fiche est relue par la liste : elle porte toujours le nom d'origine
+    // (2) reste encaissé : le même geste passe.
+    await py(`import datetime
+from apps.ventes.models import Facture, Paiement
+f = Facture.objects.get(pk=${ids.f1})
+Paiement.objects.create(company_id=f.company_id, facture=f, montant=f.montant_du, date_paiement=datetime.date.today(), mode='virement')
+sortie(str(Facture.objects.get(pk=${ids.f1}).montant_du))`)
+    await p.getByRole('button', { name: 'Anonymiser (RGPD)' }).click()
+    const dlg2 = p.getByRole('alertdialog')
+    await expect(dlg2).toContainText('Anonymiser ce client ?')
+    await expect(dlg2.getByRole('alert'), 'ancien motif effacé à la réouverture').toHaveCount(0)
+    await dlg2.getByRole('button', { name: 'Anonymiser définitivement' }).click()
+    await expect(toast(p, 'Client anonymisé (données personnelles effacées)'), 'client anonymisé à l\'écran').toBeVisible(V)
+    const apres = await etat(ids.c1)
+    expect(apres[0], `client anonymisé en base (${J(apres)})`).toBe(true)
+    expect(apres[1], 'nom d\'origine effacé').not.toBe(nom)
+    // (3) Paramètres › Confidentialité : demande d'effacement sur l'e-mail du 2e client, « Traiter » ⇒ 409, motif en toast.
+    await p.goto('/parametres?onglet=confidentialite')
+    const carte = p.getByText('Demandes de personnes concernées').first()
+      .locator('xpath=ancestor::*[.//input[@placeholder="Email ou téléphone de la personne concernée"]][1]')
+    await expect(carte, 'bloc « Demandes de personnes concernées »').toBeVisible(V)
+    await carte.getByPlaceholder('Email ou téléphone de la personne concernée').fill(email2)
+    await carte.getByRole('combobox').click()
+    await p.getByRole('option', { name: 'Effacement' }).click()
+    await carte.getByRole('button', { name: 'Soumettre' }).click()
+    const ligne = p.getByTestId('dsr-row').filter({ hasText: email2 })
+    await expect(ligne, 'demande reçue').toContainText('Reçue', V)
+    await ligne.getByRole('button', { name: 'Traiter' }).click()
+    const dlg3 = p.getByRole('alertdialog')
+    await expect(dlg3).toContainText(`Effacer les données de ${email2} ?`)
+    suivi.attendre(/\/core\/dsr-requests\/\d+\/traiter\/$/, 409)
+    await dlg3.getByRole('button', { name: 'Effacer' }).click()
+    await expect(toast(p, MOTIF), 'toast : le motif du 409').toBeVisible(V)
+    await expect(ligne, 'la demande reste « Reçue »').toContainText('Reçue')
+    expect(await etat(ids.c2), 'second client intact en base').toEqual([false, nom2, email2])
+    const statut = await py(`from core.models import DataSubjectRequest
+sortie([d.statut for d in DataSubjectRequest.objects.filter(subject_identifier=${J(email2)})])`)
+    expect(statut, 'demande toujours reçue en base').toEqual(['recue'])
+    await p.reload()
+    await expect(p.getByTestId('dsr-row').filter({ hasText: email2 }), 'après rechargement : « Reçue »').toContainText('Reçue', V)
+  } finally {
+    await py(`from apps.crm.models import Client
+from apps.ventes.models import Facture, Paiement
+from core.models import DataSubjectRequest
+DataSubjectRequest.objects.filter(subject_identifier=${J(email2)}).delete()
+for pk in (${ids.f1}, ${ids.f2}):
+    Paiement.objects.filter(facture_id=pk).delete()
+    try: Facture.objects.filter(pk=pk).delete()
+    except Exception as exc: print('nettoyage', exc)
+Client.objects.filter(pk__in=[${ids.c1}, ${ids.c2}]).delete()
 sortie(1)`).catch(() => null)
   }
 })
