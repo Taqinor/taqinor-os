@@ -1,8 +1,13 @@
 import asyncio
+import base64
+import binascii
 import re
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from fastapi.exceptions import RequestValidationError
+from pydantic import (BaseModel, Field, TypeAdapter, ValidationError, field_validator,
+                      model_validator)
 
 from app.core import database as _database
 from app.core.security import exiger_compte_interne, get_raw_token, verify_token
@@ -20,7 +25,10 @@ router = APIRouter(dependencies=[Depends(exiger_compte_interne)])  # APFS2
 
 # AANA5 (C-AANA-034) — bornes de l'agent : une question de 1 Mo ou une rafale
 # de requetes ne doit ni saturer le LLM (payant) ni la base.
-SQL_AGENT_QUESTION_MAX_LENGTH = 2000      # caracteres ; 422 au-dela
+# Copilote v2 (F4) : 6 000 quand le copilote est allume pour l'appelant
+# (`relais_copilote.capacites`) ; sinon 2 000, avec le MEME 422 qu'avant.
+SQL_AGENT_QUESTION_MAX_LENGTH = relais_copilote.LIMITE_QUESTION   # 2000 caracteres
+SQL_AGENT_QUESTION_MAX_LENGTH_COPILOTE = relais_copilote.LIMITE_QUESTION_COPILOTE
 SQL_AGENT_RATE_LIMIT_MAX = 20             # requetes max par utilisateur...
 SQL_AGENT_RATE_LIMIT_WINDOW = 60          # ...sur une fenetre de 60 s
 
@@ -58,13 +66,40 @@ class ContexteEcran(BaseModel):
         return relais_copilote.borner_diagnostic(valeur)
 
 
+#: Copilote v2 (F5) — images jointes a une question (capture d'un message de
+#: client) : 3 au plus, chacune <= 2 000 000 caracteres base64, types du
+#: contrat ; contenu verifie par la signature du fichier (meme table que l'OCR).
+IMAGES_MAX = 3
+IMAGE_BASE64_MAX = 2_000_000
+
+
+class ImageJointe(BaseModel):
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    data: str = Field(..., min_length=16, max_length=IMAGE_BASE64_MAX)
+
+    @model_validator(mode="after")
+    def _verifier_contenu(self):
+        from app.api.endpoints.ocr import _check_magic_bytes  # meme table que l'OCR (ocr.py MAGIC_BYTES)
+        try:
+            octets = base64.b64decode(self.data, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("Image illisible : base64 invalide.") from None
+        if not _check_magic_bytes(self.media_type, octets[:16]):
+            raise ValueError("Le contenu de l'image ne correspond pas à son type.")
+        return self
+
+
 class SQLQuery(BaseModel):
-    # AANA5 — 422 automatique au-dela de la borne (avant tout appel LLM).
-    question: str = Field(..., max_length=SQL_AGENT_QUESTION_MAX_LENGTH)
+    # AANA5 — 422 au-dela de la borne de l'APPELANT, avant tout appel LLM :
+    # `_borner_question` (2 000, ou 6 000 copilote allume — F4). La borne n'est
+    # plus dans le schema : elle depend du compte, lu chez Django.
+    question: str = Field(...)
     # AIC9 — optionnel : injecte dans le message UTILISATEUR, journalise.
     contexte: ContexteEcran | None = None
     # AIC91 — optionnel : identifiant aleatoire pour sonder les etapes du tour.
     progression_id: str | None = Field(None, pattern=_PROGRESSION_ID)
+    # F5 — optionnel : servies au moteur natif seulement (relais_copilote.tour_avec_images).
+    images: list[ImageJointe] | None = Field(None, max_length=IMAGES_MAX)
 
 
 class SQLResponse(BaseModel):
@@ -95,6 +130,41 @@ class SQLResponse(BaseModel):
     moteur: str = "langchain"
 
 
+def _contexte_de_lecture(token_payload: dict, raw_token: str) -> ActionContext:
+    """Contexte minimal pour LIRE le catalogue de l'appelant (Django tranche
+    par le jeton : la societe passee ici ne sert a rien)."""
+    return ActionContext(company_id=0, role=str(token_payload.get("role") or ""),
+                         permissions=[], token=raw_token,
+                         is_superuser=bool(token_payload.get("is_superuser", False)))
+
+
+def _refus_longueur(question: str, limite: int) -> None:
+    """Le 422 de pydantic, octet pour octet (`string_too_long`, loc
+    body.question) — copilote eteint, la meme reponse qu'avant F4."""
+    try:
+        TypeAdapter(Annotated[str, Field(max_length=limite)]).validate_python(question)
+    except ValidationError as exc:
+        raise RequestValidationError([
+            {**err, "loc": ("body", "question", *err["loc"])}
+            for err in exc.errors(include_url=False)]) from None
+
+
+async def _borner_question(question: str, token_payload: dict, raw_token: str) -> None:
+    """AANA5 + F4 — au-dela de 2 000 caracteres, la borne de l'appelant est
+    lue chez Django (une lecture du catalogue, seulement dans ce cas)."""
+    if len(question) <= SQL_AGENT_QUESTION_MAX_LENGTH:
+        return
+    caps = await asyncio.to_thread(
+        relais_copilote.capacites, _contexte_de_lecture(token_payload, raw_token))
+    _refus_longueur(question, caps["limite_question"])
+
+
+class Capacites(BaseModel):
+    """Contrat `assistant_reponse.json` → `capacites` (copilote v2, F4)."""
+    limite_question: int
+    images_acceptees: bool
+
+
 class HistoryMessage(BaseModel):
     role: str
     content: str
@@ -116,6 +186,8 @@ async def query_database(
     JWT, les permissions du role (lues par /auth/me/, AANA8) + le jeton brut
     (relaye a l'API Django interne, qui tranche).
     """
+    # AANA5 / F4 — borne de longueur de l'appelant (422 comme avant), avant tout.
+    await _borner_question(request.question, token_payload, raw_token)
     user_id = int(token_payload.get("user_id", 0))
     # ERR44 — exige un company_id present et non nul (403 sinon).
     company_id = _require_company_id(token_payload)
@@ -141,6 +213,8 @@ async def query_database(
     options = {}
     if request.contexte is not None:
         options["contexte"] = request.contexte.model_dump()
+    if request.images:  # F5 — jamais journalisees ni gardees (marqueur seulement)
+        options["images"] = [image.model_dump() for image in request.images]
     try:
         result = await sql_agent_service.query(
             question=request.question,
@@ -192,6 +266,17 @@ def get_suggestions(ecran: str = "/", token_payload: dict = Depends(verify_token
     """AIC9 — trois questions suggerees pour l'ecran, lues du manifeste
     `capacites.yml` deja charge (cle `suggestions`) ; [] sans manifeste."""
     return suggestions_pour_ecran(ecran[:255])
+
+
+@router.get("/capacites", response_model=Capacites)
+async def get_capacites(token_payload: dict = Depends(verify_token),
+                        raw_token: str = Depends(get_raw_token)):
+    """Copilote v2 (F4) — ce que l'ecran peut envoyer pour CE compte :
+    `{limite_question, images_acceptees}` (6 000 / vrai seulement copilote
+    allume ; images : moteur natif + fournisseur claude en plus ; sinon
+    2 000 / faux). Lu par le panneau a son ouverture."""
+    return await asyncio.to_thread(
+        relais_copilote.capacites, _contexte_de_lecture(token_payload, raw_token))
 
 
 @router.get("/progression/{progression_id}")

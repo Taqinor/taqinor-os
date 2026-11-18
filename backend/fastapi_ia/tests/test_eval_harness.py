@@ -221,14 +221,23 @@ class EvalCommerciauxTests(unittest.TestCase):
         self.assertEqual(rapport["reussis"], 12)
 
     def test_scenarios_du_copilote(self):
-        """COP-B7 — 15 phrases du jour + 2 injections + 2 darija ; chaque cle
-        attendue ou interdite est connue ; chaque scenario attend un outil ou
-        interdit une ecriture ; la reponse ideale passe a 100 %."""
+        """COP-B7 — 15 phrases du jour + 2 injections + 2 darija + 4 demandes de
+        devis (copilote v2) ; chaque cle attendue ou interdite est connue ;
+        chaque scenario attend un outil ou interdit une ecriture ; la reponse
+        ideale passe a 100 %."""
         from tests.eval.cases_commerciaux import CASES_COPILOTE, CLES_COPILOTE
         sources = [c["source"] for c in CASES_COPILOTE]
         self.assertEqual((sources.count("voix"), sources.count("injection"),
-                          sources.count("darija"), len(CASES_COPILOTE)), (15, 2, 2, 19))
-        self.assertEqual(len({c["id"] for c in CASES_COPILOTE}), 19)
+                          sources.count("darija"), sources.count("devis"), len(CASES_COPILOTE)),
+                         (15, 2, 2, 4, 23))
+        self.assertEqual(len({c["id"] for c in CASES_COPILOTE}), 23)
+        devis = {c["id"]: c for c in CASES_COPILOTE if c["source"] == "devis"}
+        self.assertEqual(runner.outils_requis(devis["dev_demande_client_nomme"]),
+                         ["crm.lead.chercher", "ventes.catalogue.chercher", "ventes.devis.composer"])
+        self.assertIn("ventes.devis.composer", devis["dev_demande_sans_client"]["interdits"])
+        self.assertEqual(devis["dev_demande_depuis_taches"]["contexte"]["ecran"], "/taches/aujourdhui")
+        self.assertEqual(devis["dev_whatsapp_colle"]["a_confirmer"], ("crm.lead.creer",))
+        self.assertTrue(all(c.get("interdits") for c in devis.values()))
         for c in CASES_COPILOTE:
             cles = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ()) \
                 | set(c.get("interdits") or ()) | set(c.get("a_confirmer") or ())
@@ -245,11 +254,11 @@ class EvalCommerciauxTests(unittest.TestCase):
     def test_scenarios_du_coach(self):
         """TCH116 — les dix-sept conversations de textes.md §5.8 (douze, puis
         les cinq qui manquaient), plus celles de la revue F3 (A5), du Copilote sur les tâches, APRÈS
-        celles du copilote (restées 19) : ids uniques, clés connues, injections
+        celles du copilote (23 depuis le copilote v2) : ids uniques, clés connues, injections
         avec interdits, une carte attendue sauf hors sujet ; la réponse idéale
         passe à 100 %, une carte manquante échoue en `bonne_carte`."""
         from tests.eval.cases_commerciaux import CASES_COACH, CASES_COPILOTE, CLES_COACH
-        self.assertEqual((len(CASES_COACH), len(CASES_COPILOTE)), (19, 19))
+        self.assertEqual((len(CASES_COACH), len(CASES_COPILOTE)), (19, 23))
         ids = [c["id"] for c in CASES_COACH]
         self.assertEqual(len(set(ids)), 19)
         self.assertLessEqual({"coa_ou_j_en_suis", "coa_modifier", "coa_plus_sept",

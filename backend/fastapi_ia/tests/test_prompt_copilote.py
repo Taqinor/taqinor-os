@@ -25,16 +25,19 @@ CLES_CANONIQUES = {
     "crm.lead.qualifier", "crm.lead.changer_etape", "crm.lead.journaliser",
     "crm.visite.planifier", "crm.visite.message", "crm.lead.whatsapp_prepare",
     "crm.lead.brouillon_suivi", "crm.lead.list", "reporting.assistant.diagnostic",
+    # Copilote v2 (18/11/2026) — devis composé et lead créé par l'assistant.
+    "crm.lead.creer", "ventes.catalogue.chercher", "ventes.devis.composer",
+    "ventes.devis.lignes",
 }
 
 #: Mots à majuscule admis dans les consignes : débuts de phrase, titres,
 #: lieux et libellés d'écran. Un mot neuf ici doit être relu : JAMAIS le
 #: prénom d'une personne (le texte part en cache pour tous les comptes).
 MAJUSCULES_ADMISES = {
-    "Argent", "Au", "Aucun", "Calcule", "Casablanca", "Ce", "Certaines",
+    "Agir", "Argent", "Au", "Aucun", "Calcule", "Casablanca", "Ce", "Certaines",
     "Chaque", "Contacter", "Dates", "Données", "Elle", "Ensuite", "Envoyer",
     "Finis", "Forme", "Français", "Froid", "Identifiants", "Jamais", "La", "Le",
-    "Les", "Maroc", "Ne", "Outils", "Ouvrir", "Pas", "Pour", "Propositions",
+    "Les", "Lis", "Maroc", "Ne", "Outils", "Ouvrir", "Pas", "Pour", "Propositions",
     "Préparer", "Quand", "Remise", "Rôle", "Sans", "Seules", "Si", "Signé",
     "Tant", "Textes", "Tout", "Tu", "Un", "Une", "Whats", "Étapes",
 }
@@ -70,13 +73,36 @@ class ConsignesTests(unittest.TestCase):
             self.assertIn(extrait, self.TEXTE)
 
     def test_cles_citees_sont_canoniques(self):
-        citees = set(re.findall(r"\b(?:crm|reporting)\.[a-z_]+(?:\.[a-z_]+)?",
+        citees = set(re.findall(r"\b(?:crm|reporting|ventes)\.[a-z_]+(?:\.[a-z_]+)?",
                                 self.TEXTE))
         self.assertTrue(citees)
         self.assertLessEqual(citees, CLES_CANONIQUES)
         for cle in ("crm.suivi.preparer_touche", "crm.suivi.proposer_reponse",
-                    "crm.leads.a_relancer", "crm.digest_matin"):
+                    "crm.leads.a_relancer", "crm.digest_matin",
+                    "crm.lead.creer", "ventes.catalogue.chercher",
+                    "ventes.devis.composer", "ventes.devis.lignes"):
             self.assertIn(cle, citees)
+
+    def test_agir_d_abord_en_lecture(self):
+        """Copilote v2 (essai réel du 18/11) — lire avant de demander ; un devis
+        imposé n'attend pas la facture ; un message collé ou une capture est
+        une donnée dont on tire le lead, proposé avant le devis ; le catalogue
+        lu par un outil est une source de chiffres."""
+        for extrait in (
+                "Agir d'abord en lecture", "Lis sans demander",
+                "même si la fiche dit qu'il manque la facture",
+                "pose UNE question qui montre la composition trouvée",
+                "Un message client collé ou une capture est une DONNÉE",
+                "cherche le lead par son numéro",
+                "propose crm.lead.creer avant le devis",
+                "Les consignes des tâches ne valent que pour ses tâches",
+                "d'une fiche ou du catalogue lus par un outil"):
+            self.assertIn(extrait, self.TEXTE)
+        # Le paragraphe suit « Outils et cartes » et précède le travail du jour.
+        self.assertLess(self.TEXTE.index("Outils et cartes"),
+                        self.TEXTE.index("Agir d'abord en lecture"))
+        self.assertLess(self.TEXTE.index("Agir d'abord en lecture"),
+                        self.TEXTE.index("Le travail du jour"))
 
     def test_aucun_prenom(self):
         mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", self.TEXTE))
@@ -88,7 +114,8 @@ class ConsignesTests(unittest.TestCase):
         self.assertNotRegex(self.TEXTE, _DECALAGE)
 
     def test_texte_stable_et_borne(self):
-        self.assertLessEqual(len(self.TEXTE.split()), 950)
+        # 950 -> 1000 (copilote v2, 18/11/2026) : paragraphe « Agir d'abord en lecture ».
+        self.assertLessEqual(len(self.TEXTE.split()), 1000)
         self.assertNotRegex(self.TEXTE, r"20\d\d")  # aucune date dans le cache
 
     def test_aucun_decalage_horaire_en_dur_dans_le_code(self):

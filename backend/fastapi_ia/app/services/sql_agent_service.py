@@ -514,11 +514,13 @@ def _contenu_systeme(provider: str, allow_price: bool,
     COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
     MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange.
     `taches` : le bloc « TACHES — CONSIGNES DU COPILOTE » seulement pour un
-    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`)."""
+    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`).
+    F1 : consignes AVANT `_AGENT_PREFIX` (role avant le guide SQL)."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
     if copilote:
-        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.consignes_du_copilote(taches) + "\n"
+        base = (prompt_copilote.consignes_du_copilote(taches) + "\n"
+                + prompt_copilote.TRANSITION_GUIDE_SQL + base)
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + _manuel_du_role(docs, role)
@@ -1637,6 +1639,8 @@ class SQLAgentService:
             actions_available, build_action_tools, outil_report_gap,
         )
         from app.services import relais_copilote as relais
+        if relais.question_trop_longue_pour(provider or SQL_AGENT_PROVIDER, question):  # F4 — repli Groq
+            return relais.reponse_question_longue(provider or SQL_AGENT_PROVIDER)
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
         # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
@@ -1821,12 +1825,12 @@ class SQLAgentService:
         user_id: int | None = None,
         company_id: int | None = None,
         action_ctx: "ActionContext | None" = None,
-        contexte: dict | None = None,
+        contexte: dict | None = None, images: list | None = None,
     ) -> dict[str, Any]:
         """AIC6 — toute reponse (succes, erreur, repli) est journalisee.
         AIC9 — `contexte` {ecran, lead_id} voyage jusqu'a l'evenement."""
         out = await self._query(question, user_id, company_id, action_ctx,
-                                contexte)
+                                contexte, **({"images": images} if images else {}))
         out["evenement_id"] = await asyncio.to_thread(
             self._journaliser, question, out, action_ctx, contexte)
         return out
@@ -1840,7 +1844,7 @@ class SQLAgentService:
         contexte = contexte or {}
         corps = {
             "intention": out.get("intention") or "donnee",
-            "question": (question or "")[:2000],
+            "question": (out.get("question_journal") or question or "")[:2000],
             "resume_reponse": (out.get("answer") or "")[:500],
             "ecran": str(contexte.get("ecran") or "")[:255],
             "lead_id": contexte.get("lead_id"),
@@ -1880,7 +1884,7 @@ class SQLAgentService:
         user_id: int | None,
         company_id: int | None,
         action_ctx: "ActionContext | None",
-        contexte: dict | None = None,
+        contexte: dict | None = None, images: list | None = None,
     ) -> dict[str, Any]:
         from app.services import relais_copilote as relais
         try:
@@ -1888,6 +1892,9 @@ class SQLAgentService:
             # catalogue recu de Django porte une action du lot `copilote`.
             catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
             relais.noter_question_du_tour(action_ctx, question)  # A5 — liste ou texte collé
+            if images:  # F5 — moteur natif seulement, jamais ignorees en silence
+                return await asyncio.to_thread(relais.tour_avec_images, self, question, company_id or 0,
+                                               user_id or 0, action_ctx, contexte, catalogue, images)
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
