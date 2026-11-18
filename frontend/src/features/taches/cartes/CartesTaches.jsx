@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import CaseRonde from '../ui/CaseRonde'
-import { accord, duree, heure, jourNomme } from '../lib/textes'
+import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
 
 /* ============================================================================
    TCH117 + TCH165 — Les cartes « Tâches » du Copilote, rendues DIRECTEMENT (sans passer par
@@ -276,7 +276,10 @@ function CarteEcho({ tache, proposition }) {
 // écrit, la carte porte le corps de la requête (`proposition.corps`, contrat `ecriture_a_valider`) et le
 // doigt la valide. « Modifier » / « Laisser » : textes.md §5.5. Les autres écritures gardent le libellé
 // du registre de l'agent (`proposition.libelle`) sur leur bouton.
-const ECRITURES_A_VALIDER = {
+// Revue F3 n° 2 : la carte DIT chaque champ du corps avant le doigt (`lignesDuCorps`) et le bouton
+// envoie ce corps-là, le même objet ; un champ qu'elle ne sait pas dire se montre tel quel (clé : valeur).
+// eslint-disable-next-line react-refresh/only-export-components -- table parcourue par la garde du test (revue F3 n° 2)
+export const ECRITURES_A_VALIDER = {
   'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
   'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c) },
   'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
@@ -298,17 +301,114 @@ function ligneDuChangement({ champ, avant, apres }, titre) {
   return `Projet : ${avant?.nom ?? 'sans projet'} → ${apres?.nom ?? 'sans projet'}`
 }
 
+// Les mots de chaque champ : puces de la saisie (textes.md §2.3 : « Matin » / « Après-midi » / « Ce soir »,
+// « échéance {jour} [· {HH:MM}] », « En réserve », « Nouveau projet : {nom} », « Priorité haute »,
+// « Rappel {jour} {HH:MM} »), champs de la fiche (§2.4 : Quand, Heure, Durée, « Lié à : »), Mon rythme
+// (§2.11 : modes, « Objectif du jour : {n} », « Plus » / « Moins »). Une valeur qui n'a pas la forme
+// attendue n'est jamais « arrangée » : elle tombe dans le rendu tel quel.
+const MOMENT_DIT = { matin: 'Matin', apres_midi: 'Après-midi', soir: 'Ce soir' }
+const SENS_DIT = { plus: 'Plus', moins: 'Moins' }
+// `lock_version` : le numéro de version que le serveur compare ; il n'écrit rien et n'est pas dit.
+const CHAMPS_TECHNIQUES = new Set(['lock_version'])
+const estJour = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const estHeure = (v) => typeof v === 'string' && /^\d{2}:\d{2}(:\d{2})?$/.test(v)
+const estTexte = (v) => typeof v === 'string' && v.trim() !== ''
+const prioriteDite = (v) => (Number.isInteger(v) && v in PRIORITE_DITE ? `Priorité ${PRIORITE_DITE[v]}` : '')
+const brut = (cle, v) => `${cle} : ${JSON.stringify(v) ?? String(v)}`
+
+function nouveauProjetDit(p) {
+  if (!p || typeof p !== 'object' || !estTexte(p.nom)) return ''
+  if (Object.keys(p).some((k) => k !== 'nom' && k !== 'priorite')) return ''
+  if (p.priorite === undefined) return `Nouveau projet : ${p.nom}`
+  const priorite = prioriteDite(p.priorite)
+  return priorite ? `Nouveau projet : ${p.nom} · ${priorite}` : ''
+}
+
+function lienDit(l) {
+  if (!l || typeof l !== 'object' || Object.keys(l).length !== 2 || !estTexte(l.cible) || !Number.isInteger(l.id)) return ''
+  return `Lié à : ${l.cible} ${l.id}`
+}
+
+// Une règle par champ (ou groupe de champs dits ensemble) : elle ne s'applique que si tous ses champs sont
+// dans le corps, et rend '' quand la valeur n'a pas la forme attendue. Les groupes passent d'abord.
+const DIRE_CHAMPS = [
+  [['echeance', 'echeance_heure'], (c) => (estJour(c.echeance) && estHeure(c.echeance_heure)
+    ? `Échéance : ${jourCourt(c.echeance)} · ${heure(c.echeance_heure)}` : '')],
+  [['jour', 'heure'], (c) => (estJour(c.jour) && estHeure(c.heure) ? `Rappel ${jourCourt(c.jour)} ${heure(c.heure)}` : '')],
+  [['cle', 'valeur'], (c) => (estTexte(c.cle)
+    ? `${c.cle} : ${typeof c.valeur === 'string' ? c.valeur : JSON.stringify(c.valeur)}` : '')],
+  [['echeance'], (c) => (estJour(c.echeance) ? `Échéance : ${jourCourt(c.echeance)}` : '')],
+  [['heure'], (c) => (estHeure(c.heure) ? `Rappel ${heure(c.heure)}` : '')],
+  [['jour_prevu'], (c) => (estJour(c.jour_prevu) ? `Quand : ${jourCourt(c.jour_prevu)}` : '')],
+  [['moment'], (c) => MOMENT_DIT[c.moment] ?? ''],
+  [['heure_debut'], (c) => (estHeure(c.heure_debut) ? `Heure : ${heure(c.heure_debut)}` : '')],
+  [['estimation_minutes'], (c) => (Number.isInteger(c.estimation_minutes) && duree(c.estimation_minutes)
+    ? `Durée : ${duree(c.estimation_minutes)}` : '')],
+  [['priorite'], (c) => prioriteDite(c.priorite)],
+  [['quelque_jour'], (c) => (c.quelque_jour === true ? 'En réserve' : '')],
+  [['nom'], (c) => (estTexte(c.nom) ? `Nouveau projet : ${c.nom}` : '')],
+  [['nouveau_projet'], (c) => nouveauProjetDit(c.nouveau_projet)],
+  [['lien'], (c) => lienDit(c.lien)],
+  [['mode'], (c) => LIBELLES_MODE[c.mode] ?? ''],
+  [['objectif'], (c) => (Number.isInteger(c.objectif) ? `Objectif du jour : ${c.objectif}` : '')],
+  [['sens'], (c) => (SENS_DIT[c.sens] ? `Changer d'objectif : ${SENS_DIT[c.sens]}` : '')],
+]
+
+// `taches.tache.modifier` : un changement (avant → après, servi par le relais) dit le champ du corps
+// seulement si son « après » EST la valeur envoyée ; sinon le champ se dit aussi tel quel.
+const CHAMP_DU_CHANGEMENT = { priorite: 'priorite', echeance: 'echeance', projet: 'projet_id' }
+function changementDit(c, corps) {
+  const cle = CHAMP_DU_CHANGEMENT[c.champ]
+  if (!cle || !(cle in corps)) return false
+  return cle === 'projet_id' ? c.apres?.id === corps.projet_id : c.apres === corps[cle]
+}
+
+/**
+ * Ce que la carte dit du corps qu'elle enverra : `[{ cles, texte, brut, changement }]`, dans l'ordre
+ * changements → champs lisibles → champs dits tels quels. Tout champ du corps (hors `lock_version`) est
+ * dans au moins une ligne ; `titre` est dit par la tête de la carte quand aucune tâche n'est visée.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, lu par la garde du test
+export function lignesDuCorps(corps, changements = [], { titreEnTete = false, titreTache = '' } = {}) {
+  const lignes = []
+  const dits = new Set(CHAMPS_TECHNIQUES)
+  if (titreEnTete) dits.add('titre')
+  for (const c of changements) {
+    const cle = CHAMP_DU_CHANGEMENT[c.champ]
+    const exact = changementDit(c, corps)
+    if (exact) dits.add(cle)
+    lignes.push({ cles: exact ? [cle] : [], texte: ligneDuChangement(c, titreTache), brut: false, changement: true })
+  }
+  for (const [cles, dire] of DIRE_CHAMPS) {
+    if (cles.some((k) => !(k in corps) || dits.has(k))) continue
+    const texte = dire(corps)
+    if (!texte) continue
+    cles.forEach((k) => dits.add(k))
+    lignes.push({ cles, texte, brut: false })
+  }
+  for (const [cle, valeur] of Object.entries(corps)) {
+    if (!dits.has(cle)) lignes.push({ cles: [cle], texte: brut(cle, valeur), brut: true })
+  }
+  return lignes
+}
+
 function CarteAValider({ tache, proposition }) {
   const geste = useGeste()
   const [laisse, setLaisse] = useState(false)
   const ecriture = ECRITURES_A_VALIDER[proposition.action_key]
-  const corps = proposition.corps ?? {}
-  const titre = tache?.titre ?? proposition.libelle
+  // UN objet : celui que les lignes disent est celui que le bouton envoie.
+  const [corps] = useState(() => proposition.corps ?? {})
+  const titreEnTete = !tache && estTexte(corps.titre)
+  const titre = tache?.titre ?? (titreEnTete ? corps.titre : proposition.libelle)
+  const lignes = lignesDuCorps(corps, proposition.changements ?? [], { titreEnTete, titreTache: tache?.titre ?? '' })
   return (
     <div role="group" aria-label={titre}>
       <Tete titre={titre} />
-      {(proposition.changements ?? []).map((c) => (
-        <p key={c.champ} className="section-sous">{ligneDuChangement(c, tache?.titre ?? '')}</p>
+      {lignes.map((l, i) => (
+        <p key={`${i}:${l.cles.join(',')}`} className="section-sous whitespace-pre-wrap break-words"
+          data-brut={l.brut ? '' : undefined}>
+          {l.texte}
+        </p>
       ))}
       {ecriture && !geste.fait && !laisse ? (
         <div className="propose-actions ep-carte-ia-pied">
@@ -570,9 +670,16 @@ const COMPOSANTS = {
   point: CartePoint,
 }
 
+/** Une écriture à valider arrive sous la clé de carte de son action (`tache`, ou `rythme` pour
+ *  `taches.rythme.regler` et `taches.preference.noter`) : elle se rend TOUJOURS en carte à valider. */
+function CarteEcritureAValider({ donnees }) {
+  return <CarteAValider tache={donnees.tache} proposition={donnees.proposition} />
+}
+
 /** Une carte `taches` du Copilote : `carte` = `{ carte: '<clé>', donnees: <corps de la route> }`. */
 export default function CartesTaches({ carte }) {
-  const Composant = COMPOSANTS[carte?.carte]
+  const aValider = carte?.donnees?.proposition?.geste === 'ecrire'
+  const Composant = COMPOSANTS[carte?.carte] && aValider ? CarteEcritureAValider : COMPOSANTS[carte?.carte]
   if (!Composant || !carte.donnees) return null
   return (
     <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
