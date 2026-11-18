@@ -16,6 +16,15 @@ import { mkdirSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 import { py } from './acceptation/_django.js'
 
+// Passe visuelle n° 28 et 48 — les champs natifs date et heure (`type=date`, `type=time`) s'affichent dans la langue
+// du NAVIGATEUR, pas dans celle du contexte : `locale: 'fr-FR'` (posé par `ouvrir`) règle `navigator.language` et
+// `Intl`, mais Chromium dessine encore « mm/dd/yyyy » et « 08:30 AM » (mesuré sur la machine cloud ; `--lang=fr-FR`
+// n'y change rien non plus). Sa langue d'interface sous Linux se lit dans `LANGUAGE` au LANCEMENT : posée ici, au
+// chargement du module, avant que l'ouvrier lance son navigateur (fixture `browser`, au premier test), elle donne
+// « 25/11/2026 » et « 08:30 ». `LANGUAGE` ne touche que les traductions (gettext) : ni l'encodage ni les dates des
+// commandes de pile. Un navigateur déjà lancé par une autre spec du même ouvrier garde sa langue.
+if (!String(process.env.LANGUAGE || '').startsWith('fr')) process.env.LANGUAGE = 'fr_FR'
+
 export const COMPTE = 'demo_taches'
 export const API = '/api/django/taches'
 export const DOSSIER_CAPTURES = '/opt/taches-cloud/captures/f2'

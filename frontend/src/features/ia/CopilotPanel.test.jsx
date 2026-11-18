@@ -329,6 +329,68 @@ describe('CopilotPanel — les quatre demandes prêtes de Tâches (A12, TCH118)'
     expect(screen.queryByRole('group', { name: 'Demandes prêtes' })).toBeNull()
   })
 
+  // Passe visuelle n° 49 — ouvert depuis Tâches : logo ✦, demandes en puces `.ep-demandes` (l'envoyée marquée), et ni
+  // l'accueil ni les questions de l'assistant ERP (« Quels produits sont en rupture de stock ? »…).
+  it('n° 49 — sur /taches : demandes en puces de la maquette, aucune suggestion de l’assistant ERP', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    const liste = await screen.findByRole('group', { name: 'Demandes prêtes' })
+    expect(liste.className).toBe('ep-demandes')
+    expect(liste.closest('.tch')).not.toBeNull()
+    expect(document.querySelector('[data-logo="copilote-taches"]')).not.toBeNull()
+    expect(screen.queryByText('Quels produits sont en rupture de stock ?')).toBeNull()
+    expect(screen.queryByText('Comment puis-je aider ?')).toBeNull()
+    expect(screen.queryByText(/L'agent analyse votre base de données/)).toBeNull()
+    await user.click(within(liste).getByRole('button', { name: 'Où j\'en suis ?' }))
+    await screen.findByTestId('carte-taches-point')
+    expect(within(liste).getByRole('button', { name: 'Où j\'en suis ?' }).className).toBe('envoyee')
+    expect(within(liste).getByRole('button', { name: 'Planifie ma journée' }).className).toBe('')
+  })
+
+  it('n° 49 — hors /taches, le panneau de l’ERP ne change pas (logo, accueil, suggestions par défaut)', async () => {
+    window.history.pushState({}, '', '/crm/relances')
+    iaApi.getSuggestions.mockResolvedValue({ data: [] })
+    monterAvecDroits(['taches_voir'])
+    await screen.findByText('Comment puis-je aider ?')
+    expect(screen.getByText("L'agent analyse votre base de données et répond en français.")).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Quels produits sont en rupture de stock ?' })).toBeTruthy()
+    expect(document.querySelector('[data-logo="copilote-taches"]')).toBeNull()
+    expect(document.querySelector('.ep-demandes')).toBeNull()
+  })
+
+  // Passe visuelle n° 50 — une carte Tâches dans le tiroir ouvert depuis Tâches : UNE carte pleine largeur (ni bulle
+  // grise, ni cadre ambre autour), la question dans la bulle d'accent, la réponse en texte simple.
+  it('n° 50 — sur /taches : la carte n’est prise ni dans une bulle ni dans un cadre', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Planifie ma journée' }))
+    const carte = await screen.findByTestId('carte-taches-plan_propose')
+    const cadre = carte.parentElement
+    expect(cadre.dataset.cadre).toBe('attente')
+    expect(cadre.className).toBe('mt-2')
+    expect(carte.closest('.bg-muted')).toBeNull()
+    expect(carte.closest('[class*="max-w-"]')).toBeNull()
+    expect(screen.getByText('Planifie ma journée', { selector: 'p' })).toHaveClass('ep-bulle-moi')
+    expect(screen.getByText(/Rien ne change tant que tu ne gardes pas\.$/)).toHaveClass('ep-bulle-ia')
+  })
+
+  it('n° 50 — hors /taches, la même carte garde sa bulle et son cadre « proposition » (ambre)', async () => {
+    window.history.pushState({}, '', '/crm/relances')
+    const initial = iaReducer(undefined, { type: '@@init' })
+    const store = configureStore({
+      reducer: { ia: iaReducer, auth: (etat = { permissions: ['taches_voir'] }) => etat },
+      preloadedState: { ia: { ...initial, copilotOpen: true, messages: [{ role: 'agent', content: 'Voici.', cartes: [
+        { type: 'resultat', carte: 'plan_propose', donnees: exempleContrat('taches', 'journee_proposition') }] }] } },
+    })
+    render(<Provider store={store}><MemoryRouter><CopilotPanel /></MemoryRouter></Provider>)
+    const carte = await screen.findByTestId('carte-taches-plan_propose')
+    expect(carte.parentElement.className).toMatch(/amber/)
+    expect(carte.closest('.bg-muted')).not.toBeNull()
+    expect(screen.getByText('Voici.')).not.toHaveClass('ep-bulle-ia')
+  })
+
   it('sur /taches sans le droit taches_voir : pas de demandes prêtes', async () => {
     window.history.pushState({}, '', '/taches/aujourdhui')
     iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 ?'] })

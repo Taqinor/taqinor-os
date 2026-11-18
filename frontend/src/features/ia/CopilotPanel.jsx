@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, CheckCircle2, Bug,
+  Bot, MessageSquare, Send, CheckCircle2, Bug, Sparkles,
 } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
@@ -50,6 +50,30 @@ const SUGGESTIONS = [
   'Affiche les factures impayées',
 ]
 
+/** Passe visuelle n° 50 — un message du tiroir ouvert depuis Tâches (copilote.html) : la question dans la bulle
+ *  d'accent `.ep-bulle-moi`, la réponse en texte simple `.ep-bulle-ia`, et ses cartes pleine largeur, sans bulle ni
+ *  avatar autour (une carte Tâches = une seule carte, variante `copilot_taches` de CartesDuMessage). */
+function MessageTaches({ msg, index }) {
+  const texte = displayMessageText(msg)
+  return (
+    <div data-bulle={msg.role}>
+      {texte ? (
+        <div className="tch">
+          <p className={msg.role === 'user' ? 'ep-bulle-moi' : 'ep-bulle-ia'}>{texte}</p>
+        </div>
+      ) : null}
+      {msg.action_performed && (
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-3.5" aria-hidden="true" />
+          Action effectuée
+        </span>
+      )}
+      <MessageActions msg={msg} index={index} variant="copilot_taches" />
+      <NoteReponse msg={msg} index={index} />
+    </div>
+  )
+}
+
 export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
@@ -71,6 +95,8 @@ export default function CopilotPanel() {
     && estEcranTaches(routeNormalisee(window.location.pathname))
   // ERR 3 — sans clé d'IA (dit par la réponse du service), le champ laisse la place à la phrase de §5.2.
   const sansConversationTaches = demandesTaches && conversationLibreAbsente(messages)
+  // Passe visuelle n° 49 — la demande prête qu'on vient d'envoyer reste marquée (maquette copilote.html, `.envoyee`).
+  const derniereQuestion = demandesTaches ? [...messages].reverse().find((m) => m.role === 'user')?.content : null
 
   useEffect(() => {
     if (open && !historyLoadedRef.current) {
@@ -174,9 +200,17 @@ export default function CopilotPanel() {
       >
         <SheetHeader className="border-b border-border px-4 py-3 pr-10">
           <SheetTitle className="flex items-center gap-2">
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <Bot className="size-4" aria-hidden="true" />
-            </span>
+            {/* Passe visuelle n° 49 — ouvert depuis Tâches : le logo ✦ de la maquette (copilote.html, `.ep-ia-tete .logo`). */}
+            {demandesTaches ? (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--tch-accent-doux)] text-[var(--tch-accent)]"
+                data-logo="copilote-taches">
+                <Sparkles className="size-4" aria-hidden="true" />
+              </span>
+            ) : (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <Bot className="size-4" aria-hidden="true" />
+              </span>
+            )}
             Copilote
           </SheetTitle>
           <SheetDescription>
@@ -208,17 +242,23 @@ export default function CopilotPanel() {
 
         {/* ── Zone messages ── */}
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
+          {/* Passe visuelle n° 49 — les quatre demandes prêtes en puces teintées de la maquette (`.ep-demandes`,
+              styles/taches/coeur.css), sous une racine `.tch` : le panneau vit hors du module. */}
           {demandesTaches && (
-            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Demandes prêtes">
-              {DEMANDES_PRETES_TACHES.map((d) => (
-                <Button key={d.question} variant="outline" size="sm" className="min-h-11"
-                  disabled={agentLoading || demandeEnCours} onClick={() => lancerDemandeTaches(d.question)}>
-                  {d.question}
-                </Button>
-              ))}
+            <div className="tch">
+              <div className="ep-demandes" role="group" aria-label="Demandes prêtes">
+                {DEMANDES_PRETES_TACHES.map((d) => (
+                  <button key={d.question} type="button" className={d.question === derniereQuestion ? 'envoyee' : undefined}
+                    disabled={agentLoading || demandeEnCours} onClick={() => lancerDemandeTaches(d.question)}>
+                    {d.question}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          {messages.length === 0 && !agentLoading && (
+          {/* n° 49 — ouvert depuis Tâches, ni l'accueil ni les questions de l'assistant ERP (« rupture de stock »…) :
+              les quatre demandes prêtes en tiennent lieu (textes.md §5.2). */}
+          {messages.length === 0 && !agentLoading && !demandesTaches && (
             <EmptyState
               icon={MessageSquare}
               title="Comment puis-je aider ?"
@@ -234,7 +274,7 @@ export default function CopilotPanel() {
           )}
 
           <div className="space-y-3">
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => (demandesTaches ? <MessageTaches key={i} msg={msg} index={i} /> : (
               <div
                 key={i}
                 className={cn(
@@ -275,7 +315,7 @@ export default function CopilotPanel() {
                   <NoteReponse msg={msg} index={i} />
                 </div>
               </div>
-            ))}
+            )))}
 
             {agentLoading && (
               <div className="flex items-start gap-2">

@@ -182,6 +182,25 @@ describe('TCH109 — Mon iPhone', () => {
     expect(onReglage).toHaveBeenLastCalledWith('titres_notifications', false)
   })
 
+  // Passe visuelle (mineur, contenu de Mon iPhone) — les marches de chaque étape sont NUMÉROTÉES (textes.md §7 :
+  // « 1. Ouvre l'ERP… 2. Touche… ») : la remise à zéro des listes de l'ERP effaçait les numéros, et les marches se
+  // lisaient d'un bloc.
+  it('passe visuelle — les marches des étapes 1 à 4 sont des listes numérotées', async () => {
+    monter({ reglages: { ...contrat('reglages'), raccourci_siri_url: null } })
+    const marches = [
+      [/Recevoir les notifications/, /^Ouvre l'ERP depuis son icône/],
+      [/Voir tes tâches dans le Calendrier/, /^Touche « Créer le lien du calendrier »/],
+      [/Dicter à Siri/, /^Ouvre l'app Raccourcis/],
+      [/Installer la grande tuile/, /^App Store → Scriptable/],
+    ]
+    for (const [nom, premiere] of marches) {
+      await ouvrir(nom)
+      const liste = (await screen.findByText(premiere)).closest('ol')
+      expect(liste, `liste de « ${nom} »`).toHaveClass('list-decimal')
+      expect(liste.closest('ol.ep-etapes')).not.toBe(liste)
+    }
+  })
+
   it('Siri : « Installer le raccourci » n\'existe que si l\'adresse est posée, sans elle la recette est directe', async () => {
     const { unmount } = monter({ reglages: { ...contrat('reglages'), raccourci_siri_url: 'https://www.icloud.com/shortcuts/abc' } })
     await ouvrir(/Dicter à Siri/)
