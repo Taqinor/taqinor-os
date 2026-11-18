@@ -82,6 +82,18 @@ describe('TCH108 — Réglages', () => {
     expect(await screen.findByRole('switch', { name: 'Messages sans délai' })).toBeInTheDocument()
   })
 
+  it('/reglages/iphone?etape=calendrier ouvre l\'étape calendrier : « Mes agendas » et « Adresse de l\'agenda » rendus', async () => {
+    monter('/taches/reglages/iphone?etape=calendrier')
+    expect(await screen.findByRole('heading', { name: 'Mes agendas' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /^Adresse de l'agenda/ })).toBeInTheDocument()
+  })
+
+  it('Avancé ne porte plus « Mes agendas » (il vit dans Mon iPhone)', async () => {
+    monter('/taches/reglages/avance')
+    await screen.findByRole('switch', { name: 'Messages sans délai' })
+    expect(screen.queryByRole('heading', { name: 'Mes agendas' })).toBeNull()
+  })
+
   it('Vie privée : le texte est celui de la référence, mot pour mot', async () => {
     const { container } = monter('/taches/reglages/vie-privee')
     await screen.findByRole('switch', { name: 'Comprendre mon rythme' })

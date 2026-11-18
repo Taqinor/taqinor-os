@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { lireReglages, modifierReglages } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -22,8 +22,13 @@ const messageDe = (err, champ) => {
   return Array.isArray(brut) && brut.length > 0 ? String(brut[0]) : frenchError(err, 'Réessaie dans un instant.')
 }
 
-function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
-  if (rubrique === 'iphone') return <MonIphone reglages={reglages} onReglage={basculer} erreur={erreur} />
+// `/taches/reglages/iphone?etape=calendrier` ouvre d'emblée l'étape « calendrier » (« Mes agendas » y vit)
+const ETAPES_IPHONE = { notifications: 0, calendrier: 1, siri: 2, tuile: 3, accueil: 4 }
+
+function Contenu({ rubrique, reglages, erreur, basculer, navigate, etape }) {
+  if (rubrique === 'iphone') {
+    return <MonIphone reglages={reglages} onReglage={basculer} erreur={erreur} etapeDemandee={ETAPES_IPHONE[etape] ?? null} />
+  }
   if (rubrique === 'vie-privee') {
     return (
       <ViePrivee
@@ -50,6 +55,7 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
 export default function Reglages() {
   const { rubrique } = useParams()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const [reglages, setReglages] = useState(null)
   const [echec, setEchec] = useState(false)
   const [erreur, setErreur] = useState({})
@@ -90,7 +96,7 @@ export default function Reglages() {
       <div className="es-reglages-grille">
         <ListeRubriques courante={rubrique} onOuvrir={(cle) => navigate(`/taches/reglages/${cle}`)} />
         <div>
-          <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} />
+          <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} etape={params.get('etape')} />
         </div>
       </div>
     </CoquilleTaches>

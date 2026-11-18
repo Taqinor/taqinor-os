@@ -65,6 +65,15 @@ describe('TCH109 — Mon iPhone', () => {
     expect(await etape(/Dicter à Siri/)).toHaveTextContent('À faire')
   })
 
+  it('étape demandée par l\'adresse (?etape=calendrier) : « Mes agendas » et son champ sont visibles sans geste de plus', async () => {
+    monter({ etapeDemandee: 1 })
+    const calendrier = await etape(/Voir tes tâches dans le Calendrier/)
+    expect(calendrier).toHaveAttribute('aria-expanded', 'true')
+    expect(await screen.findByRole('heading', { name: 'Mes agendas' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /^Adresse de l'agenda/ })).toBeInTheDocument()
+    expect(await etape(/Recevoir les notifications/)).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('deux jetons de plus utilisés et la permission accordée : « 4 sur 5 », les étapes faites se replient', async () => {
     window.Notification = { permission: 'granted' }
     listerJetons.mockResolvedValue({ data: { results: [jetonFlux(), utilise('capture', 5), utilise('tuile', 6)] } })
