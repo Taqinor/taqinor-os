@@ -6,8 +6,7 @@ création rend le clair UNE fois et révoque l'ancien du même usage. La tuile e
 authentifiés par `JetonAccesAuthentication` de LEUR usage (`auth_jeton.py`) ; le flux sert du
 `text/calendar`, son jeton est dans l'adresse (aucun en-tête d'authentification au schéma) : son
 chemin est masqué pour les journaux et ses réponses d'erreur ne sont jamais réécrites par
-`django.request`. Une route pas encore construite lève
-`PasEncore` (501).
+`django.request`. `mon-iphone/test-notification/` (TCH97, reste) : `balayage.envoyer_test`, 204.
 
 Tuile et flux (TCH97, regles.md §10) : la société et le propriétaire sont ceux du JETON (posés sur
 `request.user` par l'authentification) ; la sélection est celle de l'écran — le préfiltre et la
@@ -33,6 +32,7 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 
+from apps.taches import balayage
 from apps.taches.auth_jeton import JetonFlux, JetonTuile, emettre_jeton, revoquer_jeton
 from apps.taches.choix import StatutTache
 from apps.taches.confidentialite import nom_pour
@@ -42,7 +42,7 @@ from apps.taches.selectors.base import jetons_de
 from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSerializer, forme_jeton_cree
 from apps.taches.throttles import ThrottleFlux, ThrottleTuile
 from apps.taches.views.base import (
-    ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore, corps, est_assistant, forme_echantillon,
+    ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant, forme_echantillon,
     reponses,
 )
 
@@ -188,13 +188,15 @@ class JetonRevoquerVue(APIView):
 
 
 class TestNotificationVue(APIView):
-    """POST mon-iphone/test-notification/ — push `TACHES_RAPPEL`, hors plafond."""
+    """POST mon-iphone/test-notification/ — push `TACHES_RAPPEL` au seul compte de la requête, hors plafond
+    (`balayage.envoyer_test`) ; 204 sans corps, y compris coupe-circuit allumé (rien n'est envoyé)."""
 
     permission_classes = PERMISSIONS
 
     @extend_schema(request=None, responses=reponses(None, statut=204))
     def post(self, request):
-        raise PasEncore()
+        balayage.envoyer_test(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TuileVue(MethodeAvantJeton, APIView):

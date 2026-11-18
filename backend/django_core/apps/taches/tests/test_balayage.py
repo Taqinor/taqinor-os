@@ -11,7 +11,9 @@ from unittest import mock
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
+from apps.notifications import services
 from apps.notifications.models import Notification
 from apps.notifications.types_evenements import EventType
 from apps.taches import balayage, sweeps
@@ -208,6 +210,57 @@ class BalayageTests(TestCase):
         balayage.executer(a(8, 31))
         self.assertEqual(self.notifications().count(), 1)
         self.assertTrue(self.notifications(EventType.TACHES_PLAN_DU_JOUR).exists())
+
+
+class TestNotificationTests(TestCase):
+    """TCH97 (reste) — `POST mon-iphone/test-notification/` : UNE notification de test au seul compte de la
+    requête, hors plafond (api.md §3.4 ; regles.md « Les sollicitations » ; textes.md §3)."""
+
+    URL = '/api/django/taches/mon-iphone/test-notification/'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.societe = fabriques.societe('t')
+        cls.moi = fabriques.compte(cls.societe, nom='moi')
+        cls.collegue = fabriques.compte(cls.societe, nom='collegue')
+
+    def appuyer(self, compte=None):
+        api = APIClient()
+        api.force_authenticate(compte or self.moi)
+        return api.post(self.URL, {}, format='json')
+
+    def test_une_notification_de_test_au_seul_compte_204(self):
+        reponse = self.appuyer()
+        self.assertEqual(reponse.status_code, 204)
+        self.assertFalse(reponse.content)
+        notification = Notification.objects.filter(recipient=self.moi, event_type=EventType.TACHES_RAPPEL).get()
+        self.assertEqual((notification.title, notification.body, notification.link),
+                         ('Test des notifications', 'Les notifications de Tâches arrivent bien sur cet appareil.',
+                          '/taches/reglages/iphone'))
+        self.assertFalse(Notification.objects.exclude(recipient=self.moi).exists())
+
+    def test_hors_plafond_aucun_marqueur_et_le_plafond_n_empeche_rien(self):
+        for type_ in (regles.PLAN_MATIN, regles.BILAN_SOIR, regles.RELANCE):
+            IncitationCoach.objects.create(
+                company=self.societe, proprietaire=self.moi, type=type_, jour=timezone.localdate(), cle='',
+                canal=CanalIncitation.PUSH, montre_le=timezone.now())
+        avant = IncitationCoach.objects.count()
+        self.assertEqual(self.appuyer().status_code, 204)
+        self.assertEqual(self.appuyer().status_code, 204)
+        self.assertEqual(IncitationCoach.objects.count(), avant)
+        self.assertEqual(Notification.objects.filter(recipient=self.moi).count(), 2)
+
+    def test_part_tout_de_suite_meme_hors_de_la_fenetre_de_la_societe(self):
+        reel = services._report_hors_fenetre
+        with mock.patch.object(services, '_report_hors_fenetre', wraps=reel) as report:
+            self.appuyer()
+        self.assertIs(report.call_args.args[2], False)  # respect_quiet_hours
+        self.assertIsNone(Notification.objects.get(recipient=self.moi).programmee_pour)
+
+    def test_coupe_circuit_allume_aucune_notification_de_taches(self):
+        ReglagesSociete.objects.update_or_create(company=self.societe, defaults={'balayage_actif': False})
+        self.assertEqual(self.appuyer().status_code, 204)
+        self.assertFalse(Notification.objects.filter(recipient=self.moi).exists())
 
 
 class TachePlanifieeBalayageTests(SimpleTestCase):

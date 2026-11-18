@@ -32,6 +32,7 @@ from apps.notifications.services import notify
 from apps.notifications.types_evenements import EventType
 from apps.taches import confidentialite
 from apps.taches.choix import CanalIncitation, ClePreference, ModeRythme, StatutProjet, StatutRappel, StatutTache
+from apps.taches.models.presence import ReglagesSociete
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.models.taches import Rappel
 from apps.taches.moteur import sollicitations as regles
@@ -50,6 +51,8 @@ RETARD_MANQUE = datetime.timedelta(hours=2)
 NEGLIGE_UNE_FOIS_PAR = datetime.timedelta(days=7)
 CANAL_MESSAGES = 'whatsapp'  # la fenêtre des MESSAGES de la société (`notifications.selectors`)
 LIEN_AUJOURDHUI = '/taches/aujourdhui'
+#: Le test des notifications mène à l'écran Mon iPhone (textes.md §3 : « test → Mon iPhone »).
+LIEN_MON_IPHONE = '/taches/reglages/iphone'
 LIENS = {regles.PLAN_MATIN: LIEN_AUJOURDHUI, regles.RELANCE: LIEN_AUJOURDHUI,
          regles.BILAN_SOIR: f'{LIEN_AUJOURDHUI}?ouvrir=bilan', regles.REVUE_SEMAINE: '/taches/revue'}
 EVENEMENTS = {regles.PLAN_MATIN: EventType.TACHES_PLAN_DU_JOUR, regles.RELANCE: EventType.TACHES_RELANCE,
@@ -384,4 +387,23 @@ def _envoyer(reglages, type_, message, maintenant, lecture):
             return 0
         notify(user, EVENEMENTS[type_], titre, body=corps, link=LIENS[type_], company=user.company,
                respect_quiet_hours=False, badge=badge)
+    return 1
+
+
+# --- 3. Le test des notifications -------------------------------------------------------------------------
+
+def envoyer_test(user):
+    """`POST mon-iphone/test-notification/` : UNE notification `TACHES_RAPPEL` au seul compte `user`
+    (titre et corps du gabarit `test`, lien Mon iPhone) → 1, ou 0 si le coupe-circuit de la société est
+    allumé (« aucune notification de Tâches », textes.md §3 ; relu à chaque appel, absent = actif).
+
+    Hors plafond (regles.md « Les sollicitations ») : aucun marqueur `IncitationCoach`, donc ni plafond
+    consommé, ni pause, ni décroissance. L'appui est un geste du compte : la notification part tout de
+    suite, jamais différée à l'ouverture de la société (`respect_quiet_hours=False`). Aucun titre de
+    tâche (regles.md §8) : le texte est celui du gabarit, rien n'est lu de la journée."""
+    if ReglagesSociete.objects.filter(company_id=user.company_id, balayage_actif=False).exists():
+        return 0
+    notify(user, EventType.TACHES_RAPPEL, texte('notification', 'titre.test', {}),
+           body=texte('notification', 'test', {}), link=LIEN_MON_IPHONE, company=user.company,
+           respect_quiet_hours=False)
     return 1
