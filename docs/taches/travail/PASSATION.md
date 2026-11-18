@@ -670,6 +670,23 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
 - **Reste** : les deux jeux de gardes + lint + node sur la tête finale (en cours), `git push origin dev-taches-f4`,
   CI, corps de la PR #1464, `draft=false`, `enable_pr_auto_merge(MERGE)`, vérifier la fusion sur `main`, rapport final.
 
+**Point de 08 h 50 UTC (18/11) — FUSION 4 EN FILE DE MERGE ; Reda a demandé le déploiement**
+
+- **Fusion 4** : tête finale `04432379d0` poussée à 08 h 32 ; **CI entièrement verte** (42 contrôles : 36 verts, 6
+  sautés, 0 rouge ; les cinq requis verts). La PR #1464 visait encore `dev-taches-f3` (elle était empilée) : **base
+  repassée à `main`** avant la sortie du brouillon. Corps de la PR réécrit, `draft=false`, auto-merge (MERGE) activé à
+  08 h 48 → file de merge. Un guetteur local attend la fusion sur `main`.
+- Gardes locales sur la tête finale : `backend-lint-fast` 59/59 ; `stage-names` : seul le test PowerShell des scripts
+  de nuit (pas de `pwsh` ici) ; eslint vert ; node : seul CAL224 (build local).
+- **Reda, à 08 h 30 : « continue, also deploy ».** Le déploiement est IMPOSSIBLE depuis cette session cloud :
+  `scripts/deploy-prod.ps1` part de son PC avec la clé SSH `%USERPROFILE%\.ssh\taqinor_hetzner` (jamais dans le dépôt),
+  il n'existe aucun workflow de déploiement, et aucun dossier de son ordinateur n'est partagé avec la session
+  (`list_computer_folders` : vide). Dit à Reda ; son geste : `powershell -File scripts\deploy-prod.ps1` après la
+  fusion 4 (un seul lancement met en ligne les fusions 2, 3 et 4).
+- **Production vérifiée en lecture seule** (accord permanent) à 08 h 33 : `https://api.taqinor.ma/` 200,
+  `/api/django/core/health/ready/` → `ready`, **dernier démarrage le 17/11 à 12 h 31 UTC** : rien de ce qui a été
+  fusionné aujourd'hui n'est en ligne. Après le déploiement de Reda, ce même appel doit montrer un démarrage neuf.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
