@@ -61,8 +61,50 @@
 .tch .fiche { display: contents; }
 .tch .fiche-corps { display: flex; flex-direction: column; gap: 4px; }
 .tch .fiche-titre-champ {
-  display: block; width: 100%; min-height: 48px; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
-  font: inherit; font-size: 1.25rem; font-weight: 650; outline: none;
+  display: block; width: 100%; min-height: 44px; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
+  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 650; letter-spacing: -0.01em; outline: none;
+}
+/* Passe visuelle (ecran-fiche.html, ecrans-coeur.css « Fiche ») — UN seul titre : la barre de la feuille n'en
+   répète aucun (l'en-tête garde ✕ à gauche, ☆ et ⋯ à droite) ; le nom du dialogue reste lu */
+.tch .fiche .feuille-entete .feuille-titre { visibility: hidden; }
+.tch .fiche-entete-actions {
+  position: absolute; top: 24px; right: calc(var(--tch-gouttiere) - 10px); display: flex; align-items: center; height: 44px;
+}
+.tch .fiche-entete-actions .etoile-bouton { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 999px; }
+.tch .fiche-champs { margin-top: 14px; }
+.tch .fiche-champs .puce { height: 36px; }
+.tch .fiche-champs .puce .projet-nom { max-width: 22ch; white-space: nowrap; }
+.tch .fiche-editeur { margin-top: 12px; }
+.tch .fiche-section { display: flex; flex-direction: column; margin-top: 22px; }
+.tch .fiche-section .fiche-notes { min-height: 0; padding: 0; font-size: 1rem; line-height: 1.5; }
+.tch .points { list-style: none; margin: 0; padding: 0; }
+.tch .point-liste { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -12px; }
+.tch .point-liste .case { margin: 0; }
+.tch .point-liste .rond { width: 18px; height: 18px; border-width: 1.5px; }
+.tch .point-liste .rond svg { width: 11px; height: 11px; }
+.tch .point-liste .libelle { font-size: 1rem; line-height: 1.375rem; }
+.tch .point-liste.fait .libelle { color: var(--tch-texte-doux); text-decoration: line-through; text-decoration-thickness: 1px; }
+.tch .point-liste.ajout { grid-template-columns: 44px 1fr; color: var(--tch-texte-doux); }
+.tch .point-liste.ajout svg { justify-self: center; }
+.tch .fiche-plus-bouton {
+  display: flex; align-items: center; gap: 8px; min-height: 52px; margin-top: 14px; width: 100%;
+  box-shadow: inset 0 1px 0 var(--tch-trait); font-size: 1rem; font-weight: 600; text-align: left; color: var(--tch-texte);
+}
+.tch .fiche-plus-bouton .indice {
+  flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 400; color: var(--tch-texte-doux);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tch .fiche-plus-bouton svg { color: var(--tch-texte-doux); }
+.tch .bouton.fait { gap: 8px; background: var(--tch-fait); color: var(--tch-fait-texte); box-shadow: var(--shadow-xs); }
+.tch .bouton.second.accent { color: var(--tch-accent); }
+/* le conflit vit DANS la feuille (etat-conflit.html, .es-conflit : margin 10px 0 16px) — pas de seconde gouttière */
+.tch .fiche .conflit { margin-inline: 0; }
+/* le pied « Reporter · Fait » se pose en bas de la feuille, même quand la fiche est courte */
+.tch .fiche .feuille-corps { display: flex; flex-direction: column; }
+.tch .fiche .fiche-corps { flex: none; }
+.tch .fiche .feuille-pied { margin-top: auto; }
+@media (min-width: 768px) {
+  .tch .fiche .dialogue-bureau .fiche-entete-actions { top: 20px; right: 10px; }
 }
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
