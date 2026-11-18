@@ -42,6 +42,7 @@ d += datetime.timedelta(seconds=time.time() - float(sys.argv[2]) + 5)
 print(d.astimezone(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
 PY
 )
+      /opt/taches-cloud/faketime-nettoyer.sh
       TZ=UTC setsid nohup faketime -f "@$utc" uvicorn app.main:app --host 127.0.0.1 --port "$port" \
         > "$LOGS/ia-$port.log" 2>&1 &
     fi

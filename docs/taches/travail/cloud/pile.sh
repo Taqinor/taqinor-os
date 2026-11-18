@@ -78,6 +78,7 @@ d = datetime.datetime.strptime(t, fmt).replace(tzinfo=zoneinfo.ZoneInfo('Africa/
 print(d.astimezone(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))
 PY
 )
+      /opt/taches-cloud/faketime-nettoyer.sh
       TZ=UTC DONT_FAKE_MONOTONIC=1 setsid nohup faketime -f "@$utc" python manage.py runserver "127.0.0.1:$port" --noreload > "$LOGS/django-$port.log" 2>&1 &
     fi
     echo $! > "$RUN/django-$port.pid"; echo "$quand" > "$RUN/django-$port.horloge"
