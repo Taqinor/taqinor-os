@@ -577,6 +577,45 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
   mesure finale ; deux jeux de gardes ; CI de #1464 ; file de merge après la fusion 3.
 - La CI d'une PR prend maintenant 13 à 18 minutes (cache des migrations chaud), pas 35.
 
+**Point de 06 h 50 UTC (18/11) — FUSIONS 2 ET 3 SUR `main` ; fusion 4 : passe visuelle en cours (4 lanes)**
+
+- **FUSION 3 FUSIONNÉE** par la file de merge à 06 h 40 UTC : `main` = `7de450bfd4` (« Merge pull request #1462 »).
+  Corps de la PR mis à jour avant la mise en file (acceptation 17/17 avec le vrai assistant, migration additive
+  `notifications.0079_eventtype_taches`, brique `core/chemins_sensibles.py`, gestes). **À DIRE À REDA : un seul
+  `scripts/deploy-prod.ps1` met en ligne les fusions 2 et 3** ; après le déploiement : skill `assistant-manuel`.
+- **Fusion 4** : tête `940cee72d9` poussée à 06 h 47 (CI en cours). Dedans, depuis le point de 06 h 20 :
+  - **V-A pliée** (12 corrections : alignement de la ligne de tâche, D-V1 côté serveur — une essentielle faite reste
+    dans Essentiel ET dans Faites, comptée une fois —, constat C5 à [OK] seul, iPhone bord à bord, anneau de la poignée,
+    « Garder » seul…) et **V-B pliée** (10 corrections : fiche en puces avec ☆ ⋯ et « ✓ Fait » vert, À trier — case
+    ronde, « En réserve {n} » replié en bas —, jetons surlignés dans la saisie, aperçu d'un collage, loupe de la
+    recherche) ; captures d'après regardées par l'orchestrateur (`/opt/taches-cloud/captures/v-a/apres`, `v-b/apres`) ;
+  - trouvé au pli en jouant TOUS les tests de Tâches : le test des suggestions comptait toute lecture de liste comme
+    une relecture (À trier lit maintenant aussi sa réserve à l'ouverture) → test resserré ;
+  - **rouge de CI corrigé (frontend-static, 8 tests)** : V-A avait ajouté un bloc `@media (max-width: 768px)` dans
+    `styles/taches/base.css` ; nos feuilles sont importées AVANT celles de la coquille, et les gardes de la coquille
+    (`mobile-foundation.test.mjs`, `menu.layout.test.mjs`) lisent le PREMIER bloc de ce nom dans `index.css` comme le
+    sien → réécrit `@media screen and (max-width: 768px)`. LEÇON : avant de pousser un pli, jouer TOUT le job
+    frontend-static en local (`npm run lint`, `node --test "src/**/*.test.mjs"`, `npm run check-hex`, `build`,
+    `check-bundle-budget`), pas seulement vitest ;
+  - référence mise à jour par l'orchestrateur (`textes.md` §2.2 à §2.5, `spec-8` §2) avec les phrases rendues par V-A
+    et V-B ; `main` (fusions 2 et 3 fusionnées) fusionné dedans ; bundle 3844,7 Ko (budget 3850).
+- **Lanes visuelles EN COURS** (opus, worktrees isolés, une pile chacune) : **V-C1** agenda et Planifier (pile 1,
+  `lane/v-c1-agenda`), **V-C2** projets, rythme, revue, réglages (pile 3, `lane/v-c2-projets`), **V-D** Copilote,
+  rappel ouvert, Mon iPhone, `locale: 'fr-FR'` des captures (pile 2, `lane/v-d-copilote`), **V-E** restes : mot
+  cherché surligné et méta de statut dans la Recherche, Supprimées récemment, ligne hors ligne (pile 4 NEUVE : Django
+  8003, front 4176, base `erp_ve`, Redis 6383, scripts `/opt/taches-cloud/acc-ve.sh` et `django-exec-ve.sh`,
+  `lane/v-e-restes`). Briefs : `<scratchpad>/briefs/*.pret.md`.
+- **Points ouverts à dire à Reda et phrases de référence à reporter** : tenus dans `<scratchpad>/visuel-suites.md`
+  (raison écrite sous une ligne de Proposé, bouton micro de la saisie, « Dicté · hier 19:12 » non servi, compteur
+  « 0/2 » absent du HTML final…).
+- **Fin prévue pour la fusion 4** : plier les 4 lanes → jeu complet de frontend-static + vitest de Tâches → deux jeux
+  de gardes → TCH173 (dérivés, note du budget) → rejeu OFFICIEL local `tch.spec.js` + `tch3.spec.js` en UNE invocation
+  (`<scratchpad>/jouer-f4-officiel.sh`, base `erp_f4_fidele` : les scripts `acc-f4.sh` et `django-exec-f4.sh`
+  lisent maintenant `TACHES_DB_F4`) → enregistrement, cocher TCH142, TCH172, TCH173 → pousser AVEC le workflow
+  temporaire remis pour UN jeu de `tch2.spec.js` avec le vrai assistant sur `dev-taches-f4` (reprendre les trois
+  fichiers de `9e2a7bead6`, changer `branches: [dev-taches-f4]`) → fusionner son enregistrement, retirer les trois
+  fichiers, pousser → CI → `draft=false` + `enable_pr_auto_merge(MERGE)`.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
