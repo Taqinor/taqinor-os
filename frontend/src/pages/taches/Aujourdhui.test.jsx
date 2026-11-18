@@ -346,3 +346,71 @@ describe('TCH76 — gestes optimistes', () => {
     expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
   })
 })
+
+describe('F2 acceptation (S5) — un refus 409 nommé (textes.md §2.16) se VOIT, pas seulement au lecteur d\'écran', () => {
+  it('carte du moment : 409 `proposition_expiree` → la carte part et « Cette proposition a expiré. » s\'affiche', async () => {
+    servir(donnees())
+    const expiree = exempleContrat('taches', 'erreurs').proposition_expiree
+    api.post.mockImplementation((url) => (url.endsWith('/repondre/')
+      ? Promise.reject(Object.assign(new Error('409'), { response: { status: 409, data: expiree } }))
+      : Promise.resolve({ data: {} })))
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: 'Monter à 6' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Cette proposition a expiré.')
+    expect(screen.queryByRole('button', { name: 'Monter à 6' })).toBeNull()
+  })
+})
+
+describe('F2 acceptation (P144.1) — le bandeau de conflit dit l\'heure servie par la réponse 409', () => {
+  it('Reporter refusé par un 409 `conflit_version` : « Modifiée sur ton autre appareil à 10:42 »', async () => {
+    servir(donnees())
+    const conflit = exempleContrat('taches', 'erreurs').conflit_version
+    api.post.mockImplementation((url) => (url.endsWith('/planifier/')
+      ? Promise.reject(Object.assign(new Error('409'), { response: { status: 409, data: conflit } }))
+      : Promise.resolve({ data: {} })))
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('group', { name: 'Conflit entre appareils' })).toHaveTextContent('Modifiée sur ton autre appareil à 10:42')
+  })
+})
+
+describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touche se valide par Entrée', () => {
+  /** Focalise le titre d'une ligne, comme `j` le fait. */
+  const focaliser = (id) => act(() => { document.querySelector(`[data-ligne="tache:${id}"] .ligne-corps-bouton`).focus() })
+
+  it('`d` ouvre « Choisir un jour » sur le jour nommé de Reporter ; Entrée reporte (spec-7 §5)', async () => {
+    servir(donnees())
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 71, progression: null } })
+    monter()
+    await screen.findByText('Timbres')
+    focaliser(42)
+    await userEvent.keyboard('d')
+    const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
+    expect(within(feuille).getByLabelText('Jour')).toHaveValue('2026-11-19')
+    expect(within(feuille).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', { jour_prevu: '2026-11-19', lock_version: expect.anything() }))
+    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
+  })
+
+  it('`m` ouvre « Déplacer vers… » sur un AUTRE projet que le sien ; Entrée déplace', async () => {
+    servir(donnees())
+    const autres = { results: [{ id: 3, nom: 'Ventes', couleur: 'indigo', priorite: 1 }, { id: 7, nom: 'Salon', couleur: 'vert', priorite: 2 }], next: null, count: 2 }
+    api.get.mockImplementation((url) => Promise.resolve({ data: url === '/taches/projets/' ? autres : donnees() }))
+    api.post.mockResolvedValue({ data: { geste_id: 72, refusees: [] } })
+    monter()
+    await screen.findByText('Devis Settat')
+    focaliser(20)
+    await userEvent.keyboard('m')
+    const feuille = await screen.findByRole('dialog', { name: 'Déplacer vers…' })
+    expect(within(feuille).getByRole('combobox', { name: 'Chercher un projet' })).toHaveFocus()
+    // Entrée frappée avant même l'arrivée de la liste des projets : elle n'est pas perdue
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/lot/', expect.objectContaining({
+      ids: [20], action: 'deplacer', valeurs: { projet_id: 7 },
+    }), expect.anything()))
+  })
+})

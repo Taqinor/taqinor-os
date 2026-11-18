@@ -31,7 +31,9 @@ function BarreCharge({ minutes, capacite }) {
   )
 }
 
-function resume(jour, aujourdhui, capaciteServie = null) {
+/** L'en-tête d'un jour (textes.md §2.8) — partagé avec la vue Semaine de l'Agenda (F2 acceptation, P139.1). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function resume(jour, aujourdhui, capaciteServie = null) {
   const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   if (jour.jour < aujourdhui) {
     const faites = taches.filter((t) => t.statut === 'fait').length

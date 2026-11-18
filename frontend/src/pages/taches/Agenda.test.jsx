@@ -140,6 +140,22 @@ describe('TCH104 — vues et navigation', () => {
     expect(screen.getByTestId('adresse').textContent).toContain('vue=semaine')
   })
 
+  it('F2 acceptation (P139.1) — Semaine sur iPhone : l\'en-tête d\'un jour dit sa charge « {n} tâches · {h} pour {cap} »', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    // mar. 17 du contrat : Timbres (15 min) + Devis Settat (60 min) ; capacité servie `capacite.minutes` = 240
+    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+  })
+
+  it('F2 acceptation (P139.1) — sans capacité servie, l\'en-tête ne dit que le nombre (jamais une capacité devinée)', async () => {
+    const sans = agenda()
+    delete sans.capacite
+    lireAgenda.mockResolvedValue({ data: sans })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete').textContent).not.toMatch(/pour/)
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())

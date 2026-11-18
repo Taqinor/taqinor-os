@@ -83,25 +83,42 @@ export function Ailleurs() {
   )
 }
 
-/** Corps de la feuille « Lier une tâche » : le titre de la tâche (celui de l'activité d'emblée). */
+/**
+ * Corps de la feuille « Lier une tâche » : le titre de la tâche (celui de l'activité d'emblée). `onLier(titre)` rend
+ * '' (réussi : la page ferme la feuille) ou le message du refus, affiché SOUS le champ (textes.md §2.16, ex. 409
+ * `deja_lie` « Cette activité a déjà sa tâche. ») — la feuille reste ouverte, rien n'est perdu.
+ */
 export function FeuilleLier({ item, onLier }) {
   const [titre, setTitre] = useState(item.titre)
+  const [erreur, setErreur] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const lier = async () => {
+    setEnvoi(true)
+    setErreur('')
+    const refus = await onLier(titre.trim())
+    setEnvoi(false)
+    if (refus) setErreur(refus)
+  }
   return (
     <div className="choisir-jour">
       <label className="fiche-label" htmlFor="tch-lier-titre">Titre de la tâche</label>
-      <input id="tch-lier-titre" type="text" className="champ-date" value={titre} maxLength={280} onChange={(e) => setTitre(e.target.value)} />
-      <button type="button" className="bouton plein large" disabled={!titre.trim()} onClick={() => onLier(titre.trim())}>
+      <input id="tch-lier-titre" type="text" className="champ-date" value={titre} maxLength={280}
+        aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'tch-lier-erreur' : undefined}
+        onChange={(e) => { setTitre(e.target.value); setErreur('') }} />
+      {erreur ? <p id="tch-lier-erreur" className="erreur-champ" role="alert">{erreur}</p> : null}
+      <button type="button" className="bouton plein large" disabled={!titre.trim() || envoi} onClick={lier}>
         Lier une tâche
       </button>
     </div>
   )
 }
 
-/** « Lier une tâche » : crée la tâche, la montre dans Prévu si elle est du jour, propose Annuler. */
+/** « Lier une tâche » : crée la tâche, la montre dans Prévu si elle est du jour, propose Annuler. Rend '' si la
+ *  tâche est liée, sinon le message du refus (la feuille l'affiche sous son champ). */
 // eslint-disable-next-line react-refresh/only-export-components -- hook du geste, lu par la page (D-ENF22)
 export function useLierActivite({ donnees, setDonnees, garde, charger }) {
   return useCallback(async (item, titre) => {
-    try { garde() } catch { return }
+    try { garde() } catch (err) { return err.message }
     try {
       const { data } = await client.lierActivite({ activite_id: item.id, titre, jour_prevu: null })
       if (data.tache?.jour_prevu === donnees.jour) {
@@ -113,8 +130,11 @@ export function useLierActivite({ donnees, setDonnees, garde, charger }) {
         message: "Tâche liée à l'activité",
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
       })
+      return ''
     } catch (err) {
-      annoncer(frenchError(err))
+      const message = frenchError(err)
+      annoncer(message)
+      return message
     }
   }, [donnees, setDonnees, garde, charger])
 }

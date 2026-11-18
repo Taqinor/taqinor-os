@@ -547,7 +547,7 @@
   margin: 0 0 16px; max-width: 26ch; font-size: 1.0625rem; line-height: 1.45; font-weight: 500;
 }
 .tch .fab {
-  position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(52px + env(safe-area-inset-bottom) + 16px);
+  position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 16px);
   z-index: var(--z-sticky);
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
   background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-md);
@@ -556,12 +556,12 @@
   width: 26px; height: 26px; stroke-width: 2.25;
 }
 .tch .toast-place {
-  position: fixed; left: 16px; right: 16px; bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+  position: fixed; left: 16px; right: 16px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
   z-index: var(--z-popover);
 }
 @media (max-width: 767px) {
   .tch .toast-place {
-    right: 84px; bottom: calc(52px + env(safe-area-inset-bottom) + 20px);
+    right: 84px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 20px);
   }
 }
 .tch .voile {
@@ -910,6 +910,16 @@
 .tch .menu {
   z-index: calc(var(--z-modal) + 1);
 }
+/* F2 acceptation (P136.2) — le fondu d'entrée de route de l'ERP (`.route-fade`, `animation: fade-in … both`) GARDE
+   son effet d'opacité une fois fini : tant qu'il le garde, `.route-fade` est un contexte d'empilement (Chromium et
+   WebKit), et tout ce que `.tch` pose en `position: fixed` (voile, feuilles, menus, toasts, barre de sélection) y est
+   enfermé au niveau 0 — SOUS l'en-tête et la barre d'onglets de l'ERP (`--z-sticky`), quel que soit son z-index : le
+   pied d'une feuille passait sous les onglets et ne recevait plus le doigt. Le fondu reste (remplissage `backwards`
+   au lieu de `both`) ; fini, il ne retient plus rien et nos calques reprennent leur rang de jetons (`--z-modal`…),
+   au-dessus des onglets comme dans les maquettes (taches.css : voile 7, feuille 8, au-dessus de `.onglets`). */
+.route-fade:has(> .tch) {
+  animation-fill-mode: backwards;
+}
 .tch .puce.icone {
   width: 44px; padding: 0; justify-content: center;
 }
@@ -1124,7 +1134,7 @@
   .tch .ligne, .tch .fab, .tch .feuille, .tch .voile { transition: none; animation: none; }
 }
 /* Barre de sélection (lot) : posée au bas, comme le bouton flottant qu'elle remplace */
-.tch .barre-selection { position: fixed; left: 12px; right: 12px; bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+.tch .barre-selection { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
   z-index: var(--z-sticky); display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 6px 8px 6px 16px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-inverse-fond); color: var(--tch-inverse-texte);
   box-shadow: var(--shadow-lg); }
