@@ -12,15 +12,22 @@ from rest_framework.views import APIView
 
 from apps.taches.services.donnees import exporter, tout_effacer
 from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
+from apps.taches.views.presence import HorsAssistant
 
 CONFIRMATION = 'EFFACER'
 MESSAGE_CONFIRMATION = 'Tape EFFACER pour confirmer.'
 
 
-class MesDonneesVue(APIView):
-    """GET mes-donnees/ — export JSON des modèles de l'app."""
+class ExportHorsAssistant(HorsAssistant):
+    """403 sous l'en-tête assistant (api.md §0) : l'export porte tout, le contenu confidentiel compris."""
 
-    permission_classes = PERMISSIONS
+    message = "L'assistant ne lit pas l'export de tes données."
+
+
+class MesDonneesVue(APIView):
+    """GET mes-donnees/ — export JSON des modèles de l'app ; jamais servi au relais de l'assistant."""
+
+    permission_classes = [*PERMISSIONS, ExportHorsAssistant]
 
     @extend_schema(responses=reponses(forme_echantillon('mes_donnees')))
     def get(self, request):
