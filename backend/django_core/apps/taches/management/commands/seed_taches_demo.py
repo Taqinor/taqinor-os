@@ -163,6 +163,12 @@ DEVIS, STAND, RAILS = 'Envoyer le devis révisé', 'Confirmer la réservation du
 FOURNISSEUR, FICHE = 'Appeler le fournisseur', 'Rédiger la fiche de poste'
 CONTRAT = 'Relire le contrat de maintenance'
 A_REVOIR = ('Mettre à jour le planning des poses', 'Rappeler le bureau de contrôle')
+#: S1 (acceptation F2) : « À revoir » = reportée 3 fois (regles.md §4.2 cas 3, textes.md « À revoir ») ; prévues
+#: lun. 23 (§1) APRÈS trois reports faits par le vrai geste « Reporter » (`planifier`), le soir de chaque jour prévu.
+#: Les trois premiers jours ne sont pas dans SCENARIO.md (ERR-SCENARIO au rapport) : 17 → 19 (18 férié) → 20 → 23.
+JOURS_A_REVOIR = ((11, 17), (11, 19), (11, 20), (11, 23))
+CREATION_A_REVOIR = ((11, 16), '08:30')
+HEURE_DU_REPORT = '18:00'
 #: La journée du 24 (§3), dans l'ordre : (heure, geste). Un geste n'est semé que si son heure est PASSÉE (`--heure`).
 #: « Lier une tâche » sur « Rappeler pour le devis » (parcours TCH137 étape 4) n'a pas d'heure dans SCENARIO.md
 #: (ERR-SCENARIO) : 10:30, l'heure de l'activité, avant sa clôture de 10:40 — sans ce lien la clôture compterait 1
@@ -349,9 +355,18 @@ class Scenario:
             cloturer_a_faire_personnel(activite, self.user)
 
     def a_revoir(self):
+        """S1 : prévues lun. 23 après trois reports (`JOURS_A_REVOIR`), chacun par `planifier` le soir du
+        jour prévu (ancien jour ≤ aujourd'hui : le service compte le report, invariant 4)."""
+        (mois, jour), heure = CREATION_A_REVOIR
+        premier, *suivants = JOURS_A_REVOIR
         for titre in A_REVOIR:
-            self._creer(self.instant(self.date(11, 23), '08:30'),
-                        {'titre': titre, 'jour_prevu': self.date(11, 23), 'estimation_minutes': 30})
+            tache = self._creer(self.instant(self.date(mois, jour), heure),
+                                {'titre': titre, 'jour_prevu': self.date(*premier), 'estimation_minutes': 30})
+            prevu = premier
+            for suivant in suivants:
+                with horloge(self.instant(self.date(*prevu), HEURE_DU_REPORT)):
+                    planifier(tache, acteur=self.user, jour_prevu=self.date(*suivant))
+                prevu = suivant
 
     def reserve(self):
         for titre in RESERVE_ANONYME:
