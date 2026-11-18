@@ -32,10 +32,7 @@ from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items, charger_taches, tache_ecrite
 from apps.taches.services import rythme as service_rythme
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
-from apps.taches.services.planification import planifier
-from apps.taches.services.planification import creer_ligne as _creer_ligne
-from apps.taches.services.planification import remplacer_ligne as _remplacer_ligne
-from apps.taches.services.planification import valeurs_ligne as _valeurs_ligne
+from apps.taches.services.planification import creer_ligne, planifier, remplacer_ligne, valeurs_ligne
 from apps.taches.services.rappels import annuler_rappels
 
 logger = logging.getLogger(__name__)
@@ -636,10 +633,10 @@ def _lignes_du_plan(user, plan, cles, essentielles, ops):
         if cle in existantes:
             ligne = existantes[cle]
             if type_ == TACHE and pk in essentielles and not ligne.essentielle:
-                _remplacer_ligne(ligne, ops, essentielle=True)
+                remplacer_ligne(ligne, ops, essentielle=True)
             continue
         champs = {'tache_id': pk} if type_ == TACHE else {'activite_id': pk}
-        _creer_ligne(plan, ops, prevue_au_plan=True, essentielle=type_ == TACHE and pk in essentielles, **champs)
+        creer_ligne(plan, ops, prevue_au_plan=True, essentielle=type_ == TACHE and pk in essentielles, **champs)
 
 
 def _verifier_essentiels(plan, essentielles, champ='essentielles'):
@@ -686,10 +683,9 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
         if essentielle:
             _verifier_essentiels(plan, [tache.pk], champ='essentielle')
         if ligne is not None and ligne.essentielle != essentielle:
-            _remplacer_ligne(ligne, ops, essentielle=essentielle)
+            remplacer_ligne(ligne, ops, essentielle=essentielle)
         elif ligne is None and essentielle:
-            _creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True,
-                         prevue_au_plan=plan.planifie_le is None)
+            creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True, prevue_au_plan=plan.planifie_le is None)
         geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
     tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
     return tache_ecrite(tache, progression=sel.progression_courante(user, jour),
@@ -717,7 +713,7 @@ def alleger(user, jour, maintenant, *, garder, assistant=False):
             planifier(tache, acteur=user, jour_prevu=None, compter_report=False, collecte=ops)
         ids = {t.pk for t in renvoyees}
         for ligne in plan.ligneplanjour_set.filter(tache_id__in=ids):
-            ops.append(op_suppression_dure('ligne_plan_jour', ligne, _valeurs_ligne(ligne)))
+            ops.append(op_suppression_dure('ligne_plan_jour', ligne, valeurs_ligne(ligne)))
             ligne.delete()
         avant = plan.allege_le
         plan.allege_le = maintenant
@@ -835,7 +831,7 @@ def _choix_du_bilan(user, jour, choix, le_reste):
 
 def _marquer_reportees(plan, ids, ops):
     for ligne in plan.ligneplanjour_set.filter(tache_id__in=ids, reportee=False):
-        _remplacer_ligne(ligne, ops, reportee=True)
+        remplacer_ligne(ligne, ops, reportee=True)
 
 
 def cloturer(user, jour, maintenant, *, choix=(), le_reste=False, reflexion=''):

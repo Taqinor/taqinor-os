@@ -210,7 +210,7 @@ class PlanifierTests(TestCase):
 
 
 class LigneDuPlanTests(TestCase):
-    """Acceptation F2, défaut 6 — LA règle d'une gardée qui change de jour (`suivre_les_lignes_du_plan`,
+    """Acceptation F2, défaut 6 — LA règle d'une gardée qui change de jour (`_suivre_les_lignes_du_plan`,
     appelée par `planifier`, seul écrivain du jour) : sa ligne du plan du jour qu'elle quitte RESTE (une
     gardée non tenue, comptée dans « x des y gardées » ; seul Alléger retire une ligne) et passe
     `reportee` comme au bilan (regles.md §4.6, §4.9). Prouvée sur chaque chemin qui change le jour."""

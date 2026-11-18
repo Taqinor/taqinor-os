@@ -8,7 +8,7 @@ endroit qui compte un REPORT (`reports += 1` par `F()`, sous `select_for_update(
 - jamais : futur → futur, avancer, premier jour posé, `compter_report=False` (Alléger, retour
   d'absence, décaler, instancier, création).
 
-C'est donc aussi LA règle de la ligne de plan d'une tâche qui change de jour (`suivre_les_lignes_du_plan`,
+C'est donc aussi LA règle de la ligne de plan d'une tâche qui change de jour (`_suivre_les_lignes_du_plan`,
 acceptation F2 défaut 6) : tous les chemins (Choisir un jour, Reporter, trancher, lot, décaler un
 projet, Planifier ma semaine, placer dans l'agenda, récurrence, retour d'absence, bilan) passent ici.
 
@@ -201,7 +201,7 @@ def remplacer_ligne(ligne, ops, **changements):
     return creer_ligne(plan, ops, tache_id=valeurs['tache'], activite_id=valeurs['activite_id'], **champs)
 
 
-def suivre_les_lignes_du_plan(t, ancien, ops):
+def _suivre_les_lignes_du_plan(t, ancien, ops):
     """LA règle d'une tâche gardée qui change de jour (regles.md §4.6, §4.9 ; invariant 18) : sa ligne
     du plan du jour qu'elle QUITTE reste une gardée — non tenue, comptée dans « x des y gardées » (seul
     Alléger retire une ligne) — et passe `reportee` comme au bilan ; revenue à ce jour (ou gardée par
@@ -232,7 +232,7 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
         ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
                if getattr(t, champ) != valeur]
         ops += recalculer_ancres(t)  # rappels ancrés sur le jour prévu (TCH35)
-        suivre_les_lignes_du_plan(t, avant['jour_prevu'], ops)
+        _suivre_les_lignes_du_plan(t, avant['jour_prevu'], ops)
         geste = None
         if collecte is not None:
             collecte.extend(ops)
