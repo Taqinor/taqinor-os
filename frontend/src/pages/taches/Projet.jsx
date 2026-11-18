@@ -18,7 +18,7 @@ import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronol
 import FeuilleACrans from '../../features/taches/ui/FeuilleACrans'
 import SelecteurVue from '../../features/taches/ui/SelecteurVue'
 import Tableau from '../../features/taches/ui/Tableau'
-import { CODES_VUES, compteursApresDeplacement, compteursApresStatut, etapesDuProjet } from '../../features/taches/lib/projets'
+import { CODES_VUES, compteursApresDeplacement, compteursApresStatut, nomsDesEtapes } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -402,11 +402,11 @@ export default function Projet() {
         <DialogueDecaler projet={vue.projet} noms={noms} aujourdhui={aujourdhui} onFait={decale} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'dupliquer' ? (
-        <DialogueUtiliser source={{ type: 'projet', id: vue.projet.id, nom: vue.projet.nom }} etapes={etapesDuProjet(vue)}
+        <DialogueUtiliser source={{ type: 'projet', id: vue.projet.id, nom: vue.projet.nom }} etapes={nomsDesEtapes(vue)}
           aujourdhui={aujourdhui} onFait={duplique} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'modele' ? (
-        <DialogueEnregistrerModele projet={vue.projet} vue={vue} onFait={modeleEnregistre} onFermer={() => setDialogue(null)} />
+        <DialogueEnregistrerModele projet={vue.projet} onFait={modeleEnregistre} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'burnup' ? (
         <FeuilleACrans ouverte onFermer={() => setDialogue(null)} titre="Avancement par semaine">

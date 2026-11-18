@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, CalendarCheck, CalendarClock } from 'lucide-react'
 import {
   decalerProjet, dupliquerProjet, enregistrerModele, instancierModele, listerTousLesProjets, renommerModele,
@@ -6,7 +6,7 @@ import {
 } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import FeuilleACrans from '../ui/FeuilleACrans'
-import { etapesDuProjet, premiereDate } from '../lib/projets'
+import { premiereDate } from '../lib/projets'
 import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
 
 /* ============================================================================
@@ -257,6 +257,16 @@ export function DialogueTerminer({ projet, onFait, onFermer }) {
    `projet_ecrit.json`. Chaque dialogue dit l'erreur SOUS le champ fautif.
    ========================================================================== */
 
+/** La clé que le serveur ajoute à l'APERÇU d'une copie : le nombre de tâches confidentielles NON reprises (jamais copiées
+ *  dans un modèle ni dans un double). Absente ou nulle : rien n'est dit. Nom attendu, à confirmer avec le serveur. */
+const CLE_CONFIDENTIELLES = 'nb_confidentielles_non_reprises'
+
+function NonReprises({ apercu }) {
+  const n = apercu?.[CLE_CONFIDENTIELLES]
+  if (!Number.isInteger(n) || n <= 0) return null
+  return <p className="es-aide">{`${accord(n, 'tâche confidentielle', 'tâches confidentielles')} non ${n > 1 ? 'reprises' : 'reprise'}`}</p>
+}
+
 function Etapes({ etapes }) {
   if (!etapes || etapes.length === 0) return null
   return (
@@ -270,13 +280,30 @@ function Etapes({ etapes }) {
   )
 }
 
-export function DialogueEnregistrerModele({ projet, vue, onFait, onFermer }) {
+export function DialogueEnregistrerModele({ projet, onFait, onFermer }) {
   const [nom, setNom] = useState(projet.nom)
   const [notes, setNotes] = useState(false)
   const [erreur, setErreur] = useState('')
   const [occupe, setOccupe] = useState(false)
-  const total = vue?.avancement?.total
-  const etapes = etapesDuProjet(vue)
+  const [apercu, setApercu] = useState(null)
+
+  // Ce que le modèle contiendra, c'est ce que le SERVEUR copie (confidentielles écartées, sous-tâches comprises) : on lit
+  // l'aperçu de la copie — le même moteur que « Dupliquer », `apercu: true`, rien n'est écrit. Sans aperçu lisible
+  // (nom déjà pris, réseau), aucun nombre n'est montré : jamais ceux du projet.
+  useEffect(() => {
+    let vivant = true
+    ;(async () => {
+      try {
+        const { data } = await dupliquerProjet(projet.id, { nom: `${projet.nom} (aperçu)`, date_debut: null, apercu: true })
+        if (vivant) setApercu(data)
+      } catch {
+        if (vivant) setApercu(null) // aperçu illisible : le dialogue se tait sur les nombres, l'enregistrement reste possible
+      }
+    })()
+    return () => { vivant = false }
+  }, [projet.id, projet.nom])
+  const nbTaches = apercu?.taches?.length
+  const etapes = (apercu?.sections ?? []).map((e) => ({ nom: e.nom, n: null }))
 
   const enregistrer = async () => {
     setOccupe(true)
@@ -301,11 +328,12 @@ export function DialogueEnregistrerModele({ projet, vue, onFait, onFermer }) {
             aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-modele-erreur' : undefined} />
           <Erreur id="ep-modele-erreur" texte={erreur} />
         </div>
-        {Number.isInteger(total) ? (
+        {Number.isInteger(nbTaches) ? (
           <p className="es-resume"><CalendarCheck className="i i-16" aria-hidden="true" />
-            <span className="chiffres">{`${accord(total, 'tâche')} · ${accord(etapes.filter((e) => e.nom !== 'Sans étape').length, 'étape')}`}</span>
+            <span className="chiffres">{`${accord(nbTaches, 'tâche')} · ${accord(etapes.length, 'étape')}`}</span>
           </p>
         ) : null}
+        <NonReprises apercu={apercu} />
         <Etapes etapes={etapes} />
         <div className="ep-reglage">
           <span id="ep-modele-notes">Inclure les notes</span>
@@ -399,6 +427,7 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
             <span className="chiffres">{`${accord(n, 'tâche')}${premier ? `, première le ${jourNomme(premier, aujourdhui)}` : ''}`}</span>
           </p>
         ) : null}
+        <NonReprises apercu={apercu} />
         <Etapes etapes={etapes} />
         <Pied onFermer={onFermer} principal={{ libelle: 'Créer', onClick: creer }} occupe={occupe} desactive={!nom.trim()} />
       </form>

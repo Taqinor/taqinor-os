@@ -109,6 +109,10 @@ export function etapesDuProjet(vue) {
   return sans > 0 ? [...lignes, { nom: 'Sans étape', n: sans }] : lignes
 }
 
+/** Les NOMS des étapes d'un projet lu, sans leur nombre : celui du projet n'est pas celui d'une copie (tâches
+ *  confidentielles écartées, sous-tâches comprises) ; le nombre d'une copie vient de l'aperçu du serveur. */
+export const nomsDesEtapes = (vue) => etapesDuProjet(vue).map(({ nom }) => ({ nom, n: null }))
+
 /** Le premier jour daté d'un aperçu d'instanciation (`modele_instancier.json`), ou `null` sans aucune date. */
 export function premiereDate(apercu) {
   const jours = (apercu?.taches ?? []).map((t) => t.jour_prevu ?? t.echeance).filter(Boolean).sort()

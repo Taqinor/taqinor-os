@@ -226,15 +226,18 @@ describe('TCH157 — Renommer et Supprimer un modèle', () => {
 describe('TCH157 — Enregistrer comme modèle', () => {
   const vue = () => structuredClone(exempleContrat('taches', 'projet_vue'))
 
-  it('résumé et étapes viennent de la vue servie ; « Inclure les notes » éteint par défaut', async () => {
+  it('F4 revue #11 — résumé et étapes sont ceux de la COPIE (aperçu du serveur), pas ceux du projet ; « Inclure les notes » éteint par défaut', async () => {
     const onFait = vi.fn()
+    api.dupliquerProjet.mockResolvedValue({ data: apercuServi() }) // la copie : 1 tâche, 1 étape (le projet en compte 20)
     api.enregistrerModele.mockResolvedValue({ data: modeleServi() })
     const user = utilisateur()
-    render(<DialogueEnregistrerModele projet={vue().projet} vue={vue()} onFait={onFait} onFermer={() => {}} />)
+    render(<DialogueEnregistrerModele projet={vue().projet} onFait={onFait} onFermer={() => {}} />)
     const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
-    expect(within(dialogue).getByText('20 tâches · 1 étape')).toBeInTheDocument()
-    expect(within(dialogue).getByText('Études')).toBeInTheDocument()
-    expect(within(dialogue).getByText('5 tâches')).toBeInTheDocument() // 1 ouverte + 4 faites : `compteurs` du serveur
+    expect(await within(dialogue).findByText('1 tâche · 1 étape')).toBeInTheDocument()
+    expect(api.dupliquerProjet).toHaveBeenCalledWith(3, expect.objectContaining({ apercu: true })) // aperçu : rien n'est écrit
+    expect(within(dialogue).getByText('Préparation')).toBeInTheDocument()
+    expect(within(dialogue).queryByText('20 tâches · 1 étape')).toBeNull()
+    expect(within(dialogue).queryByText('5 tâches')).toBeNull()
     const notes = within(dialogue).getByRole('switch', { name: 'Inclure les notes' })
     expect(notes).toHaveAttribute('aria-checked', 'false')
     await user.click(notes)
@@ -243,10 +246,26 @@ describe('TCH157 — Enregistrer comme modèle', () => {
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(modeleServi()))
   })
 
+  it('F4 revue #11 — des tâches confidentielles non reprises sont dites quand le serveur en compte (clé `nb_confidentielles_non_reprises`)', async () => {
+    api.dupliquerProjet.mockResolvedValue({ data: { ...apercuServi(), nb_confidentielles_non_reprises: 2 } })
+    render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
+    const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
+    expect(await within(dialogue).findByText('2 tâches confidentielles non reprises')).toBeInTheDocument()
+  })
+
+  it('F4 revue #11 — sans aperçu lisible (nom pris, réseau), aucun nombre du projet n\'est montré à la place', async () => {
+    api.dupliquerProjet.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet existe déjà.'] } } })
+    render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
+    const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalled())
+    expect(within(dialogue).queryByText(/tâches? · /)).toBeNull()
+    expect(within(dialogue).queryByText('Études')).toBeNull()
+  })
+
   it('un nom de modèle déjà pris est dit sous le champ', async () => {
     api.enregistrerModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un modèle « Ventes » existe déjà.'] } } })
     const user = utilisateur()
-    render(<DialogueEnregistrerModele projet={vue().projet} vue={vue()} onFait={vi.fn()} onFermer={() => {}} />)
+    render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     await user.click(screen.getByRole('button', { name: 'Créer' }))
     const champ = screen.getByLabelText('Nom du modèle')
     expect(await screen.findByText('Un modèle « Ventes » existe déjà.')).toBeInTheDocument()
@@ -264,7 +283,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
       id: m.id, nom: m.nom, created_at: m.created_at, nb_taches: m.contenu.taches.length, nb_sections: m.contenu.sections.length,
     })))
     const user = utilisateur()
-    const premier = render(<DialogueEnregistrerModele projet={vue().projet} vue={vue()} onFait={vi.fn()} onFermer={() => {}} />)
+    const premier = render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     await user.click(screen.getByRole('button', { name: 'Créer' }))
     await waitFor(() => expect(serveur).toHaveLength(1))
     premier.unmount()
@@ -303,6 +322,7 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     await ouvrirMenu(user, 'Dupliquer')
     const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
     expect(within(dialogue).getByText('Études')).toBeInTheDocument()
+    expect(within(dialogue).queryByText('5 tâches')).toBeNull() // F4 revue #11 : le compte du projet n'est pas celui de la copie
     await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Ventes 2027')
     await user.tab()
     await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: true }))
@@ -310,6 +330,18 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
     await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: false }))
     expect(await screen.findByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+  })
+
+  it('F4 revue #11 — Dupliquer dit les tâches confidentielles non reprises quand l\'aperçu du serveur en compte', async () => {
+    api.dupliquerProjet.mockImplementation(async () => ({ data: { ...apercuServi(), nb_confidentielles_non_reprises: 1 } }))
+    const user = utilisateur()
+    monterProjet()
+    await ouvrirMenu(user, 'Dupliquer')
+    const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
+    await user.type(within(dialogue).getByLabelText('Nom du projet'), 'Ventes 2027')
+    await user.tab()
+    expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
+    expect(within(dialogue).getByText('1 tâche confidentielle non reprise')).toBeInTheDocument()
   })
 
   it('Modèle… ouvre « Enregistrer comme modèle » sans quitter le projet', async () => {
