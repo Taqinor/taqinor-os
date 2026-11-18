@@ -135,6 +135,25 @@
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
 .tch .ep-revue-boutons { flex-wrap: wrap; }
 .tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
+/* Passe visuelle n° 45 — la carte de revue-semaine.html (`.ep-carte-projet`) : fond de page cerné d'un filet, nom en
+   1.0625rem (plus le titre de page), méta séparée par « · », « Projet de la semaine » à l'étoile */
+.tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
+.tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: 1.0625rem; font-weight: 650; line-height: 1.35; }
+.tch .ep-carte-revue .ep-carte-tete .point { width: 10px; height: 10px; }
+.tch .ep-carte-revue .ep-rang { font-size: var(--tch-chiffre); font-weight: 600; }
+.tch .ep-carte-revue .meta { margin-top: -6px; column-gap: 8px; }
+.tch .ep-carte-revue .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
+.tch .ep-carte-revue .meta > .ep-sante::before, .tch .ep-carte-revue .meta > .ep-aplanifier::before { content: none; }
+.tch .ep-carte-revue .ep-revue-ligne .bouton.discret { position: relative; min-height: 0; height: auto; margin-left: auto; padding: 0;
+  font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); background: none; }
+.tch .ep-carte-revue .ep-revue-ligne .bouton.discret::after { content: ""; position: absolute; inset: -14px -8px; }
+.tch .ep-focus { position: relative; font-weight: 400; color: var(--tch-texte-doux); }
+.tch .ep-focus input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.tch .ep-focus svg { color: var(--tch-etoile); }
+.tch .ep-focus:has(input:checked) { color: var(--tch-texte); font-weight: 600; }
+.tch .ep-focus:has(input:checked) svg { fill: var(--tch-etoile-fond); }
+.tch .ep-focus:has(input:focus-visible) { box-shadow: var(--focus-ring); border-radius: 8px; }
+.tch .ep-focus:has(input[aria-invalid="true"]) svg { color: var(--tch-alerte); }
 /* ── Un projet, vues Tableau et Chronologie, burn-up (TCH90) ─────────────── */
 .tch .ep-entre { display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--tch-gouttiere) 4px; }
 .tch .ep-vue-puce { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 10px; border-radius: 999px;
