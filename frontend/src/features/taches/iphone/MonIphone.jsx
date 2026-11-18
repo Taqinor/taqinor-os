@@ -330,7 +330,8 @@ function useJetons() {
   return { jetons, reveles, copies, erreurs, echec, pret, creer, revoquer, copie }
 }
 
-export default function MonIphone({ reglages, onReglage, erreur = {} }) {
+// `etapeDemandee` : numéro (0-4) d'une étape à ouvrir d'emblée, en plus de celle du départ (adresse `?etape=calendrier`).
+export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDemandee = null }) {
   const contexte = useContext(ReactReduxContext)
   const accueilServeur = contexte?.store.getState().auth?.user?.mobile_home_route === ROUTE_ACCUEIL
   const jetons = useJetons()
@@ -369,6 +370,7 @@ export default function MonIphone({ reglages, onReglage, erreur = {} }) {
   // Les étapes déjà faites À L'OUVERTURE sont repliées ; une étape qu'on vient de faire reste ouverte (Envoyer un test).
   if (jetons.pret && depart === null) setDepart(premier)
   const nombre = faits.filter(Boolean).length
+  const ouverteParDefaut = (i) => i === (depart ?? 0) || i === etapeDemandee
   const bloc = (usage, libelleCreer, libelleCopie, valeurCopiee) => (
     <BlocJeton usage={usage} jeton={actif(jetons.jetons, usage)} revele={jetons.reveles[usage]} copie={jetons.copies[usage]}
       libelleCreer={libelleCreer} libelleCopie={libelleCopie} valeurCopiee={valeurCopiee}
@@ -397,8 +399,8 @@ export default function MonIphone({ reglages, onReglage, erreur = {} }) {
       {jetons.echec ? <p className="es-erreur es-aide" role="alert">Pas à jour</p> : null}
       <ol className="ep-etapes">
         {TITRES.map((titre, i) => (
-          <Etape key={titre} numero={i + 1} titre={titre} fait={faits[i]} ouverte={choix[i] ?? i === (depart ?? 0)}
-            onBasculer={() => setChoix((c) => ({ ...c, [i]: !(c[i] ?? i === (depart ?? 0)) }))}>
+          <Etape key={titre} numero={i + 1} titre={titre} fait={faits[i]} ouverte={choix[i] ?? ouverteParDefaut(i)}
+            onBasculer={() => setChoix((c) => ({ ...c, [i]: !(c[i] ?? ouverteParDefaut(i)) }))}>
             {contenus[i]}
           </Etape>
         ))}
