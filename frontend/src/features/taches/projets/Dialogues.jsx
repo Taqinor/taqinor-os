@@ -1,9 +1,13 @@
 import { useRef, useState } from 'react'
-import { ArrowRight, CalendarClock } from 'lucide-react'
-import { decalerProjet, listerTousLesProjets, supprimerProjet, terminerProjet } from '../../../api/tachesApi'
+import { ArrowRight, CalendarCheck, CalendarClock } from 'lucide-react'
+import {
+  decalerProjet, dupliquerProjet, enregistrerModele, instancierModele, listerTousLesProjets, renommerModele,
+  supprimerModele, supprimerProjet, terminerProjet,
+} from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import FeuilleACrans from '../ui/FeuilleACrans'
-import { accord, aujourdhuiIso, jourCourt } from '../lib/textes'
+import { etapesDuProjet, premiereDate } from '../lib/projets'
+import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
 
 /* ============================================================================
    TCH92 — Les trois dialogues d'un projet : Supprimer (« … et ses N tâches ? »), Décaler les dates (aperçu
@@ -239,6 +243,221 @@ export function DialogueTerminer({ projet, onFait, onFermer }) {
         ) : null}
         <Erreur id="ep-terminer-erreur" texte={erreurs.general} />
         <Pied onFermer={onFermer} principal={{ libelle: 'Terminer', onClick: terminer }} occupe={occupe} />
+      </div>
+    </FeuilleACrans>
+  )
+}
+
+/* ============================================================================
+   TCH157 — Les modèles de projet : « Enregistrer comme modèle », « Utiliser ce modèle » et « Dupliquer » (même
+   dialogue, même moteur serveur), « Renommer » et « Supprimer » un modèle. Maquettes : projets-modeles-enregistrer.html,
+   projets-modeles-utiliser.html, projets-modeles.html. Textes : reference/textes.md §2.6 « Modèles » (« Enregistrer comme
+   modèle », « Inclure les notes », « Date de lancement », « {n} tâches, première le {jour} », Créer). Contrats :
+   `modele.json`, `modele_instancier.json` (l'APERÇU des dates, obligatoire avant d'écrire : `apercu: true` puis `false`),
+   `projet_ecrit.json`. Chaque dialogue dit l'erreur SOUS le champ fautif.
+   ========================================================================== */
+
+function Etapes({ etapes }) {
+  if (!etapes || etapes.length === 0) return null
+  return (
+    <div className="es-etapes-modele">
+      {etapes.map((e) => (
+        <div className="es-etape-modele" key={e.nom}>
+          <span>{e.nom}</span>{e.n != null ? <span className="chiffres">{accord(e.n, 'tâche')}</span> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function DialogueEnregistrerModele({ projet, vue, onFait, onFermer }) {
+  const [nom, setNom] = useState(projet.nom)
+  const [notes, setNotes] = useState(false)
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const total = vue?.avancement?.total
+  const etapes = etapesDuProjet(vue)
+
+  const enregistrer = async () => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      const { data } = await enregistrerModele(projet.id, { nom: nom.trim(), inclure_notes: notes })
+      onFait?.(data)
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le modèle n\'a pas été enregistré. Réessaie.'))
+    } finally {
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Enregistrer comme modèle">
+      <form className="ep-formulaire" data-p={projet.couleur} noValidate onSubmit={(e) => { e.preventDefault(); enregistrer() }}>
+        <p className="ep-dialogue-sous"><i className="point" aria-hidden="true" />{projet.nom}</p>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-modele-nom">Nom du modèle</label>
+          <input id="ep-modele-nom" className="champ" type="text" value={nom} onChange={(e) => setNom(e.target.value)}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-modele-erreur' : undefined} />
+          <Erreur id="ep-modele-erreur" texte={erreur} />
+        </div>
+        {Number.isInteger(total) ? (
+          <p className="es-resume"><CalendarCheck className="i i-16" aria-hidden="true" />
+            <span className="chiffres">{`${accord(total, 'tâche')} · ${accord(etapes.filter((e) => e.nom !== 'Sans étape').length, 'étape')}`}</span>
+          </p>
+        ) : null}
+        <Etapes etapes={etapes} />
+        <div className="ep-reglage">
+          <span id="ep-modele-notes">Inclure les notes</span>
+          <button type="button" className="interrupteur" role="switch" aria-checked={notes} aria-labelledby="ep-modele-notes"
+            onClick={() => setNotes((v) => !v)} />
+        </div>
+        <p className="es-aide">Les dates deviennent des écarts depuis la date de lancement&nbsp;; rien n'est coché.</p>
+        <Pied onFermer={onFermer} principal={{ libelle: 'Créer', onClick: enregistrer }} occupe={occupe} desactive={!nom.trim()} />
+      </form>
+    </FeuilleACrans>
+  )
+}
+
+/**
+ * « Utiliser ce modèle » (`source.type === 'modele'`) ou « Dupliquer » (`'projet'`) : un nom, une date de lancement,
+ * l'APERÇU des dates annoncé par le serveur (« {n} tâches, première le {jour} »), puis Créer. L'aperçu se lit quand le
+ * nom ou la date est posé ; un Créer sans aperçu à jour LIT l'aperçu seulement : rien n'est écrit avant de l'avoir vu.
+ */
+export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhuiIso(), onFait, onFermer }) {
+  const modele = source.type === 'modele'
+  const [nom, setNom] = useState('')
+  const [date, setDate] = useState(aujourdhui)
+  const [apercu, setApercu] = useState(null)
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const rang = useRef(0)
+
+  const corps = (n, d, sansApercu) => (modele
+    ? { nom: n, date_lancement: d || null, apercu: !sansApercu }
+    : { nom: n, date_debut: d || null, apercu: !sansApercu })
+  const appeler = (n, d, sansApercu) => (modele ? instancierModele(source.id, corps(n, d, sansApercu))
+    : dupliquerProjet(source.id, corps(n, d, sansApercu)))
+
+  const lireApercu = async (n, d) => {
+    rang.current += 1
+    const mien = rang.current
+    setApercu(null)
+    setErreur('')
+    if (!n.trim()) return null
+    try {
+      const { data } = await appeler(n.trim(), d, false)
+      if (mien !== rang.current) return null
+      const lu = { ...data, pour: { nom: n.trim(), date: d } }
+      setApercu(lu)
+      return lu
+    } catch (err) {
+      if (mien !== rang.current) return null
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? premiere(champs?.date_lancement) ?? premiere(champs?.date_debut)
+        ?? frenchError(err, 'L\'aperçu n\'a pas pu être lu. Réessaie.'))
+      return null
+    }
+  }
+
+  const aJour = apercu && apercu.pour.nom === nom.trim() && apercu.pour.date === date
+  const creer = async () => {
+    if (!aJour) { await lireApercu(nom, date); return } // l'aperçu d'abord : rien n'est écrit avant de l'avoir vu
+    setOccupe(true)
+    try {
+      const { data } = await appeler(nom.trim(), date, true)
+      onFait?.(data)
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le projet n\'a pas été créé. Réessaie.'))
+    } finally {
+      setOccupe(false)
+    }
+  }
+
+  const n = apercu?.taches?.length ?? 0
+  const premier = premiereDate(apercu)
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre={modele ? 'Utiliser ce modèle' : 'Dupliquer'}>
+      <form className="ep-formulaire" noValidate onSubmit={(e) => { e.preventDefault(); creer() }}>
+        <p className="ep-dialogue-sous">{source.nom}</p>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-utiliser-nom">Nom du projet</label>
+          <input id="ep-utiliser-nom" className="champ" type="text" value={nom}
+            onChange={(e) => { setNom(e.target.value); setApercu(null); setErreur('') }}
+            onBlur={() => { if (nom.trim() && !aJour) lireApercu(nom, date) }}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-utiliser-erreur' : undefined} />
+          <Erreur id="ep-utiliser-erreur" texte={erreur} />
+        </div>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-utiliser-date">Date de lancement</label>
+          <input id="ep-utiliser-date" className="champ" type="date" value={date}
+            onChange={(e) => { setDate(e.target.value); lireApercu(nom, e.target.value) }} />
+        </div>
+        {apercu ? (
+          <p className="es-resume"><CalendarCheck className="i i-16" aria-hidden="true" />
+            <span className="chiffres">{`${accord(n, 'tâche')}${premier ? `, première le ${jourNomme(premier, aujourdhui)}` : ''}`}</span>
+          </p>
+        ) : null}
+        <Etapes etapes={etapes} />
+        <Pied onFermer={onFermer} principal={{ libelle: 'Créer', onClick: creer }} occupe={occupe} desactive={!nom.trim()} />
+      </form>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueRenommerModele({ modele, onFait, onFermer }) {
+  const [nom, setNom] = useState(modele.nom)
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const renommer = async () => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      const { data } = await renommerModele(modele.id, { nom: nom.trim() })
+      onFait?.(data)
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le modèle n\'a pas été renommé. Réessaie.'))
+    } finally {
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Renommer">
+      <form className="ep-formulaire" noValidate onSubmit={(e) => { e.preventDefault(); renommer() }}>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-renommer-nom">Nom du modèle</label>
+          <input id="ep-renommer-nom" className="champ" type="text" value={nom} onChange={(e) => setNom(e.target.value)}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-renommer-erreur' : undefined} />
+          <Erreur id="ep-renommer-erreur" texte={erreur} />
+        </div>
+        <Pied onFermer={onFermer} principal={{ libelle: 'Renommer', onClick: renommer }} occupe={occupe} desactive={!nom.trim()} />
+      </form>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueSupprimerModele({ modele, onFait, onFermer }) {
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const supprimer = async () => {
+    setOccupe(true)
+    try {
+      await supprimerModele(modele.id)
+      onFait?.(modele)
+    } catch (err) {
+      setErreur(frenchError(err, 'Le modèle n\'a pas été supprimé. Réessaie.'))
+    } finally {
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Supprimer">
+      <div className="ep-formulaire">
+        <p className="ep-dialogue-texte">{`Supprimer « ${modele.nom} » ?`}</p>
+        <Erreur id="ep-supprimer-modele-erreur" texte={erreur} />
+        <Pied onFermer={onFermer} principal={{ libelle: 'Supprimer', onClick: supprimer }} occupe={occupe} danger />
       </div>
     </FeuilleACrans>
   )

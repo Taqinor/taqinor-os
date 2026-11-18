@@ -54,3 +54,28 @@ export function elementsChronologie(vue, aujourdhui) {
   elements.sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : ordre[a.type] - ordre[b.type]))
   return { elements, sansDate }
 }
+
+// ── TCH157 — modèles de projet ──────────────────────────────────────────────
+
+/** Les étapes d'un contenu de modèle (`modele.json`) et leur nombre de tâches ; « Sans étape » en dernier s'il y en a. */
+export function etapesDuModele(contenu) {
+  const sections = contenu?.sections ?? []
+  const taches = contenu?.taches ?? []
+  const lignes = sections.map((s, i) => ({ nom: s.nom, n: taches.filter((t) => t.section_index === i).length }))
+  const sans = taches.filter((t) => t.section_index == null).length
+  return sans > 0 ? [...lignes, { nom: 'Sans étape', n: sans }] : lignes
+}
+
+/** Les étapes d'un projet lu (`projet_vue.json`) et leur nombre de tâches, tels que le serveur les compte. */
+export function etapesDuProjet(vue) {
+  const nombre = (c) => (c && Number.isInteger(c.ouvertes) && Number.isInteger(c.faites) ? c.ouvertes + c.faites : null)
+  const lignes = (vue?.sections ?? []).map((s) => ({ nom: s.nom, n: nombre(s.compteurs) }))
+  const sans = nombre(vue?.sans_section_compteurs)
+  return sans > 0 ? [...lignes, { nom: 'Sans étape', n: sans }] : lignes
+}
+
+/** Le premier jour daté d'un aperçu d'instanciation (`modele_instancier.json`), ou `null` sans aucune date. */
+export function premiereDate(apercu) {
+  const jours = (apercu?.taches ?? []).map((t) => t.jour_prevu ?? t.echeance).filter(Boolean).sort()
+  return jours[0] ?? null
+}

@@ -9,14 +9,16 @@ import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
-import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
+import {
+  DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
+} from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
 import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronologie'
 import FeuilleACrans from '../../features/taches/ui/FeuilleACrans'
 import SelecteurVue from '../../features/taches/ui/SelecteurVue'
 import Tableau from '../../features/taches/ui/Tableau'
-import { CODES_VUES } from '../../features/taches/lib/projets'
+import { CODES_VUES, etapesDuProjet } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -294,6 +296,21 @@ export default function Projet() {
     await charger() // le décalage touche des dates partout : une relecture, une fois
   }
 
+  // TCH157 — « Dupliquer » : le double s'ouvre, « Projet créé · Annuler » le supprime ; « Modèle… » enregistre sans quitter l'écran.
+  const duplique = (reponse) => {
+    const retour = vue.projet.id
+    setDialogue(null)
+    proposerAnnuler({
+      message: 'Projet créé',
+      onAnnuler: async () => { if (reponse.geste_id) await annulerGeste(reponse.geste_id); navigate(`/taches/projets/${retour}`) },
+    })
+    navigate(`/taches/projets/${reponse.projet.id}`)
+  }
+  const modeleEnregistre = (modele) => {
+    setDialogue(null)
+    annoncer(`« ${modele.nom} » enregistré comme modèle`)
+  }
+
   const termine = () => {
     setDialogue(null)
     proposerAnnuler({
@@ -320,6 +337,8 @@ export default function Projet() {
     { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
+    { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
+    { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
     { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
@@ -368,6 +387,13 @@ export default function Projet() {
       ) : null}
       {vue && dialogue === 'decaler' ? (
         <DialogueDecaler projet={vue.projet} noms={noms} aujourdhui={aujourdhui} onFait={decale} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'dupliquer' ? (
+        <DialogueUtiliser source={{ type: 'projet', id: vue.projet.id, nom: vue.projet.nom }} etapes={etapesDuProjet(vue)}
+          aujourdhui={aujourdhui} onFait={duplique} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'modele' ? (
+        <DialogueEnregistrerModele projet={vue.projet} vue={vue} onFait={modeleEnregistre} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'burnup' ? (
         <FeuilleACrans ouverte onFermer={() => setDialogue(null)} titre="Avancement par semaine">
