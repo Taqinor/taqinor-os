@@ -241,6 +241,18 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
   })
 })
 
+describe('Feuille de style des cartes du Copilote (maquette copilote.html)', () => {
+  it('chaque carte porte la racine .tch puis le cadre .ep-carte-ia, sa tête et son pied', () => {
+    monter('plan_propose', contrat('journee_proposition'))
+    const racine = screen.getByTestId('carte-taches-plan_propose')
+    expect(racine).toHaveClass('tch')
+    const cadre = racine.firstElementChild
+    expect(cadre).toHaveClass('ep-carte-ia')
+    expect(cadre.querySelector('.ep-carte-ia-tete .seg-tete')).toHaveTextContent("Proposé pour aujourd'hui")
+    expect(within(cadre).getByRole('button', { name: 'Garder ces 2' }).parentElement).toHaveClass('ep-carte-ia-pied')
+  })
+})
+
 describe('A5 — écriture du Copilote sous un texte tiers : carte à valider (« Modifier » · « Laisser »)', () => {
   it('modifier : les trois changements dits, « Modifier » envoie le corps porté par la carte', async () => {
     const donnees = contrat('ecriture_a_valider')
