@@ -214,6 +214,7 @@
 .tch .ag-pj .j { font-size: 0.9375rem; font-weight: 650; }
 .tch .ag-pj .n { font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ag-pj.auj .j { color: var(--tch-accent); }
+.tch .ag-sj.passe .ag-sj-date b { color: var(--tch-texte-doux); font-weight: 500; }
 .tch .ag-pj.passe { background: transparent; cursor: default; }
 .tch .ag-pj.passe .j { color: var(--tch-texte-doux); font-weight: 500; }
 .tch .ag-pj.repos { background: var(--ag-repos); }

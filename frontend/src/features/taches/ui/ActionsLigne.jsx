@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
-  annulerGeste, attendreTache, classerErreur, creerProjet, listerTousLesProjets, marquerEssentiel, planifierTache,
+  attendreTache, classerErreur, creerProjet, listerTousLesProjets, marquerEssentiel, planifierTache,
   restaurerTache, supprimerTache, traiterLot,
 } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { MESSAGE_EN_FILE, enfilerReport } from '../horsligne/captureQueue'
 import { estEnLigne } from '../lib/enLigne'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
+import { annulerEtRecaler, versionDe } from '../lib/versions'
 import { aujourdhuiIso, heureDuConflit, jourCourt, jourNomme } from '../lib/textes'
 import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
@@ -97,6 +98,14 @@ export function useActionsLigne({
     return () => poserChamps(item.id, avant)
   }, [])
 
+  /** « Annuler » : le serveur change la version de la tâche ; la ligne remise garde celle qu'il rend (F4 revue #7). */
+  const annuler = useCallback(async (gesteId, item, defaire) => {
+    const retour = await annulerEtRecaler(gesteId, [item.id])
+    defaire()
+    const version = versionDe(retour, item.id, null)
+    if (version != null) rappels.current.maj(item.id, { lock_version: version })
+  }, [])
+
   const echec = useCallback((err, defaire) => {
     defaire()
     annoncer(frenchError(err))
@@ -123,7 +132,7 @@ export function useActionsLigne({
       rappels.current.apresEcriture?.(data)
       proposerAnnuler({
         message,
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
+        onAnnuler: data?.geste_id ? () => annuler(data.geste_id, item, defaire) : undefined,
       })
     } catch (err) {
       const classee = classerErreur(err)
@@ -138,7 +147,7 @@ export function useActionsLigne({
       }
       annoncer(frenchError(err))
     }
-  }, [poser])
+  }, [poser, annuler])
   useEffect(() => { relancer.current = planifier }, [planifier])
 
   const reporter = useCallback((item) => {
@@ -154,12 +163,12 @@ export function useActionsLigne({
       if (refus) { defaire(); annoncer('Cette tâche a changé : rien n\'a été modifié.'); return }
       proposerAnnuler({
         message,
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
+        onAnnuler: data?.geste_id ? () => annuler(data.geste_id, item, defaire) : undefined,
       })
     } catch (err) {
       echec(err, defaire)
     }
-  }, [poser, echec])
+  }, [poser, echec, annuler])
 
   const deplacer = useCallback((item, projet) => {
     setFeuille(null)
@@ -188,12 +197,12 @@ export function useActionsLigne({
       rappels.current.apresEcriture?.(data)
       proposerAnnuler({
         message: `En attente de : ${texte}`,
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
+        onAnnuler: data?.geste_id ? () => annuler(data.geste_id, item, defaire) : undefined,
       })
     } catch (err) {
       echec(err, defaire)
     }
-  }, [poser, echec])
+  }, [poser, echec, annuler])
 
   const essentiel = useCallback(async (item, suivant = !item.essentielle) => {
     const defaire = poser('essentiel', item, { essentielle: suivant })
@@ -203,12 +212,12 @@ export function useActionsLigne({
       proposerAnnuler({
         message: suivant ? 'Essentielle' : 'Plus essentielle',
         annonce: `${suivant ? 'Essentielle' : 'Plus essentielle'} : ${item.titre}`,
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); defaire() } : undefined,
+        onAnnuler: data?.geste_id ? () => annuler(data.geste_id, item, defaire) : undefined,
       })
     } catch (err) {
       echec(err, defaire)
     }
-  }, [poser, echec])
+  }, [poser, echec, annuler])
 
   const supprimer = useCallback(async (item) => {
     setFeuille(null)
@@ -221,10 +230,11 @@ export function useActionsLigne({
         onAnnuler: async () => {
           if (supprimee?.geste_id) {
             // « Annuler » côté serveur (A7) : rappels annulés remis, geste consommé. Une tâche modifiée depuis reste supprimée.
-            const { data } = await annulerGeste(supprimee.geste_id)
+            const { data, taches } = await annulerEtRecaler(supprimee.geste_id, [item.id])
             const conflits = data?.conflits?.length ?? 0
-            if (conflits > 0) annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`)
-            else remettre()
+            if (conflits > 0) { annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`); return }
+            remettre()
+            if (taches[item.id]) poserChamps(item.id, { lock_version: taches[item.id].lock_version }) // la version rendue par le serveur
             return
           }
           const { data } = await restaurerTache(item.id)

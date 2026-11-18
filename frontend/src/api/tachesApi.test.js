@@ -1,12 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, documentContrat } from '../test/fixtures/contractSamples'
 
 vi.mock('./axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
+vi.mock('../lib/toast', async (original) => ({ ...(await original()), toastError: vi.fn() }))
 
 const api = (await import('./axios')).default
+const { toastError } = await import('../lib/toast')
 const client = await import('./tachesApi')
 
 /* TCH42 — chaque fonction du client est EXÉCUTÉE avec un axios simulé et appelle EXACTEMENT
@@ -232,6 +234,68 @@ describe('TCH42 — codes 409 distingués (erreurs.json)', () => {
     expect(client.classerErreur({ response: { status: 404, data: erreurs.introuvable } }).code).toBe('introuvable')
     expect(client.classerErreur({ response: { status: 429, data: {} } }).code).toBe('limite')
     expect(client.classerErreur(new Error('Network Error')).code).toBe('reseau')
+  })
+})
+
+describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le toast global de l\'ERP', () => {
+  const erreurs = documentContrat('taches', 'erreurs').exemple
+  // L'instance de l'ERP, simulée au plus près : `defaults.validateStatus` décide, AU MOMENT DE L'APPEL, si la réponse
+  // résout ou rejette ; un rejet passe par le pont global (axios.js L53), qui toaste tout sauf 401/404 et
+  // `idempotency_en_cours`.
+  const pont = (statut, corps) => (url) => {
+    const reponse = { status: statut, data: corps, headers: {}, config: { url } }
+    if (api.defaults.validateStatus(statut)) return Promise.resolve(reponse)
+    const err = Object.assign(new Error(`Request failed with status code ${statut}`), { response: reponse, config: reponse.config })
+    if (corps?.code !== 'idempotency_en_cours') toastError(`toast global : ${corps?.detail ?? statut}`)
+    return Promise.reject(err)
+  }
+  const valider = (statut) => statut >= 200 && statut < 300
+
+  beforeEach(() => {
+    api.defaults = { validateStatus: valider }
+    toastError.mockClear()
+  })
+  afterEach(() => { delete api.defaults })
+
+  it('409 `conflit_version` sur modifierTache : aucun toast global, l\'erreur garde son statut et son corps', async () => {
+    api.patch.mockImplementation(pont(409, erreurs.conflit_version))
+    const err = await client.modifierTache(20, { titre: 'x', lock_version: 4 }).catch((e) => e)
+    expect(toastError).not.toHaveBeenCalled()
+    expect(err.response.status).toBe(409)
+    expect(err.response.data).toEqual(erreurs.conflit_version)
+    expect(client.classerErreur(err)).toMatchObject({ code: 'conflit_version', lockVersion: 5 })
+    // l'instance de l'ERP retrouve sa règle aussitôt l'appel parti : les autres écrans ne sont pas touchés
+    expect(api.defaults.validateStatus).toBe(valider)
+  })
+
+  it.each(['deja_lie', 'nom_pris', 'proposition_expiree', 'autre_compte'])('409 `%s` : aucun toast global', async (code) => {
+    api.post.mockImplementation(pont(409, erreurs[code]))
+    const err = await client.lierActivite({ activite_id: 1, titre: 't' }).catch((e) => e)
+    expect(err.response.data.code).toBe(code)
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('409 sans code : le toast de l\'ERP reste (une seule fois), l\'erreur est rejetée', async () => {
+    api.patch.mockImplementation(pont(409, { detail: 'Conflit.' }))
+    const err = await client.modifierTache(20, { titre: 'x', lock_version: 4 }).catch((e) => e)
+    expect(err.response.status).toBe(409)
+    expect(toastError).toHaveBeenCalledTimes(1)
+  })
+
+  it('409 `idempotency_en_cours` : ni toast (le pont ne le toaste pas non plus) ni résolution', async () => {
+    api.post.mockImplementation(pont(409, { code: 'idempotency_en_cours', detail: 'En cours.' }))
+    const err = await client.planifierTache(20, { jour_prevu: '2026-11-25' }).catch((e) => e)
+    expect(client.classerErreur(err).code).toBe('idempotency_en_cours')
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('400 et 500 : le toast global de l\'ERP, exactement comme avant', async () => {
+    api.patch.mockImplementation(pont(400, erreurs.champ))
+    await client.modifierTache(20, { projet_id: 9 }).catch((e) => e)
+    api.patch.mockImplementation(pont(500, { detail: 'Erreur serveur.' }))
+    const err = await client.modifierTache(20, { titre: 'x' }).catch((e) => e)
+    expect(err.response.status).toBe(500)
+    expect(toastError).toHaveBeenCalledTimes(2)
   })
 })
 
