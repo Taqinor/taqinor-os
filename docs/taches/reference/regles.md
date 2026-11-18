@@ -152,7 +152,7 @@ heure ; « pour / for » + durée = durée, + date ou heure = échéance (« pou
 |---|---|---|
 | `rapide` (`saisie-rapide/`) | tous | nouveau projet, étape, étiquette créés ; aperçu sans écriture |
 | `capture` (`capture/`, jeton) | `jour`, `heure`, `moment`, `echeance`, `priorite`, `duree`, `projet` EXISTANT (A1) — par `#nom` ou par « projet <nom> » / « project <nom> » EN TÊTE (le plus long nom de projet existant qui suit, comparé par `cle_nom`) | jamais de création de projet, d'étape, d'étiquette, de récurrence, de rappel ; « un jour / en réserve » non lu (A15) ; `#inconnu` et « projet <inconnu> » restent du texte ; rien reconnu → À trier |
-| `assistant` (lignes du Copilote) | la ligne SOURCE est analysée en `rapide` ; le `titre` envoyé par le modèle est ignoré | ≤ 3 écritures par tour ; contenu non fiable → carte à valider (A5) |
+| `assistant` (lignes du Copilote) | la ligne SOURCE est analysée en `rapide` ; le `titre` envoyé par le modèle est ignoré | ≤ 3 écritures par tour ; tour marqué (toute lecture ou texte collé, §12 « Garde A5 ») → carte à valider |
 
 Réponse de la capture : `dans` = `journee` si un jour est posé (quel qu'il soit), `projet` si un projet sans jour,
 `a_trier` sinon — une échéance seule laisse la tâche dans À trier (invariant 1) ; message lu par Siri : `textes.md` §7.
@@ -1091,7 +1091,25 @@ externes du jour qui commencent après maintenant ; `carte_du_moment`.
 
 **`taches.tache.modifier`** (✎, `PATCH taches/{id}/`) : sur demande EXPLICITE seulement (« passe la TVA en priorité
 haute »), champs `priorite`, `echeance`, `projet_id` ; `lock_version` requis ; `geste_id` rendu (Annuler) ; dans un tour
-où un texte tiers est entré : carte-écho (A5) ; ≤ 3 écritures par tour.
+MARQUÉ (garde A5 ci-dessous) : carte-écho ; ≤ 3 écritures par tour. En pratique, désigner une tâche EXISTANTE par son
+nom demande à l'assistant de la chercher (une lecture) : la modification arrive donc en carte à valider au doigt, puis
+« Modifiée · Annuler ». Une création dictée d'un trait, sans lecture avant elle, s'écrit sans carte.
+
+**Garde A5 — fermée par défaut (relecture adverse de la fusion 3).** Toute action qui n'est pas une écriture
+`taches.*` — lecture ou écho `taches.*`, action d'une autre app, lien de document, lecture SQL, schéma, métrique
+gouvernée, tout outil fixe sauf `report_gap` — MARQUE le tour dès son appel ; sous cette marque toute écriture
+`taches.*` devient une carte à valider (rien n'est écrit avant le doigt). Une écriture exécutée ne rend au modèle que
+ses ids, nombres, booléens, dates et heures (la carte garde tout) ; son échec marque le tour. Une action `taches.*`
+inconnue qui n'est ni GET ni écho est traitée comme une écriture. La marque SUIT LA CONVERSATION : chaque message
+d'agent gardé porte `contenu_tiers` (la marque de son tour, héritée comprise) ; un tour est marqué si un échange relu au
+modèle l'est (LangChain : la fenêtre des 2 derniers échanges ; natif : la conversation gardée, récapitulée comprise) ;
+un message sans la marque (écrit avant) compte comme marqué ; elle tombe à « Effacer » ou à l'expiration ; la reprise
+après confirmation est marquée. La QUESTION elle-même marque le tour quand elle porte un passage entre guillemets, une
+liste à virgules de 3 éléments ou plus, des puces à tirets ou une numérotation « 1. 2. » (texte collé). Limite écrite :
+un texte collé court, sans guillemets ni liste, ne se distingue pas d'une demande tapée. Pourquoi plus strict que la
+lettre de A5 (« dès qu'un contenu non fiable est entré dans le tour ») : une lecture `taches.*` rend des libellés
+de leads, des résumés d'activités et des textes d'aperçu ; aucune liste blanche de lectures « sûres » n'a pu être
+prouvée.
 
 ## 13. Activation par étapes et coupe-circuit
 
