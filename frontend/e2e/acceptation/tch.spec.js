@@ -369,15 +369,18 @@ const ligneProjet = (p, nom) => p.locator('[data-projet]').filter({ has: p.locat
 etape('P138.1', ['TCH138', 'TCH60', 'TCH88', 'TCH169'], async (f) => {
   const instant = scenario(['--jour', J24, '--heure', '08:30'], `${J24} 08:30`, { lecture: true })
   const p = await ouvrir(f, { instant })
+  // captures d'abord (la vue d'un projet, puis retour à la liste)
+  await aller(p, '/taches/projets', 'projets')
+  await expect(p.locator('[data-projet]').first()).toBeVisible()
+  await capturer(p, 'projets')
+  await ligneProjet(p, 'Chantier Benali 9 kWc').locator('.ep-ouvrir').click()
+  await expect(p.locator('.tch[data-ecran="projet"]')).toBeVisible()
+  await capturer(p, 'projet')
   await aller(p, '/taches/projets', 'projets')
   // Oracle : 5 projets, Benali « 12 sur 18 », Site web « À planifier »
   await expect(p.locator('[data-projet]')).toHaveCount(5)
   await expect(ligneProjet(p, 'Chantier Benali 9 kWc')).toContainText('12 sur 18')
   await expect(ligneProjet(p, 'Site web')).toContainText('À planifier')
-  await capturer(p, 'projets')
-  await ligneProjet(p, 'Chantier Benali 9 kWc').locator('.ep-ouvrir').click()
-  await expect(p.locator('.tch[data-ecran="projet"]')).toBeVisible()
-  await capturer(p, 'projet')
 })
 
 etape('P138.2', ['TCH138', 'TCH88', 'TCH91', 'TCH63'], async (f) => {
@@ -452,10 +455,11 @@ etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
   const instant = scenario(['--jour', '2026-11-20', '--heure', '17:40'], '2026-11-20 17:40')
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/revue', 'revue')
+  await expect(p.locator('.ep-constat').first()).toBeVisible()
+  await capturer(p, 'revue')
   // Oracle : Revue « 21 faites en 4 jours » — mots de textes.md §4.5 : « Du {lun.} au {ven.} : {faites} tâches en
   // {jours} jours … » (le plan et SCENARIO disent « faites » : ERR-PLAN de vocabulaire, le chiffre est l'oracle)
   await expect(p.locator('.ep-constat').first()).toContainText(/\b21 (faites|tâches) en 4 jours/)
-  await capturer(p, 'revue')
   // décisions : une carte par projet actif, « Garder » chacune
   for (let n = 0; n < 10; n += 1) {
     const fin = p.locator('.ep-revue-fin')
@@ -484,13 +488,15 @@ etape('P139.1', ['TCH139', 'TCH59', 'TCH104'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/agenda', 'agenda')
   await capturer(p, 'agenda-jour')
-  await p.getByRole('radio', { name: 'Semaine', exact: true }).click()
-  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h pour 4 h »
-  const jeudi = p.locator('.ag-sj').filter({ has: p.locator('.ag-sj-date b', { hasText: /^26$/ }) })
-  await expect(jeudi).toContainText('2 tâches · 2 h pour 4 h')
-  await capturer(p, 'agenda-semaine')
   await p.getByRole('radio', { name: 'Mois', exact: true }).click()
+  await expect(p.getByRole('radio', { name: 'Mois', exact: true })).toHaveAttribute('aria-checked', 'true')
   await capturer(p, 'agenda-mois')
+  await p.getByRole('radio', { name: 'Semaine', exact: true }).click()
+  const jeudi = p.locator('.ag-sj').filter({ has: p.locator('.ag-sj-date b', { hasText: /^26$/ }) })
+  await expect(jeudi).toBeVisible()
+  await capturer(p, 'agenda-semaine')
+  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h pour 4 h »
+  await expect(jeudi).toContainText('2 tâches · 2 h pour 4 h')
 })
 
 etape('P139.2', ['TCH139', 'TCH106'], async (f) => {
@@ -620,6 +626,11 @@ etape('P140.1', ['TCH140', 'TCH66', 'TCH107'], async (f) => {
   await expect(p.getByRole('button', { name: 'Monter à 6', exact: true })).toBeVisible()
   await expect(p.getByRole('button', { name: 'Pas maintenant', exact: true })).toBeVisible()
   await capturer(p, 'mon-rythme')
+  // capture de relecture seulement (aucun oracle) : la Recherche
+  await aller(p, '/taches/recherche', 'recherche')
+  await p.getByRole('searchbox', { name: 'Chercher dans mes tâches' }).fill('devis')
+  await expect(p.getByText(T.devis).first()).toBeVisible()
+  await capturer(p, 'recherche')
 })
 
 etape('P140.2', ['TCH140', 'TCH67', 'TCH77'], async (f) => {
