@@ -160,7 +160,37 @@ Vous aviez demandé de ne poser aucune question. Voici les choix qui touchent ce
 - **Les raccourcis clavier** `j` `k` `d` `m` ne marchent que sur Aujourd'hui, pas encore dans un projet, la Recherche
   ou l'Agenda.
 
+- **Au bureau, la ligne « Ajouter une tâche » reste sur une journée vide.** La maquette de l'état vide ne la dessine
+  pas ; l'iPhone, lui, garde son bouton « + » : on ne retire jamais le moyen d'ajouter une tâche.
+
 Le détail et les raisons sont dans `docs/claude-memory/taches-decisions-fondateur.md`.
+
+## Écarts d'apparence connus avec les maquettes — à toi de trancher
+
+Une passe complète a comparé chaque écran aux maquettes (65 écarts relevés, corrigés pour la plupart). Ceux-ci
+restent, parce que la maquette et les textes de référence se contredisent, ou parce qu'il manque une donnée :
+
+- **Ligne de « Proposé »** : la raison écrite (« prochaine action de Chantier Benali ») répète le nom du projet, la
+  ligne tient sur trois étages. Les textes de référence exigent la raison ; la maquette ne la montre pas.
+- **Saisie** : la maquette montre un bouton micro ; la conception dit « micro du clavier ». Le bouton de dictée de
+  l'ERP envoie l'audio à Google : il n'a pas été ajouté.
+- **À trier et Recherche** : « Dicté · hier 19:12 », « Noté · lun. 23 » — le serveur ne sert ni la date de création
+  ni la façon dont la tâche est entrée.
+- **Projets au bureau** : la maquette montre la liste à gauche et le projet ouvert à droite ; l'app ouvre le projet
+  en pleine page.
+- **Revue de la semaine** : une phrase de bilan au lieu des trois tuiles chiffrées (le serveur ne sert pas ces
+  nombres) ; le champ « Intention de la semaine » est gardé.
+- **Mon rythme** : les boutons Moins · Plus · Choisir sont gardés (les textes les exigent ; la maquette ne les montre
+  pas).
+- **Agenda** : la carte « Ajoute ton agenda… » reste tant qu'aucun agenda n'est ajouté ; deux tâches à la même heure
+  se posent en cascade dans la Semaine du bureau (la première ne garde qu'une bande étroite).
+- **Copilote ouvert depuis Tâches** : « Signaler un bug », « Nouvelle conversation » et l'avertissement de l'assistant
+  de l'ERP restent ; pas de micro dans le panneau.
+- **Hors ligne** : le bandeau orange de l'ERP et la ligne « Hors ligne » de Tâches s'affichent tous les deux.
+- **Sur iPhone**, le bouton « + » reste visible pendant le défilement (la maquette le cache quand on descend) ; en
+  bas de page, rien n'est recouvert.
+- **Données de la journée d'exemple** : quelques chiffres diffèrent des maquettes (« 4 h 45 » au lieu de « 4 h 15 »,
+  « 3 faites » au lieu de 4 le lundi) : c'est le jeu de démonstration, pas l'écran.
 
 ## Une précision honnête
 

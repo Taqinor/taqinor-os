@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, lireAujourdhui, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
-} from '../../api/tachesApi'
+  annulerGeste, classerErreur, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
+  lireAujourdhui } from '../../api/tachesApi'
 import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
