@@ -13,6 +13,7 @@ import {
   CarteWaMessage, CarteWaDevis, CarteDocument, CarteVisite,
 } from './CartesWhatsApp'
 import CarteDiagnostic from './CarteDiagnostic'
+import CarteDevisCree from './CarteDevisCree'
 import CartesTaches from '../../taches/cartes/CartesTaches'
 
 /* COP-F1 — le rendu des cartes d'un message agent, dans l'ordre du serveur.
@@ -75,6 +76,7 @@ const COMPOSANTS = {
   wa_message: CarteWaMessage,
   wa_devis: CarteWaDevis,
   document: CarteDocument,
+  devis_cree: CarteDevisCree,
   visite: CarteVisite,
   diagnostic: CarteDiagnostic,
   // Tâches (TCH118) : une même vue, la clé de la carte choisit son rendu.
