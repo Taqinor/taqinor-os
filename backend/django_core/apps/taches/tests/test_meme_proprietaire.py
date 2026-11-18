@@ -324,6 +324,9 @@ SANS_ID = {
     ('DELETE', 'preferences/{cle}/'): lambda m: ('preferences/heure_limite/', None),
     ('GET', 'reglages/'): lambda m: ('reglages/', None),
     ('PATCH', 'reglages/'): lambda m: ('reglages/', {'titres_tuile': True}),
+    # Coupe-circuit de la SOCIÉTÉ (administrateur seul : `moi` l'est) ; aucun id reçu.
+    ('GET', 'reglages-societe/'): lambda m: ('reglages-societe/', None),
+    ('PATCH', 'reglages-societe/'): lambda m: ('reglages-societe/', {'balayage_actif': False}),
     ('GET', 'coach/entete/'): lambda m: ('coach/entete/', None),
     ('GET', 'mes-donnees/'): lambda m: ('mes-donnees/', None),
     ('POST', 'tout-effacer/'): lambda m: ('tout-effacer/', {'confirmation': 'EFFACER'}),
@@ -470,7 +473,7 @@ class MemeProprietaireTests(TestCase):
     def setUpTestData(cls):
         cls.jour = timezone.localdate()
         a, b = fabriques.societe('mp-a'), fabriques.societe('mp-b')
-        cls.moi = _monde(fabriques.compte(a, nom='moi'), cls.jour)
+        cls.moi = _monde(fabriques.compte(a, nom='moi', admin=True), cls.jour)  # admin : reglages-societe/
         cls.autre = _monde(fabriques.compte(a, nom='autre'), cls.jour)
         cls.etranger = _monde(fabriques.compte(b, nom='etranger'), cls.jour)
 
