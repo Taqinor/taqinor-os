@@ -268,7 +268,9 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     const ouverture = vi.fn()
     window.addEventListener('taqinor:taches:saisir', ouverture)
     monter()
-    expect(await screen.findByText('Colle ou dicte tes listes : je les range par projet.')).toBeInTheDocument()
+    const phrase = await screen.findByText('Colle ou dicte tes listes : je les range par projet.')
+    // passe visuelle n° 20 — espace INSÉCABLE avant « : » (maquette ecran-aujourdhui-vide.html) : jamais « : » en tête de ligne
+    expect(phrase.textContent).toBe('Colle ou dicte tes listes : je les range par projet.')
     await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
     expect(ouverture).toHaveBeenCalledTimes(1)
     window.removeEventListener('taqinor:taches:saisir', ouverture)
