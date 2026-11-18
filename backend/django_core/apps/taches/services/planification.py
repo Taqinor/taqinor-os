@@ -22,6 +22,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.taches.choix import Moment
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.moteur.gabarits import format_heure, format_jour
 from apps.taches.saisie.grammaire import moment_de
 from apps.taches.selectors.base import jours_travailles_de, taches_de
@@ -52,9 +53,12 @@ def _en_date(valeur, champ):
     if valeur is None or isinstance(valeur, datetime.date):
         return valeur
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
-        raise serializers.ValidationError({champ: ['Date attendue (AAAA-MM-JJ).']})
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    return jour
 
 
 def _en_heure(valeur):

@@ -40,6 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -129,9 +130,12 @@ def _date(valeur, champ):
     if valeur is None or valeur == '' or isinstance(valeur, datetime.date):
         return valeur or None
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
-        raise serializers.ValidationError({champ: ['Date attendue (AAAA-MM-JJ).']})
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    return jour
 
 
 def _heure(valeur, champ):

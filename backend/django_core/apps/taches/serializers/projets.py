@@ -12,6 +12,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
+from apps.taches.entrees import DateBornee
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
@@ -70,8 +71,8 @@ class ProjetModificationSerializer(serializers.Serializer):
     couleur = serializers.ChoiceField(choices=Couleur.values, required=False, error_messages=_messages())
     priorite = serializers.ChoiceField(choices=Priorite.values, required=False, error_messages=_messages())
     statut = serializers.ChoiceField(choices=StatutProjet.values, required=False, error_messages=_messages())
-    date_debut = serializers.DateField(required=False, allow_null=True)
-    echeance = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False, allow_null=True)
+    echeance = DateBornee(required=False, allow_null=True)
     domaine = _texte(40, required=False, allow_blank=True)
     confidentiel = serializers.BooleanField(required=False)
     affichage = serializers.DictField(required=False)
@@ -91,7 +92,7 @@ class ProjetModificationSerializer(serializers.Serializer):
         if 'montrer_faites' in valeur and not isinstance(valeur['montrer_faites'], bool):
             raise serializers.ValidationError(VALEUR_INCONNUE)
         for cle in ('tri', 'groupe'):
-            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20):
+            if cle in valeur and not (isinstance(valeur[cle], str) and 0 < len(valeur[cle]) <= 20:
                 raise serializers.ValidationError(VALEUR_INCONNUE)
         return valeur
 
@@ -127,8 +128,8 @@ class SectionCreationSerializer(serializers.Serializer):
 
     projet_id = serializers.IntegerField(error_messages=_messages())
     nom = _texte(120)
-    date_debut = serializers.DateField(required=False, allow_null=True)
-    date_fin = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False, allow_null=True)
+    date_fin = DateBornee(required=False, allow_null=True)
 
     def validate(self, donnees):
         return _dates_ordonnees(donnees)
@@ -138,8 +139,8 @@ class SectionModificationSerializer(serializers.Serializer):
     """PATCH sections/{id}/ — renommer, dates."""
 
     nom = _texte(120, required=False)
-    date_debut = serializers.DateField(required=False, allow_null=True)
-    date_fin = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False, allow_null=True)
+    date_fin = DateBornee(required=False, allow_null=True)
 
     def validate(self, donnees):
         return _dates_ordonnees(donnees)
@@ -186,7 +187,7 @@ class PlanificationSerializer(serializers.Serializer):
 
     priorite = serializers.ChoiceField(choices=Priorite.values, required=False, error_messages=_messages())
     objectif = serializers.CharField(required=False, allow_blank=True, error_messages=_messages())
-    echeance = serializers.DateField(required=False, allow_null=True)
+    echeance = DateBornee(required=False, allow_null=True)
     risque = _texte(280, required=False, allow_blank=True)
     sections = _EtapePlanSerializer(many=True, required=False)
     actions = _ActionPlanSerializer(many=True, required=False)
@@ -211,7 +212,7 @@ class DecalerSerializer(serializers.Serializer):
 class RevueDecisionSerializer(serializers.Serializer):
     """PUT revue/projets/{projet_id}/ — la décision d'une carte (`terminer` exige `issue`)."""
 
-    semaine = serializers.DateField(error_messages=_messages())
+    semaine = DateBornee(error_messages=_messages())
     intention = _texte(200, required=False, allow_blank=True)
     prochaine_action_id = serializers.IntegerField(required=False, allow_null=True)
     decision = serializers.ChoiceField(choices=[c for c in DecisionRevue.values if c], error_messages=_messages())
