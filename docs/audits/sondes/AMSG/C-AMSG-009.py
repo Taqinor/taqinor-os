@@ -43,7 +43,8 @@ class Espace(dict):
     def _charger(s, n):
         n = copy.deepcopy(n)
         if hasattr(n, "decorator_list"): n.decorator_list = []
-        exec(compile(ast.fix_missing_locations(ast.Module(body=[_SansImport().visit(n)], type_ignores=[])), s["__name__"], "exec"), s)
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[_SansImport().visit(n)], type_ignores=[])), s["__name__"], "exec", flags=__import__("__future__").annotations.compiler_flag), s)  # `from __future__ import annotations` des modules
+        # réels : sans lui les annotations d'une classe (NamedTuple) sont évaluées dans son corps, hors de __missing__
 
     def __missing__(s, nom):
         if nom.startswith("__") or hasattr(builtins, nom): raise KeyError(nom)
@@ -67,6 +68,8 @@ def espace(rel, b):
 class QS(list):
     def filter(s, *a, **k): return s
     select_related = actives = filter
+    def first(s): return s[0] if s else None
+    def update(s, **k): return len(s)
 
 
 def sonde(ctx=None):
@@ -77,8 +80,12 @@ def sonde(ctx=None):
     settings = NS(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend", ANYMAIL={}, DEFAULT_FROM_EMAIL="erp@example.invalid",
                   INBOUND_REPLY_EMAIL="")
     co = NS(id=1, pk=1)
+    taches = []  # lignes « Envoyer ce WhatsApp » créées (records.Activity bouchonné, chemin réel de _creer_tache)
+
+    def creer_activite(**k):
+        taches.append(k); return NS(pk=len(taches), save=lambda **kk: None, **k)
     client = NS(id=5, prenom="Karim", nom="Client", email="x@example.invalid", telephone="+212600000000")
-    interv = NS(id=3, company=co, installation=NS(id=9, reference="INS-9", client=client), date_prevue=None, rdv_confirme=False)
+    interv = NS(id=3, pk=3, company=co, installation=NS(id=9, reference="INS-9", client=client), date_prevue=None, rdv_confirme=False)
     b = {"logger": logging.getLogger("sonde"), "settings": settings, "dj_settings": settings, "send_mail": send_mail,
          "resolve_langue_sortie": lambda **k: "fr", "render_message_template": lambda t, c: t.format(**c),
          "build_wa_url": lambda p, m: f"https://wa.me/{p.lstrip('+')}?text=…",
@@ -87,12 +94,16 @@ def sonde(ctx=None):
          "timezone": NS(now=lambda: dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc), is_naive=lambda d: d.tzinfo is None,
                         make_aware=lambda d, tz=None: d.replace(tzinfo=tz or dt.timezone.utc), localtime=lambda d=None: d or dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc),
                         localdate=lambda d=None: (d or dt.datetime(2026, 11, 11, 10, 0, tzinfo=dt.timezone.utc)).date()),  # django.utils.timezone (notifications/selectors.py)
+         "Activity": NS(objects=NS(create=creer_activite)), "ContentType": NS(objects=NS(get_for_model=lambda c: NS(id=1))),
+         "horaires": NS(prochain_creneau_appel=lambda d, c, **k: d),  # crm.horaires : fenêtre ouverte (module réel = ORM + fuseaux)
+         "WorkingHoursConfig": NS(objects=NS(filter=lambda **k: QS(), get=lambda **k: None)), "Holiday": NS(objects=NS(filter=lambda **k: QS())),
          "casablanca_today": lambda: dt.date(2026, 11, 11), "active_companies": lambda: [co], "Intervention": NS(objects=QS([interv])),
          "_livraison_lien": lambda l, request=None: "https://erp.example.invalid/portail/client/livraisons",
          "SavSlaSettings": NS(get=lambda c: NS(notifications_client_sav=True)),
          "build_ticket_transition_message": lambda t, cle, request=None: ("Bonjour", {"sujet": "Votre ticket", "corps": "Bonjour"}),
          "_build_wa_draft_url": lambda p, m: f"https://wa.me/{p.lstrip('+')}?text=…", "notifier_portail_client": lambda *a, **k: None,
          "marque_portail": lambda c: {"nom_affichage": "Société"}, "_nom_affiche_societe": lambda c: "Société"}
+    b["calendar_utils"] = espace("apps/notifications/calendar_utils.py", b)  # `from . import calendar_utils` (repli de fenêtre)
     sortie, compte = {}, NS(email="x@example.invalid", username="client-portail")
     r1 = espace("apps/installations/tasks.py", b)["rappel_rdv_j1"]()  # 1. rappel de pose J-1
     sortie["installations/tasks.py::rappel_rdv_j1"] = {"retour": r1, "brouillon_whatsapp_compte_puis_jete": bool(r1.get("wa_generes")) and "wa.me" not in str(r1)}
@@ -113,7 +124,7 @@ def sonde(ctx=None):
     return {"repro": bool(faux), "observe": {
         "methode": "exécution des 5 vraies fonctions d'envoi (modules réels, noms résolus paresseusement, ORM bouchonné), send_mail = backend console",
         "is_email_configured": espace("apps/ventes/email_service.py", b)["is_email_configured"](),
-        "messages_imprimes_par_le_backend_console": len(console), "emplacements_qui_disent_envoye": faux, "retours": sortie}}
+        "messages_imprimes_par_le_backend_console": len(console), "taches_whatsapp_creees": len(taches), "emplacements_qui_disent_envoye": faux, "retours": sortie}}
 
 
 if __name__ == "__main__":
