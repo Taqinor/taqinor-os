@@ -537,7 +537,9 @@ jobs:
         run: |
           git pull -q --rebase origin "${GITHUB_REF_NAME}" || true
           if [ -d /tmp/celery-art ]; then
-            cp -r /tmp/celery-art/docs/audits/acceptation/ACEL/traces docs/audits/acceptation/ACEL/ 2>/dev/null || cp -r /tmp/celery-art/ACEL/traces docs/audits/acceptation/ACEL/ 2>/dev/null || true
+            # l'artefact à deux chemins se décompresse sous leur racine commune : trouver le dossier traces où qu'il soit
+            src=$(find /tmp/celery-art -type d -path '*ACEL/traces' | head -1)
+            [ -n "$src" ] && { mkdir -p docs/audits/acceptation/ACEL; cp -r "$src" docs/audits/acceptation/ACEL/; } || { echo "traces ACEL introuvables dans l'artefact"; exit 1; }
             find /tmp/celery-art -name 'etapes-ACEL.json' -exec cp {} /tmp/etapes-ACEL.json \;
             ls -R /tmp/celery-art | head -20
           fi
