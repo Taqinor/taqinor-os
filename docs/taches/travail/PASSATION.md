@@ -291,6 +291,47 @@ Tri de l'orchestrateur (aucune question à Reda) :
   `lane/f4-final` (TCH158, opus), relecture adverse de la fusion 4 (opus → `revue-code-f4.md`).
 - Passe Fable n° 2 du run EN COURS : critique adverse de la fusion 3 (jetons, balayage, assistant) → `revue-code-f3.md`.
 
+**Point de 06 h 10 UTC (18/11) — état exact, à lire après le point de 04 h 10**
+- BASE MIGRÉE PRÊTE : le rejeu des 2 399 migrations est fini, le gabarit s'appelle `tpl_test` ; `tests-base.sh` passe
+  seul en MODE FIDÈLE (clone du gabarit, comme la CI). `pile.conf` (réglages rapides des piles) est ENCORE en place :
+  ne l'enlever que lorsque plus aucune lane ne se sert d'une pile (les bases `erp_acc` et `erp_f3` des piles sont des
+  bases rapides) ; pour le rejeu FINAL : `rm /opt/taches-cloud/pile.conf`, `pile.sh base erp_acc tpl_test`.
+  ATTENTION `psql` : toujours `. /opt/taches-cloud/env.sh ; export PGPASSWORD="$DB_PASSWORD"` et `psql -w`, sinon la
+  commande reste bloquée sur une demande de mot de passe.
+- FUSION 2 : `dev-taches-f2` POUSSÉE à `bbf654cb25` (seconde relecture corrigée en entier, spec d'acceptation, plan :
+  TCH175 = « spec écrite », cochée ; les parcours TCH136-140/144 restent ouverts). Suite verte sur la base migrée
+  (1 459 tests), vitest 680, gardes, schéma OpenAPI à jour. CI en cours sur #1454. Lanes de réparation de
+  l'acceptation toujours en cours (`lane/f2-acc-ecran`, `lane/f2-acc-serveur`).
+- FUSION 3 : la CRITIQUE FABLE (passe n° 2 du run) est rendue : `revue-code-f3.md` — **non mergeable en l'état : 2
+  bloquants, 5 majeurs, 6 mineurs**. Bloquants : (1) la garde A5 ne voit pas le texte tiers rendu par les LECTURES
+  `taches.*` (libellé d'un lead, résumé d'une activité) → écriture sans carte ; (2) la « carte à valider » ne montre
+  pas ce qu'elle écrit. Majeurs : la garde ne tient pas d'un échange au suivant ; le jeton du flux sort en clair dans
+  les journaux JSON et chez Sentry ; `test-notification` en 501 (CORRIGÉ) ; une exception sur un compte prive les
+  suivants ; un compte sans `taches_voir` reçoit encore les notifications. Tri : tout se corrige, sauf le n° 13
+  (`webcal://` : à vérifier sur l'iPhone de Reda). Lanes EN COURS, parties de `merge/f2-dans-f3` : `lane/f3-revue-garde`
+  (#1, #3), `lane/f3-revue-cartes` (#2, #12), `lane/f3-revue-serveur` (#4, 6, 7, 8, 9, 10, 11).
+- `merge/f2-dans-f3` (worktree `…/worktrees/f3m`, tête `b8cce941b4`) = `dev-taches-f3` + la fusion 2 corrigée + le
+  raccord des trois appelants de l'objectif (tuile, priorités, point) + plafonds re-mesurés (tuile 15, priorités 22) +
+  `mon-iphone/test-notification/` construite (lane) et qui répond 409 `envoi_coupe` quand l'envoi est coupé. À POUSSER
+  vers `origin/dev-taches-f3` (avance rapide : `git push origin merge/f2-dans-f3:dev-taches-f3`) quand sa batterie est
+  verte ; le worktree `f3` (branche locale `dev-taches-f3`, encore à `4f5352f7ce`) ne se touche PAS tant que
+  `lane/f3-acceptation` joue sur sa pile ; ensuite `git merge --ff-only merge/f2-dans-f3` dedans.
+- FUSION 4 : `dev-taches-f4` local = `0c819aee47` (TCH158 pliée : 106 routes balayées, aucun défaut d'isolement ;
+  fusions 2 et 3 corrigées fusionnées ; 1 692 tests verts sur la base migrée ; 16 tâches cochées). JAMAIS POUSSÉE :
+  à pousser + PR brouillon dès que le schéma OpenAPI, CODEMAP et le budget du bundle sont refaits. RELECTURE ADVERSE
+  rendue (`revue-code-f4.md`) : 0 bloquant, 2 majeurs (un modèle tiré d'un projet confidentiel perd sa protection
+  quand le projet est supprimé ou décoché ; les notes d'un modèle sont servies à l'assistant), 16 mineurs. Tri : tout
+  se corrige ; #13 → une suggestion RETIRÉE par le système revient si l'événement se reproduit, une suggestion
+  refusée par l'utilisateur (« Pas utile ») jamais ; #14 → l'aperçu de « Dupliquer » DIT le nombre de tâches
+  confidentielles non copiées (jamais une perte muette) ; #16 → inscrire `MesActivitesPage.chargeEquipe.test.jsx` dans
+  l'en-tête du plan. Deux lanes À LANCER quand la machine respire (charge > 6 sur 4 cœurs à 06 h) : back (opus : #1,
+  2, 3, 4, 5, 12, 13, 14) et front (sonnet : #6 à #11, #15, #17).
+- Restes connus à ne pas oublier : (a) `taches-bureau.spec.js` jamais jouée et absente de la liste e2e de `ci.yml` ;
+  (b) libellés « sans source » des lanes F4 et de la relecture F4 (24) à inscrire dans `textes.md` ; (c) budget du
+  bundle ; (d) passe visuelle : captures réelles dans `/opt/taches-cloud/captures/f2/` (96) et `f2-apres/`, `f3/` ;
+  (e) le constat du bilan montre C5 alors que SCENARIO montre une phrase de C2 (C2 est hors première livraison) ;
+  (f) en sombre, l'icône du menu en haut à gauche est très peu contrastée.
+
 **Les clés d'IA (demande de Reda du 18/11 : « there is a key in the ERP use it », puis « find the keys yourself »)**
 - Cherché partout où cette session peut lire : conteneur (rien), serveur (SSH refusé depuis le cloud), poste de Reda
   (non attaché), dépôt et son historique, CI, autres dépôts, Drive, Gmail. TROUVÉ : les vraies clés sont des SECRETS
