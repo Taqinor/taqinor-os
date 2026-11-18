@@ -150,11 +150,6 @@ from .fiche_api_publique import (  # façade
 
 from .receivers_cadence import poser_tache_avenant  # façade
 
-# Semis de démonstration de l'app Tâches (`seed_taches_demo`) : sociétés `est_demo` seulement.
-from .leads_intake import creer_lead_demonstration, effacer_leads_demonstration  # façade
-
-from .cadence_touche import marquer_touche_faite, poser_touche_demonstration  # façade
-
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -196,9 +191,8 @@ __all__ = [
     'calculer_echeances_cadence', 'clients_par_ids', 'completer_client_depuis_acceptation',
     'create_activity_from_public_api', 'create_draft_lead_from_ocr', 'create_lead_depuis_ticket',
     'create_lead_from_evenement_marketing', 'create_lead_from_meta_lead_ads',
-    'create_lead_from_public_api', 'create_minimal_lead_from_ctwa', 'creer_lead_demonstration',
-    'creer_lead_meta_pull', 'creer_relance_lead', 'effacer_leads_demonstration', 'marquer_touche_faite',
-    'poser_touche_demonstration',
+    'create_lead_from_public_api', 'create_minimal_lead_from_ctwa', 'creer_lead_meta_pull',
+    'creer_relance_lead',
     'default_responsable_for', 'delete_leads_for_company', 'demarrer_cadence_contact',
     'detecter_concurrent', 'devis_envoyes_pour_relance', 'domaine_cookies_equipe',
     'ecrire_identite_client', 'enregistrer_appareil_equipe', 'enregistrer_consentements_intake_web',
