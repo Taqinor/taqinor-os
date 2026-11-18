@@ -263,9 +263,18 @@ def modeles_de(user):
     return _du_compte(ModeleProjet.objects, user)
 
 
-def modele_de(user, pk):
-    """Le modèle `pk` de `user`, ou `None` (l'id d'un autre compte répond comme un id inconnu)."""
-    return modeles_de(user).filter(pk=pk).first()
+def modeles_servis(user, assistant=False):
+    """Les modèles de `user` à SERVIR (liste, fiche, renommer, supprimer, instancier). Sous l'en-tête assistant
+    (regles.md §8, revue F4 #3) : les seuls modèles ordinaires (`MODELE_ORDINAIRE`) — un modèle confidentiel est tu
+    (ni nom ni compteurs) et son id répond comme un id inconnu. Échec fermé : dans le doute, tu."""
+    qs = modeles_de(user)
+    return qs.filter(MODELE_ORDINAIRE) if assistant else qs
+
+
+def modele_de(user, pk, assistant=False):
+    """Le modèle `pk` servi à `user` (`modeles_servis`), ou `None` (l'id d'un autre compte, ou celui d'un modèle
+    confidentiel sous l'en-tête assistant, répond comme un id inconnu)."""
+    return modeles_servis(user, assistant=assistant).filter(pk=pk).first()
 
 
 #: Clé de `contenu` où la confidentialité du modèle est FIGÉE à l'enregistrement (revue F4 #1) : celle du projet

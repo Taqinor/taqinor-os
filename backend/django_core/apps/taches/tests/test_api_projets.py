@@ -1101,14 +1101,28 @@ class ModelesTests(_Base):
         self.assertTrue(ModeleProjet.objects.filter(pk=modele.pk, nom='Autre').exists())
 
     def test_un_modele_issu_d_un_projet_confidentiel_est_ferme_a_l_assistant(self):
+        """Revue F4 #3 : sous l'en-tête assistant, un modèle confidentiel est tu dans la liste (ni nom ni compteurs)
+        et sa fiche, son renommage, sa suppression et son instanciation répondent comme un id inconnu."""
         secret = fabriques.projet(self.u1, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre='Une tâche')
         modele = self._enregistrer(secret, nom='Secret').json()['id']
+        ordinaire = fabriques.projet(self.u1, nom='Ordinaire')
+        self._enregistrer(ordinaire, nom='Visible')
         assistant = self._api(self.u1, assistant=True)
-        self.assertEqual(assistant.get(_url(f'modeles/{modele}/')).status_code, 403)
-        self.assertEqual(assistant.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'X'},
-                                        format='json').status_code, 403)
-        self.assertEqual(assistant.get(_url('modeles/')).status_code, 200)  # le décompte seul
+        for reponse in (assistant.get(_url(f'modeles/{modele}/')),
+                        assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Renommé'}, format='json'),
+                        assistant.delete(_url(f'modeles/{modele}/')),
+                        assistant.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'X'}, format='json')):
+            self.assertEqual(reponse.status_code, 404)
+            self.assertNotIn('Secret', reponse.content.decode())
+        liste = assistant.get(_url('modeles/'))
+        self.assertEqual(liste.status_code, 200)
+        self.assertEqual([(m['nom'], m['nb_taches']) for m in liste.json()['results']], [('Visible', 0)])
+        self.assertEqual(liste.json()['count'], 1)
+        self.assertEqual(ModeleProjet.objects.get(pk=modele).nom, 'Secret')  # rien n'a été écrit
         self.assertEqual(self._api(self.u1).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertEqual([m['nom'] for m in self._api(self.u1).get(_url('modeles/')).json()['results']],
+                         ['Secret', 'Visible'])
 
     def _modele_secret(self, nom):
         """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
@@ -1126,7 +1140,7 @@ class ModelesTests(_Base):
         Projet.objects.filter(pk=decoche.pk).update(confidentiel=False)
         for modele, copie in ((modele_1, 'Copie 1'), (modele_2, 'Copie 2')):
             lu = assistant.get(_url(f'modeles/{modele}/'))
-            self.assertEqual(lu.status_code, 403)
+            self.assertEqual(lu.status_code, 404)  # comme un id inconnu (revue F4 #3)
             self.assertNotIn('NOTE-SECRETE', lu.content.decode())
             cree = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': copie, 'apercu': False},
                                            format='json')

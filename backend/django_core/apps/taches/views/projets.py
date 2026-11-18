@@ -79,7 +79,6 @@ def _ecrit(request, resultat, statut=200):
 
 
 MESSAGE_PROJET_CONFIDENTIEL = "Ce projet est confidentiel : l'assistant ne le copie pas."
-MESSAGE_MODELE_CONFIDENTIEL = "Ce modèle vient d'un projet confidentiel : l'assistant ne le lit pas."
 
 
 def _reponse_instance(request, instance):
@@ -92,12 +91,11 @@ def _reponse_instance(request, instance):
 
 
 def _modele_ou_404(request, pk):
-    """Le modèle `pk` du compte ; sous l'en-tête assistant, un modèle issu d'un projet confidentiel est refusé."""
-    modele = lecture.modele_de(request.user, pk)
+    """Le modèle `pk` servi au compte (`modeles_servis`) ; sous l'en-tête assistant, un modèle confidentiel répond
+    comme un id inconnu (revue F4 #3 : la liste le tait, la fiche et les gestes aussi)."""
+    modele = lecture.modele_de(request.user, pk, assistant=est_assistant(request))
     if modele is None:
         raise Http404('Introuvable.')
-    if est_assistant(request) and lecture.modele_confidentiel(modele):
-        raise PermissionDenied(MESSAGE_MODELE_CONFIDENTIEL)
     return modele
 
 
@@ -453,8 +451,8 @@ class ModelesVue(APIView):
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('modeles_liste')))
     def get(self, request):
         pagination = StandardPagination()
-        page = pagination.paginate_queryset(lecture.modeles_de(request.user).order_by('nom', 'id'), request,
-                                            view=self)
+        modeles = lecture.modeles_servis(request.user, assistant=est_assistant(request))
+        page = pagination.paginate_queryset(modeles.order_by('nom', 'id'), request, view=self)
         return pagination.get_paginated_response(formes_projets.ModeleListeSerializer(page, many=True).data)
 
 
