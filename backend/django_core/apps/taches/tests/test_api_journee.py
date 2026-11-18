@@ -149,6 +149,27 @@ class SectionsEtOrdreTests(_Base):
         self.assertEqual(self.section_de(journee, prevue), S.JOURNEE)
         self.assertEqual(self.section_de(journee, attente), S.EN_ATTENTE)
 
+    def test_essentielle_faite_reste_dans_essentiel_et_dans_faites(self):
+        """D-V1 (passe visuelle) — regles.md §4.1 ligne 3 (« ouvertes ou faites aujourd'hui ») et §4.2-1 (« et reste
+        dans essentiel si sa ligne y est ») : barrée à sa place dans Essentiel ET repliée dans Faites ; une faite sans
+        ★ n'est que dans Faites ; la pastille et la progression la comptent une seule fois."""
+        faite = self.tache(jour_prevu=J, heure_debut=datetime.time(9, 0), statut=StatutTache.FAIT, fait_le=a(J, 10))
+        ouverte = self.tache(jour_prevu=J)
+        simple = self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 11))
+        plan = fabriques.plan(self.u, J)
+        ligne(plan, tache=faite, essentielle=True)
+        ligne(plan, tache=ouverte, essentielle=True)
+        ligne(plan, tache=simple)
+        journee = self.journee()
+        self.assertEqual([o.pk for o in journee.objets_de(S.ESSENTIEL)], [faite.pk, ouverte.pk])
+        self.assertEqual(sorted(o.pk for o in journee.objets_de(S.FAITES)), sorted([faite.pk, simple.pk]))
+        self.assertEqual(sel.compter_journee(self.u, J, journee), 1)
+        reponse = client_de(self.u).get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual([(i['id'], i['statut']) for i in reponse['essentiel']], [(faite.pk, 'fait'), (ouverte.pk, 'a_faire')])
+        self.assertEqual(sorted(i['id'] for i in reponse['faites']), sorted([faite.pk, simple.pk]))
+        self.assertEqual((reponse['progression']['faites'], reponse['progression']['essentiel_faites'],
+                          reponse['progression']['essentiel_prevues']), (2, 1, 2))
+
     def test_prevu_a_l_heure_d_abord_puis_rang_jour_puis_cle_tri(self):
         sans = self.tache(jour_prevu=J, priorite=3)
         rangee = self.tache(jour_prevu=J, rang_jour=1024)

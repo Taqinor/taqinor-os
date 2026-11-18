@@ -139,7 +139,8 @@ function CaseJournee({ item }) {
 function CarteMaJournee({ donnees }) {
   const lot = useGeste()
   const items = [...(donnees.essentiel ?? []), ...(donnees.journee ?? [])]
-  const ids = items.filter((it) => it.type === 'tache').map((it) => it.id)
+  // D-V1 : une essentielle faite est aussi servie dans `essentiel` (regles.md §4.1) — le report groupé ne la prend jamais
+  const ids = items.filter((it) => it.type === 'tache' && it.statut !== 'fait').map((it) => it.id)
   const p = donnees.progression
   const objectif = donnees.objectif
   const chiffres = p ? (objectif?.mode === LIBRE || !objectif?.nb ? `${p.faites} faites` : `${p.faites} sur ${objectif.nb}`) : ''

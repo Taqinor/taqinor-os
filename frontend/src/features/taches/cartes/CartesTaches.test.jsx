@@ -75,6 +75,19 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(screen.getByText('Déclaration TVA')).toBeInTheDocument()
   })
 
+  it('D-V1 — ma_journee : une essentielle FAITE (servie aussi dans `essentiel`) n\'est jamais reportée par le lot', async () => {
+    const donnees = contrat('aujourdhui')
+    donnees.essentiel = [{ ...donnees.faites[0], essentielle: true }, ...donnees.essentiel]
+    monter('ma_journee', donnees)
+    const carte = screen.getByRole('group', { name: 'Ma journée' })
+    expect(within(carte).getByText('Dossier subvention')).toBeInTheDocument()
+    const ouvertes = [...donnees.essentiel, ...donnees.journee].filter((it) => it.type === 'tache' && it.statut !== 'fait')
+    await userEvent.click(within(carte).getByRole('button', { name: `Tout au prochain jour travaillé (${ouvertes.length})` }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/taches/lot/', expect.objectContaining({ ids: ouvertes.map((it) => it.id) }), expect.anything(),
+    ))
+  })
+
   it('ma_journee : lignes de la journée, cocher termine la tâche, report groupé au prochain jour travaillé', async () => {
     const donnees = contrat('aujourdhui')
     monter('ma_journee', donnees)
