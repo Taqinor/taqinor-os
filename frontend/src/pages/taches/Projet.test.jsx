@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import { ZoneAnnonces } from '../../features/taches/coquille/CoquilleTaches'
+import { poserRectangles } from '../../features/taches/projets/rectanglesDeTest'
 
 vi.mock('../../api/tachesApi', async (original) => ({
   ...(await original()),
@@ -394,22 +395,9 @@ describe('TCH92 — Un projet : ⋯ ouvre Décaler, Terminer, Supprimer', () => 
 /* F4 revue #6 + #8 — Tableau : « Annuler » rend la version du serveur (le geste suivant n'est pas refusé), et les
    compteurs des colonnes suivent le déplacement, puis l'annulation (même règle que le serveur, `_compteurs`). */
 describe('F4 revue — Tableau : déplacer, Annuler, redéplacer', () => {
-  const rectsOriginaux = Element.prototype.getBoundingClientRect
-  beforeEach(() => {
-    // jsdom ne mesure rien : une colonne = 280 px de large tous les 300 px, une carte 264 × 60 dedans
-    Element.prototype.getBoundingClientRect = function rect() {
-      const colonne = this.matches?.('section.ep-col') ? this : this.closest?.('section.ep-col')
-      if (!colonne) return rectsOriginaux.call(this)
-      const rang = Array.from(colonne.parentElement.children).indexOf(colonne)
-      const carte = this.classList?.contains('ep-carte')
-      const gauche = rang * 300 + (carte ? 8 : 0)
-      const largeur = carte ? 264 : 280
-      const haut = carte ? 40 : 0
-      const hauteur = carte ? 60 : 400
-      return { x: gauche, y: haut, left: gauche, top: haut, right: gauche + largeur, bottom: haut + hauteur, width: largeur, height: hauteur, toJSON() { return this } }
-    }
-  })
-  afterEach(() => { Element.prototype.getBoundingClientRect = rectsOriginaux })
+  let remettreRectangles = () => {}
+  beforeEach(() => { remettreRectangles = poserRectangles() })
+  afterEach(() => { remettreRectangles() })
 
   const touche = async (cible, code) => {
     await act(async () => {

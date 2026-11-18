@@ -7,6 +7,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../lib/gestes'
 import VueChronologie, { Burnup } from './VueChronologie'
 import Tableau from '../ui/Tableau'
+import { poserRectangles } from './rectanglesDeTest'
 
 vi.mock('../../../api/tachesApi', async (original) => ({
   ...(await original()),
@@ -183,23 +184,6 @@ describe('TCH90 — la vue choisie est mémorisée côté serveur (affichage.vue
     expect(await screen.findByText('10 sur 18')).toBeInTheDocument()
   })
 })
-
-/** dnd-kit mesure les rectangles : jsdom n'en a pas, on pose des colonnes côte à côte (une carte par colonne). */
-function poserRectangles() {
-  const original = Element.prototype.getBoundingClientRect
-  Element.prototype.getBoundingClientRect = function rect() {
-    const colonne = this.matches?.('section.ep-col') ? this : this.closest?.('section.ep-col')
-    if (!colonne) return original.call(this)
-    const rang = Array.from(colonne.parentElement.children).indexOf(colonne)
-    const carte = this.classList?.contains('ep-carte')
-    const gauche = rang * 300 + (carte ? 8 : 0)
-    const largeur = carte ? 264 : 280
-    const haut = carte ? 40 : 0
-    const hauteur = carte ? 60 : 400
-    return { x: gauche, y: haut, left: gauche, top: haut, right: gauche + largeur, bottom: haut + hauteur, width: largeur, height: hauteur, toJSON() { return this } }
-  }
-  return () => { Element.prototype.getBoundingClientRect = original }
-}
 
 describe('TCH90 — Tableau : déplacer une carte au clavier (kanbanA11y.js)', () => {
   let rendre

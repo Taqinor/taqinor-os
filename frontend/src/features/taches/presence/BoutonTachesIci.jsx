@@ -26,7 +26,7 @@ const EVENEMENT_CREEES = 'taqinor:taches:creees'
 
 /** Les tâches ouvertes liées à `cible` : `{ taches, nb, retirer, relire }` — la liste gardée si une relecture échoue. */
 function useTachesLiees(nomCible, idCible) {
-  const [lu, setLu] = useState({ cle: '', taches: [], nb: 0 })
+  const [lu, setLu] = useState({ cle: '', taches: [], nb: 0, echec: false })
   const cle = `${nomCible}:${idCible}`
   const courante = useRef(cle)
   useEffect(() => { courante.current = cle })
@@ -37,10 +37,13 @@ function useTachesLiees(nomCible, idCible) {
       // liste paginée : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0)
       const taches = data?.next ? await listerToutesLesTaches(filtres) : (Array.isArray(data?.results) ? data.results : [])
       if (courante.current === cle) {
-        setLu({ cle, taches, nb: taches.length })
+        setLu({ cle, taches, nb: taches.length, echec: false })
       }
     } catch {
-      // relecture en échec : la dernière liste reste affichée (jamais vidée), le bouton ne dit rien de faux
+      // lecture en échec : la dernière liste reste affichée (jamais vidée) et l'écran le dit (« Pas à jour »)
+      if (courante.current === cle) {
+        setLu((l) => (l.cle === cle ? { ...l, echec: true } : { cle, taches: [], nb: 0, echec: true }))
+      }
     }
   }, [nomCible, idCible, cle])
   useEffect(() => {
@@ -50,7 +53,7 @@ function useTachesLiees(nomCible, idCible) {
   }, [relire])
   const propre = lu.cle === cle
   const retirer = (id) => setLu((l) => ({ ...l, taches: l.taches.filter((t) => t.id !== id), nb: Math.max(0, l.nb - 1) }))
-  return { taches: propre ? lu.taches : [], nb: propre ? lu.nb : 0, lu: propre, retirer, relire }
+  return { taches: propre ? lu.taches : [], nb: propre ? lu.nb : 0, lu: propre, echec: propre && lu.echec, retirer, relire }
 }
 
 function LigneLiee({ tache, onTerminer, onOuvrir }) {
@@ -69,7 +72,7 @@ function LigneLiee({ tache, onTerminer, onOuvrir }) {
 function Actif({ cible }) {
   const navigate = useNavigate()
   const [ouvert, setOuvert] = useState(false)
-  const { taches, nb, lu, retirer, relire } = useTachesLiees(cible.cible, cible.id)
+  const { taches, nb, lu, echec, retirer, relire } = useTachesLiees(cible.cible, cible.id)
   const libelle = libelleDeCible(cible.cible)
 
   const terminer = async (tache) => {
@@ -107,7 +110,8 @@ function Actif({ cible }) {
         <div role="list" aria-label="Tâches liées à cette fiche">
           {taches.map((t) => <LigneLiee key={t.id} tache={t} onTerminer={terminer} onOuvrir={ouvrirTache} />)}
         </div>
-        {lu && taches.length === 0 ? <p className="aide-champ">Aucune tâche ouverte liée.</p> : null}
+        {echec ? <p className="es-erreur es-aide" role="alert">Pas à jour</p> : null}
+        {lu && !echec && taches.length === 0 ? <p className="aide-champ">Aucune tâche ouverte liée.</p> : null}
         <button type="button" className="bouton plein tch-ici-nouvelle" onClick={nouvelle}>
           <Plus className="i i-16" aria-hidden="true" />Nouvelle tâche liée
         </button>

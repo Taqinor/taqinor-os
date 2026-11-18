@@ -127,6 +127,17 @@ describe('TCH102 — BoutonTachesIci (✓+)', () => {
     act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:creees', { detail: { creees: [] } })) })
     await waitFor(() => expect(mocks.listerTaches).toHaveBeenCalledTimes(3))
     expect(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' })).toBeInTheDocument()
+    // … et l'écran le DIT : l'erreur du serveur n'est jamais avalée en silence (garde EZ16)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pas à jour')
+  })
+
+  it('une PREMIÈRE lecture en échec dit « Pas à jour », jamais « Aucune tâche ouverte liée. »', async () => {
+    const user = userEvent.setup()
+    mocks.listerTaches.mockRejectedValue(Object.assign(new Error('réseau'), { response: undefined }))
+    monter('/ventes/devis?devis=12')
+    await user.click(await screen.findByRole('button', { name: 'Tâches liées à cette fiche' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Pas à jour')
+    expect(screen.queryByText('Aucune tâche ouverte liée.')).toBeNull()
   })
 
   it('cocher termine la tâche (optimiste, « Annuler ») et le compte baisse', async () => {
