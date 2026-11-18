@@ -596,7 +596,10 @@ etape('P139.5', ['TCH139', 'TCH122', 'TCH121', 'TCH104'], async (f) => {
 etape('P139.6', ['TCH139', 'TCH108', 'TCH121'], async (f) => {
   const instant = scenario(AGENDA, `${J24} 09:41`)
   const p = await ouvrir(f, { instant })
-  await aller(p, '/taches/reglages/avance', 'reglages')
+  // « Mes agendas » vit dans Réglages → Mon iPhone, étape « calendrier », depuis la fusion 3 (textes.md §2.20) : le
+  // chemin d'écran a changé, l'oracle non (adresse http refusée, 127.0.0.1 refusée, 4e adresse refusée)
+  await aller(p, '/taches/reglages/iphone?etape=calendrier', 'reglages')
+  await expect(p.getByRole('heading', { name: 'Mes agendas' })).toBeVisible()
   await capturer(p, 'reglages')
   const champ = p.getByRole('textbox', { name: /^Adresse de l'agenda/ })
   const ajouter = async (url) => { await champ.fill(url); await p.getByRole('button', { name: 'Ajouter', exact: true }).click() }
