@@ -104,18 +104,27 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
         with self.assertMaxQueries(31):
             self._lire(URL_AUJOURDHUI)
 
-    def test_aujourdhui_le_matin_lit_en_plus_la_veille(self):
-        """Avant midi : + 2 requêtes exactement (plan de la veille, restes d'hier), avec et sans familles
-        ERP — le plafond du matin est celui de l'après-midi plus ces deux lectures, jamais davantage."""
-        for allume, plafond in ((False, 28), (True, 33)):
-            with self.subTest(erp_dans_journee=allume):
-                self._erp_dans_journee(allume)
-                with frozen(MATIN):
-                    # un jeton du matin : celui de `setUp` date de 15:00, « émis dans le futur » vu de 09:00
-                    self.api.cookies['access_token'] = str(AccessToken.for_user(self.compte))
-                    self._lire(URL_AUJOURDHUI)
-                    with self.assertMaxQueries(plafond):
-                        self._lire(URL_AUJOURDHUI)
+    def _jeton_du_moment(self):
+        """Un jeton émis à l'heure figée du test (celui de `setUp` date de 15:00 : vu de 09:00, il est
+        « émis dans le futur » et refusé)."""
+        self.api.cookies['access_token'] = str(AccessToken.for_user(self.compte))
+
+    def test_aujourdhui_le_matin_sans_familles_erp(self):
+        """Avant midi : + 2 requêtes (plan de la veille et ses restes, carte « bilan d'hier »)."""
+        self._erp_dans_journee(False)
+        with frozen(MATIN):
+            self._jeton_du_moment()
+            self._lire(URL_AUJOURDHUI)
+            with self.assertMaxQueries(28):
+                self._lire(URL_AUJOURDHUI)
+
+    def test_aujourdhui_le_matin_avec_familles_erp(self):
+        self._erp_dans_journee(True)
+        with frozen(MATIN):
+            self._jeton_du_moment()
+            self._lire(URL_AUJOURDHUI)
+            with self.assertMaxQueries(33):
+                self._lire(URL_AUJOURDHUI)
 
     def test_badge(self):
         self._lire(URL_BADGE)
