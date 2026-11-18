@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { Code2, ChevronDown, ThumbsUp, ThumbsDown } from 'lucide-react'
-import { Button, Textarea } from '../../ui'
+import { Code2, ChevronDown, ThumbsUp, ThumbsDown, Paperclip, X } from 'lucide-react'
+import { Button, IconButton, Textarea } from '../../ui'
 import { noterEvenement } from './store/iaSlice'
 import CartesDuMessage from './cartes/CartesDuMessage'
 import StateBlock from '../../components/StateBlock'
-import { COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE, formatAgentError } from './copilotMessages'
+import {
+  COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE, IMAGES_MAX, LIMITE_QUESTION_DEFAUT,
+  formatAgentError, etatCompteur, marqueurImages,
+} from './copilotMessages'
+import { fichierImageOk } from './images'
 
 /* ENF19 — briques de conversation partagées par le tiroir Copilote
    (features/ia/CopilotPanel.jsx) et l'écran Agent IA (pages/ia/AgentChat.jsx),
@@ -137,24 +141,104 @@ export function NoteReponse({ msg, index }) {
   )
 }
 
+// COP2-W2 — « [image jointe] » : ce que l'historique garde d'un message de l'utilisateur qui portait une image
+// (le magasin n'en conserve que le nombre, jamais l'image).
+export function MarqueurImages({ msg, className = '' }) {
+  const texte = marqueurImages(msg)
+  if (!texte) return null
+  return <p className={`min-w-0 break-words text-xs opacity-80 ${className}`} data-testid="marqueur-images">{texte}</p>
+}
+
+// COP2-W2 — ligne sous le champ quand une image est jointe (texte exact demandé par le fondateur).
+const AVERTISSEMENT_IMAGES = "Jamais de facture ni de pièce d'identité."
+
+// COP2-W2 — miniatures des images jointes, chacune avec son bouton « Retirer » (zone tactile ≥ 40 px).
+function MiniaturesJointes({ joints }) {
+  return (
+    <ul className="mb-2 flex flex-wrap gap-2.5" data-testid="images-jointes">
+      {joints.images.map((im, i) => (
+        <li key={im.id} className="relative">
+          <img src={im.apercu} alt={`Image jointe ${i + 1}`} className="size-16 rounded-md border border-border object-cover" />
+          <button
+            type="button" aria-label={`Retirer l'image ${i + 1}`} onClick={() => joints.retirer(im.id)}
+            className="absolute -right-2 -top-2 flex size-7 items-center justify-center rounded-full border border-border bg-background text-foreground shadow before:absolute before:-inset-1.5 before:content-['']"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // `placeholder` : F3 acceptation ERR 3 — « Écris ou dicte… » depuis un écran Tâches (textes.md §5.2) ; ailleurs, le défaut.
+// COP2-W2 — `limite` : longueur maximale lue chez le serveur (compteur près de la limite) ; `joints` : le retour de
+// `useImagesJointes` (le bouton « Joindre une image », le collage et les miniatures n'existent que si le serveur
+// accepte les images pour ce compte). Sans ces deux propriétés, le formulaire est celui d'avant.
 export function QuestionForm({
   onSubmit, inputRef, input, setInput, onKeyDown, disabled, children, placeholder = 'Posez votre question en français…',
+  limite = LIMITE_QUESTION_DEFAUT, joints = null,
 }) {
+  const choixFichiers = useRef(null)
+  const images = joints?.acceptees ? joints : null
+  const compteur = etatCompteur(input, limite)
+  const surColle = (e) => {
+    if (!images) return
+    const fichiers = Array.from(e.clipboardData?.files ?? []).filter(fichierImageOk)
+    if (fichiers.length === 0) return // collage de TEXTE : comportement normal
+    e.preventDefault()
+    images.ajouter(fichiers)
+  }
   return (
-    <form className="flex items-end gap-2" onSubmit={onSubmit}>
-      <Textarea
-        ref={inputRef}
-        rows={1}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        disabled={disabled}
-        autoComplete="off"
-        className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"
-      />
-      {children}
+    <form className="flex flex-col gap-1.5" onSubmit={onSubmit}>
+      {images && images.images.length > 0 && <MiniaturesJointes joints={images} />}
+      <div className="flex items-end gap-2">
+        <Textarea
+          ref={inputRef}
+          rows={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          onPaste={surColle}
+          placeholder={placeholder}
+          disabled={disabled}
+          autoComplete="off"
+          aria-describedby={compteur.visible ? 'compteur-question' : undefined}
+          className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"
+        />
+        {images && (
+          <>
+            <input
+              ref={choixFichiers} type="file" accept="image/*" multiple hidden data-testid="images-input"
+              onChange={(e) => { images.ajouter(e.target.files); e.target.value = '' }}
+            />
+            <IconButton
+              type="button" variant="outline" label="Joindre une image" data-testid="images-joindre"
+              disabled={disabled || images.images.length >= IMAGES_MAX || images.occupe}
+              onClick={() => choixFichiers.current?.click()}
+            >
+              <Paperclip />
+            </IconButton>
+          </>
+        )}
+        {children}
+      </div>
+      {images && images.images.length > 0 && (
+        <p className="min-w-0 break-words text-xs text-muted-foreground" data-testid="images-avertissement">
+          {AVERTISSEMENT_IMAGES}
+        </p>
+      )}
+      {images?.erreur && (
+        <p className="min-w-0 break-words text-xs text-destructive" role="alert" data-testid="images-erreur">{images.erreur}</p>
+      )}
+      {compteur.visible && (
+        <p
+          id="compteur-question" data-testid="compteur-question" aria-live="polite"
+          className={`text-right text-xs ${compteur.depasse ? 'font-medium text-destructive' : 'text-muted-foreground'}`}
+        >
+          {compteur.depasse ? `Trop long : ${compteur.n} / ${compteur.limite} caractères.` : `${compteur.n} / ${compteur.limite}`}
+        </p>
+      )}
     </form>
   )
 }
