@@ -12,7 +12,7 @@ import { X } from 'lucide-react'
      · l'erreur du champ, SOUS le champ (textes.md §2.16).
    iPhone : `<textarea>` natif (pas de contenteditable), 16 px mini (pas de zoom à la mise au point),
    `enterKeyHint="send"`. Entrée envoie quand le texte tient sur une ligne ; Maj+Entrée ou le
-   collage d'une liste gardent les retours à la ligne.
+   collage d'une liste gardent les retours à la ligne. `onColle(texte collé)` dit un VRAI collage à la feuille.
    Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html.
    ========================================================================== */
 
@@ -130,6 +130,7 @@ export function PrioriteProjet({ nom, valeur, onChoisir }) {
 export default function ChampSaisie({
   valeur,
   onChange,
+  onColle,
   jetons = [],
   alertes = [],
   erreur = '',
@@ -176,6 +177,7 @@ export default function ChampSaisie({
           ref={champ}
           value={valeur}
           onChange={(e) => onChange?.(e.target.value)}
+          onPaste={(e) => onColle?.(e.clipboardData?.getData('text') ?? '')}
           onKeyDown={surTouche}
         />
       </div>

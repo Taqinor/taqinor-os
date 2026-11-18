@@ -234,11 +234,50 @@ describe('TCH82 — feuille de saisie', () => {
     const user = userEvent.setup()
     monter()
     act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { coller: true } })) })
+    // un collage, comme le navigateur le fait : l'événement `paste` (texte collé) puis la nouvelle valeur
+    fireEvent.paste(champ(), { clipboardData: { getData: () => 'Courses\nlait\npain' } })
     fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
     expect(await screen.findByText('Nouveau projet : Courses', {}, { timeout: 3000 })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Ajouter une tâche' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Coller encore' }))
     expect(champ()).toHaveValue('')
+  })
+
+  const listeMenage = () => ({
+    projets_communs: [{ collage: 0, id: null, nom: 'Ménage', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+    lignes: ['Aspirer', 'Laver les vitres'].map((titre, index) => ({
+      ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Ménage', priorite: 2 } },
+    })),
+    projets_nouveaux: [{ nom: 'Ménage', priorite: 2 }],
+  })
+
+  it('relecture adverse F4 n° 3 — champ ouvert (« Coller mes listes ») : une suggestion du clavier ou un mot collé dans une liste ne le replie pas', async () => {
+    const liste = listeMenage()
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { coller: true } })) })
+    await user.type(champ(), 'Ménage{Shift>}{Enter}{/Shift}Aspirer{Shift>}{Enter}{/Shift}')
+    expect(await screen.findByText('Nouveau projet : Ménage', {}, { timeout: 3000 })).toBeInTheDocument()
+    // une suggestion QuickType (ou une dictée) pose plusieurs caractères d'un coup, dans un texte qui a déjà un saut de ligne
+    fireEvent.change(champ(), { target: { value: 'Ménage\nAspirer\nLaver les' } })
+    // un seul mot collé (sans saut de ligne) : ce n'est pas une liste collée
+    fireEvent.paste(champ(), { clipboardData: { getData: () => ' vitres' } })
+    fireEvent.change(champ(), { target: { value: 'Ménage\nAspirer\nLaver les vitres' } })
+    await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].texte).toBe('Ménage\nAspirer\nLaver les vitres'))
+    await screen.findByText('Nouveau projet : Ménage')
+    expect(champ()).toHaveValue('Ménage\nAspirer\nLaver les vitres')
+  })
+
+  it('relecture adverse F4 n° 3 — une liste TAPÉE à la main (Maj+Entrée) garde le champ et son focus quand l\'aperçu arrive', async () => {
+    const liste = listeMenage()
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Ménage{Shift>}{Enter}{/Shift}Aspirer')
+    expect(await screen.findByText('Nouveau projet : Ménage', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(champ()).toHaveFocus()
+    expect(champ()).toHaveValue('Ménage\nAspirer')
   })
 
   it('Raccord F2 — le contexte de l\'écran (projet courant) part avec la ligne qui n\'en nomme pas', async () => {
