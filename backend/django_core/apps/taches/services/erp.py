@@ -9,11 +9,15 @@
 - `reverifier_liens` (TCH75) : étape de nuit appelée par `nocturne.executer` (TCH37) : l'état et le
   libellé du lien de chaque tâche ouverte, tels que son propriétaire les voit.
 
-Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`) ; les suggestions
-arrivent avec TCH71-TCH72.
+Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py`).
+
+- `proposer_suggestion` · `retirer_suggestion` (TCH71) : appelés par les abonnés de `receivers.py`
+  (regles.md §9) ; destinataire STRICT (le responsable du lead, lu par `crm.selectors.get_company_lead`)
+  et, avec `suggestions_societe`, l'administrateur, mêmes contrôles ; anti-doublon par la clé.
 """
 import logging
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q
@@ -22,7 +26,9 @@ from django.utils import timezone
 
 from apps.records.selectors import a_faire_personnels_de, activite_ouverte_de
 from apps.records.services import cloturer_a_faire_personnel
-from apps.taches.choix import CibleLiable, LienEtat, Source, StatutTache
+from apps.taches.choix import CibleLiable, LienEtat, Source, StatutSuggestion, StatutTache
+from apps.taches.models.erp import SuggestionTache
+from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Tache
 from apps.taches.selectors.base import gestes_de
 from apps.taches.selectors.liens import libelle_de_cible
@@ -210,6 +216,71 @@ def reverifier_liens(company_id, jour, *, maintenant=None):
         revues.append(tache)
     Tache.objects.bulk_update(revues, ['lien_etat', 'lien_libelle', 'lien_verifie_le'], batch_size=500)
     return len(revues)
+
+
+# --- Suggestions venues de l'ERP (TCH71, regles.md §9) ----------------------------------------
+
+def _responsable(company_id, lead_id):
+    """Id du responsable (`owner`) du lead `lead_id` de la société, lu par la porte de `crm`."""
+    from apps.crm.selectors import get_company_lead
+    lead = get_company_lead(company_id, lead_id)
+    return getattr(lead, 'owner_id', None)
+
+
+def _destinataire_admis(user, reglages, famille, cible, cible_id):
+    """Conditions de regles.md §9 : compte actif interne, `taches_voir`, module actif, une
+    `ReglagesRythme` (IR14), famille allumée, ET cible visible par lui (A3 ; sinon rien, sans trace)."""
+    from apps.taches.auth_jeton import DROIT, MODULE, _compte_interne_actif
+    from core.feature_flags import module_actif
+
+    if reglages is None or famille not in (reglages.familles_suggestions or []):
+        return False
+    if not _compte_interne_actif(user) or not user.has_erp_permission(DROIT):
+        return False
+    if not module_actif(user.company, MODULE):
+        return False
+    return libelle_de_cible(user, cible, cible_id) is not None
+
+
+def _destinataires(company_id, famille, lead_id, cible, cible_id):
+    """Le responsable du lead (sinon personne) et les administrateurs qui ont choisi
+    `suggestions_societe` ; chacun passe les mêmes contrôles."""
+    from django.contrib.auth import get_user_model
+
+    responsable = _responsable(company_id, lead_id)
+    reglages = {r.proprietaire_id: r for r in ReglagesRythme.objects.filter(company_id=company_id).filter(
+        Q(proprietaire_id=responsable) | Q(suggestions_societe=True))}
+    ids = set(reglages) & ({responsable} | {pk for pk, r in reglages.items() if r.suggestions_societe})
+    comptes = (get_user_model().objects.filter(pk__in=ids, company_id=company_id)
+               .select_related('company', 'role').order_by('pk'))
+    return [user for user in comptes
+            if (user.pk == responsable or user.is_admin_role)
+            and _destinataire_admis(user, reglages[user.pk], famille, cible, cible_id)]
+
+
+def proposer_suggestion(company_id, *, famille, cle, titre, lead_id, cible, cible_id):
+    """Propose la suggestion `cle` à chaque destinataire admis → nombre de suggestions CRÉÉES.
+
+    Anti-doublon : `get_or_create` sur (`company`, `proprietaire`, `cle`) — contrainte
+    `taches_sugg_cle_uniq` ; une suggestion existante (proposée, acceptée, refusée ou retirée) n'est
+    jamais reproposée."""
+    app_label, modele = cible.split('.', 1)
+    content_type = ContentType.objects.get_by_natural_key(app_label, modele)
+    creees = 0
+    for user in _destinataires(company_id, famille, lead_id, cible, cible_id):
+        _suggestion, creee = SuggestionTache.objects.get_or_create(
+            company_id=company_id, proprietaire=user, cle=cle,
+            defaults={'famille': famille, 'titre_propose': titre, 'content_type': content_type,
+                      'object_id': cible_id, 'lead_ref': lead_id})
+        creees += int(creee)
+    return creees
+
+
+def retirer_suggestion(company_id, cle):
+    """Les suggestions ENCORE proposées de la clé `cle` passent `retiree` → nombre retiré."""
+    maintenant = timezone.now()
+    return (SuggestionTache.objects.filter(company_id=company_id, cle=cle, statut=StatutSuggestion.PROPOSEE)
+            .update(statut=StatutSuggestion.RETIREE, decidee_le=maintenant, updated_at=maintenant))
 
 
 def _verdict_isole(tache):
