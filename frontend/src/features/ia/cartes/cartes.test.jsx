@@ -307,6 +307,76 @@ describe('cartes — Préparer (zéro appel au modèle)', () => {
   })
 })
 
+describe('cartes — devis_cree (COP2-W1, échantillon assistant_devis_cree)', () => {
+  const devis = () => exempleContrat('ventes', 'assistant_devis_cree')
+
+  it('référence, kWc, lignes empilées, total TTC et alertes viennent de l\'échantillon', () => {
+    monter([resultat('devis_cree', devis())])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte).toHaveTextContent('DEV-202611-0451')
+    expect(carte).toHaveTextContent('7,1 kWc')
+    expect(within(carte).getAllByTestId('devis-cree-ligne')).toHaveLength(3)
+    expect(carte).toHaveTextContent('Onduleur hybride Deye 10kW Triphasé')
+    // « qté × prix TTC » puis le total de la ligne, au format MAD.
+    expect(carte).toHaveTextContent(/10 × 1\s?400,00\s?MAD TTC/)
+    expect(within(carte).getByTestId('devis-cree-total')).toHaveTextContent(/73\s?000,00\s?MAD/)
+    expect(within(carte).getByTestId('devis-cree-alertes')).toHaveTextContent(/Composition imposée : 10 panneaux/)
+    // 11 lignes au total, 3 montrées : on le dit, sans inventer lesquelles.
+    expect(within(carte).getByTestId('devis-cree-autres')).toHaveTextContent('+ 8 autres lignes dans le devis.')
+  })
+
+  it('ne montre jamais le jeton ni le chemin de la proposition, ni un prix d\'achat', () => {
+    monter([resultat('devis_cree', {
+      ...devis(), proposal_token: 'JETON-SECRET', proposal_path: '/api/django/ventes/devis/451/proposal/?t=JETON-SECRET',
+      prix_achat: '999', marge: '12',
+    })])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte.innerHTML).not.toMatch(/JETON-SECRET|proposal\/|prix_achat|marge/i)
+    expect(carte.querySelector('a')).toBeNull()
+  })
+
+  it('le PDF passe par /proposal authentifié (ventesApi.getProposalPdf), jamais par un lien', async () => {
+    monter([resultat('devis_cree', devis())])
+    await userEvent.click(screen.getByRole('button', { name: 'Télécharger le PDF' }))
+    expect(downloadBlobInGesture).toHaveBeenCalled()
+    await waitFor(() => expect(ventesApi.getProposalPdf).toHaveBeenCalledWith(451, {}))
+  })
+
+  it('« Ouvrir le devis » mène au devis (?devis=<id>) ET referme le tiroir', async () => {
+    const { store } = monter([resultat('devis_cree', devis())], { copilotOpen: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le devis' }))
+    expect(screen.getByTestId('route')).toHaveTextContent('/ventes/devis')
+    expect(store.getState().ia.copilotOpen).toBe(false)
+  })
+
+  it('l\'identifiant se lit dans `devis_id` ou `id` ; sans identifiant entier, aucun bouton', () => {
+    const sansDevisId = { ...devis(), devis_id: undefined }
+    const { unmount } = monter([resultat('devis_cree', sansDevisId)])
+    expect(screen.getByRole('button', { name: 'Ouvrir le devis' })).toBeInTheDocument()
+    unmount()
+    monter([resultat('devis_cree', { ...devis(), devis_id: 'abc', id: null })])
+    expect(screen.queryByRole('button', { name: 'Ouvrir le devis' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Télécharger le PDF' })).not.toBeInTheDocument()
+  })
+
+  it('un serveur plus ancien (référence seule) : la carte rend sans planter', () => {
+    monter([resultat('devis_cree', { id: 12, reference: 'DEV-202611-0012' })])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte).toHaveTextContent('DEV-202611-0012')
+    expect(within(carte).queryByTestId('devis-cree-ligne')).not.toBeInTheDocument()
+    expect(within(carte).queryByTestId('devis-cree-total')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir le devis' })).toBeInTheDocument()
+  })
+
+  it('une proposition à aperçu multi-lignes garde ses retours à la ligne (une ligne par entrée)', () => {
+    const apercu = 'Créer un lead\nNom : Aziz Benali\nTéléphone : 0661 23 45 67\nNote : veut 10 panneaux'
+    monter([{ type: 'proposition', action_key: 'crm.lead.creer', libelle: 'Créer un lead', apercu, confirm_token: 't', expire_dans_s: 300 }])
+    const p = screen.getByTestId('proposal-card').querySelector('p.whitespace-pre-wrap')
+    expect(p).not.toBeNull()
+    expect(p.textContent).toBe(apercu)
+  })
+})
+
 describe('diagnostic — texte « Copier pour Claude Code »', () => {
   it('routes, statuts, identifiants de requête, erreurs — aucune question ni nom', () => {
     const d = exempleContrat('reporting', 'assistant_diagnostic')

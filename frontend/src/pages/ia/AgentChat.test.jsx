@@ -21,6 +21,8 @@ vi.mock('../../api/iaApi', () => ({
     getChatHistory: vi.fn(() => Promise.resolve({ data: [] })),
     clearChatHistory: vi.fn(() => Promise.resolve({})),
     getSuggestions: vi.fn(() => Promise.resolve({ data: [] })),
+    // COP2-W2 — capacités de l'assistant pour ce compte (limite de question, images).
+    getCapacitesAssistant: vi.fn(() => Promise.resolve({ data: { limite_question: 2000, images_acceptees: false } })),
     // AIC12 — mesure de l'assistant (contrat assistant_stats.json).
     statsAssistant: vi.fn(() => Promise.resolve({ data: STATS.exemple })),
     confirmAction: vi.fn(() =>
@@ -39,6 +41,12 @@ vi.mock('../../api/iaApi', () => ({
       }),
     ),
   },
+}))
+
+// COP2-W2 — jsdom n'a ni canvas ni URL d'objet : la réduction d'image est simulée, le reste du module est le vrai.
+vi.mock('../../features/ia/images', async (importOriginal) => ({
+  ...(await importOriginal()),
+  reduireImage: vi.fn(async () => ({ media_type: 'image/jpeg', data: 'QUJD', apercu: 'blob:apercu-test' })),
 }))
 
 import iaApi from '../../api/iaApi'
@@ -380,6 +388,47 @@ describe('AgentChat — progression du tour (AIC91)', () => {
     repondre({ data: { answer: 'Voici.' } })
     await waitFor(() => expect(screen.queryByTestId('etape-en-cours')).not.toBeInTheDocument())
   }, 10000)
+})
+
+describe('AgentChat — limite de question et images jointes (COP2-W2)', () => {
+  const champ = () => screen.getByPlaceholderText(/Posez votre question/)
+
+  it('la limite vient du serveur : compteur près de la limite, envoi bloqué au-delà, saisie conservée', async () => {
+    iaApi.getCapacitesAssistant.mockResolvedValueOnce({ data: { limite_question: 100, images_acceptees: false } })
+    iaApi.queryAgent.mockClear()
+    const user = userEvent.setup()
+    render(<Provider store={makeStore([])}><AgentChat /></Provider>)
+    await waitFor(() => expect(iaApi.getCapacitesAssistant).toHaveBeenCalled())
+    await user.click(champ())
+    await user.paste('a'.repeat(85))
+    await waitFor(() => expect(screen.getByTestId('compteur-question')).toHaveTextContent('85 / 100'))
+    await user.paste('a'.repeat(16))
+    expect(screen.getByTestId('compteur-question')).toHaveTextContent('Trop long : 101 / 100 caractères.')
+    expect(screen.getByRole('button', { name: 'Envoyer' })).toBeDisabled()
+    await user.keyboard('{Enter}')
+    expect(iaApi.queryAgent).not.toHaveBeenCalled()
+    expect(champ()).toHaveValue('a'.repeat(101))
+    expect(screen.queryByRole('button', { name: 'Joindre une image' })).toBeNull()
+  })
+
+  it('images acceptées : la capture part avec la question, le magasin n\'en garde que le nombre', async () => {
+    iaApi.getCapacitesAssistant.mockResolvedValueOnce({ data: { limite_question: 6000, images_acceptees: true } })
+    iaApi.queryAgent.mockClear()
+    iaApi.queryAgent.mockResolvedValueOnce({ data: { answer: 'Je lis la capture.' } })
+    const user = userEvent.setup()
+    const store = makeStore([])
+    render(<Provider store={store}><AgentChat /></Provider>)
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    await user.upload(screen.getByTestId('images-input'), new File(['x'], 'wa.png', { type: 'image/png' }))
+    expect(await screen.findByAltText('Image jointe 1')).toBeInTheDocument()
+    expect(screen.getByTestId('images-avertissement')).toHaveTextContent('Jamais de facture ni de pièce d\'identité.')
+    await user.type(champ(), 'Prépare-lui un devis')
+    await user.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await screen.findByText('[image jointe]')
+    expect(iaApi.queryAgent.mock.calls[0][3]).toEqual([{ media_type: 'image/jpeg', data: 'QUJD' }])
+    expect(JSON.stringify(store.getState().ia)).not.toContain('QUJD')
+    expect(store.getState().ia.messages[0]).toMatchObject({ role: 'user', images_jointes: 1 })
+  })
 })
 
 describe('AgentChat — hygiène du source (COP-F8)', () => {

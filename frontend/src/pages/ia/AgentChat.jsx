@@ -15,14 +15,15 @@ import {
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent,
+  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent, MarqueurImages,
 } from '../../features/ia/ChatParts'
 import {
-  queryAgent, loadChatHistory, clearChatHistory,
+  queryAgent, loadChatHistory, clearChatHistory, chargerCapacitesAssistant,
 } from '../../features/ia/store/iaSlice'
 import {
-  enterSubmits, CONFIG_MISSING_FR, isConfigMissing, routeNormalisee,
+  enterSubmits, CONFIG_MISSING_FR, isConfigMissing, routeNormalisee, canSendQuestion, CAPACITES_PAR_DEFAUT,
 } from '../../features/ia/copilotMessages'
+import useImagesJointes from '../../features/ia/useImagesJointes'
 import useVoiceChat from '../../features/ia/voice/useVoiceChat'
 import { prefersReducedMotion } from '../../ui/charts/chart-theme'
 import iaApi from '../../api/iaApi'
@@ -179,6 +180,9 @@ function AssistantStatsCard() {
 export default function AgentChat() {
   const dispatch = useDispatch()
   const { messages, agentLoading, agentError, etapes } = useSelector((s) => s.ia)
+  // COP2-W2 — ce que le serveur permet à ce compte (longueur d'une question, images) ; défauts tant qu'il n'a pas répondu.
+  const capacites = useSelector((s) => s.ia.capacites) ?? CAPACITES_PAR_DEFAUT
+  const joints = useImagesJointes({ acceptees: capacites.images_acceptees })
   const [input, setInput] = useState('')
   // COP-F8 — les questions suggérées viennent du manifeste de l'écran (comme le
   // tiroir), la liste codée en dur (orientée stock) ne sert que de repli.
@@ -214,6 +218,7 @@ export default function AgentChat() {
   // Charge l'historique Redis au montage du composant
   useEffect(() => {
     dispatch(loadChatHistory())
+    dispatch(chargerCapacitesAssistant())
   }, [dispatch])
 
   useEffect(() => {
@@ -234,10 +239,14 @@ export default function AgentChat() {
   const handleSubmit = (e) => {
     e.preventDefault()
     const q = input.trim()
-    if (!q || agentLoading) return
+    if (!canSendQuestion(q, agentLoading, capacites.limite_question) || joints.occupe) return
     // COP-F5 — le contexte (route, fiche, foyer) est lu à l'envoi par `queryAgent`.
-    dispatch(queryAgent(q))
+    // COP2-W2 — avec des images jointes, l'argument porte `{question, images}` ; le magasin n'en garde que le nombre.
+    dispatch(queryAgent(joints.images.length
+      ? { question: q, images: joints.images.map(({ media_type, data }) => ({ media_type, data })) }
+      : q))
     setInput('')
+    joints.vider()
   }
 
   const handleSuggestion = (text) => {
@@ -383,6 +392,7 @@ export default function AgentChat() {
                         : displayText}
                     </p>
                   )}
+                  <MarqueurImages msg={msg} />
                   {structuredRows && (
                     <StructuredRowsTable columns={structuredRows.columns} rows={structuredRows.rows} />
                   )}
@@ -424,7 +434,8 @@ export default function AgentChat() {
               </div>
             )}
             <QuestionForm onSubmit={handleSubmit} inputRef={inputRef} input={input} setInput={setInput}
-                onKeyDown={handleKeyDown} disabled={agentLoading}>
+                onKeyDown={handleKeyDown} disabled={agentLoading}
+                limite={capacites.limite_question} joints={joints}>
               {/* AG11 — micro : capture audio → /transcribe → flux question.
                   Masqué quand le mode conversation pilote déjà le micro, et
                   caché si le navigateur ne supporte pas l'enregistrement (repli
@@ -449,7 +460,7 @@ export default function AgentChat() {
                   type="submit"
                   variant="default"
                   label="Envoyer"
-                  disabled={agentLoading || !input.trim()}
+                  disabled={!canSendQuestion(input, agentLoading, capacites.limite_question) || joints.occupe}
                 >
                   <Send />
                 </IconButton>

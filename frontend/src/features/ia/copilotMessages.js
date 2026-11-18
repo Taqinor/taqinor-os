@@ -56,9 +56,41 @@ export function formatAgentError(error) {
 // Garde d'envoi : on n'envoie une question que si elle n'est pas vide (après
 // trim) ET qu'aucune requête n'est déjà en vol. Mutualisé entre le bouton
 // « Envoyer », la touche Entrée et les suggestions.
-export function canSendQuestion(text, loading) {
+// COP2-W2 — `limite` (facultative) : la longueur maximale lue chez le serveur ; une question plus longue
+// n'est jamais envoyée (le serveur la refuserait en 422).
+export function canSendQuestion(text, loading, limite = null) {
   if (loading) return false
-  return typeof text === 'string' && text.trim().length > 0
+  if (typeof text !== 'string' || text.trim().length === 0) return false
+  return !(Number.isInteger(limite) && limite > 0 && text.trim().length > limite)
+}
+
+// COP2-W2 — capacités de l'assistant pour CE compte, lues chez le serveur : longueur maximale d'une question
+// et pièces jointes images. Absentes (serveur plus ancien, lecture en échec) : 2000 caractères, pas d'image.
+export const LIMITE_QUESTION_DEFAUT = 2000
+export const IMAGES_MAX = 3
+export const CAPACITES_PAR_DEFAUT = Object.freeze({ limite_question: LIMITE_QUESTION_DEFAUT, images_acceptees: false })
+
+export function normaliserCapacites(data) {
+  const n = Number(data?.limite_question)
+  return {
+    limite_question: Number.isInteger(n) && n > 0 ? n : LIMITE_QUESTION_DEFAUT,
+    images_acceptees: data?.images_acceptees === true,
+  }
+}
+
+/** Compteur de caractères : visible à partir de 80 % de la limite ; `depasse` quand la question est trop longue. */
+export function etatCompteur(texte, limite = LIMITE_QUESTION_DEFAUT) {
+  const n = typeof texte === 'string' ? texte.trim().length : 0
+  const max = Number.isInteger(limite) && limite > 0 ? limite : LIMITE_QUESTION_DEFAUT
+  return { n, limite: max, visible: n >= max * 0.8, depasse: n > max }
+}
+
+/** « [image jointe] » : ce que l'historique montre d'un message de l'utilisateur qui portait des images
+ *  (l'image elle-même n'est jamais gardée, seulement leur nombre). */
+export function marqueurImages(msg) {
+  const n = Number(msg?.images_jointes)
+  if (!Number.isInteger(n) || n <= 0) return ''
+  return n === 1 ? '[image jointe]' : `[${n} images jointes]`
 }
 
 // AIC9 — événement DOM qui ouvre le Copilote avec le contexte de l'écran :
