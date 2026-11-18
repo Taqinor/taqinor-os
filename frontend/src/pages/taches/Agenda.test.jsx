@@ -328,6 +328,18 @@ describe('TCH104 — une lecture en échec ne vide rien', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Réessayer' })) })
     expect(await screen.findByRole('button', { name: /Devis Settat/ })).toBeInTheDocument()
   })
+
+  it('relecture adverse F4 n° 7 — « Planifier ma semaine » sans rien de lu : « Terminer » reste là et quitte le mode', async () => {
+    lireAgenda.mockRejectedValueOnce({ response: { status: 503, data: {} } })
+    monter('/taches/agenda?vue=semaine&placer=1')
+    expect(await screen.findByText('Pas à jour')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Jours de la semaine' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer', exact: true }))
+    await waitFor(() => expect(screen.getByTestId('adresse').textContent).not.toContain('placer'))
+    expect(screen.getByTestId('adresse').textContent).toContain('vue=semaine')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument()
+  })
 })
 
 describe('Raccord F2 — Mes agendas', () => {

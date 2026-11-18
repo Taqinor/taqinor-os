@@ -751,6 +751,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   )
 
   if (planifier) {
+    const terminer = () => changer({ placer: null, vue: 'semaine' })
     return (
       // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
       // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
@@ -765,9 +766,16 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
             onPoser={(item, iso) => placement.poser(item, iso, null)}
             onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-            onTerminer={() => changer({ placer: null, vue: 'semaine' })}
+            onTerminer={terminer}
           />
-        ) : null}
+        ) : (
+          // relecture adverse F4 n° 7 — rien de lu (hors ligne sans cache, erreur) : le mode garde sa sortie, au même endroit
+          <div className="ag-planifier">
+            <div className="ag-planifier-tete">
+              <button type="button" className="bouton plein ag-terminer" onClick={terminer}>Terminer</button>
+            </div>
+          </div>
+        )}
       </CoquilleTaches>
     )
   }
