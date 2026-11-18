@@ -13,7 +13,12 @@ correspondant : une valeur vide ⇒ nginx n'émet pas l'en-tête.
 
 Le mini-analyseur (`analyser`, `server_principal`, `location_pour`,
 `entetes_effectifs`) est réutilisé par les tests nginx ASEC47 / ASEC52.
+
+ADEP106 (`JournalJetonMasqueTests`) : le jeton du calendrier abonné de Tâches ne
+sort en clair d'aucun journal de nginx ; `motifs_django` / `masque_django` sont
+réutilisés par le jumeau Caddy (test_caddyfile_adep103_relais.py).
 """
+import ast
 import os
 import re
 import shutil
@@ -337,6 +342,241 @@ class FrontNginxUnePolitiqueTests(unittest.TestCase):
         self.assertEqual(len(cc), 1, motif)
         for jeton in ("public", "max-age=31536000", "immutable"):
             self.assertIn(jeton, cc[0])
+
+
+# ── ADEP106 — jeton du calendrier abonné de Tâches hors des journaux ─────────
+AUTH_JETON = ROOT / "backend" / "django_core" / "apps" / "taches" / "auth_jeton.py"
+# Valeurs d'EXEMPLE à la forme d'un clair émis (préfixe d'usage + caractères
+# url-safe) — jamais un vrai jeton.
+JETON_FLUX = "tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm"
+JETON_CAPTURE = "tqc_EXEMPLEcaptureFACTICE0123456789abcdefghijk"
+FLUX = "/api/django/taches/flux/"
+# Variables nginx qui portent l'adresse (ou un morceau) telle que le client l'a envoyée.
+ADRESSES_BRUTES = {
+    "request", "request_uri", "uri", "document_uri", "args", "query_string",
+    "http_referer", "request_filename", "request_body", "sent_http_location",
+    "upstream_http_location",
+}
+# (ligne reçue, ligne écrite) — au plus UNE occurrence par motif (limite d'une `map`).
+LIGNES_A_SECRET = (
+    (f"GET {FLUX}abc123.ics HTTP/1.1", f"GET {FLUX}<jeton>.ics HTTP/1.1"),
+    (f"GET {FLUX}{JETON_FLUX}.ics HTTP/1.1", f"GET {FLUX}<jeton>.ics HTTP/1.1"),
+    (f"HEAD {FLUX}{JETON_FLUX}.ics?plage=30 HTTP/1.0",
+     f"HEAD {FLUX}<jeton>.ics?plage=30 HTTP/1.0"),
+    # `.ics` oublié, `/` encodés (Django route quand même), adresse collée dans une recherche
+    (f"GET {FLUX}{JETON_FLUX} HTTP/1.1", f"GET {FLUX}<jeton> HTTP/1.1"),
+    (f"GET /api/django/taches%2Fflux%2F{JETON_FLUX}.ics HTTP/1.1",
+     "GET /api/django/taches%2Fflux%2F<jeton>.ics HTTP/1.1"),
+    (f"GET /api/django/recherche/?q=https%3A%2F%2Fapi.taqinor.ma%2Fapi%2Fdjango%2Ftaches%2Fflux%2F{JETON_FLUX}.ics"
+     " HTTP/1.1",
+     "GET /api/django/recherche/?q=https%3A%2F%2Fapi.taqinor.ma%2Fapi%2Fdjango%2Ftaches%2Fflux%2F<jeton>.ics"
+     " HTTP/1.1"),
+    # clair de jeton isolé : préfixe d'usage gardé
+    (f"GET /api/django/recherche/?q={JETON_FLUX} HTTP/1.1",
+     "GET /api/django/recherche/?q=tqf_<jeton> HTTP/1.1"),
+    (f"GET /api/django/taches/flu/{JETON_FLUX}.ics HTTP/1.1",
+     "GET /api/django/taches/flu/tqf_<jeton>.ics HTTP/1.1"),
+    # les deux motifs sur la même ligne
+    (f"GET {FLUX}{JETON_FLUX}.ics?q={JETON_CAPTURE} HTTP/1.1",
+     f"GET {FLUX}<jeton>.ics?q=tqc_<jeton> HTTP/1.1"),
+    # la forme d'un Referer
+    (f"https://api.taqinor.ma{FLUX}{JETON_FLUX}.ics", f"https://api.taqinor.ma{FLUX}<jeton>.ics"),
+)
+AUTRES_LIGNES = (
+    "GET / HTTP/1.1",
+    "GET /api/django/crm/leads/?page=2&search=el%20amrani HTTP/1.1",
+    "POST /api/django/token/ HTTP/1.1",
+    "GET /api/django/taches/taches/?vue=aujourdhui HTTP/1.1",
+    "GET /api/django/taches/flux/ HTTP/1.1",
+    "GET /api/django/taches/fluxion/abc.ics HTTP/1.1",
+    "GET /api/django/crm/leads/?q=tqf_trop_court HTTP/1.1",
+    'GET /api/django/x/"guillemets"\\barre HTTP/1.1',
+    "https://api.taqinor.ma/ventes/devis?x=1",
+    "GARBAGE",
+    "-",
+)
+
+
+def motifs_django():
+    """([(nom, motif, remplacement)], masque) de `CHEMINS_SENSIBLES` — lus dans la
+    source d'apps/taches/auth_jeton.py sans importer Django (constantes simples du
+    module et leurs concaténations)."""
+    constantes = {}
+
+    def valeur(noeud):
+        if isinstance(noeud, ast.Constant):
+            return noeud.value
+        if isinstance(noeud, ast.Name):
+            return constantes[noeud.id]
+        if isinstance(noeud, ast.BinOp) and isinstance(noeud.op, ast.Add):
+            return valeur(noeud.left) + valeur(noeud.right)
+        raise ValueError(ast.dump(noeud))
+
+    for noeud in ast.parse(AUTH_JETON.read_text(encoding="utf-8")).body:
+        if isinstance(noeud, ast.Assign) and len(noeud.targets) == 1 \
+                and isinstance(noeud.targets[0], ast.Name):
+            nom = noeud.targets[0].id
+            if nom == "CHEMINS_SENSIBLES":
+                motifs = [tuple(valeur(e) for e in entree.elts) for entree in noeud.value.elts]
+                return motifs, constantes["MASQUE"]
+            try:
+                constantes[nom] = valeur(noeud.value)
+            except (ValueError, KeyError):
+                pass
+    raise AssertionError("CHEMINS_SENSIBLES introuvable dans apps/taches/auth_jeton.py")
+
+
+def masque_django(texte, occurrences=0):
+    """`texte` tel que la brique Django le masque (`core.chemins_sensibles.masquer` :
+    chaque motif, dans l'ordre), écrit avec `<jeton>`. `occurrences=1` : la première
+    seulement de chaque motif — ce que sait faire une `map` nginx."""
+    motifs, masque = motifs_django()
+    for _, motif, remplacement in motifs:
+        texte = re.sub(motif, remplacement, texte, count=occurrences)
+    return texte.replace(masque, "<jeton>")
+
+
+def _toutes_les_directives(directives):
+    """Chaque (nom, args, enfants) de l'arbre, à toute profondeur."""
+    for nom, args, enfants in directives:
+        yield nom, args, enfants
+        if enfants is not None:
+            yield from _toutes_les_directives(enfants)
+
+
+def _mot_nginx(mot):
+    """Un mot de nginx.conf tel que nginx le lit : `\\"`, `\\'`, `\\\\` perdent leur
+    barre, `\\t` `\\r` `\\n` deviennent le caractère ; toute autre barre est gardée
+    (le `\\s` d'une expression régulière)."""
+    def remplacer(m):
+        c = m.group(1)
+        if c in "\"'\\":
+            return c
+        return {"t": "\t", "r": "\r", "n": "\n"}.get(c, m.group(0))
+    return re.sub(r"\\(.)", remplacer, mot)
+
+
+def variable_journal(arbre, variable, contexte):
+    """Valeur de `variable` pour un `contexte` {variable: valeur} : rejoue la `map`
+    qui la définit comme nginx — clé exacte, puis expressions régulières dans l'ordre
+    du fichier (jamais sur une valeur vide), puis `default` ; les captures nommées et
+    les variables de la valeur sont recollées."""
+    if variable in contexte:
+        return contexte[variable]
+    for nom, args, enfants in bloc_http(arbre):
+        if nom == "map" and len(args) == 2 and args[1] == variable:
+            source = variable_journal(arbre, args[0], contexte)
+            entrees = [(_mot_nginx(cle), _mot_nginx(vals[0]) if vals else "")
+                       for cle, vals, _ in enfants]
+            gabarit, captures = dict(entrees).get("default", ""), {}
+            exactes = {c: v for c, v in entrees if c != "default" and not c.startswith("~")}
+            if source in exactes:
+                gabarit = exactes[source]
+            elif source:
+                for cle, val in entrees:
+                    if not cle.startswith("~"):
+                        continue
+                    sans_casse = cle.startswith("~*")
+                    trouve = re.search(cle[2:] if sans_casse else cle[1:], source,
+                                       re.IGNORECASE if sans_casse else 0)
+                    if trouve:
+                        gabarit, captures = val, trouve.groupdict()
+                        break
+
+            def recoller(m):
+                nom_var = m.group(1) or m.group(2)
+                if nom_var in captures:
+                    return captures[nom_var]
+                return variable_journal(arbre, "$" + nom_var, contexte)
+            return re.sub(r"\$\{(\w+)\}|\$(\w+)", recoller, gabarit)
+    raise AssertionError(f"{variable} : ni fournie, ni définie par une map du bloc http")
+
+
+class JournalJetonMasqueTests(unittest.TestCase):
+    """ADEP106 — le calendrier abonné de Tâches porte son jeton DANS l'adresse
+    (`/api/django/taches/flux/<jeton>.ics`, imposé par l'iPhone). nginx ne passe pas
+    par Django : son journal d'accès est masqué par `map` (les deux motifs de
+    `CHEMINS_SENSIBLES`), son journal d'erreurs — qui écrit la requête et l'adresse de
+    l'amont sans format réglable — est coupé sur le chemin du flux. Rejoué sur nginx
+    1.27.5 (ancien et nouveau format côte à côte) : docs/audits/acceptation/ADEP/."""
+
+    def setUp(self):
+        self.arbre = analyser()
+
+    def _requete(self, ligne):
+        return variable_journal(self.arbre, "$requete_masquee", {"$request": ligne})
+
+    def _referent(self, valeur):
+        return variable_journal(self.arbre, "$referent_masque", {"$http_referer": valeur})
+
+    def test_aucun_journal_d_acces_n_ecrit_l_adresse_brute(self):
+        formats = {args[0]: "".join(a for a in args[1:] if not a.startswith("escape="))
+                   for nom, args, _ in _toutes_les_directives(self.arbre) if nom == "log_format"}
+        for nom_format, gabarit in formats.items():
+            brutes = {v for v in re.findall(r"\$\{?(\w+)", gabarit)
+                      if v in ADRESSES_BRUTES or v.startswith("arg_")}
+            self.assertFalse(brutes, f"log_format {nom_format} écrit l'adresse telle quelle : "
+                                     f"{sorted(brutes)}")
+        journaux = [args for nom, args, _ in _toutes_les_directives(self.arbre)
+                    if nom == "access_log"]
+        self.assertTrue(journaux, "plus aucun access_log : nginx reprend `combined`, adresse brute")
+        for args in journaux:
+            if args != ["off"]:
+                # sans nom de format, nginx écrit `combined` : `"$request"` brut.
+                self.assertTrue(len(args) >= 2 and args[1] in formats, f"access_log {args}")
+        taqinor = formats["taqinor"]
+        self.assertIn('"$requete_masquee"', taqinor)
+        self.assertIn('"$referent_masque"', taqinor)
+        # YJPB2 — les durées qui servent au suivi des temps de réponse restent écrites.
+        for champ in ("rt=$request_time", 'urt="$upstream_response_time"',
+                      'uct="$upstream_connect_time"', 'us="$upstream_status"',
+                      "rid=$upstream_http_x_request_id"):
+            self.assertIn(champ, taqinor)
+
+    def test_jeton_masque_dans_la_requete_et_le_referer(self):
+        for recue, ecrite in LIGNES_A_SECRET:
+            for champ, rendu in (("$request", self._requete(recue)),
+                                 ("$http_referer", self._referent(recue))):
+                self.assertEqual(rendu, ecrite, f"{champ} : {recue}")
+                self.assertNotIn("EXEMPLE", rendu)
+                self.assertNotIn("abc123", rendu)
+
+    def test_toute_autre_ligne_sort_inchangee(self):
+        for ligne in AUTRES_LIGNES:
+            self.assertEqual(self._requete(ligne), ligne)
+            self.assertEqual(self._referent(ligne), ligne)
+        # variable absente : le tiret que nginx écrivait déjà (une map rendrait du vide).
+        self.assertEqual(self._requete(""), "-")
+        self.assertEqual(self._referent(""), "-")
+
+    def test_meme_masquage_que_la_brique_django(self):
+        """Jumeau de `apps/taches/auth_jeton.py::CHEMINS_SENSIBLES` : un motif changé côté
+        Django sans son jumeau nginx rougit ici."""
+        motifs, _ = motifs_django()
+        self.assertEqual([nom for nom, _, _ in motifs], ["taches.flux", "taches.jeton"])
+        for ligne in [recue for recue, _ in LIGNES_A_SECRET] + list(AUTRES_LIGNES):
+            attendu = masque_django(ligne, occurrences=1)
+            self.assertEqual(self._requete(ligne), attendu, ligne)
+            self.assertEqual(self._referent(ligne), attendu, ligne)
+
+    def test_flux_sans_journal_d_erreurs_memes_reglages_que_l_api(self):
+        server = server_principal(self.arbre)
+        motif, flux = location_pour(server, FLUX + "abc123.ics")
+        self.assertEqual(motif, FLUX)
+        # `^~` : la location à expression régulière du login admin (ASEC47) ne reprend
+        # jamais ce préfixe, même pour `…/flux/<jeton>/login/`.
+        self.assertIn(("^~", FLUX), [(mod, m) for mod, m, _ in locations(server)])
+        self.assertEqual(location_pour(server, FLUX + "abc123/login/")[0], FLUX)
+        directives = [(n, a) for n, a, _ in flux]
+        self.assertIn(("error_log", ["/dev/null"]), directives)
+        _, api = location_pour(server, "/api/django/crm/leads/")
+        self.assertEqual([d for d in directives if d[0] != "error_log"],
+                         [(n, a) for n, a, _ in api],
+                         "le flux doit garder les réglages de /api/django/ (débit, délais, en-têtes)")
+        entetes = entetes_effectifs(self.arbre, FLUX + "abc123.ics")
+        self.assertIn("no-store", entetes.get("Cache-Control", ""))
+        for nom in ENTETES_SECURITE:
+            self.assertIn(nom, entetes)
 
 
 if __name__ == "__main__":
