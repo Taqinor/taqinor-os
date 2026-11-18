@@ -128,9 +128,12 @@ function CaseJournee({ item }) {
   return (
     <CaseRonde
       coche={fait} titre={item.titre}
-      onBasculer={async () => {
-        await client.terminerTache(item.id, { lock_version: item.lock_version })
-        setFait(true)
+      onBasculer={async (suivant) => {
+        // relecture adverse F4 n° 4 — décocher ROUVRE (terminer une faite ne fait rien : la case mentait) ; un échec
+        // rejette, et `CaseRonde` remet la case comme avant le toucher
+        if (suivant) await client.terminerTache(item.id, { lock_version: item.lock_version })
+        else await client.rouvrirTache(item.id)
+        setFait(suivant)
       }}
     />
   )
