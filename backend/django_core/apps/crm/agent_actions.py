@@ -70,6 +70,10 @@ CREER_LEAD = AgentAction(
     # COP-C5 — UNE seule définition effective de ``crm.lead.create`` : la
     # création reste CONFIRMÉE (la lane REGISTRE retire le doublon du registre).
     risk=RISK_OUTWARD,
+    # COP2-C — copilote ALLUMÉ, c'est ``crm.lead.creer`` (garde de doublon,
+    # note, fiche) qui sert ; ``create`` reste tel quel pour les comptes dont
+    # le copilote est éteint (ils gardent exactement ce qu'ils avaient).
+    lot=LOT_HERITE,
 )
 
 
@@ -705,8 +709,61 @@ MESSAGE_MANUEL = AgentAction(
 )
 
 
+def _entrees_creer_lead():
+    champs = ('type_installation', 'raccordement', 'batterie_souhaitee',
+              'taille_souhaitee_kwc')
+    proprietes = {
+        'nom': {'type': 'string', 'description': 'Nom de famille (ou société).'},
+        'prenom': {'type': 'string'},
+        'societe': {'type': 'string'},
+        'telephone': {'type': 'string',
+                      'description': 'Tel que dans le message du client.'},
+        'whatsapp': {'type': 'string'},
+        'email': {'type': 'string'},
+        'ville': {'type': 'string'},
+        'adresse': {'type': 'string'},
+    }
+    proprietes.update({c: _propriete_du_champ(c) for c in champs})
+    proprietes['note'] = {
+        'type': 'string',
+        'description': ("La demande du client, telle qu'écrite (versée au fil "
+                        "du lead, interne)."),
+    }
+    proprietes['creer_quand_meme'] = {
+        'type': 'boolean',
+        'description': ("Seulement sur ordre exprès, après un refus de "
+                        "doublon."),
+    }
+    return {'type': 'object', 'properties': proprietes, 'required': ['nom']}
+
+
+CREER_LEAD_ASSISTANT = AgentAction(
+    key='crm.lead.creer',
+    label='Créer un lead',
+    description=(
+        "Sert à : créer le lead d'une demande de client (message collé, "
+        "capture, appel) : nom, téléphone, besoin. Société, responsable et "
+        "étape sont posés par le serveur. "
+        "Ne pas utiliser pour : un lead déjà connu (cherche-le par son "
+        "téléphone avec crm.lead.chercher) ni modifier une fiche. "
+        "Exemple : « Karim, 0661007731 : 10 panneaux, onduleur triphasé "
+        "10 kW, batterie 5 kWh ». "
+        "Résultat : la fiche créée (cree) ; un lead de la portée au même "
+        "numéro ou e-mail = refus 409 qui le nomme, rien n'est créé."
+    ),
+    endpoint='/api/django/crm/assistant/leads/creer/',
+    method='POST',
+    inputs=_entrees_creer_lead(),
+    required_permission='crm_creer',
+    risk=RISK_OUTWARD,
+    carte='fiche_lead',
+    lot=LOT_COPILOTE,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
+    CREER_LEAD_ASSISTANT,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
