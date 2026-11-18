@@ -176,7 +176,7 @@ HEURE_BILAN_VEILLE = '18:20'
 #: (ERR-SCENARIO) : 10:30, l'heure de l'activité, avant sa clôture de 10:40 — sans ce lien la clôture compterait 1
 #: (regles.md §6.1) et 15:00 dirait « 4 sur 5 ».
 GESTES_DU_JOUR = (
-    ('08:20', 'essentielles'), ('08:31', 'garder'), ('08:52', 'rails'), ('09:10', 'contrat'),
+    ('08:20', 'ouvrir'), ('08:20', 'essentielles'), ('08:31', 'garder'), ('08:52', 'rails'), ('09:10', 'contrat'),
     ('10:20', 'fournisseur'), ('10:30', 'lier_rappel'), ('10:40', 'fermer_rappel'), ('10:50', 'devis'),
     ('14:10', 'fiche'), ('16:30', 'stand'))
 #: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
@@ -418,6 +418,11 @@ class Scenario:
     # --- La journée du mardi 24, minute par minute (§3) : la table `GESTES_DU_JOUR` -------------------------------
     #: Heure des « faites » du 24 (§3).
     FAIT_A = {RAILS: '08:52', FOURNISSEUR: '10:20', DEVIS: '10:50', STAND: '16:30'}
+
+    def _geste_ouvrir(self, instant):
+        """S4 : l'app est ouverte (`POST vu/` → `PlanJour.app_ouverte_le`) : la dernière ouverture d'avant une
+        absence (`--absence N`) est connue, le retour N jours plus tard est un vrai retour (regles.md §4.8)."""
+        journee.vu(self.user, self.jour, instant)
 
     def _geste_essentielles(self, instant):
         for titre in (DEVIS, STAND):
