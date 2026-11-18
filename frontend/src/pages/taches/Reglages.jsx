@@ -7,10 +7,11 @@ import { configurerGestes } from '../../features/taches/lib/gestes'
 import ListeRubriques, { Avance, MesDonnees } from '../../features/taches/reglages/Rubriques'
 import ViePrivee from '../../features/taches/reglages/ViePrivee'
 import MonIphone from '../../features/taches/iphone/MonIphone'
+import Notifications, { CoupeCircuit } from '../../features/taches/reglages/Notifications'
 
 /* ============================================================================
    TCH108 — Écran « Réglages » (routes /taches/reglages et /taches/reglages/:rubrique ; atteignable
-   par le menu ⋯ de la coquille). Rubriques construites : `vie-privee`, `donnees`, `avance`.
+   par le menu ⋯ de la coquille). Rubriques construites : `notifications`, `iphone`, `vie-privee`, `donnees`, `avance`.
    Lecture : `GET reglages/` (`contract_samples/reglages.json`) ; chaque interrupteur envoie
    `PATCH reglages/` (liste blanche) et adopte la valeur rendue ; l'erreur du serveur s'affiche
    sous le réglage. Un échec de lecture dit « Pas à jour » et garde l'écran.
@@ -29,6 +30,7 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate, etape }) {
   if (rubrique === 'iphone') {
     return <MonIphone reglages={reglages} onReglage={basculer} erreur={erreur} etapeDemandee={ETAPES_IPHONE[etape] ?? null} />
   }
+  if (rubrique === 'notifications') return <Notifications reglages={reglages} onReglage={basculer} erreur={erreur} />
   if (rubrique === 'vie-privee') {
     return (
       <ViePrivee
@@ -42,11 +44,14 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate, etape }) {
   if (rubrique === 'donnees') return <MesDonnees onEfface={() => navigate('/taches/aujourdhui')} />
   if (rubrique === 'avance') {
     return (
-      <Avance
-        sansDelai={Boolean(reglages?.messages_sans_delai)}
-        onSansDelai={(valeur) => basculer('messages_sans_delai', valeur)}
-        erreur={erreur.messages_sans_delai}
-      />
+      <>
+        <Avance
+          sansDelai={Boolean(reglages?.messages_sans_delai)}
+          onSansDelai={(valeur) => basculer('messages_sans_delai', valeur)}
+          erreur={erreur.messages_sans_delai}
+        />
+        <CoupeCircuit estAdmin={Boolean(reglages?.est_admin)} />
+      </>
     )
   }
   return null
