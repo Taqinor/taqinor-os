@@ -24,6 +24,7 @@ from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Tache
+from apps.taches.services.erp import suggestions_de
 from apps.taches.tests import fabriques
 from apps.taches.tests.test_routes import est_construite
 from apps.taches.views.base import exemple_de
@@ -177,6 +178,34 @@ class RetraitTests(_Base):
         suggestion = self._de(self.commercial).get()
         self.assertEqual(suggestion.statut, StatutSuggestion.RETIREE)
         self.assertIsNotNone(suggestion.decidee_le)
+
+    def _annuler_l_acceptation(self):
+        devis_acceptation_annulee.send(sender=self.Devis, devis=self.devis, user=self.commercial,
+                                       option_acceptee='', date_acceptation=None, motif='test')
+
+    def test_retiree_par_le_systeme_est_reproposee_quand_l_evenement_revient(self):
+        """Revue F4 #13 (décision d'orchestrateur) : devis accepté → acceptation annulée (`retiree`) → devis
+        réaccepté : la suggestion redevient `proposee`, comme neuve (visible 7 jours à compter de ce jour-là)."""
+        self._accepter()
+        self._annuler_l_acceptation()
+        self._de(self.commercial).update(created_at=timezone.now() - datetime.timedelta(days=8))
+        self._accepter()
+        suggestion = self._de(self.commercial).get()
+        self.assertEqual((suggestion.statut, suggestion.decidee_le, suggestion.tache_id),
+                         (StatutSuggestion.PROPOSEE, None, None))
+        self.assertEqual([s.pk for s in suggestions_de(self.commercial, timezone.localdate())], [suggestion.pk])
+
+    def test_refusee_par_l_utilisateur_ou_deja_ajoutee_ne_revient_jamais(self):
+        """Revue F4 #13 : « Pas utile » n'est jamais reproposée ; une suggestion déjà ajoutée (tâche créée) ne
+        revient pas en double, même après une annulation puis une nouvelle acceptation du devis."""
+        for statut in (StatutSuggestion.REFUSEE, StatutSuggestion.ACCEPTEE):
+            with self.subTest(statut=statut):
+                SuggestionTache.objects.all().delete()
+                self._accepter()
+                self._de(self.commercial).update(statut=statut)
+                self._annuler_l_acceptation()
+                self._accepter()
+                self.assertEqual(list(self._de(self.commercial).values_list('statut', flat=True)), [statut])
 
     def test_une_suggestion_deja_acceptee_reste_acceptee(self):
         self._accepter()
@@ -356,6 +385,42 @@ class AccepterTests(_Routes):
         self._de(self.commercial).update(statut=StatutSuggestion.REFUSEE)
         self.assertEqual(self._api().post(self._url(), {}, format='json').status_code, 404)
         self.assertFalse(Tache.objects.exists())
+
+    def _ajoutee_sans_lien(self, reponse):
+        """« Ajouter » a réussi, la tâche est née SANS lien, rien de la cible n'est servi, la suggestion est partie."""
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('tache_ecrite')))
+        self.assertIsNone(corps['tache']['lien'])
+        self.assertNotIn('DEV-TCH71', reponse.content.decode())
+        tache = Tache.objects.get(pk=corps['tache']['id'])
+        self.assertEqual((tache.titre, tache.content_type_id, tache.object_id, tache.lien_libelle),
+                         (TITRE_DEVIS, None, None, ''))
+        self.suggestion.refresh_from_db()
+        self.assertEqual((self.suggestion.statut, self.suggestion.tache_id), (StatutSuggestion.ACCEPTEE, tache.pk))
+        self.assertEqual(self._api().get(LISTE).json(), {'results': []})
+
+    def test_cible_sortie_de_la_portee_la_tache_nait_sans_lien(self):
+        """Revue F4 #12 : droit `ventes_voir` retiré — « Ajouter » ne doit pas échouer à chaque fois."""
+        self.commercial.role.permissions = ['taches_voir', 'crm_voir', 'records_scope_soi']
+        self.commercial.role.save(update_fields=['permissions'])
+        self._ajoutee_sans_lien(self._api().post(self._url(), {}, format='json'))
+
+    def test_cible_supprimee_la_tache_nait_sans_lien(self):
+        """Revue F4 #12 : le devis a disparu — même règle."""
+        self.Devis.objects.filter(pk=self.devis.pk).delete()
+        self._ajoutee_sans_lien(self._api().post(self._url(), {}, format='json'))
+
+    def test_jour_hors_plage_400_jamais_500(self):
+        """Revue F4 #4 : `jour_prevu` hors de 2000-01-01 → 2100-12-31 rend 400 sous le champ ; rien n'est écrit."""
+        for jour in ('9999-12-31', '0001-01-01', '2101-01-01'):
+            with self.subTest(jour=jour):
+                reponse = self._api().post(self._url(), {'jour_prevu': jour}, format='json')
+                self.assertEqual((reponse.status_code, reponse.json()['jour_prevu']),
+                                 (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertFalse(Tache.objects.exists())
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.statut, StatutSuggestion.PROPOSEE)
 
     def test_titre_trop_long_400(self):
         reponse = self._api().post(self._url(), {'titre': 'x' * 281}, format='json')

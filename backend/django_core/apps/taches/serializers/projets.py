@@ -12,7 +12,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.confidentialite import est_confidentielle, nom_pour
-from apps.taches.entrees import DateBornee, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, DateBornee, sans_nul
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
@@ -214,7 +214,7 @@ class DupliquerSerializer(serializers.Serializer):
     """POST projets/{id}/dupliquer/ — `{nom, date_debut?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
-    date_debut = serializers.DateField(required=False, allow_null=True)
+    date_debut = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
     apercu = serializers.BooleanField(required=False, default=True)
 
 
@@ -235,7 +235,7 @@ class ModeleInstancierSerializer(serializers.Serializer):
     """POST modeles/{id}/instancier/ — `{nom, date_lancement?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
-    date_lancement = serializers.DateField(required=False, allow_null=True)
+    date_lancement = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
     apercu = serializers.BooleanField(required=False, default=True)
 
 
@@ -329,20 +329,39 @@ class ModeleListeSerializer(serializers.Serializer):
         return len(modele.contenu.get('sections', ()))
 
 
+#: Clés que `contenu` garde pour le serveur seul (figées à l'enregistrement) : jamais servies dans `contenu`.
+CLES_INTERNES_MODELE = (lecture.CLE_CONFIDENTIEL, lecture.CLE_NON_REPRISES)
+
+
 class ModeleSerializer(serializers.Serializer):
-    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`)."""
+    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`), sans ses clés internes. Contexte
+    `{'assistant': bool}` : sous l'en-tête assistant, les notes figées ne sont pas servies (regles.md §8 : jamais,
+    même celles d'une tâche ordinaire ; revue F4 #2)."""
 
     id = serializers.IntegerField()
     nom = serializers.CharField()
     created_at = serializers.DateTimeField()
-    contenu = serializers.JSONField()
+    contenu = serializers.SerializerMethodField()
+    confidentielles_non_reprises = serializers.SerializerMethodField()
+
+    def get_confidentielles_non_reprises(self, modele) -> int:
+        """Tâches confidentielles que l'enregistrement n'a pas reprises (figé ; 0 pour un ancien modèle). Ce n'est
+        pas un contenu confidentiel (regles.md §8) : servi aussi à l'assistant (revue F4 #14)."""
+        return (modele.contenu or {}).get(lecture.CLE_NON_REPRISES, 0)
+
+    def get_contenu(self, modele) -> dict:
+        contenu = {cle: valeur for cle, valeur in (modele.contenu or {}).items() if cle not in CLES_INTERNES_MODELE}
+        if self.context.get('assistant') and 'taches' in contenu:
+            contenu['taches'] = [{cle: valeur for cle, valeur in tache.items() if cle != 'notes'}
+                                 for tache in contenu['taches']]
+        return contenu
 
 
 def modele_apercu(plan):
     """`modele_instancier.json` : le projet à créer, ses étapes et ses tâches DATÉES ; rien n'est écrit."""
     return {'projet': {'nom': plan['projet']['nom']}, 'sections': plan['sections'],
             'taches': [{cle: tache[cle] for cle in ('titre', 'jour_prevu', 'echeance')} for tache in plan['taches']],
-            'geste_id': None}
+            lecture.CLE_NON_REPRISES: plan.get(lecture.CLE_NON_REPRISES, 0), 'geste_id': None}
 
 
 def poser_calculs_d_items(user, taches, etat, ctx):

@@ -264,21 +264,32 @@ def _destinataires(company_id, famille, lead_id, cible, cible_id):
             and _destinataire_admis(user, reglages[user.pk], famille, cible, cible_id)]
 
 
+def _reproposer_si_retiree(suggestion):
+    """Vrai si `suggestion`, RETIRÉE PAR LE SYSTÈME (son événement a été annulé : `retirer_suggestion`), redevient
+    proposée, comme neuve (visible 7 jours à compter de maintenant), parce que l'événement se reproduit (revue F4 #13,
+    décision d'orchestrateur). Écriture conditionnelle sur `statut=retiree` : deux émissions qui se croisent n'en
+    reproposent qu'une, et une suggestion refusée ou acceptée n'est jamais touchée."""
+    maintenant = timezone.now()
+    return bool(SuggestionTache.objects.filter(pk=suggestion.pk, statut=StatutSuggestion.RETIREE).update(
+        statut=StatutSuggestion.PROPOSEE, decidee_le=None, tache=None, created_at=maintenant, updated_at=maintenant))
+
+
 def proposer_suggestion(company_id, *, famille, cle, titre, lead_id, cible, cible_id):
-    """Propose la suggestion `cle` à chaque destinataire admis → nombre de suggestions CRÉÉES.
+    """Propose la suggestion `cle` à chaque destinataire admis → nombre de suggestions créées ou reproposées.
 
     Anti-doublon : `get_or_create` sur (`company`, `proprietaire`, `cle`) — contrainte
-    `taches_sugg_cle_uniq` ; une suggestion existante (proposée, acceptée, refusée ou retirée) n'est
-    jamais reproposée."""
+    `taches_sugg_cle_uniq`. Une suggestion existante n'est reproposée que si le SYSTÈME l'avait retirée
+    (`retiree` : l'événement avait été annulé et se reproduit) ; refusée par l'utilisateur (« Pas utile »),
+    acceptée (tâche créée) ou encore proposée : jamais reproposée, jamais en double (regles.md §9)."""
     app_label, modele = cible.split('.', 1)
     content_type = ContentType.objects.get_by_natural_key(app_label, modele)
     creees = 0
     for user in _destinataires(company_id, famille, lead_id, cible, cible_id):
-        _suggestion, creee = SuggestionTache.objects.get_or_create(
+        suggestion, creee = SuggestionTache.objects.get_or_create(
             company_id=company_id, proprietaire=user, cle=cle,
             defaults={'famille': famille, 'titre_propose': titre, 'content_type': content_type,
                       'object_id': cible_id, 'lead_ref': lead_id})
-        creees += int(creee)
+        creees += int(creee or _reproposer_si_retiree(suggestion))
     return creees
 
 
@@ -322,6 +333,20 @@ def _decider(suggestion, statut, tache=None):
     return [op_champ('suggestion_tache', suggestion, champ, valeur) for champ, valeur in avant.items()]
 
 
+def _lien_encore_a_portee(user, suggestion):
+    """`{"cible","id"}` de la cible de `suggestion` si `user` la lit ENCORE (porte unique `libelle_de_cible`, droits
+    du moment), sinon `None` : la tâche naît alors sans lien, comme celle d'une activité dont la cible n'est pas
+    visible (`_lien_de_l_activite`). Une cible sortie de sa portée (droit retiré, objet supprimé) ne fait donc plus
+    échouer « Ajouter » à chaque fois, et rien d'elle n'est servi (revue F4 #12)."""
+    if suggestion.content_type_id is None or suggestion.object_id is None:
+        return None
+    content_type = ContentType.objects.get_for_id(suggestion.content_type_id)
+    cible = f'{content_type.app_label}.{content_type.model}'
+    if libelle_de_cible(user, cible, suggestion.object_id) is None:
+        return None
+    return {'cible': cible, 'id': suggestion.object_id}
+
+
 def accepter_suggestion(user, suggestion_id, *, titre='', jour_prevu=None):
     """« Ajouter » → (id de la tâche née, geste) : `creer_taches(source='suggestion', lien=cible)` avec
     le titre édité, sinon `titre_propose` (regles.md §9) ; la suggestion passe `acceptee` dans le MÊME
@@ -334,12 +359,9 @@ def accepter_suggestion(user, suggestion_id, *, titre='', jour_prevu=None):
             return suggestion.tache_id, None
         if suggestion.statut != StatutSuggestion.PROPOSEE:
             raise Http404('Introuvable.')
-        lien = None
-        if suggestion.content_type_id is not None and suggestion.object_id is not None:
-            content_type = ContentType.objects.get_for_id(suggestion.content_type_id)
-            lien = {'cible': f'{content_type.app_label}.{content_type.model}', 'id': suggestion.object_id}
         ligne = {'titre': (titre or '').strip() or suggestion.titre_propose, 'jour_prevu': jour_prevu}
-        resultat = creer_taches(user, [ligne], source=Source.SUGGESTION, porte='suggestion', lien=lien)
+        resultat = creer_taches(user, [ligne], source=Source.SUGGESTION, porte='suggestion',
+                                lien=_lien_encore_a_portee(user, suggestion))
         tache = resultat.creees[0]
         operations = [*resultat.geste.operations, *_decider(suggestion, StatutSuggestion.ACCEPTEE, tache)]
         # UN geste (création + décision) : celui de `creer_taches` est remplacé, comme `_un_seul_geste`.

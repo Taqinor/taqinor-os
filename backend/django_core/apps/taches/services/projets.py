@@ -22,12 +22,15 @@ from rest_framework import serializers
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.confidentialite import nom_pour
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler, figer_modele, instancier
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import jours_travailles_de, projets_de, rappels_de, sections_de, taches_de
-from apps.taches.selectors.projets import elements_a_figer, modele_confidentiel, modele_de, modeles_de
+from apps.taches.selectors.projets import (
+    CLE_CONFIDENTIEL, CLE_NON_REPRISES, elements_a_figer, modele_confidentiel, modele_de, modeles_de,
+)
 from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office, creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
@@ -603,17 +606,43 @@ def _tel_quel(jour):
     return jour
 
 
-def _plan_date(user, contenu, nom, date_lancement):
+def _hors_plage(champ):
+    return serializers.ValidationError({champ: [MESSAGE_DATE]})
+
+
+def _ecarts_dans_la_plage(date_lancement, decalages):
+    """Vrai si `date_lancement` + chaque décalage reste dans la plage acceptée (`entrees.jour_dans_bornes`) —
+    jugé AVANT de lire le calendrier : un écart démesuré ne lit jamais des millions de jours."""
+    try:
+        extremes = [date_lancement + datetime.timedelta(days=d) for d in (min(decalages), max(decalages))]
+    except OverflowError:
+        return False
+    return all(jour_dans_bornes(jour) for jour in extremes)
+
+
+def _dates_du_plan(plan):
+    dates = [s[c] for s in plan['sections'] for c in ('date_debut', 'date_fin')]
+    dates += [t[c] for t in plan['taches'] for c in ('jour_prevu', 'echeance')]
+    return [datetime.date.fromisoformat(d) for d in dates if d is not None]
+
+
+def _plan_date(user, contenu, nom, date_lancement, champ):
     """Le plan du moteur `instancier` : chaque date = `date_lancement` + décalage, rectifiée sur un jour
-    travaillé du compte (un seul calendrier lu)."""
+    travaillé du compte (un seul calendrier lu). Une date du plan hors de la plage acceptée (un écart du modèle la
+    fait sortir, avant ou après rectification) → 400 sous `champ`, jamais 500 (revue F4 #4)."""
     decalages = _decalages(contenu)
     if decalages:
+        if not _ecarts_dans_la_plage(date_lancement, decalages):
+            raise _hors_plage(champ)
         bas = date_lancement + datetime.timedelta(days=min(0, min(decalages)))
         haut = date_lancement + datetime.timedelta(days=max(0, max(decalages)) + HORIZON_OUVRES)
         prochain = _prochain_ouvre_entre(user, bas, haut)
     else:  # aucune date à rectifier : le calendrier n'est pas lu
         prochain = _tel_quel
-    return instancier(contenu, nom, date_lancement, prochain)
+    plan = instancier(contenu, nom, date_lancement, prochain)
+    if not all(jour_dans_bornes(jour) for jour in _dates_du_plan(plan)):
+        raise _hors_plage(champ)
+    return plan
 
 
 def _jour(texte):
@@ -685,23 +714,31 @@ def _creer_depuis_le_plan(user, plan, *, confidentiel):
     return ResultatProjet(projet, geste=geste, creees=creees)
 
 
-def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel):
-    """Le plan daté ; sans `apercu`, le projet est créé. Un nom de projet pris → 400, aperçu compris."""
+def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel, champ):
+    """Le plan daté ; sans `apercu`, le projet est créé. Un nom de projet pris → 400, aperçu compris ; une date
+    hors plage → 400 sous `champ` (le champ de date de la route)."""
     if projets_de(user).filter(nom_cle=cle_nom(nom)).exists():
         raise _nom_pris(nom)
-    plan = _plan_date(user, contenu, nom, date_lancement or timezone.localdate())
+    plan = _plan_date(user, contenu, nom, date_lancement or timezone.localdate(), champ)
+    plan[CLE_NON_REPRISES] = contenu.get(CLE_NON_REPRISES, 0)
     if apercu:
         return ResultatInstance(plan)
     return ResultatInstance(plan, _creer_depuis_le_plan(user, plan, confidentiel=confidentiel))
 
 
 def _contenu_du_projet(user, projet, *, inclure_notes):
-    sections, taches, listes = elements_a_figer(user, projet)
+    """Le contenu v1 figé du projet, avec sa confidentialité de CET instant (`CLE_CONFIDENTIEL`, revue F4 #1) :
+    le modèle la garde, quoi que devienne ensuite le projet ; et le nombre de tâches confidentielles non reprises
+    (`CLE_NON_REPRISES`, revue F4 #14)."""
+    sections, taches, listes, non_reprises = elements_a_figer(user, projet)
     pures = [SimpleNamespace(
         id=t.pk, parent_id=t.parent_id, statut=t.statut, section_id=t.section_id, titre=t.titre,
         priorite=t.priorite, jalon=t.jalon, jour_prevu=t.jour_prevu, echeance=t.echeance,
         bloquee_par=t.bloquee_par_id, checklist=listes.get(t.pk, []), notes=t.notes) for t in taches]
-    return figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
+    contenu = figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
+    contenu[CLE_CONFIDENTIEL] = bool(projet.confidentiel)
+    contenu[CLE_NON_REPRISES] = non_reprises
+    return contenu
 
 
 def _projet_a_copier(user, projet_id):
@@ -716,7 +753,8 @@ def dupliquer_projet(user, projet_id, nom, date_debut=None, *, apercu=True):
     même moteur que les modèles. Le double d'un projet confidentiel l'est aussi. `apercu` : rien n'est écrit."""
     projet = _projet_a_copier(user, projet_id)
     contenu = _contenu_du_projet(user, projet, inclure_notes=True)
-    return _instancier(user, contenu, nom, date_debut, apercu=apercu, confidentiel=projet.confidentiel)
+    return _instancier(user, contenu, nom, date_debut, apercu=apercu, confidentiel=projet.confidentiel,
+                       champ='date_debut')
 
 
 def enregistrer_modele(user, projet_id, nom, *, inclure_notes=False):
@@ -767,7 +805,7 @@ def instancier_modele(user, modele_id, nom, date_lancement=None, *, apercu=True)
     travaillé. `apercu` d'abord (rien n'écrit), puis sans `apercu` : le projet est créé (un geste)."""
     modele = _modele_du_compte(user, modele_id)
     return _instancier(user, modele.contenu, nom, date_lancement, apercu=apercu,
-                       confidentiel=modele_confidentiel(modele))
+                       confidentiel=modele_confidentiel(modele), champ='date_lancement')
 
 
 # --- Revue de la semaine -------------------------------------------------------------------------

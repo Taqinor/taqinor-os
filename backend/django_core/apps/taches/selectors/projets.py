@@ -11,16 +11,18 @@ Toute lecture passe par les sélecteurs de `selectors/base.py` : société ET pr
 import datetime
 from dataclasses import dataclass, field
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.taches.choix import StatutJour, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
 from apps.taches.models.journee import PlanJour
-from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet
+from apps.taches.models.projets import ModeleProjet, RevueProjet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist
 from apps.taches.moteur import sante
 from apps.taches.moteur.classement import ItemPur, prochaine_action
+from apps.taches.moteur.decalage import nb_figees
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import semaine_courte
 from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
@@ -262,28 +264,55 @@ def modeles_de(user):
     return _du_compte(ModeleProjet.objects, user)
 
 
-def modele_de(user, pk):
-    """Le modèle `pk` de `user`, ou `None` (l'id d'un autre compte répond comme un id inconnu)."""
-    return modeles_de(user).filter(pk=pk).first()
+def modeles_servis(user, assistant=False):
+    """Les modèles de `user` à SERVIR (liste, fiche, renommer, supprimer, instancier). Sous l'en-tête assistant
+    (regles.md §8, revue F4 #3) : les seuls modèles ordinaires (`MODELE_ORDINAIRE`) — un modèle confidentiel est tu
+    (ni nom ni compteurs) et son id répond comme un id inconnu. Échec fermé : dans le doute, tu."""
+    qs = modeles_de(user)
+    return qs.filter(MODELE_ORDINAIRE) if assistant else qs
+
+
+def modele_de(user, pk, assistant=False):
+    """Le modèle `pk` servi à `user` (`modeles_servis`), ou `None` (l'id d'un autre compte, ou celui d'un modèle
+    confidentiel sous l'en-tête assistant, répond comme un id inconnu)."""
+    return modeles_servis(user, assistant=assistant).filter(pk=pk).first()
+
+
+#: Clé de `contenu` où la confidentialité du modèle est FIGÉE à l'enregistrement (revue F4 #1) : celle du projet
+#: d'origine à cet instant ; elle ne dépend plus jamais de ce projet (supprimé, décoché ou rendu confidentiel).
+CLE_CONFIDENTIEL = 'confidentiel'
+#: Clé de `contenu` où est FIGÉ le nombre de tâches confidentielles que l'enregistrement n'a pas reprises (revue F4
+#: #14) ; servie hors de `contenu` (`modele.json`, `modele_instancier.json`), 0 pour un modèle qui ne la porte pas.
+CLE_NON_REPRISES = 'confidentielles_non_reprises'
+#: Un modèle ORDINAIRE : drapeau figé à `false` ; sans drapeau (modèle enregistré avant lui), échec fermé : ordinaire
+#: seulement si son projet d'origine existe encore, vivant et ordinaire (origine inconnue ou supprimée = confidentiel).
+MODELE_ORDINAIRE = (
+    Q(**{f'contenu__{CLE_CONFIDENTIEL}': False})
+    | (~Q(contenu__has_key=CLE_CONFIDENTIEL)
+       & Q(cree_depuis__isnull=False, cree_depuis__is_deleted=False, cree_depuis__confidentiel=False)))
 
 
 def modele_confidentiel(modele):
-    """Vrai quand le projet d'origine du modèle (s'il existe encore) est confidentiel : l'assistant
-    ne lit alors ni son contenu ni son aperçu."""
-    return (modele.cree_depuis_id is not None
-            and Projet.objects.filter(pk=modele.cree_depuis_id, confidentiel=True).exists())
+    """Vrai quand le modèle est confidentiel (`MODELE_ORDINAIRE` faux) : l'assistant ne lit alors ni son contenu
+    ni son aperçu, et le projet qui en naît est confidentiel."""
+    return not ModeleProjet.objects.filter(
+        pk=modele.pk, company_id=modele.company_id).filter(MODELE_ORDINAIRE).exists()
 
 
 def elements_a_figer(user, projet):
-    """`(étapes par rang, tâches par rang, {tâche: libellés de sa check-list})` de `projet` : celles du projet,
-    SAUF les tâches confidentielles par leur propre drapeau (jamais copiées dans un modèle)."""
+    """`(étapes par rang, tâches par rang, {tâche: libellés de sa check-list}, non reprises)` de `projet` : celles du
+    projet, SAUF les tâches confidentielles par leur propre drapeau (jamais copiées dans un modèle ni un double) ;
+    `non reprises` = le NOMBRE de tâches que la copie aurait reprises sans cette règle (la confidentielle et ses
+    sous-tâches, abandonnées exclues comme partout : `moteur.decalage.nb_figees`) — jamais une perte muette (revue F4
+    #14). Une seule lecture des tâches."""
     sections = list(sections_de(user).filter(projet=projet).order_by('rang', 'id'))
-    taches = list(taches_de(user).filter(projet=projet, confidentiel=False).order_by('rang_projet', 'id'))
+    toutes = list(taches_de(user).filter(projet=projet).order_by('rang_projet', 'id'))
+    taches = [tache for tache in toutes if not tache.confidentiel]
     listes = {}
     for tache_id, libelle in (ElementChecklist.objects.filter(company_id=user.company_id, tache__in=taches)
                               .order_by('rang', 'id').values_list('tache_id', 'libelle')):
         listes.setdefault(tache_id, []).append(libelle)
-    return sections, taches, listes
+    return sections, taches, listes, nb_figees(toutes) - nb_figees(taches)
 
 
 # --- La vue d'un projet --------------------------------------------------------------------------

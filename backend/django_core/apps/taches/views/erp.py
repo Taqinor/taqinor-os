@@ -10,7 +10,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.entrees import DateBornee
+from apps.taches.entrees import MESSAGE_DATE, DateBornee
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.selectors.base import taches_de
 from apps.taches.selectors.journee import progression_courante
@@ -55,7 +55,7 @@ class _CorpsAccepter(serializers.Serializer):
     """Corps de `suggestions/{id}/accepter/` : `{"titre","jour_prevu"}`, champs facultatifs (api.md §4)."""
 
     titre = serializers.CharField(required=False, allow_blank=True, max_length=280)
-    jour_prevu = serializers.DateField(required=False, allow_null=True)
+    jour_prevu = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
 
 
 def _tache_ecrite(request, tache_id, geste):

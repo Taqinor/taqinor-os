@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/taches/modeles/{id}/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET modeles/{id}/ · consommateurs : Modèles ». Source : docs/taches/reference/api.md annexe A (`modele.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET modeles/{id}/ · consommateurs : Modèles ». Source : docs/taches/reference/api.md annexe A (`modele.json`), recopié mot pour mot. Clé ajoutée par la revue F4 #14 : `confidentielles_non_reprises` (tâches confidentielles que la copie ne reprend pas, 0 sinon) — à reporter dans l'annexe A.",
   "exemple": {
     "id": 2,
     "nom": "Salon",
@@ -30,6 +30,7 @@
           "notes": ""
         }
       ]
-    }
+    },
+    "confidentielles_non_reprises": 0
   }
 }

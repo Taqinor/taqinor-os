@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.taches.models.projets import ModeleProjet, Projet, Section
 from apps.taches.models.taches import ElementChecklist, Tache
+from apps.taches.selectors import projets as lecture_projets
 from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.projets import _rangs_apres_insertion
@@ -1100,14 +1101,158 @@ class ModelesTests(_Base):
         self.assertTrue(ModeleProjet.objects.filter(pk=modele.pk, nom='Autre').exists())
 
     def test_un_modele_issu_d_un_projet_confidentiel_est_ferme_a_l_assistant(self):
+        """Revue F4 #3 : sous l'en-tête assistant, un modèle confidentiel est tu dans la liste (ni nom ni compteurs)
+        et sa fiche, son renommage, sa suppression et son instanciation répondent comme un id inconnu."""
         secret = fabriques.projet(self.u1, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre='Une tâche')
         modele = self._enregistrer(secret, nom='Secret').json()['id']
+        ordinaire = fabriques.projet(self.u1, nom='Ordinaire')
+        self._enregistrer(ordinaire, nom='Visible')
         assistant = self._api(self.u1, assistant=True)
-        self.assertEqual(assistant.get(_url(f'modeles/{modele}/')).status_code, 403)
-        self.assertEqual(assistant.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'X'},
-                                        format='json').status_code, 403)
-        self.assertEqual(assistant.get(_url('modeles/')).status_code, 200)  # le décompte seul
+        for reponse in (assistant.get(_url(f'modeles/{modele}/')),
+                        assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Renommé'}, format='json'),
+                        assistant.delete(_url(f'modeles/{modele}/')),
+                        assistant.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'X'}, format='json')):
+            self.assertEqual(reponse.status_code, 404)
+            self.assertNotIn('Secret', reponse.content.decode())
+        liste = assistant.get(_url('modeles/'))
+        self.assertEqual(liste.status_code, 200)
+        self.assertEqual([(m['nom'], m['nb_taches']) for m in liste.json()['results']], [('Visible', 0)])
+        self.assertEqual(liste.json()['count'], 1)
+        self.assertEqual(ModeleProjet.objects.get(pk=modele).nom, 'Secret')  # rien n'a été écrit
         self.assertEqual(self._api(self.u1).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertEqual([m['nom'] for m in self._api(self.u1).get(_url('modeles/')).json()['results']],
+                         ['Secret', 'Visible'])
+
+    def test_les_notes_d_un_modele_ne_sont_jamais_servies_a_l_assistant(self):
+        """Revue F4 #2 (regles.md §8 : notes jamais servies à l'assistant, même ordinaires) : la fiche, le renommage
+        et l'enregistrement d'un modèle « notes comprises » les taisent sous l'en-tête ; l'écran les voit."""
+        projet, _, _ = self._source()
+        ecran, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        modele = self._enregistrer(projet, inclure_notes=True).json()['id']
+        reponses = (assistant.get(_url(f'modeles/{modele}/')),
+                    assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Salon renommé'}, format='json'),
+                    assistant.post(_url(f'projets/{projet.pk}/enregistrer-modele/'),
+                                   {'nom': 'Par l\'assistant', 'inclure_notes': True}, format='json'))
+        for reponse in reponses:
+            self.assertIn(reponse.status_code, (200, 201))
+            self.assertNotIn('Appeler Lydec', reponse.content.decode())
+            taches = reponse.json()['contenu']['taches']
+            self.assertEqual([t['titre'] for t in taches], ['Réserver le stand', 'photos', 'Montage', 'Déjà faite'])
+            self.assertEqual([t for t in taches if 'notes' in t], [])
+        self.assertEqual(ecran.get(_url(f'modeles/{modele}/')).json()['contenu']['taches'][0]['notes'],
+                         'Appeler Lydec')
+
+    def test_les_confidentielles_non_reprises_sont_comptees_jamais_perdues_en_silence(self):
+        """Revue F4 #14 (décision d'orchestrateur) : « Dupliquer » et « Enregistrer comme modèle » ne reprennent pas une
+        tâche confidentielle par son propre drapeau (ni ses sous-tâches) ; l'aperçu de `dupliquer/`, la réponse
+        d'`enregistrer-modele/` (et la fiche du modèle, figée) en portent le NOMBRE ; 0 quand il n'y en a pas. Ce
+        nombre n'est pas un contenu confidentiel (regles.md §8) : servi aussi à l'assistant."""
+        projet, _, _ = self._source()  # « Secrète » : confidentielle par son drapeau
+        fabriques.tache(self.u1, projet=projet, titre='Sous-tâche de la secrète', parent=Tache.objects.get(
+            titre='Secrète'))  # ordinaire, mais perdue avec son parent
+        fabriques.tache(self.u1, projet=projet, titre='Secrète abandonnée', confidentiel=True, statut='annule')
+        api, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        ecrit = self._enregistrer(projet).json()
+        self.assertEqual(ecrit['confidentielles_non_reprises'], 2)
+        self.assertNotIn('confidentielles_non_reprises', ecrit['contenu'])
+        for client in (api, assistant):
+            self.assertEqual(client.get(_url(f'modeles/{ecrit["id"]}/')).json()['confidentielles_non_reprises'], 2)
+            apercu = client.post(_url(f'projets/{projet.pk}/dupliquer/'), {'nom': 'Double'}, format='json').json()
+            self.assertEqual(apercu['confidentielles_non_reprises'], 2)
+            depuis = client.post(_url(f'modeles/{ecrit["id"]}/instancier/'), {'nom': 'Copie'}, format='json').json()
+            self.assertEqual(depuis['confidentielles_non_reprises'], 2)
+        sans = fabriques.projet(self.u1, nom='Sans secret')
+        fabriques.tache(self.u1, projet=sans, titre='Ordinaire')
+        self.assertEqual(self._enregistrer(sans, nom='Sans').json()['confidentielles_non_reprises'], 0)
+        self.assertEqual(api.post(_url(f'projets/{sans.pk}/dupliquer/'), {'nom': 'Double sans'},
+                                  format='json').json()['confidentielles_non_reprises'], 0)
+
+    def test_une_date_hors_plage_rend_400_sous_son_champ_jamais_500(self):
+        """Revue F4 #4 : `date_lancement` et `date_debut` hors de 2000-01-01 → 2100-12-31 rendent 400 sous leur
+        champ, aperçu compris ; rien n'est écrit."""
+        projet, _, _ = self._source()
+        modele = self._enregistrer(projet).json()['id']
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for date in ('9999-12-31', '9999-12-01', '0001-01-01', '2101-01-01', '1999-12-31'):
+            for apercu in (True, False):
+                with self.subTest(date=date, apercu=apercu):
+                    instancier = api.post(_url(f'modeles/{modele}/instancier/'),
+                                          {'nom': f'I {date}', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((instancier.status_code, instancier.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+                    dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                                         {'nom': f'D {date}', 'date_debut': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
+    def test_un_ecart_qui_sort_de_la_plage_rend_400_jamais_500(self):
+        """Revue F4 #4 : une date reçue dans la plage, mais qu'un écart du modèle ferait sortir (au-delà du
+        2100-12-31, ou au-delà de ce que Python sait dater), rend 400 sous `date_lancement` ; rien n'est écrit."""
+        projet, _, _ = self._source()  # « Montage » : échéance à J + 20 du lancement
+        modele = self._enregistrer(projet).json()['id']
+        enorme = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom='Écart énorme', contenu={
+            'v': 1, 'confidentiel': False, 'sections': [], 'taches': [
+                {'titre': 'Loin', 'section_index': None, 'priorite': 0, 'jalon': False, 'decalage_jour': 3_000_000,
+                 'decalage_echeance': None, 'parent_index': None, 'bloquee_par_index': None, 'checklist': []}]})
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for pk, date in ((modele, '2100-12-25'), (enorme.pk, '2030-01-07')):
+            for apercu in (True, False):
+                with self.subTest(pk=pk, apercu=apercu):
+                    reponse = api.post(_url(f'modeles/{pk}/instancier/'),
+                                       {'nom': 'Trop loin', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((reponse.status_code, reponse.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                             {'nom': 'Trop loin', 'date_debut': '2100-12-25', 'apercu': True}, format='json')
+        self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                         (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
+    def _modele_secret(self, nom):
+        """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
+        secret = fabriques.projet(self.u1, nom=nom, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre=f'{nom} tâche', notes='NOTE-SECRETE')
+        return secret, self._enregistrer(secret, nom=f'{nom} modèle', inclure_notes=True).json()['id']
+
+    def test_la_confidentialite_d_un_modele_survit_a_son_projet_d_origine(self):
+        """Revue F4 #1 : supprimer le projet confidentiel d'origine, ou le décocher, ne rouvre jamais son modèle
+        à l'assistant, et « Utiliser ce modèle » donne toujours un projet confidentiel."""
+        assistant = self._api(self.u1, assistant=True)
+        supprime, modele_1 = self._modele_secret('Supprimé')
+        self.assertEqual(self._api(self.u1).delete(_url(f'projets/{supprime.pk}/')).status_code, 200)
+        decoche, modele_2 = self._modele_secret('Décoché')
+        Projet.objects.filter(pk=decoche.pk).update(confidentiel=False)
+        for modele, copie in ((modele_1, 'Copie 1'), (modele_2, 'Copie 2')):
+            lu = assistant.get(_url(f'modeles/{modele}/'))
+            self.assertEqual(lu.status_code, 404)  # comme un id inconnu (revue F4 #3)
+            self.assertNotIn('NOTE-SECRETE', lu.content.decode())
+            cree = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': copie, 'apercu': False},
+                                           format='json')
+            self.assertEqual(cree.status_code, 201)
+            self.assertTrue(Projet.objects.get(pk=cree.json()['projet']['id']).confidentiel)
+
+    def test_un_modele_ordinaire_le_reste_quand_son_projet_devient_confidentiel(self):
+        """Revue F4 #1 : la confidentialité est figée à l'enregistrement, dans les deux sens."""
+        projet = fabriques.projet(self.u1, nom='Ordinaire')
+        fabriques.tache(self.u1, projet=projet, titre='Une tâche')
+        modele = self._enregistrer(projet, nom='Ordinaire modèle').json()['id']
+        Projet.objects.filter(pk=projet.pk).update(confidentiel=True)
+        self.assertEqual(self._api(self.u1, assistant=True).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertFalse(lecture_projets.modele_confidentiel(ModeleProjet.objects.get(pk=modele)))
+
+    def test_un_modele_sans_drapeau_fige_est_confidentiel_si_son_origine_est_inconnue(self):
+        """Revue F4 #1 : un modèle enregistré avant le drapeau figé (aucun en production) — échec fermé : il n'est
+        ordinaire que si son projet d'origine existe encore, vivant et ordinaire."""
+        vivant, supprime, secret = (fabriques.projet(self.u1, nom=n, confidentiel=(n == 'C')) for n in 'ABC')
+        supprime.soft_delete(self.u1, record=False)
+        attendus = {None: True, vivant: False, supprime: True, secret: True}
+        for rang, (origine, confidentiel) in enumerate(attendus.items()):
+            modele = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom=f'Ancien {rang}',
+                                                 contenu={'v': 1, 'sections': [], 'taches': []}, cree_depuis=origine)
+            with self.subTest(origine=getattr(origine, 'nom', None)):
+                self.assertEqual(lecture_projets.modele_confidentiel(modele), confidentiel)
 
     # --- Instancier -------------------------------------------------------------------------------
 

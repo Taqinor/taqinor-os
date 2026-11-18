@@ -79,7 +79,6 @@ def _ecrit(request, resultat, statut=200):
 
 
 MESSAGE_PROJET_CONFIDENTIEL = "Ce projet est confidentiel : l'assistant ne le copie pas."
-MESSAGE_MODELE_CONFIDENTIEL = "Ce modèle vient d'un projet confidentiel : l'assistant ne le lit pas."
 
 
 def _reponse_instance(request, instance):
@@ -91,13 +90,17 @@ def _reponse_instance(request, instance):
     return reponse
 
 
+def _forme_modele(request, modele):
+    """`modele.json` du modèle, servi selon l'usage de la requête (notes tues à l'assistant, revue F4 #2)."""
+    return formes_projets.ModeleSerializer(modele, context={'assistant': est_assistant(request)}).data
+
+
 def _modele_ou_404(request, pk):
-    """Le modèle `pk` du compte ; sous l'en-tête assistant, un modèle issu d'un projet confidentiel est refusé."""
-    modele = lecture.modele_de(request.user, pk)
+    """Le modèle `pk` servi au compte (`modeles_servis`) ; sous l'en-tête assistant, un modèle confidentiel répond
+    comme un id inconnu (revue F4 #3 : la liste le tait, la fiche et les gestes aussi)."""
+    modele = lecture.modele_de(request.user, pk, assistant=est_assistant(request))
     if modele is None:
         raise Http404('Introuvable.')
-    if est_assistant(request) and lecture.modele_confidentiel(modele):
-        raise PermissionDenied(MESSAGE_MODELE_CONFIDENTIEL)
     return modele
 
 
@@ -389,7 +392,7 @@ class EnregistrerModeleVue(IdempotentCreateMixin, APIView):
         def enregistrer():
             modele = ecriture.enregistrer_modele(request.user, id, donnees['nom'],
                                                  inclure_notes=donnees['inclure_notes'])
-            return Response(_json(formes_projets.ModeleSerializer(modele).data), status=201)
+            return Response(_json(_forme_modele(request, modele)), status=201)
         return self._avec_idempotence(request, enregistrer, suffixe=f'u{request.user.pk}')
 
 
@@ -453,8 +456,8 @@ class ModelesVue(APIView):
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('modeles_liste')))
     def get(self, request):
         pagination = StandardPagination()
-        page = pagination.paginate_queryset(lecture.modeles_de(request.user).order_by('nom', 'id'), request,
-                                            view=self)
+        modeles = lecture.modeles_servis(request.user, assistant=est_assistant(request))
+        page = pagination.paginate_queryset(modeles.order_by('nom', 'id'), request, view=self)
         return pagination.get_paginated_response(formes_projets.ModeleListeSerializer(page, many=True).data)
 
 
@@ -465,7 +468,7 @@ class ModeleVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('modele'), erreurs=(404,)))
     def get(self, request, id):
-        return Response(formes_projets.ModeleSerializer(_modele_ou_404(request, id)).data)
+        return Response(_forme_modele(request, _modele_ou_404(request, id)))
 
     @extend_schema(request=corps('ModelePatch', {'nom': 'Salon'}, requis=('nom',)),
                    responses=reponses(forme_echantillon('modele'), erreurs=(400, 404)))
@@ -473,7 +476,7 @@ class ModeleVue(APIView):
         donnees = _valider(formes_projets.ModeleModificationSerializer, request.data)
         _modele_ou_404(request, id)
         modele = ecriture.renommer_modele(request.user, id, donnees['nom'])
-        return Response(formes_projets.ModeleSerializer(modele).data)
+        return Response(_forme_modele(request, modele))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
