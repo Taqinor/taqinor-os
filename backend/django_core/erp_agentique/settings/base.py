@@ -1572,7 +1572,7 @@ VEILLE_AO_RETENTION_MOIS = int(
 NOTIFICATIONS_TOUJOURS_IMMEDIATES = tuple(
     cle.strip() for cle in os.environ.get(
         'NOTIFICATIONS_TOUJOURS_IMMEDIATES',
-        'lead_new,lead_assigned,lead_callback_requested').split(',')
+        'lead_new,lead_assigned,lead_callback_requested,taches_rappel').split(',')
     if cle.strip())
 
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same

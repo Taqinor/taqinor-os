@@ -6,13 +6,15 @@ ouvré, fenêtre des messages de la société 08:30-20:00 (défauts de `crm.hora
 l'état STOCKÉ (`Notification`, `Rappel`, `IncitationCoach`) — jamais un espion à la place du résultat.
 """
 import datetime
+from unittest import mock
 
-from django.test import TestCase
+from django.conf import settings
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from apps.notifications.models import Notification
 from apps.notifications.types_evenements import EventType
-from apps.taches import balayage
+from apps.taches import balayage, sweeps
 from apps.taches.choix import CanalIncitation, StatutRappel
 from apps.taches.models.presence import ReglagesSociete
 from apps.taches.models.rythme import IncitationCoach, Preference
@@ -206,3 +208,24 @@ class BalayageTests(TestCase):
         balayage.executer(a(8, 31))
         self.assertEqual(self.notifications().count(), 1)
         self.assertTrue(self.notifications(EventType.TACHES_PLAN_DU_JOUR).exists())
+
+
+class TachePlanifieeBalayageTests(SimpleTestCase):
+    """TCH174 — `taches.balayer` (sweeps.py) chaque minute ; le rappel posé part sans délai."""
+
+    def test_planifiee_chaque_minute_et_expire_apres_sa_periode(self):
+        from erp_agentique.celery import app
+        entree = app.conf.beat_schedule['taches-balayer']
+        self.assertEqual(entree['task'], 'taches.balayer')
+        self.assertEqual((entree['schedule'].hour, entree['schedule'].minute), (set(range(24)), set(range(60))))
+        self.assertEqual(entree['options'], {'expires': 60})
+        self.assertEqual(list(app.conf.beat_schedule)[-1], 'taches-balayer')
+
+    def test_la_tache_appelle_un_passage(self):
+        with mock.patch.object(balayage, 'executer', return_value={'societes': 1}) as executer:
+            self.assertEqual(sweeps.balayer(), {'societes': 1})
+        executer.assert_called_once_with()
+        self.assertEqual(sweeps.balayer.name, 'taches.balayer')
+
+    def test_rappel_toujours_immediat_par_defaut(self):
+        self.assertIn(EventType.TACHES_RAPPEL, settings.NOTIFICATIONS_TOUJOURS_IMMEDIATES)
