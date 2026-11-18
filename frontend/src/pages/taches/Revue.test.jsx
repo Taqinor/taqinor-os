@@ -72,6 +72,16 @@ describe('TCH93 — Revue : en tête et carte', () => {
     expect(boutons).toEqual(expect.arrayContaining(['Garder', 'Pause', 'Terminer', 'Suivant', 'Changer']))
   })
 
+  it('passe visuelle n° 45 — « Projet de la semaine » est l\'étoile de la maquette (la case native reste lisible) ; échéance avec son mois', async () => {
+    monter()
+    const carte = await screen.findByRole('region', { name: 'Ventes' })
+    const caseFocus = within(carte).getByRole('checkbox', { name: 'Projet de la semaine' })
+    const etiquette = caseFocus.closest('label')
+    expect(etiquette).toHaveClass('ep-focus')
+    expect(etiquette.querySelector('svg')).not.toBeNull()
+    expect(within(carte).getByText('échéance mar. 15 déc.')).toBeInTheDocument()
+  })
+
   it('Semaine courte : « Semaine courte, on reprend lundi. » à la place du bilan', async () => {
     const r = revue()
     r.semaine_courte = true

@@ -60,6 +60,29 @@ describe('TCH88 — Projets : rendu du contrat', () => {
     expect(within(ligne).queryByText('À planifier')).toBeNull()
   })
 
+  it('passe visuelle n° 39 — puce de priorité : trois barres croissantes allumées depuis la gauche (« Moyenne » : 2 sur 3)', async () => {
+    const liste = projets()
+    liste.results[0].priorite = 2
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    const puce = within(ligne).getByRole('button', { name: 'Priorité moyenne, changer' })
+    expect([...puce.querySelectorAll('.barres i')].map((i) => i.className)).toEqual(['', '', 'eteinte'])
+  })
+
+  it('passe visuelle n° 40 — une seule forme de date de projet : jour, quantième ET mois', async () => {
+    const { echeanceProjet, jourProjet } = await import('../../features/taches/projets/LigneProjet')
+    const auj = '2026-11-24'
+    expect(echeanceProjet('2026-12-04', auj)).toEqual({ texte: 'échéance ven. 4 déc.', ton: 'fort' })
+    expect(echeanceProjet('2026-11-27', auj).texte).toBe('échéance ven. 27 nov.')
+    expect(echeanceProjet('2027-01-15', auj).texte).toBe('échéance ven. 15 janv.')
+    expect(echeanceProjet('2027-12-03', auj).texte).toBe('échéance ven. 3 déc. 2027')
+    expect(echeanceProjet('2026-11-24', auj)).toEqual({ texte: "échéance aujourd'hui", ton: 'alerte' })
+    expect(echeanceProjet('2026-11-20', auj)).toEqual({ texte: 'échéance dépassée le 20/11', ton: 'alerte' })
+    expect(jourProjet('2026-11-25', auj)).toBe('demain')
+    expect(jourProjet('2026-12-03', auj)).toBe('jeu. 3 déc.')
+  })
+
   it('le constat est calculé du serveur : « 7 projets actifs, 3 ont avancé ces 7 jours »', async () => {
     monter()
     expect(await screen.findByText('7 projets actifs, 3 ont avancé ces 7 jours')).toBeInTheDocument()

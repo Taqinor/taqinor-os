@@ -52,6 +52,15 @@ describe('TCH107 — Mon rythme', () => {
     expect(screen.getByText('5 faites ou plus 7 jours sur 10')).toBeInTheDocument()
   })
 
+  it('passe visuelle n° 44 — pas de section « Objectif du jour » en plus : Moins · Plus · Choisir sous la ligne de l\'objectif', async () => {
+    monter()
+    const ligne = (await screen.findByText('Objectif du jour : 5 (accepté)')).closest('p')
+    expect(screen.queryByRole('heading', { name: 'Objectif du jour' })).toBeNull()
+    const groupe = screen.getByRole('group', { name: "Changer d'objectif" })
+    expect(within(groupe).getAllByRole('button').map((b) => b.textContent)).toEqual(['Moins', 'Plus', 'Choisir un nombre (1 à 12)'])
+    expect(ligne.nextElementSibling).toBe(groupe)
+  })
+
   it('les trois modes : « En faire plus » est coché, et choisir « Garder ce rythme » envoie le mode', async () => {
     const tenir = { ...rythme(), mode: 'tenir', objectif: { nb: 5, source: 'calcule', mode: 'tenir', zone: [4, 6] }, geste_id: 92 }
     poserMode.mockResolvedValue({ data: tenir })
