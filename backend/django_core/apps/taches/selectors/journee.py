@@ -368,15 +368,22 @@ def activites_closes_du_jour(user, jour):
     return list(activites_closes_par(user, debut, fin).exclude(pk__in=portees).values_list('pk', flat=True))
 
 
-def compte_faites(user, jour):
+def compte_faites(user, jour, closes=None):
     """(`compte`, `detail`) de `compte_du_jour` : tâches faites ce jour et activités ERP closes par
-    lui ce jour (regles.md §6.1)."""
-    return compte_du_jour(faites_du_jour(user, jour), activites_closes_du_jour(user, jour))
+    lui ce jour (regles.md §6.1). `closes` : `activites_closes_du_jour` déjà lu par l'appelant (il
+    le passe aussi à `progression_du_jour`) — aucune lecture de plus."""
+    closes = activites_closes_du_jour(user, jour) if closes is None else closes
+    return compte_du_jour(faites_du_jour(user, jour), closes)
 
 
-def _ligne_faite(journee, ligne):
+def ligne_faite(journee, ligne, closes=()):
+    """LA règle d'une ligne de plan faite (progression, nuit, donc revue) : `faite` posée, ou sa tâche
+    faite aujourd'hui, ou son activité ERP close par lui aujourd'hui (`closes` =
+    `activites_closes_du_jour`, la même lecture que le compte : revue F2 tour 2 #2)."""
     if ligne.faite:
         return True
+    if ligne.activite_id is not None:
+        return ligne.activite_id in closes
     item = journee.items.get((TACHE, ligne.tache_id)) if ligne.tache_id else None
     return item is not None and item.statut == StatutTache.FAIT
 
@@ -394,19 +401,21 @@ def _minutes_prevues(journee):
     return sum(i.estimation_minutes or 0 for i in taches), sum(1 for i in taches if i.estimation_minutes is None)
 
 
-def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False):
+def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
-    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan`."""
+    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
+    activités ERP closes du jour, lues pour `faites`)."""
     essentielles = [ligne for ligne in journee.lignes if ligne.essentielle]
     au_plan = [ligne for ligne in journee.lignes if ligne.prevue_au_plan]
     minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
     activites = [cle for cle in journee.sections.get(SectionJournee.JOURNEE, ()) if cle[0] == ACTIVITE]
+    closes = frozenset(closes)
     return {
         'faites': faites, 'detail': dict(detail), 'prevues': faites + len(gardes_ouverts(journee)),
-        'essentiel_faites': sum(1 for ligne in essentielles if _ligne_faite(journee, ligne)),
+        'essentiel_faites': sum(1 for ligne in essentielles if ligne_faite(journee, ligne, closes)),
         'essentiel_prevues': len(essentielles),
-        'plan_tenues': sum(1 for ligne in au_plan if _ligne_faite(journee, ligne)),
+        'plan_tenues': sum(1 for ligne in au_plan if ligne_faite(journee, ligne, closes)),
         'plan_lignes': len(au_plan), 'minutes_prevues': minutes, 'sans_estimation': sans,
         'capacite_minutes': capacite_minutes, 'capacite_source': capacite_source,
         'rendez_vous_minutes': rendez_vous_minutes,
@@ -433,12 +442,13 @@ def progression_courante(user, jour):
     reglages = reglages_de(user)
     travailles = travailles_autour(user, jour)
     journee = lire_journee(user, jour, reglages=reglages, travailles=travailles)
-    compte, detail = compte_faites(user, jour)
+    closes = activites_closes_du_jour(user, jour)
+    compte, detail = compte_faites(user, jour, closes)
     capacite = capacite_du_jour(user, jour, reglages, preferences_de(user), travailles)
     rendez_vous, _libelles = rendez_vous_pour(user, jour, jour)
     return progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite,
                                rendez_vous_minutes=minutes_de_rendez_vous(user, jour, rendez_vous),
-                               reprise=reprise_du_jour(user, jour))
+                               reprise=reprise_du_jour(user, jour), closes=closes)
 
 
 # --- Les obligations du jour (donnees.md §5 `obligations_du_jour`, TCH55) ------------------------

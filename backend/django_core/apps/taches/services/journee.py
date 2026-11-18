@@ -73,6 +73,9 @@ class Contexte:
     rendez_vous: tuple = ()
     agendas: dict = field(default_factory=dict)
     rendez_vous_minutes: int = 0
+    #: Activités ERP closes par lui ce jour (`sel.activites_closes_du_jour`) : comptées dans `compte`
+    #: et jugées faites sur leur ligne de plan (`sel.ligne_faite`), d'une seule lecture.
+    closes: tuple = ()
 
     @property
     def reglages(self):
@@ -100,14 +103,15 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     journee = sel.lire_journee(user, jour, charger=charger_items, reglages=reglages, travailles=travailles)
     obligations = sel.obligations_du_jour(user, jour) if journee.erp else sel.Obligations()
     preferences = sel.preferences_de(user)
-    compte, detail = sel.compte_faites(user, jour)
+    closes = tuple(sel.activites_closes_du_jour(user, jour))
+    compte, detail = sel.compte_faites(user, jour, closes)
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
     rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
                     preferences=preferences, objectif=sel.objectif_du_jour(reglages), compte=compte,
                     detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant,
                     rendez_vous=rendez_vous, agendas=agendas,
-                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous))
+                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous), closes=closes)
 
 
 def _gardees_ouvertes(ctx):
@@ -121,7 +125,8 @@ def reprise(ctx):
 
 def progression(ctx):
     return sel.progression_du_jour(ctx.journee, faites=ctx.compte, detail=ctx.detail, capacite=ctx.capacite,
-                                   rendez_vous_minutes=ctx.rendez_vous_minutes, reprise=reprise(ctx))
+                                   rendez_vous_minutes=ctx.rendez_vous_minutes, reprise=reprise(ctx),
+                                   closes=ctx.closes)
 
 
 def proposer(ctx, *, exclure=(), inclure=()):
@@ -874,9 +879,10 @@ def _clore_pour(user, hier):
     """Statut et compteurs du `PlanJour` d'hier de `user` — recalcul déterministe, tâches intactes."""
     preferences = sel.preferences_de(user)
     journee = sel.lire_journee(user, hier)
-    compte, detail = sel.compte_faites(user, hier)
+    closes = sel.activites_closes_du_jour(user, hier)
+    compte, detail = sel.compte_faites(user, hier, closes)
     capacite = sel.capacite_du_jour(user, hier, journee.reglages, preferences, journee.travailles)
-    prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite)
+    prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite, closes=closes)
     conge = _en_conge(preferences, hier)
     plan, _cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=hier)
     plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,

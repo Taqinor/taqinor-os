@@ -1057,6 +1057,24 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(self.chiffres(), avant)
         self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
 
+    def test_2_activite_gardee_puis_close_compte_dans_les_gardees_faites(self):
+        from apps.taches.services import journee as services
+        from apps.taches.services.taches import terminer_tache
+        fabriques.reglages(self.u)
+        self.pr = fabriques.projet(self.u)
+        t = fabriques.tache(self.u, projet=self.pr, jour_prevu=J)
+        activite = fabriques.activite(self.u, due_date=J)
+        services.planifier_express(self.u, J, maintenant_a(9), lignes=[])
+        self.assertEqual(set(LignePlanJour.objects.filter(plan__proprietaire=self.u)
+                             .values_list('tache_id', 'activite_id', 'prevue_au_plan')),
+                         {(t.pk, None, True), (None, activite.pk, True)})
+        terminer_tache(self.u, t.pk, maintenant=a(J, 11), aujourdhui=J)
+        activite.done, activite.done_by, activite.done_at = True, self.u, a(J, 12)
+        activite.save(update_fields=['done', 'done_by', 'done_at'])
+        self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.assertEqual(sel.progression_courante(self.u, J)['plan_tenues'], 2)
+        self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
+
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
         en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
         ouverte = self.tache(projet=en_pause, jour_prevu=J)
