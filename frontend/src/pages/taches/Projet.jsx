@@ -8,7 +8,7 @@ import { frenchError } from '../../lib/frenchError'
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
-import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
+import { PuchePriorite, avancementDe, echeanceProjet, jourProjet } from '../../features/taches/projets/LigneProjet'
 import {
   DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
 } from '../../features/taches/projets/Dialogues'
@@ -24,7 +24,7 @@ import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
-import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH89 — Écran « Un projet », vue Liste (`/taches/projets/:id`). Maquette : docs/taches/maquettes/projet-liste.html.
@@ -87,18 +87,20 @@ function Entete({ vue, aujourdhui, onPriorite }) {
   const { texte, part } = avancementDe({ compteurs: { faites: avancement.faites, ouvertes: avancement.total - avancement.faites } })
   const sante = projet.sante?.[0]?.phrase
   const jalonJour = jalon ? (jalon.jour_prevu ?? jalon.echeance) : null
+  // passe visuelle n° 40 : la date d'un projet a la même forme partout (« échéance ven. 4 déc. », « jeu. 3 déc. »)
+  const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   return (
     <div className="ep-tete" data-p={projet.couleur}>
       <div className="ep-ligne-info">
         <PuchePriorite projet={projet} onChoisir={onPriorite} />
-        <span className="chiffres">{`${texte}${projet.echeance ? ` · échéance ${jjmm(projet.echeance)}` : ''}`}</span>
+        <span className="chiffres">{`${texte}${ech ? ` · ${ech.texte}` : ''}`}</span>
       </div>
       <div className="ep-avance">
         <div className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></div>
         {jalon ? (
           <span className="ep-jalon-proche">
             <Diamond className="i i-14 ep-losange" aria-hidden="true" />
-            {`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourCourt(jalonJour, aujourdhui)}` : ''}`}
+            {`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}
           </span>
         ) : null}
       </div>

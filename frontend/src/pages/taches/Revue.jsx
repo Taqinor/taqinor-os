@@ -4,9 +4,9 @@ import { TriangleAlert } from 'lucide-react'
 import { deciderRevue, lireRevue, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
-import { avancementDe } from '../../features/taches/projets/LigneProjet'
+import { avancementDe, echeanceProjet } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, echeanceTexte } from '../../features/taches/lib/textes'
+import { aujourdhuiIso } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH93 — Écran Revue de la semaine (`/taches/revue`). Maquette : docs/taches/maquettes/revue-semaine.html.
@@ -55,7 +55,7 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
   const [change, setChange] = useState(false)
   const [terminer, setTerminer] = useState(false)
   const { texte } = avancementDe(projet)
-  const ech = projet.echeance ? echeanceTexte(projet.echeance, aujourdhui) : null
+  const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const faites = (carte.faites_semaine ?? []).slice(0, 3)
   const corps = (decision, issue = null) => ({
     intention, prochaine_action_id: action?.id ?? null, decision, focus: focusId === projet.id, issue,

@@ -2,7 +2,7 @@ import { Ellipsis, TriangleAlert } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
-import { aujourdhuiIso, echeanceTexte } from '../lib/textes'
+import { ABR_JOURS, ABR_MOIS, aujourdhuiIso, ecartJours, echeanceTexte, jourCourt } from '../lib/textes'
 
 /* ============================================================================
    TCH88 — Une ligne de la liste Projets. Forme lue : PROJET (api.md §1,
@@ -32,6 +32,31 @@ export function avancementDe(projet) {
   return { faites, total, texte: `${faites} sur ${total}`, part: total > 0 ? faites / total : 0 }
 }
 
+/**
+ * Passe visuelle n° 40 — la date d'un projet, UNE forme pour la liste, la vue d'un projet et la revue
+ * (projets-liste.html, projet-liste.html, revue-semaine.html) : « aujourd'hui » · « demain » · « ven. 4 déc. »
+ * (jour, quantième ET mois, même à moins de 13 jours) ; au-delà de 12 mois, l'année : « ven. 15 janv. 2028 » ;
+ * passé : la forme de `jourCourt` (« jeu. 12/11 »).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- idem
+export function jourProjet(iso, aujourdhui = aujourdhuiIso()) {
+  const ecart = ecartJours(iso, aujourdhui)
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))
+  if (ecart === null || !m) return ''
+  if (ecart <= 1) return jourCourt(iso, aujourdhui)
+  const [annee, mois, jour] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const texte = `${ABR_JOURS[new Date(Date.UTC(annee, mois - 1, jour)).getUTCDay()]} ${jour} ${ABR_MOIS[mois - 1]}`
+  return ecart >= 365 ? `${texte} ${annee}` : texte
+}
+
+/** « échéance ven. 4 déc. » (`ton` fort) ; aujourd'hui et dépassée gardent la forme d'`echeanceTexte` (`ton` alerte). */
+// eslint-disable-next-line react-refresh/only-export-components -- idem
+export function echeanceProjet(echeance, aujourdhui = aujourdhuiIso()) {
+  const base = echeanceTexte(echeance, aujourdhui)
+  if (!base || base.ton === 'alerte') return base
+  return { texte: `échéance ${jourProjet(echeance, aujourdhui)}`, ton: base.ton }
+}
+
 /** La puce de priorité, touchable : « Priorité haute, changer » ouvre les quatre choix. */
 export function PuchePriorite({ projet, onChoisir }) {
   const courante = prioriteDe(projet.priorite)
@@ -59,7 +84,7 @@ export function PuchePriorite({ projet, onChoisir }) {
 
 export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOuvrir, onPriorite, onAction, enPause = false }) {
   const { texte, part } = avancementDe(projet)
-  const ech = projet.echeance ? echeanceTexte(projet.echeance, aujourdhui) : null
+  const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const surveiller = Array.isArray(projet.sante) && projet.sante.length > 0
   return (
     <div className="ligne projet" role="listitem" data-p={projet.couleur} data-projet={projet.id}>
