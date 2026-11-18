@@ -16,7 +16,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.entrees import MESSAGE_DATE, DateBornee, jour_dans_bornes
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, DateBornee, jour_dans_bornes
 from apps.taches.serializers.formes import TacheEcriteSerializer, contexte
 from apps.taches.serializers.journee import PLAFOND_LIGNES
 from apps.taches.services import journee as services
@@ -58,7 +58,8 @@ def drapeau(request, champ):
 def ids_de(request, champ):
     """`?exclure=41,42` → [41, 42] ; un morceau qui n'est pas un nombre est ignoré (lecture seule)."""
     morceaux = (request.query_params.get(champ) or '').split(',')
-    return [int(m) for m in (m.strip() for m in morceaux) if m.isdigit()]
+    return [int(m) for m in (m.strip() for m in morceaux)
+            if m.isascii() and m.isdigit() and len(m) <= LONGUEUR_ID_MAX]
 
 
 def par_compte(request):

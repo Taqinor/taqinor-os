@@ -459,6 +459,18 @@ class EntreesMalFormeesTests(TestCase):
                     reponse = self._envoyer(methode, chemin, entree)
                     self.assertLess(reponse.status_code, 400, reponse.content[:300])
 
+    def test_exclure_non_numerique_est_ignore(self):
+        with frozen('2026-11-18 10:00:00'):
+            for valeur in ('²', '١', '9' * 5000, '1,²,3'):
+                with self.subTest(exclure=valeur[:12]):
+                    reponse = self.api.get(PREFIXE + 'journee/proposition/', {'exclure': valeur})
+                    self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+
+    def test_temoin_exclure_numerique(self):
+        with frozen('2026-11-18 10:00:00'):
+            reponse = self.api.get(PREFIXE + 'journee/proposition/', {'exclure': '12'})
+            self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+
 
 class AccesTests(TestCase):
     """Les 106 routes, par de vraies requêtes : 403 sans le droit, 501 avec, 401 sur les jetons."""
