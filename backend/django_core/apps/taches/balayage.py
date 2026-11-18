@@ -340,7 +340,9 @@ def _motifs(mode, objectif, zone, compte, choisis, echeances, neglige):
 def _lire(reglages, maintenant, candidats):
     """La journée du compte (`services.journee`) et les conditions d'envoi des types candidats."""
     user, jour = reglages.proprietaire, maintenant.date()
-    ctx = service_journee._lire_contexte(user, jour, maintenant)
+    # Aucun appel réseau au balayage : les rendez-vous externes (qui réduisent le temps disponible, donc
+    # les propositions comptées) ne sont lus que s'ils sont déjà en cache ; sinon le message part sans eux.
+    ctx = service_journee._lire_contexte(user, jour, maintenant, cache_seul=True)
     propose = service_journee.proposer(ctx)
     objets = ctx.journee.objets
     gardees = [objets[cle] for cle in sel.gardes_ouverts(ctx.journee) if cle[0] == service_journee.TACHE]

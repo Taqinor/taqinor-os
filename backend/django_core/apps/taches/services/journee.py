@@ -120,8 +120,9 @@ def objectif_du_jour(reglages, jour, preferences, plan=None):
     return forme
 
 
-def _lire_contexte(user, jour, maintenant, *, assistant=False):
-    """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`."""
+def _lire_contexte(user, jour, maintenant, *, assistant=False, cache_seul=False):
+    """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`. `cache_seul`
+    (le balayage) : les agendas externes ne sont lus que du cache, jamais du réseau."""
     reglages = sel.reglages_de(user)
     travailles = sel.travailles_autour(user, jour)
     journee = sel.lire_journee(user, jour, charger=charger_items, reglages=reglages, travailles=travailles)
@@ -130,7 +131,7 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     closes = tuple(sel.activites_closes_du_jour(user, jour))
     compte, detail = sel.compte_faites(user, jour, closes)
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
-    rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
+    rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour, cache_seul=cache_seul)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
                     preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences, journee.plan),
                     compte=compte,

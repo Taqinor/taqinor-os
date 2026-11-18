@@ -9,6 +9,7 @@ import datetime
 from unittest import mock
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -198,6 +199,28 @@ class BalayageTests(TestCase):
         second.refresh_from_db()
         self.assertEqual(second.statut, StatutRappel.ENVOYE)
         self.assertNotIn(CANARI, '\n'.join(journal.output))
+
+    def test_aucun_appel_reseau_les_agendas_externes_lus_du_cache_seulement(self):
+        """Le balayage de chaque minute ne télécharge jamais un agenda externe (jusqu'à 10 s par compte) :
+        tout appel réseau d'`agenda_externe` échoue ici et n'est jamais tenté ; cache froid, le message part
+        sans les rendez-vous ; cache chaud, ils comptent (même lecture que l'écran)."""
+        from apps.taches import agenda_externe
+        fabriques.tache(self.u1, jour_prevu=J)
+        agenda = fabriques.agenda_externe(self.u1)
+        etat_avant = agenda.dernier_etat
+        cache.delete(agenda_externe.cle_cache(agenda))
+        agenda_externe.oublier_index(self.u1)
+        reseau = AssertionError('appel réseau pendant le balayage')
+        with mock.patch.object(agenda_externe, 'telecharger', side_effect=reseau) as telecharger, \
+                mock.patch.object(agenda_externe, '_adresses_publiques', side_effect=reseau) as resolution, \
+                mock.patch.object(agenda_externe, '_connecter', side_effect=reseau) as connexion:
+            self.assertEqual(balayage.executer(a(8, 30))['sollicitations'], 1)
+            cache.set(agenda_externe.cle_cache(agenda), 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n', 60)
+            self.assertEqual(balayage.executer(a(18, 0))['comptes_en_echec'], 0)
+        for appel in (telecharger, resolution, connexion):
+            appel.assert_not_called()
+        agenda.refresh_from_db()
+        self.assertEqual(agenda.dernier_etat, etat_avant)  # aucun état écrit par le balayage
 
     # --- coupe-circuit (invariant 39) -------------------------------------------------------------
 

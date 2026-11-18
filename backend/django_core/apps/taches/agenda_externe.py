@@ -303,16 +303,20 @@ def _poser_etat(agenda, etat, maintenant=None):
 CLE_ECHEC = 'echec'
 
 
-def lire_agenda_externe(agenda, du, au, *, rafraichir=False, fin=None):
+def lire_agenda_externe(agenda, du, au, *, rafraichir=False, fin=None, cache_seul=False):
     """Rendez-vous de l'agenda pour [du, au] (tuple, vide sur un échec) ; `dernier_etat` dit
     l'issue. Le texte — ou l'échec — est relu du cache (15 min) sauf `rafraichir` ; rien n'est écrit
     en base ni lu du réseau sur un cache trouvé. `fin` : échéance absolue de l'écran appelant ;
-    passée, l'agenda non encore en cache n'est pas lu (rien de retenu : la prochaine requête le lira)."""
+    passée, l'agenda non encore en cache n'est pas lu (rien de retenu : la prochaine requête le lira).
+    `cache_seul` (le balayage de chaque minute) : JAMAIS de réseau ; cache froid → aucun rendez-vous,
+    rien de retenu ni d'écrit."""
     cle = cle_cache(agenda)
     texte = None if rafraichir else cache.get(cle)
     if isinstance(texte, dict):  # échec retenu : pas de réseau, aucun ancien rendez-vous
         return ()
     lu_du_reseau = texte is None
+    if lu_du_reseau and cache_seul:
+        return ()
     # L'écran coupe plus d'une seconde sur les 10 de l'agenda : un `delai` ne dit alors rien de lui.
     ecran_plus_court = fin is not None and fin < horloge() + DELAI_MAX - 1.0
     if lu_du_reseau and fin is not None and fin - horloge() <= 0:
