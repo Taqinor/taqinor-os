@@ -12,9 +12,13 @@ n'existe qu'une fois, dans la réponse de `POST jetons/` (`emettre_jeton`). Un j
   `user.company = jeton.company` EN MÉMOIRE (jamais un `save()`, MAJ-4) : c'est la société du jeton
   qui borne toute la requête ;
 - `dernier_usage_le` écrit au plus une fois par minute.
-Aucun clair ni empreinte n'est journalisé ni rendu dans une erreur ; le flux (jeton DANS l'adresse)
-masque son chemin pour les journaux et marque ses réponses d'erreur comme déjà journalisées
-(`views/presence.py` FluxVue : `django.request` écrirait sinon le chemin). L'empreinte relue est
+Aucun clair ni empreinte n'est journalisé ni rendu dans une erreur. Le flux porte son jeton DANS
+l'adresse : l'app DÉCLARE ses `CHEMINS_SENSIBLES` à `core.chemins_sensibles` (`declarer_chemins_sensibles`,
+appelée par `TachesConfig.ready()`), et c'est cette fonction de `core` qui masque CHAQUE sortie (contexte de
+requête lu par les journaux et Sentry, tout enregistrement de journal, évènements et transactions Sentry) ;
+`FluxVue` masque aussi `request.path` et marque ses réponses d'erreur comme déjà journalisées. Les jetons
+`capture` et `tuile` voyagent dans `Authorization` : aucun journal ne lit cet en-tête, Sentry l'écarte
+(`send_default_pii=False`) et leur forme est masquée partout où elle paraîtrait. L'empreinte relue est
 comparée à temps constant (`hmac.compare_digest`).
 """
 import datetime
@@ -44,6 +48,15 @@ PREFIXES = {UsageJeton.CAPTURE: 'tqc_', UsageJeton.FLUX: 'tqf_', UsageJeton.TUIL
 #: Forme d'un clair : préfixe d'usage + au moins 20 caractères url-safe (un clair émis en a 43).
 FORME_CLAIR = re.compile(r'^tq[cft]_[A-Za-z0-9_-]{20,100}$')
 LONGUEUR_PREFIXE = 8
+#: Ce que voit une sortie d'observabilité à la place d'un jeton.
+MASQUE = '<masqué>'
+#: Les secrets d'adresse déclarés à `core.chemins_sensibles`, dans l'ordre : le segment du flux qui porte
+#: le jeton (quel qu'il soit, `.ics` gardé, `/` encodé compris), puis tout clair de jeton isolé (variable
+#: locale d'une pile, `Referer`…), préfixe d'usage gardé pour diagnostiquer.
+CHEMINS_SENSIBLES = (
+    ('taches.flux', r'((?:/|%2[Ff])taches(?:/|%2[Ff])flux(?:/|%2[Ff]))[^/?#&%\s"\'<>.]+', r'\1' + MASQUE),
+    ('taches.jeton', r'(?<![A-Za-z0-9_-])(tq[cft]_)[A-Za-z0-9_-]{20,}', r'\1' + MASQUE),
+)
 OCTETS_ALEATOIRES = 32
 INTERVALLE_DERNIER_USAGE = datetime.timedelta(minutes=1)
 
@@ -51,6 +64,13 @@ INTERVALLE_DERNIER_USAGE = datetime.timedelta(minutes=1)
 def empreinte(clair):
     """SHA-256 hexadécimal d'un clair (256 bits d'aléa : un hachage simple suffit)."""
     return hashlib.sha256(clair.encode('utf-8')).hexdigest()
+
+
+def declarer_chemins_sensibles():
+    """Déclare les secrets d'adresse de l'app à `core.chemins_sensibles` (idempotent, `ready()`)."""
+    from core import chemins_sensibles
+    for nom, motif, remplacement in CHEMINS_SENSIBLES:
+        chemins_sensibles.enregistrer(nom, motif, remplacement)
 
 
 # --- Émission et révocation ----------------------------------------------------------------------

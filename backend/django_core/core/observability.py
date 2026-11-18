@@ -32,6 +32,8 @@ from typing import Any, Dict, Optional
 
 import logging
 
+from core import chemins_sensibles
+
 logger = logging.getLogger(__name__)
 
 # Contexte de la requête courante (isolé par thread/coroutine).
@@ -81,9 +83,12 @@ class RequestObservabilityMiddleware:
         # (ex. settings custom) — comportement inchangé dans ce cas.
         incoming = request.META.get('HTTP_X_REQUEST_ID', '').strip()
         request_id = getattr(request, 'request_id', None) or incoming or uuid.uuid4().hex
+        # Un secret porté par l'adresse (`core.chemins_sensibles`) ne
+        # sort jamais : tout ce qui lit ce contexte (journaux, Sentry) voit le
+        # chemin masqué.
         ctx = {
-            'request_id': request_id,
-            'path': request.path,
+            'request_id': chemins_sensibles.masquer(request_id),
+            'path': chemins_sensibles.masquer(request.path),
             'method': request.method,
             'company_id': None,
             'user_id': None,
