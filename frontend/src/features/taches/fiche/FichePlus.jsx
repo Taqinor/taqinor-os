@@ -3,9 +3,9 @@ import { Link as LienIcone, X } from 'lucide-react'
 
 import { frenchError } from '../../../lib/frenchError'
 import {
-  attendreTache, classerErreur, creerTache, modifierRecurrence, nouvelleCle, poserRappel, recevoirTache,
+  annulerGeste, attendreTache, classerErreur, creerTache, modifierRecurrence, nouvelleCle, poserRappel, recevoirTache,
   restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache, rechercher } from '../../../api/tachesApi'
-import { proposerAnnuler } from '../lib/gestes'
+import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'
 import { ajouterJours } from '../ui/SelecteurQuand'
@@ -227,8 +227,15 @@ function Supprimer({ tache, onFermer, erreur }) {
   const nb = (tache.enfants ?? []).length
   const supprimer = async () => {
     try {
-      await supprimerTache(tache.id)
-      proposerAnnuler({ message: 'Supprimée', onAnnuler: () => restaurerTache(tache.id) })
+      const { data } = await supprimerTache(tache.id)
+      // « Annuler » défait le geste côté serveur (A7) ; sans `geste_id` (hors ligne, file), repli sur la restauration.
+      const defaire = async () => {
+        if (!data?.geste_id) { await restaurerTache(tache.id); return }
+        const { data: bilan } = await annulerGeste(data.geste_id)
+        const conflits = bilan?.conflits?.length ?? 0
+        if (conflits > 0) annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`)
+      }
+      proposerAnnuler({ message: 'Supprimée', onAnnuler: defaire })
       onFermer?.()
     } catch (err) {
       erreur('general', frenchError(err))
