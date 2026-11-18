@@ -1,5 +1,5 @@
 {
-  "sha": "b51977b7431bd7e8f698a35d954e38a6da25be34",
+  "sha": "ae19160c8f44fb721af3642dcfef383fc0b5c4fd",
   "date": "2026-11-18",
   "groupe": "ADEP",
   "verdict": "PASS",
@@ -29,7 +29,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "banc serveur, aucun écran (oracles NA) ; trace §1, §3, §4 : `nginx -t` vert dans l'image de backend/nginx/Dockerfile (nginx 1.27.5, amonts factices sous les vrais noms ; la commande nue échoue hors pile : amont django_core introuvable) ; journal d'accès : flux 200/502/503, Referer et jeton collé dans une recherche écrits avec <jeton> ; différentiel ancien et nouveau format côte à côte sur 83 lignes : 46 identiques à l'octet près, 35 masquées exactement comme les motifs de apps/taches/auth_jeton.py, 2 valeurs présentes mais vides écrites « - » (écart documenté), 0 écart"
+      "notes": "banc serveur, aucun écran (oracles NA) ; trace §1, §3, §4 : `nginx -t` vert dans l'image de backend/nginx/Dockerfile (nginx 1.27.5, amonts factices sous les vrais noms ; la commande nue échoue hors pile : amont django_core introuvable) ; journal d'accès : flux 200/502/503, Referer et jeton collé dans une recherche écrits avec <jeton> ; différentiel ancien et nouveau format côte à côte sur 83 lignes (comparées sans tenir compte de l'ordre) : 46 identiques à l'octet près, 35 masquées exactement comme les motifs de apps/taches/auth_jeton.py, 2 valeurs présentes mais vides écrites « - » (écart documenté), 0 écart"
     },
     {
       "id": "BANC-ADEP106-nginx-erreurs",
@@ -52,7 +52,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "trace §2 et §3 : sur la config de main, Django arrêté et limite de débit écrivent le jeton d'exemple dans le journal d'erreurs (273 lignes des deux sorties le portent) ; sur le sha, 0 ligne le porte, le flux n'écrit plus rien au journal d'erreurs, l'appel ordinaire témoin y garde sa ligne ; même répartition 200/503 de la rafale (limite de débit inchangée)"
+      "notes": "trace §2, §3 et §3 bis : sur la config de main, Django arrêté et limite de débit écrivent le jeton d'exemple dans le journal d'erreurs (273 lignes des deux sorties le portent) ; sur le sha, 0 ligne le porte pour le chemin du flux, le témoin garde sa ligne, même répartition 200/503 de la rafale ; LIMITE ÉCRITE et montrée au §3 bis : une adresse du flux collée dans une recherche sur une AUTRE route, au moment où Django ne répond pas, reste entière au journal d'erreurs (masquée au journal d'accès)"
     },
     {
       "id": "BANC-ADEP106-caddy",
@@ -75,7 +75,7 @@
         "9": "NA",
         "10": "NA"
       },
-      "notes": "trace §5 : `caddy validate` vert sur 2.7.6, 2.8.4, 2.9.1, 2.10.2 et 2.11.9 (avec et sans clé de relais) ; nginx arrêté : avant, http.log.error écrit l'adresse du flux, le Referer et le jeton collé en clair ; après, <jeton> partout, ligne témoin inchangée, mêmes champs JSON ; chemin du déploiement (validate puis reload sans redémarrage) : masqué dès le reload"
+      "notes": "trace §5 : caddy 2.6.2 refuse déjà le Caddyfile de main (la production tourne donc en 2.6.3 au moins) ; `caddy validate` vert sur 2.6.3, 2.6.4, 2.7.6, 2.8.4, 2.9.1, 2.10.2 et 2.11.9 (avec et sans clé de relais) ; nginx arrêté : avant, http.log.error écrit l'adresse du flux, le Referer et le jeton collé en clair ; après, <jeton> partout (2.11.9 et 2.6.3), ligne témoin inchangée, mêmes champs JSON ; chemin du déploiement (validate puis reload sans redémarrage) : masqué dès le reload"
     },
     {
       "id": "BANC-ADEP106-gunicorn",

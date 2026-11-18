@@ -1,5 +1,5 @@
-# ADEP106 — rejeu en direct par l'orchestrateur (session cloud), 2026-11-18T08:55:26Z
-# sha rejoué : b51977b7431bd7e8f698a35d954e38a6da25be34 — base (main) : 7de450bfd4c9d7f20b9473c903137ec2f99e0d80
+# ADEP106 — rejeu en direct par l'orchestrateur (session cloud), 2026-11-18T09:24:37Z
+# sha rejoué : ae19160c8f44fb721af3642dcfef383fc0b5c4fd — base (main) : 2fbc707761d14d11ce3b065dfc60f2b216211c69
 # Jetons : valeurs d'EXEMPLE seulement (tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm, tqc_EXEMPLEcaptureFACTICE0123456789abcdefghijk, abc123) — aucun vrai jeton.
 # Banc : Docker version 29.10.0 ; nginx = image construite par backend/nginx/Dockerfile (nginx version: nginx/1.27.5)
 #   SANS sa ligne « apk add gettext » (réseau du build filtré dans cette session ; l'image de base fournit déjà envsubst,
@@ -11,14 +11,14 @@
 
 == 1. nginx -t ==
   -- la commande du cahier des charges, hors de la pile (image nue, sans le fragment généré ni les amonts) :
-    2026/11/18 08:55:27 [emerg] 1#1: host not found in upstream "django_core:8000" in /etc/nginx/nginx.conf:284
+    2026/11/18 09:24:38 [emerg] 1#1: host not found in upstream "django_core:8000" in /etc/nginx/nginx.conf:284
     nginx: [emerg] host not found in upstream "django_core:8000" in /etc/nginx/nginx.conf:284
     nginx: configuration file /etc/nginx/nginx.conf test failed
   -- dans l'image du dépôt, amonts résolus (réseau du banc) :
     nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
     nginx: configuration file /etc/nginx/nginx.conf test is successful
 
-== 2. AVANT — nginx.conf de main (7de450bf) ==
+== 2. AVANT — nginx.conf de main (2fbc707761) ==
     HTTP 200  appel normal du flux
     HTTP 200  appel ordinaire dont le Referer porte l'adresse du flux
     HTTP 200  jeton collé dans une recherche
@@ -56,12 +56,20 @@
           1 [error] connect() failed (111: Connection refused) while connecting to upstream, client: 172.18.0.1, server: localhost, request: "GET /api/django/crm/leads/?page=2 HTTP/1.1", upstream: "http://172.18.0.2:8000/api/django/crm/leads/?page=2", host: "127.0.0.1:18080"
   -- lignes des deux sorties qui portent un jeton d'exemple : 0
 
+== 3 bis. LIMITE ÉCRITE — hors du chemin du flux, le journal d'erreurs de nginx reste entier ==
+  (l'adresse d'abonnement collée dans une recherche, sur une AUTRE route, au moment précis où Django ne répond pas)
+    HTTP 502  adresse du flux collée dans une recherche, Django arrêté
+  -- journal d'ACCÈS : masqué, sur cette route comme sur les autres
+    "GET /api/django/crm/leads/?search=https%3A%2F%2Fapi.taqinor.ma%2Fapi%2Fdjango%2Ftaches%2Fflux%2F<jeton>.ics HTTP/1.1" 502 157 "-" "curl/8.5.0"
+  -- journal d'ERREURS : la ligne garde l'adresse reçue (aucun format réglable ; limite écrite dans nginx.conf)
+    [error] connect() failed (111: Connection refused) while connecting to upstream, client: 172.18.0.1, server: localhost, request: "GET /api/django/crm/leads/?search=https%3A%2F%2Fapi.taqinor.ma%2Fapi%2Fdjango%2Ftaches%2Fflux%2Ftqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics HTTP/1.1", upstream: "http://172.18.0.2:8000/api/django/crm/leads/?search=https%3A%2F%2Fapi.taqinor.ma%2Fapi%2Fdjango%2Ftaches%2Fflux%2Ftqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics", host: "127.0.0.1:18080"
+
 == 4. Différentiel — le même nginx écrit chaque requête à l'ancien format ET au nouveau ==
   (config du sha + un second access_log à l'ancien format, recopié de main ; chaque ligne du nouveau journal
    est comparée à l'ancienne passée par les motifs de apps/taches/auth_jeton.py::CHEMINS_SENSIBLES)
     envoyé : 36 lignes ordinaires + 30 lignes à secret (+ en-têtes, connexions coupées, 8090)
-    lignes comparées : 83 — identiques à l'octet près : 46 — masquées comme Django : 35 — valeur vide écrite « - » (écart documenté) : 2 — écarts : 0
-  -- chaque champ modifié, avant → après (requête [code] ou Referer [ref]) :
+    lignes comparées : 83 (nouveau journal : 83) — identiques à l'octet près : 46 — masquées comme Django : 35 — valeur vide écrite « - » (écart documenté) : 2 — écarts : 0
+    -- chaque champ modifié, avant → après (requête [code] ou Referer [ref]) :
     [ref] (vide)
        →  -
     [400] (vide)
@@ -135,6 +143,10 @@
 
 == 5. Caddy ==
   -- caddy validate sur le Caddyfile du sha (commande de scripts/auto-deploy.sh), par version :
+    caddy:2.6.2   v2.6.2 sur le Caddyfile de MAIN (celui de la production) : parsing caddyfile tokens for 'servers': /etc/caddy/Caddyfile:12 - Error during parsing: unrecognized servers option 'trusted_proxies'
+    (la production tourne donc en 2.6.3 au moins ; le Caddyfile du sha, de 2.6.3 à la version courante :)
+    caddy:2.6.3   v2.6.3 : Valid configuration
+    caddy:2.6.4   v2.6.4 : Valid configuration
     caddy:2.7.6   v2.7.6 : Valid configuration
     caddy:2.8.4   v2.8.4 : Valid configuration
     caddy:2.9.1   v2.9.1 : Valid configuration
@@ -163,7 +175,7 @@
     error http.log.error 502 | uri=/api/django/recherche/?q=tqc_<jeton>&x=1 | Referer=None | Authorization=None
     error http.log.error 502 | uri=/api/django/crm/leads/?page=2 | Referer=None | Authorization=['REDACTED']
   -- lignes du journal de Caddy qui portent un jeton d'exemple : 0
-  -- APRÈS, plus ancienne version essayée (caddy:2.7.6)
+  -- APRÈS, plus ancienne version capable de lire le fichier de production (caddy:2.6.3)
     HTTP 200  nginx en marche : appel du flux (rien n'est écrit par Caddy)
     HTTP 502  nginx arrêté : appel du flux
     HTTP 502  nginx arrêté : appel ordinaire dont le Referer porte l'adresse du flux
@@ -186,21 +198,21 @@
     93:gunicorn==26.2.0
     gunicorn 26.2.0 — accesslog par défaut : None (None = aucun journal d'accès) ; fichier de config lu par défaut : './gunicorn.conf.py'
     lancement de développement : docker-compose.yml l.36 ; de production : docker-compose.prod.yml l.132 et suivantes
-    options de journal d'accès dans ces deux commandes : 0 ; GUNICORN_CMD_ARGS dans le dépôt : 0 ; backend/django_core/gunicorn.conf.py : 0
+    options de journal d'accès dans ces deux commandes : 0 ; GUNICORN_CMD_ARGS dans les compose, .env.example, backend/, scripts/ et .github/ : 0 ; backend/django_core/gunicorn.conf.py : 0
   -- A) options de la production (aucun journal d'accès) :
     HTTP 200
     lignes de requête écrites par gunicorn : 0
   -- B) témoin : journal d'accès ALLUMÉ à la main, sans la brique de Django :
     HTTP 200
-    127.0.0.1 - - [18/Nov/2026:08:56:15 +0000] "GET /api/django/taches/flux/tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics HTTP/1.1" 200 32 "http://127.0.0.1/api/django/taches/flux/tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics" "curl/8.5.0"
+    127.0.0.1 - - [18/Nov/2026:09:25:30 +0000] "GET /api/django/taches/flux/tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics HTTP/1.1" 200 32 "http://127.0.0.1/api/django/taches/flux/tqf_EXEMPLEjetonFACTICE0123456789abcdefghijklm.ics" "curl/8.5.0"
     lignes de requête écrites par gunicorn : 1
   -- C) journal d'accès ALLUMÉ à la main, avec la vraie brique core/chemins_sensibles.py et les motifs de auth_jeton.py :
     HTTP 200
-    127.0.0.1 - - [18/Nov/2026:08:56:17 +0000] "GET /api/django/taches/flux/<masqué>.ics HTTP/1.1" 200 32 "http://127.0.0.1/api/django/taches/flux/<masqué>.ics" "curl/8.5.0"
+    127.0.0.1 - - [18/Nov/2026:09:25:32 +0000] "GET /api/django/taches/flux/<masqué>.ics HTTP/1.1" 200 32 "http://127.0.0.1/api/django/taches/flux/<masqué>.ics" "curl/8.5.0"
     lignes de requête écrites par gunicorn : 1
 
 == 7. Gardes ==
     ----------------------------------------------------------------------
-    Ran 32 tests in 0.255s
+    Ran 33 tests in 0.242s
     
     OK
