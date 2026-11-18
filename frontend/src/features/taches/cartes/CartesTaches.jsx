@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import CaseRonde from '../ui/CaseRonde'
+import SelecteurProjet from '../ui/SelecteurProjet'
 import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
 
 /* ============================================================================
@@ -18,14 +19,26 @@ import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
 
 const LIBRE = 'libre'
 
-/** Un geste d'écriture : état occupé, erreur sous le geste, message « fait » avec « Annuler ». */
-function useGeste(initial = null) {
+// F3 acceptation ERR 5 (a) — le cadre de la carte (posé par le panneau, `CartesDuMessage`) : « attente » tant que
+// la carte attend le doigt (cadre « proposition »), « fait » une fois son geste principal fait ou pour une lecture
+// (cadre « résultat »), « laisse » quand il l'a laissée. Le geste principal de la carte le signale.
+const EtatDuCadre = createContext(() => {})
+// ERR 5 (b) — une CRÉATION validée au doigt sur une carte du Copilote est une écriture de l'assistant (A5).
+const DEPUIS_LA_CARTE = { carteAssistant: true }
+
+/** Un geste d'écriture : état occupé, erreur sous le geste, message « fait » avec « Annuler ». `principal` :
+ *  le geste qui termine la carte (son cadre passe de « proposition » à « résultat »). */
+function useGeste(initial = null, { principal = false } = {}) {
+  const changerCadre = useContext(EtatDuCadre)
   const [etat, setEtat] = useState({ occupe: false, erreur: '', fait: initial })
   const lancer = async (appel, message) => {
     setEtat({ occupe: true, erreur: '', fait: null })
     try {
       const { data } = await appel()
-      setEtat({ occupe: false, erreur: '', fait: { message, geste: data?.geste_id ?? null } })
+      // `message` peut se lire sur la réponse (« {n} tâches créées » : le nombre que le serveur a créé).
+      const dit = typeof message === 'function' ? message(data) : message
+      setEtat({ occupe: false, erreur: '', fait: { message: dit, geste: data?.geste_id ?? null } })
+      if (principal) changerCadre('fait')
       return data
     } catch (err) {
       setEtat({ occupe: false, erreur: frenchError(err), fait: null })
@@ -164,8 +177,10 @@ function BoutonGarder({ lignes, jour, geste }) {
 }
 
 function CartePlanPropose({ donnees }) {
-  const geste = useGeste()
-  const lignes = (donnees.proposition ?? []).filter((l) => l.cochee !== false && !l.deja_prevue).map((l) => l.item)
+  const geste = useGeste(null, { principal: true })
+  // F3 acceptation ERR 2 — une seule règle : les lignes du Proposé (`proposition` = `pour_objectif` du moteur, celles
+  // que l'écran Aujourd'hui garde par « Garder ces N »), sans filtre propre à la carte.
+  const lignes = (donnees.proposition ?? []).map((l) => l.item)
   const objectif = donnees.objectif?.nb
   const chiffres = objectif ? `${lignes.length} · objectif ${objectif}` : `${lignes.length}`
   return (
@@ -250,7 +265,8 @@ const ECHOS = {
 }
 
 function CarteEcho({ tache, proposition }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
+  const changerCadre = useContext(EtatDuCadre)
   const [laisse, setLaisse] = useState(false)
   const echo = ECHOS[proposition.geste]
   return (
@@ -263,7 +279,7 @@ function CarteEcho({ tache, proposition }) {
         <div className="propose-actions ep-carte-ia-pied">
           <button type="button" className="bouton second" disabled={geste.occupe}
             onClick={() => geste.lancer(() => echo.appel(tache, proposition), echo.fait)}>{echo.libelle}</button>
-          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => { setLaisse(true); changerCadre('laisse') }}>Laisser</button>
         </div>
       ) : null}
       {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
@@ -281,7 +297,7 @@ function CarteEcho({ tache, proposition }) {
 // eslint-disable-next-line react-refresh/only-export-components -- table parcourue par la garde du test (revue F3 n° 2)
 export const ECRITURES_A_VALIDER = {
   'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
-  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c) },
+  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c, DEPUIS_LA_CARTE) },
   'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
   'taches.tache.planifier': {
     fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
@@ -289,7 +305,7 @@ export const ECRITURES_A_VALIDER = {
   'taches.rappel.poser': {
     fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
   },
-  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c) },
+  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c, DEPUIS_LA_CARTE) },
   'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },
   'taches.preference.noter': { fait: () => '', appel: (t, c) => client.poserPreference(c) },
 }
@@ -393,7 +409,8 @@ export function lignesDuCorps(corps, changements = [], { titreEnTete = false, ti
 }
 
 function CarteAValider({ tache, proposition }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
+  const changerCadre = useContext(EtatDuCadre)
   const [laisse, setLaisse] = useState(false)
   const ecriture = ECRITURES_A_VALIDER[proposition.action_key]
   // UN objet : celui que les lignes disent est celui que le bouton envoie.
@@ -416,7 +433,7 @@ function CarteAValider({ tache, proposition }) {
             onClick={() => geste.lancer(() => ecriture.appel(tache, corps), ecriture.fait(corps) || proposition.libelle)}>
             {ecriture.bouton ?? proposition.libelle}
           </button>
-          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => { setLaisse(true); changerCadre('laisse') }}>Laisser</button>
         </div>
       ) : null}
       {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
@@ -442,39 +459,120 @@ function CarteTache({ donnees }) {
 
 // ── capture_apercu, plan_projet ───────────────────────────────────────────────
 
+// F3 acceptation ERR 4 — « Changer de projet » lit les projets du compte (`projets/`, toutes les pages) une fois,
+// quand une ligne doit nommer un projet servi par son seul id ou qu'on ouvre le choix.
+function useProjetsDuCompte(aLire) {
+  const [etat, setEtat] = useState({ projets: null, erreur: '' })
+  const lance = useRef(false)
+  const lire = useCallback(() => {
+    if (lance.current) return
+    lance.current = true
+    client.listerTousLesProjets()
+      .then((projets) => setEtat({ projets: projets ?? [], erreur: '' }))
+      .catch((err) => { lance.current = false; setEtat({ projets: null, erreur: frenchError(err) }) })
+  }, [])
+  useEffect(() => { if (aLire) lire() }, [aLire, lire])
+  const ajouter = useCallback((projet) => setEtat((e) => ({ ...e, projets: [...(e.projets ?? []), projet] })), [])
+  return { ...etat, lire, ajouter }
+}
+
+// Un projet né d'un collage est en priorité moyenne (textes.md §1 « Priorité », §2.3 « Moyenne par défaut »).
+const PRIORITE_PROJET_NE = 2
+const sansProjet = (champs) => Object.fromEntries(Object.entries(champs).filter(([k]) => k !== 'projet_id' && k !== 'nouveau_projet'))
+
+/** Ce que la ligne dit de son projet (textes.md §2.3 et §5.2) ; un id que la liste ne nomme pas se montre tel quel. */
+function projetDeLigne(champs, { projets, choisi, rangement }) {
+  if (champs.nouveau_projet) return `Nouveau projet : ${champs.nouveau_projet.nom}`
+  if (champs.projet_id == null) return 'Pas de projet évident : choisis-le.'
+  const nom = (projets ?? []).find((p) => p.id === champs.projet_id)?.nom
+  if (!nom) return projets === null ? '' : `projet_id : ${champs.projet_id}`
+  return rangement && !choisi ? `Projet suggéré : ${nom}` : `Projet : ${nom}`
+}
+
 function CarteCaptureApercu({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   const [retirees, setRetirees] = useState([])
-  const lignes = (donnees.lignes ?? []).filter((l) => !retirees.includes(l.index))
+  const [choix, setChoix] = useState({}) // index → champs de projet choisis au doigt
+  const [ouverte, setOuverte] = useState(null) // index de la ligne dont le choix de projet est ouvert
+  const [erreurLigne, setErreurLigne] = useState({})
+  const toutes = donnees.lignes ?? []
+  // « Range ma liste » (`ids` d'À trier) : des tâches EXISTANTES, rangées par `taches/lot/` `deplacer`, jamais recréées.
+  const rangement = toutes.some((l) => l.tache_id != null)
+  const lignes = toutes.filter((l) => !retirees.includes(l.index))
+  const champsDe = (l) => (choix[l.index] ? { ...sansProjet(l.champs ?? {}), ...choix[l.index] } : (l.champs ?? {}))
+  const projets = useProjetsDuCompte(toutes.some((l) => l.champs?.projet_id != null))
+  const choisir = (index, champs) => { setChoix((c) => ({ ...c, [index]: champs })); setOuverte(null) }
+  const nouveauProjet = async (index, nom) => {
+    const propre = String(nom ?? '').trim()
+    if (!propre) return
+    if (!rangement) { choisir(index, { nouveau_projet: { nom: propre, priorite: PRIORITE_PROJET_NE } }); return }
+    try {
+      const { data } = await client.creerProjet({ nom: propre, priorite: PRIORITE_PROJET_NE }, DEPUIS_LA_CARTE)
+      choisir(index, { projet_id: data.id })
+      projets.ajouter(data)
+    } catch (err) {
+      setErreurLigne((e) => ({ ...e, [index]: frenchError(err) }))
+    }
+  }
+  const aRanger = lignes.filter((l) => champsDe(l).projet_id != null)
   const ajouter = () => geste.lancer(() => client.saisieRapide({
-    lignes: lignes.map((l) => ({ index: l.index, collage: l.collage, client_id: `copilote:${l.collage}:${l.index}`, titre: l.titre, ...l.champs })),
+    lignes: lignes.map((l) => ({ index: l.index, collage: l.collage, client_id: `copilote:${l.collage}:${l.index}`, titre: l.titre, ...champsDe(l) })),
     apercu: false,
-  }), accord(lignes.length, 'ajoutée'))
+  }, DEPUIS_LA_CARTE), accord(lignes.length, 'ajoutée'))
+  const ranger = () => geste.lancer(() => client.traiterLot({
+    ids: aRanger.map((l) => l.tache_id), action: 'deplacer',
+    valeurs: { par_tache: Object.fromEntries(aRanger.map((l) => [l.tache_id, { projet_id: champsDe(l).projet_id }])) },
+  }), accord(aRanger.length, 'tâche rangée', 'tâches rangées'))
+  const listeProjets = projets.projets ?? []
   return (
     <div role="group" aria-label="Ta liste rangée">
       <Tete titre="Ta liste rangée" chiffres={String(lignes.length)} />
       {lignes.length === 0 ? <p className="section-sous">Rien à ajouter.</p> : (
         <div className="liste" role="list">
-          {lignes.map((l) => (
-            <div key={l.index} className="ligne" role="listitem">
-              <div className="ligne-corps">
-                <div className="titre">{l.titre}</div>
-                <div className="meta">
-                  {l.champs?.nouveau_projet ? <span>{`Nouveau projet : ${l.champs.nouveau_projet.nom}`}</span> : <span>Pas de projet évident : choisis-le.</span>}
+          {lignes.map((l) => {
+            const dit = projetDeLigne(champsDe(l), { projets: projets.projets, choisi: l.index in choix, rangement })
+            return (
+              <div key={l.index} className="ligne" role="listitem">
+                <div className="ligne-corps">
+                  <div className="titre">{l.titre}</div>
+                  {dit ? <div className="meta"><span>{dit}</span></div> : null}
+                  {ouverte === l.index ? (
+                    projets.projets === null ? (
+                      <p className="section-sous" role={projets.erreur ? 'alert' : 'status'}>{projets.erreur || 'Chargement…'}</p>
+                    ) : (
+                      <SelecteurProjet projets={listeProjets} valeur={champsDe(l).projet_id ?? null} sansProjet={!rangement}
+                        onChoisir={(id) => choisir(l.index, id == null ? {} : { projet_id: id })}
+                        onNouveau={(nom) => nouveauProjet(l.index, nom)} />
+                    )
+                  ) : null}
+                  {erreurLigne[l.index] ? <p className="section-sous alerte" role="alert">{erreurLigne[l.index]}</p> : null}
+                  {/* Sous la ligne, comme les gestes des priorités : deux gestes à droite écrasaient le titre. */}
+                  <div className="actions-priorite">
+                    <button type="button" className="bouton lien" disabled={geste.fait !== null}
+                      onClick={() => { projets.lire(); setOuverte((o) => (o === l.index ? null : l.index)) }}>
+                      Changer de projet
+                    </button>
+                    <button type="button" className="bouton lien" disabled={geste.fait !== null}
+                      onClick={() => setRetirees((r) => [...r, l.index])}>Retirer</button>
+                  </div>
                 </div>
               </div>
-              <div className="ligne-fin">
-                <button type="button" className="bouton lien" onClick={() => setRetirees((r) => [...r, l.index])}>Retirer</button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {lignes.length > 0 ? (
         <div className="propose-actions ep-carte-ia-pied">
-          <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null} onClick={ajouter}>
-            {`Tout ajouter (${lignes.length})`}
-          </button>
+          {rangement ? (
+            <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null || aRanger.length === 0}
+              onClick={ranger}>
+              {`Tout ranger (${aRanger.length})`}
+            </button>
+          ) : (
+            <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null} onClick={ajouter}>
+              {`Tout ajouter (${lignes.length})`}
+            </button>
+          )}
         </div>
       ) : null}
       <Retour geste={geste} />
@@ -482,30 +580,70 @@ function CarteCaptureApercu({ donnees }) {
   )
 }
 
+// `projet` ({id, lock_version}) n'est pas servi par `planification/apercu/` (planification_apercu.json) : sans lui,
+// « Tout ajouter » n'a pas de projet où écrire et n'est pas montré (le serveur devrait le joindre : rapport ERR 4).
+const projetPlanifiable = (projet) => Number.isInteger(projet?.id) && Number.isInteger(projet?.lock_version)
+
 function CartePlanProjet({ donnees }) {
-  const [retirees, setRetirees] = useState([])
-  const sections = donnees.sections ?? []
+  const geste = useGeste(null, { principal: true })
+  const [etapes, setEtapes] = useState(() => (donnees.sections ?? []).map((s, i) => ({
+    nom: s.nom, taches: (s.taches ?? []).map((t, j) => ({ ...t, cle: `${i}:${j}` })),
+  })))
+  const [ouverte, setOuverte] = useState(null) // clé de la tâche dont « Changer d'étape » est ouvert
+  const retirer = (cle) => setEtapes((es) => es.map((e) => ({ ...e, taches: e.taches.filter((t) => t.cle !== cle) })))
+  const deplacer = (cle, vers) => {
+    setEtapes((es) => {
+      const tache = es.flatMap((e) => e.taches).find((t) => t.cle === cle)
+      return es.map((e, i) => ({
+        ...e, taches: i === vers ? [...e.taches.filter((t) => t.cle !== cle), tache] : e.taches.filter((t) => t.cle !== cle),
+      }))
+    })
+    setOuverte(null)
+  }
+  const projet = donnees.projet
+  const toutAjouter = () => geste.lancer(() => client.planifierProjet(projet.id, {
+    sections: etapes.map((e) => ({ nom: e.nom, taches: e.taches.map((t) => Object.fromEntries(Object.entries(t).filter(([k]) => k !== 'cle'))) })),
+    lock_version: projet.lock_version,
+  }, DEPUIS_LA_CARTE), (data) => accord(data?.creees?.length ?? 0, 'tâche créée', 'tâches créées'))
+  const fige = geste.fait !== null
   return (
     <div role="group" aria-label="Le projet en étapes">
-      <Tete titre="Le projet en étapes" chiffres={String(sections.length)} />
-      {sections.map((s, i) => (
-        <div key={s.nom}>
+      <Tete titre="Le projet en étapes" chiffres={String(etapes.length)} />
+      {etapes.map((s, i) => (
+        <div key={`${i}:${s.nom}`}>
           <p className="ep-carte-ia-etape">{s.nom}</p>
           <div className="liste" role="list">
-            {(s.taches ?? []).filter((t) => !retirees.includes(`${i}:${t.titre}`)).map((t) => (
-              <div key={t.titre} className="ligne" role="listitem">
+            {s.taches.map((t) => (
+              <div key={t.cle} className="ligne" role="listitem">
                 <div className="ligne-corps">
                   <div className="titre">{t.titre}</div>
                   {(t.sous_taches ?? []).length > 0 ? <div className="meta"><span>{t.sous_taches.join(' · ')}</span></div> : null}
-                </div>
-                <div className="ligne-fin">
-                  <button type="button" className="bouton lien" onClick={() => setRetirees((r) => [...r, `${i}:${t.titre}`])}>Retirer</button>
+                  <div className="actions-priorite">
+                    {etapes.length > 1 ? (
+                      <button type="button" className="bouton lien" disabled={fige}
+                        onClick={() => setOuverte((o) => (o === t.cle ? null : t.cle))}>Changer d&apos;étape</button>
+                    ) : null}
+                    <button type="button" className="bouton lien" disabled={fige} onClick={() => retirer(t.cle)}>Retirer</button>
+                  </div>
+                  {ouverte === t.cle ? (
+                    <div className="actions-priorite" role="group" aria-label="Étapes">
+                      {etapes.map((e, j) => (j === i ? null : (
+                        <button key={`${j}:${e.nom}`} type="button" className="bouton discret" onClick={() => deplacer(t.cle, j)}>{e.nom}</button>
+                      )))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         </div>
       ))}
+      {projetPlanifiable(projet) ? (
+        <div className="propose-actions ep-carte-ia-pied">
+          <button type="button" className="bouton second" disabled={geste.occupe || fige} onClick={toutAjouter}>Tout ajouter</button>
+        </div>
+      ) : null}
+      <Retour geste={geste} />
     </div>
   )
 }
@@ -599,7 +737,7 @@ function GestesPriorite({ item, jour, plusTard }) {
 }
 
 function CartePriorites({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   const [toutes, setToutes] = useState(false)
   const lignes = donnees.lignes ?? []
   if (lignes.length === 0) {
@@ -656,6 +794,19 @@ function CartePoint({ donnees }) {
   )
 }
 
+/** ERR 5 (a) — la carte attend-elle le doigt à son arrivée ? Une écriture à valider, un écho (Renommer…), un
+ *  Proposé ou des priorités à garder, une liste à ajouter ou ranger, des étapes à ajouter ; une lecture, non. */
+function attendLeDoigt(cle, d) {
+  if (!d) return false
+  if (d.proposition?.geste === 'ecrire') return true
+  if (cle === 'plan_propose') return (d.proposition ?? []).length > 0
+  if (cle === 'priorites') return (d.garder_n ?? 0) > 0 && (d.lignes ?? []).length > 0
+  if (cle === 'capture_apercu') return (d.lignes ?? []).length > 0
+  if (cle === 'plan_projet') return projetPlanifiable(d.projet)
+  if (cle === 'tache') return Boolean(d.proposition && ECHOS[d.proposition.geste])
+  return false
+}
+
 const COMPOSANTS = {
   ma_journee: CarteMaJournee,
   plan_propose: CartePlanPropose,
@@ -677,15 +828,20 @@ function CarteEcritureAValider({ donnees }) {
 }
 
 /** Une carte `taches` du Copilote : `carte` = `{ carte: '<clé>', donnees: <corps de la route> }`. */
-export default function CartesTaches({ carte }) {
+export default function CartesTaches({ carte, cadre = null, testId }) {
   const aValider = carte?.donnees?.proposition?.geste === 'ecrire'
   const Composant = COMPOSANTS[carte?.carte] && aValider ? CarteEcritureAValider : COMPOSANTS[carte?.carte]
+  const [etatCadre, setEtatCadre] = useState(() => (attendLeDoigt(carte?.carte, carte?.donnees) ? 'attente' : 'fait'))
   if (!Composant || !carte.donnees) return null
-  return (
-    <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
-      <div className="ep-carte-ia">
-        <Composant donnees={carte.donnees} />
+  const contenu = (
+    <EtatDuCadre.Provider value={setEtatCadre}>
+      <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
+        <div className="ep-carte-ia">
+          <Composant donnees={carte.donnees} />
+        </div>
       </div>
-    </div>
+    </EtatDuCadre.Provider>
   )
+  if (!cadre) return contenu
+  return <div className={cadre[etatCadre] ?? cadre.fait} data-testid={testId} data-cadre={etatCadre}>{contenu}</div>
 }

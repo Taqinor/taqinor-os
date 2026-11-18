@@ -399,6 +399,20 @@ describe('cartes — Tâches (TCH118) : branchement dans CartesDuMessage', () =>
     expect(screen.queryByText('Action effectuée')).not.toBeInTheDocument()
   })
 
+  // F3 acceptation ERR 5 (a) — le cadre d'une carte Tâches : « proposition » (ambre) tant qu'elle attend le doigt,
+  // « résultat » (vert) pour une lecture ou une fois faite. Le cadre porte le `data-testid` `carte-<clé>`.
+  it('ERR 5 — plan_propose et carte à valider dans le cadre « proposition », point dans le cadre « résultat »', () => {
+    monter([
+      resultat('plan_propose', tache('journee_proposition')),
+      resultat('tache', tache('ecriture_a_valider')),
+      resultat('point', tache('point')),
+    ])
+    expect(screen.getByTestId('carte-plan_propose').className).toMatch(/amber/)
+    expect(screen.getByTestId('carte-tache').className).toMatch(/amber/)
+    expect(screen.getByTestId('carte-point').className).toMatch(/emerald/)
+    expect(screen.getByTestId('carte-plan_propose')).toContainElement(screen.getByTestId('carte-taches-plan_propose'))
+  })
+
   it('les cartes CRM restent intactes à côté d\'une carte Tâches', () => {
     monter([resultat('point', tache('point')), resultat('visite', touche('lead_visite_planifier'))])
     expect(screen.getByTestId('carte-taches-point')).toBeInTheDocument()

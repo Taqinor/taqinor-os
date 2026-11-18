@@ -137,7 +137,10 @@ export function NoteReponse({ msg, index }) {
   )
 }
 
-export function QuestionForm({ onSubmit, inputRef, input, setInput, onKeyDown, disabled, children }) {
+// `placeholder` : F3 acceptation ERR 3 — « Écris ou dicte… » depuis un écran Tâches (textes.md §5.2) ; ailleurs, le défaut.
+export function QuestionForm({
+  onSubmit, inputRef, input, setInput, onKeyDown, disabled, children, placeholder = 'Posez votre question en français…',
+}) {
   return (
     <form className="flex items-end gap-2" onSubmit={onSubmit}>
       <Textarea
@@ -146,7 +149,7 @@ export function QuestionForm({ onSubmit, inputRef, input, setInput, onKeyDown, d
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder="Posez votre question en français…"
+        placeholder={placeholder}
         disabled={disabled}
         autoComplete="off"
         className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"

@@ -44,10 +44,16 @@ export function nouvelleCle() {
   return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
+/** F3 acceptation ERR 5 — une CRÉATION validée au doigt sur une carte du Copilote (`{ carteAssistant: true }`) :
+ *  le serveur la range `source='assistant'` (A5). Jamais `X-Taqinor-Assistant`, qui masquerait la réponse. */
+export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
+
 const avecCle = (options = {}) => {
-  const { cle } = options
-  if (cle === null) return undefined
-  return { headers: { 'Idempotency-Key': cle || nouvelleCle() } }
+  const { cle, carteAssistant } = options ?? {}
+  const headers = {}
+  if (cle !== null) headers['Idempotency-Key'] = cle || nouvelleCle()
+  if (carteAssistant) headers[ENTETE_CARTE_ASSISTANT] = '1'
+  return Object.keys(headers).length > 0 ? { headers } : undefined
 }
 
 const avecProprietaire = (corps, options = {}) => {

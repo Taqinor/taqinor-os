@@ -94,6 +94,15 @@ export function CarteResultat({ carte, index, carteIdx, variant = 'page' }) {
   if (!Composant) {
     return <CarteGenerique carte={carte} testId={v.resultat} className={className} />
   }
+  // F3 acceptation ERR 5 (a) — une carte Tâches choisit son cadre : « proposition » tant qu'elle attend le doigt
+  // (carte à valider, Proposé non gardé…), « résultat » pour une lecture ou une fois faite, neutre si laissée.
+  if (Composant === CartesTaches) {
+    return (
+      <CartesTaches carte={carte} testId={`carte-${carte.carte}`} cadre={{
+        attente: `${CLASSE_PROPOSITION} ${v.pad}`, fait: className, laisse: `mt-2 rounded-md border border-border ${v.pad}`,
+      }} />
+    )
+  }
   return (
     <div className={className} data-testid={`carte-${carte.carte}`}>
       <Composant carte={carte} index={index} carteIdx={carteIdx} variant={variant} />
