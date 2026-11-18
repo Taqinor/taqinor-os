@@ -991,7 +991,7 @@ class VuesEnregistreesTests(BaseApi):
         projet = fabriques.projet(self.u1)
         etiquette = Etiquette.objects.create(company=self.a, proprietaire=self.u1, nom='magasin')
         filtres = {'q': 'devis', 'projets': [projet.pk], 'etiquettes': [etiquette.pk], 'priorite_min': 3,
-                   'statuts': ['a_faire'], 'periode': 'semaine', 'echeance': _j(2).isoformat(), 'tri': 'priorite',
+                   'statuts': ['a_faire'], 'periode': 'semaine', 'echeance': True, 'tri': 'priorite',
                    'groupe': 'projet', 'inclure_faites': True}
         reponse = self._post('vues/', {'nom': 'Haute', 'filtres': filtres})
         self.assertEqual(reponse.status_code, 201)

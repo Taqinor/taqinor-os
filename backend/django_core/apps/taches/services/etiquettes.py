@@ -9,8 +9,6 @@ compte (société ET propriétaire) : l'id d'un collègue répond comme un id in
 - Vue enregistrée : `filtres` à clés FERMÉES (`CLES_FILTRES`), 30 vues au plus ; une clé ou une valeur
   inconnue → 400 nommé `{"filtres": {"<clé>": ["Valeur inconnue."]}}`.
 """
-import datetime
-
 from django.db import IntegrityError, transaction
 from django.http import Http404
 from rest_framework import serializers
@@ -160,13 +158,6 @@ def _choix_ferme(permis):
     return lire
 
 
-def _date_iso(valeur):
-    try:
-        return datetime.date.fromisoformat(valeur).isoformat()
-    except (TypeError, ValueError):
-        raise ValueError(MESSAGE_INCONNU)
-
-
 def _booleen(valeur):
     if not isinstance(valeur, bool):
         raise ValueError(MESSAGE_INCONNU)
@@ -197,7 +188,7 @@ def _valider_filtres(user, filtres):
         'priorite_min': _priorite,
         'statuts': _statuts,
         'periode': _choix_ferme(PERIODES),
-        'echeance': _date_iso,
+        'echeance': _booleen,  # « Avec échéance » (spec-2 §3.6) : vrai = seulement les tâches qui en ont une
         'tri': _choix_ferme(TRIS),
         'groupe': _choix_ferme(GROUPES),
         'inclure_faites': _booleen,
