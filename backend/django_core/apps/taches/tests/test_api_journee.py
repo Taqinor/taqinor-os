@@ -1005,3 +1005,62 @@ class PassageAMinuitTests(_Base):
         clore_jour_precedent(self.societe.pk, J)
         self.assertEqual(PlanJour.objects.filter(proprietaire=self.u).count(), 1)
         self.assertFalse(PlanJour.objects.filter(proprietaire=sans_reglages).exists())
+
+
+class ChiffresDuJourTests(_Base):
+    """Revue F2 tour 2 : un nombre montré est calculé des données, le même partout (Aujourd'hui, bilan
+    du soir, nuit) pour la même chose."""
+
+    def garder_et_faire(self, n=3, essentielles=1):
+        from apps.taches.services import journee as services
+        from apps.taches.services.taches import terminer_tache
+        fabriques.reglages(self.u)
+        self.pr = fabriques.projet(self.u)
+        taches = [fabriques.tache(self.u, projet=self.pr, jour_prevu=J) for _ in range(n)]
+        services.planifier_express(self.u, J, maintenant_a(9), lignes=[],
+                                   essentielles=[t.pk for t in taches[:essentielles]])
+        for t in taches:
+            terminer_tache(self.u, t.pk, maintenant=a(J, 11), aujourdhui=J)
+        return taches
+
+    def chiffres(self):
+        from apps.taches.services import journee as services
+        rendu = services.aujourdhui(self.u, J, maintenant_a(18, 30))
+        p = rendu['progression']
+        bilan = services.cloture(self.u, J, maintenant_a(18, 30))['bilan']
+        return (len(rendu['faites']), p['faites'], p['plan_tenues'], p['plan_lignes'], p['essentiel_faites'],
+                p['essentiel_prevues']), (bilan['texte'], bilan['texte_gardees'])
+
+    def nuit(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services.journee import clore_jour_precedent
+        clore_jour_precedent(self.societe.pk, jours(1))
+        plan = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        return plan.compte_rythme, plan.plan_faites, plan.plan_prevues, plan.essentiels_faits, plan.essentiels_choisis
+
+    def test_1_faites_d_un_projet_termine_le_jour_meme(self):
+        from apps.taches.services.projets import terminer_projet
+        self.garder_et_faire()
+        avant = self.chiffres()
+        self.assertEqual(avant, ((3, 3, 3, 3, 1, 1), ('3 sur 5 · essentiel 1 sur 1', '3 des 3 gardées')))
+        terminer_projet(self.u, self.pr.pk, issue='atteint')
+        self.assertEqual(self.chiffres(), avant)
+        self.assertEqual(self.nuit(), (3, 3, 3, 1, 1))
+
+    def test_1_faites_d_un_projet_mis_en_pause_le_jour_meme(self):
+        from apps.taches.services.projets import modifier_projet
+        self.garder_et_faire(n=2, essentielles=0)
+        avant = self.chiffres()
+        self.assertEqual(avant, ((2, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.pr.refresh_from_db()
+        modifier_projet(self.u, self.pr.pk, {'statut': StatutProjet.EN_PAUSE}, version=self.pr.lock_version)
+        self.assertEqual(self.chiffres(), avant)
+        self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
+
+    def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        ouverte = self.tache(projet=en_pause, jour_prevu=J)
+        faite = self.tache(projet=en_pause, jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
+        self.assertNotIn(ouverte.pk, ids)
+        self.assertIn(faite.pk, ids)

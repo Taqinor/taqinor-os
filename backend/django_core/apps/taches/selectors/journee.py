@@ -81,14 +81,17 @@ def _du_compte(modele, user):
 
 def taches_de_la_journee(user, jour):
     """Tâches du préfiltre de la journée de `user` au jour `jour` : vivantes, `parent` nul, non
-    bloquées, projet actif (ou sans projet et triées), et ouvertes hors « En réserve » ou faites ce
-    jour-là (heure locale)."""
+    bloquées, et soit ouvertes hors « En réserve » d'un projet actif (ou sans projet et triées), soit
+    faites ce jour-là (heure locale) QUEL QUE SOIT l'état de leur projet : une faite du jour reste dans
+    « Faites », l'essentiel et les gardées faites même si son projet est terminé ou mis en pause le
+    jour même — comme `compte_faites` la compte (revue F2 tour 2 #1). Une faite est toujours triée
+    (clore pose `triee_le`)."""
     debut, fin = bornes_du_jour(jour)
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
     ouverte = Q(statut__in=OUVERTS, quelque_jour=False)
     faite = Q(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
-    return (taches_de(user).filter(parent__isnull=True).filter(rattachee).filter(ouverte | faite)
+    return (taches_de(user).filter(parent__isnull=True).filter((rattachee & ouverte) | faite)
             .exclude(BLOQUEE))
 
 
