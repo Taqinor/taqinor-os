@@ -23,6 +23,9 @@ const RUBRIQUES = [
   ['donnees', 'Mes données', 'Exporter, tout effacer'],
   ['avance', 'Avancé', 'Messages sans délai'],
 ]
+/** Le titre d'une rubrique (« Mes données ») : celui de la sous-page qu'elle ouvre ; '' si inconnue. */
+// eslint-disable-next-line react-refresh/only-export-components -- la table des rubriques reste dans ce module
+export const titreRubrique = (cle) => RUBRIQUES.find(([c]) => c === cle)?.[1] ?? ''
 const CONFIRMATION = 'EFFACER'
 const ETATS = {
   '': 'Pas encore lu.',

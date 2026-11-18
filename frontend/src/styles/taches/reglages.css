@@ -112,6 +112,12 @@
 .tch .es-sous { margin: 12px var(--tch-gouttiere) 0; font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .es-sous summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--tch-texte); }
 .tch .es-sous p { margin: 0 0 8px; }
+/* Passe visuelle n° 47 — iPhone : une rubrique ouverte est une sous-page, la liste des rubriques n'est plus au-dessus */
+@media (max-width: 767px) {
+  .tch .es-reglages-grille.es-ouverte > .es-rubriques { display: none; }
+}
+.tch .es-barre-sous-page { margin-top: -4px; }
+.tch .es-panneau > .es-panneau-titre { margin-top: 10px; margin-bottom: 8px; }
 @media (min-width: 768px) {
   .tch .es-rubrique { width: calc(100% - 16px); margin: 0 8px; padding: 10px 16px; min-height: 60px; border-radius: 10px; }
   .tch .es-rubrique::after { left: 16px; right: 16px; }
