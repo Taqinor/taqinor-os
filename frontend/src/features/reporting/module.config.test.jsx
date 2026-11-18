@@ -304,6 +304,22 @@ describe('EnvoisProgrammesPage (AANA45)', () => {
     expect(screen.queryByTestId('envoi-form-carte')).not.toBeInTheDocument()
   })
 
+  it('ADRG158 — sans stock_export, l’option Stock est grisée et motivée ; avec, elle est choisissable', async () => {
+    const { Provider } = await import('react-redux')
+    const { configureStore } = await import('@reduxjs/toolkit')
+    for (const [permissions, nom, grise] of [
+      [['reporting_voir'], "Stock (droit d'export du stock requis)", true],
+      [['reporting_voir', 'stock_export'], 'Stock', false],
+    ]) {
+      const store = configureStore({ reducer: { auth: (s = { role: 'responsable', permissions }) => s } })
+      render(<Provider store={store}><EnvoisProgrammesPage /></Provider>)
+      await screen.findByTestId(`envoi-programme-${RAPPORT.id}`)
+      await userEvent.click(screen.getByRole('button', { name: /Nouvel envoi/ }))
+      expect(screen.getByRole('option', { name: nom }).disabled).toBe(grise)
+      cleanup()
+    }
+  })
+
   it('affiche l’erreur de validation SOUS le champ fautif et garde le formulaire', async () => {
     reportingApi.createSavedReport.mockRejectedValue(erreur400({
       name: ['Ce champ ne peut être vide.'],

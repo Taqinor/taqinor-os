@@ -11,6 +11,7 @@ import {
 } from '../../ui'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import { ChargementPage } from '../../ui/ChargementPage'
+import useDroitMetier from '../sav/useDroitMetier'
 import {
   CANAUX, KINDS_AVEC_CIBLE, SCHEDULES, STATUTS, TARGET_KINDS,
 } from './envoisProgrammesChoix'
@@ -214,6 +215,7 @@ export default function EnvoisProgrammesPage() {
   }
 
   const avecCible = form && KINDS_AVEC_CIBLE.includes(form.target_kind)
+  const sansExportStock = !useDroitMetier('stock_export') // ADRG158 / D-ADRG-15
 
   return (
     <div className="page" data-testid="envois-programmes">
@@ -263,7 +265,8 @@ export default function EnvoisProgrammesPage() {
                       onChange={maj('target_kind')}
                       aria-invalid={erreurs.target_kind ? true : undefined}
                     >
-                      {TARGET_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      {TARGET_KINDS.map(([v, l]) => (v === 'stock' && sansExportStock ? <option key={v} value={v} disabled>
+                        {`${l} (droit d'export du stock requis)`}</option> : <option key={v} value={v}>{l}</option>))}
                     </select>
                   </FormField>
 

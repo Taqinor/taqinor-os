@@ -282,7 +282,8 @@ _REPORTS_STOCK_REPORT_REPONSE = inline_serializer('ReportsStockReportReponse', {
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin, lecture_source('stock'),
-                     DroitDeLaGrille('reporting_export', export=('xlsx', 'pdf'))])
+                     DroitDeLaGrille('reporting_export', export=('xlsx', 'pdf')),
+                     DroitDeLaGrille('stock_export', export=('xlsx', 'pdf'))])  # ADRG158
 def stock_report(request):
     """T14 — stock : valorisation (vente + achat interne), bas stock, par
     catégorie. Le prix d'achat reste un repère INTERNE."""

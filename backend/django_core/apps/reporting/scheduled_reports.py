@@ -154,6 +154,18 @@ def _echappe(valeur):
     return escape('' if valeur is None else str(valeur))
 
 
+def jeu_du_widget(widget, company):
+    """ADRG157 — jeu lu par un widget : celui de sa métrique nommée (même
+    priorité que ``core.dashboard_data``), sinon son ``dataset``."""
+    if widget.get('type') != 'metrique' and not widget.get('metrique'):
+        return widget.get('dataset')
+    from apps.semantic.services import MetriqueInconnue, get_metric
+    try:
+        return get_metric(company, widget.get('metrique') or widget.get('cle')).dataset
+    except MetriqueInconnue:
+        return None
+
+
 def rendre_dashboard_html(report, dashboard):
     """Le HTML du PDF d'un tableau de bord (fonction PURE, testable seule).
 
@@ -175,16 +187,17 @@ def rendre_dashboard_html(report, dashboard):
     widgets_purges = []
     refus = {}  # ADRG146 — widget dont le propriétaire n'a pas l'export du jeu
     for index, widget in enumerate(layout.get('widgets') or []):
-        if isinstance(widget, dict) and widget.get('dataset'):
+        jeu = jeu_du_widget(widget, report.company) if isinstance(widget, dict) else None
+        if jeu:
             try:
-                exiger_export_dataset(widget['dataset'], report.owner)
+                exiger_export_dataset(jeu, report.owner)
             except (DatasetNonAutorise, DatasetInconnu) as exc:
                 ident = widget.get('id') or f'widget-{index}'
                 refus[ident] = str(exc)  # non exécuté : bloc d'erreur, jamais tu
                 widget = {'id': ident, 'titre': widget.get('titre', '')}
             else:
                 widget = {**widget, 'spec': spec_sans_champs_gated(
-                    widget['dataset'], widget.get('spec'))}
+                    jeu, widget.get('spec'))}
         widgets_purges.append(widget)
     layout['widgets'] = widgets_purges
     donnees = executer_dashboard(
@@ -285,11 +298,25 @@ def _nom_fichier(base):
     return sur or 'rapport'
 
 
+JEU_DU_GENRE = {'stock': 'stock_produits'}  # ADRG158 / D-ADRG-15 — genre figé → jeu dont l'export est exigé
+MOTIF_SANS_EXPORT_STOCK = "Le propriétaire n'a pas le droit d'export du stock : envoi suspendu."
+
+
+def _export_du_genre_refuse(report):
+    from core.data_explorer import DatasetNonAutorise, exiger_export_dataset
+    try:
+        if report.target_kind in JEU_DU_GENRE:
+            exiger_export_dataset(JEU_DU_GENRE[report.target_kind], report.owner)
+    except DatasetNonAutorise:
+        return True
+    return False
+
+
 def _rendre_legacy(report):
     """Les 3 rapports FIGÉS — rendu inchangé, au format .xlsx."""
     renderer = _RENDERERS.get(report.target_kind)
     # AANA27 — aussi gardé ici : `render_report_xlsx` y entre directement.
-    if renderer is None or getattr(report, 'company_id', None) is None:
+    if renderer is None or getattr(report, 'company_id', None) is None or _export_du_genre_refuse(report):
         return None, None, None, None
     try:
         headers, rows = renderer(report)
@@ -308,6 +335,13 @@ def _rendre_legacy(report):
         return None, None, None, None
 
 
+CAUSE_PROPRIETAIRE_INACTIF = 'Propriétaire du rapport désactivé : envoi suspendu.'  # ADRG156
+
+
+def _proprietaire_inactif(report):
+    return report.owner_id is not None and not report.owner.is_active
+
+
 def rendre_rapport(report):
     """NTDATA37 — rend N'IMPORTE QUELLE cible : ``(bytes, titre, nom, mime)``.
 
@@ -318,7 +352,7 @@ def rendre_rapport(report):
     from .models import SavedReport
 
     # AANA27 — un rapport sans société n'a AUCUN rendu (ni e-mail, ni lien).
-    if getattr(report, 'company_id', None) is None:
+    if getattr(report, 'company_id', None) is None or _proprietaire_inactif(report):
         return None, None, None, None
     if report.target_kind == SavedReport.TargetKind.DASHBOARD:
         return _rendre_dashboard(report)
@@ -496,6 +530,13 @@ def email_saved_reports():
             # NTDATA38 — fenêtre fine (heure d'envoi, jour du mois, anti-doublon
             # mensuel) par-dessus la sélection grossière par cadence.
             if not _rapport_est_du(report, now):
+                continue
+            cause = (CAUSE_PROPRIETAIRE_INACTIF if _proprietaire_inactif(report)
+                     else MOTIF_SANS_EXPORT_STOCK if _export_du_genre_refuse(report) else '')
+            if cause:  # ADRG156 / ADRG158 — avant tout canal
+                canal = getattr(report, 'canal', 'email')
+                journaliser_envoi(report, canal, report.whatsapp_list() if canal == 'whatsapp'
+                                  else report.recipient_list(), 'echec', cause)
                 continue
             # NTDATA39 — canal WhatsApp : un LIEN tokenisé, jamais la pièce
             # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.

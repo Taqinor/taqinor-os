@@ -125,6 +125,33 @@ describe('Rapports — cartes selon le droit de leur route', () => {
       ['/reporting/reports/sales/', '/reporting/reports/stock/', SERVICE])))
   })
 
+  // ADRG158 / D-ADRG-15 — l'export du rapport Stock exige `stock_export`.
+  const STOCK_VIDE = { valorisation_vente: 0, valorisation_achat: null, par_categorie: [], bas_stock: [] }
+  const servirStock = () => apiGet.mockImplementation((url) => (url === '/reporting/reports/stock/'
+    ? Promise.resolve({ data: STOCK_VIDE }) : Promise.reject(new Error('hors test'))))
+
+  it('sans stock_export (Commercial responsable) : carte Stock sans export, option Stock grisée', async () => {
+    servirStock()
+    monter({ role: 'responsable', role_nom: 'Commercial responsable', permissions: ['stock_voir', 'reporting_export'] })
+    await ouvrir('Stock')
+    await screen.findByText('Valorisation (vente) :', { exact: false })
+    expect(screen.queryByRole('button', { name: /Exporter Excel/ })).toBeNull()
+    await ouvrir('Mes rapports')
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Nouveau rapport/ }))
+    const option = screen.getByRole('option', { name: "Stock (droit d'export du stock requis)" })
+    expect(option).toBeDisabled()
+  })
+
+  it('avec stock_export (Directeur) : export de la carte Stock et option Stock présents', async () => {
+    servirStock()
+    monter({ role: 'admin', role_nom: 'Directeur', permissions: ['stock_voir', 'stock_export'] })
+    await ouvrir('Stock')
+    expect(await screen.findByRole('button', { name: /Exporter Excel/ })).toBeInTheDocument()
+    await ouvrir('Mes rapports')
+    await userEvent.setup().click(await screen.findByRole('button', { name: /Nouveau rapport/ }))
+    expect(screen.getByRole('option', { name: 'Stock' })).toBeEnabled()
+  })
+
   it('Technicien responsable (installation_voir) : Service demandé, carte rendue', async () => {
     monter({ role: 'responsable', permissions: ['installation_voir', 'sav_voir'] })
     await waitFor(() => expect(demandes()).toContain(SERVICE))

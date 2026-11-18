@@ -967,7 +967,8 @@ class CodesGrilleAppliquesTests(TestCase):
             'insights/recurring-revenue/?export=xlsx',
             # APFS4 — le pivot lit le jeu ``sav_tickets``.
             'insights/sav-tickets-pivot/?export=xlsx'))
-        stock = (b + ['stock_voir'], ('reports/stock/?export=xlsx',))
+        # ADRG158 / D-ADRG-15 — le rapport stock exige aussi ``stock_export``.
+        stock = (b + ['stock_voir', 'stock_export'], ('reports/stock/?export=xlsx',))
         journal = (b + ['journal_activite_voir'], (
             'insights/audit-log/?export=xlsx',))
         reporting = (b, ('insights/cf-group-by/?export=xlsx',

@@ -111,6 +111,36 @@ class AbonnementDashboardTests(TestCase):
             EnvoiRapport.objects.filter(saved_report=rapport,
                                         statut='envoye').count(), 1)
 
+    def test_proprietaire_desactive_rien_ne_part(self):
+        """ADRG156 — propriétaire désactivé : aucun envoi (journal ``echec``
+        motivé, ``last_sent_at`` nul) et lien public 404 ; réactivé ⇒ envoi."""
+        from apps.reporting.diffusion_views import make_report_token
+        rapport = self._rapport(cible_id=self._dashboard().pk)
+        self.user.is_active = False
+        self.user.save(update_fields=['is_active'])
+        envoyer = mock.Mock(return_value=True)
+        with frozen(LUNDI_06H), \
+                mock.patch.object(scheduled_reports, '_is_email_configured',
+                                  return_value=True), \
+                mock.patch.object(scheduled_reports, '_send_report_email',
+                                  envoyer), \
+                mock.patch('core.pdf.render_pdf', return_value=b'%PDF faux'):
+            self.assertEqual(scheduled_reports.email_saved_reports(), 0)
+            envoyer.assert_not_called()
+            envois = EnvoiRapport.objects.filter(saved_report=rapport)
+            self.assertEqual(list(envois.values_list('statut', 'erreur')), [(
+                'echec', 'Propriétaire du rapport désactivé : envoi suspendu.')])
+            rapport.refresh_from_db()
+            self.assertIsNone(rapport.last_sent_at)
+            resp = self.client.get('/api/django/reporting/rapports-partages/'
+                                   f'{make_report_token(rapport)}/')
+            self.assertEqual(resp.status_code, 404)
+            self.assertEqual(resp.json()['detail'], 'Rapport indisponible.')
+            self.user.is_active = True
+            self.user.save(update_fields=['is_active'])
+            EnvoiRapport.objects.filter(saved_report=rapport).delete()
+            self.assertEqual(scheduled_reports.email_saved_reports(), 1)
+
     def test_pas_envoye_un_autre_jour(self):
         dashboard = self._dashboard()
         self._rapport(cible_id=dashboard.pk)
@@ -306,6 +336,93 @@ class AbonnementDashboardTests(TestCase):
         self.assertIn('<h2>Stock</h2><p class="erreur">Accès au jeu de données '
                       'refusé.</p>', html)
         self.assertIn('NTDATA37 SA', html)  # l'autre widget reste rendu
+
+    def test_widget_metrique_stock_exige_stock_export(self):
+        """ADRG157 — un widget de MÉTRIQUE nommée lit le jeu de sa définition :
+        programmer ou rendre le tableau exige son code d'export (403 sinon)."""
+        from apps.semantic.models import MetricDefinition
+        from apps.stock.models import Produit
+        MetricDefinition.objects.create(
+            company=self.company, cle='stock_qte', libelle='Stock',
+            dataset='stock_produits',
+            mesure={'field': 'quantite_stock', 'agg': 'sum'})
+        Produit.objects.create(company=self.company, nom='Onduleur ADRG157',
+                               sku='ADRG157-P', prix_vente=100,
+                               quantite_stock=3)
+        dashboard = self._dashboard(partage=True, layout={'widgets': [{
+            'id': 'm', 'titre': 'Stock', 'type': 'metrique',
+            'metrique': 'stock_qte', 'group_by': ['nom']}]})
+        url = '/api/django/reporting/saved-reports/'
+        corps = {'name': 'Stock', 'target_kind': 'dashboard',
+                 'cible_id': dashboard.pk, 'schedule': 'weekly',
+                 'recipients': 'x@exemple.ma'}
+        commercial, api_c = self._api_role('Commercial responsable')
+        resp = api_c.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(str(resp.data['detail']),
+                         'Accès au jeu de données refusé.')
+        self.assertFalse(SavedReport.objects.filter(owner=commercial).exists())
+        _directeur, api_d = self._api_role('Directeur')
+        resp = api_d.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        rapport = self._rapport(owner=commercial, cible_id=dashboard.pk)
+        html = scheduled_reports.rendre_dashboard_html(rapport, dashboard)
+        self.assertNotIn('Onduleur ADRG157', html)
+        self.assertIn('<h2>Stock</h2><p class="erreur">Accès au jeu de '
+                      'données refusé.</p>', html)
+
+    def test_rapport_fige_stock_exige_stock_export(self):
+        """ADRG158 / D-ADRG-15 — le rapport figé « stock » exige ``stock_export``
+        sur toutes ses sorties : programmer, modifier, envoi planifié, lien
+        public, export à l'écran ; le JSON reste ouvert."""
+        from apps.reporting.diffusion_views import make_report_token
+        from apps.stock.models import Produit
+        Produit.objects.create(company=self.company, nom='Onduleur ADRG158',
+                               sku='ADRG158-P', prix_vente=100,
+                               quantite_stock=3)
+        commercial, api_c = self._api_role('Commercial responsable')
+        _directeur, api_d = self._api_role('Directeur')
+        rapport = self._rapport(owner=commercial, name='Stock hebdo',
+                                target_kind=SavedReport.TargetKind.STOCK)
+        url = '/api/django/reporting/saved-reports/'
+        corps = {'name': 'S', 'target_kind': 'stock', 'schedule': 'weekly',
+                 'recipients': 'x@exemple.ma'}
+        for resp in (api_c.post(url, corps, format='json'),
+                     api_c.patch(f'{url}{rapport.pk}/',
+                                 {'recipients': 'x@libre.ma'}, format='json')):
+            self.assertEqual(resp.status_code, 403, resp.content)
+            self.assertEqual(str(resp.data['detail']),
+                             'Accès au jeu de données refusé.')
+        self.assertEqual(list(SavedReport.objects.filter(owner=commercial)
+                              .values_list('pk', 'recipients')),
+                         [(rapport.pk, 'direction@taqinor.ma')])
+        self.assertEqual(api_d.post(url, corps, format='json').status_code, 201)
+
+        envoyer = mock.Mock(return_value=True)
+        with frozen(LUNDI_06H), \
+                mock.patch.object(scheduled_reports, '_is_email_configured',
+                                  return_value=True), \
+                mock.patch.object(scheduled_reports, '_send_report_email',
+                                  envoyer):
+            # Seul l'envoi du Directeur part ; celui du Commercial responsable, non.
+            self.assertEqual(scheduled_reports.email_saved_reports(), 1)
+        self.assertNotIn(rapport.pk, [c.args[0].pk for c in envoyer.call_args_list])
+        self.assertEqual(
+            list(EnvoiRapport.objects.filter(saved_report=rapport)
+                 .values_list('statut', 'erreur')),
+            [('echec', "Le propriétaire n'a pas le droit d'export du stock : "
+                       'envoi suspendu.')])
+        lien = self.client.get('/api/django/reporting/rapports-partages/'
+                               f'{make_report_token(rapport)}/')
+        self.assertEqual(lien.status_code, 404)
+
+        stock = '/api/django/reporting/reports/stock/'
+        resp = api_c.get(stock, {'export': 'xlsx'})
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(resp.data['code'], 'droit_manquant')
+        self.assertIn('stock_export', str(resp.data['detail']))
+        self.assertEqual(api_c.get(stock).status_code, 200)
+        self.assertEqual(api_d.get(stock, {'export': 'xlsx'}).status_code, 200)
 
     def test_patch_destinataires_d_une_requete_stock_exige_stock_export(self):
         """ADRG147 — l'export du jeu est exigé à CHAQUE écriture d'un rapport

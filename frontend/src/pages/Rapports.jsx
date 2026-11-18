@@ -123,7 +123,7 @@ function Subhead({ children }) {
 
 // Carte de rapport T13/T14/T15 (export Excel via le chemin /reports/<kind>/).
 // `params` (période) est transmis à l'export pour qu'il honore le filtre.
-function ReportCard({ title, kind, params, children }) {
+function ReportCard({ title, kind, params, exportable = true, children }) {
   const onExport = () => api
     .get(`/reporting/reports/${kind}/`,
       { params: { ...(params || {}), export: 'xlsx' }, responseType: 'blob' })
@@ -133,9 +133,11 @@ function ReportCard({ title, kind, params, children }) {
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-3">
         <CardTitle>{title}</CardTitle>
-        <Button variant="outline" size="sm" onClick={onExport}>
-          <Download /> Exporter Excel
-        </Button>
+        {exportable && (
+          <Button variant="outline" size="sm" onClick={onExport}>
+            <Download /> Exporter Excel
+          </Button>
+        )}
       </CardHeader>
       <CardContent>{children}</CardContent>
     </Card>
@@ -178,6 +180,7 @@ const SCHEDULE_LABELS = { none: 'Aucune', daily: 'Quotidien', weekly: 'Hebdomada
 function SavedReportForm({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || '')
   const [kind, setKind] = useState(initial?.target_kind || 'sales')
+  const sansExportStock = !useDroitMetier('stock_export') // ADRG158 / D-ADRG-15
   const [schedule, setSchedule] = useState(initial?.schedule || 'none')
   const [recipients, setRecipients] = useState(initial?.recipients || '')
   const [pinned, setPinned] = useState(initial?.pinned || false)
@@ -211,8 +214,8 @@ function SavedReportForm({ initial, onSave, onCancel }) {
           <label className="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
           <select value={kind} onChange={e => setKind(e.target.value)}
                   className="h-9 rounded-md border border-input bg-card px-2 text-sm">
-            {Object.entries(KIND_LABELS).map(([v, l]) =>
-              <option key={v} value={v}>{l}</option>)}
+            {Object.entries(KIND_LABELS).map(([v, l]) => (v === 'stock' && sansExportStock
+              ? <option key={v} value={v} disabled>{`${l} (droit d'export du stock requis)`}</option> : <option key={v} value={v}>{l}</option>))}
           </select>
         </div>
         <div>
@@ -462,6 +465,7 @@ export function Component() {
   const palierResp = useIsAdminOrResponsable()
   // ADRG125 — chaque carte suit la règle de sa route (IsResponsableOrAdmin + lecture du module).
   const peutVentes = useCanLireVentes(), peutStock = useDroitMetier('stock_voir')
+  const peutExporterStock = useDroitMetier('stock_export') // ADRG158 — sinon « reports/stock/?export » : 403
   const peutLireChantiers = useDroitMetier('installation_voir') && palierResp
   // ADRG138 — attribution (crm), revenu récurrent (sav), analytics (ventes) : IsResponsableOrAdmin + lecture du module.
   const droitCrm = useDroitMetier('crm_voir'), droitSav = useDroitMetier('sav_voir')
@@ -752,7 +756,7 @@ export function Component() {
         {/* ── Stock ── */}
         <TabsContent value="stock">
           {peutStock && renderReportCard('stock', 'Stock', () => (
-            <ReportCard title="Stock" kind="stock" params={periodParams}>
+            <ReportCard title="Stock" kind="stock" params={periodParams} exportable={peutExporterStock}>
               <p className="text-sm">
                 Valorisation (vente) : <strong className="tabular-nums">{fmt(stock.valorisation_vente)} DH</strong>
                 {/* AANA26 — clé servie seulement à can_view_buy_prices. */}
