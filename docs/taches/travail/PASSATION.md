@@ -471,6 +471,48 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
   restent), 12 Go libres. Trois worktrees verrouillés restent (lanes pliées). Les piles écrivent des `test-results`
   et des `dist` : les supprimer entre deux jeux.
 
+**Point de 05 h 40 UTC (18/11) — fusion 2 acceptée, relecture finale rendue, passe visuelle rendue**
+
+- **Fusion 2 — ACCEPTATION JOUÉE ET VERTE.** Rejeu officiel par l'orchestrateur sur base MIGRÉE : **36 étapes sur 36**
+  (14,3 min). Enregistrement `docs/audits/acceptation/TCH/2026-11-18-eb9458741.md` (verdict PASS, 35 captures), commité
+  dans `842487ee29` avec TCH136 à TCH140, TCH144 et TCH94 COCHÉES. Poussé à 05 h 11 ; la CI de #1454 tourne sur cette
+  tête (à 05 h 20 : 9 verts, 23 en cours, 0 rouge). **Au vert : `update_pull_request(draft=false)` puis
+  `enable_pr_auto_merge(mergeMethod=MERGE)`** (file de merge) et dire à Reda « mergé — à déployer par toi :
+  `scripts/deploy-prod.ps1`, ~2 min ». Un premier essai du rejeu avait été cassé par l'outillage (voir « faketime »).
+- **Relecture adverse finale (3e et dernière passe Fable)** sur `dev-taches-f4` : **0 bloquant, 1 majeur, 2 mineurs**,
+  tous dans des fichiers nés en fusion 3 ; **aucun constat sur la fusion 2**. Rapport : `revue-code-finale.md` (ce
+  dossier). Corrigés et pliés dans `merge/f2-dans-f3` : n° 1 (la carte de collage du Copilote montre les puces de ce
+  qu'elle crée — jour, heure, priorité, rappel — et ne crée plus les lignes que le serveur rend décochées), n° 2 (la
+  carte à valider dit « Projet : {nom} »), n° 3 (`core/chemins_sensibles` ne remplace plus les arguments d'un journal
+  par un `dict` nu).
+- **Fusion 3** : `8847dec041` poussé à 05 h 35 AVEC le workflow temporaire → 2e run du vrai assistant en cours. Ce que
+  la CI du 1er push avait rougi, tout corrigé : gardes de crm (retirées avec le code), un saut d'environnement neuf
+  (retiré : `scripts/exceptions_permanentes.yml` ne peut que rétrécir, garde C20 — il est revenu au texte de main),
+  empreinte du CODEMAP, **budget du bundle 3815 → 3825 Ko** (mesure 3818,7 Ko, note datée dans le script). Suite :
+  lire le run, fusionner le commit d'enregistrement du job, RETIRER les trois fichiers temporaires, repousser, cocher
+  TCH141, TCH171, TCH143 puis TCH135.
+- **Fusion 4** : `b95a46a99f` poussé à 05 h 35. Corrigé pour la CI : erreur avalée dans `BoutonTachesIci` (« Pas à
+  jour »), bloc de test recopié (aide partagée `projets/rectanglesDeTest.js`), test de forme de « Mes activités »
+  (`useTachesActives`). Bundle mesuré 3843,4 Ko (budget 3850). L'agent de la spec `tch3.spec.js` (`a6742cf6e0d0605ff`,
+  pile n° 3) travaille encore.
+- **PASSE VISUELLE RENDUE : 65 écarts** (12 bloquants, 38 visibles, 15 mineurs) — `passe-visuelle.md` et le TRI de
+  l'orchestrateur `passe-visuelle-triage.md` (ce dossier : décisions, ce qui n'est pas un écart, quatre groupes).
+  Vérifié de mes yeux sur Aujourd'hui (matin, iPhone) : la ligne de tâche est désalignée et s'étale sur plus de lignes
+  que la maquette. **Décision D-V1 prise seul** : les tâches faites restent repliées dans « Faites » (référence et
+  contrat) alors que la maquette de 15 h les montre barrées à leur place ; seule l'essentielle faite doit rester dans
+  Essentiel (la référence le dit, le code ne le fait pas). À DIRE à Reda : c'est un choix de règle qu'il peut inverser.
+  Deux lanes opus lancées à 05 h 30 sur `dev-taches-f4` : **V-A** (`a293d8eac4ae752b7`, branche `lane/v-a-journee`,
+  pile n° 1 : lignes, Aujourd'hui, bilan) et **V-B** (`a6a2d5e4a234237fe`, branche `lane/v-b-fiche`, pile n° 2 : fiche,
+  saisie, À trier, recherche). RESTENT à lancer quand une pile se libère : **V-C** (agenda, planifier, projets, projet,
+  rythme, revue, réglages) et **V-D** (Copilote, Mon iPhone, `locale: 'fr-FR'` des captures), puis recapturer sur la
+  fusion 4 les écrans pris en chargement et le bureau, et rejouer les trois specs d'acceptation sur la fusion 4.
+- **faketime** : `/dev/shm` portait 836 fichiers de `faketime` morts ; un lanceur qui reçoit le pid d'un ancien échoue
+  (« sem_open: File exists ») et le Django de la pile meurt. `pile.sh` et `ia-f3.sh` appellent maintenant
+  `/opt/taches-cloud/faketime-nettoyer.sh` (copié dans `cloud/`) avant chaque lancement sous horloge figée.
+- **Suites des trois branches** : aussi `node --test "src/**/*.test.mjs"` depuis `frontend/` (4 551 tests ; le job
+  frontend-static de la CI les joue, ma batterie locale non). Sur cette machine le test CAL224 (poids du module
+  calepinage) rougit à cause du build local ; il est vert en CI.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
