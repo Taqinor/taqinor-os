@@ -50,7 +50,8 @@ import { fetchProduits } from '../features/stock/store/stockSlice'
 import { fetchClients, fetchLeads } from '../features/crm/store/crmSlice'
 import { fetchDevis, fetchFactures } from '../features/ventes/store/ventesSlice'
 import { useDeviseTenant } from '../hooks/useDeviseTenant'
-import { useCanLireVentes, useCanLireEquipesCrm, useCanLireTableauDeBord, useHasPermission } from '../hooks/useHasPermission'
+import { useCanLireVentes, useCanLireEquipesCrm, useCanLireTableauDeBord } from '../hooks/useHasPermission'
+import { useTachesActives } from '../features/taches/presence/useTachesActives'
 import useDroitMetier from '../features/sav/useDroitMetier'
 import { fetchInstallations } from '../features/installations/store/installationsSlice'
 // VX27 — cockpit du matin par rôle : le SAV réutilise les helpers de statut/SLA
@@ -482,7 +483,7 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const peutLireVentes = useCanLireVentes()
-  const peutTaches = useHasPermission('taches_voir')
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   const peutLireEquipes = useCanLireEquipesCrm()
   const lectures = lecturesAccueil({
     peutLireVentes, peutLireCrm: useDroitMetier('crm_voir'), peutLireTableau: useCanLireTableauDeBord(),

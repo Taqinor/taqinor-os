@@ -132,7 +132,7 @@ describe("CockpitHome — « À faire aujourd'hui » : la tournée selon le droi
 
 // TCH126 — la carte « Tâches · Aujourd'hui » de l'accueil mobile : avec `taches_voir` seulement.
 describe("CockpitHome — TCH126 : carte des tâches selon le droit", () => {
-  const compte = (permissions) => ({ user: { id: 3, portee: 'interne' }, role: 'responsable', role_nom: 'Commercial responsable', permissions })
+  const compte = (permissions, modulesDesactives = []) => ({ user: { id: 3, portee: 'interne' }, role: 'responsable', role_nom: 'Commercial responsable', permissions, modulesDesactives })
 
   it('avec taches_voir : la carte s\'affiche et lit taches/aujourdhui/', async () => {
     renderPage(compte(['taches_voir']))
@@ -142,6 +142,13 @@ describe("CockpitHome — TCH126 : carte des tâches selon le droit", () => {
 
   it('sans taches_voir : aucune carte, aucune requête Tâches', async () => {
     renderPage(compte(['ventes_voir']))
+    expect(await screen.findByText('Chiffres clés')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()
+    expect(tachesApiMock.lireAujourdhui).not.toHaveBeenCalled()
+  })
+
+  it('F4 revue #15 — avec taches_voir mais le module Tâches éteint pour la société : aucune carte, aucune requête Tâches', async () => {
+    renderPage(compte(['taches_voir'], ['taches']))
     expect(await screen.findByText('Chiffres clés')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()
     expect(tachesApiMock.lireAujourdhui).not.toHaveBeenCalled()

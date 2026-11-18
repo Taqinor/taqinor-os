@@ -16,7 +16,7 @@ import {
   CarteContenu,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
-import { useHasPermission } from '../../../hooks/useHasPermission'
+import { useTachesActives } from '../../taches/presence/useTachesActives'
 import { formatMAD, formatNumber } from '../../../lib/format'
 import AFaireAujourdhui from './AFaireAujourdhui'
 import OnboardingTerrain from '../OnboardingTerrain'
@@ -36,7 +36,7 @@ const SOURCE_LABELS = {
 export default function CockpitHome() {
   const isMobile = useIsMobile()
   const navigate = useNavigate()
-  const peutTaches = useHasPermission('taches_voir')
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   const [kpis, setKpis] = useState(null)
   const [approbations, setApprobations] = useState(null)
 

@@ -15,6 +15,41 @@ export function compteEtape(compteurs) {
   return Number.isInteger(faites) && Number.isInteger(total) && total > 0 ? `${faites} sur ${total}` : ''
 }
 
+/* Compteurs d'étape tenus à jour APRÈS un geste (déplacer une carte, cocher, rouvrir, puis « Annuler ») : la règle
+   est celle du serveur, écrite dans `backend/django_core/apps/taches/selectors/projets.py::_compteurs` — une tâche
+   SANS parent et non annulée compte ; « ouvertes » = à faire ou en attente, « faites » = faite. Appliquée aux seules
+   cartes qui bougent ; un compteur que le serveur n'a pas servi n'est jamais inventé. */
+const OUVERTS = ['a_faire', 'en_attente']
+const genreDe = (statut) => (OUVERTS.includes(statut) ? 'ouvertes' : statut === 'fait' ? 'faites' : null)
+
+function bougerCompteurs(compteurs, de, vers, deplace) {
+  if (!compteurs || !Number.isInteger(compteurs.ouvertes) || !Number.isInteger(compteurs.faites)) return compteurs
+  const suite = { ...compteurs }
+  if (de) suite[de] = Math.max(0, suite[de] - 1)
+  if (vers) suite[vers] += 1
+  if (deplace && Number.isInteger(suite.total)) suite.total += deplace
+  return suite
+}
+
+/** `vue` avec `fn` appliquée aux compteurs de l'étape `sectionId` (`null` : « Sans étape »). */
+function surCompteurs(vue, sectionId, fn) {
+  if (sectionId == null) return { ...vue, sans_section_compteurs: fn(vue.sans_section_compteurs) }
+  return { ...vue, sections: (vue.sections ?? []).map((s) => (s.id === sectionId ? { ...s, compteurs: fn(s.compteurs) } : s)) }
+}
+
+/** La carte `item` quitte l'étape `deId` pour `versId` (`null` : « Sans étape ») : ses compteurs suivent. */
+export function compteursApresDeplacement(vue, item, deId, versId) {
+  const genre = genreDe(item?.statut)
+  if (deId === versId || item?.parent_id != null || !genre) return vue
+  return surCompteurs(surCompteurs(vue, deId, (c) => bougerCompteurs(c, genre, null, -1)), versId, (c) => bougerCompteurs(c, null, genre, 1))
+}
+
+/** La carte `item` (de l'étape `sectionId`) devient faite (`faite`) ou rouverte : ouvertes ↔ faites de SON étape. */
+export function compteursApresStatut(vue, item, sectionId, faite) {
+  if (item?.parent_id != null || item?.statut === 'annule') return vue
+  return surCompteurs(vue, sectionId, (c) => bougerCompteurs(c, faite ? 'ouvertes' : 'faites', faite ? 'faites' : 'ouvertes', 0))
+}
+
 const iso = (valeur) => (typeof valeur === 'string' && valeur ? valeur.slice(0, 10) : null)
 
 /** Toutes les tâches chargées d'une vue : les étapes, puis « Sans étape ». */
@@ -73,6 +108,10 @@ export function etapesDuProjet(vue) {
   const sans = nombre(vue?.sans_section_compteurs)
   return sans > 0 ? [...lignes, { nom: 'Sans étape', n: sans }] : lignes
 }
+
+/** Les NOMS des étapes d'un projet lu, sans leur nombre : celui du projet n'est pas celui d'une copie (tâches
+ *  confidentielles écartées, sous-tâches comprises) ; le nombre d'une copie vient de l'aperçu du serveur. */
+export const nomsDesEtapes = (vue) => etapesDuProjet(vue).map(({ nom }) => ({ nom, n: null }))
 
 /** Le premier jour daté d'un aperçu d'instanciation (`modele_instancier.json`), ou `null` sans aucune date. */
 export function premiereDate(apercu) {

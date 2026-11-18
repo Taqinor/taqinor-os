@@ -8,6 +8,7 @@ import {
   annulerGeste, classerErreur, creerVue, listerToutesLesEtiquettes, listerTousLesProjets, listerVues, rouvrirTache,
   terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
@@ -250,7 +251,10 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     if (suivant) {
       proposerAnnuler({
         message: 'Faite',
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); majLigne(item.id, { statut: 'a_faire' }) } : undefined,
+        onAnnuler: data?.geste_id ? async () => {
+          const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : la ligne garde celle du serveur
+          majLigne(item.id, { statut: 'a_faire', lock_version: versionDe(retour, item.id, item.lock_version) })
+        } : undefined,
       })
     }
   }

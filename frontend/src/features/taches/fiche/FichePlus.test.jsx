@@ -53,6 +53,21 @@ afterEach(() => {
 })
 
 describe('TCH85 — fiche → Plus', () => {
+  it('F4 revue #17 — l\'ordre des lignes est celui de la référence (textes.md, « Plus »)', async () => {
+    const user = userEvent.setup()
+    api.lireTache.mockResolvedValue({ data: { ...tache, lien: { etat: 'ok', libelle: 'Devis D-2026-0042', url: '/ventes/devis/42' } } })
+    monter()
+    await ouvrirPlus(user)
+    const plus = document.querySelector('.fiche-plus')
+    const texte = plus.textContent
+    const place = (mot) => texte.indexOf(mot)
+    // Rappel · Répéter · Étiquettes · Durée · En attente de… · Jalon · Lié à · Confidentielle · Sous-tâches
+    const ordre = ['Rappel', 'Répéter', 'Étiquettes', 'Durée', 'En attente de', 'Jalon', 'Lié à', 'Confidentielle']
+    const places = ordre.map(place)
+    expect(places.every((i) => i >= 0)).toBe(true)
+    expect([...places].sort((x, y) => x - y)).toEqual(places)
+  })
+
   it('rappel : posé sur l\'échéance ; la question du titre (1er rappel) écrit PATCH reglages/', async () => {
     const user = userEvent.setup()
     api.poserRappel.mockResolvedValue({ data: { ...ecrite, question_titres: true, rappel: { jour: '2026-11-19', heure: '09:00' } } })

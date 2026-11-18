@@ -20,7 +20,7 @@ import MaintenanceBanner from '../../ui/MaintenanceBanner'
 import coreApi from '../../api/coreApi'
 import { reabonnerPushSiAutorise } from '../../features/pwa/pushSubscribe'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useTachesActives } from '../../features/taches/presence/useTachesActives'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
@@ -71,7 +71,7 @@ export default function Layout({ children }) {
   const userId = useSelector(s => s.auth.user?.id)
   const profile = useSelector(s => s.parametres.profile)
   const navigation = useNavigation()
-  const peutTaches = useHasPermission('taches_voir')
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   // VX57 — une fois `copilotOpen` vu vrai, on garde le panneau monté (le
   // fermer ne doit pas jeter son état/historique de conversation) ; tant
   // qu'il n'a jamais été ouvert, son chunk lazy n'est jamais demandé.
