@@ -381,6 +381,15 @@ jobs:
           docker exec "$C" python manage.py seed_demo > /tmp/seed2.log 2>&1 || tail -n 20 /tmp/seed2.log
           docker exec "$C" python manage.py seed_catalogue > /tmp/seed1.log 2>&1 || tail -n 20 /tmp/seed1.log
           echo "$C" > /tmp/conteneur.txt
+          docker compose exec -T db pg_dump -U erp_user -Fc erp_db -f /tmp/v10.dump && docker cp "$(docker compose ps -q db)":/tmp/v10.dump /tmp/testdb.dump && echo "dump ecrit" || echo "dump KO"
+      - name: Sauver la base migree (accelerateur des essais suivants)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
       - name: Rejouer les sondes comme les clauses le disent
         run: |
           set +e
