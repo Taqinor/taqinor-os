@@ -17,6 +17,8 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.notifications.models import Notification
+from apps.notifications.types_evenements import EventType
 from apps.taches import dsr
 from apps.taches.choix import (
     CanalIncitation,
@@ -221,6 +223,26 @@ class ToutEffacerTests(_Base):
         self.assertEqual(set(Tache.all_objects.values_list('pk', flat=True)), {du_voisin.pk, d_ailleurs.pk})
         activite.refresh_from_db()  # l'activité de l'ERP n'appartient pas à `taches` : intacte
         self.assertFalse(activite.done)
+
+    def test_efface_aussi_les_notifications_de_taches_du_compte(self):
+        """Revue F3 #10 : « Tes tâches, projets, réglages et jetons de cette société sont supprimés » —
+        la ligne de la cloche « Rappel · « <titre> » · 10 h » ne survit pas ; les autres notifications
+        de l'ERP, celles d'un autre compte et celles d'une autre société restent."""
+        def notification(compte, societe, type_, titre='Rappel', corps='« Rendez-vous banque » · 10 h'):
+            return Notification.objects.create(company=societe, recipient=compte, event_type=type_,
+                                               title=titre, body=corps)
+
+        for type_ in (EventType.TACHES_RAPPEL, EventType.TACHES_PLAN_DU_JOUR):
+            notification(self.u1, self.a, type_)
+        restent = [notification(self.u1, self.a, EventType.LEAD_ASSIGNED, 'Lead', 'Nouveau lead'),
+                   notification(self.u2, self.a, EventType.TACHES_RAPPEL),
+                   notification(self.u1, self.b, EventType.TACHES_RAPPEL)]
+
+        reponse = self._api().post(TOUT_EFFACER, {'confirmation': 'EFFACER'}, format='json')
+
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(reponse.json()['effacees'], {'notification': 2})
+        self.assertEqual(set(Notification.objects.values_list('pk', flat=True)), {n.pk for n in restent})
 
 
 def _il_y_a(jours, heure=12):
