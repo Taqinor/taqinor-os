@@ -342,7 +342,7 @@ class ConversationTests(_Base):
         self.tour_outil()
         etat = self.garde()
         self.assertEqual(set(etat), {"version", "modele", "empreinte_outils",
-                                     "messages"})
+                                     "messages", "contenu_tiers"})
         self.assertEqual(etat["modele"], MODELE)
         self.assertEqual([m["role"] for m in etat["messages"]],
                          ["user", "assistant", "user", "assistant"])
@@ -359,6 +359,36 @@ class ConversationTests(_Base):
         self.assertEqual(envoyes[-1]["content"], [_texte("Q2")])
         self.assertEqual(self.garde()["messages"][:len(avant)], avant)
         self.assertEqual(r["answer"], "R2")
+
+    def test_marque_a5_gardee_avec_la_conversation_et_dite_quand_elle_est_relue(self):
+        """Revue F3 #3 — la conversation gardée porte `contenu_tiers` (ce que dit l'appelant en fin de
+        tour ; sans appelant : marquée, échec fermé). Au tour suivant, `noter_relu_tiers` est appelé
+        AVANT le modèle si le passé relu (tel quel ou récapitulé) est marqué, ou s'il ne dit rien
+        (conversation gardée avant la correction)."""
+        relus = []
+
+        def tour(marque, question="Q"):
+            self.jouer([_rep([_texte("R")])], question=question, conversation=self.CONV,
+                       marque_du_tour=marque, noter_relu_tiers=lambda: relus.append(question))
+        tour(lambda: True, "Q1")
+        self.assertEqual((relus, self.garde()["contenu_tiers"]), ([], True))  # rien relu au 1er tour
+        tour(lambda: False, "Q2")
+        self.assertEqual((relus, self.garde()["contenu_tiers"]), (["Q2"], False))
+        tour(lambda: False, "Q3")
+        self.assertEqual(relus, ["Q2"])
+        etat = self.garde()
+        del etat["contenu_tiers"]  # conversation gardée avant la correction
+        self.redis.set(mn.CLE_CONVERSATION % self.CONV, json.dumps(etat))
+        tour(lambda: False, "Q4")
+        self.assertEqual(relus, ["Q2", "Q4"])
+        self.jouer([_rep([_texte("R")])], question="Q5", conversation=self.CONV)
+        self.assertIs(self.garde()["contenu_tiers"], True)  # appelant muet : marquée
+        self.redis.set(mn.CLE_CONVERSATION % self.CONV, json.dumps({**self.garde(), "modele": "autre"}))
+        tour(lambda: False, "Q6")  # repart d'un récapitulatif : le texte marqué est encore relu
+        self.assertEqual(relus, ["Q2", "Q4", "Q6"])
+        mn.effacer(self.CONV)
+        tour(lambda: False, "Q7")  # « Effacer » : plus rien de relu, la marque tombe
+        self.assertEqual(relus, ["Q2", "Q4", "Q6"])
 
     def test_rien_n_est_garde_si_le_tour_meurt_en_route(self):
         self.tour_outil()
