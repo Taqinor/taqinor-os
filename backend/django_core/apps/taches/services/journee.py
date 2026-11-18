@@ -771,7 +771,7 @@ def _bilan_chiffres(ctx, prog):
         variables['bas'], variables['haut'] = ctx.objectif['zone']
     lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
     return {'faites': ctx.compte, 'objectif': objectif,
-            'objectif_atteint': objectif is not None and ctx.compte >= objectif,
+            'objectif_atteint': bool(sel.objectif_atteint(ctx.compte, objectif)),
             'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
             'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
             'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
@@ -909,6 +909,10 @@ def _clore_pour(user, hier):
     plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
                                    plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
     plan.compte_rythme = compte
+    if plan.objectif_du_jour is None and hier in journee.travailles:
+        # Revue F2 tour 2 #4 : tout jour travaillé jugé porte SON objectif (jour court compris), pas
+        # seulement ceux où « Garder ces N » l'a posé ; un objectif déjà posé n'est jamais réécrit.
+        plan.objectif_du_jour = objectif_du_jour(journee.reglages, hier, preferences)['nb']
     plan.essentiels_choisis, plan.essentiels_faits = prog['essentiel_prevues'], prog['essentiel_faites']
     plan.plan_prevues, plan.plan_faites = prog['plan_lignes'], prog['plan_tenues']
     plan.minutes_prevues, plan.minutes_faites = prog['minutes_prevues'], _minutes_faites(user, hier)

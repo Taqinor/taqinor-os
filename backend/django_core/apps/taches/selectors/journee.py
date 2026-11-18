@@ -322,6 +322,13 @@ def objectif_en_vigueur(reglages):
             'zone': list(zone) if zone is not None else None}
 
 
+def objectif_atteint(compte, objectif):
+    """« Objectif atteint » (textes.md, lexique : compte ≥ objectif) : le bilan du soir d'un jour ET la
+    revue de la semaine qui le compte (revue F2 tour 2 #4) ; `None` sans objectif. Jamais la « journée
+    réussie » (essentiel compris, `moteur.rythme.journee_reussie`)."""
+    return None if objectif is None else compte >= objectif
+
+
 def preferences_de(user):
     """{clé: valeur} de toutes les préférences dites par `user` (une requête)."""
     return {ligne.cle: ligne.valeur for ligne in _du_compte(Preference, user)}

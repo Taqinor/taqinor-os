@@ -1115,6 +1115,22 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(services.aujourdhui(self.u, J, maintenant_a(18))['objectif']['nb'], 5)
         self.assertEqual(services.cloture(self.u, J, maintenant_a(18))['bilan']['texte'], '0 sur 5')
 
+    def test_4_la_nuit_pose_l_objectif_du_jour_juge_s_il_manque(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import rythme
+        from apps.taches.services.journee import clore_jour_precedent
+        vendredi, lundi = datetime.date(2026, 11, 20), datetime.date(2026, 11, 23)
+        fabriques.reglages(self.u)
+        rythme.poser_preference(self.u, 'jours_courts', [vendredi.weekday()], 'ecran')
+        for jour in (J, vendredi):
+            fabriques.tache(self.u, jour_prevu=jour, statut=StatutTache.FAIT, fait_le=a(jour, 10))
+        fabriques.plan(self.u, J, planifie_le=a(J, 8), objectif_du_jour=6)  # gardé : jamais réécrit
+        clore_jour_precedent(self.societe.pk, jours(1))
+        clore_jour_precedent(self.societe.pk, vendredi + datetime.timedelta(days=1))
+        clore_jour_precedent(self.societe.pk, lundi)  # dimanche : non travaillé, rien à juger
+        objectifs = dict(PlanJour.objects.filter(proprietaire=self.u).values_list('jour', 'objectif_du_jour'))
+        self.assertEqual(objectifs, {J: 6, vendredi: 4, datetime.date(2026, 11, 22): None})
+
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
         en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
         ouverte = self.tache(projet=en_pause, jour_prevu=J)

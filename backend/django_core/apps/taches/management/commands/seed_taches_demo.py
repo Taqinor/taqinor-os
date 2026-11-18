@@ -358,18 +358,18 @@ class Scenario:
         reglages.save(update_fields=['mode', 'palier', 'palier_source', 'bloc_debut', 'updated_at'])
 
     def jours_passes(self):
-        """Clôture les jours passés par la VRAIE étape de nuit (`clore_jour_precedent`), puis complète
-        directement, pour la revue de la semaine, l'objectif et les essentiels du plan clos (§5)."""
+        """Clôture les jours passés par la VRAIE étape de nuit (`clore_jour_precedent`, qui pose aussi
+        l'objectif du jour : revue F2 tour 2 #4), puis complète directement, pour la revue de la semaine,
+        les essentiels du plan clos (§5)."""
         retenus = RYTHME[len(RYTHME) - self.historique:] if self.historique else ()
         for jour_n, _total in retenus:
             jour = self.date(11, jour_n)
             with horloge(self.instant(jour + datetime.timedelta(days=1), '03:00')):
                 journee.clore_jour_precedent(self.user.company_id, jour + datetime.timedelta(days=1))
             plan = PlanJour.objects.get(company_id=self.user.company_id, proprietaire=self.user, jour=jour)
-            plan.objectif_du_jour = OBJECTIF
             choisis, faits = ESSENTIELS_PASSES.get(jour_n, (0, 0))
             plan.essentiels_choisis, plan.essentiels_faits = choisis, faits
-            plan.save(update_fields=['objectif_du_jour', 'essentiels_choisis', 'essentiels_faits', 'updated_at'])
+            plan.save(update_fields=['essentiels_choisis', 'essentiels_faits', 'updated_at'])
 
     def nuit_du_jour(self):
         """La nuit qui ouvre le 24 : clôt le 23 et pose les cartes du rythme (« Monter à 6 »)."""
