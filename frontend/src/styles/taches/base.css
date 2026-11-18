@@ -920,6 +920,20 @@
 .route-fade:has(> .tch) {
   animation-fill-mode: backwards;
 }
+/* Passe visuelle n° 52 — iPhone : le module va bord à bord comme les maquettes (390 px, gouttière 16) ; le
+   rembourrage de 0,9 rem du scrolleur de l'ERP (12-progression-mobile.css) le posait dans un cadre de 361 px, et un
+   titre de ligne qui tient sur une ligne en passait sur deux. Même idiome `:has()` que /apps (31-menu-apps.css) ;
+   le bas (barre d'onglets) et les zones sûres restent ceux de l'ERP. */
+@media (max-width: 768px) {
+  .layout-content:has(> .route-fade > .tch) {
+    padding-top: 0;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+/* …et le « filet noir de 1 px » autour du module était l'anneau de focus du scrolleur `main#contenu` (tabIndex −1,
+   focalisé par l'ERP à chaque navigation) : un conteneur non interactif ne montre pas d'anneau ; le focus y reste. */
+.layout-content:has(> .route-fade > .tch):focus { outline: none; }
 .tch .puce.icone {
   width: 44px; padding: 0; justify-content: center;
 }
