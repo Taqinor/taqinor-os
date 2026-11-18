@@ -205,7 +205,11 @@ const PER_CHUNK_BUDGET_KB = 350
 // sur l'arbre fusionné (voir commit).
 // 20/09/2026 (lot 3 du module Calepinage, mesure RÉELLE 3806,7 Ko sur dev-cal-3 : ~25 écrans/panneaux
 // lazy du module + mode terrain/ombrière/horizon/course du soleil de l atelier) : 3760 -> 3815.
-const TOTAL_BUDGET_KB = 3815
+// 18/11/2026 (module Tâches, fusion 3 : écran Mon iPhone, Réglages → Notifications, cartes Tâches du Copilote et
+// leurs cartes à valider, pastille) : mesure RÉELLE 3818,0 Ko sur le runner (job frontend-static du run 44235643878,
+// 3817,4 Ko sur l'arbre fusionné local). Gras prouvé absent : diff package.json vide. Budget monté au juste-dessus
+// de la mesure : 3815 -> 3820.
+const TOTAL_BUDGET_KB = 3820
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
