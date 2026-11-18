@@ -461,6 +461,33 @@ def sha_deploye():
             or '').strip() or None
 
 
+# Incident du 18/11/2026 : ``core/apps.py::ready()`` poussait aussi un marqueur
+# pour les ``python -c`` de la sonde interne et du prechauffage du deploy
+# (argv[0] vaut ``-c`` ou ``-``), si bien que le dernier marqueur n'etait pas
+# forcement celui de gunicorn. Seul un processus qui SERT en pose un desormais.
+SERVEURS_WEB = ('gunicorn', 'uvicorn', 'daphne')
+
+
+def est_processus_serveur(argv=None):
+    """Vrai pour un processus qui SERT : gunicorn/uvicorn/daphne, un worker ou
+    beat celery, ``manage.py runserver``. Faux pour ``python -c``, ``python -``,
+    toute autre commande de gestion (migrate, test, shell...) et pytest."""
+    import os
+    import sys
+    argv = list(sys.argv if argv is None else argv)
+    if not argv or not argv[0]:
+        return False
+    chemin = argv[0].replace('\\', '/')
+    nom = os.path.basename(chemin)
+    if nom == '__main__.py':  # ``python -m gunicorn`` / ``python -m celery``
+        nom = os.path.basename(os.path.dirname(chemin))
+    if nom in SERVEURS_WEB:
+        return True
+    if nom == 'celery':
+        return 'worker' in argv[1:] or 'beat' in argv[1:]
+    return nom == 'manage.py' and argv[1:2] == ['runserver']
+
+
 def enregistrer_demarrage():
     """Pousse ``{ts, sha}`` dans ``erp:demarrages`` (borne a 50). Jamais bloquant."""
     import json

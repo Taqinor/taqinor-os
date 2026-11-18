@@ -39,6 +39,13 @@ OUVERT tant que Reda n'a pas relancé la séquence COURANTE (voir « Remède »)
   `ssh -i $env:USERPROFILE\.ssh\taqinor_hetzner root@178.105.192.116 "cd /opt/taqinor-os && git fetch origin main && git show origin/main:scripts/auto-deploy.sh > /opt/autodeploy/auto-deploy.sh.neuf && chmod +x /opt/autodeploy/auto-deploy.sh.neuf && mv /opt/autodeploy/auto-deploy.sh.neuf /opt/autodeploy/auto-deploy.sh && rm -f /opt/autodeploy/commit_en_echec && systemctl start taqinor-autodeploy.service; tail -n 12 /opt/autodeploy/deploy.log"`
   (c'est exactement ce que fait le `deploy-prod.ps1` courant) ; puis mettre à jour le dossier local (`git pull` sur `main`).
 
+- Garde-fous posés dans le DÉPÔT le 18/11 (actifs au prochain deploy de Reda avec la séquence courante) : l'étape
+  `commit_servi` d'`auto-deploy.sh` exige `dernier_demarrage.sha` = commit déployé (sinon ÉCHEC + retour arrière) ;
+  le marqueur n'est plus posé par les `python -c` du deploy (`core/health.py::est_processus_serveur`) ; `wsgi.py`
+  charge les routes au démarrage (plus d'import requête par requête) ; un crochet git `reference-transaction` posé
+  par la séquence fait mourir une vieille copie de `deploy-prod.ps1` à son `git reset`, avant tout build
+  (contournement conscient : `TAQINOR_SEQUENCE_DEPLOY=1 git …`) ; le skill `problemes-prod` compte les pages nues.
+
 **How to apply :** après un deploy de Reda, vérifier de l'extérieur que le BACKEND sert le commit attendu, pas seulement
 le front, avant d'écrire « en ligne » : (1) une adresse née du dernier merge backend répond 401 sans connexion, pas
 404 ; (2) aucune page nue de gunicorn sur 30 appels à `health/ready` ; (3) `health/ready` → `dernier_demarrage.sha` porte

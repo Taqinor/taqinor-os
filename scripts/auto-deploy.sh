@@ -55,6 +55,44 @@ rien_a_deployer() { [ "$ZERO_DOWNTIME" = "1" ] && log "zéro-coupure demandée, 
 
 cd "$REPO" || { log "ERREUR: dépôt $REPO introuvable"; exit 1; }
 
+# ── GARDE CONTRE UNE COPIE ANCIENNE DU DEPLOY MANUEL (incident 18/11/2026) ──
+# Un `deploy-prod.ps1` d'avant le 10/11 (ADCG1), lancé depuis un dossier local
+# pas à jour, embarque sa propre séquence : `git reset --hard origin/main` puis
+# build, sans redémarrer Django quand seul le front est reconstruit — Django a
+# servi le code de la veille et 47 % des appels sont tombés. On ne maîtrise que
+# le serveur : ce crochet git y refuse tout déplacement de HEAD ou d'une branche
+# de /opt/taqinor-os hors de CETTE séquence (variable posée ci-dessous). La
+# vieille copie meurt donc à son `git reset` (sous `set -e`), avant tout build,
+# avec la consigne. `git fetch`, `git show`, `git log` restent libres. Contourner
+# à la main (geste conscient) : TAQINOR_SEQUENCE_DEPLOY=1 git …
+export TAQINOR_SEQUENCE_DEPLOY=1
+installer_garde_git() {
+  local dossier
+  dossier=$(git rev-parse --git-path hooks 2>/dev/null)
+  [ -n "$dossier" ] || dossier=.git/hooks
+  mkdir -p "$dossier" && cat > "$dossier/reference-transaction" <<'GARDE'
+#!/bin/sh
+# Posé par scripts/auto-deploy.sh (incident 18/11/2026) — ne pas modifier ici.
+[ "$1" = prepared ] || exit 0
+[ "${TAQINOR_SEQUENCE_DEPLOY:-}" = 1 ] && exit 0
+zero=0000000000000000000000000000000000000000
+refus=0
+while read -r ancien neuf ref; do
+  case "$ref" in HEAD|refs/heads/*) ;; *) continue ;; esac
+  [ "$ancien" = "$zero" ] || [ "$ancien" = "$neuf" ] || refus=1
+done
+[ "$refus" = 0 ] && exit 0
+cat >&2 <<'MSG'
+REFUS : /opt/taqinor-os n'avance que par la séquence de deploy du serveur.
+Votre copie de scripts/deploy-prod.ps1 est ANCIENNE (avant le 10/11/2026) : rien n'a été modifié.
+À faire : sur votre PC, `git pull` sur main, puis relancer `powershell -File scripts/deploy-prod.ps1`.
+MSG
+exit 1
+GARDE
+  chmod +x "$dossier/reference-transaction"
+}
+installer_garde_git || log "AVERTISSEMENT: garde git (reference-transaction) non posée"
+
 # ADCG12 — trace d'un ÉCHEC dans le journal des problèmes (Redis erp:deploys_en_echec, lu par
 # apps/reporting/journal_problemes.py::_deploys_en_echec), best-effort. ADCG110 : un fetch
 # en échec y est consigné UNE fois par série (marqueur effacé au fetch revenu), sha = déployé.
@@ -383,6 +421,31 @@ if [ "$ok" = "1" ]; then
     sleep "${PAUSE_SANTE:-6}"
   done
   [ "$CODE_HTTP" = "200" ] || { log "AVERTISSEMENT: health/ready HTTP ${CODE_HTTP:-aucune réponse}"; ok=0; }
+fi
+
+# ── LE BACKEND SERT-IL LE COMMIT DÉPLOYÉ ? (incident 18/11/2026) ──────────
+# Un health/ready à 200 ne dit pas QUEL code Django sert : le 18/11, le front du
+# jour tournait et Django servait la veille (route neuve en 404, 47 % de pages
+# nues de gunicorn). Le maître gunicorn pose au démarrage le marqueur
+# `dernier_demarrage` avec DEPLOYED_SHA (core/health.py::sha_deploye ; un
+# `python -c` du deploy n'en pose plus) : il doit porter $NEW, sinon Django n'a
+# pas redémarré sur le code neuf.
+sha_servi() {
+  curl -sS --resolve "$HOTE_SANTE:443:127.0.0.1" "$URL_SANTE" 2>/dev/null | tr -d ' \n\r' \
+    | sed -n 's/.*"dernier_demarrage":{[^}]*"sha":"\([0-9a-f]*\)".*/\1/p'
+}
+etape commit_servi
+if [ "$ok" = "1" ]; then
+  SHA_SERVI=""
+  for _ in 1 2 3 4 5; do
+    SHA_SERVI=$(sha_servi)
+    [ "$SHA_SERVI" = "$NEW" ] && break
+    sleep "${PAUSE_SANTE:-6}"
+  done
+  if [ "$SHA_SERVI" != "$NEW" ]; then
+    log "AVERTISSEMENT: Django ne sert pas le commit déployé (health/ready dernier_demarrage.sha = « ${SHA_SERVI:-nul} », attendu $SHORT) : il n'a pas redémarré sur le code neuf. À faire : relancer scripts/deploy-prod.ps1 depuis un dossier à jour (git pull sur main) ; si cela revient, voir docs/production.md « Le backend sert-il le commit déployé ? »"
+    ok=0
+  fi
 fi
 
 # NTPLT57 — bascule SANS coupure (opt-in, drapeau du deploy manuel) : scale à 2

@@ -42,8 +42,24 @@ construise. Conception : `docs/boucle-problemes-quotidienne.md` ; capture serveu
 
 ## ETAPE 1 — Lire (4 sources, toutes en lecture)
 
-1. `GET {base_url}/api/django/health/ready/` : etat des services, `dernier_demarrage`
-   (horodatage + sha, BPQ2). Un service `down` est un constat en soi.
+1. `GET {base_url}/api/django/core/health/ready/` : etat des services, `dernier_demarrage`
+   (horodatage + sha, BPQ2). Un service `down` est un constat en soi. Deux controles de plus
+   (incident du 18/11/2026 : Django servait le code de la veille, ~47 % de pages nues) :
+   - **Page nue de gunicorn** : appelle `health/ready` 30 fois (une par seconde). Une seule
+     reponse 500 de ~141 octets SANS en-tete `x-request-id` (corps « Internal Server Error »,
+     hors gestion d'erreur de Django) est un constat **Critical** : `Signature:
+     deploy|GET|/api/django/core/health/ready/|500|page-nue-gunicorn`, avec le nombre sur 30.
+   - **Commit servi** : `dernier_demarrage.sha` **nul** est un constat **Critical**
+     (`Signature: deploy|GET|/api/django/core/health/ready/|200|sha-servi-nul`) : la sequence de
+     deploy courante l'ecrit toujours, nul = deploy hors sequence ou Django jamais redemarre.
+     Non nul : compare-le au dernier merge backend (`git log -1 --format=%H origin/main --
+     backend/`). S'il n'en est pas l'ancetre-ou-egal (`git merge-base --is-ancestor <merge> <sha>`
+     faux), ecris dans la ligne d'intake « Django sert <sha9> ; N merges backend pas encore servis
+     (le plus ancien du <date>) » — une information, pas une ligne ERR-PROD (le deploy est manuel
+     depuis le 17/11 : seul Reda sait ce qu'il a lance). Elle devient un constat **High**
+     (`Signature: deploy|GET|/api/django/core/health/ready/|200|sha-servi-different`) quand la
+     page nue de gunicorn est vue le meme matin : code melange sur le serveur. Remede a citer :
+     `docs/production.md` « Le backend sert-il le commit deploye ? ».
 2. `GET {base_url}/api/django/reporting/problemes/resume/?jours=1&tri=1` (contrat :
    `backend/django_core/apps/reporting/contract_samples/problemes_resume.json`). Chaque ligne
    porte genre, methode, route, statut, code, nombre, personnes, classe, tendance et un
