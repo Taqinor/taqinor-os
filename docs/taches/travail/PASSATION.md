@@ -810,6 +810,11 @@ README (relances en double avant d'ouvrir à un commercial, écarts d'apparence,
 - Reste à Reda : mettre à jour le script du portable (`git fetch origin main` puis
   `git checkout origin/main -- scripts/deploy-prod.ps1`) avant d'y redéployer.
 
+**18/11/2026, 17 h 00 UTC — #1471 FUSIONNÉE (`main` = `0f6b4bd38a`)** : le script de deploy ne peut plus répondre
+« le backend n'a pas bougé » sur un gros lot. Prend effet au prochain deploy (la séquence est réinstallée depuis
+`origin/main` à chaque lancement). Rien d'ouvert côté session ; restent à Reda le redémarrage à la main de `fastapi_ia`
+(ligne donnée) et la mise à jour du script de son portable.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
