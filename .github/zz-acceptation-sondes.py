@@ -45,7 +45,7 @@ def juger(lignes):
 
 def juger_hote(chemin):
     texte = open(chemin, encoding='utf-8', errors='replace').read() if os.path.exists(chemin) else ''
-    m = re.search(r'^repro: (True|False)', texte, re.M)
+    m = re.search(r"^\{?['\"]?repro['\"]?: (True|False)", texte, re.M)
     code = re.search(r'^code : (\d+)', texte, re.M)
     return {'repro': {'True': True, 'False': False}.get(m.group(1)) if m else None,
             'code': code.group(1) if code else '?', 'traceback': 'Traceback' in texte}
