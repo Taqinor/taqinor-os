@@ -897,6 +897,13 @@ class RestaurerTests(BaseApi):
         self.assertIsNone(reponse.json()['tache']['parent_id'])
         self.assertEqual((_relue(enfant).is_deleted, _relue(enfant).parent_id), (False, None))
 
+    def test_restaurer_un_parent_supprime_garde_ses_sous_taches_attachees(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        self._api().delete(f'{URL}taches/{parent.pk}/')
+        self._post(f'taches/{parent.pk}/restaurer/')
+        self.assertEqual((_relue(enfant).is_deleted, _relue(enfant).parent_id), (False, parent.pk))
+
     def test_restaurer_une_sous_tache_dont_le_parent_est_vivant_la_garde_attachee(self):
         parent = fabriques.tache(self.u1)
         enfant = fabriques.tache(self.u1, parent=parent)

@@ -336,6 +336,16 @@ class GesteTests(TestCase):
         self.assertIsNone(relue.parent_id)
         self.assertIn(enfant.pk, [t.pk for t in taches_de(self.u1)])
 
+    def test_annuler_la_suppression_d_un_parent_garde_ses_sous_taches_attachees(self):
+        from apps.taches.services.taches import supprimer_tache
+        parent = fabriques.tache(self.u1)
+        enfants = [fabriques.tache(self.u1, parent=parent) for _ in range(2)]
+        geste = supprimer_tache(self.u1, parent.pk)
+        annuler_geste(self.u1, geste.pk)
+        self.assertTrue(Tache.objects.filter(pk=parent.pk).exists())
+        for enfant in enfants:
+            self.assertEqual(Tache.objects.get(pk=enfant.pk).parent_id, parent.pk)
+
     def test_sous_tache_restauree_dont_le_parent_est_vivant_reste_attachee(self):
         parent = fabriques.tache(self.u1)
         enfant = fabriques.tache(self.u1, parent=parent)
