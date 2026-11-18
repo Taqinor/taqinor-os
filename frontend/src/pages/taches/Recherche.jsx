@@ -113,7 +113,7 @@ function Groupe({ titre, lignes, ...rappels }) {
     <section className="section" aria-label={`${titre} (${lignes.length})`}>
       <h2 className="section-titre"><span>{`${titre} (${lignes.length})`}</span></h2>
       <div className="liste" role="list">
-        {lignes.map((item) => <LigneTache key={`${item.type}:${item.id}`} item={item} {...rappels} />)}
+        {lignes.map((item) => <LigneTache key={`${item.type}:${item.id}`} item={item} contexte="recherche" {...rappels} />)}
       </div>
     </section>
   )
@@ -378,8 +378,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         </div>
       ) : null}
 
-      <Groupe titre="Ouvertes" lignes={ouvertes} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
-      <Groupe titre="Faites" lignes={faitesLignes} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      {/* passe visuelle n° 46 (recherche.html) : le mot cherché surligné, la méta de statut de chaque résultat */}
+      <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
 
       {rien ? (
         <div className="vide-etat">

@@ -48,6 +48,8 @@
 .tch .es-filtres ~ .recherche-replies { margin: 10px var(--tch-gouttiere) 0; }
 .tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
 @media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
+/* le mot cherché, surligné dans le titre d'un résultat (`LigneTache` prop `surligne`) */
+.tch .titre .es-trouve { font-weight: 650; }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }

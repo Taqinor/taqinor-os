@@ -82,6 +82,18 @@ describe('TCH87 — Recherche', () => {
     expect(screen.getByLabelText('Filtres')).toHaveClass('es-filtres')
   })
 
+  it('passe visuelle n° 46 — le mot cherché est surligné dans chaque résultat, qui porte sa méta de statut', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [
+      item(30, 'Préparer le chantier du devis accepté', { jour_prevu: null, heure_debut: null, projet: null, echeance: null, source: 'suggestion' }),
+      item(31, 'Comparer deux Devis', { jour_prevu: null, heure_debut: null, quelque_jour: true, echeance: null }),
+    ] } })
+    monter()
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    expect([...ouvertes.querySelectorAll('.titre b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'Devis'])
+    const metas = [...ouvertes.querySelectorAll('.meta')].map((m) => [...m.children].map((e) => e.textContent))
+    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['En réserve', 'Ventes']])
+  })
+
   it('rien pour « {q} » : la phrase, sans groupes', async () => {
     api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
     monter('/taches/recherche?q=zzz')

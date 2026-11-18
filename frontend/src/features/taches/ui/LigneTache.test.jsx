@@ -235,3 +235,54 @@ describe('TCH44 — balayage tactile', () => {
     expect(ligne).not.toHaveClass('glisse-gauche')
   })
 })
+
+describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
+  // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
+  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '')
+
+  it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
+    const { container } = monter()
+    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres">1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis lucide-more-horizontal i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
+  })
+
+  it('le mot cherché est surligné dans le titre, sans tenir compte de la casse ni des accents', () => {
+    const { container } = monter({ item: { ...item(), titre: 'Préparer le DEVIS accepté' }, surligne: 'devis' })
+    const titre = container.querySelector('.titre')
+    expect([...titre.querySelectorAll('b.es-trouve')].map((b) => b.textContent)).toEqual(['DEVIS'])
+    expect(titre).toHaveTextContent('Préparer le DEVIS accepté')
+    const { container: c2 } = monter({ item: { ...item(), titre: "Relancer l'Électricien et l'electricien" }, surligne: 'ELECTRICIEN' })
+    expect([...c2.querySelectorAll('.titre b.es-trouve')].map((b) => b.textContent)).toEqual(['Électricien', 'electricien'])
+  })
+
+  it('chaque mot de la recherche est surligné ; aucun HTML du titre n\'est jamais interprété', () => {
+    const titre = '<img src=x onerror="alert(1)"> devis <b>signé</b>'
+    const { container } = monter({ item: { ...item(), titre }, surligne: 'devis signe' })
+    const t = container.querySelector('.titre')
+    expect(t.querySelector('img')).toBeNull()
+    expect(t).toHaveTextContent(titre)
+    expect([...t.querySelectorAll('b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'signé'])
+  })
+
+  it('variante « recherche » : méta de statut lue des données (À trier, En réserve, jour) puis « Suggéré par l\'ERP »', () => {
+    const sansRien = { ...item(), jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
+    const textes = (container) => [...container.querySelector('.meta').children].map((e) => e.textContent)
+    const { container: aTrier } = monter({ item: { ...sansRien, source: 'suggestion' }, contexte: 'recherche' })
+    expect(textes(aTrier)).toEqual(['À trier', "Suggéré par l'ERP"])
+    const reserve = { ...sansRien, quelque_jour: true, projet: { id: 3, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 2 } }
+    const { container: enReserve } = monter({ item: reserve, contexte: 'recherche' })
+    expect(textes(enReserve)).toEqual(['En réserve', 'Salon Solaire Expo'])
+    // une tâche qui a un jour le dit (« aujourd'hui », « lun. 16 ») à la place du statut
+    const { container: duJour } = monter({ item: { ...sansRien, statut: 'fait', jour_prevu: AUJOURDHUI }, contexte: 'recherche' })
+    expect(textes(duJour)).toEqual(["aujourd'hui"])
+    // une tâche faite n'est jamais « À trier »
+    const { container: faite } = monter({ item: { ...sansRien, statut: 'fait', source: 'suggestion' }, contexte: 'recherche' })
+    expect(textes(faite)).toEqual(["Suggéré par l'ERP"])
+  })
+
+  it('hors de la recherche, ni statut ni « Suggéré par l\'ERP » ne s\'ajoutent à la méta', () => {
+    const sansRien = { ...item(), jour_prevu: null, quelque_jour: false, projet: null, source: 'suggestion' }
+    const { container } = monter({ item: sansRien })
+    expect(container.querySelector('.meta')).not.toHaveTextContent('À trier')
+    expect(container.querySelector('.meta')).not.toHaveTextContent("Suggéré par l'ERP")
+  })
+})

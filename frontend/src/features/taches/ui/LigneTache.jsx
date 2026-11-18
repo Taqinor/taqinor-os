@@ -22,6 +22,8 @@ import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/te
    (le parent le relie à `role=status`, textes.md §2.19).
    TCH152 — `glissable` (bureau seulement : `{ onDebut(item), onFin() }`) : une tâche ouverte se glisse vers une
    heure de la colonne Agenda ; sans la prop, la ligne ne se glisse pas (iPhone : jamais de glisser, spec-7 §5).
+   Passe visuelle n° 46 (recherche.html) — `surligne` (le texte cherché) : ses mots sont surlignés dans le titre ;
+   `contexte="recherche"` : la méta commence par le statut du résultat. Sans ces props, la ligne ne change pas.
    ========================================================================== */
 
 const DUREE_APPUI_LONG_MS = 500
@@ -92,9 +94,70 @@ function MetaProjet({ projet }) {
   )
 }
 
+/* Passe visuelle n° 46 — le mot cherché, surligné dans le titre (recherche.html : `<b class="es-trouve">`).
+   Casse et accents ignorés ; le titre est DÉCOUPÉ en fragments de texte (jamais de HTML interprété). */
+const sansAccent = (texte) => texte.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+
+/** Les plages `[début, fin[` du titre où tombe un des mots, fusionnées quand elles se touchent. */
+function plagesTrouvees(titre, mots) {
+  const caracteres = Array.from(titre)
+  const carte = [] // position dans le texte normalisé → indice du caractère d'origine
+  let plat = ''
+  caracteres.forEach((car, i) => {
+    const n = sansAccent(car)
+    for (let k = 0; k < n.length; k += 1) carte.push(i)
+    plat += n
+  })
+  const plages = []
+  for (const mot of mots) {
+    for (let pos = plat.indexOf(mot); pos >= 0 && mot; pos = plat.indexOf(mot, pos + mot.length)) {
+      let fin = carte[pos + mot.length - 1] + 1
+      while (fin < caracteres.length && !sansAccent(caracteres[fin])) fin += 1 // un accent décomposé reste avec sa lettre
+      plages.push([carte[pos], fin])
+    }
+  }
+  plages.sort((a, b) => a[0] - b[0])
+  const fusion = []
+  for (const p of plages) {
+    const der = fusion[fusion.length - 1]
+    if (der && p[0] <= der[1]) der[1] = Math.max(der[1], p[1])
+    else fusion.push([...p])
+  }
+  return { caracteres, plages: fusion }
+}
+
+function TitreSurligne({ titre, surligne }) {
+  const mots = sansAccent(surligne).split(/\s+/).filter(Boolean)
+  if (mots.length === 0) return titre
+  const { caracteres, plages } = plagesTrouvees(titre, mots)
+  if (plages.length === 0) return titre
+  const fragments = []
+  let curseur = 0
+  plages.forEach(([debut, fin]) => {
+    if (debut > curseur) fragments.push(caracteres.slice(curseur, debut).join(''))
+    fragments.push(<b key={debut} className="es-trouve">{caracteres.slice(debut, fin).join('')}</b>)
+    curseur = fin
+  })
+  if (curseur < caracteres.length) fragments.push(caracteres.slice(curseur).join(''))
+  return fragments
+}
+
+/** La méta de STATUT d'un résultat de recherche (recherche.html), lue des données servies : son jour, sinon, pour une
+ *  tâche ouverte, « En réserve » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
+function statutRecherche(item, aujourdhui) {
+  if (item.type !== 'tache') return []
+  const puces = []
+  const ouverte = item.statut !== 'fait' && item.statut !== 'annule'
+  if (item.jour_prevu) puces.push(<span key="statut" className="chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
+  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">En réserve</span>)
+  else if (ouverte && !item.projet) puces.push(<span key="statut">À trier</span>)
+  if (item.source === 'suggestion') puces.push(<span key="suggestion">Suggéré par l'ERP</span>)
+  return puces
+}
+
 /** Les puces de méta d'une ligne, dans l'ordre des maquettes. */
 function metaDe(item, { contexte, aujourdhui, propose }) {
-  const puces = []
+  const puces = contexte === 'recherche' ? statutRecherche(item, aujourdhui) : []
   if (item.type === 'activite') puces.push(<span key="erp">Activité ERP</span>)
   if (contexte === 'projet' && item.jour_prevu) {
     puces.push(<span key="jour" className="fort chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
@@ -141,6 +204,7 @@ export default function LigneTache({
   onAction,
   onAnnonce,
   glissable = null,
+  surligne = '',
 }) {
   const cadre = useRef(null)
   const [menuOuvert, setMenuOuvert] = useState(false)
@@ -234,7 +298,7 @@ export default function LigneTache({
 
         <div className="ligne-corps">
           <button type="button" className="ligne-corps-bouton" onClick={ouvrir}>
-            <span className="titre">{item.titre}</span>
+            <span className="titre">{surligne ? <TitreSurligne titre={item.titre} surligne={surligne} /> : item.titre}</span>
           </button>
           {meta.length > 0 || propose ? (
             <div className="meta">
