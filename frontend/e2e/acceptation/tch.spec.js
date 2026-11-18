@@ -315,6 +315,22 @@ etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   // Oracle : « 3 sur 5 · essentiel 1/2 », « Objectif couvert par ce que tu as gardé. »
   await expect(progression(p)).toContainText('3 sur 5 · essentiel 1/2')
   await expect(sectionPropose(p)).toContainText('Objectif couvert par ce que tu as gardé.')
+  // À 15:00 le scénario n'a qu'UNE tâche allégeable (le contrat ; le stand, dû aujourd'hui, reste par règle,
+  // regles.md §4.5) : pour jouer « Alléger en gardant 1 », on en pose une seconde par un vrai geste d'écran — la
+  // feuille de saisie d'un projet du scénario, une tâche pour aujourd'hui.
+  const ajoutee = 'Appeler la boite de location'
+  const recrutement = liste(await lire(p, 'projets/')).find((x) => x.nom === 'Recrutement technicien')
+  await aller(p, `/taches/projets/${recrutement.id}`, 'projet')
+  await expect(p.locator('h1.entete-titre')).toHaveText('Recrutement technicien') // la vue est lue : « + » porte le projet
+  await p.locator('.fab').click()
+  await expect(saisie(p).getByRole('button', { name: 'Retirer « Recrutement technicien »' })).toBeVisible()
+  await champSaisie(p).fill(`${ajoutee} aujourd'hui`)
+  await expect(saisie(p).locator('[data-jeton="jour"]')).toBeVisible()
+  await champSaisie(p).press('Enter')
+  await expect.poll(async () => (await tacheNommee(p, ajoutee)).jour_prevu).toBe(J24)
+  expect((await tacheNommee(p, ajoutee)).projet?.nom).toBe('Recrutement technicien')
+  await p.keyboard.press('Escape')
+  await aujourdhui(p)
   // Alléger en gardant 1 → reste retourné sans report
   await p.getByRole('button', { name: "Plus d'actions" }).click()
   await p.getByRole('menuitem', { name: 'Alléger ma journée' }).click()
@@ -322,8 +338,8 @@ etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   const cases = leger.getByRole('checkbox', { name: /^Sélectionner : / })
   await expect(cases.first()).toBeVisible()
   const titres = (await cases.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))).map((n) => n.replace('Sélectionner : ', ''))
-  expect(titres.length, 'au moins deux gardées ouvertes à alléger').toBeGreaterThanOrEqual(2)
-  const gardee = titres.includes(T.stand) ? T.stand : titres[0]
+  expect(titres, 'le contrat et la tâche ajoutée sont allégeables').toEqual(expect.arrayContaining([T.contrat, ajoutee]))
+  const gardee = T.contrat
   const avant = Object.fromEntries(await Promise.all(titres.map(async (t) => [t, await tacheNommee(p, t)])))
   await leger.getByRole('checkbox', { name: `Sélectionner : ${gardee}` }).click()
   await leger.getByRole('button', { name: 'Garder celle-ci' }).click()
