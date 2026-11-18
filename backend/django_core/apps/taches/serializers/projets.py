@@ -334,7 +334,9 @@ CLES_INTERNES_MODELE = (lecture.CLE_CONFIDENTIEL,)
 
 
 class ModeleSerializer(serializers.Serializer):
-    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`), sans ses clés internes."""
+    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`), sans ses clés internes. Contexte
+    `{'assistant': bool}` : sous l'en-tête assistant, les notes figées ne sont pas servies (regles.md §8 : jamais,
+    même celles d'une tâche ordinaire ; revue F4 #2)."""
 
     id = serializers.IntegerField()
     nom = serializers.CharField()
@@ -342,7 +344,11 @@ class ModeleSerializer(serializers.Serializer):
     contenu = serializers.SerializerMethodField()
 
     def get_contenu(self, modele) -> dict:
-        return {cle: valeur for cle, valeur in (modele.contenu or {}).items() if cle not in CLES_INTERNES_MODELE}
+        contenu = {cle: valeur for cle, valeur in (modele.contenu or {}).items() if cle not in CLES_INTERNES_MODELE}
+        if self.context.get('assistant') and 'taches' in contenu:
+            contenu['taches'] = [{cle: valeur for cle, valeur in tache.items() if cle != 'notes'}
+                                 for tache in contenu['taches']]
+        return contenu
 
 
 def modele_apercu(plan):

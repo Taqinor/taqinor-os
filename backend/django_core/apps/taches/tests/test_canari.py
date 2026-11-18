@@ -5,7 +5,8 @@ Le monde canari : un projet confidentiel « Canari-7Q9 » (nom, objectif, bilan,
 ses tâches « Canari-X3K » (titre, notes, « en attente de », lien ERP, check-list, étiquette), une sous-tâche, une
 tâche d'« À trier » et une série confidentielles par leur SEUL drapeau, la sous-tâche de l'une d'elles (héritage
 par le parent), des tâches supprimées, un rendez-vous externe « Canari-RDV », un geste « En attente de : Canari… »
-fait à l'écran, et une tâche ORDINAIRE bloquée par une confidentielle. Les trois `titres_*` sont allumés.
+fait à l'écran, et une tâche ORDINAIRE bloquée par une confidentielle. Les trois `titres_*` sont allumés. Deux
+modèles de projet (revue F4) : l'un tiré d'un projet confidentiel PUIS supprimé, l'autre ordinaire « notes comprises ».
 
 Aucune chaîne servie ne contient « canari » (casse et accents ignorés ; JSON décodé ; .ics déplié) :
 1. ASSISTANT : chaque route CONSTRUITE de l'app — la liste fermée de `test_meme_proprietaire` (`CAS`, `SANS_ID`,
@@ -48,6 +49,7 @@ from apps.taches.models.projets import Projet, RevueProjet
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.models.taches import Etiquette, EtiquetteTache, Rappel, Tache
 from apps.taches.moteur.ics import RendezVousPur
+from apps.taches.services import projets as ecriture_projets
 from apps.taches.tests import fabriques
 from apps.taches.tests import test_agent_actions as agent
 from apps.taches.tests import test_meme_proprietaire as meme
@@ -75,6 +77,7 @@ VIVANTES = frozenset({
     ('GET', 'revue/projets/'), ('POST', 'taches/{id}/changement/apercu/'), ('POST', 'saisie-rapide/'),
     ('GET', 'taches/'), ('GET', 'taches/{id}/'), ('GET', 'projets/'), ('GET', 'projets/{id}/'),
     ('GET', 'supprimees/'), ('GET', 'gestes/'), ('GET', 'agenda/'),
+    ('GET', 'modeles/'), ('GET', 'modeles/{id}/'), ('PATCH', 'modeles/{id}/'), ('POST', 'modeles/{id}/instancier/'),
 })
 #: Actions de l'agent dont la route, appelée par l'écran, montre le canari.
 ACTIONS_VIVANTES = frozenset({'taches.journee.lire', 'taches.tache.chercher', 'taches.projet.lire'})
@@ -175,7 +178,22 @@ def _canariser(m):
     JetonAcces.objects.filter(pk=m.J.pk).update(revoque_le=timezone.now())
     m.J, m.flux = fabriques.jeton(compte, 'flux')
     m.tuile, m.capture = (fabriques.jeton(compte, usage)[1] for usage in ('tuile', 'capture'))
+    _modeles(m)
     return m
+
+
+def _modeles(m):
+    """Revue F4 #1, #2, #3 : un modèle tiré d'un projet confidentiel PUIS supprimé (`M_SECRET` : nom, titres et
+    notes au canari), et un modèle ORDINAIRE « notes comprises » (`M_NOTES` : seules ses notes portent le canari)."""
+    compte = m.compte
+    ephemere = fabriques.projet(compte, nom=f'{PROJET} éphémère', confidentiel=True)
+    fabriques.tache(compte, projet=ephemere, titre=f'{TACHE} du modèle', notes=f'{TACHE} note du modèle')
+    m.M_SECRET = ecriture_projets.enregistrer_modele(compte, ephemere.pk, f'{PROJET} modèle', inclure_notes=True)
+    ecriture_projets.supprimer_projet(compte, ephemere.pk)
+    ordinaire = fabriques.projet(compte, nom='Salon ordinaire')
+    tache = fabriques.tache(compte, projet=ordinaire, titre='Réserver le stand', notes=f'{TACHE} note ordinaire')
+    m.M_NOTES = ecriture_projets.enregistrer_modele(compte, ordinaire.pk, 'Salon avec notes', inclure_notes=True)
+    Tache.objects.filter(pk=tache.pk).update(notes='')  # le canari ne vit plus que dans le modèle figé
 
 
 def rendez_vous(m):
@@ -200,6 +218,12 @@ def en_plus(m):
         ('POST', 'saisie-rapide/', 'aperçu (doublon)', 'saisie-rapide/', {'texte': m.T.titre, 'apercu': True}),
         ('POST', 'saisie-rapide/', 'aperçu (projet)', 'saisie-rapide/',
          {'texte': f'projet {PROJET} réserver le stand', 'apercu': True}),
+        ('GET', 'modeles/{id}/', 'modèle confidentiel', f'modeles/{m.M_SECRET.pk}/', None),
+        ('GET', 'modeles/{id}/', 'modèle à notes', f'modeles/{m.M_NOTES.pk}/', None),
+        ('PATCH', 'modeles/{id}/', 'modèle confidentiel', f'modeles/{m.M_SECRET.pk}/', {'nom': 'Renommé'}),
+        ('PATCH', 'modeles/{id}/', 'modèle à notes', f'modeles/{m.M_NOTES.pk}/', {'nom': 'Renommé'}),
+        ('POST', 'modeles/{id}/instancier/', 'modèle confidentiel', f'modeles/{m.M_SECRET.pk}/instancier/',
+         {'nom': 'Copie', 'apercu': True}),
     )
 
 

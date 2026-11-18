@@ -1124,6 +1124,25 @@ class ModelesTests(_Base):
         self.assertEqual([m['nom'] for m in self._api(self.u1).get(_url('modeles/')).json()['results']],
                          ['Secret', 'Visible'])
 
+    def test_les_notes_d_un_modele_ne_sont_jamais_servies_a_l_assistant(self):
+        """Revue F4 #2 (regles.md §8 : notes jamais servies à l'assistant, même ordinaires) : la fiche, le renommage
+        et l'enregistrement d'un modèle « notes comprises » les taisent sous l'en-tête ; l'écran les voit."""
+        projet, _, _ = self._source()
+        ecran, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        modele = self._enregistrer(projet, inclure_notes=True).json()['id']
+        reponses = (assistant.get(_url(f'modeles/{modele}/')),
+                    assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Salon renommé'}, format='json'),
+                    assistant.post(_url(f'projets/{projet.pk}/enregistrer-modele/'),
+                                   {'nom': 'Par l\'assistant', 'inclure_notes': True}, format='json'))
+        for reponse in reponses:
+            self.assertIn(reponse.status_code, (200, 201))
+            self.assertNotIn('Appeler Lydec', reponse.content.decode())
+            taches = reponse.json()['contenu']['taches']
+            self.assertEqual([t['titre'] for t in taches], ['Réserver le stand', 'photos', 'Montage', 'Déjà faite'])
+            self.assertEqual([t for t in taches if 'notes' in t], [])
+        self.assertEqual(ecran.get(_url(f'modeles/{modele}/')).json()['contenu']['taches'][0]['notes'],
+                         'Appeler Lydec')
+
     def _modele_secret(self, nom):
         """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
         secret = fabriques.projet(self.u1, nom=nom, confidentiel=True)
