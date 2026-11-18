@@ -67,6 +67,16 @@ D-SPL-ATOMIQUE (a) SPL atomiques en TRANSVERSE avec `(@atomique: …)`.
   agents de fond meurent avec elle, sans trace) : ≤ 2-3 agents de fond, écriture incrémentale sur disque, commit après
   chaque fichier. Le conteneur local envoie de VRAIS mails (clé SendGrid dans `.env`) : toute sonde force un backend
   mail en mémoire.
+- Session cloud (run 17-18/11, PR #1461) : jamais `git stash` entre agents en worktree — la pile de stash est
+  PARTAGÉE par toutes les copies, un agent dépilerait le travail d'un autre ; chaque push sur la branche annule les
+  contrôles PR encore en cours (rouges « cancelled », pas de vrais échecs) et met en file un nouveau rejeu du workflow
+  d'essai : regrouper les pushes, annuler les rejeux en double ; le dump de base n'est pas réutilisé entre jobs du
+  runner (≈ 1 h 45 de migrations à froid par job), d'où rejeux rares et complets.
+- Un verdict de preuve écrit par script se vérifie contre la trace avant de cocher ou de refuser : trois faux
+  « échec » dans ce run venaient du script, pas du produit (repro imprimé en dict Python non lu, chemin d'artefact
+  manqué, « commence par celery » alors que PID 1 = `python3.11 …/celery`). Corriger le critère et recalculer depuis
+  la même trace (`ACCEPTATION_SHA=<sha> node …/_enregistrement.js <G> --etapes-supplementaires`), en le disant dans
+  la note de l'étape.
 
 **Why:** Reda (09/10/2026) veut pouvoir reprendre cet audit depuis n'importe quel poste avec tous ses détails.
 
