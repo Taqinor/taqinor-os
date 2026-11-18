@@ -20,7 +20,7 @@ import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
 import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cacheJournee'
 import { MESSAGE_EN_FILE as TOAST_EN_FILE, enfilerCoche, enfilerReport } from '../../features/taches/horsligne/captureQueue'
-import { accord, aujourdhuiIso, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, heureDuConflit, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
 import recordsApi from '../../api/recordsApi'
 import { frenchError } from '../../lib/frenchError'
@@ -294,7 +294,7 @@ export default function Aujourdhui() {
       if (err?.response?.status === 409 && err.response.data?.code === 'conflit_version') {
         const actuel = err.response.data.actuel ?? {}
         setConflit({
-          heure: heureDe(actuel.updated_at),
+          heure: heureDuConflit(actuel),
           onGarder: () => poserJour(item, jour, message, err.response.data.lock_version ?? actuel.lock_version),
           onPrendre: () => { patcher(cle, (it) => ({ ...it, ...actuel })); setConflit(null) },
         })

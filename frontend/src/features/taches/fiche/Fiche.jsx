@@ -7,7 +7,7 @@ import {
   modifierPoint, modifierReglages, modifierTache, planifierTache, repeterRappel, retirerPoint, rouvrirTache, terminerTache,
 } from '../../../api/tachesApi'
 import { proposerAnnuler } from '../lib/gestes'
-import { aujourdhuiIso, heure, jourCourt, jourNomme } from '../lib/textes'
+import { aujourdhuiIso, heure, heureDuConflit, jourCourt, jourNomme } from '../lib/textes'
 import BandeauConflit from '../ui/BandeauConflit'
 import FichePlus from './FichePlus'
 import CaseRonde from '../ui/CaseRonde'
@@ -286,7 +286,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
         {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (
           <div className="fiche-corps">
-            {conflit ? <BandeauConflit onGarder={garderLaMienne} onPrendre={prendreLautre} /> : null}
+            {conflit ? <BandeauConflit heure={heureDuConflit(conflit.actuel)} onGarder={garderLaMienne} onPrendre={prendreLautre} /> : null}
             {rappelEnvoye ? <RappelOuvert rappel={rappelEnvoye} onRepeter={repeter} /> : null}
             {questionTitres ? (
               <div className="fiche-question" role="group" aria-label="Question sur l'écran verrouillé">

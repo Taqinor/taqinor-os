@@ -116,6 +116,8 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await user.type(champ, 'Rappeler Karim avant 9 h')
     await user.tab()
     expect(await screen.findByRole('group', { name: 'Conflit entre appareils' })).toBeInTheDocument()
+    // F2 acceptation (P144.1) — l'heure vient de la réponse 409 (`actuel.updated_at` = 10:42), jamais de l'horloge
+    expect(screen.getByRole('group', { name: 'Conflit entre appareils' })).toHaveTextContent('Modifiée sur ton autre appareil à 10:42')
     expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Rappeler Karim avant 9 h')
     await user.click(screen.getByRole('button', { name: 'Prendre l\'autre' }))
     expect(screen.queryByRole('group', { name: 'Conflit entre appareils' })).toBeNull()

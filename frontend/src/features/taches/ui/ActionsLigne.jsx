@@ -8,7 +8,7 @@ import { frenchError } from '../../../lib/frenchError'
 import { MESSAGE_EN_FILE, enfilerReport } from '../horsligne/captureQueue'
 import { estEnLigne } from '../lib/enLigne'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
-import { aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
+import { aujourdhuiIso, heureDuConflit, jourCourt, jourNomme } from '../lib/textes'
 import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
 /* ============================================================================
@@ -130,7 +130,7 @@ export function useActionsLigne({
       defaire()
       if (classee.code === 'conflit_version') {
         setConflit({
-          heure: String(classee.actuel?.updated_at ?? '').slice(11, 16),
+          heure: heureDuConflit(classee.actuel),
           onGarder: () => { setConflit(null); relancer.current?.(item, quand, message, classee.lockVersion ?? classee.actuel?.lock_version) },
           onPrendre: () => { if (classee.actuel) rappels.current.maj(item.id, classee.actuel); setConflit(null) },
         })

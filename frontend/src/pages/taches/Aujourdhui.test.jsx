@@ -347,6 +347,21 @@ describe('TCH76 — gestes optimistes', () => {
   })
 })
 
+describe('F2 acceptation (P144.1) — le bandeau de conflit dit l\'heure servie par la réponse 409', () => {
+  it('Reporter refusé par un 409 `conflit_version` : « Modifiée sur ton autre appareil à 10:42 »', async () => {
+    servir(donnees())
+    const conflit = exempleContrat('taches', 'erreurs').conflit_version
+    api.post.mockImplementation((url) => (url.endsWith('/planifier/')
+      ? Promise.reject(Object.assign(new Error('409'), { response: { status: 409, data: conflit } }))
+      : Promise.resolve({ data: {} })))
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('group', { name: 'Conflit entre appareils' })).toHaveTextContent('Modifiée sur ton autre appareil à 10:42')
+  })
+})
+
 describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touche se valide par Entrée', () => {
   /** Focalise le titre d'une ligne, comme `j` le fait. */
   const focaliser = (id) => act(() => { document.querySelector(`[data-ligne="tache:${id}"] .ligne-corps-bouton`).focus() })
