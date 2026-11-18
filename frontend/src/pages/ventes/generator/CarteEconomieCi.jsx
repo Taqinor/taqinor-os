@@ -54,11 +54,11 @@ function Saisies({ eco, setEcoChamp }) {
   )
 }
 
-function Jalons({ jalons, jalonsTtc }) {
+function Jalons({ jalons, jalonsTtc, testid = 'eco-ci-jalons' }) {
   if (!Array.isArray(jalons) || !jalons.length) return null
   const ttc = Array.isArray(jalonsTtc) ? jalonsTtc : null
   return (
-    <table className="w-full text-xs" data-testid="eco-ci-jalons">
+    <table className="w-full text-xs" data-testid={testid}>
       <thead>
         <tr><th className="text-left">Cumul à</th><th>{ttc ? 'HT' : 'Économie cumulée'}</th>{ttc && <th>TTC</th>}</tr>
       </thead>
@@ -74,7 +74,62 @@ function Jalons({ jalons, jalonsTtc }) {
   )
 }
 
-export default function CarteEconomieCi({ apercu, eco, setEcoChamp, children }) {
+// Fondateur 17-18/11/2026 — un devis à deux options montre les DEUX : les
+// économies de l'option « avec batterie » (`option_avec` de l'aperçu C&I,
+// déjà servies : économie de l'année 1, retour, TRI, cumuls) à côté de celles
+// de l'offre réseau. Aucun calcul : le retour est comparé à DÉFINITION égale
+// (au dixième des deux côtés si le serveur le sert pour l'offre réseau, sinon
+// en années pleines des deux côtés).
+function DeuxOptions({ d, avec }) {
+  if (!avec) return null
+  const sans = d && d.statut !== 'omis' ? d : null
+  const flux = avec.economie_flux || {}
+  const ind = flux.indicateurs || {}
+  const an1 = avec.economie_ci?.economie_annee1 || {}
+  const dixieme = sans?.indicateurs?.retour_dixieme_ans != null && ind.retour_dixieme_ans != null
+  const retour = (i) => (dixieme ? i?.retour_dixieme_ans : i?.retour_ans)
+  const ans = (v) => (v == null ? '—' : `${nb(v, dixieme ? 1 : undefined)} ans`)
+  const tri = (i) => (i?.tri_pct == null ? '—' : `${nb(i.tri_pct, 1)} % sur ${i.tri_horizon_ans} ans`)
+  const deuxBases = sans?.base === 'deux' || flux.base === 'deux'
+  const bat = avec.batterie || {}
+  return (
+    <div className="grid gap-2 rounded-md border border-info/30 bg-info/5 p-2 text-xs" data-testid="eco-ci-deux-options">
+      <table className="w-full">
+        <thead>
+          <tr><th className="text-left">Les deux options</th><th>Sans batterie</th><th>Avec batterie</th></tr>
+        </thead>
+        <tbody>
+          <tr data-testid="eco-ci-deux-economie">
+            <td>Économie année 1{deuxBases ? ' (HT)' : ''}</td>
+            <td>{mad(sans?.economie_annee1?.total_mad)}</td>
+            <td><strong>{mad(an1.total_mad ?? avec.economie_annuelle_mad)}</strong></td>
+          </tr>
+          {deuxBases && (
+            <tr>
+              <td>Économie année 1 (TTC)</td>
+              <td>{mad(sans?.economie_annee1?.total_mad_ttc)}</td><td>{mad(an1.total_mad_ttc)}</td>
+            </tr>
+          )}
+          <tr data-testid="eco-ci-deux-retour">
+            <td>Retour sur investissement</td>
+            <td>{ans(retour(sans?.indicateurs))}</td><td><strong>{ans(retour(ind))}</strong></td>
+          </tr>
+          <tr><td>TRI</td><td>{tri(sans?.indicateurs)}</td><td>{tri(ind)}</td></tr>
+        </tbody>
+      </table>
+      <p data-testid="eco-ci-avec-systeme">
+        Avec batterie : {nb(avec.kwc, 2)} kWc
+        {bat.quantite != null && ` · ${nb(bat.quantite, 0)} × ${bat.nom || 'batterie'}`}
+        {bat.capacite_utile_kwh != null && ` (${nb(bat.capacite_utile_kwh, 1)} kWh utiles)`}
+        {avec.cout_vente_ht != null && ` · investissement ${mad(avec.cout_vente_ht)} HT`}
+      </p>
+      <Jalons jalons={flux.jalons} jalonsTtc={flux.base === 'deux' ? flux.jalons_ttc : null}
+              testid="eco-ci-avec-jalons" />
+    </div>
+  )
+}
+
+export default function CarteEconomieCi({ apercu, eco, setEcoChamp, optionAvec = null, children }) {
   const { donnees: d, chargement, erreur } = apercu || {}
   return (
     <div className="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="eco-ci">
@@ -87,8 +142,10 @@ export default function CarteEconomieCi({ apercu, eco, setEcoChamp, children }) 
           {(d.motifs_omission || []).map((m) => <li key={m}>{m}</li>)}
         </ul>
       )}
+      <DeuxOptions d={d} avec={optionAvec} />
       {d && d.statut !== 'omis' && (
         <div className="grid gap-2 text-xs" data-testid="eco-ci-resultat">
+          {optionAvec && <p className="font-semibold">Détail — option sans batterie</p>}
           {d.motif_base && <p data-testid="eco-ci-base">{d.motif_base}</p>}
           {d.economie_annee1 && (
             <table className="w-full" data-testid="eco-ci-postes">

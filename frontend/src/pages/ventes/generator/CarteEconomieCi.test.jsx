@@ -41,6 +41,47 @@ describe('CIQ223 — CarteEconomieCi', () => {
       .toHaveTextContent(`sur ${CONTRAT.exemple.indicateurs.tri_horizon_ans} ans`)
   })
 
+  it('deux options ⇒ économie, retour et TRI de l’option « avec batterie » à côté de l’offre réseau', () => {
+    // `option_avec` de l'aperçu C&I (forme décrite dans `etude_ci_preview.json`) :
+    // chiffres servis par le serveur, jamais recalculés ici.
+    const avec = {
+      kwc: 34.32, cout_vente_ht: 267050, economie_annuelle_mad: 63012, retour_simple_ans: 4.3,
+      batterie: { nom: 'Batterie 16 kWh', quantite: 3, capacite_utile_kwh: 45.81 },
+      economie_ci: { statut: 'calcule', economie_annee1: { total_mad: 63012, total_mad_ttc: 75612.62 } },
+      economie_flux: {
+        base: 'deux',
+        indicateurs: { tri_pct: 21.7967, tri_horizon_ans: 25, retour_ans: 5, retour_dixieme_ans: 4.3 },
+        jalons: [{ annee: 10, cumul_mad: 600000 }], jalons_ttc: [{ annee: 10, cumul_mad: 720000 }],
+      },
+    }
+    const { unmount } = render(<CarteEconomieCi apercu={apercu('exemple')} optionAvec={avec} />)
+    const bloc = screen.getByTestId('eco-ci-deux-options')
+    expect(bloc).toHaveTextContent('Sans batterie')
+    expect(bloc).toHaveTextContent('Avec batterie')
+    expect(screen.getByTestId('eco-ci-deux-economie')).toHaveTextContent(/63\s?012 MAD/)
+    // L'offre réseau ne sert pas le retour au dixième : années pleines des DEUX côtés.
+    const sansRetour = CONTRAT.exemple.indicateurs.retour_ans
+    expect(CONTRAT.exemple.indicateurs.retour_dixieme_ans).toBeUndefined()
+    expect(screen.getByTestId('eco-ci-deux-retour')).toHaveTextContent(`${sansRetour} ans`)
+    expect(screen.getByTestId('eco-ci-deux-retour')).toHaveTextContent('5 ans')
+    expect(screen.getByTestId('eco-ci-deux-retour')).not.toHaveTextContent('4,3')
+    expect(bloc).toHaveTextContent('21,8 % sur 25 ans')
+    expect(screen.getByTestId('eco-ci-avec-systeme')).toHaveTextContent('3 × Batterie 16 kWh')
+    expect(screen.getByTestId('eco-ci-avec-systeme')).toHaveTextContent('34,32 kWc')
+    expect(screen.getByTestId('eco-ci-avec-jalons')).toHaveTextContent('TTC')
+    expect(screen.getByText('Détail — option sans batterie')).toBeInTheDocument()
+    unmount()
+    // Offre réseau omise : l'option batterie reste dite, sans chiffre inventé en face.
+    const { unmount: fin } = render(<CarteEconomieCi apercu={apercu('exemple_omis')} optionAvec={avec} />)
+    expect(screen.getByTestId('eco-ci-deux-economie')).toHaveTextContent('—')
+    expect(screen.getByTestId('eco-ci-deux-economie')).toHaveTextContent(/63\s?012 MAD/)
+    fin()
+    // Sans option batterie : rien de neuf à l'écran.
+    render(<CarteEconomieCi apercu={apercu('exemple')} />)
+    expect(screen.queryByTestId('eco-ci-deux-options')).toBeNull()
+    expect(screen.queryByText('Détail — option sans batterie')).toBeNull()
+  })
+
   it('BT ⇒ mention, aucun montant de revente ; MT ⇒ la revente servie', () => {
     const { unmount } = render(<CarteEconomieCi apercu={apercu('exemple')} />)
     expect(CONTRAT.exemple.revente.statut).toBe('absente_bt')
