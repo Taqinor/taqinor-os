@@ -369,6 +369,69 @@ Tri de l'orchestrateur (aucune question à Reda) :
   `docs/taches/maquettes/captures/`), relecture adverse finale, README « gestes de Reda », mémoire
   `docs/claude-memory/taches-decisions-fondateur.md`, rapport final.
 
+**Point de 04 h 20 UTC (18/11) — état exact après le pliage de toutes les lanes de correction**
+
+- **Fusion 2** (`dev-taches-f2`, local `1bb83be3e6`, GitHub `cd5e8b9ea8` : 5 commits à pousser avec le lot suivant).
+  Pliés : écran d'acceptation lots 1 et 2 (feuilles au-dessus des onglets, clavier `d`/`m`/saisie en chaîne,
+  navigation après une feuille, charge du jour en vue Semaine, heure du bandeau de conflit, refus 409 visibles,
+  PORTAGE « Annuler → version du serveur », toast global de l'ERP plus jamais en doublon d'un 409 nommé, « {n}
+  faites » d'un jour passé), semis S3 (TCH177 : visite de Témara + 5 relances ; 4 fonctions `*_demonstration` chez
+  `crm`, sociétés `est_demo` seulement), lien « Lead effacé » qui le reste à l'ouverture d'une fiche (P144.5 : vrai
+  défaut pour tout compte qui a `crm_voir`). Suites : `apps.taches` + crm 1541 OK, vitest 535 OK, gardes 0.
+  **En cours** : la lane d'écran (agent `a55bcc8774965df34`, pile n° 1) aligne `tch.spec.js` sur le plan et le
+  scénario corrigés (P136.4, P138.1, P138.4, P139.4, P137.6, P144.3) puis rejoue toute la spec. Dernier rejeu complet :
+  28 vertes, 8 rouges (6 de spec/plan, P138.3 incident de pile vert au rejeu, P144.5 corrigé depuis).
+  Reste : plier ce lot, pousser, CI, REJEU FINAL sur base migrée (`rm /opt/taches-cloud/pile.conf` puis
+  `pile.sh base erp_acc tpl_test`), enregistrement, cocher TCH136-140, TCH144, TCH94, PR prête + file de merge.
+- **Fusion 3** (`merge/f2-dans-f3`, poussé sur `dev-taches-f3` = `8413ee3299` à 04 h 11). Pliés : garde A5, serveur
+  (n° 4, 6 à 11, ERR 5), cartes (ERR 1 à 5), `planification/apercu/` sert `projet {id, lock_version}`, fusion 2 à
+  jour. Suites : Django 2263 OK, IA 461 OK, vitest 760 OK, gardes 0. Rejeu local de `tch2.spec.js` : 15 vertes, 3
+  en attente du vrai assistant. **Le commit de tête `8413ee3299` est TEMPORAIRE** : il porte le workflow
+  `.github/workflows/zz-scratch-acceptation-taches-f3.yml` (+ `.github/zz-taches-pile.sh`,
+  `.github/zz-acceptation-commit.sh`) qui joue la spec sur un runner avec le vrai assistant (secrets du dépôt, jamais
+  affichés) et COMMITE lui-même son enregistrement sur la branche. Suite : lire le run, `git fetch` + fusionner le
+  commit d'enregistrement, RETIRER les trois fichiers temporaires (`git rm`), repousser, cocher TCH141, TCH171,
+  TCH143, puis TCH135 ; merge après la fusion 2.
+- **Fusion 4** (`dev-taches-f4`, local `e7ba1b00ec`, GitHub `98a5330c49`). Pliés : relecture serveur (n° 1 à 5, 12 à
+  14) et écran (n° 6 à 11, 15, 17), fusion 3 à jour (8 zones résolues en gardant les deux côtés), clé alignée
+  (`confidentielles_non_reprises`). vitest 1038 OK. En cours : suite Django (journal
+  `/opt/taches-cloud/logs/f4-apres-revue.log`) et un agent sonnet (`ab364ccf477932a25`) qui met la référence et
+  l'en-tête du plan à jour dans le worktree `f4`. Reste : gardes, pousser, CI de #1464, spec `tch3.spec.js` (TCH142,
+  TCH172), TCH173 ; TCH168 reste GATED.
+
+**Décisions prises seul depuis le point de 02 h 25 (à reprendre dans le rapport final)**
+1. **CORS** : rien à régler. Le front appelle la même origine que la page (nginx) ; il envoie déjà `Idempotency-Key`
+   sans réglage ; D-ASEC « CORS par défaut » tient. Le mode Vite seul (5173 → :80) n'est de toute façon pas servi.
+2. **Fichiers d'autres propriétaires** : deux lanes en ont touché hors de la liste de l'en-tête du plan. Gardés et
+   CITÉS (mécanisme de l'en-tête : « chacun par la tâche citée ») plutôt que défaits : `crm` (TCH177, fonctions de
+   démonstration : la règle d'architecture veut l'écriture par le service de l'app cible) et `core` (TCH178, brique
+   de fondation NEUVE `core/chemins_sensibles.py` : masque dans les journaux et chez Sentry un secret porté par une
+   adresse — le jeton du calendrier abonné). À DIRE à Reda : architecture neuve, petite, sans effet tant qu'aucune
+   app ne déclare de motif.
+3. **Journal d'accès de nginx** : il écrit encore l'adresse entière du flux. `backend/nginx/nginx.conf` est au
+   propriétaire `deploy`, hors contrat : reste un geste de Reda (ou une tâche du plan `deploy`).
+4. **Relances en double** (constat du semis S3, PAS corrigé) : un lead qui a une `relance_date` porte une activité
+   auto « Relance commerciale » ET compte dans « Suivi des relances : n » ; la journée d'un commercial les montrerait
+   deux fois. Laissé tel quel (ne jamais cacher une obligation) ; sans effet tant que Tâches n'est ouvert qu'à
+   l'Administrateur. Décision à proposer à Reda avant d'ouvrir aux commerciaux.
+5. **Toast en doublon** : corrigé dans `tachesApi.js` seul (`api/axios.js` est à `deploy`). Le client laisse un 409
+   se résoudre le temps de l'appel puis le rejette lui-même ; un test le prouve avec le vrai axios.
+6. **Raccourcis clavier** `j`/`k`/`d`/`m` : branchés sur Aujourd'hui seulement ; spec-7 §5 dit « partout ». Écart
+   noté pour la passe de conformité (Projet, Recherche, Agenda) ; `j` parcourt aussi la ligne des relances (voulu).
+7. **Alléger à 15 h** : le scénario n'a qu'une tâche allégeable ; l'oracle du plan reste, l'étape pose d'abord une
+   seconde tâche par un vrai geste (écrit dans la spec).
+8. **Cloche du compte de démonstration** : la spec la vide en entier avant les étapes de notification (chaque
+   connexion écrit « Nouvelle connexion… », la cloche ne montre que sa première page). Le semis ne crée plus de
+   « Nouveau lead assigné ».
+9. **Résidus notés, non corrigés** : `deja_prevue` servi sans lecteur (`journee/proposition/`) ; `reverifier_lien`
+   à la lecture ne distingue pas `inaccessible` d'`introuvable` ; le test `core.tests.test_startapp_erp` échoue sur
+   cette machine AVANT nos changements (guillemets du générateur : environnement, pas le code).
+
+**Outillage ajouté** : `/opt/taches-cloud/ia-f3.sh` (service d'IA de la pile n° 2), `acc-f3.sh` lit `TACHES_WT_F3` ;
+`scratchpad/jouer-f3m.sh` (rejoue une spec sur la pile n° 2 depuis `f3m`). Piles : n° 1 = fusion 2 (:8000/:4173,
+tenue par la lane d'écran), n° 2 = fusion 3 depuis `f3m` (:8001/:4174/:8100). Les deux bases de pile sont encore des
+bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
