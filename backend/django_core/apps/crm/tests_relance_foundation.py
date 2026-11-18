@@ -638,6 +638,7 @@ class SemisDemonstrationTests(TestCase):
         from django.core import mail
 
         from apps.crm import services, stages
+        from apps.notifications.models import Notification
         from apps.records.models import Activity
         lead = services.creer_lead_demonstration(self.demo, nom='Relance', ville='Témara', owner=self.user)
         self.assertEqual((lead.stage, lead.owner, lead.ville), (stages.CONTACTED, self.user, 'Témara'))
@@ -653,6 +654,8 @@ class SemisDemonstrationTests(TestCase):
         self.assertFalse(Activity.objects.filter(company=self.demo).exists())  # aucun rappel « Relance commerciale »
         self.assertTrue(LeadActivity.objects.filter(lead=lead, kind=LeadActivity.Kind.APPEL).exists())
         self.assertEqual(mail.outbox, [])
+        # ni cloche : le responsable posé par le semis ne reçoit pas « Nouveau lead assigné »
+        self.assertFalse(Notification.objects.filter(recipient=self.user).exists())
 
     def test_effacer_ne_touche_que_la_societe_de_demonstration(self):
         from apps.crm import services
