@@ -513,6 +513,46 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
   frontend-static de la CI les joue, ma batterie locale non). Sur cette machine le test CAL224 (poids du module
   calepinage) rougit à cause du build local ; il est vert en CI.
 
+**Point de 06 h 00 UTC (18/11) — fusion 3 acceptée avec le vrai assistant ; fusion 4 : spec jouée, 2 défauts corrigés**
+
+- **Fusion 2** : `main` (`bc1eca5674`, 70 commits) fusionné dedans à 05 h 37 (la PR était « dirty ») ; conflits
+  `apps/crm/dsr_provider.py` (les deux ajouts gardés) et empreinte de CODEMAP. Tête `3af778c0ee`. CI à 05 h 56 :
+  34 verts, 6 sautés, 1 en cours (shard 3 des tests à base), 0 rouge. Au vert : brouillon → prête, file de merge.
+- **Fusion 3 — ACCEPTATION VERTE AVEC LE VRAI ASSISTANT : 17 étapes sur 17** (runner GitHub, clés du dépôt, run
+  44245278395). Enregistrement `docs/audits/acceptation/TCH/2026-11-18-8847dec04.md`. Fait ensuite, en local
+  (`merge/f2-dans-f3`, tête `10e7af098b`, PAS ENCORE POUSSÉE : les deux jeux de gardes tournent) : commit
+  d'enregistrement du job fusionné, les TROIS fichiers temporaires retirés (`.github/workflows/zz-scratch-…yml`,
+  `.github/zz-taches-pile.sh`, `.github/zz-acceptation-commit.sh`), fusion 2 à jour fusionnée (conflits : DONE LOG du
+  plan, empreinte), **TCH141, TCH171, TCH143 et TCH135 cochées**. Reste après la fusion sur `main` : régénérer le
+  manuel de l'assistant (skill `assistant-manuel`) — à dire à Reda.
+- **Fusion 4** (`dev-taches-f4`, tête locale `79a5071032`, non poussée) :
+  - spec d'acceptation `tch3.spec.js` rendue par l'agent et pliée (**TCH179**, inscrite au plan avec « Nouveau fichier
+    car : ») ; premier jeu 6 sur 9 ; **deux défauts du PRODUIT corrigés par l'orchestrateur** : (1) hors de `/taches`
+    la feuille de saisie est chargée à part : un `c t`, un « Nouvelle tâche liée » ou le « + À faire » d'Activités
+    fait pendant ce chargement ouvrait une feuille vide (phrase et lien perdus) → l'hôte `TachesPresence` écoute et
+    REMET la demande (`demandes.abonner`), et répond « reçu » en annulant l'événement : Activités ne vide son champ
+    que si la phrase est prise ; (2) « Utiliser ce modèle » et « Dupliquer » n'ouvraient pas le projet créé sur
+    iPhone → `naviguerApresFeuille`. Rejoué : P142.3, P142.4, P172.2 verts ; jeu complet en cours (pile n° 3) ;
+  - **limite connue, laissée** : un `c t` tapé avant même que l'hôte (chargé à part par `Layout.jsx`) n'écoute ne fait
+    rien (aucune donnée perdue : on retape) ;
+  - le harnais de la spec pose lui-même deux leads avec devis envoyé et donne au rôle de test `ventes_voir`,
+    `ventes_valider`, `sav_voir` (le tableau de bord lit `sav/tickets/` : 403 sans lui, comportement d'avant Tâches) ;
+  - README de la fonctionnalité (TCH173, partie texte) : « L'avancé », « Ouvrir Tâches à d'autres personnes », « Vos
+    gestes sur le serveur », « Ce que la construction a choisi seule » ; mémoire partagée
+    `docs/claude-memory/taches-decisions-fondateur.md` complétée (choix pris seul, leçons) ;
+  - base MIGRÉE de l'acceptation officielle en préparation : `erp_f4_fidele` (clone de `tpl_test` + migrations de la
+    fusion 4 + `seed_demo`, `seed_catalogue`, `init_roles`, `e2e-demo-admin.py`) ; lanceur
+    `<scratchpad>/jouer-f4.sh <sortie> <json> [motif]` (variables `TACHES_FIDELE=1 TACHES_DB=erp_f4_fidele` pour le
+    rejeu officiel, à jouer APRÈS le pli des lanes visuelles) ;
+  - **le Django de la pile sous horloge figée a fait deux segfaults** dans `libc` (05 h 11 et 05 h 27, `dmesg`) pendant
+    les jeux de l'agent : environnement (libfaketime + sous-processus `fc-match`), pas le produit ; si une étape
+    reçoit un 502, rejouer.
+- **Tâche suggérée à Reda** (carte de l'application, `task_815904d0`) : masquer le jeton du calendrier dans les
+  journaux d'accès de nginx / gunicorn / Caddy — à lancer après la fusion 3.
+- **Lanes visuelles V-A et V-B** : encore en cours à 06 h 00. V-C et V-D à lancer à leur retour.
+- **Bundle fusion 4** : 3843,7 Ko mesurés après les correctifs (budget 3850) — les lanes visuelles peuvent le faire
+  déborder : re-mesurer après leur pli et monter le budget par une note datée si besoin.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
