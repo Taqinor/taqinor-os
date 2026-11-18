@@ -227,6 +227,51 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     ] }
   }
 
+  // Relecture finale n° 1 — la carte de collage dit ce que le texte collé a choisi (puces servies `jetons[].libelle`,
+  // comme l'aperçu de la saisie) et ne crée pas les lignes que le serveur rend décochées (regles.md §1.10, 3 et 8).
+  const collage = () => {
+    const d = contrat('saisie_apercu')
+    const base = d.lignes[0]
+    const cnss = {
+      ...base, index: 0, titre: 'Payer la CNSS',
+      jetons: [
+        { type: 'jour', source: 'lundi', debut: 14, fin: 19, valeur: '2026-11-23', libelle: 'lun. 23' },
+        { type: 'heure', source: '9h', debut: 20, fin: 22, valeur: '09:00', libelle: '09:00' },
+        { type: 'priorite', source: '!!', debut: 23, fin: 25, valeur: 3, libelle: 'Priorité haute' },
+        { type: 'rappel', source: 'rappel 8h', debut: 26, fin: 35, valeur: { heure: '08:00' }, libelle: 'Rappel lun. 23 08:00' },
+      ],
+      champs: { jour_prevu: '2026-11-23', heure_debut: '09:00', moment: 'matin', priorite: 3,
+        rappel: { ancre: 'jour_prevu', decalage_jours: 0, heure: '08:00' } },
+    }
+    const faite = { ...base, index: 1, titre: 'Acheter câbles', cochee: false, deja_faite: true, jetons: [], champs: { priorite: 0 } }
+    const double = { ...base, index: 2, titre: 'Appeler Ali', cochee: false, doublon_de: 9, doublon_projet: 'Ventes', jetons: [], champs: { priorite: 0 } }
+    return { ...d, projets_communs: [], projets_nouveaux: [], lignes: [cnss, faite, double] }
+  }
+
+  it('relecture finale n° 1 — capture_apercu : chaque ligne montre ses puces servies AVANT « Tout ajouter »', () => {
+    monter('capture_apercu', collage())
+    const ligne = screen.getByText('Payer la CNSS').closest('.ligne')
+    for (const puce of ['lun. 23', '09:00', 'Priorité haute', 'Rappel lun. 23 08:00']) {
+      expect(within(ligne).getByText(puce)).toBeInTheDocument()
+    }
+    expect(api.post).not.toHaveBeenCalled()
+  })
+
+  it('relecture finale n° 1 — capture_apercu : une ligne décochée par le serveur reste visible, dit pourquoi, n’est ni comptée ni créée', async () => {
+    monter('capture_apercu', collage())
+    const carte = screen.getByRole('group', { name: 'Ta liste rangée' })
+    expect(within(carte).getByText('Déjà faite')).toBeInTheDocument()
+    expect(within(carte).getByText('Déjà dans « Ventes »')).toBeInTheDocument()
+    await userEvent.click(within(carte).getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    const [url, corps] = api.post.mock.calls[0]
+    expect(url).toBe('/taches/saisie-rapide/')
+    expect(corps.apercu).toBe(false)
+    expect(corps.lignes).toHaveLength(1)
+    expect(corps.lignes[0]).toMatchObject({ titre: 'Payer la CNSS', priorite: 3, jour_prevu: '2026-11-23', heure_debut: '09:00' })
+    expect(await within(carte).findByText(/1 ajoutée/)).toBeInTheDocument()
+  })
+
   it('ERR 4 — capture_apercu (Range ma liste) : projet suggéré nommé, « Pas de projet évident », « Tout ranger (1) » par lot', async () => {
     api.get.mockResolvedValue(projetsServis())
     monter('capture_apercu', rangement())

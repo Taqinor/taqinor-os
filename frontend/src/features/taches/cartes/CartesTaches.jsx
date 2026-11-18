@@ -4,6 +4,11 @@ import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import CaseRonde from '../ui/CaseRonde'
 import SelecteurProjet from '../ui/SelecteurProjet'
+// Relecture finale n° 1 — la carte de collage lit et envoie une liste comme l'écran de collage (regles.md §1.10) :
+// mêmes puces, même raison d'une ligne décochée, même choix des lignes à créer.
+import { PucesLues, noteDeLigne } from '../ui/ApercuListe'
+import { phraseAlerte } from '../ui/ChampSaisie'
+import { lignesACreer } from '../saisie/ColleListes'
 import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
 
 /* ============================================================================
@@ -523,10 +528,21 @@ function CarteCaptureApercu({ donnees }) {
     }
   }
   const aRanger = lignes.filter((l) => champsDe(l).projet_id != null)
-  const ajouter = () => geste.lancer(() => client.saisieRapide({
-    lignes: lignes.map((l) => ({ index: l.index, collage: l.collage, client_id: `copilote:${l.collage}:${l.index}`, titre: l.titre, ...champsDe(l) })),
-    apercu: false,
-  }, DEPUIS_LA_CARTE), accord(lignes.length, 'ajoutée'))
+  // Un collage : la ligne décochée par le serveur (déjà faite, doublon) n'est ni créée ni comptée, les points en retrait
+  // vont dans la check-list de leur tâche — la règle de l'écran de collage (`lignesACreer`), pas une seconde.
+  // `client_id` : une clé PROPRE à cette carte (deux collages n'ont jamais la même ligne 0), tirée au premier toucher
+  // et gardée pour un nouvel essai depuis la même carte.
+  const cid = useRef(null)
+  const decochee = (l) => !rangement && l.cochee === false
+  const aEnvoyerAvec = (c) => (rangement ? [] : lignesACreer(
+    { ...donnees, lignes: lignes.map((l) => ({ ...l, champs: champsDe(l) })) },
+    { cochees: {}, titres: {}, enTache: {}, sousTaches: {} }, { cid: c }))
+  const aEnvoyer = aEnvoyerAvec('')
+  const ajouter = () => {
+    cid.current = cid.current ?? `copilote:${client.nouvelleCle()}`
+    return geste.lancer(() => client.saisieRapide({ lignes: aEnvoyerAvec(cid.current), apercu: false }, DEPUIS_LA_CARTE),
+      accord(aEnvoyer.length, 'ajoutée'))
+  }
   const ranger = () => geste.lancer(() => client.traiterLot({
     ids: aRanger.map((l) => l.tache_id), action: 'deplacer',
     valeurs: { par_tache: Object.fromEntries(aRanger.map((l) => [l.tache_id, { projet_id: champsDe(l).projet_id }])) },
@@ -540,10 +556,14 @@ function CarteCaptureApercu({ donnees }) {
           {lignes.map((l) => {
             const dit = projetDeLigne(champsDe(l), { projets: projets.projets, choisi: l.index in choix, rangement })
             return (
-              <div key={l.index} className="ligne" role="listitem">
+              <div key={l.index} className={decochee(l) ? 'ligne decochee' : 'ligne'} role="listitem">
                 <div className="ligne-corps">
                   <div className="titre">{l.titre}</div>
-                  {dit ? <div className="meta"><span>{dit}</span></div> : null}
+                  {decochee(l) && noteDeLigne(l) ? <p className="apercu-note">{noteDeLigne(l)}</p> : null}
+                  {(l.alertes ?? []).map(phraseAlerte).filter(Boolean).map((phrase) => <p key={phrase} className="apercu-note">{phrase}</p>)}
+                  {/* Le projet se dit (et se change) à part : une puce de projet resterait vraie après « Changer de projet ». */}
+                  <PucesLues jetons={(l.jetons ?? []).filter((j) => j.type !== 'projet')} />
+                  {dit && !decochee(l) ? <div className="meta"><span>{dit}</span></div> : null}
                   {ouverte === l.index ? (
                     projets.projets === null ? (
                       <p className="section-sous" role={projets.erreur ? 'alert' : 'status'}>{projets.erreur || 'Chargement…'}</p>
@@ -555,7 +575,7 @@ function CarteCaptureApercu({ donnees }) {
                   ) : null}
                   {erreurLigne[l.index] ? <p className="section-sous alerte" role="alert">{erreurLigne[l.index]}</p> : null}
                   {/* Sous la ligne, comme les gestes des priorités : deux gestes à droite écrasaient le titre. */}
-                  <div className="actions-priorite">
+                  <div className="actions-priorite" hidden={decochee(l)}>
                     <button type="button" className="bouton lien" disabled={geste.fait !== null}
                       onClick={() => { projets.lire(); setOuverte((o) => (o === l.index ? null : l.index)) }}>
                       Changer de projet
@@ -577,8 +597,9 @@ function CarteCaptureApercu({ donnees }) {
               {`Tout ranger (${aRanger.length})`}
             </button>
           ) : (
-            <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null} onClick={ajouter}>
-              {`Tout ajouter (${lignes.length})`}
+            <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null || aEnvoyer.length === 0}
+              onClick={ajouter}>
+              {`Tout ajouter (${aEnvoyer.length})`}
             </button>
           )}
         </div>
