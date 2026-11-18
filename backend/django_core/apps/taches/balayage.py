@@ -19,8 +19,9 @@ active, module actif, coupe-circuit `ReglagesSociete.balayage_actif` relu À CHA
 
 Rejouer le balayage n'envoie rien de plus. Le corps d'une notification ne porte un titre que si
 `titres_notifications` ET l'objet n'est pas confidentiel (`confidentialite.nom_pour`, usage
-`notification`) ; par défaut, aucun titre (textes.md §3). Une société en échec est journalisée et
-n'arrête pas les suivantes.
+`notification`) ; par défaut, aucun titre (textes.md §3). Un compte (ou un groupe de rappels) en échec
+est journalisé — id du compte et classe de l'erreur, jamais un titre — et n'arrête ni les comptes
+suivants ni les sociétés suivantes (`comptes_en_echec` du bilan) ; une société en échec non plus.
 """
 import datetime
 import logging
@@ -81,10 +82,11 @@ class Message:
 # --- Le passage -------------------------------------------------------------------------------------
 
 def executer(maintenant=None):
-    """Un passage du balayage → `{"societes", "rappels", "manques", "sollicitations"}` (compteurs)."""
+    """Un passage du balayage → `{"societes", "rappels", "manques", "sollicitations", "comptes_en_echec"}`
+    (compteurs)."""
     from apps.taches.sweeps import societes_a_balayer  # sweeps importe ce module (tâche Celery)
     maintenant = timezone.localtime(maintenant) if maintenant is not None else timezone.localtime()
-    bilan = {'societes': 0, 'rappels': 0, 'manques': 0, 'sollicitations': 0}
+    bilan = {'societes': 0, 'rappels': 0, 'manques': 0, 'sollicitations': 0, 'comptes_en_echec': 0}
     for company_id in societes_a_balayer():
         try:
             resultat = _balayer_societe(company_id, maintenant)
@@ -98,7 +100,7 @@ def executer(maintenant=None):
 
 
 def _balayer_societe(company_id, maintenant):
-    manques, rappels = _rappels_dus(company_id, maintenant)
+    manques, rappels, echecs = _rappels_dus(company_id, maintenant)
     envoyees = 0
     comptes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True,
                                              proprietaire__portee='interne')
@@ -111,8 +113,26 @@ def _balayer_societe(company_id, maintenant):
         company = reglages.proprietaire.company
         if company.pk not in fenetres:
             fenetres[company.pk] = fenetre_messages(company, maintenant.date())
-        envoyees += _solliciter(reglages, maintenant, fenetres[company.pk])
-    return {'manques': manques, 'rappels': rappels, 'sollicitations': envoyees}
+        envoye = _isoler(reglages.proprietaire_id, 'sollicitation', _solliciter, reglages, maintenant,
+                         fenetres[company.pk])
+        if envoye is None:
+            echecs += 1
+        else:
+            envoyees += envoye
+    return {'manques': manques, 'rappels': rappels, 'sollicitations': envoyees, 'comptes_en_echec': echecs}
+
+
+def _isoler(compte_id, quoi, fonction, *args):
+    """`fonction(*args)` pour UN compte : une exception est journalisée (id du compte et classe de
+    l'erreur, jamais son message, qui peut porter un titre) et rend `None` ; les comptes suivants
+    passent (même forme que la nuit, `services/rythme.etapes_nocturnes`). Le point de sauvegarde du
+    compte est posé par `fonction` là où elle écrit (`_solliciter` dès qu'un type est dû,
+    `_envoyer_rappels`) : une minute creuse n'en paie aucun."""
+    try:
+        return fonction(*args)
+    except Exception as erreur:  # noqa: BLE001 — un compte en échec n'arrête pas les suivants (journalisé)
+        logger.error('taches.balayer : %s en échec pour le compte %s (%s)', quoi, compte_id, type(erreur).__name__)
+        return None
 
 
 def fenetre_messages(company, jour):
@@ -131,7 +151,7 @@ def _instant_q(instant):
 
 
 def _rappels_dus(company_id, maintenant):
-    """(manqués, notifications de rappel envoyées) pour la société."""
+    """(manqués, notifications de rappel envoyées, groupes en échec) pour la société."""
     en_attente = Rappel.objects.filter(company_id=company_id, statut=StatutRappel.EN_ATTENTE)
     limite = maintenant - RETARD_MANQUE
     trop_tard = en_attente.filter(Q(jour__lt=limite.date()) | Q(jour=limite.date(), heure__lt=limite.time()))
@@ -143,9 +163,16 @@ def _rappels_dus(company_id, maintenant):
                                              .values_list('pk', 'proprietaire_id', 'jour', 'heure')):
         groupes.setdefault((proprietaire_id, jour, heure.replace(second=0, microsecond=0)), []).append(pk)
     admis = _comptes_admis({proprietaire_id for proprietaire_id, _jour, _heure in groupes})
-    envoyes = sum(_envoyer_rappels(ids, maintenant) for (proprietaire_id, _jour, _heure), ids in groupes.items()
-                  if proprietaire_id in admis)
-    return manques, envoyes
+    envoyes = echecs = 0
+    for (proprietaire_id, _jour, _heure), ids in groupes.items():
+        if proprietaire_id not in admis:
+            continue
+        envoye = _isoler(proprietaire_id, 'rappel', _envoyer_rappels, ids, maintenant)
+        if envoye is None:
+            echecs += 1
+        else:
+            envoyes += envoye
+    return manques, envoyes, echecs
 
 
 def _comptes_admis(ids):
@@ -249,14 +276,15 @@ def _solliciter(reglages, maintenant, fenetre):
     candidats = [t for t in regles.ORDRE_PRIORITE if regles.due(t, maintenant, optimiste, fenetre)]
     if not candidats or candidats[0] in envoyes:
         return 0
-    lecture = _lire(reglages, maintenant, candidats)
-    prefs = replace(base, **lecture.conditions)
-    # Un type déjà parti à ce tick reste « dû » pour le départage : l'autre reste sauté, jamais différé.
-    dus = [t for t in candidats if t in envoyes or regles.due(t, maintenant, prefs, fenetre)]
-    retenu, _sautes = regles.departager(dus)
-    if retenu is None or retenu in envoyes:
-        return 0
-    return _envoyer(reglages, retenu, _message(retenu, lecture, prefs), maintenant, lecture)
+    with transaction.atomic():  # le point de sauvegarde du compte : une panne ne défait que lui
+        lecture = _lire(reglages, maintenant, candidats)
+        prefs = replace(base, **lecture.conditions)
+        # Un type déjà parti à ce tick reste « dû » pour le départage : l'autre reste sauté, jamais différé.
+        dus = [t for t in candidats if t in envoyes or regles.due(t, maintenant, prefs, fenetre)]
+        retenu, _sautes = regles.departager(dus)
+        if retenu is None or retenu in envoyes:
+            return 0
+        return _envoyer(reglages, retenu, _message(retenu, lecture, prefs), maintenant, lecture)
 
 
 @dataclass

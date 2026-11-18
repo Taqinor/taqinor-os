@@ -151,6 +151,54 @@ class BalayageTests(TestCase):
         fabriques.plan(self.u1, J, planifie_le=a(8, 0))
         self.assertEqual(balayage.executer(a(18, 0))['sollicitations'], 1)  # le bilan du soir : il a le droit
 
+    def test_un_compte_en_panne_n_arrete_pas_les_suivants(self):
+        """Quatre comptes ; le 2e lève pendant sa lecture : les 1er, 3e et 4e reçoivent leur plan du matin,
+        le bilan compte l'échec, le journal dit l'id du compte et la classe de l'erreur, jamais un titre."""
+        comptes = [self.u1] + [fabriques.compte(self.societe, nom=f'u{rang}') for rang in (2, 3, 4)]
+        for compte in comptes:
+            if compte is not self.u1:
+                fabriques.reglages(compte)
+            fabriques.tache(compte, titre=CANARI, jour_prevu=J)
+        en_panne, vraie_lecture = comptes[1], balayage._lire
+
+        def lire(reglages, maintenant, candidats):
+            if reglages.proprietaire_id == en_panne.pk:
+                raise RuntimeError(f'panne « {CANARI} »')
+            return vraie_lecture(reglages, maintenant, candidats)
+
+        with mock.patch.object(balayage, '_lire', side_effect=lire), \
+                self.assertLogs('apps.taches.balayage', level='ERROR') as journal:
+            bilan = balayage.executer(a(8, 30))
+        self.assertEqual((bilan['societes'], bilan['sollicitations'], bilan['comptes_en_echec']), (1, 3, 1))
+        recus = [Notification.objects.filter(recipient=compte, event_type=EventType.TACHES_PLAN_DU_JOUR).count()
+                 for compte in comptes]
+        self.assertEqual(recus, [1, 0, 1, 1])
+        self.assertEqual(len(journal.output), 1)
+        self.assertIn(f'compte {en_panne.pk}', journal.output[0])
+        self.assertIn('RuntimeError', journal.output[0])
+        self.assertNotIn(CANARI, journal.output[0])
+
+    def test_un_groupe_de_rappels_en_panne_n_arrete_pas_les_suivants(self):
+        autre = fabriques.compte(self.societe, nom='u2')
+        tache_autre = fabriques.tache(autre, jour_prevu=J)
+        premier = self.rappel(15, 0)
+        second = Rappel.objects.create(company=self.societe, proprietaire=autre, tache=tache_autre, jour=J,
+                                       heure=datetime.time(15, 0))
+        vrai_envoi = balayage._envoyer_rappels
+
+        def envoyer(ids, maintenant):
+            if premier.pk in ids:
+                raise RuntimeError(f'panne « {CANARI} »')
+            return vrai_envoi(ids, maintenant)
+
+        with mock.patch.object(balayage, '_envoyer_rappels', side_effect=envoyer), \
+                self.assertLogs('apps.taches.balayage', level='ERROR') as journal:
+            bilan = balayage.executer(a(15, 0))
+        self.assertEqual((bilan['rappels'], bilan['comptes_en_echec']), (1, 1))
+        second.refresh_from_db()
+        self.assertEqual(second.statut, StatutRappel.ENVOYE)
+        self.assertNotIn(CANARI, '\n'.join(journal.output))
+
     # --- coupe-circuit (invariant 39) -------------------------------------------------------------
 
     def test_coupe_circuit_rien_puis_aucune_rafale_a_la_remise_en_marche(self):
