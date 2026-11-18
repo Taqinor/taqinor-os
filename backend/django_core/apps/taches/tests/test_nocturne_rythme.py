@@ -162,6 +162,37 @@ class NuitRythmeTests(TestCase):
         self.nuit()
         self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.CONSTAT), [])
 
+    def test_constats_hors_premiere_livraison_jamais_crees(self):
+        """Revue F2 tour 2 #7 : C4 et C8 (leur « Oui » ne change rien) et C1, C2 (leurs lignes ne sont
+        écrites par rien) ne naissent pas, même quand leurs données y sont."""
+        fabriques.reglages(self.u1)
+        for d in range(1, 11):  # 10 plans à 5 gardées dont 2 faites : C4 serait vrai
+            fabriques.plan(self.u1, J - datetime.timedelta(days=d), statut_jour=StatutJour.EVALUE, compte_rythme=2,
+                           plan_prevues=5, plan_faites=2)
+        projet = fabriques.projet(self.u1)
+        with mock.patch.object(rythme, '_projet_neglige', return_value=projet.pk):
+            self.nuit()
+        self.assertEqual([c.cle for c in cartes(self.u1, type=TypeIncitationEcran.CONSTAT)
+                          if c.cle in ('C1', 'C2', 'C4', 'C8')], [])
+
+    def test_c7_compte_les_lignes_d_a_revoir(self):
+        """#7 : C7 compte les lignes « Reportée 3 fois » d'À revoir, que son bouton ouvre — jamais une
+        tâche déjà tranchée ni une tâche de la réserve."""
+        from apps.taches.services.journee import aujourdhui
+        fabriques.reglages(self.u1)
+        fabriques.tache(self.u1, reports=3, reports_tranches=3, jour_prevu=J + datetime.timedelta(days=2))
+        fabriques.tache(self.u1, reports=4, reports_tranches=4, quelque_jour=True)
+        self.nuit()
+        self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.CONSTAT, cle='C7'), [])
+        fabriques.tache(self.u1, reports=3, jour_prevu=J - datetime.timedelta(days=1))
+        fabriques.tache(self.u1, reports=5, reports_tranches=2, jour_prevu=J)
+        IncitationCoach.objects.all().delete()
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.CONSTAT, cle='C7')
+        maintenant = timezone.make_aware(datetime.datetime(2026, 11, 18, 9, 0))
+        a_revoir = aujourdhui(self.u1, J, maintenant)['a_decider']
+        self.assertEqual((carte.donnees, len(a_revoir)), ({'n': 2}, 2))
+
     def test_constat_c3_les_autres_jours(self):
         fabriques.reglages(self.u1)
         vendredis = {J - datetime.timedelta(days=d) for d in range(1, 57)

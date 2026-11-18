@@ -26,7 +26,9 @@ from apps.taches.choix import (
     ClePreference,
     FamilleSuggestion,
     ModeRythme,
+    MotifRevoir,
     ReponseIncitation,
+    SectionJournee,
     SourceObjectif,
     SourcePreference,
     StatutJour,
@@ -38,11 +40,11 @@ from apps.taches.choix import (
 from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
-from apps.taches.moteur.gabarits import CONSTANTES, texte
+from apps.taches.moteur.gabarits import texte
 from apps.taches.moteur.sante import NEGLIGE_JOURS, ProjetSante, neglige
 from apps.taches.moteur.sollicitations import ETAT_PAUSE, HEURE_RELANCE_DEFAUT, etat_decroissance
 from apps.taches.selectors.base import _du_compte, projets_de, taches_de
-from apps.taches.selectors.journee import activites_closes_du_jour
+from apps.taches.selectors.journee import TACHE as TACHE_JOURNEE, activites_closes_du_jour, lire_journee
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
     bornes_du_jour,
@@ -805,10 +807,7 @@ SILENCE_DERIVE_JOURS = moteur.SILENCE_TENIR_JOURS
 FENETRE_CONSTATS = datetime.timedelta(days=moteur.FENETRE_CONSTATS_JOURS)
 FENETRE_C3 = datetime.timedelta(days=moteur.FENETRE_C3_JOURS)
 FENETRE_NEGLIGE = datetime.timedelta(days=NEGLIGE_JOURS)
-STATUTS_OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 STATUTS_CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
-#: C7 : tâches reportées 3 fois ou plus (la même constante que la phrase, textes.md « Constats »).
-REPORTS_A_REVOIR = CONSTANTES['reports']
 
 
 def creer_carte(user, type_, cle, jour, donnees, *, expire_jours=EXPIRATION_CARTE_JOURS):
@@ -937,10 +936,19 @@ def _donnees_constats(user, plans, jour):
     jours = tuple(moteur.JourCompte(jour=p.jour, statut_jour=p.statut_jour, compte=p.compte_rythme,
                                     essentiels_choisis=p.essentiels_choisis, essentiels_faits=p.essentiels_faits,
                                     plan_prevues=p.plan_prevues, plan_faites=p.plan_faites) for p in plans)
-    reportees = taches_de(user).filter(statut__in=STATUTS_OUVERTS, reports__gte=REPORTS_A_REVOIR).count()
+    lignes = _lignes_constats(user, jour) if moteur.CONSTAT_C1_ACTIF or moteur.CONSTAT_C2_ACTIF else ()
+    neglige_id = _projet_neglige(user, jour) if moteur.CONSTAT_C8_ACTIF else None
     return moteur.DonneesConstats(
-        jour=jour, jours=jours, lignes=_lignes_constats(user, jour), heures_faits=_heures_faits(user, jour),
-        reportees_3=reportees, projet_neglige_id=_projet_neglige(user, jour), refus=_refus_constats(user))
+        jour=jour, jours=jours, lignes=lignes, heures_faits=_heures_faits(user, jour),
+        reportees_3=_reportees_a_revoir(user, jour), projet_neglige_id=neglige_id, refus=_refus_constats(user))
+
+
+def _reportees_a_revoir(user, jour):
+    """C7 (Revue F2 tour 2 #7) : les lignes « Reportée 3 fois » d'À revoir au `jour` — la section même que
+    son bouton ouvre, lue par `selectors.journee.lire_journee` (jamais la règle recopiée ici)."""
+    journee = lire_journee(user, jour)
+    return sum(1 for cle in journee.sections.get(SectionJournee.A_DECIDER, ())
+               if cle[0] == TACHE_JOURNEE and journee.placements[cle].code == MotifRevoir.REPORTEE_3_FOIS)
 
 
 def _nombres_c2(d):

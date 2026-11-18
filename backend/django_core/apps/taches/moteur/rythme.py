@@ -490,6 +490,13 @@ POURCENT = 100
 # Comme les autres comportements « hors de la première livraison » : C6 est éteint
 # faute de durée réelle mesurée (critique m6) ; les champs et la formule restent.
 CONSTAT_C6_ACTIF = False
+# Revue F2 tour 2 #7, même mécanisme : C4 et C8 hors de la première livraison (leur « Oui » n'a encore aucun
+# effet : rien ne lit la carte acceptée) ; C1 et C2 aussi (ils lisent `creneau`, `rang` et `faite` des
+# lignes de plan, que rien n'écrit : ils ne pourraient jamais naître). Les formules restent.
+CONSTAT_C1_ACTIF = False
+CONSTAT_C2_ACTIF = False
+CONSTAT_C4_ACTIF = False
+CONSTAT_C8_ACTIF = False
 
 ACTION_ESSENTIEL_MATIN = 'essentiel_le_matin'
 ACTION_JOURS_COURTS = 'jours_courts'
@@ -546,6 +553,8 @@ def lignes_fenetre(d):
 
 
 def _constat_c1(d):
+    if not CONSTAT_C1_ACTIF:
+        return None
     groupes = {}
     for ligne in lignes_fenetre(d):
         if ligne.creneau:
@@ -572,6 +581,8 @@ def essentiels_classes(lignes):
 
 
 def _constat_c2(d):
+    if not CONSTAT_C2_ACTIF:
+        return None
     en_tete, ailleurs = essentiels_classes(lignes_fenetre(d))
     # 15 jours chacun (un jour compte dans les deux familles s'il a deux essentiels).
     if len({j for j, _ in en_tete}) < C2_MIN_JOURS or len({j for j, _ in ailleurs}) < C2_MIN_JOURS:
@@ -602,6 +613,8 @@ def _constat_c3(d):
 
 
 def _constat_c4(d):
+    if not CONSTAT_C4_ACTIF:
+        return None
     plans = [j for j in d.jours if j.statut_jour == StatutJour.EVALUE and j.plan_prevues > 0
              and _fenetre_ok(d.jour, j.jour, FENETRE_CONSTATS_JOURS)]
     if len(plans) < C4_MIN_PLANS:
@@ -646,7 +659,7 @@ def _constat_c7(d):
 
 
 def _constat_c8(d):
-    if d.projet_neglige_id is None:
+    if not CONSTAT_C8_ACTIF or d.projet_neglige_id is None:
         return None
     return Constat('C8', {'projet_id': d.projet_neglige_id}, ACTION_PROPOSE_DEMAIN)
 

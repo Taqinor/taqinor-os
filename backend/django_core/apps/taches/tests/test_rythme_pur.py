@@ -593,10 +593,13 @@ class ConstatsTests(unittest.TestCase):
         # C1 : écart >= 25 points entre créneaux, 30 lignes minimum par créneau.
         lignes = ([rythme.LigneConstat(il_y_a(1), 'matin', i < 24) for i in range(30)]
                   + [rythme.LigneConstat(il_y_a(2), 'apres_midi', i < 12) for i in range(30)])
-        constat = rythme.constats(donnees(lignes=tuple(lignes)))[0]
+        self.assertEqual(codes(donnees(lignes=tuple(lignes))), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True):
+            constat = rythme.constats(donnees(lignes=tuple(lignes)))[0]
         self.assertEqual((constat.code, constat.action, constat.donnees['meilleur']),
                          ('C1', 'essentiel_le_matin', 'matin'))
 
+    @mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True)
     def test_c1_minimum_et_ecart(self):
         court = ([rythme.LigneConstat(il_y_a(1), 'matin', True)] * 29
                  + [rythme.LigneConstat(il_y_a(1), 'apres_midi', False)] * 30)
@@ -605,6 +608,7 @@ class ConstatsTests(unittest.TestCase):
                   + [rythme.LigneConstat(il_y_a(1), 'apres_midi', i < 12) for i in range(30)])
         self.assertNotIn('C1', codes(donnees(lignes=tuple(proche))))  # 60 % vs 40 % = 20 points
 
+    @mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True)
     def test_c1_hors_fenetre(self):
         vieux = ([rythme.LigneConstat(il_y_a(40), 'matin', i < 24) for i in range(30)]
                  + [rythme.LigneConstat(il_y_a(40), 'apres_midi', i < 12) for i in range(30)])
@@ -622,10 +626,13 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c2_essentiel_en_tete(self):
         # C2 : essentiel fait en tête vs ailleurs, écart >= 30 points, 15 jours chacun.
-        constat = rythme.constats(donnees(lignes=self._lignes_c2(15, 15)))[0]
+        self.assertEqual(codes(donnees(lignes=self._lignes_c2(15, 15))), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C2_ACTIF', True):
+            constat = rythme.constats(donnees(lignes=self._lignes_c2(15, 15)))[0]
         self.assertEqual((constat.code, round(constat.donnees['premier']), round(constat.donnees['ailleurs'])),
                          ('C2', 80, 33))
 
+    @mock.patch.object(rythme, 'CONSTAT_C2_ACTIF', True)
     def test_c2_quatorze_jours_ne_suffisent_pas(self):
         self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(14, 15))))
         self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(15, 14))))
@@ -657,12 +664,16 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c4_trop_garde(self):
         # C4 : gardées - faites >= 2 sur >= 60 % de 10 plans -> limite médiane faite + 1.
-        constat = rythme.constats(donnees(jours=self._jours_c4(6)))[0]
+        self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(6))))  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True):
+            constat = rythme.constats(donnees(jours=self._jours_c4(6)))[0]
         self.assertEqual((constat.code, constat.donnees['limite']), ('C4', 3))
 
+    @mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True)
     def test_c4_cinq_sur_dix_ne_suffit_pas(self):
         self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(5))))
 
+    @mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True)
     def test_c4_neuf_plans_ne_suffisent_pas(self):
         self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(10)[:9])))
 
@@ -698,10 +709,13 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c8_projet_neglige(self):
         # C8 : `neglige()` non vide -> une de ses tâches dans Proposé de demain.
-        constat = rythme.constats(donnees(projet_neglige_id=5))[0]
+        self.assertEqual(codes(donnees(projet_neglige_id=5)), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True):
+            constat = rythme.constats(donnees(projet_neglige_id=5))[0]
         self.assertEqual((constat.code, constat.donnees['projet_id']), ('C8', 5))
         self.assertNotIn('C8', codes(donnees()))
 
+    @mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True)
     def test_refus_se_tait_vingt_huit_jours(self):
         base = dict(reportees_3=1, projet_neglige_id=5)
         self.assertEqual(codes(donnees(refus={'C7': il_y_a(27)}, **base)), ['C8'])
@@ -710,6 +724,7 @@ class ConstatsTests(unittest.TestCase):
     def test_comprendre_mon_rythme_coupe_tout(self):
         self.assertEqual(rythme.constats(donnees(reportees_3=3, comprendre_mon_rythme=False)), [])
 
+    @mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True)
     def test_ordre_par_numero_et_huit_au_plus(self):
         sortie = codes(donnees(reportees_3=1, projet_neglige_id=5))
         self.assertEqual(sortie, ['C7', 'C8'])
