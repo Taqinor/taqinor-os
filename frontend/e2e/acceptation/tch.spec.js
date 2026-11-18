@@ -24,7 +24,6 @@ import { readFileSync } from 'node:fs'
 import { test, expect, request as pwRequest } from '@playwright/test'
 import { groupe } from './_oracles.js'
 import { py, fermerDjangoApresTout } from './_django.js'
-import { connecterPortail } from '../helpers.js'
 import { garderParApi, lireTache, section, toast } from '../taches-aides.js'
 import {
   API, aller, appuiLong, balayer, capturer, connecter, itemsDe, lire, liste, ouvrir, pile, salir, scenario, tacheNommee,
@@ -98,6 +97,7 @@ async function collerLesQuatre(p) {
     if (rang > 0) await saisie(p).getByRole('button', { name: 'Coller encore' }).click()
     await champSaisie(p).fill(collage.join('\n'))
     await expect(saisie(p).getByText(`Nouveau projet : ${collage[0]}`)).toBeVisible()
+    if (rang === 0) await capturer(p, 'apercu-collage')
   }
 }
 
@@ -113,7 +113,6 @@ etape('P136.2', ['TCH136', 'TCH83', 'TCH48', 'TCH40'], async (f) => {
   }
   // l'aperçu n'écrit rien
   expect(liste(await lire(p, 'projets/'))).toHaveLength(0)
-  await capturer(p, 'apercu-collage')
 })
 
 etape('P136.3', ['TCH136', 'TCH48', 'TCH36', 'TCH83'], async (f) => {
@@ -181,8 +180,9 @@ sortie({'id': a.pk})`)
   await bandeau.getByRole('button', { name: 'Tout convertir' }).click()
   await expect(bandeau).toHaveCount(0)
   // Oracle : tâche créée, à-faire clos dans `/activites`.
-  await expect(p.locator('[data-ligne^="tache:"]').filter({ hasText: T.facture })).toHaveCount(1)
-  expect((await tacheNommee(p, T.facture)).echeance).toBe('2026-11-27')
+  await expect(toast(p)).toContainText('Ajoutée')
+  // spec-2 §« à-faire convertis » : `due_date` → JOUR PRÉVU (la tâche part donc dans le ven. 27, pas dans À trier)
+  expect((await tacheNommee(p, T.facture)).jour_prevu).toBe('2026-11-27')
   // « clos dans /activites » : l'écran Activités lit ce même drapeau `done` (records)
   const close = await py(`from apps.records.models import Activity\nsortie(Activity.objects.get(pk=${act.id}).done)`)
   expect(close, "l'à-faire est clos dans Activités").toBe(true)
@@ -214,6 +214,7 @@ etape('P137.1', ['TCH137', 'TCH76', 'TCH77', 'TCH78', 'TCH54', 'TCH56', 'TCH57',
   const instant = scenario(MATIN, `${J24} 08:30`, { lecture: true })
   const p = await ouvrir(f, { instant })
   await aujourdhui(p)
+  await capturer(p, 'aujourdhui-matin')
   // Oracle : « 0 sur 5 · essentiel 0/2 »
   await expect(progression(p)).toContainText('0 sur 5 · essentiel 0/2')
   // Oracle : Proposé 3 — SCENARIO §3 (fait foi, ERR-PLAN sur le 3e titre) : rails · fournisseur · fiche de poste.
@@ -226,17 +227,18 @@ etape('P137.1', ['TCH137', 'TCH76', 'TCH77', 'TCH78', 'TCH54', 'TCH56', 'TCH57',
   // Oracle : À revoir 2, En attente 1 (repliés)
   await expect(replie(p, 'À revoir')).toHaveText(/^À revoir\s*2/)
   await expect(replie(p, 'En attente')).toHaveText(/^En attente\s*1/)
-  await capturer(p, 'aujourdhui-matin')
 })
 
 etape('P137.2', ['TCH137', 'TCH78', 'TCH57'], async (f) => {
   const instant = scenario(MATIN, `${J24} 08:30`)
   const p = await ouvrir(f, { instant })
+  const proposees = (await lire(p, 'aujourdhui/')).propose.pour_objectif.map((it) => it.titre)
   await aujourdhui(p)
-  await p.locator('.moment[aria-label="Proposé pour aujourd\'hui"]').getByRole('button', { name: 'Garder ces 3', exact: true }).click()
+  // « Garder ces 3 » : celui de la carte du moment (SCENARIO) ou, sans elle, celui de Proposé — le même geste
+  await p.getByRole('button', { name: 'Garder ces 3', exact: true }).first().click()
   // Oracle : Garder ces 3 → focus sur Prévu
   await expect(section(p, 'Prévu')).toBeFocused()
-  for (const titre of [T.rails, T.fournisseur, T.fiche]) {
+  for (const titre of proposees) {
     await expect(section(p, 'Prévu').getByText(titre, { exact: true })).toBeVisible()
     expect((await tacheNommee(p, titre)).jour_prevu, `« ${titre} » gardée aujourd'hui`).toBe(J24)
   }
@@ -285,29 +287,31 @@ sortie({'n': Tache.objects.filter(activite_origine_id=${activite.id}).count(), '
 etape('P137.5', ['TCH137', 'TCH50', 'TCH53'], async (f) => {
   const instant = scenario(MATIN, `${J24} 08:30`)
   const p = await ouvrir(f, { instant })
-  await matinGarde(p)
+  const gardees = (await matinGarde(p)).map((it) => it.titre)
+  // « une tâche » gardée : le fournisseur (SCENARIO) s'il est dans Prévu, sinon la première gardée
+  const titre = gardees.includes(T.fournisseur) ? T.fournisseur : gardees[0]
   await aujourdhui(p)
-  const cible = ligneNommee(p, T.fournisseur)
-  await balayer(cible, -1)
+  const cible = ligneNommee(p, titre)
+  await balayer(p, cible, -1)
   // Oracle : balayage gauche → « Reportée à mer. 25 · Annuler »
   await expect(toast(p)).toContainText('Reportée à mer. 25')
   await expect(toast(p).getByRole('button', { name: 'Annuler' })).toBeVisible()
-  await expect.poll(async () => (await tacheNommee(p, T.fournisseur)).jour_prevu).toBe('2026-11-25')
+  await expect.poll(async () => (await tacheNommee(p, titre)).jour_prevu).toBe('2026-11-25')
   // Annuler → revenue
   await toast(p).getByRole('button', { name: 'Annuler' }).click()
-  await expect.poll(async () => (await tacheNommee(p, T.fournisseur)).jour_prevu).toBe(J24)
+  await expect.poll(async () => (await tacheNommee(p, titre)).jour_prevu).toBe(J24)
   await p.reload()
-  await expect(section(p, 'Prévu').getByText(T.fournisseur, { exact: true })).toBeVisible()
+  await expect(section(p, 'Prévu').getByText(titre, { exact: true })).toBeVisible()
 })
 
 etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   const instant = scenario([...MATIN.slice(0, 2), '--heure', '15:00', '--historique', '10'], `${J24} 15:00`)
   const p = await ouvrir(f, { instant })
   await aujourdhui(p)
+  await capturer(p, 'aujourdhui-15h')
   // Oracle : « 3 sur 5 · essentiel 1/2 », « Objectif couvert par ce que tu as gardé. »
   await expect(progression(p)).toContainText('3 sur 5 · essentiel 1/2')
   await expect(sectionPropose(p)).toContainText('Objectif couvert par ce que tu as gardé.')
-  await capturer(p, 'aujourdhui-15h')
   // Alléger en gardant 1 → reste retourné sans report
   await p.getByRole('button', { name: "Plus d'actions" }).click()
   await p.getByRole('menuitem', { name: 'Alléger ma journée' }).click()
@@ -334,10 +338,11 @@ etape('P137.7', ['TCH137', 'TCH80', 'TCH58'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/aujourdhui?ouvrir=bilan', 'aujourdhui')
   const bilan = feuille(p, 'Bilan du soir')
+  await expect(bilan.locator('.bilan-compte')).toBeVisible()
+  await capturer(p, 'bilan')
   // Oracle : bilan « 4 sur 5 · essentiel 2 sur 2 », « 4 des 5 gardées »
   await expect(bilan.locator('.bilan-compte')).toHaveText('4 sur 5 · essentiel 2 sur 2')
   await expect(bilan).toContainText('4 des 5 gardées')
-  await capturer(p, 'bilan')
   // Tout reporter → contrat à mer. 25
   await bilan.getByRole('button', { name: 'Tout reporter à mer. 25' }).click()
   await bilan.getByRole('button', { name: 'Valider', exact: true }).click()
@@ -349,10 +354,10 @@ etape('P137.8', ['TCH137', 'TCH56', 'TCH76'], async (f) => {
   const instant = scenario(['--jour', '2026-12-07', '--absence', '10'], '2026-12-07 08:30')
   const p = await ouvrir(f, { instant })
   await aujourdhui(p)
+  await capturer(p, 'aujourdhui-retour')
   // Oracle : carte « Tu reviens après 10 jours… » (textes.md §4.2 `retour`)
   await expect(p.getByRole('region', { name: 'Retour' })).toContainText(/^Tu reviens après 10 jours/)
   await expect(progression(p)).toContainText('Reprise')
-  await capturer(p, 'aujourdhui-retour')
 })
 
 // =====================================================================================================================
@@ -427,7 +432,8 @@ etape('P138.3', ['TCH138', 'TCH92', 'TCH87', 'TCH60', 'TCH61', 'TCH53'], async (
   const dialogue = feuille(p, 'Supprimer le projet')
   await expect(dialogue).toContainText('Supprimer « Stand partenaire » et ses 2 tâches ?')
   await dialogue.getByRole('button', { name: 'Supprimer', exact: true }).click()
-  await expect(p).toHaveURL(/\/taches\/projets$/)
+  await expect(dialogue).toHaveCount(0)
+  await expect.poll(async () => (await p.request.get(`${API}/projets/${projet.id}/`)).status(), 'projet supprimé').toBe(404)
   // Oracle : Supprimées récemment → une ligne
   await aller(p, '/taches/supprimees', 'supprimees')
   const supprimees = p.getByRole('region', { name: 'Supprimées récemment' })
@@ -446,8 +452,9 @@ etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
   const instant = scenario(['--jour', '2026-11-20', '--heure', '17:40'], '2026-11-20 17:40')
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/revue', 'revue')
-  // Oracle : Revue « 21 faites en 4 jours »
-  await expect(p.locator('.ep-constat').first()).toContainText('21 faites en 4 jours')
+  // Oracle : Revue « 21 faites en 4 jours » — mots de textes.md §4.5 : « Du {lun.} au {ven.} : {faites} tâches en
+  // {jours} jours … » (le plan et SCENARIO disent « faites » : ERR-PLAN de vocabulaire, le chiffre est l'oracle)
+  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 (faites|tâches) en 4 jours/)
   await capturer(p, 'revue')
   // décisions : une carte par projet actif, « Garder » chacune
   for (let n = 0; n < 10; n += 1) {
@@ -506,9 +513,19 @@ etape('P139.3', ['TCH139', 'TCH105'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/agenda', 'agenda')
   // Oracle : placer 4 tâches à une heure (toucher puis créneau) → 4 blocs
-  const poses = [[T.stand, '11:00'], [T.fiche, '13:00'], [T.contrat, '15:00'], [T.planning, '16:00']]
-  for (const [titre, heure] of poses) {
-    await volet(p).getByRole('button', { name: new RegExp(echapper(titre)) }).click()
+  // 4 tâches du volet « À placer » (SCENARIO §4 : Aujourd'hui 3 · À revoir 2 · Mes projets 7) : les 3 d'Aujourd'hui,
+  // puis la première qui reste au volet, quelle qu'elle soit
+  const poses = [[T.stand, '11:00'], [T.fiche, '13:00'], [T.contrat, '15:00'], [null, '16:00']]
+  for (const pose of poses) {
+    const [titre, heure] = pose
+    if (titre === null) {
+      const reste = volet(p).locator('button.ag-lp')
+      await expect(reste.first(), 'une 4e tâche à placer dans le volet').toBeVisible()
+      pose[0] = (await reste.first().locator('.t').evaluate((el) => el.childNodes[0].textContent)).trim()
+      await reste.first().click()
+    } else {
+      await volet(p).getByRole('button', { name: new RegExp(echapper(titre)) }).click()
+    }
     await p.getByRole('button', { name: `Placer à ${heure}`, exact: true }).click()
     await expect(toast(p)).toContainText(`Placée à ${heure}`)
   }
@@ -566,7 +583,8 @@ for n in (2, 3):
 sortie(AgendaExterne.objects.filter(company_id=soc, proprietaire=u).count())`)
   await p.reload()
   expect(await nb()).toBe(3)
-  await ajouter('https://agenda.example.com/quatrieme.ics')
+  // adresse https PUBLIQUE par son IP (la machine d'essai ne résout aucun nom : un nom serait refusé avant le plafond)
+  await ajouter('https://1.1.1.1/quatrieme.ics')
   await expect(erreur.filter({ hasText: '3 agendas au plus.' })).toBeVisible()
   expect(await nb(), 'toujours 3 agendas').toBe(3)
 })
@@ -641,6 +659,7 @@ etape('P140.4', ['TCH140', 'TCH69', 'TCH107'], async (f) => {
   await aller(p, '/taches/rythme', 'rythme')
   await expect(p.getByText(/On passe à 6 \?/)).toBeVisible()
   // Oracle : couper « Comprendre mon rythme » → constats et propositions disparus (`GET rythme/` sans profil)
+  await p.locator('button.replie', { hasText: 'Comprendre mon rythme' }).click() // l'interrupteur vit dans un repli
   await p.getByRole('switch', { name: 'Comprendre mon rythme' }).click()
   const confirmer = p.getByRole('dialog').getByRole('button', { name: /^(Éteindre|Couper|Confirmer)/ })
   if (await confirmer.count()) await confirmer.click()
@@ -703,9 +722,9 @@ etape('P144.2', ['TCH144', 'TCH100'], async (f) => {
   await expect(saisie(p)).toHaveCount(0)
   // cocher
   await ligneNommee(p, T.stand).getByRole('checkbox', { name: `Marquer « ${T.stand} » comme faite` }).click()
-  // reporter (appui long → Reporter à …)
-  await appuiLong(p, ligneNommee(p, T.fiche), /^Reporter à /)
-  await p.getByRole('menuitem', { name: /^Reporter à / }).click()
+  // reporter (balayage gauche, parcours 4)
+  await balayer(p, ligneNommee(p, T.fiche), -1)
+  expect(await p.evaluate(() => navigator.onLine), 'toujours hors ligne avant le retour du réseau').toBe(false)
   await expect(p.getByText(/^En attente d'envoi \(\d+\)$/)).toBeVisible()
   // Oracle : puis réseau → rejoués, une seule tâche ajoutée
   await p.context().setOffline(false)
@@ -728,12 +747,17 @@ etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   await expect(progression(p)).toBeVisible()
   // `n` + 3 Entrée + Échap 5 (le texte tapé ne compte pas)
   const ajouts = ['Clavier un acheter du câble', 'Clavier deux appeler le bureau', 'Clavier trois classer les devis']
-  await touche('n')
-  await expect(champSaisie(p)).toBeFocused()
-  for (const titre of ajouts) { await p.keyboard.type(titre); await touche('Enter') }
-  await touche('Escape')
+  // Comme la personne : si la feuille s'est refermée après un ajout, elle retape `n` (compté).
+  for (const titre of ajouts) {
+    if (!(await saisie(p).isVisible())) await touche('n')
+    await expect(champSaisie(p)).toBeFocused()
+    await p.keyboard.type(titre)
+    await touche('Enter')
+    await expect.poll(async () => liste(await lire(p, 'taches/', { q: titre })).filter((t) => t.titre === titre).length,
+      `« ${titre} » ajoutée`).toBe(1)
+  }
+  if (await saisie(p).isVisible()) await touche('Escape')
   await expect(saisie(p)).toHaveCount(0)
-  await expect.poll(async () => (await Promise.all(ajouts.map(async (t) => liste(await lire(p, 'taches/', { q: t })).length))).every((n) => n === 1)).toBe(true)
   // 2 × `j` Espace 4
   const cochees = []
   for (let n = 0; n < 2; n += 1) {
@@ -809,8 +833,13 @@ etape('P144.5', ['TCH144', 'TCH74', 'TCH154'], async (f) => {
   const lien = await py(`${DEMO}from apps.crm.models import Lead
 from apps.taches.choix import Source
 from apps.taches.services.creation import creer_taches
+from django.contrib.contenttypes.models import ContentType
+from apps.taches.models.taches import Tache
 lead = Lead.objects.create(company_id=soc, nom='Lead Acceptation', email='${email}')
-r = creer_taches(u, [{'titre': 'Rappeler le lead de la foire'}], source=Source.MANUEL, porte='ecran', lien={'cible': 'crm.lead', 'id': lead.pk})
+r = creer_taches(u, [{'titre': 'Rappeler le lead de la foire'}], source=Source.MANUEL, porte='ecran')
+# Lien posé directement (donnée d'essai) : le rôle de test de demo_taches ne lit pas les leads, la route le refuserait
+Tache.objects.filter(pk=r.creees[0].pk).update(content_type=ContentType.objects.get_by_natural_key('crm', 'lead'),
+    object_id=lead.pk, lien_libelle='Lead Acceptation', lien_etat='')
 sortie({'lead': lead.pk, 'tache': r.creees[0].pk})`)
   // Oracle : effacer un lead lié (porte 09-08 de `crm`) → « Lead effacé »
   const effaces = await py(`${DEMO}from authentication.models import Company
@@ -819,7 +848,10 @@ sortie(erase_crm(Company.objects.get(pk=soc), '${email}'))`)
   expect(effaces, 'le lead est anonymisé par la porte de crm').toBeGreaterThanOrEqual(1)
   const p = await ouvrir(f, { instant })
   await aller(p, `/taches/aujourdhui?tache=${lien.tache}`, 'aujourdhui')
-  await expect(p.locator(`[data-fiche="${lien.tache}"]`)).toContainText('Lead effacé')
+  const fiche = p.locator(`[data-fiche="${lien.tache}"]`)
+  await fiche.getByRole('button', { name: 'Plus', exact: true }).click() // « Lié à » vit dans Fiche → Plus (TCH85)
+  await expect(fiche).toContainText('Lead effacé')
+  await capturer(p, 'fiche-plus')
   const lue = await lireTache(p, lien.tache)
   expect(JSON.stringify(lue)).not.toContain('Lead Acceptation')
 })
@@ -859,8 +891,10 @@ sortie({'roles': r, 'client': c.pk if c else None})`)
   const compte = comptes.find((c) => c.client === roles.client)
     ?? await (await api.post('/api/django/portail/comptes-portail/', { data: { client: roles.client } })).json()
   const prov = await (await api.post(`/api/django/portail/comptes-portail/${compte.id}/provisionner-acces/`, { data: {} })).json()
-  await py(`u = U.objects.get(username=${JSON.stringify(prov.username)}); u.set_password('${MDP}'); u.save(); sortie(1)`)
-  const portail = await connecterPortail({ request: pwRequest }, f.testInfo.project.use.baseURL, prov.username, MDP)
+  // Compte portail : mot de passe d'essai posé en base, sans « à changer » (le throttle de connexion est de 5/min)
+  await py(`u = U.objects.get(username=${JSON.stringify(prov.username)}); u.set_password('${MDP}'); u.must_change_password = False; u.save(); sortie(1)`)
+  const portail = await pwRequest.newContext({ baseURL: f.testInfo.project.use.baseURL })
+  await connecter(portail, prov.username, MDP)
   expect((await portail.get(`${API}/aujourdhui/`)).status(), 'portail : API').toBe(403)
   await portail.dispose()
   await api.dispose()

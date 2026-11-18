@@ -97,6 +97,10 @@ export async function ouvrir({ page, suivi, testInfo }, {
   await connecter(ctx.request, username, password ?? (username === COMPTE ? process.env.TACHES_DEMO_PASSWORD : undefined))
   const p = await ctx.newPage()
   suivi.surveiller(p)
+  if (process.env.TCH_JOURNAL) { // mise au point : journal des écritures de l'API (jamais en rejeu normal)
+    p.on('request', (q) => { if (q.url().includes('/api/') && q.method() !== 'GET') console.log('[req]', q.method(), q.url()) })
+    p.on('requestfailed', (q) => { if (q.url().includes('/api/')) console.log('[échec]', q.method(), q.url(), q.failure()?.errorText) })
+  }
   if (instant) await p.clock.install({ time: new Date(instant) })
   return p
 }
@@ -131,29 +135,48 @@ export function itemsDe(journee) {
 
 // --- Gestes au doigt -----------------------------------------------------------------------------------------------
 
-const toucher = (x, y) => ({ pointerType: 'touch', pointerId: 7, isPrimary: true, bubbles: true, clientX: x, clientY: y, button: 0, buttons: 1 })
+// Un VRAI doigt : `Input.dispatchTouchEvent` (CDP) — le navigateur en tire lui-même les événements pointeur
+// `pointerType: 'touch'` (pointeur actif, `setPointerCapture` valide), comme sur un écran tactile.
+// UNE session par page, jamais détachée : détacher une session CDP efface l'émulation réseau de la page
+// (`context.setOffline` repassait `navigator.onLine` à vrai au milieu du parcours hors ligne — constaté en P144.2).
+const sessions = new WeakMap()
+async function doigt(p) {
+  if (!sessions.has(p)) sessions.set(p, await p.context().newCDPSession(p))
+  return sessions.get(p)
+}
+const point = (x, y) => ({ touchPoints: [{ x: Math.round(x), y: Math.round(y), id: 1, radiusX: 4, radiusY: 4, force: 1 }] })
+
+async function boiteDe(ligneCadre, quoi) {
+  const cible = ligneCadre.locator('.ligne').first()
+  // au CENTRE de l'écran : en bas, la barre d'onglets fixe de l'iPhone recouvrirait la ligne (le doigt la toucherait)
+  await cible.evaluate((el) => el.scrollIntoView({ block: 'center' }))
+  const boite = await cible.boundingBox()
+  expect(boite, `la ligne ${quoi} est affichée`).toBeTruthy()
+  return boite
+}
 
 /** Balayage d'une ligne (`.ligne` d'un `[data-ligne]`) : `sens` −1 = vers la gauche (Reporter), +1 = droite (Fait).
  *  Balayage COMPLET (au-delà de la moitié de la largeur) : le geste se déclenche au lâcher. */
-export async function balayer(ligneCadre, sens) {
-  const cible = ligneCadre.locator('.ligne').first()
-  const boite = await cible.boundingBox()
-  expect(boite, 'la ligne à balayer est affichée').toBeTruthy()
+export async function balayer(p, ligneCadre, sens) {
+  const boite = await boiteDe(ligneCadre, 'à balayer')
   const y = boite.y + boite.height / 2
-  const x0 = boite.x + boite.width / 2
-  await cible.dispatchEvent('pointerdown', toucher(x0, y))
-  for (const pas of [12, 40, 90, 150, 210, 260]) await cible.dispatchEvent('pointermove', toucher(x0 + sens * pas, y))
-  await cible.dispatchEvent('pointerup', { ...toucher(x0 + sens * 260, y), buttons: 0 })
+  const x0 = boite.x + boite.width / 2 + (sens < 0 ? boite.width / 3 : -boite.width / 3)
+  const cdp = await doigt(p)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', ...point(x0, y) })
+  for (const pas of [10, 30, 60, 100, 150, 200, 250, 290]) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', ...point(x0 + sens * pas, y) })
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
 /** Appui long : on pose le doigt et on attend que le menu s'ouvre (le minuteur de 500 ms est celui de la page). */
 export async function appuiLong(p, ligneCadre, menuitem) {
-  const cible = ligneCadre.locator('.ligne').first()
-  const boite = await cible.boundingBox()
-  expect(boite, 'la ligne à presser est affichée').toBeTruthy()
-  await cible.dispatchEvent('pointerdown', toucher(boite.x + boite.width / 3, boite.y + boite.height / 2))
+  const boite = await boiteDe(ligneCadre, 'à presser')
+  const cdp = await doigt(p)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', ...point(boite.x + boite.width / 3, boite.y + boite.height / 2) })
+  await expect(p.getByRole('menu'), "l'appui long ouvre le menu de la ligne").toBeVisible()
   await expect(p.getByRole('menuitem', { name: menuitem })).toBeVisible()
-  await cible.dispatchEvent('pointerup', { ...toucher(boite.x + boite.width / 3, boite.y + boite.height / 2), buttons: 0 })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 }
 
 // --- Captures de relecture visuelle -------------------------------------------------------------------------------
