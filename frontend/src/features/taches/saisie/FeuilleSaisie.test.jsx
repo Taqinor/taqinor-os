@@ -9,6 +9,7 @@ import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captur
 import { reinitialiserGestes } from '../lib/gestes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
+import { morceauxSurlignes } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -75,6 +76,28 @@ describe('TCH82 — feuille de saisie', () => {
       expect(dernier.ignorer).toEqual([{ type: 'jour', source: 'demain' }])
     })
     expect(champ()).toHaveValue(PHRASE)
+  })
+
+  it('passe visuelle n° 32 — les jetons lus sont SURLIGNÉS dans le texte (calque derrière le champ natif)', async () => {
+    const user = userEvent.setup()
+    const { container } = monter()
+    await user.type(champ(), PHRASE)
+    await screen.findByText('mer. 18 nov.', {}, { timeout: 3000 })
+    const calque = container.querySelector('.saisie-miroir')
+    expect(calque).toHaveAttribute('aria-hidden', 'true')
+    expect([...calque.querySelectorAll('.jeton')].map((s) => [s.className, s.textContent])).toEqual([
+      ['jeton', 'demain'], ['jeton nouveau', '#SiteWeb'],
+    ])
+    expect(calque.textContent.replace('​', '')).toBe(PHRASE) // le texte du calque = le texte tapé, à l'identique
+    expect(champ()).toHaveValue(PHRASE)
+  })
+
+  it('passe visuelle n° 32 — un jeton dont la source ne tombe pas à sa place n\'est jamais surligné', () => {
+    expect(morceauxSurlignes('Appeler Karim demain', [{ type: 'jour', source: 'demain', debut: 0, fin: 6 }]))
+      .toEqual([{ texte: 'Appeler Karim demain' }])
+    expect(morceauxSurlignes('demain !!', [
+      { type: 'jour', source: 'demain', debut: 0, fin: 6 }, { type: 'priorite', source: '!!', debut: 7, fin: 9 },
+    ]).map((m) => [m.texte, Boolean(m.jeton)])).toEqual([['demain', true], [' ', false], ['!!', true]])
   })
 
   it('« Ajouter » envoie la ligne lue (Entrée aussi, voir plus bas), avec la priorité choisie du nouveau projet, puis vide le champ et RESTE ouverte (chaîne, spec-2 §1)', async () => {

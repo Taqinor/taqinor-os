@@ -10,7 +10,17 @@
   caret-color: var(--tch-accent); outline: none;
 }
 .tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
-.tch .puces.saisie { margin-top: 2px; }
+/* Passe visuelle n° 32 (ecran-saisie.html, taches.css « .saisie-texte .jeton ») — les jetons lus surlignés DANS le
+   texte : un calque derrière le textarea (même police, même retour à la ligne), texte transparent */
+.tch .saisie-zone { position: relative; }
+.tch .saisie-zone .saisie-champ { position: relative; }
+.tch .saisie-miroir {
+  position: absolute; inset: 0; padding: 4px 0; overflow: hidden; pointer-events: none;
+  font: inherit; font-size: 1.0625rem; line-height: 1.6; color: transparent; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.tch .saisie-miroir .jeton { border-radius: 5px; background: var(--tch-jeton); box-shadow: 0 0 0 2px var(--tch-jeton); }
+.tch .saisie-miroir .jeton.pj { background: var(--tch-bloc-fond); box-shadow: 0 0 0 2px var(--tch-bloc-fond); }
+.tch .saisie-miroir .jeton.nouveau { background: transparent; box-shadow: none; outline: 1.5px dashed var(--tch-texte-doux); outline-offset: 1px; }.tch .puces.saisie { margin-top: 2px; }
 .tch .alertes-saisie {
   margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
   font-size: 0.8125rem; color: var(--tch-texte-doux);
