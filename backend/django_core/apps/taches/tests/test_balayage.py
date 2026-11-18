@@ -124,6 +124,33 @@ class BalayageTests(TestCase):
         balayage.executer(a(15, 0))
         self.assertFalse(Notification.objects.filter(recipient=self.u1).exists())
 
+    def test_compte_sans_taches_voir_ni_sollicitation_ni_rappel(self):
+        """Un rôle vidé de `taches_voir` (invariant 28) : `aujourdhui/` répond 403, le balayage ne lui
+        envoie rien (relu à chaque passage) ; le droit rendu, l'envoi reprend sans rafale."""
+        self.reglages.titres_notifications = True
+        self.reglages.save(update_fields=['titres_notifications'])
+        fabriques.tache(self.u1, titre=CANARI, jour_prevu=J)
+        rappel = self.rappel(15, 0)
+        role = self.u1.role
+        role.permissions = []
+        role.save(update_fields=['permissions'])
+        api = APIClient()
+        api.force_authenticate(self.u1)
+        self.assertEqual(api.get('/api/django/taches/aujourdhui/').status_code, 403)
+        self.assertEqual(balayage.executer(a(8, 30))['sollicitations'], 0)
+        self.assertEqual(balayage.executer(a(15, 0))['rappels'], 0)
+        self.assertFalse(Notification.objects.filter(recipient=self.u1).exists())
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.EN_ATTENTE)  # jamais pris : `manque` après 2 h
+        role.permissions = ['taches_voir']
+        role.save(update_fields=['permissions'])
+        balayage.executer(a(17, 1))
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.MANQUE)
+        self.assertFalse(self.notifications(EventType.TACHES_RAPPEL).exists())
+        fabriques.plan(self.u1, J, planifie_le=a(8, 0))
+        self.assertEqual(balayage.executer(a(18, 0))['sollicitations'], 1)  # le bilan du soir : il a le droit
+
     # --- coupe-circuit (invariant 39) -------------------------------------------------------------
 
     def test_coupe_circuit_rien_puis_aucune_rafale_a_la_remise_en_marche(self):

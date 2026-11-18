@@ -7,13 +7,15 @@ active, module actif, coupe-circuit `ReglagesSociete.balayage_actif` relu À CHA
 
 1. **Rappels posés** (hors plafond, à l'heure demandée même hors fenêtre) : dus = `jour < J` ou
    (`jour = J` ∧ `heure ≤` maintenant) ; retard > 2 h → `manque`, jamais envoyé (pas de rafale après
-   une coupure) ; les autres sont GROUPÉS par minute et par compte : pris par `UPDATE … WHERE
-   statut='en_attente'` puis `notify(TACHES_RAPPEL)` dans la même transaction.
+   une coupure) ; un compte sans le droit du module (`views.base.a_le_droit`, relu à chaque passage,
+   invariant 28) n'en reçoit aucun ; les autres sont GROUPÉS par minute et par compte : pris par
+   `UPDATE … WHERE statut='en_attente'` puis `notify(TACHES_RAPPEL)` dans la même transaction.
 2. **Sollicitations** (`moteur/sollicitations.py` décide de tout : tick, sauts, priorité, plafond) :
-   pour chaque compte actif, interne, ayant une `ReglagesRythme` ; le marqueur `IncitationCoach` (canal
-   `push`) est pris par `get_or_create` puis `notify(…, respect_quiet_hours=False, badge=…)` dans la même
-   transaction — `notify` ne diffère donc jamais une sollicitation : la fenêtre de la société est
-   contrôlée ICI, avant (sautée, jamais différée — invariant 22).
+   pour chaque compte actif, interne, ayant une `ReglagesRythme` et le droit du module ; le marqueur
+   `IncitationCoach` (canal `push`) est pris par `get_or_create` puis
+   `notify(…, respect_quiet_hours=False, badge=…)` dans la même transaction — `notify` ne diffère donc
+   jamais une sollicitation : la fenêtre de la société est contrôlée ICI, avant (sautée, jamais
+   différée — invariant 22).
 
 Rejouer le balayage n'envoie rien de plus. Le corps d'une notification ne porte un titre que si
 `titres_notifications` ET l'objet n'est pas confidentiel (`confidentialite.nom_pour`, usage
@@ -42,6 +44,7 @@ from apps.taches.selectors.base import _conges, _en_conge, jours_travailles_de, 
 from apps.taches.selectors.projets import bilan_de_semaine
 from apps.taches.services import journee as service_journee
 from apps.taches.services import rythme as service_rythme
+from apps.taches.views.base import a_le_droit
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +102,12 @@ def _balayer_societe(company_id, maintenant):
     envoyees = 0
     comptes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True,
                                              proprietaire__portee='interne')
-               .select_related('proprietaire', 'proprietaire__company').order_by('proprietaire_id'))
+               .select_related('proprietaire', 'proprietaire__company', 'proprietaire__role')
+               .order_by('proprietaire_id'))
     fenetres = {}
     for reglages in comptes:
+        if not a_le_droit(reglages.proprietaire):  # rôle vidé de `taches_voir` : plus rien (inv. 28)
+            continue
         company = reglages.proprietaire.company
         if company.pk not in fenetres:
             fenetres[company.pk] = fenetre_messages(company, maintenant.date())
@@ -136,8 +142,21 @@ def _rappels_dus(company_id, maintenant):
                                              .order_by('jour', 'heure', 'pk')
                                              .values_list('pk', 'proprietaire_id', 'jour', 'heure')):
         groupes.setdefault((proprietaire_id, jour, heure.replace(second=0, microsecond=0)), []).append(pk)
-    envoyes = sum(_envoyer_rappels(ids, maintenant) for ids in groupes.values())
+    admis = _comptes_admis({proprietaire_id for proprietaire_id, _jour, _heure in groupes})
+    envoyes = sum(_envoyer_rappels(ids, maintenant) for (proprietaire_id, _jour, _heure), ids in groupes.items()
+                  if proprietaire_id in admis)
     return manques, envoyes
+
+
+def _comptes_admis(ids):
+    """Les comptes de `ids` qui ont le droit du module à cet instant (`a_le_droit`, la garde des
+    routes), en UNE requête ; aucune si rien n'est dû. Un rappel d'un compte sans le droit reste en
+    attente : jamais pris, il devient `manque` après 2 h (aucune rafale si le droit revient)."""
+    if not ids:
+        return set()
+    from django.contrib.auth import get_user_model
+    return {user.pk for user in get_user_model().objects.filter(pk__in=ids).select_related('role')
+            if a_le_droit(user)}
 
 
 def _envoyer_rappels(ids, maintenant):

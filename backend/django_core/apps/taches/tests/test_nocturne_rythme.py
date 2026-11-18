@@ -249,6 +249,23 @@ class NuitRythmeTests(TestCase):
         self.assertEqual((carte.cle, carte.jour, carte.expire_le), ('revue', J, J7))
         self.rejouer_sans_effet()
 
+    def test_compte_sans_taches_voir_rien_servi(self):
+        """Un rôle vidé de `taches_voir` (invariant 28) : la nuit ne lui sert ni carte ni révélation et
+        ne touche pas son rythme ; le droit rendu, la nuit suivante le reprend."""
+        reglages = fabriques.reglages(self.u1)
+        jours(self.u1, [9, 10, 9, 1, 2, 1, 2, 9, 10, 9])
+        role = self.u1.role
+        role.permissions = []
+        role.save(update_fields=['permissions'])
+        self.nuit()
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.bloc_debut), (None, None))
+        self.assertEqual(cartes(self.u1), [])
+        role.permissions = ['taches_voir']
+        role.save(update_fields=['permissions'])
+        self.nuit()
+        self.assertEqual(len(cartes(self.u1, type=TypeIncitationEcran.PROPOSITION_PALIER)), 1)
+
     def test_une_autre_societe_n_est_pas_touchee(self):
         etrangere = fabriques.reglages(self.ailleurs, palier=5, bloc_debut=J - datetime.timedelta(days=10))
         jours(self.ailleurs, [6] * 10)

@@ -43,8 +43,15 @@ class PasEncore(APIException):
     default_code = 'pas_encore'
 
 
+def a_le_droit(user):
+    """`taches_voir` porté par le rôle fin (ou superutilisateur) ; AUCUN repli hérité. LA garde du module
+    (donnees.md invariant 28) : les routes (`PermissionTaches`) et les envois (`balayage`, la nuit) la
+    relisent à chaque appel."""
+    return bool(user.has_erp_permission(DROIT))
+
+
 class PermissionTaches(BasePermission):
-    """`taches_voir` porté par le rôle fin (ou superutilisateur) ; AUCUN repli hérité."""
+    """`taches_voir` porté par le rôle fin (ou superutilisateur) ; AUCUN repli hérité (`a_le_droit`)."""
 
     message = "Tu n'as pas accès aux tâches."
 
@@ -52,7 +59,7 @@ class PermissionTaches(BasePermission):
         user = getattr(request, 'user', None)
         if not (user and user.is_authenticated):
             return False
-        return bool(user.has_erp_permission(DROIT))
+        return a_le_droit(user)
 
 
 PERMISSIONS = [IsAuthenticatedInterne, PermissionTaches]
