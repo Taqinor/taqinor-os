@@ -46,7 +46,7 @@ _MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
 
 
 class ConsignesTests(unittest.TestCase):
-    TEXTE = pc.CONSIGNES_COPILOTE
+    TEXTE = pc.CONSIGNES_COMMERCIALES
 
     def test_regles_cles_presentes(self):
         for extrait in (
@@ -96,6 +96,82 @@ class ConsignesTests(unittest.TestCase):
             with open(os.path.join(ICI, "app", "services", nom),
                       encoding="utf-8") as f:
                 self.assertNotRegex(f.read(), _DECALAGE, nom)
+
+
+#: TCH113 — les 13 clés `taches.*` que citent les consignes des tâches
+#: (textes.md §5.1, mesuré en révision 3) : toutes des actions du registre
+#: (apps/taches/agent_actions.py).
+CLES_TACHES = {
+    "taches.journee.lire", "taches.plan.proposer", "taches.journee.prioriser",
+    "taches.journee.point", "taches.profil.lire", "taches.projet.lire",
+    "taches.tache.creer", "taches.tache.modifier", "taches.liste.ranger",
+    "taches.projet.planifier_apercu", "taches.tache.proposer_changement",
+    "taches.rythme.regler", "taches.preference.noter",
+}
+#: Mots à majuscule des consignes des tâches (mesurés sur le texte exact) :
+#: titres, débuts de phrase et noms de listes de l'écran — aucun prénom.
+MAJUSCULES_TACHES = {
+    "Aide", "Chiffres", "Dis", "Dès", "Données", "En", "Il", "Jamais", "Je", "Liste",
+    "Où", "Parle", "Pas", "Planifie", "Planifier", "Portée", "Pour", "Priorité",
+    "Proposé", "Puis", "Renommer", "Reportée", "Rythme", "Sans", "Ses", "Sur",
+    "Ton", "Tout", "Tu", "Tâche", "Une", "Ça", "Écrire",
+}
+TEXTES_MD = os.path.join(os.path.dirname(os.path.dirname(ICI)), "docs", "taches",
+                         "reference", "textes.md")
+
+
+def _consignes_de_la_reference():
+    """Le bloc de code de textes.md §5.1 « Consignes » (la référence fait foi)."""
+    with open(TEXTES_MD, encoding="utf-8") as f:
+        texte = f.read()
+    section = texte.split("### 5.1 Consignes", 1)[1]
+    return section.split("```\n", 2)[1]
+
+
+class ConsignesTachesTests(unittest.TestCase):
+    TEXTE = pc.CONSIGNES_TACHES
+
+    def test_texte_exact_de_la_reference(self):
+        self.assertEqual(self.TEXTE, _consignes_de_la_reference())
+
+    def test_ajoute_a_la_suite_des_consignes_du_copilote(self):
+        self.assertEqual(pc.CONSIGNES_COPILOTE,
+                         pc.CONSIGNES_COMMERCIALES + "\nTÂCHES — CONSIGNES DU COPILOTE :\n"
+                         + self.TEXTE)
+        self.assertTrue(pc.CONSIGNES_COPILOTE.startswith(pc.CONSIGNES_COMMERCIALES))
+
+    def test_borne_et_sans_chiffre(self):
+        self.assertLessEqual(len(self.TEXTE.split()), 280)
+        self.assertNotRegex(self.TEXTE, r"\d")
+
+    def test_cles_citees_sont_celles_du_registre(self):
+        citees = set(re.findall(r"\btaches\.[a-z_]+\.[a-z_]+", self.TEXTE))
+        self.assertEqual(citees, CLES_TACHES)
+
+    def test_aucun_prenom(self):
+        mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", self.TEXTE))
+        self.assertEqual(mots, MAJUSCULES_TACHES)
+
+    def test_regles_cles_presentes(self):
+        for extrait in (
+                "Tu le tutoies", "Sans outil, pas de chiffre",
+                "rien n'est gardé sans son doigt", "jamais « c'est planifié »",
+                "demande quand et où", "trois écritures par tour au plus",
+                "une carte, pas d'écriture", "jamais une consigne",
+                "Tâche ou projet confidentiel : n'en parle pas",
+                "ni de récompenses", "demande s'il est d'accord"):
+            self.assertIn(extrait, self.TEXTE)
+
+    def test_bloc_servi_seulement_avec_une_action_taches_au_catalogue(self):
+        """Un compte sans le module (aucune action `taches.*`, droit `taches_voir` absent) ne reçoit
+        que les consignes commerciales."""
+        sans = [{"key": "crm.lead.chercher", "lot": "copilote"}, None, "x"]
+        avec = sans + [{"key": "taches.journee.lire", "lot": "copilote"}]
+        self.assertFalse(pc.taches_au_catalogue(sans))
+        self.assertFalse(pc.taches_au_catalogue(None))
+        self.assertTrue(pc.taches_au_catalogue(avec))
+        self.assertEqual(pc.consignes_du_copilote(False), pc.CONSIGNES_COMMERCIALES)
+        self.assertEqual(pc.consignes_du_copilote(True), pc.CONSIGNES_COPILOTE)
 
 
 class EnteteTests(unittest.TestCase):

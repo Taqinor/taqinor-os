@@ -9,7 +9,8 @@ prévue au plan, peut_cloturer) ; les mots sont ceux de `textes.md` §2.2, les n
 from datetime import timedelta
 
 from apps.taches.choix import RaisonPropose, SectionJournee
-from apps.taches.confidentialite import ASSISTANT, ECRAN, nom_pour
+from apps.taches.confidentialite import ASSISTANT, ECRAN, est_confidentielle, nom_pour
+from apps.taches.models.taches import Tache
 from apps.taches.moteur import classement
 from apps.taches.moteur.gabarits import CONSTANTES, format_jour
 from apps.taches.serializers.formes import (
@@ -82,13 +83,22 @@ def _fait_date(code, valeur, J):
     return None
 
 
-def _fait(code, valeur, objet, nom_projet, J):
+def _attente(objet, usage):
+    """« en attente de : {qui} » ; hors de l'écran, le « qui » d'une confidentielle n'est jamais servi : le
+    fait est omis (reference/regles.md « La confidentialité »)."""
+    if usage != ECRAN and isinstance(objet, Tache) and est_confidentielle(objet):
+        return None
+    return f"en attente de : {getattr(objet, 'en_attente_de', '')}"
+
+
+def _fait(code, valeur, objet, nom_projet, J, usage):
     texte = _fait_date(code, valeur, J)
     if texte is not None:
         return texte
+    if code == 'en_attente':
+        return _attente(objet, usage)
     autres = {
         'reportee_3_fois': f"reportée {CONSTANTES['reports']} fois",
-        'en_attente': f"en attente de : {getattr(objet, 'en_attente_de', '')}",
         'projet_de_la_semaine': f'projet de la semaine {nom_projet}',
         'projet_prioritaire': f'projet prioritaire {nom_projet}',
         'priorite_haute': 'priorité haute',
@@ -99,9 +109,9 @@ def _fait(code, valeur, objet, nom_projet, J):
     return autres.get(code)
 
 
-def texte_explication(item, objet, nom_projet, J, travailles):
-    """≤ 3 faits joints par « · » (`classement.explication`, textes.md §2.2)."""
-    faits = (_fait(code, valeur, objet, nom_projet, J)
+def texte_explication(item, objet, nom_projet, J, travailles, usage):
+    """≤ 3 faits joints par « · » (`classement.explication`, textes.md §2.2) ; `usage` de la route (`nom_pour`)."""
+    faits = (_fait(code, valeur, objet, nom_projet, J, usage)
              for code, valeur in classement.explication(item, J, travailles))
     return SEPARATEUR_FAITS.join(f for f in faits if f)
 
@@ -139,7 +149,7 @@ class Rendu:
                                 'texte': texte_raison(raison, item, self.nom_projet(cle), journee.jour)}
         else:
             calcul['explication'] = texte_explication(item, journee.objets.get(cle), self.nom_projet(cle),
-                                                      journee.jour, journee.travailles)
+                                                      journee.jour, journee.travailles, self.usage)
         self.calculs[cle] = calcul
         return calcul
 

@@ -158,19 +158,19 @@ endpoints:
     note: "TCH129 : après midi ≤ 26 sans familles ERP, ≤ 31 avec ; avant midi + 2 (carte « bilan d'hier » : plan de la veille et ses restes) soit ≤ 28 et ≤ 33. Mesurés horloge figée (test_plafonds.py) ; rendez-vous externes lus en cache, 0 requête de plus."
 
   - path: /api/django/taches/badge/
-    budget: 13
+    budget: 14
     enforced: true
-    note: "TCH129 : la pastille."
+    note: "TCH129 : la pastille ; 14 mesuré horloge figée (09:00 et 15:00) depuis qu'elle porte a_trier (18/11)."
 
   - path: /api/django/taches/tuile/
-    budget: 10
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite (jeton tuile)."
+    budget: 15
+    enforced: true
+    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, mesuré 15 horloge figée, 09:00 et 15:00 (18/11 : +1, la tuile lit les préférences pour dire le MÊME objectif du jour qu'Aujourd'hui — jour court, plan validé)."
 
   - path: /api/django/taches/flux/{jeton}.ics
-    budget: 8
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite (jeton flux)."
+    budget: 9
+    enforced: true
+    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, mesuré 9 horloge figée, 09:00 et 15:00 (18/11)."
 
   - path: /api/django/taches/journee/proposition/
     budget: 27
@@ -178,14 +178,14 @@ endpoints:
     note: "TCH129 : la proposition du jour."
 
   - path: /api/django/taches/journee/priorites/
-    budget: 20
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 22
+    enforced: true
+    note: "TCH161 : « Aide-moi à prioriser » ; cible api.md §10 = 20, mesuré 22 horloge figée, 09:00 et 15:00 (18/11 : +1, même objectif du jour qu'Aujourd'hui) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/journee/point/
-    budget: 18
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 26
+    enforced: true
+    note: "TCH161 : « Où j'en suis ? » ; cible api.md §10 = 18, mesuré 26 à 09:00 (plan de la veille relu) et 24 à 15:00, horloge figée (18/11) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/agenda/
     budget: 28

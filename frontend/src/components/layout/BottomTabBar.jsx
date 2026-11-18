@@ -27,6 +27,10 @@ import { Menu, X, LayoutGrid } from 'lucide-react'
 // ODY4/ODY6 — l'app active (dérivée de la ROUTE, jamais d'un état mémorisé) et
 // la sortie canonique vers le Menu d'accueil.
 import { useActiveApp, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
+// TCH124 — pastille de l'onglet « À trier » de l'app Tâches (masquée à 0).
+import { useBadgeTaches } from '../../features/taches/useBadgeTaches'
+
+const ROUTE_A_TRIER = '/taches/a-trier'
 
 // M156 — Plafond DUR de 5 onglets atteignables au pouce : au-delà, le 5e
 // raccourci serait hors zone de pouce confortable.
@@ -53,6 +57,8 @@ export function splitAppTabs(items) {
 export default function BottomTabBar() {
   const activeApp = useActiveApp()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // TCH124 — seul l'app Tâches interroge le serveur ; ailleurs, aucune requête.
+  const { aTrier } = useBadgeTaches({ actif: activeApp?.key === 'taches' })
 
   // Hors de toute app : aucune barre (le Menu d'accueil est l'accueil mobile).
   if (!activeApp) return null
@@ -89,10 +95,22 @@ export default function BottomTabBar() {
             // (« Approvisionnement », « Bons de commande ») : le tooltip natif
             // garde le texte entier accessible, comme la Sidebar (VX175(d)).
             title={item.label}
-            className={({ isActive }) => `bottom-tab${isActive ? ' active' : ''}`}
+            className={({ isActive }) => `bottom-tab${isActive ? ' active' : ''}${item.to === ROUTE_A_TRIER ? ' relative' : ''}`}
           >
-            <span className="bottom-tab-icon" aria-hidden="true">{item.icon}</span>
+            <span className="bottom-tab-icon relative" aria-hidden="true">{item.icon}</span>
             <span className="bottom-tab-label">{item.label}</span>
+            {activeApp.key === 'taches' && item.to === ROUTE_A_TRIER && aTrier > 0 && (
+              <>
+                <span
+                  className="absolute right-[18%] top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
+                  aria-hidden="true"
+                  data-testid="pastille-a-trier"
+                >
+                  {aTrier}
+                </span>
+                <span className="sr-only">{`, ${aTrier} à trier`}</span>
+              </>
+            )}
           </NavLink>
         ))}
 

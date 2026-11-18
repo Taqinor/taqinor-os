@@ -173,6 +173,9 @@ test.describe('Tâches — réglages', () => {
     await sansDelai.click() // on remet l'état de départ
     await expect.poll(async () => (await (await page.request.get(`${API}/reglages/`)).json()).messages_sans_delai).toBe(initial)
 
+    // « Mes agendas » vit dans Mon iPhone, étape « calendrier » (ouverte par l'adresse)
+    await ouvrirEcran(page, '/taches/reglages/iphone?etape=calendrier', 'reglages')
+
     // une adresse en http:// : refusée, SOUS le champ, avec la phrase du serveur
     const champ = page.getByRole('textbox', { name: /^Adresse de l'agenda/ })
     await expect(page.getByRole('heading', { name: 'Mes agendas' })).toBeVisible()

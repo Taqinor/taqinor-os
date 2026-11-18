@@ -107,15 +107,168 @@ def outil_schema(db):
     return _Schema(db=db, description=DESCRIPTION_SCHEMA_SQL)
 
 
-def catalogue_du_tour(ctx) -> list[dict]:
+#: TCH114 (api.md §8) — jeu réduit hors claude (Groq : 8 000 jetons par
+#: minute) sur un écran `/taches…` : ces 7 actions seulement, ni CRM ni autre.
+JEU_GROQ_TACHES = (
+    "taches.journee.lire", "taches.plan.proposer", "taches.journee.prioriser",
+    "taches.tache.creer", "taches.tache.terminer", "taches.liste.ranger",
+    "taches.rythme.regler",
+)
+PREFIXE_ECRAN_TACHES = "/taches"
+
+
+def _ecran_taches(contexte: Optional[dict]) -> bool:
+    ecran = (contexte or {}).get("ecran")
+    return isinstance(ecran, str) and (ecran == PREFIXE_ECRAN_TACHES
+                                       or ecran.startswith(PREFIXE_ECRAN_TACHES + "/"))
+
+
+def _jeu_du_fournisseur(catalogue: list[dict], fournisseur: str,
+                        contexte: Optional[dict]) -> list[dict]:
+    """Sous claude : le catalogue entier. Ailleurs : sur `/taches…`, le jeu
+    réduit des tâches seul ; hors `/taches`, aucune action `taches.*`."""
+    if fournisseur == "claude":
+        return catalogue
+    if _ecran_taches(contexte):
+        return [a for a in catalogue if isinstance(a, dict) and a.get("key") in JEU_GROQ_TACHES]
+    return [a for a in catalogue
+            if not (isinstance(a, dict) and str(a.get("key", "")).startswith("taches."))]
+
+
+def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
+                      fournisseur: Optional[str] = None) -> list[dict]:
     """Catalogue d'actions du compte (filtré par Django) : il décide si le
-    copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais."""
+    copilote est allumé (`prompt_copilote.copilote_allume`). [] sans relais.
+    TCH114 — réduit selon le fournisseur du tour (défaut : le principal) et
+    l'écran du contexte ; le contexte est gardé sur `ctx` pour le tour (le
+    `lien` d'une tâche créée en vient)."""
     from app.services.action_tools import actions_available, fetch_catalogue
     if not actions_available(ctx):
         return []
+    if fournisseur is None:
+        from app.services.sql_agent_service import SQL_AGENT_PROVIDER
+        fournisseur = SQL_AGENT_PROVIDER
+    ctx.contexte_tour = dict(contexte or {})
     # Gardé pour le tour : `build_action_tools` ne relit pas Django.
-    ctx.catalogue_tour = fetch_catalogue(ctx)
+    ctx.catalogue_tour = _jeu_du_fournisseur(fetch_catalogue(ctx), (fournisseur or "").lower(), contexte)
     return ctx.catalogue_tour
+
+
+# ── A5 — un texte tiers est-il entré dans le tour ? (le SERVEUR le dit) ──────
+# Le marquage vit sur le contexte du tour ; `action_tools.garde_ecriture_taches`
+# le lit avant toute écriture `taches.*` : le modèle ne peut ni l'effacer ni
+# l'ignorer, il ne voit que la carte à valider.
+
+#: Au-delà, la question est un texte collé (fiche, page) : une tâche dite
+#: clairement tient dans un titre (280 caractères au plus, regles.md §1.7).
+QUESTION_COLLEE_CARACTERES = 300
+#: Une liste collée ou dictée : trois lignes (ou segments « / », « ; », « , »
+#: hors nombre décimal, « - » entre espaces) non vides.
+LISTE_COLLEE_SEGMENTS = 3
+_SEPARATEURS_LISTE = re.compile(r"\n|\s/\s|;|(?<!\d),|,(?!\d)|\s[-–•*]\s")
+#: « 1. … 2. … » : deux entrées numérotées font une liste.
+_ENTREE_NUMEROTEE = re.compile(r"(?:^|\s)\d{1,2}[.)]\s")
+#: Un passage cité (« … », “ … ”, " … ") : les mots de quelqu'un d'autre.
+_PASSAGE_CITE = re.compile(r"«[^»]*\S[^»]*»|“[^”]*\S[^”]*”|\"[^\"]*\S[^\"]*\"")
+
+
+def question_porte_un_texte_tiers(question) -> bool:
+    """A5 — la question porte-t-elle un texte collé, dicté ou cité ? Long,
+    liste (lignes, « / », « ; », virgules, tirets, numérotation) ou passage
+    entre guillemets. Une phrase courte collée sans aucun de ces signes ne se
+    distingue pas d'une demande tapée (limite dite dans le rapport de la
+    revue F3)."""
+    texte = question.strip() if isinstance(question, str) else ""
+    if len(texte) > QUESTION_COLLEE_CARACTERES or _PASSAGE_CITE.search(texte):
+        return True
+    if len(_ENTREE_NUMEROTEE.findall(texte)) >= 2:
+        return True
+    segments = [s for s in _SEPARATEURS_LISTE.split(texte) if s.strip()]
+    return len(segments) >= LISTE_COLLEE_SEGMENTS
+
+
+def noter_question_du_tour(ctx, question) -> None:
+    """Une liste ou un texte collé dans la question marque le tour (A5)."""
+    if ctx is not None and question_porte_un_texte_tiers(question):
+        from app.services.action_tools import noter_contenu_tiers
+        noter_contenu_tiers(ctx, "question")
+
+
+# ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────
+# Le modèle relit les échanges d'avant : historique Redis de l'écran (moteur
+# LangChain, `fenetre_du_modele`) ou conversation gardée (moteur natif). Chaque
+# message d'agent écrit porte `contenu_tiers` (booléen, rien de confidentiel :
+# le journal garde « [tâches — privé] », regles.md §8) = la marque de SON tour,
+# héritée comprise (la réponse d'un tour marqué a pu redire le texte lu).
+
+
+def historique_porte_un_texte_tiers(brut: Optional[list], copilote: bool = True) -> bool:
+    """Un échange RELU au modèle est-il marqué ? Question de l'utilisateur
+    porteuse d'un texte tiers, ou message d'agent dont `contenu_tiers` n'est
+    pas `False` — échec fermé : un message écrit avant la correction (sans la
+    clé) compte comme marqué."""
+    for message in fenetre_du_modele(brut, copilote):
+        if message.get("role") == "user":
+            if question_porte_un_texte_tiers(message.get("content")):
+                return True
+        elif message.get("contenu_tiers") is not False:
+            return True
+    return False
+
+
+def noter_historique_du_tour(ctx, brut: Optional[list], copilote: bool = True) -> None:
+    """Moteur LangChain : marque le tour si l'historique relu l'est (A5)."""
+    if ctx is not None and historique_porte_un_texte_tiers(brut, copilote):
+        from app.services.action_tools import noter_contenu_tiers
+        noter_contenu_tiers(ctx, "historique")
+
+
+def marque_du_tour(ctx) -> bool:
+    """Valeur de `contenu_tiers` écrite avec l'échange : la marque du tour ;
+    sans contexte (aucune garde possible), marqué."""
+    from app.services.action_tools import contenu_tiers_du_tour
+    return ctx is None or contenu_tiers_du_tour(ctx)
+
+
+def _marques_natives(ctx) -> dict[str, Any]:
+    """Crochets A5 remis au moteur natif : il dit si le passé qu'il relit est
+    marqué, et garde la marque du tour avec la conversation."""
+    from app.services.action_tools import noter_contenu_tiers
+    return {"noter_relu_tiers": lambda: noter_contenu_tiers(ctx, "historique"),
+            "marque_du_tour": lambda: marque_du_tour(ctx)}
+
+
+#: Outils fixes dont la sortie ne porte aucun texte venu d'ailleurs
+#: (`report_gap` rend « signale »). Tout autre outil fixe marque le tour.
+OUTILS_SANS_TEXTE_TIERS = frozenset({"report_gap"})
+
+
+def marquer_lectures_tierces(outils: list, ctx) -> list:
+    """A5 (revue F3 #1) — tout outil HORS catalogue rend au modèle des données
+    de l'ERP : lignes SQL (leads, clients), schéma, métrique gouvernée, et
+    tout outil fixe à venir (échec fermé). Chaque appel marque le tour dès son
+    début, sous les deux moteurs (le moteur natif les appelle par `invoke`, qui
+    passe par les mêmes rappels). Sauf `report_gap`, et sauf les actions du
+    catalogue (`metadata.action_key`) : `garde_ecriture_taches` les juge, elle
+    seule sait si une écriture part."""
+    if ctx is None:
+        return outils
+    from langchain_core.callbacks import BaseCallbackHandler
+    from app.services.action_tools import noter_contenu_tiers
+
+    class _MarqueLectureTierce(BaseCallbackHandler):
+        def __init__(self, nom: str):
+            self.nom = nom
+
+        def on_tool_start(self, serialized, input_str, **kwargs):
+            noter_contenu_tiers(ctx, self.nom)
+
+    for outil in outils:
+        nom = getattr(outil, "name", None) or "outil"
+        if nom in OUTILS_SANS_TEXTE_TIERS or (getattr(outil, "metadata", None) or {}).get("action_key"):
+            continue
+        outil.callbacks = [*(outil.callbacks or []), _MarqueLectureTierce(nom)]
+    return outils
 
 
 # ── COP-B2 — identité de l'appelant, lue par le SERVEUR ───────────────────────
@@ -339,6 +492,9 @@ def apres_confirmation(service, ctx, company_id: int, user_id: int,
         "cartes": [carte] if carte else [],
         # Marque lue par `fenetre_du_modele` : copilote éteint, pas relue.
         "confirmation": True,
+        # A5 — relue au modèle : un texte fixe et le libellé du registre ; la
+        # carte n'est relue que par ses identifiants (`references_des_cartes`).
+        "contenu_tiers": False,
     }])
     return {"carte": carte,
             "suite": reprise_native(service, ctx, company_id, user_id,
@@ -439,15 +595,17 @@ def _preparer(service, question: str, company_id: int, ctx,
     droits = service._droits_sql(ctx)
     lecture, schema = service._outils_sql(
         service._base_sql(question, company_id), company_id, droits)
+    marquer_lectures_tierces([lecture, schema], ctx)  # A5
     outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
     outils += _outils_fixes(lecture, schema, collecteur)
     appeles: list = []
     contenu, present = svc._contenu_systeme(
         "claude", droits[0], copilote=True,
-        role=(getattr(ctx, "identite", None) or {}).get("role"))
+        role=(getattr(ctx, "identite", None) or {}).get("role"),
+        taches=prompt_copilote.taches_au_catalogue(catalogue))
     blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
     return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
-            "manuel_present": present,
+            "manuel_present": present, "marque": lambda: marque_du_tour(ctx),
             "cles": {o.nom: a["key"] for o, a in zip(outils, catalogue)},
             "reglages": {"systeme": [{"type": "text", "text": b["text"]} for b in blocs],
                          "modele": svc._modele_effectif("claude"),
@@ -467,7 +625,9 @@ def _reponse_native(service, question: Optional[str], user_id: int, texte: str,
     if panne is not None and erreur is None:
         intention, erreur = "bug", panne
     cartes = _cartes.construire_cartes(collecteur)
-    agent = {"role": "agent", "content": answer, "cartes": cartes}
+    marque = prep.get("marque")
+    agent = {"role": "agent", "content": answer, "cartes": cartes,
+             "contenu_tiers": bool(marque()) if callable(marque) else True}
     service._ajouter_historique(user_id, ([{"role": "user", "content": question}]
                                           if question is not None else []) + [agent])
     jetons = rendu.get("tokens") or {}
@@ -533,7 +693,7 @@ def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
         rendu = moteur_natif.executer(
             question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
             outils=prep["outils"], conversation=conversation_de(company_id, user_id),
-            **prep["reglages"])
+            **prep["reglages"], **_marques_natives(ctx))
         return _sortie_native(service, question, user_id, rendu, collecteur, prep)
     except Exception as exc:
         if prep is None or not _outil_deja_appele(prep, collecteur):
@@ -572,11 +732,15 @@ def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
     if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
         return None
     collecteur: list = []
+    # A5 — le résultat de l'ERP entre dans le tour de reprise : marqué.
+    from app.services.action_tools import noter_contenu_tiers
+    noter_contenu_tiers(ctx, "reprise")
     try:
         prep = _preparer(service, libelle, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.reprendre(conversation=conversation_de(company_id, user_id),
                                        message=message_de_reprise(libelle, resultat),
-                                       outils=prep["outils"], **prep["reglages"])
+                                       outils=prep["outils"], **prep["reglages"],
+                                       **_marques_natives(ctx))
         if rendu is None:
             return None
         sortie = _sortie_native(service, None, user_id, rendu, collecteur, prep)

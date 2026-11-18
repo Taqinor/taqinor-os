@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -33,7 +34,7 @@ function monter(url = '/taches/agenda') {
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/taches/agenda" element={<><Agenda aujourdhui={AUJOURDHUI} maintenant={MAINTENANT} /><Adresse /></>} />
-        <Route path="/taches/reglages/avance" element={<p>Réglages Avancé</p>} />
+        <Route path="/taches/reglages/iphone" element={<><p>Réglages iPhone</p><Adresse /></>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -236,7 +237,17 @@ describe('Raccord F2 — Mes agendas', () => {
     const invitation = await screen.findByRole('region', { name: 'Mes agendas' })
     expect(invitation).toHaveTextContent('Ajoute ton agenda pour voir tes rendez-vous ici.')
     fireEvent.click(within(invitation).getByRole('button', { name: 'Mes agendas' }))
-    expect(await screen.findByText('Réglages Avancé')).toBeInTheDocument()
+    expect(await screen.findByText('Réglages iPhone')).toBeInTheDocument()
+    expect(screen.getByTestId('adresse')).toHaveTextContent('?etape=calendrier')
+  })
+
+  it('l\'action d\'écran « Mes agendas » mène à la même adresse', async () => {
+    monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Mes agendas' }))
+    expect(await screen.findByText('Réglages iPhone')).toBeInTheDocument()
+    expect(screen.getByTestId('adresse')).toHaveTextContent('?etape=calendrier')
   })
 
   it('un agenda déjà ajouté : pas d\'invitation', async () => {

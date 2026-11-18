@@ -23,6 +23,8 @@ from apps.taches.tests import fabriques
 ECHANTILLONS = Path(__file__).resolve().parents[1] / 'contract_samples'
 URL = '/api/django/taches/'
 ASSISTANT = {'HTTP_X_TAQINOR_ASSISTANT': '1'}
+#: Le toucher d'une carte du Copilote (acceptation F3, ERR 5) : la source seule, la porte reste l'écran.
+CARTE = {'HTTP_X_TAQINOR_CARTE_ASSISTANT': '1'}
 
 
 def exemple(nom):
@@ -358,6 +360,23 @@ class CreationTests(BaseApi):
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('titre', reponse.json()['lignes']['0'])
         self.assertEqual(Tache.objects.count(), 0)
+
+    def test_toucher_une_carte_du_copilote_cree_sous_la_source_assistant_a_l_ecran(self):
+        """Acceptation F3, ERR 5 : `X-Taqinor-Carte-Assistant: 1` → `source='assistant'`, porte de l'écran
+        (le titre de la ligne est lu, réponse en clair même dans un projet confidentiel) ; une autre valeur
+        est ignorée (`rapide`) ; avec l'en-tête de l'assistant, le mode assistant comme avant (titre ignoré)."""
+        projet = fabriques.projet(self.u1, nom='Perso', confidentiel=True)
+        lignes = [{'index': 0, 'titre': 'Rendez-vous banque', 'projet_id': projet.pk}]
+        reponse = self._post('saisie-rapide/', {'lignes': lignes}, **CARTE)
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        creee = reponse.json()['creees'][0]
+        self.assertEqual((creee['titre'], creee['source']), ('Rendez-vous banque', 'assistant'))
+        self.assertEqual(Tache.objects.get(pk=creee['id']).source, 'assistant')
+        autre = self._post('saisie-rapide/', {'lignes': [{'titre': 'Autre'}]}, HTTP_X_TAQINOR_CARTE_ASSISTANT='0')
+        self.assertEqual(Tache.objects.get(pk=autre.json()['creees'][0]['id']).source, 'rapide')
+        les_deux = self._post('saisie-rapide/', {'lignes': lignes}, **CARTE, **ASSISTANT)
+        self.assertEqual(les_deux.status_code, 400)
+        self.assertIn('titre', les_deux.json()['lignes']['0'])
 
     def test_sans_lignes_ni_texte_refuse(self):
         reponse = self._post('saisie-rapide/', {})

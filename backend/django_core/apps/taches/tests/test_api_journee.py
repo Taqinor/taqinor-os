@@ -544,7 +544,17 @@ class BadgeEtVuTests(_Base):
         self.tache(jour_prevu=timezone.localdate())
         rendu = client_de(self.u).get('/api/django/taches/badge/').json()
         self.assertEqual(set(rendu), set(exemple('badge')))
-        self.assertEqual(rendu, {'n': 1, 'jour': timezone.localdate().isoformat()})
+        self.assertEqual(rendu, {'n': 1, 'jour': timezone.localdate().isoformat(), 'a_trier': 0})
+
+    def test_badge_porte_le_compte_a_trier_de_aujourdhui(self):
+        self.tache(jour_prevu=timezone.localdate())
+        self.tache(projet=None)
+        self.tache(projet=None)
+        client = client_de(self.u)
+        rendu = client.get('/api/django/taches/badge/').json()
+        journee = client.get('/api/django/taches/aujourdhui/').json()
+        self.assertEqual(rendu['a_trier'], journee['a_trier']['boite_reception'])
+        self.assertEqual(rendu['a_trier'], 2)
 
     def test_vu_sans_reglages_n_ecrit_rien(self):
         from apps.taches.models.journee import PlanJour
@@ -1011,6 +1021,215 @@ class PassageAMinuitTests(_Base):
         clore_jour_precedent(self.societe.pk, J)
         self.assertEqual(PlanJour.objects.filter(proprietaire=self.u).count(), 1)
         self.assertFalse(PlanJour.objects.filter(proprietaire=sans_reglages).exists())
+
+
+# --- TCH161 : routes déterministes du Copilote (regles.md §12, A18-M3) -----------------------------
+
+URL_PRIORITES = '/api/django/taches/journee/priorites/'
+URL_POINT = '/api/django/taches/journee/point/'
+
+
+#: Plafonds de requêtes mesurés horloge figée sur J (le Maroc est à UTC+0) : (moment -> plafond).
+MATIN_J, APRES_MIDI_J = '2026-11-17 09:00:00', '2026-11-17 15:00:00'
+PLAFONDS_PRIORITES = {MATIN_J: 16, APRES_MIDI_J: 16}
+PLAFONDS_POINT = {MATIN_J: 20, APRES_MIDI_J: 18}
+
+
+def requetes_de(client, url, params=None):
+    """Nombre de requêtes d'un GET, une fois les caches du processus chauds (agendas, calendrier)."""
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+    client.get(url, params or {})
+    with CaptureQueriesContext(connection) as capture:
+        reponse = client.get(url, params or {})
+    assert reponse.status_code == 200, reponse.content[:300]
+    return len(capture)
+
+
+def canari(compte, jour):
+    """Un projet confidentiel et ses tâches portant « Canari » partout (regles.md §8) : une prévue au
+    jour (Prévu), une essentielle, une sans jour (tour des projets), une à échéance proche."""
+    secret = fabriques.projet(compte, nom='Canari-projet', objectif='Canari-objectif', domaine='Canari-dom',
+                              confidentiel=True)
+    etape = fabriques.section(secret, nom='Canari-étape')
+    communs = {'projet': secret, 'section': etape, 'notes': 'Canari-notes', 'en_attente_de': 'Canari-attente'}
+    prevue = fabriques.tache(compte, titre='Canari-titre', jour_prevu=jour, **communs)
+    essentielle = fabriques.tache(compte, titre='Canari-titre-essentiel', jour_prevu=jour, **communs)
+    fabriques.tache(compte, titre='Canari-titre-tour', **communs)
+    fabriques.tache(compte, titre='Canari-titre-echeance', echeance=jour + datetime.timedelta(days=1), **communs)
+    ligne(fabriques.plan(compte, jour), tache=essentielle, essentielle=True)
+    return prevue
+
+
+class PrioritesTests(_Base):
+    """GET journee/priorites/ : toutes les ouvertes non gardées, classées, chacune avec sa raison."""
+
+    def scenario(self):
+        self.presse = self.tache(echeance=jours(1))  # ce qui presse : échéance proche
+        self.premiere = self.tache()  # tour des projets : prochaine action
+        self.suivante = self.tache()  # tour des projets : action suivante
+        self.gardee = self.tache(jour_prevu=J)  # gardée aujourd'hui : absente
+        self.revoir = self.tache(jour_prevu=jours(-4), reports=3)  # À revoir, en dernier
+        autre = fabriques.compte(self.societe, nom='u2')
+        self.etrangere = fabriques.tache(autre, projet=fabriques.projet(autre))
+
+    def get(self, **params):
+        params.setdefault('jour', J.isoformat())
+        reponse = client_de(self.u).get(URL_PRIORITES, params)
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        return reponse.json()
+
+    def test_forme_de_l_echantillon(self):
+        self.scenario()
+        modele, rendu = exemple('priorites'), self.get()
+        self.assertEqual(list(rendu), list(modele))
+        self.assertEqual(set(rendu['objectif']), set(modele['objectif']))
+        for ligne_ in rendu['lignes']:
+            self.assertEqual(set(ligne_), set(modele['lignes'][0]))
+            self.assertEqual(set(ligne_['item']), CLES_ITEM)
+        self.assertFalse(rendu['tronque'])
+
+    def test_ordre_raisons_et_motif(self):
+        self.scenario()
+        rendu = self.get()
+        ids = [ligne_['item']['id'] for ligne_ in rendu['lignes']]
+        self.assertEqual(ids, [self.presse.pk, self.premiere.pk, self.suivante.pk, self.revoir.pk])
+        self.assertEqual([ligne_['rang'] for ligne_ in rendu['lignes']], [1, 2, 3, 4])
+        raisons = [ligne_['item']['raison'] for ligne_ in rendu['lignes']]
+        self.assertEqual([r['code'] for r in raisons[:3]], ['echeance_proche', 'prochaine_action', 'action_suivante'])
+        self.assertEqual(raisons[1]['texte'], f'prochaine action de {self.projet.nom}')
+        self.assertTrue(all(r['texte'] for r in raisons[:3]))
+        dernier = rendu['lignes'][-1]['item']
+        self.assertIsNone(dernier['raison'])
+        self.assertEqual(dernier['motif'], 'reportee_3_fois')
+        self.assertEqual(dernier['explication'], 'reportée 3 fois')
+        self.assertNotIn(self.gardee.pk, ids)
+        self.assertNotIn(self.etrangere.pk, ids)
+
+    def test_garder_n_et_plus_tard(self):
+        from apps.taches.moteur import classement
+        self.scenario()
+        rendu = self.get()
+        # N = 5 − 0 faite − 1 gardée ouverte = 4 ; Proposé n'a que 3 candidates (presse + tour).
+        self.assertEqual(rendu['garder_n'], 3)
+        attendu = classement.plus_tard(J, sel.travailles_autour(self.u, J))
+        self.assertEqual(rendu['plus_tard'], attendu.isoformat())
+        self.assertEqual(rendu['jour'], J.isoformat())
+        self.assertEqual(rendu['objectif']['nb'], 5)
+
+    def test_jour_illisible_400_au_champ(self):
+        reponse = client_de(self.u).get(URL_PRIORITES, {'jour': '17/11/2026'})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('jour', reponse.json())
+
+    def test_plafond_de_requetes(self):
+        """Horloge FIGÉE sur J (mardi) aux deux moments — le matin, la journée relit aussi le plan de la
+        veille et ses restes — chacun à son plafond mesuré (cible api.md §10 : 20) ; ne grandit pas."""
+        from testkit.time import frozen
+        self.scenario()
+        params = {'jour': J.isoformat()}
+        peu = {}
+        for moment, plafond in PLAFONDS_PRIORITES.items():
+            with self.subTest(moment=moment), frozen(moment):
+                peu[moment] = requetes_de(client_de(self.u), URL_PRIORITES, params)
+                self.assertLessEqual(peu[moment], plafond)
+        for _ in range(10):
+            self.tache()
+            self.tache(echeance=jours(1), estimation_minutes=30)
+        for moment in PLAFONDS_PRIORITES:
+            with self.subTest(moment=moment), frozen(moment):
+                self.assertEqual(requetes_de(client_de(self.u), URL_PRIORITES, params), peu[moment])
+
+    def test_canari_jamais_servi_a_l_assistant(self):
+        canari(self.u, J)
+        params = {'jour': J.isoformat()}
+        assistant = client_de(self.u).get(URL_PRIORITES, params, HTTP_X_TAQINOR_ASSISTANT='1')
+        self.assertEqual(assistant.status_code, 200, assistant.content[:300])
+        self.assertNotIn('canari', assistant.content.decode('utf-8').lower())
+        ecran = client_de(self.u).get(URL_PRIORITES, params).content.decode('utf-8')
+        self.assertIn('Canari-titre-tour', ecran)  # le canari est vivant
+
+
+class PointTests(_Base):
+    """GET journee/point/ (« Où j'en suis ? ») à 15 h : essentielles restantes, prochaine ligne, restes."""
+
+    def scenario(self):
+        self.essentielle = self.tache(jour_prevu=J, heure_debut=datetime.time(10, 0))
+        self.passee = self.tache(jour_prevu=J, heure_debut=datetime.time(11, 0))
+        self.sans_heure = self.tache(jour_prevu=J)
+        self.a_venir = self.tache(jour_prevu=J, heure_debut=datetime.time(16, 0))
+        self.soir = self.tache(jour_prevu=J, moment='soir')
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        ligne(fabriques.plan(self.u, J, planifie_le=a(J, 8)), tache=self.essentielle, essentielle=True)
+
+    def point(self, heure=15, minute=0):
+        from apps.taches.views import journee as vues
+        return vues.point(self.u, maintenant_a(heure, minute))
+
+    def test_forme_de_l_echantillon(self):
+        self.scenario()
+        modele, rendu = exemple('point'), self.point()
+        self.assertEqual(list(rendu), list(modele))
+        self.assertEqual(set(rendu['objectif']), set(modele['objectif']))
+        self.assertEqual(set(rendu['progression']), set(modele['progression']))
+        self.assertEqual(set(rendu['progression']['detail']), set(modele['progression']['detail']))
+        self.assertEqual(set(rendu['prochaine']), CLES_ITEM)
+        for item in rendu['essentiel_restant']:
+            self.assertEqual(set(item), CLES_ITEM)
+        self.assertEqual(set(rendu['carte_du_moment']), set(modele['carte_du_moment']))
+        self.assertEqual(rendu['jour'], J.isoformat())
+        self.assertEqual(rendu['maintenant'], maintenant_a(15).isoformat())
+
+    def test_essentielles_restantes_et_restes(self):
+        self.scenario()
+        rendu = self.point()
+        self.assertEqual([item['id'] for item in rendu['essentiel_restant']], [self.essentielle.pk])
+        self.assertEqual(rendu['restes_nb'], 5)
+        self.assertEqual(rendu['progression']['faites'], 1)
+        self.assertEqual(rendu['rendez_vous_restants'], [])
+
+    def test_prochaine_bloc_a_venir_puis_sans_heure_puis_ce_soir(self):
+        from apps.taches.models.taches import Tache
+        self.scenario()
+        self.assertEqual(self.point()['prochaine']['id'], self.a_venir.pk)
+        Tache.objects.filter(pk=self.a_venir.pk).update(statut=StatutTache.FAIT, fait_le=a(J, 15))
+        self.assertEqual(self.point()['prochaine']['id'], self.sans_heure.pk)
+        Tache.objects.filter(pk__in=[self.sans_heure.pk, self.passee.pk]).update(
+            statut=StatutTache.FAIT, fait_le=a(J, 15))
+        self.assertEqual(self.point()['prochaine']['id'], self.soir.pk)
+        Tache.objects.filter(pk=self.soir.pk).update(statut=StatutTache.FAIT, fait_le=a(J, 15))
+        self.assertIsNone(self.point()['prochaine'])
+
+    def test_le_matin_le_bloc_passe_n_existe_pas_encore(self):
+        self.scenario()
+        self.assertEqual(self.point(10, 30)['prochaine']['id'], self.passee.pk)
+
+    def test_route_et_plafond_de_requetes(self):
+        """Horloge FIGÉE sur J (mardi) aux deux moments — le matin, la journée relit aussi le plan de la
+        veille et ses restes — chacun à son plafond mesuré (cible api.md §10 : 18) ; ne grandit pas."""
+        from testkit.time import frozen
+        self.tache(jour_prevu=J, estimation_minutes=30)
+        with frozen(APRES_MIDI_J):
+            rendu = client_de(self.u).get(URL_POINT).json()
+        self.assertEqual(list(rendu), list(exemple('point')))
+        peu = {}
+        for moment, plafond in PLAFONDS_POINT.items():
+            with self.subTest(moment=moment), frozen(moment):
+                peu[moment] = requetes_de(client_de(self.u), URL_POINT)
+                self.assertLessEqual(peu[moment], plafond)
+        for _ in range(10):
+            self.tache(jour_prevu=J)
+        for moment in PLAFONDS_POINT:
+            with self.subTest(moment=moment), frozen(moment):
+                self.assertEqual(requetes_de(client_de(self.u), URL_POINT), peu[moment])
+
+    def test_canari_jamais_servi_a_l_assistant(self):
+        canari(self.u, timezone.localdate())
+        assistant = client_de(self.u).get(URL_POINT, HTTP_X_TAQINOR_ASSISTANT='1')
+        self.assertEqual(assistant.status_code, 200, assistant.content[:300])
+        self.assertNotIn('canari', assistant.content.decode('utf-8').lower())
+        ecran = client_de(self.u).get(URL_POINT).content.decode('utf-8')
+        self.assertIn('Canari-titre-essentiel', ecran)  # le canari est vivant
 
 
 class ChiffresDuJourTests(_Base):

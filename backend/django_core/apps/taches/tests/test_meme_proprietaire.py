@@ -41,6 +41,7 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.notifications.models import Notification
 from apps.records.models import Activity
 from apps.taches import agenda_externe as lecteur
 from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran
@@ -256,6 +257,7 @@ CAS_DETAILS = (
     Cas('DELETE', 'agendas-externes/{id}/', 'chemin', ('AG',), lambda m, x: (f'agendas-externes/{x.AG.pk}/', None)),
     Cas('POST', 'agendas-externes/{id}/rafraichir/', 'chemin', ('AG',),
         lambda m, x: (f'agendas-externes/{x.AG.pk}/rafraichir/', None)),
+    Cas('POST', 'jetons/{id}/revoquer/', 'chemin', ('J',), lambda m, x: (f'jetons/{x.J.pk}/revoquer/', None)),
 )
 
 CAS_PROJETS = (
@@ -323,11 +325,26 @@ SANS_ID = {
     ('DELETE', 'preferences/{cle}/'): lambda m: ('preferences/heure_limite/', None),
     ('GET', 'reglages/'): lambda m: ('reglages/', None),
     ('PATCH', 'reglages/'): lambda m: ('reglages/', {'titres_tuile': True}),
+    # Coupe-circuit de la SOCIÉTÉ (administrateur seul : `moi` l'est) ; aucun id reçu.
+    ('GET', 'reglages-societe/'): lambda m: ('reglages-societe/', None),
+    ('PATCH', 'reglages-societe/'): lambda m: ('reglages-societe/', {'balayage_actif': False}),
     ('GET', 'coach/entete/'): lambda m: ('coach/entete/', None),
     ('GET', 'mes-donnees/'): lambda m: ('mes-donnees/', None),
     ('POST', 'tout-effacer/'): lambda m: ('tout-effacer/', {'confirmation': 'EFFACER'}),
     ('GET', 'agendas-externes/'): lambda m: ('agendas-externes/', None),
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
+    ('GET', 'jetons/'): lambda m: ('jetons/', None),
+    ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+    # La notification de test part au SEUL compte de la requête (`empreinte_de` compte les notifications
+    # reçues : l'autre compte et l'autre société n'en reçoivent aucune).
+    ('POST', 'mon-iphone/test-notification/'): lambda m: ('mon-iphone/test-notification/', None),
+    # Le projet de la capture est lu par son NOM parmi les projets du compte (test_capture.py : celui
+    # d'un collègue reste du texte) ; aucun id n'est reçu.
+    ('POST', 'capture/'): lambda m: ('capture/', {'titre': 'Appeler le fournisseur demain'}),
+    ('GET', 'tuile/'): lambda m: ('tuile/', None),  # compte forcé (`force_authenticate`) : celui du jeton
+    ('GET', 'flux/{jeton}.ics'): lambda m: ('flux/tqf_force.ics', None),  # idem : le jeton de l'adresse n'est pas lu
+    ('GET', 'journee/priorites/'): lambda m: ('journee/priorites/', None),
+    ('GET', 'journee/point/'): lambda m: ('journee/point/', None),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
@@ -373,6 +390,7 @@ def _monde(compte, jour):
     Preference.objects.create(company=societe, proprietaire=compte, cle=ClePreference.HEURE_LIMITE, valeur='19:00')
     m.A = fabriques.activite(compte)
     m.AG = fabriques.agenda_externe(compte, actif=False)
+    m.J, _clair = fabriques.jeton(compte, 'flux')
     return m
 
 
@@ -392,6 +410,9 @@ def empreinte_de(*comptes):
             lignes[(cle, compte.pk)] = list(_lignes_du_compte(cle, compte).order_by('pk').values_list())
         activites = Activity._base_manager.filter(Q(assigned_to=compte) | Q(created_by=compte))
         lignes[('activite', compte.pk)] = list(activites.order_by('pk').values_list())
+        # Les notifications reçues (la notification de test d'un autre compte n'arrive jamais ici).
+        lignes[('notifications', compte.pk)] = list(
+            Notification.objects.filter(recipient=compte).order_by('pk').values_list())
     return lignes
 
 
@@ -459,7 +480,7 @@ class MemeProprietaireTests(TestCase):
     def setUpTestData(cls):
         cls.jour = timezone.localdate()
         a, b = fabriques.societe('mp-a'), fabriques.societe('mp-b')
-        cls.moi = _monde(fabriques.compte(a, nom='moi'), cls.jour)
+        cls.moi = _monde(fabriques.compte(a, nom='moi', admin=True), cls.jour)  # admin : reglages-societe/
         cls.autre = _monde(fabriques.compte(a, nom='autre'), cls.jour)
         cls.etranger = _monde(fabriques.compte(b, nom='etranger'), cls.jour)
 

@@ -11,7 +11,7 @@ from django.db.models import F
 from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
-from apps.taches.confidentialite import nom_pour
+from apps.taches.confidentialite import est_confidentielle, nom_pour
 from apps.taches.entrees import DateBornee, sans_nul
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
@@ -266,9 +266,10 @@ def section_ecrite(section, geste):
             'geste_id': geste.pk if geste is not None else None}
 
 
-def apercu_du_plan(texte):
-    """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit."""
-    return decouper_plan(texte)
+def apercu_du_plan(projet, texte):
+    """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit ;
+    `projet` = où l'écrire et son verrou (la carte `plan_projet` du Copilote n'a que cette réponse)."""
+    return {'projet': {'id': projet.pk, 'lock_version': projet.lock_version}, **decouper_plan(texte)}
 
 
 def planification_rendue(user, resultat, ctx):
@@ -297,7 +298,7 @@ def poser_calculs_d_items(user, taches, etat, ctx):
         ctx['calculs'][('tache', tache.pk)] = {
             **ctx['calculs'].get(('tache', tache.pk), {}),
             'explication': texte_explication(item, tache, nom_du_projet(tache, usage, ctx['reglages']), etat.jour,
-                                             etat.travailles_journee),
+                                             etat.travailles_journee, usage),
             'essentielle': bool(ligne and ligne.essentielle),
             'prevue_au_plan': bool(ligne and ligne.prevue_au_plan)}
 
@@ -316,12 +317,14 @@ def _item(user, pk, ctx, chargees, etat):
 
 def _sections_de_la_vue(user, projet, taches, ctx, pures):
     """Les étapes du projet (avec leurs ITEM et leur compte `{ouvertes, faites}`, calculé de TOUTES ses
-    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape »."""
+    tâches même quand les faites ne sont pas servies) et les ITEM « sans étape ». Sous l'en-tête assistant,
+    le nom d'une étape d'un projet confidentiel n'est pas servi (vidé, comme l'étape d'un ITEM : regles.md §8)."""
+    masque = bool(ctx.get('assistant')) and est_confidentielle(projet)
     par_etape = {}
     for tache in taches:
         par_etape.setdefault(tache.section_id, []).append(tache)
     comptes = lecture.compteurs_par_etape(pures)
-    etapes = [{'id': s.pk, 'nom': s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
+    etapes = [{'id': s.pk, 'nom': '' if masque else s.nom, 'rang': s.rang, 'date_debut': _iso(s.date_debut),
                'date_fin': _iso(s.date_fin),
                'taches': ItemSerializer(par_etape.get(s.pk, []), many=True, context=ctx).data,
                'compteurs': comptes.get(s.pk, {'ouvertes': 0, 'faites': 0})}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { lireReglages, modifierReglages } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -7,10 +7,12 @@ import { configurerGestes } from '../../features/taches/lib/gestes'
 import ListeRubriques, { Avance, MesDonnees } from '../../features/taches/reglages/Rubriques'
 import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import ViePrivee from '../../features/taches/reglages/ViePrivee'
+import MonIphone from '../../features/taches/iphone/MonIphone'
+import Notifications, { CoupeCircuit } from '../../features/taches/reglages/Notifications'
 
 /* ============================================================================
    TCH108 — Écran « Réglages » (routes /taches/reglages et /taches/reglages/:rubrique ; atteignable
-   par le menu ⋯ de la coquille). Rubriques construites : `vie-privee`, `donnees`, `avance`.
+   par le menu ⋯ de la coquille). Rubriques construites : `notifications`, `iphone`, `vie-privee`, `donnees`, `avance`.
    Lecture : `GET reglages/` (`contract_samples/reglages.json`) ; chaque interrupteur envoie
    `PATCH reglages/` (liste blanche) et adopte la valeur rendue ; l'erreur du serveur s'affiche
    sous le réglage. Un échec de lecture dit « Pas à jour » et garde l'écran.
@@ -22,7 +24,14 @@ const messageDe = (err, champ) => {
   return Array.isArray(brut) && brut.length > 0 ? String(brut[0]) : frenchError(err, 'Réessaie dans un instant.')
 }
 
-function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
+// `/taches/reglages/iphone?etape=calendrier` ouvre d'emblée l'étape « calendrier » (« Mes agendas » y vit)
+const ETAPES_IPHONE = { notifications: 0, calendrier: 1, siri: 2, tuile: 3, accueil: 4 }
+
+function Contenu({ rubrique, reglages, erreur, basculer, navigate, etape }) {
+  if (rubrique === 'iphone') {
+    return <MonIphone reglages={reglages} onReglage={basculer} erreur={erreur} etapeDemandee={ETAPES_IPHONE[etape] ?? null} />
+  }
+  if (rubrique === 'notifications') return <Notifications reglages={reglages} onReglage={basculer} erreur={erreur} />
   if (rubrique === 'vie-privee') {
     return (
       <ViePrivee
@@ -36,11 +45,14 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
   if (rubrique === 'donnees') return <MesDonnees onEfface={() => naviguerApresFeuille(navigate, '/taches/aujourdhui')} />
   if (rubrique === 'avance') {
     return (
-      <Avance
-        sansDelai={Boolean(reglages?.messages_sans_delai)}
-        onSansDelai={(valeur) => basculer('messages_sans_delai', valeur)}
-        erreur={erreur.messages_sans_delai}
-      />
+      <>
+        <Avance
+          sansDelai={Boolean(reglages?.messages_sans_delai)}
+          onSansDelai={(valeur) => basculer('messages_sans_delai', valeur)}
+          erreur={erreur.messages_sans_delai}
+        />
+        <CoupeCircuit estAdmin={Boolean(reglages?.est_admin)} />
+      </>
     )
   }
   return null
@@ -49,6 +61,7 @@ function Contenu({ rubrique, reglages, erreur, basculer, navigate }) {
 export default function Reglages() {
   const { rubrique } = useParams()
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const [reglages, setReglages] = useState(null)
   const [echec, setEchec] = useState(false)
   const [erreur, setErreur] = useState({})
@@ -89,7 +102,7 @@ export default function Reglages() {
       <div className="es-reglages-grille">
         <ListeRubriques courante={rubrique} onOuvrir={(cle) => navigate(`/taches/reglages/${cle}`)} />
         <div>
-          <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} />
+          <Contenu rubrique={rubrique} reglages={reglages} erreur={erreur} basculer={basculer} navigate={navigate} etape={params.get('etape')} />
         </div>
       </div>
     </CoquilleTaches>

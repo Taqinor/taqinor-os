@@ -178,6 +178,19 @@ describe('TCH89 — Un projet : ajouter une tâche', () => {
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
+  it('« + » touché AVANT que la vue du projet soit lue : la saisie s\'ouvre quand même dans ce projet (id de l\'adresse)', async () => {
+    // Constaté en acceptation (réseau lent) : le « + » ouvrait la saisie SANS projet, la tâche partait dans À trier.
+    api.lireVueProjet.mockReturnValue(new Promise(() => {})) // la vue n'arrive pas encore
+    const ouverture = vi.fn()
+    window.addEventListener('taqinor:taches:saisir', ouverture)
+    monter('/taches/projets/3')
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(screen.getAllByRole('button', { name: 'Ajouter une tâche' })[0])
+    expect(ouverture).toHaveBeenCalledTimes(1)
+    expect(ouverture.mock.calls[0][0].detail).toEqual({ projet_id: 3 })
+    window.removeEventListener('taqinor:taches:saisir', ouverture)
+  })
+
   it('Raccord F2 — après une création (`taqinor:taches:creees`), la vue se relit une fois, sans recharger la page', async () => {
     monter()
     await screen.findByRole('region', { name: 'Études' })

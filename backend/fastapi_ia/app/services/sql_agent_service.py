@@ -504,18 +504,21 @@ def _manuel_du_role(docs: dict, role: str | None) -> str:
 
 def _contenu_systeme(provider: str, allow_price: bool,
                      copilote: bool = False,
-                     role: str | None = None) -> tuple[Any, bool]:
+                     role: str | None = None,
+                     taches: bool = False) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
     (repli AIC4, ou Groq en fournisseur principal) : bloc ALLEGE sans manuel
     ni manifeste complet (voir _manifeste_allege), manuel_present=False.
     COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
-    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange."""
+    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange.
+    `taches` : le bloc « TACHES — CONSIGNES DU COPILOTE » seulement pour un
+    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`)."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
     if copilote:
-        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
+        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.consignes_du_copilote(taches) + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + _manuel_du_role(docs, role)
@@ -523,6 +526,35 @@ def _contenu_systeme(provider: str, allow_price: bool,
         return texte, docs["present"]
     return [{"type": "text", "text": texte,
              "cache_control": {"type": "ephemeral", "ttl": "1h"}}], docs["present"]
+
+
+#: TCH115 (socle §2.6, spec-5b « Journal ») — un tour « Tâches » est PRIVE :
+#: le journal de l'assistant n'en garde ni la question, ni la reponse, ni le
+#: texte d'une erreur ; l'administrateur voit date, intention, outils, modele,
+#: repli, jetons, cout et codes d'erreur.
+QUESTION_TACHES_PRIVEE = "[tâches — privé]"
+ECRAN_TACHES = "/taches"
+
+
+def _tour_taches_prive(corps: dict[str, Any]) -> bool:
+    """Un outil `taches.*` appele, un ecran `/taches…`, ou une erreur venue
+    d'un appel `taches.*` (sans outil journalise) : le tour est prive."""
+    ecran = corps.get("ecran") or ""
+    outil_erreur = str((corps.get("erreur") or {}).get("outil") or "")
+    return (any(str(o).startswith("taches.") for o in corps.get("outils_appeles") or [])
+            or ecran == ECRAN_TACHES or ecran.startswith(ECRAN_TACHES + "/")
+            or outil_erreur.startswith("taches."))
+
+
+def _masquer_tour_taches(corps: dict[str, Any]) -> dict[str, Any]:
+    """Question remplacee, reponse et texte d'erreur vides, ecran ramene a
+    `/taches` ; le tampon du navigateur (messages lus a l'ecran) est retire."""
+    erreur = corps.get("erreur")
+    if isinstance(erreur, dict):
+        erreur = {k: v for k, v in erreur.items() if k != "diagnostic"}
+        erreur["message"] = ""
+    return {**corps, "question": QUESTION_TACHES_PRIVEE, "resume_reponse": "",
+            "ecran": ECRAN_TACHES, "erreur": erreur}
 
 
 def suggestions_pour_ecran(ecran: str) -> list[str]:
@@ -1475,13 +1507,15 @@ class SQLAgentService:
 
     def _save_history(
         self, user_id: int, question: str, answer: str,
-        cartes: list | None = None,
+        cartes: list | None = None, contenu_tiers: bool = True,
     ) -> None:
         """Sauvegarde un echange dans Redis avec TTL 24h. COP-B1 : le message
-        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran)."""
+        d'agent porte ses `cartes` (rejouees au rechargement de l'ecran). A5
+        (revue F3 #3) : et la marque `contenu_tiers` du tour (defaut : marque)."""
         self._ajouter_historique(user_id, [
             {"role": "user", "content": question},
-            {"role": "agent", "content": answer, "cartes": list(cartes or [])},
+            {"role": "agent", "content": answer, "cartes": list(cartes or []),
+             "contenu_tiers": bool(contenu_tiers)},
         ])
 
     def _ajouter_historique(self, user_id: int, messages: list[dict]) -> None:
@@ -1605,7 +1639,10 @@ class SQLAgentService:
         from app.services import relais_copilote as relais
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
-        lc_history = relais.historique_langchain(self._load_history(user_id), copilote)
+        # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
+        historique = self._load_history(user_id)
+        relais.noter_historique_du_tour(action_ctx, historique, copilote)
+        lc_history = relais.historique_langchain(historique, copilote)
 
         # 2. Base filtree (allowlist, moteur lecture seule, GUC RLS) ; 3. LLM ;
         # 4. outils SQL gardes (COP-B5 : lecture + schema seulement).
@@ -1651,6 +1688,9 @@ class SQLAgentService:
         outil_metrique = outil_metrique_gouvernee(action_ctx, allow_price)
         if outil_metrique is not None:
             tools.extend(_etiqueter_outils([outil_metrique]))
+        # A5 (revue F3 #1) — tout outil hors catalogue (SQL, schema, metrique)
+        # marque le tour ; les actions du catalogue passent par la garde.
+        relais.marquer_lectures_tierces(tools, action_ctx)
 
         # 5. Prompt avec historique (+ restriction marge si non autorise).
         # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.
@@ -1659,7 +1699,8 @@ class SQLAgentService:
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
             (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote,
-            role=(getattr(action_ctx, "identite", None) or {}).get("role"))
+            role=(getattr(action_ctx, "identite", None) or {}).get("role"),
+            taches=prompt_copilote.taches_au_catalogue(getattr(action_ctx, "catalogue_tour", None)))
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),
@@ -1698,7 +1739,8 @@ class SQLAgentService:
         intention, erreur = _intention_et_erreur(action_outputs, intention)
         # COP-B1 — TOUTES les sorties structurees du tour, dans l'ordre.
         cartes = construire_cartes(action_outputs)
-        self._save_history(user_id, question, answer, cartes)
+        self._save_history(user_id, question, answer, cartes,
+                           contenu_tiers=relais.marque_du_tour(action_ctx))
 
         # ERR84 — le SQL genere (avec les vrais noms de tables) reste cote
         # serveur (log de debug uniquement) et n'est JAMAIS renvoye au client :
@@ -1812,6 +1854,8 @@ class SQLAgentService:
             "tokens": dict(out.get("tokens") or {
                 "cache_read": 0, "cache_write": 0, "input": 0, "output": 0}),
         }
+        if _tour_taches_prive(corps):
+            corps = _masquer_tour_taches(corps)
         try:
             return journaliser_evenement_assistant(action_ctx, corps)
         except Exception as exc:  # pragma: no cover - best-effort
@@ -1842,7 +1886,8 @@ class SQLAgentService:
         try:
             # COP-B3 — le copilote est allume pour ce compte quand le
             # catalogue recu de Django porte une action du lot `copilote`.
-            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx)
+            catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
+            relais.noter_question_du_tour(action_ctx, question)  # A5 — liste ou texte collé
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).

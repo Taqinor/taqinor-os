@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 
+from . import chemins_sensibles
 from .observability import current_context
 
 # Champs de contexte injectés sur chaque record (valeur par défaut si hors requête).
@@ -40,14 +41,14 @@ class JSONFormatter(logging.Formatter):
             'ts': self.formatTime(record, self.datefmt),
             'level': record.levelname,
             'logger': record.name,
-            'message': record.getMessage(),
+            'message': chemins_sensibles.masquer(record.getMessage()),
         }
         for field in _CONTEXT_FIELDS:
             value = getattr(record, field, None)
             if value is not None:
                 payload[field] = value
         if record.exc_info:
-            payload['exc'] = self.formatException(record.exc_info)
+            payload['exc'] = chemins_sensibles.masquer(self.formatException(record.exc_info))
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 

@@ -1486,6 +1486,7 @@ CELERY_TASK_ROUTES = {
     'core.balayer_travaux_orphelins': {'queue': 'scheduled'},
     # TCH99 — nuit des tâches personnelles (beat 03:00).
     'taches.nocturne': {'queue': 'scheduled'},
+    'taches.balayer': {'queue': 'scheduled'},
 }
 # Le worker par défaut (sans -Q) écoute la queue nommée dans
 # task_default_queue — on la garde `default` pour ne rien casser ; en
@@ -1572,7 +1573,7 @@ VEILLE_AO_RETENTION_MOIS = int(
 NOTIFICATIONS_TOUJOURS_IMMEDIATES = tuple(
     cle.strip() for cle in os.environ.get(
         'NOTIFICATIONS_TOUJOURS_IMMEDIATES',
-        'lead_new,lead_assigned,lead_callback_requested').split(',')
+        'lead_new,lead_assigned,lead_callback_requested,taches_rappel').split(',')
     if cle.strip())
 
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same

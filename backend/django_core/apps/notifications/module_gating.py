@@ -92,6 +92,11 @@ EVENT_MODULE = {
     # AMON86 — une alerte de sous-performance n'est pas émise pour une société
     # dont le module monitoring est éteint.
     EventType.MONITORING_SOUS_PERFORMANCE: 'monitoring',
+    # TCH20 — module ``taches`` éteint : ni plan, ni bilan, ni relance, ni rappel.
+    EventType.TACHES_PLAN_DU_JOUR: 'taches',
+    EventType.TACHES_BILAN_SOIR: 'taches',
+    EventType.TACHES_RELANCE: 'taches',
+    EventType.TACHES_RAPPEL: 'taches',
 }
 
 

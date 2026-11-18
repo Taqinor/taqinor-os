@@ -519,9 +519,12 @@ def reponse_supprimees(projets, compteurs, taches, *, assistant=False):
     }
 
 
-def reponse_gestes(gestes):
-    """Forme de `gestes.json` : `{"results": […]}` ; `annulable` tant que le geste n'est pas annulé."""
-    return {'results': [{'id': g.pk, 'type': g.type, 'message': g.message,
+def reponse_gestes(gestes, masques=frozenset()):
+    """Forme de `gestes.json` : `{"results": […]}` ; `annulable` tant que le geste n'est pas annulé.
+    `masques` : ids des gestes d'une tâche confidentielle servis à l'assistant — leur message ne porte pas
+    le texte saisi (`services.taches.gestes_confidentiels`), seulement l'état « En attente de… »."""
+    return {'results': [{'id': g.pk, 'type': g.type,
+                         'message': StatutTache.EN_ATTENTE.label if g.pk in masques else g.message,
                          'created_at': _INSTANT.to_representation(g.created_at),
                          'annule_le': _INSTANT.to_representation(g.annule_le) if g.annule_le else None,
                          'annulable': g.annule_le is None} for g in gestes]}

@@ -8,7 +8,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captureQueue'
 import { reinitialiserGestes } from '../lib/gestes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
-import FeuilleSaisie, { cleBrouillon, lireBrouillon, messageChamps } from './FeuilleSaisie'
+import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -99,6 +99,27 @@ describe('TCH82 — feuille de saisie', () => {
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     expect(toast).toHaveTextContent('Ajoutée')
     expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+  })
+
+  it('le brouillon est effacé AVANT l\'événement « tâches créées » : l\'écran qui le relit n\'affiche pas la carte « Brouillon »', async () => {
+    const user = userEvent.setup()
+    const vusALInstant = []
+    const ecoute = () => vusALInstant.push(lireBrouillon(7, 42))
+    window.addEventListener(EVENEMENT_CREEES, ecoute)
+    try {
+      const { onFermer } = monter()
+      await user.type(champ(), PHRASE)
+      expect(lireBrouillon(7, 42)).not.toBeNull()
+      await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      // saisie en chaîne (spec-2 §1) : la feuille reste ouverte, champ vidé ; l'événement est parti une fois
+      await waitFor(() => expect(vusALInstant).toHaveLength(1))
+      expect(vusALInstant).toEqual([null])
+      expect(champ()).toHaveValue('')
+      expect(onFermer).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener(EVENEMENT_CREEES, ecoute)
+    }
   })
 
   it('une erreur du serveur s\'affiche SOUS le champ, et ce qui est tapé reste intact', async () => {
@@ -237,6 +258,22 @@ describe('TCH82 — feuille de saisie', () => {
       const [op] = await file.pending()
       expect(op.payload.corps.lignes[0]).toMatchObject({ titre: 'Appeler Karim', nouveau_projet: { nom: 'SiteWeb' } })
       expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
+    })
+
+    it('la mise en file efface le brouillon avant de fermer la feuille (et avant tout rejeu qui émet l\'événement)', async () => {
+      const user = userEvent.setup()
+      const vusALaFermeture = []
+      const fermer = vi.fn(() => vusALaFermeture.push(lireBrouillon(7, 42)))
+      monter({ onFermer: fermer })
+      await user.type(champ(), PHRASE)
+      expect(lireBrouillon(7, 42)).not.toBeNull()
+      act(() => {
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+        window.dispatchEvent(new Event('offline'))
+      })
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(fermer).toHaveBeenCalled())
+      expect(vusALaFermeture).toEqual([null])
     })
 
     it('une coupure pendant l\'envoi met la ligne en file au lieu d\'une erreur ; sans analyse, le texte entier sert de titre', async () => {

@@ -210,6 +210,13 @@ export default defineConfig({
             url: '/crm/cockpit',
             icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
           },
+          // TCH120 — l'app Tâches : /taches/aujourdhui (route réelle, docs/taches/reference/api.md §7).
+          {
+            name: 'Tâches',
+            short_name: 'Tâches',
+            url: '/taches/aujourdhui',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
         ],
       },
       injectManifest: {

@@ -983,6 +983,13 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=3, minute=0),
         'options': _expire_dans(3600),
     },
+    # TCH174 — balayage des tâches personnelles (apps/taches/sweeps.py) : rappels posés et
+    # sollicitations, sociétés actives à module actif, coupe-circuit `balayage_actif` relu à chaque passage.
+    'taches-balayer': {
+        'task': 'taches.balayer',
+        'schedule': crontab(minute='*'),
+        'options': _expire_dans(60),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

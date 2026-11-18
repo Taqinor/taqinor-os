@@ -1,0 +1,106 @@
+{
+  "endpoint": "POST /api/fastapi/sql-agent/query",
+  "pourquoi": "A5 (arbitrages ; api.md §8 ; textes.md §5.5) — `donnees` de la carte `tache` quand une écriture `taches.*` du Copilote arrive dans un tour où un texte tiers est entré (liste collée, donnée d'un lead ou d'un client, lecture SQL) : RIEN n'est écrit ; la carte porte le corps de la requête (`proposition.corps`) et le doigt de l'utilisateur la valide (« Modifier » pour `taches.tache.modifier`). Forme posée par le relais (`backend/fastapi_ia/app/services/action_tools.py::_ecriture_en_carte_echo`), pas par une route Django : `tache` = GET taches/{id}/ en forme assistant (null pour une écriture sans tâche visée), `changements` seulement pour `taches.tache.modifier`. Revue F3 #2 : quand le corps porte `projet_id`, la proposition porte `projet` {id, nom} lu par le relais (GET projets/{id}/ sous l'en-tête assistant : « Projet confidentiel » pour un projet confidentiel ; projet illisible = écriture refusée, aucune carte). `exemple_creation` : une création (`tache` null).",
+  "exemple": {
+    "tache": {
+      "type": "tache",
+      "id": 21,
+      "titre": "Déclaration TVA",
+      "statut": "a_faire",
+      "projet": {
+        "id": 4,
+        "nom": "Admin",
+        "couleur": "prune",
+        "priorite": 1
+      },
+      "section": null,
+      "parent_id": null,
+      "priorite": 1,
+      "jour_prevu": null,
+      "moment": "",
+      "heure_debut": null,
+      "echeance": null,
+      "echeance_heure": null,
+      "quelque_jour": false,
+      "estimation_minutes": 30,
+      "reports": 0,
+      "rang": null,
+      "motif": null,
+      "raison": null,
+      "explication": "",
+      "rappel": null,
+      "lien": null,
+      "checklist": null,
+      "sous_taches": null,
+      "recurrente": false,
+      "routine": false,
+      "jalon": false,
+      "bloquee_par": null,
+      "en_attente_de": "",
+      "essentielle": false,
+      "prevue_au_plan": false,
+      "confidentiel": false,
+      "confidentielle": false,
+      "source": "rapide",
+      "peut_cloturer": true,
+      "lock_version": 2
+    },
+    "proposition": {
+      "geste": "ecrire",
+      "action_key": "taches.tache.modifier",
+      "libelle": "Modifier une tâche",
+      "corps": {
+        "lock_version": 2,
+        "priorite": 3,
+        "echeance": "2026-11-20",
+        "projet_id": 3
+      },
+      "projet": {
+        "id": 3,
+        "nom": "Ventes"
+      },
+      "changements": [
+        {
+          "champ": "priorite",
+          "avant": 1,
+          "apres": 3
+        },
+        {
+          "champ": "echeance",
+          "avant": null,
+          "apres": "2026-11-20"
+        },
+        {
+          "champ": "projet",
+          "avant": {
+            "id": 4,
+            "nom": "Admin",
+            "couleur": "prune",
+            "priorite": 1
+          },
+          "apres": {
+            "id": 3,
+            "nom": "Ventes"
+          }
+        }
+      ]
+    }
+  },
+  "exemple_creation": {
+    "tache": null,
+    "proposition": {
+      "geste": "ecrire",
+      "action_key": "taches.tache.creer",
+      "libelle": "Ajouter une tâche",
+      "corps": {
+        "titre": "Rappeler la banque",
+        "jour_prevu": "2026-11-19",
+        "projet_id": 3
+      },
+      "projet": {
+        "id": 3,
+        "nom": "Ventes"
+      }
+    }
+  }
+}

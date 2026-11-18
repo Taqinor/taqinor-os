@@ -5,8 +5,8 @@ texte est rendu à la lecture (`serializers/rythme.py`), rien n'est stocké que 
 Une par jour au plus, une seule fois chacune :
 
 - `apres_creation` — le crochet que `creer_taches` appelle, dans sa transaction, après chaque création
-  réussie : `planifier_projet` (1er projet créé) puis `ranger_copilote` (À trier ≥ 5) ; `mon_iphone`
-  (1er collage créé) est branché par TCH109.
+  réussie : `planifier_projet` (1er projet créé), `ranger_copilote` (À trier ≥ 5), puis `mon_iphone`
+  (1er « Créer N tâches » de la feuille de saisie ; dernière, 3 jours au plus).
 - `revelation_revue` — étape de la nuit (`services/rythme._nuit_du_compte`) : fin de la 1re semaine.
 """
 import datetime
@@ -22,6 +22,9 @@ from apps.taches.services.rythme import creer_carte
 
 PLANIFIER_PROJET = 'planifier_projet'
 RANGER_COPILOTE = 'ranger_copilote'
+MON_IPHONE = 'mon_iphone'
+#: `mon_iphone` : « 3 jours au plus, puis seulement dans Réglages » (regles.md §4.10, A17-T3).
+EXPIRATION_MON_IPHONE = 3
 REVUE = 'revue'
 #: « À trier ≥ 5 » (textes.md « Révélations »).
 A_TRIER_MIN = 5
@@ -81,6 +84,9 @@ def apres_creation(user, creees, projets_crees, *, porte):
         n = _nb_a_trier(user)
         if n >= A_TRIER_MIN:
             return creer_carte(user, TypeIncitationEcran.REVELATION, RANGER_COPILOTE, jour, {'n': n})
+    if creees and porte == 'saisie' and _peut_reveler(user, MON_IPHONE, jour):
+        return creer_carte(user, TypeIncitationEcran.REVELATION, MON_IPHONE, jour, {},
+                           expire_jours=EXPIRATION_MON_IPHONE)
     return None
 
 

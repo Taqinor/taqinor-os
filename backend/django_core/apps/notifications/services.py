@@ -269,7 +269,7 @@ def _vapid_private_for_push(private_key):
         return private_key
 
 
-def _dispatch_webpush(user, title, body, link=None, approval_action=None):
+def _dispatch_webpush(user, title, body, link=None, approval_action=None, badge=None):
     """Best-effort : envoie un Web Push à TOUS les appareils de l'utilisateur.
 
     NO-OP silencieux si les clés VAPID sont absentes OU si l'utilisateur n'a
@@ -309,6 +309,8 @@ def _dispatch_webpush(user, title, body, link=None, approval_action=None):
         'title': str(title), 'body': str(body or ''),
         'link': str(link or ''),
     }
+    if badge is not None:  # TCH21 — pastille d'icône (Badging API), sinon aucun champ
+        payload_dict['badge'] = int(badge)
     source = (approval_action or {}).get('source')
     obj_id = (approval_action or {}).get('id')
     if source and obj_id is not None:
@@ -571,7 +573,7 @@ def _report_hors_fenetre(event_type, company, respect_quiet_hours):
 
 
 def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
-                       instance=None, skip_email=False, approval_action=None):
+                       instance=None, skip_email=False, approval_action=None, badge=None):
     """Diffusions HORS-APP d'une notification (e-mail, WhatsApp, push).
 
     Partagé par ``notify()`` (envoi immédiat) et par la livraison différée
@@ -607,7 +609,7 @@ def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
         try:
             _dispatch_webpush(
                 user, str(title), str(body or ''), link=link,
-                approval_action=approval_action)
+                approval_action=approval_action, badge=badge)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch web push notification échoué : %s', exc)
 
@@ -623,7 +625,7 @@ def destinataire_actif(user, *, lead=None):
 
 def notify(user, event_type, title, body='', link=None, company=None,
            skip_email=False, reason='', respect_quiet_hours=True,
-           approval_action=None):
+           approval_action=None, badge=None):
     """Émet une notification pour `user` en respectant ses préférences.
 
     - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
@@ -742,7 +744,7 @@ def notify(user, event_type, title, body='', link=None, company=None,
     transaction.on_commit(lambda: _diffuser_hors_app(
         user, company, event_type, title, body, link, prefs,
         instance=created, skip_email=skip_email,
-        approval_action=approval_action))
+        approval_action=approval_action, badge=badge))
     return created
 
 
@@ -1587,3 +1589,16 @@ def supprimer_abonnement_push(user, endpoint):
     deleted, _ = PushSubscription.objects.filter(
         user=user, endpoint=endpoint).delete()
     return deleted
+
+
+def supprimer_notifications_du_compte(user, company_id, event_types):
+    """Supprime (dur) les notifications in-app de ``user`` dans la société
+    ``company_id`` pour ces types d'événement — différées comprises — et rend
+    le nombre de lignes supprimées. Pour le « Tout effacer » d'un module (ex.
+    `taches` : une ligne de la cloche peut porter le titre d'une tâche) ;
+    bornée au couple (société, compte) : jamais la notification d'autrui."""
+    if user is None or company_id is None or not event_types:
+        return 0
+    supprimees, _ = Notification.objects.filter(
+        company_id=company_id, recipient=user, event_type__in=list(event_types)).delete()
+    return supprimees

@@ -150,7 +150,12 @@ export default function Projet() {
 
   // Raccord F2 — « + » (coquille) et « Ajouter une tâche » (étape) ouvrent LA feuille de saisie avec ce projet
   // (et cette étape) en contexte ; après la création, la vue se relit une fois (sans recharger la page).
-  const contexteSaisie = useMemo(() => (vue ? { projet_id: vue.projet.id, projet_nom: vue.projet.nom } : null), [vue])
+  // Tant que la vue n'est pas lue (réseau lent), le projet est celui de l'ADRESSE : un « + » touché tôt ne crée
+  // jamais une tâche hors du projet (constaté en acceptation : elle partait dans À trier).
+  const contexteSaisie = useMemo(() => {
+    if (vue) return { projet_id: vue.projet.id, projet_nom: vue.projet.nom }
+    return /^\d+$/.test(id ?? '') ? { projet_id: Number(id) } : null
+  }, [vue, id])
   const ajouter = (sectionId) => {
     window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: { ...contexteSaisie, section_id: sectionId } }))
   }

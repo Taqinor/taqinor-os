@@ -120,8 +120,9 @@ def objectif_du_jour(reglages, jour, preferences, plan=None):
     return forme
 
 
-def _lire_contexte(user, jour, maintenant, *, assistant=False):
-    """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`."""
+def _lire_contexte(user, jour, maintenant, *, assistant=False, cache_seul=False):
+    """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`. `cache_seul`
+    (le balayage) : les agendas externes ne sont lus que du cache, jamais du réseau."""
     reglages = sel.reglages_de(user)
     travailles = sel.travailles_autour(user, jour)
     journee = sel.lire_journee(user, jour, charger=charger_items, reglages=reglages, travailles=travailles)
@@ -130,7 +131,7 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     closes = tuple(sel.activites_closes_du_jour(user, jour))
     compte, detail = sel.compte_faites(user, jour, closes)
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
-    rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
+    rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour, cache_seul=cache_seul)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
                     preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences, journee.plan),
                     compte=compte,
@@ -309,12 +310,17 @@ def _carte_du_moment(ctx, propose):
 
 # --- `aujourdhui/` ---------------------------------------------------------------------------------
 
+def _boite_a_trier(user):
+    """La boîte de réception (invariant 1) : ouvertes, sans parent, sans projet, jamais triées."""
+    return taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
+                                  statut__in=sel.OUVERTS).count()
+
+
 def a_trier(user, jour):
     """Compteurs de « À trier » : boîte (invariant 1), bloquées, suggestions visibles (7 jours), à
     convertir (`records.selectors.nb_a_faire_personnels`)."""
     from apps.records.selectors import nb_a_faire_personnels
-    boite = taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
-                                   statut__in=sel.OUVERTS).count()
+    boite = _boite_a_trier(user)
     bloquees = taches_de(user).filter(statut=StatutTache.A_FAIRE).filter(sel.BLOQUEE).count()
     depuis, _ = sel.bornes_du_jour(jour - DUREE_SUGGESTION)
     suggestions = SuggestionTache.objects.filter(company_id=user.company_id, proprietaire=user,
@@ -401,8 +407,10 @@ def aujourdhui(user, jour, maintenant, *, tout=False, assistant=False):
 
 
 def badge(user, jour):
-    """GET badge/ : `{n, jour}` — `compter_journee`, la seule définition (invariant 11)."""
-    return {'n': sel.compter_journee(user, jour), 'jour': jour.isoformat()}
+    """GET badge/ : `{n, jour, a_trier}` — `n` par `compter_journee`, la seule définition (invariant 11) ;
+    `a_trier` = `a_trier.boite_reception` d'`aujourdhui/` (une requête de plus : la pastille de l'onglet
+    « À trier » n'a plus à lire toute la journée)."""
+    return {'n': sel.compter_journee(user, jour), 'jour': jour.isoformat(), 'a_trier': _boite_a_trier(user)}
 
 
 # --- « Ailleurs dans l'ERP » -----------------------------------------------------------------------

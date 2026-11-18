@@ -591,7 +591,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   const navigate = useNavigate()
-  // Mes agendas (§2.20) : rangés dans Réglages → Avancé en attendant « Mon iPhone » (F3) ; lus une fois
+  // Mes agendas (§2.20) : vivent dans Réglages → Mon iPhone, étape « calendrier » (`?etape=calendrier`) ; lus une fois
   const [agendas, setAgendas] = useState(null)
   useEffect(() => {
     let vivant = true
@@ -604,7 +604,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       .catch(() => { if (vivant) setAgendas(null) }) // illisible : pas d'invitation plutôt qu'une fausse
     return () => { vivant = false }
   }, [])
-  const ouvrirMesAgendas = useCallback(() => navigate('/taches/reglages/avance'), [navigate])
+  const ouvrirMesAgendas = useCallback(() => navigate('/taches/reglages/iphone?etape=calendrier'), [navigate])
   // Raccord F2 — le gestionnaire commun des actions de ligne (menu ⋯) ; prévue un autre jour, la ligne part
   const actions = useActionsLigne({
     aujourdhui,

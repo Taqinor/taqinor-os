@@ -756,6 +756,194 @@ def _cle_dans_le_corps(action: dict[str, Any]) -> bool:
     return action.get("key") in _CLE_DANS_LE_CORPS or "idempotency_key" in proprietes
 
 
+#: TCH114 — tout appel d'une action `taches.*` porte cet en-tete (api.md §0
+#: « Requete assistant ») : Django sert alors la forme assistant (objets
+#: confidentiels masques). Pose par `headers=` de `_django_call` ;
+#: `internal_headers()` reste inchange (Django tient aussi le Bearer pour
+#: assistant : un oubli echoue ferme).
+PREFIXE_TACHES = "taches."
+ENTETE_ASSISTANT = {"X-Taqinor-Assistant": "1"}
+#: Fiche ouverte (contexte pose par l'ECRAN, jamais par le modele) -> `lien`
+#: d'une tache creee par le Copilote ; le devis prime sur le lead.
+_LIENS_DU_CONTEXTE = (("devis_id", "ventes.devis"), ("lead_id", "crm.lead"))
+
+
+def _avec_lien_du_contexte(ctx: ActionContext, action: dict[str, Any],
+                           body: dict[str, Any]) -> dict[str, Any]:
+    """`taches.tache.creer` : le `lien` vient du contexte du tour (fiche
+    ouverte), jamais d'une entree du modele (le schema ne la declare pas)."""
+    if action.get("key") != "taches.tache.creer":
+        return body
+    contexte = getattr(ctx, "contexte_tour", None) or {}
+    for cle, cible in _LIENS_DU_CONTEXTE:
+        valeur = contexte.get(cle)
+        if isinstance(valeur, int) and not isinstance(valeur, bool) and valeur > 0:
+            return {**body, "lien": {"cible": cible, "id": valeur}}
+    return body
+
+
+# ── A5 (arbitrages A5 ; api.md §8 ; spec-5b §1) — garde des ecritures Taches ──
+# Le MODELE ne la contourne pas : elle vit dans `run_catalogue_action`, le seul
+# chemin d'execution d'une action du catalogue pour les DEUX moteurs, et son
+# etat est porte par le contexte du tour (un `ActionContext` par requete).
+
+#: Les huit ✎ `taches.*` (`apps/taches/agent_actions.ECRITURES`).
+ECRITURES_TACHES = frozenset({
+    "taches.tache.creer", "taches.tache.terminer", "taches.tache.modifier",
+    "taches.tache.planifier", "taches.rappel.poser", "taches.projet.creer",
+    "taches.rythme.regler", "taches.preference.noter"})
+#: Les trois ⟲ `taches.*` (`apps/taches/agent_actions.ECHOS`) : un apercu, rien d'ecrit.
+ECHOS_TACHES = frozenset({
+    "taches.liste.ranger", "taches.projet.planifier_apercu",
+    "taches.tache.proposer_changement"})
+#: Au plus trois ecritures `taches.*` par tour (A5).
+ECRITURES_TACHES_PAR_TOUR = 3
+REFUS_ECRITURES_TACHES = (
+    "Action refusée : au-delà de trois écritures par tour, propose "
+    "taches.liste.ranger ; rien n'est écrit.")
+MESSAGE_CARTE_A_VALIDER = (
+    "Rien n'est écrit : des données lues ou un texte tiers sont entrés dans cet "
+    "échange, l'écriture attend son doigt sur la carte.")
+#: Seules chaines gardees dans la sortie d'une ecriture rendue au modele.
+_DATE_OU_HEURE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+    r"|\d{2}:\d{2}(?::\d{2})?")
+_CLE_DE_CHAMP = re.compile(r"[a-z_][a-z0-9_]{0,40}")
+_LECTURE_TACHE = "/api/django/taches/taches/{id}/"
+_LECTURE_PROJET = "/api/django/taches/projets/{id}/"
+
+
+def noter_contenu_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+    """Marque le tour : un texte tiers y est entre (liste collee, donnee d'un
+    lead ou d'un client, page lue). Definitif pour le tour."""
+    if ctx is not None and not getattr(ctx, "contenu_tiers", None):
+        ctx.contenu_tiers = origine or "tiers"
+
+
+def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
+    return bool(getattr(ctx, "contenu_tiers", None))
+
+
+def _lire_pour_echo(ctx: ActionContext, gabarit: str, ident: Any) -> Optional[dict]:
+    """Lecture (forme ASSISTANT : objet confidentiel masque) d'une tache ou
+    d'un projet a montrer sur la carte a valider ; None si illisible."""
+    res = _django_call(ctx, gabarit.format(id=int(ident)), method="GET",
+                       headers=dict(ENTETE_ASSISTANT))
+    data = res.get("data") if res.get("ok") else None
+    return data if isinstance(data, dict) and data.get("id") is not None else None
+
+
+def _changements_demandes(tache: dict, inputs: dict[str, Any],
+                          projet: Optional[dict]) -> list[dict]:
+    """`taches.tache.modifier` : avant -> apres de chaque champ demande
+    (textes.md §5.5) ; `projet` = le projet vise, deja lu."""
+    lignes = [{"champ": champ, "avant": tache.get(champ), "apres": inputs[champ]}
+              for champ in ("priorite", "echeance") if champ in inputs]
+    if projet is not None:
+        lignes.append({"champ": "projet", "avant": tache.get("projet"), "apres": projet})
+    return lignes
+
+
+def _ecriture_en_carte_echo(ctx: ActionContext, action: dict[str, Any],
+                            inputs: dict[str, Any],
+                            collector: Optional[list[dict[str, Any]]]) -> str:
+    """✎ sous un texte tiers -> carte-echo `tache` portant le corps (A5) :
+    RIEN n'est ecrit ; le doigt de l'utilisateur valide sur la carte. Un
+    corps qui porte `projet_id` (revue F3 #2) : la proposition porte aussi
+    `projet` {id, nom}, lu sous l'en-tete assistant (un projet confidentiel
+    reste « Projet confidentiel ») ; illisible ou d'un autre compte : refus."""
+    cle = action["key"]
+    try:
+        _, corps = _build_path(action.get("endpoint", ""), inputs)
+    except ActionValidationError as exc:
+        return f"Action refusée : {exc}"
+    tache = None
+    if "{id}" in str(action.get("endpoint", "")):
+        tache = _lire_pour_echo(ctx, _LECTURE_TACHE, inputs.get("id"))
+        if tache is None:
+            return "Action refusée : tâche introuvable ; rien n'est écrit."
+    projet = None
+    if corps.get("projet_id") is not None:
+        lu = _lire_pour_echo(ctx, _LECTURE_PROJET, corps["projet_id"])
+        if lu is None:
+            return "Action refusée : projet introuvable ; rien n'est écrit."
+        projet = {"id": lu["id"], "nom": lu.get("nom")}
+    proposition = {"geste": "ecrire", "action_key": cle, "libelle": _libelle_action(action),
+                   "corps": _avec_lien_du_contexte(ctx, action, corps)}
+    if projet is not None:
+        proposition["projet"] = projet
+    if cle == "taches.tache.modifier":
+        proposition["changements"] = _changements_demandes(tache, inputs, projet)
+    if collector is not None:
+        collector.append({"type": "result", "action_key": cle,
+                          "libelle": _libelle_action(action), "carte": action.get("carte"),
+                          "ok": True, "data": {"tache": tache, "proposition": proposition}})
+    return MESSAGE_CARTE_A_VALIDER
+
+
+def est_ecriture_taches(action: dict[str, Any]) -> bool:
+    """✎ `taches.*` : une des huit ecritures ; echec ferme, toute action
+    `taches.*` inconnue ici qui n'est ni un GET ni un ⟲ connu en est une."""
+    cle = str(action.get("key", ""))
+    if not cle.startswith(PREFIXE_TACHES):
+        return False
+    if cle in ECRITURES_TACHES:
+        return True
+    return cle not in ECHOS_TACHES and str(action.get("method", "POST")).upper() != "GET"
+
+
+def garde_ecriture_taches(ctx: ActionContext, action: dict[str, Any],
+                          inputs: dict[str, Any],
+                          collector: Optional[list[dict[str, Any]]] = None) -> Optional[str]:
+    """None = l'action s'execute comme avant ; sinon le texte rendu au modele
+    (ecriture refusee, ou convertie en carte a valider). Revue F3 #1 — TOUTE
+    action qui n'est pas une ✎ `taches.*` (lecture ou ⟲ `taches.*`, action de
+    n'importe quelle autre app, lien de document) marque le tour des son
+    appel : sa sortie porte un texte que l'utilisateur n'a pas tape (titre
+    importe, libelle d'un lead, resume d'une activite, apercu). Sous ce
+    marquage, toute ✎ devient une carte-echo ; sans lui, la quatrieme ✎ du
+    tour est refusee. La sortie d'une ✎ executee ne porte, elle, aucun texte
+    (`_sortie_ecriture_sans_texte`) ; son echec marque le tour."""
+    cle = str(action.get("key", ""))
+    if not est_ecriture_taches(action):
+        noter_contenu_tiers(ctx, cle or "action")
+        return None
+    if contenu_tiers_du_tour(ctx):
+        return _ecriture_en_carte_echo(ctx, action, inputs, collector)
+    faites = int(getattr(ctx, "ecritures_taches", 0) or 0)
+    if faites >= ECRITURES_TACHES_PAR_TOUR:
+        return REFUS_ECRITURES_TACHES
+    ctx.ecritures_taches = faites + 1
+    return None
+
+
+def _sans_texte(valeur: Any) -> Any:
+    """Copie sans aucune chaine libre : nombres, booleens, None, dates et
+    heures gardes ; toute autre chaine (titre, nom, libelle, note, texte
+    d'apercu) et toute cle qui n'est pas un nom de champ sont retirees."""
+    if isinstance(valeur, dict):
+        return {k: _sans_texte(v) for k, v in valeur.items()
+                if isinstance(k, str) and _CLE_DE_CHAMP.fullmatch(k) and not _texte_libre(v)}
+    if isinstance(valeur, (list, tuple)):
+        return [_sans_texte(v) for v in valeur if not _texte_libre(v)]
+    return valeur
+
+
+def _texte_libre(valeur: Any) -> bool:
+    return isinstance(valeur, str) and not _DATE_OU_HEURE.fullmatch(valeur)
+
+
+def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
+    """Revue F3 #1 — sortie d'une ✎ `taches.*` executee, rendue au MODELE :
+    l'enveloppe du relais (cle et libelle du registre) et les ids, nombres,
+    dates et heures servis par l'ERP ; aucun texte (le libelle du lead lie,
+    le titre, les notes restent sur la carte, entiere dans le collecteur). Une
+    ecriture ne fait donc rien lire au modele et ne marque pas le tour."""
+    return _sortie_pour_modele({
+        **result, "data": _sans_texte(result.get("data")),
+        "textes": "retirés : la carte les montre"})
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
     *, idempotency_key: str | None = None,
@@ -765,18 +953,24 @@ def _execute_catalogue_action(
     « document » n'appelle pas Django (COP1) : son lien suffit. ACNC42 — la cle
     d'idempotence voyage dans le corps (paiement, ou action dont le schema la
     declare) ou l'en-tete (le reste) ; c'est TOUJOURS l'empreinte du jeton,
-    jamais une valeur choisie par le modele (elle l'ecrase)."""
+    jamais une valeur choisie par le modele (elle l'ecrase). TCH114 — une
+    action `taches.*` part avec l'en-tete assistant et, a la creation, le lien
+    de la fiche ouverte."""
     if action.get("carte") == "document":
         return _lien_document(action, inputs)
     path, body = _build_path(action.get("endpoint", ""), inputs)
     methode = action.get("method", "POST")
+    extra: dict[str, Any] = {}
+    if str(action.get("key", "")).startswith(PREFIXE_TACHES):
+        extra["headers"] = dict(ENTETE_ASSISTANT)
+        body = _avec_lien_du_contexte(ctx, action, body)
     if not idempotency_key:
-        return _django_call(ctx, path, method=methode, payload=body)
+        return _django_call(ctx, path, method=methode, payload=body, **extra)
     if _cle_dans_le_corps(action):
         corps = {**(body or {}), "idempotency_key": idempotency_key}
-        return _django_call(ctx, path, method=methode, payload=corps)
+        return _django_call(ctx, path, method=methode, payload=corps, **extra)
     return _django_call(ctx, path, method=methode, payload=body,
-                        idempotency_key=idempotency_key)
+                        idempotency_key=idempotency_key, **extra)
 
 
 def run_catalogue_action(
@@ -800,6 +994,10 @@ def run_catalogue_action(
         inputs = validate_inputs(action.get("inputs") or {}, raw_inputs)
     except ActionValidationError as exc:
         return f"Action refusee : {exc}"
+    # A5 — trois ecritures Taches par tour ; sous un texte tiers, carte a valider.
+    garde = garde_ecriture_taches(ctx, action, inputs, collector)
+    if garde is not None:
+        return garde
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
@@ -831,6 +1029,8 @@ def run_catalogue_action(
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
     if not res.get("ok"):
+        # A5 (revue F3 #1) — le texte d'erreur de l'ERP entre dans le tour.
+        noter_contenu_tiers(ctx, action["key"])
         # AIC7 — capteur : un echec inattendu devient un evenement `bug`.
         if collector is not None and intention_pour_statut(res.get("status")):
             collector.append({
@@ -845,6 +1045,8 @@ def run_catalogue_action(
     }
     if collector is not None:
         collector.append(result)  # entier : les cartes ne sont jamais coupees
+    if est_ecriture_taches(action):
+        return _sortie_ecriture_sans_texte(result)
     return _sortie_pour_modele(result)
 
 

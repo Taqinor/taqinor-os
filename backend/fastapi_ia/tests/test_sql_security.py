@@ -805,6 +805,15 @@ class CombinedGuardTests(unittest.TestCase):
             svc._references_forbidden_column(
                 "SELECT prix_achat FROM stock_produit WHERE company_id=7"))
 
+    def test_aucune_table_taches_lisible_par_l_agent_sql(self):
+        # TCH162 — invariant 36 (reference/donnees.md) : les tâches personnelles ne
+        # passent que par les routes de `taches` (forme assistant, objets
+        # confidentiels masqués), jamais par le SQL : aucune table `taches_*`.
+        self.assertEqual([t for t in svc._ALLOWED_TABLES if t.startswith("taches_")], [])
+        with self.assertRaises(svc.SQLSecurityError):
+            svc._validate_and_secure(
+                "SELECT titre, notes FROM taches_tache WHERE company_id=7", 7)
+
 
 @unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
 class TenantGucTests(unittest.TestCase):

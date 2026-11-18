@@ -13,6 +13,7 @@ import {
   CarteWaMessage, CarteWaDevis, CarteDocument, CarteVisite,
 } from './CartesWhatsApp'
 import CarteDiagnostic from './CarteDiagnostic'
+import CartesTaches from '../../taches/cartes/CartesTaches'
 
 /* COP-F1 — le rendu des cartes d'un message agent, dans l'ordre du serveur.
    Une carte ne vient JAMAIS du texte du modèle : seul `msg.cartes` est lu.
@@ -71,6 +72,18 @@ const COMPOSANTS = {
   document: CarteDocument,
   visite: CarteVisite,
   diagnostic: CarteDiagnostic,
+  // Tâches (TCH118) : une même vue, la clé de la carte choisit son rendu.
+  ma_journee: CartesTaches,
+  plan_propose: CartesTaches,
+  liste_taches: CartesTaches,
+  tache: CartesTaches,
+  capture_apercu: CartesTaches,
+  rythme: CartesTaches,
+  plan_projet: CartesTaches,
+  projet: CartesTaches,
+  revue_semaine: CartesTaches,
+  priorites: CartesTaches,
+  point: CartesTaches,
 }
 
 // Aiguille une carte « résultat » par sa clé `carte`.
@@ -80,6 +93,15 @@ export function CarteResultat({ carte, index, carteIdx, variant = 'page' }) {
   const className = `${CLASSE_RESULTAT} ${v.pad}`
   if (!Composant) {
     return <CarteGenerique carte={carte} testId={v.resultat} className={className} />
+  }
+  // F3 acceptation ERR 5 (a) — une carte Tâches choisit son cadre : « proposition » tant qu'elle attend le doigt
+  // (carte à valider, Proposé non gardé…), « résultat » pour une lecture ou une fois faite, neutre si laissée.
+  if (Composant === CartesTaches) {
+    return (
+      <CartesTaches carte={carte} testId={`carte-${carte.carte}`} cadre={{
+        attente: `${CLASSE_PROPOSITION} ${v.pad}`, fait: className, laisse: `mt-2 rounded-md border border-border ${v.pad}`,
+      }} />
+    )
   }
   return (
     <div className={className} data-testid={`carte-${carte.carte}`}>

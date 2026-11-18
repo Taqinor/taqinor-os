@@ -16,6 +16,8 @@ import FeuilleACrans from '../ui/FeuilleACrans'
    ========================================================================== */
 
 const RUBRIQUES = [
+  ['notifications', 'Notifications', 'Plan du matin, message de 15 h, bilan du soir'],
+  ['iphone', 'Mon iPhone', 'Cinq étapes, à faire une fois'],
   ['vie-privee', 'Vie privée', 'Ce qui part au Copilote, qui peut lire'],
   ['donnees', 'Mes données', 'Exporter, tout effacer'],
   ['avance', 'Avancé', 'Messages sans délai'],
@@ -211,7 +213,7 @@ function AjoutAgenda({ onAjoute }) {
   )
 }
 
-function Agendas() {
+export function Agendas() {
   const [agendas, setAgendas] = useState(null)
   const [echec, setEchec] = useState(false)
 
@@ -260,7 +262,6 @@ export function Avance({ sansDelai, onSansDelai, erreur = '' }) {
         </div>
         {erreur ? <p className="es-erreur" role="alert">{erreur}</p> : null}
       </div>
-      <Agendas />
     </div>
   )
 }

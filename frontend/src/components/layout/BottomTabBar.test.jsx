@@ -9,8 +9,8 @@
 // Comme `Sidebar.ody4.test.jsx`, l'ensemble autorisé n'est jamais écrit à la
 // main : il est reconstruit depuis `moduleConfigs` via `appNavItems` — la
 // source que la coquille consomme réellement.
-import { describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -18,6 +18,14 @@ import { MemoryRouter } from 'react-router-dom'
 import BottomTabBar, { splitAppTabs } from './BottomTabBar'
 import { moduleConfigs } from '../../router/moduleRoutes'
 import { appNavItems, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { reinitialiserBadgeTaches } from '../../features/taches/useBadgeTaches'
+import * as tachesApi from '../../api/tachesApi'
+
+// TCH124 — le seul appel réseau de la barre : la pastille « À trier » de l'app Tâches.
+vi.mock('../../api/tachesApi', async (importOriginal) => ({
+  ...(await importOriginal()), lireBadge: vi.fn(), lireAujourdhui: vi.fn(),
+}))
 
 // Store minimal, comme Sidebar.ody4.test.jsx : `modulesDesactives` est LU par
 // `useInstalledApps` (ODX6) — l'omettre ferait retomber le sélecteur sur [],
@@ -187,5 +195,46 @@ describe('ODY6 — hors de toute app, aucune barre', () => {
   it('une app désactivée pour la société ne rend pas de barre (ODX6)', () => {
     const { container } = renderBar('/ventes/devis', { modulesDesactives: ['ventes'] })
     expect(container.querySelector('.bottom-tabbar')).toBeNull()
+  })
+})
+
+describe('TCH124 — pastille « À trier » de l’app Tâches (masquée à 0)', () => {
+  // F3 — `badge/` porte `a_trier` : la pastille se lit en UNE requête (plus de lecture d'Aujourd'hui).
+  const badge = (aTrier) => ({ data: { ...exempleContrat('taches', 'badge'), a_trier: aTrier } })
+  const taches = { role: 'admin', permissions: ['taches_voir'] }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    reinitialiserBadgeTaches()
+    tachesApi.lireBadge.mockResolvedValue({ data: exempleContrat('taches', 'badge') })
+  })
+
+  it('affiche le nombre À trier sur l’onglet, lu par le lecteur d’écran dans le nom du lien', async () => {
+    tachesApi.lireBadge.mockResolvedValue(badge(7))
+    renderBar('/taches/aujourdhui', taches)
+    const pastille = await screen.findByTestId('pastille-a-trier')
+    expect(pastille).toHaveTextContent('7')
+    expect(tachesApi.lireBadge).toHaveBeenCalledTimes(1)
+    expect(tachesApi.lireAujourdhui).not.toHaveBeenCalled()
+    const lien = screen.getByRole('link', { name: /À trier/ })
+    expect(lien).toHaveAttribute('href', '/taches/a-trier')
+    expect(lien).toHaveAccessibleName('À trier, 7 à trier')
+    // les autres onglets n'ont aucune pastille
+    expect(screen.getAllByTestId('pastille-a-trier')).toHaveLength(1)
+  })
+
+  it('masquée à 0', async () => {
+    tachesApi.lireBadge.mockResolvedValue(badge(0))
+    renderBar('/taches/aujourdhui', taches)
+    await waitFor(() => expect(tachesApi.lireBadge).toHaveBeenCalled())
+    expect(screen.queryByTestId('pastille-a-trier')).toBeNull()
+    expect(screen.getByRole('link', { name: 'À trier' })).toBeInTheDocument()
+  })
+
+  it('hors de l’app Tâches, aucune requête et aucune pastille', async () => {
+    renderBar('/ventes/devis')
+    await Promise.resolve()
+    expect(tachesApi.lireBadge).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('pastille-a-trier')).toBeNull()
   })
 })

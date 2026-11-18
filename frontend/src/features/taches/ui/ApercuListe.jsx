@@ -31,8 +31,10 @@ function CocheCarree({ coche, titre, onBasculer }) {
   )
 }
 
-/** Ce qui explique qu'une ligne soit décochée d'office (textes.md §2.3). */
-function noteDeLigne(ligne) {
+/** Ce qui explique qu'une ligne soit décochée d'office (textes.md §2.3). Partagé avec la carte de collage du
+ *  Copilote (`cartes/CartesTaches.jsx`, relecture finale F3 n° 1). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur partagé avec la carte du Copilote
+export function noteDeLigne(ligne) {
   if (ligne.deja_faite) return 'Déjà faite'
   if (ligne.doublon_de != null) {
     // Raccord F2 — `doublon_projet` servi : « Déjà dans « {projet} » » ; sinon le repli sans nom
@@ -41,6 +43,16 @@ function noteDeLigne(ligne) {
   }
   if (ligne.doublon_de_ligne != null) return 'En double dans cette liste'
   return ''
+}
+
+/** Les puces lues d'une ligne (`jetons[].libelle` servis par le serveur), comme l'aperçu les montre. */
+export function PucesLues({ jetons }) {
+  if (!jetons || jetons.length === 0) return null
+  return (
+    <div className="puces">
+      {jetons.map((j) => <span key={`${j.type}:${j.debut}`} className="puce lue chiffres">{j.libelle}</span>)}
+    </div>
+  )
 }
 
 function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
@@ -60,11 +72,7 @@ function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
         />
         {note ? <p className="apercu-note">{note}</p> : null}
         {alertes.map((phrase) => <p key={phrase} className="apercu-note">{phrase}</p>)}
-        {jetons.length > 0 ? (
-          <div className="puces">
-            {jetons.map((j) => <span key={`${j.type}:${j.debut}`} className="puce lue chiffres">{j.libelle}</span>)}
-          </div>
-        ) : null}
+        <PucesLues jetons={jetons} />
       </div>
     </div>
   )

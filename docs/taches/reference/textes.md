@@ -435,6 +435,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | 409 `autre_compte` | « Une action d'un autre compte a été retirée de la file. » |
 | 409 `conflit_version` | bandeau de conflit §2.2 |
 | `lock_version` | « Requis. » (jamais montré : le front l'envoie toujours) |
+| 403 sous l'assistant (`api.md` §0 ; jamais montré à l'écran, lu par le seul relais) | `reglages/`, `reglages-societe/` : « L'assistant ne touche pas à tes réglages. » · `jetons/` : « L'assistant ne gère pas les jetons. » · `mes-donnees/` : « L'assistant ne lit pas l'export de tes données. » · `tout-effacer/` : « L'assistant n'efface jamais tes données. » · `agendas-externes/` : « L'assistant ne gère pas tes agendas. » |
 
 ### 2.17 La carte du moment (une à la fois, en haut d'Aujourd'hui, ordre `regles.md` §4.10)
 
@@ -520,6 +521,7 @@ Bandeau de l'Agenda en cas d'échec : « « {libellé} » : {texte de l'état} �
 | Aide | « Éteint : plus aucun message ni rappel de Tâches n'est envoyé dans la société, jusqu'à ce que tu le rallumes. Rien d'autre ne change. » |
 | Dialogue d'extinction | « Couper tous les messages et rappels de Tâches pour la société ? » [Couper] [Fermer] ; toast « Messages et rappels coupés · Annuler » |
 | Bandeau quand c'est coupé (administrateurs) | « Messages et rappels de Tâches coupés pour la société depuis le {jj/mm} à {HH:MM}. » [Rallumer] |
+| « Envoyer un test » (Mon iPhone) quand c'est coupé | refus 409 `envoi_coupe` : « Messages et rappels de Tâches coupés pour la société. » (montré sous le bouton ; rien n'est envoyé) |
 | Activation | « Tâches est ouvert aux administrateurs. Pour l'ouvrir à un autre rôle : dans l'éditeur des rôles, coche « Tâches ». » |
 
 ## 3. Notifications

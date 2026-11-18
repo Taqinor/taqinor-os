@@ -1216,3 +1216,95 @@ class Enf11NotificationsSchemaTests(SimpleTestCase):
             if p['name'] == 'date')
         self.assertIn({'type': 'string', 'maxLength': 0},
                       parametre['schema']['anyOf'])
+
+
+# ── TCH20 — les quatre événements du gestionnaire de tâches personnel ──────
+TYPES_TACHES = (
+    EventType.TACHES_PLAN_DU_JOUR, EventType.TACHES_BILAN_SOIR,
+    EventType.TACHES_RELANCE, EventType.TACHES_RAPPEL)
+
+
+class TypesTachesTests(TestCase):
+    """Fin d'énum, push + in-app seuls par défaut, gatés par le module
+    ``taches`` (``module_gating`` ET ``module_map``)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='TCH20', slug='tch20-n')
+        self.user = _make_user(self.company, username='tch20')
+
+    def test_quatre_types_en_fin_d_enum(self):
+        self.assertEqual(
+            [x.value for x in list(EventType)[-4:]],
+            ['taches_plan_du_jour', 'taches_bilan_soir', 'taches_relance',
+             'taches_rappel'])
+
+    def test_push_et_in_app_seuls_par_defaut(self):
+        from .services import default_prefs_for
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertEqual(default_prefs_for(event_type), {
+                    'in_app': True, 'push': True, 'email': False,
+                    'whatsapp': False})
+
+    def test_module_actif_notifie(self):
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertIsNotNone(notify(
+                    self.user, event_type, 'Titre', company=self.company,
+                    respect_quiet_hours=False))
+
+    def test_module_eteint_ne_notifie_ni_ne_propose(self):
+        from core.models import ModuleToggle
+
+        from .module_gating import EVENT_MODULE
+        from .module_map import EVENT_TYPE_MODULE, event_types_masques
+        ModuleToggle.objects.create(
+            company=self.company, module='taches', actif=False)
+        masques = event_types_masques(self.company)
+        for event_type in TYPES_TACHES:
+            with self.subTest(event_type=event_type):
+                self.assertEqual(EVENT_MODULE[event_type], 'taches')
+                self.assertEqual(EVENT_TYPE_MODULE[event_type.value], 'taches')
+                self.assertIn(event_type.value, masques)
+                self.assertIsNone(notify(
+                    self.user, event_type, 'Titre', company=self.company,
+                    respect_quiet_hours=False))
+        self.assertFalse(Notification.objects.filter(
+            event_type__startswith='taches_').exists())
+
+
+# ── TCH21 — ``notify(badge=…)`` porte la pastille dans la charge push ───────
+@override_settings(
+    VAPID_PUBLIC_KEY='pub', VAPID_PRIVATE_KEY='priv',
+    VAPID_ADMIN_EMAIL='admin@x.com')
+class BadgePushTests(TestCase):
+
+    def setUp(self):
+        from .models import PushSubscription
+        self.company = Company.objects.create(nom='TCH21', slug='tch21-n')
+        self.user = _make_user(self.company, username='tch21')
+        PushSubscription.objects.create(
+            company=self.company, user=self.user,
+            endpoint='https://push.example/tch21', p256dh='p', auth='a')
+
+    def _charge(self, **kwargs):
+        import json as json_module
+        capture = {}
+
+        def faux_webpush(subscription_info, data, vapid_private_key, vapid_claims):
+            capture['data'] = json_module.loads(data)
+
+        with mock.patch('pywebpush.webpush', side_effect=faux_webpush):
+            with self.captureOnCommitCallbacks(execute=True):
+                notify(self.user, EventType.TACHES_RAPPEL, 'Rappel',
+                       company=self.company, respect_quiet_hours=False, **kwargs)
+        return capture['data']
+
+    def test_badge_porte_dans_la_charge(self):
+        self.assertEqual(self._charge(badge=3)['badge'], 3)
+
+    def test_badge_zero_porte(self):
+        self.assertEqual(self._charge(badge=0)['badge'], 0)
+
+    def test_sans_badge_aucun_champ(self):
+        self.assertNotIn('badge', self._charge())

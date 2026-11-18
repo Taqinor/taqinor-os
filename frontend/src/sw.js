@@ -139,8 +139,25 @@ self.addEventListener('push', (event) => {
   if (Array.isArray(data.actions) && data.actions.length) {
     options.actions = data.actions
   }
-  event.waitUntil(self.registration.showNotification(title, options))
+  // TCH120 — pastille de l'icône de l'app : le serveur envoie `badge` (un NOMBRE) seulement
+  // quand l'appelant le fournit (rappels et messages de l'app Tâches). Absent : rien ne change.
+  const pastille = typeof data.badge === 'number' ? appliquerBadgeApp(data.badge) : undefined
+  event.waitUntil(Promise.all([self.registration.showNotification(title, options), pastille]))
 })
+
+// TCH120 — `navigator.setAppBadge(n)` (n > 0) ou `clearAppBadge()` (0), seulement si le navigateur
+// l'offre dans le service worker ; un refus ne casse jamais la notification. Ce qu'iOS en fait
+// n'est pas prouvé ici (liste « À essayer par Reda »).
+function appliquerBadgeApp(n) {
+  const nav = self.navigator
+  const geste = n > 0 ? nav && nav.setAppBadge : nav && nav.clearAppBadge
+  if (typeof geste !== 'function') return Promise.resolve()
+  try {
+    return Promise.resolve(n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge()).catch(() => undefined)
+  } catch {
+    return Promise.resolve()
+  }
+}
 
 // ── N91/F21 — Synchro de la capture terrain hors-ligne ──────────────────────
 // L'outbox (file IndexedDB des actions terrain) est vidée par la PAGE (elle a

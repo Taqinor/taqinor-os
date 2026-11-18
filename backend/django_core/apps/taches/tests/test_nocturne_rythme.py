@@ -249,6 +249,23 @@ class NuitRythmeTests(TestCase):
         self.assertEqual((carte.cle, carte.jour, carte.expire_le), ('revue', J, J7))
         self.rejouer_sans_effet()
 
+    def test_compte_sans_taches_voir_rien_servi(self):
+        """Un rôle vidé de `taches_voir` (invariant 28) : la nuit ne lui sert ni carte ni révélation et
+        ne touche pas son rythme ; le droit rendu, la nuit suivante le reprend."""
+        reglages = fabriques.reglages(self.u1)
+        jours(self.u1, [9, 10, 9, 1, 2, 1, 2, 9, 10, 9])
+        role = self.u1.role
+        role.permissions = []
+        role.save(update_fields=['permissions'])
+        self.nuit()
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.bloc_debut), (None, None))
+        self.assertEqual(cartes(self.u1), [])
+        role.permissions = ['taches_voir']
+        role.save(update_fields=['permissions'])
+        self.nuit()
+        self.assertEqual(len(cartes(self.u1, type=TypeIncitationEcran.PROPOSITION_PALIER)), 1)
+
     def test_une_autre_societe_n_est_pas_touchee(self):
         etrangere = fabriques.reglages(self.ailleurs, palier=5, bloc_debut=J - datetime.timedelta(days=10))
         jours(self.ailleurs, [6] * 10)
@@ -283,12 +300,12 @@ class RevelationsCreationTests(TestCase):
 
     def test_ranger_copilote_a_5_a_trier(self):
         taches = [fabriques.tache(self.u1) for _ in range(4)]
-        self.assertIsNone(revelations.apres_creation(self.u1, taches, [], porte='saisie'))
+        self.assertIsNone(revelations.apres_creation(self.u1, taches, [], porte='ecran'))
         taches.append(fabriques.tache(self.u1))
-        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie')
+        carte = revelations.apres_creation(self.u1, taches[-1:], [], porte='ecran')
         self.assertEqual((carte.type, carte.cle, carte.donnees, carte.jour, carte.expire_le),
                          ('revelation', 'ranger_copilote', {'n': 5}, J, J7))
-        self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='saisie'))  # une fois
+        self.assertIsNone(revelations.apres_creation(self.u1, taches[-1:], [], porte='ecran'))  # une fois
 
     def test_ranger_copilote_dit_le_compte_courant(self):
         """Revue F2 tour 2 #10 : « N tâches à trier » rendu À LA LECTURE, le même nombre que le compteur
@@ -318,6 +335,21 @@ class RevelationsCreationTests(TestCase):
         second = fabriques.projet(self.u1)
         self.assertIsNone(revelations.apres_creation(self.u1, [], [second], porte='saisie'))
 
+    def test_mon_iphone_au_premier_creer_de_la_saisie_3_jours_seulement(self):
+        tache = fabriques.tache(self.u1)
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='ecran'))
+        carte = revelations.apres_creation(self.u1, [tache], [], porte='saisie')
+        self.assertEqual((carte.type, carte.cle, carte.donnees, carte.jour, carte.expire_le),
+                         ('revelation', 'mon_iphone', {}, J, J + datetime.timedelta(days=3)))
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='saisie'))  # une fois
+
+    def test_mon_iphone_passe_apres_les_autres_revelations(self):
+        premier = fabriques.projet(self.u1)
+        tache = fabriques.tache(self.u1, projet=premier)
+        carte = revelations.apres_creation(self.u1, [tache], [premier], porte='saisie')
+        self.assertEqual(carte.cle, 'planifier_projet')
+        self.assertIsNone(revelations.apres_creation(self.u1, [tache], [], porte='saisie'))  # une par jour
+
     def test_une_revelation_par_jour(self):
         premier = fabriques.projet(self.u1)
         taches = [fabriques.tache(self.u1) for _ in range(5)]
@@ -327,6 +359,6 @@ class RevelationsCreationTests(TestCase):
     def test_par_creer_taches(self):
         from apps.taches.services.creation import creer_taches
         lignes = [{'titre': f'Idée {n}'} for n in range(5)]
-        creer_taches(self.u1, lignes, source='rapide', porte='saisie')
+        creer_taches(self.u1, lignes, source='rapide', porte='ecran')
         self.assertEqual(list(IncitationCoach.objects.filter(proprietaire=self.u1).values_list('cle', flat=True)),
                          ['ranger_copilote'])
