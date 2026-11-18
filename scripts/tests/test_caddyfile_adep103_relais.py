@@ -11,12 +11,25 @@ moitiés, qui doivent parler le MÊME nom d'en-tête et de clé :
 Le comportement réel (4 cas : sans clé / clé sans en-tête / mauvais secret /
 bon secret) a été rejoué sur deux conteneurs caddy:2 — trace dans le DONE LOG.
 
+ADEP106 (`CaddyJournalJetonTests`) : le journal de Caddy ne porte plus en clair
+le jeton du calendrier abonné de Tâches (jumeau du masquage nginx, mêmes motifs
+que la brique Django).
+
 Stdlib pure (unittest). Run :
     python -m unittest scripts.tests.test_caddyfile_adep103_relais -v
 """
 import re
 import unittest
 from pathlib import Path
+
+from scripts.tests.test_nginx_cache_control import (
+    AUTRES_LIGNES,
+    FLUX,
+    JETON_CAPTURE,
+    JETON_FLUX,
+    LIGNES_A_SECRET,
+    masque_django,
+)
 
 RACINE = Path(__file__).resolve().parents[2]
 CADDYFILE = RACINE / "backend" / "caddy" / "Caddyfile"
@@ -78,6 +91,111 @@ class CaddyRelaisTests(unittest.TestCase):
         self.assertIsNotNone(caddy)
         self.assertRegex(caddy.group(1),
                          r"(?m)^\s+%s: \$\{%s:-\}$" % (CLE, CLE))
+
+
+def _bloc(texte, ouvrante):
+    """Texte entre l'accolade ouvrante d'indice `ouvrante` et sa fermante. Les
+    chaînes (accents graves, guillemets) et les commentaires sont sautés : une
+    expression régulière porte des accolades."""
+    assert texte[ouvrante] == "{"
+    profondeur, i = 0, ouvrante
+    while i < len(texte):
+        c = texte[i]
+        if c in "`\"":
+            i = texte.index(c, i + 1)
+        elif c == "#" and (i == 0 or texte[i - 1] in " \t\n"):
+            i = texte.index("\n", i)
+            continue
+        elif c == "{":
+            profondeur += 1
+        elif c == "}":
+            profondeur -= 1
+            if profondeur == 0:
+                return texte[ouvrante + 1:i]
+        i += 1
+    raise AssertionError("accolade non refermée dans le Caddyfile")
+
+
+def _sous_bloc(texte, entete):
+    """Corps du bloc dont la ligne d'ouverture est `<entete> {` (None s'il manque)."""
+    m = re.search(r"(?m)^[ \t]*%s \{$" % re.escape(entete), texte)
+    return _bloc(texte, m.end() - 1) if m else None
+
+
+class CaddyJournalJetonTests(unittest.TestCase):
+    """ADEP106 — Caddy n'écrit aucun journal d'accès, mais son journal d'ERREURS
+    (`http.log.error`) écrit la requête entière dès que nginx ne répond pas (à
+    chaque déploiement) : l'adresse `/api/django/taches/flux/<jeton>.ics` et le
+    `Referer` y sortaient en clair. Le bloc `log` des options globales garde la
+    sortie et le format par défaut et remplace seulement les deux secrets que
+    Django masque déjà. Rejoué sur caddy 2.7.6 → 2.11.9 (validate, reload, ligne
+    réelle) : docs/audits/acceptation/ADEP/."""
+
+    CHAMPS = ("request>uri", "request>headers>Referer")
+
+    def setUp(self):
+        self.texte = CADDYFILE.read_text(encoding="utf-8").replace("\r\n", "\n")
+        ouverture = re.search(r"(?m)^\{$", self.texte)
+        self.assertIsNotNone(ouverture, "bloc d'options globales introuvable")
+        self.options = _bloc(self.texte, ouverture.start())
+        self.journal = _sous_bloc(self.options, "log")
+        self.assertIsNotNone(self.journal, "bloc `log` absent des options globales")
+        self.filtre = _sous_bloc(self.journal, "format filter")
+        self.assertIsNotNone(self.filtre, "`format filter` absent du bloc `log`")
+        champs = _sous_bloc(self.filtre, "fields")
+        self.assertIsNotNone(champs, "`fields` absent de `format filter`")
+        self.filtres = {champ: (motif, remplacement) for champ, motif, remplacement
+                        in re.findall(r"(?m)^[ \t]*(\S+) regexp `([^`]*)` `([^`]*)`$", champs)}
+
+    def _masquer(self, champ, valeur):
+        """Le filtre `regexp` de Caddy (Go `ReplaceAllString` : toutes les
+        occurrences, `${n}` = groupe n) rejoué en Python."""
+        motif, remplacement = self.filtres[champ]
+        return re.sub(motif, re.sub(r"\$\{(\w+)\}", r"\\g<\1>", remplacement), valeur)
+
+    def test_l_adresse_et_le_referer_sont_filtres_par_le_meme_motif(self):
+        self.assertEqual(set(self.filtres), set(self.CHAMPS))
+        self.assertEqual(len(set(self.filtres.values())), 1)
+
+    def test_le_journal_garde_sa_sortie_et_son_format(self):
+        # JSON sur la sortie d'erreur, niveau INFO : rien d'autre n'est réglé.
+        self.assertRegex(self.filtre, r"(?m)^[ \t]*wrap json$")
+        hors_filtre = self.journal.replace(self.filtre, "")
+        self.assertEqual(re.findall(r"(?m)^[ \t]*(\w+)", hors_filtre), ["format"],
+                         "le bloc `log` ne règle que le format (ni output, ni level)")
+
+    def test_un_seul_journal_global_et_il_porte_le_filtre(self):
+        # Un second `log <nom> { … }` recevrait les mêmes lignes SANS le filtre ;
+        # `log_credentials` ferait écrire `Authorization` (jetons de capture et de tuile).
+        mots = re.findall(r"(?m)^[ \t]*(log\w*)[ \t]*([^\n]*)$", self.options)
+        self.assertEqual(mots, [("log", "{")])
+
+    def test_aucun_site_n_ouvre_un_journal_sans_filtre(self):
+        # Un `log` dans un site ouvrirait un journal d'ACCÈS à part, hors du filtre.
+        sites = self.texte.split(self.options, 1)[1]
+        self.assertNotRegex(sites, r"(?m)^[ \t]*log(_\w+)?([ \t]|$)")
+
+    def test_jeton_masque_dans_l_adresse_et_le_referer(self):
+        for champ in self.CHAMPS:
+            self.assertEqual(self._masquer(champ, FLUX + "abc123.ics"), FLUX + "<jeton>.ics")
+            for recue, ecrite in LIGNES_A_SECRET:
+                rendu = self._masquer(champ, recue)
+                self.assertEqual(rendu, ecrite, f"{champ} : {recue}")
+                self.assertNotIn("EXEMPLE", rendu)
+            for ligne in AUTRES_LIGNES:
+                self.assertEqual(self._masquer(champ, ligne), ligne)
+
+    def test_meme_masquage_que_la_brique_django(self):
+        """Jumeau de `apps/taches/auth_jeton.py::CHEMINS_SENSIBLES` (toutes les
+        occurrences, comme `core.chemins_sensibles.masquer`)."""
+        plusieurs = (f"{FLUX}{JETON_FLUX}.ics?retour=%2Ftaches%2Fflux%2F{JETON_FLUX}.ics"
+                     f"&a={JETON_CAPTURE},{JETON_CAPTURE}")
+        self.assertEqual(masque_django(plusieurs),
+                         f"{FLUX}<jeton>.ics?retour=%2Ftaches%2Fflux%2F<jeton>.ics"
+                         "&a=tqc_<jeton>,tqc_<jeton>")
+        for ligne in [recue for recue, _ in LIGNES_A_SECRET] + list(AUTRES_LIGNES) + [plusieurs]:
+            for champ in self.CHAMPS:
+                self.assertEqual(self._masquer(champ, ligne), masque_django(ligne), ligne)
 
 
 class WorkerRelaisTests(unittest.TestCase):
