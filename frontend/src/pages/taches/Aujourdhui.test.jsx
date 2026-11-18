@@ -60,6 +60,15 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     ])
   })
 
+  it('passe visuelle n° 15 — bureau : la progression, PUIS « Ajouter une tâche » (maquette ecran-aujourdhui-matin.html)', async () => {
+    servir(donnees())
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    const ordre = [...container.querySelectorAll('button.progression, .saisie-bureau, .section-titre')].map((n) => n.className)
+    expect(ordre.slice(0, 2)).toEqual(['progression', 'saisie-bureau bureau-seul'])
+    expect(container.querySelectorAll('.saisie-bureau')).toHaveLength(1)
+  })
+
   it('met les lignes à leur place : essentiel, rendez-vous à son heure, activité ERP, relances', async () => {
     servir(donnees())
     const { container } = monter()

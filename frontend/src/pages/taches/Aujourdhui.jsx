@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR, SaisieBureau } from '../../features/taches/coquille/CoquilleTaches'
 import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import Sections, {
@@ -652,6 +652,8 @@ export default function Aujourdhui() {
       ) : null}
       {squelette ? <Squelette /> : null}
       {donnees && !journeeVide(donnees) ? <Progression donnees={donnees} onRythme={() => navigate('/taches/rythme')} /> : null}
+      {/* passe visuelle n° 15 — bureau : « Ajouter une tâche » sous la progression (maquette ecran-aujourdhui-matin.html) */}
+      {donnees && !journeeVide(donnees) ? <SaisieBureau onClick={() => ouvrirSaisie({})} /> : null}
       {bandeau}
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment
@@ -718,6 +720,7 @@ export default function Aujourdhui() {
       selecteurProjet={actions.selecteurProjet}
       actionsEcran={actionsEcran}
       selection={barreSelection}
+      saisieBureau={false}
     >
       {bureau ? (
         <div className="tch-bureau">
