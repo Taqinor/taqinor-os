@@ -864,22 +864,22 @@ export default function LeadsPage() {
     // Ordre fondateur 2026-09-01 — tri global (FilterBar → kanban ET liste).
     tri: filters.tri,
     onOpenLead,
-    onChangeStage: changeStage,
+    onChangeStage: canWrite ? changeStage : undefined,
     onAutoQuote,
     onPlanifierRelance,
     onRefetch: refetch,
     busyLeadId,
     users,
-    onReassign: reassign,
+    onReassign: canReassign ? reassign : undefined,
     selected: visibleSelected,
     onToggleSelect,
     onToggleAll,
-    onInlineSave,
-    onMarkPerdu,
+    onInlineSave: canWrite ? onInlineSave : undefined,
+    onMarkPerdu: canWrite ? onMarkPerdu : undefined,
   }), [
     filtered, filters.tri, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance,
     refetch, busyLeadId, users, reassign, visibleSelected, onToggleSelect,
-    onToggleAll, onInlineSave, onMarkPerdu,
+    onToggleAll, onInlineSave, onMarkPerdu, canWrite, canReassign,
   ])
 
   // LB27 — squelette EN FORME dans le shell (blueprint I9) : au lieu de

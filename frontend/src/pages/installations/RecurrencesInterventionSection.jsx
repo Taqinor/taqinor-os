@@ -9,6 +9,7 @@ import { frenchError } from '../../lib/frenchError'
 import { formatDate } from '../../lib/format'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import { Button, Input, FormField } from '../../ui'
+import useDroitMetier from '../../features/sav/useDroitMetier'
 
 const URL = '/installations/recurrences-intervention/'
 const REGLES = [
@@ -26,11 +27,13 @@ export default function RecurrencesInterventionSection({ installationId, peutGer
   const [form, setForm] = useState(VIDE)
   const [erreur, setErreur] = useState('')
   const [busy, setBusy] = useState(false)
+  const peutLire = useDroitMetier('installation_voir')
 
   const load = useCallback(() => {
+    if (!peutLire) return
     lireToutesLesPages((p) => api.get(URL, { params: { installation: installationId, ...p } }))
       .then(setRecs).catch((e) => setErreur(frenchError(e)))
-  }, [installationId])
+  }, [installationId, peutLire])
   useEffect(() => { load() }, [load])
 
   const creer = () => {
@@ -45,6 +48,7 @@ export default function RecurrencesInterventionSection({ installationId, peutGer
     .then(load).catch((e) => setErreur(frenchError(e)))
   const champ = (cle) => (e) => setForm((f) => ({ ...f, [cle]: e.target.value }))
 
+  if (!peutLire) return <p className="text-sm text-muted-foreground">Interventions récurrentes réservées au module chantiers.</p>
   return (
     <div className="flex flex-col gap-3">
       {recs.length === 0 ? (

@@ -308,7 +308,7 @@ def dashboard_quote_to_cash(request):
     # pour 1 envoyé ouvert donnaient 400 %. Numérateur ⊂ dénominateur ⇒ le
     # taux reste entre 0 et 100 %. ``envoyes`` (stock ouvert) reste servi.
     mine = request.query_params.get('mine') in ('1', 'true')  # AANA59 — devis du demandeur
-    commercial_id = request.user.id if mine else None
+    commercial_id = request.user.id if mine else visibles  # ALEC55 — sinon la portée du rôle
     taux = taux_acceptation_periode(company, debut_p, fin_p, commercial_id)
     n_envoyes_periode, n_acceptes_periode = taux['envoyes'], taux['acceptes']
     factures_periode = (

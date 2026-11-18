@@ -70,6 +70,15 @@ class IdentiteVendeurFigeeTests(TestCase):
         facture.refresh_from_db()
         return facture
 
+    def _encaisser_le_reste(self, facture):
+        """ASUP70 (D-ASUP-8) — solde la créance : l'effacement ne la refuse plus."""
+        from django.utils import timezone
+        from apps.ventes.models import Facture, Paiement
+        Paiement.objects.create(
+            company=self.company, facture=facture, mode='virement',
+            montant=Facture.objects.get(pk=facture.pk).montant_du,
+            date_paiement=timezone.now().date())
+
     def _pdf(self, facture):
         from apps.ventes.utils.pdf import generate_facture_pdf
         return _texte(self.objets[generate_facture_pdf(facture.id)])
@@ -219,6 +228,7 @@ class IdentiteVendeurFigeeTests(TestCase):
                  'quantite': '1', 'prix_unitaire': '100', 'taux_tva': '20'}
         existant = api.post(url_avoir, {'motif': 'geste', 'lignes': [ligne]}, format='json')
         self.assertEqual(existant.status_code, 201, existant.data)
+        self._encaisser_le_reste(facture)  # ASUP70 (D-ASUP-8) — Given d'origine gardé
         r = api.post(f'/api/django/crm/clients/{self.client_obj.pk}/anonymize/')
         self.assertEqual(r.status_code, 200, r.data)
         self.client_obj.refresh_from_db()
@@ -264,6 +274,7 @@ class IdentiteVendeurFigeeTests(TestCase):
         Client.objects.filter(pk=self.client_obj.pk).update(
             nom='X SARL', prenom='', type_client='entreprise', ice=ice)
         facture = self._facture('FAC-ASUP3-0001', statut='emise')
+        self._encaisser_le_reste(facture)  # ASUP70 (D-ASUP-8) — Given d'origine gardé
         demande = DataSubjectRequest.objects.create(
             company=self.company, subject_identifier='apar61@example.invalid',
             kind=DataSubjectRequest.KIND_ERASURE)

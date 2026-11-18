@@ -1,0 +1,106 @@
+{
+  "sha": "ed9668a67ba1359ad572c028e4b9ab13f0a869ef",
+  "date": "2026-11-18",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR4",
+    "AERR100",
+    "AERR102",
+    "AERR180"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF-AERR4-relances-lecture-ratee",
+      "taches": [
+        "AERR4"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-AERR-PF-AERR4-relances-lecture-ratee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF-AERR100-leads-relecture-ratee",
+      "taches": [
+        "AERR100"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-AERR-PF-AERR100-leads-relecture-ratee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "PF-AERR102-etapes-lecture-ratee",
+      "taches": [
+        "AERR102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-AERR-PF-AERR102-etapes-lecture-ratee.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "SONDES.AERR180-sonde-py",
+      "taches": [
+        "AERR180"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AERR/traces/2026-11-18/AERR-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue), run https://github.com/Taqinor/taqinor-os/actions/runs/44209948217 ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes AERR ; C-AERR-001 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-AERR-044 : verdict ÉCART, repro False, erreur non, base inchangée oui"
+    }
+  ]
+}

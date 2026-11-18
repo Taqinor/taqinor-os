@@ -36,6 +36,7 @@ vi.mock('../../lib/toast', async (importOriginal) => ({ ...(await importOriginal
 import savApi from '../../api/savApi'
 import { TicketCalendarView } from './TicketCalendarView.jsx'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 beforeEach(() => {
   searchClients.mockResolvedValue({
@@ -194,5 +195,35 @@ describe('CalendarQuickCreateDialog (WIR178 — client obligatoire)', () => {
       client: 12,
     })))
     await waitFor(() => expect(savApi.replanifierTicket).toHaveBeenCalledWith(99, todayIso))
+  })
+})
+
+// ADRG154 — « Créer un ticket ce jour » et le glisser = `sav_gerer` (POST / replanifier : 403 sinon).
+describe('TicketCalendarView — ADRG154 droits', () => {
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const tickets = [{ id: 1, date_tournee: todayIso, reference: 'SAV-DROITS', statut: 'planifie', client_nom: 'A' }]
+  const monter = (permissions) => renderAvecAuth(
+    <TicketCalendarView tickets={tickets} onSelect={() => {}} onReload={() => {}} />,
+    { role: 'normal', permissions }, { routeur: false },
+  )
+
+  it("sans sav_gerer : pas de Créer un ticket ce jour, un dépôt n'envoie rien", async () => {
+    monter(['sav_voir'])
+    expect(screen.queryAllByTitle('Créer un ticket ce jour')).toHaveLength(0)
+    await dnd.onDragEnd({
+      active: { data: { current: { ticket: tickets[0] } } },
+      over: { data: { current: { date: '2099-01-01' } } },
+    })
+    expect(savApi.replanifierTicket).not.toHaveBeenCalled()
+  })
+
+  it('Technicien responsable (sav_gerer) : création et replanification actives', async () => {
+    monter(['sav_voir', 'sav_gerer'])
+    expect(screen.queryAllByTitle('Créer un ticket ce jour').length).toBeGreaterThan(0)
+    await dnd.onDragEnd({
+      active: { data: { current: { ticket: tickets[0] } } },
+      over: { data: { current: { date: '2099-01-01' } } },
+    })
+    expect(savApi.replanifierTicket).toHaveBeenCalledWith(1, '2099-01-01')
   })
 })

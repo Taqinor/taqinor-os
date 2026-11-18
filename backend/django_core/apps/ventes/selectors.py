@@ -875,8 +875,8 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
         qs = qs.filter(date_envoi__date__gte=date_debut)
     if date_fin:
         qs = qs.filter(date_envoi__date__lte=date_fin)
-    if commercial_id:
-        qs = qs.filter(created_by_id=commercial_id)
+    if commercial_id is not None:  # ALEC55 — un id, ou l'ensemble des ids de la portée du rôle
+        qs = qs.filter(created_by_id__in=[commercial_id] if isinstance(commercial_id, int) else commercial_id)
     return qs.order_by('date_envoi', 'id')
 
 

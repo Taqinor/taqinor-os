@@ -1,0 +1,119 @@
+# rejeu sur runner GitHub (2026-11-18T04:53:06Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes AMSG --conteneur <django_core>
+
+== C-AMSG-001 (sha 3acfee471)
+attendu : POST questionnaire-lien/ sur un lead ne_plus_contacter (et perdu, archivé) rend 200 + url du questionnaire au lieu d'un 409 ; l'écran en fait un lien wa.me pré-rempli sans lire l'opposition
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie action questionnaire_lien (+ vrais mint_lien/url_publique, gardes réelles disponibles) ; écran lu", "route": "POST /api/django/crm/leads/<id>/questionnaire-lien/", "fiches_closes_servies": [], "par_cas": {"oppose": {"statut": 409, "refus": "Message refusé : ne plus contacter."}, "perdu": {"statut": 409, "refus": "Message refusé : perdu/archivé."}, "archive": {"statut": 409, "refus": "Message refusé : perdu/archivé."}, "temoin": {"statut": 200, "url_servie": "https://site.example.invalid/questionnaire/jeton-client/"}}, "journal_ecrit": ["Lien questionnaire créé (sections : Toiture)"], "ecran_QuestionnaireDialog": {"lien_wa_assemble_par_l_ecran": true, "opposition_lue_par_le_dialogue": false}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-002 (sha 3acfee471)
+attendu : wa_drafts porte un brouillon WhatsApp (et la ligne le numéro) pour les devis des leads opposé, perdu et archivé, comme pour le témoin contactable
+observé : {"repro": false, "observe": {"methode": "exécution du vrai module selectors_cadence (devis_action_requise) sur faux ORM", "route": "GET /api/django/ventes/devis/action-requise/ (écran « Relances du jour », DevisActionBoardPage)", "leads_clos_avec_brouillon": [], "par_cas": {"oppose": {"panier": "engagement_relance", "brouillon_whatsapp": null, "numero_publie": null}, "perdu": {"panier": "engagement_relance", "brouillon_whatsapp": null, "numero_publie": null}, "archive": {"panier": "engagement_relance", "brouillon_whatsapp": null, "numero_publie": null}, "temoin": {"panier": "engagement_relance", "brouillon_whatsapp": "Bonjour Prénom Temoin, votre proposition (réf. DEV-2611-0045) vous attend toujours — souhaitez-vous que je vous la présente ?", "numero_publie": "+212600000000"}}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-003 (sha 3acfee471)
+attendu : après le STOP sur A, peut_contacter(B) reste vrai pour la fiche B existante au même numéro, et un numéro opposé recollé sur une fiche existante la laisse contactable ; seule une fiche CRÉÉE après naît opposée
+observé : {"repro": false, "observe": {"methode": "exécution du vrai Lead.save, des vrais leads_doublons/portee_selectors et du vrai chemin du STOP (cadence_reponses)", "scenario": "A et B au même numéro ; STOP sur A ; B modifiée ; C créée après ; D recolle le numéro opposé", "contactable_avant_stop": {"A": true, "B": true}, "contactable_apres_stop": {"A": false, "B_existante": false, "C_creee_apres": false, "D_numero_recolle": false}, "empreintes_posees": 1, "ne_plus_contacter": {"A": true, "B": true, "C": true, "D": true}, "fonction_lue_a_l_envoi": "apps/crm/portee_selectors.py::peut_contacter"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-004 (sha 3acfee471)
+attendu : après POST clients/<id>/anonymize/ le client est anonymisé, mais son lead garde nom, téléphone, WhatsApp et e-mail, sans ne_plus_contacter ni empreinte : peut_contacter(lead) reste vrai
+observé : ERREUR : /local/lib/python3.11/site-packages/django/db/models/lookups.py", line 38, in __init__
+    self.rhs = self.get_prep_lookup()
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/fields/related_lookups.py", line 112, in get_prep_lookup
+    self.rhs = target_field.get_prep_value(self.rhs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/django/db/models/fields/__init__.py", line 2130, in get_prep_value
+    raise e.__class__(
+TypeError: Field 'id' expected a number but got namespace(pk=1, id=1).
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-005 (sha 3acfee471)
+attendu : erase_crm('x@example.invalid') n'efface que la fiche qui porte l'e-mail ; la fiche sœur au même téléphone (sans e-mail) garde son identité et reste contactable
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 78, in sonde
+  File "/tmp/racine_sonde/backend/django_core/apps/crm/dsr_provider.py", line 426, in erase_crm
+    leads, clients = _matcher(company, subject_identifier)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/racine_sonde/backend/django_core/apps/crm/dsr_provider.py", line 97, in _matcher
+    leads = Lead.all_objects.filter(company=company)
+            ^^^^^^^^^^^^^^^^
+AttributeError: 'types.SimpleNamespace' object has no attribute 'all_objects'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-006 (sha 3acfee471)
+attendu : POST factures/<id>/whatsapp/ modele=relance sur une facture en retard dont contestee_le est posé rend 200 + wa_url au lieu d'un 409 ; l'écran offre « Relancer par WhatsApp » sans lire contestee_le
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie action whatsapp (+ vrais whatsapp.py/phone.py ; garde facture_relancable réelle disponible) ; écran lu", "route": "POST /api/django/ventes/factures/<id>/whatsapp/ {modele: relance}", "par_cas": {"contestee": {"statut": 409, "wa_url": null, "detail": "Facture contestée : la relance est suspendue."}, "temoin_non_contestee": {"statut": 200, "wa_url": "https://wa.me/212600000000?text=Bonjour%20Client%2C%20relance%20de%20la%20facture%20FAC-2611-0003%20%3A%20https%3A//erp.example.invalid/api/django/public/document/jeton-public/", "detail": null}}, "chatter": ["FAC-2611-0003 : relance"], "facture_relancable_sur_la_contestee": [false, "Facture contestée : la relance est suspendue."], "ecran_FactureRow": {"bouton_relancer_par_whatsapp": true, "contestee_lue_pres_du_bouton": true}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-007 (sha 3acfee471)
+attendu : risque « internal » ⇒ exécuté au vol sans proposition ; la vue COMMIT whatsapp_devis appelle mark_devis_sent : devis brouillon → envoye + événement devis_sent (étape du lead, cadence)
+observé : {"repro": false, "observe": {"methode": "exécution du vrai relais FastAPI + vraie vue Django (url_path) + vrai mark_devis_sent (ast, bouchons)", "action": "crm.lead.whatsapp_prepare", "endpoint": "/api/django/crm/assistant/leads/{id}/whatsapp-devis-apercu/", "risque_catalogue": "internal", "risques_a_confirmer_du_relais": ["irreversible", "outward"], "proposition_a_confirmer": false, "appels_relayes": ["POST /api/django/crm/assistant/leads/12/whatsapp-devis-apercu/"], "vue_executee": {"fichier": "backend/django_core/apps/crm/devis_views.py", "vue": "LeadDevisActionsMixin.whatsapp_devis_apercu"}, "statut_devis": "brouillon → brouillon", "effets": [], "message_envoye_par_quelquun": false, "sortie_relais": "{\"type\": \"result\", \"action_key\": \"crm.lead.whatsapp_prepare\", \"libelle\": \"Préparer un envoi WhatsApp de devis\", \"carte\": null, \"ok\": true, \"data\": {\"wa_url\": \"h"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-008 (sha 3acfee471)
+attendu : EmailLog « envoye » alors que rien ne part ; RelanceLog niveau 1 créée, prochaine_relance avancée (niveau consommé) ; is_email_configured() répond pourtant faux
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie tâche relance_reminders → vrai send_relance_email → vrai _send (ast, ORM bouchonné)", "backend": "django.core.mail.backends.console.EmailBackend (aucun envoi réel)", "canal_email": {"is_email_configured": false, "relances_comptees": 0, "messages_imprimes_par_le_backend_console": 0, "emaillog_statuts": [], "relancelog_niveaux": [], "prochaine_relance": "2026-11-11 → 2026-11-11", "prochain_niveau_apres": "Rappel courtois", "brouillons_whatsapp_calcules_puis_jetes": 0}, "volet_informatif_canal_whatsapp": {"is_email_configured": false, "relances_comptees": 0, "messages_imprimes_par_le_backend_console": 0, "emaillog_statuts": [], "relancelog_niveaux": [], "prochaine_relance": "2026-11-11 → 2026-11-12", "prochain_niveau_apres": "Rappel courtois", "brouillons_whatsapp_calcules_puis_jetes": 0}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-009 (sha 3acfee471)
+attendu : chaque emplacement dit « envoyé » (emails_envoyes=1, email_sent=True, True) alors que rien ne part ; le brouillon WhatsApp du rappel J-1 est compté puis jeté
+observé : {"repro": false, "observe": {"methode": "exécution des 5 vraies fonctions d'envoi (modules réels, noms résolus paresseusement, ORM bouchonné), send_mail = backend console", "is_email_configured": false, "messages_imprimes_par_le_backend_console": 0, "taches_whatsapp_creees": 2, "emplacements_qui_disent_envoye": [], "retours": {"installations/tasks.py::rappel_rdv_j1": {"retour": {"jour_cible": "2026-11-12", "cibles": 1, "wa_generes": 1, "emails_envoyes": 0}, "brouillon_whatsapp_compte_puis_jete": true}, "installations/livraison_client_notify.py::notify_livraison_transition": {"sent": true, "wa_draft_url": "https://wa.me/212600000000?text=…", "email_sent": false, "tache_whatsapp": true}, "sav/notifications_client.py::notify_ticket_transition": {"sent": true, "wa_draft_url": "https://wa.me/212600000000?text=…", "email_sent": false, "wa_corps": "Bonjour"}, "portail/services.py::_envoyer_identifiants_portail": false, "stock/services.py::_envoyer_identifiants_portail_fournisseur": false}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-010 (sha 3acfee471)
+attendu : adresses du seed à domaine non réservé > 0 ; aucun backend enveloppe défini ni branché
+observé : {"repro": false, "observe": {"methode": "ast (littéraux du seed ; classes send_messages ; réglages EMAIL_BACKEND)", "fichier_seed": "authentication/management/commands/seed_demo.py", "adresses_litterales_du_seed": 11, "adresses_a_domaine_non_reserve": 0, "domaines_non_reserves_distincts": 0, "adresses_a_domaine_reserve": 11, "backends_enveloppes_definis_hors_tests": ["core.email_backends.EnveloppeEmailBackend"], "backends_ecrits_dans_les_reglages": ["core.email_backends.EnveloppeEmailBackend", "django.core.mail.backends.console.EmailBackend"], "garde_de_destinataires_branchee": ["core.email_backends.EnveloppeEmailBackend"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-011 (sha 3acfee471)
+attendu : lot et unitaire : la facture annulée et la brouillon partent (EmailLog « envoye », message dans la boîte d'envoi, réponse « Email envoyé ») comme la facture émise
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 95, in sonde
+  File "apps/facturation/views/facture_lot.py", line 170, in bulk
+    droit_pdf = DroitDeLaGrille('ventes_pdf')
+                ^^^^^^^^^^^^^^^
+NameError: name 'DroitDeLaGrille' is not defined
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-012 (sha 3acfee471)
+attendu : le rappel part aux 4 factures, dont la contestée, celle du client MANUEL et celle sous promesse ; _motif_facture ne donne aucun motif d'arrêt pour une facture en retard contestée
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie tâche pre_echeance_reminders + vrai _motif_facture (modules réels, noms résolus paresseusement, ORM bouchonné)", "emplacements": ["apps/ventes/scheduled.py::pre_echeance_reminders", "apps/automation/engine.py::_motif_facture"], "scenario": "4 factures émises, échéance J+2, rappel J-5 ; aucune n'a encore reçu le rappel", "rappels_comptes_envoyes": 1, "destinataires_du_rappel": ["témoin"], "recus_a_tort": [], "temoin_recu": true, "automatisation_facture_en_retard_contestee": {"motif_d_arret": "Facture contestée : la relance est suspendue.", "verdict": "arrêtée"}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-VER2-101 (sha d64fa1e4e)
+attendu : e-mail éteint : _envoyer_invitation_portail rend False et send_mail n'est pas appelé, mais la vue répond 201 sans aucune clé disant que l'e-mail n'est pas parti, et l'écran affiche « Invitation envoyée. »
+observé : {"repro": false, "observe": {"methode": "exécution de la vraie vue create + vrai inviter_membre_portail + vrai _envoyer_invitation_portail (chaîne is_email_configured réelle) ; lecture du bloc inviter de l'écran", "emplacements": ["apps/portail/services.py::inviter_membre_portail", "apps/portail/views_client.py::MonEquipePortailViewSet.create", "frontend/src/features/portail/client/PortailClientEquipe.jsx::inviter"], "email_eteint": {"backend": "django.core.mail.backends.console.EmailBackend", "envoi_reel_rendu": [false], "send_mail_appels": 0, "statut_http": 201, "cles_servies": ["date_acceptation", "date_creation", "email", "email_envoye", "id", "role", "role_display", "statut", "statut_display"], "invitation_creee": true}, "temoin_backend_qui_envoie": {"backend": "anymail.backends.brevo.EmailBackend", "envoi_reel_rendu": [true], "send_mail_appels": 1, "statut_http": 201, "cles_servies": ["date_acceptation", "date_creation", "email", "email_envoye", "id", "role", "role_display", "statut", "statut_display"], "invitation_creee": true}, "ecran": {"bloc_inviter_trouve": true, "message_affiche": [], "reponse_lue": true}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-VER3-100 (sha a12f40f82)
+attendu : paire existante au déploiement (empreinte de A déjà posée par la migration 0154) : après un nouveau STOP sur A, un enregistrement de A et un de B, peut_contacter(B) reste vrai ; témoin (paire neuve) : la sœur est cochée
+observé : {"repro": true, "observe": {"methode": "vrai Lead.save, vrais leads_doublons/portee_selectors, vrai receveur post_save et vrai tracer_opposition_registre", "scenario": "paire (A opposée, B même numéro) présente au déploiement, empreinte de A déjà posée (migration 0154) ; nouveau STOP sur A, enregistrement de A, enregistrement de B", "B_contactable_avant": true, "B_contactable_apres_stop_et_enregistrements": true, "B_ne_plus_contacter": false, "empreintes_societe_1": 1, "temoin_paire_neuve": {"B2_contactable_apres_stop": false, "B2_ne_plus_contacter": true, "ligne_de_chatter_B2": true}, "fonction_lue_a_l_envoi": "apps/crm/portee_selectors.py::peut_contacter"}}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-AMSG-VER4-400 (sha 0d834aa12)
+attendu : jeudi de Ramadan 07:45, ouverture 10:00 (ou message_heure_debut 09:30) : 0 relance, 0 reprise ged, 0 reprise rappel J-1, ORM des poses jamais atteint ; témoins 08:30 et 09:00 : une reprise de chaque
+observé : {"repro": false, "visibility_timeout": 5400, "cas": {"témoin 08:30": {"relances": 0, "reprises": ["ged", "rdv"], "orm_poses_atteint": false}, "Ramadan 09:00 (défaut 0099)": {"relances": 0, "reprises": ["ged", "rdv"], "orm_poses_atteint": false}, "Ramadan 10:00 (défaut 0082)": {"relances": 0, "reprises": ["ged", "rdv"], "orm_poses_atteint": false}, "message_heure_debut 09:30": {"relances": 0, "reprises": ["ged", "rdv"], "orm_poses_atteint": false}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan AMSG : 1/15 OK
+  C-AMSG-001.py    ÉCART (échec)
+  C-AMSG-002.py    ÉCART (échec)
+  C-AMSG-003.py    ÉCART (échec)
+  C-AMSG-004.py    ÉCART (échec)
+  C-AMSG-005.py    ÉCART (échec)
+  C-AMSG-006.py    ÉCART (échec)
+  C-AMSG-007.py    ÉCART (échec)
+  C-AMSG-008.py    ÉCART (échec)
+  C-AMSG-009.py    ÉCART (échec)
+  C-AMSG-010.py    ÉCART (échec)
+  C-AMSG-011.py    ÉCART (échec)
+  C-AMSG-012.py    ÉCART (échec)
+  C-AMSG-VER2-101.py ÉCART (échec)
+  C-AMSG-VER3-100.py REPRO
+  C-AMSG-VER4-400.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

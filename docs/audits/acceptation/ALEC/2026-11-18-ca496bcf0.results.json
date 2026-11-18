@@ -1,0 +1,58 @@
+{
+  "sha": "ca496bcf0157f86e28839a13de8cb45b3f034c93",
+  "date": "2026-11-18",
+  "groupe": "ALEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEC53",
+    "ALEC50"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF6-ALEC53-assistant-jetons",
+      "taches": [
+        "ALEC53"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-18/ACCEPTATION-ALEC-PF6-ALEC53-assistant-jetons.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "SONDES.ALEC50-sonde-py",
+      "taches": [
+        "ALEC50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/ALEC/traces/2026-11-18/ALEC-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue), run https://github.com/Taqinor/taqinor-os/actions/runs/44225838060 ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes ALEC ; C-ALEC-016 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-ALEC-020 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-ALEC-024 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-ALEC-025 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-ALEC-VER1-102 : verdict ÉCART, repro False, erreur non, base inchangée oui"
+    }
+  ]
+}

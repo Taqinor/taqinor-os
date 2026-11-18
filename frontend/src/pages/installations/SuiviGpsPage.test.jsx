@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* WIR113 — page Suivi GPS terrain (XFSM23), décision de périmètre WEB-FIRST.
@@ -72,11 +72,10 @@ const inst = vi.hoisted(() => ({
   getPresenceIntervention: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: () => Promise.resolve({ data: [{ id: 10, username: 'ahmed' }] }),
-  },
+const crm = vi.hoisted(() => ({
+  getAssignableUsers: vi.fn(() => Promise.resolve({ data: [{ id: 10, username: 'ahmed' }] })),
 }))
+vi.mock('../../api/crmApi', () => ({ default: crm }))
 // Leaflet n'est pas rendu en test (jsdom sans canvas de tuiles) : la carte est
 // déjà chargée en `lazy`, on stub le module pour garder le test rapide.
 vi.mock('../../components/MapView', () => ({
@@ -86,7 +85,15 @@ vi.mock('../../components/MapView', () => ({
 
 import SuiviGpsPage from './SuiviGpsPage'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 import { reponseContrat } from '../../test/fixtures/contractSamples'
+
+// ADRG148 — rendu sous un store `auth` (le crochet `useCanListAssignableUsers`
+// lit le store) ; par défaut un responsable portant un code crm.
+const STORE_RESPONSABLE_CRM = {
+  role: 'responsable', role_nom: 'Commercial responsable', permissions: ['crm_voir', 'crm_modifier', 'installation_voir'],
+}
+const monter = (auth = STORE_RESPONSABLE_CRM) => renderAvecAuth(<SuiviGpsPage />, auth)
 
 beforeEach(() => {
   inst.getPresenceIntervention.mockResolvedValue(
@@ -95,8 +102,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SuiviGpsPage (WIR113)', () => {
+  it('Technicien responsable : aucune lecture des utilisateurs assignables', async () => {
+    monter({ role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer'] })
+    expect(screen.getByRole('tab', { name: /Consentements/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Carte live/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Alertes géofence/i })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: /Historique de présence/i })).toBeTruthy()
+    await waitFor(() => expect(inst.getGpsConsentements).toHaveBeenCalled())
+    expect(crm.getAssignableUsers).not.toHaveBeenCalled()
+  })
+
+  it('Directeur : la liste des utilisateurs assignables est lue', async () => {
+    monter({ role: 'admin', role_nom: 'Directeur', permissions: [] })
+    await waitFor(() => expect(crm.getAssignableUsers).toHaveBeenCalledTimes(1))
+  })
+
   it('rend les 3 onglets et charge les consentements', async () => {
-    render(<SuiviGpsPage />)
+    monter()
     expect(screen.getByRole('tab', { name: /Consentements/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /Carte live/i })).toBeTruthy()
     expect(screen.getByRole('tab', { name: /Alertes géofence/i })).toBeTruthy()
@@ -105,7 +127,7 @@ describe('SuiviGpsPage (WIR113)', () => {
   })
 
   it('affiche un consentement actif et propose de le révoquer', async () => {
-    render(<SuiviGpsPage />)
+    monter()
     const row = await screen.findByTestId('consentement-1')
     expect(row.textContent).toContain('ahmed')
     expect(row.textContent).toContain('Actif')
@@ -114,7 +136,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it("refuse d'enregistrer un consentement sans confirmation explicite", async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('button', { name: /Enregistrer un consentement/i }))
     const select = await screen.findByLabelText('Technicien')
@@ -126,7 +148,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('enregistre le consentement une fois la confirmation cochée', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('button', { name: /Enregistrer un consentement/i }))
     await user.selectOptions(await screen.findByLabelText('Technicien'), '10')
@@ -138,7 +160,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('charge la carte live et les alertes de géofence sur leurs onglets', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
 
     await user.click(screen.getByRole('tab', { name: /Carte live/i }))
@@ -157,7 +179,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('Historique de présence : choisir un chantier charge les franchissements réels du serveur (NTMOB9)', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
 
     await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
@@ -178,7 +200,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('Historique de présence : le filtre type de franchissement interroge le serveur', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
     await user.selectOptions(screen.getByLabelText('Chantier'), '100')
@@ -193,7 +215,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   // ── Revue chantier 26/10/2026 ──────────────────────────────────────────
   it("dit si le technicien a donné son accord ou s'il est attendu", async () => {
-    render(<SuiviGpsPage />)
+    monter()
     const row = await screen.findByTestId('consentement-1')
     expect(row.textContent).toContain("En attente d'accord du technicien")
     expect(row.textContent).toContain('récépissé CNDP non encore déclaré')
@@ -201,7 +223,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('le dialogue transmet la version de la notice et le récépissé CNDP', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('button', { name: /Enregistrer un consentement/i }))
     await user.selectOptions(await screen.findByLabelText('Technicien'), '10')
@@ -227,7 +249,7 @@ describe('SuiviGpsPage (WIR113)', () => {
       }],
     }))
     try {
-      render(<SuiviGpsPage />)
+      monter()
       await screen.findByTestId('consentement-1')
       await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
       const alerte = await screen.findByTestId('alerte-6')
@@ -252,7 +274,7 @@ describe('SuiviGpsPage (WIR113)', () => {
       }],
     })
     try {
-      render(<SuiviGpsPage />)
+      monter()
       await screen.findByTestId('consentement-1')
       await user.click(screen.getByRole('tab', { name: /Carte live/i }))
       const ages = await screen.findByTestId('carte-live-ages')
@@ -270,7 +292,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it('alertes : ouvertes par défaut, acquittées sur filtre, lien vers l\'intervention', async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
     const alerte = await screen.findByTestId('alerte-5')
@@ -281,7 +303,7 @@ describe('SuiviGpsPage (WIR113)', () => {
 
   it("Historique : temps sur site du jour calculé par le serveur (contrat)", async () => {
     const user = userEvent.setup()
-    render(<SuiviGpsPage />)
+    monter()
     await screen.findByTestId('consentement-1')
     await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
     const ligne = await screen.findByTestId('presence-interv-12')

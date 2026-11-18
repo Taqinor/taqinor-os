@@ -1,0 +1,34 @@
+{
+  "sha": "ca496bcf0157f86e28839a13de8cb45b3f034c93",
+  "date": "2026-11-18",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR180"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "SONDES.AERR180-sonde-py",
+      "taches": [
+        "AERR180"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/audits/acceptation/AERR/traces/2026-11-18/AERR-sondes.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (conteneur django_core, .env = .env.example, migrate + seed_demo + seed_catalogue), run https://github.com/Taqinor/taqinor-os/actions/runs/44225838060 ; clause jouée telle qu'écrite : python scripts/sonde.py --toutes AERR ; C-AERR-001 : verdict ÉCART, repro False, erreur non, base inchangée oui ; C-AERR-044 : verdict ÉCART, repro False, erreur non, base inchangée oui"
+    }
+  ]
+}

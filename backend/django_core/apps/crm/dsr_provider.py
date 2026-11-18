@@ -550,6 +550,38 @@ def sweep_retention_prospects(now, apply_=False):
     return compte
 
 
+def motif_creance_ouverte(client):
+    """ASUP70 (D-ASUP-8) — motif de refus tant que le client doit encore de
+    l'argent sur une facture émise (assiette de l'encours FG41), sinon None."""
+    from .clients_selectors import client_credit_warning
+    reste = client_credit_warning(client)['encours']
+    if reste > 0:
+        montant = f'{reste:,.2f}'.replace(',', ' ').replace('.', ',')
+        return (f'Anonymisation refusée : ce client doit encore {montant} MAD sur ses '
+                'factures émises. Encaissez le solde, ou soldez-le par un avoir ou un '
+                'abandon de créance, puis recommencez.')
+    return None
+
+
+def _garde_creance_ouverte(company, subject_identifier):
+    """ASUP70 — garde d'effacement : un client de la personne a une créance ouverte."""
+    from .clients_selectors import client_ids_par_identifiant
+    from .models import Client
+    ids = client_ids_par_identifiant(company, subject_identifier)
+    return next(filter(None, map(motif_creance_ouverte, Client.objects.filter(pk__in=ids))), None)
+
+
+def verifier_anonymisation_client(client, identifiants):
+    """ASUP70 — « Anonymiser (RGPD) » : motif par client (même sans e-mail ni
+    téléphone) puis gardes par identifiant ; lève ``dsr.EffacementBloque``."""
+    from core import dsr
+    motif = motif_creance_ouverte(client)
+    if motif:
+        raise dsr.EffacementBloque(motif)
+    for identifiant in identifiants:
+        dsr.verifier_gardes_effacement(client.company, identifiant)
+
+
 def register():
     """Enregistre le fournisseur DSR CRM (idempotent). Appelé en ready().
 
@@ -563,3 +595,4 @@ def register():
     from core import dsr
     dsr.register_dsr_provider(
         PROVIDER_NAME, export=export_crm, erase=erase_crm, erase_order=100)
+    dsr.register_erasure_guard('creance_ouverte', _garde_creance_ouverte)

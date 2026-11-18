@@ -1,0 +1,126 @@
+# rejeu sur runner GitHub (2026-11-18T04:50:55Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py --toutes ASUP --conteneur <django_core>
+
+== C-ASUP-001 (sha 3acfee471)
+attendu : après « Anonymiser (RGPD) », l'acheteur d'une facture émise sans instantané perd son identité légale (nom remplacé, ICE/IF/RC/adresse vides)
+observé : ERREUR : Traceback (most recent call last):
+  File "<string>", line 51, in _rejouer
+  File "sonde", line 58, in sonde
+  File "apps/crm/dsr_provider.py", line 383, in anonymiser_client
+    figer_identite_acheteur_manquante(company, client_id=cl.pk, appliquer=True)
+                                                         ^^^^^
+AttributeError: 'Client' object has no attribute 'pk'
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-002 (sha 3acfee471)
+attendu : force_delete d'un produit archivé à 2 mouvements rend 200 et efface les 2 MouvementStock puis le produit
+observé : {"repro": false, "observe": {"geste": "Stock > Archivés > Supprimer (StockList, admin) -> DELETE /stock/produits/<id>/force-delete/", "archive_seuls_mouvements": {"http": 409, "journal": []}, "non_archive": {"http": 409, "journal": []}, "archive_avec_ligne_de_devis": {"http": 409, "journal": []}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-003 (sha 3acfee471)
+attendu : destroy rend 204 pour un compte actif ordinaire ; des dizaines de modèles partent en CASCADE et des centaines de liens d'auteur passent à NULL
+observé : {"repro": false, "observe": {"compte_actif_ordinaire": 409, "compte_responsable_de_calepinage": 409, "destroy_appelle_traces": true, "modeles_emportes_en_cascade": 55, "exemples": ["adminops.LectureAnnonce", "adminops.SessionImpersonation", "automation.ApprovalDelegation", "crm.ForecastSnapshot", "crm.PeriodeAbsence", "crm.PermanenceEquipe", "crm.SavedView", "ged.AclGed"], "liens_mis_a_null": 314, "liens_protect": 1, "geste": "Administration > Utilisateurs > Supprimer (UsersManagement)"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-004 (sha 3acfee471)
+attendu : ProductionWarrantyViewSet hérite du destroy de DRF (aucune surcharge, DELETE non exclu) et l'écran appelle la suppression
+observé : {"repro": false, "observe": {"methode": "ast + lecture écran", "bases": ["TenantMixin", "viewsets.ModelViewSet"], "surcharges_de_suppression": ["perform_destroy"], "ecran_offre_la_suppression": true}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-005 (sha 3acfee471)
+attendu : les 3 chemins d'effacement / rétention lisent Lead.objects et jamais Lead.all_objects
+observé : {"repro": false, "observe": {"apps/crm/dsr_provider.py::_matcher": ["all_objects"], "apps/crm/dsr_provider.py::prospects_hors_duree": ["all_objects"], "apps/crm/leads_selectors.py::lead_ids_par_identifiant": ["all_objects"], "SoftDeleteManager_filtre_is_deleted": true, "methode": "ast"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-006 (sha 3acfee471)
+attendu : restaurer_lead rend vivant un lead absorbé par une fusion et replante sa prochaine étape, sans refus
+observé : {"repro": false, "observe": {"refus": "NameError", "is_archived_apres": true, "effets": [], "geste": "Restaurer (LeadWorkspace / liste des archivés, Commercial responsable, Directeur)"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-007 (sha 3acfee471)
+attendu : après restauration générique : is_archived False alors que archived_at / archived_by restent remplis
+observé : {"repro": false, "observe": {"is_deleted": false, "is_archived": true, "archived_at": "2026-10-01", "archived_by": "commercial", "ecritures": ["('is_deleted',)"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-008 (sha 3acfee471)
+attendu : anonymize appelle anonymiser_client et aucune fonction d'effacement des leads ni des ventes
+observé : {"repro": false, "observe": {"methode": "ast", "appels_de_anonymize": ["ClientSerializer", "Response", "action", "anonymiser_client", "anonymiser_lead", "effacer", "exclude", "extend_schema", "figer_identite_acheteur_manquante", "filter", "get_object", "record", "str", "strip", "verifier_anonymisation_client"], "effacements_absents": ["erase_crm", "erase_ventes", "traiter_demande"], "geste": "Anonymiser (RGPD) sur la fiche client (ClientRgpdActions, Directeur)"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-015 (sha 3acfee471)
+attendu : 3 leads archivés + 1 lead ouvert (+1 supprimé) du même commercial : _leads_ouverts_count rend 4 au lieu de 1
+observé : {"repro": false, "observe": {"leads_ouverts_comptes": 1, "attendu_metier": 1, "archives_dans_le_lot": 3, "manager_filtre_is_deleted": true, "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-016 (sha 3acfee471)
+attendu : lead archivé ou perdu : _nudge_suppressed rend False (la relance part) alors que l'opposé rend True
+observé : {"repro": false, "observe": {"supprimee": {"archive": false, "perdu": false, "oppose_temoin": false, "normal": false}, "attendu_metier": "True pour archive, perdu, oppose", "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-017 (sha 3acfee471)
+attendu : 12 non lues archivées (70 j) + 3 récentes : la liste en montre 3, unread-count et read-all en comptent 15
+observé : {"repro": false, "observe": {"liste_visible": 3, "badge_unread_count": 3, "tout_marquer_lu_touche": 3, "archivees_par_le_balayage": 12, "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-018 (sha 3acfee471)
+attendu : le chemin de suppression n'atteint aucune fonction annuler_rendez_vous*, alors que archiver_lead l'appelle
+observé : {"repro": false, "observe": {"depart_suppression": ["LeadViewSet.destroy", "SoftDeleteModel.soft_delete", "_emit_lead_created", "_dispatch_mise_en_attente", "_relais_arreter_cadence_on_archive", "_empreinte_opposition_lead", "_garder_restauration_corbeille", "_rejouer_restauration_corbeille", "_arreter_cadence_on_archive"], "annulation_rdv_atteinte_par_la_suppression": ["annuler_rendez_vous", "annuler_rendez_vous_du_lead", "annuler_rendez_vous_sur_arret"], "annulation_rdv_appelee_par_archiver_lead": ["annuler_rendez_vous_sur_arret"], "methode": "ast"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-019 (sha 3acfee471)
+attendu : ni ma_file / pieces_visibles / _activites_visibles ne lisent l'état archivé ou supprimé de la cible, ni l'archivage ne clôt les à-faire manuels
+observé : {"repro": false, "observe": {"etat_de_la_cible_lu_par_les_lecteurs": {"records:ma_file": ["sans_cibles_archivees"], "records:pieces_visibles": [], "records:_scoped": [], "reporting:_activites_visibles": ["sans_cibles_archivees"]}, "l_archivage_clot_des_activites_manuelles": "NON", "appelles_par_archivage_extrait": ["_saisie_relance_echue", "creer_activite", "sync_relance_activity"], "methode": "ast"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-020 (sha 3acfee471)
+attendu : le rappel est envoyé pour un lead archivé/perdu/supprimé ; ni dispatch ni annuler_rendez_vous_du_lead ne lisent l'état du lead ni n'annulent crm.Appointment
+observé : {"repro": false, "observe": {"rappels_envoyes_pour(1=archive,2=perdu,3=supprime,4=normal)": [4], "etat_du_lead_lu_par_send_due": ["is_archived", "is_deleted", "perdu"], "etat_du_lead_lu_par_dispatch": "AUCUN", "annuler_rendez_vous_du_lead_touche_crm_Appointment": true, "methode": "execution + ast"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-021 (sha 3acfee471)
+attendu : cheapest_prix_fournisseur rend le fournisseur archivé (1 200) et exiger_fournisseur_commandable ne lève pas pour lui
+observé : {"repro": false, "observe": {"moins_cher": null, "garde_exiger_fournisseur_commandable_sur_archive": "refuse (Fournisseur archivé : désarchivez-le pour lui commander.)", "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-022 (sha 3acfee471)
+attendu : archiver un lead signé réussit sans garde ; est_lead_signe passe de True à False
+observé : {"repro": false, "observe": {"est_lead_signe_avant": true, "est_lead_signe_apres_archivage": true, "lead_archive": false, "issue_du_geste": "ConflitEtat: Impossible d'archiver ce lead signé : une facture existe", "journal": [], "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-023 (sha 3acfee471)
+attendu : lead archivé + devis accepté : étape = Signé, is_archived reste True, est_lead_signe = False (le lead perdu, lui, est levé)
+observé : {"repro": false, "observe": {"perdu_temoin": {"etape_finale_est_signe": true, "perdu": false, "is_archived": false, "est_lead_signe": true, "erreur": null}, "archive": {"etape_finale_est_signe": true, "perdu": false, "is_archived": false, "est_lead_signe": true, "erreur": null}, "methode": "execution"}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-VER2-101 (sha d64fa1e4e)
+attendu : après « Anonymiser (RGPD) », un avoir ou une note de débit (re)rendu sur une facture figée imprime le client vivant anonymisé : nom remplacé, ICE/IF/RC/adresse absents ; la facture d'origine, elle, garde son acheteur
+observé : {"repro": false, "observe": {"geste": "Anonymiser (RGPD) sur la fiche client, puis Créer un avoir / Annuler un avoir / Créer ou annuler une note de débit", "temoin_ice_imprime_avant_anonymisation": true, "facture_d_origine_figee": {"nom": "SARL Exemple", "ice": "000000000000001"}, "avoir_html": {"nom_anonymise_imprime": false, "ice_d_origine_imprime": true, "if_imprime": true, "rc_imprime": true}, "note_debit_html": {"nom_anonymise_imprime": false, "ice_d_origine_imprime": true, "if_imprime": true, "rc_imprime": true}, "contexte_generate_avoir_pdf": ["acheteur", "avoir"], "contexte_generate_note_debit_pdf": ["acheteur", "note_debit"]}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+== C-ASUP-VER3-100 (sha a12f40f82)
+attendu : après « Anonymiser (RGPD) », l'export comptable (et le journal des ventes, le grand livre reconstitué) listent la facture, l'avoir et la note de débit émis sous le client vivant anonymisé, ICE vide, alors que l'acheteur figé de la facture (PDF) garde nom et ICE
+observé : {"repro": false, "observe": {"geste": "Anonymiser (RGPD) sur la fiche client, puis Ventes > exports : journal des ventes, export comptable, grand livre", "temoin_avant_anonymisation": [["SARL Exemple", "000000000000001"], ["SARL Exemple", "000000000000001"], ["SARL Exemple", "000000000000001"]], "acheteur_fige_de_la_facture": {"nom": "SARL Exemple", "ice": "000000000000001"}, "export_comptable_apres": {"FAC-2026-11-0001": ["SARL Exemple", "000000000000001"], "AV-2026-11-0001": ["SARL Exemple", "000000000000001"], "ND-2026-11-0001": ["SARL Exemple", "000000000000001"]}, "fonctions_qui_lisent_le_client_vivant": {"export_journal_ventes": false, "_compta_rows": false, "lignes_rectificatives": false, "_grand_livre_rows_reconstitues": false}}}
+verdict : ÉCART
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+
+== bilan ASUP : 0/19 OK
+  C-ASUP-001.py    ÉCART (échec)
+  C-ASUP-002.py    ÉCART (échec)
+  C-ASUP-003.py    ÉCART (échec)
+  C-ASUP-004.py    ÉCART (échec)
+  C-ASUP-005.py    ÉCART (échec)
+  C-ASUP-006.py    ÉCART (échec)
+  C-ASUP-007.py    ÉCART (échec)
+  C-ASUP-008.py    ÉCART (échec)
+  C-ASUP-015.py    ÉCART (échec)
+  C-ASUP-016.py    ÉCART (échec)
+  C-ASUP-017.py    ÉCART (échec)
+  C-ASUP-018.py    ÉCART (échec)
+  C-ASUP-019.py    ÉCART (échec)
+  C-ASUP-020.py    ÉCART (échec)
+  C-ASUP-021.py    ÉCART (échec)
+  C-ASUP-022.py    ÉCART (échec)
+  C-ASUP-023.py    ÉCART (échec)
+  C-ASUP-VER2-101.py ÉCART (échec)
+  C-ASUP-VER3-100.py ÉCART (échec)
+# code de sortie de sonde.py : 1 (1 est attendu quand repro est faux : verdict ECART)

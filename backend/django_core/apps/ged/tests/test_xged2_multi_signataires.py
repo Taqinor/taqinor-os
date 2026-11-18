@@ -334,9 +334,19 @@ class RelancesTests(XGed2Base):
         """AMSG73 (D-AMSG-1) — balayage de 07:45 (fenêtre des messages
         fermée, idem un dimanche) : 0 relance, l'expiration reste immédiate,
         la relance est reprise à `prochaine_ouverture` ; à l'ouverture : 1."""
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from freezegun import freeze_time
+
         from apps.ged import tasks
         from apps.ged.models import DemandeSignatureDocument
         from apps.notifications.selectors import FenetreNotifications
+        # AMSG106 — horloge figée à 07:45 : l'ouverture (+45 min) tombe le jour même
+        # quelle que soit l'heure du run (rouge de 23:15 à minuit sur l'horloge réelle).
+        gel = freeze_time(datetime(2027, 2, 17, 7, 45, tzinfo=ZoneInfo('Africa/Casablanca')))
+        gel.start()
+        self.addCleanup(gel.stop)
         demande = services.creer_demande_multi_signataires(
             self.doc_a, destinataires=self._destinataires(),
             company=self.co_a, relance_cadence_jours=3)
@@ -364,9 +374,57 @@ class RelancesTests(XGed2Base):
         self.assertEqual((alice.nb_relances, alice.derniere_relance_le), (0, None))
         echue.refresh_from_db()
         self.assertEqual(echue.statut, SIGNATURE_ANNULE)
-        with mock.patch('apps.ged.services._send_signataire_email',
-                        return_value=True):
+        with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                        return_value=FenetreNotifications(True, ouverture)), \
+                mock.patch('apps.ged.services._send_signataire_email',
+                           return_value=True):  # AMSG106 — la reprise relit la fenêtre
             self.assertEqual(tasks.relancer_signataires_societe(self.co_a.pk), 1)
+        alice.refresh_from_db()
+        self.assertEqual(alice.nb_relances, 1)
+
+    def test_ouverture_tardive_le_jour_meme_reprise_relais(self):
+        """AMSG106 — ouverture à 10:00 le jour même (> 90 min après 07:45) :
+        reprise relais à `min(ouverture, now + visibility_timeout − 600 s)` qui
+        relit la fenêtre et se reprogramme ; à 10:00 la relance part."""
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        from django.conf import settings
+        from freezegun import freeze_time
+
+        from apps.ged import tasks
+        from apps.notifications.selectors import FenetreNotifications
+        casa = ZoneInfo('Africa/Casablanca')  # jamais un UTC codé en dur
+        delai = timedelta(
+            seconds=settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout'] - 600)
+        demande = services.creer_demande_multi_signataires(
+            self.doc_a, destinataires=self._destinataires(),
+            company=self.co_a, relance_cadence_jours=3)
+        alice = demande.signataires.get(nom='Alice')
+        alice.notifie_le = timezone.now() - timezone.timedelta(days=4)
+        alice.save(update_fields=['notifie_le'])
+        matin = datetime(2027, 2, 18, 7, 45, tzinfo=casa)
+        ouverture = datetime(2027, 2, 18, 10, 0, tzinfo=casa)
+        with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                        return_value=FenetreNotifications(False, ouverture)), \
+                mock.patch.object(tasks.relancer_signataires_societe,
+                                  'apply_async') as differee, \
+                mock.patch('apps.ged.services._send_signataire_email',
+                           return_value=True) as envoi:
+            with freeze_time(matin):
+                self.assertEqual(tasks.signature_relances_expiration()['relances'], 0)
+            differee.assert_any_call(args=[self.co_a.pk], eta=matin + delai)
+            differee.reset_mock()
+            with freeze_time(matin + delai):  # la reprise relit la fenêtre : encore fermée
+                self.assertEqual(tasks.relancer_signataires_societe(self.co_a.pk), 0)
+            differee.assert_called_once_with(args=[self.co_a.pk], eta=ouverture)
+            envoi.assert_not_called()
+        with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                        return_value=FenetreNotifications(True, ouverture)), \
+                mock.patch('apps.ged.services._send_signataire_email',
+                           return_value=True), freeze_time(ouverture):
+            self.assertGreaterEqual(  # horloge en 2027 : les autres sont dus aussi
+                tasks.relancer_signataires_societe(self.co_a.pk), 1)
         alice.refresh_from_db()
         self.assertEqual(alice.nb_relances, 1)
 
