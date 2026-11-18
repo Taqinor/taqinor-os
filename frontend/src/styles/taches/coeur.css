@@ -120,6 +120,9 @@
 .tch .alleger .carte-source { margin: 4px 0 8px; font-size: 0.875rem; line-height: 1.4; }
 .tch .ligne-courte { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -11px; }
 .tch .ligne-courte .case { margin: 0; }
+/* Passe visuelle n° 55 — Faites du bilan : la case cochée est en lecture seule, mais d'un vert plein (ecran-bilan.html),
+   jamais l'atténuation à 45 % d'une case grisée */
+.tch .bilan-faites .case:disabled .rond { opacity: 1; }
 .tch .ligne-courte .texte { font-size: 1rem; line-height: 1.375rem; }
 .tch .feuille-pied { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
   padding: 12px var(--tch-gouttiere) 16px; background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait); }

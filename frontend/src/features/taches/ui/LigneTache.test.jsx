@@ -50,10 +50,21 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
   })
 
   it('priorité haute = drapeau (jamais une teinte), échéance du jour = rouge, dépassée = rouge', () => {
-    const urgente = { ...item(), priorite: 3, echeance: AUJOURDHUI }
+    const urgente = { ...item(), priorite: 3, essentielle: false, echeance: AUJOURDHUI }
     const { container } = render(<LigneTache item={urgente} aujourdhui={AUJOURDHUI} />)
     expect(screen.getByRole('img', { name: 'Priorité haute' })).toBeInTheDocument()
     expect(container.querySelector('.meta .alerte')).toHaveTextContent("échéance aujourd'hui")
+  })
+
+  it('passe visuelle n° 53 — fin de ligne « heure, ★ ou drapeau » : drapeau avant l\'heure, jamais à côté de ★', () => {
+    const { container, unmount } = render(<LigneTache item={{ ...item(), priorite: 3, essentielle: false }} aujourdhui={AUJOURDHUI} />)
+    const fin = [...container.querySelector('.ligne-fin').children]
+    expect(fin[0]).toHaveClass('drapeau')
+    expect(fin[1]).toHaveClass('heure')
+    unmount()
+    render(<LigneTache item={{ ...item(), priorite: 3, essentielle: true }} aujourdhui={AUJOURDHUI} />)
+    expect(screen.getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Priorité haute' })).toBeNull()
   })
 
   it('une activité de l\'ERP porte « Activité ERP » et son lien', () => {
@@ -72,6 +83,13 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     expect(document.querySelector('.meta .fort')).toHaveTextContent("aujourd'hui")
     await userEvent.setup().click(screen.getByRole('button', { name: 'Garder' }))
     expect(onGarder).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
+  })
+
+  it('passe visuelle n° 16 — la puce « Garder » est le mot seul, sans « + » (maquettes : `<button class="garder">Garder`)', () => {
+    render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} propose onGarder={() => {}} />)
+    const garder = screen.getByRole('button', { name: 'Garder' })
+    expect(garder.querySelector('svg')).toBeNull()
+    expect(garder).toHaveTextContent(/^Garder$/)
   })
 })
 

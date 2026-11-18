@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Plus, Repeat, Ellipsis } from 'lucide-react'
+import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Repeat, Ellipsis } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
@@ -239,9 +239,7 @@ export default function LigneTache({
           {meta.length > 0 || propose ? (
             <div className="meta">
               {propose ? (
-                <button type="button" className="garder" onClick={() => onGarder?.(item)}>
-                  <Plus className="i i-14" aria-hidden="true" />Garder
-                </button>
+                <button type="button" className="garder" onClick={() => onGarder?.(item)}>Garder</button>
               ) : null}
               {meta}
             </div>
@@ -250,6 +248,9 @@ export default function LigneTache({
 
         <div className="ligne-fin">
           {estampille ? <span className="estampille chiffres">{estampille}</span> : null}
+          {/* spec-8 §2 « heure, ★ ou drapeau » : l'étoile d'une essentielle tient lieu du drapeau ; drapeau AVANT l'heure
+              (maquettes ecran-aujourdhui-15h.html, ecran-bilan.html) */}
+          {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
           {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
           <Etoile
             active={Boolean(item.essentielle)}
@@ -258,7 +259,6 @@ export default function LigneTache({
             onRefus={onRefusEssentiel}
             titre={item.titre}
           />
-          {item.priorite === 3 ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
         </div>
 
         <DropdownMenu open={menuOuvert} onOpenChange={setMenuOuvert}>

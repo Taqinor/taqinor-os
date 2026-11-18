@@ -265,7 +265,8 @@ export function EtatVide({ donnees, onColler, onDicter, onTrier }) {
   return (
     <div className="vide-etat vide-plein">
       <span className="vide-picto grand"><ClipboardPaste className="i" aria-hidden="true" /></span>
-      <p className="vide-phrase">Colle ou dicte tes listes : je les range par projet.</p>
+      {/* espace insécable avant « : » (maquette ecran-aujourdhui-vide.html) : le deux-points ne commence jamais une ligne */}
+      <p className="vide-phrase">{'Colle ou dicte tes listes : je les range par projet.'}</p>
       <p className="vide-aide">Une liste par projet, une tâche par ligne.</p>
       <button type="button" className="bouton plein" onClick={onColler}>Coller mes listes</button>
       <button type="button" className="bouton discret" onClick={onDicter}>

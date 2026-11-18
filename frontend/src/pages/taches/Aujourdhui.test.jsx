@@ -60,6 +60,15 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     ])
   })
 
+  it('passe visuelle n° 15 — bureau : la progression, PUIS « Ajouter une tâche » (maquette ecran-aujourdhui-matin.html)', async () => {
+    servir(donnees())
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    const ordre = [...container.querySelectorAll('button.progression, .saisie-bureau, .section-titre')].map((n) => n.className)
+    expect(ordre.slice(0, 2)).toEqual(['progression', 'saisie-bureau bureau-seul'])
+    expect(container.querySelectorAll('.saisie-bureau')).toHaveLength(1)
+  })
+
   it('met les lignes à leur place : essentiel, rendez-vous à son heure, activité ERP, relances', async () => {
     servir(donnees())
     const { container } = monter()
@@ -268,7 +277,9 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     const ouverture = vi.fn()
     window.addEventListener('taqinor:taches:saisir', ouverture)
     monter()
-    expect(await screen.findByText('Colle ou dicte tes listes : je les range par projet.')).toBeInTheDocument()
+    const phrase = await screen.findByText('Colle ou dicte tes listes : je les range par projet.')
+    // passe visuelle n° 20 — espace INSÉCABLE avant « : » (maquette ecran-aujourdhui-vide.html) : jamais « : » en tête de ligne
+    expect(phrase.textContent).toBe('Colle ou dicte tes listes : je les range par projet.')
     await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
     expect(ouverture).toHaveBeenCalledTimes(1)
     window.removeEventListener('taqinor:taches:saisir', ouverture)
