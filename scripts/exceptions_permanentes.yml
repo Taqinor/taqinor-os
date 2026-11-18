@@ -483,7 +483,6 @@ tests_sautes_environnement:
     - "backend/fastapi_ia/tests/test_permissions_agent.py::PermissionsAgentTests"
     - "backend/fastapi_ia/tests/test_read_extension.py::ReadExtensionTests"
     - "backend/fastapi_ia/tests/test_societe_active.py::SocieteActiveTests"
-    - "backend/fastapi_ia/tests/test_sql_agent_endpoint.py::GardeA5ConversationTests"
     - "backend/fastapi_ia/tests/test_sql_agent_endpoint.py::QueryConfirmLoopTests"
     - "backend/fastapi_ia/tests/test_sql_agent_endpoint.py::RelevantTableSelectionTests"
     - "backend/fastapi_ia/tests/test_sql_agent_endpoint.py::RequireCompanyIdTests"

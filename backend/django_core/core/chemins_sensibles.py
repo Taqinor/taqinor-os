@@ -27,6 +27,7 @@ sa valeur telle quelle).
 """
 from __future__ import annotations
 
+import copy
 import logging
 import re
 
@@ -88,9 +89,19 @@ def masquer_enregistrement(record):
     if isinstance(record.msg, str):
         record.msg = masquer(record.msg)
     if isinstance(record.args, dict):
-        record.args = {cle: masquer(valeur) for cle, valeur in record.args.items()}
+        # Jamais un `dict` nu à la place de l'objet de l'appelant : un dictionnaire spécialisé (le journal
+        # d'accès de gunicorn rend « - » pour un en-tête absent) garde son type ; rien n'est réécrit quand
+        # rien n'est masqué, et l'objet de l'appelant n'est jamais modifié (copie).
+        masquees = {cle: masquee for cle, valeur in record.args.items()
+                    if (masquee := masquer(valeur)) != valeur}
+        if masquees:
+            copie = copy.copy(record.args)
+            copie.update(masquees)
+            record.args = copie
     elif isinstance(record.args, tuple):
-        record.args = tuple(masquer(valeur) for valeur in record.args)
+        masques = tuple(masquer(valeur) for valeur in record.args)
+        if masques != record.args:
+            record.args = masques
     if record.exc_info and record.exc_info[0] is not None and not record.exc_text:
         pile = logging.Formatter().formatException(record.exc_info)
         masquee = masquer(pile)
