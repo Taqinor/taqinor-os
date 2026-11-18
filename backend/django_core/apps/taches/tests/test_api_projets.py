@@ -1143,6 +1143,31 @@ class ModelesTests(_Base):
         self.assertEqual(ecran.get(_url(f'modeles/{modele}/')).json()['contenu']['taches'][0]['notes'],
                          'Appeler Lydec')
 
+    def test_les_confidentielles_non_reprises_sont_comptees_jamais_perdues_en_silence(self):
+        """Revue F4 #14 (décision d'orchestrateur) : « Dupliquer » et « Enregistrer comme modèle » ne reprennent pas une
+        tâche confidentielle par son propre drapeau (ni ses sous-tâches) ; l'aperçu de `dupliquer/`, la réponse
+        d'`enregistrer-modele/` (et la fiche du modèle, figée) en portent le NOMBRE ; 0 quand il n'y en a pas. Ce
+        nombre n'est pas un contenu confidentiel (regles.md §8) : servi aussi à l'assistant."""
+        projet, _, _ = self._source()  # « Secrète » : confidentielle par son drapeau
+        fabriques.tache(self.u1, projet=projet, titre='Sous-tâche de la secrète', parent=Tache.objects.get(
+            titre='Secrète'))  # ordinaire, mais perdue avec son parent
+        fabriques.tache(self.u1, projet=projet, titre='Secrète abandonnée', confidentiel=True, statut='annule')
+        api, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        ecrit = self._enregistrer(projet).json()
+        self.assertEqual(ecrit['confidentielles_non_reprises'], 2)
+        self.assertNotIn('confidentielles_non_reprises', ecrit['contenu'])
+        for client in (api, assistant):
+            self.assertEqual(client.get(_url(f'modeles/{ecrit["id"]}/')).json()['confidentielles_non_reprises'], 2)
+            apercu = client.post(_url(f'projets/{projet.pk}/dupliquer/'), {'nom': 'Double'}, format='json').json()
+            self.assertEqual(apercu['confidentielles_non_reprises'], 2)
+            depuis = client.post(_url(f'modeles/{ecrit["id"]}/instancier/'), {'nom': 'Copie'}, format='json').json()
+            self.assertEqual(depuis['confidentielles_non_reprises'], 2)
+        sans = fabriques.projet(self.u1, nom='Sans secret')
+        fabriques.tache(self.u1, projet=sans, titre='Ordinaire')
+        self.assertEqual(self._enregistrer(sans, nom='Sans').json()['confidentielles_non_reprises'], 0)
+        self.assertEqual(api.post(_url(f'projets/{sans.pk}/dupliquer/'), {'nom': 'Double sans'},
+                                  format='json').json()['confidentielles_non_reprises'], 0)
+
     def test_une_date_hors_plage_rend_400_sous_son_champ_jamais_500(self):
         """Revue F4 #4 : `date_lancement` et `date_debut` hors de 2000-01-01 → 2100-12-31 rendent 400 sous leur
         champ, aperçu compris ; rien n'est écrit."""

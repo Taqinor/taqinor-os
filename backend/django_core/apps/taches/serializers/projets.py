@@ -330,7 +330,7 @@ class ModeleListeSerializer(serializers.Serializer):
 
 
 #: Clés que `contenu` garde pour le serveur seul (figées à l'enregistrement) : jamais servies dans `contenu`.
-CLES_INTERNES_MODELE = (lecture.CLE_CONFIDENTIEL,)
+CLES_INTERNES_MODELE = (lecture.CLE_CONFIDENTIEL, lecture.CLE_NON_REPRISES)
 
 
 class ModeleSerializer(serializers.Serializer):
@@ -342,6 +342,12 @@ class ModeleSerializer(serializers.Serializer):
     nom = serializers.CharField()
     created_at = serializers.DateTimeField()
     contenu = serializers.SerializerMethodField()
+    confidentielles_non_reprises = serializers.SerializerMethodField()
+
+    def get_confidentielles_non_reprises(self, modele) -> int:
+        """Tâches confidentielles que l'enregistrement n'a pas reprises (figé ; 0 pour un ancien modèle). Ce n'est
+        pas un contenu confidentiel (regles.md §8) : servi aussi à l'assistant (revue F4 #14)."""
+        return (modele.contenu or {}).get(lecture.CLE_NON_REPRISES, 0)
 
     def get_contenu(self, modele) -> dict:
         contenu = {cle: valeur for cle, valeur in (modele.contenu or {}).items() if cle not in CLES_INTERNES_MODELE}
@@ -355,7 +361,7 @@ def modele_apercu(plan):
     """`modele_instancier.json` : le projet à créer, ses étapes et ses tâches DATÉES ; rien n'est écrit."""
     return {'projet': {'nom': plan['projet']['nom']}, 'sections': plan['sections'],
             'taches': [{cle: tache[cle] for cle in ('titre', 'jour_prevu', 'echeance')} for tache in plan['taches']],
-            'geste_id': None}
+            lecture.CLE_NON_REPRISES: plan.get(lecture.CLE_NON_REPRISES, 0), 'geste_id': None}
 
 
 def poser_calculs_d_items(user, taches, etat, ctx):

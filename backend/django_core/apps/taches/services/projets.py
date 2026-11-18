@@ -29,7 +29,7 @@ from apps.taches.moteur.decalage import decaler, figer_modele, instancier
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import jours_travailles_de, projets_de, rappels_de, sections_de, taches_de
 from apps.taches.selectors.projets import (
-    CLE_CONFIDENTIEL, elements_a_figer, modele_confidentiel, modele_de, modeles_de,
+    CLE_CONFIDENTIEL, CLE_NON_REPRISES, elements_a_figer, modele_confidentiel, modele_de, modeles_de,
 )
 from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office, creer_taches
 from apps.taches.services.gestes import (
@@ -720,6 +720,7 @@ def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel, cha
     if projets_de(user).filter(nom_cle=cle_nom(nom)).exists():
         raise _nom_pris(nom)
     plan = _plan_date(user, contenu, nom, date_lancement or timezone.localdate(), champ)
+    plan[CLE_NON_REPRISES] = contenu.get(CLE_NON_REPRISES, 0)
     if apercu:
         return ResultatInstance(plan)
     return ResultatInstance(plan, _creer_depuis_le_plan(user, plan, confidentiel=confidentiel))
@@ -727,14 +728,16 @@ def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel, cha
 
 def _contenu_du_projet(user, projet, *, inclure_notes):
     """Le contenu v1 figé du projet, avec sa confidentialité de CET instant (`CLE_CONFIDENTIEL`, revue F4 #1) :
-    le modèle la garde, quoi que devienne ensuite le projet."""
-    sections, taches, listes = elements_a_figer(user, projet)
+    le modèle la garde, quoi que devienne ensuite le projet ; et le nombre de tâches confidentielles non reprises
+    (`CLE_NON_REPRISES`, revue F4 #14)."""
+    sections, taches, listes, non_reprises = elements_a_figer(user, projet)
     pures = [SimpleNamespace(
         id=t.pk, parent_id=t.parent_id, statut=t.statut, section_id=t.section_id, titre=t.titre,
         priorite=t.priorite, jalon=t.jalon, jour_prevu=t.jour_prevu, echeance=t.echeance,
         bloquee_par=t.bloquee_par_id, checklist=listes.get(t.pk, []), notes=t.notes) for t in taches]
     contenu = figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
     contenu[CLE_CONFIDENTIEL] = bool(projet.confidentiel)
+    contenu[CLE_NON_REPRISES] = non_reprises
     return contenu
 
 
