@@ -1463,14 +1463,16 @@ class OrganigrammeTest(TestCase):
             company=self.company, field='user:org_sans_role:role').exists())
 
 
-# ── TCH130 — activation de `taches` pour l'Administrateur SEUL ─────────────
+# ── TCH130 / TCH168 — activation de `taches` : Directeur et Administrateur ──
 
 
 class ActivationTachesAdministrateurTests(TestCase):
-    """TCH130 (donnees.md inv. 28, arbitrages A18-M8) — fin de F2 : `taches_voir`
-    est porté par le SEUL rôle système « Administrateur » ; le Directeur reste
-    exclu ; `init_roles` l'applique aux sociétés existantes au déploiement ; un
-    compte hérité sans rôle fin n'entre pas."""
+    """TCH130 puis TCH168 (donnees.md inv. 28) — `taches_voir` est porté par les
+    DEUX rôles système « Directeur » et « Administrateur », aucun autre (jamais
+    un rôle portail) ; `init_roles` l'applique aux sociétés existantes au
+    déploiement ; un compte hérité sans rôle fin n'entre pas. TCH168
+    (18/11/2026) : `init_roles` range tout propriétaire ou superuser sur
+    « Directeur » — exclu, ce rôle privait le fondateur de son propre module."""
 
     DROIT = 'taches_voir'
 
@@ -1488,13 +1490,14 @@ class ActivationTachesAdministrateurTests(TestCase):
             self.assertIn(attendu, noms)
         porteurs = [nom for nom, permissions in CANONICAL_SYSTEM_ROLES
                     if self.DROIT in permissions]
-        self.assertEqual(porteurs, ['Administrateur'])
+        self.assertEqual(porteurs, ['Directeur', 'Administrateur'])
 
-    def test_accorde_explicitement_une_seule_fois(self):
+    def test_accorde_une_seule_fois_a_chacun(self):
         from apps.roles.permissions_registre import (
             ADMIN_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        self.assertEqual(DIRECTEUR_PERMISSIONS.count(self.DROIT), 1)
+        # Hérité du Directeur : jamais ajouté une seconde fois.
         self.assertEqual(ADMIN_PERMISSIONS.count(self.DROIT), 1)
-        self.assertNotIn(self.DROIT, DIRECTEUR_PERMISSIONS)
 
     def test_init_roles_atteint_les_societes_existantes(self):
         from io import StringIO
@@ -1513,10 +1516,45 @@ class ActivationTachesAdministrateurTests(TestCase):
             roles = list(Role.objects.filter(company=societe))
             self.assertTrue(roles, societe.slug)
             self.assertEqual(
-                [r.nom for r in roles if self.DROIT in (r.permissions or [])],
-                ['Administrateur'], societe.slug)
+                sorted(r.nom for r in roles if self.DROIT in (r.permissions or [])),
+                ['Administrateur', 'Directeur'], societe.slug)
         admin = User.objects.select_related('role').get(pk=admin.pk)
         self.assertTrue(admin.has_erp_permission(self.DROIT))
+
+    def test_proprietaire_range_sur_directeur_garde_le_droit(self):
+        """TCH168 — le cas du 18/11/2026 : `init_roles` range le propriétaire
+        (`is_protected`) et le superuser d'une société sur « Directeur », à
+        CHAQUE déploiement. Ils doivent voir « Tâches » après ce geste, y
+        compris quand le rôle « Directeur » de la société a été semé AVANT
+        l'ouverture (sans le droit)."""
+        from io import StringIO
+        from django.core.management import call_command
+        from apps.roles.permissions_registre import (
+            ADMIN_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+        societe = Company.objects.create(nom='TCH168 propriétaire', slug='tch168-proprio')
+        Role.objects.create(
+            company=societe, nom='Directeur', est_systeme=True,
+            permissions=[p for p in DIRECTEUR_PERMISSIONS if p != self.DROIT])
+        administrateur = Role.objects.create(
+            company=societe, nom='Administrateur', est_systeme=True,
+            permissions=list(ADMIN_PERMISSIONS))
+        proprietaire = User.objects.create_user(
+            username='tch168_proprio', password=None, company=societe,
+            role=administrateur, is_protected=True)
+        superuser = User.objects.create_user(
+            username='tch168_super', password=None, company=societe,
+            role=administrateur, is_superuser=True)
+        call_command('init_roles', verbosity=0, stdout=StringIO())
+        for compte in (proprietaire, superuser):
+            compte = User.objects.select_related('role').get(pk=compte.pk)
+            self.assertEqual(compte.role.nom, 'Directeur', compte.username)
+            self.assertTrue(compte.has_erp_permission(self.DROIT), compte.username)
+
+    def test_aucun_role_portail_ne_le_porte(self):
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        for nom, permissions in CANONICAL_SYSTEM_ROLES:
+            if nom.startswith('Portail'):
+                self.assertNotIn(self.DROIT, permissions, nom)
 
     def test_compte_herite_sans_role_fin_n_entre_pas(self):
         societe = Company.objects.create(nom='TCH130 hérités', slug='tch130-herites')

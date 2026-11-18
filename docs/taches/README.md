@@ -46,26 +46,36 @@ principal (variable `PLAYWRIGHT_DIR` pour pointer ailleurs). Depuis la racine du
 - **F1 — le socle, invisible.** Modèles, contrats, moteurs de calcul. Rien n'est visible : personne n'a le droit
   d'ouvrir l'app, sauf les comptes techniques.
 - **F2 — le cœur complet.** Saisie, Aujourd'hui, agenda, projets, rythme, réglages, liens ERP, hors ligne. Activé à
-  la fin pour le SEUL rôle Administrateur : c'est la première fois que vous pouvez l'essayer.
+  la fin pour le SEUL rôle Administrateur ; depuis le 18/11/2026 le rôle Directeur l'a aussi (voir « Vous ne voyez
+  pas la tuile Tâches ? »).
 - **F3 — iPhone et Copilote.** Pastille, notifications, calendrier abonné, Siri, tuile, écran « Mon iPhone », Copilote
   qui planifie et range.
 - **F4 — l'avancé replié.** Étiquettes, vues enregistrées, planification de projets avancée ; puis l'ouverture aux
-  autres rôles, seulement quand vous le dites (tâche `TCH168`).
+  autres rôles (le Directeur d'office depuis le 18/11/2026, tâche `TCH168` ; les autres par votre geste).
 
 ## Essayer le cœur (après la fusion F2)
 
 1. Lancer la pile locale (`docker compose up`, voir le fichier `CLAUDE.md` à la racine).
 2. Charger la journée d'exemple : `python manage.py seed_taches_demo` (commande créée par la tâche `TCH169`, absente
    avant F2) ; elle crée le compte de démonstration `demo_taches`.
-3. Se connecter avec un compte au rôle **Administrateur** (ou `demo_taches`) : la tuile **Tâches** apparaît dans le
+3. Se connecter avec un compte au rôle **Directeur** ou **Administrateur** (ou `demo_taches`) : la tuile **Tâches** apparaît dans le
    menu Applications (⊞) ; elle ouvre Aujourd'hui, avec les quatre onglets Aujourd'hui · À trier · Projets · Agenda.
    On peut aussi taper `/taches/aujourdhui` dans la barre d'adresse.
 4. Après un déploiement sur un serveur existant, `python manage.py init_roles` (lancé par le déploiement) donne le
-   droit au rôle Administrateur de chaque société.
+   droit aux rôles Directeur et Administrateur de chaque société.
 
-Avant F2 seuls un superutilisateur et `demo_taches` atteignent l'app ; après, l'Administrateur. Le Directeur et les
-autres rôles ne voient ni la tuile ni les onglets : pour ouvrir Tâches à un autre rôle, Paramètres → Rôles, cocher la
-case « Tâches » (décision de F4, sur votre parole).
+Les autres rôles ne voient ni la tuile ni les onglets : pour ouvrir Tâches à un autre rôle, Paramètres → Rôles, cocher
+la case « Tâches ».
+
+### Vous ne voyez pas la tuile Tâches ?
+
+- **Votre compte est le propriétaire de la société (ou un superutilisateur).** Chaque déploiement range ce compte sur
+  le rôle **Directeur**. Jusqu'au 18/11/2026 ce rôle n'avait pas le droit de voir Tâches (seul l'Administrateur
+  l'avait) : vous ne pouviez donc pas voir votre propre module, et changer votre rôle à la main était défait au
+  déploiement suivant. Corrigé le 18/11/2026 : il faut un déploiement (`powershell -File scripts\deploy-prod.ps1`),
+  puis recharger la page (ou fermer et rouvrir l'application installée).
+- **Votre compte a un autre rôle** (Commercial, Technicien…) : c'est voulu ; voir « Ouvrir Tâches à d'autres
+  personnes » plus bas.
 
 ## L'avancé (après la fusion F4) — où le trouver
 
@@ -88,18 +98,20 @@ Rien de tout cela n'encombre l'écran du jour : c'est rangé un cran plus loin, 
 
 ## Ouvrir Tâches à d'autres personnes — seulement quand vous le dites
 
-Aujourd'hui seul le rôle **Administrateur** voit Tâches. Deux façons d'ouvrir, de la plus prudente à la plus large :
+Aujourd'hui les rôles **Directeur** et **Administrateur** voient Tâches (le Directeur depuis le 18/11/2026 : la tâche
+`TCH168` a été construite sans attendre, parce que le compte du propriétaire est toujours rangé « Directeur » et ne
+voyait donc pas le module). Pour ouvrir à quelqu'un d'autre :
 
-1. **Un rôle à la fois, sans rien construire.** Paramètres → Rôles → cocher la case « Tâches » du rôle voulu ; on
-   revient en arrière en décochant. Chacun n'y voit que SES tâches : ouvrir le module ne montre les vôtres à personne.
-2. **Le Directeur d'office** — c'est la tâche `TCH168` du plan, qui attend votre parole. Elle retire l'exception qui
-   prive le Directeur du droit : le rôle Directeur de chaque société le reçoit au déploiement suivant. Les autres
-   rôles internes restent à cocher à la main ; un rôle du portail client ne peut jamais le recevoir.
+- **Un rôle à la fois, sans rien construire.** Paramètres → Rôles → cocher la case « Tâches » du rôle voulu ; on
+  revient en arrière en décochant. Chacun n'y voit que SES tâches : ouvrir le module ne montre les vôtres à personne.
+  Un rôle du portail client ne peut jamais le recevoir.
+- **Revenir à « Administrateur seul »** se demande en une phrase (c'est une ligne de code) ; mais le propriétaire de
+  la société ne verrait alors plus le module.
 
 **Une question à trancher AVANT d'ouvrir à un commercial.** Un lead qui a une date de relance apparaît deux fois dans
 sa journée : comme activité « Relance commerciale » et dans la ligne « Suivi des relances : n ». Rien n'est faux, mais
-c'est en double. Tant que l'Administrateur est seul à voir Tâches, cela ne se voit pas. Dites laquelle des deux
-lignes garder ; la correction se fait avant l'ouverture.
+c'est en double. Tant que seuls le Directeur et l'Administrateur voient Tâches, cela ne se voit que si l'un d'eux
+porte lui-même des leads à relancer. Dites laquelle des deux lignes garder ; la correction se fait avant l'ouverture.
 
 ## À essayer par Reda sur son iPhone
 

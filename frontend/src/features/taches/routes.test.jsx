@@ -97,7 +97,7 @@ describe('TCH43 — routes du module', () => {
       .some((a) => a.key === 'taches')
     expect(visible('admin', [])).toBe(false) // compte hérité sans rôle fin
     expect(visible('responsable', [])).toBe(false)
-    expect(visible('admin', ['crm_voir', 'roles_gerer'])).toBe(false) // rôle fin sans le droit (Directeur)
+    expect(visible('admin', ['crm_voir', 'roles_gerer'])).toBe(false) // rôle fin sans le droit
     const avec = buildInstalledApps(moduleConfigs, { role: 'admin', permissions: ['taches_voir'] })
       .find((a) => a.key === 'taches')
     expect(avec).toMatchObject({ key: 'taches', to: '/taches/aujourdhui', icon: config.nav.icon })
