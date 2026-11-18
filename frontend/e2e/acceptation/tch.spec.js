@@ -109,8 +109,8 @@ etape('P136.2', ['TCH136', 'TCH83', 'TCH48', 'TCH40'], async (f) => {
   // Oracle : 4 listes → 4 « Nouveau projet », puce Moyenne.
   await expect(saisie(p).getByText(/^Nouveau projet : /)).toHaveCount(4)
   for (const [nom] of COLLAGES) {
-    await expect(saisie(p).getByRole('radiogroup', { name: `Priorité du projet ${nom}` })
-      .getByRole('radio', { name: 'Moyenne' })).toBeChecked()
+    // passe visuelle n° 33 : la priorité est la puce « Moyenne ⌄ » de l'en-tête du projet (premier-usage-1-apercu.html)
+    await expect(saisie(p).getByRole('button', { name: `Priorité du projet ${nom} : moyenne` })).toHaveText('Moyenne')
   }
   // l'aperçu n'écrit rien
   expect(liste(await lire(p, 'projets/'))).toHaveLength(0)

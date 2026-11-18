@@ -48,6 +48,18 @@
 }
 .tch .apercu-projet .nom { flex: 1; min-width: 0; text-align: left; }
 .tch .apercu-projet .nom small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--tch-texte-doux); }
+/* Passe visuelle n° 33 (premier-usage-1-apercu.html) — l'en-tête d'un projet tient sur une ligne : point de
+   couleur, nom, « {n} tâches · En faire une tâche », puis la puce de priorité « Moyenne ⌄ » */
+.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 650; }
+.tch .apercu-projet > .point { flex: none; }
+.tch .apercu-projet .nom-projet { display: block; overflow-wrap: anywhere; }
+.tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
+.tch .apercu-bascule::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
+.tch .apercu-bascule[aria-pressed="true"] { text-decoration: underline; }
+.tch .puce.prio { flex: none; height: 34px; gap: 4px; background: var(--tch-surface); color: var(--tch-texte); }
+.tch .puce.prio svg { color: var(--tch-texte-doux); }
+/* une liste collée : la feuille s'ouvre en grand (cran 85, comme la maquette), quel que soit son cran de départ */
+.tch .feuille.cran-50:has(.apercu-liste) { height: 85vh; }
 .tch .apercu-ligne { display: grid; grid-template-columns: 44px 1fr; align-items: start; min-height: 48px; margin-left: -11px; }
 .tch .apercu-ligne.retrait { padding-left: 28px; }
 .tch .apercu-ligne .coche-carree { margin-top: 2px; }

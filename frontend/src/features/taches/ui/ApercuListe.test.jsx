@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -61,7 +61,14 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
     expect(screen.getByText('Aperçu de ta liste')).toBeInTheDocument()
     expect(screen.getByText('Nouveau projet : Salon Solaire Expo')).toBeInTheDocument()
     expect(screen.getByText('Nouveau projet : Recrutement technicien')).toBeInTheDocument()
-    expect(screen.getAllByRole('radio', { name: 'Moyenne' }).every((r) => r.getAttribute('aria-checked') === 'true')).toBe(true)
+    // passe visuelle n° 33 — la priorité est UNE puce « Moyenne ⌄ » dans l'en-tête du projet (premier-usage-1-apercu.html)
+    for (const nom of ['Salon Solaire Expo', 'Recrutement technicien']) {
+      const puce = screen.getByRole('button', { name: `Priorité du projet ${nom} : moyenne` })
+      expect(puce).toHaveClass('puce', 'prio')
+      expect(puce).toHaveTextContent('Moyenne')
+      expect(puce.closest('.apercu-projet')).toHaveTextContent(`Nouveau projet : ${nom}`)
+    }
+    expect(screen.queryByRole('radiogroup')).toBeNull()
     expect(screen.getByText('6 tâches · 2 projets')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Créer 6 tâches' })).toBeInTheDocument()
     expect(screen.getAllByRole('checkbox')).toHaveLength(6)
@@ -87,9 +94,10 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
   it('la priorité d\'un nouveau projet part avec ses lignes', async () => {
     const user = userEvent.setup()
     const { onPriorite } = monter(APERCU, { priorites: { 'Salon Solaire Expo': 3 } })
-    const salon = screen.getByRole('radiogroup', { name: 'Priorité du projet Salon Solaire Expo' })
-    expect(within(salon).getByRole('radio', { name: 'Haute' })).toHaveAttribute('aria-checked', 'true')
-    await user.click(within(screen.getByRole('radiogroup', { name: 'Priorité du projet Recrutement technicien' })).getByRole('radio', { name: 'Basse' }))
+    expect(screen.getByRole('button', { name: 'Priorité du projet Salon Solaire Expo : haute' })).toHaveTextContent('Haute')
+    await user.click(screen.getByRole('button', { name: 'Priorité du projet Recrutement technicien : moyenne' }))
+    expect(await screen.findByRole('menuitemradio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(screen.getByRole('menuitemradio', { name: 'Basse' }))
     expect(onPriorite).toHaveBeenCalledWith('Recrutement technicien', 1)
     const lignes = lignesACreer(APERCU, { cochees: {}, titres: {}, enTache: {}, sousTaches: {} }, { cid: 'c', priorites: { 'Salon Solaire Expo': 3 } })
     expect(lignes[0].nouveau_projet).toEqual({ nom: 'Salon Solaire Expo', priorite: 3 })

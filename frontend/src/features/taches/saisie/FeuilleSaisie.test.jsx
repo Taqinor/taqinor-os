@@ -222,6 +222,25 @@ describe('TCH82 — feuille de saisie', () => {
     expect(lireBrouillon(7, 42)).toBeNull()
   })
 
+  it('passe visuelle n° 33 — une liste COLLÉE (même ouverte par « Coller mes listes ») : l\'aperçu seul, le champ replié ; « Coller encore » le rouvre', async () => {
+    const liste = {
+      projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
+      lignes: ['lait', 'pain'].map((titre, index) => ({
+        ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: { nouveau_projet: { nom: 'Courses', priorite: 2 } },
+      })),
+      projets_nouveaux: [{ nom: 'Courses', priorite: 2 }],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { coller: true } })) })
+    fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+    expect(await screen.findByText('Nouveau projet : Courses', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Ajouter une tâche' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Coller encore' }))
+    expect(champ()).toHaveValue('')
+  })
+
   it('Raccord F2 — le contexte de l\'écran (projet courant) part avec la ligne qui n\'en nomme pas', async () => {
     const user = userEvent.setup()
     mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({

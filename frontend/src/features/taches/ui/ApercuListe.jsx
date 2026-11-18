@@ -1,7 +1,10 @@
-import { Check } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
+} from '../../../ui/DropdownMenu'
 import { accord } from '../lib/textes'
-import { PrioriteProjet, phraseAlerte } from './ChampSaisie'
+import { PRIORITES_PROJET, phraseAlerte } from './ChampSaisie'
 
 /* ============================================================================
    TCH83 — « Aperçu de ta liste » : ce que le serveur a lu d'un collage (`saisie-rapide/` aperçu,
@@ -96,24 +99,52 @@ function PointsDeListe({ points, sousTaches, titre, onSousTaches }) {
   )
 }
 
+/** La priorité d'un nouveau projet en UNE puce « Moyenne ⌄ » (premier-usage-1-apercu.html, `puce prio`) : un toucher
+ *  ouvre Haute · Moyenne · Basse ; l'en-tête du projet tient ainsi sur une ligne, même sur iPhone. */
+function PucePriorite({ nom, valeur, onChoisir }) {
+  const libelle = PRIORITES_PROJET.find(([, niveau]) => niveau === valeur)?.[0] ?? 'Moyenne'
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className="puce prio" aria-label={`Priorité du projet ${nom} : ${libelle.toLowerCase()}`}>
+          {libelle}
+          <ChevronDown className="i i-16" aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuRadioGroup value={String(valeur)} onValueChange={(v) => onChoisir?.(nom, Number(v))}>
+          {PRIORITES_PROJET.map(([texte, niveau]) => (
+            <DropdownMenuRadioItem key={niveau} value={String(niveau)}>{texte}</DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function EnteteProjet({ commun, nbTaches, priorite, enTache, onPriorite, onEnTache }) {
   const nouveau = Boolean(commun.nouveau)
   return (
-    <div className="apercu-projet">
+    <div className="apercu-projet" data-p={commun.couleur || undefined}>
+      {/* la couleur d'un projet n'est servie que pour un projet existant : sans elle, pas de point muet */}
+      {commun.couleur ? <i className="point" aria-hidden="true" /> : null}
       <span className="nom">
-        {nouveau ? `Nouveau projet : ${commun.nom}` : `Projet : ${commun.nom}`}
-        <small>{accord(nbTaches, 'tâche')}</small>
+        <span className="nom-projet">{nouveau ? `Nouveau projet : ${commun.nom}` : `Projet : ${commun.nom}`}</span>
+        <small>
+          {accord(nbTaches, 'tâche')}
+          {' · '}
+          <button
+            type="button"
+            className="apercu-bascule"
+            aria-label={`En faire une tâche : ${commun.nom}`}
+            aria-pressed={enTache}
+            onClick={onEnTache}
+          >
+            En faire une tâche
+          </button>
+        </small>
       </span>
-      {nouveau && !enTache ? <PrioriteProjet nom={commun.nom} valeur={priorite} onChoisir={onPriorite} /> : null}
-      <button
-        type="button"
-        className="bouton discret"
-        aria-label={`En faire une tâche : ${commun.nom}`}
-        aria-pressed={enTache}
-        onClick={onEnTache}
-      >
-        En faire une tâche
-      </button>
+      {nouveau && !enTache ? <PucePriorite nom={commun.nom} valeur={priorite} onChoisir={onPriorite} /> : null}
     </div>
   )
 }

@@ -273,7 +273,12 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null 
     [frais, priorites],
   )
 
-  const surTexte = (valeur) => { setTexte(valeur); setErreur('') }
+  const surTexte = (valeur) => {
+    // une LISTE collée d'un coup (plusieurs lignes arrivées ensemble) : le champ se replie dès que l'aperçu est là,
+    // la feuille montre l'aperçu seul (premier-usage-1-apercu.html) ; « Coller encore » le rouvre
+    if (valeur.includes('\n') && valeur.length - texte.length > 1) setChampOuvert(false)
+    setTexte(valeur); setErreur('')
+  }
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
