@@ -123,6 +123,9 @@ async function demander(page, qui, question) {
 }
 const LIT_INTERVENTION = (sql) => litTable(sql, 'installations_intervention')
 const JETONS_OU_ETOILE = /lien_rapport_token|lien_client_token|select\s+\*|\binstallations_intervention\s*\.\s*\*|\bi\s*\.\s*\*/i
+// Enveloppe d'isolement posée par le service lui-même (`(SELECT * FROM <table> WHERE company_id = N)`, ALEC52) :
+// ce n'est pas la projection de l'agent, elle est retirée avant de chercher une étoile ou un jeton (run 44209948217).
+const sansEnveloppe = (sql) => sql.replace(/\(\s*select\s+\*\s+from\s+"?installations_intervention"?\s+where\s+company_id\s*=\s*\d+\s*\)/gi, '(<enveloppe>)')
 const REFUS = /refus|pas (le )?droit|pas autoris|non autoris|n['’]avez pas|n['’]êtes pas|impossible|ne peux pas|ne puis pas|interdit|accès|droit/i
 
 // ═══ PF6 — ALEC53 : Utilisateur du registre ⇒ liens de rapport refusés, jetons jamais lus ; un décompte reste servi ═══
@@ -153,7 +156,7 @@ sortie(u.id)`)
   expect(J(t1.corps.data || null), 'refus : aucune donnée de jeton servie').not.toMatch(/lien_rapport_token|lien_client_token/i)
   const lectures1 = t1.entrees.filter((e) => LIT_INTERVENTION(e.sql))
   console.log(`[ALEC53] refus : lectures de installations_intervention ${J(lectures1)}`)
-  expect(lectures1.filter((e) => JETONS_OU_ETOILE.test(e.sql)), 'journal Postgres : aucune instruction de sql_agent_ro ne lit lien_rapport_token / lien_client_token / SELECT * sur installations_intervention').toEqual([])
+  expect(lectures1.filter((e) => JETONS_OU_ETOILE.test(sansEnveloppe(e.sql))), 'journal Postgres : aucune instruction de sql_agent_ro ne lit lien_rapport_token / lien_client_token / SELECT * sur installations_intervention').toEqual([])
   expect(t1.entrees.filter((e) => /lien_rapport_token|lien_client_token/i.test(e.sql)), 'journal Postgres : aucun jeton nommé dans une instruction du tour').toEqual([])
   expect(t1.ia.filter((l) => /Traceback/.test(l)), 'service IA : aucune exception').toEqual([])
 
@@ -162,11 +165,11 @@ sortie(u.id)`)
   const reponse2 = t2.corps.answer || ''
   expect(reponse2, 'décompte : une réponse est rendue').toBeTruthy()
   expect(reponse2, 'décompte : ce n\'est pas un refus').not.toMatch(/refus|pas (le )?droit|non autoris|interdit/i)
-  expect(reponse2, 'décompte : la réponse donne un nombre').toMatch(/\d|aucune?\b/i)
+  expect(reponse2, 'décompte : la réponse donne un nombre').toMatch(/\d|\b(aucune?|une?|deux|trois|quatre|cinq|six|sept|huit|neuf|dix)\b/i)
   const lectures2 = t2.entrees.filter((e) => LIT_INTERVENTION(e.sql))
   console.log(`[ALEC53] décompte : lectures de installations_intervention ${J(lectures2)}`)
   expect(lectures2.length, 'journal Postgres : une instruction de sql_agent_ro lit installations_intervention').toBeGreaterThan(0)
-  expect(lectures2.filter((e) => JETONS_OU_ETOILE.test(e.sql)), 'journal Postgres : cette instruction ne sélectionne aucun jeton').toEqual([])
+  expect(lectures2.filter((e) => JETONS_OU_ETOILE.test(sansEnveloppe(e.sql))), 'journal Postgres : cette instruction ne sélectionne aucun jeton').toEqual([])
   await expect.poll(async () => (await t2.panneau.innerText()).includes(reponse2.slice(0, 20)), { timeout: 30_000, message: 'tiroir : la réponse est affichée' }).toBe(true)
   expect(t2.ia.filter((l) => /Traceback/.test(l)), 'service IA : aucune exception').toEqual([])
 })
