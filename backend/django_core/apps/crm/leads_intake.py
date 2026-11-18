@@ -667,8 +667,13 @@ def creer_lead_demonstration(company, *, nom, ville='', owner=None):
     lead » — rien ne part vers personne. Une ligne de création au chatter (le
     lead a une origine lisible). Refuse toute société réelle."""
     _exiger_societe_demo(company)
-    lead = Lead.objects.create(company=company, nom=nom, ville=ville, owner=owner,
-                               stage=stages.CONTACTED)
+    lead = Lead.objects.create(company=company, nom=nom, ville=ville, stage=stages.CONTACTED)
+    if owner is not None:
+        # Le responsable est posé SANS passer par l'enregistrement du lead : celui-ci notifierait
+        # « Nouveau lead assigné » (`notifications.signals.lead_post_save`), et un semis rejoué
+        # remplirait la cloche du compte de démonstration.
+        Lead.objects.filter(pk=lead.pk).update(owner=owner)
+        lead.owner = owner
     activity.log_creation(lead, None, origine='semis de démonstration')
     return lead
 
