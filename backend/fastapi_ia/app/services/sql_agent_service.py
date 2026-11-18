@@ -1640,6 +1640,7 @@ class SQLAgentService:
         droits = self._droits_sql(action_ctx)
         allow_price = droits[0]
         tools = self._outils_sql(db, company_id, droits, llm, copilote)
+        relais.marquer_lectures_tierces(tools, action_ctx)  # A5 — lecture SQL = texte tiers
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
@@ -1871,6 +1872,7 @@ class SQLAgentService:
             # COP-B3 — le copilote est allume pour ce compte quand le
             # catalogue recu de Django porte une action du lot `copilote`.
             catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
+            relais.noter_question_du_tour(action_ctx, question)  # A5 — liste ou texte collé
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
