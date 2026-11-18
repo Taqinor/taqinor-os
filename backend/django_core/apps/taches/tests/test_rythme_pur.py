@@ -284,6 +284,25 @@ class CloreBlocTests(unittest.TestCase):
         etat = etat_bloc([5] * 10, blocs_a_sauter=2)
         self.assertEqual(rythme.clore_bloc(etat, jour_n(5), None, None).blocs_a_sauter, 1)
 
+    def test_oui_repart_le_bloc_au_nouveau_palier(self):
+        # Revue F2 tour 2 #8 : « Oui » six jours après la carte — les jours faits à 5 ne comptent pas contre 6
+        # (§6.5 « 10 jours évalués au même palier ») ; le bloc repart le lendemain, comme un objectif dit.
+        for decision, palier, attendu in (('monter', 5, 6), ('baisser', 6, 5)):
+            with self.subTest(decision=decision):
+                etat = EtatRythme(mode=ModeRythme.POUSSER, palier=palier, palier_source=SourceObjectif.ACCEPTE,
+                                  bloc_debut=jour_n(0), comptes_bloc=(5,) * 6)
+                neuf = rythme.mettre_a_jour(etat, **rythme.apres_decision(etat, jour_n(6), decision, 'oui'))
+                self.assertEqual((neuf.palier, neuf.comptes_bloc, neuf.bloc_debut), (attendu, (), jour_n(7)))
+        refus = EtatRythme(palier=5, bloc_debut=jour_n(0), comptes_bloc=(5,) * 6)
+        neuf = rythme.mettre_a_jour(refus, **rythme.apres_decision(refus, jour_n(6), 'monter', 'pas_maintenant'))
+        self.assertEqual((neuf.comptes_bloc, neuf.bloc_debut), ((5,) * 6, jour_n(0)))  # un refus ne repart pas
+        # Jumeau : la carte `premier` acceptée (5 par défaut -> 3) repart aussi le bloc ; « Garder 5 » non.
+        froid = EtatRythme(bloc_debut=jour_n(0), comptes_bloc=(5,) * 4)
+        oui = rythme.repondre_premier(froid, 3, 'oui', jour_n(4))
+        self.assertEqual((oui.palier, oui.comptes_bloc, oui.bloc_debut), (3, (), jour_n(5)))
+        garder = rythme.repondre_premier(froid, 3, 'garder', jour_n(4))
+        self.assertEqual((garder.palier, garder.comptes_bloc, garder.bloc_debut), (5, (5,) * 4, jour_n(0)))
+
     def test_carte_a_jour_seulement_depuis_le_palier_courant(self):
         # Revue F2 tour 2 #5 : une carte calculée d'un autre palier est périmée (jamais deux crans).
         a_jour = rythme.carte_a_jour

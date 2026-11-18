@@ -377,6 +377,18 @@ class RepondreTests(BaseRythme):
         moment = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()['carte_du_moment']
         self.assertFalse(moment and (moment.get('proposition') or {}).get('id') == carte_.pk)
 
+    def test_oui_repart_le_bloc(self):
+        """#8 : « Oui » six jours après la carte : les jours faits à 5 ne comptent pas contre 6."""
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE,
+                                 bloc_debut=J - datetime.timedelta(days=6))
+        jours_evalues(self.u1, [5] * 6)
+        self.assertEqual(self.api.get(URL).json()['bloc'], {'jours': 6, 'tenus': 6, 'sur': 10})
+        self.repondre(self.monter(jour=J - datetime.timedelta(days=6)), 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.essai_restant, reglages.bloc_debut),
+                         (6, True, J + datetime.timedelta(days=1)))
+        self.assertEqual(self.api.get(URL).json()['bloc'], {'jours': 0, 'tenus': 0, 'sur': 10})
+
     def test_carte_perimee_close_sans_changer_le_palier(self):
         """#5 (b) : une carte calculée d'un autre palier que le courant (5 → 6, palier déjà 7) est close
         par la réponse ; « Oui » n'applique jamais un autre nombre que celui de la carte."""

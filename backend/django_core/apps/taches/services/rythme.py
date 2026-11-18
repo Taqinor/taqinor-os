@@ -363,7 +363,7 @@ def _palier(etat, carte, reponse, jour):
     if carte.cle in ('premier', 'journee_type'):
         if reponse == _R.PAS_MAINTENANT:
             return etat
-        return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse)
+        return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse, jour)
     # La nuit a clos le bloc (`clore_bloc` sans réponse) ; la réponse applique la décision du bloc.
     return moteur.mettre_a_jour(etat, **moteur.apres_decision(etat, jour, carte.cle, reponse))
 

@@ -262,18 +262,24 @@ def evaluer_bloc(etat, jour):
     return None
 
 
+def _bloc_neuf(jour):
+    """Un palier accepté repart d'un bloc vide le lendemain (§6.5 point 3 : 10 jours évalués au MÊME
+    palier), comme un objectif dit."""
+    return {'comptes_bloc': (), 'bloc_debut': jour + timedelta(days=1)}
+
+
 def apres_decision(etat, jour, decision, reponse):
-    """Champs changés par la réponse à la proposition du bloc."""
+    """Champs changés par la réponse à la proposition du bloc (« Oui » repart le bloc)."""
     n = _palier(etat)
     if decision == DECISION_MONTER and reponse == ReponseIncitation.OUI:
         return {'palier': min(PALIER_MAX, n + 1), 'palier_source': SourceObjectif.ACCEPTE,
-                'essai_restant': True, 'refus_montee': 0}
+                'essai_restant': True, 'refus_montee': 0, **_bloc_neuf(jour)}
     if decision == DECISION_MONTER and reponse == ReponseIncitation.PAS_MAINTENANT:
         refus = etat.refus_montee + 1
         return {'refus_montee': refus, 'blocs_a_sauter': min(REFUS_SAUT_MAX, 2 ** (refus - 1))}
     if decision == DECISION_BAISSER and reponse == ReponseIncitation.OUI:
         champs = {'palier': max(PALIER_MIN, n - 1), 'palier_source': SourceObjectif.ACCEPTE,
-                  'refus_montee': 0}
+                  'refus_montee': 0, **_bloc_neuf(jour)}
         if n > (etat.meilleur_tenu or 0):
             champs.update(echec_niveau=n, echec_le=jour,
                           echec_n=etat.echec_n + 1 if etat.echec_niveau == n else 1)
@@ -343,10 +349,12 @@ def objectif_dit(etat, nombre=None, sens=None, jour=None):
     return mettre_a_jour(etat, **champs)
 
 
-def repondre_premier(etat, journee_type, choix):
-    """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5."""
+def repondre_premier(etat, journee_type, choix, jour=None):
+    """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5. Avec `jour`, un
+    palier qui change repart le bloc le lendemain (comme `apres_decision`)."""
     palier = journee_type if choix == ReponseIncitation.OUI else PALIER_DEFAUT
-    return mettre_a_jour(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE)
+    bloc = _bloc_neuf(jour) if jour is not None and palier != _palier(etat) else {}
+    return mettre_a_jour(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE, **bloc)
 
 
 # --- TCH27 : « Garder ce rythme » et bascules (TENIR, §6.6-§6.7) ------------
