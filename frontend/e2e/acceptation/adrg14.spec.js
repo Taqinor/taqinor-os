@@ -13,7 +13,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, lireJson, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ADRG', ['ADRG148', 'ADRG149', 'ADRG150', 'ADRG151'])
+const etape = groupe('ADRG', ['ADRG148', 'ADRG149', 'ADRG150', 'ADRG151', 'ADRG155'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -212,7 +212,7 @@ etape('PF4-ADRG149-exports-chantiers', ['ADRG149'], async ({ page, suivi, testIn
 })
 
 // ── PF4-ADRG150-ticket-fiche-chantier : « Ouvrir un ticket » de la fiche chantier sous `sav_gerer` ─────────────────
-etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150'], async ({ page, suivi, testInfo }) => {
+etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150', 'ADRG155'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const co = await compteDe('Commercial', 'adrg150co')
   const tr = await compteDe('Technicien responsable', 'adrg150tr')
@@ -256,7 +256,7 @@ etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150'], async ({ page, suivi, te
   } finally {
     await nettoyerChantier(o)
   }
-}, { ecart: { base: 'FAIL', raison: "défaut antérieur hors d'ADRG150 : frontend/src/pages/installations/RecurrencesInterventionSection.jsx (section « Interventions récurrentes » du même onglet, ACEL46) lit GET installations/recurrences-intervention/ pour tout rôle ; le Commercial (lecture du chantier par ventes_voir) prend 403 + console.error — même classe que l'écart types-intervention d'ADRG21 (2026-11-13-22edd014f) ; présent à la base f3ca519ae, fichier hors des Files d'ADRG150 ; tâche ouverte chez le propriétaire (PLAN_AUDIT_CHANTIERS, ADRG155)" } })
+})
 
 // ── PF4-ADRG151-planification-ma-journee : menu et routes /planification et /ma-journee sous `installation_voir` ───
 const CALENDRIER = /^\/installations\/interventions\/calendrier\/$/
