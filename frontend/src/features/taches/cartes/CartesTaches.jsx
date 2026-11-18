@@ -271,9 +271,63 @@ function CarteEcho({ tache, proposition }) {
   )
 }
 
+// A5 — une écriture du Copilote arrivée dans un tour où un texte tiers est entré : le relais n'a RIEN
+// écrit, la carte porte le corps de la requête (`proposition.corps`, contrat `ecriture_a_valider`) et le
+// doigt la valide. « Modifier » / « Laisser » : textes.md §5.5. Les autres écritures gardent le libellé
+// du registre de l'agent (`proposition.libelle`) sur leur bouton.
+const ECRITURES_A_VALIDER = {
+  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
+  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c) },
+  'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
+  'taches.tache.planifier': {
+    fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
+  },
+  'taches.rappel.poser': {
+    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
+  },
+  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c) },
+  'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },
+  'taches.preference.noter': { fait: () => '', appel: (t, c) => client.poserPreference(c) },
+}
+const PRIORITE_DITE = { 3: 'haute', 2: 'moyenne', 1: 'basse', 0: 'aucune' }
+
+function ligneDuChangement({ champ, avant, apres }, titre) {
+  if (champ === 'priorite') return `Priorité de « ${titre} » : ${PRIORITE_DITE[avant] ?? ''} → ${PRIORITE_DITE[apres] ?? ''}`
+  if (champ === 'echeance') return `Échéance : ${avant ? jourNomme(avant) : 'aucune'} → ${apres ? jourNomme(apres) : 'aucune'}`
+  return `Projet : ${avant?.nom ?? 'sans projet'} → ${apres?.nom ?? 'sans projet'}`
+}
+
+function CarteAValider({ tache, proposition }) {
+  const geste = useGeste()
+  const [laisse, setLaisse] = useState(false)
+  const ecriture = ECRITURES_A_VALIDER[proposition.action_key]
+  const corps = proposition.corps ?? {}
+  const titre = tache?.titre ?? proposition.libelle
+  return (
+    <div role="group" aria-label={titre}>
+      <Tete titre={titre} />
+      {(proposition.changements ?? []).map((c) => (
+        <p key={c.champ} className="section-sous">{ligneDuChangement(c, tache?.titre ?? '')}</p>
+      ))}
+      {ecriture && !geste.fait && !laisse ? (
+        <div className="propose-actions">
+          <button type="button" className="bouton second" disabled={geste.occupe}
+            onClick={() => geste.lancer(() => ecriture.appel(tache, corps), ecriture.fait(corps) || proposition.libelle)}>
+            {ecriture.bouton ?? proposition.libelle}
+          </button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+        </div>
+      ) : null}
+      {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
 function CarteTache({ donnees }) {
   const { tache, proposition, avertissements } = donnees
   const geste = useGeste(donnees.geste_id ? { message: 'Modifiée', geste: donnees.geste_id } : null)
+  if (proposition?.geste === 'ecrire') return <CarteAValider tache={tache} proposition={proposition} />
   if (proposition) return <CarteEcho tache={tache} proposition={proposition} />
   return (
     <div role="group" aria-label={tache.titre}>
