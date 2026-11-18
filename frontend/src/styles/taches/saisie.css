@@ -136,7 +136,8 @@
   flex: 1; min-width: 0; font-size: 0.875rem; font-weight: 400; color: var(--tch-texte-doux);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.tch .fiche-plus-bouton svg { color: var(--tch-texte-doux); }
+.tch .fiche-plus-bouton svg { color: var(--tch-texte-doux); transition: transform var(--motion-fast) var(--ease-standard); }
+.tch .fiche-plus-bouton[aria-expanded="true"] svg { transform: rotate(180deg); }
 .tch .bouton.fait { gap: 8px; background: var(--tch-fait); color: var(--tch-fait-texte); box-shadow: var(--shadow-xs); }
 .tch .bouton.second.accent { color: var(--tch-accent); }
 /* le conflit vit DANS la feuille (etat-conflit.html, .es-conflit : margin 10px 0 16px) — pas de seconde gouttière */

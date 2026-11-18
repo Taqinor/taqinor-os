@@ -30,7 +30,10 @@ const erreurHttp = (data, status) => Object.assign(new Error('http'), { response
 const monter = () => render(
   <MemoryRouter initialEntries={['/taches/a-trier']}><ATrier aujourdhui={AUJOURD} /></MemoryRouter>,
 )
-const RESERVE = [ligne(51, 'Comparer deux devis'), ligne(52, 'Changer de banque')].map((t) => ({ ...t, quelque_jour: true }))
+const RESERVE = [
+  { ...ligne(51, 'Comparer deux devis'), projet: { id: 9, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 3 } },
+  ligne(52, 'Changer de banque'),
+].map((t) => ({ ...t, quelque_jour: true }))
 const lignes = () => within(screen.getAllByRole('list')[0]).getAllByRole('listitem')
 const appelsBoite = () => api.listerToutesLesTaches.mock.calls.filter(([f]) => f.vue === 'boite').length
 
@@ -198,6 +201,7 @@ describe('TCH86 — écran À trier', () => {
     await user.click(replie)
     const reserve = screen.getByRole('region', { name: 'En réserve' })
     expect(within(reserve).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(within(reserve).getAllByRole('listitem')[0]).getByText('Salon Solaire Expo').closest('[data-p]')).toHaveAttribute('data-p', 'indigo')
     // une ligne de la boîte mise en réserve la rejoint aussitôt
     await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
     await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))

@@ -51,6 +51,10 @@ function MetaATrier({ tache, propose, aujourdhui }) {
     mentions.push(<span key="lien"><LienIcone className="i i-14" aria-hidden="true" /><span className="sr">Lié à : </span>{tache.lien.libelle}</span>)
   }
   if (ech) mentions.push(<span key="ech" className={ech.ton === 'alerte' ? 'alerte chiffres' : 'fort chiffres'}>{ech.texte}</span>)
+  // une tâche gardée en réserve peut avoir un projet (« Comparer deux devis d'impression » · ● Salon Solaire Expo)
+  if (tache.projet) {
+    mentions.push(<span key="projet" data-p={tache.projet.couleur}><i className="point" aria-hidden="true" /><span className="projet-nom">{tache.projet.nom}</span></span>)
+  }
   if (propose !== undefined) {
     mentions.push(<span key="repere" className="atrier-repere">{propose ? 'Rangée par le Copilote' : 'Non rangée'}</span>)
     if (propose) mentions.push(<span key="suggere" className="fort">{`Projet suggéré : ${propose.nom}`}</span>)
