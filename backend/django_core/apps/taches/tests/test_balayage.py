@@ -257,9 +257,14 @@ class TestNotificationTests(TestCase):
         self.assertIs(report.call_args.args[2], False)  # respect_quiet_hours
         self.assertIsNone(Notification.objects.get(recipient=self.moi).programmee_pour)
 
-    def test_coupe_circuit_allume_aucune_notification_de_taches(self):
+    def test_coupe_circuit_allume_aucune_notification_et_l_ecran_le_dit(self):
+        """Coupe-circuit allumé : rien ne part (textes.md §3) ET la réponse le DIT (409 + `detail` montré par
+        Mon iPhone) — jamais un 204 qui ferait afficher « une notification doit arriver »."""
         ReglagesSociete.objects.update_or_create(company=self.societe, defaults={'balayage_actif': False})
-        self.assertEqual(self.appuyer().status_code, 204)
+        reponse = self.appuyer()
+        self.assertEqual(reponse.status_code, 409)
+        self.assertEqual(reponse.json()['detail'], 'Messages et rappels de Tâches coupés pour la société.')
+        self.assertEqual(reponse.json()['code'], 'envoi_coupe')
         self.assertFalse(Notification.objects.filter(recipient=self.moi).exists())
 
 

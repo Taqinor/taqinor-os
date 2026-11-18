@@ -43,10 +43,13 @@ from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSeriali
 from apps.taches.services import journee as services_journee
 from apps.taches.throttles import ThrottleFlux, ThrottleTuile
 from apps.taches.views.base import (
-    ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant, forme_echantillon,
+    ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant, forme_echantillon,
     reponses,
 )
 
+#: Refus du test de notification quand l'administrateur a coupé l'envoi (textes.md §2.21, mots du bandeau).
+DETAIL_ENVOI_COUPE = 'Messages et rappels de Tâches coupés pour la société.'
+CODE_ENVOI_COUPE = 'envoi_coupe'
 #: `jetons/` rend au plus 20 lignes (api.md §0), actives d'abord puis les plus récentes.
 PLAFOND_JETONS = 20
 DETAIL_INTROUVABLE = 'Introuvable.'
@@ -194,13 +197,15 @@ class JetonRevoquerVue(APIView):
 
 class TestNotificationVue(APIView):
     """POST mon-iphone/test-notification/ — push `TACHES_RAPPEL` au seul compte de la requête, hors plafond
-    (`balayage.envoyer_test`) ; 204 sans corps, y compris coupe-circuit allumé (rien n'est envoyé)."""
+    (`balayage.envoyer_test`) ; 204 sans corps. Coupe-circuit de la société allumé : rien n'est envoyé et la
+    réponse le DIT (409 `envoi_coupe`, `detail` montré par Mon iPhone) — jamais un 204 muet."""
 
     permission_classes = PERMISSIONS
 
-    @extend_schema(request=None, responses=reponses(None, statut=204))
+    @extend_schema(request=None, responses=reponses(None, statut=204, conflit=ERREUR_CODE))
     def post(self, request):
-        balayage.envoyer_test(request.user)
+        if not balayage.envoyer_test(request.user):
+            return Response({'detail': DETAIL_ENVOI_COUPE, 'code': CODE_ENVOI_COUPE}, status=status.HTTP_409_CONFLICT)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -521,6 +521,7 @@ Bandeau de l'Agenda en cas d'échec : « « {libellé} » : {texte de l'état} �
 | Aide | « Éteint : plus aucun message ni rappel de Tâches n'est envoyé dans la société, jusqu'à ce que tu le rallumes. Rien d'autre ne change. » |
 | Dialogue d'extinction | « Couper tous les messages et rappels de Tâches pour la société ? » [Couper] [Fermer] ; toast « Messages et rappels coupés · Annuler » |
 | Bandeau quand c'est coupé (administrateurs) | « Messages et rappels de Tâches coupés pour la société depuis le {jj/mm} à {HH:MM}. » [Rallumer] |
+| « Envoyer un test » (Mon iPhone) quand c'est coupé | refus 409 `envoi_coupe` : « Messages et rappels de Tâches coupés pour la société. » (montré sous le bouton ; rien n'est envoyé) |
 | Activation | « Tâches est ouvert aux administrateurs. Pour l'ouvrir à un autre rôle : dans l'éditeur des rôles, coche « Tâches ». » |
 
 ## 3. Notifications
