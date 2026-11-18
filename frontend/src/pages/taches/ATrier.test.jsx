@@ -58,6 +58,28 @@ describe('TCH86 — écran À trier', () => {
     expect(within(bandeau).getByRole('button', { name: 'Voir' })).toBeInTheDocument()
   })
 
+  it('passe visuelle n° 22 — une ligne = case ronde, titre, mentions servies, gestes en liens (pas en pilules)', async () => {
+    const user = userEvent.setup()
+    api.listerToutesLesTaches.mockResolvedValue([{ ...TACHES[0], source: 'suggestion' }, TACHES[1]])
+    monter()
+    await screen.findByText('Timbres')
+    const [premiere, seconde] = lignes()
+    expect(premiere).toHaveClass('ligne', 'tri')
+    expect(within(premiere).getByText("Suggéré par l'ERP")).toBeInTheDocument()
+    expect(within(premiere).getByText(modele.lien.libelle)).toBeInTheDocument()
+    expect(within(premiere).getByText('échéance jeu. 19')).toBeInTheDocument()
+    expect(within(seconde).queryByText("Suggéré par l'ERP")).toBeNull()
+    for (const nom of ['Aujourd\'hui', 'Demain', 'Projet…']) {
+      const geste = within(premiere).getByRole('button', { name: nom })
+      expect(geste).toHaveClass('geste')
+      expect(geste).not.toHaveClass('puce')
+    }
+    await user.click(within(seconde).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    expect(api.traiterLot).toHaveBeenLastCalledWith({ ids: [42], action: 'terminer', valeurs: {} })
+    expect(screen.queryByText('Timbres')).toBeNull()
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
+  })
+
   it('Aujourd\'hui : la ligne part tout de suite, le lot est écrit, « Annuler » la ramène à sa place', async () => {
     const user = userEvent.setup()
     monter()
