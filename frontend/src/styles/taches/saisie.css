@@ -48,6 +48,8 @@
 .tch .es-filtres ~ .recherche-replies { margin: 10px var(--tch-gouttiere) 0; }
 .tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
 @media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
+/* le mot cherché, surligné dans le titre d'un résultat (`LigneTache` prop `surligne`) */
+.tch .titre .es-trouve { font-weight: 650; }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
@@ -194,7 +196,7 @@
 .tch .geste.icone { min-width: 44px; justify-content: center; margin-left: -12px; }
 .tch .marque-erp { display: inline-flex; align-items: center; gap: 5px; color: var(--tch-texte); font-weight: 550; }
 .tch .marque-erp svg { color: var(--tch-accent); }
-/* lignes « à plat » de Supprimées récemment et de « Suggéré par l'ERP » (inchangées) */
+/* lignes « à plat » de « Suggéré par l'ERP » (inchangées) */
 .tch .atrier-ligne {
   display: flex; flex-direction: column; gap: 6px; padding: 10px 0; min-height: 52px; box-shadow: inset 0 -1px 0 var(--tch-trait);
 }
@@ -203,6 +205,24 @@
 .tch .atrier-repere { font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .meta .atrier-repere { font-size: inherit; }
 .tch .atrier-ligne .puces { align-items: center; }
+/* Passe visuelle n° 63 — Supprimées récemment (supprimees.html, supprimees-gestes.html, ecrans-secondaires.css) :
+   sous-titre et lignes sur la marge du contenu, « Restaurer » en tête de méta, derniers gestes en rangées */
+.tch[data-ecran="supprimees"] .es-sous { margin-top: 4px; font-size: 0.9375rem; line-height: 1.4; }
+.tch .es-supprimees { margin-top: 10px; }
+.tch .ligne.es-supprimee .titre { color: var(--tch-texte); }
+.tch .ligne.es-supprimee .meta { margin-top: 4px; }
+/* au toucher, l'ERP pose `min-height: 44px` sur tout bouton : la puce garde ses 26 px, sa cible de 44 px est son ::after */
+.tch .ligne.es-supprimee .es-action { min-height: 0; }
+.tch .es-gestes { list-style: none; margin: 4px 0 0; padding: 0; }
+.tch .es-geste {
+  display: grid; grid-template-columns: 52px 1fr auto; align-items: center; column-gap: 8px; min-height: 52px;
+  padding: 4px var(--tch-gouttiere);
+}
+.tch .es-geste time { font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte-doux); }
+.tch .es-geste .msg { font-size: 1rem; line-height: 1.375rem; }
+.tch .es-geste .deja { font-size: var(--tch-meta); color: var(--tch-texte-doux); padding-right: 8px; }
+.tch .es-geste .bouton.lien { height: 44px; margin-right: -8px; }
+.tch .es-geste > .erreur-champ { grid-column: 1 / -1; }
 @media (min-width: 768px) {
   .tch .ligne.tri { padding-bottom: 8px; }
   .tch .ligne.tri .ligne-corps { display: grid; grid-template-columns: 1fr auto; column-gap: 24px; }

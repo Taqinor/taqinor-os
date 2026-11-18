@@ -82,6 +82,18 @@ describe('TCH87 — Recherche', () => {
     expect(screen.getByLabelText('Filtres')).toHaveClass('es-filtres')
   })
 
+  it('passe visuelle n° 46 — le mot cherché est surligné dans chaque résultat, qui porte sa méta de statut', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [
+      item(30, 'Préparer le chantier du devis accepté', { jour_prevu: null, heure_debut: null, projet: null, echeance: null, source: 'suggestion' }),
+      item(31, 'Comparer deux Devis', { jour_prevu: null, heure_debut: null, quelque_jour: true, echeance: null }),
+    ] } })
+    monter()
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    expect([...ouvertes.querySelectorAll('.titre b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'Devis'])
+    const metas = [...ouvertes.querySelectorAll('.meta')].map((m) => [...m.children].map((e) => e.textContent))
+    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['En réserve', 'Ventes']])
+  })
+
   it('rien pour « {q} » : la phrase, sans groupes', async () => {
     api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
     monter('/taches/recherche?q=zzz')
@@ -241,6 +253,26 @@ describe('TCH87 — Supprimées récemment', () => {
     expect(screen.getByText('Supprimées depuis moins de 30 jours.')).toBeInTheDocument()
     expect(screen.getByText('Timbres')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Derniers gestes' })).toHaveTextContent('Reportée à jeu. 19')
+  })
+
+  it('passe visuelle n° 63 — lignes de tâche (supprimees.html) : Restaurer, « Sans projet » ou le projet, jour de suppression', async () => {
+    api.listerSupprimees.mockResolvedValue({ data: { ...supprimees, taches: [
+      ...supprimees.taches,
+      { ...supprimees.taches[0], item: { ...supprimees.taches[0].item, id: 43, titre: 'Rails', projet: { id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3 } } },
+    ] } })
+    render(<MemoryRouter><Supprimees aujourdhui={AUJOURD} /></MemoryRouter>)
+    await screen.findByText('Timbres')
+    expect(screen.getByText('Supprimées depuis moins de 30 jours.')).toHaveClass('es-sous')
+    const lignes = [...document.querySelectorAll('section[aria-label="Supprimées récemment"] [role="listitem"]')]
+    expect(lignes.every((l) => l.matches('.ligne.es-supprimee') && l.firstElementChild.matches('.case'))).toBe(true)
+    const metas = lignes.map((l) => [...l.querySelector('.meta').children].map((e) => e.textContent))
+    // supprimees.json : le projet le 15/11 à 10:00, « Timbres » (sans projet) le 16/11 à 11:00 — jour servi, heure du Maroc
+    expect(metas).toEqual([['Restaurer', 'dim. 15/11'], ['Restaurer', 'Sans projet', 'lun. 16/11'], ['Restaurer', 'Ventes', 'lun. 16/11']])
+    expect(lignes[1].querySelector('.meta > button')).toHaveClass('es-action')
+    // Derniers gestes : l'heure du geste (le jour même) ou son jour, le message, puis « Annuler » en lien
+    const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getByRole('listitem')
+    expect(geste).toHaveClass('es-geste')
+    expect([...geste.children].map((e) => e.textContent)).toEqual(['09:20', 'Reportée à jeu. 19', 'Annuler'])
   })
 
   it('Restaurer un projet : la ligne part ; 409 nom_pris : « Un projet actif porte déjà ce nom. » sous la ligne', async () => {
