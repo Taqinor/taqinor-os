@@ -639,6 +639,37 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
 - Mesuré : en bas de « Mon iPhone » le dernier interrupteur passe bien au-dessus du « + » flottant (y=500 contre 720) :
   la capture de la lane était prise en cours de défilement, ce n'est pas un défaut.
 
+**Point de 08 h 25 UTC (18/11) — fusion 4 : TOUT est plié, les deux acceptations sont vertes, dernier push en préparation**
+
+- **Passe visuelle terminée** : six lanes pliées (V-A 12, V-B 10, V-C1 9, V-C2 7, V-D 5, V-E 3 = 46 corrections). Écarts
+  laissés (maquette contre textes de référence, donnée non servie) : `docs/taches/README.md` « Écarts d'apparence
+  connus » sur la branche, détail dans `passe-visuelle-suites.md` (ce dossier).
+- **Relecture adverse du delta** (`revue-code-delta-f4.md`, ce dossier) : 3 majeurs, 4 mineurs → 6 corrigés par deux
+  lanes (R1 : une essentielle faite vit dans deux sections — supprimer, dé-★ ; R2 : champ de saisie qui se repliait
+  pendant la frappe, Échap sur un menu, case d'une carte du Copilote, « Terminer » de Planifier sans données), chacun
+  avec un test vu rouge puis vert. Laissé : cascade de deux blocs à la même heure dans la Semaine du bureau.
+- **Trouvés par l'orchestrateur après les plis** : la ligne « {faites} sur {objectif} aujourd'hui » de Mon rythme ne
+  s'affichait JAMAIS en vrai (l'écran la cherchait dans `RYTHME.serie`, qui ne porte pas le jour courant ; le test
+  injectait le jour de l'échantillon) → lue dans la progression du jour ; P139.6 de `tch.spec.js` suivait un écran
+  déplacé à la fusion 3 (« Mes agendas » → Réglages → Mon iPhone) → chemin corrigé, oracle inchangé.
+- **ACCEPTATIONS DE LA FUSION 4 — VERTES** :
+  - rejeu OFFICIEL local, `tch.spec.js` + `tch3.spec.js` en une invocation, base MIGRÉE refaite pour ce rejeu :
+    **44 étapes sur 44** au commit `844f5f291d` → `docs/audits/acceptation/TCH/2026-11-18-844f5f291.md` ;
+  - parcours de la fusion 3 rejoués sur la fusion 4 avec le VRAI assistant (runner GitHub, run 44262344642) :
+    **17 étapes sur 17** → `docs/audits/acceptation/TCH/2026-11-18-60c17af83.md`. Workflow temporaire RETIRÉ.
+  - **TCH142, TCH172, TCH173 cochées.** TCH168 reste GATED (parole de Reda).
+- **Trois faux départs, à ne pas refaire** : (1) le rejeu officiel lancé sur une base déjà jouée par un essai : les
+  parcours de la fusion 4 laissent des leads et des devis de démonstration, et « première journée, vide » (P136.1) ne
+  l'était plus → le lanceur officiel REFAIT maintenant la base à chaque rejeu ; (2) le script du workflow temporaire
+  remis sans son bit exécutable (EACCES, 17 étapes rouges en 4 minutes) → mode 100755 ; (3) un commit pendant un rejeu
+  aurait changé le nom de son enregistrement (nommé par le sha de HEAD) → aucun commit sur la branche pendant un rejeu.
+- **CI** : le shard vitest 4 a rougi une fois sur `ProductTour.test.jsx` (test de l'ERP, intermittent, déjà documenté
+  dans le fichier) → rendu robuste comme son voisin (le geste renvoyé à chaque essai du `waitFor`) ; la garde
+  `check_frontend_query_params` ne lit pas un nom au milieu d'un import sur plusieurs lignes → import de `Rythme.jsx`
+  reformé.
+- **Reste** : les deux jeux de gardes + lint + node sur la tête finale (en cours), `git push origin dev-taches-f4`,
+  CI, corps de la PR #1464, `draft=false`, `enable_pr_auto_merge(MERGE)`, vérifier la fusion sur `main`, rapport final.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
