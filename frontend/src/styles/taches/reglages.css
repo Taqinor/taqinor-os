@@ -13,6 +13,7 @@
 .tch .ep-proposition { margin-top: 16px; }
 .tch .ep-proposition .carte-texte { margin-bottom: 14px; }
 .tch .ep-puces { padding: 4px var(--tch-gouttiere) 0; }
+.tch .ep-changer-objectif { margin-top: 6px; }
 .tch .ep-graph { margin: 4px var(--tch-gouttiere) 0; }
 .tch .ep-graph-zone { position: relative; height: 132px; display: flex; align-items: flex-end; padding-right: 44px; }
 .tch .ep-graph-sem { display: flex; justify-content: space-around; align-items: flex-end; height: 100%; flex: 1; }

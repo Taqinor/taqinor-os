@@ -158,9 +158,10 @@ function ChangerObjectif({ onChanger }) {
     try { await onChanger({ sens }, sens) } catch (err) { setErreur(messageErreur(err, 'objectif')) }
   }
 
+  // Passe visuelle n° 44 — rythme.html n'a pas de section « Objectif du jour » : l'objectif est la ligne en gras au-dessus ;
+  // « Plus · Moins · Choisir un nombre » (textes.md §2.11, « Changer d'objectif ») restent, en une rangée sous elle.
   return (
-    <section className="section">
-      <h2 className="section-titre"><span>Objectif du jour</span></h2>
+    <div className="ep-changer-objectif" role="group" aria-label="Changer d'objectif">
       <div className="puces ep-puces">
         <button type="button" className="puce" onClick={() => pas('moins')}>
           <Minus className="i i-16" aria-hidden="true" />Moins
@@ -189,7 +190,7 @@ function ChangerObjectif({ onChanger }) {
         </div>
       ) : null}
       {erreur ? <p id="err-objectif" className="es-erreur" role="alert">{erreur}</p> : null}
-    </section>
+    </div>
   )
 }
 
@@ -325,13 +326,13 @@ function Corps({ rythme, aujourdhui, erreurs, actions }) {
       <div>
         <Aujourdhui rythme={rythme} aujourdhui={aujourdhui} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
+        {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (
           <div className="es-attente-rythme">
             <p>{`${evalues} jour${evalues >= 2 ? 's' : ''} sur ${JOURS_VOULUS} : il m'en faut ${JOURS_VOULUS} pour comprendre ton rythme.`}</p>
           </div>
         ) : null}
         <Proposition proposition={rythme.proposition} onRepondre={actions.repondre} erreur={erreurs.proposition} />
-        {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? null : <Graphique rythme={rythme} aujourdhui={aujourdhui} />}
         {rythme.repere ? (
           <p className="ep-source">
