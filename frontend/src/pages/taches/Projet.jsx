@@ -1,17 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, Diamond, TriangleAlert } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, modifierProjet, restaurerProjet, rouvrirProjet,
+  annulerGeste, classerErreur, modifierProjet, modifierTache, restaurerProjet, rouvrirProjet,
   rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe } from '../../features/taches/projets/LigneProjet'
-import { DialogueDecaler, DialogueSupprimer, DialogueTerminer } from '../../features/taches/projets/Dialogues'
+import {
+  DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
+} from '../../features/taches/projets/Dialogues'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
 import VueListe from '../../features/taches/projets/VueListe'
+import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronologie'
+import FeuilleACrans from '../../features/taches/ui/FeuilleACrans'
+import SelecteurVue from '../../features/taches/ui/SelecteurVue'
+import Tableau from '../../features/taches/ui/Tableau'
+import { CODES_VUES, etapesDuProjet } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -21,7 +28,9 @@ import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/text
    TCH89 — Écran « Un projet », vue Liste (`/taches/projets/:id`). Maquette : docs/taches/maquettes/projet-liste.html.
    Textes : reference/textes.md §2.6 (« {faites} sur {total} · échéance {jj/mm} », « Prochain jalon : {titre} · {jour} »,
    santé si signal, Détails « Fini quand : {objectif} » · « dernière faite le {jj/mm} »). Contrat : `projet_vue.json`.
-   Tableau, Chronologie, Modèle et Dupliquer sont de la fusion F4 : ils n'apparaissent pas ici.
+   TCH90 (fusion F4, l'avancé replié) — Tableau et Chronologie se choisissent au sélecteur discret (`?vue=`), la
+   dernière vue est MÉMORISÉE côté serveur (`projet.affichage.vue`, PATCH) ; « Avancement par semaine » (burn-up)
+   est dans le ⋯. Une vue simple reste la Liste : rien de l'avancé ne s'ajoute d'emblée.
    Un geste (cocher, ajouter, priorité, pause) met l'écran à jour sur place et ne relit jamais la vue entière.
    ========================================================================== */
 
@@ -57,6 +66,13 @@ function remettreTache(vue, place) {
   const inserer = (liste) => { const suite = [...(liste ?? [])]; suite.splice(Math.min(place.rang, suite.length), 0, place.tache); return suite }
   if (place.sectionId == null) return { ...vue, sans_section: inserer(vue.sans_section) }
   return { ...vue, sections: (vue.sections ?? []).map((s) => (s.id === place.sectionId ? { ...s, taches: inserer(s.taches) } : s)) }
+}
+
+/** Place la tâche `item` à la fin de l'étape `sectionId` (null : « Sans étape »), où qu'elle soit. */
+function versEtape(vue, item, sectionId) {
+  const sans = sansTache(vue, item.id)
+  if (sectionId == null) return { ...sans, sans_section: [...(sans.sans_section ?? []), item] }
+  return { ...sans, sections: (sans.sections ?? []).map((s) => (s.id === sectionId ? { ...s, taches: [...(s.taches ?? []), item] } : s)) }
 }
 
 function Entete({ vue, aujourdhui, onPriorite }) {
@@ -111,6 +127,8 @@ export default function Projet() {
   const [erreur, setErreur] = useState('')
   const [introuvable, setIntrouvable] = useState(false)
   const [dialogue, setDialogue] = useState(null)
+  const projetRef = useRef(null)
+  const chaineVue = useRef(Promise.resolve())
 
   const charger = useCallback(async () => {
     try {
@@ -126,6 +144,34 @@ export default function Projet() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'écran (D-ENF22)
   useEffect(() => { charger() }, [charger])
+
+  // Le dernier projet lu (verrou de version) : les écritures de vue en file le relisent ici.
+  useEffect(() => { projetRef.current = vue?.projet ?? null })
+
+  // La vue montrée : celle de l'adresse (`?vue=`), sinon la dernière MÉMORISÉE par le serveur (`affichage.vue`), sinon Liste.
+  const vueUrl = params.get('vue')
+  const vueCode = CODES_VUES.includes(vueUrl) ? vueUrl : (CODES_VUES.includes(vue?.projet?.affichage?.vue) ? vue.projet.affichage.vue : 'liste')
+
+  // Choisir une vue la mémorise (`affichage.vue`, PATCH sous verrou) ; les écritures se suivent une à une (la version change à chacune).
+  const memoriserVue = (code) => {
+    chaineVue.current = chaineVue.current.then(async () => {
+      const projet = projetRef.current
+      if (!projet || projet.affichage?.vue === code) return // déjà mémorisée : rien à écrire
+      const affichage = { ...(projet.affichage ?? {}), vue: code }
+      setVue((v) => (v ? { ...v, projet: { ...v.projet, affichage } } : v))
+      try {
+        const { data } = await modifierProjet(projet.id, { affichage, lock_version: projet.lock_version })
+        setVue((v) => (v ? { ...v, projet: { ...v.projet, ...data } } : v))
+      } catch (err) {
+        setVue((v) => (v ? { ...v, projet } : v))
+        setErreur(frenchError(err, 'La vue n\'a pas été mémorisée. Réessaie.'))
+      }
+    })
+  }
+  const choisirVue = (code) => {
+    if (code !== vueUrl) setParams((p) => { const s = new URLSearchParams(p); s.set('vue', code); return s }, { replace: true })
+    memoriserVue(code) // sans effet si le serveur la garde déjà
+  }
 
   const majTache = (tache) => setVue((v) => (v ? remplacerTache(v, tache) : v))
   const ajusterFaites = (delta) => setVue((v) => (v ? { ...v, avancement: { ...v.avancement, faites: v.avancement.faites + delta } } : v))
@@ -170,6 +216,28 @@ export default function Projet() {
     },
     sortApres: (code, item, valeurs) => code === 'deplacer' && valeurs.projet_id !== Number(id),
   })
+
+  // Tableau — la carte change d'étape : la colonne bouge à l'instant, le serveur confirme (verrou de la tâche),
+  // « Annuler » la remet ; un échec la ramène d'où elle vient. La vue n'est jamais relue.
+  const deplacerVersEtape = async (item, sectionId) => {
+    const avant = vue
+    const nom = sectionId == null ? 'Sans étape' : (avant.sections ?? []).find((s) => s.id === sectionId)?.nom ?? 'Étape'
+    setVue((v) => (v ? versEtape(v, item, sectionId) : v))
+    try {
+      const { data } = await modifierTache(item.id, { section_id: sectionId, lock_version: item.lock_version })
+      majTache(data.tache ?? { ...item })
+      proposerAnnuler({
+        message: `Déplacée dans « ${nom} »`,
+        onAnnuler: async () => {
+          if (data.geste_id) await annulerGeste(data.geste_id)
+          setVue((v) => (v ? versEtape(v, item, placeDe(avant, item.id)?.sectionId ?? null) : v))
+        },
+      })
+    } catch (err) {
+      setVue(avant)
+      setErreur(frenchError(err, 'La tâche n\'a pas été déplacée. Réessaie.'))
+    }
+  }
 
   const poserPriorite = async (projet, valeur) => {
     if (valeur === projet.priorite) return
@@ -228,6 +296,21 @@ export default function Projet() {
     await charger() // le décalage touche des dates partout : une relecture, une fois
   }
 
+  // TCH157 — « Dupliquer » : le double s'ouvre, « Projet créé · Annuler » le supprime ; « Modèle… » enregistre sans quitter l'écran.
+  const duplique = (reponse) => {
+    const retour = vue.projet.id
+    setDialogue(null)
+    proposerAnnuler({
+      message: 'Projet créé',
+      onAnnuler: async () => { if (reponse.geste_id) await annulerGeste(reponse.geste_id); navigate(`/taches/projets/${retour}`) },
+    })
+    navigate(`/taches/projets/${reponse.projet.id}`)
+  }
+  const modeleEnregistre = (modele) => {
+    setDialogue(null)
+    annoncer(`« ${modele.nom} » enregistré comme modèle`)
+  }
+
   const termine = () => {
     setDialogue(null)
     proposerAnnuler({
@@ -251,8 +334,11 @@ export default function Projet() {
   const actionsEcran = projet ? [
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
+    { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
+    { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
+    { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
     { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
@@ -270,21 +356,49 @@ export default function Projet() {
       {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
+          <SelecteurVue vue={vueCode} onChoisir={choisirVue} />
           <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} />
-          <VueListe
-            vue={vue}
-            aujourdhui={aujourdhui}
-            onTerminer={terminer}
-            onOuvrir={(t) => ouvrirFiche(t.id)}
-            onAction={actions.surAction}
-            chargerFaites={chargerFaites}
-            onAjouter={ajouter}
-            onAnnonce={annoncer}
-          />
+          {vueCode === 'tableau' ? (
+            <Tableau
+              vue={vue}
+              aujourdhui={aujourdhui}
+              onDeplacer={deplacerVersEtape}
+              onTerminer={terminer}
+              onOuvrir={(t) => ouvrirFiche(t.id)}
+              onAction={actions.surAction}
+              onAjouter={ajouter}
+              onAnnonce={annoncer}
+            />
+          ) : null}
+          {vueCode === 'chronologie' ? <VueChronologie vue={vue} aujourdhui={aujourdhui} /> : null}
+          {vueCode === 'liste' ? (
+            <VueListe
+              vue={vue}
+              aujourdhui={aujourdhui}
+              onTerminer={terminer}
+              onOuvrir={(t) => ouvrirFiche(t.id)}
+              onAction={actions.surAction}
+              chargerFaites={chargerFaites}
+              onAjouter={ajouter}
+              onAnnonce={annoncer}
+            />
+          ) : null}
         </>
       ) : null}
       {vue && dialogue === 'decaler' ? (
         <DialogueDecaler projet={vue.projet} noms={noms} aujourdhui={aujourdhui} onFait={decale} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'dupliquer' ? (
+        <DialogueUtiliser source={{ type: 'projet', id: vue.projet.id, nom: vue.projet.nom }} etapes={etapesDuProjet(vue)}
+          aujourdhui={aujourdhui} onFait={duplique} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'modele' ? (
+        <DialogueEnregistrerModele projet={vue.projet} vue={vue} onFait={modeleEnregistre} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'burnup' ? (
+        <FeuilleACrans ouverte onFermer={() => setDialogue(null)} titre="Avancement par semaine">
+          <Burnup vue={vue} aujourdhui={aujourdhui} />
+        </FeuilleACrans>
       ) : null}
       {vue && dialogue === 'terminer' ? <DialogueTerminer projet={vue.projet} onFait={termine} onFermer={() => setDialogue(null)} /> : null}
       {vue && dialogue === 'supprimer' ? <DialogueSupprimer projet={vue.projet} onFait={supprime} onFermer={() => setDialogue(null)} /> : null}

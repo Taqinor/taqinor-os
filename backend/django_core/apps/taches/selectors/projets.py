@@ -16,13 +16,14 @@ from django.utils import timezone
 from apps.taches.choix import StatutJour, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
 from apps.taches.models.journee import PlanJour
-from apps.taches.models.projets import RevueProjet
+from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet
 from apps.taches.models.rythme import ReglagesRythme
+from apps.taches.models.taches import ElementChecklist
 from apps.taches.moteur import sante
 from apps.taches.moteur.classement import ItemPur, prochaine_action
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import journee_reussie, semaine_courte
-from apps.taches.selectors.base import jours_travailles_de, projets_de, sections_de, taches_de
+from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
 from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
@@ -249,6 +250,37 @@ def projets_filtres(user, statut=None):
 def projet_de(user, pk):
     """Le projet vivant `pk` de `user`, ou `None` (l'id d'un autre compte répond comme un id inconnu)."""
     return projets_de(user).filter(pk=pk).first()
+
+
+# --- Les modèles de projet -----------------------------------------------------------------------
+
+def modeles_de(user):
+    """Modèles de projet de `user`, dans sa société."""
+    return _du_compte(ModeleProjet.objects, user)
+
+
+def modele_de(user, pk):
+    """Le modèle `pk` de `user`, ou `None` (l'id d'un autre compte répond comme un id inconnu)."""
+    return modeles_de(user).filter(pk=pk).first()
+
+
+def modele_confidentiel(modele):
+    """Vrai quand le projet d'origine du modèle (s'il existe encore) est confidentiel : l'assistant
+    ne lit alors ni son contenu ni son aperçu."""
+    return (modele.cree_depuis_id is not None
+            and Projet.objects.filter(pk=modele.cree_depuis_id, confidentiel=True).exists())
+
+
+def elements_a_figer(user, projet):
+    """`(étapes par rang, tâches par rang, {tâche: libellés de sa check-list})` de `projet` : celles du projet,
+    SAUF les tâches confidentielles par leur propre drapeau (jamais copiées dans un modèle)."""
+    sections = list(sections_de(user).filter(projet=projet).order_by('rang', 'id'))
+    taches = list(taches_de(user).filter(projet=projet, confidentiel=False).order_by('rang_projet', 'id'))
+    listes = {}
+    for tache_id, libelle in (ElementChecklist.objects.filter(company_id=user.company_id, tache__in=taches)
+                              .order_by('rang', 'id').values_list('tache_id', 'libelle')):
+        listes.setdefault(tache_id, []).append(libelle)
+    return sections, taches, listes
 
 
 # --- La vue d'un projet --------------------------------------------------------------------------

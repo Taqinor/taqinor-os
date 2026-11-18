@@ -101,3 +101,115 @@
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
 .tch .ep-revue-boutons { flex-wrap: wrap; }
 .tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
+/* ── Un projet, vues Tableau et Chronologie, burn-up (TCH90) ─────────────── */
+.tch .ep-entre { display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--tch-gouttiere) 4px; }
+.tch .ep-vue-puce { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 10px; border-radius: 999px;
+  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 600; }
+.tch .ep-vue-puce::after { content: ""; position: absolute; inset: -8px -4px; }
+.tch .ep-vue-puce svg { width: 14px; height: 14px; stroke-width: 2.25; }
+.tch .ep-vues { display: none; }
+@media (min-width: 768px) {
+  .tch .ep-vues { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px; padding: 2px; border-radius: 10px; background: var(--tch-panneau); }
+  .tch .ep-vues button { position: relative; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 0.8125rem; font-weight: 500; color: var(--tch-texte-doux); }
+  .tch .ep-vues button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+  .tch .ep-vues button[aria-checked="true"] { background: var(--tch-segment-actif); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs); }
+}
+.tch .ep-onglets-etapes { display: flex; align-items: center; gap: 5px; padding: 14px 12px 2px var(--tch-gouttiere); overflow: hidden; }
+.tch .ep-onglets-etapes button { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 10px;
+  border-radius: 999px; font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux); box-shadow: inset 0 0 0 1px var(--tch-trait); }
+.tch .ep-onglets-etapes button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.tch .ep-onglets-etapes button[aria-selected="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; font-weight: 600; }
+.tch .ep-onglets-compte { margin-left: auto; font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux); white-space: nowrap; }
+.tch .ep-tableau { display: flex; gap: 12px; padding: 10px var(--tch-gouttiere) 0; align-items: flex-start; }
+.tch .ep-col { flex: none; width: calc(100% - 48px); border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); padding: 6px; }
+.tch .ep-col.sur { box-shadow: inset 0 0 0 2px var(--tch-accent); }
+.tch .ep-col-tete { display: none; align-items: baseline; justify-content: space-between; padding: 8px 10px; }
+.tch .ep-col-tete b { font-size: var(--tch-section); font-weight: 650; }
+.tch .ep-col-tete span { font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux); }
+.tch .ep-col .ligne { margin: 0; border-radius: 12px; background: var(--tch-surface); padding-right: 8px; }
+.tch .ep-col .titre { font-size: 1rem; line-height: 1.375rem; }
+.tch .ep-col .meta > span { white-space: normal; }
+.tch .ep-carte { display: flex; align-items: center; margin: 0 0 6px; }
+.tch .ep-carte.saisie { opacity: 0.6; }
+.tch .ep-carte > .liste { flex: 1; min-width: 0; }
+.tch .ep-poignee { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--tch-cible); height: var(--tch-cible);
+  color: var(--tch-texte-doux); touch-action: none; }
+.tch .ep-col-ajout { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tch-cible); padding: 0 10px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); }
+@media (hover: hover) {
+  .tch .ep-col-ajout:hover, .tch .ep-vue-puce:hover { background: var(--tch-survol); }
+}
+@media (min-width: 768px) {
+  .tch .ep-onglets-etapes { display: none; }
+  .tch .ep-tableau { padding: 16px 24px 0; overflow: hidden; }
+  .tch .ep-col { flex: 0 0 264px; }
+  .tch .ep-col-tete { display: flex; }
+}
+/* Chronologie : iPhone, frise verticale par date */
+.tch .ep-frise { position: relative; margin: 14px var(--tch-gouttiere) 0; padding-left: 28px; }
+.tch .ep-frise::before { content: ""; position: absolute; left: 10px; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--tch-piste); }
+.tch .ep-f-item { position: relative; padding-bottom: 16px; }
+.tch .ep-f-item::before { content: ""; position: absolute; left: -23px; top: 6px; width: 12px; height: 12px; border-radius: 999px; background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-texte-doux); }
+.tch .ep-f-item.etape::before { border-radius: 4px; top: 4px; left: -21px; width: 8px; height: calc(100% - 22px); min-height: 16px; background: var(--tch-point); box-shadow: none; }
+.tch .ep-f-item.etape.faite::before { background: var(--tch-piste); }
+.tch .ep-f-item.jalon::before { content: none; }
+.tch .ep-f-item.jalon .ep-f-glyphe { position: absolute; left: -26px; top: 2px; width: 18px; height: 18px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
+.tch .ep-f-item.auj::before { background: var(--tch-accent); box-shadow: 0 0 0 4px var(--tch-accent-doux); }
+.tch .ep-f-item.fin::before { background: var(--tch-texte); box-shadow: none; border-radius: 3px; }
+.tch .ep-f-date { font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte-doux); }
+.tch .ep-f-item.auj .ep-f-date { color: var(--tch-accent); }
+.tch .ep-f-titre { font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; margin-top: 1px; }
+.tch .ep-f-item.etape .ep-f-titre { font-weight: 650; }
+.tch .ep-f-detail { font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); margin-top: 1px; }
+.tch .ep-sans-dates { margin: 6px var(--tch-gouttiere) 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-sans-dates b { color: var(--tch-texte); font-weight: 600; }
+/* Chronologie : bureau, UNE piste, les étapes bout à bout, le jalon au-dessus (pas un Gantt) */
+.tch .ep-frise-h { display: none; }
+@media (min-width: 768px) {
+  .tch .ep-frise { display: none; }
+  .tch .ep-frise-h { display: block; margin: 8px 24px 0; }
+  .tch .ep-fh-axe { position: relative; height: 22px; margin-top: 24px; font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
+  .tch .ep-fh-axe span { position: absolute; top: 0; white-space: nowrap; }
+  .tch .ep-fh-axe span:last-child { transform: translateX(-100%); }
+  .tch .ep-fh-zone { position: relative; padding: 40px 0 14px; box-shadow: inset 0 1px 0 var(--tch-trait); }
+  .tch .ep-fh-jalons { position: relative; height: 30px; }
+  .tch .ep-fh-losange { position: absolute; top: 4px; width: 20px; height: 20px; margin-left: -10px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
+  .tch .ep-fh-etiquette { position: absolute; top: 5px; transform: translateX(calc(-100% - 14px)); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+  .tch .ep-fh-rang { position: relative; height: 44px; }
+  .tch .ep-fh-barre { position: absolute; top: 0; height: 44px; display: flex; align-items: center; padding: 0 10px 0 12px; border-radius: 8px; overflow: hidden; white-space: nowrap;
+    background: var(--tch-bloc-fond); color: var(--tch-bloc-texte); box-shadow: inset 3px 0 0 var(--tch-point); font-size: 0.9375rem; font-weight: 600; }
+  .tch .ep-fh-barre.faite { background: transparent; color: var(--tch-texte-doux); box-shadow: inset 3px 0 0 var(--tch-point), inset 0 0 0 1px var(--tch-trait); }
+  .tch .ep-fh-sous-rang { position: relative; height: 26px; }
+  .tch .ep-fh-sous { position: absolute; top: 6px; padding-left: 12px; font-size: 0.8125rem; color: var(--tch-texte-doux); white-space: nowrap; }
+  .tch .ep-fh-trait { position: absolute; top: 30px; bottom: 40px; width: 2px; margin-left: -1px; z-index: var(--z-base); }
+  .tch .ep-fh-trait.auj { background: var(--tch-accent); }
+  .tch .ep-fh-trait.fin { background: var(--tch-texte); }
+  .tch .ep-fh-trait span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-size: 0.75rem; font-weight: 700; }
+  .tch .ep-fh-trait.auj span { background: var(--tch-accent); color: var(--tch-accent-texte); }
+  .tch .ep-fh-trait.fin span { background: var(--tch-texte); color: var(--tch-surface); }
+}
+/* Avancement par semaine (burn-up) */
+.tch .ep-burnup { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+.tch .ep-burnup svg { width: 100%; height: auto; }
+.tch .ep-burnup .courbe-total { fill: none; stroke: var(--tch-texte-doux); stroke-width: 2; }
+.tch .ep-burnup .courbe-faites { fill: none; stroke: var(--tch-point); stroke-width: 2.5; }
+.tch .ep-burnup-liste { list-style: none; margin: 0; padding: 0; }
+.tch .ep-burnup-liste li { display: flex; justify-content: space-between; gap: 12px; min-height: 40px; align-items: center; font-size: 0.9375rem; }
+.tch .ep-burnup-legende { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+
+/* ── Modèles de projet, Dupliquer, Enregistrer comme modèle (TCH157) ─────── */
+.tch .es-action { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px;
+  border-radius: var(--tch-rayon-puce); background: var(--tch-accent-doux); color: var(--tch-accent);
+  font-size: 0.8125rem; font-weight: 650; white-space: nowrap; }
+.tch .es-action::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--tch-cible)); height: var(--tch-cible); transform: translate(-50%, -50%); }
+.tch .es-action.danger { background: transparent; color: var(--tch-alerte); }
+.tch .ep-modele-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.tch .ep-modele-origine { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .es-etapes-modele { margin-top: 10px; }
+.tch .es-etape-modele { display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 0.9375rem; box-shadow: inset 0 -1px 0 var(--tch-trait); }
+.tch .es-etape-modele:last-child { box-shadow: none; }
+.tch .es-etape-modele span:last-child { color: var(--tch-texte-doux); }
+.tch .es-resume { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ);
+  background: var(--tch-accent-doux); font-size: 0.9375rem; font-weight: 600; }
+.tch .es-resume svg { color: var(--tch-accent); }
+.tch .es-aide { margin: 2px 0 0; font-size: 0.8125rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .ep-reglage { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tch-cible); font-size: 1rem; }

@@ -46,6 +46,7 @@ from apps.taches import agenda_externe as lecteur
 from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
+from apps.taches.models.projets import ModeleProjet
 from apps.taches.models.rythme import IncitationCoach, Preference
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence
 from apps.taches.services.donnees import MODELES, _lignes_du_compte
@@ -290,6 +291,16 @@ CAS_PROJETS = (
         {'issue': 'atteint', 'taches_ouvertes': 'deplacer', 'projet_cible_id': x.P2.pk})),
     Cas('POST', 'projets/{id}/rouvrir/', 'chemin', ('P',), lambda m, x: (f'projets/{x.P.pk}/rouvrir/', None)),
     Cas('POST', 'projets/{id}/restaurer/', 'chemin', ('PD',), lambda m, x: (f'projets/{x.PD.pk}/restaurer/', None)),
+    # TCH64 — dupliquer, modèles.
+    Cas('POST', 'projets/{id}/dupliquer/', 'chemin', ('P',),
+        lambda m, x: (f'projets/{x.P.pk}/dupliquer/', {'nom': 'Double', 'apercu': True})),
+    Cas('POST', 'projets/{id}/enregistrer-modele/', 'chemin', ('P',),
+        lambda m, x: (f'projets/{x.P.pk}/enregistrer-modele/', {'nom': 'Modèle neuf'})),
+    Cas('GET', 'modeles/{id}/', 'chemin', ('M',), lambda m, x: (f'modeles/{x.M.pk}/', None)),
+    Cas('PATCH', 'modeles/{id}/', 'chemin', ('M',), lambda m, x: (f'modeles/{x.M.pk}/', {'nom': 'Renommé'})),
+    Cas('DELETE', 'modeles/{id}/', 'chemin', ('M',), lambda m, x: (f'modeles/{x.M.pk}/', None)),
+    Cas('POST', 'modeles/{id}/instancier/', 'chemin', ('M',),
+        lambda m, x: (f'modeles/{x.M.pk}/instancier/', {'nom': 'Salon 2027', 'apercu': True})),
     Cas('POST', 'sections/', 'projet_id', ('P',),
         lambda m, x: ('sections/', {'projet_id': x.P.pk, 'nom': 'Étape neuve'})),
     Cas('PATCH', 'sections/{id}/', 'chemin', ('S1',), lambda m, x: (f'sections/{x.S1.pk}/', {'nom': 'Renommée'})),
@@ -320,6 +331,7 @@ SANS_ID = {
     ('GET', 'supprimees/'): lambda m: ('supprimees/', None),
     ('GET', 'gestes/'): lambda m: ('gestes/', None),
     ('GET', 'projets/'): lambda m: ('projets/', None),
+    ('GET', 'modeles/'): lambda m: ('modeles/', None),  # TCH64 : les modèles du compte
     ('POST', 'projets/'): lambda m: ('projets/', {'nom': 'Projet neuf'}),
     ('POST', 'projets/trier-par-priorite/'): lambda m: ('projets/trier-par-priorite/', None),
     ('GET', 'revue/projets/'): lambda m: ('revue/projets/', None),
@@ -366,6 +378,13 @@ def _monde(compte, jour):
     m.P, m.P2, m.PD = fabriques.projet(compte), fabriques.projet(compte), fabriques.projet(compte)
     m.PD.soft_delete(compte, record=False)
     m.S1, m.S2 = fabriques.section(m.P), fabriques.section(m.P)
+    m.M = ModeleProjet.objects.create(  # TCH64 : un modèle v1 (une étape, une tâche)
+        company=societe, proprietaire=compte, nom='Salon', cree_depuis=m.P, contenu={
+            'v': 1, 'objectif': 'Stand monté', 'priorite': 2,
+            'sections': [{'nom': 'Préparation', 'decalage_debut': 0, 'decalage_fin': 14}],
+            'taches': [{'titre': 'Réserver le stand', 'section_index': 0, 'priorite': 3, 'jalon': False,
+                        'decalage_jour': 0, 'decalage_echeance': 5, 'parent_index': None,
+                        'bloquee_par_index': None, 'checklist': []}]})
     m.T = fabriques.tache(compte, projet=m.P, jour_prevu=jour)
     m.T2 = fabriques.tache(compte, projet=m.P, jour_prevu=jour)
     m.T3 = fabriques.tache(compte, projet=m.P, section=m.S1)

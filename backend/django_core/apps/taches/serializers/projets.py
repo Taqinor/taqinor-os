@@ -208,6 +208,35 @@ class DecalerSerializer(serializers.Serializer):
     apercu = serializers.BooleanField(required=False, default=True)
 
 
+class DupliquerSerializer(serializers.Serializer):
+    """POST projets/{id}/dupliquer/ — `{nom, date_debut?, apercu}` (sans `apercu`, rien n'est écrit)."""
+
+    nom = _texte(120)
+    date_debut = serializers.DateField(required=False, allow_null=True)
+    apercu = serializers.BooleanField(required=False, default=True)
+
+
+class EnregistrerModeleSerializer(serializers.Serializer):
+    """POST projets/{id}/enregistrer-modele/ — `{nom, inclure_notes}` (notes exclues par défaut)."""
+
+    nom = _texte(120)
+    inclure_notes = serializers.BooleanField(required=False, default=False)
+
+
+class ModeleModificationSerializer(serializers.Serializer):
+    """PATCH modeles/{id}/ — le nom seul."""
+
+    nom = _texte(120)
+
+
+class ModeleInstancierSerializer(serializers.Serializer):
+    """POST modeles/{id}/instancier/ — `{nom, date_lancement?, apercu}` (sans `apercu`, rien n'est écrit)."""
+
+    nom = _texte(120)
+    date_lancement = serializers.DateField(required=False, allow_null=True)
+    apercu = serializers.BooleanField(required=False, default=True)
+
+
 class RevueDecisionSerializer(serializers.Serializer):
     """PUT revue/projets/{projet_id}/ — la décision d'une carte (`terminer` exige `issue`)."""
 
@@ -280,6 +309,38 @@ def planification_rendue(user, resultat, ctx):
 
 def decalage_rendu(changements, geste):
     return {'changements': changements, 'geste_id': geste.pk if geste is not None else None}
+
+
+class ModeleListeSerializer(serializers.Serializer):
+    """Une ligne de `modeles_liste.json` : le modèle et ce que son contenu figé porte."""
+
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    nb_taches = serializers.SerializerMethodField()
+    nb_sections = serializers.SerializerMethodField()
+
+    def get_nb_taches(self, modele):
+        return len(modele.contenu.get('taches', ()))
+
+    def get_nb_sections(self, modele):
+        return len(modele.contenu.get('sections', ()))
+
+
+class ModeleSerializer(serializers.Serializer):
+    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`)."""
+
+    id = serializers.IntegerField()
+    nom = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    contenu = serializers.JSONField()
+
+
+def modele_apercu(plan):
+    """`modele_instancier.json` : le projet à créer, ses étapes et ses tâches DATÉES ; rien n'est écrit."""
+    return {'projet': {'nom': plan['projet']['nom']}, 'sections': plan['sections'],
+            'taches': [{cle: tache[cle] for cle in ('titre', 'jour_prevu', 'echeance')} for tache in plan['taches']],
+            'geste_id': None}
 
 
 def poser_calculs_d_items(user, taches, etat, ctx):
