@@ -166,4 +166,25 @@ describe('InstallationDetail — ACHT3 gestes refusés masqués', () => {
     expect(await screen.findByRole('option', { name: 'Pose spéciale' })).toBeInTheDocument()
     lecture.mockRestore()
   })
+
+  // ADRG150 — `POST sav/tickets/` exige `sav_gerer` : le formulaire d'ouverture suit ce droit.
+  it('sans sav_gerer : pas de « Ouvrir un ticket »', async () => {
+    const user = userEvent.setup()
+    const OUVRIR = { name: 'Ouvrir un ticket' }
+    for (const [id, auth] of [
+      [15, { role: 'normal', role_nom: 'Commercial', permissions: ['ventes_voir', 'ventes_creer', 'crm_voir'] }],
+      [16, { role: 'normal', role_nom: 'Viewer', permissions: ['ventes_voir', 'installation_voir'] }],
+    ]) {
+      rendre({ id, reference: `CH-${id}`, statut: 'installe', annule: false }, auth)
+      await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
+      expect(await screen.findByText(/Le suivi détaillé \(interventions, historique\)/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', OUVRIR)).toBeNull()
+      expect(screen.queryByLabelText('Équipement concerné')).toBeNull()
+      cleanup()
+    }
+    rendre({ id: 17, reference: 'CH-17', statut: 'installe', annule: false },
+      { role: 'responsable', role_nom: 'Technicien responsable', permissions: ['installation_voir', 'installation_gerer', 'sav_gerer'] })
+    await user.click(await screen.findByRole('tab', { name: /Interventions/ }))
+    expect(await screen.findByRole('button', OUVRIR)).toBeInTheDocument()
+  })
 })

@@ -178,6 +178,34 @@ class GedPermissionContractTests(TestCase):
             self.assertEqual(auth(c2).get(
                 f'{BASE}/documents/{doc.pk}/').status_code, 404)
 
+    def test_lectures_rattachees_sous_le_droit_du_module(self):
+        """ALEC57 — validations OCR et annotations suivent la règle des
+        documents (ALEC18) : sans code ``ged_*`` 403 ; le Commercial 200."""
+        from apps.ged.models import (
+            AnnotationDocument, DocumentVersion, ValidationOcrDocument)
+        terrain = self._role_livre('Commercial terrain', 'alec57-terrain')
+        utilisateur = self._role_livre('Utilisateur', 'alec57-util')
+        commercial = self._role_livre('Commercial', 'alec57-c')
+        validation = ValidationOcrDocument.objects.create(
+            company=self.co, document=self.doc, score_confiance=0.4)
+        version = DocumentVersion.objects.create(
+            company=self.co, document=self.doc, version=1,
+            file_key='attachments/alec57.pdf', filename='alec57.pdf',
+            size=1, mime='application/pdf')
+        annotation = AnnotationDocument.objects.create(
+            company=self.co, version=version, contenu='Vu')
+        for path, ligne in (('validations-ocr/', validation.pk),
+                            ('annotations/', annotation.pk)):
+            with self.subTest(path=path):
+                for user in (terrain, utilisateur):
+                    self.assertEqual(
+                        auth(user).get(f'{BASE}/{path}').status_code, 403,
+                        user.username)
+                resp = auth(commercial).get(f'{BASE}/{path}')
+                self.assertEqual(resp.status_code, 200)
+                rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+                self.assertEqual([r['id'] for r in rows], [ligne])
+
     # ── ALEC42/ALEC43 — demandes de signature et leurs destinataires ────────
     def _demande_deux_signataires(self):
         from django.utils import timezone

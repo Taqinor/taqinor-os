@@ -1,0 +1,9 @@
+# rejeu sur runner GitHub (2026-11-18T04:56:36Z), sha ca496bcf0157f86e28839a13de8cb45b3f034c93, conteneur 1991f49e5c1ef53e1a3740fbdced126b227d6244a9f9ce88552e04fd70d507fa (pile compose, .env = .env.example)
+# commande : python scripts/sonde.py ACNC/C-ACNC-006 --conteneur <django_core>
+
+== C-ACNC-006 (sha 3acfee471)
+attendu : 1 000 -> 1 100 -> 1 210 au second envoi ; après panne au 3e produit puis nouvel essai : certains produits à +21 %, d'autres à +10 %
+observé : {"repro": true, "observe": {"methode": "rejeu (vraie vue bulk + vrai _avec_idempotence + vraie apply_product_bulk extraites par ast, faux ORM, faux atomic qui annule)", "route": "POST produits/bulk/ op=set_price mode=percent valeur=10", "prix_produit_1": {"initial": "1000.00", "apres_envoi_1": "1100.00", "apres_envoi_2_meme_corps": "1100.00"}, "panne_au_3e_produit": {"etat_apres_panne": {"1": "1100.00", "2": "2200.00", "3": "500.00", "4": "800.00"}, "etat_apres_nouvel_essai": {"1": "1210.00", "2": "2420.00", "3": "550.00", "4": "880.00"}}, "rejeu_donne_plus_21_pour_cent": false, "catalogue_incoherent_apres_panne_et_essai": true}}
+verdict : REPRO
+base inchangée : oui (avant 4183, après 4183) ; mails 0 ; tâches Celery bloquées 0
+# code de sortie de sonde.py : 0 (1 est attendu quand repro est faux : verdict ECART)

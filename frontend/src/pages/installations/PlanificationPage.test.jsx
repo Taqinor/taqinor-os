@@ -103,7 +103,7 @@ describe('VX251 · onglet dispatch (glisser-déposer)', () => {
 
   it('rend des cartes intervention déplaçables + l’invite de réaffectation', async () => {
     calendrier()
-    renderPage('responsable', ['technicien_assign'])
+    renderPage('responsable', ['installation_voir', 'technicien_assign'])
     // Bascule sur l'onglet « Calendrier techniciens ».
     await userEvent.click(screen.getByText('Calendrier techniciens'))
     await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())
@@ -116,10 +116,28 @@ describe('VX251 · onglet dispatch (glisser-déposer)', () => {
   // ADRG21 — glisser une carte change son technicien : `technicien_assign`.
   it('sans technicien_assign : cartes non glissables, lecture seule', async () => {
     calendrier()
-    renderPage('normal', ['installation_gerer', 'intervention_gerer'])
+    renderPage('normal', ['installation_voir', 'installation_gerer', 'intervention_gerer'])
     await userEvent.click(screen.getByText('Calendrier techniciens'))
     await waitFor(() => expect(screen.getByText(/Assigner techniciens/)).toBeInTheDocument())
     expect(screen.queryByText(/Glissez une intervention vers un autre technicien/)).toBeNull()
     expect(screen.queryByLabelText(/Déplacer l'intervention CH-010/)).toBeNull()
+  })
+})
+
+// ADRG151 — calendrier, tournée et plan de charge : lecture du module (`installation_voir`).
+describe('PlanificationPage — droit de lecture du module (ADRG151)', () => {
+  it('Commercial responsable : aucun GET calendrier, tournée ni plan de charge', async () => {
+    renderPage('responsable', ['crm_voir', 'crm_modifier', 'ventes_voir', 'ventes_creer'])
+    await userEvent.click(screen.getByText('Ma tournée'))
+    await userEvent.click(screen.getByText('Plan de charge'))
+    await userEvent.click(screen.getByText('Calendrier techniciens'))
+    expect(api.getCalendrierInterventions).not.toHaveBeenCalled()
+    expect(api.getMaTournee).not.toHaveBeenCalled()
+    expect(api.getPlanDeCharge).not.toHaveBeenCalled()
+  })
+
+  it('Technicien responsable : le calendrier est chargé', async () => {
+    renderPage('responsable', ['installation_voir', 'installation_gerer', 'intervention_gerer'])
+    await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())
   })
 })

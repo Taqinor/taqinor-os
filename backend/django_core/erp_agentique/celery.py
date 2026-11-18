@@ -367,8 +367,8 @@ app.conf.beat_schedule = {
     # 1er du mois 08:00 Africa/Casablanca.
     'ventes-releve-mensuel-reminders': {
         'task': 'ventes.releve_mensuel_reminders',
-        # AMSG43 — 1er jour ouvré parmi 1-3 (marqueur mensuel : un seul envoi).
-        'schedule': crontab(hour=8, minute=30, day_of_month='1-3',
+        # AMSG43 / AMSG107 — 1er jour ouvré parmi 1-7 (marqueur mensuel : un seul envoi).
+        'schedule': crontab(hour=8, minute=30, day_of_month='1-7',
                             day_of_week='mon-fri'),  # AMSG44
     },
     # XFSM6 — rappel client J-1 (interventions non confirmées, demain).

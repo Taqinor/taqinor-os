@@ -30,8 +30,14 @@ from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
 User = get_user_model()
 TEMOIN = '+212661909901'
 FRAGMENT = '661909901'
+CIN = 'AB123456'
 LEADS = '/api/django/crm/leads/'
 CLIENTS = '/api/django/crm/clients/'
+
+
+def _en_tetes(response):
+    classeur = load_workbook(io.BytesIO(response.content))
+    return [c.value for c in next(classeur.active.iter_rows(max_row=1))]
 
 
 def _cellules(response):
@@ -60,7 +66,7 @@ class PiiVuesTests(TestCase):
             role=sans_pii)
         self.client_c = Client.objects.create(
             company=self.company, nom='Temoin', prenom='Client',
-            telephone=TEMOIN, email='temoin-acrm4@example.com')
+            telephone=TEMOIN, email='temoin-acrm4@example.com', cin=CIN)
         self.lead = Lead.objects.create(
             company=self.company, nom='Temoin', prenom='Un',
             telephone=TEMOIN, email='temoin-acrm4@example.com',
@@ -136,6 +142,9 @@ class PiiVuesTests(TestCase):
             self.assertIn('Temoin', texte, nom)
             self.assertNotIn(FRAGMENT, texte, nom)
             self.assertNotIn('Téléphone', texte, nom)
+        # ALEC54 — la CIN suit la même règle : ni l'en-tête ni la valeur.
+        self.assertNotIn('CIN', _en_tetes(clients))
+        self.assertNotIn(CIN, _cellules(clients))
 
     def test_whatsapp_devis_refuse(self):
         api = self._api(self.masque)
@@ -162,6 +171,8 @@ class PiiVuesTests(TestCase):
         api = self._api(self.complet)
         resp = api.post(f'{CLIENTS}export-xlsx/', {}, format='json')
         self.assertIn(FRAGMENT, _cellules(resp))
+        self.assertIn('CIN', _en_tetes(resp))
+        self.assertIn(CIN, _cellules(resp))
         resp = api.post(f'{LEADS}export-xlsx/', {'ids': [self.lead_c.pk]},
                         format='json')
         self.assertIn(FRAGMENT, _cellules(resp))

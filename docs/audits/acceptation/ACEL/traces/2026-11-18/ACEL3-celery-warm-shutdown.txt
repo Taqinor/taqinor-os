@@ -1,0 +1,30 @@
+# ACEL3 — runner GitHub 2026-11-18T04:48:32Z, sha ca496bcf0157f86e28839a13de8cb45b3f034c93, pile compose (.env = .env.example)
+## /proc/1/cmdline AVANT
+/usr/local/bin/python3.11 /usr/local/bin/celery -A erp_agentique worker -l info -Q default,scheduled,bulk 
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+## tâche d'essai acel3_essai_dormir(150) envoyée : f0a34bdb-0841-4984-9e0e-2af131050881
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+## état à t+20 s : PENDING
+## docker compose up -d --force-recreate celery_worker (04:48:56)
+ Container erp-agentique-redis-1 Healthy 
+ Container erp-agentique-celery_worker-1 Starting 
+ Container erp-agentique-celery_worker-1 Started 
+## recréé à 04:51:07
+/app/erp_agentique/settings/base.py:43: UserWarning: SECRET_KEY par défaut détectée. Générez une vraie clé avec :
+  python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+  warnings.warn(
+## état final : SUCCESS (04:51:10)
+## exécutions de la tâche dans les journaux (une seule attendue) :
+1
+## journal de l'ANCIEN conteneur (capturé avant la recréation) :
+  . core.acel3_essai_dormir
+[2026-11-18 05:48:33,989: INFO/MainProcess] Task core.acel3_essai_dormir[f0a34bdb-0841-4984-9e0e-2af131050881] received
+worker: Warm shutdown (MainProcess)
+[2026-11-18 05:51:03,996: INFO/ForkPoolWorker-4] Task core.acel3_essai_dormir[f0a34bdb-0841-4984-9e0e-2af131050881] succeeded in 150.0031648920003s: 150
+## journal du NOUVEAU conteneur :
+## /proc/1/cmdline APRÈS
+/usr/local/bin/python3.11 /usr/local/bin/celery -A erp_agentique worker -l info -Q default,scheduled,bulk 

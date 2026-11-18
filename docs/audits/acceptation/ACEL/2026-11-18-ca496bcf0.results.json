@@ -1,0 +1,59 @@
+{
+  "sha": "ca496bcf0157f86e28839a13de8cb45b3f034c93",
+  "date": "2026-11-18",
+  "groupe": "ACEL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACEL3",
+    "ACEL8"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "COMPOSE-ACEL8-i18n-celery-worker",
+      "taches": [
+        "ACEL8"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-18/ACEL8-i18n-celery-worker.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (.env = .env.example), jamais la production ; `docker compose exec celery_worker python manage.py shell -c recalculer_couverture_i18n_task()` puis relu : I18nCoverageSnapshot semaine 2026-11-16, composants 246"
+    },
+    {
+      "id": "COMPOSE-ACEL3-warm-shutdown",
+      "taches": [
+        "ACEL3"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ACEL/traces/2026-11-18/ACEL3-celery-warm-shutdown.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "runner GitHub ubuntu-latest, pile docker compose (.env = .env.example), jamais la production, run https://github.com/Taqinor/taqinor-os/actions/runs/44225838060 ; tâche d'essai acel3_essai_dormir(150) (limites propres 170/179 s, ajoutée au seul checkout du runner) en cours, puis `docker compose up -d --force-recreate celery_worker` : « worker: Warm shutdown » au journal de l'ancien conteneur, tâche « succeeded in 150 s » avant l'arrêt, état final SUCCESS, exécutions 1 ; /proc/1/cmdline avant et après « /usr/local/bin/python3.11 /usr/local/bin/celery -A erp_agentique worker -l info -Q default,scheduled,bulk » (Celery = PID 1, lancé par exec) ; non-ré-exécution une heure plus tard : message acquitté au succès (acks_late), une seule exécution au journal — l'heure d'après n'est pas observable dans le temps du job. Verdict recalculé par l'orchestrateur depuis la même trace : le rédacteur du runner exigeait une ligne qui COMMENCE par « celery », alors que PID 1 est « python3.11 /usr/local/bin/celery … » (le script celery, nommé)"
+    }
+  ]
+}

@@ -68,6 +68,21 @@ describe('ClientRgpdActions (WR9/FG26)', () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
 
+  it('refus 409 : motif dans la boîte, onChanged non appelé (ASUP70, D-ASUP-8)', async () => {
+    const detail = 'Anonymisation refusée : ce client doit encore 1 080,00 MAD sur ses factures émises. '
+      + 'Encaissez le solde, ou soldez-le par un avoir ou un abandon de créance, puis recommencez.'
+    crmApi.anonymizeClient.mockRejectedValueOnce({ response: { status: 409, data: { detail } } })
+    const onChanged = vi.fn()
+    renderWithRole('admin', { id: 7, is_anonymized: false }, { onChanged })
+    fireEvent.click(screen.getByRole('button', { name: /Anonymiser \(RGPD\)/ }))
+    expect(await screen.findByText(/doit encore de l'argent sur une facture émise/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Anonymiser définitivement' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(detail)
+    expect(screen.getByText('Anonymiser ce client ?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Anonymiser définitivement' })).toBeDisabled()
+    expect(onChanged).not.toHaveBeenCalled()
+  })
+
   it('client déjà anonymisé : pas de bouton anonymiser, mention affichée', () => {
     renderWithRole('admin', { id: 7, is_anonymized: true })
     expect(screen.queryByRole('button', { name: /Anonymiser/ })).not.toBeInTheDocument()

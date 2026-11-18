@@ -9,6 +9,7 @@ import { Download, Search, FileBarChart } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import { downloadBlob } from '../../utils/downloadBlob'
+import { useHasPermission } from '../../hooks/useHasPermission'
 // VX186 — `MapView` (leaflet) en `lazy` : `escapeHtml` (fonction pure) reste
 // statique, seul le COMPOSANT porte le poids de leaflet — la vue « carte »
 // n'est qu'une bascule parmi d'autres, souvent jamais ouverte.
@@ -150,6 +151,7 @@ export default function ParcInstallePage() {
   const [selected, setSelected] = useState(null)
   const [rapportFor, setRapportFor] = useState(null)
   const [view, setView] = useState('liste')
+  const peutExporter = useHasPermission('installation_export')
   const [filters, setFilters] = useState({
     q: '', ville: '', marque: '', band: '', annee: '',
     regime: '', dossier: '', garantie: '',
@@ -317,9 +319,9 @@ export default function ParcInstallePage() {
         </h1>
         <div className="page-subtitle">{rows.length} système(s) installé(s)</div>
         <div className="page-header-actions flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={() => handleExport(rows)}>
+          {peutExporter && <Button type="button" size="sm" variant="outline" onClick={() => handleExport(rows)}>
             <Download /> Exporter Excel
-          </Button>
+          </Button>}
           <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },
@@ -446,6 +448,7 @@ export default function ParcInstallePage() {
             onRowClick={(row) => setSelected(row)}
             onExport={handleExport}
             exportName="parc-installe"
+            codeExport="installation_export"
             pageSize={25}
             emptyTitle="Aucun système installé"
             emptyDescription="Aucun système ne correspond aux filtres."

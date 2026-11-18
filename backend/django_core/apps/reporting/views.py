@@ -13,7 +13,7 @@ from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ADRG73
 from core.analytics_db import analytics_queryset
 from .metriques_ca import _part_ht  # ASOC73 — déplacé (1 définition)
-from .services import borner_portee  # ALEC22 — portée du rôle
+from .services import borner_portee, portee_du_role  # ALEC22 / ALEC55 — portée du rôle
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
@@ -192,7 +192,7 @@ def dashboard(request):
     from apps.ventes.selectors import taux_acceptation_periode
     fin_t = _qdate(request.query_params.get('to')) or date.today()
     debut_t = _qdate(request.query_params.get('from')) or fin_t - timedelta(days=365)
-    taux_acc = taux_acceptation_periode(co.get('company'), debut_t, fin_t)
+    taux_acc = taux_acceptation_periode(co.get('company'), debut_t, fin_t, portee_du_role(request.user))  # ALEC55
 
     # ── Stock critique (produits sous seuil, seuil > 0) ───────────────────────
     from django.db.models import F

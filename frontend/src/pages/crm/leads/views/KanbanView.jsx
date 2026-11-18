@@ -383,7 +383,7 @@ export default function KanbanView({
   const handleDragEnd = async ({ active, over }) => {
     setActiveLead(null)
     const lead = active.data.current?.lead
-    if (!lead || !over || over.id === lead.stage) return
+    if (!lead || !over || over.id === lead.stage || !onChangeStage) return
     // LB4 — garde-fou UI : MÊME règle que le serveur (isStageMoveAllowed,
     // miroir _bulk_stage_allowed, stages.js). Bug #7 (recon2-03) : l'ancien
     // `stageRank` local classait COLD au rang le plus HAUT → tout drag
@@ -526,7 +526,7 @@ export default function KanbanView({
                       onAutoQuote={onAutoQuote}
                       users={users}
                       // EZ14 — réassignation et étape passent par l'undo.
-                      onReassign={reassignAvecUndo}
+                      onReassign={onReassign ? reassignAvecUndo : undefined}
                       selected={selected.has(lead.id)}
                       selectionActive={selected.size > 0}
                       onToggleSelect={onToggleSelect}

@@ -45,11 +45,11 @@ vi.mock('../../../api/crmApi', () => ({
 import InstallationsPage from '../InstallationsPage'
 import { polyfillResizeObserver } from '../../../test/selectNatif'
 
-const rendre = () => render(
+const rendre = (auth = { user: { id: 1 } }) => render(
   <Provider store={configureStore({
     reducer: {
       installations: installationsReducer,
-      auth: (s = { user: { id: 1 } }) => s,
+      auth: (s = auth) => s,
       stock: (s = { produits: [] }) => s,
     },
   })}>
@@ -86,5 +86,20 @@ describe('ListView — action groupée ACHT64', () => {
     expect(bilan).not.toHaveTextContent(/3 chantier\(s\) mis à jour/)
     expect(serveur.patchs).toHaveLength(3)
     await waitFor(() => expect(serveur.lectures - lecturesAvant).toBe(1))
+  })
+
+  // ADRG149 — le « Exporter » du tableau suit la case `installation_export`.
+  it('sans installation_export : pas de bouton Exporter du tableau', async () => {
+    rendre({ user: { id: 1 }, role: 'responsable', role_nom: 'Commercial responsable',
+      permissions: ['ventes_voir', 'ventes_creer', 'crm_voir', 'crm_modifier'] })
+    await waitFor(() => expect(screen.getAllByText('CH-A1').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: /Exporter/ })).not.toBeInTheDocument()
+  })
+
+  it('avec installation_export : le bouton Exporter du tableau est présent', async () => {
+    rendre({ user: { id: 1 }, role: 'responsable', role_nom: 'Directeur',
+      permissions: ['ventes_voir', 'installation_export', 'installation_gerer'] })
+    await waitFor(() => expect(screen.getAllByText('CH-A1').length).toBeGreaterThan(0))
+    expect(screen.getAllByRole('button', { name: /Exporter/ }).length).toBeGreaterThan(0)
   })
 })

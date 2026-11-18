@@ -3926,10 +3926,10 @@ class ValidationOcrDocumentViewSet(CorpsObjetMixin, TenantMixin, mixins.ListMode
 
     def get_permissions(self):
         # ADOC9 — valider une extraction écrit les métadonnées du document :
-        # palier ged_gerer (la lecture de la file reste ouverte).
+        # palier ged_gerer (la lecture : droit du module GED, ALEC57).
         if self.action == 'valider':
             return [HasPermissionOrLegacy(GED_GERER)()]
-        return [IsAnyRole()]
+        return [LectureDuModule()]  # ALEC57 — droit du module GED
 
     def get_queryset(self):
         # ADOC3 — validations des seuls documents visibles de l'appelant.
@@ -3980,7 +3980,7 @@ class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'tampons':
-            return [IsAnyRole()]
+            return [LectureDuModule()]  # ALEC57 — droit du module GED
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):

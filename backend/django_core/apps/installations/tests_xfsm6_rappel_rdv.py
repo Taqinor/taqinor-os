@@ -89,7 +89,8 @@ class TestRappelRdvJ1(TestCase):
         self.user = make_user(self.company)
         self.inst = make_chantier(self.company, self.user)
         self.demain = casablanca_today() + timedelta(days=1)
-        if self._testMethodName != 'test_fenetre_et_jours_ouvres':  # AMSG72 — la vraie fenêtre y est jouée
+        if self._testMethodName not in (  # AMSG72 / AMSG106 — la vraie fenêtre y est jouée
+                'test_fenetre_et_jours_ouvres', 'test_ouverture_tardive_rappel_jamais_perdu'):
             ouvrir_la_fenetre(self)
 
     def test_cible_exactement_j1_non_confirmees(self):
@@ -270,6 +271,43 @@ class TestRappelRdvJ1(TestCase):
         self.assertEqual(result['cibles'], 0)
         self.assertEqual(result['wa_generes'], 0)
         self.assertEqual(result['emails_envoyes'], 0)
+
+    def test_ouverture_tardive_rappel_jamais_perdu(self):
+        """AMSG106 — ouverture à 10:00 le jour même (> 90 min après 07:45) :
+        reprise relais à `min(ouverture, now + visibility_timeout − 600 s)` qui
+        relit la fenêtre et se reprogramme ; à 10:00 le rappel part."""
+        from zoneinfo import ZoneInfo
+
+        from django.conf import settings
+        from freezegun import freeze_time
+
+        from apps.notifications.selectors import FenetreNotifications
+        casa = ZoneInfo('Africa/Casablanca')  # jamais un UTC codé en dur
+        delai = timedelta(
+            seconds=settings.CELERY_BROKER_TRANSPORT_OPTIONS['visibility_timeout'] - 600)
+        pose = Intervention.objects.create(
+            company=self.company, installation=self.inst, type_intervention='pose',
+            created_by=self.user, date_prevue=date(2027, 2, 19), rdv_confirme=False)
+        matin = datetime(2027, 2, 18, 7, 45, tzinfo=casa)  # jeudi
+        ouverture = datetime(2027, 2, 18, 10, 0, tzinfo=casa)
+        kwargs = {'company_id': self.company.pk, 'jours_cibles': ['2027-02-19']}
+        with AVEC_CLE, mock.patch.object(rappel_rdv_j1, 'apply_async') as differee:
+            with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                            lambda company, maintenant=None: FenetreNotifications(False, ouverture)):
+                with freeze_time(matin):
+                    self.assertEqual(rappel_rdv_j1()['cibles'], 0)
+                differee.assert_called_once_with(kwargs=kwargs, eta=matin + delai)
+                differee.reset_mock()
+                with freeze_time(matin + delai):  # la reprise relit la fenêtre : fermée
+                    self.assertEqual(rappel_rdv_j1(**kwargs)['cibles'], 0)
+                differee.assert_called_once_with(kwargs=kwargs, eta=ouverture)
+            self.assertEqual(len(mail.outbox), 0)
+            with mock.patch('apps.notifications.selectors.fenetre_notifications',
+                            lambda company, maintenant=None: FenetreNotifications(True, ouverture)), \
+                    freeze_time(ouverture):
+                self.assertEqual(rappel_rdv_j1(**kwargs)['cibles'], 1)
+        pose.refresh_from_db()
+        self.assertIsNotNone(pose.rappel_j1_traite_le)
 
     def test_fenetre_et_jours_ouvres(self):
         """AMSG72 (D-AMSG-1) — société L–V : vendredi 07:45 rien ne part, reprise
