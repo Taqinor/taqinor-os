@@ -47,7 +47,9 @@ from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeInc
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import IncitationCoach, Preference
-from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence
+from apps.taches.models.taches import (
+    ElementChecklist, Etiquette, EtiquetteTache, Rappel, RegleRecurrence, VueEnregistree,
+)
 from apps.taches.services.donnees import MODELES, _lignes_du_compte
 from apps.taches.tests import fabriques
 from apps.taches.tests.test_routes import PREFIXE, ROUTES, est_construite
@@ -262,6 +264,19 @@ CAS_DETAILS = (
     Cas('POST', 'suggestions/{id}/accepter/', 'chemin', ('SG',),
         lambda m, x: (f'suggestions/{x.SG.pk}/accepter/', {})),
     Cas('POST', 'suggestions/{id}/refuser/', 'chemin', ('SG',), lambda m, x: (f'suggestions/{x.SG.pk}/refuser/', None)),
+    # TCH156 — étiquettes et vues enregistrées ; les ids reçus dans les filtres d'une vue sont ceux du compte.
+    Cas('PATCH', 'etiquettes/{id}/', 'chemin', ('E',), lambda m, x: (f'etiquettes/{x.E.pk}/', {'nom': 'Renommée'})),
+    Cas('DELETE', 'etiquettes/{id}/', 'chemin', ('E',), lambda m, x: (f'etiquettes/{x.E.pk}/', None)),
+    Cas('PATCH', 'vues/{id}/', 'chemin', ('V',), lambda m, x: (f'vues/{x.V.pk}/', {'nom': 'Renommée'})),
+    Cas('PATCH', 'vues/{id}/', 'filtres.projets', ('P',),
+        lambda m, x: (f'vues/{m.V.pk}/', {'filtres': {'projets': [x.P.pk]}})),
+    Cas('PATCH', 'vues/{id}/', 'filtres.etiquettes', ('E',),
+        lambda m, x: (f'vues/{m.V.pk}/', {'filtres': {'etiquettes': [x.E.pk]}})),
+    Cas('DELETE', 'vues/{id}/', 'chemin', ('V',), lambda m, x: (f'vues/{x.V.pk}/', None)),
+    Cas('POST', 'vues/', 'filtres.projets', ('P',),
+        lambda m, x: ('vues/', {'nom': 'Neuve', 'filtres': {'projets': [x.P.pk]}})),
+    Cas('POST', 'vues/', 'filtres.etiquettes', ('E',),
+        lambda m, x: ('vues/', {'nom': 'Neuve', 'filtres': {'etiquettes': [x.E.pk]}})),
 )
 
 CAS_PROJETS = (
@@ -347,6 +362,10 @@ SANS_ID = {
     ('GET', 'journee/priorites/'): lambda m: ('journee/priorites/', None),
     ('GET', 'journee/point/'): lambda m: ('journee/point/', None),
     ('GET', 'suggestions/'): lambda m: ('suggestions/', None),  # TCH72 : les suggestions du compte
+    ('GET', 'etiquettes/'): lambda m: ('etiquettes/', None),  # TCH156 : les étiquettes du compte
+    ('POST', 'etiquettes/'): lambda m: ('etiquettes/', {'nom': 'Neuve'}),
+    ('GET', 'vues/'): lambda m: ('vues/', None),
+    ('POST', 'vues/'): lambda m: ('vues/', {'nom': 'Neuve'}),
 }
 #: Écritures sans id d'une route qui en reçoit aussi (même vérification que `SANS_ID`).
 AUSSI_SANS_ID = (
@@ -374,6 +393,7 @@ def _monde(compte, jour):
     m.D.soft_delete(compte, record=False)
     m.E = Etiquette.objects.create(company=societe, proprietaire=compte, nom='magasin')
     EtiquetteTache.objects.create(company=societe, tache=m.T, etiquette=m.E)
+    m.V = VueEnregistree.objects.create(company=societe, proprietaire=compte, nom='Haute', filtres={'tri': 'priorite'})
     m.C1 = ElementChecklist.objects.create(company=societe, tache=m.T, libelle='Prix', rang=1024)
     m.C2 = ElementChecklist.objects.create(company=societe, tache=m.T, libelle='Quantités', rang=2048)
     m.R = RegleRecurrence.objects.create(company=societe, proprietaire=compte, frequence=Frequence.HEBDO,
