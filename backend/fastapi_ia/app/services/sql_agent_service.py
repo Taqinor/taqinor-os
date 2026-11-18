@@ -1825,12 +1825,12 @@ class SQLAgentService:
         user_id: int | None = None,
         company_id: int | None = None,
         action_ctx: "ActionContext | None" = None,
-        contexte: dict | None = None,
+        contexte: dict | None = None, images: list | None = None,
     ) -> dict[str, Any]:
         """AIC6 — toute reponse (succes, erreur, repli) est journalisee.
         AIC9 — `contexte` {ecran, lead_id} voyage jusqu'a l'evenement."""
         out = await self._query(question, user_id, company_id, action_ctx,
-                                contexte)
+                                contexte, **({"images": images} if images else {}))
         out["evenement_id"] = await asyncio.to_thread(
             self._journaliser, question, out, action_ctx, contexte)
         return out
@@ -1844,7 +1844,7 @@ class SQLAgentService:
         contexte = contexte or {}
         corps = {
             "intention": out.get("intention") or "donnee",
-            "question": (question or "")[:2000],
+            "question": (out.get("question_journal") or question or "")[:2000],
             "resume_reponse": (out.get("answer") or "")[:500],
             "ecran": str(contexte.get("ecran") or "")[:255],
             "lead_id": contexte.get("lead_id"),
@@ -1884,7 +1884,7 @@ class SQLAgentService:
         user_id: int | None,
         company_id: int | None,
         action_ctx: "ActionContext | None",
-        contexte: dict | None = None,
+        contexte: dict | None = None, images: list | None = None,
     ) -> dict[str, Any]:
         from app.services import relais_copilote as relais
         try:
@@ -1892,6 +1892,9 @@ class SQLAgentService:
             # catalogue recu de Django porte une action du lot `copilote`.
             catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
             relais.noter_question_du_tour(action_ctx, question)  # A5 — liste ou texte collé
+            if images:  # F5 — moteur natif seulement, jamais ignorees en silence
+                return await asyncio.to_thread(relais.tour_avec_images, self, question, company_id or 0,
+                                               user_id or 0, action_ctx, contexte, catalogue, images)
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).

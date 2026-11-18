@@ -1,10 +1,13 @@
 import asyncio
+import base64
+import binascii
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import (BaseModel, Field, TypeAdapter, ValidationError, field_validator,
+                      model_validator)
 
 from app.core import database as _database
 from app.core.security import exiger_compte_interne, get_raw_token, verify_token
@@ -63,6 +66,29 @@ class ContexteEcran(BaseModel):
         return relais_copilote.borner_diagnostic(valeur)
 
 
+#: Copilote v2 (F5) — images jointes a une question (capture d'un message de
+#: client) : 3 au plus, chacune <= 2 000 000 caracteres base64, types du
+#: contrat ; contenu verifie par la signature du fichier (meme table que l'OCR).
+IMAGES_MAX = 3
+IMAGE_BASE64_MAX = 2_000_000
+
+
+class ImageJointe(BaseModel):
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    data: str = Field(..., min_length=16, max_length=IMAGE_BASE64_MAX)
+
+    @model_validator(mode="after")
+    def _verifier_contenu(self):
+        from app.api.endpoints.ocr import _check_magic_bytes  # meme table que l'OCR (ocr.py MAGIC_BYTES)
+        try:
+            octets = base64.b64decode(self.data, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("Image illisible : base64 invalide.") from None
+        if not _check_magic_bytes(self.media_type, octets[:16]):
+            raise ValueError("Le contenu de l'image ne correspond pas à son type.")
+        return self
+
+
 class SQLQuery(BaseModel):
     # AANA5 — 422 au-dela de la borne de l'APPELANT, avant tout appel LLM :
     # `_borner_question` (2 000, ou 6 000 copilote allume — F4). La borne n'est
@@ -72,6 +98,8 @@ class SQLQuery(BaseModel):
     contexte: ContexteEcran | None = None
     # AIC91 — optionnel : identifiant aleatoire pour sonder les etapes du tour.
     progression_id: str | None = Field(None, pattern=_PROGRESSION_ID)
+    # F5 — optionnel : servies au moteur natif seulement (relais_copilote.tour_avec_images).
+    images: list[ImageJointe] | None = Field(None, max_length=IMAGES_MAX)
 
 
 class SQLResponse(BaseModel):
@@ -185,6 +213,8 @@ async def query_database(
     options = {}
     if request.contexte is not None:
         options["contexte"] = request.contexte.model_dump()
+    if request.images:  # F5 — jamais journalisees ni gardees (marqueur seulement)
+        options["images"] = [image.model_dump() for image in request.images]
     try:
         result = await sql_agent_service.query(
             question=request.question,

@@ -500,7 +500,8 @@ def _moteur_sqlite():
 
 
 def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
-          ctx=None, fournisseur="groq", reglages=None, question="Prépare ma relance"):
+          ctx=None, fournisseur="groq", reglages=None, question="Prépare ma relance",
+          images=None):
     """Un tour du VRAI service (`_query` -> `_run_agent` : executeur, outils,
     gardes) : seuls le LLM, Django et Redis sont simules. Rend (sortie,
     historique ecrit, llm). `reglages` : attributs du service a surcharger."""
@@ -529,7 +530,8 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
     with contextlib.ExitStack() as pile:
         for p in patches:
             pile.enter_context(p)
-        sortie = asyncio.run(service._query(question, 1, 7, ctx, contexte))
+        sortie = asyncio.run(service._query(question, 1, 7, ctx, contexte,
+                                            **({"images": images} if images else {})))
     return sortie, ecrit, llm
 
 
@@ -1303,9 +1305,18 @@ class ContexteEcranAic9Tests(unittest.TestCase):
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual(set(r.json()), set(contrat["exemple"]))
             return r.json()
+        from app.core import config
         self.assertEqual(lire("herite"), {"limite_question": 2000, "images_acceptees": False})
         self.assertEqual(lire("copilote", url=""), {"limite_question": 2000, "images_acceptees": False})
-        self.assertEqual(lire("copilote")["limite_question"], relais.LIMITE_QUESTION_COPILOTE)
+        # Images (F5) : moteur natif ET fournisseur claude ET copilote allumé.
+        for moteur, fournisseur, lot, images in (
+                ("langchain", "claude", "copilote", False), ("natif", "groq", "copilote", False),
+                ("natif", "claude", "herite", False), ("natif", "claude", "copilote", True)):
+            with self.subTest(moteur=moteur, fournisseur=fournisseur, lot=lot), \
+                    mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
+                    mock.patch.object(self.svc, "SQL_AGENT_PROVIDER", fournisseur):
+                attendu = relais.LIMITE_QUESTION_COPILOTE if lot == "copilote" else relais.LIMITE_QUESTION
+                self.assertEqual(lire(lot), {"limite_question": attendu, "images_acceptees": images})
 
 
 # ── A5 (revue F3) — la garde des écritures `taches.*` : ce que le tour a lu ─────────────────────────────
@@ -1868,6 +1879,113 @@ class ApercuMultiligneF3Tests(unittest.TestCase):
         apercu = self._apercu(reporter, {"touche_id": 412, "lead_id": 1489, "jours": 3}, lu)
         self.assertEqual(apercu.split("\n"), [
             "Reporter une touche — " + self.libelles["lead"] + " ; " + self.libelles["touche"], "Jours : 3"])
+
+
+# ── Copilote v2 (F5) — images jointes à une question ─────────────────────────────────────────────────────
+
+_PNG = {"media_type": "image/png",
+        "data": __import__("base64").b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 24).decode()}
+
+
+class ImagesF5Tests(unittest.TestCase):
+    """Copilote v2 (F5) — corps borné et vérifié ; moteur natif seulement ;
+    ailleurs le tour le DIT ; l'image n'entre ni dans l'historique de l'écran
+    ni dans le journal (marqueur) ; le tour est marqué contenu tiers (A5)."""
+
+    def test_corps_borne_et_verifie(self):
+        import base64
+        from pydantic import ValidationError
+        jpeg = base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 20).decode()
+        webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"\x00" * 12).decode()
+        ok = _ep.SQLQuery.model_validate({"question": "q", "images": [
+            _PNG, {"media_type": "image/jpeg", "data": jpeg}, {"media_type": "image/webp", "data": webp}]})
+        self.assertEqual(len(ok.images), 3)
+        self.assertIsNone(_ep.SQLQuery.model_validate({"question": "q"}).images)
+        for images in ([_PNG] * 4,                                        # plus de 3
+                       [{"media_type": "image/jpeg", "data": _PNG["data"]}],  # signature d'un PNG
+                       [{"media_type": "image/gif", "data": _PNG["data"]}],   # type hors contrat
+                       [{"media_type": "image/png", "data": "pas du base64 !!!!"}],
+                       [{"media_type": "image/png", "data": "A" * (_ep.IMAGE_BASE64_MAX + 4)}]):
+            with self.subTest(n=len(images), type=images[0]["media_type"]):
+                with self.assertRaises(ValidationError):
+                    _ep.SQLQuery.model_validate({"question": "q", "images": images})
+
+    def test_l_endpoint_ne_transmet_les_images_que_si_elles_sont_la(self):
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
+        app = _FastAPI()
+        app.include_router(_ep.router, prefix="/sql-agent")
+        app.dependency_overrides[verify_token] = lambda: {"user_id": 1, "company_id": 7, "role": "admin"}
+        app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}
+        recus = []
+
+        async def fake_query(question, user_id=None, company_id=None, action_ctx=None, **options):
+            recus.append(options)
+            return {"answer": "ok", "sql_query": "", "data": None}
+        with mock.patch.multiple(_ep._database, check_rate_limit=lambda *a, **k: None,
+                                 require_sql_agent_enabled=lambda: None), \
+                mock.patch.object(_at, "_django_call", lambda *a, **k: {"ok": True, "status": 200, "data": {}}), \
+                mock.patch.object(_ep.sql_agent_service, "query", fake_query):
+            client = _TestClient(app)
+            self.assertEqual(client.post("/sql-agent/query", json={"question": "q"}).status_code, 200)
+            r = client.post("/sql-agent/query", json={"question": "q", "images": [_PNG]})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(client.post("/sql-agent/query", json={
+                "question": "q", "images": [dict(_PNG, media_type="image/jpeg")]}).status_code, 422)
+        self.assertEqual(recus, [{}, {"images": [_PNG]}])
+
+    def test_hors_moteur_natif_le_tour_le_dit(self):
+        """Moteur LangChain (ou natif sans copilote, ou moteur natif qui ne sert
+        pas le tour) : MESSAGE_IMAGE_ILLISIBLE, aucun appel au modèle,
+        historique et journal marqués, jamais l'image."""
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif, relais_copilote as relais, sql_agent_service as svc
+
+        def indisponible(**kw):
+            raise moteur_natif.MoteurIndisponible("pas de clé")
+        for moteur, lot, executer in (("langchain", "copilote", None), ("natif", "herite", None),
+                                      ("natif", "copilote", indisponible)):
+            with self.subTest(moteur=moteur, lot=lot):
+                ctx = _ctx()
+                with mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
+                        mock.patch.object(moteur_natif, "executer", executer or indisponible):
+                    sortie, ecrit, llm = _tour([AIMessage(content="LangChain.")], ctx=ctx,
+                                               catalogue=[dict(_CAT_LEAD_LIST, lot=lot)],
+                                               fournisseur="claude", question="Lis ça", images=[_PNG])
+                self.assertEqual(sortie["answer"], relais.MESSAGE_IMAGE_ILLISIBLE)
+                self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+                self.assertEqual(ecrit[0], {"role": "user", "content": "Lis ça\n\n[image jointe]"})
+                self.assertEqual(ecrit[1]["content"], relais.MESSAGE_IMAGE_ILLISIBLE)
+                self.assertNotIn(_PNG["data"], json.dumps(ecrit))
+                journal = []
+                with mock.patch.object(_at, "journaliser_evenement_assistant",
+                                       lambda c, corps: journal.append(corps) or 1):
+                    svc.SQLAgentService._journaliser("Lis ça", sortie, ctx)
+                self.assertEqual(journal[0]["question"], "Lis ça\n\n[image jointe]")
+                self.assertTrue(_at.contenu_tiers_du_tour(ctx))
+
+    def test_moteur_natif_recoit_les_images(self):
+        from app.core import config
+        from app.services import moteur_natif
+        vu = {}
+
+        def executer(**kw):
+            vu.update(kw)
+            return _rendu_natif(answer="C'est M. Essai, 10 panneaux.")
+        ctx = _ctx()
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                mock.patch.object(moteur_natif, "executer", executer):
+            sortie, ecrit, _ = _tour([], catalogue=_CAT_COPILOTE, ctx=ctx, fournisseur="claude",
+                                     question="Lis ça", images=[_PNG, _PNG])
+        self.assertEqual(vu["images"], [_PNG, _PNG])
+        self.assertTrue(vu["question"].endswith("\n\nLis ça"))
+        self.assertNotIn(_PNG["data"], vu["question"])
+        self.assertEqual((sortie["moteur"], sortie["answer"]), ("natif", "C'est M. Essai, 10 panneaux."))
+        self.assertEqual(ecrit[0]["content"], "Lis ça\n\n[image jointe] [image jointe]")
+        self.assertNotIn(_PNG["data"], json.dumps(ecrit))
+        self.assertEqual(sortie["question_journal"], "Lis ça\n\n[image jointe] [image jointe]")
+        self.assertEqual(ctx.contenu_tiers, "image")
 
 
 if __name__ == "__main__":
