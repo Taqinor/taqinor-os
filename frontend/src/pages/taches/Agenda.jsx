@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
 import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
-import PlanifierSemaine from '../../features/taches/agenda/PlanifierSemaine'
+import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -327,7 +327,17 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
   )
 }
 
-function SemaineListe({ jours, aujourdhui, onChoisir }) {
+/** En-tête d'un jour de la Semaine (iPhone) : un jour ouvert à venir dit sa charge « {n} tâches · {h} pour {cap} »
+ *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
+ *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé ou non travaillé garde son libellé. */
+function teteJour(j, aujourdhui, capacite, n) {
+  if (j.ferie) return 'Férié'
+  if (!j.ouvre) return 'Jour non travaillé'
+  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
+  return n >= 2 ? `${n} tâches` : `${n} tâche`
+}
+
+function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
       {jours.map((j) => {
@@ -341,7 +351,7 @@ function SemaineListe({ jours, aujourdhui, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {j.ferie ? 'Férié' : !j.ouvre ? 'Jour non travaillé' : taches.length >= 2 ? `${taches.length} tâches` : `${taches.length} tâche`}
+                {teteJour(j, aujourdhui, capacite, taches.length)}
               </span>
               {taches.slice(0, 3).map((t) => (
                 <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
@@ -358,7 +368,7 @@ function SemaineListe({ jours, aujourdhui, onChoisir }) {
   )
 }
 
-function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, onChoisir }) {
+function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, onChoisir }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   return (
     <>
@@ -379,7 +389,7 @@ function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, onChoisi
           placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
         />
       </div>
-      <SemaineListe jours={jours} aujourdhui={aujourdhui} onChoisir={onChoisir} />
+      <SemaineListe jours={jours} aujourdhui={aujourdhui} capacite={capacite} onChoisir={onChoisir} />
     </>
   )
 }
@@ -715,7 +725,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       ) : null}
       {donnees && vue === 'semaine' ? (
         <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          onChoisir={choisirJour} />
+          capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour} />
       ) : null}
       {donnees && vue === 'mois' ? (
         <>
