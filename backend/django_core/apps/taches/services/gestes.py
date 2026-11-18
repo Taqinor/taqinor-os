@@ -348,6 +348,22 @@ def _sortir_d_un_projet_supprime(tache):
         tache.save(update_fields=['projet', 'section', 'triee_le', 'updated_at'])
 
 
+def detacher_d_un_parent_supprime(tache):
+    """Une sous-tâche restaurée dont le parent reste supprimé redevient une tâche ordinaire (sinon la
+    purge du parent l'emporterait en cascade) ; même règle que N7 pour le projet."""
+    if tache.parent_id and not Tache.objects.filter(pk=tache.parent_id).exists():
+        tache.parent_id = None
+        tache.save(update_fields=['parent', 'updated_at'])
+
+
+def _detacher_les_restaurees(user, bilan):
+    """Passe finale : le parent n'est jugé « resté supprimé » qu'une fois TOUT le geste défait (les
+    opérations se défont à l'envers : une sous-tâche passe avant son parent)."""
+    pks = [r['id'] for r in bilan.restaurees if r['objet'] == 'tache']
+    for tache in taches_de(user).filter(pk__in=pks, parent__isnull=False):
+        detacher_d_un_parent_supprime(tache)
+
+
 def _defaire_suppression_douce(user, op, bilan):
     objet, pk = op.get('objet'), op.get('id')
     if objet not in ('tache', 'projet'):
@@ -535,6 +551,7 @@ def annuler_geste(user, geste_id):
             defaire = _DEFAIRE.get(etape.get('op'))
             if defaire is not None:
                 defaire(user, etape, bilan)
+        _detacher_les_restaurees(user, bilan)
         if geste.type == 'conversion':
             _rouvrir_sources_converties(user, geste.operations, bilan)
         geste.annule_le = timezone.now()

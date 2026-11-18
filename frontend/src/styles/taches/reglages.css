@@ -97,6 +97,10 @@
 .tch .es-dialogue-texte b { font-weight: 650; }
 .tch .es-dialogue-pied { display: flex; gap: 10px; margin-top: 20px; }
 .tch .es-dialogue-pied .bouton { flex: 1; height: 50px; font-size: 1rem; }
+.tch .es-ecart { height: 24px; }
+.tch .es-heure { position: relative; flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--tch-panneau);
+  font-size: 0.9375rem; font-weight: 600; color: var(--tch-texte); }
+.tch .es-heure.eteint { display: inline-flex; align-items: center; background: transparent; color: var(--tch-texte-doux); font-weight: 500; padding: 0 4px; }
 .tch .es-agenda { padding: 10px 0; box-shadow: inset 0 -1px 0 var(--tch-trait); }
 .tch .es-agenda:last-child { box-shadow: none; }
 .tch .es-agenda-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }

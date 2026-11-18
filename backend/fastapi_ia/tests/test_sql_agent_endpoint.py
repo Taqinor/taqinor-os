@@ -697,12 +697,20 @@ class TourReelCartesTests(unittest.TestCase):
         allume = systeme([dict(_CAT_LEAD_LIST, lot="copilote")])
         self.assertIsInstance(allume, list)
         self.assertEqual(allume[0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
-        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, allume[0]["text"])
+        # Compte sans le module Tâches : consignes commerciales SEULES (pas les ~280 mots de plus).
+        self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, allume[0]["text"])
+        self.assertNotIn(prompt_copilote.CONSIGNES_TACHES, allume[0]["text"])
+        taches = systeme([dict(_CAT_LEAD_LIST, lot="copilote"),
+                          dict(_CAT_LEAD_LIST, key="taches.journee.lire", lot="copilote")])
+        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, taches[0]["text"])
         eteint = systeme([dict(_CAT_LEAD_LIST, lot="herite")])
         self.assertEqual(eteint, svc._contenu_systeme("claude", False)[0])
         self.assertNotIn(prompt_copilote.CONSIGNES_COPILOTE, str(eteint))
-        groq, _ = svc._contenu_systeme("groq", True, copilote=True)
+        groq, _ = svc._contenu_systeme("groq", True, copilote=True, taches=True)
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, groq)
+        groq_sans, _ = svc._contenu_systeme("groq", True, copilote=True)
+        self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, groq_sans)
+        self.assertNotIn(prompt_copilote.CONSIGNES_TACHES, groq_sans)
 
     def test_outils_appeles_complets_et_limite_en_francais(self):
         """COP-B4 (b, c) — `outils_appeles` porte AUSSI les outils SQL et le
@@ -903,7 +911,8 @@ class MoteurNatifCop6Tests(unittest.TestCase):
                                       "sql_db_query", "sql_db_schema", "report_gap"])
         self.assertEqual(vu["conversation"], "7:1")
         self.assertTrue(all("cache_control" not in b for b in vu["systeme"]))
-        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, vu["systeme"][0]["text"])
+        self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, vu["systeme"][0]["text"])
+        self.assertNotIn(prompt_copilote.CONSIGNES_TACHES, vu["systeme"][0]["text"])  # sans module Tâches
         self.assertTrue(vu["question"].startswith("[Contexte donné par l'ERP"))
         self.assertEqual(vu["lecture"], svc._UNSAFE_QUERY_REPLY)
         self.assertEqual([c["type"] for c in sortie["cartes"]], ["resultat", "proposition"])
@@ -913,6 +922,19 @@ class MoteurNatifCop6Tests(unittest.TestCase):
         self.assertEqual(sortie["intention"], "manque")
         self.assertEqual([m["role"] for m in ecrit], ["user", "agent"])
         self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+
+    def test_bloc_taches_seulement_avec_une_action_taches(self):
+        """Moteur natif : le bloc « TÂCHES — CONSIGNES DU COPILOTE » n'entre que si le catalogue du
+        tour porte une action `taches.*` (Django ne la sert qu'avec `taches_voir`)."""
+        from app.services import prompt_copilote
+        vu = {}
+
+        def executer(**kw):
+            vu.update(kw)
+            return _rendu_natif()
+        catalogue = _CAT_COPILOTE + [dict(_CAT_LEAD_LIST, key="taches.journee.lire", lot="copilote")]
+        self._servir("natif", catalogue, executer)
+        self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, vu["systeme"][0]["text"])
 
     def test_panne_du_moteur_natif(self):
         """Panne avant toute action : tour servi par LangChain (journalise) ;

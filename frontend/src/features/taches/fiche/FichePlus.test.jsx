@@ -212,4 +212,18 @@ describe('TCH85 — fiche → Plus', () => {
     await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.restaurerTache).toHaveBeenCalledWith(20))
   })
+
+  it('Supprimer puis Annuler : le geste rendu par le serveur est défait (A7), jamais `restaurer/`', async () => {
+    const user = userEvent.setup()
+    api.supprimerTache.mockResolvedValue({ data: { geste_id: 77 } })
+    api.annulerGeste.mockResolvedValue({ data: { restaurees: [{ objet: 'tache', id: 20 }], conflits: [], deja: false } })
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+    await user.click(screen.getByRole('button', { name: 'Supprimer « Devis Settat »' }))
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(77))
+    expect(api.restaurerTache).not.toHaveBeenCalled()
+  })
 })

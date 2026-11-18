@@ -137,3 +137,22 @@
 @media (min-width: 768px) { .tch .propose-actions { padding-inline: 24px; } }
 .tch .demo-balayage b { position: absolute; right: 0; top: 0; bottom: 0; width: 92px; display: grid; place-items: center;
   font-size: 0.75rem; font-weight: 650; color: var(--tch-accent-texte); }
+
+/* ── F3 · Cartes du Copilote (maquette docs/taches/maquettes/copilote.html ; classes `.ep-carte-ia*` de
+   ecrans-projets.css, variante du panneau `.ep-ia` fondue : les cartes ne vivent que dans le panneau).
+   Le panneau du Copilote est HORS de `.tch` : `CartesTaches` pose lui-même la racine `.tch` autour de
+   chaque carte, d'où la portée `.tch .ep-carte-ia…` (jetons --tch-* globaux, design/tokens.css). ── */
+.tch .ep-carte-ia { margin-top: 12px; border-radius: var(--tch-rayon-carte); background: transparent;
+  box-shadow: inset 0 0 0 1px var(--tch-trait); overflow: hidden; }
+.tch .ep-carte-ia-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 14px 4px; font-size: 0.9375rem; font-weight: 600; color: var(--tch-texte); }
+.tch .ep-carte-ia-tete .seg-tete { margin: 0; font: inherit; color: inherit; }
+.tch .ep-carte-ia-tete .chiffres { font-size: 0.8125rem; font-weight: 500; color: var(--tch-texte-doux); }
+.tch .ep-carte-ia-etape { margin: 0; padding: 10px 14px 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-texte-doux); }
+.tch .ep-carte-ia .ligne { background: transparent; margin: 0; border-radius: 0; padding-block: 8px; min-height: 0; }
+.tch .ep-carte-ia .meta { flex-wrap: nowrap; overflow: hidden; }
+.tch .ep-carte-ia .meta > span:last-child { min-width: 0; overflow: hidden; }
+.tch .ep-carte-ia .meta .fort { color: var(--tch-texte); font-weight: 500; }
+.tch .ep-carte-ia .section-sous { padding-inline: 14px; }
+.tch .ep-carte-ia-pied { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;
+  padding: 10px 12px 12px; box-shadow: inset 0 1px 0 var(--tch-trait); }

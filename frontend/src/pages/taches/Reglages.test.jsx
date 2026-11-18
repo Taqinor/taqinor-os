@@ -75,11 +75,23 @@ describe('TCH108 — Réglages', () => {
     monter()
     const liste = await screen.findByRole('list')
     const lignes = within(liste).getAllByRole('listitem')
-    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Mon iPhone', 'Vie privée', 'Mes données', 'Avancé'])
+    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', 'Mes données', 'Avancé'])
     expect(within(liste).getByText('Ce qui part au Copilote, qui peut lire')).toBeInTheDocument()
     expect(within(liste).getByText('Exporter, tout effacer')).toBeInTheDocument()
     await userEvent.click(within(liste).getByRole('button', { name: /Avancé/ }))
     expect(await screen.findByRole('switch', { name: 'Messages sans délai' })).toBeInTheDocument()
+  })
+
+  it('/reglages/iphone?etape=calendrier ouvre l\'étape calendrier : « Mes agendas » et « Adresse de l\'agenda » rendus', async () => {
+    monter('/taches/reglages/iphone?etape=calendrier')
+    expect(await screen.findByRole('heading', { name: 'Mes agendas' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /^Adresse de l'agenda/ })).toBeInTheDocument()
+  })
+
+  it('Avancé ne porte plus « Mes agendas » (il vit dans Mon iPhone)', async () => {
+    monter('/taches/reglages/avance')
+    await screen.findByRole('switch', { name: 'Messages sans délai' })
+    expect(screen.queryByRole('heading', { name: 'Mes agendas' })).toBeNull()
   })
 
   it('Vie privée : le texte est celui de la référence, mot pour mot', async () => {

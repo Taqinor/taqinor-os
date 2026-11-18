@@ -176,6 +176,14 @@ const ECRANS = [
     nom: 'reglages-avance',
     ouvrir: async (page) => {
       await ouvrirEcran(page, '/taches/reglages/avance', 'reglages')
+      await expect(page.getByRole('switch', { name: 'Messages sans délai' })).toBeVisible()
+    },
+  },
+  {
+    // « Mes agendas » vit dans Mon iPhone, étape « calendrier » (ouverte par l'adresse)
+    nom: 'reglages-iphone-agendas',
+    ouvrir: async (page) => {
+      await ouvrirEcran(page, '/taches/reglages/iphone?etape=calendrier', 'reglages')
       await expect(page.getByRole('heading', { name: 'Mes agendas' })).toBeVisible()
     },
   },

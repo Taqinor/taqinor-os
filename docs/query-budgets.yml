@@ -153,24 +153,24 @@ endpoints:
   # devient la mesure au premier vert. Routes de §10 pas encore construites : enforced: false.
   # `saisie-rapide/` (aperçu ≤ 10, constant en lignes) est un POST : gardé par test_plafonds.py seul.
   - path: /api/django/taches/aujourdhui/
-    budget: 31
+    budget: 33
     enforced: true
-    note: "TCH129 : ≤ 25 sans familles ERP, ≤ 31 avec (rendez-vous externes lus en cache, 0 requête de plus)."
+    note: "TCH129 : après midi ≤ 26 sans familles ERP, ≤ 31 avec ; avant midi + 2 (carte « bilan d'hier » : plan de la veille et ses restes) soit ≤ 28 et ≤ 33. Mesurés horloge figée (test_plafonds.py) ; rendez-vous externes lus en cache, 0 requête de plus."
 
   - path: /api/django/taches/badge/
-    budget: 13
+    budget: 14
     enforced: true
-    note: "TCH129 : la pastille."
+    note: "TCH129 : la pastille ; 14 mesuré horloge figée (09:00 et 15:00) depuis qu'elle porte a_trier (18/11)."
 
   - path: /api/django/taches/tuile/
     budget: 14
     enforced: true
-    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, plafond estimé à ramener à la mesure."
+    note: "TCH97 : jeton tuile, authentification comprise ; cible api.md §10 = 10, mesuré 14 horloge figée, 09:00 et 15:00 (18/11)."
 
   - path: /api/django/taches/flux/{jeton}.ics
-    budget: 10
+    budget: 9
     enforced: true
-    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, plafond estimé à ramener à la mesure."
+    note: "TCH97 : jeton flux dans l'adresse, authentification comprise ; cible api.md §10 = 8, mesuré 9 horloge figée, 09:00 et 15:00 (18/11)."
 
   - path: /api/django/taches/journee/proposition/
     budget: 27
@@ -178,14 +178,14 @@ endpoints:
     note: "TCH129 : la proposition du jour."
 
   - path: /api/django/taches/journee/priorites/
-    budget: 20
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 21
+    enforced: true
+    note: "TCH161 : « Aide-moi à prioriser » ; cible api.md §10 = 20, mesuré 21 horloge figée, 09:00 et 15:00 (18/11) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/journee/point/
-    budget: 18
-    enforced: false
-    note: "TCH129 : cible ; route pas encore construite."
+    budget: 26
+    enforced: true
+    note: "TCH161 : « Où j'en suis ? » ; cible api.md §10 = 18, mesuré 26 à 09:00 (plan de la veille relu) et 24 à 15:00, horloge figée (18/11) ; ne grandit pas avec les tâches."
 
   - path: /api/django/taches/agenda/
     budget: 28

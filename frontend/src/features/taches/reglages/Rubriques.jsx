@@ -16,6 +16,7 @@ import FeuilleACrans from '../ui/FeuilleACrans'
    ========================================================================== */
 
 const RUBRIQUES = [
+  ['notifications', 'Notifications', 'Plan du matin, message de 15 h, bilan du soir'],
   ['iphone', 'Mon iPhone', 'Cinq étapes, à faire une fois'],
   ['vie-privee', 'Vie privée', 'Ce qui part au Copilote, qui peut lire'],
   ['donnees', 'Mes données', 'Exporter, tout effacer'],

@@ -195,6 +195,21 @@ def copilote_allume(catalogue: Optional[list]) -> bool:
                for a in catalogue or [])
 
 
+def taches_au_catalogue(catalogue: Optional[list]) -> bool:
+    """Vrai si le catalogue du TOUR porte une action `taches.*` : Django ne la
+    sert qu'avec le droit `taches_voir` (module actif), et le relais l'a déjà
+    retirée hors du jeu de l'écran (Groq hors `/taches`)."""
+    return any(isinstance(a, dict) and str(a.get("key", "")).startswith("taches.")
+               for a in catalogue or [])
+
+
+def consignes_du_copilote(taches: bool) -> str:
+    """Les consignes servies copilote allumé : le bloc des tâches (≈ 280 mots)
+    seulement pour un compte qui a le module ; sinon les consignes commerciales
+    seules — un commercial sans Tâches ne paie pas ce bloc à chaque tour."""
+    return CONSIGNES_COPILOTE if taches else CONSIGNES_COMMERCIALES
+
+
 def calendrier(jour: datetime.date) -> str:
     """Mini-calendrier DÉTERMINISTE des sept jours qui suivent ``jour``
     (« demain vendredi = 14/11 ; samedi = 15/11 ; … ») : « jeudi prochain »

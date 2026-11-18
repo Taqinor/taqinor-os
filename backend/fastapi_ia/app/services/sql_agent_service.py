@@ -504,18 +504,21 @@ def _manuel_du_role(docs: dict, role: str | None) -> str:
 
 def _contenu_systeme(provider: str, allow_price: bool,
                      copilote: bool = False,
-                     role: str | None = None) -> tuple[Any, bool]:
+                     role: str | None = None,
+                     taches: bool = False) -> tuple[Any, bool]:
     """AIC5 — bloc SYSTEME = _AGENT_PREFIX (+ marge) + politique + manifeste +
     manuel ; sous `claude`, marque `cache_control` ephemere 1 h (>= 512
     tokens). Renvoie (contenu du SystemMessage, manuel_present). Hors claude
     (repli AIC4, ou Groq en fournisseur principal) : bloc ALLEGE sans manuel
     ni manifeste complet (voir _manifeste_allege), manuel_present=False.
     COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
-    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange."""
+    MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange.
+    `taches` : le bloc « TACHES — CONSIGNES DU COPILOTE » seulement pour un
+    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`)."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
     if copilote:
-        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.CONSIGNES_COPILOTE + "\n"
+        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.consignes_du_copilote(taches) + "\n"
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + _manuel_du_role(docs, role)
@@ -1640,6 +1643,7 @@ class SQLAgentService:
         droits = self._droits_sql(action_ctx)
         allow_price = droits[0]
         tools = self._outils_sql(db, company_id, droits, llm, copilote)
+        relais.marquer_lectures_tierces(tools, action_ctx)  # A5 — lecture SQL = texte tiers
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
@@ -1685,7 +1689,8 @@ class SQLAgentService:
         from langchain_core.messages import SystemMessage
         systeme, manuel_present = _contenu_systeme(
             (provider or SQL_AGENT_PROVIDER).lower(), allow_price, copilote,
-            role=(getattr(action_ctx, "identite", None) or {}).get("role"))
+            role=(getattr(action_ctx, "identite", None) or {}).get("role"),
+            taches=prompt_copilote.taches_au_catalogue(getattr(action_ctx, "catalogue_tour", None)))
         prompt = ChatPromptTemplate.from_messages([
             SystemMessage(content=systeme),
             MessagesPlaceholder(variable_name="chat_history"),
@@ -1871,6 +1876,7 @@ class SQLAgentService:
             # COP-B3 — le copilote est allume pour ce compte quand le
             # catalogue recu de Django porte une action du lot `copilote`.
             catalogue = await asyncio.to_thread(relais.catalogue_du_tour, action_ctx, contexte)
+            relais.noter_question_du_tour(action_ctx, question)  # A5 — liste ou texte collé
             copilote = prompt_copilote.copilote_allume(catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
