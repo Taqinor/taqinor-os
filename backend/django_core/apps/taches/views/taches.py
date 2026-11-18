@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 
 from apps.taches.choix import Source
 from apps.taches.confidentialite import ASSISTANT, ECRAN
-from apps.taches.selectors.base import etiquettes_de, taches_de
+from apps.taches.selectors.base import etiquettes_servies, taches_de
 from apps.taches.selectors.journee import progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, RappelEcritSerializer, TacheEcriteSerializer, TacheSerializer, charger_items, contexte,
@@ -511,8 +511,8 @@ class EtiquettesVue(APIView):
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('etiquettes')))
     def get(self, request):
         paginateur = StandardPagination()
-        page = paginateur.paginate_queryset(etiquettes_de(request.user).order_by('nom_cle', 'id'), request,
-                                            view=self)
+        etiquettes = etiquettes_servies(request.user, assistant=est_assistant(request))
+        page = paginateur.paginate_queryset(etiquettes.order_by('nom_cle', 'id'), request, view=self)
         return paginateur.get_paginated_response([forme_etiquette(e) for e in page])
 
     @extend_schema(request=corps('Etiquette', {'nom': 'magasin', 'couleur': 'ciel'}, requis=('nom',)),

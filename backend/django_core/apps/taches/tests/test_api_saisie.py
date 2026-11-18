@@ -855,6 +855,23 @@ class EtiquettesTests(BaseApi):
         self.assertEqual([(e['id'], e['nom'], e['couleur']) for e in corps['results']],
                          [(appels.pk, 'appels', 'ambre'), (magasin.pk, 'magasin', 'ciel')])
 
+    def test_sous_l_assistant_une_etiquette_des_seules_confidentielles_n_est_pas_servie(self):
+        """regles.md §8 (test canari) : le nom d'une étiquette portée par des tâches dont AUCUNE n'est vivante et
+        ordinaire ne sort pas vers l'assistant ; une étiquette aussi portée par une tâche ordinaire, ou portée par
+        aucune tâche, est servie ; l'écran les voit toutes."""
+        secrete, mixte, libre = self._etiquette('dossier-prive'), self._etiquette('magasin'), self._etiquette('zzz')
+        prive = fabriques.projet(self.u1, nom='Privé', confidentiel=True)
+        confidentielle = fabriques.tache(self.u1, projet=prive, titre='Cachée')
+        ordinaire = fabriques.tache(self.u1, titre='Visible')
+        for tache, etiquette in ((confidentielle, secrete), (confidentielle, mixte), (ordinaire, mixte)):
+            EtiquetteTache.objects.create(company=self.u1.company, tache=tache, etiquette=etiquette)
+        ecran = [e['nom'] for e in self._get('etiquettes/').json()['results']]
+        assistant = [e['nom'] for e in self._get('etiquettes/', **ASSISTANT).json()['results']]
+        self.assertEqual(ecran, ['dossier-prive', 'magasin', 'zzz'])
+        self.assertEqual(assistant, ['magasin', 'zzz'])
+        self.assertEqual(self._get('etiquettes/', **ASSISTANT).json()['count'], 2)
+        self.assertIsNotNone(libre.pk)
+
     def test_la_liste_est_paginee(self):
         for n in range(3):
             self._etiquette(f'e{n}')

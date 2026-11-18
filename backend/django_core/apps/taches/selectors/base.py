@@ -60,6 +60,19 @@ def etiquettes_de(user):
     return _du_compte(Etiquette.objects, user)
 
 
+def etiquettes_servies(user, assistant=False):
+    """Les étiquettes de `user` à SERVIR en liste. Sous l'en-tête assistant (regles.md §8, test canari) : une
+    étiquette portée par des tâches n'est servie que si l'une d'elles au moins est vivante et ordinaire — le nom
+    d'une étiquette des seules tâches confidentielles (ou supprimées) dirait de quoi elles parlent. Une étiquette
+    portée par aucune tâche est servie. Échec fermé : dans le doute, tue."""
+    qs = etiquettes_de(user)
+    if not assistant:
+        return qs
+    portee = EtiquetteTache.objects.filter(etiquette=OuterRef('pk'))
+    ordinaire = portee.filter(tache__in=taches_de(user).exclude(TACHE_CONFIDENTIELLE))
+    return qs.exclude(Exists(portee) & ~Exists(ordinaire))
+
+
 def vues_de(user):
     """Vues enregistrées de `user` (jamais celles d'un collègue)."""
     return _du_compte(VueEnregistree.objects, user)
