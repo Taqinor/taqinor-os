@@ -267,9 +267,11 @@ class ScenarioTests(TestCase):
         self.assertEqual(self.lire('badge/', _instant('15:02'))['n'], 2)  # cockpit « 2 à faire » (stand, contrat)
         self.assertNotIn(FICHE, _titres(forme['journee']))  # partie jeu. 26 à 14:10
         self.assertEqual(_titres(forme['ce_soir']), [CONTRAT])
-        # Essentiel : le devis (fait 10:50, ★) et le stand ; la faite est servie dans `faites`, ★ portée
-        essentielles = [i['titre'] for i in forme['essentiel'] + forme['faites'] if i['essentielle']]
-        self.assertEqual(sorted(essentielles), sorted([DEVIS, STAND]))
+        # Essentiel : le devis (fait 10:50, ★) et le stand ; la faite reste AUSSI dans Essentiel, barrée
+        # (regles.md §4.1 ligne 3, §4.2-1 — D-V1 de la passe visuelle), et dans `faites`, ★ portée
+        self.assertEqual(sorted((i['titre'], i['statut']) for i in forme['essentiel']),
+                         sorted([(DEVIS, 'fait'), (STAND, 'a_faire')]))
+        self.assertEqual([i['titre'] for i in forme['faites'] if i['essentielle']], [DEVIS])
 
     def test_18h20_le_bilan(self):
         self.semer('--heure', '18:20', '--historique', '10')
