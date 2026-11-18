@@ -24,6 +24,7 @@ from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Tache
+from apps.taches.services.erp import suggestions_de
 from apps.taches.tests import fabriques
 from apps.taches.tests.test_routes import est_construite
 from apps.taches.views.base import exemple_de
@@ -177,6 +178,34 @@ class RetraitTests(_Base):
         suggestion = self._de(self.commercial).get()
         self.assertEqual(suggestion.statut, StatutSuggestion.RETIREE)
         self.assertIsNotNone(suggestion.decidee_le)
+
+    def _annuler_l_acceptation(self):
+        devis_acceptation_annulee.send(sender=self.Devis, devis=self.devis, user=self.commercial,
+                                       option_acceptee='', date_acceptation=None, motif='test')
+
+    def test_retiree_par_le_systeme_est_reproposee_quand_l_evenement_revient(self):
+        """Revue F4 #13 (décision d'orchestrateur) : devis accepté → acceptation annulée (`retiree`) → devis
+        réaccepté : la suggestion redevient `proposee`, comme neuve (visible 7 jours à compter de ce jour-là)."""
+        self._accepter()
+        self._annuler_l_acceptation()
+        self._de(self.commercial).update(created_at=timezone.now() - datetime.timedelta(days=8))
+        self._accepter()
+        suggestion = self._de(self.commercial).get()
+        self.assertEqual((suggestion.statut, suggestion.decidee_le, suggestion.tache_id),
+                         (StatutSuggestion.PROPOSEE, None, None))
+        self.assertEqual([s.pk for s in suggestions_de(self.commercial, timezone.localdate())], [suggestion.pk])
+
+    def test_refusee_par_l_utilisateur_ou_deja_ajoutee_ne_revient_jamais(self):
+        """Revue F4 #13 : « Pas utile » n'est jamais reproposée ; une suggestion déjà ajoutée (tâche créée) ne
+        revient pas en double, même après une annulation puis une nouvelle acceptation du devis."""
+        for statut in (StatutSuggestion.REFUSEE, StatutSuggestion.ACCEPTEE):
+            with self.subTest(statut=statut):
+                SuggestionTache.objects.all().delete()
+                self._accepter()
+                self._de(self.commercial).update(statut=statut)
+                self._annuler_l_acceptation()
+                self._accepter()
+                self.assertEqual(list(self._de(self.commercial).values_list('statut', flat=True)), [statut])
 
     def test_une_suggestion_deja_acceptee_reste_acceptee(self):
         self._accepter()

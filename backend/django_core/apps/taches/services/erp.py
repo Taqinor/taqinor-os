@@ -264,21 +264,32 @@ def _destinataires(company_id, famille, lead_id, cible, cible_id):
             and _destinataire_admis(user, reglages[user.pk], famille, cible, cible_id)]
 
 
+def _reproposer_si_retiree(suggestion):
+    """Vrai si `suggestion`, RETIRÉE PAR LE SYSTÈME (son événement a été annulé : `retirer_suggestion`), redevient
+    proposée, comme neuve (visible 7 jours à compter de maintenant), parce que l'événement se reproduit (revue F4 #13,
+    décision d'orchestrateur). Écriture conditionnelle sur `statut=retiree` : deux émissions qui se croisent n'en
+    reproposent qu'une, et une suggestion refusée ou acceptée n'est jamais touchée."""
+    maintenant = timezone.now()
+    return bool(SuggestionTache.objects.filter(pk=suggestion.pk, statut=StatutSuggestion.RETIREE).update(
+        statut=StatutSuggestion.PROPOSEE, decidee_le=None, tache=None, created_at=maintenant, updated_at=maintenant))
+
+
 def proposer_suggestion(company_id, *, famille, cle, titre, lead_id, cible, cible_id):
-    """Propose la suggestion `cle` à chaque destinataire admis → nombre de suggestions CRÉÉES.
+    """Propose la suggestion `cle` à chaque destinataire admis → nombre de suggestions créées ou reproposées.
 
     Anti-doublon : `get_or_create` sur (`company`, `proprietaire`, `cle`) — contrainte
-    `taches_sugg_cle_uniq` ; une suggestion existante (proposée, acceptée, refusée ou retirée) n'est
-    jamais reproposée."""
+    `taches_sugg_cle_uniq`. Une suggestion existante n'est reproposée que si le SYSTÈME l'avait retirée
+    (`retiree` : l'événement avait été annulé et se reproduit) ; refusée par l'utilisateur (« Pas utile »),
+    acceptée (tâche créée) ou encore proposée : jamais reproposée, jamais en double (regles.md §9)."""
     app_label, modele = cible.split('.', 1)
     content_type = ContentType.objects.get_by_natural_key(app_label, modele)
     creees = 0
     for user in _destinataires(company_id, famille, lead_id, cible, cible_id):
-        _suggestion, creee = SuggestionTache.objects.get_or_create(
+        suggestion, creee = SuggestionTache.objects.get_or_create(
             company_id=company_id, proprietaire=user, cle=cle,
             defaults={'famille': famille, 'titre_propose': titre, 'content_type': content_type,
                       'object_id': cible_id, 'lead_ref': lead_id})
-        creees += int(creee)
+        creees += int(creee or _reproposer_si_retiree(suggestion))
     return creees
 
 
