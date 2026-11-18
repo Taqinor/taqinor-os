@@ -474,12 +474,32 @@ LIMITE_RECHERCHE = 10
 LIMITE_RECHERCHE_MAX = 25
 
 
+#: Un terme de recherche « ressemble à un numéro » : chiffres, espaces, points,
+#: tirets, parenthèses, ``+`` initial, au moins 6 chiffres (« 0661 00 77 31 »,
+#: « +212 661-007-731 »). Moins, ce serait un morceau de nom ou de référence.
+_FORME_NUMERO = re.compile(r'^\+?[\d\s().-]+$')
+
+
+def _cle_numero(terme):
+    """Clé de numéro normalisée (celle des colonnes ``phone_normalise`` /
+    ``whatsapp_normalise``) si ``terme`` ressemble à un numéro, sinon ``''``."""
+    if not _FORME_NUMERO.match(terme or ''):
+        return ''
+    from .leads_doublons import normalize_phone
+
+    cle = normalize_phone(terme)
+    return cle if len(cle) >= 6 else ''
+
+
 def _leads_trouves(request, terme, etape):
     """Les leads de la PORTÉE de l'appelant (société + visibilité de son rôle,
     comme la liste) filtrés par la recherche de ``LeadViewSet`` (mêmes
-    ``search_fields``, jamais une troisième recherche) et par étape. Sans
+    ``search_fields``) et par étape. Un terme qui ressemble à un numéro cherche
+    AUSSI les colonnes normalisées du téléphone et du WhatsApp (« +212 661… »
+    retrouve « 0661… », et un lead connu seulement par son WhatsApp). Sans
     ``client_pii_voir``, ni le téléphone ni l'e-mail ne servent de critère
     (la recherche ne devient pas un oracle du numéro masqué)."""
+    from django.db.models import Q
     from rest_framework.filters import SearchFilter
 
     from .portee_selectors import leads_visibles
@@ -495,8 +515,15 @@ def _leads_trouves(request, terme, etape):
                   if not (masque and c in ('telephone', 'email'))]
         filtre = SearchFilter()
         filtre.search_param = 'q'
-        leads = filtre.filter_queryset(
+        par_texte = filtre.filter_queryset(
             request, leads, type('VueRecherche', (), {'search_fields': champs}))
+        cle = '' if masque else _cle_numero(terme)
+        if cle:
+            leads = leads.filter(
+                Q(pk__in=par_texte.order_by().values('pk'))
+                | Q(phone_normalise=cle) | Q(whatsapp_normalise=cle))
+        else:
+            leads = par_texte
     return leads.select_related('owner').order_by('-date_creation', 'id')
 
 

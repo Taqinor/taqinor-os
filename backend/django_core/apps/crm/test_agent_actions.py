@@ -855,6 +855,33 @@ class CrmAssistantRechercheLeadsTest(_CopiloteBase):
         self.assertEqual(avec.data['total'], 0)  # lead de discret, hors portée
         self.assertEqual(lead.owner, self.discret)
 
+    def test_numero_cherche_sur_les_colonnes_normalisees(self):
+        """COP2-C2 — « +212 661 23 45 67 » retrouve « 0661234567 », et un lead
+        connu seulement par son WhatsApp se retrouve par son numéro."""
+        a = self._lead('Alami', telephone='0661234567')
+        b = self._lead('SeulWa', telephone=None, whatsapp='0661998877')
+        self._lead('Autre', telephone='0662000000')
+        for q, attendu in (('+212 661 23 45 67', {a.pk}),
+                           ('06 61 23 45 67', {a.pk}),
+                           ('212661234567', {a.pk}),
+                           ('(0661) 99-88-77', {b.pk}),
+                           ('alami', {a.pk})):
+            ids = {x['lead_id'] for x in auth(self.alice).get(
+                self.URL, {'q': q}).data['lignes']}
+            self.assertEqual(ids, attendu, q)
+        # Trop court pour être un numéro : recherche texte seulement.
+        court = auth(self.alice).get(self.URL, {'q': '66123'})
+        self.assertEqual({x['lead_id'] for x in court.data['lignes']}, {a.pk})
+
+    def test_numero_normalise_n_est_pas_un_oracle_sans_droit_pii(self):
+        self._lead('Cache', owner=self.discret, telephone='0661234567')
+        self._lead('CacheWa', owner=self.discret, telephone=None,
+                   whatsapp='0661998877')
+        for q in ('+212 661 23 45 67', '0661998877'):
+            resp = auth(self.discret).get(self.URL, {'q': q})
+            self.assertEqual((resp.status_code, resp.data['lignes']),
+                             (200, []), q)
+
     def test_prochaine_touche_en_une_requete_pour_toutes_les_lignes(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
