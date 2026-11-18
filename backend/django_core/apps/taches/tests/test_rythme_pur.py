@@ -284,6 +284,20 @@ class CloreBlocTests(unittest.TestCase):
         etat = etat_bloc([5] * 10, blocs_a_sauter=2)
         self.assertEqual(rythme.clore_bloc(etat, jour_n(5), None, None).blocs_a_sauter, 1)
 
+    def test_carte_a_jour_seulement_depuis_le_palier_courant(self):
+        # Revue F2 tour 2 #5 : une carte calculée d'un autre palier est périmée (jamais deux crans).
+        a_jour = rythme.carte_a_jour
+        self.assertTrue(a_jour(EtatRythme(palier=5), 'monter', {'N': 5, 'N1': 6}))
+        self.assertTrue(a_jour(EtatRythme(), 'monter', {'N': 5, 'N1': 6}))  # froid : palier 5 par défaut
+        self.assertFalse(a_jour(EtatRythme(palier=8), 'monter', {'N': 5, 'N1': 6}))
+        self.assertFalse(a_jour(EtatRythme(palier=5), 'monter', {'N': 5, 'N1': 7}))
+        self.assertTrue(a_jour(EtatRythme(palier=6), 'baisser', {'N': 6, 'N_1': 5}))
+        self.assertFalse(a_jour(EtatRythme(palier=5), 'baisser', {'N': 6, 'N_1': 5}))
+        self.assertTrue(a_jour(EtatRythme(), 'premier', {'type': 3}))
+        self.assertFalse(a_jour(EtatRythme(palier=4), 'premier', {'type': 3}))
+        self.assertTrue(a_jour(EtatRythme(palier=5), 'journee_type', {'type': 3, 'dit': 5}))
+        self.assertFalse(a_jour(EtatRythme(palier=6), 'journee_type', {'type': 3, 'dit': 5}))
+
 
 def replace_bloc(etat):
     """Un bloc plein de plus (le précédent a été remis à zéro)."""

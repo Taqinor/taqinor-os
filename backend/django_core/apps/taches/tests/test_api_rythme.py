@@ -226,9 +226,9 @@ class RepondreTests(BaseRythme):
     def repondre(self, carte_, reponse):
         return self.api.post(f'{URL}propositions/{carte_.pk}/repondre/', {'reponse': reponse}, format='json')
 
-    def monter(self, refus=1, **champs):
+    def monter(self, refus=1, n=5, **champs):
         return carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'monter',
-                     {'N': 5, 'N1': 6, 'tenus': 7, 'refus': refus}, **champs)
+                     {'N': n, 'N1': n + 1, 'tenus': 7, 'refus': refus}, **champs)
 
     def test_monter_oui_un_cran_et_forme_repondue(self):
         reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
@@ -282,16 +282,18 @@ class RepondreTests(BaseRythme):
         self.assertEqual((reglages.palier, reglages.palier_source), (3, SourceObjectif.ACCEPTE))
 
     def test_vaut_le_jour_meme_avant_le_plan_sinon_le_lendemain(self):
-        self.reglages(palier=5, bloc_debut=J)
+        reglages = self.reglages(palier=5, bloc_debut=J)
         plan = fabriques.plan(self.u1, J, objectif_du_jour=5)
         self.repondre(self.monter(), 'oui')
         plan.refresh_from_db()
         self.assertEqual(plan.objectif_du_jour, 6)
         plan.planifie_le = datetime.datetime(2026, 11, 17, 8, 0, tzinfo=datetime.timezone.utc)
         plan.save(update_fields=['planifie_le'])
-        self.repondre(self.monter(jour=J - datetime.timedelta(days=1)), 'oui')
+        # Une carte calculée depuis le palier courant (6 → 7) : le palier monte, le plan validé de J garde 6.
+        self.assertEqual(self.repondre(self.monter(n=6, jour=J - datetime.timedelta(days=1)), 'oui').status_code, 200)
         plan.refresh_from_db()
-        self.assertEqual(plan.objectif_du_jour, 6)
+        reglages.refresh_from_db()
+        self.assertEqual((plan.objectif_du_jour, reglages.palier), (6, 7))
 
     def test_reponse_inconnue_ou_reservee_a_la_nuit_400(self):
         self.reglages()
@@ -343,6 +345,50 @@ class RepondreTests(BaseRythme):
         self.repondre(pause, 'reactiver')
         reglages.refresh_from_db()
         self.assertEqual(reglages.pauses_sollicitations, [])
+
+    def test_objectif_dit_puis_monter_ne_saute_jamais_deux_crans(self):
+        """Revue F2 tour 2 #5 : l'objectif dit (8) abandonne la carte « Monter à 6 » ; répondue quand
+        même (écran périmé), elle ne change rien — jamais 9."""
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        corps = self.api.post(URL, {'mode': 'pousser', 'objectif': 8}, format='json').json()
+        self.assertIsNone(corps['proposition'])
+        self.assertEqual(self.repondre(carte_, 'oui').status_code, 409)  # abandonnée, comme à une bascule
+        reglages.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.palier_source), (8, SourceObjectif.DIT))
+
+    def test_moins_puis_descendre_un_seul_cran(self):
+        """#5 : « − » (6 → 5) puis le bouton « Descendre à 5 » d'une carte calculée à 6 : palier 5,
+        jamais 4 (§6.5 « jamais plus d'un cran »)."""
+        reglages = self.reglages(palier=6, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        baisser = carte(self.u1, TypeIncitationEcran.PROPOSITION_PALIER, 'baisser', {'N': 6, 'N_1': 5, 'tenus': 2})
+        self.api.post(URL, {'mode': 'pousser', 'sens': 'moins'}, format='json')
+        self.repondre(baisser, 'oui')
+        reglages.refresh_from_db()
+        self.assertEqual(reglages.palier, 5)
+
+    def test_apres_plus_la_carte_n_est_plus_servie(self):
+        """#5 (a) : « + » abandonne la proposition de palier ouverte : ni `rythme/` ni la carte du moment."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        self.assertEqual(self.api.get(URL).json()['proposition']['id'], carte_.pk)
+        self.api.post(URL, {'mode': 'pousser', 'sens': 'plus'}, format='json')
+        self.assertIsNone(self.api.get(URL).json()['proposition'])
+        moment = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()['carte_du_moment']
+        self.assertFalse(moment and (moment.get('proposition') or {}).get('id') == carte_.pk)
+
+    def test_carte_perimee_close_sans_changer_le_palier(self):
+        """#5 (b) : une carte calculée d'un autre palier que le courant (5 → 6, palier déjà 7) est close
+        par la réponse ; « Oui » n'applique jamais un autre nombre que celui de la carte."""
+        reglages = self.reglages(palier=7, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        carte_ = self.monter()
+        reponse = self.repondre(carte_, 'oui')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.json()['rythme']['proposition'])
+        reglages.refresh_from_db()
+        carte_.refresh_from_db()
+        self.assertEqual((reglages.palier, reglages.essai_restant), (7, False))
+        self.assertEqual(carte_.reponse, 'oui')
 
     def test_annuler_la_reponse_rouvre_la_carte_et_le_palier(self):
         reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)

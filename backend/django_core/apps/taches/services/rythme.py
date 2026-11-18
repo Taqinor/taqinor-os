@@ -174,12 +174,23 @@ def _appliquer_au_jour(user, jour, etat, *, avant_plan=False):
     return [op_champ('plan_jour', plan, 'objectif_du_jour', avant)]
 
 
-def _abandonner_propositions(user, jour):
+def _abandonner_propositions(user, jour, types=TYPES_PROPOSITION, sauf=None):
     """Une bascule abandonne la proposition en attente (§6.7) : elle sort de « ouverte » ce jour
-    (`expire_le` = veille) ; la nuit la marque `expiree` (seule à poser cette réponse)."""
+    (`expire_le` = veille) ; la nuit la marque `expiree` (seule à poser cette réponse). Un palier qui
+    change abandonne les cartes de palier (`types`), sauf la carte `sauf` qu'on est en train de répondre."""
     veille = jour - datetime.timedelta(days=1)
-    ouvertes(cartes_de(user), jour).filter(type__in=TYPES_PROPOSITION).update(
+    ouvertes(cartes_de(user), jour).filter(type__in=types).exclude(pk=sauf).update(
         expire_le=veille, updated_at=timezone.now())
+
+
+def _abandons(user, jour, etat, neuf, sauf=None):
+    """Revue F2 tour 2 #5 : un mode qui change abandonne toute proposition ; un palier qui change
+    (objectif dit, +, −, réponse à une carte) abandonne les cartes de palier ouvertes, calculées
+    depuis l'ancien palier (§6.5 : jamais plus d'un cran)."""
+    if neuf.mode != etat.mode:
+        _abandonner_propositions(user, jour, sauf=sauf)
+    elif (neuf.palier, neuf.palier_source) != (etat.palier, etat.palier_source):
+        _abandonner_propositions(user, jour, types=(TypeIncitationEcran.PROPOSITION_PALIER,), sauf=sauf)
 
 
 # --- POST rythme/ ----------------------------------------------------------------------------
@@ -261,8 +272,7 @@ def regler_rythme(user, donnees, jour):
         etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
         neuf = _nouvel_etat(etat, mode, objectif, sens, jour)
         operations = _ecrire_etat(reglages, neuf)
-        if neuf.mode != etat.mode:
-            _abandonner_propositions(user, jour)
+        _abandons(user, jour, etat, neuf)
         operations += _appliquer_au_jour(user, jour, neuf)
         geste = None
         if operations:
@@ -363,6 +373,8 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
         raise SansReglages()
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
     if carte.type == TypeIncitationEcran.PROPOSITION_PALIER:
+        if not moteur.carte_a_jour(etat, carte.cle, carte.donnees or {}):
+            return []  # Revue F2 tour 2 #5 : carte d'un autre palier, close par la réponse, sans effet
         neuf = _palier(etat, carte, reponse, jour)
     elif reponse == _R.PASSER:  # dérive : R = arrondir(moyenne) (le `m` de la carte), fixée ce jour (§6.6)
         donnees = carte.donnees or {}
@@ -372,8 +384,7 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
     else:
         return []
     operations = _ecrire_etat(reglages, neuf)
-    if neuf.mode != etat.mode:
-        _abandonner_propositions(user, jour)
+    _abandons(user, jour, etat, neuf, sauf=carte.pk)
     return operations + _appliquer_au_jour(user, jour, neuf, avant_plan=True)
 
 

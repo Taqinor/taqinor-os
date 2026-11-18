@@ -283,6 +283,25 @@ def apres_decision(etat, jour, decision, reponse):
     return {}
 
 
+#: Le nombre écrit sur le bouton « Oui » d'une carte de palier (`Monter à {N1}`, `Descendre à {N_1}`).
+CIBLE_DE_LA_CARTE = {DECISION_MONTER: ('N1', 1), DECISION_BAISSER: ('N_1', -1)}
+
+
+def carte_a_jour(etat, cle, donnees):
+    """Vrai si la carte de palier `cle` a été calculée depuis le palier COURANT (§6.5 : jamais plus
+    d'un cran). `monter`/`baisser` portent `N` et le nombre de leur bouton (N ± 1), `premier` naît à
+    froid (palier nul), `journee_type` porte le palier dit. Une carte périmée ne change rien."""
+    if cle in CIBLE_DE_LA_CARTE:
+        champ, pas = CIBLE_DE_LA_CARTE[cle]
+        n = _palier(etat)
+        return donnees.get('N') == n and donnees.get(champ) == n + pas
+    if cle == CARTE_PREMIER:
+        return etat.palier is None
+    if cle == CARTE_JOURNEE_TYPE:
+        return etat.palier == donnees.get('dit')
+    return True
+
+
 def clore_bloc(etat, jour, decision, reponse):
     """Clôture d'un bloc : `meilleur_tenu`, réponse appliquée, bloc remis à zéro.
 
