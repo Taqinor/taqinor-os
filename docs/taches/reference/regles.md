@@ -598,7 +598,12 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
   d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` (« gardées faites ») = lignes `prevue_au_plan` faites /
   lignes `prevue_au_plan` (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger
-  n'y sont plus). Partout l'écran montre « N sur OBJECTIF » ; les gardées faites sont une seconde donnée (A17-M2).
+  n'y sont plus). Une gardée qui change de jour (tout chemin de `planifier`) GARDE sa ligne, marquée `reportee` et
+  non tenue : seul Alléger retire une ligne (la déplacer ne gonfle jamais le taux). La ligne d'une activité ERP qui
+  PORTE une tâche (lien ou conversion) ne compte ni au numérateur ni au dénominateur : sa tâche la représente, une
+  même chose n'est jamais comptée deux fois (§6.1, `selectors.journee.ligne_gardee`) ; une activité gardée sans
+  tâche est une ligne, tenue quand il la clôt ce jour-là. Partout l'écran montre « N sur OBJECTIF » ; les gardées
+  faites sont une seconde donnée (A17-M2).
 - **Pastille (UNE définition, invariant 11)** : `n` = éléments OUVERTS et GARDÉS d'Essentiel + Prévu + Ce soir
   (tâches ET activités ERP), plafonné à 99 ; JAMAIS Proposé (A16-N5) ; peut valoir 0 (→ `clearAppBadge`). Ni À revoir,
   En attente, À trier, ni obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et `notify(badge=n)`.

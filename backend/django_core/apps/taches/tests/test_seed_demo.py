@@ -273,10 +273,11 @@ class ScenarioTests(TestCase):
         cloture = self.lire('journee/cloture/', _instant('18:20'), jour=JOUR.isoformat())
         bilan = cloture['bilan']
         self.assertEqual(bilan['texte'], '4 sur 5 · essentiel 2 sur 2')
-        # Défaut 6 / ERR-SCENARIO : 6 gardées (devis, stand, rails, fournisseur, fiche reportée, ET l'activité ERP
-        # « Rappeler pour le devis », ligne du plan selon regles.md §4.4) ; SCENARIO dit « 4 des 5 »
-        self.assertEqual((bilan['plan_tenues'], bilan['plan_lignes']), (4, 6))
-        self.assertEqual(bilan['texte_gardees'], '4 des 6 gardées')
+        # SCENARIO §3, 18:20 : « 4 des 5 gardées » — devis, stand, rails, fournisseur tenues ; la fiche, passée à
+        # jeu. 26, garde sa ligne (non tenue). L'activité ERP « Rappeler pour le devis », gardée le matin puis LIÉE
+        # à une tâche à 10:30, n'est pas une gardée de plus : sa tâche la représente (`sel.ligne_gardee`).
+        self.assertEqual((bilan['plan_tenues'], bilan['plan_lignes']), (4, 5))
+        self.assertEqual(bilan['texte_gardees'], '4 des 5 gardées')
         self.assertEqual(_titres(cloture['restes']), [CONTRAT])
         self.assertEqual(sorted(_titres(cloture['faites'])), sorted([DEVIS, FOURNISSEUR, RAILS, STAND]))
         self.assertEqual(cloture['prochain_jour_ouvre'], '2026-11-25')

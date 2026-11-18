@@ -17,7 +17,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 
-from django.db.models import BooleanField, ExpressionWrapper, Q
+from django.db.models import BooleanField, Exists, ExpressionWrapper, OuterRef, Q
 from django.utils import timezone
 
 from apps.taches.choix import (
@@ -202,12 +202,22 @@ ESSENTIELLE_VIVANTE = Q(essentielle=True, tache__is_deleted=False) & ~Q(tache__s
 
 
 def lignes_du_plan(plan):
-    """Les lignes d'un plan, chacune annotée `essentielle_vivante` (`ESSENTIELLE_VIVANTE`) — une requête ;
-    aucune sans plan."""
+    """Les lignes d'un plan, chacune annotée `essentielle_vivante` (`ESSENTIELLE_VIVANTE`) et
+    `activite_portee` (son activité ERP porte une tâche : lien ou conversion, la même définition que
+    `activites_closes_du_jour`) — une requête ; aucune sans plan."""
     if plan is None:
         return []
     vivante = ExpressionWrapper(ESSENTIELLE_VIVANTE, output_field=BooleanField())
-    return list(plan.ligneplanjour_set.annotate(essentielle_vivante=vivante))
+    portee = Exists(Tache.all_objects.filter(company_id=OuterRef('company_id'),
+                                             activite_origine_id=OuterRef('activite_id')))
+    return list(plan.ligneplanjour_set.annotate(essentielle_vivante=vivante, activite_portee=portee))
+
+
+def ligne_gardee(ligne):
+    """La ligne (lue par `lignes_du_plan`) compte-t-elle dans « x des y gardées » ? Une ligne `prevue_au_plan`,
+    SAUF celle d'une activité ERP qui porte une tâche : sa tâche la représente, une même chose n'est jamais
+    comptée deux fois (regles.md §6.1) — sinon l'activité liée puis close resterait une gardée non tenue."""
+    return bool(ligne.prevue_au_plan) and not (ligne.activite_id is not None and ligne.activite_portee)
 
 
 def ligne_essentielle(ligne):
@@ -431,7 +441,7 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
     ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
     activités ERP closes du jour, lues pour `faites`)."""
     essentielles = [ligne for ligne in journee.lignes if ligne_essentielle(ligne)]
-    au_plan = [ligne for ligne in journee.lignes if ligne.prevue_au_plan]
+    au_plan = [ligne for ligne in journee.lignes if ligne_gardee(ligne)]
     minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
     activites = [cle for cle in journee.sections.get(SectionJournee.JOURNEE, ()) if cle[0] == ACTIVITE]
