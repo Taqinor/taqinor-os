@@ -67,6 +67,22 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(api.post.mock.calls[0][1].lignes).toEqual([{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }, { type: 'tache', id: 41 }])
   })
 
+  it('passe visuelle n° 50 — plan_propose : chaque ligne a sa case ronde (maquette copilote.html), cocher la termine', async () => {
+    const donnees = contrat('journee_proposition')
+    monter('plan_propose', donnees)
+    const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
+    const lignes = within(carte).getAllByRole('listitem')
+    expect(lignes).toHaveLength(donnees.proposition.length)
+    for (const [i, ligne] of lignes.entries()) {
+      const titre = donnees.proposition[i].item.titre
+      expect(within(ligne).getByRole('checkbox', { name: `Marquer « ${titre} » comme faite` })).toHaveClass('case')
+    }
+    await userEvent.click(within(lignes[0]).getByRole('checkbox'))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/taches/taches/${donnees.proposition[0].item.id}/terminer/`,
+      expect.objectContaining({ lock_version: donnees.proposition[0].item.lock_version })))
+  })
+
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
     api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
     monter('plan_propose', contrat('journee_proposition'))

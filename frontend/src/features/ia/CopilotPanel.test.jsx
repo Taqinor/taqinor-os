@@ -359,6 +359,38 @@ describe('CopilotPanel — les quatre demandes prêtes de Tâches (A12, TCH118)'
     expect(document.querySelector('.ep-demandes')).toBeNull()
   })
 
+  // Passe visuelle n° 50 — une carte Tâches dans le tiroir ouvert depuis Tâches : UNE carte pleine largeur (ni bulle
+  // grise, ni cadre ambre autour), la question dans la bulle d'accent, la réponse en texte simple.
+  it('n° 50 — sur /taches : la carte n’est prise ni dans une bulle ni dans un cadre', async () => {
+    window.history.pushState({}, '', '/taches/aujourdhui')
+    const user = userEvent.setup()
+    monterAvecDroits(['taches_voir'])
+    await user.click(screen.getByRole('button', { name: 'Planifie ma journée' }))
+    const carte = await screen.findByTestId('carte-taches-plan_propose')
+    const cadre = carte.parentElement
+    expect(cadre.dataset.cadre).toBe('attente')
+    expect(cadre.className).toBe('mt-2')
+    expect(carte.closest('.bg-muted')).toBeNull()
+    expect(carte.closest('[class*="max-w-"]')).toBeNull()
+    expect(screen.getByText('Planifie ma journée', { selector: 'p' })).toHaveClass('ep-bulle-moi')
+    expect(screen.getByText(/Rien ne change tant que tu ne gardes pas\.$/)).toHaveClass('ep-bulle-ia')
+  })
+
+  it('n° 50 — hors /taches, la même carte garde sa bulle et son cadre « proposition » (ambre)', async () => {
+    window.history.pushState({}, '', '/crm/relances')
+    const initial = iaReducer(undefined, { type: '@@init' })
+    const store = configureStore({
+      reducer: { ia: iaReducer, auth: (etat = { permissions: ['taches_voir'] }) => etat },
+      preloadedState: { ia: { ...initial, copilotOpen: true, messages: [{ role: 'agent', content: 'Voici.', cartes: [
+        { type: 'resultat', carte: 'plan_propose', donnees: exempleContrat('taches', 'journee_proposition') }] }] } },
+    })
+    render(<Provider store={store}><MemoryRouter><CopilotPanel /></MemoryRouter></Provider>)
+    const carte = await screen.findByTestId('carte-taches-plan_propose')
+    expect(carte.parentElement.className).toMatch(/amber/)
+    expect(carte.closest('.bg-muted')).not.toBeNull()
+    expect(screen.getByText('Voici.')).not.toHaveClass('ep-bulle-ia')
+  })
+
   it('sur /taches sans le droit taches_voir : pas de demandes prêtes', async () => {
     window.history.pushState({}, '', '/taches/aujourdhui')
     iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 ?'] })

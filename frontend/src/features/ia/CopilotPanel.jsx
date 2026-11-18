@@ -50,6 +50,30 @@ const SUGGESTIONS = [
   'Affiche les factures impayées',
 ]
 
+/** Passe visuelle n° 50 — un message du tiroir ouvert depuis Tâches (copilote.html) : la question dans la bulle
+ *  d'accent `.ep-bulle-moi`, la réponse en texte simple `.ep-bulle-ia`, et ses cartes pleine largeur, sans bulle ni
+ *  avatar autour (une carte Tâches = une seule carte, variante `copilot_taches` de CartesDuMessage). */
+function MessageTaches({ msg, index }) {
+  const texte = displayMessageText(msg)
+  return (
+    <div data-bulle={msg.role}>
+      {texte ? (
+        <div className="tch">
+          <p className={msg.role === 'user' ? 'ep-bulle-moi' : 'ep-bulle-ia'}>{texte}</p>
+        </div>
+      ) : null}
+      {msg.action_performed && (
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="size-3.5" aria-hidden="true" />
+          Action effectuée
+        </span>
+      )}
+      <MessageActions msg={msg} index={index} variant="copilot_taches" />
+      <NoteReponse msg={msg} index={index} />
+    </div>
+  )
+}
+
 export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
@@ -250,7 +274,7 @@ export default function CopilotPanel() {
           )}
 
           <div className="space-y-3">
-            {messages.map((msg, i) => (
+            {messages.map((msg, i) => (demandesTaches ? <MessageTaches key={i} msg={msg} index={i} /> : (
               <div
                 key={i}
                 className={cn(
@@ -291,7 +315,7 @@ export default function CopilotPanel() {
                   <NoteReponse msg={msg} index={i} />
                 </div>
               </div>
-            ))}
+            )))}
 
             {agentLoading && (
               <div className="flex items-start gap-2">

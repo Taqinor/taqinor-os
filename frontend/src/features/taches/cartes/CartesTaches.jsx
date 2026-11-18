@@ -193,7 +193,10 @@ function CartePlanPropose({ donnees }) {
     <div role="group" aria-label="Proposé pour aujourd'hui">
       <Tete titre="Proposé pour aujourd'hui" chiffres={chiffres} />
       {lignes.length === 0 ? <p className="section-sous">Objectif couvert par ce que tu as gardé.</p> : (
-        <div className="liste" role="list">{lignes.map((it) => <LigneCarte key={cleItem(it)} item={it} />)}</div>
+        // Passe visuelle n° 50 — chaque ligne a sa case ronde, comme le Proposé de la maquette (copilote.html).
+        <div className="liste" role="list">
+          {lignes.map((it) => <LigneCarte key={cleItem(it)} item={it} case_={<CaseJournee item={it} />} />)}
+        </div>
       )}
       {lignes.length > 0 ? <div className="propose-actions ep-carte-ia-pied"><BoutonGarder lignes={lignes} jour={donnees.jour} geste={geste} /></div> : null}
       <Retour geste={geste} />
