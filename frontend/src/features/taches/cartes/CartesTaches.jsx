@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
@@ -19,8 +19,17 @@ import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
 
 const LIBRE = 'libre'
 
-/** Un geste d'écriture : état occupé, erreur sous le geste, message « fait » avec « Annuler ». */
-function useGeste(initial = null) {
+// F3 acceptation ERR 5 (a) — le cadre de la carte (posé par le panneau, `CartesDuMessage`) : « attente » tant que
+// la carte attend le doigt (cadre « proposition »), « fait » une fois son geste principal fait ou pour une lecture
+// (cadre « résultat »), « laisse » quand il l'a laissée. Le geste principal de la carte le signale.
+const EtatDuCadre = createContext(() => {})
+// ERR 5 (b) — une CRÉATION validée au doigt sur une carte du Copilote est une écriture de l'assistant (A5).
+const DEPUIS_LA_CARTE = { carteAssistant: true }
+
+/** Un geste d'écriture : état occupé, erreur sous le geste, message « fait » avec « Annuler ». `principal` :
+ *  le geste qui termine la carte (son cadre passe de « proposition » à « résultat »). */
+function useGeste(initial = null, { principal = false } = {}) {
+  const changerCadre = useContext(EtatDuCadre)
   const [etat, setEtat] = useState({ occupe: false, erreur: '', fait: initial })
   const lancer = async (appel, message) => {
     setEtat({ occupe: true, erreur: '', fait: null })
@@ -29,6 +38,7 @@ function useGeste(initial = null) {
       // `message` peut se lire sur la réponse (« {n} tâches créées » : le nombre que le serveur a créé).
       const dit = typeof message === 'function' ? message(data) : message
       setEtat({ occupe: false, erreur: '', fait: { message: dit, geste: data?.geste_id ?? null } })
+      if (principal) changerCadre('fait')
       return data
     } catch (err) {
       setEtat({ occupe: false, erreur: frenchError(err), fait: null })
@@ -167,7 +177,7 @@ function BoutonGarder({ lignes, jour, geste }) {
 }
 
 function CartePlanPropose({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   // F3 acceptation ERR 2 — une seule règle : les lignes du Proposé (`proposition` = `pour_objectif` du moteur, celles
   // que l'écran Aujourd'hui garde par « Garder ces N »), sans filtre propre à la carte.
   const lignes = (donnees.proposition ?? []).map((l) => l.item)
@@ -255,7 +265,8 @@ const ECHOS = {
 }
 
 function CarteEcho({ tache, proposition }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
+  const changerCadre = useContext(EtatDuCadre)
   const [laisse, setLaisse] = useState(false)
   const echo = ECHOS[proposition.geste]
   return (
@@ -268,7 +279,7 @@ function CarteEcho({ tache, proposition }) {
         <div className="propose-actions ep-carte-ia-pied">
           <button type="button" className="bouton second" disabled={geste.occupe}
             onClick={() => geste.lancer(() => echo.appel(tache, proposition), echo.fait)}>{echo.libelle}</button>
-          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => { setLaisse(true); changerCadre('laisse') }}>Laisser</button>
         </div>
       ) : null}
       {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
@@ -286,7 +297,7 @@ function CarteEcho({ tache, proposition }) {
 // eslint-disable-next-line react-refresh/only-export-components -- table parcourue par la garde du test (revue F3 n° 2)
 export const ECRITURES_A_VALIDER = {
   'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
-  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c) },
+  'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c, DEPUIS_LA_CARTE) },
   'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
   'taches.tache.planifier': {
     fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
@@ -294,7 +305,7 @@ export const ECRITURES_A_VALIDER = {
   'taches.rappel.poser': {
     fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
   },
-  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c) },
+  'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c, DEPUIS_LA_CARTE) },
   'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },
   'taches.preference.noter': { fait: () => '', appel: (t, c) => client.poserPreference(c) },
 }
@@ -398,7 +409,8 @@ export function lignesDuCorps(corps, changements = [], { titreEnTete = false, ti
 }
 
 function CarteAValider({ tache, proposition }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
+  const changerCadre = useContext(EtatDuCadre)
   const [laisse, setLaisse] = useState(false)
   const ecriture = ECRITURES_A_VALIDER[proposition.action_key]
   // UN objet : celui que les lignes disent est celui que le bouton envoie.
@@ -421,7 +433,7 @@ function CarteAValider({ tache, proposition }) {
             onClick={() => geste.lancer(() => ecriture.appel(tache, corps), ecriture.fait(corps) || proposition.libelle)}>
             {ecriture.bouton ?? proposition.libelle}
           </button>
-          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => setLaisse(true)}>Laisser</button>
+          <button type="button" className="bouton lien" disabled={geste.occupe} onClick={() => { setLaisse(true); changerCadre('laisse') }}>Laisser</button>
         </div>
       ) : null}
       {laisse ? <p className="section-sous" role="status">Laissée comme elle est.</p> : null}
@@ -478,7 +490,7 @@ function projetDeLigne(champs, { projets, choisi, rangement }) {
 }
 
 function CarteCaptureApercu({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   const [retirees, setRetirees] = useState([])
   const [choix, setChoix] = useState({}) // index → champs de projet choisis au doigt
   const [ouverte, setOuverte] = useState(null) // index de la ligne dont le choix de projet est ouvert
@@ -495,7 +507,7 @@ function CarteCaptureApercu({ donnees }) {
     if (!propre) return
     if (!rangement) { choisir(index, { nouveau_projet: { nom: propre, priorite: PRIORITE_PROJET_NE } }); return }
     try {
-      const { data } = await client.creerProjet({ nom: propre, priorite: PRIORITE_PROJET_NE })
+      const { data } = await client.creerProjet({ nom: propre, priorite: PRIORITE_PROJET_NE }, DEPUIS_LA_CARTE)
       choisir(index, { projet_id: data.id })
       projets.ajouter(data)
     } catch (err) {
@@ -506,7 +518,7 @@ function CarteCaptureApercu({ donnees }) {
   const ajouter = () => geste.lancer(() => client.saisieRapide({
     lignes: lignes.map((l) => ({ index: l.index, collage: l.collage, client_id: `copilote:${l.collage}:${l.index}`, titre: l.titre, ...champsDe(l) })),
     apercu: false,
-  }), accord(lignes.length, 'ajoutée'))
+  }, DEPUIS_LA_CARTE), accord(lignes.length, 'ajoutée'))
   const ranger = () => geste.lancer(() => client.traiterLot({
     ids: aRanger.map((l) => l.tache_id), action: 'deplacer',
     valeurs: { par_tache: Object.fromEntries(aRanger.map((l) => [l.tache_id, { projet_id: champsDe(l).projet_id }])) },
@@ -573,7 +585,7 @@ function CarteCaptureApercu({ donnees }) {
 const projetPlanifiable = (projet) => Number.isInteger(projet?.id) && Number.isInteger(projet?.lock_version)
 
 function CartePlanProjet({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   const [etapes, setEtapes] = useState(() => (donnees.sections ?? []).map((s, i) => ({
     nom: s.nom, taches: (s.taches ?? []).map((t, j) => ({ ...t, cle: `${i}:${j}` })),
   })))
@@ -592,7 +604,7 @@ function CartePlanProjet({ donnees }) {
   const toutAjouter = () => geste.lancer(() => client.planifierProjet(projet.id, {
     sections: etapes.map((e) => ({ nom: e.nom, taches: e.taches.map((t) => Object.fromEntries(Object.entries(t).filter(([k]) => k !== 'cle'))) })),
     lock_version: projet.lock_version,
-  }), (data) => accord(data?.creees?.length ?? 0, 'tâche créée', 'tâches créées'))
+  }, DEPUIS_LA_CARTE), (data) => accord(data?.creees?.length ?? 0, 'tâche créée', 'tâches créées'))
   const fige = geste.fait !== null
   return (
     <div role="group" aria-label="Le projet en étapes">
@@ -725,7 +737,7 @@ function GestesPriorite({ item, jour, plusTard }) {
 }
 
 function CartePriorites({ donnees }) {
-  const geste = useGeste()
+  const geste = useGeste(null, { principal: true })
   const [toutes, setToutes] = useState(false)
   const lignes = donnees.lignes ?? []
   if (lignes.length === 0) {
@@ -782,6 +794,19 @@ function CartePoint({ donnees }) {
   )
 }
 
+/** ERR 5 (a) — la carte attend-elle le doigt à son arrivée ? Une écriture à valider, un écho (Renommer…), un
+ *  Proposé ou des priorités à garder, une liste à ajouter ou ranger, des étapes à ajouter ; une lecture, non. */
+function attendLeDoigt(cle, d) {
+  if (!d) return false
+  if (d.proposition?.geste === 'ecrire') return true
+  if (cle === 'plan_propose') return (d.proposition ?? []).length > 0
+  if (cle === 'priorites') return (d.garder_n ?? 0) > 0 && (d.lignes ?? []).length > 0
+  if (cle === 'capture_apercu') return (d.lignes ?? []).length > 0
+  if (cle === 'plan_projet') return projetPlanifiable(d.projet)
+  if (cle === 'tache') return Boolean(d.proposition && ECHOS[d.proposition.geste])
+  return false
+}
+
 const COMPOSANTS = {
   ma_journee: CarteMaJournee,
   plan_propose: CartePlanPropose,
@@ -803,15 +828,20 @@ function CarteEcritureAValider({ donnees }) {
 }
 
 /** Une carte `taches` du Copilote : `carte` = `{ carte: '<clé>', donnees: <corps de la route> }`. */
-export default function CartesTaches({ carte }) {
+export default function CartesTaches({ carte, cadre = null, testId }) {
   const aValider = carte?.donnees?.proposition?.geste === 'ecrire'
   const Composant = COMPOSANTS[carte?.carte] && aValider ? CarteEcritureAValider : COMPOSANTS[carte?.carte]
+  const [etatCadre, setEtatCadre] = useState(() => (attendLeDoigt(carte?.carte, carte?.donnees) ? 'attente' : 'fait'))
   if (!Composant || !carte.donnees) return null
-  return (
-    <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
-      <div className="ep-carte-ia">
-        <Composant donnees={carte.donnees} />
+  const contenu = (
+    <EtatDuCadre.Provider value={setEtatCadre}>
+      <div className="tch" data-testid={`carte-taches-${carte.carte}`}>
+        <div className="ep-carte-ia">
+          <Composant donnees={carte.donnees} />
+        </div>
       </div>
-    </div>
+    </EtatDuCadre.Provider>
   )
+  if (!cadre) return contenu
+  return <div className={cadre[etatCadre] ?? cadre.fait} data-testid={testId} data-cadre={etatCadre}>{contenu}</div>
 }

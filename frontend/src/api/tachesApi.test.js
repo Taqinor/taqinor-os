@@ -170,6 +170,27 @@ describe('TCH42 — conventions', () => {
     expect(api.post.mock.calls[3]).toHaveLength(2)
   })
 
+  it('F3 acceptation ERR 5 — `carteAssistant` pose X-Taqinor-Carte-Assistant: 1 sur les créations, jamais X-Taqinor-Assistant', async () => {
+    const appels = [
+      () => client.creerTache({ titre: 'a' }, { carteAssistant: true }),
+      () => client.saisieRapide({ lignes: [] }, { carteAssistant: true }),
+      () => client.creerProjet({ nom: 'A' }, { carteAssistant: true }),
+      () => client.planifierProjet(3, { lock_version: 1 }, { carteAssistant: true }),
+    ]
+    for (const [i, appel] of appels.entries()) {
+      await appel()
+      const entetes = api.post.mock.calls[i][2].headers
+      expect(entetes['X-Taqinor-Carte-Assistant']).toBe('1')
+      expect(entetes['Idempotency-Key']).toMatch(/\S{8,}/)
+      expect(entetes).not.toHaveProperty('X-Taqinor-Assistant')
+    }
+    // Avec cle:null, l'en-tête de carte part seul ; sans l'option, rien ne change.
+    await client.creerProjet({ nom: 'A' }, { cle: null, carteAssistant: true })
+    expect(api.post.mock.calls[4][2]).toEqual({ headers: { 'X-Taqinor-Carte-Assistant': '1' } })
+    await client.creerTache({ titre: 'b' })
+    expect(api.post.mock.calls[5][2].headers).not.toHaveProperty('X-Taqinor-Carte-Assistant')
+  })
+
   it('proprietaire_attendu est posé au corps de saisie-rapide, planifier et terminer', async () => {
     client.definirProprietaire(7)
     await client.saisieRapide({ textes: ['a'], apercu: true })

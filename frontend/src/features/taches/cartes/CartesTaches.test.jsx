@@ -513,3 +513,73 @@ describe('A5 — la carte à valider montre tout ce qu’elle écrit (revue F3 n
     expect(racine.textContent).toContain('heure : "08:30\\n"')
   })
 })
+
+/* F3 acceptation ERR 5 — (a) une carte qui attend le doigt porte le cadre « proposition », le cadre
+   « résultat » une fois faite ; (b) une CRÉATION validée au doigt part avec `X-Taqinor-Carte-Assistant: 1`
+   (décision de l'orchestrateur, A5 : une écriture validée sur une carte du Copilote est de l'assistant). */
+describe('ERR 5 — cadre de la carte et en-tête des créations validées au doigt', () => {
+  const CADRE = { attente: 'cadre-proposition', fait: 'cadre-resultat', laisse: 'cadre-neutre' }
+  const monterCadre = (cle, donnees) => render(
+    <MemoryRouter><CartesTaches carte={{ type: 'resultat', carte: cle, donnees }} cadre={CADRE} testId={`carte-${cle}`} /></MemoryRouter>,
+  )
+  const ENTETE = 'X-Taqinor-Carte-Assistant'
+  const aValider = (action_key, corps) => ({ tache: null, proposition: { geste: 'ecrire', action_key, libelle: 'Écrire', corps } })
+
+  it('(a) plan_propose : « proposition » tant qu’il n’est pas gardé, « résultat » après « Garder ces 2 »', async () => {
+    monterCadre('plan_propose', contrat('journee_proposition'))
+    const cadre = screen.getByTestId('carte-plan_propose')
+    expect(cadre).toHaveClass('cadre-proposition')
+    await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
+    await waitFor(() => expect(cadre).toHaveClass('cadre-resultat'))
+  })
+
+  it('(a) carte à valider : « proposition », puis « résultat » au toucher, neutre si « Laisser »', async () => {
+    monterCadre('tache', contrat('ecriture_a_valider'))
+    expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-proposition')
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    await waitFor(() => expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-resultat'))
+  })
+
+  it('(a) carte à valider laissée : cadre neutre, jamais « résultat »', async () => {
+    monterCadre('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Laisser' }))
+    expect(screen.getByTestId('carte-tache')).toHaveClass('cadre-neutre')
+  })
+
+  it('(a) une carte de lecture (point) garde le cadre « résultat »', () => {
+    monterCadre('point', contrat('point'))
+    expect(screen.getByTestId('carte-point')).toHaveClass('cadre-resultat')
+  })
+
+  it('(b) création de tâche et de projet validées sur une carte : l’en-tête de carte part', async () => {
+    const { unmount } = monter('tache', aValider('taches.tache.creer', { titre: 'Appeler Ali' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Écrire' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][2].headers[ENTETE]).toBe('1')
+    expect(api.post.mock.calls[0][2].headers).not.toHaveProperty('X-Taqinor-Assistant')
+    unmount()
+    monter('tache', aValider('taches.projet.creer', { nom: 'Salon' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Écrire' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2))
+    expect(api.post.mock.calls[1][0]).toBe('/taches/projets/')
+    expect(api.post.mock.calls[1][2].headers[ENTETE]).toBe('1')
+  })
+
+  it('(b) « Tout ajouter » (collage) et « Tout ajouter » (étapes) portent l’en-tête ; une modification non', async () => {
+    const { unmount } = monter('capture_apercu', contrat('saisie_apercu'))
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ajouter (1)' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][0]).toBe('/taches/saisie-rapide/')
+    expect(api.post.mock.calls[0][2].headers[ENTETE]).toBe('1')
+    unmount()
+    const { unmount: fin2 } = monter('plan_projet', { ...contrat('planification_apercu'), projet: { id: 3, lock_version: 4 } })
+    await userEvent.click(screen.getByRole('button', { name: 'Tout ajouter' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2))
+    expect(api.post.mock.calls[1][2].headers[ENTETE]).toBe('1')
+    fin2()
+    monter('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1))
+    expect(api.patch.mock.calls[0]).toHaveLength(2) // PATCH taches/{id}/ : une modification, pas une création
+  })
+})
