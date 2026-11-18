@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronDown, Diamond, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Diamond, TriangleAlert } from 'lucide-react'
 import {
   annulerGeste, classerErreur, modifierProjet, modifierTache, restaurerProjet, rouvrirProjet,
   rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
@@ -81,36 +81,58 @@ function versEtape(vue, item, sectionId) {
   return origine ? compteursApresDeplacement(place, origine.tache, origine.sectionId, sectionId) : place
 }
 
+/** Santé courte de l'en-tête (textes.md §2.6) : signal (d) d'`echeance_menacee` → « À ce rythme : … » ; sinon la phrase. */
+function santeCourte(signal) {
+  const d = signal?.donnees
+  if (signal?.code === 'echeance_menacee' && d?.signal === 'd' && d.besoin != null && d.reste != null) {
+    return `À ce rythme : ${d.besoin} jours travaillés, il en reste ${d.reste}`
+  }
+  return signal?.phrase ?? ''
+}
+
 function Entete({ vue, aujourdhui, onPriorite }) {
   const [details, setDetails] = useState(false)
+  const [detailSante, setDetailSante] = useState(false)
   const { projet, avancement, prochain_jalon: jalon } = vue
   const { texte, part } = avancementDe({ compteurs: { faites: avancement.faites, ouvertes: avancement.total - avancement.faites } })
-  const sante = projet.sante?.[0]?.phrase
+  const signal = projet.sante?.[0]
+  const sante = santeCourte(signal)
   const jalonJour = jalon ? (jalon.jour_prevu ?? jalon.echeance) : null
-  // passe visuelle n° 40 : la date d'un projet a la même forme partout (« échéance ven. 4 déc. », « jeu. 3 déc. »)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
+  // Passe visuelle n° 43 — l'en-tête de projet-liste.html : priorité · échéance ; barre, « 12 sur 18 » et le jalon
+  // dessous ; la santé en UNE ligne (le détail au toucher) ; « Fini quand… » replié.
   return (
     <div className="ep-tete" data-p={projet.couleur}>
       <div className="ep-ligne-info">
         <PuchePriorite projet={projet} onChoisir={onPriorite} />
-        <span className="chiffres">{`${texte}${ech ? ` · ${ech.texte}` : ''}`}</span>
+        {ech ? <span className={`chiffres ${ech.ton === 'alerte' ? 'alerte' : 'fort'}`}>{ech.texte}</span> : null}
       </div>
       <div className="ep-avance">
         <div className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></div>
-        {jalon ? (
-          <span className="ep-jalon-proche">
-            <Diamond className="i i-14 ep-losange" aria-hidden="true" />
-            {`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}
-          </span>
-        ) : null}
+        <div className="ep-avance-texte">
+          <span className="chiffres"><b>{texte}</b></span>
+          {jalon ? (
+            <span className="ep-jalon-proche">
+              <Diamond className="i i-14 ep-losange" aria-hidden="true" />
+              {`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}
+            </span>
+          ) : null}
+        </div>
       </div>
-      {sante ? (
-        <p className="ep-sante-ligne surveiller">
+      {sante && sante !== signal.phrase ? (
+        <button type="button" className="ep-sante-ligne" aria-expanded={detailSante} onClick={() => setDetailSante((o) => !o)}>
+          <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
+          <ChevronRight className="i i-14 chev" aria-hidden="true" />
+        </button>
+      ) : null}
+      {sante && sante !== signal.phrase && detailSante ? <p className="ep-sante-detail">{signal.phrase}</p> : null}
+      {sante && sante === signal.phrase ? (
+        <p className="ep-sante-ligne">
           <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
         </p>
       ) : null}
       <button type="button" className="ep-details" aria-expanded={details} onClick={() => setDetails((o) => !o)}>
-        <b>Détails</b>
+        <span className="ep-details-texte"><b>Fini quand…</b></span>
         <ChevronDown className="i i-16" aria-hidden="true" />
       </button>
       {details ? (
@@ -365,10 +387,18 @@ export default function Projet() {
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
 
+  // Passe visuelle n° 43 — le point de couleur du projet devant son nom (projet-liste.html, `.ep-projet-nom`)
+  const titre = projet ? (
+    <span className="ep-projet-nom" data-p={projet.couleur}><i className="point" aria-hidden="true" />{projet.nom}</span>
+  ) : 'Projet'
   return (
-    <CoquilleTaches ecran="projet" titre={projet?.nom ?? 'Projet'} actionsEcran={actionsEcran}
+    <CoquilleTaches ecran="projet" titre={titre} actionsEcran={actionsEcran}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
-      <BarreRetourProjets />
+      {/* Passe visuelle n° 43 — « ‹ Projets » et la vue (puce sur iPhone, segmenté au bureau) sur UNE rangée */}
+      <div className="ep-barre-projet">
+        <BarreRetourProjets />
+        {vue && !planifier ? <SelecteurVue vue={vueCode} onChoisir={choisirVue} /> : null}
+      </div>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {introuvable ? <p className="ep-alerte-ligne" role="alert">Ce projet n'existe plus.</p> : null}
       <ChargementTardif actif={!vue && !erreur && !introuvable} />
@@ -378,7 +408,6 @@ export default function Projet() {
       {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
-          <SelecteurVue vue={vueCode} onChoisir={choisirVue} />
           <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} />
           {vueCode === 'tableau' ? (
             <Tableau

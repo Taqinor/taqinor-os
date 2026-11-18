@@ -56,14 +56,34 @@
 .tch .ep-retour { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px 0 0; font-size: 1.0625rem; font-weight: 500; color: var(--tch-accent); }
 .tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
-.tch .ep-ligne-info { display: flex; align-items: center; gap: 10px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
-.tch .ep-avance { display: flex; flex-direction: column; gap: 6px; }
-.tch .ep-barre-avance { height: 6px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
+/* Passe visuelle n° 43 — en-tête de projet-liste.html (ecrans-projets.css « En-tête d'un projet ») */
+.tch .ep-barre-projet { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: var(--tch-gouttiere); }
+.tch .ep-barre-projet > .ep-barre { padding-right: 0; }
+.tch .ep-barre-projet > .ep-entre { padding: 0; }
+/* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
+.tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
+.tch .ep-ligne-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
+.tch .ep-ligne-info .fort { color: var(--tch-texte); font-weight: 600; }
+.tch .ep-ligne-info .alerte { color: var(--tch-alerte); font-weight: 600; }
+.tch .ep-avance { display: flex; flex-direction: column; gap: 8px; }
+.tch .ep-barre-avance { height: 4px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
 .tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
-.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; font-size: 0.875rem; color: var(--tch-texte-doux); }
-.tch .ep-losange { color: var(--tch-point); }
-.tch .ep-sante-ligne { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 600; }
-.tch .ep-details { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); align-self: flex-start; font-size: 0.9375rem; }
+.tch .ep-avance-texte { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
+.tch .ep-avance-texte b { color: var(--tch-texte); font-weight: 650; }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; color: var(--tch-texte); font-weight: 500; }
+.tch .ep-losange { color: var(--tch-point); fill: var(--tch-point); }
+/* Santé : une ligne sans fond, le détail au toucher */
+.tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; width: 100%; min-height: var(--tch-cible); margin: 0; text-align: left;
+  font-size: 0.9375rem; color: var(--tch-texte); }
+.tch .ep-sante-ligne > svg:first-child { flex: none; color: var(--tch-surveiller); }
+.tch .ep-sante-ligne span { text-wrap: balance; }
+.tch .ep-sante-ligne .chev { flex: none; color: var(--tch-texte-doux); }
+.tch .ep-sante-detail { margin: -6px 0 0; font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
+/* Détails repliés : « Fini quand… » seul */
+.tch .ep-details { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tch-cible); text-align: left; font-size: 0.9375rem; color: var(--tch-texte); }
+.tch .ep-details-texte { flex: 1; }
+.tch .ep-details-texte b { font-weight: 500; }
+.tch .ep-details svg { color: var(--tch-texte-doux); }
 .tch .ep-details-corps { display: flex; flex-direction: column; gap: 4px; font-size: 0.9375rem; }
 .tch .ep-details-corps p { margin: 0; }
 .tch .ep-etape { margin-top: 8px; }
