@@ -60,6 +60,19 @@ describe('TCH86 — écran À trier', () => {
     expect(within(bandeau).getByRole('button', { name: 'Voir' })).toBeInTheDocument()
   })
 
+  it('passe visuelle n° 24 — bandeau : la phrase seule sur sa ligne, « Tout convertir · Voir » en liens dessous', async () => {
+    api.lireAujourdhui.mockResolvedValue({ data: { ...aujourdhui, a_trier: { ...aujourdhui.a_trier, a_convertir: 1 } } })
+    monter()
+    const bandeau = await screen.findByRole('region', { name: 'Activités personnelles' })
+    const phrase = within(bandeau).getByText('1 à-faire personnel dans Activités')
+    expect(phrase).toHaveClass('bandeau-titre')
+    for (const nom of ['Tout convertir', 'Voir']) {
+      const geste = within(bandeau).getByRole('button', { name: nom })
+      expect(geste).toHaveClass('geste')
+      expect(phrase.contains(geste)).toBe(false)
+    }
+  })
+
   it('passe visuelle n° 22 — une ligne = case ronde, titre, mentions servies, gestes en liens (pas en pilules)', async () => {
     const user = userEvent.setup()
     api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(

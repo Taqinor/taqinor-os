@@ -135,3 +135,8 @@
 .tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
 .tch .atrier-compteur { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .bandeau .bouton.discret { height: 44px; }
+/* À trier : « 1 à-faire personnel dans Activités » sur une ligne, Tout convertir · Voir en liens dessous */
+.tch .atrier-bandeau { align-items: flex-start; padding-bottom: 6px; }
+.tch .atrier-bandeau .bandeau-icone { width: 32px; height: 32px; border-radius: 9px; color: var(--tch-accent); }
+.tch .atrier-bandeau .bandeau-titre { margin: 5px 0 0; }
+.tch .atrier-bandeau .tri-gestes { margin: 2px 0 0; }

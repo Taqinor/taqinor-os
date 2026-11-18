@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, Ellipsis, Link as LienIcone, Sparkles } from 'lucide-react'
+import { ChevronDown, Ellipsis, Link as LienIcone, ListTodo, Sparkles } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { SuggereParLErp } from '../../features/taches/atrier/Suggestions'
@@ -289,10 +289,16 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       }}
     >
       {aConvertir > 0 ? (
-        <div className="bandeau" role="region" aria-label="Activités personnelles">
-          <span className="bandeau-texte">{`${accord(aConvertir, 'à-faire personnel', 'à-faire personnels')} dans Activités`}</span>
-          <button type="button" className="bouton discret" onClick={convertir}>Tout convertir</button>
-          <button type="button" className="bouton discret" onClick={() => navigate('/activites')}>Voir</button>
+        // la phrase sur UNE ligne, les deux gestes en liens dessous (jamais écrasée par deux boutons à droite)
+        <div className="bandeau atrier-bandeau" role="region" aria-label="Activités personnelles">
+          <span className="bandeau-icone" aria-hidden="true"><ListTodo className="i i-16" /></span>
+          <div className="bandeau-texte">
+            <p className="bandeau-titre">{`${accord(aConvertir, 'à-faire personnel', 'à-faire personnels')} dans Activités`}</p>
+            <div className="tri-gestes">
+              <button type="button" className="geste" onClick={convertir}>Tout convertir</button>
+              <button type="button" className="geste" onClick={() => navigate('/activites')}>Voir</button>
+            </div>
+          </div>
         </div>
       ) : null}
       {refus.map((phrase) => <p key={phrase} className="apercu-note" role="status">{phrase}</p>)}
