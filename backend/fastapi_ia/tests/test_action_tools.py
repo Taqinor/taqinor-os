@@ -1857,28 +1857,20 @@ class EnteteEchoueFermeTch163Tests(unittest.TestCase):
 
 # ── A5 — trois écritures Tâches par tour ; texte tiers dans le tour → carte à valider ───────────
 
-_CONTRATS_TACHES = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core", "apps", "taches", "contract_samples")
-
-
-def _contrat_taches(nom):
-    with open(os.path.join(_CONTRATS_TACHES, nom), encoding="utf-8") as f:
-        return json.load(f)
-
-
-_ID, _VERSION, _PRIO = {"type": "integer"}, {"type": "integer"}, {"type": "integer"}
+_CONTRAT_A5 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core", "apps",
+                           "taches", "contract_samples", "ecriture_a_valider.json")
+_ID = {"type": "integer"}
 _A5_CREER = {"key": "taches.tache.creer", "label": "Ajouter une tâche", "carte": "tache", "risk": "internal",
              "endpoint": "/api/django/taches/taches/", "method": "POST",
              "inputs": {"type": "object", "properties": {"titre": {"type": "string"}}, "required": ["titre"]}}
 _A5_MODIFIER = {"key": "taches.tache.modifier", "label": "Modifier une tâche", "carte": "tache", "risk": "internal",
                 "endpoint": "/api/django/taches/taches/{id}/", "method": "PATCH",
                 "inputs": {"type": "object", "required": ["id", "lock_version"], "properties": {
-                    "id": _ID, "lock_version": _VERSION, "priorite": _PRIO,
+                    "id": _ID, "lock_version": _ID, "priorite": _ID,
                     "echeance": {"type": "string"}, "projet_id": _ID}}}
 _A5_RANGER = {"key": "taches.liste.ranger", "label": "Ranger une liste", "carte": "capture_apercu",
               "risk": "internal", "endpoint": "/api/django/taches/saisie-rapide/", "method": "POST",
-              "inputs": {"type": "object", "properties": {"texte": {"type": "string"},
-                                                          "apercu": {"type": "boolean"}}}}
+              "inputs": {"type": "object", "properties": {"texte": {"type": "string"}, "apercu": {"type": "boolean"}}}}
 _A5_LEAD = {**_CAT_LEAD_LIST, "key": "crm.lead.chercher"}
 
 
@@ -1887,8 +1879,8 @@ class EcrituresTachesA5Tests(unittest.TestCase):
     le modèle ne peut ni la sauter ni l'éteindre."""
 
     def setUp(self):
-        exemple = _contrat_taches("ecriture_a_valider.json")["exemple"]
-        self.exemple = exemple
+        with open(_CONTRAT_A5, encoding="utf-8") as f:
+            self.exemple = exemple = json.load(f)["exemple"]
         self.appels = []
 
         def faux(ctx, path, method="POST", payload=None, idempotency_key=None, **extra):
@@ -1969,8 +1961,7 @@ class EcrituresTachesA5Tests(unittest.TestCase):
     def test_actions_hors_taches_inchangees(self):
         for i in range(3):
             self._lancer(_A5_CREER, {"titre": f"Tâche {i}"})
-        sortie = self._lancer(_A5_LEAD, {})
-        self.assertNotIn("refusée", sortie)
+        self.assertNotIn("refusée", self._lancer(_A5_LEAD, {}))
         self.assertEqual(self.appels[-1], ("GET", "/api/django/crm/leads/"))
         self.assertEqual(self.cartes[-1]["action_key"], "crm.lead.chercher")
 
