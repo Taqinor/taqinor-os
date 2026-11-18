@@ -1131,6 +1131,24 @@ class ChiffresDuJourTests(_Base):
         objectifs = dict(PlanJour.objects.filter(proprietaire=self.u).values_list('jour', 'objectif_du_jour'))
         self.assertEqual(objectifs, {J: 6, vendredi: 4, datetime.date(2026, 11, 22): None})
 
+    def test_11_etoile_d_une_tache_supprimee_ou_abandonnee_ne_compte_plus(self):
+        from apps.taches.services import journee as services
+        from apps.taches.services.taches import supprimer_tache, trancher_tache
+        fabriques.reglages(self.u)
+        projet = fabriques.projet(self.u)
+        supprimee, abandonnee, *autres = [fabriques.tache(self.u, projet=projet, jour_prevu=J) for _ in range(5)]
+        for t in (supprimee, abandonnee):
+            services.marquer_essentielle(self.u, t.pk, True, maintenant_a(8))
+        supprimer_tache(self.u, supprimee.pk)
+        trancher_tache(self.u, abandonnee.pk, 'abandonner', maintenant=a(J, 9), aujourdhui=J)
+        rendu = services.aujourdhui(self.u, J, maintenant_a(10))
+        p = rendu['progression']
+        self.assertEqual((p['essentiel_faites'], p['essentiel_prevues'], len(rendu['essentiel'])), (0, 0, 0))
+        for t in autres:  # trois ★ visibles : permises
+            services.marquer_essentielle(self.u, t.pk, True, maintenant_a(11))
+        self.assertEqual(sel.progression_courante(self.u, J)['essentiel_prevues'], 3)
+        self.assertEqual(self.nuit()[3:], (0, 3))
+
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
         en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
         ouverte = self.tache(projet=en_pause, jour_prevu=J)

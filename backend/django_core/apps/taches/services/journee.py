@@ -653,7 +653,8 @@ def _lignes_du_plan(user, plan, cles, essentielles, ops):
 
 
 def _verifier_essentiels(plan, essentielles, champ='essentielles'):
-    deja = {lig.tache_id for lig in plan.ligneplanjour_set.all() if lig.essentielle}
+    """« 3 au plus. » sur les ★ qui comptent (`sel.ESSENTIELLE_VIVANTE` : tâche vivante, non abandonnée)."""
+    deja = set(plan.ligneplanjour_set.filter(sel.ESSENTIELLE_VIVANTE).values_list('tache_id', flat=True))
     if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
         raise Refus({champ: [MESSAGE_ESSENTIELS]})
 

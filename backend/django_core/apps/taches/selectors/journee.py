@@ -17,7 +17,7 @@ import datetime
 import logging
 from dataclasses import dataclass, field
 
-from django.db.models import Q
+from django.db.models import BooleanField, ExpressionWrapper, Q
 from django.utils import timezone
 
 from apps.taches.choix import (
@@ -138,7 +138,8 @@ def item_d_activite(activite):
 
 
 def plan_pur(plan, lignes):
-    """`PlanPur` d'un `PlanJour` (ou None) et de ses lignes."""
+    """`PlanPur` d'un `PlanJour` (ou None) et de ses lignes (lues par `lignes_du_plan`) ; une ★ n'y est
+    `essentielle` que si elle compte (`ligne_essentielle`)."""
     if plan is None:
         return None
     return classement.PlanPur(
@@ -146,7 +147,7 @@ def plan_pur(plan, lignes):
         allege_le=plan.allege_le, objectif_du_jour=plan.objectif_du_jour,
         lignes=tuple(classement.LignePure(
             tache_id=ligne.tache_id, activite_id=ligne.activite_id, prevue_au_plan=ligne.prevue_au_plan,
-            faite=ligne.faite, reportee=ligne.reportee, essentielle=ligne.essentielle,
+            faite=ligne.faite, reportee=ligne.reportee, essentielle=ligne_essentielle(ligne),
             creneau=ligne.creneau, rang=ligne.rang) for ligne in lignes))
 
 
@@ -194,9 +195,24 @@ def plan_du_jour(user, jour):
     return _du_compte(PlanJour, user).filter(jour=jour).first()
 
 
+#: LA règle d'une ★ qui compte (progression, nuit, « 3 au plus. ») : ligne `essentielle` dont la tâche est
+#: vivante et non abandonnée — une tâche supprimée ou abandonnée après sa ★ ne laisse pas un « essentiel 0
+#: sur 1 » fantôme ni ne prend une des 3 places (revue F2 tour 2 #11).
+ESSENTIELLE_VIVANTE = Q(essentielle=True, tache__is_deleted=False) & ~Q(tache__statut=StatutTache.ANNULE)
+
+
 def lignes_du_plan(plan):
-    """Les lignes d'un plan (une requête ; aucune sans plan)."""
-    return list(plan.ligneplanjour_set.all()) if plan is not None else []
+    """Les lignes d'un plan, chacune annotée `essentielle_vivante` (`ESSENTIELLE_VIVANTE`) — une requête ;
+    aucune sans plan."""
+    if plan is None:
+        return []
+    vivante = ExpressionWrapper(ESSENTIELLE_VIVANTE, output_field=BooleanField())
+    return list(plan.ligneplanjour_set.annotate(essentielle_vivante=vivante))
+
+
+def ligne_essentielle(ligne):
+    """La ligne (lue par `lignes_du_plan`) est-elle une ★ qui compte (`ESSENTIELLE_VIVANTE`) ?"""
+    return bool(ligne.essentielle_vivante)
 
 
 def lignes_de_taches_du_jour(user, jour):
@@ -414,7 +430,7 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
     ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
     activités ERP closes du jour, lues pour `faites`)."""
-    essentielles = [ligne for ligne in journee.lignes if ligne.essentielle]
+    essentielles = [ligne for ligne in journee.lignes if ligne_essentielle(ligne)]
     au_plan = [ligne for ligne in journee.lignes if ligne.prevue_au_plan]
     minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
