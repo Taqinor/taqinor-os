@@ -32,6 +32,7 @@ from .views import (
     ParametresGammesView,  # PVMRQ
     PlanCommissionViewSet,  # WIR281/XSAL6
 )
+from .views.assistant import CatalogueAssistantView  # COP2-V2
 from apps.facturation.recouvrement import (  # ODX18 — mêmes vues sous facturation/
     FollowupLevelViewSet,
     ParametrageRelanceClientViewSet,  # ZFAC8
@@ -297,5 +298,9 @@ urlpatterns = [
     # PVMRQ — réglages « offre à deux gammes » par société (singleton).
     path('parametres-gammes/', ParametresGammesView.as_view(),
          name='parametres-gammes'),
+    # COP2-V2 — catalogue vendable lu par l'assistant (contrat
+    # ``assistant_catalogue.json``).
+    path('assistant/catalogue/', CatalogueAssistantView.as_view(),
+         name='assistant-catalogue'),
     path('', include(router.urls)),
 ]

@@ -146,10 +146,17 @@ class VentesAgentCatalogueTest(TestCase):
         from django.urls import resolve
         from apps.agent.registry import LOT_COPILOTE
         cles = {a.key for a in all_actions()}
+        # COP2 — chaque action du lot nomme les objets qu'elle désigne ; la
+        # recherche catalogue n'en désigne aucun.
+        objets_attendus = {
+            'ventes.devis.expliquer': {'id': 'devis'},
+            'ventes.devis.envoyer_email': {'id': 'devis'},
+            'ventes.catalogue.chercher': {},
+        }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
             self.assertEqual((action.lot, action.objets),
-                             (LOT_COPILOTE, {'id': 'devis'}), action.key)
+                             (LOT_COPILOTE, objets_attendus[action.key]), action.key)
             self.assertNotIn('company', action.inputs['properties'], action.key)
             for interdit in ('prix_achat', 'marge'):
                 self.assertNotIn(interdit, (action.description + str(action.inputs)).lower())
@@ -449,3 +456,109 @@ class EnregistrerPaiementRelayedCallTest(TestCase):
         self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
         self.assertFalse(
             Paiement.objects.filter(facture=foreign_facture).exists())
+
+
+class CatalogueAssistantTest(TestCase):
+    """COP2-V1/V2 — ``GET ventes/assistant/catalogue/`` : le classement du
+    résolveur unique (celui de la composition imposée), des bornes publiées,
+    jamais un prix d'achat ni une quantité en stock — même pour un
+    superutilisateur."""
+
+    URL = '/api/django/ventes/assistant/catalogue/'
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='COP2 Cat', slug='cop2-cat')
+        self.autre = Company.objects.create(nom='COP2 Autre', slug='cop2-autre')
+        self.admin = User.objects.create_user(
+            username='cop2_cat_su', password='x', company=self.company,
+            is_superuser=True, is_staff=True)
+        self.lecture = User.objects.create_user(
+            username='cop2_cat_ro', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Ventes RO',
+                                     permissions=['ventes_voir']))
+
+        def mk(nom, prix, stock=10, company=None, **extra):
+            return Produit.objects.create(
+                company=company or self.company, nom=nom,
+                sku='C2-%s' % Produit.objects.count(),
+                prix_vente=Decimal(prix), prix_achat=Decimal('123.45'),
+                quantite_stock=stock, **extra)
+        self.panneau = mk('Panneau Canadien Solar 710W', '1400')
+        mk('Panneau Jinko 710W', '1300')
+        self.hybride = mk('Onduleur hybride Deye 10kW Triphasé', '28000',
+                          marque='Deye')
+        mk('Onduleur réseau Huawei 10kW Triphasé', '20000')
+        self.batterie = mk('Batterie Dyness 5 kWh', '14000')
+        mk('Batterie Dyness 10 kWh', '26000', stock=0)
+        mk('Batterie Lithium 5 kWh', '15500', company=self.autre)
+        mk('Onduleur hybride Deye 10kW Triphasé sans prix', '0')
+
+    def _get(self, user, **params):
+        return auth(user).get(self.URL, params)
+
+    def test_batterie_5_kwh_unique_et_jamais_d_achat_meme_superuser(self):
+        resp = self._get(self.admin, genre='batterie', kwh=5)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'q', 'genre', 'total', 'limite',
+                                          'statut', 'raison', 'lignes'})
+        self.assertEqual(resp.data['statut'], 'unique')
+        self.assertEqual([li['produit_id'] for li in resp.data['lignes']],
+                         [self.batterie.pk])
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(set(ligne), {
+            'produit_id', 'nom', 'marque', 'genre', 'kw', 'kwh', 'wc',
+            'phase', 'famille', 'prix_ttc', 'en_stock'})
+        self.assertIs(ligne['en_stock'], True)
+        texte = str(resp.data).lower()
+        for interdit in ('prix_achat', 'marge', '123.45', 'quantite'):
+            self.assertNotIn(interdit, texte)
+
+    def test_onduleur_deux_familles_ambigu_puis_hybride_unique(self):
+        ambigu = self._get(self.lecture, genre='onduleur', kw=10,
+                           phase='triphase')
+        self.assertEqual(ambigu.status_code, 200, ambigu.data)
+        self.assertEqual(ambigu.data['statut'], 'ambigu')
+        unique = self._get(self.lecture, genre='onduleur', kw=10,
+                           phase='triphase', famille='hybride')
+        self.assertEqual(unique.data['statut'], 'unique')
+        self.assertEqual(unique.data['lignes'][0]['produit_id'],
+                         self.hybride.pk)
+        self.assertEqual(unique.data['lignes'][0]['famille'], 'hybride')
+        self.assertEqual(unique.data['lignes'][0]['phase'], 'triphase')
+
+    def test_panneau_canadien_passe_devant_comme_le_compositeur(self):
+        resp = self._get(self.lecture, genre='panneau', wc=710)
+        self.assertEqual(resp.data['statut'], 'unique')
+        self.assertEqual(resp.data['lignes'][0]['produit_id'], self.panneau.pk)
+
+    def test_batterie_7_kwh_aucun_nomme_les_tailles_proches(self):
+        resp = self._get(self.lecture, genre='batterie', kwh=7)
+        self.assertEqual(resp.data['statut'], 'aucun')
+        self.assertEqual(resp.data['lignes'], [])
+        self.assertIn('5 kWh', resp.data['raison'])
+
+    def test_autre_societe_et_sans_prix_jamais_servis(self):
+        resp = self._get(self.lecture, limite=25)
+        noms = [li['nom'] for li in resp.data['lignes']]
+        self.assertNotIn('Batterie Lithium 5 kWh', noms)
+        self.assertFalse(any('sans prix' in n for n in noms))
+
+    def test_parametre_inconnu_ou_hors_borne_400_nomme(self):
+        for params, champ in (({'inconnu': 1}, 'inconnu'),
+                              ({'kw': 500}, 'kw'), ({'limite': 99}, 'limite'),
+                              ({'genre': 'cable'}, 'genre')):
+            with self.subTest(params=params):
+                resp = self._get(self.lecture, **params)
+                self.assertEqual(resp.status_code, 400)
+                self.assertIn(champ, str(resp.data))
+
+    def test_action_chercher_lot_copilote_et_garde_reelle(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import CHERCHER_CATALOGUE
+        self.assertEqual((CHERCHER_CATALOGUE.lot, CHERCHER_CATALOGUE.risk,
+                          CHERCHER_CATALOGUE.required_permission),
+                         (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir'))
+        self.assertLessEqual(len(CHERCHER_CATALOGUE.description), 600)
+        for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                        'Résultat :'):
+            self.assertIn(section, CHERCHER_CATALOGUE.description)

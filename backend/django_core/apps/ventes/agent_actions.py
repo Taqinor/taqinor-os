@@ -586,8 +586,51 @@ ENVOYER_EMAIL_DEVIS = AgentAction(
 )
 
 
+#: COP2 — l'exemple commun des actions de composition : la phrase du fondateur.
+_EXEMPLE_FONDATEUR = (
+    "« prépare-lui un devis : 10 panneaux solaires avec onduleur triphasé de "
+    "10kw et une batterie de 5kwh »")
+
+# COP2-V2 — lire le catalogue vendable (route ``ventes/assistant/catalogue/``,
+# garde ``LectureVentes`` = ``ventes_voir``) : même classement que la
+# composition imposée, jamais de prix d'achat, de marge ni de stock chiffré.
+CHERCHER_CATALOGUE = AgentAction(
+    key='ventes.catalogue.chercher',
+    label='Chercher dans le catalogue',
+    description=(
+        "Sert à : lire le catalogue vendable (panneaux, onduleurs, batteries) "
+        "avec prix TTC ; un genre et une taille donnent un verdict unique, "
+        "ambigu ou aucun. Ne pas utiliser pour : créer un devis ni demander "
+        "une puissance au client. Exemple : " + _EXEMPLE_FONDATEUR + " → "
+        "genre=onduleur, kw=10, phase=triphase, famille=hybride ; puis "
+        "genre=batterie, kwh=5. Résultat : produits (produit_id, nom, "
+        "marque, prix TTC), statut et raison."
+    ),
+    endpoint='/api/django/ventes/assistant/catalogue/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'description': 'Texte cherché (nom ou marque).'},
+            'genre': {'type': 'string', 'enum': ['panneau', 'onduleur', 'batterie']},
+            'kw': {'type': 'number', 'description': "Puissance d'onduleur en kW (0,5 à 100)."},
+            'kwh': {'type': 'number', 'description': 'Capacité de batterie en kWh (0,5 à 100).'},
+            'wc': {'type': 'number', 'description': 'Puissance de panneau en Wc (100 à 1000).'},
+            'phase': {'type': 'string', 'enum': ['monophase', 'triphase']},
+            'famille': {'type': 'string', 'enum': ['hybride', 'reseau', 'offgrid'],
+                        'description': 'Famille d\'onduleur (hybride = avec batterie).'},
+            'limite': {'type': 'integer', 'description': 'Lignes rendues (1 à 25, défaut 10).'},
+        },
+    },
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
-VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS)
+VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
+                           CHERCHER_CATALOGUE)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
