@@ -906,9 +906,13 @@ def _clore_pour(user, hier):
     prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite, closes=closes)
     conge = _en_conge(preferences, hier)
     plan, _cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=hier)
-    plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
-                                   plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
-    plan.compte_rythme = compte
+    if journee.reglages is None or journee.reglages.comprendre_mon_rythme:
+        # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, plus rien n'est calculé ni gardé sur son
+        # rythme (donnees.md §8) : ni `statut_jour` ni `compte_rythme` (`micro_comptees` et
+        # `taille_mediane_min` ne sont écrits nulle part ici). Le bilan du jour, lui, reste écrit.
+        plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
+                                       plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
+        plan.compte_rythme = compte
     if plan.objectif_du_jour is None and hier in journee.travailles:
         # Revue F2 tour 2 #4 : tout jour travaillé jugé porte SON objectif (jour court compris), pas
         # seulement ceux où « Garder ces N » l'a posé ; un objectif déjà posé n'est jamais réécrit.

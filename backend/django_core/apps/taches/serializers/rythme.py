@@ -160,7 +160,8 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
     plans = plans_du_rythme(user, jour)
     etat = etat_rythme(reglages, plans, jour)
     nb, source, zone = moteur.objectif_affiche(etat)
-    serie = _serie(plans)
+    # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, ni série ni trace (donc `trace` nulle).
+    serie = _serie(plans) if reglages.comprendre_mon_rythme else []
     proposition, constats = _cartes(user, jour, assistant)
     return {
         'mode': etat.mode,
