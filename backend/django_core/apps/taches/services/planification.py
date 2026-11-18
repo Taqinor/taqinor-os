@@ -8,6 +8,10 @@ endroit qui compte un REPORT (`reports += 1` par `F()`, sous `select_for_update(
 - jamais : futur → futur, avancer, premier jour posé, `compter_report=False` (Alléger, retour
   d'absence, décaler, instancier, création).
 
+C'est donc aussi LA règle de la ligne de plan d'une tâche qui change de jour (`_suivre_les_lignes_du_plan`,
+acceptation F2 défaut 6) : tous les chemins (Choisir un jour, Reporter, trancher, lot, décaler un
+projet, Planifier ma semaine, placer dans l'agenda, récurrence, retour d'absence, bilan) passent ici.
+
 Heure murale (invariant 14) : jour et heure sont stockés tels quels, jamais un instant UTC.
 `collecte` (une liste) reçoit les opérations sans créer de geste : l'appelant (lot, rituels,
 alléger, retour, décaler, instancier, création) enregistre UN geste pour tout son travail.
@@ -23,10 +27,11 @@ from rest_framework import serializers
 
 from apps.taches.choix import Moment
 from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.models.journee import LignePlanJour
 from apps.taches.moteur.gabarits import format_heure, format_jour
 from apps.taches.saisie.grammaire import moment_de
 from apps.taches.selectors.base import jours_travailles_de, taches_de
-from apps.taches.services.gestes import enregistrer_geste, op_champ
+from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.rappels import recalculer_ancres
 from core.verrou_optimiste import CHAMP_VERSION, CODE_CONFLIT_VERSION, ConflitVersion
 
@@ -37,6 +42,9 @@ MESSAGE_VALEUR_INCONNUE = 'Valeur inconnue.'
 #: Colonnes écrites par `planifier` (toutes dans la liste blanche de l'annulation, §4).
 CHAMPS_ECRITS = ('jour_prevu', 'moment', 'heure_debut', 'quelque_jour', 'premier_jour_prevu',
                  'triee_le', 'rang_jour')
+
+#: Champs d'une ligne de plan recopiés quand elle change (une ligne n'a pas de champ restaurable, §4).
+CHAMPS_LIGNE = ('prevue_au_plan', 'faite', 'reportee', 'essentielle', 'creneau', 'rang')
 
 AVERTISSEMENT_APRES_ECHEANCE = 'prevue_apres_echeance'
 AVERTISSEMENT_JOUR_NON_TRAVAILLE = 'jour_non_travaille'
@@ -167,6 +175,48 @@ def avertissements_du_jour(acteur, t, aujourdhui):
     return sortie
 
 
+# --- Les lignes du plan (donnees.md §2.9) ----------------------------------------------------
+
+def valeurs_ligne(ligne):
+    return {'plan': ligne.plan_id, 'tache': ligne.tache_id, 'activite_id': ligne.activite_id,
+            **{champ: getattr(ligne, champ) for champ in CHAMPS_LIGNE}}
+
+
+def creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
+    ligne = LignePlanJour.objects.create(company_id=plan.company_id, plan=plan, tache_id=tache_id,
+                                         activite_id=activite_id, **champs)
+    ops.append(op_creation('ligne_plan_jour', ligne))
+    return ligne
+
+
+def remplacer_ligne(ligne, ops, **changements):
+    """Une ligne n'a pas de champ restaurable (§4) : la changer = la supprimer (opération dure,
+    restaurée à l'identique) et en créer une neuve — l'annulation défait les deux."""
+    valeurs = valeurs_ligne(ligne)
+    ops.append(op_suppression_dure('ligne_plan_jour', ligne, valeurs))
+    plan = ligne.plan
+    ligne.delete()
+    champs = {champ: valeurs[champ] for champ in CHAMPS_LIGNE}
+    champs.update(changements)
+    return creer_ligne(plan, ops, tache_id=valeurs['tache'], activite_id=valeurs['activite_id'], **champs)
+
+
+def _suivre_les_lignes_du_plan(t, ancien, ops):
+    """LA règle d'une tâche gardée qui change de jour (regles.md §4.6, §4.9 ; invariant 18) : sa ligne
+    du plan du jour qu'elle QUITTE reste une gardée — non tenue, comptée dans « x des y gardées » (seul
+    Alléger retire une ligne) — et passe `reportee` comme au bilan ; revenue à ce jour (ou gardée par
+    son échéance), elle ne l'est plus. Une requête quand le jour change, aucune sinon."""
+    jours = [jour for jour in (ancien, t.jour_prevu) if jour is not None]
+    if ancien == t.jour_prevu or not jours:
+        return
+    lignes = LignePlanJour.objects.filter(company_id=t.company_id, tache_id=t.pk,
+                                          plan__jour__in=jours).select_related('plan')
+    for ligne in lignes:
+        reportee = ligne.plan.jour not in (t.jour_prevu, t.echeance)
+        if ligne.reportee != reportee:
+            remplacer_ligne(ligne, ops, reportee=reportee)
+
+
 def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque_jour=False,
               compter_report=True, version=None, collecte=None):
     """Pose le jour, l'heure, le moment ou « En réserve » de `tache` (à `acteur`) → résultat
@@ -182,6 +232,7 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
         ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
                if getattr(t, champ) != valeur]
         ops += recalculer_ancres(t)  # rappels ancrés sur le jour prévu (TCH35)
+        _suivre_les_lignes_du_plan(t, avant['jour_prevu'], ops)
         geste = None
         if collecte is not None:
             collecte.extend(ops)
