@@ -24,6 +24,7 @@ vi.mock('../../api/tachesApi', async (original) => ({
   listerToutesLesTaches: vi.fn(),
   supprimerProjet: vi.fn(),
   creerProjet: vi.fn(),
+  lireTache: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -273,6 +274,23 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     expect(api.annulerGeste).toHaveBeenCalledWith(91)
     expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
     expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+  })
+
+  it('F4 revue #7 — En réserve, « Annuler », En réserve encore : la ligne garde la version rendue par le serveur', async () => {
+    api.planifierTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 93 } })
+    api.lireTache.mockResolvedValue({ data: { ...tacheEcrite().tache, id: 20, lock_version: 9 } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(93))
+    await waitFor(() => expect(api.lireTache).toHaveBeenCalledWith(20))
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledTimes(2))
+    expect(api.planifierTache.mock.calls[1][1].lock_version).toBe(9)
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1) // la vue n'est jamais relue : seule cette tâche l'est
   })
 
   it('Priorité → Basse passe par le lot `prioriser` ; En réserve par `planifier/` avec le lock_version', async () => {

@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annulerEtRecaler } from '../../features/taches/lib/versions'
 import {
   ABR_JOURS, ABR_MOIS, aujourdhuiIso, duree as dureeTexte, jourLong, jourNomme,
 } from '../../features/taches/lib/textes'
@@ -484,8 +485,10 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     else setPosees((p) => ({ ...p, [jour]: placee }))
     const gesteId = reponse?.data?.geste_id
     const annuler = async () => {
-      if (gesteId) await annulerGeste(gesteId)
+      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend
+      const retour = gesteId ? await annulerEtRecaler(gesteId, [item.id]) : null
       setDonnees(precedent)
+      if (retour?.taches?.[item.id]) reconcilier(setDonnees, retour.taches[item.id])
       setPosee(null)
       setPosees((p) => Object.fromEntries(Object.entries(p).filter(([, t]) => t.id !== item.id)))
     }
