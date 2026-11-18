@@ -514,11 +514,15 @@ def _contenu_systeme(provider: str, allow_price: bool,
     COP-B3 — copilote allume : ses consignes (texte STABLE) entrent dans le
     MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange.
     `taches` : le bloc « TACHES — CONSIGNES DU COPILOTE » seulement pour un
-    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`)."""
+    tour dont le catalogue porte une action `taches.*` (droit `taches_voir`).
+    Copilote v2 (F1) : ses consignes passent AVANT `_AGENT_PREFIX` — le modele
+    lit son role avant le guide SQL ; eteint, le bloc commence toujours par
+    `_AGENT_PREFIX`, octet pour octet."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
     if copilote:
-        base += "\nCOPILOTE COMMERCIAL :\n" + prompt_copilote.consignes_du_copilote(taches) + "\n"
+        base = (prompt_copilote.consignes_du_copilote(taches) + "\n"
+                + prompt_copilote.TRANSITION_GUIDE_SQL + base)
     if provider != "claude":
         return base + _manifeste_allege(docs["manifeste"]), False
     texte = base + _manuel_du_role(docs, role)

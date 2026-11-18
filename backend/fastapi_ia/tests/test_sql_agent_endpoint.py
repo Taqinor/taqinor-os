@@ -706,12 +706,18 @@ class TourReelCartesTests(unittest.TestCase):
         # Compte sans le module Tâches : consignes commerciales SEULES (pas les ~280 mots de plus).
         self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, allume[0]["text"])
         self.assertNotIn(prompt_copilote.CONSIGNES_TACHES, allume[0]["text"])
+        # Copilote v2 (F1) — le rôle du copilote AVANT le guide SQL.
+        self.assertTrue(allume[0]["text"].startswith(prompt_copilote.CONSIGNES_COMMERCIALES))
+        self.assertLess(allume[0]["text"].index(prompt_copilote.TRANSITION_GUIDE_SQL),
+                        allume[0]["text"].index(svc._AGENT_PREFIX))
         taches = systeme([dict(_CAT_LEAD_LIST, lot="copilote"),
                           dict(_CAT_LEAD_LIST, key="taches.journee.lire", lot="copilote")])
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, taches[0]["text"])
         eteint = systeme([dict(_CAT_LEAD_LIST, lot="herite")])
         self.assertEqual(eteint, svc._contenu_systeme("claude", False)[0])
         self.assertNotIn(prompt_copilote.CONSIGNES_COPILOTE, str(eteint))
+        self.assertTrue(eteint[0]["text"].startswith(svc._AGENT_PREFIX))
+        self.assertNotIn(prompt_copilote.TRANSITION_GUIDE_SQL, str(eteint))
         groq, _ = svc._contenu_systeme("groq", True, copilote=True, taches=True)
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, groq)
         groq_sans, _ = svc._contenu_systeme("groq", True, copilote=True)
