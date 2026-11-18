@@ -12,7 +12,7 @@ import { groupe } from './_oracles.js'
 import { py, MDP_ESSAI, fermerDjangoApresTout } from './_django.js'
 import { connexionApi, assurerSessionPage, lireJson, telephoneMobileUnique } from '../helpers.js'
 
-const etape = groupe('ADRG', ['ADRG147', 'ADRG152', 'ADRG153', 'ADRG154'])
+const etape = groupe('ADRG', ['ADRG147', 'ADRG152', 'ADRG153', 'ADRG154', 'ADRG156', 'ADRG157', 'ADRG158'])
 fermerDjangoApresTout()
 const API = '/api/django'
 const T = { timeout: 120_000 }
@@ -609,5 +609,200 @@ except Exception as exc: print('nettoyage ticket', exc)
 try: Client.objects.filter(pk=${cl.id}).delete()
 except Exception as exc: print('nettoyage client', exc)
 sortie(1)`).catch(() => null)
+  }
+})
+
+// ───────────────────────── ADRG156 : propriétaire désactivé ─────────────────────────
+etape('PF4-ADRG156-proprietaire-desactive', ['ADRG156'], async ({ testInfo }) => {
+  const m = marque()
+  const pro = await compteDe('Directeur', 'adrg156di')
+  const anonyme = await pwRequest.newContext({ baseURL: testInfo.project.use.baseURL })
+  OUVERTS.push(() => anonyme.dispose())
+  let rapportId = 0
+  /** Passage hebdomadaire RÉEL (`email_saved_reports`), lundi 06 h Casablanca, courrier doublé ; limité à CE rapport. */
+  const passage = async () => py(`from apps.reporting import scheduled_reports as sr
+from zoneinfo import ZoneInfo
+envoyer = mock.Mock(return_value=True)
+lundi = datetime.datetime(2026, 4, 13, 6, 0, tzinfo=ZoneInfo('Africa/Casablanca'))
+orig = sr._rapport_est_du
+with mock.patch.object(sr, '_casablanca_now', return_value=lundi), \\
+     mock.patch.object(sr, '_is_email_configured', return_value=True), \\
+     mock.patch.object(sr, '_send_report_email', envoyer), \\
+     mock.patch.object(sr, '_rapport_est_du', lambda r, n: r.pk == ${rapportId} and orig(r, n)):
+    n = sr.email_saved_reports()
+from apps.reporting.models import EnvoiRapport, SavedReport
+r = SavedReport.objects.get(pk=${rapportId})
+sortie(dict(n=n, appels=envoyer.call_count, last=str(r.last_sent_at),
+            envois=list(EnvoiRapport.objects.filter(saved_report=r).order_by('id').values_list('statut', 'erreur'))))`)
+  try {
+    const cree = await py(`from apps.reporting.models import SavedReport
+r = SavedReport.objects.create(company_id=${SOC}, owner_id=${pro.id}, name=${J(`Hebdo ADRG156 ${m}`)}, target_kind='sales',
+    schedule='weekly', recipients='direction@exemple.ma')
+from apps.reporting.diffusion_views import make_report_token
+sortie(dict(id=r.pk, jeton=make_report_token(r)))`)
+    rapportId = cree.id
+    const lien = `${API}/reporting/rapports-partages/${cree.jeton}/`
+    const desactive = async (actif) => py(`U.objects.filter(pk=${pro.id}).update(is_active=${actif ? 'True' : 'False'})
+sortie(1)`)
+    // Propriétaire désactivé : aucun envoi, une ligne echec motivée, last_sent_at nul, lien 404.
+    await desactive(false)
+    const a = await passage()
+    expect(a.appels, `propriétaire désactivé : _send_report_email jamais appelé (${J(a)})`).toBe(0)
+    expect(a.envois, `propriétaire désactivé : une seule ligne echec motivée (${J(a)})`).toEqual([['echec', 'Propriétaire du rapport désactivé : envoi suspendu.']])
+    expect(a.last, 'propriétaire désactivé : last_sent_at nul').toBe('None')
+    const l404 = await anonyme.get(lien, T)
+    expect(l404.status(), 'propriétaire désactivé : lien public 404').toBe(404)
+    expect((await l404.json()).detail, 'propriétaire désactivé : message du lien').toBe('Rapport indisponible.')
+    const relu = await py(`from apps.reporting.models import EnvoiRapport
+sortie(list(EnvoiRapport.objects.filter(saved_report_id=${rapportId}).values_list('statut', flat=True)))`)
+    expect(relu, 'relu : une seule ligne echec').toEqual(['echec'])
+    // Témoin : propriétaire réactivé ⇒ le rapport part, le lien répond 200.
+    await desactive(true)
+    const b = await passage()
+    expect(b.appels, `propriétaire réactivé : le rapport est envoyé (${J(b)})`).toBe(1)
+    expect(b.n, 'propriétaire réactivé : un envoi compté').toBe(1)
+    expect(b.envois.map((x) => x[0]), 'propriétaire réactivé : journal echec puis envoye').toEqual(['echec', 'envoye'])
+    const l200 = await anonyme.get(lien, T)
+    expect(l200.status(), 'propriétaire réactivé : lien public 200').toBe(200)
+  } finally {
+    await py(`from apps.reporting.models import SavedReport
+SavedReport.objects.filter(pk=${rapportId}).delete()
+sortie(1)`).catch(() => null)
+  }
+})
+
+// ───────────────────────── ADRG157 : widget de métrique nommée ─────────────────────────
+etape('PF4-ADRG157-widget-metrique', ['ADRG157'], async ({ testInfo }) => {
+  const m = marque()
+  const re = await compteDe('Commercial responsable', 'adrg157re')
+  const di = await compteDe('Directeur', 'adrg157di')
+  expect(re.codes.includes('stock_export'), 'Given : Commercial responsable sans stock_export').toBe(false)
+  expect(di.codes.includes('stock_export'), 'Given : Directeur avec stock_export').toBe(true)
+  const apiR = await apiDe(testInfo, re)
+  const apiD = await apiDe(testInfo, di)
+  const nomProduit = `Onduleur ADRG157 ${m}`
+  const donnees = await py(`from apps.semantic.models import MetricDefinition
+from apps.stock.models import Produit
+from core.models import Dashboard
+cle = 'stock_qte_${m}'
+md = MetricDefinition.objects.create(company_id=${SOC}, cle=cle, libelle='Stock', dataset='stock_produits',
+    mesure={'field': 'quantite_stock', 'agg': 'sum'})
+p = Produit.objects.create(company_id=${SOC}, nom=${J(nomProduit)}, sku='A157-${m}', prix_vente=100, quantite_stock=3)
+d = Dashboard.objects.create(company_id=${SOC}, titre=${J(`Tableau ADRG157 ${m}`)}, partage=True,
+    layout={'widgets': [{'id': 'm', 'titre': 'Stock', 'type': 'metrique', 'metrique': cle, 'group_by': ['nom']}]})
+sortie(dict(md=md.pk, p=p.pk, d=d.pk))`)
+  const corps = { name: `Stock ADRG157 ${m}`, target_kind: 'dashboard', cible_id: donnees.d, schedule: 'weekly', recipients: 'x@exemple.ma' }
+  const url = `${API}/reporting/saved-reports/`
+  let creeD = null
+  let rapportR = 0
+  try {
+    const refuse = await apiR.post(url, { ...T, data: corps })
+    expect(refuse.status(), 'Commercial responsable : programmer le tableau de métrique stock refusé').toBe(403)
+    expect(await refuse.text(), 'Commercial responsable : refus du jeu de données').toContain('Accès au jeu de données refusé.')
+    const liste = await lireJson(await apiR.get(url, T), 'rapports du Commercial responsable')
+    const noms = (Array.isArray(liste) ? liste : liste.results || []).map((x) => x.name)
+    expect(noms, 'relu : aucun rapport du Commercial responsable à ce nom').not.toContain(corps.name)
+    // Témoin Directeur : 201.
+    const ok = await apiD.post(url, { ...T, data: corps })
+    expect(ok.status(), 'Directeur : même programmation acceptée').toBe(201)
+    creeD = (await ok.json()).id
+    // Rendu : un rapport du Commercial responsable ne rend pas le nom du produit ; widget en bloc d'erreur.
+    const rendu = await py(`from apps.reporting import scheduled_reports as sr
+from apps.reporting.models import SavedReport
+from core.models import Dashboard
+r = SavedReport.objects.create(company_id=${SOC}, owner_id=${re.id}, name=${J(`Rendu ADRG157 ${m}`)}, target_kind='dashboard',
+    cible_id=${donnees.d}, schedule='weekly', recipients='x@exemple.ma')
+html_re = sr.rendre_dashboard_html(r, Dashboard.objects.get(pk=${donnees.d}))
+r.owner_id = ${di.id}; r.save()
+html_di = sr.rendre_dashboard_html(SavedReport.objects.get(pk=r.pk), Dashboard.objects.get(pk=${donnees.d}))
+sortie(dict(r=r.pk, re=html_re, di=html_di))`)
+    rapportR = rendu.r
+    expect(rendu.re.includes(nomProduit), 'rendu (propriétaire Commercial responsable) : sans le nom du produit').toBe(false)
+    expect(rendu.re, 'rendu (propriétaire Commercial responsable) : widget en bloc d\'erreur').toContain('<h2>Stock</h2><p class="erreur">Accès au jeu de données refusé.</p>')
+    expect(rendu.di.includes(nomProduit), 'rendu (témoin, propriétaire Directeur) : le nom du produit est rendu').toBe(true)
+  } finally {
+    if (creeD) await apiD.delete(`${url}${creeD}/`, T).catch(() => undefined)
+    await py(`from apps.reporting.models import SavedReport
+from apps.semantic.models import MetricDefinition
+from apps.stock.models import Produit
+from core.models import Dashboard
+SavedReport.objects.filter(pk=${rapportR}).delete()
+SavedReport.objects.filter(cible_id=${donnees.d}).delete()
+Dashboard.objects.filter(pk=${donnees.d}).delete()
+MetricDefinition.objects.filter(pk=${donnees.md}).delete()
+Produit.objects.filter(pk=${donnees.p}).delete()
+sortie(1)`).catch(() => null)
+  }
+})
+
+// ───────────────────────── ADRG158 : rapport figé « stock » ─────────────────────────
+etape('PF4-ADRG158-rapport-stock', ['ADRG158'], async ({ page, suivi, testInfo }) => {
+  const re = await compteDe('Commercial responsable', 'adrg158re')
+  const di = await compteDe('Directeur', 'adrg158di')
+  expect(re.codes.includes('stock_export'), 'Given : Commercial responsable sans stock_export').toBe(false)
+  expect(di.codes.includes('stock_export'), 'Given : Directeur avec stock_export').toBe(true)
+  const apiR = await apiDe(testInfo, re)
+  const apiD = await apiDe(testInfo, di)
+  const MOTIF = "Stock (droit d'export du stock requis)"
+  const stockUrl = `${API}/reporting/reports/stock/`
+  const onglet = (s, nom) => s.p.getByRole('tab', { name: nom, exact: true })
+  const ouvrirStock = async (s, passe) => {
+    await charger(s, '/rapports')
+    await expect(s.p.getByRole('heading', { name: 'Rapports' }).first(), `${passe}${s.c.nomRole} : écran Rapports`).toBeVisible(V)
+    await onglet(s, 'Stock').click()
+    await expect(s.p.getByText('Valorisation (vente)').first(), `${passe}${s.c.nomRole} : onglet Stock rendu`).toBeVisible(V)
+    await calme(s.p)
+  }
+  const optionStock = async (s, passe, formulaire) => {
+    if (formulaire === 'rapports') {
+      await charger(s, '/rapports')
+      await onglet(s, 'Mes rapports').click()
+      await s.p.getByRole('button', { name: 'Nouveau rapport' }).click()
+      await expect(s.p.getByText('Nouveau rapport sauvegardé'), `${passe}${s.c.nomRole} : formulaire Nouveau rapport`).toBeVisible(V)
+      return s.p.locator('select option[value="stock"]')
+    }
+    await charger(s, '/reporting/envois-programmes')
+    await expect(s.p.getByRole('heading', { name: 'Envois programmés' }), `${passe}${s.c.nomRole} : écran des envois programmés`).toBeVisible(V)
+    await s.p.getByRole('button', { name: 'Nouvel envoi' }).click()
+    await expect(s.p.getByTestId('envoi-form-carte'), `${passe}${s.c.nomRole} : formulaire Nouvel envoi`).toBeVisible(V)
+    return s.p.locator('#ep-kind option[value="stock"]')
+  }
+  const propre = (s, quoi) => {
+    expect(refus(s.reseau), `${quoi} : aucune réponse refusée (${J(s.reseau)})`).toEqual([])
+    expect(s.consoles, `${quoi} : console propre`).toEqual([])
+  }
+  // API : refus PROVOQUÉ par l'appel direct (contexte API, hors page).
+  const x = await apiR.get(`${stockUrl}?export=xlsx`, T)
+  expect(x.status(), 'Commercial responsable : export xlsx du stock refusé').toBe(403)
+  const corpsX = await x.json()
+  expect(corpsX.code, 'Commercial responsable : code droit_manquant').toBe('droit_manquant')
+  expect(String(corpsX.detail), 'Commercial responsable : détail nomme stock_export').toContain('stock_export')
+  expect((await apiR.get(stockUrl, T)).status(), 'Commercial responsable : JSON du stock 200').toBe(200)
+  expect((await apiD.get(`${stockUrl}?export=xlsx`, T)).status(), 'Directeur : export xlsx du stock 200').toBe(200)
+  // Commercial responsable : écrans.
+  const s = await ecranDe(page, suivi, testInfo, re)
+  for (const passe of PASSES) {
+    await ouvrirStock(s, passe)
+    await expect(s.p.getByRole('button', { name: 'Exporter Excel' }), `${passe}Commercial responsable : aucun « Exporter Excel » sur l'onglet Stock`).toHaveCount(0)
+    propre(s, `${passe}Commercial responsable /rapports Stock`)
+    for (const f of ['rapports', 'envois']) {
+      const opt = await optionStock(s, passe, f)
+      await expect(opt, `${passe}Commercial responsable (${f}) : option Stock grisée`).toBeDisabled()
+      await expect(opt, `${passe}Commercial responsable (${f}) : motif affiché`).toHaveText(MOTIF)
+      propre(s, `${passe}Commercial responsable ${f}`)
+    }
+  }
+  // Témoin Directeur.
+  const d = await ecranDe(page, suivi, testInfo, di)
+  for (const passe of PASSES) {
+    await ouvrirStock(d, passe)
+    await expect(d.p.getByRole('button', { name: 'Exporter Excel' }).first(), `${passe}Directeur : « Exporter Excel » présent sur l'onglet Stock`).toBeVisible(V)
+    propre(d, `${passe}Directeur /rapports Stock`)
+    for (const f of ['rapports', 'envois']) {
+      const opt = await optionStock(d, passe, f)
+      await expect(opt, `${passe}Directeur (${f}) : option Stock activée`).toBeEnabled()
+      await expect(opt, `${passe}Directeur (${f}) : libellé « Stock »`).toHaveText('Stock')
+      propre(d, `${passe}Directeur ${f}`)
+    }
   }
 })
