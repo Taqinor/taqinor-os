@@ -887,6 +887,40 @@ class RestaurerTests(BaseApi):
         self.assertEqual(GesteAnnulable.objects.get(pk=reponse.json()['geste_id']).message,
                          'Restaurée dans À trier')
 
+    def test_restaurer_une_sous_tache_dont_le_parent_reste_supprime_la_detache(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        self._api().delete(f'{URL}taches/{enfant.pk}/')
+        self._api().delete(f'{URL}taches/{parent.pk}/')
+        reponse = self._post(f'taches/{enfant.pk}/restaurer/')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertIsNone(reponse.json()['tache']['parent_id'])
+        self.assertEqual((_relue(enfant).is_deleted, _relue(enfant).parent_id), (False, None))
+
+    def test_restaurer_un_parent_supprime_garde_ses_sous_taches_attachees(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        self._api().delete(f'{URL}taches/{parent.pk}/')
+        self._post(f'taches/{parent.pk}/restaurer/')
+        self.assertEqual((_relue(enfant).is_deleted, _relue(enfant).parent_id), (False, parent.pk))
+
+    def test_restaurer_une_sous_tache_dont_le_parent_est_vivant_la_garde_attachee(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        self._api().delete(f'{URL}taches/{enfant.pk}/')
+        self._post(f'taches/{enfant.pk}/restaurer/')
+        self.assertEqual(_relue(enfant).parent_id, parent.pk)
+
+    def test_annuler_la_suppression_d_une_sous_tache_dont_le_parent_a_ete_supprime_la_detache(self):
+        parent = fabriques.tache(self.u1)
+        enfant = fabriques.tache(self.u1, parent=parent)
+        geste = self._api().delete(f'{URL}taches/{enfant.pk}/').json()['geste_id']
+        self._api().delete(f'{URL}taches/{parent.pk}/')
+        annuler_geste(self.u1, geste)
+        relue = _relue(enfant)
+        self.assertEqual((relue.is_deleted, relue.parent_id), (False, None))
+        self.assertIn(enfant.pk, [ligne['id'] for ligne in self._get('taches/').json()['results']])
+
     def test_une_tache_vivante_ou_d_un_collegue_repond_comme_inconnue(self):
         vivante = fabriques.tache(self.u1)
         self.assertEqual(self._post(f'taches/{vivante.pk}/restaurer/').status_code, 404)

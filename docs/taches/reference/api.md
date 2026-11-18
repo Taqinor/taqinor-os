@@ -1580,6 +1580,11 @@ administrateur ; effet au passage suivant, sans redéploiement.
 `agenda/` ≤ 16 · `taches/` ≤ 12 · `projets/` ≤ 12 · `projets/{id}/vue/` ≤ 15 · `saisie-rapide/` aperçu ≤ 10 (constant en
 lignes) · `rythme/` ≤ 10 · `recherche/` ≤ 8 · `suggestions/` ≤ 6.
 
+Les plafonds RÉELS sont ceux de `tests/test_plafonds.py` et de `docs/query-budgets.yml` (la mesure). Le coût d'une
+route qui passe par la journée dépend de l'HEURE : avant midi, la carte « bilan d'hier » lit en plus le plan de la
+veille et ses restes (+ 2 requêtes ; `aujourdhui/` : 26 et 31 l'après-midi, 28 et 33 le matin). Tout test de plafond
+fige donc l'horloge (`testkit.time.frozen`) et mesure une telle route aux deux moments.
+
 ## 11. Fichiers d'un autre propriétaire (une tâche chacun, A8)
 
 `erp_agentique/urls.py` (fin de `_APP_URLS`), `settings/base.py` (`INSTALLED_APPS`, `TACHES_RACCOURCI_SIRI_URL` dès

@@ -252,7 +252,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
 
   it('Supprimer demande confirmation, retire la ligne ; Annuler la restaure à sa place', async () => {
     api.supprimerTache.mockResolvedValue({ data: { geste_id: 94 } })
-    api.restaurerTache.mockResolvedValue({ data: tacheEcrite() })
+    api.annulerGeste.mockResolvedValue({ data: { restaurees: [{ objet: 'tache', id: 20 }], conflits: [], deja: false } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await ouvrirMenu(user, 'Devis Settat')
@@ -263,7 +263,9 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
     expect(api.supprimerTache).toHaveBeenCalledWith(20)
     await user.click(screen.getByRole('button', { name: 'Annuler' }))
-    expect(api.restaurerTache).toHaveBeenCalledWith(20)
+    // A7 : « Annuler » défait le geste côté serveur (le DELETE a rendu `geste_id`), jamais `restaurer/`.
+    await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(94))
+    expect(api.restaurerTache).not.toHaveBeenCalled()
     expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
   })
 

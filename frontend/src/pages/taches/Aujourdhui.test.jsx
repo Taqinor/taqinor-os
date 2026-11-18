@@ -219,14 +219,41 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     })
 
     it('ouvert sans réseau, l\'écran lit la journée gardée dans le cache du compte au lieu de rester vide', async () => {
-      servir(donnees())
-      const { unmount } = monterConnecte()
-      await screen.findByText('Devis Settat')
-      unmount()
-      servir(() => Promise.reject(echecReseau()))
-      monterConnecte()
-      expect(await screen.findByText('Devis Settat')).toBeInTheDocument()
-      expect(screen.getByText(/^Pas à jour · \d\d:\d\d$/)).toBeInTheDocument()
+      // Le cache est PAR JOUR : écrit sous le `jour` servi, relu sous le jour de l'appareil. L'horloge du test est
+      // donc celle du jour de l'échantillon (seule `Date` est figée : les attentes asynchrones gardent leurs minuteurs).
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(`${donnees().jour}T10:00:00Z`))
+      try {
+        servir(donnees())
+        const { unmount } = monterConnecte()
+        await screen.findByText('Devis Settat')
+        unmount()
+        servir(() => Promise.reject(echecReseau()))
+        monterConnecte()
+        expect(await screen.findByText('Devis Settat')).toBeInTheDocument()
+        expect(screen.getByText(/^Pas à jour · \d\d:\d\d$/)).toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('le cache d\'un autre jour n\'est jamais montré comme la journée d\'aujourd\'hui', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date(`${donnees().jour}T10:00:00Z`))
+      try {
+        servir(donnees())
+        const { unmount } = monterConnecte()
+        await screen.findByText('Devis Settat')
+        unmount()
+        vi.setSystemTime(new Date(new Date(`${donnees().jour}T10:00:00Z`).getTime() + 24 * 3600 * 1000))
+        servir(() => Promise.reject(echecReseau()))
+        monterConnecte()
+        // l'état d'échec est rendu (« Réessayer ») : la lecture a échoué ET le cache a été consulté
+        expect(await screen.findByRole('button', { name: 'Réessayer' })).toBeInTheDocument()
+        expect(screen.queryByText('Devis Settat')).toBeNull()
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

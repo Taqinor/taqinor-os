@@ -214,10 +214,18 @@ export function useActionsLigne({
     const { retirer: sortir, maj: poserChamps } = rappels.current
     const remettre = sortir ? (sortir(item) ?? (() => {})) : (() => {})
     try {
-      await supprimerTache(item.id)
+      const { data: supprimee } = await supprimerTache(item.id)
       proposerAnnuler({
         message: 'Supprimée',
         onAnnuler: async () => {
+          if (supprimee?.geste_id) {
+            // « Annuler » côté serveur (A7) : rappels annulés remis, geste consommé. Une tâche modifiée depuis reste supprimée.
+            const { data } = await annulerGeste(supprimee.geste_id)
+            const conflits = data?.conflits?.length ?? 0
+            if (conflits > 0) annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`)
+            else remettre()
+            return
+          }
           const { data } = await restaurerTache(item.id)
           remettre()
           if (data?.tache) poserChamps(item.id, { lock_version: data.tache.lock_version })
