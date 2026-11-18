@@ -176,7 +176,7 @@ NON pliés ; les trois autres lanes F3 du portable étaient déjà entièrement 
   agendas » de l'écran Agenda menait à Réglages → Avancé où la section n'est plus (déplacée dans Mon iPhone) → lane
   écran-iphone, avec les 3 specs e2e ; plafonds `badge/` (14) et `journee/point/` → lane copilote, horloge figée.
 
-**État au 18/11/2026, 01 h 40 UTC (branches LOCALES de la machine cloud ; ce qui est poussé est dit « poussé »)**
+**État au 18/11/2026, 01 h 15 UTC (branches LOCALES de la machine cloud ; ce qui est poussé est dit « poussé »)**
 - `dev-taches-f2` : poussé `f3102c936f` (PR #1454) + 1 commit local `eae7042972` (en-tête du plan). CI de
   `f3102c936f` : tout vert SAUF `frontend-vitest-shard (2)` sur `src/pages/installations/RecettePompageDialog.test.jsx:60`
   (AUTRE module, test synchrone juste après un chargement asynchrone, 3/3 verts ici) → l'UNIQUE relance permise des
@@ -228,7 +228,7 @@ Tri de l'orchestrateur (aucune question à Reda) :
   prête dans le rapport de la lane présence).
 - Base RAPIDE pour les lanes et la mise au point des specs (tables créées depuis les modèles en 18 s) en attendant
   la base migrée (≈ 3 h à froid) ; l'enregistrement d'acceptation final se joue sur la base migrée. Rejeu des
-  migrations : ≈ 1 550 sur 2 399 à 01 h 40 (détaché ; journal `/opt/taches-cloud/logs/migrate-tpl-suite.log`).
+  migrations : ≈ 1 550 sur 2 399 à 01 h 15 (détaché ; journal `/opt/taches-cloud/logs/migrate-tpl-suite.log`).
 - TCH127 (canari) : 3 fuites de plus trouvées et fermées par la lane (`mes-donnees/` servi à l'assistant ; « En
   attente de : … » d'une confidentielle dans `gestes/` et dans l'explication de `projets/{id}/vue/`). Le canari a
   aussi montré que `api.md` §0 n'était pas tenu sur `reglages/`, `reglages-societe/`, `tout-effacer/`,
@@ -239,7 +239,7 @@ Tri de l'orchestrateur (aucune question à Reda) :
   réelle faite sur l'arbre final de la fusion 4, avec la ligne datée d'usage (précédents du 20/09 dans le fichier).
 - Machine cloud : 4 cœurs, 15 Go. Au plus 5 agents à la fois, un seul processus de test par lane.
 
-**Point de 02 h 40 UTC (18/11)**
+**Point de 01 h 30 UTC (18/11)**
 - CI : #1454 entièrement VERTE à `f3102c936f` (la relance unique du shard vitest est passée) ; #1462 entièrement
   VERTE à `1fe6a6c76c`, puis `4f5352f7ce` poussé (tour 3 en cours). `main` a avancé d'un merge sans rapport (#1463,
   le flaky de minuit du calepinage, la tâche que cette session avait suggérée) : aucun conflit avec la fusion 2.
@@ -257,7 +257,7 @@ Tri de l'orchestrateur (aucune question à Reda) :
 - Pile n° 2 (fusion 3) DEBOUT : front :4174, Django :8001 (horloge 2026-11-24 08:30), base `erp_f3`, Redis :6380.
   `lane/f3-acceptation` (opus) écrit `frontend/e2e/acceptation/tch2.spec.js` (TCH141, TCH171, TCH143).
 
-**Point de 04 h 10 UTC (18/11) — LIRE AVANT TOUT : l'acceptation en direct de la fusion 2 a parlé**
+**Point de 01 h 50 UTC (18/11) — LIRE AVANT TOUT : l'acceptation en direct de la fusion 2 a parlé**
 - Spec `frontend/e2e/acceptation/tch.spec.js` (+ aides `frontend/e2e/taches-acceptation.js`) écrite, jouée, PLIÉE dans
   `dev-taches-f2`. Résultat sur l'arbre d'avant corrections : **20 étapes vertes, 15 rouges sur 35**. Rapport complet :
   `docs/taches/travail/acceptation-f2-defauts.md`. Aucun oracle n'a été modifié.
@@ -291,7 +291,7 @@ Tri de l'orchestrateur (aucune question à Reda) :
   `lane/f4-final` (TCH158, opus), relecture adverse de la fusion 4 (opus → `revue-code-f4.md`).
 - Passe Fable n° 2 du run EN COURS : critique adverse de la fusion 3 (jetons, balayage, assistant) → `revue-code-f3.md`.
 
-**Point de 06 h 10 UTC (18/11) — état exact, à lire après le point de 04 h 10**
+**Point de 02 h 20 UTC (18/11) — état exact, à lire après le point de 01 h 50** (les heures de ce journal ont été recalées sur l'horloge réelle : les points portaient par erreur 02 h 40, 04 h 10 et 06 h 10)
 - BASE MIGRÉE PRÊTE : le rejeu des 2 399 migrations est fini, le gabarit s'appelle `tpl_test` ; `tests-base.sh` passe
   seul en MODE FIDÈLE (clone du gabarit, comme la CI). `pile.conf` (réglages rapides des piles) est ENCORE en place :
   ne l'enlever que lorsque plus aucune lane ne se sert d'une pile (les bases `erp_acc` et `erp_f3` des piles sont des
@@ -324,13 +324,20 @@ Tri de l'orchestrateur (aucune question à Reda) :
   se corrige ; #13 → une suggestion RETIRÉE par le système revient si l'événement se reproduit, une suggestion
   refusée par l'utilisateur (« Pas utile ») jamais ; #14 → l'aperçu de « Dupliquer » DIT le nombre de tâches
   confidentielles non copiées (jamais une perte muette) ; #16 → inscrire `MesActivitesPage.chargeEquipe.test.jsx` dans
-  l'en-tête du plan. Deux lanes À LANCER quand la machine respire (charge > 6 sur 4 cœurs à 06 h) : back (opus : #1,
+  l'en-tête du plan. Deux lanes À LANCER quand la machine respire (charge > 6 sur 4 cœurs à 02 h 20) : back (opus : #1,
   2, 3, 4, 5, 12, 13, 14) et front (sonnet : #6 à #11, #15, #17).
 - Restes connus à ne pas oublier : (a) `taches-bureau.spec.js` jamais jouée et absente de la liste e2e de `ci.yml` ;
   (b) libellés « sans source » des lanes F4 et de la relecture F4 (24) à inscrire dans `textes.md` ; (c) budget du
   bundle ; (d) passe visuelle : captures réelles dans `/opt/taches-cloud/captures/f2/` (96) et `f2-apres/`, `f3/` ;
   (e) le constat du bilan montre C5 alors que SCENARIO montre une phrase de C2 (C2 est hors première livraison) ;
   (f) en sombre, l'icône du menu en haut à gauche est très peu contrastée.
+
+**Point de 02 h 25 UTC (18/11)**
+- CI de #1454 à `bbf654cb25` : ENTIÈREMENT VERTE (37 verts, 6 sautés, 0 rouge) — la seconde relecture corrigée
+  passe toute la CI (tests sur la base migrée, e2e, fuzz). CI de #1462 à `4f5352f7ce` (canari + routes fermées à
+  l'assistant) : verte aussi.
+- Pour les guetteurs de CI (agents haiku) : leur écrire « n'appelle AUCUN autre outil que `pull_request_read` et
+  `get_job_logs` » (l'un d'eux a tenté un `archive_session`, refusé, sans effet).
 
 **Les clés d'IA (demande de Reda du 18/11 : « there is a key in the ERP use it », puis « find the keys yourself »)**
 - Cherché partout où cette session peut lire : conteneur (rien), serveur (SSH refusé depuis le cloud), poste de Reda
