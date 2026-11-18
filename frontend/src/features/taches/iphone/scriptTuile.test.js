@@ -11,7 +11,11 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
 const tuile = () => structuredClone(exempleContrat('taches', 'tuile'))
 const BASE = 'https://erp.example'
 
-async function lancer({ reponse = tuile(), jeton = 'tqt_secret', famille = 'large', enApp = false, saisie = '', fichiers = {}, trousseau } = {}) {
+// `reponse` : le corps rendu (une Error = panne de réseau, sans réponse HTTP) ; `statut` : le code HTTP
+// de la réponse (Scriptable le pose sur `request.response.statusCode`) ; une liste = un appel chacun.
+async function lancer({ reponse = tuile(), statut = 200, jeton = 'tqt_secret', famille = 'large', enApp = false, saisie = '', fichiers = {}, trousseau } = {}) {
+  const suite = Array.isArray(reponse) ? [...reponse] : null
+  const statuts = Array.isArray(statut) ? [...statut] : null
   const sortie = { lignes: [], requetes: [], widget: null, alertes: [], fichiers, trousseau: trousseau ?? (jeton ? { taqinor_tuile: jeton } : {}) }
   class Color {
     constructor(hex) { this.hex = hex }
@@ -26,8 +30,12 @@ async function lancer({ reponse = tuile(), jeton = 'tqt_secret', famille = 'larg
   class Request {
     constructor(url) { this.url = url; sortie.requetes.push(this) }
     async loadJSON() {
-      if (reponse instanceof Error) throw reponse
-      return reponse
+      const corps = suite ? suite.shift() : reponse
+      const code = statuts ? statuts.shift() : statut
+      if (corps instanceof Error && code === 200) throw corps // panne de réseau : aucune réponse HTTP
+      this.response = { statusCode: code }
+      if (corps instanceof Error) throw corps // corps illisible (pas du JSON) d'une vraie réponse
+      return corps
     }
   }
   class Alert {
@@ -48,6 +56,7 @@ async function lancer({ reponse = tuile(), jeton = 'tqt_secret', famille = 'larg
     writeString: (chemin, texte) => { sortie.fichiers[chemin] = texte },
     fileExists: (chemin) => chemin in sortie.fichiers,
     readString: (chemin) => sortie.fichiers[chemin],
+    remove: (chemin) => { delete sortie.fichiers[chemin] },
   }) }
   const Font = { boldSystemFont: (t) => ({ t, gras: true }), systemFont: (t) => ({ t }) }
   const Script = { setWidget: () => {}, complete: () => {} }
@@ -122,6 +131,30 @@ describe('TCH110 — script de la grande tuile', () => {
     const sansJeton = await lancer({ jeton: '' })
     expect(sansJeton.textes).toEqual(['Jeton absent', 'Ouvre le script dans Scriptable.'])
     expect(sansJeton.requetes).toHaveLength(0)
+  })
+
+  it('revue F3 n° 12 — jeton refusé (401) : rien d\'ancien n\'est montré, la réponse gardée est effacée, la tuile dit quoi faire', async () => {
+    const gardee = { '/doc/taches-tuile.json': JSON.stringify(tuile()) }
+    const refus = await lancer({ reponse: { detail: 'Informations d\'authentification non fournies.' }, statut: 401, fichiers: gardee })
+    expect(refus.textes).toEqual(['Pas de données', 'Perdu ? Régénère-le.', 'Ouvre le script dans Scriptable.'])
+    expect(refus.textes.some((t) => t.startsWith('Hors ligne'))).toBe(false)
+    expect(refus.fichiers).not.toHaveProperty('/doc/taches-tuile.json')
+    expect(refus.trousseau.taqinor_tuile).toBe('tqt_secret') // le jeton n'est jamais jeté d'office
+    // Corps illisible d'un refus (pas du JSON) : même chose.
+    const illisible = await lancer({ reponse: new Error('JSON'), statut: 401, fichiers: { '/doc/taches-tuile.json': JSON.stringify(tuile()) } })
+    expect(illisible.textes[0]).toBe('Pas de données')
+    expect(illisible.fichiers).not.toHaveProperty('/doc/taches-tuile.json')
+    // Une panne de réseau, elle, garde la dernière réponse et le dit (« Hors ligne »).
+    const panne = await lancer({ reponse: new Error('réseau'), fichiers: { '/doc/taches-tuile.json': JSON.stringify(tuile()) } })
+    expect(panne.textes.at(-1)).toBe('Hors ligne · maj 09:41')
+  })
+
+  it('revue F3 n° 12 — refusé, lancé dans l\'app : redemande le jeton, le garde et relit la tuile avec lui', async () => {
+    const r = await lancer({ reponse: [{ detail: 'refusé' }, tuile()], statut: [401, 200], enApp: true, saisie: 'tqt_nouveau' })
+    expect(r.alertes).toHaveLength(1)
+    expect(r.trousseau.taqinor_tuile).toBe('tqt_nouveau')
+    expect(r.requetes.map((q) => q.headers.Authorization)).toEqual(['Bearer tqt_secret', 'Bearer tqt_nouveau'])
+    expect(r.textes[0]).toBe('1 sur 5')
   })
 
   it('lancé dans l\'app sans jeton : demande « Jeton de la tuile », le garde dans le Trousseau et présente la tuile', async () => {
