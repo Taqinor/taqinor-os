@@ -1,6 +1,6 @@
 # Environnement local de la session cloud (Postgres + Redis natifs, Python 3.11 comme la CI).
 export PATH=/opt/venv-erp/bin:$PATH
-export DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev
+export DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-erp_agentique.settings.dev}
 export DJANGO_SECRET_KEY=cloud-dev-only-secret-key-not-used-in-production
 export DJANGO_DEBUG=True
 export DB_NAME=${DB_NAME:-erp_db}

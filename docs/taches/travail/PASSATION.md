@@ -176,16 +176,47 @@ NON pliés ; les trois autres lanes F3 du portable étaient déjà entièrement 
   agendas » de l'écran Agenda menait à Réglages → Avancé où la section n'est plus (déplacée dans Mon iPhone) → lane
   écran-iphone, avec les 3 specs e2e ; plafonds `badge/` (14) et `journee/point/` → lane copilote, horloge figée.
 
-**Lanes de cette session (branches LOCALES ; ce qui est plié est dit « plié »)**
-- F2 : `lane/f2-restes` PLIÉE dans `dev-taches-f2` (mineurs #1 et #9, garde de la nuit ; la relecture de
-  l'orchestrateur y a trouvé et fait corriger une régression : annuler la suppression d'un parent détachait ses
-  sous-tâches). `lane/f2-acceptation` (spec `frontend/e2e/acceptation/tch.spec.js`) EN COURS. Seconde relecture
-  adverse du code serveur non relu par la première (`revue-code-f2-tour2-serveur.md`) EN COURS.
-- F3 : `lane/f3-presence2` PLIÉE dans `dev-taches-f3` (TCH155, TCH98, TCH174 cochées ; 141 sur 174) ;
-  `lane/f3-copilote-restes`, `lane/f3-ecran-iphone2` (TCH160), `lane/f3-canari` (TCH127) EN COURS.
-- F4 (branche locale `dev-taches-f4`, partie de `dev-taches-f3`, plan dé-gelé là seulement) :
-  `lane/f4-presence-front` RENDUE, pas encore pliée (TCH102, TCH103 ; à plier AVEC la lane de montage TCH123/125/126,
-  sinon `check_ecrans_atteignables` rougit) ; `lane/f4-erp-avance` (TCH71, TCH72) EN COURS.
+**État au 18/11/2026, 01 h 40 UTC (branches LOCALES de la machine cloud ; ce qui est poussé est dit « poussé »)**
+- `dev-taches-f2` : poussé `f3102c936f` (PR #1454) + 1 commit local `eae7042972` (en-tête du plan). CI de
+  `f3102c936f` : tout vert SAUF `frontend-vitest-shard (2)` sur `src/pages/installations/RecettePompageDialog.test.jsx:60`
+  (AUTRE module, test synchrone juste après un chargement asynchrone, 3/3 verts ici) → l'UNIQUE relance permise des
+  jobs en échec a été déclenchée (run 44209983280). S'il rougit encore : ce n'est pas à nous, le dire une fois sur la PR.
+- `dev-taches-f3` : poussé `1fe6a6c76c` (PR #1462, CI tour 2 en cours) + local `4f5352f7ce` (TCH127 pliée et cochée,
+  143 sur 174 ; 4 routes fermées à l'assistant). Batterie locale verte avant le push (21 gardes, FastAPI 362 tests,
+  Django 2 444 tests sauf 1 artefact connu du mode rapide, vitest 965, eslint).
+- `dev-taches-f4` : LOCALE seulement, `6556621585` : fusion 3 fusionnée dedans, `lane/f4-erp-avance` (TCH71, TCH72),
+  `lane/f4-presence-front` (TCH102, TCH103) et `lane/f4-coquille` (TCH123, 125, 126, 159) pliées ; tâches PAS encore
+  cochées dans le plan de f4 ; empreinte de structure de CODEMAP périmée sur f4 (à refaire à la fin de la fusion 4).
+
+**Lanes en cours (worktrees `…/.claude/worktrees/agent-*`)**
+- F2 `lane/f2-acceptation` : écrit `frontend/e2e/acceptation/tch.spec.js` sur la pile F2 (usage exclusif de :4173/:8000/`erp_acc`).
+- F2 `lane/f2-revue2-journee` (opus) : constats 1, 2, 3, 4, 6, 11 de la seconde relecture.
+- F2 `lane/f2-revue2-rythme` (opus) : constats 5, 7, 8, 9, 10 et la part « Mon rythme + saisie » du constat 12.
+- F4 `lane/f4-etiquettes-avance` (TCH156, 166, 167, 152) et `lane/f4-projets-avances` (TCH64, 90, 157).
+- À LANCER quand une place se libère (machine à 4 cœurs : 5 lanes au plus) : F2 « entrées mal formées » (sonnet), le
+  reste du constat 12 (dates extrêmes `9999-12-31`/`0001-01-01` → borner dans `selectors/base.py::date_de` et les
+  sérialiseurs ; `?exclure=²` ; `nouveau_projet.priorite` hors 0-3 ; caractère nul dans un texte libre) : des 500 sur
+  entrée fabriquée, à rendre en 400 — le fuzz de la CI est bloquant et finira par tomber dessus.
+
+**Seconde relecture adverse du serveur de la fusion 2 (passe Fable n° 1 du run) — `revue-code-f2-tour2-serveur.md`**
+Verdict : mergeable après corrections ; 0 bloquant, 5 majeurs, 7 mineurs, tous PROUVÉS par exécution. Ce qu'elle a
+attrapé : des NOMBRES FAUX à l'écran dès la première semaine (journée réussie qui retombe à 0 quand on termine le
+projet le jour même ; activité ERP gardée puis close jamais comptée ; « jour court » ignoré par Aujourd'hui ; phrase
+« Objectif atteint X jours sur N » fausse ; carte de palier périmée qui monte à 9 au lieu de 6).
+Tri de l'orchestrateur (aucune question à Reda) :
+- Les 5 majeurs et les mineurs 6, 8, 9, 10, 11 : CORRIGÉS avant le merge de la fusion 2 (règle « aucun chiffre faux »).
+- Constat 4 : « Objectif atteint » compte les jours où le compte a atteint l'objectif (`compte ≥ objectif`), pas la
+  « journée réussie » ; la nuit pose l'objectif du jour jugé ; « jours non travaillés » ne compte que des jours que le
+  compte travaille d'habitude.
+- Constat 5 : les DEUX protections (la carte de palier ouverte est abandonnée dès que le palier change ; une réponse
+  « Oui » n'applique jamais autre chose que le nombre de la carte, et rien si le palier a bougé).
+- Constat 7 : les constats C4 (« Te proposer 4 à garder ? ») et C8 (« Mettre une de ses tâches dans Proposé
+  demain ? ») sont RETIRÉS de la première livraison, comme C6 : leur « Oui » n'enregistrait que la réponse, rien ne
+  changeait. C1 et C2 ne peuvent pas apparaître (ils lisent des champs que rien n'écrit) : hors livraison aussi. C7
+  compte comme l'écran « À revoir ». À DIRE À REDA dans le rapport final (4 conseils du rythme reportés).
+- Constat 12 : traité en entier (voir la lane à lancer) ; la seule entrée atteignable par l'écran (« dans 999999
+  semaines » qui cassait tout l'aperçu d'une liste collée) est dans la lane rythme.
+- La liste « Optionnel » du rapport : NON corrigée (durcissement, cas hypothétiques), elle reste dans le rapport.
 
 **Décisions de plus**
 - TCH174 : `taches.balayer` routée sur la file `scheduled` (api.md §9 fait foi sur le « rien d'autre » de la tâche).
@@ -196,16 +227,35 @@ NON pliés ; les trois autres lanes F3 du portable étaient déjà entièrement 
   propriétaire, erreur = site coupé) : c'est un GESTE DE SERVEUR à proposer à Reda dans le rapport final (ligne `map`
   prête dans le rapport de la lane présence).
 - Base RAPIDE pour les lanes et la mise au point des specs (tables créées depuis les modèles en 18 s) en attendant
-  la base migrée (≈ 3 h à froid) ; l'enregistrement d'acceptation final se joue sur la base migrée.
+  la base migrée (≈ 3 h à froid) ; l'enregistrement d'acceptation final se joue sur la base migrée. Rejeu des
+  migrations : ≈ 1 550 sur 2 399 à 01 h 40 (détaché ; journal `/opt/taches-cloud/logs/migrate-tpl-suite.log`).
+- TCH127 (canari) : 3 fuites de plus trouvées et fermées par la lane (`mes-donnees/` servi à l'assistant ; « En
+  attente de : … » d'une confidentielle dans `gestes/` et dans l'explication de `projets/{id}/vue/`). Le canari a
+  aussi montré que `api.md` §0 n'était pas tenu sur `reglages/`, `reglages-societe/`, `tout-effacer/`,
+  `agendas-externes/` : l'assistant POUVAIT appeler « tout effacer ». Fermé par l'orchestrateur (403 sous l'en-tête ou
+  Bearer, test `FermeesALAssistantTests`), textes inscrits dans `textes.md` §2.16 et `regles.md` §8.
+- Budget du bundle (`frontend/scripts/check_bundle_budget.mjs`, total 3 815 Ko) : la fusion 4 le dépasse d'environ
+  10 Ko (chunks lazy neufs ; bundle initial +0,4 Ko). Le budget sera monté UNE fois, au juste-dessus de la mesure
+  réelle faite sur l'arbre final de la fusion 4, avec la ligne datée d'usage (précédents du 20/09 dans le fichier).
+- Machine cloud : 4 cœurs, 15 Go. Au plus 5 agents à la fois, un seul processus de test par lane.
 
 **Ce qui reste, dans l'ordre** (mis à jour à chaque étape)
-- Fusion 2 : CI verte sur `85c186783` → plier `lane/f2-restes` → acceptations en direct TCH136-140, TCH144 (spec
-  `frontend/e2e/acceptation/tch.spec.js` + enregistrement `docs/audits/acceptation/TCH/`) → corriger ce qu'elles
-  trouvent → TCH94 → `gh pr ready 1454` + mise en file. Dire à Reda : « mergé — à déployer par toi :
-  `scripts/deploy-prod.ps1` » (le deploy automatique est ARRÊTÉ depuis le 17/11 : ne plus écrire « l'auto-deploy suit »).
-- Fusion 3 : plier les lanes, première CI de #1462 (plusieurs tours), TCH160, TCH127, acceptations TCH141, TCH171,
-  TCH143, TCH135, merge après la fusion 2.
-- Fusion 4 puis les deux relectures finales et le rapport.
+- Fusion 2 : plier `lane/f2-revue2-journee` et `lane/f2-revue2-rythme` (relire chaque commit, suite `apps.taches`
+  entière, gardes) → lane « entrées mal formées » → rafraîchir les deux lignes périmées de `docs/CODEMAP.md` de f2
+  (262 et 494 : « INVISIBLE… aucune entrée de nav ») + empreinte → pousser, CI verte → recevoir la spec d'acceptation
+  et sa liste de défauts, corriger → REJEU FINAL par l'orchestrateur sur la base migrée (`tpl_test`), enregistrement
+  `docs/audits/acceptation/TCH/<date>-<sha9>.md` → cocher TCH136-140, TCH144, TCH94 → PR prête + file de merge
+  (`--merge`). Dire à Reda : « mergé — à déployer par toi : `scripts/deploy-prod.ps1`, ~2 min » (le deploy
+  automatique est ARRÊTÉ depuis le 17/11 : ne plus écrire « l'auto-deploy suit »).
+- Fusion 3 : lire la CI du tour 2 de #1462, pousser `4f5352f7ce` ; pile n° 2 (`acc-f3.sh` : base `erp_f3`, Django
+  :8001, front :4174, Redis :6380) pour jouer les specs e2e Tâches (dont les 3 retouchées par `lane/f3-ecran-iphone2`,
+  jamais jouées) et écrire/jouer les acceptations TCH141, TCH171, TCH143 ; phrase du seuil A5 à écrire dans
+  `reference/regles.md` ; TCH135 ; merge après la fusion 2.
+- Fusion 4 : plier les deux lanes en cours, puis TCH158 (opus), TCH173, cocher, OpenAPI, CODEMAP + empreinte, budget
+  du bundle, pousser `dev-taches-f4`, PR brouillon, CI, acceptations TCH142, TCH172. TCH168 reste GATED (décision de Reda).
+- Passe visuelle (écrans réels contre maquettes : captures dans `/opt/taches-cloud/captures/f2/` et
+  `docs/taches/maquettes/captures/`), relecture adverse finale, README « gestes de Reda », mémoire
+  `docs/claude-memory/taches-decisions-fondateur.md`, rapport final.
 
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
