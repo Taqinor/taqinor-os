@@ -780,6 +780,23 @@ etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   let touches = 0
   const touche = async (k) => { touches += 1; await p.keyboard.press(k) }
   const ligneFocus = () => p.evaluate(() => document.activeElement?.closest?.('[data-ligne]')?.getAttribute('data-ligne') ?? '')
+  // `j` / `k` parcourent TOUTES les lignes visibles (spec-7 §5), dont celles de l'ERP sans case (« Suivi des relances :
+  // n », semis S3) : la personne descend (`j`, puis `k` une fois en bas) jusqu'à la tâche qu'elle vise — chaque touche
+  // est comptée, aucun rang n'est supposé.
+  const estTache = (cle) => /^tache:\d+$/.test(cle)
+  const ouverte = async (cle) => (await lireTache(p, Number(cle.split(':')[1]))).statut !== 'fait'
+  const prochaineTache = async (vise) => {
+    let sens = 'j'
+    let avant = await ligneFocus()
+    for (let essai = 0; essai < 30; essai += 1) {
+      await touche(sens)
+      const cle = await ligneFocus()
+      if (cle === avant) { if (sens === 'k') break; sens = 'k'; continue } // en bas de la liste : on remonte
+      avant = cle
+      if (estTache(cle) && (await vise(cle))) return cle
+    }
+    throw new Error('aucune tâche visée atteinte au clavier')
+  }
   // `g j` 2
   await touche('g'); await touche('j')
   await expect(p).toHaveURL(/\/taches\/aujourdhui/)
@@ -797,26 +814,29 @@ etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   }
   if (await saisie(p).isVisible()) await touche('Escape')
   await expect(saisie(p)).toHaveCount(0)
-  // 2 × `j` Espace 4
+  // 2 × `j` Espace 4 (+ une touche par ligne non visée traversée)
   const cochees = []
+  const reportees = []
+  const neuve = async (cle) => !cochees.includes(cle) && !reportees.includes(cle) && ouverte(cle)
   for (let n = 0; n < 2; n += 1) {
-    await touche('j'); const cle = await ligneFocus(); cochees.push(cle); await touche(' ')
+    const cle = await prochaineTache(neuve); cochees.push(cle); await touche(' ')
   }
   // 2 × `j d` Entrée 6
-  const reportees = []
   for (let n = 0; n < 2; n += 1) {
-    await touche('j'); reportees.push(await ligneFocus()); await touche('d'); await touche('Enter')
+    reportees.push(await prochaineTache(neuve)); await touche('d'); await touche('Enter')
   }
-  // 2 × `j m` Entrée 6
+  // 2 × `j m` Entrée 6 — à 10:45, Aujourd'hui n'a plus que 4 tâches ouvertes visibles (À revoir est replié) : les deux
+  // déplacées sont les deux reportées, toujours affichées (estampille « → mer. 25 ») jusqu'à la sortie de l'écran.
   const deplacees = []
   for (let n = 0; n < 2; n += 1) {
-    await touche('j')
-    const cle = await ligneFocus()
-    const avant = /^tache:\d+$/.test(cle) ? (await lireTache(p, Number(cle.split(':')[1]))).projet?.id ?? null : null
+    const cle = await prochaineTache(async (c) => reportees.includes(c) && !deplacees.some((d) => d.cle === c))
+    const avant = (await lireTache(p, Number(cle.split(':')[1]))).projet?.id ?? null
     deplacees.push({ cle, avant })
     await touche('m'); await touche('Enter')
   }
   // Oracle : 3 ajouts, 2 cochées, 2 reportées, 2 déplacées en ≈ 27 touches (parcours 18 ; 4 de palette hors F2)
+  console.log(`[P144.3] touches comptées : ${touches}`)
+  f.testInfo.annotations.push({ type: 'touches', description: String(touches) })
   expect(touches, 'touches comptées').toBeLessThanOrEqual(27)
   const id = (cle) => Number(String(cle).split(':')[1])
   for (const cle of cochees) {
