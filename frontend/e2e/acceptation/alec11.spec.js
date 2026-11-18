@@ -98,6 +98,11 @@ async function charger(s, url, passe) {
   await calme(s.p)
 }
 const PASSES = ['', 'relu après rechargement : ']
+/** Pourcentage tel que rendu : Q2C affiche la valeur servie telle quelle (« 33.3 % »), l'accueil l'arrondit à l'entier
+ *  (`formatPercent`, espaces insécables possibles) — on compare donc au texte de la carte, espaces normalisés. */
+const normaliser = (t) => String(t ?? '').replace(/[\s\u00a0\u202f]+/g, ' ').trim()
+const tauxQ2C = (p) => p.getByText("Taux d'acceptation").first().locator('xpath=..').locator('xpath=..')
+const tauxAccueil = (p) => p.getByText(/signés sur/).locator('xpath=..').locator('.font-display')
 const lire = async (ctx, url, quoi) => lireJson(await ctx.get(`${API}${url}`, T), quoi)
 
 /** Client (société démo) créé par demo_admin : les devis d'essai le référencent. */
@@ -150,6 +155,8 @@ sortie(1)`)
       expect([d.envoyes_periode, d.acceptes_periode, d.taux_acceptation_pct], `${passe}A : JSON ventes/dashboard/ (envoyés, acceptés, taux)`).toEqual([1, 0, 0])
       await expect(sa.p.getByText("Taux d'acceptation").first(), `${passe}A : écran Quote-to-cash rendu`).toBeVisible(V)
       await expect(sa.p.getByText('0 / 1 devis envoyés'), `${passe}A Q2C : « 0 / 1 devis envoyés »`).toBeVisible(V)
+      await expect(tauxQ2C(sa.p), `${passe}A Q2C : taux affiché = taux servi (${d.taux_acceptation_pct} %, 0 pour A)`).toContainText(`${d.taux_acceptation_pct} %`, V)
+      expect(normaliser(await tauxQ2C(sa.p).innerText()), `${passe}A Q2C : le taux affiché est « 0 % »`).toMatch(/(^|\s)0 %(\s|$)/)
       expect(refus(sa.reseau), `${passe}A Q2C : aucune réponse refusée`).toEqual([])
     }
     for (const passe of PASSES) {
@@ -161,6 +168,8 @@ sortie(1)`)
       expect([d.envoyes_periode, d.acceptes_periode, d.taux_acceptation_pct], `${passe}A : JSON du Dashboard (envoyés, acceptés, taux)`).toEqual([1, 0, 0])
       await expect(sa.p.getByText('Conversion devis → signé').first(), `${passe}A Dashboard : carte de conversion`).toBeVisible(V)
       await expect(sa.p.getByText(/0 signés sur 1 devis émis/), `${passe}A Dashboard : « 0 signés sur 1 devis émis »`).toBeVisible(V)
+      await expect(tauxAccueil(sa.p), `${passe}A Dashboard : taux affiché = taux servi (${d.taux_acceptation_pct} %)`).toBeVisible(V)
+      expect(normaliser(await tauxAccueil(sa.p).innerText()), `${passe}A Dashboard : taux affiché « ${Math.round(d.taux_acceptation_pct)} % »`).toBe(`${Math.round(d.taux_acceptation_pct)} %`)
       expect(refus(sa.reseau), `${passe}A Dashboard : aucune réponse refusée`).toEqual([])
     }
     // `reporting/dashboard/` : le rôle Commercial n'a pas d'écran /reporting (« Accès refusé (403) » à la route) ; la
@@ -181,7 +190,21 @@ sortie(1)`)
       const attendu = Math.round((d.acceptes_periode / d.envoyes_periode) * 1000) / 10
       expect(d.taux_acceptation_pct, `${passe}Directeur : taux = acceptés ÷ envoyés de la société`).toBeCloseTo(attendu, 1)
       await expect(sd.p.getByText(`${d.acceptes_periode} / ${d.envoyes_periode} devis envoyés`), `${passe}Directeur Q2C : compteurs de la société à l'écran`).toBeVisible(V)
+      await expect(tauxQ2C(sd.p), `${passe}Directeur Q2C : taux affiché = taux servi (${d.taux_acceptation_pct} %)`).toContainText(`${d.taux_acceptation_pct} %`, V)
       expect(refus(sd.reseau), `${passe}Directeur Q2C : aucune réponse refusée`).toEqual([])
+    }
+    // Directeur — Tableau de bord (accueil) : la carte de conversion rend les chiffres de la société servis par Q2C.
+    for (const passe of PASSES) {
+      const lu = reponse(sd.p, Q2C, 'GET', (u) => !u.searchParams.get('mine'))
+      await charger(sd, '/dashboard', passe)
+      const rep = await lu
+      expect(rep.status(), `${passe}Directeur Dashboard : Quote-to-cash lu`).toBe(200)
+      const d = (await rep.json()).devis
+      expect([d.envoyes_periode, d.acceptes_periode], `${passe}Directeur Dashboard : JSON +3 envoyés, +1 accepté`).toEqual([avantQ.envoyes_periode + 3, avantQ.acceptes_periode + 1])
+      await expect(sd.p.getByText('Conversion devis → signé').first(), `${passe}Directeur Dashboard : carte de conversion`).toBeVisible(V)
+      await expect(sd.p.getByText(`${d.acceptes_periode} signés sur ${d.envoyes_periode} devis émis`), `${passe}Directeur Dashboard : compteurs de la société à l'écran`).toBeVisible(V)
+      expect(normaliser(await tauxAccueil(sd.p).innerText()), `${passe}Directeur Dashboard : taux affiché = taux servi arrondi`).toBe(`${Math.round(d.taux_acceptation_pct)} %`)
+      expect(refus(sd.reseau), `${passe}Directeur Dashboard : aucune réponse refusée`).toEqual([])
     }
     for (const passe of PASSES) {
       const lu = reponse(sd.p, REPORTING)
