@@ -203,6 +203,31 @@ describe('TCH104 — vues et navigation', () => {
     expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
   })
 
+  it('Passe visuelle n° 59 — Semaine sur iPhone : un jour passé tient une ligne (ses faites), un jour chargé trois, le reste en « +N »', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    const ligne = (id, titre, statut = 'a_faire') => ({ ...base, id, titre, statut })
+    d.jours.unshift({
+      ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
+      sans_heure: [ligne(901, 'Faite A', 'fait'), ligne(902, 'Faite B', 'fait'), ligne(903, 'Faite C', 'fait'),
+        ligne(906, 'Restée à faire')],
+    })
+    d.jours[1].sans_heure.push(ligne(904, 'En plus 1'), ligne(905, 'En plus 2'))
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj.passe')).not.toBeNull())
+    const lundi = container.querySelector('.ag-sem .ag-sj.passe')
+    expect(lundi.querySelectorAll('.ag-sj-l')).toHaveLength(1)
+    expect(lundi.querySelector('.ag-sj-l .t')).toHaveTextContent('Faite A')
+    expect(lundi.querySelector('.ag-sj-l .plus')).toHaveTextContent('+2')
+    // mar. 17 : visite + Devis Settat + Timbres + 2 = 5 lignes → 3 montrées, « +2 » sur la dernière
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    const lignes = mardi.querySelectorAll('.ag-sj-l')
+    expect(lignes).toHaveLength(3)
+    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+2')
+    expect(lignes[0].querySelector('.plus')).toBeNull()
+  })
+
   const semaineAvecRepos = () => {
     const d = agenda()
     const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [] }

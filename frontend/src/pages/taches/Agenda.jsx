@@ -340,6 +340,35 @@ function teteJour(j, aujourdhui, capacite, taches) {
   return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
+/** Passe visuelle n° 59 — un jour de la Semaine (iPhone) montre `max` lignes (passé : 1, sinon 3) ; le reste se dit
+ *  « +{n} » au bout de la dernière (maquette agenda-semaine.html `.ag-sj-l .plus`, comme le Mois). Passe visuelle n° 8 —
+ *  la visite de l'ERP (Toute la journée) ouvre la liste : icône de lieu, sans heure. */
+function LignesDuJour({ lignes, max }) {
+  const montrees = lignes.slice(0, max)
+  const reste = lignes.length - montrees.length
+  return montrees.map((t, rang) => {
+    const plus = reste > 0 && rang === montrees.length - 1 ? <span className="plus">{`+${reste}`}</span> : null
+    if (t.erp) {
+      return (
+        <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
+          <span className="h" />
+          <MapPin className="i i-16" aria-hidden="true" />
+          <span className="t">{t.titre}</span>
+          {plus}
+        </span>
+      )
+    }
+    return (
+      <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
+        <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
+        <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
+        <span className="t">{t.titre}</span>
+        {plus}
+      </span>
+    )
+  })
+}
+
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
@@ -356,22 +385,10 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
               <span className="ag-sj-tete">
                 {teteJour(j, aujourdhui, capacite, taches)}
               </span>
-              {[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches].slice(0, 3).map((t) => (
-                t.erp ? (
-                  // Passe visuelle n° 8 — la visite de l'ERP (Toute la journée) ouvre la liste, sans heure, hors du compte
-                  <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
-                    <span className="h" />
-                    <MapPin className="i i-16" aria-hidden="true" />
-                    <span className="t">{t.titre}</span>
-                  </span>
-                ) : (
-                  <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
-                    <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
-                    <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
-                    <span className="t">{t.titre}</span>
-                  </span>
-                )
-              ))}
+              {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
+              {j.jour < aujourdhui
+                ? <LignesDuJour lignes={taches.filter((t) => t.statut === 'fait')} max={1} />
+                : <LignesDuJour lignes={[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches]} max={3} />}
             </span>
           </button>
         )
