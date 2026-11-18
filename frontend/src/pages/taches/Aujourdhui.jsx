@@ -155,23 +155,53 @@ function chercher(donnees, cle) {
   return trouve
 }
 
-/** Retire un item de sa liste ; rend la journée amputée et de quoi le remettre (Annuler). */
+/**
+ * Retire un item de TOUTES ses listes (une essentielle faite est servie dans `essentiel` ET `faites` — regles.md §4.1
+ * ligne 3, D-V1) ; rend la journée amputée et ses `origines` (`{ liste, rang, item }`, une par liste) pour la remettre.
+ */
 function retirer(donnees, cle) {
+  const origines = []
+  let suite = donnees
   for (const liste of LISTES_ITEMS) {
-    const rang = (donnees[liste] ?? []).findIndex((it) => cleDe(it) === cle)
+    const items = donnees[liste] ?? []
+    const rang = items.findIndex((it) => cleDe(it) === cle)
     if (rang >= 0) {
-      const item = donnees[liste][rang]
-      return { suite: { ...donnees, [liste]: donnees[liste].filter((_, i) => i !== rang) }, liste, rang, item }
+      origines.push({ liste, rang, item: items[rang] })
+      suite = { ...suite, [liste]: items.filter((it) => cleDe(it) !== cle) }
     }
   }
-  return { suite: mapItems(donnees, (it) => it), liste: null, rang: -1, item: null }
+  if (origines.length === 0) return { suite: mapItems(donnees, (it) => it), origines, item: null }
+  return { suite, origines, item: origines[0].item }
 }
 
-function remettre(donnees, { liste, rang, item }) {
-  if (!liste || !item) return donnees
-  const suite = [...(donnees[liste] ?? [])]
-  suite.splice(Math.min(rang, suite.length), 0, item)
-  return { ...donnees, [liste]: suite }
+/** Remet chaque origine rendue par `retirer` dans sa liste, à son rang (Annuler, refus du serveur). */
+function remettre(donnees, { origines = [] }) {
+  return origines.reduce((d, { liste, rang, item }) => {
+    const suite = [...(d[liste] ?? [])]
+    suite.splice(Math.min(rang, suite.length), 0, item)
+    return { ...d, [liste]: suite }
+  }, donnees)
+}
+
+/**
+ * Pose ou ôte la ★ comme la relecture la rangera (`selectors/journee.py::_ranger`, regles.md §4.1 ligne 3, D-V1) :
+ * une ouverte passe d'Essentiel à Prévu (ou l'inverse) ; une FAITE n'est jamais dans Prévu — avec ★ elle est dans
+ * Essentiel ET Faites, sans ★ dans Faites seule. Toutes ses occurrences prennent la nouvelle ★. Rend aussi les `origines`.
+ */
+function rangerEssentielle(donnees, cle, essentielle, lockVersion) {
+  const { suite, origines, item } = retirer(donnees, cle)
+  if (!item) return { suite: donnees, origines }
+  const change = { ...item, essentielle, lock_version: lockVersion ?? item.lock_version }
+  if (item.statut !== 'fait') {
+    return {
+      suite: essentielle
+        ? { ...suite, essentiel: [...(suite.essentiel ?? []), change] }
+        : { ...suite, journee: [change, ...(suite.journee ?? [])] },
+      origines,
+    }
+  }
+  const place = (liste) => ({ liste, rang: origines.find((o) => o.liste === liste)?.rang ?? Infinity, item: change })
+  return { suite: remettre(suite, { origines: essentielle ? [place('essentiel'), place('faites')] : [place('faites')] }), origines }
 }
 
 /** Vrai au bureau (≥ 1024 px) ; suit le redimensionnement. Sans `matchMedia` (tests), jamais le bureau. */
@@ -337,23 +367,22 @@ export default function Aujourdhui() {
     try {
       const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
       poserProgression(data.progression)
+      const avant = { origines: [] }
       setDonnees((d) => {
-        const { suite, item: trouve } = retirer(d, cleDe(item))
-        if (!trouve) return d
-        const change = { ...trouve, essentielle: suivant, lock_version: data.tache?.lock_version ?? trouve.lock_version }
-        return suivant
-          ? { ...suite, essentiel: [...(suite.essentiel ?? []), change] }
-          : { ...suite, journee: [change, ...(suite.journee ?? [])] }
+        const r = rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version)
+        avant.origines = r.origines
+        return r.suite
       })
       proposerAnnuler({
         message: suivant ? 'Essentielle' : 'Plus essentielle',
         onAnnuler: async () => {
           const rendu = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
+          // l'état d'avant : la ★ d'avant, à chacune de ses places d'avant (une essentielle faite retrouve ses deux lignes)
           setDonnees((d) => {
             const { suite, item: trouve } = retirer(d, cleDe(item))
-            if (!trouve) return d
+            if (!trouve || avant.origines.length === 0) return d
             const retour = { ...trouve, essentielle: !suivant, lock_version: versionDe(rendu, item.id, trouve.lock_version) }
-            return suivant ? { ...suite, journee: [retour, ...(suite.journee ?? [])] } : { ...suite, essentiel: [...(suite.essentiel ?? []), retour] }
+            return remettre(suite, { origines: avant.origines.map((o) => ({ ...o, item: retour })) })
           })
         },
       })
