@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
-import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annulerEtRecaler } from '../../features/taches/lib/versions'
 import {
   ABR_JOURS, ABR_MOIS, aujourdhuiIso, duree as dureeTexte, jourLong, jourNomme,
 } from '../../features/taches/lib/textes'
@@ -329,12 +330,14 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
 
 /** En-tête d'un jour de la Semaine (iPhone) : un jour ouvert à venir dit sa charge « {n} tâches · {h} pour {cap} »
  *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
- *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé ou non travaillé garde son libellé. */
-function teteJour(j, aujourdhui, capacite, n) {
+ *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé dit ce qui y a été fait, « {n} faites » (maquette
+ *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
+function teteJour(j, aujourdhui, capacite, taches) {
   if (j.ferie) return 'Férié'
   if (!j.ouvre) return 'Jour non travaillé'
   if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  return n >= 2 ? `${n} tâches` : `${n} tâche`
+  const faites = taches.filter((t) => t.statut === 'fait').length
+  return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
@@ -343,7 +346,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
       {jours.map((j) => {
         const taches = [...(j.blocs ?? []), ...(j.sans_heure ?? [])]
         return (
-          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : 'ag-sj'}
+          <button key={j.jour} type="button" className={j.jour === aujourdhui ? 'ag-sj auj' : j.jour < aujourdhui ? 'ag-sj passe' : 'ag-sj'}
             aria-current={j.jour === aujourdhui ? 'date' : undefined} onClick={() => onChoisir(j.jour)}>
             <span className="ag-sj-date">
               <small>{ABR_JOURS[new Date(versUtc(j.jour)).getUTCDay()]}</small>
@@ -351,7 +354,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite, taches.length)}
+                {teteJour(j, aujourdhui, capacite, taches)}
               </span>
               {taches.slice(0, 3).map((t) => (
                 <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
@@ -484,8 +487,10 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     else setPosees((p) => ({ ...p, [jour]: placee }))
     const gesteId = reponse?.data?.geste_id
     const annuler = async () => {
-      if (gesteId) await annulerGeste(gesteId)
+      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend
+      const retour = gesteId ? await annulerEtRecaler(gesteId, [item.id]) : null
       setDonnees(precedent)
+      if (retour?.taches?.[item.id]) reconcilier(setDonnees, retour.taches[item.id])
       setPosee(null)
       setPosees((p) => Object.fromEntries(Object.entries(p).filter(([, t]) => t.id !== item.id)))
     }

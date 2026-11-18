@@ -11,7 +11,7 @@ import Supprimees from './Supprimees'
 const api = vi.hoisted(() => ({
   rechercher: vi.fn(), listerTaches: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
   listerSupprimees: vi.fn(), listerGestes: vi.fn(), restaurerProjet: vi.fn(), restaurerTache: vi.fn(), annulerGeste: vi.fn(),
-  terminerTache: vi.fn(), rouvrirTache: vi.fn(), supprimerTache: vi.fn(),
+  terminerTache: vi.fn(), rouvrirTache: vi.fn(), supprimerTache: vi.fn(), lireTache: vi.fn(),
 }))
 vi.mock('../../api/tachesApi', async (importOriginal) => ({ ...(await importOriginal()), ...api }))
 
@@ -52,6 +52,7 @@ beforeEach(() => {
   api.restaurerProjet.mockResolvedValue({ data: {} })
   api.restaurerTache.mockResolvedValue({ data: { tache: { ...supprimees.taches[0].item } } })
   api.annulerGeste.mockResolvedValue({ data: { restaurees: [], conflits: [], deja: false } })
+  api.lireTache.mockRejectedValue(new Error('Network Error')) // comme avant : aucun serveur derrière la fiche
 })
 afterEach(() => {
   vi.clearAllMocks()
@@ -203,6 +204,20 @@ describe('TCH87 — Recherche', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
     await waitFor(() => expect(api.terminerTache).toHaveBeenCalledWith(20, {}))
     expect(await screen.findByRole('region', { name: 'Faites (2)' })).toBeInTheDocument()
+  })
+
+  it('F4 revue #7 — « Annuler » relit CETTE tâche seule : la ligne rouverte garde la version rendue par le serveur', async () => {
+    const user = userEvent.setup()
+    api.terminerTache.mockResolvedValue({ data: { tache: { ...MIXTE.taches[0], statut: 'fait' }, geste_id: 9 } })
+    api.lireTache.mockResolvedValue({ data: { ...MIXTE.taches[0], lock_version: 11 } })
+    monter()
+    await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    await user.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(9))
+    await waitFor(() => expect(api.lireTache).toHaveBeenCalledWith(20))
+    expect(await screen.findByRole('region', { name: 'Ouvertes (2)' })).toBeInTheDocument()
+    expect(api.rechercher).toHaveBeenCalledTimes(1) // la recherche n'est pas relancée
   })
 })
 

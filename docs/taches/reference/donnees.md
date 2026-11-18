@@ -567,7 +567,9 @@ Contrainte `taches_regsoc_uniq` (company). Écrit par un administrateur seulemen
 22. ≤ 3 sollicitations par jour (rappels et push de test hors compte) ; aucune hors fenêtre, après `heure_limite`, en
     congé, un jour non travaillé, pour un compte inactif ; SAUTÉE, jamais différée.
 23. Lien ERP : cible ∈ `CibleLiable` ET visible (sélecteur de l'app cible) ; libellé servi vide hors `ok` (« Lead
-    effacé » si `efface`) ; la tâche nocturne revérifie les liens des tâches ouvertes.
+    effacé » si `efface`) ; la tâche nocturne revérifie les liens des tâches ouvertes. Un lien `efface` le RESTE,
+    la nuit comme à l'ouverture d'une fiche : le lead anonymisé se lit encore par la porte de crm pour qui a
+    `crm_voir` (« Anonymisé »), il ne redevient jamais un lien vivant.
 24. Objectif entre 1 et 12 ; une baisse n'est jamais imposée ; un cran au plus par proposition.
 25. Un seul projet de la semaine par propriétaire et par semaine.
 26. Aucun objet `taches` dans la corbeille de l'ERP, la recherche globale, `record_targets`, `_traces_du_compte`.

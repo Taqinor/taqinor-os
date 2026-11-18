@@ -148,6 +148,23 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
   })
 
+  it('F2 acceptation — Semaine sur iPhone : un jour passé dit « {n} faites » (maquette agenda-semaine.html, `ag-sj passe`)', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours.unshift({
+      ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
+      sans_heure: [
+        { ...base, id: 901, titre: 'Faite lundi', statut: 'fait', jour_prevu: '2026-11-16' },
+        { ...base, id: 902, titre: 'Encore une faite', statut: 'fait', jour_prevu: '2026-11-16' },
+        { ...base, id: 903, titre: 'Restée à faire', statut: 'a_faire', jour_prevu: '2026-11-16' },
+      ],
+    })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj.passe')).not.toBeNull())
+    expect(container.querySelector('.ag-sem .ag-sj.passe .ag-sj-tete')).toHaveTextContent(/^2 faites$/)
+  })
+
   it('F2 acceptation (P139.1) — sans capacité servie, l\'en-tête ne dit que le nombre (jamais une capacité devinée)', async () => {
     const sans = agenda()
     delete sans.capacite
