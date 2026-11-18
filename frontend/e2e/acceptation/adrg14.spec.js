@@ -212,6 +212,7 @@ etape('PF4-ADRG149-exports-chantiers', ['ADRG149'], async ({ page, suivi, testIn
 })
 
 // ── PF4-ADRG150-ticket-fiche-chantier : « Ouvrir un ticket » de la fiche chantier sous `sav_gerer` ─────────────────
+const RECURRENCES = /^\/installations\/recurrences-intervention\/$/
 etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150', 'ADRG155'], async ({ page, suivi, testInfo }) => {
   const m = marque()
   const co = await compteDe('Commercial', 'adrg150co')
@@ -242,6 +243,14 @@ etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150', 'ADRG155'], async ({ page
       await expect(fiche.locator('#tk-type'), `${passe}Commercial : pas de champ « Type » du ticket`).toHaveCount(0)
       await expect(fiche.getByPlaceholder('Symptôme / demande'), `${passe}Commercial : pas de champ « Description » du ticket`).toHaveCount(0)
       console.log(`[ADRG150] ${passe}Commercial fiche ${o.ref} : ${J(c.reseau)} ; console ${J(c.consoles)}`)
+      // ADRG155 : la section « Interventions récurrentes » est neutre et AUCUNE lecture de installations/recurrences-intervention/ n'est faite.
+      await expect(fiche.getByText('Interventions récurrentes', { exact: true }).first(), `${passe}Commercial : titre de section « Interventions récurrentes »`).toBeVisible(V)
+      await expect(fiche.getByText('Interventions récurrentes réservées au module chantiers.', { exact: true }), `${passe}Commercial : texte neutre « Interventions récurrentes réservées au module chantiers. »`).toBeVisible(V)
+      await expect(fiche.getByText('Aucune intervention récurrente sur ce chantier.'), `${passe}Commercial : pas de liste des récurrences`).toHaveCount(0)
+      await expect(fiche.locator('#rec-type'), `${passe}Commercial : pas de formulaire de récurrence`).toHaveCount(0)
+      expect(appels(c.reseau, RECURRENCES), `${passe}Commercial : aucun GET installations/recurrences-intervention/ (${J(c.reseau)})`).toEqual([])
+      expect(refus(c.reseau), `${passe}Commercial : aucune réponse refusée (aucune 403)`).toEqual([])
+      expect(c.consoles, `${passe}Commercial : console sans erreur`).toEqual([])
     }
     // Témoin Technicien responsable : le formulaire et le bouton.
     const t = await ecranDe(page, suivi, testInfo, tr)
@@ -252,6 +261,14 @@ etape('PF4-ADRG150-ticket-fiche-chantier', ['ADRG150', 'ADRG155'], async ({ page
       await expect(fiche.locator('#tk-type'), `${passe}Technicien responsable : champ « Type » du ticket`).toBeVisible(V)
       await expect(fiche.getByPlaceholder('Symptôme / demande'), `${passe}Technicien responsable : champ « Description » du ticket`).toBeVisible(V)
       expect(refus(t.reseau), `${passe}Technicien responsable : aucune réponse refusée`).toEqual([])
+      // ADRG155 (témoin) : la section est rendue avec sa liste et son formulaire, et la lecture a répondu 200.
+      await expect(fiche.getByText('Interventions récurrentes', { exact: true }).first(), `${passe}Technicien responsable : titre de section « Interventions récurrentes »`).toBeVisible(V)
+      await expect(fiche.getByText('Aucune intervention récurrente sur ce chantier.'), `${passe}Technicien responsable : liste des récurrences rendue`).toBeVisible(V)
+      await expect(fiche.locator('#rec-type'), `${passe}Technicien responsable : formulaire de récurrence (« Type »)`).toBeVisible(V)
+      await expect(fiche.getByText('Interventions récurrentes réservées au module chantiers.'), `${passe}Technicien responsable : pas de texte neutre`).toHaveCount(0)
+      const lus = appels(t.reseau, RECURRENCES).filter((l) => l.startsWith('GET '))
+      expect(lus.length, `${passe}Technicien responsable : GET installations/recurrences-intervention/ relevé (${J(t.reseau)})`).toBeGreaterThan(0)
+      expect(lus.every((l) => l.endsWith('→ 200')), `${passe}Technicien responsable : lecture des récurrences en 200 ${J(lus)}`).toBe(true)
     }
   } finally {
     await nettoyerChantier(o)
