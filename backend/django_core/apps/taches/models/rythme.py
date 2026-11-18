@@ -1,8 +1,9 @@
 """Le rythme : réglages typés, préférences dites, journal des sollicitations
 (reference/donnees.md §2.10-§2.12).
 
-`ReglagesRythme` n'est créée QUE par `creer_taches()` (première tâche, invariant 29) ; `vu/` ne la
-crée jamais.
+`ReglagesRythme` naît à la première tâche (`creer_taches()`, invariant 29) OU au premier geste qui
+l'écrit (`POST rythme/`, `PATCH reglages/` : `services.rythme._reglages_a_ecrire`) ; une lecture
+(`vu/`, `aujourdhui/`, `reglages/`) ne la crée jamais.
 """
 from django.conf import settings
 from django.db import models

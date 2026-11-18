@@ -22,11 +22,12 @@ class TachesConfig(AppConfig):
         # d'un tenant) / vertical_<x> (sorti du build de l'édition solaire —
         # à inscrire AUSSI dans erp_agentique/settings/editions.py).
         'sku': 'generic',
-        'label': 'Taches',
+        'label': 'Tâches',
         'icone': '',
         'depends': [],
-        'installable': False,
-        'description': 'Module taches (à décrire).',
+        # TCH131 — activation (fin de F2, donnees.md inv. 28) : le module devient installable.
+        'installable': True,
+        'description': 'Tes tâches, tes projets et ton agenda, avec le Copilote.',
         # Ventes/Finance/RH/Stock/Services/Marketing/Technique/Commercial.
         'categorie': 'Technique',
     }
@@ -36,4 +37,8 @@ class TachesConfig(AppConfig):
         # éviter les cycles au chargement des apps). Décommenter quand l'app
         # réagit à l'état d'une autre app (ex. ``ventes`` émet ``devis_accepted``).
         # from . import receivers  # noqa: F401
-        pass
+        #
+        # TCH74 — effacement 09-08, les DEUX portes (reference/donnees.md §5) : le récepteur
+        # `lead_erased` (abonné à l'import de `receivers`) et le fournisseur DSR `taches`.
+        from apps.taches import dsr, receivers  # noqa: F401
+        dsr.register()

@@ -348,6 +348,22 @@ def _sortir_d_un_projet_supprime(tache):
         tache.save(update_fields=['projet', 'section', 'triee_le', 'updated_at'])
 
 
+def detacher_d_un_parent_supprime(tache):
+    """Une sous-tâche restaurée dont le parent reste supprimé redevient une tâche ordinaire (sinon la
+    purge du parent l'emporterait en cascade) ; même règle que N7 pour le projet."""
+    if tache.parent_id and not Tache.objects.filter(pk=tache.parent_id).exists():
+        tache.parent_id = None
+        tache.save(update_fields=['parent', 'updated_at'])
+
+
+def _detacher_les_restaurees(user, bilan):
+    """Passe finale : le parent n'est jugé « resté supprimé » qu'une fois TOUT le geste défait (les
+    opérations se défont à l'envers : une sous-tâche passe avant son parent)."""
+    pks = [r['id'] for r in bilan.restaurees if r['objet'] == 'tache']
+    for tache in taches_de(user).filter(pk__in=pks, parent__isnull=False):
+        detacher_d_un_parent_supprime(tache)
+
+
 def _defaire_suppression_douce(user, op, bilan):
     objet, pk = op.get('objet'), op.get('id')
     if objet not in ('tache', 'projet'):
@@ -447,6 +463,74 @@ _DEFAIRE = {
 }
 
 
+def _rouvrir_sources_converties(user, operations, bilan):
+    """Annuler une conversion (« conversion » d'à-faire ERP en tâches) rouvre l'à-faire SOURCE de chaque
+    tâche dont la création vient d'être défaite, par `records.services.rouvrir_a_faire_personnel` (lu par
+    `records.selectors.a_faire_personnels_de` : jamais l'à-faire d'un autre créateur). Une tâche restée en
+    place (conflit) garde sa source close ; un à-faire que `records` refuse de rouvrir va dans `conflits`
+    (`objet` = `activite`)."""
+    from apps.records.selectors import a_faire_personnels_de
+    from apps.records.services import rouvrir_a_faire_personnel
+
+    retirees = {r['id'] for r in bilan.restaurees if r['objet'] == 'tache'}
+    creees = [op.get('id') for op in operations if isinstance(op, dict) and op.get('op') == 'creation'
+              and op.get('objet') == 'tache' and op.get('id') in retirees]
+    sources = list(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=creees,
+                                            is_deleted=True, activite_origine_id__isnull=False)
+                   .values_list('activite_origine_id', flat=True))
+    for activite in a_faire_personnels_de(user, ids=sources):
+        try:
+            rouvrir_a_faire_personnel(activite, user)
+        except activite.DoesNotExist:
+            bilan.conflit('activite', activite.pk, CONFLIT_INTROUVABLE)
+
+
+#: Colonnes d'un `PlanJour` qu'aucun geste n'écrit (la nuit, `vu/`) : non vides = le plan a vécu.
+PLAN_ECRIT_AILLEURS = ('app_ouverte_le', 'capacite_minutes', 'capacite_source', 'statut_jour', 'compte_rythme',
+                       'micro_comptees', 'essentiels_choisis', 'essentiels_faits', 'plan_prevues', 'plan_faites',
+                       'minutes_prevues', 'minutes_faites', 'taille_mediane_min')
+
+
+def _ids_crees(operations, objet):
+    return {op.get('id') for op in operations if isinstance(op, dict) and op.get('op') == 'creation'
+            and op.get('objet') == objet}
+
+
+def _plans_gardes(user, geste):
+    """Revue F2 #3 : les `PlanJour` créés par `geste` qui ont reçu DEPUIS d'autres écritures — une
+    ligne d'un autre geste (★, bilan), un geste plus récent qui les nomme (bilan du soir, alléger), un
+    compteur de la nuit ou `vu/`. Les défaire supprimerait (CASCADE) ce que ces écritures ont posé :
+    ils restent tels quels, avec leurs lignes, et vont dans `conflits` (`modifiee_depuis`)."""
+    operations = geste.operations if isinstance(geste.operations, list) else []
+    crees = _ids_crees(operations, 'plan_jour')
+    if not crees:
+        return set()
+    lignes_du_geste = _ids_crees(operations, 'ligne_plan_jour')
+    plus_recents = (gestes_de(user).filter(created_at__gte=geste.created_at, annule_le__isnull=True)
+                    .exclude(pk=geste.pk))
+    gardes = set()
+    for plan in _lignes_du_compte('plan_jour', user).filter(pk__in=crees):
+        if (any(getattr(plan, champ) != plan._meta.get_field(champ).get_default() for champ in PLAN_ECRIT_AILLEURS)
+                or LignePlanJour.objects.filter(plan=plan).exclude(pk__in=lignes_du_geste).exists()
+                or plus_recents.filter(operations__contains=[{'objet': 'plan_jour', 'id': plan.pk}]).exists()):
+            gardes.add(plan.pk)
+    return gardes
+
+
+def _etapes_hors_plans_gardes(user, geste, bilan):
+    """Les étapes du geste, sans celles qui toucheraient un plan gardé (`_plans_gardes`)."""
+    gardes = _plans_gardes(user, geste)
+    lignes = set(LignePlanJour.objects.filter(plan_id__in=gardes).values_list('pk', flat=True)) if gardes else set()
+    for pk in sorted(gardes):
+        bilan.conflit('plan_jour', pk, CONFLIT_MODIFIEE)
+    for etape in _etapes(geste.operations):
+        if (etape.get('objet') == 'plan_jour' and etape.get('id') in gardes
+                or etape.get('objet') == 'ligne_plan_jour' and etape.get('op') == 'creation'
+                and etape.get('id') in lignes):
+            continue
+        yield etape
+
+
 def annuler_geste(user, geste_id):
     """Défait le geste `geste_id` de `user` → `{"restaurees", "conflits", "deja"}`
     (`geste_annuler.json`). `Http404` hors propriétaire, inconnu ou de plus de 7 jours."""
@@ -463,10 +547,13 @@ def annuler_geste(user, geste_id):
         if geste.annule_le is not None:
             return {'restaurees': [], 'conflits': [], 'deja': True}
         bilan = _Bilan()
-        for etape in _etapes(geste.operations):
+        for etape in _etapes_hors_plans_gardes(user, geste, bilan):
             defaire = _DEFAIRE.get(etape.get('op'))
             if defaire is not None:
                 defaire(user, etape, bilan)
+        _detacher_les_restaurees(user, bilan)
+        if geste.type == 'conversion':
+            _rouvrir_sources_converties(user, geste.operations, bilan)
         geste.annule_le = timezone.now()
         geste.save(update_fields=['annule_le', 'updated_at'])
     return bilan.rendu()

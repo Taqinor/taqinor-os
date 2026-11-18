@@ -7,13 +7,15 @@ calculé par chaque étape. Chaque étape est idempotente : rejouer la nuit ne c
 (recalcul déterministe, contrainte unique des cartes, purges par date).
 
 Ordre (api.md §9) :
-1. `services/journee.clore_jour_precedent` — clôt le `PlanJour` d'hier (TCH58) ;
+1. `services/journee.clore_jour_precedent` — clôt le `PlanJour` d'hier (TCH58) ; AVANT le rythme, qui
+   lit `statut_jour` et `compte_rythme` de ce plan ;
 2. `services/rythme.etapes_nocturnes` — rythme, cartes, constats, révélation `revue`, expirations,
-   push ignorés, pauses (TCH70) ;
+   push ignorés, pauses (TCH70) — des cartes d'écran : la nuit n'ENVOIE rien ;
 3. `services/erp.reverifier_liens` — revérifie les liens ERP des tâches ouvertes (TCH75) ;
 4. `services/purge.purger` — rétentions de donnees.md §8 (TCH75).
 
-Appelée par `sweeps.py` (TCH99), une fois par société active.
+Appelée par `sweeps.py` (TCH99), une fois par société active où le module est actif, coupe-circuit
+compris (`ReglagesSociete.balayage_actif` ne coupe que l'envoi, `taches.balayer`).
 """
 import logging
 

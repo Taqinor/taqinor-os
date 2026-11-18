@@ -185,3 +185,53 @@ describe('useFocusedRecordShortcuts — scopeRef (incident 02/10/2026)', () => {
     expect(onN).not.toHaveBeenCalled()
   })
 })
+
+/* TCH119 — `taches` au registre de l'aide (spec-7 « Gestes et clavier », N2) : les touches de
+   textes.md « Aide des touches », aucune touche seule qui fasse disparaître une ligne, et le
+   clavier muet sous un dialogue posé par-dessus l'écran. */
+function EcranTaches({ handlers, autreDialogue = false }) {
+  const ref = useRef(null)
+  useFocusedRecordShortcuts('taches', handlers, true, { scopeRef: ref })
+  const { activeScreen } = useActiveScreen()
+  return (
+    <>
+      <main ref={ref}><button type="button" data-testid="ligne">Appeler Karim</button></main>
+      <span data-testid="ecran-actif">{activeScreen ?? ''}</span>
+      {autreDialogue && createPortal(
+        <div role="dialog" data-state="open"><button type="button" data-testid="feuille">Quand</button></div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+describe('TCH119 — registre « taches »', () => {
+  it('les touches de l’aide, pour tous les profils, jamais une suppression à une touche', () => {
+    const entry = FOCUSED_RECORD_SHORTCUTS.taches
+    expect(entry.title).toBe('Tâches')
+    expect(entry.items.map((it) => [it.key, it.label])).toEqual([
+      ['n', 'Ajouter ici'], ['/', 'Chercher'], [' ', 'Fait'], ['e', 'Renommer'], ['d', 'Quand'],
+      ['m', 'Déplacer'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
+    ])
+    expect(entry.items.some((it) => /supprim|abandon|archiv/i.test(it.label))).toBe(false)
+    for (const profil of ['commercial', 'sav', 'general']) expect(entry.roles).toContain(profil)
+  })
+
+  it('« d » ouvre Quand sur l’écran ; l’écran devient l’écran actif de l’aide', () => {
+    const onD = vi.fn()
+    render(<ActiveScreenProvider><EcranTaches handlers={{ d: onD }} /></ActiveScreenProvider>)
+    fireEvent.keyDown(screen.getByTestId('ligne'), { key: 'd' })
+    expect(onD).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('ecran-actif').textContent).toBe('taches')
+  })
+
+  it('clavier muet sous un dialogue posé par-dessus (la feuille Quand ouverte)', () => {
+    const onD = vi.fn()
+    const onFait = vi.fn()
+    render(<ActiveScreenProvider><EcranTaches handlers={{ d: onD, ' ': onFait }} autreDialogue /></ActiveScreenProvider>)
+    fireEvent.keyDown(screen.getByTestId('feuille'), { key: 'd' })
+    fireEvent.keyDown(screen.getByTestId('feuille'), { key: ' ' })
+    expect(onD).not.toHaveBeenCalled()
+    expect(onFait).not.toHaveBeenCalled()
+  })
+})

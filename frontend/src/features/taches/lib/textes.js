@@ -79,6 +79,14 @@ export function heure(valeur) {
   return m ? `${deux(m[1])}:${m[2]}` : ''
 }
 
+/**
+ * « 10:42 » du bandeau de conflit (textes.md §2.2) : l'heure de la version de l'autre appareil, lue dans la réponse
+ * 409 (`actuel.updated_at`, ISO servi à l'heure du Maroc) — jamais l'horloge du navigateur ; '' si absente.
+ */
+export function heureDuConflit(actuel) {
+  return heure(String(actuel?.updated_at ?? '').slice(11, 16))
+}
+
 /** « 10 h » · « 10 h 30 » : l'heure dans une phrase lue ou dite. */
 export function heureDite(valeur) {
   const m = /^(\d{1,2}):(\d{2})/.exec(String(valeur ?? ''))

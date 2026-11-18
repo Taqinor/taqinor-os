@@ -1,18 +1,123 @@
 """Journée, rituels et pastille (reference/api.md §2, §3.1, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
-schéma OpenAPI est celui de leur échantillon de `contract_samples/` (`forme_echantillon`).
+Routes déclarées : une vue pas encore construite lève `PasEncore` (501) ; le schéma OpenAPI de
+chaque route est celui de son échantillon de `contract_samples/` (`forme_echantillon`). Les vues
+construites lisent le jour (`?jour=`, défaut : aujourd'hui) et l'heure murale, puis délèguent tout à
+`services/journee.py`.
 """
+import datetime
+from contextlib import contextmanager
+
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.serializers.formes import TacheEcriteSerializer
-from apps.taches.views.base import PERMISSIONS, PasEncore, corps, forme_echantillon, parametre, reponses
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, DateBornee, jour_dans_bornes
+from apps.taches.serializers.formes import TacheEcriteSerializer, contexte
+from apps.taches.serializers.journee import PLAFOND_LIGNES
+from apps.taches.services import journee as services
+from apps.taches.views.base import (
+    PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses)
 from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
 TOUT = parametre('tout', OpenApiTypes.BOOL, '1 : « Voir toutes les tâches de mes projets ».')
+VRAI = ('1', 'true', 'oui')
+
+
+def date_de(valeur, champ):
+    """Une date AAAA-MM-JJ, ou 400 au champ nommé."""
+    try:
+        jour = datetime.date.fromisoformat(str(valeur))
+    except (TypeError, ValueError):
+        raise ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise ValidationError({champ: [MESSAGE_DATE]})
+    return jour
+
+
+def jour_de(request, champ='jour'):
+    """`?jour=` (défaut : aujourd'hui, fuseau de la société)."""
+    texte = request.query_params.get(champ)
+    return date_de(texte, champ) if texte else timezone.localdate()
+
+
+def maintenant():
+    """Heure murale de la société."""
+    return timezone.localtime()
+
+
+def drapeau(request, champ):
+    return (request.query_params.get(champ) or '').lower() in VRAI
+
+
+def ids_de(request, champ):
+    """`?exclure=41,42` → [41, 42] ; un morceau qui n'est pas un nombre est ignoré (lecture seule)."""
+    morceaux = (request.query_params.get(champ) or '').split(',')
+    return [int(m) for m in (m.strip() for m in morceaux)
+            if m.isascii() and m.isdigit() and len(m) <= LONGUEUR_ID_MAX]
+
+
+def par_compte(request):
+    """Espace de clés d'idempotence propre au compte (deux comptes, même clé : deux gestes)."""
+    return f'compte-{request.user.pk}'
+
+
+def valide(classe, donnees):
+    serializer = classe(data=donnees)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+@contextmanager
+def refus_en_400():
+    """`services.journee.Refus` → 400 au champ nommé."""
+    try:
+        yield
+    except services.Refus as exc:
+        raise ValidationError(exc.erreurs)
+
+
+class LigneCorps(serializers.Serializer):
+    type = serializers.ChoiceField(choices=(services.TACHE, services.ACTIVITE))
+    id = serializers.IntegerField(min_value=1)
+
+
+class PlanifierCorps(serializers.Serializer):
+    jour = DateBornee()
+    mode = serializers.CharField()
+    lignes = serializers.ListField(child=LigneCorps(), max_length=PLAFOND_LIGNES)
+    essentielles = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
+                                         default=list)
+    triage = serializers.ListField(required=False, default=list)
+
+
+class EssentielCorps(serializers.Serializer):
+    tache_id = serializers.IntegerField(min_value=1)
+    essentielle = serializers.BooleanField()
+
+
+class AllegerCorps(serializers.Serializer):
+    jour = DateBornee()
+    garder = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=PLAFOND_LIGNES)
+
+
+class ChoixBilanCorps(serializers.Serializer):
+    id = serializers.IntegerField(min_value=1)
+    choix = serializers.CharField()
+    jour = DateBornee(required=False)
+
+
+class CloturerCorps(serializers.Serializer):
+    jour = DateBornee()
+    choix = serializers.ListField(child=ChoixBilanCorps(), required=False, default=list,
+                                  max_length=PLAFOND_LIGNES)
+    le_reste = serializers.BooleanField(required=False, default=False)
+    reflexion = serializers.CharField(required=False, allow_blank=True, default='', max_length=280)
 
 
 class AujourdhuiVue(APIView):
@@ -22,7 +127,8 @@ class AujourdhuiVue(APIView):
 
     @extend_schema(parameters=[JOUR, TOUT], responses=reponses(forme_echantillon('aujourdhui'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        return Response(services.aujourdhui(request.user, jour_de(request), maintenant(),
+                                            tout=drapeau(request, 'tout'), assistant=est_assistant(request)))
 
 
 class BadgeVue(APIView):
@@ -32,7 +138,7 @@ class BadgeVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('badge')))
     def get(self, request):
-        raise PasEncore()
+        return Response(services.badge(request.user, timezone.localdate()))
 
 
 class VuVue(APIView):
@@ -43,7 +149,8 @@ class VuVue(APIView):
     @extend_schema(request=corps('Vu', {'ecran': 'aujourdhui'}),
                    responses=reponses(forme_echantillon('vu'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        heure = maintenant()
+        return Response(services.vu(request.user, heure.date(), heure))
 
 
 class PropositionJourneeVue(APIView):
@@ -57,7 +164,10 @@ class PropositionJourneeVue(APIView):
         parametre('inclure', OpenApiTypes.STR, 'Ids de tâches ajoutées, séparés par des virgules.'),
     ], responses=reponses(forme_echantillon('journee_proposition'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        heure = maintenant()
+        return Response(services.proposition_du_jour(
+            request.user, jour_de(request), heure, exclure=ids_de(request, 'exclure'),
+            inclure=ids_de(request, 'inclure'), tout=drapeau(request, 'tout'), assistant=est_assistant(request)))
 
 
 class PrioritesVue(APIView):
@@ -90,7 +200,14 @@ class PlanifierJourneeVue(IdempotentCreateMixin, APIView):
         'essentielles': [20], 'triage': [],
     }, requis=('jour', 'mode', 'lignes')), responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._planifier(request), suffixe=par_compte(request))
+
+    def _planifier(self, request):
+        corps_ = valide(PlanifierCorps, request.data)
+        with refus_en_400():
+            return Response(services.planifier_express(
+                request.user, corps_['jour'], maintenant(), lignes=corps_['lignes'],
+                essentielles=corps_['essentielles'], mode=corps_['mode'], assistant=est_assistant(request)))
 
 
 class EssentielVue(APIView):
@@ -102,7 +219,12 @@ class EssentielVue(APIView):
                                  requis=('tache_id', 'essentielle')),
                    responses=reponses(TacheEcriteSerializer, erreurs=(400, 404)))
     def post(self, request):
-        raise PasEncore()
+        corps_ = valide(EssentielCorps, request.data)
+        with refus_en_400():
+            ecrite = services.marquer_essentielle(request.user, corps_['tache_id'], corps_['essentielle'],
+                                                  maintenant())
+        contexte_ = contexte(assistant=est_assistant(request))
+        return Response(TacheEcriteSerializer(ecrite, context=contexte_).data)
 
 
 class AllegerVue(IdempotentCreateMixin, APIView):
@@ -114,7 +236,12 @@ class AllegerVue(IdempotentCreateMixin, APIView):
                                  requis=('jour', 'garder')),
                    responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._alleger(request), suffixe=par_compte(request))
+
+    def _alleger(self, request):
+        corps_ = valide(AllegerCorps, request.data)
+        return Response(services.alleger(request.user, corps_['jour'], maintenant(), garder=corps_['garder'],
+                                         assistant=est_assistant(request)))
 
 
 class ClotureVue(APIView):
@@ -124,7 +251,9 @@ class ClotureVue(APIView):
 
     @extend_schema(parameters=[JOUR], responses=reponses(forme_echantillon('journee_cloture'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        with refus_en_400():
+            return Response(services.cloture(request.user, jour_de(request), maintenant(),
+                                             assistant=est_assistant(request)))
 
 
 class CloturerVue(IdempotentCreateMixin, APIView):
@@ -137,4 +266,10 @@ class CloturerVue(IdempotentCreateMixin, APIView):
         'le_reste': True, 'reflexion': '',
     }, requis=('jour',)), responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        return self._avec_idempotence(request, lambda: self._cloturer(request), suffixe=par_compte(request))
+
+    def _cloturer(self, request):
+        corps_ = valide(CloturerCorps, request.data)
+        with refus_en_400():
+            return Response(services.cloturer(request.user, corps_['jour'], maintenant(), choix=corps_['choix'],
+                                              le_reste=corps_['le_reste'], reflexion=corps_['reflexion']))

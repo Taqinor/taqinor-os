@@ -596,3 +596,16 @@ def register():
     dsr.register_dsr_provider(
         PROVIDER_NAME, export=export_crm, erase=erase_crm, erase_order=100)
     dsr.register_erasure_guard('creance_ouverte', _garde_creance_ouverte)
+
+
+def cibles_du_sujet(company, subject_identifier):
+    """TCH154 — porte d'effacement lue par ``taches`` (``effacer_sujet``).
+
+    Les identifiants des leads (corbeille comprise) et des clients d'UNE
+    société que ``erase_crm`` traiterait pour ce sujet : MÊME résolution
+    (``_matcher``, e-mail ou téléphone normalisé, un rebond), jamais un
+    second chemin. Lecture seule ; aucune donnée personnelle rendue.
+    """
+    leads, clients = _matcher(company, subject_identifier)
+    return {'leads': sorted(leads.values_list('pk', flat=True)),
+            'clients': sorted(clients.values_list('pk', flat=True))}

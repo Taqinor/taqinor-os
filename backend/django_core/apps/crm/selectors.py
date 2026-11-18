@@ -205,3 +205,10 @@ def porte_une_opposition(company_id, email=None, telephone=None, whatsapp=None):
     from .leads_doublons import porte_une_opposition as _porte
 
     return _porte(company_id, email, telephone, whatsapp)
+
+
+def cibles_du_sujet(company, subject_identifier):
+    """TCH154 — ``dsr_provider.cibles_du_sujet`` pour ``taches`` (porte d'effacement, lecture seule)."""
+    from .dsr_provider import cibles_du_sujet as _cibles
+
+    return _cibles(company, subject_identifier)

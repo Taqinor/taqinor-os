@@ -598,7 +598,12 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
   d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` (« gardées faites ») = lignes `prevue_au_plan` faites /
   lignes `prevue_au_plan` (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger
-  n'y sont plus). Partout l'écran montre « N sur OBJECTIF » ; les gardées faites sont une seconde donnée (A17-M2).
+  n'y sont plus). Une gardée qui change de jour (tout chemin de `planifier`) GARDE sa ligne, marquée `reportee` et
+  non tenue : seul Alléger retire une ligne (la déplacer ne gonfle jamais le taux). La ligne d'une activité ERP qui
+  PORTE une tâche (lien ou conversion) ne compte ni au numérateur ni au dénominateur : sa tâche la représente, une
+  même chose n'est jamais comptée deux fois (§6.1, `selectors.journee.ligne_gardee`) ; une activité gardée sans
+  tâche est une ligne, tenue quand il la clôt ce jour-là. Partout l'écran montre « N sur OBJECTIF » ; les gardées
+  faites sont une seconde donnée (A17-M2).
 - **Pastille (UNE définition, invariant 11)** : `n` = éléments OUVERTS et GARDÉS d'Essentiel + Prévu + Ce soir
   (tâches ET activités ERP), plafonné à 99 ; JAMAIS Proposé (A16-N5) ; peut valoir 0 (→ `clearAppBadge`). Ni À revoir,
   En attente, À trier, ni obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et `notify(badge=n)`.
@@ -729,7 +734,11 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
    la 3e carte refusée de suite, le bouton « Garder ce rythme » s'ajoute (bascule `tenir`). Baisse « Oui » → palier
    −1, échec mémorisé si N > `meilleur_tenu` ; « Garder N » → pas de baisse au bloc suivant. Sans réponse en 7 jours :
    expirée, ce n'est pas un refus. La réponse vaut le jour même si elle précède la validation du plan, sinon le
-   lendemain. `meilleur_tenu` = max des N d'un bloc à ≥ 5/10.
+   lendemain : un plan VALIDÉ fixe l'objectif du jour partout (Aujourd'hui, en-tête du Copilote, plan, bilan —
+   `services.rythme.objectif_du_plan_valide`). « Oui » repart le bloc le lendemain (comme un objectif dit). Un
+   palier qui change (objectif dit, +, −, réponse à une carte) abandonne les cartes de palier ouvertes ; une carte
+   calculée d'un autre palier que le courant est close sans effet (jamais deux crans). `meilleur_tenu` = max des N
+   d'un bloc à ≥ 5/10.
 7. **Garde de taille** (HORS de la première livraison, critique m5) : référence = médiane des estimations des tâches
    faites des 10 jours initiaux ; pas de montée si la médiane du bloc < 70 % de la référence (≥ 10 tâches estimées de
    chaque côté) → carte `garde_taille`. De même la **mémoire d'échec** du point 4 (`echec_*`) n'est pas lue en v1 : la
@@ -747,6 +756,8 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 - Dérive = moyenne plafonnée des 14 derniers jours évalués DEPUIS la fixation de R, strictement hors zone → carte
   `derive_tenir` (`sous` / `au_dessus`), puis **28 jours de silence** quelle que soit la réponse ; `garder` garde R ;
   `passer` (bouton « Monter à {m} » ou « Descendre à {m} ») pose R = `arrondir(moyenne)`, fixée ce jour. Surchauffe : Proposé plafonné à ⌊R + b⌋ tâches.
+- Planchers (revue F2 tour 2) : objectif montré `max(1, arrondir(R))`, bas de zone plancher 0 (jamais « 0 tâche »
+  ni borne négative) ; dérive : `m = max(1, arrondir(moyenne))` ; aucune carte (ni silence) quand `m` = l'objectif gardé.
 
 ### 6.7 Bascules (`basculer(etat, mode, jour)`)
 
@@ -769,7 +780,8 @@ froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposit
 ### 6.9 Constats sur son comportement (`constats(donnees)`)
 
 Calculés à 03:00 si « comprendre mon rythme » est allumé (C6 hors de la première livraison, faute de durée réelle
-mesurée, critique m6) (coupé : rien calculé ni gardé, socle §8) ; fenêtre 28 jours
+mesurée, critique m6) (coupé : rien calculé ni gardé, socle §8 — la nuit n'écrit alors ni `statut_jour` ni
+`compte_rythme`, et `rythme/` ne sert ni série ni trace) ; fenêtre 28 jours
 calendaires sauf mention ; 8 au plus ; un constat refusé (« Pas maintenant ») se tait 28 jours ; **un seul montré
 par bilan du soir** (le plus récent jamais montré, puis par numéro), la liste vit dans Mon rythme (A14-M4).
 
@@ -781,11 +793,16 @@ par bilan du soir** (le plus récent jamais montré, puis par numéro), la liste
 | C4 | gardées − gardées faites ≥ 2 sur ≥ 60 % des plans | 10 plans | « Garder ces N » limité à médiane faite + 1 tant que la carte acceptée est la dernière de C4 (I13) |
 | C5 | part des tâches finies par tranche de 2 h (heure de `fait_le`) | 30 tâches | aucune (information) |
 | C6 | réel / estimé médian par projet hors [0,8 ; 1,25] | 5 tâches estimées ET mesurées du projet | durée corrigée (minutes × ratio) dans `charge` tant que la carte acceptée est la dernière de C6 (I13) |
-| C7 | tâches reportées 3 fois ou plus (ouvertes) | 1 | ouvrir À revoir |
+| C7 | lignes « Reportée 3 fois » d'À revoir au jour J (`reports ≥ reports_tranches + 3`, jour prévu ≤ J ; ni tranchée ni en réserve) — le nombre de lignes qu'ouvre son bouton | 1 | ouvrir À revoir |
 | C8 | `neglige()` non vide (projet de plus haute priorité) | — | une de ses tâches actionnables dans Proposé de demain (`inclure`), lue sur la carte acceptée (I13) |
 
 Chaque nombre d'une phrase figure dans `IncitationCoach.donnees` (ids, jamais de titres ; noms rendus à la lecture
 par `nom_pour`).
+
+**Hors de la première livraison (comme C6, revue F2 tour 2 #7)** : C1 et C2 (les lignes de plan ne portent encore ni
+`creneau`, ni `rang`, ni `faite`), C4 et C8 (l'effet de leur « Oui » — limite de « Garder ces N », `inclure` de
+Proposé — n'est pas branché : une carte dont le bouton ne change rien n'est pas montrée) ; les champs et les
+formules restent, une livraison ultérieure les allume. Livrés : C3, C5, C7.
 
 ### 6.10 Exemples chiffrés — 49 de spec-5a §7 + 12 de A2 + 4 de la révision 2 + 5 variantes v1, RECALCULÉS
 
@@ -1018,8 +1035,11 @@ validé par `apps/publicapi/validators.py` ; lecture immédiate, `dernier_etat` 
 | 5 Contenu | `BEGIN:VCALENDAR` présent, au moins un VEVENT lisible ou un calendrier vide | `illisible` |
 | 6 Succès | événements mis en cache par adresse, 15 min (IR23) ; `dernier_chargement_le`, `ok` | — |
 
-`rafraichir/` ignore le cache. Les événements ne vont JAMAIS en base. Un échec efface le cache de l'adresse : ses
-rendez-vous disparaissent et son état est dit (Agenda, Réglages).
+`rafraichir/` ignore le cache. Les événements ne vont JAMAIS en base. Un échec REMPLACE le texte en cache de l'adresse
+et y est retenu 15 min comme un succès : l'adresse n'est pas relue pendant ce temps, ses rendez-vous sont absents
+(jamais d'anciens présentés comme frais) et son état est dit (Agenda, Réglages) ; « Rafraîchir » (`rafraichir/`) ou un
+nouvel enregistrement de l'adresse la relit aussitôt (revue F2 #6). Le délai total est une échéance absolue (connexion,
+redirections, en-têtes, corps) et une requête d'écran borne ensemble la lecture de tous ses agendas (10 s).
 
 **`lire_evenements(texte, du, au) -> tuple[RendezVousPur]`** : lignes dépliées (RFC 5545 : une ligne commençant par une
 espace continue la précédente) ; par VEVENT : `DTSTART`, `DTEND` ou `DURATION`, `SUMMARY` (échappements `\,` `\;` `\n`

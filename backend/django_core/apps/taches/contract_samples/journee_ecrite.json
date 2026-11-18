@@ -121,9 +121,9 @@
           "url": "/visites"
         },
         {
-          "famille": "pose",
-          "id": 42,
-          "titre": "Pose — INS-0042",
+          "famille": "intervention",
+          "id": null,
+          "titre": "Intervention Pose — Karim Benali",
           "jour": "2026-11-17",
           "url": "/chantiers?id=42"
         },
@@ -306,9 +306,9 @@
             "motif": null,
             "raison": {
               "code": "echeance_proche",
-              "texte": "échéance jeudi"
+              "texte": "échéance jeu. 19"
             },
-            "explication": "échéance jeudi",
+            "explication": "",
             "rappel": null,
             "lien": null,
             "checklist": null,
@@ -349,7 +349,7 @@
               "code": "retard",
               "texte": "prévue hier"
             },
-            "explication": "prévue hier",
+            "explication": "",
             "rappel": null,
             "lien": null,
             "checklist": null,
@@ -395,7 +395,7 @@
               "code": "prochaine_action",
               "texte": "prochaine action de Équipe"
             },
-            "explication": "prochaine action de Équipe",
+            "explication": "",
             "rappel": null,
             "lien": null,
             "checklist": null,

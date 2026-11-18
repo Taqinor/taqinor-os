@@ -30,6 +30,7 @@ GARDE_TAILLE_RATIO = 0.7  # médiane du bloc < 70 % de la référence
 GARDE_TAILLE_MIN_ESTIMEES = 10
 BANDE_FACTEUR = 0.2  # b = max(1 ; 0,2 R)
 BANDE_MIN = 1
+ZONE_MIN = 0  # bas de zone montré : jamais négatif
 OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 DECISION_MONTER = 'monter'
 DECISION_BAISSER = 'baisser'
@@ -168,6 +169,18 @@ def _bande(reference):
     return round(reference - b, 2), round(reference + b, 2)
 
 
+def objectif_tenir(reference):
+    """L'objectif montré pour une référence R (« environ arrondir(R) ») : plancher 1, jamais « 0 tâche »
+    (Revue F2 tour 2 #9) ; aussi le `m` d'une dérive."""
+    return max(PALIER_MIN, arrondir(float(reference)))
+
+
+def zone_tenir(reference):
+    """La zone montrée `(arrondir(R − b), arrondir(R + b))`, bas plancher 0 (jamais une borne négative)."""
+    bas, haut = _bande(float(reference))
+    return max(ZONE_MIN, arrondir(bas)), arrondir(haut)
+
+
 def objectif_affiche(etat):
     """`(objectif | None, source, zone | None)` ; la zone n'existe qu'en TENIR."""
     if etat.mode == ModeRythme.LIBRE:
@@ -176,14 +189,13 @@ def objectif_affiche(etat):
         reference = etat.tenir_reference
         if reference is None:
             reference = _palier(etat)  # R provisoire = palier courant (ou 5)
-        bas, haut = _bande(float(reference))
-        return arrondir(float(reference)), SourceObjectif.CALCULE, (arrondir(bas), arrondir(haut))
+        return objectif_tenir(reference), SourceObjectif.CALCULE, zone_tenir(reference)
     if etat.palier is None:
         return PALIER_DEFAUT, SourceObjectif.DEFAUT, None
     return etat.palier, etat.palier_source or SourceObjectif.CALCULE, None
 
 
-def _maj(etat, **changes):
+def mettre_a_jour(etat, **changes):
     """`replace` puis recalcul de `objectif` (en vigueur)."""
     neuf = replace(etat, **changes)
     return replace(neuf, objectif=objectif_affiche(neuf)[0])
@@ -262,18 +274,24 @@ def evaluer_bloc(etat, jour):
     return None
 
 
-def _apres_decision(etat, jour, decision, reponse):
-    """Champs changés par la réponse à la proposition du bloc."""
+def _bloc_neuf(jour):
+    """Un palier accepté repart d'un bloc vide le lendemain (§6.5 point 3 : 10 jours évalués au MÊME
+    palier), comme un objectif dit."""
+    return {'comptes_bloc': (), 'bloc_debut': jour + timedelta(days=1)}
+
+
+def apres_decision(etat, jour, decision, reponse):
+    """Champs changés par la réponse à la proposition du bloc (« Oui » repart le bloc)."""
     n = _palier(etat)
     if decision == DECISION_MONTER and reponse == ReponseIncitation.OUI:
         return {'palier': min(PALIER_MAX, n + 1), 'palier_source': SourceObjectif.ACCEPTE,
-                'essai_restant': True, 'refus_montee': 0}
+                'essai_restant': True, 'refus_montee': 0, **_bloc_neuf(jour)}
     if decision == DECISION_MONTER and reponse == ReponseIncitation.PAS_MAINTENANT:
         refus = etat.refus_montee + 1
         return {'refus_montee': refus, 'blocs_a_sauter': min(REFUS_SAUT_MAX, 2 ** (refus - 1))}
     if decision == DECISION_BAISSER and reponse == ReponseIncitation.OUI:
         champs = {'palier': max(PALIER_MIN, n - 1), 'palier_source': SourceObjectif.ACCEPTE,
-                  'refus_montee': 0}
+                  'refus_montee': 0, **_bloc_neuf(jour)}
         if n > (etat.meilleur_tenu or 0):
             champs.update(echec_niveau=n, echec_le=jour,
                           echec_n=etat.echec_n + 1 if etat.echec_niveau == n else 1)
@@ -281,6 +299,25 @@ def _apres_decision(etat, jour, decision, reponse):
     if decision == DECISION_BAISSER and reponse == ReponseIncitation.GARDER:
         return {'baisse_refusee': True}
     return {}
+
+
+#: Le nombre écrit sur le bouton « Oui » d'une carte de palier (`Monter à {N1}`, `Descendre à {N_1}`).
+CIBLE_DE_LA_CARTE = {DECISION_MONTER: ('N1', 1), DECISION_BAISSER: ('N_1', -1)}
+
+
+def carte_a_jour(etat, cle, donnees):
+    """Vrai si la carte de palier `cle` a été calculée depuis le palier COURANT (§6.5 : jamais plus
+    d'un cran). `monter`/`baisser` portent `N` et le nombre de leur bouton (N ± 1), `premier` naît à
+    froid (palier nul), `journee_type` porte le palier dit. Une carte périmée ne change rien."""
+    if cle in CIBLE_DE_LA_CARTE:
+        champ, pas = CIBLE_DE_LA_CARTE[cle]
+        n = _palier(etat)
+        return donnees.get('N') == n and donnees.get(champ) == n + pas
+    if cle == CARTE_PREMIER:
+        return etat.palier is None
+    if cle == CARTE_JOURNEE_TYPE:
+        return etat.palier == donnees.get('dit')
+    return True
 
 
 def clore_bloc(etat, jour, decision, reponse):
@@ -295,8 +332,8 @@ def clore_bloc(etat, jour, decision, reponse):
         champs['meilleur_tenu'] = max(etat.meilleur_tenu or 0, n)
     champs.update(blocs_a_sauter=max(0, etat.blocs_a_sauter - 1), baisse_refusee=False,
                   essai_restant=False, comptes_bloc=(), bloc_debut=jour + timedelta(days=1))
-    champs.update(_apres_decision(etat, jour, decision, reponse))
-    return _maj(etat, **champs)
+    champs.update(apres_decision(etat, jour, decision, reponse))
+    return mettre_a_jour(etat, **champs)
 
 
 def objectif_dit(etat, nombre=None, sens=None, jour=None):
@@ -321,13 +358,15 @@ def objectif_dit(etat, nombre=None, sens=None, jour=None):
               'essai_restant': False, 'comptes_bloc': ()}
     if jour is not None and etat.bloc_debut is not None:
         champs['bloc_debut'] = jour + timedelta(days=1)
-    return _maj(etat, **champs)
+    return mettre_a_jour(etat, **champs)
 
 
-def repondre_premier(etat, journee_type, choix):
-    """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5."""
+def repondre_premier(etat, journee_type, choix, jour=None):
+    """Réponse à la carte `premier` : `oui` -> palier = type ; `garder` -> palier 5. Avec `jour`, un
+    palier qui change repart le bloc le lendemain (comme `apres_decision`)."""
     palier = journee_type if choix == ReponseIncitation.OUI else PALIER_DEFAUT
-    return _maj(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE)
+    bloc = _bloc_neuf(jour) if jour is not None and palier != _palier(etat) else {}
+    return mettre_a_jour(etat, palier=palier, palier_source=SourceObjectif.ACCEPTE, **bloc)
 
 
 # --- TCH27 : « Garder ce rythme » et bascules (TENIR, §6.6-§6.7) ------------
@@ -340,7 +379,7 @@ DERIVE_SOUS = 'sous'
 DERIVE_AU_DESSUS = 'au_dessus'
 
 
-def _moyenne_plafonnee(comptes):
+def moyenne_plafonnee(comptes):
     plafonnes = plafonner_jours(comptes)
     return sum(plafonnes) / len(plafonnes)
 
@@ -350,7 +389,7 @@ def reference_tenir(comptes):
     derniers = list(comptes)[-JOURS_REFERENCE:]
     if len(derniers) < JOURS_REFERENCE:
         return None
-    return round(_moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
+    return round(moyenne_plafonnee(derniers), DECIMALES_REFERENCE)
 
 
 def bande_tenir(reference):
@@ -369,7 +408,7 @@ def derive_tenir(reference, comptes, jour, silence):
     derniers = list(comptes)[-JOURS_REFERENCE:]
     if len(derniers) < JOURS_REFERENCE:
         return None
-    moyenne = _moyenne_plafonnee(derniers)
+    moyenne = moyenne_plafonnee(derniers)
     bas, haut = _bande(float(reference))
     if moyenne < bas:
         return DERIVE_SOUS
@@ -417,7 +456,7 @@ def basculer(etat, mode, jour):
         champs.update(_vers_tenir(etat, jour))
     elif mode == ModeRythme.POUSSER:
         champs.update(_vers_pousser(etat, jour))
-    return _maj(etat, **champs)
+    return mettre_a_jour(etat, **champs)
 
 
 # --- TCH28 : constats, retour d'absence, semaine courte, repère (§6.9, §4.8) -
@@ -451,6 +490,13 @@ POURCENT = 100
 # Comme les autres comportements « hors de la première livraison » : C6 est éteint
 # faute de durée réelle mesurée (critique m6) ; les champs et la formule restent.
 CONSTAT_C6_ACTIF = False
+# Revue F2 tour 2 #7, même mécanisme : C4 et C8 hors de la première livraison (leur « Oui » n'a encore aucun
+# effet : rien ne lit la carte acceptée) ; C1 et C2 aussi (ils lisent `creneau`, `rang` et `faite` des
+# lignes de plan, que rien n'écrit : ils ne pourraient jamais naître). Les formules restent.
+CONSTAT_C1_ACTIF = False
+CONSTAT_C2_ACTIF = False
+CONSTAT_C4_ACTIF = False
+CONSTAT_C8_ACTIF = False
 
 ACTION_ESSENTIEL_MATIN = 'essentiel_le_matin'
 ACTION_JOURS_COURTS = 'jours_courts'
@@ -502,13 +548,15 @@ def _pct(ok, total):
     return POURCENT * ok / total
 
 
-def _lignes_fenetre(d):
+def lignes_fenetre(d):
     return [x for x in d.lignes if _fenetre_ok(d.jour, x.jour, FENETRE_CONSTATS_JOURS)]
 
 
 def _constat_c1(d):
+    if not CONSTAT_C1_ACTIF:
+        return None
     groupes = {}
-    for ligne in _lignes_fenetre(d):
+    for ligne in lignes_fenetre(d):
         if ligne.creneau:
             groupes.setdefault(ligne.creneau, []).append(ligne.faite)
     taux = {c: _pct(sum(v), len(v)) for c, v in groupes.items() if len(v) >= C1_MIN_LIGNES}
@@ -518,7 +566,7 @@ def _constat_c1(d):
     return Constat('C1', {'taux': taux, 'meilleur': meilleur}, ACTION_ESSENTIEL_MATIN)
 
 
-def _essentiels_classes(lignes):
+def essentiels_classes(lignes):
     """Lignes essentielles `(jour, faite)` : en tête du plan (rang minimal du jour) / ailleurs."""
     rang_min = {}
     for ligne in lignes:
@@ -533,7 +581,9 @@ def _essentiels_classes(lignes):
 
 
 def _constat_c2(d):
-    en_tete, ailleurs = _essentiels_classes(_lignes_fenetre(d))
+    if not CONSTAT_C2_ACTIF:
+        return None
+    en_tete, ailleurs = essentiels_classes(lignes_fenetre(d))
     # 15 jours chacun (un jour compte dans les deux familles s'il a deux essentiels).
     if len({j for j, _ in en_tete}) < C2_MIN_JOURS or len({j for j, _ in ailleurs}) < C2_MIN_JOURS:
         return None
@@ -563,6 +613,8 @@ def _constat_c3(d):
 
 
 def _constat_c4(d):
+    if not CONSTAT_C4_ACTIF:
+        return None
     plans = [j for j in d.jours if j.statut_jour == StatutJour.EVALUE and j.plan_prevues > 0
              and _fenetre_ok(d.jour, j.jour, FENETRE_CONSTATS_JOURS)]
     if len(plans) < C4_MIN_PLANS:
@@ -607,7 +659,7 @@ def _constat_c7(d):
 
 
 def _constat_c8(d):
-    if d.projet_neglige_id is None:
+    if not CONSTAT_C8_ACTIF or d.projet_neglige_id is None:
         return None
     return Constat('C8', {'projet_id': d.projet_neglige_id}, ACTION_PROPOSE_DEMAIN)
 

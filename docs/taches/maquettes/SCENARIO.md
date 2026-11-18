@@ -4,6 +4,34 @@ Toutes les maquettes racontent LA MÊME journée. Un chiffre, une heure, un titr
 n'est pas ici n'existe pas. Les comptes de la barre latérale et des onglets ne s'écrivent plus à la main : `coque.js`
 les tire de §7 selon `<body data-heure>`.
 
+## 0. Errata du 18/11/2026 (acceptation en direct de la fusion 2)
+
+Le semis `seed_taches_demo` rejoue maintenant cette journée par les VRAIS services (une table heure → geste) et un test
+compare ses chiffres à ce document (`apps/taches/tests/test_seed_demo.py::ScenarioTests`). Six phrases d'origine ne
+peuvent pas être produites par les règles de la référence ; elles se lisent ainsi (le reste du document est inchangé) :
+
+1. §1, « À revoir » : les deux tâches sans projet sont « prévues mar. 17 puis reportées 3 fois (jeu. 19, ven. 20,
+   lun. 23) » — une tâche seulement « prévue lun. 23 » serait proposée, pas « À revoir » (`regles.md` §4.2).
+2. §1, « À trier (5…) » : en fusion 2, À trier porte 4 lignes et le bandeau « 1 à-faire personnel » (la facture
+   d'acompte, que le parcours convertit) ; 5 lignes dès 10:30 avec la tâche liée au rappel. La ligne « Suggéré par
+   l'ERP » n'existe qu'à partir de la fusion 4.
+3. §2, Site web : « 0 sur 4, toutes sans jour » — l'état « À planifier » exige zéro tâche ouverte (`regles.md`,
+   santé d'un projet).
+4. §3 : à 10:30, « Lier une tâche » sur « Rappeler pour le devis » (sans ce lien, sa clôture de 10:40 compterait et
+   15:00 dirait « 4 sur 5 »). Le bilan dit bien « 4 des 5 gardées » : l'activité liée n'est pas une gardée de plus
+   (`regles.md` §4.9).
+5. §3 et §4, « Visite technique à Témara » : une visite venue de l'ERP se nomme « Visite — {nom du lead} ».
+6. §6, retour du 7 décembre : seule la phrase de la carte (« Tu reviens après 10 jours… ») est reproduite ; les
+   nombres de ce jour-là (18 tâches, 3 à trier, 12 relances) ne sont pas semés.
+7. §3 et §4, la visite et les relances de l'ERP : le semis `seed_taches_demo` ne pose NI lead, NI visite, NI relance (le
+   code de `crm` n'a aucune porte de démonstration). L'acceptation en direct pose la visite par son harnais : un lead
+   d'essai « Témara » SANS responsable, puis le vrai service de planification — elle se lit « Visite — Témara »,
+   seule dans la bande « Toute la journée » du mar. 24. Les lignes « Suivi des relances : 5 » puis « 2 » de ce
+   document ne sont donc pas rejouées ; quand elles existent, elles sont des lignes de Prévu, jamais de la bande.
+8. §3, 15:00, « Alléger ma journée » : une seule tâche est allégeable à cette heure (« Relire le contrat de
+   maintenance » ; le stand, dû aujourd'hui, reste par règle). Le parcours pose d'abord une seconde tâche pour
+   aujourd'hui, par la feuille de saisie, puis allège en gardant le contrat.
+
 ## 1. Le cadre
 - **Aujourd'hui = mardi 24 novembre 2026.** Semaine du lundi 23 au dimanche 29 (sam. 28 et dim. 29 non travaillés).
   Le mercredi 18 novembre est férié. Premier jour de l'app : lundi 2 novembre.

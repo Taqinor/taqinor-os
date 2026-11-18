@@ -19,6 +19,7 @@ from rest_framework import serializers
 
 from apps.notifications.selectors import fenetre_notifications
 from apps.taches.choix import AncreRappel, SourceRappel, StatutRappel, StatutTache
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Rappel
 from apps.taches.moteur.gabarits import format_duree, format_heure, format_jour
@@ -52,9 +53,12 @@ def _jour(valeur):
     if valeur is None or isinstance(valeur, datetime.date):
         return valeur
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
-        raise serializers.ValidationError({'jour': ['Date attendue (AAAA-MM-JJ).']})
+        raise serializers.ValidationError({'jour': [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise serializers.ValidationError({'jour': [MESSAGE_DATE]})
+    return jour
 
 
 def _jour_du_rappel(tache, jour, ancre, decalage_jours):
@@ -73,7 +77,7 @@ def _jour_du_rappel(tache, jour, ancre, decalage_jours):
     return base + datetime.timedelta(days=int(decalage_jours))
 
 
-def _hors_fenetre(company, jour, heure):
+def est_hors_fenetre(company, jour, heure):
     """Vrai si la fenêtre des messages de la société est fermée à ce moment-là."""
     instant = timezone.make_aware(datetime.datetime.combine(jour, heure))
     return not fenetre_notifications(company, instant).ouverte
@@ -130,7 +134,7 @@ def poser_rappel(tache, *, acteur, heure, jour=None, ancre='', decalage_jours=0,
                                   decalage_jours=decalage_jours, source=source)
         message = f'Rappel posé {format_jour(rappel.jour, timezone.localdate())} à {format_heure(heure)}'
         geste = _consigner(acteur, [op_creation('rappel', rappel)], collecte, message)
-    return ResultatRappel(rappel, _hors_fenetre(acteur.company, rappel.jour, rappel.heure), question, geste)
+    return ResultatRappel(rappel, est_hors_fenetre(acteur.company, rappel.jour, rappel.heure), question, geste)
 
 
 def _rappel_du_compte(acteur, rappel_id):
@@ -173,7 +177,7 @@ def repeter_rappel(acteur, rappel_id, *, dans_minutes=None, jour=None, heure=Non
         rappel, question = _creer(acteur, source_rappel.tache_id, heure=_heure(heure), jour=jour,
                                   ancre='', decalage_jours=0, source=SourceRappel.REPETITION)
         geste = enregistrer_geste(acteur, 'rappel', message, [op_creation('rappel', rappel)])
-    return ResultatRappel(rappel, _hors_fenetre(acteur.company, rappel.jour, rappel.heure), question, geste)
+    return ResultatRappel(rappel, est_hors_fenetre(acteur.company, rappel.jour, rappel.heure), question, geste)
 
 
 def _en_attente_de(tache):

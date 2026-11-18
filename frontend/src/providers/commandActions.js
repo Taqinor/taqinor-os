@@ -24,7 +24,9 @@ export const NAV_ACTIONS = GOTO_SHORTCUTS.filter((s) => !!s.to).map((s) => ({
 // VX220(b) — actions de CRÉATION (lead/devis/client), même source unique que
 // NAV_ACTIONS (dérivées de CREATE_SHORTCUTS) : la palette les affiche dans
 // leur PROPRE section « Créer », jamais mélangées à la navigation.
-export const CREATE_ACTIONS = CREATE_SHORTCUTS.map((s) => ({
+// TCH119 — même règle que NAV_ACTIONS : une entrée à `event` (« c t », feuille de
+// saisie de Tâches en overlay) n'est pas une navigation ; seules les routables.
+export const CREATE_ACTIONS = CREATE_SHORTCUTS.filter((s) => !!s.to).map((s) => ({
   id: s.keys.replace(/\s+/g, '-'), // ex. 'c-l'
   label: s.label, // ex. 'Créer un lead'
   to: s.to,
@@ -51,6 +53,31 @@ export function filterCreateActions(query) {
   return CREATE_ACTIONS.filter(
     (a) => a.label.toLowerCase().includes(q) || a.keys.toLowerCase().includes(q),
   )
+}
+
+// Raccord F2 (Tâches) — entrées de la palette SANS raccourci clavier propre (textes.md §2.1 « Palette ») : la
+// recherche dans les tâches, Nouveau projet, Faire le bilan et les onglets. Toutes sont des routes réelles de
+// `features/taches/module.config.jsx` ; la palette les filtre par `isPathVisible` comme les autres (module masqué
+// pour le compte → aucune entrée). « Aujourd'hui » vient déjà de « g j » (NAV_ACTIONS).
+export const TACHES_ACTIONS = [
+  { id: 'taches-nouveau-projet', label: 'Nouveau projet', to: '/taches/projets?nouveau=1', keys: '' },
+  { id: 'taches-bilan', label: 'Faire le bilan', to: '/taches/aujourdhui?ouvrir=bilan', keys: '' },
+  { id: 'taches-a-trier', label: 'À trier', to: '/taches/a-trier', keys: '' },
+  { id: 'taches-projets', label: 'Projets', to: '/taches/projets', keys: '' },
+  { id: 'taches-agenda', label: 'Agenda', to: '/taches/agenda', keys: '' },
+]
+
+/**
+ * filterTachesActions — TACHES_ACTIONS filtrées comme filterActions, précédées de la recherche : à vide
+ * « Chercher dans mes tâches », sinon « Chercher « {q} » dans mes tâches » (la requête part dans `?q=`).
+ */
+export function filterTachesActions(query) {
+  const brut = (query || '').trim()
+  const q = brut.toLowerCase()
+  const chercher = brut
+    ? { id: 'taches-chercher', label: `Chercher « ${brut} » dans mes tâches`, to: `/taches/recherche?q=${encodeURIComponent(brut)}`, keys: '' }
+    : { id: 'taches-chercher', label: 'Chercher dans mes tâches', to: '/taches/recherche', keys: '' }
+  return [chercher, ...TACHES_ACTIONS.filter((a) => !q || a.label.toLowerCase().includes(q))]
 }
 
 /**

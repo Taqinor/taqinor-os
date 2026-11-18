@@ -1,18 +1,69 @@
 """Réglages de l'utilisateur et coupe-circuit de la société (reference/api.md §3.4, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction ; leur
-schéma OpenAPI est celui de leur échantillon de `contract_samples/`. `reglages-societe/` est
-réservé à un administrateur (`IsAdminRole`, A18-M8).
+`reglages/` : réglages de `request.user` (sa `ReglagesRythme`, ou ses défauts tant qu'il n'a rien
+écrit ; le premier `PATCH` la crée), heures des sollicitations DITES (`Preference`), fenêtre de la société, adresse du
+raccourci Siri (réglage déclaré par TCH4), `est_admin` = `IsAdminRole`. Une route pas encore
+construite lève `PasEncore` (501) ; le schéma OpenAPI de chacune est celui de son échantillon.
+`reglages-societe/` est réservé à un administrateur (`IsAdminRole`, A18-M8).
 """
+import datetime
+
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers
+from rest_framework import serializers, status
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.taches.choix import ClePreference
+from apps.taches.moteur import sollicitations
+from apps.taches.moteur.gabarits import format_heure
+from apps.taches.selectors.rythme import preferences_de
+from apps.taches.services import rythme as service
 from apps.taches.views.base import PERMISSIONS, PasEncore, corps, forme_echantillon, reponses
 from authentication.permissions import IsAdminRole
 
 REGLAGES = forme_echantillon('reglages')
 REGLAGES_SOCIETE = forme_echantillon('reglages_societe')
+#: Jours cherchés pour la prochaine fenêtre ouverte de la société (un férié, un week-end).
+FENETRE_HORIZON_JOURS = 7
+#: Heures des sollicitations tant que rien n'est dit (reference/donnees.md §2.11).
+SOLLICITATIONS_DEFAUT = {
+    ClePreference.HEURE_MATIN: format_heure(sollicitations.HEURE_MATIN_DEFAUT),
+    ClePreference.RELANCE_JOUR: format_heure(sollicitations.HEURE_RELANCE_DEFAUT),
+    ClePreference.HEURE_SOIR: format_heure(sollicitations.HEURE_SOIR_DEFAUT),
+    ClePreference.HEURE_LIMITE: format_heure(sollicitations.HEURE_LIMITE_DEFAUT),
+    ClePreference.REVUE_SEMAINE: 'auto',
+}
+CHAMPS_DIRECTS = ('titres_notifications', 'titres_calendrier', 'titres_tuile', 'messages_sans_delai',
+                  'rappel_avant_bloc_min', 'projet_arret_jours', 'familles_suggestions', 'suggestions_societe',
+                  'erp_dans_journee', 'comprendre_mon_rythme', 'pauses_sollicitations')
+
+
+def fenetre_societe(company, jour):
+    """Heures de travail de la société `{"debut","fin"}` : la fenêtre des MESSAGES que
+    `notifications.selectors.fenetre_notifications` applique (même canal, même source
+    `crm.horaires`), lue le premier jour ouvert à partir de `jour` ; `None` si aucun en 7 jours."""
+    from apps.crm import horaires  # module pur, lu comme le fait notifications.selectors
+    from apps.notifications.selectors import CANAL_NOTIFICATIONS
+    for decalage in range(FENETRE_HORIZON_JOURS):
+        fenetre = horaires.fenetre_du_jour(jour + datetime.timedelta(days=decalage), company,
+                                           canal=CANAL_NOTIFICATIONS)
+        if fenetre is not None:
+            return {'debut': format_heure(fenetre[0]), 'fin': format_heure(fenetre[1])}
+    return None
+
+
+def forme_reglages(request, reglages):
+    """Le dict de `reglages.json` pour l'utilisateur de `request`."""
+    user = request.user
+    dites = {p.cle: p.valeur for p in preferences_de(user)}
+    forme = {champ: getattr(reglages, champ) for champ in CHAMPS_DIRECTS}
+    forme['titres_notifications_demande'] = reglages.titres_notifications_demande_le is not None
+    forme['sollicitations'] = {cle: dites.get(cle, defaut) for cle, defaut in SOLLICITATIONS_DEFAUT.items()}
+    forme['fenetre_societe'] = fenetre_societe(user.company, service.aujourdhui())
+    forme['raccourci_siri_url'] = getattr(settings, 'TACHES_RACCOURCI_SIRI_URL', '') or None
+    forme['est_admin'] = IsAdminRole().has_permission(request, None)
+    return forme
 
 
 class ReglagesVue(APIView):
@@ -22,7 +73,7 @@ class ReglagesVue(APIView):
 
     @extend_schema(responses=reponses(REGLAGES))
     def get(self, request):
-        raise PasEncore()
+        return Response(forme_reglages(request, service.reglages_ou_defauts(request.user)))
 
     @extend_schema(request=inline_serializer('TachesCorpsReglages', {
         'titres_notifications': serializers.BooleanField(required=False),
@@ -38,7 +89,14 @@ class ReglagesVue(APIView):
         'pauses_sollicitations': serializers.ListField(required=False, child=serializers.DictField()),
     }), responses=reponses(REGLAGES, erreurs=(400,)))
     def patch(self, request):
-        raise PasEncore()
+        est_admin = IsAdminRole().has_permission(request, self)
+        try:
+            reglages = service.modifier_reglages(request.user, request.data, est_admin=est_admin)
+        except service.ErreursRythme as exc:
+            return Response(exc.erreurs, status=status.HTTP_400_BAD_REQUEST)
+        except service.ReserveAdministrateur:
+            return Response({'suggestions_societe': [service.RESERVE_ADMIN]}, status=status.HTTP_403_FORBIDDEN)
+        return Response(forme_reglages(request, reglages))
 
 
 class ReglagesSocieteVue(APIView):

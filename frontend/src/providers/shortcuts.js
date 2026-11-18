@@ -40,6 +40,8 @@ export const GOTO_SHORTCUTS = [
   // que le bouton grille émettait. Un SEUL gestionnaire de séquences le
   // déclenche désormais (le listener privé du composant est supprimé).
   { keys: 'g o', event: 'taqinor:app-launcher', label: 'Ouvrir le lanceur d’applications' },
+  // TCH119 — Tâches : « g j » mène à Aujourd'hui (`g t` reste au SAV, ci-dessus).
+  { keys: 'g j', to: '/taches/aujourdhui', label: "Aujourd'hui" },
 ]
 
 /**
@@ -97,6 +99,10 @@ export const CREATE_SHORTCUTS = [
   { keys: 'c l', to: '/crm/leads?new=1', label: 'Créer un lead' },
   { keys: 'c d', to: '/ventes/devis/nouveau', label: 'Créer un devis' },
   { keys: 'c c', to: '/crm?new=1', label: 'Créer un client' },
+  // TCH119 — la feuille de saisie de Tâches est un OVERLAY (aucune URL) : elle
+  // s'ouvre par l'événement que la coquille de `/taches/*` écoute
+  // (`EVENEMENT_SAISIR`, features/taches/coquille/CoquilleTaches.jsx).
+  { keys: 'c t', event: 'taqinor:taches:saisir', label: 'Créer une tâche' },
 ]
 
 // VX73 — l'ERP tourne réellement sur Windows/Linux (glyphe ⌘ codé en dur

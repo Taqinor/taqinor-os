@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5166, operations: 7998, components: 4106}
+counts: {paths: 5166, operations: 7998, components: 4113}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13109,6 +13109,7 @@ components:
 - TachesEchAgendaExterne
 - TachesEchAgenda_APlacer_Element
 - TachesEchAgenda_APlacer_Element_Projet
+- TachesEchAgenda_Capacite
 - TachesEchAgenda_Jours_Element
 - TachesEchAgenda_Jours_Element_Blocs_Element
 - TachesEchAgenda_Jours_Element_Blocs_Element_Projet
@@ -13170,6 +13171,8 @@ components:
 - TachesEchEtiquettes_Results_Element
 - TachesEchGesteAnnuler
 - TachesEchGesteAnnuler_Conflits_Element
+- TachesEchGesteAnnuler_Progression
+- TachesEchGesteAnnuler_Progression_Detail
 - TachesEchGesteAnnuler_Restaurees_Element
 - TachesEchGestes
 - TachesEchGestes_Results_Element
@@ -13238,6 +13241,8 @@ components:
 - TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element_Raison
 - TachesEchJourneeProposition_SuiteParProjet_Element_Projet
 - TachesEchLierActivite
+- TachesEchLierActivite_Progression
+- TachesEchLierActivite_Progression_Detail
 - TachesEchLierActivite_Tache
 - TachesEchLierActivite_Tache_Checklist
 - TachesEchLierActivite_Tache_ElementsChecklist_Element
@@ -13332,8 +13337,10 @@ components:
 - TachesEchProjetVue_Projet_Compteurs
 - TachesEchProjetVue_Projet_Sante_Element
 - TachesEchProjetVue_Projet_Sante_Element_Donnees
+- TachesEchProjetVue_SansSectionCompteurs
 - TachesEchProjetVue_SansSection_Element
 - TachesEchProjetVue_Sections_Element
+- TachesEchProjetVue_Sections_Element_Compteurs
 - TachesEchProjetVue_Sections_Element_Taches_Element
 - TachesEchProjetVue_Sections_Element_Taches_Element_Projet
 - TachesEchProjetsListe

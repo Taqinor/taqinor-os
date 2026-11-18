@@ -7,7 +7,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import CoquilleTaches from '../coquille/CoquilleTaches'
 import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
-import FeuilleACrans from './FeuilleACrans'
+import FeuilleACrans, { naviguerApresFeuille } from './FeuilleACrans'
 import SelecteurProjet from './SelecteurProjet'
 
 /* TCH45 — FeuilleACrans (crans 50 / 85 %, clavier ouvert), SelecteurProjet (« Nouveau projet »
@@ -110,6 +110,58 @@ describe('TCH45 — FeuilleACrans', () => {
       </div>,
     )
     expect(screen.getByRole('button', { name: 'ouvreur' })).toHaveFocus()
+  })
+
+  it('Raccord F2 — le retour arrière du navigateur ferme la feuille (l\'écran reste) ; fermée autrement, l\'entrée est retirée', async () => {
+    const onFermer = vi.fn()
+    const pose = vi.spyOn(window.history, 'pushState')
+    const retour = vi.spyOn(window.history, 'back')
+    const { rerender } = render(<FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(1))
+    const marque = pose.mock.calls[0][0].tchFeuille
+    expect(window.history.state?.tchFeuille).toBe(marque)
+    // le geste « retour » de l'iPhone : l'entrée marquée part, la feuille se ferme
+    act(() => { window.history.back() })
+    await vi.waitFor(() => expect(onFermer).toHaveBeenCalledTimes(1))
+    rerender(<FeuilleACrans ouverte={false} titre="Quand" onFermer={onFermer} />)
+    expect(retour).toHaveBeenCalledTimes(1) // le nôtre seulement : fermée PAR le retour, rien à retirer de plus
+    // fermée par la croix : l'entrée posée est retirée
+    rerender(<FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(2))
+    rerender(<FeuilleACrans ouverte={false} titre="Quand" onFermer={onFermer} />)
+    expect(retour).toHaveBeenCalledTimes(2)
+  })
+
+  it('F2 acceptation (P138.3) — une navigation voulue à la fermeture gagne : elle REMPLACE l\'entrée de la feuille, aucun retour arrière', async () => {
+    const pose = vi.spyOn(window.history, 'pushState')
+    const retour = vi.spyOn(window.history, 'back')
+    const navigate = vi.fn()
+    const { rerender } = render(<FeuilleACrans ouverte titre="Supprimer le projet" onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(1))
+    // l'écran ferme sa feuille ET navigue dans le même geste (supprimer un projet → la liste)
+    naviguerApresFeuille(navigate, '/taches/projets')
+    rerender(<FeuilleACrans ouverte={false} titre="Supprimer le projet" onFermer={() => {}} />)
+    expect(navigate).toHaveBeenCalledWith('/taches/projets', { replace: true })
+    expect(retour).not.toHaveBeenCalled()
+    // la fermeture suivante, sans navigation, retire de nouveau son entrée
+    rerender(<FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(2))
+    rerender(<FeuilleACrans ouverte={false} titre="Quand" onFermer={() => {}} />)
+    expect(retour).toHaveBeenCalledTimes(1)
+  })
+
+  it('F2 acceptation (P138.3) — sans feuille ouverte, naviguerApresFeuille navigue normalement (une entrée de plus)', () => {
+    window.history.replaceState({}, '')
+    const navigate = vi.fn()
+    naviguerApresFeuille(navigate, '/taches/aujourdhui')
+    expect(navigate).toHaveBeenCalledWith('/taches/aujourdhui', {})
+  })
+
+  it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
+    const pose = vi.spyOn(window.history, 'pushState')
+    render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
+    await new Promise((fin) => { setTimeout(fin, 5) })
+    expect(pose).not.toHaveBeenCalled()
   })
 })
 

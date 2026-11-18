@@ -124,6 +124,11 @@ référence données/API.
 | Activité ERP | puce « Activité ERP » ; « Ouvrir » ; case seulement si `peut_cloturer` ; appui long : « Lier une tâche » |
 | Copilote de section | Proposé : « Planifier avec le Copilote » · À revoir : « Revoir avec le Copilote » |
 | Brouillon gardé (navigateur) | carte « Ta saisie de tout à l'heure t'attend. » [Reprendre] |
+| Ailleurs dans l'ERP (déplié) | une ligne par famille SERVIE et non nulle, « {famille} {n} › » : « Chantiers » · « Tickets » · « Demandes d'achat à commander » · « Leads chauds » · « Rappels » · « Devis expirant » · « Relances » · « Mentions » ; famille absente de la réponse ou à 0 : pas de ligne ; toutes à 0 : « Rien à signaler. » |
+| Modes Réorganiser · Sélectionner | bandeau « Réorganiser » / « Sélectionner » + « OK » (sortie du mode) ; lot : « Quand » · « Terminer » |
+| En faire mon accueil | toast « L'icône ouvrira Aujourd'hui » |
+| Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · En réserve · Déplacer… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
+| Feuilles de ces actions | « Déplacer vers… » (sélecteur de projet) · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
 
 États :
 
@@ -158,7 +163,8 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Par ligne | case ; titre modifiable ; puces ; « Déjà faite » (décochée) ; « Déjà dans « {projet} » » / « Déjà dans À trier » (décochée) ; « En double dans cette liste » (décochée) ; points de check-list en retrait ; « En faire des sous-tâches » |
 | Boutons | **Créer {n} tâches** (« Créer 1 tâche ») · Coller encore · Ranger avec le Copilote (si disponible) |
 | Vide | « Aucune ligne lisible. » |
-| Hors ligne | « Hors ligne : elle partira dès le retour du réseau. » |
+| Hors ligne | « Hors ligne : elle partira dès le retour du réseau. » (sous le champ, tant que le réseau manque ; « Ajouter » met la phrase dans la file, toast §2.15) |
+| Ouverte depuis un écran | le contexte de l'écran est posé : puce « ● {projet} » (Un projet, × pour la retirer), « Quand » au jour de l'agenda |
 | Rangées par le Copilote | repère « Rangée par le Copilote » ; « Non rangée » pour une ligne omise |
 | Révélations de geste (une fois) | « Tape #nom pour ranger dans un projet, même un nouveau. » · « Mets un mot entre guillemets pour qu'il ne soit pas lu comme une date. » |
 
@@ -171,7 +177,9 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Champs visibles | Quand je la fais · Échéance · Projet · Priorité · ★ Essentielle · Notes · Check-list (« Ajouter un point ») |
 | Plus | Heure · Rappel · Répéter · Étiquettes · Durée · En attente de… · Jalon · Lié à · Confidentielle · Découper · Sous-tâches |
 | En attente de… | « Quelqu'un ou quelque chose » (champ « De qui ou de quoi ? ») · « Une autre tâche » |
-| Pied | Reporter à {jour} · Abandonner · Supprimer |
+| Pied | Reporter à {jour} · Abandonner · Supprimer ; Supprimer demande « Supprimer « {titre} » ? » [Supprimer « {titre} »] |
+| Priorité (champ) | Haute · Moyenne · Basse (même ordre partout) |
+| Découper | champ « Découper » (une sous-tâche par ligne) |
 | Aide repliée | « Confier à quelqu'un : crée une activité dans l'ERP, sur la fiche concernée. » |
 | Sélecteur Quand | Aujourd'hui · Demain · Ce soir · Reporter à {jour} · Choisir un jour · En réserve · Sans jour |
 | Heure | « Heure » ; à l'agenda, bloc sans durée : « durée non estimée » |
@@ -256,13 +264,14 @@ Santé (`sante[].phrase`) :
 ### 2.8 Agenda et Planifier ma semaine
 
 Vues « Jour · Semaine · Mois · À venir » ; « ← Aujourd'hui → » ; bande « Toute la journée » ; volet « À placer ({n}) »
-(vide : « Tout est placé ») ; en vue Semaine, le volet ajoute « Mes projets » (« ● {projet} ») et l'aide « Touche une
-tâche, puis un jour. » ; bloc sans durée « durée non estimée » ; chevauchement « +{n} » ; iPhone : bloc → « Déplacer »
+(vide : « Tout est placé ») ; le volet porte « Mes projets » (« ● {projet} ») en vue Jour comme en vue Semaine (le même
+nombre « À placer · {n} » dans les deux) ; en vue Semaine il ajoute l'aide « Touche une tâche, puis un jour. » ; bloc sans durée « durée non estimée » ; chevauchement « +{n} » ; iPhone : bloc → « Déplacer »
 → créneau ; ERP « Ouvrir dans le Calendrier » ; jour « Jour non travaillé » / « Férié » ; vide « Rien ce jour-là » ;
 créneau vide « Ajouter à {HH:MM} » ; erreur « 42 jours au plus. » ; rendez-vous externes (ESSENTIEL) : blocs en
 lecture seule, puce « {libellé de l'agenda} », journée entière dans « Toute la journée », toucher → « {titre} · {HH:MM}–
 {HH:MM} · {libellé} · Ouvrir dans ton agenda d'origine » ; ⋯ → « Mes agendas » (§2.20) ; échec : bandeau §2.20 ;
-aucun agenda : « Ajoute ton agenda pour voir tes rendez-vous ici. » [Mes agendas].
+aucun agenda : « Ajoute ton agenda pour voir tes rendez-vous ici. » [Mes agendas]. Lecture en échec : bandeau
+« Pas à jour · {HH:MM} » [Réessayer] (§2.2) ; au premier échec, rien n'étant encore lu, « Pas à jour » seul, sans grille.
 Volet « À placer » : trois groupes « Aujourd'hui ({n}) » · « À revoir ({n}) » · « Mes projets ({n}) » (puis « ● {projet} ({n})
 », chaque tâche avec sa durée « 30 min », « 1 h ») ; aides « Touche un créneau pour {titre} » (Jour) et « Glisse une
 tâche sur un créneau pour lui donner une heure. » ; Planifier ma semaine : « Touche un jour pour placer {titre} »,
@@ -290,7 +299,7 @@ faites », « non travaillé », bouton **Terminer** ; ligne d'une tâche prévu
 
 Titre « Alléger ma journée » ; aide « Coche ce que tu gardes aujourd'hui. Le reste retourne à ses projets, sans
 compter de report ; Proposé revient demain. Les tâches à échéance aujourd'hui restent. » ; rien de coché d'avance ;
-**Garder ces {n}**. Hors ligne : grisé.
+**Garder ces {n}** (n = 1 : « Garder celle-ci » ; rien de coché : « Garder ces 0 », grisé). Hors ligne : grisé.
 
 ### 2.11 Mon rythme
 
@@ -301,7 +310,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 | Modes | « En faire plus » — « Un objectif, et je te propose d'aller plus loin quand tu le tiens. » · « Garder ce rythme » — « Je ne te pousse plus ; je te préviens si tu t'en éloignes. » · « Sans objectif » — « Pas de nombre visé ; tes faites restent affichées. » |
 | Changer d'objectif | « Plus » · « Moins » · « Choisir un nombre (1 à 12) » |
 | 10 jours | « Les 10 derniers jours travaillés » (la fenêtre de la proposition de rythme) ; en tête « {total} faites » · « obj. {objectif} » ; une barre par jour travaillé ; un jour férié ou en congé n'a pas de barre et se dit sous la trace (« mer. 18 : férié ») ; jour sans données : barre vide |
-| Trace | « {N} faites ou plus {tenus} jours sur {sur} » (+ « · {jour} : férié ») |
+| Trace | « {N} faites ou plus {tenus} jour{s} sur {sur} » (« jour » à 0 ou 1 ; + « · {jour} : férié ») |
 | Avant 10 jours | « {n} jours sur 10 : il m'en faut 10 pour comprendre ton rythme. » |
 | Ce que j'ai remarqué | liste des constats (§4.4) ; vide « Rien de remarqué pour l'instant. » |
 | Repère (AVANCÉ) | « Repère : 6 de tes journées sur 10 sont à {p60} tâches ou moins (sur {jours} jours). » |
@@ -313,7 +322,9 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 
 Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites aussi · Projet ▾ · Priorité haute » ; repliés « Aujourd'hui · À
 revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
-(« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste.
+(« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste. Bouton des repliés « Plus de
+filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
+étiquettes sont servies.
 
 ### 2.13 Supprimées récemment et derniers gestes
 
@@ -321,6 +332,22 @@ revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance �
 tâches » · Restaurer ; vide « Rien de supprimé » ; « Derniers gestes » (7 jours) : `GesteAnnulable.message` + « Annuler »
 (ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
 Restaurée dans À trier · Annuler ».
+
+Messages servis par le serveur (`GesteAnnulable.message`, raccord F2 : posés par les lanes, validés et inscrits ici ;
+jamais un titre de tâche ni un nom de projet — la liste part aussi vers l'assistant) :
+
+| Geste | Message |
+|---|---|
+| Tâche | « Faite » (récurrente : « Faite · prochaine {jour} ») · « Sautée » · « Rouverte » · « Reçue » · « En attente de : {qui} » · « Modifiée » · « Supprimée » · « Restaurée » (« Restaurée dans À trier ») · « Abandonnée » · « Sans jour » · « Essentielle » |
+| Check-list | « Ajoutée » · « Modifiée » · « Retirée » |
+| Lot (`n` = 1 : singulier) | « {n} déplacées » · « {n} priorisées » · « {n} étiquetées » · « {n} faites » · « {n} supprimées » · « {n} gardées sans projet » · « {n} prévues {jour} » · « {n} en réserve » |
+| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
+| Rappel | « Rappel retiré » |
+| Préférence | « Noté : {phrase} » (la phrase de l'en-tête du Copilote, §5.7 ; une note libre : « notes libres ») · « Retirée : {libellé} » |
+
+Libellés des préférences (`ClePreference`, phrases du Copilote et messages ci-dessus) : « Capacité du jour (minutes) »
+· « Jours travaillés » · « Jours courts » · « Congés » · « Heure du plan du matin » · « Heure de la relance » · « Heure du
+bilan du soir » · « Heure limite » · « Jour de la revue de semaine » · « Choisir l'essentiel le matin » · « Notes libres ».
 
 ### 2.14 Réglages
 
@@ -363,6 +390,13 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | Annulation | « Annulé. » ; partielle « Annulé, sauf {n} modifiée(s) depuis. » |
 | Préférence dite | « Noté : {phrase de la préférence} · Annuler » |
 | Hors ligne | « Partira dès le retour du réseau » ; op refusée car d'un autre compte : « Une action d'un autre compte a été retirée de la file. » |
+| En attente de… | « En attente de : {texte} · Annuler » |
+| Priorité | « Priorité haute » / « moyenne » / « basse » / « aucune » · Annuler |
+| Lot (Sélectionner) | « {n} faites · Annuler » (« 1 faite ») ; « Prévues {jour} · Annuler » ; refus : « {n} tâches refusées » |
+| À trier | « Gardée sans projet · Annuler » ; « {n} tâches rangées · Annuler » (« 1 tâche rangée ») ; geste refusé : « Cette tâche a changé : elle est restée dans la liste. » |
+| Geste d'une ligne refusé | « Cette tâche a changé : rien n'a été modifié. » (la ligne revient comme avant) |
+| Supprimées récemment | « Restaurée » ; projet « « {projet} » restauré » ; sans son projet : « Restaurée dans À trier » |
+| Projet | « « {projet} » en pause · Annuler » ; « « {projet} » terminé · Annuler » ; supprimé : ligne « Supprimer » ci-dessus ; décalage « {n} dates changées · Annuler » (« 1 date changée ») |
 
 ### 2.16 Messages d'erreur (sous le champ nommé ; un bandeau le nomme)
 
@@ -378,7 +412,16 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `bloquee_par_id` | « Boucle : « {B} » attend déjà « {T} ». » |
 | `en_attente_de` | « Dis de qui ou de quoi tu attends. » |
 | `essentielles` / `essentielle` | « 3 au plus. » |
-| `delta_jours` | « {n} tâches passeraient avant aujourd'hui. » |
+| `delta_jours` | « {n} tâches passeraient avant aujourd'hui. » (une : « 1 tâche passerait avant aujourd'hui. ») |
+| `echeance_heure` | « Une heure demande une échéance. » |
+| `recurrence` (sauter une occurrence) | « Cette tâche ne se répète pas. » |
+| `ids` (lot) · `libelle` (check-list) · `en_attente_de` | « 200 au plus. » · « Requis. » / « 255 caractères au plus. » · « 200 caractères au plus. » |
+| tout choix fermé (`periode`, `tri`, `groupe`, `liste`, `quand`, `taches_ouvertes`, `vue`…) | « Valeur inconnue. » |
+| `nom` (étape) | « Une étape « {nom} » existe déjà. » |
+| 403 (assistant, Planifier le projet) | « Ce projet est confidentiel : l'assistant ne lit pas sa liste. » |
+| champ obligatoire absent | « Requis. » |
+| `jour` (bilan) | « Le bilan d'hier n'est plus modifiable après midi. » |
+| `jour` · `du` (date) | « Date attendue (AAAA-MM-JJ). » |
 | `focus` | « Déjà « {projet} » cette semaine. » |
 | `au` · `q` | « 42 jours au plus. » · « Requis. » |
 | `estimation_minutes` · `objectif` · `mode` | « Entre 5 et 960 minutes. » · « Entre 1 et 12. » · « Valeur inconnue. » |

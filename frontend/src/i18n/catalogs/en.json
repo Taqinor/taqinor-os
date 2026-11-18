@@ -115,6 +115,11 @@
   "nav.partenaires": "Partners",
   "nav.concurrents_perte": "Competitors (lost)",
   "nav.defis": "Challenges",
+  "nav.section.taches": "Tasks",
+  "nav.taches_aujourdhui": "Today",
+  "nav.taches_a_trier": "To sort",
+  "nav.taches_projets": "Projects",
+  "nav.taches_agenda": "Agenda",
 
   "title.dashboard": "Dashboard",
   "title.stock.bons_commande_fournisseur": "Supplier purchase orders",

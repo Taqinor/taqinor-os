@@ -147,3 +147,77 @@ endpoints:
     enforced: true
     colonnes_absentes: [etude_params]
     note: "ACVI95 : statistiques d'équipe (C-ACVI-154)."
+
+  # TCH129 (17/11/2026) — app Tâches : cibles de docs/taches/reference/api.md §10 (A15, R13), posées
+  # en plafonds `assertMaxQueries` par apps/taches/tests/test_plafonds.py ; la CI mesure, la cible
+  # devient la mesure au premier vert. Routes de §10 pas encore construites : enforced: false.
+  # `saisie-rapide/` (aperçu ≤ 10, constant en lignes) est un POST : gardé par test_plafonds.py seul.
+  - path: /api/django/taches/aujourdhui/
+    budget: 33
+    enforced: true
+    note: "TCH129 : après midi ≤ 26 sans familles ERP, ≤ 31 avec ; avant midi + 2 (carte « bilan d'hier » : plan de la veille et ses restes) soit ≤ 28 et ≤ 33. Mesurés horloge figée (test_plafonds.py) ; rendez-vous externes lus en cache, 0 requête de plus."
+
+  - path: /api/django/taches/badge/
+    budget: 13
+    enforced: true
+    note: "TCH129 : la pastille."
+
+  - path: /api/django/taches/tuile/
+    budget: 10
+    enforced: false
+    note: "TCH129 : cible ; route pas encore construite (jeton tuile)."
+
+  - path: /api/django/taches/flux/{jeton}.ics
+    budget: 8
+    enforced: false
+    note: "TCH129 : cible ; route pas encore construite (jeton flux)."
+
+  - path: /api/django/taches/journee/proposition/
+    budget: 27
+    enforced: true
+    note: "TCH129 : la proposition du jour."
+
+  - path: /api/django/taches/journee/priorites/
+    budget: 20
+    enforced: false
+    note: "TCH129 : cible ; route pas encore construite."
+
+  - path: /api/django/taches/journee/point/
+    budget: 18
+    enforced: false
+    note: "TCH129 : cible ; route pas encore construite."
+
+  - path: /api/django/taches/agenda/
+    budget: 28
+    enforced: true
+    note: "TCH129 : l'agenda (vue semaine) ; F2 : une seule lecture préchargée pour toute la fenêtre."
+
+  - path: /api/django/taches/taches/
+    budget: 12
+    enforced: true
+    note: "TCH129 : listes paginées des tâches ; ne grandit pas avec les lignes."
+
+  - path: /api/django/taches/projets/
+    budget: 14
+    enforced: true
+    note: "TCH129 : liste des projets ; ne grandit pas avec les lignes."
+
+  - path: /api/django/taches/projets/{id}/vue/
+    budget: 22
+    enforced: true
+    note: "TCH129 : la vue d'un projet."
+
+  - path: /api/django/taches/rythme/
+    budget: 10
+    enforced: true
+    note: "TCH129 : Mon rythme."
+
+  - path: /api/django/taches/recherche/
+    budget: 12
+    enforced: true
+    note: "TCH129 : recherche par mots."
+
+  - path: /api/django/taches/suggestions/
+    budget: 6
+    enforced: false
+    note: "TCH129 : cible ; route pas encore construite."

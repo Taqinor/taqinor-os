@@ -4,18 +4,79 @@ Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche d
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon la forme PROJET partagée ;
 `GESTE` et `REORDONNER` viennent de `views/taches.py` (déclarés une fois).
 """
+import datetime
+import json
+
+from django.http import Http404
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
+from rest_framework.utils.encoders import JSONEncoder
 from rest_framework.views import APIView
 
+from apps.taches.confidentialite import est_confidentielle
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.selectors import projets as lecture
+from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
+from apps.taches.services import projets as ecriture
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, forme_echantillon, parametre, reponses,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses,
 )
 from apps.taches.views.taches import GESTE, REORDONNER
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
+from core.pagination import StandardPagination
+from core.verrou_optimiste import ConflitVersion
+
+
+def _json(donnees):
+    """Des données JSON pures (dates en texte) : ce que l'idempotence mémorise et rejoue."""
+    return json.loads(json.dumps(donnees, cls=JSONEncoder))
+
+
+def _valider(classe, donnees, **options):
+    """Le corps reçu, validé (400 par champ) ; seules les clés déclarées passent."""
+    serialiseur = classe(data=donnees, **options)
+    serialiseur.is_valid(raise_exception=True)
+    return serialiseur.validated_data
+
+
+def _etat(request):
+    """`(état des projets, contexte des formes)` de la requête, calculés au jour courant."""
+    assistant = est_assistant(request)
+    etat = lecture.etat_projets(request.user, timezone.localdate(), usage='assistant' if assistant else 'ecran')
+    return etat, formes_projets.contexte_de(etat, assistant=assistant)
+
+
+def _projet_ou_404(request, pk):
+    projet = lecture.projet_de(request.user, pk)
+    if projet is None:
+        raise Http404('Introuvable.')
+    return projet
+
+
+def _avec_conflit_projet(request, appel):
+    """Joue `appel()` ; un 409 `conflit_version` porte l'état courant du projet (forme PROJET)."""
+    try:
+        return appel()
+    except ConflitVersion as exc:
+        projet = getattr(exc, 'projet', None)
+        if projet is not None:
+            projet.refresh_from_db()
+            _, ctx = _etat(request)
+            exc.detail['actuel'] = formes_projets.forme_projet(projet, ctx)
+        raise
+
+
+def _ecrit(request, resultat, statut=200):
+    """La réponse `projet_ecrit` d'une écriture (état recalculé APRÈS elle)."""
+    _, ctx = _etat(request)
+    return Response(formes_projets.projet_ecrit(resultat, ctx), status=statut)
+
 
 #: 409 d'un projet : `conflit_version` (`lock_version`, `actuel` = PROJET).
 CONFLIT_PROJET = inline_serializer('TachesConflitProjet', {
@@ -52,13 +113,28 @@ class ProjetsVue(IdempotentCreateMixin, APIView):
     @extend_schema(parameters=[parametre('statut', OpenApiTypes.STR, 'actif, en_pause ou archive.'), *PAGINATION],
                    responses=reponses(forme_echantillon('projets_liste'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        statut = request.query_params.get('statut') or None
+        if statut not in (None, 'actif', 'en_pause', 'archive'):
+            raise serializers.ValidationError({'statut': ['Valeur inconnue.']})
+        etat, ctx = _etat(request)
+        pagination = StandardPagination()
+        page = pagination.paginate_queryset(lecture.projets_filtres(request.user, statut), request, view=self)
+        reponse = pagination.get_paginated_response(ProjetSerializer(page, many=True, context=ctx).data)
+        reponse.data['constat'] = etat.constat
+        return reponse
 
     @extend_schema(request=corps('Projet', {'nom': 'Chantier X', 'priorite': 2, 'couleur': 'vert', 'icone': '',
                                             'objectif': '', 'domaine': ''}, requis=('nom',)),
                    responses=reponses(PROJET_ECRIT, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ProjetCreationSerializer, request.data)
+
+        def creer():
+            resultat = ecriture.creer_projet(request.user, **donnees)
+            reponse = _ecrit(request, resultat, 201)
+            reponse.data = _json(reponse.data)
+            return reponse
+        return self._avec_idempotence(request, creer, suffixe=f'u{request.user.pk}')
 
 
 class ProjetVue(APIView):
@@ -68,7 +144,9 @@ class ProjetVue(APIView):
 
     @extend_schema(responses=reponses(ProjetSerializer, erreurs=(404,)))
     def get(self, request, id):
-        raise PasEncore()
+        projet = _projet_ou_404(request, id)
+        _, ctx = _etat(request)
+        return Response(formes_projets.forme_projet(projet, ctx))
 
     @extend_schema(request=inline_serializer('TachesCorpsProjetPatch', {
         'nom': serializers.CharField(required=False, max_length=120),
@@ -86,11 +164,19 @@ class ProjetVue(APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(ProjetSerializer, erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = dict(_valider(formes_projets.ProjetModificationSerializer, request.data))
+        version = donnees.pop('lock_version')
+        projet = _avec_conflit_projet(
+            request, lambda: ecriture.modifier_projet(request.user, id, donnees, version=version))
+        _, ctx = _etat(request)
+        return Response(formes_projets.forme_projet(projet, ctx))
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        _projet_ou_404(request, id)
+        _, ctx = _etat(request)  # lu AVANT la suppression : compteurs et santé du projet tel qu'il était
+        resultat = ecriture.supprimer_projet(request.user, id)
+        return Response(formes_projets.projet_ecrit(resultat, ctx))
 
 
 class ProjetReordonnerVue(APIView):
@@ -100,7 +186,10 @@ class ProjetReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=SANS_CORPS)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
+        ecriture.reordonner_projet(request.user, id, avant_id=donnees.get('avant_id'),
+                                   apres_id=donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class TrierParPrioriteVue(APIView):
@@ -110,7 +199,8 @@ class TrierParPrioriteVue(APIView):
 
     @extend_schema(request=None, responses=reponses(None, statut=204))
     def post(self, request):
-        raise PasEncore()
+        ecriture.trier_par_priorite(request.user)
+        return Response(status=204)
 
 
 class ProjetAffichageVue(APIView):
@@ -121,7 +211,10 @@ class ProjetAffichageVue(APIView):
     @extend_schema(parameters=[parametre('vue', OpenApiTypes.STR, 'liste, tableau ou chronologie.')],
                    responses=reponses(forme_echantillon('projet_vue'), erreurs=(400, 404)))
     def get(self, request, id):
-        raise PasEncore()
+        _valider(formes_projets.VueProjetSerializer, {k: v for k, v in request.query_params.items() if k == 'vue'})
+        projet = _projet_ou_404(request, id)
+        etat, ctx = _etat(request)
+        return Response(formes_projets.vue_du_projet(request.user, projet, etat, ctx, etat.jour))
 
 
 class PlanificationApercuVue(APIView):
@@ -133,7 +226,11 @@ class PlanificationApercuVue(APIView):
                                  requis=('texte',)),
                    responses=reponses(forme_echantillon('planification_apercu'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        projet = _projet_ou_404(request, id)
+        if est_assistant(request) and est_confidentielle(projet):
+            raise PermissionDenied("Ce projet est confidentiel : l'assistant ne lit pas sa liste.")
+        donnees = _valider(formes_projets.ApercuPlanSerializer, request.data)
+        return Response(formes_projets.apercu_du_plan(donnees['texte']))
 
 
 class PlanificationVue(IdempotentCreateMixin, APIView):
@@ -161,7 +258,16 @@ class PlanificationVue(IdempotentCreateMixin, APIView):
         'lock_version': serializers.IntegerField(),
     }), responses=reponses(forme_echantillon('planification'), erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = dict(_valider(formes_projets.PlanificationSerializer, request.data))
+        version = donnees.pop('lock_version')
+        assistant = est_assistant(request)
+
+        def creer():
+            resultat = _avec_conflit_projet(request, lambda: ecriture.planifier_projet(
+                request.user, id, donnees, version=version, assistant=assistant))
+            _, ctx = _etat(request)
+            return Response(_json(formes_projets.planification_rendue(request.user, resultat, ctx)), status=201)
+        return self._avec_idempotence(request, creer, suffixe=f'u{request.user.pk}')
 
 
 class DecalerVue(IdempotentCreateMixin, APIView):
@@ -172,7 +278,19 @@ class DecalerVue(IdempotentCreateMixin, APIView):
     @extend_schema(request=corps('Decaler', {'delta_jours': 7, 'apercu': True}, requis=('delta_jours',)),
                    responses=reponses(forme_echantillon('decalage'), erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.DecalerSerializer, request.data)
+        usage = 'assistant' if est_assistant(request) else 'ecran'
+
+        def decaler():
+            try:
+                changements, geste = ecriture.decaler_projet(
+                    request.user, id, donnees['delta_jours'], apercu=donnees['apercu'], usage=usage)
+            except ecriture.DecalageRefuse as refus:
+                # Le refus rend l'aperçu : ce qui AURAIT bougé, et les tâches qui passeraient avant aujourd'hui.
+                return Response(_json({'delta_jours': [refus.refus], 'changements': refus.changements,
+                                       'avant_aujourdhui': refus.avant_aujourdhui}), status=400)
+            return Response(_json(formes_projets.decalage_rendu(changements, geste)))
+        return self._avec_idempotence(request, decaler, suffixe=f'u{request.user.pk}')
 
 
 class ProjetTerminerVue(APIView):
@@ -187,7 +305,9 @@ class ProjetTerminerVue(APIView):
         'projet_cible_id': serializers.IntegerField(required=False, allow_null=True),
     }), responses=reponses(PROJET_ECRIT, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.TerminerSerializer, request.data)
+        resultat = ecriture.terminer_projet(request.user, id, **donnees)
+        return _ecrit(request, resultat)
 
 
 class ProjetRouvrirVue(APIView):
@@ -197,7 +317,7 @@ class ProjetRouvrirVue(APIView):
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,)))
     def post(self, request, id):
-        raise PasEncore()
+        return _ecrit(request, ecriture.rouvrir_projet(request.user, id))
 
 
 class ProjetRestaurerVue(APIView):
@@ -207,7 +327,7 @@ class ProjetRestaurerVue(APIView):
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,), conflit=ERREUR_CODE))
     def post(self, request, id):
-        raise PasEncore()
+        return _ecrit(request, ecriture.restaurer_projet(request.user, id))
 
 
 class DupliquerVue(IdempotentCreateMixin, APIView):
@@ -245,7 +365,9 @@ class SectionsVue(APIView):
         'date_fin': serializers.DateField(required=False, allow_null=True),
     }), responses=reponses(SECTION, statut=201, erreurs=(400,)))
     def post(self, request):
-        raise PasEncore()
+        donnees = _valider(formes_projets.SectionCreationSerializer, request.data)
+        section, geste = ecriture.creer_section(request.user, **donnees)
+        return Response(formes_projets.section_ecrite(section, geste), status=201)
 
 
 class SectionVue(APIView):
@@ -259,11 +381,14 @@ class SectionVue(APIView):
         'date_fin': serializers.DateField(required=False, allow_null=True),
     }), responses=reponses(SECTION, erreurs=(400, 404)))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.SectionModificationSerializer, request.data)
+        section, geste = ecriture.modifier_section(request.user, id, donnees)
+        return Response(formes_projets.section_ecrite(section, geste))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        geste = ecriture.supprimer_section(request.user, id)
+        return Response({'geste_id': geste.pk})
 
 
 class SectionReordonnerVue(APIView):
@@ -273,7 +398,10 @@ class SectionReordonnerVue(APIView):
 
     @extend_schema(request=REORDONNER, responses=SANS_CORPS)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
+        ecriture.reordonner_section(request.user, id, avant_id=donnees.get('avant_id'),
+                                    apres_id=donnees.get('apres_id'))
+        return Response(status=204)
 
 
 class ModelesVue(APIView):
@@ -326,7 +454,15 @@ class RevueProjetsVue(APIView):
     @extend_schema(parameters=[parametre('semaine', OpenApiTypes.DATE, 'Lundi de la semaine ; défaut : courante.')],
                    responses=reponses(forme_echantillon('revue_projets'), erreurs=(400,)))
     def get(self, request):
-        raise PasEncore()
+        brut = request.query_params.get('semaine')
+        try:
+            semaine = datetime.date.fromisoformat(brut) if brut else timezone.localdate()
+        except ValueError:
+            raise serializers.ValidationError({'semaine': [MESSAGE_DATE]})
+        if not jour_dans_bornes(semaine):
+            raise serializers.ValidationError({'semaine': [MESSAGE_DATE]})
+        etat, ctx = _etat(request)
+        return Response(formes_projets.revue_des_projets(request.user, etat, ctx, lecture.lundi_de(semaine)))
 
 
 class RevueDecisionVue(APIView):
@@ -343,4 +479,7 @@ class RevueDecisionVue(APIView):
         'issue': serializers.CharField(required=False, allow_null=True),
     }), responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404)))
     def put(self, request, projet_id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.RevueDecisionSerializer, request.data)
+        revue, projet, geste = ecriture.decider_revue(request.user, projet_id, donnees)
+        _, ctx = _etat(request)
+        return Response(formes_projets.decision_rendue(revue, projet, geste, ctx))

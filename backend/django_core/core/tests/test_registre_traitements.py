@@ -207,3 +207,13 @@ class RegistreCndpTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         rt = RegistreTraitement.objects.get(pk=resp.data['id'])
         self.assertEqual(rt.company, self.company)
+
+    def test_seed_pose_le_profil_de_rythme_des_taches_une_fois(self):
+        """TCH19 — le profil de rythme de l'app Tâches est au registre 09-08 : présent, idempotent."""
+        call_command('seed_registre_traitements', company=self.company.pk)
+        call_command('seed_registre_traitements', company=self.company.pk)
+        lignes = RegistreTraitement.objects.filter(company=self.company, code='taches_rythme')
+        self.assertEqual(lignes.count(), 1)
+        ligne = lignes.get()
+        self.assertIn('Comprendre mon rythme', ligne.finalite)
+        self.assertTrue(ligne.duree_conservation)

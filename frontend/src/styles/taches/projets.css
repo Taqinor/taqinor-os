@@ -1,3 +1,103 @@
-/* Tâches — zone « projets » (TCH41) : Projets, Un projet, Planifier le projet, Revue (TCH88-TCH93).
-   Vide à dessein : la lane d'écran y verse ses règles, TOUTES sous `.tch` (jamais un sélecteur nu),
-   couleurs par jetons de l'ERP ou --tch-* uniquement. Port des maquettes : docs/taches/maquettes/ecrans-*.css. */
+/* Tâches — zone « projets » (TCH41, TCH88-TCH93) : Projets, Un projet, Planifier le projet, Archive, Revue.
+   Port de docs/taches/maquettes/ecrans-projets.css (préfixe ep-), TOUT sous `.tch`, couleurs par jetons
+   de l'ERP ou --tch-* uniquement, :hover sous @media (hover: hover), aucun position: fixed ni z-index en dur. */
+
+/* ── Liste Projets (TCH88) ───────────────────────────────────────────────── */
+.tch .ep-constat { margin: 4px var(--tch-gouttiere) 8px; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ligne.projet .ligne-fin { margin-right: var(--tch-cible); gap: 8px; }
+.tch .ep-prio {
+  display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); padding: 0 8px;
+  font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte); border-radius: var(--tch-rayon-puce);
+}
+.tch .ep-prio .barres { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.tch .ep-prio .barres i { display: block; width: 3px; border-radius: 1px; background: var(--tch-texte); }
+.tch .ep-prio .barres i:nth-child(1) { height: 12px; }
+.tch .ep-prio .barres i:nth-child(2) { height: 9px; }
+.tch .ep-prio .barres i:nth-child(3) { height: 6px; }
+.tch .ep-prio .barres i.eteinte { background: var(--tch-segment-vide); }
+.tch .ep-prio.aucune { color: var(--tch-texte-doux); }
+@media (hover: hover) {
+  .tch .ep-prio:hover { background: var(--tch-survol); }
+}
+.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; }
+.tch .ep-aplanifier { font-weight: 600; color: var(--tch-accent); }
+.tch .ep-nouveau {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 48px;
+  margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: 1rem; font-weight: 600; color: var(--tch-accent);
+  border-radius: var(--tch-rayon-champ);
+}
+@media (hover: hover) {
+  .tch .ep-nouveau:hover { background: var(--tch-survol); }
+}
+.tch .ep-vide { margin: 24px var(--tch-gouttiere); text-align: center; }
+.tch .ep-vide p { margin: 0 0 12px; font-size: 1.0625rem; font-weight: 600; }
+.tch .ep-formulaire { padding: 4px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.tch .ep-etiquette { font-size: 0.875rem; font-weight: 600; }
+.tch .ep-erreur { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
+.tch .ep-modeles-lien { align-self: flex-start; }
+.tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
+
+/* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
+.tch .ep-barre { display: flex; align-items: center; min-height: 44px; padding: 0 var(--tch-gouttiere); }
+.tch .ep-retour { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px 0 0; font-size: 1.0625rem; font-weight: 500; color: var(--tch-accent); }
+.tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
+.tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
+.tch .ep-ligne-info { display: flex; align-items: center; gap: 10px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .ep-avance { display: flex; flex-direction: column; gap: 6px; }
+.tch .ep-barre-avance { height: 6px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
+.tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-losange { color: var(--tch-point); }
+.tch .ep-sante-ligne { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 0.875rem; font-weight: 600; }
+.tch .ep-details { display: inline-flex; align-items: center; gap: 6px; min-height: var(--tch-cible); align-self: flex-start; font-size: 0.9375rem; }
+.tch .ep-details-corps { display: flex; flex-direction: column; gap: 4px; font-size: 0.9375rem; }
+.tch .ep-details-corps p { margin: 0; }
+.tch .ep-etape { margin-top: 8px; }
+.tch .ep-faites { display: flex; align-items: center; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-weight: 600; }
+.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-accent); font-size: 0.9375rem; font-weight: 600; }
+.tch .ep-ajout { padding: 4px var(--tch-gouttiere) 8px; display: flex; flex-direction: column; gap: 6px; }
+@media (hover: hover) {
+  .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
+}
+
+/* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
+.tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
+.tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.tch .ep-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
+.tch .ep-sous { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-groupe { display: flex; flex-direction: column; gap: 8px; }
+.tch .ep-choix { display: flex; flex-direction: column; gap: 6px; }
+.tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
+  border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
+.tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ep-choix-ligne[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--tch-accent); background: var(--tch-selection); }
+.tch .ep-action { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.tch .ep-action-titre { font-size: 1rem; font-weight: 600; }
+.tch .ep-ajout-action { display: flex; gap: 8px; align-items: center; }
+.tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+.tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
+.tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
+.tch .ep-planifier-pied { margin-top: 4px; }
+/* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
+.tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
+.tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .ep-dialogue-pied { margin-top: 8px; justify-content: flex-end; }
+.tch .ep-resume { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
+.tch .ep-apercu-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tch .ep-apercu-liste li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 0.9375rem; }
+.tch .ep-apercu-liste li .chiffres { display: inline-flex; align-items: center; gap: 6px; color: var(--tch-texte-doux); }
+.tch .ep-apercu-liste li b { color: var(--tch-texte); }
+.tch .ep-recherche { margin: 4px var(--tch-gouttiere) 8px; }
+.tch .ep-archive-ligne .meta .issue { font-weight: 600; }
+.tch .ep-bilan { margin: 4px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+/* ── Revue de la semaine (TCH93) ─────────────────────────────────────────── */
+.tch .ep-carte-revue { margin: 8px var(--tch-gouttiere) 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
+.tch .ep-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tch .ep-carte-tete .ep-titre { display: flex; align-items: center; gap: 8px; }
+.tch .ep-rang { color: var(--tch-texte-doux); font-size: 0.875rem; }
+.tch .ep-revue-ligne { margin: 0; font-size: 0.9375rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: 0.9375rem; font-weight: 600; }
+.tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
+.tch .ep-revue-boutons { flex-wrap: wrap; }
+.tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }

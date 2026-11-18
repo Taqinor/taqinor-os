@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest'
 import { moduleConfigs } from '../../router/moduleRoutes'
 import { buildInstalledApps } from './useInstalledApps'
 import { appGlyph, APP_GLYPH_PROPS } from './appGlyph'
+import { estAutoriseEntree } from '../../router/moduleGating'
 
 /* Un module est une APP s'il a une section de nav non vide — même règle que
    `buildInstalledApps` (les modules routes-only comme `ao` n'en sont pas). */
@@ -60,7 +61,10 @@ describe('ODY34 — glyphes d’app', () => {
     // `buildInstalledApps` est la source unique des quatre surfaces : c'est SON
     // résultat qu'il faut vérifier sans doublon, pas seulement les configs.
     const rendues = buildInstalledApps(moduleConfigs, { role: 'admin', permissions: [] })
-    expect(rendues.length).toBe(apps.length)
+    // TCH131 — une app dont TOUS les écrans exigent un droit strict (`taches` : `taches_voir`,
+    // sans repli légacy) n'est pas rendue à ce compte hérité : on compte les apps qu'il ouvre.
+    const ouvrables = apps.filter((c) => c.nav.items.some((it) => estAutoriseEntree(it, 'admin', [])))
+    expect(rendues.length).toBe(ouvrables.length)
     const noms = rendues.map((a) => nomDuGlyphe(a.icon))
     expect(new Set(noms).size, `doublons rendus : ${noms.join(', ')}`).toBe(noms.length)
   })

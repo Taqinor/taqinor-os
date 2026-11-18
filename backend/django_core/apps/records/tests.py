@@ -1938,3 +1938,46 @@ class TestSelecteursTaches(TestCase):
             rouvrir_a_faire_personnel(fait, self.b)
         fait.refresh_from_db()
         self.assertTrue(fait.done)
+
+    # ── TCH73 — à-faire personnels créés par l'utilisateur, tous états ──────
+    def test_a_faire_personnels_de_tous_etats_du_seul_createur(self):
+        from apps.records.selectors import a_faire_personnels_de
+        ouvert = self._act(summary='ouvert', personnelle=True)
+        fait = self._act(summary='fait', personnelle=True, done=True)
+        pour_a = self._act(summary='pour A', personnelle=True, assigned_to=self.a)
+        self._act(summary='de A', personnelle=True, created_by=self.a)
+        self._act(summary='pas perso', due_date=date.today())
+        self._act(company=self.co2, activity_type=None, summary='co2',
+                  personnelle=True, created_by=self.c, assigned_to=self.c)
+        self.assertEqual(set(a_faire_personnels_de(self.b).values_list('pk', flat=True)),
+                         {ouvert.pk, fait.pk, pour_a.pk})
+        self.assertEqual(list(a_faire_personnels_de(self.b, ids=[fait.pk, 999999])), [fait])
+        self.assertEqual(list(a_faire_personnels_de(self.c).values_list('summary', flat=True)), ['co2'])
+        self.assertFalse(a_faire_personnels_de(SimpleNamespace(pk=self.b.pk, company_id=None)).exists())
+
+    # ── Raccord F2 — lier toute activité ouverte ; activités closes par lui ──
+    def test_activite_ouverte_de_sans_date_reportee_comprises(self):
+        from apps.records.selectors import activite_ouverte_de
+        sans_date = self._act(summary='sans date')
+        reportee = self._act(summary='reportée', due_date=date.today(),
+                             snoozed_until=date.today() + timedelta(days=5))
+        refus = (self._act(summary='faite', done=True), self._act(summary='pour A', assigned_to=self.a),
+                 self._act(summary='de A', personnelle=True, created_by=self.a),
+                 self._act(summary='archivé', **self._cible(self.lead_archive)))
+        for activite in (sans_date, reportee):
+            self.assertEqual(activite_ouverte_de(self.b, activite.pk), activite)
+        for activite in refus:
+            self.assertIsNone(activite_ouverte_de(self.b, activite.pk), activite.summary)
+
+    def test_activites_closes_par_lui_dans_la_fenetre(self):
+        from django.utils import timezone
+
+        from apps.records.selectors import activites_closes_par
+        maintenant = timezone.now()
+        par_b = self._act(summary='close par b', done=True, done_by=self.b, done_at=maintenant)
+        self._act(summary='close par a', done=True, done_by=self.a, done_at=maintenant)
+        self._act(summary='hier', done=True, done_by=self.b, done_at=maintenant - timedelta(days=1))
+        self._act(summary='ouverte')
+        fenetre = (maintenant - timedelta(hours=1), maintenant + timedelta(hours=1))
+        self.assertEqual(list(activites_closes_par(self.b, *fenetre)), [par_b])
+        self.assertFalse(activites_closes_par(self.c, *fenetre).exists())

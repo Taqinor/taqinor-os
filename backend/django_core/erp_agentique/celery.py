@@ -976,6 +976,13 @@ app.conf.beat_schedule = {
         'schedule': crontab(minute='*/10'),
         'options': _expire_dans(600),
     },
+    # TCH99 — nuit des tâches personnelles (apps/taches/sweeps.py) : rythme, cartes, liens ERP,
+    # purges ; sociétés actives à module actif, coupe-circuit `balayage_actif` respecté.
+    'taches-nocturne': {
+        'task': 'taches.nocturne',
+        'schedule': crontab(hour=3, minute=0),
+        'options': _expire_dans(3600),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

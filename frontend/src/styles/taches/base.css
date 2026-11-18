@@ -38,7 +38,6 @@
     --tch-chiffre: 0.75rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
-    --tch-heure-h: 56px;
   }
 }
 
@@ -181,7 +180,8 @@
 @media (min-width: 768px) {
   .tch .ligne {
     margin: 0 8px; border-radius: 10px;
-    padding: 11px 16px 11px calc(16px - (var(--tch-cible) - var(--tch-case)) / 2);
+    /* à droite : la place du bouton « Actions » (au survol, il se pose sur le bord) — l'étoile ne passe jamais dessous */
+    padding: 11px calc(var(--tch-cible) + 16px) 11px calc(16px - (var(--tch-cible) - var(--tch-case)) / 2);
   }
   .tch .ligne:has(.meta) {
     padding-block: 8px;
@@ -365,6 +365,9 @@
 .tch .puce::after {
   content: ""; position: absolute; inset: -5px 0;
 }
+.tch span.puce::after {
+  content: none;
+}
 @media (hover: hover) {
   .tch .puce:hover {
     background: color-mix(in oklch, var(--muted) 70%, var(--foreground) 6%);
@@ -439,6 +442,20 @@
 }
 .tch .bouton.rond-micro {
   width: 44px; padding: 0; border-radius: 999px; color: var(--tch-texte-doux);
+}
+/* Raccord F2 — variantes communes à tous les écrans (une seule définition : projets, réglages, conflit, feuilles) */
+.tch .bouton.danger {
+  background: var(--destructive); color: var(--destructive-foreground); box-shadow: var(--shadow-xs);
+}
+.tch .bouton.plein-accent {
+  background: var(--tch-accent); color: var(--tch-accent-texte);
+}
+.tch .bouton:disabled {
+  opacity: 0.5; cursor: default;
+}
+/* Hors ligne (TCH100) : un geste marqué data-necessite-reseau est grisé ; la coquille dit « Possible une fois connecté » */
+.tch[data-hors-ligne] [data-necessite-reseau] {
+  opacity: 0.5; cursor: default;
 }
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
@@ -530,7 +547,7 @@
   margin: 0 0 16px; max-width: 26ch; font-size: 1.0625rem; line-height: 1.45; font-weight: 500;
 }
 .tch .fab {
-  position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(52px + env(safe-area-inset-bottom) + 16px);
+  position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 16px);
   z-index: var(--z-sticky);
   width: 56px; height: 56px; border-radius: 999px; display: grid; place-items: center;
   background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-md);
@@ -539,12 +556,12 @@
   width: 26px; height: 26px; stroke-width: 2.25;
 }
 .tch .toast-place {
-  position: fixed; left: 16px; right: 16px; bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+  position: fixed; left: 16px; right: 16px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
   z-index: var(--z-popover);
 }
 @media (max-width: 767px) {
   .tch .toast-place {
-    right: 84px; bottom: calc(52px + env(safe-area-inset-bottom) + 20px);
+    right: 84px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 20px);
   }
 }
 .tch .voile {
@@ -748,6 +765,9 @@
   .tch .feuille.dialogue-bureau {
     left: 50%; right: auto; bottom: auto; top: 16vh; width: 560px; height: auto;
     transform: translateX(-50%); border-radius: var(--tch-rayon-carte); padding: 20px 20px 16px;
+    /* bornée à la fenêtre : sans plafond le dialogue dépasse le bas de l'écran (Coller encore, Fait hors d'atteinte) ;
+       c'est alors `.feuille-corps` qui défile et le pied collant reste visible */
+    max-height: calc(100vh - 16vh - 16px);
   }
   .tch .feuille.dialogue-bureau .poignee {
     display: none;
@@ -755,6 +775,7 @@
   .tch .feuille.popover-bureau {
     right: auto; bottom: auto; top: 136px; left: calc(50% - 520px); width: 380px; height: auto;
     border-radius: var(--tch-rayon-carte); padding: 8px 16px 12px; box-shadow: var(--shadow-lg), 0 0 0 1px var(--tch-trait);
+    max-height: calc(100vh - 136px - 16px);
   }
   .tch .feuille.popover-bureau .poignee {
     display: none;
@@ -888,6 +909,16 @@
 .tch .feuille,
 .tch .menu {
   z-index: calc(var(--z-modal) + 1);
+}
+/* F2 acceptation (P136.2) — le fondu d'entrée de route de l'ERP (`.route-fade`, `animation: fade-in … both`) GARDE
+   son effet d'opacité une fois fini : tant qu'il le garde, `.route-fade` est un contexte d'empilement (Chromium et
+   WebKit), et tout ce que `.tch` pose en `position: fixed` (voile, feuilles, menus, toasts, barre de sélection) y est
+   enfermé au niveau 0 — SOUS l'en-tête et la barre d'onglets de l'ERP (`--z-sticky`), quel que soit son z-index : le
+   pied d'une feuille passait sous les onglets et ne recevait plus le doigt. Le fondu reste (remplissage `backwards`
+   au lieu de `both`) ; fini, il ne retient plus rien et nos calques reprennent leur rang de jetons (`--z-modal`…),
+   au-dessus des onglets comme dans les maquettes (taches.css : voile 7, feuille 8, au-dessus de `.onglets`). */
+.route-fade:has(> .tch) {
+  animation-fill-mode: backwards;
 }
 .tch .puce.icone {
   width: 44px; padding: 0; justify-content: center;
@@ -1103,7 +1134,7 @@
   .tch .ligne, .tch .fab, .tch .feuille, .tch .voile { transition: none; animation: none; }
 }
 /* Barre de sélection (lot) : posée au bas, comme le bouton flottant qu'elle remplace */
-.tch .barre-selection { position: fixed; left: 12px; right: 12px; bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+.tch .barre-selection { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
   z-index: var(--z-sticky); display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 6px 8px 6px 16px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-inverse-fond); color: var(--tch-inverse-texte);
   box-shadow: var(--shadow-lg); }
@@ -1136,4 +1167,3 @@
 .tch .conflit .carte-actions { margin-top: 10px; }
 .tch .conflit .bouton { height: 40px; padding: 0 14px; font-size: 0.9375rem; position: relative; }
 .tch .conflit .bouton::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
-.tch .conflit .bouton.plein-accent { background: var(--tch-accent); color: var(--tch-accent-texte); }

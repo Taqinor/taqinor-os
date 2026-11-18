@@ -153,7 +153,29 @@
         "message": "Prévue après l'échéance."
       }
     ],
-    "progression": null,
+    "progression": {
+      "faites": 1,
+      "detail": {
+        "etapes": 0,
+        "routines": 0,
+        "micro_non_comptees": 0,
+        "activites_closes": 0
+      },
+      "prevues": 4,
+      "essentiel_faites": 0,
+      "essentiel_prevues": 1,
+      "plan_tenues": 1,
+      "plan_lignes": 4,
+      "minutes_prevues": 75,
+      "sans_estimation": 1,
+      "capacite_minutes": 240,
+      "capacite_source": "defaut",
+      "rendez_vous_minutes": 60,
+      "disponible_minutes": 180,
+      "activites_closes": 0,
+      "activites": 1,
+      "reprise": false
+    },
     "geste_id": 77
   }
 }

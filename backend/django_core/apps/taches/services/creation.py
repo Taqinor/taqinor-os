@@ -40,6 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
+from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, jour_dans_bornes, sans_nul
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -67,7 +68,7 @@ MESSAGE_TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
 MESSAGE_PROJET_INEXISTANT = 'Projet inexistant.'
 MESSAGE_LIEN_INTROUVABLE = 'Élément introuvable ou hors de ta portée.'
 MESSAGE_LIEN_TYPE = "Ce type d'élément ne peut pas être lié à une tâche."
-MESSAGE_DEJA_LIE = 'Une tâche est déjà liée à cette activité.'
+MESSAGE_DEJA_LIE = 'Cette activité a déjà sa tâche.'  # textes.md §2.16, 409 `deja_lie`
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,7 @@ class _Contexte:
     parent: object = None
     activite: object = None
     lien: object = None
+    par_ligne: bool = False
     creees: list = field(default_factory=list)
     projets_crees: list = field(default_factory=list)
     deja_creees: list = field(default_factory=list)
@@ -128,9 +130,12 @@ def _date(valeur, champ):
     if valeur is None or valeur == '' or isinstance(valeur, datetime.date):
         return valeur or None
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except ValueError:
-        raise serializers.ValidationError({champ: ['Date attendue (AAAA-MM-JJ).']})
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise serializers.ValidationError({champ: [MESSAGE_DATE]})
+    return jour
 
 
 def _heure(valeur, champ):
@@ -221,19 +226,21 @@ def _activite_verifiee(user, activite, nombre):
 
 
 def _lien_verifie(user, lien):
-    """(ContentType, id) d'une cible ∈ `CibleLiable` VISIBLE par `user` (invariant 23), par la porte
-    unique `selectors/liens.cible_visible` ; refus = introuvable."""
+    """(ContentType, id, libellé) d'une cible ∈ `CibleLiable` VISIBLE par `user` (invariant 23), par la
+    porte unique `selectors/liens` (`cible_visible` = un libellé existe) ; refus = introuvable. Le libellé
+    est posé à la liaison (comme `lier_activite`), la nuit le revérifie ensuite."""
     if not isinstance(lien, dict) or lien.get('cible') not in CibleLiable.values:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
     try:
         objet_id = int(lien.get('id'))
     except (TypeError, ValueError):
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
-    from apps.taches.selectors.liens import cible_visible
-    if not cible_visible(user, lien['cible'], objet_id):
+    from apps.taches.selectors.liens import libelle_de_cible
+    libelle = libelle_de_cible(user, lien['cible'], objet_id)
+    if libelle is None:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     app_label, modele = lien['cible'].split('.', 1)
-    return ContentType.objects.get_by_natural_key(app_label, modele), objet_id
+    return ContentType.objects.get_by_natural_key(app_label, modele), objet_id, libelle
 
 
 def _projet_existant(user, projet_id):
@@ -247,19 +254,26 @@ def _projet_existant(user, projet_id):
     return projet
 
 
+def _priorite_projet(valeur):
+    """La priorité d'un projet né d'une ligne : une des `Priorite.values` (0-3), sinon 400 sous le champ."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int) or valeur not in Priorite.values:
+        raise serializers.ValidationError({'nouveau_projet': [MESSAGE_VALEUR]})
+    return valeur
+
+
 def _nouveau_projet(ctx, spec):
     """« Nouveau projet : X » : retrouvé par sa clé s'il existe déjà (même envoi ou base), sinon créé
     priorité Moyenne, couleur d'office, rang au milieu de sa priorité."""
     nom = str((spec or {}).get('nom') or '').strip()[:120]
     if not nom:
         raise serializers.ValidationError({'nouveau_projet': ['Requis.']})
+    priorite = _priorite_projet(spec.get('priorite', PRIORITE_PROJET_NE))
     cle = cle_nom(nom)
     if cle in ctx.projets_par_cle:
         return ctx.projets_par_cle[cle]
     user = ctx.user
     projet = projets_de(user).filter(nom_cle=cle).first()
     if projet is None:
-        priorite = int(spec.get('priorite', PRIORITE_PROJET_NE))
         projet, cree = Projet.objects.get_or_create(
             company_id=user.company_id, proprietaire=user, nom_cle=cle, is_deleted=False,
             defaults={'nom': nom, 'priorite': priorite, 'couleur': couleur_d_office(user),
@@ -324,6 +338,10 @@ def _regle_neuve(ctx, spec, jour):
     mode = spec.get('mode') or ModeRecurrence.CALENDRIER
     if frequence not in Frequence.values or mode not in ModeRecurrence.values:
         raise serializers.ValidationError({'recurrence': ['Valeur inconnue.']})
+    # Revue F2 #8 : revérifiée comme au PATCH (400 sous le champ, jamais un 500 au calcul de l'occurrence) ;
+    # import local, `services.taches` important ce module. `None` = la valeur par défaut, comme ci-dessous.
+    from apps.taches.services.taches import _valeurs_regle
+    _valeurs_regle({champ: valeur for champ, valeur in spec.items() if valeur is not None}, 'recurrence')
     debut = _date(spec.get('date_debut'), 'recurrence') or jour or ctx.aujourdhui
     return RegleRecurrence.objects.create(
         company_id=ctx.user.company_id, proprietaire=ctx.user, frequence=frequence,
@@ -385,7 +403,7 @@ def _construire(ctx, ligne, cid, projet, section):
         recurrence=regle, occurrence_du=occurrence if regle is not None else None,
         **_champs_simples(ligne))
     if lien is not None:
-        tache.content_type, tache.object_id = lien
+        tache.content_type, tache.object_id, tache.lien_libelle = lien
         tache.lien_etat, tache.lien_verifie_le = 'ok', ctx.maintenant
     return tache, jour
 
@@ -416,6 +434,8 @@ def _etiqueter(ctx, tache, etiquettes):
     for etiquette in etiquettes or ():
         if isinstance(etiquette, dict):
             nom = str(etiquette.get('nom') or '').strip()[:40]
+            if not sans_nul(nom):
+                raise serializers.ValidationError({'etiquettes': [MESSAGE_VALEUR]})
             if not nom:
                 continue
             etiquette, _cree = Etiquette.objects.get_or_create(
@@ -473,7 +493,7 @@ def _par_ligne(ctx, rang, ligne, cid):
     try:
         _creer_ligne(ctx, ligne, cid)
     except serializers.ValidationError as exc:
-        if ctx.porte != 'saisie':
+        if ctx.porte != 'saisie' and not ctx.par_ligne:
             raise
         raise serializers.ValidationError({'lignes': {str(ligne.get('index', rang)): exc.detail}})
 
@@ -494,14 +514,15 @@ def _geste(ctx):
                              ctx.ops_contenants + ctx.ops_taches)
 
 
-def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None):
+def creer_taches(user, lignes, *, source, porte, client_id=None, lien=None, parent=None, activite=None,
+                 par_ligne=False):
     """Crée les tâches de `lignes` pour `user` (une transaction, tout ou rien) → `ResultatCreation`
     (`creees`, `projets_crees`, `deja_creees` = `client_id` déjà vus, `geste`)."""
     if porte not in PORTES or source not in Source.values:
         raise ValueError(f'creer_taches : porte {porte!r} ou source {source!r} inconnue')
     lignes = list(lignes or ())
     ctx = _Contexte(user=user, source=source, porte=porte, maintenant=timezone.now(),
-                    aujourdhui=timezone.localdate())
+                    aujourdhui=timezone.localdate(), par_ligne=par_ligne)
     with transaction.atomic():
         ctx.parent = _parent_verifie(user, parent)
         ctx.activite = _activite_verifiee(user, activite, len(lignes))

@@ -19,7 +19,9 @@
         "tache_id": null,
         "titre": "Appeler Karim",
         "cochee": true,
+        "deja_faite": false,
         "doublon_de": null,
+        "doublon_projet": null,
         "etape_de": null,
         "alertes": [],
         "jetons": [
