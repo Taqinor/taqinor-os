@@ -298,11 +298,25 @@ def _nom_fichier(base):
     return sur or 'rapport'
 
 
+JEU_DU_GENRE = {'stock': 'stock_produits'}  # ADRG158 / D-ADRG-15 — genre figé → jeu dont l'export est exigé
+MOTIF_SANS_EXPORT_STOCK = "Le propriétaire n'a pas le droit d'export du stock : envoi suspendu."
+
+
+def _export_du_genre_refuse(report):
+    from core.data_explorer import DatasetNonAutorise, exiger_export_dataset
+    try:
+        if report.target_kind in JEU_DU_GENRE:
+            exiger_export_dataset(JEU_DU_GENRE[report.target_kind], report.owner)
+    except DatasetNonAutorise:
+        return True
+    return False
+
+
 def _rendre_legacy(report):
     """Les 3 rapports FIGÉS — rendu inchangé, au format .xlsx."""
     renderer = _RENDERERS.get(report.target_kind)
     # AANA27 — aussi gardé ici : `render_report_xlsx` y entre directement.
-    if renderer is None or getattr(report, 'company_id', None) is None:
+    if renderer is None or getattr(report, 'company_id', None) is None or _export_du_genre_refuse(report):
         return None, None, None, None
     try:
         headers, rows = renderer(report)
@@ -517,10 +531,12 @@ def email_saved_reports():
             # mensuel) par-dessus la sélection grossière par cadence.
             if not _rapport_est_du(report, now):
                 continue
-            if _proprietaire_inactif(report):  # ADRG156 — avant tout canal
+            cause = (CAUSE_PROPRIETAIRE_INACTIF if _proprietaire_inactif(report)
+                     else MOTIF_SANS_EXPORT_STOCK if _export_du_genre_refuse(report) else '')
+            if cause:  # ADRG156 / ADRG158 — avant tout canal
                 canal = getattr(report, 'canal', 'email')
                 journaliser_envoi(report, canal, report.whatsapp_list() if canal == 'whatsapp'
-                                  else report.recipient_list(), 'echec', CAUSE_PROPRIETAIRE_INACTIF)
+                                  else report.recipient_list(), 'echec', cause)
                 continue
             # NTDATA39 — canal WhatsApp : un LIEN tokenisé, jamais la pièce
             # jointe, et un NO-OP TOTAL tant que le canal n'est pas armé.

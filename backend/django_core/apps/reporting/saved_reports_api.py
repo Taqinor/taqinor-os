@@ -116,6 +116,10 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                                 data_explorer.exiger_export_dataset(jeu, requete.user)
                             except data_explorer.DatasetInconnu:
                                 pass
+        from .scheduled_reports import JEU_DU_GENRE
+        if kind in JEU_DU_GENRE:  # ADRG158 / D-ADRG-15 — à chaque écriture, PATCH compris
+            from core.data_explorer import exiger_export_dataset
+            exiger_export_dataset(JEU_DU_GENRE[kind], getattr(self.context.get('request'), 'user', None))
         return attrs
 
 
