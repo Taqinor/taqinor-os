@@ -1732,5 +1732,143 @@ class GardeA5ConversationTests(unittest.TestCase):
         self.assertIs(ecrit[1]["contenu_tiers"], False)
 
 
+# ── Copilote v2 (F2, F3) — refus détaillés et aperçu d'une proposition ──────────────────────────────────
+# (dans ce module et non dans test_action_tools.py : celui-là passerait 2 000 lignes, garde C20).
+
+_APPS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core", "apps")
+
+
+def _contrat_app(app, nom):
+    with open(os.path.join(_APPS, app, "contract_samples", nom), encoding="utf-8") as f:
+        return json.load(f)
+
+
+class _Resp:
+    def __init__(self, status_code, payload):
+        self.status_code, self._payload, self.headers = status_code, payload, {}
+
+
+class RefusDetaillesF2Tests(unittest.TestCase):
+    """Copilote v2 (F2) — un refus métier garde ses candidats / son doublon
+    (liste blanche) ; le modèle ne les lit que copilote allumé."""
+
+    def test_choix_du_contrat_ventes(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        erreur = _at._normalize_error(_Resp(409, corps), corps)
+        self.assertEqual(erreur["error"], corps["detail"])
+        self.assertEqual(erreur["details"]["field"], "batterie_produit_id")
+        self.assertEqual([c["produit_id"] for c in erreur["details"]["choix"]], [147, 152])
+        self.assertEqual(erreur["details"]["choix"][0], corps["choix"][0])
+
+    def test_doublon_du_contrat_crm(self):
+        corps = _contrat_app("crm", "assistant_lead_creer.json")["exemple_409_doublon"]
+        details = _at._normalize_error(_Resp(409, corps), corps)["details"]
+        self.assertEqual(details, {"doublon": True, "archive": False,
+                                   "ne_plus_contacter": False, "lead_id": 1637})
+
+    def test_liste_blanche_et_bornes(self):
+        corps = {"detail": "Plusieurs.", "field": "x" * 200, "prix_achat": "1",
+                 "choix": [{"produit_id": i, "nom": "n" * 500, "prix_achat": "9",
+                            "marge": "3", "kw": {"brut": 1}} for i in range(15)]}
+        details = _at._normalize_error(_Resp(409, corps), corps)["details"]
+        self.assertEqual(len(details["choix"]), _at.CHOIX_MAX)
+        self.assertEqual(len(details["field"]), 64)
+        self.assertNotIn("prix_achat", json.dumps(details))
+        self.assertNotIn("marge", json.dumps(details))
+        self.assertLessEqual(len(details["choix"][0]["nom"]), 120)
+        self.assertIsNone(details["choix"][0]["kw"])
+        # Ni un 500 ni un refus sans clé connue ne portent `details`.
+        self.assertNotIn("details", _at._normalize_error(_Resp(500, corps), corps))
+        self.assertNotIn("details", _at._normalize_error(_Resp(409, {"detail": "Non."}), {"detail": "Non."}))
+
+    def test_relaye_au_modele_copilote_allume_seulement(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        refus = _at._normalize_error(_Resp(409, corps), corps)
+        textes = {}
+        for lot in ("herite", "copilote"):
+            ctx = _ctx()
+            ctx.catalogue_tour = [dict(_CAT_LEAD_LIST, lot=lot)]
+            with mock.patch.object(_at, "_django_call", lambda *a, **k: dict(refus)):
+                textes[lot] = _at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {}, [])
+        self.assertEqual(textes["herite"],
+                         f"L'action « {_CAT_LEAD_LIST['label']} » a echoue. {corps['detail']}")
+        self.assertTrue(textes["copilote"].startswith(textes["herite"] + " Détails du refus : "))
+        details = json.loads(textes["copilote"].split(" Détails du refus : ", 1)[1])
+        self.assertEqual([c["produit_id"] for c in details["choix"]], [147, 152])
+
+
+class ApercuMultiligneF3Tests(unittest.TestCase):
+    """Copilote v2 (F3) — une ligne par entrée, libellé humain, note longue
+    tronquée, jamais le repr Python d'une liste ; l'objet nommé garde la forme
+    du contrat ; copilote éteint, l'aperçu d'avant."""
+
+    def setUp(self):
+        p = mock.patch.multiple(_at, ACTION_PROPOSAL_SECRET="sig-secret",
+                                DJANGO_INTERNAL_URL="http://dj:8000",
+                                _proposal_redis=lambda: _FakeRedis())
+        p.start()
+        self.addCleanup(p.stop)
+        with open(os.path.join(_APPS, "agent", "contract_samples", "assistant_libelles.json"),
+                  encoding="utf-8") as f:
+            self.libelles = json.load(f)["exemple"]
+
+    @staticmethod
+    def _apercu(action, entrees, reponse, lot="copilote"):
+        collector: list = []
+        ctx = _ctx()
+        ctx.catalogue_tour = [dict(action, lot=lot)]
+        with mock.patch.object(_at, "_django_call", lambda *a, **k: reponse):
+            _at.run_catalogue_action(ctx, action, entrees, collector)
+        return collector[0]["human_preview"]
+
+    def test_une_ligne_par_entree(self):
+        creer = {
+            "key": "crm.lead.creer", "label": "Créer un lead",
+            "endpoint": "/api/django/crm/assistant/leads/creer/", "method": "POST",
+            "inputs": {"type": "object", "properties": {
+                "nom": {"type": "string"}, "prenom": {"type": "string"},
+                "telephone": {"type": "string"}, "tags": {"type": "array"},
+                "note": {"type": "string"}, "creer_quand_meme": {"type": "boolean"},
+                "taille_souhaitee_kwc": {"type": "number"}}, "required": ["nom"]},
+            "risk": "outward"}
+        entrees = {"nom": "Alami", "prenom": "Karim", "telephone": "0661007731",
+                   "tags": ["villa", "batterie"], "creer_quand_meme": False,
+                   "note": "Demande : 10 panneaux,\nonduleur triphasé 10 kW. " + "x" * 400,
+                   "taille_souhaitee_kwc": 7.0}
+        lignes = self._apercu(creer, entrees, {"ok": True, "status": 200, "data": {}}).split("\n")
+        self.assertEqual(lignes[:5], ["Créer un lead", "Nom : Alami", "Prénom : Karim",
+                                      "Téléphone : 0661007731", "Étiquettes : villa, batterie"])
+        self.assertTrue(lignes[5].startswith("Note : Demande : 10 panneaux, onduleur triphasé 10 kW. x"))
+        self.assertLessEqual(len(lignes[5]), len("Note : ") + _at.APERCU_TEXTE_MAX)
+        self.assertTrue(lignes[5].endswith("…"))
+        self.assertEqual(lignes[6:], ["Créer même si un lead existe : non", "Taille souhaitée (kWc) : 7"])
+        self.assertNotIn("[", "\n".join(lignes))
+        # Copilote éteint : la forme d'avant, inchangée (« k=v », repr des listes compris).
+        eteint = self._apercu(creer, entrees, {"ok": True, "status": 200, "data": {}}, lot="herite")
+        self.assertEqual(eteint, _at._human_preview(creer, entrees))
+        self.assertTrue(eteint.startswith("Créer un lead (creer_quand_meme=False, nom=Alami"))
+
+    def test_objet_nomme_garde_la_forme_du_contrat(self):
+        accepter = {"key": "ventes.devis.accepter", "label": "Accepter un devis",
+                    "confirm_summary": "Accepter ce devis.",
+                    "endpoint": "/api/django/ventes/devis/{id}/accepter/", "method": "POST",
+                    "inputs": {"type": "object", "properties": {"id": {"type": "integer"}},
+                               "required": ["id"]},
+                    "risk": "outward", "objets": {"id": "devis"}}
+        lu = {"ok": True, "status": 200, "data": self.libelles}
+        attendu = _contrat_app("agent", "assistant_reponse.json")[
+            "exemple_deux_propositions"]["cartes"][0]["apercu"]
+        self.assertEqual(self._apercu(accepter, {"id": 45}, lu), attendu)
+        reporter = {"key": "crm.suivi.reporter", "label": "Reporter une touche",
+                    "endpoint": "/api/django/crm/relance-etapes/{touche_id}/reporter/", "method": "POST",
+                    "inputs": {"type": "object", "properties": {
+                        "touche_id": {"type": "integer"}, "lead_id": {"type": "integer"},
+                        "jours": {"type": "integer"}}, "required": ["touche_id"]},
+                    "risk": "outward", "objets": {"lead_id": "lead", "touche_id": "touche"}}
+        apercu = self._apercu(reporter, {"touche_id": 412, "lead_id": 1489, "jours": 3}, lu)
+        self.assertEqual(apercu.split("\n"), [
+            "Reporter une touche — " + self.libelles["lead"] + " ; " + self.libelles["touche"], "Jours : 3"])
+
+
 if __name__ == "__main__":
     unittest.main()
