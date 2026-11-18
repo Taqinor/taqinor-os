@@ -100,16 +100,70 @@ l'agenda, `VITE_VAPID_PUBLIC_KEY` en prod, fournisseur d'IA en prod) — liste d
 
 ## Journal de fin de session
 
-### Reprise par une session cloud — 17/11/2026, 23 h 40 UTC (la suite s'écrit ICI, au-dessus de l'état du portable)
+### Reprise par une session cloud — commencée le 17/11/2026 à 23 h 40 UTC (LIRE EN PREMIER ; tenue à jour au fil de l'eau)
 
-- Vérifié sur GitHub avant tout travail : `main` = `6b4435c2a` (4 commits de docs en avance sur `dev-taches-f2`) ;
-  PR #1454 ouverte, brouillon, tête `7c50012ee`, état « clean » ; `dev-taches-f3` = `53c6d4443` (138 cochées sur 174,
-  44 commits devant `dev-taches-f2`, jamais passée en CI) ; `origin/lane/f2-revue` porte 6 commits NON pliés (les 4
-  majeurs de la relecture F2 + les mineurs #2, #7, #8) ; `lane/f3-assistant`, `lane/f3-restes`, `lane/f3-tch97` sont
-  déjà entièrement dans `dev-taches-f3`. Aucune réservation de plan tenue par un autre poste.
-- Machine : conteneur Linux (4 cœurs, 15 Go), pas de docker qui tourne ; PostgreSQL 16, Redis, Node 22 et Python 3.13
-  présents → la pile locale des acceptations sera montée SANS docker (Postgres + Redis + Django + front construit).
+**État vérifié à la reprise.** `main` = `6b4435c2a` ; PR #1454 (fusion 2) brouillon, tête `7c50012ee`, verte ;
+`dev-taches-f3` = `53c6d4443` (138 cochées sur 174, jamais passée en CI) ; `origin/lane/f2-revue` portait 6 commits
+NON pliés ; les trois autres lanes F3 du portable étaient déjà entièrement dans `dev-taches-f3`.
 
+**Fait depuis (dans l'ordre)**
+1. `lane/f2-revue` relue commit par commit puis PLIÉE dans `dev-taches-f2` (les 4 majeurs #3, #4, #5, #6 et les mineurs
+   #2, #7, #8 de `revue-code-f2.md`), `origin/main` fusionné, poussé : tête `85c186783`. CI relancée sur #1454.
+2. `dev-taches-f2` fusionnée dans `dev-taches-f3`, poussé : tête `684aed104`. **PR brouillon de la fusion 3 ouverte :
+   Taqinor/taqinor-os#1462** (empilée sur la fusion 2 ; à ne mettre en file de merge qu'après #1454). L'instantané
+   OpenAPI de `dev-taches-f3` a été régénéré : il était déjà à jour (aucun diff).
+3. Lanes lancées (worktrees isolés, branches LOCALES de cette machine) : `lane/f2-restes` (sonnet : mineurs #1 et #9 de
+   la relecture, test « la nuit n'écrit rien pour un compte qui n'a jamais utilisé le module ») ; `lane/f3-presence2`
+   (opus : TCH155, TCH98, TCH174, suites de sécurité de TCH95) ; `lane/f3-copilote-restes` (opus : garde A5 « contenu
+   non fiable » et « 3 écritures par tour », bouton Modifier de la carte écho, styles des cartes, bloc de consignes
+   conditionnel, branchement des 4 demandes prêtes dans `CopilotPanel.jsx`, plafonds mesurés, 6 conversations
+   d'évaluation manquantes).
+
+**Décisions prises seul par cette session (chacune notée ici, aucune ne demande Reda)**
+- **Branches** : cette session cloud a pour consigne technique de pousser sur `claude/nice-lamport-fsv7my`. Reda a
+  demandé de reprendre CETTE passation, qui vit sur `dev-taches-f2` (PR #1454), `dev-taches-f3` et la branche de
+  travail `claude/erp-task-manager-ai-f8db1b` : la session pousse donc sur ces trois branches-là et sur aucune autre
+  (jamais sur `main`, qui n'avance que par la file de merge ; jamais de force-push). Raison de fond, en plus de la
+  continuité de #1454 : la CI d'une PR dont la branche s'appelle `claude/*` est ALLÉGÉE (règle « une seule CI par PR »
+  du 27/10 : tests à base, vitest et bout en bout reportés à la file de merge) ; une fusion de cette taille a besoin
+  de la CI complète sur la PR. `claude/nice-lamport-fsv7my` reste vide.
+- **Réservations de plan IMPOSSIBLES depuis le cloud** : GitHub refuse à cette session l'écriture des refs
+  `refs/plan-claims/*` (403, garde volontaire : non contournée). `plan_claims.py list` (lecture) marche : aucun poste
+  ne tient de réservation Tâches. Parade : relire la liste et faire `git fetch` avant chaque push. SI UN AUTRE POSTE
+  REPREND : qu'il prenne les réservations normalement, cette session le verra à sa prochaine lecture et s'arrêtera.
+- **Auto-fix** : l'interrupteur de l'app de bureau n'existe pas dans une session cloud ; la session est abonnée aux
+  événements des PR #1454 et #1462 et corrige elle-même les rouges de CI.
+- **Pile locale SANS docker** (docker ne tourne pas dans ce conteneur) : PostgreSQL 16 + pgvector, Redis, Python
+  3.11 (celui de la CI et de la prod) dans `/opt/venv-erp`, Node 22, front construit servi par `vite preview` avec
+  le relais `/api/django` (la pile e2e de la CI). Scripts de la machine dans `/opt/taches-cloud/` (hors dépôt,
+  recopiés dans `docs/taches/travail/cloud/` à la fin). Les tests À BASE tournent donc ICI, chaque lane sur sa base
+  privée (clone d'un gabarit migré une fois : 2 399 migrations, ≈ 1 h). Brief des lanes : `brief-lane-cloud.md`.
+- **Horloge des acceptations** : la journée du 24/11 du semis suppose une horloge figée. Le serveur Django des
+  acceptations tourne sous `libfaketime` (heure du scénario), le navigateur sous l'horloge de Playwright. Aucun code
+  de « fausse horloge » n'est ajouté au produit.
+- **Heure du Maroc** : depuis le 20/09/2026 le Maroc est revenu à GMT (UTC+0) toute l'année (décret annoncé le
+  25/06/2026 ; `tzdata` 2026.6 épinglé par le dépôt le sait). Le Chromium de cette machine a des fuseaux PÉRIMÉS
+  (Africa/Casablanca encore à +1) : les acceptations lancent le navigateur en UTC (= l'heure réelle du Maroc) et une
+  étape vérifie en plus qu'une heure posée depuis un navigateur « périmé » n'est pas décalée d'une heure.
+- **Relecture F2 #1** (sous-tâche restaurée dont le parent reste supprimé) : elle est DÉTACHÉE (`parent=None`), même
+  règle que N7 pour un projet supprimé — jamais refusée, jamais perdue à la purge du parent.
+- **Relecture F2 #4** : la correction touche `frontend/src/providers/session-bridge.js` (+ son test), fichier d'un
+  autre propriétaire, en AJOUT seulement (purge des clés `taches:*` à toute déconnexion) : accepté, c'est la seule
+  place qui marche quand le module Tâches n'a pas été chargé dans l'onglet. À inscrire dans l'en-tête du plan.
+- **Copilote** : `CopilotPanel.jsx` n'appelait pas les 4 demandes prêtes (TCH118 a livré la fonction sans appelant).
+  Le fichier est hors de la liste du plan : autorisé en AJOUT seulement pour ce branchement (tâche à inscrire au plan).
+- **Constats « optionnels » de la relecture F2** (CGNAT accepté par le validateur, `g j` offert sans le module, clé de
+  cache sans société, « Annuler » après « Fait » sans lire les conflits, activité liée à la tâche d'un collègue) :
+  NON corrigés (durcissement, cas hypothétiques) ; ils restent listés dans `revue-code-f2.md`.
+
+**Ce qui reste, dans l'ordre** (mis à jour à chaque étape)
+- Fusion 2 : CI verte sur `85c186783` → plier `lane/f2-restes` → acceptations en direct TCH136-140, TCH144 (spec
+  `frontend/e2e/acceptation/tch.spec.js` + enregistrement `docs/audits/acceptation/TCH/`) → corriger ce qu'elles
+  trouvent → TCH94 → `gh pr ready 1454` + mise en file. Dire à Reda : « mergé — à déployer par toi :
+  `scripts/deploy-prod.ps1` » (le deploy automatique est ARRÊTÉ depuis le 17/11 : ne plus écrire « l'auto-deploy suit »).
+- Fusion 3 : plier les lanes, première CI de #1462 (plusieurs tours), TCH160, TCH127, acceptations TCH141, TCH171,
+  TCH143, TCH135, merge après la fusion 2.
+- Fusion 4 puis les deux relectures finales et le rapport.
 
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
