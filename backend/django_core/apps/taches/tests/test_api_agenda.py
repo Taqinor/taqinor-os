@@ -97,12 +97,18 @@ class AgendaTests(TestCase):
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))
 
-    def test_mes_projets_en_vue_semaine_seulement(self):
+    def test_mes_projets_en_vue_jour_et_semaine_le_meme_volet(self):
+        """Le volet « À placer » est le MÊME en vue Jour et en vue Semaine (maquettes `agenda-jour.html` et
+        `agenda-semaine.html` : « À placer · 12 » dans les deux ; SCENARIO §4) : « Mes projets » y est servi
+        dans les deux vues, jamais en Mois ni À venir (pas de volet)."""
         self.tache()
-        self.assertEqual(self.periode(vue='jour', au=self.T.isoformat())['mes_projets'], [])
-        groupes = self.periode(vue='semaine')['mes_projets']
-        self.assertEqual(groupes[0]['projet']['id'], self.projet.pk)
-        self.assertEqual(groupes[0]['items'][0]['raison']['code'], 'prochaine_action')
+        jour = self.periode(vue='jour', au=self.T.isoformat())['mes_projets']
+        semaine = self.periode(vue='semaine')['mes_projets']
+        self.assertEqual(jour, semaine)
+        self.assertEqual(semaine[0]['projet']['id'], self.projet.pk)
+        self.assertEqual(semaine[0]['items'][0]['raison']['code'], 'prochaine_action')
+        self.assertEqual(self.get(vue='mois')['mes_projets'], [])
+        self.assertEqual(self.get(vue='a-venir')['mes_projets'], [])
 
     def test_a_placer_du_jour_sans_heure_et_a_revoir(self):
         sans = self.tache(jour_prevu=self.T)

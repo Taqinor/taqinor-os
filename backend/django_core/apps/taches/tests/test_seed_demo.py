@@ -236,9 +236,10 @@ class ScenarioTests(TestCase):
         # À placer : Aujourd'hui 3 (stand, fiche, contrat) + À revoir 2, LE MÊME dans les deux vues (api.md §4)
         self.assertEqual(sorted(_titres(jour['a_placer'])), sorted([STAND, FICHE, CONTRAT, *commande.A_REVOIR]))
         self.assertEqual(_titres(semaine['a_placer']), _titres(jour['a_placer']))
-        # « Mes projets » seulement en vue Semaine (api.md §4 `agenda/`) : ERR-SCENARIO « À placer · 12 (Jour et
-        # Semaine) »
-        self.assertEqual(jour['mes_projets'], [])
+        # SCENARIO §4 : « À placer · 12 (Jour et Semaine, 09:41) » — le MÊME volet dans les deux vues, « Mes
+        # projets » compris (maquettes `agenda-jour.html` et `agenda-semaine.html`) : 5 + 7 = 12.
+        self.assertEqual(jour['mes_projets'], semaine['mes_projets'])
+        self.assertEqual(len(jour['a_placer']) + sum(len(g['items']) for g in jour['mes_projets']), 12)
         mes_projets = {g['projet']['nom']: _titres(g['items']) for g in semaine['mes_projets']}
         self.assertEqual(sorted(mes_projets[commande.SALON]),
                          sorted(['Préparer la démo onduleur hybride', "Réserver l'hôtel du salon"]))

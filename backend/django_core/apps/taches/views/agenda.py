@@ -1,5 +1,5 @@
 """Agenda (reference/api.md §3.1, §4 `agenda/`) : jours (≤ 42), Toute la journée, sans heure, blocs,
-échéances, À placer, Mes projets (vue semaine), férié ; rendez-vous externes du jour.
+échéances, À placer, Mes projets (vues jour et semaine : le même volet), férié ; rendez-vous externes du jour.
 
 Le schéma OpenAPI est celui de l'échantillon `agenda.json`. Les tâches de la période sont chargées
 en une passe (`formes.charger_items`) ; la journée d'aujourd'hui (`selectors.journee.lire_journee`)
@@ -162,12 +162,13 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
             rendu, jour, ouvre=jour in travailles, ferie=jour.weekday() < 5 and jour not in ouvres,
             cles_jour=cles, toute_la_journee=obligations.lignes if jour == J else (),
             externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
-    semaine = vue == VUE_SEMAINE
+    # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
+    volet = vue in (VUE_JOUR, VUE_SEMAINE)
     minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)
     return {
         'du': du.isoformat(), 'au': au.isoformat(), 'jours': jours,
         'a_placer': rendu.items(a_placer(journee, projet_id)),
-        'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if semaine else [],
+        'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if volet else [],
         # La capacité d'un jour travaillé (« {h} pour {cap} ») : celle d'aujourd'hui, même calcul que la
         # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240).
         'capacite': {'minutes': minutes, 'source': source},
