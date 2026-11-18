@@ -130,6 +130,27 @@ class CheminsSensiblesJournauxTests(SimpleTestCase):
         self.assertEqual(RequestObservabilityMiddleware._route_normalisee(vu['ctx']['path']),
                          '/api/secret/<masqué>.ics')
 
+    def test_arguments_en_dictionnaire_specialise_gardent_leur_comportement(self):
+        """Relecture finale n° 3 : la fabrique ne remplace pas les arguments par un `dict` nu. Le journal
+        d'accès de gunicorn passe un dictionnaire qui rend « - » pour un en-tête absent (`SafeAtoms`) : le
+        réécrire en `dict` levait `KeyError` au formatage. Rien n'est réécrit quand rien n'est masqué ; quand
+        une valeur l'est, c'est une COPIE du même type qui la porte."""
+        class Atomes(dict):
+            def __getitem__(self, cle):
+                return dict.get(self, cle, '-')
+
+        sans_secret = Atomes(h='10.0.0.1', U='/api/sante/')
+        record = logging.getLogger('test.secret').makeRecord(
+            'test.secret', logging.INFO, __file__, 1, '%(h)s %(U)s %({x-absent}i)s', (sans_secret,), None)
+        self.assertIs(record.args, sans_secret, 'rien à masquer : les arguments ne sont pas touchés')
+        self.assertEqual(record.getMessage(), '10.0.0.1 /api/sante/ -')
+        avec_secret = Atomes(h='10.0.0.1', U='/api/secret/s3cr3t.ics')
+        record = logging.getLogger('test.secret').makeRecord(
+            'test.secret', logging.INFO, __file__, 1, '%(h)s %(U)s %({x-absent}i)s', (avec_secret,), None)
+        self.assertEqual(record.getMessage(), '10.0.0.1 /api/secret/<masqué>.ics -')
+        self.assertIsInstance(record.args, Atomes)
+        self.assertEqual(avec_secret['U'], '/api/secret/s3cr3t.ics', "l'objet de l'appelant n'est pas modifié")
+
     def test_enregistrement_et_formateur_json_masquent(self):
         try:
             raise RuntimeError('panne /secret/s3cr3t')
