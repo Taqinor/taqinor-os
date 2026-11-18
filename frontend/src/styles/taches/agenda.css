@@ -152,7 +152,8 @@
 .tch .ag-corps { display: block; }
 .tch .ag-principal { min-width: 0; }
 @media (min-width: 1024px) {
-  .tch .ag-corps { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  .tch[data-ecran="agenda"] .tch-page { max-width: 1320px; }
+  .tch .ag-corps { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
   .tch .ag-aside { position: sticky; top: 16px; }
 }
 .tch .ag-aside { margin-top: 12px; padding-bottom: 8px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
@@ -252,17 +253,22 @@
    (docs/taches/maquettes/agenda-semaine-planifier.html, ecrans-agenda.css .ag-pcols / .ag-carte) ; iPhone : sept lignes. */
 .tch .ag-pj-cartes { display: none; }
 @media (min-width: 1024px) {
+  /* Passe visuelle n° 38 — colonnes de jours lisibles : la page de l'Agenda s'élargit au bureau (comme Aujourd'hui),
+     jours travaillés larges, non travaillés de 64 px ; en-tête de colonne = nom, barre de charge, puis le compte. */
   .tch .ag-planifier .ag-jours { display: flex; flex-direction: row; align-items: stretch; gap: 8px; padding: 14px 0 24px; min-height: 420px; }
   .tch .ag-planifier .ag-pj-place { flex: 1 1 0; min-width: 0; display: flex; }
   .tch .ag-planifier .ag-pj-place.repos { flex: 0 0 64px; }
-  .tch .ag-planifier .ag-pj {
+  .tch .ag-planifier .ag-pj, .tch .ag-planifier .ag-pj-place.repos .ag-pj {
     display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 100%;
     padding: 10px 8px 8px; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait);
   }
-  .tch .ag-planifier .ag-pj .j { padding: 0 4px; font-size: 0.875rem; }
-  .tch .ag-planifier .ag-pj .n { padding: 0 4px 4px; font-size: 0.75rem; }
+  .tch .ag-planifier .ag-pj .j { order: 1; padding: 0 4px; font-size: 0.875rem; }
+  .tch .ag-planifier .ag-pj .ag-charge { order: 2; align-self: stretch; width: auto; margin: 2px 4px 0; }
+  .tch .ag-planifier .ag-pj .n { order: 3; padding: 0 4px 4px; font-size: 0.75rem; text-align: left; }
+  .tch .ag-planifier .ag-pj-cartes { order: 4; }
   .tch .ag-planifier .ag-pj.repos { align-items: center; background: var(--ag-repos); box-shadow: none; }
   .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; text-align: center; }
+  .tch .ag-planifier .ag-pj.repos .n { text-align: center; }
   .tch .ag-planifier .ag-pj.nouveau { background: var(--ag-cible); box-shadow: inset 0 0 0 2px var(--tch-accent); }
   .tch .ag-planifier .ag-pj-ajout { display: none; }
   .tch .ag-pj-cartes { display: flex; flex-direction: column; gap: 6px; }
@@ -290,6 +296,3 @@
 .tch .ag-charge i.b { background: var(--tch-texte-doux); }
 .tch .ag-charge i.bp { background: var(--tch-surveiller); }
 .tch .ag-pj .ag-charge { grid-column: 2; grid-row: 2; align-self: center; }
-@media (min-width: 1024px) {
-  .tch .ag-planifier .ag-pj .ag-charge { width: 100%; margin: 0; align-self: stretch; }
-}
