@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
+import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useTachesActives } from '../../features/taches/presence/useTachesActives'
 import { EVENEMENT_SAISIR } from '../../features/taches/presence/cibleEcran'
 // VX211 — « Ma file » par persona (ordre des `kind` selon le rôle) +
 // départage optionnel « Victoires rapides d'abord ».
@@ -185,7 +186,7 @@ export default function MesActivitesPage() {
   const [todoDate, setTodoDate] = useState('')
   const [todoBusy, setTodoBusy] = useState(false)
   // TCH159 — « une seule saisie » : avec `taches_voir`, « + À faire » ouvre la saisie de Tâches
-  const peutTaches = useHasPermission('taches_voir')
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
 
   const load = () => {
     setLoading(true)

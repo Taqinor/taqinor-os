@@ -25,7 +25,7 @@ import CompanySwitcher from './CompanySwitcher'
 // que l'utilisateur n'a pas accès à 2 entités ou plus).
 import EntiteSwitcher from '../../features/entites/EntiteSwitcher'
 import NotificationBell from './NotificationBell'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useTachesActives } from '../../features/taches/presence/useTachesActives'
 import BackgroundJobsBell from './BackgroundJobsBell'
 import SyncStatusBadge from './SyncStatusBadge'
 import Breadcrumbs from './Breadcrumbs'
@@ -80,7 +80,7 @@ export default function Header({ onMenu }) {
   },
   // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : ne se redéclenche QUE si l'id utilisateur change (jamais sur un changement d'identité de l'objet `user` qui laisse le même id) — même convention que VisiteursPage.jsx. (D-ENF22)
   [user?.id])
-  const peutTaches = useHasPermission('taches_voir')
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   const t = useT()
   // VX181 — le ThemeToggle segmenté disparaît sous md (voir plus bas) ; ces 3
   // options du menu utilisateur restent le SEUL accès au thème sur mobile.

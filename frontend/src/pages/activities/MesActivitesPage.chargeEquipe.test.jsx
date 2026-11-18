@@ -178,4 +178,20 @@ describe('TCH159 — « + À faire » : une seule saisie', () => {
     await waitFor(() => expect(creer).toHaveBeenCalledWith({ summary: 'Appeler Settat' }))
     expect(recus).toEqual([])
   })
+
+  it('F4 revue #15 — avec taches_voir MAIS le module Tâches éteint pour la société : « Ajouter » crée l\'activité comme avant la fusion 4', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    const recus = []
+    const ecouteur = (e) => recus.push(e.detail)
+    window.addEventListener('taqinor:taches:saisir', ecouteur)
+    const store = configureStore({
+      reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: ['taches_voir'], modulesDesactives: ['taches'], user: { id: 1 } }) => s },
+    })
+    render(<Provider store={store}><MemoryRouter><MesActivitesPage /></MemoryRouter></Provider>)
+    await saisirTexte()
+    window.removeEventListener('taqinor:taches:saisir', ecouteur)
+    await waitFor(() => expect(creer).toHaveBeenCalledWith({ summary: 'Appeler Settat' }))
+    expect(recus).toEqual([])
+  })
 })

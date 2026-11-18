@@ -169,8 +169,8 @@ describe('cartes gardées IsResponsableOrAdmin : accueil du Lecteur (ERR-ACC-ACC
 describe('Dashboard — TCH125 : carte des tâches avec taches_voir seulement', () => {
   const aujourdhui = exempleContrat('taches', 'aujourdhui')
   const vide = (s = { items: [], loading: false, error: null }) => s
-  const monter = (permissions) => {
-    const auth = { user: { id: 42, username: 'reda' }, role: 'admin', role_nom: 'Administrateur', permissions }
+  const monter = (permissions, modulesDesactives = []) => {
+    const auth = { user: { id: 42, username: 'reda' }, role: 'admin', role_nom: 'Administrateur', permissions, modulesDesactives }
     const store = configureStore({
       reducer: {
         auth: (s = auth) => s,
@@ -201,6 +201,16 @@ describe('Dashboard — TCH125 : carte des tâches avec taches_voir seulement', 
     tachesApiMock.lireAujourdhui.mockReset()
     tachesApiMock.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
     monter([])
+    expect(await screen.findByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()
+    expect(tachesApiMock.lireAujourdhui).not.toHaveBeenCalled()
+  })
+
+  it('F4 revue #15 — avec taches_voir mais le module Tâches éteint pour la société : aucune carte, aucune requête Tâches', async () => {
+    tachesApiMock.lireAujourdhui.mockReset()
+    tachesApiMock.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
+    monter(['taches_voir'], ['taches'])
     expect(await screen.findByRole('heading', { name: 'Tableau de bord' })).toBeInTheDocument()
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()

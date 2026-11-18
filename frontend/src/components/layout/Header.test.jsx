@@ -198,8 +198,8 @@ describe('Header — U3 layout mobile : rangée plate sans chevauchement', () =>
 /* ── TCH123 — pastille ✓+ des tâches liées à la fiche ─────────────────── */
 describe('Header — TCH123 : ✓+ visible avec taches_voir seulement', () => {
   const item = exempleContrat('taches', 'item')
-  const rendreAvec = (permissions, chemin) => {
-    const etat = { user: { username: 'reda', email: 'r@x.ma' }, permissions }
+  const rendreAvec = (permissions, chemin, modulesDesactives = []) => {
+    const etat = { user: { username: 'reda', email: 'r@x.ma' }, permissions, modulesDesactives }
     const store = configureStore({ reducer: { auth: (s = etat) => s } })
     return render(
       <Provider store={store}>
@@ -222,6 +222,15 @@ describe('Header — TCH123 : ✓+ visible avec taches_voir seulement', () => {
 
   it('sans taches_voir : aucune pastille, aucune requête Tâches, le reste de l\'en-tête est là', async () => {
     const { container } = rendreAvec([], '/crm/leads/5')
+    expect(screen.getByRole('button', { name: 'Toutes les apps' })).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('button', { name: /Tâches liées à cette fiche/ })).toBeNull()
+    expect(tachesApiMock.listerTaches).not.toHaveBeenCalled()
+    expect(container.querySelector('.tch-ici')).toBeNull()
+  })
+
+  it('F4 revue #15 — avec taches_voir mais le module Tâches éteint pour la société : aucune pastille, aucune requête Tâches', async () => {
+    const { container } = rendreAvec(['taches_voir'], '/crm/leads/5', ['taches'])
     expect(screen.getByRole('button', { name: 'Toutes les apps' })).toBeInTheDocument()
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.queryByRole('button', { name: /Tâches liées à cette fiche/ })).toBeNull()
