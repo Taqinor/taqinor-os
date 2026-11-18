@@ -32,3 +32,9 @@ reconstruite sur `main` + les PR devant elle, ses checks requis tournent sur ce 
 
 **How to apply:** plus jamais de boucle `gh pr update-branch` → CI → merge ; une PR retirée de la file
 (checks rouges sur le groupe) se corrige puis se remet en file. Voir [[check-main-before-fixing]].
+- Ne PAS modifier une PR (titre, description) une fois la fusion automatique activée : le 18/11/2026, retoucher la
+  description de la PR #1468 quelques secondes après sa mise en file l'en a sortie (« INVALID_MERGE_COMMIT ») et a
+  annulé sa CI en cours. Écrire le corps AVANT `--auto --merge`, puis ne plus y toucher jusqu'à la fusion.
+- Une PR `claude/*` ne joue les tests à base QU'EN file : avant de mettre en file un changement de règle, chercher le
+  littéral attendu par les tests dans TOUT le dépôt (app propriétaire comprise) et lancer la suite de l'app en local —
+  le 18/11, deux tests jumeaux oubliés ont coûté un passage en file (PR #1468).

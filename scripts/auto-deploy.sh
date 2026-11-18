@@ -119,32 +119,40 @@ fi
 # déploiement qui livre une image périmée ne l'est pas.
 A_CONSTRUIRE=""
 TOUT=0
+# ── PIÈGE DU TUBE (18/11/2026) — NE PAS REMETTRE `echo "$CHANGES" | grep -q` ──
+# `grep -q` sort au PREMIER chemin trouvé ; `echo`, qui écrit encore, meurt
+# alors de SIGPIPE, et `pipefail` rend le test FAUX alors que le motif est là.
+# Liste plus longue que le tampon d'un tube (64 Ko) : toujours ; plus courte :
+# parfois. Vu en production : « le backend a-t-il bougé ? » a répondu NON sur un
+# lot de 737 fichiers — fastapi_ia jamais redémarré, nginx pas reconstruit, sous
+# un « DEPLOY — OK ». La liste est donc donnée à grep SANS tube.
+lot_contient() { grep -qE "$1" <<<"$CHANGES"; }
 # Le code BACKEND a-t-il bougé ? Monté en bind, seul un restart le charge
 # (cf. piège n° 2 plus bas). Diff impossible -> on suppose que oui.
 BACKEND_TOUCHE=0
-if [ -z "$CHANGES" ] || echo "$CHANGES" | grep -qE '^backend/'; then
+if [ -z "$CHANGES" ] || lot_contient '^backend/'; then
   BACKEND_TOUCHE=1
 fi
 if [ -z "$CHANGES" ]; then
   TOUT=1   # commit précédent inconnu ou diff impossible : on ne parie pas.
 else
-  if echo "$CHANGES" | grep -qE '^backend/django_core/(Dockerfile|requirements.*\.txt)$'; then
+  if lot_contient '^backend/django_core/(Dockerfile|requirements.*\.txt)$'; then
     A_CONSTRUIRE="$A_CONSTRUIRE django_core"
   fi
-  if echo "$CHANGES" | grep -qE '^backend/fastapi_ia/(Dockerfile|requirements.*\.txt)$'; then
+  if lot_contient '^backend/fastapi_ia/(Dockerfile|requirements.*\.txt)$'; then
     A_CONSTRUIRE="$A_CONSTRUIRE fastapi_ia"
   fi
   # ADCG10 : apps/web/worker/ est copié par frontend/Dockerfile.prod.
-  if echo "$CHANGES" | grep -qE '^(frontend/|apps/web/src/|apps/web/worker/|package(-lock)?\.json)'; then
+  if lot_contient '^(frontend/|apps/web/src/|apps/web/worker/|package(-lock)?\.json)'; then
     A_CONSTRUIRE="$A_CONSTRUIRE frontend"
   fi
-  if echo "$CHANGES" | grep -qE '^backend/minio/'; then   # ADCG10 : build: ./backend/minio
+  if lot_contient '^backend/minio/'; then   # ADCG10 : build: ./backend/minio
     A_CONSTRUIRE="$A_CONSTRUIRE minio"
   fi
-  if echo "$CHANGES" | grep -qE '(nginx)'; then
+  if lot_contient '(nginx)'; then
     A_CONSTRUIRE="$A_CONSTRUIRE nginx"
   fi
-  if echo "$CHANGES" | grep -qE '^docker-compose(\.prod)?\.yml$'; then
+  if lot_contient '^docker-compose(\.prod)?\.yml$'; then
     TOUT=1
   fi
 fi
@@ -264,7 +272,7 @@ fi
 # recharge (pg_reload_conf) ; un réglage qui exige un redémarrage est SIGNALÉ,
 # jamais appliqué par un redémarrage automatique de db.
 etape postgresql_conf
-if [ "$ok" = "1" ] && echo "$CHANGES" | grep -qE '^backend/db/postgresql\.conf$'; then
+if [ "$ok" = "1" ] && lot_contient '^backend/db/postgresql\.conf$'; then
   psql_db() { $COMPOSE exec -T db sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"$1\""; }
   psql_db "SELECT pg_reload_conf()" || ok=0
   if [ "$(psql_db "SELECT count(*) FROM pg_settings WHERE pending_restart" | tr -d '[:space:]')" != "0" ]; then

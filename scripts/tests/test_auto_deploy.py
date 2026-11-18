@@ -346,6 +346,26 @@ class AutoDeployTests(unittest.TestCase):
         banc.jouer()
         self.assertNotIn("exige un redémarrage", banc.journal)
 
+    def test_gros_lot_backend_et_nginx_toujours_vus(self):
+        """18/11/2026 — `echo "$CHANGES" | grep -q` sous `pipefail` : `grep -q` sort au premier chemin trouvé,
+        `echo` meurt de SIGPIPE et le test rend FAUX alors que le motif est là. Avec une liste plus longue que
+        le tampon d'un tube (64 Ko), « le backend a-t-il bougé ? » répondait toujours NON : `fastapi_ia` n'était
+        pas redémarré, nginx pas reconstruit (vu en production : `fastapi_ia : Up 28 hours` après « DEPLOY — OK »)."""
+        gros = "".join(f"backend/django_core/apps/taches/tests/test_fichier_{i:05d}.py\n" for i in range(4000))
+        lot = ("backend/django_core/apps/taches/views/base.py\nbackend/nginx/nginx.conf\n" + gros
+               + "frontend/src/pages/taches/Aujourdhui.jsx\n")
+        self.assertGreater(len(lot), 200_000)
+        banc = self.banc(changes=lot)
+        rc, sortie = banc.jouer()
+        self.assertEqual(rc, 0, sortie + banc.journal)
+        self.assertIn("rebuild ciblé : frontend nginx", banc.journal)
+        self.assertIsNotNone(banc.index(r"prod\.yml build frontend nginx$"))
+        self.assertIsNotNone(banc.index(
+            r"prod\.yml restart django_core celery_worker celery_worker_interactive celery_beat fastapi_ia$"))
+        banc = self.banc("pgconf_gros", changes="backend/db/postgresql.conf\n" + gros)
+        self.assertEqual(banc.jouer()[0], 0, banc.journal)
+        self.assertIsNotNone(banc.index(r"exec -T db sh -c psql .*SELECT pg_reload_conf\(\)"))
+
     def test_commit_deploye_passe_aux_conteneurs(self):
         """ADCG19 — `up -d` reçoit DEPLOYED_SHA = B ; le compose prod le passe aux 4 services."""
         banc = self.banc(changes="backend/django_core/apps/crm/views.py\n")
