@@ -41,6 +41,7 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.notifications.models import Notification
 from apps.records.models import Activity
 from apps.taches import agenda_externe as lecteur
 from apps.taches.choix import CanalIncitation, ClePreference, Frequence, TypeIncitationEcran
@@ -334,6 +335,9 @@ SANS_ID = {
     ('POST', 'agendas-externes/'): lambda m: ('agendas-externes/', {'url': 'https://agenda.example/b.ics'}),
     ('GET', 'jetons/'): lambda m: ('jetons/', None),
     ('POST', 'jetons/'): lambda m: ('jetons/', {'usage': 'flux'}),
+    # La notification de test part au SEUL compte de la requête (`empreinte_de` compte les notifications
+    # reçues : l'autre compte et l'autre société n'en reçoivent aucune).
+    ('POST', 'mon-iphone/test-notification/'): lambda m: ('mon-iphone/test-notification/', None),
     # Le projet de la capture est lu par son NOM parmi les projets du compte (test_capture.py : celui
     # d'un collègue reste du texte) ; aucun id n'est reçu.
     ('POST', 'capture/'): lambda m: ('capture/', {'titre': 'Appeler le fournisseur demain'}),
@@ -406,6 +410,9 @@ def empreinte_de(*comptes):
             lignes[(cle, compte.pk)] = list(_lignes_du_compte(cle, compte).order_by('pk').values_list())
         activites = Activity._base_manager.filter(Q(assigned_to=compte) | Q(created_by=compte))
         lignes[('activite', compte.pk)] = list(activites.order_by('pk').values_list())
+        # Les notifications reçues (la notification de test d'un autre compte n'arrive jamais ici).
+        lignes[('notifications', compte.pk)] = list(
+            Notification.objects.filter(recipient=compte).order_by('pk').values_list())
     return lignes
 
 
