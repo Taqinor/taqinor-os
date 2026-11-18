@@ -533,6 +533,10 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
     return sortie, ecrit, llm
 
 
+#: Argument d'outil du test de progression : 12 chiffres, illisible dans un horodatage Unix.
+ID_ARGUMENT = 987654321012
+
+
 class TourReelCartesTests(unittest.TestCase):
     """COP-B1 — le vrai `_run_agent` rend toutes les cartes et les ecrit dans
     l'historique avec la reponse."""
@@ -568,7 +572,7 @@ class TourReelCartesTests(unittest.TestCase):
         ctx.progression_cle = _at.cle_progression(1, "tour-abc12345")
         with mock.patch.object(_at, "_progression_redis", lambda: redis):
             _tour([_appel_outil("crm_lead_list", {}),
-                   _appel_outil("ventes_devis_proposal_pdf", {"id": 45}, "appel-2"),
+                   _appel_outil("ventes_devis_proposal_pdf", {"id": ID_ARGUMENT}, "appel-2"),
                    _appel_outil("crm_lead_list", {}, "appel-3"),
                    AIMessage(content="Voici.")],
                   catalogue=_FULL_CATALOGUE, ctx=ctx)
@@ -578,7 +582,9 @@ class TourReelCartesTests(unittest.TestCase):
             self.assertEqual([e["libelle"] for e in lu["etapes"]],
                              ["Lister les leads", "Générer le PDF", "Lister les leads"])
             self.assertFalse(lu["fini"])
-            self.assertNotIn("45", json.dumps(lu["etapes"]))
+            # L'argument ne sort jamais dans une etape. Un id a 12 chiffres ne peut pas se lire dans l'horodatage
+            # `t` (10 chiffres) : avec « 45 », le test rougissait chaque fois que l'heure contenait « 45 ».
+            self.assertNotIn(str(ID_ARGUMENT), json.dumps(lu["etapes"]))
             vide = {"etapes": [], "fini": False}
             self.assertEqual(_ep.get_progression("tour-abc12345", token_payload={"user_id": 2}), vide)
             self.assertEqual(_ep.get_progression("x", token_payload={"user_id": 1}), vide)
