@@ -766,6 +766,28 @@ README (relances en double avant d'ouvrir à un commercial, écarts d'apparence,
 - Production à 13 h 35 UTC : TOUJOURS à moitié basculée (Reda n'a pas encore relancé la séquence ; notification
   envoyée sur son téléphone à 13 h 03).
 
+**18/11/2026, 14 h 28 UTC — #1468 FUSIONNÉE (`main` = `a0e492a1f8`) ; plan Tâches : 0 tâche ouverte**
+
+- Le rôle « Directeur » porte `taches_voir` sur `main`. EN LIGNE seulement après le deploy de Reda — avec la séquence
+  COURANTE (ligne `ssh` de la fiche `docs/claude-memory/deploy-manuel-1711.md`). Un seul deploy apporte tout : la
+  réparation de la production, la fusion 4 et la tuile pour son compte.
+- Production relue à 14 h 28 UTC (lecture seule) : TOUJOURS à moitié basculée (adresse-témoin en 404/500, 11 erreurs sur
+  30 appels à `health/ready`, dernier démarrage inchangé depuis 08 h 35). Reda n'a pas encore déployé ; deux
+  notifications envoyées sur son téléphone (13 h 03 et à la fusion).
+- **Deux leçons payées sur cette PR**
+  1. *Jumeaux oubliés.* La file de merge a refusé le premier passage (13 h 49) : `apps/taches/tests/test_socle.py`
+     portait deux fois l'ancienne règle « Administrateur seul ». La recherche des assertions existantes avait EXCLU
+     `apps/taches` (`':!…/apps/taches'`) et n'y cherchait que le mot « Directeur ». Avant de changer une règle :
+     chercher le LITTÉRAL attendu par les tests (`['Administrateur']`) dans tout le dépôt, app propriétaire comprise,
+     et lancer la suite complète de l'app (ici 1 923 tests, 4 min) AVANT de mettre en file — une PR `claude/*` n'a
+     que la CI allégée, les tests à base ne tournent qu'en file.
+  2. *Ne pas toucher une PR en file.* Modifier la description de la PR quelques secondes après sa mise en file l'en a
+     sortie (« INVALID_MERGE_COMMIT », 14 h 05) et a annulé sa CI en cours. Écrire le corps de la PR AVANT d'activer la
+     fusion automatique, puis ne plus y toucher. À verser dans `docs/claude-memory/merge-queue-main.md` à la prochaine
+     PR qui touche la mémoire (pas de PR à part pour une ligne).
+- Reste : contrôle de la production après le deploy (adresse-témoin en 401, zéro page nue sur 30 appels,
+  `dernier_demarrage.sha` non nul) ; la carte « Refuser un deploy qui ne redémarre pas Django » attend Reda.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
