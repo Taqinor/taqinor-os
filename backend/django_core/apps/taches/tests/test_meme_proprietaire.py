@@ -404,11 +404,9 @@ AUSSI_SANS_ID = (
 )
 #: Couples de reference/api.md §3 NON balayés, chacun avec sa raison : une route qui ne reçoit ni id ni
 #: donnée d'un compte. Une exemption tombe dès que la route est construite (`ListeFermeeTests`).
-EXEMPTIONS = {
-    ('POST', 'mon-iphone/test-notification/'): (
-        "bouchon `PasEncore` (501) pour tout compte : ne reçoit aucun id, ne lit ni n'écrit aucune ligne ; "
-        "à balayer dans `SANS_ID` (push vers le seul compte appelant) dès sa construction."),
-}
+#: VIDE depuis que `mon-iphone/test-notification/` est construite et balayée dans `SANS_ID` (push vers le seul
+#: compte appelant) : les 106 couples sont tous balayés. Une entrée ici = un bouchon 501 avec sa raison écrite.
+EXEMPTIONS = {}
 #: Routes sans id dont la réponse, appelée par le compte MARQUÉ lui-même, montre sa marque (témoin de
 #: `test_sans_id_aucun_objet_d_un_autre_compte_n_est_servi`) : toutes celles qui nomment un objet. Les autres
 #: (compteurs, réglages, rythme, créations, `coach/entete/`) ne servent aucun nom du monde ; elles sont
