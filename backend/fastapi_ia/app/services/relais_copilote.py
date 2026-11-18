@@ -154,6 +154,54 @@ def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
     return ctx.catalogue_tour
 
 
+# ── Copilote v2 (F4) — ce que l'appelant peut envoyer ────────────────────────
+
+#: Longueur d'une question (caractères) : 2 000 comme avant (422 au-delà),
+#: 6 000 quand le copilote est allumé pour l'appelant (message de client collé).
+LIMITE_QUESTION = 2000
+LIMITE_QUESTION_COPILOTE = 6000
+#: Le modèle de repli (Groq : 8 000 jetons par minute) ne prend jamais plus
+#: que la limite d'avant : au-delà, le tour le dit au lieu de partir.
+MESSAGE_QUESTION_LONGUE = (
+    "Ta demande est trop longue pour le modèle de secours en service en ce "
+    "moment (2 000 caractères au plus). Raccourcis-la ou colle seulement "
+    "l'essentiel du message, puis renvoie-la.")
+
+
+def question_trop_longue_pour(fournisseur: Optional[str], question) -> bool:
+    """Vrai si un tour servi par ``fournisseur`` (hors claude) recevrait une
+    question au-delà de :data:`LIMITE_QUESTION`."""
+    return ((fournisseur or "").lower() != "claude"
+            and len(question or "") > LIMITE_QUESTION)
+
+
+def reponse_question_longue(fournisseur: Optional[str]) -> dict[str, Any]:
+    """Le tour refusé, dit en français, à la forme du retour de `_run_agent`
+    (aucun appel au modèle ; l'appelant pose `repli` et `modele`)."""
+    return {"answer": MESSAGE_QUESTION_LONGUE, "sql_query": "", "data": None,
+            "action_performed": False, "proposal": None, "result": None,
+            "cartes": [], "moteur": MOTEUR_LANGCHAIN, "manuel_present": False,
+            "intention": None, "erreur": None, "outils_appeles": [],
+            "tokens": {"cache_read": 0, "cache_write": 0, "input": 0, "output": 0}}
+
+
+def capacites(ctx) -> dict[str, Any]:
+    """Contrat `assistant_reponse.json` → `capacites` : la longueur de question
+    permise à l'appelant et s'il peut joindre des images. Lu du catalogue de
+    Django (copilote allumé ou non pour CE compte), jamais d'un réglage du
+    navigateur. Sans relais Django : les valeurs d'avant (2 000, aucune image)."""
+    from app.services.sql_agent_service import SQL_AGENT_PROVIDER
+    catalogue = catalogue_du_tour(ctx)
+    copilote = prompt_copilote.copilote_allume(catalogue)
+    return {"limite_question": LIMITE_QUESTION_COPILOTE if copilote else LIMITE_QUESTION,
+            "images_acceptees": bool(IMAGES_ACCEPTEES and copilote
+                                     and moteur_natif_actif(catalogue, SQL_AGENT_PROVIDER))}
+
+
+#: Les images jointes à une question (F5) ne sont pas encore servies.
+IMAGES_ACCEPTEES = False
+
+
 # ── A5 — un texte tiers est-il entré dans le tour ? (le SERVEUR le dit) ──────
 # Le marquage vit sur le contexte du tour ; `action_tools.garde_ecriture_taches`
 # le lit avant toute écriture `taches.*` : le modèle ne peut ni l'effacer ni

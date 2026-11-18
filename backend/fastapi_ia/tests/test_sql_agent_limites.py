@@ -154,6 +154,58 @@ class SqlAgentLimitesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(calls), 1)
 
+    def _patch_catalogue(self, lot):
+        """Le catalogue de l'appelant (lot `copilote` = copilote allume)."""
+        from app.services import action_tools as _at
+
+        def appel(ctx, path, method="POST", payload=None, **kwargs):
+            if path == _at._CATALOGUE_PATH:
+                return {"ok": True, "status": 200, "data": {"actions": [
+                    {"key": "crm.lead.list", "lot": lot}]}}
+            return {"ok": True, "status": 200, "data": {"permissions": []}}
+        patcher = mock.patch.multiple(_at, _django_call=appel,
+                                      DJANGO_INTERNAL_URL="http://dj:8000")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_question_eteint_422_identique_a_pydantic(self):
+        """F4 — copilote ÉTEINT : au-delà de 2 000, le corps du 422 est celui
+        que pydantic rendait avec `max_length=2000` (octet pour octet)."""
+        from pydantic import BaseModel, Field
+
+        class _Avant(BaseModel):
+            question: str = Field(..., max_length=2000)
+        avant = FastAPI()
+
+        @avant.post("/q")
+        def _q(request: _Avant):
+            return {}
+        self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("herite")
+        client = self._client(106)
+        for longueur in (2001, 3000, 7000):
+            with self.subTest(longueur=longueur):
+                corps = {"question": "x" * longueur}
+                r = client.post("/sql-agent/query", json=corps)
+                self.assertEqual(r.status_code, 422)
+                self.assertEqual(r.json(), TestClient(avant).post("/q", json=corps).json())
+
+    def test_question_copilote_allume_6000(self):
+        """F4 — copilote ALLUMÉ : 6 000 caractères acceptés (message collé),
+        422 au-delà avec la borne 6 000."""
+        calls = self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("copilote")
+        client = self._client(107)
+        r = client.post("/sql-agent/query", json={"question": "x" * 6000})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(calls), 1)
+        r = client.post("/sql-agent/query", json={"question": "x" * 6001})
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 6000})
+        self.assertEqual(len(calls), 1)
+
     def test_debit_limite_429(self):
         calls = self._patch_llm()
         self._patch_redis(_FakeRedis())
@@ -362,6 +414,42 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertTrue(out["repli"])
         self.assertTrue(out["answer"].startswith(self.svc.MESSAGE_BUDGET_ATTEINT))
         self.assertIn("Reponse du repli.", out["answer"])
+
+    def test_question_longue_jamais_envoyee_au_repli(self):
+        """F4 — une question de plus de 2 000 caractères (copilote allumé) ne
+        part jamais sur Groq : au plafond du jour, après un refus de Claude, ou
+        Groq en fournisseur principal, le tour le dit en français."""
+        import asyncio
+        import contextlib
+        from app.services import relais_copilote as relais
+        refuse, credit_nul, groq = _llm_factices()
+
+        def groq_interdit():
+            raise AssertionError("la question longue ne doit pas partir sur Groq")
+        cas = (
+            ("plafond", lambda: refuse(messages=iter([])),
+             [mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                                staticmethod(lambda ctx: True))]),
+            ("refus_claude", lambda: refuse(messages=iter([]), erreur=credit_nul()), []),
+            ("groq_principal", groq_interdit,
+             [mock.patch.object(self.svc, "SQL_AGENT_PROVIDER", "groq")]),
+        )
+        for nom, claude, patches in cas:
+            with self.subTest(cas=nom):
+                construits = self._poser(claude, groq_interdit)
+                with contextlib.ExitStack() as pile:
+                    for p in patches:
+                        pile.enter_context(p)
+                    out = asyncio.run(self.service.query(question="x" * 3000, user_id=1, company_id=7))
+                # Au plafond, la phrase du budget précède celle de la longueur.
+                self.assertTrue(out["answer"].endswith(relais.MESSAGE_QUESTION_LONGUE), out["answer"])
+                self.assertEqual(out["repli"], nom != "groq_principal")
+                self.assertNotIn("groq", construits)
+        # À la borne d'avant (2 000), le repli sert toujours le tour.
+        self._poser(lambda: refuse(messages=iter([]), erreur=credit_nul()), groq)
+        with self.assertLogs(self.svc.logger, level="WARNING"):
+            out = asyncio.run(self.service.query(question="x" * 2000, user_id=1, company_id=7))
+        self.assertEqual(out["answer"], "Reponse du repli.")
 
     def test_plafond_sans_repli_distinct_reste_sur_claude(self):
         """Repli vide : jamais d'arret, le tour reste sur Claude + avertissement."""

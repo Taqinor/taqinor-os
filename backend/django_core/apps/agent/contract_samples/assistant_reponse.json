@@ -235,6 +235,14 @@
       "fini": false
     }
   },
+  "capacites": {
+    "endpoint": "GET /api/fastapi/sql-agent/capacites",
+    "regles": "Copilote v2 (F4, 18/11/2026) — ce que l'écran peut envoyer pour CE compte, lu par le panneau à son ouverture (mêmes gardes que `/sql-agent/suggestions` : jeton + compte interne). `limite_question` : 6000 quand le copilote est allumé pour l'appelant (son catalogue porte une action du lot `copilote`), sinon 2000 ; au-delà, `POST /sql-agent/query` répond 422 `string_too_long` (loc body.question) — copilote éteint, le MÊME 422 qu'avant, octet pour octet. Un tour servi par le modèle de repli (Groq) refuse une question de plus de 2000 caractères par une phrase française (aucun appel au modèle). `images_acceptees` : vrai seulement copilote allumé ET moteur natif ET fournisseur claude ; faux tant que les images ne sont pas servies. Écran sans réponse de cette route : 2000 et aucune image.",
+    "exemple": {
+      "limite_question": 6000,
+      "images_acceptees": false
+    }
+  },
   "deploiement": {
     "regles": "Deux interrupteurs, tous deux ÉTEINTS pour les commerciaux au merge. (1) Django `ASSISTANT_COPILOTE` = `aucun` | `admins` (défaut) | `tous` : sert ou non les actions du lot `copilote` (et retire alors celles du lot `herite`) dans `GET /api/django/agent/actions/` ; chaque action du catalogue porte `lot`. Le relais n'a aucun réglage à lui pour cela : il applique les consignes du copilote dès que le catalogue reçu contient une action du lot `copilote`. (2) FastAPI `ASSISTANT_MOTEUR` = `langchain` (défaut) | `natif` : moteur du fournisseur claude ; le moteur natif n'est pris que pour un compte dont le copilote est allumé. Les réparations déterministes (cartes, confirmation à usage unique, validations, écran) ne dépendent d'aucun interrupteur."
   }

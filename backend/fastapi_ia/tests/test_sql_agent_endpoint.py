@@ -1281,6 +1281,32 @@ class ContexteEcranAic9Tests(unittest.TestCase):
                                 params={"ecran": "/stock"})
             self.assertEqual(r.json(), [])
 
+    def test_capacites_de_l_appelant(self):
+        """Copilote v2 (F4) — `GET /sql-agent/capacites` : la forme du contrat
+        (`assistant_reponse.json` → `capacites.exemple`) ; 2 000 / aucune image
+        copilote éteint ou sans relais Django ; 6 000 copilote allumé."""
+        from app.services import relais_copilote as relais
+        chemin = os.path.join(os.path.dirname(__file__), "..", "..", "django_core",
+                              "apps", "agent", "contract_samples", "assistant_reponse.json")
+        with open(chemin, encoding="utf-8") as f:
+            contrat = json.load(f)["capacites"]
+        self.assertEqual(contrat["endpoint"], "GET /api/fastapi/sql-agent/capacites")
+
+        def lire(lot, url="http://dj:8000"):
+            def appel(ctx, path, method="POST", payload=None, **kwargs):
+                if path == _at._CATALOGUE_PATH:
+                    return {"ok": True, "status": 200, "data": {"actions": [
+                        {"key": "crm.lead.chercher", "lot": lot}]}}
+                return self._me(ctx, path, method, payload)
+            with mock.patch.multiple(_at, _django_call=appel, DJANGO_INTERNAL_URL=url):
+                r = self.client.get("/sql-agent/capacites")
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(set(r.json()), set(contrat["exemple"]))
+            return r.json()
+        self.assertEqual(lire("herite"), {"limite_question": 2000, "images_acceptees": False})
+        self.assertEqual(lire("copilote", url=""), {"limite_question": 2000, "images_acceptees": False})
+        self.assertEqual(lire("copilote")["limite_question"], relais.LIMITE_QUESTION_COPILOTE)
+
 
 # ── A5 (revue F3) — la garde des écritures `taches.*` : ce que le tour a lu ─────────────────────────────
 # (dans ce module et non dans test_action_tools.py : celui-là passerait 2 000 lignes, garde C20).

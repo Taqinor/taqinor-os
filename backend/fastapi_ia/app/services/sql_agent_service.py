@@ -515,9 +515,7 @@ def _contenu_systeme(provider: str, allow_price: bool,
     MEME bloc, donc dans le cache ; sinon le prompt d'avant, inchange.
     `taches` : le bloc « TACHES — CONSIGNES DU COPILOTE » seulement pour un
     tour dont le catalogue porte une action `taches.*` (droit `taches_voir`).
-    Copilote v2 (F1) : ses consignes passent AVANT `_AGENT_PREFIX` — le modele
-    lit son role avant le guide SQL ; eteint, le bloc commence toujours par
-    `_AGENT_PREFIX`, octet pour octet."""
+    F1 : consignes AVANT `_AGENT_PREFIX` (role avant le guide SQL)."""
     docs = _charger_docs_assistant()
     base = _AGENT_PREFIX + ("" if allow_price else _MARGIN_RESTRICTION) + _POLITIQUE_NON_FIABLE
     if copilote:
@@ -1641,6 +1639,8 @@ class SQLAgentService:
             actions_available, build_action_tools, outil_report_gap,
         )
         from app.services import relais_copilote as relais
+        if relais.question_trop_longue_pour(provider or SQL_AGENT_PROVIDER, question):  # F4 — repli Groq
+            return relais.reponse_question_longue(provider or SQL_AGENT_PROVIDER)
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
         # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
