@@ -1,0 +1,36 @@
+{
+  "endpoint": "GET /api/django/ventes/assistant/catalogue/",
+  "pourquoi": "COP2-V (PACT10, 18/11/2026) — l'assistant n'avait AUCUN moyen de lire le catalogue : il demandait la puissance d'un panneau au lieu de la lire, et ne pouvait nommer ni un onduleur ni une batterie. Lecture COMPACTE du catalogue vendable de la société (produits de la société + globaux, non archivés, avec un prix de vente), classée par le MÊME code que le compositeur de devis : ce que cette recherche rend est ce que la composition imposée accepte. Filtres, tous facultatifs et bornés : `q` (texte), `genre` (panneau | onduleur | batterie), `kw`, `kwh`, `wc`, `phase` (monophase | triphase), `famille` (hybride | reseau), `limite` (10 par défaut, 25 au plus). Un paramètre inconnu ou hors borne → 400 qui le nomme. `statut` vaut `unique`, `ambigu` ou `aucun` quand un genre et une taille sont donnés (sinon chaîne vide) ; `raison` dit pourquoi en une phrase. `en_stock` n'est suivi que pour les batteries (`null` ailleurs). JAMAIS de prix d'achat, de marge ni de quantité en stock, même pour un administrateur.",
+  "exemple": {
+    "q": "",
+    "genre": "onduleur",
+    "total": 1,
+    "limite": 10,
+    "statut": "unique",
+    "raison": "",
+    "lignes": [
+      {
+        "produit_id": 88,
+        "nom": "Onduleur hybride Deye 10kW Triphasé",
+        "marque": "Deye",
+        "genre": "onduleur",
+        "kw": 10,
+        "kwh": null,
+        "wc": null,
+        "phase": "triphase",
+        "famille": "hybride",
+        "prix_ttc": "28000.00",
+        "en_stock": null
+      }
+    ]
+  },
+  "exemple_aucun": {
+    "q": "",
+    "genre": "batterie",
+    "total": 0,
+    "limite": 10,
+    "statut": "aucun",
+    "raison": "Aucune batterie de 7 kWh au catalogue. Tailles les plus proches : 5 kWh, 10 kWh.",
+    "lignes": []
+  }
+}

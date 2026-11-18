@@ -1,0 +1,74 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/auto/",
+  "pourquoi": "COP2-V (PACT10, 18/11/2026) — « prépare-lui un devis : 10 panneaux, onduleur triphasé de 10 kW, batterie de 5 kWh » : le devis automatique ne savait pas IMPOSER un onduleur ni une batterie, et sa réponse ne disait pas ce qu'il avait composé (l'assistant affichait seulement « Référence : DEV-… »). Deux ajouts. (1) Composition imposée, résidentiel seulement : `nb_panneaux` (obligatoire dès qu'un champ imposé est présent), `panneau_produit_id`, `onduleur_produit_id` OU `onduleur_kw` + `onduleur_phase`, `batterie_produit_id` OU `batterie_kwh` ; `target_kwc` et `scenario=les_deux` sont refusés dans ce mode ; une batterie demandée force le scénario « avec » et un onduleur hybride. Chaque élément se résout sur UN produit du catalogue (société + globaux, non archivés, avec prix) ; zéro ou plusieurs candidats → 409 `choix` qui les nomme, le serveur ne choisit jamais en silence. (2) La réponse — imposée ou non, rejeu d'idempotence compris — porte `composition` (les lignes du devis créé, prix TTC), `devis_id` (alias de `id`), `lead_id` et `alertes`. C'est la donnée de la carte `devis_cree` de l'assistant : référence, lignes, total, « Ouvrir le devis », PDF par `/proposal` seulement. Sans consommation sur le lead, économies et retour sont `null` (jamais inventés). Aucun prix d'achat, aucune marge, nulle part.",
+  "corps_impose": {
+    "lead": 1637,
+    "nb_panneaux": 10,
+    "onduleur_kw": 10,
+    "onduleur_phase": "triphase",
+    "batterie_kwh": 5
+  },
+  "exemple": {
+    "id": 451,
+    "devis_id": 451,
+    "lead_id": 1637,
+    "reference": "DEV-202611-0451",
+    "statut": "brouillon",
+    "kwc": 7.1,
+    "nb_lignes": 11,
+    "total_ttc": "73000.00",
+    "composition": [
+      {
+        "designation": "Onduleur hybride Deye 10kW Triphasé",
+        "quantite": 1,
+        "prix_unitaire_ttc": "28000.00",
+        "total_ttc": "28000.00",
+        "variante": ""
+      },
+      {
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": 10,
+        "prix_unitaire_ttc": "1400.00",
+        "total_ttc": "14000.00",
+        "variante": ""
+      },
+      {
+        "designation": "Batterie Dyness 5 kWh",
+        "quantite": 1,
+        "prix_unitaire_ttc": "14000.00",
+        "total_ttc": "14000.00",
+        "variante": ""
+      }
+    ],
+    "alertes": [
+      {
+        "code": "composition_imposee",
+        "message": "Composition imposée : 10 panneaux, onduleur hybride 10 kW triphasé, batterie 5 kWh — la facture du lead n'a pas servi au dimensionnement."
+      }
+    ]
+  },
+  "exemple_409_choix": {
+    "detail": "Deux batteries de 5 kWh conviennent : Batterie Dyness 5 kWh (produit 147) ou Batterie Lithium 5 kWh (produit 152). Laquelle ?",
+    "field": "batterie_produit_id",
+    "choix": [
+      {
+        "produit_id": 147,
+        "nom": "Batterie Dyness 5 kWh",
+        "marque": "Dyness",
+        "kw": null,
+        "kwh": 5,
+        "phase": "",
+        "prix_ttc": "14000.00"
+      },
+      {
+        "produit_id": 152,
+        "nom": "Batterie Lithium 5 kWh",
+        "marque": "",
+        "kw": null,
+        "kwh": 5,
+        "phase": "",
+        "prix_ttc": "15500.00"
+      }
+    ]
+  }
+}

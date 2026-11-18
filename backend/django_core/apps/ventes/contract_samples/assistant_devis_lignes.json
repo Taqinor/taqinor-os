@@ -1,0 +1,30 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/lignes-assistant/",
+  "pourquoi": "COP2-V (PACT10, 18/11/2026) — « aucune action ne liste les lignes d'un devis » : modifier ou retirer une ligne demande son identifiant, que l'assistant ne pouvait pas lire. Lecture des lignes d'UN devis dans la portée de l'utilisateur (société + visibilité de son rôle, celle de la liste des devis). Chaque ligne porte `ligne_id` (pour `ventes.devis.ligne_modifier` / `ligne_supprimer`) et `produit_id`. Prix TTC seulement ; jamais de prix d'achat ni de marge.",
+  "exemple": {
+    "devis_id": 451,
+    "reference": "DEV-202611-0451",
+    "statut": "brouillon",
+    "total_ttc": "73000.00",
+    "lignes": [
+      {
+        "ligne_id": 9001,
+        "produit_id": 88,
+        "designation": "Onduleur hybride Deye 10kW Triphasé",
+        "quantite": 1,
+        "prix_unitaire_ttc": "28000.00",
+        "total_ttc": "28000.00",
+        "variante": ""
+      },
+      {
+        "ligne_id": 9002,
+        "produit_id": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": 10,
+        "prix_unitaire_ttc": "1400.00",
+        "total_ttc": "14000.00",
+        "variante": ""
+      }
+    ]
+  }
+}

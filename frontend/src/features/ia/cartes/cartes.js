@@ -30,7 +30,7 @@ export const MESSAGE_INCERTAIN = 'Résultat incertain : vérifie si l’action a
  *  Django). Toute autre valeur — ou `null` — tombe sur la carte générique. */
 export const CARTES_CONNUES = Object.freeze([
   'liste_leads', 'file_touches', 'matin', 'fiche_lead', 'touche', 'suite_touche',
-  'wa_message', 'wa_devis', 'document', 'visite', 'diagnostic',
+  'wa_message', 'wa_devis', 'document', 'devis_cree', 'visite', 'diagnostic',
   // Tâches (TCH118) : rendues DIRECTEMENT par `features/taches/cartes/CartesTaches`.
   'ma_journee', 'plan_propose', 'liste_taches', 'tache', 'capture_apercu', 'rythme',
   'plan_projet', 'projet', 'revue_semaine', 'priorites', 'point',
