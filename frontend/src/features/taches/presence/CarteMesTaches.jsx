@@ -23,16 +23,24 @@ const NB_LIGNES = 3
 
 const estTache = (item) => item?.type === 'tache'
 
-/** Les tâches gardées, sans doublon : l'essentiel d'abord, puis la journée, puis les faites. */
-function lignesDeLaCarte(donnees, faitesLocales) {
+/** Les tâches gardées, sans doublon, dans l'ordre de l'écran : l'essentiel, le prévu, « Ce soir », puis les faites.
+ *  `etats` : ce que l'utilisateur vient de cocher ou décocher (id → fait ?), avant que le serveur ne soit relu. */
+function lignesDeLaCarte(donnees, etats) {
   const vues = new Set()
-  const fait = (t) => t.statut === 'fait' || faitesLocales.has(t.id)
-  const toutes = [...(donnees.essentiel ?? []), ...(donnees.journee ?? []), ...(donnees.faites ?? [])]
+  const fait = (t) => (etats.has(t.id) ? etats.get(t.id) : t.statut === 'fait')
+  const toutes = [...(donnees.essentiel ?? []), ...(donnees.journee ?? []), ...(donnees.ce_soir ?? []), ...(donnees.faites ?? [])]
     .filter(estTache)
     .filter((t) => (vues.has(t.id) ? false : vues.add(t.id)))
   const ouvertes = toutes.filter((t) => !fait(t))
   const faites = toutes.filter(fait)
-  return { ouvertes: ouvertes.length, lignes: [...ouvertes, ...faites].slice(0, NB_LIGNES), fait }
+  return { lignes: [...ouvertes, ...faites].slice(0, NB_LIGNES), fait }
+}
+
+/** « {n} à faire » : les éléments ouverts GARDÉS d'Aujourd'hui, comme la pastille (regles.md §4.9) — `prevues − faites`
+ *  de la progression SERVIE ; sans ce chiffre, rien n'est affiché (jamais un compte refait ici). */
+function aFaire(progression) {
+  const { prevues, faites } = progression ?? {}
+  return Number.isInteger(prevues) && Number.isInteger(faites) ? Math.max(0, prevues - faites) : 0
 }
 
 function Compte({ donnees, ouvertes }) {
@@ -77,7 +85,7 @@ function Ligne({ tache, fait, onTerminer, onOuvrir }) {
 function CarteActive() {
   const navigate = useNavigate()
   const [donnees, setDonnees] = useState(null)
-  const [faitesLocales, setFaitesLocales] = useState(() => new Set())
+  const [etats, setEtats] = useState(() => new Map())
 
   useEffect(() => {
     let vivant = true
@@ -88,22 +96,35 @@ function CarteActive() {
   }, [])
 
   if (!donnees) return null
-  const { ouvertes, lignes, fait } = lignesDeLaCarte(donnees, faitesLocales)
-  const poserFaite = (id, oui) => setFaitesLocales((s) => { const suite = new Set(s); if (oui) suite.add(id); else suite.delete(id); return suite })
-  const poserProgression = (progression) => {
-    if (progression && typeof progression.faites === 'number') setDonnees((d) => (d ? { ...d, progression } : d))
+  const { lignes, fait } = lignesDeLaCarte(donnees, etats)
+  const poserEtat = (id, oui) => setEtats((s) => new Map(s).set(id, oui))
+  /** La progression servie par le geste (`tache_ecrite.progression`, `geste_annuler.progression`) ; sans elle, Aujourd'hui
+   *  est relu UNE fois (la carte entière, jamais une liste) et ses lignes redeviennent celles du serveur. */
+  const reconcilier = async (progression) => {
+    if (progression && typeof progression.faites === 'number') { setDonnees((d) => (d ? { ...d, progression } : d)); return true }
+    try {
+      const { data } = await lireAujourdhui()
+      setDonnees(data)
+      setEtats(new Map())
+      return true
+    } catch {
+      return false // relecture en échec : la carte garde ses lignes et le dernier relevé du serveur, jamais un faux chiffre
+    }
   }
 
   const terminer = async (tache, suivant) => {
-    const avant = donnees.progression
     const { data } = suivant ? await terminerTache(tache.id) : await rouvrirTache(tache.id)
-    poserFaite(tache.id, suivant)
-    poserProgression(data?.progression)
+    poserEtat(tache.id, suivant)
+    await reconcilier(data?.progression)
     if (!suivant) return
     proposerAnnuler({
       message: 'Faite',
       annonce: `Fait : ${tache.titre}`,
-      onAnnuler: async () => { await annulerGeste(data?.geste_id); poserFaite(tache.id, false); poserProgression(avant) },
+      onAnnuler: async () => {
+        const bilan = await annulerGeste(data?.geste_id)
+        poserEtat(tache.id, false)
+        await reconcilier(bilan?.data?.progression)
+      },
     })
   }
 
@@ -111,7 +132,7 @@ function CarteActive() {
     <div className="tch">
       <section className="ep-carte-cockpit" aria-label="Tâches, aujourd'hui">
         <div className="ep-cc-tete">
-          <div className="ep-cc-titre"><b>Tâches · Aujourd'hui</b><Compte donnees={donnees} ouvertes={ouvertes} /></div>
+          <div className="ep-cc-titre"><b>Tâches · Aujourd'hui</b><Compte donnees={donnees} ouvertes={aFaire(donnees.progression)} /></div>
         </div>
         {lignes.length > 0 ? (
           <div className="liste" role="list">

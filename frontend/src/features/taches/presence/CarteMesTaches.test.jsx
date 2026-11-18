@@ -54,22 +54,71 @@ afterEach(() => {
 })
 
 describe('TCH103 — carte du cockpit « Tâches · Aujourd\'hui »', () => {
-  it('« {faites} sur {objectif} », les tâches à faire restantes, trois lignes : l\'essentiel d\'abord', async () => {
+  it('« {faites} sur {objectif} », « {n} à faire » (progression servie), trois lignes : essentiel, prévu, puis « Ce soir »', async () => {
     const donnees = jour()
     monter()
     const carte = await screen.findByRole('region', { name: 'Tâches, aujourd\'hui' })
     expect(within(carte).getByText('Tâches · Aujourd\'hui')).toBeInTheDocument()
     expect(carte).toHaveTextContent(`${donnees.progression.faites} sur ${donnees.objectif.nb}`)
+    // le nombre « à faire » est celui d'Aujourd'hui : prévues − faites de la progression servie (regles.md §4.9)
+    expect(carte).toHaveTextContent(`${donnees.progression.prevues - donnees.progression.faites} à faire`)
     const lignes = within(carte).getAllByRole('listitem')
     expect(lignes).toHaveLength(3)
-    // l'essentielle d'abord, puis le reste de la journée (l'activité de l'ERP n'est pas une tâche), puis une faite
+    // l'essentielle d'abord, puis le prévu (l'activité de l'ERP n'est pas une tâche), puis « Ce soir » (F4 revue #10)
     expect(lignes[0]).toHaveTextContent(donnees.essentiel[0].titre)
     expect(within(lignes[0]).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
     expect(lignes[1]).toHaveTextContent(donnees.journee[0].titre)
-    expect(lignes[2]).toHaveTextContent(donnees.faites[0].titre)
-    expect(lignes[2]).toHaveClass('faite')
+    expect(lignes[2]).toHaveTextContent(donnees.ce_soir[0].titre)
+    expect(carte).not.toHaveTextContent(donnees.faites[0].titre)
+  })
+
+  it('F4 revue #10 — avec « Ce soir » seul d\'ouvert, la ligne du soir est montrée et comptée', async () => {
+    const donnees = jour()
+    donnees.essentiel = []
+    donnees.journee = []
+    donnees.progression = { ...donnees.progression, faites: 1, prevues: 2 }
+    mocks.lireAujourdhui.mockResolvedValue({ data: donnees })
+    monter()
+    const carte = await screen.findByRole('region', { name: 'Tâches, aujourd\'hui' })
+    expect(within(carte).getAllByRole('listitem')[0]).toHaveTextContent(donnees.ce_soir[0].titre)
+    expect(carte).toHaveTextContent('1 à faire')
+  })
+
+  it('F4 revue #9 — décocher une tâche faite : la case, « {faites} sur {objectif} » et « {n} à faire » suivent (progression rendue)', async () => {
+    const donnees = jour()
+    donnees.ce_soir = []
+    donnees.progression = { ...donnees.progression, faites: 1, prevues: 3 }
+    mocks.lireAujourdhui.mockResolvedValue({ data: donnees })
+    mocks.rouvrirTache.mockResolvedValue({ data: { progression: { ...donnees.progression, faites: 0, prevues: 3 } } })
+    const user = userEvent.setup()
+    monter()
+    const carte = await screen.findByRole('region', { name: 'Tâches, aujourd\'hui' })
+    expect(carte).toHaveTextContent('1 sur 5')
     expect(carte).toHaveTextContent('2 à faire')
-    expect(carte).not.toHaveTextContent(donnees.journee[1].titre)
+    await user.click(within(carte).getByRole('checkbox', { name: `Marquer « ${donnees.faites[0].titre} » comme faite` }))
+    await waitFor(() => expect(mocks.rouvrirTache).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(carte).toHaveTextContent('0 sur 5'))
+    expect(carte).toHaveTextContent('3 à faire')
+    within(carte).getAllByRole('checkbox').forEach((case_) => expect(case_).not.toBeChecked())
+  })
+
+  it('F4 revue #9 — une réponse sans progression : la carte relit Aujourd\'hui (une fois) au lieu de garder un chiffre périmé', async () => {
+    const avant = jour()
+    avant.ce_soir = []
+    avant.progression = { ...avant.progression, faites: 1, prevues: 3 }
+    const apres = structuredClone(avant)
+    apres.faites = []
+    apres.journee = [...apres.journee, { ...avant.faites[0], statut: 'a_faire' }]
+    apres.progression = { ...avant.progression, faites: 0, prevues: 4 }
+    mocks.lireAujourdhui.mockResolvedValueOnce({ data: avant }).mockResolvedValue({ data: apres })
+    mocks.rouvrirTache.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    monter()
+    const carte = await screen.findByRole('region', { name: 'Tâches, aujourd\'hui' })
+    await user.click(within(carte).getByRole('checkbox', { name: `Marquer « ${avant.faites[0].titre} » comme faite` }))
+    await waitFor(() => expect(carte).toHaveTextContent('0 sur 5'))
+    expect(carte).toHaveTextContent('4 à faire')
+    expect(mocks.lireAujourdhui).toHaveBeenCalledTimes(2)
   })
 
   it('cocher une ligne la termine, la progression vient de la réponse du serveur, « Annuler » la rouvre', async () => {
@@ -79,7 +128,7 @@ describe('TCH103 — carte du cockpit « Tâches · Aujourd\'hui »', () => {
     await waitFor(() => expect(mocks.terminerTache).toHaveBeenCalledWith(20))
     const carte = screen.getByRole('region', { name: 'Tâches, aujourd\'hui' })
     await waitFor(() => expect(carte).toHaveTextContent('2 sur 5'))
-    expect(carte).toHaveTextContent('1 à faire')
+    expect(carte).toHaveTextContent('2 à faire') // prévues 4 − faites 2 : la progression RENDUE par le serveur
     await user.click(await screen.findByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(mocks.annulerGeste).toHaveBeenCalledWith(9))
     await waitFor(() => expect(carte).toHaveTextContent('1 sur 5'))
@@ -100,7 +149,7 @@ describe('TCH103 — carte du cockpit « Tâches · Aujourd\'hui »', () => {
   })
 
   it('rien de gardé : « Rien de gardé », sans ligne', async () => {
-    const vide = { ...jour(), essentiel: [], journee: [], faites: [], progression: { ...jour().progression, faites: 0 } }
+    const vide = { ...jour(), essentiel: [], journee: [], ce_soir: [], faites: [], progression: { ...jour().progression, faites: 0 } }
     mocks.lireAujourdhui.mockResolvedValue({ data: vide })
     monter()
     expect(await screen.findByText('Rien de gardé')).toBeInTheDocument()
