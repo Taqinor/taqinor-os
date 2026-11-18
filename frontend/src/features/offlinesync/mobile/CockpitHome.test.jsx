@@ -5,6 +5,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 const { reportingApiMock, installationsApiMock } = vi.hoisted(() => ({
   reportingApiMock: {
@@ -17,11 +18,18 @@ const { reportingApiMock, installationsApiMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../../api/reportingApi', () => ({ default: reportingApiMock }))
 vi.mock('../../../api/installationsApi', () => ({ default: installationsApiMock }))
+// TCH126 — la carte des tâches lit `taches/aujourdhui/` : client mocké, jamais le réseau.
+const tachesApiMock = vi.hoisted(() => ({ lireAujourdhui: vi.fn() }))
+vi.mock('../../../api/tachesApi', async (importOriginal) => ({
+  ...(await importOriginal()),
+  lireAujourdhui: tachesApiMock.lireAujourdhui,
+}))
 
 import CockpitHome from './CockpitHome'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  tachesApiMock.lireAujourdhui.mockResolvedValue({ data: exempleContrat('taches', 'aujourdhui') })
   isMobileMock.mockReturnValue(true)
   reportingApiMock.getDashboard.mockResolvedValue({
     data: {
@@ -51,9 +59,10 @@ function renderPage(auth) {
       </Routes>
     </MemoryRouter>
   )
-  if (!auth) return render(page)
-  // Compte connecté : l'état d'auth servi, lu par « À faire aujourd'hui ».
-  const store = configureStore({ reducer: { auth: (s = auth) => s } })
+  // Compte connecté : l'état d'auth servi, lu par « À faire aujourd'hui » et par la carte des tâches
+  // (sans compte précisé : palier admin, qui tente les relances comme avant, mais sans le code `taches_voir`).
+  const etat = auth ?? { user: null, role: 'admin', permissions: [] }
+  const store = configureStore({ reducer: { auth: (s = etat) => s } })
   return render(<Provider store={store}>{page}</Provider>)
 }
 
@@ -118,5 +127,23 @@ describe("CockpitHome — « À faire aujourd'hui » : la tournée selon le droi
     expect(await screen.findByText('Intervention #9')).toBeInTheDocument()
     expect(screen.getByText('Intervention du jour')).toBeInTheDocument()
     expect(installationsApiMock.getMaTournee).toHaveBeenCalledTimes(1)
+  })
+})
+
+// TCH126 — la carte « Tâches · Aujourd'hui » de l'accueil mobile : avec `taches_voir` seulement.
+describe("CockpitHome — TCH126 : carte des tâches selon le droit", () => {
+  const compte = (permissions) => ({ user: { id: 3, portee: 'interne' }, role: 'responsable', role_nom: 'Commercial responsable', permissions })
+
+  it('avec taches_voir : la carte s\'affiche et lit taches/aujourdhui/', async () => {
+    renderPage(compte(['taches_voir']))
+    expect(await screen.findByRole('region', { name: /Tâches, aujourd'hui/ })).toBeInTheDocument()
+    expect(tachesApiMock.lireAujourdhui).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans taches_voir : aucune carte, aucune requête Tâches', async () => {
+    renderPage(compte(['ventes_voir']))
+    expect(await screen.findByText('Chiffres clés')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /Tâches, aujourd'hui/ })).toBeNull()
+    expect(tachesApiMock.lireAujourdhui).not.toHaveBeenCalled()
   })
 })

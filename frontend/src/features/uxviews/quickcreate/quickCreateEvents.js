@@ -16,6 +16,9 @@ export const QUICK_CREATE_TYPES = [
   { id: 'client', label: 'Créer un client' },
   { id: 'ticket', label: 'Créer un ticket SAV' },
   { id: 'produit', label: 'Créer un produit' },
+  // TCH126 — « Créer une tâche » : l'hôte `TachesPresence` écoute l'événement (type 'tache') et ouvre la
+  // feuille de saisie ; l'entrée disparaît de la palette sans le droit `taches_voir` (app Tâches non rendue).
+  { id: 'tache', label: 'Créer une tâche' },
 ]
 
 export function isQuickCreateType(id) {
