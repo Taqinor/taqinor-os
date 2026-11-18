@@ -12,6 +12,12 @@ rapide est constant en lignes (§10).
 Routes de §10 pas encore construites (`tuile/`, `flux/`, `journee/priorites/`, `journee/point/`,
 `suggestions/`) : déclarées `enforced: false` dans le manifeste, sans test ici. `saisie-rapide/` est un
 POST : le manifeste ne garde que des routes GET (`check_query_budgets._routes_get`), son plafond vit ici.
+
+HORLOGE FIGÉE (18/11/2026) : le coût de `aujourdhui/` dépend de l'HEURE — avant midi la carte « bilan
+d'hier » lit en plus le plan de la veille et ses restes (2 requêtes, `services/journee._carte_bilan_hier`).
+Mesurés avec l'horloge vivante, ces plafonds passaient l'après-midi et échouaient la nuit et le matin
+(CI de 00 h 05 : 28 pour 26, 33 pour 31). La classe est donc figée un mardi ordinaire à 15:00 (le moment
+des mesures du 17/11), et `aujourdhui/` est mesurée EN PLUS à 09:00 avec son plafond du matin.
 """
 import datetime
 
@@ -26,6 +32,11 @@ from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel
 from apps.taches.tests import fabriques
 from core.test_utils import AssertQueryBudgetMixin
+from testkit.time import frozen
+
+#: Mardi ordinaire, heure murale du Maroc (UTC+0 depuis le 20/09/2026) : après midi, puis avant midi.
+APRES_MIDI = '2026-11-24 15:00:00'
+MATIN = '2026-11-24 09:00:00'
 
 URL_AUJOURDHUI = '/api/django/taches/aujourdhui/'
 URL_BADGE = '/api/django/taches/badge/'
@@ -56,6 +67,7 @@ def _peupler(compte, projets, etiquette, jour, nombre, depart=0):
     fabriques.tache(compte, titre=f'À trier {depart}')
 
 
+@frozen(APRES_MIDI)
 class PlafondsTests(AssertQueryBudgetMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -91,6 +103,19 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
         self._lire(URL_AUJOURDHUI)
         with self.assertMaxQueries(31):
             self._lire(URL_AUJOURDHUI)
+
+    def test_aujourdhui_le_matin_lit_en_plus_la_veille(self):
+        """Avant midi : + 2 requêtes exactement (plan de la veille, restes d'hier), avec et sans familles
+        ERP — le plafond du matin est celui de l'après-midi plus ces deux lectures, jamais davantage."""
+        for allume, plafond in ((False, 28), (True, 33)):
+            with self.subTest(erp_dans_journee=allume):
+                self._erp_dans_journee(allume)
+                with frozen(MATIN):
+                    # un jeton du matin : celui de `setUp` date de 15:00, « émis dans le futur » vu de 09:00
+                    self.api.cookies['access_token'] = str(AccessToken.for_user(self.compte))
+                    self._lire(URL_AUJOURDHUI)
+                    with self.assertMaxQueries(plafond):
+                        self._lire(URL_AUJOURDHUI)
 
     def test_badge(self):
         self._lire(URL_BADGE)
