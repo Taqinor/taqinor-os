@@ -275,6 +275,8 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     <CoquilleTaches
       ecran="a-trier"
       titre="À trier"
+      // ecran-a-trier.html : « 5 sans jour ni projet » — le compte des lignes de la boîte, dit dès qu'elle est lue
+      sousTitre={charge && !echec && lignes.length > 0 ? `${lignes.length} sans jour ni projet` : null}
       actionsEcran={actionsEcran}
       selecteurProjet={{
         ouverte: Boolean(projetPour), onFermer: () => setProjetPour(null), projets, sansProjet: false,

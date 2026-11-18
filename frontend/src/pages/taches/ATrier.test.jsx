@@ -84,6 +84,14 @@ describe('TCH86 — écran À trier', () => {
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
   })
 
+  it('passe visuelle n° 21 — sous-titre « {n} sans jour ni projet », suit la boîte', async () => {
+    const user = userEvent.setup()
+    monter()
+    expect(await screen.findByText('3 sans jour ni projet')).toBeInTheDocument()
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Demain' }))
+    expect(await screen.findByText('2 sans jour ni projet')).toBeInTheDocument()
+  })
+
   it('Aujourd\'hui : la ligne part tout de suite, le lot est écrit, « Annuler » la ramène à sa place', async () => {
     const user = userEvent.setup()
     monter()
