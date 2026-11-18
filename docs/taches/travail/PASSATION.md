@@ -432,6 +432,45 @@ Tri de l'orchestrateur (aucune question à Reda) :
 tenue par la lane d'écran), n° 2 = fusion 3 depuis `f3m` (:8001/:4174/:8100). Les deux bases de pile sont encore des
 bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
 
+**Point de 04 h 55 UTC (18/11) — annule et remplace les lignes « semis S3 » et « TCH177 » du point de 04 h 20**
+
+- **Le semis ne pose plus rien dans l'ERP (décision prise seul, la plus sûre).** La CI de #1454 a rougi sur deux
+  gardes de `crm` : `check_parcours.py` (« création de lead non déclarée : creer_lead_demonstration » — chaque
+  `Lead.objects.create` de `apps/**` est une PORTE déclarée dans `apps/crm/parcours/PA1.json`, un test en compte 13)
+  et `check_garde_contact.py` (touche posée hors `peut_contacter`). Plutôt que déclarer une 14e porte « de
+  démonstration » dans le code de production de crm, les quatre fonctions ont été RETIRÉES : `apps/crm/` est au texte
+  de `main` (contrôlé sur les trois branches). La visite du scénario est posée par le harnais de la spec
+  (`poserVisiteTemara` dans `frontend/e2e/taches-acceptation.js`) ; les relances ne sont plus rejouées (SCENARIO
+  §0.7). TCH177 réécrite, l'en-tête du plan ne cite plus crm. Reste de la lane : `agenda/` sans la ligne des
+  relances dans la bande, rôle de démonstration avec `crm_voir` et `visites_voir`.
+- **Lancer TOUTES les gardes de la CI avant un push** : `python scripts/ci_guards.py stage-names` (≈ 11 min, 192
+  gardes) puis `python scripts/ci_guards.py backend-lint-fast` (≈ 3 min, 59). Ma liste à la main en oubliait. Sur
+  cette machine UNE garde rougit toujours : `scripts.tests.test_nightly_qa_scripts` (« pwsh introuvable », PowerShell
+  absent ici, présent en CI). Une garde réécrit `docs/on-delete-financial-audit.md` au passage (numéros de ligne
+  d'autres apps) : `git checkout docs/on-delete-financial-audit.md` avant de commiter.
+- **Fusion 2** : `eb94587416` POUSSÉ à 04 h 52 (CI de #1454 en cours). Suites : Django 1532 OK, vitest 536 OK, les
+  deux jeux de gardes verts. **REJEU OFFICIEL en cours** : pile n° 1 depuis le worktree `f2`, base MIGRÉE
+  `erp_acc_fidele` (clone de `tpl_test` + `seed_demo` + `seed_catalogue` + `init_roles` + rôle Administrateur de
+  `demo_admin`), réglages de la CI (`TACHES_FIDELE=1`, lu par `acc.sh` et `django-exec.sh`), lanceur
+  `scratchpad/jouer-f2-fidele.sh`, sortie `scratchpad/f2-officiel.txt`. Au vert : commiter
+  `docs/audits/acceptation/TCH/<date>-<sha9>.md` + captures, cocher TCH136-140, TCH144, TCH94, PR prête, file de merge.
+- **Fusion 3** : 1er run du vrai assistant sur runner (workflow temporaire, run 44235638667, enregistrement
+  `docs/audits/acceptation/TCH/2026-11-18-8413ee329.md` commité par le job) : **P143.1 à P143.4 et P143.6 vertes
+  avec le vrai modèle** ; 11 rouges de harnais (le compte `demo_taches` n'existait pas encore sur la base neuve du
+  runner quand le premier `py()` de P141/P171 tournait) ; P143.5 rouge parce que l'assistant, sous la garde A5 fermée
+  par défaut, rend une carte à valider au lieu d'écrire (il doit d'abord CHERCHER la tâche = une lecture).
+  **Décision : comportement gardé** (le plus sûr), écrit dans `regles.md` §12 « Garde A5 » et `api.md` §8 ; l'étape
+  touche la carte puis vérifie. L'agent des cartes (`add72744b070bc09f`) corrige la spec (semis avant tout `py()`,
+  P143.5 par la carte). Local `merge/f2-dans-f3` = `c6d33182e8` (gardes signées, A5 écrite, « + » d'un projet avant
+  la lecture de la vue, fusion 2 à jour) : NON poussé — il repartira avec le workflow temporaire pour un 2e run.
+- **Fusion 4** : local `015456e8ab` (fusion 3 à jour). Agent opus `a6742cf6e0d0605ff` : spec `tch3.spec.js` sur la
+  pile n° 3 (`acc-f4.sh`, base `erp_f4`, :8002 / :4175 / Redis :6382). **Relecture adverse finale (3e et dernière
+  passe Fable)** lancée sur `dev-taches-f4` : agent `a310d48a43be7ad3a`, rapport attendu dans
+  `scratchpad/revue-code-finale.md`.
+- **Disque** : l'allocation s'est remplie (39 Go) ; 23 worktrees de lanes déjà pliées ont été retirés (leurs branches
+  restent), 12 Go libres. Trois worktrees verrouillés restent (lanes pliées). Les piles écrivent des `test-results`
+  et des `dist` : les supprimer entre deux jeux.
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**

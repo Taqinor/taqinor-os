@@ -8,6 +8,8 @@
 set -euo pipefail
 . /opt/taches-cloud/env.sh
 [ -f /opt/taches-cloud/pile.conf ] && . /opt/taches-cloud/pile.conf
+# TACHES_FIDELE=1 : cette pile-ci tourne sur une base MIGRÉE avec les réglages de la CI, quoi que dise pile.conf.
+[ "${TACHES_FIDELE:-0}" = 1 ] && unset TACHES_REGLAGES
 export DJANGO_SETTINGS_MODULE="${TACHES_REGLAGES:-erp_agentique.settings.dev}" PYTHONPATH="/opt/taches-cloud${PYTHONPATH:+:$PYTHONPATH}"; . /opt/taches-cloud/secret.env
 WT="${TACHES_WT:-/home/user/taqinor-os/.claude/worktrees/f2}"; DB="${TACHES_DB:-erp_acc}"; PORT="${TACHES_PORT:-8000}"
 # Chaque pile a SON Redis (cache, débits, sessions) : un semis ne vide que le sien.
