@@ -36,7 +36,7 @@ from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
     ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
-    derniers_gestes, liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache,
+    derniers_gestes, gestes_confidentiels, liste_taches, lot_taches, modifier_element, modifier_regle, modifier_tache,
     rappel_a_la_creation, recevoir_tache, rechercher, reordonner_element, reordonner_tache, restaurer_tache,
     retirer_element, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimees_recentes, supprimer_tache,
     tache_du_compte, terminer_tache, trancher_tache,
@@ -582,7 +582,9 @@ class GestesVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):
-        return Response(reponse_gestes(derniers_gestes(request.user)))
+        gestes = derniers_gestes(request.user)
+        masques = gestes_confidentiels(request.user, gestes) if est_assistant(request) else frozenset()
+        return Response(reponse_gestes(gestes, masques))
 
 
 class GesteAnnulerVue(APIView):

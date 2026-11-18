@@ -24,7 +24,7 @@ from rest_framework import serializers
 from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
-from apps.taches.confidentialite import ECRAN, nom_pour
+from apps.taches.confidentialite import ECRAN, est_confidentielle, nom_pour
 from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
@@ -497,6 +497,8 @@ VERSION_OCCURRENCE_NEUVE = 1
 CHOIX_TRANCHER = ('aujourdhui', 'garder', 'jour', 'un_jour', 'abandonner')
 MESSAGE_ATTENTE_VIDE = 'Dis de qui ou de quoi tu attends.'
 MESSAGE_ATTENTE_LONGUE = '200 caractères au plus.'
+#: Début du message du geste « En attente de : {qui} » (textes.md « Messages servis par le serveur »).
+MESSAGE_ATTENTE = 'En attente de : '
 MESSAGE_PAS_RECURRENTE = 'Cette tâche ne se répète pas.'
 MESSAGE_JOUR_REQUIS = 'Requis.'
 FENETRE_SUPPRESSION_GROUPEE = datetime.timedelta(seconds=5)
@@ -661,7 +663,7 @@ def attendre_tache(user, pk, texte):
         t.save(update_fields=['statut', 'en_attente_de', 'updated_at'])
         ops = [op_champ('tache', t, champ, valeur) for champ, valeur in avant.items()
                if getattr(t, champ) != valeur]
-        geste = enregistrer_geste(user, 'modification', f'En attente de : {texte}', ops) if ops else None
+        geste = enregistrer_geste(user, 'modification', f'{MESSAGE_ATTENTE}{texte}', ops) if ops else None
     return ResultatEcriture(t, geste)
 
 
@@ -1334,3 +1336,17 @@ def derniers_gestes(user, *, maintenant=None):
     """`GET gestes/` : les gestes annulables des 7 derniers jours, le plus récent d'abord (200 au plus)."""
     depuis = (maintenant or timezone.now()) - FENETRE_GESTES
     return list(gestes_de(user).filter(created_at__gte=depuis).order_by('-created_at', '-pk')[:PLAFOND_LISTE])
+
+
+def gestes_confidentiels(user, gestes):
+    """Ids des gestes « En attente de : … » d'une tâche confidentielle (`est_confidentielle`) : servis à
+    l'assistant, leur message ne porte pas le texte saisi (reference/regles.md « La confidentialité »)."""
+    touchees = {geste.pk: {op.get('id') for op in geste.operations if op.get('objet') == 'tache'}
+                for geste in gestes if geste.message.startswith(MESSAGE_ATTENTE)}
+    ids = set().union(*touchees.values())
+    if not ids:
+        return set()
+    taches = (Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=ids)
+              .select_related('projet', 'parent', 'parent__projet'))
+    confidentielles = {tache.pk for tache in taches if est_confidentielle(tache)}
+    return {pk for pk, ids_ in touchees.items() if ids_ & confidentielles}
