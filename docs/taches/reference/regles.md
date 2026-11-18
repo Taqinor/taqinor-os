@@ -1114,9 +1114,10 @@ prouvée.
 ## 13. Activation par étapes et coupe-circuit
 
 - **Activation** (A18-M5, M8, invariant 28) : F1 invisible (`taches_voir` déclaré, accordé à aucun rôle) ; fin de F2 :
-  accordé au seul rôle Administrateur (Directeur exclu, `donnees.md` rév. 3) ; les autres rôles internes l'obtiennent
-  par la case de l'éditeur des rôles, quand Reda le décide ; jamais aux rôles portail ni aux rôles à liste blanche
-  d'apps.
+  accordé au seul rôle Administrateur (Directeur exclu, `donnees.md` rév. 3) ; depuis le 18/11/2026 (TCH168) le
+  Directeur le porte aussi — `init_roles` range le propriétaire et tout superuser sur ce rôle, l'exclure privait le
+  fondateur de son module ; les autres rôles internes l'obtiennent par la case de l'éditeur des rôles, quand Reda le
+  décide ; jamais aux rôles portail ni aux rôles à liste blanche d'apps.
 - **Coupe-circuit** (invariant 39) : `ReglagesSociete.balayage_actif = False` (`PATCH reglages-societe/`, administrateur)
   → `taches.balayer` n'émet RIEN pour la société (ni sollicitation ni rappel), lu à chaque passage, sans redéploiement ;
   les rappels dus pendant la coupure deviennent `manque` au-delà de 2 h (jamais une rafale à la remise en marche) ;

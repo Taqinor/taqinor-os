@@ -231,7 +231,8 @@ Toutes les corrections sont ADOPTÉES. Ce qu'elles changent :
 - **M7 — ce qui ne se prouve que sur un vrai iPhone** (pastille, notifications en production, tuile, Siri,
   calendrier abonné) est construit et testé autant qu'un navigateur le permet, puis listé comme « à essayer par Reda
   sur son iPhone » : aucune tâche ne prétend l'avoir prouvé.
-- **M8 — activation prudente** : d'abord le rôle Administrateur seul ; un réglage coupe-circuit arrête le balayage
+- **M8 — activation prudente** : d'abord le rôle Administrateur seul (révisé le 18/11/2026 par TCH168 : le Directeur
+  aussi, parce que `init_roles` range le propriétaire sur ce rôle) ; un réglage coupe-circuit arrête le balayage
   des sollicitations et des rappels sans redéploiement.
 - Vie privée (restes) : l'en-tête qui marque un tour « Tâches » pour le relais de l'assistant échoue FERMÉ (sans
   lui, pas de titre dans le journal) avec un test côté relais ; un test vérifie que les tables de `taches` ne sont

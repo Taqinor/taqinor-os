@@ -9,7 +9,7 @@
 5. Le **Copilote** (l'assistant de l'ERP) sait planifier, prioriser et ranger ; tout marche aussi sans clé d'IA.
 6. Sur iPhone : icône, pastille, notifications, calendrier abonné, dictée Siri, grande tuile Scriptable.
 7. Personne d'autre ne voit vos tâches : espace privé, pas de projet partagé dans cette première construction.
-8. Le module est **invisible** au début : il s'allume d'abord pour l'Administrateur seul, puis plus largement sur votre parole.
+8. Le module s'allume par étapes : d'abord l'Administrateur seul, le Directeur depuis le 18/11/2026, puis plus largement sur votre parole.
 
 Plan de construction : `docs/plans/PLAN_TACHES.md` (tâches `TCH1` à `TCH179`).
 Décisions de Reda : `docs/claude-memory/taches-decisions-fondateur.md`.

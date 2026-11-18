@@ -1609,7 +1609,7 @@ fige donc l'horloge (`testkit.time.frozen`) et mesure une telle route aux deux m
 
 `erp_agentique/urls.py` (fin de `_APP_URLS`), `settings/base.py` (`INSTALLED_APPS`, `TACHES_RACCOURCI_SIRI_URL` dès
 l'échafaudage, deux beats, `NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` · `apps/roles/permissions_registre.py`
-(règle de `donnees.md` inv. 28 : exclusion explicite puis Administrateur seul) · `frontend/src/lib/apps/appSkus.js` ·
+(règle de `donnees.md` inv. 28 : exclusion explicite, Administrateur seul, puis Directeur le 18/11/2026) · `frontend/src/lib/apps/appSkus.js` ·
 `apps/notifications/*` (types, migration 0079, `badge` de `notify`) · `apps/records/selectors.py` + `services.py` ·
 `apps/crm/selectors.py` (`cibles_du_sujet`, effacement 09-08) · `authentication/selectors.py`
 (`MOBILE_HOME_ALLOWED_ROUTES`), `authentication/views.py` (traces) · `seed_registre_traitements.py` ·
