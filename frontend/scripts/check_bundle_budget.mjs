@@ -214,7 +214,12 @@ const PER_CHUNK_BUDGET_KB = 350
 // enregistrées, « Suggéré par l'ERP », colonne de bureau d'Aujourd'hui, hôte de présence et carte du cockpit — une
 // quinzaine de chunks lazy neufs) : mesure RÉELLE 3835,7 Ko sur l'arbre fusionné dev-taches-f4. Gras prouvé absent :
 // diff package.json vide, bundle initial inchangé à 0,4 Ko près. Budget monté au juste-dessus de la mesure : 3825 -> 3850.
-const TOTAL_BUDGET_KB = 3850
+// 18/11/2026 (fusion 4, suite : correctifs de l'acceptation en direct et passe visuelle contre les maquettes — fiche en
+// puces, jetons surlignés dans la saisie, À trier, résultats de recherche surlignés, Supprimées, agenda de la semaine
+// et volet « À placer », en-tête d'un projet, réglages en sous-page, Copilote ouvert depuis Tâches ; l'hôte de présence
+// passe dans le bundle initial, un morceau de moins) : mesure RÉELLE 3847,5 Ko sur l'arbre fusionné (≈ 3848,1 Ko sur le
+// runner, qui mesure 0,6 Ko de plus). Gras prouvé absent : diff package.json vide. Budget : 3850 -> 3855.
+const TOTAL_BUDGET_KB = 3855
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
