@@ -14,6 +14,7 @@ from django.http import Http404
 from rest_framework import serializers
 
 from apps.taches.choix import Couleur, Priorite, StatutTache
+from apps.taches.entrees import sans_nul
 from apps.taches.models.taches import Etiquette, EtiquetteTache, VueEnregistree
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import etiquettes_de, projets_de, vues_de
@@ -39,7 +40,7 @@ MAX_IDS = 100
 
 
 def _nom(valeur, maximum, message_long):
-    if valeur is not None and not isinstance(valeur, str):
+    if (valeur is not None and not isinstance(valeur, str)) or not sans_nul(valeur):
         raise serializers.ValidationError({'nom': [MESSAGE_INCONNU]})
     nom = (valeur or '').strip()
     if not nom:
@@ -145,7 +146,9 @@ def _ids_du_compte(valeur, selecteur, user, message):
 
 
 def _texte_borne(valeur):
-    if not isinstance(valeur, str) or len(valeur) > MAX_Q:
+    """Un texte libre de filtre : chaîne d'au plus `MAX_Q` caractères, sans caractère nul (PostgreSQL ne le stocke
+    pas en JSONB : 500 sinon, revue F4 #5)."""
+    if not isinstance(valeur, str) or len(valeur) > MAX_Q or not sans_nul(valeur):
         raise ValueError(MESSAGE_INCONNU)
     return valeur.strip()
 

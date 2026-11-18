@@ -549,18 +549,28 @@ class EtiquettePatchSerializer(serializers.Serializer):
     couleur = serializers.CharField(required=False, error_messages={'null': MESSAGE_INCONNU})
 
 
+#: `VueEnregistree.rang` est un `IntegerField` : l'entier signé 32 bits de la base (au-delà, 500 « integer out of
+#: range » ; revue F4 #5).
+RANG_MIN, RANG_MAX = -2 ** 31, 2 ** 31 - 1
+
+
+def _rang_de_vue():
+    return serializers.IntegerField(required=False, min_value=RANG_MIN, max_value=RANG_MAX, error_messages={
+        'invalid': MESSAGE_INCONNU, 'min_value': MESSAGE_INCONNU, 'max_value': MESSAGE_INCONNU})
+
+
 class VueEntreeSerializer(serializers.Serializer):
     """Corps de `POST vues/` : `filtres` est jugé (clés fermées) par le service."""
 
     nom = serializers.CharField(allow_blank=True, error_messages=_REQUIS)
     filtres = serializers.JSONField(required=False)
-    rang = serializers.IntegerField(required=False, error_messages={'invalid': MESSAGE_INCONNU})
+    rang = _rang_de_vue()
 
 
 class VuePatchSerializer(serializers.Serializer):
     nom = serializers.CharField(required=False, allow_blank=True, error_messages={'null': MESSAGE_REQUIS})
     filtres = serializers.JSONField(required=False)
-    rang = serializers.IntegerField(required=False, error_messages={'invalid': MESSAGE_INCONNU})
+    rang = _rang_de_vue()
 
 
 def forme_etiquette(etiquette):

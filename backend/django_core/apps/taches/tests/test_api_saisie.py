@@ -11,6 +11,7 @@ from pathlib import Path
 
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.test import APIClient
 
 from apps.taches.choix import StatutTache
@@ -19,6 +20,7 @@ from apps.taches.models.projets import Projet
 from apps.taches.models.taches import (
     ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache, VueEnregistree,
 )
+from apps.taches.services import etiquettes as service_etiquettes
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.tests import fabriques
 
@@ -1081,6 +1083,37 @@ class VuesEnregistreesTests(BaseApi):
         self.assertEqual(self._post(f'gestes/{corps["geste_id"]}/annuler/').json()['conflits'], [])
         relue = VueEnregistree.objects.get(pk=vue.pk)
         self.assertEqual((relue.nom, relue.filtres, relue.rang), ('Haute', {'tri': 'priorite'}, 1024))
+
+    def test_un_caractere_nul_ou_un_rang_hors_plage_est_un_400_nomme_jamais_500(self):
+        """Revue F4 #5 : `filtres.q` avec un caractère nul (refusé par PostgreSQL en JSONB) et un `rang` hors de
+        l'entier de la base rendent 400 sous leur champ, à la création comme au PATCH ; rien n'est écrit."""
+        vue = self._vue('Haute', filtres={'tri': 'priorite'}, rang=1024)
+        refus = (({'filtres': {'q': 'a\x00b'}}, {'filtres': {'q': ['Valeur inconnue.']}}),
+                 ({'rang': 10 ** 12}, {'rang': ['Valeur inconnue.']}),
+                 ({'rang': -(10 ** 12)}, {'rang': ['Valeur inconnue.']}),
+                 ({'rang': 2 ** 31}, {'rang': ['Valeur inconnue.']}))
+        for corps, attendu in refus:
+            with self.subTest(corps=corps):
+                cree = self._post('vues/', {'nom': 'Neuve', **corps})
+                self.assertEqual((cree.status_code, champs(cree.json())), (400, attendu))
+                modifie = self._patch(f'vues/{vue.pk}/', corps)
+                self.assertEqual((modifie.status_code, champs(modifie.json())), (400, attendu))
+        nul = self._post('vues/', {'nom': 'a\x00b'})
+        self.assertEqual((nul.status_code, list(champs(nul.json()))), (400, ['nom']))
+        self.assertEqual(list(VueEnregistree.objects.values_list('nom', 'filtres', 'rang')),
+                         [('Haute', {'tri': 'priorite'}, 1024)])
+        bornes = self._post('vues/', {'nom': 'Bornes', 'rang': 2 ** 31 - 1})
+        self.assertEqual((bornes.status_code, bornes.json()['rang']), (201, 2 ** 31 - 1))
+
+    def test_le_service_refuse_un_nom_a_caractere_nul_d_une_etiquette_ou_d_une_vue(self):
+        """Revue F4 #5 : la porte d'écriture elle-même (pas seulement le sérialiseur de la route) refuse `\\x00`."""
+        vue = self._vue('Haute')
+        for appel in (lambda: service_etiquettes.creer_etiquette(self.u1, nom='a\x00b'),
+                      lambda: service_etiquettes.creer_vue(self.u1, nom='a\x00b'),
+                      lambda: service_etiquettes.modifier_vue(self.u1, vue.pk, {'nom': 'a\x00b'})):
+            with self.assertRaises(serializers.ValidationError) as refus:
+                appel()
+            self.assertEqual(refus.exception.detail, {'nom': ['Valeur inconnue.']})
 
     def test_un_patch_de_filtres_inconnus_ne_change_rien(self):
         vue = self._vue('Haute', filtres={'tri': 'priorite'})
