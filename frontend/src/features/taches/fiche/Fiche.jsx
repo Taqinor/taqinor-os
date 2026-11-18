@@ -34,7 +34,7 @@ import SelecteurQuand, { ajouterJours } from '../ui/SelecteurQuand'
 const CHAMP_DE_ERREUR = {
   jour_prevu: 'quand', heure_debut: 'quand', moment: 'quand', quelque_jour: 'quand',
   echeance: 'echeance', echeance_heure: 'echeance', titre: 'titre', notes: 'notes', priorite: 'priorite',
-  projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist',
+  projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist', etiquettes: 'etiquettes',
 }
 const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 

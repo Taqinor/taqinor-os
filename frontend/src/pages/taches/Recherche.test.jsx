@@ -9,7 +9,7 @@ import Recherche from './Recherche'
 import Supprimees from './Supprimees'
 
 const api = vi.hoisted(() => ({
-  rechercher: vi.fn(), listerTaches: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(),
+  rechercher: vi.fn(), listerTaches: vi.fn(), listerToutesLesTaches: vi.fn(), listerTousLesProjets: vi.fn(), listerToutesLesEtiquettes: vi.fn(), listerVues: vi.fn(),
   listerSupprimees: vi.fn(), listerGestes: vi.fn(), restaurerProjet: vi.fn(), restaurerTache: vi.fn(), annulerGeste: vi.fn(),
   terminerTache: vi.fn(), rouvrirTache: vi.fn(), supprimerTache: vi.fn(),
 }))
@@ -47,6 +47,7 @@ beforeEach(() => {
   api.listerToutesLesTaches.mockResolvedValue(MIXTE.taches)
   api.listerTousLesProjets.mockResolvedValue(projetsListe.results)
   api.listerToutesLesEtiquettes.mockResolvedValue(etiquettes.results)
+  api.listerVues.mockResolvedValue({ data: exempleContrat('taches', 'vues') }) // TCH166 : lues à l'ouverture des filtres repliés
   api.listerSupprimees.mockResolvedValue({ data: supprimees })
   api.listerGestes.mockResolvedValue({ data: gestes })
   api.restaurerProjet.mockResolvedValue({ data: {} })
