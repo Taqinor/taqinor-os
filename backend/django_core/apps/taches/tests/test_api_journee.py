@@ -1300,6 +1300,30 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(sel.progression_courante(self.u, J)['plan_tenues'], 2)
         self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
 
+    def test_2_une_activite_gardee_qui_porte_une_tache_n_est_pas_une_ligne_de_plus(self):
+        """Une activité ERP gardée à laquelle une tâche est liée (ou qui a été convertie) n'est pas une gardée
+        de plus : sa tâche la représente, comme dans le compte (regles.md §6.1, « jamais deux fois »). Sans
+        cela, l'activité liée puis close restait une gardée NON tenue (« 4 des 6 » au lieu de « 4 des 5 »,
+        SCENARIO §3, 18:20). Une activité gardée SANS tâche reste une ligne, tenue quand elle est close."""
+        from apps.taches.services import journee as services
+        from apps.taches.services.erp import lier_activite
+        from apps.taches.services.taches import terminer_tache
+        fabriques.reglages(self.u)
+        self.pr = fabriques.projet(self.u)
+        t = fabriques.tache(self.u, projet=self.pr, jour_prevu=J)
+        liee, seule = fabriques.activite(self.u, due_date=J), fabriques.activite(self.u, due_date=J)
+        services.planifier_express(self.u, J, maintenant_a(9), lignes=[])
+        self.assertEqual(sel.progression_courante(self.u, J)['plan_lignes'], 3)
+        lier_activite(self.u, activite_id=liee.pk)
+        self.assertEqual(sel.progression_courante(self.u, J)['plan_lignes'], 2)
+        terminer_tache(self.u, t.pk, maintenant=a(J, 11), aujourdhui=J)
+        for activite in (liee, seule):
+            activite.done, activite.done_by, activite.done_at = True, self.u, a(J, 12)
+            activite.save(update_fields=['done', 'done_by', 'done_at'])
+        progression = sel.progression_courante(self.u, J)
+        self.assertEqual((progression['plan_tenues'], progression['plan_lignes']), (2, 2))
+        self.assertEqual(self.nuit()[1:3], (2, 2))
+
     def test_3_jour_court_le_meme_objectif_partout(self):
         """regles.md §6.3 : un jour court vaut `max(1, N − 1)` sur Aujourd'hui, l'en-tête du Copilote, le
         plan gardé et le bilan (qui le dit, textes.md §4.3), avant et après un « + » puis « − »."""

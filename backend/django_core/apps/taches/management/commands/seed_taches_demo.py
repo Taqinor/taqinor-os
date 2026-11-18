@@ -52,9 +52,10 @@ from apps.taches.models.taches import Tache
 from apps.taches.services import donnees as services_donnees
 from apps.taches.services import journee, rythme
 from apps.taches.services.creation import creer_taches
+from apps.taches.services.erp import lier_activite
 from apps.taches.services.planification import planifier
 from apps.taches.services.projets import creer_projet, modifier_projet
-from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache, trancher_tache
+from apps.taches.services.taches import attendre_tache, modifier_tache, terminer_tache
 
 #: Société de démonstration et compte du semis (jamais une société réelle : `est_demo=True` exigé).
 SLUG_SOCIETE = 'demo-taches'
@@ -113,7 +114,8 @@ TACHES = (
      {'est': 60, 'prevu': ((11, 25), '09:00'), 'echeance': (11, 26)}),
     (BENALI, 'Matériel', 'Réceptionner les 16 panneaux', None, {'est': 60, 'prevu': ((11, 26), '09:00')}),
     (BENALI, 'Pose', 'Poser la structure', None, {'est': 480, 'prevu': ((11, 23), None)}),
-    (BENALI, 'Pose', 'Mise en service', None, {'jalon': True, 'echeance': (12, 3)}),
+    # Jalon PRÉVU jeu. 3 déc. (§2, colonne « Jour ») : daté, il n'est pas « à placer » dans Mes projets (§4 : 7).
+    (BENALI, 'Pose', 'Mise en service', None, {'jalon': True, 'prevu': ((12, 3), None)}),
     (SALON, 'Stand', 'Réserver le stand', (3, None), {}),
     (SALON, 'Stand', 'Confirmer la réservation du stand', None,
      {'est': 30, 'prevu': ((11, 24), None), 'echeance': (11, 24)}),
@@ -162,6 +164,22 @@ DEVIS, STAND, RAILS = 'Envoyer le devis révisé', 'Confirmer la réservation du
 FOURNISSEUR, FICHE = 'Appeler le fournisseur', 'Rédiger la fiche de poste'
 CONTRAT = 'Relire le contrat de maintenance'
 A_REVOIR = ('Mettre à jour le planning des poses', 'Rappeler le bureau de contrôle')
+#: S1 (acceptation F2) : « À revoir » = reportée 3 fois (regles.md §4.2 cas 3, textes.md « À revoir ») ; prévues
+#: lun. 23 (§1) APRÈS trois reports faits par le vrai geste « Reporter » (`planifier`), le soir de chaque jour prévu.
+#: Les trois premiers jours ne sont pas dans SCENARIO.md (ERR-SCENARIO au rapport) : 17 → 19 (18 férié) → 20 → 23.
+JOURS_A_REVOIR = ((11, 17), (11, 19), (11, 20), (11, 23))
+CREATION_A_REVOIR = ((11, 16), '08:30')
+HEURE_DU_REPORT = '18:00'
+#: S2 : le bilan de la veille (lun. 23), fait le soir par la vraie route (`journee.cloturer`, « Tout reporter »).
+HEURE_BILAN_VEILLE = '18:20'
+#: La journée du 24 (§3), dans l'ordre : (heure, geste). Un geste n'est semé que si son heure est PASSÉE (`--heure`).
+#: « Lier une tâche » sur « Rappeler pour le devis » (parcours TCH137 étape 4) n'a pas d'heure dans SCENARIO.md
+#: (ERR-SCENARIO) : 10:30, l'heure de l'activité, avant sa clôture de 10:40 — sans ce lien la clôture compterait 1
+#: (regles.md §6.1) et 15:00 dirait « 4 sur 5 ».
+GESTES_DU_JOUR = (
+    ('08:20', 'ouvrir'), ('08:20', 'essentielles'), ('08:31', 'garder'), ('08:52', 'rails'), ('09:10', 'contrat'),
+    ('10:20', 'fournisseur'), ('10:30', 'lier_rappel'), ('10:40', 'fermer_rappel'), ('10:50', 'devis'),
+    ('14:10', 'fiche'), ('16:30', 'stand'))
 #: Les 6 autres tâches « En réserve » : le scénario n'en dit que le nombre (§1) ; titres plausibles, sans nom propre.
 RESERVE_ANONYME = (
     'Étudier une assurance pour la flotte de véhicules', "Tester un logiciel de devis concurrent",
@@ -302,7 +320,8 @@ class Scenario:
 
     # --- À trier, à revoir, en réserve (§1) -----------------------------------------------------------------------
     def a_trier(self):
-        """5 tâches À TRIER, nées par leur porte réelle (suggestion, activité, capture, saisie)."""
+        """4 tâches À TRIER nées par leur porte réelle (suggestion, capture, saisie), et l'à-faire d'Activités
+        que le bandeau d'À trier propose de convertir (ERR-PLAN 3)."""
         soir_23 = self.instant(self.date(11, 23), '17:30')
         suggeree = self._creer(self.instant(self.date(11, 23), '18:00'),
                                {'titre': 'Préparer le chantier du devis accepté'},
@@ -331,18 +350,26 @@ class Scenario:
                                        created_by=self.user, done=False, **champs)
 
     def _facture_d_acompte(self, instant):
-        """« À-faire d'Activités » converti comme `services.erp._convertir_une` : échéance ven. 27, À trier."""
-        from apps.records.services import cloturer_a_faire_personnel
+        """« À-faire d'Activités, échéance ven. 27 » (§1) : l'à-faire personnel RESTE dans Activités ; le
+        bandeau d'À trier « 1 à-faire personnel dans Activités · Tout convertir » le propose (TCH136 étape 5),
+        et LA conversion (`services.erp.convertir_activites`) en fera une tâche PRÉVUE ven. 27 (spec-2 §3.8) —
+        jamais une tâche à échéance laissée dans À trier (ERR-PLAN 3 / ERR-SCENARIO au rapport)."""
         with horloge(instant):
-            activite = self._activite(summary=ACTIVITE_FACTURE, personnelle=True, due_date=self.date(11, 27))
-            creer_taches(self.user, [{'titre': ACTIVITE_FACTURE, 'echeance': self.date(11, 27)}],
-                         source=Source.ACTIVITE, porte='conversion', activite=activite)
-            cloturer_a_faire_personnel(activite, self.user)
+            self._activite(summary=ACTIVITE_FACTURE, personnelle=True, due_date=self.date(11, 27))
 
     def a_revoir(self):
+        """S1 : prévues lun. 23 après trois reports (`JOURS_A_REVOIR`), chacun par `planifier` le soir du
+        jour prévu (ancien jour ≤ aujourd'hui : le service compte le report, invariant 4)."""
+        (mois, jour), heure = CREATION_A_REVOIR
+        premier, *suivants = JOURS_A_REVOIR
         for titre in A_REVOIR:
-            self._creer(self.instant(self.date(11, 23), '08:30'),
-                        {'titre': titre, 'jour_prevu': self.date(11, 23), 'estimation_minutes': 30})
+            tache = self._creer(self.instant(self.date(mois, jour), heure),
+                                {'titre': titre, 'jour_prevu': self.date(*premier), 'estimation_minutes': 30})
+            prevu = premier
+            for suivant in suivants:
+                with horloge(self.instant(self.date(*prevu), HEURE_DU_REPORT)):
+                    planifier(tache, acteur=self.user, jour_prevu=self.date(*suivant))
+                prevu = suivant
 
     def reserve(self):
         for titre in RESERVE_ANONYME:
@@ -371,6 +398,16 @@ class Scenario:
             plan.essentiels_choisis, plan.essentiels_faits = choisis, faits
             plan.save(update_fields=['essentiels_choisis', 'essentiels_faits', 'updated_at'])
 
+    def bilan_de_la_veille(self):
+        """S2 : le bilan du lun. 23 est fait le soir même (`journee.cloturer`, « Tout reporter » : ses deux
+        À revoir, reportées 3 fois, restent en place, regles.md §4.6) ; la veille est close et la carte du
+        moment du 24 au matin est « Garder ces 3 », plus « Le bilan d'hier… » (§4.10). La nuit du 24
+        (`nuit_du_jour`) clôt ensuite le 23 comme les autres jours."""
+        veille = self.date(11, 23)
+        instant = self.instant(veille, HEURE_BILAN_VEILLE)
+        with horloge(instant):
+            journee.cloturer(self.user, veille, instant, le_reste=True)
+
     def nuit_du_jour(self):
         """La nuit qui ouvre le 24 : clôt le 23 et pose les cartes du rythme (« Monter à 6 »)."""
         avant = self.instant(self.jour, '03:00')
@@ -379,61 +416,72 @@ class Scenario:
                 journee.clore_jour_precedent(self.user.company_id, self.jour)
             rythme.etapes_nocturnes(self.user.company_id, self.jour)
 
-    # --- La journée du mardi 24, minute par minute (§3) -------------------------------------------------------------
-    def evenements(self):
+    # --- La journée du mardi 24, minute par minute (§3) : la table `GESTES_DU_JOUR` -------------------------------
+    #: Heure des « faites » du 24 (§3).
+    FAIT_A = {RAILS: '08:52', FOURNISSEUR: '10:20', DEVIS: '10:50', STAND: '16:30'}
+
+    def _geste_ouvrir(self, instant):
+        """S4 : l'app est ouverte (`POST vu/` → `PlanJour.app_ouverte_le`) : la dernière ouverture d'avant une
+        absence (`--absence N`) est connue, le retour N jours plus tard est un vrai retour (regles.md §4.8)."""
+        journee.vu(self.user, self.jour, instant)
+
+    def _geste_essentielles(self, instant):
+        for titre in (DEVIS, STAND):
+            journee.marquer_essentielle(self.user, self.taches[titre].pk, True, instant)
+
+    def _geste_garder(self, instant):
         T = self.taches
-        J = self.jour
+        lignes = [{'type': 'tache', 'id': T[t].pk} for t in (RAILS, FOURNISSEUR, FICHE)]
+        journee.planifier_express(self.user, self.jour, instant, lignes=lignes,
+                                  essentielles=[T[DEVIS].pk, T[STAND].pk])
+        planifier(T[RAILS], acteur=self.user, jour_prevu=self.jour, heure_debut=datetime.time(8, 30))
+        planifier(T[FOURNISSEUR], acteur=self.user, jour_prevu=self.jour, heure_debut=datetime.time(10, 0))
 
-        def essentielles():
-            for titre in (DEVIS, STAND):
-                journee.marquer_essentielle(self.user, T[titre].pk, True, self.instant(J, '08:20'))
+    def _geste_contrat(self, instant):
+        planifier(self.taches[CONTRAT], acteur=self.user, jour_prevu=self.jour, moment='soir')
 
-        def garder():
-            instant = self.instant(J, '08:31')
-            lignes = [{'type': 'tache', 'id': T[t].pk} for t in (RAILS, FOURNISSEUR, FICHE)]
-            journee.planifier_express(self.user, J, instant, lignes=lignes,
-                                      essentielles=[T[DEVIS].pk, T[STAND].pk])
-            planifier(T[RAILS], acteur=self.user, jour_prevu=J, heure_debut=datetime.time(8, 30))
-            planifier(T[FOURNISSEUR], acteur=self.user, jour_prevu=J, heure_debut=datetime.time(10, 0))
+    def _geste_rails(self, instant):
+        self._terminer(self.taches[RAILS], instant)
 
-        def contrat():
-            planifier(T[CONTRAT], acteur=self.user, jour_prevu=J, moment='soir')
+    def _geste_fournisseur(self, instant):
+        self._terminer(self.taches[FOURNISSEUR], instant)
 
-        def fait(titre):
-            return lambda: self._terminer(T[titre], self.instant(J, self._fait_a[titre]))
+    def _geste_devis(self, instant):
+        self._terminer(self.taches[DEVIS], instant)
 
-        def fiche():
-            instant = self.instant(J, '14:10')
-            trancher_tache(self.user, T[FICHE].pk, 'jour', self.date(11, 26), maintenant=instant, aujourdhui=J)
+    def _geste_stand(self, instant):
+        self._terminer(self.taches[STAND], instant)
 
-        self._fait_a = {RAILS: '08:52', FOURNISSEUR: '10:20', DEVIS: '10:50', STAND: '16:30'}
-        return (('08:20', essentielles), ('08:31', garder), ('08:52', fait(RAILS)), ('09:10', contrat),
-                ('10:20', fait(FOURNISSEUR)), ('10:40', self._fermer_rappel), ('10:50', fait(DEVIS)),
-                ('14:10', fiche), ('16:30', fait(STAND)))
+    def _geste_lier_rappel(self, instant):
+        """S5 : « Lier une tâche » par la VRAIE route (`services.erp.lier_activite`, `jour_prevu` nul comme
+        l'écran) ; avant 10:30 l'activité n'a aucune tâche et le geste du parcours répond 201."""
+        lier_activite(self.user, activite_id=self.rappel.pk)
 
-    def _fermer_rappel(self):
+    def _geste_fermer_rappel(self, instant):
         """L'activité ERP « Rappeler pour le devis » est close à 10:40 ; écrit directement : seule la route
         `records` des activités clôt une activité planifiée (aucun service sans HTTP)."""
         from apps.records.models import Activity
-        Activity.objects.filter(pk=self.rappel.pk).update(
-            done=True, done_at=self.instant(self.jour, '10:40'), done_by=self.user)
+        Activity.objects.filter(pk=self.rappel.pk).update(done=True, done_at=instant, done_by=self.user)
+
+    def _geste_fiche(self, instant):
+        """« Choisir un jour » (§3 14:10) : la route `taches/{id}/planifier/`, donc `planifier` — pas
+        `trancher`, la décision d'À revoir (acceptation F2 défaut 6)."""
+        planifier(self.taches[FICHE], acteur=self.user, jour_prevu=self.date(11, 26))
 
     def activite_du_jour(self):
+        """L'activité ERP du 24 « Rappeler pour le devis » (§1), sans tâche liée d'avance (S5)."""
         with horloge(self.instant(self.jour, '08:00')):
             self.rappel = self._activite(summary=ACTIVITE_APPEL, personnelle=False, due_date=self.jour)
-        # Le rappel PORTE la tâche « Envoyer le devis révisé » : règle du serveur (regles.md §6.1, `selectors.
-        # journee.activites_closes_du_jour`), une activité close qui porte une tâche ne compte pas, et la
-        # progression de 15 h dit « 3 sur 5 ». Écrit directement : `services.erp.lier_activite` CRÉE une tâche
-        # liée, il ne rattache pas une tâche existante du scénario.
-        Tache.objects.filter(pk=self.taches[DEVIS].pk).update(activite_origine=self.rappel)
 
     def jour_du_scenario(self):
+        """Rejoue `GESTES_DU_JOUR` jusqu'à `--heure` incluse, horloge figée à l'heure de chaque geste."""
         self.activite_du_jour()
         limite = _heure(self.heure)
-        for heure, geste in self.evenements():
+        for heure, nom in GESTES_DU_JOUR:
             if _heure(heure) <= limite:
-                with horloge(self.instant(self.jour, heure)):
-                    geste()
+                instant = self.instant(self.jour, heure)
+                with horloge(instant):
+                    getattr(self, f'_geste_{nom}')(instant)
 
     def rendez_vous(self, utilisateur):
         """Agenda externe rempli depuis `tests/donnees/agenda.ics` : le texte va directement dans le cache
@@ -545,6 +593,7 @@ class Command(BaseCommand):
         scenario.a_trier()
         scenario.reglages()
         scenario.jours_passes()
+        scenario.bilan_de_la_veille()
         scenario.nuit_du_jour()
         scenario.jour_du_scenario()
         if options['rendez_vous']:
