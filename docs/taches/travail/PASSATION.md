@@ -709,6 +709,42 @@ bases RAPIDES (`pile.conf`) : le rejeu final se fait sur base migrée.
 - **Non vérifié, à dire tel quel** : rien n'a tourné sur un vrai iPhone ; le rôle du compte de Reda en production ;
   la production elle-même tant qu'elle n'est pas déployée.
 
+**SUITE DU 18/11/2026, 11 h 26 → 12 h 45 UTC — « je ne vois pas le nouveau module » : DEUX causes, toutes deux trouvées**
+
+Reda a écrit qu'il ne voyait pas le module. Vérifié de l'extérieur (lecture seule) puis reproduit sur cette machine.
+
+1. **Le rôle.** `init_roles` (relancé par chaque déploiement) range tout propriétaire (`is_protected`) ou superuser
+   d'une société sur le rôle « Directeur » ; la construction (TCH5, TCH130) excluait ce rôle de `taches_voir`
+   (« Administrateur seul d'abord », arbitrage de l'orchestrateur). Le fondateur ne pouvait donc PAS voir son module,
+   et le conseil du rapport de 09 h 00 (« mets ton compte sur le rôle Administrateur ») aurait été défait au deploy
+   suivant. Prouvé par un test vu rouge sur le registre de production. **Choix pris seul, consigné : TCH168 construite
+   sans attendre sa parole** (aucun geste dans l'ERP ne pouvait le satisfaire) — exclusion du Directeur retirée,
+   liste de l'Administrateur inchangée, aucun autre rôle. PR Taqinor/taqinor-os#1468 sur `claude/nice-lamport-fsv7my`
+   (la branche de consigne de la session ; CI allégée sur la PR, complète en file de merge). Preuves : tests
+   `apps.roles` (198 verts en local), garde `backend-lint-fast` (59 contrôles verts), étape P144.6 réécrite et rejouée
+   en direct (compte propriétaire : 4 onglets). L'ouverture aux autres rôles reste le geste de Reda (éditeur de rôles).
+2. **La production à moitié basculée (incident, fiche `docs/claude-memory/deploy-manuel-1711.md`).** Le site sert les
+   écrans des fusions 2 et 3, mais Django répond avec le code de la VEILLE (l'adresse
+   `/api/django/ventes/etude-ci/recomposer-batteries/` répond 404 au lieu de 401, 0 fois 401 sur 50) et ~47 % des
+   appels (214 sur 453) reçoivent la page nue « Internal Server Error » de gunicorn. Mécanisme reproduit ici (worktree
+   `prod-0835`, lanceur `prod-local.sh` du scratchpad) : `--preload` garde le code du démarrage, les routes ne sont
+   importées qu'à la première requête de chaque worker ; un worker né après le changement des fichiers casse à
+   l'import. Cause PRÉSUMÉE : deploy lancé avec une copie de `scripts/deploy-prod.ps1` d'avant le 10/11 (l'ancienne
+   séquence ne redémarrait pas Django quand seul le front était reconstruit). **Donné à Reda** (12 h 25 UTC) : une
+   ligne `ssh` qui installe la séquence d'`origin/main` puis démarre `taqinor-autodeploy.service`. Tâche suggérée
+   déposée (« Refuser un deploy qui ne redémarre pas Django »).
+
+**Ce qui a été écarté, pour ne pas le refaire** : le masquage des journaux de la fusion 3 (`core/chemins_sensibles`,
+seul changement de socle entre les deux deploys — innocent : aucune erreur en local sous la commande gunicorn de la
+production, supervision allumée, 4 minutes de charge concurrente) ; l'échantillonnage des traces Sentry (taux d'erreur
+identique avec un en-tête `sentry-trace` forcé à 1 ou à 0) ; une erreur de base ou de vue (elles rendent l'enveloppe
+JSON 500 avec `x-request-id`, pas la page nue).
+
+**Reste après cette suite** : (a) que Reda lance la séquence courante — vérifier ensuite de l'extérieur : l'adresse
+ci-dessus répond 401, zéro page nue sur 30 appels à `health/ready`, `dernier_demarrage.sha` non nul ; (b) #1468
+fusionnée → un deploy de plus → la tuile « Tâches » apparaît pour le compte de Reda ; (c) les points ouverts du
+README (relances en double avant d'ouvrir à un commercial, écarts d'apparence, gestes iPhone).
+
 ### État FINAL de la session du portable — 17/11/2026, quota à 98-99 % (arrêt)
 
 **Sur GitHub**
