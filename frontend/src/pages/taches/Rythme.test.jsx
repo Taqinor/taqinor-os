@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import {
-  annulerGeste, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
+  annulerGeste, lireAujourdhui, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
 } from '../../api/tachesApi'
 import Rythme from './Rythme'
 
 vi.mock('../../api/tachesApi', async (importOriginal) => ({
   ...(await importOriginal()),
   lireRythme: vi.fn(),
+  lireAujourdhui: vi.fn(),
   poserMode: vi.fn(),
   poserPreference: vi.fn(),
   repondreProposition: vi.fn(),
@@ -24,7 +25,9 @@ vi.mock('../../api/tachesApi', async (importOriginal) => ({
    (« Monter à 6 » · « Pas maintenant »), constats, modes, Mes jours ; chaque geste adopte le RYTHME
    rendu par le serveur ; une erreur s'affiche sous le champ fautif. Le jour est injecté. */
 
-const AUJOURDHUI = '2026-11-16'
+// le jour courant n'est JAMAIS dans la série servie (jours déjà évalués seulement) : un jour APRÈS celui de l'échantillon
+const AUJOURDHUI = '2026-11-17'
+const journee = () => structuredClone(exempleContrat('taches', 'aujourdhui'))
 const rythme = () => structuredClone(exempleContrat('taches', 'rythme'))
 const reponse = (donnees) => Promise.resolve({ data: donnees })
 const erreur400 = (corps) => Object.assign(new Error('400'), { response: { status: 400, data: corps } })
@@ -33,14 +36,26 @@ function monter() {
   return render(<MemoryRouter><Rythme aujourdhui={AUJOURDHUI} /></MemoryRouter>)
 }
 
-beforeEach(() => { lireRythme.mockImplementation(() => reponse(rythme())) })
+beforeEach(() => {
+  lireRythme.mockImplementation(() => reponse(rythme()))
+  lireAujourdhui.mockImplementation(() => reponse(journee()))
+})
 afterEach(() => { vi.clearAllMocks(); reinitialiserGestes() })
 
 describe('TCH107 — Mon rythme', () => {
+  it('sans la progression du jour (lecture en échec), la ligne « aujourd\'hui » manque et tout le reste s\'affiche', async () => {
+    lireAujourdhui.mockRejectedValue(new Error('Network Error'))
+    monter()
+    expect(await screen.findByText('Objectif du jour : 5 (accepté)')).toBeInTheDocument()
+    expect(screen.queryByText("sur 5 aujourd'hui")).toBeNull()
+  })
+
   it('rend aujourd\'hui, l\'objectif et sa source, la proposition, les constats et le repère', async () => {
     monter()
-    expect(await screen.findByText("sur 5 aujourd'hui")).toBeInTheDocument()
-    expect(screen.getByText('essentiel 1/1')).toBeInTheDocument()
+    // la ligne du jour vient de la progression d'Aujourd'hui (aujourdhui.json : 1 faite, essentiel 0/1), pas de la série
+    const ligne = await screen.findByText("sur 5 aujourd'hui")
+    expect(ligne.parentElement).toHaveTextContent("1 sur 5 aujourd'hui")
+    expect(screen.getByText('essentiel 0/1')).toBeInTheDocument()
     expect(screen.getByText('Objectif du jour : 5 (accepté)')).toBeInTheDocument()
     expect(screen.getByText('Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Monter à 6' })).toBeInTheDocument()

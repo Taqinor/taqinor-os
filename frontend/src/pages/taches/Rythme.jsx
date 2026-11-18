@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
+  annulerGeste, classerErreur, lireAujourdhui, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
 } from '../../api/tachesApi'
 import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
@@ -93,10 +93,17 @@ function BandeauPasAJour({ onReessayer }) {
   )
 }
 
-function Aujourdhui({ rythme, aujourdhui }) {
-  const { objectif, serie } = rythme
-  const jour = serie.find((s) => s.jour === aujourdhui)
-  if (!jour) return null
+/* Le jour COURANT n'est pas dans `RYTHME.serie` (elle ne porte que les jours travaillés déjà évalués par la nuit) :
+   « {faites} sur {objectif} aujourd'hui · essentiel {ef}/{ep} » (textes.md §2.11) se lit dans la progression du jour,
+   là où Aujourd'hui la lit. L'écran la cherchait dans la série et ne l'y trouvait jamais : la ligne n'apparaissait pas. */
+function Aujourdhui({ rythme, progression }) {
+  const { objectif } = rythme
+  if (!progression) return null
+  const jour = {
+    faites: progression.faites ?? 0,
+    essentiel_faites: progression.essentiel_faites ?? 0,
+    essentiel_prevues: progression.essentiel_prevues ?? 0,
+  }
   const visees = objectif.nb ?? 0
   const segments = Math.max(visees, jour.faites)
   return (
@@ -317,14 +324,14 @@ function Comprendre({ allume, onBasculer, erreur }) {
   )
 }
 
-function Corps({ rythme, aujourdhui, erreurs, actions }) {
+function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
   const avantDixJours = rythme.objectif.source === 'defaut'
     && rythme.serie.filter((s) => s.statut_jour === 'evalue').length < JOURS_VOULUS
   const evalues = rythme.serie.filter((s) => s.statut_jour === 'evalue').length
   return (
     <div className="ep-grille-rythme">
       <div>
-        <Aujourdhui rythme={rythme} aujourdhui={aujourdhui} />
+        <Aujourdhui rythme={rythme} progression={progression} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
         {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (
@@ -360,6 +367,7 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
   const { pathname } = useLocation()
   const geste = useGeste()
   const [rythme, setRythme] = useState(null)
+  const [progression, setProgression] = useState(null)
   const [echec, setEchec] = useState(false)
   const [lent, setLent] = useState(false)
   const [erreurs, setErreurs] = useState({})
@@ -371,6 +379,10 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
     lireRythme()
       .then((reponse) => { if (actif) { setRythme(reponse.data); setEchec(false) } })
       .catch(() => { if (actif) setEchec(true) })
+    // la progression du jour : un supplément — si elle ne vient pas, la ligne « aujourd'hui » manque, le reste s'affiche
+    lireAujourdhui()
+      .then((reponse) => { if (actif) setProgression(reponse.data?.progression ?? null) })
+      .catch(() => { if (actif) setProgression(null) })
     return () => { actif = false; clearTimeout(minuteur) }
   }, [essai])
 
@@ -434,7 +446,7 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
   return (
     <CoquilleTaches ecran="rythme" titre="Mon rythme">
       {echec ? <BandeauPasAJour onReessayer={recharger} /> : null}
-      {rythme ? <Corps rythme={rythme} aujourdhui={aujourdhui} erreurs={erreurs} actions={actions} /> : null}
+      {rythme ? <Corps rythme={rythme} progression={progression} aujourdhui={aujourdhui} erreurs={erreurs} actions={actions} /> : null}
       {!rythme && !echec && lent ? <p className="ep-source" role="status">Chargement</p> : null}
     </CoquilleTaches>
   )
