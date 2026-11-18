@@ -218,3 +218,20 @@ class NuitSansEffetPourUnCompteInactifTests(TestCase):
         petite = self._requetes('nuit2', 3)
         grande = self._requetes('nuit3', 30)
         self.assertEqual(petite, grande)
+
+    def test_comptes_jamais_utilises_ou_sans_reglages_ne_creent_aucune_ligne_dans_aucune_table(self):
+        """Garde avant activation : ni compte vierge, ni compte qui n'a que des tâches (pas de
+        `ReglagesRythme`) ne fait écrire la nuit : aucune table de l'app, aucune notification."""
+        societe = fabriques.societe('nuit4')
+        fabriques.compte(societe, nom='vierge')
+        seulement_taches = fabriques.compte(societe, nom='taches')
+        fabriques.tache(seulement_taches, jour_prevu=JOUR - datetime.timedelta(days=1))
+        fabriques.tache(seulement_taches, jour_prevu=JOUR)
+        avant = _lignes_taches()
+        notifications = Notification.objects.count()
+        activites = Activity.objects.count()
+        nocturne.executer(societe.pk, JOUR)
+        nocturne.executer(societe.pk, JOUR)
+        self.assertEqual(_lignes_taches(), avant)
+        self.assertEqual(Notification.objects.count(), notifications)
+        self.assertEqual(Activity.objects.count(), activites)
