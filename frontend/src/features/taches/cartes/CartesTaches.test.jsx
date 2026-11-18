@@ -194,6 +194,14 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     ))
   })
 
+  it('passe visuelle n° 65 — priorites : les trois gestes de chaque ligne sont des liens d’accent (`bouton lien`)', () => {
+    monter('priorites', contrat('priorites'))
+    const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
+    const gestes = within(ligne.querySelector('.actions-priorite')).getAllByRole('button')
+    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", expect.stringMatching(/^Plus tard dans la semaine/)])
+    for (const b of gestes) expect(b).toHaveClass('bouton', 'lien')
+  })
+
   it('priorites : liste vide', () => {
     const donnees = { ...contrat('priorites'), lignes: [], garder_n: 0 }
     monter('priorites', donnees)

@@ -750,16 +750,18 @@ function GestesPriorite({ item, jour, plusTard }) {
   const geste = useGeste()
   const ecrire = (appel, message) => geste.lancer(appel, message)
   const ligne = [{ type: item.type, id: item.id }]
+  // Passe visuelle n° 65 — des gestes en liens d'accent, comme ceux de « Ta liste rangée » : un mot gras nu ne
+  // disait pas qu'on pouvait le toucher.
   return (
     <div className="actions-priorite">
-      <button type="button" className="bouton discret" disabled={geste.occupe}
+      <button type="button" className="bouton lien" disabled={geste.occupe}
         onClick={() => ecrire(() => client.marquerEssentiel({ tache_id: item.id, essentielle: true }), 'Essentielle')}>Essentiel</button>
-      <button type="button" className="bouton discret" disabled={geste.occupe}
+      <button type="button" className="bouton lien" disabled={geste.occupe}
         onClick={() => ecrire(() => client.garderJournee({ jour, mode: 'express', lignes: ligne, essentielles: [], triage: [] }), 'Mise à aujourd\'hui')}>
         Aujourd&apos;hui
       </button>
       {plusTard ? (
-        <button type="button" className="bouton discret" disabled={geste.occupe}
+        <button type="button" className="bouton lien" disabled={geste.occupe}
           onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Prévue ${jourNomme(plusTard, jour)}`)}>
           {`Plus tard dans la semaine (→ ${jourNomme(plusTard, jour)})`}
         </button>
