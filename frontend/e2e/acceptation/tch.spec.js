@@ -138,7 +138,9 @@ etape('P136.4', ['TCH136', 'TCH86', 'TCH49', 'TCH169'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/a-trier', 'a-trier')
   const lignes = p.locator('section.section[aria-label="À trier"] [data-ligne^="tache:"]')
-  await expect(lignes).toHaveCount(5) // SCENARIO §1 : À trier (5)
+  // Plan TCH136 étape 4 (corrigé) et SCENARIO §0 errata 2 : en fusion 2, À trier porte 4 lignes ; la facture
+  // d'acompte est l'à-faire du bandeau, convertie à l'étape 5.
+  await expect(lignes).toHaveCount(4)
   await capturer(p, 'a-trier')
   const parTitre = (titre) => p.locator('section.section[aria-label="À trier"] [data-ligne^="tache:"]')
     .filter({ has: p.locator('.titre', { hasText: new RegExp(`^${echapper(titre)}$`) }) })
@@ -147,9 +149,9 @@ etape('P136.4', ['TCH136', 'TCH86', 'TCH49', 'TCH169'], async (f) => {
   await expect(parTitre("Acheter des cartouches pour l'imprimante")).toHaveCount(0)
   await parTitre("Demander le devis d'assurance décennale").getByRole('button', { name: 'Demain', exact: true }).click()
   await expect(parTitre("Demander le devis d'assurance décennale")).toHaveCount(0)
-  // 3 projets
+  // 2 projets
   for (const [titre, projet] of [['Préparer le chantier du devis accepté', 'Chantier Benali 9 kWc'],
-    [T.facture, 'Administratif'], ['Filmer le chantier pour Instagram', 'Site web']]) {
+    ['Filmer le chantier pour Instagram', 'Site web']]) {
     await parTitre(titre).getByRole('button', { name: 'Projet…', exact: true }).click()
     await feuille(p, 'Projet').getByRole('option', { name: projet }).click()
     await expect(parTitre(titre)).toHaveCount(0)
