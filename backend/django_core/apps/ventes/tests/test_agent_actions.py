@@ -45,6 +45,7 @@ from apps.ventes.agent_actions import (
     ENREGISTRER_PAIEMENT,
     ENVOYER_EMAIL_DEVIS,
     EXPLIQUER_DEVIS,
+    LIGNES_DEVIS,
     VENTES_ACTIONS,
     VENTES_ACTIONS_COPILOTE,
     register_ventes_actions,
@@ -153,6 +154,7 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.devis.envoyer_email': {'id': 'devis'},
             'ventes.catalogue.chercher': {},
             'ventes.devis.composer': {'lead': 'lead', 'client': 'client'},
+            'ventes.devis.lignes': {'id': 'devis'},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -487,6 +489,66 @@ class EnregistrerPaiementRelayedCallTest(TestCase):
         self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
         self.assertFalse(
             Paiement.objects.filter(facture=foreign_facture).exists())
+
+
+class LignesAssistantTest(TestCase):
+    """COP2-V5 — ``GET devis/<pk>/lignes-assistant/`` : forme du contrat
+    ``assistant_devis_lignes.json``, portée de ``get_object`` (société +
+    rôle), prix TTC seulement — jamais un prix d'achat."""
+
+    def setUp(self):
+        from apps.ventes.models import LigneDevis
+        self.company = Company.objects.create(nom='COP2 Lg', slug='cop2-lg')
+        self.autre = Company.objects.create(nom='COP2 Lg2', slug='cop2-lg2')
+        self.user = User.objects.create_user(
+            username='cop2_lg', password='x', role_legacy='responsable',
+            company=self.company)
+        client = Client.objects.create(
+            company=self.company, nom='Lg', email='lg@example.com',
+            telephone='+212600000013', adresse='Rabat')
+        self.devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{self.company.id}451',
+            client=client, taux_tva=Decimal('20.00'), created_by=self.user)
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Batterie Dyness 5 kWh', sku='LG-BAT',
+            prix_vente=Decimal('10000'), prix_achat=Decimal('777.77'))
+        self.ligne = LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit,
+            designation='Batterie Dyness 5 kWh', quantite=Decimal('2'),
+            prix_unitaire=Decimal('10000'), ordre=0)
+
+    def test_forme_du_contrat_ttc_et_jamais_d_achat(self):
+        url = LIGNES_DEVIS.endpoint.format(id=self.devis.pk)
+        resp = auth(self.user).get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'devis_id', 'reference', 'statut',
+                                          'total_ttc', 'lignes'})
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(set(ligne), {
+            'ligne_id', 'produit_id', 'designation', 'quantite',
+            'prix_unitaire_ttc', 'total_ttc', 'variante'})
+        self.assertEqual((ligne['ligne_id'], ligne['produit_id'],
+                          ligne['quantite']), (self.ligne.pk, self.produit.pk, 2))
+        self.assertEqual(ligne['prix_unitaire_ttc'], '12000.00')
+        self.assertEqual(ligne['total_ttc'], '24000.00')
+        texte = str(resp.data).lower()
+        self.assertNotIn('777.77', texte)
+        self.assertNotIn('prix_achat', texte)
+
+    def test_devis_d_une_autre_societe_404(self):
+        autre_user = User.objects.create_user(
+            username='cop2_lg_autre', password='x', role_legacy='responsable',
+            company=self.autre)
+        resp = auth(autre_user).get(
+            LIGNES_DEVIS.endpoint.format(id=self.devis.pk))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_action_lot_copilote_garde_reelle(self):
+        from apps.agent.registry import LOT_COPILOTE
+        self.assertEqual((LIGNES_DEVIS.lot, LIGNES_DEVIS.risk,
+                          LIGNES_DEVIS.required_permission, LIGNES_DEVIS.objets),
+                         (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir',
+                          {'id': 'devis'}))
 
 
 class CatalogueAssistantTest(TestCase):

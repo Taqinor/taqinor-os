@@ -191,8 +191,8 @@ LIGNE_AJOUTER = AgentAction(
 
 # Action — Modifier une ligne de devis. Endpoint réel : PATCH
 # /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). L'id est celui de la
-# LIGNE (aucune action ne liste les lignes d'un devis : l'agent le demande s'il
-# ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
+# LIGNE (COP2-V5 : ``ventes.devis.lignes``, lot copilote, les liste ; sans
+# copilote, l'agent le demande s'il ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
 # proposition à confirmer — AIC98 : une baisse de prix de ligne (prix tapé) compte
 # comme une remise pour le seuil d'approbation T17 (``profondeur_remise_effective``).
 LIGNE_MODIFIER = AgentAction(
@@ -688,9 +688,37 @@ COMPOSER_DEVIS = AgentAction(
 )
 
 
+# COP2-V5 — lire les lignes d'UN devis (``GET devis/{id}/lignes-assistant/``,
+# garde ``LectureVentes`` = ``ventes_voir``) : l'id de ligne que
+# ``ligne_modifier`` / ``ligne_supprimer`` demandent. Prix TTC seulement.
+LIGNES_DEVIS = AgentAction(
+    key='ventes.devis.lignes',
+    label='Lire les lignes du devis',
+    description=(
+        "Sert à : lire les lignes d'un devis (ligne_id, produit, quantité, "
+        "prix TTC) avant de modifier ou retirer une ligne. Ne pas utiliser "
+        "pour : modifier le devis ni lire un prix d'achat (jamais servi). "
+        "Exemple : « passe la batterie du devis 451 à 2 » → id=451, puis "
+        "ligne_modifier avec le ligne_id lu. Résultat : référence, statut, "
+        "total TTC et lignes du devis."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/lignes-assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {'id': _entier('Identifiant du devis.')},
+        'required': ['id'],
+    },
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
-                           CHERCHER_CATALOGUE, COMPOSER_DEVIS)
+                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

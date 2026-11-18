@@ -765,6 +765,30 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         return Response(_reponse_devis_auto(devis, alertes),
                         status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=None,
+                   responses={200: D.LignesAssistantResponse,
+                              404: D.ErreurDetail})
+    @action(detail=True, methods=['get'], url_path='lignes-assistant',
+            permission_classes=[LectureVentes])
+    def lignes_assistant(self, request, pk=None):
+        """COP2-V5 — les lignes d'UN devis pour l'assistant : ``ligne_id`` (que
+        ``ventes.devis.ligne_modifier`` / ``ligne_supprimer`` demandent),
+        ``produit_id``, quantité et prix TTC. Portée = ``get_object`` (société
+        + visibilité du rôle, celle de la liste). Jamais de prix d'achat ni de
+        marge. Contrat : ``contract_samples/assistant_devis_lignes.json``."""
+        from decimal import Decimal
+        from ..domain.composition_imposee import lignes_ttc
+        devis = self.get_object()
+        total = devis.total_ttc
+        return Response({
+            'devis_id': devis.id,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'total_ttc': (str(Decimal(total).quantize(Decimal('0.01')))
+                          if total is not None else None),
+            'lignes': lignes_ttc(devis, avec_ids=True),
+        })
+
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
     @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,
                    responses={200: D.VarianteConfigResponse,
