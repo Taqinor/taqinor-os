@@ -346,6 +346,17 @@ class ObjectifTests(unittest.TestCase):
         etat = EtatRythme(mode=ModeRythme.TENIR, tenir_reference=8)
         self.assertEqual(rythme.objectif_affiche(etat), (8, SourceObjectif.CALCULE, (6, 10)))
 
+    def test_tenir_sous_un_par_jour_plancher(self):
+        # Revue F2 tour 2 #9 : R 0,29 -> objectif 1 (jamais 0), zone 0 à 1 (jamais une borne négative).
+        for reference in (0.29, 0.5, 0):
+            with self.subTest(reference=reference):
+                etat = EtatRythme(mode=ModeRythme.TENIR, tenir_reference=reference)
+                self.assertEqual(rythme.objectif_affiche(etat), (1, SourceObjectif.CALCULE, (0, 1)))
+        recents = (0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1)  # 4 tâches en 14 jours évalués
+        tenir = rythme.basculer(EtatRythme(comptes_recents=recents), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual((tenir.objectif, rythme.objectif_affiche(tenir)[2]), (1, (0, 1)))
+        self.assertEqual(rythme.objectif_tenir(0.14), 1)  # le `m` d'une dérive : plancher 1
+
     def test_tenir_reference_provisoire_palier(self):
         etat = EtatRythme(mode=ModeRythme.TENIR, palier=4)
         self.assertEqual(rythme.objectif_affiche(etat)[0], 4)

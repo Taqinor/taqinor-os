@@ -30,6 +30,7 @@ GARDE_TAILLE_RATIO = 0.7  # médiane du bloc < 70 % de la référence
 GARDE_TAILLE_MIN_ESTIMEES = 10
 BANDE_FACTEUR = 0.2  # b = max(1 ; 0,2 R)
 BANDE_MIN = 1
+ZONE_MIN = 0  # bas de zone montré : jamais négatif
 OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 DECISION_MONTER = 'monter'
 DECISION_BAISSER = 'baisser'
@@ -168,6 +169,18 @@ def _bande(reference):
     return round(reference - b, 2), round(reference + b, 2)
 
 
+def objectif_tenir(reference):
+    """L'objectif montré pour une référence R (« environ arrondir(R) ») : plancher 1, jamais « 0 tâche »
+    (Revue F2 tour 2 #9) ; aussi le `m` d'une dérive."""
+    return max(PALIER_MIN, arrondir(float(reference)))
+
+
+def zone_tenir(reference):
+    """La zone montrée `(arrondir(R − b), arrondir(R + b))`, bas plancher 0 (jamais une borne négative)."""
+    bas, haut = _bande(float(reference))
+    return max(ZONE_MIN, arrondir(bas)), arrondir(haut)
+
+
 def objectif_affiche(etat):
     """`(objectif | None, source, zone | None)` ; la zone n'existe qu'en TENIR."""
     if etat.mode == ModeRythme.LIBRE:
@@ -176,8 +189,7 @@ def objectif_affiche(etat):
         reference = etat.tenir_reference
         if reference is None:
             reference = _palier(etat)  # R provisoire = palier courant (ou 5)
-        bas, haut = _bande(float(reference))
-        return arrondir(float(reference)), SourceObjectif.CALCULE, (arrondir(bas), arrondir(haut))
+        return objectif_tenir(reference), SourceObjectif.CALCULE, zone_tenir(reference)
     if etat.palier is None:
         return PALIER_DEFAUT, SourceObjectif.DEFAUT, None
     return etat.palier, etat.palier_source or SourceObjectif.CALCULE, None

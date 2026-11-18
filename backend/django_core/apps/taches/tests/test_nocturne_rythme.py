@@ -14,6 +14,7 @@ from apps.taches import nocturne
 from apps.taches.choix import (
     CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
+from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.services import revelations, rythme
 from apps.taches.tests import fabriques
@@ -112,6 +113,34 @@ class NuitRythmeTests(TestCase):
                          (3, 5.0, 4.0, 6.0))
         self.assertAlmostEqual(carte.donnees['moyenne'], 3.2143, places=4)
         self.rejouer_sans_effet()
+
+    def test_derive_jamais_vers_zero_ni_borne_negative(self):
+        """Revue F2 tour 2 #9 : `m` plancher 1, bas de zone plancher 0, `R` montré comme l'objectif."""
+        fixee = J - datetime.timedelta(days=14)
+        reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=3, tenir_fixee_le=fixee)
+        jours(self.u1, [0] * 13 + [1])  # moyenne 0,07 → sous, arrondie 0
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR)
+        self.assertEqual((carte.donnees['m'], carte.donnees['R'], carte.donnees['bas']), (1, 3, 2.0))
+        IncitationCoach.objects.all().delete()
+        reglages.tenir_reference, reglages.tenir_silence_jusquau = 0.29, None
+        reglages.save(update_fields=['tenir_reference', 'tenir_silence_jusquau'])
+        PlanJour.objects.filter(proprietaire=self.u1).update(compte_rythme=2)  # moyenne 2 → au-dessus de 1,29
+        self.nuit()
+        [carte] = cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR)
+        self.assertEqual((carte.cle, carte.donnees['m'], carte.donnees['R'], carte.donnees['bas']),
+                         ('au_dessus', 2, 1, 0))
+
+    def test_derive_sans_carte_quand_rien_a_proposer(self):
+        """#9 : R 1,4 (objectif 1) et 0,1 tâche par jour : « Garder 1, ou descendre à 1 » ne propose rien —
+        pas de carte, pas de silence (aucune carte dont le bouton ne fait rien)."""
+        fixee = J - datetime.timedelta(days=14)
+        reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=1.4, tenir_fixee_le=fixee)
+        jours(self.u1, [0] * 12 + [1, 1])
+        self.nuit()
+        self.assertEqual(cartes(self.u1, type=TypeIncitationEcran.DERIVE_TENIR), [])
+        reglages.refresh_from_db()
+        self.assertIsNone(reglages.tenir_silence_jusquau)
 
     def test_tenir_provisoire_fixee_apres_14_jours(self):
         reglages = fabriques.reglages(self.u1, mode=ModeRythme.TENIR, tenir_reference=5)

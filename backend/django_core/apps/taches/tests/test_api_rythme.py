@@ -214,6 +214,25 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual(ReglagesRythme.objects.filter(proprietaire=self.u1).count(), 1)
         self.assertEqual(self.api.get(aujourdhui, {'jour': J.isoformat()}).json()['objectif']['nb'], 6)
 
+    def test_garder_ce_rythme_sous_un_par_jour_jamais_zero(self):
+        """Revue F2 tour 2 #9 : 4 tâches en 14 jours évalués → objectif 1 (0 à 1) partout : `rythme/`,
+        le toast, le plan du jour, Aujourd'hui et l'en-tête du Copilote — jamais « 0 » ni « -1 »."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages()
+        plan = fabriques.plan(self.u1, J)
+        jours_evalues(self.u1, [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1])
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 1, 'source': 'calcule', 'mode': 'tenir', 'zone': [0, 1]})
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         'Garder ce rythme : environ 1 tâche par jour (0 à 1). '
+                         "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes.")
+        plan.refresh_from_db()
+        self.assertEqual(plan.objectif_du_jour, 1)
+        jour = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual((jour['objectif']['nb'], jour['objectif']['zone']), (1, [0, 1]))
+        self.assertIn('objectif 1 (calculé) · 0 sur 1',
+                      self.api.get('/api/django/taches/coach/entete/').json()['lignes'][0])
+
     def test_corps_refuse_ne_cree_pas_les_reglages(self):
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 40}, format='json')
         self.assertEqual(reponse.status_code, 400)

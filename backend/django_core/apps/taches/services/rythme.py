@@ -237,7 +237,7 @@ def confirmation(etat, neuf, objectif, sens):
     nb, _source, zone = moteur.objectif_affiche(neuf)
     donnees = {'nb': nb}
     if zone is not None:
-        donnees.update(R=float(neuf.tenir_reference), bas=zone[0], haut=zone[1])
+        donnees.update(R=nb, bas=zone[0], haut=zone[1])  # « environ {R} » = l'objectif montré (#9)
     return texte('confirmation', cle, donnees)
 
 
@@ -379,7 +379,7 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
     elif reponse == _R.PASSER:  # dérive : R = arrondir(moyenne) (le `m` de la carte), fixée ce jour (§6.6)
         donnees = carte.donnees or {}
         m = donnees.get('m')
-        m = moteur.arrondir(float(donnees.get('moyenne'))) if m is None else m
+        m = moteur.objectif_tenir(float(donnees.get('moyenne'))) if m is None else m
         neuf = replace(etat, tenir_reference=m, tenir_fixee_le=jour)
     else:
         return []
@@ -875,9 +875,13 @@ def _derive(user, etat, plans, jour):
         return etat
     moyenne = moteur.moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
     bas, haut = moteur.bande_tenir(float(etat.tenir_reference))
+    # Revue F2 tour 2 #9 : R et m montrés comme des objectifs (plancher 1), bas plancher 0 ; « Garder 1,
+    # ou descendre à 1 » ne propose rien → pas de carte (son bouton ne changerait rien).
+    garder, m = moteur.objectif_tenir(etat.tenir_reference), moteur.objectif_tenir(moyenne)
+    if m == garder:
+        return etat
     creer_carte(user, TypeIncitationEcran.DERIVE_TENIR, sens, jour, {
-        'moyenne': round(moyenne, 4), 'R': float(etat.tenir_reference), 'bas': bas, 'haut': haut,
-        'm': moteur.arrondir(moyenne)})
+        'moyenne': round(moyenne, 4), 'R': garder, 'bas': max(moteur.ZONE_MIN, bas), 'haut': haut, 'm': m})
     return replace(etat, tenir_silence_jusquau=jour + datetime.timedelta(days=SILENCE_DERIVE_JOURS))
 
 
