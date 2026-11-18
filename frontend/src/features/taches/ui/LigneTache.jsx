@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Plus, Repeat, Ellipsis } from 'lucide-react'
+import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Repeat, Ellipsis } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
@@ -239,9 +239,7 @@ export default function LigneTache({
           {meta.length > 0 || propose ? (
             <div className="meta">
               {propose ? (
-                <button type="button" className="garder" onClick={() => onGarder?.(item)}>
-                  <Plus className="i i-14" aria-hidden="true" />Garder
-                </button>
+                <button type="button" className="garder" onClick={() => onGarder?.(item)}>Garder</button>
               ) : null}
               {meta}
             </div>

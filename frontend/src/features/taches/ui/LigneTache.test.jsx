@@ -84,6 +84,13 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Garder' }))
     expect(onGarder).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
   })
+
+  it('passe visuelle n° 16 — la puce « Garder » est le mot seul, sans « + » (maquettes : `<button class="garder">Garder`)', () => {
+    render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} propose onGarder={() => {}} />)
+    const garder = screen.getByRole('button', { name: 'Garder' })
+    expect(garder.querySelector('svg')).toBeNull()
+    expect(garder).toHaveTextContent(/^Garder$/)
+  })
 })
 
 describe('TCH44 — clavier : Tab → Actions → item (sans balayage ni glisser)', () => {
