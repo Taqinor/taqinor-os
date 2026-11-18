@@ -10,11 +10,13 @@ set -euo pipefail
 [ -f /opt/taches-cloud/pile.conf ] && . /opt/taches-cloud/pile.conf
 export DJANGO_SETTINGS_MODULE="${TACHES_REGLAGES:-erp_agentique.settings.dev}" PYTHONPATH="/opt/taches-cloud${PYTHONPATH:+:$PYTHONPATH}"; . /opt/taches-cloud/secret.env
 WT="${TACHES_WT:-/home/user/taqinor-os/.claude/worktrees/f2}"; DB="${TACHES_DB:-erp_acc}"; PORT="${TACHES_PORT:-8000}"
+# Chaque pile a SON Redis (cache, débits, sessions) : un semis ne vide que le sien.
+export REDIS_PORT="${TACHES_REDIS_PORT:-6379}"
 cmd="${1:-etat}"; shift || true
 case "$cmd" in
   semer)
     /opt/taches-cloud/pile.sh stop django "$PORT" >/dev/null
-    redis-cli flushall >/dev/null
+    redis-cli -p "$REDIS_PORT" flushall >/dev/null
     cd "$WT/backend/django_core"; DB_NAME="$DB" python manage.py seed_taches_demo "$@" ;;
   horloge)
     TACHES_DEMO_PASSWORD="$TACHES_DEMO_PASSWORD" /opt/taches-cloud/pile.sh django "$WT" "$DB" "$PORT" "${1:-reel}" ;;

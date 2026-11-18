@@ -5,6 +5,6 @@ set -euo pipefail
 . /opt/taches-cloud/env.sh
 [ -f /opt/taches-cloud/pile.conf ] && . /opt/taches-cloud/pile.conf
 export DJANGO_SETTINGS_MODULE="${TACHES_REGLAGES:-erp_agentique.settings.dev}" PYTHONPATH="/opt/taches-cloud${PYTHONPATH:+:$PYTHONPATH}"; . /opt/taches-cloud/secret.env
-export DB_NAME="${TACHES_DB:-erp_acc}"
+export DB_NAME="${TACHES_DB:-erp_acc}" REDIS_PORT="${TACHES_REDIS_PORT:-6379}"
 cd "${TACHES_WT:-/home/user/taqinor-os/.claude/worktrees/f2}/backend/django_core"
 exec "$@"

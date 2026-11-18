@@ -10,6 +10,7 @@ set -euo pipefail
 if [ $# -lt 2 ]; then echo "usage: $0 <nom-de-lane> <labels…>" >&2; exit 2; fi
 LANE="$1"; shift
 . /opt/taches-cloud/env.sh
+export REDIS_PORT=6381   # Redis des TESTS : jamais celui des piles d'acceptation (6379, 6380)
 ROOT=$(git rev-parse --show-toplevel)
 SAFE=$(printf '%s' "$LANE" | tr -c 'a-zA-Z0-9' '_' | tr 'A-Z' 'a-z')
 GABARIT="${TACHES_GABARIT:-tpl_test}"
