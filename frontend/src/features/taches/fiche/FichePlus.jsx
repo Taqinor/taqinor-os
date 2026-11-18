@@ -1,19 +1,20 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link as LienIcone, X } from 'lucide-react'
 
 import { frenchError } from '../../../lib/frenchError'
 import {
-  annulerGeste, attendreTache, classerErreur, creerTache, modifierRecurrence, nouvelleCle, poserRappel, recevoirTache,
-  restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache, rechercher } from '../../../api/tachesApi'
+  annulerGeste, attendreTache, classerErreur, creerEtiquette, creerTache, listerToutesLesEtiquettes, modifierRecurrence,
+  nouvelleCle, poserRappel, recevoirTache, restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache,
+  rechercher } from '../../../api/tachesApi'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
-import { accord, duree, heure, jourCourt } from '../lib/textes'
+import { ETATS_LIEN, accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'
 import { ajouterJours } from '../ui/SelecteurQuand'
 
 /* ============================================================================
    TCH85 — « Plus » d'une fiche : Rappel (avec la question du titre au 1er rappel) · Répéter ·
-   Durée · En attente de… · Jalon · Lié à · Confidentielle · Sous-tâches · Abandonner · Supprimer
-   (dialogue qui NOMME la tâche). Les étiquettes viennent en F4 (TCH166). Source : textes.md
+   Durée · En attente de… · Étiquettes (TCH166) · Jalon · Lié à · Confidentielle · Sous-tâches · Abandonner ·
+   Supprimer (dialogue qui NOMME la tâche). Source : textes.md
    « Fiche d'une tâche, Quand, Rappel » ; maquettes ecran-fiche-plus.html, etat-question-rappel.html.
    Rouvrir ce volet montre les MÊMES valeurs : tout est lu de la tâche, rien n'est gardé ici sauf
    ce qui est en cours de frappe. La fiche (`Fiche.jsx`) fournit `ecrire` / `patcher` : un 400
@@ -21,9 +22,6 @@ import { ajouterJours } from '../ui/SelecteurQuand'
    ========================================================================== */
 
 const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-const ETATS_LIEN = {
-  archive: 'Élément archivé', introuvable: 'Élément introuvable', inaccessible: 'Hors de ta portée', efface: 'Lead effacé',
-}
 
 const dateDe = (iso) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))
@@ -142,6 +140,77 @@ function Repeter({ tache, aujourdhui, ecrire, patcher, erreur }) {
   )
 }
 
+/** Les étiquettes de la tâche : celles du compte (`etiquettes/`) en puces à bascule, et un champ pour en créer une
+ *  à la volée. Poser ou retirer = `PATCH taches/{id}/ {etiquettes:[ids]}` (la réponse remplace la tâche, aucune
+ *  relecture de liste) ; « Annuler » défait le geste. Un nom refusé s'affiche sous le champ. */
+function Etiquettes({ tache, patcher, erreur, annulable }) {
+  const [toutes, setToutes] = useState([])
+  const [nom, setNom] = useState('')
+  const ids = (tache.etiquettes ?? []).map((e) => e.id)
+
+  useEffect(() => {
+    let courant = true
+    listerToutesLesEtiquettes()
+      .then((liste) => { if (courant) setToutes(liste) })
+      .catch((err) => { if (courant) erreur('etiquettes', frenchError(err)) })
+    return () => { courant = false }
+  }, [erreur])
+
+  const basculer = async (id) => {
+    const suite = ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]
+    const r = await patcher({ etiquettes: suite }, 'etiquettes')
+    if (r) annulable('Modifiée', r.geste)
+  }
+  const ajouter = async () => {
+    const saisi = nom.trim()
+    if (!saisi) return
+    let cible = toutes.find((e) => e.nom.trim().toLowerCase() === saisi.toLowerCase())
+    if (!cible) {
+      try {
+        const { data } = await creerEtiquette({ nom: saisi })
+        cible = { id: data.id, nom: data.nom, couleur: data.couleur }
+        setToutes((liste) => [...liste, cible])
+      } catch (err) {
+        erreur('etiquettes', classerErreur(err).champs?.nom?.[0] || frenchError(err))
+        return
+      }
+    }
+    setNom('')
+    if (!ids.includes(cible.id)) await basculer(cible.id)
+  }
+
+  return (
+    <section className="fiche-bloc" aria-label="Étiquettes">
+      <h3 className="fiche-bloc-titre">Étiquettes</h3>
+      <div className="puces" role="group" aria-label="Étiquettes de la tâche">
+        {toutes.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            className={ids.includes(e.id) ? 'puce active' : 'puce'}
+            data-p={e.couleur}
+            aria-pressed={ids.includes(e.id)}
+            onClick={() => basculer(e.id)}
+          >
+            <i className="point" aria-hidden="true" />
+            {e.nom}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        className="champ-discret"
+        aria-label="Ajouter une étiquette"
+        placeholder="Ajouter une étiquette"
+        maxLength={40}
+        value={nom}
+        onChange={(e) => { setNom(e.target.value); erreur('etiquettes', '') }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter() } }}
+      />
+    </section>
+  )
+}
+
 function Attente({ tache, ecrire, patcher, erreur }) {
   const [qui, setQui] = useState(tache.en_attente_de ?? '')
   const [mode, setMode] = useState(tache.bloquee_par ? 'tache' : 'quelquun')
@@ -222,8 +291,11 @@ function SousTaches({ tache, charger, erreur }) {
   )
 }
 
-function Supprimer({ tache, onFermer, erreur }) {
-  const [confirmation, setConfirmation] = useState(false)
+/** `demande` > 0 : « Supprimer » choisi dans le ⋯ de l'en-tête — la question s'ouvre d'elle-même et se montre. */
+function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
+  const [confirmation, setConfirmation] = useState(demande > 0)
+  const question = useRef(null)
+  useEffect(() => { if (demande > 0) question.current?.scrollIntoView?.({ block: 'center' }) }, [demande])
   const nb = (tache.enfants ?? []).length
   const supprimer = async () => {
     try {
@@ -245,7 +317,7 @@ function Supprimer({ tache, onFermer, erreur }) {
     return <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>
   }
   return (
-    <div className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
+    <div ref={question} className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
       <p>{`Supprimer « ${tache.titre} » ?`}</p>
       {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
       <div className="carte-actions">
@@ -267,7 +339,9 @@ function Lien({ lien }) {
   )
 }
 
-export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer }) {
+export default function FichePlus({
+  tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer, supprimerDemande = 0,
+}) {
   const [duree2, setDuree] = useState(null)
   const minutes = duree2 ?? (tache.estimation_minutes ?? '')
 
@@ -287,6 +361,9 @@ export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, 
       {erreurs.rappel ? <p className="erreur-champ" role="alert">{erreurs.rappel}</p> : null}
       <Repeter tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} patcher={patcher} erreur={erreur} />
       {erreurs.repeter ? <p className="erreur-champ" role="alert">{erreurs.repeter}</p> : null}
+
+      <Etiquettes tache={tache} patcher={patcher} erreur={erreur} annulable={annulable} />
+      {erreurs.etiquettes ? <p className="erreur-champ" role="alert">{erreurs.etiquettes}</p> : null}
 
       <div className="fiche-champ">
         <label className="fiche-ligne" htmlFor="fiche-duree">
@@ -315,20 +392,23 @@ export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, 
           <button type="button" className="interrupteur" role="switch" aria-checked={Boolean(tache.jalon)} aria-label="Jalon"
             onClick={() => patcher({ jalon: !tache.jalon }, 'jalon')} />
         </div>
+      </div>
+
+      <Lien lien={tache.lien} />
+
+      <div className="fiche-champ">
         <div className="fiche-ligne">
           <span className="fiche-etiquette">Confidentielle</span>
           <button type="button" className="interrupteur" role="switch" aria-checked={Boolean(tache.confidentiel)} aria-label="Confidentielle"
             onClick={() => patcher({ confidentiel: !tache.confidentiel }, 'confidentiel')} />
         </div>
       </div>
-
-      <Lien lien={tache.lien} />
       <SousTaches tache={tache} charger={charger} erreur={erreur} />
       {erreurs.sous_taches ? <p className="erreur-champ" role="alert">{erreurs.sous_taches}</p> : null}
 
       <div className="carte-actions">
         <button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>
-        <Supprimer tache={tache} onFermer={onFermer} erreur={erreur} />
+        <Supprimer key={supprimerDemande} demande={supprimerDemande} tache={tache} onFermer={onFermer} erreur={erreur} />
       </div>
     </div>
   )

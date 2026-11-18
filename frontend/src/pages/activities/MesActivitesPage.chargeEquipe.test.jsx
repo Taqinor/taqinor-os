@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -30,6 +31,7 @@ function paginer(params = {}) {
   }
 }
 
+const creations = vi.hoisted(() => ({ fn: () => Promise.resolve({ data: {} }) }))
 const mine = vi.hoisted(() => ({ value: { en_retard: [], aujourdhui: [], a_venir: [] } }))
 
 vi.mock('../../api/recordsApi', () => ({
@@ -37,6 +39,7 @@ vi.mock('../../api/recordsApi', () => ({
     getMyActivities: () => Promise.resolve({ data: mine.value }),
     getMaFile: () => Promise.resolve({ data: { items: [], total: 0, resume: {} } }),
     getActivities: (model, id, extra) => Promise.resolve({ data: paginer(extra) }),
+    createActivity: (corps) => creations.fn(corps),
   },
 }))
 
@@ -49,9 +52,9 @@ afterEach(() => {
 
 const Lieu = () => <span data-testid="lieu">{useLocation().pathname}</span>
 
-const rendre = () => {
+const rendre = (permissions = []) => {
   const store = configureStore({
-    reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: [], user: { id: 1 } }) => s },
+    reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions, user: { id: 1 } }) => s },
   })
   return render(
     <Provider store={store}>
@@ -140,5 +143,65 @@ describe('ALEA20 — Charge de l’équipe sur toutes les activités ouvertes', 
     // Deux responsables, 35 chacun.
     expect(screen.getByText('Meryem').parentElement).toHaveTextContent('35')
     expect(screen.getByText('Sami').parentElement).toHaveTextContent('35')
+  })
+})
+
+describe('TCH159 — « + À faire » : une seule saisie', () => {
+  const saisirTexte = async () => {
+    await userEvent.type(await screen.findByLabelText('Nouvelle tâche à faire'), 'Appeler Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
+  }
+
+  it('avec taches_voir : « Ajouter » ouvre la saisie de Tâches avec la phrase tapée, sans créer d\'activité', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    const recus = []
+    // l'hôte de Tâches répond « reçu » en annulant l'événement (TachesPresence) : ici, un écouteur qui fait de même
+    const ecouteur = (e) => { recus.push(e.detail); e.preventDefault() }
+    window.addEventListener('taqinor:taches:saisir', ecouteur)
+    rendre(['taches_voir'])
+    await saisirTexte()
+    window.removeEventListener('taqinor:taches:saisir', ecouteur)
+    expect(recus).toEqual([{ texte: 'Appeler Settat' }])
+    expect(creer).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Nouvelle tâche à faire')).toHaveValue('')
+  })
+
+  it('Acceptation F4 — avec taches_voir mais personne pour répondre « reçu » (l\'hôte de Tâches n\'est pas encore chargé) : la phrase RESTE dans le champ, rien n\'est créé', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    rendre(['taches_voir'])
+    await saisirTexte()
+    expect(creer).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Nouvelle tâche à faire')).toHaveValue('Appeler Settat')
+  })
+
+  it('sans taches_voir : ancien comportement (activité créée par le serveur), aucun événement', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    const recus = []
+    const ecouteur = (e) => recus.push(e.detail)
+    window.addEventListener('taqinor:taches:saisir', ecouteur)
+    rendre([])
+    await saisirTexte()
+    window.removeEventListener('taqinor:taches:saisir', ecouteur)
+    await waitFor(() => expect(creer).toHaveBeenCalledWith({ summary: 'Appeler Settat' }))
+    expect(recus).toEqual([])
+  })
+
+  it('F4 revue #15 — avec taches_voir MAIS le module Tâches éteint pour la société : « Ajouter » crée l\'activité comme avant la fusion 4', async () => {
+    const creer = vi.fn(() => Promise.resolve({ data: {} }))
+    creations.fn = creer
+    const recus = []
+    const ecouteur = (e) => recus.push(e.detail)
+    window.addEventListener('taqinor:taches:saisir', ecouteur)
+    const store = configureStore({
+      reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: ['taches_voir'], modulesDesactives: ['taches'], user: { id: 1 } }) => s },
+    })
+    render(<Provider store={store}><MemoryRouter><MesActivitesPage /></MemoryRouter></Provider>)
+    await saisirTexte()
+    window.removeEventListener('taqinor:taches:saisir', ecouteur)
+    await waitFor(() => expect(creer).toHaveBeenCalledWith({ summary: 'Appeler Settat' }))
+    expect(recus).toEqual([])
   })
 })

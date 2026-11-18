@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Calendar, X } from 'lucide-react'
 import { ReactReduxContext } from 'react-redux'
 
@@ -152,10 +152,17 @@ function lireContexte(detail) {
     projetId,
     projetNom: projetId != null && typeof detail.projet_nom === 'string' ? detail.projet_nom : '',
     sectionId: projetId != null && Number.isInteger(detail.section_id) ? detail.section_id : null,
+    // TCH102 — « Nouvelle tâche liée » : l'objet de l'écran d'où part la saisie (`{cible, id, libelle?}`), retirable
+    lien: typeof detail?.lien?.cible === 'string' && Number.isInteger(detail.lien.id)
+      ? { cible: detail.lien.cible, id: detail.lien.id, libelle: typeof detail.lien.libelle === 'string' ? detail.lien.libelle : '' }
+      : null,
   }
 }
 
-function avecContexte(ligne, contexte) {
+function avecContexte(origine, contexte) {
+  const ligne = contexte?.lien && origine.lien == null
+    ? { ...origine, lien: { cible: contexte.lien.cible, id: contexte.lien.id } }
+    : origine
   if (contexte?.projetId == null || ligne.projet_id != null || ligne.nouveau_projet) return ligne
   return { ...ligne, projet_id: contexte.projetId, ...(contexte.sectionId != null ? { section_id: contexte.sectionId } : {}) }
 }
@@ -166,7 +173,7 @@ function lignesBrutes(textes, { cid, quand }) {
     .map((titre, index) => ({ index, client_id: `${cid}:${index}`, titre, ...(quand ?? {}) }))
 }
 
-export default function FeuilleSaisie({ ouverte, onFermer }) {
+export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null, demandes = null }) {
   const { societe, compte } = useCompte()
   const cle = cleBrouillon(societe, compte)
   const [initial] = useState(() => lireBrouillon(societe, compte))
@@ -174,7 +181,8 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   const [collages, setCollages] = useState(() => (Array.isArray(initial?.collages) ? initial.collages : []))
   const [quand, setQuand] = useState(() => initial?.quand ?? null)
   const [quandOuvert, setQuandOuvert] = useState(false)
-  const [champOuvert, setChampOuvert] = useState(false)
+  // replié par un VRAI collage d'une liste (aperçu seul) ; une liste reprise du brouillon montre l'aperçu seul, comme avant
+  const [champReplie, setChampReplie] = useState(() => (initial?.collages?.length ?? 0) > 0 || String(initial?.texte ?? '').includes('\n'))
   const [ignorer, setIgnorer] = useState([])
   const [priorites, setPriorites] = useState({})
   const [apercu, setApercu] = useState(null)
@@ -194,7 +202,7 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   }, [cle, texte, collages, quand])
 
   const remettreAZero = useCallback(() => {
-    setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampOuvert(false); setIgnorer([])
+    setTexte(''); setCollages([]); setQuand(null); setQuandOuvert(false); setChampReplie(false); setIgnorer([])
     setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null)); setQuandDepart(null)
   }, [])
 
@@ -213,26 +221,36 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
 
   // « Coller mes listes » (état vide d'Aujourd'hui) : l'événement de la coquille peut porter `liste` ou `texte` ;
   // Raccord F2 : il porte aussi le contexte de l'écran (`projet_id`, `projet_nom`, `section_id`, `jour_prevu`, `heure_debut`)
-  useEffect(() => {
-    const surSaisir = (e) => {
-      const detail = e?.detail ?? {}
-      if (typeof detail.texte === 'string') setTexte(detail.texte)
-      if (detail.liste || detail.coller) setChampOuvert(true)
-      setContexte(lireContexte(detail))
-      if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
-        const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
-        setQuand(depart)
-        setQuandDepart(depart)
-      }
+  const lienDefaut = useRef(lienParDefaut)
+  useEffect(() => { lienDefaut.current = lienParDefaut })
+  /** Ce qu'une demande de saisie porte (le `detail` de `taqinor:taches:saisir`) arrive dans la feuille. */
+  const recevoir = useCallback((detail) => {
+    if (typeof detail.texte === 'string') setTexte(detail.texte)
+    if (detail.liste || detail.coller) setChampReplie(false)
+    // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
+    setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
+    if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
+      const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+      setQuand(depart)
+      setQuandDepart(depart)
     }
+  }, [])
+  // Dans /taches la feuille est montée avec la coquille : elle écoute l'événement elle-même. Hors de /taches elle est
+  // chargée À PART par l'hôte `TachesPresence`, qui écoute pour elle : elle s'abonne à lui (`demandes.abonner`) et
+  // reçoit aussitôt la demande arrivée pendant son chargement — un événement émis avant son montage perdait sinon la
+  // phrase tapée et le lien de l'écran. Un seul chemin à la fois, jamais deux lectures de la même demande.
+  useEffect(() => {
+    if (demandes) return demandes.abonner(recevoir)
+    const surSaisir = (e) => recevoir(e?.detail ?? {})
     window.addEventListener(EVENEMENT_SAISIR, surSaisir)
     return () => window.removeEventListener(EVENEMENT_SAISIR, surSaisir)
-  }, [])
+  }, [demandes, recevoir])
 
-  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste)
+  // Échap ferme, même quand le focus n'est pas dans la feuille (le brouillon, lui, reste) — sauf l'Échap qu'un menu
+  // ouvert (puce de priorité de l'aperçu) a pris pour se fermer, lui (`preventDefault` de Radix)
   useEffect(() => {
     if (!ouverte) return undefined
-    const surTouche = (e) => { if (e.key === 'Escape') onFermer?.() }
+    const surTouche = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) onFermer?.() }
     document.addEventListener('keydown', surTouche)
     return () => document.removeEventListener('keydown', surTouche)
   }, [ouverte, onFermer])
@@ -264,11 +282,15 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   )
 
   const surTexte = (valeur) => { setTexte(valeur); setErreur('') }
+  // une LISTE COLLÉE (le texte collé porte un saut de ligne) : le champ se replie dès que l'aperçu est là, la feuille
+  // montre l'aperçu seul (premier-usage-1-apercu.html) ; « Coller encore » le rouvre. Relecture adverse F4 n° 3 : seul
+  // un vrai collage replie — une suggestion du clavier, une dictée ou un mot collé grandissent aussi le texte d'un coup
+  const surColle = (colle) => { if (colle.includes('\n')) setChampReplie(true) }
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
     if (texte.trim()) setCollages((liste) => [...liste, texte])
-    setTexte(''); setChampOuvert(true); setErreur('')
+    setTexte(''); setChampReplie(false); setErreur('')
   }
 
   /** Hors ligne (TCH100) : les lignes partent dans la file, la feuille se ferme, le texte n'est jamais perdu. */
@@ -341,10 +363,11 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
   return (
     <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
       <div className="feuille-saisie">
-        {!(modeListe && donneesListe) || champOuvert ? (
+        {!(modeListe && donneesListe) || !champReplie ? (
           <ChampSaisie
             valeur={texte}
             onChange={surTexte}
+            onColle={surColle}
             jetons={modeListe ? [] : ligne?.jetons ?? []}
             alertes={modeListe ? [] : ligne?.alertes ?? []}
             nouveauxProjets={modeListe ? [] : nouveauxProjets}
@@ -387,8 +410,15 @@ export default function FeuilleSaisie({ ouverte, onFermer }) {
                 ) : null}
                 {contexte.projetId != null && contexte.projetNom ? (
                   <button type="button" className="puce lue" aria-label={`Retirer « ${contexte.projetNom} »`}
-                    onClick={() => setContexte(lireContexte(null))}>
+                    onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
                     <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
+                    <X className="i i-14" aria-hidden="true" />
+                  </button>
+                ) : null}
+                {contexte.lien ? (
+                  <button type="button" className="puce lue" aria-label={`Retirer le lien « ${contexte.lien.libelle || 'cette fiche'} »`}
+                    onClick={() => setContexte((c) => ({ ...c, lien: null }))}>
+                    <span>{`Lié à : ${contexte.lien.libelle || 'cette fiche'}`}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : null}

@@ -5,7 +5,7 @@ import { Search } from 'lucide-react'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
 import {
-  listerToutesLesEtiquettes, listerTousLesProjets, rouvrirTache,
+  annulerGeste, classerErreur, creerVue, listerToutesLesEtiquettes, listerTousLesProjets, listerVues, rouvrirTache,
   terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
@@ -19,7 +19,8 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
    TCH87 — Recherche (`/taches/recherche?q=`) : un champ « Chercher dans mes tâches », deux groupes
    « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites aussi · Projet ▾ · Priorité haute ;
    repliés : Aujourd'hui · À revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance ·
-   Étiquette ▾ et le tri. Vide : « Rien pour « {q} » ». Les vues enregistrées viennent en F4 (TCH166).
+   Étiquette ▾, le tri, « Enregistrer cette vue » (« Nom de la vue ») et les vues déjà enregistrées (TCH166 : un
+   appui les rouvre, mêmes filtres). Vide : « Rien pour « {q} » ».
    D'OÙ VIENNENT LES LIGNES : sans filtre côté serveur, `recherche/` (projets + tâches par mots) ; dès que
    Faites aussi, Projet, Priorité haute, Étiquette ou En réserve est posé, `taches/` (liste paginée, filtres
    de l'API) ; les puces de jour (Aujourd'hui, 7 jours…) et le tri s'appliquent ensuite sur les lignes lues,
@@ -46,6 +47,42 @@ function periodeServie(puces) {
 
 /** Tris servis par `GET taches/?tri=` (rang par défaut) ; « Jour » et « Création » restent triés ici. */
 const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
+
+/** Ce que l'écran garde d'une vue (clés FERMÉES du serveur, donnees.md §2.16). `null` quand un filtre n'a pas de
+ *  clé (En réserve, À revoir, Sans date, tris Jour et Création) : l'enregistrer perdrait ce filtre à la
+ *  réouverture, donc on ne l'enregistre pas. */
+function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri }) {
+  if (reserve || puces.includes('a_revoir') || puces.includes('sans_date') || tri === 'jour' || tri === 'creation') return null
+  const filtres = { inclure_faites: Boolean(faites) }
+  if (q.trim()) filtres.q = q.trim()
+  if (projetId != null) filtres.projets = [projetId]
+  if (etiquetteId != null) filtres.etiquettes = [etiquetteId]
+  if (haute) filtres.priorite_min = 3
+  if (puces.includes('en_attente')) filtres.statuts = ['en_attente']
+  const periode = periodeServie(puces)
+  if (periode) filtres.periode = periode
+  if (puces.includes('avec_echeance')) filtres.echeance = true
+  if (TRI_SERVI[tri]) filtres.tri = TRI_SERVI[tri]
+  return filtres
+}
+
+/** Les réglages de l'écran qui rendent les `filtres` d'une vue (l'inverse de `filtresDeLEcran`). */
+function ecranDeLaVue(filtres) {
+  const puces = []
+  if (filtres.periode === 'aujourdhui') puces.push('aujourdhui')
+  if (filtres.periode === 'semaine') puces.push('sept_jours')
+  if (filtres.statuts?.includes('en_attente')) puces.push('en_attente')
+  if (filtres.echeance) puces.push('avec_echeance')
+  return {
+    q: filtres.q ?? '',
+    faites: Boolean(filtres.inclure_faites),
+    haute: (filtres.priorite_min ?? 0) >= 3,
+    projetId: filtres.projets?.[0] ?? null,
+    etiquetteId: filtres.etiquettes?.[0] ?? null,
+    puces,
+    tri: TRI_SERVI[filtres.tri] ? filtres.tri : 'manuel',
+  }
+}
 
 /** Les puces de jour, lues sur la ligne et le jour de l'appareil (ET entre puces). */
 function correspond(tache, puce, aujourdhui) {
@@ -76,7 +113,7 @@ function Groupe({ titre, lignes, ...rappels }) {
     <section className="section" aria-label={`${titre} (${lignes.length})`}>
       <h2 className="section-titre"><span>{`${titre} (${lignes.length})`}</span></h2>
       <div className="liste" role="list">
-        {lignes.map((item) => <LigneTache key={`${item.type}:${item.id}`} item={item} {...rappels} />)}
+        {lignes.map((item) => <LigneTache key={`${item.type}:${item.id}`} item={item} contexte="recherche" {...rappels} />)}
       </div>
     </section>
   )
@@ -101,6 +138,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const [resultat, setResultat] = useState({ projets: [], taches: [] })
   const [lu, setLu] = useState(false)
   const [erreur, setErreur] = useState('')
+  const [vues, setVues] = useState([])
+  const [nomVue, setNomVue] = useState('')
+  const [erreurVue, setErreurVue] = useState('')
 
   // la saisie reste TELLE QUE TAPÉE ; l'adresse (`?q=`) la suit après une courte pause
   useEffect(() => {
@@ -149,8 +189,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const chargerProjets = useCallback(() => {
     if (projets.length === 0) listerTousLesProjets().then(setProjets).catch((err) => setErreur(frenchError(err)))
   }, [projets.length])
-  // Les étiquettes (`etiquettes/`) ne sont servies qu'en F4 (TCH166, 501 d'ici là) : sans liste lue, le filtre
-  // « Étiquette » n'apparaît pas — ce n'est pas une erreur de l'écran, rien n'est affiché.
+  // Sans étiquette au compte, le filtre « Étiquette » n'apparaît pas (textes.md « Recherche »).
   const [etiquettesLues, setEtiquettesLues] = useState(false)
   useEffect(() => {
     if (!replie || etiquettesLues) return
@@ -159,6 +198,40 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       .catch(() => setEtiquettes([]))
       .finally(() => setEtiquettesLues(true))
   }, [replie, etiquettesLues])
+
+  // Les vues enregistrées (`vues/`, ≤ 30, `{"results"}`) : lues une fois, à l'ouverture des filtres repliés.
+  const [vuesLues, setVuesLues] = useState(false)
+  useEffect(() => {
+    if (!replie || vuesLues) return
+    listerVues()
+      // liste fermée, plafonnée par le serveur (30 vues au plus, non paginée) : jamais de page suivante
+      .then((r) => { const { results } = r.data; setVues(results ?? []) })
+      .catch((err) => setErreurVue(frenchError(err)))
+      .finally(() => setVuesLues(true))
+  }, [replie, vuesLues])
+
+  const filtresAEnregistrer = filtresDeLEcran({ q: saisie, faites, haute, reserve, projetId, etiquetteId, puces, tri })
+  const rouvrirVue = (vue) => {
+    const suite = ecranDeLaVue(vue.filtres ?? {})
+    setSaisie(suite.q); setFaites(suite.faites); setHaute(suite.haute); setReserve(false)
+    setProjetId(suite.projetId); setEtiquetteId(suite.etiquetteId); setPuces(suite.puces); setTri(suite.tri)
+    if (suite.projetId != null) chargerProjets()
+    setErreurVue('')
+  }
+  const enregistrerVue = async () => {
+    try {
+      const { data } = await creerVue({ nom: nomVue.trim(), filtres: filtresAEnregistrer })
+      const { geste_id: geste, ...vue } = data
+      setVues((liste) => [...liste, vue])
+      setNomVue(''); setErreurVue('')
+      proposerAnnuler({
+        message: 'Vue enregistrée',
+        onAnnuler: geste ? async () => { await annulerGeste(geste); setVues((liste) => liste.filter((v) => v.id !== vue.id)) } : undefined,
+      })
+    } catch (err) {
+      setErreurVue(classerErreur(err).champs?.nom?.[0] || classerErreur(err).champs?.filtres?.[0] || frenchError(err))
+    }
+  }
 
   const actif = serveur || Boolean(mots)
   const lignes = useMemo(() => (actif ? resultat.taches : [])
@@ -217,20 +290,23 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         onNouveau: () => setSelecteur(false),
       }}
     >
-      <div className="recherche-champ">
-        <Search className="i i-16" aria-hidden="true" />
-        <input
-          type="search"
-          className="champ"
-          aria-label="Chercher dans mes tâches"
-          placeholder="Chercher dans mes tâches"
-          autoComplete="off"
-          value={saisie}
-          onChange={(e) => setSaisie(e.target.value)}
-        />
+      {/* recherche.html : la loupe DANS le champ, le champ aligné sur le contenu (gouttière), les filtres dessous */}
+      <div className="es-recherche">
+        <label className="es-champ">
+          <Search className="i" aria-hidden="true" />
+          <input
+            type="search"
+            className="valeur"
+            aria-label="Chercher dans mes tâches"
+            placeholder="Chercher dans mes tâches"
+            autoComplete="off"
+            value={saisie}
+            onChange={(e) => setSaisie(e.target.value)}
+          />
+        </label>
       </div>
 
-      <div className="puces" aria-label="Filtres">
+      <div className="puces es-filtres" aria-label="Filtres">
         <button type="button" className="puce" role="checkbox" aria-checked={faites} onClick={() => setFaites((v) => !v)}>Faites aussi</button>
         <button
           type="button"
@@ -268,6 +344,25 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
               {TRIS.map(([cle, libelle]) => <option key={cle} value={cle}>{libelle}</option>)}
             </select>
           </label>
+          {vues.length > 0 ? (
+            <div className="puces" role="group" aria-label="Mes vues">
+              {vues.map((vue) => <button key={vue.id} type="button" className="puce" onClick={() => rouvrirVue(vue)}>{vue.nom}</button>)}
+            </div>
+          ) : null}
+          <div className="recherche-vue">
+            <input
+              type="text"
+              className="champ"
+              aria-label="Nom de la vue"
+              placeholder="Nom de la vue"
+              maxLength={60}
+              value={nomVue}
+              onChange={(e) => { setNomVue(e.target.value); setErreurVue('') }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && filtresAEnregistrer) { e.preventDefault(); enregistrerVue() } }}
+            />
+            <button type="button" className="bouton second" disabled={!filtresAEnregistrer} onClick={enregistrerVue}>Enregistrer cette vue</button>
+          </div>
+          {erreurVue ? <p className="erreur-champ" role="alert">{erreurVue}</p> : null}
         </div>
       ) : null}
 
@@ -283,8 +378,9 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         </div>
       ) : null}
 
-      <Groupe titre="Ouvertes" lignes={ouvertes} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
-      <Groupe titre="Faites" lignes={faitesLignes} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      {/* passe visuelle n° 46 (recherche.html) : le mot cherché surligné, la méta de statut de chaque résultat */}
+      <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
 
       {rien ? (
         <div className="vide-etat">

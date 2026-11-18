@@ -20,6 +20,12 @@ import MaintenanceBanner from '../../ui/MaintenanceBanner'
 import coreApi from '../../api/coreApi'
 import { reabonnerPushSiAutorise } from '../../features/pwa/pushSubscribe'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
+import { useTachesActives } from '../../features/taches/presence/useTachesActives'
+// TCH123 — hôte « Créer une tâche » (c t, palette, ✓+). Il est importé EN DUR (une soixantaine de lignes, sans
+// dépendance neuve) et monté seulement pour un compte qui a Tâches : il doit écouter dès que l'écran est là — chargé
+// à part, un « c t » tapé pendant son chargement ne faisait rien (acceptation de la fusion 4, P142.3). Ce qui pèse,
+// la feuille de saisie, reste chargé à part PAR lui.
+import TachesPresence from '../../features/taches/presence/TachesPresence'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
@@ -33,6 +39,7 @@ const COLLAPSE_KEY = 'taqinor.sidebar.collapsed'
 // première fois (patron AgentChat) — après quoi il reste monté (pas de
 // démontage sur fermeture, pour ne pas perdre l'état de la conversation).
 const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
+
 
 // NTIDE9 — CTA « Suggérer une amélioration » (Intercom-style), chargé
 // paresseusement comme le copilote : n'ajoute rien au chemin froid pour un
@@ -66,6 +73,7 @@ export default function Layout({ children }) {
   const userId = useSelector(s => s.auth.user?.id)
   const profile = useSelector(s => s.parametres.profile)
   const navigation = useNavigation()
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
   // VX57 — une fois `copilotOpen` vu vrai, on garde le panneau monté (le
   // fermer ne doit pas jeter son état/historique de conversation) ; tant
   // qu'il n'a jamais été ouvert, son chunk lazy n'est jamais demandé.
@@ -186,6 +194,8 @@ export default function Layout({ children }) {
           distinct du guide global ci-dessus. Rend null hors des écrans
           ciblés / une fois vu. */}
       <ProductTour />
+      {/* TCH123 — hôte des Tâches (saisie depuis n'importe quel écran) : rien sans `taches_voir`. */}
+      {peutTaches && <TachesPresence />}
       {/* NTIDE9/NTIDE37 — ORDRE FONDATEUR 2026-08-04 : les deux boutons
           flottants (« Suggérer une amélioration », « Envoyer un retour »)
           quittent l'écran — leurs modales vivent désormais dans le menu

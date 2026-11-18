@@ -174,6 +174,97 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete').textContent).not.toMatch(/pour/)
   })
 
+  it('Passe visuelle n° 34 — Semaine : « Planifier ma semaine » en pied avec « À placer · n » (iPhone) et au bas du volet À placer (bureau), plus en haut', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem')).not.toBeNull())
+    expect(within(container.querySelector('.ag-vues')).queryByRole('button', { name: 'Planifier ma semaine' })).toBeNull()
+    // contrat : a_placer (1) + Mes projets (1) = 2, le même nombre que le volet
+    const barre = container.querySelector('.ag-barre')
+    expect(barre).toHaveClass('mobile-seul')
+    expect(barre.querySelector('.ag-barre-titre')).toHaveTextContent('À placer · 2')
+    const volet = screen.getByRole('complementary', { name: 'À placer' })
+    expect(within(volet).getByRole('heading', { name: 'À placer · 2' })).toBeInTheDocument()
+    expect(volet.querySelector('.ag-aside-action')).toContainElement(within(volet).getByRole('button', { name: 'Planifier ma semaine' }))
+    fireEvent.click(within(barre).getByRole('button', { name: 'Planifier ma semaine' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
+  })
+
+  it('Passe visuelle n° 8 — Semaine sur iPhone : la visite de l\'ERP (Toute la journée) ouvre la liste du jour, sans heure, hors du compte', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    const lignes = mardi.querySelectorAll('.ag-sj-l')
+    expect(lignes[0]).toHaveClass('erp')
+    expect(lignes[0].querySelector('.t')).toHaveTextContent('Visite — Karim Benali')
+    expect(lignes[0].querySelector('.h')).toHaveTextContent('')
+    expect(lignes[0].querySelector('svg')).not.toBeNull()
+    expect(lignes[1].querySelector('.t')).toHaveTextContent('Devis Settat')
+    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+  })
+
+  it('Passe visuelle n° 59 — Semaine sur iPhone : un jour passé tient une ligne (ses faites), un jour chargé trois, le reste en « +N »', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    const ligne = (id, titre, statut = 'a_faire') => ({ ...base, id, titre, statut })
+    d.jours.unshift({
+      ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
+      sans_heure: [ligne(901, 'Faite A', 'fait'), ligne(902, 'Faite B', 'fait'), ligne(903, 'Faite C', 'fait'),
+        ligne(906, 'Restée à faire')],
+    })
+    d.jours[1].sans_heure.push(ligne(904, 'En plus 1'), ligne(905, 'En plus 2'))
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj.passe')).not.toBeNull())
+    const lundi = container.querySelector('.ag-sem .ag-sj.passe')
+    expect(lundi.querySelectorAll('.ag-sj-l')).toHaveLength(1)
+    expect(lundi.querySelector('.ag-sj-l .t')).toHaveTextContent('Faite A')
+    expect(lundi.querySelector('.ag-sj-l .plus')).toHaveTextContent('+2')
+    // mar. 17 : visite + Devis Settat + Timbres + 2 = 5 lignes → 3 montrées, « +2 » sur la dernière
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    const lignes = mardi.querySelectorAll('.ag-sj-l')
+    expect(lignes).toHaveLength(3)
+    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+2')
+    expect(lignes[0].querySelector('.plus')).toBeNull()
+  })
+
+  const semaineAvecRepos = () => {
+    const d = agenda()
+    const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [] }
+    d.jours.push({ ...vide, jour: '2026-11-21', ouvre: false, ferie: false }, { ...vide, jour: '2026-11-22', ouvre: false, ferie: false })
+    return d
+  }
+
+  it('Passe visuelle n° 36 — Semaine au bureau : « Toute la journée » est une rangée DE la grille, sous les jours, jours non travaillés étroits', async () => {
+    lireAgenda.mockResolvedValue({ data: semaineAvecRepos() })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const tete = grille(container).querySelector('.semaine-tete')
+    const journee = grille(container).querySelector('.ag-semtj')
+    expect(journee).not.toBeNull()
+    expect(tete.nextElementSibling).toBe(journee)
+    expect(within(journee).getByRole('link', { name: /Visite — Karim Benali/ })).toBeInTheDocument()
+    // une cellule par jour sous chaque tête, gouttière comprise : sam./dim. restent dans leur colonne
+    expect(journee.children).toHaveLength(8)
+    expect(grille(container).style.gridTemplateColumns)
+      .toBe('68px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+  })
+
+  it('Passe visuelle n° 7 — Semaine au bureau : bloc d\'une heure marqué `h1`, chevauchement en cascade (le premier garde sa largeur)', async () => {
+    const d = semaineAvecRepos()
+    const devis = d.jours[0].blocs[0]
+    d.jours[0].blocs.push({ ...devis, id: 77, titre: 'Appel fournisseur', heure_debut: '10:30', estimation_minutes: 30 })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const blocDevis = grille(container).querySelector('[data-bloc="20"]')
+    const blocAppel = grille(container).querySelector('[data-bloc="77"]')
+    expect(blocDevis).toHaveClass('h1')
+    expect(blocDevis.style.right).toBe('')
+    expect(blocAppel).toHaveClass('g2')
+    expect(blocAppel.style.left).toBe('10%')
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
@@ -192,6 +283,15 @@ describe('TCH104 — vues et navigation', () => {
     fireEvent.click(screen.getByRole('gridcell', { name: /^Mercredi 18 novembre/ }))
     expect(screen.getByRole('gridcell', { name: /^Mercredi 18 novembre/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('adresse').textContent).toContain('jour=2026-11-18')
+  })
+
+  it('Passe visuelle n° 58 (mineur) — Mois : « Novembre 2026 » et la charge du jour choisi à droite de son titre', async () => {
+    const { container } = monter('/taches/agenda?vue=mois')
+    await screen.findByRole('gridcell', { name: 'Mardi 17 novembre · 3 tâches' })
+    expect(container.querySelector('.ag-nav b')).toHaveTextContent(/^Novembre 2026$/)
+    const tete = container.querySelector('.ag-jour-tete')
+    expect(tete.querySelector('b')).toHaveTextContent('Mardi 17 novembre')
+    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
   })
 
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {
@@ -227,6 +327,18 @@ describe('TCH104 — une lecture en échec ne vide rien', () => {
     expect(grille(container)).toBeNull()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Réessayer' })) })
     expect(await screen.findByRole('button', { name: /Devis Settat/ })).toBeInTheDocument()
+  })
+
+  it('relecture adverse F4 n° 7 — « Planifier ma semaine » sans rien de lu : « Terminer » reste là et quitte le mode', async () => {
+    lireAgenda.mockRejectedValueOnce({ response: { status: 503, data: {} } })
+    monter('/taches/agenda?vue=semaine&placer=1')
+    expect(await screen.findByText('Pas à jour')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Jours de la semaine' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Terminer', exact: true }))
+    await waitFor(() => expect(screen.getByTestId('adresse').textContent).not.toContain('placer'))
+    expect(screen.getByTestId('adresse').textContent).toContain('vue=semaine')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument()
   })
 })
 

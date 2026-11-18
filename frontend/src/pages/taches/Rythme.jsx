@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import {
   annulerGeste, classerErreur, lireRythme, modifierReglages, poserMode, poserPreference, repondreProposition,
-} from '../../api/tachesApi'
+  lireAujourdhui } from '../../api/tachesApi'
 import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -93,10 +93,17 @@ function BandeauPasAJour({ onReessayer }) {
   )
 }
 
-function Aujourdhui({ rythme, aujourdhui }) {
-  const { objectif, serie } = rythme
-  const jour = serie.find((s) => s.jour === aujourdhui)
-  if (!jour) return null
+/* Le jour COURANT n'est pas dans `RYTHME.serie` (elle ne porte que les jours travaillés déjà évalués par la nuit) :
+   « {faites} sur {objectif} aujourd'hui · essentiel {ef}/{ep} » (textes.md §2.11) se lit dans la progression du jour,
+   là où Aujourd'hui la lit. L'écran la cherchait dans la série et ne l'y trouvait jamais : la ligne n'apparaissait pas. */
+function Aujourdhui({ rythme, progression }) {
+  const { objectif } = rythme
+  if (!progression) return null
+  const jour = {
+    faites: progression.faites ?? 0,
+    essentiel_faites: progression.essentiel_faites ?? 0,
+    essentiel_prevues: progression.essentiel_prevues ?? 0,
+  }
   const visees = objectif.nb ?? 0
   const segments = Math.max(visees, jour.faites)
   return (
@@ -158,9 +165,10 @@ function ChangerObjectif({ onChanger }) {
     try { await onChanger({ sens }, sens) } catch (err) { setErreur(messageErreur(err, 'objectif')) }
   }
 
+  // Passe visuelle n° 44 — rythme.html n'a pas de section « Objectif du jour » : l'objectif est la ligne en gras au-dessus ;
+  // « Plus · Moins · Choisir un nombre » (textes.md §2.11, « Changer d'objectif ») restent, en une rangée sous elle.
   return (
-    <section className="section">
-      <h2 className="section-titre"><span>Objectif du jour</span></h2>
+    <div className="ep-changer-objectif" role="group" aria-label="Changer d'objectif">
       <div className="puces ep-puces">
         <button type="button" className="puce" onClick={() => pas('moins')}>
           <Minus className="i i-16" aria-hidden="true" />Moins
@@ -189,7 +197,7 @@ function ChangerObjectif({ onChanger }) {
         </div>
       ) : null}
       {erreur ? <p id="err-objectif" className="es-erreur" role="alert">{erreur}</p> : null}
-    </section>
+    </div>
   )
 }
 
@@ -316,22 +324,22 @@ function Comprendre({ allume, onBasculer, erreur }) {
   )
 }
 
-function Corps({ rythme, aujourdhui, erreurs, actions }) {
+function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
   const avantDixJours = rythme.objectif.source === 'defaut'
     && rythme.serie.filter((s) => s.statut_jour === 'evalue').length < JOURS_VOULUS
   const evalues = rythme.serie.filter((s) => s.statut_jour === 'evalue').length
   return (
     <div className="ep-grille-rythme">
       <div>
-        <Aujourdhui rythme={rythme} aujourdhui={aujourdhui} />
+        <Aujourdhui rythme={rythme} progression={progression} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
+        {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (
           <div className="es-attente-rythme">
             <p>{`${evalues} jour${evalues >= 2 ? 's' : ''} sur ${JOURS_VOULUS} : il m'en faut ${JOURS_VOULUS} pour comprendre ton rythme.`}</p>
           </div>
         ) : null}
         <Proposition proposition={rythme.proposition} onRepondre={actions.repondre} erreur={erreurs.proposition} />
-        {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? null : <Graphique rythme={rythme} aujourdhui={aujourdhui} />}
         {rythme.repere ? (
           <p className="ep-source">
@@ -359,6 +367,7 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
   const { pathname } = useLocation()
   const geste = useGeste()
   const [rythme, setRythme] = useState(null)
+  const [progression, setProgression] = useState(null)
   const [echec, setEchec] = useState(false)
   const [lent, setLent] = useState(false)
   const [erreurs, setErreurs] = useState({})
@@ -370,6 +379,10 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
     lireRythme()
       .then((reponse) => { if (actif) { setRythme(reponse.data); setEchec(false) } })
       .catch(() => { if (actif) setEchec(true) })
+    // la progression du jour : un supplément — si elle ne vient pas, la ligne « aujourd'hui » manque, le reste s'affiche
+    lireAujourdhui()
+      .then((reponse) => { if (actif) setProgression(reponse.data?.progression ?? null) })
+      .catch(() => { if (actif) setProgression(null) })
     return () => { actif = false; clearTimeout(minuteur) }
   }, [essai])
 
@@ -433,7 +446,7 @@ export default function Rythme({ aujourdhui = aujourdhuiIso() }) {
   return (
     <CoquilleTaches ecran="rythme" titre="Mon rythme">
       {echec ? <BandeauPasAJour onReessayer={recharger} /> : null}
-      {rythme ? <Corps rythme={rythme} aujourdhui={aujourdhui} erreurs={erreurs} actions={actions} /> : null}
+      {rythme ? <Corps rythme={rythme} progression={progression} aujourdhui={aujourdhui} erreurs={erreurs} actions={actions} /> : null}
       {!rythme && !echec && lent ? <p className="ep-source" role="status">Chargement</p> : null}
     </CoquilleTaches>
   )

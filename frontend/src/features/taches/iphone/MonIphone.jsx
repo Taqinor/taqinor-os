@@ -58,6 +58,9 @@ function permissionNotifications() {
   return window.Notification.permission
 }
 
+// Passe visuelle — les marches d'une étape sont numérotées (textes.md §7) : `list-decimal` rend les numéros que la
+// remise à zéro des listes de l'ERP (`ol { list-style: none }`) effaçait.
+
 /* ── Un jeton : créer → copier (une seule fois) → régénérer / révoquer ───────────────────────── */
 
 function BlocJeton({ usage, jeton, revele, copie, libelleCreer, libelleCopie, valeurCopiee, onCreer, onCopie, onRevoquer, erreur }) {
@@ -122,7 +125,7 @@ function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onRegla
   const choix = repondu ?? (reglages?.titres_notifications_demande ? Boolean(reglages.titres_notifications) : null)
   return (
     <>
-      <ol>
+      <ol className="list-decimal">
         <li>Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari. Pas d'icône ? Dans Safari, touche le bouton Partager, puis « Sur l'écran d'accueil ». Il faut iOS 16.4 ou plus récent.</li>
         <li>Touche « Autoriser les notifications », puis « Autoriser » quand l'iPhone le demande.</li>
         <li>{"« Montrer le titre sur l'écran verrouillé ? » · sans réponse, seulement des nombres."}</li>
@@ -156,7 +159,7 @@ function RecetteSiri({ adresse }) {
   const copierAdresse = async () => { setCopiee(await copier(adresse)) }
   return (
     <>
-      <ol>{RECETTE_SIRI.map((ligne) => <li key={ligne}>{ligne}</li>)}</ol>
+      <ol className="list-decimal">{RECETTE_SIRI.map((ligne) => <li key={ligne}>{ligne}</li>)}</ol>
       <button type="button" className="bouton second" onClick={copierAdresse}>Copier l'adresse</button>
       {copiee ? <p className="rassure" role="status">Adresse copiée.</p> : null}
       <p className="rassure">Les noms des actions peuvent différer légèrement selon la version d'iOS.</p>
@@ -194,7 +197,7 @@ function EtapeCalendrier({ bloc, revele }) {
     <>
       <p className="ep-phrase">{"D'abord, dans l'autre sens (le plus utile) : « Mes agendas » — ajoute l'adresse de ton agenda Microsoft 365, Google ou iCloud (3 au plus). Ensuite :"}</p>
       <Agendas />
-      <ol>
+      <ol className="list-decimal">
         <li>Touche « Créer le lien du calendrier », puis « S'abonner » : l'iPhone propose de s'abonner ; accepte.</li>
         <li>Si rien ne s'ouvre : « Copier le lien », puis Réglages de l'iPhone → Calendrier (ou Apps → Calendrier) → Comptes → Ajouter un compte → Autre → « Ajouter un calendrier avec abonnement », colle, Suivant, Enregistrer. Les noms exacts peuvent varier selon la version d'iOS.</li>
         <li>Sur l'écran d'accueil : appui long → « + » → Calendrier → Ajouter.</li>
@@ -226,7 +229,7 @@ function CopierLeScript() {
 function EtapeTuile({ bloc }) {
   return (
     <>
-      <ol>
+      <ol className="list-decimal">
         <li>App Store → Scriptable (gratuite).</li>
         <li>Ici : « Créer le jeton de la tuile », puis « Copier le script ».</li>
         <li>Dans Scriptable : « + », colle, nomme le script « Tâches ».</li>

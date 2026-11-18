@@ -1,5 +1,6 @@
-"""TCH60-TCH63 — les routes `projets/` et `sections/` : liste, création, fiche, PATCH, suppression, ordre,
-clôture, vue, étapes, planification, décalage (reference/api.md §3.3, §4 ; invariants 17, 25, 27).
+"""TCH60-TCH64 — les routes `projets/`, `sections/` et `modeles/` : liste, création, fiche, PATCH, suppression,
+ordre, clôture, vue, étapes, planification, décalage, dupliquer, modèles (reference/api.md §3.3, §4 ; invariants
+17, 25, 27).
 
 Base requise (`TestCase`) : joué par la CI. Les jours des tests sont RELATIFS à aujourd'hui (`_j`) : les routes
 lisent l'horloge à leur frontière (`timezone.localdate()`), comme `planifier`. Chaque réponse est comparée aux
@@ -13,8 +14,9 @@ from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.test import APIClient
 
-from apps.taches.models.projets import Projet, Section
-from apps.taches.models.taches import Tache
+from apps.taches.models.projets import ModeleProjet, Projet, Section
+from apps.taches.models.taches import ElementChecklist, Tache
+from apps.taches.selectors import projets as lecture_projets
 from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.projets import _rangs_apres_insertion
@@ -956,3 +958,458 @@ class DecalerTests(_Base):
         self.assertEqual(api.post(_url(f'projets/{projet.pk}/decaler/'), {}, format='json').status_code, 400)
         self.assertEqual(api.post(_url(f'projets/{etranger.pk}/decaler/'), {'delta_jours': 7},
                                   format='json').status_code, 404)
+
+
+class ModelesTests(_Base):
+    """TCH64 — dupliquer, « Enregistrer comme modèle », modèles (liste, fiche, renommer, supprimer, instancier)."""
+
+    def _source(self, **champs):
+        """Un projet daté : une étape, une tâche avec check-list, notes et sous-tâche, un jalon bloqué par elle,
+        une tâche faite (comptée), une abandonnée et une confidentielle (ces deux-là ne sont jamais figées)."""
+        projet = fabriques.projet(self.u1, nom='Salon 2026', objectif='Stand monté', priorite=2,
+                                  date_debut=_j(10), **champs)
+        etape = fabriques.section(projet, nom='Préparation', date_debut=_j(10), date_fin=_j(24))
+        a = fabriques.tache(self.u1, projet=projet, section=etape, titre='Réserver le stand', priorite=3,
+                            jour_prevu=_j(10), echeance=_j(15), notes='Appeler Lydec')
+        ElementChecklist.objects.create(company=self.a, tache=a, libelle='Prix', rang=1024)
+        fabriques.tache(self.u1, projet=projet, section=etape, titre='photos', parent=a)
+        fabriques.tache(self.u1, projet=projet, titre='Montage', jalon=True, bloquee_par=a, echeance=_j(30))
+        self._fait(self.u1, projet, titre='Déjà faite', jour_prevu=_j(12))
+        fabriques.tache(self.u1, projet=projet, titre='Abandonnée', statut='annule')
+        fabriques.tache(self.u1, projet=projet, titre='Secrète', confidentiel=True)
+        return projet, etape, a
+
+    def _enregistrer(self, projet, nom='Salon', **plus):
+        return self._api(self.u1).post(_url(f'projets/{projet.pk}/enregistrer-modele/'), {'nom': nom, **plus},
+                                       format='json')
+
+    # --- Enregistrer comme modèle ---------------------------------------------------------------
+
+    def test_enregistrer_fige_le_projet_en_decalages_et_rend_l_echantillon(self):
+        projet, _, _ = self._source()
+        reponse = self._enregistrer(projet, inclure_notes=True)
+        self.assertEqual(reponse.status_code, 201)
+        corps = reponse.json()
+        exemple = exemple_de('modele')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['contenu']), set(exemple['contenu']))
+        self.assertEqual(set(corps['contenu']['sections'][0]), set(exemple['contenu']['sections'][0]))
+        self.assertEqual(set(corps['contenu']['taches'][0]), set(exemple['contenu']['taches'][0]))
+        contenu = corps['contenu']
+        self.assertEqual((contenu['v'], contenu['objectif'], contenu['priorite']), (1, 'Stand monté', 2))
+        self.assertEqual(contenu['sections'], [{'nom': 'Préparation', 'decalage_debut': 0, 'decalage_fin': 14}])
+        titres = [t['titre'] for t in contenu['taches']]
+        self.assertEqual(titres, ['Réserver le stand', 'photos', 'Montage', 'Déjà faite'])
+        reserver, photos, montage, faite = contenu['taches']
+        self.assertEqual((reserver['decalage_jour'], reserver['decalage_echeance']), (0, 5))
+        self.assertEqual((reserver['section_index'], reserver['priorite'], reserver['notes']),
+                         (0, 3, 'Appeler Lydec'))
+        self.assertEqual(reserver['checklist'], ['Prix'])
+        self.assertEqual((photos['parent_index'], montage['bloquee_par_index'], montage['jalon']), (0, 0, True))
+        self.assertEqual(faite['decalage_jour'], 2)
+        modele = ModeleProjet.objects.get(pk=corps['id'])
+        self.assertEqual((modele.proprietaire_id, modele.company_id, modele.cree_depuis_id),
+                         (self.u1.pk, self.a.pk, projet.pk))
+
+    def test_les_notes_ne_sont_figees_que_sur_demande(self):
+        projet, _, _ = self._source()
+        sans = self._enregistrer(projet, nom='Sans notes').json()
+        self.assertNotIn('notes', sans['contenu']['taches'][0])
+        avec = self._enregistrer(projet, nom='Avec notes', inclure_notes=True).json()
+        self.assertEqual(avec['contenu']['taches'][0]['notes'], 'Appeler Lydec')
+
+    def test_ni_l_abandonnee_ni_la_confidentielle_ne_partent_dans_un_modele(self):
+        projet, _, _ = self._source()
+        titres = [t['titre'] for t in self._enregistrer(projet).json()['contenu']['taches']]
+        self.assertNotIn('Abandonnée', titres)
+        self.assertNotIn('Secrète', titres)
+        self.assertEqual(Tache.objects.get(titre='Secrète').projet_id, projet.pk)  # rien n'est retiré du projet
+
+    def test_enregistrer_refus_nom_pris_projet_etranger_et_nom_requis(self):
+        projet, _, _ = self._source()
+        etranger = fabriques.projet(self.voisin)
+        self.assertEqual(self._enregistrer(projet).status_code, 201)
+        pris = self._enregistrer(projet, nom='SALON')
+        self.assertEqual(pris.status_code, 400)
+        self.assertEqual(pris.json()['nom'], ['Un modèle « SALON » existe déjà.'])
+        self.assertEqual(self._api(self.u1).post(_url(f'projets/{projet.pk}/enregistrer-modele/'), {},
+                                                 format='json').status_code, 400)
+        self.assertEqual(self._enregistrer(etranger, nom='Autre').status_code, 404)
+        self.assertEqual(ModeleProjet.objects.count(), 1)
+
+    def test_un_projet_confidentiel_ne_s_enregistre_pas_par_l_assistant(self):
+        secret = fabriques.projet(self.u1, confidentiel=True)
+        assistant = self._api(self.u1, assistant=True)
+        refus = assistant.post(_url(f'projets/{secret.pk}/enregistrer-modele/'), {'nom': 'X'}, format='json')
+        self.assertEqual(refus.status_code, 403)
+        self.assertEqual(ModeleProjet.objects.count(), 0)
+        self.assertEqual(self._enregistrer(secret, nom='Écran').status_code, 201)
+
+    # --- Liste, fiche, renommer, supprimer --------------------------------------------------------
+
+    def test_liste_paginee_a_la_forme_de_l_echantillon(self):
+        projet, _, _ = self._source()
+        self._enregistrer(projet, nom='Salon')
+        etranger = fabriques.projet(self.voisin)
+        ModeleProjet.objects.create(company=self.a, proprietaire=self.voisin, nom='Autre', contenu={'v': 1},
+                                    cree_depuis=etranger)
+        reponse = self._api(self.u1).get(_url('modeles/'))
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        exemple = exemple_de('modeles_liste')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['results'][0]), set(exemple['results'][0]))
+        self.assertEqual([(m['nom'], m['nb_taches'], m['nb_sections']) for m in corps['results']],
+                         [('Salon', 4, 1)])
+
+    def test_enregistrer_puis_relire_rend_le_meme_objet(self):
+        projet, _, _ = self._source()
+        ecrit = self._enregistrer(projet, inclure_notes=True).json()
+        relu = self._api(self.u1).get(_url(f'modeles/{ecrit["id"]}/')).json()
+        self.assertEqual(relu, ecrit)
+        renomme = self._api(self.u1).patch(_url(f'modeles/{ecrit["id"]}/'), {'nom': relu['nom']}, format='json')
+        self.assertEqual(renomme.status_code, 200)
+        self.assertEqual(self._api(self.u1).get(_url(f'modeles/{ecrit["id"]}/')).json(), ecrit)
+
+    def test_renommer_un_modele(self):
+        projet, _, _ = self._source()
+        premier = self._enregistrer(projet, nom='Salon').json()['id']
+        second = self._enregistrer(projet, nom='Foire').json()['id']
+        api = self._api(self.u1)
+        ok = api.patch(_url(f'modeles/{premier}/'), {'nom': 'Salon 2027'}, format='json')
+        self.assertEqual((ok.status_code, ok.json()['nom']), (200, 'Salon 2027'))
+        pris = api.patch(_url(f'modeles/{second}/'), {'nom': 'salon 2027'}, format='json')
+        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un modèle « salon 2027 » existe déjà.']))
+        self.assertEqual(api.patch(_url(f'modeles/{second}/'), {}, format='json').status_code, 400)
+        self.assertEqual(ModeleProjet.objects.get(pk=second).nom, 'Foire')
+
+    def test_supprimer_un_modele_laisse_les_projets(self):
+        projet, _, _ = self._source()
+        modele = self._enregistrer(projet).json()['id']
+        reponse = self._api(self.u1).delete(_url(f'modeles/{modele}/'))
+        self.assertEqual((reponse.status_code, reponse.json()), (200, {'geste_id': None}))
+        self.assertFalse(ModeleProjet.objects.filter(pk=modele).exists())
+        self.assertTrue(Projet.objects.filter(pk=projet.pk).exists())
+        self.assertEqual(self._api(self.u1).get(_url(f'modeles/{modele}/')).status_code, 404)
+
+    def test_le_modele_d_un_autre_compte_repond_comme_un_id_inconnu(self):
+        etranger = fabriques.projet(self.voisin)
+        modele = ModeleProjet.objects.create(company=self.a, proprietaire=self.voisin, nom='Autre',
+                                             contenu={'v': 1}, cree_depuis=etranger)
+        api = self._api(self.u1)
+        corps = {'nom': 'X', 'apercu': True}
+        for reponse in (api.get(_url(f'modeles/{modele.pk}/')), api.delete(_url(f'modeles/{modele.pk}/')),
+                        api.patch(_url(f'modeles/{modele.pk}/'), {'nom': 'X'}, format='json'),
+                        api.post(_url(f'modeles/{modele.pk}/instancier/'), corps, format='json')):
+            self.assertEqual(reponse.status_code, 404)
+        self.assertTrue(ModeleProjet.objects.filter(pk=modele.pk, nom='Autre').exists())
+
+    def test_un_modele_issu_d_un_projet_confidentiel_est_ferme_a_l_assistant(self):
+        """Revue F4 #3 : sous l'en-tête assistant, un modèle confidentiel est tu dans la liste (ni nom ni compteurs)
+        et sa fiche, son renommage, sa suppression et son instanciation répondent comme un id inconnu."""
+        secret = fabriques.projet(self.u1, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre='Une tâche')
+        modele = self._enregistrer(secret, nom='Secret').json()['id']
+        ordinaire = fabriques.projet(self.u1, nom='Ordinaire')
+        self._enregistrer(ordinaire, nom='Visible')
+        assistant = self._api(self.u1, assistant=True)
+        for reponse in (assistant.get(_url(f'modeles/{modele}/')),
+                        assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Renommé'}, format='json'),
+                        assistant.delete(_url(f'modeles/{modele}/')),
+                        assistant.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'X'}, format='json')):
+            self.assertEqual(reponse.status_code, 404)
+            self.assertNotIn('Secret', reponse.content.decode())
+        liste = assistant.get(_url('modeles/'))
+        self.assertEqual(liste.status_code, 200)
+        self.assertEqual([(m['nom'], m['nb_taches']) for m in liste.json()['results']], [('Visible', 0)])
+        self.assertEqual(liste.json()['count'], 1)
+        self.assertEqual(ModeleProjet.objects.get(pk=modele).nom, 'Secret')  # rien n'a été écrit
+        self.assertEqual(self._api(self.u1).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertEqual([m['nom'] for m in self._api(self.u1).get(_url('modeles/')).json()['results']],
+                         ['Secret', 'Visible'])
+
+    def test_les_notes_d_un_modele_ne_sont_jamais_servies_a_l_assistant(self):
+        """Revue F4 #2 (regles.md §8 : notes jamais servies à l'assistant, même ordinaires) : la fiche, le renommage
+        et l'enregistrement d'un modèle « notes comprises » les taisent sous l'en-tête ; l'écran les voit."""
+        projet, _, _ = self._source()
+        ecran, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        modele = self._enregistrer(projet, inclure_notes=True).json()['id']
+        reponses = (assistant.get(_url(f'modeles/{modele}/')),
+                    assistant.patch(_url(f'modeles/{modele}/'), {'nom': 'Salon renommé'}, format='json'),
+                    assistant.post(_url(f'projets/{projet.pk}/enregistrer-modele/'),
+                                   {'nom': 'Par l\'assistant', 'inclure_notes': True}, format='json'))
+        for reponse in reponses:
+            self.assertIn(reponse.status_code, (200, 201))
+            self.assertNotIn('Appeler Lydec', reponse.content.decode())
+            taches = reponse.json()['contenu']['taches']
+            self.assertEqual([t['titre'] for t in taches], ['Réserver le stand', 'photos', 'Montage', 'Déjà faite'])
+            self.assertEqual([t for t in taches if 'notes' in t], [])
+        self.assertEqual(ecran.get(_url(f'modeles/{modele}/')).json()['contenu']['taches'][0]['notes'],
+                         'Appeler Lydec')
+
+    def test_les_confidentielles_non_reprises_sont_comptees_jamais_perdues_en_silence(self):
+        """Revue F4 #14 (décision d'orchestrateur) : « Dupliquer » et « Enregistrer comme modèle » ne reprennent pas une
+        tâche confidentielle par son propre drapeau (ni ses sous-tâches) ; l'aperçu de `dupliquer/`, la réponse
+        d'`enregistrer-modele/` (et la fiche du modèle, figée) en portent le NOMBRE ; 0 quand il n'y en a pas. Ce
+        nombre n'est pas un contenu confidentiel (regles.md §8) : servi aussi à l'assistant."""
+        projet, _, _ = self._source()  # « Secrète » : confidentielle par son drapeau
+        fabriques.tache(self.u1, projet=projet, titre='Sous-tâche de la secrète', parent=Tache.objects.get(
+            titre='Secrète'))  # ordinaire, mais perdue avec son parent
+        fabriques.tache(self.u1, projet=projet, titre='Secrète abandonnée', confidentiel=True, statut='annule')
+        api, assistant = self._api(self.u1), self._api(self.u1, assistant=True)
+        ecrit = self._enregistrer(projet).json()
+        self.assertEqual(ecrit['confidentielles_non_reprises'], 2)
+        self.assertNotIn('confidentielles_non_reprises', ecrit['contenu'])
+        for client in (api, assistant):
+            self.assertEqual(client.get(_url(f'modeles/{ecrit["id"]}/')).json()['confidentielles_non_reprises'], 2)
+            apercu = client.post(_url(f'projets/{projet.pk}/dupliquer/'), {'nom': 'Double'}, format='json').json()
+            self.assertEqual(apercu['confidentielles_non_reprises'], 2)
+            depuis = client.post(_url(f'modeles/{ecrit["id"]}/instancier/'), {'nom': 'Copie'}, format='json').json()
+            self.assertEqual(depuis['confidentielles_non_reprises'], 2)
+        sans = fabriques.projet(self.u1, nom='Sans secret')
+        fabriques.tache(self.u1, projet=sans, titre='Ordinaire')
+        self.assertEqual(self._enregistrer(sans, nom='Sans').json()['confidentielles_non_reprises'], 0)
+        self.assertEqual(api.post(_url(f'projets/{sans.pk}/dupliquer/'), {'nom': 'Double sans'},
+                                  format='json').json()['confidentielles_non_reprises'], 0)
+
+    def test_une_date_hors_plage_rend_400_sous_son_champ_jamais_500(self):
+        """Revue F4 #4 : `date_lancement` et `date_debut` hors de 2000-01-01 → 2100-12-31 rendent 400 sous leur
+        champ, aperçu compris ; rien n'est écrit."""
+        projet, _, _ = self._source()
+        modele = self._enregistrer(projet).json()['id']
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for date in ('9999-12-31', '9999-12-01', '0001-01-01', '2101-01-01', '1999-12-31'):
+            for apercu in (True, False):
+                with self.subTest(date=date, apercu=apercu):
+                    instancier = api.post(_url(f'modeles/{modele}/instancier/'),
+                                          {'nom': f'I {date}', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((instancier.status_code, instancier.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+                    dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                                         {'nom': f'D {date}', 'date_debut': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
+    def test_un_ecart_qui_sort_de_la_plage_rend_400_jamais_500(self):
+        """Revue F4 #4 : une date reçue dans la plage, mais qu'un écart du modèle ferait sortir (au-delà du
+        2100-12-31, ou au-delà de ce que Python sait dater), rend 400 sous `date_lancement` ; rien n'est écrit."""
+        projet, _, _ = self._source()  # « Montage » : échéance à J + 20 du lancement
+        modele = self._enregistrer(projet).json()['id']
+        enorme = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom='Écart énorme', contenu={
+            'v': 1, 'confidentiel': False, 'sections': [], 'taches': [
+                {'titre': 'Loin', 'section_index': None, 'priorite': 0, 'jalon': False, 'decalage_jour': 3_000_000,
+                 'decalage_echeance': None, 'parent_index': None, 'bloquee_par_index': None, 'checklist': []}]})
+        api, nb = self._api(self.u1), Projet.objects.count()
+        for pk, date in ((modele, '2100-12-25'), (enorme.pk, '2030-01-07')):
+            for apercu in (True, False):
+                with self.subTest(pk=pk, apercu=apercu):
+                    reponse = api.post(_url(f'modeles/{pk}/instancier/'),
+                                       {'nom': 'Trop loin', 'date_lancement': date, 'apercu': apercu}, format='json')
+                    self.assertEqual((reponse.status_code, reponse.json()['date_lancement']),
+                                     (400, ['Date attendue (AAAA-MM-JJ).']))
+        dupliquer = api.post(_url(f'projets/{projet.pk}/dupliquer/'),
+                             {'nom': 'Trop loin', 'date_debut': '2100-12-25', 'apercu': True}, format='json')
+        self.assertEqual((dupliquer.status_code, dupliquer.json()['date_debut']),
+                         (400, ['Date attendue (AAAA-MM-JJ).']))
+        self.assertEqual(Projet.objects.count(), nb)
+
+    def _modele_secret(self, nom):
+        """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
+        secret = fabriques.projet(self.u1, nom=nom, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre=f'{nom} tâche', notes='NOTE-SECRETE')
+        return secret, self._enregistrer(secret, nom=f'{nom} modèle', inclure_notes=True).json()['id']
+
+    def test_la_confidentialite_d_un_modele_survit_a_son_projet_d_origine(self):
+        """Revue F4 #1 : supprimer le projet confidentiel d'origine, ou le décocher, ne rouvre jamais son modèle
+        à l'assistant, et « Utiliser ce modèle » donne toujours un projet confidentiel."""
+        assistant = self._api(self.u1, assistant=True)
+        supprime, modele_1 = self._modele_secret('Supprimé')
+        self.assertEqual(self._api(self.u1).delete(_url(f'projets/{supprime.pk}/')).status_code, 200)
+        decoche, modele_2 = self._modele_secret('Décoché')
+        Projet.objects.filter(pk=decoche.pk).update(confidentiel=False)
+        for modele, copie in ((modele_1, 'Copie 1'), (modele_2, 'Copie 2')):
+            lu = assistant.get(_url(f'modeles/{modele}/'))
+            self.assertEqual(lu.status_code, 404)  # comme un id inconnu (revue F4 #3)
+            self.assertNotIn('NOTE-SECRETE', lu.content.decode())
+            cree = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': copie, 'apercu': False},
+                                           format='json')
+            self.assertEqual(cree.status_code, 201)
+            self.assertTrue(Projet.objects.get(pk=cree.json()['projet']['id']).confidentiel)
+
+    def test_un_modele_ordinaire_le_reste_quand_son_projet_devient_confidentiel(self):
+        """Revue F4 #1 : la confidentialité est figée à l'enregistrement, dans les deux sens."""
+        projet = fabriques.projet(self.u1, nom='Ordinaire')
+        fabriques.tache(self.u1, projet=projet, titre='Une tâche')
+        modele = self._enregistrer(projet, nom='Ordinaire modèle').json()['id']
+        Projet.objects.filter(pk=projet.pk).update(confidentiel=True)
+        self.assertEqual(self._api(self.u1, assistant=True).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertFalse(lecture_projets.modele_confidentiel(ModeleProjet.objects.get(pk=modele)))
+
+    def test_un_modele_sans_drapeau_fige_est_confidentiel_si_son_origine_est_inconnue(self):
+        """Revue F4 #1 : un modèle enregistré avant le drapeau figé (aucun en production) — échec fermé : il n'est
+        ordinaire que si son projet d'origine existe encore, vivant et ordinaire."""
+        vivant, supprime, secret = (fabriques.projet(self.u1, nom=n, confidentiel=(n == 'C')) for n in 'ABC')
+        supprime.soft_delete(self.u1, record=False)
+        attendus = {None: True, vivant: False, supprime: True, secret: True}
+        for rang, (origine, confidentiel) in enumerate(attendus.items()):
+            modele = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom=f'Ancien {rang}',
+                                                 contenu={'v': 1, 'sections': [], 'taches': []}, cree_depuis=origine)
+            with self.subTest(origine=getattr(origine, 'nom', None)):
+                self.assertEqual(lecture_projets.modele_confidentiel(modele), confidentiel)
+
+    # --- Instancier -------------------------------------------------------------------------------
+
+    def _modele(self):
+        projet, _, _ = self._source()
+        return self._enregistrer(projet, inclure_notes=False).json()['id']
+
+    def _premier_jour_travaille(self, jour):
+        return min(jours_travailles_de(self.u1, jour, jour + datetime.timedelta(days=14)))
+
+    def test_apercu_annonce_les_dates_rectifiees_sans_rien_ecrire(self):
+        modele = self._modele()
+        projets, taches, sections = Projet.objects.count(), Tache.objects.count(), Section.objects.count()
+        reponse = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'),
+                                          {'nom': 'Salon 2027', 'date_lancement': _j(40).isoformat(),
+                                           'apercu': True}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        corps = reponse.json()
+        exemple = exemple_de('modele_instancier')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['projet']), set(exemple['projet']))
+        self.assertEqual(set(corps['sections'][0]), set(exemple['sections'][0]))
+        self.assertEqual(set(corps['taches'][0]), set(exemple['taches'][0]))
+        self.assertEqual(corps['projet'], {'nom': 'Salon 2027'})
+        self.assertIsNone(corps['geste_id'])
+        reserver = corps['taches'][0]
+        self.assertEqual(reserver['jour_prevu'], self._premier_jour_travaille(_j(40)).isoformat())
+        self.assertEqual(reserver['echeance'], self._premier_jour_travaille(_j(45)).isoformat())
+        self.assertEqual((Projet.objects.count(), Tache.objects.count(), Section.objects.count()),
+                         (projets, taches, sections))
+
+    def test_apercu_est_le_defaut_et_rien_n_est_ecrit(self):
+        modele = self._modele()
+        projets = Projet.objects.count()
+        reponse = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': 'Salon 2027'},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(Projet.objects.count(), projets)
+
+    def test_creer_le_projet_depuis_le_modele(self):
+        modele = self._modele()
+        reponse = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'),
+                                          {'nom': 'Salon 2027', 'date_lancement': _j(40).isoformat(),
+                                           'apercu': False}, format='json')
+        self.assertEqual(reponse.status_code, 201)
+        corps = reponse.json()
+        exemple = exemple_de('projet_ecrit')
+        self.assertEqual(set(corps), set(exemple))
+        self.assertEqual(set(corps['projet']), set(exemple['projet']))
+        projet = Projet.objects.get(pk=corps['projet']['id'])
+        self.assertEqual((projet.nom, projet.priorite, projet.objectif, projet.proprietaire_id),
+                         ('Salon 2027', 2, 'Stand monté', self.u1.pk))
+        self.assertFalse(projet.confidentiel)
+        etape = Section.objects.get(projet=projet)
+        self.assertEqual((etape.nom, etape.date_debut), ('Préparation', self._premier_jour_travaille(_j(40))))
+        taches = {t.titre: t for t in Tache.objects.filter(projet=projet)}
+        self.assertEqual(sorted(taches), ['Déjà faite', 'Montage', 'Réserver le stand', 'photos'])
+        reserver = taches['Réserver le stand']
+        self.assertEqual((reserver.section_id, reserver.priorite, reserver.source, reserver.notes),
+                         (etape.pk, 3, 'modele', ''))
+        self.assertEqual(reserver.jour_prevu, self._premier_jour_travaille(_j(40)))
+        self.assertEqual(list(ElementChecklist.objects.filter(tache=reserver).values_list('libelle', flat=True)),
+                         ['Prix'])
+        self.assertEqual((taches['photos'].parent_id, taches['photos'].section_id), (reserver.pk, etape.pk))
+        self.assertEqual((taches['Montage'].bloquee_par_id, taches['Montage'].jalon), (reserver.pk, True))
+        self.assertEqual(taches['Déjà faite'].statut, 'a_faire')  # remise à faire
+        self.assertEqual(Tache.objects.filter(projet=projet).exclude(source='modele').count(), 0)
+
+    def test_annuler_supprime_le_projet_cree(self):
+        modele = self._modele()
+        corps = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'),
+                                        {'nom': 'Salon 2027', 'apercu': False}, format='json').json()
+        self.assertIsNotNone(corps['geste_id'])
+        projet = Projet.objects.get(pk=corps['projet']['id'])
+        bilan = annuler_geste(self.u1, corps['geste_id'])
+        self.assertEqual(bilan['conflits'], [])
+        self.assertFalse(Projet.objects.filter(pk=projet.pk).exists())
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 0)
+        self.assertEqual(Section.objects.filter(projet=projet).count(), 0)
+
+    def test_nom_de_projet_pris_et_rejeu_de_la_meme_cle(self):
+        modele = self._modele()
+        api = self._api(self.u1)
+        pris = api.post(_url(f'modeles/{modele}/instancier/'), {'nom': 'salon 2026', 'apercu': True}, format='json')
+        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un projet « salon 2026 » existe déjà.']))
+        corps = {'nom': 'Salon 2027', 'apercu': False}
+        for _ in range(2):
+            api.post(_url(f'modeles/{modele}/instancier/'), corps, format='json', HTTP_IDEMPOTENCY_KEY='inst-1')
+        self.assertEqual(Projet.objects.filter(nom='Salon 2027').count(), 1)
+
+    def test_un_modele_d_un_projet_confidentiel_donne_un_projet_confidentiel(self):
+        secret = fabriques.projet(self.u1, confidentiel=True)
+        modele = self._enregistrer(secret, nom='Secret').json()['id']
+        corps = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': 'Copie', 'apercu': False},
+                                        format='json').json()
+        self.assertTrue(Projet.objects.get(pk=corps['projet']['id']).confidentiel)
+
+    def test_un_modele_sans_date_cree_un_projet_sans_date(self):
+        projet = fabriques.projet(self.u1, nom='Sans dates')
+        fabriques.tache(self.u1, projet=projet, titre='Une tâche')
+        modele = self._enregistrer(projet, nom='Nu').json()['id']
+        corps = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': 'Copie nue'},
+                                        format='json').json()
+        self.assertEqual(corps['taches'], [{'titre': 'Une tâche', 'jour_prevu': None, 'echeance': None}])
+
+    # --- Dupliquer --------------------------------------------------------------------------------
+
+    def test_dupliquer_apercu_puis_creation_avec_les_notes(self):
+        projet, _, _ = self._source()
+        api = self._api(self.u1)
+        url = _url(f'projets/{projet.pk}/dupliquer/')
+        apercu = api.post(url, {'nom': 'Salon 2027', 'date_debut': _j(40).isoformat(), 'apercu': True},
+                          format='json')
+        self.assertEqual(apercu.status_code, 200)
+        exemple = exemple_de('modele_instancier')
+        self.assertEqual(set(apercu.json()), set(exemple))
+        self.assertEqual(Projet.objects.filter(nom='Salon 2027').count(), 0)
+        cree = api.post(url, {'nom': 'Salon 2027', 'date_debut': _j(40).isoformat(), 'apercu': False},
+                        format='json')
+        self.assertEqual(cree.status_code, 201)
+        double = Projet.objects.get(pk=cree.json()['projet']['id'])
+        self.assertEqual((double.objectif, double.priorite), ('Stand monté', 2))
+        reserver = Tache.objects.get(projet=double, titre='Réserver le stand')
+        self.assertEqual(reserver.notes, 'Appeler Lydec')
+        self.assertEqual(reserver.jour_prevu, self._premier_jour_travaille(_j(40)))
+        self.assertEqual(Tache.objects.filter(projet=projet).count(), 6)  # l'original ne bouge pas
+        self.assertFalse(Tache.objects.filter(projet=double, titre='Secrète').exists())
+
+    def test_dupliquer_un_projet_confidentiel_donne_un_double_confidentiel(self):
+        secret = fabriques.projet(self.u1, confidentiel=True, nom='Secret')
+        fabriques.tache(self.u1, projet=secret, titre='Une tâche')
+        corps = self._api(self.u1).post(_url(f'projets/{secret.pk}/dupliquer/'), {'nom': 'Double', 'apercu': False},
+                                        format='json').json()
+        self.assertTrue(Projet.objects.get(pk=corps['projet']['id']).confidentiel)
+        refus = self._api(self.u1, assistant=True).post(_url(f'projets/{secret.pk}/dupliquer/'), {'nom': 'Autre'},
+                                                        format='json')
+        self.assertEqual(refus.status_code, 403)
+
+    def test_dupliquer_refus_nom_pris_projet_etranger_et_nom_requis(self):
+        projet, _, _ = self._source()
+        etranger = fabriques.projet(self.voisin)
+        api = self._api(self.u1)
+        pris = api.post(_url(f'projets/{projet.pk}/dupliquer/'), {'nom': 'Salon 2026'}, format='json')
+        self.assertEqual((pris.status_code, pris.json()['nom']), (400, ['Un projet « Salon 2026 » existe déjà.']))
+        self.assertEqual(api.post(_url(f'projets/{projet.pk}/dupliquer/'), {}, format='json').status_code, 400)
+        self.assertEqual(api.post(_url(f'projets/{etranger.pk}/dupliquer/'), {'nom': 'X'},
+                                  format='json').status_code, 404)
+
+    def test_dupliquer_annule_en_un_geste(self):
+        projet, _, _ = self._source()
+        corps = self._api(self.u1).post(_url(f'projets/{projet.pk}/dupliquer/'),
+                                        {'nom': 'Double', 'apercu': False}, format='json').json()
+        double = Projet.objects.get(pk=corps['projet']['id'])
+        self.assertEqual(annuler_geste(self.u1, corps['geste_id'])['conflits'], [])
+        self.assertFalse(Projet.objects.filter(pk=double.pk).exists())
+        self.assertEqual(Tache.objects.filter(projet=double).count(), 0)

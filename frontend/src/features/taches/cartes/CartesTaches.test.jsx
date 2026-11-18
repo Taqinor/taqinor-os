@@ -67,12 +67,41 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(api.post.mock.calls[0][1].lignes).toEqual([{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }, { type: 'tache', id: 41 }])
   })
 
+  it('passe visuelle n° 50 — plan_propose : chaque ligne a sa case ronde (maquette copilote.html), cocher la termine', async () => {
+    const donnees = contrat('journee_proposition')
+    monter('plan_propose', donnees)
+    const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
+    const lignes = within(carte).getAllByRole('listitem')
+    expect(lignes).toHaveLength(donnees.proposition.length)
+    for (const [i, ligne] of lignes.entries()) {
+      const titre = donnees.proposition[i].item.titre
+      expect(within(ligne).getByRole('checkbox', { name: `Marquer « ${titre} » comme faite` })).toHaveClass('case')
+    }
+    await userEvent.click(within(lignes[0]).getByRole('checkbox'))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/taches/taches/${donnees.proposition[0].item.id}/terminer/`,
+      expect.objectContaining({ lock_version: donnees.proposition[0].item.lock_version })))
+  })
+
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
     api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
     monter('plan_propose', contrat('journee_proposition'))
     await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.getByText('Déclaration TVA')).toBeInTheDocument()
+  })
+
+  it('D-V1 — ma_journee : une essentielle FAITE (servie aussi dans `essentiel`) n\'est jamais reportée par le lot', async () => {
+    const donnees = contrat('aujourdhui')
+    donnees.essentiel = [{ ...donnees.faites[0], essentielle: true }, ...donnees.essentiel]
+    monter('ma_journee', donnees)
+    const carte = screen.getByRole('group', { name: 'Ma journée' })
+    expect(within(carte).getByText('Dossier subvention')).toBeInTheDocument()
+    const ouvertes = [...donnees.essentiel, ...donnees.journee].filter((it) => it.type === 'tache' && it.statut !== 'fait')
+    await userEvent.click(within(carte).getByRole('button', { name: `Tout au prochain jour travaillé (${ouvertes.length})` }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/taches/lot/', expect.objectContaining({ ids: ouvertes.map((it) => it.id) }), expect.anything(),
+    ))
   })
 
   it('ma_journee : lignes de la journée, cocher termine la tâche, report groupé au prochain jour travaillé', async () => {
@@ -93,6 +122,30 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
       expect.anything(),
     ))
     expect(within(carte).getAllByRole('link', { name: 'Ouvrir' })[0]).toHaveAttribute('href', '/taches/aujourdhui?tache=20')
+  })
+
+  it('relecture adverse F4 n° 4 — ma_journee : retoucher une case cochée ROUVRE la tâche (jamais « terminer » une faite) ; un échec la remet cochée', async () => {
+    const donnees = contrat('aujourdhui')
+    donnees.essentiel = [{ ...donnees.faites[0], essentielle: true }, ...donnees.essentiel]
+    monter('ma_journee', donnees)
+    const carte = screen.getByRole('group', { name: 'Ma journée' })
+    const caseFaite = () => within(carte).getByRole('checkbox', { name: 'Marquer « Dossier subvention » comme faite' })
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/12/rouvrir/', {}))
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/12/terminer/', expect.anything())
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'false')
+
+    // recochée : elle est terminée à nouveau
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/12/terminer/', expect.objectContaining({ lock_version: 5 })))
+    expect(caseFaite()).toHaveAttribute('aria-checked', 'true')
+
+    // le serveur refuse la réouverture : la case revient cochée, elle ne ment pas
+    api.post.mockRejectedValueOnce(Object.assign(new Error('http'), { response: { status: 500, data: {} } }))
+    await userEvent.click(caseFaite())
+    await waitFor(() => expect(caseFaite()).toHaveAttribute('aria-checked', 'true'))
   })
 
   it('liste_taches : projets et tâches, chaque « Ouvrir » mène à sa fiche', () => {
@@ -163,6 +216,14 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/taches/taches/21/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: 2 }),
     ))
+  })
+
+  it('passe visuelle n° 65 — priorites : les trois gestes de chaque ligne sont des liens d’accent (`bouton lien`)', () => {
+    monter('priorites', contrat('priorites'))
+    const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
+    const gestes = within(ligne.querySelector('.actions-priorite')).getAllByRole('button')
+    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", expect.stringMatching(/^Plus tard dans la semaine/)])
+    for (const b of gestes) expect(b).toHaveClass('bouton', 'lien')
   })
 
   it('priorites : liste vide', () => {

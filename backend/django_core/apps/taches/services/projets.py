@@ -12,6 +12,7 @@ sélecteurs du compte (société ET propriétaire) ; un id reçu d'un autre comp
 import datetime
 from bisect import bisect_right
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 from django.db import IntegrityError, transaction
 from django.db.models import Max
@@ -21,11 +22,15 @@ from rest_framework import serializers
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.confidentialite import nom_pour
-from apps.taches.models.projets import Projet, RevueProjet, Section
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
-from apps.taches.moteur.decalage import decaler
+from apps.taches.moteur.decalage import decaler, figer_modele, instancier
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import jours_travailles_de, projets_de, rappels_de, sections_de, taches_de
+from apps.taches.selectors.projets import (
+    CLE_CONFIDENTIEL, CLE_NON_REPRISES, elements_a_figer, modele_confidentiel, modele_de, modeles_de,
+)
 from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office, creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
@@ -106,20 +111,26 @@ def _geste(user, type_, message, ops):
 
 def creer_projet(user, *, nom, priorite=0, couleur=None, icone='', objectif='', domaine=''):
     """Crée un projet neuf (couleur d'office, rang au milieu de sa priorité) ; nom pris → 400."""
-    cle = cle_nom(nom)
     with transaction.atomic():
-        if projets_de(user).filter(nom_cle=cle).exists():
-            raise _nom_pris(nom)
-        try:
-            with transaction.atomic():
-                projet = Projet.objects.create(
-                    company_id=user.company_id, proprietaire=user, nom=nom, priorite=priorite,
-                    couleur=couleur or couleur_d_office(user), icone=icone, objectif=objectif,
-                    domaine=domaine, rang=_rang_projet_neuf(user, priorite))
-        except IntegrityError:  # deux envois qui se croisent : le second voit la contrainte
-            raise _nom_pris(nom)
+        projet = _projet_neuf(user, nom=nom, priorite=priorite, couleur=couleur, icone=icone, objectif=objectif,
+                              domaine=domaine)
         geste = enregistrer_geste(user, 'creation', 'Projet créé', [op_creation('projet', projet)])
     return ResultatProjet(projet, geste=geste)
+
+
+def _projet_neuf(user, *, nom, priorite=0, couleur=None, icone='', objectif='', domaine='', confidentiel=False):
+    """Le projet neuf (couleur d'office, rang au milieu de sa priorité), SANS geste : l'appelant en rend un.
+    Nom pris → 400, aussi quand deux envois se croisent (la contrainte est relue)."""
+    if projets_de(user).filter(nom_cle=cle_nom(nom)).exists():
+        raise _nom_pris(nom)
+    try:
+        with transaction.atomic():
+            return Projet.objects.create(
+                company_id=user.company_id, proprietaire=user, nom=nom, priorite=priorite,
+                couleur=couleur or couleur_d_office(user), icone=icone, objectif=objectif,
+                domaine=domaine, confidentiel=confidentiel, rang=_rang_projet_neuf(user, priorite))
+    except IntegrityError:  # deux envois qui se croisent : le second voit la contrainte
+        raise _nom_pris(nom)
 
 
 def _statut_de(projet, statut):
@@ -482,6 +493,11 @@ def _prochain_ouvre(user, dates, delta):
     """`prochain_ouvre(d)` : `d` s'il est travaillé, sinon le prochain jour travaillé (une seule lecture)."""
     bas = min(dates) + datetime.timedelta(days=min(delta, 0))
     haut = max(dates) + datetime.timedelta(days=max(delta, 0) + HORIZON_OUVRES)
+    return _prochain_ouvre_entre(user, bas, haut)
+
+
+def _prochain_ouvre_entre(user, bas, haut):
+    """`prochain_ouvre(d)` sur la fenêtre `[bas, haut]` (un seul calendrier lu pour tout le projet)."""
     travailles = sorted(jours_travailles_de(user, bas, haut))
 
     def prochain(jour):
@@ -560,6 +576,236 @@ def decaler_projet(user, projet_id, delta, *, apercu=True, usage='ecran'):
             return changements, None
         ops = _appliquer_decalage(user, projet, sections, taches, changements)
         return changements, _geste(user, 'decalage', 'Dates décalées', ops)
+
+
+# --- Dupliquer, modèles --------------------------------------------------------------------------
+
+MESSAGE_MODELE_PRIS = 'Un modèle « {nom} » existe déjà.'
+
+
+@dataclass
+class ResultatInstance:
+    """Ce que rend « instancier » : le plan daté (`apercu` : titre, étapes, tâches, rien d'écrit) et, quand
+    `apercu` est faux, le projet créé."""
+    plan: dict
+    resultat: ResultatProjet = None
+
+
+def _modele_pris(nom):
+    return serializers.ValidationError({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
+
+
+def _decalages(contenu):
+    """Tous les décalages (jours) d'un contenu de modèle, sans les `None`."""
+    valeurs = [s.get(c) for s in contenu.get('sections', ()) for c in ('decalage_debut', 'decalage_fin')]
+    valeurs += [t.get(c) for t in contenu.get('taches', ()) for c in ('decalage_jour', 'decalage_echeance')]
+    return [v for v in valeurs if v is not None]
+
+
+def _tel_quel(jour):
+    return jour
+
+
+def _hors_plage(champ):
+    return serializers.ValidationError({champ: [MESSAGE_DATE]})
+
+
+def _ecarts_dans_la_plage(date_lancement, decalages):
+    """Vrai si `date_lancement` + chaque décalage reste dans la plage acceptée (`entrees.jour_dans_bornes`) —
+    jugé AVANT de lire le calendrier : un écart démesuré ne lit jamais des millions de jours."""
+    try:
+        extremes = [date_lancement + datetime.timedelta(days=d) for d in (min(decalages), max(decalages))]
+    except OverflowError:
+        return False
+    return all(jour_dans_bornes(jour) for jour in extremes)
+
+
+def _dates_du_plan(plan):
+    dates = [s[c] for s in plan['sections'] for c in ('date_debut', 'date_fin')]
+    dates += [t[c] for t in plan['taches'] for c in ('jour_prevu', 'echeance')]
+    return [datetime.date.fromisoformat(d) for d in dates if d is not None]
+
+
+def _plan_date(user, contenu, nom, date_lancement, champ):
+    """Le plan du moteur `instancier` : chaque date = `date_lancement` + décalage, rectifiée sur un jour
+    travaillé du compte (un seul calendrier lu). Une date du plan hors de la plage acceptée (un écart du modèle la
+    fait sortir, avant ou après rectification) → 400 sous `champ`, jamais 500 (revue F4 #4)."""
+    decalages = _decalages(contenu)
+    if decalages:
+        if not _ecarts_dans_la_plage(date_lancement, decalages):
+            raise _hors_plage(champ)
+        bas = date_lancement + datetime.timedelta(days=min(0, min(decalages)))
+        haut = date_lancement + datetime.timedelta(days=max(0, max(decalages)) + HORIZON_OUVRES)
+        prochain = _prochain_ouvre_entre(user, bas, haut)
+    else:  # aucune date à rectifier : le calendrier n'est pas lu
+        prochain = _tel_quel
+    plan = instancier(contenu, nom, date_lancement, prochain)
+    if not all(jour_dans_bornes(jour) for jour in _dates_du_plan(plan)):
+        raise _hors_plage(champ)
+    return plan
+
+
+def _jour(texte):
+    return datetime.date.fromisoformat(texte) if texte else None
+
+
+def _etapes_du_modele(user, projet, etapes, ops):
+    """Les étapes du plan, créées dans l'ordre du modèle ; rend leurs ids par index."""
+    ids = []
+    for rang, etape in enumerate(etapes, start=1):
+        section = Section.objects.create(
+            company_id=user.company_id, projet=projet, nom=etape['nom'], rang=rang * PAS_RANG,
+            date_debut=_jour(etape['date_debut']), date_fin=_jour(etape['date_fin']))
+        ops.append(op_creation('section', section))
+        ids.append(section.pk)
+    return ids
+
+
+def _ligne_du_modele(tache, projet, section_id):
+    ligne = {'titre': tache['titre'], 'projet_id': projet.pk, 'priorite': tache['priorite'],
+             'jalon': tache['jalon'], 'jour_prevu': tache['jour_prevu'], 'echeance': tache['echeance'],
+             'checklist': tache['checklist']}
+    if section_id is not None:
+        ligne['section_id'] = section_id
+    if 'notes' in tache:
+        ligne['notes'] = tache['notes']
+    return ligne
+
+
+def _taches_du_modele(user, projet, taches, etapes_ids):
+    """Crée les tâches (puis leurs sous-tâches) du plan, dans l'ordre du modèle ; rend `[tâche ou None]` par
+    index. Chaque sous-tâche reprend le projet et l'étape de son parent. Les prérequis (`bloquee_par_index`)
+    se posent une fois toutes les tâches nées."""
+    creees = [None] * len(taches)
+    hautes = [i for i, t in enumerate(taches) if t['parent_index'] is None]
+    lignes = []
+    for i in hautes:
+        index = taches[i]['section_index']
+        lignes.append(_ligne_du_modele(taches[i], projet, etapes_ids[index] if index is not None else None))
+    if lignes:
+        for i, tache in zip(hautes, creer_taches(user, lignes, source=Source.MODELE, porte='modele').creees):
+            creees[i] = tache
+    for i in hautes:
+        enfants = [j for j, t in enumerate(taches) if t['parent_index'] == i]
+        if enfants and creees[i] is not None:
+            nees = creer_taches(user, [_ligne_du_modele(taches[j], projet, None) for j in enfants],
+                                source=Source.MODELE, porte='modele', parent=creees[i]).creees
+            for j, tache in zip(enfants, nees):
+                creees[j] = tache
+    for i, t in enumerate(taches):
+        cible = t['bloquee_par_index']
+        if cible is not None and creees[i] is not None and creees[cible] is not None and cible != i:
+            Tache.objects.filter(pk=creees[i].pk).update(bloquee_par_id=creees[cible].pk)
+    return creees
+
+
+def _creer_depuis_le_plan(user, plan, *, confidentiel):
+    """Le projet, ses étapes et ses tâches du `plan` (même transaction), UN geste `creation` (« Annuler » =
+    suppression douce du projet créé)."""
+    with transaction.atomic():
+        ops = []
+        projet = _projet_neuf(user, nom=plan['projet']['nom'], priorite=plan['projet']['priorite'],
+                              objectif=plan['projet']['objectif'], confidentiel=confidentiel)
+        ops.append(op_creation('projet', projet))
+        etapes_ids = _etapes_du_modele(user, projet, plan['sections'], ops)
+        creees = [t for t in _taches_du_modele(user, projet, plan['taches'], etapes_ids) if t is not None]
+        ops.extend(op_creation('tache', t) for t in creees)
+        geste = enregistrer_geste(user, 'creation', 'Projet créé', ops)
+    return ResultatProjet(projet, geste=geste, creees=creees)
+
+
+def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel, champ):
+    """Le plan daté ; sans `apercu`, le projet est créé. Un nom de projet pris → 400, aperçu compris ; une date
+    hors plage → 400 sous `champ` (le champ de date de la route)."""
+    if projets_de(user).filter(nom_cle=cle_nom(nom)).exists():
+        raise _nom_pris(nom)
+    plan = _plan_date(user, contenu, nom, date_lancement or timezone.localdate(), champ)
+    plan[CLE_NON_REPRISES] = contenu.get(CLE_NON_REPRISES, 0)
+    if apercu:
+        return ResultatInstance(plan)
+    return ResultatInstance(plan, _creer_depuis_le_plan(user, plan, confidentiel=confidentiel))
+
+
+def _contenu_du_projet(user, projet, *, inclure_notes):
+    """Le contenu v1 figé du projet, avec sa confidentialité de CET instant (`CLE_CONFIDENTIEL`, revue F4 #1) :
+    le modèle la garde, quoi que devienne ensuite le projet ; et le nombre de tâches confidentielles non reprises
+    (`CLE_NON_REPRISES`, revue F4 #14)."""
+    sections, taches, listes, non_reprises = elements_a_figer(user, projet)
+    pures = [SimpleNamespace(
+        id=t.pk, parent_id=t.parent_id, statut=t.statut, section_id=t.section_id, titre=t.titre,
+        priorite=t.priorite, jalon=t.jalon, jour_prevu=t.jour_prevu, echeance=t.echeance,
+        bloquee_par=t.bloquee_par_id, checklist=listes.get(t.pk, []), notes=t.notes) for t in taches]
+    contenu = figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
+    contenu[CLE_CONFIDENTIEL] = bool(projet.confidentiel)
+    contenu[CLE_NON_REPRISES] = non_reprises
+    return contenu
+
+
+def _projet_a_copier(user, projet_id):
+    projet = projets_de(user).filter(pk=projet_id).first()
+    if projet is None:
+        raise Http404(MESSAGE_INTROUVABLE)
+    return projet
+
+
+def dupliquer_projet(user, projet_id, nom, date_debut=None, *, apercu=True):
+    """« Dupliquer » : le projet figé (notes comprises) puis instancié à `date_debut` (aujourd'hui sinon) par le
+    même moteur que les modèles. Le double d'un projet confidentiel l'est aussi. `apercu` : rien n'est écrit."""
+    projet = _projet_a_copier(user, projet_id)
+    contenu = _contenu_du_projet(user, projet, inclure_notes=True)
+    return _instancier(user, contenu, nom, date_debut, apercu=apercu, confidentiel=projet.confidentiel,
+                       champ='date_debut')
+
+
+def enregistrer_modele(user, projet_id, nom, *, inclure_notes=False):
+    """« Enregistrer comme modèle » : fige le projet (notes seulement si `inclure_notes`) ; nom pris → 400."""
+    with transaction.atomic():
+        projet = _projet_a_copier(user, projet_id)
+        if modeles_de(user).filter(nom__iexact=nom).exists():
+            raise _modele_pris(nom)
+        contenu = _contenu_du_projet(user, projet, inclure_notes=inclure_notes)
+        try:
+            with transaction.atomic():
+                return ModeleProjet.objects.create(
+                    company_id=user.company_id, proprietaire=user, nom=nom, contenu=contenu, cree_depuis=projet)
+        except IntegrityError:  # deux envois qui se croisent
+            raise _modele_pris(nom)
+
+
+def _modele_du_compte(user, modele_id):
+    modele = modele_de(user, modele_id)
+    if modele is None:
+        raise Http404(MESSAGE_INTROUVABLE)
+    return modele
+
+
+def renommer_modele(user, modele_id, nom):
+    """PATCH d'un modèle : son nom seul ; nom pris → 400."""
+    with transaction.atomic():
+        modele = _modele_du_compte(user, modele_id)
+        if modeles_de(user).filter(nom__iexact=nom).exclude(pk=modele.pk).exists():
+            raise _modele_pris(nom)
+        modele.nom = nom
+        try:
+            with transaction.atomic():
+                modele.save(update_fields=['nom', 'updated_at'])
+        except IntegrityError:
+            raise _modele_pris(nom)
+    return modele
+
+
+def supprimer_modele(user, modele_id):
+    """Supprime le modèle (définitivement : aucun geste annulable) ; les projets qui en sont nés restent."""
+    with transaction.atomic():
+        _modele_du_compte(user, modele_id).delete()
+
+
+def instancier_modele(user, modele_id, nom, date_lancement=None, *, apercu=True):
+    """« Utiliser un modèle » : `date_lancement` (aujourd'hui sinon) + décalages, rectifiée sur un jour
+    travaillé. `apercu` d'abord (rien n'écrit), puis sans `apercu` : le projet est créé (un geste)."""
+    modele = _modele_du_compte(user, modele_id)
+    return _instancier(user, modele.contenu, nom, date_lancement, apercu=apercu,
+                       confidentiel=modele_confidentiel(modele), champ='date_lancement')
 
 
 # --- Revue de la semaine -------------------------------------------------------------------------

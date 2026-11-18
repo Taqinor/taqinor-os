@@ -107,8 +107,8 @@ test.describe('Tâches — saisie', () => {
     // chaque première ligne est un « Nouveau projet », priorité Moyenne par défaut
     for (const [nom] of listes) {
       await expect(feuilleSaisie(page).getByText(`Nouveau projet : ${nom}`)).toBeVisible()
-      await expect(feuilleSaisie(page).getByRole('radiogroup', { name: `Priorité du projet ${nom}` })
-        .getByRole('radio', { name: 'Moyenne' })).toBeChecked()
+      // passe visuelle n° 33 : la priorité est la puce « Moyenne ⌄ » de l'en-tête du projet
+      await expect(feuilleSaisie(page).getByRole('button', { name: `Priorité du projet ${nom} : moyenne` })).toHaveText('Moyenne')
     }
 
     await feuilleSaisie(page).getByRole('button', { name: 'Créer 12 tâches' }).click()

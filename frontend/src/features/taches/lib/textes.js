@@ -124,3 +124,16 @@ export function echeanceTexte(echeance, aujourdhui = aujourdhuiIso()) {
   }
   return { texte: `échéance ${jourCourt(echeance, aujourdhui)}`, ton: 'fort' }
 }
+
+/** Ce que dit l'écran d'un lien ERP qui n'est plus lisible (textes.md « Lien ERP ») : jamais un libellé ni une adresse. */
+export const ETATS_LIEN = {
+  archive: 'Élément archivé', introuvable: 'Élément introuvable', inaccessible: 'Hors de ta portée', efface: 'Lead effacé',
+}
+
+/** Les familles de suggestions de l'ERP et leur phrase (textes.md « L'ERP me suggère »), dans l'ordre du serveur. */
+export const FAMILLES_SUGGESTIONS = [
+  ['devis_accepte', 'Devis accepté : préparer le chantier'],
+  ['chantier_receptionne', 'Chantier réceptionné : demander un avis'],
+  ['chantier_annule', 'Chantier annulé : comprendre pourquoi'],
+  ['visite_validee', 'Visite validée : préparer le devis'],
+]

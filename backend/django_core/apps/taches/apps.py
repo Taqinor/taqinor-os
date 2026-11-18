@@ -44,3 +44,8 @@ class TachesConfig(AppConfig):
         dsr.register()
         # Le jeton du calendrier abonné est DANS l'adresse : aucune sortie d'observabilité ne le porte.
         auth_jeton.declarer_chemins_sensibles()
+        #
+        # TCH71 — suggestions venues de l'ERP (reference/regles.md §9) : le même import de
+        # `receivers` abonne `devis_accepted`, `devis_acceptation_annulee`, `chantier_receptionne`,
+        # `chantier_annule` et `visite_validee` (aucun signal neuf ; chaque abonné best-effort, son
+        # `dispatch_uid` en `taches.*`). Rien d'autre à poser ici.

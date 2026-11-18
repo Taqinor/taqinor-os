@@ -39,7 +39,7 @@ const messageDe = (err, champs) => {
 
 const valeurRevue = (texte) => (/^\d$/.test(texte) ? Number(texte) : texte)
 
-function Interrupteur({ nom, allume, onBasculer }) {
+export function Interrupteur({ nom, allume, onBasculer }) {
   return <button type="button" className="interrupteur" role="switch" aria-checked={allume} aria-label={nom} onClick={onBasculer} />
 }
 

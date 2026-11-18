@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import { ZoneAnnonces } from '../../features/taches/coquille/CoquilleTaches'
+import { poserRectangles } from '../../features/taches/projets/rectanglesDeTest'
 
 vi.mock('../../api/tachesApi', async (original) => ({
   ...(await original()),
@@ -22,6 +23,7 @@ vi.mock('../../api/tachesApi', async (original) => ({
   annulerGeste: vi.fn(),
   attendreTache: vi.fn(),
   listerToutesLesTaches: vi.fn(),
+  modifierTache: vi.fn(),
   supprimerProjet: vi.fn(),
   creerProjet: vi.fn(),
   lireTache: vi.fn(),
@@ -54,7 +56,9 @@ afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); reinitialiserGestes() 
 describe('TCH89 — Un projet : en-tête', () => {
   it('avancement, échéance, jalon, santé et priorité viennent de la vue', async () => {
     monter()
-    expect(await screen.findByText('12 sur 20 · échéance 15/12')).toBeInTheDocument()
+    expect(await screen.findByText('12 sur 20')).toBeInTheDocument()
+    // passe visuelle n° 40 : l'échéance a son mois, comme dans la liste (« mar. 15 déc. », jamais « 15/12 »)
+    expect(screen.getByText('échéance mar. 15 déc.')).toBeInTheDocument()
     expect(screen.getByText("Prochain jalon : Devis Settat · aujourd'hui")).toBeInTheDocument()
     expect(screen.getByText('Rien de fait depuis 10 jours travaillés.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Priorité haute, changer' })).toBeInTheDocument()
@@ -66,9 +70,27 @@ describe('TCH89 — Un projet : en-tête', () => {
   it('Détails montre « Fini quand… » et « dernière faite le 03/11 »', async () => {
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    await user.click(await screen.findByRole('button', { name: 'Détails' }))
+    // passe visuelle n° 43 : le repli s'intitule « Fini quand… » (projet-liste.html), plus « Détails »
+    await user.click(await screen.findByRole('button', { name: 'Fini quand…' }))
+    expect(screen.queryByRole('button', { name: 'Détails' })).toBeNull()
     expect(screen.getByText('Fini quand les 4 devis sont signés')).toBeInTheDocument()
     expect(screen.getByText('dernière faite le 03/11')).toBeInTheDocument()
+  })
+
+  it('passe visuelle n° 43 — point de couleur devant le nom ; échéance menacée (d) : « À ce rythme : … » en une ligne, le détail au toucher', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    const longue = 'Au rythme des 4 dernières semaines (12 faites en 20 jours travaillés), il faudrait 10 jours travaillés ; il en reste 8.'
+    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd' } }]
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const sante = await screen.findByRole('button', { name: 'À ce rythme : 10 jours travaillés, il en reste 8' })
+    const titre = screen.getByRole('heading', { level: 1 })
+    expect(titre.querySelector('.ep-projet-nom[data-p="vert"] > .point')).not.toBeNull()
+    expect(screen.queryByText(longue)).toBeNull()
+    await user.click(sante)
+    expect(sante).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(longue)).toBeInTheDocument()
   })
 
   it('pas de signal de santé : aucune ligne de santé', async () => {
@@ -76,7 +98,7 @@ describe('TCH89 — Un projet : en-tête', () => {
     vue.projet.sante = []
     api.lireVueProjet.mockResolvedValue({ data: vue })
     monter()
-    await screen.findByText('12 sur 20 · échéance 15/12')
+    await screen.findByText('12 sur 20')
     expect(screen.queryByText(/Rien de fait depuis/)).toBeNull()
   })
 
@@ -108,12 +130,12 @@ describe('TCH89 — Un projet : étapes', () => {
     const etape = await screen.findByRole('region', { name: 'Études' })
     await user.click(within(etape).getByRole('checkbox', { name: /Marquer « Devis Settat »/ }))
     expect(api.terminerTache).toHaveBeenCalledWith(20)
-    expect(await screen.findByText('13 sur 20 · échéance 15/12')).toBeInTheDocument()
+    expect(await screen.findByText('13 sur 20')).toBeInTheDocument()
     expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByRole('button', { name: 'Annuler' }))
     expect(api.rouvrirTache).toHaveBeenCalledWith(20)
-    expect(await screen.findByText('12 sur 20 · échéance 15/12')).toBeInTheDocument()
+    expect(await screen.findByText('12 sur 20')).toBeInTheDocument()
   })
 
   it('un échec réseau remet la case et l\'avancement comme avant', async () => {
@@ -124,7 +146,7 @@ describe('TCH89 — Un projet : étapes', () => {
     const case_ = within(etape).getByRole('checkbox', { name: /Marquer « Devis Settat »/ })
     await user.click(case_)
     await waitFor(() => expect(case_).not.toBeChecked())
-    expect(screen.getByText('12 sur 20 · échéance 15/12')).toBeInTheDocument()
+    expect(screen.getByText('12 sur 20')).toBeInTheDocument()
   })
 })
 
@@ -217,7 +239,7 @@ describe('TCH89 — Un projet : priorité', () => {
     api.modifierProjet.mockResolvedValueOnce({ data: { ...vue.projet, statut: 'en_pause', lock_version: 5 } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    await screen.findByText('12 sur 20 · échéance 15/12')
+    await screen.findByText('12 sur 20')
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Mettre en pause' }))
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
@@ -232,7 +254,7 @@ describe('F2 acceptation (P138.3) — supprimer le projet ramène à la liste, t
     api.supprimerProjet.mockResolvedValueOnce({ data: { geste_id: 9 } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    await screen.findByText('12 sur 20 · échéance 15/12')
+    await screen.findByText('12 sur 20')
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Supprimer le projet…' }))
     const dialogue = await screen.findByRole('dialog', { name: 'Supprimer le projet' })
@@ -365,15 +387,105 @@ describe('TCH91 — Un projet : ?planifier=1 ouvre Planifier le projet', () => {
 })
 
 describe('TCH92 — Un projet : ⋯ ouvre Décaler, Terminer, Supprimer', () => {
+  it('F4 revue #17 — l\'ordre du ⋯ est celui de la référence (textes.md « ⋯ d\'un projet »)', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    const menu = await screen.findByRole('menu')
+    const libelles = within(menu).getAllByRole('menuitem').map((m) => m.textContent)
+    const ordre = ['Planifier le projet', "Voir dans l'agenda", 'Avancement par semaine', 'Décaler les dates…', 'Dupliquer', 'Modèle…',
+      'Mettre en pause', 'Terminer le projet…', 'Supprimer le projet…']
+    expect(libelles.filter((l) => ordre.includes(l))).toEqual(ordre)
+  })
+
   it('le menu porte les trois entrées et « Supprimer le projet… » ouvre le dialogue', async () => {
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    await screen.findByText('12 sur 20 · échéance 15/12')
+    await screen.findByText('12 sur 20')
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     const menu = await screen.findByRole('menu')
     const libelles = within(menu).getAllByRole('menuitem').map((m) => m.textContent)
     expect(libelles).toEqual(expect.arrayContaining(['Décaler les dates…', 'Terminer le projet…', 'Supprimer le projet…', 'Planifier le projet', "Voir dans l'agenda"]))
     await user.click(within(menu).getByRole('menuitem', { name: 'Supprimer le projet…' }))
     expect(await screen.findByRole('dialog', { name: 'Supprimer le projet' })).toHaveTextContent('Supprimer « Ventes » et ses 20 tâches ?')
+  })
+})
+
+/* F4 revue #6 + #8 — Tableau : « Annuler » rend la version du serveur (le geste suivant n'est pas refusé), et les
+   compteurs des colonnes suivent le déplacement, puis l'annulation (même règle que le serveur, `_compteurs`). */
+describe('F4 revue — Tableau : déplacer, Annuler, redéplacer', () => {
+  let remettreRectangles = () => {}
+  beforeEach(() => { remettreRectangles = poserRectangles() })
+  afterEach(() => { remettreRectangles() })
+
+  const touche = async (cible, code) => {
+    await act(async () => {
+      fireEvent.keyDown(cible, { code, key: code === 'Space' ? ' ' : code })
+      await new Promise((fin) => { setTimeout(fin, 15) })
+    })
+  }
+  const deplacer = async (nom, fleche) => {
+    const poignee = screen.getByRole('button', { name: `Déplacer « ${nom} »` })
+    poignee.focus()
+    await touche(poignee, 'Space')
+    await touche(document, fleche)
+    await touche(document, 'Space')
+  }
+  const compte = (nom) => within(screen.getByRole('region', { name: nom })).getByText(/^\d+ sur \d+$/).textContent
+  // un serveur qui verrouille la tâche 20 : chaque écriture et chaque « Annuler » changent sa version
+  const fauxServeur = () => {
+    const tache = { verrou: 4 }
+    api.modifierTache.mockImplementation(async (id, corps) => {
+      if (corps.lock_version !== tache.verrou) {
+        throw Object.assign(new Error('conflit'), { response: { status: 409, data: { code: 'conflit_version', detail: 'Modifiée ailleurs.' } } })
+      }
+      tache.verrou += 1
+      const ecrite = tacheEcrite()
+      ecrite.tache.lock_version = tache.verrou
+      return { data: { ...ecrite, geste_id: 91 } }
+    })
+    api.annulerGeste.mockImplementation(async () => { tache.verrou += 1; return { data: { restaurees: [{ objet: 'tache', id: 20 }], conflits: [], deja: false } } })
+    api.lireTache.mockImplementation(async (id) => ({ data: { ...tacheEcrite().tache, id, lock_version: tache.verrou } }))
+    return tache
+  }
+
+  it('après Annuler, la carte garde la version du serveur : le déplacement suivant n\'est pas refusé', async () => {
+    fauxServeur()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Études' })).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument())
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+    expect(api.modifierTache.mock.calls[1][1].lock_version).toBe(6) // 4 → écriture 5 → annulation 6
+    await act(async () => { await new Promise((fin) => { setTimeout(fin, 30) }) })
+    expect(within(screen.getByRole('region', { name: 'Sans étape' })).getByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('Modifiée ailleurs')
+  })
+
+  it('les compteurs des colonnes bougent avec la carte, et reviennent avec Annuler', async () => {
+    fauxServeur()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 5', '8 sur 15'])
+    await deplacer('Devis Settat', 'ArrowRight')
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 4', '8 sur 16']))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect([compte('Études'), compte('Sans étape')]).toEqual(['4 sur 5', '8 sur 15']))
+  })
+
+  it('cocher une carte met à jour le compteur de SA colonne', async () => {
+    api.terminerTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 92 } })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    monter('/taches/projets/3?vue=tableau')
+    await screen.findByRole('region', { name: 'Études' })
+    await user.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    await waitFor(() => expect(compte('Études')).toBe('5 sur 5'))
   })
 })

@@ -33,12 +33,47 @@
 }
 .tch .ag-tj-item.erp { background: var(--tch-bloc-erp); color: var(--tch-texte); box-shadow: none; }
 .tch .ag-tj-item.erp svg { color: var(--tch-texte-doux); }
-.tch .ag-semtj {
-  display: grid; grid-template-columns: 56px repeat(7, 1fr); align-items: start; min-height: 44px;
-  padding: 6px 0; box-shadow: inset 0 -1px 0 var(--tch-trait);
+/* Passe visuelle n° 36 — Semaine au bureau : « Toute la journée » est une rangée DE la grille (`subgrid`), sous la
+   tête des jours (maquette agenda-semaine.html `.ag-semtj`) : une cellule par colonne, sam./dim. compris ; la puce
+   de la visite reste dans sa colonne (2 lignes au plus). */
+.tch .semaine .ag-semtj {
+  display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: stretch; min-height: 44px;
+  margin-bottom: 12px;
 }
-.tch .ag-semtj > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 2px; }
-.tch .ag-semtj .repos-fond { background: var(--ag-repos); border-radius: 8px; min-height: 36px; }
+.tch .ag-semtj > div {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 4px 3px 6px;
+  box-shadow: inset 1px 0 0 var(--tch-trait-grille), inset 0 -1px 0 var(--tch-trait);
+}
+.tch .ag-semtj > div:first-child { justify-content: center; box-shadow: inset 0 -1px 0 var(--tch-trait); }
+.tch .ag-semtj .ag-tj-label { padding: 0 8px 0 12px; text-align: left; }
+.tch .ag-semtj .repos-fond { background-color: var(--ag-repos); }
+.tch .ag-semtj .ag-tj-item {
+  height: auto; min-height: 26px; max-width: 100%; gap: 5px; padding: 3px 6px; overflow: hidden;
+  font-size: 0.75rem; line-height: 1rem; white-space: normal;
+}
+.tch .ag-semtj .ag-tj-item span {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0;
+}
+.tch .ag-semtj .ag-tj-item svg { flex: none; }
+/* Passe visuelle n° 7 — blocs lisibles dans les colonnes de la Semaine (maquette agenda-semaine.html `.ag-semcol`) :
+   64 px par heure, titre sur 2 lignes, sans la case (elle mangeait la largeur ; on coche au Jour ou à la fiche), plage
+   horaire seulement au-delà d'une heure ; un chevauchement se pose en cascade (`.g2`, détouré). */
+@media (min-width: 768px) {
+  .tch .semaine { --tch-heure-h: 64px; }
+  .tch .semaine .bloc { left: 3px; right: 3px; gap: 6px; padding: 4px 6px 3px 9px; }
+  .tch .semaine .bloc .ag-bc { display: none; }
+  .tch .semaine .bloc.h1 small, .tch .semaine .bloc.court small { display: none; }
+  .tch .semaine .bloc.court { padding: 0 6px 0 9px; }
+  .tch .semaine .bloc.court .ag-bt { display: block; }
+  .tch .semaine .bloc.court b {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal;
+    font-size: 0.75rem; line-height: 0.8125rem; text-overflow: clip;
+  }
+  .tch .semaine .bloc.g2 { box-shadow: inset 3px 0 0 var(--tch-point), 0 0 0 2px var(--tch-surface); z-index: calc(var(--z-base) + 2); }
+  .tch .semaine .bloc.g2.erp { box-shadow: 0 0 0 2px var(--tch-surface); }
+}
+.tch .semaine-tete .repos { flex-direction: column; align-items: center; gap: 0; padding-top: 4px; line-height: 1.1; }
+.tch .semaine-tete .repos b { font-size: 0.9375rem; }
 .tch .ag-ferie { display: block; font-size: 0.6875rem; font-weight: 500; color: var(--tch-texte-doux); }
 
 /* Grille : créneaux vides (« Ajouter à 09:00 »), blocs à case, rendez-vous externes */
@@ -108,6 +143,10 @@
 }
 .tch .ag-sj-l .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tch .ag-sj-l .h { flex: none; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux); width: 38px; }
+.tch .ag-sj-l .plus {
+  flex: none; margin-left: auto; padding-left: 8px; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux);
+}
+.tch .ag-sj-l.erp svg { flex: none; width: 14px; height: 14px; margin: 0 -3px; color: var(--tch-texte-doux); }
 .tch .ag-sj-l.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; text-decoration-thickness: 1px; }
 
 /* Mois */
@@ -135,6 +174,7 @@
   box-shadow: inset 0 1px 0 var(--tch-trait); margin-top: 8px;
 }
 .tch .ag-jour-tete b { font-size: var(--tch-section); font-weight: 650; }
+.tch .ag-jour-tete .ag-jour-charge { flex: none; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 
 /* À venir, états d'un jour, erreurs */
 .tch .ag-av-tete {
@@ -152,7 +192,8 @@
 .tch .ag-corps { display: block; }
 .tch .ag-principal { min-width: 0; }
 @media (min-width: 1024px) {
-  .tch .ag-corps { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  .tch[data-ecran="agenda"] .tch-page { max-width: 1320px; }
+  .tch .ag-corps { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
   .tch .ag-aside { position: sticky; top: 16px; }
 }
 .tch .ag-aside { margin-top: 12px; padding-bottom: 8px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
@@ -160,6 +201,23 @@
 .tch .ag-aside-tete h2 { margin: 0; font-size: 1.0625rem; font-weight: 650; }
 .tch .ag-aside-tete h2 span { font-weight: 500; color: var(--tch-texte-doux); }
 .tch .ag-aside-pied { margin: 8px var(--tch-gouttiere) 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ag-aside-action { margin: 8px var(--tch-gouttiere) 4px; }
+.tch .ag-aside-action .bouton { width: 100%; }
+.tch .ag-aside-action .bouton svg, .tch .ag-barre .bouton svg { color: var(--tch-accent); }
+/* Passe visuelle n° 34 — pied de la Semaine sur iPhone (`.ag-barre`) : « À placer · n » + Planifier ma semaine, posé
+   au-dessus des onglets (même ancrage que la barre de sélection) ; le « + » flottant de la coquille garde sa place à
+   droite (le bas de page de la coquille, 112 px, laisse déjà défiler la fin de la liste au-dessus de la barre). */
+.tch .ag-barre {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom));
+  z-index: calc(var(--z-sticky) - 1);
+  display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 0 84px 0 var(--tch-gouttiere);
+  background: var(--tch-surface); box-shadow: inset 0 1px 0 var(--tch-trait);
+}
+.tch .ag-barre-titre {
+  flex: none; display: flex; align-items: baseline; gap: 5px; white-space: nowrap; font-size: 0.8125rem; font-weight: 650;
+}
+.tch .ag-barre-titre span { font-weight: 500; color: var(--tch-texte-doux); }
+.tch .ag-barre .bouton.second { flex: 1; min-width: 0; height: 44px; }
 .tch .ag-groupe {
   display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px var(--tch-gouttiere) 0;
   font-size: 0.8125rem; font-weight: 650; color: var(--tch-texte-doux); width: 100%; text-align: left;
@@ -201,16 +259,37 @@
 
 /* ── TCH106 — Planifier ma semaine : sept lignes de jour + le volet ─────── */
 .tch .ag-vues .bouton.second { flex: none; height: 44px; }
+/* Passe visuelle n° 37 — Planifier est un MODE (agenda-semaine-planifier.html, `.ag-plan-entete`) : la ligne du titre
+   ne porte que « Terminer » (et, au bureau, l'aide du clavier) ; ni loupe, ni Copilote, ni ⋯. La page devient une
+   grille dont la 1re ligne = en-tête de la coquille | `.ag-planifier-tete` ; `.ag-planifier` s'efface (contents). */
+.tch[data-ecran="agenda"] .tch-page:has(> .ag-planifier) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end;
+}
+.tch[data-ecran="agenda"] .tch-page:has(> .ag-planifier) > * { grid-column: 1 / -1; }
+.tch[data-ecran="agenda"] .tch-page:has(> .ag-planifier) > .entete {
+  grid-column: 1; grid-row: 1; min-width: 0; padding-right: 0;
+}
+.tch[data-ecran="agenda"] .tch-page:has(> .ag-planifier) .entete-actions { display: none; }
+.tch .ag-planifier { display: contents; }
+.tch .ag-planifier > .ag-corps { grid-column: 1 / -1; }
 .tch .ag-planifier-tete {
-  display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 4px var(--tch-gouttiere) 0;
+  grid-column: 2; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+  margin: 0 var(--tch-gouttiere) 0 0;
 }
-.tch .ag-terminer { min-height: 44px; font-weight: 650; }
-.tch .ag-jours { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px 0; }
+.tch .ag-terminer { min-height: 44px; padding: 0 14px; font-weight: 650; }
+.tch .ag-jours { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 10px 8px 0; }
+.tch .ag-pj-place { grid-column: 1 / -1; display: flex; min-width: 0; }
+/* sam. + dim. côte à côte (`.ag-pj-duo`) : un jour non travaillé tient une demi-ligne, « non travaillé » à droite */
+.tch .ag-pj-place.repos { grid-column: auto; }
 .tch .ag-pj {
-  position: relative; display: grid; grid-template-columns: 72px 1fr; align-items: center; column-gap: 10px;
-  min-height: 50px; width: 100%; padding: 4px 12px; border-radius: 12px; text-align: left;
-  background: var(--tch-panneau);
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto;
+  align-items: center; column-gap: 10px; row-gap: 3px; min-height: 56px; width: 100%; padding: 7px 12px 7px 14px;
+  border-radius: 12px; text-align: left; background: var(--tch-panneau);
 }
+.tch .ag-pj .j { grid-column: 1; grid-row: 1; }
+.tch .ag-pj .n { grid-column: 1; grid-row: 2; }
+.tch .ag-pj-place.repos .ag-pj { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto; min-height: 48px; }
+.tch .ag-pj-place.repos .ag-pj .n { grid-column: 2; grid-row: 1; text-align: right; }
 .tch .ag-pj .j { font-size: 0.9375rem; font-weight: 650; }
 .tch .ag-pj .n { font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ag-pj.auj .j { color: var(--tch-accent); }
@@ -224,24 +303,29 @@
   .tch .ag-pj:not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
 }
 .tch .ag-pj-ajout {
-  grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; padding: 0 0 6px; font-size: 0.9375rem; font-weight: 600;
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 2px 0 0; font-size: 0.9375rem; font-weight: 600;
 }
 
 /* Raccord F2 — Planifier ma semaine au BUREAU (≥ 1024 px) : les sept jours en colonnes à cartes
    (docs/taches/maquettes/agenda-semaine-planifier.html, ecrans-agenda.css .ag-pcols / .ag-carte) ; iPhone : sept lignes. */
 .tch .ag-pj-cartes { display: none; }
 @media (min-width: 1024px) {
-  .tch .ag-planifier .ag-jours { flex-direction: row; align-items: stretch; gap: 8px; padding: 14px 0 24px; min-height: 420px; }
+  /* Passe visuelle n° 38 — colonnes de jours lisibles : la page de l'Agenda s'élargit au bureau (comme Aujourd'hui),
+     jours travaillés larges, non travaillés de 64 px ; en-tête de colonne = nom, barre de charge, puis le compte. */
+  .tch .ag-planifier .ag-jours { display: flex; flex-direction: row; align-items: stretch; gap: 8px; padding: 14px 0 24px; min-height: 420px; }
   .tch .ag-planifier .ag-pj-place { flex: 1 1 0; min-width: 0; display: flex; }
   .tch .ag-planifier .ag-pj-place.repos { flex: 0 0 64px; }
-  .tch .ag-planifier .ag-pj {
+  .tch .ag-planifier .ag-pj, .tch .ag-planifier .ag-pj-place.repos .ag-pj {
     display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 100%;
     padding: 10px 8px 8px; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait);
   }
-  .tch .ag-planifier .ag-pj .j { padding: 0 4px; font-size: 0.875rem; }
-  .tch .ag-planifier .ag-pj .n { padding: 0 4px 4px; font-size: 0.75rem; }
+  .tch .ag-planifier .ag-pj .j { order: 1; padding: 0 4px; font-size: 0.875rem; }
+  .tch .ag-planifier .ag-pj .ag-charge { order: 2; align-self: stretch; width: auto; margin: 2px 4px 0; }
+  .tch .ag-planifier .ag-pj .n { order: 3; padding: 0 4px 4px; font-size: 0.75rem; text-align: left; }
+  .tch .ag-planifier .ag-pj-cartes { order: 4; }
   .tch .ag-planifier .ag-pj.repos { align-items: center; background: var(--ag-repos); box-shadow: none; }
   .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; text-align: center; }
+  .tch .ag-planifier .ag-pj.repos .n { text-align: center; }
   .tch .ag-planifier .ag-pj.nouveau { background: var(--ag-cible); box-shadow: inset 0 0 0 2px var(--tch-accent); }
   .tch .ag-planifier .ag-pj-ajout { display: none; }
   .tch .ag-pj-cartes { display: flex; flex-direction: column; gap: 6px; }
@@ -268,7 +352,4 @@
 .tch .ag-charge i { display: block; height: 100%; width: var(--c); flex: none; }
 .tch .ag-charge i.b { background: var(--tch-texte-doux); }
 .tch .ag-charge i.bp { background: var(--tch-surveiller); }
-.tch .ag-pj .ag-charge { grid-column: 2; margin-bottom: 4px; }
-@media (min-width: 1024px) {
-  .tch .ag-planifier .ag-pj .ag-charge { width: 100%; margin: 0; }
-}
+.tch .ag-pj .ag-charge { grid-column: 2; grid-row: 2; align-self: center; }

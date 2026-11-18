@@ -60,6 +60,15 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     ])
   })
 
+  it('passe visuelle n° 15 — bureau : la progression, PUIS « Ajouter une tâche » (maquette ecran-aujourdhui-matin.html)', async () => {
+    servir(donnees())
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    const ordre = [...container.querySelectorAll('button.progression, .saisie-bureau, .section-titre')].map((n) => n.className)
+    expect(ordre.slice(0, 2)).toEqual(['progression', 'saisie-bureau bureau-seul'])
+    expect(container.querySelectorAll('.saisie-bureau')).toHaveLength(1)
+  })
+
   it('met les lignes à leur place : essentiel, rendez-vous à son heure, activité ERP, relances', async () => {
     servir(donnees())
     const { container } = monter()
@@ -267,10 +276,17 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     servir(d)
     const ouverture = vi.fn()
     window.addEventListener('taqinor:taches:saisir', ouverture)
-    monter()
-    expect(await screen.findByText('Colle ou dicte tes listes : je les range par projet.')).toBeInTheDocument()
+    const { container } = monter()
+    const phrase = await screen.findByText('Colle ou dicte tes listes : je les range par projet.')
+    // passe visuelle n° 20 — espace INSÉCABLE avant « : » (maquette ecran-aujourdhui-vide.html) : jamais « : » en tête de ligne
+    expect(phrase.textContent).toBe('Colle ou dicte tes listes : je les range par projet.')
     await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
     expect(ouverture).toHaveBeenCalledTimes(1)
+    // journée vide : le bureau garde sa ligne « Ajouter une tâche » (le « + » du bureau), et elle ouvre la saisie
+    const ligneBureau = container.querySelector('.saisie-bureau')
+    expect(ligneBureau).toHaveTextContent('Ajouter une tâche')
+    await userEvent.click(ligneBureau)
+    expect(ouverture).toHaveBeenCalledTimes(2)
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
@@ -379,6 +395,105 @@ describe('TCH76 — gestes optimistes', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/records/activities/101/done/', {}))
     expect(await screen.findByText("Close dans l'ERP")).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+  })
+})
+
+describe('Relecture adverse F4 — une essentielle faite est servie dans Essentiel ET dans Faites (regles.md §4.1 ligne 3, D-V1)', () => {
+  /** L'échantillon, avec « Dossier subvention » (faite) portée par une ligne ★ : le serveur la sert dans les deux listes. */
+  const journeeEssentielleFaite = () => {
+    const d = donnees()
+    const faite = { ...d.faites[0], essentielle: true }
+    d.essentiel = [...d.essentiel, faite]
+    d.faites = [faite]
+    return d
+  }
+  const ecrite = (id, lockVersion, gesteId) => {
+    const e = exempleContrat('taches', 'tache_ecrite')
+    return { data: { ...e, tache: { ...e.tache, id, lock_version: lockVersion }, geste_id: gesteId, progression: null } }
+  }
+  const annulation = (id) => ({ data: { restaurees: [{ objet: 'tache', id }], conflits: [], deja: false } })
+  const lignesDe = (zone, id) => (zone ? zone.querySelectorAll(`[data-ligne="tache:${id}"]`).length : 0)
+  const zones = (container) => ({
+    essentiel: container.querySelector('.section.premiere'),
+    prevu: [...container.querySelectorAll('.section')].find((s) => s.textContent.startsWith('Prévu')),
+    faites: container.querySelector('.replies'),
+  })
+  const ouvrirFaites = async () => userEvent.click(screen.getByRole('button', { name: /^Faites/ }))
+
+  it('n° 1 — Supprimer une essentielle faite retire SES DEUX lignes ; Annuler remet les deux, chacune à sa place', async () => {
+    servir(journeeEssentielleFaite())
+    api.delete.mockResolvedValue({ data: { geste_id: 90 } })
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/gestes/90/annuler/' ? annulation(12) : { data: {} }))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    expect(lignesDe(zones(container).essentiel, 12)).toBe(1)
+    expect(lignesDe(zones(container).faites, 12)).toBe(1)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Actions pour « Dossier subvention »' })[0])
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const feuille = await screen.findByRole('dialog', { name: 'Supprimer' })
+    await userEvent.click(within(feuille).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/taches/taches/12/'))
+    // aucune ligne fantôme : ni dans Essentiel, ni dans Faites
+    expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /^Faites/ })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/90/annuler/', {}))
+    // les deux reviennent, chacune à son rang : Essentiel après « Devis Settat », et dans Faites
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect([...zones(container).essentiel.querySelectorAll('[data-ligne]')].map((n) => n.dataset.ligne)).toEqual(['tache:20', 'tache:12'])
+    await ouvrirFaites()
+    expect(lignesDe(zones(container).faites, 12)).toBe(1)
+    expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(2)
+  })
+
+  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; Annuler remet l\'état d\'avant', async () => {
+    servir(journeeEssentielleFaite())
+    api.post.mockImplementation((url) => Promise.resolve(
+      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : url === '/taches/gestes/91/annuler/' ? annulation(12) : { data: {} },
+    ))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    await userEvent.click(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 12, essentielle: false }))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
+    // une faite sans ★ n'est QUE dans Faites (le serveur ne la sert jamais dans Prévu)
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(faite).not.toBeNull()
+    expect(within(faite).queryByRole('img', { name: 'Essentielle' })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/91/annuler/', {}))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    expect(within(zones(container).faites.querySelector('[data-ligne="tache:12"]')).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+  })
+
+  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; Annuler la rend à Faites seule', async () => {
+    servir(donnees())
+    api.post.mockImplementation((url) => Promise.resolve(
+      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : url === '/taches/gestes/92/annuler/' ? annulation(12) : { data: {} },
+    ))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Dossier subvention »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Essentielle' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 12, essentielle: true }))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
+    const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(faite).not.toBeNull()
+    expect(within(faite).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/92/annuler/', {}))
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
+    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
+    const rendue = zones(container).faites.querySelector('[data-ligne="tache:12"]')
+    expect(rendue).not.toBeNull()
+    expect(within(rendue).queryByRole('img', { name: 'Essentielle' })).toBeNull()
   })
 })
 

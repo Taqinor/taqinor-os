@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { CalendarCheck, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
 import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
@@ -86,7 +86,10 @@ function pas(vue, jour, sens) {
 
 function titrePeriode(vue, jour, { du, au }) {
   if (vue === 'jour') return jourLong(jour)
-  if (vue === 'mois') return `${MOIS_LONGS[Number(jour.slice(5, 7)) - 1]} ${jour.slice(0, 4)}`
+  if (vue === 'mois') { // maquette agenda-mois.html : « Novembre 2026 »
+    const mois = MOIS_LONGS[Number(jour.slice(5, 7)) - 1]
+    return `${mois[0].toUpperCase()}${mois.slice(1)} ${jour.slice(0, 4)}`
+  }
   const [md, ma] = [Number(du.slice(5, 7)), Number(au.slice(5, 7))]
   const debut = md === ma ? `${Number(du.slice(8))}` : `${Number(du.slice(8))} ${ABR_MOIS[md - 1]}`
   return `${debut} – ${Number(au.slice(8))} ${MOIS_LONGS[ma - 1]}`
@@ -340,6 +343,35 @@ function teteJour(j, aujourdhui, capacite, taches) {
   return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
+/** Passe visuelle n° 59 — un jour de la Semaine (iPhone) montre `max` lignes (passé : 1, sinon 3) ; le reste se dit
+ *  « +{n} » au bout de la dernière (maquette agenda-semaine.html `.ag-sj-l .plus`, comme le Mois). Passe visuelle n° 8 —
+ *  la visite de l'ERP (Toute la journée) ouvre la liste : icône de lieu, sans heure. */
+function LignesDuJour({ lignes, max }) {
+  const montrees = lignes.slice(0, max)
+  const reste = lignes.length - montrees.length
+  return montrees.map((t, rang) => {
+    const plus = reste > 0 && rang === montrees.length - 1 ? <span className="plus">{`+${reste}`}</span> : null
+    if (t.erp) {
+      return (
+        <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
+          <span className="h" />
+          <MapPin className="i i-16" aria-hidden="true" />
+          <span className="t">{t.titre}</span>
+          {plus}
+        </span>
+      )
+    }
+    return (
+      <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
+        <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
+        <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
+        <span className="t">{t.titre}</span>
+        {plus}
+      </span>
+    )
+  })
+}
+
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
@@ -356,13 +388,10 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
               <span className="ag-sj-tete">
                 {teteJour(j, aujourdhui, capacite, taches)}
               </span>
-              {taches.slice(0, 3).map((t) => (
-                <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
-                  <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
-                  <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
-                  <span className="t">{t.titre}</span>
-                </span>
-              ))}
+              {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
+              {j.jour < aujourdhui
+                ? <LignesDuJour lignes={taches.filter((t) => t.statut === 'fait')} max={1} />
+                : <LignesDuJour lignes={[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches]} max={3} />}
             </span>
           </button>
         )
@@ -371,29 +400,73 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   )
 }
 
-function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, onChoisir }) {
+/** Passe visuelle n° 36 — la rangée « Toute la journée » de la Semaine au bureau : une cellule par jour, posée par
+ *  GrilleAgenda sous la tête des jours (mêmes colonnes ; sam./dim. ne décalent plus rien). */
+function LigneJourneeSemaine({ jours }) {
+  return (
+    <div className="ag-semtj" role="group" aria-label="Toute la journée">
+      <div className="ag-tj-label">Toute la journée</div>
+      {jours.map((j) => (
+        <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
+          {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
+          {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
+            <PuceJournee key={`ext:${e.cle}`} element={e} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, volet = null, onChoisir }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   return (
     <>
-      <div className="ag-semtj bureau-seul" role="group" aria-label="Toute la journée">
-        <div className="ag-tj-label">Toute la journée</div>
-        {jours.map((j) => (
-          <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
-            {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
-            {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
-              <PuceJournee key={`ext:${e.cle}`} element={e} />
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="bureau-seul">
-        <GrilleAgenda
-          jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
-          placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
-        />
+      <div className="ag-corps bureau-seul">
+        <div className="ag-principal">
+          <GrilleAgenda
+            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
+            ligneJournee={<LigneJourneeSemaine jours={jours} />}
+            placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
+          />
+        </div>
+        {volet}
       </div>
       <SemaineListe jours={jours} aujourdhui={aujourdhui} capacite={capacite} onChoisir={onChoisir} />
     </>
+  )
+}
+
+/** Passe visuelle n° 34 — pied de la Semaine sur iPhone (maquette agenda-semaine.html `.ag-barre`) : « À placer · {n} »
+ *  (le même nombre que le volet, textes.md §2.8) et **Planifier ma semaine**. */
+function BarreAPlacer({ total, onPlanifier }) {
+  return (
+    <div className="ag-barre mobile-seul">
+      <div className="ag-barre-titre">À placer <span className="chiffres">{`· ${total}`}</span></div>
+      <BoutonPlanifier onClick={onPlanifier} />
+    </div>
+  )
+}
+
+function BoutonPlanifier({ onClick }) {
+  return (
+    <button type="button" className="bouton second" onClick={onClick}>
+      <CalendarCheck className="i i-16" aria-hidden="true" />
+      Planifier ma semaine
+    </button>
+  )
+}
+
+/** Passe visuelle n° 58 — Mois : le jour choisi dit sa charge à droite de son titre, par la règle de Planifier ma
+ *  semaine (« {n} tâches · {h} pour {cap} », textes.md §2.8 ; maquette agenda-mois.html) ; un jour non travaillé ou
+ *  férié n'en dit rien ici (« Jour non travaillé » / « Férié » suivent dessous). */
+function TeteJourChoisi({ jour, aujourdhui, capacite }) {
+  const r = resumeJour(jour, aujourdhui, capacite)
+  return (
+    <div className="ag-jour-tete">
+      <b>{jourLong(jour.jour)}</b>
+      {r.repos ? null : <span className="ag-jour-charge chiffres">{r.texte}</span>}
+    </div>
   )
 }
 
@@ -656,6 +729,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     },
   }
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
+  const planifierSemaine = () => changer({ placer: '1' })
   const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
   const choisie = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
@@ -677,22 +751,31 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   )
 
   if (planifier) {
+    const terminer = () => changer({ placer: null, vue: 'semaine' })
     return (
-      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}>
-        <Navigation
-          vue="semaine" titre={titrePeriode('semaine', jour, periode)}
-          onPas={(sens) => changer({ jour: pas('semaine', jour, sens) })}
-          onAujourdhui={() => changer({ jour: null })}
-        />
+      // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
+      // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
+      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}
+        saisieBureau={false}>
         {etats}
-        <PlanifierSemaine
-          jours={jours} aujourdhui={aujourdhui} capacite={donnees?.capacite?.minutes ?? null} aPlacer={donnees?.a_placer ?? []}
-          mesProjets={donnees?.mes_projets ?? []} choisie={choisie} posees={placement.posees}
-          onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
-          onPoser={(item, iso) => placement.poser(item, iso, null)}
-          onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-          onTerminer={() => changer({ placer: null, vue: 'semaine' })}
-        />
+        {/* Passe visuelle n° 6 — rien de lu : aucun jour ni compte (« 0 tâche », « Tout est placé » seraient faux) */}
+        {donnees ? (
+          <PlanifierSemaine
+            jours={jours} aujourdhui={aujourdhui} capacite={donnees.capacite?.minutes ?? null} aPlacer={donnees.a_placer ?? []}
+            mesProjets={donnees.mes_projets ?? []} choisie={choisie} posees={placement.posees}
+            onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+            onPoser={(item, iso) => placement.poser(item, iso, null)}
+            onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
+            onTerminer={terminer}
+          />
+        ) : (
+          // relecture adverse F4 n° 7 — rien de lu (hors ligne sans cache, erreur) : le mode garde sa sortie, au même endroit
+          <div className="ag-planifier">
+            <div className="ag-planifier-tete">
+              <button type="button" className="bouton plein ag-terminer" onClick={terminer}>Terminer</button>
+            </div>
+          </div>
+        )}
       </CoquilleTaches>
     )
   }
@@ -704,11 +787,6 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
       <div className="ag-vues">
         <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
-        {vue === 'semaine' ? (
-          <button type="button" className="bouton second" onClick={() => changer({ placer: '1' })}>
-            Planifier ma semaine
-          </button>
-        ) : null}
       </div>
       <Navigation
         vue={vue} titre={titrePeriode(vue, jour, periode)}
@@ -729,15 +807,26 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
       ) : null}
       {donnees && vue === 'semaine' ? (
-        <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour} />
+        <>
+          <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
+            placement={placementGrille} capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour}
+            volet={(
+              <VoletAPlacer
+                aPlacer={donnees.a_placer ?? []} mesProjets={donnees.mes_projets ?? []} aujourdhui={aujourdhui}
+                choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+                projetsOuverts aide="Touche une tâche, puis un jour." action={<BoutonPlanifier onClick={planifierSemaine} />}
+              />
+            )} />
+          <BarreAPlacer total={tousAPlacer.length} onPlanifier={planifierSemaine} />
+        </>
       ) : null}
       {donnees && vue === 'mois' ? (
         <>
           <VueMois du={periode.du} au={periode.au} mois={jour.slice(0, 7)} jours={donnees?.jours}
             aujourdhui={aujourdhui} jourChoisi={jour} onChoisir={(iso) => changer({ jour: iso })} />
           <section className="ag-av" aria-label={jourLong(jour)}>
-            <div className="ag-jour-tete"><b>{jourLong(jour)}</b></div>
+            <TeteJourChoisi jour={parJour[jour] ?? jourVide(jour)} aujourdhui={aujourdhui}
+              capacite={donnees?.capacite?.minutes ?? null} />
             <EtatDuJour jour={parJour[jour] ?? jourVide(jour)} />
             <ListeDuJour jour={parJour[jour] ?? jourVide(jour)} aujourdhui={aujourdhui} gestes={gestesEcran} />
           </section>

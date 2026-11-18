@@ -7,6 +7,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { mockMatchMedia } from '../../test/matchMedia'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import {
   ajouterAgendaExterne, exporterMesDonnees, lireReglages, listerAgendasExternes, modifierAgendaExterne,
@@ -75,7 +76,7 @@ describe('TCH108 — Réglages', () => {
     monter()
     const liste = await screen.findByRole('list')
     const lignes = within(liste).getAllByRole('listitem')
-    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', 'Mes données', 'Avancé'])
+    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', "L'ERP me suggère", 'Mes données', 'Avancé'])
     expect(within(liste).getByText('Ce qui part au Copilote, qui peut lire')).toBeInTheDocument()
     expect(within(liste).getByText('Exporter, tout effacer')).toBeInTheDocument()
     await userEvent.click(within(liste).getByRole('button', { name: /Avancé/ }))
@@ -197,6 +198,29 @@ describe('TCH108 — Réglages', () => {
     await userEvent.click(within(dialogue).getByRole('button', { name: 'Retirer' }))
     expect(retirerAgendaExterne).toHaveBeenCalledWith(2)
     expect(screen.queryByText('Microsoft 365 · outlook.office365.com')).toBeNull()
+  })
+
+  it('passe visuelle n° 47 — iPhone : une rubrique s\'ouvre en sous-page (son titre, « ‹ Réglages », liste cachée)', async () => {
+    const avant = window.matchMedia
+    mockMatchMedia(true)
+    try {
+      const { container } = monter('/taches/reglages/donnees')
+      expect(await screen.findByRole('heading', { level: 1, name: 'Mes données' })).toBeInTheDocument()
+      expect(container.querySelector('.es-reglages-grille')).toHaveClass('es-ouverte')
+      expect(screen.queryByRole('heading', { level: 2, name: 'Mes données' })).toBeNull()
+      await userEvent.click(screen.getByRole('button', { name: 'Réglages' }))
+      expect(await screen.findByRole('heading', { level: 1, name: 'Réglages' })).toBeInTheDocument()
+      expect(container.querySelector('.es-reglages-grille')).not.toHaveClass('es-ouverte')
+    } finally {
+      window.matchMedia = avant
+    }
+  })
+
+  it('passe visuelle n° 47 — bureau : la liste reste à gauche, le panneau porte le nom de la rubrique', async () => {
+    monter('/taches/reglages/notifications')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Notifications' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Réglages' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Réglages' })).toBeNull()
   })
 
   it('un échec de lecture dit « Pas à jour » et garde la liste des rubriques', async () => {

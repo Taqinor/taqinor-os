@@ -4243,6 +4243,18 @@ decisions:
     source: "Reda, question interactive, 11/11/2026 (après-midi, session loop audit) ; avant : audit de parcours PF4 (10/11/2026) : non posée (défaut recommandé : users_gerer) ; constat C-ADRG-061"
     taches: []
 
+  - id: D-ADRG-15
+    question: "Le rapport figé « stock » (genre `stock` des rapports programmés et enregistrés : nom, référence et quantité de chaque produit) ne demande pas le droit d'export du stock (`stock_export`), que D-ASEC-VER4-1 a retiré au Commercial responsable et au Responsable. Doit-il l'exiger ?"
+    options:
+      - cle: exiger
+        texte: "Oui : le rapport stock exige le droit d'export du stock en plus de celui des rapports, sur tous ses chemins de sortie (programmer, modifier, envoi planifié, lien public, WhatsApp, export à l'écran)"
+      - cle: laisser
+        texte: "Non : c'est l'export propre du module Rapports, le droit d'export des rapports suffit"
+    reponse: exiger
+    date: "2026-11-18"
+    source: "Reda, question interactive, 18/11/2026 (session loop audit) ; avant : contre-visites ADRG du 14/11 (docs/audits/2026-11-14-droits-grille-verifie.md §5), du 17/11 (docs/audits/2026-11-17-droits-grille-verifie.md §5) et du 18/11 (docs/audits/2026-11-18-droits-grille-verifie.md §5, « non déposés ») : genre figé `stock` et `stock_report?export=xlsx` sans `stock_export`"
+    taches: [ADRG158]
+
   - id: D-ALEC-1
     question: "Les tarifs de transport (prix de base d'un transporteur, offres de prix d'une expédition) sont servis sans masque à des rôles sans « voir les prix d'achat », alors que le coût réel d'une expédition et le coût de transport d'une livraison sont masqués. Un tarif de transport est-il un montant d'achat ?"
     options:

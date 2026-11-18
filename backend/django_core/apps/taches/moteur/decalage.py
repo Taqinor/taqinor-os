@@ -85,6 +85,12 @@ def _taches_figees(taches):
     return [t for t in taches if t.statut != ANNULE and (t.parent_id is None or t.parent_id in hautes)]
 
 
+def nb_figees(taches):
+    """Nombre de tâches de `taches` que `figer_modele` reprend (comptées et leurs sous-tâches) : ce qui permet de
+    compter celles qu'un tri préalable a laissées de côté (revue F4 #14)."""
+    return len(_taches_figees(taches))
+
+
 def _origine(projet, sections, figees):
     """`date_debut` du projet, sinon la plus petite date du projet ; None si aucune."""
     if projet.date_debut is not None:

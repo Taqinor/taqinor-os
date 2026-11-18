@@ -1,6 +1,6 @@
 """Projets, étapes, modèles et revue (reference/api.md §3.3, §4).
 
-Routes déclarées : leurs vues lèvent `PasEncore` (501) jusqu'à leur tâche de construction. Schémas :
+Toutes les routes sont construites (dupliquer, modèles : TCH64). Schémas :
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon la forme PROJET partagée ;
 `GESTE` et `REORDONNER` viennent de `views/taches.py` (déclarés une fois).
 """
@@ -24,7 +24,7 @@ from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
 from apps.taches.services import projets as ecriture
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, PasEncore, corps, est_assistant, forme_echantillon, parametre, reponses,
+    ERREUR_CODE, PAGINATION, PERMISSIONS, corps, est_assistant, forme_echantillon, parametre, reponses,
 )
 from apps.taches.views.taches import GESTE, REORDONNER
 from core.idempotency import IdempotentCreateMixin
@@ -76,6 +76,32 @@ def _ecrit(request, resultat, statut=200):
     """La réponse `projet_ecrit` d'une écriture (état recalculé APRÈS elle)."""
     _, ctx = _etat(request)
     return Response(formes_projets.projet_ecrit(resultat, ctx), status=statut)
+
+
+MESSAGE_PROJET_CONFIDENTIEL = "Ce projet est confidentiel : l'assistant ne le copie pas."
+
+
+def _reponse_instance(request, instance):
+    """Aperçu (`apercu:true`) : le plan daté, 200 ; sinon le projet créé, 201 (`projet_ecrit.json`)."""
+    if instance.resultat is None:
+        return Response(_json(formes_projets.modele_apercu(instance.plan)))
+    reponse = _ecrit(request, instance.resultat, 201)
+    reponse.data = _json(reponse.data)
+    return reponse
+
+
+def _forme_modele(request, modele):
+    """`modele.json` du modèle, servi selon l'usage de la requête (notes tues à l'assistant, revue F4 #2)."""
+    return formes_projets.ModeleSerializer(modele, context={'assistant': est_assistant(request)}).data
+
+
+def _modele_ou_404(request, pk):
+    """Le modèle `pk` servi au compte (`modeles_servis`) ; sous l'en-tête assistant, un modèle confidentiel répond
+    comme un id inconnu (revue F4 #3 : la liste le tait, la fiche et les gestes aussi)."""
+    modele = lecture.modele_de(request.user, pk, assistant=est_assistant(request))
+    if modele is None:
+        raise Http404('Introuvable.')
+    return modele
 
 
 #: 409 d'un projet : `conflit_version` (`lock_version`, `actuel` = PROJET).
@@ -339,7 +365,15 @@ class DupliquerVue(IdempotentCreateMixin, APIView):
                                  requis=('nom',)),
                    responses=APERCU_OU_CREATION)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.DupliquerSerializer, request.data)
+        projet = _projet_ou_404(request, id)
+        if est_assistant(request) and est_confidentielle(projet):
+            raise PermissionDenied(MESSAGE_PROJET_CONFIDENTIEL)
+
+        def dupliquer():
+            return _reponse_instance(request, ecriture.dupliquer_projet(
+                request.user, id, donnees['nom'], donnees.get('date_debut'), apercu=donnees['apercu']))
+        return self._avec_idempotence(request, dupliquer, suffixe=f'u{request.user.pk}')
 
 
 class EnregistrerModeleVue(IdempotentCreateMixin, APIView):
@@ -350,7 +384,16 @@ class EnregistrerModeleVue(IdempotentCreateMixin, APIView):
     @extend_schema(request=corps('EnregistrerModele', {'nom': 'Salon', 'inclure_notes': False}, requis=('nom',)),
                    responses=reponses(forme_echantillon('modele'), statut=201, erreurs=(400, 404)))
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.EnregistrerModeleSerializer, request.data)
+        projet = _projet_ou_404(request, id)
+        if est_assistant(request) and est_confidentielle(projet):
+            raise PermissionDenied(MESSAGE_PROJET_CONFIDENTIEL)
+
+        def enregistrer():
+            modele = ecriture.enregistrer_modele(request.user, id, donnees['nom'],
+                                                 inclure_notes=donnees['inclure_notes'])
+            return Response(_json(_forme_modele(request, modele)), status=201)
+        return self._avec_idempotence(request, enregistrer, suffixe=f'u{request.user.pk}')
 
 
 class SectionsVue(APIView):
@@ -412,7 +455,10 @@ class ModelesVue(APIView):
 
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('modeles_liste')))
     def get(self, request):
-        raise PasEncore()
+        pagination = StandardPagination()
+        modeles = lecture.modeles_servis(request.user, assistant=est_assistant(request))
+        page = pagination.paginate_queryset(modeles.order_by('nom', 'id'), request, view=self)
+        return pagination.get_paginated_response(formes_projets.ModeleListeSerializer(page, many=True).data)
 
 
 class ModeleVue(APIView):
@@ -422,16 +468,21 @@ class ModeleVue(APIView):
 
     @extend_schema(responses=reponses(forme_echantillon('modele'), erreurs=(404,)))
     def get(self, request, id):
-        raise PasEncore()
+        return Response(_forme_modele(request, _modele_ou_404(request, id)))
 
     @extend_schema(request=corps('ModelePatch', {'nom': 'Salon'}, requis=('nom',)),
                    responses=reponses(forme_echantillon('modele'), erreurs=(400, 404)))
     def patch(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ModeleModificationSerializer, request.data)
+        _modele_ou_404(request, id)
+        modele = ecriture.renommer_modele(request.user, id, donnees['nom'])
+        return Response(_forme_modele(request, modele))
 
     @extend_schema(request=None, responses=reponses(GESTE, erreurs=(404,)))
     def delete(self, request, id):
-        raise PasEncore()
+        _modele_ou_404(request, id)
+        ecriture.supprimer_modele(request.user, id)
+        return Response({'geste_id': None})
 
 
 class ModeleInstancierVue(IdempotentCreateMixin, APIView):
@@ -443,7 +494,13 @@ class ModeleInstancierVue(IdempotentCreateMixin, APIView):
                                                       'apercu': True}, requis=('nom',)),
                    responses=APERCU_OU_CREATION)
     def post(self, request, id):
-        raise PasEncore()
+        donnees = _valider(formes_projets.ModeleInstancierSerializer, request.data)
+        _modele_ou_404(request, id)
+
+        def instancier():
+            return _reponse_instance(request, ecriture.instancier_modele(
+                request.user, id, donnees['nom'], donnees.get('date_lancement'), apercu=donnees['apercu']))
+        return self._avec_idempotence(request, instancier, suffixe=f'u{request.user.pk}')
 
 
 class RevueProjetsVue(APIView):

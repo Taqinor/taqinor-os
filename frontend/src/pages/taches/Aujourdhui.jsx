@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
+import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR, SaisieBureau } from '../../features/taches/coquille/CoquilleTaches'
 import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import Sections, {
@@ -11,6 +11,7 @@ import Replies, { useARevoir } from '../../features/taches/aujourdhui/Replies'
 import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
 import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
 import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
+import ColonneBureau, { ColonneProjets } from '../../features/taches/aujourdhui/ColonneBureau'
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
@@ -37,11 +38,14 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
      · relecture au retour du focus ; hors ligne, la lecture reste affichée et les gestes sont
        grisés (« Possible une fois connecté ») ;
      · un geste (cocher, reporter, ★) est optimiste puis réconcilié par la réponse du serveur :
-       il ne relit jamais toute la liste ; le toast « … · Annuler » défait par `gestes/{id}/annuler/`.
+       il ne relit jamais toute la liste ; le toast « … · Annuler » défait par `gestes/{id}/annuler/` ;
+     · TCH152 — au bureau (≥ 1024 px) la liste a l'Agenda du jour à sa droite et « Mes projets » à sa
+       gauche (`ColonneBureau`) : glisser une ligne sur un créneau lui donne une heure. L'iPhone n'en monte rien.
    Maquettes : ecran-aujourdhui-*.html, etat-chargement.html, etat-pas-a-jour.html.
    ========================================================================== */
 
 const DELAI_SQUELETTE_MS = 1000
+const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
 
@@ -151,23 +155,68 @@ function chercher(donnees, cle) {
   return trouve
 }
 
-/** Retire un item de sa liste ; rend la journée amputée et de quoi le remettre (Annuler). */
+/**
+ * Retire un item de TOUTES ses listes (une essentielle faite est servie dans `essentiel` ET `faites` — regles.md §4.1
+ * ligne 3, D-V1) ; rend la journée amputée et ses `origines` (`{ liste, rang, item }`, une par liste) pour la remettre.
+ */
 function retirer(donnees, cle) {
+  const origines = []
+  let suite = donnees
   for (const liste of LISTES_ITEMS) {
-    const rang = (donnees[liste] ?? []).findIndex((it) => cleDe(it) === cle)
+    const items = donnees[liste] ?? []
+    const rang = items.findIndex((it) => cleDe(it) === cle)
     if (rang >= 0) {
-      const item = donnees[liste][rang]
-      return { suite: { ...donnees, [liste]: donnees[liste].filter((_, i) => i !== rang) }, liste, rang, item }
+      origines.push({ liste, rang, item: items[rang] })
+      suite = { ...suite, [liste]: items.filter((it) => cleDe(it) !== cle) }
     }
   }
-  return { suite: mapItems(donnees, (it) => it), liste: null, rang: -1, item: null }
+  if (origines.length === 0) return { suite: mapItems(donnees, (it) => it), origines, item: null }
+  return { suite, origines, item: origines[0].item }
 }
 
-function remettre(donnees, { liste, rang, item }) {
-  if (!liste || !item) return donnees
-  const suite = [...(donnees[liste] ?? [])]
-  suite.splice(Math.min(rang, suite.length), 0, item)
-  return { ...donnees, [liste]: suite }
+/** Remet chaque origine rendue par `retirer` dans sa liste, à son rang (Annuler, refus du serveur). */
+function remettre(donnees, { origines = [] }) {
+  return origines.reduce((d, { liste, rang, item }) => {
+    const suite = [...(d[liste] ?? [])]
+    suite.splice(Math.min(rang, suite.length), 0, item)
+    return { ...d, [liste]: suite }
+  }, donnees)
+}
+
+/**
+ * Pose ou ôte la ★ comme la relecture la rangera (`selectors/journee.py::_ranger`, regles.md §4.1 ligne 3, D-V1) :
+ * une ouverte passe d'Essentiel à Prévu (ou l'inverse) ; une FAITE n'est jamais dans Prévu — avec ★ elle est dans
+ * Essentiel ET Faites, sans ★ dans Faites seule. Toutes ses occurrences prennent la nouvelle ★. Rend aussi les `origines`.
+ */
+function rangerEssentielle(donnees, cle, essentielle, lockVersion) {
+  const { suite, origines, item } = retirer(donnees, cle)
+  if (!item) return { suite: donnees, origines }
+  const change = { ...item, essentielle, lock_version: lockVersion ?? item.lock_version }
+  if (item.statut !== 'fait') {
+    return {
+      suite: essentielle
+        ? { ...suite, essentiel: [...(suite.essentiel ?? []), change] }
+        : { ...suite, journee: [change, ...(suite.journee ?? [])] },
+      origines,
+    }
+  }
+  const place = (liste) => ({ liste, rang: origines.find((o) => o.liste === liste)?.rang ?? Infinity, item: change })
+  return { suite: remettre(suite, { origines: essentielle ? [place('essentiel'), place('faites')] : [place('faites')] }), origines }
+}
+
+/** Vrai au bureau (≥ 1024 px) ; suit le redimensionnement. Sans `matchMedia` (tests), jamais le bureau. */
+function useBureau() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MEDIA_BUREAU).matches
+  const [bureau, setBureau] = useState(lire)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const requete = window.matchMedia(MEDIA_BUREAU)
+    const maj = () => setBureau(requete.matches)
+    requete.addEventListener?.('change', maj)
+    maj()
+    return () => requete.removeEventListener?.('change', maj)
+  }, [])
+  return bureau
 }
 
 /**
@@ -210,6 +259,8 @@ export default function Aujourdhui() {
   const [conflit, setConflit] = useState(null)
   const [invite, setInvite] = useState(false)
   const [focusPrevu, setFocusPrevu] = useState(0)
+  const bureau = useBureau()
+  const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
   const garde = useCallback(() => {
     if (enLigne) return
@@ -316,23 +367,22 @@ export default function Aujourdhui() {
     try {
       const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
       poserProgression(data.progression)
+      const avant = { origines: [] }
       setDonnees((d) => {
-        const { suite, item: trouve } = retirer(d, cleDe(item))
-        if (!trouve) return d
-        const change = { ...trouve, essentielle: suivant, lock_version: data.tache?.lock_version ?? trouve.lock_version }
-        return suivant
-          ? { ...suite, essentiel: [...(suite.essentiel ?? []), change] }
-          : { ...suite, journee: [change, ...(suite.journee ?? [])] }
+        const r = rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version)
+        avant.origines = r.origines
+        return r.suite
       })
       proposerAnnuler({
         message: suivant ? 'Essentielle' : 'Plus essentielle',
         onAnnuler: async () => {
           const rendu = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
+          // l'état d'avant : la ★ d'avant, à chacune de ses places d'avant (une essentielle faite retrouve ses deux lignes)
           setDonnees((d) => {
             const { suite, item: trouve } = retirer(d, cleDe(item))
-            if (!trouve) return d
+            if (!trouve || avant.origines.length === 0) return d
             const retour = { ...trouve, essentielle: !suivant, lock_version: versionDe(rendu, item.id, trouve.lock_version) }
-            return suivant ? { ...suite, journee: [retour, ...(suite.journee ?? [])] } : { ...suite, essentiel: [...(suite.essentiel ?? []), retour] }
+            return remettre(suite, { origines: avant.origines.map((o) => ({ ...o, item: retour })) })
           })
         },
       })
@@ -460,6 +510,27 @@ export default function Aujourdhui() {
     naviguer: (url) => navigate(url),
   }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])
 
+  const glissable = useMemo(() => (bureau ? { onDebut: setGlisse, onFin: () => setGlisse(null) } : null), [bureau])
+  // La ligne glissée peut quitter le DOM en cours de route (elle prend son heure et change de place) : `dragend` ne
+  // lui parvient alors plus. Le dépôt, ou la fin du glisser vu par la fenêtre, ferme donc aussi les créneaux.
+  useEffect(() => {
+    if (!glisse) return undefined
+    const fin = () => setGlisse(null)
+    window.addEventListener('drop', fin)
+    window.addEventListener('dragend', fin)
+    return () => { window.removeEventListener('drop', fin); window.removeEventListener('dragend', fin) }
+  }, [glisse])
+  // « Placée à {HH:MM} » : la ligne prend son heure sans relire la journée ; « Annuler » lui rend celle d'avant
+  const placee = useCallback((item, data, heureChoisie) => {
+    patcher(cleDe(item), (it) => ({
+      ...it,
+      heure_debut: data?.tache?.heure_debut ?? heureChoisie,
+      lock_version: data?.tache?.lock_version ?? it.lock_version,
+    }))
+    poserProgression(data?.progression)
+  }, [patcher, poserProgression])
+  const replacee = useCallback((item) => patcher(cleDe(item), () => item), [patcher])
+
   const contexte = useMemo(() => ({
     donnees,
     estampilles,
@@ -469,7 +540,8 @@ export default function Aujourdhui() {
     focusPrevu,
     reorganiser: modes.reorganiser,
     selection: modes.selection,
-  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection])
+    glissable,
+  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection, glissable])
 
   // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
   const racine = useClavierListe((action, { cle }) => {
@@ -599,18 +671,8 @@ export default function Aujourdhui() {
   } : null
   const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
-  return (
-    <CoquilleTaches
-      ecran="aujourdhui"
-      titre="Aujourd'hui"
-      sousTitre={sousTitre}
-      derniereSynchro={derniere}
-      conflit={conflit ?? actions.conflit}
-      feuille={laFeuille ?? actions.feuille}
-      selecteurProjet={actions.selecteurProjet}
-      actionsEcran={actionsEcran}
-      selection={barreSelection}
-    >
+  const contenu = (
+    <>
       {modes.reorganiser || modes.selection.actif ? (
         <div className="mode-ecran" role="status">
           <span>{modes.reorganiser ? 'Réorganiser' : 'Sélectionner'}</span>
@@ -619,6 +681,10 @@ export default function Aujourdhui() {
       ) : null}
       {squelette ? <Squelette /> : null}
       {donnees && !journeeVide(donnees) ? <Progression donnees={donnees} onRythme={() => navigate('/taches/rythme')} /> : null}
+      {/* passe visuelle n° 15 — bureau : « Ajouter une tâche » sous la progression (maquette ecran-aujourdhui-matin.html).
+          Elle reste là quand la journée est vide ou encore en chargement : c'est le « + » du bureau (l'iPhone garde son
+          bouton flottant dans ces états-là aussi) — on ne retire jamais le moyen d'ajouter une tâche. */}
+      <SaisieBureau onClick={() => ouvrirSaisie({})} />
       {bandeau}
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment
@@ -671,6 +737,29 @@ export default function Aujourdhui() {
         />
         </div>
       ) : null}
+    </>
+  )
+
+  return (
+    <CoquilleTaches
+      ecran="aujourdhui"
+      titre="Aujourd'hui"
+      sousTitre={sousTitre}
+      derniereSynchro={derniere}
+      conflit={conflit ?? actions.conflit}
+      feuille={laFeuille ?? actions.feuille}
+      selecteurProjet={actions.selecteurProjet}
+      actionsEcran={actionsEcran}
+      selection={barreSelection}
+      saisieBureau={false}
+    >
+      {bureau ? (
+        <div className="tch-bureau">
+          <ColonneProjets />
+          <div className="tch-bureau-liste">{contenu}</div>
+          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
+        </div>
+      ) : contenu}
     </CoquilleTaches>
   )
 }

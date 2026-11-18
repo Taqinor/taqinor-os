@@ -114,6 +114,29 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
   })
   afterEach(() => { vi.clearAllMocks() })
 
+  it('Passe visuelle n° 6 — pendant le chargement, aucun chiffre : ni « 0 tâche », ni « passé · 0 faite », ni « Tout est placé »', async () => {
+    let servir
+    lireAgenda.mockReturnValue(new Promise((resoudre) => { servir = resoudre }))
+    monter()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
+    expect(screen.queryByRole('list', { name: 'Jours de la semaine' })).toBeNull()
+    expect(screen.queryByText(/0 tâche|0 faite/)).toBeNull()
+    expect(screen.queryByText('Tout est placé')).toBeNull()
+    servir({ data: agenda() })
+    expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches · 1 h 15/ })).toBeInTheDocument()
+  })
+
+  it('Passe visuelle n° 37 — un mode (agenda-semaine-planifier.html) : ni navigation qui répète la semaine, ni barre d\'ajout', async () => {
+    const { container } = monter()
+    expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Semaine précédente' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Semaine suivante' })).toBeNull()
+    expect(container.querySelector('.ag-nav')).toBeNull()
+    expect(container.querySelector('.saisie-bureau')).toBeNull()
+    expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))
+  })
+
   it('pose une tâche sur un jour sans ouvrir de fiche, puis Terminer', async () => {
     const { container } = monter()
     expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()

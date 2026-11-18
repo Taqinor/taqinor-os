@@ -10,7 +10,7 @@ import Fiche from './Fiche'
 const api = vi.hoisted(() => ({
   lireTache: vi.fn(), modifierTache: vi.fn(), planifierTache: vi.fn(), terminerTache: vi.fn(), rouvrirTache: vi.fn(),
   marquerEssentiel: vi.fn(), repeterRappel: vi.fn(), annulerGeste: vi.fn(), ajouterPoint: vi.fn(), modifierPoint: vi.fn(),
-  retirerPoint: vi.fn(), listerTousLesProjets: vi.fn(), creerProjet: vi.fn(), modifierReglages: vi.fn(),
+  retirerPoint: vi.fn(), listerTousLesProjets: vi.fn(), creerProjet: vi.fn(), modifierReglages: vi.fn(), trancherTache: vi.fn(),
 }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importOriginal()), ...api }))
 
@@ -47,12 +47,15 @@ afterEach(() => {
 
 describe('TCH84 — fiche d\'une tâche', () => {
   it('montre Quand · Échéance · Projet · Priorité · Essentielle · Notes · Check-list de la tâche lue', async () => {
+    const user = userEvent.setup()
     monter()
     expect(await screen.findByRole('textbox', { name: 'Titre' })).toHaveValue('Devis Settat')
     expect(api.lireTache).toHaveBeenCalledWith(20)
-    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('aujourd\'hui · 10:00')
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Aujourd\'hui · 10:00')
+    await user.click(screen.getByRole('button', { name: 'Échéance : jeu. 19' }))
     expect(screen.getByLabelText('Échéance')).toHaveValue('2026-11-19')
     expect(screen.getByRole('button', { name: /Projet/ })).toHaveTextContent('Ventes')
+    await user.click(screen.getByRole('button', { name: 'Priorité : moyenne' }))
     expect(within(screen.getByRole('radiogroup', { name: 'Priorité' })).getByRole('radio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('checkbox', { name: 'Essentielle : Devis Settat' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Appeler avant 11 h.')
@@ -60,6 +63,82 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(screen.getByRole('textbox', { name: 'Ajouter un point' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Fait' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reporter à mer. 18' })).toBeInTheDocument()
+  })
+
+  it('passe visuelle n° 27/57 — Quand · Échéance · Projet · Priorité sont des PUCES (plus de formulaire en liste)', async () => {
+    const user = userEvent.setup()
+    const { container } = monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    const puces = container.querySelector('.puces.fiche-champs')
+    expect([...puces.querySelectorAll('button.puce')].map((b) => b.textContent)).toEqual(
+      ['Aujourd\'hui · 10:00', 'échéance jeu. 19', 'Ventes', 'Priorité moyenne'],
+    )
+    expect(within(puces).getByRole('button', { name: 'Projet : Ventes' })).toHaveAttribute('data-p', 'vert')
+    expect(container.querySelector('.fiche-ligne')).toBeNull()
+    expect(screen.queryByText('Quand je la fais')).toBeNull()
+    // une priorité posée est MARQUÉE dans le choix qui s'ouvre sous la puce
+    await user.click(within(puces).getByRole('button', { name: 'Priorité : moyenne' }))
+    expect(screen.getByRole('radio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(screen.getByRole('radio', { name: 'Haute' }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { priorite: 3, lock_version: 4 }))
+  })
+
+  it('passe visuelle n° 27 — sans échéance, sans projet, sans priorité : puces vides, aucun champ date nu', async () => {
+    api.lireTache.mockResolvedValue({ data: { ...tache, echeance: null, projet: null, priorite: 0 } })
+    const { container } = monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    const vides = [...container.querySelectorAll('.fiche-champs .puce.vide')].map((b) => b.textContent)
+    expect(vides).toEqual(['Échéance', 'Sans projet', 'Priorité'])
+    expect(container.querySelector('input[type="date"]')).toBeNull()
+  })
+
+  it('passe visuelle n° 30/31 — UN seul titre ; ☆ et ⋯ dans l\'en-tête ; ⋯ = Abandonner · Supprimer', async () => {
+    const user = userEvent.setup()
+    api.trancherTache.mockResolvedValue({ data: { geste_id: 5 } })
+    const onFermer = vi.fn()
+    const { container } = monter({ onFermer })
+    await screen.findByRole('textbox', { name: 'Titre' })
+    // le titre ne s'écrit qu'une fois À L'ÉCRAN : celui de la barre est masqué (nom du dialogue gardé)
+    expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(container.querySelector('.fiche .feuille-entete .feuille-titre')).not.toBeNull()
+    const actions = container.querySelector('.fiche-entete-actions')
+    expect(within(actions).getByRole('checkbox', { name: 'Essentielle : Devis Settat' })).toBeInTheDocument()
+    await user.click(within(actions).getByRole('button', { name: 'Actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    expect(await screen.findByRole('alertdialog', { name: 'Supprimer « Devis Settat »' })).toBeInTheDocument()
+    await user.click(within(actions).getByRole('button', { name: 'Actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Abandonner' }))
+    await waitFor(() => expect(api.trancherTache).toHaveBeenCalledWith(20, { choix: 'abandonner' }))
+    await waitFor(() => expect(onFermer).toHaveBeenCalled())
+  })
+
+  it('relecture adverse F4 n° 5 — Échap ferme le menu ⋯ de l\'en-tête, PAS la fiche', async () => {
+    const user = userEvent.setup()
+    const onFermer = vi.fn()
+    const { container } = monter({ onFermer })
+    await screen.findByRole('textbox', { name: 'Titre' })
+    const actions = container.querySelector('.fiche-entete-actions')
+    await user.click(within(actions).getByRole('button', { name: 'Actions' }))
+    expect(await screen.findByRole('menuitem', { name: 'Abandonner' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'Abandonner' })).toBeNull())
+    expect(onFermer).not.toHaveBeenCalled()
+    // menu fermé : Échap ferme maintenant la fiche, comme avant
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalled()
+  })
+
+  it('passe visuelle n° 29/56 — « ✓ Fait » vert (bouton fait) ; « Plus » avec indice et chevron, nom lu « Plus »', async () => {
+    monter()
+    await screen.findByRole('textbox', { name: 'Titre' })
+    const fait = screen.getByRole('button', { name: 'Fait' })
+    expect(fait).toHaveClass('bouton', 'fait')
+    expect(fait).not.toHaveClass('plein')
+    expect(fait.querySelector('svg')).not.toBeNull()
+    expect(screen.getByRole('button', { name: /^Reporter à/ })).toHaveClass('accent')
+    const plus = screen.getByRole('button', { name: 'Plus' })
+    expect(plus).toHaveTextContent('Répéter, durée, étiquettes, en attente de…')
+    expect(screen.getByText('1/1')).toBeInTheDocument() // compte de la check-list
   })
 
   it('une tâche introuvable est dite, la fiche reste montée', async () => {

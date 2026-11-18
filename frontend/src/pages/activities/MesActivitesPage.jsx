@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
+import { useTachesActives } from '../../features/taches/presence/useTachesActives'
+import { EVENEMENT_SAISIR } from '../../features/taches/presence/cibleEcran'
 // VX211 — « Ma file » par persona (ordre des `kind` selon le rôle) +
 // départage optionnel « Victoires rapides d'abord ».
 import {
@@ -183,6 +185,8 @@ export default function MesActivitesPage() {
   const [todoText, setTodoText] = useState('')
   const [todoDate, setTodoDate] = useState('')
   const [todoBusy, setTodoBusy] = useState(false)
+  // TCH159 — « une seule saisie » : avec `taches_voir`, « + À faire » ouvre la saisie de Tâches
+  const peutTaches = useTachesActives() // F4 revue #15 : permission ET module Tâches actif
 
   const load = () => {
     setLoading(true)
@@ -263,6 +267,20 @@ export default function MesActivitesPage() {
     e?.preventDefault?.()
     const txt = todoText.trim()
     if (!txt) return
+    if (peutTaches) {
+      // TCH159 — la phrase tapée part dans la feuille de saisie unique (`taqinor:taches:saisir`), l'échéance en « Quand ».
+      // L'hôte de Tâches (chargé à part) répond « reçu » en annulant l'événement : tant qu'il n'écoute pas encore, la
+      // phrase RESTE dans le champ — elle n'est jamais perdue.
+      const recue = !window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, {
+        cancelable: true,
+        detail: { texte: txt, ...(todoDate ? { jour_prevu: todoDate } : {}) },
+      }))
+      if (recue) {
+        setTodoText('')
+        setTodoDate('')
+      }
+      return
+    }
     setTodoBusy(true)
     setActionError(null)
     try {

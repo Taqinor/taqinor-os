@@ -51,6 +51,23 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(dialogue).toHaveClass('cran-50')
   })
 
+  it('passe visuelle n° 26 — le focus posé d\'office sur la poignée ne dessine pas d\'anneau ; une action désignée garde le sien', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    const { unmount } = feuille()
+    const poignee = screen.getByRole('button', { name: 'Agrandir la feuille' })
+    expect(poignee).toHaveFocus()
+    expect(focus.mock.contexts.at(-1)).toBe(poignee)
+    expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
+    unmount()
+    focus.mockClear()
+    render(
+      <FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><button type="button" data-focus-initial>OK</button></FeuilleACrans>,
+    )
+    expect(screen.getByRole('button', { name: 'OK' })).toHaveFocus()
+    expect(focus.mock.calls.at(-1)).toEqual([])
+    focus.mockRestore()
+  })
+
   it('peut s\'ouvrir directement à 85 %', () => {
     feuille({ cranInitial: '85' })
     expect(screen.getByRole('dialog')).toHaveClass('cran-85')
