@@ -538,6 +538,7 @@ class PreferencesTests(BaseRythme):
                ('jours_travailles', '0000000', 'Garde au moins un jour travaillé.'),
                ('note_libre', ['x'] * 11, '10 phrases au plus.'),
                ('note_libre', ['x' * 201], '200 caractères au plus.'),
+               ('note_libre', ['a\x00b'], 'Valeur inconnue.'),
                ('revue_semaine', 'lundi', 'Choisis un jour, Auto ou Éteinte.'))
         for cle, valeur, message in cas:
             with self.subTest(cle=cle, valeur=valeur):

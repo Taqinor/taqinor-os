@@ -37,6 +37,7 @@ from apps.taches.choix import (
     TypeIncitationEcran,
     TypeIncitationPush,
 )
+from apps.taches.entrees import sans_nul
 from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
@@ -573,7 +574,7 @@ def _booleen(valeur):
 
 
 def _notes(valeur):
-    if not isinstance(valeur, list) or not all(isinstance(v, str) for v in valeur):
+    if not isinstance(valeur, list) or not all(isinstance(v, str) and sans_nul(v) for v in valeur):
         _invalide(VALEUR_INCONNUE)
     if len(valeur) > NOTES_MAX:
         _invalide(NOTES_TROP_NOMBREUSES)
