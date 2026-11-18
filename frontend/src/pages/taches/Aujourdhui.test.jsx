@@ -347,6 +347,20 @@ describe('TCH76 — gestes optimistes', () => {
   })
 })
 
+describe('F2 acceptation (S5) — un refus 409 nommé (textes.md §2.16) se VOIT, pas seulement au lecteur d\'écran', () => {
+  it('carte du moment : 409 `proposition_expiree` → la carte part et « Cette proposition a expiré. » s\'affiche', async () => {
+    servir(donnees())
+    const expiree = exempleContrat('taches', 'erreurs').proposition_expiree
+    api.post.mockImplementation((url) => (url.endsWith('/repondre/')
+      ? Promise.reject(Object.assign(new Error('409'), { response: { status: 409, data: expiree } }))
+      : Promise.resolve({ data: {} })))
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: 'Monter à 6' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Cette proposition a expiré.')
+    expect(screen.queryByRole('button', { name: 'Monter à 6' })).toBeNull()
+  })
+})
+
 describe('F2 acceptation (P144.1) — le bandeau de conflit dit l\'heure servie par la réponse 409', () => {
   it('Reporter refusé par un 409 `conflit_version` : « Modifiée sur ton autre appareil à 10:42 »', async () => {
     servir(donnees())

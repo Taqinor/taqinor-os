@@ -175,7 +175,8 @@ export function useActionsLigne({
       setProjets((liste) => (liste ? [...liste, cree] : liste))
       deplacer(item, cree)
     } catch (err) {
-      annoncer(classerErreur(err).champs?.nom?.[0] ?? frenchError(err))
+      // la feuille est déjà fermée : le refus (409 `nom_pris`, `nom` déjà pris…) se VOIT dans le toast, et il est lu
+      proposerAnnuler({ message: classerErreur(err).champs?.nom?.[0] ?? frenchError(err) })
     }
   }, [deplacer])
 

@@ -23,6 +23,7 @@ vi.mock('../../api/tachesApi', async (original) => ({
   attendreTache: vi.fn(),
   listerToutesLesTaches: vi.fn(),
   supprimerProjet: vi.fn(),
+  creerProjet: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -242,6 +243,20 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     api.listerTousLesProjets.mockResolvedValue([
       { id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3 }, { id: 5, nom: 'Site web', couleur: 'ciel', priorite: 2 },
     ])
+  })
+
+  it('F2 acceptation (S5) — Déplacer… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
+    api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await ouvrirMenu(user, 'Devis Settat')
+    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(api.traiterLot).not.toHaveBeenCalled()
   })
 
   it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {

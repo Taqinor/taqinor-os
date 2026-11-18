@@ -383,6 +383,8 @@ export default function Aujourdhui() {
     } catch (err) {
       if (err?.response?.status === 409 && err.response.data?.code === 'proposition_expiree') {
         setDonnees((d) => ({ ...d, carte_du_moment: null }))
+        // la carte part : le refus se VOIT (textes.md §2.16 « Cette proposition a expiré. »), pas seulement lu
+        proposerAnnuler({ message: frenchError(err) })
         return
       }
       annoncer(frenchError(err))
@@ -556,7 +558,13 @@ export default function Aujourdhui() {
       ouverte: true,
       titre: 'Lier une tâche',
       onFermer: () => setFeuille(null),
-      children: <FeuilleLier item={feuille.item} onLier={(titre) => { setFeuille(null); lier(feuille.item, titre) }} />,
+      children: (
+        <FeuilleLier item={feuille.item} onLier={async (titre) => {
+          const refus = await lier(feuille.item, titre)
+          if (!refus) setFeuille(null)
+          return refus
+        }} />
+      ),
     }
   } else if (feuille?.type === 'jour_lot') {
     laFeuille = {
