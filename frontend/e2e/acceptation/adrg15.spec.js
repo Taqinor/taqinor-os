@@ -230,6 +230,27 @@ sortie(1)`)
       expect(appels(s.reseau, LEAD_ECRIT(ids)).filter((l) => !l.startsWith('GET ')), `${quoi} : aucun PATCH/POST crm/leads/<id>/`).toEqual([])
       expect(s.consoles, `${quoi} : console sans erreur`).toEqual([])
     }
+    /** Colonne d'étape du kanban (section « Étape <libellé> — n leads »). */
+    const colonneDe = (s, libelle) => s.p.getByRole('region', { name: new RegExp(`^Étape ${libelle} `) })
+    const carteDans = (s, libelle) => colonneDe(s, libelle).locator('article').filter({ hasText: `ADRG152 un ${m}` })
+    /** VRAI glisser de la carte du premier lead : souris enfoncée sur la carte, quelques pixels (seuil MouseSensor), puis
+     *  déplacement progressif jusqu'au centre de la colonne cible, relâchement. */
+    async function glisser(s, libelleCible) {
+      const poignee = s.p.locator(`[data-lead-id="${ids[0]}"]`)
+      await poignee.scrollIntoViewIfNeeded()
+      const b = await poignee.boundingBox()
+      const cible = await colonneDe(s, libelleCible).boundingBox()
+      expect(b && cible, `${s.c.nomRole} : carte et colonne cible mesurables`).toBeTruthy()
+      const x = b.x + 10
+      const y = b.y + 10
+      await s.p.mouse.move(x, y)
+      await s.p.mouse.down()
+      await s.p.mouse.move(x + 8, y + 8, { steps: 3 })
+      await s.p.mouse.move(x + 16, y + 16, { steps: 3 })
+      await s.p.mouse.move(cible.x + cible.width / 2, cible.y + Math.min(cible.height / 2, 200), { steps: 25 })
+      await s.p.waitForTimeout(300)
+      await s.p.mouse.up()
+    }
     // Commercial : « Responsable » inerte sur chaque ligne et carte ; étape, champs et « Marquer perdu » actifs.
     await attribuer(co)
     const c = await ecranDe(page, suivi, testInfo, co)
@@ -281,6 +302,23 @@ sortie(1)`)
       await expect(v.p.getByRole('menuitem', { name: /Marquer perdu/ }), `${passe}Viewer kanban : aucune entrée « Marquer perdu »`).toHaveCount(0)
       propres(v, `${passe}Viewer kanban`)
     }
+    // Viewer : un VRAI glisser de carte vers « Contacté » n'envoie aucun PATCH ; la carte reste dans « Nouveau ».
+    {
+      await ouvrir(v, 'kanban', '')
+      await expect(carteDans(v, 'Nouveau'), 'Viewer kanban : le lead est dans « Nouveau » avant le glisser').toBeVisible(V)
+      v.reseau.length = 0
+      await glisser(v, 'Contacté')
+      await calme(v.p)
+      await v.p.waitForTimeout(1500)
+      expect(appels(v.reseau, LEAD_ECRIT(ids)).filter((l) => !l.startsWith('GET ')), `Viewer glisser : aucun PATCH crm/leads/<id>/ (${J(v.reseau)})`).toEqual([])
+      expect(v.reseau.filter((l) => !l.startsWith('GET ')), 'Viewer glisser : aucune requête d\'écriture').toEqual([])
+      await expect(carteDans(v, 'Nouveau'), 'Viewer glisser : la carte est toujours dans « Nouveau »').toBeVisible(V)
+      await expect(carteDans(v, 'Contacté'), 'Viewer glisser : la carte n\'est pas dans « Contacté »').toHaveCount(0)
+      await ouvrir(v, 'kanban', 'relu après rechargement : ')
+      await expect(carteDans(v, 'Nouveau'), 'relu après rechargement : Viewer — carte toujours dans « Nouveau »').toBeVisible(V)
+      await expect(carteDans(v, 'Contacté'), 'relu après rechargement : Viewer — carte absente de « Contacté »').toHaveCount(0)
+      expect((await lireJson(await r.get(`${API}/crm/leads/${ids[0]}/`, T), 'lead relu')).stage, 'relu (API) : étape inchangée = NEW').toBe('NEW')
+    }
     // Témoin Directeur : tout est actif.
     await attribuer(di)
     const d = await ecranDe(page, suivi, testInfo, di)
@@ -300,6 +338,21 @@ sortie(1)`)
       await expect(d.p.getByRole('menuitem', { name: /Marquer perdu/ }), `${passe}Directeur kanban : « Marquer perdu » présent`).toBeVisible(V)
       await d.p.keyboard.press('Escape')
       propres(d, `${passe}Directeur kanban`)
+    }
+    // Témoin Directeur : le MÊME glisser (en avant, sans confirmation) envoie un PATCH 200 et déplace la carte.
+    {
+      await ouvrir(d, 'kanban', '')
+      await expect(carteDans(d, 'Nouveau'), 'Directeur kanban : le lead est dans « Nouveau » avant le glisser').toBeVisible(V)
+      d.reseau.length = 0
+      const ecrit = reponse(d.p, LEAD_ECRIT([ids[0]]), 'PATCH')
+      await glisser(d, 'Contacté')
+      const rep = await ecrit
+      expect(rep.status(), 'Directeur glisser : PATCH crm/leads/<id>/ accepté').toBe(200)
+      await expect(carteDans(d, 'Contacté'), 'Directeur glisser : la carte est dans « Contacté »').toBeVisible(V)
+      await ouvrir(d, 'kanban', 'relu après rechargement : ')
+      await expect(carteDans(d, 'Contacté'), 'relu après rechargement : Directeur — carte dans « Contacté »').toBeVisible(V)
+      await expect(carteDans(d, 'Nouveau'), 'relu après rechargement : Directeur — carte plus dans « Nouveau »').toHaveCount(0)
+      expect((await lireJson(await r.get(`${API}/crm/leads/${ids[0]}/`, T), 'lead relu')).stage, 'relu (API) : étape = CONTACTED').toBe('CONTACTED')
     }
   } finally {
     await py(`from apps.crm.models import Lead
@@ -446,6 +499,33 @@ sortie(1)`)
       await cellule.hover()
       return s.p.getByTitle('Créer un ticket ce jour')
     }
+    /** Jour cible du glisser : lendemain d'aujourd'hui, ou la veille si le lendemain tombe dans le mois suivant. */
+    const [aa, mm, jj] = aujourdhui.split('-').map(Number)
+    const lend = new Date(aa, mm - 1, jj + 1)
+    const cibleJ = lend.getMonth() === mm - 1 ? lend : new Date(aa, mm - 1, jj - 1)
+    const cibleYmd = `${cibleJ.getFullYear()}-${String(cibleJ.getMonth() + 1).padStart(2, '0')}-${String(cibleJ.getDate()).padStart(2, '0')}`
+    /** Cellule du mois affiché pour le jour `n` (cellules « dans le mois » = fond bg-card). */
+    const celluleDe = (s, n) => s.p.locator('div.group.bg-card').filter({ has: s.p.locator('span', { hasText: new RegExp(`^${n}$`) }) })
+    const carteTicket = (zone) => zone.getByRole('button', { name: new RegExp(`ADRG154 ${m}`) })
+    /** VRAI glisser de la carte du ticket (aujourd'hui) vers la cellule du jour cible : souris enfoncée, quelques pixels
+     *  (seuil du PointerSensor), puis déplacement progressif, relâchement. */
+    async function glisserTicket(s) {
+      const carte = carteTicket(celluleDe(s, jj)).first()
+      await carte.scrollIntoViewIfNeeded()
+      const b = await carte.boundingBox()
+      const cible = await celluleDe(s, cibleJ.getDate()).first().boundingBox()
+      expect(b && cible, `${s.c.nomRole} : carte et cellule cible mesurables`).toBeTruthy()
+      const x = b.x + b.width / 2
+      const y = b.y + b.height / 2
+      await s.p.mouse.move(x, y)
+      await s.p.mouse.down()
+      await s.p.mouse.move(x + 8, y + 8, { steps: 3 })
+      await s.p.mouse.move(x + 16, y + 16, { steps: 3 })
+      await s.p.mouse.move(cible.x + cible.width / 2, cible.y + cible.height / 2, { steps: 25 })
+      await s.p.waitForTimeout(300)
+      await s.p.mouse.up()
+    }
+    const dateDuTicket = async () => (await lireJson(await r.get(`${API}/sav/tickets/${t.id}/`, T), 'ticket relu')).date_tournee
     const sans403 = (s, quoi) => {
       console.log(`[ADRG154] ${quoi} : ${J(pertinent(s.reseau))} ; console ${J(s.consoles)}`)
       expect(refus(s.reseau), `${quoi} : aucune réponse refusée (aucune 403)`).toEqual([])
@@ -472,6 +552,21 @@ sortie(1)`)
         await calme(s.p)
         sans403(s, `${passe}${quoi} calendrier`)
       }
+      // Un VRAI glisser de la carte vers un autre jour : aucun replanifier, le ticket garde son jour.
+      await calendrier(s, '')
+      await expect(carteTicket(celluleDe(s, jj)).first(), `${quoi} glisser : le ticket est sur le jour d'origine avant le glisser`).toBeVisible(V)
+      s.reseau.length = 0
+      await glisserTicket(s)
+      await calme(s.p)
+      await s.p.waitForTimeout(1500)
+      expect(ecritures(s.reseau, REPLANIFIER), `${quoi} glisser : aucun appel replanifier (${J(s.reseau)})`).toEqual([])
+      expect(s.reseau.filter((l) => !l.startsWith('GET ')), `${quoi} glisser : aucune requête d'écriture`).toEqual([])
+      await expect(carteTicket(celluleDe(s, jj)).first(), `${quoi} glisser : le ticket est toujours sur son jour`).toBeVisible(V)
+      await expect(carteTicket(celluleDe(s, cibleJ.getDate())), `${quoi} glisser : rien sur le jour cible`).toHaveCount(0)
+      await calendrier(s, 'relu après rechargement : ')
+      await expect(carteTicket(celluleDe(s, jj)).first(), `relu après rechargement : ${quoi} — ticket toujours sur son jour`).toBeVisible(V)
+      await expect(carteTicket(celluleDe(s, cibleJ.getDate())), `relu après rechargement : ${quoi} — rien sur le jour cible`).toHaveCount(0)
+      expect(await dateDuTicket(), `relu (API) : ${quoi} — date_tournee inchangée`).toBe(aujourdhui)
     }
     // Témoin Technicien responsable (sav_gerer) : les trois gestes et le contrôle de création rapide.
     await attribuer(te)
@@ -488,6 +583,23 @@ sortie(1)`)
       const creer = await survol(s)
       await expect(creer.first(), `${passe}Technicien responsable calendrier : « Créer un ticket ce jour » au survol`).toBeVisible(V)
       sans403(s, `${passe}Technicien responsable calendrier`)
+    }
+    // Témoin : le MÊME glisser appelle replanifier (200) et le ticket change de jour, relu après rechargement.
+    {
+      await calendrier(s, '')
+      await expect(carteTicket(celluleDe(s, jj)).first(), 'Technicien responsable glisser : ticket sur son jour avant le glisser').toBeVisible(V)
+      s.reseau.length = 0
+      const ecrit = reponse(s.p, REPLANIFIER, 'POST')
+      await glisserTicket(s)
+      const rep = await ecrit
+      expect(rep.status(), 'Technicien responsable glisser : replanifier accepté').toBe(200)
+      await expect(carteTicket(celluleDe(s, cibleJ.getDate())).first(), 'Technicien responsable glisser : ticket sur le jour cible').toBeVisible(V)
+      expect(await dateDuTicket(), 'relu (API) : Technicien responsable — date_tournee = jour cible').toBe(cibleYmd)
+      await charger(s, '/sav', 'relu')
+      await s.p.getByRole('radio', { name: 'Calendrier' }).click()
+      await expect(s.p.getByRole('button', { name: "Aujourd'hui" }), 'relu après rechargement : calendrier rendu').toBeVisible(V)
+      await expect(carteTicket(celluleDe(s, cibleJ.getDate())).first(), 'relu après rechargement : Technicien responsable — ticket sur le jour cible').toBeVisible(V)
+      await expect(carteTicket(celluleDe(s, jj)), 'relu après rechargement : Technicien responsable — plus sur le jour d\'origine').toHaveCount(0)
     }
   } finally {
     await py(`from apps.sav.models import Ticket
