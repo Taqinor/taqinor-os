@@ -297,6 +297,44 @@ describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le 
     expect(err.response.status).toBe(500)
     expect(toastError).toHaveBeenCalledTimes(2)
   })
+
+  it('la prémisse tient avec le VRAI axios : la règle posée pendant l\'appel est celle que la requête emporte', async () => {
+    // Le client pose sa règle sur l'instance le temps de l'appel puis la retire : cela ne vaut que si axios
+    // fusionne ses réglages DÈS l'appel (synchrone). Une vraie instance, un adaptateur qui applique la règle
+    // REÇUE par la requête : si une montée de version d'axios différait cette fusion, ce test rougirait.
+    const axios = (await vi.importActual('axios')).default
+    const recues = []
+    const instance = axios.create({
+      adapter: (config) => {
+        recues.push(config.validateStatus)
+        const reponse = { status: 409, statusText: 'Conflict', data: erreurs.conflit_version, headers: {}, config }
+        if (config.validateStatus(409)) return Promise.resolve(reponse)
+        return Promise.reject(Object.assign(new Error('Request failed with status code 409'), { response: reponse, config }))
+      },
+    })
+    const regleDeLInstance = instance.defaults.validateStatus
+    // témoin : hors du client, la même instance REJETTE un 409 par sa propre règle
+    await expect(instance.patch('/taches/taches/20/', {})).rejects.toMatchObject({ response: { status: 409 } })
+    expect(recues[0](409)).toBe(false)
+    vi.resetModules()
+    vi.doMock('./axios', () => ({ default: instance }))
+    try {
+      const reel = await import('./tachesApi')
+      const appel = reel.modifierTache(20, { titre: 'x', lock_version: 4 })
+      expect(instance.defaults.validateStatus).toBe(regleDeLInstance) // retirée dès l'appel parti
+      const err = await appel.catch((e) => e)
+      expect(recues).toHaveLength(2)
+      expect(recues[1](409)).toBe(true) // la requête du client, elle, a emporté la règle qui laisse passer le 409
+      expect(err.response.status).toBe(409)
+      expect(reel.classerErreur(err)).toMatchObject({ code: 'conflit_version', lockVersion: 5 })
+      // et une requête lancée APRÈS, hors du client, rejette de nouveau par la règle de l'instance
+      await expect(instance.patch('/taches/taches/20/', {})).rejects.toMatchObject({ response: { status: 409 } })
+      expect(recues[2](409)).toBe(false)
+    } finally {
+      vi.doUnmock('./axios')
+      vi.resetModules()
+    }
+  })
 })
 
 describe('TCH42 — listes paginées lues en entier', () => {
