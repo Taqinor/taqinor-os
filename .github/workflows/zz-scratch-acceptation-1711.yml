@@ -356,7 +356,7 @@ jobs:
           path: |
             /tmp/testdb.dump
             /tmp/testdb.manifest
-          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
           restore-keys: |
             v8sondes-db-
             testdb-v1-
@@ -473,7 +473,7 @@ jobs:
           path: |
             /tmp/testdb.dump
             /tmp/testdb.manifest
-          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          key: testdb-v1-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
           restore-keys: |
             v8sondes-db-
             testdb-v1-
