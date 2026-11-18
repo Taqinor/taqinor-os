@@ -1,0 +1,8 @@
+# load-smoke dispatché sur la branche (workflow_dispatch, run 44205663524, sha 1750acee557a8257fc5f74ae7044466a58dcfc69, run_time 2m) — extraits du journal du job
+[36;1mpython manage.py seed_scale --tag CHARGE --companies 1 --users 20 \[0m
+── Entreprise : [CHARGE] Load smoke
+seed_scale terminé.
+         Aggregated                                                                       944     0(0.00%) |    450      17   28886     60 |    7.89        0.00
+[36;1mprint(f'p95 agrégé = {p95} ms (limite {limit} ms)')[0m
+p95 agrégé = 490.0 ms (limite 1000.0 ms)
+# sociétés [SEED_SCALE] citées dans le journal : 0

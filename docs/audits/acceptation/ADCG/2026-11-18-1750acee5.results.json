@@ -1,0 +1,35 @@
+{
+  "sha": "1750acee557a8257fc5f74ae7044466a58dcfc69",
+  "date": "2026-11-18",
+  "groupe": "ADCG",
+  "verdict": "PASS",
+  "couvre": [
+    "ADCG105"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "RUNNER-ADCG105-load-smoke",
+      "taches": [
+        "ADCG105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/audits/acceptation/ADCG/traces/2026-11-18/ADCG105-load-smoke.txt",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "workflow_dispatch de load-smoke sur la branche (run 44205663524, run_time 2m) : seed_scale --tag CHARGE --companies 1 peuple « [CHARGE] Load smoke », aucune société [SEED_SCALE] au journal ; Locust en compte charge : 944 requêtes, 0 échec (0,00 % < 1 %), porte p95 verte (490 ms, limite 1000 ms) ; le volet « journal de deploy » de la clause est un geste de production (lecture seule) non joué depuis la session cloud"
+    }
+  ]
+}
