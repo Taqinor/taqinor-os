@@ -356,12 +356,21 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
               <span className="ag-sj-tete">
                 {teteJour(j, aujourdhui, capacite, taches)}
               </span>
-              {taches.slice(0, 3).map((t) => (
-                <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
-                  <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
-                  <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
-                  <span className="t">{t.titre}</span>
-                </span>
+              {[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches].slice(0, 3).map((t) => (
+                t.erp ? (
+                  // Passe visuelle n° 8 — la visite de l'ERP (Toute la journée) ouvre la liste, sans heure, hors du compte
+                  <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
+                    <span className="h" />
+                    <MapPin className="i i-16" aria-hidden="true" />
+                    <span className="t">{t.titre}</span>
+                  </span>
+                ) : (
+                  <span key={t.id} className={t.statut === 'fait' ? 'ag-sj-l faite' : 'ag-sj-l'}>
+                    <span className="h">{t.heure_debut ? t.heure_debut.slice(0, 5) : ''}</span>
+                    <i className="point" data-p={t.projet?.couleur || undefined} aria-hidden="true" />
+                    <span className="t">{t.titre}</span>
+                  </span>
+                )
               ))}
             </span>
           </button>

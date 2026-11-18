@@ -143,6 +143,7 @@
 }
 .tch .ag-sj-l .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tch .ag-sj-l .h { flex: none; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux); width: 38px; }
+.tch .ag-sj-l.erp svg { flex: none; width: 14px; height: 14px; margin: 0 -3px; color: var(--tch-texte-doux); }
 .tch .ag-sj-l.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; text-decoration-thickness: 1px; }
 
 /* Mois */

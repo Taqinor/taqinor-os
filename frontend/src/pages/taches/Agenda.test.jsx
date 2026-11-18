@@ -190,6 +190,19 @@ describe('TCH104 — vues et navigation', () => {
     expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
   })
 
+  it('Passe visuelle n° 8 — Semaine sur iPhone : la visite de l\'ERP (Toute la journée) ouvre la liste du jour, sans heure, hors du compte', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    const lignes = mardi.querySelectorAll('.ag-sj-l')
+    expect(lignes[0]).toHaveClass('erp')
+    expect(lignes[0].querySelector('.t')).toHaveTextContent('Visite — Karim Benali')
+    expect(lignes[0].querySelector('.h')).toHaveTextContent('')
+    expect(lignes[0].querySelector('svg')).not.toBeNull()
+    expect(lignes[1].querySelector('.t')).toHaveTextContent('Devis Settat')
+    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+  })
+
   const semaineAvecRepos = () => {
     const d = agenda()
     const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [] }
