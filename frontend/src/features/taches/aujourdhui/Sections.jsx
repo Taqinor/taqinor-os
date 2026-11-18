@@ -49,6 +49,7 @@ export function Ligne({ item, contexte, geste, extra = {}, reorg = false }) {
       onAction={geste.action}
       onAnnonce={geste.annoncer}
       onRefusEssentiel={geste.refusEssentiel}
+      glissable={contexte.glissable ?? undefined}
       {...extra}
     />
   )

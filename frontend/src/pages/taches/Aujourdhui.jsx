@@ -11,6 +11,7 @@ import Replies, { useARevoir } from '../../features/taches/aujourdhui/Replies'
 import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
 import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
 import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
+import ColonneBureau, { ColonneProjets } from '../../features/taches/aujourdhui/ColonneBureau'
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
@@ -36,11 +37,14 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
      · relecture au retour du focus ; hors ligne, la lecture reste affichée et les gestes sont
        grisés (« Possible une fois connecté ») ;
      · un geste (cocher, reporter, ★) est optimiste puis réconcilié par la réponse du serveur :
-       il ne relit jamais toute la liste ; le toast « … · Annuler » défait par `gestes/{id}/annuler/`.
+       il ne relit jamais toute la liste ; le toast « … · Annuler » défait par `gestes/{id}/annuler/` ;
+     · TCH152 — au bureau (≥ 1024 px) la liste a l'Agenda du jour à sa droite et « Mes projets » à sa
+       gauche (`ColonneBureau`) : glisser une ligne sur un créneau lui donne une heure. L'iPhone n'en monte rien.
    Maquettes : ecran-aujourdhui-*.html, etat-chargement.html, etat-pas-a-jour.html.
    ========================================================================== */
 
 const DELAI_SQUELETTE_MS = 1000
+const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
 
@@ -169,6 +173,21 @@ function remettre(donnees, { liste, rang, item }) {
   return { ...donnees, [liste]: suite }
 }
 
+/** Vrai au bureau (≥ 1024 px) ; suit le redimensionnement. Sans `matchMedia` (tests), jamais le bureau. */
+function useBureau() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(MEDIA_BUREAU).matches
+  const [bureau, setBureau] = useState(lire)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const requete = window.matchMedia(MEDIA_BUREAU)
+    const maj = () => setBureau(requete.matches)
+    requete.addEventListener?.('change', maj)
+    maj()
+    return () => requete.removeEventListener?.('change', maj)
+  }, [])
+  return bureau
+}
+
 /** « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). */
 function ChoisirJour({ item, minimum, onChoisir }) {
   const [jour, setJour] = useState('')
@@ -202,6 +221,8 @@ export default function Aujourdhui() {
   const [conflit, setConflit] = useState(null)
   const [invite, setInvite] = useState(false)
   const [focusPrevu, setFocusPrevu] = useState(0)
+  const bureau = useBureau()
+  const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
   const garde = useCallback(() => {
     if (enLigne) return
@@ -449,6 +470,27 @@ export default function Aujourdhui() {
     naviguer: (url) => navigate(url),
   }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])
 
+  const glissable = useMemo(() => (bureau ? { onDebut: setGlisse, onFin: () => setGlisse(null) } : null), [bureau])
+  // La ligne glissée peut quitter le DOM en cours de route (elle prend son heure et change de place) : `dragend` ne
+  // lui parvient alors plus. Le dépôt, ou la fin du glisser vu par la fenêtre, ferme donc aussi les créneaux.
+  useEffect(() => {
+    if (!glisse) return undefined
+    const fin = () => setGlisse(null)
+    window.addEventListener('drop', fin)
+    window.addEventListener('dragend', fin)
+    return () => { window.removeEventListener('drop', fin); window.removeEventListener('dragend', fin) }
+  }, [glisse])
+  // « Placée à {HH:MM} » : la ligne prend son heure sans relire la journée ; « Annuler » lui rend celle d'avant
+  const placee = useCallback((item, data, heureChoisie) => {
+    patcher(cleDe(item), (it) => ({
+      ...it,
+      heure_debut: data?.tache?.heure_debut ?? heureChoisie,
+      lock_version: data?.tache?.lock_version ?? it.lock_version,
+    }))
+    poserProgression(data?.progression)
+  }, [patcher, poserProgression])
+  const replacee = useCallback((item) => patcher(cleDe(item), () => item), [patcher])
+
   const contexte = useMemo(() => ({
     donnees,
     estampilles,
@@ -458,7 +500,8 @@ export default function Aujourdhui() {
     focusPrevu,
     reorganiser: modes.reorganiser,
     selection: modes.selection,
-  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection])
+    glissable,
+  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection, glissable])
 
   // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
   const racine = useClavierListe((action, { cle }) => {
@@ -574,18 +617,8 @@ export default function Aujourdhui() {
   } : null
   const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
-  return (
-    <CoquilleTaches
-      ecran="aujourdhui"
-      titre="Aujourd'hui"
-      sousTitre={sousTitre}
-      derniereSynchro={derniere}
-      conflit={conflit ?? actions.conflit}
-      feuille={laFeuille ?? actions.feuille}
-      selecteurProjet={actions.selecteurProjet}
-      actionsEcran={actionsEcran}
-      selection={barreSelection}
-    >
+  const contenu = (
+    <>
       {modes.reorganiser || modes.selection.actif ? (
         <div className="mode-ecran" role="status">
           <span>{modes.reorganiser ? 'Réorganiser' : 'Sélectionner'}</span>
@@ -646,6 +679,28 @@ export default function Aujourdhui() {
         />
         </div>
       ) : null}
+    </>
+  )
+
+  return (
+    <CoquilleTaches
+      ecran="aujourdhui"
+      titre="Aujourd'hui"
+      sousTitre={sousTitre}
+      derniereSynchro={derniere}
+      conflit={conflit ?? actions.conflit}
+      feuille={laFeuille ?? actions.feuille}
+      selecteurProjet={actions.selecteurProjet}
+      actionsEcran={actionsEcran}
+      selection={barreSelection}
+    >
+      {bureau ? (
+        <div className="tch-bureau">
+          <ColonneProjets />
+          <div className="tch-bureau-liste">{contenu}</div>
+          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
+        </div>
+      ) : contenu}
     </CoquilleTaches>
   )
 }
