@@ -313,6 +313,18 @@ describe('TCH91 — Un projet : ?planifier=1 ouvre Planifier le projet', () => {
 })
 
 describe('TCH92 — Un projet : ⋯ ouvre Décaler, Terminer, Supprimer', () => {
+  it('F4 revue #17 — l\'ordre du ⋯ est celui de la référence (textes.md « ⋯ d\'un projet »)', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20 · échéance 15/12')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    const menu = await screen.findByRole('menu')
+    const libelles = within(menu).getAllByRole('menuitem').map((m) => m.textContent)
+    const ordre = ['Planifier le projet', "Voir dans l'agenda", 'Avancement par semaine', 'Décaler les dates…', 'Dupliquer', 'Modèle…',
+      'Mettre en pause', 'Terminer le projet…', 'Supprimer le projet…']
+    expect(libelles.filter((l) => ordre.includes(l))).toEqual(ordre)
+  })
+
   it('le menu porte les trois entrées et « Supprimer le projet… » ouvre le dialogue', async () => {
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })

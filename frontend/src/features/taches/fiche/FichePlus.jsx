@@ -357,6 +357,9 @@ export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, 
       <Repeter tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} patcher={patcher} erreur={erreur} />
       {erreurs.repeter ? <p className="erreur-champ" role="alert">{erreurs.repeter}</p> : null}
 
+      <Etiquettes tache={tache} patcher={patcher} erreur={erreur} annulable={annulable} />
+      {erreurs.etiquettes ? <p className="erreur-champ" role="alert">{erreurs.etiquettes}</p> : null}
+
       <div className="fiche-champ">
         <label className="fiche-ligne" htmlFor="fiche-duree">
           <span className="fiche-etiquette">{`Durée${tache.estimation_minutes ? ` · ${duree(tache.estimation_minutes)}` : ''}`}</span>
@@ -378,23 +381,23 @@ export default function FichePlus({ tache, aujourdhui, ecrire, patcher, erreur, 
       <Attente tache={tache} ecrire={ecrire} patcher={patcher} erreur={erreur} />
       {erreurs.attente ? <p className="erreur-champ" role="alert">{erreurs.attente}</p> : null}
 
-      <Etiquettes tache={tache} patcher={patcher} erreur={erreur} annulable={annulable} />
-      {erreurs.etiquettes ? <p className="erreur-champ" role="alert">{erreurs.etiquettes}</p> : null}
-
       <div className="fiche-champ">
         <div className="fiche-ligne">
           <span className="fiche-etiquette">Jalon</span>
           <button type="button" className="interrupteur" role="switch" aria-checked={Boolean(tache.jalon)} aria-label="Jalon"
             onClick={() => patcher({ jalon: !tache.jalon }, 'jalon')} />
         </div>
+      </div>
+
+      <Lien lien={tache.lien} />
+
+      <div className="fiche-champ">
         <div className="fiche-ligne">
           <span className="fiche-etiquette">Confidentielle</span>
           <button type="button" className="interrupteur" role="switch" aria-checked={Boolean(tache.confidentiel)} aria-label="Confidentielle"
             onClick={() => patcher({ confidentiel: !tache.confidentiel }, 'confidentiel')} />
         </div>
       </div>
-
-      <Lien lien={tache.lien} />
       <SousTaches tache={tache} charger={charger} erreur={erreur} />
       {erreurs.sous_taches ? <p className="erreur-champ" role="alert">{erreurs.sous_taches}</p> : null}
 

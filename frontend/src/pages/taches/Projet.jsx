@@ -349,9 +349,9 @@ export default function Projet() {
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
     { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
-    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
     { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
     { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
+    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
     { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
