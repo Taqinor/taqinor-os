@@ -11,12 +11,13 @@ Toute lecture passe par les sélecteurs de `selectors/base.py` : société ET pr
 import datetime
 from dataclasses import dataclass, field
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.taches.choix import StatutJour, StatutProjet, StatutTache
 from apps.taches.confidentialite import nom_pour
 from apps.taches.models.journee import PlanJour
-from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet
+from apps.taches.models.projets import ModeleProjet, RevueProjet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist
 from apps.taches.moteur import sante
@@ -267,11 +268,22 @@ def modele_de(user, pk):
     return modeles_de(user).filter(pk=pk).first()
 
 
+#: Clé de `contenu` où la confidentialité du modèle est FIGÉE à l'enregistrement (revue F4 #1) : celle du projet
+#: d'origine à cet instant ; elle ne dépend plus jamais de ce projet (supprimé, décoché ou rendu confidentiel).
+CLE_CONFIDENTIEL = 'confidentiel'
+#: Un modèle ORDINAIRE : drapeau figé à `false` ; sans drapeau (modèle enregistré avant lui), échec fermé : ordinaire
+#: seulement si son projet d'origine existe encore, vivant et ordinaire (origine inconnue ou supprimée = confidentiel).
+MODELE_ORDINAIRE = (
+    Q(**{f'contenu__{CLE_CONFIDENTIEL}': False})
+    | (~Q(contenu__has_key=CLE_CONFIDENTIEL)
+       & Q(cree_depuis__isnull=False, cree_depuis__is_deleted=False, cree_depuis__confidentiel=False)))
+
+
 def modele_confidentiel(modele):
-    """Vrai quand le projet d'origine du modèle (s'il existe encore) est confidentiel : l'assistant
-    ne lit alors ni son contenu ni son aperçu."""
-    return (modele.cree_depuis_id is not None
-            and Projet.objects.filter(pk=modele.cree_depuis_id, confidentiel=True).exists())
+    """Vrai quand le modèle est confidentiel (`MODELE_ORDINAIRE` faux) : l'assistant ne lit alors ni son contenu
+    ni son aperçu, et le projet qui en naît est confidentiel."""
+    return not ModeleProjet.objects.filter(
+        pk=modele.pk, company_id=modele.company_id).filter(MODELE_ORDINAIRE).exists()
 
 
 def elements_a_figer(user, projet):

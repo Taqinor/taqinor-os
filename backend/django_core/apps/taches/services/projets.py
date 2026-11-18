@@ -27,7 +27,9 @@ from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler, figer_modele, instancier
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import jours_travailles_de, projets_de, rappels_de, sections_de, taches_de
-from apps.taches.selectors.projets import elements_a_figer, modele_confidentiel, modele_de, modeles_de
+from apps.taches.selectors.projets import (
+    CLE_CONFIDENTIEL, elements_a_figer, modele_confidentiel, modele_de, modeles_de,
+)
 from apps.taches.services.creation import PAS_RANG, _rang_projet_neuf, couleur_d_office, creer_taches
 from apps.taches.services.gestes import (
     enregistrer_geste, op_champ, op_creation, op_suppression_douce, op_suppression_dure,
@@ -696,12 +698,16 @@ def _instancier(user, contenu, nom, date_lancement, *, apercu, confidentiel):
 
 
 def _contenu_du_projet(user, projet, *, inclure_notes):
+    """Le contenu v1 figé du projet, avec sa confidentialité de CET instant (`CLE_CONFIDENTIEL`, revue F4 #1) :
+    le modèle la garde, quoi que devienne ensuite le projet."""
     sections, taches, listes = elements_a_figer(user, projet)
     pures = [SimpleNamespace(
         id=t.pk, parent_id=t.parent_id, statut=t.statut, section_id=t.section_id, titre=t.titre,
         priorite=t.priorite, jalon=t.jalon, jour_prevu=t.jour_prevu, echeance=t.echeance,
         bloquee_par=t.bloquee_par_id, checklist=listes.get(t.pk, []), notes=t.notes) for t in taches]
-    return figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
+    contenu = figer_modele(projet, sections, pures, inclure_notes=inclure_notes)
+    contenu[CLE_CONFIDENTIEL] = bool(projet.confidentiel)
+    return contenu
 
 
 def _projet_a_copier(user, projet_id):

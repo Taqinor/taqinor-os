@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 from apps.taches.models.projets import ModeleProjet, Projet, Section
 from apps.taches.models.taches import ElementChecklist, Tache
+from apps.taches.selectors import projets as lecture_projets
 from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.projets import _rangs_apres_insertion
@@ -1108,6 +1109,50 @@ class ModelesTests(_Base):
                                         format='json').status_code, 403)
         self.assertEqual(assistant.get(_url('modeles/')).status_code, 200)  # le décompte seul
         self.assertEqual(self._api(self.u1).get(_url(f'modeles/{modele}/')).status_code, 200)
+
+    def _modele_secret(self, nom):
+        """Un projet confidentiel `nom` (une tâche avec notes) enregistré comme modèle, notes comprises."""
+        secret = fabriques.projet(self.u1, nom=nom, confidentiel=True)
+        fabriques.tache(self.u1, projet=secret, titre=f'{nom} tâche', notes='NOTE-SECRETE')
+        return secret, self._enregistrer(secret, nom=f'{nom} modèle', inclure_notes=True).json()['id']
+
+    def test_la_confidentialite_d_un_modele_survit_a_son_projet_d_origine(self):
+        """Revue F4 #1 : supprimer le projet confidentiel d'origine, ou le décocher, ne rouvre jamais son modèle
+        à l'assistant, et « Utiliser ce modèle » donne toujours un projet confidentiel."""
+        assistant = self._api(self.u1, assistant=True)
+        supprime, modele_1 = self._modele_secret('Supprimé')
+        self.assertEqual(self._api(self.u1).delete(_url(f'projets/{supprime.pk}/')).status_code, 200)
+        decoche, modele_2 = self._modele_secret('Décoché')
+        Projet.objects.filter(pk=decoche.pk).update(confidentiel=False)
+        for modele, copie in ((modele_1, 'Copie 1'), (modele_2, 'Copie 2')):
+            lu = assistant.get(_url(f'modeles/{modele}/'))
+            self.assertEqual(lu.status_code, 403)
+            self.assertNotIn('NOTE-SECRETE', lu.content.decode())
+            cree = self._api(self.u1).post(_url(f'modeles/{modele}/instancier/'), {'nom': copie, 'apercu': False},
+                                           format='json')
+            self.assertEqual(cree.status_code, 201)
+            self.assertTrue(Projet.objects.get(pk=cree.json()['projet']['id']).confidentiel)
+
+    def test_un_modele_ordinaire_le_reste_quand_son_projet_devient_confidentiel(self):
+        """Revue F4 #1 : la confidentialité est figée à l'enregistrement, dans les deux sens."""
+        projet = fabriques.projet(self.u1, nom='Ordinaire')
+        fabriques.tache(self.u1, projet=projet, titre='Une tâche')
+        modele = self._enregistrer(projet, nom='Ordinaire modèle').json()['id']
+        Projet.objects.filter(pk=projet.pk).update(confidentiel=True)
+        self.assertEqual(self._api(self.u1, assistant=True).get(_url(f'modeles/{modele}/')).status_code, 200)
+        self.assertFalse(lecture_projets.modele_confidentiel(ModeleProjet.objects.get(pk=modele)))
+
+    def test_un_modele_sans_drapeau_fige_est_confidentiel_si_son_origine_est_inconnue(self):
+        """Revue F4 #1 : un modèle enregistré avant le drapeau figé (aucun en production) — échec fermé : il n'est
+        ordinaire que si son projet d'origine existe encore, vivant et ordinaire."""
+        vivant, supprime, secret = (fabriques.projet(self.u1, nom=n, confidentiel=(n == 'C')) for n in 'ABC')
+        supprime.soft_delete(self.u1, record=False)
+        attendus = {None: True, vivant: False, supprime: True, secret: True}
+        for rang, (origine, confidentiel) in enumerate(attendus.items()):
+            modele = ModeleProjet.objects.create(company=self.a, proprietaire=self.u1, nom=f'Ancien {rang}',
+                                                 contenu={'v': 1, 'sections': [], 'taches': []}, cree_depuis=origine)
+            with self.subTest(origine=getattr(origine, 'nom', None)):
+                self.assertEqual(lecture_projets.modele_confidentiel(modele), confidentiel)
 
     # --- Instancier -------------------------------------------------------------------------------
 

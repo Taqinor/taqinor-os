@@ -329,13 +329,20 @@ class ModeleListeSerializer(serializers.Serializer):
         return len(modele.contenu.get('sections', ()))
 
 
+#: Clés que `contenu` garde pour le serveur seul (figées à l'enregistrement) : jamais servies dans `contenu`.
+CLES_INTERNES_MODELE = (lecture.CLE_CONFIDENTIEL,)
+
+
 class ModeleSerializer(serializers.Serializer):
-    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`)."""
+    """`modele.json` : le modèle et son contenu figé (`contenu.v = 1`), sans ses clés internes."""
 
     id = serializers.IntegerField()
     nom = serializers.CharField()
     created_at = serializers.DateTimeField()
-    contenu = serializers.JSONField()
+    contenu = serializers.SerializerMethodField()
+
+    def get_contenu(self, modele) -> dict:
+        return {cle: valeur for cle, valeur in (modele.contenu or {}).items() if cle not in CLES_INTERNES_MODELE}
 
 
 def modele_apercu(plan):
