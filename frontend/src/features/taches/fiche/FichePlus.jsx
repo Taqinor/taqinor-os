@@ -7,7 +7,7 @@ import {
   nouvelleCle, poserRappel, recevoirTache, restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache,
   rechercher } from '../../../api/tachesApi'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
-import { accord, duree, heure, jourCourt } from '../lib/textes'
+import { ETATS_LIEN, accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'
 import { ajouterJours } from '../ui/SelecteurQuand'
 
@@ -22,9 +22,6 @@ import { ajouterJours } from '../ui/SelecteurQuand'
    ========================================================================== */
 
 const JOURS_SEMAINE = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-const ETATS_LIEN = {
-  archive: 'Élément archivé', introuvable: 'Élément introuvable', inaccessible: 'Hors de ta portée', efface: 'Lead effacé',
-}
 
 const dateDe = (iso) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso ?? ''))

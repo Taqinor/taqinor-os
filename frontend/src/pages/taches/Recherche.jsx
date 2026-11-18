@@ -203,7 +203,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   useEffect(() => {
     if (!replie || vuesLues) return
     listerVues()
-      .then((r) => setVues(r.data?.results ?? []))
+      // liste fermée, plafonnée par le serveur (30 vues au plus, non paginée) : jamais de page suivante
+      .then((r) => { const { results } = r.data; setVues(results ?? []) })
       .catch((err) => setErreurVue(frenchError(err)))
       .finally(() => setVuesLues(true))
   }, [replie, vuesLues])

@@ -9,7 +9,7 @@ import ATrier from './ATrier'
 
 const api = vi.hoisted(() => ({
   listerToutesLesTaches: vi.fn(), lireAujourdhui: vi.fn(), traiterLot: vi.fn(), convertirActivites: vi.fn(),
-  listerTousLesProjets: vi.fn(), creerProjet: vi.fn(), annulerGeste: vi.fn(), saisieRapide: vi.fn(),
+  listerTousLesProjets: vi.fn(), creerProjet: vi.fn(), annulerGeste: vi.fn(), saisieRapide: vi.fn(), listerSuggestions: vi.fn(),
 }))
 vi.mock('../../api/tachesApi', async (importOriginal) => ({ ...(await importOriginal()), ...api }))
 
@@ -39,6 +39,7 @@ beforeEach(() => {
   api.convertirActivites.mockResolvedValue({ data: conversion })
   api.listerTousLesProjets.mockResolvedValue([projet])
   api.annulerGeste.mockResolvedValue({ data: {} })
+  api.listerSuggestions.mockResolvedValue({ data: { results: [] } }) // TCH167 : « Suggéré par l'ERP » (testé dans atrier/Suggestions.test.jsx)
 })
 afterEach(() => {
   vi.clearAllMocks()

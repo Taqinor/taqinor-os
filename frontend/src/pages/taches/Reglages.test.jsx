@@ -75,7 +75,7 @@ describe('TCH108 — Réglages', () => {
     monter()
     const liste = await screen.findByRole('list')
     const lignes = within(liste).getAllByRole('listitem')
-    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', 'Mes données', 'Avancé'])
+    expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', "L'ERP me suggère", 'Mes données', 'Avancé'])
     expect(within(liste).getByText('Ce qui part au Copilote, qui peut lire')).toBeInTheDocument()
     expect(within(liste).getByText('Exporter, tout effacer')).toBeInTheDocument()
     await userEvent.click(within(liste).getByRole('button', { name: /Avancé/ }))
