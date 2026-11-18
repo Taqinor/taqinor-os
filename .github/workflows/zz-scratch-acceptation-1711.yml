@@ -145,7 +145,7 @@ jobs:
         env:
           VITE_E2E: '1'
         run: npm run build
-      - name: Django + specs d'acceptation (adrg14, adrg15, alec11, asup9)
+      - name: Django + specs d'acceptation (adrg14, adrg15, alec11, asup9, acal5, aerr13)
         working-directory: backend/django_core
         env:
           E2E_ACCEPTATION: '1'
@@ -165,7 +165,7 @@ jobs:
           export E2E_DJANGO_EXEC="env -C ${GITHUB_WORKSPACE}/backend/django_core"
           cd ../../frontend
           rc=0
-          for s in adrg14 adrg15 alec11 asup9; do
+          for s in adrg14 adrg15 alec11 asup9 acal5 aerr13; do
             [ -f "e2e/acceptation/$s.spec.js" ] || { echo "spec $s absente"; rc=1; continue; }
             npx playwright test --project=acceptation "e2e/acceptation/$s.spec.js" || rc=1
           done
@@ -429,9 +429,77 @@ jobs:
         if: ${{ !cancelled() }}
         run: for f in docs/audits/acceptation/*/traces/${D}/*.txt; do echo "##### $f"; cat "$f"; done
 
+  celery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Liberer de la place disque
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+      - name: .env de la pile + tache d'essai ACEL3 (checkout du runner seulement, jamais commitee)
+        run: |
+          cp .env.example .env
+          cat >> backend/django_core/core/tasks.py <<'PYT'
+
+
+          @shared_task(name='core.acel3_essai_dormir')
+          def acel3_essai_dormir(secondes=150):
+              import time
+              time.sleep(secondes)
+              return secondes
+          PYT
+          tail -8 backend/django_core/core/tasks.py
+      - name: Construire l'image django_core
+        run: |
+          set -o pipefail
+          if ! docker compose build django_core > /tmp/compose-build.log 2>&1; then tail -n 150 /tmp/compose-build.log; exit 1; fi
+      - name: Base deja migree - dump du cache (accelerateur, hors preuve)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/testdb.dump
+            /tmp/testdb.manifest
+          key: v8sondes-db-${{ hashFiles('backend/django_core/**/migrations/*.py', 'backend/django_core/requirements.txt') }}
+          restore-keys: |
+            v8sondes-db-
+            testdb-v1-
+      - name: Demarrer db, restaurer, migrer, monter redis et celery_worker
+        run: |
+          set -uo pipefail
+          docker compose up -d db
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U erp_user && break; sleep 2; done
+          if [ -f /tmp/testdb.dump ]; then
+            id=$(docker compose ps -q db); docker cp /tmp/testdb.dump "$id":/tmp/testdb.dump
+            docker compose exec -T db pg_restore -U erp_user -d erp_db --no-owner -j 4 /tmp/testdb.dump || echo "pg_restore : avertissements"
+          fi
+          docker compose up -d django_core
+          C=$(docker compose ps -q django_core)
+          for i in $(seq 1 60); do docker exec "$C" python manage.py check >/dev/null 2>&1 && break; sleep 3; done
+          docker exec "$C" python manage.py migrate --noinput > /tmp/migrate.log 2>&1 || { tail -n 60 /tmp/migrate.log; exit 1; }
+          docker exec "$C" python manage.py seed_demo > /tmp/seed.log 2>&1 || tail -n 20 /tmp/seed.log
+          docker compose up -d redis redis_cache celery_worker
+          for i in $(seq 1 40); do docker compose logs celery_worker 2>&1 | grep -q "ready" && break; sleep 3; done
+          docker compose ps
+      - name: Rejouer ACEL3 et ACEL8 comme les clauses le disent
+        run: bash .github/zz-acceptation-celery.sh
+      - name: Garder traces et etapes pour le job d'ecriture
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptation-1711-celery
+          path: |
+            docs/audits/acceptation/ACEL/traces/
+            /tmp/etapes-ACEL.json
+          retention-days: 7
+
   ecrire-sondes:
-    needs: [pages, assistant, sondes]
-    if: ${{ !cancelled() && needs.sondes.result == 'success' }}
+    needs: [pages, assistant, sondes, celery]
+    if: ${{ !cancelled() && (needs.sondes.result == 'success' || needs.celery.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -444,21 +512,32 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: acceptation-1711-sondes-traces
           path: docs/audits/acceptation
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: acceptation-1711-celery
+          path: /tmp/celery-art
       - name: Juger les traces et completer les enregistrements du jour
         env:
           ACCEPTATION_SHA: ${{ github.sha }}
         run: |
           git pull -q --rebase origin "${GITHUB_REF_NAME}" || true
-          D=$(ls -d docs/audits/acceptation/*/traces/* | head -1 | xargs basename)
+          if [ -d /tmp/celery-art ]; then
+            cp -r /tmp/celery-art/docs/audits/acceptation/ACEL/traces docs/audits/acceptation/ACEL/ 2>/dev/null || cp -r /tmp/celery-art/ACEL/traces docs/audits/acceptation/ACEL/ 2>/dev/null || true
+            find /tmp/celery-art -name 'etapes-ACEL.json' -exec cp {} /tmp/etapes-ACEL.json \;
+            ls -R /tmp/celery-art | head -20
+          fi
+          D=$(ls -d docs/audits/acceptation/{ASUP,AMET,ACNC}/traces/* 2>/dev/null | head -1 | xargs -r basename)
           echo "date des traces : $D"
-          python3 .github/zz-acceptation-sondes.py "$D"
+          [ -n "$D" ] && python3 .github/zz-acceptation-sondes.py "$D"
           for f in /tmp/etapes-*.json; do
             G=$(basename "$f" .json | sed 's/^etapes-//')
             node frontend/e2e/acceptation/_enregistrement.js "$G" --etapes-supplementaires "$f"
           done
           python3 scripts/check_acceptation.py --rapport | tail -20 || true
       - name: Commiter les enregistrements sur la branche
-        run: bash .github/zz-acceptation-commit.sh "sondes (AMET109, ASUP69, ASUP66, ALEC50, AMSG105, ACNC77, AERR180, APUB75)"
+        run: bash .github/zz-acceptation-commit.sh "sondes et celery (AMET109, ASUP69, ASUP66, ALEC50, AMSG105, ACNC77, AERR180, APUB75, ACEL3, ACEL8)"
