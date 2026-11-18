@@ -398,6 +398,52 @@ describe('TCH76 — gestes optimistes', () => {
   })
 })
 
+describe('Relecture adverse F4 — une essentielle faite est servie dans Essentiel ET dans Faites (regles.md §4.1 ligne 3, D-V1)', () => {
+  /** L'échantillon, avec « Dossier subvention » (faite) portée par une ligne ★ : le serveur la sert dans les deux listes. */
+  const journeeEssentielleFaite = () => {
+    const d = donnees()
+    const faite = { ...d.faites[0], essentielle: true }
+    d.essentiel = [...d.essentiel, faite]
+    d.faites = [faite]
+    return d
+  }
+  const annulation = (id) => ({ data: { restaurees: [{ objet: 'tache', id }], conflits: [], deja: false } })
+  const lignesDe = (zone, id) => (zone ? zone.querySelectorAll(`[data-ligne="tache:${id}"]`).length : 0)
+  const zones = (container) => ({
+    essentiel: container.querySelector('.section.premiere'),
+    prevu: [...container.querySelectorAll('.section')].find((s) => s.textContent.startsWith('Prévu')),
+    faites: container.querySelector('.replies'),
+  })
+  const ouvrirFaites = async () => userEvent.click(screen.getByRole('button', { name: /^Faites/ }))
+
+  it('n° 1 — Supprimer une essentielle faite retire SES DEUX lignes ; Annuler remet les deux, chacune à sa place', async () => {
+    servir(journeeEssentielleFaite())
+    api.delete.mockResolvedValue({ data: { geste_id: 90 } })
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/gestes/90/annuler/' ? annulation(12) : { data: {} }))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirFaites()
+    expect(lignesDe(zones(container).essentiel, 12)).toBe(1)
+    expect(lignesDe(zones(container).faites, 12)).toBe(1)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Actions pour « Dossier subvention »' })[0])
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
+    const feuille = await screen.findByRole('dialog', { name: 'Supprimer' })
+    await userEvent.click(within(feuille).getByRole('button', { name: 'Supprimer' }))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/taches/taches/12/'))
+    // aucune ligne fantôme : ni dans Essentiel, ni dans Faites
+    expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /^Faites/ })).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/90/annuler/', {}))
+    // les deux reviennent, chacune à son rang : Essentiel après « Devis Settat », et dans Faites
+    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
+    expect([...zones(container).essentiel.querySelectorAll('[data-ligne]')].map((n) => n.dataset.ligne)).toEqual(['tache:20', 'tache:12'])
+    await ouvrirFaites()
+    expect(lignesDe(zones(container).faites, 12)).toBe(1)
+    expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(2)
+  })
+})
+
 describe('F2 acceptation (S5) — un refus 409 nommé (textes.md §2.16) se VOIT, pas seulement au lecteur d\'écran', () => {
   it('carte du moment : 409 `proposition_expiree` → la carte part et « Cette proposition a expiré. » s\'affiche', async () => {
     servir(donnees())

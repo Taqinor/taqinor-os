@@ -155,23 +155,32 @@ function chercher(donnees, cle) {
   return trouve
 }
 
-/** Retire un item de sa liste ; rend la journée amputée et de quoi le remettre (Annuler). */
+/**
+ * Retire un item de TOUTES ses listes (une essentielle faite est servie dans `essentiel` ET `faites` — regles.md §4.1
+ * ligne 3, D-V1) ; rend la journée amputée et ses `origines` (`{ liste, rang, item }`, une par liste) pour la remettre.
+ */
 function retirer(donnees, cle) {
+  const origines = []
+  let suite = donnees
   for (const liste of LISTES_ITEMS) {
-    const rang = (donnees[liste] ?? []).findIndex((it) => cleDe(it) === cle)
+    const items = donnees[liste] ?? []
+    const rang = items.findIndex((it) => cleDe(it) === cle)
     if (rang >= 0) {
-      const item = donnees[liste][rang]
-      return { suite: { ...donnees, [liste]: donnees[liste].filter((_, i) => i !== rang) }, liste, rang, item }
+      origines.push({ liste, rang, item: items[rang] })
+      suite = { ...suite, [liste]: items.filter((it) => cleDe(it) !== cle) }
     }
   }
-  return { suite: mapItems(donnees, (it) => it), liste: null, rang: -1, item: null }
+  if (origines.length === 0) return { suite: mapItems(donnees, (it) => it), origines, item: null }
+  return { suite, origines, item: origines[0].item }
 }
 
-function remettre(donnees, { liste, rang, item }) {
-  if (!liste || !item) return donnees
-  const suite = [...(donnees[liste] ?? [])]
-  suite.splice(Math.min(rang, suite.length), 0, item)
-  return { ...donnees, [liste]: suite }
+/** Remet chaque origine rendue par `retirer` dans sa liste, à son rang (Annuler, refus du serveur). */
+function remettre(donnees, { origines = [] }) {
+  return origines.reduce((d, { liste, rang, item }) => {
+    const suite = [...(d[liste] ?? [])]
+    suite.splice(Math.min(rang, suite.length), 0, item)
+    return { ...d, [liste]: suite }
+  }, donnees)
 }
 
 /** Vrai au bureau (≥ 1024 px) ; suit le redimensionnement. Sans `matchMedia` (tests), jamais le bureau. */
