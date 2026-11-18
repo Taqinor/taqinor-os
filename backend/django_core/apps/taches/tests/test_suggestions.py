@@ -1,4 +1,5 @@
-"""TCH71 — les suggestions venues de l'ERP (reference/regles.md §9 ; A3, A4).
+"""TCH71-TCH72 — les suggestions venues de l'ERP (reference/regles.md §9 ; A3, A4) et leurs routes
+(reference/api.md §3.2, §4 ; `suggestions.json`, `suggestion_refusee.json`, `tache_ecrite.json`).
 
 Base requise (`TestCase`). De vraies lignes `crm.Lead`, `crm.Client`, `ventes.Devis` (lues par le registre
 d'applications, jamais importées) ; `devis_accepted` / `devis_acceptation_annulee` sont ÉMIS sur le vrai
@@ -6,19 +7,26 @@ bus ; les abonnés de chantier et de visite reçoivent l'objet émis réduit aux
 (`pk`, `company_id`, `lead_id`), leur abonnement au bus étant vérifié à part. Chaque test relit les
 `SuggestionTache` STOCKÉES.
 """
+import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
 from django.apps import apps as registre
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.roles.models import Role
 from apps.taches import receivers
-from apps.taches.choix import FamilleSuggestion, StatutSuggestion
+from apps.taches.choix import FamilleSuggestion, Source, StatutSuggestion
 from apps.taches.models.erp import SuggestionTache
+from apps.taches.models.gestes import GesteAnnulable
 from apps.taches.models.rythme import ReglagesRythme
+from apps.taches.models.taches import Tache
 from apps.taches.tests import fabriques
+from apps.taches.tests.test_routes import est_construite
+from apps.taches.views.base import exemple_de
 from core.event_coverage import orphan_signals
 from core.events import (
     chantier_annule,
@@ -31,6 +39,9 @@ from core.models import ModuleToggle
 
 DROITS = ['taches_voir', 'crm_voir', 'ventes_voir', 'records_scope_soi']
 TITRE_DEVIS = 'Préparer le chantier du devis accepté'
+PREFIXE = '/api/django/taches/'
+LISTE = PREFIXE + 'suggestions/'
+JOUR = '2030-01-15'
 
 
 def _utilisateur(societe, nom, permissions):
@@ -221,3 +232,175 @@ class AbonnementsTests(TestCase):
 
     def test_aucun_signal_orphelin(self):
         self.assertEqual(orphan_signals(), set())
+
+
+# --- TCH72 : routes des suggestions ---------------------------------------------------------------
+
+class _Routes(_Base):
+    def setUp(self):
+        self._accepter()
+        self.suggestion = self._de(self.commercial).get()
+
+    def _api(self, compte=None):
+        api = APIClient()
+        api.force_authenticate(compte or self.commercial)
+        return api
+
+    def _ligne(self, compte, cle, **champs):
+        return SuggestionTache.objects.create(
+            company=compte.company, proprietaire=compte, famille=FamilleSuggestion.CHANTIER_ANNULE, cle=cle,
+            titre_propose="Comprendre l'annulation du chantier", **champs)
+
+
+class ListeTests(_Routes):
+    def test_forme_de_suggestions_json_cle_pour_cle(self):
+        reponse = self._api().get(LISTE)
+
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        corps, modele = reponse.json(), exemple_de('suggestions')
+        self.assertEqual(set(corps), set(modele))
+        ligne, ligne_modele = corps['results'][0], modele['results'][0]
+        self.assertEqual(set(ligne), set(ligne_modele))
+        self.assertEqual(set(ligne['lien']), set(ligne_modele['lien']))
+        self.assertEqual((ligne['id'], ligne['famille'], ligne['titre']),
+                         (self.suggestion.pk, 'devis_accepte', TITRE_DEVIS))
+        self.assertEqual((ligne['lien']['cible'], ligne['lien']['id'], ligne['lien']['url'], ligne['lien']['etat']),
+                         ('ventes.devis', self.devis.pk, f'/ventes/devis?devis={self.devis.pk}', 'ok'))
+        self.assertTrue(ligne['lien']['libelle'].startswith('DEV-TCH71-0001'))
+
+    def test_au_plus_20_proposees_de_moins_de_7_jours_les_plus_recentes_d_abord(self):
+        lignes = [self._ligne(self.commercial, f'chantier_annule:{n}') for n in range(25)]
+        vieille = self._ligne(self.commercial, 'chantier_annule:vieille')
+        SuggestionTache.objects.filter(pk=vieille.pk).update(
+            created_at=timezone.now() - datetime.timedelta(days=8))
+        self._ligne(self.commercial, 'chantier_annule:refusee', statut=StatutSuggestion.REFUSEE)
+        self._ligne(self.collegue, 'chantier_annule:collegue')
+
+        ids = [ligne['id'] for ligne in self._api().get(LISTE).json()['results']]
+
+        attendus = [ligne.pk for ligne in sorted(lignes + [self.suggestion],
+                                                 key=lambda x: (x.created_at, x.pk), reverse=True)][:20]
+        self.assertEqual(ids, attendus)
+
+    def test_cible_sortie_de_la_portee_servie_inaccessible_sans_libelle(self):
+        self.commercial.role.permissions = ['taches_voir', 'crm_voir', 'records_scope_soi']
+        self.commercial.role.save(update_fields=['permissions'])
+        lien = self._api().get(LISTE).json()['results'][0]['lien']
+        self.assertEqual((lien['etat'], lien['libelle'], lien['url']), ('inaccessible', '', None))
+
+    def test_l_autre_compte_ne_voit_rien(self):
+        self.assertEqual(self._api(self.collegue).get(LISTE).json(), {'results': []})
+
+
+class AccepterTests(_Routes):
+    def _url(self, pk=None):
+        return f'{LISTE}{pk or self.suggestion.pk}/accepter/'
+
+    def test_ajouter_avec_le_titre_edite(self):
+        reponse = self._api().post(self._url(), {'titre': 'Préparer le chantier', 'jour_prevu': JOUR},
+                                   format='json')
+
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('tache_ecrite')))
+        tache = Tache.objects.get(pk=corps['tache']['id'])
+        self.assertEqual((tache.titre, tache.source, tache.proprietaire_id, tache.jour_prevu.isoformat()),
+                         ('Préparer le chantier', Source.SUGGESTION, self.commercial.pk, JOUR))
+        self.assertEqual((tache.content_type.model, tache.object_id, tache.lien_etat),
+                         ('devis', self.devis.pk, 'ok'))
+        self.suggestion.refresh_from_db()
+        self.assertEqual((self.suggestion.statut, self.suggestion.tache_id),
+                         (StatutSuggestion.ACCEPTEE, tache.pk))
+        self.assertIsNotNone(self.suggestion.decidee_le)
+        self.assertEqual(corps['geste_id'], GesteAnnulable.objects.get(proprietaire=self.commercial).pk)
+
+    def test_sans_titre_le_titre_propose(self):
+        reponse = self._api().post(self._url(), {}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+        self.assertEqual(Tache.objects.get(proprietaire=self.commercial).titre, TITRE_DEVIS)
+
+    def test_meme_etat_que_le_semis_de_demonstration(self):
+        """`seed_taches_demo` écrit une suggestion « acceptée » : tâche `source=suggestion`, statut
+        `acceptee`, `tache` et `decidee_le` posés — la route produit le même état par le service."""
+        self._api().post(self._url(), {}, format='json')
+        stockee = SuggestionTache.objects.select_related('tache').get(pk=self.suggestion.pk)
+        self.assertEqual((stockee.statut, stockee.tache.source, stockee.tache.titre),
+                         (StatutSuggestion.ACCEPTEE, Source.SUGGESTION, stockee.titre_propose))
+        self.assertIsNotNone(stockee.decidee_le)
+
+    def test_rejeu_rend_la_meme_tache_sans_doublon(self):
+        premiere = self._api().post(self._url(), {}, format='json').json()
+        seconde = self._api().post(self._url(), {}, format='json')
+        self.assertEqual(seconde.status_code, 201)
+        self.assertEqual(seconde.json()['tache']['id'], premiere['tache']['id'])
+        self.assertIsNone(seconde.json()['geste_id'])
+        self.assertEqual(Tache.objects.filter(proprietaire=self.commercial).count(), 1)
+
+    def test_annuler_rend_la_suggestion_proposee_et_retire_la_tache(self):
+        geste_id = self._api().post(self._url(), {}, format='json').json()['geste_id']
+        reponse = self._api().post(f'{PREFIXE}gestes/{geste_id}/annuler/', {}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.suggestion.refresh_from_db()
+        self.assertEqual((self.suggestion.statut, self.suggestion.tache_id, self.suggestion.decidee_le),
+                         (StatutSuggestion.PROPOSEE, None, None))
+        self.assertFalse(Tache.objects.filter(proprietaire=self.commercial).exists())
+
+    def test_id_d_un_autre_404(self):
+        autre = self._ligne(self.collegue, 'chantier_annule:1')
+        self.assertEqual(self._api().post(self._url(autre.pk), {}, format='json').status_code, 404)
+        self.assertEqual(self._api().post(self._url(987654), {}, format='json').status_code, 404)
+        autre.refresh_from_db()
+        self.assertEqual(autre.statut, StatutSuggestion.PROPOSEE)
+
+    def test_refusee_404(self):
+        self._de(self.commercial).update(statut=StatutSuggestion.REFUSEE)
+        self.assertEqual(self._api().post(self._url(), {}, format='json').status_code, 404)
+        self.assertFalse(Tache.objects.exists())
+
+    def test_titre_trop_long_400(self):
+        reponse = self._api().post(self._url(), {'titre': 'x' * 281}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('titre', reponse.json())
+
+
+class RefuserTests(_Routes):
+    def _url(self, pk=None):
+        return f'{LISTE}{pk or self.suggestion.pk}/refuser/'
+
+    def test_pas_utile_suggestion_refusee_json(self):
+        reponse = self._api().post(self._url(), format='json')
+
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        corps = reponse.json()
+        self.assertEqual(set(corps), set(exemple_de('suggestion_refusee')))
+        geste = GesteAnnulable.objects.get(proprietaire=self.commercial)
+        self.assertEqual(corps, {'id': self.suggestion.pk, 'statut': 'refusee', 'geste_id': geste.pk})
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.statut, StatutSuggestion.REFUSEE)
+        self.assertEqual(self._api().get(LISTE).json(), {'results': []})
+
+    def test_rejeu_sans_geste_neuf(self):
+        self._api().post(self._url(), format='json')
+        rejeu = self._api().post(self._url(), format='json')
+        self.assertEqual(rejeu.json(), {'id': self.suggestion.pk, 'statut': 'refusee', 'geste_id': None})
+        self.assertEqual(GesteAnnulable.objects.filter(proprietaire=self.commercial).count(), 1)
+
+    def test_annuler_la_rend_proposee(self):
+        geste_id = self._api().post(self._url(), format='json').json()['geste_id']
+        self._api().post(f'{PREFIXE}gestes/{geste_id}/annuler/', {}, format='json')
+        self.suggestion.refresh_from_db()
+        self.assertEqual(self.suggestion.statut, StatutSuggestion.PROPOSEE)
+
+    def test_id_d_un_autre_404(self):
+        autre = self._ligne(self.collegue, 'chantier_annule:1')
+        self.assertEqual(self._api().post(self._url(autre.pk), format='json').status_code, 404)
+        autre.refresh_from_db()
+        self.assertEqual(autre.statut, StatutSuggestion.PROPOSEE)
+
+
+class RoutesConstruitesTests(TestCase):
+    def test_les_trois_routes_sortent_des_501(self):
+        for methode, chemin in (('GET', 'suggestions/'), ('POST', 'suggestions/{id}/accepter/'),
+                                ('POST', 'suggestions/{id}/refuser/')):
+            with self.subTest(chemin=chemin):
+                self.assertTrue(est_construite(methode, chemin))

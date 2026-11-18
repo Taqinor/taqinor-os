@@ -14,6 +14,8 @@ Activités lues par les SEULES portes de `records` (`selectors.py`, `services.py
 - `proposer_suggestion` · `retirer_suggestion` (TCH71) : appelés par les abonnés de `receivers.py`
   (regles.md §9) ; destinataire STRICT (le responsable du lead, lu par `crm.selectors.get_company_lead`)
   et, avec `suggestions_societe`, l'administrateur, mêmes contrôles ; anti-doublon par la clé.
+- `suggestions_de` · `accepter_suggestion` · `refuser_suggestion` (TCH72) : les routes `suggestions/`
+  (≤ 20, < 7 jours), « Ajouter » (titre éditable, par `creer_taches`) et « Pas utile », annulables.
 """
 import logging
 
@@ -30,10 +32,10 @@ from apps.taches.choix import CibleLiable, LienEtat, Source, StatutSuggestion, S
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Tache
-from apps.taches.selectors.base import gestes_de
+from apps.taches.selectors.base import gestes_de, taches_de
 from apps.taches.selectors.liens import libelle_de_cible
 from apps.taches.services.creation import creer_taches
-from apps.taches.services.gestes import enregistrer_geste
+from apps.taches.services.gestes import enregistrer_geste, op_champ
 from core.conflit_etat import ConflitEtat
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,10 @@ TITRE_A_FAIRE = 'À-faire personnel'
 LONGUEUR_TITRE = 280
 #: Tâches dont la nuit revérifie le lien (invariant 23 : « les tâches ouvertes »).
 OUVERTES = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
+#: `suggestions/` sert au plus 20 suggestions (api.md §3.2).
+PLAFOND_SUGGESTIONS = 20
+#: Texte du geste « Pas utile » (le libellé du bouton, textes.md §2.5 ; aucun toast dédié).
+MESSAGE_PAS_UTILE = 'Pas utile'
 
 
 # --- Lier une tâche à une activité ------------------------------------------------------------
@@ -281,6 +287,79 @@ def retirer_suggestion(company_id, cle):
     maintenant = timezone.now()
     return (SuggestionTache.objects.filter(company_id=company_id, cle=cle, statut=StatutSuggestion.PROPOSEE)
             .update(statut=StatutSuggestion.RETIREE, decidee_le=maintenant, updated_at=maintenant))
+
+
+# --- Routes des suggestions (TCH72, api.md §3.2, §4) --------------------------------------------
+
+def suggestions_de(user, jour):
+    """Les suggestions PROPOSÉES de `user` nées depuis 7 jours (même borne que le compteur d'À trier),
+    les plus récentes d'abord, au plus 20 (`suggestions.json`)."""
+    from apps.taches.selectors.journee import bornes_du_jour
+    from apps.taches.services.journee import DUREE_SUGGESTION
+
+    depuis, _ = bornes_du_jour(jour - DUREE_SUGGESTION)
+    return list(SuggestionTache.objects
+                .filter(company_id=user.company_id, proprietaire=user, statut=StatutSuggestion.PROPOSEE,
+                        created_at__gte=depuis)
+                .select_related('content_type').order_by('-created_at', '-pk')[:PLAFOND_SUGGESTIONS])
+
+
+def _suggestion_de(user, suggestion_id):
+    """La suggestion `suggestion_id` de `user`, verrouillée ; `Http404` pour celle d'un autre."""
+    # Sans `select_related` : FOR UPDATE refuse le côté nul d'une jointure externe (content_type).
+    suggestion = (SuggestionTache.objects.select_for_update()
+                  .filter(company_id=user.company_id, proprietaire=user, pk=suggestion_id).first())
+    if suggestion is None:
+        raise Http404('Introuvable.')
+    return suggestion
+
+
+def _decider(suggestion, statut, tache=None):
+    """Pose la décision ; rend les opérations annulables (statut, tâche, `decidee_le`)."""
+    avant = {'statut': suggestion.statut, 'tache': suggestion.tache_id, 'decidee_le': suggestion.decidee_le}
+    suggestion.statut, suggestion.tache, suggestion.decidee_le = statut, tache, timezone.now()
+    suggestion.save(update_fields=['statut', 'tache', 'decidee_le', 'updated_at'])
+    return [op_champ('suggestion_tache', suggestion, champ, valeur) for champ, valeur in avant.items()]
+
+
+def accepter_suggestion(user, suggestion_id, *, titre='', jour_prevu=None):
+    """« Ajouter » → (id de la tâche née, geste) : `creer_taches(source='suggestion', lien=cible)` avec
+    le titre édité, sinon `titre_propose` (regles.md §9) ; la suggestion passe `acceptee` dans le MÊME
+    geste (« Annuler » la rend proposée). Rejeu d'une suggestion déjà acceptée : sa tâche, sans geste
+    neuf. Une suggestion refusée ou retirée répond `Http404`."""
+    with transaction.atomic():
+        suggestion = _suggestion_de(user, suggestion_id)
+        if suggestion.statut == StatutSuggestion.ACCEPTEE and taches_de(user).filter(
+                pk=suggestion.tache_id).exists():
+            return suggestion.tache_id, None
+        if suggestion.statut != StatutSuggestion.PROPOSEE:
+            raise Http404('Introuvable.')
+        lien = None
+        if suggestion.content_type_id is not None and suggestion.object_id is not None:
+            content_type = ContentType.objects.get_for_id(suggestion.content_type_id)
+            lien = {'cible': f'{content_type.app_label}.{content_type.model}', 'id': suggestion.object_id}
+        ligne = {'titre': (titre or '').strip() or suggestion.titre_propose, 'jour_prevu': jour_prevu}
+        resultat = creer_taches(user, [ligne], source=Source.SUGGESTION, porte='suggestion', lien=lien)
+        tache = resultat.creees[0]
+        operations = [*resultat.geste.operations, *_decider(suggestion, StatutSuggestion.ACCEPTEE, tache)]
+        # UN geste (création + décision) : celui de `creer_taches` est remplacé, comme `_un_seul_geste`.
+        gestes_de(user).filter(pk=resultat.geste.pk).delete()
+        geste = enregistrer_geste(user, 'suggestion', resultat.geste.message, operations)
+    return tache.pk, geste
+
+
+def refuser_suggestion(user, suggestion_id):
+    """« Pas utile » → `{"id","statut":"refusee","geste_id"}` (`suggestion_refusee.json`) ; rejeu d'une
+    suggestion déjà refusée : même réponse, sans geste neuf ; acceptée ou retirée : `Http404`."""
+    with transaction.atomic():
+        suggestion = _suggestion_de(user, suggestion_id)
+        if suggestion.statut == StatutSuggestion.REFUSEE:
+            return {'id': suggestion.pk, 'statut': suggestion.statut, 'geste_id': None}
+        if suggestion.statut != StatutSuggestion.PROPOSEE:
+            raise Http404('Introuvable.')
+        operations = _decider(suggestion, StatutSuggestion.REFUSEE)
+        geste = enregistrer_geste(user, 'suggestion', MESSAGE_PAS_UTILE, operations)
+    return {'id': suggestion.pk, 'statut': suggestion.statut, 'geste_id': geste.pk}
 
 
 def _verdict_isole(tache):
