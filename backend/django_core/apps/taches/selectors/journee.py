@@ -312,8 +312,10 @@ def etat_rythme(reglages):
                       tenir_reference=float(tenir) if tenir is not None else None)
 
 
-def objectif_du_jour(reglages):
-    """Forme OBJECTIF `{nb, source, mode, zone}` (`moteur.rythme.objectif_affiche`)."""
+def objectif_en_vigueur(reglages):
+    """Forme OBJECTIF `{nb, source, mode, zone}` de l'objectif EN VIGUEUR (`moteur.rythme.
+    objectif_affiche`), sans le jour court : l'objectif d'UN jour, le seul servi, est
+    `services.journee.objectif_du_jour` (revue F2 tour 2 #3)."""
     etat = etat_rythme(reglages)
     nb, source, zone = objectif_affiche(etat)
     return {'nb': nb, 'source': str(source), 'mode': str(etat.mode),

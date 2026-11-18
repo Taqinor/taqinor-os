@@ -30,6 +30,7 @@ from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, prochain_jour_travaille, taches_de
 from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items, charger_taches, tache_ecrite
+from apps.taches.services import rythme as service_rythme
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import annuler_rappels
@@ -76,6 +77,8 @@ class Contexte:
     #: Activités ERP closes par lui ce jour (`sel.activites_closes_du_jour`) : comptées dans `compte`
     #: et jugées faites sur leur ligne de plan (`sel.ligne_faite`), d'une seule lecture.
     closes: tuple = ()
+    #: Le jour est-il un jour court DIT (`Preference.jours_courts`) : le bilan le dit (textes.md §4.3).
+    jour_court: bool = False
 
     @property
     def reglages(self):
@@ -96,6 +99,21 @@ def _cartes_ouvertes(user, jour):
         .order_by('jour', 'pk'))
 
 
+def _jour_court(preferences, jour):
+    return jour.weekday() in service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
+
+
+def objectif_du_jour(reglages, jour, preferences):
+    """Forme OBJECTIF `{nb, source, mode, zone}` du jour `jour` — la SEULE servie : `aujourdhui/`,
+    `journee/proposition/`, « Garder ces N », le bilan et la nuit. `nb` vient de LA règle
+    (`services.rythme.objectif_du_jour`, celle de l'en-tête du Copilote et d'un objectif dit) : un jour
+    court vaut `max(1, N − 1)` (regles.md §6.3). `preferences` : `sel.preferences_de`, déjà lues."""
+    forme = sel.objectif_en_vigueur(reglages)
+    courts = service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
+    forme['nb'] = service_rythme.objectif_du_jour(sel.etat_rythme(reglages), jour, courts)
+    return forme
+
+
 def _lire_contexte(user, jour, maintenant, *, assistant=False):
     """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`."""
     reglages = sel.reglages_de(user)
@@ -108,10 +126,11 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
     rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
-                    preferences=preferences, objectif=sel.objectif_du_jour(reglages), compte=compte,
+                    preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences), compte=compte,
                     detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant,
                     rendez_vous=rendez_vous, agendas=agendas,
-                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous), closes=closes)
+                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous), closes=closes,
+                    jour_court=_jour_court(preferences, jour))
 
 
 def _gardees_ouvertes(ctx):
@@ -652,7 +671,8 @@ def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=M
         plan, cree = _plan_verrouille(user, jour, ops)
         _verifier_essentiels(plan, essentielles)
         _poser_au_jour(user, {pk: taches[pk] for pk in ids_taches}, jour, ops)
-        _valider_plan(plan, cree, maintenant, sel.objectif_du_jour(sel.reglages_de(user))['nb'], ops)
+        _valider_plan(plan, cree, maintenant,
+                      objectif_du_jour(sel.reglages_de(user), jour, sel.preferences_de(user))['nb'], ops)
         journee = sel.lire_journee(user, jour)
         cles = list(dict.fromkeys(sel.gardes_ouverts(journee) + [(TACHE, pk) for pk in ids_taches]
                                   + [(ACTIVITE, pk) for pk in ids_activites]
@@ -745,7 +765,8 @@ def _bilan_chiffres(ctx, prog):
     objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
     mode = ctx.objectif['mode']
     variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
-                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes']}
+                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes'],
+                 'jour_court': ctx.jour_court and objectif is not None}
     if ctx.objectif['zone']:
         variables['bas'], variables['haut'] = ctx.objectif['zone']
     lignes = gabarits.texte('bilan', 'texte', variables).split('\n')

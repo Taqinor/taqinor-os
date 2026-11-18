@@ -234,12 +234,14 @@ class ProgressionTests(_Base):
 
 class ObjectifEtCapaciteTests(_Base):
     def test_objectif_par_defaut_sans_reglages(self):
-        self.assertEqual(sel.objectif_du_jour(None),
+        from apps.taches.services.journee import objectif_du_jour
+        self.assertEqual(objectif_du_jour(None, J, {}),
                          {'nb': 5, 'source': 'defaut', 'mode': 'pousser', 'zone': None})
 
     def test_objectif_libre(self):
+        from apps.taches.services.journee import objectif_du_jour
         reglages = fabriques.reglages(self.u, mode='libre')
-        self.assertIsNone(sel.objectif_du_jour(reglages)['nb'])
+        self.assertIsNone(objectif_du_jour(reglages, J, {'jours_courts': [J.weekday()]})['nb'])
 
     def test_capacite_dite(self):
         from apps.taches.models.rythme import Preference
@@ -1074,6 +1076,44 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
         self.assertEqual(sel.progression_courante(self.u, J)['plan_tenues'], 2)
         self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
+
+    def test_3_jour_court_le_meme_objectif_partout(self):
+        """regles.md §6.3 : un jour court vaut `max(1, N − 1)` sur Aujourd'hui, l'en-tête du Copilote, le
+        plan gardé et le bilan (qui le dit, textes.md §4.3), avant et après un « + » puis « − »."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services import rythme
+        vendredi = datetime.date(2026, 11, 20)
+        fabriques.reglages(self.u)
+        rythme.poser_preference(self.u, 'jours_courts', [vendredi.weekday()], 'ecran')
+
+        def a_heure(heure):
+            return timezone.localtime(a(vendredi, heure))
+
+        def partout():
+            rendu = services.aujourdhui(self.u, vendredi, a_heure(18))
+            entete = rythme.entete_coach(self.u, vendredi)[0]
+            bilan = services.cloture(self.u, vendredi, a_heure(18))['bilan']
+            plan = PlanJour.objects.get(proprietaire=self.u, jour=vendredi)
+            return (rendu['objectif']['nb'], entete.rsplit(' sur ', 1)[1], plan.objectif_du_jour, bilan['objectif'],
+                    bilan['texte'])
+
+        t = fabriques.tache(self.u, projet=fabriques.projet(self.u), jour_prevu=vendredi)
+        self.assertEqual(services.proposition_du_jour(self.u, vendredi, a_heure(8))['objectif']['nb'], 4)
+        services.planifier_express(self.u, vendredi, a_heure(9), lignes=[{'type': 'tache', 'id': t.pk}])
+        attendu = (4, '4', 4, 4, '0 sur 4 (jour court : objectif 4)')
+        self.assertEqual(partout(), attendu)
+        rythme.regler_rythme(self.u, {'mode': 'pousser', 'sens': 'plus'}, vendredi)
+        rythme.regler_rythme(self.u, {'mode': 'pousser', 'sens': 'moins'}, vendredi)
+        self.assertEqual(partout(), attendu)
+
+    def test_3_jour_ordinaire_sans_mention(self):
+        from apps.taches.services import journee as services
+        from apps.taches.services import rythme
+        fabriques.reglages(self.u)
+        rythme.poser_preference(self.u, 'jours_courts', [4], 'ecran')  # vendredi ; J est un mardi
+        self.assertEqual(services.aujourdhui(self.u, J, maintenant_a(18))['objectif']['nb'], 5)
+        self.assertEqual(services.cloture(self.u, J, maintenant_a(18))['bilan']['texte'], '0 sur 5')
 
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
         en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
