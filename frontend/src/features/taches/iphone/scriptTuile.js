@@ -6,6 +6,8 @@
    `__BASE__` est remplacé par l'adresse de l'ERP à la copie (`scriptPour`).
    Textes : reference/textes.md §8. Maquette : docs/taches/maquettes/tuile.html.
    Hors ligne : la dernière réponse gardée est relue et le pied dit « Hors ligne · maj HH:MM ».
+   Jeton refusé (401/403, revue F3 n° 12) : la réponse gardée est effacée, la tuile dit « Pas de données »
+   et « Perdu ? Régénère-le. » (textes.md §7-§8) ; lancé dans l'app, le script redemande le jeton.
    ========================================================================== */
 
 export const SCRIPT_TUILE = String.raw`// Tâches Taqinor — tuile Scriptable. Colle ce script dans Scriptable, puis lance-le une fois (▶).
@@ -16,8 +18,8 @@ const fond = Color.dynamic(new Color("#ffffff"), new Color("#0f172a"));
 const texte = Color.dynamic(new Color("#0f172a"), new Color("#f8fafc"));
 const doux = Color.dynamic(new Color("#64748b"), new Color("#94a3b8"));
 
-async function jeton() {
-  if (Keychain.contains("taqinor_tuile")) return Keychain.get("taqinor_tuile");
+async function jeton(nouveau) {
+  if (!nouveau && Keychain.contains("taqinor_tuile")) return Keychain.get("taqinor_tuile");
   if (!config.runsInApp) return null;
   const a = new Alert();
   a.title = "Jeton de la tuile";
@@ -31,18 +33,20 @@ async function jeton() {
 }
 
 async function charger(t) {
-  try {
-    const r = new Request(BASE + "/api/django/taches/tuile/");
-    r.headers = { Authorization: "Bearer " + t };
-    r.timeoutInterval = 15;
-    const d = await r.loadJSON();
-    if (!d || !d.jour) throw new Error("réponse refusée");
-    fm.writeString(FICHIER, JSON.stringify(d));
-    return { d: d, enLigne: true };
-  } catch (e) {
-    if (fm.fileExists(FICHIER)) return { d: JSON.parse(fm.readString(FICHIER)), enLigne: false };
-    return { d: null, enLigne: false };
+  const r = new Request(BASE + "/api/django/taches/tuile/");
+  r.headers = { Authorization: "Bearer " + t };
+  r.timeoutInterval = 15;
+  let d = null;
+  try { d = await r.loadJSON(); } catch (e) { d = null; }
+  const code = r.response ? r.response.statusCode : 0;
+  // Jeton refusé (révoqué, régénéré) : rien d'ancien n'est montré comme vrai.
+  if (code === 401 || code === 403) {
+    if (fm.fileExists(FICHIER)) fm.remove(FICHIER);
+    return { d: null, refus: true };
   }
+  if (d && d.jour) { fm.writeString(FICHIER, JSON.stringify(d)); return { d: d, enLigne: true }; }
+  if (fm.fileExists(FICHIER)) return { d: JSON.parse(fm.readString(FICHIER)), enLigne: false };
+  return { d: null, enLigne: false };
 }
 
 function ligne(w, s, taille, couleur, gras) {
@@ -53,13 +57,16 @@ function ligne(w, s, taille, couleur, gras) {
 }
 
 const t = await jeton();
-const res = t ? await charger(t) : { d: null, enLigne: false };
+let res = t ? await charger(t) : { d: null, enLigne: false };
+const n = res.refus ? await jeton(true) : null;
+if (n) res = await charger(n);
 const d = res.d;
 const w = new ListWidget();
 w.backgroundColor = fond;
 w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
 if (!d) {
   ligne(w, t ? "Pas de données" : "Jeton absent", 16, texte, true);
+  if (res.refus) ligne(w, "Perdu ? Régénère-le.", 12, doux);
   ligne(w, "Ouvre le script dans Scriptable.", 12, doux);
 } else {
   if (d.lien) w.url = d.lien;
