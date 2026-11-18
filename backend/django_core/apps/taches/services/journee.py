@@ -103,12 +103,18 @@ def _jour_court(preferences, jour):
     return jour.weekday() in service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
 
 
-def objectif_du_jour(reglages, jour, preferences):
+def objectif_du_jour(reglages, jour, preferences, plan=None):
     """Forme OBJECTIF `{nb, source, mode, zone}` du jour `jour` — la SEULE servie : `aujourdhui/`,
     `journee/proposition/`, « Garder ces N », le bilan et la nuit. `nb` vient de LA règle
     (`services.rythme.objectif_du_jour`, celle de l'en-tête du Copilote et d'un objectif dit) : un jour
-    court vaut `max(1, N − 1)` (regles.md §6.3). `preferences` : `sel.preferences_de`, déjà lues."""
+    court vaut `max(1, N − 1)` (regles.md §6.3). `preferences` : `sel.preferences_de`, déjà lues.
+    `plan` : le `PlanJour` du jour déjà lu ; VALIDÉ, il fixe le nombre du jour
+    (`services.rythme.objectif_du_plan_valide`, regles.md §6.5 point 6)."""
     forme = sel.objectif_en_vigueur(reglages)
+    fixe = service_rythme.objectif_du_plan_valide(plan)
+    if fixe is not None:
+        forme['nb'] = fixe
+        return forme
     courts = service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
     forme['nb'] = service_rythme.objectif_du_jour(sel.etat_rythme(reglages), jour, courts)
     return forme
@@ -126,7 +132,8 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
     rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
-                    preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences), compte=compte,
+                    preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences, journee.plan),
+                    compte=compte,
                     detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant,
                     rendez_vous=rendez_vous, agendas=agendas,
                     rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous), closes=closes,

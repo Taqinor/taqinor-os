@@ -331,6 +331,21 @@ class RepondreTests(BaseRythme):
         reglages.refresh_from_db()
         self.assertEqual((plan.objectif_du_jour, reglages.palier), (6, 7))
 
+    def test_apres_le_plan_valide_l_objectif_du_jour_reste_celui_du_plan_partout(self):
+        """regles.md §6.5 point 6 : une réponse donnée APRÈS la validation du plan vaut le lendemain. Le jour
+        même, Aujourd'hui et l'en-tête du Copilote gardent l'objectif du plan validé (5), comme le bilan — le
+        palier, lui, est monté (6) et vaudra demain (revue F2 tour 2 #3, suite)."""
+        reglages = self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J)
+        plan = fabriques.plan(self.u1, J, objectif_du_jour=5,
+                              planifie_le=datetime.datetime(2026, 11, 17, 8, 0, tzinfo=datetime.timezone.utc))
+        self.assertEqual(self.repondre(self.monter(), 'oui').status_code, 200)
+        plan.refresh_from_db()
+        reglages.refresh_from_db()
+        self.assertEqual((plan.objectif_du_jour, reglages.palier), (5, 6))
+        jour = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual(jour['objectif']['nb'], 5)
+        self.assertIn(' · 0 sur 5', self.api.get('/api/django/taches/coach/entete/').json()['lignes'][0])
+
     def test_reponse_inconnue_ou_reservee_a_la_nuit_400(self):
         self.reglages()
         carte_ = self.monter()

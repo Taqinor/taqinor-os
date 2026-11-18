@@ -164,6 +164,15 @@ def objectif_du_jour(etat, jour, courts):
     return max(moteur.PALIER_MIN, nb - 1)
 
 
+def objectif_du_plan_valide(plan):
+    """L'objectif FIXÉ pour le jour par son plan VALIDÉ (`planifie_le` posé), sinon `None`. Une réponse à une
+    carte de palier donnée après la validation vaut le lendemain (regles.md §6.5 point 6) : ce jour-là,
+    Aujourd'hui, l'en-tête du Copilote, le plan et le bilan disent le nombre du plan."""
+    if plan is None or plan.planifie_le is None:
+        return None
+    return plan.objectif_du_jour
+
+
 def _appliquer_au_jour(user, jour, etat, *, avant_plan=False):
     """L'objectif s'applique TOUT DE SUITE au `PlanJour` de J s'il existe et n'est pas clos (A2.1).
 
@@ -682,7 +691,8 @@ def entete_coach(user, jour):
     au plus pour les deux, formées depuis des clés fermées (jamais un titre, une note, un projet)."""
     reglages = reglages_ou_defauts(user)
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
-    objectif = objectif_du_jour(etat, jour, _jours_courts_dits(user))
+    fixe = objectif_du_plan_valide(plan_du_jour(user, jour))
+    objectif = fixe if fixe is not None else objectif_du_jour(etat, jour, _jours_courts_dits(user))
     lignes = [_ligne_rythme(etat, _faites_aujourdhui(user, jour), objectif)]
     dites = [_dite(p.cle, p.valeur) for p in preferences_de(user) if p.cle != ClePreference.NOTE_LIBRE]
     if dites:
