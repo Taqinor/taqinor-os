@@ -15,13 +15,20 @@ débit), jamais leur corps de succès.
 import contextlib
 import datetime
 import hashlib
+import io
+import json
 import logging
+import os
 from types import SimpleNamespace
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import RequestFactory, TestCase
+from django.core.handlers.wsgi import WSGIHandler
+from django.core.signals import request_finished, request_started
+from django.db import close_old_connections
+from django.test import RequestFactory, TestCase, override_settings
+from django.utils.module_loading import import_string
 from django.utils import timezone
 from rest_framework.exceptions import AuthenticationFailed, NotFound
 from rest_framework.test import APIClient
@@ -35,6 +42,8 @@ from apps.taches.throttles import ThrottleTuile
 from apps.taches.views.base import exemple_de
 from apps.taches.views.presence import FluxVue
 from authentication.models import AppartenanceSociete
+from core import monitoring
+from core.logging_ext import build_logging_config
 from core.models import ModuleToggle
 
 PREFIXE = '/api/django/taches/'
@@ -68,6 +77,74 @@ def journaux():
     with mock.patch.object(logging.Logger, 'isEnabledFor', return_value=True), \
             mock.patch.object(logging.Logger, 'handle', autospec=True, side_effect=garder):
         yield lignes
+
+
+@contextlib.contextmanager
+def journal_json():
+    """Ce qu'écrit le journal de `LOG_FORMAT=json` : les filtres et le formateur de `build_logging_config`,
+    appliqués à TOUT enregistrement émis (quel que soit son niveau ou son logger), après la fabrique
+    d'enregistrements et le contexte de requête, comme en production."""
+    config = build_logging_config()
+    console = config['handlers']['console_json']
+    sortie = io.StringIO()
+    handler = logging.StreamHandler(sortie)
+    for nom in console['filters']:
+        handler.addFilter(import_string(config['filters'][nom]['()'])())
+    handler.setFormatter(import_string(config['formatters'][console['formatter']]['()'])())
+    with mock.patch.object(logging.Logger, 'isEnabledFor', return_value=True), \
+            mock.patch.object(logging.Logger, 'callHandlers', autospec=True,
+                              side_effect=lambda _logger, record: handler.handle(record)):
+        yield sortie
+
+
+@contextlib.contextmanager
+def sentry_capture():
+    """`core.monitoring.init_sentry()` réel (intégrations Django et journaux, traces à 100 %), seul son
+    transport remplacé : rend les charges JSON que Sentry aurait envoyées. Coupé à la sortie."""
+    import sentry_sdk
+    from sentry_sdk.transport import Transport
+    charges = []
+
+    class Capteur(Transport):
+        def capture_envelope(self, envelope):
+            charges.extend(item.payload.json for item in envelope.items if item.payload.json is not None)
+
+        def flush(self, timeout, callback=None):
+            return None
+
+        def kill(self):
+            return None
+
+    vrai_init = sentry_sdk.init
+    with mock.patch.dict(os.environ, {'SENTRY_DSN': 'http://cle@localhost/1', 'SENTRY_TRACES_SAMPLE_RATE': '1'}), \
+            mock.patch.object(monitoring, '_INITIALISE', False), \
+            mock.patch.object(sentry_sdk, 'init', lambda **options: vrai_init(transport=Capteur, **options)):
+        try:
+            assert monitoring.init_sentry()
+            yield charges
+            sentry_sdk.flush()
+        finally:
+            vrai_init(dsn='')
+
+
+def appel_wsgi(chemin, methode='get', **options):
+    """La requête par `WSGIHandler` (là où Sentry pose `request.url`) ; rend le statut."""
+    environ = getattr(RequestFactory(), methode)(chemin, **options).environ
+    statut = {}
+
+    def start_response(ligne, _entetes, exc_info=None):
+        statut['ligne'] = ligne
+
+    request_started.disconnect(close_old_connections)
+    request_finished.disconnect(close_old_connections)
+    try:
+        reponse = WSGIHandler()(environ, start_response)
+        b''.join(reponse)
+        reponse.close()
+    finally:
+        request_started.connect(close_old_connections)
+        request_finished.connect(close_old_connections)
+    return int(statut['ligne'].split()[0])
 
 
 class _Base(TestCase):
@@ -153,6 +230,13 @@ class JetonsApiTests(_Base):
         refus = JetonFlux()
         with self.assertRaises(NotFound):
             refus.authenticate(SimpleNamespace(parser_context={'kwargs': {'jeton': premier['jeton']}}))
+
+    def test_clair_suivi_d_un_saut_de_ligne_refuse_sans_lecture(self):
+        """Revue F3 #8 (jumeau de `_HEURE`) : `FORME_CLAIR` finissait par `$`, qui accepte un saut de
+        ligne final (`…%0A.ics` dans l'adresse du flux) : refusé par sa FORME, avant toute lecture."""
+        _jeton, clair = fabriques.jeton(self.u1, 'flux')
+        with self.assertNumQueries(0), self.assertRaises(NotFound):
+            JetonFlux().authenticate(SimpleNamespace(parser_context={'kwargs': {'jeton': clair + '\n'}}))
 
     def test_revoquer(self):
         jeton, clair = fabriques.jeton(self.u1, 'tuile')
@@ -361,7 +445,7 @@ class JournauxEtDebitsTests(_Base):
         self.assertEqual(reponse.status_code, 500)
         self.assertEqual(reponse['Cache-Control'], 'no-store')
         texte = '\n'.join(lignes)
-        self.assertIn('flux/<jeton>.ics', texte)
+        self.assertIn('flux/<masqué>.ics', texte)
         self.assertNotIn(clair, texte)
         self.assertNotIn(clair, reponse.content.decode())
 
@@ -377,3 +461,70 @@ class JournauxEtDebitsTests(_Base):
             self.assertEqual(refus.status_code, 429)
             self.assertIn('detail', refus.json())
             self.assertNotEqual(self._porteur(clair_autre).get(PREFIXE + 'tuile/').status_code, 429)
+
+
+class SortiesObservabiliteTests(_Base):
+    """Le jeton du flux est DANS l'adresse (imposé par Apple) : aucune sortie d'observabilité ne le
+    porte (journal JSON, journal d'accès, requêtes lentes, pile d'exception, Sentry), toutes gardent
+    le chemin masqué pour diagnostiquer ; l'en-tête `Authorization` de la capture et de la tuile n'est
+    écrit nulle part."""
+
+    def setUp(self):
+        super().setUp()
+        _jf, self.flux = fabriques.jeton(self.u1, 'flux')
+        _jc, self.capture = fabriques.jeton(self.u1, 'capture')
+        _jt, self.tuile = fabriques.jeton(self.u1, 'tuile')
+        revoque, self.revoque = fabriques.jeton(self.u2, 'flux')
+        JetonAcces.objects.filter(pk=revoque.pk).update(revoque_le=T0)
+        self.clairs = [self.flux, self.capture, self.tuile, self.revoque]
+        self.adresse = f'{PREFIXE}flux/{self.flux}.ics'
+        self.masquee = f'{PREFIXE}flux/<masqué>.ics'
+
+    def _sans_aucun_clair(self, texte):
+        for clair in self.clairs:
+            self.assertNotIn(clair, texte)
+            self.assertNotIn(clair[4:], texte)
+            self.assertNotIn(_empreinte(clair), texte)
+
+    def test_journal_json_sans_jeton_avec_le_chemin_masque(self):
+        panne = RuntimeError(f'panne de {self.adresse}')
+        with override_settings(REQUEST_ACCESS_LOG=True, SLOW_REQUEST_MS=1), journal_json() as sortie:
+            self.assertEqual(APIClient().get(self.adresse).status_code, 200)
+            self.assertEqual(APIClient().get(f'{PREFIXE}flux/{self.revoque}.ics').status_code, 404)
+            self.assertEqual(APIClient().get(f'{PREFIXE}flux/{self.flux}').status_code, 404)
+            with mock.patch('apps.taches.views.presence._corps_flux', side_effect=panne):
+                reponse = APIClient().get(self.adresse, HTTP_REFERER=f'https://ex.ma{self.adresse}')
+            self.assertEqual(reponse.status_code, 500)
+            self.assertEqual(self._porteur(self.capture).post(
+                PREFIXE + 'capture/', {'titre': 'Note'}, format='json').status_code, 201)
+            self.assertEqual(self._porteur(self.tuile).get(PREFIXE + 'tuile/').status_code, 200)
+        texte = sortie.getvalue()
+        self._sans_aucun_clair(texte)
+        lignes = [json.loads(ligne) for ligne in texte.splitlines()]
+        self.assertIn(f'GET {self.masquee} -> 200', [ligne['message'] for ligne in lignes])
+        refus = [ligne for ligne in lignes if ligne['message'] == 'taches : jeton flux refusé']
+        self.assertEqual([ligne.get('path') for ligne in refus], [self.masquee])
+        self.assertTrue(any(ligne['message'].startswith('Requête lente') and self.masquee in ligne['message']
+                            for ligne in lignes))
+        self.assertTrue(any(f'panne de {self.masquee}' in ligne.get('exc', '') for ligne in lignes))
+        self.assertIn(f'{PREFIXE}capture/', [ligne.get('path') for ligne in lignes])
+
+    def test_sentry_sans_jeton_avec_le_chemin_masque(self):
+        panne = RuntimeError(f'panne de {self.adresse}')
+        with override_settings(SLOW_REQUEST_MS=1), sentry_capture() as charges:
+            self.assertEqual(appel_wsgi(self.adresse), 200)
+            self.assertEqual(appel_wsgi(f'{PREFIXE}flux/{self.revoque}.ics'), 404)
+            with mock.patch('apps.taches.views.presence._corps_flux', side_effect=panne):
+                self.assertEqual(appel_wsgi(self.adresse, HTTP_REFERER=f'https://ex.ma{self.adresse}'), 500)
+            self.assertEqual(appel_wsgi(PREFIXE + 'tuile/', HTTP_AUTHORIZATION=f'Bearer {self.tuile}'), 200)
+            self.assertEqual(appel_wsgi(PREFIXE + 'capture/', 'post', data=json.dumps({'titre': 'Note'}),
+                                        content_type='application/json',
+                                        HTTP_AUTHORIZATION=f'Bearer {self.capture}'), 201)
+        self.assertTrue(charges, 'le transport de test ne reçoit rien')
+        self._sans_aucun_clair(json.dumps(charges, default=str))
+        types = {charge.get('type', 'event') for charge in charges}
+        self.assertTrue({'transaction', 'event'} <= types, types)
+        adresses = {(charge.get('request') or {}).get('url') for charge in charges}
+        self.assertIn(f'http://testserver{self.masquee}', adresses)
+        erreurs = [charge for charge in charges if charge.get('type', 'event') == 'event' and 'exception' in charge]
+        self.assertTrue(any(f'panne de {self.masquee}' in json.dumps(charge, ensure_ascii=False) for charge in erreurs))

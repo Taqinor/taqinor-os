@@ -507,7 +507,8 @@ CAPACITE_MIN, CAPACITE_MAX = 30, 720
 NOTE_LONGUEUR_MAX, NOTES_MAX = 200, 10
 JOURS_SEMAINE = 7
 ETEINT, AUTO = 'off', 'auto'
-_HEURE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+#: `\Z`, jamais `$` (qui accepte un saut de ligne final : « 08:30\n » stocké, illisible au balayage).
+_HEURE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d\Z')
 
 
 def _invalide(message):
@@ -1116,13 +1117,17 @@ def _nuit_du_compte(reglages, jour):
 def etapes_nocturnes(company_id, jour):
     """Nuit du `jour` (api.md §9) pour la société `company_id` : cartes expirées et push ignorés
     d'abord (la décroissance les lit), puis, pour chaque compte actif qui a une `ReglagesRythme`
-    (invariant 29), ses étapes de rythme. Idempotente : `bloc_debut` et silence avancés, contrainte
-    unique des cartes, mises à jour conditionnées par l'état."""
+    (invariant 29) et le droit du module (invariant 28, `views.base.a_le_droit`), ses étapes de rythme.
+    Idempotente : `bloc_debut` et silence avancés, contrainte unique des cartes, mises à jour
+    conditionnées par l'état."""
     _expirer(company_id, jour)
     _ignorer(company_id, jour)
+    from apps.taches.views.base import a_le_droit  # la garde des routes (invariant 28)
     lignes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True)
-              .select_related('proprietaire').order_by('pk'))
+              .select_related('proprietaire', 'proprietaire__role').order_by('pk'))
     for reglages in lignes:
+        if not a_le_droit(reglages.proprietaire):  # rôle vidé de `taches_voir` : rien ne lui est servi
+            continue
         # Revue F2 #2 : un compte en échec (savepoint défait) n'arrête pas les autres ; journal sans donnée
         # personnelle (id du compte et classe de l'erreur).
         try:

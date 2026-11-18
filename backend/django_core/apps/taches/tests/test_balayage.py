@@ -9,6 +9,7 @@ import datetime
 from unittest import mock
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -123,6 +124,103 @@ class BalayageTests(TestCase):
         balayage.executer(a(8, 30))
         balayage.executer(a(15, 0))
         self.assertFalse(Notification.objects.filter(recipient=self.u1).exists())
+
+    def test_compte_sans_taches_voir_ni_sollicitation_ni_rappel(self):
+        """Un rôle vidé de `taches_voir` (invariant 28) : `aujourdhui/` répond 403, le balayage ne lui
+        envoie rien (relu à chaque passage) ; le droit rendu, l'envoi reprend sans rafale."""
+        self.reglages.titres_notifications = True
+        self.reglages.save(update_fields=['titres_notifications'])
+        fabriques.tache(self.u1, titre=CANARI, jour_prevu=J)
+        rappel = self.rappel(15, 0)
+        role = self.u1.role
+        role.permissions = []
+        role.save(update_fields=['permissions'])
+        api = APIClient()
+        api.force_authenticate(self.u1)
+        self.assertEqual(api.get('/api/django/taches/aujourdhui/').status_code, 403)
+        self.assertEqual(balayage.executer(a(8, 30))['sollicitations'], 0)
+        self.assertEqual(balayage.executer(a(15, 0))['rappels'], 0)
+        self.assertFalse(Notification.objects.filter(recipient=self.u1).exists())
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.EN_ATTENTE)  # jamais pris : `manque` après 2 h
+        role.permissions = ['taches_voir']
+        role.save(update_fields=['permissions'])
+        balayage.executer(a(17, 1))
+        rappel.refresh_from_db()
+        self.assertEqual(rappel.statut, StatutRappel.MANQUE)
+        self.assertFalse(self.notifications(EventType.TACHES_RAPPEL).exists())
+        fabriques.plan(self.u1, J, planifie_le=a(8, 0))
+        self.assertEqual(balayage.executer(a(18, 0))['sollicitations'], 1)  # le bilan du soir : il a le droit
+
+    def test_un_compte_en_panne_n_arrete_pas_les_suivants(self):
+        """Quatre comptes ; le 2e lève pendant sa lecture : les 1er, 3e et 4e reçoivent leur plan du matin,
+        le bilan compte l'échec, le journal dit l'id du compte et la classe de l'erreur, jamais un titre."""
+        comptes = [self.u1] + [fabriques.compte(self.societe, nom=f'u{rang}') for rang in (2, 3, 4)]
+        for compte in comptes:
+            if compte is not self.u1:
+                fabriques.reglages(compte)
+            fabriques.tache(compte, titre=CANARI, jour_prevu=J)
+        en_panne, vraie_lecture = comptes[1], balayage._lire
+
+        def lire(reglages, maintenant, candidats):
+            if reglages.proprietaire_id == en_panne.pk:
+                raise RuntimeError(f'panne « {CANARI} »')
+            return vraie_lecture(reglages, maintenant, candidats)
+
+        with mock.patch.object(balayage, '_lire', side_effect=lire), \
+                self.assertLogs('apps.taches.balayage', level='ERROR') as journal:
+            bilan = balayage.executer(a(8, 30))
+        self.assertEqual((bilan['societes'], bilan['sollicitations'], bilan['comptes_en_echec']), (1, 3, 1))
+        recus = [Notification.objects.filter(recipient=compte, event_type=EventType.TACHES_PLAN_DU_JOUR).count()
+                 for compte in comptes]
+        self.assertEqual(recus, [1, 0, 1, 1])
+        self.assertEqual(len(journal.output), 1)
+        self.assertIn(f'compte {en_panne.pk}', journal.output[0])
+        self.assertIn('RuntimeError', journal.output[0])
+        self.assertNotIn(CANARI, journal.output[0])
+
+    def test_un_groupe_de_rappels_en_panne_n_arrete_pas_les_suivants(self):
+        autre = fabriques.compte(self.societe, nom='u2')
+        tache_autre = fabriques.tache(autre, jour_prevu=J)
+        premier = self.rappel(15, 0)
+        second = Rappel.objects.create(company=self.societe, proprietaire=autre, tache=tache_autre, jour=J,
+                                       heure=datetime.time(15, 0))
+        vrai_envoi = balayage._envoyer_rappels
+
+        def envoyer(ids, maintenant):
+            if premier.pk in ids:
+                raise RuntimeError(f'panne « {CANARI} »')
+            return vrai_envoi(ids, maintenant)
+
+        with mock.patch.object(balayage, '_envoyer_rappels', side_effect=envoyer), \
+                self.assertLogs('apps.taches.balayage', level='ERROR') as journal:
+            bilan = balayage.executer(a(15, 0))
+        self.assertEqual((bilan['rappels'], bilan['comptes_en_echec']), (1, 1))
+        second.refresh_from_db()
+        self.assertEqual(second.statut, StatutRappel.ENVOYE)
+        self.assertNotIn(CANARI, '\n'.join(journal.output))
+
+    def test_aucun_appel_reseau_les_agendas_externes_lus_du_cache_seulement(self):
+        """Le balayage de chaque minute ne télécharge jamais un agenda externe (jusqu'à 10 s par compte) :
+        tout appel réseau d'`agenda_externe` échoue ici et n'est jamais tenté ; cache froid, le message part
+        sans les rendez-vous ; cache chaud, ils comptent (même lecture que l'écran)."""
+        from apps.taches import agenda_externe
+        fabriques.tache(self.u1, jour_prevu=J)
+        agenda = fabriques.agenda_externe(self.u1)
+        etat_avant = agenda.dernier_etat
+        cache.delete(agenda_externe.cle_cache(agenda))
+        agenda_externe.oublier_index(self.u1)
+        reseau = AssertionError('appel réseau pendant le balayage')
+        with mock.patch.object(agenda_externe, 'telecharger', side_effect=reseau) as telecharger, \
+                mock.patch.object(agenda_externe, '_adresses_publiques', side_effect=reseau) as resolution, \
+                mock.patch.object(agenda_externe, '_connecter', side_effect=reseau) as connexion:
+            self.assertEqual(balayage.executer(a(8, 30))['sollicitations'], 1)
+            cache.set(agenda_externe.cle_cache(agenda), 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n', 60)
+            self.assertEqual(balayage.executer(a(18, 0))['comptes_en_echec'], 0)
+        for appel in (telecharger, resolution, connexion):
+            appel.assert_not_called()
+        agenda.refresh_from_db()
+        self.assertEqual(agenda.dernier_etat, etat_avant)  # aucun état écrit par le balayage
 
     # --- coupe-circuit (invariant 39) -------------------------------------------------------------
 

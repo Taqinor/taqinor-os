@@ -87,3 +87,46 @@ class SentryRequestIdTagTests(SimpleTestCase):
         self.assertEqual(vu['pendant'], 'req-0042')
         # …et retiré après : la requête suivante du même worker ne l'hérite pas.
         self.assertIsNone(monitoring._request_id_ctx.get())
+
+
+class SentryCheminsSensiblesTests(SimpleTestCase):
+    """Un secret porté par l'adresse (``core.chemins_sensibles``) ne part jamais chez Sentry : ni
+    dans une erreur (``before_send``), ni dans une transaction (``before_send_transaction``)."""
+
+    def setUp(self):
+        from core import chemins_sensibles
+        chemins_sensibles.enregistrer('test.secret', r'(/secret/)[^/?#.]+', r'\1<masqué>')
+        self.addCleanup(chemins_sensibles.retirer, 'test.secret')
+
+    def _evenement(self):
+        return {
+            'transaction': '/api/secret/s3cr3t.ics',
+            'request': {'url': 'http://h/api/secret/s3cr3t.ics',
+                        'headers': {'Referer': 'https://h/api/secret/s3cr3t.ics'}},
+            'exception': {'values': [{'value': 'panne /api/secret/s3cr3t.ics',
+                                      'stacktrace': {'frames': [{'vars': {'p': "'/secret/s3cr3t'"}}]}}]},
+            'breadcrumbs': {'values': [{'message': 'GET /secret/s3cr3t -> 404'}]},
+            'tags': {'route': '/api/secret/s3cr3t.ics'},
+            'level': 'error',
+        }
+
+    def test_before_send_masque_toute_chaine(self):
+        event = monitoring._before_send(self._evenement(), {})
+        self.assertNotIn('s3cr3t', repr(event))
+        self.assertEqual(event['request']['url'], 'http://h/api/secret/<masqué>.ics')
+        self.assertEqual(event['level'], 'error')
+
+    def test_before_send_transaction_masque_toute_chaine(self):
+        event = monitoring._before_send_transaction(self._evenement(), {})
+        self.assertNotIn('s3cr3t', repr(event))
+        self.assertEqual(event['request']['headers']['Referer'], 'https://h/api/secret/<masqué>.ics')
+
+    def test_init_branche_les_deux_masques(self):
+        fake = mock.MagicMock()
+        with mock.patch.dict(os.environ, {'SENTRY_DSN': 'https://x@example/1'}, clear=False), \
+                mock.patch.dict('sys.modules', {'sentry_sdk': fake}), \
+                mock.patch.object(monitoring, '_INITIALISE', False):
+            self.assertTrue(monitoring.init_sentry())
+        options = fake.init.call_args.kwargs
+        self.assertIs(options['before_send'], monitoring._before_send)
+        self.assertIs(options['before_send_transaction'], monitoring._before_send_transaction)

@@ -1589,3 +1589,16 @@ def supprimer_abonnement_push(user, endpoint):
     deleted, _ = PushSubscription.objects.filter(
         user=user, endpoint=endpoint).delete()
     return deleted
+
+
+def supprimer_notifications_du_compte(user, company_id, event_types):
+    """Supprime (dur) les notifications in-app de ``user`` dans la société
+    ``company_id`` pour ces types d'événement — différées comprises — et rend
+    le nombre de lignes supprimées. Pour le « Tout effacer » d'un module (ex.
+    `taches` : une ligne de la cloche peut porter le titre d'une tâche) ;
+    bornée au couple (société, compte) : jamais la notification d'autrui."""
+    if user is None or company_id is None or not event_types:
+        return 0
+    supprimees, _ = Notification.objects.filter(
+        company_id=company_id, recipient=user, event_type__in=list(event_types)).delete()
+    return supprimees

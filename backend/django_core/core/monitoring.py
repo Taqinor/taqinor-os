@@ -21,6 +21,8 @@ import logging
 import os
 from typing import Optional
 
+from core import chemins_sensibles
+
 logger = logging.getLogger(__name__)
 
 # Drapeau idempotent : ``init_sentry`` ne s'exécute qu'une fois par process.
@@ -109,7 +111,13 @@ def _before_send(event, hint):
             tags.setdefault('request_id', request_id)
     except Exception:  # noqa: BLE001 — un before_send ne doit jamais lever (D-ENF22-BLE001)
         logger.warning("before send : échec ignoré, comportement dégradé", exc_info=True)
-    return event
+    return chemins_sensibles.masquer_evenement(event, hint)
+
+
+def _before_send_transaction(event, hint):
+    """Une transaction (trace de performance) : son adresse, ses étiquettes et
+    ses étapes ne portent aucun secret d'adresse (``core.chemins_sensibles``)."""
+    return chemins_sensibles.masquer_evenement(event, hint)
 
 
 def init_sentry():
@@ -152,6 +160,9 @@ def init_sentry():
         send_default_pii=False,
         # NTPLT46 — chaque événement porte le tag `company` (repli contextvar).
         before_send=_before_send,
+        # Un secret porté par l'adresse (ex. jeton du calendrier abonné) ne
+        # part jamais chez Sentry, erreur ou transaction.
+        before_send_transaction=_before_send_transaction,
     )
     _INITIALISE = True
     logger.info('Monitoring Sentry initialisé.')

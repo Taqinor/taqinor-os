@@ -16,7 +16,6 @@ titre d'activité ERP ni de rendez-vous externe. Le flux est écrit par `reporti
 (CRLF, lignes pliées à 75 octets, échappement, UID `tache-<id>@taqinor`, heures en UTC).
 """
 import datetime
-import re
 
 from django.db.models import F
 from django.http import HttpResponse
@@ -46,6 +45,7 @@ from apps.taches.views.base import (
     ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant, forme_echantillon,
     reponses,
 )
+from core import chemins_sensibles
 
 #: Refus du test de notification quand l'administrateur a coupé l'envoi (textes.md §2.21, mots du bandeau).
 DETAIL_ENVOI_COUPE = 'Messages et rappels de Tâches coupés pour la société.'
@@ -54,9 +54,6 @@ CODE_ENVOI_COUPE = 'envoi_coupe'
 PLAFOND_JETONS = 20
 DETAIL_INTROUVABLE = 'Introuvable.'
 DEBITS = list(api_settings.DEFAULT_THROTTLE_CLASSES)
-#: Le segment du flux qui porte le jeton, et ce qu'en voient les journaux.
-MOTIF_CHEMIN_FLUX = re.compile(r'/flux/[^/]+\.ics$')
-CHEMIN_FLUX_MASQUE = '/flux/<jeton>.ics'
 #: Le calendrier abonné (textes.md §8) et son type servi.
 NOM_CALENDRIER = 'Tâches Taqinor'
 TYPE_ICS = 'text/calendar; charset=utf-8'
@@ -236,8 +233,9 @@ class FluxVue(MethodeAvantJeton, APIView):
 
     def initialize_request(self, request, *args, **kwargs):
         """Le chemin porte le jeton : `request.path` (lu par les journaux, dont celui d'un 500) est
-        masqué dès l'entrée de la vue ; le jeton reste lu dans les `kwargs` de l'adresse résolue."""
-        request.path = MOTIF_CHEMIN_FLUX.sub(CHEMIN_FLUX_MASQUE, request.path)
+        masqué dès l'entrée de la vue par LA fonction de `core.chemins_sensibles` (motifs déclarés par
+        `auth_jeton.CHEMINS_SENSIBLES`) ; le jeton reste lu dans les `kwargs` de l'adresse résolue."""
+        request.path = chemins_sensibles.masquer(request.path)
         return super().initialize_request(request, *args, **kwargs)
 
     def finalize_response(self, request, response, *args, **kwargs):

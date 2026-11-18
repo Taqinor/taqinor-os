@@ -7,18 +7,21 @@ active, module actif, coupe-circuit `ReglagesSociete.balayage_actif` relu À CHA
 
 1. **Rappels posés** (hors plafond, à l'heure demandée même hors fenêtre) : dus = `jour < J` ou
    (`jour = J` ∧ `heure ≤` maintenant) ; retard > 2 h → `manque`, jamais envoyé (pas de rafale après
-   une coupure) ; les autres sont GROUPÉS par minute et par compte : pris par `UPDATE … WHERE
-   statut='en_attente'` puis `notify(TACHES_RAPPEL)` dans la même transaction.
+   une coupure) ; un compte sans le droit du module (`views.base.a_le_droit`, relu à chaque passage,
+   invariant 28) n'en reçoit aucun ; les autres sont GROUPÉS par minute et par compte : pris par
+   `UPDATE … WHERE statut='en_attente'` puis `notify(TACHES_RAPPEL)` dans la même transaction.
 2. **Sollicitations** (`moteur/sollicitations.py` décide de tout : tick, sauts, priorité, plafond) :
-   pour chaque compte actif, interne, ayant une `ReglagesRythme` ; le marqueur `IncitationCoach` (canal
-   `push`) est pris par `get_or_create` puis `notify(…, respect_quiet_hours=False, badge=…)` dans la même
-   transaction — `notify` ne diffère donc jamais une sollicitation : la fenêtre de la société est
-   contrôlée ICI, avant (sautée, jamais différée — invariant 22).
+   pour chaque compte actif, interne, ayant une `ReglagesRythme` et le droit du module ; le marqueur
+   `IncitationCoach` (canal `push`) est pris par `get_or_create` puis
+   `notify(…, respect_quiet_hours=False, badge=…)` dans la même transaction — `notify` ne diffère donc
+   jamais une sollicitation : la fenêtre de la société est contrôlée ICI, avant (sautée, jamais
+   différée — invariant 22).
 
 Rejouer le balayage n'envoie rien de plus. Le corps d'une notification ne porte un titre que si
 `titres_notifications` ET l'objet n'est pas confidentiel (`confidentialite.nom_pour`, usage
-`notification`) ; par défaut, aucun titre (textes.md §3). Une société en échec est journalisée et
-n'arrête pas les suivantes.
+`notification`) ; par défaut, aucun titre (textes.md §3). Un compte (ou un groupe de rappels) en échec
+est journalisé — id du compte et classe de l'erreur, jamais un titre — et n'arrête ni les comptes
+suivants ni les sociétés suivantes (`comptes_en_echec` du bilan) ; une société en échec non plus.
 """
 import datetime
 import logging
@@ -42,6 +45,7 @@ from apps.taches.selectors.base import _conges, _en_conge, jours_travailles_de, 
 from apps.taches.selectors.projets import bilan_de_semaine
 from apps.taches.services import journee as service_journee
 from apps.taches.services import rythme as service_rythme
+from apps.taches.views.base import a_le_droit
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +82,11 @@ class Message:
 # --- Le passage -------------------------------------------------------------------------------------
 
 def executer(maintenant=None):
-    """Un passage du balayage → `{"societes", "rappels", "manques", "sollicitations"}` (compteurs)."""
+    """Un passage du balayage → `{"societes", "rappels", "manques", "sollicitations", "comptes_en_echec"}`
+    (compteurs)."""
     from apps.taches.sweeps import societes_a_balayer  # sweeps importe ce module (tâche Celery)
     maintenant = timezone.localtime(maintenant) if maintenant is not None else timezone.localtime()
-    bilan = {'societes': 0, 'rappels': 0, 'manques': 0, 'sollicitations': 0}
+    bilan = {'societes': 0, 'rappels': 0, 'manques': 0, 'sollicitations': 0, 'comptes_en_echec': 0}
     for company_id in societes_a_balayer():
         try:
             resultat = _balayer_societe(company_id, maintenant)
@@ -95,18 +100,39 @@ def executer(maintenant=None):
 
 
 def _balayer_societe(company_id, maintenant):
-    manques, rappels = _rappels_dus(company_id, maintenant)
+    manques, rappels, echecs = _rappels_dus(company_id, maintenant)
     envoyees = 0
     comptes = (ReglagesRythme.objects.filter(company_id=company_id, proprietaire__is_active=True,
                                              proprietaire__portee='interne')
-               .select_related('proprietaire', 'proprietaire__company').order_by('proprietaire_id'))
+               .select_related('proprietaire', 'proprietaire__company', 'proprietaire__role')
+               .order_by('proprietaire_id'))
     fenetres = {}
     for reglages in comptes:
+        if not a_le_droit(reglages.proprietaire):  # rôle vidé de `taches_voir` : plus rien (inv. 28)
+            continue
         company = reglages.proprietaire.company
         if company.pk not in fenetres:
             fenetres[company.pk] = fenetre_messages(company, maintenant.date())
-        envoyees += _solliciter(reglages, maintenant, fenetres[company.pk])
-    return {'manques': manques, 'rappels': rappels, 'sollicitations': envoyees}
+        envoye = _isoler(reglages.proprietaire_id, 'sollicitation', _solliciter, reglages, maintenant,
+                         fenetres[company.pk])
+        if envoye is None:
+            echecs += 1
+        else:
+            envoyees += envoye
+    return {'manques': manques, 'rappels': rappels, 'sollicitations': envoyees, 'comptes_en_echec': echecs}
+
+
+def _isoler(compte_id, quoi, fonction, *args):
+    """`fonction(*args)` pour UN compte : une exception est journalisée (id du compte et classe de
+    l'erreur, jamais son message, qui peut porter un titre) et rend `None` ; les comptes suivants
+    passent (même forme que la nuit, `services/rythme.etapes_nocturnes`). Le point de sauvegarde du
+    compte est posé par `fonction` là où elle écrit (`_solliciter` dès qu'un type est dû,
+    `_envoyer_rappels`) : une minute creuse n'en paie aucun."""
+    try:
+        return fonction(*args)
+    except Exception as erreur:  # noqa: BLE001 — un compte en échec n'arrête pas les suivants (journalisé)
+        logger.error('taches.balayer : %s en échec pour le compte %s (%s)', quoi, compte_id, type(erreur).__name__)
+        return None
 
 
 def fenetre_messages(company, jour):
@@ -125,7 +151,7 @@ def _instant_q(instant):
 
 
 def _rappels_dus(company_id, maintenant):
-    """(manqués, notifications de rappel envoyées) pour la société."""
+    """(manqués, notifications de rappel envoyées, groupes en échec) pour la société."""
     en_attente = Rappel.objects.filter(company_id=company_id, statut=StatutRappel.EN_ATTENTE)
     limite = maintenant - RETARD_MANQUE
     trop_tard = en_attente.filter(Q(jour__lt=limite.date()) | Q(jour=limite.date(), heure__lt=limite.time()))
@@ -136,8 +162,28 @@ def _rappels_dus(company_id, maintenant):
                                              .order_by('jour', 'heure', 'pk')
                                              .values_list('pk', 'proprietaire_id', 'jour', 'heure')):
         groupes.setdefault((proprietaire_id, jour, heure.replace(second=0, microsecond=0)), []).append(pk)
-    envoyes = sum(_envoyer_rappels(ids, maintenant) for ids in groupes.values())
-    return manques, envoyes
+    admis = _comptes_admis({proprietaire_id for proprietaire_id, _jour, _heure in groupes})
+    envoyes = echecs = 0
+    for (proprietaire_id, _jour, _heure), ids in groupes.items():
+        if proprietaire_id not in admis:
+            continue
+        envoye = _isoler(proprietaire_id, 'rappel', _envoyer_rappels, ids, maintenant)
+        if envoye is None:
+            echecs += 1
+        else:
+            envoyes += envoye
+    return manques, envoyes, echecs
+
+
+def _comptes_admis(ids):
+    """Les comptes de `ids` qui ont le droit du module à cet instant (`a_le_droit`, la garde des
+    routes), en UNE requête ; aucune si rien n'est dû. Un rappel d'un compte sans le droit reste en
+    attente : jamais pris, il devient `manque` après 2 h (aucune rafale si le droit revient)."""
+    if not ids:
+        return set()
+    from django.contrib.auth import get_user_model
+    return {user.pk for user in get_user_model().objects.filter(pk__in=ids).select_related('role')
+            if a_le_droit(user)}
 
 
 def _envoyer_rappels(ids, maintenant):
@@ -230,14 +276,15 @@ def _solliciter(reglages, maintenant, fenetre):
     candidats = [t for t in regles.ORDRE_PRIORITE if regles.due(t, maintenant, optimiste, fenetre)]
     if not candidats or candidats[0] in envoyes:
         return 0
-    lecture = _lire(reglages, maintenant, candidats)
-    prefs = replace(base, **lecture.conditions)
-    # Un type déjà parti à ce tick reste « dû » pour le départage : l'autre reste sauté, jamais différé.
-    dus = [t for t in candidats if t in envoyes or regles.due(t, maintenant, prefs, fenetre)]
-    retenu, _sautes = regles.departager(dus)
-    if retenu is None or retenu in envoyes:
-        return 0
-    return _envoyer(reglages, retenu, _message(retenu, lecture, prefs), maintenant, lecture)
+    with transaction.atomic():  # le point de sauvegarde du compte : une panne ne défait que lui
+        lecture = _lire(reglages, maintenant, candidats)
+        prefs = replace(base, **lecture.conditions)
+        # Un type déjà parti à ce tick reste « dû » pour le départage : l'autre reste sauté, jamais différé.
+        dus = [t for t in candidats if t in envoyes or regles.due(t, maintenant, prefs, fenetre)]
+        retenu, _sautes = regles.departager(dus)
+        if retenu is None or retenu in envoyes:
+            return 0
+        return _envoyer(reglages, retenu, _message(retenu, lecture, prefs), maintenant, lecture)
 
 
 @dataclass
@@ -293,7 +340,9 @@ def _motifs(mode, objectif, zone, compte, choisis, echeances, neglige):
 def _lire(reglages, maintenant, candidats):
     """La journée du compte (`services.journee`) et les conditions d'envoi des types candidats."""
     user, jour = reglages.proprietaire, maintenant.date()
-    ctx = service_journee._lire_contexte(user, jour, maintenant)
+    # Aucun appel réseau au balayage : les rendez-vous externes (qui réduisent le temps disponible, donc
+    # les propositions comptées) ne sont lus que s'ils sont déjà en cache ; sinon le message part sans eux.
+    ctx = service_journee._lire_contexte(user, jour, maintenant, cache_seul=True)
     propose = service_journee.proposer(ctx)
     objets = ctx.journee.objets
     gardees = [objets[cle] for cle in sel.gardes_ouverts(ctx.journee) if cle[0] == service_journee.TACHE]
