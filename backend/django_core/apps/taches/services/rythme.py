@@ -140,15 +140,22 @@ def _ecrire_etat(reglages, etat):
 
 # --- Objectif du jour ------------------------------------------------------------------------
 
-def _jours_courts_dits(user):
-    """Jours courts DITS (`Preference.jours_courts`, entiers 0-6) ; absents = aucun."""
-    preference = preference_de(user, ClePreference.JOURS_COURTS)
-    valeur = preference.valeur if preference is not None else []
+def jours_courts(valeur):
+    """Jours courts d'une valeur de `Preference.jours_courts` (entiers 0-6) ; absente ou illisible = aucun.
+    Lue aussi par `services.journee` sur les préférences qu'il a déjà lues (revue F2 tour 2 #3)."""
     return {v for v in valeur if isinstance(v, int) and not isinstance(v, bool)} if isinstance(valeur, list) else set()
 
 
+def _jours_courts_dits(user):
+    """Jours courts DITS (`Preference.jours_courts`, entiers 0-6) ; absents = aucun."""
+    preference = preference_de(user, ClePreference.JOURS_COURTS)
+    return jours_courts(preference.valeur if preference is not None else None)
+
+
 def objectif_du_jour(etat, jour, courts):
-    """Objectif du `jour` : celui en vigueur, `max(1, N − 1)` un jour court (§6.3) ; `None` en libre."""
+    """Objectif du `jour` : celui en vigueur, `max(1, N − 1)` un jour court (§6.3) ; `None` en libre.
+    LA règle de l'objectif d'un jour : `aujourdhui/`, `journee/proposition/`, « Garder ces N », le bilan,
+    la nuit (`services.journee.objectif_du_jour`), l'en-tête du Copilote et un objectif dit (ici)."""
     nb = moteur.objectif_affiche(etat)[0]
     if nb is None or jour.weekday() not in courts:
         return nb
