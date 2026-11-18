@@ -152,6 +152,7 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.devis.expliquer': {'id': 'devis'},
             'ventes.devis.envoyer_email': {'id': 'devis'},
             'ventes.catalogue.chercher': {},
+            'ventes.devis.composer': {'lead': 'lead', 'client': 'client'},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -205,6 +206,34 @@ class VentesAgentCatalogueTest(TestCase):
             self.assertIn(marche, CREER_AUTO.description)
         self.assertNotIn('uniquement', CREER_AUTO.description.lower())
 
+    def test_composer_kit_impose_lot_copilote_et_corps_publie(self):
+        """COP2-V4 — ``ventes.devis.composer`` : la route ``devis/auto/`` au
+        kit imposé, lot copilote, carte « devis créé », entrées = sous-ensemble
+        du corps publié, ni remise ni puissance cible ; hors ``VENTES_ACTIONS``
+        (copilote éteint = catalogue identique)."""
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import COMPOSER_DEVIS
+        from apps.ventes.views.openapi_docs import AutoDevisRequest
+        props = COMPOSER_DEVIS.inputs['properties']
+        self.assertLessEqual(set(props), set(AutoDevisRequest.fields))
+        self.assertNotIn('remise_globale', props)
+        self.assertNotIn('target_kwc', props)
+        self.assertEqual((COMPOSER_DEVIS.endpoint, COMPOSER_DEVIS.method),
+                         (CREER_AUTO.endpoint, 'POST'))
+        self.assertEqual((COMPOSER_DEVIS.lot, COMPOSER_DEVIS.risk,
+                          COMPOSER_DEVIS.carte,
+                          COMPOSER_DEVIS.required_permission),
+                         (LOT_COPILOTE, RISK_INTERNAL, 'devis_cree',
+                          'ventes_creer'))
+        self.assertNotIn(COMPOSER_DEVIS, VENTES_ACTIONS)
+        self.assertNotIn('ventes.devis.composer', CREER_AUTO.description)
+        desc = COMPOSER_DEVIS.description
+        self.assertLessEqual(len(desc), 600)
+        for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                        'Résultat :'):
+            self.assertIn(section, desc)
+        self.assertIn('10 panneaux solaires avec onduleur triphasé', desc)
+
     def test_pdf_action_ses_options_arrivent_au_moteur(self):
         """COP-G3 — carte « document » (le relais rend le lien /proposal) ; CHAQUE
         option déclarée par l'action est lue par la route et arrive au moteur
@@ -240,9 +269,11 @@ class VentesAgentCatalogueTest(TestCase):
             'include_calepinage': True, 'show_monthly': False,
             'devis_final': True, 'langue_sortie': 'en'})
         # Aucune autre action du flux ne rend un PDF : seule la lecture de
-        # /proposal porte la carte « document ».
+        # /proposal porte la carte « document ». COP2-V4 — la création
+        # automatique se rend en carte « devis créé » (écran seulement).
         self.assertEqual(
-            [a.key for a in VENTES_ACTIONS if a.carte], [GENERER_PDF_DEVIS.key])
+            {a.key: a.carte for a in VENTES_ACTIONS if a.carte},
+            {GENERER_PDF_DEVIS.key: 'document', CREER_AUTO.key: 'devis_cree'})
 
     def test_objets_nommes_pour_chaque_identifiant_d_objet(self):
         """COP-G3 — toute entrée qui désigne un devis, une facture, un lead ou un

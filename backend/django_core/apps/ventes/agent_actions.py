@@ -142,6 +142,9 @@ CREER_AUTO = AgentAction(
     },
     required_permission=_PERM_CREER,
     risk=RISK_INTERNAL,
+    # COP2-V4 — changement d'ÉCRAN seulement : la réponse (contrat
+    # ``assistant_devis_cree.json``) se rend en carte « devis créé ».
+    carte='devis_cree',
     objets={'lead': 'lead', 'client': 'client'},
 )
 
@@ -628,9 +631,66 @@ CHERCHER_CATALOGUE = AgentAction(
 )
 
 
+def _entier(description):
+    return {'type': 'integer', 'description': description}
+
+
+# COP2-V4 — composer un devis au kit IMPOSÉ (route ``POST ventes/devis/auto/``,
+# garde ``ventes_creer``) : un brouillon est une écriture INTERNE (précédent
+# ``creer_auto``). Entrées = sous-ensemble de ``DevisAutoRequest`` ; ni remise
+# globale (montant), ni puissance cible (refusée en mode imposé).
+COMPOSER_DEVIS = AgentAction(
+    key='ventes.devis.composer',
+    label='Composer un devis (kit imposé)',
+    description=(
+        "Sert à : créer un devis brouillon résidentiel au kit demandé "
+        "(nombre de panneaux, onduleur, batterie), même sans facture sur le "
+        "lead. Ne pas utiliser pour : dimensionner depuis la facture "
+        "(creer_auto) ni un lead commercial ou agricole. Exemple : "
+        + _EXEMPLE_FONDATEUR + " → lead, nb_panneaux=10, onduleur_kw=10, "
+        "onduleur_phase=triphase, batterie_kwh=5. Résultat : devis "
+        "brouillon et ses lignes TTC ; 409 choix si un produit est ambigu."
+    ),
+    endpoint='/api/django/ventes/devis/auto/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'lead': _entier('Identifiant du lead (résidentiel).'),
+            'client': _entier('Identifiant du client — on remonte à son lead '
+                              'le plus récent.'),
+            'nb_panneaux': _entier('Nombre de panneaux (1 à 200), obligatoire.'),
+            'panneau_produit_id': _entier('Produit panneau (catalogue) ; '
+                                          'absent : 710 Wc du catalogue.'),
+            'onduleur_produit_id': _entier('Produit onduleur, OU onduleur_kw '
+                                           '+ onduleur_phase.'),
+            'onduleur_kw': {'type': 'number',
+                            'description': "Puissance de l'onduleur (0,5 à 100 kW)."},
+            'onduleur_phase': {'type': 'string',
+                               'enum': ['monophase', 'triphase']},
+            'batterie_produit_id': _entier('Produit batterie, OU batterie_kwh.'),
+            'batterie_kwh': {'type': 'number',
+                             'description': 'Capacité de batterie (0,5 à 100 kWh).'},
+            'scenario': {'type': 'string', 'enum': ['sans', 'avec'],
+                         'description': 'Avec ou sans batterie (une batterie '
+                                        'donnée vaut « avec »).'},
+            'taux_tva': {'type': 'number',
+                         'description': 'Taux de TVA en % (défaut : taux '
+                                        'standard de la société).'},
+        },
+        'required': ['nb_panneaux'],
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_INTERNAL,
+    carte='devis_cree',
+    lot=LOT_COPILOTE,
+    objets={'lead': 'lead', 'client': 'client'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
-                           CHERCHER_CATALOGUE)
+                           CHERCHER_CATALOGUE, COMPOSER_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
