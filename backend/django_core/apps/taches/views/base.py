@@ -31,6 +31,8 @@ from authentication.permissions import IsAuthenticatedInterne
 DROIT = 'taches_voir'
 #: En-tête posé par le relais de l'assistant (`fastapi_ia/.../action_tools.py`, `headers=`).
 ENTETE_ASSISTANT = 'X-Taqinor-Assistant'
+#: Posé par le front sur la CRÉATION validée au doigt sur une carte du Copilote (acceptation F3, ERR 5).
+ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
 PREFIXE_BEARER = 'Bearer '
 DETAIL_PAS_ENCORE = 'Pas encore construit.'
 
@@ -71,6 +73,16 @@ def est_assistant(request):
     if ENTETE_ASSISTANT in entetes:
         return True
     return (entetes.get('Authorization') or '').startswith(PREFIXE_BEARER)
+
+
+def carte_assistant(request):
+    """Vrai si l'utilisateur valide AU DOIGT, sur son écran, une création proposée par une carte du
+    Copilote (`X-Taqinor-Carte-Assistant: 1` exactement ; toute autre valeur est ignorée). Seule la
+    `source` de ce qui est créé change (`assistant`, arbitrage A5) : la porte reste l'écran (ses
+    validations, sa réponse en clair, aucun masquage, aucun 403) ; ni permission, ni société, ni
+    propriétaire, ni confidentialité n'en dépendent. Sous l'en-tête de l'assistant, `est_assistant`
+    l'emporte (mode assistant)."""
+    return getattr(request, 'headers', {}).get(ENTETE_CARTE_ASSISTANT) == '1'
 
 
 class MethodeAvantJeton:

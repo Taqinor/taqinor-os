@@ -41,7 +41,7 @@ from apps.taches.services.creation import creer_taches
 from apps.taches.services.taches import verifier_lien
 from apps.taches.throttles import ThrottleCapture, ThrottleCaptureJour
 from apps.taches.views.base import (
-    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant,
+    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, carte_assistant, corps, est_assistant,
     forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
@@ -105,9 +105,11 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
             lignes = [{cle: valeur for cle, valeur in ligne.items() if cle != 'titre'} for ligne in lignes]
         if donnees.get('lien'):
             verifier_lien(user, donnees['lien'])
+        # Une carte du Copilote validée au doigt : source `assistant`, porte de l'écran (ERR 5).
+        source = Source.ASSISTANT if assistant or carte_assistant(request) else Source.RAPIDE
         with transaction.atomic():
             resultat = creer_taches(
-                user, lignes, source=Source.ASSISTANT if assistant else Source.RAPIDE,
+                user, lignes, source=source,
                 porte='assistant' if assistant else 'saisie', client_id=donnees.get('client_id') or None,
                 lien=donnees.get('lien') or None, parent=donnees.get('parent_id'), par_ligne=True)
         return Response(reponse_creation(user, resultat, assistant=assistant), status=201)

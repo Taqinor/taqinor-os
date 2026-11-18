@@ -17,7 +17,7 @@ from apps.taches.moteur.recurrence import prochaine_occurrence
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.services.taches import VERSION_OCCURRENCE_NEUVE
 from apps.taches.tests import fabriques
-from apps.taches.tests.test_api_saisie import ASSISTANT, URL, BaseApi, champs, exemple
+from apps.taches.tests.test_api_saisie import ASSISTANT, CARTE, URL, BaseApi, champs, exemple
 
 TITRE_VIDE = 'Le titre est vide une fois la date et le projet retirés.'
 
@@ -189,6 +189,27 @@ class CreationTachesTests(BaseApi):
     def test_l_assistant_cree_sous_sa_source(self):
         reponse = self._post('taches/', {'titre': 'Appeler'}, **ASSISTANT)
         self.assertEqual(Tache.objects.get(pk=reponse.json()['tache']['id']).source, 'assistant')
+
+    def test_toucher_une_carte_du_copilote_cree_sous_la_source_assistant_a_l_ecran(self):
+        """Acceptation F3, ERR 5 (arbitrage A5) : la création validée au doigt sur une carte du Copilote
+        (`X-Taqinor-Carte-Assistant: 1`) porte `source='assistant'`, mais la porte reste l'écran : réponse
+        en clair (titre d'une tâche confidentielle par son projet, notes servies). Une autre valeur est
+        ignorée ; avec l'en-tête de l'assistant, le mode assistant comme avant."""
+        projet = fabriques.projet(self.u1, nom='Perso', confidentiel=True)
+        corps = {'titre': 'Rendez-vous banque', 'projet_id': projet.pk, 'notes': 'Dossier 42'}
+        reponse = self._post('taches/', corps, **CARTE)
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        tache = reponse.json()['tache']
+        self.assertEqual((tache['titre'], tache['notes'], tache['source']), ('Rendez-vous banque', 'Dossier 42',
+                                                                             'assistant'))
+        self.assertEqual(Tache.objects.get(pk=tache['id']).source, 'assistant')
+        for valeur in ('0', 'oui', 'true', ''):
+            with self.subTest(valeur=valeur):
+                autre = self._post('taches/', {'titre': f'Autre {valeur}'}, HTTP_X_TAQINOR_CARTE_ASSISTANT=valeur)
+                self.assertEqual(Tache.objects.get(pk=autre.json()['tache']['id']).source, 'manuel')
+        les_deux = self._post('taches/', corps, **CARTE, **ASSISTANT).json()['tache']
+        self.assertEqual((les_deux['titre'], les_deux['notes']), ('Tâche confidentielle', ''))
+        self.assertEqual(Tache.objects.get(pk=les_deux['id']).source, 'assistant')
 
     def test_proprietaire_attendu_d_un_autre_compte_409(self):
         reponse = self._post('taches/', {'titre': 'x', 'proprietaire_attendu': self.u2.pk})
