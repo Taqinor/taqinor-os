@@ -568,7 +568,9 @@ class JournalJetonMasqueTests(unittest.TestCase):
         self.assertIn(("^~", FLUX), [(mod, m) for mod, m, _ in locations(server)])
         self.assertEqual(location_pour(server, FLUX + "abc123/login/")[0], FLUX)
         directives = [(n, a) for n, a, _ in flux]
-        self.assertIn(("error_log", ["/dev/null"]), directives)
+        # nginx écrit dans CHAQUE `error_log` déclaré : un second, à côté de /dev/null,
+        # ressortirait la requête entière.
+        self.assertEqual([a for n, a in directives if n == "error_log"], [["/dev/null"]])
         _, api = location_pour(server, "/api/django/crm/leads/")
         self.assertEqual([d for d in directives if d[0] != "error_log"],
                          [(n, a) for n, a, _ in api],

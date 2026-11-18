@@ -164,6 +164,12 @@ class CaddyJournalJetonTests(unittest.TestCase):
         self.assertEqual(re.findall(r"(?m)^[ \t]*(\w+)", hors_filtre), ["format"],
                          "le bloc `log` ne règle que le format (ni output, ni level)")
 
+    def test_un_seul_journal_global_et_il_porte_le_filtre(self):
+        # Un second `log <nom> { … }` recevrait les mêmes lignes SANS le filtre ;
+        # `log_credentials` ferait écrire `Authorization` (jetons de capture et de tuile).
+        mots = re.findall(r"(?m)^[ \t]*(log\w*)[ \t]*([^\n]*)$", self.options)
+        self.assertEqual(mots, [("log", "{")])
+
     def test_aucun_site_n_ouvre_un_journal_sans_filtre(self):
         # Un `log` dans un site ouvrirait un journal d'ACCÈS à part, hors du filtre.
         sites = self.texte.split(self.options, 1)[1]
