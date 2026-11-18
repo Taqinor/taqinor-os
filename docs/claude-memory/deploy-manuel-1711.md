@@ -21,7 +21,8 @@ metadata:
 serveur en s'attendant à y voir le merge.
 
 **Incident du 18/11/2026 — premier deploy manuel après l'arrêt de la minuterie : Django n'a pas été redémarré.**
-OUVERT tant que Reda n'a pas relancé la séquence COURANTE (voir « Remède »).
+CLOS le 18/11 à 16 h 35 UTC : séquence courante relancée par Reda (`DEPLOY a0e492a1f8 — OK`), puis relu de l'extérieur :
+0 erreur sur 60 appels, l'adresse-témoin répond 401, `dernier_demarrage.sha` = `a0e492a1f8`.
 
 - Constaté de l'extérieur, en lecture seule, de 11:28 à 12:25 UTC : le site servi porte les écrans du matin (fusions 2
   et 3 de Tâches), mais Django répond avec le code de la VEILLE — l'adresse
@@ -32,9 +33,17 @@ OUVERT tant que Reda n'a pas relancé la séquence COURANTE (voir « Remède »)
   les vues ne sont importées qu'à la PREMIÈRE requête de chaque worker. Un worker né après le changement des fichiers
   importe des vues neuves contre des modules anciens : erreur d'import à chaque requête, hors de la gestion d'erreur de
   Django. Les workers nés avant continuent de servir l'ancien code ; à mesure qu'ils meurent, tout tombe.
-- Cause PRÉSUMÉE (non vérifiable sans accès au serveur) : deploy lancé depuis un dossier local dont
-  `scripts/deploy-prod.ps1` date d'avant le 10/11 (ADCG1). L'ancienne séquence manuelle avançait le code, reconstruisait
-  le front, migrait, mais ne redémarrait pas Django quand seul le front était reconstruit.
+- Cause CONFIRMÉE (sortie du serveur collée par Reda, et sa parole) : les deux deploys du jour sont partis de son
+  PORTABLE, dont `scripts/deploy-prod.ps1` date d'avant le 10/11 (ADCG1). L'ancienne séquence manuelle avançait le
+  code, reconstruisait le front, migrait, mais ne redémarrait pas Django quand le front était reconstruit. Signature
+  sur le serveur : `/opt/autodeploy/deploy.log` SANS aucune ligne du jour (la séquence courante en écrit une à chaque
+  passage), `last_deployed_commit` resté à la veille, `django_core : Up 28 hours` à côté de `frontend : Up 14 minutes`.
+- Second défaut trouvé au deploy de clôture, dans la séquence COURANTE cette fois : `fastapi_ia` est resté
+  « Up 28 hours » sous un « DEPLOY — OK » (et le journal disait « rebuild ciblé : frontend », sans nginx). Cause :
+  `echo "$CHANGES" | grep -q` sous `pipefail` — `grep -q` sort au premier chemin trouvé, `echo` meurt de SIGPIPE et le
+  test rend FAUX ; toujours au-delà de 64 Ko de noms de fichiers, parfois en dessous (lot du jour : 737 fichiers).
+  Django et Celery n'ont été sauvés que par `DEPLOYED_SHA`, qui les fait recréer. Corrigé le 18/11
+  (`lot_contient()`, sans tube ; test `test_gros_lot_backend_et_nginx_toujours_vus`).
 - Remède : la séquence d'`origin/main`, jamais une copie locale ancienne. Une ligne, depuis le PC de Reda :
   `ssh -i $env:USERPROFILE\.ssh\taqinor_hetzner root@178.105.192.116 "cd /opt/taqinor-os && git fetch origin main && git show origin/main:scripts/auto-deploy.sh > /opt/autodeploy/auto-deploy.sh.neuf && chmod +x /opt/autodeploy/auto-deploy.sh.neuf && mv /opt/autodeploy/auto-deploy.sh.neuf /opt/autodeploy/auto-deploy.sh && rm -f /opt/autodeploy/commit_en_echec && systemctl start taqinor-autodeploy.service; tail -n 12 /opt/autodeploy/deploy.log"`
   (c'est exactement ce que fait le `deploy-prod.ps1` courant) ; puis mettre à jour le dossier local (`git pull` sur `main`).
@@ -43,3 +52,8 @@ OUVERT tant que Reda n'a pas relancé la séquence COURANTE (voir « Remède »)
 le front, avant d'écrire « en ligne » : (1) une adresse née du dernier merge backend répond 401 sans connexion, pas
 404 ; (2) aucune page nue de gunicorn sur 30 appels à `health/ready` ; (3) `health/ready` → `dernier_demarrage.sha` porte
 le commit (il est resté nul tout ce temps : signe que la séquence courante ne tournait pas).
+Quand le doute porte sur le serveur, ne pas donner une commande de deploy de plus : faire coller d'abord la lecture
+seule (`git log -1` dans `/opt/taqinor-os`, `cat /opt/autodeploy/last_deployed_commit`, `docker ps` avec les durées,
+`tail /opt/autodeploy/deploy.log`, première erreur de `django_core`) — c'est elle qui a tranché en une minute, après
+des heures de mesures de l'extérieur. Après un « DEPLOY — OK », lire aussi les durées de `docker ps` : un conteneur
+resté « Up N hours » n'a pas pris le code.
