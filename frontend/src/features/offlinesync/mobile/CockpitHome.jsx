@@ -6,7 +6,7 @@
 // via reporting/approbations-en-attente/ (le sélecteur déjà utilisé par
 // FE-XKB1-3 / VX86 ApprobationsAttentionCard, réutilisé ici en lecture) —
 // pas de nouvelle logique d'approbation, seulement l'agrégation en vue mobile.
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Inbox, TrendingUp, AlertTriangle, HardHat, Wallet } from 'lucide-react'
 import reportingApi from '../../../api/reportingApi'
@@ -16,10 +16,14 @@ import {
   CarteContenu,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatMAD, formatNumber } from '../../../lib/format'
 import AFaireAujourdhui from './AFaireAujourdhui'
 import OnboardingTerrain from '../OnboardingTerrain'
 import EnteteCarteBadge from './EnteteCarteBadge'
+
+// TCH126 — carte « Tâches · Aujourd'hui » : chargée à part, et seulement avec `taches_voir`.
+const CarteMesTaches = lazy(() => import('../../taches/presence/CarteMesTaches'))
 
 const SOURCE_LABELS = {
   automation: 'Automatisation',
@@ -32,6 +36,7 @@ const SOURCE_LABELS = {
 export default function CockpitHome() {
   const isMobile = useIsMobile()
   const navigate = useNavigate()
+  const peutTaches = useHasPermission('taches_voir')
   const [kpis, setKpis] = useState(null)
   const [approbations, setApprobations] = useState(null)
 
@@ -78,6 +83,12 @@ export default function CockpitHome() {
       {/* NTMOB19 — widget unifié cross-rôle (relances, approbations,
           interventions, factures échues) partagé avec les autres accueils. */}
       <AFaireAujourdhui />
+      {/* TCH126 — « Tâches · Aujourd'hui » : rien sans `taches_voir`. */}
+      {peutTaches && (
+        <Suspense fallback={null}>
+          <CarteMesTaches />
+        </Suspense>
+      )}
       <CarteContenu
         entete={(
         <CardHeader>
