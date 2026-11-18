@@ -51,7 +51,7 @@ Règles transverses (chaque modèle) :
 | `IssueProjet` | `''` · `atteint` · `abandonne` | s4 §I |
 | `Moment` | `''` · `matin` · `apres_midi` · `soir` « Ce soir » | socle |
 | `Creneau` (LignePlanJour, constat C1) | `''` · `matin` (< 12 h) · `apres_midi` (12-16 h) · `fin_journee` (≥ 16 h) | regles manque 6 |
-| `Source` | `manuel` · `rapide` · `assistant` (repère, A5) · `capture` · `activite` (conversion ET lien) · `recurrence` · `modele` · `suggestion` | C31 |
+| `Source` | `manuel` · `rapide` · `assistant` (repère, A5 : créée par le relais de l'assistant, ou validée au doigt sur une carte du Copilote, `X-Taqinor-Carte-Assistant: 1`) · `capture` · `activite` (conversion ET lien) · `recurrence` · `modele` · `suggestion` | C31 |
 | `Couleur` | `terre` · `ambre` · `olive` · `vert` · `menthe` · `ciel` · `bleu` · `indigo` · `prune` · `rose` | A15, spec-8 §3 |
 | `Visibilite` | `prive` | socle, D-TCH-1 |
 | `LienEtat` | `''` · `ok` · `archive` · `introuvable` · `inaccessible` · `efface` | s6a §3.2 |

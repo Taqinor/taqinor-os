@@ -270,6 +270,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
 
   it('ERR 4 — plan_projet : « Changer d’étape » déplace une tâche ; « Tout ajouter » absent sans projet servi', async () => {
     const donnees = contrat('planification_apercu')
+    delete donnees.projet // une réponse plus ancienne : sans le projet où écrire, pas de « Tout ajouter »
     donnees.sections.push({ nom: 'Pose', taches: [{ titre: 'Fixer les rails', jalon: false, sous_taches: [] }] })
     monter('plan_projet', donnees)
     const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
@@ -283,7 +284,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
 
   it('ERR 4 — plan_projet : avec le projet servi (id, lock_version), « Tout ajouter » crée les étapes gardées', async () => {
     api.post.mockResolvedValue({ data: { ...contrat('planification'), geste_id: 85 } })
-    const donnees = { ...contrat('planification_apercu'), projet: { id: 3, lock_version: 4 } }
+    const donnees = contrat('planification_apercu') // le contrat sert `projet` {id: 3, lock_version: 4}
     monter('plan_projet', donnees)
     const carte = screen.getByRole('group', { name: 'Le projet en étapes' })
     await userEvent.click(within(carte).getAllByRole('button', { name: 'Retirer' })[1])

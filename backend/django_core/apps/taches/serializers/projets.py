@@ -266,9 +266,10 @@ def section_ecrite(section, geste):
             'geste_id': geste.pk if geste is not None else None}
 
 
-def apercu_du_plan(texte):
-    """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit."""
-    return decouper_plan(texte)
+def apercu_du_plan(projet, texte):
+    """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit ;
+    `projet` = où l'écrire et son verrou (la carte `plan_projet` du Copilote n'a que cette réponse)."""
+    return {'projet': {'id': projet.pk, 'lock_version': projet.lock_version}, **decouper_plan(texte)}
 
 
 def planification_rendue(user, resultat, ctx):

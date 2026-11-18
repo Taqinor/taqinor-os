@@ -112,8 +112,11 @@ describe('TCH82 — feuille de saisie', () => {
       expect(lireBrouillon(7, 42)).not.toBeNull()
       await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-      await waitFor(() => expect(onFermer).toHaveBeenCalled())
+      // saisie en chaîne (spec-2 §1) : la feuille reste ouverte, champ vidé ; l'événement est parti une fois
+      await waitFor(() => expect(vusALInstant).toHaveLength(1))
       expect(vusALInstant).toEqual([null])
+      expect(champ()).toHaveValue('')
+      expect(onFermer).not.toHaveBeenCalled()
     } finally {
       window.removeEventListener(EVENEMENT_CREEES, ecoute)
     }

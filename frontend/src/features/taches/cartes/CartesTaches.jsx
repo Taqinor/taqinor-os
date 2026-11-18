@@ -580,8 +580,8 @@ function CarteCaptureApercu({ donnees }) {
   )
 }
 
-// `projet` ({id, lock_version}) n'est pas servi par `planification/apercu/` (planification_apercu.json) : sans lui,
-// « Tout ajouter » n'a pas de projet où écrire et n'est pas montré (le serveur devrait le joindre : rapport ERR 4).
+// `projet` ({id, lock_version}) est servi par `planification/apercu/` (planification_apercu.json) : sans lui (carte
+// d'une réponse plus ancienne), « Tout ajouter » n'a pas de projet où écrire et n'est pas montré.
 const projetPlanifiable = (projet) => Number.isInteger(projet?.id) && Number.isInteger(projet?.lock_version)
 
 function CartePlanProjet({ donnees }) {
