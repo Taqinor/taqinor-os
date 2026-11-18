@@ -8,6 +8,7 @@
 //     → `E2E_IA_URL`, jeton de session relayé en Bearer) ;
 //   - les captures de relecture visuelle de la fusion 3 (iPhone et bureau, clair et sombre).
 // Aucune attente fixe : on attend un état visible ou une réponse observée.
+import { execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { expect, request as pwRequest } from '@playwright/test'
 import { py } from './acceptation/_django.js'
@@ -79,6 +80,17 @@ sortie(Notification.objects.filter(recipient=u, event_type__startswith='taches_'
 // --- Le service d'IA (FastAPI) sous /api/fastapi --------------------------------------------------------------------
 
 const IA = process.env.E2E_IA_URL
+
+/** Remet le service d'IA à l'heure de Django quand la pile le demande (`E2E_IA_RELANCER` = commande + arguments,
+ *  séparés par des espaces ; ex. `/opt/taches-cloud/ia-f3.sh demarrer <worktree>` sur la machine cloud). Sur un runner,
+ *  `zz-taches-pile.sh horloge` relance déjà les deux ensemble : variable absente, rien à faire. Un jeton émis par Django
+ *  porte son `iat`/`exp` : le service d'IA doit vivre à la même heure (PyJWT refuse un `iat` futur ou un `exp` passé). */
+export function relancerIA() {
+  const commande = (process.env.E2E_IA_RELANCER || '').trim()
+  if (!commande) return
+  const [cmd, ...args] = commande.split(/\s+/)
+  execFileSync(cmd, args, { encoding: 'utf8', timeout: 300_000, stdio: ['ignore', 'pipe', 'pipe'] })
+}
 
 /** Branche `/api/fastapi/…` de la page sur `E2E_IA_URL` (comme nginx en production), jeton de session en Bearer. */
 export async function brancherIA(p) {

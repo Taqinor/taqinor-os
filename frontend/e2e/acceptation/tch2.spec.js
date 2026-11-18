@@ -33,7 +33,7 @@ import { toast } from '../taches-aides.js'
 import { API, aller, lire, liste, ouvrir, pile, salir, scenario, tacheNommee } from '../taches-acceptation.js'
 import {
   VRAI_ASSISTANT_REQUIS, balayer, brancherIA, capturerF3, clientNu, demandePrete, demanderAuCopilote, deplier,
-  etapeOuverte, etapesIphone, jetonParEcran, notificationsDe, ouvrirCopilote, viderNotificationsTaches,
+  etapeOuverte, etapesIphone, jetonParEcran, notificationsDe, ouvrirCopilote, relancerIA, viderNotificationsTaches,
 } from '../taches-acceptation-f3.js'
 
 const PARCOURS = ['TCH141', 'TCH171', 'TCH143']
@@ -421,6 +421,7 @@ const QUESTIONS = [
 /** Le matin du Copilote : semis de 08:30, page iPhone connectée, service d'IA branché, panneau ouvert sur Aujourd'hui. */
 async function copilote(f, { lecture = false, vue = 'iphone' } = {}) {
   const instant = scenario(SEMIS_143, `${J24} 08:30`, { lecture })
+  relancerIA()
   const p = await ouvrir(f, { instant, vue })
   const requetes = await brancherIA(p)
   await aller(p, '/taches/aujourdhui', 'aujourdhui')
