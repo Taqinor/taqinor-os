@@ -4,22 +4,26 @@
 écrit ; le premier `PATCH` la crée), heures des sollicitations DITES (`Preference`), fenêtre de la société, adresse du
 raccourci Siri (réglage déclaré par TCH4), `est_admin` = `IsAdminRole`. Une route pas encore
 construite lève `PasEncore` (501) ; le schéma OpenAPI de chacune est celui de son échantillon.
-`reglages-societe/` est réservé à un administrateur (`IsAdminRole`, A18-M8).
+`reglages-societe/` est réservé à un administrateur (`IsAdminRole`, A18-M8) : le coupe-circuit de la
+société (donnees.md §2.21, invariant 39) ; absent = actif, lire ne crée rien, un `PATCH` qui ne change pas
+la valeur n'écrit rien (la trace `modifie_par`/`modifie_le` reste celle du dernier vrai changement).
 """
 import datetime
 
 from django.conf import settings
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.taches.choix import ClePreference
+from apps.taches.models.presence import ReglagesSociete
 from apps.taches.moteur import sollicitations
 from apps.taches.moteur.gabarits import format_heure
 from apps.taches.selectors.rythme import preferences_de
 from apps.taches.services import rythme as service
-from apps.taches.views.base import PERMISSIONS, PasEncore, corps, forme_echantillon, reponses
+from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
 from authentication.permissions import IsAdminRole
 
 REGLAGES = forme_echantillon('reglages')
@@ -99,6 +103,41 @@ class ReglagesVue(APIView):
         return Response(forme_reglages(request, reglages))
 
 
+def maintenant():
+    """L'instant de la trace du coupe-circuit (les tests le remplacent)."""
+    return timezone.now()
+
+
+def forme_reglages_societe(company):
+    """Le dict de `reglages_societe.json` ; aucune ligne = actif, jamais modifié."""
+    reglages = ReglagesSociete.objects.filter(company=company).first()
+    if reglages is None:
+        return {'balayage_actif': True, 'modifie_par': None, 'modifie_le': None}
+    return {'balayage_actif': reglages.balayage_actif, 'modifie_par': reglages.modifie_par_id,
+            'modifie_le': serializers.DateTimeField().to_representation(reglages.modifie_le)
+            if reglages.modifie_le is not None else None}
+
+
+def erreurs_reglages_societe(donnees):
+    """Erreurs par champ du corps `{"balayage_actif": bool}` (seul champ, obligatoire), ou `{}`."""
+    erreurs = {champ: [service.NON_MODIFIABLE] for champ in donnees if champ != 'balayage_actif'}
+    if not isinstance(donnees.get('balayage_actif'), bool):
+        erreurs['balayage_actif'] = [service.VALEUR_INCONNUE]
+    return erreurs
+
+
+def ecrire_balayage(company, user, valeur):
+    """Pose `balayage_actif = valeur` pour la société et trace l'administrateur, seulement si la valeur
+    change (absent = actif : rallumer une société jamais coupée ne crée rien)."""
+    actuel = ReglagesSociete.objects.filter(company=company).values_list('balayage_actif', flat=True).first()
+    if (True if actuel is None else actuel) == valeur:
+        return
+    instant = maintenant()
+    reglages, _ = ReglagesSociete.objects.get_or_create(company=company)
+    ReglagesSociete.objects.filter(pk=reglages.pk).update(
+        balayage_actif=valeur, modifie_par=user, modifie_le=instant, updated_at=instant)
+
+
 class ReglagesSocieteVue(APIView):
     """GET · PATCH reglages-societe/ `{"balayage_actif"}` — administrateur seulement."""
 
@@ -106,9 +145,14 @@ class ReglagesSocieteVue(APIView):
 
     @extend_schema(responses=reponses(REGLAGES_SOCIETE))
     def get(self, request):
-        raise PasEncore()
+        return Response(forme_reglages_societe(request.user.company))
 
     @extend_schema(request=corps('ReglagesSociete', {'balayage_actif': False}, requis=('balayage_actif',)),
                    responses=reponses(REGLAGES_SOCIETE, erreurs=(400,)))
     def patch(self, request):
-        raise PasEncore()
+        donnees = request.data if isinstance(request.data, dict) else {}
+        erreurs = erreurs_reglages_societe(donnees)
+        if erreurs:
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        ecrire_balayage(request.user.company, request.user, donnees['balayage_actif'])
+        return Response(forme_reglages_societe(request.user.company))

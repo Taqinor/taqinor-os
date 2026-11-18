@@ -1,4 +1,4 @@
-"""TCH69 — Réglages : `GET` et `PATCH reglages/` en liste blanche.
+"""TCH69 — Réglages : `GET` et `PATCH reglages/` en liste blanche ; TCH155 — coupe-circuit `reglages-societe/`.
 
 Base requise (`TestCase`) : joué par la CI. Jour injecté (`services.rythme.aujourdhui`). Chaque test
 relit l'état STOCKÉ ; « enregistrer → rouvrir → enregistrer sans toucher » compare l'objet serveur.
@@ -12,12 +12,15 @@ from rest_framework.test import APIClient
 
 from apps.taches.choix import CanalIncitation, ModeRythme, StatutJour, TypeIncitationEcran
 from apps.taches.models.journee import PlanJour
+from apps.taches.models.presence import ReglagesSociete
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
 
 J = datetime.date(2026, 11, 17)
 URL = '/api/django/taches/reglages/'
+URL_SOCIETE = '/api/django/taches/reglages-societe/'
+INSTANT = datetime.datetime(2026, 11, 17, 14, 5, tzinfo=datetime.timezone.utc)
 HEURE = re.compile(r'^\d{2}:\d{2}$')
 
 
@@ -159,3 +162,79 @@ class ReglagesTests(TestCase):
         self.assertEqual(self.patch({'projet_arret_jours': 99}).status_code, 400)
         self.assertEqual(self.patch({'suggestions_societe': True}).status_code, 403)
         self.assertFalse(ReglagesRythme.objects.exists())
+
+
+class ReglagesSocieteTests(TestCase):
+    """TCH155 — coupe-circuit `reglages-societe/` (donnees.md §2.21, invariant 39) : administrateur seul,
+    absent = actif, lire ne crée rien ; l'instant est injecté (`views.reglages.maintenant`)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.a = fabriques.societe('a')
+        cls.b = fabriques.societe('b')
+        cls.u1 = fabriques.compte(cls.a, nom='u1')
+        cls.admin = fabriques.compte(cls.a, admin=True, nom='admin')
+        cls.admin_b = fabriques.compte(cls.b, admin=True, nom='adminb')
+
+    def setUp(self):
+        horloge = mock.patch('apps.taches.views.reglages.maintenant', return_value=INSTANT)
+        horloge.start()
+        self.addCleanup(horloge.stop)
+
+    def client_de(self, compte):
+        api = APIClient()
+        api.force_authenticate(compte)
+        return api
+
+    def test_non_administrateur_403_et_rien_n_est_ecrit(self):
+        api = self.client_de(self.u1)
+        self.assertEqual(api.get(URL_SOCIETE).status_code, 403)
+        self.assertEqual(api.patch(URL_SOCIETE, {'balayage_actif': False}, format='json').status_code, 403)
+        self.assertFalse(ReglagesSociete.objects.exists())
+
+    def test_absent_actif_forme_exacte_et_lire_ne_cree_rien(self):
+        corps = self.client_de(self.admin).get(URL_SOCIETE).json()
+        self.assertEqual(corps, exemple_de('reglages_societe'))
+        self.assertFalse(ReglagesSociete.objects.exists())
+
+    def test_couper_puis_rallumer_trace_l_administrateur(self):
+        api = self.client_de(self.admin)
+        reponse = api.patch(URL_SOCIETE, {'balayage_actif': False}, format='json')
+        self.assertEqual(reponse.status_code, 200)
+        stocke = ReglagesSociete.objects.get(company=self.a)
+        self.assertEqual((stocke.balayage_actif, stocke.modifie_par_id, stocke.modifie_le),
+                         (False, self.admin.pk, INSTANT))
+        self.assertEqual(reponse.json(), api.get(URL_SOCIETE).json())
+        self.assertEqual(set(reponse.json()), set(exemple_de('reglages_societe')))
+        self.assertFalse(reponse.json()['balayage_actif'])
+        self.assertEqual(reponse.json()['modifie_par'], self.admin.pk)
+        self.assertEqual(datetime.datetime.fromisoformat(reponse.json()['modifie_le']), INSTANT)
+        self.assertTrue(api.patch(URL_SOCIETE, {'balayage_actif': True}, format='json').json()['balayage_actif'])
+        stocke.refresh_from_db()
+        self.assertTrue(stocke.balayage_actif)
+
+    def test_enregistrer_rouvrir_enregistrer_sans_toucher(self):
+        api = self.client_de(self.admin)
+        api.patch(URL_SOCIETE, {'balayage_actif': False}, format='json')
+        premier = api.get(URL_SOCIETE).json()
+        with mock.patch('apps.taches.views.reglages.maintenant',
+                        return_value=INSTANT + datetime.timedelta(hours=1)):
+            self.assertEqual(api.patch(URL_SOCIETE, {'balayage_actif': premier['balayage_actif']},
+                                       format='json').json(), premier)
+        self.assertEqual(api.get(URL_SOCIETE).json(), premier)
+        # rallumer une société jamais coupée n'écrit rien (absent = actif)
+        self.assertEqual(self.client_de(self.admin_b).patch(URL_SOCIETE, {'balayage_actif': True},
+                                                            format='json').status_code, 200)
+        self.assertFalse(ReglagesSociete.objects.filter(company=self.b).exists())
+
+    def test_corps_invalide_400_rien_n_est_ecrit(self):
+        api = self.client_de(self.admin)
+        for corps in ({}, {'balayage_actif': 'non'}, {'balayage_actif': 0}, {'balayage_actif': False, 'autre': 1}):
+            with self.subTest(corps=corps):
+                self.assertEqual(api.patch(URL_SOCIETE, corps, format='json').status_code, 400)
+        self.assertFalse(ReglagesSociete.objects.exists())
+
+    def test_chaque_societe_son_coupe_circuit(self):
+        self.client_de(self.admin_b).patch(URL_SOCIETE, {'balayage_actif': False}, format='json')
+        self.assertTrue(self.client_de(self.admin).get(URL_SOCIETE).json()['balayage_actif'])
+        self.assertFalse(self.client_de(self.admin_b).get(URL_SOCIETE).json()['balayage_actif'])
