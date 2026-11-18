@@ -923,8 +923,11 @@
 /* Passe visuelle n° 52 — iPhone : le module va bord à bord comme les maquettes (390 px, gouttière 16) ; le
    rembourrage de 0,9 rem du scrolleur de l'ERP (12-progression-mobile.css) le posait dans un cadre de 361 px, et un
    titre de ligne qui tient sur une ligne en passait sur deux. Même idiome `:has()` que /apps (31-menu-apps.css) ;
-   le bas (barre d'onglets) et les zones sûres restent ceux de l'ERP. */
-@media (max-width: 768px) {
+   le bas (barre d'onglets) et les zones sûres restent ceux de l'ERP.
+   Même seuil que la coquille de l'ERP (768 px), écrit `screen and (…)` : les gardes de la coquille
+   (mobile-foundation.test.mjs, menu.layout.test.mjs) lisent le PREMIER bloc « @media (max-width: 768px) » d'index.css
+   comme étant le sien, et nos feuilles sont importées avant lui. */
+@media screen and (max-width: 768px) {
   .layout-content:has(> .route-fade > .tch) {
     padding-top: 0;
     padding-left: env(safe-area-inset-left);
