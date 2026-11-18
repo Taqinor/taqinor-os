@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from apps.taches.choix import CanalIncitation, StatutTache, TypeIncitationEcran
 from apps.taches.models.projets import Projet
+from apps.taches.models.taches import Tache
 from apps.taches.selectors.base import taches_de
 from apps.taches.selectors.rythme import cartes_de
 from apps.taches.services.rythme import creer_carte
@@ -41,10 +42,28 @@ def _peut_reveler(user, cle, jour):
     return not revelations.filter(cle=cle).exists() and not revelations.filter(jour=jour).exists()
 
 
+def _a_trier(taches):
+    """Invariant 1 : vivantes, sans parent, sans projet, jamais triées, à faire ou en attente (le
+    filtre du compteur `a_trier.boite_reception` de `services.journee`)."""
+    return taches.filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
+                         statut__in=(StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)).count()
+
+
 def _nb_a_trier(user):
-    """Invariant 1 : vivantes, sans parent, sans projet, jamais triées, à faire ou en attente."""
-    return taches_de(user).filter(parent__isnull=True, projet__isnull=True, triee_le__isnull=True,
-                                  statut__in=(StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)).count()
+    return _a_trier(taches_de(user))
+
+
+def donnees_lues(carte):
+    """Les nombres d'une révélation À LA LECTURE (Revue F2 tour 2 #10) et si elle a encore quelque
+    chose à dire : `(donnees, vivante)`. `ranger_copilote` porte le compte COURANT d'À trier (jamais
+    celui du jour de sa création) et se tait sous `A_TRIER_MIN` ; les autres ne portent qu'un id
+    (`planifier_projet`) ou rien : leurs données restent celles de la carte."""
+    donnees = dict(carte.donnees or {})
+    if carte.cle != RANGER_COPILOTE:
+        return donnees, True
+    # Le compte de la carte : société ET propriétaire de sa ligne (sans relire l'utilisateur).
+    donnees['n'] = _a_trier(Tache.objects.filter(company_id=carte.company_id, proprietaire_id=carte.proprietaire_id))
+    return donnees, donnees['n'] >= A_TRIER_MIN
 
 
 def _premier_projet(user, projets_crees):

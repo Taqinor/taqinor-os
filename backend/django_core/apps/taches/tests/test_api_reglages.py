@@ -112,6 +112,15 @@ class ReglagesTests(TestCase):
                 self.assertEqual(self.patch(corps).status_code, 400)
         self.assertEqual(self.patch({'projet_arret_jours': 30, 'rappel_avant_bloc_min': 10}).status_code, 200)
 
+    def test_listes_mal_formees_400_jamais_500(self):
+        """Revue F2 tour 2 #12 : une liste ou un objet là où une chaîne est attendue → 400 au champ."""
+        fabriques.reglages(self.u1, pauses_sollicitations=[{'type': 'relance', 'ignorees': 14}])
+        for champ, valeur in (('pauses_sollicitations', [['relance']]), ('pauses_sollicitations', [{'type': []}]),
+                              ('familles_suggestions', [['devis_accepte']]), ('familles_suggestions', [{}])):
+            with self.subTest(champ=champ, valeur=valeur):
+                reponse = self.patch({champ: valeur})
+                self.assertEqual((reponse.status_code, reponse.json().get(champ)), (400, ['Valeur inconnue.']))
+
     def test_enregistrer_rouvrir_enregistrer_sans_toucher(self):
         fabriques.reglages(self.u1)
         self.patch({'messages_sans_delai': True, 'projet_arret_jours': 12,
@@ -149,6 +158,30 @@ class ReglagesTests(TestCase):
         self.assertEqual(reglages.mode, ModeRythme.TENIR)
         self.assertEqual((plan.statut_jour, plan.compte_rythme, plan.plan_prevues), ('', 0, 4))
         self.assertEqual(list(IncitationCoach.objects.values_list('pk', flat=True)), [gardee.pk])
+
+    def test_comprendre_coupe_la_nuit_ne_garde_plus_rien_du_rythme(self):
+        """Revue F2 tour 2 #6 : « plus rien n'est calculé ni gardé » — la nuit suivante n'écrit ni
+        `statut_jour` ni `compte_rythme` (donnees.md §8), `GET rythme/` ne sert ni série ni trace ; le
+        bilan du jour (gardées, essentiels, minutes) reste écrit."""
+        from django.utils import timezone
+
+        from apps.taches.services.journee import clore_jour_precedent
+        fabriques.reglages(self.u1)
+        hier = J - datetime.timedelta(days=1)
+        for _ in range(4):
+            fabriques.tache(self.u1, projet=fabriques.projet(self.u1), statut='fait', estimation_minutes=15,
+                            fait_le=timezone.make_aware(datetime.datetime.combine(hier, datetime.time(11))))
+        for n in range(2, 9):
+            fabriques.plan(self.u1, J - datetime.timedelta(days=n), statut_jour=StatutJour.EVALUE, compte_rythme=3)
+        self.assertEqual(self.patch({'comprendre_mon_rythme': False}).status_code, 200)
+        clore_jour_precedent(self.a.pk, J)
+        plan = PlanJour.objects.get(proprietaire=self.u1, jour=hier)
+        self.assertEqual((plan.statut_jour, plan.compte_rythme, plan.micro_comptees, plan.taille_mediane_min),
+                         ('', 0, 0, None))
+        self.assertEqual(plan.minutes_faites, 60)
+        rythme = self.api.get('/api/django/taches/rythme/').json()
+        self.assertFalse(rythme['comprendre_mon_rythme'])
+        self.assertEqual((rythme['serie'], rythme['trace']), ([], None))
 
     def test_compte_neuf_le_premier_patch_cree_les_reglages(self):
         reponse = self.patch({'titres_tuile': False})

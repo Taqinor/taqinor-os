@@ -284,6 +284,39 @@ class CloreBlocTests(unittest.TestCase):
         etat = etat_bloc([5] * 10, blocs_a_sauter=2)
         self.assertEqual(rythme.clore_bloc(etat, jour_n(5), None, None).blocs_a_sauter, 1)
 
+    def test_oui_repart_le_bloc_au_nouveau_palier(self):
+        # Revue F2 tour 2 #8 : « Oui » six jours après la carte — les jours faits à 5 ne comptent pas contre 6
+        # (§6.5 « 10 jours évalués au même palier ») ; le bloc repart le lendemain, comme un objectif dit.
+        for decision, palier, attendu in (('monter', 5, 6), ('baisser', 6, 5)):
+            with self.subTest(decision=decision):
+                etat = EtatRythme(mode=ModeRythme.POUSSER, palier=palier, palier_source=SourceObjectif.ACCEPTE,
+                                  bloc_debut=jour_n(0), comptes_bloc=(5,) * 6)
+                neuf = rythme.mettre_a_jour(etat, **rythme.apres_decision(etat, jour_n(6), decision, 'oui'))
+                self.assertEqual((neuf.palier, neuf.comptes_bloc, neuf.bloc_debut), (attendu, (), jour_n(7)))
+        refus = EtatRythme(palier=5, bloc_debut=jour_n(0), comptes_bloc=(5,) * 6)
+        neuf = rythme.mettre_a_jour(refus, **rythme.apres_decision(refus, jour_n(6), 'monter', 'pas_maintenant'))
+        self.assertEqual((neuf.comptes_bloc, neuf.bloc_debut), ((5,) * 6, jour_n(0)))  # un refus ne repart pas
+        # Jumeau : la carte `premier` acceptée (5 par défaut -> 3) repart aussi le bloc ; « Garder 5 » non.
+        froid = EtatRythme(bloc_debut=jour_n(0), comptes_bloc=(5,) * 4)
+        oui = rythme.repondre_premier(froid, 3, 'oui', jour_n(4))
+        self.assertEqual((oui.palier, oui.comptes_bloc, oui.bloc_debut), (3, (), jour_n(5)))
+        garder = rythme.repondre_premier(froid, 3, 'garder', jour_n(4))
+        self.assertEqual((garder.palier, garder.comptes_bloc, garder.bloc_debut), (5, (5,) * 4, jour_n(0)))
+
+    def test_carte_a_jour_seulement_depuis_le_palier_courant(self):
+        # Revue F2 tour 2 #5 : une carte calculée d'un autre palier est périmée (jamais deux crans).
+        a_jour = rythme.carte_a_jour
+        self.assertTrue(a_jour(EtatRythme(palier=5), 'monter', {'N': 5, 'N1': 6}))
+        self.assertTrue(a_jour(EtatRythme(), 'monter', {'N': 5, 'N1': 6}))  # froid : palier 5 par défaut
+        self.assertFalse(a_jour(EtatRythme(palier=8), 'monter', {'N': 5, 'N1': 6}))
+        self.assertFalse(a_jour(EtatRythme(palier=5), 'monter', {'N': 5, 'N1': 7}))
+        self.assertTrue(a_jour(EtatRythme(palier=6), 'baisser', {'N': 6, 'N_1': 5}))
+        self.assertFalse(a_jour(EtatRythme(palier=5), 'baisser', {'N': 6, 'N_1': 5}))
+        self.assertTrue(a_jour(EtatRythme(), 'premier', {'type': 3}))
+        self.assertFalse(a_jour(EtatRythme(palier=4), 'premier', {'type': 3}))
+        self.assertTrue(a_jour(EtatRythme(palier=5), 'journee_type', {'type': 3, 'dit': 5}))
+        self.assertFalse(a_jour(EtatRythme(palier=6), 'journee_type', {'type': 3, 'dit': 5}))
+
 
 def replace_bloc(etat):
     """Un bloc plein de plus (le précédent a été remis à zéro)."""
@@ -312,6 +345,17 @@ class ObjectifTests(unittest.TestCase):
         # §6.6 : « environ arrondir(R) », zone arrondir(R - b) à arrondir(R + b).
         etat = EtatRythme(mode=ModeRythme.TENIR, tenir_reference=8)
         self.assertEqual(rythme.objectif_affiche(etat), (8, SourceObjectif.CALCULE, (6, 10)))
+
+    def test_tenir_sous_un_par_jour_plancher(self):
+        # Revue F2 tour 2 #9 : R 0,29 -> objectif 1 (jamais 0), zone 0 à 1 (jamais une borne négative).
+        for reference in (0.29, 0.5, 0):
+            with self.subTest(reference=reference):
+                etat = EtatRythme(mode=ModeRythme.TENIR, tenir_reference=reference)
+                self.assertEqual(rythme.objectif_affiche(etat), (1, SourceObjectif.CALCULE, (0, 1)))
+        recents = (0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1)  # 4 tâches en 14 jours évalués
+        tenir = rythme.basculer(EtatRythme(comptes_recents=recents), ModeRythme.TENIR, jour_n(0))
+        self.assertEqual((tenir.objectif, rythme.objectif_affiche(tenir)[2]), (1, (0, 1)))
+        self.assertEqual(rythme.objectif_tenir(0.14), 1)  # le `m` d'une dérive : plancher 1
 
     def test_tenir_reference_provisoire_palier(self):
         etat = EtatRythme(mode=ModeRythme.TENIR, palier=4)
@@ -549,10 +593,13 @@ class ConstatsTests(unittest.TestCase):
         # C1 : écart >= 25 points entre créneaux, 30 lignes minimum par créneau.
         lignes = ([rythme.LigneConstat(il_y_a(1), 'matin', i < 24) for i in range(30)]
                   + [rythme.LigneConstat(il_y_a(2), 'apres_midi', i < 12) for i in range(30)])
-        constat = rythme.constats(donnees(lignes=tuple(lignes)))[0]
+        self.assertEqual(codes(donnees(lignes=tuple(lignes))), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True):
+            constat = rythme.constats(donnees(lignes=tuple(lignes)))[0]
         self.assertEqual((constat.code, constat.action, constat.donnees['meilleur']),
                          ('C1', 'essentiel_le_matin', 'matin'))
 
+    @mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True)
     def test_c1_minimum_et_ecart(self):
         court = ([rythme.LigneConstat(il_y_a(1), 'matin', True)] * 29
                  + [rythme.LigneConstat(il_y_a(1), 'apres_midi', False)] * 30)
@@ -561,6 +608,7 @@ class ConstatsTests(unittest.TestCase):
                   + [rythme.LigneConstat(il_y_a(1), 'apres_midi', i < 12) for i in range(30)])
         self.assertNotIn('C1', codes(donnees(lignes=tuple(proche))))  # 60 % vs 40 % = 20 points
 
+    @mock.patch.object(rythme, 'CONSTAT_C1_ACTIF', True)
     def test_c1_hors_fenetre(self):
         vieux = ([rythme.LigneConstat(il_y_a(40), 'matin', i < 24) for i in range(30)]
                  + [rythme.LigneConstat(il_y_a(40), 'apres_midi', i < 12) for i in range(30)])
@@ -578,10 +626,13 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c2_essentiel_en_tete(self):
         # C2 : essentiel fait en tête vs ailleurs, écart >= 30 points, 15 jours chacun.
-        constat = rythme.constats(donnees(lignes=self._lignes_c2(15, 15)))[0]
+        self.assertEqual(codes(donnees(lignes=self._lignes_c2(15, 15))), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C2_ACTIF', True):
+            constat = rythme.constats(donnees(lignes=self._lignes_c2(15, 15)))[0]
         self.assertEqual((constat.code, round(constat.donnees['premier']), round(constat.donnees['ailleurs'])),
                          ('C2', 80, 33))
 
+    @mock.patch.object(rythme, 'CONSTAT_C2_ACTIF', True)
     def test_c2_quatorze_jours_ne_suffisent_pas(self):
         self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(14, 15))))
         self.assertNotIn('C2', codes(donnees(lignes=self._lignes_c2(15, 14))))
@@ -613,12 +664,16 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c4_trop_garde(self):
         # C4 : gardées - faites >= 2 sur >= 60 % de 10 plans -> limite médiane faite + 1.
-        constat = rythme.constats(donnees(jours=self._jours_c4(6)))[0]
+        self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(6))))  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True):
+            constat = rythme.constats(donnees(jours=self._jours_c4(6)))[0]
         self.assertEqual((constat.code, constat.donnees['limite']), ('C4', 3))
 
+    @mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True)
     def test_c4_cinq_sur_dix_ne_suffit_pas(self):
         self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(5))))
 
+    @mock.patch.object(rythme, 'CONSTAT_C4_ACTIF', True)
     def test_c4_neuf_plans_ne_suffisent_pas(self):
         self.assertNotIn('C4', codes(donnees(jours=self._jours_c4(10)[:9])))
 
@@ -654,10 +709,13 @@ class ConstatsTests(unittest.TestCase):
 
     def test_c8_projet_neglige(self):
         # C8 : `neglige()` non vide -> une de ses tâches dans Proposé de demain.
-        constat = rythme.constats(donnees(projet_neglige_id=5))[0]
+        self.assertEqual(codes(donnees(projet_neglige_id=5)), [])  # hors première livraison (#7)
+        with mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True):
+            constat = rythme.constats(donnees(projet_neglige_id=5))[0]
         self.assertEqual((constat.code, constat.donnees['projet_id']), ('C8', 5))
         self.assertNotIn('C8', codes(donnees()))
 
+    @mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True)
     def test_refus_se_tait_vingt_huit_jours(self):
         base = dict(reportees_3=1, projet_neglige_id=5)
         self.assertEqual(codes(donnees(refus={'C7': il_y_a(27)}, **base)), ['C8'])
@@ -666,6 +724,7 @@ class ConstatsTests(unittest.TestCase):
     def test_comprendre_mon_rythme_coupe_tout(self):
         self.assertEqual(rythme.constats(donnees(reportees_3=3, comprendre_mon_rythme=False)), [])
 
+    @mock.patch.object(rythme, 'CONSTAT_C8_ACTIF', True)
     def test_ordre_par_numero_et_huit_au_plus(self):
         sortie = codes(donnees(reportees_3=1, projet_neglige_id=5))
         self.assertEqual(sortie, ['C7', 'C8'])

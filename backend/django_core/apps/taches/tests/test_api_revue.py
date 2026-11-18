@@ -197,6 +197,65 @@ class BilanDeSemaineTests(_Base):
         self.assertIsNone(self._cartes(f'?semaine={lundi.isoformat()}')['bilan_semaine'])
 
 
+class ObjectifAtteintDeLaSemaineTests(_Base):
+    """Revue F2 tour 2 #4 : « Objectif atteint X jours sur N » compte les jours où le compte a atteint
+    l'objectif du jour (le « objectif atteint » du bilan du soir), sur les jours jugés ; « Jours non
+    travaillés » ne compte que des jours qu'il travaille d'habitude. Semaine du lun. 9/11/2026."""
+
+    LUNDI = datetime.date(2026, 11, 9)
+
+    def jour(self, n):
+        return self.LUNDI + datetime.timedelta(days=n)
+
+    def instant(self, jour, heure=11):
+        return timezone.make_aware(datetime.datetime.combine(jour, datetime.time(heure)))
+
+    def texte(self):
+        from apps.taches.selectors.projets import bilan_de_semaine
+        return bilan_de_semaine(self.u1, self.LUNDI, 'pousser')[1]['texte']
+
+    def test_objectif_atteint_meme_sans_l_essentiel(self):
+        fabriques.plan(self.u1, self.jour(0), statut_jour='evalue', compte_rythme=3, objectif_du_jour=3,
+                       essentiels_choisis=1, essentiels_faits=0)
+        fabriques.plan(self.u1, self.jour(1), statut_jour='evalue', compte_rythme=2, objectif_du_jour=5)
+        self.assertIn('Objectif atteint 1 jour sur 2', self.texte())
+
+    def test_la_nuit_pose_l_objectif_de_chaque_jour_juge(self):
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services.journee import clore_jour_precedent
+        fabriques.reglages(self.u1)
+        projet = fabriques.projet(self.u1)
+        for n in range(4):
+            for _ in range(6):
+                fabriques.tache(self.u1, projet=projet, statut='fait', fait_le=self.instant(self.jour(n)))
+        for n in (0, 1):  # « Garder ces N » touché ces deux jours-là seulement
+            fabriques.plan(self.u1, self.jour(n), planifie_le=self.instant(self.jour(n), 8), objectif_du_jour=5)
+        for n in range(1, 5):
+            clore_jour_precedent(self.u1.company_id, self.jour(n))
+        self.assertEqual(list(PlanJour.objects.filter(proprietaire=self.u1).order_by('jour')
+                              .values_list('statut_jour', 'compte_rythme', 'objectif_du_jour')),
+                         [('evalue', 6, 5)] * 4)
+        self.assertIn('24 tâches en 4 jours. Objectif atteint 4 jours sur 4.', self.texte())
+
+    def test_jours_non_travailles_seulement_parmi_ses_jours_travailles(self):
+        from apps.taches.services.journee import clore_jour_precedent
+        from apps.taches.services.rythme import poser_preference
+        fabriques.reglages(self.u1)
+        poser_preference(self.u1, 'conges', [{'du': self.jour(2).isoformat(), 'au': self.jour(2).isoformat()}],
+                         'ecran')
+        projet = fabriques.projet(self.u1)
+        for n in (0, 1, 3, 4):
+            for _ in range(5):
+                fabriques.tache(self.u1, projet=projet, statut='fait', fait_le=self.instant(self.jour(n)))
+        for n in range(1, 6):  # nuits du mar. au sam. : la revue lue le vendredi soir ou le samedi
+            clore_jour_precedent(self.u1.company_id, self.jour(n))
+        vendredi_soir = self.texte()
+        for n in (6, 7):  # nuits de dim. et lun. : le samedi et le dimanche, non travaillés, sont clos
+            clore_jour_precedent(self.u1.company_id, self.jour(n))
+        self.assertEqual(self.texte(), vendredi_soir)
+        self.assertTrue(vendredi_soir.endswith('Jour non travaillé : 1.'), vendredi_soir)
+
+
 class DecisionDeRevueTests(_Base):
     def _corps(self, **plus):
         return {'semaine': _aujourdhui().isoformat(), 'intention': 'Signer Settat', 'decision': 'garder',

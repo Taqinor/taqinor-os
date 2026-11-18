@@ -330,6 +330,14 @@ class SortieEtOptionsTests(unittest.TestCase):
         a = lire('Payer tous les 100 jours')
         self.assertEqual((a.titre, a.champs), ('Payer tous les 100 jours', {'priorite': 0}))
 
+    def test_decalage_hors_du_calendrier_non_lu(self):
+        # Revue F2 tour 2 #12 : au-delà de l'an 9999, le décalage n'est pas lu (jamais une exception).
+        for saisie in ('Ranger dans 999999 semaines', 'Payer dans 99999999999 jours', 'Relire dans 99999999 mois'):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie)
+                self.assertEqual((a.titre, a.champs), (saisie, {'priorite': 0}))
+        self.assertEqual(lire('Payer dans 3 jours').champs['jour_prevu'], j(20))  # inchangé dans le calendrier
+
     def test_capture_ne_lit_ni_recurrence_ni_etape_ni_nouveau_projet(self):
         a = lire('Payer tous les 2 jours #Maison /Achats #Inconnu', porte='capture')
         self.assertEqual(a.titre, 'Payer tous les 2 jours /Achats #Inconnu')

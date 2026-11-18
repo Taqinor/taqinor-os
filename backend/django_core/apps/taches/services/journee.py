@@ -30,6 +30,7 @@ from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, prochain_jour_travaille, taches_de
 from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items, charger_taches, tache_ecrite
+from apps.taches.services import rythme as service_rythme
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import annuler_rappels
@@ -73,6 +74,11 @@ class Contexte:
     rendez_vous: tuple = ()
     agendas: dict = field(default_factory=dict)
     rendez_vous_minutes: int = 0
+    #: Activités ERP closes par lui ce jour (`sel.activites_closes_du_jour`) : comptées dans `compte`
+    #: et jugées faites sur leur ligne de plan (`sel.ligne_faite`), d'une seule lecture.
+    closes: tuple = ()
+    #: Le jour est-il un jour court DIT (`Preference.jours_courts`) : le bilan le dit (textes.md §4.3).
+    jour_court: bool = False
 
     @property
     def reglages(self):
@@ -93,6 +99,27 @@ def _cartes_ouvertes(user, jour):
         .order_by('jour', 'pk'))
 
 
+def _jour_court(preferences, jour):
+    return jour.weekday() in service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
+
+
+def objectif_du_jour(reglages, jour, preferences, plan=None):
+    """Forme OBJECTIF `{nb, source, mode, zone}` du jour `jour` — la SEULE servie : `aujourdhui/`,
+    `journee/proposition/`, « Garder ces N », le bilan et la nuit. `nb` vient de LA règle
+    (`services.rythme.objectif_du_jour`, celle de l'en-tête du Copilote et d'un objectif dit) : un jour
+    court vaut `max(1, N − 1)` (regles.md §6.3). `preferences` : `sel.preferences_de`, déjà lues.
+    `plan` : le `PlanJour` du jour déjà lu ; VALIDÉ, il fixe le nombre du jour
+    (`services.rythme.objectif_du_plan_valide`, regles.md §6.5 point 6)."""
+    forme = sel.objectif_en_vigueur(reglages)
+    fixe = service_rythme.objectif_du_plan_valide(plan)
+    if fixe is not None:
+        forme['nb'] = fixe
+        return forme
+    courts = service_rythme.jours_courts(preferences.get(ClePreference.JOURS_COURTS))
+    forme['nb'] = service_rythme.objectif_du_jour(sel.etat_rythme(reglages), jour, courts)
+    return forme
+
+
 def _lire_contexte(user, jour, maintenant, *, assistant=False):
     """Lit la journée, les obligations, l'objectif, la capacité et les cartes de `user`."""
     reglages = sel.reglages_de(user)
@@ -100,14 +127,17 @@ def _lire_contexte(user, jour, maintenant, *, assistant=False):
     journee = sel.lire_journee(user, jour, charger=charger_items, reglages=reglages, travailles=travailles)
     obligations = sel.obligations_du_jour(user, jour) if journee.erp else sel.Obligations()
     preferences = sel.preferences_de(user)
-    compte, detail = sel.compte_faites(user, jour)
+    closes = tuple(sel.activites_closes_du_jour(user, jour))
+    compte, detail = sel.compte_faites(user, jour, closes)
     capacite = sel.capacite_du_jour(user, jour, reglages, preferences, travailles)
     rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return Contexte(user=user, jour=jour, maintenant=maintenant, journee=journee, obligations=obligations,
-                    preferences=preferences, objectif=sel.objectif_du_jour(reglages), compte=compte,
+                    preferences=preferences, objectif=objectif_du_jour(reglages, jour, preferences, journee.plan),
+                    compte=compte,
                     detail=detail, capacite=capacite, cartes=_cartes_ouvertes(user, jour), assistant=assistant,
                     rendez_vous=rendez_vous, agendas=agendas,
-                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous))
+                    rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous), closes=closes,
+                    jour_court=_jour_court(preferences, jour))
 
 
 def _gardees_ouvertes(ctx):
@@ -121,7 +151,8 @@ def reprise(ctx):
 
 def progression(ctx):
     return sel.progression_du_jour(ctx.journee, faites=ctx.compte, detail=ctx.detail, capacite=ctx.capacite,
-                                   rendez_vous_minutes=ctx.rendez_vous_minutes, reprise=reprise(ctx))
+                                   rendez_vous_minutes=ctx.rendez_vous_minutes, reprise=reprise(ctx),
+                                   closes=ctx.closes)
 
 
 def proposer(ctx, *, exclure=(), inclure=()):
@@ -636,7 +667,8 @@ def _lignes_du_plan(user, plan, cles, essentielles, ops):
 
 
 def _verifier_essentiels(plan, essentielles, champ='essentielles'):
-    deja = {lig.tache_id for lig in plan.ligneplanjour_set.all() if lig.essentielle}
+    """« 3 au plus. » sur les ★ qui comptent (`sel.ESSENTIELLE_VIVANTE` : tâche vivante, non abandonnée)."""
+    deja = set(plan.ligneplanjour_set.filter(sel.ESSENTIELLE_VIVANTE).values_list('tache_id', flat=True))
     if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
         raise Refus({champ: [MESSAGE_ESSENTIELS]})
 
@@ -654,7 +686,8 @@ def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=M
         plan, cree = _plan_verrouille(user, jour, ops)
         _verifier_essentiels(plan, essentielles)
         _poser_au_jour(user, {pk: taches[pk] for pk in ids_taches}, jour, ops)
-        _valider_plan(plan, cree, maintenant, sel.objectif_du_jour(sel.reglages_de(user))['nb'], ops)
+        _valider_plan(plan, cree, maintenant,
+                      objectif_du_jour(sel.reglages_de(user), jour, sel.preferences_de(user))['nb'], ops)
         journee = sel.lire_journee(user, jour)
         cles = list(dict.fromkeys(sel.gardes_ouverts(journee) + [(TACHE, pk) for pk in ids_taches]
                                   + [(ACTIVITE, pk) for pk in ids_activites]
@@ -747,12 +780,13 @@ def _bilan_chiffres(ctx, prog):
     objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
     mode = ctx.objectif['mode']
     variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
-                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes']}
+                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes'],
+                 'jour_court': ctx.jour_court and objectif is not None}
     if ctx.objectif['zone']:
         variables['bas'], variables['haut'] = ctx.objectif['zone']
     lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
     return {'faites': ctx.compte, 'objectif': objectif,
-            'objectif_atteint': objectif is not None and ctx.compte >= objectif,
+            'objectif_atteint': bool(sel.objectif_atteint(ctx.compte, objectif)),
             'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
             'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
             'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
@@ -881,14 +915,23 @@ def _clore_pour(user, hier):
     """Statut et compteurs du `PlanJour` d'hier de `user` — recalcul déterministe, tâches intactes."""
     preferences = sel.preferences_de(user)
     journee = sel.lire_journee(user, hier)
-    compte, detail = sel.compte_faites(user, hier)
+    closes = sel.activites_closes_du_jour(user, hier)
+    compte, detail = sel.compte_faites(user, hier, closes)
     capacite = sel.capacite_du_jour(user, hier, journee.reglages, preferences, journee.travailles)
-    prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite)
+    prog = sel.progression_du_jour(journee, faites=compte, detail=detail, capacite=capacite, closes=closes)
     conge = _en_conge(preferences, hier)
     plan, _cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=hier)
-    plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
-                                   plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
-    plan.compte_rythme = compte
+    if journee.reglages is None or journee.reglages.comprendre_mon_rythme:
+        # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, plus rien n'est calculé ni gardé sur son
+        # rythme (donnees.md §8) : ni `statut_jour` ni `compte_rythme` (`micro_comptees` et
+        # `taille_mediane_min` ne sont écrits nulle part ici). Le bilan du jour, lui, reste écrit.
+        plan.statut_jour = statut_jour(ouvre=hier in journee.travailles or conge, conge=conge, compte=compte,
+                                       plan=plan.planifie_le is not None, app=plan.app_ouverte_le is not None)
+        plan.compte_rythme = compte
+    if plan.objectif_du_jour is None and hier in journee.travailles:
+        # Revue F2 tour 2 #4 : tout jour travaillé jugé porte SON objectif (jour court compris), pas
+        # seulement ceux où « Garder ces N » l'a posé ; un objectif déjà posé n'est jamais réécrit.
+        plan.objectif_du_jour = objectif_du_jour(journee.reglages, hier, preferences)['nb']
     plan.essentiels_choisis, plan.essentiels_faits = prog['essentiel_prevues'], prog['essentiel_faites']
     plan.plan_prevues, plan.plan_faites = prog['plan_lignes'], prog['plan_tenues']
     plan.minutes_prevues, plan.minutes_faites = prog['minutes_prevues'], _minutes_faites(user, hier)

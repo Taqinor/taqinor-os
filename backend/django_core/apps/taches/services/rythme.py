@@ -26,7 +26,9 @@ from apps.taches.choix import (
     ClePreference,
     FamilleSuggestion,
     ModeRythme,
+    MotifRevoir,
     ReponseIncitation,
+    SectionJournee,
     SourceObjectif,
     SourcePreference,
     StatutJour,
@@ -35,14 +37,15 @@ from apps.taches.choix import (
     TypeIncitationEcran,
     TypeIncitationPush,
 )
+from apps.taches.entrees import sans_nul
 from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
-from apps.taches.moteur.gabarits import CONSTANTES, texte
+from apps.taches.moteur.gabarits import texte
 from apps.taches.moteur.sante import NEGLIGE_JOURS, ProjetSante, neglige
 from apps.taches.moteur.sollicitations import ETAT_PAUSE, HEURE_RELANCE_DEFAUT, etat_decroissance
 from apps.taches.selectors.base import _du_compte, projets_de, taches_de
-from apps.taches.selectors.journee import activites_closes_du_jour
+from apps.taches.selectors.journee import TACHE as TACHE_JOURNEE, activites_closes_du_jour, lire_journee
 from apps.taches.selectors.rythme import (
     TYPES_PROPOSITION,
     bornes_du_jour,
@@ -140,19 +143,35 @@ def _ecrire_etat(reglages, etat):
 
 # --- Objectif du jour ------------------------------------------------------------------------
 
-def _jours_courts_dits(user):
-    """Jours courts DITS (`Preference.jours_courts`, entiers 0-6) ; absents = aucun."""
-    preference = preference_de(user, ClePreference.JOURS_COURTS)
-    valeur = preference.valeur if preference is not None else []
+def jours_courts(valeur):
+    """Jours courts d'une valeur de `Preference.jours_courts` (entiers 0-6) ; absente ou illisible = aucun.
+    Lue aussi par `services.journee` sur les préférences qu'il a déjà lues (revue F2 tour 2 #3)."""
     return {v for v in valeur if isinstance(v, int) and not isinstance(v, bool)} if isinstance(valeur, list) else set()
 
 
+def _jours_courts_dits(user):
+    """Jours courts DITS (`Preference.jours_courts`, entiers 0-6) ; absents = aucun."""
+    preference = preference_de(user, ClePreference.JOURS_COURTS)
+    return jours_courts(preference.valeur if preference is not None else None)
+
+
 def objectif_du_jour(etat, jour, courts):
-    """Objectif du `jour` : celui en vigueur, `max(1, N − 1)` un jour court (§6.3) ; `None` en libre."""
+    """Objectif du `jour` : celui en vigueur, `max(1, N − 1)` un jour court (§6.3) ; `None` en libre.
+    LA règle de l'objectif d'un jour : `aujourdhui/`, `journee/proposition/`, « Garder ces N », le bilan,
+    la nuit (`services.journee.objectif_du_jour`), l'en-tête du Copilote et un objectif dit (ici)."""
     nb = moteur.objectif_affiche(etat)[0]
     if nb is None or jour.weekday() not in courts:
         return nb
     return max(moteur.PALIER_MIN, nb - 1)
+
+
+def objectif_du_plan_valide(plan):
+    """L'objectif FIXÉ pour le jour par son plan VALIDÉ (`planifie_le` posé), sinon `None`. Une réponse à une
+    carte de palier donnée après la validation vaut le lendemain (regles.md §6.5 point 6) : ce jour-là,
+    Aujourd'hui, l'en-tête du Copilote, le plan et le bilan disent le nombre du plan."""
+    if plan is None or plan.planifie_le is None:
+        return None
+    return plan.objectif_du_jour
 
 
 def _appliquer_au_jour(user, jour, etat, *, avant_plan=False):
@@ -174,12 +193,23 @@ def _appliquer_au_jour(user, jour, etat, *, avant_plan=False):
     return [op_champ('plan_jour', plan, 'objectif_du_jour', avant)]
 
 
-def _abandonner_propositions(user, jour):
+def _abandonner_propositions(user, jour, types=TYPES_PROPOSITION, sauf=None):
     """Une bascule abandonne la proposition en attente (§6.7) : elle sort de « ouverte » ce jour
-    (`expire_le` = veille) ; la nuit la marque `expiree` (seule à poser cette réponse)."""
+    (`expire_le` = veille) ; la nuit la marque `expiree` (seule à poser cette réponse). Un palier qui
+    change abandonne les cartes de palier (`types`), sauf la carte `sauf` qu'on est en train de répondre."""
     veille = jour - datetime.timedelta(days=1)
-    ouvertes(cartes_de(user), jour).filter(type__in=TYPES_PROPOSITION).update(
+    ouvertes(cartes_de(user), jour).filter(type__in=types).exclude(pk=sauf).update(
         expire_le=veille, updated_at=timezone.now())
+
+
+def _abandons(user, jour, etat, neuf, sauf=None):
+    """Revue F2 tour 2 #5 : un mode qui change abandonne toute proposition ; un palier qui change
+    (objectif dit, +, −, réponse à une carte) abandonne les cartes de palier ouvertes, calculées
+    depuis l'ancien palier (§6.5 : jamais plus d'un cran)."""
+    if neuf.mode != etat.mode:
+        _abandonner_propositions(user, jour, sauf=sauf)
+    elif (neuf.palier, neuf.palier_source) != (etat.palier, etat.palier_source):
+        _abandonner_propositions(user, jour, types=(TypeIncitationEcran.PROPOSITION_PALIER,), sauf=sauf)
 
 
 # --- POST rythme/ ----------------------------------------------------------------------------
@@ -189,7 +219,7 @@ def _entier(valeur):
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
     try:
         return int(valeur)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):  # OverflowError : `1e400` lu comme l'infini (#12)
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
 
 
@@ -226,7 +256,7 @@ def confirmation(etat, neuf, objectif, sens):
     nb, _source, zone = moteur.objectif_affiche(neuf)
     donnees = {'nb': nb}
     if zone is not None:
-        donnees.update(R=float(neuf.tenir_reference), bas=zone[0], haut=zone[1])
+        donnees.update(R=nb, bas=zone[0], haut=zone[1])  # « environ {R} » = l'objectif montré (#9)
     return texte('confirmation', cle, donnees)
 
 
@@ -261,8 +291,7 @@ def regler_rythme(user, donnees, jour):
         etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
         neuf = _nouvel_etat(etat, mode, objectif, sens, jour)
         operations = _ecrire_etat(reglages, neuf)
-        if neuf.mode != etat.mode:
-            _abandonner_propositions(user, jour)
+        _abandons(user, jour, etat, neuf)
         operations += _appliquer_au_jour(user, jour, neuf)
         geste = None
         if operations:
@@ -353,7 +382,7 @@ def _palier(etat, carte, reponse, jour):
     if carte.cle in ('premier', 'journee_type'):
         if reponse == _R.PAS_MAINTENANT:
             return etat
-        return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse)
+        return moteur.repondre_premier(etat, (carte.donnees or {}).get('type'), reponse, jour)
     # La nuit a clos le bloc (`clore_bloc` sans réponse) ; la réponse applique la décision du bloc.
     return moteur.mettre_a_jour(etat, **moteur.apres_decision(etat, jour, carte.cle, reponse))
 
@@ -363,17 +392,18 @@ def _rythme_repondu(user, reglages, carte, reponse, jour):
         raise SansReglages()
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
     if carte.type == TypeIncitationEcran.PROPOSITION_PALIER:
+        if not moteur.carte_a_jour(etat, carte.cle, carte.donnees or {}):
+            return []  # Revue F2 tour 2 #5 : carte d'un autre palier, close par la réponse, sans effet
         neuf = _palier(etat, carte, reponse, jour)
     elif reponse == _R.PASSER:  # dérive : R = arrondir(moyenne) (le `m` de la carte), fixée ce jour (§6.6)
         donnees = carte.donnees or {}
         m = donnees.get('m')
-        m = moteur.arrondir(float(donnees.get('moyenne'))) if m is None else m
+        m = moteur.objectif_tenir(float(donnees.get('moyenne'))) if m is None else m
         neuf = replace(etat, tenir_reference=m, tenir_fixee_le=jour)
     else:
         return []
     operations = _ecrire_etat(reglages, neuf)
-    if neuf.mode != etat.mode:
-        _abandonner_propositions(user, jour)
+    _abandons(user, jour, etat, neuf, sauf=carte.pk)
     return operations + _appliquer_au_jour(user, jour, neuf, avant_plan=True)
 
 
@@ -429,7 +459,7 @@ def _carte_a_repondre(user, carte_id, reponse, jour):
     carte = cartes_de(user).select_for_update().filter(pk=carte_id, canal=CanalIncitation.ECRAN).first()
     if carte is None:
         raise Introuvable()
-    if reponse not in _reponses_permises(carte):
+    if not isinstance(reponse, str) or reponse not in _reponses_permises(carte):
         raise ErreursRythme({'reponse': [REPONSE_INCONNUE]})
     if carte.reponse or carte.repondu_le is not None or (carte.expire_le is not None and carte.expire_le < jour):
         raise PropositionExpiree()
@@ -544,7 +574,7 @@ def _booleen(valeur):
 
 
 def _notes(valeur):
-    if not isinstance(valeur, list) or not all(isinstance(v, str) for v in valeur):
+    if not isinstance(valeur, list) or not all(isinstance(v, str) and sans_nul(v) for v in valeur):
         _invalide(VALEUR_INCONNUE)
     if len(valeur) > NOTES_MAX:
         _invalide(NOTES_TROP_NOMBREUSES)
@@ -572,7 +602,7 @@ VALIDATIONS = {
 
 def _valider_preference(cle, valeur):
     """La valeur normalisée de `cle`, ou `ErreursRythme` (`cle` inconnue, `valeur` hors règle)."""
-    validation = VALIDATIONS.get(cle)
+    validation = VALIDATIONS.get(cle) if isinstance(cle, str) else None
     if validation is None:
         raise ErreursRythme({'cle': [CLE_INCONNUE]})
     return validation(valeur)
@@ -662,7 +692,8 @@ def entete_coach(user, jour):
     au plus pour les deux, formées depuis des clés fermées (jamais un titre, une note, un projet)."""
     reglages = reglages_ou_defauts(user)
     etat = etat_rythme(reglages, plans_du_rythme(user, jour), jour)
-    objectif = objectif_du_jour(etat, jour, _jours_courts_dits(user))
+    fixe = objectif_du_plan_valide(plan_du_jour(user, jour))
+    objectif = fixe if fixe is not None else objectif_du_jour(etat, jour, _jours_courts_dits(user))
     lignes = [_ligne_rythme(etat, _faites_aujourdhui(user, jour), objectif)]
     dites = [_dite(p.cle, p.valeur) for p in preferences_de(user) if p.cle != ClePreference.NOTE_LIBRE]
     if dites:
@@ -706,7 +737,7 @@ def _type_pause(pause):
 def _pauses(valeur, reglages):
     """« Réactiver » : la liste dite ne peut que RETIRER des types en pause (la nuit seule en ajoute)."""
     actuelles = list(reglages.pauses_sollicitations or [])
-    if not isinstance(valeur, list):
+    if not isinstance(valeur, list) or not all(isinstance(_type_pause(p), str) for p in valeur):
         raise ErreursRythme({'pauses_sollicitations': [VALEUR_INCONNUE]})
     gardes = {_type_pause(p) for p in valeur}
     if not gardes <= {_type_pause(p) for p in actuelles}:
@@ -731,7 +762,8 @@ def _valeur_reglage(champ, valeur, reglages):
             raise erreur
         return valeur
     if champ == 'familles_suggestions':
-        if not isinstance(valeur, list) or not set(valeur) <= set(FamilleSuggestion.values):
+        if not isinstance(valeur, list) or not all(isinstance(f, str) for f in valeur) \
+                or not set(valeur) <= set(FamilleSuggestion.values):
             raise erreur
         return [f for f in FamilleSuggestion.values if f in valeur]
     return _pauses(valeur, reglages)
@@ -794,10 +826,7 @@ SILENCE_DERIVE_JOURS = moteur.SILENCE_TENIR_JOURS
 FENETRE_CONSTATS = datetime.timedelta(days=moteur.FENETRE_CONSTATS_JOURS)
 FENETRE_C3 = datetime.timedelta(days=moteur.FENETRE_C3_JOURS)
 FENETRE_NEGLIGE = datetime.timedelta(days=NEGLIGE_JOURS)
-STATUTS_OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 STATUTS_CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
-#: C7 : tâches reportées 3 fois ou plus (la même constante que la phrase, textes.md « Constats »).
-REPORTS_A_REVOIR = CONSTANTES['reports']
 
 
 def creer_carte(user, type_, cle, jour, donnees, *, expire_jours=EXPIRATION_CARTE_JOURS):
@@ -864,9 +893,13 @@ def _derive(user, etat, plans, jour):
         return etat
     moyenne = moteur.moyenne_plafonnee(comptes[-moteur.JOURS_REFERENCE:])
     bas, haut = moteur.bande_tenir(float(etat.tenir_reference))
+    # Revue F2 tour 2 #9 : R et m montrés comme des objectifs (plancher 1), bas plancher 0 ; « Garder 1,
+    # ou descendre à 1 » ne propose rien → pas de carte (son bouton ne changerait rien).
+    garder, m = moteur.objectif_tenir(etat.tenir_reference), moteur.objectif_tenir(moyenne)
+    if m == garder:
+        return etat
     creer_carte(user, TypeIncitationEcran.DERIVE_TENIR, sens, jour, {
-        'moyenne': round(moyenne, 4), 'R': float(etat.tenir_reference), 'bas': bas, 'haut': haut,
-        'm': moteur.arrondir(moyenne)})
+        'moyenne': round(moyenne, 4), 'R': garder, 'bas': max(moteur.ZONE_MIN, bas), 'haut': haut, 'm': m})
     return replace(etat, tenir_silence_jusquau=jour + datetime.timedelta(days=SILENCE_DERIVE_JOURS))
 
 
@@ -922,10 +955,19 @@ def _donnees_constats(user, plans, jour):
     jours = tuple(moteur.JourCompte(jour=p.jour, statut_jour=p.statut_jour, compte=p.compte_rythme,
                                     essentiels_choisis=p.essentiels_choisis, essentiels_faits=p.essentiels_faits,
                                     plan_prevues=p.plan_prevues, plan_faites=p.plan_faites) for p in plans)
-    reportees = taches_de(user).filter(statut__in=STATUTS_OUVERTS, reports__gte=REPORTS_A_REVOIR).count()
+    lignes = _lignes_constats(user, jour) if moteur.CONSTAT_C1_ACTIF or moteur.CONSTAT_C2_ACTIF else ()
+    neglige_id = _projet_neglige(user, jour) if moteur.CONSTAT_C8_ACTIF else None
     return moteur.DonneesConstats(
-        jour=jour, jours=jours, lignes=_lignes_constats(user, jour), heures_faits=_heures_faits(user, jour),
-        reportees_3=reportees, projet_neglige_id=_projet_neglige(user, jour), refus=_refus_constats(user))
+        jour=jour, jours=jours, lignes=lignes, heures_faits=_heures_faits(user, jour),
+        reportees_3=_reportees_a_revoir(user, jour), projet_neglige_id=neglige_id, refus=_refus_constats(user))
+
+
+def _reportees_a_revoir(user, jour):
+    """C7 (Revue F2 tour 2 #7) : les lignes « Reportée 3 fois » d'À revoir au `jour` — la section même que
+    son bouton ouvre, lue par `selectors.journee.lire_journee` (jamais la règle recopiée ici)."""
+    journee = lire_journee(user, jour)
+    return sum(1 for cle in journee.sections.get(SectionJournee.A_DECIDER, ())
+               if cle[0] == TACHE_JOURNEE and journee.placements[cle].code == MotifRevoir.REPORTEE_3_FOIS)
 
 
 def _nombres_c2(d):

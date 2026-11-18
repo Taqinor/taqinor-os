@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.taches.choix import RaisonPropose, SectionJournee, StatutTache
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, DateBornee, jour_dans_bornes
 from apps.taches.moteur import classement
 from apps.taches.selectors import journee as sel
 from apps.taches.serializers import journee as formes_journee
@@ -29,16 +30,18 @@ from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
 TOUT = parametre('tout', OpenApiTypes.BOOL, '1 : « Voir toutes les tâches de mes projets ».')
-MESSAGE_DATE = 'Date attendue (AAAA-MM-JJ).'
 VRAI = ('1', 'true', 'oui')
 
 
 def date_de(valeur, champ):
     """Une date AAAA-MM-JJ, ou 400 au champ nommé."""
     try:
-        return datetime.date.fromisoformat(str(valeur))
+        jour = datetime.date.fromisoformat(str(valeur))
     except (TypeError, ValueError):
         raise ValidationError({champ: [MESSAGE_DATE]})
+    if not jour_dans_bornes(jour):
+        raise ValidationError({champ: [MESSAGE_DATE]})
+    return jour
 
 
 def jour_de(request, champ='jour'):
@@ -59,7 +62,8 @@ def drapeau(request, champ):
 def ids_de(request, champ):
     """`?exclure=41,42` → [41, 42] ; un morceau qui n'est pas un nombre est ignoré (lecture seule)."""
     morceaux = (request.query_params.get(champ) or '').split(',')
-    return [int(m) for m in (m.strip() for m in morceaux) if m.isdigit()]
+    return [int(m) for m in (m.strip() for m in morceaux)
+            if m.isascii() and m.isdigit() and len(m) <= LONGUEUR_ID_MAX]
 
 
 def par_compte(request):
@@ -88,7 +92,7 @@ class LigneCorps(serializers.Serializer):
 
 
 class PlanifierCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     mode = serializers.CharField()
     lignes = serializers.ListField(child=LigneCorps(), max_length=PLAFOND_LIGNES)
     essentielles = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
@@ -102,18 +106,18 @@ class EssentielCorps(serializers.Serializer):
 
 
 class AllegerCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     garder = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=PLAFOND_LIGNES)
 
 
 class ChoixBilanCorps(serializers.Serializer):
     id = serializers.IntegerField(min_value=1)
     choix = serializers.CharField()
-    jour = serializers.DateField(required=False)
+    jour = DateBornee(required=False)
 
 
 class CloturerCorps(serializers.Serializer):
-    jour = serializers.DateField()
+    jour = DateBornee()
     choix = serializers.ListField(child=ChoixBilanCorps(), required=False, default=list,
                                   max_length=PLAFOND_LIGNES)
     le_reste = serializers.BooleanField(required=False, default=False)
@@ -199,7 +203,7 @@ def priorites(user, jour, *, assistant=False):
     semaine »."""
     reglages, journee = _journee_lue(user, jour)
     compte, _detail = sel.compte_faites(user, jour)
-    objectif = sel.objectif_du_jour(reglages)
+    objectif = services.objectif_du_jour(reglages, jour, sel.preferences_de(user), journee.plan)
     taches = [item for item in journee.items.values() if item.type == services.TACHE]
     classees = classement.classer_priorites(
         taches, jour, journee.travailles, objectif['nb'], compte, _taches_gardees_ouvertes(journee),
@@ -222,12 +226,14 @@ def _contexte_du_point(user, heure, *, assistant=False):
     jour = heure.date()
     reglages, journee = _journee_lue(user, jour)
     preferences = sel.preferences_de(user)
-    compte, detail = sel.compte_faites(user, jour)
+    closes = tuple(sel.activites_closes_du_jour(user, jour))
+    compte, detail = sel.compte_faites(user, jour, closes)
     rendez_vous, agendas = sel.rendez_vous_pour(user, jour, jour)
     return services.Contexte(
         user=user, jour=jour, maintenant=heure, journee=journee,
-        obligations=sel.Obligations(peut_cloturer=sel._peut_cloturer(user)),
-        preferences=preferences, objectif=sel.objectif_du_jour(reglages), compte=compte, detail=detail,
+        obligations=sel.Obligations(peut_cloturer=sel._peut_cloturer(user)), closes=closes,
+        preferences=preferences, objectif=services.objectif_du_jour(reglages, jour, preferences, journee.plan),
+        compte=compte, detail=detail,
         capacite=sel.capacite_du_jour(user, jour, reglages, preferences, journee.travailles),
         cartes=services._cartes_ouvertes(user, jour), assistant=assistant, rendez_vous=rendez_vous,
         agendas=agendas, rendez_vous_minutes=sel.minutes_de_rendez_vous(user, jour, rendez_vous))

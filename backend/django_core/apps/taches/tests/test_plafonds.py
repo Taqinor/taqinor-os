@@ -208,7 +208,7 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
         """TCH97 — jeton `tuile` (authentification comprise) ; cible d'api.md §10 : 10."""
         porteur = _porteur(fabriques.jeton(self.compte, 'tuile')[1])
         self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
-        with self.assertMaxQueries(14):
+        with self.assertMaxQueries(15):
             self.assertEqual(porteur.get(URL_TUILE).status_code, 200)
 
     def test_flux(self):
@@ -296,10 +296,10 @@ URL_PRIORITES = '/api/django/taches/journee/priorites/'
 URL_POINT = '/api/django/taches/journee/point/'
 #: route : (plafond à 09:00, plafond à 15:00).
 PLAFONDS_FIGES = {
-    URL_PRIORITES: (21, 21),   # TCH161 « Aide-moi à prioriser » ; cible api.md §10 : 20
+    URL_PRIORITES: (22, 22),   # TCH161 « Aide-moi à prioriser » ; cible api.md §10 : 20 (+1 : objectif du jour unique)
     URL_POINT: (26, 24),       # TCH161 « Où j'en suis ? » ; cible api.md §10 : 18
     URL_BADGE: (14, 14),       # la pastille (porte `a_trier`)
-    URL_TUILE: (14, 14),       # TCH97, jeton tuile, authentification comprise ; cible 10
+    URL_TUILE: (15, 15),       # TCH97, jeton tuile, authentification comprise ; cible 10 (+1 : objectif du jour unique)
     URL_FLUX: (9, 9),          # TCH97, jeton flux dans l'adresse, authentification comprise ; cible 8
 }
 

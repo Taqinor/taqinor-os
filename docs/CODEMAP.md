@@ -472,7 +472,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 | `tiers` | `/tiers` |
 | `ia` | `/ia` |
 
-| `taches` | `/taches` (→ `/taches/aujourdhui`), `/taches/aujourdhui`, `/taches/a-trier`, `/taches/projets`, `/taches/projets/archive`, `/taches/projets/modeles`, `/taches/projets/:id`, `/taches/agenda`, `/taches/revue`, `/taches/rythme`, `/taches/recherche`, `/taches/supprimees`, `/taches/reglages/:rubrique?` — sans entrée de nav (module invisible, garde `taches_voir`) |
+| `taches` | `/taches` (→ `/taches/aujourdhui`), `/taches/aujourdhui`, `/taches/a-trier`, `/taches/projets`, `/taches/projets/archive`, `/taches/projets/modeles`, `/taches/projets/:id`, `/taches/agenda`, `/taches/revue`, `/taches/rythme`, `/taches/recherche`, `/taches/supprimees`, `/taches/reglages/:rubrique?` — entrée de nav à 4 onglets, montrée au seul droit `taches_voir` (rôle Administrateur) |
 
 ### Features (`frontend/src/features`) — 28 folders
 

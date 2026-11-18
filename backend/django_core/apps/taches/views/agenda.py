@@ -78,10 +78,12 @@ def _projet_du_compte(user, valeur):
 
 def taches_de_la_periode(user, du, au, projet_id=None):
     """Tâches vivantes non abandonnées de `user` prévues ou à échéance dans [du, au] (parent nul,
-    projet actif ou triées : le préfiltre de la journée, étendu à la période)."""
+    projet actif ou triées, une faite quel que soit l'état de son projet : le préfiltre de la journée,
+    étendu à la période — revue F2 tour 2 #1)."""
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
-    qs = (taches_de(user).filter(parent__isnull=True).filter(rattachee).exclude(statut=StatutTache.ANNULE)
+    qs = (taches_de(user).filter(parent__isnull=True).filter(rattachee | Q(statut=StatutTache.FAIT))
+          .exclude(statut=StatutTache.ANNULE)
           .filter(Q(jour_prevu__range=(du, au)) | Q(echeance__range=(du, au))))
     return qs.filter(projet_id=projet_id) if projet_id is not None else qs
 

@@ -40,6 +40,7 @@ from apps.taches.moteur import flux as moteur_flux
 from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jetons_de
 from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSerializer, forme_jeton_cree
+from apps.taches.services import journee as services_journee
 from apps.taches.throttles import ThrottleFlux, ThrottleTuile
 from apps.taches.views.base import (
     ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, PasEncore, corps, est_assistant, forme_echantillon,
@@ -79,11 +80,15 @@ def _corps_tuile(user, jour, maintenant, lien):
     `prevues` et l'Essentiel par `progression_du_jour`, puis `moteur.flux.tuile_pure`."""
     reglages = sel.reglages_de(user)
     journee = sel.lire_journee(user, jour, reglages=reglages)
-    faites, detail = sel.compte_faites(user, jour)
-    progression = sel.progression_du_jour(journee, faites=faites, detail=detail, capacite=CAPACITE_HORS_TUILE)
+    closes = sel.activites_closes_du_jour(user, jour)
+    faites, detail = sel.compte_faites(user, jour, closes)
+    progression = sel.progression_du_jour(journee, faites=faites, detail=detail, capacite=CAPACITE_HORS_TUILE,
+                                          closes=closes)
     taches = {pk: objet for (type_, pk), objet in journee.objets.items() if type_ == sel.TACHE}
+    # L'objectif du jour est celui d'Aujourd'hui : LA fonction servie (jour court, plan validé).
+    objectif = services_journee.objectif_du_jour(reglages, jour, sel.preferences_de(user), journee.plan)
     corps = moteur_flux.tuile_pure(
-        list(journee.items.values()), jour, journee.plan_pur, sel.objectif_du_jour(reglages)['nb'],
+        list(journee.items.values()), jour, journee.plan_pur, objectif['nb'],
         progression, reglages, _titre_de(taches), journee.travailles)
     return {'jour': jour.isoformat(), 'maj': maintenant.isoformat(timespec='seconds'), **corps, 'lien': lien}
 
