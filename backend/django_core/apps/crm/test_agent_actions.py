@@ -25,10 +25,12 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    BROUILLON_SUIVI, CHANGER_ETAPE_LEAD, CHERCHER_LEAD, CREER_LEAD,
-    CREER_LEAD_ASSISTANT, DIGEST_MATIN, JOURNALISER_LEAD, LEADS_A_RELANCER, MESSAGE_VISITE,
+    ARCHIVER_LEAD, BROUILLON_SUIVI, CHANGER_ETAPE_LEAD, CHERCHER_LEAD,
+    CREER_LEAD, CREER_LEAD_ASSISTANT, DIGEST_MATIN, ETIQUETER_LEAD,
+    JOURNALISER_LEAD, LEAD_PERDU, LEADS_A_RELANCER, MESSAGE_VISITE,
     METTRE_A_JOUR_LEAD, NOTER_LEAD, PLANIFIER_VISITE, PREPARER_ENVOI_WHATSAPP,
-    PREPARER_TOUCHE, PROPOSER_REPONSE, QUALIFIER_LEAD, RESUME_LEAD,
+    PREPARER_TOUCHE, PROPOSER_REPONSE, QUALIFIER_LEAD, REAFFECTER_LEAD,
+    RESTAURER_LEAD, RESUME_LEAD,
     _ACTIONS,
     register_crm_actions,
 )
@@ -1812,3 +1814,132 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
         portes = json.loads(
             (ici / 'parcours' / 'PA1.json').read_text('utf-8'))['portes']
         self.assertEqual(len(portes), 13)
+
+
+class CrmAssistantRangementLeadTest(_CopiloteBase):
+    """COP2-C3 — perdu, archiver, restaurer, réaffecter, étiqueter : cinq
+    propositions à confirmer qui n'appellent que des routes EXISTANTES."""
+
+    ACTIONS = (LEAD_PERDU, ARCHIVER_LEAD, RESTAURER_LEAD, REAFFECTER_LEAD,
+               ETIQUETER_LEAD)
+
+    def test_declarations(self):
+        permissions = {
+            'crm.lead.perdu': 'crm_modifier',
+            'crm.lead.archiver': 'crm_modifier',
+            'crm.lead.restaurer': 'crm_modifier',
+            'crm.lead.reaffecter': 'crm_reassign',
+            'crm.lead.etiqueter': 'crm_modifier'}
+        self.assertEqual({a.key for a in self.ACTIONS}, set(permissions))
+        for action in self.ACTIONS:
+            with self.subTest(action=action.key):
+                self.assertEqual(
+                    (action.lot, action.risk, action.objets,
+                     action.required_permission),
+                    (LOT_COPILOTE, 'outward', {'id': 'lead'},
+                     permissions[action.key]))
+                self.assertIn(action, _ACTIONS)
+                self.assertEqual(action.inputs['properties']['id'],
+                                 {'type': 'integer'})
+                # Jamais Signé, Froid, « ne plus contacter » ni société.
+                for interdit in ('stage', 'parc_etat', 'parc_raison',
+                                 'parc_jusqu_au', 'ne_plus_contacter',
+                                 'company'):
+                    self.assertNotIn(interdit,
+                                     action.inputs['properties'])
+        self.assertEqual(LEAD_PERDU.inputs['required'],
+                         ['id', 'perdu', 'motif_perte'])
+        self.assertEqual(LEAD_PERDU.inputs['properties']['perdu']['enum'],
+                         [True])
+        self.assertEqual(set(REAFFECTER_LEAD.inputs['properties']),
+                         {'id', 'owner'})
+        self.assertEqual(set(ETIQUETER_LEAD.inputs['properties']),
+                         {'id', 'tags'})
+
+    def test_servies_seulement_copilote_allume(self):
+        cles = {a.key for a in self.ACTIONS}
+        role = Role.objects.create(
+            company=self.company, nom='Gestionnaire',
+            permissions=['crm_voir', 'crm_modifier', 'crm_reassign'])
+        gestionnaire = User.objects.create_user(
+            username='cop_gest', password='x', role=role,
+            company=self.company)
+        for reglage, attendu in (('aucun', set()), ('tous', cles)):
+            with self.settings(ASSISTANT_COPILOTE=reglage):
+                vus = {a.key for a in for_user(gestionnaire)} & cles
+            self.assertEqual(vus, attendu, reglage)
+        # Sans crm_reassign, la réaffectation n'est pas proposée.
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            vus = {a.key for a in for_user(self.alice)}
+        self.assertNotIn(REAFFECTER_LEAD.key, vus)
+        self.assertLessEqual(cles - {REAFFECTER_LEAD.key}, vus)
+
+    def test_perdu_exige_un_motif_et_ne_touche_pas_l_etape(self):
+        lead = self._lead(stage=stages.QUOTE_SENT)
+        url = LEAD_PERDU.endpoint.format(id=lead.pk)
+        sans = auth(self.alice).patch(url, {'perdu': True}, format='json')
+        self.assertEqual(sans.status_code, 409, sans.data)
+        self.assertIn('motif_perte', str(sans.data))
+        lead.refresh_from_db()
+        self.assertFalse(lead.perdu)
+        resp = auth(self.alice).patch(
+            url, {'perdu': True, 'motif_perte': 'Signé chez un concurrent'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual((lead.perdu, lead.motif_perte, lead.stage),
+                         (True, 'Signé chez un concurrent', stages.QUOTE_SENT))
+
+    def test_archiver_puis_restaurer(self):
+        lead = self._lead()
+        resp = auth(self.alice).post(
+            ARCHIVER_LEAD.endpoint.format(id=lead.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertTrue(lead.is_archived)
+        resp = auth(self.alice).post(
+            RESTAURER_LEAD.endpoint.format(id=lead.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertFalse(lead.is_archived)
+
+    def test_reaffecter_exige_crm_reassign(self):
+        lead = self._lead(owner=self.alice)
+        url = REAFFECTER_LEAD.endpoint.format(id=lead.pk)
+        refus = auth(self.alice).patch(url, {'owner': self.bob.pk},
+                                       format='json')
+        self.assertEqual(refus.status_code, 403, refus.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.alice.pk)
+        role = Role.objects.create(
+            company=self.company, nom='Gestionnaire',
+            permissions=['crm_voir', 'crm_modifier', 'crm_reassign'])
+        gestionnaire = User.objects.create_user(
+            username='cop_gest2', password='x', role=role,
+            company=self.company)
+        resp = auth(gestionnaire).patch(url, {'owner': self.bob.pk},
+                                        format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.bob.pk)
+
+    def test_etiqueter_remplace_les_etiquettes(self):
+        lead = self._lead(tags='ancien')
+        resp = auth(self.alice).patch(
+            ETIQUETER_LEAD.endpoint.format(id=lead.pk),
+            {'tags': 'villa, urgent'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.tags, 'villa, urgent')
+
+    def test_lead_d_une_autre_portee_ou_societe_404(self):
+        autre = self._lead(owner=self.bob)
+        etranger = Lead.objects.create(company=self.autre_societe, nom='X')
+        for lead in (autre, etranger):
+            for action, corps in ((ETIQUETER_LEAD, {'tags': 'a'}),
+                                  (ARCHIVER_LEAD, {})):
+                methode = auth(self.alice).patch if action.method == 'PATCH' \
+                    else auth(self.alice).post
+                resp = methode(action.endpoint.format(id=lead.pk), corps,
+                               format='json')
+                self.assertEqual(resp.status_code, 404, (action.key, lead.pk))

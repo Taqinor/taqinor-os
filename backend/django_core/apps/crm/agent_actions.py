@@ -761,9 +761,159 @@ CREER_LEAD_ASSISTANT = AgentAction(
 )
 
 
+# COP2-C3 — gestes de rangement d'un lead, tous proposés puis CONFIRMÉS (la
+# carte nomme le lead par ``objets``) et tous portés par une route EXISTANTE
+# du ``LeadViewSet`` (permission + société re-vérifiées par elle). Jamais
+# Signé (l'acceptation d'un devis), jamais Froid (parcage avec sa raison),
+# jamais ``ne_plus_contacter`` : aucune de ces entrées n'existe ici.
+LEAD_PERDU = AgentAction(
+    key='crm.lead.perdu',
+    label='Marquer un lead perdu',
+    description=(
+        "Sert à : marquer un lead perdu, avec son motif (refus, acheté "
+        "ailleurs, injoignable). "
+        "Ne pas utiliser pour : parquer au Froid ni changer d'étape "
+        "(crm.lead.changer_etape). "
+        "Exemple : « Le lead 12 a signé chez un concurrent : perdu, motif "
+        "prix ». "
+        "Résultat : le lead mis à jour, après confirmation ; sans motif le "
+        "serveur refuse (409)."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'perdu': {'type': 'boolean', 'enum': [True],
+                      'description': 'Toujours true.'},
+            'motif_perte': {'type': 'string',
+                            'description': 'Motif court (obligatoire).'},
+        },
+        'required': ['id', 'perdu', 'motif_perte'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+ARCHIVER_LEAD = AgentAction(
+    key='crm.lead.archiver',
+    label='Archiver un lead',
+    description=(
+        "Sert à : archiver un lead (il quitte les vues par défaut, "
+        "réversible). "
+        "Ne pas utiliser pour : supprimer ni marquer perdu "
+        "(crm.lead.perdu) ; le serveur refuse un lead signé. "
+        "Exemple : « Archive le lead 12, c'est un doublon ». "
+        "Résultat : le lead archivé, après confirmation."
+    ),
+    endpoint='/api/django/crm/leads/{id}/archiver/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+RESTAURER_LEAD = AgentAction(
+    key='crm.lead.restaurer',
+    label='Restaurer un lead archivé',
+    description=(
+        "Sert à : sortir un lead de l'archive (retour dans les vues par "
+        "défaut). "
+        "Ne pas utiliser pour : un lead jamais archivé ni rouvrir un lead "
+        "perdu. "
+        "Exemple : « Remets le lead 12 dans la liste ». "
+        "Résultat : le lead restauré, après confirmation."
+    ),
+    endpoint='/api/django/crm/leads/{id}/restaurer/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+REAFFECTER_LEAD = AgentAction(
+    key='crm.lead.reaffecter',
+    label='Réaffecter un lead',
+    description=(
+        "Sert à : confier un lead au responsable que l'utilisateur désigne. "
+        "Ne pas utiliser pour : choisir un responsable à sa place ni "
+        "répartir plusieurs leads. "
+        "Exemple : « Passe le lead 12 à l'utilisateur 7 » (identifiant "
+        "donné par la personne). "
+        "Résultat : le lead réaffecté, après confirmation ; sans le droit "
+        "de réaffecter, le serveur refuse (403)."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'owner': {'type': 'integer',
+                      'description': ("Identifiant de l'utilisateur "
+                                      "responsable, donné par la personne.")},
+        },
+        'required': ['id', 'owner'],
+    },
+    required_permission='crm_reassign',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+ETIQUETER_LEAD = AgentAction(
+    key='crm.lead.etiqueter',
+    label='Étiqueter un lead',
+    description=(
+        "Sert à : poser les étiquettes d'un lead (libellés séparés par des "
+        "virgules). "
+        "Ne pas utiliser pour : l'étape, le motif de perte ni une note "
+        "(crm.lead.note). "
+        "Exemple : « Étiquette le lead 12 : villa, urgent ». "
+        "Résultat : le lead mis à jour, après confirmation ; la liste "
+        "REMPLACE les étiquettes actuelles."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'tags': {'type': 'string',
+                     'description': 'Libellés séparés par des virgules.'},
+        },
+        'required': ['id', 'tags'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     CREER_LEAD_ASSISTANT,
+    LEAD_PERDU,
+    ARCHIVER_LEAD,
+    RESTAURER_LEAD,
+    REAFFECTER_LEAD,
+    ETIQUETER_LEAD,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
