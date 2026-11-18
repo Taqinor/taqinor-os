@@ -238,9 +238,14 @@ class ScenarioTests(TestCase):
         self.assertEqual(mes_projets[commande.RECRUTEMENT], ["Préparer les questions d'entretien"])
         self.assertEqual(len(mes_projets[commande.SITE]), 4)
         self.assertEqual(sum(len(titres) for titres in mes_projets.values()), 7, mes_projets)  # « Mes projets 7 » (§4)
-        jeudi = next(j for j in semaine['jours'] if j['jour'] == '2026-11-26')
-        taches = [i for i in jeudi['blocs'] + jeudi['sans_heure'] if i.get('type') == 'tache']
-        self.assertEqual((len(taches), sum(i['estimation_minutes'] for i in taches)), (2, 120))  # « 2 tâches · 2 h »
+        charges = {}
+        for j in semaine['jours']:
+            taches = [i for i in j['blocs'] + j['sans_heure'] if i.get('type') == 'tache']
+            charges[j['jour']] = (len(taches), sum(i['estimation_minutes'] or 0 for i in taches))
+        self.assertEqual(charges['2026-11-25'], (3, 150))  # mer. 25 « 3 tâches · 2 h 30 »
+        self.assertEqual(charges['2026-11-26'], (2, 120))  # jeu. 26 « 2 tâches · 2 h »
+        # ven. 27 : SCENARIO « 3 tâches · 2 h » ; la facture d'acompte convertie y est prévue (ERR-PLAN 3) : 4
+        self.assertEqual(charges['2026-11-27'], (4, 120))
         self.assertEqual(semaine['capacite']['minutes'], 240)
 
     def test_15h00_3_sur_5_et_objectif_couvert(self):
@@ -251,7 +256,11 @@ class ScenarioTests(TestCase):
                           p['essentiel_prevues']), (3, 0, 1, 2))
         self.assertEqual(forme['propose']['pour_objectif'], [])  # « Objectif couvert par ce que tu as gardé. »
         self.assertEqual(self.lire('badge/', _instant('15:02'))['n'], 2)  # cockpit « 2 à faire » (stand, contrat)
-        self.assertNotIn(FICHE, _titres(forme['journee']))
+        self.assertNotIn(FICHE, _titres(forme['journee']))  # partie jeu. 26 à 14:10
+        self.assertEqual(_titres(forme['ce_soir']), [CONTRAT])
+        # Essentiel : le devis (fait 10:50, ★) et le stand ; la faite est servie dans `faites`, ★ portée
+        essentielles = [i['titre'] for i in forme['essentiel'] + forme['faites'] if i['essentielle']]
+        self.assertEqual(sorted(essentielles), sorted([DEVIS, STAND]))
 
     def test_18h20_le_bilan(self):
         self.semer('--heure', '18:20', '--historique', '10')
@@ -263,6 +272,7 @@ class ScenarioTests(TestCase):
         self.assertEqual((bilan['plan_tenues'], bilan['plan_lignes']), (4, 6))
         self.assertEqual(bilan['texte_gardees'], '4 des 6 gardées')
         self.assertEqual(_titres(cloture['restes']), [CONTRAT])
+        self.assertEqual(sorted(_titres(cloture['faites'])), sorted([DEVIS, FOURNISSEUR, RAILS, STAND]))
         self.assertEqual(cloture['prochain_jour_ouvre'], '2026-11-25')
 
     def test_vide_aucune_tache_aucun_projet(self):
