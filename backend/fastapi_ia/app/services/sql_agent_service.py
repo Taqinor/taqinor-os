@@ -1643,7 +1643,6 @@ class SQLAgentService:
         droits = self._droits_sql(action_ctx)
         allow_price = droits[0]
         tools = self._outils_sql(db, company_id, droits, llm, copilote)
-        relais.marquer_lectures_tierces(tools, action_ctx)  # A5 — lecture SQL = texte tiers
 
         # 4b. N86 — outils d'ACTION (ecriture). Exposes UNIQUEMENT si l'appelant
         # a un droit d'ecriture et qu'une URL Django interne est configuree. Un
@@ -1681,6 +1680,9 @@ class SQLAgentService:
         outil_metrique = outil_metrique_gouvernee(action_ctx, allow_price)
         if outil_metrique is not None:
             tools.extend(_etiqueter_outils([outil_metrique]))
+        # A5 (revue F3 #1) — tout outil hors catalogue (SQL, schema, metrique)
+        # marque le tour ; les actions du catalogue passent par la garde.
+        relais.marquer_lectures_tierces(tools, action_ctx)
 
         # 5. Prompt avec historique (+ restriction marge si non autorise).
         # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.

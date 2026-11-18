@@ -182,22 +182,36 @@ def noter_question_du_tour(ctx, question) -> None:
         noter_contenu_tiers(ctx, "question")
 
 
+#: Outils fixes dont la sortie ne porte aucun texte venu d'ailleurs
+#: (`report_gap` rend « signale »). Tout autre outil fixe marque le tour.
+OUTILS_SANS_TEXTE_TIERS = frozenset({"report_gap"})
+
+
 def marquer_lectures_tierces(outils: list, ctx) -> list:
-    """La lecture SQL rend des lignes de l'ERP (leads, clients) : chaque appel
-    de `sql_db_query` marque le tour (A5), sous les deux moteurs (le moteur
-    natif l'appelle par `invoke`, qui passe par les mêmes rappels)."""
+    """A5 (revue F3 #1) — tout outil HORS catalogue rend au modèle des données
+    de l'ERP : lignes SQL (leads, clients), schéma, métrique gouvernée, et
+    tout outil fixe à venir (échec fermé). Chaque appel marque le tour dès son
+    début, sous les deux moteurs (le moteur natif les appelle par `invoke`, qui
+    passe par les mêmes rappels). Sauf `report_gap`, et sauf les actions du
+    catalogue (`metadata.action_key`) : `garde_ecriture_taches` les juge, elle
+    seule sait si une écriture part."""
     if ctx is None:
         return outils
     from langchain_core.callbacks import BaseCallbackHandler
     from app.services.action_tools import noter_contenu_tiers
 
     class _MarqueLectureTierce(BaseCallbackHandler):
+        def __init__(self, nom: str):
+            self.nom = nom
+
         def on_tool_start(self, serialized, input_str, **kwargs):
-            noter_contenu_tiers(ctx, "sql_db_query")
+            noter_contenu_tiers(ctx, self.nom)
 
     for outil in outils:
-        if getattr(outil, "name", None) == "sql_db_query":
-            outil.callbacks = [*(outil.callbacks or []), _MarqueLectureTierce()]
+        nom = getattr(outil, "name", None) or "outil"
+        if nom in OUTILS_SANS_TEXTE_TIERS or (getattr(outil, "metadata", None) or {}).get("action_key"):
+            continue
+        outil.callbacks = [*(outil.callbacks or []), _MarqueLectureTierce(nom)]
     return outils
 
 
@@ -522,7 +536,7 @@ def _preparer(service, question: str, company_id: int, ctx,
     droits = service._droits_sql(ctx)
     lecture, schema = service._outils_sql(
         service._base_sql(question, company_id), company_id, droits)
-    marquer_lectures_tierces([lecture], ctx)  # A5
+    marquer_lectures_tierces([lecture, schema], ctx)  # A5
     outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
     outils += _outils_fixes(lecture, schema, collecteur)
     appeles: list = []

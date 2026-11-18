@@ -792,16 +792,23 @@ ECRITURES_TACHES = frozenset({
     "taches.tache.creer", "taches.tache.terminer", "taches.tache.modifier",
     "taches.tache.planifier", "taches.rappel.poser", "taches.projet.creer",
     "taches.rythme.regler", "taches.preference.noter"})
+#: Les trois ⟲ `taches.*` (`apps/taches/agent_actions.ECHOS`) : un apercu, rien d'ecrit.
+ECHOS_TACHES = frozenset({
+    "taches.liste.ranger", "taches.projet.planifier_apercu",
+    "taches.tache.proposer_changement"})
 #: Au plus trois ecritures `taches.*` par tour (A5).
 ECRITURES_TACHES_PAR_TOUR = 3
-#: ⟲ dont l'entree `texte` est une liste collee ou dictee : un texte tiers.
-_ECHOS_A_TEXTE = frozenset({"taches.liste.ranger", "taches.projet.planifier_apercu"})
 REFUS_ECRITURES_TACHES = (
     "Action refusée : au-delà de trois écritures par tour, propose "
     "taches.liste.ranger ; rien n'est écrit.")
 MESSAGE_CARTE_A_VALIDER = (
-    "Rien n'est écrit : un texte tiers est entré dans cet échange, l'écriture "
-    "attend son doigt sur la carte.")
+    "Rien n'est écrit : des données lues ou un texte tiers sont entrés dans cet "
+    "échange, l'écriture attend son doigt sur la carte.")
+#: Seules chaines gardees dans la sortie d'une ecriture rendue au modele.
+_DATE_OU_HEURE = re.compile(
+    r"\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?"
+    r"|\d{2}:\d{2}(?::\d{2})?")
+_CLE_DE_CHAMP = re.compile(r"[a-z_][a-z0-9_]{0,40}")
 _LECTURE_TACHE = "/api/django/taches/taches/{id}/"
 _LECTURE_PROJET = "/api/django/taches/projets/{id}/"
 
@@ -869,22 +876,32 @@ def _ecriture_en_carte_echo(ctx: ActionContext, action: dict[str, Any],
     return MESSAGE_CARTE_A_VALIDER
 
 
+def est_ecriture_taches(action: dict[str, Any]) -> bool:
+    """✎ `taches.*` : une des huit ecritures ; echec ferme, toute action
+    `taches.*` inconnue ici qui n'est ni un GET ni un ⟲ connu en est une."""
+    cle = str(action.get("key", ""))
+    if not cle.startswith(PREFIXE_TACHES):
+        return False
+    if cle in ECRITURES_TACHES:
+        return True
+    return cle not in ECHOS_TACHES and str(action.get("method", "POST")).upper() != "GET"
+
+
 def garde_ecriture_taches(ctx: ActionContext, action: dict[str, Any],
                           inputs: dict[str, Any],
                           collector: Optional[list[dict[str, Any]]] = None) -> Optional[str]:
     """None = l'action s'execute comme avant ; sinon le texte rendu au modele
-    (ecriture refusee, ou convertie en carte a valider). Une action hors
-    `taches.*` (donnees d'un lead, d'un client) et un ⟲ porteur d'un `texte`
-    marquent le tour ; sous ce marquage, toute ✎ devient une carte-echo ; sans
-    lui, la quatrieme ✎ du tour est refusee."""
+    (ecriture refusee, ou convertie en carte a valider). Revue F3 #1 — TOUTE
+    action qui n'est pas une ✎ `taches.*` (lecture ou ⟲ `taches.*`, action de
+    n'importe quelle autre app, lien de document) marque le tour des son
+    appel : sa sortie porte un texte que l'utilisateur n'a pas tape (titre
+    importe, libelle d'un lead, resume d'une activite, apercu). Sous ce
+    marquage, toute ✎ devient une carte-echo ; sans lui, la quatrieme ✎ du
+    tour est refusee. La sortie d'une ✎ executee ne porte, elle, aucun texte
+    (`_sortie_ecriture_sans_texte`) ; son echec marque le tour."""
     cle = str(action.get("key", ""))
-    if not cle.startswith(PREFIXE_TACHES):
-        noter_contenu_tiers(ctx, cle)
-        return None
-    if cle in _ECHOS_A_TEXTE and str(inputs.get("texte") or "").strip():
-        noter_contenu_tiers(ctx, cle)
-        return None
-    if cle not in ECRITURES_TACHES:
+    if not est_ecriture_taches(action):
+        noter_contenu_tiers(ctx, cle or "action")
         return None
     if contenu_tiers_du_tour(ctx):
         return _ecriture_en_carte_echo(ctx, action, inputs, collector)
@@ -893,6 +910,33 @@ def garde_ecriture_taches(ctx: ActionContext, action: dict[str, Any],
         return REFUS_ECRITURES_TACHES
     ctx.ecritures_taches = faites + 1
     return None
+
+
+def _sans_texte(valeur: Any) -> Any:
+    """Copie sans aucune chaine libre : nombres, booleens, None, dates et
+    heures gardes ; toute autre chaine (titre, nom, libelle, note, texte
+    d'apercu) et toute cle qui n'est pas un nom de champ sont retirees."""
+    if isinstance(valeur, dict):
+        return {k: _sans_texte(v) for k, v in valeur.items()
+                if isinstance(k, str) and _CLE_DE_CHAMP.fullmatch(k) and not _texte_libre(v)}
+    if isinstance(valeur, (list, tuple)):
+        return [_sans_texte(v) for v in valeur if not _texte_libre(v)]
+    return valeur
+
+
+def _texte_libre(valeur: Any) -> bool:
+    return isinstance(valeur, str) and not _DATE_OU_HEURE.fullmatch(valeur)
+
+
+def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
+    """Revue F3 #1 — sortie d'une ✎ `taches.*` executee, rendue au MODELE :
+    l'enveloppe du relais (cle et libelle du registre) et les ids, nombres,
+    dates et heures servis par l'ERP ; aucun texte (le libelle du lead lie,
+    le titre, les notes restent sur la carte, entiere dans le collecteur). Une
+    ecriture ne fait donc rien lire au modele et ne marque pas le tour."""
+    return _sortie_pour_modele({
+        **result, "data": _sans_texte(result.get("data")),
+        "textes": "retirés : la carte les montre"})
 
 
 def _execute_catalogue_action(
@@ -980,6 +1024,8 @@ def run_catalogue_action(
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
     if not res.get("ok"):
+        # A5 (revue F3 #1) — le texte d'erreur de l'ERP entre dans le tour.
+        noter_contenu_tiers(ctx, action["key"])
         # AIC7 — capteur : un echec inattendu devient un evenement `bug`.
         if collector is not None and intention_pour_statut(res.get("status")):
             collector.append({
@@ -994,6 +1040,8 @@ def run_catalogue_action(
     }
     if collector is not None:
         collector.append(result)  # entier : les cartes ne sont jamais coupees
+    if est_ecriture_taches(action):
+        return _sortie_ecriture_sans_texte(result)
     return _sortie_pour_modele(result)
 
 
