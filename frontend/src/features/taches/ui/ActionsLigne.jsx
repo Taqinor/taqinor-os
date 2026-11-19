@@ -179,7 +179,7 @@ export function useActionsLigne({
   const nouveauProjet = useCallback(async (item, nom) => {
     setFeuille(null)
     try {
-      const { data } = await creerProjet({ nom })
+      const { data } = await creerProjet({ nom }, { erreurSousLeChamp: true })
       const cree = data?.projet ?? data
       setProjets((liste) => (liste ? [...liste, cree] : liste))
       deplacer(item, cree)

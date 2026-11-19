@@ -307,7 +307,7 @@ export function useListeProjets({ hydrater = false, surSupprime = null } = {}) {
   }
 
   const creer = async (nom) => {
-    const { data } = await creerProjet({ nom })
+    const { data } = await creerProjet({ nom }, { erreurSousLeChamp: true })
     const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
     setNouveau(false)
     naviguerApresFeuille(navigate, `/taches/projets/${cree.id}?planifier=1`)

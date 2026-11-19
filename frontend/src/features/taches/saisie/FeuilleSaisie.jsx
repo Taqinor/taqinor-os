@@ -325,7 +325,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!ouverte || !enLigne || ![...collages, texte].some((t) => t.trim())) return undefined
     let vivant = true
     const minuteur = setTimeout(() => {
-      saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })
+      saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null, erreurSousLeChamp: true })
         .then((r) => { if (vivant) setApercu({ texte, collages, ignorer, donnees: r.data }) })
         .catch((err) => {
           if (!vivant) return
@@ -438,7 +438,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!donnees) {
       if (!estEnLigne()) return { horsLigne: true }
       try {
-        donnees = (await saisieRapide(corpsApercu(gel.collages, gel.texte, gel.ignorer), { cle: null })).data
+        donnees = (await saisieRapide(corpsApercu(gel.collages, gel.texte, gel.ignorer), { cle: null, erreurSousLeChamp: true })).data
       } catch (err) {
         return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
@@ -467,7 +467,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!estEnLigne()) { await mettreEnFile(gel, lignes); return }
     let data
     try {
-      ({ data } = await saisieRapide({ lignes, apercu: false }, { cle: gel.cid }))
+      ({ data } = await saisieRapide({ lignes, apercu: false }, { cle: gel.cid, erreurSousLeChamp: true }))
     } catch (err) {
       if (sansReseau(err)) await mettreEnFile(gel, lignes)
       else echouer(gel, phraseErreur(err))

@@ -39,22 +39,29 @@ import { fetchAllPages } from '../utils/fetchAllPages'
 // (`validateStatus`), donc le pont ne le voit pas ; il est aussitôt rejeté ici avec la même forme d'erreur
 // (`response`, `config`) que lisent `classerErreur`, la file hors ligne et les écrans. Nommé (`CODES_409`) ou
 // `idempotency_en_cours` (que le pont ne toaste pas non plus) : silence ; tout autre 409 : le même toast que le pont.
-// Toute autre erreur (400, 5xx, délai, réseau) suit le pont exactement comme avant. Jamais `suppressErrorToast`.
+// Un 400 que l'écran dit SOUS LE CHAMP (l'appelant passe `{ erreurSousLeChamp: true }` dans ses options : nom de
+// projet refusé, agenda externe injoignable, phrase de saisie refusée) suit la même voie, sans aucun toast : le
+// message ne se dit qu'une fois, là où il faut agir. Toute autre erreur (400 d'un appelant qui ne le dit pas, 5xx,
+// délai, réseau) suit le pont exactement comme avant. Jamais `suppressErrorToast` (il tairait aussi les 5xx).
 const garde409 = (statut) => (statut >= 200 && statut < 300) || statut === 409
+const garde409Et400 = (statut) => garde409(statut) || statut === 400
 
-function refus409(reponse) {
-  const erreur = Object.assign(new Error('Request failed with status code 409'), {
+function refusResolu(reponse, { toaster }) {
+  const erreur = Object.assign(new Error(`Request failed with status code ${reponse.status}`), {
     name: 'AxiosError', code: 'ERR_BAD_REQUEST', isAxiosError: true, response: reponse, config: reponse.config,
   })
-  const code = reponse.data?.code
-  if (!CODES_409.includes(code) && code !== 'idempotency_en_cours') toastError(errorMessageFrom(erreur))
+  if (toaster) toastError(errorMessageFrom(erreur))
   return erreur
 }
 
+const nomme409 = (reponse) => CODES_409.includes(reponse.data?.code) || reponse.data?.code === 'idempotency_en_cours'
+
 function appeler(verbe, args) {
+  const config = args[verbe === 'get' || verbe === 'delete' ? 1 : 2]
+  const sousLeChamp = Boolean(config?.erreurSousLeChamp)
   const defauts = apiErp.defaults
   const regle = defauts?.validateStatus
-  if (defauts) defauts.validateStatus = garde409
+  if (defauts) defauts.validateStatus = sousLeChamp ? garde409Et400 : garde409
   let promesse
   try {
     promesse = apiErp[verbe](...args)
@@ -62,7 +69,8 @@ function appeler(verbe, args) {
     if (defauts) defauts.validateStatus = regle // l'instance de l'ERP retrouve sa règle dès l'appel parti
   }
   return Promise.resolve(promesse).then((reponse) => {
-    if (reponse?.status === 409) throw refus409(reponse)
+    if (reponse?.status === 409) throw refusResolu(reponse, { toaster: !nomme409(reponse) })
+    if (reponse?.status === 400 && sousLeChamp) throw refusResolu(reponse, { toaster: false })
     return reponse
   })
 }
@@ -86,12 +94,16 @@ export function nouvelleCle() {
  *  le serveur la range `source='assistant'` (A5). Jamais `X-Taqinor-Assistant`, qui masquerait la réponse. */
 export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
 
+/** `{ erreurSousLeChamp: true }` de l'appelant : son 400 ne passe pas par le toast global (voir `appeler`). */
+const sousLeChamp = (options) => (options?.erreurSousLeChamp ? { erreurSousLeChamp: true } : undefined)
+
 const avecCle = (options = {}) => {
   const { cle, carteAssistant } = options ?? {}
   const headers = {}
   if (cle !== null) headers['Idempotency-Key'] = cle || nouvelleCle()
   if (carteAssistant) headers[ENTETE_CARTE_ASSISTANT] = '1'
-  return Object.keys(headers).length > 0 ? { headers } : undefined
+  const config = { ...(Object.keys(headers).length > 0 ? { headers } : {}), ...sousLeChamp(options) }
+  return Object.keys(config).length > 0 ? config : undefined
 }
 
 const avecProprietaire = (corps, options = {}) => {
@@ -210,7 +222,8 @@ export const refuserSuggestion = (id) => api.post(`/taches/suggestions/${id}/ref
 export const listerProjets = (params) => api.get('/taches/projets/', { params })
 export const creerProjet = (corps, options) => api.post('/taches/projets/', corps, avecCle(options))
 export const lireProjet = (id) => api.get(`/taches/projets/${id}/`)
-export const modifierProjet = (id, corps) => api.patch(`/taches/projets/${id}/`, corps)
+export const modifierProjet = (id, corps, options) =>
+  api.patch(`/taches/projets/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerProjet = (id) => api.delete(`/taches/projets/${id}/`)
 export const reordonnerProjet = (id, corps) => api.post(`/taches/projets/${id}/reordonner/`, corps)
 export const trierProjetsParPriorite = () => api.post('/taches/projets/trier-par-priorite/', {})
@@ -219,7 +232,8 @@ export const apercuPlanification = (id, corps) => api.post(`/taches/projets/${id
 export const planifierProjet = (id, corps, options) =>
   api.post(`/taches/projets/${id}/planification/`, corps, avecCle(options))
 export const decalerProjet = (id, corps, options) => api.post(`/taches/projets/${id}/decaler/`, corps, avecCle(options))
-export const terminerProjet = (id, corps) => api.post(`/taches/projets/${id}/terminer/`, corps)
+export const terminerProjet = (id, corps, options) =>
+  api.post(`/taches/projets/${id}/terminer/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const rouvrirProjet = (id) => api.post(`/taches/projets/${id}/rouvrir/`, {})
 export const restaurerProjet = (id) => api.post(`/taches/projets/${id}/restaurer/`, {})
 export const dupliquerProjet = (id, corps, options) =>
@@ -232,7 +246,8 @@ export const supprimerSection = (id) => api.delete(`/taches/sections/${id}/`)
 export const reordonnerSection = (id, corps) => api.post(`/taches/sections/${id}/reordonner/`, corps)
 export const listerModeles = (params) => api.get('/taches/modeles/', { params })
 export const lireModele = (id) => api.get(`/taches/modeles/${id}/`)
-export const renommerModele = (id, corps) => api.patch(`/taches/modeles/${id}/`, corps)
+export const renommerModele = (id, corps, options) =>
+  api.patch(`/taches/modeles/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerModele = (id) => api.delete(`/taches/modeles/${id}/`)
 export const instancierModele = (id, corps, options) =>
   api.post(`/taches/modeles/${id}/instancier/`, corps, avecCle(options))
@@ -261,7 +276,8 @@ export const exporterMesDonnees = () => api.get('/taches/mes-donnees/')
 export const toutEffacer = (corps) => api.post('/taches/tout-effacer/', corps)
 export const listerAgendasExternes = () => api.get('/taches/agendas-externes/')
 export const ajouterAgendaExterne = (corps, options) => api.post('/taches/agendas-externes/', corps, avecCle(options))
-export const modifierAgendaExterne = (id, corps) => api.patch(`/taches/agendas-externes/${id}/`, corps)
+export const modifierAgendaExterne = (id, corps, options) =>
+  api.patch(`/taches/agendas-externes/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const retirerAgendaExterne = (id) => api.delete(`/taches/agendas-externes/${id}/`)
 export const rafraichirAgendaExterne = (id) => api.post(`/taches/agendas-externes/${id}/rafraichir/`, {})
 

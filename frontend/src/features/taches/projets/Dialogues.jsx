@@ -185,7 +185,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
     setErreur('')
     if (!Number.isInteger(valeur) || valeur === 0) return
     try {
-      const { data } = await decalerProjet(projet.id, { delta_jours: valeur, apercu: true })
+      const { data } = await decalerProjet(projet.id, { delta_jours: valeur, apercu: true }, { erreurSousLeChamp: true })
       if (mien === rang.current) setApercu(data)
     } catch (err) {
       if (mien !== rang.current) return
@@ -199,7 +199,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
   const appliquer = async () => {
     setOccupe(true)
     try {
-      const { data } = await decalerProjet(projet.id, { delta_jours: delta, apercu: false })
+      const { data } = await decalerProjet(projet.id, { delta_jours: delta, apercu: false }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       setErreur(premiere(err?.response?.data?.delta_jours) ?? frenchError(err, 'Les dates n\'ont pas été décalées. Réessaie.'))
@@ -283,7 +283,7 @@ export function DialogueTerminer({ projet, onFait, onFermer }) {
     setErreurs({})
     const corps = { issue, bilan, taches_ouvertes: ouvertes, projet_cible_id: ouvertes === 'deplacer' && cible ? Number(cible) : null }
     try {
-      const { data } = await terminerProjet(projet.id, corps)
+      const { data } = await terminerProjet(projet.id, corps, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
@@ -405,7 +405,7 @@ export function DialogueEnregistrerModele({ projet, onFait, onFermer }) {
     setOccupe(true)
     setErreur('')
     try {
-      const { data } = await enregistrerModele(projet.id, { nom: nom.trim(), inclure_notes: notes })
+      const { data } = await enregistrerModele(projet.id, { nom: nom.trim(), inclure_notes: notes }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
@@ -461,8 +461,8 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
   const corps = (n, d, sansApercu) => (modele
     ? { nom: n, date_lancement: d || null, apercu: !sansApercu }
     : { nom: n, date_debut: d || null, apercu: !sansApercu })
-  const appeler = (n, d, sansApercu) => (modele ? instancierModele(source.id, corps(n, d, sansApercu))
-    : dupliquerProjet(source.id, corps(n, d, sansApercu)))
+  const appeler = (n, d, sansApercu) => (modele ? instancierModele(source.id, corps(n, d, sansApercu), { erreurSousLeChamp: true })
+    : dupliquerProjet(source.id, corps(n, d, sansApercu), { erreurSousLeChamp: true }))
 
   const lireApercu = async (n, d) => {
     rang.current += 1
@@ -544,7 +544,7 @@ export function DialogueRenommerModele({ modele, onFait, onFermer }) {
     setOccupe(true)
     setErreur('')
     try {
-      const { data } = await renommerModele(modele.id, { nom: nom.trim() })
+      const { data } = await renommerModele(modele.id, { nom: nom.trim() }, { erreurSousLeChamp: true })
       onFait?.(data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null

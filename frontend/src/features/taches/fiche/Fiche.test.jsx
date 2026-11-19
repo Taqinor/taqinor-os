@@ -434,3 +434,16 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(api.lireTache).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Couture r2 — un nom de projet refusé se dit SOUS le champ Projet, sans toast global en double', () => {
+  it('Créer « … » depuis la fiche : creerProjet porte erreurSousLeChamp, le refus s\'affiche dans la fiche', async () => {
+    api.creerProjet.mockRejectedValue(erreurHttp({ nom: ['Ce nom est trop long.'] }, 400))
+    const user = userEvent.setup()
+    monter()
+    await user.click(await screen.findByRole('button', { name: /Projet/ }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Chantier' }, { erreurSousLeChamp: true })
+    expect(await screen.findByText('Ce nom est trop long.')).toBeInTheDocument()
+  })
+})

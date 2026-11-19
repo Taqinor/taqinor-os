@@ -337,7 +337,7 @@ export default function Projet() {
       const avant = Object.fromEntries(Object.keys(champs).map((c) => [c, projet[c]]))
       setVue((v) => (v ? { ...v, projet: { ...v.projet, ...champs } } : v))
       try {
-        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version })
+        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version }, { erreurSousLeChamp: true })
         projetRef.current = { ...projet, ...champs, ...data }
         setVue((v) => (v ? { ...v, projet: { ...v.projet, ...data } } : v))
         if (message) {

@@ -113,7 +113,7 @@ export default function ColleListes({
 
   /** Relit UNE ligne : `texte` sans les jetons de `ignorer` ; le titre tapé est remplacé par le titre relu. */
   const relire = (index, texte, ignorer = []) => {
-    saisieRapide({ texte, ignorer, apercu: true }, { cle: null })
+    saisieRapide({ texte, ignorer, apercu: true }, { cle: null, erreurSousLeChamp: true })
       .then(({ data }) => {
         const lue = data?.lignes?.[0]
         if (!lue) return

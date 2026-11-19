@@ -315,7 +315,7 @@ describe('TCH88 — Projets : Nouveau projet et navigation', () => {
     const feuille = await screen.findByRole('dialog', { name: 'Nouveau projet' })
     await user.type(within(feuille).getByLabelText('Nom du projet'), 'Salon')
     await user.click(within(feuille).getByRole('button', { name: 'Créer' }))
-    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Salon' })
+    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Salon' }, { erreurSousLeChamp: true })
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/9?planifier=1')
   })
 

@@ -177,6 +177,18 @@ describe('TCH86 — écran À trier', () => {
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Déplacée dans « Ventes »')
   })
 
+  it('Couture r2 — Projet… › Créer « … » refusé : le message est dit par l\'écran, sans toast global en double', async () => {
+    api.creerProjet.mockRejectedValue(Object.assign(new Error('http'), { response: { status: 400, data: { nom: ['Ce nom est trop long.'] } } }))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Projet…' }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    await waitFor(() => expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Chantier' }, { erreurSousLeChamp: true }))
+    expect(api.traiterLot).not.toHaveBeenCalled()
+  })
+
   it('Choisir un jour : le sélecteur « Quand » pose le jour choisi', async () => {
     const user = userEvent.setup()
     monter()

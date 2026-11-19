@@ -679,6 +679,8 @@ describe('TCH82 — feuille de saisie', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGE)
       expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
       expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+      // couture r2 — un 400 de la saisie se dit sous le champ : chaque appel fait taire le toast global
+      expect(mocks.saisieRapide.mock.calls.every(([, options]) => options?.erreurSousLeChamp === true)).toBe(true)
     })
 
     it('« Mettre le reste en note » crée la tâche : 280 caractères au plus en titre, le reste en note', async () => {

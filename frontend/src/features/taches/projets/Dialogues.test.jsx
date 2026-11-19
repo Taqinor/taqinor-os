@@ -69,7 +69,7 @@ describe('TCH92 — Décaler les dates', () => {
     const user = utilisateur()
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()
     await user.click(screen.getByRole('radio', { name: '+1 semaine' }))
-    expect(api.decalerProjet).toHaveBeenCalledWith(3, { delta_jours: 7, apercu: true })
+    expect(api.decalerProjet).toHaveBeenCalledWith(3, { delta_jours: 7, apercu: true }, { erreurSousLeChamp: true })
     expect(await screen.findByText('1 date change.')).toBeInTheDocument()
     const ligne = screen.getByText('Devis Settat').closest('li') // `changements[].titre` servi par decalage.json
     expect(ligne).toHaveTextContent('ven. 20')
@@ -77,7 +77,7 @@ describe('TCH92 — Décaler les dates', () => {
     expect(onFait).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Appliquer' }))
-    expect(api.decalerProjet).toHaveBeenLastCalledWith(3, { delta_jours: 7, apercu: false })
+    expect(api.decalerProjet).toHaveBeenLastCalledWith(3, { delta_jours: 7, apercu: false }, { erreurSousLeChamp: true })
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(expect.objectContaining({ changements: expect.any(Array) })))
   })
 
@@ -111,7 +111,7 @@ describe('TCH92 — Terminer le projet', () => {
     render(<DialogueTerminer projet={projet()} onFait={() => {}} onFermer={() => {}} />)
     await utilisateur().click(screen.getByRole('button', { name: 'Terminer' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Atteint ou abandonné ?')
-    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: '', bilan: '', taches_ouvertes: 'boite', projet_cible_id: null })
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: '', bilan: '', taches_ouvertes: 'boite', projet_cible_id: null }, { erreurSousLeChamp: true })
   })
 
   it('Atteint + bilan + « Les remettre dans À trier » : le corps de projet_ecrit.json est rendu', async () => {
@@ -123,7 +123,7 @@ describe('TCH92 — Terminer le projet', () => {
     await user.click(screen.getByRole('radio', { name: 'Atteint' }))
     await user.type(screen.getByLabelText('Bilan (facultatif)'), 'Signé')
     await user.click(screen.getByRole('button', { name: 'Terminer' }))
-    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: 'Signé', taches_ouvertes: 'boite', projet_cible_id: null })
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: 'Signé', taches_ouvertes: 'boite', projet_cible_id: null }, { erreurSousLeChamp: true })
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(expect.objectContaining({ deplacees: 3, geste_id: 86 })))
   })
 
@@ -139,7 +139,7 @@ describe('TCH92 — Terminer le projet', () => {
     expect(within(choix).queryByRole('option', { name: 'Ventes' })).toBeNull()
     await user.selectOptions(choix, 'Site web')
     await user.click(screen.getByRole('button', { name: 'Terminer' }))
-    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: '', taches_ouvertes: 'deplacer', projet_cible_id: 5 })
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'atteint', bilan: '', taches_ouvertes: 'deplacer', projet_cible_id: 5 }, { erreurSousLeChamp: true })
   })
 
   it('Raccord F2 — « Les abandonner » envoie `taches_ouvertes: annuler`, la valeur que le serveur accepte', async () => {
@@ -149,7 +149,7 @@ describe('TCH92 — Terminer le projet', () => {
     await user.click(screen.getByRole('radio', { name: 'Abandonné' }))
     await user.click(screen.getByRole('radio', { name: 'Les abandonner' }))
     await user.click(screen.getByRole('button', { name: 'Terminer' }))
-    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'abandonne', bilan: '', taches_ouvertes: 'annuler', projet_cible_id: null })
+    expect(api.terminerProjet).toHaveBeenCalledWith(3, { issue: 'abandonne', bilan: '', taches_ouvertes: 'annuler', projet_cible_id: null }, { erreurSousLeChamp: true })
   })
 
   it('un projet sans tâche ouverte ne pose pas la question des tâches ouvertes', () => {

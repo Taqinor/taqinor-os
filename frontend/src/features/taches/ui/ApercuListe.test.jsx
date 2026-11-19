@@ -229,7 +229,7 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
       await user.clear(champ)
       await user.type(champ, 'Relancer mardi')
       await user.tab()
-      expect(mocks.saisieRapide).toHaveBeenCalledWith({ texte: 'Relancer mardi', ignorer: [], apercu: true }, { cle: null })
+      expect(mocks.saisieRapide).toHaveBeenCalledWith({ texte: 'Relancer mardi', ignorer: [], apercu: true }, { cle: null, erreurSousLeChamp: true })
       expect(await screen.findByText('mar. 24 nov.')).toBeInTheDocument()
       expect(screen.getByRole('textbox', { name: 'Titre : Relancer' })).toHaveValue('Relancer')
       await user.click(screen.getByRole('button', { name: 'Créer 6 tâches' }))
@@ -244,7 +244,7 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
       mocks.saisieRapide.mockResolvedValue(relue('Relancer mardi', [], { priorite: 0 }))
       await user.click(screen.getByRole('button', { name: 'Retirer mar. 24 nov.' }))
       expect(mocks.saisieRapide).toHaveBeenCalledWith(
-        { texte: 'Relancer mardi', ignorer: [{ type: 'jour', source: 'mardi' }], apercu: true }, { cle: null })
+        { texte: 'Relancer mardi', ignorer: [{ type: 'jour', source: 'mardi' }], apercu: true }, { cle: null, erreurSousLeChamp: true })
       expect(await screen.findByRole('textbox', { name: 'Titre : Relancer mardi' })).toBeInTheDocument()
       expect(screen.queryByText('mar. 24 nov.')).toBeNull()
       await user.click(screen.getByRole('button', { name: 'Créer 1 tâche' }))

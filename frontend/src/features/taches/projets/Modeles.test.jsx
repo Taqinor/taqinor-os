@@ -94,18 +94,18 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     expect(within(dialogue).getByLabelText('Date de lancement')).toHaveValue(AUJOURDHUI)
     // R2-065 — le nom est prérempli et l'aperçu est lu DÈS L'OUVERTURE (rien n'est écrit)
     expect(within(dialogue).getByLabelText('Nom du projet')).toHaveValue('Salon')
-    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon', date_lancement: AUJOURDHUI, apercu: true }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon', date_lancement: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
 
     const champ = within(dialogue).getByLabelText('Nom du projet')
     await user.clear(champ)
     await user.type(champ, 'Salon 2027')
     await user.tab() // l'aperçu se relit quand le nom est posé
-    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: true }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
     expect(api.instancierModele.mock.calls.every(([, corps]) => corps.apercu === true)).toBe(true) // rien d'écrit à ce stade
 
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByText('Écran du projet créé')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument() // « Projet créé · Annuler »
   })
@@ -132,7 +132,7 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     await user.clear(champ)
     await user.type(champ, 'Salon 2027')
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' })) // sans quitter le champ avant
-    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon 2027', date_lancement: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByText('Écran du projet créé')).toBeInTheDocument()
   })
 
@@ -145,7 +145,7 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
     const champ = within(dialogue).getByLabelText('Date de lancement')
     await user.clear(champ)
     await user.type(champ, '2026-12-01')
-    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon', date_lancement: '2026-12-01', apercu: true }))
+    await waitFor(() => expect(api.instancierModele).toHaveBeenLastCalledWith(2, { nom: 'Salon', date_lancement: '2026-12-01', apercu: true }, { erreurSousLeChamp: true }))
   })
 
   it('un nom de projet déjà pris est dit sous le champ, rien n\'est créé', async () => {
@@ -188,7 +188,7 @@ describe('TCH157 — Renommer et Supprimer un modèle', () => {
     await user.clear(champ)
     await user.type(champ, 'Foire')
     await user.click(within(dialogue).getByRole('button', { name: 'Renommer' }))
-    expect(api.renommerModele).toHaveBeenCalledWith(2, { nom: 'Foire' })
+    expect(api.renommerModele).toHaveBeenCalledWith(2, { nom: 'Foire' }, { erreurSousLeChamp: true })
     expect(await screen.findByText('Foire')).toBeInTheDocument()
     expect(screen.queryByText('Salon')).toBeNull()
     expect(api.listerTousLesModeles).toHaveBeenCalledTimes(1)
@@ -246,7 +246,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
     expect(notes).toHaveAttribute('aria-checked', 'false')
     await user.click(notes)
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: true })
+    expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: true }, { erreurSousLeChamp: true })
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(modeleServi()))
   })
 
@@ -330,14 +330,14 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     // R2-065 — nom prérempli « {nom} (copie) », aperçu lu à l'ouverture
     const champ = within(dialogue).getByLabelText('Nom du projet')
     expect(champ).toHaveValue('Ventes (copie)')
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes (copie)', date_debut: AUJOURDHUI, apercu: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes (copie)', date_debut: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
     await user.clear(champ)
     await user.type(champ, 'Ventes 2027')
     await user.tab()
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: false }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByRole('button', { name: 'Annuler' })).toBeInTheDocument()
   })
 
@@ -358,7 +358,7 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     await ouvrirMenu(user, 'Modèle…')
     const dialogue = await screen.findByRole('dialog', { name: 'Enregistrer comme modèle' })
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: false }))
+    await waitFor(() => expect(api.enregistrerModele).toHaveBeenCalledWith(3, { nom: 'Ventes', inclure_notes: false }, { erreurSousLeChamp: true }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Enregistrer comme modèle' })).toBeNull())
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ventes')
   })
