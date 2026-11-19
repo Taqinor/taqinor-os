@@ -302,7 +302,10 @@ class ConsignesDomainesTests(unittest.TestCase):
                 self.assertLessEqual(mots, MAJUSCULES_ADMISES, "est-ce un prénom ?")
                 for cle in re.findall(r"\b[a-z_]+\.[a-z_]+\.[a-z_]+\b|\b[a-z_]+\.[a-z_]+\b", texte):
                     if "." in cle and cle.split(".")[0] in self.chargeur.DOMAINES + ("erp",):
-                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU, cle)
+                        # Une clé listée aussi dans ce domaine (AUSSI_DANS) arrive
+                        # avec lui : crm.visite.planifier pour visites.
+                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU
+                                        or domaine in self.chargeur.AUSSI_DANS.get(cle, ()), cle)
         self.assertLessEqual(sum(len(t.split()) for t in textes.values()), 900)
 
     def test_bloc_borne_ou_rien(self):
