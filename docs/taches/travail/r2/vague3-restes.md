@@ -78,3 +78,35 @@ Plis faits (worktree `taches-r2-ci`) : CI api-fuzz ×4 (`d0bc4a9ff`), L2 temps 1
   (la CI joue-t-elle le Mois ? sinon tour 3) ; `e2e/taches-agenda.spec.js` (glisser vers le premier jour de la semaine,
   peut-être passé) jamais jouée ; fichier hors table touché : `projets/Modeles.test.jsx`.
 - (L6) défaut trouvé et corrigé : le glisser « À placer » → créneau était annulé par le navigateur dès la première image.
+
+## Après les plis de L5 second passage (`58e2308ac`), L1 coutures (`848623e77`) et L2 temps 2 (`7ceb9318d`) — tête `voir git`
+Les six lanes L1 à L6 sont pliées. Reste L7 (lexique) + couture finale, seule sur l'arbre :
+- **Étoile qui change d'avis** (L2, défaut SERVEUR) : `views/taches.py` l.216 (`GET taches/{id}/`) sérialise sans
+  `calculs` → `essentielle: False` et `prevue_au_plan: False` toujours ; reprendre la lecture de
+  `serializers/projets.py` l.417 (`journee_lue.lignes_de_taches_du_jour`) ; +1 requête à déclarer (`test_plafonds.py`) ;
+  jumeau probable : `formes.py::tache_ecrite` (l.513).
+- Le brouillon du mot du bilan (`localStorage`, par compte et par jour) n'est pas effacé à la déconnexion.
+- Aide `?` : remettre « Alt+↑/↓ Réorganiser » (R3-007 et R3-026 pliées ; vérifié sur l'écran : 204 dans les deux sens).
+- `LigneTache` : cacher (`visibility: hidden`) l'heure et l'étoile sous la pastille de report au lieu de les retirer
+  (au bureau la hauteur bouge : 80→58, 44→56).
+- Carte de conseil sur iPhone : 98 pt (la question sur deux lignes, les réponses dessous) → première tâche à y = 287 ;
+  viser ≤ 260 (réponses sur la ligne, ou carte en une rangée comme la carte « OK »).
+- Saisie en place : le champ plafonné à 6 lignes se place sur sa dernière ligne, la première ligne visible est coupée.
+- Restent à 50 px : `.choisir-jour .bouton.large`, `.feuille-pied .bouton` (jeton `--tch-bouton-h` = 44).
+- Mois : `label-content-name-mismatch` (axe 4.14) sur les cases du jour.
+- CI (tête `6e96ddbf1`) : `e2e/taches-saisie.spec.js:253` « vider À trier : 5 tâches, 2 dates, 3 projets » :
+  `locator.click: Timeout 15000ms` — depuis R3-065 (L4) les gestes d'une carte d'À trier sont invisibles au repos au
+  bureau et n'apparaissent qu'au survol : vérifier qu'ils restent atteignables au clavier et au toucher, et que la spec
+  clique un élément visible (journal `…\scratchpad\r2\ci\t9-e2e-shard2.log`).
+- Budget du bundle : 3 890,8 Ko mesurés en CI (plafond 3 870) : à poser à la valeur mesurée après le dernier pli
+  (`frontend/scripts/check_bundle_budget.mjs`, précédent : F3, F4), aucune dépendance neuve.
+- Specs d'acceptation `e2e/acceptation/tch.spec.js` : l.523 et 537 (« pour » → « sur »), l.606 (« Temps libre : 3 h 30
+  (4 h moins 30 min de rendez-vous) » → nouvelle phrase « Temps : … prévues pour … disponibles »), l.882 (« Exporter
+  mes données » → « Télécharger mes données »), tout libellé changé par la vague 3.
+- `textes.md` : phrases neuves de L2, L3, L5, L6 (listes dans leurs rapports, recopiées plus haut dans ce fichier) +
+  celles de L2 temps 2 : « Temps : … prévues pour … disponibles · … de trop », « · N sans durée », « Prévue … —
+  l'échéance reste aujourd'hui », « Repousser l'échéance », « Ton objectif est couvert par tes tâches du jour (f sur n
+  faites) », « Ta journée déborde de … », « Reporter à {jour} », « Reste : … pour … disponibles », « Envoi en cours »,
+  « envoi… », « Quand ? », « Calendrier… ».
+- Non rejoué sur l'écran : R3-030 (envoi en cours), brouillon du bilan, `e2e/taches-journee.spec.js`,
+  `taches-agenda.spec.js`, `taches-bureau.spec.js`.
