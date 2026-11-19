@@ -20,8 +20,8 @@ from django.utils import timezone
 from core.scoping import scope_client_queryset, scope_queryset, visible_user_ids
 
 from . import machine_etats
-from .models import ContratMaintenance, Ticket
-from .selectors import ticket_en_retard_sla
+from .models import ContratMaintenance, Ticket, TicketActivity
+from .selectors import pieces_unifiees, ticket_en_retard_sla
 from .selectors_libelles import _equipements_visibles as equipements_visibles
 
 #: Parc : 5 clients par défaut, 10 au plus ; au plus 20 équipements par client.
@@ -325,3 +325,109 @@ def tickets_compacts(user, *, retard_sla=None, limite=LIMITE_TICKETS_DEFAUT,
     gardes = [t for t in qs[:SCAN_RETARD_MAX]
               if bool(ticket_en_retard_sla(t, aujourdhui)) == retard_sla]
     return len(gardes), [ligne_ticket(t, aujourdhui) for t in gardes[:limite]]
+
+
+# ── Fiche d'un ticket ───────────────────────────────────────────────────────
+
+#: Le texte du client (``description``) est un contenu TIERS : borné.
+DESCRIPTION_MAX = 600
+TEXTE_ACTIVITE_MAX = 300
+NB_ACTIVITES = 5
+
+
+def ticket_pour_fiche(user, pk):
+    """Le ticket ``pk`` de la société de ``user`` dans sa portée, chargé pour
+    la fiche — ``None`` s'il n'existe pas, est d'une autre société ou hors
+    portée (le même 404 que l'écran)."""
+    return (tickets_visibles(user).filter(pk=pk)
+            .select_related('client', 'installation', 'technicien_responsable',
+                            'equipement__produit').first())
+
+
+def bloc_client(ticket):
+    return {'id': ticket.client_id, 'nom': nom_du_client(ticket.client)}
+
+
+def bloc_installation(ticket):
+    if ticket.installation_id is None:
+        return None
+    return {'id': ticket.installation_id,
+            'reference': ticket.installation.reference or ''}
+
+
+def bloc_equipement(ticket):
+    """L'équipement du ticket et sa garantie, jugée à l'OUVERTURE du ticket
+    (D-ASAV-6), jamais un coût."""
+    equipement = ticket.equipement
+    if equipement is None:
+        return None
+    fin = equipement.date_fin_garantie_effective
+    return {
+        'id': equipement.pk,
+        'produit': equipement.produit.nom or '',
+        'numero_serie': equipement.numero_serie or '',
+        'fin_garantie_effective': fin.isoformat() if fin else None,
+        'sous_garantie': ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI,
+    }
+
+
+def bloc_sla(ticket, aujourdhui=None):
+    aujourdhui = aujourdhui or timezone.localdate()
+    reponse, due = ticket.sla_reponse_due_at, (
+        ticket.sla_due_at_effectif(today=aujourdhui) if ticket.sla_due_at else None)
+    return {'reponse_due_at': reponse.isoformat() if reponse else None,
+            'due_at': due.isoformat() if due else None,
+            'en_retard': bool(ticket_en_retard_sla(ticket, aujourdhui))}
+
+
+def nom_du_technicien(ticket):
+    """Nom complet du technicien responsable — jamais son identifiant de
+    connexion ; ``None`` sans technicien."""
+    technicien = ticket.technicien_responsable
+    if technicien is None:
+        return None
+    return (technicien.get_full_name() or '').strip() or None
+
+
+def _texte_activite(activite):
+    """Une ligne de chatter en une phrase bornée : la note ou le message tels
+    qu'écrits ; un champ modifié « Priorité : Normale → Haute » (le CONTENU de
+    la description n'est pas recopié)."""
+    if activite.kind != TicketActivity.Kind.MODIFICATION:
+        texte = activite.body or ''
+    elif activite.field == 'description':
+        texte = 'Description modifiée'
+    else:
+        texte = (f'{activite.field_label or activite.field} : '
+                 f'{activite.old_value or "—"} → {activite.new_value or "—"}')
+    return texte[:TEXTE_ACTIVITE_MAX]
+
+
+def dernieres_activites(ticket):
+    """Les ``NB_ACTIVITES`` dernières entrées du chatter, plus récente d'abord.
+    Sont écartées : les lignes du COÛT (interne) et les notes VISIBLES du
+    client (écrites pour lui, pas pour l'équipe)."""
+    activites = (ticket.activites.exclude(field='cout').exclude(visible_client=True)
+                 .select_related('user').order_by('-created_at', '-id')[:NB_ACTIVITES])
+    return [{
+        'type': a.kind,
+        'le': a.created_at.isoformat(),
+        'par': (a.user.get_full_name() or '').strip() if a.user_id else '',
+        'texte': _texte_activite(a),
+    } for a in activites]
+
+
+def pieces_du_ticket(ticket):
+    """Pièces posées / retirées : opération, désignation, quantité — JAMAIS un
+    coût (même pour un compte qui voit les prix d'achat)."""
+    return [{'operation': ligne['operation'], 'produit': ligne['produit_nom'] or '',
+             'quantite': float(ligne['quantite'])}
+            for ligne in pieces_unifiees(ticket)['lignes']]
+
+
+def statuts_suivants_permis(ticket):
+    """Statuts que ``machine_etats.statuts_suivants`` permet depuis le statut du
+    ticket (aucun pour un ticket annulé : à réactiver à l'écran)."""
+    if ticket.annule:
+        return []
+    return [s.value for s in machine_etats.statuts_suivants(ticket)]

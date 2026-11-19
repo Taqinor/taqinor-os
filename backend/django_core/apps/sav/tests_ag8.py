@@ -358,3 +358,98 @@ class SavTicketsAssistantTest(TestCase):
         from apps.sav.tests import auth
         r = auth(user).get('/api/django/sav/assistant/tickets/')
         self.assertEqual((r.data['total'], r.data['lignes']), (0, []))
+
+
+class SavTicketFicheAssistantTest(TestCase):
+    """SAV4 — ``GET sav/assistant/tickets/<id>/`` : la fiche compacte de
+    ``assistant_ticket_fiche.json`` — jamais de coût, ni de note écrite pour le
+    client ; le texte du client est tronqué et reste une donnée."""
+
+    CLES = {
+        'id', 'reference', 'statut', 'statut_libelle', 'priorite', 'type', 'client',
+        'installation', 'equipement', 'description', 'sla', 'technicien',
+        'activites', 'pieces', 'statuts_suivants', 'a_faire', 'lien'}
+
+    def setUp(self):
+        from decimal import Decimal
+        from apps.sav import activity
+        from apps.sav.models import Equipement, PieceConsommee, Ticket
+        from apps.sav.tests import make_installation, make_produit
+        self.company = Company.objects.create(nom='SAV Fiche', slug='sav-fiche')
+        self.inst, self.client_obj = make_installation(self.company, ref='CHT-FCH')
+        self.produit = make_produit(self.company)
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=self.produit, installation=self.inst,
+            numero_serie='SN-FCH')
+        self.tech = User.objects.create_user(
+            username='tech_fch', password='x', company=self.company,
+            first_name='Hamza', last_name='Idrissi')
+        self.user = User.objects.create_user(
+            username='fch', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Fch',
+                                     permissions=['sav_voir', 'prix_achat_voir']))
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-FCH-1', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, statut='nouveau',
+            technicien_responsable=self.tech, cout=Decimal('98765.43'),
+            description='Erreur F13. ' + 'x' * 700)
+        activity.log_note(self.ticket, self.user, 'note interne')
+        activity.log_note(self.ticket, self.user, 'écrite pour le client',
+                          visible_client=True)
+        activity.log_changes(Ticket(pk=self.ticket.pk, company=self.company,
+                                    cout=Decimal('0')), self.ticket, self.user)
+        PieceConsommee.objects.create(
+            company=self.company, ticket=self.ticket, produit=self.produit,
+            quantite=Decimal('2'))
+
+    def _get(self, pk=None, user=None):
+        from apps.sav.tests import auth
+        return auth(user or self.user).get(
+            f'/api/django/sav/assistant/tickets/{pk or self.ticket.pk}/')
+
+    def test_fiche_forme_du_contrat_sans_cout(self):
+        r = self._get()
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(set(r.data), self.CLES)
+        self.assertEqual(r.data['statuts_suivants'], ['en_cours', 'planifie'])
+        self.assertEqual((r.data['a_faire'], r.data['lien']),
+                         ('planifier', f'/sav?id={self.ticket.pk}'))
+        self.assertEqual(r.data['technicien'], 'Hamza Idrissi')
+        self.assertEqual(r.data['equipement']['numero_serie'], 'SN-FCH')
+        self.assertEqual(r.data['pieces'], [
+            {'operation': 'ajout', 'produit': 'Onduleur X', 'quantite': 2.0}])
+        self.assertLessEqual(len(r.data['description']), 600)
+        self.assertNotIn('98765', str(r.data))
+        self.assertNotIn('Coût', str(r.data['activites']))
+
+    def test_activites_sans_note_visible_du_client(self):
+        textes = [a['texte'] for a in self._get().data['activites']]
+        self.assertIn('note interne', textes)
+        self.assertNotIn('écrite pour le client', textes)
+        for activite in self._get().data['activites']:
+            self.assertEqual(set(activite), {'type', 'le', 'par', 'texte'})
+
+    def test_hors_societe_hors_portee_et_hors_droit(self):
+        from apps.roles.permissions_registre import SCOPE_SELF
+        autre = Company.objects.create(nom='SAV Fiche 2', slug='sav-fiche-2')
+        etranger = User.objects.create_user(
+            username='fch_autre', password='x', company=autre,
+            role=Role.objects.create(company=autre, nom='FchAutre',
+                                     permissions=['sav_voir']))
+        self.assertEqual(self._get(user=etranger).status_code, 404)
+        restreint = User.objects.create_user(
+            username='fch_self', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='FchSelf',
+                                     permissions=['sav_voir', SCOPE_SELF]))
+        self.assertEqual(self._get(user=restreint).status_code, 404)
+        sans_droit = User.objects.create_user(
+            username='fch_crm', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='FchCrm',
+                                     permissions=['crm_voir']))
+        self.assertEqual(self._get(user=sans_droit).status_code, 403)
+
+    def test_ticket_annule_n_a_aucun_statut_suivant(self):
+        from apps.sav.models import Ticket
+        Ticket.objects.filter(pk=self.ticket.pk).update(annule=True)
+        r = self._get()
+        self.assertEqual((r.data['statuts_suivants'], r.data['a_faire']), ([], 'rien'))

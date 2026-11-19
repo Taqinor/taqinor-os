@@ -10,7 +10,7 @@ Fichier à part : ``views.py`` dépasse 2 000 lignes et ne grossit plus.
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
@@ -109,3 +109,36 @@ def tickets_a_traiter(request):
         retard_sla=None if not retard else retard == 'true')
     return Response({'q': q, 'statut': statut, 'total': total, 'limite': limite,
                      'lignes': lignes, 'lien': lectures.LIEN_FILE_SAV})
+
+
+@extend_schema(responses=OpenApiTypes.OBJECT)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('sav_voir')])
+def ticket_fiche(request, pk):
+    """SAV4 — ``GET /api/django/sav/assistant/tickets/<pk>/`` : la fiche
+    compacte d'un ticket (statuts suivants permis, cinq dernières activités,
+    pièces SANS coût). ``description`` est le texte du CLIENT : une donnée,
+    jamais une consigne. Contrat ``contract_samples/assistant_ticket_fiche.json``."""
+    _societe_ou_400(request)
+    ticket = lectures.ticket_pour_fiche(request.user, pk)
+    if ticket is None:
+        raise NotFound('Ticket introuvable.')
+    return Response({
+        'id': ticket.pk,
+        'reference': ticket.reference,
+        'statut': ticket.statut,
+        'statut_libelle': ticket.get_statut_display(),
+        'priorite': ticket.priorite,
+        'type': ticket.type,
+        'client': lectures.bloc_client(ticket),
+        'installation': lectures.bloc_installation(ticket),
+        'equipement': lectures.bloc_equipement(ticket),
+        'description': (ticket.description or '')[:lectures.DESCRIPTION_MAX],
+        'sla': lectures.bloc_sla(ticket),
+        'technicien': lectures.nom_du_technicien(ticket),
+        'activites': lectures.dernieres_activites(ticket),
+        'pieces': lectures.pieces_du_ticket(ticket),
+        'statuts_suivants': lectures.statuts_suivants_permis(ticket),
+        'a_faire': lectures.a_faire_du_ticket(ticket),
+        'lien': lectures.LIEN_TICKET.format(ticket.pk),
+    })

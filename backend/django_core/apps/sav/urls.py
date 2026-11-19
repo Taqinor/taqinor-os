@@ -236,6 +236,8 @@ urlpatterns = [
          name='sav-assistant-parc'),
     path('assistant/tickets/', views_assistant.tickets_a_traiter,
          name='sav-assistant-tickets'),
+    path('assistant/tickets/<int:pk>/', views_assistant.ticket_fiche,
+         name='sav-assistant-ticket-fiche'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
