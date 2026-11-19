@@ -22,6 +22,8 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAdminRole, IsAnyRole
 from apps.records.champs_stricts import RegexStricte
 
+from . import ecrans as _ecrans
+from . import libelles as _libelles
 from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
 from .selectors import (agregats_par_modele, cout_des_agregats,
@@ -746,26 +748,29 @@ class AssistantEventNoteView(APIView):
 # Contrat ``contract_samples/assistant_libelles.json`` : le relais demande, au
 # moment de préparer une proposition, le libellé des objets que ses entrées
 # désignent (``AgentAction.objets``). Un type -> le sélecteur de l'app qui le
-# possède (jamais un import de ses modèles).
-TYPES_LIBELLES = ('lead', 'devis', 'touche', 'facture', 'client')
+# possède (jamais un import de ses modèles) — table de ``apps/agent/libelles.py``
+# (vague 2, FND8 : les 11 nouveaux types, importés paresseusement).
+TYPES_LIBELLES = _libelles.TYPES
+
+
+def _entier_positif(request, nom: str):
+    """L'entier > 0 du paramètre ``nom`` ; None s'il est absent (ou 0) ; un
+    paramètre répété ou non entier est un 400 nommé."""
+    valeurs = request.query_params.getlist(nom)
+    if not valeurs:
+        return None
+    brut = valeurs[0].strip()
+    if len(valeurs) > 1 or not brut.isascii() or not brut.isdigit() \
+            or int(brut) >= 2 ** 31:
+        raise ParseError(f'{nom} : un entier positif est attendu.')
+    return int(brut) or None
 
 
 def _identifiants_libelles(request) -> dict:
-    """Entiers positifs des paramètres ``lead``, ``devis``, ``touche``,
-    ``facture`` et ``client`` (absents ignorés) ; un paramètre répété ou non
-    entier est un 400 nommé."""
-    ids = {}
-    for type_objet in TYPES_LIBELLES:
-        valeurs = request.query_params.getlist(type_objet)
-        if not valeurs:
-            continue
-        brut = valeurs[0].strip()
-        if len(valeurs) > 1 or not brut.isascii() or not brut.isdigit() \
-                or int(brut) >= 2 ** 31:
-            raise ParseError(f'{type_objet} : un entier positif est attendu.')
-        if int(brut):
-            ids[type_objet] = int(brut)
-    return ids
+    """Entiers positifs des paramètres de :data:`TYPES_LIBELLES` (absents
+    ignorés) ; un paramètre répété ou non entier est un 400 nommé."""
+    ids = {t: _entier_positif(request, t) for t in TYPES_LIBELLES}
+    return {t: v for t, v in ids.items() if v}
 
 
 class LibellesObjetsView(APIView):
@@ -784,17 +789,43 @@ class LibellesObjetsView(APIView):
     ], responses=inline_serializer('AssistantLibelles', {
         t: drf_serializers.CharField(required=False) for t in TYPES_LIBELLES}))
     def get(self, request):
-        from apps.crm.selectors_libelles import libelles_crm
-        from apps.ventes.selectors_libelles import libelles_ventes
+        return Response(_libelles.libelles_objets(request.user, _identifiants_libelles(request)))
 
-        ids = _identifiants_libelles(request)
-        libelles = libelles_crm(
-            request.user, **{k: ids[k] for k in ('lead', 'touche', 'client')
-                             if k in ids})
-        libelles.update(libelles_ventes(
-            request.user, **{k: ids[k] for k in ('devis', 'facture')
-                             if k in ids}))
-        return Response(libelles)
+
+class OuvrirEcranView(APIView):
+    """Copilote vague 2 (FND8) — ``GET /api/django/agent/ouvrir/`` (action
+    ``erp.ouvrir``, carte ``lien_ecran``) : le chemin d'un écran, construit
+    par le SERVEUR depuis ``contract_samples/assistant_ecrans.json`` (jamais
+    depuis une chaîne du modèle). Un écran à objet vérifie l'objet par le
+    résolveur de libellés : inconnu, autre société, hors portée, ou module
+    sans résolveur -> 404 « introuvable ». Paramètre refusé -> 400 nommé.
+    Aucun écran d'administration. Lecture seule."""
+
+    # ASEC43 — vue INTERNE : un compte portail reçoit 403.
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(parameters=[
+        OpenApiParameter('ecran', str, required=True, enum=_ecrans.cles()),
+        OpenApiParameter('id', int, required=False),
+        OpenApiParameter('onglet', str, required=False, enum=_ecrans.onglets_calepinage()),
+    ], responses=inline_serializer('AssistantOuvrir', {
+        'ecran': drf_serializers.CharField(), 'chemin': drf_serializers.CharField(),
+        'libelle': drf_serializers.CharField(), 'titre': drf_serializers.CharField()}))
+    def get(self, request):
+        ecran = request.query_params.get('ecran') or ''
+        onglet = request.query_params.get('onglet') or None
+        ident = _entier_positif(request, 'id')
+        try:
+            chemin = _ecrans.chemin(ecran, ident, onglet)
+        except _ecrans.ParametreEcran as exc:
+            raise ParseError(str(exc)) from exc
+        fiche = _ecrans.ecrans()[ecran]
+        libelle = fiche['titre']
+        if fiche['objet']:
+            libelle = _libelles.libelles_objets(request.user, {fiche['objet']: ident}).get(fiche['objet'])
+            if not libelle:
+                raise NotFound('Écran ou objet introuvable.')
+        return Response({'ecran': ecran, 'chemin': chemin, 'libelle': libelle, 'titre': fiche['titre']})
 
 
 class AutomationDraftView(APIView):
