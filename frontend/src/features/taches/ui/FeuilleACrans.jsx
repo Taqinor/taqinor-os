@@ -103,6 +103,91 @@ function useClavier(actif) {
   return actif ? clavier : 0
 }
 
+/* ── Vague 2 — la SORTIE des feuilles (spec-8 §2 : 180 ms ; l'entrée, R2-048, est en CSS `@starting-style`) ──────────
+   Fermée (ou démontée avec son écran : la fiche), la feuille quittait l'écran d'un coup. React l'a déjà retirée : on
+   laisse à sa place, le temps de l'animation, une COPIE inerte (`sortante` : sans rôle, `aria-hidden`, `inert`, sans
+   id ni data-*) — le focus est rendu tout de suite, aucun lecteur d'écran ni test ne voit plus de dialogue. La copie
+   est posée dans `.tch` sous une copie vide des ancêtres (`.fiche`…) : les règles `.tch .fiche .feuille…` valent
+   encore. Seulement si la personne n'a pas demandé moins d'animations ; jamais pour la saisie en place (dans le flux,
+   elle ferait sauter la liste). */
+const DUREE_SORTIE_MAX_MS = 400
+
+const animerSortie = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && window.matchMedia('(prefers-reduced-motion: no-preference)').matches
+
+function nettoyerCopie(copie) {
+  ;[copie, ...copie.querySelectorAll('*')].forEach((n) => {
+    ;[...n.attributes].forEach(({ name }) => {
+      if (name === 'id' || name === 'name' || name === 'for' || name === 'role' || name.startsWith('data-')
+        || (name.startsWith('aria-') && name !== 'aria-hidden')) n.removeAttribute(name)
+    })
+  })
+  copie.setAttribute('aria-hidden', 'true')
+  copie.inert = true
+}
+
+function laisserSortir(noeud, voileNoeud, racineTch, chaine) {
+  let hote = racineTch
+  let tete = null
+  chaine.forEach((ancetre) => {
+    const vide = ancetre.cloneNode(false)
+    nettoyerCopie(vide)
+    if (!tete) tete = vide
+    hote.appendChild(vide)
+    hote = vide
+  })
+  const copier = (el) => {
+    const copie = el.cloneNode(true)
+    // la valeur TAPÉE (propriété) n'est pas un attribut : sans elle la copie montrerait le champ d'origine
+    const champs = el.querySelectorAll('input, textarea, select')
+    copie.querySelectorAll('input, textarea, select').forEach((c, i) => {
+      c.value = champs[i]?.value ?? c.value
+      if ('checked' in c) c.checked = Boolean(champs[i]?.checked)
+    })
+    nettoyerCopie(copie)
+    copie.classList.add('sortante')
+    return copie
+  }
+  const copies = [voileNoeud, noeud].filter(Boolean).map(copier)
+  copies.forEach((c) => hote.appendChild(c))
+  let fini = false
+  const retirer = () => {
+    if (fini) return
+    fini = true
+    if (tete) tete.remove()
+    else copies.forEach((c) => c.remove())
+  }
+  copies[copies.length - 1]?.addEventListener('animationend', retirer)
+  setTimeout(retirer, DUREE_SORTIE_MAX_MS) // filet : une animation qui ne part pas (onglet caché) ne laisse rien
+}
+
+function useSortieAnimee(ouverte, enPlace, feuille, voile) {
+  const ouverteRendue = useRef(Boolean(ouverte))
+  useLayoutEffect(() => { ouverteRendue.current = Boolean(ouverte) })
+  const demontee = useRef(false)
+  useLayoutEffect(() => {
+    demontee.current = false
+    return () => { demontee.current = true }
+  }, [])
+  useLayoutEffect(() => {
+    const noeud = feuille.current
+    const voileNoeud = voile.current
+    const racineTch = noeud?.closest?.('.tch') ?? null
+    if (!ouverte || enPlace || !noeud || !racineTch) return undefined
+    const chaine = []
+    for (let n = noeud.parentElement; n && n !== racineTch; n = n.parentElement) chaine.unshift(n)
+    return () => {
+      if (!animerSortie()) return
+      // lu une fois le rendu posé : fermée, ou démontée avec son écran — jamais quand elle change seulement d'allure
+      // (en place ↔ dialogue), ni au double montage du mode strict (la feuille reste alors dans le document)
+      queueMicrotask(() => {
+        const fermee = demontee.current || !ouverteRendue.current
+        if (fermee && !noeud.isConnected && racineTch.isConnected) laisserSortir(noeud, voileNoeud, racineTch, chaine)
+      })
+    }
+  }, [ouverte, enPlace, feuille, voile])
+}
+
 /** Vrai entre `naviguerApresFeuille` et la fermeture de la feuille qu'elle remplace (voir ci-dessous). */
 let navigationVoulue = false
 
@@ -284,6 +369,8 @@ export default function FeuilleACrans({
     ;[...corps.children].forEach((enfant) => observateur.observe(enfant))
     return () => observateur.disconnect()
   }, [ouverte, clavier, panneau, enPlace, cran])
+
+  useSortieAnimee(ouverte, enPlace, feuille, voile)
 
   if (!ouverte) return null
 
