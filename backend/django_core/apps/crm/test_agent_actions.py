@@ -1715,9 +1715,12 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
         self.assertEqual((note.user_id, note.company_id),
                          (self.alice.pk, self.company.pk))
         self.assertIsNone(lead.first_contacted_at)
+        # Sans note demandée : aucune note « demande du client » (la note du plan de
+        # relance, elle, est posée à toute création).
         sans = self._creer(nom='Sans note')
         self.assertFalse(LeadActivity.objects.filter(
-            lead_id=sans.data['identite']['id'], kind='note').exists())
+            lead_id=sans.data['identite']['id'], kind='note',
+            body__startswith='Demande du client').exists())
 
     def test_champs_de_la_demande_ecrits_sur_la_fiche(self):
         resp = self._creer(
