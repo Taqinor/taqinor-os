@@ -39,6 +39,7 @@
     "capacite_utile_kwh": "capacité utile de la batterie unique (étude à 1 batterie, `option_avec.batterie.capacite_utile_kwh`)",
     "total_ht": "Total HT net de l'option « avec » recomposée à 1 batterie (remise globale et arrondi commercial compris) — imprimé quand la base du document est HT",
     "total_ttc": "Total TTC de l'option « avec » recomposée à 1 batterie, au centime : celui que montrerait « Batteries au départ » = 1",
+    "remise_comprise": "clé ADDITIVE, `true` seulement quand le devis porte une remise globale (> 0 %) : elle est DANS `total_ht` / `total_ttc`, et la phrase le dit (« remise comprise ») ; absente sans remise",
     "reference_option_avec": "les totaux de l'option « avec » du devis au moment du calcul : un devis NON brouillon garde le bloc tant qu'ils n'ont pas bougé",
     "refus.code": "sans_option | une_batterie | sans_lead | lignes_modifiees (la recomposition au nombre COURANT de batteries ne reproduit plus, au centime, le Total HT et le Total TTC de l'option des lignes) | recomposition (le calculateur refuse le système à 1 batterie : prix manquant, étude refusée, échéancier…) | incomplet | non_brouillon | corrige_apres_envoi | erreur"
   },

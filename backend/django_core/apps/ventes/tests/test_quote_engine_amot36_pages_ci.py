@@ -132,6 +132,17 @@ class DepartUneBatterieTests(SimpleTestCase):
         self.assertTrue(un.endswith(" La seconde batterie pourra être ajoutée ensuite : "
                                     "l'onduleur est déjà prévu pour."))
 
+    def test_remise_du_devis_dite_comprise(self):
+        """Fondateur 19/11/2026 — le bloc servi avec ``remise_comprise`` : la
+        phrase le dit dans les trois langues ; sans la clé, phrase d'hier."""
+        v = self._textes(_bloc_depart(remise_comprise=True))
+        self.assertIn("182\u202f300 MAD TTC (remise comprise). Les 2 autres", v["textes"]["fr"])
+        self.assertIn("MAD incl. VAT (discount included). The other 2", v["textes"]["en"])
+        self.assertIn("(شامل الخصم)", v["textes"]["ar"])
+        sans = self._textes(_bloc_depart())["textes"]
+        for lg in ("fr", "en", "ar"):
+            self.assertNotIn("(", sans[lg].split("—")[1], lg)
+
     def test_base_ht_le_prix_ht(self):
         v = self._textes(_bloc_depart(), economie_ci={"base": "ht"})
         self.assertIn("— 151\u202f916,67 MAD HT.", v["textes"]["fr"])

@@ -88,7 +88,7 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, re
         <p className="text-xs text-muted-foreground" data-testid="gen-phrase-une-batterie-apercu">
           Phrase imprimée : 1 batterie, {formatNumber(depart.nb_panneaux)} panneaux
           ({formatNumber(depart.kwc, { decimals: 2 })} kWc) — {formatNumber(depart.total_ttc)} MAD TTC
-          ({formatNumber(depart.total_ht)} MAD HT)
+          ({formatNumber(depart.total_ht)} MAD HT){depart.remise_comprise ? ' — remise du devis comprise' : ''}
         </p>
       )}
       {cochee && !depart && (

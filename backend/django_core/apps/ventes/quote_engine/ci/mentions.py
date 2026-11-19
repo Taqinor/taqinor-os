@@ -517,12 +517,14 @@ def extension_option_avec(data):
 TEXTES_DEPART_UNE_BATTERIE = {
     "debut": {
         "fr": "Pour démarrer avec une seule batterie : {n} {panneaux} ({kwc} kWc) et 1 batterie "
-              "de {kwh} kWh utiles — {prix} MAD {base}.",
+              "de {kwh} kWh utiles — {prix} MAD {base}{remise}.",
         "en": "To start with a single battery: {n} {panneaux} ({kwc} kWp) and 1 battery of "
-              "{kwh} usable kWh — {prix} MAD {base}.",
+              "{kwh} usable kWh — {prix} MAD {base}{remise}.",
         "ar": "للبدء ببطارية واحدة فقط: {n} {panneaux} ({kwc} كيلوواط ذروة) وبطارية واحدة "
-              "بسعة مفيدة {kwh} كيلوواط ساعة — {prix} درهم {base}.",
+              "بسعة مفيدة {kwh} كيلوواط ساعة — {prix} درهم {base}{remise}.",
     },
+    # Fondateur 19/11/2026 — la remise du devis est comprise dans ce prix : dit.
+    "remise": {"fr": " (remise comprise)", "en": " (discount included)", "ar": " (شامل الخصم)"},
     # Arabe : 3 à 10 ⇒ pluriel, 11 et plus ⇒ singulier (tamyiz) — 3e forme.
     "panneaux": {"fr": ("panneau", "panneaux"), "en": ("panel", "panels"),
                  "ar": ("لوح شمسي", "ألواح شمسية", "لوحًا شمسيًا")},
@@ -569,10 +571,11 @@ def valeurs_depart_une_batterie(data):
     if nombre_normalise(bloc.get("nb_batteries")) != 1 or any(
             not v or v <= 0 for v in valeurs.values()):
         return None
-    return dict(valeurs, n=int(valeurs["n"]), m=int(valeurs["m"]), base=base)
+    return dict(valeurs, n=int(valeurs["n"]), m=int(valeurs["m"]), base=base,
+                remise=bloc.get("remise_comprise") is True)
 
 
-def gabarits_depart_une_batterie(lg, n, m, base):
+def gabarits_depart_une_batterie(lg, n, m, base, remise=False):
     """``(début, suite)`` de la phrase dans la langue ``lg`` (accords faits :
     1 panneau / N panneaux, « la seconde » / « les M autres »)."""
     t = TEXTES_DEPART_UNE_BATTERIE
@@ -585,7 +588,8 @@ def gabarits_depart_une_batterie(lg, n, m, base):
     elif lg == "ar" and m >= 11:
         rang = 3
     debut = t["debut"][lg].replace("{panneaux}", panneaux) \
-        .replace("{base}", t["base"][base][lg])
+        .replace("{base}", t["base"][base][lg]) \
+        .replace("{remise}", t["remise"][lg] if remise else "")
     return debut, suites[rang]
 
 
@@ -605,7 +609,7 @@ def depart_une_batterie_option_avec(data):
 
     textes = {}
     for lg in LANGUES:
-        debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"])
+        debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"], v["remise"])
         textes[lg] = debut.format(n=v["n"], kwc=court(v["kwc"], lg, 2),
                                   kwh=court(v["kwh"], lg, 2),
                                   prix=_nombre_langue(v["prix"], lg, 0 if float(v["prix"]).is_integer()
