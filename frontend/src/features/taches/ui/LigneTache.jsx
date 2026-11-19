@@ -259,6 +259,8 @@ function metaDe(item, { contexte, aujourdhui, propose, groupeTitre }) {
 export default function LigneTache({
   item,
   contexte = 'jour',
+  // couture r2 — `none` quand un parent porte déjà le rôle `listitem` (ligne réordonnable d'une vue Liste)
+  roleCadre = 'listitem',
   aujourdhui = aujourdhuiIso(),
   reporterLibelle = '',
   estampille = '',
@@ -320,7 +322,7 @@ export default function LigneTache({
     <div
       ref={cadre}
       className="ligne-cadre"
-      role="listitem"
+      role={roleCadre}
       aria-selected={selection?.actif ? Boolean(selection.selectionnee) : undefined}
       data-ligne={`${item.type}:${item.id}`}
       draggable={glissable && item.type === 'tache' && !fait ? true : undefined}
@@ -414,7 +416,7 @@ export default function LigneTache({
             ) : null}
             {!activite ? <DropdownMenuItem onSelect={action('choisir_jour')}>Choisir un jour</DropdownMenuItem> : null}
             {!activite && !item.quelque_jour ? <DropdownMenuItem onSelect={action('reserve')}>En réserve</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Déplacer…</DropdownMenuItem> : null}
+            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Changer de projet…</DropdownMenuItem> : null}
             {!activite ? (
               <DropdownMenuItem onSelect={action('essentiel')}>
                 {item.essentielle ? 'Plus essentielle' : 'Essentielle'}

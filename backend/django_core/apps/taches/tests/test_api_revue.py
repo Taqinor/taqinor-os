@@ -98,6 +98,22 @@ class RevueProjetsTests(_Base):
         self.assertEqual(set(carte['faites_semaine'][0]), {'id', 'titre'})
         self.assertNotIn('Vieille', [t['titre'] for t in carte['faites_semaine']])
 
+    def test_prevues_aujourdhui_ce_qu_une_pause_laisse_dans_la_journee(self):
+        """C-5 — par carte, les tâches ouvertes prévues aujourd'hui (préfiltre de la journée) : ni sous-tâche, ni
+        bloquée, ni faite, ni demain, ni « Un jour » ; un autre projet compte à part ; en UNE requête pour toutes."""
+        jour = _aujourdhui()
+        ventes, site, vide = (fabriques.projet(self.u1, priorite=3, rang=r) for r in (1024, 2048, 3072))
+        mere = fabriques.tache(self.u1, projet=ventes, jour_prevu=jour, titre='Mère')
+        fabriques.tache(self.u1, projet=ventes, jour_prevu=jour, titre='Seconde')
+        fabriques.tache(self.u1, projet=ventes, parent=mere, jour_prevu=jour, titre='Sous')
+        fabriques.tache(self.u1, projet=ventes, jour_prevu=jour, titre='Bloquée', bloquee_par=mere)
+        fabriques.tache(self.u1, projet=ventes, jour_prevu=jour + datetime.timedelta(days=1), titre='Demain')
+        self._fait(self.u1, ventes, jour_prevu=jour, titre='Faite')
+        fabriques.tache(self.u1, projet=site, jour_prevu=jour, titre='Site')
+        fabriques.tache(self.voisin, projet=fabriques.projet(self.voisin), jour_prevu=jour, titre='Voisin')
+        cartes = {c['projet']['id']: c['prevues_aujourdhui_nb'] for c in self._cartes()['cartes']}
+        self.assertEqual(cartes, {ventes.pk: 2, site.pk: 1, vide.pk: 0})
+
     def test_une_autre_semaine_n_a_pas_ces_faites(self):
         projet = fabriques.projet(self.u1)
         self._fait(self.u1, projet)

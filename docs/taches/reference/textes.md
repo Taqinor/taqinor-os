@@ -91,14 +91,14 @@ référence données/API.
 | Onglets (`nav.items`, dernière vague) | Aujourd'hui · À trier · Projets · Agenda |
 | Pastille d'À trier | `{boite_reception}` (masquée à 0) |
 | ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
-| ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées récemment · Réglages |
+| ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées et derniers gestes (R2-125) · Réglages |
 | Loupe | Chercher dans mes tâches |
 | Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications ({n}) » (celle de l'ERP) ; au défilement, le titre de la page en compact |
 | Écran enfant (projet ouvert, sous-page de Réglages) | « ‹ {écran parent} » au-dessus du titre (« ‹ Projets », « ‹ Réglages ») ; ni loupe ni Copilote, le ⋯ reste |
 | Bouton flottant (seul bouton plein) | Ajouter |
 | Bouton global | Copilote |
 | Palette | Créer une tâche · Chercher « {q} » dans mes tâches · Copilote : Planifie ma journée · Aide-moi à prioriser · Range ma liste · Où j'en suis ? · Nouveau projet · Faire le bilan · Aujourd'hui · À trier · Projets · Agenda · Supprimer « {titre} » · Abandonner « {titre} » |
-| Aide des touches (`?`, feuille « Touches de Tâches » ; dans Tâches, `?` n'ouvre plus l'aide générale de l'ERP, `/` va à la Recherche) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
+| Aide des touches (`?`, feuille « Touches de Tâches » ; dans Tâches, `?` n'ouvre plus l'aide générale de l'ERP, `/` va à la Recherche) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Changer de projet · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min (tâche posée) · Ctrl/⌘ Z Annuler (hors champ). L'aide ne montre que les touches que l'écran ouvert traite (couture r2) : Espace, `*`, `Alt+↑/↓`, Ctrl/⌘ Z sur Aujourd'hui et un projet (Espace aussi dans la Recherche) ; `e`, `h` sur Aujourd'hui, un projet, À trier, la Recherche ; `d`, `m` sur Aujourd'hui, un projet, À trier ; `x` sur Aujourd'hui ; `Maj+↓` dans l'Agenda seulement ; les quatre premières partout |
 | Raccourci de manifeste (AVANCÉ) | Tâches |
 | Carte cockpit | « Tâches · Aujourd'hui » · « {faites} sur {objectif} » · 3 lignes cochables · Ouvrir ; vide : « Rien de gardé » |
 
@@ -110,7 +110,7 @@ référence données/API.
 | Progression (`pousser`) | « {faites} sur {objectif} · essentiel {ef}/{ep} » ; sans essentiel : « {faites} sur {objectif} » ; jour de retour : « Reprise » |
 | Progression (`tenir`) | « {faites} sur {objectif} · ton rythme : {bas} à {haut} » (`OBJECTIF.zone`) |
 | Progression (`libre`) | « {faites} faites » (« 1 faite ») |
-| Au toucher (vers Mon rythme) | « Objectif du jour : {objectif} ({source}) » · « {pt} des {pl} gardées » · « Temps : {charge} » · « Temps libre : {disponible} ({cap} moins {rdv} de rendez-vous) » (sans rendez-vous : « Temps libre : {cap} ») · « Mon rythme › » |
+| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} visée(s) · {gardées} tâche(s) gardée(s) » (sans objectif : « {faites} faite(s) · {gardées} tâches gardées » ; la source n'est dite que si elle est `defaut` : « Objectif : valeur par défaut, pas encore calculée sur toi », R2-035) · « Temps : {charge} » · « Temps libre : {disponible} ({cap} moins {rdv} de rendez-vous) » (sans rendez-vous : « Temps libre : {cap} ») · « Mon rythme › » |
 | Sources de l'objectif | `defaut` « valeur par défaut, pas encore calculée sur toi » · `calcule` « ta journée type » (en `tenir` : « ton rythme ») · `accepte` « accepté » · `dit` « ton choix » |
 | Charge | « {h} prévues » · « {h} prévues + {n} sans durée » · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
 | Source du temps disponible | `reglage` « ton réglage » · `historique` « habituel » · `defaut` « valeur par défaut » |
@@ -133,8 +133,8 @@ référence données/API.
 | Ailleurs dans l'ERP (déplié) | une ligne par famille SERVIE et non nulle, « {famille} {n} › » : « Chantiers » · « Tickets » · « Demandes d'achat à commander » · « Leads chauds » · « Rappels » · « Devis expirant » · « Relances » · « Mentions » ; famille absente de la réponse ou à 0 : pas de ligne ; toutes à 0 : « Rien à signaler. » |
 | Modes Réorganiser · Sélectionner | bandeau « Réorganiser » / « Sélectionner » + « OK » (sortie du mode) ; lot : « Quand » · « Terminer » |
 | En faire mon accueil | toast « L'icône ouvrira Aujourd'hui » |
-| Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · En réserve · Déplacer… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
-| Feuilles de ces actions | « Déplacer vers… » (sélecteur de projet) · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
+| Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · En réserve · Changer de projet… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
+| Feuilles de ces actions | « Changer de projet » (sélecteur de projet ; R2-063 : « Déplacer » se lisait « dans le temps ») · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
 
 États :
 
@@ -171,6 +171,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Par ligne | case ; titre modifiable ; puces ; « Déjà faite » (décochée) ; « Déjà dans « {projet} » » / « Déjà dans À trier » (décochée) ; « En double dans cette liste » (décochée) ; points de check-list en retrait ; « En faire des sous-tâches » |
 | Boutons | **Créer {n} tâches** (« Créer 1 tâche ») · Coller encore · Ranger avec le Copilote (si disponible) |
 | Vide | « Aucune ligne lisible. » |
+| Une phrase déjà là | sous le champ : « Déjà dans ta liste » (une tâche ouverte identique) · « Déjà faite » ; bouton « Ajouter quand même » (l'envoie) — jamais « Aucune ligne lisible. » |
 | Hors ligne | « Hors ligne : elle partira dès le retour du réseau. » (sous le champ, tant que le réseau manque ; « Ajouter » met la phrase dans la file, toast §2.15) |
 | Ouverte depuis un écran | le contexte de l'écran est posé : puce « ● {projet} » (Un projet, × pour la retirer), « Quand » au jour de l'agenda |
 | Rangées par le Copilote | repère « Rangée par le Copilote » ; « Non rangée » pour une ligne omise |
@@ -235,7 +236,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Titre d'un projet · « Fini quand… » | le nom se touche pour le renommer (Entrée ou la sortie enregistre, Échap annule ; refus sous le champ) · « Fini quand… » se corrige sur place (vide : « Ce sera fini quand… ») · toasts « Projet renommé » · « Couleur changée » · « Échéance changée » · « Échéance retirée » · « Objectif enregistré » (tous avec Annuler) |
 | Ordre des tâches d'une étape (R2-063) | glisser la poignée (souris : au survol ; Tableau : la poignée de la carte) · ⋯ → **Réorganiser** : bandeau « Réorganiser · OK », ▲ « Monter « {titre} » » / ▼ « Descendre « {titre} » » (éteints en tête et en queue) · clavier : Alt+↑/↓ sur une ligne, `j`/`k` pour parcourir ; toast « Ordre changé · Annuler » ; annonce « {titre} : position {n} sur {m} » |
 | ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Réorganiser (vue Liste) · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
-| Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
+| Santé courte (en-tête, une ligne) | « À ce rythme, pas prêt pour le {jour} » (signal (d) d'`echeance_menacee` avec `donnees.echeance` ; « pour aujourd'hui », « pour demain » sans « le », R2-034) ; sans `echeance` servie : « À ce rythme : {besoin} jours travaillés, il en reste {reste} » ; les autres signaux : leur phrase ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
 | Projet vide | « Ajoute la première tâche » · « Planifier le projet » (R2-071) · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |
 | Planifier — étape 1 | « Priorité : Haute · Moyenne · Basse » ; « Ce sera fini quand… » |
@@ -353,6 +354,9 @@ filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le
 titre (casse et accents ignorés). La loupe est dans le champ.
 
 ### 2.13 Supprimées récemment et derniers gestes
+
+Titre de l'écran et entrée du menu ⋯ : « Supprimées et derniers gestes » (R2-125) ; la section des éléments supprimés garde
+son nom « Supprimées récemment ».
 
 « Supprimées récemment » — « Supprimées depuis moins de 30 jours. » — un projet = une ligne « « {projet} » et ses {n}
 tâches » · Restaurer ; une tâche = une ligne : Restaurer · {projet ou « Sans projet »} · {jour de suppression} ; vide

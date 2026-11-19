@@ -28,7 +28,7 @@ import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { estEnLigne, useCompteTaches } from '../../features/taches/lib/enLigne'
 import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
-import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH89 — Écran « Un projet », vue Liste (`/taches/projets/:id`). Maquette : docs/taches/maquettes/projet-liste.html.
@@ -119,9 +119,15 @@ function versEtape(vue, item, sectionId) {
   return origine ? compteursApresDeplacement(place, origine.tache, origine.sectionId, sectionId) : place
 }
 
-/** Santé courte de l'en-tête (textes.md §2.6) : signal (d) d'`echeance_menacee` → « À ce rythme : … » ; sinon la phrase. */
-function santeCourte(signal) {
+/** Santé courte de l'en-tête (textes.md §2.6) : signal (d) d'`echeance_menacee` → la conséquence « À ce rythme, pas prêt
+ *  pour le jeu. 26 » quand l'échéance est servie (R2-034 ; « pour demain » sans « le »), sinon « À ce rythme : {besoin}
+ *  jours travaillés, il en reste {reste} » ; les autres signaux : leur phrase. */
+function santeCourte(signal, aujourdhui) {
   const d = signal?.donnees
+  if (signal?.code === 'echeance_menacee' && d?.signal === 'd' && d.echeance) {
+    const jour = jourCourt(d.echeance, aujourdhui)
+    if (jour) return `À ce rythme, pas prêt pour ${["aujourd'hui", 'demain'].includes(jour) ? jour : `le ${jour}`}`
+  }
   if (signal?.code === 'echeance_menacee' && d?.signal === 'd' && d.besoin != null && d.reste != null) {
     return `À ce rythme : ${d.besoin} jours travaillés, il en reste ${d.reste}`
   }
@@ -204,7 +210,7 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif }) {
   const { projet, avancement, prochain_jalon: jalon } = vue
   const { texte, part } = avancementDe({ compteurs: { faites: avancement.faites, ouvertes: avancement.total - avancement.faites } })
   const signal = projet.sante?.[0]
-  const sante = santeCourte(signal)
+  const sante = santeCourte(signal, aujourdhui)
   const jalonJour = jalon ? (jalon.jour_prevu ?? jalon.echeance) : null
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   // Passe visuelle n° 43 — l'en-tête de projet-liste.html : priorité · échéance ; barre, « 12 sur 18 » et le jalon
@@ -331,7 +337,7 @@ export default function Projet() {
       const avant = Object.fromEntries(Object.keys(champs).map((c) => [c, projet[c]]))
       setVue((v) => (v ? { ...v, projet: { ...v.projet, ...champs } } : v))
       try {
-        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version })
+        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version }, { erreurSousLeChamp: true })
         projetRef.current = { ...projet, ...champs, ...data }
         setVue((v) => (v ? { ...v, projet: { ...v.projet, ...data } } : v))
         if (message) {
@@ -503,7 +509,7 @@ export default function Projet() {
     else if (action === 'essentiel') actions.essentiel(tache)
     else if (action === 'quand') actions.surAction('choisir_jour', tache)
     else if (action === 'deplacer') actions.surAction('deplacer', tache, { clavier: true })
-    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id)
+    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id, { focus: action === 'renommer' ? 'titre' : 'heure' })
   }, { actif: Boolean(vue) && !planifier && !dialogue && !actions.feuille && !actions.selecteurProjet })
 
   const poserPriorite = async (projet, valeur) => {

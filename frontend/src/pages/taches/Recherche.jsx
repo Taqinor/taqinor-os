@@ -381,7 +381,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     const item = cle ? lignes.find((t) => `${t.type}:${t.id}` === cle) : null
     if (!item) return
     if (touche === 'terminer') terminer(item, ouverte(item)).catch((err) => setErreur(frenchError(err)))
-    else if (touche === 'renommer' || touche === 'heure') ouvrirFiche(item)
+    else if (touche === 'renommer' || touche === 'heure') ouvrirLaFiche(item.id, { focus: touche === 'renommer' ? 'titre' : 'heure' })
   }, { actif: !actions.feuille && !actions.selecteurProjet && !selecteur })
 
   const basculerPuce = (cle) => setPuces((l) => (l.includes(cle) ? l.filter((c) => c !== cle) : [...l, cle]))

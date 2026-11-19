@@ -10,7 +10,7 @@ import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
 import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
-import { morceauxSurlignes } from '../ui/ChampSaisie'
+import ChampSaisie, { morceauxSurlignes } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -178,6 +178,50 @@ describe('TCH82 — feuille de saisie', () => {
     unmount()
     monter()
     expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
+  })
+
+  it('couture r2 — `n` sur un projet avant sa lecture (projet_id seul) : la puce nomme le projet, lu dans la liste', async () => {
+    mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3, statut: 'actif' }])
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3 } })) })
+    expect(await screen.findByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
+  })
+
+  it('couture r2 — le « Quand » posé d\'office par Aujourd\'hui ne suit pas le brouillon rouvert depuis un autre écran', async () => {
+    const user = userEvent.setup()
+    const lieu = window.location.pathname
+    try {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      const premiere = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      expect(await screen.findByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), 'Relancer le client')
+      premiere.unmount()
+      window.history.pushState({}, '', '/taches/projets/3')
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      expect(champ()).toHaveValue('Relancer le client') // la phrase suit
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull() // pas le jour d'Aujourd'hui
+    } finally {
+      window.history.pushState({}, '', lieu)
+    }
+  })
+
+  it('couture r2 — une date lue dans la phrase l\'emporte : la puce « Quand » ne montre plus le jour posé d\'office', async () => {
+    const user = userEvent.setup()
+    const lieu = window.location.pathname
+    try {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      expect(await screen.findByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), PHRASE) // « demain » : l'aperçu sert jour_prevu
+      expect(await screen.findByText('mer. 18 nov.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Quand' })).toBeInTheDocument()
+    } finally {
+      window.history.pushState({}, '', lieu)
+    }
   })
 
   it('la déconnexion vide le brouillon, à l\'écran et dans le stockage', async () => {
@@ -611,7 +655,8 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Stand #')
       await waitFor(() => expect(liste()).not.toBeNull())
       expect(options()).toEqual(['Salon Solaire Expo', 'Chantier Bénali 9 kWc', 'Site web'])
-      expect(champ()).toHaveAttribute('aria-expanded', 'true')
+      expect(champ()).toHaveAttribute('aria-controls', liste().id) // jamais aria-expanded sur un champ texte (axe)
+      expect(champ()).not.toHaveAttribute('aria-expanded')
       await user.type(champ(), 'Sal')
       expect(options()).toEqual(['Salon Solaire Expo'])
       await user.keyboard('{Enter}')
@@ -638,6 +683,16 @@ describe('TCH82 — feuille de saisie', () => {
       expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
     })
 
+    it('couture r2 — « #Nom » déjà tapé EN ENTIER : Entrée envoie la phrase (la liste ne mange pas la touche)', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Stand #Salon_Solaire_Expo')
+      await waitFor(() => expect(liste()).not.toBeNull())
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(champ()).toHaveValue('')
+    })
+
     it('la puce « Projet » ouvre le sélecteur ; le projet choisi part avec la ligne et se retire', async () => {
       mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
         ...apercu, projets_nouveaux: [], lignes: [{ ...apercu.lignes[0], titre: 'Réserver le stand', jetons: [], alertes: [], champs: {} }],
@@ -652,6 +707,43 @@ describe('TCH82 — feuille de saisie', () => {
       await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
       const envoi = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
       expect(envoi.lignes[0]).toMatchObject({ titre: 'Réserver le stand', projet_id: 11 })
+    })
+  })
+
+  it('couture r2 — la puce du projet lu porte sa teinte (data-p) ; sans couleur servie, le fond des puces lues', () => {
+    const jeton = (nom, couleur) => ({ type: 'projet', source: `#${nom}`, debut: 0, fin: nom.length + 1, libelle: `● ${nom}`,
+      valeur: { id: 3, nom, nouveau: false, ...(couleur ? { couleur } : {}) } })
+    render(<div className="tch"><ChampSaisie valeur="" onChange={() => {}} jetons={[jeton('Salon', 'indigo'), jeton('Ventes')]} /></div>)
+    const [salon, ventes] = document.querySelectorAll('[data-jeton="projet"]')
+    expect(salon).toHaveClass('projet-lu')
+    expect(salon).toHaveAttribute('data-p', 'indigo')
+    expect(ventes).toHaveClass('lue')
+    expect(ventes).not.toHaveAttribute('data-p')
+  })
+
+  describe('couture r2 — une phrase identique à une tâche ouverte : « Déjà dans ta liste » et « Ajouter quand même »', () => {
+    beforeEach(() => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: { priorite: 0 },
+          cochee: false, doublon_de: 31, doublon_projet: null }],
+      } : creation }))
+    })
+
+    it('Entrée ne crée rien et dit « Déjà dans ta liste » (jamais « Aucune ligne lisible. ») ; « Ajouter quand même » la crée', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Appeler Karim')
+      await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled(), { timeout: 3000 })
+      await user.keyboard('{Enter}')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Déjà dans ta liste')
+      expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
+      expect(champ()).toHaveValue('Appeler Karim')
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+      await user.click(screen.getByRole('button', { name: 'Ajouter quand même' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const [creee] = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0].lignes
+      expect(creee.titre).toBe('Appeler Karim')
     })
   })
 
@@ -679,6 +771,8 @@ describe('TCH82 — feuille de saisie', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGE)
       expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
       expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+      // couture r2 — un 400 de la saisie se dit sous le champ : chaque appel fait taire le toast global
+      expect(mocks.saisieRapide.mock.calls.every(([, options]) => options?.erreurSousLeChamp === true)).toBe(true)
     })
 
     it('« Mettre le reste en note » crée la tâche : 280 caractères au plus en titre, le reste en note', async () => {

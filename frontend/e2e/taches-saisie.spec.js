@@ -395,7 +395,8 @@ test.describe('Tâches — iPhone : le pied des feuilles passe au-dessus de la b
     await expect.poll(() => recoitLeDoigt(creer), '« Créer 3 tâches » sous le doigt').toBe(true)
     await creer.tap()
     await expect(feuilleSaisie(page)).toHaveCount(0)
-    expect((await listerProjets(page)).map((p) => p.nom)).toEqual([nom])
+    // R2-001 : l'envoi part EN ARRIÈRE-PLAN (la feuille se ferme au toucher) — on attend que le serveur l'ait écrit
+    await expect.poll(async () => (await listerProjets(page)).map((p) => p.nom)).toEqual([nom])
   })
 
   test('fiche : « Fait » reçoit le doigt', async ({ page }) => {

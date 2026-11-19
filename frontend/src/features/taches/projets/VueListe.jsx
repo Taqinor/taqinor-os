@@ -36,10 +36,12 @@ function Rang({ item, etape, rang, total, aujourdhui, poignees, reorganiser }) {
   const data = { etape, titre: item.titre }
   const { attributes, listeners, setNodeRef: refGlisse, isDragging } = useDraggable({ id, data })
   const { setNodeRef: refRecoit } = useDroppable({ id, data })
+  const enRang = total >= 2 && item.type === 'tache'
   const ligne = (
     <LigneTache
       item={item}
       contexte="projet"
+      roleCadre={enRang ? 'none' : 'listitem'}
       aujourdhui={aujourdhui}
       onTerminer={poignees.onTerminer}
       onOuvrir={poignees.onOuvrir}
@@ -47,10 +49,12 @@ function Rang({ item, etape, rang, total, aujourdhui, poignees, reorganiser }) {
       onAnnonce={poignees.onAnnonce}
     />
   )
-  if (total < 2 || item.type !== 'tache') return ligne
+  if (!enRang) return ligne
+  // couture r2 (axe) — le rang EST l'élément de liste (sa ligne n'en reprend pas le rôle) ; la poignée ne sert qu'à la
+  // souris et au doigt : au clavier, Alt+↑/↓ et « Réorganiser » (▲ ▼) réordonnent — elle sort de l'ordre de tabulation
   return (
-    <div ref={(noeud) => { refGlisse(noeud); refRecoit(noeud) }} role="presentation" className={`ep-rang${reorganiser ? ' reorg' : ''}${isDragging ? ' saisi' : ''}`}>
-      <button type="button" className="ep-poignee-ordre" aria-label={`Déplacer « ${item.titre} »`} {...attributes} {...listeners}>
+    <div ref={(noeud) => { refGlisse(noeud); refRecoit(noeud) }} role="listitem" className={`ep-rang${reorganiser ? ' reorg' : ''}${isDragging ? ' saisi' : ''}`}>
+      <button type="button" className="ep-poignee-ordre" {...attributes} {...listeners} tabIndex={-1} aria-hidden="true">
         <GripVertical className="i i-16" aria-hidden="true" />
       </button>
       <div className="ep-rang-ligne">{ligne}</div>

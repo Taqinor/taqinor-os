@@ -352,7 +352,9 @@ class MessagesDAjoutTests(SimpleTestCase):
                          ['Adresse injoignable : vérifie le lien.'])
 
     def test_hote_introuvable_ou_interne_est_injoignable(self):
-        for motif in ("L'hôte du webhook est introuvable (DNS).", "L'URL du webhook pointe vers une adresse interne interdite."):
+        motifs = ("L'hôte du webhook est introuvable (DNS).",
+                  "L'URL du webhook pointe vers une adresse interne interdite.")
+        for motif in motifs:
             with self.subTest(motif=motif):
                 self.assertEqual(self.refus('https://agenda.example/a.ics', leve=UnsafeWebhookURL(motif)),
                                  ['Adresse injoignable : vérifie le lien.'])

@@ -93,9 +93,12 @@ function Surlignage({ valeur, jetons }) {
 
 function PuceJeton({ jeton, onIgnorer }) {
   const nouveau = jeton.type === 'projet' && jeton.valeur?.nouveau
-  const classe = nouveau ? 'puce nouveau' : jeton.type === 'projet' ? 'puce projet-lu' : 'puce lue'
+  // couture r2 — la puce d'un projet lu prend SA teinte (`data-p`, comme le surlignage du champ) ; sans couleur servie,
+  // elle garde le fond des autres puces lues (jamais une puce nue à côté de puces pleines)
+  const couleur = jeton.type === 'projet' && !nouveau ? jeton.valeur?.couleur : null
+  const classe = nouveau ? 'puce nouveau' : couleur ? 'puce projet-lu' : 'puce lue'
   return (
-    <span className={classe} data-jeton={jeton.type}>
+    <span className={classe} data-jeton={jeton.type} data-p={couleur || undefined}>
       <span className="chiffres">{jeton.libelle}</span>
       <button
         type="button"
@@ -220,7 +223,9 @@ export default function ChampSaisie({
         setActif(e.key === 'ArrowDown' ? Math.min(courant + 1, proposes.length - 1) : Math.max(courant - 1, 0))
         return
       }
-      if ((e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === 'Tab') {
+      // couture r2 — « #Nom » déjà tapé en entier (le choix ne changerait rien) : Entrée envoie la phrase, Tab complète
+      const complet = Boolean(mot) && cle(mot.q) === cle(jetonProjet(proposes[courant]?.nom))
+      if ((e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !complet) || e.key === 'Tab') {
         e.preventDefault()
         choisirProjet(proposes[courant])
         return
@@ -248,8 +253,9 @@ export default function ChampSaisie({
           aria-label="Ajouter une tâche"
           aria-invalid={erreur ? true : undefined}
           aria-describedby={erreur ? idErreur : undefined}
+          // couture r2 — `aria-expanded` n'est pas permis sur un champ texte (axe : aria-allowed-attr, critique) : la liste
+          // ouverte se dit par `aria-controls` et `aria-activedescendant`
           aria-autocomplete={projets ? 'list' : undefined}
-          aria-expanded={projets ? listeOuverte : undefined}
           aria-controls={listeOuverte ? idListe : undefined}
           aria-activedescendant={listeOuverte ? `${idListe}-${proposes[courant].id}` : undefined}
           placeholder={indication}

@@ -676,7 +676,7 @@ export default function Aujourdhui() {
   useEffect(() => { donneesCourantes.current = donnees }, [donnees])
   const majLigne = useCallback((id, champs) => {
     const cle = `tache:${id}`
-    // R2-029 — une tâche ouverte change de projet (« Déplacer… », ou son Annuler) : « Mes projets » (bureau) suit
+    // R2-029 — une tâche ouverte change de projet (« Changer de projet… », ou son Annuler) : « Mes projets » (bureau) suit
     if (Object.prototype.hasOwnProperty.call(champs, 'projet')) {
       const actuel = chercher(donneesCourantes.current, cle)
       const avant = actuel?.projet?.id ?? null
@@ -777,7 +777,20 @@ export default function Aujourdhui() {
 
   const ouvrirFiche = useOuvrirFiche()
   // une création (saisie, collage, file rejouée) : la journée se relit une fois, sans recharger la page
-  useApresCreation(useCallback(() => { charger(); setBrouillon(lireBrouillon(societe, userId)) }, [charger, societe, userId]))
+  useApresCreation(useCallback((detail) => {
+    // couture r2 (R2-040) — « Fait » touché dans la fiche : la ligne se barre SUR PLACE et le compte avance, exactement
+    // comme une case cochée ; une relecture l'aurait rangée dans « Faites » replié (elle disparaissait sous la fiche)
+    const ecrite = detail?.tache
+    const cle = ecrite?.id != null ? `tache:${ecrite.id}` : null
+    const avant = cle && donnees ? chercher(donnees, cle) : null
+    if (avant && ecrite.statut === 'fait' && avant.statut !== 'fait') {
+      patcher(cle, (it) => ({ ...it, statut: 'fait', lock_version: ecrite.lock_version ?? it.lock_version }))
+      setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, avant, 1) } : d))
+      return
+    }
+    charger()
+    setBrouillon(lireBrouillon(societe, userId))
+  }, [charger, societe, userId, donnees, patcher, setDonnees]))
 
   // Raccord F2 — le gestionnaire commun des actions de ligne ; Aujourd'hui garde son ★ (la ligne change de section),
   // son Reporter / Choisir un jour (estampille « → jeu. 19 ») et « Lier une tâche » des activités ERP.
@@ -863,7 +876,13 @@ export default function Aujourdhui() {
     if (action === 'annuler') annulerToast()
     else if (!item) return
     else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
-    else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
+    else if (action === 'essentiel' && item.type === 'tache') {
+      // couture r2 — la ligne change de section (Prévu ↔ Essentiel) : son bouton est remonté ailleurs, le focus le suit
+      basculerEssentiel(item, !item.essentielle).then(() => requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return
+        document.querySelector(`[data-ligne="${cle}"] .ligne-corps-bouton`)?.focus()
+      }))
+    }
     else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, clavier: true })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)

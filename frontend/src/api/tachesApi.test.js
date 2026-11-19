@@ -327,6 +327,26 @@ describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le 
     expect(toastError).toHaveBeenCalledTimes(2)
   })
 
+  it('400 dit SOUS LE CHAMP (`erreurSousLeChamp`) : aucun toast global, l\'erreur garde son corps ; 500 : le toast reste', async () => {
+    api.patch.mockImplementation(pont(400, { nom: ['Ce nom est trop long.'] }))
+    let err = await client.modifierProjet(3, { nom: 'x' }, { erreurSousLeChamp: true }).catch((e) => e)
+    expect(toastError).not.toHaveBeenCalled()
+    expect(err.response.status).toBe(400)
+    expect(client.classerErreur(err)).toMatchObject({ code: 'validation', champs: { nom: ['Ce nom est trop long.'] } })
+    expect(api.defaults.validateStatus).toBe(valider)
+    api.post.mockImplementation(pont(400, { url: ['Adresse injoignable : vérifie le lien.'] }))
+    err = await client.ajouterAgendaExterne({ url: 'https://x' }, { erreurSousLeChamp: true }).catch((e) => e)
+    expect(err.response.data.url).toEqual(['Adresse injoignable : vérifie le lien.'])
+    expect(api.post.mock.calls.at(-1)[2].headers['Idempotency-Key']).toBeTruthy() // la clé reste posée
+    await client.creerProjet({ nom: '' }, { erreurSousLeChamp: true }).catch((e) => e)
+    await client.saisieRapide({ texte: 'x', apercu: true }, { cle: null, erreurSousLeChamp: true }).catch((e) => e)
+    expect(toastError).not.toHaveBeenCalled()
+    api.patch.mockImplementation(pont(500, { detail: 'Erreur serveur.' }))
+    err = await client.modifierProjet(3, { nom: 'x' }, { erreurSousLeChamp: true }).catch((e) => e)
+    expect(err.response.status).toBe(500)
+    expect(toastError).toHaveBeenCalledTimes(1)
+  })
+
   it('la prémisse tient avec le VRAI axios : la règle posée pendant l\'appel est celle que la requête emporte', async () => {
     // Le client pose sa règle sur l'instance le temps de l'appel puis la retire : cela ne vaut que si axios
     // fusionne ses réglages DÈS l'appel (synchrone). Une vraie instance, un adaptateur qui applique la règle

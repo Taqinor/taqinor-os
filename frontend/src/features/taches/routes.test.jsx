@@ -32,7 +32,7 @@ const ATTENDU = {
   '/taches/revue': 'Revue de la semaine',
   '/taches/rythme': 'Mon rythme',
   '/taches/recherche': 'Recherche',
-  '/taches/supprimees': 'Supprimées récemment',
+  '/taches/supprimees': 'Supprimées et derniers gestes',
   '/taches/reglages': 'Réglages',
   '/taches/reglages/iphone': 'Réglages',
 }
@@ -171,7 +171,12 @@ describe('TCH43 — routes du module', () => {
       await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true })) })
       const aide = screen.getByRole('dialog', { name: 'Touches de Tâches' })
       expect(within(aide).getByText('Ajouter ici')).toBeInTheDocument()
-      expect(within(aide).getByText('Annuler (hors champ)')).toBeInTheDocument()
+      // couture r2 — l'aide dit ce que l'écran OUVERT fait : À trier traite Quand, mais ni Fait, ni ★, ni Ctrl Z
+      expect(within(aide).getByText('Quand')).toBeInTheDocument()
+      expect(within(aide).queryByText('Fait')).toBeNull()
+      expect(within(aide).queryByText('Essentiel')).toBeNull()
+      expect(within(aide).queryByText('Annuler (hors champ)')).toBeNull()
+      expect(within(aide).queryByText(/\+15 min/)).toBeNull()
       expect(aideErp).not.toHaveBeenCalled()
       await act(async () => { aide.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
       expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()

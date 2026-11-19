@@ -100,7 +100,7 @@ export default function Supprimees({ aujourdhui = aujourdhuiIso() }) {
   const vide = charge && projets.length === 0 && taches.length === 0
 
   return (
-    <CoquilleTaches ecran="supprimees" titre="Supprimées récemment">
+    <CoquilleTaches ecran="supprimees" titre="Supprimées et derniers gestes">
       <p className="es-sous">Supprimées depuis moins de 30 jours.</p>
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
       <ChargementTardif actif={!charge && !erreur} />

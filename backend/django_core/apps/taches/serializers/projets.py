@@ -449,6 +449,7 @@ def _carte_de_revue(carte, ctx, prochaines):
         'projet': forme_projet(carte.projet, ctx),
         'faites_semaine': [{'id': t.pk, 'titre': _titre(t, ctx)} for t in carte.faites[:3]],
         'faites_nb': len(carte.faites),
+        'prevues_aujourdhui_nb': carte.prevues_aujourdhui,
         'bloquees': [{'id': t.pk, 'titre': _titre(t, ctx),
                       'attend': {'id': t.bloquee_par_id, 'titre': _titre(t.bloquee_par, ctx)}} for t in carte.bloquees],
         'prochaine_action': _item_de_revue(carte.prochaine_id, ctx, prochaines),

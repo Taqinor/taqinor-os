@@ -401,7 +401,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const choisirProjet = (projetId) => { setOuvert(''); patcher({ projet_id: projetId }, 'projet') }
   const nouveauProjet = async (nom) => {
     try {
-      const { data } = await creerProjet({ nom })
+      const { data } = await creerProjet({ nom }, { erreurSousLeChamp: true })
       const cree = data?.projet ?? data // POST projets/ rend `projet_ecrit` : { projet, deplacees, … }
       setProjets((liste) => (liste ? [...liste, cree] : liste))
       choisirProjet(cree.id)

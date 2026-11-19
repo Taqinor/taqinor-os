@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -175,6 +175,18 @@ describe('TCH86 — écran À trier', () => {
     await user.click(await screen.findByRole('option', { name: 'Ventes' }))
     await waitFor(() => expect(api.traiterLot).toHaveBeenCalledWith({ ids: [41], action: 'deplacer', valeurs: { projet_id: projet.id } }))
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Déplacée dans « Ventes »')
+  })
+
+  it('Couture r2 — Projet… › Créer « … » refusé : le message est dit par l\'écran, sans toast global en double', async () => {
+    api.creerProjet.mockRejectedValue(Object.assign(new Error('http'), { response: { status: 400, data: { nom: ['Ce nom est trop long.'] } } }))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Projet…' }))
+    await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
+    await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
+    await waitFor(() => expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Chantier' }, { erreurSousLeChamp: true }))
+    expect(api.traiterLot).not.toHaveBeenCalled()
   })
 
   it('Choisir un jour : le sélecteur « Quand » pose le jour choisi', async () => {
@@ -363,6 +375,21 @@ describe('R2-036 — j / k parcourent les cartes d\'À trier, Entrée ouvre la f
     expect(screen.getByTestId('position')).toHaveTextContent('?tache=42')
     expect(api.traiterLot).not.toHaveBeenCalled()
     expect(lignes()).toHaveLength(3)
+  })
+
+  it('couture r2 — `e` ouvre la fiche curseur dans le titre, `h` sur l\'heure (comme l\'aide le dit)', async () => {
+    const user = userEvent.setup()
+    const premier = monter()
+    await screen.findByText('Appeler Karim')
+    await user.keyboard('jj')
+    await user.keyboard('e')
+    expect(screen.getByTestId('position')).toHaveTextContent('?tache=42&focus=titre')
+    premier.unmount()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await act(async () => { within(lignes()[0]).getByRole('button', { name: 'Appeler Karim' }).focus() })
+    await user.keyboard('h')
+    expect(screen.getByTestId('position')).toHaveTextContent('?tache=41&focus=heure')
   })
 
   it('k remonte, jamais au-delà de la première ; Espace ne fait disparaître aucune carte', async () => {

@@ -213,7 +213,7 @@ function AjoutAgenda({ onAjoute }) {
     setErreur('')
     setLecture(true)
     try {
-      const { data } = await ajouterAgendaExterne({ url: url.trim(), libelle: libelle.trim() })
+      const { data } = await ajouterAgendaExterne({ url: url.trim(), libelle: libelle.trim() }, { erreurSousLeChamp: true })
       onAjoute(data)
       setUrl('')
       setLibelle('')

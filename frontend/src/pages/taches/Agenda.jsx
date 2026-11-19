@@ -524,7 +524,7 @@ function VueAVenir({ jours, aujourdhui, gestes }) {
 /** Raccord F2 — aucun agenda externe ajouté : l'invitation de textes.md §2.8 (lue une fois, jamais devinée). */
 function InvitationAgendas({ onOuvrir }) {
   return (
-    <div className="bandeau" role="region" aria-label="Mes agendas">
+    <div className="bandeau ag-invitation" role="region" aria-label="Mes agendas">
       <span className="bandeau-texte">Ajoute ton agenda pour voir tes rendez-vous ici.</span>
       <button type="button" className="bouton discret" onClick={onOuvrir}>Mes agendas</button>
     </div>

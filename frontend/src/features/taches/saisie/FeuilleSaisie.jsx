@@ -141,6 +141,11 @@ const ANNONCE_EN_FILE = 'Hors ligne : gardée, elle partira dès le retour du r�
 
 /** Longueur maximale d'un titre (api.md §4, `CHAMPS_LIGNE.titre`). */
 const TITRE_MAX = 280
+/** Une phrase déjà là (le serveur la décoche : `doublon_de`, `deja_faite`) : dit sous le champ, jamais « Aucune ligne
+ *  lisible. » ; « Ajouter quand même » l'envoie (textes.md §2.3). */
+const DEJA_DANS_LISTE = 'Déjà dans ta liste'
+const DEJA_FAITE = 'Déjà faite'
+const raisonDouble = (l) => (l?.doublon_de != null ? DEJA_DANS_LISTE : l?.deja_faite ? DEJA_FAITE : '')
 
 /** R2-007 — un titre trop long coupé au dernier espace avant 280 caractères ; la suite devient la note. */
 function couperTitre(titre) {
@@ -218,6 +223,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [cid, setCid] = useState(() => nouvelleCle())
   const [contexte, setContexte] = useState(() => lireContexte(null))
   const [quandDepart, setQuandDepart] = useState(null)
+  /** Vrai quand le « Quand » affiché est celui que l'écran a posé d'office (jamais choisi à la main) : gardé avec le
+   *  brouillon, il ne suit pas la saisie rouverte depuis un écran qui n'en pose pas. */
+  const quandAuto = useRef(Boolean(initial?.quandAuto))
+  const choisirQuand = (valeur) => { quandAuto.current = false; setQuand(valeur) }
   const enLigne = useEnLigne()
   // R2-009 — au bureau, la saisie s'ouvre à la place de la ligne « Ajouter une tâche » de l'écran (ancre lue à
   // l'ouverture) ; « Coller mes listes » et une liste collée gardent le dialogue centré
@@ -239,6 +248,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     return () => { vivant = false }
   }, [ouverte, enLigne, projets])
   const projetsOuverts = useMemo(() => (projets ?? []).filter((p) => !p.statut || p.statut !== 'archive'), [projets])
+  // couture r2 — le projet de l'écran nommé même quand la demande ne portait que son id (vue pas encore lue)
+  const nomProjet = contexte.projetId == null ? ''
+    : contexte.projetNom || (projets ?? []).find((p) => p.id === contexte.projetId)?.nom || ''
   // R2-001 — l'envoi part en ARRIÈRE-PLAN : ce qui est à l'écran au retour du serveur est lu ici, jamais une copie figée
   const actuel = useRef({ texte, collages, ouverte })
   useEffect(() => { actuel.current = { texte, collages, ouverte } })
@@ -255,7 +267,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // le brouillon suit la frappe ; une phrase vide l'efface
   useEffect(() => {
     const tout = [...collages, texte].filter((t) => t.trim()).join('\n\n')
-    ecrireBrouillon(cle, tout ? { texte: tout, quand, collages, courant: texte } : null)
+    ecrireBrouillon(cle, tout ? { texte: tout, quand, quandAuto: Boolean(quand) && quandAuto.current, collages, courant: texte } : null)
   }, [cle, texte, collages, quand])
 
   const remettreAZero = useCallback(() => {
@@ -296,8 +308,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
       : surAujourdhui() ? aujourdhuiIso() : null
     if (jour) {
       const depart = { jour_prevu: jour, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+      quandAuto.current = true
       setQuand(depart)
       setQuandDepart(depart)
+    } else if (quandAuto.current) {
+      // couture r2 — le jour posé d'office par un AUTRE écran (brouillon d'Aujourd'hui) ne suit pas : rien de choisi
+      quandAuto.current = false
+      setQuand(null)
+      setQuandDepart(null)
     }
   }, [])
   // Dans /taches la feuille est montée avec la coquille : elle écoute l'événement elle-même. Hors de /taches elle est
@@ -325,7 +343,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!ouverte || !enLigne || ![...collages, texte].some((t) => t.trim())) return undefined
     let vivant = true
     const minuteur = setTimeout(() => {
-      saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })
+      saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null, erreurSousLeChamp: true })
         .then((r) => { if (vivant) setApercu({ texte, collages, ignorer, donnees: r.data }) })
         .catch((err) => {
           if (!vivant) return
@@ -344,6 +362,12 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // R2-007 — l'erreur de la ligne lue (« Le titre est trop long : 280 caractères au plus. ») se dit sous le champ
   // (seul le « trop long » se dit pendant la frappe : un titre encore vide, « demain… », n'est pas une faute)
   const titreTropLong = !modeListe && (ligne?.titre?.length ?? 0) > TITRE_MAX && Boolean(ligne?.erreurs?.titre)
+  // couture r2 (R2-002) — une date lue dans la phrase l'emporte sur le jour posé d'office par l'écran : la puce « Quand »
+  // ne montre plus ce jour-là (le jour lu est la puce de la phrase) ; un Quand choisi à la main reste affiché
+  const dateLue = !modeListe && Boolean(ligne?.champs?.jour_prevu || ligne?.champs?.quelque_jour)
+  const quandVu = quand && quand === quandDepart && dateLue ? null : quand
+  // la phrase lue est déjà là (tâche ouverte identique, ou déjà faite) : Entrée le dit, « Ajouter quand même » l'envoie
+  const doubleLu = !modeListe && ligne?.cochee === false ? raisonDouble(ligne) : ''
   const erreurLue = titreTropLong ? messageChamps(ligne.erreurs) : ''
   const nouveauxProjets = useMemo(
     () => (frais?.projets_nouveaux ?? []).map((p) => ({ nom: p.nom, priorite: priorites[p.nom] ?? p.priorite })),
@@ -382,6 +406,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
 
   const restaurer = (gel) => {
     setTexte(gel.texte); setCollages(gel.collages); setIgnorer(gel.ignorer); setQuand(gel.quand)
+    quandAuto.current = gel.quand != null && gel.quand === gel.quandDepart
     setPriorites(gel.priorites); setContexte(gel.contexte); setCid(gel.cid); setChampReplie(false); setApercu(null)
   }
   /** Rouvre la feuille fermée entre-temps (l'hôte et la coquille écoutent la même demande). */
@@ -438,7 +463,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!donnees) {
       if (!estEnLigne()) return { horsLigne: true }
       try {
-        donnees = (await saisieRapide(corpsApercu(gel.collages, gel.texte, gel.ignorer), { cle: null })).data
+        donnees = (await saisieRapide(corpsApercu(gel.collages, gel.texte, gel.ignorer), { cle: null, erreurSousLeChamp: true })).data
       } catch (err) {
         return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
@@ -447,15 +472,17 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     const depart = gel.quand != null && gel.quand === gel.quandDepart
     // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
     const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l)).map((l) => {
+    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
+    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
       const base = construireLigne(l, {
         cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
       })
       return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
     })
     if (lignes.length > 0) return { lignes }
-    // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), sinon le générique
-    const message = (donnees.lignes ?? []).map((l) => messageChamps(l.erreurs)).find(Boolean)
+    // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), « Déjà dans ta liste » pour
+    // une phrase déjà là, sinon le générique
+    const message = (donnees.lignes ?? []).map((l) => messageChamps(l.erreurs) || raisonDouble(l)).find(Boolean)
     return { erreur: message || 'Aucune ligne lisible.' }
   }
 
@@ -467,7 +494,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!estEnLigne()) { await mettreEnFile(gel, lignes); return }
     let data
     try {
-      ({ data } = await saisieRapide({ lignes, apercu: false }, { cle: gel.cid }))
+      ({ data } = await saisieRapide({ lignes, apercu: false }, { cle: gel.cid, erreurSousLeChamp: true }))
     } catch (err) {
       if (sansReseau(err)) await mettreEnFile(gel, lignes)
       else echouer(gel, phraseErreur(err))
@@ -502,8 +529,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!texte.trim()) return
     // R2-007 — un titre trop long ne part pas : le message du serveur reste sous le champ, rien n'est effacé
     if (titreTropLong) { setErreur(erreurLue); return }
+    if (doubleLu) { setErreur(doubleLu); return }
     lancer(geler(), modeListe)
   }
+  const envoyerQuandMeme = () => { if (texte.trim()) lancer(geler({ memeSiDouble: true }), false) }
+  const double = !modeListe && (erreur === DEJA_DANS_LISTE || erreur === DEJA_FAITE)
   const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
   const enDialogue = modeListe || demandeListe
@@ -539,6 +569,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             <button type="button" className="bouton discret" onClick={envoyerResteEnNote}>Mettre le reste en note</button>
           </p>
         ) : null}
+        {double ? (
+          <p className="aide-champ">
+            <button type="button" className="bouton discret" onClick={envoyerQuandMeme}>Ajouter quand même</button>
+          </p>
+        ) : null}
         {modeListe && donneesListe ? (
           <ColleListes
             apercu={donneesListe}
@@ -553,7 +588,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         ) : null}
         {modeListe ? null : (
           <>
-            {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={setQuand} /> : null}
+            {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={choisirQuand} /> : null}
             {projetOuvert ? (
               <SelecteurProjet
                 projets={projetsOuverts}
@@ -567,22 +602,22 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
               <span className="puces">
                 <button
                   type="button"
-                  className={quand ? 'puce lue' : 'puce vide'}
+                  className={quandVu ? 'puce lue' : 'puce vide'}
                   aria-expanded={quandOuvert}
                   onClick={() => { setQuandOuvert((v) => !v); setProjetOuvert(false) }}
                 >
                   <Calendar className="i i-16" aria-hidden="true" />
-                  <span className="chiffres">{libelleQuand(quand)}</span>
+                  <span className="chiffres">{libelleQuand(quandVu)}</span>
                 </button>
-                {quand ? (
-                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { setQuand(null); setQuandOuvert(false) }}>
+                {quandVu ? (
+                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : null}
-                {contexte.projetId != null && contexte.projetNom ? (
-                  <button type="button" className="puce lue" aria-label={`Retirer « ${contexte.projetNom} »`}
+                {contexte.projetId != null && nomProjet ? (
+                  <button type="button" className="puce lue" aria-label={`Retirer « ${nomProjet} »`}
                     onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
-                    <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
+                    <span className="projet-nom">{`● ${nomProjet}`}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : (

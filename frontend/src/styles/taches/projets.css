@@ -64,19 +64,16 @@
 .tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
 
 /* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
-.tch .ep-barre { display: flex; align-items: center; min-height: 44px; padding: 0 var(--tch-gouttiere); }
-.tch .ep-retour { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px 0 0; font-size: 1.0625rem; font-weight: 500; color: var(--tch-accent); }
-.tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
 /* Passe visuelle n° 43 — en-tête de projet-liste.html (ecrans-projets.css « En-tête d'un projet ») */
 /* R2-093 : « ‹ Projets » est celui de la coquille ; il ne reste ici que le sélecteur de vue, à droite */
 .tch .ep-barre-projet { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: var(--tch-gouttiere); }
-.tch .ep-barre-projet > .ep-barre { padding-right: 0; }
 .tch .ep-barre-projet > .ep-entre { padding: 0; }
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
 .tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
 /* R2-061 — le nom du projet se renomme au toucher (le bouton reprend la typographie du titre) */
-.tch .entete-titre .ep-titre-nom { display: inline; min-height: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: text; }
+.tch .entete-titre .ep-titre-nom { position: relative; display: inline; min-height: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: text; }
+.tch .entete-titre .ep-titre-nom::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
 .tch .entete-titre .ep-titre-champ { width: calc(100% - 24px); max-width: 100%; min-height: 0; padding: 2px 8px; font: inherit; color: inherit;
   border: 0; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
 .tch .entete-titre .ep-titre-erreur { display: block; margin-top: 4px; font-family: var(--tch-font-texte); font-size: 0.875rem; line-height: 1.35; font-weight: 600; letter-spacing: 0; }
@@ -121,7 +118,7 @@
 .tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-accent); font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-ajout { padding: 4px var(--tch-gouttiere) 8px; display: flex; flex-direction: column; gap: 6px; }
 @media (hover: hover) {
-  .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
+  .tch .ep-ajouter:hover { background: var(--tch-survol); }
 }
 
 /* R2-063 — l'ordre des tâches d'une étape : une poignée dans la gouttière (au survol sur bureau ; sous « Réorganiser »
@@ -136,7 +133,7 @@
 /* sous « Réorganiser » : la poignée passe à DROITE, après ▲▼ (au bord gauche d'un iPhone, le geste « retour » du système la prendrait) */
 .tch .ep-rang.reorg .ep-rang-ligne { order: 1; }
 .tch .ep-rang.reorg .reorg-controles { order: 2; }
-.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: 36px; }
+.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: var(--tch-cible); }
 .tch .ep-rang.reorg .ep-poignee-ordre::after { inset: 0; }
 .tch .ep-rang.reorg .reorg-controles .bouton-icone:disabled { opacity: 0.35; }
 @media (hover: hover) {
@@ -182,11 +179,11 @@
 .tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
 .tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
 .tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
-/* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets */
+/* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets.
+   Couture r2 — `bottom: 0` aussi sur iPhone : le scrolleur de l'ERP s'arrête déjà AU-DESSUS de la barre d'onglets et
+   réserve sa hauteur en bas (`.layout-content`) ; ajouter `--tch-onglets-h` la comptait deux fois et le pied, remonté de
+   52 px, recouvrait le bas des choix de priorité (« passe avant » coupé). */
 .tch .ep-planifier-pied { position: sticky; bottom: 0; margin-top: 4px; padding: 10px 0 12px; background: var(--tch-surface); z-index: var(--z-sticky); }
-@media screen and (max-width: 767px) {
-  .tch .ep-planifier-pied { bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom)); }
-}
 /* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
 .tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
 .tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
@@ -204,7 +201,8 @@
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
 .tch .ep-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tch .ep-carte-tete .ep-titre { display: flex; align-items: center; gap: 8px; }
-.tch .ep-rang { color: var(--tch-texte-doux); font-size: 0.875rem; }
+/* « 1/3 » d'une carte de revue (≠ `.ep-rang`, la ligne réordonnable d'une vue Liste) */
+.tch .ep-rang-revue { color: var(--tch-texte-doux); font-size: 0.875rem; }
 .tch .ep-revue-ligne { margin: 0; font-size: 0.9375rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
@@ -223,7 +221,7 @@
 .tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
 .tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: 1.0625rem; font-weight: 650; line-height: 1.35; }
 .tch .ep-carte-revue .ep-carte-tete .point { width: 10px; height: 10px; }
-.tch .ep-carte-revue .ep-rang { font-size: var(--tch-chiffre); font-weight: 600; }
+.tch .ep-carte-revue .ep-rang-revue { font-size: var(--tch-chiffre); font-weight: 600; }
 .tch .ep-carte-revue .meta { margin-top: -6px; column-gap: 8px; }
 .tch .ep-carte-revue .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
 .tch .ep-carte-revue .meta > .ep-sante::before, .tch .ep-carte-revue .meta > .ep-aplanifier::before { content: none; }
@@ -265,7 +263,14 @@
 .tch .ep-col .ligne { margin: 0; border-radius: 12px; background: var(--tch-surface); padding-right: 8px; }
 .tch .ep-col .titre { font-size: 1rem; line-height: 1.375rem; }
 .tch .ep-col .meta > span { white-space: normal; }
-.tch .ep-carte { display: flex; align-items: center; margin: 0 0 6px; }
+.tch .ep-carte { display: flex; align-items: stretch; margin: 0 0 6px; border-radius: 12px; background: var(--tch-surface); }
+/* couture r2 — une carte du Tableau est UNE surface (la poignée y compris) ; l'heure, le drapeau et l'étoile passent sous
+   le titre : à 280 px, sur la ligne du titre, ils ne laissaient que 50 px au titre (« Réceptionnei 09:00 ») */
+.tch .ep-col .ep-carte .ligne { background: transparent; grid-template-columns: var(--tch-cible) minmax(0, 1fr); }
+.tch .ep-col .ligne-fin { grid-column: 2; height: auto; margin-top: 4px; }
+.tch .ep-col .ligne-fin:empty { display: none; }
+.tch .ep-col .titre { overflow-wrap: anywhere; }
+.tch .ep-carte > .ep-poignee { height: auto; min-height: var(--tch-cible); }
 .tch .ep-carte.saisie { opacity: 0.6; }
 .tch .ep-carte > .liste { flex: 1; min-width: 0; }
 .tch .ep-poignee { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--tch-cible); height: var(--tch-cible);
@@ -279,10 +284,27 @@
   /* R2-064 — le Tableau (et la Chronologie) sortent de la colonne de lecture de 760 px : sinon 2,5 colonnes et la dernière
      (« Pose ») inatteignable. La page s'élargit ; au-delà, le Tableau DÉFILE à l'horizontale au lieu de couper. */
   .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) { max-width: 1320px; }
-  .tch .ep-tableau { padding: 16px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain; }
-  .tch .ep-col { flex: 0 0 264px; min-width: 260px; }
+  /* couture r2 — le Tableau qui déborde le DIT : barre de défilement visible, colonnes qui s'arrêtent sur leur bord */
+  .tch .ep-tableau {
+    padding: 16px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain;
+    scrollbar-width: thin; scrollbar-color: var(--tch-texte-doux) transparent;
+    scroll-snap-type: x proximity; scroll-padding-inline: 24px;
+  }
+  .tch .ep-col { flex: 0 0 280px; min-width: 0; scroll-snap-align: start; }
+  /* … et son bord droit s'estompe tant qu'il reste des colonnes à droite (défilement lu par le navigateur ; sans
+     `animation-timeline`, ou sans débordement, aucun fondu : la barre fine suffit) */
+  @supports (animation-timeline: scroll()) {
+    @media (prefers-reduced-motion: no-preference) {
+    .tch .ep-tableau {
+      mask-image: linear-gradient(to right, #000 calc(100% - var(--tch-tableau-fondu)), transparent);
+      animation: tch-tableau-fondu linear both; animation-timeline: scroll(self inline);
+    }
+    }
+  }
   .tch .ep-col-tete { display: flex; }
 }
+@property --tch-tableau-fondu { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes tch-tableau-fondu { 0%, 92% { --tch-tableau-fondu: 56px; } 100% { --tch-tableau-fondu: 0px; } }
 /* Chronologie : iPhone, frise verticale par date */
 .tch .ep-frise { position: relative; margin: 14px var(--tch-gouttiere) 0; padding-left: 28px; }
 .tch .ep-frise::before { content: ""; position: absolute; left: 10px; top: 8px; bottom: 8px; width: 2px; border-radius: 2px; background: var(--tch-piste); }

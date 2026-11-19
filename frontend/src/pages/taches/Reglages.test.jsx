@@ -196,7 +196,7 @@ describe('TCH108 — Réglages', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('3 agendas au plus.')
     expect(adresse).toHaveValue('https://agenda.example/a.ics')
     await userEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
-    expect(ajouterAgendaExterne).toHaveBeenLastCalledWith({ url: 'https://agenda.example/a.ics', libelle: '' })
+    expect(ajouterAgendaExterne).toHaveBeenLastCalledWith({ url: 'https://agenda.example/a.ics', libelle: '' }, { erreurSousLeChamp: true })
     expect(await screen.findByText('Bureau · agenda.example')).toBeInTheDocument()
     expect(screen.getByText(/Agenda illisible : ce n'est pas une adresse de calendrier \(\.ics\)\./)).toBeInTheDocument()
 

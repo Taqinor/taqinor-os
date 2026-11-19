@@ -98,6 +98,20 @@ describe('TCH89 — Un projet : en-tête', () => {
     expect(screen.getByText(longue)).toBeInTheDocument()
   })
 
+  it("R2-034 — échéance servie : la santé courte dit la conséquence « À ce rythme, pas prêt pour le jeu. 26 »", async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il faudrait 10 jours travaillés, il en reste 8 (12 faites en 20 jours travaillés ces 4 dernières semaines).'
+    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-11-26' } }]
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const { unmount } = monter()
+    expect(await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour le jeu. 26' })).toBeInTheDocument()
+    unmount()
+    vue.projet.sante[0].donnees.echeance = '2026-11-18'
+    api.lireVueProjet.mockResolvedValue({ data: structuredClone(vue) })
+    monter()
+    expect(await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour demain' })).toBeInTheDocument()
+  })
+
   it('pas de signal de santé : aucune ligne de santé', async () => {
     const vue = exempleContrat('taches', 'projet_vue')
     vue.projet.sante = []
@@ -350,7 +364,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
     await user.clear(champ)
     await user.type(champ, 'Ventes Maroc{Enter}')
-    expect(api.modifierProjet).toHaveBeenCalledWith(3, { nom: 'Ventes Maroc', lock_version: 4 })
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { nom: 'Ventes Maroc', lock_version: 4 }, { erreurSousLeChamp: true })
     expect(await screen.findByRole('button', { name: 'Renommer « Ventes Maroc »' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Projet renommé')
   })
@@ -397,7 +411,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     expect(await within(dialogue).findByRole('alert')).toHaveTextContent('Un projet actif porte déjà ce nom.')
     expect(champ).toHaveAttribute('aria-invalid', 'true')
     await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
-    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', lock_version: 4 })
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', lock_version: 4 }, { erreurSousLeChamp: true })
     expect(await screen.findByRole('button', { name: 'Renommer « Ventes 2027 »' })).toBeInTheDocument()
   })
 
@@ -411,7 +425,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     expect(within(groupe).getAllByRole('radio')).toHaveLength(10)
     expect(within(groupe).getByRole('radio', { name: 'Vert' })).toBeChecked()
     await user.click(within(groupe).getByRole('radio', { name: 'Bleu' }))
-    expect(api.modifierProjet).toHaveBeenCalledWith(3, { couleur: 'bleu', lock_version: 4 })
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { couleur: 'bleu', lock_version: 4 }, { erreurSousLeChamp: true })
     await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).querySelector('.ep-projet-nom')).toHaveAttribute('data-p', 'bleu'))
   })
 
@@ -424,14 +438,14 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     const dialogue = await screen.findByRole('dialog', { name: 'Échéance' })
     fireEvent.change(within(dialogue).getByLabelText('Échéance du projet'), { target: { value: '2026-12-31' } })
     await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
-    expect(api.modifierProjet).toHaveBeenCalledWith(3, { echeance: '2026-12-31', lock_version: 4 })
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { echeance: '2026-12-31', lock_version: 4 }, { erreurSousLeChamp: true })
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Échéance' })).toBeNull())
     expect(await screen.findByText('échéance jeu. 31 déc.')).toBeInTheDocument()
 
     api.modifierProjet.mockResolvedValueOnce(envoye({ echeance: null, lock_version: 6 }))
     await ouvrirMenu(user, 'Échéance…')
     await user.click(await screen.findByRole('button', { name: "Retirer l'échéance" }))
-    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { echeance: null, lock_version: 5 })
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { echeance: null, lock_version: 5 }, { erreurSousLeChamp: true })
   })
 
   it('« Fini quand… » se corrige sur place : le texte devient un champ, la sortie enregistre l\'objectif', async () => {
@@ -444,7 +458,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     await user.clear(champ)
     await user.type(champ, 'les 5 devis sont signés')
     await user.tab()
-    expect(api.modifierProjet).toHaveBeenCalledWith(3, { objectif: 'les 5 devis sont signés', lock_version: 4 })
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { objectif: 'les 5 devis sont signés', lock_version: 4 }, { erreurSousLeChamp: true })
     expect(await screen.findByText('Fini quand : les 5 devis sont signés')).toBeInTheDocument()
   })
 })
@@ -583,26 +597,27 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     ])
   })
 
-  it('F2 acceptation (S5) — Déplacer… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
+  it('F2 acceptation (S5) — Changer de projet… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
     api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
       response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
     await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(api.creerProjet).toHaveBeenCalledWith({ nom: 'Chantier' }, { erreurSousLeChamp: true }) // le toast ci-dessus, seul
     expect(api.traiterLot).not.toHaveBeenCalled()
   })
 
-  it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
+  it('Changer de projet… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
     api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 91 } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.click(await screen.findByRole('option', { name: 'Site web' }))
     expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'deplacer', valeurs: { projet_id: 5 } })
     await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
@@ -669,7 +684,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.click(await screen.findByRole('option', { name: 'Site web' }))
     expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
   })

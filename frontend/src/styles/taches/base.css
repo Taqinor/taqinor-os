@@ -149,10 +149,8 @@
     padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
     background: var(--tch-surface);
   }
-  .tch .entete-barre.replie {
-    background: var(--tch-barre-fond); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-    box-shadow: inset 0 -0.5px 0 var(--tch-trait);
-  }
+  /* couture r2 — repliée, la rangée reste OPAQUE (le fond translucide laissait lire le texte qui défile dessous) */
+  .tch .entete-barre.replie { background: var(--tch-surface); box-shadow: inset 0 -0.5px 0 var(--tch-trait); }
   .tch .entete-barre .entete-menu, .tch .entete-barre .entete-cloche { display: inline-grid; flex: none; }
   .tch .entete-barre .entete-compact {
     display: block; flex: 1; min-width: 0; padding: 0 4px; text-align: center; opacity: 0;
@@ -433,7 +431,8 @@
   display: flex; flex-wrap: wrap; gap: 8px;
 }
 .tch .puce {
-  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px;
+  min-width: var(--tch-cible); padding: 0 12px; /* couture r2 — la puce « × » seule (Retirer le jour) faisait 38 px */
   border-radius: var(--tch-rayon-puce); background: var(--tch-panneau); color: var(--tch-texte);
   font-size: 0.875rem; font-weight: 500; white-space: nowrap;
   transition: background-color var(--motion-fast) var(--ease-standard);
@@ -887,7 +886,7 @@
   .tch .feuille.popover-bureau .feuille-corps { overflow: visible; padding-top: 0; }
   .tch .feuille.popover-bureau .saisie-zone { margin-right: 40px; }
   /* une ligne tant qu'on tape une ligne (le textarea a 2 rangées d'office) ; elle grandit avec le texte */
-  .tch .feuille.popover-bureau .saisie-champ { min-height: 0; font-size: 1rem; field-sizing: content; }
+  .tch .feuille.popover-bureau .saisie-champ { min-height: var(--tch-cible); font-size: 1rem; field-sizing: content; }
   .tch .feuille.popover-bureau .saisie-miroir { font-size: 1rem; }
   .tch .feuille.popover-bureau .saisie-pied { margin-top: 0; padding-top: 0; }
   /* la ligne « Ajouter une tâche » s'efface tant que la saisie est à sa place */
