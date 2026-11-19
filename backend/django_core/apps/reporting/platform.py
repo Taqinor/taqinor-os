@@ -1,8 +1,9 @@
 """Manifeste plateforme du module Rapports (voir ``core.platform``).
 
 Le reporting n'expose ni chatter, ni recherche, ni champ perso, ni import : il
-LIT ce que les autres modules produisent. Son unique surface est donc
-``kpi_providers``.
+LIT ce que les autres modules produisent. Ses surfaces sont donc
+``kpi_providers`` et, depuis RPT3, ``agent_actions_module`` (la lecture des
+trois « CA » : ``reporting.ca.lire``).
 
 CAL218 — les indicateurs calepinage sont déclarés ICI, du côté qui les
 CALCULE (``apps/reporting/calepinage_kpis.py``), pour qu'ils alimentent le KPI
@@ -21,7 +22,7 @@ PLATFORM = {
     'searchable_models': [],
     'customfield_models': [],
     'import_specs': [],
-    'agent_actions_module': '',
+    'agent_actions_module': 'apps.reporting.agent_actions',  # RPT3 : reporting.ca.lire
     'automation_state_fields': [],
     'kpi_providers': ['apps.reporting.calepinage_kpis.kpi_calepinage'],
 }
