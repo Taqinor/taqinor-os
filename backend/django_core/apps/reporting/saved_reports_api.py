@@ -8,6 +8,7 @@ est posé sur l'utilisateur courant. Aucun prix d'achat / marge n'apparaît ici
 from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -116,7 +117,10 @@ class SavedReportSerializer(ChampsStrictsEntiersMixin,
                                 data_explorer.exiger_export_dataset(jeu, requete.user)
                             except data_explorer.DatasetInconnu:
                                 pass
-        from .scheduled_reports import JEU_DU_GENRE
+        from .scheduled_reports import JEU_DU_GENRE, MODULE_DU_GENRE, lecture_du_genre_refusee
+        if lecture_du_genre_refusee(kind, getattr(self.context.get('request'), 'user', None)):
+            raise PermissionDenied(  # ADRG159
+                f'Accès réservé aux rôles du module {MODULE_DU_GENRE[kind]}.')
         if kind in JEU_DU_GENRE:  # ADRG158 / D-ADRG-15 — à chaque écriture, PATCH compris
             from core.data_explorer import exiger_export_dataset
             exiger_export_dataset(JEU_DU_GENRE[kind], getattr(self.context.get('request'), 'user', None))

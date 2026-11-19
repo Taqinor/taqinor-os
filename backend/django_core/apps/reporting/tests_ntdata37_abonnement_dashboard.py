@@ -424,6 +424,50 @@ class AbonnementDashboardTests(TestCase):
         self.assertEqual(api_c.get(stock).status_code, 200)
         self.assertEqual(api_d.get(stock, {'export': 'xlsx'}).status_code, 200)
 
+    def test_rapports_figes_ventes_service_exigent_la_lecture_du_module(self):
+        """ADRG159 — jumeau d'ADRG158 : « ventes » exige la lecture du module
+        ``ventes``, « service » celle d'``installations`` (gardes
+        ``lecture_source`` de ``reports.py``) : programmer (403), envoi planifié
+        (``echec`` + motif du module), lien public (404) ; rapports gardés."""
+        from apps.reporting.diffusion_views import make_report_token
+        tech, api_t = self._api_role('Technicien responsable')
+        admin_v, api_v = self._api_role('Admin Ventes')
+        _directeur, api_d = self._api_role('Directeur')
+        url = '/api/django/reporting/saved-reports/'
+        corps = {'name': 'Ventes', 'schedule': 'weekly', 'recipients': 'x@exemple.ma'}
+        for api, kind, module in ((api_t, 'sales', 'ventes'), (api_v, 'service', 'installations')):
+            resp = api.post(url, {**corps, 'target_kind': kind}, format='json')
+            self.assertEqual(resp.status_code, 403, resp.content)
+            self.assertEqual(str(resp.data['detail']), f'Accès réservé aux rôles du module {module}.')
+        self.assertFalse(SavedReport.objects.filter(owner__in=[tech, admin_v]).exists())
+        for kind in ('sales', 'service'):
+            resp = api_d.post(url, {**corps, 'name': kind, 'target_kind': kind}, format='json')
+            self.assertEqual(resp.status_code, 201, resp.content)
+
+        r_ventes = self._rapport(owner=tech, name='Ventes hebdo',
+                                 target_kind=SavedReport.TargetKind.SALES)
+        r_service = self._rapport(owner=admin_v, name='Service hebdo',
+                                  target_kind=SavedReport.TargetKind.SERVICE)
+        envoyer = mock.Mock(return_value=True)
+        with frozen(LUNDI_06H), \
+                mock.patch.object(scheduled_reports, '_is_email_configured',
+                                  return_value=True), \
+                mock.patch.object(scheduled_reports, '_send_report_email',
+                                  envoyer):
+            self.assertEqual(scheduled_reports.email_saved_reports(), 2)  # les 2 du Directeur
+        envoyes = [c.args[0].pk for c in envoyer.call_args_list]
+        for rapport, module in ((r_ventes, 'ventes'), (r_service, 'installations')):
+            self.assertNotIn(rapport.pk, envoyes)
+            self.assertEqual(
+                list(EnvoiRapport.objects.filter(saved_report=rapport)
+                     .values_list('statut', 'erreur')),
+                [('echec', "Le propriétaire n'a pas le droit de lecture du "
+                           f'module {module} : envoi suspendu.')])
+            lien = self.client.get('/api/django/reporting/rapports-partages/'
+                                   f'{make_report_token(rapport)}/')
+            self.assertEqual(lien.status_code, 404)
+        self.assertEqual(SavedReport.objects.filter(pk__in=[r_ventes.pk, r_service.pk]).count(), 2)
+
     def test_patch_destinataires_d_une_requete_stock_exige_stock_export(self):
         """ADRG147 — l'export du jeu est exigé à CHAQUE écriture d'un rapport
         ``query``, PATCH partiel compris : réorienter l'envoi stock d'un
