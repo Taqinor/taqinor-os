@@ -211,7 +211,7 @@
 - frontend/src/api/iaApi.js :: statsAssistant -> /api/django/agent/evenements/stats
     commerciaux_actifs:inconnu, cout_estime_usd:nombre, manques_recents:liste, par_intention:inconnu, part_repli:nombre, questions:inconnu, questions_par_commercial_semaine:nombre, taux_non_supporte:nombre
 - frontend/src/api/iaApi.js :: undoAgentAction -> /api/django/agent/logs/<>/annuler
-    action_key:inconnu, confirmed_at:inconnu, detail:texte, executed_at:inconnu, id:inconnu, is_undoable:inconnu, object_repr:inconnu, risk_level:inconnu, undone_at:inconnu, user:inconnu
+    action_key:inconnu, confirmed_at:inconnu, detail:texte, executed_at:inconnu, id:inconnu, is_undoable:inconnu, object_repr:inconnu, origine:inconnu, risk_level:inconnu, undone_at:inconnu, user:inconnu
 - frontend/src/api/identityApi.js :: acknowledge -> /api/django/identity/login-banner
     acknowledged:booleen
 - frontend/src/api/identityApi.js :: get -> /api/django/identity/login-banner
