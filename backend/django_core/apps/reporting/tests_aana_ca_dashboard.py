@@ -510,3 +510,49 @@ class TestTroisChiffresCa(TestCase):
         with override_settings(ASSISTANT_COPILOTE='aucun'):
             self.assertNotIn('reporting.ca.lire',
                              {a.key for a in for_user(self.admin)})
+
+    # ── RPT5 — assertions locales de permission ─────────────────────────────
+
+    def test_chaque_role_de_la_grille_a_le_statut_du_tableau_de_bord(self):
+        """La route ne donne à AUCUN rôle livré ce que le tableau de bord
+        refuse, et ne refuse rien de ce qu'il donne : même statut, rôle par
+        rôle ; un commercial passe, un rôle en lecture seule non."""
+        from apps.roles import permissions_registre as registre
+        statuts = {}
+        for nom in ('RESPONSABLE_PERMISSIONS', 'UTILISATEUR_PERMISSIONS',
+                    'COMMERCIAL_RESP_PERMISSIONS', 'COMMERCIAL_PERMISSIONS',
+                    'COMMERCIAL_TERRAIN_PERMISSIONS',
+                    'TECHNICIEN_RESP_PERMISSIONS', 'TECHNICIEN_PERMISSIONS',
+                    'VIEWER_PERMISSIONS', 'ADMIN_RH_PERMISSIONS',
+                    'ADMIN_VENTES_PERMISSIONS'):
+            _user, api = self._compte('rpt5-' + nom.lower(),
+                                      list(getattr(registre, nom)))
+            statuts[nom] = (api.get(URL).status_code, self._ca(
+                api, du='2026-03-01', au='2026-03-31').status_code)
+        for nom, (tableau, route) in statuts.items():
+            self.assertEqual(route, tableau, f'{nom} : {statuts[nom]}')
+        self.assertEqual(statuts['COMMERCIAL_PERMISSIONS'], (200, 200))
+        self.assertEqual(statuts['VIEWER_PERMISSIONS'], (403, 403))
+
+    def test_l_action_n_expose_aucune_entree_interdite(self):
+        from apps.agent.registry import all_actions
+        action = {a.key: a for a in all_actions()}['reporting.ca.lire']
+        interdites = ('company', 'societe', 'forcer', 'emettre',
+                      'visible_client', 'confirmer_doublon')
+        for nom in action.inputs['properties']:
+            self.assertFalse(nom.startswith(('override_', 'derogation')), nom)
+            self.assertNotIn(nom, interdites)
+        self.assertIsNone(action.confirm_summary)
+        self.assertFalse(action.objets)
+
+    def test_la_reponse_ne_porte_ni_marge_ni_prix_d_achat_ni_classement(self):
+        facture = self._facture('FAC-RPT5-1', self.dedans)
+        self._paye(facture, '600', Facture.Statut.EMISE)
+        self._devis('DEV-RPT5-1', self.dedans)
+        resp = self._ca(du='2026-03-01', au='2026-03-31')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        texte = str(resp.data).lower()
+        for mot in ('marge', 'prix_achat', 'cout', 'classement'):
+            self.assertNotIn(mot, texte)
+        self.assertEqual(set(resp.data['chiffres'][0]),
+                         {'cle', 'libelle', 'montant_ht', 'definition'})
