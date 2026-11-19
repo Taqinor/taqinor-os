@@ -28,7 +28,6 @@ from django.db.models import Max
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound
 
 from apps.notifications.calendar_utils import jours_ouvres_entre
 from apps.taches.choix import (
@@ -41,7 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
-from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, jour_dans_bornes, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, introuvable, jour_dans_bornes, sans_nul
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -241,7 +240,7 @@ def _lien_verifie(user, lien):
     # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
     # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if libelle is None:
-        raise NotFound({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise introuvable({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     app_label, modele = lien['cible'].split('.', 1)
     return ContentType.objects.get_by_natural_key(app_label, modele), objet_id, libelle
 

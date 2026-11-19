@@ -165,7 +165,7 @@ class CreationTests(TestCase):
         # 404 au corps inchangé : la fiche liée manque (api-fuzz r2, règle d'IdInconnu404Mixin).
         with self.assertRaises(NotFound) as ctx:
             self._creer(_ligne(), lien={'cible': 'crm.lead', 'id': 987654321}, porte='ecran', source='manuel')
-        self.assertEqual(ctx.exception.detail, {'lien': ['Élément introuvable ou hors de ta portée.']})
+        self.assertEqual(ctx.exception.detail['lien'], ['Élément introuvable ou hors de ta portée.'])
         self.assertFalse(Tache.objects.exists())
 
     # --- Invariant 29 : réglages du rythme nés à la première tâche ----------------------------

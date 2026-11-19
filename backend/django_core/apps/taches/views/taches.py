@@ -149,7 +149,7 @@ class TachesVue(IdempotentCreateMixin, APIView):
         return paginateur.get_paginated_response(donnees)
 
     @extend_schema(request=inline_serializer('TachesCorpsTache', dict(CHAMPS_CREATION)),
-                   responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400,), conflit=ERREUR_CODE))
+                   responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404), conflit=ERREUR_CODE))
     def post(self, request):
         entree = TacheCreationSerializer(data=request.data)
         entree.is_valid(raise_exception=True)
@@ -316,7 +316,8 @@ class TacheReordonnerVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=ReordonnerEntreeSerializer, responses=reponses(None, statut=204, erreurs=(400, 404)))
+    @extend_schema(request=ReordonnerEntreeSerializer,
+                   responses=reponses(None, statut=204, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(ReordonnerEntreeSerializer, request.data)
         reordonner_tache(request.user, id, donnees['liste'], donnees.get('avant_id'), donnees.get('apres_id'))
@@ -377,7 +378,7 @@ class LotVue(IdempotentCreateMixin, APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=LotEntreeSerializer, responses=reponses(forme_echantillon('lot'), erreurs=(400,)))
+    @extend_schema(request=LotEntreeSerializer, responses=reponses(forme_echantillon('lot'), erreurs=(400, 404)))
     def post(self, request):
         donnees = lire_corps(LotEntreeSerializer, request.data)
         return self._avec_idempotence(
@@ -487,7 +488,7 @@ class EtiquettesVue(APIView):
         return paginateur.get_paginated_response([forme_etiquette(e) for e in page])
 
     @extend_schema(request=EtiquetteEntreeSerializer,
-                   responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400,)))
+                   responses=reponses(ETIQUETTE_ECRITE, statut=201, erreurs=(400, 409)))
     def post(self, request):
         donnees = lire_corps(EtiquetteEntreeSerializer, request.data)
         etiquette, geste = creer_etiquette(request.user, nom=donnees['nom'], couleur=donnees.get('couleur'))
@@ -501,7 +502,7 @@ class EtiquetteVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=EtiquettePatchSerializer,
-                   responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404)))
+                   responses=reponses(ETIQUETTE_ECRITE, erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = lire_corps(EtiquettePatchSerializer, request.data)
         etiquette, geste = modifier_etiquette(request.user, id, donnees)
@@ -522,7 +523,8 @@ class VuesVue(APIView):
     def get(self, request):
         return Response({'results': [forme_vue(v) for v in liste_vues(request.user)]})
 
-    @extend_schema(request=VueEntreeSerializer, responses=reponses(VUE_ENREGISTREE, statut=201, erreurs=(400,)))
+    @extend_schema(request=VueEntreeSerializer,
+                   responses=reponses(VUE_ENREGISTREE, statut=201, erreurs=(400, 404, 409)))
     def post(self, request):
         donnees = lire_corps(VueEntreeSerializer, request.data)
         vue, geste = creer_vue(request.user, nom=donnees['nom'], filtres=donnees.get('filtres'),
@@ -536,7 +538,7 @@ class VueEnregistreeVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=VuePatchSerializer, responses=reponses(VUE_ENREGISTREE, erreurs=(400, 404)))
+    @extend_schema(request=VuePatchSerializer, responses=reponses(VUE_ENREGISTREE, erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = lire_corps(VuePatchSerializer, request.data)
         vue, geste = modifier_vue(request.user, id, donnees)
