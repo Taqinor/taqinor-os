@@ -301,10 +301,25 @@ test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
       expect(Math.min(b.l, b.h), `cible ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(44)
       expect(b.droite, 'dans l\'écran').toBeLessThanOrEqual(390)
     }
-    await page.locator('main#contenu').evaluate((el) => el.scrollBy(0, 600))
+    // la journée du compte (semis de CI ou autre) peut tenir dans l'écran : on donne à la page de quoi défiler, pour ne
+    // dépendre ni du nombre de tâches ni de celui des notifications
+    await page.locator('.tch .tch-page').evaluate((el) => {
+      const cale = document.createElement('div')
+      cale.style.height = '2000px'
+      cale.setAttribute('data-cale-test', '')
+      el.append(cale)
+    })
+    // le défileur est celui de la coque (main#contenu) ou, à défaut, la fenêtre : on défile le premier qui défile
+    const defiler = (y) => page.locator('.tch .tch-page').evaluate((el, haut) => {
+      let e = el.parentElement
+      while (e && !(/(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight)) e = e.parentElement
+      if (e) e.scrollTo(0, haut)
+      else window.scrollTo(0, haut)
+    }, y)
+    await defiler(600)
     await expect(page.locator('.tch .entete-barre.entete-repliee')).toHaveCount(1)
     expect((await barre()).map((b) => b.x), 'au défilement, rien ne glisse').toEqual(auRepos.map((b) => b.x))
-    await page.locator('main#contenu').evaluate((el) => el.scrollTo(0, 0))
+    await defiler(0)
     await context.setOffline(true)
     await expect(page.locator('.tch[data-hors-ligne]')).toHaveCount(1)
     expect((await barre()).map((b) => b.x), 'hors ligne, rien ne glisse (le Copilote garde sa place)').toEqual(auRepos.map((b) => b.x))
