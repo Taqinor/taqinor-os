@@ -1315,7 +1315,8 @@ class ContexteEcranAic9Tests(unittest.TestCase):
             with self.subTest(moteur=moteur, fournisseur=fournisseur, lot=lot), \
                     mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
                     mock.patch.object(self.svc, "SQL_AGENT_PROVIDER", fournisseur):
-                attendu = relais.LIMITE_QUESTION_COPILOTE if lot == "copilote" else relais.LIMITE_QUESTION
+                attendu = (relais.LIMITE_QUESTION_COPILOTE if (lot, fournisseur) == ("copilote", "claude")
+                           else relais.LIMITE_QUESTION)  # revue S3 : Groq refuse > 2 000
                 self.assertEqual(lire(lot), {"limite_question": attendu, "images_acceptees": images})
 
 

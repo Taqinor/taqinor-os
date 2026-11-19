@@ -90,10 +90,10 @@ class ImageJointe(BaseModel):
 
 
 class SQLQuery(BaseModel):
-    # AANA5 — 422 au-dela de la borne de l'APPELANT, avant tout appel LLM :
-    # `_borner_question` (2 000, ou 6 000 copilote allume — F4). La borne n'est
-    # plus dans le schema : elle depend du compte, lu chez Django.
-    question: str = Field(...)
+    # AANA5 — plafond DUR du schema (6 000 : 422 pydantic standard au-dela) ;
+    # puis, apres le limiteur, la borne de l'APPELANT (`_borner_question` :
+    # 2 000, ou 6 000 copilote allume sous claude — F4), avant tout appel LLM.
+    question: str = Field(..., max_length=SQL_AGENT_QUESTION_MAX_LENGTH_COPILOTE)
     # AIC9 — optionnel : injecte dans le message UTILISATEUR, journalise.
     contexte: ContexteEcran | None = None
     # AIC91 — optionnel : identifiant aleatoire pour sonder les etapes du tour.
@@ -186,8 +186,6 @@ async def query_database(
     JWT, les permissions du role (lues par /auth/me/, AANA8) + le jeton brut
     (relaye a l'API Django interne, qui tranche).
     """
-    # AANA5 / F4 — borne de longueur de l'appelant (422 comme avant), avant tout.
-    await _borner_question(request.question, token_payload, raw_token)
     user_id = int(token_payload.get("user_id", 0))
     # ERR44 — exige un company_id present et non nul (403 sinon).
     company_id = _require_company_id(token_payload)
@@ -195,6 +193,9 @@ async def query_database(
     _database.require_sql_agent_enabled()
     # AANA5 — plafond de debit (429) ; Redis injoignable => 503 (fail-closed).
     _check_sql_agent_rate_limit(user_id)
+    # AANA5 / F4 — borne de l'APPELANT (2 000, ou 6 000) APRES le limiteur :
+    # la lecture du catalogue qu'elle demande au-dela de 2 000 est bornee aussi.
+    await _borner_question(request.question, token_payload, raw_token)
 
     action_ctx = ActionContext(
         company_id=company_id,
