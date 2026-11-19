@@ -518,6 +518,28 @@ class SchemaTests(SimpleTestCase):
                 with self.subTest(composant=composant, carte=carte):
                     jsonschema.validate(json.loads(json.dumps(carte)), noeud)
 
+    def test_la_charge_nulle_d_un_jour_passe_et_chaque_echantillon_a_charge_sont_valides(self):
+        """R4-01 (api-fuzz, shard 3, `GET agenda/?au=2000-01-01&du=2000-01-01` : « null is not of type object ») — la
+        `charge` d'un jour PASSÉ est nulle (voulu) : le schéma publié d'`agenda/` la dit nullable, et chaque réponse qui
+        embarque une `charge` (agenda, point, priorites, journee_proposition) accepte son
+        propre échantillon, un jour passé nul compris (`aujourdhui` et `journee_ecrite` : leurs `obligations`
+        ont un écart d'échantillon sans rapport avec `charge`, hors de ce test)."""
+        import copy
+
+        import jsonschema
+
+        from apps.taches.views.base import exemple_de
+        agenda = copy.deepcopy(exemple_de('agenda'))
+        passe = copy.deepcopy(agenda['jours'][0])
+        passe.update({'jour': '2000-01-01', 'charge': None})
+        agenda['jours'].append(passe)
+        composants = self.schema['components']['schemas']
+        jsonschema.validate(json.loads(json.dumps(agenda)), self._json_schema(composants['TachesEchAgenda']))
+        for nom, composant in (('point', 'TachesEchPoint'), ('priorites', 'TachesEchPriorites'),
+                               ('journee_proposition', 'TachesEchJourneeProposition')):
+            with self.subTest(echantillon=nom):
+                jsonschema.validate(json.loads(json.dumps(exemple_de(nom))), self._json_schema(composants[composant]))
+
     def test_le_rejeu_d_une_creation_est_documente_200(self):
         self.assertEqual({'200', '201'} & set(self._operation('POST', 'taches/')['responses']), {'200', '201'})
 

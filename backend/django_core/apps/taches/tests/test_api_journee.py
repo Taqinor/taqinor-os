@@ -1424,7 +1424,10 @@ class PointTests(_Base):
         self.assertEqual(set(rendu['prochaine']), CLES_ITEM)
         for item in rendu['essentiel_restant']:
             self.assertEqual(set(item), CLES_ITEM)
-        self.assertEqual(set(rendu['carte_du_moment']), set(modele['carte_du_moment']))
+        # R4-04 : « Alléger » n'est servi que s'il a un sens (objectif dit, pas le premier jour, de quoi alléger) ;
+        # ce scénario n'en réunit pas les conditions : la carte est nulle, sinon elle a la forme de l'échantillon
+        if rendu['carte_du_moment'] is not None:
+            self.assertEqual(set(rendu['carte_du_moment']), set(modele['carte_du_moment']))
         self.assertEqual(rendu['jour'], J.isoformat())
         self.assertEqual(rendu['maintenant'], maintenant_a(15).isoformat())
 

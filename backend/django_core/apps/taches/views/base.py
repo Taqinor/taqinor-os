@@ -258,6 +258,8 @@ NULS_SERVIS = {
     'point': ('objectif.nb',),
     'journee_proposition': ('objectif.nb',),
     'journee_ecrite': ('aujourdhui.objectif.nb',),
+    # R4-01 : la charge d'un jour PASSÉ est nulle (un jour passé dit ses faites, pas une charge)
+    'agenda': ('jours.charge',),
 }
 
 
@@ -274,6 +276,8 @@ def noeud_au_chemin(valeur, chemin):
     for morceau in chemin.split('.')[:-1]:
         sous = cible.get(morceau) if isinstance(cible, dict) else None
         cible = sous[0] if sous else None
+        if isinstance(cible, list):  # une liste : son élément représentant
+            cible = cible[0][0] if cible else None
     return cible if isinstance(cible, dict) and chemin.split('.')[-1] in cible else None
 
 
