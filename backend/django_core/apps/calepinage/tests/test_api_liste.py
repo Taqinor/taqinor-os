@@ -870,6 +870,18 @@ class ContenanceTest(BaseAssistantCalepinage):
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['code'], 'fiche_incomplete')
 
+    def test_sans_panneau_designe_celui_du_devis_automatique_est_dit(self):
+        from unittest import mock
+
+        with mock.patch('apps.ventes.selectors_assistant.panneau_par_defaut_id',
+                        return_value=self.panneau.pk):
+            reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
+                                    largeur_m='6', toit_plat='true')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['produit']['id'], self.panneau.pk)
+        self.assertTrue(any(s.startswith('Panneau non précisé') and self.panneau.nom in s
+                            for s in reponse.data['suppositions']), reponse.data['suppositions'])
+
     def test_sans_panneau_designe(self):
         reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
                                 largeur_m='6', toit_plat='true')

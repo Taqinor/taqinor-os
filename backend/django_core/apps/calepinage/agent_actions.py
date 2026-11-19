@@ -326,7 +326,8 @@ CONTENANCE = AgentAction(
         "largeur_m=6, toit_plat=true. Résultat : une fourchette min–max par "
         "zone et au total, avec « libelle » (à répéter tel quel), « regles » "
         "et « suppositions » (à dire) ; aucune production, aucun prix. "
-        "Sans panneau désigné, le refus dit d'en choisir un (produit)."),
+        "Sans panneau désigné, celui du devis automatique est pris et dit "
+        "dans « suppositions » ; s'il n'y en a pas, le refus dit d'en choisir un."),
     endpoint=BASE + 'contenance/',
     method='GET',
     inputs=_schema({

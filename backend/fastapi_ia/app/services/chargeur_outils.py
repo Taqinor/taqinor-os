@@ -39,21 +39,25 @@ AUSSI_DANS = {
 #: Libellés FIXES de l'index (jamais générés).
 LIBELLES = {
     "crm": "leads, fiche, suivi et touches, étapes, étiquettes, visite à planifier",
-    "ventes": "catalogue, devis (composer, lignes, remise, PDF), factures, paiements",
-    "calepinage": "plan de toiture, simulation, variantes, publication au devis",
-    "visites": "agenda des visites techniques, relevés, validation",
-    "installations": "chantiers, planning, interventions, approvisionnement",
-    "sav": "parc installé, tickets, garanties",
-    "stock": "niveaux, mouvements, commandes fournisseur",
-    "reporting": "chiffres, CA, créances, diagnostic",
+    "ventes": ("catalogue, devis (composer, lignes, taille, remise, PDF), état d'une vente, "
+               "factures, impayés, paiements"),
+    "calepinage": ("calepinages à traiter, état d'un calepinage, nombre de panneaux qui "
+                   "tiennent, simulation, variantes, publication au devis"),
+    "visites": "agenda et charge des visites techniques, compte rendu, validation",
+    "installations": "chantiers (état, blocages, liste), planning de pose, interventions, approvisionnement",
+    "sav": "parc installé d'un client, tickets, garanties",
+    "stock": "niveaux de stock, mouvements, commandes fournisseur",
+    "reporting": "chiffre d'affaires signé, facturé, encaissé ; créances ; diagnostic",
     "taches": "journée, tâches, projets, rythme",
     "adsengine": "publicité : dépense, annonces, campagnes",
 }
 
 ENTETE_INDEX = (
-    "OUTILS PAR DOMAINE — avant d'utiliser un outil d'un de ces domaines, "
-    "appelle outils_charger(domaines=[…]) (jusqu'à %d domaines en un appel) ; "
-    "un domaine chargé le reste pour toute la conversation :" % DOMAINES_PAR_APPEL)
+    "OUTILS PAR DOMAINE — une question qui porte sur un de ces domaines se "
+    "traite avec SES outils : appelle d'abord outils_charger(domaines=[…]) "
+    "(jusqu'à %d domaines en un appel), même si le point du matin, la fiche "
+    "d'un lead ou une requête de données semblent suffire — ce ne sont que des "
+    "extraits. Un domaine chargé le reste pour toute la conversation :" % DOMAINES_PAR_APPEL)
 
 #: Écran (préfixe de route) -> domaine indiqué dans l'en-tête de tour.
 ECRANS = (("/crm", "crm"), ("/ventes", "ventes"), ("/calepinage", "calepinage"),

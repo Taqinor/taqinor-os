@@ -53,9 +53,14 @@ def _refus_fiche():
         'produit', 'fiche_incomplete')
 
 
+SUPPOSE_PANNEAU = 'Panneau non précisé : celui du devis automatique (%s)'
+
+
 def _panneau(company, produit_id, ouvert):
-    """``(produit, kit)`` — le panneau demandé, sinon celui du calepinage
-    ouvert (désigné, ou ligne du devis lié) ; refus nommé sinon."""
+    """``(produit, kit, supposition)`` — le panneau demandé, sinon celui du
+    calepinage ouvert (désigné, ou ligne du devis lié), sinon celui que le
+    devis automatique retient par défaut (DIT dans les suppositions) ; refus
+    nommé quand aucun n'est désigné."""
     from apps.stock.selectors import get_produit_scoped
 
     from ..villa_service import kit_panneau_du_produit
@@ -64,6 +69,12 @@ def _panneau(company, produit_id, ouvert):
     if produit_id is None and ouvert is not None:
         materiel = resoudre_materiel(company, entree_stockee(ouvert), calepinage=ouvert)
         produit_id = (materiel.get('produits') or {}).get('module')
+    par_defaut = False
+    if produit_id is None:
+        from apps.ventes.selectors_assistant import panneau_par_defaut_id
+
+        produit_id = panneau_par_defaut_id(company)
+        par_defaut = produit_id is not None
     if produit_id is None:
         raise RefusAssistant(
             'Choisissez le panneau : cherchez-le dans le catalogue '
@@ -76,7 +87,7 @@ def _panneau(company, produit_id, ouvert):
     kit = kit_panneau_du_produit(produit, company=company)
     if kit is None:
         raise _refus_fiche()
-    return produit, kit
+    return produit, kit, (SUPPOSE_PANNEAU % produit.nom if par_defaut else None)
 
 
 def _nombre(valeur):
@@ -259,7 +270,7 @@ def estimer(user, *, lead_id, origine, cotes=None, produit_id=None):
 
     lead = lead_de_l_appelant(user, lead_id)
     ouvert, _hors_vue = calepinage_ouvert_visible(user, lead.pk)
-    produit, kit = _panneau(user.company, produit_id, ouvert)
+    produit, kit, note_panneau = _panneau(user.company, produit_id, ouvert)
     contexte = _contexte(user.company, lead)
     if origine == 'trace':
         lignes, regles = _zones_du_trace(ouvert, produit, contexte['parametres'],
@@ -285,7 +296,7 @@ def estimer(user, *, lead_id, origine, cotes=None, produit_id=None):
                         else sum(ligne[cle] for ligne in lignes))
                   for cle in ('modules_min', 'modules_max', 'kwc_min', 'kwc_max')},
         'regles': [r for r in dict.fromkeys(regles) if r],
-        'suppositions': list(dict.fromkeys(notes)),
+        'suppositions': list(dict.fromkeys(notes + ([note_panneau] if note_panneau else []))),
         'a_faire': 'dessiner' if ouvert is not None else 'preparer_calepinage',
         'lien': (chemin('calepinage', ouvert.pk, 'reprise-visite' if origine == 'visite' else None)
                  if ouvert is not None else chemin('lead', lead.pk)),

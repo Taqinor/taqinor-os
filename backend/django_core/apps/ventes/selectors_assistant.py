@@ -246,3 +246,14 @@ def brief_ventes(user, aujourdhui=None):
         'lignes': lu['lignes'],
         'lien': '/ventes/relances',
     }
+
+
+def panneau_par_defaut_id(company):
+    """Identifiant du panneau que le devis automatique retient quand rien n'est
+    précisé (LE résolveur du compositeur) ; ``None`` s'il n'en désigne pas UN."""
+    from .domain.resolution_catalogue import STATUT_UNIQUE, resoudre_panneau, vivier
+
+    resolution = resoudre_panneau(company, vivier(company))
+    if resolution.statut != STATUT_UNIQUE or resolution.produit is None:
+        return None
+    return resolution.produit.pk
