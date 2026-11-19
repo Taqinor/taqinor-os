@@ -223,7 +223,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
-| Vide | « Aucun projet » · **Coller mes listes** |
+| Vide | « Aucun projet » · **Coller mes listes** — seulement sur RÉPONSE du serveur (R2-070) : lecture échouée = l'erreur dite ; hors ligne, la dernière liste lue du compte (cache `taches:projets:<user>:…`, vidé à la déconnexion) ; la page ne porte pas la date du jour en sous-titre (R2-085) |
 | Nouveau projet | « Nom du projet » · Créer · « Depuis un modèle » ; aussitôt : Planifier le projet |
 | En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
 | Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre ; R2-066 : les tâches datées d'une étape se lisent sous elle (iPhone) ou en points sur la piste (bureau), une étape sans date a sa rangée ou la bande « Sans date : … ») — la dernière vue est gardée |

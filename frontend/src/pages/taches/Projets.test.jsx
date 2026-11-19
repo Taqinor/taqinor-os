@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
@@ -200,6 +201,58 @@ describe('R2-060 — Projets : « Mettre en haut » atteignable au doigt', () =>
     act(() => { vi.advanceTimersByTime(700) })
     vi.useRealTimers()
     expect(screen.queryByRole('menu')).toBeNull()
+  })
+})
+
+describe('R2-070 — Projets : jamais « Aucun projet » sans réponse ; hors ligne, la dernière liste lue', () => {
+  const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
+  const monterConnecte = (id = 42) => render(
+    <ReactReduxContext.Provider value={{ store: connecte(id) }}>
+      <MemoryRouter initialEntries={['/taches/projets']}>
+        <Routes><Route path="/taches/projets" element={<Projets />} /><Route path="*" element={<Lieu />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  beforeEach(() => { window.localStorage.clear() })
+  afterEach(() => { window.localStorage.clear() })
+
+  it('lecture échouée et rien de gardé : l\'erreur est dite, jamais un faux « Aucun projet »', async () => {
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    monterConnecte()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Connexion perdue')
+    expect(screen.queryByText('Aucun projet')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Coller mes listes' })).toBeNull()
+  })
+
+  it('relu sans réseau : la dernière liste lue du compte s\'affiche, avec son constat', async () => {
+    const premier = monterConnecte()
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    monterConnecte()
+    expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+    expect(screen.getByText('7 projets actifs, 3 ont avancé ces 7 jours')).toBeInTheDocument()
+    expect(screen.queryByText('Aucun projet')).toBeNull()
+  })
+
+  it('la liste gardée par un AUTRE compte n\'est jamais montrée ; la déconnexion vide le cache', async () => {
+    const premier = monterConnecte(42)
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    const autre = monterConnecte(43)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ventes' })).toBeNull()
+    autre.unmount()
+    const { viderCacheProjets } = await import('../../features/taches/horsligne/cacheProjets')
+    expect(viderCacheProjets()).toBeGreaterThan(0)
+    expect(window.localStorage.length).toBe(0)
+  })
+
+  it('R2-085 — la page Projets ne porte plus la date du jour en sous-titre', async () => {
+    monter()
+    await screen.findByRole('button', { name: 'Ventes' })
+    expect(document.querySelector('.entete-date')).toBeNull()
   })
 })
 

@@ -25,6 +25,8 @@ import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
+import { useCompteTaches } from '../../features/taches/lib/enLigne'
+import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 
@@ -258,20 +260,29 @@ export default function Projet() {
   const projetRef = useRef(null)
   const chaineVue = useRef(Promise.resolve())
 
+  // R2-070 — la dernière vue LUE du projet est gardée par compte (`cacheProjets`) : sans réseau et sans rien à l'écran,
+  // elle tient lieu de lecture (l'erreur reste dite) — jamais un écran muet
+  const { userId } = useCompteTaches()
+  const dejaLu = useRef(false)
   const charger = useCallback(async () => {
     try {
       const { data } = await lireVueProjet(id, { vue: 'liste' })
       setVue(data)
       setErreur('')
       setIntrouvable(false)
+      dejaLu.current = true
+      ecrireProjetsCache(userId, `projet-${id}`, data)
     } catch (err) {
-      if (classerErreur(err).code === 'introuvable') setIntrouvable(true)
-      else setErreur(frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
+      if (classerErreur(err).code === 'introuvable') { setIntrouvable(true); return }
+      setErreur(frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
+      const cache = dejaLu.current ? null : lireProjetsCache(userId, `projet-${id}`)
+      if (cache?.donnees) { dejaLu.current = true; setVue(cache.donnees) }
     }
-  }, [id])
+  }, [id, userId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'écran (D-ENF22)
   useEffect(() => { charger() }, [charger])
+  useEffect(() => viderCacheProjetsALaDeconnexion(), [])
 
   // Le dernier projet lu (verrou de version) : les écritures de vue en file le relisent ici.
   useEffect(() => { projetRef.current = vue?.projet ?? null })

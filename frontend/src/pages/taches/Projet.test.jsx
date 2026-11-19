@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
@@ -248,6 +249,34 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
     expect(await screen.findByText('En pause')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
+  })
+})
+
+describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
+  const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
+  const monterConnecte = (id = 42) => render(
+    <ReactReduxContext.Provider value={{ store: connecte(id) }}>
+      <MemoryRouter initialEntries={['/taches/projets/3']}>
+        <Routes><Route path="/taches/projets/:id" element={<Projet />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  beforeEach(() => { window.localStorage.clear() })
+  afterEach(() => { window.localStorage.clear() })
+
+  it('relu sans réseau, le projet gardé s\'affiche (l\'erreur est dite) ; un autre compte ne le voit pas', async () => {
+    const premier = monterConnecte(42)
+    await screen.findByText('12 sur 20')
+    premier.unmount()
+    api.lireVueProjet.mockRejectedValue(new Error('Network Error'))
+    const hors = monterConnecte(42)
+    expect(await screen.findByText('12 sur 20')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Études' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Connexion perdue')
+    hors.unmount()
+    monterConnecte(43)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('12 sur 20')).toBeNull()
   })
 })
 
