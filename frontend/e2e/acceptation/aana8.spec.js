@@ -294,7 +294,7 @@ sortie(1)`)
     // Même règle que LE taux de gain du reporting (apps.reporting.services.taux_gain, D-AANA-1) sur les mêmes leads.
     const tg = await py(`from apps.crm.models import Lead
 from apps.reporting.services import taux_gain
-sortie([taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(0, 3))})), taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(3))}))])`)
+sortie([taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(0, 3))})), taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(3, 4))}))])`)
     expect(tg, '[AANA65] taux_gain du reporting sur les mêmes leads = roi-sources').toEqual([50, null])
     // ── Écran : cockpit CRM du directeur, carte « ROI par source » → « 1 (50 %) » ; rechargement ⇒ identique.
     const pd = await ouvrir(w.dA, suivi)
