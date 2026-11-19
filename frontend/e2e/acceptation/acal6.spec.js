@@ -109,8 +109,10 @@ async function carteRefusee(context, suivi) {
   }))
 }
 
-/** Ouvre l'atelier (fond de repli) et attend la scène HYDRATÉE + la production chiffrée. */
-async function ouvrirAtelier(page, id, onglet = null) {
+/** Ouvre l'atelier (fond de repli) et attend la scène HYDRATÉE + la production chiffrée du pan ACTIF.
+ *  `production: false` seulement quand le pan actif relu est un pan VIDE (sans contour) : la carte Production
+ *  est celle du pan actif, elle reste « — » (ACAL357, la zone ajoutée devient le pan actif). */
+async function ouvrirAtelier(page, id, onglet = null, { production = true } = {}) {
   await page.goto(`/calepinage/${id}${onglet ? `?onglet=${onglet}` : ''}`)
   const bouton = page.getByTestId('cal-enregistrer-calepinage').getByRole('button', { name: /Enregistrer le calepinage/ })
   try {
@@ -121,8 +123,19 @@ async function ouvrirAtelier(page, id, onglet = null) {
   }
   await expect(page.locator('#rp9-status'), '`#rp9-status` n’est plus « Chargement… »').not.toHaveText(/^Chargement/, T)
   await expect(page.getByRole('alert').filter({ hasText: 'clé MapTiler' }), 'jamais « Carte indisponible »').toHaveCount(0)
-  await expect(page.locator('#rp9-reco-prod'), 'carte Production chiffrée').toHaveText(/\d/, T)
+  if (production) await expect(page.locator('#rp9-reco-prod'), 'carte Production chiffrée').toHaveText(/\d/, T)
   return bouton
+}
+
+/** Rouvre l'atelier dans un NOUVEL onglet (même session) : l'onglet quitté garde sa scène, sans garde de sortie. */
+async function nouvelOnglet(context, suivi) {
+  const p = await context.newPage()
+  await p.addInitScript(() => {
+    try { localStorage.setItem('taqinor-pwa-install-dismissed', '1') } catch { /* mode privé */ }
+    try { localStorage.setItem('taqinor:welcome:seen:v1', '1') } catch { /* mode privé */ }
+  })
+  suivi.surveiller(p)
+  return p
 }
 
 /** « Enregistrer le calepinage » (écriture COMPLÈTE, If-Match) puis relecture du document stocké. */
@@ -171,16 +184,22 @@ async function saisirHorizon25(page, id) {
 // ════════════════════════════════════════════════════════════════════════════
 etape('PA2.3-ACAL355-production-par-pan', ['ACAL355'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
+  // L'atelier ne pave QUE le pan ACTIF (run 44626834471 : le pan non actif est enregistré sans `geometry` ni
+  // `result`). Préparation du document à deux pans pavés : B actif → enregistrer (B pavé) ; puis A actif →
+  // enregistrer (A pavé, B garde sa géométrie enregistrée — ACAL28).
   const cal = await calepinageAvec('ACAL355', {
-    version: 2, pin: PIN, activeAreaId: 'z1',
+    version: 2, pin: PIN, activeAreaId: 'z2',
     zones: [zonePentue('z1', 'Pan A sud', PAN_A, 15, 180), zonePentue('z2', 'Pan B est', PAN_B, 15, 90)],
   })
-  // L'atelier pave et enregistre les deux pans (géométrie par pan).
   let bouton = await ouvrirAtelier(page, cal.id)
+  const docB = await enregistrer(page, cal.id, bouton)
+  expect(pan(docB, 'z2')?.geometry?.panels?.length, 'pan B (actif) pavé par l’atelier').toBeGreaterThan(0)
+  await poserDocument(cal.id, { ...docB, activeAreaId: 'z1' })
+  bouton = await ouvrirAtelier(page, cal.id)
   const doc0 = await enregistrer(page, cal.id, bouton)
   const [a0, b0] = [pan(doc0, 'z1'), pan(doc0, 'z2')]
   expect(a0?.geometry?.panels?.length, 'pan A pavé par l’atelier').toBeGreaterThan(0)
-  expect(b0?.geometry?.panels?.length, 'pan B pavé par l’atelier').toBeGreaterThan(0)
+  expect(b0?.geometry?.panels?.length, 'pan B (non actif) garde sa géométrie enregistrée').toBeGreaterThan(0)
   const watt = Number(doc0.panelWatt) || 710
   const kwcDe = (z) => (Number.isFinite(z.geometry.kwc) ? z.geometry.kwc : (z.geometry.panels.length * watt) / 1000)
   const [kwcA, kwcB] = [kwcDe(a0), kwcDe(b0)]
@@ -360,7 +379,50 @@ sortie({'p50': t.get('p50_kwh'), 'complete': t.get('complete')})`)
   }
 }
 
+/** Réglage société de la pile d'essai (pas un défaut produit) : la simulation refuse sans `mode_meteo` saisi
+ *  (`chaine_pertes.decision_meteo`). `tmy` est refusé sans fichier météo déposé (`verifier_simulable`,
+ *  MOTIF_TMY_HORIZONTAL) : mode `pluriannuel` + `fenetre_annees`, la forme lue par `etapes.reglage`
+ *  (`{valeur, source}`), celle des tests `test_calx193_serie_persistee.py::reglages`. Rend l'état d'avant. */
+async function reglerMeteo() {
+  return py(`from apps.calepinage.models import ParametresCalepinage
+co = U.objects.get(username='demo_admin').company
+p = ParametresCalepinage.objects.filter(company=co).order_by('id').first()
+avant = None if p is None else dict(p.simulation or {})
+if p is None:
+    p = ParametresCalepinage.objects.create(company=co)
+sim = dict(p.simulation or {})
+sim['mode_meteo'] = {'valeur': 'pluriannuel', 'source': 'societe', 'reference': 'acceptation ACAL6'}
+sim['fenetre_annees'] = {'valeur': '2020-2020', 'source': 'societe', 'reference': 'acceptation ACAL6'}
+p.simulation = sim
+p.save(update_fields=['simulation'])
+sortie({'cree': avant is None, 'avant': avant})`)
+}
+
+async function restaurerMeteo(etat) {
+  if (!etat) return
+  await py(`import json
+from apps.calepinage.models import ParametresCalepinage
+co = U.objects.get(username='demo_admin').company
+p = ParametresCalepinage.objects.filter(company=co).order_by('id').first()
+if p is not None:
+    if ${etat.cree ? 'True' : 'False'}:
+        p.delete()
+    else:
+        p.simulation = json.loads(${JSON.stringify(JSON.stringify(etat.avant || {}))})
+        p.save(update_fields=['simulation'])
+sortie(1)`)
+}
+
 etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({ page, context, suivi }) => {
+  const meteo = await reglerMeteo()
+  try {
+    await ecartSimulation({ page, context, suivi })
+  } finally {
+    await restaurerMeteo(meteo)
+  }
+})
+
+async function ecartSimulation({ page, context, suivi }) {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL367 sim', toitPlat())
   let bouton = await ouvrirAtelier(page, cal.id)
@@ -378,7 +440,7 @@ etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({
   expect(s1, 'l’atelier applique l’horizon').toBeLessThan(s0)
   expect(ecart1, 'l’écart atelier ↔ simulation ne s’ouvre plus avec l’horizon').toBeLessThanOrEqual(ecart0 + 0.01)
   await nettoyer(cal)
-})
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // ACAL357 — PA2.3 : ombres du site (tracée shade-1 + relues sh-1, sh-2) et matrice 0,8 ; « + Ajouter une zone » puis
@@ -418,8 +480,12 @@ etape('PA2.3-ACAL357-ombres-ajout-zone', ['ACAL357'], async ({ page, context, su
   expect(apres.shadeObstructions, 'ombres gardées par l’ajout d’un pan').toEqual(avant.shadeObstructions)
   expect(apres.shading12x24, 'matrice gardée par l’ajout d’un pan').toEqual(avant.shading12x24)
 
-  // Persistance : rouvrir ⇒ ombres et matrice relues identiques.
-  bouton = await ouvrirAtelier(page, cal.id)
+  // Persistance : rouvrir ⇒ ombres et matrice relues identiques. La zone ajoutée (sans contour) est le pan ACTIF
+  // enregistré (run 44626834471 : activeAreaId 'area-1', 0 sommet) : la carte Production du pan actif reste « — ».
+  const ajoutee = pan(apres, apres.activeAreaId)
+  expect(['z1', 'z2'], 'la zone ajoutée est le pan actif enregistré').not.toContain(apres.activeAreaId)
+  expect(ajoutee?.vertices || [], 'zone ajoutée encore sans contour').toHaveLength(0)
+  bouton = await ouvrirAtelier(page, cal.id, null, { production: false })
   const relu = await enregistrer(page, cal.id, bouton)
   expect(relu.shadeObstructions, 'ombres relues identiques').toEqual(apres.shadeObstructions)
   expect(relu.shading12x24, 'matrice relue identique').toEqual(apres.shading12x24)
@@ -488,9 +554,13 @@ etape('PA2.3-ACAL364-allee-section', ['ACAL364'], async ({ page, context, suivi 
   expect((await lireLayout(page.request, cal.id)).roof_layout.alleeTechnique, '409 : rien n’est écrit').toEqual({ largeurM: 1.2, source: 'saisie' })
   expect(ecrituresCompletes).toEqual([])
 
-  // Persistance : rouvrir ⇒ l'horizon est toujours là.
-  await ouvrirAtelier(page, cal.id, 'horizon')
-  await expect(page.getByTestId('cal-horizon-hauteur-max'), 'horizon relu après rouverture').toHaveText('25.0°')
+  // Persistance : rouvrir ⇒ l'horizon est toujours là. Rouvert dans un NOUVEL onglet : après le 409, l'onglet quitté
+  // porte l'allée 0,9 appliquée localement que le serveur a refusée (le document dit 1,2) — sa garde de sortie
+  // (ACAL85, `beforeunload`) est alors légitime ; la recharger dans le même onglet ouvrait ce dialogue, que le
+  // harnais referme, ce qui annulait la navigation (run 44626834471 : net::ERR_ABORTED, dialogue `beforeunload`).
+  const rouvert = await nouvelOnglet(context, suivi)
+  await ouvrirAtelier(rouvert, cal.id, 'horizon')
+  await expect(rouvert.getByTestId('cal-horizon-hauteur-max'), 'horizon relu après rouverture').toHaveText('25.0°')
   expect((await lireLayout(page.request, cal.id)).roof_layout.horizonProfile).toEqual(docH.roof_layout.horizonProfile)
   await nettoyer(cal)
 })
