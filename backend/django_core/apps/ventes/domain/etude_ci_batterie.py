@@ -318,9 +318,7 @@ def _flux_option_avec(evaluation, economie, investissement, ctx):
     entrée manque (économie omise, investissement non chiffré) — jamais le
     quotient coût ÷ économie."""
     from apps.ventes import economie_ci as eco
-    from apps.ventes.economie_ci_options import (
-        annee_remplacement_batterie, flux_option_avec,
-    )
+    from apps.ventes.economie_ci_options import flux_option_avec
     annee1 = economie.get('economie_annee1') if isinstance(economie, dict) else None
     if not investissement or not isinstance(annee1, dict) \
             or economie.get('statut') == eco.STATUT_OMIS \
@@ -334,8 +332,7 @@ def _flux_option_avec(evaluation, economie, investissement, ctx):
     kwh = sum(_num(p.get('kwh_evites')) or 0.0 for p in annee1.get('par_poste') or [])
     return flux_option_avec(
         base, lignes=investissement['lignes'],
-        batterie=annee_remplacement_batterie(fiche.get('garantie_mois'),
-                                             fiche.get('cycles_publies')),
+        batterie=regle_remplacement(fiche, evaluation.get('bilan'), ctx.get('regles_cycles', True)),
         production_annee1_kwh=_num((evaluation.get('bilan') or {}).get('production_kwh')),
         kwh_evites_an=kwh, **(ctx.get('flux') or {}))
 
@@ -431,47 +428,63 @@ def _alerte_dominee(sans, avec, alertes, choix):
         niveau='bloquant' if choix == 'avec' else 'alerte')
 
 
-def _annee_remplacement(fiche):
-    """L'année du remplacement de la batterie du flux 25 ans
-    (``economie_ci_options.annee_remplacement_batterie``), ``None`` au-delà de
-    l'horizon du flux (aucun remplacement compté)."""
-    from apps.ventes.economie_ci import HORIZON_CI_ANS
-    from apps.ventes.economie_ci_options import annee_remplacement_batterie
+def regle_remplacement(fiche, bilan=None, regles_cycles=True):
+    """``{annee, source[, duree]}`` du remplacement de la batterie
+    (``economie_ci_options.annee_remplacement_batterie``) pour UNE évaluation :
+    niveau 13 (``regles_cycles``, fondateur 19/11/2026) ⇒ les cycles publiés de
+    la fiche ÷ les cycles par an de SON bilan ; sinon la règle d'hier. Le flux
+    25 ans, la montée de la banque et le verdict marginal passent tous ici."""
+    from apps.ventes.economie_ci_options import (
+        annee_remplacement_batterie, cycles_par_an_du_bilan,
+    )
     fiche = fiche or {}
-    annee = annee_remplacement_batterie(fiche.get('garantie_mois'),
-                                        fiche.get('cycles_publies'))['annee']
+    par_an = cycles_par_an_du_bilan(bilan) if regles_cycles else None
+    return annee_remplacement_batterie(fiche.get('garantie_mois'), fiche.get('cycles_publies'),
+                                       cycles_par_an=par_an)
+
+
+def _annee_remplacement(fiche, bilan=None, regles_cycles=True):
+    """L'année du remplacement de la batterie du flux 25 ans
+    (:func:`regle_remplacement`), ``None`` au-delà de l'horizon du flux
+    (aucun remplacement compté)."""
+    from apps.ventes.economie_ci import HORIZON_CI_ANS
+    annee = regle_remplacement(fiche, bilan, regles_cycles)['annee']
     return annee if annee <= HORIZON_CI_ANS else None
 
 
-def _remplacement_moteur(taux_tva_pct):
+def _remplacement_moteur(taux_tva_pct, regles_cycles=True):
     """``remplacement(evaluation, banque)`` → ``(HT, année)`` pour le choix du
-    meilleur groupe (``moteur_ci.batterie._meilleur_groupe``)."""
+    meilleur groupe (``moteur_ci.batterie._meilleur_groupe``) : l'année lue
+    sur le bilan du CANDIDAT ``e`` (niveau 13)."""
     from apps.ventes.moteur_ci.batterie import cout_batterie_ht
     return lambda e, banque: (cout_batterie_ht(e.get('composition'), taux_tva_pct),
-                              _annee_remplacement(banque))
+                              _annee_remplacement(banque, e.get('bilan'), regles_cycles))
 
 
-def _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct):
+def _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct, regles_cycles=True):
     """``(HT, année)`` du remplacement de la batterie : celui du flux 25 ans
     servi (``economie_flux.remplacements``), sinon celui de la composition et
-    de la fiche."""
+    de la fiche (bilan de l'évaluation, à défaut celui du bloc servi)."""
     flux = (bloc or {}).get('economie_flux')
     if isinstance(flux, dict):
         r = next((r for r in flux.get('remplacements') or []
                   if isinstance(r, dict) and r.get('composant') == 'batterie'), None)
         return (_num(r.get('montant_ht_mad')) or 0.0, r.get('annee')) if r else (0.0, None)
     from apps.ventes.moteur_ci.batterie import cout_batterie_ht
+    bilan = (evaluation or {}).get('bilan') or (bloc or {}).get('bilan')
     return (cout_batterie_ht((evaluation or {}).get('composition'), taux_tva_pct),
-            _annee_remplacement(fiche))
+            _annee_remplacement(fiche, bilan, regles_cycles))
 
 
-def verdict_rentabilite(sans, evaluation, bloc, fiche=None, taux_tva_pct=None):
+def verdict_rentabilite(sans, evaluation, bloc, fiche=None, taux_tva_pct=None,
+                        regles_cycles=True):
     """D-CI-BATTERIE-NON-RENTABLE (fondateur 30/10/2026) — ``None`` quand
     l'option « avec » tient la règle marginale (supplément sur « sans »
     remboursé en ≤ ``taille.HORIZON_MARGINAL_CI``, la définition d'une
     batterie RECOMMANDÉE) ou quand un chiffre manque ; sinon
     ``{retour_marginal_ans, horizon_annees}`` — le retour du supplément,
-    remplacement de la batterie compris. Aucune valeur de secours."""
+    remplacement de la batterie compris (``regles_cycles`` : niveau 13).
+    Aucune valeur de secours."""
     from apps.ventes.moteur_ci.batterie import retour_marginal_batterie
     from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
     bloc, evaluation = bloc or {}, evaluation or {}
@@ -485,7 +498,7 @@ def verdict_rentabilite(sans, evaluation, bloc, fiche=None, taux_tva_pct=None):
     simple = retour_marginal_batterie(cout_s, eco_s, cout_a, eco_a)
     if simple is None or simple <= HORIZON_MARGINAL_CI + 1e-9:
         return None
-    ht, annee = _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct)
+    ht, annee = _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct, regles_cycles)
     retour = retour_marginal_batterie(cout_s, eco_s, cout_a, eco_a, ht, annee)
     return {'retour_marginal_ans': round(retour, 1), 'horizon_annees': HORIZON_MARGINAL_CI}
 
@@ -505,7 +518,7 @@ def _marquer_non_rentable(sortie, verdict):
 
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
                   borne_toit, production_rasante=None, regles_3010b=False, nb_batteries=None,
-                  **noyau):
+                  regles_cycles=True, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import (
         MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
@@ -533,7 +546,9 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         cout_depart=evaluation.get('cout'), economie_depart=evaluation.get('economie'),
         # D-CI-BATTERIE-NON-RENTABLE (niveau 5) : aucun groupe dans l'horizon ⇒
         # le groupe au meilleur retour, remplacement de la batterie compris.
-        remplacement=_remplacement_moteur(noyau.get('taux_tva_pct')) if regles_3010b else None,
+        # Niveau 13 (19/11/2026) : l'année lue sur les cycles de CHAQUE candidat.
+        remplacement=(_remplacement_moteur(noyau.get('taux_tva_pct'), regles_cycles)
+                      if regles_3010b else None),
         # D-HYB-4 (17/11/2026) — N batteries choisies : panneaux pour N, onduleur pour R.
         modules_choisis=nb_batteries_choisi(nb_batteries),
         combiner_impose=lambda kwc, produit, quantite: combiner_impose(
@@ -713,6 +728,8 @@ def _ctx_flux(contexte, batterie):
     return {'tva_recuperable': contexte.get('tva_recuperable'),
             'taux_tva_pct': contexte.get('taux_tva_pct'),
             'regles_2710': contexte.get('regles_2710', True),
+            # Niveau 13 (``REGLES_CYCLES_BATTERIE_1911``) : remplacement lu sur les cycles.
+            'regles_cycles': contexte.get('regles_cycles', True),
             'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
@@ -823,6 +840,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     # cachée ; ``reference_sans`` : l'option « sans » même quand
     # ``evaluation`` n'est pas passée (onduleurs imposés par les lignes).
     regles_3010b = contexte.pop('regles_3010b', True)
+    # Niveau 13 (fondateur 19/11/2026) : remplacement de la batterie lu sur ses cycles.
+    flux['regles_cycles'] = regles_cycles = contexte.pop('regles_cycles', True)
     talon_inconnu = contexte.pop('talon_inconnu', False)
     nb_batteries = contexte.pop('nb_batteries', None)  # D-HYB-4 (options.nb_batteries)
     reference_sans = contexte.pop('reference_sans', None) or evaluation
@@ -839,10 +858,12 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),
                                      prix_a_renseigner=list(
                                          imposee['composition'].get('prix_a_renseigner') or [])),
-                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'])
+                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'],
+                                regles_cycles)
     if imposee is not None:
         return _imposee_verdict(dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux))),
-                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'])
+                                imposee, reference_sans, regles_3010b, flux['taux_tva_pct'],
+                                regles_cycles)
     choix = choix_batterie(choix, lead)
     if evaluation is None or choix == 'sans':
         return vide
@@ -861,7 +882,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         resultat = _dimensionner(catalogue, bat, batteries, evaluation,
                                  production_rasante=production_rasante,
                                  regles_3010b=regles_3010b, nb_batteries=nb_batteries,
-                                 **contexte)
+                                 regles_cycles=regles_cycles, **contexte)
     else:
         resultat = {'evaluation': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': [],
                     'motif': 'aucun onduleur hybride basse tension ni batterie basse tension '
@@ -900,15 +921,15 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.
         sortie['bloc']['inclinaison_retenue_deg'] = evalue['inclinaison_retenue_deg']
     verdict = verdict_rentabilite(evaluation, evalue, sortie['bloc'], fiche,
-                                  flux['taux_tva_pct']) if regles_3010b else None
+                                  flux['taux_tva_pct'], regles_cycles) if regles_3010b else None
     return _marquer_non_rentable(sortie, verdict) if verdict else sortie
 
 
-def _imposee_verdict(sortie, imposee, sans, regles_3010b, taux_tva_pct):
+def _imposee_verdict(sortie, imposee, sans, regles_3010b, taux_tva_pct, regles_cycles=True):
     """L'option des LIGNES (rafraîchisseur) porte le MÊME verdict que l'étude
     (niveau 5) : c'est elle que le PDF et ``/proposition`` lisent."""
     if not regles_3010b or not sortie.get('bloc'):
         return sortie
     verdict = verdict_rentabilite(sans, imposee, sortie['bloc'], imposee.get('banque'),
-                                  taux_tva_pct)
+                                  taux_tva_pct, regles_cycles)
     return _marquer_non_rentable(sortie, verdict) if verdict else sortie

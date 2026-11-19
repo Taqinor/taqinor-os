@@ -575,6 +575,65 @@ class OptionAvecBatterieTest(SimpleTestCase):
         self.assertEqual(defaut['annee'], 11)
         self.assertIn('défaut fondateur', defaut['source'])
 
+    # ── Niveau 13 (fondateur 19/11/2026) : « cycles publiés, usage réel » ──
+    BILAN_0080 = {'batterie': {'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 13239,
+                               'charge_kwh_an': 13510, 'rendement': 0.98}}
+
+    def test_cycles_par_an_du_bilan_une_seule_formule(self):
+        from apps.ventes import economie_ci_options as opt
+        self.assertAlmostEqual(opt.cycles_par_an_du_bilan(self.BILAN_0080), 13239 / 45.81)
+        for bilan in (None, {}, {'batterie': None}, {'batterie': {'capacite_utile_kwh': 45.81}},
+                      {'batterie': {'capacite_utile_kwh': 0, 'restitue_kwh_an': 100}},
+                      {'batterie': {'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 0}},
+                      {'batterie': {'capacite_utile_kwh': 'x', 'restitue_kwh_an': 100}}):
+            self.assertIsNone(opt.cycles_par_an_du_bilan(bilan), bilan)
+
+    def test_niveau_13_cycles_publies_sur_usage_reel_garantie_pas_un_plafond(self):
+        from apps.ventes import economie_ci_options as opt
+        par_an = opt.cycles_par_an_du_bilan(self.BILAN_0080)       # ≈ 289
+        regle = opt.annee_remplacement_batterie(120, 8000, cycles_par_an=par_an)
+        self.assertEqual(regle['annee'], 28)                        # ⌊8000 ÷ 289⌋ + 1
+        self.assertEqual(regle['duree'], {'cycles_publies': 8000, 'cycles_par_an': 289})
+        self.assertEqual(regle['source'], "8000 cycles publiés par le fabricant, 289 cycles "
+                                          "par an d'après l'étude")
+        # Usage intense : les cycles fixent une année AVANT la garantie.
+        self.assertEqual(opt.annee_remplacement_batterie(120, 3000, cycles_par_an=400)['annee'], 8)
+
+    def test_niveau_13_sans_cycles_ou_sans_usage_regle_d_hier_a_l_identique(self):
+        from apps.ventes import economie_ci_options as opt
+        for args in ((120, 6000), (120, 3000), (120, None), (None, 6000), (None, None)):
+            hier = opt.annee_remplacement_batterie(*args)
+            self.assertEqual(opt.annee_remplacement_batterie(*args, cycles_par_an=None), hier)
+            self.assertEqual(opt.annee_remplacement_batterie(*args, cycles_par_an=0), hier)
+            self.assertNotIn('duree', hier)
+        # Pas de cycles publiés : fin de garantie + 1 ; ni l'un ni l'autre : le défaut.
+        self.assertEqual(opt.annee_remplacement_batterie(120, None, cycles_par_an=289),
+                         opt.annee_remplacement_batterie(120))
+        self.assertEqual(opt.annee_remplacement_batterie(cycles_par_an=289),
+                         opt.annee_remplacement_batterie())
+
+    def test_niveau_13_flux_sans_remplacement_et_batterie_duree_servie(self):
+        from apps.ventes import economie_ci_options as opt
+        regle = opt.annee_remplacement_batterie(120, 8000, cycles_par_an=13239 / 45.81)
+        avec = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                    batterie=regle)
+        self.assertEqual([r['composant'] for r in avec['remplacements']], ['onduleur'])
+        self.assertEqual(avec['batterie_duree'], {'cycles_publies': 8000, 'cycles_par_an': 289,
+                                                  'annee_remplacement': None,
+                                                  'horizon_ans': eco.HORIZON_CI_ANS})
+        self.assertIn('batterie_duree', eco.economie_ci_publique(avec))
+        # Dans l'horizon : remplacement compté ET année servie.
+        dedans = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                      batterie=opt.annee_remplacement_batterie(
+                                          120, 6000, cycles_par_an=400))
+        self.assertEqual(dedans['batterie_duree']['annee_remplacement'], 16)
+        self.assertEqual([r['annee'] for r in dedans['remplacements']
+                          if r['composant'] == 'batterie'], [16])
+        # Règle d'hier : aucune clé neuve.
+        hier = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                    batterie=opt.annee_remplacement_batterie(120, 8000))
+        self.assertNotIn('batterie_duree', hier)
+
     def test_base_deux_jalons_ttc_suivent_le_remplacement(self):
         from apps.ventes import economie_ci_options as opt
         base = _base(tva='inconnu')

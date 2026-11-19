@@ -95,8 +95,17 @@ REGLES_CENTAINE_0311 = 11
 #: AMOT123 économie TTC C&I, AMOT126 une-page C&I en ``fmt_dirhams``). La migration
 #: 0153 ne passe que les brouillons jamais envoyés de 11 à 12 : un envoyé garde son rendu.
 REGLES_ECARTS_0411 = 12
+#: Niveau 13 (décision fondateur du 19/11/2026, « cycles publiés, usage réel »,
+#: « nouveaux rendus seulement ») : sur le flux 25 ans de l'option C&I « avec
+#: batterie », la batterie est remplacée l'année ⌊cycles publiés de la fiche ÷
+#: cycles par an de l'étude⌋ + 1 — jamais au-delà de l'horizon, la garantie n'est
+#: plus un plafond (``economie_ci_options.annee_remplacement_batterie``). La même
+#: année sert le flux, la montée de la banque et le verdict « non rentable ». La
+#: migration 0158 ne passe que les brouillons jamais envoyés de 12 à 13 : un devis
+#: envoyé garde l'année de remplacement que le client a reçue.
+REGLES_CYCLES_BATTERIE_1911 = 13
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_ECARTS_0411
+REGLES_COURANTES = REGLES_CYCLES_BATTERIE_1911
 
 
 def regles_au_moins(devis, niveau: int) -> bool:
