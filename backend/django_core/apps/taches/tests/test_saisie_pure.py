@@ -790,6 +790,25 @@ class CollageTests(unittest.TestCase):
         self.assertEqual(coller('Courses\nLait\nPain')['projets_communs'][0]['collage'], 0)
 
 
+class ChecklistDUneLigneTests(unittest.TestCase):
+    """Critique serveur n° 1 — les points d'une ligne collée : un point vide (« - demain » une fois la date lue)
+    ou de 256 à 280 caractères ne fait plus refuser TOUT le collage (`_checklist` ignore le vide, coupe à 255).
+    Le schéma publié dit la même chose (enfant sans `minLength`, `maxLength` 280) : api-fuzz joue `--mode all`."""
+
+    def test_point_vide_ou_long_accepte(self):
+        from apps.taches.serializers.saisie import valider_lignes
+        [ligne] = valider_lignes([{'titre': 'Chantier Benali', 'checklist': ['poser les rails', '', '  ', 'x' * 280]}])
+        self.assertEqual(ligne['checklist'], ['poser les rails', '', '', 'x' * 280])
+
+    def test_point_au_dela_de_280_refuse_sous_la_ligne(self):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.taches.serializers.saisie import valider_lignes
+        with self.assertRaises(ValidationError) as refus:
+            valider_lignes([{'index': 2, 'titre': 'Chantier', 'checklist': ['x' * 281]}])
+        self.assertIn('checklist', refus.exception.detail['lignes']['2'])
+
+
 class PlanCollePlanTests(unittest.TestCase):
     """TCH40 — `decouper_plan` : liste collée de « Planifier le projet » (spec-4 §B)."""
 
