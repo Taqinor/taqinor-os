@@ -2125,6 +2125,9 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `activites_closes` `[{"jour","titre"}]` (les activités ERP closes par lui cette semaine, comptées dans `total`,
   la plus récente d'abord). `results` ne liste que ce que `total` compte : sans routines ni sous-tâches (comme
   `compte_du_jour`). Recherche, Revue et Agenda disent le même nombre.
+- **Constat des projets** (`projets_liste.json` `constat`, R3-010) : `{actifs, avances_7j}` ne compte que les projets
+  actifs créés il y a 7 jours ou plus (« 0 a avancé ces 7 jours » une minute après leur création était faux) ;
+  aucun → `constat: null` (la phrase est omise).
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
