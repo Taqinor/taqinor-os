@@ -87,8 +87,37 @@ function CarteImpayes({ carte }) {
   )
 }
 
+// `liste_factures` — retrouver une facture (action `ventes.facture.chercher`). Plusieurs
+// candidates : on les montre, l'assistant demande laquelle (il ne répartit jamais).
+function CarteFactures({ carte }) {
+  const d = carte.donnees ?? {}
+  const lignes = d.lignes ?? []
+  if (!lignes.length) return <Vide texte="Aucune facture ne correspond." />
+  return (
+    <div className="min-w-0">
+      <Titre>Factures trouvées ({d.total ?? lignes.length})</Titre>
+      <ul className="space-y-2">
+        {lignes.map((l) => (
+          <Rangee key={l.facture_id} titre={`${l.reference} — ${l.client_nom}`}
+            detail={[libelle(NATURES_FACTURE, l.nature), libelle(STATUTS_FACTURE, l.statut),
+              `total ${montant(l.total_ttc)}`,
+              l.montant_du && l.montant_du !== '0.00' ? `reste dû ${montant(l.montant_du)}` : '',
+              dateOuVide(l.date_emission) && `émise le ${dateOuVide(l.date_emission)}`,
+              dateOuVide(l.date_echeance) && `échéance le ${dateOuVide(l.date_echeance)}`,
+              l.jours_retard > 0 ? `${l.jours_retard} j de retard` : ''].filter(Boolean).join(' · ')}>
+            <Geste cle={l.a_faire} />
+            <BoutonLien lien={l.lien} texte="Ouvrir la facture" />
+          </Rangee>
+        ))}
+      </ul>
+      <SurTotal affiches={lignes.length} total={d.total} />
+    </div>
+  )
+}
+
 const CARTES_VENTES = Object.freeze({
   vente_etat: CarteVenteEtat,
   liste_impayes: CarteImpayes,
+  liste_factures: CarteFactures,
 })
 export default CARTES_VENTES

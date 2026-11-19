@@ -37,6 +37,23 @@ describe('carte liste_impayes', () => {
   })
 })
 
+describe('carte liste_factures', () => {
+  it('exemple : brouillon à émettre et facture payée, chacune avec son lien', () => {
+    monter('liste_factures', ex('liste_factures'))
+    expect(screen.getByText('Factures trouvées (2)')).toBeInTheDocument()
+    expect(screen.getByText(/BROUILLON-126 — Driss Lahlou/)).toBeInTheDocument()
+    expect(screen.getByText(/Intermédiaire · Brouillon · total /)).toBeInTheDocument()
+    expect(screen.getByText(/Acompte · Payée/)).toBeInTheDocument()
+    expect(screen.getByText(/À faire : Émettre la facture depuis l’écran/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Ouvrir la facture' })).toHaveLength(2)
+  })
+
+  it('aucune facture : un message', () => {
+    monter('liste_factures', ex('liste_factures', 'exemple_aucune'))
+    expect(screen.getByText(/Aucune facture ne correspond/)).toBeInTheDocument()
+  })
+})
+
 describe('carte vente_etat', () => {
   it('exemple : référence, client, montants du serveur, tranches, facture, lien', () => {
     monter('vente_etat', ex('vente_etat'))
