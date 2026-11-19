@@ -1347,3 +1347,11 @@
 .tch .ligne.meta-en-ligne .ligne-corps { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
 .tch .ligne.meta-en-ligne .ligne-corps-bouton { width: auto; flex: 0 1 auto; min-width: 0; }
 .tch .ligne.meta-en-ligne .meta { margin-top: 0; }
+
+/* R2-094 — au clavier, c'est la LIGNE qui est encadrée (anneau arrondi dedans, fond de survol), plus un rectangle
+   collé aux lettres du titre qui mordait sur l'heure. Anneau intérieur : le cadre de balayage (`overflow: hidden`)
+   ne le coupe pas. */
+.tch .ligne-corps-bouton:focus-visible { box-shadow: none; }
+.tch .ligne:has(.ligne-corps-bouton:focus-visible) {
+  border-radius: 10px; background: var(--tch-survol); box-shadow: inset 0 0 0 var(--ring-width) var(--ring);
+}
