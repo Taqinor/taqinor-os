@@ -70,7 +70,9 @@ describe('TCH93 — Revue : en tête et carte', () => {
     expect(within(carte).getByText('Prochaine action : Devis Settat')).toBeInTheDocument()
     expect(within(carte).getByText('Rien de fait depuis 10 jours travaillés.')).toBeInTheDocument()
     expect(within(carte).getByText('à surveiller')).toBeInTheDocument()
-    expect(within(carte).getByText('1/2')).toBeInTheDocument()
+    expect(within(carte).getByText('Projet 1 sur 2')).toBeInTheDocument()
+    // R4-46 — l'avancement dit ce qu'il compte (plus « 1/2 · 13 sur 18 » : deux fractions sans étiquette)
+    expect(within(carte).getByText(/^\d+ tâches? faites? sur \d+$/)).toBeInTheDocument()
     // R2-068 — UNE seule intention, en tête (plus un champ par carte)
     expect(screen.getAllByLabelText('Intention de la semaine (facultatif)')).toHaveLength(1)
     expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('')
@@ -130,7 +132,7 @@ describe('TCH93 — Revue : décisions', () => {
       semaine: '2026-11-16', intention: 'Signer Settat', prochaine_action_id: 20, decision: 'garder', focus: true, issue: null,
     }, { erreurSousLeChamp: true })
     expect(await screen.findByRole('region', { name: 'Site web' })).toBeInTheDocument()
-    expect(screen.getByText('3/3')).toBeInTheDocument()
+    expect(screen.getByText('Projet 3 sur 3')).toBeInTheDocument()
     // l'intention n'est PAS redemandée : le même champ, déjà rempli
     expect(screen.getAllByLabelText('Intention de la semaine (facultatif)')).toHaveLength(1)
     expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('Signer Settat')
@@ -233,7 +235,7 @@ describe('R2-068 — Revue : reprise et résumé', () => {
     api.lireRevue.mockResolvedValue({ data: r })
     monter()
     expect(await screen.findByRole('region', { name: 'Site web' })).toBeInTheDocument()
-    expect(screen.getByText('3/3')).toBeInTheDocument()
+    expect(screen.getByText('Projet 3 sur 3')).toBeInTheDocument()
     expect(screen.getByLabelText('Intention de la semaine (facultatif)')).toHaveValue('Signer Settat') // l'intention déjà posée revient
   })
 

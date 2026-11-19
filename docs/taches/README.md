@@ -352,8 +352,6 @@ contredisent, ou parce qu'il manque une donnée :
   bas de page, rien n'est recouvert.
 - **Données de la journée d'exemple** : quelques chiffres diffèrent des maquettes (« 4 h 45 » au lieu de « 4 h 15 »,
   « 3 faites » au lieu de 4 le lundi) : c'est le jeu de démonstration, pas l'écran.
-- **Tableau d'un projet** : il commence à 332 px du haut au lieu de 472, mais la cible (260 px ou moins) n'est pas
-  atteinte.
 - **La cloche** de Tâches est passée à gauche, près de ☰ (écart assumé : le titre centré la recouvrait).
 - **« Ajoutées récemment »** (Recherche) montre les 10 dernières tâches ouvertes, pas celles des 7 derniers jours :
   le serveur ne sert pas la date de création.
