@@ -10,7 +10,7 @@ import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
 import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
-import { morceauxSurlignes } from '../ui/ChampSaisie'
+import ChampSaisie, { morceauxSurlignes } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -202,6 +202,23 @@ describe('TCH82 — feuille de saisie', () => {
       act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
       expect(champ()).toHaveValue('Relancer le client') // la phrase suit
       expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull() // pas le jour d'Aujourd'hui
+    } finally {
+      window.history.pushState({}, '', lieu)
+    }
+  })
+
+  it('couture r2 — une date lue dans la phrase l\'emporte : la puce « Quand » ne montre plus le jour posé d\'office', async () => {
+    const user = userEvent.setup()
+    const lieu = window.location.pathname
+    try {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      expect(await screen.findByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), PHRASE) // « demain » : l'aperçu sert jour_prevu
+      expect(await screen.findByText('mer. 18 nov.', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Quand' })).toBeInTheDocument()
     } finally {
       window.history.pushState({}, '', lieu)
     }
@@ -680,6 +697,17 @@ describe('TCH82 — feuille de saisie', () => {
       const envoi = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
       expect(envoi.lignes[0]).toMatchObject({ titre: 'Réserver le stand', projet_id: 11 })
     })
+  })
+
+  it('couture r2 — la puce du projet lu porte sa teinte (data-p) ; sans couleur servie, le fond des puces lues', () => {
+    const jeton = (nom, couleur) => ({ type: 'projet', source: `#${nom}`, debut: 0, fin: nom.length + 1, libelle: `● ${nom}`,
+      valeur: { id: 3, nom, nouveau: false, ...(couleur ? { couleur } : {}) } })
+    render(<div className="tch"><ChampSaisie valeur="" onChange={() => {}} jetons={[jeton('Salon', 'indigo'), jeton('Ventes')]} /></div>)
+    const [salon, ventes] = document.querySelectorAll('[data-jeton="projet"]')
+    expect(salon).toHaveClass('projet-lu')
+    expect(salon).toHaveAttribute('data-p', 'indigo')
+    expect(ventes).toHaveClass('lue')
+    expect(ventes).not.toHaveAttribute('data-p')
   })
 
   describe('couture r2 — une phrase identique à une tâche ouverte : « Déjà dans ta liste » et « Ajouter quand même »', () => {

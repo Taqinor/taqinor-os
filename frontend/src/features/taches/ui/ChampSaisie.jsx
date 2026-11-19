@@ -93,9 +93,12 @@ function Surlignage({ valeur, jetons }) {
 
 function PuceJeton({ jeton, onIgnorer }) {
   const nouveau = jeton.type === 'projet' && jeton.valeur?.nouveau
-  const classe = nouveau ? 'puce nouveau' : jeton.type === 'projet' ? 'puce projet-lu' : 'puce lue'
+  // couture r2 — la puce d'un projet lu prend SA teinte (`data-p`, comme le surlignage du champ) ; sans couleur servie,
+  // elle garde le fond des autres puces lues (jamais une puce nue à côté de puces pleines)
+  const couleur = jeton.type === 'projet' && !nouveau ? jeton.valeur?.couleur : null
+  const classe = nouveau ? 'puce nouveau' : couleur ? 'puce projet-lu' : 'puce lue'
   return (
-    <span className={classe} data-jeton={jeton.type}>
+    <span className={classe} data-jeton={jeton.type} data-p={couleur || undefined}>
       <span className="chiffres">{jeton.libelle}</span>
       <button
         type="button"

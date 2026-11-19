@@ -362,6 +362,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // R2-007 — l'erreur de la ligne lue (« Le titre est trop long : 280 caractères au plus. ») se dit sous le champ
   // (seul le « trop long » se dit pendant la frappe : un titre encore vide, « demain… », n'est pas une faute)
   const titreTropLong = !modeListe && (ligne?.titre?.length ?? 0) > TITRE_MAX && Boolean(ligne?.erreurs?.titre)
+  // couture r2 (R2-002) — une date lue dans la phrase l'emporte sur le jour posé d'office par l'écran : la puce « Quand »
+  // ne montre plus ce jour-là (le jour lu est la puce de la phrase) ; un Quand choisi à la main reste affiché
+  const dateLue = !modeListe && Boolean(ligne?.champs?.jour_prevu || ligne?.champs?.quelque_jour)
+  const quandVu = quand && quand === quandDepart && dateLue ? null : quand
   // la phrase lue est déjà là (tâche ouverte identique, ou déjà faite) : Entrée le dit, « Ajouter quand même » l'envoie
   const doubleLu = !modeListe && ligne?.cochee === false ? raisonDouble(ligne) : ''
   const erreurLue = titreTropLong ? messageChamps(ligne.erreurs) : ''
@@ -598,14 +602,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
               <span className="puces">
                 <button
                   type="button"
-                  className={quand ? 'puce lue' : 'puce vide'}
+                  className={quandVu ? 'puce lue' : 'puce vide'}
                   aria-expanded={quandOuvert}
                   onClick={() => { setQuandOuvert((v) => !v); setProjetOuvert(false) }}
                 >
                   <Calendar className="i i-16" aria-hidden="true" />
-                  <span className="chiffres">{libelleQuand(quand)}</span>
+                  <span className="chiffres">{libelleQuand(quandVu)}</span>
                 </button>
-                {quand ? (
+                {quandVu ? (
                   <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
