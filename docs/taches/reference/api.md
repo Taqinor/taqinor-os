@@ -32,6 +32,17 @@ aucun marqueur).
   `effacement_occupe` (`tout-effacer/` : une ligne du compte était verrouillée par une autre écriture plus de
   5 s — `lock_timeout` posé dans la transaction —, ou la suppression a dépassé le `statement_timeout` : la
   transaction est défaite en entier, RIEN n'est effacé ; jamais un 500) (`erreurs.json`).
+- **Refus d'ÉTAT = 409 `state_conflict`** (r2 CI api-fuzz, L2 r3) : un refus qui dépend de l'état lu en base et que le
+  schéma ne peut pas dire — nom de projet, d'étape, d'étiquette ou de vue déjà pris, série déjà ouverte, rappel sur une
+  date absente ou sur une tâche close, plafond de rappels, `sauter` une tâche qui ne se répète pas, voisin hors de la
+  liste ordonnée, boucle de blocage, « Déjà « X » cette semaine » (revue), heure ou ★ déjà posées (`journee/`) —
+  répond 409, corps `{"<champ>":["…"],"detail":"…","code":"state_conflict"}` (le champ fautif ET la forme `{detail,
+  code}` ; `entrees.refus_etat`, `core.conflit_etat.ConflitEtat`). Un identifiant BIEN FORMÉ du corps d'une action
+  (`projet_id`, `projet_cible_id`…) qui ne désigne rien du compte répond 404 au même corps `{"<champ>":["…"],"detail"}`
+  (`entrees.introuvable`). Restent 400 : les erreurs de forme et de borne, et « Projet inexistant. » d'une ligne de
+  saisie ou du PATCH d'une tâche. L'écran dit un 409 `state_conflict` ou un 404 qui nomme un champ SOUS le champ : avec
+  `{ erreurSousLeChamp: true }`, `tachesApi.js` le rend à l'appelant en 400 de champ (`response.statutServeur` garde le
+  vrai statut), sans toast ni annonce.
 - **Idempotence** : `client_id` (par tâche, `:<n>` par ligne d'un texte multi-lignes) ; `Idempotency-Key` : chaque vue
   qui la porte MÉLANGE `IdempotentCreateMixin` (`core/idempotency.py:202`) et appelle sa méthode
   `_avec_idempotence(request, creer, suffixe=f'u{user.pk}')` (`:234`), sinon deux collègues rejoueraient la réponse de
@@ -698,7 +709,7 @@ de leur section ; une activité ERP a la même forme (`type:"activite"`, champs 
 `lock_version:null`). `a_notes` : la tâche porte une note (l'indice « note » de la ligne) — toujours `false` sous
 l'en-tête assistant (les notes ne lui sont jamais servies, `regles.md` §8) et pour une activité ; `fait_le` : l'instant
 où la tâche a été faite (`done_at` d'une activité close), `null` sinon — tous deux lus de colonnes déjà chargées,
-aucune requête de plus par ligne. TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit). TACHE_ECRITE :
+aucune requête de plus par ligne. TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit ; `essentielle` / `prevue_au_plan` d'une TACHE — fiche `GET taches/{id}/` ou TACHE_ECRITE — sont lus du plan du jour, comme dans la journée : Révision 3.3, couture L7). TACHE_ECRITE :
 `suivante` = occurrence née (terminer, sauter) ; `progression` posée par terminer/rouvrir ; `question_titres` vrai au
 premier rappel tant que `titres_notifications_demande_le` est nul (A17-T4) ; avertissements `prevue_apres_echeance`,
 `jour_non_travaille`, `hors_fenetre`, `echeance_aujourdhui` (R3-002 : « L'échéance reste aujourd'hui. », la tâche
@@ -1562,7 +1573,10 @@ Tout (file, cache, brouillon) vidé sur `taqinor:auth-logout` (`providers/sessio
 ## 6. Contrats d'abord (`apps/taches/contract_samples/*.json`)
 
 Un fichier par échantillon de l'annexe A (même nom, contenu recopié mot pour mot ; `exemple` est toujours un OBJET).
-L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`docs/plans/PLAN_TACHES.md`).
+L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`docs/plans/PLAN_TACHES.md`). Une clé
+facultative `nuls` (liste de chemins) dit ce que l'exemple ne montre pas nul mais que le serveur peut servir nul
+(`aujourdhui.json` : `plan.planifie_le` ; `journee_proposition.json` : `suite_par_projet`, `rythme` ;
+`projets_liste.json` : `constat`) ; elle n'est pas une clé de la réponse.
 
 ## 7. Routes du FRONT (une seule table — spec-7 r3 §2)
 
@@ -2134,6 +2148,12 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 - **Réordonner dans Aujourd'hui** (R3-007) : `taches/{id}/reordonner/` `liste:"jour"` d'une tâche gardée aujourd'hui
   (`jour_prevu` = J OU `echeance` = J) range dans la liste de la JOURNÉE — toute tâche ouverte gardée aujourd'hui est
   une voisine permise ; les autres jours gardent la liste du même `jour_prevu`.
+- **La ★ de la fiche** (couture L7) : `GET taches/{id}/` et la TACHE_ECRITE de toute écriture servent `essentielle` et
+  `prevue_au_plan` lus du plan du jour (`serializers.saisie.calculs_du_plan` → `selectors.journee.
+  lignes_de_taches_du_jour`, UNE requête de plus) — la MÊME source que la journée (`aujourdhui/`) et la vue d'un projet ;
+  avant, ces deux champs valaient toujours `false` et la ★ changeait d'avis à l'ouverture de la fiche. `GET taches/`
+  (listes) garde ses défauts (§ Révision 3.2). Plafond de la fiche déclaré : `test_plafonds.py::test_fiche_d_une_tache`,
+  `docs/query-budgets.yml` (16, estimé : la CI tranche).
 - **Derniers gestes** (`gestes.json`, R3-008) : `GET gestes/` ne liste plus que les gestes sur des tâches ou des
   projets — ni réglage du rythme (`rythme`), ni préférence (« Noté : … »), ni réponse à une carte (geste `decision`
   qui touche une `incitation_coach` : il reste annulable par son toast). Un geste ★ porte son `titre` (« Essentielle

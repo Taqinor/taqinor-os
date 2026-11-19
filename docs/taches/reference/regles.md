@@ -75,14 +75,14 @@ garde `’`, les accents et la casse), espaces fusionnés en une espace ASCII, b
 | `jour` relatif | aujourd'hui, demain, après-demain | today, tomorrow | J, J+1, J+2 → `jour_prevu` |
 | `jour` de semaine | lundi…dimanche [prochain], le lundi | monday…sunday, next monday, on monday | prochaine date de ce jour, **J exclu** (dit un lundi : J+7) |
 | `jour` période | semaine prochaine ; ce week-end, ce weekend ; fin de semaine | next week ; this weekend ; end of week | lundi suivant (J exclu) ; J si J est samedi ou dimanche, sinon samedi suivant ; vendredi de la semaine courante (J si J est vendredi), samedi/dimanche → vendredi suivant |
-| `jour` décalage | dans N jour(s) / semaine(s) / mois (N ≥ 1) | in N day(s) / week(s) / month(s) | J+N ; J+7N ; même quantième N mois plus tard, borné à la fin du mois |
+| `jour` décalage | dans N jour(s) / semaine(s) / mois (N ≥ 1 ; N en chiffres, ou en lettres de un à trente : « dans quinze jours », « dans vingt et un jours », « dans une semaine » — R3-047) | in N day(s) / week(s) / month(s) | J+N ; J+7N ; même quantième N mois plus tard, borné à la fin du mois |
 | `jour` date | [le] JJ/MM[/AAAA], [le] JJ mois [AAAA], [le] 1er mois | DD MMM, MMM DD, AAAA-MM-JJ | **jour d'abord** ; sans année : prochaine date ≥ J ; avec année passée : gardée + alerte `date_passee` |
 | `jour` fin de mois | fin de mois | end of month | dernier jour du mois courant (J si c'est aujourd'hui) |
 | `heure` | à 15h, 15h, 15 h, 15h30, 15 h 30, 15:30, à 15 heures, à midi | at 3pm, 3pm, 3:30pm, 15:30, at noon | `heure_debut` ; `Nh` nu seulement si 7 ≤ N ≤ 23 ; `NhMM` nu seulement si 5 ≤ N ≤ 23 (IR5) |
 | `moment` | ce matin, cet après-midi, ce soir ; matin, après-midi, soir (contexte §1.4) | this morning, this afternoon, this evening, tonight ; morning, afternoon, evening, in the morning… | `moment` ; ce/cet/this/tonight posent J |
 | `echeance` | pour / avant / d'ici + date [heure], ou + heure seule | due / by / for / deadline + date [heure], ou + heure | `echeance`, `echeance_heure` ; `jour_prevu` intact |
 | `quelque_jour` | « un jour » ou « pour plus tard » en fin de ligne | someday (partout) | `quelque_jour = true` (montré « Plus tard ») |
-| `projet` | `#mot` (lettre après `#`, `_` = espace, tiret permis) | idem | §1.9 |
+| `projet` | `#mot` (lettre après `#`, `_` = espace, tiret permis) ; le nom d'un projet EXISTANT écrit avec ses espaces est lu en entier (le plus long de deux mots ou plus, comparé par `cle_nom` : « #Chantier Benali 9 kWc » — c'est ainsi que la liste `#` l'insère ; R3-047) | idem | §1.9 |
 | `section` | `/mot` après un `#projet` de la même ligne | idem | étape existante (par `cle_nom`), sinon créée |
 | `priorite` | `!!` = 2, `!!!` = 3 ; `p1` = 3, `p2` = 2, `p3` = 1 | idem | `priorite` |
 | `etiquette` | `%mot` (lettre après `%`) | idem | existante (par `cle_nom`), sinon créée |
@@ -176,7 +176,13 @@ Réponse de la capture : `dans` = `journee` si un jour est posé (quel qu'il soi
 2. Retirées : lignes vides ou de ponctuation seule ; puces de tête `- * • – — · N. N) [ ] ☐ □`.
 3. `[x] [X] ✓ ✔ ☑` en tête → ligne « déjà faite », décochée dans l'aperçu.
 4. **Titre de groupe** : ligne finissant par « : » suivie d'au moins une ligne → pas une tâche ; les lignes
-   suivantes, jusqu'au titre suivant, prennent ce projet (§1.9) sauf `#` propre.
+   suivantes, jusqu'au titre suivant, prennent ce projet (§1.9) sauf `#` propre. Le nom du titre de groupe (et celui de
+   la première ligne, point 5) est cherché ainsi (R3-043, `collage.resoudre_groupe`) : le nom exact ; sinon le projet
+   OUVERT dont un mot commence ainsi (« Recrutement » → « Recrutement technicien »), mais SEULEMENT s'il est le seul —
+   un début partagé par deux projets ne rattache le groupe à aucun, il reste « Nouveau projet : … » ; un projet archivé
+   n'est jamais pris par son début. À l'écran, l'en-tête de chaque groupe a « Changer » (un projet existant, « Sans
+   projet » ou un nouveau) : le choix vaut pour les lignes qui recevaient le projet du groupe, jamais pour une ligne qui
+   nomme le sien.
 5. **Première ligne = projet (A14-M9)**, PAR collage (`textes[i]` → l'élément de `projets_communs[]` d'index
    `collage = i`, champ `collage` sur chaque ligne de l'aperçu) : la première ligne retenue est proposée comme projet
    commun de son collage (`source = "premiere_ligne"`, `priorite` 2) si (a) elle n'est pas un titre de groupe, (b) elle n'avait ni puce
@@ -374,7 +380,9 @@ Entrées : `ItemPur` (§0.1), `J`, l'ensemble `travailles`, `objectif` (`int | N
 
 Dans **Prévu**, les tâches à `heure_debut` et les rendez-vous externes (§11) passent d'abord, par heure croissante ;
 les `obligations` sans heure sont dans la bande « Toute la journée » au-dessus. `reordonner` numérote toute une
-section par pas de 1 024.
+section par pas de 1 024 ; la liste `jour` d'une tâche gardée AUJOURD'HUI est celle de la journée (jour prévu OU
+échéance aujourd'hui, la règle de `gardee_aujourdhui`, R3-007 : une ★ prévue demain mais due aujourd'hui est une voisine
+comme une autre), jamais seulement le même `jour_prevu`.
 
 ### 3.2 `cle_tri(item: ItemPur, J, n_ouvres) -> tuple` — ordre total strict (inchangé)
 
@@ -628,7 +636,13 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
   PORTE une tâche (lien ou conversion) ne compte ni au numérateur ni au dénominateur : sa tâche la représente, une
   même chose n'est jamais comptée deux fois (§6.1, `selectors.journee.ligne_gardee`) ; une activité gardée sans
   tâche est une ligne, tenue quand il la clôt ce jour-là. Partout l'écran montre « N sur OBJECTIF » ; les gardées
-  faites sont une seconde donnée (A17-M2).
+  faites ne sont plus montrées (R3-001, R3-020 : une seule source par chiffre, celle de `progression`). Tant que l'objectif
+  est la valeur par défaut (`source = defaut`, rien de calculé ni de choisi) l'écran dit « {faites} faites », comme en mode
+  libre, jamais « 0 sur 5 » (R3-029, choix C-24).
+- **Temps de la journée (R3-020)** : l'écran le dit en UNE phrase lue dans `progression` : « Temps : {minutes_prevues}
+  prévues pour {disponible_minutes} disponibles », « · {sans_estimation} sans durée », « · {minutes_prevues −
+  disponible_minutes} de trop » quand les minutes prévues dépassent le temps disponible ; « Durée totale inconnue » quand
+  plus de la moitié des tâches prévues n'a pas de durée (`sans_estimation` × 2 > `prevues`).
 - **Pastille (UNE définition, invariant 11)** : `n` = éléments OUVERTS et GARDÉS d'Essentiel + Prévu + Ce soir
   (tâches ET activités ERP), plafonné à 99 ; JAMAIS Proposé (A16-N5) ; peut valoir 0 (→ `clearAppBadge`). Ni À revoir,
   En attente, À trier, ni obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et `notify(badge=n)`.
@@ -736,7 +750,7 @@ jamais dans la trace, un bloc ni l'objectif — le calendrier de la société fa
 chaque jour vaut `compte_du_jour` (§6.1), la période = la somme de ses jours, du premier jour à aujourd'hui compris,
 week-end compris. La tête de la Revue (« Cette semaine : N faites (P la précédente) »), « Faites cette semaine » de la
 Recherche (`total`) et l'Agenda (`faites_nb`) la lisent ; rien d'autre ne recompte. « Objectif atteint X jours sur
-N » n'est plus dans la Revue (Mon rythme garde « 5 faites ou plus X jours sur 10 »).
+N » n'est plus dans la Revue (Mon rythme garde « 5 faites ou plus X jours sur 10 »). L'Agenda dit d'un jour non travaillé qui porte des faites « {n} faites · jour non travaillé » (R3-125), Mon rythme « Hors objectif : sam. 14 » sous sa trace.
 
 `conge` · `non_ouvre` (non travaillé pour lui) · `sans_donnees` (travaillé, 0 compté, aucun plan validé, app non
 ouverte) · `evalue`. Seul `evalue` entre dans un bloc, une référence ou un constat. Un samedi travaillé va dans les
