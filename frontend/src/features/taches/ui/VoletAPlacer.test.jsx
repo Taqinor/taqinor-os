@@ -81,7 +81,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     </MemoryRouter>,
   )
   const placee = (lockVersion = 7, champs = {}) => ({
-    data: { tache: { ...aPlacer()[0], jour_prevu: AUJOURDHUI, heure_debut: '11:00', lock_version: lockVersion, ...champs },
+    data: { tache: { ...aPlacer()[0], jour_prevu: AUJOURDHUI, heure_debut: '14:00', lock_version: lockVersion, ...champs },
       geste_id: 99 },
   })
 
@@ -97,18 +97,18 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   it('la tâche puis le créneau : `planifier/` avec le jour et l\'heure, sans relire l\'agenda', async () => {
     const { container } = monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    expect(screen.queryByRole('button', { name: 'Ajouter à 11:00' })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    expect(screen.queryByRole('button', { name: 'Ajouter à 14:00' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     // R2-106 — « Site web » est reportée 3 fois (À revoir) : la poser la DÉCIDE (`trancher/`), puis l'heure
     await waitFor(() => expect(trancherTache).toHaveBeenCalledWith(50, { choix: 'jour', jour: AUJOURDHUI }))
     await waitFor(() => expect(planifierTache).toHaveBeenCalledWith(50, {
-      jour_prevu: AUJOURDHUI, heure_debut: '11:00', moment: '', quelque_jour: false, lock_version: 7,
+      jour_prevu: AUJOURDHUI, heure_debut: '14:00', moment: '', quelque_jour: false, lock_version: 7,
     }))
     const grille = container.querySelector('.grille-agenda')
     expect(within(grille).getByRole('button', { name: /Site web/ }).closest('.bloc')).toHaveClass('choisi')
     expect(screen.queryByRole('group', { name: 'À revoir (1)' })).toBeNull() // sortie d'« À placer »
     expect(screen.getByRole('heading', { name: 'À placer · 1' })).toBeInTheDocument() // reste Mes projets
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Placée à 11:00')
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Placée à 14:00')
     expect(lireAgenda).toHaveBeenCalledTimes(1)
   })
 
@@ -128,7 +128,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   it('R2-105 — « Déplacer » reprend la tâche posée : un autre créneau la déplace, sans fiche ni relecture', async () => {
     const { container } = monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
     fireEvent.click(within(duree).getByRole('button', { name: 'Déplacer' }))
     expect(screen.queryByRole('group', { name: 'Durée de Site web' })).toBeNull()
@@ -147,7 +147,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   it('la durée par pas de 15 (Maj+↓) puis 1 h, avec la version rendue', async () => {
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
     fireEvent.keyDown(window, { key: 'ArrowDown', shiftKey: true })
     await waitFor(() => expect(modifierTache).toHaveBeenCalledWith(50, { estimation_minutes: 45, lock_version: 7 }))
@@ -161,7 +161,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     planifierTache.mockRejectedValue({ response: { status: 409, data: { detail: 'Modifiée ailleurs.', code: 'conflit_version' } } })
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(within(screen.getByRole('complementary', { name: 'À placer' })).getByRole('button', { name: /Site web/ }))
       .toBeInTheDocument()
@@ -170,7 +170,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   it('R2-106 — « Annuler » défait la pose ET la décision (deux gestes, le dernier d\'abord)', async () => {
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
     fireEvent.click(within(duree).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(annulerGeste).toHaveBeenCalledTimes(2))
@@ -181,7 +181,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     planifierTache.mockRejectedValue({ response: { status: 500, data: {} } })
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     await waitFor(() => expect(annulerGeste).toHaveBeenCalledWith(98))
   })
@@ -189,7 +189,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   it('« Annuler » de la durée défait la pose par le geste', async () => {
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 14:00' }))
     const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
     fireEvent.click(within(duree).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(annulerGeste).toHaveBeenCalledWith(99))

@@ -335,7 +335,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
         </section>
       ) : null}
       <GrilleAgenda
-        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi}
+        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi} creneauxLibres
         onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
       />
     </>
@@ -466,7 +466,7 @@ function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite
       <div className="ag-corps bureau-seul">
         <div className="ag-principal">
           <GrilleAgenda
-            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
+            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms} creneauxLibres
             ligneJournee={<LigneJourneeSemaine jours={jours} />}
             placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
           />

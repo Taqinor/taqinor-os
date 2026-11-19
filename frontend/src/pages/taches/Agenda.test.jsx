@@ -338,6 +338,47 @@ describe('TCH104 — vues et navigation', () => {
   })
 })
 
+describe('R2-107 — la grille : un seul arrêt de Tab, des flèches, aucun créneau sous un bloc', () => {
+  const tabulables = (container) => [...container.querySelectorAll('.grille-agenda .ag-creneau-vide')].filter((b) => b.tabIndex === 0)
+
+  it('vue Jour : UN créneau dans l\'ordre de Tab ; ↓ ↑ passent de créneau en créneau et le suivent', async () => {
+    const { container } = monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    expect(tabulables(container)).toHaveLength(1)
+    const premier = tabulables(container)[0]
+    expect(premier).toHaveAccessibleName('Ajouter à 07:00')
+    act(() => premier.focus())
+    fireEvent.keyDown(premier, { key: 'ArrowDown' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 07:30')
+    await waitFor(() => expect(tabulables(container)).toHaveLength(1))
+    expect(tabulables(container)[0]).toBe(document.activeElement) // l'arrêt de Tab suit le focus
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowUp' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 07:00')
+  })
+
+  it('vue Semaine : ← → passent d\'un jour à l\'autre à la même heure', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await screen.findByRole('button', { name: 'Ajouter à 09:00 · mar. 17' })
+    const mardi = screen.getByRole('button', { name: 'Ajouter à 09:00 · mar. 17' })
+    act(() => mardi.focus())
+    fireEvent.keyDown(mardi, { key: 'ArrowRight' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 09:00 · mer. 18')
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 09:00 · mar. 17')
+    expect(tabulables(container)).toHaveLength(1)
+  })
+
+  it('aucun créneau sous un bloc : ni sous Devis Settat (10:00-11:00), ni sous la réunion (11:00-12:00)', async () => {
+    monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    for (const heure of ['10:00', '10:30', '11:00', '11:30']) {
+      expect(screen.queryByRole('button', { name: `Ajouter à ${heure}` }), heure).toBeNull()
+    }
+    expect(screen.getByRole('button', { name: 'Ajouter à 09:30' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ajouter à 12:00' })).toBeInTheDocument()
+  })
+})
+
 describe('R2-101 — À venir ne montre pas deux fois la même tâche', () => {
   it('le jour de son échéance, une tâche est une puce « · échéance » et rien d\'autre', async () => {
     monter('/taches/agenda?vue=a-venir')
