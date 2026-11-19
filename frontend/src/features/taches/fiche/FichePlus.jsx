@@ -46,6 +46,15 @@ function reglesProposees(jour) {
   ]
 }
 
+/** R2-046 — un rappel ancré, dit comme on le dirait : « Le jour prévu à 22:00 », « Le jour même à 09:00 » (échéance,
+ *  décalage 0), « 1 jour avant l'échéance à 18:00 », « 2 jours avant le jour prévu à 08:00 » — jamais « 0 jour avant ». */
+function texteRappelAncre(r) {
+  const n = Math.abs(Number(r.decalage_jours) || 0)
+  const a = heure(r.heure)
+  if (r.ancre === 'jour_prevu') return n === 0 ? `Le jour prévu à ${a}` : `${accord(n, 'jour')} avant le jour prévu à ${a}`
+  return n === 0 ? `Le jour même à ${a}` : `${accord(n, 'jour')} avant l'échéance à ${a}`
+}
+
 function Rappel({ tache, aujourdhui, ecrire, annulable }) {
   const [mode, setMode] = useState('meme')
   const [heureRappel, setHeureRappel] = useState('09:00')
@@ -73,7 +82,7 @@ function Rappel({ tache, aujourdhui, ecrire, annulable }) {
       <h3 className="fiche-bloc-titre">Rappel</h3>
       {actifs.map((r) => (
         <p key={r.id} className="fiche-rappel-ligne chiffres">
-          {r.ancre ? `${accord(Math.abs(r.decalage_jours), 'jour')} avant l'échéance à ${heure(r.heure)}` : `${jourCourt(r.jour, aujourdhui)} ${heure(r.heure)}`}
+          {r.ancre ? texteRappelAncre(r) : `${jourCourt(r.jour, aujourdhui)} ${heure(r.heure)}`}
           <button type="button" className="bouton-icone" aria-label={`Retirer le rappel de ${heure(r.heure)}`} onClick={() => retirer(r)}>
             <X className="i i-16" aria-hidden="true" />
           </button>
