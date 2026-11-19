@@ -78,7 +78,9 @@ _TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 _TIMEOUT_LENT = httpx.Timeout(75.0, connect=5.0)
 ACTIONS_LENTES = frozenset({
     "calepinage.publier_apercu", "calepinage.publier_devis",
-    "ventes.devis.taille_apercu", "ventes.devis.taille"})
+    "ventes.devis.taille_apercu", "ventes.devis.taille",
+    # Essai du 19/11 : 103 dossiers délégués en ~25 s (un geste par dossier).
+    "crm.dossiers.deleguer"})
 
 
 class ActionContext:

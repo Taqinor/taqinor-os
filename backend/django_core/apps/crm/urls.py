@@ -27,6 +27,7 @@ from .public_affiner_views import lead_affiner_pro
 from .views_visite import lead_photo_toit
 # AIC — lectures servies à l'assistant (relais FastAPI, aucun écran en face).
 from .views_assistant import (
+    collegues_assistant,
     digest_matin, lead_brouillon_suivi, lead_creer, lead_message_visite,
     lead_resume, lead_whatsapp_devis_apercu, leads_a_relancer,
     leads_recherche)
@@ -209,6 +210,9 @@ urlpatterns = [
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
     # headless: digest du matin servi à l'assistant, aucun écran ERP
     path('assistant/digest-matin/', digest_matin, name='assistant-digest-matin'),
+    # headless: collègues par NOM servis à l'assistant (crm.collegues.lister)
+    path('assistant/collegues/', collegues_assistant,
+         name='assistant-collegues'),
     # headless: recherche compacte de leads servie à l'assistant (COP-C1)
     path('assistant/leads/', leads_recherche, name='assistant-leads'),
     # headless: création d'un lead depuis une demande de client, servie à
