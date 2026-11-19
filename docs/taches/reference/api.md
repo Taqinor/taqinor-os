@@ -2187,7 +2187,7 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 - **Derniers gestes** (`gestes.json`, R3-008) : `GET gestes/` ne liste plus que les gestes sur des tâches ou des
   projets — ni réglage du rythme (`rythme`), ni préférence (« Noté : … »), ni réponse à une carte (geste `decision`
   qui touche une `incitation_coach` : il reste annulable par son toast). Un geste ★ porte son `titre` (« Essentielle
-  · Devis Benali », « Plus essentielle · … ») ; une revue qui met en pause : « Revue : {projet} en pause ».
+  · Devis Benali », « Plus essentielle · … ») ; une revue qui met en pause : « Revue : {projet} en pause ». R4 couture : le `titre` d'un geste sur UN projet (revue, pause, terminé, rouvert, supprimé, créé) est le NOM du projet (les tâches qu'il déplace n'en sont que la suite), celui d'un geste d'étiquette son nom (gardé dans l'opération après une suppression) ; une lecture groupée par type, nul sous l'en-tête assistant.
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
