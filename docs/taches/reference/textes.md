@@ -228,7 +228,8 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
 | Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
-| ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
+| Titre d'un projet · « Fini quand… » | le nom se touche pour le renommer (Entrée ou la sortie enregistre, Échap annule ; refus sous le champ) · « Fini quand… » se corrige sur place (vide : « Ce sera fini quand… ») · toasts « Projet renommé » · « Couleur changée » · « Échéance changée » · « Échéance retirée » · « Objectif enregistré » (tous avec Annuler) |
+| ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
 | Projet vide | « Planifier le projet » · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |

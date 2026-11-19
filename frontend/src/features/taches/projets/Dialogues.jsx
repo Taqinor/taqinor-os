@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, CalendarCheck, CalendarClock } from 'lucide-react'
+import { ArrowRight, CalendarCheck, CalendarClock, Check } from 'lucide-react'
 import {
   decalerProjet, dupliquerProjet, enregistrerModele, instancierModele, listerTousLesProjets, renommerModele,
   supprimerModele, supprimerProjet, terminerProjet,
@@ -8,6 +8,7 @@ import { frenchError } from '../../../lib/frenchError'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import { premiereDate } from '../lib/projets'
 import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
+import { jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH92 — Les trois dialogues d'un projet : Supprimer (« … et ses N tâches ? »), Décaler les dates (aperçu
@@ -63,6 +64,100 @@ export function DialogueSupprimer({ projet, onFait, onFermer }) {
         <Erreur id="ep-supprimer-erreur" texte={erreur} />
         <Pied onFermer={onFermer} principal={{ libelle: 'Supprimer', onClick: supprimer }} occupe={occupe} danger />
       </div>
+    </FeuilleACrans>
+  )
+}
+
+/* R2-061 — Couleur et échéance d'un projet, sans repasser par la planification. Les dix couleurs sont celles du
+   serveur (`choix.Couleur`) ; un choix écrit tout de suite et ferme la feuille. */
+// eslint-disable-next-line react-refresh/only-export-components -- table des couleurs, co-localisée avec sa feuille (D-ENF22)
+export const COULEURS = [
+  ['terre', 'Terre'], ['ambre', 'Ambre'], ['olive', 'Olive'], ['vert', 'Vert'], ['menthe', 'Menthe'],
+  ['ciel', 'Ciel'], ['bleu', 'Bleu'], ['indigo', 'Indigo'], ['prune', 'Prune'], ['rose', 'Rose'],
+]
+
+export function DialogueRenommerProjet({ projet, onEnregistrer, onFermer }) {
+  const [nom, setNom] = useState(projet.nom)
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const enregistrer = async () => {
+    if (nom.trim() === projet.nom) { onFermer(); return }
+    setOccupe(true)
+    setErreur('')
+    try {
+      await onEnregistrer(nom.trim())
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le projet n\'a pas été renommé. Réessaie.'))
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Renommer">
+      <form className="ep-formulaire" data-p={projet.couleur} noValidate onSubmit={(e) => { e.preventDefault(); enregistrer() }}>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-renommer-projet">Nom du projet</label>
+          <input id="ep-renommer-projet" className="champ" type="text" value={nom} maxLength={120} autoFocus
+            onChange={(e) => setNom(e.target.value)} onFocus={(e) => e.target.select()}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-renommer-projet-erreur' : undefined} />
+          <Erreur id="ep-renommer-projet-erreur" texte={erreur} />
+        </div>
+        <Pied onFermer={onFermer} principal={{ libelle: 'Enregistrer', onClick: enregistrer }} occupe={occupe} desactive={!nom.trim()} />
+      </form>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueCouleur({ projet, onChoisir, onFermer }) {
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Couleur">
+      <div className="ep-formulaire">
+        <p className="ep-dialogue-sous" data-p={projet.couleur}><i className="point" aria-hidden="true" />{projet.nom}</p>
+        <div className="ep-couleurs" role="radiogroup" aria-label="Couleur du projet">
+          {COULEURS.map(([code, nom]) => (
+            <button key={code} type="button" className="ep-couleur" role="radio" aria-checked={projet.couleur === code}
+              aria-label={nom} data-p={code} onClick={() => onChoisir(code)}>
+              <i className="point" aria-hidden="true">{projet.couleur === code ? <Check className="i i-14" aria-hidden="true" /> : null}</i>
+              <span>{nom}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </FeuilleACrans>
+  )
+}
+
+export function DialogueEcheance({ projet, aujourdhui = aujourdhuiIso(), onEnregistrer, onFermer }) {
+  const [date, setDate] = useState(projet.echeance ?? '')
+  const [erreur, setErreur] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const enregistrer = async (valeur) => {
+    setOccupe(true)
+    setErreur('')
+    try {
+      await onEnregistrer(valeur || null)
+    } catch (err) {
+      const champs = err?.response?.status === 400 ? err.response.data : null
+      setErreur(premiere(champs?.echeance) ?? frenchError(err, "L'échéance n'a pas été changée. Réessaie."))
+      setOccupe(false)
+    }
+  }
+  return (
+    <FeuilleACrans ouverte onFermer={onFermer} titre="Échéance">
+      <form className="ep-formulaire" data-p={projet.couleur} noValidate onSubmit={(e) => { e.preventDefault(); enregistrer(date) }}>
+        <p className="ep-dialogue-sous"><i className="point" aria-hidden="true" />{projet.nom}</p>
+        <div className="ep-groupe">
+          <label className="ep-etiquette" htmlFor="ep-echeance-projet">Échéance du projet</label>
+          <input id="ep-echeance-projet" className="champ" type="date" value={date} onChange={(e) => setDate(e.target.value)}
+            aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-echeance-projet-erreur' : undefined} />
+          {date ? <p className="ep-dialogue-sous chiffres">{jourProjet(date, aujourdhui)}</p> : null}
+          <Erreur id="ep-echeance-projet-erreur" texte={erreur} />
+        </div>
+        <div className="carte-actions ep-dialogue-pied">
+          {projet.echeance ? <button type="button" className="bouton second" disabled={occupe} onClick={() => enregistrer('')}>Retirer l'échéance</button> : null}
+          <button type="submit" className="bouton plein" disabled={occupe || !date || date === projet.echeance}>Enregistrer</button>
+        </div>
+      </form>
     </FeuilleACrans>
   )
 }

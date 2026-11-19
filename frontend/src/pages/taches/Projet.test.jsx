@@ -275,6 +275,120 @@ describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran',
   })
 })
 
+describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand… »', () => {
+  const envoye = (champs) => ({ data: { ...exempleContrat('taches', 'projet_vue').projet, lock_version: 5, ...champs } })
+  const ouvrirMenu = async (user, libelle) => {
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: libelle }))
+  }
+
+  it('toucher le titre le rend éditable ; Entrée enregistre le nom (lock_version de la vue) et le titre suit', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ nom: 'Ventes Maroc' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
+    await user.clear(champ)
+    await user.type(champ, 'Ventes Maroc{Enter}')
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { nom: 'Ventes Maroc', lock_version: 4 })
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes Maroc »' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Projet renommé')
+  })
+
+  it('Échap annule : rien n\'est écrit, l\'ancien nom reste', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    await user.type(screen.getByRole('textbox', { name: 'Nom du projet' }), ' X{Escape}')
+    expect(api.modifierProjet).not.toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes »' })).toBeInTheDocument()
+  })
+
+  it('un nom refusé (déjà pris) s\'affiche SOUS le champ, le texte tapé reste et le titre garde l\'ancien nom', async () => {
+    api.modifierProjet.mockRejectedValue(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
+    await user.clear(champ)
+    await user.type(champ, 'Chantier{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(screen.getByRole('textbox', { name: 'Nom du projet' })).toHaveValue('Chantier')
+    expect(screen.getByRole('textbox', { name: 'Nom du projet' })).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('⋯ → Renommer : une feuille avec le nom ; Enregistrer l\'écrit, un refus s\'affiche sous le champ', async () => {
+    api.modifierProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    api.modifierProjet.mockResolvedValueOnce(envoye({ nom: 'Ventes 2027' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Renommer')
+    const dialogue = await screen.findByRole('dialog', { name: 'Renommer' })
+    const champ = within(dialogue).getByLabelText('Nom du projet')
+    expect(champ).toHaveValue('Ventes')
+    await user.clear(champ)
+    await user.type(champ, 'Ventes 2027')
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(await within(dialogue).findByRole('alert')).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(champ).toHaveAttribute('aria-invalid', 'true')
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', lock_version: 4 })
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes 2027 »' })).toBeInTheDocument()
+  })
+
+  it('⋯ → Couleur… : dix couleurs ; en choisir une l\'écrit et change le point du titre', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ couleur: 'bleu' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Couleur…')
+    const groupe = await screen.findByRole('radiogroup', { name: 'Couleur du projet' })
+    expect(within(groupe).getAllByRole('radio')).toHaveLength(10)
+    expect(within(groupe).getByRole('radio', { name: 'Vert' })).toBeChecked()
+    await user.click(within(groupe).getByRole('radio', { name: 'Bleu' }))
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { couleur: 'bleu', lock_version: 4 })
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).querySelector('.ep-projet-nom')).toHaveAttribute('data-p', 'bleu'))
+  })
+
+  it('⋯ → Échéance… : une date enregistrée ; Retirer l\'échéance écrit null', async () => {
+    api.modifierProjet.mockResolvedValueOnce(envoye({ echeance: '2026-12-31' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Échéance…')
+    const dialogue = await screen.findByRole('dialog', { name: 'Échéance' })
+    fireEvent.change(within(dialogue).getByLabelText('Échéance du projet'), { target: { value: '2026-12-31' } })
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { echeance: '2026-12-31', lock_version: 4 })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Échéance' })).toBeNull())
+    expect(await screen.findByText('échéance jeu. 31 déc.')).toBeInTheDocument()
+
+    api.modifierProjet.mockResolvedValueOnce(envoye({ echeance: null, lock_version: 6 }))
+    await ouvrirMenu(user, 'Échéance…')
+    await user.click(await screen.findByRole('button', { name: "Retirer l'échéance" }))
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { echeance: null, lock_version: 5 })
+  })
+
+  it('« Fini quand… » se corrige sur place : le texte devient un champ, la sortie enregistre l\'objectif', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ objectif: 'les 5 devis sont signés' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Fini quand…' }))
+    await user.click(screen.getByRole('button', { name: 'Modifier « Fini quand… »' }))
+    const champ = screen.getByRole('textbox', { name: 'Fini quand…' })
+    await user.clear(champ)
+    await user.type(champ, 'les 5 devis sont signés')
+    await user.tab()
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { objectif: 'les 5 devis sont signés', lock_version: 4 })
+    expect(await screen.findByText('Fini quand : les 5 devis sont signés')).toBeInTheDocument()
+  })
+})
+
 describe('F2 acceptation (P138.3) — supprimer le projet ramène à la liste, toast « Annuler »', () => {
   it('Supprimer le projet… → la liste des projets, sans retour arrière qui rouvrirait le projet supprimé', async () => {
     const retour = vi.spyOn(window.history, 'back')

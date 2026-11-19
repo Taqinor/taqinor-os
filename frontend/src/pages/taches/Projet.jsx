@@ -10,7 +10,8 @@ import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe, echeanceProjet, jourProjet } from '../../features/taches/projets/LigneProjet'
 import {
-  DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
+  DialogueCouleur, DialogueDecaler, DialogueEcheance, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer,
+  DialogueRenommerProjet, DialogueUtiliser,
 } from '../../features/taches/projets/Dialogues'
 import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
@@ -90,7 +91,71 @@ function santeCourte(signal) {
   return signal?.phrase ?? ''
 }
 
-function Entete({ vue, aujourdhui, onPriorite }) {
+/** R2-061 — « Fini quand… » se lit et se corrige sur place : toucher le texte ouvre le champ ; Entrée ou la sortie
+ *  enregistre, Échap annule ; un refus du serveur s'affiche sous le champ et le texte tapé reste. */
+function Objectif({ objectif, onEnregistrer }) {
+  const [edition, setEdition] = useState(false)
+  const [texte, setTexte] = useState('')
+  const [erreur, setErreur] = useState('')
+  const fini = useRef(false)
+  const commencer = () => { fini.current = false; setTexte(objectif ?? ''); setErreur(''); setEdition(true) }
+  const valider = async () => {
+    if (fini.current) return
+    fini.current = true
+    if (texte.trim() === (objectif ?? '').trim()) { setEdition(false); return }
+    const retour = await onEnregistrer(texte.trim())
+    if (retour.ok) setEdition(false)
+    else { fini.current = false; setErreur(retour.message) }
+  }
+  const touche = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); fini.current = true; setEdition(false) }
+    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); valider() }
+  }
+  if (!edition) {
+    return (
+      <button type="button" className={`ep-objectif${objectif ? '' : ' vide'}`} aria-label="Modifier « Fini quand… »" onClick={commencer}>
+        {objectif ? (/^fini quand/i.test(objectif) ? objectif : `Fini quand : ${objectif}`) : 'Ce sera fini quand…'}
+      </button>
+    )
+  }
+  return (
+    <div className="ep-groupe">
+      <textarea className="champ ep-zone" rows={2} value={texte} autoFocus aria-label="Fini quand…" placeholder="Une phrase"
+        onChange={(e) => setTexte(e.target.value)} onKeyDown={touche} onBlur={valider}
+        aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-objectif-erreur' : undefined} />
+      {erreur ? <p id="ep-objectif-erreur" className="ep-erreur" role="alert">{erreur}</p> : null}
+    </div>
+  )
+}
+
+/** R2-061 — le nom du projet, dans le titre : le toucher le rend éditable (Entrée ou la sortie enregistre, Échap annule). */
+function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
+  const [texte, setTexte] = useState(nom)
+  const fini = useRef(false)
+  const champ = useRef(null)
+  const valider = async () => {
+    if (fini.current) return
+    const propre = texte.trim()
+    fini.current = true
+    if (!propre || propre === nom) { onAbandonner(); return }
+    const ok = await onEnregistrer(propre)
+    if (!ok) { fini.current = false; champ.current?.focus() }
+  }
+  const touche = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); fini.current = true; onAbandonner() }
+    else if (e.key === 'Enter') { e.preventDefault(); valider() }
+  }
+  return (
+    <>
+      <input ref={champ} className="ep-titre-champ" type="text" value={texte} maxLength={120} autoFocus aria-label="Nom du projet"
+        onChange={(e) => setTexte(e.target.value)} onKeyDown={touche} onBlur={valider} onFocus={(e) => e.target.select()}
+        aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-nom-erreur' : undefined} />
+      {erreur ? <span id="ep-nom-erreur" className="ep-erreur ep-titre-erreur" role="alert">{erreur}</span> : null}
+    </>
+  )
+}
+
+function Entete({ vue, aujourdhui, onPriorite, onObjectif }) {
   const [details, setDetails] = useState(false)
   const [detailSante, setDetailSante] = useState(false)
   const { projet, avancement, prochain_jalon: jalon } = vue
@@ -137,9 +202,7 @@ function Entete({ vue, aujourdhui, onPriorite }) {
       </button>
       {details ? (
         <div className="ep-details-corps">
-          {projet.objectif ? (
-            <p>{/^fini quand/i.test(projet.objectif) ? projet.objectif : `Fini quand : ${projet.objectif}`}</p>
-          ) : null}
+          <Objectif objectif={projet.objectif} onEnregistrer={onObjectif} />
           {avancement.derniere_faite_le ? <p className="chiffres">{`dernière faite le ${jjmm(avancement.derniere_faite_le)}`}</p> : null}
         </div>
       ) : null}
@@ -202,6 +265,68 @@ export default function Projet() {
     if (code !== vueUrl) setParams((p) => { const s = new URLSearchParams(p); s.set('vue', code); return s }, { replace: true })
     memoriserVue(code) // sans effet si le serveur la garde déjà
   }
+
+  // R2-061 — écrire des champs du PROJET (nom, couleur, échéance, objectif) : l'écran suit tout de suite, le serveur
+  // confirme (verrou de version, écritures en file), « Annuler » remet les valeurs d'avant, un refus remet l'écran
+  // comme avant et rend `{ ok: false, message }` (le message du champ fautif, sinon le message français général).
+  const ecrireProjet = (champs, message = null, repli = 'Le projet n\'a pas été modifié. Réessaie.') => {
+    const suite = chaineVue.current.then(async () => {
+      const projet = projetRef.current
+      if (!projet) return { ok: false, message: repli }
+      const avant = Object.fromEntries(Object.keys(champs).map((c) => [c, projet[c]]))
+      setVue((v) => (v ? { ...v, projet: { ...v.projet, ...champs } } : v))
+      try {
+        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version })
+        projetRef.current = { ...projet, ...champs, ...data }
+        setVue((v) => (v ? { ...v, projet: { ...v.projet, ...data } } : v))
+        if (message) {
+          proposerAnnuler({
+            message,
+            onAnnuler: async () => {
+              const retour = await ecrireProjet(avant, null, 'Le projet n\'a pas été remis comme avant. Réessaie.')
+              if (!retour.ok) throw new Error(retour.message)
+            },
+          })
+        }
+        return { ok: true }
+      } catch (err) {
+        projetRef.current = projet
+        setVue((v) => (v ? { ...v, projet: { ...v.projet, ...avant } } : v))
+        const champ = classerErreur(err).champs ?? err?.response?.data
+        const premier = Object.keys(champs).map((c) => champ?.[c]).find((m) => Array.isArray(m) && m.length > 0)
+        return { ok: false, message: premier?.[0] ?? frenchError(err, repli) }
+      }
+    })
+    chaineVue.current = suite
+    return suite
+  }
+
+  const [renommage, setRenommage] = useState(false)
+  const [erreurNom, setErreurNom] = useState('')
+  const renommer = async (nom) => {
+    const retour = await ecrireProjet({ nom }, 'Projet renommé', 'Le projet n\'a pas été renommé. Réessaie.')
+    if (retour.ok) { setRenommage(false); setErreurNom('') } else setErreurNom(retour.message)
+    return retour.ok
+  }
+  // « Renommer » du ⋯ : une feuille (le menu qui se referme rendrait le focus à son bouton et ferait « sortir » du champ du titre)
+  const renommerParFeuille = async (nom) => {
+    const retour = await ecrireProjet({ nom }, 'Projet renommé', 'Le projet n\'a pas été renommé. Réessaie.')
+    if (!retour.ok) throw Object.assign(new Error(retour.message), { response: { status: 400, data: { nom: [retour.message] } } })
+    setDialogue(null)
+  }
+  const fermerRenommage = () => { setRenommage(false); setErreurNom('') }
+  const changerCouleur = async (couleur) => {
+    setDialogue(null)
+    if (couleur === vue.projet.couleur) return
+    const retour = await ecrireProjet({ couleur }, 'Couleur changée', 'La couleur n\'a pas été changée. Réessaie.')
+    if (!retour.ok) setErreur(retour.message)
+  }
+  const changerEcheance = async (echeance) => {
+    const retour = await ecrireProjet({ echeance }, echeance ? 'Échéance changée' : 'Échéance retirée', 'L\'échéance n\'a pas été changée. Réessaie.')
+    if (!retour.ok) throw Object.assign(new Error(retour.message), { response: { status: 400, data: { echeance: [retour.message] } } })
+    setDialogue(null)
+  }
+  const changerObjectif = (objectif) => ecrireProjet({ objectif }, 'Objectif enregistré', 'L\'objectif n\'a pas été enregistré. Réessaie.')
 
   const majTache = (tache) => setVue((v) => (v ? remplacerTache(v, tache) : v))
   // L'avancement du projet ET le compteur de l'étape de la carte suivent le geste (même règle que le serveur).
@@ -390,6 +515,9 @@ export default function Projet() {
 
   const projet = vue?.projet
   const actionsEcran = projet ? [
+    { libelle: 'Renommer', onSelect: () => setDialogue('renommer') },
+    { libelle: 'Couleur…', onSelect: () => setDialogue('couleur') },
+    { libelle: 'Échéance…', onSelect: () => setDialogue('echeance') },
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
     { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
@@ -403,7 +531,15 @@ export default function Projet() {
 
   // Passe visuelle n° 43 — le point de couleur du projet devant son nom (projet-liste.html, `.ep-projet-nom`)
   const titre = projet ? (
-    <span className="ep-projet-nom" data-p={projet.couleur}><i className="point" aria-hidden="true" />{projet.nom}</span>
+    <span className="ep-projet-nom" data-p={projet.couleur}>
+      <i className="point" aria-hidden="true" />
+      {renommage ? (
+        <ChampNom nom={projet.nom} erreur={erreurNom} onEnregistrer={renommer} onAbandonner={fermerRenommage} />
+      ) : (
+        <button type="button" className="ep-titre-nom" aria-label={`Renommer « ${projet.nom} »`}
+          onClick={() => { setErreurNom(''); setRenommage(true) }}>{projet.nom}</button>
+      )}
+    </span>
   ) : 'Projet'
   return (
     <CoquilleTaches ecran="projet" titre={titre} actionsEcran={actionsEcran}
@@ -422,7 +558,7 @@ export default function Projet() {
       {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
-          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} />
+          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} onObjectif={changerObjectif} />
           {vueCode === 'tableau' ? (
             <Tableau
               vue={vue}
@@ -464,6 +600,15 @@ export default function Projet() {
         <FeuilleACrans ouverte onFermer={() => setDialogue(null)} titre="Avancement par semaine">
           <Burnup vue={vue} aujourdhui={aujourdhui} />
         </FeuilleACrans>
+      ) : null}
+      {vue && dialogue === 'renommer' ? (
+        <DialogueRenommerProjet projet={vue.projet} onEnregistrer={renommerParFeuille} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'couleur' ? (
+        <DialogueCouleur projet={vue.projet} onChoisir={changerCouleur} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'echeance' ? (
+        <DialogueEcheance projet={vue.projet} aujourdhui={aujourdhui} onEnregistrer={changerEcheance} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'terminer' ? <DialogueTerminer projet={vue.projet} onFait={termine} onFermer={() => setDialogue(null)} /> : null}
       {vue && dialogue === 'supprimer' ? <DialogueSupprimer projet={vue.projet} onFait={supprime} onFermer={() => setDialogue(null)} /> : null}
