@@ -1153,6 +1153,22 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
   })
 
+  it('couture L7 (C-22) — le prochain jour travaillé est DEMAIN : une seule tuile « Demain », et c\'est elle qui a le focus ; Entrée reporte', async () => {
+    const d = donnees()
+    d.prochain_jour_ouvre = '2026-11-18'
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 72, progression: null } })
+    monter()
+    await screen.findByText('Timbres')
+    focaliser(42)
+    await userEvent.keyboard('d')
+    const feuille = await screen.findByRole('dialog', { name: 'Quand ?' })
+    expect(within(feuille).queryByRole('radio', { name: /^Reporter à/ })).toBeNull()
+    expect(within(feuille).getByRole('radio', { name: /^Demain/ })).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-18' })))
+  })
+
   it('R2-022 — « Choisir un jour » : les tuiles du sélecteur Quand ; « Demain » en UN toucher', async () => {
     servir(donnees())
     api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 74, progression: null } })

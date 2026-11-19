@@ -250,9 +250,12 @@ function ChoisirJour({ titre, valeur, aujourdhui, reporterA = null, clavier = fa
   useLayoutEffect(() => {
     if (!clavier) return
     const tuiles = racine.current?.querySelectorAll('[role="radio"]') ?? []
+    // couture L7 (C-22) — quand le prochain jour travaillé est demain, « Reporter à » n'existe pas : « Demain » EST le
+    // report et prend le focus (sinon le champ Heure le prenait et Entrée ne reportait rien)
     const reporter = [...tuiles].find((tuile) => tuile.textContent.startsWith('Reporter à'))
+      ?? (reporterA ? [...tuiles].find((tuile) => tuile.textContent.startsWith('Demain')) : null)
     reporter?.setAttribute('data-focus-initial', '')
-  }, [clavier])
+  }, [clavier, reporterA])
   return (
     <div className="choisir-jour" ref={racine}>
       <p className="carte-source">{titre}</p>
