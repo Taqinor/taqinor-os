@@ -7,7 +7,7 @@ import {
 import { frenchError } from '../../../lib/frenchError'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import { premiereDate } from '../lib/projets'
-import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../lib/textes'
+import { accord, aujourdhuiIso, jourNomme } from '../lib/textes'
 import { jourProjet } from './LigneProjet'
 
 /* ============================================================================
@@ -246,7 +246,7 @@ export function DialogueDecaler({ projet, noms, aujourdhui = aujourdhuiIso(), on
                 <li key={`${c.objet}:${c.id}:${c.champ}`}>
                   <span>{nomDuChangement(c, noms)}</span>
                   <span className="chiffres">
-                    {jourCourt(c.avant, aujourdhui)}<ArrowRight className="i i-14" aria-hidden="true" /><b>{jourCourt(c.apres, aujourdhui)}</b>
+                    {jourProjet(c.avant, aujourdhui)}<ArrowRight className="i i-14" aria-hidden="true" /><b>{jourProjet(c.apres, aujourdhui)}</b>
                   </span>
                 </li>
               ))}

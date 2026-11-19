@@ -6,9 +6,9 @@
 .tch .ep-jour { padding: 10px var(--tch-gouttiere) 0; }
 .tch .ep-jour-ligne { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .tch .ep-jour-chiffre { font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
-.tch .ep-jour-chiffre small { font-size: 1rem; font-weight: 500; color: var(--tch-texte-doux); }
+.tch .ep-jour-chiffre small { font-size: var(--tch-taille-texte); font-weight: 500; color: var(--tch-texte-doux); }
 .tch .ep-jour-detail { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
-.tch .ep-source { margin: 12px var(--tch-gouttiere) 0; font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .ep-source { margin: 12px var(--tch-gouttiere) 0; font-size: var(--tch-taille-meta); line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .ep-source b { color: var(--tch-texte); font-weight: 600; }
 .tch .ep-proposition { margin-top: 16px; }
 .tch .ep-proposition .carte-texte { margin-bottom: 14px; }
@@ -43,7 +43,7 @@
    colonne vide de 8 px) */
 .tch .ep-remarque li { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px var(--tch-gouttiere); font-size: 0.9375rem; line-height: 1.45; }
 .tch .ep-remarque li > span[aria-hidden="true"]:empty { display: none; }
-.tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
+.tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; min-width: var(--tch-cible); margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
 /* R3-088 — les réponses servies d'un constat, sur une ligne sous sa phrase : « Oui » en accent, « Pas maintenant » doux */
 .tch .ep-remarque-reponses { display: flex; flex-wrap: wrap; column-gap: 20px; }
 .tch .ep-remarque-reponses .action-lien + .action-lien { color: var(--tch-texte-doux); font-weight: 500; }
@@ -52,7 +52,7 @@
 .tch .ep-mode:last-child { box-shadow: none; }
 .tch .ep-mode .radio { width: 22px; height: 22px; margin-top: 1px; border-radius: 999px; box-shadow: inset 0 0 0 1.75px var(--tch-texte-doux); }
 .tch .ep-mode[aria-checked="true"] .radio { box-shadow: inset 0 0 0 7px var(--tch-accent); }
-.tch .ep-mode b { display: block; font-size: 1rem; font-weight: 600; line-height: 1.4; }
+.tch .ep-mode b { display: block; font-size: var(--tch-taille-texte); font-weight: 600; line-height: 1.4; }
 .tch .ep-mode span { display: block; font-size: var(--tch-meta); line-height: 1.4; color: var(--tch-texte-doux); }
 .tch .ep-replie-corps { padding: 4px var(--tch-gouttiere) 12px; }
 .tch .ep-parler { display: block; margin: 16px var(--tch-gouttiere) 0; min-height: 44px; }
@@ -73,7 +73,7 @@
 .tch .es-champ { min-height: 44px; min-width: 0; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-surface);
   box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
 .tch .es-champ[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px var(--tch-alerte); }
-.tch .es-erreur { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 0.875rem; line-height: 1.4; font-weight: 600; color: var(--tch-alerte); }
+.tch .es-erreur { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--tch-taille-meta); line-height: 1.4; font-weight: 600; color: var(--tch-alerte); }
 .tch .es-attente-rythme { display: flex; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 14px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
 .tch .es-attente-rythme p { margin: 0; font-size: 0.9375rem; line-height: 1.45; }
 @media (min-width: 768px) {
@@ -101,12 +101,12 @@
 .tch .es-reglage .txt b { display: block; font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 400; }
 .tch .es-reglage .txt small { display: block; margin-top: 2px; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
 .tch .es-note { margin: 18px var(--tch-gouttiere) 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
+  font-size: var(--tch-taille-meta); line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .es-aide { margin: 10px var(--tch-gouttiere) 0; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
-.tch .es-panneau-titre { margin: 0 var(--tch-gouttiere); font-family: var(--tch-font-titre); font-size: var(--tch-taille-tache); line-height: 1.3; font-weight: 700; }
+.tch .es-panneau-titre { margin: 0 var(--tch-gouttiere); font-family: var(--tch-font-titre); font-size: var(--tch-taille-tache); line-height: 1.3; font-weight: 600; }
 .tch .es-verite { margin: 2px var(--tch-gouttiere) 0; max-width: 62ch; }
 .tch .es-verite h2 { margin: 6px 0 10px; font-size: var(--tch-taille-tache); line-height: 1.35; font-weight: 600; }
-.tch .es-verite p { margin: 0; font-size: 1rem; line-height: 1.55; }
+.tch .es-verite p { margin: 0; font-size: var(--tch-taille-texte); line-height: 1.55; }
 .tch .es-verite p + p { margin-top: 18px; }
 .tch .es-verite p > b:first-child { display: block; margin-bottom: 2px; font-size: var(--tch-section); line-height: 1.4; font-weight: 600; }
 .tch .es-action-ligne { display: flex; align-items: center; gap: 12px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 52px;
@@ -116,7 +116,7 @@
 .tch .es-groupe-actions .es-action-ligne { width: 100%; margin: 0; padding: 0 14px; }
 .tch .es-groupe-actions .es-action-ligne + .es-action-ligne { box-shadow: inset 0 1px 0 var(--tch-trait); } /* R2-130 : deux rangées d une même liste */
 .tch .es-dialogue-titre { margin: 4px 0 0; font-size: var(--tch-taille-tache); line-height: 1.3; font-weight: 600; }
-.tch .es-dialogue-texte { margin: 10px 0 0; font-size: 1rem; line-height: 1.5; }
+.tch .es-dialogue-texte { margin: 10px 0 0; font-size: var(--tch-taille-texte); line-height: 1.5; }
 .tch .es-dialogue-texte b { font-weight: 600; }
 .tch .es-dialogue-pied { display: flex; gap: 10px; margin-top: 20px; }
 .tch .es-dialogue-pied .bouton { flex: 1; height: var(--tch-bouton-h); font-size: var(--tch-taille-texte); }
@@ -132,7 +132,7 @@
 .tch .es-agenda-etat.refus { color: var(--tch-alerte); }
 .tch .es-agenda-ajout { display: grid; gap: 8px; margin: 14px var(--tch-gouttiere) 0; }
 .tch .es-agenda-ajout .es-champ { width: 100%; }
-.tch .es-sous { margin: 12px var(--tch-gouttiere) 0; font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .es-sous { margin: 12px var(--tch-gouttiere) 0; font-size: var(--tch-taille-meta); line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .es-sous summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; color: var(--tch-texte); }
 .tch .es-sous p { margin: 0 0 8px; }
 /* Passe visuelle n° 47 — iPhone : une rubrique ouverte est une sous-page, la liste des rubriques n'est plus au-dessus */
@@ -142,7 +142,8 @@
 .tch .es-panneau > .es-panneau-titre { margin-top: 10px; margin-bottom: 8px; }
 @media (min-width: 768px) {
   .tch .es-rubrique { width: calc(100% - 16px); margin: 0 8px; padding: 10px 16px; min-height: 60px; border-radius: 10px; }
-  .tch .es-rubrique::after { left: 16px; right: 16px; }
+  /* R4-44 — les filets vont d'un bord à l'autre de la rangée : la rubrique choisie (même largeur) ne les déborde plus */
+  .tch .es-rubrique::after { left: 0; right: 0; }
   .tch .es-rubrique[aria-current="page"] { background: var(--tch-choisi-fond); box-shadow: var(--tch-choisi-trait); }
   .tch .es-rubrique[aria-current="page"] b { color: var(--tch-choisi-texte); }
   .tch .es-rubrique[aria-current="page"]::after { display: none; }
@@ -175,4 +176,4 @@
 @media (hover: hover) { .tch .es-recherche .es-effacer:hover { color: var(--tch-texte); } }
 .tch .es-resultats > .section:first-child { margin-top: 18px; }
 .tch .es-approche { margin: 14px var(--tch-gouttiere) 0; }
-.tch .ep-groupe > .ep-source { margin: 8px 0 0; font-size: 0.875rem; }
+.tch .ep-groupe > .ep-source { margin: 8px 0 0; font-size: var(--tch-taille-meta); }

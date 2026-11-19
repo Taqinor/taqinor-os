@@ -70,7 +70,7 @@ function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, o
   // Garder d'office ; la décision déjà écrite cette semaine (carte rouverte) est celle qui est cochée
   const [choix, setChoix] = useState(CHOIX.some(([code]) => code === carte.revue?.decision) ? carte.revue.decision : 'garder')
   const [issue, setIssue] = useState('')
-  const { texte } = avancementDe(projet)
+  const avance = avancementDe(projet)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const faites = (carte.faites_semaine ?? []).slice(0, 3)
   const prevuesAujourdhui = Number.isInteger(carte.prevues_aujourdhui_nb) ? carte.prevues_aujourdhui_nb : 0
@@ -82,10 +82,11 @@ function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, o
     <section className="ep-carte-revue" aria-label={projet.nom} data-p={projet.couleur}>
       <header className="ep-carte-tete">
         <h2 className="ep-titre"><i className="point" aria-hidden="true" />{projet.nom}</h2>
-        <span className="chiffres ep-rang-revue">{`${index + 1}/${total}`}</span>
+        {/* R4-46 — deux fractions sans étiquette (« 1/5 · 13 sur 18 ») : le rang dit ce qu'il compte, l'avancement aussi */}
+        <span className="chiffres ep-rang-revue">{`Projet ${index + 1} sur ${total}`}</span>
       </header>
       <div className="meta">
-        <span className="chiffres">{texte}</span>
+        {avance.total > 0 ? <span className="chiffres">{`${accord(avance.faites, 'tâche faite', 'tâches faites')} sur ${avance.total}`}</span> : null}
         {ech ? <span className="chiffres">{ech.texte}</span> : null}
         {(projet.sante ?? []).length > 0 ? (
           <span className="ep-sante surveiller"><TriangleAlert className="i i-14" aria-hidden="true" />à surveiller</span>

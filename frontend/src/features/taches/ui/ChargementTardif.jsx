@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 /* ============================================================================
    Raccord F2 — l'état « chargement » commun aux écrans de Tâches (spec-7 « Partout » : squelette, jamais sur une liste
    déjà affichée ; textes.md §2.19 : annonce « Chargement »). L'écran le monte tant qu'il n'a RIEN à montrer.
+   R4-42 — la classe est `squelette-liste` : `.squelette` est le bloc d'UNE barre de 44 px de saisie.css (fiche, bilan) ; sous elle ce
+   squelette de liste tenait dans 44 px de haut et la page se posait PAR-DESSUS (Projets n'affichait que « Nouveau projet »).
    R2-089 — dès 300 ms (une réponse rapide ne fait rien clignoter ; au-delà, l'écran montre déjà SA forme) : deux
    sections de lignes de tâches « os », comme etat-chargement.html — jamais le squelette des tableaux de bord de l'ERP.
    ========================================================================== */
@@ -36,7 +38,7 @@ export default function ChargementTardif({ actif = true }) {
   }, [actif])
   if (!actif || !visible) return null
   return (
-    <div className="squelette" role="status" aria-label="Chargement">
+    <div className="squelette-liste" role="status" aria-label="Chargement">
       {SECTIONS.map((lignes, section) => (
         <div key={section} className="squelette-section">
           <span className="os titre-section" aria-hidden="true" />

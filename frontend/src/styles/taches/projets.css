@@ -105,11 +105,33 @@
 .tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
 .tch .ep-avance-texte { font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap; }
 .tch .ep-avance-texte b { color: var(--tch-texte); font-weight: 600; }
-.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; color: var(--tch-texte); font-weight: 400; }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; color: var(--tch-texte); font-weight: 400; font-size: var(--tch-taille-texte); }
 .tch .ep-jalon-texte { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tch .ep-losange { flex: none; color: var(--tch-point); fill: var(--tch-point); }
 .tch .ep-ligne-suite { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; }
 .tch .ep-ligne-suite .ep-details { flex: none; width: auto; margin-left: auto; }
+/* R4-43 — le MÊME en-tête dans les trois vues, au bureau : (1) priorité · échéance · avance · vues ; (2) santé · prochain jalon ·
+   « Fini quand… », une seule ligne de 32 px chacune (santé et jalon se coupent par « … » ; le détail de la santé est au toucher).
+   La ligne « Ajouter une tâche » du haut s'efface sur la page d'un projet (la touche `n` et « + Ajouter » de chaque étape ou
+   colonne restent) : c'est elle qui repoussait le Tableau à y = 332 au lieu de ≤ 260. La cible tactile reste de 44 px (::after). */
+@media (min-width: 768px) {
+  .tch[data-ecran="projet"] .tch-page > .saisie-bureau { display: none; }
+  .tch .ep-tete { gap: 2px; padding-bottom: 6px; }
+  .tch .ep-ligne-suite { flex-wrap: nowrap; }
+  .tch .ep-ligne-suite .ep-sante-ligne { flex: 0 1 auto; min-width: 140px; min-height: 32px; position: relative; }
+  .tch .ep-ligne-suite .ep-sante-ligne span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-wrap: nowrap; }
+  .tch .ep-ligne-suite .ep-jalon-proche { flex: 1 1 160px; min-width: 100px; }
+  .tch .ep-ligne-suite .ep-details { min-height: 32px; position: relative; }
+  .tch .ep-ligne-suite :is(button.ep-sante-ligne, .ep-details)::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
+  /* Liste à 1 280 px (colonne des projets comprise) : la 1re ligne n'a que ~590 px ; sans sa barre fine (le « 13 sur 18 »
+     reste) et avec des vues resserrées elle tient, et les vues ne tombent plus seules sur une 3e ligne. */
+  .tch .ep-tete { container-type: inline-size; }
+  @container (max-width: 680px) {
+    .tch .ep-ligne-info { column-gap: 8px; }
+    .tch .ep-ligne-info .ep-barre-avance { display: none; }
+    .tch .ep-ligne-info .ep-vues button { padding: 0 8px; }
+  }
+}
 /* Santé : une ligne sans fond, le détail au toucher */
 .tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; flex: 1 1 220px; min-width: 0; min-height: var(--tch-cible); margin: 0; text-align: left;
   font-size: var(--tch-taille-texte); color: var(--tch-texte); }
@@ -246,9 +268,9 @@
 .tch .ep-resume-revue .decision { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 /* Passe visuelle n° 45 — la carte de revue-semaine.html (`.ep-carte-projet`) : fond de page cerné d'un filet, nom en
    1.0625rem (plus le titre de page), méta séparée par « · », « Projet de la semaine » à l'étoile */
-.tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
+.tch .ep-carte-revue { border-radius: var(--tch-rayon-carte); background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
 .tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: var(--tch-taille-tache); font-weight: 600; line-height: 1.35; }
-.tch .ep-carte-revue .ep-carte-tete .point { width: 10px; height: 10px; }
+.tch .ep-carte-revue .ep-carte-tete .point { width: 8px; height: 8px; } /* R4-44 : la pastille de projet de la Revue = celle des lignes (8 px) */
 .tch .ep-carte-revue .ep-rang-revue { font-size: var(--tch-chiffre); font-weight: 600; }
 .tch .ep-carte-revue .meta { margin-top: -6px; column-gap: 8px; }
 .tch .ep-carte-revue .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
@@ -470,9 +492,10 @@
   .tch .ep-md-liste .ligne.projet { padding-right: 16px; }
   .tch .ep-md-liste .ep-nouveau { width: calc(100% - 24px); margin-left: 12px; margin-right: 12px; }
   .tch .ep-md-liste .section .replie { margin-inline: 12px; }
-  .tch .ligne.projet.ouvert-bureau { background: var(--tch-selection); }
-  .tch .ligne.projet.ouvert-bureau .titre { font-weight: 700; }
+  /* R4-44 — UN « sélectionné » : fond léger, filet d'accent de 1,5 px, texte d'accent (le projet ouvert n'avait ni filet ni accent) */
+  .tch .ligne.projet.ouvert-bureau { background: var(--tch-choisi-fond); box-shadow: var(--tch-choisi-trait); }
+  .tch .ligne.projet.ouvert-bureau .titre { font-weight: 600; color: var(--tch-choisi-texte); }
 }
 @media (min-width: 1024px) and (hover: hover) {
-  .tch .ligne.projet.ouvert-bureau:hover { background: var(--tch-selection); }
+  .tch .ligne.projet.ouvert-bureau:hover { background: var(--tch-choisi-fond); }
 }

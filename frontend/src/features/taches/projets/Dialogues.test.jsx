@@ -176,7 +176,7 @@ describe('TCH92 — Archive', () => {
     const salé = (await screen.findByText('Chantier Salé')).closest('.ligne')
     expect(api.listerProjets).toHaveBeenCalledWith({ statut: 'archive' })
     expect(salé).toHaveTextContent('Atteint')
-    expect(salé).toHaveTextContent('ven. 13/11')
+    expect(salé).toHaveTextContent('ven. 13 nov.')
     expect(salé).toHaveTextContent('14 sur 14')
     expect(salé).toHaveTextContent('Mis en service.')
     expect(screen.getByText('Site vitrine').closest('.ligne')).toHaveTextContent('Abandonné')

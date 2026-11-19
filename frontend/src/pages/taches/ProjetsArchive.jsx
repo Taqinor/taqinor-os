@@ -4,7 +4,8 @@ import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { avancementDe } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
+import { aujourdhuiIso } from '../../features/taches/lib/textes'
+import { jourProjet } from '../../features/taches/projets/LigneProjet'
 
 /* ============================================================================
    TCH92 — Écran Archive (`/taches/projets/archive`) : les projets terminés ou archivés, une recherche, « Rouvrir ».
@@ -75,7 +76,7 @@ export default function ProjetsArchive() {
                     <div className="titre">{p.nom}</div>
                     <div className="meta">
                       {p.issue ? <span className="issue">{ISSUES[p.issue] ?? p.issue}</span> : null}
-                      {p.termine_le ? <span className="chiffres">{jourCourt(p.termine_le.slice(0, 10), aujourdhui)}</span> : null}
+                      {p.termine_le ? <span className="chiffres">{jourProjet(p.termine_le.slice(0, 10), aujourdhui)}</span> : null}
                       <span className="chiffres">{texte}</span>
                     </div>
                     {p.bilan ? <p className="ep-bilan">{p.bilan}</p> : null}

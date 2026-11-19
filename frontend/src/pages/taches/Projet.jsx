@@ -204,6 +204,21 @@ function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
   )
 }
 
+/** Vrai dès 768 px (le bureau de base.css) ; suit le redimensionnement. Sans `matchMedia` (tests) : faux, le jalon reste en haut. */
+function useJalonEnBas() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 768px)').matches
+  const [bureau, setBureau] = useState(lire)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined
+    const requete = window.matchMedia('(min-width: 768px)')
+    const maj = () => setBureau(requete.matches)
+    requete.addEventListener?.('change', maj)
+    maj()
+    return () => requete.removeEventListener?.('change', maj)
+  }, [])
+  return bureau
+}
+
 function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, versLaListe = null }) {
   const [details, setDetails] = useState(false)
   const [detailSante, setDetailSante] = useState(false)
@@ -213,9 +228,18 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, ver
   const sante = santeCourte(signal, aujourdhui)
   const jalonJour = jalon ? (jalon.jour_prevu ?? jalon.echeance) : null
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
+  const jalonEnBas = useJalonEnBas()
+  const prochainJalon = jalon ? (
+    <span className="ep-jalon-proche">
+      <Diamond className="i i-14 ep-losange" aria-hidden="true" />
+      <span className="ep-jalon-texte">{`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}</span>
+    </span>
+  ) : null
   // Passe visuelle n° 43 — l'en-tête de projet-liste.html ; R3-126 — UNE ligne : priorité · échéance · barre et « 12 sur 18 » ·
   // prochain jalon · les vues (à droite) ; puis UNE ligne : la santé (le détail au toucher) · « Fini quand… » replié. Sept
-  // étages avant, deux maintenant : le Tableau commence sous la saisie, pas sous la ligne de flottaison.
+  // étages avant, deux maintenant. R4-43 — au bureau (≥ 768 px) le jalon passe sur la 2e ligne : à 592 px (Liste à 1 280,
+  // colonne des projets comprise) la 1re ligne ne tient plus avec lui, les vues tombaient seules sur une 3e ligne et l'en-tête
+  // changeait de hauteur d'une vue à l'autre. Sur iPhone il reste avec les vues (une ligne de moins qu'en dessous).
   return (
     <div className="ep-tete" data-p={projet.couleur}>
       <div className="ep-ligne-info">
@@ -233,12 +257,7 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, ver
             <span className="chiffres ep-avance-texte"><b>{texte}</b></span>
           </span>
         ) : null}
-        {jalon ? (
-          <span className="ep-jalon-proche">
-            <Diamond className="i i-14 ep-losange" aria-hidden="true" />
-            <span className="ep-jalon-texte">{`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}</span>
-          </span>
-        ) : null}
+        {jalonEnBas ? null : prochainJalon}
         {selecteur}
       </div>
       <div className="ep-ligne-suite">
@@ -253,6 +272,7 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, ver
             <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
           </p>
         ) : null}
+        {jalonEnBas ? prochainJalon : null}
         <button type="button" className="ep-details" aria-expanded={details} onClick={() => setDetails((o) => !o)}>
           <span className="ep-details-texte"><b>Fini quand…</b></span>
           <ChevronDown className="i i-16" aria-hidden="true" />
