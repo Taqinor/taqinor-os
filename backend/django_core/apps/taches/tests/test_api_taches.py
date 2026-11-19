@@ -130,6 +130,21 @@ class ListeTests(BaseApi):
         self.assertEqual(len(corps['results']) + len(corps['activites_closes']), corps['total'])
         self.assertEqual(list(simple), ['count', 'next', 'previous', 'results'])  # les autres listes : inchangées
 
+    def test_faites_cette_semaine_jamais_une_sous_tache_meme_filtree_par_fiche(self):
+        """Critique serveur n° 3 — `results` ne porte que ce que `total` compte (`compte_du_jour` : une sous-tâche vaut
+        0) : la règle vit dans le filtre de la période, pas seulement dans celui des fiches ERP — avec `cible=` (qui
+        garde les sous-tâches des listes ouvertes ✓+), une sous-tâche faite cette semaine n'est toujours pas listée."""
+        from apps.taches.services.taches import liste_taches
+        jeudi = datetime.date(2026, 11, 19)
+        fait_le = timezone.make_aware(datetime.datetime(2026, 11, 18, 10, 0))
+        lead = ContentType.objects.get_by_natural_key('crm', 'lead')
+        parent = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=fait_le, content_type=lead, object_id=1637)
+        fabriques.tache(self.u1, parent=parent, statut=StatutTache.FAIT, fait_le=fait_le, content_type=lead,
+                        object_id=1637)
+        for params in ({'periode': 'faites_semaine'}, {'periode': 'faites_semaine', 'cible': 'crm.lead'}):
+            with self.subTest(params=params):
+                self.assertEqual([t.pk for t in liste_taches(self.u1, params, aujourdhui=jeudi)], [parent.pk])
+
     def test_filtres_projet_priorite_et_mots(self):
         projet = fabriques.projet(self.u1)
         voulue = fabriques.tache(self.u1, projet=projet, titre='Devis Settat', priorite=3)
