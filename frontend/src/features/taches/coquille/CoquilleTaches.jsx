@@ -14,7 +14,7 @@ import BoutonCopilote from '../ui/BoutonCopilote'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
 import { useEnLigne } from '../lib/enLigne'
-import { definirProprietaire, lireReglages } from '../../../api/tachesApi'
+import { definirProprietaire } from '../../../api/tachesApi'
 import { derniereSynchro as lireDerniereSynchro, viderCacheALaDeconnexion } from '../horsligne/cacheJournee'
 import {
   MESSAGE_AUTRE_COMPTE, brancherRejeu, definirCompteFile, etatFile, garderLaMienne, prendreLAutre, rejouerFile, useVersionFile,
@@ -78,6 +78,25 @@ function AideTouches() {
       ))}
     </dl>
   )
+}
+
+/** R2-088 — « Messages sans délai », gardé sur l'appareil par compte (stockage indisponible : rien n'est gardé). */
+const cleSansDelai = (compte) => `taqinor:taches:sans-delai:${compte}`
+function lireSansDelaiGarde(compte) {
+  try {
+    const valeur = window.localStorage.getItem(cleSansDelai(compte))
+    return valeur === null ? null : valeur === '1'
+  } catch {
+    return null
+  }
+}
+function garderSansDelai(compte, valeur) {
+  try {
+    window.localStorage.setItem(cleSansDelai(compte), valeur ? '1' : '0')
+    return true
+  } catch {
+    return false // stockage indisponible (navigation privée) : le réglage vaudra au prochain passage dans Réglages
+  }
 }
 
 /** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
@@ -304,17 +323,17 @@ export default function CoquilleTaches({
     return () => { retirer(); retirerCache() }
   }, [userId, companyId])
 
-  // R2-088 — « Messages sans délai » vaut dès l'ouverture de Tâches, pas seulement après un passage dans Réglages :
-  // la coquille lit les réglages à son montage. Échec (hors ligne, serveur absent) : le réglage déjà appliqué reste.
+  // R2-088 — « Messages sans délai » vaut dès l'ouverture de Tâches (et après un rechargement), pas seulement après un
+  // passage dans Réglages : la dernière valeur connue (celle que Réglages a lue au serveur ou posée) est gardée sur
+  // l'appareil et rendue aux gestes au montage — sans requête de plus (aucun écran ne paie un GET pour elle, hors ligne
+  // compris). Un réglage changé sur un AUTRE appareil vaut ici au premier passage dans Réglages.
+  const { sansDelai } = useEtatGestes()
+  const compteGestes = userId ?? 'anonyme'
   useEffect(() => {
-    // hors ligne, pas d'appel : il échouerait et l'ERP en ferait un toast « Connexion perdue » de plus
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined
-    let actif = true
-    lireReglages()
-      .then((reponse) => { if (actif) configurerGestes({ sansDelai: Boolean(reponse?.data?.messages_sans_delai) }) })
-      .catch(() => { /* rien à défaire : sans réponse, les gestes gardent leur réglage courant */ })
-    return () => { actif = false }
-  }, [])
+    const garde = lireSansDelaiGarde(compteGestes)
+    if (garde !== null) configurerGestes({ sansDelai: garde })
+  }, [compteGestes])
+  useEffect(() => { garderSansDelai(compteGestes, sansDelai) }, [compteGestes, sansDelai])
 
   // L'état de la file (en attente, conflits) se relit quand elle bouge.
   useEffect(() => {
