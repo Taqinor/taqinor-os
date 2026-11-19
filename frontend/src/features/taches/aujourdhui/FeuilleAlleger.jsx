@@ -8,15 +8,18 @@ import { heure } from '../lib/textes'
    ERP, obligations et tâches à échéance aujourd'hui ou avant, qui restent de toute façon
    (regles.md §4.5). RIEN n'est coché d'avance : on coche ce qu'on GARDE ; le reste retourne à
    ses projets sans compter de report et Proposé revient demain (`journee/alleger/`).
-   Le bouton dit « Garder ces k » ; hors ligne, il est grisé. Le parent poste, annonce
+   Le bouton dit « Garder ces k » — rien coché : « Tout renvoyer aux projets » (R2-026) ; hors ligne, il est
+   grisé. Le parent poste, annonce
    « {n} retournées aux projets » et pose le toast Annuler.
    Maquettes : ecran-aujourdhui-15h-menu.html, ecran-aujourdhui-15h-bas.html.
    ========================================================================== */
 
-export const AIDE_ALLEGER = "Coche ce que tu gardes aujourd'hui. Le reste retourne à ses projets, sans compter de report ; Proposé revient demain. Les tâches à échéance aujourd'hui restent."
+// R2-026 — l'aide en UNE ligne (les tâches à échéance du jour n'y sont pas listées : elles ne se proposent pas)
+export const AIDE_ALLEGER = 'Coche ce que tu gardes ; le reste retourne à ses projets, sans report.'
 
 /** Les tâches qu'Alléger peut renvoyer : celles de la journée dont l'échéance n'est pas atteinte. */
-function candidates(donnees) {
+// eslint-disable-next-line react-refresh/only-export-components -- règle pure partagée avec le menu ⋯ (D-ENF22)
+export function candidatesAlleger(donnees) {
   const vues = new Set()
   return ['essentiel', 'journee', 'ce_soir']
     .flatMap((cle) => donnees[cle] ?? [])
@@ -26,7 +29,7 @@ function candidates(donnees) {
 
 export default function FeuilleAlleger({ donnees, enLigne, onGarder }) {
   const [gardees, setGardees] = useState(() => new Set())
-  const lignes = candidates(donnees)
+  const lignes = candidatesAlleger(donnees)
   const k = gardees.size
   const basculer = (id) => setGardees((avant) => {
     const suite = new Set(avant)
@@ -53,13 +56,14 @@ export default function FeuilleAlleger({ donnees, enLigne, onGarder }) {
         ))}
       </div>
       <div className="feuille-pied">
+        {/* R2-026 — rien coché : on renvoie TOUT (jamais un « Garder ces 0 » mort) */}
         <button
           type="button"
           className="bouton plein large"
-          aria-disabled={!enLigne || k === 0 || undefined}
-          onClick={() => { if (enLigne && k > 0) onGarder([...gardees]) }}
+          aria-disabled={!enLigne || undefined}
+          onClick={() => { if (enLigne) onGarder([...gardees]) }}
         >
-          {k === 1 ? 'Garder celle-ci' : `Garder ces ${k}`}
+          {k === 0 ? 'Tout renvoyer aux projets' : k === 1 ? 'Garder celle-ci' : `Garder ces ${k}`}
         </button>
       </div>
     </div>

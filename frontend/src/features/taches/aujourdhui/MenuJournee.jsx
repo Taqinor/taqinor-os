@@ -37,11 +37,13 @@ async function faireMonAccueil() {
 /**
  * Les actions de l'écran pour la coquille (`actionsEcran`). Hors ligne : Alléger et l'accueil sont
  * grisés (« Possible une fois connecté »), Réorganiser et Sélectionner restent possibles à vide.
+ * R2-026 — « Alléger ma journée » n'est offert que s'il y a de quoi alléger (`peutAlleger` : bilan pas fait, une tâche
+ * ouverte au moins que la feuille peut renvoyer).
  */
-export function actionsJournee({ enLigne, onAlleger, onReorganiser, onSelectionner }) {
+export function actionsJournee({ enLigne, peutAlleger = true, onAlleger, onReorganiser, onSelectionner }) {
   const garde = (action) => () => (enLigne ? action() : annoncer(PHRASE_HORS_LIGNE))
   return [
-    { libelle: 'Alléger ma journée', onSelect: garde(onAlleger) },
+    ...(peutAlleger ? [{ libelle: 'Alléger ma journée', onSelect: garde(onAlleger) }] : []),
     { libelle: 'Réorganiser', onSelect: onReorganiser },
     { libelle: 'Sélectionner', onSelect: onSelectionner },
     { libelle: 'En faire mon accueil', onSelect: garde(faireMonAccueil) },

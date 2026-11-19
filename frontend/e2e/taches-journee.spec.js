@@ -177,9 +177,9 @@ test.describe('Tâches — la journée', () => {
     await page.getByRole('menuitem', { name: 'Alléger ma journée' }).click()
     const feuille = page.getByRole('dialog', { name: 'Alléger ma journée' })
     await expect(feuille).toBeVisible()
-    // rien n'est coché d'avance : le bouton ne propose rien tant qu'on n'a rien gardé
+    // rien n'est coché d'avance : rien coché, le bouton renvoie tout (R2-026, jamais un « Garder ces 0 » mort)
     for (const titre of titres) await expect(feuille.getByRole('checkbox', { name: `Sélectionner : ${titre}` })).not.toBeChecked()
-    await expect(feuille.getByRole('button', { name: 'Garder ces 0' })).toBeVisible()
+    await expect(feuille.getByRole('button', { name: 'Tout renvoyer aux projets' })).toBeVisible()
 
     await feuille.getByRole('checkbox', { name: `Sélectionner : ${titres[1]}` }).click()
     await feuille.getByRole('button', { name: 'Garder celle-ci' }).click()

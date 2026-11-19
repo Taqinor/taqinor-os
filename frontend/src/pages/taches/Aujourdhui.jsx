@@ -9,7 +9,7 @@ import Sections, {
 import { FeuilleLier, useLierActivite } from '../../features/taches/aujourdhui/LignesErp'
 import Replies, { useARevoir } from '../../features/taches/aujourdhui/Replies'
 import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
-import FeuilleAlleger from '../../features/taches/aujourdhui/FeuilleAlleger'
+import FeuilleAlleger, { candidatesAlleger } from '../../features/taches/aujourdhui/FeuilleAlleger'
 import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
 import ColonneBureau, { ColonneProjets } from '../../features/taches/aujourdhui/ColonneBureau'
 import Propose from '../../features/taches/aujourdhui/Propose'
@@ -972,6 +972,7 @@ export default function Aujourdhui() {
   const ouvrirFeuille = (type, parametres = {}) => setFeuille({ type, ...parametres })
   const actionsEcran = actionsJournee({
     enLigne,
+    peutAlleger: Boolean(donnees) && !donnees.plan?.cloture_le && candidatesAlleger(donnees).length > 0,
     onAlleger: () => ouvrirFeuille('alleger'),
     onReorganiser: () => modes.setReorganiser((v) => !v),
     onSelectionner: modes.basculerSelection,
