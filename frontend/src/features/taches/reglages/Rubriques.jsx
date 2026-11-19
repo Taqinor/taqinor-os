@@ -5,6 +5,7 @@ import {
   retirerAgendaExterne, toutEffacer,
 } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
+import { jourCourt } from '../lib/textes'
 import FeuilleACrans from '../ui/FeuilleACrans'
 
 /* ============================================================================
@@ -48,13 +49,23 @@ const messageDe = (err, champ) => {
   return Array.isArray(brut) && brut.length > 0 ? String(brut[0]) : frenchError(err, 'Réessaie dans un instant.')
 }
 
-/** « À jour à 09:05. » : l'heure est lue dans le texte ISO, tel que le serveur l'a écrit. */
+/** La dernière lecture RÉUSSIE de l'agenda, « jeu. 19 09:05 » (jour et heure lus dans le texte ISO du serveur), ou ''. */
+function derniereLecture(agenda) {
+  const trouve = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(agenda.dernier_chargement_le ?? '')
+  return trouve ? `${jourCourt(trouve[1])} ${trouve[2]}` : ''
+}
+
+/** « À jour à 09:05. » ; sinon l'état dit, suivi de la dernière lecture réussie quand il y en a une
+ *  (« Pas encore lu. » seulement s'il n'y en a aucune : jamais une heure inventée). */
 function texteEtat(agenda) {
   if (agenda.dernier_etat === 'ok') {
     const heure = /T(\d{2}:\d{2})/.exec(agenda.dernier_chargement_le ?? '')
     return heure ? `À jour à ${heure[1]}.` : 'À jour.'
   }
-  return ETATS[agenda.dernier_etat ?? ''] ?? ETATS['']
+  const lecture = derniereLecture(agenda)
+  const etat = agenda.dernier_etat ? (ETATS[agenda.dernier_etat] ?? '') : ''
+  if (!lecture) return etat || ETATS['']
+  return `${etat ? `${etat} ` : ''}Dernière lecture réussie : ${lecture}.`
 }
 
 export default function ListeRubriques({ courante, onOuvrir, resumes = {} }) {
@@ -192,15 +203,19 @@ function AjoutAgenda({ onAjoute }) {
   const [url, setUrl] = useState('')
   const [libelle, setLibelle] = useState('')
   const [erreur, setErreur] = useState('')
+  const [lecture, setLecture] = useState(false)
 
+  // L'ajout LIT l'adresse côté serveur (parfois plusieurs secondes) : un indicateur, et un seul envoi à la fois.
   const ajouter = async () => {
+    if (lecture) return
     setErreur('')
+    setLecture(true)
     try {
       const { data } = await ajouterAgendaExterne({ url: url.trim(), libelle: libelle.trim() })
       onAjoute(data)
       setUrl('')
       setLibelle('')
-    } catch (err) { setErreur(messageDe(err, 'url')) }
+    } catch (err) { setErreur(messageDe(err, 'url')) } finally { setLecture(false) }
   }
 
   return (
@@ -211,7 +226,10 @@ function AjoutAgenda({ onAjoute }) {
       <input className="es-champ" type="text" autoComplete="off" aria-label="Nom (facultatif)" placeholder="Nom (facultatif)"
         value={libelle} onChange={(e) => setLibelle(e.target.value)} />
       {erreur ? <p id="err-agenda" className="es-erreur" role="alert">{erreur}</p> : null}
-      <button type="button" className="bouton second" onClick={ajouter}>Ajouter</button>
+      {lecture ? <p className="es-sous" role="status">{"Lecture de l'agenda…"}</p> : null}
+      <button type="button" className="bouton second" disabled={lecture} aria-busy={lecture || undefined} onClick={ajouter}>
+        {lecture ? "Lecture de l'agenda…" : 'Ajouter'}
+      </button>
       <p className="es-sous">Cette adresse vaut une clé : l'ERP la garde sans jamais l'afficher en entier.</p>
     </div>
   )

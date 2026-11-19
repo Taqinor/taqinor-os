@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -183,11 +183,11 @@ describe('TCH108 — Réglages', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
     expect(ajouterAgendaExterne).toHaveBeenLastCalledWith({ url: 'https://agenda.example/a.ics', libelle: '' })
     expect(await screen.findByText('Bureau · agenda.example')).toBeInTheDocument()
-    expect(screen.getByText("Agenda illisible : ce n'est pas une adresse de calendrier (.ics).")).toBeInTheDocument()
+    expect(screen.getByText(/Agenda illisible : ce n'est pas une adresse de calendrier \(\.ics\)\./)).toBeInTheDocument()
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Rafraîchir' })[0])
     expect(rafraichirAgendaExterne).toHaveBeenCalledWith(2)
-    expect(await screen.findByText("Agenda injoignable pour l'instant.")).toBeInTheDocument()
+    expect(await screen.findByText(/Agenda injoignable pour l'instant\./)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('switch', { name: 'Afficher Microsoft 365' }))
     expect(modifierAgendaExterne).toHaveBeenCalledWith(2, { actif: false })
@@ -198,6 +198,37 @@ describe('TCH108 — Réglages', () => {
     await userEvent.click(within(dialogue).getByRole('button', { name: 'Retirer' }))
     expect(retirerAgendaExterne).toHaveBeenCalledWith(2)
     expect(screen.queryByText('Microsoft 365 · outlook.office365.com')).toBeNull()
+  })
+
+  it('R2-127 — pendant la lecture d\'une adresse : « Lecture de l\'agenda… », le bouton est tenu, puis l\'injoignable se dit sous le champ', async () => {
+    let refuser
+    ajouterAgendaExterne.mockReturnValueOnce(new Promise((_resolve, rejeter) => { refuser = rejeter }))
+    monter('/taches/reglages/iphone')
+    await userEvent.click(await screen.findByRole('button', { name: /Voir tes tâches dans le Calendrier/ }))
+    await screen.findByText('Microsoft 365 · outlook.office365.com')
+    await userEvent.type(screen.getByRole('textbox', { name: "Adresse de l'agenda (https://… ou webcal://…)" }), 'https://agenda-invalide.example/x.ics')
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
+    expect(await screen.findByText("Lecture de l'agenda…", { selector: 'p' })).toHaveAttribute('role', 'status')
+    expect(screen.getByRole('button', { name: "Lecture de l'agenda…" })).toBeDisabled()
+    expect(ajouterAgendaExterne).toHaveBeenCalledTimes(1)
+    await act(async () => { refuser(erreur400({ url: ['Adresse injoignable : vérifie le lien.'] })) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Adresse injoignable : vérifie le lien.')
+    expect(screen.queryByText("Lecture de l'agenda…", { selector: 'p' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ajouter' })).toBeEnabled()
+  })
+
+  it('R2-127 — un agenda jamais lu avec succès le dit ; un agenda lu une fois dit QUAND, même s\'il échoue ensuite', async () => {
+    const jamais = { ...exemple('agenda_externe'), id: 5, libelle: 'Jamais', hote: 'jamais.example', dernier_etat: '', dernier_chargement_le: null }
+    const echoue = { ...exemple('agenda_externe'), id: 6, libelle: 'Ancien', hote: 'ancien.example', dernier_etat: 'delai', dernier_chargement_le: '2026-11-17T09:05:00+01:00' }
+    const lu = { ...exemple('agenda_externe'), id: 7, libelle: 'Lu', hote: 'lu.example', dernier_etat: '', dernier_chargement_le: '2026-11-17T09:05:00+01:00' }
+    listerAgendasExternes.mockResolvedValue({ data: { results: [jamais, echoue, lu] } })
+    monter('/taches/reglages/iphone')
+    await userEvent.click(await screen.findByRole('button', { name: /Voir tes tâches dans le Calendrier/ }))
+    const ligne = async (nom) => (await screen.findByText(nom)).closest('li')
+    expect(await ligne('Jamais · jamais.example')).toHaveTextContent('Pas encore lu.')
+    expect(await ligne('Ancien · ancien.example')).toHaveTextContent(/Agenda trop lent à répondre\. Dernière lecture réussie : .* 09:05\./)
+    expect(await ligne('Lu · lu.example')).toHaveTextContent(/Dernière lecture réussie : .* 09:05\./)
+    expect(await ligne('Lu · lu.example')).not.toHaveTextContent('Pas encore lu')
   })
 
   it('passe visuelle n° 47 — iPhone : une rubrique s\'ouvre en sous-page (son titre, « ‹ Réglages », liste cachée)', async () => {

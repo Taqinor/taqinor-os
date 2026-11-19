@@ -107,7 +107,7 @@
 .tch .es-agenda { padding: 10px 0; box-shadow: inset 0 -1px 0 var(--tch-trait); }
 .tch .es-agenda:last-child { box-shadow: none; }
 .tch .es-agenda-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-.tch .es-agenda-ligne .txt { flex: 1; min-width: 0; }
+.tch .es-agenda-ligne .txt { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; } /* R2-127 : le nom prend toute la largeur, les actions passent dessous */
 .tch .es-agenda-etat { margin: 2px 0 0; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
 .tch .es-agenda-etat.refus { color: var(--tch-alerte); }
 .tch .es-agenda-ajout { display: grid; gap: 8px; margin: 14px var(--tch-gouttiere) 0; }

@@ -444,7 +444,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `cle` | « Clé inconnue. » |
 | réglage hors liste blanche | « Non modifiable ici. » |
 | `confirmation` | « Tape EFFACER pour confirmer. » |
-| `url` (agenda externe) | « Adresse https publique attendue. » |
+| `url` (agenda externe) | « Ce n'est pas une adresse : colle le lien de ton agenda. » · « L'adresse doit commencer par https. » · « Adresse injoignable : vérifie le lien. » |
 | 409 `deja_lie` | « Cette activité a déjà sa tâche. » |
 | 409 `autre_compte` | « Une action d'un autre compte a été retirée de la file. » |
 | 409 `conflit_version` | bandeau de conflit §2.2 |
@@ -509,7 +509,7 @@ Noms accessibles : case « Marquer « {titre} » comme faite » ; étoile « Ess
 | Ligne d'un agenda | « {libellé} · {hôte} » · état (ci-dessous) · Rafraîchir · Retirer · interrupteur « Afficher » |
 | Limite (dite une fois) | « Les rendez-vous qui se répètent n'apparaissent qu'à leur première date pour l'instant. » |
 | Retirer | « Retirer « {libellé} » ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché. » [Retirer] [Fermer] |
-| Plafond | 400 `url` : « 3 agendas au plus. » · doublon : « Cet agenda est déjà ajouté. » · schéma : « Adresse https publique attendue. » |
+| Plafond | 400 `url` : « 3 agendas au plus. » · doublon : « Cet agenda est déjà ajouté. » · schéma : « L'adresse doit commencer par https. » · pas une adresse : « Ce n'est pas une adresse : colle le lien de ton agenda. » · injoignable : « Adresse injoignable : vérifie le lien. » |
 | Vie privée (sous le champ) | « Cette adresse vaut une clé : l'ERP la garde sans jamais l'afficher en entier. » |
 
 États (`EtatAgendaExterne`), montrés sur la ligne de l'agenda et en bandeau de l'Agenda :

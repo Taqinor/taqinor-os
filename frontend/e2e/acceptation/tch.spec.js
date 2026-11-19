@@ -606,10 +606,10 @@ etape('P139.6', ['TCH139', 'TCH108', 'TCH121'], async (f) => {
   const erreur = p.locator('p.es-erreur[role="alert"]')
   const nb = async () => liste(await lire(p, 'agendas-externes/')).length
   expect(await nb(), "l'agenda de démonstration du semis").toBe(1)
-  // Oracle : adresse `http://…` → « Adresse https publique attendue. »
+  // Oracle : adresse `http://…` → « L'adresse doit commencer par https. »
   f.suivi.attendre(/\/taches\/agendas-externes\/$/, 400)
   await ajouter('http://agenda.example.com/mon-agenda.ics')
-  await expect(erreur.filter({ hasText: 'Adresse https publique attendue.' })).toBeVisible()
+  await expect(erreur.filter({ hasText: "L'adresse doit commencer par https." })).toBeVisible()
   // Oracle : adresse vers 127.0.0.1 → refus
   await ajouter('https://127.0.0.1/mon-agenda.ics')
   await expect(erreur.filter({ hasText: /\S/ })).toBeVisible()

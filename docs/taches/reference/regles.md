@@ -1025,7 +1025,7 @@ ESSENTIEL (A18-M4) : jusqu'à 3 adresses ICS par utilisateur (Microsoft 365, Goo
 affichées en lecture seule, retranchées du temps disponible.
 
 **Ajout** (`POST agendas-externes/`) : `webcal://` est réécrit en `https://` (même hôte, même chemin : l'iPhone donne
-ses liens publics ainsi, IR22) ; tout autre schéma → 400 `{"url":["Adresse https publique attendue."]}` ; 4e adresse →
+ses liens publics ainsi, IR22) ; tout autre schéma → 400 `{"url":["L'adresse doit commencer par https."]}` ; pas une adresse → `{"url":["Ce n'est pas une adresse : colle le lien de ton agenda."]}` ; hôte introuvable ou interne → `{"url":["Adresse injoignable : vérifie le lien."]}` (R2-127) ; 4e adresse →
 `{"url":["3 agendas au plus."]}` ; adresse déjà là → `{"url":["Cet agenda est déjà ajouté."]}` ; `hote` posé ; l'hôte est
 validé par `apps/publicapi/validators.py` ; lecture immédiate, `dernier_etat` rendu.
 
