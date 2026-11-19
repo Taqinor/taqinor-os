@@ -617,8 +617,7 @@ def _sensibilites_deux(d, opts, fmt_mad, L, noms):
         for nom, valeurs in rangees)
     base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
              "base : 0 % d'indexation du tarif.")
-    return (f'<div class="i2d-st">{_t(d, "sensibilites")}'
-            f'<span class="i2d-stn"> — {base}</span></div>'
+    return (f'<div class="i2d-st i2d-stn">{base}</div>'
             f'<table class="i2-tbl i2-fx i2d-fx i2d-sens"><tr><th></th>{groupes}</tr>'
             f'<tr><th>{L("ci_sens_scenario", "Scénario")}</th>{entete}</tr>'
             f'{lignes}</table>')
@@ -817,7 +816,7 @@ def css(ctx, argent):
 .i2-cfo{{margin-top:6px;}}
 .i2-hyp{{margin-top:6px;padding:6px 12px;}}
 .i2-foot{{margin-top:5px;}}
-.i2d-stn{{font-weight:400;color:{muted};}}
+.i2d-stn{{font-weight:400;color:{muted};margin-top:3px;}}
 .i2d-cfob .i2d-sens td{{padding-top:1.2px;padding-bottom:1.2px;}}
 .i2d-hp{{font-size:6.6pt;color:{muted};line-height:1.3;margin-top:3px;}}
 .i2d-hp b{{color:{ink};}}
