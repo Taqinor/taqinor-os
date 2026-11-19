@@ -1579,3 +1579,85 @@ class ListeFroideTests(TestCase):
         self.assertEqual(res.status_code, 200, res.content)
         self.assertNotIn(pris.pk, [ligne['id'] for ligne in
                                    leads_fermes_avec_touche_ouverte(self.company)])
+
+    # ── 19/11/2026 (fondateur) — « garder deux essais et ajouter la raison
+    # honnête après » : la 2e tentative sans réponse écrit la raison de parcage.
+
+    NOTE_DEUX_APPELS = 'Liste froide : deux appels sans réponse.'
+
+    def _deux_appels_sans_reponse(self, lead):
+        """Deux prises un autre jour, chacune close « pas de réponse »."""
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+
+    def test_la_seconde_tentative_sans_reponse_ecrit_la_raison_honnete(self):
+        lead = self._froid('B')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        lead.refresh_from_db()
+        self.assertEqual((lead.parc_etat, lead.parc_raison), (None, None),
+                         'la première tentative n’écrit rien')
+        self.assertFalse(lead.activites.filter(field='parc_raison').exists())
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        lead.refresh_from_db()
+        self.assertEqual((lead.parc_raison, lead.parc_etat),
+                         ('liste_froide_sans_reponse', 'nurture'))
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertFalse(lead.perdu)
+        self.assertIsNone(lead.parc_jusqu_au)
+        ligne = lead.activites.get(field='parc_raison')
+        self.assertEqual(ligne.new_value,
+                         Lead.ParcRaison.LISTE_FROIDE_SANS_REPONSE.label)
+        self.assertFalse(lead.relance_etapes.filter(statut=A_FAIRE).exists())
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=7))
+        self.assertEqual(self._restant(), 0, 'sorti du vivier, resté au Froid')
+
+    def test_une_raison_deja_posee_reste_et_la_note_n_est_ecrite_qu_une_fois(self):
+        from apps.crm.liste_froide import noter_deux_appels_sans_reponse
+
+        lead = self._froid('B', parc_etat='nurture', parc_raison='budget')
+        self._deux_appels_sans_reponse(lead)
+        lead.refresh_from_db()
+        self.assertEqual((lead.parc_raison, lead.parc_etat), ('budget', 'nurture'))
+        self.assertEqual((lead.stage, lead.perdu), (stages.COLD, False))
+        self.assertFalse(lead.activites.filter(field='parc_raison').exists())
+        notes = lead.activites.filter(body=self.NOTE_DEUX_APPELS)
+        self.assertEqual(notes.count(), 1)
+        self.assertIsNone(notes.get().user_id, 'ligne système : pas un contact (QJ7)')
+        derniere = lead.relance_etapes.filter(
+            cle='liste_froide').order_by('-traite_le', '-pk').first()
+        self.assertFalse(noter_deux_appels_sans_reponse(derniere, self.moi),
+                         'rejouer la même clôture n’écrit pas deux fois')
+        self.assertEqual(notes.count(), 1)
+
+    def test_une_seconde_tentative_jointe_n_ecrit_rien(self):
+        lead = self._froid('B')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'joint')
+        lead.refresh_from_db()
+        self.assertNotEqual(lead.stage, stages.COLD)
+        self.assertNotEqual(lead.parc_raison, 'liste_froide_sans_reponse')
+        self.assertFalse(lead.activites.filter(
+            field='parc_raison',
+            new_value=Lead.ParcRaison.LISTE_FROIDE_SANS_REPONSE.label).exists())
+        self.assertFalse(lead.activites.filter(body=self.NOTE_DEUX_APPELS).exists())
+
+    def test_une_seconde_tentative_refusee_n_ecrit_rien(self):
+        lead = self._froid('B')
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'non_joint')
+        self.horloge.move_to(MARDI_LF + datetime.timedelta(days=1))
+        self._prendre(1)
+        self._repondre(self._ouverte(lead), 'refuse')
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.COLD)
+        self.assertNotEqual(lead.parc_raison, 'liste_froide_sans_reponse')
+        self.assertFalse(lead.activites.filter(body=self.NOTE_DEUX_APPELS).exists())

@@ -36,6 +36,7 @@ from .cadence_reperes import (
     touche_traitee_en_avance,
 )
 from .fiche_funnel import appliquer_stage_lead, avancer_stage_devis_envoye_sur_touche
+from .liste_froide import noter_deux_appels_sans_reponse
 from .models import LeadActivity, RelanceEtape
 
 logger = logging.getLogger(__name__)
@@ -337,6 +338,11 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             and (outcome or '') not in _OUTCOMES_SANS_CLOTURE
             and not est_etape_de_visite(etape)):
         cloturer_cadence(lead, user, etape.cadence)
+    # Fondateur 19/11/2026 — la 2ᵉ tentative de la LISTE FROIDE sans réponse écrit
+    # la raison de parcage (ou une note) ; le dossier reste au Froid. Ici et non
+    # dans ``cloturer_cadence`` : celle-ci ne voit pas l'étape, ne tourne que sur
+    # une fin de gabarit, et son filet s'arrête d'office sur un lead au Froid.
+    noter_deux_appels_sans_reponse(etape, user)
     # QJ-INVARIANT (fondateur 07/09/2026, « fix this relance once and for
     # all ») — aucun geste de relance ne laisse un lead ACTIF sans prochaine
     # étape : si ni la cadence, ni la clôture MRY11 (parking Froid + réveils),

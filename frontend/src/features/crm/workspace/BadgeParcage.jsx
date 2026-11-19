@@ -18,6 +18,7 @@ const RAISONS = {
   doublon: 'Doublon',
   test: 'Fiche de test',
   archive_odoo: 'Contact Odoo froid archivé',
+  liste_froide_sans_reponse: 'Liste froide : deux appels sans réponse',
 }
 
 // Une date seule, sans fuseau : jamais décalée d'un jour par un `new Date()`.
