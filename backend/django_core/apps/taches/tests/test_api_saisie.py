@@ -328,6 +328,17 @@ class CreationTests(BaseApi):
             'Le titre est vide une fois la date et le projet retirés.']}}})
         self.assertEqual((Tache.objects.count(), Projet.objects.count()), (0, 0))
 
+    def test_point_vide_ou_trop_long_n_empeche_pas_le_collage(self):
+        """Critique serveur n° 1 — « Chantier Benali : / poser les rails / - demain » : le point réduit à une date
+        est ignoré, un point de 270 caractères est coupé à 255 ; la tâche est créée."""
+        lignes = [{'index': 0, 'titre': 'Chantier Benali', 'checklist': ['poser les rails', '', 'x' * 270]}]
+        reponse = self._post('saisie-rapide/', {'lignes': lignes})
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        tache = Tache.objects.get(pk=reponse.json()['creees'][0]['id'])
+        self.assertEqual(
+            list(ElementChecklist.objects.filter(tache=tache).order_by('rang').values_list('libelle', flat=True)),
+            ['poser les rails', 'x' * 255])
+
     def test_un_titre_trop_long_est_refuse_sous_la_ligne(self):
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 4, 'titre': 'x' * 281}]})
         self.assertEqual(reponse.status_code, 400)

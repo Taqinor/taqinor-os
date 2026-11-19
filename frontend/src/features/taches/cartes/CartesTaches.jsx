@@ -301,6 +301,10 @@ function CarteEcho({ tache, proposition }) {
   )
 }
 
+// Critique serveur n° 7 — un refus au champ (5 rappels au plus, heure sans échéance…) est dit SOUS la carte (`Retour`),
+// le message du serveur, sans le toast du pont par-dessus.
+const SOUS_LA_CARTE = { erreurSousLeChamp: true }
+
 // A5 — une écriture du Copilote arrivée dans un tour où un texte tiers est entré : le relais n'a RIEN
 // écrit, la carte porte le corps de la requête (`proposition.corps`, contrat `ecriture_a_valider`) et le
 // doigt la valide. « Modifier » / « Laisser » : textes.md §5.5. Les autres écritures gardent le libellé
@@ -309,14 +313,15 @@ function CarteEcho({ tache, proposition }) {
 // envoie ce corps-là, le même objet ; un champ qu'elle ne sait pas dire se montre tel quel (clé : valeur).
 // eslint-disable-next-line react-refresh/only-export-components -- table parcourue par la garde du test (revue F3 n° 2)
 export const ECRITURES_A_VALIDER = {
-  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c) },
+  'taches.tache.modifier': { bouton: 'Modifier', fait: () => 'Modifiée', appel: (t, c) => client.modifierTache(t.id, c, SOUS_LA_CARTE) },
   'taches.tache.creer': { fait: () => 'Ajoutée', appel: (t, c) => client.creerTache(c, DEPUIS_LA_CARTE) },
   'taches.tache.terminer': { fait: () => 'Faite', appel: (t, c) => client.terminerTache(t.id, c) },
   'taches.tache.planifier': {
     fait: (c) => (c.jour_prevu ? `Prévue ${jourNomme(c.jour_prevu)}` : ''), appel: (t, c) => client.planifierTache(t.id, c),
   },
   'taches.rappel.poser': {
-    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''), appel: (t, c) => client.poserRappel(t.id, c),
+    fait: (c) => (c.jour ? `Rappel posé ${jourNomme(c.jour)} à ${heure(c.heure)}` : ''),
+    appel: (t, c) => client.poserRappel(t.id, c, SOUS_LA_CARTE),
   },
   'taches.projet.creer': { fait: () => '', appel: (t, c) => client.creerProjet(c, DEPUIS_LA_CARTE) },
   'taches.rythme.regler': { fait: () => '', appel: (t, c) => client.poserMode(c) },

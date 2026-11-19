@@ -83,13 +83,12 @@ def taches_de_la_periode(user, du, au, projet_id=None, J=None):
     """Tâches vivantes non abandonnées de `user` prévues ou à échéance dans [du, au] (parent nul,
     projet actif ou triées, une faite quel que soit l'état de son projet : le préfiltre de la journée,
     étendu à la période — revue F2 tour 2 #1). `J` : aujourd'hui — R2-031b (règle C-5, « ce que j'ai posé reste
-    posé ») : une tâche OUVERTE d'un projet EN PAUSE prévue CE jour-là reste dans l'agenda du jour ; la pause
-    continue de retirer celles des jours à venir."""
+    posé ») : la règle d'Aujourd'hui, `sel.gardee_malgre_la_pause` (projet mis en pause CE jour-là, tâche prévue
+    ce jour-là) ; la pause continue de retirer celles des jours à venir."""
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
     if J is not None:
-        rattachee |= Q(projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False, jour_prevu=J,
-                       quelque_jour=False, statut__in=sel.OUVERTS)
+        rattachee |= sel.gardee_malgre_la_pause(J)
     qs = (taches_de(user).filter(parent__isnull=True).filter(rattachee | Q(statut=StatutTache.FAIT))
           .exclude(statut=StatutTache.ANNULE)
           .filter(Q(jour_prevu__range=(du, au)) | Q(echeance__range=(du, au))))
@@ -190,9 +189,13 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         # R2-102 — « faites » = finies CE jour-là (règle C-12), le nombre de Mon rythme ; 0 pour un jour à venir
         entree['faites_nb'] = faites.get(jour, 0)
         # R4-01 — LA charge du jour (`selectors.journee.charge_du_jour`, celle d'Aujourd'hui et du Copilote) : ce qui
-        # reste à faire contre la capacité moins les rendez-vous de CE jour ; nulle pour un jour passé (ses faites)
+        # reste à faire contre la capacité moins les rendez-vous de CE jour ; nulle pour un jour passé (ses faites).
+        # Critique serveur n° 5 — chaque jour a SA capacité : 0 un jour non travaillé (calendrier de la société, jours
+        # dits du compte, congés : `travailles`, déjà lus) ; aujourd'hui garde celle d'Aujourd'hui (une source).
+        capacite_jour = minutes if jour == J or jour in travailles else 0
         entree['charge'] = None if jour < J else sel.charge_du_jour(
-            journee, jour, minutes, entree['rendez_vous_minutes'], items=items_du_jour if jour == J else items_periode)
+            journee, jour, capacite_jour, entree['rendez_vous_minutes'],
+            items=items_du_jour if jour == J else items_periode)
         jours.append(entree)
     # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
     volet = vue in (VUE_JOUR, VUE_SEMAINE)
@@ -201,7 +204,8 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         'a_placer': rendu.items(a_placer(journee, projet_id)),
         'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if volet else [],
         # La capacité d'un jour travaillé (« {h} pour {cap} ») : celle d'aujourd'hui, même calcul que la
-        # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240).
+        # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240) ; un jour
+        # non travaillé à venir a 0 (`jours[].charge.capacite_minutes`).
         'capacite': {'minutes': minutes, 'source': source},
     }
 

@@ -18,6 +18,8 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importO
    en attente de…, jalon, lié à, confidentielle, sous-tâches, abandonner, supprimer (dialogue nommant).
    Réponses = échantillons du contrat. */
 
+/** Critique serveur n° 7 — la fiche écrit ses champs en disant ses refus SOUS le champ (`erreurSousLeChamp`). */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const tache = exempleContrat('taches', 'tache')
 const ecrite = exempleContrat('taches', 'tache_ecrite')
 const AUJOURDHUI = '2026-11-17'
@@ -206,7 +208,7 @@ describe('TCH85 — fiche → Plus', () => {
     await user.clear(champ)
     await user.type(champ, '90')
     await user.tab()
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { estimation_minutes: 90, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { estimation_minutes: 90, lock_version: 4 }, SOUS_LE_CHAMP))
 
     api.modifierTache.mockRejectedValueOnce(erreurHttp({ estimation_minutes: ['Entre 5 et 960 minutes.'] }, 400))
     await user.clear(champ)
@@ -221,9 +223,9 @@ describe('TCH85 — fiche → Plus', () => {
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('switch', { name: 'Jalon' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { jalon: true, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { jalon: true, lock_version: 4 }, SOUS_LE_CHAMP))
     await user.click(screen.getByRole('switch', { name: 'Confidentielle' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { confidentiel: true, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { confidentiel: true, lock_version: 4 }, SOUS_LE_CHAMP))
   })
 
   it('répéter : « chaque mardi » (jour de la tâche) crée la règle', async () => {
@@ -235,7 +237,7 @@ describe('TCH85 — fiche → Plus', () => {
     expect(api.modifierTache).toHaveBeenCalledWith(20, expect.objectContaining({
       lock_version: 4,
       recurrence: expect.objectContaining({ frequence: 'hebdo', jours_semaine: '0100000', mode: 'calendrier', date_debut: '2026-11-17' }),
-    }))
+    }), SOUS_LE_CHAMP)
   })
 
   it('répéter, règle existante : libellé du serveur, Sauter cette fois · Arrêter de répéter', async () => {
@@ -271,8 +273,41 @@ describe('TCH85 — fiche → Plus', () => {
     await user.click(screen.getByRole('radio', { name: 'Une autre tâche' }))
     await user.type(screen.getByRole('searchbox', { name: 'Chercher une tâche' }), 'plan')
     await user.click(await screen.findByRole('button', { name: 'Obtenir le plan' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { bloquee_par_id: 43, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { bloquee_par_id: 43, lock_version: 4 }, SOUS_LE_CHAMP))
     expect(screen.queryByRole('button', { name: 'Devis Settat' })).toBeNull()
+  })
+
+  it('critique serveur n° 7 — une boucle de blocage refusée (409 au champ `bloquee_par_id`, rendu en 400 de champ par `tachesApi`) se dit sous « En attente de »', async () => {
+    const user = userEvent.setup()
+    const message = '« Obtenir le plan » attend déjà « Devis Settat ».'
+    const boucle = `Boucle : ${message}`
+    api.modifierTache.mockRejectedValueOnce(Object.assign(new Error('http'), {
+      response: { status: 400, statutServeur: 409, data: { bloquee_par_id: [boucle], detail: boucle, code: 'state_conflict' } },
+    }))
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [{ ...tache, id: 43, titre: 'Obtenir le plan' }] } })
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('radio', { name: 'Une autre tâche' }))
+    await user.type(screen.getByRole('searchbox', { name: 'Chercher une tâche' }), 'plan')
+    await user.click(await screen.findByRole('button', { name: 'Obtenir le plan' }))
+    const alerte = await screen.findByText(boucle)
+    expect(alerte).toHaveClass('erreur-champ')
+    // sous le choix « En attente de » (dans « Plus »), pas en bas de la fiche ; dit une fois
+    expect(alerte.closest('.fiche-plus')).not.toBeNull()
+    expect(screen.getAllByText(boucle)).toHaveLength(1)
+  })
+
+  it('critique serveur n° 7 — une règle refusée sans message de premier niveau (`{recurrence: {frequence: […]}}`) se dit sous « Répéter »', async () => {
+    const user = userEvent.setup()
+    api.modifierTache.mockRejectedValueOnce(Object.assign(new Error('http'), {
+      response: { status: 400, statutServeur: 409, data: { recurrence: { frequence: ['Requis.'] }, detail: 'Requis.', code: 'state_conflict' } },
+    }))
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('radio', { name: 'chaque mardi' }))
+    const alerte = await screen.findByText('Requis.')
+    expect(alerte).toHaveClass('erreur-champ')
+    expect(alerte.closest('.fiche-plus')).not.toBeNull()
   })
 
   it('sous-tâches : « Découper en sous-tâches » crée l\'enfant et relit la tâche', async () => {

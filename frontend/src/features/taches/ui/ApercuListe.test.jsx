@@ -157,6 +157,22 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
     expect(screen.getByRole('button', { name: 'Créer 3 tâches' })).toBeInTheDocument()
   })
 
+  it('critique n° 1 — un point réduit à une date (« - demain ») ne part pas ; un point trop long est coupé à 255', () => {
+    const long = 'x'.repeat(270)
+    const avecPoints = {
+      ...APERCU,
+      lignes: [
+        ligne(0, 0, 'Chantier Benali'), ligne(1, 0, 'poser les rails', { etape_de: 0 }),
+        ligne(2, 0, '', { etape_de: 0 }), ligne(3, 0, '   ', { etape_de: 0 }), ligne(4, 0, long, { etape_de: 0 }),
+      ],
+    }
+    const [tache] = lignesACreer(avecPoints, { cochees: {}, titres: {}, enTache: {}, sousTaches: {} }, { cid: 'c', priorites: {} })
+    expect(tache.checklist).toEqual(['poser les rails', 'x'.repeat(255)])
+    // un titre de point effacé à la main ne part pas non plus
+    const [efface] = lignesACreer(avecPoints, { cochees: {}, titres: { 1: '' }, enTache: {}, sousTaches: {} }, { cid: 'c', priorites: {} })
+    expect(efface.checklist).toEqual(['x'.repeat(255)])
+  })
+
   it('« Coller encore » rend la main ; rien d\'écrit avant « Créer » ; liste vide dite en une phrase', async () => {
     const user = userEvent.setup()
     const { onCreer, onCollerEncore } = monter()

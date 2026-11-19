@@ -9,6 +9,9 @@ vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
 
+const toasts = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('../../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastError: toasts.toastError }))
+
 const api = (await import('../../../api/axios')).default
 const { default: CartesTaches } = await import('./CartesTaches')
 
@@ -507,7 +510,8 @@ describe('A5 — écriture du Copilote sous un texte tiers : carte à valider (�
     expect(within(carte).getByText('Projet : Admin → Ventes')).toBeInTheDocument()
     expect(api.patch).not.toHaveBeenCalled() // rien n'est écrit avant le doigt
     await userEvent.click(within(carte).getByRole('button', { name: 'Modifier' }))
-    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/taches/taches/21/', donnees.proposition.corps))
+    // critique serveur n° 7 : un refus au champ se dit sous la carte (`erreurSousLeChamp`), sans toast par-dessus
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/taches/taches/21/', donnees.proposition.corps, { erreurSousLeChamp: true }))
     expect(await within(carte).findByText(/Modifiée/)).toBeInTheDocument()
     await userEvent.click(within(carte).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/6/annuler/', {}))
@@ -743,6 +747,34 @@ describe('ERR 5 — cadre de la carte et en-tête des créations validées au do
     monter('tache', contrat('ecriture_a_valider'))
     await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
     await waitFor(() => expect(api.patch).toHaveBeenCalledTimes(1))
-    expect(api.patch.mock.calls[0]).toHaveLength(2) // PATCH taches/{id}/ : une modification, pas une création
+    // PATCH taches/{id}/ : une modification, pas une création — aucun en-tête, le refus dit sous la carte (critique n° 7)
+    expect(api.patch.mock.calls[0][2]).toEqual({ erreurSousLeChamp: true })
+  })
+})
+
+/* Critique serveur n° 7 — un refus d'ÉTAT au champ (409 `state_conflict`) d'une écriture validée sur la carte se dit
+   SOUS la carte, le message français du serveur, une fois : jamais aussi en toast, jamais « state_conflict ». */
+describe('critique serveur n° 7 — refus 409 au champ dit sous la carte', () => {
+  const refus409 = (champ, message) => ({ status: 409, data: { [champ]: [message], detail: message, code: 'state_conflict' } })
+
+  it('rappel au plafond (5 rappels) : le message du serveur sous la carte, aucun toast', async () => {
+    api.post.mockResolvedValueOnce(refus409('rappel', '5 rappels au plus par tâche.'))
+    const base = contrat('ecriture_a_valider')
+    monter('tache', {
+      tache: base.tache,
+      proposition: { geste: 'ecrire', action_key: 'taches.rappel.poser', libelle: 'Poser un rappel', corps: { jour: '2026-11-19', heure: '08:30' } },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Poser un rappel' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('5 rappels au plus par tâche.')
+    expect(screen.getByRole('alert')).not.toHaveTextContent('state_conflict')
+    expect(toasts.toastError).not.toHaveBeenCalled()
+  })
+
+  it('modifier : une heure sans échéance refusée (409) se dit sous la carte, aucun toast', async () => {
+    api.patch.mockResolvedValueOnce(refus409('echeance_heure', 'Une heure demande une échéance.'))
+    monter('tache', contrat('ecriture_a_valider'))
+    await userEvent.click(screen.getByRole('button', { name: 'Modifier' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Une heure demande une échéance.')
+    expect(toasts.toastError).not.toHaveBeenCalled()
   })
 })

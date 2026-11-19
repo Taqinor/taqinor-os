@@ -29,12 +29,16 @@ const SEMAINE = ['2026-11-16', '2026-11-17', '2026-11-18', '2026-11-19', '2026-1
 /** R4-01 — la charge qu'`agenda/` sert à un jour à venir sans rien à faire (capacité 240, aucun rendez-vous). */
 const LIBRE = { taches: 0, restantes_minutes: 0, sans_duree: 0, capacite_minutes: 240, rendez_vous_minutes: 0, disponible_minutes: 240, deborde_minutes: 0 }
 
+/** Critique serveur n° 5 — un jour à venir NON travaillé a sa capacité : 0 (plus celle d'aujourd'hui). */
+const REPOS = { ...LIBRE, capacite_minutes: 0, disponible_minutes: 0 }
+const WEEK_END = ['2026-11-21', '2026-11-22']
+
 function septJours() {
   const servis = Object.fromEntries(agenda().jours.map((j) => [j.jour, j]))
   return SEMAINE.map((iso) => servis[iso] ?? {
-    jour: iso, ouvre: !['2026-11-21', '2026-11-22'].includes(iso), ferie: false,
+    jour: iso, ouvre: !WEEK_END.includes(iso), ferie: false,
     toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], faites_nb: 0, rendez_vous_minutes: 0,
-    charge: iso < AUJOURDHUI ? null : { ...LIBRE },
+    charge: iso < AUJOURDHUI ? null : { ...(WEEK_END.includes(iso) ? REPOS : LIBRE) },
   })
 }
 
@@ -137,6 +141,19 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(within(liste).getByRole('button', { name: 'mar. 17 · 1 tâche · 2 h sur 6 h' }).querySelector('.ag-charge')).not.toBeNull()
     const jeudi = within(liste).getByRole('button', { name: 'jeu. 19 · 1 tâche' })
     expect(jeudi.querySelector('.ag-charge')).toBeNull()
+  })
+
+  it('critique serveur n° 5 — un samedi chargé (capacité 0 servie, 1 h « de trop ») dit « non travaillé », jamais sa charge', () => {
+    const jours = septJours()
+    jours[5] = {
+      ...jours[5], sans_heure: [{ ...agenda().jours[0].sans_heure[0], id: 802, jour_prevu: '2026-11-21', estimation_minutes: 60 }],
+      charge: { ...REPOS, taches: 1, restantes_minutes: 60, deborde_minutes: 60 },
+    }
+    monter({ jours })
+    const samedi = within(screen.getByRole('list', { name: 'Jours de la semaine' })).getByRole('button', { name: /^sam\. 21/ })
+    expect(samedi).toHaveAccessibleName('sam. 21 · non travaillé')
+    expect(samedi).not.toHaveTextContent('de trop')
+    expect(samedi.querySelector('.ag-charge')).toBeNull()
   })
 
   it('Raccord F2 — chaque jour porte ses cartes (colonnes du bureau), décor muet : le nom du jour reste celui du bouton', () => {

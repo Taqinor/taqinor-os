@@ -261,7 +261,10 @@ CHAMPS_LIGNE = {
     'recurrence': RecurrenceLigneField(required=False, allow_null=True),
     'rappel': RappelLigneSerializer(required=False, allow_null=True),
     'notes': _facultatif(ChaineStricte, allow_blank=True),
-    'checklist': _facultatif(serializers.ListField, child=ChaineStricte(max_length=255)),
+    # Un point d'une ligne collée est un sous-point de la liste (280 comme la ligne) : vide (« - demain » une fois la
+    # date lue), il est ignoré, au-delà de 255 il est coupé (`services/creation._checklist`) — jamais tout refusé.
+    'checklist': _facultatif(serializers.ListField, child=ChaineStricte(
+        max_length=280, allow_blank=True, error_messages={'max_length': '280 caractères au plus.'})),
     'lien': LienLigneField(required=False, allow_null=True),
 }
 

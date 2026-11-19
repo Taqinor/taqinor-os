@@ -75,9 +75,12 @@ def lire_maintenant(agenda):
     return agenda
 
 
-#: Une adresse d'agenda telle que le serveur la lit (`https://` ou `webcal://` puis un hôte) ; qu'elle soit publique
-#: et joignable dépend du DNS, pas du corps : refus d'ÉTAT (409), comme `publicapi` (ERR46).
-MOTIF_URL_AGENDA = r'^(?:https|webcal)://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[^\s]*)?$'
+#: Une adresse d'agenda telle que le serveur la lit : `https://` ou `webcal://` (casse indifférente, ECMA n'a pas de
+#: drapeau en ligne), un `user@` facultatif, un hôte ASCII (`_` et punycode compris), un port, puis `/`, `?` ou `#` ;
+#: un espace collé autour est toléré (`normaliser_url` le retire). Qu'elle soit publique et joignable dépend du DNS,
+#: pas du corps : refus d'ÉTAT (409), comme `publicapi` (ERR46) — critique serveur n° 6.
+MOTIF_URL_AGENDA = (r"^\s*(?:[Hh][Tt][Tt][Pp][Ss]|[Ww][Ee][Bb][Cc][Aa][Ll])://"
+                    r"(?:[A-Za-z0-9._~%!$&'()*+,;=:-]+@)?[A-Za-z0-9._~%-]+(?::[0-9]{1,5})?(?:[/?#]\S*)?\s*$")
 #: `AgendaExterne.rang` est un `IntegerField` (au-delà : 500 « integer out of range »).
 RANG_MIN, RANG_MAX = -2 ** 31, 2 ** 31 - 1
 
@@ -92,7 +95,9 @@ class MotifUrlAgenda(MotifPublie):
         try:
             super().__call__(valeur)
         except DjangoValidationError:
-            if isinstance(valeur, str) and re.match(r'^[A-Za-z][A-Za-z0-9+.-]*://\S', valeur.strip()):
+            schema = re.match(r'^([A-Za-z][A-Za-z0-9+.-]*)://\S', valeur.strip()) if isinstance(valeur, str) else None
+            # « http:// », « ftp:// » : il faut https ; une adresse https / webcal mal formée n'est pas une adresse
+            if schema and schema.group(1).lower() not in (lecteur.SCHEMA, 'webcal'):
                 raise DjangoValidationError(MESSAGE_HTTPS, code='invalid')
             raise
 

@@ -1529,10 +1529,12 @@ ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/poi
 `mes_projets` en `vue=jour` et `vue=semaine` (le même volet « À placer », maquettes `agenda-jour` et `agenda-semaine` ; vide en `mois` et `a-venir`) ; `toute_la_journee` = les `obligations` du jour SANS la famille `touches` (la ligne « Suivi des relances » est une ligne de Prévu, textes.md §2 ; la bande ne porte que ce qui a une date sans heure) ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
 RENDEZ_VOUS du jour ; chaque jour porte aussi `rendez_vous_minutes` (R2-100 : la durée UNIE de ses rendez-vous horodatés,
 bornée aux heures de travail de la société, journée entière = 0 — invariant 35, `minutes_de_rendez_vous`), `charge`
-(R4-01 : forme CHARGE de ce jour, capacité d'aujourd'hui moins CES rendez-vous — « {n} tâches · {h} sur {cap} · {x} de
-trop » se lit là, jamais recompté ; nulle pour un jour passé) et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
+(R4-01 : forme CHARGE de ce jour, SA capacité — celle d'aujourd'hui un jour travaillé, 0 un jour non travaillé — moins
+CES rendez-vous — « {n} tâches · {h} sur {cap} · {x} de trop » se lit là, jamais recompté ; nulle pour un jour passé ;
+l'écran dit « non travaillé » / « Férié » d'un jour au repos, jamais sa charge) et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
 tâches finies CE jour local, prévues ce jour-là ou non, + activités ERP closes par lui ; 0 pour un jour à venir) ; une
-tâche ouverte d'un projet en pause prévue AUJOURD'HUI reste dans le jour (R2-031b, choix C-5). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
+tâche ouverte d'un projet mis en pause AUJOURD'HUI et prévue aujourd'hui reste dans le jour, comme dans `aujourdhui/`
+(R2-031b, choix C-5 : la même règle, `gardee_malgre_la_pause`). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon
 → 400 `{"nom":["Un projet « Chantier X » existe déjà."]}`. **PATCH** `{"nom":"Ventes","objectif":"","icone":"","couleur":"vert","priorite":3,"statut":"en_pause","date_debut":null,"echeance":"2026-12-15","domaine":"","confidentiel":false,"affichage":{"vue":"tableau","tri":"manuel","groupe":"section","montrer_faites":false},"risque":"","lock_version":4}`
@@ -1570,7 +1572,8 @@ administrateur."]}`), `erp_dans_journee`, `comprendre_mon_rythme`, `pauses_solli
 (vide → `null`). **`reglages-societe/`** (`IsAdminRole`) PATCH `{"balayage_actif":false}` → `reglages_societe.json`.
 **`jetons/`** POST `{"usage":"flux","libelle":""}` → 201 `jeton.json` (clair rendu une seule fois).
 **`agendas-externes/`** POST `{"url":"https://outlook.office365.com/owa/calendar/abc/reachcalendar.ics","libelle":"Microsoft 365"}`
-(une adresse `webcal://` est réécrite en `https://`) → 201 `agenda_externe.json` (lecture immédiate ; corps ≤ 2 Mo, délai 10 s, cache 15 minutes) ; PATCH `{"libelle":"Bureau","actif":false,"rang":2048}` ; POST
+(une adresse `webcal://` est réécrite en `https://` ; schéma en majuscules, `user@hôte`, `?…` ou `#…` juste après
+l'hôte, `_` et punycode dans l'hôte et un espace collé autour sont acceptés — critique serveur n° 6) → 201 `agenda_externe.json` (lecture immédiate ; corps ≤ 2 Mo, délai 10 s, cache 15 minutes) ; PATCH `{"libelle":"Bureau","actif":false,"rang":2048}` ; POST
 `…/{id}/rafraichir/` (ignore le cache). 400 `{"url":["Ce n'est pas une adresse : colle le lien de ton agenda."]}` (pas une adresse), `{"url":["L'adresse doit commencer par https."]}` (http, ftp…), `{"url":["Adresse injoignable : vérifie le lien."]}` (hôte introuvable ou interne), `{"url":["3 agendas au plus."]}`,
 `{"url":["Cet agenda est déjà ajouté."]}` ; l'hôte est validé par `apps/publicapi/validators.py` à l'ajout puis
 revérifié à chaque lecture (`donnees.md` inv. 33). **`tout-effacer/`** `{"confirmation":"EFFACER"}` (400
@@ -2151,7 +2154,9 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   capacite_minutes, rendez_vous_minutes, disponible_minutes, deborde_minutes}` rendue par la SEULE fonction
   `selectors.journee.charge_du_jour` (règle pure `moteur.classement.compte_dans_la_charge`, regles.md §4.9) : servie
   dans `progression.charge` (`aujourdhui/`, toute TACHE_ECRITE, `point/`), `priorites.charge` et chaque jour à venir
-  d'`agenda/` (`jours[].charge`, nulle pour un jour passé) — donc Planifier ma semaine. Aucun écran ne la recalcule ;
+  d'`agenda/` (`jours[].charge`, nulle pour un jour passé ; un jour à venir NON travaillé — calendrier de la société,
+  jours dits du compte, congés — a `capacite_minutes` 0, donc `disponible_minutes` 0 ; aujourd'hui garde la capacité
+  d'Aujourd'hui) — donc Planifier ma semaine. Aucun écran ne la recalcule ;
   `minutes_prevues` et `sans_estimation` ne sont plus servis dans la PROGRESSION (la nuit garde
   `PlanJour.minutes_prevues`, `selectors.journee.minutes_prevues_du_jour`). Aucune requête de plus.
 - **`conseil_donne` (R4-10, R3-022)** : `aujourdhui/` (et la journée de toute `journee_ecrite`) dit si une carte de

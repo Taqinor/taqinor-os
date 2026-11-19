@@ -390,16 +390,27 @@ def compte_dans_la_charge(item, jour, J):
     """R4-01 (M1, « un chiffre, une source ») — LA règle d'une tâche qui pèse sur la charge du jour `jour`
     (aujourd'hui = `J`) : à faire (`a_faire` : ni faite — une faite ne compte plus —, ni en attente de quelqu'un),
     dans le préfiltre (`dans_prefiltre` : ni sous-tâche, ni bloquée, rangée), ni « plus tard », ni « Ce soir » (hors
-    des heures de travail), ni « reportée 3 fois » (À revoir, elle n'est pas dans la liste du jour) ; prévue ce
-    jour-là, ou à échéance ce jour-là sans être prévue un jour d'avant encore à venir (elle pèse une fois).
-    Aujourd'hui, c'est exactement Essentiel et Prévu ouverts, hors Ce soir."""
+    des heures de travail), ni « reportée 3 fois » (À revoir, elle n'est pas dans la liste du jour) ; et `jour` est
+    SON jour de charge (`jour_de_charge` : elle pèse sur UN seul jour). Aujourd'hui, c'est exactement Essentiel et
+    Prévu ouverts, hors Ce soir."""
     if item.type != TACHE or item.statut != StatutTache.A_FAIRE or item.quelque_jour or not dans_prefiltre(item):
         return False
     if item.moment == Moment.SOIR or reportee_3_fois(item, J):
         return False
-    if item.jour_prevu == jour:
-        return True
-    return item.echeance == jour and not (item.jour_prevu is not None and J <= item.jour_prevu < jour)
+    return jour == jour_de_charge(item, J)
+
+
+def jour_de_charge(item, J):
+    """Le SEUL jour où une tâche pèse (critique serveur n° 4 : prévue APRÈS son échéance, elle pesait deux jours) :
+    aujourd'hui `J` si Aujourd'hui la garde (prévue ou à échéance `J`, `gardee_aujourdhui`) ; sinon le jour où elle est
+    prévue, s'il est encore à venir ; sinon son échéance à venir ; None sinon (rien à venir). La somme des charges des
+    jours d'une semaine est donc la somme des durées de ses tâches ouvertes, chacune une fois."""
+    if gardee_aujourdhui(item, J):
+        return J
+    for jour in (item.jour_prevu, item.echeance):
+        if jour is not None and jour > J:
+            return jour
+    return None
 
 
 def charge_du_jour(items, jour, J, capacite_minutes, rendez_vous_minutes):

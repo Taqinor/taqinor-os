@@ -147,9 +147,11 @@ def _filtrer_periode(qs, periode, aujourdhui):
     if periode == 'retard':
         return qs.filter(Q(jour_prevu__lt=aujourdhui) | Q(echeance__lt=aujourdhui))
     if periode == FAITES_SEMAINE:
-        # R3-003 : la liste ne porte que ce que `total` compte (`compte_du_jour` : une routine vaut 0)
+        # R3-003 : la liste ne porte que ce que `total` compte (`compte_du_jour` : une routine et une sous-tâche
+        # valent 0 — la sous-tâche est exclue ICI, même quand `cible=` garde les sous-tâches des autres listes)
         lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
-        return (qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
+        return (qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)),
+                          parent__isnull=True)
                 .exclude(ROUTINE))
     return qs
 

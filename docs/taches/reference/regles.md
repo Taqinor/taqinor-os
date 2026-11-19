@@ -537,13 +537,13 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 7. Candidate du tour des projets (§3.4) → `propose` (`pour_objectif` ou suite dépliée).
 8. Sinon absente (prévue plus tard — visible dans la suite dépliée et l'agenda —, Plus tard, À trier, bloquée…).
 
-**Projet en pause (choix C-5, « ce que j'ai posé reste posé », R2-031).** Agenda (`agenda/`,
-`views/agenda.py::taches_de_la_periode`, R2-031b) : une tâche OUVERTE (`a_faire`, `en_attente`, hors réserve) d'un projet
-`en_pause` prévue AUJOURD'HUI (`jour_prevu = J`) reste dans le jour J ; la pause continue de retirer ses tâches des autres
-jours, de Proposé, d'À trier et du tour des projets. Moitié journée (`aujourdhui/`, `selectors/journee.py::
-taches_de_la_journee`, même règle) : le préfiltre garde une tâche ouverte d'un projet mis en pause CE jour-là ou plus tard
-(`statut_depuis` ≥ début de J) quand elle est prévue J (`jour_prevu = J`) ; une pause antérieure à J la retire (une faite
-du jour reste quel que soit l'état de son projet). La Revue sert, par carte, `prevues_aujourdhui_nb` : le nombre de ces
+**Projet en pause (choix C-5, « ce que j'ai posé reste posé », R2-031).** UNE règle,
+`selectors/journee.py::gardee_malgre_la_pause`, lue par Aujourd'hui (`aujourdhui/`, `taches_de_la_journee`) ET par
+l'Agenda (`agenda/`, `views/agenda.py::taches_de_la_periode`, R2-031b) : une tâche OUVERTE (`a_faire`, `en_attente`, hors
+réserve) d'un projet `en_pause` reste dans le jour J quand elle est prévue J (`jour_prevu = J`) ET que son projet a été mis
+en pause CE jour-là ou plus tard (`statut_depuis` ≥ début de J) ; une pause antérieure à J la retire des deux écrans (une
+faite du jour reste quel que soit l'état de son projet). La pause retire toujours ses tâches des autres jours, de Proposé,
+d'À trier et du tour des projets. La Revue sert, par carte, `prevues_aujourdhui_nb` : le nombre de ces
 tâches qu'une pause posée maintenant laisserait dans la journée.
 
 Activité ERP (`activites_ouvertes_pour`, si `erp_dans_journee`) : due J → `journee` ; due < J → `a_decider` motif
@@ -628,8 +628,11 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **La charge d'un jour (R4-01, M1 « un chiffre, une source »)** : UNE fonction, `selectors.journee.charge_du_jour`
   (règle pure `moteur.classement.compte_dans_la_charge`), dit pour un jour D (aujourd'hui = J) : les tâches qui pèsent
   sur D — à faire (ni faites : une faite ne compte plus ; ni en attente de quelqu'un), dans le préfiltre, ni plus tard,
-  ni Ce soir (hors des heures de travail), ni reportées 3 fois (À revoir), prévues D, ou à échéance D sans être prévues
-  un jour d'avant encore à venir (aujourd'hui : exactement Essentiel et Prévu ouverts, hors Ce soir) ;
+  ni Ce soir (hors des heures de travail), ni reportées 3 fois (À revoir), dont D est LE jour de charge
+  (`classement.jour_de_charge` : une tâche pèse sur UN seul jour — aujourd'hui si Aujourd'hui la garde, prévue ou à
+  échéance J ; sinon son jour prévu encore à venir ; sinon son échéance à venir ; une tâche prévue APRÈS son échéance
+  pèse donc sur son jour prévu, jamais sur les deux ; la somme des charges d'une semaine = la somme des durées de ses
+  tâches ouvertes) (aujourd'hui : exactement Essentiel et Prévu ouverts, hors Ce soir) ;
   `restantes_minutes` = Σ de leurs durées DITES ; `sans_duree` = celles sans durée (comptées 0, dites « N sans durée »,
   jamais une durée inventée) ; `disponible_minutes` = capacité − rendez-vous de D (invariant 35) ; `deborde_minutes` =
   max(0, restantes − disponible). Servie par `progression.charge` (Aujourd'hui, toute écriture, « Où j'en suis ? »),

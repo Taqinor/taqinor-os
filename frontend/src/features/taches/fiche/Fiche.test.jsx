@@ -22,6 +22,8 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importO
 /* TCH84 — la fiche d'une tâche : champs, enregistrement par champ, erreur sous le champ,
    conflit entre deux appareils SANS perte, rappel ouvert. Réponses = échantillons du contrat. */
 
+/** Critique serveur n° 7 — la fiche écrit ses champs en disant ses refus SOUS le champ (`erreurSousLeChamp`). */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const tache = exempleContrat('taches', 'tache')
 const ecrite = exempleContrat('taches', 'tache_ecrite')
 const recurrente = exempleContrat('taches', 'tache_recurrente_ecrite')
@@ -85,7 +87,7 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await user.click(within(puces).getByRole('button', { name: 'Priorité : moyenne' }))
     expect(screen.getByRole('radio', { name: 'Moyenne' })).toHaveAttribute('aria-checked', 'true')
     await user.click(screen.getByRole('radio', { name: 'Haute' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { priorite: 3, lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { priorite: 3, lock_version: 4 }, SOUS_LE_CHAMP))
   })
 
   it('passe visuelle n° 27 — sans échéance, sans projet, sans priorité : puces vides, aucun champ date nu', async () => {
@@ -427,7 +429,7 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(api.modifierTache).not.toHaveBeenCalled()
     fireEvent.blur(champ)
     await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
-    expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 })
+    expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 }, SOUS_LE_CHAMP)
   })
 
   it('R3-060 — « 16:30 » tapé puis Échap : l\'heure part au serveur, la fiche se ferme ; rien n\'est perdu en silence', async () => {
@@ -484,9 +486,9 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(within(raccourcis).getAllByRole('radio').map((r) => r.querySelector('b').textContent))
       .toEqual(['Demain', 'Vendredi', 'Fin de mois', 'Aucune'])
     await user.click(within(raccourcis).getByRole('radio', { name: /^Vendredi/ }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-20', lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-20', lock_version: 4 }, SOUS_LE_CHAMP))
     await user.click(within(raccourcis).getByRole('radio', { name: /^Fin de mois/ }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { echeance: '2026-11-30', lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { echeance: '2026-11-30', lock_version: 4 }, SOUS_LE_CHAMP))
     api.modifierTache.mockRejectedValueOnce(erreurHttp({ echeance: ['Date has wrong format. Use one of these formats instead: YYYY-MM-DD.'] }, 400))
     await user.click(within(raccourcis).getByRole('radio', { name: /^Demain/ }))
     expect(await screen.findByText('Date incomplète.')).toBeInTheDocument()

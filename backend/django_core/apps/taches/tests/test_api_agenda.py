@@ -185,6 +185,50 @@ class AgendaTests(TestCase):
         self.assertEqual([i['id'] for i in self.le_jour(rendu, self.T)['blocs']], [posee.pk])
         self.assertEqual(self.le_jour(rendu, self.jour(2))['sans_heure'], [])
 
+    def test_pause_une_seule_regle_pour_aujourdhui_et_l_agenda(self):
+        """Critique serveur n° 2 (C-5) — Aujourd'hui et l'Agenda lisent LA même règle
+        (`selectors.journee.gardee_malgre_la_pause`) : projet en pause depuis 14 jours, tâche prévue aujourd'hui →
+        absente des deux ; projet mis en pause aujourd'hui → présente dans les deux."""
+        from apps.taches.choix import StatutProjet
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        maintenant_ = timezone.now()
+        ancienne = fabriques.projet(self.u, nom='Ancienne pause', statut=StatutProjet.EN_PAUSE,
+                                    statut_depuis=maintenant_ - datetime.timedelta(days=14))
+        minuit = timezone.make_aware(datetime.datetime.combine(self.T, datetime.time.min))
+        du_jour = fabriques.projet(self.u, nom='Pause du jour', statut=StatutProjet.EN_PAUSE, statut_depuis=minuit)
+        oubliee = self.tache(projet=ancienne, jour_prevu=self.T)
+        gardee = self.tache(projet=du_jour, jour_prevu=self.T)
+        journee = set(sel.taches_de_la_journee(self.u, self.T).values_list('pk', flat=True))
+        periode = set(agenda.taches_de_la_periode(self.u, self.T, self.jour(6), J=self.T).values_list('pk', flat=True))
+        self.assertEqual(({oubliee.pk, gardee.pk} & journee, {oubliee.pk, gardee.pk} & periode),
+                         ({gardee.pk}, {gardee.pk}))
+        self.assertEqual([i['id'] for i in self.le_jour(self.periode(), self.T)['sans_heure']], [gardee.pk])
+
+    def test_un_jour_non_travaille_n_a_aucune_capacite(self):
+        """Critique serveur n° 5 — chaque jour a SA capacité : celle d'un jour travaillé (la capacité du compte, 240
+        par défaut) moins ses rendez-vous ; 0 un jour non travaillé (calendrier de la société, jours dits du compte,
+        congés : les `travailles` de la période, déjà lus — aucune requête de plus). Avant : la capacité d'aujourd'hui
+        pour tous les jours, un samedi chargé de 60 min ne débordait jamais. Aujourd'hui garde la capacité d'Aujourd'hui
+        (une source, R4-01)."""
+        from unittest import mock
+
+        from apps.taches.views import agenda
+        self.tache(jour_prevu=self.jour(1), estimation_minutes=60)
+        self.tache(jour_prevu=self.jour(2), estimation_minutes=60)
+        with mock.patch.object(agenda, '_travailles_de', return_value={self.T, self.jour(1)}):
+            rendu = self.periode()
+        travaille, repos = self.le_jour(rendu, self.jour(1)), self.le_jour(rendu, self.jour(2))
+        self.assertEqual((travaille['ouvre'], repos['ouvre']), (True, False))
+        cles = ('restantes_minutes', 'capacite_minutes', 'disponible_minutes', 'deborde_minutes')
+        capacite = rendu['capacite']['minutes']
+        self.assertEqual({cle: travaille['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': capacite, 'disponible_minutes': capacite,
+                          'deborde_minutes': max(0, 60 - capacite)})
+        self.assertEqual({cle: repos['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': 0, 'disponible_minutes': 0,
+                          'deborde_minutes': 60})
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""

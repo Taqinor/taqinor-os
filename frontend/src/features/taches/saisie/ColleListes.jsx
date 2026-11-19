@@ -18,6 +18,8 @@ import ApercuListe, { groupesDuCollage, projetDuGroupe } from '../ui/ApercuListe
 
 const MODIFS_VIDES = { cochees: {}, titres: {}, enTache: {}, sousTaches: {}, projets: {} }
 const SANS_PROJETS = []
+/** Longueur d'un point de check-list (`ElementChecklist.libelle`, 255). */
+const MAX_POINT = 255
 
 // La ligne à créer (`construireLigne`) vit avec la file hors ligne, qui la refait au rejeu d'une phrase (R2-008a) ;
 // elle est relue d'ici par FeuilleSaisie.
@@ -99,7 +101,9 @@ export function lignesACreer(apercu, modifs, { cid, priorites, projets = [] }) {
     if (modifs.enTache[ligne.collage] || heriteDuTitre) { delete base.nouveau_projet; delete base.projet_id }
     const points = lignes.filter((l) => l.etape_de === ligne.index)
     if (points.length > 0 && !modifs.sousTaches[ligne.index]) {
-      base.checklist = points.map((p) => modifs.titres[p.index] ?? p.titre)
+      // un point réduit à une date (« - demain ») ou effacé ne part pas ; aucun point ne dépasse 255 caractères
+      const libelles = points.map((p) => (modifs.titres[p.index] ?? p.titre ?? '').trim()).filter(Boolean)
+      if (libelles.length > 0) base.checklist = libelles.map((t) => t.slice(0, MAX_POINT))
     }
     sorties.push(base)
   })
