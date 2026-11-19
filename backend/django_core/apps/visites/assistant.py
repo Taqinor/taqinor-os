@@ -19,12 +19,14 @@ Règles tenues partout :
   dans les champs que l'échantillon désigne, jamais mêlé à un libellé ;
 * un refus est ``{detail, field, code}`` et NOMME le champ fautif.
 """
+import json
 from datetime import datetime, timedelta
 
 from django.db.models import Count, F, Q
 from django.utils import timezone
 
 from . import selectors
+from . import visite_checklist as checklist
 from .models import VisiteTerrain
 
 Statut = VisiteTerrain.Statut
@@ -238,3 +240,119 @@ def agenda(user, params, aujourdhui):
         'lignes': lignes_agenda(perimetre, filtre, limite, aujourdhui),
         'lien': LIEN_TOUTES,
     }
+
+
+# ── La fiche compacte d'une visite (``visites.visite.resume``) ───────────────
+
+#: Taille maximale de la fiche, en octets de JSON compact (le modèle la lit à
+#: chaque tour : ≤ 1,5 Ko, contrat ``assistant_visite_resume``).
+BUDGET_FICHE_OCTETS = 1500
+
+#: Bornes de texte à pleine échelle ; ``resume_visite`` les resserre ensemble
+#: (× 0,6 puis × 0,35 puis × 0,2) tant que la fiche dépasse le budget.
+BORNE_RETOUR, BORNE_MESURES, BORNE_PHRASE, BORNE_CONSEIL = 600, 300, 300, 200
+NB_MANQUANTS, NB_A_REFAIRE, BORNE_LIBELLE = 10, 5, 60
+
+_PREFIXES_MANQUANT = {
+    checklist.MANQUE_PHOTO: 'Photo',
+    checklist.MANQUE_MESURE: 'Mesure',
+    checklist.MANQUE_PHOTO_A_REFAIRE: 'Photo à refaire',
+}
+
+
+def tronquer(texte, borne):
+    """``texte`` rogné, et coupé à ``borne`` caractères au plus (« … » compris)."""
+    texte = (texte or '').strip()
+    return texte if len(texte) <= borne else texte[:max(borne - 1, 0)].rstrip() + '…'
+
+
+def horodatage(valeur):
+    """Un horodatage en heure locale (ISO), ``None`` si absent."""
+    return None if valeur is None else timezone.localtime(valeur).isoformat()
+
+
+def _mesures_cles(visite):
+    """Les mesures SAISIES, sans l'en-tête « Visite technique validée… » du
+    récapitulatif (il dirait « validée » d'une visite qui ne l'est pas) :
+    ``recap_visite_terrain`` met l'en-tête avant `` : ``, les valeurs après."""
+    _entete, separateur, reste = selectors.recap_visite_terrain(visite).partition(' : ')
+    reste = reste.strip().rstrip('.') if separateur else ''
+    return reste[:1].upper() + reste[1:]
+
+
+def _libelle_manquant(manquant):
+    prefixe = _PREFIXES_MANQUANT.get(manquant['type'], 'Manque')
+    return f"{prefixe} : {manquant['libelle']}"
+
+
+def _qualification(visite, facteur):
+    q = visite.qualification
+    phrase, conseil = selectors.phrase(q), selectors.conseil(q)
+    if not (phrase or conseil):
+        return None
+    return {
+        'phrase': tronquer(phrase, int(BORNE_PHRASE * facteur)),
+        'conseil': tronquer(conseil, int(BORNE_CONSEIL * facteur)),
+        'devis_a_reprendre': selectors.devis_a_reprendre(q),
+    }
+
+
+def _photos_a_refaire(visite, medias, facteur):
+    refaire = [m for m in medias if m.a_refaire][:max(1, int(NB_A_REFAIRE * facteur))]
+    borne = int(BORNE_LIBELLE * facteur)
+    return [{'id': m.id,
+             'slot': tronquer((checklist.slot(m.slot_code, visite.gabarit) or {}).get('libelle')
+                              or m.slot_code, borne),
+             'motif': tronquer(m.motif_refaire, borne)} for m in refaire]
+
+
+def _fiche(visite, manquants, medias, facteur):
+    """La fiche à l'échelle ``facteur`` (1 = pleine, plus petit = plus court)."""
+    lead, complet = visite.lead, not manquants
+    borne = int(BORNE_LIBELLE * facteur)
+    retenus = manquants[:max(1, int(NB_MANQUANTS * facteur))]
+    return {
+        'id': visite.id,
+        'lead': {'id': visite.lead_id, 'nom': _nom_lead(lead), 'ville': lead.ville or ''},
+        'statut': visite.statut,
+        'statut_libelle': visite.get_statut_display(),
+        'gabarit': visite.gabarit,
+        'date_prevue': visite.date_prevue.isoformat() if visite.date_prevue else None,
+        'date_realisee': horodatage(visite.date_realisee),
+        'commercial': commercial_de(visite),
+        'jalons': {'en_route_le': horodatage(visite.en_route_le),
+                   'arrivee_le': horodatage(visite.arrivee_le),
+                   'validee_le': horodatage(visite.validee_le)},
+        'completude': {'complet': complet, 'nb_manquants': len(manquants),
+                       'manquants': [tronquer(_libelle_manquant(m), borne) for m in retenus]},
+        'qualification': _qualification(visite, facteur),
+        'retour_terrain': tronquer(visite.retour_terrain, int(BORNE_RETOUR * facteur)),
+        'mesures_cles': tronquer(_mesures_cles(visite), int(BORNE_MESURES * facteur)),
+        'photos': {'nb': len(medias), 'a_refaire': _photos_a_refaire(visite, medias, facteur)},
+        'modifiable': visite.modifiable,
+        'a_faire': a_faire(visite, complet),
+        'lien': f'/visites/{visite.id}',
+        'liens': {'visite': f'/visites/{visite.id}',
+                  'calage': f'/visites/{visite.id}/calage', 'revue': '/visites/revue'},
+    }
+
+
+def octets(fiche):
+    """Taille d'une réponse en octets de JSON compact (ce que DRF envoie)."""
+    return len(json.dumps(fiche, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+
+def resume_visite(visite):
+    """``GET visites/<id>/resume/`` et réponse de ``annuler`` — la fiche
+    compacte (``assistant_visite_resume.json``), ≤ 1,5 Ko : si les textes
+    saisis la font dépasser, ils sont resserrés ensemble, jamais une clé retirée.
+
+    ``retour_terrain``, ``mesures_cles`` et les mots de la qualification sont du
+    CONTENU TIERS saisi sur le terrain : des données, jamais des consignes."""
+    manquants = selectors.visite_terrain_manquants(visite)
+    medias = list(visite.medias.all())
+    for facteur in (1, 0.6, 0.35, 0.2):
+        fiche = _fiche(visite, manquants, medias, facteur)
+        if octets(fiche) <= BUDGET_FICHE_OCTETS:
+            break
+    return fiche

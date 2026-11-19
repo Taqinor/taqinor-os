@@ -141,6 +141,29 @@ _AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
     'lien': serializers.CharField(),
 })
 
+#: Copilote vague 2 (VIS4) — la fiche compacte (``assistant_visite_resume.json``),
+#: aussi la réponse de ``annuler`` (``visite_annuler.json``).
+_RESUME_ASSISTANT = inline_serializer('VisiteResumeAssistant', {
+    'id': serializers.IntegerField(),
+    'lead': serializers.DictField(),
+    'statut': serializers.CharField(),
+    'statut_libelle': serializers.CharField(),
+    'gabarit': serializers.CharField(),
+    'date_prevue': serializers.CharField(allow_null=True),
+    'date_realisee': serializers.CharField(allow_null=True),
+    'commercial': serializers.JSONField(allow_null=True),
+    'jalons': serializers.DictField(),
+    'completude': serializers.DictField(),
+    'qualification': serializers.JSONField(allow_null=True),
+    'retour_terrain': serializers.CharField(allow_blank=True),
+    'mesures_cles': serializers.CharField(allow_blank=True),
+    'photos': serializers.DictField(),
+    'modifiable': serializers.BooleanField(),
+    'a_faire': serializers.CharField(),
+    'lien': serializers.CharField(),
+    'liens': serializers.DictField(),
+})
+
 
 def _schema_qualification():
     """ENF11 — le corps RÉEL de ``qualification`` (vocabulaire fermé de
@@ -912,6 +935,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
                 request.user, request.query_params, timezone.localdate()))
         except assistant.ErreurAssistant as erreur:
             return Response(erreur.corps(), status=erreur.statut)
+
+    @extend_schema(responses=_RESUME_ASSISTANT)
+    @action(detail=True, methods=['get'], url_path='resume')
+    def resume(self, request, pk=None):
+        """VIS4 — la fiche COMPACTE d'une visite (carte ``fiche_visite``, ≤ 1,5 Ko) :
+        jalons, complétude, qualification, retour terrain, photos à refaire.
+        Hors portée ou autre société : 404, comme le détail."""
+        return Response(assistant.resume_visite(self.get_object()))
 
 
 def _coordonnee(brute, limite):
