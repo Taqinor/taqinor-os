@@ -202,6 +202,8 @@ class PropositionJourneeVue(APIView):
 # les montre), ni « À trier » — d'où des plafonds plus bas que ceux d'`aujourdhui/` (api.md §10).
 
 RAISONS = frozenset(RaisonPropose.values)
+#: `geste_propose` de « Aide-moi à prioriser » quand la journée déborde (R3-006).
+GESTE_ALLEGER = 'alleger'
 
 
 def _journee_lue(user, jour):
@@ -223,20 +225,33 @@ def priorites(user, jour, *, assistant=False):
     pour À revoir, son motif ; `garder_n` = N de Proposé, `plus_tard` = geste « Plus tard dans la
     semaine »."""
     reglages, journee = _journee_lue(user, jour)
+    preferences = sel.preferences_de(user)
     compte, _detail = sel.compte_faites(user, jour)
-    objectif = services.objectif_du_jour(reglages, jour, sel.preferences_de(user), journee.plan)
+    objectif = services.objectif_du_jour(reglages, jour, preferences, journee.plan)
     taches = [item for item in journee.items.values() if item.type == services.TACHE]
     classees = classement.classer_priorites(
         taches, jour, journee.travailles, objectif['nb'], compte, _taches_gardees_ouvertes(journee),
         plan=journee.plan_pur)
-    cles = [(services.TACHE, item.id) for item, _code in classees.lignes]
-    raisons = {(services.TACHE, item.id): code for item, code in classees.lignes if code in RAISONS}
+    # R3-006 : le temps de la journée, celui de la PROGRESSION (capacité − rendez-vous) — une requête de plus
+    # (l'historique de la capacité ; les agendas externes sont lus du cache, 0 requête à chaud)
+    capacite, _source = sel.capacite_du_jour(user, jour, reglages, preferences, journee.travailles)
+    rendez_vous, _agendas = sel.rendez_vous_pour(user, jour, jour)
+    disponible = classement.temps_disponible(capacite, sel.minutes_de_rendez_vous(user, jour, rendez_vous))
+    restantes, deborde = sel.debordement(journee, disponible)
+    if deborde > 0:
+        # la journée déborde : on n'en propose pas plus — les GARDÉES ouvertes, dans l'ordre de la journée, à alléger
+        cles, raisons = [cle for cle in sel.gardes_ouverts(journee) if cle[0] == services.TACHE], {}
+    else:
+        cles = [(services.TACHE, item.id) for item, _code in classees.lignes]
+        raisons = {(services.TACHE, item.id): code for item, code in classees.lignes if code in RAISONS}
     (cles,), tronque = formes_journee.plafonner([cles])
     rendu = formes_journee.Rendu(journee, assistant=assistant)
     lignes = [{'rang': rang, 'item': forme} for rang, forme in enumerate(rendu.items(cles, raisons), start=1)]
     return {
         'jour': jour.isoformat(), 'objectif': dict(objectif), 'garder_n': classees.garder_n,
         'plus_tard': classees.plus_tard.isoformat() if classees.plus_tard else None,
+        'faites': compte, 'minutes_restantes': restantes, 'deborde_minutes': deborde,
+        'geste_propose': GESTE_ALLEGER if deborde > 0 else None,
         'lignes': lignes, 'tronque': tronque,
     }
 
@@ -295,11 +310,13 @@ def point(user, heure, *, assistant=False):
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer,
                                  agendas=ctx.agendas)
     prochaine = _prochaine(journee, heure)
+    restantes, deborde = sel.debordement(journee, classement.temps_disponible(ctx.capacite[0], ctx.rendez_vous_minutes))
     return {
         'jour': ctx.jour.isoformat(),
         'maintenant': heure.replace(microsecond=0).isoformat(),
         'objectif': dict(ctx.objectif),
         'progression': services.progression(ctx),
+        'faites': ctx.compte, 'minutes_restantes': restantes, 'deborde_minutes': deborde,
         'essentiel_restant': rendu.items(_ouvertes(journee, SectionJournee.ESSENTIEL)),
         'prochaine': rendu.items([prochaine])[0] if prochaine is not None else None,
         'restes_nb': len(sel.gardes_ouverts(journee)),

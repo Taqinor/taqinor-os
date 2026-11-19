@@ -341,6 +341,8 @@ _CONFIRMATIONS = {
     'garder_ce_rythme.provisoire': 'Garder ce rythme : environ {R} tâche{R?|s} par jour ({bas} à {haut}). '
                                    "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. "
                                    'À confirmer sur {fenetre_derive} jours travaillés.',
+    # R3-004 (choix C-15) : moins de 5 jours évalués, le rythme ne se mesure pas encore — dit franchement
+    'garder_ce_rythme.palier': "Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant.",
     'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées '
                      'restent affichés.',
     'comprendre_eteint': "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme.",
@@ -380,16 +382,10 @@ def _ligne_bilan(v):
     return ' · '.join(parties)
 
 
-def _gardees(v):
-    """« {pt} des {pl} gardées » ; vide quand rien n'était gardé."""
-    if not v.get('pl'):
-        return ''
-    return _rendre('{pt} des {pl} gardée{pl?|s}', v)
-
-
 def _bilan(cle, v, var, nom_pour):
-    lignes = (_ligne_bilan(v), _gardees(v))
-    return '\n'.join(ligne for ligne in lignes if ligne)
+    """Une seule ligne (R3-001, choix C-14) : « x des y gardées », second chiffre de la même journée, n'est plus
+    jamais rendu — ni au bilan ni à la revue."""
+    return _ligne_bilan(v)
 
 
 # --- Constats (textes.md §4.4) --------------------------------------------------------
@@ -449,17 +445,11 @@ def _debut_revue(v):
 
 
 def _chiffres_revue(v):
-    parties = []
-    if v.get('mode') != 'libre' and v.get('oa') is not None:
-        parties.append(_rendre('Objectif atteint {oa} jour{oa?|s} sur {jours}', v))
-    if v.get('je'):
-        parties.append(_rendre('essentiel {e} sur {je}', v))
-    gardees = _gardees(v)
-    if gardees:
-        parties.append(gardees)
-    if not parties:
+    """« Essentiel {e} sur {je}. » ; rien sans essentiel choisi. R3-003 (choix C-16) : « Objectif atteint X jours
+    sur N » quitte la tête (illisible un jeudi, « 0 sur 1 ») — Mon rythme garde « 5 faites ou plus X jours sur 10 »."""
+    if not v.get('je'):
         return ''
-    return ' · '.join(parties) + '.'
+    return _rendre('Essentiel {e} sur {je}.', v)
 
 
 def _revue(cle, v, var, nom_pour):

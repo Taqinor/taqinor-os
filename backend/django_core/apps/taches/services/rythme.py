@@ -242,7 +242,11 @@ def _cle_confirmation(etat, neuf, objectif, sens):
     if neuf.mode == etat.mode:
         return None
     if neuf.mode == ModeRythme.TENIR:
-        return 'garder_ce_rythme' if neuf.tenir_fixee_le else 'garder_ce_rythme.provisoire'
+        if neuf.tenir_fixee_le:
+            return 'garder_ce_rythme'
+        # R3-004 (C-15) : provisoire sur le pas réel dès 5 jours évalués ; en dessous, le palier, dit franchement
+        mesure = moteur.reference_provisoire(neuf.comptes_recents) is not None
+        return 'garder_ce_rythme.provisoire' if mesure else 'garder_ce_rythme.palier'
     return 'en_faire_plus' if neuf.mode == ModeRythme.POUSSER else 'sans_objectif'
 
 

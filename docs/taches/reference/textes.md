@@ -201,7 +201,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Puce de routine | « routine » |
 | Lien ERP | « Lié à : {libellé} » ; `archive` « Élément archivé » · `introuvable` « Élément introuvable » · `inaccessible` « Hors de ta portée » · `efface` « Lead effacé » |
 | Repère Copilote | « Ajoutée par le Copilote » |
-| Avertissements | `prevue_apres_echeance` « Prévue après l'échéance. » · `jour_non_travaille` « {jour} n'est pas un jour travaillé. » · `hors_fenetre` « Hors des heures de travail : il sonnera quand même à {HH:MM}. » |
+| Avertissements | `prevue_apres_echeance` « Prévue après l'échéance. » · `jour_non_travaille` « {jour} n'est pas un jour travaillé. » · `hors_fenetre` « Hors des heures de travail : il sonnera quand même à {HH:MM}. » · `echeance_aujourdhui` « L'échéance reste aujourd'hui. » (R3-002) |
 
 ### 2.5 À trier
 
@@ -225,7 +225,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
 | Bureau ≥ 1024 px (R2-067) | maître-détail : la liste des projets à gauche (en-tête « Projets » + ⋯ : Trier par priorité · Archive · Modèles ; « Nouveau projet » ; « En pause ({n}) »), le projet ouvert surligné, le projet choisi à droite ; `/taches/projets` ouvre le premier projet actif ; `j`/`k` ou ↓/↑ (le focus dans la colonne) changent de projet ; la puce de priorité n'est pas dans la colonne (elle se lit et se change dans le projet) ; pas de « ‹ Projets » (la liste est à l'écran) ; en dessous de 1024 px et sur iPhone : la liste, puis le projet avec « ‹ Projets » au-dessus du titre (R2-093) |
 | Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
-| Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
+| Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (projets nés il y a 7 jours ou plus ; aucun : phrase omise, R3-010) |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
 | Vide | « Aucun projet » · **Coller mes listes** — seulement sur RÉPONSE du serveur (R2-070) : lecture échouée = l'erreur dite ; hors ligne, la dernière liste lue du compte (cache `taches:projets:<user>:…`, vidé à la déconnexion) ; la page ne porte pas la date du jour en sous-titre (R2-085) |
@@ -260,7 +260,7 @@ Santé (`sante[].phrase`) :
 | `echeance_menacee` (a) | « Échéance dépassée le {jj/mm}. » |
 | `echeance_menacee` (b) | « {k} tâches sont prévues après l'échéance. » |
 | `echeance_menacee` (c) | « L'étape « {etape} » finit après l'échéance. » |
-| `echeance_menacee` (d) | « À ce rythme, pas prêt pour le {jour} : il faudrait {besoin} jours travaillés, il en reste {reste} ({f28} faites en {j28} jours travaillés ces 4 dernières semaines). » — `{jour}` = l'échéance du projet au format §0 (« jeu. 26 », « mar. 8 déc. ») ; « pour aujourd'hui », « pour demain » sans « le » (R2-034) ; `donnees.echeance` (ISO) servie pour la santé courte |
+| `echeance_menacee` (d) | « À ce rythme, pas prêt pour le {jour} : il manque environ {manque} jour(s). » ({manque} = {besoin} − {reste}, R3-011 : un seul chiffre, déjà soustrait ; besoin, reste, F28, J28 restent dans `donnees`) — `{jour}` = l'échéance du projet au format §0 (« jeu. 26 », « mar. 8 déc. ») ; « pour aujourd'hui », « pour demain » sans « le » (R2-034) ; `donnees.echeance` (ISO) servie pour la santé courte |
 | `a_l_arret` | « Rien de fait depuis {jours} jours travaillés. » |
 | `neglige` | « « {projet} » ({priorite}) n'a rien vu avancer en 14 jours ; « {autre} » ({priorite_autre}) : {d} faite(s). » |
 | `sans_prochaine_action` | « Rien à faire maintenant : tout est en réserve. » · « Tout attend quelqu'un ou une autre tâche. » · « Rien à faire maintenant : ajoute la prochaine tâche. » |
@@ -309,7 +309,7 @@ ligne d'une tâche prévue « prévue {jour} », « ce soir ».
 |---|---|
 | Titre | Bilan du soir ; le lendemain matin : « Bilan d'hier » |
 | Première ligne | « {faites} sur {objectif} » (§4.3) |
-| Seconde ligne | « {pt} des {pl} gardées » ; détail « {c} micro-tâches comptées sur {t} » · « {n} sous-tâches faites (non comptées) » · « {n} routines faites (à part) » |
+| Seconde ligne | — (R3-001 : « {pt} des {pl} gardées » n'est plus rendu) ; détail « {c} micro-tâches comptées sur {t} » · « {n} sous-tâches faites (non comptées) » · « {n} routines faites (à part) » |
 | Par reste | Reporter à {jour} · Choisir un jour · En réserve · Abandonner |
 | Reportée 3 fois (`a_trancher`) | puce « À revoir : reportée 3 fois » ; « Sans choix, elle reste à sa place. » |
 | Bouton de lot | **Tout reporter à {jour}** (prochain jour travaillé : « Tout reporter à mer. 25 ») |
@@ -372,7 +372,7 @@ jamais un titre de tâche ni un nom de projet — la liste part aussi vers l'ass
 | Tâche | « Faite » (récurrente : « Faite · prochaine {jour} ») · « Sautée » · « Rouverte » · « Reçue » · « En attente de : {qui} » · « Modifiée » · « Supprimée » · « Restaurée » (« Restaurée dans À trier ») · « Abandonnée » · « Sans jour » · « Essentielle » |
 | Check-list | « Ajoutée » · « Modifiée » · « Retirée » |
 | Lot (`n` = 1 : singulier) | « {n} déplacées » · « {n} priorisées » · « {n} étiquetées » · « {n} faites » · « {n} supprimées » · « {n} gardées sans projet » · « {n} prévues {jour} » · « {n} en réserve » |
-| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
+| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » (avec une pause : « Revue : {projet} en pause », R3-008) · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
 | Rappel | « Rappel retiré » |
 | Préférence | « Noté : {phrase} » (la phrase de l'en-tête du Copilote, §5.7 ; une note libre : « notes libres ») · « Retirée : {libellé} » |
 
@@ -601,7 +601,7 @@ Factuelles ; jamais de reproche, de récompense, de points ni de « série ».
 | Objectif dit (nombre) | « Objectif du jour : {nb}, dès aujourd'hui. » |
 | « Plus » / « Moins » | « Objectif du jour : {nb} (un de plus), dès aujourd'hui. » · « … (un de moins), dès aujourd'hui. » |
 | En faire plus | « En faire plus : objectif du jour {nb}. Je te proposerai d'aller plus loin quand tu le tiens. » |
-| Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire : « … à confirmer sur 14 jours travaillés. » |
+| Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire (5 à 13 jours évalués, R sur le pas réel) : « … à confirmer sur 14 jours travaillés. » ; moins de 5 jours (R3-004) : « Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant. » |
 | Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés. » |
 | Comprendre mon rythme éteint | « C'est éteint : plus rien n'est calculé ni gardé sur ton rythme. » |
 
@@ -624,17 +624,18 @@ Factuelles ; jamais de reproche, de récompense, de points ni de « série ».
 `{moyenne}` à une décimale (« 3,4 ») ; `{R}`, `{m}`, `{bas}`, `{haut}` arrondis (demie vers le bas). Carte expirée :
 retirée sans phrase.
 
-### 4.3 Bilan (`bilan.texte`) — deux lignes, parties sans objet omises
+### 4.3 Bilan (`bilan.texte`) — UNE ligne, parties sans objet omises
 
-| Mode · cas | Première ligne | Seconde ligne |
-|---|---|---|
-| `pousser`, atteint | « {faites} sur {objectif} · objectif atteint · essentiel fait » | « {pt} des {pl} gardées » |
-| `pousser`, non atteint | « {faites} sur {objectif} · essentiel {ef} sur {ep} » | « {pt} des {pl} gardées » |
-| `tenir` | « {faites} sur {objectif} (ton rythme : {bas} à {haut}) · essentiel {ef} sur {ep} » | idem |
-| `libre` | « {faites} faites · essentiel {ef} sur {ep} » | idem |
+| Mode · cas | Ligne |
+|---|---|
+| `pousser`, atteint | « {faites} sur {objectif} · objectif atteint · essentiel fait » |
+| `pousser`, non atteint | « {faites} sur {objectif} · essentiel {ef} sur {ep} » |
+| `tenir` | « {faites} sur {objectif} (ton rythme : {bas} à {haut}) · essentiel {ef} sur {ep} » |
+| `libre` | « {faites} faites · essentiel {ef} sur {ep} » |
 
-Aucun essentiel choisi → sans « essentiel… » ; rien de gardé → sans seconde ligne ; jour court : « (jour court :
-objectif {objectif}) ».
+Aucun essentiel choisi → sans « essentiel… » ; jour court : « (jour court : objectif {objectif}) ». R3-001 (choix
+C-14) : plus de seconde ligne « {pt} des {pl} gardées » (`bilan.texte_gardees` est toujours vide) ; l'essentiel
+`{ef}`/`{ep}` = les ★ de la section Essentiel servie, comme sur la page.
 
 ### 4.4 Constats (Mon rythme ; un seul au bilan)
 
@@ -660,9 +661,11 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 
 ### 4.6 Revue de la semaine (en tête)
 
-« Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
-· essentiel {e} sur {je} · {pt} des {pl} gardées. {Jour non travaillé} : {n}. » — parties sans objet omises (`libre` :
-sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
+« Cette semaine : {faites} faites ({prec} la précédente). Essentiel {e} sur {je}. {Jour non travaillé} : {n}. » —
+parties sans objet omises (sans essentiel choisi : sans « Essentiel… » ; pas de semaine précédente : sans parenthèse).
+R3-001 / R3-003 (choix C-14, C-16) : ni « Objectif atteint {oa} jours sur {jours} » ni « {pt} des {pl} gardées » ;
+`{faites}` = toutes les faites du lundi à maintenant, week-end et aujourd'hui compris (la somme de l'Agenda et de
+« Faites cette semaine »). Une revue demandée pour une AUTRE semaine
 (`courante` faux dans les données du gabarit : `selectors/projets.py::bilan_de_semaine` le pose quand le lundi lu
 n'est pas celui de la semaine du jour) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
 précédente). » (R2-034 ; avant : « Du lun. 16 au ven. 20 : 4 tâches en 1 jour (précédente : 9). ») Semaine courte (`semaine_courte`) : « Semaine

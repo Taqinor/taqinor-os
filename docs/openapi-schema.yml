@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4013}
+counts: {paths: 5228, operations: 8060, components: 4014}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13195,6 +13195,7 @@ components:
 - TacheReapproInterne
 - TacheReapproInterneRequest
 - TacheReapproInterneStatutEnum
+- TachesActiviteClose
 - TachesAffichage
 - TachesAvertissement
 - TachesCompteChecklist

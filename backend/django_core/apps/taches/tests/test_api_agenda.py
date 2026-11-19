@@ -167,6 +167,13 @@ class AgendaTests(TestCase):
         self.assertEqual(faites, {avant.isoformat(): 0, hier.isoformat(): 2, self.T.isoformat(): 1,
                                   demain.isoformat(): 0})
 
+    def test_faites_par_jour_vit_dans_les_selecteurs(self):
+        """R3-003 (choix C-16) — « faites d'une période » a UNE source, `selectors.journee.faites_par_jour`, que
+        l'Agenda importe (la Revue et la Recherche la lisent aussi) : plus de copie dans la vue."""
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        self.assertIs(agenda.faites_par_jour, sel.faites_par_jour)
+
     def test_pause_la_tache_posee_aujourdhui_reste_dans_l_agenda(self):
         """R2-031b (règle C-5, « ce que j'ai posé reste posé ») — une tâche OUVERTE d'un projet en pause prévue
         AUJOURD'HUI (à 16:00) reste dans l'agenda du jour ; la pause continue de retirer les jours à venir."""
