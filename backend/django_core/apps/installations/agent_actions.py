@@ -19,15 +19,18 @@ moment-là. Le ``company`` n'apparaît JAMAIS dans les ``inputs`` (forcé côté
 serveur). Pour ``commander-besoin``, le ``<id>`` du chantier est modélisé comme
 un input requis que le gabarit de chemin consomme.
 
-Permission requise : ``installation_gerer`` (la permission ERP que les deux
-outils FastAPI exigent — ``_BC_PERMS`` / ``_VISITE_PERMS``).
+Permissions (copilote vague 2) : chacune est le code que la ROUTE exige
+(``get_permissions`` des viewsets) — ``achats_commander`` pour
+``commander-besoin`` (REP3, proposition À CONFIRMER) ; ``installation_gerer``
+pour la visite de maintenance.
 
 Enregistré (idempotent) au démarrage par :func:`register_installation_actions`,
 appelée depuis ``InstallationsConfig.ready()``.
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_INTERNAL, register
+from apps.agent.registry import (
+    AgentAction, RISK_INTERNAL, RISK_OUTWARD, register)
 
 
 # Permission ERP exigée par les deux outils FastAPI d'origine
@@ -79,15 +82,32 @@ PLANIFIER_VISITE_MAINTENANCE = AgentAction(
 )
 
 
+#: REP3 — garde RÉELLE de ``commander-besoin`` : ``IsResponsableOrAdmin`` +
+#: ``HasPermissionOrLegacy('achats_commander')`` (branche dédiée de
+#: ``InstallationViewSet.get_permissions``, ACHT54) — jamais
+#: ``installation_gerer`` (le Technicien voyait l'outil et recevait 403).
+_PERM_COMMANDER = 'achats_commander'
+
+
+# REP3 — la route crée des BCF BROUILLONS (un par fournisseur) ET tente de
+# faire passer un chantier « Signé » à « Matériel commandé »
+# (``_avancer_materiel_commande``, ``exiger_couverture=False``) : deux effets
+# sur des données existantes → proposition À CONFIRMER dont l'aperçu dit les
+# deux. Corps de la route (``CommanderBesoinRequete``) : ``fournisseur``,
+# ``fournisseurs`` {produit_id: fournisseur_id}, ``produits`` [ids].
 BROUILLON_COMMANDE_CHANTIER = AgentAction(
     key='installations.chantier.commander_besoin',
-    label='Brouillonner un bon de commande chantier',
+    label='Commander les manques du chantier (brouillons)',
     description=(
-        "Crée un bon de commande fournisseur BROUILLON pour les manques de "
-        "matériel d'un chantier. Remplaçante-catalogue de l'outil FastAPI "
-        "brouillon_bon_commande_chantier : appelle l'endpoint commander-besoin "
-        "du chantier ; la société est forcée côté serveur, le brouillon reste à "
-        "confirmer manuellement."
+        "Sert à : créer, après confirmation, les bons de commande "
+        "fournisseur BROUILLONS des manques de matériel d'un chantier (un "
+        "par fournisseur) ; rien n'est envoyé au fournisseur. Un chantier "
+        "« Signé » passe aussi à « Matériel commandé » quand ses étapes le "
+        "permettent. Ne pas utiliser pour : envoyer une commande ni une "
+        "commande hors chantier. Exemple : « commande ce qui manque pour le "
+        "chantier 12 » → id=12. Résultat : les BCF brouillons et le statut du "
+        "chantier ; 409 si rien ne manque, si un BCF ouvert couvre déjà ou "
+        "sans fournisseur."
     ),
     endpoint='/api/django/installations/chantiers/{id}/commander-besoin/',
     method='POST',
@@ -96,20 +116,37 @@ BROUILLON_COMMANDE_CHANTIER = AgentAction(
         'properties': {
             'id': {
                 'type': 'integer',
+                'title': 'Chantier (id)',
                 'description': 'Chantier dont on commande les manques '
                                '(consommé par le gabarit de chemin).',
             },
             'fournisseur': {
                 'type': 'integer',
-                'description': 'Fournisseur (optionnel).',
+                'title': 'Fournisseur (id)',
+                'description': ('Fournisseur imposé aux lignes ; absent : '
+                                'celui du produit.'),
+            },
+            'fournisseurs': {
+                'type': 'object',
+                'title': 'Fournisseur par produit',
+                'additionalProperties': {'type': 'integer'},
+                'description': '{"<produit_id>": <fournisseur_id>}.',
+            },
+            'produits': {
+                'type': 'array',
+                'title': 'Produits à commander (ids)',
+                'items': {'type': 'integer'},
+                'description': 'Absent : tous les manques.',
             },
         },
         'required': ['id'],
     },
-    required_permission=_PERM_GERER,
-    risk=RISK_INTERNAL,
-    confirm_summary='Créer un bon de commande fournisseur brouillon pour les '
-                    'manques du chantier.',
+    required_permission=_PERM_COMMANDER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Créer les bons de commande fournisseur BROUILLONS des manques du "
+        "chantier (rien n'est envoyé) ; un chantier « Signé » peut passer à "
+        "« Matériel commandé »."),
 )
 
 
