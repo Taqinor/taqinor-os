@@ -44,8 +44,14 @@ const echeancesDuJour = (jour) => {
 const erpDuJour = (jour) => [...(jour?.toute_la_journee ?? []), ...(jour?.externes ?? [])]
 const texteEcheances = (n) => (n >= 2 ? `${n} échéances` : 'échéance')
 
+/** couture L7 — un texte DESSINÉ (`data-texte`, peint par `::before`, agenda.css) : la case du jour est un bouton nommé
+ *  « Mardi 17 novembre · 2 tâches… » ; son seul texte visible doit être un mot de ce nom (axe-core 4.14,
+ *  `label-content-name-mismatch`, WCAG 2.5.3 : on la nomme à la voix par son numéro). Titres, « +n » et « · échéance »
+ *  redisent ce que le nom porte déjà ; ils restent visibles sans être du texte de la case. */
+const dessine = (texte) => ({ 'data-texte': texte })
+
 function Points({ jour }) {
-  if (jour?.ferie) return <span className="pts ferie">Férié</span>
+  if (jour?.ferie) return <span className="pts ferie" {...dessine('Férié')} />
   const taches = tachesDuJour(jour)
   const erp = erpDuJour(jour)
   const montrees = taches.slice(0, POINTS_MAX)
@@ -55,7 +61,7 @@ function Points({ jour }) {
       {montrees.map((t) => <i key={`t${t.id}`} data-p={t.projet?.couleur || undefined} />)}
       {erp.length ? <i className="erp" /> : null}
       {echeancesDuJour(jour).length ? <i className="ech" /> : null}
-      {reste > 0 ? <em>+{reste}</em> : null}
+      {reste > 0 ? <em {...dessine(`+${reste}`)} /> : null}
     </span>
   )
 }
@@ -73,11 +79,11 @@ function Titres({ jour }) {
       {montrees.map((t) => (
         <span key={`t${t.id}`} className={t.statut === 'fait' ? 'faite' : undefined}>
           <i className="point" data-p={t.projet?.couleur || undefined} />
-          <span className="t">{t.titre}</span>
+          <span className="t" {...dessine(t.titre)} />
         </span>
       ))}
-      {reste > 0 ? <em className="plus">{`+${reste}`}</em> : null}
-      {echeances.length ? <span className="ag-mj-ech">{`· ${texteEcheances(echeances.length)}`}</span> : null}
+      {reste > 0 ? <em className="plus" {...dessine(`+${reste}`)} /> : null}
+      {echeances.length ? <span className="ag-mj-ech" {...dessine(`· ${texteEcheances(echeances.length)}`)} /> : null}
     </span>
   )
 }

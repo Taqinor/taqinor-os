@@ -8,7 +8,7 @@ Le module expose la TABLE des motifs (`MOTIFS`), la recherche des candidats
 (`candidats`), les règles de contexte (`filtrer_contexte`), les échéances
 composées (`composer_echeances`), le choix sans chevauchement (`choisir`) et les
 convertisseurs de `jour`, `heure`, `moment`, `echeance` et `duree`. Les autres
-types (projet, étape, étiquette, priorité, récurrence, rappel, « en réserve »)
+types (projet, étape, étiquette, priorité, récurrence, rappel, « pour plus tard »)
 sont convertis par `analyseur.py`, qui complète `CONVERTISSEURS`.
 
 Un convertisseur reçoit `(m, ctx, texte)` — `m` est le résultat de la recherche

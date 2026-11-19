@@ -306,6 +306,23 @@ class FicheTests(BaseApi):
         corps = self._get(f'taches/{tache.pk}/', **ASSISTANT).json()
         self.assertEqual((corps['notes'], corps['titre']), ('', 'Tâche confidentielle'))
 
+    def test_l_etoile_de_la_fiche_et_de_l_ecriture_est_celle_de_la_journee(self):
+        """Couture L7 (vague 3) — la ★ ne change pas d'avis entre la liste et la fiche : GET taches/{id}/ et la
+        TACHE_ECRITE d'un PATCH lisent `essentielle` / `prevue_au_plan` du plan du jour, comme la journée et la
+        vue d'un projet ; une tâche hors du plan reste à `False`."""
+        from apps.taches.models.journee import LignePlanJour
+        etoilee = fabriques.tache(self.u1, jour_prevu=_j())
+        simple = fabriques.tache(self.u1, jour_prevu=_j())
+        plan = fabriques.plan(self.u1, _j())
+        LignePlanJour.objects.create(company=self.a, plan=plan, tache=etoilee, prevue_au_plan=True, essentielle=True)
+        fiche = self._get(f'taches/{etoilee.pk}/').json()
+        self.assertEqual((fiche['essentielle'], fiche['prevue_au_plan']), (True, True))
+        autre = self._get(f'taches/{simple.pk}/').json()
+        self.assertEqual((autre['essentielle'], autre['prevue_au_plan']), (False, False))
+        ecrite = self._api().patch(f'{URL}taches/{etoilee.pk}/', {'lock_version': _relue(etoilee).lock_version,
+                                                                  'titre': 'Relancer'}, format='json').json()
+        self.assertEqual((ecrite['tache']['essentielle'], ecrite['tache']['prevue_au_plan']), (True, True))
+
 
 class ModifierTests(BaseApi):
     def _patch(self, tache, corps, compte=None, **entetes):

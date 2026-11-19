@@ -201,7 +201,8 @@ export default function Revue() {
     setOccupe(true)
     setErreurs({})
     try {
-      await deciderRevue(carte.projet.id, { semaine: revue.semaine, ...corps })
+      // couture L7 — « Déjà « X » cette semaine. » est un refus d'ÉTAT (409) : dit une fois, sous sa case
+      await deciderRevue(carte.projet.id, { semaine: revue.semaine, ...corps }, { erreurSousLeChamp: true })
       annoncer(`« ${carte.projet.nom} » : décision enregistrée`)
       const ecrites = { ...decisions, [carte.projet.id]: corps.decision }
       setDecisions(ecrites)

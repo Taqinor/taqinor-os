@@ -157,7 +157,7 @@ describe('TCH157 — Utiliser ce modèle (aperçu des dates avant d\'écrire)', 
   })
 
   it('un nom de projet déjà pris est dit sous le champ, rien n\'est créé', async () => {
-    api.instancierModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet « Ventes » existe déjà.'] } } })
+    api.instancierModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet « Ventes » existe déjà.'], detail: 'Un projet « Ventes » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     monter()
     const dialogue = await ouvrir(user)
@@ -203,7 +203,7 @@ describe('TCH157 — Renommer et Supprimer un modèle', () => {
   })
 
   it('un nom de modèle déjà pris est dit sous le champ et la ligne garde son nom', async () => {
-    api.renommerModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un modèle « Foire » existe déjà.'] } } })
+    api.renommerModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un modèle « Foire » existe déjà.'], detail: 'Un modèle « Foire » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     monter()
     await menu(user, 'Renommer')
@@ -266,7 +266,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
   })
 
   it('F4 revue #11 — sans aperçu lisible (nom pris, réseau), aucun nombre du projet n\'est montré à la place', async () => {
-    api.dupliquerProjet.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet existe déjà.'] } } })
+    api.dupliquerProjet.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet existe déjà.'], detail: 'Un projet existe déjà.', code: 'state_conflict' } } })
     render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     const dialogue = screen.getByRole('dialog', { name: 'Enregistrer comme modèle' })
     await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalled())
@@ -275,7 +275,7 @@ describe('TCH157 — Enregistrer comme modèle', () => {
   })
 
   it('un nom de modèle déjà pris est dit sous le champ', async () => {
-    api.enregistrerModele.mockRejectedValue({ response: { status: 400, data: { nom: ['Un modèle « Ventes » existe déjà.'] } } })
+    api.enregistrerModele.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un modèle « Ventes » existe déjà.'], detail: 'Un modèle « Ventes » existe déjà.', code: 'state_conflict' } } })
     const user = utilisateur()
     render(<DialogueEnregistrerModele projet={vue().projet} onFait={vi.fn()} onFermer={() => {}} />)
     await user.click(screen.getByRole('button', { name: 'Créer' }))

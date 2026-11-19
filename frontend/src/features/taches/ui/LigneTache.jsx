@@ -182,13 +182,13 @@ function TitreSurligne({ titre, surligne }) {
 }
 
 /** La méta de STATUT d'un résultat de recherche (recherche.html), lue des données servies : son jour, sinon, pour une
- *  tâche ouverte, « En réserve » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
+ *  tâche ouverte, « Plus tard » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
 function statutRecherche(item, aujourdhui) {
   if (item.type !== 'tache') return []
   const puces = []
   const ouverte = item.statut !== 'fait' && item.statut !== 'annule'
   if (item.jour_prevu) puces.push(<span key="statut" className="chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
-  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">En réserve</span>)
+  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">Plus tard</span>)
   else if (ouverte && !item.projet) puces.push(<span key="statut">À trier</span>)
   if (item.source === 'suggestion') puces.push(<span key="suggestion">Suggéré par l'ERP</span>)
   return puces
@@ -328,7 +328,7 @@ export default function LigneTache({
     : [
       ...(reporterLibelle ? [{ cle: 'reporter', libelle: `Reporter à ${reporterLibelle}`, faire: reporter }] : []),
       { cle: 'choisir_jour', libelle: 'Choisir un jour', faire: action('choisir_jour') },
-      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'En réserve', faire: action('reserve') }]),
+      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'Plus tard', faire: action('reserve') }]),
       { cle: 'deplacer', libelle: 'Changer de projet…', faire: action('deplacer') },
       { cle: 'essentiel', libelle: item.essentielle ? 'Plus essentielle' : 'Essentielle', faire: action('essentiel') },
       { cle: 'attente', libelle: 'En attente de…', faire: action('attente') },
@@ -412,7 +412,8 @@ export default function LigneTache({
           {meta.length > 0 || propose ? (
             <div className="meta">
               {propose ? (
-                <button type="button" className="garder" onClick={() => onGarder?.(item)}>Garder</button>
+                <button type="button" className="garder" aria-label={`Mettre « ${item.titre} » aujourd'hui`}
+                  onClick={() => onGarder?.(item)}>Aujourd&apos;hui</button>
               ) : null}
               {meta}
             </div>
@@ -423,11 +424,13 @@ export default function LigneTache({
           {estampille ? <span className="estampille chiffres">{estampille}</span> : null}
           {/* spec-8 §2 « heure, ★ ou drapeau » : l'étoile d'une essentielle tient lieu du drapeau ; drapeau AVANT l'heure
               (maquettes ecran-aujourdhui-15h.html, ecran-bilan.html) */}
-          {/* R2-017 — la pastille « → ven. 20 » REMPLACE tout le reste de la colonne (heure, drapeau, étoile) le temps que la
-              ligne s'efface : en s'y ajoutant elle poussait le titre sur deux lignes et la ligne sautait de 65 à 150 px */}
-          {item.priorite === 3 && !item.essentielle && !estampille ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
-          {item.heure_debut && !estampille ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
-          {estampille ? null : (
+          {/* R2-017 — la pastille « → ven. 20 » se POSE sur la colonne (R3-086) le temps que la ligne s'efface ; couture L7 :
+              l'heure, le drapeau et l'étoile restent à leur place, CACHÉS (`visibility: hidden`, inertes) au lieu d'être
+              retirés — les retirer changeait la largeur de la colonne, donc la hauteur de la ligne (bureau : 80 → 58) */}
+          <span className={estampille ? 'ligne-fin-masque masquee' : 'ligne-fin-masque'}
+            aria-hidden={estampille ? 'true' : undefined} inert={Boolean(estampille)}>
+            {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
+            {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
             <Etoile
               active={Boolean(item.essentielle)}
               onBasculer={onEssentiel ? (suivant) => onEssentiel(item, suivant) : undefined}
@@ -435,7 +438,7 @@ export default function LigneTache({
               onRefus={onRefusEssentiel}
               titre={item.titre}
             />
-          )}
+          </span>
         </div>
 
         <DropdownMenu open={menuOuvert} onOpenChange={setMenuOuvert}>

@@ -41,7 +41,7 @@
 .tch .choisir-jour { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 20px; }
 .tch .choisir-jour .champ-date { height: 48px; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
   box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: var(--tch-taille-tache); color: var(--tch-texte); }
-.tch .choisir-jour .bouton.large { width: 100%; height: 50px; font-size: var(--tch-taille-tache); }
+.tch .choisir-jour .bouton.large { width: 100%; height: var(--tch-bouton-h); font-size: var(--tch-taille-tache); }
 .tch .choisir-jour .carte-texte { margin: 0; }
 
 /* ── TCH77 · Progression (détail au toucher) et carte du moment ───────────────────────────────── */
@@ -149,7 +149,7 @@
 .tch .ligne-courte .texte { font-size: var(--tch-taille-tache); line-height: 1.375rem; }
 .tch .feuille-pied { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
   padding: 12px var(--tch-gouttiere) 16px; background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait); }
-.tch .feuille-pied .bouton { height: 50px; font-size: var(--tch-taille-tache); }
+.tch .feuille-pied .bouton { height: var(--tch-bouton-h); font-size: var(--tch-taille-tache); }
 .tch .feuille-pied .bouton.large { flex: 1; }
 
 /* ── TCH78 · Proposé pour aujourd'hui ─────────────────────────────────────────────────────────── */
@@ -186,7 +186,7 @@
 .tch .ep-carte-ia .titre { display: block; -webkit-line-clamp: unset; overflow-wrap: anywhere; }
 .tch .ep-carte-ia .meta { flex-wrap: wrap; }
 .tch .ep-carte-ia .meta > span { white-space: normal; min-width: 0; overflow-wrap: anywhere; }
-/* Un bouton de carte passe à la ligne plutôt que d'être rogné par le cadre (« Plus tard dans la semaine (→ m »). */
+/* Un bouton de carte passe à la ligne plutôt que d'être rogné par le cadre (« Reporter à {jour} » sur un iPhone étroit). */
 .tch .ep-carte-ia .bouton { height: auto; min-height: 44px; white-space: normal; text-align: left; }
 .tch .ep-carte-ia .actions-priorite { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: 2px 0 0 -12px; }
 .tch .ep-carte-ia .actions-priorite .bouton { padding: 0 12px; }

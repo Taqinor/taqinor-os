@@ -11,8 +11,8 @@ import { Ailleurs } from './LignesErp'
 /* ============================================================================
    TCH81 — Les sections REPLIÉES d'Aujourd'hui (regles.md §4.1, lignes 7 à 10) :
      · « À revoir (n) » : reportées 3 fois, retards de plus de 7 jours, activités ERP en retard ; un lot
-       « Tout en réserve » ; par tâche : Aujourd'hui · Choisir un jour · En réserve · Abandonner
-       (+ Découper si reportée 3 fois) → `taches/{id}/trancher/` ; jamais bloquant ;
+       « Tout pour plus tard » ; par tâche : Aujourd'hui · Choisir un jour · Plus tard · Abandonner
+       (+ Découper en sous-tâches si reportée 3 fois) → `taches/{id}/trancher/` ; jamais bloquant ;
      · « En attente (n) » · « Bloquées {b} » (R2-027) ; « Faites (n) » ;
      · « Ailleurs dans l'ERP », lu à l'ouverture seulement.
    Un en-tête vide est absent. Tout geste est optimiste, grisé hors ligne, défait par « Annuler ».
@@ -40,7 +40,7 @@ function raisonARevoir(item, aujourdhui) {
 /** « tâche » : seules les tâches se tranchent ; une activité ERP en retard se coche ou s'ouvre. */
 const estTache = (item) => item.type === 'tache'
 
-/** Les gestes d'« À revoir » : trancher une tâche, tout mettre en réserve. Optimistes, annulables. */
+/** Les gestes d'« À revoir » : trancher une tâche, tout remettre à plus tard. Optimistes, annulables. */
 // eslint-disable-next-line react-refresh/only-export-components -- hook des gestes, lu par la page (D-ENF22)
 export function useARevoir({ donnees, setDonnees, garde, charger }) {
   const trancher = useCallback(async (item, choix, jour = null) => {
@@ -55,7 +55,7 @@ export function useARevoir({ donnees, setDonnees, garde, charger }) {
       const message = {
         aujourdhui: "Mise à aujourd'hui",
         jour: `Prévue ${jourNomme(jour, donnees.jour)}`,
-        un_jour: 'En réserve',
+        un_jour: 'Plus tard',
         abandonner: 'Abandonnée',
       }[choix]
       proposerAnnuler({
@@ -83,7 +83,7 @@ export function useARevoir({ donnees, setDonnees, garde, charger }) {
       const rangees = new Set(data.appliquees ?? [])
       setDonnees((d) => ({ ...d, a_decider: (d.a_decider ?? []).filter((it) => !(estTache(it) && rangees.has(it.id))) }))
       proposerAnnuler({
-        message: `${rangees.size} en réserve`,
+        message: `${rangees.size} pour plus tard`,
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
       })
     } catch (err) {
@@ -94,17 +94,17 @@ export function useARevoir({ donnees, setDonnees, garde, charger }) {
   return { trancher, toutEnReserve }
 }
 
-/** Les quatre actions d'une ligne d'« À revoir » (+ Découper si reportée 3 fois). */
+/** Les quatre actions d'une ligne d'« À revoir » (+ Découper en sous-tâches si reportée 3 fois). */
 function ActionsARevoir({ item, geste, revoir, minimum }) {
   const [calendrier, setCalendrier] = useState(false)
   return (
     <div className="reste-choix revoir-actions" role="group" aria-label={`Que faire de « ${item.titre} » ?`} data-necessite-reseau="">
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'aujourdhui')}>Aujourd&apos;hui</button>
       <button type="button" className="puce" aria-expanded={calendrier} onClick={() => setCalendrier((v) => !v)}>Choisir un jour</button>
-      <button type="button" className="puce" onClick={() => revoir.trancher(item, 'un_jour')}>En réserve</button>
+      <button type="button" className="puce" onClick={() => revoir.trancher(item, 'un_jour')}>Plus tard</button>
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'abandonner')}>Abandonner</button>
       {item.motif === 'reportee_3_fois' ? (
-        <button type="button" className="puce" onClick={() => (geste.decouper ?? geste.ouvrir)(item)}>Découper</button>
+        <button type="button" className="puce" onClick={() => (geste.decouper ?? geste.ouvrir)(item)}>Découper en sous-tâches</button>
       ) : null}
       {calendrier ? (
         <input type="date" className="champ-date" aria-label={`Jour pour « ${item.titre} »`} min={minimum}
@@ -173,7 +173,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne, dep
           {aDecider.some(estTache) ? (
             <div className="propose-actions">
               <button type="button" className="bouton second" data-necessite-reseau="" aria-disabled={!enLigne || undefined} onClick={revoir.toutEnReserve}>
-                Tout en réserve
+                Tout pour plus tard
               </button>
               <button type="button" className="bouton lien" data-necessite-reseau="" aria-disabled={!enLigne || undefined}
                 onClick={() => geste.copilote('Aide-moi à prioriser')}>

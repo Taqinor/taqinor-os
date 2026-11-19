@@ -109,7 +109,8 @@ etape('P141.1', ['TCH141', 'TCH109', 'TCH95'], async (f) => {
   // Oracle (plan) : « Mon iPhone → 5 étapes « À faire » »
   await expect(etapesIphone(p)).toHaveCount(5)
   for (let i = 0; i < 5; i += 1) await expect(etapesIphone(p).nth(i).locator('.etat')).toHaveText('À faire')
-  await expect(p.getByText('0 sur 5', { exact: true })).toBeVisible()
+  // R3-098 : « Mettre Tâches sur l'écran d'accueil » compte comme une étape : « Six étapes », « 0 sur 6 »
+  await expect(p.getByText('0 sur 6', { exact: true })).toBeVisible()
   await capturerF3(p, 'mon-iphone')
   for (const n of [1, 2, 3, 4, 5]) {
     await deplier(p, n)
@@ -287,7 +288,8 @@ const notifsTaches = async () => (await notificationsDe()).filter((n) => n.type.
 
 /** La cloche de l'en-tête : ouverte, rend son panneau. */
 async function cloche(p) {
-  const bouton = p.getByRole('button', { name: /^Notifications \(\d+\)$/ })
+  // la cloche de Tâches dit « Notifications : {n} » (axe-core 4.14 : le chiffre visible est un mot du nom lu)
+  const bouton = p.getByRole('button', { name: /^Notifications : \d+$/ })
   await expect(bouton, 'la cloche de l\'en-tête').toBeVisible({ timeout: 30_000 })
   await bouton.click()
   const panneau = p.locator('.nb-panel')
@@ -472,7 +474,8 @@ etape('P143.2', ['TCH143', 'TCH170', 'TCH161', 'TCH165'], async (f) => {
       const coupe = await el.evaluate((n) => ({ texte: n.textContent, coupe: n.scrollWidth > n.clientWidth + 1 }))
       expect(coupe.coupe, `${quoi} « ${coupe.texte} » coupé à l'écran (${p.viewportSize().width} px)`).toBe(false)
     }
-    await expect(ligne.getByRole('button')).toHaveText(['Essentiel', "Aujourd'hui", /^Plus tard dans la semaine \(→ .+\)$/])
+    // R3-150 (C-20) : « Plus tard dans la semaine (→ ven.) » est devenu « Reporter à ven. 20 »
+    await expect(ligne.getByRole('button')).toHaveText(['Essentiel', "Aujourd'hui", /^Reporter à \S+ \d+$/])
   }
   await capturerF3(p, 'copilote-carte-priorites-toutes', { cadre: panneau })
 })

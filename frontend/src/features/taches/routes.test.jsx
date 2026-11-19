@@ -32,7 +32,7 @@ const ATTENDU = {
   '/taches/revue': 'Revue de la semaine',
   '/taches/rythme': 'Mon rythme',
   '/taches/recherche': 'Recherche',
-  '/taches/supprimees': 'Supprimées et derniers gestes',
+  '/taches/supprimees': 'Supprimées',
   '/taches/reglages': 'Réglages',
   '/taches/reglages/iphone': 'Réglages',
 }
@@ -188,6 +188,20 @@ describe('TCH43 — routes du module', () => {
     expect(container.querySelector('.tch')).not.toHaveAttribute('data-largeur')
   })
 
+  it('couture L7 — R3-007 et R3-026 pliés : l\'aide d\'Aujourd\'hui et d\'un projet redit « Alt+↑/↓ Réorganiser »', async () => {
+    for (const ecran of ['aujourdhui', 'projet']) {
+      const router = createMemoryRouter([
+        { path: '/x', element: <CoquilleTaches ecran={ecran} titre="Écran"><p>liste</p></CoquilleTaches> },
+      ], { initialEntries: ['/x'] })
+      const { unmount } = render(<RouterProvider router={router} />)
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true })) })
+      const aide = screen.getByRole('dialog', { name: 'Touches de Tâches' })
+      const ligne = within(aide).getByText('Réorganiser').closest('.touches-ligne')
+      expect(ligne.querySelector('dt')).toHaveTextContent('Alt+↑/↓')
+      unmount()
+    }
+  })
+
   it('R2-087 — « ? » montre les touches de Tâches ; « / » va à la Recherche', async () => {
     const aideErp = vi.fn()
     window.addEventListener('keydown', aideErp) // l'aide générale de l'ERP écoute sur `window`
@@ -203,7 +217,7 @@ describe('TCH43 — routes du module', () => {
       expect(within(aide).queryByText('Essentiel')).toBeNull()
       expect(within(aide).queryByText('Annuler (hors champ)')).toBeNull()
       expect(within(aide).queryByText(/\+15 min/)).toBeNull()
-      // R3-095 — les touches les plus utilisées en TÊTE : j/k, Entrée, Échap ; « Réorganiser » (Alt+↑/↓) n'est plus promis
+      // R3-095 — les touches les plus utilisées en TÊTE : j/k, Entrée, Échap ; « Réorganiser » (Alt+↑/↓) n'est pas promis à À trier
       expect([...aide.querySelectorAll('dt')].slice(0, 3).map((dt) => dt.textContent)).toEqual(['j / k', 'Entrée', 'Échap'])
       expect(within(aide).getByText('Ligne suivante / précédente')).toBeInTheDocument()
       expect(within(aide).getByText('Ouvrir')).toBeInTheDocument()

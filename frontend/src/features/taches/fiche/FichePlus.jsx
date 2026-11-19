@@ -177,7 +177,8 @@ function Etiquettes({ tache, patcher, erreur, annulable }) {
     let cible = toutes.find((e) => e.nom.trim().toLowerCase() === saisi.toLowerCase())
     if (!cible) {
       try {
-        const { data } = await creerEtiquette({ nom: saisi })
+        // couture L7 — « Une étiquette « X » existe déjà. » (409) est dite une fois, sous le champ, sans toast
+        const { data } = await creerEtiquette({ nom: saisi }, { erreurSousLeChamp: true })
         cible = { id: data.id, nom: data.nom, couleur: data.couleur }
         setToutes((liste) => [...liste, cible])
       } catch (err) {
@@ -296,7 +297,7 @@ function SousTaches({ tache, charger, erreur }) {
           <span className="titre">{e.titre}</span>
         </div>
       ))}
-      <input type="text" className="champ-discret" aria-label="Découper" placeholder="Découper" value={titre}
+      <input type="text" className="champ-discret" aria-label="Découper en sous-tâches" placeholder="Découper en sous-tâches" value={titre}
         onChange={(e) => setTitre(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter() } }} />
     </section>
   )

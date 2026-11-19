@@ -359,9 +359,10 @@
    d'entrer dans le flux : plus large que l'étoile, elle poussait le titre et la méta sur deux lignes chacun (la ligne
    passait de 63 à 110 px). Elle recouvre la fin du titre, un fondu de la surface de la ligne derrière elle. */
 .tch .ligne .ligne-fin { position: relative; }
-/* la colonne garde au moins la place de l'étoile qu'elle remplace : le titre ne s'élargit pas d'un coup (la ligne ne
-   rétrécit pas plus qu'elle ne grandissait) */
-.tch .ligne .ligne-fin:has(> .estampille) { min-width: calc(var(--tch-cible) - 12px); }
+/* couture L7 — l'heure, le drapeau et l'étoile restent DANS la colonne sous la pastille, cachés : la colonne garde sa
+   largeur, le titre ne se reflue pas et la ligne garde sa hauteur (bureau : 80 → 58 quand ils étaient retirés) */
+.tch .ligne-fin-masque { display: contents; }
+.tch .ligne-fin-masque.masquee { visibility: hidden; }
 .tch .ligne .ligne-fin > .estampille {
   position: absolute; inset-inline-end: 0; top: 50%; translate: 0 -50%; white-space: nowrap;
   box-shadow: -8px 0 8px var(--tch-surface);
@@ -667,6 +668,14 @@
 }
 @media (hover: hover) {
   .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton:hover { background: var(--tch-survol); }
+}
+/* couture L7 (M2) — sur iPhone, une question de conseil sur deux lignes et ses réponses dessous prenaient 98 pt + 32 pt
+   d'air : la première tâche tombait à y = 297. Carte resserrée (marges, réponses dessinées à 28 px, cible de 44 px
+   gardée par `::after`) et la première section qui la suit à 12 px au lieu de 20. */
+@media screen and (max-width: 768px) {
+  .tch .tch-page .carte.rythme { margin-top: 8px; padding: 8px 10px 8px 14px; row-gap: 0; }
+  .tch .tch-page .carte.rythme .carte-actions .bouton { height: 28px; }
+  .tch .tch-page .carte.rythme + div > .section:first-child { margin-top: 12px; }
 }
 .tch .pas-a-jour {
   display: flex; align-items: center; gap: 10px; margin: 8px var(--tch-gouttiere) 0; padding: 0 4px 0 12px;

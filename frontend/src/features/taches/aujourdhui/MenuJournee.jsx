@@ -10,7 +10,7 @@ import { PHRASE_HORS_LIGNE } from './Sections'
 /* ============================================================================
    TCH79 — Le menu ⋯ d'Aujourd'hui (reference/textes.md §2.1) : « Alléger ma journée »,
    « Réorganiser », « Sélectionner », « En faire mon accueil » ; la coquille y ajoute Revue,
-   Mon rythme, Supprimées et derniers gestes et Réglages (spec-7 §2 « Plus »).
+   Mon rythme, Supprimées (avec ses derniers gestes) et Réglages (spec-7 §2 « Plus »).
    · Alléger : ouvre la feuille (FeuilleAlleger) — grisé hors ligne ;
    · Réorganiser : bascule le mode ▲▼ des lignes de la journée (Alt+↑/↓ au clavier) ;
    · Sélectionner : bascule la sélection multiple (barre d'actions en lot) ;
@@ -129,7 +129,9 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     suite[j] = taches[i]
     setDonnees((d) => ({ ...d, [liste]: recomposer(d[liste], suite) }))
     try {
-      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null })
+      // couture L7 — un refus d'état (409) est dit UNE fois, ici, en mots humains : jamais aussi le toast « Valeur inconnue. »
+      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null },
+        { erreurSousLeChamp: true })
       annoncer(`${item.titre} : position ${j + 1} sur ${suite.length}`)
     } catch {
       // R3-026 — le refus se VOIT, en mots humains : la ligne revient à sa place (le détail serveur n'aide pas Reda)

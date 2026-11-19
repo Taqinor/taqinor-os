@@ -128,7 +128,7 @@ describe('TCH93 — Revue : décisions', () => {
     await user.click(suivant(carte))
     expect(api.deciderRevue).toHaveBeenCalledWith(3, {
       semaine: '2026-11-16', intention: 'Signer Settat', prochaine_action_id: 20, decision: 'garder', focus: true, issue: null,
-    })
+    }, { erreurSousLeChamp: true })
     expect(await screen.findByRole('region', { name: 'Site web' })).toBeInTheDocument()
     expect(screen.getByText('3/3')).toBeInTheDocument()
     // l'intention n'est PAS redemandée : le même champ, déjà rempli
@@ -143,9 +143,9 @@ describe('TCH93 — Revue : décisions', () => {
     const premiere = await screen.findByRole('region', { name: 'Ventes' })
     await user.click(within(premiere).getByRole('radio', { name: 'Pause' }))
     await user.click(suivant(premiere))
-    expect(api.deciderRevue).toHaveBeenLastCalledWith(3, expect.objectContaining({ decision: 'pause' }))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(3, expect.objectContaining({ decision: 'pause' }), { erreurSousLeChamp: true })
     await user.click(within(await screen.findByRole('region', { name: 'Site web' })).getByRole('button', { name: 'Passer' }))
-    expect(api.deciderRevue).toHaveBeenLastCalledWith(5, expect.objectContaining({ decision: 'passe', prochaine_action_id: null, focus: false }))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(5, expect.objectContaining({ decision: 'passe', prochaine_action_id: null, focus: false }), { erreurSousLeChamp: true })
   })
 
   it("C-5 — « Pause » dit, en une phrase, ce qui reste prévu aujourd'hui (nombre SERVI) ; sans nombre servi, rien", async () => {
@@ -194,11 +194,14 @@ describe('TCH93 — Revue : décisions', () => {
     expect(api.deciderRevue).not.toHaveBeenCalled()
     await user.click(within(carte).getByRole('radio', { name: 'Atteint' }))
     await user.click(suivant(carte))
-    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ decision: 'terminer', issue: 'atteint' }))
+    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ decision: 'terminer', issue: 'atteint' }), { erreurSousLeChamp: true })
   })
 
-  it('« Déjà « A » cette semaine. » reste sur la carte, sous la case, et la carte ne bouge pas', async () => {
-    api.deciderRevue.mockRejectedValue({ response: { status: 400, data: { focus: ['Déjà « A » cette semaine.'] } } })
+  it('« Déjà « A » cette semaine. » (409 state_conflict) reste sur la carte, sous la case, et la carte ne bouge pas', async () => {
+    // le vrai code : 409 `state_conflict`, rendu par `tachesApi` en 400 de champ (`statutServeur` 409) car l'écran
+    // demande `erreurSousLeChamp` (couture L7) — sinon le pont le toastait ET l'écran le redisait en tête
+    api.deciderRevue.mockRejectedValue({ response: { status: 400, statutServeur: 409,
+      data: { focus: ['Déjà « A » cette semaine.'], detail: 'Déjà « A » cette semaine.', code: 'state_conflict' } } })
     monter()
     const user = userEvent.setup()
     const carte = await screen.findByRole('region', { name: 'Ventes' })
@@ -206,6 +209,7 @@ describe('TCH93 — Revue : décisions', () => {
     expect(await within(carte).findByRole('alert')).toHaveTextContent('Déjà « A » cette semaine.')
     expect(within(carte).getByRole('checkbox', { name: 'Projet de la semaine' })).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByRole('region', { name: 'Ventes' })).toBeInTheDocument()
+    expect(api.deciderRevue).toHaveBeenCalledWith(expect.anything(), expect.anything(), { erreurSousLeChamp: true })
   })
 
   it('Changer propose les tâches ouvertes du projet et retient le choix pour la décision', async () => {
@@ -216,7 +220,7 @@ describe('TCH93 — Revue : décisions', () => {
     await user.selectOptions(await within(carte).findByLabelText('Prochaine action'), 'Timbres')
     expect(within(carte).getByText('Prochaine action : Timbres')).toBeInTheDocument()
     await user.click(suivant(carte))
-    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ prochaine_action_id: 42 }))
+    expect(api.deciderRevue).toHaveBeenCalledWith(3, expect.objectContaining({ prochaine_action_id: 42 }), { erreurSousLeChamp: true })
   })
 })
 
@@ -271,7 +275,7 @@ describe('R2-068 — Revue : reprise et résumé', () => {
     expect(within(carte).getByRole('radio', { name: 'Pause' })).toBeChecked()
     await user.click(within(carte).getByRole('radio', { name: 'Continuer' }))
     await user.click(suivant(carte))
-    expect(api.deciderRevue).toHaveBeenLastCalledWith(r.cartes[1].projet.id, expect.objectContaining({ decision: 'garder', intention: 'Signer Settat' }))
+    expect(api.deciderRevue).toHaveBeenLastCalledWith(r.cartes[1].projet.id, expect.objectContaining({ decision: 'garder', intention: 'Signer Settat' }), { erreurSousLeChamp: true })
     const apres = await screen.findByRole('list', { name: 'Résumé de la revue' })
     expect(within(apres).getByText('Équipe').closest('li')).toHaveTextContent('Continue')
   })

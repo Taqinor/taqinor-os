@@ -147,7 +147,7 @@ const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(
 const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : texte)
 
 const texteQuand = (t, aujourdhui) => {
-  if (t.quelque_jour) return 'En réserve'
+  if (t.quelque_jour) return 'Plus tard'
   if (!t.jour_prevu) return 'Sans jour'
   const jour = majuscule(t.moment === 'soir' ? 'ce soir' : jourCourt(t.jour_prevu, aujourdhui))
   return t.heure_debut ? `${jour} · ${heure(t.heure_debut)}` : jour
@@ -310,7 +310,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   useEffect(() => () => signalerEcrite(), [])
 
   // R2-021b / R2-025b — ouverte pour un geste précis (`useOuvrirFiche()(id, { section, focus })`, lu dans l'adresse
-  // ou passé en prop) : « Découper » déplie « Plus » et y met le curseur ; `titre` le met dans le titre ; `heure`
+  // ou passé en prop) : « Découper en sous-tâches » déplie « Plus » et y met le curseur ; `titre` le met dans le titre ; `heure`
   // ouvre Quand sur le champ Heure. Une seule fois par tâche, dès qu'elle est lue.
   const racineFiche = useRef(null)
   const curseurPose = useRef(null) // l'identifiant dont la demande a déjà été servie
@@ -326,7 +326,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   }
   useEffect(() => {
     if (!demande?.cible || curseurPose.current === demande.pour) return
-    const cibles = { decouper: 'input[aria-label="Découper"]', titre: '.fiche-titre-champ', heure: 'input[aria-label="Heure"]' }
+    const cibles = { decouper: 'input[aria-label="Découper en sous-tâches"]', titre: '.fiche-titre-champ', heure: 'input[aria-label="Heure"]' }
     const champ = racineFiche.current?.querySelector(cibles[demande.cible])
     if (!champ) return
     curseurPose.current = demande.pour
@@ -403,7 +403,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
 
   const planifier = async (quand) => {
     const r = await ecrire((lock) => planifierTache(id, { ...quand, lock_version: lock }), 'quand')
-    if (r) annulable(quand.quelque_jour ? 'En réserve' : `Prévue ${jourCourt(quand.jour_prevu, aujourdhui) || 'sans jour'}`, r.geste)
+    if (r) annulable(quand.quelque_jour ? 'Plus tard' : `Prévue ${jourCourt(quand.jour_prevu, aujourdhui) || 'sans jour'}`, r.geste)
   }
   const reporter = async (jour) => {
     const r = await ecrire((lock) => planifierTache(id, { jour_prevu: jour, moment: '', heure_debut: null, quelque_jour: false, lock_version: lock }), 'quand')

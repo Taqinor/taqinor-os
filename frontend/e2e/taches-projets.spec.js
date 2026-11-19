@@ -78,12 +78,12 @@ test.describe('Tâches — projets', () => {
     const titres = [titreUnique('Préparer la démo'), titreUnique('Commander les kakémonos'), titreUnique('Réserver lhôtel')]
     const taches = await creerTaches(page, titres, { projet_id: projet.id })
 
-    // Revue : une carte par projet, on décide « Garder », puis le chemin mène à Planifier ma semaine
+    // Revue : une carte par projet, on décide « Continuer », puis le chemin mène à Planifier ma semaine
     await ouvrirEcran(page, '/taches/revue', 'revue')
     const carte = page.getByRole('region', { name: projet.nom })
     await expect(carte).toBeVisible()
     await page.getByLabel('Intention de la semaine (facultatif)').fill('Tout commander') // R2-068 : une seule intention, en tête
-    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // « Garder » est d'office coché
+    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // « Continuer » est d'office coché
     await expect(annonce(page)).toContainText(`« ${projet.nom} » : décision enregistrée`)
     await page.getByRole('button', { name: 'Planifier ma semaine', exact: true }).click()
 

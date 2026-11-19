@@ -18,7 +18,7 @@ const badge = vi.hoisted(() => ({ chargerBadgeTaches: vi.fn(), ajusterBadgeATrie
 vi.mock('../../features/taches/useBadgeTaches', async (importOriginal) => ({ ...(await importOriginal()), ...badge }))
 
 /* TCH86 — À trier : bandeau à convertir, Aujourd'hui · Demain · Projet… · ⋯, Trier une par une,
-   En réserve, Tout ranger. Réponses = `lot.json`, `convertir_activite.json` (et le reste du contrat). */
+   Plus tard, Tout ranger. Réponses = `lot.json`, `convertir_activite.json` (et le reste du contrat). */
 
 const modele = exempleContrat('taches', 'tache')
 const lot = exempleContrat('taches', 'lot')
@@ -132,14 +132,14 @@ describe('TCH86 — écran À trier', () => {
     await waitFor(() => expect(lignes().map((l) => l.textContent.slice(0, 7))).toEqual(['Appeler', 'Timbres', 'Ranger ']))
   })
 
-  it('Demain, En réserve, Supprimer : un seul chemin, `taches/lot/`', async () => {
+  it('Demain, Plus tard, Supprimer : un seul chemin, `taches/lot/`', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByText('Appeler Karim')
     await user.click(within(lignes()[0]).getByRole('button', { name: 'Demain' }))
     expect(api.traiterLot).toHaveBeenLastCalledWith({ ids: [41], action: 'planifier', valeurs: { jour_prevu: '2026-11-18' } })
     await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
-    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Plus tard' }))
     expect(api.traiterLot).toHaveBeenLastCalledWith({ ids: [42], action: 'planifier', valeurs: { quelque_jour: true } })
     await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
     await user.click(await screen.findByRole('menuitem', { name: 'Supprimer' }))
@@ -211,36 +211,36 @@ describe('TCH86 — écran À trier', () => {
     expect(appelsBoite()).toBe(2)
   })
 
-  it('passe visuelle n° 23 — « En réserve {n} » est replié EN BAS (vue quelque_jour), jamais un commutateur en tête', async () => {
+  it('passe visuelle n° 23 — « Plus tard {n} » est replié EN BAS (vue quelque_jour), jamais un commutateur en tête', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByText('Appeler Karim')
     expect(screen.queryByRole('radiogroup', { name: 'Liste' })).toBeNull()
     expect(api.listerToutesLesTaches).toHaveBeenCalledWith({ vue: 'quelque_jour' })
-    const replie = await screen.findByRole('button', { name: /^En réserve\s*2/ })
+    const replie = await screen.findByRole('button', { name: /^Plus tard\s*2/ })
     expect(replie).toHaveAttribute('aria-expanded', 'false')
     // replié : sous la liste de la boîte, ses lignes cachées
     expect(screen.getByRole('region', { name: 'À trier' }).compareDocumentPosition(replie) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByText('Comparer deux devis')).toBeNull()
     await user.click(replie)
-    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    const reserve = screen.getByRole('region', { name: 'Plus tard' })
     expect(within(reserve).getAllByRole('listitem')).toHaveLength(2)
     expect(within(within(reserve).getAllByRole('listitem')[0]).getByText('Salon Solaire Expo').closest('[data-p]')).toHaveAttribute('data-p', 'indigo')
-    // une ligne de la boîte mise en réserve la rejoint aussitôt
+    // une ligne de la boîte remise à plus tard la rejoint aussitôt
     await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
-    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Plus tard' }))
     expect(within(reserve).getAllByRole('listitem')).toHaveLength(3)
-    expect(screen.getByRole('button', { name: /^En réserve\s*3/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Plus tard\s*3/ })).toBeInTheDocument()
   })
 
-  it('« En réserve » vide une fois déplié : « Rien en réserve »', async () => {
+  it('« Plus tard » vide une fois déplié : « Rien pour plus tard »', async () => {
     const user = userEvent.setup()
     api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(vue === 'quelque_jour' ? RESERVE.slice(0, 1) : TACHES))
     monter()
-    await user.click(await screen.findByRole('button', { name: /^En réserve\s*1/ }))
-    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    await user.click(await screen.findByRole('button', { name: /^Plus tard\s*1/ }))
+    const reserve = screen.getByRole('region', { name: 'Plus tard' })
     await user.click(within(reserve).getByRole('button', { name: 'Demain' }))
-    expect(await screen.findByText('Rien en réserve')).toBeInTheDocument()
+    expect(await screen.findByText('Rien pour plus tard')).toBeInTheDocument()
   })
 
   it('boîte vide : « Rien à trier » et « Voir mes projets »', async () => {
@@ -270,7 +270,7 @@ describe('TCH86 — écran À trier', () => {
     await user.click(within(suivante).getByRole('button', { name: 'Suivant' }))
     expect(api.traiterLot).toHaveBeenCalledTimes(1)
     const derniere = await screen.findByRole('group', { name: 'Trier : Ranger le bureau' })
-    await user.click(within(derniere).getByRole('button', { name: 'En réserve' }))
+    await user.click(within(derniere).getByRole('button', { name: 'Plus tard' }))
     expect(await screen.findByText('Tout est trié')).toBeInTheDocument()
   })
 
@@ -339,8 +339,8 @@ describe('R2-024 — la pastille rouge d\'À trier suit les gestes tout de suite
   it('une ligne de la réserve n\'est pas dans la pastille : aucun ajustement, mais une relecture', async () => {
     const user = userEvent.setup()
     monter()
-    await user.click(await screen.findByRole('button', { name: /^En réserve\s*2/ }))
-    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    await user.click(await screen.findByRole('button', { name: /^Plus tard\s*2/ }))
+    const reserve = screen.getByRole('region', { name: 'Plus tard' })
     await user.click(within(within(reserve).getAllByRole('listitem')[0]).getByRole('button', { name: 'Demain' }))
     await waitFor(() => expect(ordre).toContain('relire:force'))
     expect(ordre).not.toContain('ajuster:-1')

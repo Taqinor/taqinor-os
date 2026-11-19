@@ -58,7 +58,7 @@ describe('TCH79 — menu ⋯ d\'Aujourd\'hui', () => {
     const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
     expect(noms).toEqual([
       'Alléger ma journée', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
-      'Revue de la semaine', 'Mon rythme', 'Supprimées et derniers gestes', 'Réglages',
+      'Revue de la semaine', 'Mon rythme', 'Supprimées', 'Réglages',
     ])
   })
 
@@ -178,7 +178,7 @@ describe('TCH79 — Réorganiser et Sélectionner', () => {
     await screen.findByText('Timbres')
     await ouvrirMenu('Réorganiser')
     await userEvent.click(screen.getByRole('button', { name: 'Descendre « Timbres »' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }, { erreurSousLeChamp: true }))
     const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
     expect(titres).toEqual(['Appeler Lydec', 'Timbres'])
     expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Timbres : position 2 sur 2'))).toBe(true)
@@ -208,7 +208,7 @@ describe('TCH79 — Réorganiser et Sélectionner', () => {
     await screen.findByText('Timbres')
     await ouvrirMenu('Réorganiser')
     await userEvent.click(screen.getByRole('button', { name: 'Descendre « Timbres »' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }, { erreurSousLeChamp: true }))
     const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
     expect(titres.indexOf('Appeler Lydec')).toBeGreaterThanOrEqual(0)
     expect(titres.indexOf('Appeler Lydec')).toBeLessThan(titres.indexOf('Timbres'))

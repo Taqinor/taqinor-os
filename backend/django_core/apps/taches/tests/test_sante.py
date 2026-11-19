@@ -124,7 +124,7 @@ class CasDuTableau(unittest.TestCase):
         taches = [T(quelque_jour=True), T(quelque_jour=True)]
         s = sante.sans_prochaine_action(taches)
         self.assertEqual(s.donnees['cause'], 'reserve')
-        self.assertEqual(s.phrase, 'Rien à faire maintenant : tout est en réserve.')
+        self.assertEqual(s.phrase, 'Rien à faire maintenant : tout est pour plus tard.')
 
     def test_10_tout_fait(self):
         taches = [faite(d) for d in (3, 4, 5, 6, 9)]

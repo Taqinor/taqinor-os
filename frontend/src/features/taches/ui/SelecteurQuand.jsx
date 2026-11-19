@@ -3,7 +3,7 @@ import { aujourdhuiIso, jourNomme } from '../lib/textes'
 
 /* ============================================================================
    TCH82 — Sélecteur « Quand » (textes.md §2.4 ; R3-067 : Aujourd'hui · Demain · Ce soir · Reporter à
-   {jour} (seulement s'il n'est pas demain) · Calendrier… · En réserve · Sans jour) + l'heure. Un seul composant,
+   {jour} (seulement s'il n'est pas demain) · Calendrier… · Plus tard · Sans jour) + l'heure. Un seul composant,
    posé dans la feuille de saisie, la fiche (TCH84) et À trier (« Choisir un jour »).
 
    La valeur est celle que `planifier/` et `saisie-rapide/` lisent :
@@ -99,7 +99,7 @@ export default function SelecteurQuand({
   }
   tuiles.push(
     { cle: 'choisir', titre: 'Calendrier…', detail: courante === 'choisir' ? jourNomme(valeur.jour_prevu, aujourdhui) : '', pose: () => setDateOuverte(true) },
-    { cle: 'reserve', titre: 'En réserve', detail: '', pose: () => { setDateOuverte(false); choisir({ quelque_jour: true }) } },
+    { cle: 'reserve', titre: 'Plus tard', detail: '', pose: () => { setDateOuverte(false); choisir({ quelque_jour: true }) } },
     { cle: 'sans', titre: 'Sans jour', detail: '', pose: () => { setDateOuverte(false); choisir({}) } },
   )
 

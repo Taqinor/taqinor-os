@@ -20,11 +20,11 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
    TCH87 — Recherche (`/taches/recherche?q=`) : un champ « Chercher dans mes tâches », deux groupes
    « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites cette semaine (R2-124 : groupes par jour,
    « Aujourd'hui (n) », « Hier (n) », « mar. 17 (n) ») · Faites aussi · Projet ▾ · Priorité haute ;
-   repliés : Aujourd'hui · À revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance ·
+   repliés : Aujourd'hui · À revoir · 7 prochains jours · Sans date · En attente · Plus tard · Avec échéance ·
    Étiquette ▾, le tri, « Enregistrer cette vue » (« Nom de la vue ») et les vues déjà enregistrées (TCH166 : un
    appui les rouvre, mêmes filtres). Vide : « Rien pour « {q} » ».
    D'OÙ VIENNENT LES LIGNES : sans filtre côté serveur, `recherche/` (projets + tâches par mots) ; dès que
-   Faites aussi, Projet, Priorité haute, Étiquette ou En réserve est posé, `taches/` (liste paginée, filtres
+   Faites aussi, Projet, Priorité haute, Étiquette ou Plus tard est posé, `taches/` (liste paginée, filtres
    de l'API) ; les puces de jour (Aujourd'hui, 7 jours…) et le tri s'appliquent ensuite sur les lignes lues,
    d'après leurs dates. La dernière liste reste affichée si une lecture échoue (hors ligne).
    Maquettes : recherche.html, recherche-filtres.html, recherche-vide.html.
@@ -90,7 +90,7 @@ function periodeServie(puces) {
 const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
 
 /** Ce que l'écran garde d'une vue (clés FERMÉES du serveur, donnees.md §2.16). `null` quand un filtre n'a pas de
- *  clé (En réserve, À revoir, Sans date, tris Jour et Création) : l'enregistrer perdrait ce filtre à la
+ *  clé (Plus tard, À revoir, Sans date, tris Jour et Création) : l'enregistrer perdrait ce filtre à la
  *  réouverture, donc on ne l'enregistre pas. */
 function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine, recentes }) {
   if (recentes || reserve || puces.includes('a_revoir') || puces.includes('sans_date') || tri === 'jour' || tri === 'creation') return null
@@ -350,7 +350,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   }
   const enregistrerVue = async () => {
     try {
-      const { data } = await creerVue({ nom: nomVue.trim(), filtres: filtresAEnregistrer })
+      // couture L7 — vue déjà existante, « 30 au plus » (409) : dits une fois, sous le champ, sans toast
+      const { data } = await creerVue({ nom: nomVue.trim(), filtres: filtresAEnregistrer }, { erreurSousLeChamp: true })
       const { geste_id: geste, ...vue } = data
       setVues((liste) => [...liste, vue])
       setNomVue(''); setErreurVue('')
@@ -494,7 +495,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
             {PUCES_JOUR.map(([cle, libelle]) => (
               <button key={cle} type="button" className="puce" role="checkbox" aria-checked={puces.includes(cle)} onClick={() => basculerPuce(cle)}>{libelle}</button>
             ))}
-            <button type="button" className="puce" role="checkbox" aria-checked={reserve} onClick={() => setReserve((v) => !v)}>En réserve</button>
+            <button type="button" className="puce" role="checkbox" aria-checked={reserve} onClick={() => setReserve((v) => !v)}>Plus tard</button>
           </div>
           {etiquettes.length > 0 ? (
             <label className="champ-etiquette">

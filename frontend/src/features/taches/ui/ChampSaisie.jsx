@@ -241,6 +241,14 @@ export default function ChampSaisie({
     curseurVoulu.current = null
     el.setSelectionRange?.(voulu.pos, voulu.pos)
   })
+  // couture L7 — le champ plafonné à 6 lignes (saisie.css) défile : le navigateur ne ramène le curseur que juste assez
+  // pour le voir, et la 1re ligne visible restait coupée à mi-hauteur. Curseur en fin de texte : le champ va au bout, et
+  // le plafond (6 lignes + la marge du bas) aligne alors la 1re ligne visible sur son haut.
+  useLayoutEffect(() => {
+    const el = champ.current
+    if (!el || el.scrollHeight <= el.clientHeight || el.selectionEnd !== el.value.length) return
+    el.scrollTop = el.scrollHeight
+  }, [valeur])
   const mot = projets ? motDiese(valeur, curseur) : null
   const proposes = mot ? projetsPour(projets, mot.q) : []
   const listeOuverte = proposes.length > 0 && fermeePour !== valeur

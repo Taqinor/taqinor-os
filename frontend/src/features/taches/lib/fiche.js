@@ -49,7 +49,7 @@ export function oublierApercus() {
 if (typeof window !== 'undefined') window.addEventListener('taqinor:auth-logout', oublierApercus)
 
 /** Ce que la fiche ouvre d'elle-même (R2-021b/025b) : `section` (`decouper` : « Plus » déplié, curseur dans
- *  « Découper ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */
+ *  « Découper en sous-tâches ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */
 export const SECTIONS_FICHE = ['decouper']
 export const FOCUS_FICHE = ['titre', 'heure']
 

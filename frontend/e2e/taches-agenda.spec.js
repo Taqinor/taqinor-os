@@ -126,17 +126,28 @@ test.describe('Tâches — l\'Agenda au bureau', () => {
     await expect(volet).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(volet).toBeHidden()
-    // le glisser : le premier jour de la semaine (jamais sous le panneau, qui s'ouvre à droite), 15:00
+    // le glisser : le premier jour de la semaine (jamais sous le panneau, qui s'ouvre à droite), sur une heure pleine
+    // VISIBLE panneau ouvert (couture L7 : « 15:00 » en dur dépendait de l'heure du passage — la grille se place sur
+    // « maintenant » ; à 17:17, 15:00 était hors de vue et le glisser faisait défiler la page, le panneau avec)
     await bouton.click()
+    await expect(volet).toBeVisible()
     const colonne = page.locator('.semaine .ag-colonne').first()
     const jourCible = await colonne.getAttribute('data-jour')
-    const creneau = colonne.locator(`.ag-creneau-vide[data-m="${15 * 60}"]`)
+    const minutes = await colonne.evaluate((c) => {
+      const vus = [...c.querySelectorAll('.ag-creneau-vide[data-m]')].filter((e) => {
+        const b = e.getBoundingClientRect()
+        return Number(e.dataset.m) % 60 === 0 && b.top >= 0 && b.bottom <= window.innerHeight
+      })
+      return vus.length ? Number(vus[Math.floor(vus.length / 2)].dataset.m) : null
+    })
+    expect(minutes, 'une heure pleine visible dans la colonne').not.toBeNull()
+    const creneau = colonne.locator(`.ag-creneau-vide[data-m="${minutes}"]`)
     const reponse = page.waitForResponse((r) => /\/taches\/\d+\/planifier\//.test(r.url()) && r.request().method() === 'POST')
     await volet.getByRole('button', { name: new RegExp(titre) }).dragTo(creneau)
     expect((await reponse).ok(), 'planifier/ répond').toBeTruthy()
     const posee = await lireTache(page, tache.id)
     expect(posee.jour_prevu, 'le jour de la colonne déposée').toBe(jourCible)
-    expect(posee.heure_debut, 'l\'heure du créneau déposé').toMatch(/^15:00/)
+    expect(posee.heure_debut, 'l\'heure du créneau déposé').toMatch(new RegExp(`^${String(minutes / 60).padStart(2, '0')}:00`))
   })
 
   test('R2-107 — mode « placer » : Tab atteint le menu en moins de 15 arrêts (un seul arrêt pour la grille)', async ({ page }) => {

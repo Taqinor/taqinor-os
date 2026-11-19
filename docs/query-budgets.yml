@@ -197,6 +197,11 @@ endpoints:
     enforced: true
     note: "TCH129 : listes paginées des tâches ; ne grandit pas avec les lignes."
 
+  - path: /api/django/taches/taches/{id}/
+    budget: 16
+    enforced: true
+    note: "Couture L7 (19/11) : la fiche d'une tâche ; +1 requête nommée, les lignes du plan du jour (`calculs_du_plan` → `selectors.journee.lignes_de_taches_du_jour`) pour servir la MÊME ★ que la journée. Plafond estimé (test_plafonds.py::test_fiche_d_une_tache), à ramener à la mesure au premier vert."
+
   - path: /api/django/taches/projets/
     budget: 14
     enforced: true

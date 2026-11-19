@@ -8,13 +8,14 @@ import CaseRonde from '../ui/CaseRonde'
 import { annoncer } from '../lib/gestes'
 import { accord, jourLong, jourNomme } from '../lib/textes'
 import { useCompteTaches } from '../lib/enLigne'
+import { ecrireTexte, lireTexte, viderALaDeconnexion } from '../lib/stockage'
 
 /* ============================================================================
    TCH80 — Feuille « Bilan du soir » (textes.md §2.9, regles.md §4.6), ouverte par la carte
    « Faire le bilan », le menu, ou `?ouvrir=bilan` (notification du soir). Le lendemain jusqu'à
    midi, c'est le « Bilan d'hier ». Contenu lu dans `journee/cloture/` (journee_cloture.json) :
      · « {faites} sur {objectif} » (+ essentiel), les segments (R3-020 : plus de second chiffre « gardées ») ;
-     · Faites ; Reste : par tâche Reporter à {jour} · Choisir un jour · En réserve · Abandonner
+     · Faites ; Reste : par tâche Reporter à {jour} · Choisir un jour · Plus tard · Abandonner
        (Reporter est le choix d'emblée), « Tout reporter à {jour} » les remet toutes sur le prochain
        jour travaillé ; une tâche reportée 3 fois est marquée « À revoir : reportée 3 fois » et,
        sans choix, RESTE à sa place (jamais bloquante) ;
@@ -27,25 +28,13 @@ import { useCompteTaches } from '../lib/enLigne'
 const REPORTER = 'prochain_jour_ouvre'
 const LIMITE_MOT = 280
 
-/** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu). */
-const cleBrouillonMot = (userId, jourBilan) => (userId != null && jourBilan ? `taches:bilan-mot:${userId}:${jourBilan}` : null)
-function lireMot(cle) {
-  if (!cle) return ''
-  try {
-    return window.localStorage.getItem(cle) ?? ''
-  } catch {
-    return '' // stockage indisponible (navigation privée) : le mot vit le temps de la feuille, rien d'autre
-  }
-}
-function garderMot(cle, texte) {
-  if (!cle) return
-  try {
-    if (texte) window.localStorage.setItem(cle, texte)
-    else window.localStorage.removeItem(cle)
-  } catch {
-    // stockage indisponible : rien n'est gardé au-delà de la feuille ouverte, la frappe reste à l'écran
-  }
-}
+/** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu), gardé
+ *  par `lib/stockage` (stockage indisponible : le mot vit le temps de la feuille) et vidé à la déconnexion. */
+const PREFIXE_MOT = 'taches:bilan-mot:'
+const cleBrouillonMot = (userId, jourBilan) => (userId != null && jourBilan ? `${PREFIXE_MOT}${userId}:${jourBilan}` : null)
+const lireMot = lireTexte
+const garderMot = ecrireTexte
+viderALaDeconnexion(PREFIXE_MOT)
 
 function useCloture(jour, aujourdhui) {
   const [etat, setEtat] = useState({ chargement: true, erreur: '', donnees: null })
@@ -81,7 +70,7 @@ function Constat({ constat, onRepondre }) {
 
 /**
  * R2-030 — UNE action visible par tâche : le choix retenu (« Reporter à ven. 20 » d'emblée), et « ⋯ » qui déplie les
- * autres (Reporter · Choisir un jour · En réserve · Abandonner) — quatre pilules par tâche en faisaient vingt pour cinq.
+ * autres (Reporter · Choisir un jour · Plus tard · Abandonner) — quatre pilules par tâche en faisaient vingt pour cinq.
  * Une tâche « à revoir » (aucun choix d'emblée) montre « Que faire ? ».
  */
 function ChoixReste({ titre, choix, jourReport, onChoisir, minimum }) {
@@ -90,14 +79,14 @@ function ChoixReste({ titre, choix, jourReport, onChoisir, minimum }) {
   const retenu = {
     [REPORTER]: `Reporter à ${jourReport}`,
     jour: choix.jour ? `Le ${jourNomme(choix.jour, minimum)}` : '',
-    un_jour: 'En réserve',
+    un_jour: 'Plus tard',
     abandonner: 'Abandonner',
   }[choix.choix] ?? ''
   const prendre = (suite) => { setAutres(false); setCalendrier(false); onChoisir(suite) }
   const options = [
     { cle: REPORTER, libelle: `Reporter à ${jourReport}`, choisir: () => prendre({ choix: REPORTER }) },
     { cle: 'jour', libelle: 'Choisir un jour', choisir: () => setCalendrier((v) => !v) },
-    { cle: 'un_jour', libelle: 'En réserve', choisir: () => prendre({ choix: 'un_jour' }) },
+    { cle: 'un_jour', libelle: 'Plus tard', choisir: () => prendre({ choix: 'un_jour' }) },
     { cle: 'abandonner', libelle: 'Abandonner', choisir: () => prendre({ choix: 'abandonner' }) },
   ].filter((o) => o.cle === 'jour' || o.cle !== choix.choix)
   return (

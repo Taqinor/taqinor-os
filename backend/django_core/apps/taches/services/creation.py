@@ -8,7 +8,7 @@ LIGNE (`api.md` §4, déjà validée par la vue) :
   va dans `deja_creees`, jamais en double ;
 - tout identifiant reçu (projet, étape, parent, étiquette, récurrence, activité, lien ERP) est revérifié
   « même société ET même propriétaire » (invariant 9) ;
-- `triee_le` = maintenant dès qu'un projet, un jour ou « En réserve » est reconnu (invariant 1) ; un
+- `triee_le` = maintenant dès qu'un projet, un jour ou « Plus tard » est reconnu (invariant 1) ; un
   rappel posé sans jour donne son jour à la tâche ;
 - `rang_projet` = dernier du projet (ou des tâches sans projet) + 1 024 (invariant 32) ;
 - le jour passe par `planifier()` (jamais écrit ici), sans report ;

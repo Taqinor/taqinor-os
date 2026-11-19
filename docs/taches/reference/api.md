@@ -32,6 +32,17 @@ aucun marqueur).
   `effacement_occupe` (`tout-effacer/` : une ligne du compte était verrouillée par une autre écriture plus de
   5 s — `lock_timeout` posé dans la transaction —, ou la suppression a dépassé le `statement_timeout` : la
   transaction est défaite en entier, RIEN n'est effacé ; jamais un 500) (`erreurs.json`).
+- **Refus d'ÉTAT = 409 `state_conflict`** (r2 CI api-fuzz, L2 r3) : un refus qui dépend de l'état lu en base et que le
+  schéma ne peut pas dire — nom de projet, d'étape, d'étiquette ou de vue déjà pris, série déjà ouverte, rappel sur une
+  date absente ou sur une tâche close, plafond de rappels, `sauter` une tâche qui ne se répète pas, voisin hors de la
+  liste ordonnée, boucle de blocage, « Déjà « X » cette semaine » (revue), heure ou ★ déjà posées (`journee/`) —
+  répond 409, corps `{"<champ>":["…"],"detail":"…","code":"state_conflict"}` (le champ fautif ET la forme `{detail,
+  code}` ; `entrees.refus_etat`, `core.conflit_etat.ConflitEtat`). Un identifiant BIEN FORMÉ du corps d'une action
+  (`projet_id`, `projet_cible_id`…) qui ne désigne rien du compte répond 404 au même corps `{"<champ>":["…"],"detail"}`
+  (`entrees.introuvable`). Restent 400 : les erreurs de forme et de borne, et « Projet inexistant. » d'une ligne de
+  saisie ou du PATCH d'une tâche. L'écran dit un 409 `state_conflict` ou un 404 qui nomme un champ SOUS le champ : avec
+  `{ erreurSousLeChamp: true }`, `tachesApi.js` le rend à l'appelant en 400 de champ (`response.statutServeur` garde le
+  vrai statut), sans toast ni annonce.
 - **Idempotence** : `client_id` (par tâche, `:<n>` par ligne d'un texte multi-lignes) ; `Idempotency-Key` : chaque vue
   qui la porte MÉLANGE `IdempotentCreateMixin` (`core/idempotency.py:202`) et appelle sa méthode
   `_avec_idempotence(request, creer, suffixe=f'u{user.pk}')` (`:234`), sinon deux collègues rejoueraient la réponse de
@@ -698,7 +709,7 @@ de leur section ; une activité ERP a la même forme (`type:"activite"`, champs 
 `lock_version:null`). `a_notes` : la tâche porte une note (l'indice « note » de la ligne) — toujours `false` sous
 l'en-tête assistant (les notes ne lui sont jamais servies, `regles.md` §8) et pour une activité ; `fait_le` : l'instant
 où la tâche a été faite (`done_at` d'une activité close), `null` sinon — tous deux lus de colonnes déjà chargées,
-aucune requête de plus par ligne. TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit). TACHE_ECRITE :
+aucune requête de plus par ligne. TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit ; `essentielle` / `prevue_au_plan` d'une TACHE — fiche `GET taches/{id}/` ou TACHE_ECRITE — sont lus du plan du jour, comme dans la journée : Révision 3.3, couture L7). TACHE_ECRITE :
 `suivante` = occurrence née (terminer, sauter) ; `progression` posée par terminer/rouvrir ; `question_titres` vrai au
 premier rappel tant que `titres_notifications_demande_le` est nul (A17-T4) ; avertissements `prevue_apres_echeance`,
 `jour_non_travaille`, `hors_fenetre`, `echeance_aujourdhui` (R3-002 : « L'échéance reste aujourd'hui. », la tâche
@@ -1337,7 +1348,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 |---|---|---|---|---|---|---|---|
 | POST | `/api/django/taches/saisie-rapide/` | analyse, aperçu (`apercu:true`) ou création | S | — | C, K | Saisie, Coller mes listes, carte `capture_apercu`, file hors ligne | s2, C11 |
 | POST | `/api/django/taches/capture/` | Siri / partage | J:capture | — | C | raccourci Siri | s6b, A1 |
-| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes paginées | S | — | — | À trier (`vue=boite`), En réserve (`vue=quelque_jour`), filtres, ✓+ des fiches ERP (`count`) | s2, s6a |
+| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes paginées | S | — | — | À trier (`vue=boite`), Plus tard (`vue=quelque_jour`), filtres, ✓+ des fiches ERP (`count`) | s2, s6a |
 | POST | `/api/django/taches/taches/` | une tâche (LIGNE) | S | — | C, K | fiche, agenda (créneau vide), Copilote | socle §4 |
 | GET | `/api/django/taches/taches/{id}/` | TACHE ; revérifie le lien | S | — | — | Fiche | s6a |
 | PATCH | `/api/django/taches/taches/{id}/` | éditer | S | oui | — | Fiche, Renommer | s2, s4 |
@@ -1353,7 +1364,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | POST | `/api/django/taches/taches/{id}/restaurer/` | restaurer | S | — | N | Supprimées récemment | s2 |
 | POST | `/api/django/taches/taches/{id}/rappels/` | poser un rappel | S | — | — | Quand → Rappel, Copilote | s3, A17-T4 |
 | POST | `/api/django/taches/taches/{id}/changement/apercu/` | écho renommer/abandonner/supprimer | S | — | N | carte `tache` | s5b |
-| POST | `/api/django/taches/taches/lot/` | `deplacer` · `planifier` · `prioriser` · `etiqueter` · `terminer` · `supprimer` · `garder_sans_projet` (≤ 200) | S | — | K | sélection, « Tout en réserve », « Tout ranger » | s2, C11, C32 |
+| POST | `/api/django/taches/taches/lot/` | `deplacer` · `planifier` · `prioriser` · `etiqueter` · `terminer` · `supprimer` · `garder_sans_projet` (≤ 200) | S | — | K | sélection, « Tout pour plus tard », « Tout ranger » | s2, C11, C32 |
 | POST | `/api/django/taches/taches/lier-activite/` | lier une tâche à une activité ERP (non close) | S | — | K | appui long sur l'activité | A17 |
 | POST | `/api/django/taches/convertir-activite/` | convertir `{activite_ids}` ou `{toutes}` (200 partiel) | S | — | N | bandeau d'À trier | s2, s6a, C20 |
 | DELETE | `/api/django/taches/rappels/{id}/` | retirer | S | — | N | fiche | s3 |
@@ -1492,7 +1503,7 @@ par `records.services.cloturer_a_faire_personnel`). **`suggestions/{id}/accepter
 `{"jour":"2026-11-17","garder":[20,42]}` → `journee_ecrite.json` (`renvoyees` rempli ; `allege_le` posé, sans report).
 **`journee/priorites/`** `?jour=2026-11-17` → `priorites.json` : TOUTES les tâches ouvertes du préfiltre, classées
 comme Proposé (inv. 34 étendu au pool entier), chacune avec `raison` ; gestes de la carte : Essentiel →
-`journee/essentiel/`, Aujourd'hui → `planifier/` (J), Plus tard dans la semaine → `planifier/` (`plus_tard`), « Garder
+`journee/essentiel/`, Aujourd'hui → `planifier/` (J), « Reporter à {jour} » → `planifier/` (`plus_tard`), « Garder
 ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/point/`** → `point.json`.
 **`journee/cloture/`** `?jour=2026-11-17` (J−1 admis jusqu'à 12 h) → `journee_cloture.json` (UN constat au plus ;
 `a_trancher` = reportées 3 fois, marquées, jamais refusées). **`journee/cloturer/`**
@@ -1562,7 +1573,10 @@ Tout (file, cache, brouillon) vidé sur `taqinor:auth-logout` (`providers/sessio
 ## 6. Contrats d'abord (`apps/taches/contract_samples/*.json`)
 
 Un fichier par échantillon de l'annexe A (même nom, contenu recopié mot pour mot ; `exemple` est toujours un OBJET).
-L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`docs/plans/PLAN_TACHES.md`).
+L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`docs/plans/PLAN_TACHES.md`). Une clé
+facultative `nuls` (liste de chemins) dit ce que l'exemple ne montre pas nul mais que le serveur peut servir nul
+(`aujourdhui.json` : `plan.planifie_le` ; `journee_proposition.json` : `suite_par_projet`, `rythme` ;
+`projets_liste.json` : `constat`) ; elle n'est pas une clé de la réponse.
 
 ## 7. Routes du FRONT (une seule table — spec-7 r3 §2)
 
@@ -1744,7 +1758,7 @@ l'échafaudage, deux beats, `NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` ·
   micro-tâches, garde de taille, mémoire d'échec) et C6 hors de la première livraison (m6) : à dire dans `regles.md`
   §6 (les champs de données restent).
 - `textes.md` : textes des états `EtatAgendaExterne` ; carte `priorites` (titre, raisons, gestes « Essentiel ·
-  Aujourd'hui · Plus tard dans la semaine », « Garder ces N ») ; carte `point` ; « Rendez-vous » sous l'en-tête
+  Aujourd'hui · Reporter à {jour} », « Garder ces N ») ; carte `point` ; « Rendez-vous » sous l'en-tête
   assistant ; texte du coupe-circuit (Réglages → Avancé, administrateur) ; les trois silences de Vie privée (A18).
 
 ## Révision 2 : ce qui a changé
@@ -1899,7 +1913,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 {"tache":{"type":"tache","id":95,"titre":"Préparer l'appel Benali","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"activite","peut_cloturer":true,"a_notes":true,"fait_le":null,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"a_notes":false,"fait_le":null,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":101,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,"avertissements":[],"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"geste_id":92}
 ```
 
-**`lot.json`** — POST taches/lot/ · consommateurs : sélection, « Tout en réserve »
+**`lot.json`** — POST taches/lot/ · consommateurs : sélection, « Tout pour plus tard »
 ```json
 {"appliquees":[41],"refusees":[{"id":42,"raison":"introuvable"}],"geste_id":78}
 ```
@@ -2121,7 +2135,7 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `taches/{id}/planifier/` vers un autre jour (ou sans jour) d'une tâche dont `echeance` = aujourd'hui sert
   `{"code":"echeance_aujourdhui","message":"L'échéance reste aujourd'hui."}` : la règle ne change pas, l'échéance la
   garde dans la journée (`aujourdhui/` la sert encore, ★ comprise) ; « Repousser l'échéance » = le PATCH `echeance`
-  qui existe. Rien pour « En réserve » (elle quitte la journée).
+  qui existe. Rien pour « Plus tard » (elle quitte la journée).
 - **« Faites cette semaine »** (`faites_semaine.json`, nouveau, R3-003, C-16) : `GET taches/?periode=faites_semaine`
   garde la page paginée (`results` = ITEM, faites depuis lundi 0 h, la plus récente d'abord) et ajoute, sur chaque
   page, `total` (LA somme de la Revue et de l'Agenda : `faites_par_jour` du lundi à aujourd'hui) et
@@ -2134,6 +2148,12 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 - **Réordonner dans Aujourd'hui** (R3-007) : `taches/{id}/reordonner/` `liste:"jour"` d'une tâche gardée aujourd'hui
   (`jour_prevu` = J OU `echeance` = J) range dans la liste de la JOURNÉE — toute tâche ouverte gardée aujourd'hui est
   une voisine permise ; les autres jours gardent la liste du même `jour_prevu`.
+- **La ★ de la fiche** (couture L7) : `GET taches/{id}/` et la TACHE_ECRITE de toute écriture servent `essentielle` et
+  `prevue_au_plan` lus du plan du jour (`serializers.saisie.calculs_du_plan` → `selectors.journee.
+  lignes_de_taches_du_jour`, UNE requête de plus) — la MÊME source que la journée (`aujourdhui/`) et la vue d'un projet ;
+  avant, ces deux champs valaient toujours `false` et la ★ changeait d'avis à l'ouverture de la fiche. `GET taches/`
+  (listes) garde ses défauts (§ Révision 3.2). Plafond de la fiche déclaré : `test_plafonds.py::test_fiche_d_une_tache`,
+  `docs/query-budgets.yml` (16, estimé : la CI tranche).
 - **Derniers gestes** (`gestes.json`, R3-008) : `GET gestes/` ne liste plus que les gestes sur des tâches ou des
   projets — ni réglage du rythme (`rythme`), ni préférence (« Noté : … »), ni réponse à une carte (geste `decision`
   qui touche une `incitation_coach` : il reste annulable par son toast). Un geste ★ porte son `titre` (« Essentielle

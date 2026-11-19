@@ -54,7 +54,7 @@ def _heure_murale(maintenant):
 # ------------------------------------------------- convertisseurs (§1.3, §1.9)
 
 def conv_quelque_jour(m, ctx, texte):
-    return Lu(True, 'En réserve')
+    return Lu(True, 'Plus tard')
 
 
 def _nom_du_mot(m, texte):

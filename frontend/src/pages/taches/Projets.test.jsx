@@ -360,7 +360,7 @@ describe('TCH88 — Projets : Nouveau projet et navigation', () => {
   })
 
   it('un nom déjà pris s\'affiche sous le champ', async () => {
-    api.creerProjet.mockRejectedValue({ response: { status: 400, data: { nom: ['Un projet « Ventes » existe déjà.'] } } })
+    api.creerProjet.mockRejectedValue({ response: { status: 400, statutServeur: 409, data: { nom: ['Un projet « Ventes » existe déjà.'], detail: 'Un projet « Ventes » existe déjà.', code: 'state_conflict' } } })
     monter()
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Ventes' })

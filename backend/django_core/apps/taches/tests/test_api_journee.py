@@ -81,7 +81,7 @@ class PrefiltreTests(_Base):
 
     def test_pause_du_jour_garde_ce_qui_est_pose_ce_jour(self):
         """R2-031 (choix C-5) — mis en pause aujourd'hui à 15:00 : la tâche posée aujourd'hui à 16:00 reste
-        dans la journée (Prévu) ; ses tâches sans jour, en réserve ou prévues un autre jour n'y sont pas ;
+        dans la journée (Prévu) ; ses tâches sans jour, pour plus tard ou prévues un autre jour n'y sont pas ;
         le lendemain, plus rien du projet."""
         en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(J, 15))
         a_16h = self.tache(projet=en_pause, jour_prevu=J, heure_debut=datetime.time(16, 0))

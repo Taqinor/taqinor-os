@@ -558,7 +558,7 @@ describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et ta
     await reorganiser(user)
     await user.click(screen.getByRole('button', { name: 'Descendre « Devis Settat »' }))
     expect(ordre()).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
-    expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 })
+    expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 }, { erreurSousLeChamp: true })
     expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Ordre changé')
   })
@@ -579,7 +579,7 @@ describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et ta
     await reorganiser(user)
     await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
     expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
-    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 20, apres_id: 21 })
+    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 20, apres_id: 21 }, { erreurSousLeChamp: true })
     await user.click(await screen.findByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client']))
     expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 21, apres_id: null })
@@ -587,6 +587,15 @@ describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et ta
     api.reordonnerTache.mockRejectedValueOnce({ response: { status: 500, data: {} } })
     await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client'])
+
+    // couture L7 — un refus d'ÉTAT (409 « voisin d'une autre liste », rendu en 400 de champ par `erreurSousLeChamp`)
+    // se dit en mots humains, jamais « Avant id : Valeur inconnue. »
+    api.reordonnerTache.mockRejectedValueOnce({ response: { status: 400, statutServeur: 409,
+      data: { avant_id: ['Valeur inconnue.'], detail: 'Valeur inconnue.', code: 'state_conflict' } } })
+    await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Impossible de déplacer cette tâche ici.'))
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Valeur inconnue')
     expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client'])
   })
 
@@ -600,7 +609,7 @@ describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et ta
     expect(document.activeElement).toHaveTextContent('Préparer le matériel')
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}')
     expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
-    expect(api.reordonnerTache).toHaveBeenCalledWith(21, { liste: 'projet', avant_id: 22, apres_id: null })
+    expect(api.reordonnerTache).toHaveBeenCalledWith(21, { liste: 'projet', avant_id: 22, apres_id: null }, { erreurSousLeChamp: true })
   })
 
   describe('Tableau', () => {
@@ -622,7 +631,7 @@ describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et ta
       await touche(poignee, 'Space')
       await touche(document, 'ArrowDown')
       await touche(document, 'Space')
-      await waitFor(() => expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 }))
+      await waitFor(() => expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 }, { erreurSousLeChamp: true }))
       expect(api.modifierTache).not.toHaveBeenCalled() // la carte n'a pas changé d'étape
       const cartes = [...screen.getByRole('region', { name: 'Études' }).querySelectorAll('.ep-carte .ligne-corps-bouton')].map((b) => b.textContent)
       expect(cartes).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
@@ -694,24 +703,24 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
   })
 
-  it('F4 revue #7 — En réserve, « Annuler », En réserve encore : la ligne garde la version rendue par le serveur', async () => {
+  it('F4 revue #7 — Plus tard, « Annuler », Plus tard encore : la ligne garde la version rendue par le serveur', async () => {
     api.planifierTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 93 } })
     api.lireTache.mockResolvedValue({ data: { ...tacheEcrite().tache, id: 20, lock_version: 9 } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Plus tard' }))
     await user.click(await screen.findByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(93))
     await waitFor(() => expect(api.lireTache).toHaveBeenCalledWith(20))
     await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Plus tard' }))
     await waitFor(() => expect(api.planifierTache).toHaveBeenCalledTimes(2))
     expect(api.planifierTache.mock.calls[1][1].lock_version).toBe(9)
     expect(api.lireVueProjet).toHaveBeenCalledTimes(1) // la vue n'est jamais relue : seule cette tâche l'est
   })
 
-  it('Priorité → Basse passe par le lot `prioriser` ; En réserve par `planifier/` avec le lock_version', async () => {
+  it('Priorité → Basse passe par le lot `prioriser` ; Plus tard par `planifier/` avec le lock_version', async () => {
     api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 92 } })
     api.planifierTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 93 } })
     monter()
@@ -722,7 +731,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'prioriser', valeurs: { priorite: 1 } })
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Priorité basse')
     await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'En réserve' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Plus tard' }))
     expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ quelque_jour: true, jour_prevu: null, lock_version: expect.any(Number) }))
   })
 

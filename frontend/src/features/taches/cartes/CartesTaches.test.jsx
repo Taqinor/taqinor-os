@@ -209,13 +209,13 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     ))
   })
 
-  it('priorites : Essentiel, Aujourd’hui et Plus tard dans la semaine ont chacun leur route', async () => {
+  it('priorites : Essentiel, Aujourd’hui et « Reporter à {jour} » (R3-150, C-20) ont chacun leur route', async () => {
     monter('priorites', contrat('priorites'))
     const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
     await userEvent.click(within(ligne).getByRole('button', { name: 'Essentiel' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 21, essentielle: true }))
     expect(await within(ligne).findByText(/Essentielle/)).toBeInTheDocument()
-    await userEvent.click(within(ligne).getByRole('button', { name: /Plus tard dans la semaine/ }))
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Reporter à jeu. 19' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/taches/taches/21/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: 2 }),
     ))
@@ -225,7 +225,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
     monter('priorites', contrat('priorites'))
     const ligne = screen.getByText('Déclaration TVA').closest('.ligne')
     const gestes = within(ligne.querySelector('.actions-priorite')).getAllByRole('button')
-    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", expect.stringMatching(/^Plus tard dans la semaine/)])
+    expect(gestes.map((b) => b.textContent)).toEqual(['Essentiel', "Aujourd'hui", 'Reporter à jeu. 19'])
     for (const b of gestes) expect(b).toHaveClass('bouton', 'lien')
   })
 
@@ -562,7 +562,7 @@ describe('A5 — la carte à valider montre tout ce qu’elle écrit (revue F3 n
     'taches.tache.planifier': {
       tache: true,
       corps: { lock_version: 2, jour_prevu: '2027-03-01', moment: 'soir', heure_debut: '03:00', quelque_jour: true },
-      vus: (j) => ['Déclaration TVA', `Quand : ${j.jourCourt('2027-03-01')}`, 'Ce soir', 'Heure : 03:00', 'En réserve'],
+      vus: (j) => ['Déclaration TVA', `Quand : ${j.jourCourt('2027-03-01')}`, 'Ce soir', 'Heure : 03:00', 'Plus tard'],
     },
     'taches.rappel.poser': {
       tache: true, corps: { jour: '2026-11-19', heure: '03:00' },

@@ -88,7 +88,7 @@ describe('TCH166 — étiquettes dans la fiche → Plus', () => {
     await ouvrirPlus(user)
     const champ = screen.getByRole('textbox', { name: 'Ajouter une étiquette' })
     await user.type(champ, 'urgent{Enter}')
-    await waitFor(() => expect(api.creerEtiquette).toHaveBeenCalledWith({ nom: 'urgent' }))
+    await waitFor(() => expect(api.creerEtiquette).toHaveBeenCalledWith({ nom: 'urgent' }, { erreurSousLeChamp: true }))
     await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 9], lock_version: 4 }))
     expect(champ).toHaveValue('')
     expect(within(puces()).getByRole('button', { name: 'urgent' })).toBeInTheDocument()
@@ -182,7 +182,7 @@ describe('TCH166 — vues enregistrées dans la Recherche', () => {
     await waitFor(() => expect(api.creerVue).toHaveBeenCalledWith({
       nom: 'Mon point',
       filtres: { q: 'devis', inclure_faites: true, periode: 'aujourdhui', tri: 'echeance' },
-    }))
+    }, { erreurSousLeChamp: true }))
     expect(await screen.findByRole('button', { name: 'Mon point' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Nom de la vue' })).toHaveValue('')
     expect(api.listerVues).toHaveBeenCalledTimes(1)
@@ -192,12 +192,12 @@ describe('TCH166 — vues enregistrées dans la Recherche', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Mon point' })).toBeNull())
   })
 
-  it('un filtre qui n\'a pas de clé (En réserve) ne s\'enregistre pas : le bouton est éteint', async () => {
+  it('un filtre qui n\'a pas de clé (Plus tard) ne s\'enregistre pas : le bouton est éteint', async () => {
     const user = userEvent.setup()
     monter()
     await plusDeFiltres(user)
     expect(screen.getByRole('button', { name: 'Enregistrer cette vue' })).toBeEnabled()
-    await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plus tard' }))
     expect(screen.getByRole('button', { name: 'Enregistrer cette vue' })).toBeDisabled()
   })
 

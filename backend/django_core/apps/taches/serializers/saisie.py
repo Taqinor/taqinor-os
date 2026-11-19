@@ -32,7 +32,7 @@ from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import (
     TACHE_CONFIDENTIELLE, etiquettes_de, projets_de, sections_de, taches_de,
 )
-from apps.taches.selectors.journee import progression_courante
+from apps.taches.selectors.journee import lignes_de_taches_du_jour, progression_courante
 from apps.taches.serializers.formes import (
     ItemSerializer, ProjetSerializer, TacheEcriteSerializer, TacheSerializer, charger_taches, contexte,
     projet_court, tache_ecrite,
@@ -583,8 +583,8 @@ class ProprietaireEntreeSerializer(CorpsTaches):
 
 @extend_schema_serializer(component_name='TachesCorpsPlanifier')
 class PlanifierEntreeSerializer(ProprietaireEntreeSerializer):
-    """Corps de `planifier/` : le jour, l'heure, le moment ou « En réserve » ; `lock_version` requis. Une heure
-    demande un jour, sauf « En réserve » (`services.planification._normaliser`, publié en règle croisée)."""
+    """Corps de `planifier/` : le jour, l'heure, le moment ou « Plus tard » ; `lock_version` requis. Une heure
+    demande un jour, sauf « Plus tard » (`services.planification._normaliser`, publié en règle croisée)."""
 
     jour_prevu = DateBornee(required=False, allow_null=True)
     moment = _choix(Moment.values, required=False, allow_blank=True)
@@ -767,7 +767,19 @@ def reponse_ecrite(user, tache, *, assistant=False, geste=None, suivante=None, p
         projet_cree=projet_cree, rappel=rappel, question_titres=question_titres,
         avertissements=avertissements, progression=progression_courante(user, timezone.localdate()),
         geste_id=geste.pk if geste is not None else None)
-    return TacheEcriteSerializer(instance, context=contexte(assistant=assistant)).data
+    calculs = calculs_du_plan(user, [t for t in (instance['tache'], instance['suivante']) if t is not None])
+    return TacheEcriteSerializer(instance, context=contexte(assistant=assistant, calculs=calculs)).data
+
+
+def calculs_du_plan(user, taches, jour=None):
+    """`essentielle` / `prevue_au_plan` d'une TACHE servie seule (fiche `GET taches/{id}/`, TACHE_ECRITE) : la
+    MÊME source que la journée et la vue d'un projet (`serializers.projets.poser_calculs_d_items`), les lignes du
+    plan de J, en UNE requête (`selectors.journee.lignes_de_taches_du_jour`). Sans elle, la fiche servait
+    `essentielle: false` pour une ★ de la liste et l'étoile changeait d'avis à l'ouverture (couture L7)."""
+    lignes = lignes_de_taches_du_jour(user, jour or timezone.localdate())
+    return {('tache', t.pk): {'essentielle': bool(lignes[t.pk].essentielle),
+                              'prevue_au_plan': bool(lignes[t.pk].prevue_au_plan)}
+            for t in taches if t.pk in lignes}
 
 
 # --- Recherche, supprimées récemment, derniers gestes ------------------------------------------------

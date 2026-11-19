@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/taches/taches/lot/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST taches/lot/ · consommateurs : sélection, « Tout en réserve » ». Source : docs/taches/reference/api.md annexe A (`lot.json`), recopié mot pour mot.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « POST taches/lot/ · consommateurs : sélection, « Tout pour plus tard » ». Source : docs/taches/reference/api.md annexe A (`lot.json`), recopié mot pour mot.",
   "exemple": {
     "appliquees": [
       41

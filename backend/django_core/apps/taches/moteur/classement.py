@@ -328,7 +328,7 @@ def cle_ordre_projet(item):
 
 
 def prochaine_action(taches_du_projet):
-    """Première tâche `a_faire` non bloquée, hors En réserve, `parent` nul, dans l'ordre du projet."""
+    """Première tâche `a_faire` non bloquée, hors Plus tard, `parent` nul, dans l'ordre du projet."""
     ouvertes = [t for t in taches_du_projet
                 if t.type == TACHE and t.statut == StatutTache.A_FAIRE and t.bloquee_par is None
                 and not t.quelque_jour and t.parent_id is None]

@@ -279,7 +279,7 @@ describe('TCH82 — feuille de saisie', () => {
     const { onFermer } = monter()
     await user.type(champ(), 'Appeler Karim')
     await user.click(screen.getByRole('button', { name: 'Quand' }))
-    await user.click(screen.getByRole('radio', { name: 'En réserve' }))
+    await user.click(screen.getByRole('radio', { name: 'Plus tard' }))
     await user.click(screen.getByRole('button', { name: 'Ajouter' }))
     await waitFor(() => expect(champ()).toHaveValue(''))
     expect(onFermer).not.toHaveBeenCalled()

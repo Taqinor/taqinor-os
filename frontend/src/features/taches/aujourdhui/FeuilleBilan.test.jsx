@@ -70,7 +70,7 @@ describe('TCH80 — contenu du bilan', () => {
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
     expect(within(within(reste).getByRole('group', { name: 'Autres choix pour « Timbres »' })).getAllByRole('button').map((b) => b.textContent))
-      .toEqual(['Choisir un jour', 'En réserve', 'Abandonner'])
+      .toEqual(['Choisir un jour', 'Plus tard', 'Abandonner'])
   })
 
   it('une tâche reportée 3 fois est marquée « À revoir » et reste en place sans choix', async () => {
@@ -129,7 +129,7 @@ describe('TCH80 — Valider', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bilan du soir' })).toBeNull())
   })
 
-  it('un choix par reste : En réserve, un jour choisi, Abandonner ; un mot sur la journée', async () => {
+  it('un choix par reste : Plus tard, un jour choisi, Abandonner ; un mot sur la journée', async () => {
     const cloture = contrat('journee_cloture')
     cloture.restes = [
       cloture.restes[0],
@@ -145,7 +145,7 @@ describe('TCH80 — Valider', () => {
       await userEvent.click(within(ligne).getByRole('button', { name: `Autres choix pour « ${titre} »` }))
       await userEvent.click(within(ligne).getByRole('button', { name: libelle }))
     }
-    await autre(42, 'Timbres', 'En réserve')
+    await autre(42, 'Timbres', 'Plus tard')
     await autre(44, 'Relire le contrat', 'Abandonner')
     await autre(43, 'Appeler Lydec', 'Choisir un jour')
     fireEvent.change(within(f).getByLabelText('Choisir un jour'), { target: { value: '2026-11-23' } })
@@ -171,7 +171,7 @@ describe('TCH80 — Valider', () => {
       return ligne
     })
     await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
-    await userEvent.click(within(reste).getByRole('button', { name: 'En réserve' }))
+    await userEvent.click(within(reste).getByRole('button', { name: 'Plus tard' }))
     await userEvent.click(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
     await waitFor(() => expect(api.post.mock.calls.map(([url]) => url)).toContain('/taches/taches/42/terminer/'))
     expect(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).toBeChecked()
@@ -294,6 +294,18 @@ describe('R3-020 / R3-021 / L4 — le bilan ne redit pas « gardées », dit une
     await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
     await waitFor(() => expect(cloturer()).toBeTruthy())
     expect(cloturer()[1].reflexion).toBe('Bonne journée, le devis Settat est parti')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
+  })
+
+  it('couture L7 — un mot gardé en brouillon est effacé à la déconnexion (poste partagé)', async () => {
+    servir()
+    const premier = monterConnecte()
+    const f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: /Un mot sur ta journée/ }))
+    await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Note privée')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toHaveLength(1)
+    premier.unmount()
+    window.dispatchEvent(new Event('taqinor:auth-logout'))
     expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
   })
 })

@@ -240,7 +240,7 @@ function useBureau() {
 
 /**
  * R2-022 — « Choisir un jour » : le sélecteur « Quand » de tout le module (`ui/SelecteurQuand`, importé tel quel) —
- * Aujourd'hui · Demain · Ce soir · Reporter à {jour} · Choisir un jour · En réserve · Sans jour : un toucher suffit.
+ * Aujourd'hui · Demain · Ce soir · Reporter à {jour} · Choisir un jour · Plus tard · Sans jour : un toucher suffit.
  * Ouverte au clavier (`d`, spec-7 §5 « Quand (Entrée = Reporter au jour nommé) »), la tuile « Reporter à {jour} » a
  * le focus : Entrée reporte. `valeur` : le « Quand » actuel de la ligne (sa tuile est cochée).
  */
@@ -250,9 +250,12 @@ function ChoisirJour({ titre, valeur, aujourdhui, reporterA = null, clavier = fa
   useLayoutEffect(() => {
     if (!clavier) return
     const tuiles = racine.current?.querySelectorAll('[role="radio"]') ?? []
+    // couture L7 (C-22) — quand le prochain jour travaillé est demain, « Reporter à » n'existe pas : « Demain » EST le
+    // report et prend le focus (sinon le champ Heure le prenait et Entrée ne reportait rien)
     const reporter = [...tuiles].find((tuile) => tuile.textContent.startsWith('Reporter à'))
+      ?? (reporterA ? [...tuiles].find((tuile) => tuile.textContent.startsWith('Demain')) : null)
     reporter?.setAttribute('data-focus-initial', '')
-  }, [clavier])
+  }, [clavier, reporterA])
   return (
     <div className="choisir-jour" ref={racine}>
       <p className="carte-source">{titre}</p>
@@ -263,7 +266,7 @@ function ChoisirJour({ titre, valeur, aujourdhui, reporterA = null, clavier = fa
 
 /** Le toast d'un « Quand » choisi (mêmes phrases que le menu ⋯ : « Reportée à ven. 20 », « Prévue lun. 23 »…). */
 function messageQuand(quand, aujourdhui, reporterA) {
-  if (quand.quelque_jour) return 'En réserve'
+  if (quand.quelque_jour) return 'Plus tard'
   if (!quand.jour_prevu) return 'Sans jour'
   if (quand.jour_prevu === aujourdhui && quand.moment === 'soir') return 'Ce soir'
   if (quand.jour_prevu === reporterA) return `Reportée à ${jourNomme(quand.jour_prevu, aujourdhui)}`
@@ -722,7 +725,8 @@ export default function Aujourdhui() {
     // R2-012 — le plafond se teste AVANT l'appel, depuis l'étoile comme depuis le menu ⋯ : la 4e ne part jamais
     if (suivant && !item.essentielle && (donnees?.essentiel?.length ?? 0) >= MAX_ESSENTIELLES) { refuserEssentielle(); return }
     try {
-      const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
+      // couture L7 — « 3 au plus » (409) n'est dit qu'une fois : par le toast du catch, pas aussi par le pont
+      const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant }, { erreurSousLeChamp: true })
       poserProgression(data.progression)
       setDonnees((d) => rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version).suite)
       // R2-027 — l'étoile pleine suffit : plus de toast « Essentielle · Annuler » (retoucher l'étoile la retire) ;
@@ -887,7 +891,7 @@ export default function Aujourdhui() {
     maj: majLigne,
     retirer: sortirLigne,
     apresEcriture: (data) => poserProgression(data?.progression),
-    // en réserve, la tâche quitte la journée ; en attente, elle PASSE dans « En attente » (`majLigne`, R2-013)
+    // pour plus tard, la tâche quitte la journée ; en attente, elle PASSE dans « En attente » (`majLigne`, R2-013)
     sortApres: (code, item, valeurs) => code === 'planifier' && Boolean(valeurs.quelque_jour),
     actionsPropres,
   })
@@ -907,7 +911,7 @@ export default function Aujourdhui() {
     reporter,
     choisirJour: (item) => setFeuille({ type: 'jour', item }),
     ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : direActiviteErp(item)) : ouvrirFiche(item.id)),
-    decouper: (item) => ouvrirFiche(item.id, { section: 'decouper' }), // R2-021 : la fiche s'ouvre SUR « Découper »
+    decouper: (item) => ouvrirFiche(item.id, { section: 'decouper' }), // R2-021 : la fiche s'ouvre SUR « Découper en sous-tâches »
     action: actions.surAction,
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
     deplacer: modes.deplacer,
@@ -1043,7 +1047,7 @@ export default function Aujourdhui() {
           clavier={Boolean(feuille.clavier)}
           onChoisir={(quand) => {
             setFeuille(null)
-            // en réserve, la ligne quitte la journée : le geste commun du menu ⋯ (optimiste, Annuler)
+            // pour plus tard, la ligne quitte la journée : le geste commun du menu ⋯ (optimiste, Annuler)
             if (quand.quelque_jour) actions.surAction('reserve', feuille.item)
             else poserJour(feuille.item, quand, messageQuand(quand, jourFeuille, donnees?.prochain_jour_ouvre))
           }}
