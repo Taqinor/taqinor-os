@@ -22,6 +22,12 @@ visite acceptée → le dossier sort du Froid et le filet pose la suite (récept
 MRY9) ; pas de réponse → il reste au Froid, rien n'est posé (``cloturer_cadence``
 → ``cloturer_reveils_sans_reponse``, sans effet au Froid) ; « à rappeler le… »
 → rappel convenu (``est_dernier_reveil``) ; refus → reste au Froid.
+
+Décision du fondateur (19/11/2026) : « garder deux essais et ajouter la raison
+honnête après » — la SECONDE tentative close sans réponse écrit la raison de
+parcage ``liste_froide_sans_reponse`` (``noter_deux_appels_sans_reponse``, appelée
+par ``marquer_etape_relance``) pour que ces dossiers se voient et se comptent ;
+le dossier reste au Froid, jamais perdu.
 """
 import logging
 
@@ -46,6 +52,11 @@ TENTATIVES_MAX = 2
 #: Les issues après lesquelles le dossier revient dans le vivier : « pas de
 #: réponse » (et ses précisions), ou une étape sautée sans issue.
 ISSUES_RETOUR_AU_VIVIER = ('', 'non_joint')
+
+#: 19/11/2026 — la raison de parcage écrite à la seconde tentative sans réponse,
+#: et la note du chatter quand le dossier porte déjà une autre raison.
+RAISON_DEUX_APPELS_SANS_REPONSE = 'liste_froide_sans_reponse'
+NOTE_DEUX_APPELS_SANS_REPONSE = 'Liste froide : deux appels sans réponse.'
 
 GROUPE_CHIFFRE = 'A'
 GROUPE_SANS_REPONSE = 'B'
@@ -262,3 +273,66 @@ def prendre_dossiers(company, user, nombre):
         'pour_le': pour_le.isoformat(),
         'du_jour': pour_le == aujourd_hui_local(),
     }
+
+
+def noter_deux_appels_sans_reponse(etape, user):
+    """Fondateur 19/11/2026 — la SECONDE tentative de la liste froide close sans
+    réponse dit pourquoi le dossier ne revient plus au vivier. ``etape`` vient
+    d'être close par ``marquer_etape_relance`` (qui l'appelle, hors ``suite=False``).
+
+    Déclenchée par une étape ``CLE_LISTE_FROIDE`` close sur une issue qui renvoie
+    au vivier ; la raison n'est écrite que si le dossier totalise ``TENTATIVES_MAX``
+    APPELS passés sans réponse (étape faite, issue « pas de réponse ») : une étape
+    sautée n'est pas un appel, une réponse obtenue (joint, refus, rappel) non plus.
+
+      * dossier SANS raison de parcage : ``parquer_lead`` la pose
+        (``liste_froide_sans_reponse``, Nurture) — les deux appels EN SONT la
+        touche (``exiger_touche=False``), la ligne du chatter est la sienne ;
+      * dossier qui en porte DÉJÀ une (budget, trop cher, injoignable…) : elle
+        reste, et UNE note système l'ajoute au chatter (jamais écrite deux fois).
+
+    Le dossier reste au Froid : ni perdu, ni changement d'étape. Rien n'est écrit
+    pour un dossier déjà sorti du Froid, perdu, archivé ou opposé. Best-effort :
+    ne lève jamais. Renvoie ``True`` si quelque chose a été écrit."""
+    from .activity import journal_systeme
+    from .fiche_funnel import ParcRefuse, parquer_lead
+    from .models import LeadActivity, RelanceEtape
+
+    if (getattr(etape, 'cle', '') or '') != CLE_LISTE_FROIDE:
+        return False
+    if (etape.outcome or '') not in ISSUES_RETOUR_AU_VIVIER:
+        return False
+    lead = etape.lead
+    try:
+        with transaction.atomic():
+            # La raison dit « deux APPELS » : seuls comptent les appels passés
+            # (étape faite, issue « pas de réponse ») — une étape sautée n'en est pas un.
+            sans_reponse = RelanceEtape.objects.filter(
+                company=etape.company, lead=lead, cle=CLE_LISTE_FROIDE,
+                statut=RelanceEtape.Statut.FAIT, outcome='non_joint').count()
+            if sans_reponse < TENTATIVES_MAX:
+                return False
+            lead.refresh_from_db(fields=[
+                'stage', 'perdu', 'is_archived', 'ne_plus_contacter',
+                'parc_etat', 'parc_raison', 'parc_jusqu_au'])
+            if (lead.stage != stages.COLD or lead.perdu or lead.is_archived
+                    or lead.ne_plus_contacter):
+                return False
+            if not lead.parc_raison:
+                parquer_lead(lead, RAISON_DEUX_APPELS_SANS_REPONSE, None, user,
+                             exiger_touche=False)
+                return True
+            if (lead.parc_raison == RAISON_DEUX_APPELS_SANS_REPONSE
+                    or lead.activites.filter(
+                        body=NOTE_DEUX_APPELS_SANS_REPONSE).exists()):
+                return False
+            journal_systeme(
+                company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+                body=NOTE_DEUX_APPELS_SANS_REPONSE)
+            return True
+    except ParcRefuse:
+        return False
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le geste (D-ENF22-BLE001)
+        logger.warning('Liste froide : raison non posée (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False

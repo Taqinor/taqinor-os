@@ -129,6 +129,46 @@ class TestOandM(SimpleTestCase):
         self.assertIn("O&M déduite du flux : 25 000,00 MAD/an", txt)
 
 
+class TestDeuxOptionsPageFinance(SimpleTestCase):
+    """Fondateur 18/11/2026 — la page 3 d'un devis à DEUX options dit aussi
+    l'économie annuelle, le retour et le TRI de l'option « avec batterie »,
+    lus de l'étude (jamais recalculés)."""
+
+    def _avec(self, **option):
+        from apps.ventes.tests.test_quote_engine_amot36_pages_ci import (
+            _avec_option_batterie)
+        d = _avec_option_batterie(_data())
+        d["etude"]["etude_ci"]["option_avec"].update(option)
+        return d
+
+    def test_option_avec_batterie_dite_sous_l_offre_reseau(self):
+        d = self._avec(economie_flux={"indicateurs": {
+            "tri_pct": 21.7967, "tri_horizon_ans": 25}})
+        page = _page_finance(d)
+        bande = _visible(re.search(
+            r'<div class="i2-avec".*?</div>', page, flags=re.S).group(0))
+        self.assertIn("Option avec batterie", bande)
+        self.assertIn("120 000", bande)            # économie annuelle servie
+        self.assertIn("8,4 ans", bande)            # retour servi
+        self.assertIn("TRI sur 25 ans : 21,8 %", bande)
+        # L'offre réseau garde ses chiffres, désormais étiquetée.
+        self.assertIn("Sans batterie", _visible(page))
+        self.assertLess(page.index('class="i2-optl"'), page.index('class="i2-kpis"'))
+        self.assertLess(page.index('class="i2-kpis"'), page.index('class="i2-avec"'))
+
+    def test_sans_tri_servi_la_bande_l_omet(self):
+        bande = _visible(re.search(
+            r'<div class="i2-avec".*?</div>', _page_finance(self._avec()),
+            flags=re.S).group(0))
+        self.assertIn("120 000", bande)
+        self.assertNotIn("TRI", bande)
+
+    def test_une_seule_option_rendu_inchange(self):
+        page = _page_finance(_data())
+        self.assertNotIn('class="i2-avec"', page)
+        self.assertNotIn('class="i2-optl"', page)
+
+
 class TestPaybackMemeFlux(SimpleTestCase):
     """(c) — le retour imprimé est celui du flux servi, ancré."""
 

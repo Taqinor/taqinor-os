@@ -578,7 +578,7 @@ def avancer_stage_lead_vers(lead, user, stage_cible):
     return True
 
 
-#: CADV21 — état de parcage dicté par la RAISON (conception v4 §2, mêmes 14
+#: CADV21 — état de parcage dicté par la RAISON (conception v4 §2, mêmes 15
 #: codes que ``contract_samples/lead.json::notes.codes_raison``). Une raison
 #: ne se déduit jamais de l'état : c'est elle qui est saisie.
 ETAT_PAR_RAISON = {
@@ -596,6 +596,7 @@ ETAT_PAR_RAISON = {
     'doublon': 'archive',
     'test': 'archive',
     'archive_odoo': 'archive',
+    'liste_froide_sans_reponse': 'nurture',
 }
 
 
