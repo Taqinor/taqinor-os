@@ -96,6 +96,9 @@
 .tch .reste-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .tch .reste-choix .puce { height: 34px; }
 .tch .reste-choix .puce.choisi { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+/* R2-030 — « ⋯ » à côté du choix retenu ; une tâche cochée dans le bilan est barrée, comme dans la liste */
+.tch .reste-choix .puce.plus { min-width: 44px; padding: 0 10px; justify-content: center; color: var(--tch-texte-doux); }
+.tch .reste.faite .titre { text-decoration: line-through; color: var(--tch-texte-doux); }
 .tch .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .tch .restes-tete .fiche-label { margin: 0; }
 .tch .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
