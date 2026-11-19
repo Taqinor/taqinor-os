@@ -11,7 +11,7 @@ Toute lecture passe par les sélecteurs de `selectors/base.py` : société ET pr
 import datetime
 from dataclasses import dataclass, field
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.taches.choix import StatutJour, StatutProjet, StatutTache
@@ -26,7 +26,7 @@ from apps.taches.moteur.decalage import nb_figees
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import semaine_courte
 from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
-from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, objectif_atteint
+from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, objectif_atteint, taches_de_la_journee
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
@@ -373,6 +373,7 @@ class CarteRevue:
     bloquees: list = field(default_factory=list)
     prochaine_id: int | None = None
     revue: object = None
+    prevues_aujourdhui: int = 0
 
 
 def _par_projet(taches):
@@ -407,15 +408,26 @@ def _prochaine_choisie(etat, projet, revue):
     return prochaine_action_id(taches)
 
 
-def cartes_de_revue(user, etat, lundi):
+def _prevues_aujourdhui(user, projets, aujourdhui):
+    """`{projet_id: n}` : tâches ouvertes de la journée d'`aujourdhui` (le préfiltre UNIQUE) prévues ce jour-là,
+    celles qu'une pause posée maintenant laisse dans la journée (C-5, R2-031). Une seule requête."""
+    lignes = (taches_de_la_journee(user, aujourdhui)
+              .filter(projet__in=projets, statut__in=OUVERTS, jour_prevu=aujourdhui)
+              .order_by().values('projet_id').annotate(n=Count('id')))
+    return {ligne['projet_id']: ligne['n'] for ligne in lignes}
+
+
+def cartes_de_revue(user, etat, lundi, *, aujourdhui=None):
     """Une `CarteRevue` par projet ACTIF (priorité décroissante, puis rang) pour la semaine de `lundi`."""
     actifs = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF),
                     key=lambda p: (-p.priorite, p.rang, p.pk))
     faites, bloquees = _faites_de_la_semaine(user, actifs, lundi), _bloquees_ouvertes(user, actifs)
+    prevues = _prevues_aujourdhui(user, actifs, aujourdhui or timezone.localdate())
     revues = {r.projet_id: r for r in RevueProjet.objects.filter(
         company_id=user.company_id, proprietaire=user, semaine=lundi, projet__in=actifs)}
     return [CarteRevue(projet=p, faites=faites.get(p.pk, []), bloquees=bloquees.get(p.pk, []),
-                       prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk))
+                       prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk),
+                       prevues_aujourdhui=prevues.get(p.pk, 0))
             for p in actifs]
 
 

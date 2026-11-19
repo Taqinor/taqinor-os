@@ -443,7 +443,7 @@ describe('TCH165 — cartes Tâches du Copilote (2/2)', () => {
   it('revue_semaine : le bilan de la semaine et « Ouvrir la revue »', () => {
     monter('revue_semaine', contrat('revue_projets'))
     const carte = screen.getByRole('group', { name: 'Revue de la semaine' })
-    expect(within(carte).getByText(/Du lun. 16 au ven. 20/)).toBeInTheDocument()
+    expect(within(carte).getByText(/^Cette semaine : 26 faites \(23 la précédente\)\./)).toBeInTheDocument()
     expect(within(carte).getByRole('link', { name: 'Ouvrir la revue' })).toHaveAttribute('href', '/taches/revue')
   })
 })

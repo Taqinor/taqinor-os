@@ -61,7 +61,7 @@ afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); reinitialiserGestes() 
 describe('TCH93 — Revue : en tête et carte', () => {
   it('le bilan du serveur, puis la carte du projet avec faites, attente, prochaine action et santé', async () => {
     monter()
-    expect(await screen.findByText('Du lun. 16 au ven. 20 : 26 tâches en 5 jours (précédente : 23). Objectif atteint 4 jours sur 5 · essentiel 4 sur 5 · 20 des 24 gardées.')).toBeInTheDocument()
+    expect(await screen.findByText('Cette semaine : 26 faites (23 la précédente). Objectif atteint 4 jours sur 5 · essentiel 4 sur 5 · 20 des 24 gardées.')).toBeInTheDocument()
     const carte = screen.getByRole('region', { name: 'Ventes' })
     expect(within(carte).getByText('Faites cette semaine : Dossier subvention')).toBeInTheDocument()
     expect(within(carte).getByText('« Pose » attend « Livraison »')).toBeInTheDocument()
@@ -169,12 +169,18 @@ describe('TCH93 — Revue : décisions', () => {
     expect(within(carte).getByText("2 tâches prévues aujourd'hui restent dans ta journée.")).toBeInTheDocument()
     second.unmount()
 
-    // le serveur ne sert pas le nombre (ou 0) : aucune phrase, aucun chiffre inventé
-    api.lireRevue.mockResolvedValue(reponseContrat('taches', 'revue_projets'))
-    monter()
-    carte = await screen.findByRole('region', { name: 'Ventes' })
-    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
-    expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+    // le serveur sert 0, ou ne sert pas le nombre : aucune phrase, aucun chiffre inventé
+    for (const valeur of [0, undefined]) {
+      const sans = revue()
+      if (valeur === undefined) delete sans.cartes[0].prevues_aujourdhui_nb
+      else sans.cartes[0].prevues_aujourdhui_nb = valeur
+      api.lireRevue.mockResolvedValue({ data: sans })
+      const rendu = monter()
+      carte = await screen.findByRole('region', { name: 'Ventes' })
+      await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+      expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+      rendu.unmount()
+    }
   })
 
   it('Terminer demande « Atteint ou abandonné ? » : Suivant → reste éteint jusqu\'au choix, puis envoie l\'issue', async () => {
