@@ -326,3 +326,24 @@ class ActionsServiesTest(BaseAssistantCalepinage):
     @override_settings(ASSISTANT_COPILOTE='aucun')
     def test_copilote_eteint_les_cache(self):
         self.assertNotIn('calepinage.du_lead', self._cles(self.user))
+
+
+class SimulerTest(BaseAssistantCalepinage):
+    """CALA5 — ``calepinage.simuler`` : écriture silencieuse, jamais ``forcer``."""
+
+    def test_contrat_de_l_action(self):
+        from apps.calepinage.agent_actions import SIMULER
+
+        self.assertEqual((SIMULER.method, SIMULER.risk, SIMULER.required_permission),
+                         ('POST', RISK_INTERNAL, 'calepinage_gerer'))
+        self.assertEqual(set(SIMULER.inputs['properties']), {'id', 'variante_id'})
+        self.assertFalse(SIMULER.lecture)
+        self.assertEqual(SIMULER.endpoint, f'{URL}{{id}}/simuler/')
+
+    def test_le_refus_nomme_est_relaye_tel_quel(self):
+        """Le corps que le relais envoie (sans ``forcer``) sur un calepinage non
+        dessiné : un 409 qui NOMME ce qui manque, jamais un 500."""
+        reponse = self.api.post(url_assistant('simuler/', self.cal.pk), {},
+                                format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertTrue(set(reponse.data))

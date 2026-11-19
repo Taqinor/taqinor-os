@@ -134,7 +134,35 @@ SIMULATION_SUIVRE = AgentAction(
     lot=LOT_COPILOTE,
 )
 
-ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE)
+SIMULER = AgentAction(
+    key='calepinage.simuler',
+    label='Lancer la simulation de production',
+    description=(
+        "Sert à : lancer (ou relire si rien n'a changé) la simulation de "
+        "production d'un calepinage dessiné, ou d'une de ses variantes. "
+        "N'écrit que l'étude technique interne : aucun statut, aucun devis. "
+        "Ne pas utiliser pour : un calepinage sans pans équipés (dessiner "
+        "d'abord, lien de l'atelier). Exemple : « lance la simulation du "
+        "calepinage 12 » → id=12. Résultat : 202 avec un job_id (suis-le avec "
+        "calepinage.simulation_suivre), ou 200 deja_calcule (enchaîne sur "
+        "calepinage.resume). Un refus 409 NOMME le réglage manquant : "
+        "« parametres.simulation.* » = réglage société (Paramètres du "
+        "calepinage), « plans » = panneau non désigné (onglet Matériel "
+        "électrique), « site.pin » = épingle du site dans l'atelier, "
+        "« temperatures » = saisies électriques ; dis-le et donne le lien du "
+        "calepinage (erp.ouvrir). Ne relance jamais pour forcer un calcul."),
+    endpoint=BASE + '{id}/simuler/',
+    method='POST',
+    inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
+                    'variante_id': dict(ENTIER, description='Variante du même calepinage (facultatif).')},
+                   ('id',)),
+    required_permission=GERER,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'calepinage', 'variante_id': 'variante'},
+)
+
+ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER)
 
 
 def register_actions() -> None:
