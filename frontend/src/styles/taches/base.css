@@ -340,6 +340,17 @@
   font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-accent);
   background: var(--tch-accent-doux); border-radius: var(--tch-rayon-puce); padding: 2px 10px; line-height: 1.25rem;
 }
+/* R3-086 — la pastille « → ven. 20 » d'une tâche qu'on vient de reporter se POSE sur la fin de la ligne au lieu
+   d'entrer dans le flux : plus large que l'étoile, elle poussait le titre et la méta sur deux lignes chacun (la ligne
+   passait de 63 à 110 px). Elle recouvre la fin du titre, un fondu de la surface de la ligne derrière elle. */
+.tch .ligne .ligne-fin { position: relative; }
+/* la colonne garde au moins la place de l'étoile qu'elle remplace : le titre ne s'élargit pas d'un coup (la ligne ne
+   rétrécit pas plus qu'elle ne grandissait) */
+.tch .ligne .ligne-fin:has(> .estampille) { min-width: calc(var(--tch-cible) - 12px); }
+.tch .ligne .ligne-fin > .estampille {
+  position: absolute; inset-inline-end: 0; top: 50%; translate: 0 -50%; white-space: nowrap;
+  box-shadow: -8px 0 8px var(--tch-surface);
+}
 .tch .case {
   width: var(--tch-cible); height: var(--tch-cible); display: grid; place-items: center;
   margin-block: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2); border-radius: 999px;
