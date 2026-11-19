@@ -1,8 +1,21 @@
 import { definirProfil, rendreParametresEntreprise } from '../../test/parametresEntrepriseHarness'
 import crmApi from '../../api/crmApi'
 import installationsApi from '../../api/installationsApi'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import notificationsApi from '../../api/notificationsApi'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { screen, cleanup, waitFor } from '@testing-library/react'
+
+// AERR169 — panneaux de l'onglet Notifications : chaque lecture répond vide (le
+// test compte les lectures des règles de routage).
+vi.mock('../../api/notificationsApi', () => ({
+  default: new Proxy({}, {
+    get: (t, k) => {
+      if (k === 'then') return undefined
+      if (typeof k === 'string' && !(k in t)) t[k] = vi.fn(() => Promise.resolve({ data: [] }))
+      return t[k]
+    },
+  }),
+}))
 
 /* APAR38 — l'écran Paramètres reflète le droit `parametres_modifier` (garde
    serveur ASEC31) : un Admin RH (palier responsable, sans le droit) voit la
@@ -99,5 +112,20 @@ describe('ERR-PARAM-ASSIGNABLE-USERS-403 — liste des assignables', () => {
     rendreParametresEntreprise({ role: 'admin', role_nom: 'Directeur', permissions: ['installation_voir', 'parametres_modifier'] })
     await waitFor(() => expect(installationsApi.getTypesIntervention).toHaveBeenCalled())
     expect(installationsApi.getChecklistEtapes).toHaveBeenCalled()
+  })
+})
+
+describe('AERR169 — le profil relu ne remonte pas les sections', () => {
+  beforeEach(() => definirProfil(PROFIL))
+  afterEach(cleanup)
+
+  it('?onglet=notifications : les règles de routage ne sont lues qu’une fois', async () => {
+    notificationsApi.getRoutingRules.mockClear()
+    rendreParametresEntreprise({ role: 'admin', role_nom: 'Directeur', permissions: ['parametres_modifier'] },
+      '/parametres?onglet=notifications')
+    await waitFor(() => expect(notificationsApi.getRoutingRules).toHaveBeenCalled())
+    // Laisse le profil se résoudre : l'ancien `if (loading) return <Spinner/>` démontait puis remontait la section.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(notificationsApi.getRoutingRules).toHaveBeenCalledTimes(1)
   })
 })
