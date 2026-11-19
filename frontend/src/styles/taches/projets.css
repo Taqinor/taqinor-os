@@ -69,7 +69,8 @@
 .tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
 /* Passe visuelle n° 43 — en-tête de projet-liste.html (ecrans-projets.css « En-tête d'un projet ») */
-.tch .ep-barre-projet { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: var(--tch-gouttiere); }
+/* R2-093 : « ‹ Projets » est celui de la coquille ; il ne reste ici que le sélecteur de vue, à droite */
+.tch .ep-barre-projet { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: var(--tch-gouttiere); }
 .tch .ep-barre-projet > .ep-barre { padding-right: 0; }
 .tch .ep-barre-projet > .ep-entre { padding: 0; }
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
@@ -314,7 +315,7 @@
   .tch .ep-fh-axe span:last-child { transform: translateX(-100%); }
   .tch .ep-fh-zone { position: relative; padding: 40px 0 14px; box-shadow: inset 0 1px 0 var(--tch-trait); }
   .tch .ep-fh-jalons { position: relative; height: 30px; }
-  .tch .ep-fh-losange { position: absolute; top: 4px; width: 20px; height: 20px; margin-left: -10px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
+  .tch .ep-fh-losange { position: absolute; top: 4px; left: clamp(10px, var(--x), calc(100% - 10px)); width: 20px; height: 20px; margin-left: -10px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
   .tch .ep-fh-etiquette { position: absolute; top: 5px; transform: translateX(calc(-100% - 14px)); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
   .tch .ep-fh-rang { position: relative; height: 44px; }
   .tch .ep-fh-barre { position: absolute; top: 0; height: 44px; display: flex; align-items: center; padding: 0 10px 0 12px; border-radius: 8px; overflow: hidden; white-space: nowrap;
@@ -330,7 +331,8 @@
   .tch .ep-fh-trait.fin span { background: var(--tch-texte); color: var(--tch-surface); }
   /* R2-066 — un point par jour de tâche sous la barre de son étape ; rangée nommée pour une étape sans date ; pastilles bornées au cadre */
   .tch .ep-fh-points { position: relative; height: 18px; }
-  .tch .ep-fh-point { position: absolute; top: 4px; width: 10px; height: 10px; margin-left: -5px; border-radius: 999px;
+  /* `--x` : la place sur l'axe (JSX) ; bornée pour que le point, centré, ne déborde jamais du cadre (5 px de rayon) */
+  .tch .ep-fh-point { position: absolute; top: 4px; left: clamp(5px, var(--x), calc(100% - 5px)); width: 10px; height: 10px; margin-left: -5px; border-radius: 999px;
     background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-point); }
   .tch .ep-fh-point[data-n] { background: var(--tch-point); }
   .tch .ep-fh-libre { margin-top: 6px; }
@@ -365,3 +367,29 @@
 .tch .es-resume svg { color: var(--tch-accent); }
 .tch .es-aide { margin: 2px 0 0; font-size: 0.8125rem; line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .ep-reglage { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tch-cible); font-size: 1rem; }
+
+/* ── R2-067 — Projets au bureau (≥ 1024 px) : maître-détail ───────────────────────────────────────────────────────────
+   La liste des projets à gauche (colonne `.ep-md-liste`, enfant de la page), le projet choisi à droite : le projet ouvert
+   est surligné. La page garde son départ au bord gauche du contenu (R2-085, base.css) ; le retrait à gauche (`padding-left`)
+   porte l'en-tête, la ligne « Ajouter une tâche » et le projet à droite de la colonne, qui se pose en absolu dans ce retrait.
+   Tout reste sous `.tch` : rien ne regarde la coque de l'ERP. */
+@media (min-width: 1024px) {
+  .tch { --ep-md-liste: 320px; }
+  .tch .tch-page:has(> .ep-md-liste) { position: relative; max-width: 1200px; padding-left: calc(var(--ep-md-liste) + 16px); }
+  /* le Tableau et la Chronologie gardent toute la largeur utile (et défilent au-delà : R2-064) */
+  .tch[data-ecran="projet"] .tch-page:has(> .ep-md-liste):has(.ep-vue-tableau, .ep-frise-h) { max-width: 1760px; }
+  .tch .ep-md-liste { position: absolute; left: 0; top: 0; bottom: 0; width: var(--ep-md-liste); box-shadow: inset -1px 0 0 var(--tch-trait); }
+  .tch .ep-md-defile { position: sticky; top: 0; max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; padding: 20px 0 24px; }
+  .tch .ep-md-tete { display: flex; align-items: center; justify-content: space-between; min-height: var(--tch-cible); padding: 0 8px 0 24px; }
+  .tch .ep-md-titre { font-size: var(--tch-section); font-weight: 650; color: var(--tch-texte-doux); }
+  /* la puce de priorité se lit et se change dans le projet ouvert : la colonne garde la place du nom */
+  .tch .ep-md-liste .ligne.projet .ep-prio { display: none; }
+  .tch .ep-md-liste .ligne.projet { padding-right: 16px; }
+  .tch .ep-md-liste .ep-nouveau { width: calc(100% - 24px); margin-left: 12px; margin-right: 12px; }
+  .tch .ep-md-liste .section .replie { margin-inline: 12px; }
+  .tch .ligne.projet.ouvert-bureau { background: var(--tch-selection); }
+  .tch .ligne.projet.ouvert-bureau .titre { font-weight: 700; }
+}
+@media (min-width: 1024px) and (hover: hover) {
+  .tch .ligne.projet.ouvert-bureau:hover { background: var(--tch-selection); }
+}

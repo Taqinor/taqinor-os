@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -54,6 +54,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date('2026-11-17T09:00:00'))
   reinitialiserGestes()
   api.lireVueProjet.mockResolvedValue(reponseContrat('taches', 'projet_vue'))
+  api.listerTousLesProjets.mockResolvedValue([]) // la feuille de saisie lit la liste des projets à son ouverture
 })
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); reinitialiserGestes() })
 
@@ -788,5 +789,129 @@ describe('F4 revue — Tableau : déplacer, Annuler, redéplacer', () => {
     await screen.findByRole('region', { name: 'Études' })
     await user.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
     await waitFor(() => expect(compte('Études')).toBe('5 sur 5'))
+  })
+})
+
+describe('R2-093 — Un projet : UN seul « ‹ Projets », celui de la coquille, au-dessus du titre', () => {
+  it('iPhone / < 1024 px : un seul bouton « Projets », avant le titre, qui ramène à la liste', async () => {
+    monter()
+    const titre = await screen.findByRole('heading', { level: 1 })
+    const retours = screen.getAllByRole('button', { name: 'Projets' })
+    expect(retours).toHaveLength(1)
+    expect(retours[0].compareDocumentPosition(titre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelector('.ep-barre')).toBeNull() // plus de barre de retour dans la page
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(retours[0])
+    expect(await screen.findByText('Liste des projets')).toBeInTheDocument()
+  })
+})
+
+describe('R2-067 — Projets au bureau (≥ 1024 px) : la liste à gauche, le projet à droite', () => {
+  const ancienne = window.matchMedia
+  const media = (bureau) => vi.fn().mockImplementation((requete) => ({
+    matches: bureau, media: requete, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  }))
+  const liste = () => {
+    const base = exempleContrat('taches', 'projets_liste')
+    const un = base.results[0]
+    return { ...base, count: 3, results: [
+      un, { ...un, id: 5, nom: 'Site web', couleur: 'ciel', priorite: 2, lock_version: 7 }, { ...un, id: 8, nom: 'Salon', couleur: 'prune', priorite: 1 },
+    ] }
+  }
+  function Lieu() {
+    const l = useLocation()
+    return <div data-testid="lieu">{`${l.pathname}${l.search}`}</div>
+  }
+  const monterBureau = (chemin = '/taches/projets/3') => render(
+    <MemoryRouter initialEntries={[chemin]}>
+      <Routes>
+        <Route path="/taches/projets/:id" element={<><Projet /><Lieu /></>} />
+        <Route path="/taches/projets" element={<div className="tch"><p>Liste des projets</p></div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  beforeEach(() => {
+    window.matchMedia = media(true)
+    window.localStorage.clear()
+    api.listerProjets.mockImplementation(async (params) => (
+      params?.statut === 'en_pause' ? { data: { count: 0, next: null, previous: null, results: [] } } : { data: liste() }))
+  })
+  afterEach(() => { window.matchMedia = ancienne })
+
+  it('la colonne montre TOUS les projets, le projet ouvert est surligné ; pas de « ‹ Projets » (la liste est là), loupe et Copilote restent', async () => {
+    monterBureau()
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    const ouvert = await within(colonne).findByRole('button', { name: 'Ventes' })
+    expect(within(colonne).getByRole('button', { name: 'Site web' })).toBeInTheDocument()
+    expect(within(colonne).getByRole('button', { name: 'Salon' })).toBeInTheDocument()
+    expect(ouvert).toHaveAttribute('aria-current', 'true')
+    expect(ouvert.closest('.ligne')).toHaveClass('ouvert-bureau')
+    expect(within(colonne).getByRole('button', { name: 'Site web' })).not.toHaveAttribute('aria-current')
+    // le projet est à droite, dans la même page
+    expect((await screen.findAllByText('12 sur 20')).length).toBeGreaterThan(1) // la ligne de la colonne ET l'en-tête du projet
+    expect(screen.queryByRole('button', { name: 'Projets' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+  })
+
+  it("cliquer un autre projet change l'adresse (/taches/projets/<id>), sans retour à la liste", async () => {
+    monterBureau()
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(await within(colonne).findByRole('button', { name: 'Site web' }))
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/projets/5')
+  })
+
+  it('j (focus dans la colonne) passe au projet suivant', async () => {
+    monterBureau('/taches/projets/5')
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    const ouvert = await within(colonne).findByRole('button', { name: 'Site web' })
+    ouvert.focus()
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).keyboard('j')
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/projets/8')
+  })
+
+  it('↑ (focus dans la colonne) revient au projet précédent', async () => {
+    monterBureau('/taches/projets/5')
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    ;(await within(colonne).findByRole('button', { name: 'Site web' })).focus()
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).keyboard('{ArrowUp}')
+    expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/projets/3')
+  })
+
+  it('renommer le projet ouvert met la colonne à jour tout de suite', async () => {
+    api.modifierProjet.mockResolvedValue({ data: { ...exempleContrat('taches', 'projet_vue').projet, nom: 'Ventes 2027', lock_version: 5 } })
+    monterBureau()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    await within(colonne).findByRole('button', { name: 'Ventes' })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
+    await user.clear(champ)
+    await user.type(champ, 'Ventes 2027{Enter}')
+    expect(await within(colonne).findByRole('button', { name: 'Ventes 2027' })).toBeInTheDocument()
+  })
+
+  it("cocher une tâche du projet ouvert met l'avancement de sa ligne à jour", async () => {
+    api.terminerTache.mockResolvedValue({ data: { ...tacheEcrite(), geste_id: 92 } })
+    monterBureau()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    const ligne = (await within(colonne).findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    expect(within(ligne).getByText('12 sur 20')).toBeInTheDocument()
+    await user.click(await screen.findByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    await waitFor(() => expect(within(ligne).getByText('13 sur 20')).toBeInTheDocument())
+  })
+
+  it('« Nouveau projet » dans la colonne ouvre la feuille de création', async () => {
+    monterBureau()
+    const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(await within(colonne).findByRole('button', { name: 'Nouveau projet' }))
+    expect(await screen.findByRole('dialog', { name: 'Nouveau projet' })).toBeInTheDocument()
+  })
+
+  it('< 1024 px : aucune colonne (la liste, puis le projet)', async () => {
+    window.matchMedia = media(false)
+    monterBureau()
+    await screen.findByText('12 sur 20')
+    expect(screen.queryByRole('complementary', { name: 'Liste des projets' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Projets' })).toBeInTheDocument()
   })
 })

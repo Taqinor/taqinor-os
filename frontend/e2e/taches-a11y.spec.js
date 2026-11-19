@@ -88,7 +88,9 @@ const ECRANS = [
   {
     nom: 'projets',
     ouvrir: async (page, d) => {
-      await ouvrirEcran(page, '/taches/projets', 'projets')
+      // bureau (≥ 1024 px) : `/taches/projets` ouvre le premier projet, la liste est sa colonne de gauche (R2-067)
+      await page.goto('/taches/projets')
+      await expect(page.locator('.tch[data-ecran="projets"], .tch[data-ecran="projet"]')).toBeVisible()
       await expect(page.locator(`[data-projet="${d.projet.id}"]`)).toBeVisible()
     },
   },
@@ -286,7 +288,9 @@ test.describe('Tâches — enveloppe au bureau (1440 × 900)', () => {
   test('R2-085 — le titre est au même pixel sur chaque écran', async ({ page }) => {
     await semer(page)
     const positions = {}
-    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'], ['/taches/projets', 'projets'],
+    // R2-067 — « Projets » est, au bureau, la liste à gauche et le projet à droite : son titre est celui du projet, décalé de la
+    // colonne ; il n'est donc pas dans cette grille (la colonne est vérifiée à part, dans le parcours « projets » ci-dessus).
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'],
       ['/taches/revue', 'revue'], ['/taches/recherche', 'recherche'], ['/taches/supprimees', 'supprimees']]) {
       await ouvrirEcran(page, chemin, ecran)
       const b = await page.locator('h1.entete-titre').boundingBox()
