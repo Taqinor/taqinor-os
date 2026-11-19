@@ -17,6 +17,8 @@ import VoletAPlacer from '../ui/VoletAPlacer'
 
 const versUtc = (iso) => { const [a, m, j] = iso.split('-').map(Number); return Date.UTC(a, m - 1, j) }
 const nomJour = (iso) => `${ABR_JOURS[new Date(versUtc(iso)).getUTCDay()]} ${Number(iso.slice(8, 10))}`
+/** « 4 h » ne se coupe jamais entre le chiffre et l'unité (« pour 4 / h » sur deux lignes) */
+const insecables = (texte) => String(texte).replace(/(\d) (h|min)\b/g, '$1\u00a0$2')
 const accordTaches = (n) => (n >= 2 ? `${n} tâches` : `${n} tâche`)
 
 /** Barre de charge (maquette : la capacité est le repère à 2/3 de la barre ; au-delà, la part en trop). */
@@ -111,7 +113,7 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvr
         <span className="sr">{choisie && !passe ? `${nom} · ${texte} · placer ${choisie.titre}` : `${nom} · ${texte}`}</span>
         <span className="j" aria-hidden="true">{nom}</span>
         <span className="n" aria-hidden="true">
-          {trop ? <>{base}{' · '}<b className="trop">{trop}</b></> : texte}
+          {trop ? <>{insecables(base)}{' · '}<b className="trop">{insecables(trop)}</b></> : insecables(texte)}
         </span>
         {charge ? <BarreCharge {...charge} /> : null}
         <CartesDuJour jour={jour} />

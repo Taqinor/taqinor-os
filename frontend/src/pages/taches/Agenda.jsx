@@ -805,14 +805,15 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   }
   // R2-105 — sur iPhone le volet « À placer » est SOUS la grille : une tâche choisie, la vue remonte sur la grille, près de
   // la ligne « maintenant » (sinon en haut de la grille) — jamais de défilement manuel pour trouver où la poser.
+  const lu = donnees != null
   useEffect(() => {
-    if (placement.choisie == null || vue !== 'jour' || planifier || !donnees) return
+    if (placement.choisie == null || vue !== 'jour' || planifier || !lu) return
     if (window.matchMedia?.('(min-width: 1024px)').matches) return // au bureau le volet est à côté de la grille
     const grille = document.querySelector('.tch .grille-agenda')
     const cible = grille?.querySelector('.maintenant') ?? grille
     const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     cible?.scrollIntoView?.({ block: cible === grille ? 'start' : 'center', behavior: reduit ? 'auto' : 'smooth' })
-  }, [placement.choisie, vue, planifier, donnees])
+  }, [placement.choisie, vue, planifier, lu])
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
   const planifierSemaine = () => changer({ placer: '1' })
   const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
