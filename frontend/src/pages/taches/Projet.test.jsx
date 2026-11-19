@@ -73,6 +73,27 @@ describe('TCH89 — Un projet : en-tête', () => {
     expect(api.lireVueProjet).toHaveBeenCalledWith('3', { vue: 'liste' })
   })
 
+  describe('R4-43 — le même en-tête dans les trois vues (deux lignes)', () => {
+    afterEach(() => { vi.unstubAllGlobals() })
+    const jalon = () => screen.getByText("Prochain jalon : Devis Settat · aujourd'hui").closest('.ep-jalon-proche')
+
+    it('bureau (≥ 768 px) : le jalon est sur la 2e ligne, avec la santé et « Fini quand… » ; la 1re garde les vues', async () => {
+      vi.stubGlobal('matchMedia', (q) => ({ matches: q === '(min-width: 768px)', media: q, addEventListener() {}, removeEventListener() {} }))
+      const { container } = monter('/taches/projets/3?vue=tableau')
+      await screen.findByText('12 sur 20')
+      expect(jalon().parentElement).toHaveClass('ep-ligne-suite')
+      expect(container.querySelector('.ep-ligne-info .ep-jalon-proche')).toBeNull()
+      expect(container.querySelector('.ep-ligne-info')).toContainElement(screen.getByRole('img', { name: '12 sur 20' }))
+    })
+
+    it('iPhone : le jalon reste avec la priorité et les vues (une ligne de moins qu\'en le descendant)', async () => {
+      vi.stubGlobal('matchMedia', (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }))
+      monter()
+      await screen.findByText('12 sur 20')
+      expect(jalon().parentElement).toHaveClass('ep-ligne-info')
+    })
+  })
+
   it('Détails montre « Fini quand… » et « dernière faite le 03/11 »', async () => {
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })

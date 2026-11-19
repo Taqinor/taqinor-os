@@ -110,6 +110,28 @@
 .tch .ep-losange { flex: none; color: var(--tch-point); fill: var(--tch-point); }
 .tch .ep-ligne-suite { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; }
 .tch .ep-ligne-suite .ep-details { flex: none; width: auto; margin-left: auto; }
+/* R4-43 — le MÊME en-tête dans les trois vues, au bureau : (1) priorité · échéance · avance · vues ; (2) santé · prochain jalon ·
+   « Fini quand… », une seule ligne de 32 px chacune (santé et jalon se coupent par « … » ; le détail de la santé est au toucher).
+   La ligne « Ajouter une tâche » du haut s'efface sur la page d'un projet (la touche `n` et « + Ajouter » de chaque étape ou
+   colonne restent) : c'est elle qui repoussait le Tableau à y = 332 au lieu de ≤ 260. La cible tactile reste de 44 px (::after). */
+@media (min-width: 768px) {
+  .tch[data-ecran="projet"] .tch-page > .saisie-bureau { display: none; }
+  .tch .ep-tete { gap: 2px; padding-bottom: 6px; }
+  .tch .ep-ligne-suite { flex-wrap: nowrap; }
+  .tch .ep-ligne-suite .ep-sante-ligne { flex: 0 1 auto; min-width: 140px; min-height: 32px; position: relative; }
+  .tch .ep-ligne-suite .ep-sante-ligne span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-wrap: nowrap; }
+  .tch .ep-ligne-suite .ep-jalon-proche { flex: 1 1 160px; min-width: 100px; }
+  .tch .ep-ligne-suite .ep-details { min-height: 32px; position: relative; }
+  .tch .ep-ligne-suite :is(button.ep-sante-ligne, .ep-details)::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
+  /* Liste à 1 280 px (colonne des projets comprise) : la 1re ligne n'a que ~590 px ; sans sa barre fine (le « 13 sur 18 »
+     reste) et avec des vues resserrées elle tient, et les vues ne tombent plus seules sur une 3e ligne. */
+  .tch .ep-tete { container-type: inline-size; }
+  @container (max-width: 680px) {
+    .tch .ep-ligne-info { column-gap: 8px; }
+    .tch .ep-ligne-info .ep-barre-avance { display: none; }
+    .tch .ep-ligne-info .ep-vues button { padding: 0 8px; }
+  }
+}
 /* Santé : une ligne sans fond, le détail au toucher */
 .tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; flex: 1 1 220px; min-width: 0; min-height: var(--tch-cible); margin: 0; text-align: left;
   font-size: var(--tch-taille-texte); color: var(--tch-texte); }
