@@ -306,15 +306,15 @@ describe('R2-080 — sur iPhone, la rangée du haut de Tâches remplace la barre
     const { container } = monter('/taches/aujourdhui')
     await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
     const coquille = container.querySelector('.tch')
-    const cloche = within(coquille).getByRole('button', { name: 'Notifications (3)' })
+    const cloche = within(coquille).getByRole('button', { name: 'Notifications : 3' })
     await act(async () => { cloche.click() })
     expect(erp.cloche).toHaveBeenCalledTimes(1)
     // le compteur suit celui de l'ERP
     await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (5)') })
-    expect(within(coquille).getByRole('button', { name: 'Notifications (5)' })).toBeInTheDocument()
+    expect(within(coquille).getByRole('button', { name: 'Notifications : 5' })).toBeInTheDocument()
     // au-delà de 99, le nom lu dit ce que la pastille écrit (« 99+ ») : jamais un nom qui contredit le texte visible
     await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (120)') })
-    expect(within(coquille).getByRole('button', { name: 'Notifications (99+)' })).toHaveTextContent('99+')
+    expect(within(coquille).getByRole('button', { name: 'Notifications : 99+' })).toHaveTextContent('99+')
   })
 
   it('le titre compact (rangée du haut) répète le titre de la page, caché aux lecteurs d\'écran', async () => {
