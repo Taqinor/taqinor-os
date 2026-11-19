@@ -261,3 +261,62 @@ liste, dans `constats`, les contrôles de son étape, dans l'ordre. Ce qu'il fau
 
 La forme durable est une spec maison `frontend/e2e/acceptation/aic.spec.js` (une fonction par étape) : à écrire avec
 la tâche AIC88, qui demande de toute façon un rejeu avec une vraie clé.
+
+## 12. Copilote v2 — devis à composition imposée, lead depuis un message de client (18-19/11/2026, PR #1473)
+
+**Demande de Reda (18/11).** Il a écrit à l'assistant : « Voici la demande d'un client prepare lui un devis : 10 panneaux
+solaires avec onduleur triphasé de 10kw et une batterie de 5kwh ». L'assistant a répondu par trois questions. Reda : « make
+copilot much more powerful, it should be able to do this and much more » ; puis : partir d'un message WhatsApp.
+
+**Ce que l'enquête a prouvé (8 lanes, 3 vérifications, une critique finale, deux essais avec une vraie clé).**
+- Le compte de Reda avait 61 outils allumés, dont la création et la recherche de lead : ce n'était pas un problème de droits.
+- Le moteur de devis ne savait pas IMPOSER un onduleur ni une batterie ; aucun outil ne lisait le catalogue ; aucun ne
+  listait les lignes d'un devis (modifier une ligne demande son identifiant).
+- Le moteur de production (`langchain`, effort bas) oublie les résultats d'outils et ne reprend jamais après une
+  confirmation : la chaîne « créer le lead → faire le devis » ne peut pas s'y terminer. Le moteur `natif`, essayé avec
+  une vraie clé le 18/11, reprend seul après chaque confirmation.
+- La fiche d'un lead sans facture dit « devis automatique : manque la facture », alors qu'une taille ou une composition
+  donnée suffit : le modèle s'arrêtait sur ce faux blocage (corrigé par une consigne).
+
+**Ce qui est construit** (tout outil neuf vu par le modèle est dans le lot `copilote`).
+- ventes : composition imposée sur `POST ventes/devis/auto/` (résidentiel seulement) — `nb_panneaux`, `onduleur_kw` +
+  `onduleur_phase` ou `onduleur_produit_id`, `batterie_kwh` ou `batterie_produit_id`. Chaque élément se résout sur UN
+  produit du catalogue ; zéro ou plusieurs candidats → 409 `choix` qui les nomme, le serveur ne choisit jamais en silence.
+  Tout ce qui est supposé est annoncé (panneau par défaut, raccordement vide, rapport DC/AC). Marqueur
+  `etude_params['composition_imposee']` honoré par la resynchronisation, jamais copié sur une révision ou un clone.
+  Lectures : `ventes.catalogue.chercher` (sans prix d'achat ni quantité, même pour un administrateur),
+  `ventes.devis.lignes`. Action `ventes.devis.composer` : crée un devis SÉPARÉ (jamais une V2). Carte `devis_cree`.
+- crm : `crm.lead.creer` (type d'installation, raccordement, batterie souhaitée, note ; garde de doublon dans la portée
+  de l'utilisateur ; 400 qui nomme le champ pour un rôle sans droit de voir les coordonnées) ; un seul chemin de
+  création partagé avec l'écran (`leads_creation.py`) ; recherche par numéro quelle que soit la graphie ; `perdu`,
+  `archiver`, `restaurer`, `reaffecter`, `etiqueter` en propositions à confirmer.
+- assistant : consignes « Agir d'abord en lecture » ; détails d'un refus remontés au modèle ; aperçu d'une proposition
+  une ligne par entrée ; question jusqu'à 6 000 caractères copilote allumé sous claude ; images jointes (capture d'un
+  message de client) — moteur natif seulement, jamais gardées ; au plus deux devis créés par message, un seul quand le
+  message porte un texte collé ou une image.
+- écran : carte du devis créé (lignes, total, « Ouvrir le devis », PDF par `/proposal`), compteur, images jointes.
+
+**Essai réel du 19/11 (moteur natif, pile locale).** Un message WhatsApp collé (nom, numéro, « 10 panneaux, onduleur
+triphasé 10 kW, batterie 5 kWh, 20 % de remise ») : recherche par numéro, lecture du catalogue, proposition du lead ;
+après UNE confirmation, devis brouillon créé avec la composition demandée, suppositions dites, remise du message non
+appliquée. Coût mesuré au journal : ≈ 0,33 $ dont 0,27 $ d'écriture de cache payée une fois par heure.
+
+**Ce qui reste un geste de Reda.** `ASSISTANT_MOTEUR=natif` dans le `.env` du serveur (sans lui, ni chaîne après
+confirmation ni images) ; `ASSISTANT_COPILOTE=tous` pour l'équipe ; `ASSISTANT_PLAFOND_JOUR_USD` (vide = aucun plafond).
+
+**WhatsApp (recherche du 18-19/11).** Aucun script ne lit les notifications WhatsApp sur un iPhone. Sans abonnement :
+coller le message ou joindre une capture (construit). Automatique et officiel : la « coexistence » de Meta (l'application
+WhatsApp Business et l'API sur le même numéro, par un prestataire, ≈ 50 € par mois ; aucune exclusion du Maroc trouvée,
+aucune confirmation écrite non plus) — rouvre D-WHATSAPP, décision de Reda. Écartés : bibliothèques non officielles
+(risque de bannissement du numéro).
+
+**Non fait, dit tel quel.** Cible de partage de l'application installée (un partage en GET mettrait le texte du client
+dans l'adresse) ; le manuel de l'assistant n'est pas régénéré (il cite encore `crm.lead.create`) ; le détail d'un doublon
+ne revient pas au modèle après une confirmation refusée (la phrase du refus s'affiche sur la carte) ; composition
+imposée hors résidentiel ; aucune recette sur un vrai téléphone.
+
+**Suite décidée le 19/11 : l'assistant de tout l'ERP** (visites, chantiers, calepinage d'abord, puis SAV, stock,
+après-devis, pilotage). Enquête L3 faite et vérifiée ; elle a trouvé des défauts de l'assistant d'AUJOURD'HUI : quatre
+outils existants écrivent sans confirmation (mouvement de stock, commande fournisseur, mise à jour de ticket, commande
+du besoin d'un chantier), une visite planifiée par l'assistant n'a aucun technicien, « générer la facture » émet un
+numéro légal sur-le-champ. Ils se corrigent en tête de la vague suivante.
