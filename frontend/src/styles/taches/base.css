@@ -648,6 +648,12 @@
 }
 .tch .tch-page .moment.revelation .moment-texte b { font-size: 0.9375rem; font-weight: 500; line-height: 1.4; }
 .tch .tch-page .moment.revelation .moment-texte .demo-balayage { grid-column: 1 / -1; grid-row: 2; }
+/* demande L2 (R3-085) — la démo du balayage est une miniature sous la phrase, pas une ligne de tâche de plus : 28 px,
+   texte de méta, 280 px au plus, « Reporter » resserré */
+.tch .tch-page .moment.revelation .demo-balayage { height: 28px; max-width: 280px; margin-top: 6px; border-radius: 8px; }
+.tch .tch-page .moment.revelation .demo-balayage span { width: calc(100% - 76px); padding: 0 8px; gap: 6px; font-size: var(--tch-taille-meta); }
+.tch .tch-page .moment.revelation .demo-balayage span i { width: 12px; height: 12px; }
+.tch .tch-page .moment.revelation .demo-balayage b { width: 76px; font-size: var(--tch-taille-meta); }
 .tch .tch-page .moment.revelation .carte-actions { grid-column: 2; grid-row: 1; margin: 0; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton {
@@ -977,7 +983,9 @@
      aussi changée par la lane de CI (pas de z-index en dur, garde MB3) — le pli prend la sienne telle quelle. */
   .tch .feuille.popover-bureau.popover-bureau { max-height: 70vh; overflow: auto; margin: 16px var(--tch-gouttiere) 0; }
   .tch .feuille.popover-bureau .feuille-entete { position: absolute; top: 4px; right: 4px; display: block; margin: 0; }
-  .tch .feuille.popover-bureau .feuille-titre,
+  /* le titre de la FEUILLE (« Ajouter une tâche ») seulement : celui de l'aperçu d'une liste collée (« Aperçu de ta
+     liste », `.apercu-entete .feuille-titre`) reste (demande L3) */
+  .tch .feuille.popover-bureau .feuille-entete .feuille-titre,
   .tch .feuille.popover-bureau .feuille-entete > span { display: none; }
   .tch .feuille.popover-bureau .feuille-corps { overflow: visible; padding-top: 0; }
   .tch .feuille.popover-bureau .saisie-zone { margin-right: 40px; }

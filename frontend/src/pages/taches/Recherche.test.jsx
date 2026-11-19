@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
 import Recherche from './Recherche'
 import Supprimees from './Supprimees'
@@ -164,6 +164,31 @@ describe('TCH87 — Recherche', () => {
     // un 2e toucher la retire : retour à la recherche ordinaire, rien demandé sans mot
     await user.click(puce)
     expect(puce).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('R3-093 — « Faites cette semaine » dit le `total` servi et range les activités ERP closes dans leur jour', async () => {
+    // l'enveloppe du contrat L1 (`faites_semaine.json`) : 1 tâche faite mar. 17, 1 activité close lun. 16, total 2
+    api.listerTaches.mockResolvedValue(reponseContrat('taches', 'faites_semaine'))
+    render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByText('2 faites depuis lundi')).toHaveClass('es-sous')
+    const regions = await screen.findAllByRole('region')
+    expect(regions.map((r) => r.getAttribute('aria-label'))).toEqual(['mar. 17 (1)', 'lun. 16 (1)'])
+    expect(within(regions[1]).getByRole('listitem')).toHaveTextContent('Rappeler M. AlamiActivité ERP')
+    // la liste reste lue en entier : la page suivante est demandée quand `next` existe (le total vient de la page 1)
+    expect(api.listerToutesLesTaches).not.toHaveBeenCalled()
+  })
+
+  it('R3-093 — un mot tapé ne garde que les activités qui le portent ; le total devient ce qui est montré', async () => {
+    // le serveur filtre les tâches par mots (aucune ici) ; l'activité « Rappeler M. Alami » porte « alami »
+    const enveloppe = reponseContrat('taches', 'faites_semaine')
+    api.listerTaches.mockResolvedValue({ data: { ...enveloppe.data, results: [], count: 0 } })
+    const { unmount } = render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine&q=alami']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByRole('region', { name: 'lun. 16 (1)' })).toBeInTheDocument()
+    expect(screen.getByText('1 faite depuis lundi')).toBeInTheDocument()
+    unmount()
+    render(<MemoryRouter initialEntries={['/taches/recherche?periode=faites_semaine&q=zzqxw']}><Recherche aujourdhui="2026-11-19" /></MemoryRouter>)
+    expect(await screen.findByText('Rien pour « zzqxw »')).toBeInTheDocument()
+    expect(screen.queryByText(/Rappeler M\. Alami/)).toBeNull()
   })
 
   it('R2-124 — l\'adresse garde la vue (`?periode=faites_semaine`) ; rien de fait : la phrase le dit', async () => {

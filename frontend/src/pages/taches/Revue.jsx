@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Star, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Star, TriangleAlert } from 'lucide-react'
 import { deciderRevue, lireRevue, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
@@ -13,7 +13,7 @@ import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
    Textes : reference/textes.md §2.7 et §4.6. Contrats : `revue_projets.json` (GET) et `revue_decision.json` (PUT).
    Une carte par projet, UNE à la fois : « Faites cette semaine » (3 titres au plus), « « A » attend « B » »,
    « Prochaine action » [Changer], santé, « Intention de la semaine (facultatif) », case « Projet de la semaine »,
-   puis Garder · Pause · Terminer · Suivant. Chaque bouton écrit la décision de la carte (PUT), puis passe à la suivante ;
+   puis Continuer · Pause · Terminer · Suivant (R3-090 : « Continuer » dit la décision garder). Chaque bouton écrit la décision de la carte (PUT), puis passe à la suivante ;
    un refus (« Déjà « A » cette semaine. ») reste SUR la carte, sous la case. À la fin : « Planifier ma semaine ».
    « Semaine courte » : le bilan est remplacé par « Semaine courte, on reprend lundi. » — aucun chiffre inventé.
    ========================================================================== */
@@ -58,8 +58,10 @@ function ChoixAction({ projetId, valeur, onChoisir }) {
   )
 }
 
-const CHOIX = [['garder', 'Garder'], ['pause', 'Pause'], ['terminer', 'Terminer']]
-const DECISION_DITE = { garder: 'Gardé', pause: 'En pause', terminer: 'Terminé', passe: 'Passé' }
+// R3-090 (M6, C-20) — « Continuer » : la décision `garder` du serveur, dite avec le mot de Reda
+const CHOIX = [['garder', 'Continuer'], ['pause', 'Pause'], ['terminer', 'Terminer']]
+const DECISION_DITE = { garder: 'Continue', pause: 'En pause', terminer: 'Terminé', passe: 'Passé' }
+const INVITE_INTENTION = 'Ce que tu veux finir cette semaine…'
 
 function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, onDecider, occupe, erreurs }) {
   const { projet } = carte
@@ -173,6 +175,8 @@ export default function Revue() {
   const [occupe, setOccupe] = useState(false)
   const [erreurs, setErreurs] = useState({})
   const [erreur, setErreur] = useState('')
+  // R3-090 — une carte rouverte depuis le résumé : sa décision écrite, on revient au résumé (pas à la carte suivante)
+  const [retouche, setRetouche] = useState(false)
 
   const lire = useCallback(async () => {
     try {
@@ -199,8 +203,14 @@ export default function Revue() {
     try {
       await deciderRevue(carte.projet.id, { semaine: revue.semaine, ...corps })
       annoncer(`« ${carte.projet.nom} » : décision enregistrée`)
-      setDecisions((d) => ({ ...d, [carte.projet.id]: corps.decision }))
-      setIndex((i) => i + 1)
+      const ecrites = { ...decisions, [carte.projet.id]: corps.decision }
+      setDecisions(ecrites)
+      // la carte suivante est la prochaine SANS décision (un projet déjà mis en pause cette semaine, servi avec sa
+      // décision, n'est pas redemandé) ; une carte rouverte depuis le résumé y ramène
+      const liste = revue.cartes ?? []
+      const prochaine = retouche ? -1 : liste.findIndex((c, rang) => rang > index && !ecrites[c.projet.id])
+      setIndex(prochaine < 0 ? liste.length : prochaine)
+      setRetouche(false)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
       if (champs && typeof champs === 'object') {
@@ -225,7 +235,8 @@ export default function Revue() {
       {revue && !fini ? (
         <div className="ep-groupe ep-intention">
           <label className="ep-etiquette" htmlFor="rv-intention">Intention de la semaine (facultatif)</label>
-          <input id="rv-intention" className="champ" value={intention} onChange={(e) => setIntention(e.target.value)} />
+          {/* R3-090 — une invite : le champ vide de 48 pt ne disait pas quoi y écrire */}
+          <input id="rv-intention" className="champ" placeholder={INVITE_INTENTION} value={intention} onChange={(e) => setIntention(e.target.value)} />
         </div>
       ) : null}
       {revue && !fini ? (
@@ -243,12 +254,21 @@ export default function Revue() {
           erreurs={erreurs}
         />
       ) : null}
+      {/* R3-090 — le résumé : l'intention en tête, puis TOUTES les décisions servies (un projet mis en pause ou terminé
+          garde sa ligne : le serveur sert sa carte tant qu'il a une revue cette semaine) ; une ligne touchée rouvre sa
+          carte, et la décision écrite ramène au résumé */}
+      {fini && cartes.length > 0 && intention.trim() ? (
+        <p className="ep-constat ep-resume-intention"><b>Intention de la semaine</b>{` · ${intention.trim()}`}</p>
+      ) : null}
       {fini && cartes.length > 0 ? (
         <ul className="ep-resume-revue" aria-label="Résumé de la revue">
-          {cartes.map((c) => (
+          {cartes.map((c, rang) => (
             <li key={c.projet.id} data-p={c.projet.couleur}>
-              <i className="point" aria-hidden="true" /><span className="nom">{c.projet.nom}</span>
-              <span className="decision">{DECISION_DITE[decisions[c.projet.id]] ?? ''}</span>
+              <button type="button" className="ep-resume-ligne" onClick={() => { setRetouche(true); setErreurs({}); setIndex(rang) }}>
+                <i className="point" aria-hidden="true" /><span className="nom">{c.projet.nom}</span>
+                <span className="decision">{DECISION_DITE[decisions[c.projet.id]] ?? ''}</span>
+                <ChevronRight className="i i-16" aria-hidden="true" />
+              </button>
             </li>
           ))}
         </ul>
