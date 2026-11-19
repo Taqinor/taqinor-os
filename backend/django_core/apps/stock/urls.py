@@ -37,6 +37,8 @@ from .views import (
     tableau_bord_achats_view,
 )
 
+from .views.negoce import NiveauxStockAssistantView  # STK3 (copilote vague 2)
+
 router = DefaultRouter()
 router.register(r'produits', ProduitViewSet)
 router.register(r'categories', CategorieViewSet)
@@ -170,5 +172,10 @@ urlpatterns = [
     # exceptions 3 voies/notes de frais en attente), lecture seule.
     path('tableau-bord-achats/', tableau_bord_achats_view,
          name='stock-tableau-bord-achats'),
+    # Copilote vague 2 (STK3) — niveaux de stock lus par l'assistant (contrat
+    # ``assistant_niveaux.json``).
+    # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/niveaux/', NiveauxStockAssistantView.as_view(),
+         name='stock-assistant-niveaux'),
     path('', include(router.urls)),
 ]
