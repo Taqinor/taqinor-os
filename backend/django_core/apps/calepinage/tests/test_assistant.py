@@ -641,3 +641,39 @@ class ContenanceTest(BaseAssistantCalepinage):
     def test_lead_d_une_autre_societe_introuvable(self):
         reponse = self._dicte(api=self.api_autre, toit_plat='true')
         self.assertEqual(reponse.status_code, 404, reponse.data)
+
+
+class BriefCalepinageTest(BaseAssistantCalepinage):
+    """CALA11 — ``selectors.brief_calepinage`` : le bloc du point du matin."""
+
+    def test_forme_du_bloc_et_lignes_de_la_file(self):
+        import datetime
+
+        from apps.calepinage.selectors import LIGNES_BRIEF, brief_calepinage
+
+        for rang in range(LIGNES_BRIEF + 2):
+            Calepinage.objects.create(company=self.company, titre=f'Brief {rang}',
+                                      responsable=self.user, cree_par=self.user)
+        bloc = brief_calepinage(self.user, datetime.date.today())
+        self.assertEqual(set(bloc), {'total', 'lignes'})
+        self.assertEqual(len(bloc['lignes']), LIGNES_BRIEF)
+        self.assertGreaterEqual(bloc['total'], LIGNES_BRIEF + 2)
+        ligne_contrat = echantillon('calepinage_assistant_a_traiter.json')['lignes'][0]
+        for ligne in bloc['lignes']:
+            self.assertEqual(set(ligne), set(ligne_contrat))
+
+    def test_fenetre_de_30_jours_depuis_aujourdhui(self):
+        import datetime
+
+        from apps.calepinage.selectors import brief_calepinage
+
+        bien_plus_tard = datetime.date.today() + datetime.timedelta(days=60)
+        self.assertEqual(brief_calepinage(self.user, bien_plus_tard)['lignes'], [])
+
+    def test_absent_sans_droit_de_lecture(self):
+        from apps.calepinage.selectors import brief_calepinage
+
+        sans = Role.objects.create(company=self.company, nom='SansCalepinage', permissions=[])
+        compte = User.objects.create_user(username='cala_sans', password='x',
+                                          company=self.company, role=sans)
+        self.assertIsNone(brief_calepinage(compte))
