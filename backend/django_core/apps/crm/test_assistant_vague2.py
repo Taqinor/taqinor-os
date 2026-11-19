@@ -6,6 +6,7 @@ droit de chaque module) et ``crm.lead.resume`` (bloc ``dossier``).
 Run :
     python manage.py test apps.crm.test_assistant_vague2 -v 2
 """
+import datetime
 import json
 import pathlib
 from unittest import mock
@@ -18,6 +19,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.assistant_brief import LIMITE_CARACTERES, borner_taille
 from authentication.models import Company
 from apps.roles.models import Role
+from core.test_utils import AssertQueryBudgetMixin
 
 User = get_user_model()
 
@@ -219,6 +221,60 @@ class DossierDuLeadTest(TestCase):
             'exemple_dossier']['dossier']
         self.assertEqual(set(dossier['factures']), set(modele['factures']))
         self.assertEqual(set(dossier['devis']), set(modele['devis']))
+
+
+class RequetesBorneesTest(AssertQueryBudgetMixin, TestCase):
+    """BRF6 — le point du matin et le résumé ne grandissent pas avec les
+    données : le même nombre de requêtes avec 1 puis 6 visites / devis."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = Company.objects.create(nom='BRF6 Co', slug='brf6-co')
+        self.admin = User.objects.create_user(
+            username='brf6_admin', password='x', company=self.company,
+            is_superuser=True)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Idrissi', owner=self.admin)
+        self.api = _api(self.admin)
+
+    def _requetes(self, url):
+        self.api.get(url)  # chauffe les caches (réglages, permissions)
+        with self.assertMaxQueries(10 ** 6) as ctx:
+            reponse = self.api.get(url)
+        self.assertEqual(reponse.status_code, 200)
+        return len(ctx.captured_queries)
+
+    def _ajouter(self, nb):
+        from django.utils import timezone
+        from apps.crm.models import Client, Lead
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+        client = Client.objects.create(company=self.company, nom='BRF6')
+        for i in range(nb):
+            lead = Lead.objects.create(
+                company=self.company, nom=f'Lead {i}', owner=self.admin)
+            VisiteTerrain.objects.create(
+                company=self.company, lead=lead, commercial=self.admin,
+                statut=VisiteTerrain.Statut.VALIDEE, validee_le=timezone.now())
+            Devis.objects.create(
+                company=self.company, lead=self.lead, client=client,
+                statut='envoye', reference=f'DEV-BRF6-{i}',
+                date_envoi=timezone.now() - datetime.timedelta(days=10))
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_digest_en_nombre_de_requetes_constant(self):
+        self._ajouter(1)
+        avant = self._requetes(DIGEST)
+        self._ajouter(5)
+        self.assertEqual(self._requetes(DIGEST), avant)
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_resume_en_nombre_de_requetes_constant(self):
+        url = f'/api/django/crm/leads/{self.lead.pk}/resume/'
+        self._ajouter(1)
+        avant = self._requetes(url)
+        self._ajouter(5)
+        self.assertEqual(self._requetes(url), avant)
 
 
 class ControleSuiviAssistantTest(TestCase):
