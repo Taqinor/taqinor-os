@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin, X } from 'lucide-react'
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, ListChecks, MapPin, X } from 'lucide-react'
 
 import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache, trancherTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
@@ -15,10 +15,11 @@ import {
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
-import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
+import { retenirApercu, useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { frenchError } from '../../lib/frenchError'
+import { useIsMobile } from '../../ui/ResponsiveDialog'
 
 /* ============================================================================
    TCH104 — écran Agenda (route /taches/agenda) : vues Jour · Semaine · Mois · À venir,
@@ -94,6 +95,13 @@ function jourDePlanification(aujourdhui, horloge) {
   return finDeSemaine ? decaler(lundiDe(aujourdhui), 7) : aujourdhui
 }
 
+/** R3-123 — « 16 – 22 nov. » : la semaine, courte, entre les flèches de Planifier ma semaine. */
+function titreSemaineCourt({ du, au }) {
+  const [md, ma] = [Number(du.slice(5, 7)), Number(au.slice(5, 7))]
+  const debut = md === ma ? `${Number(du.slice(8))}` : `${Number(du.slice(8))} ${ABR_MOIS[md - 1]}`
+  return `${debut} – ${Number(au.slice(8))} ${ABR_MOIS[ma - 1]}`
+}
+
 function titrePeriode(vue, jour, { du, au }) {
   if (vue === 'jour') return jourLong(jour)
   if (vue === 'mois') { // maquette agenda-mois.html : « Novembre 2026 »
@@ -111,9 +119,9 @@ const joursEntre = (du, au) => {
   return dates
 }
 
-/** Un jour sans ligne servie : ouvré, vide. */
+/** Un jour sans ligne servie : ouvré, vide ; `absent` : la lecture ne l'a pas (encore) servi (R3-125 : pas de « Passé » deviné). */
 const jourVide = (iso) => ({
-  jour: iso, ouvre: true, ferie: false, toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [],
+  jour: iso, ouvre: true, ferie: false, toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], absent: true,
 })
 
 // --- Mise à jour d'UNE ligne dans l'agenda chargé (jamais une relecture) ----------------------
@@ -139,7 +147,7 @@ function deplacerVers(donnees, item, jour, heureDebut) {
   const posee = { ...item, jour_prevu: jour, heure_debut: heureDebut, quelque_jour: false }
   const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === item.id))
   const jours = (donnees.jours ?? []).map((j) => ({ ...j, blocs: sans(j.blocs), sans_heure: sans(j.sans_heure) }))
-  if (!jours.some((j) => j.jour === jour)) jours.push(jourVide(jour))
+  if (!jours.some((j) => j.jour === jour)) jours.push({ ...jourVide(jour), absent: false })
   const cible = heureDebut ? 'blocs' : 'sans_heure'
   return {
     ...donnees,
@@ -305,20 +313,20 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
   )
 }
 
-function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, consigne = null, onChoisir }) {
+function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, onDeplacer, choisi, volet, consigne = null, onChoisir }) {
   return (
     <div className="ag-corps">
       <div className="ag-principal">
         {consigne}
         <VueJourGrille jour={jour} dates={dates} parJour={parJour} aujourdhui={aujourdhui} maintenant={maintenant}
-          gestes={gestes} placement={placement} choisi={choisi} onChoisir={onChoisir} />
+          gestes={gestes} placement={placement} onDepot={onDepot} onDeplacer={onDeplacer} choisi={choisi} onChoisir={onChoisir} />
       </div>
       {volet}
     </div>
   )
 }
 
-function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, onChoisir }) {
+function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, onDeplacer, choisi, onChoisir }) {
   return (
     <>
       <BandeJours dates={dates} parJour={parJour} jour={jour.jour} aujourdhui={aujourdhui} onChoisir={onChoisir} />
@@ -335,7 +343,8 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
         </section>
       ) : null}
       <GrilleAgenda
-        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi} creneauxLibres
+        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} onDepot={onDepot}
+        onDeplacer={onDeplacer} choisi={choisi} creneauxLibres
         onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
       />
     </>
@@ -348,12 +357,16 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
  *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
 function teteJour(j, aujourdhui, capacite) {
   if (j.ferie) return 'Férié'
-  if (!j.ouvre) return 'Jour non travaillé'
-  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
   const faites = j.faites_nb
-  if (!Number.isInteger(faites)) return 'Passé'
-  return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
+  const dites = Number.isInteger(faites) ? `${faites} ${faites >= 2 ? 'faites' : 'faite'}` : ''
+  // R3-125 (C-21) — un week-end où il a travaillé le DIT (« 7 faites · jour non travaillé ») : le calendrier société garde ses jours
+  // travaillés, mais ce qui a été fait n'est pas caché derrière « Jour non travaillé »
+  if (!j.ouvre) return faites > 0 ? `${dites} · jour non travaillé` : 'Jour non travaillé'
+  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
+  // R3-125 — un jour passé que la lecture n'a pas encore servi n'est pas « Passé » : rien (le squelette de la ligne), jamais un mot deviné
+  if (j.absent) return null
+  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
+  return dites || 'Passé'
 }
 
 /** Passe visuelle n° 59 — un jour de la Semaine (iPhone) montre `max` lignes (passé : 1, sinon 3) ; le reste se dit
@@ -427,7 +440,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite)}
+                {teteJour(j, aujourdhui, capacite) ?? <i className="squelette ag-sj-squelette" aria-hidden="true" />}
               </span>
               {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
               {j.jour < aujourdhui
@@ -441,37 +454,96 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   )
 }
 
+/** R3-121 — la case d'un jour de la rangée « Toute la journée » : ce qui n'a pas d'heure et que la grille ne dessine pas.
+ *  Dans l'ordre : l'ERP (visite…), les rendez-vous de journée entière, les tâches SANS HEURE du jour, les tâches dont
+ *  c'est l'ÉCHÉANCE (puce « · échéance », comme `ToutesLaJournee`, jamais une tâche déjà posée là). Deux puces au plus,
+ *  le reste se dit « +n » (touche : ouvre le jour). */
+const PUCES_PAR_JOUR = 2
+
+function PuceTache({ tache, echeance = false, onOuvrir }) {
+  return (
+    <button type="button" className={tache.statut === 'fait' ? 'ag-tj-item ag-tj-tache faite' : 'ag-tj-item ag-tj-tache'}
+      data-p={tache.projet?.couleur || undefined} onClick={() => { retenirApercu(tache); onOuvrir(tache) }}>
+      <i className="point" aria-hidden="true" />
+      <span>{echeance ? `${tache.titre} · échéance` : tache.titre}</span>
+    </button>
+  )
+}
+
+function CaseJourneeSemaine({ jour, nom, onOuvrir, onChoisir }) {
+  const dejaLa = new Set([...(jour.blocs ?? []), ...(jour.sans_heure ?? [])].map((t) => t.id))
+  const puces = [
+    ...(jour.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />),
+    ...(jour.externes ?? []).filter((e) => e.journee_entiere).map((e) => <PuceJournee key={`ext:${e.cle}`} element={e} />),
+    ...(jour.sans_heure ?? []).map((t) => <PuceTache key={`sh:${t.id}`} tache={t} onOuvrir={onOuvrir} />),
+    ...(jour.echeances ?? []).filter((t) => !dejaLa.has(t.id))
+      .map((t) => <PuceTache key={`ech:${t.id}`} tache={t} echeance onOuvrir={onOuvrir} />),
+  ]
+  const reste = puces.length - PUCES_PAR_JOUR
+  return (
+    <div className={!jour.ouvre || jour.ferie ? 'repos-fond' : undefined}>
+      {puces.slice(0, PUCES_PAR_JOUR)}
+      {reste > 0 ? (
+        <button type="button" className="ag-tj-plus chiffres" aria-label={`+${reste} de plus, ouvrir ${nom}`}
+          onClick={() => onChoisir(jour.jour)}>
+          {`+${reste}`}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 /** Passe visuelle n° 36 — la rangée « Toute la journée » de la Semaine au bureau : une cellule par jour, posée par
  *  GrilleAgenda sous la tête des jours (mêmes colonnes ; sam./dim. ne décalent plus rien). */
-function LigneJourneeSemaine({ jours }) {
+function LigneJourneeSemaine({ jours, onOuvrir, onChoisir }) {
   return (
     <div className="ag-semtj" role="group" aria-label="Toute la journée">
       <div className="ag-tj-label">Toute la journée</div>
       {jours.map((j) => (
-        <div key={j.jour} className={!j.ouvre || j.ferie ? 'repos-fond' : undefined}>
-          {(j.toute_la_journee ?? []).map((e) => <PuceJournee key={`erp:${e.famille}:${e.id}`} element={e} />)}
-          {(j.externes ?? []).filter((e) => e.journee_entiere).map((e) => (
-            <PuceJournee key={`ext:${e.cle}`} element={e} />
-          ))}
-        </div>
+        <CaseJourneeSemaine key={j.jour} jour={j} nom={nomCourt(j.jour)} onOuvrir={onOuvrir} onChoisir={onChoisir} />
       ))}
     </div>
   )
 }
 
-function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite = null, volet = null, onChoisir }) {
+/** R3-120 — la Semaine au bureau donne TOUTE la largeur à la grille : « À placer (n) » est un bouton de la barre du haut
+ *  (panneau à la demande, `ouvert`) sous 1600 px, un volet fixe de 280 px au-delà (agenda.css). Toucher une tâche du
+ *  panneau le referme (la grille se montre en entier pour y poser la tâche) ; la glisser le rend presque transparent et
+ *  traversable tant qu'elle est choisie (`data-choix` : jamais masqué ni retiré — le navigateur annulerait le glisser),
+ *  pour que les colonnes qu'il recouvre reçoivent le dépôt ; Échap le referme. */
+const ID_BOUTON_VOLET = 'ag-bouton-volet-semaine'
+
+function VueSemaine({
+  jours, aujourdhui, maintenant, gestes, placement, capacite = null, aPlacer = [], mesProjets = [],
+  choisie = null, ouvert = false, onVolet, onChoisirAPlacer, onGlisser, onDepot, onDeplacer, consigne = null, onPlanifier, onChoisir,
+}) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
+  const corps = useRef(null)
+  const refermer = useCallback(() => onVolet(false), [onVolet])
+  useEffect(() => {
+    if (ouvert) corps.current?.querySelector('.ag-aside-fermer')?.focus()
+  }, [ouvert])
+  const surTouche = (e) => {
+    if (e.key !== 'Escape' || !ouvert) return
+    refermer()
+    document.getElementById(ID_BOUTON_VOLET)?.focus()
+  }
   return (
     <>
-      <div className="ag-corps bureau-seul">
+      <div ref={corps} className="ag-corps ag-corps-semaine bureau-seul" data-volet={ouvert ? 'ouvert' : 'ferme'} onKeyDown={surTouche}>
         <div className="ag-principal">
+          {consigne}
           <GrilleAgenda
             jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms} creneauxLibres
-            ligneJournee={<LigneJourneeSemaine jours={jours} />}
-            placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
+            ligneJournee={<LigneJourneeSemaine jours={jours} onOuvrir={gestes.ouvrir} onChoisir={onChoisir} />}
+            placement={placement} onDepot={onDepot} onDeplacer={onDeplacer} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
           />
         </div>
-        {volet}
+        <VoletAPlacer
+          id="ag-volet-semaine" aPlacer={aPlacer} mesProjets={mesProjets} aujourdhui={aujourdhui}
+          choisie={choisie} onChoisir={onChoisirAPlacer} onGlisser={onGlisser} apresChoix={refermer} onFermer={refermer}
+          projetsOuverts aide="Touche une tâche, puis un jour." action={<BoutonPlanifier onClick={onPlanifier} />}
+        />
       </div>
       <SemaineListe jours={jours} aujourdhui={aujourdhui} capacite={capacite} onChoisir={onChoisir} />
     </>
@@ -579,6 +651,11 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
   const [posee, setPosee] = useState(null)
   const [posees, setPosees] = useState({})
   const annulerPose = useRef(null)
+  // R3-120 — la tâche qu'on GLISSE : retenue dans une référence, SANS aucun rendu (le navigateur annule un glisser dont la
+  // page bouge ou se redessine pendant son début) ; les créneaux acceptent le dépôt sans que la tâche soit « choisie »
+  // (`GrilleAgenda onDepot`), et le dépôt la pose comme le toucher.
+  const glisse = useRef(null)
+  const glisser = useCallback((item) => { glisse.current = item }, [])
 
   /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable.
    *  R2-106 — une tâche « À revoir » (reportée 3 fois) ne sort d'À revoir que par `trancher/` : la poser sur un jour EST
@@ -587,6 +664,7 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     let precedent = null
     const aTrancher = item.motif === MOTIF_A_TRANCHER
     const posable = aTrancher ? { ...item, motif: null } : item
+    glisse.current = null
     setChoisie(null)
     setErreur('')
     setDonnees((d) => { precedent = d; return deplacerVers(d, posable, jour, heureDebut) })
@@ -687,7 +765,7 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     annuler?.().catch((err) => setErreur(frenchError(err, "L'annulation a échoué. Réessayez.")))
   }, [setErreur])
 
-  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose, deplacer }
+  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose, deplacer, glisse, glisser }
 }
 
 function DureePosee({ posee, onDuree, onAnnuler, onDeplacer }) {
@@ -735,10 +813,12 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const [maj, setMaj] = useState('')
   const [relire, setRelire] = useState(0)
   const [erreurGeste, setErreurGeste] = useState('')
+  const [voletSemaine, setVoletSemaine] = useState(false) // R3-120 : le panneau « À placer (n) » de la Semaine au bureau
   const derniere = useRef(0)
   const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
   const navigate = useNavigate()
+  const mobile = useIsMobile()
   // Mes agendas (§2.20) : vivent dans Réglages → Mon iPhone, étape « calendrier » (`?etape=calendrier`) ; lus une fois
   const [agendas, setAgendas] = useState(null)
   useEffect(() => {
@@ -821,7 +901,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const dansLeVolet = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
   const choisie = dansLeVolet ?? (placement.choisie == null ? null
     : jours.flatMap((j) => [...(j.blocs ?? []), ...(j.sans_heure ?? [])]).find((it) => it.id === placement.choisie) ?? null)
-  const consigneDeplacement = choisie && !dansLeVolet && vue === 'jour' ? (
+  const consigneDeplacement = choisie && !dansLeVolet && (vue === 'jour' || vue === 'semaine') ? (
     <div className="ag-consigne" role="status">
       <span>{`Touche un créneau pour déplacer ${choisie.titre}`}</span>
       <button type="button" className="bouton" aria-label="Annuler le déplacement" onClick={() => placement.setChoisie(null)}>
@@ -829,11 +909,26 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       </button>
     </div>
   ) : null
+  // R3-132 — une tâche de « À placer » est choisie : le bandeau COLLANT en haut de la grille le dit et offre « Annuler » (sur iPhone
+  // la consigne du volet était SOUS la grille, hors de vue ; au bureau le volet de la vue Jour garde la sienne)
+  const bandeauPose = (classe) => (choisie && dansLeVolet ? (
+    <div className={`ag-consigne ${classe}`} role="status">
+      <span>{`Pose « ${choisie.titre} » : touche un créneau`}</span>
+      <button type="button" className="bouton lien" onClick={() => placement.setChoisie(null)}>Annuler</button>
+    </div>
+  ) : null)
+  const deplacer = (item) => placement.setChoisie(item.id) // R3-132 : toucher un bloc posé, en mode « placer », le déplace
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
+  // R3-120 — le dépôt d'une tâche GLISSÉE depuis « À placer » : la tâche retenue au début du glisser (ou, à défaut, la choisie)
+  const deposer = (j, h) => {
+    const item = placement.glisse.current ?? choisie
+    if (item) placement.poser(item, j, h)
+  }
   const volet = (
     <VoletAPlacer
       aPlacer={donnees?.a_placer ?? []} mesProjets={donnees?.mes_projets ?? []} aujourdhui={aujourdhui}
       choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+      onGlisser={placement.glisser}
       sansHeure={vue === 'jour' && jour !== aujourdhui ? (parJour[jour]?.sans_heure ?? []) : []}
     />
   )
@@ -852,10 +947,11 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     const terminer = () => changer({ placer: null, vue: 'semaine', jour: jour === aujourdhui ? null : jour })
     const changerSemaine = (sens) => changer({ jour: pas('semaine', jour, sens) })
     return (
-      // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
-      // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
-      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" sousTitre={titrePeriode('semaine', jour, periode)}
-        saisieBureau={false}>
+      // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : sans barre « Ajouter une tâche » ; Terminer rejoint
+      // la ligne du titre (agenda.css). R3-123 — la semaine est dite UNE fois, entre les flèches « ‹ 16 – 22 nov. › » ;
+      // sur iPhone le mode est un écran ENFANT de l'Agenda : « ‹ Agenda » remplace ☰ (au bureau le sur-titre est libre).
+      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" largeur="pleine"
+        retour={mobile ? { libelle: 'Agenda', vers: '/taches/agenda' } : null} saisieBureau={false}>
         {etats}
         {/* Passe visuelle n° 6 — rien de lu : aucun jour ni compte (« 0 tâche », « Tout est placé » seraient faux) */}
         {donnees ? (
@@ -865,7 +961,12 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
             onPoser={(item, iso) => placement.poser(item, iso, null)}
             onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-            onTerminer={terminer} onSemaine={changerSemaine}
+            onTerminer={terminer} onSemaine={changerSemaine} semaine={titreSemaineCourt(periode)}
+            onGlisser={placement.glisser}
+            onDeposer={(iso) => {
+              const item = placement.glisse.current ?? choisie
+              if (item) placement.poser(item, iso, null)
+            }}
           />
         ) : (
           // relecture adverse F4 n° 7 — rien de lu (hors ligne sans cache, erreur) : le mode garde sa sortie, au même endroit
@@ -880,7 +981,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   }
 
   return (
-    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
+    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)} largeur="pleine"
       actionsEcran={[{ libelle: 'Planifier ma semaine', onSelect: planifierSemaine },
         { libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
@@ -895,6 +996,19 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
           onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
           onAujourdhui={() => changer({ jour: null })}
         />
+        {vue === 'semaine' && donnees ? (
+          <button
+            id={ID_BOUTON_VOLET} type="button" className="bouton second ag-volet-bouton"
+            aria-expanded={voletSemaine} aria-controls="ag-volet-semaine" onClick={() => setVoletSemaine((o) => !o)}
+          >
+            <ListChecks className="i i-16" aria-hidden="true" />
+            {`À placer (${tousAPlacer.length})`}
+          </button>
+        ) : null}
+        {/* R3-120 — le panneau « À placer » est replié : « Planifier ma semaine » (l'action de la Semaine) reste à portée, dans la barre */}
+        {vue === 'semaine' && donnees ? (
+          <button type="button" className="bouton discret ag-planifier-bouton" onClick={planifierSemaine}>Planifier ma semaine</button>
+        ) : null}
       </div>
       {etats}
       {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
@@ -903,8 +1017,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet} consigne={consigneDeplacement}
-          onChoisir={(iso) => changer({ jour: iso })} />
+          placement={placementGrille} onDepot={deposer} onDeplacer={deplacer} choisi={placement.posee?.id ?? null} volet={volet}
+          consigne={consigneDeplacement ?? bandeauPose('ag-consigne-pose')} onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
       {donnees && vue === 'jour' && placement.posee ? (
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose}
@@ -914,13 +1028,10 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         <>
           <VueSemaine jours={jours} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
             placement={placementGrille} capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour}
-            volet={(
-              <VoletAPlacer
-                aPlacer={donnees.a_placer ?? []} mesProjets={donnees.mes_projets ?? []} aujourdhui={aujourdhui}
-                choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
-                projetsOuverts aide="Touche une tâche, puis un jour." action={<BoutonPlanifier onClick={planifierSemaine} />}
-              />
-            )} />
+            aPlacer={donnees.a_placer ?? []} mesProjets={donnees.mes_projets ?? []}
+            choisie={placement.choisie} onChoisirAPlacer={(item) => placement.setChoisie(item ? item.id : null)}
+            onGlisser={placement.glisser} onDepot={deposer} onDeplacer={deplacer} consigne={consigneDeplacement ?? bandeauPose('ag-consigne-grille')}
+            ouvert={voletSemaine} onVolet={setVoletSemaine} onPlanifier={planifierSemaine} />
           <BarreAPlacer total={tousAPlacer.length} onPlanifier={planifierSemaine} />
         </>
       ) : null}
