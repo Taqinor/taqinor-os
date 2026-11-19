@@ -20,7 +20,7 @@ from core.parseurs import PARSEURS_JSON
 
 from . import machine_etats, selectors_assistant as lectures, services as sav_services
 from .models import Ticket
-from .query_params import ENTIER_ID, choix_param, entier_param, valeur_param
+from .query_params import ENTIER_ID, choix_param, entier_param, ou_vide, valeur_param
 from .serializers import TicketSerializer
 
 #: Longueur maximale du texte cherché (nom, téléphone, numéro de série).
@@ -50,8 +50,8 @@ def _texte_cherche(request, obligatoire):
         OpenApiParameter('q', {'type': 'string', 'minLength': 1, 'maxLength': Q_MAX},
                          OpenApiParameter.QUERY, required=True,
                          description='Nom, téléphone ou numéro de série.'),
-        OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
-                                    'maximum': lectures.LIMITE_PARC_MAX},
+        OpenApiParameter('limite', ou_vide({'type': 'integer', 'minimum': 1,
+                                            'maximum': lectures.LIMITE_PARC_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
     responses=OpenApiTypes.OBJECT)
@@ -88,8 +88,8 @@ def _enum_ou_vide(valeurs):
         OpenApiParameter('equipement', ENTIER_ID, OpenApiParameter.QUERY, required=False),
         OpenApiParameter('retard_sla', _enum_ou_vide(('true', 'false')),
                          OpenApiParameter.QUERY, required=False),
-        OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
-                                    'maximum': lectures.LIMITE_TICKETS_MAX},
+        OpenApiParameter('limite', ou_vide({'type': 'integer', 'minimum': 1,
+                                            'maximum': lectures.LIMITE_TICKETS_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
     responses=OpenApiTypes.OBJECT)
