@@ -7,8 +7,8 @@ filtres, ni son unité. Le fondateur peut donc corriger une définition sans
 qu'un déploiement ultérieur la réécrase. Deux exécutions consécutives laissent
 exactement les mêmes métriques, aux mêmes valeurs.
 
-LES DIX, ET D'OÙ VIENT CHAQUE CHIFFRE
--------------------------------------
+LES HUIT, ET D'OÙ VIENT CHAQUE CHIFFRE
+--------------------------------------
 Aucune de ces définitions n'invente un nombre : chacune pointe soit un champ
 RÉELLEMENT stocké, soit le calcul qui fait déjà autorité dans le dépôt.
 
@@ -26,9 +26,12 @@ RÉELLEMENT stocké, soit le calcul qui fait déjà autorité dans le dépôt.
   LE taux de gain du reporting, leads gagnés ÷ leads NON perdus.
 * `mrr` — valeur annuelle des contrats de maintenance ACTIFS ÷ 12
   (`sav_contrats.valeur_annuelle`, dérivée du prix de période × 12/mois).
-* `marge_brute` et `dso` — ADAPTATEURS `compta.*` : lus du cockpit
-  `pilotage_financier` (grand livre). Les recalculer en SQL créerait un
-  second chiffre.
+* `marge_brute` et `dso` NE SONT PLUS SEMÉES (RPT2) : leurs adaptateurs
+  `compta.*` n'existent plus (l'app `compta` est parquée) et une métrique
+  listée qui ne se résout pas ment à l'assistant. Aucune formule de
+  remplacement n'est inventée : le jour où un calcul canonique existe, la clé
+  revient avec son adaptateur. Les lignes déjà semées sont désactivées par la
+  migration 0008.
 * `valeur_pipeline_ponderee` — ADAPTATEUR `crm.pipeline_pondere` : réutilise
   les scorers `_lead_forecast_value` × `_lead_win_weight` de l'écran Pipeline.
 
@@ -120,25 +123,6 @@ METRIQUES_COEUR = [
         },
         'filtres': {'actif': True},
         'unite': MetricDefinition.Unite.MAD,
-    },
-    {
-        'cle': 'marge_brute',
-        'libelle': 'Marge brute',
-        'description': 'Produits moins charges de la période, lus du grand '
-                       'livre (cockpit Pilotage financier).',
-        'dataset': '',
-        'mesure': {'adapter': 'compta.marge_brute'},
-        'unite': MetricDefinition.Unite.MAD,
-    },
-    {
-        'cle': 'dso',
-        'libelle': 'DSO (délai moyen de règlement)',
-        'description': 'Encours clients rapporté au chiffre d\'affaires de la '
-                       'période, en jours — lu du grand livre.',
-        'dataset': '',
-        'mesure': {'adapter': 'compta.dso'},
-        'unite': MetricDefinition.Unite.JOURS,
-        'format': 0,
     },
     {
         'cle': 'valeur_pipeline_ponderee',

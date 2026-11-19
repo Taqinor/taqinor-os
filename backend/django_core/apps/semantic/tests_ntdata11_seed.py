@@ -29,9 +29,9 @@ from authentication.models import Company
 
 CLES_ATTENDUES = {
     'ca_ht', 'ca_ttc', 'panier_moyen', 'taux_conversion', 'mrr',
-    'marge_brute', 'dso', 'valeur_pipeline_ponderee',
+    'valeur_pipeline_ponderee',
     'ca_signe_ht', 'encaisse_ht',  # RPT1 — les trois « CA » : signé, facturé, encaissé
-}
+}  # RPT2 — ni `marge_brute` ni `dso` : aucun adaptateur ne les résout
 
 
 class SeedMetriquesTests(TestCase):
@@ -386,7 +386,7 @@ class SeedMetriquesTests(TestCase):
     def test_metrique_adaptateur_refuse_un_regroupement(self):
         self._seed()
         with self.assertRaises(services.MetriqueNonRegroupable) as ctx:
-            services.resolve_metric(self.company, None, 'dso',
+            services.resolve_metric(self.company, None, 'ca_ht',
                                     group_by=['mois'])
         self.assertIn('adaptateur', str(ctx.exception))
         # ENF51 — état de la métrique, pas requête fautive : 409 à l'API.
@@ -396,21 +396,56 @@ class SeedMetriquesTests(TestCase):
         api.force_authenticate(get_user_model().objects.create_user(
             username='enf51-sem', password='x', role_legacy='responsable',
             company=self.company))
-        reponse = api.get('/api/django/semantic/metriques/dso/valeur/',
+        reponse = api.get('/api/django/semantic/metriques/ca_ht/valeur/',
                           {'group_by': 'mois'})
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('adaptateur', reponse.data['detail'])
 
-    def test_dso_resolu_par_l_adaptateur(self):
+    def test_dso_et_marge_brute_ne_sont_plus_listes(self):
+        """RPT2 — ``compta`` est parqué : aucun adaptateur ne résout ces deux
+        clés. Elles ne sont plus semées, donc plus offertes à l'assistant ;
+        un déploiement n'en recrée aucune."""
         self._seed()
-        # compta (fournisseur de l'adaptateur DSO) est parqué (Groupe
-        # SOLMVP) : plus aucun adaptateur ``compta.dso`` n'est enregistré.
-        # Le résolveur le dit en clair (module désactivé) plutôt que de
-        # rendre un faux zéro — même famille d'erreur que
-        # ``test_metrique_adaptateur_refuse_un_regroupement``.
-        with self.assertRaises(services.MetriqueNonResolvable) as ctx:
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=self.company, cle__in=['dso', 'marge_brute']).exists())
+        with self.assertRaises(services.MetriqueInconnue):
             services.resolve_metric(self.company, None, 'dso')
-        self.assertIn('désactivé', str(ctx.exception))
+
+    def test_migration_0008_desactive_les_deux_cles_inertes(self):
+        """RPT2 — société semée avant : ``marge_brute`` / ``dso`` à l'ancien
+        défaut sont désactivées (jamais supprimées) et sortent du catalogue de
+        l'assistant ; une définition réécrite par le fondateur reste active."""
+        import importlib
+
+        from django.apps import apps as parc
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0008_rpt_marge_dso_inertes')
+        self._seed()
+        for cle, unite in (('marge_brute', 'MAD'), ('dso', 'jours')):
+            MetricDefinition.objects.create(
+                company=self.company, cle=cle, libelle=cle, dataset='',
+                mesure={'adapter': 'compta.%s' % cle}, unite=unite)
+        MetricDefinition.objects.filter(
+            company=self.company, cle='dso').update(
+            mesure={'field': 'reste_du', 'agg': 'sum'}, dataset='ventes_factures')
+        api = APIClient()
+        api.force_authenticate(get_user_model().objects.create_user(
+            username='rpt2-resp', password='x', role_legacy='responsable',
+            company=self.company))
+        url = '/api/django/semantic/metriques/pour-agent/'
+        avant = {m['cle'] for m in api.get(url).data['metriques']}
+        self.assertLessEqual({'marge_brute', 'dso'}, avant)
+        mig.desactiver(parc, None)
+        mig.desactiver(parc, None)  # second passage : rien de plus
+        actifs = dict(MetricDefinition.objects.filter(
+            company=self.company, cle__in=['marge_brute', 'dso']
+        ).values_list('cle', 'actif'))
+        self.assertEqual(actifs, {'marge_brute': False, 'dso': True})
+        apres = {m['cle'] for m in api.get(url).data['metriques']}
+        self.assertNotIn('marge_brute', apres)
+        self.assertEqual(apres - {'dso'}, CLES_ATTENDUES)
 
     def test_pipeline_pondere_resolu_par_l_adaptateur(self):
         self._seed()

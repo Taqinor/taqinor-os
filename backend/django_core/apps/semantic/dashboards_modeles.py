@@ -8,11 +8,14 @@ ne porte sa propre spec : corriger la définition d'une métrique met à jour le
 trois modèles avec tous les autres écrans qui la référencent.
 
 AUCUNE MÉTRIQUE INVENTÉE : les clés sont celles des 8 métriques cœur de
-``seed_metriques`` (NTDATA11). « Relances » et « encours » n'ont pas (encore)
-de métrique gouvernée : le modèle Commerce montre la conversion, le pipeline
-pondéré et le panier moyen ; le modèle Finance le DSO, le CA TTC et la marge
-brute. Une clé absente de la société (seed_metriques pas encore passé) rend
-un widget « métrique inconnue » lisible, jamais un chiffre fabriqué.
+``seed_metriques`` (NTDATA11, RPT1/RPT2). « Relances » et « encours » n'ont pas
+(encore) de métrique gouvernée, ni le DSO ni la marge brute (RPT2 : aucun
+calcul canonique à brancher) : le modèle Commerce montre la conversion, le
+pipeline pondéré et le panier moyen ; Direction le CA signé, facturé et le
+pipeline ; Finance le CA facturé HT et TTC et l'encaissé HT. Les trois « CA »
+portent leur nom, jamais un « CA » nu. Une clé absente de la société
+(seed_metriques pas encore passé) rend un widget « métrique inconnue » lisible,
+jamais un chiffre fabriqué.
 
 IDEMPOTENT ET ADDITIF : le marqueur ``layout['modele']`` identifie un modèle
 déjà posé ; il n'est alors JAMAIS réécrit — un dashboard modèle que la société
@@ -25,12 +28,13 @@ from django.db import transaction
 DASHBOARDS_MODELES = [
     {
         'modele': 'direction',
-        'titre': 'Direction — chiffre, marge, pipeline',
-        'description': "Vue de direction : chiffre d'affaires, marge brute et "
-                       'pipeline pondéré, sur les métriques gouvernées.',
+        'titre': 'Direction — signé, facturé, pipeline',
+        'description': "Vue de direction : chiffre d'affaires signé et "
+                       'facturé, et pipeline pondéré, sur les métriques '
+                       'gouvernées.',
         'metriques': [
-            ('ca_ht', "Chiffre d'affaires HT"),
-            ('marge_brute', 'Marge brute'),
+            ('ca_signe_ht', 'CA signé HT'),
+            ('ca_ht', 'CA facturé HT'),
             ('valeur_pipeline_ponderee', 'Pipeline pondéré'),
         ],
     },
@@ -47,13 +51,13 @@ DASHBOARDS_MODELES = [
     },
     {
         'modele': 'finance',
-        'titre': 'Finance — DSO, chiffre, marge',
-        'description': "Vue financière : délai moyen de règlement (DSO), "
-                       "chiffre d'affaires TTC et marge brute.",
+        'titre': 'Finance — facturé, encaissé',
+        'description': "Vue financière : chiffre d'affaires facturé HT et "
+                       'TTC, et encaissé HT.',
         'metriques': [
-            ('dso', 'DSO (délai moyen de règlement)'),
-            ('ca_ttc', "Chiffre d'affaires TTC"),
-            ('marge_brute', 'Marge brute'),
+            ('ca_ht', 'CA facturé HT'),
+            ('ca_ttc', 'CA facturé TTC'),
+            ('encaisse_ht', 'Encaissé HT'),
         ],
     },
 ]
