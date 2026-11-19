@@ -258,8 +258,9 @@ def reconcilier(devis, intention):
       Meter + clé Wifi derrière un onduleur Huawei. Ces classes sont AJOUTÉES
       quand elles manquent, jamais re-tarifées quand elles sont là ; un
       composant introuvable ou non tarifé est sauté ET annoncé en français.
-      Ni sur un devis agricole (pompage) ni sur un multi-villa : les deux
-      demandent un kit qui ne se déduit pas d'une composition résidentielle ;
+      Ni sur un devis agricole (pompage), ni sur un multi-villa, ni sur un
+      commercial / industriel (panier du moteur C&I) : tous demandent un kit
+      qui ne se déduit pas d'une composition résidentielle ;
     * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
       sections, notes, ordre d'affichage, groupes multi-villa, et les produits
       des lignes non touchées ne sont JAMAIS re-choisis ;
@@ -1028,12 +1029,18 @@ def reconcilier(devis, intention):
         # Le squelette des devis d'hier devient le kit réellement installé. La
         # complétion n'AJOUTE que : les lignes en place, leurs prix négociés et
         # leur ordre ne sont jamais touchés (voir le bloc PVHEAL plus haut).
-        # Deux devis en sont écartés, parce qu'une composition RÉSIDENTIELLE ne
-        # décrit pas leur kit : l'agricole (pompage — ni structure de toiture
-        # ni socles) et le multi-villa (chaque villa a le sien, une série de
-        # lignes hors groupe y serait fausse).
+        # Trois devis en sont écartés, parce qu'une composition RÉSIDENTIELLE
+        # ne décrit pas leur kit : l'agricole (pompage — ni structure de
+        # toiture ni socles), le multi-villa (chaque villa a le sien, une série
+        # de lignes hors groupe y serait fausse) et le commercial / industriel
+        # (panier du moteur C&I : coffrets AC/DC, pose, raccordement… — y
+        # ajouter Accessoires + Tableau + Installation les compte en double,
+        # devis DEV-202611-0076 du 19/11/2026).
+        from apps.ventes.domain.etude_schema import MARCHES_CI
+        marche_ci = ((verrou.mode_installation or '').strip().lower()
+                     in MARCHES_CI)
         lignes_ajoutees = 0
-        if agricole or multi_villa:
+        if agricole or multi_villa or marche_ci:
             if multi_villa and not agricole:
                 avertissements.append(
                     'Devis multi-villa : le kit manquant (structures, socles, '
