@@ -1361,7 +1361,8 @@ class UneChargeTests(_Base):
         """Mardi 17/11, 15:00, capacité par défaut 240 min, aucun rendez-vous. Calcul à la main :
         restent 120 + 90 + 60 (prévues) + 30 (prévue demain, échéance aujourd'hui) = 300 min ; 1 sans durée ; 5 tâches ;
         la faite (30 min) et Ce soir (20 min) ne comptent pas ; disponible 240 ; déborde 300 − 240 = 60 min.
-        Demain : la même tâche à échéance aujourd'hui, prévue demain : 30 min."""
+        Demain : 0 — la tâche à échéance aujourd'hui, prévue demain, pèse sur UN jour, aujourd'hui (Aujourd'hui la
+        garde ; critique serveur n° 4, `classement.jour_de_charge`)."""
         for minutes in (120, 90, 60):
             self.tache(jour_prevu=J, estimation_minutes=minutes)
         self.tache(jour_prevu=J)
@@ -1392,7 +1393,7 @@ class UneChargeTests(_Base):
         for lecture, charge in lectures.items():
             with self.subTest(lecture=lecture):
                 self.assertEqual(charge, attendu)
-        self.assertEqual(semaine[jours(1).isoformat()]['charge']['restantes_minutes'], 30)
+        self.assertEqual(semaine[jours(1).isoformat()]['charge']['restantes_minutes'], 0)
         self.assertIsNone(semaine[jours(-1).isoformat()]['charge'])  # un jour passé dit ses faites, pas une charge
         # la charge de « Garder ces N » part de la même base (aucune proposée ici)
         self.assertEqual(aujourdhui['propose']['charge']['minutes_estimees'], 300)

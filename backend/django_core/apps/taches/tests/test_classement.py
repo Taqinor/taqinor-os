@@ -535,11 +535,38 @@ class CapaciteTests(unittest.TestCase):
         self.assertEqual(charge_du_jour(items, J, J, 240, 60), {
             'taches': 4, 'restantes_minutes': 135, 'sans_duree': 1, 'capacite_minutes': 240,
             'rendez_vous_minutes': 60, 'disponible_minutes': 180, 'deborde_minutes': 0})
-        self.assertEqual(charge_du_jour(items, demain, J, 240, 0)['restantes_minutes'], 85)
+        # critique serveur n° 4 : la ★ (prévue demain, échéance aujourd'hui) pèse AUJOURD'HUI seulement — demain = 40
+        self.assertEqual(charge_du_jour(items, demain, J, 240, 0)['restantes_minutes'], 40)
         self.assertEqual(charge_du_jour(items, apres, J, 240, 0)['restantes_minutes'], 0)
         # 4 h 30 restantes pour 4 h : 30 min de trop
         longue = [tache(1, jour_prevu=J, estimation_minutes=270)]
         self.assertEqual(charge_du_jour(longue, J, J, 240, 0)['deborde_minutes'], 30)
+
+    def test_une_tache_pese_sur_un_seul_jour(self):
+        """Critique serveur n° 4 — une tâche pèse sur UN jour de la semaine : aujourd'hui si Aujourd'hui la garde
+        (prévue ou à échéance aujourd'hui) ; sinon le jour où elle est prévue (encore à venir) ; sinon son échéance.
+        Jeu, mardi 17/11 = J, semaine du 17 au 23 :
+          1. prévue jeu. 19, échéance mer. 18 (prévue APRÈS son échéance), 60 min → jeu. 19 seul (avant : mer. ET jeu.)
+          2. prévue mer. 18, échéance J, 45 min → J seulement (Aujourd'hui la garde par son échéance)
+          3. prévue ven. 20, 30 min → ven. 20
+          4. échéance sam. 21 sans jour prévu, 20 min → sam. 21
+          5. prévue lun. 16 (passé), échéance jeu. 19, 15 min → jeu. 19 (aucun jour prévu encore à venir)
+          6. prévue J, échéance ven. 20, 10 min → J seulement
+        Σ des durées = 60 + 45 + 30 + 20 + 15 + 10 = 180 ; par jour : J 45 + 10 = 55, mer. 0, jeu. 60 + 15 = 75,
+        ven. 30, sam. 20, dim. 0, lun. 23 0 → Σ = 55 + 75 + 30 + 20 = 180."""
+        from apps.taches.moteur.classement import charge_du_jour
+        d = {n: date(2026, 11, n) for n in range(16, 24)}
+        items = [
+            tache(1, jour_prevu=d[19], echeance=d[18], estimation_minutes=60),
+            tache(2, jour_prevu=d[18], echeance=J, estimation_minutes=45),
+            tache(3, jour_prevu=d[20], estimation_minutes=30),
+            tache(4, echeance=d[21], estimation_minutes=20),
+            tache(5, jour_prevu=d[16], echeance=d[19], estimation_minutes=15),
+            tache(6, jour_prevu=J, echeance=d[20], estimation_minutes=10),
+        ]
+        par_jour = {n: charge_du_jour(items, d[n], J, 240, 0)['restantes_minutes'] for n in range(17, 24)}
+        self.assertEqual(par_jour, {17: 55, 18: 0, 19: 75, 20: 30, 21: 20, 22: 0, 23: 0})
+        self.assertEqual(sum(par_jour.values()), sum(i.estimation_minutes for i in items))
 
 
 class ExplicationTests(unittest.TestCase):

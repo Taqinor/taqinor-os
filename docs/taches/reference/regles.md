@@ -628,8 +628,11 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **La charge d'un jour (R4-01, M1 « un chiffre, une source »)** : UNE fonction, `selectors.journee.charge_du_jour`
   (règle pure `moteur.classement.compte_dans_la_charge`), dit pour un jour D (aujourd'hui = J) : les tâches qui pèsent
   sur D — à faire (ni faites : une faite ne compte plus ; ni en attente de quelqu'un), dans le préfiltre, ni plus tard,
-  ni Ce soir (hors des heures de travail), ni reportées 3 fois (À revoir), prévues D, ou à échéance D sans être prévues
-  un jour d'avant encore à venir (aujourd'hui : exactement Essentiel et Prévu ouverts, hors Ce soir) ;
+  ni Ce soir (hors des heures de travail), ni reportées 3 fois (À revoir), dont D est LE jour de charge
+  (`classement.jour_de_charge` : une tâche pèse sur UN seul jour — aujourd'hui si Aujourd'hui la garde, prévue ou à
+  échéance J ; sinon son jour prévu encore à venir ; sinon son échéance à venir ; une tâche prévue APRÈS son échéance
+  pèse donc sur son jour prévu, jamais sur les deux ; la somme des charges d'une semaine = la somme des durées de ses
+  tâches ouvertes) (aujourd'hui : exactement Essentiel et Prévu ouverts, hors Ce soir) ;
   `restantes_minutes` = Σ de leurs durées DITES ; `sans_duree` = celles sans durée (comptées 0, dites « N sans durée »,
   jamais une durée inventée) ; `disponible_minutes` = capacité − rendez-vous de D (invariant 35) ; `deborde_minutes` =
   max(0, restantes − disponible). Servie par `progression.charge` (Aujourd'hui, toute écriture, « Où j'en suis ? »),
