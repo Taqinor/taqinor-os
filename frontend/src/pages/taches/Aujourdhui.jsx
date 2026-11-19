@@ -46,6 +46,9 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    ========================================================================== */
 
 const DELAI_SQUELETTE_MS = 1000
+const MAX_ESSENTIELLES = 3 // regles.md §4.1 « 3 au plus » (même plafond que `ui/Etoile`)
+/** R2-012 — la 4e étoile est refusée À L'ÉCRAN (un toast), pas seulement au lecteur d'écran. */
+const refuserEssentielle = () => proposerAnnuler({ message: "3 essentielles au plus — retire une étoile d'abord" })
 const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
@@ -551,6 +554,8 @@ export default function Aujourdhui() {
 
   const basculerEssentiel = useCallback(async (item, suivant) => {
     try { garde() } catch { return }
+    // R2-012 — le plafond se teste AVANT l'appel, depuis l'étoile comme depuis le menu ⋯ : la 4e ne part jamais
+    if (suivant && !item.essentielle && (donnees?.essentiel?.length ?? 0) >= MAX_ESSENTIELLES) { refuserEssentielle(); return }
     try {
       const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
       poserProgression(data.progression)
@@ -576,7 +581,7 @@ export default function Aujourdhui() {
     } catch (err) {
       annoncer(frenchError(err))
     }
-  }, [garde, setDonnees, poserProgression])
+  }, [garde, donnees, setDonnees, poserProgression])
 
   /** Sort une ligne de sa section ; rend la fonction qui la remet à sa place (Annuler, refus du serveur). */
   const sortirLigne = useCallback((item) => {
@@ -692,7 +697,7 @@ export default function Aujourdhui() {
     copilote: (question) => {
       if (enLigne) window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, { detail: { ecran: '/taches/aujourdhui', question, envoyer: true } }))
     },
-    refusEssentiel: () => annoncer('3 au plus.'),
+    refusEssentiel: refuserEssentielle,
     annoncer,
     naviguer: (url) => navigate(url),
   }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])

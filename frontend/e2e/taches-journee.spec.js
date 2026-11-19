@@ -78,7 +78,7 @@ test.describe('Tâches — la journée', () => {
     }
   })
 
-  test('★★★ : trois essentielles au plus, la 4e est refusée à voix haute', async ({ page }) => {
+  test('★★★ : trois essentielles au plus, la 4e est refusée à l’écran (R2-012)', async ({ page }) => {
     const { titres, base } = await journeeDeQuatre(page, { gardees: true })
     await attendreAujourdhui(page)
     await expect(section(page, 'Prévu')).toBeVisible()
@@ -90,9 +90,9 @@ test.describe('Tâches — la journée', () => {
     // la progression lit « essentiel 0 sur 3 » (rien de fait par ce test)
     await expect(progression(page, base, ', essentiel 0 sur 3')).toBeVisible()
 
-    // la 4e ★ : refusée, la ligne reste dans Prévu et la région `role=status` le dit
+    // la 4e ★ : refusée, la ligne reste dans Prévu et un toast le dit (lu aussi par la région `role=status`)
     await section(page, 'Prévu').getByRole('checkbox', { name: `Essentielle : ${titres[3]}` }).click()
-    await expect(annonce(page)).toContainText('3 au plus.')
+    await expect(toast(page)).toContainText("3 essentielles au plus — retire une étoile d'abord")
     await expect(section(page, 'Prévu').getByText(titres[3], { exact: true })).toBeVisible()
     await expect(section(page, 'Essentiel').getByText(titres[3], { exact: true })).toHaveCount(0)
   })

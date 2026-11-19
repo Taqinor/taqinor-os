@@ -384,6 +384,36 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
+  describe('R2-012 — la 4e étoile est refusée À L\'ÉCRAN, avant toute requête (étoile et menu)', () => {
+    const PHRASE = "3 essentielles au plus — retire une étoile d'abord"
+    const troisEtoiles = () => {
+      const d = donnees()
+      const autre = (id, titre) => ({ ...d.essentiel[0], id, titre, heure_debut: null })
+      d.essentiel = [...d.essentiel, autre(301, 'Deuxième'), autre(302, 'Troisième')]
+      return d
+    }
+    const appelsEtoile = () => api.post.mock.calls.filter(([url]) => url === '/taches/journee/essentiel/')
+
+    it('l\'étoile vide d\'une ligne de Prévu : toast visible, aucune requête', async () => {
+      servir(troisEtoiles())
+      monter()
+      await screen.findByText('Timbres')
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Essentielle : Timbres' }))
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(PHRASE)
+      expect(appelsEtoile()).toHaveLength(0)
+    })
+
+    it('le menu ⋯ > Essentielle : même refus, aucune requête', async () => {
+      servir(troisEtoiles())
+      monter()
+      await screen.findByText('Timbres')
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Essentielle' }))
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(PHRASE)
+      expect(appelsEtoile()).toHaveLength(0)
+    })
+  })
+
   describe('R2-011 — cocher, Annuler et reporter n\'attendent PAS le serveur (réponse retenue 2 s)', () => {
     const CASE = 'Marquer « Timbres » comme faite'
     const ecrite = (gesteId, extra = {}) => {
