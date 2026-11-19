@@ -422,20 +422,23 @@ describe('R2-028 — la ligne dit qu\'il y a une note, une check-list, un rappel
   })
 
   it('la note se lit aussi du drapeau `a_notes` d\'une liste (les notes elles-mêmes ne sont servies que par la fiche)', () => {
-    const { container } = monter({ item: { ...item(), a_notes: true } })
+    // l'ITEM servi par la liste (item.json) : la tâche 20 porte une note, `notes` absent, `a_notes: true`
+    expect(item()).not.toHaveProperty('notes')
+    expect(item().a_notes).toBe(true)
+    const { container } = monter()
     expect(indices(container)).toEqual(['Note'])
   })
 
   it('rien à dire, rien d\'affiché : ni note vide, ni check-list absente, ni rappel d\'une tâche faite', () => {
-    const { container, unmount } = monter({ item: { ...item(), notes: '', checklist: null, rappel: null } })
+    const { container, unmount } = monter({ item: { ...item(), a_notes: false, notes: '', checklist: null, rappel: null } })
     expect(indices(container)).toEqual([])
     unmount()
-    const faite = { ...item(), statut: 'fait', rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    const faite = { ...item(), a_notes: false, statut: 'fait', rappel: { jour: AUJOURDHUI, heure: '09:45' } }
     expect(indices(monter({ item: faite }).container)).toEqual([])
   })
 
   it('un rappel d\'un autre jour dit son jour ; les indices ne comptent pas dans la méta brève', () => {
-    const autre = { ...item(), projet: null, rappel: { jour: '2026-11-20', heure: '09:45' }, checklist: { faits: 0, total: 3 } }
+    const autre = { ...item(), a_notes: false, projet: null, rappel: { jour: '2026-11-20', heure: '09:45' }, checklist: { faits: 0, total: 3 } }
     const { container } = monter({ item: autre })
     expect(indices(container)).toEqual(['Check-list : 0/3', 'Rappel ven. 20 à 09:45'])
     expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte') // échéance + durée seulement
@@ -448,7 +451,7 @@ describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, m
   const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '').replace(/ lucide-more-horizontal/g, '')
 
   it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
-    const { container } = monter()
+    const { container } = monter({ item: { ...item(), a_notes: false } }) // figé sans l'indice « note » (R2-028)
     expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
   })
 
@@ -471,7 +474,7 @@ describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, m
   })
 
   it('variante « recherche » : méta de statut lue des données (À trier, En réserve, jour) puis « Suggéré par l\'ERP »', () => {
-    const sansRien = { ...item(), jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
+    const sansRien = { ...item(), a_notes: false, jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
     const textes = (container) => [...container.querySelector('.meta').children].map((e) => e.textContent)
     const { container: aTrier } = monter({ item: { ...sansRien, source: 'suggestion' }, contexte: 'recherche' })
     expect(textes(aTrier)).toEqual(['À trier', "Suggéré par l'ERP"])

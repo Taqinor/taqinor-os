@@ -27,7 +27,8 @@ const projetsListe = exempleContrat('taches', 'projets_liste')
 const AUJOURD = '2026-11-17'
 const erreurHttp = (data, status) => Object.assign(new Error('http'), { response: { status, data } })
 
-const item = (id, titre, plus = {}) => ({ ...recherche.taches[0], id, titre, ...plus })
+// une autre tâche que la 20 du contrat (qui porte une note) n'a pas de note : `a_notes` faux par défaut
+const item = (id, titre, plus = {}) => ({ ...recherche.taches[0], a_notes: false, id, titre, ...plus })
 const MIXTE = {
   projets: recherche.projets,
   taches: [
