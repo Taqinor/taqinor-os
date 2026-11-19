@@ -1,6 +1,6 @@
 ---
 name: batterie-duree-cycles
-description: Décision fondateur du 19/11/2026 (D-BATCYC-1) — sur le flux 25 ans de l'option C&I « avec batterie », la batterie n'est plus remplacée à la fin de sa garantie mais quand ses cycles publiés sont épuisés au rythme réel de l'étude (cycles publiés ÷ cycles par an) ; aucun remplacement au-delà de 25 ans ; niveau de règles 13 ; la fiche Dyness 16 kWh de la prod n'a pas encore ses 8 000 cycles
+description: Décision fondateur du 19/11/2026 (D-BATCYC-1) — sur le flux 25 ans de l'option C&I « avec batterie », la batterie n'est plus remplacée à la fin de sa garantie mais quand ses cycles publiés sont épuisés au rythme réel de l'étude (cycles publiés ÷ cycles par an) ; aucun remplacement au-delà de 25 ans ; niveau de règles 13 ; cycles publiés saisis en prod le 19/11 sur quatre fiches batterie (à la demande de Reda)
 metadata:
   type: project
 ---
@@ -23,6 +23,11 @@ Décision de Reda du 19/11/2026, sur le devis C&I DEV-202611-0080 (option « ave
   cycles par an — aucun remplacement sur 25 ans » (fr/en/ar), sous le nom de l'option batterie.
 - **Nouveaux rendus seulement : niveau de règles 13** (`REGLES_CYCLES_BATTERIE_1911`, migration 0158 :
   seuls les brouillons jamais envoyés passent de 12 à 13). Un devis envoyé garde l'année que le client a reçue.
-- **Geste restant pour Reda.** La fiche « Dyness PowerBrick SC 16 kWh » EN PRODUCTION n'a pas encore
-  `bat_cycles_publies` : saisir **8000** dans le champ « cycles publiés » de la fiche produit pour que la règle s'applique ; sans ce
-  chiffre, le remplacement reste à la fin de la garantie.
+- **Fiches en production (fait le 19/11/2026, sur ordre de Reda : « you can do this yourself »).** Le champ
+  `bat_cycles_publies` était vide sur les fiches (le nombre n'existait qu'en texte libre de garantie) ; saisi
+  par la session, valeur lue sur le texte de garantie de chaque produit : Dyness PowerBrick SC 16 kWh = 8000 ;
+  Deye BOS-B Pro haute tension 16 kWh, Dyness 5 kWh et Dyness 10 kWh = 6000. Une batterie sans ce champ garde
+  la fin de garantie. Toute nouvelle batterie au catalogue : renseigner ce champ sur sa fiche.
+- **Effet sur la taille de la banque.** La montée de la banque juge chaque candidat avec SON année de
+  remplacement : une grande banque cycle moins, donc dure plus longtemps — les nouveaux devis peuvent retenir
+  une banque différente de celle d'avant le niveau 13.
