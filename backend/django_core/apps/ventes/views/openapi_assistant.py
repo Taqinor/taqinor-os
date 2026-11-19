@@ -97,7 +97,8 @@ TailleAssistantResponse = _ser('TailleAssistantResponse', {
 })
 
 ErreurTailleAssistant = _ser('ErreurTailleAssistant', {
-    'detail': s.CharField(), 'field': s.CharField(), 'code': s.CharField()})
+    'detail': s.CharField(required=False), 'field': s.CharField(required=False),
+    'code': s.CharField(required=False)})
 
 #: VAD8 — ``POST ventes/assistant/factures/<pk>/relance-whatsapp/`` : la
 #: langue seulement (le modèle « relance » est FORCÉ, aucun texte libre).
@@ -112,7 +113,7 @@ RelanceWhatsappResponse = _ser('RelanceWhatsappAssistantResponse', {
     'lien': s.CharField(),
 })
 ErreurRelanceWhatsapp = _ser('ErreurRelanceWhatsappAssistant', {
-    'detail': s.CharField(), 'code': s.CharField()})
+    'detail': s.CharField(required=False), 'code': s.CharField(required=False)})
 
 #: VAD3 — ``GET ventes/assistant/factures/`` (``assistant_factures.json``).
 FacturesAssistantResponse = _ser('FacturesAssistantResponse', {

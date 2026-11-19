@@ -136,9 +136,9 @@ _REPONSE = inline_serializer('AssistantCaReponse', {
     'lien': serializers.CharField(),
 })
 _REFUS = inline_serializer('AssistantCaRefus', {
-    'detail': serializers.CharField(),
-    'field': serializers.CharField(),
-    'code': serializers.CharField(),
+    'detail': serializers.CharField(required=False),
+    'field': serializers.CharField(required=False),
+    'code': serializers.CharField(required=False),
 })
 
 

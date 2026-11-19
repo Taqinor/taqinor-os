@@ -49,9 +49,9 @@ ENTIER_ID = {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX}
 #: Le refus NOMMÉ ``{detail, field, code}`` (404 / 409), DOCUMENTÉ.
 REPONSE_REFUS = OpenApiResponse(
     response=inline_serializer('CalepinageAssistantRefus', {
-        'detail': drf_serializers.CharField(),
-        'field': drf_serializers.CharField(),
-        'code': drf_serializers.CharField()}),
+        'detail': drf_serializers.CharField(required=False),
+        'field': drf_serializers.CharField(required=False),
+        'code': drf_serializers.CharField(required=False)}),
     description='Refus nommé : introuvable (404) ou état qui ne le permet pas (409).')
 REFUS_404_409 = {404: REPONSE_REFUS, 409: REPONSE_REFUS}
 

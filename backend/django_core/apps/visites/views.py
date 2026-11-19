@@ -135,8 +135,8 @@ _PARAMETRES_AGENDA = [
 #: Refus nommé de l'assistant : ``{detail, field, code}`` (400 paramètre, 409 règle
 #: d'ensemble ou d'état que le schéma ne dit pas).
 _ERREUR_ASSISTANT = inline_serializer('VisitesErreurAssistant', {
-    'detail': serializers.CharField(), 'field': serializers.CharField(),
-    'code': serializers.CharField()})
+    'detail': serializers.CharField(required=False), 'field': serializers.CharField(required=False),
+    'code': serializers.CharField(required=False)})
 
 _AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
     'du': serializers.CharField(),
