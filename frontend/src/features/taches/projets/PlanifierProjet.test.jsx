@@ -8,6 +8,8 @@ vi.mock('../../../api/tachesApi', async (original) => ({
   ...(await original()),
   apercuPlanification: vi.fn(),
   planifierProjet: vi.fn(),
+  saisieRapide: vi.fn(),
+  planifierTache: vi.fn(),
 }))
 
 const api = await import('../../../api/tachesApi')
@@ -32,7 +34,24 @@ beforeEach(() => {
   window.localStorage.clear()
   api.apercuPlanification.mockResolvedValue(reponseContrat('taches', 'planification_apercu'))
   api.planifierProjet.mockResolvedValue(reponseContrat('taches', 'planification'))
+  // l'analyseur de la saisie (aperçu, rien écrit) : par défaut il ne lit aucune date
+  api.saisieRapide.mockImplementation(lecture({}))
 })
+
+/** R4-27 — réponse de `saisie-rapide/` aperçu pour une phrase : les jours lus (`{ mot: 'AAAA-MM-JJ' }`) en jetons. */
+const ligneModele = exempleContrat('taches', 'saisie_apercu').lignes[0]
+function lecture(jours) {
+  return ({ texte }) => {
+    const jetons = Object.entries(jours).filter(([mot]) => texte.includes(mot)).map(([mot, valeur]) => ({
+      type: 'jour', source: mot, debut: texte.indexOf(mot), fin: texte.indexOf(mot) + mot.length, valeur, libelle: mot,
+    }))
+    const titre = jetons.reduce((t, j) => t.replace(j.source, ''), texte).replace(/\s+/g, ' ').trim()
+    return Promise.resolve({ data: {
+      projets_communs: [], projets_nouveaux: [],
+      lignes: [{ ...ligneModele, titre, jetons, champs: jetons.length ? { jour_prevu: jetons[0].valeur } : {} }],
+    } })
+  }
+}
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); window.localStorage.clear() })
 
 describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
@@ -134,6 +153,78 @@ describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
     expect(onPasser).toHaveBeenCalledTimes(1)
     expect(api.planifierProjet).not.toHaveBeenCalled()
     expect(api.apercuPlanification).not.toHaveBeenCalled()
+  })
+})
+
+describe('R4-27 — « Premières actions » : les dates lues comme dans la saisie', () => {
+  const ajouter = async (user, texte) => {
+    await user.type(screen.getByLabelText('Nouvelle action'), texte)
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+  }
+
+  it('« … demain » → Demain, « … samedi » → sam. 21 ; le mot lu quitte le titre ; Terminer pose le jour du samedi', async () => {
+    api.saisieRapide.mockImplementation(lecture({ demain: '2026-11-18', samedi: '2026-11-21' }))
+    const creees = [
+      { ...reponseContrat('taches', 'planification').data.creees[0], id: 70, titre: 'Récupérer les 24 panneaux au dépôt', lock_version: 1 },
+      { ...reponseContrat('taches', 'planification').data.creees[0], id: 71, titre: 'Poser les rails', lock_version: 1 },
+    ]
+    api.planifierProjet.mockResolvedValue({ data: { ...reponseContrat('taches', 'planification').data, creees } })
+    api.planifierTache.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), tache: { ...creees[1], jour_prevu: '2026-11-21', lock_version: 2 } } })
+    const onTermine = vi.fn()
+    monter({ onTermine })
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await ajouter(user, 'Récupérer les 24 panneaux au dépôt demain')
+    await ajouter(user, 'Poser les rails samedi')
+    const demain = await screen.findByRole('radiogroup', { name: 'Quand : Récupérer les 24 panneaux au dépôt' })
+    expect(within(demain).getByRole('radio', { name: 'Demain' })).toHaveAttribute('aria-checked', 'true')
+    const samedi = await screen.findByRole('radiogroup', { name: 'Quand : Poser les rails' })
+    expect(within(samedi).getByRole('radio', { name: 'sam. 21' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(samedi).getByRole('radio', { name: 'Sans jour' })).toHaveAttribute('aria-checked', 'false')
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({
+      actions: [{ titre: 'Récupérer les 24 panneaux au dépôt', quand: 'demain' }, { titre: 'Poser les rails', quand: '' }],
+    }))
+    expect(api.planifierTache).toHaveBeenCalledTimes(1)
+    expect(api.planifierTache).toHaveBeenCalledWith(71, {
+      jour_prevu: '2026-11-21', moment: '', heure_debut: null, quelque_jour: false, lock_version: 1,
+    })
+    // l'écran reçoit la tâche du samedi à son jour
+    expect(onTermine.mock.calls[0][0].creees.find((c) => c.id === 71).jour_prevu).toBe('2026-11-21')
+  })
+
+  it("« Terminer » touché avant le retour de la lecture : il l'attend (jamais « … demain » dans un titre)", async () => {
+    let lacher
+    api.saisieRapide.mockImplementation((corps) => new Promise((r) => { lacher = () => r(lecture({ demain: '2026-11-18' })(corps)) }))
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await ajouter(user, 'Appeler le loueur demain')
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).not.toHaveBeenCalled()
+    await act(async () => { lacher() })
+    await vi.waitFor(() => expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({
+      actions: [{ titre: 'Appeler le loueur', quand: 'demain' }],
+    })))
+  })
+
+  it("choisir un autre « Quand » retire le jour lu ; hors ligne, l'action garde son texte (rien n'est perdu)", async () => {
+    api.saisieRapide.mockImplementationOnce(lecture({ samedi: '2026-11-21' }))
+    api.saisieRapide.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await ajouter(user, 'Poser les rails samedi')
+    const groupe = await screen.findByRole('radiogroup', { name: 'Quand : Poser les rails' })
+    await user.click(within(groupe).getByRole('radio', { name: "Aujourd'hui" }))
+    expect(within(groupe).queryByRole('radio', { name: 'sam. 21' })).toBeNull()
+    await ajouter(user, 'Câbler mardi')
+    expect(await screen.findByText('Câbler mardi')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({
+      actions: [{ titre: 'Poser les rails', quand: 'aujourdhui' }, { titre: 'Câbler mardi', quand: '' }],
+    }))
+    expect(api.planifierTache).not.toHaveBeenCalled()
   })
 })
 
