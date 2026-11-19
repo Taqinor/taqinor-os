@@ -281,7 +281,8 @@ function lireArgentCi(v: unknown, paybackPdf: number | null = null): SyntheseCiA
             ? [{
                 cle,
                 variationPct: nombreServi(x.variation_pct),
-                retourAns: nombreServi(x.retour_ans),
+                // D-SENS-1 (niveau 14) — le retour au dixième SERVI, comme le PDF ; à défaut l'année servie.
+                retourAns: nombreServi(x.retour_dixieme_ans) ?? nombreServi(x.retour_ans),
                 triPct: nombreServi(x.tri_pct),
                 motif: texteServi(x.motif),
               }]

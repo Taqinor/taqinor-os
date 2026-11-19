@@ -818,6 +818,8 @@ class RemplacementCyclesNiveau13FluxTests(ciq120.RetourOptionAvecFluxTests):
         from apps.ventes.domain.etude_ci_batterie import _jeton_cycles
         self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=12)), [])
         self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=13)), ['cycles13'])
+        # Niveau 14 (D-SENS-1) : un jeton de plus, les brouillons 13 → 14 sont recalculés.
+        self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=14)), ['cycles13', 'sensibilites14'])
         ligne = SimpleNamespace(devis=SimpleNamespace(regles_calcul=12))
         self.assertEqual(_jeton_cycles([ligne]), [])
 
@@ -880,6 +882,237 @@ class RemplacementCyclesNiveau13DevisTests(ciq120.OptionBatterieCITests):
             {}, {'argent': argent_12}, fmt, fmt, partial(ci_blocs.libelle, {}))))
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# Niveau 14 (D-SENS-1, fondateur 19/11/2026 « Yes, fix it ») — les sensibilités
+# de l'option « avec batterie » (``domain/sensibilites_option_avec.py``) : même
+# forme, mêmes scénarios, production RE-SIMULÉE avec la batterie.
+# ═════════════════════════════════════════════════════════════════════════════
+_JOURS_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+_TARIF_MT_DECLARE = {
+    'contrat': 'mt_general', 'base_tarifs': 'ht', 'provenance': 'facture', 'date_facture': '2026-08-31',
+    'mt': {'tarif_pointe': 1.6, 'tarif_pleines': 1.1, 'tarif_creuses': 0.8}}
+_CLOCHE = [0.0] * 6 + [0.1, 0.3, 0.5, 0.7, 0.85, 0.9, 0.9, 0.85, 0.7, 0.5, 0.3, 0.1] + [0.0] * 6
+#: La forme d'une ligne du contrat ``economie_ci.json`` (option réseau, D-SENS-1 compris).
+_CLES_LIGNE = {'cle', 'variation_pct', 'source', 'economie_annee1_mad', 'retour_ans', 'retour_dixieme_ans',
+               'tri_pct', 'cumul_25_ans_mad', 'ecart_retour_ans', 'ecart_tri_pct'}
+
+
+class SensibilitesOptionAvecNiveau14Tests(SimpleTestCase):
+    """Une option « avec » de 15 kWc et 2 × 10 kWh utiles (6 000 cycles publiés)
+    évaluée par LE moteur (``evaluer_option_avec`` + ``simuler_batterie_jour``)
+    et valorisée par LA valorisation de l'étude (``etude_ci._valoriseur``)."""
+
+    CHARGE = [{'mois': mo, 'type_jour': 'ouvre', 'nb_jours': n,
+               'charge_kwh': [6.0 if 7 <= h < 19 else 4.0 for h in range(24)]}
+              for mo, n in enumerate(_JOURS_MOIS, start=1)]
+    PRODUCTION = [{'mois': mo, 'production_kwh_kwc': [v * (0.8 + 0.04 * abs(6.5 - mo)) for v in _CLOCHE]}
+                  for mo in range(1, 13)]
+    BANQUE = {'produit': 7, 'nom': 'Dyness 10', 'kwh_utile': 10.0, 'quantite': 2, 'rendement': 0.95,
+              'garantie_mois': 120, 'cycles_publies': 6000.0}
+    INVESTISSEMENT = {'ht': 120000.0, 'ttc': 144000.0, 'lignes': [
+        {'designation': 'Onduleur(s) hybride(s)', 'ht': 20000.0, 'ttc': 24000.0, 'onduleur': True,
+         'optionnelle': False},
+        {'designation': 'Panneau', 'ht': 60000.0, 'ttc': 72000.0, 'optionnelle': False},
+        {'designation': 'Batterie Dyness 10 kWh', 'ht': 40000.0, 'ttc': 48000.0, 'optionnelle': False}]}
+    SCENARIOS = [{'cle': 'production', 'variation_pct': -30, 'source': 'P (test)'},
+                 {'cle': 'degradation', 'variation_pct': 0.75, 'source': 'D (test)'},
+                 {'cle': 'tarif_kwh', 'variation_pct': -10, 'source': 'T (test)'},
+                 {'cle': 'indexation_tarif', 'variation_pct': 2, 'source': 'I (test)'}]
+
+    def _valoriser(self):
+        from apps.ventes import tarif_ci
+        from apps.ventes.domain.etude_ci import _valoriseur
+        return _valoriseur(tarif_ci.tarif_applicable(_TARIF_MT_DECLARE), _TARIF_MT_DECLARE, self.CHARGE, 'mt')
+
+    def _reevaluer(self, valoriser, production=None):
+        from apps.ventes.domain.sensibilites_option_avec import reevaluateur
+        return reevaluateur(15.0, {'combinaison': []}, self.BANQUE, hybrides=[], charge=self.CHARGE,
+                            production=lambda: production or self.PRODUCTION, tension='mt',
+                            revente_choisie=False, valoriser=valoriser)
+
+    def _bloc(self, reevaluer='moteur', valoriser=None, sensibilites='scenarios'):
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        valoriser = valoriser or self._valoriser()
+        evaluation = self._reevaluer(valoriser)(1.0)
+        ctx = {'taux_tva_pct': 20, 'batterie': self.BANQUE,
+               'sensibilites': self.SCENARIOS if sensibilites == 'scenarios' else sensibilites,
+               'reevaluer': self._reevaluer(valoriser) if reevaluer == 'moteur' else reevaluer}
+        return evaluation, _bloc(evaluation, valoriser, ctx, investissement=self.INVESTISSEMENT)
+
+    def test_niveau_14_quatre_scenarios_meme_forme_que_l_option_reseau(self):
+        _evaluation, bloc = self._bloc()
+        lignes = bloc['economie_flux']['sensibilites']
+        self.assertEqual([(s['cle'], s['source']) for s in lignes],
+                         [(s['cle'], s['source']) for s in self.SCENARIOS])
+        for ligne in lignes:
+            with self.subTest(cle=ligne['cle']):
+                self.assertEqual(set(ligne), _CLES_LIGNE)
+                self.assertGreater(ligne['retour_dixieme_ans'], ligne['retour_ans'] - 1)
+                self.assertLessEqual(ligne['retour_dixieme_ans'], ligne['retour_ans'])
+        # Une grandeur à la fois sur le flux central (remplacement de la batterie compris).
+        central = bloc['economie_flux']['flux_ht']['flux'][-1]['cumul_mad']
+        par_cle = {s['cle']: s for s in lignes}
+        self.assertLess(par_cle['degradation']['cumul_25_ans_mad'], central)
+        self.assertGreater(par_cle['indexation_tarif']['cumul_25_ans_mad'], central)
+        self.assertLess(par_cle['tarif_kwh']['economie_annee1_mad'],
+                        bloc['economie_ci']['economie_annee1']['total_mad'])
+
+    def test_niveau_14_production_re_simulee_jamais_mise_a_l_echelle(self):
+        """La batterie est re-simulée sur la production × 0,7 : son énergie
+        restituée change et l'économie an 1 n'est PAS l'économie centrale × 0,7."""
+        reevaluer = self._reevaluer(self._valoriser())
+        central, scenario = reevaluer(1.0), reevaluer(0.7)
+        self.assertNotEqual(scenario['bilan']['batterie']['restitue_kwh_an'],
+                            central['bilan']['batterie']['restitue_kwh_an'])
+        ligne = self._bloc()[1]['economie_flux']['sensibilites'][0]
+        self.assertEqual(ligne['cle'], 'production')
+        self.assertAlmostEqual(ligne['economie_annee1_mad'], scenario['economie'], places=2)
+        self.assertGreater(abs(ligne['economie_annee1_mad'] - 0.7 * central['economie']), 100.0)
+        self.assertLess(ligne['economie_annee1_mad'], central['economie'])
+
+    def test_niveau_14_remplacement_suit_le_bilan_du_scenario(self):
+        """Niveau 13 par scénario : l'année de remplacement de la batterie est
+        lue sur les cycles par an du bilan DU scénario (moins de production ⇒
+        moins de cycles ⇒ plus tard, ici au-delà de l'horizon)."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        from apps.ventes.domain.sensibilites_option_avec import flux_du_scenario_production
+        from apps.ventes.economie_ci_options import cycles_par_an_du_bilan
+        valoriser = self._valoriser()
+        reevaluer = self._reevaluer(valoriser)
+        evaluation, bloc = self._bloc()
+
+        def annees(flux):
+            return [r['annee'] for r in flux['remplacements'] if r['composant'] == 'batterie']
+
+        attendu = int(6000 // cycles_par_an_du_bilan(evaluation['bilan'])) + 1
+        self.assertEqual(annees(bloc['economie_flux']), [attendu])
+        flux, _eco = flux_du_scenario_production(
+            self.SCENARIOS[0], reevaluer, complet=valoriser.complet,
+            flux_de=lambda ev, e, _c: m._flux_option_avec(
+                ev, e, self.INVESTISSEMENT, {'taux_tva_pct': 20, 'batterie': self.BANQUE}))
+        annee = int(6000 // cycles_par_an_du_bilan(reevaluer(0.7)['bilan'])) + 1
+        self.assertGreater(annee, attendu)
+        self.assertEqual(annees(flux), [annee] if annee <= 25 else [])
+
+    def test_niveau_14_scenario_non_chiffrable_motif_sans_chiffre(self):
+        from apps.ventes.domain import sensibilites_option_avec as so
+
+        def sans_chiffre(ligne, motif):
+            self.assertEqual(ligne['motif'], motif)
+            for cle in ('economie_annee1_mad', 'retour_ans', 'retour_dixieme_ans', 'tri_pct',
+                        'cumul_25_ans_mad', 'ecart_retour_ans', 'ecart_tri_pct'):
+                self.assertIsNone(ligne[cle], cle)
+
+        sans_chiffre(self._bloc(reevaluer=None)[1]['economie_flux']['sensibilites'][0],
+                     so.MOTIF_AVEC_NON_REPRODUCTIBLE)
+        # Une ré-évaluation qui ne retrouve pas le central (étude périmée).
+        valoriser = self._valoriser()
+        autre = self._reevaluer(valoriser, production=[dict(p, production_kwh_kwc=[
+            0.9 * v for v in p['production_kwh_kwc']]) for p in self.PRODUCTION])
+        sans_chiffre(self._bloc(reevaluer=autre)[1]['economie_flux']['sensibilites'][0],
+                     so.MOTIF_AVEC_NON_REPRODUCTIBLE)
+
+        class SansTarif:
+            """Un valoriseur sans le tarif de l'étude (``contexte``)."""
+            def __init__(self, reel):
+                self.reel, self.complet = reel, reel.complet
+
+            def __call__(self, bilan):
+                return self.reel(bilan)
+        lignes = self._bloc(valoriser=SansTarif(valoriser))[1]['economie_flux']['sensibilites']
+        sans_chiffre(lignes[2], so.MOTIF_AVEC_TARIF_ABSENT)
+        self.assertNotIn('motif', lignes[1])
+        self.assertNotIn('motif', lignes[0])
+
+    def test_niveau_13_aucune_sensibilite_servie(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.sensibilites_option_avec import scenarios_du_devis
+        self.assertIsNone(scenarios_du_devis(None, SimpleNamespace(regles_calcul=13)))
+        self.assertEqual(scenarios_du_devis(None, SimpleNamespace(regles_calcul=14)), [])
+        neuf = self._bloc()[1]['economie_flux']
+        hier = self._bloc(sensibilites=None)[1]['economie_flux']
+        self.assertNotIn('sensibilites', hier)
+        self.assertEqual({k: v for k, v in neuf.items() if k != 'sensibilites'}, hier)
+
+    def test_niveau_14_scenarios_atteignent_le_contexte_des_deux_chemins(self):
+        """``sensibilites`` passé à ``option_avec_de_l_etude`` atteint le
+        contexte du bloc (étude ET lignes), jamais le dimensionnement."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        resultat = {'evaluation': {'kwc': 1, 'batterie': {'produit': 1, 'quantite': 2}},
+                    'prix_a_renseigner': [], 'hypotheses': [], 'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        vus = []
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat) as dim, \
+                mock.patch.object(m, '_option_dominee', return_value=False), \
+                mock.patch.object(m, 'verdict_rentabilite', return_value=None), \
+                mock.patch.object(m, '_bloc', lambda ev, val, ctx, **k: vus.append(ctx) or {}), \
+                mock.patch.object(m, '_option_imposee', lambda imp, ctx: vus.append(ctx) or {'k': 1}):
+            for imposee in (None, {'x': 1}):
+                m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None, imposee=imposee,
+                                         tva_recuperable={'valeur': 'inconnu'}, production=[],
+                                         sensibilites=self.SCENARIOS[:1])
+        self.assertEqual([c['sensibilites'] for c in vus], [self.SCENARIOS[:1]] * 2)
+        self.assertIsNotNone(vus[0]['reevaluer'])
+        self.assertNotIn('sensibilites', dim.call_args.kwargs)
+
+    def test_niveau_14_rangees_jusqu_a_l_argent_et_au_tableau(self):
+        """``_argent_option_avec`` fusionne ``economie_flux`` : les lignes de
+        l'option arrivent dans l'argent PUBLIC et dans le tableau de la page 3,
+        nommées par ``_nom_scenario``, retour au dixième."""
+        from functools import partial
+
+        from apps.ventes.quote_engine.ci import blocs as ci_blocs
+        from apps.ventes.quote_engine.ci.synthese import _argent_option_avec
+        from apps.ventes.quote_engine.industriel.finance import _tableau_sensibilites
+        from apps.ventes.quote_engine.residential.theme import fmt
+        bloc = self._bloc()[1]
+        argent, motif = _argent_option_avec(bloc, 'industriel')
+        self.assertIsNone(motif)
+        self.assertEqual(argent['sensibilites'], bloc['economie_flux']['sensibilites'])
+        html = _tableau_sensibilites({}, argent, fmt, partial(ci_blocs.libelle, {}))
+        production = bloc['economie_flux']['sensibilites'][0]
+        self.assertIn('Production -30&#160;%', html)
+        rangee = html[html.index('Production -30'):].split('</tr>')[0]
+        self.assertIn(('%.1f' % production['retour_dixieme_ans']).replace('.', ','), rangee)
+
+
+class SensibilitesNiveau14DevisTests(ciq120.OptionBatterieCITests):
+    """Un devis automatique à deux options au niveau 14 sert les sensibilités
+    des DEUX options, retours au dixième ; au niveau 13, l'option « avec » n'en
+    sert aucune (jeux de ``OptionBatterieCITests``, sans rejouer ses tests)."""
+
+    def test_niveau_14_deux_options_servent_leurs_sensibilites(self):
+        from apps.ventes.domain.sensibilites_option_avec import _retenus
+        devis = self._auto(self._boulangerie())
+        attendues = [s['cle'] for s in _retenus(eco.reglages_economie_ci(self.co)['sensibilites_ci'])]
+        self.assertTrue(attendues)
+        for niveau in (14, 13):
+            ciq120.Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+            devis.refresh_from_db()
+            with mock.patch.object(ciq120.tarif_ci, 'tarif_applicable', side_effect=ciq120._tarif_grille):
+                ciq120.etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+                devis.refresh_from_db()
+                reseau = eco.economie_ci_pour_devis(devis, self.co)['sensibilites']
+            flux = devis.etude_params['etude_ci']['option_avec']['economie_flux']
+            self.assertIsNotNone(flux, niveau)
+            if niveau == 13:
+                self.assertNotIn('sensibilites', flux)
+                continue
+            for option, lignes in (('sans', reseau), ('avec', flux['sensibilites'])):
+                self.assertEqual([s['cle'] for s in lignes], attendues, option)
+                for ligne in lignes:
+                    with self.subTest(option=option, cle=ligne['cle']):
+                        if option == 'avec':   # re-simulée sur les entrées de l'option servie
+                            self.assertNotIn('motif', ligne)
+                        self.assertIn('retour_dixieme_ans', ligne)
+                        self.assertEqual(ligne['retour_dixieme_ans'] is None, ligne['retour_ans'] is None)
+                        if ligne['retour_ans'] is not None:
+                            self.assertGreater(ligne['retour_dixieme_ans'], ligne['retour_ans'] - 1)
+                            self.assertLessEqual(ligne['retour_dixieme_ans'], ligne['retour_ans'])
+
+
 def _sans_tests_herites(classe):
     """Ces classes n'héritent que des JEUX DE DONNÉES : les tests du parent ne
     sont pas rejoués ici."""
@@ -891,3 +1124,4 @@ def _sans_tests_herites(classe):
 
 _sans_tests_herites(RemplacementCyclesNiveau13FluxTests)
 _sans_tests_herites(RemplacementCyclesNiveau13DevisTests)
+_sans_tests_herites(SensibilitesNiveau14DevisTests)

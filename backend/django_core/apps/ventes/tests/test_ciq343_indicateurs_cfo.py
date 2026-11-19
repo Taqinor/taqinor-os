@@ -109,6 +109,20 @@ class Ciq343Sensibilites(SimpleTestCase):
         self.assertNotIn("Source", texte[texte.index("Scénario central"):])
         self.assertIn("base : 0 % d'indexation", texte)
 
+    def test_niveau_14_retour_du_scenario_au_dixieme_servi(self):
+        """D-SENS-1 (19/11/2026) — DEV-202611-0080 imprimait « 4,0 ans » (l'entier
+        servi) quand l'interpolation de la ligne centrale donne 3,3 : au niveau
+        14 la ligne imprime ``retour_dixieme_ans`` ; sous le niveau 14
+        (``regles_sensibilites_historique``) ou sans ce dixième, l'entier d'hier."""
+        dixiemes = [dict(s, retour_dixieme_ans=d) for s, d in zip(SENSIBILITES, (3.3, None))]
+        texte = _texte(_page(_data(sensibilites=dixiemes)))
+        self.assertIn("Indexation du tarif +2 % 3,3 ans 29,1 %", texte)
+        self.assertIn("Production -10 % 5,0 ans 24,2 %", texte)  # clé absente ⇒ l'entier
+        d = dict(_data(sensibilites=dixiemes), regles_sensibilites_historique=True)
+        hier = _texte(_page(d))
+        self.assertIn("Indexation du tarif +2 % 4,0 ans 29,1 %", hier)
+        self.assertEqual(hier, _texte(_page(_data(sensibilites=SENSIBILITES))))
+
 
 class Ciq343P90(SimpleTestCase):
 

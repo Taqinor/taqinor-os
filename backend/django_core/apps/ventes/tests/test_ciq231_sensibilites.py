@@ -203,7 +203,8 @@ class SensibiliteMonotoneTest(SimpleTestCase):
         prend corrigé."""
         from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010
         apercu = _apercu_profil('usine')
-        reglages = {'sensibilites_ci': SCENARIOS_P90[:1]}
+        # D-SENS-1 — les deux devis sont sous le niveau 14 : aucun ``retour_dixieme_ans``.
+        reglages = {'sensibilites_ci': SCENARIOS_P90[:1], 'sensibilites_dixieme': False}
         # Le tableau d'avant le correctif = calcul cellule par cellule (origine).
         ancien = eco.assembler_economie_ci(
             apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
@@ -218,6 +219,16 @@ class SensibiliteMonotoneTest(SimpleTestCase):
         self.assertEqual(envoye['sensibilites'], ancien['sensibilites'])
         self.assertEqual(brouillon['sensibilites'], neuf['sensibilites'])
         self.assertEqual(envoye['economie_annee1'], brouillon['economie_annee1'])
+
+    def test_niveau_14_seul_sert_le_retour_au_dixieme(self):
+        """D-SENS-1 — ``retour_dixieme_ans`` n'est servi qu'au niveau 14 : un
+        devis en dessous garde des lignes octet pour octet identiques."""
+        from apps.ventes.domain.regles_calcul import REGLES_CYCLES_BATTERIE_1911, REGLES_SENSIBILITES_1911
+        neuf = self._bloc_du_devis(REGLES_SENSIBILITES_1911, 'brouillon')['sensibilites'][0]
+        hier = self._bloc_du_devis(REGLES_CYCLES_BATTERIE_1911, 'envoye')['sensibilites'][0]
+        self.assertIsNotNone(neuf['retour_dixieme_ans'])
+        self.assertNotIn('retour_dixieme_ans', hier)
+        self.assertEqual({k: v for k, v in neuf.items() if k != 'retour_dixieme_ans'}, hier)
 
     def test_regles_origine_gardent_le_calcul_envoye(self):
         """Fondateur 08/10 : un devis envoyé garde ce que le client a reçu."""
@@ -373,3 +384,27 @@ class SensibilitesTest(SimpleTestCase):
         self.assertEqual(commercial['sensibilites'],
                          industriel['sensibilites'])
         self.assertIsNotNone(commercial['sensibilites'][0]['retour_ans'])
+
+    def test_retour_au_dixieme_servi_sur_chaque_scenario(self):
+        """D-SENS-1 (19/11/2026) — chaque ligne sert ``retour_dixieme_ans``,
+        l'interpolation de la ligne centrale sur le flux du scénario : dans
+        l'année entière servie (retour_ans − 1 < dixième ≤ retour_ans)."""
+        apercu = _apercu_profil('usine')
+        bloc = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages={'sensibilites_ci': SCENARIOS_P90})
+        dixiemes = []
+        for sc in bloc['sensibilites']:
+            with self.subTest(sc=sc['cle'], v=sc['variation_pct']):
+                self.assertIsNotNone(sc['retour_dixieme_ans'])
+                self.assertGreater(sc['retour_dixieme_ans'], sc['retour_ans'] - 1)
+                self.assertLessEqual(sc['retour_dixieme_ans'], sc['retour_ans'])
+                dixiemes.append(sc['retour_dixieme_ans'])
+        self.assertTrue(any(d != int(d) for d in dixiemes), dixiemes)
+
+    def test_retour_au_dixieme_none_sans_passage_a_zero(self):
+        # 3 267 MAD/an pour 300 000 MAD : le cumul ne passe jamais à zéro en 25 ans.
+        sc = _bloc(_apercu_main(), [
+            {'cle': 'tarif_kwh', 'variation_pct': 10, 'source': 's'}])['sensibilites'][0]
+        self.assertIsNone(sc['retour_ans'])
+        self.assertIsNone(sc['retour_dixieme_ans'])

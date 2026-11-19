@@ -353,23 +353,119 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         self.assertNotIn("0,00", carte)
         self.assertNotIn("Investissement", carte)
 
-    def test_la_courbe_cede_par_paliers(self):
+    def test_la_page_cede_par_paliers(self):
+        """Pleine courbe → courbe COMPACTE → elle cède avec les autres blocs
+        optionnels ; quand une AUTRE page force le retrait d'un coup de la
+        courbe et des bases, la courbe compacte reste. Le tableau des flux
+        reste toujours."""
         d = self._donnees()
+        self.assertIn('data-graphique="courbe_cumul"', _page_finance(d))
         d["_sans_graphiques"] = frozenset({"courbe_cumul"})
         compacte = _page_finance(d)
         self.assertIn('data-graphique="courbe_compacte"', compacte)
         self.assertEqual(compacte.count("<polyline"), 2)
-        d["_sans_graphiques"] = frozenset({"courbe_cumul", "courbe_compacte"})
-        sans = _page_finance(d)
-        self.assertNotIn("<polyline", sans)
-        self.assertIn('class="i2-tbl i2-fx i2d-fx"', sans)   # le tableau reste
-        # Une AUTRE page force le retrait d'un coup de la courbe et des bases
-        # (troncature des conditions, ``equip.document_adaptatif``) : la page
-        # finance garde sa courbe compacte, sans les bases.
+        self.assertIn('data-graphique="hypotheses"', compacte)
         d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
         tronquee = _page_finance(d)
-        self.assertIn('data-graphique="courbe_compacte"', tronquee)
+        self.assertEqual(tronquee.count("<polyline"), 2)
         self.assertNotIn('data-graphique="hypotheses"', tronquee)
+        for etat in (frozenset({"courbe_cumul", "courbe_compacte", "hypotheses",
+                                "sensibilites"}), True):
+            d["_sans_graphiques"] = etat
+            rien = _page_finance(d)
+            self.assertNotIn("<svg", rien)
+            self.assertNotIn("data-graphique=", rien)
+            self.assertIn('class="i2-tbl i2-fx i2d-fx"', rien)   # le tableau reste
+
+    SCENARIOS = [
+        {"cle": "production", "variation_pct": -7.7, "source": "x",
+         "retour_ans": 4, "retour_dixieme_ans": 3.3, "tri_pct": 29.5078,
+         "cumul_25_ans_mad": 778322.89},
+        {"cle": "degradation", "variation_pct": 0.75, "source": "x",
+         "retour_ans": 4, "retour_dixieme_ans": 3.2, "tri_pct": 30.1606,
+         "cumul_25_ans_mad": 777922.91}]
+
+    def _avec_scenarios(self, **avec):
+        """Les deux options servent leurs scénarios (l'option batterie : les
+        mêmes clés, SES chiffres)."""
+        import copy
+        d = self._donnees()
+        d["economie_ci"]["sensibilites"] = copy.deepcopy(self.SCENARIOS)
+        option = d["etude"]["etude_ci"]["option_avec"]
+        siens = copy.deepcopy(self.SCENARIOS)
+        siens[0].update(dict(dict(retour_ans=10, retour_dixieme_ans=9.1, tri_pct=15.4,
+                                  cumul_25_ans_mad=1500000.5), **avec))
+        siens[1].update(retour_ans=9, retour_dixieme_ans=8.6, tri_pct=16.9,
+                        cumul_25_ans_mad=1650000.25)
+        for bloc in (option["economie_ci"], option["economie_flux"]):
+            bloc["sensibilites"] = siens
+        return d
+
+    def _tableau_sensibilites(self, page):
+        return re.search(r'<table class="i2-tbl i2-fx i2d-fx i2d-sens">.*?</table>',
+                         page, flags=re.S)
+
+    def test_un_tableau_de_sensibilites_pour_les_deux_options(self):
+        page = _page_finance(self._avec_scenarios())
+        tableau = self._tableau_sensibilites(page)
+        self.assertIsNotNone(tableau)
+        lignes = [_visible(li) for li in re.findall(r"<tr>.*?</tr>", tableau.group(0), flags=re.S)]
+        self.assertIn("Sans batterie", lignes[0])
+        self.assertIn("Avec batterie", lignes[0])
+        self.assertTrue(lignes[2].strip().startswith("Scénario central"))
+        # Central : les chiffres des cartes (retour 8,4 ans et TRI 17,3 % de
+        # l'option batterie).
+        self.assertIn("8,4 ans", lignes[2])
+        self.assertIn("17,3 %", lignes[2])
+        # Scénario : le dixième SERVI de chaque option, jamais l'année entière.
+        production = lignes[3]
+        self.assertIn("Production -7,7 %", production)
+        self.assertIn("3,3 ans", production)
+        self.assertIn("9,1 ans", production)
+        self.assertIn("1 500 000,50", production)
+        self.assertNotIn("4,0 ans", production)
+        # Plus de tableau par option : un seul, commun.
+        self.assertEqual(page.count("i2d-sens"), 1 + page.count(".i2d-sens"))
+
+    def test_scenario_non_servi_d_un_cote_un_tiret(self):
+        d = self._avec_scenarios()
+        option = d["etude"]["etude_ci"]["option_avec"]
+        for bloc in (option["economie_ci"], option["economie_flux"]):
+            bloc["sensibilites"] = bloc["sensibilites"][1:]
+        production = [_visible(li) for li in re.findall(
+            r"<tr>.*?</tr>", self._tableau_sensibilites(_page_finance(d)).group(0),
+            flags=re.S)][3]
+        self.assertIn("3,3 ans", production)       # l'offre réseau garde sa rangée
+        self.assertEqual(production.count("—"), 3)  # l'option batterie : rien d'inventé
+
+    def test_scenario_sans_chiffres_dit_son_motif_et_le_tableau_est_cedable(self):
+        d = self._avec_scenarios(retour_ans=None, retour_dixieme_ans=None, tri_pct=None,
+                                 cumul_25_ans_mad=None,
+                                 motif="scénario non reproductible sur ce site")
+        page = _page_finance(d)
+        production = [_visible(li) for li in re.findall(
+            r"<tr>.*?</tr>", self._tableau_sensibilites(page).group(0), flags=re.S)][3]
+        self.assertIn("scénario non reproductible sur ce site", production)
+        self.assertIn("3,3 ans", production)
+        self.assertIn('<div data-graphique="sensibilites">', page)
+        d["_sans_graphiques"] = frozenset({"sensibilites"})
+        self.assertIsNone(self._tableau_sensibilites(_page_finance(d)))
+
+    def test_devis_sous_le_niveau_14_l_annee_servie(self):
+        d = self._avec_scenarios()
+        d["regles_sensibilites_historique"] = True
+        production = [_visible(li) for li in re.findall(
+            r"<tr>.*?</tr>", self._tableau_sensibilites(_page_finance(d)).group(0),
+            flags=re.S)][3]
+        self.assertIn("4,0 ans", production)
+        self.assertIn("10,0 ans", production)
+
+    def test_une_option_sans_scenario_le_tableau_par_option(self):
+        d = self._donnees()
+        d["economie_ci"]["sensibilites"] = list(self.SCENARIOS)
+        page = _page_finance(d)
+        self.assertIsNone(self._tableau_sensibilites(page))
+        self.assertIn("Sensibilités — Sans batterie", _visible(page))
 
     def test_arabe_aucun_mot_dans_le_dessin(self):
         d = self._donnees()

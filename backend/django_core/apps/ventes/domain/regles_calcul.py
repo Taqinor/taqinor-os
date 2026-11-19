@@ -104,8 +104,17 @@ REGLES_ECARTS_0411 = 12
 #: migration 0158 ne passe que les brouillons jamais envoyés de 12 à 13 : un devis
 #: envoyé garde l'année de remplacement que le client a reçue.
 REGLES_CYCLES_BATTERIE_1911 = 13
+#: Niveau 14 (D-SENS-1, fondateur 19/11/2026 « Yes, fix it », « nouveaux rendus
+#: seulement ») : le tableau des sensibilités C&I imprime le retour de CHAQUE
+#: scénario au dixième (``retour_dixieme_ans``, même interpolation que la ligne
+#: centrale) et l'option « avec batterie » sert ses propres sensibilités
+#: (``domain/sensibilites_option_avec.py`` : dispatch batterie re-simulé pour la
+#: production, remplacement au niveau 13 du bilan du scénario). Drapeau de rendu
+#: ``regles_sensibilites_historique``. La migration 0159 ne passe que les
+#: brouillons jamais envoyés de 13 à 14 : un devis envoyé garde son tableau.
+REGLES_SENSIBILITES_1911 = 14
 #: Niveau posé sur un devis neuf (défaut du modèle ``Devis.regles_calcul``).
-REGLES_COURANTES = REGLES_CYCLES_BATTERIE_1911
+REGLES_COURANTES = REGLES_SENSIBILITES_1911
 
 
 def regles_au_moins(devis, niveau: int) -> bool:
