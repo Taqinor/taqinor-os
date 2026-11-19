@@ -43,6 +43,8 @@ import {
   preparerCartes, messageDeReponse, etatAffiche, foyerTouche, lienWhatsAppSur, idDevisSur, ETATS,
 } from './cartes'
 import { texteDiagnostic } from './diagnosticTexte'
+import { ECRANS, ECRANS_A_ONGLETS, ONGLETS_CALEPINAGE, cheminAutorise } from './ecrans'
+import { CARTES_CONNUES, COMPOSANTS } from './registre'
 
 const REPONSE = documentContrat('agent', 'assistant_reponse')
 const touche = (nom, variante = 'exemple') => exempleContrat('crm', nom, variante)
@@ -488,5 +490,49 @@ describe('cartes — Tâches (TCH118) : branchement dans CartesDuMessage', () =>
     monter([resultat('point', tache('point')), resultat('visite', touche('lead_visite_planifier'))])
     expect(screen.getByTestId('carte-taches-point')).toBeInTheDocument()
     expect(screen.getByText(/Visite \(brouillon\)/)).toBeInTheDocument()
+  })
+})
+
+// Copilote vague 2 (FND10) — carte `lien_ecran` (action `erp.ouvrir`) : le chemin vient du SERVEUR ; l'écran ne le suit
+// que s'il a la forme d'un écran du miroir `ecrans.js`, lui-même égal au contrat `assistant_ecrans.json`.
+describe('carte lien_ecran et miroir des écrans', () => {
+  const OUVRIR = (variante = 'exemple') => exempleContrat('agent', 'assistant_ouvrir', variante)
+
+  it('le miroir ecrans.js est égal au contrat (gabarits, onglets, écrans à onglets)', () => {
+    const contrat = documentContrat('agent', 'assistant_ecrans')
+    expect(ECRANS).toEqual(Object.fromEntries(Object.entries(contrat.ecrans).map(([cle, f]) => [cle, f.chemin])))
+    expect(ONGLETS_CALEPINAGE).toEqual(contrat.onglets_calepinage)
+    expect(ECRANS_A_ONGLETS).toEqual(Object.keys(contrat.ecrans).filter((cle) => contrat.ecrans[cle].onglets))
+    expect(cheminAutorise(contrat.exemple.chemin)).toBe(true)
+  })
+
+  it('le bouton ouvre le chemin du serveur et referme le tiroir', async () => {
+    const { store } = monter([resultat('lien_ecran', OUVRIR())], { copilotOpen: true })
+    expect(screen.getByText(OUVRIR().libelle)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: OUVRIR().titre }))
+    expect(screen.getByTestId('route')).toHaveTextContent(OUVRIR().chemin)
+    expect(store.getState().ia.copilotOpen).toBe(false)
+  })
+
+  it.each([
+    'https://exemple.invalid/crm', '//exemple.invalid', '/parametres/utilisateurs', '/crm/leads/abc',
+    '/calepinage/12?onglet=reglages', '/crm/leads/12?onglet=production', '/crm/leads/0', ' /crm', null,
+  ])('chemin hors de la table (%s) : aucun bouton', (chemin) => {
+    monter([resultat('lien_ecran', { ...OUVRIR(), chemin })])
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText(/Lien indisponible/)).toBeInTheDocument()
+  })
+
+  it('téléphone : le libellé se coupe et le bouton tient dans la largeur', () => {
+    monter([resultat('lien_ecran', OUVRIR('exemple_sans_objet'))])
+    expect(screen.getByText(OUVRIR('exemple_sans_objet').libelle, { selector: 'p' }).className).toMatch(/break-words/)
+    expect(screen.getByRole('button').className).toMatch(/w-full/)
+    expect(screen.getByRole('button').className).toMatch(/max-w-full/)
+  })
+
+  it('CARTES_CONNUES dérive des composants et chaque clé est au contrat de la réponse', () => {
+    expect(CARTES_CONNUES).toEqual(Object.keys(COMPOSANTS))
+    expect(CARTES_CONNUES).toContain('lien_ecran')
+    expect(CARTES_CONNUES.filter((cle) => !(cle in REPONSE.cartes_donnees))).toEqual([])
   })
 })
