@@ -292,7 +292,7 @@ class InstallationViewSet(ChantierAssistantMixin, oa.JsonOnlyMixin, CompanyScope
             'pack_remise',
             # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
             'reserves',
-            'etat_assistant',  # copilote vague 2 (CHTA2/3) — lectures de l'assistant.
+            'etat_assistant', 'liste_assistant',  # copilote vague 2 (CHTA2/3) — lectures de l'assistant.
         ]:
             return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [

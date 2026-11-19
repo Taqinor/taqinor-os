@@ -1,13 +1,16 @@
 """Copilote vague 2 (CHTA2, CHTA3, CHTA7) — lectures COMPACTES des chantiers
-pour l'assistant (action ``installations.chantier.etat``, carte
-``fiche_chantier``).
+pour l'assistant (actions ``installations.chantier.etat`` et
+``installations.chantiers.liste``, cartes ``fiche_chantier`` /
+``liste_chantiers``).
 
-Contrat : ``contract_samples/assistant_chantier_etat.json`` (une fiche, aussi
-rendue par ``POST chantiers/{id}/planifier-pose/``). Chaque fonction publique
-rend un dictionnaire LITTÉRAL dont les clés sont celles de l'échantillon.
+Contrats : ``contract_samples/assistant_chantier_etat.json`` (une fiche, aussi
+rendue par ``POST chantiers/{id}/planifier-pose/``) et
+``contract_samples/assistant_chantiers.json`` (une liste). Chaque fonction
+publique rend un dictionnaire LITTÉRAL dont les clés sont celles de
+l'échantillon.
 
 Règles :
-* lecture seule ; la portée est celle de l'APPELANT (chantier lu par
+* lecture seule ; la portée est celle de l'APPELANT (queryset déjà borné par
   ``InstallationViewSet.get_queryset``) ;
 * le statut est la couche PROPRE du chantier (statut canonique), jamais
   STAGES.py ; rien ici ne le change ;
@@ -15,9 +18,13 @@ Règles :
   téléphone de client ; aucune position de personne ;
 * le besoin matériel (``compute_besoin_materiel``, une requête par produit)
   n'est calculé que pour UNE fiche (``etat_chantier``), jamais par ligne de
-  liste.
+  liste : les « blocages » d'une liste sont des signaux gratuits en SQL, plus
+  l'acompte exigé (réglage société), borné à :data:`ACOMPTE_BUDGET` lectures.
 """
 import datetime
+
+from django.db.models import Exists, F, OuterRef, Q
+from django.db.models.functions import Coalesce
 
 #: Ensemble FERMÉ des « à faire » (fiche ET lignes ; une ligne de liste ne
 #: rend jamais ``commander_materiel`` : le matériel n'y est pas calculé).
@@ -26,8 +33,14 @@ A_FAIRE = ('commander_materiel', 'encaisser_acompte', 'planifier_pose',
 #: Ensemble FERMÉ des blocages d'une ligne (sans le besoin matériel).
 BLOCAGES = ('sans_date', 'sans_technicien', 'pose_sans_intervention',
             'pose_depassee', 'acompte_non_encaisse')
+VUES = ('en_cours', 'bloques', 'poses_semaine')
+LIMITE_DEFAUT, LIMITE_MAX = 10, 25
+#: Lectures « acompte encaissé ? » au plus par liste (une par devis).
+ACOMPTE_BUDGET = 25
 MANQUES_MAX = 8
 DESIGNATION_MAX = 80
+NOTE_LISTE = 'Matériel : lire installations.chantier.etat (non calculé en liste).'
+LIEN_LISTE = '/chantiers'
 LIEN_APPRO = '/chantiers/approvisionnement'
 #: Statut d'un BCF brouillon (``BonCommandeFournisseur.Statut.BROUILLON``,
 #: lu dans la ligne servie par ``achats.selectors.bcf_du_chantier``).
@@ -100,6 +113,25 @@ def _acompte_paye(inst, company):
     return bool(inst.devis_id and acompte_paye_pour_devis(inst.devis_id, company))
 
 
+class _Acomptes:
+    """Lectures « acompte encaissé ? » d'une liste, bornées et mémorisées.
+    Réglage éteint ou chantier sans devis : jamais bloqué, aucune lecture."""
+
+    def __init__(self, company, budget=ACOMPTE_BUDGET):
+        self.company, self.reste, self.vus = company, budget, {}
+        self.exige = acompte_exige_par_societe(company)
+
+    def bloque(self, inst):
+        if not self.exige or not inst.devis_id:
+            return False
+        if inst.pk not in self.vus:
+            if self.reste <= 0:
+                return False
+            self.reste -= 1
+            self.vus[inst.pk] = not _acompte_paye(inst, self.company)
+        return self.vus[inst.pk]
+
+
 def blocages_du_chantier(inst, pose, aujourdhui, acompte_bloque):
     """Blocages GRATUITS d'un chantier pas encore posé (ensemble fermé
     :data:`BLOCAGES`, dans cet ordre) ; un chantier installé ou au-delà n'en a
@@ -138,6 +170,117 @@ def a_faire(inst, blocages, nb_manques=0):
     if 'sans_technicien' in blocages:
         return 'assigner_technicien'
     return 'poser'
+
+
+def _pose_ligne(pose):
+    if pose is None:
+        return None
+    return {'id': pose.pk, 'date_prevue': _iso(pose.date_prevue),
+            'technicien_nom': _nom(pose.technicien if pose.technicien_id else None)}
+
+
+def ligne_chantier(inst, pose, blocages):
+    """UNE ligne de ``assistant_chantiers.json`` (aussi celles du matin)."""
+    from .models import Installation
+    return {
+        'id': inst.pk,
+        'reference': inst.reference,
+        'client_nom': _client_nom(inst),
+        'statut': Installation.canonical_statut(inst.statut),
+        'date_pose_prevue': _iso(inst.date_pose_prevue),
+        'technicien_nom': _nom(inst.technicien_responsable
+                               if inst.technicien_responsable_id else None),
+        'pose_intervention': _pose_ligne(pose),
+        'blocages': blocages,
+        'a_faire': a_faire(inst, blocages),
+        'lien': lien_chantier(inst.pk),
+    }
+
+
+def _q_bloque_sql(aujourdhui):
+    """Chantier pas encore posé portant un blocage SQL (tout sauf l'acompte) ;
+    suppose l'annotation ``fin_pose_assistant`` (fin prévue, sinon début)."""
+    from .models import Intervention
+    _fin, avant = _statuts()
+    pose_datee = Intervention.objects.filter(
+        installation_id=OuterRef('pk'), type_intervention=Intervention.Type.POSE,
+        annulee=False, date_prevue__isnull=False)
+    datee = Q(date_pose_prevue__isnull=False)
+    return Q(statut__in=avant) & (
+        Q(date_pose_prevue__isnull=True)
+        | Q(technicien_responsable__isnull=True)
+        | (datee & ~Exists(pose_datee))
+        | (datee & Q(fin_pose_assistant__lt=aujourdhui)))
+
+
+def _ordonner(qs):
+    return qs.order_by(F('date_pose_prevue').asc(nulls_last=True), 'pk')
+
+
+def _semaine(qs, debut):
+    """Chantiers dont une pose est datée dans la semaine de ``debut`` (un
+    lundi) OU dont la date de pose prévue y tombe."""
+    from .models import Intervention
+    fin = debut + datetime.timedelta(days=6)
+    pose_semaine = Intervention.objects.filter(
+        installation_id=OuterRef('pk'), type_intervention=Intervention.Type.POSE,
+        annulee=False, date_prevue__range=(debut, fin))
+    return qs.filter(Q(Exists(pose_semaine)) | Q(date_pose_prevue__range=(debut, fin)))
+
+
+def _bloques(qs, limite, aujourdhui, acomptes):
+    """(total, chantiers) des bloqués : blocages SQL d'abord, puis, réglage
+    acompte allumé, les chantiers avec devis bloqués par le seul acompte
+    (dans la limite des lectures restantes)."""
+    _fin, avant = _statuts()
+    sql = _ordonner(qs.filter(_q_bloque_sql(aujourdhui)))
+    total = sql.count()
+    chantiers = list(sql[:limite])
+    for inst in chantiers:
+        acomptes.bloque(inst)
+    if acomptes.exige and acomptes.reste > 0:
+        candidats = _ordonner(qs.filter(statut__in=avant, devis__isnull=False)
+                              .exclude(pk__in=sql.values('pk')))
+        seuls = [c for c in candidats[:acomptes.reste] if acomptes.bloque(c)]
+        total += len(seuls)
+        chantiers += seuls[:max(limite - len(chantiers), 0)]
+    return total, chantiers
+
+
+def liste_chantiers(base, company, *, vue='en_cours', q='', lead=None,
+                    debut=None, limite=LIMITE_DEFAUT, aujourdhui=None):
+    """Liste compacte (``assistant_chantiers.json``). ``base`` : chantiers
+    DÉJÀ bornés à la société et à la portée de l'appelant ; annulés et
+    clôturés exclus ici. ``debut`` (poses_semaine) : ramené au lundi."""
+    from .models import Installation
+    aujourdhui = aujourdhui or datetime.date.today()
+    qs = (base.filter(annule=False).exclude(statut=Installation.Statut.CLOTURE)
+          .annotate(fin_pose_assistant=Coalesce('date_pose_fin_prevue', 'date_pose_prevue')))
+    if q:
+        qs = qs.filter(Q(reference__icontains=q) | Q(client__nom__icontains=q)
+                       | Q(client__prenom__icontains=q))
+    if lead:
+        qs = qs.filter(lead_id=lead)
+    acomptes = _Acomptes(company)
+    if vue == 'bloques':
+        total, chantiers = _bloques(qs, limite, aujourdhui, acomptes)
+    else:
+        if vue == 'poses_semaine':
+            lundi = debut or aujourdhui
+            qs = _semaine(qs, lundi - datetime.timedelta(days=lundi.weekday()))
+        qs = _ordonner(qs)
+        total, chantiers = qs.count(), list(qs[:limite])
+    poses = poses_par_chantier(getattr(company, 'pk', None), [c.pk for c in chantiers])
+    lignes = [ligne_chantier(c, poses.get(c.pk), blocages_du_chantier(
+        c, poses.get(c.pk), aujourdhui, acomptes.bloque(c))) for c in chantiers]
+    return {
+        'vue': vue,
+        'total': total,
+        'limite': limite,
+        'lignes': lignes,
+        'note': NOTE_LISTE,
+        'lien': LIEN_LISTE,
+    }
 
 
 def _materiel(appro):

@@ -11,6 +11,7 @@ from django.test import TestCase
 from apps.agent.registry import all_actions
 from apps.installations.agent_actions import (
     ETAT_CHANTIER,
+    LISTE_CHANTIERS,
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
     INSTALLATIONS_ACTIONS,
@@ -120,6 +121,22 @@ class InstallationsAgentActionsTest(TestCase):
         _codes, _admin, modules = _gardes_de_la_route(a)
         self.assertIn('installations', modules)
         self.assertIn(a.required_permission, codes_du_module('installations'))
+
+    def test_liste_chantiers_metadata(self):
+        """CHTA3 — lecture du lot copilote ; les statuts offerts au modèle
+        sont exactement ceux que la route accepte."""
+        from apps.installations.views.assistant import STATUTS_LISTE
+        a = self._by_key('installations.chantiers.liste')
+        self.assertEqual(a, LISTE_CHANTIERS)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte),
+                         ('GET', 'internal', 'copilote', 'liste_chantiers'))
+        self.assertEqual(a.endpoint, '/api/django/installations/chantiers/assistant/')
+        props = a.inputs['properties']
+        self.assertEqual(props['vue']['enum'], ['en_cours', 'bloques', 'poses_semaine'])
+        self.assertEqual(tuple(props['statut']['enum']), STATUTS_LISTE)
+        self.assertEqual(props['limite']['maximum'], 25)
+        self.assertEqual(a.inputs['required'], [])
+        self.assertEqual(a.required_permission, 'installation_voir')
 
     def test_company_never_in_inputs(self):
         for a in INSTALLATIONS_ACTIONS:

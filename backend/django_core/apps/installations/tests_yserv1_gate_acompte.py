@@ -160,6 +160,31 @@ class ToggleOnSansAcompteTests(TestCase):
              'motif_override_acompte': '   '}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_liste_assistant_bloque_par_le_seul_acompte(self):
+        """Copilote vague 2 (CHTA3) — date, technicien et pose datée posés :
+        aucun blocage SQL, mais l'acompte exigé n'est pas encaissé → la vue
+        « bloques » le liste avec ``acompte_non_encaisse`` (et la fiche le
+        dit : exigé, non encaissé)."""
+        import datetime
+
+        from apps.installations.models import Intervention
+        jour = datetime.date.today() + datetime.timedelta(days=5)
+        Installation.objects.filter(pk=self.inst.pk).update(date_pose_prevue=jour)
+        Intervention.objects.create(
+            company=self.company, installation=self.inst, created_by=self.user,
+            type_intervention=Intervention.Type.POSE, date_prevue=jour,
+            technicien=self.user)
+        r = self.api.get(f'{BASE}/chantiers/assistant/', {'vue': 'bloques'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['total'], 1)
+        ligne = r.data['lignes'][0]
+        self.assertEqual(ligne['id'], self.inst.id)
+        self.assertEqual(ligne['blocages'], ['acompte_non_encaisse'])
+        self.assertEqual(ligne['a_faire'], 'encaisser_acompte')
+        make_facture_acompte(self.company, self.devis, self.client_)
+        r = self.api.get(f'{BASE}/chantiers/assistant/', {'vue': 'bloques'})
+        self.assertEqual(r.data['total'], 0)
+
     def test_patch_dater_pose_refusee_sans_acompte(self):
         """ACSV12 (C-ACSV-133) — dater par PATCH une pose sans acompte
         encaissé : 409 `date_prevue`, date nulle ; avec motif : 200 + note ;

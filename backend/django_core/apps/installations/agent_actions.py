@@ -216,11 +216,63 @@ ETAT_CHANTIER = AgentAction(
 )
 
 
+#: Statuts filtrables de la liste (canoniques, sauf « Clôturé »).
+_STATUTS_LISTE = ['signe', 'materiel_commande', 'planifie', 'en_cours',
+                  'installe', 'receptionne']
+
+
+# CHTA3 — la liste compacte (GET chantiers/assistant/, contrat
+# `assistant_chantiers.json`). Lecture : exécutée sans proposition.
+LISTE_CHANTIERS = AgentAction(
+    key='installations.chantiers.liste',
+    label='Chantiers en cours, bloqués ou posés cette semaine',
+    description=(
+        "Sert à : lister les chantiers de ta portée — vue en_cours, bloques "
+        "(sans date, sans technicien, date sans intervention de pose, date "
+        "dépassée, acompte exigé non encaissé) ou poses_semaine — ou "
+        "retrouver un chantier par référence, nom du client (q) ou lead. Le "
+        "matériel n'y est PAS calculé : lis installations.chantier.etat sur "
+        "une ligne. Ne pas utiliser pour : l'état détaillé d'un chantier. "
+        "Exemple : « quels chantiers sont bloqués ? » → vue=bloques. "
+        "Résultat : {vue, total, limite, lignes[], note, lien}, sans prix."
+    ),
+    endpoint='/api/django/installations/chantiers/assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'vue': {'type': 'string', 'title': 'Vue',
+                    'enum': ['en_cours', 'bloques', 'poses_semaine'],
+                    'description': 'Défaut en_cours.'},
+            'q': {'type': 'string', 'title': 'Recherche', 'maxLength': 100,
+                  'description': 'Référence du chantier ou nom du client.'},
+            'lead': {'type': 'integer', 'title': 'Lead (id)',
+                     'description': "Lead d'origine du chantier."},
+            'statut': {'type': 'string', 'title': 'Statut du chantier',
+                       'enum': _STATUTS_LISTE},
+            'technicien': {'type': 'integer', 'title': 'Technicien (id)',
+                           'description': 'Technicien responsable.'},
+            'debut': {'type': 'string', 'format': 'date', 'title': 'Semaine du',
+                      'description': 'poses_semaine : un jour de la semaine voulue.'},
+            'limite': {'type': 'integer', 'title': 'Nombre de lignes',
+                       'minimum': 1, 'maximum': 25, 'description': 'Défaut 10.'},
+        },
+        'required': [],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    carte='liste_chantiers',
+    lot=LOT_COPILOTE,
+    objets={'technicien': 'utilisateur', 'lead': 'lead'},
+)
+
+
 # Catalogue déclaré par cette app (ordre stable).
 INSTALLATIONS_ACTIONS = (
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
     ETAT_CHANTIER,
+    LISTE_CHANTIERS,
 )
 
 

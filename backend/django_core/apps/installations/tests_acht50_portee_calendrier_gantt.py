@@ -9,6 +9,8 @@ Run :
         -Modules "apps.installations.tests_acht50_portee_calendrier_gantt"
 """
 import datetime
+import json
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -86,3 +88,70 @@ class PorteeCalendrierGanttTests(TestCase):
                          {self.i1.id, self.i2.id})
         r = self._api(self.admin).get(f'{BASE}/chantiers/gantt/')
         self.assertIn(self.chantier.id, [row['id'] for row in r.data])
+
+
+CONTRAT_LISTE = (Path(__file__).resolve().parent / 'contract_samples'
+                 / 'assistant_chantiers.json')
+
+
+class ListeAssistantTests(TestCase):
+    """Copilote vague 2 (CHTA3) — ``GET chantiers/assistant/`` part du
+    queryset du viewset (même portée que la liste), sert les clés EXACTES de
+    ``assistant_chantiers.json`` et ses blocages SANS le besoin matériel.
+    Même jeu de données que :class:`PorteeCalendrierGanttTests`."""
+
+    setUp = PorteeCalendrierGanttTests.setUp
+    _api = PorteeCalendrierGanttTests._api
+
+    def _liste(self, user, **params):
+        r = self._api(user).get(f'{BASE}/chantiers/assistant/', params)
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()
+
+    def test_portee_de_la_liste(self):
+        self.assertIn(self.chantier.id,
+                      [li['id'] for li in self._liste(self.admin)['lignes']])
+        self.assertNotIn(self.chantier.id,
+                         [li['id'] for li in self._liste(self.t1)['lignes']])
+
+    def test_bloques_cles_du_contrat_sans_materiel(self):
+        echantillon = json.loads(CONTRAT_LISTE.read_text(encoding='utf-8'))
+        data = self._liste(self.admin, vue='bloques')
+        self.assertEqual(set(data), set(echantillon['exemple']))
+        self.assertEqual((data['vue'], data['total'], data['limite']), ('bloques', 1, 10))
+        ligne = data['lignes'][0]
+        self.assertEqual(set(ligne), set(echantillon['exemple']['lignes'][0]))
+        self.assertEqual(ligne['blocages'], ['sans_date'])
+        self.assertEqual(ligne['a_faire'], 'planifier_pose')
+        self.assertEqual(ligne['pose_intervention']['id'], self.i1.id)
+        self.assertEqual(ligne['lien'], f'/chantiers?id={self.chantier.id}')
+        self.assertEqual(data['note'], echantillon['exemple']['note'])
+        self.assertNotIn('prix', json.dumps(data))
+
+    def test_date_et_pose_plus_bloque_puis_semaine(self):
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            date_pose_prevue=self.i1.date_prevue)
+        self.assertEqual(self._liste(self.admin, vue='bloques')['total'], 0)
+        data = self._liste(self.admin, vue='poses_semaine',
+                           debut=self.i1.date_prevue.isoformat())
+        self.assertEqual([li['id'] for li in data['lignes']], [self.chantier.id])
+        self.assertEqual(data['lignes'][0]['a_faire'], 'poser')
+        autre_semaine = self.i1.date_prevue + datetime.timedelta(days=14)
+        self.assertEqual(self._liste(self.admin, vue='poses_semaine',
+                                     debut=autre_semaine.isoformat())['total'], 0)
+
+    def test_annule_exclu_q_et_lead(self):
+        Installation.objects.create(company=self.company, reference='CH-ACHT50-ANNULE',
+                                    annule=True, created_by=self.admin)
+        refs = [li['reference'] for li in self._liste(self.admin)['lignes']]
+        self.assertEqual(refs, ['CH-ACHT50'])
+        self.assertEqual(self._liste(self.admin, q='inexistant')['total'], 0)
+        self.assertEqual(self._liste(self.admin, q='acht50')['total'], 1)
+
+    def test_parametre_hors_liste_400_nomme(self):
+        r = self._api(self.admin).get(f'{BASE}/chantiers/assistant/', {'vue': 'tout'})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual((r.data['field'], r.data['code']), ('vue', 'vue_inconnue'))
+        r = self._api(self.admin).get(f'{BASE}/chantiers/assistant/', {'limite': '26'})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.data['field'], 'limite')
