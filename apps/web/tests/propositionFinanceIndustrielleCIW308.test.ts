@@ -106,7 +106,7 @@ describe('CIW308 — rentabiliteCi (extracteur pur)', () => {
     expect(r1.financement?.dureeMois).toBe(84);
   });
 
-  it('D-SENS-1 — un scénario imprime son retour au dixième servi, sinon l'année servie', () => {
+  it("D-SENS-1 — un scénario imprime son retour au dixième servi, sinon l'année servie", () => {
     const r = rentabiliteCi(
       syntheseCi(
         payload(
