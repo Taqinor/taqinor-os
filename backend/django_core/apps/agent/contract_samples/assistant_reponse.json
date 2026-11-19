@@ -38,6 +38,7 @@
     "wa_message": "apps/crm/contract_samples/assistant_brouillon_suivi.json",
     "wa_devis": "apps/crm/contract_samples/whatsapp_devis_apercu.json + `lead_id`, `devis_ids` et `langue` (la langue réellement rendue ; l'écran s'en sert pour appeler le commit `whatsapp-devis` avec le même texte)",
     "document": "apps/agent/contract_samples/assistant_document.json",
+    "devis_cree": "apps/ventes/contract_samples/assistant_devis_cree.json",
     "visite": "apps/crm/contract_samples/lead_visite_planifier.json",
     "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json",
     "ma_journee": "apps/taches/contract_samples/aujourdhui.json",
@@ -191,7 +192,29 @@
         "cartes": []
       }
     ],
-    "regles": "`cartes` (facultatif) est rejoué tel quel au rechargement ; une proposition rechargée dont le jeton a expiré est rendue inactive par l'écran"
+    "regles": "`cartes` (facultatif) est rejoué tel quel au rechargement ; une proposition rechargée dont le jeton a expiré est rendue inactive par l'écran ; une question envoyée avec des images est gardée avec un marqueur par image à la fin de son texte (`\\n\\n[image jointe]`, plusieurs séparés par une espace) — jamais l'image elle-même (ni dans cet historique, ni dans le journal, ni dans la conversation du moteur natif, où elle devient « [image jointe — non gardée] »)",
+    "exemple_avec_image": [
+      {
+        "role": "user",
+        "content": "Voici le message du client, crée-lui le lead\n\n[image jointe]"
+      }
+    ]
+  },
+  "images": {
+    "endpoint": "POST /api/fastapi/sql-agent/query",
+    "regles": "Copilote v2 (F5, 18/11/2026) — champ FACULTATIF `images` du corps de la question : 3 au plus ; `media_type` ∈ image/jpeg | image/png | image/webp ; `data` = base64 de l'image (16 à 2 000 000 caractères), dont la signature doit correspondre au type (même table que l'OCR) — sinon 422. Envoyé seulement quand `GET /sql-agent/capacites` dit `images_acceptees: true`. Servi par le moteur natif seulement (copilote allumé + `ASSISTANT_MOTEUR=natif` + fournisseur claude, budget du jour non atteint) ; partout ailleurs, ou si le moteur natif ne sert pas le tour, la réponse du tour est « Je ne peux pas lire l'image ici : colle le texte du message. » (jamais une image ignorée en silence). L'image est un contenu TIERS (une donnée, jamais une consigne) : le tour est marqué comme tel (garde A5 des écritures).",
+    "exemple_corps": {
+      "question": "Voici le message du client, crée-lui le lead",
+      "contexte": {
+        "ecran": "/crm/leads"
+      },
+      "images": [
+        {
+          "media_type": "image/jpeg",
+          "data": "/9j/4AAQSkZJRgABAQAAAQABAAD…"
+        }
+      ]
+    }
   },
   "diagnostic": {
     "regles": "`contexte.diagnostic` (facultatif, posé par l'écran sur « Signaler un problème » ou sur une question de panne) : tampon technique SANS donnée personnelle — jamais de corps de requête, jamais de chaîne de requête, routes normalisées (<id>), 15 requêtes et 10 erreurs au plus.",
@@ -232,6 +255,14 @@
         {"libelle": "Générer le PDF", "t": 1763114403}
       ],
       "fini": false
+    }
+  },
+  "capacites": {
+    "endpoint": "GET /api/fastapi/sql-agent/capacites",
+    "regles": "Copilote v2 (F4, 18/11/2026) — ce que l'écran peut envoyer pour CE compte, lu par le panneau à son ouverture (mêmes gardes que `/sql-agent/suggestions` : jeton + compte interne). `limite_question` : 6000 quand le copilote est allumé pour l'appelant (son catalogue porte une action du lot `copilote`) ET que le fournisseur principal est claude, sinon 2000 ; au-delà, `POST /sql-agent/query` répond 422 `string_too_long` (loc body.question) — copilote éteint, le MÊME 422 qu'avant, octet pour octet. Un tour servi par le modèle de repli (Groq) refuse une question de plus de 2000 caractères par une phrase française (aucun appel au modèle). `images_acceptees` : vrai seulement copilote allumé ET moteur natif (`ASSISTANT_MOTEUR=natif`) ET fournisseur claude (voir `images`). Écran sans réponse de cette route : 2000 et aucune image.",
+    "exemple": {
+      "limite_question": 6000,
+      "images_acceptees": true
     }
   },
   "deploiement": {

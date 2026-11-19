@@ -488,6 +488,20 @@ CompositionRequest = {
             'hors_reseau': {'type': 'boolean'},
             'lead': {'type': 'integer', 'nullable': True, 'minimum': 1,
                      'maximum': 2147483647},
+            # COP2-V3 — la composition IMPOSÉE, mêmes champs et mêmes bornes
+            # que ``POST devis/auto/`` (règle U3 : même kit à l'aperçu).
+            'panneau_produit_id': {'type': 'integer', 'nullable': True,
+                                   'minimum': 1, 'maximum': 2147483647},
+            'onduleur_produit_id': {'type': 'integer', 'nullable': True,
+                                    'minimum': 1, 'maximum': 2147483647},
+            'onduleur_kw': {'type': 'number', 'nullable': True,
+                            'minimum': 0.5, 'maximum': 100},
+            'onduleur_phase': {'type': 'string',
+                               'enum': ['monophase', 'triphase']},
+            'batterie_produit_id': {'type': 'integer', 'nullable': True,
+                                    'minimum': 1, 'maximum': 2147483647},
+            'batterie_kwh': {'type': 'number', 'nullable': True,
+                             'minimum': 0.5, 'maximum': 100},
             'dimensionnement_avec': {
                 'type': 'object',
                 'properties': {
@@ -594,6 +608,8 @@ def _pourcent_souple(**kwargs):
 #: composait des quantités qui débordent ``DecimalField(10, 2)`` à l'écriture
 #: des lignes (``DataError`` → 500).
 TARGET_KWC_MAX = 10_000
+#: COP2-V3 — un devis RÉSIDENTIEL à composition imposée : 200 panneaux au plus.
+NB_PANNEAUX_IMPOSES_MAX = 200
 
 AutoDevisRequest = _ser('DevisAutoRequest', {
     # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
@@ -610,6 +626,25 @@ AutoDevisRequest = _ser('DevisAutoRequest', {
     'structure_produit_id': EntierStrict(required=False, allow_null=True),
     'structure_type': ChaineStricte(required=False, allow_blank=True,
                                     allow_null=True),
+    # COP2-V3 — COMPOSITION IMPOSÉE (résidentiel seulement) : dès qu'un de ces
+    # champs est présent, ``nb_panneaux`` est obligatoire, ``target_kwc`` et
+    # ``scenario=les_deux`` sont refusés (409 nommant le champ) ; la forme id et
+    # la forme taille d'un même élément s'excluent. Contrat :
+    # ``contract_samples/assistant_devis_cree.json``.
+    'nb_panneaux': EntierStrict(required=False, allow_null=True, min_value=1,
+                                max_value=NB_PANNEAUX_IMPOSES_MAX),
+    'panneau_produit_id': EntierStrict(required=False, allow_null=True,
+                                       min_value=1),
+    'onduleur_produit_id': EntierStrict(required=False, allow_null=True,
+                                        min_value=1),
+    'onduleur_kw': NombreStrict(required=False, allow_null=True,
+                                min_value=0.5, max_value=100),
+    'onduleur_phase': s.ChoiceField(choices=['monophase', 'triphase'],
+                                    required=False, allow_null=True),
+    'batterie_produit_id': EntierStrict(required=False, allow_null=True,
+                                        min_value=1),
+    'batterie_kwh': NombreStrict(required=False, allow_null=True,
+                                 min_value=0.5, max_value=100),
 })
 #: CI #997 fuzz — un devis naît d'un LEAD ou d'un CLIENT (« Un client ou un
 #: lead est requis. ») : règle publiée sur ``POST devis/`` et ``devis/auto/``.
@@ -635,6 +670,73 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'retour_ans_avec': s.FloatField(allow_null=True),
     'kwc_avec': s.FloatField(allow_null=True),
     'postes_apres_visite': s.ListField(child=s.CharField()),
+    # COP2-V3 — la carte ``devis_cree`` de l'assistant (contrat
+    # ``assistant_devis_cree.json``) : alias de ``id``, lead, lignes TTC.
+    'devis_id': s.IntegerField(),
+    'lead_id': s.IntegerField(allow_null=True),
+    'composition': s.ListField(child=_ser('DevisAutoLigneComposition', {
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'prix_unitaire_ttc': s.CharField(),
+        'total_ttc': s.CharField(),
+        'variante': s.CharField(allow_blank=True),
+    })),
+})
+#: COP2-V3 — le 409 « choix » : zéro ou plusieurs produits pour un élément
+#: imposé ; ``choix`` les nomme (jamais un choix silencieux du serveur).
+ErreurDevisAuto = _ser('DevisAutoErreur', {
+    'detail': s.CharField(),
+    'field': s.CharField(required=False, allow_null=True),
+    'choix': s.ListField(required=False, child=_ser('DevisAutoChoix', {
+        'produit_id': s.IntegerField(),
+        'nom': s.CharField(),
+        'marque': s.CharField(allow_blank=True),
+        'kw': s.FloatField(allow_null=True),
+        'kwh': s.FloatField(allow_null=True),
+        'phase': s.CharField(allow_blank=True),
+        'prix_ttc': s.CharField(),
+    })),
+})
+
+#: COP2-V2 — ``GET ventes/assistant/catalogue/`` (``assistant_catalogue.json``).
+CatalogueAssistantResponse = _ser('CatalogueAssistantResponse', {
+    'q': s.CharField(allow_blank=True),
+    'genre': s.CharField(allow_blank=True),
+    'total': s.IntegerField(),
+    'limite': s.IntegerField(),
+    'statut': s.ChoiceField(choices=['', 'unique', 'ambigu', 'aucun']),
+    'raison': s.CharField(allow_blank=True),
+    'lignes': s.ListField(child=_ser('CatalogueAssistantLigne', {
+        'produit_id': s.IntegerField(),
+        'nom': s.CharField(),
+        'marque': s.CharField(allow_blank=True),
+        'genre': s.CharField(),
+        'kw': s.FloatField(allow_null=True),
+        'kwh': s.FloatField(allow_null=True),
+        'wc': s.FloatField(allow_null=True),
+        'phase': s.CharField(allow_blank=True),
+        'famille': s.CharField(allow_blank=True),
+        'prix_ttc': s.CharField(),
+        'en_stock': s.BooleanField(allow_null=True),
+    })),
+})
+
+#: COP2-V5 — ``GET ventes/devis/<pk>/lignes-assistant/``
+#: (``assistant_devis_lignes.json``). Prix TTC seulement.
+LignesAssistantResponse = _ser('DevisLignesAssistantResponse', {
+    'devis_id': s.IntegerField(),
+    'reference': s.CharField(),
+    'statut': s.CharField(),
+    'total_ttc': s.CharField(allow_null=True),
+    'lignes': s.ListField(child=_ser('DevisLigneAssistant', {
+        'ligne_id': s.IntegerField(),
+        'produit_id': s.IntegerField(allow_null=True),
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'prix_unitaire_ttc': s.CharField(),
+        'total_ttc': s.CharField(),
+        'variante': s.CharField(allow_blank=True),
+    })),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {

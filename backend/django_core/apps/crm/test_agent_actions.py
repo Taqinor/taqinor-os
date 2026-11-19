@@ -25,10 +25,12 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    BROUILLON_SUIVI, CHANGER_ETAPE_LEAD, CHERCHER_LEAD, CREER_LEAD,
-    DIGEST_MATIN, JOURNALISER_LEAD, LEADS_A_RELANCER, MESSAGE_VISITE,
+    ARCHIVER_LEAD, BROUILLON_SUIVI, CHANGER_ETAPE_LEAD, CHERCHER_LEAD,
+    CREER_LEAD, CREER_LEAD_ASSISTANT, DIGEST_MATIN, ETIQUETER_LEAD,
+    JOURNALISER_LEAD, LEAD_PERDU, LEADS_A_RELANCER, MESSAGE_VISITE,
     METTRE_A_JOUR_LEAD, NOTER_LEAD, PLANIFIER_VISITE, PREPARER_ENVOI_WHATSAPP,
-    PREPARER_TOUCHE, PROPOSER_REPONSE, QUALIFIER_LEAD, RESUME_LEAD,
+    PREPARER_TOUCHE, PROPOSER_REPONSE, QUALIFIER_LEAD, REAFFECTER_LEAD,
+    RESTAURER_LEAD, RESUME_LEAD,
     _ACTIONS,
     register_crm_actions,
 )
@@ -855,6 +857,33 @@ class CrmAssistantRechercheLeadsTest(_CopiloteBase):
         self.assertEqual(avec.data['total'], 0)  # lead de discret, hors portée
         self.assertEqual(lead.owner, self.discret)
 
+    def test_numero_cherche_sur_les_colonnes_normalisees(self):
+        """COP2-C2 — « +212 661 23 45 67 » retrouve « 0661234567 », et un lead
+        connu seulement par son WhatsApp se retrouve par son numéro."""
+        a = self._lead('Alami', telephone='0661234567')
+        b = self._lead('SeulWa', telephone=None, whatsapp='0661998877')
+        self._lead('Autre', telephone='0662000000')
+        for q, attendu in (('+212 661 23 45 67', {a.pk}),
+                           ('06 61 23 45 67', {a.pk}),
+                           ('212661234567', {a.pk}),
+                           ('(0661) 99-88-77', {b.pk}),
+                           ('alami', {a.pk})):
+            ids = {x['lead_id'] for x in auth(self.alice).get(
+                self.URL, {'q': q}).data['lignes']}
+            self.assertEqual(ids, attendu, q)
+        # Trop court pour être un numéro : recherche texte seulement.
+        court = auth(self.alice).get(self.URL, {'q': '66123'})
+        self.assertEqual({x['lead_id'] for x in court.data['lignes']}, {a.pk})
+
+    def test_numero_normalise_n_est_pas_un_oracle_sans_droit_pii(self):
+        self._lead('Cache', owner=self.discret, telephone='0661234567')
+        self._lead('CacheWa', owner=self.discret, telephone=None,
+                   whatsapp='0661998877')
+        for q in ('+212 661 23 45 67', '0661998877'):
+            resp = auth(self.discret).get(self.URL, {'q': q})
+            self.assertEqual((resp.status_code, resp.data['lignes']),
+                             (200, []), q)
+
     def test_prochaine_touche_en_une_requete_pour_toutes_les_lignes(self):
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
@@ -1543,3 +1572,357 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
         par_cle = {a.key: a for a in _ACTIONS}
         for cle, lot in attendu.items():
             self.assertEqual(par_cle[cle].lot, lot, cle)
+
+
+class CrmAssistantCreerLeadTest(_CopiloteBase):
+    """COP2-C — ``crm.lead.creer`` : MÊME chemin de création que l'écran,
+    garde de doublon dans la portée, coordonnées protégées par le droit PII."""
+
+    URL = CREER_LEAD_ASSISTANT.endpoint
+
+    def _creer(self, user=None, **corps):
+        corps.setdefault('nom', 'Essai')
+        return auth(user or self.alice).post(self.URL, corps, format='json')
+
+    def test_declaration_de_l_action(self):
+        self.assertEqual(
+            (CREER_LEAD_ASSISTANT.carte, CREER_LEAD_ASSISTANT.lot,
+             CREER_LEAD_ASSISTANT.required_permission,
+             CREER_LEAD_ASSISTANT.risk, CREER_LEAD_ASSISTANT.method),
+            ('fiche_lead', LOT_COPILOTE, 'crm_creer', 'outward', 'POST'))
+        self.assertEqual(CREER_LEAD.lot, LOT_HERITE)
+        props = CREER_LEAD_ASSISTANT.inputs['properties']
+        self.assertEqual(CREER_LEAD_ASSISTANT.inputs['required'], ['nom'])
+        for interdit in ('company', 'owner', 'stage', 'source'):
+            self.assertNotIn(interdit, props)
+        for champ in ('type_installation', 'raccordement',
+                      'batterie_souhaitee'):
+            self.assertEqual(
+                props[champ]['enum'],
+                [v for v, _ in Lead._meta.get_field(champ).flatchoices if v],
+                champ)
+
+    def test_cles_egales_aux_echantillons(self):
+        exemple = _echantillon('assistant_lead_creer.json')
+        resp = self._creer(
+            prenom='Karim', ville='Casablanca', telephone='0661007731',
+            note='Demande du client : 10 panneaux.')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(set(resp.data), set(exemple))
+        self.assertEqual(set(resp.data['identite']), set(exemple['identite']))
+        self.assertTrue(resp.data['cree'])
+        self.assertEqual(resp.data['etape'], stages.NEW)
+        self.assertEqual(set(resp.data['chatter'][0]),
+                         set(exemple['chatter'][0]))
+        self.assertEqual(resp.data['chatter'][0]['type'], 'note')
+        lead = Lead.objects.get(pk=resp.data['identite']['id'])
+        self.assertEqual(lead.company_id, self.company.pk)
+
+    def test_societe_responsable_etape_source_jamais_du_corps(self):
+        resp = self._creer(
+            company=self.autre_societe.pk, owner=self.bob.pk,
+            stage=stages.SIGNED, source='meta_lead_ads')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(pk=resp.data['identite']['id'])
+        self.assertEqual(lead.company_id, self.company.pk)
+        self.assertEqual(lead.stage, stages.NEW)
+        self.assertEqual(lead.source, Lead.Source.OS_NATIVE)
+        # Portée « les siens » : l'appelant garde ce qu'il crée.
+        self.assertEqual(lead.owner_id, self.alice.pk)
+
+    def test_meme_chemin_que_l_ecran(self):
+        from unittest import mock
+
+        from apps.crm import leads_creation
+        from core.models import ConsentRecord
+
+        with mock.patch.object(
+                leads_creation, 'creer_lead_saisi',
+                wraps=leads_creation.creer_lead_saisi) as saisi:
+            ecran = auth(self.alice).post(
+                '/api/django/crm/leads/',
+                {'nom': 'Ecran', 'telephone': '0661000201'}, format='json')
+            assistant = self._creer(nom='Assistant', telephone='0661000202')
+        self.assertEqual(ecran.status_code, 201, ecran.data)
+        self.assertEqual(assistant.status_code, 201, assistant.data)
+        self.assertEqual(saisi.call_count, 2)
+        # Mêmes effets : journal de création, base légale, saisies humaines.
+        effets = []
+        for nom in ('Ecran', 'Assistant'):
+            lead = Lead.objects.get(company=self.company, nom=nom)
+            effets.append((
+                sorted(LeadActivity.objects.filter(lead=lead)
+                       .values_list('kind', flat=True)),
+                ConsentRecord.objects.filter(
+                    company=self.company,
+                    subject_identifier=lead.telephone).count(),
+                'nom' in (lead.saisies_humaines or {})))
+        self.assertEqual(effets[0], effets[1])
+        self.assertIn('creation', effets[1][0])
+        self.assertEqual(effets[1][1:], (1, True))
+
+    def test_cadence_demarree_une_seule_fois(self):
+        from unittest import mock
+        with mock.patch(
+                'apps.crm.cadence_plan.demarrer_cadence_contact') as cadence:
+            resp = self._creer(telephone='0661000203')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(cadence.call_count, 1)
+
+    def test_note_versee_au_fil_sans_premier_contact(self):
+        resp = self._creer(note='  10 panneaux, onduleur triphasé 10 kW.  ')
+        lead = Lead.objects.get(pk=resp.data['identite']['id'])
+        # La création pose aussi la note du plan de relance : on lit CELLE de la demande.
+        # La demande est préfixée : la garde du premier contact la reconnaît (ACVI23).
+        note = LeadActivity.objects.get(
+            lead=lead, kind='note', body__endswith='10 panneaux, onduleur triphasé 10 kW.')
+        self.assertTrue(note.body.startswith('Demande du client (saisie à la création) : '))
+        self.assertEqual((note.user_id, note.company_id),
+                         (self.alice.pk, self.company.pk))
+        self.assertIsNone(lead.first_contacted_at)
+        # Sans note demandée : aucune note « demande du client » (la note du plan de
+        # relance, elle, est posée à toute création).
+        sans = self._creer(nom='Sans note')
+        self.assertFalse(LeadActivity.objects.filter(
+            lead_id=sans.data['identite']['id'], kind='note',
+            body__startswith='Demande du client').exists())
+
+    def test_champs_de_la_demande_ecrits_sur_la_fiche(self):
+        resp = self._creer(
+            type_installation='residentiel', raccordement='triphase',
+            batterie_souhaitee='avec', taille_souhaitee_kwc='7.1',
+            ville='Bouskoura')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        lead = Lead.objects.get(pk=resp.data['identite']['id'])
+        self.assertEqual(
+            (lead.type_installation, lead.raccordement,
+             lead.batterie_souhaitee, str(lead.taille_souhaitee_kwc)),
+            ('residentiel', 'triphase', 'avec', '7.10'))
+
+    def test_corps_refuse_en_nommant_le_champ(self):
+        for corps, champ in (({'nom': ''}, 'nom'), ({}, 'nom'),
+                             ({'nom': 'X', 'raccordement': 'biphase'},
+                              'raccordement'),
+                             ({'nom': 'X', 'email': 'pas-un-mail'}, 'email')):
+            resp = auth(self.alice).post(self.URL, corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
+            self.assertIn(champ, resp.data)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+    def test_permission_crm_creer_et_authentification(self):
+        lecture = Role.objects.create(
+            company=self.company, nom='Lecture', permissions=['crm_voir'])
+        ro = User.objects.create_user(
+            username='cop_ro', password='x', role=lecture,
+            company=self.company)
+        self.assertEqual(self._creer(ro).status_code, 403)
+        self.assertEqual(Lead.objects.count(), 0)
+        self.assertEqual(APIClient().post(
+            self.URL, {'nom': 'X'}, format='json').status_code, 401)
+
+    def test_doublon_dans_la_portee_409_et_rien_cree(self):
+        existant = self._lead('Alami', prenom='Karim',
+                              telephone='0661007731')
+        exemple = _echantillon('assistant_lead_creer.json',
+                               'exemple_409_doublon')
+        # Même numéro, autre graphie : normalisé.
+        resp = self._creer(nom='Autre', telephone='+212 661-007-731')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(set(resp.data), set(exemple))
+        self.assertEqual(
+            (resp.data['doublon'], resp.data['lead_id'], resp.data['nom'],
+             resp.data['etape'], resp.data['archive'],
+             resp.data['ne_plus_contacter']),
+            (True, existant.pk, 'Karim Alami', stages.NEW, False, False))
+        self.assertIn(f'lead {existant.pk}', resp.data['detail'])
+        self.assertIn("Rien n'a été créé", resp.data['detail'])
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+
+    def test_doublon_par_whatsapp_et_par_email(self):
+        par_wa = self._lead('ParWa', telephone=None, whatsapp='0661000301')
+        par_mail = self._lead('ParMail', telephone=None,
+                              email='Karim@Exemple.ma')
+        a = self._creer(telephone='0661000301')
+        b = self._creer(email='karim@exemple.ma')
+        self.assertEqual((a.status_code, a.data['lead_id']), (409, par_wa.pk))
+        self.assertEqual((b.status_code, b.data['lead_id']),
+                         (409, par_mail.pk))
+        self.assertIn('numéro', a.data['detail'])
+        self.assertIn('e-mail', b.data['detail'])
+
+    def test_lead_hors_portee_ou_autre_societe_compte_comme_absent(self):
+        self._lead('DeBob', owner=self.bob, telephone='0661000401')
+        Lead.objects.create(company=self.autre_societe, nom='Etranger',
+                            telephone='0661000402')
+        for numero in ('0661000401', '0661000402'):
+            resp = self._creer(nom='Nouveau ' + numero, telephone=numero)
+            self.assertEqual(resp.status_code, 201, resp.data)
+            self.assertNotIn('doublon', resp.data)
+
+    def test_doublon_archive_signale_et_creer_quand_meme(self):
+        archive = self._lead('Archive', telephone='0661000501',
+                             is_archived=True, ne_plus_contacter=True)
+        resp = self._creer(telephone='0661000501')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual((resp.data['archive'], resp.data['ne_plus_contacter'],
+                          resp.data['lead_id']), (True, True, archive.pk))
+        self.assertIn('archivé', resp.data['detail'])
+        forcee = self._creer(telephone='0661000501', creer_quand_meme=True)
+        self.assertEqual(forcee.status_code, 201, forcee.data)
+        self.assertNotEqual(forcee.data['identite']['id'], archive.pk)
+        self.assertEqual(Lead.objects.filter(
+            company=self.company, nom__in=['Archive', 'Essai']).count(), 2)
+
+    def test_vivant_avant_archive_quand_plusieurs_doublons(self):
+        self._lead('Vieux', telephone='0661000601', is_archived=True)
+        vivant = self._lead('Vivant', telephone='0661000601')
+        resp = self._creer(telephone='0661000601')
+        self.assertEqual((resp.status_code, resp.data['lead_id']),
+                         (409, vivant.pk))
+
+    def test_sans_droit_pii_telephone_whatsapp_email_refuses_en_400(self):
+        for champ, valeur in (('telephone', '0661000701'),
+                              ('whatsapp', '0661000702'),
+                              ('email', 'a@b.ma')):
+            resp = self._creer(self.discret, **{champ: valeur})
+            self.assertEqual(resp.status_code, 400, champ)
+            self.assertIn(champ, resp.data)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        ok = self._creer(self.discret, nom='Sans coordonnees', ville='Rabat')
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertEqual(ok.data['identite']['telephone'], '')
+
+    def test_la_garde_pii_ne_devient_pas_un_oracle_de_doublon(self):
+        self._lead('Cache', owner=self.discret, telephone='0661000801')
+        resp = self._creer(self.discret, telephone='0661000801')
+        self.assertEqual(resp.status_code, 400)
+        self.assertNotIn('doublon', resp.data)
+
+
+class CrmAssistantRangementLeadTest(_CopiloteBase):
+    """COP2-C3 — perdu, archiver, restaurer, réaffecter, étiqueter : cinq
+    propositions à confirmer qui n'appellent que des routes EXISTANTES."""
+
+    ACTIONS = (LEAD_PERDU, ARCHIVER_LEAD, RESTAURER_LEAD, REAFFECTER_LEAD,
+               ETIQUETER_LEAD)
+
+    def test_declarations(self):
+        permissions = {
+            'crm.lead.perdu': 'crm_modifier',
+            'crm.lead.archiver': 'crm_modifier',
+            'crm.lead.restaurer': 'crm_modifier',
+            'crm.lead.reaffecter': 'crm_reassign',
+            'crm.lead.etiqueter': 'crm_modifier'}
+        self.assertEqual({a.key for a in self.ACTIONS}, set(permissions))
+        for action in self.ACTIONS:
+            with self.subTest(action=action.key):
+                self.assertEqual(
+                    (action.lot, action.risk, action.objets,
+                     action.required_permission),
+                    (LOT_COPILOTE, 'outward', {'id': 'lead'},
+                     permissions[action.key]))
+                self.assertIn(action, _ACTIONS)
+                self.assertEqual(action.inputs['properties']['id'],
+                                 {'type': 'integer'})
+                # Jamais Signé, Froid, « ne plus contacter » ni société.
+                for interdit in ('stage', 'parc_etat', 'parc_raison',
+                                 'parc_jusqu_au', 'ne_plus_contacter',
+                                 'company'):
+                    self.assertNotIn(interdit,
+                                     action.inputs['properties'])
+        self.assertEqual(LEAD_PERDU.inputs['required'],
+                         ['id', 'perdu', 'motif_perte'])
+        self.assertEqual(LEAD_PERDU.inputs['properties']['perdu']['enum'],
+                         [True])
+        self.assertEqual(set(REAFFECTER_LEAD.inputs['properties']),
+                         {'id', 'owner'})
+        self.assertEqual(set(ETIQUETER_LEAD.inputs['properties']),
+                         {'id', 'tags'})
+
+    def test_servies_seulement_copilote_allume(self):
+        cles = {a.key for a in self.ACTIONS}
+        role = Role.objects.create(
+            company=self.company, nom='Gestionnaire',
+            permissions=['crm_voir', 'crm_modifier', 'crm_reassign'])
+        gestionnaire = User.objects.create_user(
+            username='cop_gest', password='x', role=role,
+            company=self.company)
+        for reglage, attendu in (('aucun', set()), ('tous', cles)):
+            with self.settings(ASSISTANT_COPILOTE=reglage):
+                vus = {a.key for a in for_user(gestionnaire)} & cles
+            self.assertEqual(vus, attendu, reglage)
+        # Sans crm_reassign, la réaffectation n'est pas proposée.
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            vus = {a.key for a in for_user(self.alice)}
+        self.assertNotIn(REAFFECTER_LEAD.key, vus)
+        self.assertLessEqual(cles - {REAFFECTER_LEAD.key}, vus)
+
+    def test_perdu_exige_un_motif_et_ne_touche_pas_l_etape(self):
+        lead = self._lead(stage=stages.QUOTE_SENT)
+        url = LEAD_PERDU.endpoint.format(id=lead.pk)
+        sans = auth(self.alice).patch(url, {'perdu': True}, format='json')
+        self.assertEqual(sans.status_code, 409, sans.data)
+        self.assertIn('motif_perte', str(sans.data))
+        lead.refresh_from_db()
+        self.assertFalse(lead.perdu)
+        resp = auth(self.alice).patch(
+            url, {'perdu': True, 'motif_perte': 'Signé chez un concurrent'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual((lead.perdu, lead.motif_perte, lead.stage),
+                         (True, 'Signé chez un concurrent', stages.QUOTE_SENT))
+
+    def test_archiver_puis_restaurer(self):
+        lead = self._lead()
+        resp = auth(self.alice).post(
+            ARCHIVER_LEAD.endpoint.format(id=lead.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertTrue(lead.is_archived)
+        resp = auth(self.alice).post(
+            RESTAURER_LEAD.endpoint.format(id=lead.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertFalse(lead.is_archived)
+
+    def test_reaffecter_exige_crm_reassign(self):
+        lead = self._lead(owner=self.alice)
+        url = REAFFECTER_LEAD.endpoint.format(id=lead.pk)
+        refus = auth(self.alice).patch(url, {'owner': self.bob.pk},
+                                       format='json')
+        self.assertEqual(refus.status_code, 403, refus.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.alice.pk)
+        role = Role.objects.create(
+            company=self.company, nom='Gestionnaire',
+            permissions=['crm_voir', 'crm_modifier', 'crm_reassign'])
+        gestionnaire = User.objects.create_user(
+            username='cop_gest2', password='x', role=role,
+            company=self.company)
+        resp = auth(gestionnaire).patch(url, {'owner': self.bob.pk},
+                                        format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.bob.pk)
+
+    def test_etiqueter_remplace_les_etiquettes(self):
+        lead = self._lead(tags='ancien')
+        resp = auth(self.alice).patch(
+            ETIQUETER_LEAD.endpoint.format(id=lead.pk),
+            {'tags': 'villa, urgent'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.tags, 'villa, urgent')
+
+    def test_lead_d_une_autre_portee_ou_societe_404(self):
+        autre = self._lead(owner=self.bob)
+        etranger = Lead.objects.create(company=self.autre_societe, nom='X')
+        for lead in (autre, etranger):
+            for action, corps in ((ETIQUETER_LEAD, {'tags': 'a'}),
+                                  (ARCHIVER_LEAD, {})):
+                methode = auth(self.alice).patch if action.method == 'PATCH' \
+                    else auth(self.alice).post
+                resp = methode(action.endpoint.format(id=lead.pk), corps,
+                               format='json')
+                self.assertEqual(resp.status_code, 404, (action.key, lead.pk))

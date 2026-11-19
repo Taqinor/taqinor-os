@@ -303,6 +303,15 @@
       ]
     },
     {
+      "nom": "lignes_assistant",
+      "url_path": "lignes-assistant",
+      "url_name": "lignes-assistant",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "lots",
       "url_path": "lots",
       "url_name": "lots",
@@ -695,6 +704,7 @@
     "initialize_request",
     "layout",
     "lecture_client",
+    "lignes_assistant",
     "list",
     "lookup_field",
     "lookup_url_kwarg",

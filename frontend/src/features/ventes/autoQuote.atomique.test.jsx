@@ -20,6 +20,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/ventesApi', () => ({ default: api }))
 
 import * as autoQuote from './autoQuote'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 const { createAutoQuote } = autoQuote
 
@@ -29,12 +30,13 @@ beforeEach(() => {
 
 describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () => {
   it('agricole : UN appel serveur /ventes/devis/auto/, aucun createDevisAtomic, alertes rendues', async () => {
-    const alertes = [{ code: 'pvgis_indisponible', champ: 'production', message: 'Irradiation indisponible' }]
-    api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 777, statut: 'brouillon', alertes } })
+    // COP2-W3 — réponse = échantillon du contrat (id, alertes), jamais un littéral tapé ici.
+    const { id: idContrat, alertes } = exempleContrat('ventes', 'assistant_devis_cree')
+    api.creerDevisAuto.mockResolvedValueOnce(reponseContrat('ventes', 'assistant_devis_cree'))
     const lead = { id: 7, type_installation: 'agricole', pompe_hmt_m: 60, pompe_debit_m3h: 12 }
     const onAlertes = vi.fn()
     const id = await createAutoQuote({ lead, produits: [], discountStr: '5', dispatch: vi.fn(), onAlertes })
-    expect(id).toBe(777)
+    expect(id).toBe(idContrat)
     expect(api.creerDevisAuto).toHaveBeenCalledTimes(1)
     expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 7, remise_globale: '5' })
     expect(api.createDevisAtomic).not.toHaveBeenCalled()

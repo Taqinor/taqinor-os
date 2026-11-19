@@ -694,9 +694,12 @@ CLES_ATTRIBUTION_NON_COPIEES = ('attribution',)
 #: Ce qu'une copie de devis ne reprend JAMAIS, toutes raisons confondues.
 #: CIQ129 — les clés C&I v1 et les réponses à plat RETIRÉES du schéma : un
 #: ancien devis qui les porte encore ne les transmet pas à sa copie/V2.
+#: COP2-V3 — le marqueur de composition imposée ne passe pas à une copie
+#: (V2, clone, ``/variante``) : une copie est un NOUVEAU document qu'un humain
+#: édite, il ne doit ni cacher Éco / Max ni bloquer permutation et reprise.
 CLES_NON_COPIEES = (
     CLES_DERIVEES_NON_COPIEES + CLES_ATTRIBUTION_NON_COPIEES
-    + tuple(_CLES_RETIREES_CI_V1))
+    + tuple(_CLES_RETIREES_CI_V1) + ('composition_imposee',))
 
 
 def etude_params_pour_copie(etude_params):

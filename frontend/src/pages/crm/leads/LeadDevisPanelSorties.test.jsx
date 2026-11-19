@@ -35,6 +35,7 @@ import stockApi from '../../../api/stockApi'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 // ALEA48 — le saut DOM est espionné : seul l'appel (cible) compte ici.
 vi.mock('../../../features/crm/workspace/jumpToField', () => ({ jumpToField: vi.fn() }))
@@ -315,9 +316,12 @@ describe('ALEA48 — 409 du devis automatique : bouton « Compléter »', () => 
 // rouge des erreurs), les alertes du serveur en avertissement dessous.
 describe('ALEA51 — devis automatique créé : bannière de succès', () => {
   const normaliser = (t) => t.replace(/[\u202f\u00a0]/g, ' ')
+  // COP2-W3 — la base est l'échantillon du contrat (référence, kWc, total TTC) ; seuls les champs que
+  // l'échantillon ne porte pas (économie, retour, postes, alerte) sont posés ici pour tester le bandeau.
+  const BASE = exempleContrat('ventes', 'assistant_devis_cree')
   const REPONSE = {
-    id: 413, reference: 'DEV-2026-0412', statut: 'brouillon', kwc: 65, nb_lignes: 14,
-    total_ttc: 212100, economie_an_1_ht: 102040, retour_ans: null,
+    ...BASE,
+    economie_an_1_ht: 102040, retour_ans: null,
     postes_apres_visite: ['Structure C&I', 'Câble solaire DC', 'Câble AC'],
     alertes: [{ code: 'a_chiffrer_visite', message: 'À chiffrer après la visite.', interne: true }],
   }
@@ -330,7 +334,7 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     })
     const banniere = await screen.findByTestId('ldp-succes-auto')
     expect(normaliser(banniere.textContent)).toContain(
-      'DEV-2026-0412 · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite')
+      `${BASE.reference} · 7 kWc · 73 000 MAD TTC · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite`)
     // retour_ans null (investissement incomplet) ⇒ aucun « retour » inventé.
     expect(banniere.textContent).not.toMatch(/retour/)
     const alertes = screen.getByTestId('ldp-alertes-auto')

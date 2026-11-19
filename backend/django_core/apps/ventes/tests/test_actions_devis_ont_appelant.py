@@ -36,8 +36,9 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: (VNT60, api-only jusqu'au panneau de vente VNT75/VNT79) + ``echeancier``
 #: (VNT66, même raison) + ``prolonger-validite`` (CADV82, api-only jusqu'au
 #: bouton « Prolonger ») + ``confirmer-avoir-revision`` (ATOT62, appelé par
-#: ``ventesApi.confirmerAvoirRevision``).
-NB_ACTIONS = 66
+#: ``ventesApi.confirmerAvoirRevision``) + ``lignes-assistant`` (COP2-V5,
+#: api-only : lue par l'assistant, action ``ventes.devis.lignes``).
+NB_ACTIONS = 67
 
 
 def _vues_devis():

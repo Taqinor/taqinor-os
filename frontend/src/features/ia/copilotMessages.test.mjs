@@ -27,7 +27,12 @@ import {
   nomEcranTaches,
   conversationLibreAbsente,
   phrasePlanPropose,
+  normaliserCapacites,
+  CAPACITES_PAR_DEFAUT,
+  etatCompteur,
+  marqueurImages,
 } from './copilotMessages.js'
+import { dimensionsReduites, sansPrefixeDataUrl, fichierImageOk } from './images.js'
 
 test('isConfigMissing reconnaît une réponse « clé API manquante »', () => {
   assert.ok(isConfigMissing('GROQ_API_KEY manquante dans le .env'))
@@ -201,4 +206,49 @@ test('ERR 3 — nom de l\'écran Tâches et conversation libre absente', () => {
     content: 'L\'assistant n\'est pas disponible pour le moment (réglage du serveur). Réessaie.' }]), true)
   assert.equal(conversationLibreAbsente([{ role: 'agent', content: 'GROQ_API_KEY manquante dans le .env' }]), true)
   assert.equal(conversationLibreAbsente([{ role: 'user', content: 'GROQ_API_KEY manquante' }]), false)
+})
+
+// COP2-W2 — capacités lues chez le serveur, compteur, marqueur d'image, réduction d'image (parties pures).
+test('COP2-W2 — capacités : défauts 2000 caractères / pas d\'image, jamais une valeur douteuse', () => {
+  assert.deepEqual(normaliserCapacites(undefined), { limite_question: 2000, images_acceptees: false })
+  assert.deepEqual(normaliserCapacites({}), { limite_question: 2000, images_acceptees: false })
+  assert.deepEqual(normaliserCapacites({ limite_question: 6000, images_acceptees: true }),
+    { limite_question: 6000, images_acceptees: true })
+  assert.deepEqual(normaliserCapacites({ limite_question: 'beaucoup', images_acceptees: 'oui' }),
+    { limite_question: 2000, images_acceptees: false })
+  assert.deepEqual(normaliserCapacites({ limite_question: -5 }), { limite_question: 2000, images_acceptees: false })
+  assert.equal(CAPACITES_PAR_DEFAUT.limite_question, 2000)
+})
+
+test('COP2-W2 — canSendQuestion tient compte de la limite ; compteur visible dès 80 %', () => {
+  assert.equal(canSendQuestion('a'.repeat(100), false, 100), true)
+  assert.equal(canSendQuestion('a'.repeat(101), false, 100), false)
+  assert.equal(canSendQuestion('a'.repeat(5000), false), true) // sans limite connue : comportement d'avant
+  assert.equal(canSendQuestion('  ', false, 100), false)
+  assert.deepEqual(etatCompteur('a'.repeat(79), 100), { n: 79, limite: 100, visible: false, depasse: false })
+  assert.deepEqual(etatCompteur('a'.repeat(80), 100), { n: 80, limite: 100, visible: true, depasse: false })
+  assert.deepEqual(etatCompteur('a'.repeat(101), 100), { n: 101, limite: 100, visible: true, depasse: true })
+  assert.equal(etatCompteur('', undefined).limite, 2000)
+})
+
+test('COP2-W2 — « [image jointe] » : le nombre seulement, jamais l\'image', () => {
+  assert.equal(marqueurImages({ role: 'user', content: 'x' }), '')
+  assert.equal(marqueurImages({ images_jointes: 1 }), '[image jointe]')
+  assert.equal(marqueurImages({ images_jointes: 3 }), '[3 images jointes]')
+  assert.equal(marqueurImages({ images_jointes: 0 }), '')
+  assert.equal(marqueurImages(null), '')
+})
+
+test('COP2-W2 — réduction : 1280 px au plus sur le grand côté, jamais d\'agrandissement', () => {
+  assert.deepEqual(dimensionsReduites(4000, 3000), { largeur: 1280, hauteur: 960 })
+  assert.deepEqual(dimensionsReduites(1080, 2400), { largeur: 576, hauteur: 1280 })
+  assert.deepEqual(dimensionsReduites(800, 600), { largeur: 800, hauteur: 600 })
+  assert.deepEqual(dimensionsReduites(0, 600), { largeur: 0, hauteur: 0 })
+  assert.deepEqual(dimensionsReduites(10000, 1), { largeur: 1280, hauteur: 1 })
+  assert.equal(sansPrefixeDataUrl('data:image/jpeg;base64,QUJD'), 'QUJD')
+  assert.equal(sansPrefixeDataUrl('QUJD'), '')
+  assert.equal(sansPrefixeDataUrl(null), '')
+  assert.equal(fichierImageOk({ type: 'image/png' }), true)
+  assert.equal(fichierImageOk({ type: 'application/pdf' }), false)
+  assert.equal(fichierImageOk(null), false)
 })

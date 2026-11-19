@@ -298,6 +298,33 @@ class VraiSdkTests(unittest.TestCase):
         self.assertEqual(envoyes[0]["cache_control"], {"type": "ephemeral", "ttl": "1h"})
         self.assertEqual(envoyes[0]["thinking"], {"type": "adaptive"})
 
+    def test_image_envoyee_par_le_sdk(self):
+        """F5 — le bloc image (forme des types du SDK installé : source base64)
+        part tel quel, avant le texte de la question, après l'avis « DONNÉE »."""
+        import anthropic
+        import httpx
+        envoyes = []
+
+        def transport(requete):
+            envoyes.append(json.loads(requete.content))
+            return httpx.Response(200, json=_rep([_texte("Lu.")]))
+        client = anthropic.Anthropic(api_key="k", max_retries=0, http_client=httpx.Client(
+            transport=httpx.MockTransport(transport)))
+        with mock.patch.object(mn, "_client", return_value=client):
+            r = mn.executer(question="q", systeme=SYSTEME, outils=[], conversation="",
+                            modele=MODELE, images=[IMAGE])
+        self.assertEqual(r["answer"], "Lu.")
+        self.assertEqual(envoyes[0]["messages"][0]["content"], [
+            _texte(mn.AVIS_IMAGES),
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                         "data": IMAGE["data"]}},
+            _texte("q")])
+
+
+#: Une image PNG minimale (signature + octets nuls), en base64.
+IMAGE = {"media_type": "image/png",
+         "data": "iVBORw0KGgoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+
 
 class FauxRedis:
     def __init__(self):
@@ -348,6 +375,32 @@ class ConversationTests(_Base):
                          ["user", "assistant", "user", "assistant"])
         self.assertEqual(self.redis.durees[mn.CLE_CONVERSATION % self.CONV],
                          48 * 3600)
+
+    def test_image_jamais_gardee_dans_la_conversation(self):
+        """F5 — l'image vit le temps de SON tour : la conversation gardée la
+        remplace par un texte et perd ses blocs de pensée (le passé a changé) ;
+        le tour suivant repart de ce passé, sans l'image ; le récapitulatif lit
+        la question."""
+        pensee = {"type": "thinking", "thinking": "", "signature": "sig-1"}
+        self.client = FauxClient([_rep([pensee, _appel("t1", "a")], stop="tool_use"),
+                                  _rep([pensee, _texte("C'est M. Essai.")])])
+        with mock.patch.object(mn, "_client", return_value=self.client):
+            mn.executer(question="Lis la capture", systeme=SYSTEME, outils=[_outil("a")],
+                        conversation=self.CONV, modele=MODELE, images=[IMAGE, IMAGE])
+        envoye = self.client.appels[0]["messages"][0]["content"]
+        self.assertEqual([b["type"] for b in envoye], ["text", "image", "image", "text"])
+        brut = self.redis.donnees[mn.CLE_CONVERSATION % self.CONV]
+        self.assertNotIn(IMAGE["data"], brut)
+        self.assertNotIn('"image"', brut)
+        self.assertNotIn("thinking", brut)
+        garde = self.garde()["messages"]
+        self.assertEqual([b["text"] for b in garde[0]["content"]],
+                         [mn.AVIS_IMAGES, mn.IMAGE_NON_GARDEE, mn.IMAGE_NON_GARDEE, "Lis la capture"])
+        self.assertTrue(mn._point_sur(garde))
+        self.assertEqual(mn._echanges(garde)[0][0], "Lis la capture")
+        r = self.jouer([_rep([_texte("R2")])], [_outil("a")], question="Q2", conversation=self.CONV)
+        self.assertEqual(r["answer"], "R2")
+        self.assertEqual(self.client.appels[0]["messages"][:len(garde)], garde)
 
     def test_second_tour_en_ajout_seul(self):
         self.tour_outil()

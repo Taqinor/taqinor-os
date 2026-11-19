@@ -42,6 +42,7 @@ CARTES = frozenset({
     'wa_message',     # texte prêt + lien wa.me (brouillon de suivi)
     'wa_devis',       # envoi de devis : {wa_url, message, links[], lead_id, devis_ids}
     'document',       # lien vers un PDF client (/proposal)
+    'devis_cree',     # devis brouillon créé : {devis_id, reference, total_ttc, composition[], alertes[]}
     'visite',         # visite planifiée : {visite, prochaine_touche}
     'diagnostic',     # état technique (admin) : santé, problèmes récents
     # Tâches (TCH112, `apps/taches/agent_actions.py`) : rendues par

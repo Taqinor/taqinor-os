@@ -131,8 +131,14 @@ PREFIXE_NOTE_VEILLE = 'Mise en veille '
 
 #: ACVI23 — les notes qu'écrit un geste INTERNE (``activity.log_archive``,
 #: ``log_restore``, ``leads_fusion.merge_leads``) : rien n'est sorti vers le client.
+#: COP2-C — la demande du client recopiée à la CRÉATION d'un lead par l'assistant
+#: (``leads_creation.creer_lead_pour_assistant``) : c'est ce que le client a écrit,
+#: pas une prise de contact de l'équipe — elle ne pose donc pas ``first_contacted_at``
+#: (sinon la promesse « rappelé en moins de N minutes » serait tenue sans appel).
+PREFIXE_NOTE_DEMANDE_CLIENT = 'Demande du client (saisie à la création) : '
 PREFIXES_NOTE_GESTE_INTERNE = (
-    'Lead archivé par ', 'Lead restauré par ', 'Fusion : ', 'Deux fiches client pour ce lead')
+    'Lead archivé par ', 'Lead restauré par ', 'Fusion : ', 'Deux fiches client pour ce lead',
+    PREFIXE_NOTE_DEMANDE_CLIENT)
 
 
 def est_note_de_geste_interne(activite):

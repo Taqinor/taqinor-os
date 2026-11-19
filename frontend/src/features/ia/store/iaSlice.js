@@ -1,6 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import iaApi from '../../../api/iaApi'
-import { marquerNote, construireContexte, ditUnePanne } from '../copilotMessages.js'
+import {
+  marquerNote, construireContexte, ditUnePanne, normaliserCapacites, CAPACITES_PAR_DEFAUT,
+} from '../copilotMessages.js'
 import { instantaneDiagnostic } from '../../../lib/tamponDiagnostic.js'
 import {
   ETATS, MESSAGE_INCERTAIN, messageDeReponse, carteDeConfirmation, messageDeSuite,
@@ -19,6 +21,9 @@ import {
 // ouverture précédente. `detail` = contexte posé par l'écran d'où part
 // l'événement « Demander à l'assistant » (cette question seulement).
 const questionDe = (arg) => (typeof arg === 'string' ? arg : arg?.question ?? '')
+// COP2-W2 — images jointes (`[{media_type, data}]`, base64 déjà réduit par l'écran) : elles partent dans la
+// requête, mais le magasin n'en garde que le NOMBRE (`images_jointes` du message) — jamais le contenu.
+const imagesDe = (arg) => (typeof arg === 'string' || !Array.isArray(arg?.images) ? [] : arg.images)
 
 // AIC91 — progression du tour : un identifiant aléatoire part avec la question,
 // l'écran sonde ses étapes toutes les 1,5 s jusqu'à la réponse (aucun flux SSE :
@@ -60,12 +65,26 @@ export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { reject
       diagnostic: (typeof arg === 'string' ? null : arg?.diagnostic)
         ?? (ditUnePanne(questionDe(arg)) ? instantaneDiagnostic() : null),
     })
-    const res = await iaApi.queryAgent(questionDe(arg), contexte, progressionId)
+    const images = imagesDe(arg)
+    // Sans image, l'appel garde EXACTEMENT sa forme d'avant (trois arguments).
+    const res = await iaApi.queryAgent(questionDe(arg), contexte, progressionId, ...(images.length ? [images] : []))
     return { ...res.data, recu_le: Date.now() }
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   } finally {
     clearInterval(sonde)
+  }
+})
+
+// COP2-W2 — capacités de l'assistant pour ce compte, lues chez le serveur à l'ouverture : longueur maximale
+// d'une question et images acceptées. UNE seule fonction : toute panne (route absente d'un serveur plus ancien,
+// réponse illisible) rend les valeurs par défaut — 2000 caractères, pas d'image —, jamais une erreur à l'écran.
+export const chargerCapacitesAssistant = createAsyncThunk('ia/chargerCapacitesAssistant', async () => {
+  try {
+    const res = await iaApi.getCapacitesAssistant?.()
+    return normaliserCapacites(res?.data)
+  } catch {
+    return { ...CAPACITES_PAR_DEFAUT }
   }
 })
 
@@ -194,6 +213,8 @@ const iaSlice = createSlice({
     agentError: null,
     // AIC91 — dernière étape du tour en cours (libellé du registre), ou null.
     etapes: [],
+    // COP2-W2 — ce que le serveur permet à ce compte (lu à l'ouverture ; défauts tant qu'il n'a pas répondu).
+    capacites: { ...CAPACITES_PAR_DEFAUT },
     // OCR
     ocrResult: null,
     ocrLoading: false,
@@ -276,7 +297,13 @@ const iaSlice = createSlice({
         state.agentLoading = true
         state.agentError = null
         state.etapes = []
-        state.messages.push({ role: 'user', content: questionDe(action.meta.arg) })
+        const nbImages = imagesDe(action.meta.arg).length
+        state.messages.push({
+          role: 'user', content: questionDe(action.meta.arg), ...(nbImages ? { images_jointes: nbImages } : {}),
+        })
+      })
+      .addCase(chargerCapacitesAssistant.fulfilled, (state, action) => {
+        state.capacites = action.payload
       })
       .addCase(queryAgent.fulfilled, (state, action) => {
         state.agentLoading = false

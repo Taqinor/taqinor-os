@@ -134,6 +134,11 @@ class IntentionComposition:
     #: d'un devis neuf ; un appelant qui recompose un devis EXISTANT passe
     #: ``regles_au_moins(devis, REGLES_CORRIGEES_2710)``.
     regles_2710: bool = True
+    #: COP2-V3 — COMPOSITION IMPOSÉE (devis automatique) : l'id de l'onduleur
+    #: VENDU et ``{'produit_id', 'nombre'}`` de la banque, déjà résolus par
+    #: ``domain/resolution_catalogue``. ``None`` (LE DÉFAUT) ⇒ inchangé.
+    onduleur_impose: object = None
+    batterie_imposee: object = None
 
 
 @dataclass(frozen=True)
@@ -215,6 +220,14 @@ def composer(intention):
     # Sans optimum « avec », la fusion joue à champs ÉGAUX : jamais plus la
     # forme commune réseau + hybride dans une même offre — sauf pour un devis
     # existant aux règles < 3, qui garde sa forme servie.
+    imposition = {
+        cle: getattr(intention, cle, None)
+        for cle in ('onduleur_impose', 'batterie_imposee')
+        if getattr(intention, cle, None) is not None}
+    if deux_options and imposition:
+        # COP2-V3 — une composition imposée est MONO-OPTION (le devis auto
+        # refuse ``les_deux`` en amont) : jamais une imposition ignorée.
+        raise ValueError('Composition imposée : forme mono-option seulement.')
     if deux_options and (avec or commun['regles_2710']):
         avec = avec or {}
         lignes = composition_deux_optimiseurs(
@@ -242,6 +255,7 @@ def composer(intention):
             hors_reseau=hors_reseau,
             batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
             modeles=getattr(intention, 'modeles', None),
+            **imposition,
             **commun)
     # QJR604 — LE BARÈME TRANSPORT est appliqué ICI, pour toutes les origines,
     # avant l'écriture des lignes (donc avant le cliché de marge et le gel du
@@ -508,6 +522,79 @@ def refus_modeles_designes(company, modeles):
     return erreurs
 
 
+def _fiche_tarifee(company, produit_id):
+    """COP2-V3 — la fiche ``produit_id`` du catalogue de la société si elle
+    est TARIFÉE, sinon ``None`` (inconnue, d'une autre société, archivée)."""
+    try:
+        cle = int(produit_id)
+    except (TypeError, ValueError):
+        return None
+    produit = next((p for p in catalogue_de_la_societe(company)
+                    if getattr(p, 'pk', None) == cle), None)
+    return produit if produit is not None and _has_price(produit) else None
+
+
+def refus_produits_imposes(company, onduleur_impose, batterie_imposee):
+    """COP2-V3 — modelé sur :func:`refus_modeles_designes` : les messages
+    FRANÇAIS des produits IMPOSÉS non servables (fiche introuvable ou non
+    tarifée). ``[]`` quand tout est servable. Jamais un remplaçant."""
+    erreurs = []
+    if company is None:
+        return erreurs
+    if onduleur_impose is not None and _fiche_tarifee(
+            company, onduleur_impose) is None:
+        erreurs.append(
+            "L'onduleur imposé (fiche produit #%s) est introuvable ou sans "
+            'prix dans votre catalogue : choisissez un onduleur tarifé du '
+            'catalogue.' % onduleur_impose)
+    if isinstance(batterie_imposee, dict) and _fiche_tarifee(
+            company, batterie_imposee.get('produit_id')) is None:
+        erreurs.append(
+            'La batterie imposée (fiche produit #%s) est introuvable ou sans '
+            'prix dans votre catalogue : choisissez une batterie tarifée du '
+            'catalogue.' % batterie_imposee.get('produit_id'))
+    return erreurs
+
+
+def _verifier_impose(intention, erreurs):
+    """COP2-V3 — l'étape ``verifier`` d'une composition IMPOSÉE : les produits
+    imposés sont contrôlés EUX-MÊMES (jamais le choix catalogue qu'ils
+    remplacent) ; ce qui n'est pas imposé garde l'exigence ordinaire."""
+    company = intention.company
+    onduleur_impose = getattr(intention, 'onduleur_impose', None)
+    batterie_imposee = getattr(intention, 'batterie_imposee', None)
+    erreurs.extend(refus_produits_imposes(
+        company, onduleur_impose, batterie_imposee))
+    scenario = (intention.scenario or '').strip().lower()
+    hors_reseau = bool(getattr(intention, 'hors_reseau', False))
+    veut_stockage = hors_reseau or scenario in (COMPOSITION_AVEC,
+                                                COMPOSITION_LES_DEUX)
+    if onduleur_impose is not None:
+        onduleur = _fiche_tarifee(company, onduleur_impose)
+    elif hors_reseau:
+        onduleur = _pick_product(company, _is_offgrid_inverter)
+        if onduleur is None:
+            erreurs.append(MSG_SANS_ONDULEUR_OFFGRID)
+    elif veut_stockage:
+        onduleur = _pick_product(company, _is_hybrid_inverter,
+                                 role='onduleur_hybride',
+                                 gamme=intention.gamme_nom_devis)
+        if onduleur is None:
+            erreurs.append(MSG_SANS_ONDULEUR_HYBRIDE)
+    else:
+        onduleur = _pick_product(company, _is_reseau_inverter,
+                                 role='onduleur_reseau',
+                                 gamme=intention.gamme_nom_devis)
+        if onduleur is None:
+            erreurs.append(MSG_SANS_ONDULEUR_RESEAU)
+    if veut_stockage and batterie_imposee is None:
+        if _pick_batterie(company, onduleur=onduleur) is None:
+            plage = _plage_batterie_de_l_onduleur(onduleur)
+            erreurs.append(message_batterie_incompatible(plage)
+                           if plage and plage[1] > 0 else MSG_SANS_BATTERIE)
+    return erreurs or None
+
+
 def verifier(intention):
     """Étape 4 — la composition demandée est-elle SERVABLE par ce catalogue ?
 
@@ -538,6 +625,12 @@ def verifier(intention):
     # repli sur le panneau le moins cher du même wattage.
     erreurs.extend(refus_modeles_designes(
         intention.company, getattr(intention, 'modeles', None)))
+
+    # COP2-V3 — composition IMPOSÉE : les produits imposés sont vérifiés
+    # eux-mêmes, jamais le choix catalogue qu'ils remplacent.
+    if (getattr(intention, 'onduleur_impose', None) is not None
+            or getattr(intention, 'batterie_imposee', None) is not None):
+        return _verifier_impose(intention, erreurs)
 
     scenario = (intention.scenario or '').strip().lower()
     company = intention.company

@@ -45,6 +45,7 @@ from app.core.config import (
     internal_headers,
     REDIS_PROPOSAL_URL,
 )
+from app.services import prompt_copilote
 
 logger = logging.getLogger(__name__)
 
@@ -275,9 +276,60 @@ def _normalize_error(resp, data) -> dict[str, Any]:
         detail = detail or "Vous n'avez pas les droits pour cette action."
     if len(detail) > _MESSAGE_MAX:
         detail = detail[:_MESSAGE_MAX - 1].rstrip() + "…"
-    return {"ok": False, "status": resp.status_code,
-            "error": detail or "La demande a ete refusee.",
-            "request_id": _request_id(resp, data)}
+    erreur = {"ok": False, "status": resp.status_code,
+              "error": detail or "La demande a ete refusee.",
+              "request_id": _request_id(resp, data)}
+    if resp.status_code in STATUTS_REFUS_DETAILLES:
+        details = details_du_refus(data)
+        if details:
+            erreur["details"] = details
+    return erreur
+
+
+# Copilote v2 (F2) — un refus METIER (400/409) dit souvent QUOI choisir : les
+# candidats d'une composition imposee (`choix`), le lead deja existant
+# (`doublon`, `lead_id`, `archive`, `ne_plus_contacter`), le champ fautif
+# (`field`). Seul `detail` (300 caracteres) survivait : le modele ne voyait
+# jamais les candidats. Liste BLANCHE de cles et de valeurs scalaires bornees ;
+# relayee au modele seulement copilote allume (`run_catalogue_action`).
+STATUTS_REFUS_DETAILLES = frozenset({400, 409})
+CHOIX_MAX = 10
+_CLES_CHOIX = ("produit_id", "nom", "marque", "kw", "kwh", "phase", "prix_ttc")
+_CLES_BOOLEENNES_REFUS = ("doublon", "archive", "ne_plus_contacter")
+_TEXTE_REFUS_MAX = 120
+
+
+def _scalaire_borne(valeur: Any) -> Any:
+    """Nombre, booleen, None ou texte tronque ; toute autre forme -> None."""
+    if valeur is None or isinstance(valeur, (bool, int, float)):
+        return valeur
+    if isinstance(valeur, str):
+        return valeur[:_TEXTE_REFUS_MAX]
+    return None
+
+
+def details_du_refus(data: Any) -> dict[str, Any]:
+    """Cles relayees d'un corps de refus (liste blanche) ; {} sans aucune."""
+    if not isinstance(data, dict):
+        return {}
+    details: dict[str, Any] = {}
+    champ = data.get("field")
+    if isinstance(champ, str) and champ.strip():
+        details["field"] = champ.strip()[:64]
+    choix = data.get("choix")
+    if isinstance(choix, list):
+        lignes = [{k: _scalaire_borne(c.get(k)) for k in _CLES_CHOIX if k in c}
+                  for c in choix[:CHOIX_MAX] if isinstance(c, dict)]
+        lignes = [ligne for ligne in lignes if ligne]
+        if lignes:
+            details["choix"] = lignes
+    for cle in _CLES_BOOLEENNES_REFUS:
+        if isinstance(data.get(cle), bool):
+            details[cle] = data[cle]
+    lead = data.get("lead_id")
+    if isinstance(lead, int) and not isinstance(lead, bool) and lead > 0:
+        details["lead_id"] = lead
+    return details
 
 
 # COP-A4 — message d'erreur court, sans enveloppe technique brute.
@@ -706,11 +758,82 @@ def _libelles_objets(
             if isinstance(data.get(genre), str) and data[genre].strip()}
 
 
+#: Copilote v2 (F3) — libellé humain des entrées courantes d'une proposition
+#: (repli : `title` du schéma, sinon la clé lisible).
+LIBELLES_ENTREES = {
+    "nom": "Nom", "prenom": "Prénom", "societe": "Société", "telephone": "Téléphone",
+    "whatsapp": "WhatsApp", "email": "E-mail", "ville": "Ville", "adresse": "Adresse",
+    "type_installation": "Type d'installation", "raccordement": "Raccordement",
+    "batterie_souhaitee": "Batterie souhaitée", "taille_souhaitee_kwc": "Taille souhaitée (kWc)",
+    "note": "Note", "creer_quand_meme": "Créer même si un lead existe",
+    "perdu": "Perdu", "motif_perte": "Motif de perte", "tags": "Étiquettes",
+    "owner": "Responsable", "lead": "Lead", "lead_id": "Lead", "client": "Client",
+    "nb_panneaux": "Nombre de panneaux", "panneau_produit_id": "Panneau (produit)",
+    "onduleur_produit_id": "Onduleur (produit)", "onduleur_kw": "Onduleur (kW)",
+    "onduleur_phase": "Phase de l'onduleur", "batterie_produit_id": "Batterie (produit)",
+    "batterie_kwh": "Batterie (kWh)", "taux_tva": "Taux de TVA", "jours": "Jours",
+}
+#: Texte libre d'une entrée (une note, un message) tronqué dans l'aperçu.
+APERCU_TEXTE_MAX = 200
+
+
+def _libelle_entree(action: dict[str, Any], cle: str) -> str:
+    spec = ((action.get("inputs") or {}).get("properties") or {}).get(cle)
+    titre = spec.get("title") if isinstance(spec, dict) else None
+    if isinstance(titre, str) and titre.strip():
+        return titre.strip()
+    if cle in LIBELLES_ENTREES:
+        return LIBELLES_ENTREES[cle]
+    lisible = cle.replace("_", " ").strip()
+    return lisible[:1].upper() + lisible[1:]
+
+
+def _valeur_apercu(valeur: Any) -> str:
+    """Valeur lisible sur UNE ligne : jamais un repr Python d'une liste ou d'un
+    dict ; texte replié sur une ligne et tronqué à `APERCU_TEXTE_MAX`."""
+    if isinstance(valeur, bool):
+        return "oui" if valeur else "non"
+    if isinstance(valeur, float) and valeur.is_integer():
+        return str(int(valeur))
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(_valeur_apercu(v) for v in valeur if v is not None)
+    if isinstance(valeur, dict):
+        return " ; ".join(f"{k} : {_valeur_apercu(v)}" for k, v in valeur.items()
+                          if v is not None)
+    texte = " ".join(str(valeur).split())
+    if len(texte) > APERCU_TEXTE_MAX:
+        texte = texte[:APERCU_TEXTE_MAX - 1].rstrip() + "…"
+    return texte
+
+
+def _apercu_multiligne(action: dict[str, Any], inputs: dict[str, Any],
+                       libelles: dict[str, str] | None) -> str:
+    """Copilote v2 (F3) — première ligne : l'action (et le NOM des objets
+    désignés) ; puis UNE ligne par autre entrée, « Libellé : valeur »."""
+    summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    lignes = [(action.get("label") or summary) + " — " + " ; ".join(libelles.values())
+              if libelles else summary]
+    proprietes = list(((action.get("inputs") or {}).get("properties") or {}))
+    ordre = [c for c in proprietes if c in inputs] + sorted(c for c in inputs if c not in proprietes)
+    for cle in ordre:
+        if libelles and cle in libelles:
+            continue
+        valeur = _valeur_apercu(inputs[cle])
+        if valeur:
+            lignes.append(f"{_libelle_entree(action, cle)} : {valeur}")
+    return "\n".join(lignes)
+
+
 def _human_preview(action: dict[str, Any], inputs: dict[str, Any],
-                   libelles: dict[str, str] | None = None) -> str:
+                   libelles: dict[str, str] | None = None,
+                   multiligne: bool = False) -> str:
     """Texte court montre a l'utilisateur avant confirmation. Avec des
     libelles (COP-A5) : « Label — <libelle(s)> (autres entrees k=v) », les
-    entrees deja nommees n'etant pas repetees ; sinon la forme historique."""
+    entrees deja nommees n'etant pas repetees ; sinon la forme historique.
+    `multiligne` (copilote allume, F3) : une ligne par entree, libelles
+    humains, texte libre tronque."""
+    if multiligne:
+        return _apercu_multiligne(action, inputs, libelles)
     summary = action.get("confirm_summary") or action.get("label") or action["key"]
     if libelles:
         texte = (action.get("label") or summary) + " — " + " ; ".join(libelles.values())
@@ -822,6 +945,50 @@ def noter_contenu_tiers(ctx: Optional[ActionContext], origine: str) -> None:
 
 def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
+
+
+def noter_message_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+    """Le MESSAGE de l'utilisateur porte lui-même un texte tiers (texte collé
+    ou cité, liste — `relais_copilote.question_porte_un_texte_tiers`) ou une
+    image : marque A5 du tour ET borne serrée des créations de devis."""
+    noter_contenu_tiers(ctx, origine)
+    if ctx is not None:
+        ctx.message_tiers = True
+
+
+# Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` ÉCRIVENT (un
+# devis brouillon) sans confirmation : bornés par tour, sous les deux moteurs
+# (ce chemin est le seul qui exécute une action du catalogue). Au plus deux
+# devis par message ; un seul quand le message porte un texte tiers (collé,
+# cité) ou une image. Un refus métier net (400/403/404/409 : rien d'écrit) ne
+# compte pas ; tout autre échec compte (issue incertaine).
+CREATIONS_DEVIS = frozenset({"ventes.devis.composer", "ventes.devis.creer_auto"})
+CREATIONS_DEVIS_PAR_TOUR = 2
+CREATIONS_DEVIS_MESSAGE_TIERS = 1
+REFUS_CREATION_DEVIS_TIERS = (
+    "Action refusée : un seul devis par message collé ou par image ; rien n'est "
+    "créé. Dis-lui de confirmer ou de reformuler pour en créer un autre.")
+REFUS_CREATIONS_DEVIS = (
+    "Action refusée : deux devis déjà créés pour ce message ; rien n'est créé. "
+    "Dis-lui de le demander dans un nouveau message.")
+
+
+def garde_creations_devis(ctx: Optional[ActionContext], action: dict[str, Any]) -> Optional[str]:
+    """None = la création part ; sinon le refus rendu au modèle."""
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return None
+    faites = int(getattr(ctx, "creations_devis", 0) or 0)
+    if getattr(ctx, "message_tiers", False) and faites >= CREATIONS_DEVIS_MESSAGE_TIERS:
+        return REFUS_CREATION_DEVIS_TIERS
+    return REFUS_CREATIONS_DEVIS if faites >= CREATIONS_DEVIS_PAR_TOUR else None
+
+
+def compter_creation_devis(ctx: Optional[ActionContext], action: dict[str, Any],
+                           res: dict[str, Any]) -> None:
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return
+    if res.get("ok") or res.get("status") not in STATUTS_REPONSE_NORMALE:
+        ctx.creations_devis = int(getattr(ctx, "creations_devis", 0) or 0) + 1
 
 
 def _lire_pour_echo(ctx: ActionContext, gabarit: str, ident: Any) -> Optional[dict]:
@@ -1001,7 +1168,9 @@ def run_catalogue_action(
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
-        preview = _human_preview(action, inputs, _libelles_objets(ctx, action, inputs))
+        preview = _human_preview(
+            action, inputs, _libelles_objets(ctx, action, inputs),
+            multiligne=prompt_copilote.copilote_allume(getattr(ctx, "catalogue_tour", None)))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",
@@ -1026,8 +1195,12 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
+    refus = garde_creations_devis(ctx, action)  # revue S2 — devis bornes par tour
+    if refus is not None:
+        return refus
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
+    compter_creation_devis(ctx, action, res)
     if not res.get("ok"):
         # A5 (revue F3 #1) — le texte d'erreur de l'ERP entre dans le tour.
         noter_contenu_tiers(ctx, action["key"])
@@ -1037,7 +1210,13 @@ def run_catalogue_action(
                 "type": "erreur", "intention": "bug", "status": res.get("status"),
                 "outil": action["key"], "message": str(res.get("error", ""))[:200],
                 "request_id": res.get("request_id")})
-        return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
+        texte = f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
+        # Copilote v2 (F2) — les candidats / le doublon du refus, copilote
+        # allume seulement (eteint : le texte d'avant, octet pour octet).
+        details = res.get("details")
+        if details and prompt_copilote.copilote_allume(getattr(ctx, "catalogue_tour", None)):
+            texte += " Détails du refus : " + json.dumps(details, ensure_ascii=False)
+        return texte
     result = {
         "type": "result", "action_key": action["key"],
         "libelle": _libelle_action(action), "carte": action.get("carte"),

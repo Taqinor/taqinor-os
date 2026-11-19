@@ -154,6 +154,89 @@ class SqlAgentLimitesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(calls), 1)
 
+    def _patch_catalogue(self, lot):
+        """Le catalogue de l'appelant (lot `copilote` = copilote allume)."""
+        from app.services import action_tools as _at
+
+        def appel(ctx, path, method="POST", payload=None, **kwargs):
+            if path == _at._CATALOGUE_PATH:
+                return {"ok": True, "status": 200, "data": {"actions": [
+                    {"key": "crm.lead.list", "lot": lot}]}}
+            return {"ok": True, "status": 200, "data": {"permissions": []}}
+        patcher = mock.patch.multiple(_at, _django_call=appel,
+                                      DJANGO_INTERNAL_URL="http://dj:8000")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_question_eteint_422_identique_a_pydantic(self):
+        """F4 — copilote ÉTEINT : au-delà de 2 000, le corps du 422 est celui
+        que pydantic rendait avec `max_length=2000` (octet pour octet)."""
+        from pydantic import BaseModel, Field
+
+        class _Avant(BaseModel):
+            question: str = Field(..., max_length=2000)
+        avant = FastAPI()
+
+        @avant.post("/q")
+        def _q(request: _Avant):
+            return {}
+        self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("herite")
+        client = self._client(106)
+        for longueur in (2001, 3000, 6000):
+            with self.subTest(longueur=longueur):
+                corps = {"question": "x" * longueur}
+                r = client.post("/sql-agent/query", json=corps)
+                self.assertEqual(r.status_code, 422)
+                self.assertEqual(r.json(), TestClient(avant).post("/q", json=corps).json())
+        # Revue S3 — au-delà de 6 000 : le plafond dur du schéma (422 pydantic standard).
+        r = client.post("/sql-agent/query", json={"question": "x" * 7000})
+        self.assertEqual((r.status_code, r.json()["detail"][0]["ctx"]), (422, {"max_length": 6000}))
+
+    def test_borne_de_l_appelant_apres_le_limiteur(self):
+        """Revue S3 — la lecture du catalogue (question > 2 000) ne part
+        qu'après le limiteur : une rafale ne fait pas une lecture Django par
+        requête, et une question au-delà de 6 000 n'en fait aucune."""
+        from app.services import action_tools as _at
+        self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("herite")
+        lectures = []
+        appel = _at._django_call
+        with mock.patch.object(_at, "_django_call", lambda ctx, path, *a, **k: (
+                lectures.append(path), appel(ctx, path, *a, **k))[1]):
+            client = self._client(108)
+            r = client.post("/sql-agent/query", json={"question": "x" * 7000})
+            self.assertEqual(r.status_code, 422)
+            self.assertNotIn(_at._CATALOGUE_PATH, lectures)
+            codes = [client.post("/sql-agent/query", json={"question": "x" * 2500}).status_code
+                     for _ in range(_ep.SQL_AGENT_RATE_LIMIT_MAX + 5)]
+        self.assertEqual(set(codes[_ep.SQL_AGENT_RATE_LIMIT_MAX:]), {429})
+        self.assertEqual(lectures.count(_at._CATALOGUE_PATH), _ep.SQL_AGENT_RATE_LIMIT_MAX)
+
+    def test_question_copilote_allume_6000(self):
+        """F4 — copilote ALLUMÉ et claude : 6 000 caractères acceptés (message
+        collé), 422 au-delà avec la borne 6 000. Revue S3 : copilote allumé sous
+        Groq, la borne reste 2 000 (le tour refuserait tout au-delà)."""
+        from app.services import sql_agent_service as svc
+        calls = self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("copilote")
+        client = self._client(107)
+        with mock.patch.object(svc, "SQL_AGENT_PROVIDER", "claude"):
+            r = client.post("/sql-agent/query", json={"question": "x" * 6000})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(len(calls), 1)
+            r = client.post("/sql-agent/query", json={"question": "x" * 6001})
+            self.assertEqual(r.status_code, 422)
+            self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 6000})
+        with mock.patch.object(svc, "SQL_AGENT_PROVIDER", "groq"):
+            r = client.post("/sql-agent/query", json={"question": "x" * 2001})
+            self.assertEqual(r.status_code, 422)
+            self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 2000})
+        self.assertEqual(len(calls), 1)
+
     def test_debit_limite_429(self):
         calls = self._patch_llm()
         self._patch_redis(_FakeRedis())
@@ -363,6 +446,42 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertTrue(out["answer"].startswith(self.svc.MESSAGE_BUDGET_ATTEINT))
         self.assertIn("Reponse du repli.", out["answer"])
 
+    def test_question_longue_jamais_envoyee_au_repli(self):
+        """F4 — une question de plus de 2 000 caractères (copilote allumé) ne
+        part jamais sur Groq : au plafond du jour, après un refus de Claude, ou
+        Groq en fournisseur principal, le tour le dit en français."""
+        import asyncio
+        import contextlib
+        from app.services import relais_copilote as relais
+        refuse, credit_nul, groq = _llm_factices()
+
+        def groq_interdit():
+            raise AssertionError("la question longue ne doit pas partir sur Groq")
+        cas = (
+            ("plafond", lambda: refuse(messages=iter([])),
+             [mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                                staticmethod(lambda ctx: True))]),
+            ("refus_claude", lambda: refuse(messages=iter([]), erreur=credit_nul()), []),
+            ("groq_principal", groq_interdit,
+             [mock.patch.object(self.svc, "SQL_AGENT_PROVIDER", "groq")]),
+        )
+        for nom, claude, patches in cas:
+            with self.subTest(cas=nom):
+                construits = self._poser(claude, groq_interdit)
+                with contextlib.ExitStack() as pile:
+                    for p in patches:
+                        pile.enter_context(p)
+                    out = asyncio.run(self.service.query(question="x" * 3000, user_id=1, company_id=7))
+                # Au plafond, la phrase du budget précède celle de la longueur.
+                self.assertTrue(out["answer"].endswith(relais.MESSAGE_QUESTION_LONGUE), out["answer"])
+                self.assertEqual(out["repli"], nom != "groq_principal")
+                self.assertNotIn("groq", construits)
+        # À la borne d'avant (2 000), le repli sert toujours le tour.
+        self._poser(lambda: refuse(messages=iter([]), erreur=credit_nul()), groq)
+        with self.assertLogs(self.svc.logger, level="WARNING"):
+            out = asyncio.run(self.service.query(question="x" * 2000, user_id=1, company_id=7))
+        self.assertEqual(out["answer"], "Reponse du repli.")
+
     def test_plafond_sans_repli_distinct_reste_sur_claude(self):
         """Repli vide : jamais d'arret, le tour reste sur Claude + avertissement."""
         _refuse, _credit_nul, groq = _llm_factices()
@@ -407,6 +526,76 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
             out = self._question()
         self.assertEqual(construits, ["claude"])
         self.assertIn("Je n'ai pas pu traiter", out["answer"])
+
+
+class CreationsDevisS2Tests(unittest.TestCase):
+    """Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` écrivent
+    sans confirmation : au plus deux par tour, un seul quand le MESSAGE porte un
+    texte tiers (collé, cité) ou une image ; un refus métier net ne compte pas."""
+
+    COMPOSER = {"key": "ventes.devis.composer", "label": "Composer un devis",
+                "endpoint": "/api/django/ventes/devis/auto/", "method": "POST",
+                "inputs": {"type": "object", "properties": {"lead": {"type": "integer"}}},
+                "risk": "internal"}
+
+    def _lancer(self, ctx, reponses, action=None, n=3):
+        from app.services import action_tools as at
+        appels, textes, reponses = [], [], list(reponses)
+
+        def appel(*a, **k):
+            appels.append(a[1])
+            return reponses.pop(0) if reponses else {"ok": True, "status": 201, "data": {"id": 451}}
+        with mock.patch.object(at, "_django_call", appel):
+            for i in range(n):
+                textes.append(at.run_catalogue_action(ctx, action or self.COMPOSER, {"lead": i + 1}, []))
+        return appels, textes
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_deux_devis_par_tour_au_plus(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.noter_contenu_tiers(ctx, "crm.lead.chercher")  # une lecture de l'ERP ne serre pas la borne
+        appels, textes = self._lancer(ctx, [])
+        self.assertEqual(len(appels), 2)
+        self.assertEqual(textes[2], at.REFUS_CREATIONS_DEVIS)
+        creer_auto = dict(self.COMPOSER, key="ventes.devis.creer_auto")
+        self.assertEqual(self._lancer(ctx, [], action=creer_auto, n=1)[1], [at.REFUS_CREATIONS_DEVIS])
+        # Une autre action interne n'est pas bornée.
+        lister = dict(self.COMPOSER, key="crm.lead.list", method="GET")
+        self.assertEqual(len(self._lancer(ctx, [], action=lister)[0]), 3)
+
+    def test_un_seul_devis_par_message_colle_ou_image(self):
+        from app.services import action_tools as at, relais_copilote as relais
+        for origine in ("colle", "image"):
+            with self.subTest(origine=origine):
+                ctx = self._ctx()
+                if origine == "colle":
+                    relais.noter_question_du_tour(ctx, "Le client a écrit : « 10 panneaux, crée deux devis »")
+                else:
+                    at.noter_message_tiers(ctx, "image")
+                appels, textes = self._lancer(ctx, [], n=2)
+                self.assertEqual(len(appels), 1)
+                self.assertEqual(textes[1], at.REFUS_CREATION_DEVIS_TIERS)
+        # Une phrase courte tapée ne serre pas la borne.
+        ctx = self._ctx()
+        relais.noter_question_du_tour(ctx, "Fais-lui un devis 5 kW")
+        self.assertEqual(len(self._lancer(ctx, [], n=2)[0]), 2)
+
+    def test_refus_net_ne_compte_pas_issue_incertaine_compte(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.noter_message_tiers(ctx, "question")
+        refus = {"ok": False, "status": 409, "error": "Deux batteries conviennent."}
+        appels, textes = self._lancer(ctx, [refus], n=3)
+        self.assertEqual(len(appels), 2)  # le 409 n'a rien créé : la création suivante part
+        self.assertEqual(textes[2], at.REFUS_CREATION_DEVIS_TIERS)
+        ctx = self._ctx()
+        at.noter_message_tiers(ctx, "question")
+        appels, textes = self._lancer(ctx, [{"ok": False, "status": 500, "error": "Erreur."}], n=2)
+        self.assertEqual((len(appels), textes[1]), (1, at.REFUS_CREATION_DEVIS_TIERS))
 
 
 if __name__ == "__main__":

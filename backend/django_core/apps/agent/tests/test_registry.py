@@ -399,6 +399,25 @@ class GuardedWriteActionsTest(TestCase):
         self.assertTrue(action.description.startswith('Sert à'))
         self.assertEqual(action.method.upper(), 'POST')
 
+    def test_creation_de_lead_copilote_allume_ou_eteint(self):
+        """COP2-C — ``crm.lead.create`` reste tel quel pour un compte dont le
+        copilote est ÉTEINT (lot « herite », rien ne change pour lui) ;
+        copilote ALLUMÉ, c'est ``crm.lead.creer`` (lot « copilote », garde de
+        doublon) qui est servi, jamais les deux."""
+        par_cle = self._by_key()
+        self.assertEqual(par_cle['crm.lead.create'].lot, 'herite')
+        self.assertEqual(par_cle['crm.lead.creer'].lot, 'copilote')
+        self.assertEqual(par_cle['crm.lead.creer'].required_permission,
+                         'crm_creer')
+        self.assertEqual(par_cle['crm.lead.creer'].risk, RISK_OUTWARD)
+        for reglage, attendu in (('aucun', ('crm.lead.create',)),
+                                 ('tous', ('crm.lead.creer',))):
+            with self.settings(ASSISTANT_COPILOTE=reglage):
+                cles = {a.key for a in for_user(self.writer)}
+            vus = tuple(sorted(k for k in cles if k in (
+                'crm.lead.create', 'crm.lead.creer')))
+            self.assertEqual(vus, attendu, reglage)
+
     def test_actions_retirees_du_catalogue(self):
         """COP-G2 — ``ventes.devis.proposal_pdf`` doublonnait
         ``ventes.devis.generer_pdf`` (même route /proposal)."""

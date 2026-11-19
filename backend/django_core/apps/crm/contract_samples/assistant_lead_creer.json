@@ -1,0 +1,39 @@
+{
+  "endpoint": "POST /api/django/crm/assistant/leads/creer/",
+  "pourquoi": "COP2-C (PACT10, 18/11/2026) — créer un lead depuis ce qu'une demande de client contient (un message WhatsApp collé, une capture). Corps : `nom` (obligatoire), `prenom`, `societe`, `telephone`, `whatsapp`, `email`, `ville`, `adresse`, `type_installation`, `raccordement`, `batterie_souhaitee`, `taille_souhaitee_kwc`, `note` (texte libre, versé au fil de la fiche — interne, jamais envoyé au client), `creer_quand_meme` (booléen). Société, responsable, étape et source sont posés par le serveur, jamais lus du corps. MÊME chemin de création que l'écran « nouveau lead » (journal de création, base légale, relance, score, cadence de contact). Garde de doublon : un lead de la PORTÉE de l'utilisateur au même téléphone, WhatsApp ou e-mail normalisé → 409 `doublon` qui le nomme et rien n'est créé, sauf `creer_quand_meme=true` ; un lead hors de sa portée compte comme absent (rien n'en est dit). Un rôle sans `client_pii_voir` qui envoie un téléphone, un WhatsApp ou un e-mail reçoit un 400 nommant le champ (jamais un lead créé sans son numéro en silence). Réponse = la forme de `assistant_lead_resume.json` + `cree` : c'est la donnée de la carte `fiche_lead`.",
+  "exemple": {
+    "identite": {
+      "id": 1701,
+      "nom": "Essai",
+      "prenom": "Karim",
+      "societe": "",
+      "ville": "Casablanca",
+      "telephone": "+212661007731"
+    },
+    "etape": "NEW",
+    "contact_prefere": "whatsapp",
+    "chatter": [
+      {
+        "type": "note",
+        "champ": "",
+        "texte": "Demande du client (saisie à la création) : 10 panneaux, onduleur triphasé 10 kW, batterie 5 kWh.",
+        "le": "2026-11-18T22:40:00+00:00"
+      }
+    ],
+    "devis": [],
+    "visites": [],
+    "prochaine_touche": null,
+    "alertes": [],
+    "cree": true
+  },
+  "exemple_409_doublon": {
+    "detail": "Ce numéro est déjà celui du lead « Karim Alami » (lead 1637, étape Nouveau, responsable meryem). Rien n'a été créé.",
+    "doublon": true,
+    "lead_id": 1637,
+    "nom": "Karim Alami",
+    "etape": "NEW",
+    "responsable": "meryem",
+    "archive": false,
+    "ne_plus_contacter": false
+  }
+}

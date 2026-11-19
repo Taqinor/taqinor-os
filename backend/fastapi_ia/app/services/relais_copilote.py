@@ -154,6 +154,99 @@ def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
     return ctx.catalogue_tour
 
 
+# ── Copilote v2 (F4) — ce que l'appelant peut envoyer ────────────────────────
+
+#: Longueur d'une question (caractères) : 2 000 comme avant (422 au-delà),
+#: 6 000 quand le copilote est allumé pour l'appelant (message de client collé).
+LIMITE_QUESTION = 2000
+LIMITE_QUESTION_COPILOTE = 6000
+#: Le modèle de repli (Groq : 8 000 jetons par minute) ne prend jamais plus
+#: que la limite d'avant : au-delà, le tour le dit au lieu de partir.
+MESSAGE_QUESTION_LONGUE = (
+    "Ta demande est trop longue pour le modèle de secours en service en ce "
+    "moment (2 000 caractères au plus). Raccourcis-la ou colle seulement "
+    "l'essentiel du message, puis renvoie-la.")
+
+
+def question_trop_longue_pour(fournisseur: Optional[str], question) -> bool:
+    """Vrai si un tour servi par ``fournisseur`` (hors claude) recevrait une
+    question au-delà de :data:`LIMITE_QUESTION`."""
+    return ((fournisseur or "").lower() != "claude"
+            and len(question or "") > LIMITE_QUESTION)
+
+
+def reponse_question_longue(fournisseur: Optional[str]) -> dict[str, Any]:
+    """Le tour refusé, dit en français, à la forme du retour de `_run_agent`
+    (aucun appel au modèle ; l'appelant pose `repli` et `modele`)."""
+    return {"answer": MESSAGE_QUESTION_LONGUE, "sql_query": "", "data": None,
+            "action_performed": False, "proposal": None, "result": None,
+            "cartes": [], "moteur": MOTEUR_LANGCHAIN, "manuel_present": False,
+            "intention": None, "erreur": None, "outils_appeles": [],
+            "tokens": {"cache_read": 0, "cache_write": 0, "input": 0, "output": 0}}
+
+
+def capacites(ctx) -> dict[str, Any]:
+    """Contrat `assistant_reponse.json` → `capacites` : la longueur de question
+    permise à l'appelant et s'il peut joindre des images. Lu du catalogue de
+    Django (copilote allumé ou non pour CE compte), jamais d'un réglage du
+    navigateur. Sans relais Django : les valeurs d'avant (2 000, aucune image)."""
+    from app.services.sql_agent_service import SQL_AGENT_PROVIDER
+    catalogue = catalogue_du_tour(ctx)
+    copilote = prompt_copilote.copilote_allume(catalogue)
+    # Revue S3 — 6 000 seulement si claude sert le tour : ailleurs (Groq)
+    # `_run_agent` refuse tout au-delà de 2 000 (`question_trop_longue_pour`).
+    longue = copilote and (SQL_AGENT_PROVIDER or "").lower() == "claude"
+    return {"limite_question": LIMITE_QUESTION_COPILOTE if longue else LIMITE_QUESTION,
+            "images_acceptees": bool(IMAGES_ACCEPTEES and copilote
+                                     and moteur_natif_actif(catalogue, SQL_AGENT_PROVIDER))}
+
+
+#: Images jointes à une question (F5) : servies par le moteur natif seulement.
+IMAGES_ACCEPTEES = True
+#: Réponse du tour quand une image ne peut pas être lue (jamais ignorée en silence).
+MESSAGE_IMAGE_ILLISIBLE = "Je ne peux pas lire l'image ici : colle le texte du message."
+#: Marqueur d'une image dans l'historique de l'écran et dans le journal
+#: (l'image elle-même n'y entre jamais).
+MARQUEUR_IMAGE = "[image jointe]"
+
+
+def question_marquee(question: str, images: Optional[list]) -> str:
+    """La question telle que l'historique et le journal la gardent : son
+    texte, puis un marqueur par image jointe (jamais l'image)."""
+    if not images:
+        return question
+    return f"{question}\n\n" + " ".join([MARQUEUR_IMAGE] * len(images))
+
+
+def tour_avec_images(service, question: str, company_id: int, user_id: int, ctx,
+                     contexte: Optional[dict], catalogue: list, images: list) -> dict[str, Any]:
+    """F5 — un tour dont la question porte des images : moteur natif (claude,
+    copilote allumé, budget du jour non atteint) seulement. Ailleurs, ou si le
+    moteur natif ne sert pas le tour, le tour répond `MESSAGE_IMAGE_ILLISIBLE`
+    — jamais un tour LangChain qui aurait laissé l'image de côté. L'image est
+    un CONTENU TIERS : le tour est marqué (A5)."""
+    from app.services.action_tools import noter_message_tiers
+    from app.services import sql_agent_service as svc
+    vue = question_marquee(question, images)
+    noter_message_tiers(ctx, "image")
+    sortie = None
+    try:
+        if moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER) and not service._budget_atteint(ctx):
+            sortie = tour_natif(service, question, company_id, user_id, ctx, contexte, catalogue,
+                                images=images)
+    except Exception as exc:  # le tour répond quand même, honnêtement
+        logger.warning("Tour avec images impossible : %s", exc)
+    if sortie is None:
+        service._ajouter_historique(user_id, [
+            {"role": "user", "content": vue},
+            {"role": "agent", "content": MESSAGE_IMAGE_ILLISIBLE, "cartes": [],
+             "contenu_tiers": True}])
+        sortie = {"answer": MESSAGE_IMAGE_ILLISIBLE, "sql_query": "", "data": None,
+                  "action_performed": False, "proposal": None, "result": None,
+                  "cartes": [], "moteur": MOTEUR_LANGCHAIN, "outils_appeles": []}
+    return {**sortie, "question_journal": vue}
+
+
 # ── A5 — un texte tiers est-il entré dans le tour ? (le SERVEUR le dit) ──────
 # Le marquage vit sur le contexte du tour ; `action_tools.garde_ecriture_taches`
 # le lit avant toute écriture `taches.*` : le modèle ne peut ni l'effacer ni
@@ -188,10 +281,11 @@ def question_porte_un_texte_tiers(question) -> bool:
 
 
 def noter_question_du_tour(ctx, question) -> None:
-    """Une liste ou un texte collé dans la question marque le tour (A5)."""
+    """Une liste ou un texte collé dans la question marque le tour (A5) et
+    borne ses créations de devis à une (revue S2)."""
     if ctx is not None and question_porte_un_texte_tiers(question):
-        from app.services.action_tools import noter_contenu_tiers
-        noter_contenu_tiers(ctx, "question")
+        from app.services.action_tools import noter_message_tiers
+        noter_message_tiers(ctx, "question")
 
 
 # ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────
@@ -676,11 +770,14 @@ def _outil_deja_appele(prep: Optional[dict], collecteur: list) -> bool:
 
 
 def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
-               contexte: Optional[dict], catalogue: list) -> Optional[dict]:
+               contexte: Optional[dict], catalogue: list,
+               images: Optional[list] = None) -> Optional[dict]:
     """Un tour servi par le moteur natif quand il est actif pour ce compte ;
     None = le tour est servi par LangChain (moteur éteint, indisponible, ou
     panne AVANT tout appel d'outil — journalisée). Une panne APRÈS un appel
-    d'outil n'est jamais rejouée (doublon) : réponse honnête + cartes."""
+    d'outil n'est jamais rejouée (doublon) : réponse honnête + cartes.
+    `images` (F5) : blocs image du tour ; l'historique de l'écran garde la
+    question marquée (`question_marquee`), jamais l'image."""
     from app.services import moteur_natif
     from app.services import sql_agent_service as svc
 
@@ -688,20 +785,21 @@ def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
         return None
     collecteur: list = []
     prep = None
+    vue = question_marquee(question, images)
     try:
         prep = _preparer(service, question, company_id, ctx, catalogue, collecteur)
         rendu = moteur_natif.executer(
             question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
             outils=prep["outils"], conversation=conversation_de(company_id, user_id),
-            **prep["reglages"], **_marques_natives(ctx))
-        return _sortie_native(service, question, user_id, rendu, collecteur, prep)
+            **({"images": images} if images else {}), **prep["reglages"], **_marques_natives(ctx))
+        return _sortie_native(service, vue, user_id, rendu, collecteur, prep)
     except Exception as exc:
         if prep is None or not _outil_deja_appele(prep, collecteur):
             logger.warning("Moteur natif indisponible (%s) : tour servi par LangChain.", exc)
             return None
         logger.error("Moteur natif en panne après un appel d'outil : %s", exc)
         return _reponse_native(
-            service, question, user_id, MESSAGE_ACTION_INTERROMPUE, collecteur,
+            service, vue, user_id, MESSAGE_ACTION_INTERROMPUE, collecteur,
             prep, {}, {"status": 500, "outil": "moteur_natif", "message": str(exc)[:200]})
 
 

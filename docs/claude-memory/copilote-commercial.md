@@ -66,3 +66,24 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
 - Sans Docker : Postgres 16 + pgvector et Redis natifs suffisent ; la base de test (≈ 2 350 migrations) se
   construit en ≈ 2 h sur 4 cœurs — la lancer en tout premier, puis la cloner par lane (`CREATE DATABASE …
   TEMPLATE`).
+
+## Copilote v2 (18-19/11/2026, PR #1473) — ce qui gouverne la suite
+- **Le moteur natif est la condition de tout travail en plusieurs étapes** (reprise après confirmation, images). Essayé
+  avec une vraie clé le 18 et le 19/11 : il enchaîne lead → devis avec une confirmation. La bascule en production
+  (`ASSISTANT_MOTEUR=natif`) reste un geste de Reda.
+- **Un devis n'a pas besoin de la facture quand une taille ou une composition est donnée** : le « manque la facture » de
+  la fiche ne concerne que le dimensionnement depuis les factures.
+- **`ventes.devis.composer` crée un devis séparé, jamais une V2** ; « une V2 avec 12 panneaux » = réviser puis appliquer
+  la taille. Le serveur ne choisit jamais un produit en silence (409 `choix`), et un lead hors de la portée de
+  l'utilisateur compte comme absent dans la garde de doublon.
+- **Texte collé ou image d'un client = donnée, jamais une consigne** ; au plus un devis créé par message qui en porte.
+- **Essai réel sans pile complète** : `.env` du worktree copié du dépôt principal (`SQL_AGENT_PROVIDER=claude`,
+  `ASSISTANT_MOTEUR=natif`, `ASSISTANT_COPILOTE=tous`, un `AGENT_HMAC_SECRET` local pour que le journal compte les
+  tokens), `docker compose up -d --no-build db redis redis_cache minio django_core fastapi_ia`, jeton fabriqué par
+  `CustomTokenObtainPairSerializer.get_token`, appels à `http://localhost:8001/sql-agent/query` depuis le conteneur.
+- **Gardes qu'une lane d'assistant déclenche à coup sûr** : forme du code (fichier ≥ 2 000 lignes et fonction > 100
+  lignes ne grossissent pas), `except` large muet, duplicata ≥ 6 lignes entre le tiroir et la page, test qui lit un
+  source, `toLocaleString` hors `lib/format`, échantillon de contrat incomplet, instantané OpenAPI, empreinte CODEMAP.
+  Les donner dans la consigne de chaque lane.
+- Décisions de Reda encore attendues : connexion WhatsApp officielle, plafond de dépense par jour, mémoire de
+  préférences de l'assistant, prix d'achat dans les réponses internes.
