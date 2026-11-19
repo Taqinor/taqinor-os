@@ -10,7 +10,7 @@ import {
 } from '../../../ui/DropdownMenu'
 import { EVENEMENT_SAISIR } from '../coquille/CoquilleTaches'
 import { DialogueSupprimer } from './Dialogues'
-import LigneProjet from './LigneProjet'
+import LigneProjet, { PRIORITES } from './LigneProjet'
 import FeuilleACrans, { naviguerApresFeuille } from '../ui/FeuilleACrans'
 import ChargementTardif from '../ui/ChargementTardif'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
@@ -65,6 +65,13 @@ export function useProjetEcrit(source, surEcrit) {
 }
 
 const parPriorite = (a, b) => (b.priorite ?? 0) - (a.priorite ?? 0)
+
+/** R3-129 (C-19) — la liste des projets est GROUPÉE par priorité (Haute, Moyenne, Basse, Aucune), l'ordre manuel du serveur
+ *  gardé dans chaque groupe (le tri est stable) : « Haute » ne passe plus sous « Moyenne » parce que l'ordre manuel le voulait. */
+const ordonnerParPriorite = (projets) => [...projets].sort(parPriorite)
+const groupesDePriorite = (projets) => PRIORITES
+  .map((p) => ({ ...p, projets: projets.filter((x) => (x.priorite ?? 0) === p.valeur) }))
+  .filter((g) => g.projets.length > 0)
 
 function lignes(reponse) {
   const donnees = reponse?.data
@@ -257,11 +264,13 @@ export function useListeProjets({ hydrater = false, surSupprime = null } = {}) {
     signalerProjetEcrit({ id: maj.id, statut: maj.statut, lock_version: maj.lock_version }, 'liste')
   }
 
+  // R3-129 — « Mettre en haut » : en tête de SON groupe de priorité (devant le premier projet de même priorité)
   const mettreEnHaut = async (projet) => {
     const avant = actifs
-    const premier = avant[0]
+    const premier = avant.find((p) => (p.priorite ?? 0) === (projet.priorite ?? 0))
     if (!premier || premier.id === projet.id) return
-    setActifs([projet, ...avant.filter((p) => p.id !== projet.id)])
+    const sans = avant.filter((p) => p.id !== projet.id)
+    setActifs([...sans.slice(0, sans.indexOf(premier)), projet, ...sans.slice(sans.indexOf(premier))])
     try {
       await reordonnerProjet(projet.id, { avant_id: premier.id })
       annoncer(`« ${projet.nom} » en haut`)
@@ -326,8 +335,9 @@ export function useListeProjets({ hydrater = false, surSupprime = null } = {}) {
     children: <FormulaireNouveau onCreer={creer} onModeles={() => naviguerApresFeuille(navigate, '/taches/projets/modeles')} />,
   }
 
+  const actifsOrdonnes = useMemo(() => ordonnerParPriorite(actifs), [actifs])
   return {
-    aujourdhui, actifs, enPause, constat, charge, lu, erreur, pauseOuverte, setPauseOuverte, asupprimer, setAsupprimer,
+    aujourdhui, actifs, actifsOrdonnes, enPause, constat, charge, lu, erreur, pauseOuverte, setPauseOuverte, asupprimer, setAsupprimer,
     vide: lu && actifs.length === 0 && enPause.length === 0,
     surAction, poserPriorite, supprime, ouvrir, setNouveau, actionsEcran, feuilleNouveau,
   }
@@ -337,9 +347,10 @@ export function useListeProjets({ hydrater = false, surSupprime = null } = {}) {
  *  `ouvertId` : le projet ouvert à droite (surligné) ; `compact` : la colonne du maître-détail (sans constat ni « Coller »). */
 export function CorpsListeProjets({ liste, ouvertId = null, compact = false }) {
   const {
-    aujourdhui, actifs, enPause, constat, charge, erreur, vide, pauseOuverte, setPauseOuverte, asupprimer, setAsupprimer,
+    aujourdhui, actifs, actifsOrdonnes, enPause, constat, charge, erreur, vide, pauseOuverte, setPauseOuverte, asupprimer, setAsupprimer,
     surAction, poserPriorite, supprime, ouvrir, setNouveau,
   } = liste
+  const groupes = groupesDePriorite(actifsOrdonnes)
   const ouvert = (p) => ouvertId !== null && String(p.id) === String(ouvertId)
   return (
     <>
@@ -358,11 +369,19 @@ export function CorpsListeProjets({ liste, ouvertId = null, compact = false }) {
 
       {actifs.length > 0 ? (
         <section className="section" aria-label="Projets actifs">
-          <div className="liste" role="list">
-            {actifs.map((p) => (
-              <LigneProjet key={p.id} projet={p} aujourdhui={aujourdhui} ouvert={ouvert(p)} onOuvrir={ouvrir} onPriorite={poserPriorite} onAction={surAction} />
-            ))}
-          </div>
+          {groupes.map((g) => (
+            <div key={g.valeur} role={groupes.length > 1 ? 'group' : undefined}
+              aria-label={groupes.length > 1 ? `Priorité ${g.libelle.toLowerCase()}` : undefined}>
+              {groupes.length > 1 ? (
+                <h3 className="ep-groupe-prio" aria-hidden="true"><span>{g.libelle}</span><span className="compte chiffres">{g.projets.length}</span></h3>
+              ) : null}
+              <div className="liste" role="list">
+                {g.projets.map((p) => (
+                  <LigneProjet key={p.id} projet={p} aujourdhui={aujourdhui} ouvert={ouvert(p)} onOuvrir={ouvrir} onPriorite={poserPriorite} onAction={surAction} />
+                ))}
+              </div>
+            </div>
+          ))}
         </section>
       ) : null}
 
@@ -418,7 +437,7 @@ export function AsideProjets({ ouvertId }) {
     // le projet OUVERT supprimé d'ici : l'écran de droite n'a plus rien à montrer, retour à la liste (qui ouvre le premier)
     surSupprime: (projet) => { if (String(projet.id) === String(ouvertId)) navigate('/taches/projets', { replace: true }) },
   })
-  const { actifs, enPause, lu, pauseOuverte, setPauseOuverte } = liste
+  const { actifsOrdonnes, enPause, lu, pauseOuverte, setPauseOuverte } = liste
   const racine = useRef(null)
 
   // le projet ouvert est en pause : sa ligne est dans « En pause (n) », qu'on déplie une fois pour la montrer
@@ -435,7 +454,7 @@ export function AsideProjets({ ouvertId }) {
     if (focusAuClavier) bouton.focus({ preventScroll: true })
   }, [lu, ouvertId, focusAuClavier])
 
-  const navigables = useMemo(() => [...actifs, ...(pauseOuverte ? enPause : [])], [actifs, enPause, pauseOuverte])
+  const navigables = useMemo(() => [...actifsOrdonnes, ...(pauseOuverte ? enPause : [])], [actifsOrdonnes, enPause, pauseOuverte])
   const surTouche = (e) => {
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
     if (e.target.closest?.('input, textarea, select, [role="menu"], [role="dialog"]')) return

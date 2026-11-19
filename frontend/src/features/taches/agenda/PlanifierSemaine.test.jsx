@@ -52,6 +52,37 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(screen.getByText('● Équipe (1)')).toBeInTheDocument()
   })
 
+  it('R3-122 — sept colonnes sur UNE rangée : un week-end vide est étroit (72 px), un week-end qui porte une tâche garde une colonne entière', () => {
+    const colonne = (conteneur) => conteneur.querySelector('.ag-jours').style.getPropertyValue('--ag-jours-colonnes')
+    const ouvre = 'minmax(0, 1fr)'
+    const etroit = 'minmax(72px, 0.6fr)'
+    const vide = monter()
+    expect(colonne(vide.container)).toBe([ouvre, ouvre, ouvre, ouvre, ouvre, etroit, etroit].join(' '))
+    vide.unmount()
+    const jours = septJours()
+    jours[5] = { ...jours[5], sans_heure: [{ ...agenda().jours[0].sans_heure[0], id: 701, titre: 'Mise en service', jour_prevu: '2026-11-21' }] }
+    const charge = monter({ jours })
+    expect(colonne(charge.container)).toBe([ouvre, ouvre, ouvre, ouvre, ouvre, ouvre, etroit].join(' '))
+  })
+
+  it('R3-134 — un jour sans rien de prévu dit « Libre · 4 h » (plus « 0 tâche · 0 min pour 4 h »), « sur » et non « pour » quand il y a des tâches', () => {
+    monter({ capacite: 240 })
+    expect(screen.getByRole('button', { name: 'jeu. 19 · Libre · 4 h' })).toBeEnabled()
+    expect(screen.queryByText(/0 tâche · 0 min/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 sur 3 h' })).toBeInTheDocument()
+  })
+
+  it('R3-134 — le rendez-vous qui réduit la capacité est écrit sous le jour ; le nom du jour ne change pas (il est la DESCRIPTION)', () => {
+    monter({ capacite: 240 })
+    // mar. 17 : 240 min de capacité − 60 min de rendez-vous servis (`rendez_vous_minutes`) = « sur 3 h »
+    const mardi = screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 sur 3 h' })
+    const rdv = mardi.querySelector('.ag-pj-rdv')
+    expect(rdv).toHaveTextContent('Rendez-vous : 1 h')
+    expect(mardi).toHaveAttribute('aria-describedby', rdv.id)
+    // un jour sans rendez-vous n'en dit rien
+    expect(screen.getByRole('button', { name: 'jeu. 19 · Libre · 4 h' }).querySelector('.ag-pj-rdv')).toBeNull()
+  })
+
   it('R2-102 — un jour passé dit les tâches FINIES ce jour-là (`faites_nb` servi), pas celles qui y étaient prévues', () => {
     const jours = septJours()
     jours[0] = { ...jours[0], faites_nb: 3 }
@@ -59,15 +90,15 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(screen.getByRole('button', { name: 'lun. 16 · passé · 3 faites' })).toBeDisabled()
   })
 
-  it('R2-114 — un jour trop chargé le DIT sur sa ligne : « 7 h 30 pour 4 h · 3 h 30 de trop » (et pas seulement un segment orange)', () => {
+  it('R2-114 — un jour trop chargé le DIT sur sa ligne : « 7 h 30 sur 4 h · 3 h 30 de trop » (et pas seulement un segment orange)', () => {
     const jours = septJours()
     const base = agenda().jours[0].sans_heure[0]
     jours[4] = { ...jours[4], sans_heure: [{ ...base, id: 501, titre: 'Gros chantier', estimation_minutes: 450 }] }
     monter({ jours, capacite: 240 })
-    const vendredi = screen.getByRole('button', { name: 'ven. 20 · 1 tâche · 7 h 30 pour 4 h · 3 h 30 de trop' })
+    const vendredi = screen.getByRole('button', { name: 'ven. 20 · 1 tâche · 7 h 30 sur 4 h · 3 h 30 de trop' })
     expect(vendredi.querySelector('.n')).toHaveTextContent('3 h 30 de trop')
     // un jour dans la capacité ne dit rien de plus
-    expect(screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 3 h' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 sur 3 h' })).toBeInTheDocument()
   })
 
   it('une tâche choisie se pose sur le jour touché ; sans choix, le jour s\'ouvre', () => {
@@ -88,8 +119,8 @@ describe('TCH106 — PlanifierSemaine', () => {
   it('Raccord F2 — « {n} tâches · {h} pour {cap} » seulement si la capacité du jour est servie', () => {
     monter({ capacite: 420 })
     const liste = screen.getByRole('list', { name: 'Jours de la semaine' })
-    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 6 h' })).toBeInTheDocument()
-    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 6 h' }).querySelector('.ag-charge')).not.toBeNull()
+    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 sur 6 h' })).toBeInTheDocument()
+    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 sur 6 h' }).querySelector('.ag-charge')).not.toBeNull()
   })
 
   it('Raccord F2 — chaque jour porte ses cartes (colonnes du bureau), décor muet : le nom du jour reste celui du bouton', () => {
@@ -189,7 +220,7 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     monterLe('/taches/agenda?vue=semaine&placer=1', '2026-11-20', new Date(2026, 10, 20, 10, 0))
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
     expect(appel()).toEqual({ du: '2026-11-23', au: '2026-11-29', vue: 'semaine' })
-    expect(await screen.findByText('23 – 29 novembre')).toBeInTheDocument()
+    expect(await screen.findByText('23 – 29 nov.')).toBeInTheDocument()
     // les sept jours sont à venir : aucun « passé », tous posables
     expect(await screen.findByRole('button', { name: /^lun\. 23 · / })).toBeEnabled()
     expect(screen.queryByText(/passé/)).toBeNull()
@@ -240,6 +271,41 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))
   })
 
+  it('R3-123 — la semaine est dite UNE fois, « ‹ 16 – 22 nov. › » sur une rangée, et pas de sur-titre qui la répète', async () => {
+    const { container } = monter()
+    expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })).toBeInTheDocument()
+    const nav = container.querySelector('.ag-plan-nav')
+    expect([...nav.children].map((e) => e.getAttribute('aria-label') ?? e.textContent))
+      .toEqual(['Semaine précédente', '16 – 22 nov.', 'Semaine suivante'])
+    expect(screen.queryByText('16 – 22 novembre')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    expect(await screen.findByText('23 – 29 nov.')).toBeInTheDocument()
+    // une semaine à cheval sur deux mois dit les deux
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    expect(await screen.findByText('30 nov. – 6 déc.')).toBeInTheDocument()
+  })
+
+  it('R3-123 — iPhone : Planifier ma semaine est un écran ENFANT de l\'Agenda (« ‹ Agenda » remplace ☰) ; au bureau rien de tel', async () => {
+    const matchMedia = window.matchMedia
+    window.matchMedia = (requete) => ({
+      matches: requete.includes('max-width: 767px'), media: requete, addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {},
+    })
+    try {
+      const { container, unmount } = monter()
+      await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })
+      const retour = container.querySelector('.entete-retour')
+      expect(retour).toHaveTextContent('Agenda')
+      fireEvent.click(retour)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument()
+      expect(screen.getByTestId('adresse').textContent).not.toContain('placer=')
+      unmount()
+    } finally { window.matchMedia = matchMedia }
+    const bureau = monter()
+    await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })
+    expect(bureau.container.querySelector('.entete-retour')).toBeNull()
+  })
+
   it('R2-106 — poser sur un jour une tâche « À revoir » (reportée 3 fois) la DÉCIDE : `trancher/` avec le jour, jamais `planifier/`', async () => {
     trancherTache.mockResolvedValue({ data: { tache: { ...agenda().a_placer[0], jour_prevu: '2026-11-19', lock_version: 7 }, geste_id: 8 } })
     monter()
@@ -263,7 +329,7 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     await waitFor(() => expect(planifierTache).toHaveBeenCalledWith(30, {
       jour_prevu: '2026-11-19', heure_debut: null, moment: '', quelque_jour: false, lock_version: 2,
     }))
-    const jeudi = await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche · 45 min pour 4 h$/ })
+    const jeudi = await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche · 45 min sur 4 h$/ })
     expect(jeudi).toHaveClass('nouveau')
     // la puce de la pose (iPhone) et la carte de la colonne (bureau, Raccord F2) portent la tâche posée
     expect(jeudi.querySelector('.ag-pj-ajout')).toHaveTextContent('Préparer formation')

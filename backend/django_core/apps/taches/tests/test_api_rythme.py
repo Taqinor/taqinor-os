@@ -448,7 +448,7 @@ class RepondreTests(BaseRythme):
         reglages = self.reglages(palier=5, refus_montee=2)
         tot = self.monter(refus=1, jour=J - datetime.timedelta(days=1))
         reponse = self.repondre(tot, 'garder_ce_rythme')
-        self.assertEqual((reponse.status_code, reponse.json()), (400, {'reponse': ['Réponse inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['reponse']), (409, ['Réponse inconnue.']))  # état : 409
         self.assertEqual(self.repondre(self.monter(refus=3), 'garder_ce_rythme').status_code, 200)
         reglages.refresh_from_db()
         self.assertEqual(reglages.mode, ModeRythme.TENIR)
@@ -505,7 +505,7 @@ class RepondreTests(BaseRythme):
         carte_ = self.monter()
         for reponse in ('expiree', 'ignoree', 'peut-etre', 'garder'):
             with self.subTest(reponse=reponse):
-                self.assertEqual(self.repondre(carte_, reponse).json(), {'reponse': ['Réponse inconnue.']})
+                self.assertEqual(self.repondre(carte_, reponse).json()['reponse'], ['Réponse inconnue.'])
         carte_.refresh_from_db()
         self.assertEqual(carte_.reponse, '')
 

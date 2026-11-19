@@ -309,7 +309,7 @@ def _echeance(edition, donnees):
             edition.poser('echeance_heure', None)
     if 'echeance_heure' in donnees and donnees['echeance_heure'] is not None:
         if tache.echeance is None:
-            raise serializers.ValidationError({'echeance_heure': [MESSAGE_HEURE_SANS_ECHEANCE]})
+            raise refus_etat({'echeance_heure': [MESSAGE_HEURE_SANS_ECHEANCE]})
         edition.poser('echeance_heure', donnees['echeance_heure'])
     elif 'echeance_heure' in donnees:
         edition.poser('echeance_heure', None)
@@ -344,7 +344,7 @@ def _projet_et_section(edition, donnees):
         return
     for champ in ('projet_id', 'section_id'):
         if champ in donnees and tache.parent_id is not None:
-            raise serializers.ValidationError({champ: [MESSAGE_NON_MODIFIABLE]})
+            raise refus_etat({champ: [MESSAGE_NON_MODIFIABLE]})  # une sous-tâche : état
     if 'projet_id' in donnees:
         projet = _projet(user, donnees['projet_id']) if donnees['projet_id'] is not None else None
         if edition.poser('projet', projet.pk if projet else None):
@@ -381,7 +381,7 @@ def _prerequis(edition, donnees, usage):
     candidat_id = donnees['bloquee_par_id']
     candidat = tache_du_compte(edition.user, candidat_id) if candidat_id is not None else None
     if candidat is not None and _boucle(edition.user, edition.tache, candidat):
-        raise serializers.ValidationError({'bloquee_par_id': [
+        raise refus_etat({'bloquee_par_id': [
             f'Boucle : « {nom_pour(candidat, usage)} » attend déjà « {nom_pour(edition.tache, usage)} ».']})
     edition.poser('bloquee_par', candidat.pk if candidat else None)
 
@@ -628,7 +628,7 @@ def sauter_occurrence(user, pk, *, maintenant=None, aujourdhui=None):
     with transaction.atomic():
         t = tache_du_compte(user, pk, verrou=True)
         if t.recurrence_id is None:
-            raise serializers.ValidationError({'recurrence': [MESSAGE_PAS_RECURRENTE]})
+            raise refus_etat({'recurrence': [MESSAGE_PAS_RECURRENTE]})
         if t.statut not in OUVERTES:
             return ResultatEcriture(t)
         ops = []
@@ -682,7 +682,7 @@ def attendre_tache(user, pk, texte):
     with transaction.atomic():
         t = tache_du_compte(user, pk, verrou=True)
         if t.statut not in OUVERTES:
-            raise serializers.ValidationError({'statut': [MESSAGE_VALEUR_INCONNUE]})
+            raise refus_etat({'statut': [MESSAGE_VALEUR_INCONNUE]})  # tâche close : état
         avant = {'statut': t.statut, 'en_attente_de': t.en_attente_de}
         t.statut, t.en_attente_de = StatutTache.EN_ATTENTE, texte
         t.save(update_fields=['statut', 'en_attente_de', 'updated_at'])
@@ -809,8 +809,8 @@ def _voisin(user, pk, ids, nom):
     if pk is None:
         return None
     voisin = tache_du_compte(user, pk)
-    if voisin.pk not in ids:
-        raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+    if voisin.pk not in ids:  # voisin d'une autre liste : état (409)
+        raise refus_etat({nom: [MESSAGE_VALEUR_INCONNUE]})
     return voisin
 
 
@@ -923,7 +923,7 @@ def _appliquer_regle(regle, valeurs, enveloppe=None):
         setattr(regle, champ, valeur)
     if regle.date_fin is not None and regle.date_fin < regle.date_debut:
         erreur = {'date_fin': [MESSAGE_FIN_AVANT_DEBUT]}
-        raise serializers.ValidationError({enveloppe: erreur} if enveloppe else erreur)
+        raise refus_etat({enveloppe: erreur} if enveloppe else erreur)  # fin avant le début DE LA RÈGLE : état
 
 
 def _premiere_date_de(user, regle, aujourdhui):
@@ -993,7 +993,7 @@ def _regle_de_la_tache(edition, spec, aujourdhui):
         regle.save()
         return
     if 'frequence' not in valeurs:
-        raise serializers.ValidationError({'recurrence': {'frequence': [MESSAGE_REQUIS]}})
+        raise refus_etat({'recurrence': {'frequence': [MESSAGE_REQUIS]}})  # tâche sans règle : état
     debut = valeurs.get('date_debut') or t.jour_prevu or aujourdhui
     regle = RegleRecurrence(company_id=user.company_id, proprietaire=user, date_debut=debut)
     _appliquer_regle(regle, valeurs, 'recurrence')
@@ -1280,8 +1280,8 @@ def reordonner_element(user, pk, avant_id=None, apres_id=None):
         for nom, voisin in (('avant_id', avant_id), ('apres_id', apres_id)):
             if voisin is not None:
                 _element_du_compte(user, voisin)  # d'un autre compte : 404
-                if voisin not in ids:
-                    raise serializers.ValidationError({nom: [MESSAGE_VALEUR_INCONNUE]})
+                if voisin not in ids:  # point d'une autre check-list : état (409)
+                    raise refus_etat({nom: [MESSAGE_VALEUR_INCONNUE]})
         ids.insert(ids.index(avant_id) + 1 if avant_id is not None else ids.index(apres_id), element.pk)
         for rang, identifiant in enumerate(ids, start=1):
             par_id[identifiant].rang = rang * PAS_RANG

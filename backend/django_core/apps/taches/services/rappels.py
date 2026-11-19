@@ -19,7 +19,7 @@ from rest_framework import serializers
 
 from apps.notifications.selectors import fenetre_notifications
 from apps.taches.choix import AncreRappel, SourceRappel, StatutRappel, StatutTache
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes, refus_etat
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Rappel
 from apps.taches.moteur.gabarits import format_duree, format_heure, format_jour
@@ -73,7 +73,7 @@ def _jour_du_rappel(tache, jour, ancre, decalage_jours):
         raise serializers.ValidationError({'decalage_jours': ['Entre -7 et 0.']})
     base = getattr(tache, ancre)
     if base is None:
-        raise serializers.ValidationError({'ancre': ["Cette date n'est pas posée sur la tâche."]})
+        raise refus_etat({'ancre': ["Cette date n'est pas posée sur la tâche."]})  # état de la tâche : 409
     return base + datetime.timedelta(days=int(decalage_jours))
 
 
@@ -88,7 +88,7 @@ def _verrouiller_tache(acteur, tache):
     if t is None:
         raise Http404('Introuvable.')
     if t.statut in STATUTS_CLOS:
-        raise serializers.ValidationError({'rappel': ['Cette tâche est close.']})
+        raise refus_etat({'rappel': ['Cette tâche est close.']})
     return t
 
 
@@ -99,9 +99,9 @@ def _verifier_plafonds(acteur, t):
                 .filter(company_id=acteur.company_id, proprietaire=acteur).first())
     en_attente = rappels_de(acteur).filter(statut=StatutRappel.EN_ATTENTE)
     if en_attente.filter(tache=t).count() >= MAX_PAR_TACHE:
-        raise serializers.ValidationError({'rappel': [f'{MAX_PAR_TACHE} rappels au plus par tâche.']})
+        raise refus_etat({'rappel': [f'{MAX_PAR_TACHE} rappels au plus par tâche.']})
     if en_attente.count() >= MAX_PAR_COMPTE:
-        raise serializers.ValidationError({'rappel': [f'{MAX_PAR_COMPTE} rappels en attente au plus.']})
+        raise refus_etat({'rappel': [f'{MAX_PAR_COMPTE} rappels en attente au plus.']})
     return reglages
 
 

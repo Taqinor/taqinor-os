@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
+import { ecrireProjetsCache } from '../../features/taches/horsligne/cacheProjets'
 import { ZoneAnnonces } from '../../features/taches/coquille/CoquilleTaches'
 import { poserRectangles } from '../../features/taches/projets/rectanglesDeTest'
 
@@ -84,12 +85,13 @@ describe('TCH89 — Un projet : en-tête', () => {
 
   it('passe visuelle n° 43 — point de couleur devant le nom ; échéance menacée (d) : « À ce rythme : … » en une ligne, le détail au toucher', async () => {
     const vue = exempleContrat('taches', 'projet_vue')
-    const longue = 'Au rythme des 4 dernières semaines (12 faites en 20 jours travaillés), il faudrait 10 jours travaillés ; il en reste 8.'
-    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd' } }]
+    // la phrase SERVIE (R3-011) : la conséquence, puis UN chiffre déjà soustrait
+    const longue = 'À ce rythme, pas prêt pour le mar. 8 déc. : il manque environ 2 jours.'
+    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-12-08' } }]
     api.lireVueProjet.mockResolvedValue({ data: vue })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const sante = await screen.findByRole('button', { name: 'À ce rythme : 10 jours travaillés, il en reste 8' })
+    const sante = await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour le mar. 8 déc.' })
     const titre = screen.getByRole('heading', { level: 1 })
     expect(titre.querySelector('.ep-projet-nom[data-p="vert"] > .point')).not.toBeNull()
     expect(screen.queryByText(longue)).toBeNull()
@@ -100,7 +102,7 @@ describe('TCH89 — Un projet : en-tête', () => {
 
   it("R2-034 — échéance servie : la santé courte dit la conséquence « À ce rythme, pas prêt pour le jeu. 26 »", async () => {
     const vue = exempleContrat('taches', 'projet_vue')
-    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il faudrait 10 jours travaillés, il en reste 8 (12 faites en 20 jours travaillés ces 4 dernières semaines).'
+    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il manque environ 2 jours.'
     vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-11-26' } }]
     api.lireVueProjet.mockResolvedValue({ data: vue })
     const { unmount } = monter()
@@ -289,6 +291,33 @@ describe('R2-071 — Un projet vide : l\'invite', () => {
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
+  it('R3-139 — sans aucune tâche : ni « 0 sur 0 » ni barre d\'avancement vide au-dessus de l\'invite', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { s.taches = [] })
+    vue.sans_section = []
+    vue.faites_nb = 0
+    vue.avancement = { ...vue.avancement, faites: 0, total: 0 }
+    vue.projet.compteurs = { ouvertes: 0, faites: 0 }
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const { container } = monter()
+    await screen.findByRole('region', { name: 'Projet vide' })
+    expect(screen.queryByText(/0 sur 0/)).toBeNull()
+    expect(container.querySelector('.ep-barre-avance')).toBeNull()
+    expect(container.querySelector('.ep-avance')).toBeNull()
+    // le reste de la ligne (priorité, vues) est là
+    expect(screen.getByRole('button', { name: 'Priorité haute, changer' })).toBeInTheDocument()
+  })
+
+  it('R3-127 — une étape VIDE garde « Ajouter une tâche » visible en permanence (sa seule invite) ; les étapes à tâches le montrent au survol', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.push({ ...vue.sections[0], id: 99, nom: 'Démarches', taches: [], compteurs: { ouvertes: 0, faites: 0 } })
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    await screen.findByText('12 sur 20')
+    expect(screen.getByRole('region', { name: 'Démarches' })).toHaveClass('etape-vide')
+    expect(screen.getByRole('region', { name: vue.sections[0].nom })).not.toHaveClass('etape-vide')
+  })
+
   it('un projet qui a des tâches ne montre pas l\'invite', async () => {
     monter()
     await screen.findByText('12 sur 20')
@@ -324,9 +353,46 @@ describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
   })
 })
 
+describe('R3-136 — Un projet jamais ouvert, sans réseau : son NOM en titre (lu dans la liste gardée), pas « Projet » et une page muette', () => {
+  const connecte = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+  const monterHorsLigne = () => render(
+    <ReactReduxContext.Provider value={{ store: connecte }}>
+      <MemoryRouter initialEntries={['/taches/projets/3']}>
+        <Routes><Route path="/taches/projets/:id" element={<Projet />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  let enLigne
+  beforeEach(() => {
+    window.localStorage.clear()
+    enLigne = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    api.lireVueProjet.mockRejectedValue(new Error('Network Error'))
+  })
+  afterEach(() => { enLigne.mockRestore(); window.localStorage.clear() })
+
+  it('le titre est le nom du projet gardé dans la liste ; la page dit ce qui va se passer, sans promettre de saisies', async () => {
+    ecrireProjetsCache(42, 'liste', { actifs: [{ id: 3, nom: 'Chantier Benali 9 kWc', couleur: 'terre' }], enPause: [], constat: null })
+    monterHorsLigne()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Ses tâches s'afficheront au retour du réseau.")
+    expect(screen.getByRole('alert')).not.toHaveTextContent('saisies')
+    const titre = screen.getByRole('heading', { level: 1 })
+    expect(titre).toHaveTextContent('Chantier Benali 9 kWc')
+    expect(titre.querySelector('.ep-projet-nom')).toHaveAttribute('data-p', 'terre')
+  })
+
+  it('un projet absent de la liste gardée garde le titre « Projet » (jamais un nom inventé)', async () => {
+    monterHorsLigne()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Ses tâches s'afficheront au retour du réseau.")
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Projet$/)
+  })
+})
+
 describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran', () => {
-  it('⋯ → Mettre en haut place le projet avant le premier projet actif', async () => {
-    api.listerTousLesProjets.mockResolvedValue([{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }])
+  it('⋯ → Mettre en haut place le projet avant le premier projet actif DE SA PRIORITÉ (R3-129 : la liste est groupée)', async () => {
+    // « Ventes » est de priorité haute (3) : le projet 9, de priorité basse, est en tête de la liste mais pas de son groupe
+    api.listerTousLesProjets.mockResolvedValue([
+      { id: 9, nom: 'Admin', priorite: 1 }, { id: 7, nom: 'Chantier', priorite: 3 }, { id: 3, nom: 'Ventes', priorite: 3 },
+    ])
     api.reordonnerProjet.mockResolvedValue({ data: {} })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -338,7 +404,7 @@ describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran',
   })
 
   it('déjà premier : rien n\'est écrit', async () => {
-    api.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes' }])
+    api.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', priorite: 3 }])
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await screen.findByText('12 sur 20')
@@ -380,7 +446,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
 
   it('un nom refusé (déjà pris) s\'affiche SOUS le champ, le texte tapé reste et le titre garde l\'ancien nom', async () => {
     api.modifierProjet.mockRejectedValue(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -395,7 +461,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
 
   it('⋯ → Renommer : une feuille avec le nom ; Enregistrer l\'écrit, un refus s\'affiche sous le champ', async () => {
     api.modifierProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     api.modifierProjet.mockResolvedValueOnce(envoye({ nom: 'Ventes 2027' }))
     monter()
@@ -599,7 +665,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
 
   it('F2 acceptation (S5) — Changer de projet… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
     api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -920,6 +986,36 @@ describe('R2-067 — Projets au bureau (≥ 1024 px) : la liste à gauche, le pr
     const colonne = await screen.findByRole('complementary', { name: 'Liste des projets' })
     await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(await within(colonne).findByRole('button', { name: 'Nouveau projet' }))
     expect(await screen.findByRole('dialog', { name: 'Nouveau projet' })).toBeInTheDocument()
+  })
+
+  it('R3-126 — l\'en-tête du projet tient sur DEUX lignes : priorité · barre · jalon · vues, puis santé · « Fini quand… »', async () => {
+    const { container } = monterBureau()
+    await screen.findAllByText('12 sur 20')
+    const tete = container.querySelector('.ep-tete')
+    expect([...tete.children].filter((e) => !e.matches('.ep-sante-detail')).map((e) => e.className)).toEqual(['ep-ligne-info', 'ep-ligne-suite'])
+    const premiere = tete.querySelector('.ep-ligne-info')
+    expect(premiere.querySelector('.ep-prio')).not.toBeNull()
+    expect(premiere.querySelector('.ep-barre-avance')).not.toBeNull()
+    expect(premiere.querySelector('.ep-avance-texte')).toHaveTextContent('12 sur 20')
+    expect(premiere.querySelector('.ep-vues')).not.toBeNull() // le sélecteur de vue est dans la ligne, plus au-dessus
+    const seconde = tete.querySelector('.ep-ligne-suite')
+    expect(within(seconde).getByRole('button', { name: /Fini quand/ })).toBeInTheDocument()
+    expect(container.querySelector('.ep-barre-projet')).toBeNull()
+  })
+
+  it('R3-126 — Tableau et Chronologie prennent toute la largeur : « ‹ Projets » (dans l\'en-tête) ramène à la liste, la Liste n\'en a pas', async () => {
+    const { unmount } = monterBureau('/taches/projets/3?vue=tableau')
+    await screen.findAllByText('12 sur 20')
+    const retour = await screen.findByRole('button', { name: 'Projets' })
+    expect(retour.closest('.ep-ligne-info')).not.toBeNull()
+    // la loupe et le Copilote restent (la coquille n'est pas en mode « écran enfant »)
+    expect(screen.getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(retour)
+    expect(await screen.findByText('Liste des projets')).toBeInTheDocument()
+    unmount()
+    monterBureau('/taches/projets/3?vue=liste')
+    await screen.findAllByText('12 sur 20')
+    expect(screen.queryByRole('button', { name: 'Projets' })).toBeNull()
   })
 
   it('< 1024 px : aucune colonne (la liste, puis le projet)', async () => {

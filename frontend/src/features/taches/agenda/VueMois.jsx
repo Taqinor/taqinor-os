@@ -33,8 +33,16 @@ function joursDeRepos(jours) {
   return new Set([...vus].filter(([, repos]) => repos).map(([rang]) => rang))
 }
 
-const tachesDuJour = (jour) => [...(jour?.blocs ?? []), ...(jour?.sans_heure ?? []), ...(jour?.echeances ?? [])]
+/** R3-124 — les tâches PRÉVUES ce jour-là (à l'heure ou sans heure) sont les titres et les points ; celles dont c'est
+ *  seulement l'ÉCHÉANCE sont déjà écrites à leur jour prévu : ici elles sont une MARQUE « · échéance » (jamais un titre de
+ *  plus, jamais comptées dans les trois titres), et une tâche déjà prévue ce jour-là n'est pas marquée deux fois. */
+const tachesDuJour = (jour) => [...(jour?.blocs ?? []), ...(jour?.sans_heure ?? [])]
+const echeancesDuJour = (jour) => {
+  const prevues = new Set(tachesDuJour(jour).map((t) => t.id))
+  return (jour?.echeances ?? []).filter((t) => !prevues.has(t.id))
+}
 const erpDuJour = (jour) => [...(jour?.toute_la_journee ?? []), ...(jour?.externes ?? [])]
+const texteEcheances = (n) => (n >= 2 ? `${n} échéances` : 'échéance')
 
 function Points({ jour }) {
   if (jour?.ferie) return <span className="pts ferie">Férié</span>
@@ -46,6 +54,7 @@ function Points({ jour }) {
     <span className="pts" aria-hidden="true">
       {montrees.map((t) => <i key={`t${t.id}`} data-p={t.projet?.couleur || undefined} />)}
       {erp.length ? <i className="erp" /> : null}
+      {echeancesDuJour(jour).length ? <i className="ech" /> : null}
       {reste > 0 ? <em>+{reste}</em> : null}
     </span>
   )
@@ -55,7 +64,8 @@ function Points({ jour }) {
 function Titres({ jour }) {
   if (jour?.ferie) return null
   const taches = tachesDuJour(jour)
-  if (!taches.length) return null
+  const echeances = echeancesDuJour(jour)
+  if (!taches.length && !echeances.length) return null
   const montrees = taches.slice(0, POINTS_MAX)
   const reste = taches.length - montrees.length
   return (
@@ -67,16 +77,19 @@ function Titres({ jour }) {
         </span>
       ))}
       {reste > 0 ? <em className="plus">{`+${reste}`}</em> : null}
+      {echeances.length ? <span className="ag-mj-ech">{`· ${texteEcheances(echeances.length)}`}</span> : null}
     </span>
   )
 }
 
 function libelleJour(iso, jour) {
   const n = tachesDuJour(jour).length
+  const e = echeancesDuJour(jour).length
   const morceaux = [jourLong(iso)]
   if (jour?.ferie) morceaux.push('Férié')
   else if (jour && !jour.ouvre) morceaux.push('Jour non travaillé')
-  morceaux.push(n >= 2 ? `${n} tâches` : `${n} tâche`)
+  if (n || !e) morceaux.push(n >= 2 ? `${n} tâches` : `${n} tâche`)
+  if (e) morceaux.push(texteEcheances(e))
   return morceaux.join(' · ')
 }
 

@@ -167,6 +167,46 @@ describe('TCH88 — Projets : gestes sur place', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Trier par priorité' }))
     expect(api.trierProjetsParPriorite).toHaveBeenCalledTimes(1)
   })
+
+  const ligneDuNom = (nom) => screen.getByRole('button', { name: nom }).closest('.ligne')
+  const melange = () => {
+    // l'ordre MANUEL du serveur : Basse, Haute, Moyenne, Haute 2 — « Haute » est sous « Basse » parce que l'ordre manuel le veut
+    const base = projets().results[0]
+    const liste = projets()
+    liste.results = [
+      { ...base, id: 11, nom: 'Admin', priorite: 1 }, { ...base, id: 12, nom: 'Chantier', priorite: 3 },
+      { ...base, id: 13, nom: 'Site web', priorite: 2 }, { ...base, id: 14, nom: 'Salon', priorite: 3 },
+    ]
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+  }
+
+  it('R3-129 — la liste est GROUPÉE par priorité (Haute, Moyenne, Basse), l\'ordre manuel gardé dans chaque groupe', async () => {
+    melange()
+    const { container } = monter()
+    await screen.findByRole('button', { name: 'Admin' })
+    const groupes = [...container.querySelectorAll('.ep-groupe-prio')].map((e) => e.textContent)
+    expect(groupes).toEqual(['Haute2', 'Moyenne1', 'Basse1'])
+    const ordre = [...container.querySelectorAll('.ligne.projet .ep-ouvrir')].map((e) => e.textContent)
+    expect(ordre).toEqual(['Chantier', 'Salon', 'Site web', 'Admin']) // Haute (Chantier, Salon), Moyenne, Basse
+    expect(screen.getByRole('group', { name: 'Priorité haute' })).toContainElement(ligneDuNom('Salon'))
+  })
+
+  it('R3-129 — changer la priorité d\'un projet le fait passer dans son nouveau groupe, sans relire la liste', async () => {
+    melange()
+    api.modifierProjet.mockResolvedValue({ data: { ...projets().results[0], id: 11, nom: 'Admin', priorite: 3, lock_version: 9 } })
+    const { container } = monter()
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Priorité basse, changer' }))
+    await userEvent.setup().click(await screen.findByRole('menuitem', { name: 'Haute' }))
+    await waitFor(() => expect([...container.querySelectorAll('.ep-groupe-prio')].map((e) => e.textContent)).toEqual(['Haute3', 'Moyenne1']))
+    // l'ordre manuel (Admin, Chantier, Site web, Salon) est gardé dans le groupe Haute : Admin d'abord
+    expect([...container.querySelectorAll('.ligne.projet .ep-ouvrir')].map((e) => e.textContent)).toEqual(['Admin', 'Chantier', 'Salon', 'Site web'])
+  })
+
+  it('R3-129 — une seule priorité : pas d\'intitulé de groupe', async () => {
+    monter()
+    await screen.findByRole('button', { name: 'Ventes' })
+    expect(document.querySelector('.ep-groupe-prio')).toBeNull()
+  })
 })
 
 describe('R2-060 — Projets : « Mettre en haut » atteignable au doigt', () => {

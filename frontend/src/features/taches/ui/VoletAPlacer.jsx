@@ -20,7 +20,7 @@ function grouper(aPlacer, aujourdhui) {
   return { jour: aPlacer.filter((it) => !aRevoir(it)), revoir: aPlacer.filter(aRevoir) }
 }
 
-function LignePlacer({ item, choisie, detail, onChoisir }) {
+function LignePlacer({ item, choisie, detail, onChoisir, onGlisser, apresChoix }) {
   const presse = choisie === item.id
   return (
     <button
@@ -29,8 +29,17 @@ function LignePlacer({ item, choisie, detail, onChoisir }) {
       data-p={item.projet?.couleur || undefined}
       aria-pressed={presse}
       draggable
-      onDragStart={(e) => { e.dataTransfer?.setData('text/plain', String(item.id)); onChoisir(item) }}
-      onClick={() => onChoisir(presse ? null : item)}
+      // R3-120 — au début du glisser RIEN ne change à l'écran (choisir la tâche ajoutait la consigne au-dessus de la liste :
+      // la ligne saisie bougeait, le navigateur annulait le glisser aussitôt — dragend sans un seul dragenter). La page
+      // retient la tâche (`onGlisser`) et ne la CHOISIT qu'à l'entrée dans la grille ; sans `onGlisser`, l'ancien geste.
+      onDragStart={(e) => {
+        e.dataTransfer?.setData('text/plain', String(item.id))
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+        if (onGlisser) onGlisser(item)
+        else onChoisir(item)
+      }}
+      onDragEnd={onGlisser ? () => onGlisser(null) : undefined}
+      onClick={() => { onChoisir(presse ? null : item); if (!presse) apresChoix?.(item) }}
     >
       <span className="pt"><GripVertical className="i i-16" aria-hidden="true" /></span>
       <span className="t">
@@ -78,22 +87,31 @@ function MesProjets({ groupes, ouvertAuDepart, ...props }) {
  * `aPlacer` : `agenda.json` → `a_placer` ; `mesProjets` : → `mes_projets` ; `choisie` : l'id de la
  * tâche choisie (ou nul) ; `aide` : la phrase du pied au bureau (Jour : glisser sur un créneau), `aideTactile` : la même sur iPhone (toucher) ; `action` : un bouton
  * au bas du volet (Semaine au bureau : « Planifier ma semaine », maquette agenda-semaine.html `.ag-aside-action`).
+ * R3-120 — `id` : l'adresse du volet (le bouton « À placer (n) » de la Semaine le désigne par `aria-controls`) ;
+ * `apresChoix(item)` : appelé quand une tâche vient d'être CHOISIE au toucher (la Semaine replie alors le panneau) ;
+ * `onFermer` : donne au panneau son bouton « Fermer » (le panneau replié de la Semaine, jamais le volet fixe) ;
+ * `onGlisser(item | null)` : la tâche que l'on commence (ou cesse) de glisser — voir `LignePlacer`.
  */
 export default function VoletAPlacer({
   aPlacer = [], mesProjets = [], choisie = null, aujourdhui, onChoisir, projetsOuverts = false,
   consigne = (titre) => `Touche un créneau pour ${titre}`,
   aide = 'Glisse une tâche sur un créneau pour lui donner une heure.', aideTactile = 'Touche une tâche, puis un créneau.',
-  action = null, sansHeure = [],
+  action = null, sansHeure = [], id = undefined, apresChoix = undefined, onFermer = undefined, onGlisser = undefined,
 }) {
   const { jour, revoir } = grouper(aPlacer, aujourdhui)
   const total = aPlacer.length + mesProjets.reduce((n, g) => n + g.items.length, 0)
   const tous = [...sansHeure, ...aPlacer, ...mesProjets.flatMap((g) => g.items)]
   const choisi = tous.find((it) => it.id === choisie) ?? null
-  const props = { choisie, detail: true, onChoisir }
+  const props = { choisie, detail: true, onChoisir, onGlisser, apresChoix }
   return (
-    <aside className="ag-aside" aria-label="À placer">
+    <aside className="ag-aside" id={id} aria-label="À placer">
       <div className="ag-aside-tete">
         <h2>À placer <span className="chiffres">{`· ${total}`}</span></h2>
+        {onFermer ? (
+          <button type="button" className="bouton-icone ag-aside-fermer" aria-label="Fermer À placer" onClick={onFermer}>
+            <X className="i" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
       {choisi ? (
         <div className="ag-consigne" role="status">

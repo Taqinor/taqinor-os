@@ -33,6 +33,7 @@ const { DialogueEnregistrerModele } = await import('./Dialogues')
    « Dupliquer » dans le ⋯ d'un projet. Les réponses viennent des échantillons committés (`exempleContrat`). */
 
 const AUJOURDHUI = '2026-11-17'
+const LUNDI_PROCHAIN = '2026-11-23' // R3-137 : « Dupliquer » part du lundi qui suit aujourd'hui (mar. 17), « Utiliser un modèle » d'aujourd'hui
 const modeleServi = () => structuredClone(exempleContrat('taches', 'modele'))
 const apercuServi = () => structuredClone(exempleContrat('taches', 'modele_instancier'))
 const projetEcrit = () => structuredClone(exempleContrat('taches', 'projet_ecrit'))
@@ -337,15 +338,30 @@ describe('TCH157 — Dupliquer et Modèle… dans le ⋯ d\'un projet', () => {
     // R2-065 — nom prérempli « {nom} (copie) », aperçu lu à l'ouverture
     const champ = within(dialogue).getByLabelText('Nom du projet')
     expect(champ).toHaveValue('Ventes (copie)')
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes (copie)', date_debut: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes (copie)', date_debut: LUNDI_PROCHAIN, apercu: true }, { erreurSousLeChamp: true }))
     await user.clear(champ)
     await user.type(champ, 'Ventes 2027')
     await user.tab()
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: true }, { erreurSousLeChamp: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenCalledWith(3, { nom: 'Ventes 2027', date_debut: LUNDI_PROCHAIN, apercu: true }, { erreurSousLeChamp: true }))
     expect(await within(dialogue).findByText('1 tâche, première le lun. 23')).toBeInTheDocument()
     await user.click(within(dialogue).getByRole('button', { name: 'Créer' }))
-    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: AUJOURDHUI, apercu: false }, { erreurSousLeChamp: true }))
+    await waitFor(() => expect(api.dupliquerProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', date_debut: LUNDI_PROCHAIN, apercu: false }, { erreurSousLeChamp: true }))
     expect(await screen.findByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    // R3-137 — le toast dit où les premières tâches sont posées
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Projet créé · 1 tâche posée le lun. 23')
+  })
+
+  it('R3-137 — Dupliquer part du lundi PROCHAIN (un lundi : celui d\'après), Utiliser un modèle d\'aujourd\'hui', async () => {
+    api.dupliquerProjet.mockImplementation(async (id, corps) => ({ data: corps.apercu ? apercuServi() : projetEcrit() }))
+    const user = utilisateur()
+    monterProjet()
+    await ouvrirMenu(user, 'Dupliquer')
+    const dialogue = await screen.findByRole('dialog', { name: 'Dupliquer' })
+    expect(within(dialogue).getByLabelText('Date de lancement')).toHaveValue(LUNDI_PROCHAIN)
+    const { lundiProchain } = await import('./Dialogues')
+    expect(lundiProchain('2026-11-16')).toBe('2026-11-23') // un lundi → le lundi d'après
+    expect(lundiProchain('2026-11-22')).toBe('2026-11-23') // un dimanche → le lendemain
+    expect(lundiProchain('2026-11-19')).toBe('2026-11-23')
   })
 
   it('F4 revue #11 — Dupliquer dit les tâches confidentielles non reprises quand l\'aperçu du serveur en compte', async () => {
