@@ -113,6 +113,10 @@ const MODALE = '[role="dialog"]:not([aria-modal="false"]), [role="alertdialog"]'
 
 /** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
 const ECRANS_AVEC_FAB = new Set(['aujourdhui', 'a-trier', 'projets', 'projet', 'agenda'])
+/** R3-087 — les écrans qui portent la ligne « Ajouter une tâche · n » du bureau sous l'en-tête : ceux où l'on range des
+ *  tâches (Aujourd'hui rend la sienne, sous la progression). Ni Modèles, ni Archive, ni Revue, ni Réglages, ni Mon rythme,
+ *  ni Supprimées, ni Recherche (R2-086) : la touche `n` y reste. */
+const ECRANS_AVEC_SAISIE = new Set(['a-trier', 'projets', 'projet', 'agenda'])
 
 /** Le message dit à qui touche un geste grisé hors ligne (textes.md §2.1). */
 export const PHRASE_GESTE_GRISE = 'Possible une fois connecté'
@@ -284,11 +288,14 @@ export function SaisieBureau({ onClick }) {
  * `retour` (R2-093, écrans enfants) : `{ libelle, vers }` — `libelle` est le nom de l'écran parent (« Projets »,
  * « Réglages »), `vers` son chemin (`/taches/projets`). Exemple : `retour={{ libelle: 'Projets', vers: '/taches/projets' }}`.
  * Rendu « ‹ {libelle} » au-dessus du titre ; l'écran enfant n'a alors ni loupe ni Copilote (le ⋯ reste).
+ * `saisieBureau` (R3-087) : la ligne « Ajouter une tâche » du bureau ; sans valeur, les écrans de ECRANS_AVEC_SAISIE.
+ * `largeur` (R3-082, M3) : `"pleine"` pose `data-largeur="pleine"` — le contenu prend toute la largeur utile au bureau
+ * (agenda, tableau, chronologie, Planifier) ; l'en-tête reste sur sa bande de 1 320 px (base.css).
  */
 export default function CoquilleTaches({
   ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
   feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, contexteSaisie = null,
-  saisieBureau = true, retour = null, children,
+  saisieBureau = null, retour = null, largeur = null, children,
 }) {
   const navigate = useNavigate()
   const { pathname, state: etatLieu } = useLocation()
@@ -310,6 +317,7 @@ export default function CoquilleTaches({
     && !(ecran === 'projet' && params.get('planifier') === '1')
   // R2-086 — sur la Recherche, son champ EST l'en-tête : ni loupe (qui ouvrait… la recherche) ni « Ajouter une tâche »
   const surRecherche = ecran === 'recherche'
+  const avecSaisieBureau = !surRecherche && (saisieBureau ?? ECRANS_AVEC_SAISIE.has(ecran))
   const barre = useRef(null)
   const titreH1 = useRef(null)
   const replie = useTitreReplie(barre, titreH1)
@@ -419,7 +427,13 @@ export default function CoquilleTaches({
   }
 
   return (
-    <div className="tch" data-ecran={ecran} data-hors-ligne={enLigne ? undefined : 'true'} onClickCapture={surClicCapture}>
+    <div
+      className="tch"
+      data-ecran={ecran}
+      data-largeur={largeur === 'pleine' ? 'pleine' : undefined}
+      data-hors-ligne={enLigne ? undefined : 'true'}
+      onClickCapture={surClicCapture}
+    >
       <div className="tch-page">
         {/* R2-080 — la rangée du haut (☰, titre compact, actions) colle en haut de l'écran sur iPhone ; au bureau elle
             n'a pas de boîte (`display: contents`) et ses actions se posent à droite du titre, comme avant. */}
@@ -471,7 +485,7 @@ export default function CoquilleTaches({
           </div>
         </header>
 
-        {saisieBureau && !surRecherche ? <SaisieBureau onClick={demanderSaisie} /> : null}
+        {avecSaisieBureau ? <SaisieBureau onClick={demanderSaisie} /> : null}
 
         {conflit ?? conflitFile ? <BandeauConflit {...(conflit ?? conflitFile)} /> : null}
 

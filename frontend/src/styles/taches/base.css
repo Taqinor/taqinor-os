@@ -31,10 +31,25 @@
    pour une tâche ») ; « Coller mes listes » reste son seul bouton plein DANS la page. */
 @media (min-width: 768px) {
   /* R2-085 — une seule grille au bureau : la page part toujours du bord gauche du contenu (le titre est au même x
-     d'un écran à l'autre, qu'il fasse 720 px ou, pour Aujourd'hui et l'Agenda, 1 320 px) ; la droite reste libre pour
-     le panneau (fiche, agenda). La hauteur de l'en-tête est fixe : le sur-titre garde sa ligne même vide. */
-  .tch .tch-page { max-width: 720px; margin-inline: 0; padding: 20px 16px 56px; }
+     d'un écran à l'autre) ; la hauteur de l'en-tête est fixe : le sur-titre garde sa ligne même vide.
+     R3-082 (M3, choix C-18) — la PAGE fait 1 320 px sur TOUS les écrans : l'en-tête (titre à gauche ; loupe · Copilote ·
+     ⋯ à droite) occupe cette bande, ses actions sont donc au même pixel d'un écran à l'autre (elles sautaient de 600 px
+     entre Aujourd'hui et Réglages). Sous l'en-tête :
+       · les écrans de LECTURE (À trier, Recherche, Revue, Mon rythme, Réglages, Supprimées, Modèles, Archive) gardent
+         une colonne de 720 px, qui ne s'élargit jamais ;
+       · Aujourd'hui garde sa grille (coeur.css), Projets son maître-détail (projets.css) ;
+       · un écran PLEINE LARGEUR (agenda, tableau, chronologie, Planifier ma semaine) pose `data-largeur="pleine"` sur
+         `.tch` — prop `largeur="pleine"` de CoquilleTaches — : son contenu prend toute la largeur utile, 1 760 px dès
+         1 800 px d'écran ; l'en-tête, lui, reste sur sa bande de 1 320. */
+  .tch .tch-page { max-width: 1320px; margin-inline: 0; padding: 20px 16px 56px; }
+  .tch .tch-page > .entete { max-width: calc(1320px - 32px); }
   .tch .entete { padding-inline: 24px; }
+  .tch:is([data-ecran="a-trier"], [data-ecran="recherche"], [data-ecran="revue"], [data-ecran="rythme"],
+    [data-ecran="reglages"], [data-ecran="supprimees"], [data-ecran="projets-modeles"], [data-ecran="projets-archive"])
+    .tch-page > :not(.entete, .voile, .feuille) { max-width: 720px; }
+}
+@media (min-width: 1800px) {
+  .tch[data-largeur="pleine"] .tch-page { max-width: 1760px; }
 }
 
 /* Desktop 768 px : mêmes valeurs que les maquettes (--tch-section, --tch-tache… ajustés) */
