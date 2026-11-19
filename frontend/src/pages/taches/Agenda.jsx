@@ -335,11 +335,13 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
  *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
  *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé dit ce qui y a été fait, « {n} faites » (maquette
  *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
-function teteJour(j, aujourdhui, capacite, taches) {
+function teteJour(j, aujourdhui, capacite) {
   if (j.ferie) return 'Férié'
   if (!j.ouvre) return 'Jour non travaillé'
   if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  const faites = taches.filter((t) => t.statut === 'fait').length
+  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
+  const faites = j.faites_nb
+  if (!Number.isInteger(faites)) return 'Passé'
   return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
@@ -414,7 +416,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite, taches)}
+                {teteJour(j, aujourdhui, capacite)}
               </span>
               {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
               {j.jour < aujourdhui

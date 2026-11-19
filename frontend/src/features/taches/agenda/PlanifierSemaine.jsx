@@ -36,7 +36,10 @@ function BarreCharge({ minutes, capacite }) {
 export function resume(jour, aujourdhui, capaciteServie = null) {
   const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   if (jour.jour < aujourdhui) {
-    const faites = taches.filter((t) => t.statut === 'fait').length
+    // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là, le nombre de Mon rythme servi par `agenda/`
+    // (`faites_nb`), jamais un recompte des tâches prévues ce jour-là ; non servi : rien de deviné.
+    const faites = jour.faites_nb
+    if (!Number.isInteger(faites)) return { passe: true, texte: 'passé' }
     return { passe: true, texte: `passé · ${faites} ${faites >= 2 ? 'faites' : 'faite'}` }
   }
   if (!jour.ouvre || jour.ferie) return { repos: true, texte: jour.ferie ? 'Férié' : 'non travaillé' }

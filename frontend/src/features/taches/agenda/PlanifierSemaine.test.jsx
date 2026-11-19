@@ -29,7 +29,7 @@ function septJours() {
   const servis = Object.fromEntries(agenda().jours.map((j) => [j.jour, j]))
   return SEMAINE.map((iso) => servis[iso] ?? {
     jour: iso, ouvre: !['2026-11-21', '2026-11-22'].includes(iso), ferie: false,
-    toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [],
+    toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], faites_nb: 0,
   })
 }
 
@@ -49,6 +49,13 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(within(jours).getByRole('button', { name: 'dim. 22 · non travaillé' })).toBeEnabled()
     expect(screen.getByRole('button', { name: /Préparer formation/ })).toBeInTheDocument()
     expect(screen.getByText('● Équipe (1)')).toBeInTheDocument()
+  })
+
+  it('R2-102 — un jour passé dit les tâches FINIES ce jour-là (`faites_nb` servi), pas celles qui y étaient prévues', () => {
+    const jours = septJours()
+    jours[0] = { ...jours[0], faites_nb: 3 }
+    monter({ jours })
+    expect(screen.getByRole('button', { name: 'lun. 16 · passé · 3 faites' })).toBeDisabled()
   })
 
   it('une tâche choisie se pose sur le jour touché ; sans choix, le jour s\'ouvre', () => {

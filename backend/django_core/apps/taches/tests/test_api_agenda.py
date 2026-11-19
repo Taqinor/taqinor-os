@@ -148,6 +148,25 @@ class AgendaTests(TestCase):
         self.assertEqual(self.le_jour(rendu, self.jour(2))['rendez_vous_minutes'], 0)
         self.assertEqual(self.le_jour(rendu, self.jour(1))['rendez_vous_minutes'], 0)
 
+    def test_faites_nb_finies_ce_jour_la(self):
+        """R2-102 (règle C-12) — « faites » un jour = les tâches PASSÉES à `fait` CE jour-là (prévues ce jour-là ou
+        non), comptées comme Mon rythme : une sous-tâche vaut 0, une ouverte ne compte pas, un jour à venir dit 0."""
+        from apps.taches.choix import StatutTache
+
+        def a(jour, heure=10):
+            return timezone.make_aware(datetime.datetime.combine(jour, datetime.time(heure, 0)))
+
+        hier, avant, demain = self.jour(-1), self.jour(-2), self.jour(1)
+        self.tache(jour_prevu=avant, statut=StatutTache.FAIT, fait_le=a(hier))  # prévue avant-hier, finie hier
+        self.tache(jour_prevu=hier, statut=StatutTache.FAIT, fait_le=a(hier, 15))
+        parent = self.tache(jour_prevu=hier)
+        self.tache(parent=parent, statut=StatutTache.FAIT, fait_le=a(hier, 16))  # sous-tâche : 0
+        self.tache(jour_prevu=self.T, statut=StatutTache.FAIT, fait_le=a(self.T, 9))
+        rendu = self.get(du=avant.isoformat(), au=demain.isoformat())
+        faites = {j['jour']: j['faites_nb'] for j in rendu['jours']}
+        self.assertEqual(faites, {avant.isoformat(): 0, hier.isoformat(): 2, self.T.isoformat(): 1,
+                                  demain.isoformat(): 0})
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""

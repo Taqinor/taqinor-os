@@ -159,7 +159,8 @@
             "journee_entiere": false
           }
         ],
-        "rendez_vous_minutes": 60
+        "rendez_vous_minutes": 60,
+        "faites_nb": 1
       }
     ],
     "a_placer": [
