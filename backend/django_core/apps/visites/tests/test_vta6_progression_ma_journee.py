@@ -18,10 +18,14 @@ Ce que le test prouve :
 Aucune horloge vive n'est asservie : les dates sont posées RELATIVEMENT au
 jour courant du serveur, jamais écrites en dur.
 """
+import json
 from datetime import timedelta
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -364,6 +368,161 @@ class LibellesVisitesAssistantTests(VtaBase):
         # Un identifiant inconnu est absent, jamais une erreur.
         from apps.agent.libelles import libelles_objets
         self.assertEqual(libelles_objets(self.bureau, {'visite': 10 ** 9}), {})
+
+
+def echantillon(nom):
+    """Le contrat PACT10 ``contract_samples/<nom>.json`` de l'app."""
+    chemin = Path(__file__).resolve().parents[1] / 'contract_samples' / f'{nom}.json'
+    return json.loads(chemin.read_text(encoding='utf-8'))
+
+
+class AgendaAssistantTests(VtaBase):
+    """Copilote vague 2 (VIS3) — ``GET visites/visites/agenda/`` : totaux d'une
+    fenêtre + lignes compactes, à la portée de l'écran (``visites_voir``). La
+    forme est celle de ``assistant_agenda.json`` ; un refus nomme son champ."""
+
+    URL = '/api/django/visites/visites/agenda/'
+
+    def _jeu(self):
+        """Une visite de chaque sorte autour d'aujourd'hui (``d`` = jours)."""
+        s, d = VisiteTerrain.Statut, lambda jours: self.aujourdhui + timedelta(days=jours)
+        return {
+            'orpheline': self._visite(None, date_prevue=d(2)),
+            'assignee': self._visite(self.terrain, date_prevue=d(3)),
+            'a_valider': self._visite(self.terrain, date_prevue=d(-1), statut=s.TERMINEE),
+            'en_retard': self._visite(self.terrain, date_prevue=d(-3)),
+            'a_refaire': self._visite(self.terrain, date_prevue=d(1), statut=s.A_REFAIRE),
+            'annulee': self._visite(self.terrain, date_prevue=None, statut=s.ANNULEE),
+            'loin': self._visite(self.terrain, date_prevue=d(40)),
+        }
+
+    def _ids(self, reponse):
+        return [ligne['id'] for ligne in reponse.data['lignes']]
+
+    def test_la_forme_est_celle_du_contrat(self):
+        self._jeu()
+        reponse = auth(self.bureau).get(self.URL)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        contrat = echantillon('assistant_agenda')['exemple']
+        self.assertEqual(set(reponse.data), set(contrat))
+        self.assertEqual(set(reponse.data['totaux']), set(contrat['totaux']))
+        for ligne in reponse.data['lignes']:
+            self.assertEqual(set(ligne), set(contrat['lignes'][0]))
+        self.assertEqual(reponse.data['du'], self.aujourdhui.isoformat())
+        self.assertEqual(reponse.data['au'],
+                         (self.aujourdhui + timedelta(days=7)).isoformat())
+        self.assertEqual((reponse.data['filtre'], reponse.data['limite']), ('tout', 10))
+        self.assertEqual(reponse.data['lien'], '/visites/toutes')
+
+    def test_totaux_filtres_et_a_faire(self):
+        jeu = self._jeu()
+        api = auth(self.bureau)
+        reponse = api.get(self.URL)
+        self.assertEqual(reponse.data['totaux'], {
+            'planifiees': 3, 'sans_technicien': 1, 'a_valider': 1,
+            'en_retard': 1, 'a_refaire': 1})
+        # Date croissante ; l'annulée et la visite hors fenêtre sont absentes.
+        self.assertEqual(self._ids(reponse), [
+            jeu[k].id for k in ('en_retard', 'a_valider', 'a_refaire', 'orpheline', 'assignee')])
+        a_faire = {ligne['id']: ligne['a_faire'] for ligne in reponse.data['lignes']}
+        self.assertEqual(a_faire, {
+            jeu['orpheline'].id: 'assigner', jeu['assignee'].id: 'rien',
+            jeu['a_valider'].id: 'completer', jeu['en_retard'].id: 'rien',
+            jeu['a_refaire'].id: 'refaire'})
+        for filtre, cle in (('sans_technicien', 'orpheline'), ('a_valider', 'a_valider'),
+                            ('en_retard', 'en_retard'), ('a_refaire', 'a_refaire')):
+            vue = api.get(self.URL, {'filtre': filtre})
+            self.assertEqual(self._ids(vue), [jeu[cle].id], filtre)
+            self.assertEqual(vue.data['totaux'], reponse.data['totaux'])
+        retard = [ligne for ligne in reponse.data['lignes'] if ligne['en_retard']]
+        self.assertEqual([ligne['id'] for ligne in retard], [jeu['en_retard'].id])
+
+    def test_la_ligne_dit_qui_et_ne_porte_aucune_donnee_personnelle(self):
+        self.terrain.first_name, self.terrain.last_name = 'Youssef', 'Alami'
+        self.terrain.save(update_fields=['first_name', 'last_name'])
+        self.lead.telephone = '+212600000099'
+        self.lead.save(update_fields=['telephone'])
+        visite = self._visite(self.terrain, date_prevue=self.aujourdhui)
+        reponse = auth(self.bureau).get(self.URL)
+        ligne = reponse.data['lignes'][0]
+        self.assertEqual(ligne['id'], visite.id)
+        self.assertEqual(ligne['commercial'], {'id': self.terrain.id, 'nom': 'Youssef Alami'})
+        self.assertEqual((ligne['lead_nom'], ligne['ville'], ligne['lien']),
+                         ('Karim Bennani', 'Bouskoura', f'/visites/{visite.id}'))
+        for interdit in ('+2126', 'Lotissement'):
+            self.assertNotIn(interdit, json.dumps(reponse.data))
+
+    def test_la_portee_est_celle_de_l_ecran(self):
+        jeu = self._jeu()
+        autre = self._visite(self.collegue, date_prevue=self.aujourdhui)
+        # Un terrain ne voit QUE les siennes : ni l'orpheline, ni celle d'un collègue.
+        mien = auth(self.terrain).get(self.URL, {'limite': 25})
+        self.assertNotIn(jeu['orpheline'].id, self._ids(mien))
+        self.assertNotIn(autre.id, self._ids(mien))
+        self.assertEqual(mien.data['totaux']['sans_technicien'], 0)
+        # Un valideur voit l'équipe, l'orpheline comprise, et pas l'autre société.
+        self._visite(self.etranger, date_prevue=self.aujourdhui, company=self.autre,
+                     lead=self.lead_autre)
+        equipe = auth(self.bureau).get(self.URL, {'limite': 25})
+        self.assertIn(jeu['orpheline'].id, self._ids(equipe))
+        self.assertIn(autre.id, self._ids(equipe))
+        self.assertEqual(equipe.data['totaux']['planifiees'], 4)
+
+    def test_filtre_par_commercial_et_limite(self):
+        jeu = self._jeu()
+        autre = self._visite(self.collegue, date_prevue=self.aujourdhui)
+        api = auth(self.bureau)
+        vue = api.get(self.URL, {'commercial': self.collegue.id})
+        self.assertEqual(self._ids(vue), [autre.id])
+        courte = api.get(self.URL, {'limite': 2})
+        self.assertEqual(len(courte.data['lignes']), 2)
+        self.assertEqual(courte.data['limite'], 2)
+        self.assertEqual(courte.data['totaux']['planifiees'], 4)
+        self.assertEqual(self._ids(courte), [jeu['en_retard'].id, jeu['a_valider'].id])
+
+    def test_les_refus_nomment_le_champ_fautif(self):
+        du = self.aujourdhui
+        cas = (
+            ({'au': (du + timedelta(days=32)).isoformat()}, 'au', 'fenetre_trop_longue'),
+            ({'au': (du - timedelta(days=1)).isoformat()}, 'au', 'fenetre_inversee'),
+            ({'du': 'demain'}, 'du', 'date_invalide'),
+            ({'du': '9999-12-31'}, 'du', 'date_invalide'),
+            ({'filtre': 'tout_le_monde'}, 'filtre', 'filtre_invalide'),
+            ({'limite': '26'}, 'limite', 'limite_invalide'),
+            ({'commercial': 'moi'}, 'commercial', 'commercial_invalide'),
+        )
+        for parametres, champ, code in cas:
+            with self.subTest(parametres=parametres):
+                reponse = auth(self.bureau).get(self.URL, parametres)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(set(reponse.data), {'detail', 'field', 'code'})
+                self.assertEqual((reponse.data['field'], reponse.data['code']), (champ, code))
+        contrat = echantillon('assistant_agenda')['exemple_400_fenetre']
+        refus = auth(self.bureau).get(self.URL, {'au': (du + timedelta(days=32)).isoformat()})
+        self.assertEqual(refus.data, contrat)
+
+    def test_fenetre_limite_a_31_jours_acceptee(self):
+        reponse = auth(self.bureau).get(
+            self.URL, {'au': (self.aujourdhui + timedelta(days=31)).isoformat()})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
+    def test_requetes_bornees_quel_que_soit_le_nombre_de_visites(self):
+        auth(self.bureau).get(self.URL)  # caches froids (types de contenu, rôles)
+
+        def requetes(combien):
+            VisiteTerrain.objects.all().delete()
+            for _ in range(combien):
+                self._visite(self.terrain, date_prevue=self.aujourdhui)
+            with CaptureQueriesContext(connection) as capture:
+                reponse = auth(self.bureau).get(self.URL, {'limite': 25})
+            self.assertEqual(len(reponse.data['lignes']), combien)
+            return len(capture)
+        self.assertEqual(requetes(2), requetes(8))
+
+    def test_sans_droit_de_lecture_ou_anonyme_refuse(self):
+        sans_droit = self._user(self.company, 'vta6-agenda-sans-droit', ['crm_voir'])
+        self.assertEqual(auth(sans_droit).get(self.URL).status_code, 403)
+        self.assertIn(APIClient().get(self.URL).status_code, (401, 403))
 
 
 class AccueilMobileTests(TestCase):

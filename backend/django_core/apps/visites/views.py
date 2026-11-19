@@ -38,6 +38,7 @@ from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
+from . import assistant
 from . import qualification as vocabulaire_qualification
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
@@ -110,6 +111,34 @@ _VISITE_CONTEXTE = inline_serializer('VisiteTerrainContexte', {
     'qualification': serializers.JSONField(allow_null=True),
     '_non_releves': serializers.JSONField(required=False, allow_null=True),
     'releve_ci': serializers.JSONField(required=False, allow_null=True),
+})
+
+
+#: Copilote vague 2 (VIS3) — l'agenda de l'assistant : ``contract_samples/
+#: assistant_agenda.json``. Les paramètres sont DÉCLARÉS ici : un paramètre de
+#: requête non déclaré est refusé (400, ``core.parametres_requete``).
+_PARAMETRES_AGENDA = [
+    OpenApiParameter('du', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description="Début de la fenêtre (défaut : aujourd'hui)."),
+    OpenApiParameter('au', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description='Fin de la fenêtre (défaut : du + 7 j ; au plus du + 31 j).'),
+    OpenApiParameter('filtre', {'type': 'string', 'enum': list(assistant.FILTRES)},
+                     OpenApiParameter.QUERY, required=False),
+    OpenApiParameter('commercial', {'type': 'integer', 'minimum': 1},
+                     OpenApiParameter.QUERY, required=False,
+                     description="Id du compte qui fait la visite."),
+    OpenApiParameter('limite', {'type': 'integer', 'minimum': 1, 'maximum': assistant.LIMITE_MAX},
+                     OpenApiParameter.QUERY, required=False),
+]
+
+_AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
+    'du': serializers.CharField(),
+    'au': serializers.CharField(),
+    'filtre': serializers.CharField(),
+    'totaux': serializers.DictField(child=serializers.IntegerField()),
+    'limite': serializers.IntegerField(),
+    'lignes': serializers.ListField(child=serializers.DictField()),
+    'lien': serializers.CharField(),
 })
 
 
@@ -865,6 +894,24 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.texture_calage = normalise
         visite.save(update_fields=['texture_calage'])
         return self._agregat(visite)
+
+    # ── Copilote vague 2 — lectures et gestes de l'assistant ─────────────────
+    #
+    # Les formes sont celles de ``contract_samples/assistant_*.json`` et
+    # ``visite_annuler.json`` (construites par ``assistant.py``) ; la portée est
+    # celle de l'écran (``selectors.visites_visibles``). Un refus nomme son
+    # champ : ``{detail, field, code}``.
+
+    @extend_schema(parameters=_PARAMETRES_AGENDA, responses=_AGENDA_ASSISTANT)
+    @action(detail=False, methods=['get'], url_path='agenda')
+    def agenda(self, request):
+        """VIS3 — l'agenda des visites (carte ``liste_visites``) : totaux de la
+        fenêtre et lignes compactes ; lecture ``visites_voir``."""
+        try:
+            return Response(assistant.agenda(
+                request.user, request.query_params, timezone.localdate()))
+        except assistant.ErreurAssistant as erreur:
+            return Response(erreur.corps(), status=erreur.statut)
 
 
 def _coordonnee(brute, limite):
