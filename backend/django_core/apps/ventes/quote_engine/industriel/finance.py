@@ -807,6 +807,44 @@ def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
   <div class="i2-foot">{pied}.</div>""", chapeau, titre)
 
 
+def _option_avec_finance(d, L, fmt):
+    """Fondateur 18/11/2026 — page finance d'un devis à DEUX options : sous les
+    chiffres de l'offre réseau, l'économie annuelle, le retour et le TRI de
+    l'option « avec batterie », LUS de l'étude (``mentions.valeur_option_avec``,
+    les mêmes que la page équipements ; TRI de ``option_avec.economie_flux``).
+    Rend ``(étiquette de l'offre réseau, bande de l'option batterie)`` ;
+    ``('', '')`` sans seconde option chiffrée : rendu inchangé."""
+    from ..ci import options_cote
+    from ..ci.mentions import valeur_option_avec
+    valeur = valeur_option_avec(d) if options_cote.deux_options(d, "ind") else None
+    if not (valeur or {}).get("economie_annuelle_mad"):
+        return "", ""
+    lg = ci_blocs.langue(d)
+
+    def t(cle):
+        return ci_blocs.LIBELLES_OPTION_AVEC[cle].get(lg) or ci_blocs.LIBELLES_OPTION_AVEC[cle]["fr"]
+
+    ttc = valeur.get("economie_annuelle_ttc_mad")
+    morceaux = [f'{t("economie_ttc" if ttc else "economie")}&nbsp;: '
+                f'<b>{fmt(ttc or valeur["economie_annuelle_mad"])}&nbsp;MAD</b>']
+    retour = valeur.get("retour_simple_ans")
+    if retour:
+        txt = ci_couverture.ans(retour)
+        morceaux.append(f'{t("retour")}&nbsp;: <b>{txt}'
+                        f'{ci_couverture.unite_ans(d, txt)}</b>')
+    etude_ci = (d.get("etude") or {}).get("etude_ci") if isinstance(d.get("etude"), dict) else None
+    ind = (((etude_ci or {}).get("option_avec") or {}).get("economie_flux") or {}).get("indicateurs") or {}
+    tri, horizon = _num(ind.get("tri_pct")), _num(ind.get("tri_horizon_ans"))
+    if tri is not None and horizon:
+        morceaux.append(L("ci_ind_tri_sur", "TRI sur {n} ans", n=f"{horizon:g}")
+                        + f'&nbsp;: <b>{decimale(f"{tri:.1f}")}&nbsp;%</b>')
+    etiquette = (f'<div class="i2-optl">'
+                 f'{L("ci_opt_sans_batterie", "Sans batterie")}</div>')
+    bande = (f'<div class="i2-avec" data-option="avec"><b>{t("titre")}</b> &mdash; '
+             + " &middot; ".join(morceaux) + "</div>")
+    return etiquette, bande
+
+
 def build(ctx):
     d = ctx["d"]
     # CIQ345 — libellés STRUCTURELS dans la langue du document.
@@ -850,6 +888,12 @@ def build(ctx):
 .i2-kgap{{width:12px;}}
 .i2-kv{{font-family:{f_display};font-size:19pt;color:{navy};line-height:1;}}
 .i2-kl{{font-size:7.5pt;color:{muted};margin-top:4px;}}
+.i2-optl{{margin-top:8px;font-size:7.5pt;font-weight:700;color:{navy};
+  letter-spacing:.6px;text-transform:uppercase;}}
+.i2-optl + .i2-kpis{{margin-top:3px;}}
+.i2-avec{{margin-top:6px;border:1px solid {line};border-left:4px solid {navy};
+  border-radius:10px;padding:6px 12px;font-size:8.5pt;color:{ink};line-height:1.4;}}
+.i2-avec b{{color:{navy};}}
 .i2-inj{{margin-top:10px;border:1px solid {green_bg};border-left:4px solid {green};
   border-radius:12px;background:{green_bg};padding:8px 14px;font-size:8pt;color:{ink};}}
 .i2-inj b{{color:{green};}}
@@ -976,8 +1020,11 @@ def build(ctx):
         mt_source = (f'<br><span class="i2-mini">'
                      f'{ci_couverture.mention_client(d["ind_mt_mention"])}</span>'
                      if d.get("ind_mt_mention") else "")
+        # Fondateur 18/11/2026 — les DEUX options sur la page finance.
+        etiquette_sans, bande_avec = _option_avec_finance(d, L, fmt)
         corps = f"""
-  {kpis}
+  {etiquette_sans if kpis else ""}{kpis}
+  {bande_avec}
   {revente_html}
   <div class="i2-cfhead">{L("ci_ind_cumul_titre", "Cumul net de l'investissement ({base})", base=base_txt)}</div>
   {courbe}
