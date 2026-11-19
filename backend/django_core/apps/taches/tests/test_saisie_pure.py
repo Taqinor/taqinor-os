@@ -536,7 +536,8 @@ class CollageTests(unittest.TestCase):
                          {'priorite': 0, 'nouveau_projet': {'nom': 'Courses', 'priorite': 2}})
         self.assertEqual(apercu['lignes'][4]['champs'], {'priorite': 0, 'projet_id': 5})
         self.assertEqual(apercu['projets_nouveaux'],
-                         [{'nom': n, 'priorite': 2} for n in ('Courses', 'Chantier Settat', 'Idées')])
+                         [{'nom': n, 'priorite': 2, 'ressemble_a': None}
+                          for n in ('Courses', 'Chantier Settat', 'Idées')])
 
     def test_dix_collages_et_le_onzieme_est_refuse(self):
         dix = [f'Liste {i}\nUne\nDeux' for i in range(10)]
@@ -590,7 +591,7 @@ class CollageTests(unittest.TestCase):
         self.assertEqual(champs[1]['projet_id'], 3)
         self.assertEqual(champs[2]['nouveau_projet'], {'nom': 'Bricolage', 'priorite': 2})
         self.assertEqual(apercu['projets_communs'], [])
-        self.assertEqual(apercu['projets_nouveaux'], [{'nom': 'Bricolage', 'priorite': 2}])
+        self.assertEqual(apercu['projets_nouveaux'], [{'nom': 'Bricolage', 'priorite': 2, 'ressemble_a': None}])
 
     def _projets_par_ligne(self, apercu):
         noms = {5: 'Maison', 3: 'Polydesign'}
@@ -648,6 +649,42 @@ class CollageTests(unittest.TestCase):
         # un projet archivé n'est jamais pris par son début
         archive = coller('Vieux :\nranger\ntrier', projets=PROJETS + (ProjetConnu(9, 'Vieux dossiers', 'archive', 1),))
         self.assertEqual(archive['lignes'][0]['champs'].get('nouveau_projet'), {'nom': 'Vieux', 'priorite': 2})
+
+    def test_r4_26_un_nom_proche_d_un_projet_existant_est_signale_jamais_fusionne(self):
+        projets = PROJETS + (ProjetConnu(41, 'Pompage Douar Ouled Saleh', 'actif', 3),)
+        apercu = coller('Pompage Ouled Saleh :\nposer la pompe\ntirer le câble', projets=projets)
+        # jamais de fusion silencieuse : le groupe reste un NOUVEAU projet…
+        self.assertEqual({ligne['champs'].get('nouveau_projet', {}).get('nom') for ligne in apercu['lignes']},
+                         {'Pompage Ouled Saleh'})
+        # … et l'aperçu dit à quel projet existant il ressemble (l'écran propose « Utiliser »)
+        proche = {'id': 41, 'nom': 'Pompage Douar Ouled Saleh'}
+        self.assertEqual(apercu['projets_nouveaux'],
+                         [{'nom': 'Pompage Ouled Saleh', 'priorite': 2, 'ressemble_a': proche}])
+        # la première ligne (projet commun) le dit aussi
+        commun = coller('Pompage Ouled Saleh\nposer la pompe\ntirer le câble', projets=projets)['projets_communs'][0]
+        self.assertEqual((commun['nouveau'], commun['ressemble_a']), (True, proche))
+
+    def test_r4_26_la_ressemblance_ses_regles(self):
+        def ressemble(nom, *existants):
+            projets = tuple(ProjetConnu(50 + i, n, s, i) for i, (n, s) in enumerate(existants))
+            return coller(f'{nom} :\nune ligne\nune autre', projets=projets)['projets_nouveaux'][0]['ressemble_a']
+        # dans l'autre sens (le nouveau a un mot de plus), accents, casse et petits mots ignorés
+        self.assertEqual(ressemble('Ecole Al Manar de Salé', ('École Al-Manar', 'actif')),
+                         {'id': 50, 'nom': 'École Al-Manar'})
+        self.assertEqual(ressemble('Chantier Tazi villa', ('chantier TAZI', 'en_pause')),
+                         {'id': 50, 'nom': 'chantier TAZI'})
+        # un seul mot en commun : rien (« Villa » n'est pas « Villa Benali »)
+        self.assertIsNone(ressemble('Villa Atlas', ('Villa Benali', 'actif')))
+        # deux candidats aussi proches : rien (jamais un choix au hasard)
+        self.assertIsNone(ressemble('Pompage Ouled', ('Pompage Ouled Saleh', 'actif'), ('Pompage Ouled Ali', 'actif')))
+        # le plus proche l'emporte (un nom qui CONTIENT le nouveau d'un seul tenant est déjà pris par R3-043)
+        self.assertEqual(ressemble('Pompage Ouled Saleh', ('Pompage Douar Ouled Saleh', 'actif'),
+                                   ('Pompage Saleh', 'actif')),
+                         {'id': 50, 'nom': 'Pompage Douar Ouled Saleh'})
+        # un projet archivé ne se propose jamais
+        self.assertIsNone(ressemble('Pompage Ouled Saleh', ('Pompage Douar Ouled Saleh', 'archive')))
+        # un nouveau projet sans parent proche : `null`, la clé est toujours là
+        self.assertIsNone(ressemble('Bricolage maison', ('Polydesign', 'actif')))
 
     def test_r2_004_un_titre_sans_deux_points_suivi_de_lignes_a_tiret(self):
         apercu = coller('Villa\n- poser les rails\n- câbler\nHôtel Atlas\n- relancer\n- visiter')

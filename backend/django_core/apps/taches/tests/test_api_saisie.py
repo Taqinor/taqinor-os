@@ -87,7 +87,7 @@ class ApercuTests(BaseApi):
         self.assertEqual([j['type'] for j in ligne['jetons']], ['jour', 'projet'])
         self.assertEqual(ligne['champs']['jour_prevu'], _j(1).isoformat())
         self.assertEqual(ligne['champs']['nouveau_projet'], {'nom': 'SiteWeb', 'priorite': 2})
-        self.assertEqual(corps['projets_nouveaux'], [{'nom': 'SiteWeb', 'priorite': 2}])
+        self.assertEqual(corps['projets_nouveaux'], [{'nom': 'SiteWeb', 'priorite': 2, 'ressemble_a': None}])
 
     def test_un_decalage_hors_du_calendrier_reste_du_texte(self):
         """Revue F2 tour 2 #12 : « dans 999999 semaines » ne fait plus échouer l'aperçu de toute la liste
@@ -113,6 +113,19 @@ class ApercuTests(BaseApi):
                          (0, 'Courses', True, 'premiere_ligne'))
         self.assertEqual([ligne['titre'] for ligne in corps['lignes']], ['lait', 'pain'])
         self.assertEqual(list(corps['projets_communs'][0]), list(exemple('saisie_apercu')['projets_communs'][0]))
+
+    def test_r4_26_un_nom_proche_d_un_de_mes_projets_est_signale_jamais_fusionne(self):
+        proche = fabriques.projet(self.u1, nom='Pompage Douar Ouled Saleh')
+        # le projet d'un AUTRE compte (même société, autre société) ne se propose jamais
+        fabriques.projet(self.u2, nom='Pompage Douar Ouled Saleh Est')
+        fabriques.projet(self.ext, nom='Pompage Ouled Saleh Douar')
+        corps = self._apercu(['Pompage Ouled Saleh :\nposer la pompe\ntirer le câble']).json()
+        attendu = {'id': proche.pk, 'nom': 'Pompage Douar Ouled Saleh'}
+        self.assertEqual(corps['projets_nouveaux'],
+                         [{'nom': 'Pompage Ouled Saleh', 'priorite': 2, 'ressemble_a': attendu}])
+        self.assertEqual({ligne['champs'].get('nouveau_projet', {}).get('nom') for ligne in corps['lignes']},
+                         {'Pompage Ouled Saleh'})
+        self.assertEqual(Projet.objects.filter(proprietaire=self.u1).count(), 1)  # l'aperçu n'écrit rien
 
     def test_un_doublon_d_une_tache_ouverte_est_decoche(self):
         existante = fabriques.tache(self.u1, titre='lait')

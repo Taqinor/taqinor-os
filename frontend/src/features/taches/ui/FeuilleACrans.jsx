@@ -227,6 +227,131 @@ function useSortieAnimee(ouverte, enPlace, feuille, voile) {
   }, [ouverte, enPlace, feuille, voile])
 }
 
+/* ── R4-20 — TIRER une feuille du bas vers le bas pour la fermer (le geste de Rappels, Calendrier, Things) ───────────
+   La poignée le promet. Le doigt part de la poignée ou de l'en-tête — ou du contenu quand il est défilé tout en haut
+   (sinon le geste lui appartient : il défile). La feuille SUIT le doigt (`transform`, sans transition : c'est une
+   manipulation directe, permise même quand on a demandé moins d'animations), le voile s'éclaircit d'autant ; lâchée
+   au-delà de 30 % de sa hauteur ou d'un jet de plus de 0,5 px/ms, elle se ferme par le même chemin que la croix
+   (`fermerSansPerte` : le champ en cours est quitté d'abord, sa frappe gardée — R3-060) ; sinon elle revient. Vers le
+   haut, depuis la poignée ou l'en-tête : le cran 85 %. Jamais là où il n'y a pas de poignée VISIBLE (saisie en place,
+   panneau et dialogue du bureau), jamais depuis un champ de texte (on y sélectionne), jamais en glissé horizontal.
+   Écouteurs natifs `touch*` (`passive: false`) : un `touchmove` annulé dès le premier pixel vers le bas empêche le
+   navigateur de prendre le geste pour un défilement (il enverrait `pointercancel` et garderait le doigt). */
+const SEUIL_TIRE_FRACTION = 0.3
+const SEUIL_TIRE_VITESSE = 0.5 // px/ms
+const SEUIL_TIRE_JET_MIN_PX = 24
+const SEUIL_DECISION_PX = 6
+const SEUIL_CRAN_HAUT_PX = 40
+const CHAMPS_TEXTE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+
+/** Vrai si un élément entre `cible` et la feuille défile et n'est pas tout en haut (le geste vers le bas est le sien). */
+function contenuDefile(cible, racine) {
+  for (let n = cible; n && n !== racine; n = n.parentElement) {
+    if (n.scrollTop > 0 && n.scrollHeight > n.clientHeight) return true
+  }
+  return false
+}
+
+function useTirerPourFermer(feuille, voile, actif, fermerSansPerte, setCran) {
+  useEffect(() => {
+    const racine = feuille.current
+    if (!actif || !racine) return undefined
+    let geste = null
+    const reduit = () => typeof window.matchMedia === 'function' && !window.matchMedia('(prefers-reduced-motion: no-preference)').matches
+    const poser = (dy) => {
+      racine.style.transform = dy > 0 ? `translateY(${dy}px)` : ''
+      if (voile.current) voile.current.style.opacity = dy > 0 ? String(Math.max(0, 1 - dy / geste.hauteur)) : ''
+    }
+    const relacher = () => {
+      racine.classList.remove('tiree')
+      if (reduit()) { poser(0); return }
+      // le retour glisse (260 ms), puis la feuille rend la main à ses transitions d'origine
+      racine.style.transition = 'transform var(--motion-slow) var(--tch-ease-entree)'
+      if (voile.current) voile.current.style.transition = 'opacity var(--motion-slow) var(--ease-standard)'
+      const fin = (e) => {
+        if (e && e.target !== racine) return
+        racine.removeEventListener('transitionend', fin)
+        racine.style.transition = ''
+        if (voile.current) voile.current.style.transition = ''
+      }
+      racine.addEventListener('transitionend', fin)
+      poser(0)
+      if (!racine.style.transform) fin() // rien à faire glisser (jsdom, 0 px) : la main est rendue tout de suite
+    }
+    const surDebut = (e) => {
+      geste = null
+      if (e.touches.length !== 1) return
+      const cible = e.target instanceof Element ? e.target : null
+      const poignee = racine.querySelector(':scope > .poignee')
+      // pas de poignée visible (bureau : saisie en place, panneau, dialogue) : pas de geste
+      if (!cible || !poignee || !estVisible(poignee)) return
+      const parLaTete = Boolean(cible.closest('.poignee, .feuille-entete'))
+      if (!parLaTete && (cible.closest(CHAMPS_TEXTE) || contenuDefile(cible, racine))) return
+      const t = e.touches[0]
+      const hauteur = racine.getBoundingClientRect().height || window.innerHeight * 0.5
+      geste = { x: t.clientX, y: t.clientY, dy: 0, parLaTete, hauteur, etat: 'attente', echantillons: [[Date.now(), 0]] }
+    }
+    const surMouvement = (e) => {
+      if (!geste || geste.etat === 'abandon') return
+      const t = e.touches[0]
+      if (!t) return
+      const dx = t.clientX - geste.x
+      const dy = t.clientY - geste.y
+      if (geste.etat === 'attente') {
+        // vers le bas dès le premier pixel : le défilement (rebond compris) ne part pas
+        if (dy > 0 && Math.abs(dy) >= Math.abs(dx) && e.cancelable) e.preventDefault()
+        if (Math.abs(dx) < SEUIL_DECISION_PX && Math.abs(dy) < SEUIL_DECISION_PX) return
+        if (Math.abs(dx) > Math.abs(dy)) { geste.etat = 'abandon'; return }
+        if (dy < 0) { geste.etat = geste.parLaTete ? 'haut' : 'abandon'; return }
+        geste.etat = 'tire'
+        racine.classList.add('tiree')
+        racine.style.transition = 'none'
+        if (voile.current) voile.current.style.transition = 'none'
+      }
+      if (e.cancelable) e.preventDefault()
+      geste.dy = dy
+      geste.echantillons.push([Date.now(), dy])
+      if (geste.echantillons.length > 6) geste.echantillons.shift()
+      if (geste.etat === 'tire') poser(Math.max(0, dy))
+    }
+    const surFin = (e) => {
+      const g = geste
+      geste = null
+      if (!g) return
+      if (g.etat === 'haut') {
+        if (g.dy <= -SEUIL_CRAN_HAUT_PX) setCran('85')
+        if (e.cancelable) e.preventDefault()
+        return
+      }
+      if (g.etat !== 'tire') return
+      // le relâcher d'un glissé ne « touche » rien dessous (aucun clic de compatibilité)
+      if (e.cancelable) e.preventDefault()
+      const [[t0, y0]] = g.echantillons.slice(-3)
+      const [t1, y1] = g.echantillons[g.echantillons.length - 1]
+      const vitesse = t1 > t0 ? (y1 - y0) / (t1 - t0) : 0
+      const loin = g.dy > g.hauteur * SEUIL_TIRE_FRACTION
+      const jet = vitesse > SEUIL_TIRE_VITESSE && g.dy > SEUIL_TIRE_JET_MIN_PX
+      if (e.type === 'touchend' && (loin || jet)) {
+        // fermée là où le doigt l'a laissée : la copie de sortie part de cette position (translate s'ajoute au transform)
+        racine.classList.remove('tiree')
+        fermerSansPerte()
+        return
+      }
+      relacher()
+    }
+    racine.addEventListener('touchstart', surDebut, { passive: true })
+    racine.addEventListener('touchmove', surMouvement, { passive: false })
+    racine.addEventListener('touchend', surFin, { passive: false })
+    racine.addEventListener('touchcancel', surFin, { passive: false })
+    return () => {
+      racine.removeEventListener('touchstart', surDebut)
+      racine.removeEventListener('touchmove', surMouvement)
+      racine.removeEventListener('touchend', surFin)
+      racine.removeEventListener('touchcancel', surFin)
+    }
+  }, [feuille, voile, actif, fermerSansPerte, setCran])
+}
+
 /** Vrai entre `naviguerApresFeuille` et la fermeture de la feuille qu'elle remplace (voir ci-dessous). */
 let navigationVoulue = false
 
@@ -452,6 +577,8 @@ export default function FeuilleACrans({
   }, [ouverte, clavier, panneau, enPlace, cran])
 
   useSortieAnimee(ouverte, enPlace, feuille, voile)
+  // R4-20 — tirer vers le bas ferme (feuille du bas seulement : la poignée visible est vérifiée au toucher)
+  useTirerPourFermer(feuille, voile, Boolean(ouverte) && !enPlace, fermerSansPerte, setCran)
 
   if (!ouverte) return null
 

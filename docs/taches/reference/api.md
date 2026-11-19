@@ -2035,7 +2035,7 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 
 **`saisie_apercu.json`** — POST saisie-rapide/ apercu:true · consommateurs : Saisie, collage, carte `capture_apercu`, « Range ma liste »
 ```json
-{"projets_communs":[{"collage":0,"id":null,"nom":"Courses","nouveau":true,"priorite":2,"source":"premiere_ligne"}],"lignes":[{"index":0,"collage":0,"tache_id":null,"titre":"Appeler Karim","cochee":true,"deja_faite":false,"doublon_de":null,"doublon_projet":null,"etape_de":null,"alertes":[],"jetons":[{"type":"jour","source":"demain","debut":14,"fin":20,"valeur":"2026-11-18","libelle":"mer. 18 nov."},{"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true,"priorite":2},"libelle":"Nouveau projet : SiteWeb"}],"champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb","priorite":2},"priorite":0}}],"projets_nouveaux":[{"nom":"SiteWeb","priorite":2}]}
+{"projets_communs":[{"collage":0,"id":null,"nom":"Courses","nouveau":true,"priorite":2,"source":"premiere_ligne","ressemble_a":null}],"lignes":[{"index":0,"collage":0,"tache_id":null,"titre":"Appeler Karim","cochee":true,"deja_faite":false,"doublon_de":null,"doublon_projet":null,"etape_de":null,"alertes":[],"jetons":[{"type":"jour","source":"demain","debut":14,"fin":20,"valeur":"2026-11-18","libelle":"mer. 18 nov."},{"type":"projet","source":"#SiteWeb","debut":21,"fin":29,"valeur":{"id":null,"nom":"SiteWeb","nouveau":true,"priorite":2},"libelle":"Nouveau projet : SiteWeb"}],"champs":{"jour_prevu":"2026-11-18","nouveau_projet":{"nom":"SiteWeb","priorite":2},"priorite":0}}],"projets_nouveaux":[{"nom":"SiteWeb","priorite":2,"ressemble_a":null}]}
 ```
 
 **`saisie_rapide.json`** — POST saisie-rapide/ (création) · consommateurs : Saisie, file hors ligne
@@ -2193,6 +2193,10 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `doublon_projet` (nom du projet de la tâche doublon, par `nom_pour` ; `null` sans projet ou sans doublon). « En faire
   des sous-tâches » : `saisie-rapide/` création `{"lignes":[…],"parent_id":20}` (parent vérifié par propriétaire, un
   niveau ; 404 sinon).
+  R4-26 — chaque projet NOUVEAU (`projets_nouveaux[]`, et `projets_communs[]` quand `nouveau`) porte `ressemble_a` :
+  `{"id","nom"}` du projet OUVERT (actif ou en pause) dont le nom est proche — tous les mots de l'un dans l'autre,
+  accents, casse, ponctuation et petits mots ignorés, au moins deux mots communs, le plus de mots communs l'emporte,
+  égalité : aucun — sinon `null` (clé toujours présente). Rien n'est fusionné : l'écran propose « Utiliser ».
 - **`agenda.json`** : clé `capacite` `{minutes, source}` (la capacité du jour, « {h} pour {cap} »).
 - **Carte du moment** : `retour` porte `donnees.ids` (les tâches qui attendaient, lues par « Les remettre dans
   Proposé ») ; `revelation` servie par `aujourdhui/` (la plus récente ouverte, dernière de l'ordre, un bouton « OK »).

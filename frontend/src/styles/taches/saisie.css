@@ -87,6 +87,9 @@
 .tch .apercu-liste { display: flex; flex-direction: column; }
 .tch .apercu-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 2px; }
 .tch .apercu-entete .feuille-titre { text-align: left; font-size: 1.25rem; margin: 0; }
+/* R4-28 — saisie EN PLACE au bureau : le × de fermeture (44 px, posé en haut à droite, base.css) couvrait le compteur
+   « 6 tâches · 3 projets » (« proj×ts ») ; l'en-tête de l'aperçu s'arrête avant lui */
+.tch .feuille.popover-bureau .apercu-entete { padding-inline-end: 48px; }
 .tch .apercu-source { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
 .tch .apercu-groupe { margin-top: 18px; }
 .tch .apercu-projet {
@@ -104,6 +107,8 @@
 .tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
 .tch .apercu-bascule::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
 .tch .apercu-bascule[aria-pressed="true"] { text-decoration: underline; }
+/* R4-26 — « Ressemble à « … » · Utiliser » : une 2e ligne discrète sous le nom du nouveau projet */
+.tch .apercu-projet .nom .apercu-ressemble { margin-top: 2px; overflow-wrap: anywhere; }
 .tch .puce.prio { flex: none; height: 34px; gap: 4px; background: var(--tch-surface); color: var(--tch-texte); }
 .tch .puce.prio svg { color: var(--tch-texte-doux); }
 /* une liste collée : la feuille s'ouvre en grand (cran 85, comme la maquette), quel que soit son cran de départ */
@@ -223,7 +228,10 @@
 @keyframes tch-feuille-sortie { from { translate: 0 0; } to { translate: 0 100%; } }
 @keyframes tch-dialogue-sortie { from { translate: 0 0; opacity: 1; } to { translate: 0 12px; opacity: 0; } }
 @keyframes tch-panneau-sortie { from { translate: 0 0; } to { translate: 100% 0; } }
-@keyframes tch-voile-sortie { from { opacity: 1; } to { opacity: 0; } }
+/* R4-20 — sans `from` : une feuille TIRÉE vers le bas a éclairci son voile, il part de là (jamais un éclair sombre) */
+@keyframes tch-voile-sortie { to { opacity: 0; } }
+/* R4-20 — la poignée et l'en-tête d'une feuille ne défilent rien : le doigt qui s'y pose tire la feuille (FeuilleACrans) */
+.tch .feuille .poignee, .tch .feuille .feuille-entete { touch-action: none; }
 /* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
    fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
    lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */

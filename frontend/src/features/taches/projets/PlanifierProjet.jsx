@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Sparkles, X } from 'lucide-react'
-import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
+import { apercuPlanification, planifierProjet, planifierTache, saisieRapide } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
-import { accord, aujourdhuiIso } from '../lib/textes'
+import { proposerAnnuler } from '../lib/gestes'
+import { accord, aujourdhuiIso, jourCourt } from '../lib/textes'
+import { ajouterJours } from '../ui/SelecteurQuand'
 import { PRIORITES, jourProjet } from './LigneProjet'
 
 /* ============================================================================
@@ -52,6 +54,32 @@ function ecrireBrouillon(cle, data) {
     return false
   }
 }
+
+/**
+ * R4-27 — une première action se lit avec l'ANALYSEUR DE LA SAISIE (`saisie-rapide/` aperçu, rien n'est écrit) : le
+ * jour qu'elle nomme (« demain », « samedi », « dans 15 jours ») quitte le titre et devient son « Quand » — Aujourd'hui,
+ * Demain, ou un autre jour (`jour`, posé après la création : `planification/` ne connaît que ces deux mots). Le reste
+ * de la phrase reste tel quel. Rend `{ titre, quand, jour? }` ou `null` (aucun jour lu, hors ligne : l'action garde son
+ * texte, rien n'est perdu).
+ */
+async function lireAction(texte, aujourdhui) {
+  let ligne = null
+  try {
+    ligne = (await saisieRapide({ texte, apercu: true }, { cle: null, erreurSousLeChamp: true })).data?.lignes?.[0]
+  } catch {
+    return null // pas de lecture (réseau, refus) : l'action garde la phrase tapée
+  }
+  const jeton = (ligne?.jetons ?? []).find((j) => j.type === 'jour' && typeof j.valeur === 'string'
+    && texte.slice(j.debut, j.fin) === j.source)
+  if (!jeton) return null
+  const titre = `${texte.slice(0, jeton.debut)} ${texte.slice(jeton.fin)}`.replace(/\s+/g, ' ').trim()
+  if (!titre) return null // la phrase n'était qu'une date : elle reste le titre
+  const quand = jeton.valeur === aujourdhui ? 'aujourdhui' : jeton.valeur === ajouterJours(aujourdhui, 1) ? 'demain' : ''
+  return quand ? { titre, quand, jour: null } : { titre, quand: '', jour: jeton.valeur }
+}
+
+/** Le corps envoyé d'une action : `{ titre, quand }` (un autre jour lu part « sans jour », posé ensuite). */
+const actionServie = (a) => ({ titre: a.titre, quand: a.jour ? '' : quandServi(a.quand) })
 
 function Erreur({ id, texte }) {
   return texte ? <p id={id} className="ep-erreur" role="alert">{texte}</p> : null
@@ -160,12 +188,12 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   )
 }
 
-function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
+function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe, onAjouter, aujourdhui }) {
   const [nouvelle, setNouvelle] = useState('')
   const ajouter = (e) => {
     e.preventDefault()
     if (!nouvelle.trim()) return
-    maj({ actions: [...etat.actions, { titre: nouvelle.trim(), quand: '' }] })
+    onAjouter(nouvelle.trim())
     setNouvelle('')
   }
   const ouvrirCopilote = () => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {
@@ -186,11 +214,15 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
             </div>
             <div className="puces" role="radiogroup" aria-label={`Quand : ${a.titre}`}>
               {QUAND.map(([code, libelle]) => (
-                <button key={code} type="button" className="puce" role="radio" aria-checked={quandServi(a.quand) === code}
-                  onClick={() => maj({ actions: etat.actions.map((x, j) => (j === i ? { ...x, quand: code } : x)) })}>
+                <button key={code} type="button" className="puce" role="radio" aria-checked={!a.jour && quandServi(a.quand) === code}
+                  onClick={() => maj({ actions: etat.actions.map((x, j) => (j === i ? { ...x, quand: code, jour: null } : x)) })}>
                   {libelle}
                 </button>
               ))}
+              {/* R4-27 — un autre jour lu dans la phrase (« samedi ») : sa puce, choisie */}
+              {a.jour ? (
+                <button type="button" className="puce chiffres" role="radio" aria-checked>{jourCourt(a.jour, aujourdhui)}</button>
+              ) : null}
             </div>
           </div>
         ))}
@@ -220,11 +252,22 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   const [erreurs, setErreurs] = useState({})
   const [occupe, setOccupe] = useState(false)
   const modifie = useRef(false)
+  // R4-27 — la DERNIÈRE saisie (lue après une lecture d'action revenue) et les lectures encore en vol
+  const etatRef = useRef(etat)
+  useEffect(() => { etatRef.current = etat })
+  const lectures = useRef(new Set())
+  const numero = useRef(0)
 
-  const maj = (suite) => {
+  /** R4-27 — une écriture de la saisie : la même fonction pure pour l'écran et pour `etatRef` (lu par « Terminer »
+   *  aussitôt une lecture revenue, avant même le rendu suivant). */
+  const poser = (changer) => {
     modifie.current = true
+    etatRef.current = changer(etatRef.current)
+    setEtat(changer)
+  }
+  const maj = (suite) => {
     if (suite.texte !== undefined) setApercu(null)
-    setEtat((e) => ({ ...e, ...suite }))
+    poser((e) => ({ ...e, ...suite }))
   }
 
   // brouillon gardé : écrit peu après la dernière frappe, vidé à la déconnexion
@@ -239,6 +282,43 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
     window.addEventListener('taqinor:auth-logout', vider)
     return () => window.removeEventListener('taqinor:auth-logout', vider)
   }, [cle])
+
+  /** R4-27 — l'action part TOUT DE SUITE avec la phrase tapée ; sa lecture (jour lu, titre sans le jour) la remplace
+   *  au retour, sur la valeur COURANTE (jamais une copie d'avant la lecture). */
+  const ajouterAction = (texte) => {
+    numero.current += 1
+    const cleAction = `a${numero.current}`
+    poser((e) => ({ ...e, actions: [...e.actions, { titre: texte, quand: '', cle: cleAction }] }))
+    const lecture = lireAction(texte, aujourdhui).then((lue) => {
+      if (lue) poser((e) => ({ ...e, actions: e.actions.map((a) => (a.cle === cleAction && a.titre === texte ? { ...a, ...lue } : a)) }))
+    })
+    lectures.current.add(lecture)
+    lecture.finally(() => lectures.current.delete(lecture))
+  }
+
+  /** R4-27 — après la création, les actions à un AUTRE jour lu (« samedi ») y sont posées (`planifier/`) ; la tâche
+   *  créée est retrouvée à sa place (les tâches des étapes d'abord, puis les actions, dans l'ordre), sinon par son
+   *  titre. Un jour qui n'a pas pu être posé est DIT ; la tâche, elle, existe. Rend les `creees` à jour. */
+  const poserLesJours = async (data, actions, sections) => {
+    const creees = [...(data?.creees ?? [])]
+    const avant = sections.reduce((n, s) => n + (s.taches?.length ?? 0), 0)
+    for (const [i, action] of actions.entries()) {
+      if (!action.jour) continue
+      let rang = avant + i
+      if (creees[rang]?.titre !== action.titre) rang = creees.findIndex((c) => c?.titre === action.titre)
+      const tache = creees[rang]
+      if (!tache) continue
+      try {
+        const { data: ecrite } = await planifierTache(tache.id, {
+          jour_prevu: action.jour, moment: '', heure_debut: null, quelque_jour: false, lock_version: tache.lock_version,
+        })
+        creees[rang] = { ...tache, ...(ecrite?.tache ?? {}) }
+      } catch (err) {
+        proposerAnnuler({ message: `« ${action.titre} » créée sans jour : ${frenchError(err)}` })
+      }
+    }
+    return creees
+  }
 
   const lireListe = async () => {
     setOccupe(true)
@@ -260,18 +340,21 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
     setOccupe(true)
     setErreurs({})
     try {
+      // R4-27 — une action dont la lecture est encore en vol : on l'attend (jamais « … demain » dans un titre)
+      await Promise.all([...lectures.current])
+      const saisi = etatRef.current
       let lue = apercu
-      if (etat.texte.trim() && !lue) {
+      if (saisi.texte.trim() && !lue) {
         lue = await lireListe()
         if (!lue) return
       }
       const corps = {
-        priorite: etat.priorite,
-        objectif: etat.objectif,
-        echeance: etat.echeance || null,
-        risque: etat.risque,
+        priorite: saisi.priorite,
+        objectif: saisi.objectif,
+        echeance: saisi.echeance || null,
+        risque: saisi.risque,
         sections: lue?.sections ?? [],
-        actions: etat.actions.map((a) => ({ ...a, quand: quandServi(a.quand) })),
+        actions: saisi.actions.map(actionServie),
         lock_version: projet.lock_version,
       }
       const { data } = await planifierProjet(projet.id, corps)
@@ -279,7 +362,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
       clearTimeout(minuteur.current)
       modifie.current = false
       ecrireBrouillon(cle, null)
-      onTermine?.(data)
+      const creees = saisi.actions.some((a) => a.jour) ? await poserLesJours(data, saisi.actions, corps.sections) : null
+      onTermine?.(creees ? { ...data, creees } : data)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
       if (champs && typeof champs === 'object') {
@@ -310,7 +394,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
       {erreurs.general ? <p className="ep-erreur" role="alert">{erreurs.general}</p> : null}
       {etat.pas === 1
         ? <PasUn etat={etat} maj={maj} erreurs={erreurs} aujourdhui={aujourdhui} />
-        : <PasDeux etat={etat} maj={maj} erreurs={erreurs} projet={projet} apercu={apercu} onApercu={lireListe} occupe={occupe} />}
+        : <PasDeux etat={etat} maj={maj} erreurs={erreurs} projet={projet} apercu={apercu} onApercu={lireListe} occupe={occupe}
+          onAjouter={ajouterAction} aujourdhui={aujourdhui} />}
       {/* R3-128 — au pas 1 le pied suit le contenu (jamais collé au-dessus des trois priorités) ; au pas 2, long, il reste en bas */}
       <div className={etat.pas === 1 ? 'carte-actions ep-planifier-pied pas-un' : 'carte-actions ep-planifier-pied'}>
         {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => maj({ pas: 1 })}>Précédent</button> : null}

@@ -1,4 +1,5 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Calendar, Folder, X } from 'lucide-react'
 import { ReactReduxContext } from 'react-redux'
 
@@ -33,6 +34,21 @@ import ColleListes, { construireLigne } from './ColleListes'
    phrase ajoutée vide le champ, la feuille reste ouverte sur le contexte de l'écran ; une LISTE créée la ferme.
    Maquettes : ecran-saisie.html, ecran-saisie-nouveau.html, etat-erreur-champ.html,
    ecran-saisie-liste.html.
+
+   INVARIANT « AUCUNE LETTRE PERDUE » (R2-001, R3-040, R4-22) — toute écriture dans le champ part de sa valeur COURANTE
+   au moment où elle s'applique, jamais d'une valeur capturée avant un `await`, un `then`, un minuteur ou un événement de
+   file. Les écritures, une à une :
+     · frappe : `onChange` → la valeur du DOM (`e.target.value`) ;
+     · brouillon repris : au MONTAGE seulement (état initial), jamais après ;
+     · Entrée / « Ajouter » (`enchainer`) et « Créer N tâches » (`remettreAZero`) : AU TOUCHER, dans le même geste, avant
+       tout envoi — rien de ce qui est tapé ensuite ne peut être effacé ;
+     · `#projet` choisi (ChampSaisie), puce Projet, « + Nouveau projet » : mise à jour fonctionnelle / lecture du DOM ;
+     · échec rendu au champ (`echouer`) : décidé sur la valeur du DOM À CET INSTANT (`champCourant`) et posé par
+       `flushSync` dans la même tâche — aucune frappe ne peut se glisser entre la lecture et l'écriture ; une lettre déjà
+       là ⇒ rien n'est écrit, la phrase passe par le toast « Reprendre » ;
+     · « Reprendre » : la phrase en cours (lue au DOM) est mise de côté et revient après ;
+     · retour de la file (hors ligne) : n'écrit RIEN et ne ferme RIEN — la feuille reste ouverte comme en ligne (une
+       fermeture décidée au retour de la file emportait le champ pendant la frappe suivante : « Bravo h » avalé).
    ========================================================================== */
 
 export const PREFIXE_BROUILLON = 'taches:brouillon:'
@@ -251,7 +267,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     : contexte.projetNom || (projets ?? []).find((p) => p.id === contexte.projetId)?.nom || ''
   // R2-001 — l'envoi part en ARRIÈRE-PLAN : ce qui est à l'écran au retour du serveur est lu ici, jamais une copie figée
   const actuel = useRef({ texte, collages, ouverte })
-  useEffect(() => { actuel.current = { texte, collages, ouverte } })
+  useLayoutEffect(() => { actuel.current = { texte, collages, ouverte } })
   const montee = useRef(true)
   useEffect(() => { montee.current = true; return () => { montee.current = false } }, [])
   /** Les envois en vol, enchaînés : les tâches arrivent dans l'ordre tapé. */
@@ -261,6 +277,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   /** Phrases mises de côté par « Reprendre » : chacune revient dans le champ quand la précédente est partie. */
   const suivantes = useRef([])
   const corps = useRef(null)
+  /** R4-22 — la phrase dans le champ À CET INSTANT : la valeur du DOM (le navigateur l'a déjà écrite, même si React ne
+   *  l'a pas encore rendue), sinon la dernière rendue (feuille fermée). */
+  const champCourant = () => corps.current?.querySelector('.saisie-champ')?.value ?? actuel.current.texte
 
   useEffect(() => { if (compte != null) definirProprietaire(compte) }, [compte])
 
@@ -435,7 +454,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const reprendre = (gel) => {
     if (!montee.current) { rouvrir(); return } // la phrase a été remise dans le brouillon : la feuille la relit
     if (!actuel.current.ouverte) rouvrir()
-    const enCours = actuel.current.texte
+    const enCours = champCourant()
     if (enCours.trim()) suivantes.current.push(enCours)
     restaurer(gel)
     // le toast parti, le focus revient au champ : Entrée renvoie la phrase reprise
@@ -443,9 +462,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   }
   const echouer = (gel, message) => {
     annoncerEnvoi({ etat: 'echec', envoi: gel.cid })
-    const libre = !actuel.current.texte.trim() && actuel.current.collages.length === 0
+    // R4-22 — lu et écrit dans la même tâche : une lettre tapée entre les deux est impossible
+    const libre = !champCourant().trim() && actuel.current.collages.length === 0
     if (!montee.current) ecrireBrouillon(cle, { texte: [...gel.collages, gel.texte].filter((t) => t.trim()).join('\n\n'), quand: gel.quand })
-    else if (libre) { restaurer(gel); setErreur(message) }
+    else if (libre) flushSync(() => { restaurer(gel); setErreur(message) })
     // feuille ouverte et phrase rendue au champ : l'erreur SOUS le champ suffit ; sinon le toast le dit
     if (montee.current && libre && actuel.current.ouverte) return
     // R3-046 — ce toast-là (« Reprendre ») n'est jamais recouvert par celui de la fin de la rafale
@@ -459,8 +479,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   }
 
   /** Hors ligne (TCH100) : les lignes lues partent dans la file — ou, si personne n'a encore lu la phrase, la PHRASE
-   *  elle-même, que le serveur lira au rejeu (R2-008a : « ce soir » devient un jour, plus un mot du titre). La feuille
-   *  se ferme si rien d'autre n'y est tapé. */
+   *  elle-même, que le serveur lira au rejeu (R2-008a : « ce soir » devient un jour, plus un mot du titre). R4-22 — la
+   *  feuille RESTE ouverte, comme en ligne (chaîne, spec-2 §1) : le retour de la file ne touche ni au champ ni à la
+   *  feuille ; Échap ou la croix la ferment. */
   const mettreEnFile = async (gel, lignes) => {
     const depart = gel.quand != null && gel.quand === gel.quandDepart
     try {
@@ -477,7 +498,6 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
       return
     }
     annoncerEnvoi({ etat: 'en_file', envoi: gel.cid })
-    if (montee.current && actuel.current.ouverte && !actuel.current.texte.trim()) onFermer?.()
     proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
   }
 
@@ -573,12 +593,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
 
   /** Fige, vide l'écran TOUT DE SUITE (une phrase : la chaîne reste ouverte ; une liste : la feuille se ferme), envoie. */
   const lancer = (gel, liste) => {
-    // R3-046 — annoncé AVANT tout : l'écran montre la ligne « envoi… » à l'instant du toucher
+    // le brouillon part avec la phrase, AVANT tout : l'écran qui le relit (carte « Ta saisie t'attend ») le fait à la
+    // fermeture de la feuille, juste dessous — effacé après, il y lisait encore la liste créée (R4-25 : un faux
+    // « Reprendre » qui rouvrait une saisie vide)
+    ecrireBrouillon(cle, null)
+    // R3-046 — annoncé AVANT l'envoi : l'écran montre la ligne « envoi… » à l'instant du toucher
     annoncerEnvoi({ etat: 'part', envoi: gel.cid, lignes: lignesAnnoncees(gel) })
     rafale.current.enVol += 1
     if (liste) { remettreAZero(); onFermer?.() } else enchainer()
-    // le brouillon part avec la phrase : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas la revoir
-    ecrireBrouillon(cle, null)
     // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
     envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
       .finally(terminerEnvoi)

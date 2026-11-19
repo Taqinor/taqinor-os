@@ -86,7 +86,16 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
     if (e.pointerType !== 'touch') return
     depart.current = { x: e.clientX, y: e.clientY, base: ouvert === 'gauche' ? -LARGEUR_GAUCHE : ouvert === 'droite' ? LARGEUR_DROITE : 0, horizontal: false }
     annulerAppui()
-    minuteur.current = setTimeout(() => { minuteur.current = null; depart.current = null; onAppuiLong() }, DUREE_APPUI_LONG_MS)
+    minuteur.current = setTimeout(() => {
+      minuteur.current = null
+      depart.current = null
+      // R4-21 — le doigt est ENCORE posé : son relâcher (pointerup, touchend, puis le click que le navigateur envoie à
+      // ce qui est passé sous lui — « Choisir un jour », « Priorité », le voile —, dans un ordre qui varie, parfois sans
+      // click) ne doit rien déclencher. Le prochain click est avalé ; un NOUVEAU toucher (pointerdown) retire l'avaleur,
+      // et lui seul agit. Aucun minuteur de protection : c'est le geste suivant qui décide.
+      avalerProchainClic()
+      onAppuiLong()
+    }, DUREE_APPUI_LONG_MS)
   }
   const surMouvement = (e) => {
     const d = depart.current

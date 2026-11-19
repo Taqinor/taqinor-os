@@ -1,6 +1,9 @@
 import { useCallback, useEffect } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 
+import { originFrom } from '../../../api/origin'
+import { ecrireTexte, lireTexte, viderALaDeconnexion } from './stockage'
+
 /* ============================================================================
    Raccord F2 — les écrans se parlent : une SEULE façon d'ouvrir la fiche d'une tâche (`?tache=<id>`, la coquille
    la monte) et une SEULE façon d'écouter « des tâches viennent d'être créées » (`taqinor:taches:creees`, émis par
@@ -47,6 +50,53 @@ export function oublierApercus() {
 }
 
 if (typeof window !== 'undefined') window.addEventListener('taqinor:auth-logout', oublierApercus)
+
+/* R4-23 — ce qu'on tape dans la fiche (titre, notes) ne se perd pas quand la page s'en va (rechargement, retour arrière
+   sur une fiche ouverte par son adresse, appli fermée sur l'iPhone) : au `pagehide` / onglet caché, la frappe pas encore
+   partie est gardée ICI (brouillon local, par société, compte et tâche ; vidé à la déconnexion) puis envoyée par un
+   `fetch` keepalive, que le navigateur termine même après la page. Arrivée, le brouillon s'efface ; sinon la fiche le
+   reprend à sa réouverture et le dit. */
+export const PREFIXE_BROUILLON_FICHE = 'taches:fiche:'
+viderALaDeconnexion(PREFIXE_BROUILLON_FICHE)
+
+export const cleBrouillonFiche = (societe, compte, id) => `${PREFIXE_BROUILLON_FICHE}${societe ?? '0'}:${compte ?? '0'}:${id}`
+
+/** `{ titre?, notes? }` gardés pour cette clé, ou `null` (rien, stockage refusé ou illisible). */
+export function lireBrouillonFiche(cle) {
+  const brut = lireTexte(cle)
+  let lu = null
+  try {
+    lu = brut ? JSON.parse(brut) : null
+  } catch {
+    return null // brouillon abîmé : ignoré, la fiche reste celle du serveur
+  }
+  if (!lu || typeof lu !== 'object') return null
+  const champs = Object.fromEntries(['titre', 'notes'].filter((c) => typeof lu[c] === 'string').map((c) => [c, lu[c]]))
+  return Object.keys(champs).length > 0 ? champs : null
+}
+
+/** Ajoute `champs` (`{ titre?, notes? }`) au brouillon de cette clé. */
+export function garderBrouillonFiche(cle, champs) {
+  return ecrireTexte(cle, JSON.stringify({ ...(lireBrouillonFiche(cle) ?? {}), ...champs }))
+}
+
+/** Retire `champs` (tous si omis) du brouillon de cette clé ; la clé part quand il ne reste rien. */
+export function oublierBrouillonFiche(cle, champs = null) {
+  const reste = Object.fromEntries(Object.entries(lireBrouillonFiche(cle) ?? {}).filter(([c]) => champs && !champs.includes(c)))
+  return ecrireTexte(cle, Object.keys(reste).length > 0 ? JSON.stringify(reste) : '')
+}
+
+/** L'adresse d'écriture d'une tâche (`modifierTache`), écrite en entier pour l'envoi qui survit à la page. */
+const adresseTache = (id) => `${originFrom(import.meta.env.VITE_API_URL)}/api/django/taches/taches/${id}/`
+
+/** PATCH `corps` (`{ titre?, notes?, lock_version }`) par un `fetch` keepalive (le navigateur le termine même si la page
+ *  se ferme) ; rend la `Response` (le serveur a pu refuser : `ok` faux) ou rejette (aucun envoi possible). */
+export function envoyerEnPartant(id, corps) {
+  if (typeof fetch !== 'function') return Promise.reject(new Error('fetch indisponible'))
+  return fetch(adresseTache(id), {
+    method: 'PATCH', credentials: 'include', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps),
+  })
+}
 
 /** Ce que la fiche ouvre d'elle-même (R2-021b/025b) : `section` (`decouper` : « Plus » déplié, curseur dans
  *  « Découper en sous-tâches ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */

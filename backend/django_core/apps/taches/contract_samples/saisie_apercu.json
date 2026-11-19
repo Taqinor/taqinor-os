@@ -9,7 +9,8 @@
         "nom": "Courses",
         "nouveau": true,
         "priorite": 2,
-        "source": "premiere_ligne"
+        "source": "premiere_ligne",
+        "ressemble_a": null
       }
     ],
     "lignes": [
@@ -60,7 +61,8 @@
     "projets_nouveaux": [
       {
         "nom": "SiteWeb",
-        "priorite": 2
+        "priorite": 2,
+        "ressemble_a": null
       }
     ]
   }

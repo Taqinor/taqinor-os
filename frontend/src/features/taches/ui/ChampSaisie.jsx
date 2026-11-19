@@ -251,7 +251,11 @@ export default function ChampSaisie({
   }, [valeur])
   const mot = projets ? motDiese(valeur, curseur) : null
   const proposes = mot ? projetsPour(projets, mot.q) : []
-  const listeOuverte = proposes.length > 0 && fermeePour !== valeur
+  // R4-29 — le `#mot` en cours est DÉJÀ lu comme un projet existant (l'analyse de CE texte, à cette place) et la liste
+  // ne proposerait que lui : elle se tait — la puce du pied le dit (jamais la suggestion ET la puce l'une sous l'autre)
+  const dejaLu = Boolean(mot) && proposes.length === 1 && jetons.some((j) => j.type === 'projet' && !j.valeur?.nouveau
+    && j.debut === mot.debut && String(valeur ?? '').slice(j.debut, j.fin) === j.source && j.valeur?.id === proposes[0].id)
+  const listeOuverte = proposes.length > 0 && fermeePour !== valeur && !dejaLu
   // R3-042 — « plusieurs projets » se tait tant que la liste `#` est ouverte : elle montre déjà les projets candidats
   const codeAlerte = (a) => (typeof a === 'string' ? a : a?.code)
   const phrases = alertes

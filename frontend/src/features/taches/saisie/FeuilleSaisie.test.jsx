@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -309,6 +310,23 @@ describe('TCH82 — feuille de saisie', () => {
     expect(lireBrouillon(7, 42)).toBeNull()
   })
 
+  it('R4-25 — « Créer N tâches » : le brouillon est DÉJÀ effacé quand la feuille se ferme — l\'écran qui le relit à la fermeture ne montre pas de faux « Reprendre »', async () => {
+    const liste = {
+      projets_communs: [],
+      lignes: ['lait', 'pain'].map((titre, index) => ({ ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: {} })),
+      projets_nouveaux: [],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    const vusALaFermeture = []
+    monter({ onFermer: vi.fn(() => vusALaFermeture.push(lireBrouillon(7, 42))) })
+    fireEvent.change(champ(), { target: { value: 'Divers\nlait\npain' } })
+    expect(await screen.findByText('Aperçu de ta liste', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(lireBrouillon(7, 42)).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Créer 2 tâches' }))
+    expect(vusALaFermeture).toEqual([null])
+  })
+
   it('passe visuelle n° 33 — une liste COLLÉE (même ouverte par « Coller mes listes ») : l\'aperçu seul, le champ replié ; « Coller encore » le rouvre', async () => {
     const liste = {
       projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
@@ -467,7 +485,10 @@ describe('TCH82 — feuille de saisie', () => {
       })
       expect(screen.getByText('Hors ligne : elle partira dès le retour du réseau.')).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-      await waitFor(() => expect(onFermer).toHaveBeenCalled())
+      await waitFor(async () => expect(await file.pending()).toHaveLength(1))
+      // R4-22 — la feuille reste ouverte, prête pour la phrase suivante (comme en ligne)
+      expect(onFermer).not.toHaveBeenCalled()
+      expect(champ()).toHaveValue('')
       expect(mocks.saisieRapide.mock.calls.some(([corps]) => corps.apercu === false)).toBe(false)
       const [op] = await file.pending()
       expect(op.payload.corps.lignes[0]).toMatchObject({ titre: 'Appeler Karim', nouveau_projet: { nom: 'SiteWeb' } })
@@ -493,11 +514,9 @@ describe('TCH82 — feuille de saisie', () => {
       }
     })
 
-    it('la mise en file efface le brouillon avant de fermer la feuille (et avant tout rejeu qui émet l\'événement)', async () => {
+    it('la mise en file efface le brouillon (et avant tout rejeu qui émet l\'événement) ; la feuille reste ouverte (R4-22)', async () => {
       const user = userEvent.setup()
-      const vusALaFermeture = []
-      const fermer = vi.fn(() => vusALaFermeture.push(lireBrouillon(7, 42)))
-      monter({ onFermer: fermer })
+      const { onFermer } = monter()
       await user.type(champ(), PHRASE)
       expect(lireBrouillon(7, 42)).not.toBeNull()
       act(() => {
@@ -505,8 +524,10 @@ describe('TCH82 — feuille de saisie', () => {
         window.dispatchEvent(new Event('offline'))
       })
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-      await waitFor(() => expect(fermer).toHaveBeenCalled())
-      expect(vusALaFermeture).toEqual([null])
+      expect(lireBrouillon(7, 42)).toBeNull()
+      await waitFor(async () => expect(await file.pending()).toHaveLength(1))
+      expect(lireBrouillon(7, 42)).toBeNull()
+      expect(onFermer).not.toHaveBeenCalled()
     })
 
     it('une coupure pendant l\'envoi met la PHRASE en file (R2-008a : le serveur la lira au rejeu), jamais une erreur', async () => {
@@ -515,7 +536,8 @@ describe('TCH82 — feuille de saisie', () => {
       const { onFermer } = monter()
       await user.type(champ(), 'Rappeler Salma')
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
-      await waitFor(() => expect(onFermer).toHaveBeenCalled())
+      await waitFor(async () => expect(await file.pending()).toHaveLength(1))
+      expect(onFermer).not.toHaveBeenCalled()
       const [op] = await file.pending()
       expect(op.payload.corps.lignes).toBeUndefined()
       expect(op.payload.corps.phrase).toMatchObject({ textes: ['Rappeler Salma'], ignorer: [] })
@@ -539,6 +561,123 @@ describe('TCH82 — feuille de saisie', () => {
       expect(op.payload.corps.phrase).toMatchObject({ textes: ['Test ce soir'], contexte: { projetId: 3 } })
       expect(op.payload.corps.phrase.cid).toEqual(expect.any(String))
       expect(mocks.saisieRapide).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('R4-22 — aucune lettre perdue : phrases enchaînées par Entrée, hors ligne comme en ligne', () => {
+    /* La feuille est montée par un VRAI hôte (sa fermeture la démonte, comme la coquille) : une fermeture décidée au
+       retour de la file emportait le champ pendant que la phrase suivante se tapait (« Bravo h » avalé). */
+    let file
+    let fermetures
+    const PROJETS = [{ id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' }]
+    function Hote() {
+      const [ouverte, setOuverte] = useState(true)
+      return <FeuilleSaisie ouverte={ouverte} onFermer={() => { fermetures += 1; setOuverte(false) }} />
+    }
+    const monterHote = () => render(
+      <ReactReduxContext.Provider value={{ store }}>
+        <div className="tch"><Hote /><ZoneAnnonces /></div>
+      </ReactReduxContext.Provider>,
+    )
+    const reseau = (enLigne) => act(() => {
+      Object.defineProperty(window.navigator, 'onLine', { value: enLigne, configurable: true })
+      window.dispatchEvent(new Event(enLigne ? 'online' : 'offline'))
+    })
+    /** Un temps passe (la file, le serveur reviennent) — la frappe suivante, elle, n'attend rien. */
+    const unTour = () => act(() => new Promise((r) => { setTimeout(r, 0) }))
+    const phrasesEnFile = async () => (await file.pending()).map((op) => op.payload.corps.phrase?.textes.join(' ')
+      ?? op.payload.corps.lignes.map((l) => l.titre).join(' '))
+    beforeEach(() => {
+      fermetures = 0
+      file = creerFile({ store: memoryStore() })
+      remplacerFile(file)
+      definirCompteFile(42, 7)
+      mocks.listerTousLesProjets.mockResolvedValue(PROJETS)
+    })
+    afterEach(() => {
+      Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+      remplacerFile(null)
+      definirCompteFile(null)
+    })
+
+    for (const attente of ['sans attendre', 'un tour entre deux']) {
+      it(`hors ligne, trois phrases par Entrée (${attente}) : les trois en file, entières, et la feuille reste ouverte`, async () => {
+        const user = userEvent.setup({ delay: null })
+        reseau(false)
+        monterHote()
+        await user.click(champ())
+        for (const phrase of ['Alpha horsligne premier', 'Bravo horsligne second', 'Charlie horsligne tiers']) {
+          await user.keyboard(`${phrase}{Enter}`)
+          if (attente !== 'sans attendre') await unTour()
+        }
+        await waitFor(async () => expect(await file.pending()).toHaveLength(3))
+        expect(await phrasesEnFile()).toEqual(['Alpha horsligne premier', 'Bravo horsligne second', 'Charlie horsligne tiers'])
+        expect(fermetures).toBe(0)
+        expect(champ()).toHaveValue('')
+        expect(champ()).toHaveFocus()
+      })
+    }
+
+    it('hors ligne, un `#projet` choisi dans la liste entre deux phrases : rien d\'avalé avant ni après', async () => {
+      const user = userEvent.setup({ delay: null })
+      monterHote()
+      await waitFor(() => expect(mocks.listerTousLesProjets).toHaveBeenCalled())
+      reseau(false)
+      await user.click(champ())
+      await user.keyboard('Alpha premier{Enter}')
+      await unTour()
+      await user.keyboard('Photos #sal')
+      await waitFor(() => expect(screen.getByRole('option', { name: 'Salon Solaire Expo' })).toBeInTheDocument())
+      await user.keyboard('{Enter}suite{Enter}')
+      await unTour()
+      await user.keyboard('Charlie tiers{Enter}')
+      await waitFor(async () => expect(await file.pending()).toHaveLength(3))
+      expect(await phrasesEnFile()).toEqual(['Alpha premier', 'Photos #Salon Solaire Expo suite', 'Charlie tiers'])
+      expect(fermetures).toBe(0)
+    })
+
+    it('en ligne, serveur lent : trois phrases par Entrée sans attendre, les trois partent entières, dans l\'ordre', async () => {
+      const attentes = []
+      mocks.saisieRapide.mockImplementation((corps) => (corps.apercu
+        ? Promise.resolve({ data: { ...apercu, projets_nouveaux: [], lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: {} }] } })
+        : new Promise((resoudre) => attentes.push({ corps, resoudre }))))
+      const user = userEvent.setup({ delay: null })
+      monterHote()
+      await user.click(champ())
+      for (const phrase of ['Alpha enligne premier', 'Bravo enligne second', 'Charlie enligne tiers']) {
+        await user.keyboard(`${phrase}{Enter}`)
+        await unTour()
+      }
+      for (let i = 0; i < 3; i += 1) {
+        await waitFor(() => expect(attentes).toHaveLength(i + 1))
+        await act(async () => { attentes[i].resoudre({ data: creation }) })
+      }
+      expect(attentes.map((a) => a.corps.lignes[0].titre)).toEqual(['Alpha enligne premier', 'Bravo enligne second', 'Charlie enligne tiers'])
+      expect(fermetures).toBe(0)
+      expect(champ()).toHaveValue('')
+    })
+
+    it('un échec rendu au champ pendant qu\'une lettre vient d\'y être tapée : la lettre reste, la phrase passe par « Reprendre »', async () => {
+      const attentes = []
+      mocks.saisieRapide.mockImplementation((corps) => (corps.apercu
+        ? Promise.resolve({ data: { ...apercu, projets_nouveaux: [], lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: {} }] } })
+        : new Promise((resoudre, rejeter) => attentes.push({ corps, rejeter }))))
+      const user = userEvent.setup({ delay: null })
+      monterHote()
+      await user.click(champ())
+      await user.keyboard('Test un{Enter}')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      // la lettre est DANS le champ (le navigateur l'a écrite) mais React ne l'a pas encore rendue quand l'échec revient
+      act(() => {
+        const el = champ()
+        el.value = 'B'
+        attentes[0].rejeter(erreurHttp(erreurs.par_ligne))
+      })
+      await act(async () => {})
+      expect(champ()).toHaveValue('B')
+      fireEvent.change(champ(), { target: { value: 'Br' } })
+      expect(champ()).toHaveValue('Br')
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Pas ajoutée')
     })
   })
 
@@ -1105,6 +1244,23 @@ describe('TCH82 — feuille de saisie', () => {
       expect(within(pied).queryByRole('button', { name: 'Projet' })).toBeNull()
       await user.click(within(puce).getByRole('button', { name: 'Retirer Ventes' }))
       await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].ignorer).toEqual([{ type: 'projet', source: '#Ventes' }]))
+    })
+
+    it('R4-29 — un `#mot` déjà lu comme CE projet : la suggestion sous le champ s\'efface, la puce du pied seule le dit', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Vent')
+      // la liste aide pendant la frappe…
+      expect(screen.getByRole('listbox', { name: 'Projets' })).toBeInTheDocument()
+      await user.type(champ(), 'es')
+      // … et se tait dès que la phrase est lue « Ventes » : jamais la suggestion ET la puce, l'une sous l'autre
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      expect(screen.queryByRole('listbox', { name: 'Projets' })).toBeNull()
+      expect(champ()).not.toHaveAttribute('aria-controls')
+      // Entrée envoie la phrase (rien à choisir)
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
     })
 
     it('la toucher ouvre le sélecteur ; un autre projet REMPLACE `#Ventes` dans la phrase (jamais deux `#`)', async () => {

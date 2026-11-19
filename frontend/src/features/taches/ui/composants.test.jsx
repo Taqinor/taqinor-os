@@ -537,6 +537,110 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(apres).toHaveBeenCalledTimes(1)
   })
 
+  describe('R4-20 — une feuille se TIRE vers le bas : elle suit le doigt, se ferme au-delà d\'un seuil, revient sinon', () => {
+    // jsdom ne mesure rien : la feuille vaut la moitié de l'écran (384 px), le seuil 30 % ≈ 115 px
+    const toucher = (cible, type, y, x = 200) => {
+      const points = type === 'touchEnd' || type === 'touchCancel' ? [] : [{ clientX: x, clientY: y, identifier: 1 }]
+      fireEvent[type](cible, { touches: points, changedTouches: [{ clientX: x, clientY: y, identifier: 1 }] })
+    }
+    /** Un glissé de `dy` px en `pas` étapes de 16 ms (horloge simulée : la vitesse se mesure). */
+    const tirer = (depart, dy, { pas = 15, x = 200, finir = true } = {}) => {
+      const y0 = 300
+      toucher(depart, 'touchStart', y0, x)
+      for (let i = 1; i <= pas; i += 1) {
+        act(() => { vi.advanceTimersByTime(16) })
+        toucher(depart, 'touchMove', y0 + (dy * i) / pas, x)
+      }
+      if (finir) toucher(depart, 'touchEnd', y0 + dy, x)
+    }
+    const monterFeuille = (props = {}, contenu = <button type="button">Aujourd&apos;hui</button>) => {
+      const onFermer = vi.fn()
+      const rendu = render(
+        <div className="tch">
+          <FeuilleACrans ouverte titre="Quand" onFermer={onFermer} {...props}>{contenu}</FeuilleACrans>
+        </div>,
+      )
+      return { onFermer, dialogue: screen.getAllByRole('dialog', { name: 'Quand' }).at(-1), ...rendu }
+    }
+
+    it('pendant le geste la feuille suit le doigt ; 80 px puis lâché : elle revient, rien ne ferme', () => {
+      vi.useFakeTimers()
+      const { onFermer, dialogue } = monterFeuille()
+      tirer(dialogue.querySelector('.poignee'), 80, { finir: false })
+      expect(dialogue.style.transform).toBe('translateY(80px)')
+      expect(dialogue).toHaveClass('tiree')
+      toucher(dialogue.querySelector('.poignee'), 'touchEnd', 380)
+      expect(onFermer).not.toHaveBeenCalled()
+      expect(dialogue.style.transform).toBe('')
+      expect(dialogue).not.toHaveClass('tiree')
+    })
+
+    it('300 px depuis la poignée, ou depuis l\'en-tête : elle se ferme (en quittant d\'abord le champ en cours, R3-060)', () => {
+      vi.useFakeTimers()
+      const ordre = []
+      const { onFermer, dialogue } = monterFeuille({ onFermer: vi.fn(() => ordre.push('fermer')) },
+        <input aria-label="Heure" onBlur={() => { ordre.push('blur') }} />)
+      act(() => { screen.getByLabelText('Heure').focus() })
+      tirer(dialogue.querySelector('.poignee'), 300)
+      expect(ordre).toEqual(['blur', 'fermer'])
+      expect(onFermer).not.toHaveBeenCalled() // la prop remplacée : c'est la nôtre qui compte
+      const deux = monterFeuille({ titre: 'Quand' })
+      tirer(deux.dialogue.querySelector('.feuille-titre'), 300)
+      expect(deux.onFermer).toHaveBeenCalledTimes(1)
+    })
+
+    it('un jet rapide (60 px en 32 ms) ferme aussi ; un glissé vers le haut depuis la poignée passe au cran 85 %', () => {
+      vi.useFakeTimers()
+      const { onFermer, dialogue } = monterFeuille()
+      tirer(dialogue.querySelector('.poignee'), 60, { pas: 2 })
+      expect(onFermer).toHaveBeenCalledTimes(1)
+      const haut = monterFeuille()
+      const autre = haut.dialogue
+      tirer(autre.querySelector('.poignee'), -80)
+      expect(haut.onFermer).not.toHaveBeenCalled()
+      expect(autre).toHaveClass('cran-85')
+    })
+
+    it('depuis le CONTENU : seulement quand il est défilé tout en haut ; défilé, le geste lui appartient (il défile, rien ne ferme)', () => {
+      vi.useFakeTimers()
+      const { onFermer, dialogue } = monterFeuille({}, <ul aria-label="Liste">{[1, 2, 3].map((n) => <li key={n}>Ligne {n}</li>)}</ul>)
+      const corps = dialogue.querySelector('.feuille-corps')
+      const ligne = screen.getByText('Ligne 2')
+      Object.defineProperty(corps, 'scrollHeight', { configurable: true, value: 2000 })
+      Object.defineProperty(corps, 'clientHeight', { configurable: true, value: 300 })
+      corps.scrollTop = 120
+      tirer(ligne, 300)
+      expect(onFermer).not.toHaveBeenCalled()
+      expect(dialogue.style.transform).toBe('')
+      corps.scrollTop = 0
+      tirer(ligne, 300)
+      expect(onFermer).toHaveBeenCalledTimes(1)
+    })
+
+    it('un champ de texte, un glissé horizontal : jamais de geste de feuille', () => {
+      vi.useFakeTimers()
+      const { onFermer, dialogue } = monterFeuille({}, <textarea aria-label="Notes" />)
+      tirer(screen.getByLabelText('Notes'), 300)
+      tirer(dialogue.querySelector('.feuille-titre'), 0, { x: 50 })
+      toucher(dialogue.querySelector('.poignee'), 'touchStart', 300, 100)
+      act(() => { vi.advanceTimersByTime(16) })
+      toucher(dialogue.querySelector('.poignee'), 'touchMove', 310, 200)
+      toucher(dialogue.querySelector('.poignee'), 'touchEnd', 310, 200)
+      expect(onFermer).not.toHaveBeenCalled()
+    })
+
+    it('au bureau : la saisie EN PLACE (aucune poignée) ne se tire pas', () => {
+      vi.useFakeTimers()
+      const ancre = document.createElement('div')
+      document.body.appendChild(ancre)
+      const enPlace = monterFeuille({ variante: 'popover', ancre })
+      expect(enPlace.dialogue.querySelector('.poignee')).toBeNull()
+      tirer(enPlace.dialogue.querySelector('.feuille-titre'), 300)
+      expect(enPlace.onFermer).not.toHaveBeenCalled()
+      ancre.remove()
+    })
+  })
+
   it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
     const pose = vi.spyOn(window.history, 'pushState')
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)

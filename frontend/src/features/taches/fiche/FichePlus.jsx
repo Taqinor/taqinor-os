@@ -55,15 +55,25 @@ function texteRappelAncre(r) {
   return n === 0 ? `Le jour même à ${a}` : `${accord(n, 'jour')} avant l'échéance à ${a}`
 }
 
-function Rappel({ tache, aujourdhui, ecrire, annulable }) {
-  const [mode, setMode] = useState('meme')
+/** R4-24 — dit sous le bloc Rappel d'une tâche sans jour ni échéance, et sous le champ quand le jour manque. */
+const SANS_JOUR = "Cette tâche n'a pas de jour : choisis la date du rappel."
+const JOUR_MANQUANT = 'Choisis le jour du rappel.'
+
+function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour }) {
+  const [choix, setMode] = useState('meme')
   const [heureRappel, setHeureRappel] = useState('09:00')
   const [jourChoisi, setJourChoisi] = useState('')
+  const [manque, setManque] = useState(false)
   const ancre = Boolean(tache.echeance)
   const pivot = tache.echeance ?? tache.jour_prevu
+  // R4-24 — ni jour ni échéance : « Le jour même » / « La veille » n'ont rien à quoi s'accrocher (le serveur refusait
+  // `jour: null` d'un « Jour : Ce champ ne peut être nul. » en toast) ; seul le jour choisi est proposé
+  const sansJour = !pivot
+  const mode = sansJour ? 'choisir' : choix
 
   const poser = async () => {
     let corps
+    if (mode === 'choisir' && !jourChoisi) { setManque(true); return }
     if (mode === 'choisir') corps = { jour: jourChoisi, heure: heureRappel }
     else if (ancre) corps = { ancre: 'echeance', decalage_jours: mode === 'veille' ? -1 : 0, heure: heureRappel }
     else corps = { jour: mode === 'veille' ? ajouterJours(pivot, -1) : pivot, heure: heureRappel }
@@ -88,14 +98,25 @@ function Rappel({ tache, aujourdhui, ecrire, annulable }) {
           </button>
         </p>
       ))}
-      <div className="segmente" role="radiogroup" aria-label="Quand sonner">
-        {[['meme', 'Le jour même'], ['veille', 'La veille'], ['choisir', 'Choisir']].map(([cle, libelle]) => (
-          <button key={cle} type="button" role="radio" aria-checked={mode === cle} onClick={() => setMode(cle)}>{libelle}</button>
-        ))}
-      </div>
+      {sansJour ? (
+        <p className="aide-champ">
+          {SANS_JOUR}
+          {' '}
+          {onPoserJour ? <button type="button" className="apercu-bascule" onClick={onPoserJour}>Poser le jour</button> : null}
+        </p>
+      ) : (
+        <div className="segmente" role="radiogroup" aria-label="Quand sonner">
+          {[['meme', 'Le jour même'], ['veille', 'La veille'], ['choisir', 'Choisir']].map(([cle, libelle]) => (
+            <button key={cle} type="button" role="radio" aria-checked={mode === cle} onClick={() => setMode(cle)}>{libelle}</button>
+          ))}
+        </div>
+      )}
       {mode === 'choisir' ? (
-        <input type="date" className="champ-discret chiffres" aria-label="Jour du rappel" value={jourChoisi} onChange={(e) => setJourChoisi(e.target.value)} />
+        <input type="date" className="champ-discret chiffres" aria-label="Jour du rappel" value={jourChoisi}
+          aria-invalid={manque || undefined} aria-describedby={manque ? `rappel-jour-${tache.id}` : undefined}
+          onChange={(e) => { setJourChoisi(e.target.value); setManque(false) }} />
       ) : null}
+      {mode === 'choisir' && manque ? <p id={`rappel-jour-${tache.id}`} className="erreur-champ" role="alert">{JOUR_MANQUANT}</p> : null}
       <input type="time" className="champ-discret chiffres" aria-label="Heure du rappel" value={heureRappel} onChange={(e) => setHeureRappel(e.target.value)} />
       <button type="button" className="bouton second" onClick={poser}>Poser le rappel</button>
     </section>
@@ -361,7 +382,7 @@ function Lien({ lien }) {
 }
 
 export default function FichePlus({
-  tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer, supprimerDemande = 0,
+  tache, aujourdhui, ecrire, patcher, erreur, erreurs, annulable, charger, onFermer, supprimerDemande = 0, onPoserJour,
 }) {
   const [duree2, setDuree] = useState(null)
   const minutes = duree2 ?? (tache.estimation_minutes ?? '')
@@ -378,7 +399,7 @@ export default function FichePlus({
 
   return (
     <div className="fiche-plus">
-      <Rappel tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} annulable={annulable} />
+      <Rappel tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} annulable={annulable} onPoserJour={onPoserJour} />
       {erreurs.rappel ? <p className="erreur-champ" role="alert">{erreurs.rappel}</p> : null}
       <Repeter tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} patcher={patcher} erreur={erreur} />
       {erreurs.repeter ? <p className="erreur-champ" role="alert">{erreurs.repeter}</p> : null}
