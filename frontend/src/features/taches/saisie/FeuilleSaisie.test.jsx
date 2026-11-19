@@ -655,6 +655,45 @@ describe('TCH82 — feuille de saisie', () => {
     })
   })
 
+  describe('R2-007 — un titre de plus de 280 caractères : le vrai message, le compte, « Mettre le reste en note »', () => {
+    const LONG = `${'Préparer le dossier de raccordement '.repeat(8)}et le reste`.trim()
+    const MESSAGE = 'Le titre est trop long : 280 caractères au plus.'
+    beforeEach(() => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: { priorite: 0 },
+          cochee: false, erreurs: { titre: [MESSAGE] } }],
+      } : creation }))
+    })
+
+    it('le message du serveur sous le champ et « 300 / 280 » ; Entrée ne crée rien et ne dit pas « Aucune ligne lisible. »', async () => {
+      expect(LONG.length).toBeGreaterThan(280)
+      const user = userEvent.setup()
+      monter()
+      fireEvent.change(champ(), { target: { value: LONG } })
+      expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(MESSAGE)
+      expect(screen.getByText(`${LONG.length} / 280`)).toBeInTheDocument()
+      await user.click(champ())
+      await user.keyboard('{End}{Enter}')
+      await waitFor(() => expect(champ()).toHaveValue(LONG))
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGE)
+      expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+    })
+
+    it('« Mettre le reste en note » crée la tâche : 280 caractères au plus en titre, le reste en note', async () => {
+      const user = userEvent.setup()
+      monter()
+      fireEvent.change(champ(), { target: { value: LONG } })
+      await user.click(await screen.findByRole('button', { name: 'Mettre le reste en note' }, { timeout: 3000 }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const [ligneCreee] = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0].lignes
+      expect(ligneCreee.titre.length).toBeLessThanOrEqual(280)
+      expect(`${ligneCreee.titre} ${ligneCreee.notes}`).toBe(LONG)
+      expect(champ()).toHaveValue('')
+    })
+  })
+
   it('messageChamps lit le champ fautif, par ligne ou non', () => {
     expect(messageChamps(erreurs.champ)).toBe('Projet inexistant.')
     expect(messageChamps(erreurs.par_ligne)).toBe('Le titre est vide une fois la date et le projet retirés.')

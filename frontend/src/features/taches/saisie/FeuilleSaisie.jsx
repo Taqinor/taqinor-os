@@ -139,6 +139,16 @@ function phraseErreur(err) {
 const TOAST_EN_FILE = MESSAGE_EN_FILE
 const ANNONCE_EN_FILE = 'Hors ligne : gardée, elle partira dès le retour du réseau'
 
+/** Longueur maximale d'un titre (api.md §4, `CHAMPS_LIGNE.titre`). */
+const TITRE_MAX = 280
+
+/** R2-007 — un titre trop long coupé au dernier espace avant 280 caractères ; la suite devient la note. */
+function couperTitre(titre) {
+  const espace = titre.lastIndexOf(' ', TITRE_MAX)
+  const coupe = espace > 0 ? espace : TITRE_MAX
+  return { titre: titre.slice(0, coupe).trim(), notes: titre.slice(coupe).trim() }
+}
+
 /** R2-002 — toast d'une tâche ajoutée depuis Aujourd'hui et posée aujourd'hui. */
 const TOAST_AJOUTEE_AUJOURDHUI = "Ajoutée à Aujourd'hui"
 
@@ -297,6 +307,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const donneesListe = frais ?? apercu?.donnees ?? null
   const modeListe =collages.length > 0 || texte.includes('\n') || (frais?.lignes?.length ?? 0) > 1
   const ligne = frais?.lignes?.[0] ?? null
+  // R2-007 — l'erreur de la ligne lue (« Le titre est trop long : 280 caractères au plus. ») se dit sous le champ
+  // (seul le « trop long » se dit pendant la frappe : un titre encore vide, « demain… », n'est pas une faute)
+  const titreTropLong = !modeListe && (ligne?.titre?.length ?? 0) > TITRE_MAX && Boolean(ligne?.erreurs?.titre)
+  const erreurLue = titreTropLong ? messageChamps(ligne.erreurs) : ''
   const nouveauxProjets = useMemo(
     () => (frais?.projets_nouveaux ?? []).map((p) => ({ nom: p.nom, priorite: priorites[p.nom] ?? p.priorite })),
     [frais, priorites],
@@ -397,10 +411,18 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     }
     // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
     const depart = gel.quand != null && gel.quand === gel.quandDepart
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false).map((l) => construireLigne(l, {
-      cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
-    }))
-    return lignes.length === 0 ? { erreur: 'Aucune ligne lisible.' } : { lignes }
+    // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
+    const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
+    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l)).map((l) => {
+      const base = construireLigne(l, {
+        cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
+      })
+      return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
+    })
+    if (lignes.length > 0) return { lignes }
+    // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), sinon le générique
+    const message = (donnees.lignes ?? []).map((l) => messageChamps(l.erreurs)).find(Boolean)
+    return { erreur: message || 'Aucune ligne lisible.' }
   }
 
   const envoyerEnFond = async (gel) => {
@@ -444,8 +466,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
 
   const envoyer = () => {
     if (!texte.trim()) return
+    // R2-007 — un titre trop long ne part pas : le message du serveur reste sous le champ, rien n'est effacé
+    if (titreTropLong) { setErreur(erreurLue); return }
     lancer(geler(), modeListe)
   }
+  const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
   return (
     <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
@@ -461,9 +486,16 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             onPrioriteProjet={surPriorite}
             onIgnorer={surIgnorer}
             onSoumettre={envoyer}
-            erreur={modeListe ? '' : erreur}
+            erreur={modeListe ? '' : erreur || erreurLue}
             projets={modeListe ? null : projetsOuverts}
           />
+        ) : null}
+        {titreTropLong ? (
+          <p className="aide-champ">
+            <span className="chiffres">{`${ligne.titre.length} / ${TITRE_MAX}`}</span>
+            {' · '}
+            <button type="button" className="bouton discret" onClick={envoyerResteEnNote}>Mettre le reste en note</button>
+          </p>
         ) : null}
         {modeListe && donneesListe ? (
           <ColleListes
