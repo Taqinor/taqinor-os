@@ -6,16 +6,18 @@ geste (api.md §4 « Sans `geste_id` »).
 from collections.abc import Mapping
 
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.services.donnees import exporter, tout_effacer
-from apps.taches.views.base import PERMISSIONS, corps, forme_echantillon, reponses
+from apps.taches.services.donnees import EffacementOccupe, exporter, tout_effacer
+from apps.taches.views.base import ERREUR_CODE, PERMISSIONS, corps, forme_echantillon, reponses
 from apps.taches.views.presence import HorsAssistant
 
 CONFIRMATION = 'EFFACER'
 MESSAGE_CONFIRMATION = 'Tape EFFACER pour confirmer.'
+CODE_OCCUPE = 'effacement_occupe'
+MESSAGE_OCCUPE = "Rien n'a été effacé : tes données étaient en cours d'utilisation. Réessaie dans un instant."
 
 
 class ExportHorsAssistant(HorsAssistant):
@@ -48,9 +50,13 @@ class ToutEffacerVue(APIView):
     permission_classes = [*PERMISSIONS, EffacementHorsAssistant]
 
     @extend_schema(request=corps('ToutEffacer', {'confirmation': 'EFFACER'}, requis=('confirmation',)),
-                   responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,)))
+                   responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,), conflit=ERREUR_CODE))
     def post(self, request):
         donnees = request.data if isinstance(request.data, Mapping) else {}
         if str(donnees.get('confirmation') or '').strip() != CONFIRMATION:
             raise serializers.ValidationError({'confirmation': [MESSAGE_CONFIRMATION]})
-        return Response(tout_effacer(request.user))
+        try:
+            return Response(tout_effacer(request.user))
+        except EffacementOccupe:
+            # verrou tenu ailleurs ou délai dépassé : transaction défaite, rien d'effacé — dit sous le champ
+            return Response({'detail': MESSAGE_OCCUPE, 'code': CODE_OCCUPE}, status=status.HTTP_409_CONFLICT)

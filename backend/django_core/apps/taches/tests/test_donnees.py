@@ -260,6 +260,50 @@ class ToutEffacerTests(_Base):
         self.assertEqual(reponse.json()['effacees'], {'notification': 2})
         self.assertEqual(set(Notification.objects.values_list('pk', flat=True)), {n.pk for n in restent})
 
+    def test_verrou_ou_delai_depasse_409_et_rien_d_efface(self):
+        """« Tout effacer » qui butait sur une ligne verrouillée (pile chargée : « canceling statement due to
+        statement timeout … while deleting tuple in relation taches_planjour ») répondait 500. Désormais : 409
+        `effacement_occupe`, la phrase sous le champ, et la transaction défaite EN ENTIER (rien d'effacé à moitié,
+        même ce qui l'avait déjà été avant l'erreur)."""
+        from django.db import OperationalError
+
+        class Annulee(Exception):
+            sqlstate = '57014'  # query_canceled : statement_timeout (ou 55P03 lock_not_available)
+
+        tache = fabriques.tache(self.u1)
+        plan = fabriques.plan(self.u1, JOUR)
+        erreur = OperationalError('canceling statement due to statement timeout')
+        erreur.__cause__ = Annulee()
+        with mock.patch('apps.taches.services.donnees.supprimer_notifications_du_compte', side_effect=erreur):
+            reponse = self._api().post(TOUT_EFFACER, {'confirmation': 'EFFACER'}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertEqual(reponse.json(), exemple_de('erreurs')['effacement_occupe'])
+        self.assertTrue(Tache.all_objects.filter(pk=tache.pk).exists())   # supprimées AVANT l'erreur : rendues
+        self.assertTrue(PlanJour.objects.filter(pk=plan.pk).exists())
+
+    def test_une_autre_panne_de_base_n_est_pas_deguisee(self):
+        from django.db import OperationalError
+        with mock.patch('apps.taches.services.donnees.supprimer_notifications_du_compte',
+                        side_effect=OperationalError('server closed the connection unexpectedly')):
+            from apps.taches.services.donnees import tout_effacer
+            with self.assertRaises(OperationalError):
+                tout_effacer(self.u1)
+
+    def test_l_effacement_ne_patiente_pas_sur_un_verrou(self):
+        """Le délai d'attente d'un verrou est borné DANS la transaction (SET LOCAL lock_timeout) : l'écran attend
+        quelques secondes au plus, pas les 30 s du statement_timeout."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from apps.taches.services.donnees import VERROU_MAX_MS, tout_effacer
+        fabriques.tache(self.u1)
+        with CaptureQueriesContext(connection) as capture:
+            tout_effacer(self.u1)
+        requetes = [q['sql'].lower() for q in capture.captured_queries]
+        verrou = next(i for i, sql in enumerate(requetes) if 'lock_timeout' in sql)
+        premiere_suppression = next(i for i, sql in enumerate(requetes) if sql.startswith('delete'))
+        self.assertLess(verrou, premiere_suppression)
+        self.assertLessEqual(VERROU_MAX_MS, 5000)
+
 
 def _il_y_a(jours, heure=12):
     """Instant (heure murale de la société) du jour `JOUR` − `jours`."""
