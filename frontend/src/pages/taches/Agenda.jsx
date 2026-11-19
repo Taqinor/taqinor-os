@@ -15,7 +15,7 @@ import {
 import GrilleAgenda from '../../features/taches/ui/GrilleAgenda'
 import LigneTache from '../../features/taches/ui/LigneTache'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
-import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
+import { retenirApercu, useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import VoletAPlacer from '../../features/taches/ui/VoletAPlacer'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { frenchError } from '../../lib/frenchError'
@@ -119,9 +119,9 @@ const joursEntre = (du, au) => {
   return dates
 }
 
-/** Un jour sans ligne servie : ouvré, vide. */
+/** Un jour sans ligne servie : ouvré, vide ; `absent` : la lecture ne l'a pas (encore) servi (R3-125 : pas de « Passé » deviné). */
 const jourVide = (iso) => ({
-  jour: iso, ouvre: true, ferie: false, toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [],
+  jour: iso, ouvre: true, ferie: false, toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], absent: true,
 })
 
 // --- Mise à jour d'UNE ligne dans l'agenda chargé (jamais une relecture) ----------------------
@@ -147,7 +147,7 @@ function deplacerVers(donnees, item, jour, heureDebut) {
   const posee = { ...item, jour_prevu: jour, heure_debut: heureDebut, quelque_jour: false }
   const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === item.id))
   const jours = (donnees.jours ?? []).map((j) => ({ ...j, blocs: sans(j.blocs), sans_heure: sans(j.sans_heure) }))
-  if (!jours.some((j) => j.jour === jour)) jours.push(jourVide(jour))
+  if (!jours.some((j) => j.jour === jour)) jours.push({ ...jourVide(jour), absent: false })
   const cible = heureDebut ? 'blocs' : 'sans_heure'
   return {
     ...donnees,
@@ -357,12 +357,16 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
  *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
 function teteJour(j, aujourdhui, capacite) {
   if (j.ferie) return 'Férié'
-  if (!j.ouvre) return 'Jour non travaillé'
-  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
   const faites = j.faites_nb
-  if (!Number.isInteger(faites)) return 'Passé'
-  return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
+  const dites = Number.isInteger(faites) ? `${faites} ${faites >= 2 ? 'faites' : 'faite'}` : ''
+  // R3-125 (C-21) — un week-end où il a travaillé le DIT (« 7 faites · jour non travaillé ») : le calendrier société garde ses jours
+  // travaillés, mais ce qui a été fait n'est pas caché derrière « Jour non travaillé »
+  if (!j.ouvre) return faites > 0 ? `${dites} · jour non travaillé` : 'Jour non travaillé'
+  if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
+  // R3-125 — un jour passé que la lecture n'a pas encore servi n'est pas « Passé » : rien (le squelette de la ligne), jamais un mot deviné
+  if (j.absent) return null
+  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
+  return dites || 'Passé'
 }
 
 /** Passe visuelle n° 59 — un jour de la Semaine (iPhone) montre `max` lignes (passé : 1, sinon 3) ; le reste se dit
@@ -436,7 +440,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite)}
+                {teteJour(j, aujourdhui, capacite) ?? <i className="squelette ag-sj-squelette" aria-hidden="true" />}
               </span>
               {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
               {j.jour < aujourdhui
@@ -459,7 +463,7 @@ const PUCES_PAR_JOUR = 2
 function PuceTache({ tache, echeance = false, onOuvrir }) {
   return (
     <button type="button" className={tache.statut === 'fait' ? 'ag-tj-item ag-tj-tache faite' : 'ag-tj-item ag-tj-tache'}
-      data-p={tache.projet?.couleur || undefined} onClick={() => onOuvrir(tache)}>
+      data-p={tache.projet?.couleur || undefined} onClick={() => { retenirApercu(tache); onOuvrir(tache) }}>
       <i className="point" aria-hidden="true" />
       <span>{echeance ? `${tache.titre} · échéance` : tache.titre}</span>
     </button>

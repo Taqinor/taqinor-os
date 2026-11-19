@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Check, Star } from 'lucide-react'
+import { retenirApercu } from '../lib/fiche'
 import { heure } from '../lib/textes'
 
 /* ============================================================================
@@ -119,7 +120,11 @@ function BlocTache({ ev, style, choisi, deplacable = false, onCocher, onOuvrir, 
       {/* R3-132 — en mode « placer » (une tâche est choisie), toucher un bloc déjà posé le DÉPLACE (il devient la tâche choisie) ;
           sinon il ouvre sa fiche. Le nom accessible dit le geste et garde le titre et la plage visibles. */}
       <button type="button" className="ag-bt" aria-label={deplacable ? `Déplacer ${item.titre} · ${plage}` : undefined}
-        onClick={() => (deplacable ? onDeplacer?.(item) : onOuvrir?.(item))}>
+        onClick={() => {
+          if (deplacable) { onDeplacer?.(item); return }
+          retenirApercu(item) // la fiche s'ouvre à l'instant sur cet aperçu (titre, jour, heure, ★), comme depuis une liste
+          onOuvrir?.(item)
+        }}>
         <b>{item.titre}</b>
         <small className="chiffres">{plage}</small>
       </button>
@@ -303,6 +308,7 @@ function faitesDuJour(jour, aujourdhui, etroit) {
  *  (R2-108). La rangée « Toute la journée » suit les mêmes colonnes (`subgrid`). */
 const jourEtroit = (j) => j.ouvre === false
   && !['blocs', 'sans_heure', 'echeances', 'toute_la_journee', 'externes'].some((cle) => j[cle]?.length)
+  && !(j.faites_nb > 0) // R3-125 : un week-end où il a travaillé garde une colonne entière
 const colonnesSemaine = (jours) => ['56px', ...jours.map((j) => (jourEtroit(j) ? 'minmax(56px, 0.5fr)' : 'minmax(120px, 1fr)'))].join(' ')
 
 /**

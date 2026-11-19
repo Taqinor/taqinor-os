@@ -185,6 +185,31 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-sem .ag-sj.passe .ag-sj-tete')).toHaveTextContent(/^4 faites$/)
   })
 
+  it('R3-125 — un week-end où il a travaillé le dit : « 7 faites · jour non travaillé » (et sa colonne de bureau reste entière)', async () => {
+    const d = agenda()
+    const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [] }
+    d.jours.unshift({ ...vide, jour: '2026-11-14', ouvre: false, ferie: false, faites_nb: 7 })
+    d.jours.unshift({ ...vide, jour: '2026-11-15', ouvre: false, ferie: false, faites_nb: 0 })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine&jour=2026-11-14')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj')).not.toBeNull())
+    const tetes = [...container.querySelectorAll('.ag-sem .ag-sj .ag-sj-tete')].map((e) => e.textContent)
+    expect(tetes).toContain('7 faites · jour non travaillé')
+    expect(tetes).toContain('Jour non travaillé') // dim. 15 : rien fait, le libellé seul
+  })
+
+  it('R3-125 — pendant la lecture d\'une autre semaine, un jour passé non encore servi n\'est pas « Passé » : un squelette', async () => {
+    let servir
+    lireAgenda.mockReturnValueOnce(Promise.resolve({ data: agenda() })).mockReturnValueOnce(new Promise((r) => { servir = r }))
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj')).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine précédente' }))
+    await waitFor(() => expect(lireAgenda).toHaveBeenCalledTimes(2))
+    expect(screen.queryByText('Passé')).toBeNull()
+    expect(container.querySelector('.ag-sj-squelette')).not.toBeNull()
+    servir({ data: agenda() })
+  })
+
   it('R2-102 — un jour passé sans `faites_nb` servi ne devine rien : « Passé » seul', async () => {
     const d = agenda()
     d.jours.unshift({ ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
