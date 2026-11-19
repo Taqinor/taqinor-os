@@ -566,7 +566,7 @@ def phrase_depart_une_batterie(d, fmt_mad, couleur):
     def marque(cle, texte):
         return f"{texte}{ancre(cle, texte, option='avec')}"
 
-    debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"])
+    debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"], v["remise"])
     texte = debut.format(n=marque("depart_une_batterie_panneaux", str(v["n"])),
                          kwc=marque("depart_une_batterie_kwc", kwc_str(v["kwc"])),
                          kwh=marque("depart_une_batterie_kwh", kwc_str(v["kwh"])),

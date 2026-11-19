@@ -212,12 +212,27 @@ def _calculer(devis, nombre, scenario):
         manque.append('%s batterie(s) écrite(s)' % une['nb_batteries'])
     if manque:
         raise RefusDepart('incomplet', ', '.join(manque))
-    return {'nb_batteries': 1, 'batteries_ensuite': nombre - 1,
+    bloc = {'nb_batteries': 1, 'batteries_ensuite': nombre - 1,
             'nb_panneaux': une['nb_panneaux'], 'kwc': _arrondi(une['kwc']),
             'capacite_utile_kwh': _arrondi(une['capacite_utile_kwh']),
             'total_ht': _arrondi(une['ht']), 'total_ttc': _arrondi(une['ttc']),
             'reference_option_avec': {'nb_batteries': nombre, 'total_ht': _arrondi(reference[0]),
                                       'total_ttc': _arrondi(reference[1])}}
+    if _remise_du_devis(devis):
+        # Fondateur 19/11/2026 (« apply the reduction if it exists to the one
+        # battery price ») — la remise du devis est DANS ces totaux (la
+        # recomposition rejouée garde ``remise_globale``, ``option_totaux``
+        # l'applique) : clé ADDITIVE, absente sans remise, que la phrase dit.
+        bloc['remise_comprise'] = True
+    return bloc
+
+
+def _remise_du_devis(devis):
+    """Le devis porte-t-il une remise globale (%) ?"""
+    try:
+        return float(getattr(devis, 'remise_globale', 0) or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 def _repris(devis, existant):

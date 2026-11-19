@@ -648,10 +648,18 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
       render(<ControleBatteriesDepart lines={LIGNES(2)} produits={[]} ecran={ecran} />)
       expect(screen.getByTestId('gen-phrase-une-batterie')).toBeChecked()
       expect(screen.getByTestId('gen-phrase-une-batterie-apercu')).toBeInTheDocument()
+      expect(screen.getByTestId('gen-phrase-une-batterie-apercu')).not.toHaveTextContent('remise')
       await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
       // Décocher : les AUTRES options enregistrées (nb_batteries) repartent intactes.
       await waitFor(() => expect(ventesApiMock.patchEtudeParams).toHaveBeenCalledWith(
         42, { options: { ...OPTIONS, nb_batteries: 2 } }))
+    })
+
+    it('remise du devis : l’aperçu dit qu’elle est comprise dans le prix à une batterie', () => {
+      const bloc = { ...CONTRAT.etude_ci_depart_une_batterie, remise_comprise: true }
+      const ecran = ecranDe({ editDevis: devisAvec({ ...OPTIONS, phrase_une_batterie: true }, { depart_une_batterie: bloc }) })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie-apercu')).toHaveTextContent('remise du devis comprise')
     })
 
     it('etudeParamsBatteries : options, banque, prix à une batterie et son refus — rien d’autre', () => {

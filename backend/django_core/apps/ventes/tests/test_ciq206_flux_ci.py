@@ -1113,6 +1113,46 @@ class SensibilitesNiveau14DevisTests(ciq120.OptionBatterieCITests):
                             self.assertLessEqual(ligne['retour_dixieme_ans'], ligne['retour_ans'])
 
 
+class DepartUneBatterieRemiseTests(ciq120.RecomposerBatteriesTests):
+    """Fondateur 19/11/2026 (« apply the reduction if it exists to the one
+    battery price ») — la remise globale du devis est DANS le prix à une
+    batterie (jeux de ``RecomposerBatteriesTests``, sans rejouer ses tests)."""
+
+    def _bloc(self, devis):
+        etude = ciq120.Devis.objects.get(pk=devis.pk).etude_params['etude_ci']
+        self.assertNotIn('depart_une_batterie_refus', etude, etude.get('depart_une_batterie_refus'))
+        return etude['depart_une_batterie']
+
+    def test_remise_globale_dans_le_prix_a_une_batterie(self):
+        from decimal import Decimal
+
+        from apps.ventes.utils.options import AVEC_BATTERIE, option_totaux
+        devis, _reco = self._devis()
+        self.assertEqual(self._cocher(devis).status_code, 200)
+        plein = self._bloc(devis)
+        self.assertNotIn('remise_comprise', plein)
+        # Le vendeur pose 2 % de remise sur le devis, case déjà cochée : le
+        # prochain rafraîchissement de l'étude (non forcé) recalcule le bloc.
+        ciq120.Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('2'))
+        devis.refresh_from_db()
+        with mock.patch.object(ciq120.tarif_ci, 'tarif_applicable', side_effect=ciq120._tarif_grille):
+            ciq120.etude_ci.rafraichir_etude_ci_devis(devis)
+        remise = self._bloc(devis)
+        self.assertIs(remise['remise_comprise'], True)
+        self.assertEqual(remise['nb_panneaux'], plein['nb_panneaux'])
+        self.assertLess(remise['total_ht'], plein['total_ht'])
+        # 2 % de moins, à l'arrondi commercial près (palier de 100 MAD TTC).
+        self.assertAlmostEqual(remise['total_ht'], plein['total_ht'] * 0.98, delta=200)
+        # Exactitude : le vrai geste « Batteries au départ » = 1 donne ce prix,
+        # et la remise du devis est toujours là.
+        self.assertEqual(self._post(devis.pk, 1).status_code, 200)
+        apres = ciq120.Devis.objects.get(pk=devis.pk)
+        self.assertEqual(apres.remise_globale, Decimal('2'))
+        totaux = option_totaux(apres, AVEC_BATTERIE)
+        self.assertEqual(Decimal(str(remise['total_ttc'])), totaux['ttc'])
+        self.assertEqual(Decimal(str(remise['total_ht'])), totaux['ht'])
+
+
 def _sans_tests_herites(classe):
     """Ces classes n'héritent que des JEUX DE DONNÉES : les tests du parent ne
     sont pas rejoués ici."""
@@ -1125,3 +1165,4 @@ def _sans_tests_herites(classe):
 _sans_tests_herites(RemplacementCyclesNiveau13FluxTests)
 _sans_tests_herites(RemplacementCyclesNiveau13DevisTests)
 _sans_tests_herites(SensibilitesNiveau14DevisTests)
+_sans_tests_herites(DepartUneBatterieRemiseTests)
