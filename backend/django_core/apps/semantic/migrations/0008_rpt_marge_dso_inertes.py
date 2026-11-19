@@ -18,10 +18,12 @@ CLES = ('marge_brute', 'dso')
 
 def desactiver(apps, schema_editor):
     Definition = apps.get_model('semantic', 'MetricDefinition')
+    # Lecture par lots (`.iterator`) ; écriture ligne à ligne par pk (YOPSB4).
     for cle in CLES:
-        Definition.objects.filter(
-            cle=cle, actif=True, mesure={'adapter': 'compta.%s' % cle},
-        ).update(actif=False)
+        for definition in Definition.objects.filter(
+                cle=cle, actif=True, mesure={'adapter': 'compta.%s' % cle}
+        ).iterator(chunk_size=500):
+            Definition.objects.filter(pk=definition.pk).update(actif=False)
 
 
 class Migration(migrations.Migration):
