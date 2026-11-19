@@ -205,6 +205,30 @@ class AgendaTests(TestCase):
                          ({gardee.pk}, {gardee.pk}))
         self.assertEqual([i['id'] for i in self.le_jour(self.periode(), self.T)['sans_heure']], [gardee.pk])
 
+    def test_un_jour_non_travaille_n_a_aucune_capacite(self):
+        """Critique serveur n° 5 — chaque jour a SA capacité : celle d'un jour travaillé (la capacité du compte, 240
+        par défaut) moins ses rendez-vous ; 0 un jour non travaillé (calendrier de la société, jours dits du compte,
+        congés : les `travailles` de la période, déjà lus — aucune requête de plus). Avant : la capacité d'aujourd'hui
+        pour tous les jours, un samedi chargé de 60 min ne débordait jamais. Aujourd'hui garde la capacité d'Aujourd'hui
+        (une source, R4-01)."""
+        from unittest import mock
+
+        from apps.taches.views import agenda
+        self.tache(jour_prevu=self.jour(1), estimation_minutes=60)
+        self.tache(jour_prevu=self.jour(2), estimation_minutes=60)
+        with mock.patch.object(agenda, '_travailles_de', return_value={self.T, self.jour(1)}):
+            rendu = self.periode()
+        travaille, repos = self.le_jour(rendu, self.jour(1)), self.le_jour(rendu, self.jour(2))
+        self.assertEqual((travaille['ouvre'], repos['ouvre']), (True, False))
+        cles = ('restantes_minutes', 'capacite_minutes', 'disponible_minutes', 'deborde_minutes')
+        capacite = rendu['capacite']['minutes']
+        self.assertEqual({cle: travaille['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': capacite, 'disponible_minutes': capacite,
+                          'deborde_minutes': max(0, 60 - capacite)})
+        self.assertEqual({cle: repos['charge'][cle] for cle in cles},
+                         {'restantes_minutes': 60, 'capacite_minutes': 0, 'disponible_minutes': 0,
+                          'deborde_minutes': 60})
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""

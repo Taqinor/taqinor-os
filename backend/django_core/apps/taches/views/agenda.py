@@ -189,9 +189,13 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         # R2-102 — « faites » = finies CE jour-là (règle C-12), le nombre de Mon rythme ; 0 pour un jour à venir
         entree['faites_nb'] = faites.get(jour, 0)
         # R4-01 — LA charge du jour (`selectors.journee.charge_du_jour`, celle d'Aujourd'hui et du Copilote) : ce qui
-        # reste à faire contre la capacité moins les rendez-vous de CE jour ; nulle pour un jour passé (ses faites)
+        # reste à faire contre la capacité moins les rendez-vous de CE jour ; nulle pour un jour passé (ses faites).
+        # Critique serveur n° 5 — chaque jour a SA capacité : 0 un jour non travaillé (calendrier de la société, jours
+        # dits du compte, congés : `travailles`, déjà lus) ; aujourd'hui garde celle d'Aujourd'hui (une source).
+        capacite_jour = minutes if jour == J or jour in travailles else 0
         entree['charge'] = None if jour < J else sel.charge_du_jour(
-            journee, jour, minutes, entree['rendez_vous_minutes'], items=items_du_jour if jour == J else items_periode)
+            journee, jour, capacite_jour, entree['rendez_vous_minutes'],
+            items=items_du_jour if jour == J else items_periode)
         jours.append(entree)
     # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
     volet = vue in (VUE_JOUR, VUE_SEMAINE)
@@ -200,7 +204,8 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         'a_placer': rendu.items(a_placer(journee, projet_id)),
         'mes_projets': formes_journee.mes_projets(rendu, candidates_du_tour(journee, projet_id)) if volet else [],
         # La capacité d'un jour travaillé (« {h} pour {cap} ») : celle d'aujourd'hui, même calcul que la
-        # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240).
+        # PROGRESSION d'`aujourdhui/` (réglage dit, sinon médiane des 9 derniers jours travaillés, sinon 240) ; un jour
+        # non travaillé à venir a 0 (`jours[].charge.capacite_minutes`).
         'capacite': {'minutes': minutes, 'source': source},
     }
 

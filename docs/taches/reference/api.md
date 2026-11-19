@@ -1529,8 +1529,9 @@ ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/poi
 `mes_projets` en `vue=jour` et `vue=semaine` (le même volet « À placer », maquettes `agenda-jour` et `agenda-semaine` ; vide en `mois` et `a-venir`) ; `toute_la_journee` = les `obligations` du jour SANS la famille `touches` (la ligne « Suivi des relances » est une ligne de Prévu, textes.md §2 ; la bande ne porte que ce qui a une date sans heure) ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
 RENDEZ_VOUS du jour ; chaque jour porte aussi `rendez_vous_minutes` (R2-100 : la durée UNIE de ses rendez-vous horodatés,
 bornée aux heures de travail de la société, journée entière = 0 — invariant 35, `minutes_de_rendez_vous`), `charge`
-(R4-01 : forme CHARGE de ce jour, capacité d'aujourd'hui moins CES rendez-vous — « {n} tâches · {h} sur {cap} · {x} de
-trop » se lit là, jamais recompté ; nulle pour un jour passé) et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
+(R4-01 : forme CHARGE de ce jour, SA capacité — celle d'aujourd'hui un jour travaillé, 0 un jour non travaillé — moins
+CES rendez-vous — « {n} tâches · {h} sur {cap} · {x} de trop » se lit là, jamais recompté ; nulle pour un jour passé ;
+l'écran dit « non travaillé » / « Férié » d'un jour au repos, jamais sa charge) et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
 tâches finies CE jour local, prévues ce jour-là ou non, + activités ERP closes par lui ; 0 pour un jour à venir) ; une
 tâche ouverte d'un projet mis en pause AUJOURD'HUI et prévue aujourd'hui reste dans le jour, comme dans `aujourdhui/`
 (R2-031b, choix C-5 : la même règle, `gardee_malgre_la_pause`). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
@@ -2152,7 +2153,9 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   capacite_minutes, rendez_vous_minutes, disponible_minutes, deborde_minutes}` rendue par la SEULE fonction
   `selectors.journee.charge_du_jour` (règle pure `moteur.classement.compte_dans_la_charge`, regles.md §4.9) : servie
   dans `progression.charge` (`aujourdhui/`, toute TACHE_ECRITE, `point/`), `priorites.charge` et chaque jour à venir
-  d'`agenda/` (`jours[].charge`, nulle pour un jour passé) — donc Planifier ma semaine. Aucun écran ne la recalcule ;
+  d'`agenda/` (`jours[].charge`, nulle pour un jour passé ; un jour à venir NON travaillé — calendrier de la société,
+  jours dits du compte, congés — a `capacite_minutes` 0, donc `disponible_minutes` 0 ; aujourd'hui garde la capacité
+  d'Aujourd'hui) — donc Planifier ma semaine. Aucun écran ne la recalcule ;
   `minutes_prevues` et `sans_estimation` ne sont plus servis dans la PROGRESSION (la nuit garde
   `PlanJour.minutes_prevues`, `selectors.journee.minutes_prevues_du_jour`). Aucune requête de plus.
 - **`conseil_donne` (R4-10, R3-022)** : `aujourdhui/` (et la journée de toute `journee_ecrite`) dit si une carte de
