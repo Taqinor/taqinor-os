@@ -107,7 +107,7 @@ FILTRES_LISTE = [
     parametre('etiquette', OpenApiTypes.INT),
     parametre('priorite_min', OpenApiTypes.INT),
     parametre('statut', OpenApiTypes.STR),
-    parametre('periode', OpenApiTypes.STR),
+    parametre('periode', OpenApiTypes.STR, 'aujourdhui, semaine, retard, faites_semaine (depuis lundi).'),
     parametre('tri', OpenApiTypes.STR),
     parametre('groupe', OpenApiTypes.STR),
     parametre('inclure_faites', OpenApiTypes.BOOL),

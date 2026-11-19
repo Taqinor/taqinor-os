@@ -58,6 +58,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         }
       },
@@ -107,6 +109,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         }
       },
@@ -153,6 +157,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 6
         }
       }

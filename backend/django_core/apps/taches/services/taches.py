@@ -55,7 +55,10 @@ PAS_RANG = 1024
 MAX_MAILLONS = 50
 HORIZON_OUVRES = 400
 VUES = ('boite', 'quelque_jour')
-PERIODES = ('aujourdhui', 'semaine', 'retard')
+#: `faites_semaine` (R2-124, « Faites cette semaine » de la Recherche) : les FAITES depuis lundi 0 h de la semaine du
+#: jour, la plus récente d'abord (statut et tri par défaut imposés par la période).
+FAITES_SEMAINE = 'faites_semaine'
+PERIODES = ('aujourdhui', 'semaine', 'retard', FAITES_SEMAINE)
 #: `fait_le` : la plus récemment faite d'abord (« Faites (n) » d'un projet : `?projet=&statut=fait&tri=fait_le`).
 TRIS = ('rang', 'echeance', 'priorite', 'fait_le')
 GROUPES = ('projet',)
@@ -142,6 +145,9 @@ def _filtrer_periode(qs, periode, aujourdhui):
         return qs.filter(jour_prevu__gte=aujourdhui, jour_prevu__lte=aujourdhui + datetime.timedelta(days=6))
     if periode == 'retard':
         return qs.filter(Q(jour_prevu__lt=aujourdhui) | Q(echeance__lt=aujourdhui))
+    if periode == FAITES_SEMAINE:
+        lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
+        return qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
     return qs
 
 
@@ -155,8 +161,8 @@ def _filtrer_lien(qs, params):
     return qs.filter(object_id=identifiant) if identifiant is not None else qs
 
 
-def _ordre(qs, params):
-    tri = _choix(params, 'tri', TRIS) or 'rang'
+def _ordre(qs, params, defaut='rang'):
+    tri = _choix(params, 'tri', TRIS) or defaut
     groupe = _choix(params, 'groupe', GROUPES)
     ordre = {'rang': ('rang_projet', 'id'), 'priorite': ('-priorite', 'id'),
              'echeance': (F('echeance').asc(nulls_last=True), 'id'),
@@ -170,9 +176,11 @@ def liste_taches(user, params, *, assistant=False, aujourdhui=None):
     `vue=boite` : À trier ; `vue=quelque_jour` : En réserve ; `cible` + `cible_id` + `ouvertes` : les
     tâches liées à une fiche ERP (✓+). Un compte ne lit jamais que SES tâches."""
     aujourdhui = aujourdhui or timezone.localdate()
-    qs = taches_de(user).filter(statut__in=_statuts(params))
+    periode = _choix(params, 'periode', PERIODES)
+    faites_semaine = periode == FAITES_SEMAINE
+    qs = taches_de(user).filter(statut__in=(StatutTache.FAIT,) if faites_semaine else _statuts(params))
     qs = _filtrer_lien(_filtrer_vue(qs, _choix(params, 'vue', VUES)), params)
-    qs = _filtrer_periode(qs, _choix(params, 'periode', PERIODES), aujourdhui)
+    qs = _filtrer_periode(qs, periode, aujourdhui)
     for nom, champ in (('projet', 'projet_id'), ('section', 'section_id')):
         valeur = _entier(params, nom)
         if valeur is not None:
@@ -186,7 +194,7 @@ def liste_taches(user, params, *, assistant=False, aujourdhui=None):
     qs = filtrer_q(qs, params.get('q'), assistant=assistant)
     if assistant:
         qs = qs.exclude(TACHE_CONFIDENTIELLE)
-    return _ordre(qs, params)
+    return _ordre(qs, params, defaut='fait_le' if faites_semaine else 'rang')
 
 
 def reverifier_lien(user, tache):

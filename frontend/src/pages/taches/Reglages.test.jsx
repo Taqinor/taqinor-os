@@ -152,6 +152,21 @@ describe('TCH108 — Réglages', () => {
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/aujourdhui')
   })
 
+  it('Tout effacer empêché (409 `effacement_occupe`) : la phrase du serveur sous le champ, la feuille reste, on peut réessayer', async () => {
+    const occupe = exempleContrat('taches', 'erreurs').effacement_occupe
+    toutEffacer.mockRejectedValueOnce(Object.assign(new Error('409'), { response: { status: 409, data: occupe } }))
+    toutEffacer.mockResolvedValueOnce({ data: exemple('tout_effacer') })
+    monter('/taches/reglages/donnees')
+    await userEvent.click(await screen.findByRole('button', { name: 'Tout effacer' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Tout effacer ?' })
+    await userEvent.type(within(dialogue).getByRole('textbox', { name: 'Confirmation' }), 'EFFACER')
+    await userEvent.click(within(dialogue).getByRole('button', { name: 'Tout effacer' }))
+    expect(await within(dialogue).findByRole('alert')).toHaveTextContent("Rien n'a été effacé : tes données étaient en cours d'utilisation. Réessaie dans un instant.")
+    expect(within(dialogue).getByRole('textbox', { name: 'Confirmation' })).toHaveValue('EFFACER')
+    await userEvent.click(within(dialogue).getByRole('button', { name: 'Tout effacer' }))
+    expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/aujourdhui')
+  })
+
   it('Mon iPhone : les agendas (étape 2) sont listés avec leur état lisible ; Avancé : « Messages sans délai » se pose', async () => {
     modifierReglages.mockResolvedValue({ data: {} })
     monter('/taches/reglages/iphone')

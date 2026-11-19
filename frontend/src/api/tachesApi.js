@@ -103,7 +103,7 @@ const avecProprietaire = (corps, options = {}) => {
 const bearer = (jeton) => ({ headers: { Authorization: `Bearer ${jeton}` } })
 
 /** Codes 409 portés par `erreurs.json` : jamais devinés sur le texte. */
-export const CODES_409 = ['conflit_version', 'nom_pris', 'proposition_expiree', 'autre_compte', 'deja_lie']
+export const CODES_409 = ['conflit_version', 'nom_pris', 'proposition_expiree', 'autre_compte', 'deja_lie', 'effacement_occupe']
 
 /**
  * Classe une erreur axios en une forme unique :

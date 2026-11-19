@@ -108,6 +108,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": true,
+        "fait_le": null,
         "lock_version": 4
       }
     ],
@@ -184,6 +186,8 @@
         "confidentielle": false,
         "source": "manuel",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 1
       },
       {
@@ -228,6 +232,8 @@
         "confidentielle": false,
         "source": null,
         "peut_cloturer": false,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": null
       }
     ],
@@ -273,6 +279,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 0
       }
     ],
@@ -323,6 +331,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         },
         {
@@ -364,6 +374,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 3
         },
         {
@@ -410,6 +422,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 2
         }
       ],
@@ -472,6 +486,8 @@
               "confidentielle": false,
               "source": "manuel",
               "peut_cloturer": true,
+              "a_notes": false,
+              "fait_le": null,
               "lock_version": 0
             }
           ]
@@ -520,6 +536,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 6
       }
     ],
@@ -560,6 +578,8 @@
         "confidentielle": false,
         "source": "manuel",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 3
       }
     ],
@@ -605,6 +625,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": "2026-11-17T09:20:00+01:00",
         "lock_version": 5
       }
     ],

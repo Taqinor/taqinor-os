@@ -441,7 +441,11 @@ sans motif d'À revoir (§4.2) ; `exclure` retirés.
 5. **Charge** (montrée à côté de « Garder ces N », jamais un filtre) : `minutes_estimees` (gardées + proposées),
    `sans_estimation`, `surcharge` = minutes > `disponible_minutes` (§3.6), `non_calculable` = plus de la moitié sans durée.
 6. **Planifier ma semaine** : `agenda/?vue=semaine` → `mes_projets` = le tour complet (étape 3, sans N), groupé par
-   projet ; toucher une tâche puis un jour = `planifier(jour_prevu=jour)`.
+   projet ; toucher une tâche puis un jour = `planifier(jour_prevu=jour)`. Sans jour dans l'adresse, le mode s'ouvre
+   sur la semaine en cours, et sur la semaine SUIVANTE dès le jeudi 15 h et le week-end (R2-103, `Agenda.jsx::
+   jourDePlanification`) ; ‹ › changent de semaine sans quitter le mode. Une tâche d'À revoir (reportée 3 fois) posée
+   sur un jour sort d'À revoir par `trancher/` (`choix: jour`), puis reçoit son heure par `planifier/` si un créneau est
+   choisi ; un échec défait la décision (R2-106).
 
 **Jeu de test (recalculé par un script jetable (rapport resté sur la branche de travail), cette session).** Projets : Ventes (haute,
 rang 1024 ; 12 tâches V1…V12 sans date, `rang_projet` 1024…12288, + R4 reportée 3 fois), Maison (moyenne, rang 1024 ;
@@ -520,6 +524,13 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 6. Ce qui presse (`retard`, `echeance_passee`, `echeance_proche`, §3.4) → `propose`, en tête, avec sa `raison`.
 7. Candidate du tour des projets (§3.4) → `propose` (`pour_objectif` ou suite dépliée).
 8. Sinon absente (prévue plus tard — visible dans la suite dépliée et l'agenda —, En réserve, À trier, bloquée…).
+
+**Projet en pause (choix C-5, « ce que j'ai posé reste posé », R2-031).** Agenda (`agenda/`,
+`views/agenda.py::taches_de_la_periode`, R2-031b) : une tâche OUVERTE (`a_faire`, `en_attente`, hors réserve) d'un projet
+`en_pause` prévue AUJOURD'HUI (`jour_prevu = J`) reste dans le jour J ; la pause continue de retirer ses tâches des autres
+jours, de Proposé, d'À trier et du tour des projets. Moitié journée (`aujourdhui/`, `selectors/journee.py::
+taches_de_la_journee`) : à la révision de ce paragraphe, le préfiltre ne garde encore que les projets `actif` (une faite du
+jour reste quel que soit l'état de son projet) — la tâche du projet en pause n'y est donc pas encore.
 
 Activité ERP (`activites_ouvertes_pour`, si `erp_dans_journee`) : due J → `journee` ; due < J → `a_decider` motif
 `activite_passee`. `obligations` (`FamilleObligation` : `visite`, `pose`, `intervention`, `touches`) : chacune une fois,
@@ -687,6 +698,12 @@ récurrence = 1 ; activité ERP close par lui ce jour = 1 ; sans estimation = 1 
 `detail` = `etapes`, `routines`, `micro_non_comptees`, `activites_closes`. **Hors de la première livraison** (A18,
 critique m5 ; les champs restent) : le plafond des micro-tâches (estimation ≤ 10 min, 2 comptées au plus par jour) ;
 en v1 une micro-tâche compte 1 et `micro_non_comptees` vaut 0.
+
+**« Faites » veut dire la même chose partout (choix C-12, R2-102).** Le « {n} faites » d'un jour — Mon rythme, la Revue,
+l'Agenda (`agenda/` → `jours[].faites_nb`, `views/agenda.py::faites_par_jour`) et Planifier ma semaine (« passé · {n}
+faites ») — est ce `compte_du_jour` : les tâches PASSÉES à `fait` ce jour local, prévues ce jour-là ou non, plus les
+activités ERP closes par lui ce jour (moins celles qu'une tâche porte, déjà comptées) ; 0 pour un jour à venir. Jamais
+« faites parmi les prévues de ce jour ».
 
 ### 6.2 La journée évaluée (`statut_jour(ouvre, conge, compte, plan, app)`)
 

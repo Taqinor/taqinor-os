@@ -75,6 +75,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": false,
+        "fait_le": null,
         "lock_version": 4
       }
     ],
@@ -114,6 +116,8 @@
       "confidentielle": false,
       "source": "manuel",
       "peut_cloturer": true,
+      "a_notes": false,
+      "fait_le": null,
       "lock_version": 1
     },
     "restes_nb": 3,

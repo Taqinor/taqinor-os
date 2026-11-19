@@ -7,6 +7,8 @@ textes.md (« Santé »).
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from apps.taches.moteur.gabarits import format_jour
+
 A_FAIRE = 'a_faire'
 EN_ATTENTE = 'en_attente'
 FAIT = 'fait'
@@ -228,9 +230,13 @@ def echeance_menacee(taches, projet, J, travailles, rythme=False):
     if calcul is None:
         return None
     besoin, reste, f28, j28 = calcul
-    phrase = (f'Au rythme des 4 dernières semaines ({f28} faites en {j28} jours travaillés), '
-              f'il faudrait {besoin} jours travaillés ; il en reste {reste}.')
-    return _signal_menace('d', phrase, {'besoin': besoin, 'reste': reste, 'f28': f28, 'j28': j28})
+    # R2-034 — la conséquence d'abord ; chaque chiffre est calculé (rythme F28/J28, ouvertes, échéance du projet)
+    jour = format_jour(ech, J)
+    quand = jour if jour in ("aujourd'hui", 'demain') else f'le {jour}'
+    phrase = (f'À ce rythme, pas prêt pour {quand} : il faudrait {besoin} jours travaillés, il en reste {reste} '
+              f'({f28} faites en {j28} jours travaillés ces 4 dernières semaines).')
+    return _signal_menace('d', phrase, {'besoin': besoin, 'reste': reste, 'f28': f28, 'j28': j28,
+                                        'echeance': ech.isoformat()})
 
 
 def _autre_de_reference(projet, faites_14j, projets):

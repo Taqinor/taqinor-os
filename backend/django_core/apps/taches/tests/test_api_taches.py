@@ -72,6 +72,33 @@ class ListeTests(BaseApi):
         self.assertEqual(self._ids(self._liste('inclure_faites=1&ouvertes=1')), {ouverte.pk})
         self.assertEqual(self._ids(self._liste('statut=fait')), {faite.pk})
 
+    def test_faites_cette_semaine_depuis_lundi_la_plus_recente_d_abord(self):
+        """R2-124 — « Qu'ai-je fini cette semaine ? » : `periode=faites_semaine` = les faites depuis lundi 0 h (jour
+        de l'appareil), de ce compte seulement, la plus récemment faite d'abord ; jamais une ouverte."""
+        from apps.taches.services.taches import liste_taches
+        jeudi = datetime.date(2026, 11, 19)
+
+        def a_l_heure(jour, heure):
+            return timezone.make_aware(datetime.datetime(2026, 11, jour, heure, 0))
+        mardi = fabriques.tache(self.u1, titre='Mardi', statut=StatutTache.FAIT, fait_le=a_l_heure(17, 10))
+        ce_jeudi = fabriques.tache(self.u1, titre='Jeudi', statut=StatutTache.FAIT, fait_le=a_l_heure(19, 9))
+        lundi_tot = fabriques.tache(self.u1, titre='Lundi', statut=StatutTache.FAIT, fait_le=a_l_heure(16, 0))
+        fabriques.tache(self.u1, titre='Dimanche', statut=StatutTache.FAIT, fait_le=a_l_heure(15, 23))
+        fabriques.tache(self.u1, titre='Ouverte')
+        fabriques.tache(self.u2, titre='Collègue', statut=StatutTache.FAIT, fait_le=a_l_heure(18, 9))
+        lues = list(liste_taches(self.u1, {'periode': 'faites_semaine'}, aujourdhui=jeudi))
+        self.assertEqual([t.pk for t in lues], [ce_jeudi.pk, mardi.pk, lundi_tot.pk])
+
+    def test_faites_cette_semaine_servies_avec_fait_le(self):
+        faite = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
+        fabriques.tache(self.u1)
+        reponse = self._liste('periode=faites_semaine')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual(self._ids(reponse), {faite.pk})
+        ligne = reponse.json()['results'][0]
+        self.assertEqual(list(ligne), list(exemple('item')))
+        self.assertIsNotNone(ligne['fait_le'])
+
     def test_filtres_projet_priorite_et_mots(self):
         projet = fabriques.projet(self.u1)
         voulue = fabriques.tache(self.u1, projet=projet, titre='Devis Settat', priorite=3)
