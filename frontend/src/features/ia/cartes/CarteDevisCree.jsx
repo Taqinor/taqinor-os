@@ -56,7 +56,6 @@ export default function CarteDevisCree({ carte }) {
     .filter((m) => typeof m === 'string' && m.trim())
   const kwc = kwcTexte(d.kwc)
   const reference = typeof d.reference === 'string' ? d.reference : ''
-  const autres = Number.isInteger(d.nb_lignes) ? d.nb_lignes - composition.length : 0
   const aTotal = d.total_ttc != null && d.total_ttc !== ''
   return (
     <div className="min-w-0">
@@ -72,11 +71,6 @@ export default function CarteDevisCree({ carte }) {
         <ul className="mt-2 space-y-1.5">
           {composition.map((ligne, i) => <LigneComposition key={i} ligne={ligne} />)}
         </ul>
-      )}
-      {autres > 0 && (
-        <p className="mt-1.5 text-xs text-muted-foreground" data-testid="devis-cree-autres">
-          + {autres} autre{autres > 1 ? 's' : ''} ligne{autres > 1 ? 's' : ''} dans le devis.
-        </p>
       )}
       {aTotal && (
         <p className="mt-2 flex flex-wrap items-baseline justify-between gap-x-2 text-sm font-semibold" data-testid="devis-cree-total">

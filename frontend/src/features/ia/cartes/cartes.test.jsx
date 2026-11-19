@@ -321,8 +321,9 @@ describe('cartes — devis_cree (COP2-W1, échantillon assistant_devis_cree)', (
     expect(carte).toHaveTextContent(/10 × 1\s?400,00\s?MAD TTC/)
     expect(within(carte).getByTestId('devis-cree-total')).toHaveTextContent(/73\s?000,00\s?MAD/)
     expect(within(carte).getByTestId('devis-cree-alertes')).toHaveTextContent(/Composition imposée : 10 panneaux/)
-    // 11 lignes au total, 3 montrées : on le dit, sans inventer lesquelles.
-    expect(within(carte).getByTestId('devis-cree-autres')).toHaveTextContent('+ 8 autres lignes dans le devis.')
+    // `nb_lignes` compte aussi les sections et les notes : la carte n'en déduit
+    // jamais un nombre de « lignes manquantes » (revue du 19/11).
+    expect(within(carte).queryByTestId('devis-cree-autres')).toBeNull()
   })
 
   it('ne montre jamais le jeton ni le chemin de la proposition, ni un prix d\'achat', () => {
