@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Calendar, Check, Flag, Hourglass, Link as LienIcone, Lock, Repeat, Ellipsis } from 'lucide-react'
+import {
+  AlignLeft, ArrowRight, Bell, Calendar, Check, Flag, Hourglass, Link as LienIcone, ListChecks, Lock, Repeat, Ellipsis,
+} from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
@@ -162,7 +164,11 @@ function statutRecherche(item, aujourdhui) {
 /** R2-018 — les puces BRÈVES : une méta qui n'en compte que deux au plus peut tenir sur la ligne du titre
  *  (`.ligne-corps.meta-courte`, la règle CSS est celle de la coquille) ; un lien, une raison ou une attente, jamais. */
 const PUCES_BREVES = new Set(['statut', 'jour', 'ech', 'duree', 'projet'])
-const metaCourte = (meta) => meta.length > 0 && meta.length <= 2 && meta.every((p) => PUCES_BREVES.has(p.key))
+const INDICES = new Set(['note', 'check', 'rappel']) // R2-028 : de petites icônes, jamais comptées dans la méta brève
+const metaCourte = (meta) => {
+  const puces = meta.filter((p) => !INDICES.has(p.key))
+  return puces.length > 0 && puces.length <= 2 && puces.every((p) => PUCES_BREVES.has(p.key))
+}
 
 /** Les puces de méta d'une ligne, dans l'ordre des maquettes. */
 function metaDe(item, { contexte, aujourdhui, propose, groupeTitre }) {
@@ -181,6 +187,26 @@ function metaDe(item, { contexte, aujourdhui, propose, groupeTitre }) {
   if (d && item.heure_debut) {
     puces.push(
       <span key="duree" className="chiffres"><Hourglass className="i i-14" aria-hidden="true" /><span className="sr">Durée : </span>{d}</span>,
+    )
+  }
+  // R2-028 — ce que la ligne ne montrait pas : une note, une check-list, un rappel (petites icônes discrètes, comme Things).
+  // Les notes ne sont servies que par la fiche ; une liste peut porter `a_notes` : l'indice n'apparaît que si la donnée le dit.
+  if (item.notes || item.a_notes) {
+    puces.push(<span key="note" className="indice"><AlignLeft className="i i-14" aria-hidden="true" /><span className="sr">Note</span></span>)
+  }
+  if (item.checklist?.total > 0) {
+    puces.push(
+      <span key="check" className="indice chiffres">
+        <ListChecks className="i i-14" aria-hidden="true" /><span className="sr">Check-list : </span>{item.checklist.faits}/{item.checklist.total}
+      </span>,
+    )
+  }
+  if (item.rappel?.heure && item.statut !== 'fait') {
+    const quand = item.rappel.jour && item.rappel.jour !== aujourdhui ? `${jourCourt(item.rappel.jour, aujourdhui)} ` : ''
+    puces.push(
+      <span key="rappel" className="indice chiffres">
+        <Bell className="i i-14" aria-hidden="true" /><span className="sr">{`Rappel ${quand}à ${heure(item.rappel.heure)}`}</span>
+      </span>,
     )
   }
   if (item.lien?.libelle) {

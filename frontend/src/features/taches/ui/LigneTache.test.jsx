@@ -342,6 +342,38 @@ describe('R2-018 — « 2 h » se lit comme une durée, pas comme « à 2 h »',
   })
 })
 
+describe('R2-028 — la ligne dit qu\'il y a une note, une check-list, un rappel (comme Things)', () => {
+  const indices = (container) => [...container.querySelectorAll('.meta .indice')].map((e) => e.textContent)
+
+  it('une tâche avec note, check-list et rappel porte trois indices discrets, dans cet ordre', () => {
+    const riche = { ...item(), notes: 'Appeler avant 11 h.', checklist: { faits: 1, total: 2 }, rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    const { container } = monter({ item: riche })
+    expect(indices(container)).toEqual(['Note', 'Check-list : 1/2', 'Rappel à 09:45'])
+    // des icônes décoratives : la lecture d'écran n'entend que les libellés
+    container.querySelectorAll('.meta .indice svg').forEach((svg) => expect(svg).toHaveAttribute('aria-hidden', 'true'))
+  })
+
+  it('la note se lit aussi du drapeau `a_notes` d\'une liste (les notes elles-mêmes ne sont servies que par la fiche)', () => {
+    const { container } = monter({ item: { ...item(), a_notes: true } })
+    expect(indices(container)).toEqual(['Note'])
+  })
+
+  it('rien à dire, rien d\'affiché : ni note vide, ni check-list absente, ni rappel d\'une tâche faite', () => {
+    const { container, unmount } = monter({ item: { ...item(), notes: '', checklist: null, rappel: null } })
+    expect(indices(container)).toEqual([])
+    unmount()
+    const faite = { ...item(), statut: 'fait', rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    expect(indices(monter({ item: faite }).container)).toEqual([])
+  })
+
+  it('un rappel d\'un autre jour dit son jour ; les indices ne comptent pas dans la méta brève', () => {
+    const autre = { ...item(), projet: null, rappel: { jour: '2026-11-20', heure: '09:45' }, checklist: { faits: 0, total: 3 } }
+    const { container } = monter({ item: autre })
+    expect(indices(container)).toEqual(['Check-list : 0/3', 'Rappel ven. 20 à 09:45'])
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte') // échéance + durée seulement
+  })
+})
+
 describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
   // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
   // (les alias de classe d'icône changent d'une version de lucide à l'autre : `lucide-more-horizontal` n'est pas comparé)
