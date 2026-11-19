@@ -1251,3 +1251,60 @@ class BriefVentesTest(_BaseVenteAssistant):
             role=Role.objects.create(company=self.company, nom='CRM seul',
                                      permissions=['crm_voir']))
         self.assertIsNone(brief_ventes(crm_seul, timezone.localdate()))
+
+
+class PermissionsVenteAssistantTest(_BaseVenteAssistant):
+    """VAD11 — qui voit les outils de la lane VAD (copilote allumé), rôles
+    CANONIQUES du registre ; l'Admin Ventes (``ventes_valider`` sans
+    ``encaisser``) prépare un brouillon de facture mais n'émet ni n'encaisse ;
+    une route d'écriture refuse le lecteur seul (403) — catalogue et garde de
+    la route disent la même chose."""
+
+    LECTURES = {'ventes.vente.etat', 'ventes.impayes.lister',
+                'ventes.facture.chercher', 'ventes.devis.taille_apercu'}
+    ECRITURES = {'ventes.devis.prolonger', 'ventes.devis.refuser',
+                 'ventes.devis.reviser', 'ventes.devis.taille',
+                 'ventes.facture.whatsapp_relance', 'ventes.vente.facturer'}
+
+    def _compte(self, nom, permissions):
+        return User.objects.create_user(
+            username=f'vad11_{nom}', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom=f'VAD11 {nom}',
+                                     permissions=list(permissions)))
+
+    def _vus(self, user):
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            return {a.key for a in for_user(user)}
+
+    def test_catalogue_par_role_canonique(self):
+        from apps.roles import permissions_registre as R
+        toutes = self.LECTURES | self.ECRITURES
+        for nom, permissions, attendu in (
+                ('admin_ventes', R.ADMIN_VENTES_PERMISSIONS, toutes),
+                ('commercial', R.COMMERCIAL_PERMISSIONS, toutes),
+                ('lecture', R.VIEWER_PERMISSIONS, self.LECTURES),
+                ('technicien', R.TECHNICIEN_PERMISSIONS, set()),
+                ('admin_rh', R.ADMIN_RH_PERMISSIONS, set())):
+            with self.subTest(role=nom):
+                self.assertEqual(self._vus(self._compte(nom, permissions)) & toutes,
+                                 attendu)
+
+    def test_admin_ventes_brouillon_oui_emission_et_encaissement_non(self):
+        from apps.roles import permissions_registre as R
+        admin_ventes = self._compte('av', R.ADMIN_VENTES_PERMISSIONS)
+        vus = self._vus(admin_ventes)
+        self.assertIn('ventes.vente.facturer', vus)
+        self.assertNotIn(GENERER_FACTURE.key, vus)
+        self.assertNotIn(ENREGISTRER_PAIEMENT.key, vus)
+
+    def test_lecteur_seul_route_d_ecriture_403_lecture_200(self):
+        from apps.roles import permissions_registre as R
+        from apps.ventes.agent_actions import PROLONGER_DEVIS, VENTE_ETAT
+        lecteur = self._compte('ro', R.VIEWER_PERMISSIONS)
+        self.devis.created_by = lecteur
+        self.devis.save(update_fields=['created_by'])
+        ecriture = auth(lecteur).post(
+            PROLONGER_DEVIS.endpoint.format(id=self.devis.pk), {}, format='json')
+        self.assertEqual(ecriture.status_code, 403, ecriture.data)
+        lecture = auth(lecteur).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(lecture.status_code, 200, lecture.data)
