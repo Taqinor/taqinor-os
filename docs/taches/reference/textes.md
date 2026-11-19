@@ -110,7 +110,7 @@ référence données/API.
 | Progression (`pousser`) | « {faites} sur {objectif} · essentiel {ef}/{ep} » ; sans essentiel : « {faites} sur {objectif} » ; jour de retour : « Reprise » |
 | Progression (`tenir`) | « {faites} sur {objectif} · ton rythme : {bas} à {haut} » (`OBJECTIF.zone`) |
 | Progression (`libre`) | « {faites} faites » (« 1 faite ») |
-| Au toucher (vers Mon rythme) | « Objectif du jour : {objectif} ({source}) » · « {pt} des {pl} gardées » · « Temps : {charge} » · « Temps libre : {disponible} ({cap} moins {rdv} de rendez-vous) » (sans rendez-vous : « Temps libre : {cap} ») · « Mon rythme › » |
+| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} visée(s) · {gardées} tâche(s) gardée(s) » (sans objectif : « {faites} faite(s) · {gardées} tâches gardées » ; la source n'est dite que si elle est `defaut` : « Objectif : valeur par défaut, pas encore calculée sur toi », R2-035) · « Temps : {charge} » · « Temps libre : {disponible} ({cap} moins {rdv} de rendez-vous) » (sans rendez-vous : « Temps libre : {cap} ») · « Mon rythme › » |
 | Sources de l'objectif | `defaut` « valeur par défaut, pas encore calculée sur toi » · `calcule` « ta journée type » (en `tenir` : « ton rythme ») · `accepte` « accepté » · `dit` « ton choix » |
 | Charge | « {h} prévues » · « {h} prévues + {n} sans durée » · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
 | Source du temps disponible | `reglage` « ton réglage » · `historique` « habituel » · `defaut` « valeur par défaut » |
