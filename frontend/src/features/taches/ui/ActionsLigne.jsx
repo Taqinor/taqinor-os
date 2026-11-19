@@ -14,7 +14,7 @@ import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
 /* ============================================================================
    Raccord F2 — LE gestionnaire des actions d'une ligne de tâche (menu ⋯ et gestes de `LigneTache`), partagé par
-   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · En réserve · Changer de projet (vers un
+   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · Plus tard · Changer de projet (vers un
    projet · En attente de… · Priorité · ★ · Supprimer. Chaque geste est OPTIMISTE (la ligne change au toucher),
    réconcilié par la réponse, défait par le toast « Annuler » (`gestes/{id}/annuler/`) — jamais une relecture de
    toute la liste. Un refus remet la ligne comme avant et le DIT.
@@ -288,7 +288,7 @@ export function useActionsLigne({
     if (reseau && !estEnLigne()) { annoncer(PHRASE_HORS_LIGNE); return }
     if (code === 'choisir_jour') setFeuille({ type: 'quand', item })
     else if (code === 'reporter') reporter(item)
-    else if (code === 'reserve') planifier(item, { quelque_jour: true }, 'En réserve')
+    else if (code === 'reserve') planifier(item, { quelque_jour: true }, 'Plus tard')
     else if (code === 'deplacer') ouvrirProjets(item, options)
     else if (code === 'attente') setFeuille({ type: 'attente', item })
     else if (code === 'priorite') setFeuille({ type: 'priorite', item })
@@ -306,7 +306,7 @@ export function useActionsLigne({
           valeur={pris(item, CHAMPS_QUAND)} aujourdhui={aujourdhui} reporterA={prochainJourOuvre}
           onChoisir={(quand) => {
             setFeuille(null)
-            const message = quand.quelque_jour ? 'En réserve'
+            const message = quand.quelque_jour ? 'Plus tard'
               : quand.jour_prevu ? `Prévue ${jourCourt(quand.jour_prevu, aujourdhui)}` : 'Sans jour'
             planifier(item, quand, message)
           }}

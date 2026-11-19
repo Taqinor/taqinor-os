@@ -583,8 +583,8 @@ class ProprietaireEntreeSerializer(CorpsTaches):
 
 @extend_schema_serializer(component_name='TachesCorpsPlanifier')
 class PlanifierEntreeSerializer(ProprietaireEntreeSerializer):
-    """Corps de `planifier/` : le jour, l'heure, le moment ou « En réserve » ; `lock_version` requis. Une heure
-    demande un jour, sauf « En réserve » (`services.planification._normaliser`, publié en règle croisée)."""
+    """Corps de `planifier/` : le jour, l'heure, le moment ou « Plus tard » ; `lock_version` requis. Une heure
+    demande un jour, sauf « Plus tard » (`services.planification._normaliser`, publié en règle croisée)."""
 
     jour_prevu = DateBornee(required=False, allow_null=True)
     moment = _choix(Moment.values, required=False, allow_blank=True)

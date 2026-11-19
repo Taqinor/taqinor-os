@@ -968,14 +968,14 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
   )
   const adresse = () => new URLSearchParams(screen.getByTestId('adresse').textContent)
 
-  it('R2-021 — À revoir dit la raison sous chaque ligne ; « Découper » ouvre la fiche sur sa section Découper', async () => {
+  it('R2-021 — À revoir dit la raison sous chaque ligne ; « Découper en sous-tâches » ouvre la fiche sur sa section « Découper en sous-tâches »', async () => {
     servir(donnees())
     monterAvecAdresse()
     await screen.findByText('Devis Settat')
     await userEvent.click(screen.getByRole('button', { name: /^À revoir/ }))
     const zone = document.querySelector('.replies')
     expect(within(zone).getByText('reportée 3 fois')).toBeInTheDocument()
-    await userEvent.click(within(zone).getByRole('button', { name: 'Découper' }))
+    await userEvent.click(within(zone).getByRole('button', { name: 'Découper en sous-tâches' }))
     await waitFor(() => expect(adresse().get('tache')).toBe('50'))
     expect(adresse().get('section')).toBe('decouper')
   })
@@ -1162,7 +1162,7 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Choisir un jour' }))
     const feuille = await screen.findByRole('dialog', { name: 'Quand ?' })
     const tuiles = within(feuille).getAllByRole('radio').map((t) => t.querySelector('b').textContent)
-    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Calendrier…', 'En réserve', 'Sans jour'])
+    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Calendrier…', 'Plus tard', 'Sans jour'])
     await userEvent.click(within(feuille).getByRole('radio', { name: /^Demain/ }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-18' })))
     expect(screen.queryByRole('dialog', { name: 'Quand ?' })).toBeNull()

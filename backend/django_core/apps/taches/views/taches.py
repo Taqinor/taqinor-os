@@ -97,7 +97,7 @@ def _conflit_complet(request, exc, pk):
 
 
 FILTRES_LISTE = [
-    parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (En réserve)…'),
+    parametre('vue', OpenApiTypes.STR, 'boite (À trier), quelque_jour (Plus tard)…'),
     parametre('q', OpenApiTypes.STR, 'Mots, sans accents.'),
     parametre('projet', OpenApiTypes.INT),
     parametre('section', OpenApiTypes.INT),

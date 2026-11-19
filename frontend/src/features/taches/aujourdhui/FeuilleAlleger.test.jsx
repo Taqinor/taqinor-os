@@ -58,7 +58,7 @@ describe('TCH79 — menu ⋯ d\'Aujourd\'hui', () => {
     const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
     expect(noms).toEqual([
       'Alléger ma journée', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
-      'Revue de la semaine', 'Mon rythme', 'Supprimées et derniers gestes', 'Réglages',
+      'Revue de la semaine', 'Mon rythme', 'Supprimées', 'Réglages',
     ])
   })
 

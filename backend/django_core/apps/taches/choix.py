@@ -160,7 +160,7 @@ class Decision(models.TextChoices):
     GARDER = 'garder', 'Garder'
     PROCHAIN_JOUR_OUVRE = 'prochain_jour_ouvre', 'Reporter au prochain jour ouvré'
     JOUR = 'jour', 'Un jour précis'
-    UN_JOUR = 'un_jour', 'En réserve'
+    UN_JOUR = 'un_jour', 'Plus tard'
     ABANDONNER = 'abandonner', 'Abandonner'
 
 

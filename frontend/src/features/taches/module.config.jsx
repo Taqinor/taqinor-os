@@ -58,7 +58,7 @@ const config = {
   },
   titles: [
     ['/taches/reglages', 'Tâches — Réglages'],
-    ['/taches/supprimees', 'Tâches — Supprimées et derniers gestes'],
+    ['/taches/supprimees', 'Tâches — Supprimées'],
     ['/taches/recherche', 'Tâches — Recherche'],
     ['/taches/rythme', 'Tâches — Mon rythme'],
     ['/taches/revue', 'Tâches — Revue de la semaine'],

@@ -68,12 +68,12 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
     expect(within(proposé()).getByText('En tête : priorité haute.')).toBeInTheDocument()
   })
 
-  it('« Garder » sur une ligne la garde seule, mode express', async () => {
+  it('R3-151 — « Aujourd\'hui » sur une ligne la garde seule, mode express', async () => {
     servir(journee())
     monter()
     await screen.findByText('Déclaration TVA')
     const ligne = proposé().querySelector('[data-ligne="tache:41"]')
-    await userEvent.click(within(ligne).getByRole('button', { name: 'Garder' }))
+    await userEvent.click(within(ligne).getByRole('button', { name: "Mettre « Ranger le bureau » aujourd'hui" }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/taches/journee/planifier/',
       { jour: '2026-11-17', mode: 'express', lignes: [{ type: 'tache', id: 41 }], essentielles: [], triage: [] },

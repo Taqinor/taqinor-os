@@ -78,19 +78,19 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     expect(screen.queryByRole('button', { name: /Essentielle/ })).toBeNull()
   })
 
-  it('en vue Projet la méta montre le Quand ; la puce Garder d\'une ligne proposée appelle onGarder', async () => {
+  it('en vue Projet la méta montre le Quand ; la puce « Aujourd\'hui » d\'une ligne proposée appelle onGarder', async () => {
     const onGarder = vi.fn()
     render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} contexte="projet" propose onGarder={onGarder} />)
     expect(document.querySelector('.meta .fort')).toHaveTextContent("aujourd'hui")
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Garder' }))
+    await userEvent.setup().click(screen.getByRole('button', { name: `Mettre « ${item().titre} » aujourd'hui` }))
     expect(onGarder).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
   })
 
-  it('passe visuelle n° 16 — la puce « Garder » est le mot seul, sans « + » (maquettes : `<button class="garder">Garder`)', () => {
+  it('R3-151 (C-20) — la puce de Proposé dit « Aujourd\'hui », le mot seul, sans « + » ; son nom lu nomme la tâche', () => {
     render(<LigneTache item={item()} aujourdhui={AUJOURDHUI} propose onGarder={() => {}} />)
-    const garder = screen.getByRole('button', { name: 'Garder' })
+    const garder = screen.getByRole('button', { name: `Mettre « ${item().titre} » aujourd'hui` })
     expect(garder.querySelector('svg')).toBeNull()
-    expect(garder).toHaveTextContent(/^Garder$/)
+    expect(garder).toHaveTextContent(/^Aujourd'hui$/)
   })
 })
 
@@ -124,7 +124,7 @@ describe('TCH44 — clavier : Tab → Actions → item (sans balayage ni glisser
     const menu = await screen.findByRole('menu')
     const libelles = within(menu).getAllByRole('menuitem').map((el) => el.textContent)
     expect(libelles).toEqual([
-      'Reporter à lun. 23', 'Choisir un jour', 'En réserve', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+      'Reporter à lun. 23', 'Choisir un jour', 'Plus tard', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
     ])
     await user.click(within(menu).getByRole('menuitem', { name: 'Choisir un jour' }))
     expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 }))
@@ -272,7 +272,7 @@ describe('R3-063 (choix C-23) — l\'appui long au doigt ouvre une feuille du ba
     expect(screen.queryByRole('menu')).toBeNull() // plus le menu déroulant du bureau
     expect(within(feuille).getByText('Devis Settat')).toHaveClass('feuille-titre')
     expect(within(feuille).getAllByRole('button').filter((b) => b.classList.contains('action-ligne')).map((b) => b.textContent)).toEqual([
-      'Reporter à lun. 23', 'Choisir un jour', 'En réserve', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+      'Reporter à lun. 23', 'Choisir un jour', 'Plus tard', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
     ])
     expect(ligne).toHaveClass('en-actions')
     fireEvent.click(within(feuille).getByRole('button', { name: 'Choisir un jour' }))
@@ -531,14 +531,14 @@ describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, m
     expect([...t.querySelectorAll('b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'signé'])
   })
 
-  it('variante « recherche » : méta de statut lue des données (À trier, En réserve, jour) puis « Suggéré par l\'ERP »', () => {
+  it('variante « recherche » : méta de statut lue des données (À trier, Plus tard, jour) puis « Suggéré par l\'ERP »', () => {
     const sansRien = { ...item(), a_notes: false, jour_prevu: null, quelque_jour: false, projet: null, echeance: null, heure_debut: null }
     const textes = (container) => [...container.querySelector('.meta').children].map((e) => e.textContent)
     const { container: aTrier } = monter({ item: { ...sansRien, source: 'suggestion' }, contexte: 'recherche' })
     expect(textes(aTrier)).toEqual(['À trier', "Suggéré par l'ERP"])
     const reserve = { ...sansRien, quelque_jour: true, projet: { id: 3, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 2 } }
     const { container: enReserve } = monter({ item: reserve, contexte: 'recherche' })
-    expect(textes(enReserve)).toEqual(['En réserve', 'Salon Solaire Expo'])
+    expect(textes(enReserve)).toEqual(['Plus tard', 'Salon Solaire Expo'])
     // une tâche qui a un jour le dit (« aujourd'hui », « lun. 16 ») à la place du statut
     const { container: duJour } = monter({ item: { ...sansRien, statut: 'fait', jour_prevu: AUJOURDHUI }, contexte: 'recherche' })
     expect(textes(duJour)).toEqual(["aujourd'hui"])

@@ -24,9 +24,9 @@ import SelecteurQuand, { ajouterJours } from '../../features/taches/ui/Selecteur
 /* ============================================================================
    TCH86 — Écran « À trier » (`/taches/a-trier`) : la boîte de réception des tâches sans jour ni
    projet. Bandeau « {n} à-faire personnels dans Activités · Tout convertir · Voir » ; par ligne
-   Aujourd'hui · Demain · Projet… · ⋯ (Choisir un jour · En réserve · Garder sans projet · Supprimer) ;
+   Aujourd'hui · Demain · Projet… · ⋯ (Choisir un jour · Plus tard · Garder sans projet · Supprimer) ;
    ⋯ de l'écran : Trier une par une · Ranger avec le Copilote (≥ 5 lignes) ; « Tout ranger » applique le
-   rangement proposé ; « En réserve » = les tâches gardées sans jour.
+   rangement proposé ; « Plus tard » = les tâches gardées sans jour.
    UN seul chemin d'écriture : `taches/lot/` (une action, `ids`), la ligne quitte la liste TOUT DE SUITE et
    revient à sa place si le serveur refuse ; la liste ne se vide jamais sur un échec de lecture et un geste ne
    la relit pas. « Suggéré par l'ERP » (TCH167, `atrier/Suggestions.jsx`) ouvre la liste À trier : Ajouter / Pas utile.
@@ -57,7 +57,7 @@ function MetaATrier({ tache, propose, aujourdhui }) {
     mentions.push(<span key="lien"><LienIcone className="i i-14" aria-hidden="true" /><span className="sr">Lié à : </span>{tache.lien.libelle}</span>)
   }
   if (ech) mentions.push(<span key="ech" className={ech.ton === 'alerte' ? 'alerte chiffres' : 'fort chiffres'}>{ech.texte}</span>)
-  // une tâche gardée en réserve peut avoir un projet (« Comparer deux devis d'impression » · ● Salon Solaire Expo)
+  // une tâche gardée pour plus tard peut avoir un projet (« Comparer deux devis d'impression » · ● Salon Solaire Expo)
   if (tache.projet) {
     mentions.push(<span key="projet" data-p={tache.projet.couleur}><i className="point" aria-hidden="true" /><span className="projet-nom">{tache.projet.nom}</span></span>)
   }
@@ -93,7 +93,7 @@ function LigneATrier({ tache, propose, reserve, actions, aujourdhui, onChoisirJo
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => onChoisirJour(tache)}>Choisir un jour</DropdownMenuItem>
-              {reserve ? null : <DropdownMenuItem onSelect={() => actions.reserve(tache)}>En réserve</DropdownMenuItem>}
+              {reserve ? null : <DropdownMenuItem onSelect={() => actions.reserve(tache)}>Plus tard</DropdownMenuItem>}
               {reserve ? null : <DropdownMenuItem onSelect={() => actions.sansProjet(tache)}>Garder sans projet</DropdownMenuItem>}
               <DropdownMenuSeparator />
               <DropdownMenuItem destructive onSelect={() => actions.supprimer(tache)}>Supprimer</DropdownMenuItem>
@@ -128,7 +128,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const lire = useCallback(() => listerToutesLesTaches({ vue: 'boite' })
     .then((taches) => { setLignes(taches); setEchec(''); setCharge(true) })
     .catch((err) => { setEchec(frenchError(err)); setCharge(true) }), [])
-  // « En réserve {n} » est replié en bas de la liste (ecran-a-trier.html) : son compte se lit dès l'ouverture ;
+  // « Plus tard {n} » est replié en bas de la liste (ecran-a-trier.html) : son compte se lit dès l'ouverture ;
   // une lecture en échec laisse les lignes déjà lues (jamais une fausse réserve vide)
   const lireReserve = useCallback(() => listerToutesLesTaches({ vue: 'quelque_jour' })
     .then((taches) => { setReserveLignes(taches); setReserveLue(true); setEchecReserve('') })
@@ -151,7 +151,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   }, [projets.length])
 
   /** Un geste sur une ligne (de la boîte ou de la réserve dépliée) : elle part TOUT DE SUITE, revient à sa place si
-   *  le serveur refuse ; mise en réserve depuis la boîte, elle rejoint aussitôt « En réserve ». */
+   *  le serveur refuse ; remise à plus tard depuis la boîte, elle rejoint aussitôt « Plus tard ». */
   const appliquer = useCallback(async (tache, action, valeurs, message) => {
     const enReserve = reserveLignes.some((l) => l.id === tache.id)
     const setSource = enReserve ? setReserveLignes : setLignes
@@ -189,7 +189,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   const actions = {
     aujourdhui: (t) => appliquer(t, 'planifier', { jour_prevu: aujourdhui }, 'Mise à aujourd\'hui'),
     demain: (t) => { const jour = ajouterJours(aujourdhui, 1); return appliquer(t, 'planifier', { jour_prevu: jour }, `Prévue ${jourCourt(jour, aujourdhui)}`) },
-    reserve: (t) => appliquer(t, 'planifier', { quelque_jour: true }, 'En réserve'),
+    reserve: (t) => appliquer(t, 'planifier', { quelque_jour: true }, 'Plus tard'),
     sansProjet: (t) => appliquer(t, 'garder_sans_projet', {}, 'Gardée sans projet'),
     supprimer: (t) => appliquer(t, 'supprimer', {}, 'Supprimée'),
     terminer: (t) => appliquer(t, 'terminer', {}, 'Faite'),
@@ -381,18 +381,18 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
         </section>
       ) : null}
 
-      {/* « En réserve {n} ⌄ » replié EN BAS de la liste (ecran-a-trier.html), jamais un commutateur en tête */}
+      {/* « Plus tard {n} ⌄ » replié EN BAS de la liste (ecran-a-trier.html), jamais un commutateur en tête */}
       {!uneParUne && reserveLue && (reserveLignes.length > 0 || reserveOuverte) ? (
         <div className="replies">
           <button type="button" className="replie" aria-expanded={reserveOuverte} onClick={() => setReserveOuverte((v) => !v)}>
-            <span>En réserve</span>
+            <span>Plus tard</span>
             <span className="compte chiffres">{reserveLignes.length}</span>
             <ChevronDown className="i i-16" aria-hidden="true" />
           </button>
           {reserveOuverte ? (
-            <section className="section" aria-label="En réserve">
+            <section className="section" aria-label="Plus tard">
               <div className="liste" role="list">{reserveLignes.map((tache) => ligneDe(tache, true))}</div>
-              {reserveLignes.length === 0 ? <div className="vide-etat"><p className="vide-phrase">Rien en réserve</p></div> : null}
+              {reserveLignes.length === 0 ? <div className="vide-etat"><p className="vide-phrase">Rien pour plus tard</p></div> : null}
             </section>
           ) : null}
         </div>

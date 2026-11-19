@@ -486,7 +486,7 @@ class LotTests(BaseApi):
         corps = self._lot([tache.pk], 'planifier', {'quelque_jour': True}).json()
         relue = _relue(tache)
         self.assertEqual((relue.quelque_jour, relue.jour_prevu, relue.reports), (True, None, 1))
-        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message, '1 en réserve')
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message, '1 pour plus tard')
 
     def test_planifier_sans_jour_est_refuse_et_une_sous_tache_ou_une_close_sont_refusees(self):
         self.assertEqual(self._lot([1], 'planifier', {}).status_code, 400)

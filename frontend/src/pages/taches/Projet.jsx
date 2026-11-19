@@ -450,7 +450,7 @@ export default function Projet() {
   // « Faites (n) » déplié : toutes les pages des faites du projet, dernières faites d'abord (lue à la demande)
   const chargerFaites = useCallback(() => listerToutesLesTaches({ projet: Number(id), statut: 'fait', tri: 'fait_le' }), [id])
 
-  // Raccord F2 — le gestionnaire commun des actions de ligne (Choisir un jour, En réserve, Déplacer, En attente de,
+  // Raccord F2 — le gestionnaire commun des actions de ligne (Choisir un jour, Plus tard, Déplacer, En attente de,
   // Priorité, ★, Supprimer) : optimiste, annulable, sans relire la vue. Déplacée hors du projet, la ligne part.
   const actions = useActionsLigne({
     aujourdhui,

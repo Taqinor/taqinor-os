@@ -210,11 +210,11 @@ describe('TCH85 — fiche → Plus', () => {
     expect(screen.queryByRole('button', { name: 'Devis Settat' })).toBeNull()
   })
 
-  it('sous-tâches : « Découper » crée l\'enfant et relit la tâche', async () => {
+  it('sous-tâches : « Découper en sous-tâches » crée l\'enfant et relit la tâche', async () => {
     const user = userEvent.setup()
     monter()
     await ouvrirPlus(user)
-    await user.type(screen.getByRole('textbox', { name: 'Découper' }), 'Faire le devis{Enter}')
+    await user.type(screen.getByRole('textbox', { name: 'Découper en sous-tâches' }), 'Faire le devis{Enter}')
     await waitFor(() => expect(api.creerTache).toHaveBeenCalledWith(expect.objectContaining({ titre: 'Faire le devis', parent_id: 20 })))
     await waitFor(() => expect(api.lireTache).toHaveBeenCalledTimes(2))
   })

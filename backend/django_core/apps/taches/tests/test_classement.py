@@ -227,7 +227,7 @@ def jeu_propose():
         dans(MAISON, 202, 2048, jour_prevu=date(2026, 11, 20)),  # M1
         dans(MAISON, 203, 3072), dans(MAISON, 204, 4096),  # M2, M3
         dans(POLY, 301, 1024, echeance=date(2026, 11, 12)),  # R2
-        dans(POLY, 302, 2048, quelque_jour=True),  # D1 en réserve
+        dans(POLY, 302, 2048, quelque_jour=True),  # D1 pour plus tard
         dans(POLY, 303, 3072, bloquee_par=304),  # D2 bloquée
         dans(POLY, 304, 4096), dans(POLY, 305, 5120),  # D3, D4
         dans(ADMIN, 401, 1024, echeance=date(2026, 11, 19)),  # A1

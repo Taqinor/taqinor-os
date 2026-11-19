@@ -472,7 +472,8 @@ etape('P143.2', ['TCH143', 'TCH170', 'TCH161', 'TCH165'], async (f) => {
       const coupe = await el.evaluate((n) => ({ texte: n.textContent, coupe: n.scrollWidth > n.clientWidth + 1 }))
       expect(coupe.coupe, `${quoi} « ${coupe.texte} » coupé à l'écran (${p.viewportSize().width} px)`).toBe(false)
     }
-    await expect(ligne.getByRole('button')).toHaveText(['Essentiel', "Aujourd'hui", /^Plus tard dans la semaine \(→ .+\)$/])
+    // R3-150 (C-20) : « Plus tard dans la semaine (→ ven.) » est devenu « Reporter à ven. 20 »
+    await expect(ligne.getByRole('button')).toHaveText(['Essentiel', "Aujourd'hui", /^Reporter à \S+ \d+$/])
   }
   await capturerF3(p, 'copilote-carte-priorites-toutes', { cadre: panneau })
 })

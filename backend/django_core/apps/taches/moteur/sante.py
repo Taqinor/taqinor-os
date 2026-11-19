@@ -148,14 +148,14 @@ def burnup(taches, J):
 
 
 _PHRASES_SANS_ACTION = {
-    'reserve': 'Rien à faire maintenant : tout est en réserve.',
+    'reserve': 'Rien à faire maintenant : tout est pour plus tard.',
     'attend': 'Tout attend quelqu\'un ou une autre tâche.',
     'mixte': 'Rien à faire maintenant : ajoute la prochaine tâche.',
 }
 
 
 def sans_prochaine_action(taches):
-    """≥ 1 ouverte et 0 actionnable ; la cause : tout en réserve, tout attend, ou un mélange."""
+    """≥ 1 ouverte et 0 actionnable ; la cause : tout pour plus tard, tout attend, ou un mélange."""
     ouvertes = _ouvertes(taches)
     if not ouvertes or any(_actionnable(t) for t in ouvertes):
         return None

@@ -1,6 +1,6 @@
 """Lire, éditer et supprimer une tâche (reference/api.md §3.2, §4 ; donnees.md invariants 1, 6, 7, 9, 15, 27).
 
-- `liste_taches` : la requête des listes paginées (À trier, En réserve, filtres, ✓+ d'une fiche ERP) ;
+- `liste_taches` : la requête des listes paginées (À trier, Plus tard, filtres, ✓+ d'une fiche ERP) ;
 - `reverifier_lien` : la fiche revérifie son lien ERP (invariant 23) sans toucher à `lock_version` ;
 - `modifier_tache` : le PATCH à verrou. Il REFUSE `jour_prevu`, `heure_debut`, `moment` et
   `quelque_jour` (invariant 15 : seul `planifier()` les écrit) ; chaque identifiant reçu est revérifié
@@ -185,7 +185,7 @@ def _ordre(qs, params, defaut='rang'):
 def liste_taches(user, params, *, assistant=False, aujourdhui=None):
     """Le queryset des listes (`GET taches/`) ; 400 nommé sur un paramètre inconnu ou illisible.
 
-    `vue=boite` : À trier ; `vue=quelque_jour` : En réserve ; `cible` + `cible_id` + `ouvertes` : les
+    `vue=boite` : À trier ; `vue=quelque_jour` : Plus tard ; `cible` + `cible_id` + `ouvertes` : les
     tâches liées à une fiche ERP (✓+). Un compte ne lit jamais que SES tâches."""
     aujourdhui = aujourdhui or timezone.localdate()
     periode = _choix(params, 'periode', PERIODES)
@@ -727,12 +727,12 @@ def _message_tranche(choix, t, aujourdhui):
     if choix == 'aujourdhui':
         return "Mise à aujourd'hui"
     if choix == 'un_jour':
-        return 'En réserve'
+        return 'Plus tard'
     return f'Prévue {format_jour(t.jour_prevu, aujourdhui)}'
 
 
 def trancher_tache(user, pk, choix, jour=None, *, maintenant=None, aujourdhui=None):
-    """« À revoir » : `aujourdhui`, `garder`, `jour` (une date), `un_jour` (En réserve) ou `abandonner`.
+    """« À revoir » : `aujourdhui`, `garder`, `jour` (une date), `un_jour` (Plus tard) ou `abandonner`.
     `aujourdhui`, `garder` et `jour` posent `reports_tranches = reports` : la question ne revient que
     3 reports plus tard (invariant 4). Un seul geste."""
     if choix not in CHOIX_TRANCHER:
@@ -1153,7 +1153,7 @@ TRAITEMENTS_LOT = {
 def _message_lot(action, n, valeurs, aujourdhui):
     if action == 'planifier':
         if valeurs['quelque_jour']:
-            return f'{n} en réserve'
+            return f'{n} pour plus tard'
         return f'{n} prévue{"s" if n > 1 else ""} {format_jour(valeurs["jour_prevu"], aujourdhui)}'
     singulier, pluriel = MOTS_LOT[action]
     return f'{n} {pluriel if n > 1 else singulier}'

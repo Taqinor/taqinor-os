@@ -81,7 +81,7 @@ garde `’`, les accents et la casse), espaces fusionnés en une espace ASCII, b
 | `heure` | à 15h, 15h, 15 h, 15h30, 15 h 30, 15:30, à 15 heures, à midi | at 3pm, 3pm, 3:30pm, 15:30, at noon | `heure_debut` ; `Nh` nu seulement si 7 ≤ N ≤ 23 ; `NhMM` nu seulement si 5 ≤ N ≤ 23 (IR5) |
 | `moment` | ce matin, cet après-midi, ce soir ; matin, après-midi, soir (contexte §1.4) | this morning, this afternoon, this evening, tonight ; morning, afternoon, evening, in the morning… | `moment` ; ce/cet/this/tonight posent J |
 | `echeance` | pour / avant / d'ici + date [heure], ou + heure seule | due / by / for / deadline + date [heure], ou + heure | `echeance`, `echeance_heure` ; `jour_prevu` intact |
-| `quelque_jour` | « un jour » ou « en réserve » en fin de ligne | someday (partout) | `quelque_jour = true` (montré « En réserve ») |
+| `quelque_jour` | « un jour » ou « pour plus tard » en fin de ligne | someday (partout) | `quelque_jour = true` (montré « Plus tard ») |
 | `projet` | `#mot` (lettre après `#`, `_` = espace, tiret permis) | idem | §1.9 |
 | `section` | `/mot` après un `#projet` de la même ligne | idem | étape existante (par `cle_nom`), sinon créée |
 | `priorite` | `!!` = 2, `!!!` = 3 ; `p1` = 3, `p2` = 2, `p3` = 1 | idem | `priorite` |
@@ -132,7 +132,7 @@ heure ; « pour / for » + durée = durée, + date ou heure = échéance (« pou
    decalage_jours:0, heure}` ; sans date ni jour prévu → jour = J si heure à venir, sinon J+1, absolu, ET
    `jour_prevu` = ce jour (A14-M6).
 6. Projet, étape, étiquettes (§1.9). Priorité absente → 0.
-7. `triee_le` : posé par `creer_taches()` dès qu'un projet, un jour (`jour_prevu`) ou « En réserve » est reconnu,
+7. `triee_le` : posé par `creer_taches()` dès qu'un projet, un jour (`jour_prevu`) ou « Plus tard » est reconnu,
    par toute porte (invariant 1). Une échéance seule ne range PAS la tâche (elle reste À trier).
 
 ### 1.7 Bornes
@@ -151,7 +151,7 @@ heure ; « pour / for » + durée = durée, + date ou heure = échéance (« pou
 | Porte | Types lus | Effets propres |
 |---|---|---|
 | `rapide` (`saisie-rapide/`) | tous | nouveau projet, étape, étiquette créés ; aperçu sans écriture |
-| `capture` (`capture/`, jeton) | `jour`, `heure`, `moment`, `echeance`, `priorite`, `duree`, `projet` EXISTANT (A1) — par `#nom` ou par « projet <nom> » / « project <nom> » EN TÊTE (le plus long nom de projet existant qui suit, comparé par `cle_nom`) | jamais de création de projet, d'étape, d'étiquette, de récurrence, de rappel ; « un jour / en réserve » non lu (A15) ; `#inconnu` et « projet <inconnu> » restent du texte ; rien reconnu → À trier |
+| `capture` (`capture/`, jeton) | `jour`, `heure`, `moment`, `echeance`, `priorite`, `duree`, `projet` EXISTANT (A1) — par `#nom` ou par « projet <nom> » / « project <nom> » EN TÊTE (le plus long nom de projet existant qui suit, comparé par `cle_nom`) | jamais de création de projet, d'étape, d'étiquette, de récurrence, de rappel ; « un jour / pour plus tard » non lu (A15) ; `#inconnu` et « projet <inconnu> » restent du texte ; rien reconnu → À trier |
 | `assistant` (lignes du Copilote) | la ligne SOURCE est analysée en `rapide` ; le `titre` envoyé par le modèle est ignoré | ≤ 3 écritures par tour ; tour marqué (toute lecture ou texte collé, §12 « Garde A5 ») → carte à valider |
 
 Réponse de la capture : `dans` = `journee` si un jour est posé (quel qu'il soit), `projet` si un projet sans jour,
@@ -449,7 +449,7 @@ sans motif d'À revoir (§4.2) ; `exclure` retirés.
 
 **Jeu de test (recalculé par un script jetable (rapport resté sur la branche de travail), cette session).** Projets : Ventes (haute,
 rang 1024 ; 12 tâches V1…V12 sans date, `rang_projet` 1024…12288, + R4 reportée 3 fois), Maison (moyenne, rang 1024 ;
-R1 prévue 16/11, M1 prévue ven. 20, M2, M3), Polydesign (moyenne, rang 2048 ; R2 échéance 12/11, D1 en réserve, D2
+R1 prévue 16/11, M1 prévue ven. 20, M2, M3), Polydesign (moyenne, rang 2048 ; R2 échéance 12/11, D1 pour plus tard, D2
 bloquée, D3, D4), Admin (basse ; A1 échéance jeu. 19, A2, A3, R3 prévue 05/11), Salon (haute, **en pause** : 2 tâches),
 sans projet triées S1, S2 — 30 tâches. Faites 0, gardées 0 ; N = l'objectif.
 
@@ -461,7 +461,7 @@ sans projet triées S1, S2 — 30 tâches. Faites 0, gardées 0 ; N = l'objectif
 | 8 | R1, R2, A1, V1, M2, D3, A2, S1 (tous `prochaine_action`) |
 | 13 | … + V2, M3, D4, A3, S2 (`action_suivante`) |
 
-À revoir : R4 (`reportee_3_fois`), R3 (`retard_ancien`). Absentes : Salon (en pause), D1 (en réserve), D2 (bloquée), M1
+À revoir : R4 (`reportee_3_fois`), R3 (`retard_ancien`). Absentes : Salon (en pause), D1 (pour plus tard), D2 (bloquée), M1
 (prévue plus tard ; visible dans la suite dépliée). **Monopole** : avec l'ancien `cle_tri`, les 5 places du tour vont à
 V1…V5 (Ventes est en bande 2) ; avec le tour : V1, M2, D3, A2, S1 — Ventes n'a sa 2e place (V2) qu'au tour 2.
 
@@ -505,7 +505,7 @@ Recalculés par `integ2/propose.py`.
 | 4b | `journee` (« Prévu ») + `rendez_vous` | gardées du jour, hors soir : blocs et rendez-vous externes à leur heure en tête, puis tâches et activités ERP | non |
 | 5 | `ce_soir` | du jour, `moment = soir` | non |
 | 6 | `propose` | ce qui presse puis tour des projets (§3.4) ; « Garder ces N » ; `charge` ; « Voir toutes les tâches de mes projets » ; `replie` après Alléger | replié après Alléger |
-| 7 | `a_decider` (« À revoir ») | reportées 3 fois, retards de plus de 7 jours, activités ERP en retard ; lot « Tout en réserve » | oui |
+| 7 | `a_decider` (« À revoir ») | reportées 3 fois, retards de plus de 7 jours, activités ERP en retard ; lot « Tout pour plus tard » | oui |
 | 8 | `en_attente` | `en_attente` datées ≤ J ; + compte `a_trier.bloquees` | oui |
 | 9 | `faites` | faites aujourd'hui | oui |
 | 10 | Ailleurs dans l'ERP | route paresseuse `aujourdhui/ailleurs/` | oui |
@@ -519,14 +519,14 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 2. `en_attente` ∧ (`jour_prevu` ≤ J ∨ `echeance` ≤ J) → `en_attente` ; sans date ≤ J → absente (visible dans son projet).
 3. `reports ≥ reports_tranches + 3` ∧ `jour_prevu ≤ J` → `a_decider`, motif `reportee_3_fois`.
 4. `jour_prevu = J` ∨ `echeance = J` → `essentiel` si une ligne `essentielle` la porte ; sinon `ce_soir` si `moment =
-   soir` ; sinon `journee`. Reportée (jour posé plus tard ou retiré, hors « En réserve »), une tâche dont l'échéance
+   soir` ; sinon `journee`. Reportée (jour posé plus tard ou retiré, hors « Plus tard »), une tâche dont l'échéance
    est J RESTE donc dans la journée, ★ comprise et comptée : `planifier` le dit par l'avertissement
    `echeance_aujourdhui` (R3-002, choix C-13 — rien ne disparaît puis ne revient ; « Repousser l'échéance » =
    `PATCH echeance`).
 5. `jour_prevu < J − 7` ∨ `echeance < J − 7` → `a_decider`, motif `retard_ancien`.
 6. Ce qui presse (`retard`, `echeance_passee`, `echeance_proche`, §3.4) → `propose`, en tête, avec sa `raison`.
 7. Candidate du tour des projets (§3.4) → `propose` (`pour_objectif` ou suite dépliée).
-8. Sinon absente (prévue plus tard — visible dans la suite dépliée et l'agenda —, En réserve, À trier, bloquée…).
+8. Sinon absente (prévue plus tard — visible dans la suite dépliée et l'agenda —, Plus tard, À trier, bloquée…).
 
 **Projet en pause (choix C-5, « ce que j'ai posé reste posé », R2-031).** Agenda (`agenda/`,
 `views/agenda.py::taches_de_la_periode`, R2-031b) : une tâche OUVERTE (`a_faire`, `en_attente`, hors réserve) d'un projet
@@ -545,9 +545,9 @@ famille en échec absente. Cocher une activité = `POST records/activities/{id}/
 
 ### 4.3 Ce qui compte comme un report (invariant 4)
 
-`reports += 1` ⇔ ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou « En réserve ». Ne comptent jamais :
+`reports += 1` ⇔ ancien `jour_prevu ≤ J` ET le nouveau est plus tard ou « Plus tard ». Ne comptent jamais :
 futur → futur, avancer, poser un premier jour, `decaler`, `instancier`, Alléger, « Les remettre dans Proposé », le
-passage de minuit. Comptent : Reporter, Choisir un jour plus tard, « Tout reporter » et « Reporter à … » du bilan, « Tout en réserve »,
+passage de minuit. Comptent : Reporter, Choisir un jour plus tard, « Tout reporter » et « Reporter à … » du bilan, « Tout pour plus tard »,
 le lot `planifier`. `trancher` (`Decision` : `aujourdhui`, `garder` = sa date si ≥ J, sinon J, `jour`, `un_jour`,
 `abandonner`) : `aujourdhui`, `garder` ou `jour` posent `reports_tranches = reports` (la question revient 3 reports
 plus tard ; tâche en retard gardée aujourd'hui : c'est un report de plus, verif-specs-2-3 m8).
@@ -679,7 +679,7 @@ vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir
 |---|---|
 | `avancement` | F faites sur F + O comptées (« 12 sur 20 ») + « dernière faite le … » ; 0 comptée → pas de barre |
 | `burnup` | par semaine close (fin dimanche) : total = comptées créées ≤ fin et non annulées ≤ fin ; faites = `fait_le` ≤ fin ; dès 2 semaines, légende « reconstruit depuis les dates actuelles » |
-| `sans_prochaine_action` | ≥ 1 ouverte ∧ 0 actionnable ; phrase selon la cause (tout en réserve / tout attend / tout bloqué) |
+| `sans_prochaine_action` | ≥ 1 ouverte ∧ 0 actionnable ; phrase selon la cause (tout pour plus tard / tout attend / tout bloqué) |
 | `tout_fait` | 0 ouverte ∧ F ≥ 1 → « Tout est fait : terminer le projet ? » |
 | `a_l_arret` | ≥ 1 ouverte ∧ jours travaillés dans ]réf, J] ≥ N ; réf = max(dernier `fait_le` du projet, tous niveaux ; date de `statut_depuis`) ; N = `projet_arret_jours` (10, 5-30) |
 | `echeance_menacee` | `echeance` ∧ ≥ 1 ouverte ∧ un signal : (a) `echeance < J` ; (b) k ouvertes datées (`jour_prevu` ou `echeance`) après elle ; (c) une étape finit après elle ; (d) si « comprendre mon rythme » allumé ET F28 ≥ 5 : besoin = ⌈O × J28 / F28⌉ > reste |
@@ -702,7 +702,7 @@ m10). Ordre des signaux affichés : `echeance_menacee`, `a_l_arret`, `neglige`, 
 | Sans échéance | — | jamais `echeance_menacee` |
 | Échéance tenable ? | F28 8, J28 20, O 12, reste 15 | (d) : besoin 30 > 15 → `echeance_menacee` ; F28 = 4 → (d) absent |
 | Retour de congé | dernière faite 30/10, congé 02-13/11, 06/11 férié | 2 jours travaillés (16, 17/11) → pas à l'arrêt |
-| Tout en réserve | 2 ouvertes `quelque_jour` | `sans_prochaine_action` (« tout est en réserve ») |
+| Tout pour plus tard | 2 ouvertes `quelque_jour` | `sans_prochaine_action` (« tout est pour plus tard ») |
 | Tout fait | 5 faites, 0 ouverte | `tout_fait` |
 | Négligé | A (haute) d 0, B (moyenne) d 4, C (basse) d 1, tous ≥ 14 j | A négligé, Q nommé B |
 | Négligés en chaîne | A d 0, B d 0, C d 1 | A et B négligés, Q = C pour les deux |
@@ -846,7 +846,7 @@ par bilan du soir** (le plus récent jamais montré, puis par numéro), la liste
 | C4 | gardées − gardées faites ≥ 2 sur ≥ 60 % des plans | 10 plans | « Garder ces N » limité à médiane faite + 1 tant que la carte acceptée est la dernière de C4 (I13) |
 | C5 | part des tâches finies par tranche de 2 h (heure de `fait_le`) | 30 tâches | aucune (information) |
 | C6 | réel / estimé médian par projet hors [0,8 ; 1,25] | 5 tâches estimées ET mesurées du projet | durée corrigée (minutes × ratio) dans `charge` tant que la carte acceptée est la dernière de C6 (I13) |
-| C7 | lignes « Reportée 3 fois » d'À revoir au jour J (`reports ≥ reports_tranches + 3`, jour prévu ≤ J ; ni tranchée ni en réserve) — le nombre de lignes qu'ouvre son bouton | 1 | ouvrir À revoir |
+| C7 | lignes « Reportée 3 fois » d'À revoir au jour J (`reports ≥ reports_tranches + 3`, jour prévu ≤ J ; ni tranchée ni pour plus tard) — le nombre de lignes qu'ouvre son bouton | 1 | ouvrir À revoir |
 | C8 | `neglige()` non vide (projet de plus haute priorité) | — | une de ses tâches actionnables dans Proposé de demain (`inclure`), lue sur la carte acceptée (I13) |
 
 Chaque nombre d'une phrase figure dans `IncitationCoach.donnees` (ids, jamais de titres ; noms rendus à la lecture
@@ -1058,7 +1058,7 @@ l'explication d'une confidentielle omet le fait « en attente de : {qui} », et 
 - Plafonds : 8 journées entières par jour (tri : priorité décroissante, `rang_jour`, `cle_tri`), puis UN événement
   journée entière « + N autres tâches » (UID `taches-autres-<aaaammjj>`) ; 200 événements au total, le dernier jour
   tronqué. UID `tache-<id>`.
-- Exclus : faites, en attente, À trier, En réserve, bloquées, projets en pause, sous-tâches, activités ERP,
+- Exclus : faites, en attente, À trier, Plus tard, bloquées, projets en pause, sous-tâches, activités ERP,
   obligations. `DESCRIPTION` vide, jamais de notes ; `SUMMARY` = `nom_pour(t, 'flux')` ; `calname` « Tâches
   Taqinor » ; `Cache-Control: no-store` ; jeton inconnu ou révoqué → 404.
 
@@ -1191,7 +1191,7 @@ prouvée.
 - **IR4** Date impossible et durée hors bornes : texte + `date_invalide` / `duree_hors_bornes`.
 - **IR5** « Nh » nu ≤ 6 = durée, ≥ 7 = heure ; « NhMM » nu ≤ 4 = durée, ≥ 5 = heure.
 - **IR6** Couleur d'office par `couleur_d_office(user)` (spec-4 §A sur les 10 clés).
-- **IR7** « en réserve » en fin de ligne = « un jour » ; jamais à la capture.
+- **IR7** « pour plus tard » en fin de ligne = « un jour » ; jamais à la capture.
 - **IR8** `apres_fait` hebdomadaire = premier jour du masque ≥ fait + 7n − 6 ; seul `jours_ouvres` lit les fériés.
 - **IR9** La capture lit « projet <nom> » en tête (Siri ne dit pas « dièse »).
 - **IR10** Une journée allégée ne remplit plus Proposé (`allege_le`).

@@ -1337,7 +1337,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 |---|---|---|---|---|---|---|---|
 | POST | `/api/django/taches/saisie-rapide/` | analyse, aperçu (`apercu:true`) ou création | S | — | C, K | Saisie, Coller mes listes, carte `capture_apercu`, file hors ligne | s2, C11 |
 | POST | `/api/django/taches/capture/` | Siri / partage | J:capture | — | C | raccourci Siri | s6b, A1 |
-| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes paginées | S | — | — | À trier (`vue=boite`), En réserve (`vue=quelque_jour`), filtres, ✓+ des fiches ERP (`count`) | s2, s6a |
+| GET | `/api/django/taches/taches/?vue=&q=&projet=&section=&etiquette=&priorite_min=&statut=&periode=&tri=&groupe=&inclure_faites=&cible=&cible_id=&ouvertes=` | listes paginées | S | — | — | À trier (`vue=boite`), Plus tard (`vue=quelque_jour`), filtres, ✓+ des fiches ERP (`count`) | s2, s6a |
 | POST | `/api/django/taches/taches/` | une tâche (LIGNE) | S | — | C, K | fiche, agenda (créneau vide), Copilote | socle §4 |
 | GET | `/api/django/taches/taches/{id}/` | TACHE ; revérifie le lien | S | — | — | Fiche | s6a |
 | PATCH | `/api/django/taches/taches/{id}/` | éditer | S | oui | — | Fiche, Renommer | s2, s4 |
@@ -1353,7 +1353,7 @@ Auth : S / J:x · 409 : oui = `lock_version` requis · Idem. : C `client_id`, K 
 | POST | `/api/django/taches/taches/{id}/restaurer/` | restaurer | S | — | N | Supprimées récemment | s2 |
 | POST | `/api/django/taches/taches/{id}/rappels/` | poser un rappel | S | — | — | Quand → Rappel, Copilote | s3, A17-T4 |
 | POST | `/api/django/taches/taches/{id}/changement/apercu/` | écho renommer/abandonner/supprimer | S | — | N | carte `tache` | s5b |
-| POST | `/api/django/taches/taches/lot/` | `deplacer` · `planifier` · `prioriser` · `etiqueter` · `terminer` · `supprimer` · `garder_sans_projet` (≤ 200) | S | — | K | sélection, « Tout en réserve », « Tout ranger » | s2, C11, C32 |
+| POST | `/api/django/taches/taches/lot/` | `deplacer` · `planifier` · `prioriser` · `etiqueter` · `terminer` · `supprimer` · `garder_sans_projet` (≤ 200) | S | — | K | sélection, « Tout pour plus tard », « Tout ranger » | s2, C11, C32 |
 | POST | `/api/django/taches/taches/lier-activite/` | lier une tâche à une activité ERP (non close) | S | — | K | appui long sur l'activité | A17 |
 | POST | `/api/django/taches/convertir-activite/` | convertir `{activite_ids}` ou `{toutes}` (200 partiel) | S | — | N | bandeau d'À trier | s2, s6a, C20 |
 | DELETE | `/api/django/taches/rappels/{id}/` | retirer | S | — | N | fiche | s3 |
@@ -1492,7 +1492,7 @@ par `records.services.cloturer_a_faire_personnel`). **`suggestions/{id}/accepter
 `{"jour":"2026-11-17","garder":[20,42]}` → `journee_ecrite.json` (`renvoyees` rempli ; `allege_le` posé, sans report).
 **`journee/priorites/`** `?jour=2026-11-17` → `priorites.json` : TOUTES les tâches ouvertes du préfiltre, classées
 comme Proposé (inv. 34 étendu au pool entier), chacune avec `raison` ; gestes de la carte : Essentiel →
-`journee/essentiel/`, Aujourd'hui → `planifier/` (J), Plus tard dans la semaine → `planifier/` (`plus_tard`), « Garder
+`journee/essentiel/`, Aujourd'hui → `planifier/` (J), « Reporter à {jour} » → `planifier/` (`plus_tard`), « Garder
 ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/point/`** → `point.json`.
 **`journee/cloture/`** `?jour=2026-11-17` (J−1 admis jusqu'à 12 h) → `journee_cloture.json` (UN constat au plus ;
 `a_trancher` = reportées 3 fois, marquées, jamais refusées). **`journee/cloturer/`**
@@ -1744,7 +1744,7 @@ l'échafaudage, deux beats, `NOTIFICATIONS_TOUJOURS_IMMEDIATES`), `celery.py` ·
   micro-tâches, garde de taille, mémoire d'échec) et C6 hors de la première livraison (m6) : à dire dans `regles.md`
   §6 (les champs de données restent).
 - `textes.md` : textes des états `EtatAgendaExterne` ; carte `priorites` (titre, raisons, gestes « Essentiel ·
-  Aujourd'hui · Plus tard dans la semaine », « Garder ces N ») ; carte `point` ; « Rendez-vous » sous l'en-tête
+  Aujourd'hui · Reporter à {jour} », « Garder ces N ») ; carte `point` ; « Rendez-vous » sous l'en-tête
   assistant ; texte du coupe-circuit (Réglages → Avancé, administrateur) ; les trois silences de Vie privée (A18).
 
 ## Révision 2 : ce qui a changé
@@ -1899,7 +1899,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 {"tache":{"type":"tache","id":95,"titre":"Préparer l'appel Benali","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":{"jour":"2026-11-17","heure":"09:45"},"lien":{"cible":"crm.lead","id":1637,"libelle":"Karim Benali","url":"/crm/leads?lead=1637","etat":"ok"},"checklist":{"faits":1,"total":1},"sous_taches":{"faites":0,"total":1},"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"activite","peut_cloturer":true,"a_notes":true,"fait_le":null,"lock_version":4,"notes":"Appeler avant 11 h.","etiquettes":[{"id":2,"nom":"magasin","couleur":"ciel"}],"elements_checklist":[{"id":71,"libelle":"Prix","fait":true,"rang":1024}],"enfants":[{"type":"tache","id":22,"titre":"Relire les quantités","statut":"a_faire","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":20,"priorite":0,"jour_prevu":null,"moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"dans Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":false,"prevue_au_plan":false,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"a_notes":false,"fait_le":null,"lock_version":0}],"recurrence":null,"rappels":[{"id":31,"jour":"2026-11-17","heure":"09:45","ancre":"","decalage_jours":0,"statut":"en_attente"}],"triee_le":"2026-11-16T18:02:00+01:00","premier_jour_prevu":"2026-11-17","reports_tranches":0,"duree_reelle_minutes":null,"annule_le":null,"occurrence_du":null,"activite_origine_id":101,"lien_verifie_le":"2026-11-17T09:12:00+01:00","created_at":"2026-11-16T18:02:00+01:00","updated_at":"2026-11-17T10:42:00+01:00"},"suivante":null,"projet_cree":null,"rappel":null,"question_titres":false,"avertissements":[],"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false},"geste_id":92}
 ```
 
-**`lot.json`** — POST taches/lot/ · consommateurs : sélection, « Tout en réserve »
+**`lot.json`** — POST taches/lot/ · consommateurs : sélection, « Tout pour plus tard »
 ```json
 {"appliquees":[41],"refusees":[{"id":42,"raison":"introuvable"}],"geste_id":78}
 ```
@@ -2121,7 +2121,7 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `taches/{id}/planifier/` vers un autre jour (ou sans jour) d'une tâche dont `echeance` = aujourd'hui sert
   `{"code":"echeance_aujourdhui","message":"L'échéance reste aujourd'hui."}` : la règle ne change pas, l'échéance la
   garde dans la journée (`aujourdhui/` la sert encore, ★ comprise) ; « Repousser l'échéance » = le PATCH `echeance`
-  qui existe. Rien pour « En réserve » (elle quitte la journée).
+  qui existe. Rien pour « Plus tard » (elle quitte la journée).
 - **« Faites cette semaine »** (`faites_semaine.json`, nouveau, R3-003, C-16) : `GET taches/?periode=faites_semaine`
   garde la page paginée (`results` = ITEM, faites depuis lundi 0 h, la plus récente d'abord) et ajoute, sur chaque
   page, `total` (LA somme de la Revue et de l'Agenda : `faites_par_jour` du lundi à aujourd'hui) et

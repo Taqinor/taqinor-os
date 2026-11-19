@@ -68,7 +68,7 @@ class FluxTests(unittest.TestCase):
             tache(1, jour_prevu=J, statut='fait', fait_le=datetime(2026, 11, 17, 9, 0)),
             tache(2, jour_prevu=J, statut='en_attente'),
             tache(3, jour_prevu=J, projet_id=None),  # À trier
-            tache(4, jour_prevu=J, quelque_jour=True),  # En réserve
+            tache(4, jour_prevu=J, quelque_jour=True),  # Plus tard
             tache(5, jour_prevu=J, bloquee_par=9),
             tache(6, jour_prevu=J, parent_id=9),  # sous-tâche
             ItemPur(type='activite', id=7, jour_prevu=J),

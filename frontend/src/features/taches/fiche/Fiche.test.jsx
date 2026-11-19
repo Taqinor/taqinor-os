@@ -320,9 +320,9 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(notes).toHaveAttribute('rows', '3')
   })
 
-  it('R2-021b — `section="decouper"` : « Plus » est déplié et le curseur est dans « Découper »', async () => {
+  it('R2-021b — `section="decouper"` : « Plus » est déplié et le curseur est dans « Découper en sous-tâches »', async () => {
     monter({ section: 'decouper' })
-    const champ = await screen.findByRole('textbox', { name: 'Découper' })
+    const champ = await screen.findByRole('textbox', { name: 'Découper en sous-tâches' })
     await waitFor(() => expect(champ).toHaveFocus())
     expect(screen.getByRole('button', { name: 'Plus' })).toHaveAttribute('aria-expanded', 'true')
   })

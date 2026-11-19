@@ -296,7 +296,7 @@ function SousTaches({ tache, charger, erreur }) {
           <span className="titre">{e.titre}</span>
         </div>
       ))}
-      <input type="text" className="champ-discret" aria-label="Découper" placeholder="Découper" value={titre}
+      <input type="text" className="champ-discret" aria-label="Découper en sous-tâches" placeholder="Découper en sous-tâches" value={titre}
         onChange={(e) => setTitre(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouter() } }} />
     </section>
   )

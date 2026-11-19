@@ -92,7 +92,7 @@ describe('TCH87 — Recherche', () => {
     const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
     expect([...ouvertes.querySelectorAll('.titre b.es-trouve')].map((b) => b.textContent)).toEqual(['devis', 'Devis'])
     const metas = [...ouvertes.querySelectorAll('.meta')].map((m) => [...m.children].map((e) => e.textContent))
-    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['En réserve', 'Ventes']])
+    expect(metas).toEqual([['À trier', "Suggéré par l'ERP"], ['Plus tard', 'Ventes']])
   })
 
   it('rien pour « {q} » : la phrase, sans groupes', async () => {
@@ -327,8 +327,8 @@ describe('TCH87 — Recherche', () => {
     expect(within(screen.getByRole('region', { name: 'Ouvertes (1)' })).getByText('Déclaration TVA')).toBeInTheDocument()
     expect(await screen.findByRole('option', { name: 'magasin' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Tri' })).toHaveValue('manuel')
-    // « En réserve » est une vue du serveur
-    await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
+    // « Plus tard » est une vue du serveur
+    await user.click(screen.getByRole('checkbox', { name: 'Plus tard' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
   })
 

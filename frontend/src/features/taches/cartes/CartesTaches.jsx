@@ -330,7 +330,7 @@ function ligneDuChangement({ champ, avant, apres }, titre) {
 }
 
 // Les mots de chaque champ : puces de la saisie (textes.md §2.3 : « Matin » / « Après-midi » / « Ce soir »,
-// « échéance {jour} [· {HH:MM}] », « En réserve », « Nouveau projet : {nom} », « Priorité haute »,
+// « échéance {jour} [· {HH:MM}] », « Plus tard », « Nouveau projet : {nom} », « Priorité haute »,
 // « Rappel {jour} {HH:MM} »), champs de la fiche (§2.4 : Quand, Heure, Durée, « Lié à : »), Mon rythme
 // (§2.11 : modes, « Objectif du jour : {n} », « Plus » / « Moins »). Une valeur qui n'a pas la forme
 // attendue n'est jamais « arrangée » : elle tombe dans le rendu tel quel.
@@ -373,7 +373,7 @@ const DIRE_CHAMPS = [
   [['estimation_minutes'], (c) => (Number.isInteger(c.estimation_minutes) && duree(c.estimation_minutes)
     ? `Durée : ${duree(c.estimation_minutes)}` : '')],
   [['priorite'], (c) => prioriteDite(c.priorite)],
-  [['quelque_jour'], (c) => (c.quelque_jour === true ? 'En réserve' : '')],
+  [['quelque_jour'], (c) => (c.quelque_jour === true ? 'Plus tard' : '')],
   [['nom'], (c) => (estTexte(c.nom) ? `Nouveau projet : ${c.nom}` : '')],
   [['nouveau_projet'], (c) => nouveauProjetDit(c.nouveau_projet)],
   [['lien'], (c) => lienDit(c.lien)],
@@ -805,8 +805,8 @@ function GestesPriorite({ item, jour, plusTard }) {
       </button>
       {plusTard ? (
         <button type="button" className="bouton lien" disabled={geste.occupe}
-          onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Prévue ${jourNomme(plusTard, jour)}`)}>
-          {`Plus tard dans la semaine (→ ${jourNomme(plusTard, jour)})`}
+          onClick={() => ecrire(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Reportée à ${jourNomme(plusTard, jour)}`)}>
+          {`Reporter à ${jourNomme(plusTard, jour)}`}
         </button>
       ) : null}
       <Retour geste={geste} />

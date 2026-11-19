@@ -186,7 +186,7 @@
 .tch .ep-carte-ia .titre { display: block; -webkit-line-clamp: unset; overflow-wrap: anywhere; }
 .tch .ep-carte-ia .meta { flex-wrap: wrap; }
 .tch .ep-carte-ia .meta > span { white-space: normal; min-width: 0; overflow-wrap: anywhere; }
-/* Un bouton de carte passe à la ligne plutôt que d'être rogné par le cadre (« Plus tard dans la semaine (→ m »). */
+/* Un bouton de carte passe à la ligne plutôt que d'être rogné par le cadre (« Reporter à {jour} » sur un iPhone étroit). */
 .tch .ep-carte-ia .bouton { height: auto; min-height: 44px; white-space: normal; text-align: left; }
 .tch .ep-carte-ia .actions-priorite { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; margin: 2px 0 0 -12px; }
 .tch .ep-carte-ia .actions-priorite .bouton { padding: 0 12px; }

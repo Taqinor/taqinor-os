@@ -14,7 +14,7 @@ import { useCompteTaches } from '../lib/enLigne'
    « Faire le bilan », le menu, ou `?ouvrir=bilan` (notification du soir). Le lendemain jusqu'à
    midi, c'est le « Bilan d'hier ». Contenu lu dans `journee/cloture/` (journee_cloture.json) :
      · « {faites} sur {objectif} » (+ essentiel), les segments (R3-020 : plus de second chiffre « gardées ») ;
-     · Faites ; Reste : par tâche Reporter à {jour} · Choisir un jour · En réserve · Abandonner
+     · Faites ; Reste : par tâche Reporter à {jour} · Choisir un jour · Plus tard · Abandonner
        (Reporter est le choix d'emblée), « Tout reporter à {jour} » les remet toutes sur le prochain
        jour travaillé ; une tâche reportée 3 fois est marquée « À revoir : reportée 3 fois » et,
        sans choix, RESTE à sa place (jamais bloquante) ;
@@ -81,7 +81,7 @@ function Constat({ constat, onRepondre }) {
 
 /**
  * R2-030 — UNE action visible par tâche : le choix retenu (« Reporter à ven. 20 » d'emblée), et « ⋯ » qui déplie les
- * autres (Reporter · Choisir un jour · En réserve · Abandonner) — quatre pilules par tâche en faisaient vingt pour cinq.
+ * autres (Reporter · Choisir un jour · Plus tard · Abandonner) — quatre pilules par tâche en faisaient vingt pour cinq.
  * Une tâche « à revoir » (aucun choix d'emblée) montre « Que faire ? ».
  */
 function ChoixReste({ titre, choix, jourReport, onChoisir, minimum }) {
@@ -90,14 +90,14 @@ function ChoixReste({ titre, choix, jourReport, onChoisir, minimum }) {
   const retenu = {
     [REPORTER]: `Reporter à ${jourReport}`,
     jour: choix.jour ? `Le ${jourNomme(choix.jour, minimum)}` : '',
-    un_jour: 'En réserve',
+    un_jour: 'Plus tard',
     abandonner: 'Abandonner',
   }[choix.choix] ?? ''
   const prendre = (suite) => { setAutres(false); setCalendrier(false); onChoisir(suite) }
   const options = [
     { cle: REPORTER, libelle: `Reporter à ${jourReport}`, choisir: () => prendre({ choix: REPORTER }) },
     { cle: 'jour', libelle: 'Choisir un jour', choisir: () => setCalendrier((v) => !v) },
-    { cle: 'un_jour', libelle: 'En réserve', choisir: () => prendre({ choix: 'un_jour' }) },
+    { cle: 'un_jour', libelle: 'Plus tard', choisir: () => prendre({ choix: 'un_jour' }) },
     { cle: 'abandonner', libelle: 'Abandonner', choisir: () => prendre({ choix: 'abandonner' }) },
   ].filter((o) => o.cle === 'jour' || o.cle !== choix.choix)
   return (

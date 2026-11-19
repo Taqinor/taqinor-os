@@ -54,7 +54,7 @@ export const EVENEMENT_SAISIE_FERMEE = 'taqinor:taches:saisie-fermee'
 const DESTINATIONS = [
   ['Revue de la semaine', '/taches/revue'],
   ['Mon rythme', '/taches/rythme'],
-  ['Supprimées et derniers gestes', '/taches/supprimees'],
+  ['Supprimées', '/taches/supprimees'],
   ['Réglages', '/taches/reglages'],
 ]
 

@@ -10,7 +10,7 @@ import { PHRASE_HORS_LIGNE } from './Sections'
 /* ============================================================================
    TCH79 — Le menu ⋯ d'Aujourd'hui (reference/textes.md §2.1) : « Alléger ma journée »,
    « Réorganiser », « Sélectionner », « En faire mon accueil » ; la coquille y ajoute Revue,
-   Mon rythme, Supprimées et derniers gestes et Réglages (spec-7 §2 « Plus »).
+   Mon rythme, Supprimées (avec ses derniers gestes) et Réglages (spec-7 §2 « Plus »).
    · Alléger : ouvre la feuille (FeuilleAlleger) — grisé hors ligne ;
    · Réorganiser : bascule le mode ▲▼ des lignes de la journée (Alt+↑/↓ au clavier) ;
    · Sélectionner : bascule la sélection multiple (barre d'actions en lot) ;

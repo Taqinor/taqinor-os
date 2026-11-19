@@ -129,7 +129,7 @@ export function messageChamps(champs) {
 
 function libelleQuand(quand) {
   if (!quand) return 'Quand'
-  if (quand.quelque_jour) return 'En réserve'
+  if (quand.quelque_jour) return 'Plus tard'
   if (!quand.jour_prevu) return 'Sans jour'
   const jour = quand.moment === 'soir' ? 'ce soir' : jourCourt(quand.jour_prevu)
   return quand.heure_debut ? `${jour} · ${quand.heure_debut.slice(0, 5)}` : jour

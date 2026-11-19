@@ -192,12 +192,12 @@ describe('TCH166 — vues enregistrées dans la Recherche', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Mon point' })).toBeNull())
   })
 
-  it('un filtre qui n\'a pas de clé (En réserve) ne s\'enregistre pas : le bouton est éteint', async () => {
+  it('un filtre qui n\'a pas de clé (Plus tard) ne s\'enregistre pas : le bouton est éteint', async () => {
     const user = userEvent.setup()
     monter()
     await plusDeFiltres(user)
     expect(screen.getByRole('button', { name: 'Enregistrer cette vue' })).toBeEnabled()
-    await user.click(screen.getByRole('checkbox', { name: 'En réserve' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Plus tard' }))
     expect(screen.getByRole('button', { name: 'Enregistrer cette vue' })).toBeDisabled()
   })
 

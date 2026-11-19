@@ -212,7 +212,7 @@ class PlanifierTests(TestCase):
         """R3-002 (choix C-13, M5) — reportée à vendredi, la ★ dont l'échéance est AUJOURD'HUI reste dans la journée
         (son échéance la garde, règle inchangée) : `planifier` le DIT (`echeance_aujourdhui`) au lieu de la laisser
         revenir en silence au rechargement ; `aujourdhui/` la sert encore dans Essentiel, comptée. Sans échéance, ou
-        mise « En réserve », rien n'est dit (elle quitte la journée)."""
+        mise à « Plus tard », rien n'est dit (elle quitte la journée)."""
         from apps.taches.services import journee as services
         from testkit.time import frozen
         avertie = {'code': 'echeance_aujourdhui', 'message': "L'échéance reste aujourd'hui."}

@@ -182,13 +182,13 @@ function TitreSurligne({ titre, surligne }) {
 }
 
 /** La méta de STATUT d'un résultat de recherche (recherche.html), lue des données servies : son jour, sinon, pour une
- *  tâche ouverte, « En réserve » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
+ *  tâche ouverte, « Plus tard » ou « À trier » (ni jour, ni réserve, ni projet) ; puis « Suggéré par l'ERP ». */
 function statutRecherche(item, aujourdhui) {
   if (item.type !== 'tache') return []
   const puces = []
   const ouverte = item.statut !== 'fait' && item.statut !== 'annule'
   if (item.jour_prevu) puces.push(<span key="statut" className="chiffres">{jourCourt(item.jour_prevu, aujourdhui)}</span>)
-  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">En réserve</span>)
+  else if (ouverte && item.quelque_jour) puces.push(<span key="statut">Plus tard</span>)
   else if (ouverte && !item.projet) puces.push(<span key="statut">À trier</span>)
   if (item.source === 'suggestion') puces.push(<span key="suggestion">Suggéré par l'ERP</span>)
   return puces
@@ -328,7 +328,7 @@ export default function LigneTache({
     : [
       ...(reporterLibelle ? [{ cle: 'reporter', libelle: `Reporter à ${reporterLibelle}`, faire: reporter }] : []),
       { cle: 'choisir_jour', libelle: 'Choisir un jour', faire: action('choisir_jour') },
-      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'En réserve', faire: action('reserve') }]),
+      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'Plus tard', faire: action('reserve') }]),
       { cle: 'deplacer', libelle: 'Changer de projet…', faire: action('deplacer') },
       { cle: 'essentiel', libelle: item.essentielle ? 'Plus essentielle' : 'Essentielle', faire: action('essentiel') },
       { cle: 'attente', libelle: 'En attente de…', faire: action('attente') },
@@ -412,7 +412,8 @@ export default function LigneTache({
           {meta.length > 0 || propose ? (
             <div className="meta">
               {propose ? (
-                <button type="button" className="garder" onClick={() => onGarder?.(item)}>Garder</button>
+                <button type="button" className="garder" aria-label={`Mettre « ${item.titre} » aujourd'hui`}
+                  onClick={() => onGarder?.(item)}>Aujourd&apos;hui</button>
               ) : null}
               {meta}
             </div>
