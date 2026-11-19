@@ -1246,6 +1246,23 @@ describe('TCH82 — feuille de saisie', () => {
       await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].ignorer).toEqual([{ type: 'projet', source: '#Ventes' }]))
     })
 
+    it('R4-29 — un `#mot` déjà lu comme CE projet : la suggestion sous le champ s\'efface, la puce du pied seule le dit', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Vent')
+      // la liste aide pendant la frappe…
+      expect(screen.getByRole('listbox', { name: 'Projets' })).toBeInTheDocument()
+      await user.type(champ(), 'es')
+      // … et se tait dès que la phrase est lue « Ventes » : jamais la suggestion ET la puce, l'une sous l'autre
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      expect(screen.queryByRole('listbox', { name: 'Projets' })).toBeNull()
+      expect(champ()).not.toHaveAttribute('aria-controls')
+      // Entrée envoie la phrase (rien à choisir)
+      await user.keyboard('{Enter}')
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+    })
+
     it('la toucher ouvre le sélecteur ; un autre projet REMPLACE `#Ventes` dans la phrase (jamais deux `#`)', async () => {
       const user = userEvent.setup()
       const { container } = monter()
