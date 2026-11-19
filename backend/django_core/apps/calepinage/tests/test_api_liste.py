@@ -983,8 +983,11 @@ class ManifesteEtPermissionsTest(SimpleTestCase):
 
         for action in ACTIONS:
             with self.subTest(action=action.key):
-                attendu = ('calepinage_voir' if action.method == 'GET'
-                           else 'calepinage_gerer')
+                # L'aperçu de la publication joue le chemin de l'écriture
+                # (verrous compris, transaction annulée) : garde de l'écriture.
+                lecture = (action.method == 'GET'
+                           and action.key != 'calepinage.publier_apercu')
+                attendu = 'calepinage_voir' if lecture else 'calepinage_gerer'
                 self.assertEqual(action.required_permission, attendu)
                 if action.risk == 'outward':
                     self.assertTrue(action.confirm_summary)
