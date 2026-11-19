@@ -304,7 +304,8 @@ class ProjetTerminerVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=formes_projets.TerminerSerializer, responses=reponses(PROJET_ECRIT, erreurs=(400, 404)))
+    @extend_schema(request=formes_projets.TerminerSerializer,
+                   responses=reponses(PROJET_ECRIT, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = _valider(formes_projets.TerminerSerializer, request.data)
         resultat = ecriture.terminer_projet(request.user, id, **donnees)
@@ -506,7 +507,7 @@ class RevueDecisionVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=formes_projets.RevueDecisionSerializer,
-                   responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404)))
+                   responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404, 409)))
     def put(self, request, projet_id):
         donnees = _valider(formes_projets.RevueDecisionSerializer, request.data)
         revue, projet, geste = ecriture.decider_revue(request.user, projet_id, donnees)

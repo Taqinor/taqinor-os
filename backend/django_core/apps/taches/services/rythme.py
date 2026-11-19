@@ -37,7 +37,7 @@ from apps.taches.choix import (
     TypeIncitationEcran,
     TypeIncitationPush,
 )
-from apps.taches.entrees import sans_nul
+from apps.taches.entrees import refus_etat, sans_nul
 from apps.taches.models.journee import LignePlanJour, PlanJour
 from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.moteur import rythme as moteur
@@ -331,6 +331,8 @@ REFUS_AVANT_GARDER = 3
 #: Réponses permises par carte (reference/donnees.md §1 « Réponses permises ») ; `ignoree` et
 #: `expiree` sont posées par la nuit seule, jamais par cette route.
 _R = ReponseIncitation
+#: Les réponses qu'un écran peut donner (publiées) ; `ignoree` et `expiree` sont posées par la nuit seule.
+REPONSES_ECRAN = tuple(r for r in _R.values if r not in ('', _R.IGNOREE, _R.EXPIREE))
 REPONSES_PALIER = {
     'monter': {_R.OUI, _R.PAS_MAINTENANT},
     'baisser': {_R.OUI, _R.GARDER},
@@ -457,8 +459,10 @@ def _carte_a_repondre(user, carte_id, reponse, jour):
     carte = cartes_de(user).select_for_update().filter(pk=carte_id, canal=CanalIncitation.ECRAN).first()
     if carte is None:
         raise Introuvable()
-    if not isinstance(reponse, str) or reponse not in _reponses_permises(carte):
+    if not isinstance(reponse, str) or reponse not in REPONSES_ECRAN:  # forme : 400
         raise ErreursRythme({'reponse': [REPONSE_INCONNUE]})
+    if reponse not in _reponses_permises(carte):  # réponse de l'écran, pas permise À CETTE carte : état (409)
+        raise refus_etat({'reponse': [REPONSE_INCONNUE]})
     if carte.reponse or carte.repondu_le is not None or (carte.expire_le is not None and carte.expire_le < jour):
         raise PropositionExpiree()
     return carte

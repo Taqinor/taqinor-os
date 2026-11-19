@@ -335,7 +335,7 @@ class DecisionDeRevueTests(_Base):
         premier, second = fabriques.projet(self.u1, nom='Premier'), fabriques.projet(self.u1, nom='Second')
         self.assertEqual(self._put(premier, focus=True).status_code, 200)
         refus = self._put(second, focus=True)
-        self.assertEqual(refus.status_code, 400)
+        self.assertEqual(refus.status_code, 409)  # état : 409
         self.assertEqual(refus.json()['focus'], ['Déjà « Premier » cette semaine.'])
         self.assertFalse(RevueProjet.objects.filter(projet=second).exists())
 
