@@ -932,8 +932,10 @@
   .tch .toast-place {
     left: auto; right: 32px; bottom: 32px; width: 360px;
   }
+  /* R3-094 — la ligne « Ajouter une tâche » a le même bord que la carte et la saisie en place (gouttière) : le champ et
+     la carte « 57 % » empilés étaient décalés de 16 px de chaque côté */
   .tch .saisie-bureau {
-    display: flex; align-items: center; gap: 12px; margin: 16px 8px 0; padding: 0 16px; min-height: 48px;
+    display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 0 16px; min-height: 48px;
     border-radius: var(--tch-rayon-champ); box-shadow: inset 0 0 0 1px var(--tch-trait); color: var(--tch-texte-doux); font-size: 0.9375rem;
   }
   .tch .saisie-bureau kbd {
@@ -963,10 +965,12 @@
   /* R2-009 (choix C-3, ecran-saisie.html / ecrans-coeur.css « .saisie-place ») — la saisie EN PLACE : rendue dans
      `.saisie-ancre`, à la place de la ligne « Ajouter une tâche », DANS le flux de la page (la liste reste lisible et
      vivante dessous, comme Things et Todoist). Ni voile, ni crans, ni position fixe : elle défile avec la liste et ne
-     passe jamais au-dessus de la barre de l'ERP (z-index auto). Le ✕ seul reste de l'en-tête (Échap ferme aussi). */
+     passe jamais au-dessus de la barre de l'ERP (z-index de base). Le ✕ seul reste de l'en-tête (Échap ferme aussi). */
+  /* R3-094 — la saisie en place : même bord que la ligne qu'elle remplace ; une liste collée y reste (R3-044, L3) et
+     défile dans 70 % de la hauteur au lieu de pousser la page */
   .tch .feuille.popover-bureau {
-    position: relative; inset: auto; z-index: auto; width: auto; height: auto; max-height: none;
-    margin: 16px 8px 0; padding: 12px 16px; border-radius: var(--tch-rayon-champ);
+    position: relative; inset: auto; z-index: var(--z-base); width: auto; height: auto; max-height: 70vh; overflow: auto;
+    margin: 16px var(--tch-gouttiere) 0; padding: 12px 16px; border-radius: var(--tch-rayon-champ);
     background: var(--tch-surface); box-shadow: inset 0 0 0 1.5px var(--tch-accent), var(--shadow-sm);
   }
   .tch .feuille.popover-bureau .feuille-entete { position: absolute; top: 4px; right: 4px; display: block; margin: 0; }
@@ -1414,7 +1418,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .copilote[aria-disabled="true"] { opacity: 0.6; }
 
 /* « Ajouter une tâche · n » du bureau : un vrai bouton pleine largeur de la liste */
-.tch button.saisie-bureau { width: calc(100% - 16px); text-align: left; background: none; }
+.tch button.saisie-bureau { width: calc(100% - 2 * var(--tch-gouttiere)); text-align: left; background: none; }
 @media (hover: hover) {
   .tch .saisie-bureau:hover { background: var(--tch-survol); }
 }
