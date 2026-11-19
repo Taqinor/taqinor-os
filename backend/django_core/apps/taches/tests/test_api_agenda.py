@@ -185,6 +185,26 @@ class AgendaTests(TestCase):
         self.assertEqual([i['id'] for i in self.le_jour(rendu, self.T)['blocs']], [posee.pk])
         self.assertEqual(self.le_jour(rendu, self.jour(2))['sans_heure'], [])
 
+    def test_pause_une_seule_regle_pour_aujourdhui_et_l_agenda(self):
+        """Critique serveur n° 2 (C-5) — Aujourd'hui et l'Agenda lisent LA même règle
+        (`selectors.journee.gardee_malgre_la_pause`) : projet en pause depuis 14 jours, tâche prévue aujourd'hui →
+        absente des deux ; projet mis en pause aujourd'hui → présente dans les deux."""
+        from apps.taches.choix import StatutProjet
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        maintenant_ = timezone.now()
+        ancienne = fabriques.projet(self.u, nom='Ancienne pause', statut=StatutProjet.EN_PAUSE,
+                                    statut_depuis=maintenant_ - datetime.timedelta(days=14))
+        minuit = timezone.make_aware(datetime.datetime.combine(self.T, datetime.time.min))
+        du_jour = fabriques.projet(self.u, nom='Pause du jour', statut=StatutProjet.EN_PAUSE, statut_depuis=minuit)
+        oubliee = self.tache(projet=ancienne, jour_prevu=self.T)
+        gardee = self.tache(projet=du_jour, jour_prevu=self.T)
+        journee = set(sel.taches_de_la_journee(self.u, self.T).values_list('pk', flat=True))
+        periode = set(agenda.taches_de_la_periode(self.u, self.T, self.jour(6), J=self.T).values_list('pk', flat=True))
+        self.assertEqual(({oubliee.pk, gardee.pk} & journee, {oubliee.pk, gardee.pk} & periode),
+                         ({gardee.pk}, {gardee.pk}))
+        self.assertEqual([i['id'] for i in self.le_jour(self.periode(), self.T)['sans_heure']], [gardee.pk])
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""

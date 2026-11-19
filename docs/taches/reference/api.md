@@ -1532,7 +1532,8 @@ bornée aux heures de travail de la société, journée entière = 0 — invaria
 (R4-01 : forme CHARGE de ce jour, capacité d'aujourd'hui moins CES rendez-vous — « {n} tâches · {h} sur {cap} · {x} de
 trop » se lit là, jamais recompté ; nulle pour un jour passé) et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
 tâches finies CE jour local, prévues ce jour-là ou non, + activités ERP closes par lui ; 0 pour un jour à venir) ; une
-tâche ouverte d'un projet en pause prévue AUJOURD'HUI reste dans le jour (R2-031b, choix C-5). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
+tâche ouverte d'un projet mis en pause AUJOURD'HUI et prévue aujourd'hui reste dans le jour, comme dans `aujourdhui/`
+(R2-031b, choix C-5 : la même règle, `gardee_malgre_la_pause`). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon
 → 400 `{"nom":["Un projet « Chantier X » existe déjà."]}`. **PATCH** `{"nom":"Ventes","objectif":"","icone":"","couleur":"vert","priorite":3,"statut":"en_pause","date_debut":null,"echeance":"2026-12-15","domaine":"","confidentiel":false,"affichage":{"vue":"tableau","tri":"manuel","groupe":"section","montrer_faites":false},"risque":"","lock_version":4}`

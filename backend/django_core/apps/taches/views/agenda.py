@@ -83,13 +83,12 @@ def taches_de_la_periode(user, du, au, projet_id=None, J=None):
     """Tâches vivantes non abandonnées de `user` prévues ou à échéance dans [du, au] (parent nul,
     projet actif ou triées, une faite quel que soit l'état de son projet : le préfiltre de la journée,
     étendu à la période — revue F2 tour 2 #1). `J` : aujourd'hui — R2-031b (règle C-5, « ce que j'ai posé reste
-    posé ») : une tâche OUVERTE d'un projet EN PAUSE prévue CE jour-là reste dans l'agenda du jour ; la pause
-    continue de retirer celles des jours à venir."""
+    posé ») : la règle d'Aujourd'hui, `sel.gardee_malgre_la_pause` (projet mis en pause CE jour-là, tâche prévue
+    ce jour-là) ; la pause continue de retirer celles des jours à venir."""
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
     if J is not None:
-        rattachee |= Q(projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False, jour_prevu=J,
-                       quelque_jour=False, statut__in=sel.OUVERTS)
+        rattachee |= sel.gardee_malgre_la_pause(J)
     qs = (taches_de(user).filter(parent__isnull=True).filter(rattachee | Q(statut=StatutTache.FAIT))
           .exclude(statut=StatutTache.ANNULE)
           .filter(Q(jour_prevu__range=(du, au)) | Q(echeance__range=(du, au))))

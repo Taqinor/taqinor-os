@@ -79,6 +79,16 @@ def _du_compte(modele, user):
 
 # --- Le préfiltre (invariant 10) -----------------------------------------------------------------
 
+def gardee_malgre_la_pause(jour):
+    """R2-031 (choix C-5, « ce que j'ai posé reste posé ») — LA règle, lue par Aujourd'hui (`taches_de_la_journee`)
+    et par l'Agenda (`views.agenda.taches_de_la_periode`) : une tâche OUVERTE d'un projet en pause reste visible
+    le jour `jour` si elle y est prévue ET que son projet a été mis en pause ce jour-là (ou plus tard). Une pause
+    plus ancienne la retire, comme de tous les autres jours."""
+    debut, _fin = bornes_du_jour(jour)
+    return Q(projet__isnull=False, projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False,
+             projet__statut_depuis__gte=debut, jour_prevu=jour, statut__in=OUVERTS, quelque_jour=False)
+
+
 def taches_de_la_journee(user, jour):
     """Tâches du préfiltre de la journée de `user` au jour `jour` : vivantes, `parent` nul, non
     bloquées, et soit ouvertes hors « Plus tard » d'un projet actif (ou sans projet et triées), soit
@@ -94,8 +104,7 @@ def taches_de_la_journee(user, jour):
     debut, fin = bornes_du_jour(jour)
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False)
-                 | Q(projet__isnull=False, projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False,
-                     projet__statut_depuis__gte=debut, jour_prevu=jour))
+                 | gardee_malgre_la_pause(jour))
     ouverte = Q(statut__in=OUVERTS, quelque_jour=False)
     faite = Q(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
     return (taches_de(user).filter(parent__isnull=True).filter((rattachee & ouverte) | faite)
