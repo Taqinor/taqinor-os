@@ -232,12 +232,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const choisirQuand = (valeur) => { quandAuto.current = false; setQuand(valeur) }
   const enLigne = useEnLigne()
   // R2-009 — au bureau, la saisie s'ouvre à la place de la ligne « Ajouter une tâche » de l'écran (ancre lue à
-  // l'ouverture) ; « Coller mes listes » et une liste collée gardent le dialogue centré
+  // l'ouverture). R3-044 — une liste collée et « Coller mes listes » y restent aussi (plus de bascule en boîte centrée
+  // sur voile) ; sans ligne à l'écran (Agenda, autre app), le dialogue centré
   const bureau = useBureau()
   // (la coquille ouvre toujours la feuille APRÈS le montage de l'écran : la ligne est déjà là)
   const ancre = useMemo(() => (ouverte && bureau ? trouverAncre() : null), [ouverte, bureau])
-  /** Vrai quand la demande d'ouverture est « Coller mes listes » (chaque demande le repose, voir `recevoir`). */
-  const [demandeListe, setDemandeListe] = useState(false)
   // R2-003 — les projets du compte, lus une fois à l'ouverture : la liste à `#` et le sélecteur de la puce « Projet »
   const [projets, setProjets] = useState(null)
   const [projetOuvert, setProjetOuvert] = useState(false)
@@ -303,7 +302,6 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const recevoir = useCallback((detail) => {
     if (typeof detail.texte === 'string') setTexte(detail.texte)
     if (detail.liste || detail.coller) setChampReplie(false)
-    setDemandeListe(Boolean(detail.liste || detail.coller))
     // déjà ouverte (en place au bureau, le focus parti dans la liste) : `n` ou « Ajouter une tâche » ramène au champ
     if (actuel.current.ouverte) requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
     // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
@@ -542,15 +540,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const double = !modeListe && (erreur === DEJA_DANS_LISTE || erreur === DEJA_FAITE)
   const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
-  const enDialogue = modeListe || demandeListe
   return (
     <FeuilleACrans
       ouverte={Boolean(ouverte)}
       onFermer={onFermer}
       titre="Ajouter une tâche"
       cranInitial={modeListe ? '85' : '50'}
-      variante={enDialogue ? 'dialogue' : 'popover'}
-      ancre={enDialogue ? null : ancre}
+      variante="popover"
+      ancre={ancre}
     >
       <div className="feuille-saisie" ref={corps}>
         {!(modeListe && donneesListe) || !champReplie ? (

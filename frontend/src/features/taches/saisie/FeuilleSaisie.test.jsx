@@ -905,24 +905,30 @@ describe('TCH82 — feuille de saisie', () => {
       expect(onFermer).toHaveBeenCalledTimes(1)
     })
 
-    it('une liste collée garde le dialogue centré, sur voile', async () => {
+    it('R3-044 — une liste collée reste EN PLACE sous la ligne, sans voile (jamais une boîte centrée)', async () => {
       bureau(true)
       const { container } = monterEcran()
       fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
       const dialogue = screen.getByRole('dialog', { name: 'Ajouter une tâche' })
-      expect(dialogue).toHaveClass('dialogue-bureau')
-      expect(dialogue).toHaveAttribute('aria-modal', 'true')
-      expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
-      expect(container.querySelector('.voile')).not.toBeNull()
+      expect(dialogue).toHaveClass('popover-bureau')
+      expect(dialogue).not.toHaveClass('dialogue-bureau')
+      expect(dialogue).toHaveAttribute('aria-modal', 'false')
+      expect(container.querySelector('.saisie-bureau + .saisie-ancre')).toContainElement(dialogue)
+      expect(container.querySelector('.voile')).toBeNull()
       await waitFor(() => expect(champ()).toHaveFocus())
       expect(champ()).toHaveValue('Courses\nlait\npain')
+      // l'aperçu arrive : toujours en place
+      expect(await screen.findByText('Aperçu de ta liste', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('popover-bureau')
+      expect(container.querySelector('.voile')).toBeNull()
     })
 
-    it('« Coller mes listes » ouvre directement le dialogue', () => {
+    it('R3-044 — « Coller mes listes » s\'ouvre aussi en place quand la ligne est là', () => {
       bureau(true)
-      monterEcran()
+      const { container } = monterEcran()
       act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { liste: true } })) })
-      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('dialogue-bureau')
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('popover-bureau')
+      expect(container.querySelector('.voile')).toBeNull()
     })
 
     it('sans ligne « Ajouter une tâche » à l\'écran (Agenda, `c t` depuis une autre app) : le dialogue centré', () => {
