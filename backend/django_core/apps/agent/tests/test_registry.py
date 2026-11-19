@@ -208,6 +208,19 @@ class InterrupteurCopiloteTest(TestCase):
                   for a in actions if a.lot != 'copilote'}
         self.assertEqual({k: v for k, v in fautes.items() if v}, {})
 
+    def test_ged_docqa_admin_copilote_allume_seulement(self):
+        """FND11 (D-W2-5) — l'outil qui rend le texte des documents : absent
+        pour un commercial et pour TOUT compte copilote éteint (la seule
+        exception nommée à « éteint = identique ») ; présent pour un
+        administrateur copilote allumé."""
+        def sert(user, valeur):
+            with self.settings(ASSISTANT_COPILOTE=valeur):
+                return 'ged.docqa.retrieve' in {a.key for a in for_user(user)}
+        self.assertTrue(sert(self.admin, 'admins'))
+        self.assertFalse(sert(self.commercial, 'tous'))
+        self.assertFalse(sert(self.admin, 'aucun'))
+        self.assertFalse(sert(self.commercial, 'aucun'))
+
     def test_defaut_du_reglage_est_admins(self):
         from django.conf import settings
         self.assertEqual(getattr(settings, 'ASSISTANT_COPILOTE', None), 'admins')
@@ -299,8 +312,9 @@ class PariteCataloguePermissionRouteTest(SimpleTestCase):
     # clé -> raison pour laquelle la garde de la route n'est pas lisible.
     NON_LISIBLES = {
         'ged.docqa.retrieve': (
-            "catalogue None (tout compte interne) ; la route est une garde de "
-            "MODULE (LectureDuModule ged) + l'ACL coffre-fort lue dans la vue"),
+            "catalogue `roles_gerer` (FND11 : verrou administrateur PLUS strict "
+            "que la route) ; la route est une garde de MODULE (LectureDuModule "
+            "ged) + l'ACL coffre-fort lue dans la vue"),
     }
 
     def _perimetre(self):

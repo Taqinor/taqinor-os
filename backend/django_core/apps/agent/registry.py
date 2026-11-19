@@ -519,8 +519,14 @@ def _register_builtin_actions() -> None:
                 },
                 'required': ['q'],
             },
-            required_permission=None,
+            # Copilote vague 2 (FND11, D-W2-5) — l'outil rend le TEXTE des
+            # documents (OCR) : verrouillé aux administrateurs copilote allumé
+            # (critère d'administrateur `roles_gerer`). Dormant aujourd'hui (rend
+            # vide) : son retrait des comptes copilote éteint est LA seule
+            # exception nommée à « éteint = identique ».
+            required_permission='roles_gerer',
             risk=RISK_INTERNAL,
+            lot=LOT_COPILOTE,
         ),
         AgentAction(
             key='crm.lead.list',
