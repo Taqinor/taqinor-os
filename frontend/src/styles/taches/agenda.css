@@ -86,7 +86,9 @@
 }
 .tch .ag-tj-plus::after { content: ""; position: absolute; inset: -10px -6px; }
 /* R3-121 — l'en-tête d'un jour passé porte « {n} faites » sous son nom */
-.tch .semaine .semaine-tete > div { flex-wrap: wrap; align-content: center; height: auto; min-height: 56px; padding-block: 6px 4px; }
+/* R4-40 — le nom du jour part toujours du même pixel (le compte « 4 faites », s'il y en a un, vient dessous) : centrer la cellule faisait
+   monter « mer. 18 » de 20 px à côté de ses voisins */
+.tch .semaine .semaine-tete > div { flex-wrap: wrap; align-content: flex-start; height: auto; min-height: 56px; padding-block: 12px 4px; }
 .tch .ag-faites { flex: 0 0 100%; text-align: center; font-size: var(--tch-taille-meta); font-weight: 400; color: var(--tch-texte-doux); }
 /* R3-120 — blocs lisibles dans les colonnes de la Semaine (maquette agenda-semaine.html `.ag-semcol`) : 64 px par heure,
    sans la case (elle mangeait la largeur ; on coche au Jour ou à la fiche), plage horaire seulement au-delà d'une heure.

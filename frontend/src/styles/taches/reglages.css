@@ -43,7 +43,7 @@
    colonne vide de 8 px) */
 .tch .ep-remarque li { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px var(--tch-gouttiere); font-size: 0.9375rem; line-height: 1.45; }
 .tch .ep-remarque li > span[aria-hidden="true"]:empty { display: none; }
-.tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
+.tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; min-width: var(--tch-cible); margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
 /* R3-088 — les réponses servies d'un constat, sur une ligne sous sa phrase : « Oui » en accent, « Pas maintenant » doux */
 .tch .ep-remarque-reponses { display: flex; flex-wrap: wrap; column-gap: 20px; }
 .tch .ep-remarque-reponses .action-lien + .action-lien { color: var(--tch-texte-doux); font-weight: 500; }
