@@ -653,7 +653,7 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 `faire_bilan`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
 les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
 (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
-plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee.conseil_deja_donne` ;
+plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne` ;
 l'écran note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
 astuce, révélation. **Une statistique sans geste n'apparaît jamais le matin** : C5 (et tout constat sans question)
 vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir (§6.9) ; un constat AVEC question (C7

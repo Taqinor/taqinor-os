@@ -110,7 +110,7 @@ def _cartes_ouvertes(user, jour):
         .order_by('jour', 'pk'))
 
 
-def conseil_deja_donne(ctx):
+def _conseil_deja_donne(ctx):
     """Une carte de conseil (`TYPES_CONSEIL`) a-t-elle été répondue AUJOURD'HUI ? (R3-005, choix C-17)."""
     debut, fin = sel.bornes_du_jour(ctx.jour)
     return any(c.type in TYPES_CONSEIL and c.repondu_le is not None and debut <= c.repondu_le < fin
@@ -306,13 +306,13 @@ def _carte_faire_bilan(ctx, propose):
 
 
 def _carte_rythme(ctx, propose):
-    if conseil_deja_donne(ctx):
+    if _conseil_deja_donne(ctx):
         return None
     return _carte_proposition(ctx, CarteDuMoment.RYTHME, garder=_rythme_du_matin)
 
 
 def _carte_pause(ctx, propose):
-    if conseil_deja_donne(ctx):
+    if _conseil_deja_donne(ctx):
         return None
     return _carte_proposition(ctx, CarteDuMoment.PAUSE, (TypeIncitationEcran.PAUSE,))
 
@@ -322,7 +322,7 @@ def _carte_revelation(ctx, propose):
     (`TEXTES_REVELATION`, un seul bouton « OK ») ; dernière de l'ordre : elle ne passe jamais devant
     une autre carte (regles.md §4.10) ; rien quand un conseil a déjà été répondu aujourd'hui (R3-005)."""
     from apps.taches.serializers.rythme import TEXTES_REVELATION, forme_proposition  # la forme lit le rythme
-    if conseil_deja_donne(ctx):
+    if _conseil_deja_donne(ctx):
         return None
     ouvertes = [c for c in ctx.cartes if c.type == TypeIncitationEcran.REVELATION and c.reponse == ''
                 and c.cle in TEXTES_REVELATION]
