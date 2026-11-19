@@ -255,6 +255,17 @@ class ObjectifAtteintDeLaSemaineTests(_Base):
         self.assertEqual(self.texte(), vendredi_soir)
         self.assertTrue(vendredi_soir.endswith('Jour non travaillé : 1.'), vendredi_soir)
 
+    def test_cette_semaine_seulement_pour_la_semaine_en_cours(self):
+        """V2-C (R2-034) — « Cette semaine : … » ne se dit que de la semaine EN COURS ; une revue d'une semaine passée
+        garde ses dates (« Du lun. 9 au ven. 13 : … »), sinon elle se présenterait comme celle de maintenant."""
+        from apps.taches.selectors.projets import bilan_de_semaine
+        fabriques.plan(self.u1, self.jour(0), statut_jour='evalue', compte_rythme=3, objectif_du_jour=3)
+        fabriques.plan(self.u1, self.jour(1), statut_jour='evalue', compte_rythme=2, objectif_du_jour=5)
+        en_cours = bilan_de_semaine(self.u1, self.LUNDI, 'pousser', aujourdhui=self.jour(4))[1]['texte']
+        self.assertTrue(en_cours.startswith('Cette semaine : 5 faites.'), en_cours)
+        passee = bilan_de_semaine(self.u1, self.LUNDI, 'pousser', aujourdhui=self.jour(9))[1]['texte']
+        self.assertTrue(passee.startswith('Du lun. 9 au ven. 13 : 5 faites.'), passee)
+
 
 class DecisionDeRevueTests(_Base):
     def _corps(self, **plus):

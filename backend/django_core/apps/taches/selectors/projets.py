@@ -460,9 +460,11 @@ def _non_travailles(user, lundi, semaine):
     return sum(1 for p in repos if p.jour.weekday() in habituels)
 
 
-def bilan_de_semaine(user, lundi, mode):
+def bilan_de_semaine(user, lundi, mode, *, aujourdhui=None):
     """`(semaine_courte, bilan)` de la semaine de `lundi`, lus dans les `PlanJour` clos (jamais un titre).
-    `bilan` = `{texte, donnees:{faites, jours, prec}}` ou `None` (semaine courte, ou aucun jour évalué)."""
+    `bilan` = `{texte, donnees:{faites, jours, prec}}` ou `None` (semaine courte, ou aucun jour évalué).
+    La tête dit « Cette semaine » seulement si `lundi` est celui de la semaine d'`aujourdhui` (défaut : le jour
+    local) ; une semaine passée garde ses dates « Du lun. 9 au ven. 13 »."""
     plans = list(PlanJour.objects.filter(
         company_id=user.company_id, proprietaire=user,
         jour__range=(lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6))))
@@ -478,6 +480,7 @@ def bilan_de_semaine(user, lundi, mode):
     texte = gabarit_texte('revue', 'entete', {
         'debut': lundi, 'fin': lundi + datetime.timedelta(days=4), 'faites': faites, 'jours': jours,
         'prec': prec, 'oa': _jours_objectif_atteint(evalues), 'mode': mode,
+        'courante': lundi == lundi_de(aujourdhui or timezone.localdate()),
         'e': sum(p.essentiels_faits for p in evalues), 'je': sum(p.essentiels_choisis for p in evalues),
         'pt': sum(p.plan_faites for p in evalues), 'pl': sum(p.plan_prevues for p in evalues),
         'non_travailles': _non_travailles(user, lundi, semaine)})
