@@ -211,6 +211,25 @@ class ApercuTests(BaseApi):
         valeur = reponse.json()['lignes'][0]['jetons'][0]['valeur']
         self.assertEqual((valeur['id'], valeur['nouveau']), (None, True))
 
+    def test_r2_003_le_debut_d_un_nom_prend_son_projet_jamais_celui_d_un_autre_compte(self):
+        salon = fabriques.projet(self.u1, nom='Salon Solaire Expo')
+        fabriques.projet(self.u2, nom='Salon du collègue')
+        fabriques.projet(self.ext, nom='Salle externe')
+        ligne = self._apercu(['Stand #Sal']).json()['lignes'][0]
+        self.assertEqual(ligne['champs'].get('projet_id'), salon.pk)
+        self.assertNotIn('nouveau_projet', ligne['champs'])
+        self.assertEqual((ligne['jetons'][0]['libelle'], ligne['alertes']), ('● Salon Solaire Expo', []))
+        # chez le collègue, « #Sal » ne voit pas le projet de u1 : un nouveau projet
+        autre = self._apercu(['Stand #Sal'], compte=self.u2).json()['lignes'][0]
+        self.assertNotIn(salon.pk, [autre['champs'].get('projet_id')])
+        self.assertEqual(Projet.objects.count(), 3)  # un aperçu n'écrit rien
+
+    def test_r2_003_l_assistant_ne_trouve_pas_un_projet_confidentiel_par_son_debut(self):
+        fabriques.projet(self.u1, nom='Secret Rachat', confidentiel=True)
+        reponse = self._post('saisie-rapide/', {'textes': ['x #Secr'], 'apercu': True}, **ASSISTANT)
+        valeur = reponse.json()['lignes'][0]['jetons'][0]['valeur']
+        self.assertEqual((valeur['id'], valeur['nouveau']), (None, True))
+
     def test_un_doublon_confidentiel_n_est_pas_signale_a_l_assistant(self):
         fabriques.tache(self.u1, titre='lait', confidentiel=True)
         ligne = self._post('saisie-rapide/', {'textes': ['lait'], 'apercu': True}, **ASSISTANT).json()['lignes'][0]

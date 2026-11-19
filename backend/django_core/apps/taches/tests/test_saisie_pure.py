@@ -259,6 +259,55 @@ class SortieEtOptionsTests(unittest.TestCase):
         self.assertEqual(a.champs['projet_id'], 5)
         self.assertEqual(a.alertes, ('plusieurs_projets',))
 
+    # R2-003 — « #Salon » prend « Salon Solaire Expo » : le début d'un mot du nom suffit, sans créer de doublon.
+    PROJETS_LONGS = (
+        ProjetConnu(11, 'Salon Solaire Expo', 'actif', 1), ProjetConnu(12, 'Chantier Benali 9 kWc', 'actif', 2),
+        ProjetConnu(13, 'Site web', 'actif', 3), ProjetConnu(14, 'Site Polydesign', 'en_pause', 4),
+        ProjetConnu(15, 'Salle', 'archive', 5))
+
+    def test_r2_003_debut_d_un_mot_d_un_seul_projet_le_prend(self):
+        for saisie, attendu in (('Stand #Sal', 11), ('Stand #Salon', 11), ('Stand #solaire', 11),
+                                ('Stand #Salon_Sol', 11), ('Visite #Chantier', 12), ('Visite #benali', 12)):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertEqual(a.champs.get('projet_id'), attendu)
+                self.assertNotIn('nouveau_projet', a.champs)
+                self.assertEqual(a.titre, saisie.split(' #')[0])
+                self.assertEqual(a.alertes, ())
+        self.assertEqual(lire('Stand #Sal', projets=self.PROJETS_LONGS).jetons[0]['libelle'], '● Salon Solaire Expo')
+
+    def test_r2_003_plusieurs_projets_le_premier_par_rang_et_l_alerte(self):
+        a = lire('Photos #Site', projets=self.PROJETS_LONGS)
+        self.assertEqual(a.champs['projet_id'], 13)
+        self.assertEqual(a.alertes, ('plusieurs_projets',))
+
+    def test_r2_003_l_egalite_reste_prioritaire(self):
+        projets = (ProjetConnu(21, 'Salon Expo', 'actif', 1), ProjetConnu(22, 'Salon', 'actif', 2))
+        a = lire('Stand #Salon', projets=projets)
+        self.assertEqual(a.champs['projet_id'], 22)
+        self.assertEqual(a.alertes, ())
+
+    def test_r2_003_aucun_debut_de_mot_reste_un_nouveau_projet(self):
+        for saisie in ('Plan #Nouveau', 'Plan #alon', 'Plan #Salles'):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertNotIn('projet_id', a.champs)
+                self.assertEqual(a.champs['nouveau_projet']['nom'], saisie.split('#')[1])
+
+    def test_r2_003_un_projet_archive_n_est_jamais_pris_par_son_debut(self):
+        a = lire('Ranger #Sall', projets=self.PROJETS_LONGS)
+        self.assertNotIn('projet_id', a.champs)
+        self.assertEqual(a.champs['nouveau_projet']['nom'], 'Sall')
+
+    def test_r2_003_la_porte_capture_est_inchangee(self):
+        # capture : jamais de projet par son début (ni par `#`, ni par « projet <nom> » en tête)
+        a = lire('Stand #Sal', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertNotIn('projet_id', a.champs)
+        b = lire('projet Salon stand', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertNotIn('projet_id', b.champs)
+        c = lire('projet Salon Solaire Expo stand', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertEqual(c.champs['projet_id'], 11)
+
     def test_projet_archive_reste_a_trier(self):
         projets = (ProjetConnu(9, 'Vieux', 'archive', 1),)
         a = lire('Ranger #Vieux', projets=projets)

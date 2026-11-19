@@ -12,11 +12,12 @@ import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
 import { morceauxSurlignes } from '../ui/ChampSaisie'
 
-const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
+const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
   ...(await importOriginal()),
   saisieRapide: mocks.saisieRapide,
   annulerGeste: mocks.annulerGeste,
+  listerTousLesProjets: mocks.listerTousLesProjets,
 }))
 
 /* TCH82 — Feuille de saisie : puces lues (retirables), « Nouveau projet » et sa priorité, Entrée
@@ -53,6 +54,7 @@ beforeEach(() => {
   window.localStorage.clear()
   mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? apercu : creation }))
   mocks.annulerGeste.mockResolvedValue({ data: {} })
+  mocks.listerTousLesProjets.mockResolvedValue([])
 })
 afterEach(() => {
   vi.clearAllMocks()
@@ -569,6 +571,67 @@ describe('TCH82 — feuille de saisie', () => {
       demander()
       expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull()
       expect(screen.getByRole('button', { name: 'Quand' })).toBeInTheDocument()
+    })
+  })
+
+  describe('R2-003 — « # » propose les projets ; une puce « Projet » dans le pied', () => {
+    const PROJETS = [
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+      { id: 12, nom: 'Chantier Bénali 9 kWc', couleur: 'mer', statut: 'actif' },
+      { id: 13, nom: 'Site web', couleur: 'ciel', statut: 'en_pause' },
+      { id: 14, nom: 'Salle archivée', couleur: 'terre', statut: 'archive' },
+    ]
+    beforeEach(() => { mocks.listerTousLesProjets.mockResolvedValue(PROJETS) })
+    const liste = () => screen.queryByRole('listbox', { name: 'Projets' })
+    const options = () => screen.getAllByRole('option').map((o) => o.textContent)
+
+    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon_Solaire_Expo sans envoyer la phrase', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Stand #')
+      await waitFor(() => expect(liste()).not.toBeNull())
+      expect(options()).toEqual(['Salon Solaire Expo', 'Chantier Bénali 9 kWc', 'Site web'])
+      expect(champ()).toHaveAttribute('aria-expanded', 'true')
+      await user.type(champ(), 'Sal')
+      expect(options()).toEqual(['Salon Solaire Expo'])
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('Stand #Salon_Solaire_Expo ')
+      expect(liste()).toBeNull()
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+    })
+
+    it('sans accents ni casse, flèches puis Entrée, ou au doigt ; Échap ferme la liste, pas la feuille', async () => {
+      const user = userEvent.setup()
+      const { onFermer } = monter()
+      await user.type(champ(), 'Visite #benal')
+      await waitFor(() => expect(options()).toEqual(['Chantier Bénali 9 kWc']))
+      await user.keyboard('{Escape}')
+      expect(liste()).toBeNull()
+      expect(onFermer).not.toHaveBeenCalled()
+      await user.clear(champ())
+      await user.type(champ(), 'Photos #s')
+      await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
+      await user.keyboard('{ArrowDown}{Enter}')
+      expect(champ()).toHaveValue('Photos #Site_web ')
+      await user.type(champ(), 'et #cha')
+      await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
+      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+    })
+
+    it('la puce « Projet » ouvre le sélecteur ; le projet choisi part avec la ligne et se retire', async () => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [], lignes: [{ ...apercu.lignes[0], titre: 'Réserver le stand', jetons: [], alertes: [], champs: {} }],
+      } : creation }))
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Réserver le stand')
+      await user.click(screen.getByRole('button', { name: 'Projet' }))
+      await user.click(await screen.findByRole('option', { name: 'Salon Solaire Expo' }))
+      expect(screen.getByRole('button', { name: 'Retirer « Salon Solaire Expo »' })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const envoi = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
+      expect(envoi.lignes[0]).toMatchObject({ titre: 'Réserver le stand', projet_id: 11 })
     })
   })
 

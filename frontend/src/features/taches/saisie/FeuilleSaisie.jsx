@@ -1,17 +1,18 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Calendar, X } from 'lucide-react'
+import { Calendar, Folder, X } from 'lucide-react'
 import { ReactReduxContext } from 'react-redux'
 
 import { frenchError } from '../../../lib/frenchError'
 import {
-  annulerGeste, classerErreur, definirProprietaire, nouvelleCle, saisieRapide,
+  annulerGeste, classerErreur, definirProprietaire, listerTousLesProjets, nouvelleCle, saisieRapide,
 } from '../../../api/tachesApi'
 import { MESSAGE_EN_FILE, enfilerAjout } from '../horsligne/captureQueue'
 import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
 import { aujourdhuiIso, jourCourt } from '../lib/textes'
-import ChampSaisie from '../ui/ChampSaisie'
+import ChampSaisie, { jetonProjet } from '../ui/ChampSaisie'
 import FeuilleACrans from '../ui/FeuilleACrans'
+import SelecteurProjet from '../ui/SelecteurProjet'
 import SelecteurQuand from '../ui/SelecteurQuand'
 import ColleListes, { construireLigne } from './ColleListes'
 
@@ -197,6 +198,19 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [contexte, setContexte] = useState(() => lireContexte(null))
   const [quandDepart, setQuandDepart] = useState(null)
   const enLigne = useEnLigne()
+  // R2-003 — les projets du compte, lus une fois à l'ouverture : la liste à `#` et le sélecteur de la puce « Projet »
+  const [projets, setProjets] = useState(null)
+  const [projetOuvert, setProjetOuvert] = useState(false)
+  useEffect(() => {
+    if (!ouverte || !enLigne || projets) return undefined
+    let vivant = true
+    listerTousLesProjets()
+      .then((liste) => { if (vivant) setProjets(Array.isArray(liste) ? liste : []) })
+      // la liste n'est qu'une aide : sans elle, `#nom` tapé en entier reste lu par le serveur
+      .catch(() => { if (vivant) setProjets([]) })
+    return () => { vivant = false }
+  }, [ouverte, enLigne, projets])
+  const projetsOuverts = useMemo(() => (projets ?? []).filter((p) => !p.statut || p.statut !== 'archive'), [projets])
   // R2-001 — l'envoi part en ARRIÈRE-PLAN : ce qui est à l'écran au retour du serveur est lu ici, jamais une copie figée
   const actuel = useRef({ texte, collages, ouverte })
   useEffect(() => { actuel.current = { texte, collages, ouverte } })
@@ -306,6 +320,19 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // montre l'aperçu seul (premier-usage-1-apercu.html) ; « Coller encore » le rouvre. Relecture adverse F4 n° 3 : seul
   // un vrai collage replie — une suggestion du clavier, une dictée ou un mot collé grandissent aussi le texte d'un coup
   const surColle = (colle) => { if (colle.includes('\n')) setChampReplie(true) }
+  /** R2-003 — la puce « Projet » : le projet choisi devient celui de l'écran (puce « ● Nom », retirable). */
+  const choisirProjet = (projetId) => {
+    const projet = projetsOuverts.find((p) => p.id === projetId)
+    setContexte((c) => ({ ...c, projetId: projet ? projet.id : null, projetNom: projet?.nom ?? '', sectionId: null }))
+    setProjetOuvert(false)
+  }
+  /** « + Nouveau projet » / « Créer « nom » » : `#Nom` s'ajoute à la phrase, le serveur le lit « Nouveau projet ». */
+  const nouveauProjet = (nom) => {
+    const jeton = jetonProjet(nom)
+    setTexte((t) => `${t.trimEnd()}${t.trim() ? ' ' : ''}#${jeton}${jeton ? ' ' : ''}`)
+    setProjetOuvert(false)
+    requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
+  }
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
@@ -443,6 +470,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             onIgnorer={surIgnorer}
             onSoumettre={envoyer}
             erreur={modeListe ? '' : erreur}
+            projets={modeListe ? null : projetsOuverts}
           />
         ) : null}
         {modeListe && donneesListe ? (
@@ -459,13 +487,22 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         {modeListe ? null : (
           <>
             {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={setQuand} /> : null}
+            {projetOuvert ? (
+              <SelecteurProjet
+                projets={projetsOuverts}
+                valeur={contexte.projetId}
+                chargement={projets === null}
+                onChoisir={choisirProjet}
+                onNouveau={nouveauProjet}
+              />
+            ) : null}
             <div className="saisie-pied">
               <span className="puces">
                 <button
                   type="button"
                   className={quand ? 'puce lue' : 'puce vide'}
                   aria-expanded={quandOuvert}
-                  onClick={() => setQuandOuvert((v) => !v)}
+                  onClick={() => { setQuandOuvert((v) => !v); setProjetOuvert(false) }}
                 >
                   <Calendar className="i i-16" aria-hidden="true" />
                   <span className="chiffres">{libelleQuand(quand)}</span>
@@ -481,7 +518,13 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                     <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
-                ) : null}
+                ) : (
+                  <button type="button" className="puce vide" aria-expanded={projetOuvert}
+                    onClick={() => { setProjetOuvert((v) => !v); setQuandOuvert(false) }}>
+                    <Folder className="i i-16" aria-hidden="true" />
+                    <span>Projet</span>
+                  </button>
+                )}
                 {contexte.lien ? (
                   <button type="button" className="puce lue" aria-label={`Retirer le lien « ${contexte.lien.libelle || 'cette fiche'} »`}
                     onClick={() => setContexte((c) => ({ ...c, lien: null }))}>

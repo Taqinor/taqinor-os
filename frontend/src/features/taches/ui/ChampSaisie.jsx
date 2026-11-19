@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -109,6 +109,44 @@ function PuceJeton({ jeton, onIgnorer }) {
   )
 }
 
+/* R2-003 — dès `#`, la liste des projets OUVERTS : filtrée sans accents ni casse par le DÉBUT d'un mot du nom (la
+   même règle que le serveur, `analyseur.resoudre_projet`), flèches + Entrée ou le doigt ; le choix insère
+   `#Nom_Avec_Soulignés` (lu par la grammaire : `_` = espace). Échap ferme la liste, pas la feuille. */
+
+const sansAccents = (texte) => String(texte ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const cle = (texte) => sansAccents(texte).replace(/[\s_-]+/g, '')
+const MAX_PROPOSES = 6
+const OUVERTS = new Set(['actif', 'en_pause'])
+
+/** Le `#mot` que le curseur est en train d'écrire (`{ debut, fin, q }`), ou `null`. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé par la feuille (D-ENF22)
+export function motDiese(valeur, curseur) {
+  const texte = String(valeur ?? '')
+  const pos = Number.isInteger(curseur) ? curseur : texte.length
+  const m = /(^|\s)#([^\s#]*)$/u.exec(texte.slice(0, pos))
+  if (!m) return null
+  const suite = /^[^\s]*/u.exec(texte.slice(pos))[0]
+  return { debut: m.index + m[1].length, fin: pos + suite.length, q: m[2] }
+}
+
+/** Les projets ouverts dont un mot COMMENCE par `q` (« sal », « salon_sol », « benal »), dans l'ordre reçu. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function projetsPour(projets, q) {
+  const cherche = cle(q)
+  return (projets ?? []).filter((p) => !p.statut || OUVERTS.has(p.statut)).filter((p) => {
+    if (!cherche) return true
+    const mots = String(p.nom ?? '').split(/[\s_-]+/u).filter(Boolean)
+    return mots.some((_, i) => cle(mots.slice(i).join('')).startsWith(cherche))
+  }).slice(0, MAX_PROPOSES)
+}
+
+/** `#Nom_Avec_Soulignés` : espaces → `_`, coupé au premier signe que la grammaire ne lit pas dans un nom. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function jetonProjet(nom) {
+  const souligne = String(nom ?? '').trim().replace(/\s+/gu, '_')
+  return souligne.split(/[^\p{L}\p{N}_-]/u)[0]
+}
+
 export function PrioriteProjet({ nom, valeur, onChoisir }) {
   return (
     <div className="segmente" role="radiogroup" aria-label={`Priorité du projet ${nom}`}>
@@ -140,9 +178,14 @@ export default function ChampSaisie({
   onSoumettre,
   autoFocus = true,
   indication = INDICATION,
+  projets = null,
 }) {
   const idErreur = useId()
+  const idListe = useId()
   const champ = useRef(null)
+  const [curseur, setCurseur] = useState(null)
+  const [actif, setActif] = useState(0)
+  const [fermeePour, setFermeePour] = useState(null)
   // la feuille qui l'accueille met son focus sur sa poignée à l'ouverture : on reprend la main juste après
   useEffect(() => {
     if (!autoFocus) return undefined
@@ -150,7 +193,44 @@ export default function ChampSaisie({
     return () => cancelAnimationFrame(id)
   }, [autoFocus])
   const phrases = alertes.map(phraseAlerte).filter(Boolean)
+
+  const mot = projets ? motDiese(valeur, curseur) : null
+  const proposes = mot ? projetsPour(projets, mot.q) : []
+  const listeOuverte = proposes.length > 0 && fermeePour !== valeur
+  const courant = Math.min(actif, Math.max(proposes.length - 1, 0))
+  const lireCurseur = (e) => setCurseur(e.target.selectionStart ?? null)
+  const choisirProjet = (projet) => {
+    const jeton = jetonProjet(projet.nom)
+    if (!mot || !jeton) return
+    const avant = `${valeur.slice(0, mot.debut)}#${jeton} `
+    const apres = valeur.slice(mot.fin).replace(/^\s+/u, '')
+    onChange?.(avant + apres)
+    setActif(0)
+    setCurseur(avant.length)
+    requestAnimationFrame(() => {
+      champ.current?.focus()
+      champ.current?.setSelectionRange?.(avant.length, avant.length)
+    })
+  }
+
   const surTouche = (e) => {
+    if (listeOuverte && !e.nativeEvent?.isComposing) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActif(e.key === 'ArrowDown' ? Math.min(courant + 1, proposes.length - 1) : Math.max(courant - 1, 0))
+        return
+      }
+      if ((e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) || e.key === 'Tab') {
+        e.preventDefault()
+        choisirProjet(proposes[courant])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault() // la liste se ferme ; la feuille, elle, reste ouverte
+        setFermeePour(valeur)
+        return
+      }
+    }
     if (e.key !== 'Enter' || e.nativeEvent?.isComposing) return
     const seule = !String(valeur ?? '').includes('\n')
     if ((seule && !e.shiftKey) || e.metaKey || e.ctrlKey) {
@@ -168,6 +248,10 @@ export default function ChampSaisie({
           aria-label="Ajouter une tâche"
           aria-invalid={erreur ? true : undefined}
           aria-describedby={erreur ? idErreur : undefined}
+          aria-autocomplete={projets ? 'list' : undefined}
+          aria-expanded={projets ? listeOuverte : undefined}
+          aria-controls={listeOuverte ? idListe : undefined}
+          aria-activedescendant={listeOuverte ? `${idListe}-${proposes[courant].id}` : undefined}
           placeholder={indication}
           rows={2}
           enterKeyHint="send"
@@ -176,11 +260,33 @@ export default function ChampSaisie({
           spellCheck="true"
           ref={champ}
           value={valeur}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => { lireCurseur(e); setActif(0); onChange?.(e.target.value) }}
+          onSelect={lireCurseur}
           onPaste={(e) => onColle?.(e.clipboardData?.getData('text') ?? '')}
           onKeyDown={surTouche}
         />
       </div>
+      {listeOuverte ? (
+        <div id={idListe} className="selecteur-projet-liste" role="listbox" aria-label="Projets">
+          {proposes.map((projet, i) => (
+            <button
+              key={projet.id}
+              id={`${idListe}-${projet.id}`}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={i === courant}
+              className="selecteur-projet-item"
+              data-p={projet.couleur}
+              // le doigt choisit sans voler le focus au champ (le clavier de l'iPhone reste ouvert)
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choisirProjet(projet)}
+            >
+              <i className="point" aria-hidden="true" />{projet.nom}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {erreur ? <p id={idErreur} className="erreur-champ" role="alert">{erreur}</p> : null}
       {jetons.length > 0 ? (
         <div className="puces saisie" aria-label="Ce que j'ai lu">

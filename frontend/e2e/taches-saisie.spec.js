@@ -82,6 +82,24 @@ test.describe('Tâches — saisie', () => {
     }
   })
 
+  test('R2-003 — « #Sal » propose « Salon Solaire Expo » : la tâche y va, aucun projet en double', async ({ page }) => {
+    await reinitialiser(page)
+    const nom = `Salon Solaire Expo ${suffixe()}`
+    const projet = await creerProjet(page, nom)
+    const titre = titreUnique('Réserver le stand')
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    await champSaisie(page).pressSequentially(`${titre} #Sal`, { delay: 10 })
+    await expect(feuilleSaisie(page).getByRole('listbox', { name: 'Projets' }).getByRole('option', { name: nom })).toBeVisible()
+    await champSaisie(page).press('Enter')
+    await expect(champSaisie(page)).toHaveValue(`${titre} #${nom.replace(/ /g, '_')} `)
+    await expect(feuilleSaisie(page).locator('[data-jeton="projet"]')).toContainText(nom)
+    await champSaisie(page).press('Enter')
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    expect((await lireTache(page, (await chercherTaches(page, titre))[0].id)).projet?.id).toBe(projet.id)
+    expect((await listerProjets(page)).map((p) => p.nom), 'aucun « Nouveau projet : Sal »').toEqual([nom])
+  })
+
   test('retirer une puce : le mot reste dans le titre, rien n\'est corrigé', async ({ page }) => {
     await reinitialiser(page)
     const titre = titreUnique('Appeler le fournisseur')
