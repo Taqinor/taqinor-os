@@ -1739,7 +1739,9 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                      _montant(eco1.get('valeur'))
                      if isinstance(eco1, dict) else _montant(eco1)),
                  'retour_ans': _indicateur(bloc, 'retour_ans'),
-                 'retour_dixieme_ans': _options.retour_au_dixieme(bloc),  # D-SENS-1
+                 # D-SENS-1 — niveau 14 : un devis en dessous garde ses lignes d'hier.
+                 **({'retour_dixieme_ans': _options.retour_au_dixieme(bloc)}
+                    if (reglages or {}).get('sensibilites_dixieme', True) else {}),
                  'tri_pct': _indicateur(bloc, 'tri_pct'),
                  # AMOT97 — le cumul net de la dernière année du MÊME flux.
                  'cumul_25_ans_mad': ((bloc or {}).get('flux') or [{}])[-1].get(
@@ -1969,12 +1971,14 @@ def economie_ci_pour_devis(devis, company):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
     from apps.ventes.domain.regles_calcul import (
-        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_3010, calcul_corrige, regles_au_moins)
+        REGLES_CORRIGEES_2710, REGLES_SENSIBILITES_1911, REGLES_SENSIBILITES_3010, calcul_corrige,
+        regles_au_moins)
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
     reglages['regles_origine'] = not regles_au_moins(devis, REGLES_CORRIGEES_2710)  # CEC (27/10)
     # D-CI-SENSIB-ENVOYES (30/10) — un devis envoyé garde son tableau de sensibilités.
-    reglages['sensibilites_origine'] = not regles_au_moins(devis, REGLES_SENSIBILITES_3010)
+    reglages.update(sensibilites_origine=not regles_au_moins(devis, REGLES_SENSIBILITES_3010),
+                    sensibilites_dixieme=regles_au_moins(devis, REGLES_SENSIBILITES_1911))  # D-SENS-1
     if not calcul_corrige(devis):
         # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
