@@ -500,7 +500,7 @@ export default function Projet() {
     setVue(suite.vue)
     const position = `${item.titre} : position ${suite.vers + 1} sur ${suite.total}`
     try {
-      await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.avant, apres_id: suite.apres })
+      await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.avant, apres_id: suite.apres }, { erreurSousLeChamp: true })
       proposerAnnuler({
         message: 'Ordre changé',
         annonce: position,
@@ -511,7 +511,10 @@ export default function Projet() {
       })
     } catch (err) {
       setVue(avant)
-      setErreur(frenchError(err, 'L\'ordre n\'a pas été changé. Réessaie.'))
+      // couture L7 — un refus du serveur (voisin d'une autre liste : 409, rendu en 400 de champ) se dit en mots
+      // humains, une fois ; une panne garde son message
+      setErreur(err?.response?.status === 400 ? 'Impossible de déplacer cette tâche ici.'
+        : frenchError(err, 'L\'ordre n\'a pas été changé. Réessaie.'))
     }
   }
 

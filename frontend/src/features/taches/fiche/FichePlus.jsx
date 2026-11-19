@@ -177,7 +177,8 @@ function Etiquettes({ tache, patcher, erreur, annulable }) {
     let cible = toutes.find((e) => e.nom.trim().toLowerCase() === saisi.toLowerCase())
     if (!cible) {
       try {
-        const { data } = await creerEtiquette({ nom: saisi })
+        // couture L7 — « Une étiquette « X » existe déjà. » (409) est dite une fois, sous le champ, sans toast
+        const { data } = await creerEtiquette({ nom: saisi }, { erreurSousLeChamp: true })
         cible = { id: data.id, nom: data.nom, couleur: data.couleur }
         setToutes((liste) => [...liste, cible])
       } catch (err) {

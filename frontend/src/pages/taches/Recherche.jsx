@@ -350,7 +350,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   }
   const enregistrerVue = async () => {
     try {
-      const { data } = await creerVue({ nom: nomVue.trim(), filtres: filtresAEnregistrer })
+      // couture L7 — vue déjà existante, « 30 au plus » (409) : dits une fois, sous le champ, sans toast
+      const { data } = await creerVue({ nom: nomVue.trim(), filtres: filtresAEnregistrer }, { erreurSousLeChamp: true })
       const { geste_id: geste, ...vue } = data
       setVues((liste) => [...liste, vue])
       setNomVue(''); setErreurVue('')

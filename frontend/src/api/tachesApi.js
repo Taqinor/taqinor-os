@@ -198,7 +198,9 @@ export const proposerJournee = (params) => api.get('/taches/journee/proposition/
 export const lirePriorites = (params) => api.get('/taches/journee/priorites/', { params })
 export const lirePoint = () => api.get('/taches/journee/point/')
 export const garderJournee = (corps, options) => api.post('/taches/journee/planifier/', corps, avecCle(options))
-export const marquerEssentiel = (corps) => api.post('/taches/journee/essentiel/', corps)
+export const marquerEssentiel = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/journee/essentiel/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const alleger = (corps, options) => api.post('/taches/journee/alleger/', corps, avecCle(options))
 export const lireCloture = (params) => api.get('/taches/journee/cloture/', { params })
 export const cloturerJournee = (corps, options) => api.post('/taches/journee/cloturer/', corps, avecCle(options))
@@ -224,7 +226,9 @@ export const trancherTache = (id, corps) => api.post(`/taches/taches/${id}/tranc
 export const sauterTache = (id) => api.post(`/taches/taches/${id}/sauter/`, {})
 export const attendreTache = (id, corps) => api.post(`/taches/taches/${id}/attendre/`, corps)
 export const recevoirTache = (id) => api.post(`/taches/taches/${id}/recu/`, {})
-export const reordonnerTache = (id, corps) => api.post(`/taches/taches/${id}/reordonner/`, corps)
+export const reordonnerTache = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post(`/taches/taches/${id}/reordonner/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const restaurerTache = (id) => api.post(`/taches/taches/${id}/restaurer/`, {})
 export const poserRappel = (id, corps) => api.post(`/taches/taches/${id}/rappels/`, corps)
 export const apercuChangement = (id, corps) => api.post(`/taches/taches/${id}/changement/apercu/`, corps)
@@ -239,11 +243,15 @@ export const modifierPoint = (id, corps) => api.patch(`/taches/checklist/${id}/`
 export const retirerPoint = (id) => api.delete(`/taches/checklist/${id}/`)
 export const reordonnerPoint = (id, corps) => api.post(`/taches/checklist/${id}/reordonner/`, corps)
 export const listerEtiquettes = (params) => api.get('/taches/etiquettes/', { params })
-export const creerEtiquette = (corps) => api.post('/taches/etiquettes/', corps)
+export const creerEtiquette = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/etiquettes/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const modifierEtiquette = (id, corps) => api.patch(`/taches/etiquettes/${id}/`, corps)
 export const supprimerEtiquette = (id) => api.delete(`/taches/etiquettes/${id}/`)
 export const listerVues = () => api.get('/taches/vues/')
-export const creerVue = (corps) => api.post('/taches/vues/', corps)
+export const creerVue = (corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post('/taches/vues/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const modifierVue = (id, corps) => api.patch(`/taches/vues/${id}/`, corps)
 export const supprimerVue = (id) => api.delete(`/taches/vues/${id}/`)
 export const listerSupprimees = () => api.get('/taches/supprimees/')
@@ -291,7 +299,9 @@ export const supprimerModele = (id) => api.delete(`/taches/modeles/${id}/`)
 export const instancierModele = (id, corps, options) =>
   api.post(`/taches/modeles/${id}/instancier/`, corps, avecCle(options))
 export const lireRevue = (params) => api.get('/taches/revue/projets/', { params })
-export const deciderRevue = (projetId, corps) => api.put(`/taches/revue/projets/${projetId}/`, corps)
+export const deciderRevue = (projetId, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.put(`/taches/revue/projets/${projetId}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 
 // ── 3.4 Rythme, réglages, iPhone, données ─────────────────────────────────────
 

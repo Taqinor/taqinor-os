@@ -722,7 +722,8 @@ export default function Aujourdhui() {
     // R2-012 — le plafond se teste AVANT l'appel, depuis l'étoile comme depuis le menu ⋯ : la 4e ne part jamais
     if (suivant && !item.essentielle && (donnees?.essentiel?.length ?? 0) >= MAX_ESSENTIELLES) { refuserEssentielle(); return }
     try {
-      const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
+      // couture L7 — « 3 au plus » (409) n'est dit qu'une fois : par le toast du catch, pas aussi par le pont
+      const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant }, { erreurSousLeChamp: true })
       poserProgression(data.progression)
       setDonnees((d) => rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version).suite)
       // R2-027 — l'étoile pleine suffit : plus de toast « Essentielle · Annuler » (retoucher l'étoile la retire) ;

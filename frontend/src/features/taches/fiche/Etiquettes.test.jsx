@@ -88,7 +88,7 @@ describe('TCH166 — étiquettes dans la fiche → Plus', () => {
     await ouvrirPlus(user)
     const champ = screen.getByRole('textbox', { name: 'Ajouter une étiquette' })
     await user.type(champ, 'urgent{Enter}')
-    await waitFor(() => expect(api.creerEtiquette).toHaveBeenCalledWith({ nom: 'urgent' }))
+    await waitFor(() => expect(api.creerEtiquette).toHaveBeenCalledWith({ nom: 'urgent' }, { erreurSousLeChamp: true }))
     await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 9], lock_version: 4 }))
     expect(champ).toHaveValue('')
     expect(within(puces()).getByRole('button', { name: 'urgent' })).toBeInTheDocument()
@@ -182,7 +182,7 @@ describe('TCH166 — vues enregistrées dans la Recherche', () => {
     await waitFor(() => expect(api.creerVue).toHaveBeenCalledWith({
       nom: 'Mon point',
       filtres: { q: 'devis', inclure_faites: true, periode: 'aujourdhui', tri: 'echeance' },
-    }))
+    }, { erreurSousLeChamp: true }))
     expect(await screen.findByRole('button', { name: 'Mon point' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Nom de la vue' })).toHaveValue('')
     expect(api.listerVues).toHaveBeenCalledTimes(1)

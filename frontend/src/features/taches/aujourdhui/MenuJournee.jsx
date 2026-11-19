@@ -129,7 +129,9 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     suite[j] = taches[i]
     setDonnees((d) => ({ ...d, [liste]: recomposer(d[liste], suite) }))
     try {
-      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null })
+      // couture L7 — un refus d'état (409) est dit UNE fois, ici, en mots humains : jamais aussi le toast « Valeur inconnue. »
+      await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null },
+        { erreurSousLeChamp: true })
       annoncer(`${item.titre} : position ${j + 1} sur ${suite.length}`)
     } catch {
       // R3-026 — le refus se VOIT, en mots humains : la ligne revient à sa place (le détail serveur n'aide pas Reda)
