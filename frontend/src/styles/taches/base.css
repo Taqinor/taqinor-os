@@ -657,6 +657,12 @@
   .tch .toast-place {
     right: 84px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 20px);
   }
+  /* vague 2 — une feuille du bas ouverte (saisie, Quand, Projet…) : le toast monte en haut de l'écran, sur le voile,
+     au-dessus d'elle — il couvrait la liste `#` des projets et le sélecteur de projet. Une feuille fait au plus 85 % de
+     la hauteur : le haut de l'écran, voilé, ne porte rien d'utile. */
+  .tch:has(.feuille[aria-modal="true"]) .toast-place {
+    top: calc(env(safe-area-inset-top) + 8px); bottom: auto; right: 16px;
+  }
 }
 .tch .voile {
   position: fixed; inset: 0; background: var(--tch-voile);
