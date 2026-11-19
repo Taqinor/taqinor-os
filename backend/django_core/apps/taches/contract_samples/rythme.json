@@ -48,7 +48,8 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 4,
-        "plan_lignes": 5
+        "plan_lignes": 5,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-04",
@@ -58,7 +59,8 @@
         "essentiel_faites": 0,
         "essentiel_prevues": 0,
         "plan_tenues": 0,
-        "plan_lignes": 0
+        "plan_lignes": 0,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-05",
@@ -68,7 +70,8 @@
         "essentiel_faites": 0,
         "essentiel_prevues": 1,
         "plan_tenues": 2,
-        "plan_lignes": 4
+        "plan_lignes": 4,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-06",
@@ -78,7 +81,8 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 3,
-        "plan_lignes": 3
+        "plan_lignes": 3,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-09",
@@ -88,7 +92,8 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 5,
-        "plan_lignes": 6
+        "plan_lignes": 6,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-10",
@@ -98,7 +103,8 @@
         "essentiel_faites": 0,
         "essentiel_prevues": 0,
         "plan_tenues": 0,
-        "plan_lignes": 0
+        "plan_lignes": 0,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-11",
@@ -108,7 +114,8 @@
         "essentiel_faites": 0,
         "essentiel_prevues": 0,
         "plan_tenues": 0,
-        "plan_lignes": 0
+        "plan_lignes": 0,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-12",
@@ -118,7 +125,8 @@
         "essentiel_faites": 0,
         "essentiel_prevues": 1,
         "plan_tenues": 1,
-        "plan_lignes": 3
+        "plan_lignes": 3,
+        "hors_objectif": false
       },
       {
         "jour": "2026-11-13",
@@ -128,7 +136,19 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 4,
-        "plan_lignes": 4
+        "plan_lignes": 4,
+        "hors_objectif": false
+      },
+      {
+        "jour": "2026-11-14",
+        "statut_jour": "non_ouvre",
+        "faites": 3,
+        "objectif": null,
+        "essentiel_faites": 0,
+        "essentiel_prevues": 0,
+        "plan_tenues": 0,
+        "plan_lignes": 0,
+        "hors_objectif": true
       },
       {
         "jour": "2026-11-16",
@@ -138,7 +158,8 @@
         "essentiel_faites": 1,
         "essentiel_prevues": 1,
         "plan_tenues": 4,
-        "plan_lignes": 5
+        "plan_lignes": 5,
+        "hors_objectif": false
       }
     ],
     "constats": [
