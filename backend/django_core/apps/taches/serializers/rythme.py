@@ -18,7 +18,9 @@ from apps.taches.confidentialite import nom_pour
 from apps.taches.moteur import rythme as moteur
 from apps.taches.moteur.gabarits import boutons, texte
 from apps.taches.selectors.base import jours_travailles_de, projets_de
-from apps.taches.selectors.rythme import constats_ouverts, plans_du_rythme, preferences_de, proposition_ouverte
+from apps.taches.selectors.rythme import (
+    constats_ouverts, masque_travaille, plans_du_rythme, preferences_de, proposition_ouverte,
+)
 from apps.taches.serializers.formes import PROPOSITION, PropositionSerializer, contexte
 from apps.taches.services import revelations
 from apps.taches.services.rythme import etat_rythme
@@ -216,5 +218,6 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
         'constats': constats,
         'repere': _repere(etat, reglages.comprendre_mon_rythme),
         'preferences': _preferences(user),
+        'jours_travailles': masque_travaille(user),
         'geste_id': geste_id,
     }

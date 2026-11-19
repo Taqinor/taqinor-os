@@ -46,7 +46,8 @@
 .tch .ep-groupe-titre { margin: 0 0 6px; font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-jours { display: flex; flex-wrap: wrap; gap: 6px; }
 .tch .ep-jour-puce { min-height: 44px; }
-.tch .ep-jour-puce[aria-pressed="true"] { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+.tch .ep-jour-puce[aria-pressed="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 600; }
+.tch .ep-jour-puce:disabled { opacity: 0.5; }
 .tch .ep-conges { list-style: none; margin: 0 0 8px; padding: 0; }
 .tch .ep-conges li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; font-size: 0.9375rem; }
 .tch .ep-champs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

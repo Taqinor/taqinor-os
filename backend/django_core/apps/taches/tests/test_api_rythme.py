@@ -173,6 +173,20 @@ class RythmeLectureTests(BaseRythme):
         serie = self.api.get(URL).json()['serie']
         self.assertEqual([b['jour'][-2:] for b in serie], ['12', '16'])
 
+    def test_r2_123_jours_travailles_sans_preference_suit_le_calendrier_de_la_societe(self):
+        """« Mes jours » allume les jours RÉELLEMENT travaillés : sans préférence, lun.-ven. (le week-end de la
+        société ne compte pas), jamais les sept jours."""
+        self.reglages()
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1111100')
+
+    def test_r2_123_jours_travailles_est_le_masque_dit_inter_le_calendrier(self):
+        from apps.notifications.models import WorkingHoursConfig
+        self.reglages()
+        Preference.objects.create(company=self.a, proprietaire=self.u1, cle='jours_travailles', valeur='1011111')
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1011100')
+        WorkingHoursConfig.objects.create(company=self.a, working_days=0b0111111)  # la société travaille le samedi
+        self.assertEqual(self.api.get(URL).json()['jours_travailles'], '1011110')
+
     def test_moins_de_9_jours_repere_nul(self):
         self.reglages()
         jours_evalues(self.u1, [5, 5, 5])

@@ -373,7 +373,7 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
         <Constats constats={rythme.constats} onRepondre={actions.repondre} />
         <Modes mode={rythme.mode} onChoisir={actions.changerMode} />
         <Replie titre="Mes jours">
-          <MesJours preferences={rythme.preferences} onPoser={actions.poserPreference} aujourdhui={aujourdhui} />
+          <MesJours preferences={rythme.preferences} joursTravailles={rythme.jours_travailles} onPoser={actions.poserPreference} aujourdhui={aujourdhui} />
         </Replie>
         <Replie titre="Comprendre mon rythme">
           <Comprendre allume={rythme.comprendre_mon_rythme} onBasculer={actions.comprendre} erreur={erreurs.comprendre} />

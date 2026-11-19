@@ -182,8 +182,28 @@ describe('TCH107 — Mon rythme', () => {
     monter()
     await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
     const travailles = screen.getByRole('group', { name: 'Jours travaillés' })
-    await userEvent.click(within(travailles).getByRole('button', { name: 'dimanche' }))
-    expect(poserPreference).toHaveBeenCalledWith({ cle: 'jours_travailles', valeur: '1111110' })
+    await userEvent.click(within(travailles).getByRole('button', { name: 'mercredi' }))
+    // les autres jours gardent ce que Reda a DIT (ici rien : tous) ; seul mercredi s'éteint
+    expect(poserPreference).toHaveBeenCalledWith({ cle: 'jours_travailles', valeur: '1101111' })
+  })
+
+  it('R2-123 — « Mes jours » allume les jours RÉELLEMENT travaillés (lun.-ven.), samedi et dimanche éteints et grisés, dits', async () => {
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
+    const travailles = screen.getByRole('group', { name: 'Jours travaillés' })
+    const allumes = within(travailles).getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true')
+    expect(allumes.map((b) => b.textContent)).toEqual(['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'])
+    expect(within(travailles).getByRole('button', { name: 'samedi' })).toBeDisabled()
+    expect(screen.getByText('samedi, dimanche : non travaillés dans ta société.')).toBeInTheDocument()
+  })
+
+  it('R2-123 — le dernier jour travaillé est gardé : éteindre le seul jour allumé est refusé sans appel', async () => {
+    lireRythme.mockImplementation(() => reponse({ ...rythme(), jours_travailles: '0010000', preferences: [{ cle: 'jours_travailles', valeur: '0010000', source: 'ecran', dite_le: '2026-11-17T09:00:00+01:00' }] }))
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Jours travaillés' })).getByRole('button', { name: 'mercredi' }))
+    expect(await screen.findByText('Garde au moins un jour travaillé.')).toBeInTheDocument()
+    expect(poserPreference).not.toHaveBeenCalled()
   })
 
   it('Mes jours : l\'erreur du serveur s\'affiche sous le temps disponible, la saisie reste', async () => {
