@@ -58,6 +58,8 @@
       "confidentielle": false,
       "source": "rapide",
       "peut_cloturer": true,
+      "a_notes": true,
+      "fait_le": "2026-11-17T10:05:00+01:00",
       "lock_version": 5,
       "notes": "Appeler avant 11 h.",
       "etiquettes": [
@@ -117,6 +119,8 @@
           "confidentielle": false,
           "source": "rapide",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 0
         }
       ],
@@ -135,7 +139,6 @@
       "premier_jour_prevu": "2026-11-17",
       "reports_tranches": 0,
       "duree_reelle_minutes": null,
-      "fait_le": "2026-11-17T10:05:00+01:00",
       "annule_le": null,
       "occurrence_du": null,
       "activite_origine_id": null,
@@ -184,6 +187,8 @@
       "confidentielle": false,
       "source": "rapide",
       "peut_cloturer": true,
+      "a_notes": true,
+      "fait_le": null,
       "lock_version": 0,
       "notes": "Appeler avant 11 h.",
       "etiquettes": [],
@@ -207,7 +212,6 @@
       "premier_jour_prevu": "2026-11-17",
       "reports_tranches": 0,
       "duree_reelle_minutes": null,
-      "fait_le": null,
       "annule_le": null,
       "occurrence_du": "2026-11-23",
       "activite_origine_id": null,

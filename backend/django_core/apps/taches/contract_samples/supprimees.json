@@ -80,6 +80,8 @@
           "confidentielle": false,
           "source": "manuel",
           "peut_cloturer": true,
+          "a_notes": false,
+          "fait_le": null,
           "lock_version": 1
         },
         "deleted_at": "2026-11-16T11:00:00+01:00"

@@ -79,6 +79,8 @@
         "confidentielle": false,
         "source": "rapide",
         "peut_cloturer": true,
+        "a_notes": true,
+        "fait_le": null,
         "lock_version": 4,
         "notes": "Appeler avant 11 h.",
         "etiquettes": [
@@ -138,6 +140,8 @@
             "confidentielle": false,
             "source": "rapide",
             "peut_cloturer": true,
+            "a_notes": false,
+            "fait_le": null,
             "lock_version": 0
           }
         ],
@@ -156,7 +160,6 @@
         "premier_jour_prevu": "2026-11-17",
         "reports_tranches": 0,
         "duree_reelle_minutes": null,
-        "fait_le": null,
         "annule_le": null,
         "occurrence_du": null,
         "activite_origine_id": null,

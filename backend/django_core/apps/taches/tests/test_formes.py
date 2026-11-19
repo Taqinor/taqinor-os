@@ -143,6 +143,20 @@ class TachesChargeesContreEchantillonsTests(TestCase):
         self.assertEqual(list(rendu), list(exemple('tache_ecrite')))
         self.assertEqual(rendu_json(rendu), heure_murale(exemple('tache_ecrite')))
 
+    def test_item_dit_la_note_et_quand_c_est_fait(self):
+        """V2-C — l'ITEM de liste porte `a_notes` (indice « note » de la ligne) et `fait_le`
+        (« Faites cette semaine ») ; jamais `a_notes` vrai sous l'en-tête assistant (regles.md §8)."""
+        item = formes.ItemSerializer(self._tache(formes.charger_items), context=self.contexte).data
+        self.assertIs(item['a_notes'], True)
+        self.assertIsNone(item['fait_le'])
+        assistant = formes.ItemSerializer(self._tache(formes.charger_items),
+                                          context=formes.contexte(assistant=True)).data
+        self.assertIs(assistant['a_notes'], False)
+        Tache.objects.filter(pk=20).update(statut='fait', fait_le=instant((11, 17), 10, 5), notes='')
+        fait = formes.ItemSerializer(self._tache(formes.charger_items), context=self.contexte).data
+        self.assertIs(fait['a_notes'], False)
+        self.assertEqual(rendu_json(fait)['fait_le'], '2026-11-17T10:05:00')
+
     def test_assistant_ni_notes_ni_titre_confidentiel(self):
         Projet.objects.filter(pk=3).update(confidentiel=True)
         rendu = formes.TacheSerializer(self._tache(), context=formes.contexte(assistant=True)).data
@@ -168,6 +182,15 @@ class FormesContreEchantillonsTests(SimpleTestCase):
         rendu = formes.ItemSerializer(activite, context=contexte).data
         self.assertEqual(list(rendu), list(exemple('item')))
         self.assertEqual(rendu_json(rendu), heure_murale(attendu))
+
+    def test_item_d_une_activite_close_dit_quand(self):
+        """V2-C — une activité close sert `fait_le` = son `done_at` ; jamais de note (`a_notes` faux)."""
+        activite = Activity(pk=102, summary='Rappeler Benali', due_date=J, done=True,
+                            done_at=instant((11, 17), 11, 30), object_id=1637,
+                            content_type=ContentType(pk=902, app_label='crm', model='lead'))
+        rendu = rendu_json(formes.ItemSerializer(activite, context=formes.contexte()).data)
+        self.assertEqual(rendu['fait_le'], '2026-11-17T11:30:00')
+        self.assertIs(rendu['a_notes'], False)
 
     def test_projet_rend_exactement_projet_json(self):
         contexte = formes.contexte(calculs={('projet', 3): {
@@ -301,5 +324,8 @@ class CanariFormesTests(TestCase):
         self.assertEqual(tache['section']['nom'], '')
         self.assertEqual(tache['en_attente_de'], '')
         self.assertEqual(tache['enfants'][0]['en_attente_de'], '')
+        self.assertIs(rendus['item']['a_notes'], False)  # rien de plus qu'avant : ni note, ni sa présence
+        self.assertIs(tache['a_notes'], False)
+        self.assertIs(self._rendus(False)['item']['a_notes'], True)
         for champ in formes.TEXTES_PROJET:
             self.assertEqual(rendus['projet'][champ], '')
