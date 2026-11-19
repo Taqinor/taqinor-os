@@ -116,11 +116,10 @@ test.describe('Tâches — saisie', () => {
     await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
     await boutonAjouter(page).click()
     await champSaisie(page).pressSequentially(`${titre} #Sal`, { delay: 10 })
-    await expect(feuilleSaisie(page).getByRole('listbox', { name: 'Projets' }).getByRole('option', { name: nom })).toBeVisible()
-    await champSaisie(page).press('Enter')
-    // R3-047 — le nom s'insère avec ses espaces ; le serveur lit en entier le nom d'un projet existant
-    await expect(champSaisie(page)).toHaveValue(`${titre} #${nom} `)
+    // R4-29 — « #Sal » est déjà lu comme CE projet (le seul qui commence ainsi) : la puce du pied le dit, la suggestion
+    // sous le champ se tait (jamais la suggestion ET la puce, l'une sous l'autre) ; Entrée envoie la phrase, rien à choisir
     await expect(feuilleSaisie(page).locator('[data-jeton="projet"]')).toContainText(nom)
+    await expect(feuilleSaisie(page).getByRole('listbox', { name: 'Projets' })).toHaveCount(0)
     await champSaisie(page).press('Enter')
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
     expect((await lireTache(page, (await chercherTaches(page, titre))[0].id)).projet?.id).toBe(projet.id)
