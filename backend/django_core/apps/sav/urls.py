@@ -23,6 +23,10 @@ from .views import (
     sav_fcr_insight, sav_performance_agent_insight,
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
+from .views_assistant import (
+    parc_client, ticket_fiche, ticket_resoudre, ticket_transition,
+    tickets_a_traiter,
+)
 from .maintenance import ContratMaintenanceViewSet
 from .query_params import DATE_OU_VIDE, EXPORT_XLSX, LIMITE, ou_vide
 
@@ -230,6 +234,19 @@ urlpatterns = [
          name='sav-whatsapp-inbound'),
     # NTSRV8 — File d'attente par équipe (+ proposition de débordement).
     path('file-attente/', file_attente_view, name='sav-file-attente'),
+    # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/parc/', parc_client, name='sav-assistant-parc'),
+    # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/tickets/', tickets_a_traiter, name='sav-assistant-tickets'),
+    # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/tickets/<int:pk>/', ticket_fiche,
+         name='sav-assistant-ticket-fiche'),
+    # headless: geste servi à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/tickets/<int:pk>/transition/', ticket_transition,
+         name='sav-assistant-ticket-transition'),
+    # headless: geste servi à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/tickets/<int:pk>/resoudre/', ticket_resoudre,
+         name='sav-assistant-ticket-resoudre'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),

@@ -221,3 +221,119 @@ class TransitionCroiseeTests(WideTeardownTimeoutMixin, TransactionTestCase):
         # B relit « résolu » sous le verrou : même statut = no-op de la
         # machine d'états (aucun effet, aucune seconde émission).
         self.assertEqual(res.get('b'), 200)
+
+
+@override_settings(ANYMAIL={'SENDINBLUE_API_KEY': 'cle-factice'},  # AMSG57 — l'e-mail part
+                   EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TransitionAssistantTests(TestCase):
+    """SAV5 — ``POST sav/assistant/tickets/<id>/transition|resoudre/`` : le même
+    service que les écrans, sans ``sans_facture``, et un refus quand la
+    transition préviendrait le client HORS de la fenêtre d'envoi."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='sav5-co', defaults={'nom': 'SAV5 Co'})
+        self.admin = User.objects.create_user(
+            username='sav5_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='SAV5',
+            email='sav5-client@example.invalid')
+
+    def _ticket(self, statut=Ticket.Statut.NOUVEAU, ref='SAV-SAV5-1', **kw):
+        return Ticket.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            type=Ticket.Type.CORRECTIF, statut=statut, created_by=self.admin, **kw)
+
+    def _poster(self, ticket, corps, route='transition'):
+        return self.api.post(
+            f'/api/django/sav/assistant/tickets/{ticket.pk}/{route}/', corps,
+            format='json')
+
+    def _notifier(self, actif=True):
+        sla = SavSlaSettings.get(self.company)
+        sla.notifications_client_sav = actif
+        sla.save()
+
+    def test_geste_sans_notification_meme_hors_fenetre(self):
+        self._notifier(True)
+        t = self._ticket()
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):
+            r = self._poster(t, {'vers': 'demarrer'})
+        self.assertEqual(r.status_code, 200, r.content)
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.EN_COURS)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_planifier_prevenant_le_client_refuse_hors_fenetre(self):
+        self._notifier(True)
+        t = self._ticket()
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):
+            r = self._poster(t, {'vers': 'planifier'})
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r.data['code'], 'hors_fenetre_envoi')
+        self.assertIn('écran SAV', r.data['detail'])
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.NOUVEAU)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_planifier_dans_la_fenetre_previent_le_client(self):
+        self._notifier(True)
+        t = self._ticket()
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=False):
+            r = self._poster(t, {'vers': 'planifier'})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['statut'], Ticket.Statut.PLANIFIE)
+        self.assertEqual(sum(1 for m in mail.outbox if 'sav5-client@example.invalid' in m.to), 1)
+
+    def test_reglage_eteint_aucune_fenetre_a_respecter(self):
+        t = self._ticket()
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):
+            r = self._poster(t, {'vers': 'planifier'})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_resoudre_canal_et_refus_hors_fenetre(self):
+        self._notifier(True)
+        t = self._ticket(Ticket.Statut.EN_COURS)
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):
+            refuse = self._poster(t, {'canal_resolution': 'a_distance'}, 'resoudre')
+        self.assertEqual((refuse.status_code, refuse.data['code']), (409, 'hors_fenetre_envoi'))
+        with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=False):
+            r = self._poster(t, {'canal_resolution': 'a_distance'}, 'resoudre')
+        self.assertEqual(r.status_code, 200, r.content)
+        t.refresh_from_db()
+        self.assertEqual((t.statut, t.canal_resolution), (Ticket.Statut.RESOLU, 'a_distance'))
+
+    def test_saut_hors_graphe_et_ticket_annule_409_nomment_l_ecran(self):
+        t = self._ticket()
+        r = self._poster(t, {'vers': 'cloturer'})
+        self.assertEqual((r.status_code, r.data['code']), (409, 'transition_interdite'))
+        self.assertIn(f'/sav?id={t.pk}', r.data['detail'])
+        annule = self._ticket(ref='SAV-SAV5-2', annule=True)
+        r = self._poster(annule, {'vers': 'planifier'})
+        self.assertEqual((r.status_code, r.data['code']), (409, 'ticket_annule'))
+
+    def test_cloture_jamais_sans_facture(self):
+        from decimal import Decimal
+        from apps.sav.models import PieceConsommee
+        t = self._ticket(Ticket.Statut.RESOLU, couverture='facturable')
+        produit = Produit.objects.create(
+            company=self.company, nom='Câble SAV5', sku='CAB-SAV5',
+            prix_vente=Decimal('50'), prix_achat=Decimal('20'))
+        PieceConsommee.objects.create(
+            company=self.company, ticket=t, produit=produit, quantite=Decimal('1'))
+        r = self._poster(t, {'vers': 'cloturer', 'sans_facture': True, 'motif': 'geste'})
+        self.assertEqual((r.status_code, r.data['code']), (409, 'ticket_non_facture'))
+        t.refresh_from_db()
+        self.assertEqual(t.statut, Ticket.Statut.RESOLU)
+
+    def test_corps_invalide_400_et_ticket_inconnu_404(self):
+        t = self._ticket()
+        self.assertEqual(self._poster(t, {'vers': 'annuler'}).status_code, 400)
+        self.assertEqual(self._poster(t, {}).status_code, 400)
+        t.pk = t.pk + 10_000
+        self.assertEqual(self._poster(t, {'vers': 'planifier'}).status_code, 404)
