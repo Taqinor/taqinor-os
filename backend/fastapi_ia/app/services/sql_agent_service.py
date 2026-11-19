@@ -1895,7 +1895,7 @@ class SQLAgentService:
             if images:  # F5 — moteur natif seulement, jamais ignorees en silence
                 return await asyncio.to_thread(relais.tour_avec_images, self, question, company_id or 0,
                                                user_id or 0, action_ctx, contexte, catalogue, images)
-            copilote = prompt_copilote.copilote_allume(catalogue)
+            copilote = prompt_copilote.copilote_allume(getattr(action_ctx, "catalogue_complet", None) or catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
             # AIC90 (D-COP-1) — budget du jour atteint : tout le tour part sur le
@@ -1903,6 +1903,7 @@ class SQLAgentService:
             if await asyncio.to_thread(self._budget_atteint, action_ctx):
                 repli = (SQL_AGENT_FALLBACK_PROVIDER or "").lower()
                 if repli and repli != SQL_AGENT_PROVIDER.lower():
+                    relais.catalogue_pour_repli(action_ctx, repli, contexte)  # FND6
                     out = await asyncio.to_thread(
                         self._run_agent, question, company_id or 0, user_id or 0,
                         action_ctx, repli, contexte, copilote,
@@ -1931,6 +1932,7 @@ class SQLAgentService:
                 # AIC4 — UN rejeu : meme question, memes outils, meme historique.
                 logger.warning("Agent SQL : %s a refuse (%s) — repli sur %s",
                                SQL_AGENT_PROVIDER, refus, repli)
+                relais.catalogue_pour_repli(action_ctx, repli, contexte)  # FND6
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
                     action_ctx, repli, contexte, copilote,

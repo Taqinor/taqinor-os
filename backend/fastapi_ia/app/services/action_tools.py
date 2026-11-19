@@ -100,6 +100,9 @@ class ActionContext:
         # catalogue déjà lu ce tour (une seule lecture Django par question).
         self.identite: dict[str, str] = {}
         self.catalogue_tour: Optional[list[dict[str, Any]]] = None
+        # Vague 2 (FND6) — le catalogue COMPLET de Django, pour recalculer le
+        # jeu d'un tour servi par le repli sans le relire.
+        self.catalogue_complet: Optional[list[dict[str, Any]]] = None
         # AIC91 — clé Redis de la progression du tour (posée par la route).
         self.progression_cle: Optional[str] = None
         # AIC97 — identifiant du tour (un contexte par requête = un tour) :
@@ -1155,6 +1158,14 @@ def garde_ecritures_internes(ctx: Optional[ActionContext], action: dict[str, Any
     return None
 
 
+def copilote_du_tour(ctx: Optional[ActionContext]) -> bool:
+    """Copilote allume pour l'appelant ? Lu sur le catalogue COMPLET du tour
+    (vague 2, FND6 : le jeu de Groq est reduit au noyau), sinon sur celui du
+    tour."""
+    return prompt_copilote.copilote_allume(
+        getattr(ctx, "catalogue_complet", None) or getattr(ctx, "catalogue_tour", None))
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
     *, idempotency_key: str | None = None,
@@ -1214,7 +1225,7 @@ def run_catalogue_action(
     if risk in _RISK_NEEDS_CONFIRM:
         preview = _human_preview(
             action, inputs, _libelles_objets(ctx, action, inputs),
-            multiligne=prompt_copilote.copilote_allume(getattr(ctx, "catalogue_tour", None)))
+            multiligne=copilote_du_tour(ctx))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",
@@ -1259,7 +1270,7 @@ def run_catalogue_action(
         # Copilote v2 (F2) — les candidats / le doublon du refus, copilote
         # allume seulement (eteint : le texte d'avant, octet pour octet).
         details = res.get("details")
-        if details and prompt_copilote.copilote_allume(getattr(ctx, "catalogue_tour", None)):
+        if details and copilote_du_tour(ctx):
             texte += " Détails du refus : " + json.dumps(details, ensure_ascii=False)
         return texte
     result = {
@@ -1651,9 +1662,12 @@ def build_action_tools(
     """
     from langchain_core.tools import StructuredTool
 
+    from app.services.relais_copilote import pour_langchain
+
     tools = []
     catalogue = getattr(ctx, "catalogue_tour", None)
-    for action in (fetch_catalogue(ctx) if catalogue is None else catalogue):
+    # FND6 — jamais une action `natif_seul` (vague 2) chez LangChain.
+    for action in pour_langchain(fetch_catalogue(ctx) if catalogue is None else catalogue):
         try:
             args_model = _args_model_for(action)
         except Exception as exc:  # pragma: no cover - schema malforme

@@ -518,6 +518,25 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertNotIn("Reponse du repli.", out["answer"])
         self.assertFalse(out.get("repli", False))
 
+    def test_repli_recalcule_le_catalogue_du_fournisseur(self):
+        """FND6 — au plafond du jour comme après un refus de Claude, le
+        catalogue du tour est recalculé pour le repli AVANT `_run_agent`."""
+        import contextlib
+        from app.services import relais_copilote as relais
+        refuse, credit_nul, groq = _llm_factices()
+        for nom, claude, budget in (("plafond", groq, True),
+                                    ("refus", lambda: refuse(messages=iter([]), erreur=credit_nul()), False)):
+            with self.subTest(cas=nom), contextlib.ExitStack() as pile:
+                self._poser(claude, groq)
+                pile.enter_context(mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                                                     staticmethod(lambda ctx, _b=budget: _b)))
+                recalcul = pile.enter_context(mock.patch.object(relais, "catalogue_pour_repli"))
+                if not budget:
+                    pile.enter_context(self.assertLogs(self.svc.logger, level="WARNING"))
+                out = self._question()
+                self.assertTrue(out["repli"])
+                self.assertEqual(recalcul.call_args.args[1], "groq")
+
     def test_sans_fournisseur_de_repli_message_actuel(self):
         refuse, credit_nul, groq = _llm_factices()
         construits = self._poser(lambda: refuse(messages=iter([]),
@@ -721,6 +740,56 @@ class ChargeurNatifFnd4Tests(unittest.TestCase):
         self.assertNotIn(ch.NOM_CHARGEUR, noms)
         systeme = next(m for genre, m in llm.recus if genre == "messages")[0].content
         self.assertNotIn(ch.ENTETE_INDEX, systeme)
+
+
+class JeuxDesMoteursFnd6Tests(unittest.TestCase):
+    """Vague 2 (FND6) — Groq copilote allumé = noyau seul ; copilote éteint,
+    la règle d'avant ; le repli recalcule son jeu ; LangChain ne reçoit
+    jamais une action `natif_seul` ; pas de reprise native au plafond du jour."""
+
+    CATALOGUE = [_action("crm.digest_matin", noyau=True), _action("crm.lead.note"),
+                 _action("taches.journee.lire"), _action("visites.agenda", natif_seul=True)]
+
+    def test_groq_noyau_seul_copilote_allume_regle_d_avant_eteint(self):
+        from app.services import relais_copilote as relais
+        cles = lambda jeu: [a["key"] for a in jeu]  # noqa: E731
+        self.assertEqual(cles(relais._jeu_du_fournisseur(self.CATALOGUE, "groq", None)), ["crm.digest_matin"])
+        self.assertEqual(cles(relais._jeu_du_fournisseur(self.CATALOGUE, "groq", {"ecran": "/taches"})),
+                         ["taches.journee.lire"])
+        eteint = [dict(a, lot=None) for a in self.CATALOGUE]
+        self.assertEqual(cles(relais._jeu_du_fournisseur(eteint, "groq", None)),
+                         ["crm.digest_matin", "crm.lead.note", "visites.agenda"])
+        self.assertEqual(relais._jeu_du_fournisseur(self.CATALOGUE, "claude", None), self.CATALOGUE)
+
+    def test_catalogue_du_repli_recalcule_sans_relire_django(self):
+        from app.services import relais_copilote as relais
+        from app.services.action_tools import ActionContext
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        relais.catalogue_pour_repli(ctx, "groq", None)  # rien de gardé : inchangé
+        self.assertIsNone(ctx.catalogue_tour)
+        ctx.catalogue_complet, ctx.catalogue_tour = list(self.CATALOGUE), list(self.CATALOGUE)
+        relais.catalogue_pour_repli(ctx, "Groq", None)
+        self.assertEqual([a["key"] for a in ctx.catalogue_tour], ["crm.digest_matin"])
+
+    def test_langchain_jamais_natif_seul(self):
+        from langchain_core.messages import AIMessage
+        from tests.test_sql_agent_endpoint import _ctx, _tour
+        _, _, llm = _tour([AIMessage(content="ok")], catalogue=self.CATALOGUE, ctx=_ctx(), fournisseur="claude")
+        noms = next(n for genre, n in llm.recus if genre == "outils")
+        self.assertIn("crm_lead_note", noms)
+        self.assertNotIn("visites_agenda", noms)
+
+    def test_reprise_native_rien_au_plafond_du_jour(self):
+        from app.core import config
+        from app.services import moteur_natif, relais_copilote as relais, sql_agent_service as svc
+        service = mock.Mock()
+        service._budget_atteint.return_value = True
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                mock.patch.object(svc, "SQL_AGENT_PROVIDER", "claude"), \
+                mock.patch.object(relais, "catalogue_du_tour", return_value=self.CATALOGUE), \
+                mock.patch.object(moteur_natif, "reprendre") as reprendre:
+            self.assertIsNone(relais.reprise_native(service, mock.Mock(), 7, 1, "Noter", {"data": {}}))
+        reprendre.assert_not_called()
 
 
 if __name__ == "__main__":
