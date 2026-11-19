@@ -298,6 +298,33 @@ class StockNiveauxAssistantTest(TestCase):
         self.assertEqual(_gardes_de_la_route(NIVEAUX_STOCK), (set(), False, {'stock'}))
         self.assertIn(NIVEAUX_STOCK.required_permission, codes_du_module('stock'))
 
+    def test_permissions_locales_des_trois_cles(self):
+        """STK5 — qui reçoit quoi : la lecture des niveaux (lot copilote) suit
+        l'interrupteur (« admins » par défaut : l'administrateur seul ; « tous » :
+        tout lecteur du Stock) et jamais un rôle sans le module ; les deux
+        écritures gardent le code de leur route, copilote allumé ou non."""
+        from apps.stock.agent_actions import NIVEAUX_STOCK
+        register_stock_actions()
+
+        def cles(compte):
+            return {a.key for a in for_user(compte)} & {
+                NIVEAUX_STOCK.key, AJUSTER_STOCK.key, BROUILLON_COMMANDE_FOURNISSEUR.key}
+        with self.settings(ASSISTANT_COPILOTE='admins'):
+            self.assertEqual(cles(self.acheteur), {NIVEAUX_STOCK.key})
+            self.assertEqual(cles(self.lecteur), set())
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            self.assertEqual(cles(self.lecteur), {NIVEAUX_STOCK.key})
+            self.assertEqual(cles(self.crm), set())
+        with self.settings(ASSISTANT_COPILOTE='aucun'):
+            self.assertEqual(cles(self.acheteur), set())
+        magasin = User.objects.create_user(
+            username='stk3_magasin', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Magasin', permissions=[
+                'stock_voir', 'stock_mouvement', 'achats_commander']))
+        for interrupteur in ('admins', 'aucun'):
+            with self.settings(ASSISTANT_COPILOTE=interrupteur):
+                self.assertEqual(cles(magasin), {AJUSTER_STOCK.key, BROUILLON_COMMANDE_FOURNISSEUR.key})
+
     def test_forme_du_contrat_et_portee(self):
         rep = auth(self.lecteur).get(self.URL, {'q': 'panneau'})
         self.assertEqual(rep.status_code, 200, rep.data)
