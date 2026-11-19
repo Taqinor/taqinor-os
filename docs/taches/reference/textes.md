@@ -309,9 +309,10 @@ tâche sur un créneau pour lui donner une heure. » au bureau, « Touche une t�
 Planifier ma semaine : « Touche un jour pour placer {titre} », au pied « Glisse une tâche sur un jour · ou Entrée puis
 ← → » au bureau, « Touche une tâche, puis un jour. » sur iPhone ; flèches « Semaine précédente » / « Semaine suivante »
 (R2-103) ; la semaine est dite UNE fois, entre les flèches « ‹ 16 – 22 nov. › » ; sur iPhone le mode est un écran ENFANT
-de l'Agenda (« ‹ Agenda » remplace ☰, R3-123) ; en-tête de jour « {n} tâches · {h} sur {cap} » (« sur », R3-134) où {cap} = la
-capacité du jour moins ses rendez-vous (`rendez_vous_minutes`, R2-100 ; omis si `agenda/` ne sert pas la capacité) et,
-au-delà, « {n} tâches · {h} sur {cap} · {durée} de trop » (R2-114, « 3 h 30 de trop ») ; un jour sans tâche à faire dit
+de l'Agenda (« ‹ Agenda » remplace ☰, R3-123) ; en-tête de jour « {n} tâches · {h} sur {cap} » (« sur », R3-134) lu dans
+LA charge servie du jour (`jours[].charge`, R4-01 : {n} et {h} = ce qui RESTE à faire, {cap} = la capacité moins les
+rendez-vous ; « · {k} sans durée » quand des tâches n'en ont pas — jamais une durée inventée) et, au-delà,
+« {n} tâches · {h} sur {cap} · {durée} de trop » (R2-114, « 3 h 30 de trop ») ; un jour sans tâche à faire dit
 « Libre · {cap} » (jamais « 0 tâche · 0 min … ») ; le rendez-vous qui réduit la capacité est écrit sous le jour :
 « Rendez-vous : 1 h 30 » ; jour passé « passé · {n} faite(s) » = les tâches FINIES ce jour-là
 (`faites_nb`, règle C-12 — « passé » seul s'il n'est pas servi) ; « non travaillé » · « Férié » ; bouton **Terminer** ;
