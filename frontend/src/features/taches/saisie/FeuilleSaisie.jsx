@@ -184,6 +184,9 @@ function trouverAncre() {
   return typeof ancre.checkVisibility === 'function' && !ancre.checkVisibility() ? null : ancre
 }
 
+/** R3-041 — un bouton qui ne vole pas le focus au champ (le doigt ou la souris le touchent, le clavier reste ouvert). */
+const garderLeFocus = (e) => e.preventDefault()
+
 /** Coupure : aucune réponse du serveur (le geste part dans la file, jamais perdu). */
 const sansReseau = (err) => classerErreur(err).code === 'reseau'
 
@@ -280,6 +283,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const enchainer = useCallback(() => {
     setTexte(suivantes.current.shift() ?? ''); setIgnorer([]); setApercu(null); setErreur(''); setCid(nouvelleCle())
     setQuand(quandDepart); setQuandOuvert(false)
+    // R3-041 — le champ reprend le focus TOUT DE SUITE (« Ajouter » au clavier, Tab puis Entrée) : la phrase suivante
+    // se tape aussitôt. Au doigt et à la souris, le bouton ne l'a jamais pris (voir `garderLeFocus`).
+    corps.current?.querySelector('.saisie-champ')?.focus()
   }, [quandDepart])
 
   // déconnexion : plus aucune trace de la phrase (écran, stockage)
@@ -639,6 +645,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                 type="button"
                 className="bouton plein"
                 aria-disabled={!texte.trim() || titreTropLong || undefined}
+                // R3-041 — toucher « Ajouter » ne prend pas le focus au champ : le clavier de l'iPhone reste ouvert et
+                // la frappe suivante va dans le champ (même geste que la liste des projets `#`)
+                onMouseDown={garderLeFocus}
                 onClick={envoyer}
               >
                 Ajouter

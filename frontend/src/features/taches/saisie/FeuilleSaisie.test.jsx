@@ -127,6 +127,25 @@ describe('TCH82 — feuille de saisie', () => {
     expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
   })
 
+  it('R3-041 — après le bouton « Ajouter », le curseur est dans le champ : la phrase suivante se tape aussitôt', async () => {
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Appeler Karim')
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    expect(champ()).toHaveValue('')
+    expect(champ()).toHaveFocus()
+    await user.keyboard('Relancer Salma')
+    expect(champ()).toHaveValue('Relancer Salma')
+    // au clavier (Tab jusqu'au bouton, Entrée) : le focus revient aussi au champ
+    await user.tab()
+    await user.tab()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Ajouter' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(champ()).toHaveValue('')
+    expect(champ()).toHaveFocus()
+  })
+
   it('le brouillon est effacé AVANT l\'événement « tâches créées » : l\'écran qui le relit n\'affiche pas la carte « Brouillon »', async () => {
     const user = userEvent.setup()
     const vusALInstant = []
