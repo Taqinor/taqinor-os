@@ -2,9 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, Ellipsis, FolderPlus } from 'lucide-react'
-import {
-  creerProjet, listerProjets, listerTousLesProjets, modifierProjet, reordonnerProjet, restaurerProjet, trierProjetsParPriorite,
-} from '../../../api/tachesApi'
+import { creerProjet, listerProjets, listerTousLesProjets, modifierProjet } from '../../../api/tachesApi'
+import { reordonnerProjet, restaurerProjet, trierProjetsParPriorite } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,

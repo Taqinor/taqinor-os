@@ -223,6 +223,7 @@ export const listerProjets = (params) => api.get('/taches/projets/', { params })
 export const creerProjet = (corps, options) => api.post('/taches/projets/', corps, avecCle(options))
 export const lireProjet = (id) => api.get(`/taches/projets/${id}/`)
 export const modifierProjet = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.patch(`/taches/projets/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerProjet = (id) => api.delete(`/taches/projets/${id}/`)
 export const reordonnerProjet = (id, corps) => api.post(`/taches/projets/${id}/reordonner/`, corps)
@@ -233,6 +234,7 @@ export const planifierProjet = (id, corps, options) =>
   api.post(`/taches/projets/${id}/planification/`, corps, avecCle(options))
 export const decalerProjet = (id, corps, options) => api.post(`/taches/projets/${id}/decaler/`, corps, avecCle(options))
 export const terminerProjet = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.post(`/taches/projets/${id}/terminer/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const rouvrirProjet = (id) => api.post(`/taches/projets/${id}/rouvrir/`, {})
 export const restaurerProjet = (id) => api.post(`/taches/projets/${id}/restaurer/`, {})
@@ -247,6 +249,7 @@ export const reordonnerSection = (id, corps) => api.post(`/taches/sections/${id}
 export const listerModeles = (params) => api.get('/taches/modeles/', { params })
 export const lireModele = (id) => api.get(`/taches/modeles/${id}/`)
 export const renommerModele = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.patch(`/taches/modeles/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerModele = (id) => api.delete(`/taches/modeles/${id}/`)
 export const instancierModele = (id, corps, options) =>
@@ -277,6 +280,7 @@ export const toutEffacer = (corps) => api.post('/taches/tout-effacer/', corps)
 export const listerAgendasExternes = () => api.get('/taches/agendas-externes/')
 export const ajouterAgendaExterne = (corps, options) => api.post('/taches/agendas-externes/', corps, avecCle(options))
 export const modifierAgendaExterne = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.patch(`/taches/agendas-externes/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const retirerAgendaExterne = (id) => api.delete(`/taches/agendas-externes/${id}/`)
 export const rafraichirAgendaExterne = (id) => api.post(`/taches/agendas-externes/${id}/rafraichir/`, {})
