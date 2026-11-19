@@ -112,6 +112,25 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     await expect(menu).toBeFocused()
   })
 
+  test.describe('iPhone (390 px)', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+    test('R2-047 — Plus › Supprimer : la confirmation tient dans l\'écran, « Annuler » visible', async ({ page }) => {
+      const { tache } = await journeeAvecUneTache(page)
+      await ligne(page, tache.id).locator('.ligne-corps-bouton').click()
+      const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+      await fiche.getByRole('button', { name: 'Plus', exact: true }).click()
+      await fiche.getByRole('button', { name: 'Supprimer', exact: true }).click()
+      const question = page.getByRole('alertdialog', { name: `Supprimer « ${tache.titre} »` })
+      await question.scrollIntoViewIfNeeded()
+      for (const nom of [`Supprimer « ${tache.titre} »`, 'Annuler']) {
+        const boite = await question.getByRole('button', { name: nom, exact: true }).boundingBox()
+        expect(boite.x, `${nom} commence dans l'écran`).toBeGreaterThanOrEqual(0)
+        expect(boite.x + boite.width, `${nom} finit dans l'écran`).toBeLessThanOrEqual(390)
+      }
+    })
+  })
+
   test('R2-040 — la fiche met la liste à jour sans rechargement : Quand › Aujourd\'hui, Fait, Supprimer', async ({ page }) => {
     await reinitialiser(page)
     const jour = await jourServeur(page)
