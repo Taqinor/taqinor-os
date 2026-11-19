@@ -327,3 +327,84 @@ def etat_du_lead(user, lead_id):
         'a_faire': a_faire,
         'lien': lien,
     }
+
+
+class RefusAssistant(ValueError):
+    """Refus NOMMÉ d'une route de l'assistant : ``{detail, field, code}`` et
+    le statut HTTP que la vue rend tel quel."""
+
+    def __init__(self, detail, champ, code, statut=409):
+        super().__init__(detail)
+        self.champ, self.code, self.statut = champ, code, statut
+
+    def corps(self):
+        return {'detail': str(self), 'field': self.champ, 'code': self.code}
+
+
+#: CALA6 — le 409 quand l'ouvert du lead est HORS de la vue de l'appelant
+#: (ACAL295) : ni identifiant, ni référence, ni nom.
+MESSAGE_PREPARER_HORS_VUE = (
+    "Ce lead a déjà un calepinage ouvert que vous ne voyez pas : demandez au "
+    "responsable du calepinage de vous l'ouvrir.")
+
+
+def _reprendre_la_visite(calepinage, user):
+    """``reprise`` | ``deja_reprise`` | ``aucune_visite_validee`` — le service
+    ``releve-visite`` avec ``remplacer`` TOUJOURS faux (rien n'est converti,
+    la conception ne change pas, un relevé déjà repris n'est jamais touché)."""
+    from .reprise_visite import RepriseRefusee, etat_reprise, reprendre_visite
+
+    if etat_reprise(calepinage).get('visite_id') is None:
+        return 'aucune_visite_validee'
+    try:
+        _reponse, cree = reprendre_visite(calepinage, user=user, remplacer=False)
+    except RepriseRefusee as refus:
+        raise RefusAssistant(str(refus), refus.champ or 'visite_id',
+                             'reprise_refusee') from None
+    return 'reprise' if cree else 'deja_reprise'
+
+
+def preparer(user, lead_id):
+    """CALA6 — « prépare le calepinage de ce lead » en UN geste confirmé
+    (contrat ``calepinage_assistant_preparer.json``).
+
+    Ouvre le calepinage du lead s'il n'existe pas (``ouvrir_ou_creer_pour_lead``,
+    la porte UNIQUE et idempotente de ``depuis-lead`` : jamais un second ouvert,
+    D-ACAL-12), puis reprend la visite VALIDÉE (``releve-visite``, ``remplacer``
+    faux). Le dessin et le pavage restent humains : la réponse porte les quatre
+    clés de la carte ``lien_ecran`` pour ouvrir l'atelier.
+
+    Returns:
+        ``(reponse, cree)``.
+
+    Raises:
+        LeadIntrouvable: lead hors de la portée CRM (404).
+        RefusAssistant: ouvert hors de la vue (409), relevé refusé (409).
+    """
+    from apps.agent.ecrans import chemin, ecrans
+
+    from ..selectors_libelles import libelle_calepinage
+    from .creation import corps_conflit, ouvrir_ou_creer_pour_lead
+    from .mesures import mesures_du_document
+    from .presentation import reference_calepinage
+
+    lead = lead_de_l_appelant(user, lead_id)
+    calepinage, cree = ouvrir_ou_creer_pour_lead(lead.pk, user.company, user=user)
+    if not cree and 'detail' in corps_conflit(calepinage, user):
+        raise RefusAssistant(MESSAGE_PREPARER_HORS_VUE, 'lead', 'calepinage_hors_vue')
+    reprise = _reprendre_la_visite(calepinage, user)
+    document = calepinage.roof_layout if isinstance(calepinage.roof_layout, dict) else {}
+    a_dessiner = not (document and mesures_du_document(document).get('modules'))
+    return {
+        'ecran': 'calepinage',
+        'chemin': chemin('calepinage', calepinage.pk,
+                         'reprise-visite' if reprise == 'reprise' else None),
+        'libelle': libelle_calepinage(calepinage),
+        'titre': ('Ouvrir le calepinage pour dessiner le toit' if a_dessiner
+                  else ecrans()['calepinage']['titre']),
+        'calepinage': calepinage.pk,
+        'reference': reference_calepinage(calepinage),
+        'lead': lead.pk,
+        'cree': cree,
+        'reprise_visite': reprise,
+    }, cree

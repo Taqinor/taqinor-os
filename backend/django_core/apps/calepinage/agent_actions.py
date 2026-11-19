@@ -25,7 +25,7 @@ Règles qui bornent ce que l'assistant DIT (décisions D-ACAL) :
 from __future__ import annotations
 
 from apps.agent.registry import (
-    AgentAction, LOT_COPILOTE, RISK_INTERNAL, register, _REGISTRY,
+    AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register, _REGISTRY,
 )
 
 #: Les deux codes de la garde réelle des routes (``permissions.py``).
@@ -162,7 +162,37 @@ SIMULER = AgentAction(
     objets={'id': 'calepinage', 'variante_id': 'variante'},
 )
 
-ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER)
+PREPARER = AgentAction(
+    key='calepinage.preparer',
+    label="Ouvrir le calepinage du lead et y reprendre la visite validée",
+    description=(
+        "Sert à : préparer le calepinage d'un lead en un geste — l'ouvrir s'il "
+        "n'existe pas (jamais un second), puis y reprendre les mesures et les "
+        "photos de la visite VALIDÉE (rien n'est converti, rien n'est "
+        "dessiné). Ne pas utiliser pour : dessiner ou poser des panneaux (le "
+        "dessin reste humain : le résultat est un bouton vers l'atelier), ni "
+        "un lead dont calepinage.du_lead dit qu'il a déjà un calepinage à jour. "
+        "Exemple : « la visite de Karim Alami est validée, prépare son "
+        "calepinage » → lead=1637. Résultat : le bouton « Ouvrir le "
+        "calepinage », cree, et reprise_visite = reprise | deja_reprise | "
+        "aucune_visite_validee."),
+    endpoint=BASE + 'preparer/',
+    method='POST',
+    inputs=_schema({'lead': dict(ENTIER, description='Identifiant du lead.')},
+                   ('lead',)),
+    required_permission=GERER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Ouvrir le calepinage de ce lead (créé s'il n'existe pas) et y "
+        "reprendre les mesures et les photos de la visite validée. Rien n'est "
+        "dessiné ni converti ; aucun devis ne change."),
+    carte='lien_ecran',
+    lot=LOT_COPILOTE,
+    objets={'lead': 'lead'},
+)
+
+ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER,
+           PREPARER)
 
 
 def register_actions() -> None:

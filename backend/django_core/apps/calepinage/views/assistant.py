@@ -18,23 +18,42 @@ borné par ``selectors.calepinages_visibles``). Aucun prix, aucune géométrie.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutVoirCalepinage
+from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import forme_du_contrat
-from ..services.assistant import LeadIntrouvable, etat_du_lead, resume_compact
+from ..services.assistant import (
+    LeadIntrouvable, RefusAssistant, etat_du_lead, preparer as preparer_calepinage,
+    resume_compact,
+)
 from .calepinages import CalepinageViewSet
 
-__all__ = ['resume', 'du_lead']
+__all__ = ['resume', 'du_lead', 'preparer']
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
     """Le refus NOMMÉ des routes de l'assistant : ``{detail, field, code}``."""
     return Response({'detail': detail, 'field': champ, 'code': code},
                     status=statut)
+
+
+def corps_borne(request, autorises, consigne):
+    """``(corps, refus | None)`` — le corps JSON doit être un objet et ne
+    porter QUE les champs ``autorises`` ; tout autre champ est refusé (400)
+    en le nommant, avec la ``consigne`` (ce qui se règle à l'écran)."""
+    corps = request.data if request.data not in (None, '') else {}
+    if not isinstance(corps, dict):
+        return None, refus('Le corps attendu est un objet JSON.', 'detail',
+                           'corps_invalide')
+    refuses = sorted(set(corps) - set(autorises))
+    if refuses:
+        return None, refus(f'Champ refusé : {refuses[0]}. {consigne}',
+                           refuses[0], 'champ_refuse')
+    return corps, None
 
 
 def _variante_demandee(request, calepinage):
@@ -111,7 +130,39 @@ def du_lead(self, request):
         return refus(*LEAD_INTROUVABLE)
 
 
+_FORME_PREPARER = forme_du_contrat('CalepinageAssistantPreparer',
+                                   'calepinage_assistant_preparer.json')
+
+
+@extend_schema(
+    request=inline_serializer('CalepinageAssistantPreparerCorps', {
+        'lead': drf_serializers.IntegerField(min_value=1)}),
+    responses={200: _FORME_PREPARER, 201: _FORME_PREPARER})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.preparer)
+@action(detail=False, methods=['post'], url_path='preparer',
+        permission_classes=[PeutGererCalepinage])
+def preparer(self, request):
+    """CALA6 — ouvre (ou retrouve) le calepinage du lead et reprend la visite
+    validée, en UN geste ; rend le bouton qui ouvre l'atelier."""
+    corps, refuse = corps_borne(request, ('lead',), "Seul « lead » est accepté.")
+    if refuse is not None:
+        return refuse
+    brut = corps.get('lead')
+    if isinstance(brut, bool) or not isinstance(brut, int) or brut < 1:
+        return refus("« lead » attend l'identifiant entier du lead.", 'lead',
+                     'lead_invalide')
+    try:
+        reponse, cree = preparer_calepinage(request.user, brut)
+    except LeadIntrouvable:
+        return refus(*LEAD_INTROUVABLE)
+    except RefusAssistant as refuse_metier:
+        return Response(refuse_metier.corps(), status=refuse_metier.statut)
+    return Response(reponse, status=(status.HTTP_201_CREATED if cree
+                                     else status.HTTP_200_OK))
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.resume = resume
 CalepinageViewSet.du_lead = du_lead
+CalepinageViewSet.preparer = preparer

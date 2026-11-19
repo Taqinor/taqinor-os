@@ -347,3 +347,54 @@ class SimulerTest(BaseAssistantCalepinage):
                                 format='json')
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertTrue(set(reponse.data))
+
+
+class PreparerTest(BaseAssistantCalepinage):
+    """CALA6 — ``POST calepinages/preparer/ {lead}`` : un geste, jamais deux ouverts."""
+
+    def _preparer(self, api, corps):
+        return api.post(url_assistant('preparer/'), corps, format='json')
+
+    def test_cree_puis_retrouve_le_meme(self):
+        premier = self._preparer(self.api, {'lead': self.lead_2.pk})
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(set(premier.data),
+                         set(echantillon('calepinage_assistant_preparer.json')))
+        self.assertTrue(premier.data['cree'])
+        self.assertEqual(premier.data['ecran'], 'calepinage')
+        self.assertEqual(premier.data['reprise_visite'], 'aucune_visite_validee')
+        self.assertTrue(premier.data['chemin'].startswith(
+            f"/calepinage/{premier.data['calepinage']}"))
+        second = self._preparer(self.api, {'lead': self.lead_2.pk})
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertFalse(second.data['cree'])
+        self.assertEqual(second.data['calepinage'], premier.data['calepinage'])
+        self.assertEqual(Calepinage.objects.filter(
+            company=self.company, lead_id=self.lead_2.pk, archive_le__isnull=True).count(), 1)
+
+    def test_l_ouvert_existant_est_rendu(self):
+        reponse = self._preparer(self.api, {'lead': self.lead.pk})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['calepinage'], self.cal.pk)
+
+    def test_aucun_autre_champ(self):
+        for corps in ({'lead': self.lead.pk, 'remplacer': True},
+                      {'lead': self.lead.pk, 'titre': 'Karim'}):
+            with self.subTest(corps=corps):
+                reponse = self._preparer(self.api, corps)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.data['code'], 'champ_refuse')
+        self.assertEqual(self._preparer(self.api, {'lead': 'x'}).status_code, 400)
+
+    def test_autre_societe_introuvable(self):
+        reponse = self._preparer(self.api_autre, {'lead': self.lead_2.pk})
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertFalse(Calepinage.objects.filter(lead_id=self.lead_2.pk).exists())
+
+    def test_ouvert_hors_vue_refuse_sans_le_nommer(self):
+        self.restreindre()
+        reponse = self._preparer(self.api_u, {'lead': self.lead.pk})
+        self.assertIn(reponse.status_code, (404, 409), reponse.data)
+        if reponse.status_code == 409:
+            self.assertEqual(reponse.data['code'], 'calepinage_hors_vue')
+            self.assertNotIn('calepinage', reponse.data)
