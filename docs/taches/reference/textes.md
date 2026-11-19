@@ -93,10 +93,12 @@ référence données/API.
 | ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
 | ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées récemment · Réglages |
 | Loupe | Chercher dans mes tâches |
+| Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications ({n}) » (celle de l'ERP) ; au défilement, le titre de la page en compact |
+| Écran enfant (projet ouvert, sous-page de Réglages) | « ‹ {écran parent} » au-dessus du titre (« ‹ Projets », « ‹ Réglages ») ; ni loupe ni Copilote, le ⋯ reste |
 | Bouton flottant (seul bouton plein) | Ajouter |
 | Bouton global | Copilote |
 | Palette | Créer une tâche · Chercher « {q} » dans mes tâches · Copilote : Planifie ma journée · Aide-moi à prioriser · Range ma liste · Où j'en suis ? · Nouveau projet · Faire le bilan · Aujourd'hui · À trier · Projets · Agenda · Supprimer « {titre} » · Abandonner « {titre} » |
-| Aide des touches (`?`) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
+| Aide des touches (`?`, feuille « Touches de Tâches » ; dans Tâches, `?` n'ouvre plus l'aide générale de l'ERP, `/` va à la Recherche) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
 | Raccourci de manifeste (AVANCÉ) | Tâches |
 | Carte cockpit | « Tâches · Aujourd'hui » · « {faites} sur {objectif} » · 3 lignes cochables · Ouvrir ; vide : « Rien de gardé » |
 
@@ -496,7 +498,7 @@ Toute révélation se ferme par « OK ».
 | Ajout | « Ajoutée : {titre} » ; liste « {n} tâches créées » |
 | Hors ligne | « Hors ligne : gardée, elle partira dès le retour du réseau » |
 | Conflit | « Modifiée sur ton autre appareil : choisis Garder la mienne ou Prendre l'autre » |
-| Chargement plus long que 1 s | « Chargement » |
+| Chargement plus long que 300 ms (squelette en lignes de tâches) | « Chargement » |
 
 Noms accessibles : case « Marquer « {titre} » comme faite » ; étoile « Essentielle » (état coché lu) ; bouton de ligne
 « Actions pour « {titre} » » (menu de l'appui long : rien n'exige balayage ni glisser) ; × d'une puce « Retirer « {jeton} »
