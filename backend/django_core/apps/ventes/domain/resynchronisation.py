@@ -198,6 +198,24 @@ MSG_PERMUTATION_PRIX_MANUEL = (
 )
 
 
+def _avertir_sans_batterie(avertissements, hybride):
+    """La batterie voulue n'a pas pu être ajoutée : on dit POURQUOI (aucune
+    batterie compatible avec la plage de l'onduleur, ou aucune tarifée).
+    Extrait tel quel de :func:`reconcilier` (COP2-V3, aucun changement)."""
+    _plage_devis = _plage_batterie_de_l_onduleur(hybride)
+    if _plage_devis and _plage_devis[1] > 0:
+        avertissements.append(
+            'Aucune batterie compatible tarifée pour cet onduleur '
+            '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
+            'ajoutée.'
+            % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
+    else:
+        avertissements.append(
+            'Aucune batterie tarifée au catalogue : la ligne '
+            'batterie n\'a pas pu être ajoutée. Ajoutez une '
+            'batterie tarifée.')
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -803,34 +821,15 @@ def reconcilier(devis, intention):
                 _hybride_du_devis = _pick_product(
                     verrou.company, _is_hybrid_inverter,
                     role='onduleur_hybride', gamme=gamme)
-            batterie = _pick_batterie(
-                verrou.company, onduleur=_hybride_du_devis, gamme=gamme)
             # COP2-V3 — un devis à composition IMPOSÉE reprend SA batterie
-            # (jamais le choix catalogue) ; introuvable : rien n'est posé.
-            from apps.ventes.domain.composition_imposee import (
-                batterie_imposee_du_devis)
-            imposee, nombre_impose = batterie_imposee_du_devis(verrou)
-            if imposee is not None:
-                batterie = imposee or None
-            if imposee is False:
-                avertissements.append(
-                    'La batterie imposée à la création du devis n\'est plus '
-                    'tarifée au catalogue : la ligne batterie n\'a pas été '
-                    'ajoutée.')
-            elif batterie is None:
-                _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
-                if _plage_devis and _plage_devis[1] > 0:
-                    avertissements.append(
-                        'Aucune batterie compatible tarifée pour cet onduleur '
-                        '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
-                        'ajoutée.'
-                        % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
-                else:
-                    avertissements.append(
-                        'Aucune batterie tarifée au catalogue : la ligne '
-                        'batterie n\'a pas pu être ajoutée. Ajoutez une '
-                        'batterie tarifée.')
-            else:
+            # (jamais le choix catalogue) ; plus tarifée : rien n'est posé.
+            batterie, nombre_impose, imposee_manquante = batterie_de_resynchro(
+                verrou, _pick_batterie(
+                    verrou.company, onduleur=_hybride_du_devis, gamme=gamme),
+                avertissements)
+            if batterie is None and not imposee_manquante:
+                _avertir_sans_batterie(avertissements, _hybride_du_devis)
+            elif batterie is not None:
                 creer_ligne(
                     verrou, produit=batterie, designation=batterie.nom,
                     quantite=Decimal(str(nombre_impose or 1)),
@@ -943,15 +942,8 @@ def reconcilier(devis, intention):
             # du client), plus jamais « le moins cher de la marque préférée ».
             from apps.ventes.domain.catalogue import (
                 choisir_onduleur_permutation)
-            from apps.ventes.domain.composition_imposee import marqueur
-            if marqueur(verrou) is not None:
-                # COP2-V3 — onduleur IMPOSÉ : la resynchronisation s'abstient
-                # et le DIT (jamais un onduleur imposé remplacé en silence).
-                avertissements.append(
-                    'L\'onduleur « %s » a été imposé à la création du devis : '
-                    'il n\'a pas été permuté. Changez-le à la main si le '
-                    'scénario batterie a changé.'
-                    % (ligne.designation or 'ligne sans désignation'))
+            # COP2-V3 — un onduleur IMPOSÉ n'est jamais permuté (abstention DITE).
+            if abstention_onduleur(verrou, ligne, avertissements):
                 return False
             phase = _phase_du_client(ligne)
             remplacant = choisir_onduleur_permutation(
@@ -1625,4 +1617,9 @@ from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-
     puissance_kwc_du_devis,
     scenario_effectif,
     scenario_servable,
+)
+# COP2-V3 — le marqueur de composition imposée (abstentions de la resynchro).
+from apps.ventes.domain.composition_imposee import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    abstention_onduleur,
+    batterie_de_resynchro,
 )

@@ -102,6 +102,43 @@ def batterie_imposee_du_devis(devis):
     return produit, max(1, int(produits.get('batterie_nombre') or 1))
 
 
+def batterie_de_resynchro(devis, batterie, avertissements):
+    """La resynchronisation reprend la batterie IMPOSÉE (jamais le choix
+    catalogue ``batterie``) : rend ``(batterie, nombre, manquante)``.
+    ``manquante`` — imposée mais plus tarifée : rien n'est posé, et c'est
+    DIT ici (une seule phrase, pas celle du catalogue)."""
+    imposee, nombre = batterie_imposee_du_devis(devis)
+    if imposee is False:
+        avertissements.append(
+            'La batterie imposée à la création du devis n\'est plus '
+            'tarifée au catalogue : la ligne batterie n\'a pas été '
+            'ajoutée.')
+        return None, 0, True
+    return (batterie if imposee is None else imposee), nombre, False
+
+
+def abstention_onduleur(devis, ligne, avertissements):
+    """Un onduleur IMPOSÉ n'est jamais permuté : rend ``True`` (abstention
+    DITE) quand le devis porte le marqueur, ``False`` sinon."""
+    if marqueur(devis) is None:
+        return False
+    avertissements.append(
+        'L\'onduleur « %s » a été imposé à la création du devis : '
+        'il n\'a pas été permuté. Changez-le à la main si le '
+        'scénario batterie a changé.'
+        % (ligne.designation or 'ligne sans désignation'))
+    return True
+
+
+def cles_tailles_servies(devis):
+    """Les tailles que ``offres_tailles.deriver`` compose, dans l'ordre de
+    déduplication : « Recommandé » seul sur un devis à composition imposée
+    (Éco / Max composeraient un autre kit que celui imposé)."""
+    if marqueur(devis) is not None:
+        return ('recommande',)
+    return ('recommande', 'eco', 'max')
+
+
 def poser_marqueur(devis, contenu):
     from apps.ventes.domain.etude_schema import COMPOSITION_IMPOSEE, ecrire
     ecrire(devis, proprietaire=COMPOSITION_IMPOSEE, **{CLE_MARQUEUR: contenu})

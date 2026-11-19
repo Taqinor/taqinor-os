@@ -113,11 +113,10 @@ class Resolution:
 
 # ── Lecture du vivier ────────────────────────────────────────────────────────
 def _specs(produit):
+    # Même lecture que ``catalogue._tension_nominale_batterie`` : le
+    # sélecteur rend ``{}`` / ``None`` sans fiche, il ne lève pas.
     from apps.stock.selectors import specs_for_produit
-    try:
-        return specs_for_produit(produit) or {}
-    except Exception:  # noqa: BLE001 — une fiche illisible n'est qu'absente (D-ENF22-BLE001)
-        return {}
+    return specs_for_produit(produit) or {}
 
 
 def _nombre(valeur):
@@ -241,11 +240,10 @@ def _sans_accents(texte):
 
 
 def _epingle(company, role, gamme=None):
+    # ``marque_preferee`` ne lève JAMAIS (sa docstring) : réglage absent,
+    # rôle inconnu ou marque vide ⇒ ``None``.
     from apps.ventes.domain.catalogue import marque_preferee
-    try:
-        return marque_preferee(company, gamme, role)
-    except Exception:  # noqa: BLE001 — réglage illisible = aucune épingle (D-ENF22-BLE001)
-        return None
+    return marque_preferee(company, gamme, role)
 
 
 def _filtrer_marque(entrees, marque):

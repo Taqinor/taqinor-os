@@ -223,6 +223,60 @@ def _modeles_imposes(imposition):
              'count': int(imposition.nb_panneaux)}]
 
 
+def _champs_imposes(imposition):
+    """COP2-V3 — les champs IMPOSÉS d'une ``IntentionComposition`` / d'une
+    ``CibleDevis`` ; ``{}`` hors imposition (appels strictement inchangés)."""
+    if imposition is None:
+        return {}
+    return {'modeles': _modeles_imposes(imposition),
+            'onduleur_impose': imposition.onduleur_impose,
+            'batterie_imposee': imposition.batterie_imposee}
+
+
+def _taille_imposee(imposition):
+    """COP2-V3 — ``(panneaux, watt, source)`` d'une composition imposée."""
+    return (int(imposition.nb_panneaux), float(imposition.panel_watt),
+            'composition_imposee')
+
+
+def _poser_marqueur_impose(devis, imposition):
+    """COP2-V3 — pose le marqueur d'imposition ; sans effet hors imposition."""
+    if imposition is None:
+        return
+    from apps.ventes.domain.composition_imposee import poser_marqueur
+    poser_marqueur(devis, dict(imposition.marqueur))
+
+
+def _completeur_etude(etude_extra, refus_extra):
+    """La fusion des clés d'étude de l'appelant (``completer_etude`` du
+    pipeline) — extraite TELLE QUELLE de :func:`_build_devis_auto_residentiel`
+    (COP2-V3, aucun changement) ; un refus du schéma est consigné dans
+    ``refus_extra`` (422 nommé après le pipeline)."""
+    def _completer_etude(devis):
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
+        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
+        # particulier codé en dur. Le scénario qui fait foi est
+        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
+        # construction vient d'arrêter) : un corps de requête ne peut plus
+        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
+        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+        _scenario_arrete = scenario_effectif(
+            devis, (devis.etude_params or {}).get('scenario'))
+        _extra = {cle: valeur for cle, valeur in etude_extra.items()
+                  if not (_scenario_arrete and cle == 'scenario')}
+        if _scenario_arrete and _scenario_arrete != (
+                devis.etude_params or {}).get('scenario'):
+            _extra['scenario'] = _scenario_arrete
+        if _extra:
+            try:
+                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
+            except ValueError as exc:
+                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
+                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
+                refus_extra.append(str(exc))
+    return _completer_etude
+
+
 def _fmt_kwc_fr(valeur):
     """Un kWc à la française : virgule décimale, sans zéros inutiles."""
     texte = ('%.2f' % float(valeur)).rstrip('0').rstrip('.')
@@ -349,18 +403,16 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # laisse la main au moteur plutôt que de refuser un lead parfaitement
     # dimensionnable (``target_kwc``, lui, a déjà été validé plus haut).
     if imposition is not None:
-        # COP2-V3 — le compte IMPOSÉ est souverain (alerte posée en amont).
-        panneaux = int(imposition.nb_panneaux)
-        watt_dimensionnement = float(imposition.panel_watt)
-        source_dimensionnement = 'composition_imposee'
+        # COP2-V3 — le compte IMPOSÉ est souverain (alerte posée en amont) :
+        # aucun moteur, aucune taille demandée n'est consulté.
+        panneaux, watt_dimensionnement, source_dimensionnement = (
+            _taille_imposee(imposition))
     elif taille_demandee not in (None, ''):
         panneaux = _residential_panel_count(taille_kwc=taille_demandee)
-    if imposition is not None:
-        pass  # COP2-V3 — dimensionné ci-dessus, aucun moteur consulté.
-    elif panneaux > 0:
+    if imposition is None and panneaux > 0:
         source_dimensionnement = 'taille_demandee'
         _alerter_taille_demandee(journal_auto, cible, taille_demandee)
-    else:
+    elif imposition is None:
         panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
                 lead=lead, company=company,
@@ -518,15 +570,9 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         scenario=(COMPOSITION_LES_DEUX if deux_options
                   else (COMPOSITION_AVEC if wants_battery
                         else COMPOSITION_SANS)),
-        hors_reseau=hors_reseau))
-    if imposition is not None:
-        # COP2-V3 — l'étape ``verifier`` juge les produits IMPOSÉS eux-mêmes.
-        refus_composition = verifier(IntentionComposition(
-            company=company, nb_panneaux=panneaux, kwc=kwc,
-            scenario=COMPOSITION_AVEC if wants_battery else COMPOSITION_SANS,
-            hors_reseau=hors_reseau, modeles=_modeles_imposes(imposition),
-            onduleur_impose=imposition.onduleur_impose,
-            batterie_imposee=imposition.batterie_imposee))
+        hors_reseau=hors_reseau,
+        # COP2-V3 — ``verifier`` juge les produits IMPOSÉS eux-mêmes ({} sinon).
+        **_champs_imposes(imposition)))
     if refus_composition:
         raise AutoDevisError(refus_composition[0], field='composition')
 
@@ -539,9 +585,8 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # COP2-V3 — une composition IMPOSÉE a déjà été composée à blanc et
     # contrôlée en amont (``composition_imposee._controle_a_blanc``) : ses
     # produits imposés ne relèvent d'aucune marque épinglée.
-    apercu = {'marques_manquantes': []}
-    if imposition is None:
-        apercu = composer_devis_residentiel(
+    apercu = {'marques_manquantes': []} if imposition is not None else (
+        composer_devis_residentiel(
             company=company, nb_panneaux=panneaux,
             panel_watt=watt_dimensionnement,
             scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
@@ -558,7 +603,7 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
             # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera
             # créée, fusion comprise : sans cela il contrôlerait les marques
             # d'un kit qui n'est pas celui du devis.
-            dimensionnement_avec=optimum_avec)
+            dimensionnement_avec=optimum_avec))
     if apercu['marques_manquantes']:
         detail = ', '.join(
             '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
@@ -596,11 +641,11 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     from apps.ventes.models import Devis
 
     toiture = extract_roof_config(layout)
-    if imposition is None:
-        # COP2-V3 — le compte IMPOSÉ ne passe pas par l'arbitrage : jamais un
-        # nombre de panneaux changé en silence.
-        panneaux, kwc = _arbitrage_du_calepinage(
-            layout, panneaux, kwc, company=company)
+    # COP2-V3 — le compte IMPOSÉ ne passe pas par l'arbitrage : jamais un
+    # nombre de panneaux changé en silence.
+    panneaux, kwc = (_arbitrage_du_calepinage(
+        layout, panneaux, kwc, company=company) if imposition is None
+        else (panneaux, kwc))
     layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
 
     # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
@@ -616,29 +661,9 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # Le refus du schéma reste rendu APRÈS le pipeline (même 422, même
     # brouillon laissé qu'avant).
     refus_extra = []
-
-    def _completer_etude(devis):
-        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
-        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
-        # particulier codé en dur. Le scénario qui fait foi est
-        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
-        # construction vient d'arrêter) : un corps de requête ne peut plus
-        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
-        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
-        _scenario_arrete = scenario_effectif(
-            devis, (devis.etude_params or {}).get('scenario'))
-        _extra = {cle: valeur for cle, valeur in etude_extra.items()
-                  if not (_scenario_arrete and cle == 'scenario')}
-        if _scenario_arrete and _scenario_arrete != (
-                devis.etude_params or {}).get('scenario'):
-            _extra['scenario'] = _scenario_arrete
-        if _extra:
-            try:
-                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
-            except ValueError as exc:
-                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
-                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
-                refus_extra.append(str(exc))
+    # COP2-V3 — le corps de la fusion est extrait tel quel
+    # (:func:`_completeur_etude`) ; même fermeture, mêmes refus.
+    _completer_etude = _completeur_etude(etude_extra, refus_extra)
 
     resultat = appliquer(None, IntentionDevis(
         origine=origine or ORIGINE_AUTO,
@@ -656,11 +681,8 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
             kwc=kwc,
             source=source_dimensionnement,
             dimensionnement_avec=optimum_avec,
-            # COP2-V3 — le kit IMPOSÉ (``None`` partout hors imposition).
-            **({} if imposition is None else {
-                'modeles': _modeles_imposes(imposition),
-                'onduleur_impose': imposition.onduleur_impose,
-                'batterie_imposee': imposition.batterie_imposee})),
+            # COP2-V3 — le kit IMPOSÉ ({} hors imposition : cible inchangée).
+            **_champs_imposes(imposition)),
         scenario=(COMPOSITION_LES_DEUX if deux_options
                   else (COMPOSITION_AVEC if wants_battery
                         else COMPOSITION_SANS)),
@@ -697,11 +719,9 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # schéma sort ici, après le pipeline, en 422 NOMMÉ comme avant.
     if refus_extra:
         raise AutoDevisError(refus_extra[0], field='etude_params')
-    if imposition is not None:
-        # COP2-V3 — le MARQUEUR : les chemins qui recomposent ne défont pas
-        # ce que le commercial a imposé.
-        from apps.ventes.domain.composition_imposee import poser_marqueur
-        poser_marqueur(devis, dict(imposition.marqueur))
+    # COP2-V3 — le MARQUEUR : les chemins qui recomposent ne défont pas ce que
+    # le commercial a imposé (sans effet hors imposition).
+    _poser_marqueur_impose(devis, imposition)
 
     # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
     # comme sur les chemins d'écriture du générateur (``atomic``,

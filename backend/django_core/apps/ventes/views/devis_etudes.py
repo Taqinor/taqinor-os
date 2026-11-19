@@ -476,6 +476,10 @@ class DevisEtudesActionsMixin:
             return refus
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # COP2-V3 — geste commercial EXPLICITE : rend la main au
+        # dimensionnement (marqueur de composition imposée retiré).
+        from ..domain.composition_imposee import effacer_marqueur
+        effacer_marqueur(devis)
         regenerer_taille(devis, serializer.validated_data['cle'])
         from ..domain.verrou_devis import toucher
         toucher(devis)
@@ -519,6 +523,11 @@ class DevisEtudesActionsMixin:
         ttc_avant = ttc_du_devis(devis)
         try:
             with transaction.atomic():
+                # COP2-V3 — geste EXPLICITE : le marqueur de composition
+                # imposée est retiré AVANT la recomposition, sous la même
+                # transaction (un refus le rétablit).
+                from ..domain.composition_imposee import effacer_marqueur
+                effacer_marqueur(devis)
                 resume = appliquer_au_devis(devis, corps['cle'],
                                             utilisateur=request.user)
                 # AGNR63 — lignes recomposées : re-base ou 409 (rollback).
