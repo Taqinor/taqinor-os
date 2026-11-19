@@ -208,7 +208,7 @@ function Navigation({ vue, titre, onPas, onAujourdhui }) {
 
 function BandeJours({ dates, parJour, jour, aujourdhui, onChoisir }) {
   return (
-    <div className="bande-jours chiffres" role="tablist" aria-label="Jours de la semaine">
+    <div className="bande-jours ag-bande-jours chiffres" role="tablist" aria-label="Jours de la semaine">
       {dates.map((iso) => {
         const d = parJour[iso]
         const repos = d && (!d.ouvre || d.ferie)
@@ -325,7 +325,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
       <ToutesLaJournee jour={jour} />
       <EtatDuJour jour={jour} />
       {jour.sans_heure?.length ? (
-        <section className="section" aria-label="Sans heure">
+        <section className="section ag-sans-heure" aria-label="Sans heure">
           <div className="liste" role="list">
             {jour.sans_heure.map((t) => (
               <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
@@ -833,6 +833,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
     <VoletAPlacer
       aPlacer={donnees?.a_placer ?? []} mesProjets={donnees?.mes_projets ?? []} aujourdhui={aujourdhui}
       choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+      sansHeure={vue === 'jour' && jour !== aujourdhui ? (parJour[jour]?.sans_heure ?? []) : []}
     />
   )
 
@@ -883,14 +884,17 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
         { libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
-      <div className="ag-vues">
-        <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
+      {/* R2-110 — les vues et la navigation sont UNE barre : une seule ligne au bureau, la grille remonte */}
+      <div className="ag-barre-haute">
+        <div className="ag-vues">
+          <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
+        </div>
+        <Navigation
+          vue={vue} titre={titrePeriode(vue, jour, periode)}
+          onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
+          onAujourdhui={() => changer({ jour: null })}
+        />
       </div>
-      <Navigation
-        vue={vue} titre={titrePeriode(vue, jour, periode)}
-        onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
-        onAujourdhui={() => changer({ jour: null })}
-      />
       {etats}
       {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
         ? <InvitationAgendas onOuvrir={ouvrirMesAgendas} /> : null}

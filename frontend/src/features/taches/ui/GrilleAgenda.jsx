@@ -246,8 +246,11 @@ function TeteJour({ nom }) {
 }
 
 /** Passe visuelle n° 36 — colonnes de la Semaine (maquette agenda-semaine.html `.ag-semgrille`) : gouttière des heures
- *  de 68 px, jours travaillés larges, jours non travaillés de 64 px ; la rangée « Toute la journée » suit les mêmes. */
-const colonnesSemaine = (jours) => ['68px', ...jours.map((j) => (j.ouvre === false ? '64px' : 'minmax(0, 1fr)'))].join(' ')
+ *  (R2-111 : 92 px, « Toute la journée » y tient sur une ligne), jours travaillés larges, jours non travaillés VIDES de
+ *  64 px (R2-108 : un week-end qui porte des tâches garde une colonne entière) ; la rangée « Toute la journée » suit les mêmes. */
+const jourEtroit = (j) => j.ouvre === false
+  && !['blocs', 'sans_heure', 'toute_la_journee', 'externes'].some((cle) => j[cle]?.length)
+const colonnesSemaine = (jours) => ['92px', ...jours.map((j) => (jourEtroit(j) ? '64px' : 'minmax(0, 1fr)'))].join(' ')
 
 /**
  * `jours` : les jours d'`agenda.json` ; `nomsJours` : `{iso: « mar. 17 »}` (tête de la Semaine) ;

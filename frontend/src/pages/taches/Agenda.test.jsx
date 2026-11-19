@@ -281,7 +281,19 @@ describe('TCH104 — vues et navigation', () => {
     // une cellule par jour sous chaque tête, gouttière comprise : sam./dim. restent dans leur colonne
     expect(journee.children).toHaveLength(8)
     expect(grille(container).style.gridTemplateColumns)
-      .toBe('68px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+      .toBe('92px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+  })
+
+  it('R2-108 — Semaine au bureau : un week-end qui porte une tâche garde une colonne entière (étroit seulement s\'il est vide)', async () => {
+    const d = semaineAvecRepos()
+    const samedi = d.jours.find((j) => j.jour === '2026-11-21')
+    samedi.sans_heure = [{ ...d.jours[0].sans_heure[0], id: 601, titre: 'Mise en service', jour_prevu: '2026-11-21' }]
+    samedi.blocs = [{ ...d.jours[0].blocs[0], id: 602, titre: 'Réceptionner les panneaux', jour_prevu: '2026-11-21', heure_debut: '09:00' }]
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    expect(grille(container).style.gridTemplateColumns)
+      .toBe('92px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px')
   })
 
   it('Passe visuelle n° 7 — Semaine au bureau : bloc d\'une heure marqué `h1`, chevauchement en cascade (le premier garde sa largeur)', async () => {
@@ -403,6 +415,36 @@ describe('R2-107 — la grille : un seul arrêt de Tab, des flèches, aucun cré
     }
     expect(screen.getByRole('button', { name: 'Ajouter à 09:30' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ajouter à 12:00' })).toBeInTheDocument()
+  })
+})
+
+describe('R2-110 — vue Jour au bureau : un en-tête court, la grille tôt', () => {
+  it('Vues et navigation sont UNE barre (une ligne au bureau) ; la bande des 7 jours et « Sans heure » ont leur classe de bureau', async () => {
+    const { container } = monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    const barre = container.querySelector('.ag-barre-haute')
+    expect(barre).toContainElement(container.querySelector('.ag-vues'))
+    expect(barre).toContainElement(container.querySelector('.ag-nav'))
+    expect(container.querySelector('.bande-jours')).toHaveClass('ag-bande-jours')
+    expect(container.querySelector('section[aria-label="Sans heure"]')).toHaveClass('ag-sans-heure')
+  })
+
+  it('un autre jour que le jour courant : ses tâches sans heure sont dans « À placer », groupe « Sans heure »', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours.push({ ...d.jours[0], jour: '2026-11-18', toute_la_journee: [], blocs: [], echeances: [], externes: [],
+      sans_heure: [{ ...base, id: 701, titre: 'Relire le bail', jour_prevu: '2026-11-18' }] })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?jour=2026-11-18')
+    const volet = await screen.findByRole('complementary', { name: 'À placer' })
+    const groupe = within(volet).getByRole('group', { name: 'Sans heure (1)' })
+    expect(within(groupe).getByRole('button', { name: /Relire le bail/ })).toBeInTheDocument()
+  })
+
+  it("le jour courant n'ajoute pas ce groupe : ses tâches sans heure sont déjà dans « Aujourd'hui »", async () => {
+    monter()
+    const volet = await screen.findByRole('complementary', { name: 'À placer' })
+    expect(within(volet).queryByRole('group', { name: /^Sans heure/ })).toBeNull()
   })
 })
 
