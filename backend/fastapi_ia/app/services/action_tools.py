@@ -283,7 +283,20 @@ def _normalize_error(resp, data) -> dict[str, Any]:
         details = details_du_refus(data)
         if details:
             erreur["details"] = details
+        code = _code_du_refus(data)
+        if code:
+            erreur["code"] = code
     return erreur
+
+
+def _code_du_refus(data: Any) -> Optional[str]:
+    """Vague 2 (FND5) — code METIER d'un refus (`code` du corps ou de
+    l'enveloppe d'erreur), borne ; jamais montre tel quel au modele."""
+    if not isinstance(data, dict):
+        return None
+    enveloppe = data.get("error") if isinstance(data.get("error"), dict) else {}
+    code = data.get("code") or enveloppe.get("code")
+    return code[:64] if isinstance(code, str) and code else None
 
 
 # Copilote v2 (F2) — un refus METIER (400/409) dit souvent QUOI choisir : les
@@ -1111,6 +1124,37 @@ def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
         "textes": "retirés : la carte les montre"})
 
 
+# Vague 2 (FND5) — plafond des ecritures SILENCIEUSES d'un tour, tous domaines :
+# une action `internal` qui n'est ni un GET, ni une lecture declaree
+# (`lecture`), ni un lien de document, ni une action `taches.*` (qui garde SA
+# garde) s'execute sans carte ; au-dela de cinq dans le meme tour, refus. Le
+# contexte est par requete : une reprise apres confirmation repart a zero
+# (c'est un nouveau tour voulu par un doigt).
+ECRITURES_INTERNES_PAR_TOUR = 5
+REFUS_ECRITURES_INTERNES = (
+    "Action refusée : cinq écritures déjà faites dans ce tour ; dis à "
+    "l'utilisateur ce qui reste et laisse-le relancer.")
+
+
+def est_ecriture_interne(action: dict[str, Any]) -> bool:
+    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus)."""
+    return (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+            and str(action.get("method", "POST")).upper() != "GET"
+            and not action.get("lecture") and action.get("carte") != "document"
+            and not str(action.get("key", "")).startswith(PREFIXE_TACHES))
+
+
+def garde_ecritures_internes(ctx: Optional[ActionContext], action: dict[str, Any]) -> Optional[str]:
+    """None = l'ecriture part (et compte) ; sinon le refus rendu au modele."""
+    if ctx is None or not est_ecriture_interne(action):
+        return None
+    faites = int(getattr(ctx, "ecritures_internes", 0) or 0)
+    if faites >= ECRITURES_INTERNES_PAR_TOUR:
+        return REFUS_ECRITURES_INTERNES
+    ctx.ecritures_internes = faites + 1
+    return None
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
     *, idempotency_key: str | None = None,
@@ -1195,7 +1239,8 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
-    refus = garde_creations_devis(ctx, action)  # revue S2 — devis bornes par tour
+    # revue S2 — devis bornes par tour ; FND5 — cinq ecritures silencieuses au plus.
+    refus = garde_creations_devis(ctx, action) or garde_ecritures_internes(ctx, action)
     if refus is not None:
         return refus
     res = _execute_catalogue_action(
@@ -1299,6 +1344,28 @@ _SANS_REPONSE = (" La proposition est consommée et le résultat est incertain (
                  "été faite avant de la redemander.")
 
 
+#: Vague 2 (FND5) — 409 `paiement_similaire` (meme montant, meme date sur la
+#: facture) : la phrase de l'ERP finit par « confirmer ? » alors que la carte
+#: ne peut plus rien confirmer, et « redemande-la » poussait a une seconde
+#: proposition. Rien n'est ecrit : le doigt de l'utilisateur tranche a l'ecran.
+MESSAGE_PAIEMENT_SIMILAIRE = (
+    "Un paiement identique (même montant, même date) est déjà enregistré sur "
+    "cette facture : rien n'a été enregistré. Vérifie la facture ; s'il "
+    "s'agit bien d'un second paiement, enregistre-le depuis l'écran de la "
+    "facture, qui te demandera de le confirmer.")
+
+
+def texte_echec_confirmation(res: dict[str, Any]) -> str:
+    """Texte d'une confirmation refusee par Django. Sans reponse (0) ou erreur
+    serveur (5xx) : l'action a PEUT-ETRE ete faite — ne jamais affirmer « non
+    executee », ne jamais pousser a rejouer."""
+    if res.get("code") == "paiement_similaire":
+        return MESSAGE_PAIEMENT_SIMILAIRE
+    statut = int(res.get("status") or 0)
+    suite = _SANS_REPONSE if (not statut or statut >= 500) else _NON_EXECUTEE
+    return (res.get("error") or "L'action a échoué.") + suite
+
+
 def _preparer_confirmation(
     ctx: ActionContext, record: dict[str, Any],
 ) -> tuple[Optional[dict[str, Any]], dict[str, Any], str]:
@@ -1348,12 +1415,8 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_idempotence(token))
     if not res.get("ok"):
-        # Sans reponse (0) ou erreur serveur (5xx) : l'action a PEUT-ETRE ete
-        # faite — ne jamais affirmer « non executee », ne jamais pousser a rejouer.
-        statut = int(res.get("status") or 0)
-        suite = _SANS_REPONSE if (not statut or statut >= 500) else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
-                "error": (res.get("error") or "L'action a échoué.") + suite,
+                "error": texte_echec_confirmation(res),
                 "request_id": res.get("request_id")}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.

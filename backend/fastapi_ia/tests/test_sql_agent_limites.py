@@ -598,6 +598,70 @@ class CreationsDevisS2Tests(unittest.TestCase):
         self.assertEqual((len(appels), textes[1]), (1, at.REFUS_CREATION_DEVIS_TIERS))
 
 
+class EcrituresInternesFnd5Tests(unittest.TestCase):
+    """Vague 2 (FND5) — (a) cinq écritures silencieuses par tour, tous
+    domaines ; (b) le 409 `paiement_similaire` d'une confirmation est dit sans
+    pousser à une seconde proposition."""
+
+    NOTE = {"key": "crm.lead.note", "label": "Noter", "endpoint": "/api/django/crm/leads/{id}/noter/",
+            "method": "POST", "risk": "internal",
+            "inputs": {"type": "object", "properties": {"id": {"type": "integer"}}}}
+
+    def _lancer(self, ctx, action, n):
+        from app.services import action_tools as at
+        appels = []
+
+        def appel(*a, **k):
+            appels.append(a[1])
+            return {"ok": True, "status": 201, "data": {"id": 9}}
+        with mock.patch.object(at, "_django_call", appel):
+            textes = [at.run_catalogue_action(ctx, action, {"id": i + 1}, []) for i in range(n)]
+        return appels, textes
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_sixieme_ecriture_silencieuse_refusee_et_nouveau_tour_repart_a_zero(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        appels, textes = self._lancer(ctx, self.NOTE, 6)
+        self.assertEqual((len(appels), textes[5]), (5, at.REFUS_ECRITURES_INTERNES))
+        self.assertEqual(len(self._lancer(self._ctx(), self.NOTE, 1)[0]), 1)
+
+    def test_get_lecture_document_et_taches_ne_comptent_pas(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        self._lancer(ctx, self.NOTE, 5)
+        for action in (dict(self.NOTE, method="GET"), dict(self.NOTE, lecture=True),
+                       dict(self.NOTE, key="taches.tache.creer")):
+            with self.subTest(action=action["key"], methode=action["method"]):
+                self.assertFalse(at.est_ecriture_interne(action))
+        self.assertEqual(len(self._lancer(ctx, dict(self.NOTE, method="GET"), 2)[0]), 2)
+        self.assertEqual(len(self._lancer(ctx, dict(self.NOTE, lecture=True), 2)[0]), 2)
+        self.assertTrue(at.est_ecriture_interne(dict(self.NOTE, method="PATCH")))
+
+    def test_paiement_similaire_dit_sans_redemander(self):
+        from app.services import action_tools as at
+
+        class _Rep:
+            status_code, headers = 409, {}
+        corps = {"detail": "Un paiement de 20 000 MAD a déjà été enregistré aujourd'hui sur cette "
+                           "facture : confirmer ?", "code": "paiement_similaire"}
+        res = at._normalize_error(_Rep(), corps)
+        self.assertEqual(res["code"], "paiement_similaire")
+        self.assertEqual(at.texte_echec_confirmation(res), at.MESSAGE_PAIEMENT_SIMILAIRE)
+        self.assertNotIn("redemande", at.MESSAGE_PAIEMENT_SIMILAIRE)
+        autre = at._normalize_error(_Rep(), {"detail": "Facture annulée.", "code": "annulee"})
+        self.assertTrue(at.texte_echec_confirmation(autre).endswith(at._NON_EXECUTEE))
+        action = {"key": "ventes.facture.enregistrer_paiement", "label": "Encaisser"}
+        with mock.patch.object(at, "_claim_proposal", return_value={"human_preview": "x"}), \
+                mock.patch.object(at, "_preparer_confirmation", return_value=(action, {}, "")), \
+                mock.patch.object(at, "_execute_catalogue_action", return_value=res):
+            sortie = at.confirm_proposal(self._ctx(), "jeton")
+        self.assertEqual((sortie["ok"], sortie["error"]), (False, at.MESSAGE_PAIEMENT_SIMILAIRE))
+
+
 def _servir_natif(catalogue, contexte=None, fournisseur="claude", **kw):
     """Un tour du VRAI relais (`_query` -> `tour_natif`) dont le moteur natif
     est SIMULÉ : rend (sortie, arguments remis au moteur). Aides de
