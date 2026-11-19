@@ -194,6 +194,27 @@ class LeDryRunEtLaCreationNeDiverguentPas(_Base):
             self.assertEqual(refus.status_code, 409, refus.data)
             self.assertEqual(len(refus.data['choix']), 2)
 
+    def test_nb_panneaux_seul_reste_l_entree_non_imposee_du_dry_run(self):
+        """COP2-V3 — sur le dry-run, ``nb_panneaux`` SEUL est l'entrée
+        historique ``{kwc | nb_panneaux}`` : aucun mode imposé (le wattage
+        demandé est lu, ni 409 de panneau 710 Wc, ni alerte « imposée »),
+        avec ou sans lead."""
+        lead = self.lead(ville='Casablanca')
+        for corps in ({'nb_panneaux': 8, 'panel_watt': 550},
+                      {'lead': lead.id, 'nb_panneaux': 8, 'panel_watt': 550},
+                      {'nb_panneaux': 250, 'panel_watt': 550}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(COMPO_URL, corps, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertEqual(reponse.data['nb_panneaux'],
+                                 corps['nb_panneaux'])
+                self.assertIn('Panneau Jinko 550W',
+                              [li['designation'] for li in reponse.data['lignes']])
+                self.assertFalse(any(
+                    'imposée' in a for a in reponse.data['avertissements']))
+                from apps.ventes.domain.scenario import SCENARIO_LES_DEUX
+                self.assertEqual(reponse.data['scenario'], SCENARIO_LES_DEUX)
+
     def test_le_dry_run_ne_cree_rien(self):
         """« À blanc » veut dire à blanc : aucun devis, aucune ligne."""
         from apps.ventes.models import Devis, LigneDevis

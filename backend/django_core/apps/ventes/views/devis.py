@@ -518,7 +518,8 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         # que ``POST devis/auto/`` (règle U3), rien n'est écrit.
         from ..domain.composition_imposee import (
             imposition_du_corps, preparer_imposition)
-        imposes = imposition_du_corps(corps)
+        # ``nb_panneaux`` seul reste l'entrée NON imposée historique du dry-run.
+        imposes = imposition_du_corps(corps, nb_panneaux_seul_impose=False)
         impose = {}
         alertes_imposees = []
         try:

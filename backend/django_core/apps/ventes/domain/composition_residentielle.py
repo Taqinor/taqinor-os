@@ -136,6 +136,80 @@ def _paires_mppt(mppt_paires, derivees, nb, kwp, panneau, vendus):
     return max(plancher, paires_mppt_du_champ(nb, kwp, panneau, vendus))
 
 
+def _choisir_cable(par_type, par_marque, role):
+    """C4/PVCBL — le câble AU MÈTRE du rôle (jamais un rouleau/touret),
+    marque épinglée appliquée, Nexans préféré. Extrait tel quel de
+    :func:`composition_residentielle` (COP2-V3, aucun changement)."""
+    pool = par_marque(
+        [p for p in par_type.get(role) or []
+         if _est_au_metre(getattr(p, 'nom', ''))], role)
+    # Préférence NEXANS : un fournisseur confirmé par le fondateur, pas une
+    # préférence de gamme — elle joue DANS le vivier déjà filtré.
+    return next(
+        (p for p in pool
+         if 'nexans' in _sans_accents(getattr(p, 'nom', ''))),
+        next(iter(pool), None))
+
+
+def _est_huawei(produit):
+    """Smart Meter + clé Wifi : seulement derrière un onduleur Huawei.
+    Extrait tel quel de :func:`composition_residentielle` (COP2-V3)."""
+    return 'huawei' in _sans_accents(
+        '%s %s' % (getattr(produit, 'marque', '') or '',
+                   getattr(produit, 'nom', '') or ''))
+
+
+def _imposition_resolue(tarifes_par_pk, onduleur_impose, batterie_imposee, *,
+                        deux_options, hors_reseau, avec_batterie):
+    """COP2-V3 — les produits IMPOSÉS lus dans le vivier TARIFÉ, et la
+    catégorie d'onduleur qu'ils remplacent (``None`` sans onduleur imposé).
+    Une composition imposée est MONO-OPTION : ``ValueError`` sinon."""
+    if deux_options and (onduleur_impose is not None
+                         or isinstance(batterie_imposee, dict)):
+        raise ValueError('Composition imposée : forme mono-option seulement.')
+    categorie = None
+    if onduleur_impose is not None:
+        categorie = ('onduleur_offgrid' if hors_reseau
+                     else ('onduleur_hybride' if avec_batterie
+                           else 'onduleur_reseau'))
+    return {
+        'categorie': categorie,
+        'onduleur': (tarifes_par_pk.get(_entier_ou_none(onduleur_impose))
+                     if onduleur_impose is not None else None),
+        'batterie': (tarifes_par_pk.get(_entier_ou_none(
+            batterie_imposee.get('produit_id')))
+            if isinstance(batterie_imposee, dict) else None),
+    }
+
+
+def _onduleur_impose(imposes, categorie, replis_phase, refus_tri):
+    """COP2-V3 — ``(produit, kW)`` de l'onduleur IMPOSÉ : ni repli de phase,
+    ni marque épinglée, ni remplaçant (fiche absente ⇒ ``(None, None)``)."""
+    replis_phase[categorie] = False
+    refus_tri[categorie] = False
+    produit = imposes['onduleur']
+    if produit is None:
+        return None, None
+    return produit, _parse_kw(getattr(produit, 'nom', ''))
+
+
+def _candidats_imposes(imposes, batterie_imposee, candidats, avertir):
+    """COP2-V3 — la banque IMPOSÉE (produit + nombre, déjà résolus) remplace
+    le pin et le choix économique ; une fiche introuvable n'est jamais
+    remplacée (refus nommé par ``etape_composer.verifier``). Sans imposition :
+    ``candidats`` rendus tels quels."""
+    if not isinstance(batterie_imposee, dict):
+        return candidats
+    produit = imposes['batterie']
+    if produit is None:
+        avertir('La batterie imposée (fiche produit #%s) est introuvable '
+                'ou sans prix : aucune batterie composée.'
+                % batterie_imposee.get('produit_id'))
+        return []
+    return [(0.0, max(1, int(batterie_imposee.get('nombre') or 1)),
+             float(_parse_kwh(getattr(produit, 'nom', '')) or 0), produit)]
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -385,17 +459,10 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             par_type.setdefault(categorie, []).append(produit)
 
     # ── COP2-V3 — LA COMPOSITION IMPOSÉE (mono-option seulement) ─────────────
-    impose = onduleur_impose is not None or isinstance(batterie_imposee, dict)
-    if impose and deux_options:
-        raise ValueError('Composition imposée : forme mono-option seulement.')
-    ond_impose = (tarifes_par_pk.get(_entier_ou_none(onduleur_impose))
-                  if onduleur_impose is not None else None)
-    bat_imposee = (tarifes_par_pk.get(_entier_ou_none(
-        batterie_imposee.get('produit_id')))
-        if isinstance(batterie_imposee, dict) else None)
-    categorie_imposee = ('onduleur_offgrid' if hors_reseau
-                         else ('onduleur_hybride' if avec_batterie
-                               else 'onduleur_reseau'))
+    imposes = _imposition_resolue(
+        tarifes_par_pk, onduleur_impose, batterie_imposee,
+        deux_options=deux_options, hors_reseau=hors_reseau,
+        avec_batterie=avec_batterie)
 
     # ── PVMRQ (U3) — restriction par marque épinglée ────────────────────────
     # Miroir EXACT de ``_filtrerParMarque`` (solar.js) : sans préférence, le
@@ -465,14 +532,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     refus_tri = {}
 
     def choisir_onduleur(categorie):
-        if onduleur_impose is not None and categorie == categorie_imposee:
-            # COP2-V3 — l'onduleur IMPOSÉ court-circuite le choix « ≥ 80 % » :
-            # ni repli de phase, ni marque épinglée, ni remplaçant.
-            replis_phase[categorie] = False
-            refus_tri[categorie] = False
-            if ond_impose is None:
-                return None, None
-            return ond_impose, _parse_kw(getattr(ond_impose, 'nom', ''))
+        if imposes['categorie'] == categorie:
+            # COP2-V3 — l'onduleur IMPOSÉ court-circuite le choix « ≥ 80 % ».
+            return _onduleur_impose(imposes, categorie, replis_phase, refus_tri)
         candidats = []
         # PVOND — VERROU DE COMPLÉTUDE, miroir de solar.js::pickInverter : un
         # onduleur au contrat incomplet est écarté de l'auto-composition AVANT
@@ -860,20 +922,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             if candidat is not None:
                 candidats.append(candidat)
 
-    if isinstance(batterie_imposee, dict):
-        # COP2-V3 — la banque IMPOSÉE (produit + nombre, déjà résolus) remplace
-        # le pin et le choix économique ; une fiche introuvable n'est jamais
-        # remplacée (refus nommé par ``etape_composer.verifier``).
-        candidats = []
-        if bat_imposee is not None:
-            candidats = [(0.0, max(1, int(batterie_imposee.get('nombre') or 1)),
-                          float(_parse_kwh(getattr(bat_imposee, 'nom', '')) or 0),
-                          bat_imposee)]
-        else:
-            _avertir('La batterie imposée (fiche produit #%s) est introuvable '
-                     'ou sans prix : aucune batterie composée.'
-                     % batterie_imposee.get('produit_id'))
-    if veut_batterie and not candidats and not isinstance(batterie_imposee, dict):
+    # COP2-V3 — la banque IMPOSÉE remplace le pin et le choix économique.
+    candidats = _candidats_imposes(imposes, batterie_imposee, candidats,
+                                   _avertir)
+    if (veut_batterie and not candidats
+            and not isinstance(batterie_imposee, dict)):
         # AUCUNE candidate — via le pin ou l'économie : la composition part
         # sans batterie (jamais une banque fabriquée), mais elle le DIT —
         # sinon le devis mentait par omission. C'est CETTE garde qui rend
@@ -955,20 +1008,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # vivier — même chiffré, même seul candidat. L'incident fondateur du 19/08
     # (60 « unités » d'un rouleau de 100 m = 71 400 MAD de câble) vient
     # exactement de là. Sans candidat au mètre : aucune ligne, jamais un repli
-    # silencieux sur un autre conditionnement.
-    def choisir_cable(role):
-        pool = par_marque(
-            [p for p in par_type.get(role) or []
-             if _est_au_metre(getattr(p, 'nom', ''))], role)
-        # Préférence NEXANS : un fournisseur confirmé par le fondateur, pas une
-        # préférence de gamme — elle joue DANS le vivier déjà filtré.
-        return next(
-            (p for p in pool
-             if 'nexans' in _sans_accents(getattr(p, 'nom', ''))),
-            next(iter(pool), None))
-
-    cable_dc = choisir_cable('cable_dc')
-    cable_terre = choisir_cable('cable_terre')
+    # silencieux sur un autre conditionnement (``_choisir_cable``).
+    cable_dc = _choisir_cable(par_type, par_marque, 'cable_dc')
+    cable_terre = _choisir_cable(par_type, par_marque, 'cable_terre')
 
     # ── Paliers de 5 kWc — ne servent plus QUE au métrage du câble de terre ──
     blocs = max(1, _arrondi_js(kwp / 5))
@@ -992,12 +1034,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # vendu, donc c'est celui-là qui décide.
     # U2 — en forme DEUX OPTIONS les deux onduleurs sont vendus : le garde
     # Huawei teste alors les DEUX, exactement comme l'écran (autoFillLines),
-    # sinon l'option Huawei partirait sans son Smart Meter.
-    def _est_huawei(produit):
-        return 'huawei' in _sans_accents(
-            '%s %s' % (getattr(produit, 'marque', '') or '',
-                       getattr(produit, 'nom', '') or ''))
-
+    # sinon l'option Huawei partirait sans son Smart Meter (``_est_huawei``).
     huawei = (_est_huawei(onduleur_reseau) or _est_huawei(onduleur_hybride)
               if deux_options else _est_huawei(onduleur))
 

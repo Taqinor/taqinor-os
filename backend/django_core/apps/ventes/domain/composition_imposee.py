@@ -64,10 +64,18 @@ class Imposition:
     marqueur: dict = field(default_factory=dict)
 
 
-def imposition_du_corps(corps):
-    """Les champs imposés PRÉSENTS (non nuls) du corps validé, ou ``{}``."""
-    return {cle: corps.get(cle) for cle in CHAMPS_IMPOSES
-            if (corps or {}).get(cle) not in (None, '')}
+def imposition_du_corps(corps, *, nb_panneaux_seul_impose=True):
+    """Les champs imposés PRÉSENTS (non nuls) du corps validé, ou ``{}``.
+
+    ``nb_panneaux_seul_impose=False`` — le dry-run ``POST devis/composition/``,
+    où ``nb_panneaux`` est l'entrée HISTORIQUE non imposée (``{kwc |
+    nb_panneaux}``) : le mode imposé n'y commence qu'avec un des six AUTRES
+    champs ; ``nb_panneaux`` seul ⇒ ``{}`` (route strictement inchangée)."""
+    presents = {cle: corps.get(cle) for cle in CHAMPS_IMPOSES
+                if (corps or {}).get(cle) not in (None, '')}
+    if not nb_panneaux_seul_impose and set(presents) <= {'nb_panneaux'}:
+        return {}
+    return presents
 
 
 def marqueur(devis):
@@ -100,6 +108,46 @@ def batterie_imposee_du_devis(devis):
     if produit is None:
         return False, 0
     return produit, max(1, int(produits.get('batterie_nombre') or 1))
+
+
+def batterie_de_resynchro(devis, batterie, avertissements):
+    """La resynchronisation reprend la batterie IMPOSÉE (jamais le choix
+    catalogue ``batterie``) : rend ``(batterie, nombre, manquante)``.
+    ``manquante`` — imposée mais plus tarifée : rien n'est posé, et c'est
+    DIT ici (une seule phrase, pas celle du catalogue)."""
+    imposee, nombre = batterie_imposee_du_devis(devis)
+    if imposee is False:
+        avertissements.append(
+            'La batterie imposée à la création du devis n\'est plus '
+            'tarifée au catalogue : la ligne batterie n\'a pas été '
+            'ajoutée.')
+        return None, 0, True
+    return (batterie if imposee is None else imposee), nombre, False
+
+
+def abstention_onduleur(devis, ligne, avertissements):
+    """Un onduleur IMPOSÉ n'est jamais permuté : rend ``True`` (abstention
+    DITE) quand le marqueur porte un ONDULEUR imposé, ``False`` sinon — un
+    marqueur sans onduleur (panneaux seuls imposés) laisse la permutation
+    du catalogue jouer, sans quoi la batterie ajoutée resterait derrière un
+    onduleur réseau (batterie fantôme)."""
+    if not ((marqueur(devis) or {}).get('produits') or {}).get('onduleur'):
+        return False
+    avertissements.append(
+        'L\'onduleur « %s » a été imposé à la création du devis : '
+        'il n\'a pas été permuté. Changez-le à la main si le '
+        'scénario batterie a changé.'
+        % (ligne.designation or 'ligne sans désignation'))
+    return True
+
+
+def cles_tailles_servies(devis):
+    """Les tailles que ``offres_tailles.deriver`` compose, dans l'ordre de
+    déduplication : « Recommandé » seul sur un devis à composition imposée
+    (Éco / Max composeraient un autre kit que celui imposé)."""
+    if marqueur(devis) is not None:
+        return ('recommande',)
+    return ('recommande', 'eco', 'max')
 
 
 def poser_marqueur(devis, contenu):
@@ -330,6 +378,31 @@ def _panneau(imposes, entrees, *, company, alertes):
     return resolution.candidats[0]
 
 
+#: Les rôles dont la marque épinglée ne s'applique pas en composition imposée :
+#: le panneau (fiche désignée), les onduleurs (imposé, ou contrôlé par
+#: ``verifier`` sur la famille vendue — l'autre famille n'est pas vendue).
+ROLES_HORS_EPINGLE = frozenset({'panneau', 'onduleur_reseau',
+                                'onduleur_hybride', 'onduleur_offgrid'})
+
+
+def _refuser_marques_manquantes(lignes, imposition):
+    """Même refus que le devis automatique ordinaire (``marques``) pour une
+    marque épinglée absente sur un rôle NON imposé (structure, câbles,
+    forfaits…, batterie quand elle n'est pas imposée) : jamais un devis qui
+    perd une ligne en silence."""
+    from apps.ventes.domain.catalogue import _libelle_role
+    hors = ROLES_HORS_EPINGLE | (
+        {'batterie'} if imposition.batterie_imposee is not None else set())
+    manquantes = [m for m in (getattr(lignes, 'marques_manquantes', ()) or ())
+                  if m.get('role') not in hors]
+    if manquantes:
+        raise AutoDevisError(
+            'Marque épinglée introuvable au stock : %s. Ajoutez le produit ou '
+            'changez la marque dans Paramètres → Gammes.' % ', '.join(
+                '%s (%s)' % (m.get('marque'), _libelle_role(m.get('role')))
+                for m in manquantes), field='marques')
+
+
 def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
                       alertes):
     """La composition À BLANC (sans écriture) de l'imposition : le couple
@@ -377,6 +450,7 @@ def _controle_a_blanc(company, *, lead, imposition, hors_reseau, phase_lead,
             '« %s » est hors de la fenêtre de tension batterie de « %s » : '
             'choisissez une batterie compatible.' % (batterie.nom, onduleur.nom),
             field='batterie_kwh')
+    _refuser_marques_manquantes(lignes, imposition)
     for message in getattr(lignes, 'avertissements_composition', ()) or ():
         _alerter(alertes, 'composition', str(message))
     if onduleur is not None:
