@@ -378,16 +378,44 @@ etape('PA2.3-ACAL367-signature', ['ACAL367'], async ({ page, context, suivi }) =
 // ACAL356 + ACAL367 — PA2.5 : l'écart atelier ↔ simulation serveur se resserre (ne s'ouvre plus) quand l'horizon est
 // appliqué. Simulation = le VRAI service `simuler_calepinage` (sans écriture) au shell : aucun worker sur le runner.
 // ════════════════════════════════════════════════════════════════════════════
+/** Le VRAI service de simulation (sans écriture). Un refus métier (`SimulationRefusee`) revient avec son DIAGNOSTIC
+ *  (pans du bloc pose : modules, kWc, module ; matériel désigné ; manques de la conception) DANS le message d'erreur ;
+ *  seul un PVGIS injoignable est « NON JOUABLE ». */
 async function simulationServeur(id) {
+  let r
   try {
-    return await py(`from apps.calepinage.models import Calepinage
-from apps.calepinage.services.simulation import simuler_calepinage
-r = simuler_calepinage(Calepinage.objects.get(pk=${Number(id)}), forcer=True, enregistrer=False)
-t = ((r.get('blocs') or {}).get('production') or {}).get('total') or {}
-sortie({'p50': t.get('p50_kwh'), 'complete': t.get('complete')})`)
+    r = await py(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.simulation import simuler_calepinage, SimulationRefusee
+c = Calepinage.objects.get(pk=${Number(id)})
+try:
+    r = simuler_calepinage(c, forcer=True, enregistrer=False)
+    t = ((r.get('blocs') or {}).get('production') or {}).get('total') or {}
+    sortie({'p50': t.get('p50_kwh'), 'complete': t.get('complete')})
+except SimulationRefusee as refus:
+    diag = {}
+    try:
+        from apps.calepinage.services.electrique import conception_du_calepinage
+        from apps.calepinage.services.chaines import bloc_pose
+        conception, materiel, donnees, document = conception_du_calepinage(c)
+        pose = bloc_pose(conception)
+        diag = {'pans': [{k: p.get(k) for k in ('pan', 'cle', 'modules', 'kwc', 'module_id')} for p in pose.get('pans') or []],
+                'designations': materiel.get('designations'), 'absents': list(materiel.get('absents') or []),
+                'manquantes': list(getattr(conception, 'manquantes', ()) or ()),
+                'entree': bool(getattr(conception, 'entree', None)),
+                'zones': [{'id': z.get('id'), 'panels': len((z.get('geometry') or {}).get('panels') or []),
+                           'moduleId': (z.get('geometry') or {}).get('moduleId')} for z in (document or {}).get('zones') or []]}
+    except Exception as e:
+        diag = {'diagnostic_impossible': repr(e)[:300]}
+    sortie({'refus': str(refus), 'champ': getattr(refus, 'champ', ''), 'diag': diag})`)
   } catch (e) {
-    throw new Error(`NON JOUABLE sur ce runner — la simulation serveur (simuler_calepinage) a refusé ou PVGIS est injoignable : ${String(e.message).slice(-500)}`)
+    const m = String(e.message)
+    if (/pvgis|ConnectionError|Timeout|Max retries|NameResolution|resolve|unreachable|injoignable/i.test(m)) {
+      throw new Error(`NON JOUABLE sur ce runner — PVGIS injoignable pour la simulation serveur : ${m.slice(-500)}`)
+    }
+    throw new Error(`simulation serveur en erreur : ${m.slice(-700)}`)
   }
+  if (r?.refus) throw new Error(`simulation serveur REFUSÉE (${r.champ}) : ${r.refus} — diagnostic : ${JSON.stringify(r.diag)}`)
+  return r
 }
 
 /** Réglage société de la pile d'essai (pas un défaut produit) : la simulation refuse sans `mode_meteo` saisi
@@ -433,37 +461,46 @@ etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({
   }
 })
 
-/** Désigne le module PV du calepinage comme l'onglet « Matériel électrique » (`enregistrer_entree`,
- *  `module_produit`) : sans lui, `bloc_pose` n'a pas de puissance crête et la simulation refuse
- *  (MOTIF_SANS_PAN_EQUIPE). Module = un produit RÉEL du catalogue de la société (`produits_modules_qs`) dont la
- *  fiche porte tous les champs que le chaînage exige (`chaines.CHAMPS_MODULE` : Vmp, Voc, Isc, Imp, Pmax). */
-async function designerModule(id) {
+/** Désigne le MODULE et l'ONDULEUR du calepinage comme l'onglet « Matériel électrique » (`enregistrer_entree`,
+ *  `module_produit` + `onduleur_produit`). Run 44630686247 : le module seul (#31, 710 Wc) ne suffisait pas —
+ *  sans onduleur, `concevoir_par_pan` rend `Conception(pans, manquantes)` SANS `entree` (chaines.py ~l.915-918) ;
+ *  `bloc_pose` lit alors `conception.entree.module` = None (l.1205-1206) et, le document ne désignant aucun module par
+ *  pan (`geometry.moduleId` → `_module_du_pan` None, l.356-364), chaque pan a `kwc: None` ⇒ aucun « pan équipé »
+ *  (simulation.py ~l.614-615, refus l.750). Produits RÉELS du catalogue (`produits_modules_qs`,
+ *  `produits_par_type_fiche_qs(…, 'onduleur')`) dont la fiche porte tous les champs exigés (`CHAMPS_MODULE`,
+ *  `CHAMPS_ONDULEUR`). */
+async function designerMateriel(id) {
   const r = await py(`from apps.calepinage.models import Calepinage
-from apps.calepinage.services.chaines import CHAMPS_MODULE
+from apps.calepinage.services.chaines import CHAMPS_MODULE, CHAMPS_ONDULEUR
 from apps.calepinage.services.electrique import enregistrer_entree
+from apps.stock.selectors import produits_par_type_fiche_qs
 from apps.stock.selectors_fiche_technique import produits_modules_qs, specs_for_produit
 c = Calepinage.objects.get(pk=${Number(id)})
-choix = None
-for p in produits_modules_qs(c.company):
-    s = specs_for_produit(p) or {}
-    if all(s.get(cle) not in (None, '') for cle, _ in CHAMPS_MODULE):
-        choix = (p.pk, p.nom, s.get('pmax_wc'))
-        break
-if choix:
-    enregistrer_entree(c, {'module_produit': choix[0]}, user=U.objects.get(username='demo_admin'))
-sortie({'produit': choix and choix[0], 'nom': choix and choix[1], 'pmax_wc': choix and choix[2]})`)
-  if (!r?.produit) {
-    throw new Error('NON JOUABLE sur ce runner — aucun module PV du catalogue de la société ne porte une fiche complète '
-      + '(Vmp, Voc, Isc, Imp, Pmax) : impossible de désigner le module que la simulation exige.')
+def premier(qs, champs):
+    for p in qs:
+        s = specs_for_produit(p) or {}
+        if all(s.get(cle) not in (None, '') for cle, _ in champs):
+            return {'id': p.pk, 'nom': p.nom, 'pmax_wc': s.get('pmax_wc'), 'ac_kw': s.get('ac_kw')}
+    return None
+module = premier(produits_modules_qs(c.company), CHAMPS_MODULE)
+onduleur = premier(produits_par_type_fiche_qs(c.company, 'onduleur'), CHAMPS_ONDULEUR)
+if module and onduleur:
+    enregistrer_entree(c, {'module_produit': module['id'], 'onduleur_produit': onduleur['id']},
+                       user=U.objects.get(username='demo_admin'))
+sortie({'module': module, 'onduleur': onduleur})`)
+  if (!r?.module || !r?.onduleur) {
+    throw new Error(`NON JOUABLE sur ce runner — catalogue sans fiche complète pour ${!r?.module ? 'un module PV (Vmp, Voc, Isc, Imp, Pmax)' : ''}`
+      + `${!r?.module && !r?.onduleur ? ' ni ' : ''}${!r?.onduleur ? 'un onduleur (MPPT, plage, Vmax, Imax/MPPT, puissance AC)' : ''} : `
+      + `matériel exigé par la simulation impossible à désigner (${JSON.stringify(r)}).`)
   }
-  console.log(`[PA2.5] module désigné : #${r.produit} ${r.nom} (${r.pmax_wc} Wc)`)
+  console.log(`[PA2.5] matériel désigné : ${JSON.stringify(r)}`)
   return r
 }
 
 async function ecartSimulation({ page, context, suivi }) {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL367 sim', toitPlat())
-  await designerModule(cal.id)
+  await designerMateriel(cal.id)
   let bouton = await ouvrirAtelier(page, cal.id)
   const s0 = (await enregistrer(page, cal.id, bouton))?.result?.annualKwh
   const sim0 = await simulationServeur(cal.id)
