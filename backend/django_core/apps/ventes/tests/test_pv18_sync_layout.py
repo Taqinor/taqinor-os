@@ -930,6 +930,27 @@ class TestCompletionDuKit(TestCase):
         self.assertIn('Devis multi-villa', str(resp.data['roof_layout']))
         self.assertEqual(devis.lignes.count(), avant)
 
+    def test_devis_commercial_ou_industriel_aucun_kit_residentiel(self):
+        """Un devis C&I porte le panier du moteur C&I (coffrets AC/DC, pose,
+        raccordement…) : la complétion RÉSIDENTIELLE n'y ajoute rien. Devis
+        DEV-202611-0076 (19/11/2026) : un calepinage enregistré y avait ajouté
+        Accessoires + Tableau + Installation, comptés en double."""
+        self._catalogue()
+        for mode in (Devis.ModeInstallation.INDUSTRIEL,
+                     Devis.ModeInstallation.COMMERCIAL):
+            with self.subTest(mode=mode):
+                devis = self._squelette()
+                Devis.objects.filter(pk=devis.pk).update(
+                    mode_installation=mode)
+                avant = devis.lignes.count()
+                resp = self._post(devis, layout(panels=16, kwc=8.8))
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertEqual(resp.data['lignes_ajoutees'], 0)
+                self.assertEqual(devis.lignes.count(), avant)
+                for designation in KIT_ATTENDU:
+                    self.assertFalse(devis.lignes.filter(
+                        designation=designation).exists(), designation)
+
 
 # ── PVCBL — F8 : les câbles suivent la taille du calepinage ─────────────────
 #
