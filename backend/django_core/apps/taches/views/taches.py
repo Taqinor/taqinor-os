@@ -149,7 +149,9 @@ class TachesVue(IdempotentCreateMixin, APIView):
         return paginateur.get_paginated_response(donnees)
 
     @extend_schema(request=inline_serializer('TachesCorpsTache', dict(CHAMPS_CREATION)),
-                   responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404), conflit=ERREUR_CODE))
+                   # 200 : rejeu d'un `client_id` déjà créé — la tâche existante, même forme (`_creer`).
+                   responses={**reponses(TacheEcriteSerializer, statut=201, erreurs=(400, 404), conflit=ERREUR_CODE),
+                              200: TacheEcriteSerializer})
     def post(self, request):
         entree = TacheCreationSerializer(data=request.data)
         entree.is_valid(raise_exception=True)
