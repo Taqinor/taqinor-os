@@ -294,6 +294,38 @@ test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
     await expect(page.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeVisible()
   })
 
+  test('R3-081 — en sombre, la cloche ouvre un panneau du thème du module, voile et poignée ; hors de Tâches rien ne change', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* privé */ } })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await semer(page)
+    await attendreAujourdhui(page)
+    await page.locator('.tch').getByRole('button', { name: /^Notifications/ }).click()
+    const panneau = page.locator('.nb-panel')
+    await expect(panneau).toBeVisible()
+    const mesure = await panneau.evaluate((el) => {
+      const sonde = document.createElement('div')
+      sonde.style.background = 'var(--tch-surface-haute)'
+      document.body.appendChild(sonde)
+      const attendu = getComputedStyle(sonde).backgroundColor
+      sonde.remove()
+      const entete = el.closest('.header')
+      return {
+        fond: getComputedStyle(el).backgroundColor, attendu,
+        voile: getComputedStyle(entete, '::after').content !== 'none' && getComputedStyle(entete, '::after').position === 'fixed',
+        poignee: getComputedStyle(el, '::before').width,
+      }
+    })
+    expect(mesure.fond, 'le panneau a la surface haute du module, pas le blanc de l\'ERP').toBe(mesure.attendu)
+    expect(mesure.voile, 'un voile derrière le panneau').toBe(true)
+    expect(mesure.poignee, 'la poignée de 36 px').toBe('36px')
+    // toucher le voile ferme le panneau
+    await page.mouse.click(195, 120)
+    await expect(panneau).toBeHidden()
+    // hors de Tâches : l'en-tête de l'ERP n'a pas de voile
+    await page.goto('/apps')
+    await expect(page.locator('.layout-main > .header')).toBeVisible()
+    expect(await page.locator('.layout-main > .header').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none')
+  })
 })
 
 test.describe('Tâches — enveloppe au bureau (1440 × 900)', () => {

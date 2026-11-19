@@ -1068,6 +1068,54 @@
   /* R2-083 — le tiroir FERMÉ (translateX(-105 %)) gardait son ombre de 28 px, qui débordait en bande grise sur le bord
      gauche de chaque écran. Ouvert, il la retrouve. */
   .layout:not(.drawer-open):has(> .layout-main > .layout-content > .route-fade > .tch) > .sidebar { box-shadow: none; }
+  /* R3-081 — le panneau de la cloche, ouvert depuis Tâches, est une FEUILLE du module : un voile derrière lui (le
+     toucher ferme le panneau sans rien toucher dessous : la cible est l'en-tête, hors de `.nb-wrap`) et une poignée. Le
+     voile est le `::after` de l'en-tête (contexte d'empilement de la coque) : `.nb-wrap` (z-index de l'ERP) passe au-dessus. */
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header:has(.nb-panel)::after {
+    content: ""; position: fixed; inset: 0; background: var(--tch-voile); visibility: visible;
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+    border-radius: var(--tch-rayon-feuille) var(--tch-rayon-feuille) 0 0; border-bottom: 0; box-shadow: var(--shadow-lg);
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel::before {
+    content: ""; display: block; width: 36px; height: 5px; margin: 2px auto 6px; border-radius: 999px; background: var(--tch-trait);
+  }
+}
+@media screen and (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header:has(.nb-panel)::after {
+    animation: fade-in var(--motion-base) var(--ease-standard);
+  }
+}
+/* R3-081 — en sombre, le panneau de la cloche ouvert depuis Tâches prend le thème du module (iPhone ET bureau) : il était
+   BLANC sur l'écran bleu nuit, ses textes clairs devenus illisibles. Les couleurs littérales du panneau de l'ERP
+   (16-p67-composants.css) sont remplacées ici par les jetons, SEULEMENT dans les pages de Tâches : ailleurs, rien ne bouge. */
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+  background: var(--tch-surface-haute); color: var(--tch-texte); border-color: var(--tch-trait); box-shadow: var(--shadow-lg);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-header, .nb-item, .nb-annonce-titre, .nb-push-title) { color: var(--tch-texte); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-tab, .nb-empty, .nb-group-title, .nb-group-title svg, .nb-item-date, .nb-item-mark, .nb-annonce-corps, .nb-push-text, .nb-push-close) {
+  color: var(--tch-texte-doux);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-link-btn, .nb-tab-active) { color: var(--tch-accent); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-tab-active { background: var(--tch-selection); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-dot { background: var(--tch-accent); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+  :is(.nb-tabs, .nb-annonce) { border-color: var(--tch-trait); }
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-push-prompt {
+  background: var(--tch-selection); border-color: var(--tch-trait);
+}
+.dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .attention-peek {
+  background: var(--tch-surface-haute); color: var(--tch-texte); border-color: var(--tch-trait);
+}
+@media (hover: hover) {
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+    :is(.nb-item, .nb-tab, .nb-link-btn, .nb-item-mark):hover { background: var(--tch-survol); color: var(--tch-texte); }
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel
+    :is(.nb-tab-active, .nb-item-unread):hover { background: var(--tch-selection); }
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel .nb-tab-active:hover { color: var(--tch-accent); }
 }
 /* R2-090 — hors ligne, UN signal : la ligne « Hors ligne · dernière synchro à {HH:MM} » de la coquille. Le bandeau
    orange de l'ERP (OfflineBanner, seul bandeau `role=status` en `bg-warning` de la coque) ne s'empile plus dessus. */
