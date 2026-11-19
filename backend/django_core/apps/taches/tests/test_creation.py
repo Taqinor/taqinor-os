@@ -93,9 +93,18 @@ class CreationTests(TestCase):
         regle = RegleRecurrence.objects.create(company=self.a, proprietaire=self.u1, frequence='quotidien',
                                                date_debut=_j(0))
         fabriques.tache(self.u1, recurrence=regle, occurrence_du=_j(0), jour_prevu=_j(0))
-        with self.assertRaises(serializers.ValidationError):
+        # refus d'ÉTAT (la série a déjà son occurrence ouverte) : 409, même champ — plus une erreur de forme
+        with self.assertRaises(ConflitEtat) as refus:
             self._creer(_ligne(recurrence=regle.pk, occurrence_du=_j(1).isoformat()),
                         porte='recurrence', source='recurrence')
+        self.assertEqual([str(m) for m in refus.exception.detail['recurrence']],
+                         ['Une occurrence de cette série est déjà ouverte.'])
+        # par la saisie (par lignes) : le même 409, qui nomme SA ligne comme un 400 (erreurs.json), jamais un 500
+        with self.assertRaises(ConflitEtat) as par_ligne:
+            self._creer(_ligne(index=3, recurrence=regle.pk, occurrence_du=_j(1).isoformat()))
+        self.assertEqual([str(m) for m in par_ligne.exception.detail['lignes']['3']['recurrence']],
+                         ['Une occurrence de cette série est déjà ouverte.'])
+        self.assertEqual(par_ligne.exception.status_code, 409)
         Tache.objects.filter(recurrence=regle).update(statut=StatutTache.FAIT, fait_le=timezone.now())
         suivante = self._creer(_ligne(recurrence=regle.pk, occurrence_du=_j(1).isoformat()),
                                porte='recurrence', source='recurrence')
