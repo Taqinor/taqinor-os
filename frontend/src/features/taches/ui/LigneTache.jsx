@@ -34,6 +34,23 @@ const SEUIL_OUVERT = 64
 const LARGEUR_GAUCHE = 192
 const LARGEUR_DROITE = 132
 
+/** R2-032 — le toucher qui referme une ligne ouverte n'ouvre rien d'autre : son `click` est avalé, une fois. S'il n'y a
+ *  pas de clic (c'était un défilement), le toucher suivant retire l'avaleur. Hors de React : la ligne, une fois fermée,
+ *  démonte son effet, et l'avaleur doit lui survivre jusqu'au clic. */
+function avalerProchainClic() {
+  const retirer = () => {
+    document.removeEventListener('click', avaler, true)
+    document.removeEventListener('pointerdown', retirer, true)
+  }
+  const avaler = (c) => { c.stopPropagation(); c.preventDefault(); retirer() }
+  document.addEventListener('click', avaler, true)
+  document.addEventListener('pointerdown', retirer, true)
+}
+
+/** R2-032 — pendant le glissement, les actions se partagent exactement la largeur que le doigt a découverte (au repos,
+ *  la feuille de style leur donne leur largeur pleine) : jamais une bande vide ou grise à côté de la ligne. */
+const BOUTON_PROPORTIONNEL = { flexGrow: 1, flexShrink: 1, flexBasis: '0px', width: 'auto', minWidth: 0 }
+
 /** Balayage tactile : révèle des actions sous la ligne ; un balayage complet les déclenche. */
 function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
   const [dx, setDx] = useState(0)
@@ -48,6 +65,19 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
   useEffect(() => annulerAppui, [])
 
   const fermer = () => { setOuvert(null); setDx(0) }
+
+  // R2-032 — un toucher AILLEURS referme d'abord la ligne ouverte (et n'ouvre rien d'autre)
+  useEffect(() => {
+    if (!ouvert) return undefined
+    const dehors = (e) => {
+      if (cadre.current?.contains(e.target)) return
+      setOuvert(null)
+      setDx(0)
+      avalerProchainClic()
+    }
+    document.addEventListener('pointerdown', dehors, true)
+    return () => document.removeEventListener('pointerdown', dehors, true)
+  }, [ouvert, cadre])
 
   const surDebut = (e) => {
     if (e.pointerType !== 'touch') return
@@ -302,20 +332,21 @@ export default function LigneTache({
       onDragEnd={glissable ? () => glissable.onFin() : undefined}
     >
       {aRevelation && (balayage.ouvert === 'droite' || balayage.dx > 0) ? (
-        <div className="actions">
-          <button type="button" className="action fait" aria-label={`Fait : ${item.titre}`}
+        <div className="actions" style={balayage.glisse ? { right: 'auto', width: Math.max(0, balayage.dx), overflow: 'hidden' } : undefined}>
+          <button type="button" className="action fait" aria-label={`Fait : ${item.titre}`} style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); terminer(true).catch(() => {}) }}>
             <Check className="i" aria-hidden="true" />Fait
           </button>
         </div>
       ) : null}
       {aRevelation && (balayage.ouvert === 'gauche' || balayage.dx < 0) ? (
-        <div className="actions droite">
-          <button type="button" className="action choisir" aria-label="Choisir un jour"
+        <div className="actions droite" style={balayage.glisse ? { left: 'auto', width: Math.max(0, -balayage.dx), overflow: 'hidden' } : undefined}>
+          <button type="button" className="action choisir" aria-label="Choisir un jour" style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); onChoisirJour?.(item) }}>
             <Calendar className="i" aria-hidden="true" />Choisir<br />un jour
           </button>
           <button type="button" className="action reporter" aria-label={reporterLibelle ? `Reporter à ${reporterLibelle}` : 'Reporter'}
+            style={balayage.glisse ? BOUTON_PROPORTIONNEL : undefined}
             onClick={() => { balayage.fermer(); reporter() }}>
             <ArrowRight className="i" aria-hidden="true" />Reporter
             {reporterLibelle ? <small className="chiffres">{reporterLibelle}</small> : null}

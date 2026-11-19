@@ -342,6 +342,71 @@ describe('R2-018 — « 2 h » se lit comme une durée, pas comme « à 2 h »',
   })
 })
 
+describe('R2-032 — balayage : actions dévoilées proportionnellement, ligne ouverte qui se referme', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('à mi-course, les actions se partagent la largeur découverte : plus de bande grise seule à côté de la ligne', () => {
+    const { container } = monter({ reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 200)
+    const actions = container.querySelector('.actions.droite')
+    expect(actions.style.width).toBe('100px')
+    expect(actions.style.left).toBe('auto')
+    const boutons = [...actions.querySelectorAll('.action')]
+    expect(boutons).toHaveLength(2)
+    boutons.forEach((b) => { expect(b.style.flexGrow).toBe('1'); expect(b.style.flexBasis).toBe('0px'); expect(b.style.width).toBe('auto') })
+    poser(ligne, 'pointerup', 200)
+  })
+
+  it('un balayage vers la droite dévoile « Fait » à la largeur du doigt', () => {
+    const { container } = monter()
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 90)
+    const actions = container.querySelector('.actions:not(.droite)')
+    expect(actions.style.width).toBe('70px')
+    expect(actions.style.right).toBe('auto')
+    poser(ligne, 'pointerup', 90)
+  })
+
+  it("une ligne ouverte se referme au premier toucher ailleurs, et ce toucher n'ouvre rien d'autre", async () => {
+    const onOuvrir = vi.fn()
+    render(
+      <div role="list">
+        <LigneTache item={{ ...item(), id: 1, titre: 'Première' }} aujourdhui={AUJOURDHUI} reporterLibelle="lun. 23" onOuvrir={onOuvrir} />
+        <LigneTache item={{ ...item(), id: 2, titre: 'Seconde' }} aujourdhui={AUJOURDHUI} onOuvrir={onOuvrir} />
+      </div>,
+    )
+    const [premiere] = document.querySelectorAll('.ligne')
+    poser(premiere, 'pointerdown', 300)
+    poser(premiere, 'pointermove', 220)
+    poser(premiere, 'pointerup', 220)
+    expect(premiere).toHaveClass('glisse-gauche')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(premiere).not.toHaveClass('glisse-gauche')
+    expect(onOuvrir).not.toHaveBeenCalled() // le toucher a refermé la première, il n'a pas ouvert la seconde
+    // et le toucher d'après, lui, ouvre normalement
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(onOuvrir).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
+  })
+
+  it("toucher la ligne ouverte elle-même ne la referme pas par le toucher « ailleurs » (ses boutons restent actifs)", async () => {
+    const onChoisirJour = vi.fn()
+    const { container } = monter({ onChoisirJour, reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointerup', 220)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choisir un jour' }))
+    expect(onChoisirJour).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
+  })
+})
+
 describe('R2-028 — la ligne dit qu\'il y a une note, une check-list, un rappel (comme Things)', () => {
   const indices = (container) => [...container.querySelectorAll('.meta .indice')].map((e) => e.textContent)
 
