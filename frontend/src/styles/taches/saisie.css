@@ -104,6 +104,8 @@
 .tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
 .tch .apercu-bascule::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%); }
 .tch .apercu-bascule[aria-pressed="true"] { text-decoration: underline; }
+/* R4-26 — « Ressemble à « … » · Utiliser » : une 2e ligne discrète sous le nom du nouveau projet */
+.tch .apercu-projet .nom .apercu-ressemble { margin-top: 2px; overflow-wrap: anywhere; }
 .tch .puce.prio { flex: none; height: 34px; gap: 4px; background: var(--tch-surface); color: var(--tch-texte); }
 .tch .puce.prio svg { color: var(--tch-texte-doux); }
 /* une liste collée : la feuille s'ouvre en grand (cran 85, comme la maquette), quel que soit son cran de départ */

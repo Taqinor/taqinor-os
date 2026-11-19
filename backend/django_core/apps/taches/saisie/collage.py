@@ -228,6 +228,40 @@ def projet_premiere_ligne(nettes, base, projets):
     return resoudre_groupe(premiere.texte, _contexte(base, projets))
 
 
+#: R4-26 — petits mots ignorés quand on compare deux noms de projet (« Ecole Al Manar de Salé » ~ « École Al-Manar »).
+_MOTS_VIDES = frozenset({'a', 'au', 'aux', 'd', 'de', 'des', 'du', 'en', 'et', 'l', 'la', 'le', 'les', 'pour', 'sur',
+                         'un', 'une'})
+_STATUTS_PROPOSES = ('actif', 'en_pause')
+MOTS_COMMUNS_MIN = 2
+
+
+def _mots(nom):
+    return frozenset(m for m in re.findall(r'\w+', normaliser(nom)) if m not in _MOTS_VIDES)
+
+
+def ressemblance(nom, projets):
+    """R4-26 — le projet OUVERT dont le nom ressemble à celui d'un NOUVEAU projet (« Pompage Ouled Saleh » à côté de
+    « Pompage Douar Ouled Saleh ») : tous les mots de l'un sont dans l'autre (accents, casse, ponctuation et petits
+    mots ignorés), au moins deux en commun. Le plus de mots communs l'emporte ; deux candidats à égalité : aucun
+    (jamais un choix au hasard). Rend `{'id', 'nom'}` ou None. Rien n'est fusionné : l'écran PROPOSE « Utiliser »."""
+    mots = _mots(nom)
+    candidats = []
+    for projet in projets:
+        if projet.statut not in _STATUTS_PROPOSES or cle_nom(projet.nom) == cle_nom(nom):
+            continue
+        siens = _mots(projet.nom)
+        communs = len(mots & siens)
+        if communs >= MOTS_COMMUNS_MIN and (mots <= siens or siens <= mots):
+            candidats.append((communs, projet))
+    if not candidats:
+        return None
+    candidats.sort(key=lambda c: -c[0])
+    if len(candidats) > 1 and candidats[1][0] == candidats[0][0]:
+        return None
+    meilleur = candidats[0][1]
+    return {'id': meilleur.id, 'nom': meilleur.nom}
+
+
 def _projet_suggere(titre, projets):
     """Exactement un projet actif (nom ≥ 4 caractères) contenu comme mot entier dans le titre."""
     cible = normaliser(titre)
@@ -273,7 +307,8 @@ def _analyser_collage(numero, texte, base, projets, depart, projet_impose):
         if commun is not None:
             entree = {'collage': numero, 'id': commun['id'], 'nom': commun['nom'],
                       'nouveau': commun['nouveau'], 'priorite': commun.get('priorite'),
-                      'source': 'premiere_ligne'}
+                      'source': 'premiere_ligne',
+                      'ressemble_a': ressemblance(commun['nom'], projets) if commun['nouveau'] else None}
             nettes = nettes[1:]
     lignes = _lignes_du_collage(numero, nettes, base, projets, depart, commun)
     return lignes, entree
@@ -326,8 +361,9 @@ def _a_un_projet(ligne):
     return 'projet_id' in champs or 'nouveau_projet' in champs
 
 
-def _projets_nouveaux(lignes, communs):
-    """Projets nés de l'envoi, sans doublon (par `cle_nom`), `priorite` 2 par défaut."""
+def _projets_nouveaux(lignes, communs, projets=()):
+    """Projets nés de l'envoi, sans doublon (par `cle_nom`), `priorite` 2 par défaut ; R4-26 : `ressemble_a`, le
+    projet existant dont le nom est proche (ou None)."""
     vus, nouveaux = set(), []
     candidats = [{'nom': c['nom'], 'priorite': c['priorite'] or PRIORITE_PROJET_NE}
                  for c in communs if c['nouveau']]
@@ -337,7 +373,8 @@ def _projets_nouveaux(lignes, communs):
         cle = cle_nom(projet['nom'])
         if cle not in vus:
             vus.add(cle)
-            nouveaux.append({'nom': projet['nom'], 'priorite': projet['priorite']})
+            nouveaux.append({'nom': projet['nom'], 'priorite': projet['priorite'],
+                             'ressemble_a': ressemblance(projet['nom'], projets)})
     return nouveaux
 
 
@@ -380,4 +417,4 @@ def decouper_collage(textes, aujourdhui, maintenant, projets=(), sections=(), et
             communs.append(commun)
     marquer_doublons(lignes, taches_ouvertes, projets)
     return {'projets_communs': communs, 'lignes': lignes,
-            'projets_nouveaux': _projets_nouveaux(lignes, communs)}
+            'projets_nouveaux': _projets_nouveaux(lignes, communs, projets)}

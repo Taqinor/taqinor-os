@@ -190,7 +190,15 @@ export function projetDuGroupe(defaut, choix, projets = []) {
   return { nom: choix.nom, nouveau: true }
 }
 
-function EnteteProjet({ commun, nbTaches, priorite, enTache, ouvert, onPriorite, onEnTache, onChanger }) {
+/** R4-26 — le projet EXISTANT dont le nom ressemble à celui d'un nouveau projet (servi par l'aperçu, `ressemble_a`) :
+ *  celui du projet commun, sinon celui de `projets_nouveaux` pour ce nom ; `null` quand le serveur n'en a vu aucun. */
+function ressemblanceDe(apercu, commun, vu) {
+  if (!vu?.nouveau) return null
+  if (commun && commun.nom === vu.nom) return commun.ressemble_a ?? null
+  return (apercu?.projets_nouveaux ?? []).find((p) => cleNom(p.nom) === cleNom(vu.nom))?.ressemble_a ?? null
+}
+
+function EnteteProjet({ commun, nbTaches, priorite, enTache, ouvert, onPriorite, onEnTache, onChanger, ressemble, onUtiliser }) {
   const nouveau = Boolean(commun.nouveau)
   const libelle = commun.sans ? 'Sans projet' : nouveau ? `Nouveau projet : ${commun.nom}` : `Projet : ${commun.nom}`
   const nom = commun.sans ? 'Sans projet' : commun.nom
@@ -232,6 +240,17 @@ function EnteteProjet({ commun, nbTaches, priorite, enTache, ouvert, onPriorite,
             </>
           )}
         </small>
+        {/* R4-26 — un nom proche d'un projet existant : jamais fusionné en silence, l'écran le DIT et propose d'utiliser
+            l'existant (un toucher ; « Changer » reste là pour un autre choix) */}
+        {ressemble && !enTache && onUtiliser ? (
+          <small className="apercu-ressemble">
+            {`Ressemble à « ${ressemble.nom} »`}
+            {' · '}
+            <button type="button" className="apercu-bascule" aria-label={`Utiliser « ${ressemble.nom} »`} onClick={onUtiliser}>
+              Utiliser
+            </button>
+          </small>
+        ) : null}
       </span>
       {nouveau && !enTache ? <PucePriorite nom={commun.nom} valeur={priorite} onChoisir={onPriorite} /> : null}
     </div>
@@ -339,6 +358,7 @@ export default function ApercuListe({
           const cle = `p${c}`
           const choix = modifs.projets?.[cle]
           const vu = projetDuGroupe(commun, choix, projets)
+          const ressemble = choix ? null : ressemblanceDe(apercu, commun, vu)
           return (
             <div key={c} className="apercu-groupe" role="group" aria-label={vu.sans ? 'Sans projet' : vu.nom}>
               <EnteteProjet
@@ -350,6 +370,8 @@ export default function ApercuListe({
                 onPriorite={onPriorite}
                 onEnTache={() => onEnTache(c)}
                 onChanger={changer(cle)}
+                ressemble={ressemble}
+                onUtiliser={onProjet && ressemble ? () => choisir(cle)({ id: ressemble.id }) : undefined}
               />
               {changeant === cle ? <ChoixDuProjet projet={vu} projets={projets} onChoisir={choisir(cle)} /> : null}
               {enTache ? <LigneTitreEnTache cle={`p${c}`} nom={commun.nom} {...titreDeLigne} /> : null}
@@ -365,6 +387,7 @@ export default function ApercuListe({
           const gEnTache = Boolean(modifs.enTache[g.cleModif])
           const vu = g.projet ? projetDuGroupe(g.projet, modifs.projets?.[g.cleModif], projets) : null
           const titreVu = vu?.sans ? 'Sans projet' : vu?.nom
+          const ressemble = modifs.projets?.[g.cleModif] ? null : ressemblanceDe(apercu, null, vu)
           return (
             <div key={`${c}:${g.cleModif}`} className="apercu-groupe" role="group" aria-label={(nom && titreVu) || `Liste ${c + 1}`}>
               {nom ? (
@@ -377,6 +400,8 @@ export default function ApercuListe({
                   onPriorite={onPriorite}
                   onEnTache={() => onEnTache(g.cleModif)}
                   onChanger={changer(g.cleModif)}
+                  ressemble={ressemble}
+                  onUtiliser={onProjet && ressemble ? () => choisir(g.cleModif)({ id: ressemble.id }) : undefined}
                 />
               ) : null}
               {nom && changeant === g.cleModif ? (

@@ -284,6 +284,56 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
     })
   })
 
+  describe('R4-26 — un nom PROCHE d\'un projet existant : l\'aperçu le dit, jamais de fusion silencieuse', () => {
+    const PROJETS = [{ id: 41, nom: 'Pompage Douar Ouled Saleh', couleur: 'mer', statut: 'actif' }]
+    const proche = { id: 41, nom: 'Pompage Douar Ouled Saleh' }
+    const nouveau = { nouveau_projet: { nom: 'Pompage Ouled Saleh', priorite: 2 } }
+    const GROUPE = {
+      projets_communs: [],
+      lignes: [
+        { ...ligne(0, 0, 'poser la pompe'), champs: { priorite: 0, ...nouveau } },
+        { ...ligne(1, 0, 'tirer le câble'), champs: { priorite: 0, ...nouveau } },
+      ],
+      projets_nouveaux: [{ nom: 'Pompage Ouled Saleh', priorite: 2, ressemble_a: proche }],
+    }
+
+    it('« Ressemble à « … » · Utiliser » sous l\'en-tête ; sans geste, le NOUVEAU projet part (rien n\'est fusionné)', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(GROUPE, { projets: PROJETS })
+      const groupe = screen.getByRole('group', { name: 'Pompage Ouled Saleh' })
+      expect(within(groupe).getByText('Nouveau projet : Pompage Ouled Saleh')).toBeInTheDocument()
+      expect(groupe.querySelector('.apercu-ressemble')).toHaveTextContent('Ressemble à « Pompage Douar Ouled Saleh » · Utiliser')
+      await user.click(screen.getByRole('button', { name: 'Créer 2 tâches' }))
+      expect(onCreer.mock.calls[0][0].map((l) => l.nouveau_projet?.nom)).toEqual(['Pompage Ouled Saleh', 'Pompage Ouled Saleh'])
+    })
+
+    it('« Utiliser » range le groupe dans le projet existant : l\'en-tête le dit, la phrase s\'efface, ses lignes partent avec lui', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(GROUPE, { projets: PROJETS })
+      await user.click(screen.getByRole('button', { name: 'Utiliser « Pompage Douar Ouled Saleh »' }))
+      expect(screen.getByText('Projet : Pompage Douar Ouled Saleh')).toBeInTheDocument()
+      expect(document.querySelector('.apercu-ressemble')).toBeNull()
+      expect(screen.getByText('2 tâches · 1 projet')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Créer 2 tâches' }))
+      expect(onCreer.mock.calls[0][0].map((l) => [l.projet_id, l.nouveau_projet])).toEqual([[41, undefined], [41, undefined]])
+    })
+
+    it('le projet commun (première ligne) le dit aussi ; un nouveau projet sans parent proche : rien', async () => {
+      const user = userEvent.setup()
+      const commun = {
+        ...APERCU,
+        projets_communs: [{ ...APERCU.projets_communs[0], nom: 'Pompage Ouled Saleh', ressemble_a: proche },
+          { ...APERCU.projets_communs[1], ressemble_a: null }],
+        lignes: APERCU.lignes.map((l) => (l.collage === 0 ? { ...l, champs: { priorite: 0, ...nouveau } } : l)),
+      }
+      const { onCreer } = monter(commun, { projets: PROJETS })
+      expect(document.querySelectorAll('.apercu-ressemble')).toHaveLength(1)
+      await user.click(screen.getByRole('button', { name: 'Utiliser « Pompage Douar Ouled Saleh »' }))
+      await user.click(screen.getByRole('button', { name: 'Créer 6 tâches' }))
+      expect(onCreer.mock.calls[0][0].slice(0, 3).map((l) => l.projet_id)).toEqual([41, 41, 41])
+    })
+  })
+
   describe('R2-005 — un titre corrigé est relu ; chaque puce se retire', () => {
     const jour = { type: 'jour', source: 'mardi', debut: 9, fin: 14, libelle: 'mar. 24 nov.', valeur: '2026-11-24' }
     const relue = (titre, jetons, champs) => ({ data: { projets_communs: [], projets_nouveaux: [], lignes: [{ ...modele, index: 0, collage: 0, titre, jetons, alertes: [], champs }] } })
