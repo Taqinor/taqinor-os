@@ -375,6 +375,35 @@ class RythmeEcritureTests(BaseRythme):
         self.assertIn('objectif 1 (calculé) · 0 sur 1',
                       self.api.get('/api/django/taches/coach/entete/').json()['lignes'][0])
 
+    def test_garder_ce_rythme_part_du_pas_reel_avant_14_jours(self):
+        """R3-004 (choix C-15) — il dit « ça suffit » : objectif 6, il en fait 4,4. Calcul à la main : 10 jours évalués
+        (5, 4, 5, 4, 4, 5, 4, 5, 4, 4) → 44 / 10 = 4,4 → « environ 4 tâches (3 à 5) », provisoire (non fixée avant
+        14 jours) ; Aujourd'hui dit « 1 sur 4 », jamais 6. Le toast dit le provisoire."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        jours_evalues(self.u1, [5, 4, 5, 4, 4, 5, 4, 5, 4, 4])
+        fabriques.tache(self.u1, projet=fabriques.projet(self.u1), statut=StatutTache.FAIT,
+                        fait_le=timezone.make_aware(datetime.datetime.combine(J, datetime.time(10, 0))))
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 4, 'source': 'calcule', 'mode': 'tenir', 'zone': [3, 5]})
+        self.assertEqual((corps['tenir']['reference'], corps['tenir']['provisoire']), (4.4, True))
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         'Garder ce rythme : environ 4 tâches par jour (3 à 5). '
+                         "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. "
+                         'À confirmer sur 14 jours travaillés.')
+        jour = self.api.get('/api/django/taches/aujourdhui/', {'jour': J.isoformat()}).json()
+        self.assertEqual((jour['progression']['faites'], jour['objectif']['nb']), (1, 4))
+
+    def test_garder_ce_rythme_sans_assez_de_jours_garde_le_palier_et_le_dit(self):
+        """R3-004 — 4 jours évalués seulement : le palier (6) est gardé, et le toast le dit franchement."""
+        from apps.taches.models.gestes import GesteAnnulable
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        jours_evalues(self.u1, [5, 4, 5, 4])
+        corps = self.api.post(URL, {'mode': 'tenir'}, format='json').json()
+        self.assertEqual(corps['objectif']['nb'], 6)
+        self.assertEqual(GesteAnnulable.objects.get(pk=corps['geste_id']).message,
+                         "Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant.")
+
     def test_corps_refuse_ne_cree_pas_les_reglages(self):
         reponse = self.api.post(URL, {'mode': 'pousser', 'objectif': 40}, format='json')
         self.assertEqual(reponse.status_code, 400)

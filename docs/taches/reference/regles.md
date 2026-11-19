@@ -800,7 +800,9 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 
 - `plafonner_jours(comptes)` : chaque jour de la fenêtre plafonné à 2 × médiane(fenêtre) + 1 (A2.3).
 - R = moyenne non arrondie des 14 derniers jours évalués (≤ 42 jours calendaires), plafonnés ; il en manque → R
-  provisoire = palier courant (ou 5), fixée après 14 jours évalués. b = max(1 ; 0,2 R) ; affichage « environ
+  PROVISOIRE = la moyenne plafonnée des jours évalués disponibles dès 5 (le pas réel, R3-004, choix C-15 : « if i
+  say that is enough it should help me keep the same pace »), sinon (moins de 5) le palier courant (ou 5), dit
+  franchement ; fixée après 14 jours évalués (`moteur.rythme.reference_provisoire`). b = max(1 ; 0,2 R) ; affichage « environ
   arrondir(R) », zone « arrondir(R − b) à arrondir(R + b) ».
 - Dérive = moyenne plafonnée des 14 derniers jours évalués DEPUIS la fixation de R, strictement hors zone → carte
   `derive_tenir` (`sous` / `au_dessus`), puis **28 jours de silence** quelle que soit la réponse ; `garder` garde R ;
@@ -810,7 +812,8 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 
 ### 6.7 Bascules (`basculer(etat, mode, jour)`)
 
-POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel). TENIR → POUSSER : palier = `arrondir(R)`, plancher
+POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel) ; avant 14, R provisoire = moyenne des jours
+évalués disponibles dès 5, sinon le palier (§6.6, R3-004). TENIR → POUSSER : palier = `arrondir(R)`, plancher
 1. → LIBRE : objectif nul, le palier est GARDÉ. LIBRE → POUSSER : on rend le dernier palier (celui d'avant « Sans
 objectif », R2-122, choix C-7) ; sans palier encore, journée type des 10 derniers jours évalués (≤ 42 j), sinon
 démarrage à froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les

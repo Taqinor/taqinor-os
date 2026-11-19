@@ -300,6 +300,9 @@ class ConfirmationsEtCartesTests(Tableau):
             ('confirmation', 'garder_ce_rythme.provisoire', {'R': 5, 'bas': 4, 'haut': 6}, 0,
              "Garder ce rythme : environ 5 tâches par jour (4 à 6). Je ne te pousse plus ; "
              "je te préviens seulement si tu t'en éloignes. À confirmer sur 14 jours travaillés."),
+            # R3-004 (C-15) : moins de 5 jours évalués, le palier est gardé et le geste le dit
+            ('confirmation', 'garder_ce_rythme.palier', {'R': 6, 'bas': 5, 'haut': 7}, 0,
+             "Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant."),
             ('confirmation', 'sans_objectif', {}, 0,
              'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés.'),
             ('confirmation', 'comprendre_eteint', {}, 0,

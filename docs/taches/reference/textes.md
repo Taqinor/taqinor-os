@@ -601,7 +601,7 @@ Factuelles ; jamais de reproche, de récompense, de points ni de « série ».
 | Objectif dit (nombre) | « Objectif du jour : {nb}, dès aujourd'hui. » |
 | « Plus » / « Moins » | « Objectif du jour : {nb} (un de plus), dès aujourd'hui. » · « … (un de moins), dès aujourd'hui. » |
 | En faire plus | « En faire plus : objectif du jour {nb}. Je te proposerai d'aller plus loin quand tu le tiens. » |
-| Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire : « … à confirmer sur 14 jours travaillés. » |
+| Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire (5 à 13 jours évalués, R sur le pas réel) : « … à confirmer sur 14 jours travaillés. » ; moins de 5 jours (R3-004) : « Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant. » |
 | Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés. » |
 | Comprendre mon rythme éteint | « C'est éteint : plus rien n'est calculé ni gardé sur ton rythme. » |
 

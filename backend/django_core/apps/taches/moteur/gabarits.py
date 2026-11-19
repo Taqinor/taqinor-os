@@ -341,6 +341,8 @@ _CONFIRMATIONS = {
     'garder_ce_rythme.provisoire': 'Garder ce rythme : environ {R} tâche{R?|s} par jour ({bas} à {haut}). '
                                    "Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. "
                                    'À confirmer sur {fenetre_derive} jours travaillés.',
+    # R3-004 (choix C-15) : moins de 5 jours évalués, le rythme ne se mesure pas encore — dit franchement
+    'garder_ce_rythme.palier': "Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant.",
     'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées '
                      'restent affichés.',
     'comprendre_eteint': "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme.",
