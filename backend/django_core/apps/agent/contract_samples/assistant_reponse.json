@@ -41,6 +41,7 @@
     "devis_cree": "apps/ventes/contract_samples/assistant_devis_cree.json",
     "visite": "apps/crm/contract_samples/lead_visite_planifier.json",
     "diagnostic": "apps/reporting/contract_samples/assistant_diagnostic.json",
+    "lien_ecran": "apps/agent/contract_samples/assistant_ouvrir.json (bouton « Ouvrir » ; le chemin vient du SERVEUR, table assistant_ecrans.json — l'écran ne suit qu'un chemin de son miroir ecrans.js)",
     "ma_journee": "apps/taches/contract_samples/aujourdhui.json",
     "plan_propose": "apps/taches/contract_samples/journee_proposition.json",
     "liste_taches": "apps/taches/contract_samples/recherche.json",

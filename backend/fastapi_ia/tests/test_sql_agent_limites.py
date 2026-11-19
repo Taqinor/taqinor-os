@@ -14,6 +14,7 @@ de test configuree (DB_HOST absent), comme dans test_sql_security.py.
 unittest (stdlib). A lancer depuis backend/fastapi_ia :
     python -m unittest discover -s tests
 """
+import json
 import os
 import sys
 import unittest
@@ -518,6 +519,25 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertNotIn("Reponse du repli.", out["answer"])
         self.assertFalse(out.get("repli", False))
 
+    def test_repli_recalcule_le_catalogue_du_fournisseur(self):
+        """FND6 — au plafond du jour comme après un refus de Claude, le
+        catalogue du tour est recalculé pour le repli AVANT `_run_agent`."""
+        import contextlib
+        from app.services import relais_copilote as relais
+        refuse, credit_nul, groq = _llm_factices()
+        for nom, claude, budget in (("plafond", groq, True),
+                                    ("refus", lambda: refuse(messages=iter([]), erreur=credit_nul()), False)):
+            with self.subTest(cas=nom), contextlib.ExitStack() as pile:
+                self._poser(claude, groq)
+                pile.enter_context(mock.patch.object(self.svc.SQLAgentService, "_budget_atteint",
+                                                     staticmethod(lambda ctx, _b=budget: _b)))
+                recalcul = pile.enter_context(mock.patch.object(relais, "catalogue_pour_repli"))
+                if not budget:
+                    pile.enter_context(self.assertLogs(self.svc.logger, level="WARNING"))
+                out = self._question()
+                self.assertTrue(out["repli"])
+                self.assertEqual(recalcul.call_args.args[1], "groq")
+
     def test_sans_fournisseur_de_repli_message_actuel(self):
         refuse, credit_nul, groq = _llm_factices()
         construits = self._poser(lambda: refuse(messages=iter([]),
@@ -596,6 +616,305 @@ class CreationsDevisS2Tests(unittest.TestCase):
         at.noter_message_tiers(ctx, "question")
         appels, textes = self._lancer(ctx, [{"ok": False, "status": 500, "error": "Erreur."}], n=2)
         self.assertEqual((len(appels), textes[1]), (1, at.REFUS_CREATION_DEVIS_TIERS))
+
+
+class EcrituresInternesFnd5Tests(unittest.TestCase):
+    """Vague 2 (FND5) — (a) cinq écritures silencieuses par tour, tous
+    domaines ; (b) le 409 `paiement_similaire` d'une confirmation est dit sans
+    pousser à une seconde proposition."""
+
+    NOTE = {"key": "crm.lead.note", "label": "Noter", "endpoint": "/api/django/crm/leads/{id}/noter/",
+            "method": "POST", "risk": "internal",
+            "inputs": {"type": "object", "properties": {"id": {"type": "integer"}}}}
+
+    def _lancer(self, ctx, action, n):
+        from app.services import action_tools as at
+        appels = []
+
+        def appel(*a, **k):
+            appels.append(a[1])
+            return {"ok": True, "status": 201, "data": {"id": 9}}
+        with mock.patch.object(at, "_django_call", appel):
+            textes = [at.run_catalogue_action(ctx, action, {"id": i + 1}, []) for i in range(n)]
+        return appels, textes
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_sixieme_ecriture_silencieuse_refusee_et_nouveau_tour_repart_a_zero(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        appels, textes = self._lancer(ctx, self.NOTE, 6)
+        self.assertEqual((len(appels), textes[5]), (5, at.REFUS_ECRITURES_INTERNES))
+        self.assertEqual(len(self._lancer(self._ctx(), self.NOTE, 1)[0]), 1)
+
+    def test_get_lecture_document_et_taches_ne_comptent_pas(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        self._lancer(ctx, self.NOTE, 5)
+        for action in (dict(self.NOTE, method="GET"), dict(self.NOTE, lecture=True),
+                       dict(self.NOTE, key="taches.tache.creer")):
+            with self.subTest(action=action["key"], methode=action["method"]):
+                self.assertFalse(at.est_ecriture_interne(action))
+        self.assertEqual(len(self._lancer(ctx, dict(self.NOTE, method="GET"), 2)[0]), 2)
+        self.assertEqual(len(self._lancer(ctx, dict(self.NOTE, lecture=True), 2)[0]), 2)
+        self.assertTrue(at.est_ecriture_interne(dict(self.NOTE, method="PATCH")))
+
+    def test_paiement_similaire_dit_sans_redemander(self):
+        from app.services import action_tools as at
+
+        class _Rep:
+            status_code, headers = 409, {}
+        corps = {"detail": "Un paiement de 20 000 MAD a déjà été enregistré aujourd'hui sur cette "
+                           "facture : confirmer ?", "code": "paiement_similaire"}
+        res = at._normalize_error(_Rep(), corps)
+        self.assertEqual(res["code"], "paiement_similaire")
+        self.assertEqual(at.texte_echec_confirmation(res), at.MESSAGE_PAIEMENT_SIMILAIRE)
+        self.assertNotIn("redemande", at.MESSAGE_PAIEMENT_SIMILAIRE)
+        autre = at._normalize_error(_Rep(), {"detail": "Facture annulée.", "code": "annulee"})
+        self.assertTrue(at.texte_echec_confirmation(autre).endswith(at._NON_EXECUTEE))
+        action = {"key": "ventes.facture.enregistrer_paiement", "label": "Encaisser"}
+        with mock.patch.object(at, "_claim_proposal", return_value={"human_preview": "x"}), \
+                mock.patch.object(at, "_preparer_confirmation", return_value=(action, {}, "")), \
+                mock.patch.object(at, "_execute_catalogue_action", return_value=res):
+            sortie = at.confirm_proposal(self._ctx(), "jeton")
+        self.assertEqual((sortie["ok"], sortie["error"]), (False, at.MESSAGE_PAIEMENT_SIMILAIRE))
+
+
+class JournalEcrituresInternesFnd7Tests(unittest.TestCase):
+    """Vague 2 (FND7) — une écriture silencieuse réussie est journalisée
+    (`origine=interne`, entrées SANS texte libre, preuve HMAC) ; jamais une
+    lecture, une action `taches.*`, un échec, ni sans secret."""
+
+    NOTE = dict(EcrituresInternesFnd5Tests.NOTE, inputs={"type": "object", "properties": {
+        "id": {"type": "integer"}, "texte": {"type": "string"}}})
+
+    def _lancer(self, action, reponse=None, secret="s"):
+        from app.services import action_tools as at
+        from app.services.action_tools import ActionContext
+        appels = []
+
+        def appel(ctx, path, method="POST", payload=None, **k):
+            appels.append((path, payload))
+            return reponse or {"ok": True, "status": 201, "data": {"id": 9921}}
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        with mock.patch.object(at, "_django_call", appel), mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": secret}):
+            at.run_catalogue_action(ctx, action, {"id": 1489, "texte": "Le client rappelle jeudi"}, [])
+        return [(p, c) for p, c in appels if p == "/api/django/agent/logs/confirmer/"]
+
+    def test_ecriture_reussie_journalisee_sans_texte(self):
+        from app.services import action_tools as at
+        (_, corps), = self._lancer(self.NOTE)
+        self.assertEqual({k: corps[k] for k in ("action_key", "risk_level", "origine", "inputs", "object_id")},
+                         {"action_key": "crm.lead.note", "risk_level": "internal", "origine": "interne",
+                          "inputs": {"id": 1489}, "object_id": 9921})
+        self.assertEqual(corps["preuve"], at.calculer_preuve_confirmation(
+            secret="s", action_key="crm.lead.note", company_id=7, user_id=0,
+            inputs={"id": 1489}, object_id=9921))
+        self.assertNotIn("jeudi", json.dumps(corps, ensure_ascii=False))
+
+    def test_jamais_lecture_taches_echec_ni_sans_secret(self):
+        echec = {"ok": False, "status": 409, "error": "Refus."}
+        for nom, action, reponse, secret in (
+                ("get", dict(self.NOTE, method="GET"), None, "s"),
+                ("lecture", dict(self.NOTE, lecture=True), None, "s"),
+                ("taches", dict(self.NOTE, key="taches.tache.creer"), None, "s"),
+                ("echec", self.NOTE, echec, "s"), ("sans_secret", self.NOTE, None, "")):
+            with self.subTest(cas=nom):
+                self.assertEqual(self._lancer(action, reponse, secret), [])
+
+
+def _servir_natif(catalogue, contexte=None, fournisseur="claude", **kw):
+    """Un tour du VRAI relais (`_query` -> `tour_natif`) dont le moteur natif
+    est SIMULÉ : rend (sortie, arguments remis au moteur). Aides de
+    `test_sql_agent_endpoint` (LLM LangChain, Django et Redis simulés)."""
+    from langchain_core.messages import AIMessage
+    from app.core import config
+    from app.services import moteur_natif
+    from tests.test_sql_agent_endpoint import _ctx, _tour
+    vu = {}
+
+    def executer(**arguments):
+        vu.update(arguments)
+        return {"answer": "Natif.", "outils_appeles": [], "arret": "fin", "modele": "m", "tokens": {}}
+    with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+            mock.patch.object(moteur_natif, "executer", executer):
+        sortie, _, llm = _tour([AIMessage(content="LangChain.")], catalogue=catalogue, ctx=_ctx(),
+                               contexte=contexte, fournisseur=fournisseur, **kw)
+    return sortie, vu, llm
+
+
+def _action(cle, **champs):
+    return {"key": cle, "label": cle, "description": "Action %s." % cle, "method": "GET",
+            "endpoint": "/api/django/x/", "risk": "internal", "lot": "copilote",
+            "inputs": {"type": "object", "properties": {}}, **champs}
+
+
+class ChargeurNatifFnd4Tests(unittest.TestCase):
+    """Vague 2 (FND4) — sous le moteur natif : noyau dans le préfixe, le reste
+    différé, `outils_charger`, index des domaines en fin de système, indice
+    d'écran dans l'en-tête ; rien de tout cela sous LangChain."""
+
+    CATALOGUE = [_action("crm.digest_matin", noyau=True), _action("crm.lead.note", method="POST"),
+                 _action("ventes.devis.lignes")]
+
+    def test_differes_chargeur_index_et_indice(self):
+        from app.services import chargeur_outils as ch, prompt_copilote as pc
+        _, vu, _ = _servir_natif(self.CATALOGUE, contexte={"ecran": "/ventes/devis"})
+        differes = {o.nom: o.differe for o in vu["outils"]}
+        self.assertEqual({k: differes[k] for k in ("crm_digest_matin", "crm_lead_note",
+                                                   "ventes_devis_lignes", "sql_db_query")},
+                         {"crm_digest_matin": False, "crm_lead_note": True,
+                          "ventes_devis_lignes": True, "sql_db_query": False})
+        self.assertIn(ch.NOM_CHARGEUR, differes)
+        self.assertTrue(vu["systeme"][-1]["text"].startswith(ch.ENTETE_INDEX))
+        self.assertIn(pc.LIGNE_DOMAINE % "ventes", vu["question"])
+
+    def test_sans_ecran_connu_en_tete_sans_indice(self):
+        from app.services import prompt_copilote as pc
+        _, vu, _ = _servir_natif(self.CATALOGUE, contexte={"ecran": "/parametres"})
+        self.assertNotIn(pc.LIGNE_DOMAINE.split("%")[0], vu["question"])
+
+    def test_langchain_ne_voit_ni_chargeur_ni_index(self):
+        from app.services import chargeur_outils as ch
+        sortie, vu, llm = _servir_natif(self.CATALOGUE, contexte={"ecran": "/crm"}, fournisseur="groq")
+        self.assertEqual(vu, {})
+        noms = next(n for genre, n in llm.recus if genre == "outils")
+        self.assertNotIn(ch.NOM_CHARGEUR, noms)
+        systeme = next(m for genre, m in llm.recus if genre == "messages")[0].content
+        self.assertNotIn(ch.ENTETE_INDEX, systeme)
+
+
+class MetriqueNatifFnd9Tests(unittest.TestCase):
+    """Vague 2 (FND9) — `metrique_gouvernee` est donné au moteur natif (non
+    différé), sortie étiquetée non fiable, lecture tierce (A5) ; absent sans
+    catalogue de métriques."""
+
+    def test_outil_natif_etiquete_et_marque_le_tour(self):
+        from app.services import action_tools as at, metriques_gouvernees as mg, relais_copilote as relais
+        ctx = at.ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        metriques = [{"cle": "ca_ht", "libelle": "CA HT", "description": "", "unite": "MAD"}]
+        with mock.patch.object(mg, "catalogue_metriques", return_value=metriques), \
+                mock.patch.object(mg, "lire_valeur", return_value={"ok": True, "cle": "ca_ht", "valeur": 12}):
+            outil, = relais._outil_metrique(ctx, False)
+            sortie = outil.executer({"cle": "ca_ht"})
+        self.assertEqual((outil.nom, outil.differe), ("metrique_gouvernee", False))
+        self.assertIn("ca_ht", outil.description)
+        self.assertEqual(json.loads(sortie)["fiabilite"], "non_fiable")
+        self.assertTrue(at.contenu_tiers_du_tour(ctx))
+        with mock.patch.object(mg, "catalogue_metriques", return_value=[]):
+            self.assertEqual(relais._outil_metrique(ctx, False), [])
+
+
+class JeuxDesMoteursFnd6Tests(unittest.TestCase):
+    """Vague 2 (FND6) — Groq copilote allumé = noyau seul ; copilote éteint,
+    la règle d'avant ; le repli recalcule son jeu ; LangChain ne reçoit
+    jamais une action `natif_seul` ; pas de reprise native au plafond du jour."""
+
+    CATALOGUE = [_action("crm.digest_matin", noyau=True), _action("crm.lead.note"),
+                 _action("taches.journee.lire"), _action("visites.agenda", natif_seul=True)]
+
+    def test_groq_noyau_seul_copilote_allume_regle_d_avant_eteint(self):
+        from app.services import relais_copilote as relais
+        cles = lambda jeu: [a["key"] for a in jeu]  # noqa: E731
+        self.assertEqual(cles(relais._jeu_du_fournisseur(self.CATALOGUE, "groq", None)), ["crm.digest_matin"])
+        self.assertEqual(cles(relais._jeu_du_fournisseur(self.CATALOGUE, "groq", {"ecran": "/taches"})),
+                         ["taches.journee.lire"])
+        eteint = [dict(a, lot=None) for a in self.CATALOGUE]
+        self.assertEqual(cles(relais._jeu_du_fournisseur(eteint, "groq", None)),
+                         ["crm.digest_matin", "crm.lead.note", "visites.agenda"])
+        self.assertEqual(relais._jeu_du_fournisseur(self.CATALOGUE, "claude", None), self.CATALOGUE)
+
+    def test_catalogue_du_repli_recalcule_sans_relire_django(self):
+        from app.services import relais_copilote as relais
+        from app.services.action_tools import ActionContext
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        relais.catalogue_pour_repli(ctx, "groq", None)  # rien de gardé : inchangé
+        self.assertIsNone(ctx.catalogue_tour)
+        ctx.catalogue_complet, ctx.catalogue_tour = list(self.CATALOGUE), list(self.CATALOGUE)
+        relais.catalogue_pour_repli(ctx, "Groq", None)
+        self.assertEqual([a["key"] for a in ctx.catalogue_tour], ["crm.digest_matin"])
+
+    def test_langchain_jamais_natif_seul(self):
+        from langchain_core.messages import AIMessage
+        from tests.test_sql_agent_endpoint import _ctx, _tour
+        _, _, llm = _tour([AIMessage(content="ok")], catalogue=self.CATALOGUE, ctx=_ctx(), fournisseur="claude")
+        noms = next(n for genre, n in llm.recus if genre == "outils")
+        self.assertIn("crm_lead_note", noms)
+        self.assertNotIn("visites_agenda", noms)
+
+    def test_reprise_native_rien_au_plafond_du_jour(self):
+        from app.core import config
+        from app.services import moteur_natif, relais_copilote as relais, sql_agent_service as svc
+        service = mock.Mock()
+        service._budget_atteint.return_value = True
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                mock.patch.object(svc, "SQL_AGENT_PROVIDER", "claude"), \
+                mock.patch.object(relais, "catalogue_du_tour", return_value=self.CATALOGUE), \
+                mock.patch.object(moteur_natif, "reprendre") as reprendre:
+            self.assertIsNone(relais.reprise_native(service, mock.Mock(), 7, 1, "Noter", {"data": {}}))
+        reprendre.assert_not_called()
+
+
+class InvariantEteintFnd13Tests(unittest.TestCase):
+    """Vague 2 (FND13) — copilote ÉTEINT pour le compte = identique, sur tous
+    les canaux, même quand le catalogue porte les champs neufs (`noyau`,
+    `lecture`, `natif_seul`) et que le moteur natif est réglé : bloc système,
+    historique et question remis au modèle, liste des outils, descriptions et
+    schémas, jeu de Groq. Aucun outil différé, aucun chargeur, aucun index,
+    aucun indice d'écran. Seule exception nommée de la vague : le retrait de
+    `ged.docqa.retrieve` (FND11, côté Django : lot copilote + roles_gerer).
+    Le test d'origine (`test_sql_agent_endpoint.py::
+    test_copilote_eteint_texte_identique_a_main`) reste tel quel."""
+
+    CHAMPS_NEUFS = {"noyau": False, "lecture": False, "natif_seul": False}
+
+    def _catalogues(self):
+        from tests.test_sql_agent_endpoint import _CAT_LEAD_LIST, _CAT_PROPOSAL_PDF
+        avant = [dict(_CAT_LEAD_LIST, lot="herite"), dict(_CAT_PROPOSAL_PDF)]
+        return avant, [dict(a, **self.CHAMPS_NEUFS) for a in avant]
+
+    def test_messages_et_outils_identiques_moteur_natif_jamais_appele(self):
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif
+        from tests.test_sql_agent_endpoint import _ctx, _tour
+        historique = [{"role": "user", "content": "q0"}, {"role": "agent", "content": "r0"}]
+        vus = []
+        for catalogue in self._catalogues():
+            with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                    mock.patch.object(moteur_natif, "executer", side_effect=AssertionError("natif")):
+                _, _, llm = _tour([AIMessage(content="Noté.")], catalogue=catalogue, ctx=_ctx(),
+                                  fournisseur="claude", historique=historique,
+                                  contexte={"ecran": "/crm/leads/12", "lead_id": 12})
+            vus.append(([[m.content for m in recu] for genre, recu in llm.recus if genre == "messages"],
+                        [n for genre, n in llm.recus if genre == "outils"]))
+        self.assertEqual(vus[0], vus[1])
+        textes = vus[0][0][0]
+        self.assertTrue(textes[-1].startswith("Prépare ma relance"))
+        self.assertFalse(any("OUTILS PAR DOMAINE" in t or "outils_charger" in t for t in textes))
+
+    def test_descriptions_schemas_et_jeu_de_groq_identiques(self):
+        from app.services import action_tools as at, relais_copilote as relais
+        avant, apres = self._catalogues()
+
+        def outils(catalogue):
+            ctx = at.ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+            ctx.catalogue_tour = catalogue
+            return [(t.name, t.description, t.args_schema) for t in at.build_action_tools(ctx)]
+        self.assertEqual(outils(avant), outils(apres))
+        for contexte in (None, {"ecran": "/taches"}, {"ecran": "/crm"}):
+            with self.subTest(contexte=contexte):
+                self.assertEqual([a["key"] for a in relais._jeu_du_fournisseur(avant, "groq", contexte)],
+                                 [a["key"] for a in relais._jeu_du_fournisseur(apres, "groq", contexte)])
+        self.assertEqual(relais.pour_langchain(apres), apres)
+
+    def test_question_eteinte_ignore_l_indice_d_ecran(self):
+        from app.services import relais_copilote as relais
+        contexte = {"ecran": "/visites/3", "lead_id": 12}
+        self.assertEqual(relais.question_du_tour("Q", contexte, copilote=False, domaine="visites"),
+                         relais.question_du_tour("Q", contexte, copilote=False))
 
 
 if __name__ == "__main__":

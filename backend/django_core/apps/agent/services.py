@@ -122,7 +122,7 @@ def preuve_confirmation_valide(preuve: Any, **champs) -> bool:
 def log_confirmed_action(
     *, company, user, action_key: str, risk_level: str,
     inputs: Optional[Dict[str, Any]] = None, proposal_hash: str = '',
-    proposed_at=None, resulted_object=None,
+    proposed_at=None, resulted_object=None, origine: str = 'confirmee',
 ) -> AgentActionLog:
     """Journalise la confirmation d'une action IA (société forcée par
     l'appelant — jamais déduite du corps de requête). ``resulted_object`` est
@@ -153,6 +153,7 @@ def log_confirmed_action(
         content_type=content_type,
         object_id=object_id,
         object_repr=object_repr,
+        origine=origine,
     )
 
 

@@ -201,6 +201,9 @@ INTITULE_TACHES = "\nTÂCHES — CONSIGNES DU COPILOTE :\n"
 #: AJOUTÉ à la suite des consignes commerciales, dans le même texte stable.
 CONSIGNES_COPILOTE = CONSIGNES_COMMERCIALES + INTITULE_TACHES + CONSIGNES_TACHES
 
+#: Vague 2 (FND4) — indice d'écran, dernière ligne de l'en-tête (moteur natif).
+LIGNE_DOMAINE = "Outils utiles pour cet écran : domaine %s (outils_charger)"
+
 _JOURS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 _MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet",
          "août", "septembre", "octobre", "novembre", "décembre")
@@ -254,12 +257,15 @@ def _ecran_nettoye(ecran) -> str:
 
 def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
                 prenom: str = "", role: str = "",
-                contexte: Optional[dict] = None) -> str:
+                contexte: Optional[dict] = None,
+                domaine: Optional[str] = None) -> str:
     """En-tête de tour, à placer AVANT le texte de l'utilisateur.
 
     ``maintenant`` : instant courant (défaut : maintenant), converti à l'heure
     de Casablanca. ``contexte`` : ``{ecran, lead_id, devis_id, touche_id}`` posé
     par l'écran (jamais par le modèle) ; les clés absentes ou nulles sont tues.
+    ``domaine`` (vague 2, moteur natif seulement) : le domaine d'outils de
+    l'écran, calculé par le SERVEUR ; ``None`` = en-tête d'avant, inchangé.
     """
     instant = (maintenant or datetime.datetime.now(tz=FUSEAU)).astimezone(FUSEAU)
     lignes = [
@@ -282,6 +288,8 @@ def entete_tour(*, maintenant: Optional[datetime.datetime] = None,
         valeur = contexte.get(cle)
         if isinstance(valeur, int) and not isinstance(valeur, bool):
             lignes.append("%s : %d" % (libelle, valeur))
+    if domaine:
+        lignes.append(LIGNE_DOMAINE % domaine)
     lignes.append(FIN_ENTETE)
     return "\n".join(lignes)
 

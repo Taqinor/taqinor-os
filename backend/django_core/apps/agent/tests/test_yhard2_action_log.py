@@ -43,6 +43,18 @@ class LogConfirmedActionTests(TestCase):
         self.assertIsNotNone(log.content_type)
         self.assertEqual(log.object_id, str(self.company.pk))
 
+    def test_origine_confirmee_par_defaut_interne_sur_demande(self):
+        """Copilote vague 2 (FND7) — journal des écritures internes."""
+        par_defaut = services.log_confirmed_action(
+            company=self.company, user=self.user, action_key='devis.envoyer',
+            risk_level=AgentActionLog.RiskLevel.OUTWARD)
+        interne = services.log_confirmed_action(
+            company=self.company, user=self.user, action_key='crm.lead.note',
+            risk_level=AgentActionLog.RiskLevel.INTERNAL, inputs={'id': 4},
+            origine=AgentActionLog.Origine.INTERNE)
+        self.assertEqual((par_defaut.origine, interne.origine), ('confirmee', 'interne'))
+        self.assertFalse(interne.is_undoable)  # aucun handler pour une écriture interne
+
 
 class AnnulerActionTests(TestCase):
     @classmethod

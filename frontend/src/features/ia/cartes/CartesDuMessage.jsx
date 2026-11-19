@@ -5,15 +5,7 @@ import { Button, buttonVariants } from '../../../ui'
 import { cn } from '../../../lib/cn'
 import { confirmAgentAction, dismissProposal } from '../store/iaSlice'
 import { ETATS, etatAffiche, lienWhatsAppSur } from './cartes'
-import CarteTouche from './CarteTouche'
-import {
-  CarteFileTouches, CarteMatin, CarteListeLeads, CarteFicheLead, CarteSuiteTouche,
-} from './CartesCrm'
-import {
-  CarteWaMessage, CarteWaDevis, CarteDocument, CarteVisite,
-} from './CartesWhatsApp'
-import CarteDiagnostic from './CarteDiagnostic'
-import CarteDevisCree from './CarteDevisCree'
+import { COMPOSANTS } from './registre'
 import CartesTaches from '../../taches/cartes/CartesTaches'
 
 /* COP-F1 — le rendu des cartes d'un message agent, dans l'ordre du serveur.
@@ -66,34 +58,7 @@ function CarteGenerique({ carte, testId, className }) {
   )
 }
 
-const COMPOSANTS = {
-  touche: CarteTouche,
-  suite_touche: CarteSuiteTouche,
-  file_touches: CarteFileTouches,
-  matin: CarteMatin,
-  liste_leads: CarteListeLeads,
-  fiche_lead: CarteFicheLead,
-  wa_message: CarteWaMessage,
-  wa_devis: CarteWaDevis,
-  document: CarteDocument,
-  devis_cree: CarteDevisCree,
-  visite: CarteVisite,
-  diagnostic: CarteDiagnostic,
-  // Tâches (TCH118) : une même vue, la clé de la carte choisit son rendu.
-  ma_journee: CartesTaches,
-  plan_propose: CartesTaches,
-  liste_taches: CartesTaches,
-  tache: CartesTaches,
-  capture_apercu: CartesTaches,
-  rythme: CartesTaches,
-  plan_projet: CartesTaches,
-  projet: CartesTaches,
-  revue_semaine: CartesTaches,
-  priorites: CartesTaches,
-  point: CartesTaches,
-}
-
-// Aiguille une carte « résultat » par sa clé `carte`.
+// Aiguille une carte « résultat » par sa clé `carte` (registre : `./registre.js`).
 export function CarteResultat({ carte, index, carteIdx, variant = 'page' }) {
   const v = VARIANTES[variant] ?? VARIANTES.page
   const Composant = COMPOSANTS[carte.carte]

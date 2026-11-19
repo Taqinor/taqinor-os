@@ -57,7 +57,9 @@ DUREE_MAX_TOUR_S = 240.0
 # Conversation gardée (COP-M2) : Redis du service (db 2, celle de l'historique).
 CLE_CONVERSATION = "assistant:conv:%s"
 DUREE_CONVERSATION_S = 48 * 3600
-VERSION_CONVERSATION = 1
+#: 2 (vague 2, FND3) : les conversations gardées avant les outils différés
+#: repartent d'un récapitulatif (aucune n'a de ``tool_reference``).
+VERSION_CONVERSATION = 2
 #: Bornes de la conversation gardée. Au-delà, on repart d'un récapitulatif.
 #: Coût : la queue est relue en cache (0,10 $/M sur Sonnet 5.5) mais
 #: RÉÉCRITE au double du prix d'entrée (4 $/M, durée 1 h) après une heure
@@ -88,14 +90,42 @@ class OutilNatif:
 
     ``executer`` reçoit les arguments déjà décodés (dict) et rend le TEXTE
     remis au modèle (résultat, proposition en attente de confirmation, ou
-    refus expliqué). Il ne lève pas pour un refus métier ; s'il lève quand
-    même, le moteur rend au modèle un message d'erreur court et continue.
+    refus expliqué) — ou une LISTE de blocs (``tool_reference``) posée telle
+    quelle dans le ``tool_result``. Il ne lève pas pour un refus métier ; s'il
+    lève quand même, le moteur rend au modèle un message d'erreur court et
+    continue.
     """
 
     nom: str                       # ^[a-zA-Z0-9_-]{1,64}$
     description: str
     schema: dict                   # JSON Schema de type « object »
-    executer: Callable[[dict], str]
+    executer: Callable[[dict], Any]
+    #: Copilote vague 2 (FND3) — outil DIFFÉRÉ : sa définition part à chaque
+    #: requête avec ``defer_loading`` (hors du préfixe vu par le modèle) ; il
+    #: n'entre en contexte qu'une fois référencé par un ``tool_result`` fait de
+    #: blocs ``tool_reference`` (chargeur du relais). Défaut : non différé,
+    #: corps de requête inchangé.
+    differe: bool = False
+    #: Copilote vague 2 (FND4) — un appel de modèle qui n'appelle QUE des
+    #: outils ``hors_budget`` (le chargeur) ne compte pas dans
+    #: ``max_iterations`` (au plus :data:`CHARGEMENTS_HORS_BUDGET` par tour).
+    hors_budget: bool = False
+
+
+@dataclass(frozen=True)
+class ResultatOutil:
+    """Sortie riche d'un outil (vague 2, FND4) : ``contenu`` (texte ou liste
+    de blocs) va dans SON ``tool_result`` ; ``apres`` = blocs ``text`` posés
+    APRÈS tous les ``tool_result`` du même message (consignes d'un domaine
+    chargé : jamais mêlées aux ``tool_reference``) ; ``erreur`` = ``is_error``."""
+
+    contenu: Any
+    apres: tuple = ()
+    erreur: bool = False
+
+
+#: Appels de modèle « chargement seul » permis en plus de ``max_iterations``.
+CHARGEMENTS_HORS_BUDGET = 3
 
 
 class _ErreurFournisseur(Exception):
@@ -139,6 +169,22 @@ def _cache_1h() -> dict:
     return {"type": "ephemeral", "ttl": "1h"}
 
 
+def _definitions(outils: list[OutilNatif]) -> tuple[list[dict], int]:
+    """(définitions des outils, nombre de non différés). Non différés d'abord,
+    dans l'ordre reçu ; différés ensuite, triés par nom (ordre déterministe),
+    marqués ``defer_loading``. Tout différé = 400 (« At least one tool must
+    have defer_loading=false ») : sans aucun outil non différé, rien n'est
+    différé. Sans outil différé, la liste est celle d'avant, octet pour octet."""
+    fixes = [o for o in outils if not o.differe]
+    differes = sorted((o for o in outils if o.differe), key=lambda o: o.nom) if fixes else []
+    fixes = fixes or list(outils)
+    tools = [{"name": o.nom, "description": o.description, "input_schema": o.schema}
+             for o in fixes + differes]
+    for definition in tools[len(fixes):]:
+        definition["defer_loading"] = True
+    return tools, len(fixes)
+
+
 def _corps(systeme: list[dict], outils: list[OutilNatif], modele: str,
            effort: str, max_tokens: int) -> dict:
     """Paramètres fixes d'une requête (identiques à chaque appel du tour).
@@ -150,9 +196,10 @@ def _corps(systeme: list[dict], outils: list[OutilNatif], modele: str,
     le dernier bloc et avancé à chaque appel : aucune marque dans les messages
     gardés). Les deux en 1 h (une entrée 1 h après une 5 min est un 400).
     Source : claude-api shared/prompt-caching.md « The robust combination for
-    agent loops ». Ordre des outils : tel que reçu."""
-    tools = [{"name": o.nom, "description": o.description,
-              "input_schema": o.schema} for o in outils]
+    agent loops ». Ordre des outils : :func:`_definitions` ; sans système, le
+    point va sur le dernier outil NON différé (``defer_loading`` + marque de
+    cache sur le même outil = 400, tool-search-tool « Prompt caching »)."""
+    tools, nb_fixes = _definitions(outils)
     # Pensée adaptive : non désactivable sur Sonnet 5.5, `budget_tokens` y est
     # un 400 (claude-api shared/model-migration.md, Sonnet 5.5 changement 1).
     corps = {"model": modele, "max_tokens": max_tokens,
@@ -166,7 +213,7 @@ def _corps(systeme: list[dict], outils: list[OutilNatif], modele: str,
         system[-1]["cache_control"] = _cache_1h()
         corps["system"] = system
     elif tools:
-        tools[-1]["cache_control"] = _cache_1h()
+        tools[nb_fixes - 1]["cache_control"] = _cache_1h()
     if tools:
         # `tool_choice` forcé = 400 avec la pensée sur Sonnet 5.5 : `auto`
         # (claude-api python/claude-api/tool-use.md « Tool Choice »).
@@ -256,17 +303,40 @@ def _trouver_outil(nom: Any, outils: dict) -> Optional[OutilNatif]:
     return proches[0] if len(proches) == 1 else None
 
 
-def _resultat(bloc: dict, texte: str, erreur: bool = False) -> dict:
+def _contenu(sortie: Any) -> Any:
+    """Contenu d'un ``tool_result`` : une liste de blocs (dicts typés, ex.
+    ``tool_reference``) TELLE QUELLE — l'essai clé réelle FND0 a prouvé qu'un
+    texte mêlé aux références est un 400, la liste n'est donc jamais
+    complétée ; tout le reste en texte (``str``), comme avant."""
+    if isinstance(sortie, list) and sortie and all(
+            isinstance(b, dict) and isinstance(b.get("type"), str) for b in sortie):
+        return [dict(b) for b in sortie]
+    return str(sortie)
+
+
+def _resultat(bloc: dict, texte: Any, erreur: bool = False) -> dict:
     res = {"type": "tool_result", "tool_use_id": bloc.get("id"), "content": texte}
     if erreur:
         res["is_error"] = True
     return res
 
 
+def _sortie(outil: OutilNatif, entrees: dict, apres: list) -> tuple[Any, bool]:
+    """(contenu, erreur) d'un appel ; les blocs ``apres`` d'un
+    :class:`ResultatOutil` (texte seulement) s'ajoutent à ``apres``."""
+    sortie = outil.executer(entrees)
+    if not isinstance(sortie, ResultatOutil):
+        return _contenu(sortie), False
+    apres.extend(dict(b) for b in sortie.apres
+                 if isinstance(b, dict) and b.get("type") == "text")
+    return _contenu(sortie.contenu), bool(sortie.erreur)
+
+
 def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
     """TOUS les ``tool_use`` de la réponse, dans l'ordre -> UN message de
-    ``tool_result`` (mêmes identifiants, résultats d'abord — handle-tool-calls)."""
-    resultats = []
+    ``tool_result`` (mêmes identifiants, résultats d'abord — handle-tool-calls),
+    puis les blocs texte ``apres`` des outils (consignes d'un domaine)."""
+    resultats, apres = [], []
     for bloc in _blocs(contenu, "tool_use"):
         outil = _trouver_outil(bloc.get("name"), tour.outils)
         if outil is None:
@@ -277,14 +347,22 @@ def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
         tour.appeles.append(outil.nom)
         entrees = bloc.get("input") if isinstance(bloc.get("input"), dict) else {}
         try:
-            texte, erreur = str(outil.executer(dict(entrees))), False
+            texte, erreur = _sortie(outil, dict(entrees), apres)
         except Exception as exc:  # l'outil ne doit pas faire tomber le tour
             logger.warning("Outil %s : %s", outil.nom, exc)
             texte, erreur = ("L'outil « %s » a échoué (%s). Ne réessaie pas à "
                              "l'identique : dis ce qui n'a pas pu être fait."
                              % (outil.nom, type(exc).__name__)), True
         resultats.append(_resultat(bloc, texte, erreur))
-    return resultats
+    return resultats + apres
+
+
+def _chargement_seul(contenu: list, tour: _Tour) -> bool:
+    """Vrai si chaque ``tool_use`` de la réponse vise un outil ``hors_budget``."""
+    appels = _blocs(contenu, "tool_use")
+    return bool(appels) and all(
+        getattr(_trouver_outil(b.get("name"), tour.outils), "hors_budget", False)
+        for b in appels)
 
 
 # ── Conversation gardée (Redis) ─────────────────────────────────────────────
@@ -356,8 +434,14 @@ def _ecrire(conversation: str, modele: str, empreinte: str,
 
 def _empreinte(systeme: list[dict], outils: list[OutilNatif]) -> str:
     """Empreinte du PRÉFIXE vu par le modèle : outils ET système (la pensée
-    est liée aux deux — l3/web_anthropic.verif-omissions.md F6)."""
-    source = {"outils": [[o.nom, o.description, o.schema] for o in outils],
+    est liée aux deux — l3/web_anthropic.verif-omissions.md F6). TOUS les
+    outils, différés compris, et la marque ``differe`` (vague 2) : un outil qui
+    disparaît (module éteint, droit retiré) change l'empreinte, la conversation
+    repart d'un récapitulatif et aucune ``tool_reference`` orpheline ne peut
+    partir (400 « Tool reference not found »). Sans outil différé, l'empreinte
+    est celle d'avant."""
+    source = {"outils": [[o.nom, o.description, o.schema] + (["differe"] if o.differe else [])
+                         for o in outils],
               "systeme": [b.get("text") for b in systeme or []]}
     brut = json.dumps(source, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(brut.encode("utf-8")).hexdigest()[:32]
@@ -484,18 +568,23 @@ def _terminer(tour: _Tour, stop: Any, contenu: list,
 
 
 def _boucle(client, tour: _Tour, max_iterations: int) -> tuple[str, str, str]:
-    """Appel -> tant que ``stop_reason == "tool_use"`` : outils -> rappel."""
+    """Appel -> tant que ``stop_reason == "tool_use"`` : outils -> rappel.
+    Un appel qui ne fait QUE charger des outils (vague 2) ne compte pas dans
+    ``max_iterations`` (au plus :data:`CHARGEMENTS_HORS_BUDGET` fois)."""
     debut = time.monotonic()
     iterations = max(1, int(max_iterations))
-    for i in range(iterations):
+    faites = gratuits = 0
+    while True:
         reponse = _appeler(client, tour)
         contenu = reponse.get("content") if isinstance(reponse.get("content"), list) else []
         tour.modele = reponse.get("model") or tour.modele
         stop = reponse.get("stop_reason")
         if stop != "tool_use" or not _blocs(contenu, "tool_use"):
             return _terminer(tour, stop, contenu, reponse)
-        if i == iterations - 1 or time.monotonic() - debut > DUREE_MAX_TOUR_S:
+        gratuit = gratuits < CHARGEMENTS_HORS_BUDGET and _chargement_seul(contenu, tour)
+        if (not gratuit and faites >= iterations - 1) or time.monotonic() - debut > DUREE_MAX_TOUR_S:
             break  # dernier appel : ses outils ne sont PAS exécutés
+        gratuits, faites = gratuits + gratuit, faites + (not gratuit)
         tour.messages.append({"role": "assistant", "content": contenu})
         if _texte(contenu):
             tour.textes.append(_texte(contenu))

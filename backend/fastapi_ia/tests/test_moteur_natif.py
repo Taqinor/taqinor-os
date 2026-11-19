@@ -569,6 +569,198 @@ class ConversationTests(_Base):
         self.assertEqual(len(self.garde()["messages"]), len(avant) + 4)
 
 
+def _differe(nom, fonction=None):
+    import dataclasses
+    return dataclasses.replace(_outil(nom, fonction), differe=True)
+
+
+def _references(*noms):
+    return [{"type": "tool_reference", "tool_name": n} for n in noms]
+
+
+class DiffereTests(_Base):
+    """Copilote vague 2 (FND3) — outils différés : `defer_loading`, point de
+    cache jamais sur un différé, résultat en liste posé tel quel, empreinte."""
+    UNE_HEURE = {"type": "ephemeral", "ttl": "1h"}
+
+    def test_differes_marques_et_ranges_apres_les_non_differes(self):
+        self.jouer([_rep([_texte("ok")])],
+                   [_differe("z_lire"), _outil("noyau_b"), _differe("c_lire"), _outil("noyau_a")])
+        tools = self.client.appels[0]["tools"]
+        self.assertEqual([t["name"] for t in tools], ["noyau_b", "noyau_a", "c_lire", "z_lire"])
+        self.assertEqual([t.get("defer_loading") for t in tools], [None, None, True, True])
+        self.assertFalse(any("cache_control" in t for t in tools))  # système présent
+
+    def test_sans_systeme_le_point_va_sur_le_dernier_non_differe(self):
+        self.client = FauxClient([_rep([_texte("ok")])])
+        with mock.patch.object(mn, "_client", return_value=self.client):
+            mn.executer(question="q", systeme=[], conversation="", modele=MODELE,
+                        outils=[_outil("a"), _differe("d"), _outil("b")])
+        tools = self.client.appels[0]["tools"]
+        self.assertEqual([t["name"] for t in tools], ["a", "b", "d"])
+        self.assertEqual(tools[1]["cache_control"], self.UNE_HEURE)
+        self.assertNotIn("cache_control", tools[2])
+
+    def test_tous_differes_rien_n_est_differe(self):
+        self.jouer([_rep([_texte("ok")])], [_differe("b"), _differe("a")])
+        tools = self.client.appels[0]["tools"]
+        self.assertEqual([t["name"] for t in tools], ["b", "a"])
+        self.assertFalse(any("defer_loading" in t for t in tools))
+
+    def test_sans_differe_corps_d_avant(self):
+        self.jouer([_rep([_texte("ok")])], [_outil("z"), _outil("a")])
+        self.assertEqual(self.client.appels[0]["tools"], [
+            {"name": "z", "description": "Outil z.", "input_schema": {"type": "object", "properties": {}}},
+            {"name": "a", "description": "Outil a.", "input_schema": {"type": "object", "properties": {}}}])
+
+    def test_resultat_en_liste_pose_tel_quel(self):
+        self.jouer([_rep([_appel("t1", "charger")], stop="tool_use"), _rep([_texte("ok")])],
+                   [_outil("charger", lambda e: _references("x_lire")), _differe("x_lire")])
+        res = self.client.appels[1]["messages"][-1]["content"][0]
+        self.assertEqual(res["content"], _references("x_lire"))
+        self.assertNotIn("is_error", res)
+
+    def test_empreinte_inchangee_sans_differe_et_changee_avec(self):
+        import hashlib
+        outils = [_outil("a"), _outil("b")]
+        ancienne = json.dumps({"outils": [[o.nom, o.description, o.schema] for o in outils],
+                               "systeme": [b.get("text") for b in SYSTEME]},
+                              sort_keys=True, ensure_ascii=False, default=str)
+        self.assertEqual(mn._empreinte(SYSTEME, outils),
+                         hashlib.sha256(ancienne.encode("utf-8")).hexdigest()[:32])
+        self.assertNotEqual(mn._empreinte(SYSTEME, [_outil("a"), _differe("b")]),
+                            mn._empreinte(SYSTEME, outils))
+
+    def test_vrai_sdk_envoie_defer_loading_et_les_references(self):
+        """Le SDK installé (0.125.0, épinglé FND1) sérialise `defer_loading`
+        et un `tool_result` fait de `tool_reference` sans rien changer."""
+        import anthropic
+        import httpx
+        envoyes = []
+        reponses = [_rep([_appel("t1", "charger")], stop="tool_use"), _rep([_texte("ok")])]
+
+        def transport(requete):
+            envoyes.append(json.loads(requete.content))
+            return httpx.Response(200, json=reponses.pop(0))
+        client = anthropic.Anthropic(api_key="k", max_retries=0, http_client=httpx.Client(
+            transport=httpx.MockTransport(transport)))
+        with mock.patch.object(mn, "_client", return_value=client):
+            mn.executer(question="q", systeme=SYSTEME, conversation="", modele=MODELE,
+                        outils=[_outil("charger", lambda e: _references("x_lire")), _differe("x_lire")])
+        self.assertEqual(envoyes[0]["tools"][1]["defer_loading"], True)
+        self.assertEqual(envoyes[1]["messages"][-1]["content"][0]["content"], _references("x_lire"))
+
+
+class DiffereConversationTests(_Base):
+    """La conversation gardée garde les références ; une conversation de la
+    version 1 (avant les différés) repart d'un récapitulatif."""
+    CONV = ConversationTests.CONV
+    setUp = ConversationTests.setUp
+    garde = ConversationTests.garde
+    tour_outil = ConversationTests.tour_outil
+    _verifier_recommence = ConversationTests._verifier_recommence
+
+    def test_references_gardees_puis_relues_telles_quelles(self):
+        outils = [_outil("charger", lambda e: _references("x_lire")), _differe("x_lire")]
+        self.client = FauxClient([_rep([_appel("t1", "charger")], stop="tool_use"),
+                                  _rep([_texte("R1")])])
+        with mock.patch.object(mn, "_client", return_value=self.client):
+            mn.executer(question="Q1", systeme=SYSTEME, outils=outils,
+                        conversation=self.CONV, modele=MODELE)
+        gardes = self.garde()["messages"]
+        self.assertEqual(gardes[2]["content"][0]["content"], _references("x_lire"))
+        self.jouer([_rep([_texte("R2")])], outils, question="Q2", conversation=self.CONV)
+        self.assertEqual(self.client.appels[0]["messages"][:len(gardes)], gardes)
+
+    def test_conversation_version_1_repart_d_un_recapitulatif(self):
+        self.tour_outil()
+        etat = self.garde()
+        etat["version"] = 1
+        self.redis.donnees[mn.CLE_CONVERSATION % self.CONV] = json.dumps(etat)
+        self.jouer([_rep([_texte("R2")])], [_outil("a")], question="Q2", conversation=self.CONV)
+        self._verifier_recommence(self.client.appels[0]["messages"])
+
+
+CATALOGUE = [
+    {"key": "crm.digest_matin", "noyau": True},
+    {"key": "crm.lead.note"},
+    {"key": "crm.visite.planifier"},
+    {"key": "ged.docqa.retrieve"},
+    {"key": "visites.agenda"},
+]
+
+
+class ChargeurTests(_Base):
+    """Copilote vague 2 (FND4) — le chargeur `outils_charger` : domaines,
+    index, références seules, consignes APRÈS le tool_result, appels de
+    chargement hors du budget d'itérations."""
+
+    def _outils(self):
+        from app.services import chargeur_outils as ch
+        outils, domaines = ch.differer([_outil(a["key"].replace(".", "_")) for a in CATALOGUE], CATALOGUE)
+        return outils + [ch.outil_charger(domaines)], domaines
+
+    def test_noyau_et_domaine_inconnu_jamais_differes_et_liste_croisee(self):
+        outils, domaines = self._outils()
+        self.assertEqual([o.differe for o in outils[:5]], [False, True, True, False, True])
+        self.assertEqual(domaines, {"crm": ["crm_lead_note", "crm_visite_planifier"],
+                                    "visites": ["crm_visite_planifier", "visites_agenda"]})
+        self.assertTrue(outils[-1].hors_budget)
+        self.assertEqual(outils[-1].schema["properties"]["domaines"]["items"]["enum"], ["crm", "visites"])
+
+    def test_index_et_indice_d_ecran(self):
+        from app.services import chargeur_outils as ch
+        _, domaines = self._outils()
+        index = ch.index_des_domaines(domaines)
+        self.assertTrue(index.startswith(ch.ENTETE_INDEX))
+        self.assertEqual(index.count("\n- "), 2)
+        self.assertNotIn("- ventes", index)
+        self.assertEqual(ch.domaine_de_l_ecran("/visites/12/calage", domaines), "visites")
+        self.assertEqual(ch.domaine_de_l_ecran("/crm?id=4", domaines), "crm")
+        self.assertIsNone(ch.domaine_de_l_ecran("/ventes/devis", domaines))  # rien de différé
+        self.assertIsNone(ch.domaine_de_l_ecran("/crmx", domaines))
+        self.assertIsNone(ch.domaine_de_l_ecran(None, domaines))
+
+    def test_tour_scripte_chargement_puis_appel_hors_budget(self):
+        from app.services import consignes_domaines
+        vus = []
+        outils, _ = self._outils()
+        outils = [o if o.nom != "visites_agenda" else _differe("visites_agenda", lambda e: vus.append(e) or "agenda")
+                  for o in outils]
+        with mock.patch.dict(consignes_domaines.CONSIGNES, {"visites": "Demande qui fait la visite."}):
+            r = self.jouer([_rep([_appel("t1", "outils_charger", {"domaines": ["visites"]})], stop="tool_use"),
+                            _rep([_appel("t2", "visites_agenda")], stop="tool_use"),
+                            _rep([_texte("Voici l'agenda.")])], outils, max_iterations=1 + 1)
+        self.assertEqual((r["answer"], len(vus)), ("Voici l'agenda.", 1))
+        retour = self.client.appels[1]["messages"][-1]["content"]
+        self.assertEqual(retour[0]["content"], _references("crm_visite_planifier", "visites_agenda"))
+        self.assertEqual(retour[1]["type"], "text")
+        self.assertTrue(retour[1]["text"].startswith("[Consignes de l'ERP pour le domaine visites]"))
+        self.assertEqual(r["outils_appeles"], ["outils_charger", "visites_agenda"])
+
+    def test_domaine_inconnu_erreur_et_deja_charge(self):
+        outils, _ = self._outils()
+        self.jouer([_rep([_appel("t1", "outils_charger", {"domaines": ["stock"]}),
+                          _appel("t2", "outils_charger", {"domaines": ["crm"]}),
+                          _appel("t3", "outils_charger", {"domaines": ["crm"]})], stop="tool_use"),
+                    _rep([_texte("ok")])], outils)
+        inconnu, charge, deja = self.client.appels[1]["messages"][-1]["content"]
+        self.assertTrue(inconnu["is_error"])
+        self.assertIn("stock", inconnu["content"])
+        self.assertEqual(charge["content"], _references("crm_lead_note", "crm_visite_planifier"))
+        self.assertIsInstance(deja["content"], str)
+        self.assertEqual(len(self.client.appels[1]["messages"][-1]["content"]), 3)  # aucune consigne
+
+    def test_chargements_hors_budget_bornes(self):
+        from app.services.moteur_natif import CHARGEMENTS_HORS_BUDGET
+        outils, _ = self._outils()
+        boucle = [_rep([_appel("t%d" % i, "outils_charger", {"domaines": ["crm"]})], stop="tool_use")
+                  for i in range(CHARGEMENTS_HORS_BUDGET + 2)]
+        r = self.jouer(boucle, outils, max_iterations=2)
+        self.assertEqual(len(self.client.appels), CHARGEMENTS_HORS_BUDGET + 2)
+        self.assertEqual(r["arret"], mn.ARRET_LIMITE)
+
+
 class RedisAbsentTests(_Base):
     def test_tour_servi_sans_memoire(self):
         with mock.patch.object(mn, "_redis", side_effect=ConnectionError("x")):

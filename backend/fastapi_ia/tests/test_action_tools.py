@@ -1784,7 +1784,7 @@ class CatalogueTachesTch114Tests(unittest.TestCase):
         for ecran in ("/crm/relances", "/tachesX", None):
             cles = self._cles("groq", ecran)
             self.assertEqual([c for c in cles if c.startswith("taches.")], [], ecran)
-            self.assertIn("crm.lead.list", cles)
+            self.assertNotIn("crm.lead.list", cles)  # vague 2 (FND6) : Groq copilote allumé = noyau seul
 
     def test_claude_garde_le_catalogue_entier(self):
         self.assertEqual(set(self._cles("claude", "/taches/aujourdhui")), {*_CLES_TACHES, "crm.lead.list"})

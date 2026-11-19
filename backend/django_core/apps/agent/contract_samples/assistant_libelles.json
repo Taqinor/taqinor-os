@@ -1,12 +1,23 @@
 {
   "endpoint": "GET /api/django/agent/libelles/",
-  "pourquoi": "COP3 (PACT10, 13/11/2026) — une proposition à confirmer disait « Accepter un devis (id=45) » : la commerciale confirmait un NUMÉRO, pas un client. Le relais FastAPI demande ici, au moment de préparer une proposition, le libellé des objets désignés par les entrées de l'action (champ `objets` du registre : `{nom d'entrée: type}`) et l'écrit dans l'aperçu. Paramètres : un entier par type (`?lead=&devis=&touche=&facture=&client=`). Seuls les objets de la SOCIÉTÉ et de la PORTÉE de l'utilisateur sont rendus : un objet inconnu, d'une autre société ou hors portée est simplement ABSENT de la réponse (jamais une erreur, jamais un indice de son existence). Aucun prix d'achat, aucune marge ; le montant d'un devis est son total TTC, celui d'une facture son total TTC et son reste dû.",
+  "pourquoi": "COP3 (PACT10, 13/11/2026) — une proposition à confirmer disait « Accepter un devis (id=45) » : la commerciale confirmait un NUMÉRO, pas un client. Le relais FastAPI demande ici, au moment de préparer une proposition, le libellé des objets désignés par les entrées de l'action (champ `objets` du registre : `{nom d'entrée: type}`) et l'écrit dans l'aperçu. Paramètres : un entier par type (`?lead=&devis=&touche=&facture=&client=`, et depuis la vague 2 du copilote `&calepinage=&variante=&visite=&chantier=&intervention=&ticket=&equipement=&produit=&bcf=&fournisseur=&utilisateur=`). Seuls les objets de la SOCIÉTÉ et de la PORTÉE de l'utilisateur sont rendus : un objet inconnu, d'une autre société ou hors portée est simplement ABSENT de la réponse (jamais une erreur, jamais un indice de son existence). Aucun prix d'achat, aucune marge, aucun montant de commande fournisseur ; le montant d'un devis est son total TTC, celui d'une facture son total TTC et son reste dû. Vague 2 (A0, 19/11/2026) : chaque type est résolu par le `selectors_libelles.py` de l'app qui le possède — `libelles_<app>(user, **{type: id}) -> {type: libellé}`, même forme que `libelles_crm` / `libelles_ventes` (calepinage : calepinage, variante ; visites : visite ; installations : chantier, intervention ; sav : ticket, equipement ; stock : produit, bcf, fournisseur), importé PARESSEUSEMENT : tant que le module de l'app n'existe pas, son type est simplement absent de la réponse. `utilisateur` (prénom et nom d'un compte de la même société, jamais son e-mail ni son rôle) est résolu par l'agent lui-même.",
   "exemple": {
     "lead": "Aziz Benali — Casablanca",
     "devis": "DEV-202611-0045 — Benali — 84 500,00 MAD TTC (envoyé)",
     "touche": "Aziz Benali — Relance J+1 (WhatsApp, prévue le 14/11/2026)",
     "facture": "FAC-202611-0012 — Benali — 25 350,00 MAD TTC, reste dû 25 350,00",
-    "client": "Benali Aziz"
+    "client": "Benali Aziz",
+    "calepinage": "Calepinage — Benali, Casablanca (v2, 6,6 kWc)",
+    "variante": "Variante paysage — calepinage Benali, Casablanca (12 panneaux)",
+    "visite": "Visite — Benali, jeudi 20/11/2026 10 h 00, Youssef Alami",
+    "chantier": "CHT-202611-0012 — Benali, Casablanca (Signé)",
+    "intervention": "Pose — chantier CHT-202611-0012, mardi 25/11/2026",
+    "ticket": "SAV-202611-0007 — Benali — onduleur en panne (Ouvert)",
+    "equipement": "Onduleur Deye SUN-6K — n° 2311-0045 — Benali",
+    "produit": "Panneau 550 Wc — PAN-550",
+    "bcf": "BCF-202611-0003 — Fournisseur Atlas Solaire (brouillon)",
+    "fournisseur": "Atlas Solaire",
+    "utilisateur": "Youssef Alami"
   },
   "exemple_hors_portee": {}
 }
