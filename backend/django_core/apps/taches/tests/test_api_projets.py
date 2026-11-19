@@ -143,9 +143,15 @@ class _Base(TestCase):
 
 
 class ListeProjetsTests(_Base):
+    def _vieillir(self, *projets, jours=8):
+        """Projets nés il y a `jours` jours (le constat ne compte que ceux de 7 jours ou plus, R3-010)."""
+        Projet.objects.filter(pk__in=[p.pk for p in projets]).update(
+            created_at=timezone.now() - datetime.timedelta(days=jours))
+
     def test_forme_de_l_echantillon_et_constat(self):
         projet = fabriques.projet(self.u1, priorite=3)
         fabriques.tache(self.u1, projet=projet)
+        self._vieillir(projet)
         reponse = self._api(self.u1).get(_url('projets/'))
         self.assertEqual(reponse.status_code, 200)
         corps = reponse.json()
@@ -194,10 +200,20 @@ class ListeProjetsTests(_Base):
 
     def test_constat_compte_les_projets_qui_ont_avance(self):
         avance, immobile = fabriques.projet(self.u1), fabriques.projet(self.u1)
+        self._vieillir(avance, immobile)
         self._fait(self.u1, avance)
         fabriques.tache(self.u1, projet=immobile)
         constat = self._api(self.u1).get(_url('projets/')).json()['constat']
         self.assertEqual(constat, {'actifs': 2, 'avances_7j': 1})
+
+    def test_constat_tait_les_projets_qui_viennent_de_naitre(self):
+        """R3-010 — 6 projets créés il y a une minute : pas de « 6 projets actifs, 0 a avancé ces 7 jours » (constat
+        nul, la phrase est omise) ; un projet de 8 jours à côté de 2 nés de 6 jours : seul le premier est compté."""
+        neufs = [fabriques.projet(self.u1) for _ in range(6)]
+        self.assertIsNone(self._api(self.u1).get(_url('projets/')).json()['constat'])
+        self._vieillir(neufs[0])
+        self._vieillir(*neufs[1:3], jours=6)
+        self.assertEqual(self._api(self.u1).get(_url('projets/')).json()['constat'], {'actifs': 1, 'avances_7j': 0})
 
     def test_sante_a_l_arret_tout_fait_et_sans_prochaine_action(self):
         ancien = fabriques.projet(self.u1)

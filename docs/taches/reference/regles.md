@@ -684,7 +684,7 @@ vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir
 | `a_l_arret` | ≥ 1 ouverte ∧ jours travaillés dans ]réf, J] ≥ N ; réf = max(dernier `fait_le` du projet, tous niveaux ; date de `statut_depuis`) ; N = `projet_arret_jours` (10, 5-30) |
 | `echeance_menacee` | `echeance` ∧ ≥ 1 ouverte ∧ un signal : (a) `echeance < J` ; (b) k ouvertes datées (`jour_prevu` ou `echeance`) après elle ; (c) une étape finit après elle ; (d) si « comprendre mon rythme » allumé ET F28 ≥ 5 : besoin = ⌈O × J28 / F28⌉ > reste |
 | `neglige(projets, faites_14j)` | P actif, ≥ 1 actionnable, `statut_depuis` ≤ J − 14 : négligé ⇔ d(P) = 0 ∧ ∃ Q actif de priorité strictement inférieure avec d(Q) ≥ 1 ; d = tâches du projet faites (tous niveaux) sur 14 jours calendaires ; Q nommé = le plus avancé (d max), égalité → priorité plus haute, puis `rang` |
-| `constat_projets` | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (≥ 1 faite tous niveaux en 7 jours calendaires) |
+| `constat_projets` | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (≥ 1 faite tous niveaux en 7 jours calendaires) ; seuls les projets actifs nés il y a 7 jours ou plus comptent, aucun → constat omis (R3-010) |
 
 F28 = tâches comptées DU PROJET faites sur les 28 derniers jours calendaires ; J28 = jours travaillés de
 l'utilisateur dans ]J − 28, J] ; O = ouvertes du projet ; reste = jours travaillés dans ]J, échéance] (verif-specs-4-6

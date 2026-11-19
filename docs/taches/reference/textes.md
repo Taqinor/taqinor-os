@@ -225,7 +225,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
 | Bureau ≥ 1024 px (R2-067) | maître-détail : la liste des projets à gauche (en-tête « Projets » + ⋯ : Trier par priorité · Archive · Modèles ; « Nouveau projet » ; « En pause ({n}) »), le projet ouvert surligné, le projet choisi à droite ; `/taches/projets` ouvre le premier projet actif ; `j`/`k` ou ↓/↑ (le focus dans la colonne) changent de projet ; la puce de priorité n'est pas dans la colonne (elle se lit et se change dans le projet) ; pas de « ‹ Projets » (la liste est à l'écran) ; en dessous de 1024 px et sur iPhone : la liste, puis le projet avec « ‹ Projets » au-dessus du titre (R2-093) |
 | Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
-| Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
+| Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (projets nés il y a 7 jours ou plus ; aucun : phrase omise, R3-010) |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
 | Vide | « Aucun projet » · **Coller mes listes** — seulement sur RÉPONSE du serveur (R2-070) : lecture échouée = l'erreur dite ; hors ligne, la dernière liste lue du compte (cache `taches:projets:<user>:…`, vidé à la déconnexion) ; la page ne porte pas la date du jour en sous-titre (R2-085) |

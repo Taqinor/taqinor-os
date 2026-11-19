@@ -213,7 +213,12 @@ def _calcul_projet(projet, etat, travailles, negliges, focus, usage):
 
 
 def _constat(etat):
-    actifs = [p.pk for p in etat.projets if p.statut == StatutProjet.ACTIF]
+    """« {actifs} projets actifs, {k} ont avancé ces 7 jours » sur les seuls projets actifs nés il y a 7 jours ou plus
+    (R3-010 : « 0 a avancé » une minute après leur création était faux) ; aucun → `None` (la phrase est omise)."""
+    limite = etat.jour - datetime.timedelta(days=sante.CONSTAT_JOURS)
+    actifs = [p.pk for p in etat.projets if p.statut == StatutProjet.ACTIF and _local(p.created_at) <= limite]
+    if not actifs:
+        return None
     faites = {i: _faites_depuis(etat.taches_de(i), etat.jour, sante.CONSTAT_JOURS) for i in actifs}
     rendu = sante.constat_projets(actifs, faites)
     return {'actifs': rendu['actifs'], 'avances_7j': rendu['k']}
