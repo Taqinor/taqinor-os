@@ -70,13 +70,18 @@ let derniereModalite = 'pointeur'
  *  le prend AU MONTAGE, avant que la feuille ne lise son ouvreur — et, ouverte depuis un menu ⋯ (Radix), le menu le lui
  *  reprend aussitôt : la feuille retrouve ici le champ qui l'a demandé, et l'élément focalisé juste avant lui. */
 const focusRecents = []
+const retenirFocus = (el) => {
+  if (!el) return
+  focusRecents.push(el)
+  if (focusRecents.length > 6) focusRecents.shift()
+}
 if (typeof document !== 'undefined') {
   document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
   document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
-  document.addEventListener('focusin', (e) => {
-    focusRecents.push(e.target)
-    if (focusRecents.length > 6) focusRecents.shift()
-  }, true)
+  document.addEventListener('focusin', (e) => { retenirFocus(e.target) }, true)
+  // le focus DEMANDÉ et refusé : Chrome annonce la sortie vers le champ (`relatedTarget`), le FocusScope du menu la
+  // refuse dans ce même `focusout`, et le champ ne reçoit jamais `focusin`
+  document.addEventListener('focusout', (e) => { retenirFocus(e.relatedTarget) }, true)
 }
 
 /** Le champ de la feuille qui a demandé le focus à son montage (`autoFocus`), et l'élément focalisé avant lui. */

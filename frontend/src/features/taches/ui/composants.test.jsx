@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import {
   MemoryRouter, useLocation, useNavigationType, useSearchParams,
 } from 'react-router-dom'
-import { useLayoutEffect } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
@@ -158,6 +158,42 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(screen.getByRole('button', { name: 'Renommer' })).toHaveFocus() // le menu le tient encore
     rerender(page(true, false)) // le menu se referme…
     act(() => { bouton.focus() }) // … et rend le focus à son bouton
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
+  })
+
+  it('R3-066 — … et quand le menu REFUSE le focus au champ dès sa sortie (FocusScope Radix : `focusout` qui le reprend), le champ n\'a jamais eu le focus : la feuille le retrouve quand même', () => {
+    function Menu() {
+      const ref = useRef(null)
+      useLayoutEffect(() => { ref.current.querySelector('button').focus() }, [])
+      return <div role="menu" ref={ref}><button type="button">Renommer</button></div>
+    }
+    // ce que Chrome fait (relevé sur l'écran réel, debug-renommer.cjs) : la sortie du menu est annoncée (`focusout`, vers
+    // le champ), le FocusScope la refuse et le champ ne reçoit JAMAIS `focusin` — jsdom, lui, focaliserait quand même
+    const focusReel = HTMLElement.prototype.focus
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function focusRefuse(...args) {
+      const item = document.querySelector('[role="menu"] button')
+      if (this.tagName === 'INPUT' && item) {
+        item.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: this }))
+        return undefined
+      }
+      return focusReel.apply(this, args)
+    })
+    const page = (ouverte, menu) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        {menu ? <Menu /> : null}
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}><input aria-label="Nom" autoFocus defaultValue="Site web" /></FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false, true))
+    const bouton = screen.getByRole('button', { name: "Plus d'actions" })
+    expect(screen.getByRole('button', { name: 'Renommer' })).toHaveFocus()
+    rerender(page(true, true))
+    expect(screen.getByRole('textbox', { name: 'Nom' })).not.toHaveFocus() // le menu l'a gardé
+    rerender(page(true, false))
+    act(() => { bouton.focus() })
     expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
   })
 
