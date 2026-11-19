@@ -1,5 +1,6 @@
 import { Badge } from '../../../../ui'
 import { formatDate, formatNumber } from '../../../../lib/format'
+import { STATUS_LABELS } from '../../../installations/statuses'
 import {
   AFaire, BoutonEcran, Ligne, Rangee, SuiteListe, Titre, Vide,
 } from './partsTerrain'
@@ -9,15 +10,6 @@ import {
    Contrats : `assistant_chantiers`, `assistant_chantier_etat`, `chantier_planifier_pose`.
    Aucun prix ni coût n'existe dans ces charges utiles : la carte n'en affiche aucun. */
 
-const STATUT = Object.freeze({
-  signe: 'Signé',
-  materiel_commande: 'Matériel commandé',
-  planifie: 'Planifié',
-  en_cours: 'En cours',
-  installe: 'Installé',
-  receptionne: 'Réceptionné',
-  cloture: 'Clôturé',
-})
 const VUE = Object.freeze({
   en_cours: 'en cours', bloques: 'bloqués', poses_semaine: 'poses de la semaine',
 })
@@ -33,7 +25,7 @@ const INTERVENTION = Object.freeze({
 })
 
 const sansTiret = (cle) => String(cle ?? '').replace(/_/g, ' ')
-const statut = (cle) => STATUT[cle] ?? sansTiret(cle)
+const statut = (cle) => STATUS_LABELS[cle] ?? sansTiret(cle)
 
 /** `liste_chantiers` : une rangée par chantier, blocages et prochain geste. */
 export function CarteListeChantiers({ carte }) {

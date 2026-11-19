@@ -1,34 +1,22 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter, useLocation } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
 import { exempleContrat } from '../../../../test/fixtures/contractSamples'
-import iaReducer from '../../store/iaSlice'
 import { CONTRATS_CARTES, CONTRATS_JUMEAUX } from '../contrats'
 import { COMPOSANTS } from '../registre'
 
 /* Nouveau fichier car : composant neuf, aucun module de test existant. Chaque carte est
    rendue avec l'échantillon COMMITTÉ de son contrat (jamais une charge utile tapée). */
 
-const exemple = (paire, variante = 'exemple') => exempleContrat(paire[0], paire[1], variante)
+const { ouvrir } = vi.hoisted(() => ({ ouvrir: vi.fn() }))
+vi.mock('../useCarte', () => ({ useOuvrirEcran: () => ouvrir }))
+beforeEach(() => ouvrir.mockClear())
 
-function Route() {
-  return <span data-testid="route">{`${useLocation().pathname}${useLocation().search}`}</span>
-}
+const exemple = (paire, variante = 'exemple') => exempleContrat(paire[0], paire[1], variante)
 
 function monter(cle, donnees) {
   const Carte = COMPOSANTS[cle]
-  const store = configureStore({ reducer: { ia: iaReducer } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <Carte carte={{ type: 'resultat', carte: cle, donnees }} />
-        <Route />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return render(<Carte carte={{ type: 'resultat', carte: cle, donnees }} />)
 }
 
 describe('fiche_calepinage', () => {
@@ -41,7 +29,7 @@ describe('fiche_calepinage', () => {
     expect(screen.getByText(/À faire : Publier au devis/)).toBeInTheDocument()
     expect(screen.getByText(/ce n’est pas le chiffre montré au client/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Ouvrir le calepinage/ }))
-    expect(screen.getByTestId('route')).toHaveTextContent('/calepinage/12')
+    expect(ouvrir).toHaveBeenCalledWith('/calepinage/12')
   })
 
   it('borne haute : la mention est dite, aucun P90, le blocage électrique est listé', () => {
@@ -71,7 +59,7 @@ describe('liste_calepinages', () => {
     const boutons = screen.getAllByRole('button', { name: 'Ouvrir' })
     expect(boutons).toHaveLength(3)
     await userEvent.click(boutons[1])
-    expect(screen.getByTestId('route')).toHaveTextContent('/calepinage/14?onglet=verdict-electrique')
+    expect(ouvrir).toHaveBeenCalledWith('/calepinage/14?onglet=verdict-electrique')
   })
 
   it('liste vide', () => {
