@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, X } from 'lucide-react'
 import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 import { accord, aujourdhuiIso } from '../lib/textes'
-import { PRIORITES } from './LigneProjet'
+import { PRIORITES, jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH91 — « Planifier le projet » : un rituel en deux pas (`?planifier=1` sur l'écran Un projet).
@@ -86,6 +86,7 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
           onChange={(e) => maj({ echeance: e.target.value })}
           aria-invalid={erreurs.echeance ? 'true' : undefined} aria-describedby={erreurs.echeance ? 'pp-echeance-err' : undefined}
         />
+        {etat.echeance ? <p className="es-aide chiffres">{jourProjet(etat.echeance, aujourdhui)}</p> : null}
         <Erreur id="pp-echeance-err" texte={erreurs.echeance} />
       </div>
       <div className="ep-groupe">
@@ -151,7 +152,7 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
           aria-invalid={erreurs.risque ? 'true' : undefined} aria-describedby={erreurs.risque ? 'pp-risque-err' : undefined} />
         <Erreur id="pp-risque-err" texte={erreurs.risque} />
         <button type="button" className="bouton second" disabled={!etat.risque.trim()}
-          onClick={() => maj({ actions: [...etat.actions, { titre: etat.risque.trim(), quand: '' }], risque: '' })}>
+          onClick={() => maj({ actions: [...etat.actions, { titre: `Parer : ${etat.risque.trim()}`, quand: '' }], risque: '' })}>
           En faire une tâche
         </button>
       </div>
@@ -176,7 +177,13 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
         <h3 className="ep-etiquette">Premières actions</h3>
         {etat.actions.map((a, i) => (
           <div key={`${a.titre}:${i}`} className="ep-action">
-            <span className="ep-action-titre">{a.titre}</span>
+            <div className="ep-action-tete">
+              <span className="ep-action-titre">{a.titre}</span>
+              <button type="button" className="ep-action-retirer" aria-label={`Retirer « ${a.titre} »`}
+                onClick={() => maj({ actions: etat.actions.filter((_, j) => j !== i) })}>
+                <X className="i i-16" aria-hidden="true" />
+              </button>
+            </div>
             <div className="puces" role="radiogroup" aria-label={`Quand : ${a.titre}`}>
               {QUAND.map(([code, libelle]) => (
                 <button key={code} type="button" className="puce" role="radio" aria-checked={quandServi(a.quand) === code}
@@ -292,6 +299,10 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
         </div>
         <button type="button" className="bouton discret" onClick={onPasser}>Passer</button>
       </header>
+      <ol className="ep-pas" aria-label="Étapes du rituel">
+        <li className={etat.pas >= 1 ? 'fait' : ''} aria-current={etat.pas === 1 ? 'step' : undefined}><i /></li>
+        <li className={etat.pas >= 2 ? 'fait' : ''} aria-current={etat.pas === 2 ? 'step' : undefined}><i /></li>
+      </ol>
       {erreurs.general ? <p className="ep-erreur" role="alert">{erreurs.general}</p> : null}
       {etat.pas === 1
         ? <PasUn etat={etat} maj={maj} erreurs={erreurs} aujourdhui={aujourdhui} />

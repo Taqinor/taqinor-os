@@ -158,14 +158,34 @@
 .tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
   border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
 .tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
-.tch .ep-choix-ligne[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--tch-accent); background: var(--tch-selection); }
+/* R2-069 — UN dessin de « choisi » dans le rituel : le plein d'accent des puces (plus un filet pour les priorités) */
+.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); }
+.tch .ep-choix-ligne[aria-checked="true"] span { color: inherit; opacity: 0.85; }
+/* priorités : trois colonnes, jamais trois lignes pleine largeur */
+.tch .ep-planifier .ep-choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tch .ep-planifier .ep-choix-ligne { align-items: center; text-align: center; min-height: 64px; padding: 8px 6px; }
+.tch .ep-planifier .ep-choix-ligne span { font-size: 0.75rem; text-wrap: balance; }
+/* barre d'étapes du rituel (deux segments) */
+.tch .ep-pas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.tch .ep-pas li i { display: block; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); }
+.tch .ep-pas li.fait i { background: var(--tch-accent); }
 .tch .ep-action { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
-.tch .ep-action-titre { font-size: 1rem; font-weight: 600; }
+.tch .ep-action-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tch .ep-action-titre { font-size: 1rem; font-weight: 600; min-width: 0; }
+.tch .ep-action-retirer { position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; color: var(--tch-texte-doux); min-height: 0; }
+.tch .ep-action-retirer::after { content: ""; position: absolute; left: 50%; top: 50%; width: var(--tch-cible); height: var(--tch-cible); transform: translate(-50%, -50%); }
+@media (hover: hover) {
+  .tch .ep-action-retirer:hover { background: var(--tch-survol); }
+}
 .tch .ep-ajout-action { display: flex; gap: 8px; align-items: center; }
 .tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
 .tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
 .tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
-.tch .ep-planifier-pied { margin-top: 4px; }
+/* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets */
+.tch .ep-planifier-pied { position: sticky; bottom: 0; margin-top: 4px; padding: 10px 0 12px; background: var(--tch-surface); z-index: var(--z-sticky); }
+@media screen and (max-width: 767px) {
+  .tch .ep-planifier-pied { bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom)); }
+}
 /* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
 .tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
 .tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
