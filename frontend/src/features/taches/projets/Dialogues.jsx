@@ -21,6 +21,14 @@ import { jourProjet } from './LigneProjet'
 
 const premiere = (valeur) => (Array.isArray(valeur) ? valeur[0] : valeur)
 
+/** Le lundi qui SUIT `iso` (si `iso` est un lundi : celui de la semaine d'après) — calcul en UTC, aucune horloge cachée. */
+// eslint-disable-next-line react-refresh/only-export-components -- calcul pur co-localisé, testé à part (D-ENF22)
+export function lundiProchain(iso) {
+  const d = new Date(`${iso}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + (7 - ((d.getUTCDay() + 6) % 7)))
+  return d.toISOString().split('T')[0]
+}
+
 function Pied({ onFermer, principal, occupe, danger = false, desactive = false }) {
   return (
     <div className="carte-actions ep-dialogue-pied">
@@ -452,7 +460,9 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
   const modele = source.type === 'modele'
   // R2-065 — le nom est prérempli (« {nom} (copie) » pour un double) : un seul « Créer » qui écrit
   const [nom, setNom] = useState(modele ? source.nom : `${source.nom} (copie)`)
-  const [date, setDate] = useState(aujourdhui)
+  // R3-137 — Dupliquer part du lundi PROCHAIN (ses premières tâches ne tombent plus, sans qu'on le dise, aujourd'hui) ; « Utiliser un
+  // modèle » garde aujourd'hui
+  const [date, setDate] = useState(modele ? aujourdhui : lundiProchain(aujourdhui))
   const [apercu, setApercu] = useState(null)
   const [erreur, setErreur] = useState('')
   const [occupe, setOccupe] = useState(false)
@@ -495,7 +505,8 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
     setOccupe(true)
     try {
       const { data } = await appeler(nom.trim(), date, true)
-      onFait?.(data)
+      // R3-137 — ce que l'aperçu avait annoncé (nombre de tâches, premier jour) : l'écran le redit dans son toast
+      onFait?.(data, aJour ? { nombre: apercu.taches?.length ?? 0, premier: premiereDate(apercu) } : null)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
       setErreur(premiere(champs?.nom) ?? frenchError(err, 'Le projet n\'a pas été créé. Réessaie.'))

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Check, Star } from 'lucide-react'
 import { heure } from '../lib/textes'
 
@@ -95,7 +95,7 @@ const classesBloc = (ev) => [
   ev.voies >= 2 ? 'en-voies' : '',
 ]
 
-function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
+function BlocTache({ ev, style, choisi, deplacable = false, onCocher, onOuvrir, onDeplacer }) {
   const { item } = ev
   const fait = item.statut === 'fait'
   const plage = ev.sansDuree
@@ -103,7 +103,7 @@ function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
     : `${enHeure(ev.debut)} – ${enHeure(ev.fin)}`
   const plus = ev.voie === VOIES_VISIBLES - 1 && ev.caches > 0
   const classes = ['bloc', ...classesBloc(ev), fait ? 'fait-bloc' : '', choisi ? 'choisi' : '',
-    item.essentielle ? 'essentielle' : '', plus ? 'a-plus' : ''].filter(Boolean).join(' ')
+    item.essentielle ? 'essentielle' : '', plus ? 'a-plus' : '', deplacable ? 'deplacable' : ''].filter(Boolean).join(' ')
   return (
     <div className={classes} data-p={item.projet?.couleur || undefined} style={style} data-bloc={item.id}>
       <button
@@ -116,7 +116,10 @@ function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
       >
         <Check aria-hidden="true" />
       </button>
-      <button type="button" className="ag-bt" onClick={() => onOuvrir?.(item)}>
+      {/* R3-132 — en mode « placer » (une tâche est choisie), toucher un bloc déjà posé le DÉPLACE (il devient la tâche choisie) ;
+          sinon il ouvre sa fiche. Le nom accessible dit le geste et garde le titre et la plage visibles. */}
+      <button type="button" className="ag-bt" aria-label={deplacable ? `Déplacer ${item.titre} · ${plage}` : undefined}
+        onClick={() => (deplacable ? onDeplacer?.(item) : onOuvrir?.(item))}>
         <b>{item.titre}</b>
         <small className="chiffres">{plage}</small>
       </button>
@@ -134,6 +137,17 @@ function BlocExterne({ ev, style, ouvert, versGauche, onBasculer }) {
   const plage = `${enHeure(ev.debut)}–${enHeure(ev.fin)}`
   const adresse = adresseSure(item.url)
   const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev)].filter(Boolean).join(' ')
+  // R3-133 — la bulle s'ouvre sous le bloc ; si elle déborderait du bas de l'écran (rendez-vous de fin de journée), elle se
+  // RETOURNE vers le haut (son bas sur le bas du bloc). Mesure du rendu réel, avant la peinture ; la classe est posée sur le
+  // nœud (React ne la touche pas : `className` ne change pas).
+  const bulle = useRef(null)
+  useLayoutEffect(() => {
+    const b = bulle.current
+    if (!ouvert || !b) return
+    b.classList.remove('vers-haut')
+    const r = b.getBoundingClientRect()
+    if (r.bottom > window.innerHeight - 8 && r.height <= r.top) b.classList.add('vers-haut')
+  }, [ouvert])
   return (
     <>
       <button
@@ -149,7 +163,7 @@ function BlocExterne({ ev, style, ouvert, versGauche, onBasculer }) {
         <span className="ag-agenda">{item.agenda}</span>
       </button>
       {ouvert ? (
-        <p className={versGauche ? 'ag-bulle vers-gauche' : 'ag-bulle'} role="status" style={{ top: style.top }}>
+        <p ref={bulle} className={versGauche ? 'ag-bulle vers-gauche' : 'ag-bulle'} role="status" style={{ top: style.top, '--h-bloc': style.height }}>
           {`${item.titre} · ${plage} · ${item.agenda}`}
           {adresse ? (
             <>
@@ -224,8 +238,19 @@ function Maintenant({ maintenant, debut, fin }) {
   )
 }
 
+/** R3-131 — dans la Semaine l'heure courante s'écrit UNE fois, dans la gouttière des heures, à la hauteur de la ligne « maintenant »
+ *  (comme Apple Calendrier) : posée à gauche de la colonne d'aujourd'hui elle tombait sur la colonne de la veille, par-dessus
+ *  un bloc. La Semaine masque donc `.maintenant-heure` (agenda.css) ; le Jour garde la sienne. */
+function EtiquetteMaintenant({ maintenant, debut, fin }) {
+  const m = maintenant.getHours() * 60 + maintenant.getMinutes()
+  if (m < debut * 60 || m > fin * 60) return null
+  return (
+    <span className="maintenant-gouttiere chiffres" style={{ top: `calc(var(--tch-heure-h) * ${(m - debut * 60) / 60})` }}>{enHeure(m)}</span>
+  )
+}
+
 function Colonne({ jour, nomJour, props, versGauche = false }) {
-  const { aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir } = props
+  const { aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir, onDeplacer } = props
   const heures = props.heuresParJour[jour.jour]
   const [ouvert, setOuvert] = useState(null)
   const repos = !jour.ouvre || jour.ferie
@@ -251,7 +276,7 @@ function Colonne({ jour, nomJour, props, versGauche = false }) {
         }
         return (
           <BlocTache key={ev.cle} ev={ev} style={style} choisi={choisi === ev.item.id}
-            onCocher={onCocher} onOuvrir={onOuvrir} />
+            deplacable={Boolean(placement && onDeplacer)} onCocher={onCocher} onOuvrir={onOuvrir} onDeplacer={onDeplacer} />
         )
       })}
       {jour.jour === aujourdhui ? <Maintenant maintenant={maintenant} debut={debut} fin={fin} /> : null}
@@ -315,6 +340,7 @@ function surTouche(e) {
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
   placement = null, onDepot = undefined, choisi = null, ligneJournee = null, creneauxLibres = false, onCreneau, onCocher, onOuvrir,
+  onDeplacer = undefined,
 }) {
   const plusieurs = jours.length > 1
   const heures = []
@@ -325,7 +351,7 @@ export default function GrilleAgenda({
   const premier = jours.map((j) => ({ jour: j.jour, m: heuresParJour[j.jour][0] })).find((c) => c.m !== undefined) ?? { jour: null, m: null }
   const arret = dernier && heuresParJour[dernier.jour]?.includes(dernier.m) ? dernier : premier
   const props = {
-    aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir, plusieurs,
+    aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir, onDeplacer, plusieurs,
     heuresParJour, arret, onArret: setDernier,
   }
   return (
@@ -353,6 +379,8 @@ export default function GrilleAgenda({
       {plusieurs ? ligneJournee : null}
       <div className="agenda-heures" aria-hidden="true">
         {heures.map((h) => <div key={h}>{`${deux(h)}:00`}</div>)}
+        {plusieurs && maintenant && jours.some((j) => j.jour === aujourdhui)
+          ? <EtiquetteMaintenant maintenant={maintenant} debut={debut} fin={fin} /> : null}
       </div>
       {/* R2-112 — la bulle d'un rendez-vous des colonnes de droite s'ouvre vers la gauche : jamais coupée par l'écran */}
       {jours.map((j, rang) => (

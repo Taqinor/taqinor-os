@@ -164,7 +164,7 @@ describe('TCH104 — vues et navigation', () => {
     const { container } = monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
     // mar. 17 du contrat : Timbres (15 min) + Devis Settat (60 min) ; capacité servie `capacite.minutes` = 240
-    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
+    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 sur 3 h')
   })
 
   it('F2 acceptation + R2-102 — Semaine sur iPhone : un jour passé dit « {n} faites » = les tâches FINIES ce jour-là, servies par `faites_nb` (maquette agenda-semaine.html, `ag-sj passe`)', async () => {
@@ -231,7 +231,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(lignes[0].querySelector('.h')).toHaveTextContent('')
     expect(lignes[0].querySelector('svg')).not.toBeNull()
     expect(lignes[1].querySelector('.t')).toHaveTextContent('Devis Settat')
-    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
+    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 sur 3 h')
   })
 
   it('Passe visuelle n° 59 — Semaine sur iPhone : un jour passé tient une ligne (ses faites), un jour chargé trois, le reste en « +N »', async () => {
@@ -275,7 +275,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(rdv.querySelector('.h')).toHaveTextContent('14:30')
     expect(rdv.querySelector('.t')).toHaveTextContent('Rendez-vous banque')
     // 240 min de capacité − 90 min de rendez-vous servis = 2 h 30 de temps libre
-    expect(mercredi.querySelector('.ag-sj-tete')).toHaveTextContent('0 tâche · 0 min pour 2 h 30')
+    expect(mercredi.querySelector('.ag-sj-tete')).toHaveTextContent('Libre · 2 h 30')
     // et le rendez-vous de mardi (11:00) est dans sa ligne, avant les tâches sans heure
     const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
     expect(mardi.querySelector('.ag-sj-l.ext .t')).toHaveTextContent('Réunion banque')
@@ -418,6 +418,50 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelectorAll('.semaine-tete .ag-faites')).toHaveLength(1)
   })
 
+  it('R3-131 — Semaine : l\'heure courante est écrite UNE fois, dans la gouttière des heures (le Jour garde la sienne)', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const gouttiere = grille(container).querySelectorAll('.agenda-heures .maintenant-gouttiere')
+    expect(gouttiere).toHaveLength(1)
+    expect(gouttiere[0]).toHaveTextContent('09:41')
+  })
+
+  it('R3-132 — iPhone : une tâche de « À placer » choisie, le bandeau COLLANT de la grille dit « Pose « … » : touche un créneau » et offre Annuler ; toucher un bloc posé le DÉPLACE', async () => {
+    const { container } = monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    expect(container.querySelector('.ag-consigne-pose')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Site web/ }))
+    const bandeau = container.querySelector('.ag-principal > .ag-consigne-pose')
+    expect(bandeau).toHaveTextContent('Pose « Site web » : touche un créneau')
+    // en mode « placer », un bloc déjà posé se DÉPLACE au toucher (son nom le dit) au lieu d'ouvrir sa fiche
+    fireEvent.click(within(grille(container)).getByRole('button', { name: /^Déplacer Devis Settat · 10:00 – 11:00$/ }))
+    expect(container.querySelector('.ag-principal > .ag-consigne-pose')).toBeNull()
+    expect(screen.getByText('Touche un créneau pour déplacer Devis Settat')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler le déplacement' }))
+    // « Annuler » du bandeau de pose : la tâche n'est plus choisie
+    fireEvent.click(screen.getByRole('button', { name: /Site web/ }))
+    fireEvent.click(within(container.querySelector('.ag-principal > .ag-consigne-pose')).getByRole('button', { name: 'Annuler' }))
+    expect(container.querySelector('.ag-consigne-pose')).toBeNull()
+    expect(screen.getByRole('button', { name: /Site web/ })).toHaveAttribute('aria-pressed', 'false')
+    // hors du mode « placer », le bloc ouvre toujours sa fiche (nom inchangé)
+    expect(within(grille(container)).getByRole('button', { name: /^Devis Settat/ })).not.toHaveAccessibleName(/Déplacer/)
+  })
+
+  it('R3-133 — la bulle d\'un rendez-vous près du bas de l\'écran se RETOURNE vers le haut ; ailleurs elle reste sous le bloc', async () => {
+    const mesure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    const rect = (top, bottom) => ({ top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) })
+    try {
+      mesure.mockImplementation(function mesureBulle() { return this.classList.contains('ag-bulle') ? rect(window.innerHeight - 20, window.innerHeight + 60) : rect(0, 0) })
+      const { container } = monter()
+      fireEvent.click(await screen.findByRole('button', { name: /^Réunion banque/ }))
+      expect(container.querySelector('.ag-bulle')).toHaveClass('vers-haut')
+      mesure.mockImplementation(function mesureBulle() { return this.classList.contains('ag-bulle') ? rect(100, 180) : rect(0, 0) })
+      fireEvent.click(screen.getByRole('button', { name: /^Réunion banque/ })) // referme
+      fireEvent.click(screen.getByRole('button', { name: /^Réunion banque/ })) // rouvre : mesure au milieu de l'écran
+      expect(container.querySelector('.ag-bulle')).not.toHaveClass('vers-haut')
+    } finally { mesure.mockRestore() }
+  })
+
   it('← → décalent la période, « Aujourd\'hui » y revient', async () => {
     monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
@@ -444,7 +488,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-nav b')).toHaveTextContent(/^Novembre 2026$/)
     const tete = container.querySelector('.ag-jour-tete')
     expect(tete.querySelector('b')).toHaveTextContent('Mardi 17 novembre')
-    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
+    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 sur 3 h')
   })
 
   it('R2-109 — Mois : les jours non travaillés sont teintés sur TOUTES les semaines, même ceux que la lecture ne sert pas', async () => {

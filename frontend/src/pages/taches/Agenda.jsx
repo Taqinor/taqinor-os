@@ -313,20 +313,20 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
   )
 }
 
-function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, choisi, volet, consigne = null, onChoisir }) {
+function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, onDeplacer, choisi, volet, consigne = null, onChoisir }) {
   return (
     <div className="ag-corps">
       <div className="ag-principal">
         {consigne}
         <VueJourGrille jour={jour} dates={dates} parJour={parJour} aujourdhui={aujourdhui} maintenant={maintenant}
-          gestes={gestes} placement={placement} onDepot={onDepot} choisi={choisi} onChoisir={onChoisir} />
+          gestes={gestes} placement={placement} onDepot={onDepot} onDeplacer={onDeplacer} choisi={choisi} onChoisir={onChoisir} />
       </div>
       {volet}
     </div>
   )
 }
 
-function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, choisi, onChoisir }) {
+function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, onDepot, onDeplacer, choisi, onChoisir }) {
   return (
     <>
       <BandeJours dates={dates} parJour={parJour} jour={jour.jour} aujourdhui={aujourdhui} onChoisir={onChoisir} />
@@ -344,7 +344,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
       ) : null}
       <GrilleAgenda
         jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} onDepot={onDepot}
-        choisi={choisi} creneauxLibres
+        onDeplacer={onDeplacer} choisi={choisi} creneauxLibres
         onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
       />
     </>
@@ -511,7 +511,7 @@ const ID_BOUTON_VOLET = 'ag-bouton-volet-semaine'
 
 function VueSemaine({
   jours, aujourdhui, maintenant, gestes, placement, capacite = null, aPlacer = [], mesProjets = [],
-  choisie = null, ouvert = false, onVolet, onChoisirAPlacer, onGlisser, onDepot, onPlanifier, onChoisir,
+  choisie = null, ouvert = false, onVolet, onChoisirAPlacer, onGlisser, onDepot, onDeplacer, consigne = null, onPlanifier, onChoisir,
 }) {
   const noms = Object.fromEntries(jours.map((j) => [j.jour, nomCourt(j.jour)]))
   const corps = useRef(null)
@@ -528,10 +528,11 @@ function VueSemaine({
     <>
       <div ref={corps} className="ag-corps ag-corps-semaine bureau-seul" data-volet={ouvert ? 'ouvert' : 'ferme'} onKeyDown={surTouche}>
         <div className="ag-principal">
+          {consigne}
           <GrilleAgenda
             jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms} creneauxLibres
             ligneJournee={<LigneJourneeSemaine jours={jours} onOuvrir={gestes.ouvrir} onChoisir={onChoisir} />}
-            placement={placement} onDepot={onDepot} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
+            placement={placement} onDepot={onDepot} onDeplacer={onDeplacer} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
           />
         </div>
         <VoletAPlacer
@@ -896,7 +897,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const dansLeVolet = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
   const choisie = dansLeVolet ?? (placement.choisie == null ? null
     : jours.flatMap((j) => [...(j.blocs ?? []), ...(j.sans_heure ?? [])]).find((it) => it.id === placement.choisie) ?? null)
-  const consigneDeplacement = choisie && !dansLeVolet && vue === 'jour' ? (
+  const consigneDeplacement = choisie && !dansLeVolet && (vue === 'jour' || vue === 'semaine') ? (
     <div className="ag-consigne" role="status">
       <span>{`Touche un créneau pour déplacer ${choisie.titre}`}</span>
       <button type="button" className="bouton" aria-label="Annuler le déplacement" onClick={() => placement.setChoisie(null)}>
@@ -904,6 +905,15 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       </button>
     </div>
   ) : null
+  // R3-132 — une tâche de « À placer » est choisie : le bandeau COLLANT en haut de la grille le dit et offre « Annuler » (sur iPhone
+  // la consigne du volet était SOUS la grille, hors de vue ; au bureau le volet de la vue Jour garde la sienne)
+  const bandeauPose = (classe) => (choisie && dansLeVolet ? (
+    <div className={`ag-consigne ${classe}`} role="status">
+      <span>{`Pose « ${choisie.titre} » : touche un créneau`}</span>
+      <button type="button" className="bouton lien" onClick={() => placement.setChoisie(null)}>Annuler</button>
+    </div>
+  ) : null)
+  const deplacer = (item) => placement.setChoisie(item.id) // R3-132 : toucher un bloc posé, en mode « placer », le déplace
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
   // R3-120 — le dépôt d'une tâche GLISSÉE depuis « À placer » : la tâche retenue au début du glisser (ou, à défaut, la choisie)
   const deposer = (j, h) => {
@@ -999,8 +1009,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          placement={placementGrille} onDepot={deposer} choisi={placement.posee?.id ?? null} volet={volet}
-          consigne={consigneDeplacement} onChoisir={(iso) => changer({ jour: iso })} />
+          placement={placementGrille} onDepot={deposer} onDeplacer={deplacer} choisi={placement.posee?.id ?? null} volet={volet}
+          consigne={consigneDeplacement ?? bandeauPose('ag-consigne-pose')} onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
       {donnees && vue === 'jour' && placement.posee ? (
         <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose}
@@ -1012,7 +1022,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             placement={placementGrille} capacite={donnees?.capacite?.minutes ?? null} onChoisir={choisirJour}
             aPlacer={donnees.a_placer ?? []} mesProjets={donnees.mes_projets ?? []}
             choisie={placement.choisie} onChoisirAPlacer={(item) => placement.setChoisie(item ? item.id : null)}
-            onGlisser={placement.glisser} onDepot={deposer}
+            onGlisser={placement.glisser} onDepot={deposer} onDeplacer={deplacer} consigne={consigneDeplacement ?? bandeauPose('ag-consigne-grille')}
             ouvert={voletSemaine} onVolet={setVoletSemaine} onPlanifier={planifierSemaine} />
           <BarreAPlacer total={tousAPlacer.length} onPlanifier={planifierSemaine} />
         </>

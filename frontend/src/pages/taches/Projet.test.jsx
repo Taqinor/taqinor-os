@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
+import { ecrireProjetsCache } from '../../features/taches/horsligne/cacheProjets'
 import { ZoneAnnonces } from '../../features/taches/coquille/CoquilleTaches'
 import { poserRectangles } from '../../features/taches/projets/rectanglesDeTest'
 
@@ -348,6 +349,40 @@ describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
     monterConnecte(43)
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(screen.queryByText('12 sur 20')).toBeNull()
+  })
+})
+
+describe('R3-136 — Un projet jamais ouvert, sans réseau : son NOM en titre (lu dans la liste gardée), pas « Projet » et une page muette', () => {
+  const connecte = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+  const monterHorsLigne = () => render(
+    <ReactReduxContext.Provider value={{ store: connecte }}>
+      <MemoryRouter initialEntries={['/taches/projets/3']}>
+        <Routes><Route path="/taches/projets/:id" element={<Projet />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  let enLigne
+  beforeEach(() => {
+    window.localStorage.clear()
+    enLigne = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    api.lireVueProjet.mockRejectedValue(new Error('Network Error'))
+  })
+  afterEach(() => { enLigne.mockRestore(); window.localStorage.clear() })
+
+  it('le titre est le nom du projet gardé dans la liste ; la page dit ce qui va se passer, sans promettre de saisies', async () => {
+    ecrireProjetsCache(42, 'liste', { actifs: [{ id: 3, nom: 'Chantier Benali 9 kWc', couleur: 'terre' }], enPause: [], constat: null })
+    monterHorsLigne()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Ses tâches s'afficheront au retour du réseau.")
+    expect(screen.getByRole('alert')).not.toHaveTextContent('saisies')
+    const titre = screen.getByRole('heading', { level: 1 })
+    expect(titre).toHaveTextContent('Chantier Benali 9 kWc')
+    expect(titre.querySelector('.ep-projet-nom')).toHaveAttribute('data-p', 'terre')
+  })
+
+  it('un projet absent de la liste gardée garde le titre « Projet » (jamais un nom inventé)', async () => {
+    monterHorsLigne()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Ses tâches s'afficheront au retour du réseau.")
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Projet$/)
   })
 })
 

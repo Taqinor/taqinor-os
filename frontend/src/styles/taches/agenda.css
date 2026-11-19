@@ -16,6 +16,8 @@
 .tch .ag-vues .segmente { flex: 1 1 280px; max-width: 360px; margin: 0; min-width: 0; }
 .tch .ag-nav { display: flex; align-items: center; gap: 4px; margin: 2px 4px 0; min-height: 44px; }
 .tch .ag-nav b { flex: 1; text-align: center; font-size: 1rem; font-weight: 650; }
+/* R3-135 — « Aujourd'hui » se lit comme un bouton : texte d'accent (il était noir, à côté du titre de la période) */
+.tch .ag-nav .bouton.discret { color: var(--tch-accent); font-weight: 600; }
 .tch .bande-jours [aria-current="date"] small { color: var(--tch-accent); font-weight: 650; }
 
 /* R2-110 — la barre des vues et de la navigation : empilées sur iPhone, UNE ligne au bureau ; au bureau la bande des sept
@@ -117,6 +119,13 @@
   .tch .semaine .bloc.ag-externe .ag-agenda { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 0; }
   .tch .semaine .bloc.ag-externe.en-voies .ag-agenda { display: none; }
 }
+/* R3-131 — l'heure courante de la Semaine est dans la gouttière des heures (GrilleAgenda `EtiquetteMaintenant`), plus posée sur
+   la colonne de la veille */
+.tch .semaine .maintenant-heure { display: none; }
+.tch .semaine .agenda-heures .maintenant-gouttiere {
+  position: absolute; right: 8px; transform: translateY(-50%); padding: 0 3px; border-radius: 4px; background: var(--tch-surface);
+  font-size: 0.75rem; font-weight: 700; color: var(--tch-accent); z-index: calc(var(--z-base) + 2);
+}
 .tch .semaine-tete .repos { flex-direction: column; align-items: center; gap: 0; padding-top: 4px; line-height: 1.1; }
 .tch .semaine-tete .repos b { font-size: 0.9375rem; }
 .tch .ag-ferie { display: block; font-size: 0.6875rem; font-weight: 500; color: var(--tch-texte-doux); }
@@ -190,6 +199,8 @@
   font-size: 0.8125rem; font-weight: 600; line-height: 1.35; box-shadow: var(--shadow-md); overflow-wrap: anywhere;
 }
 .tch .ag-bulle.vers-gauche { left: auto; right: 8px; }
+/* R3-133 — près du bas de l'écran la bulle se retourne : son bas sur le bas du bloc (`--h-bloc`, posée par GrilleAgenda) */
+.tch .ag-bulle.vers-haut { transform: translateY(calc(-100% + var(--h-bloc, 30px))); }
 .tch .ag-bulle a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .tch .ag-externe-ligne {
   display: flex; align-items: center; gap: 6px; margin: 6px var(--tch-gouttiere) 0; font-size: 0.875rem;
@@ -262,12 +273,13 @@
   .tch .ag-mj-titres .faite .t { color: var(--tch-texte-doux); text-decoration: line-through; }
   .tch .ag-mj-titres .plus { font-style: normal; font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
 }
+/* R3-135 — le jour choisi du Mois : la DATE sur une ligne (« Jeudi 19 novembre » ne se coupe plus), le résumé de charge dessous */
 .tch .ag-jour-tete {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px var(--tch-gouttiere) 0;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px var(--tch-gouttiere) 0;
   box-shadow: inset 0 1px 0 var(--tch-trait); margin-top: 8px;
 }
-.tch .ag-jour-tete b { font-size: var(--tch-section); font-weight: 650; }
-.tch .ag-jour-tete .ag-jour-charge { flex: none; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ag-jour-tete b { font-size: var(--tch-section); font-weight: 650; white-space: nowrap; }
+.tch .ag-jour-tete .ag-jour-charge { font-size: 0.8125rem; color: var(--tch-texte-doux); }
 
 /* À venir, états d'un jour, erreurs */
 .tch .ag-av-tete {
@@ -370,6 +382,20 @@
   border-radius: 12px; background: var(--tch-accent-doux); font-size: 0.875rem;
 }
 .tch .ag-consigne span { flex: 1; min-width: 0; }
+/* R3-132 — le bandeau de la grille (« Pose « … » : touche un créneau · Annuler », ou « … pour déplacer … ») reste COLLÉ en haut
+   pendant que l'on parcourt la grille ; sur iPhone il remplace la consigne du volet (sous la grille, hors de vue) */
+.tch .ag-principal > .ag-consigne {
+  position: sticky; top: calc(44px + env(safe-area-inset-top)); z-index: calc(var(--z-sticky) - 1); margin: 6px 0;
+  box-shadow: var(--shadow-sm);
+}
+.tch .ag-consigne .bouton.lien { flex: none; width: auto; min-height: 44px; padding: 0 12px; font-weight: 600; }
+@media screen and (max-width: 1023px) {
+  .tch .ag-aside .ag-consigne { display: none; }
+}
+@media (min-width: 1024px) {
+  .tch .ag-consigne-pose { display: none; }
+  .tch .ag-principal > .ag-consigne { top: 8px; }
+}
 .tch .ag-consigne .bouton { width: 44px; height: 44px; padding: 0; color: var(--tch-accent); background: transparent; box-shadow: none; }
 .tch .ag-colonne .bloc.choisi { box-shadow: inset 3px 0 0 var(--tch-point), 0 0 0 2px var(--tch-accent); }
 .tch .ag-duree {
@@ -429,6 +455,8 @@
 }
 .tch .ag-pj .j { grid-column: 1; grid-row: 1; }
 .tch .ag-pj .n { grid-column: 1; grid-row: 2; }
+/* R3-134 — « Rendez-vous : 1 h 30 » sous le jour (iPhone : 3e ligne ; bureau : sous le compte, avant les cartes) */
+.tch .ag-pj .ag-pj-rdv { grid-column: 1 / -1; grid-row: 3; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ag-pj-place.repos .ag-pj { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto; min-height: 48px; }
 .tch .ag-pj-place.repos .ag-pj .n { grid-column: 2; grid-row: 1; text-align: right; }
 .tch .ag-pj .j { font-size: 0.9375rem; font-weight: 650; }
@@ -471,6 +499,7 @@
   .tch .ag-planifier .ag-pj .j { order: 1; padding: 0 4px; font-size: 0.875rem; }
   .tch .ag-planifier .ag-pj .ag-charge { order: 2; align-self: stretch; width: auto; margin: 2px 4px 0; }
   .tch .ag-planifier .ag-pj .n { order: 3; padding: 0 4px 4px; font-size: 0.75rem; text-align: left; }
+  .tch .ag-planifier .ag-pj .ag-pj-rdv { order: 3; padding: 0 4px 4px; font-size: 0.75rem; }
   .tch .ag-planifier .ag-pj-cartes { order: 4; }
   .tch .ag-planifier .ag-pj.repos { background: var(--ag-repos); box-shadow: none; }
   .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; }

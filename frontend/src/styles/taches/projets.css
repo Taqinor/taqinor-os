@@ -236,6 +236,9 @@
 /* R2-068 — une intention en tête, décision en segmenté + « Suivant → », résumé de la revue */
 .tch .ep-intention { margin: 8px var(--tch-gouttiere) 0; }
 .tch .ep-carte-revue .ep-decision { margin: 0; }
+/* R3-138 — le segmenté « Continuer · Pause · Terminer » : TROIS tiers égaux (base.css le dessinait en grille de quatre : une piste vide
+   à droite laissait croire à un 4e choix manquant) */
+.tch .ep-decision { grid-template-columns: repeat(3, 1fr); }
 .tch .ep-carte-revue .ep-revue-boutons { justify-content: space-between; align-items: center; }
 .tch .ep-resume-revue { list-style: none; margin: 8px var(--tch-gouttiere) 0; padding: 0; }
 .tch .ep-resume-revue li { display: flex; align-items: center; gap: 10px; min-height: 48px; }

@@ -28,7 +28,7 @@ import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { estEnLigne, useCompteTaches } from '../../features/taches/lib/enLigne'
 import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
-import { accord, aujourdhuiIso, jourCourt } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso, jourCourt, jourNomme } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH89 — Écran « Un projet », vue Liste (`/taches/projets/:id`). Maquette : docs/taches/maquettes/projet-liste.html.
@@ -278,6 +278,7 @@ export default function Projet() {
   const [vue, setVue] = useState(null)
   const [erreur, setErreur] = useState('')
   const [introuvable, setIntrouvable] = useState(false)
+  const [connuHorsLigne, setConnuHorsLigne] = useState(null) // R3-136 : { nom, couleur } lus dans la liste gardée, sans vue du projet
   const [dialogue, setDialogue] = useState(null)
   const projetRef = useRef(null)
   const chaineVue = useRef(Promise.resolve())
@@ -300,7 +301,15 @@ export default function Projet() {
       // hors ligne, la ligne « Hors ligne » de la coquille est le seul signal tant qu'une vue (déjà lue, ou la dernière
       // gardée) est à l'écran ; sans réseau ET sans rien à montrer, l'erreur reste dite
       const vueAEcran = dejaLu.current || Boolean(cache?.donnees)
-      setErreur(vueAEcran && !estEnLigne() ? '' : frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
+      // R3-136 — jamais ouvert sur cet appareil et sans réseau : le titre est quand même le NOM du projet (lu dans la liste gardée) et
+      // la page dit ce qui va se passer, sans promettre de « saisies conservées » qu'elle ne montre pas
+      if (!vueAEcran) {
+        const gardee = lireProjetsCache(userId, 'liste')?.donnees
+        const connu = [...(gardee?.actifs ?? []), ...(gardee?.enPause ?? [])].find((p) => String(p.id) === String(id))
+        setConnuHorsLigne(connu ? { nom: connu.nom, couleur: connu.couleur } : null)
+      }
+      setErreur(vueAEcran && !estEnLigne() ? ''
+        : (!vueAEcran && !estEnLigne() ? 'Ses tâches s\'afficheront au retour du réseau.' : frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.')))
       if (cache?.donnees) { dejaLu.current = true; setVue(cache.donnees) }
     }
   }, [id, userId])
@@ -594,11 +603,15 @@ export default function Projet() {
   }
 
   // TCH157 — « Dupliquer » : le double s'ouvre, « Projet créé · Annuler » le supprime ; « Modèle… » enregistre sans quitter l'écran.
-  const duplique = (reponse) => {
+  const duplique = (reponse, resume = null) => {
     const retour = vue.projet.id
     setDialogue(null)
+    // R3-137 — le toast dit OÙ les premières tâches sont posées (« 3 tâches posées le lun. 23 »), jamais « aujourd'hui » en silence
+    const posees = resume?.nombre > 0 && resume.premier
+      ? ` · ${accord(resume.nombre, 'tâche posée', 'tâches posées')} le ${jourNomme(resume.premier, aujourdhui)}`
+      : ''
     proposerAnnuler({
-      message: 'Projet créé',
+      message: `Projet créé${posees}`,
       onAnnuler: async () => { if (reponse.geste_id) await annulerGeste(reponse.geste_id); navigate(`/taches/projets/${retour}`) },
     })
     // la feuille « Dupliquer » se ferme dans le même geste : la navigation remplace son entrée d'historique
@@ -682,7 +695,11 @@ export default function Projet() {
           }}>{projet.nom}</button>
       )}
     </span>
-  ) : 'Projet'
+  ) : (connuHorsLigne ? (
+    <span className="ep-projet-nom" data-p={connuHorsLigne.couleur}>
+      <i className="point" aria-hidden="true" />{connuHorsLigne.nom}
+    </span>
+  ) : 'Projet')
   return (
     // R2-093 — « ‹ Projets » est celui de la coquille, au-dessus du titre (un seul retour, jamais deux). Au bureau, la
     // liste des projets est à l'écran (maître-détail) : aucun retour à y proposer, et la loupe et le Copilote restent.

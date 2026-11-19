@@ -55,12 +55,17 @@ export function resume(jour, aujourdhui, capaciteServie = null) {
     // R2-100 — le temps libre du jour = la capacité moins ses rendez-vous (servi : `rendez_vous_minutes`, invariant 35)
     const pris = Number.isFinite(jour.rendez_vous_minutes) && jour.rendez_vous_minutes > 0 ? jour.rendez_vous_minutes : 0
     const capacite = Math.max(0, base - pris)
-    const texte = `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite) || '0 min'}`
+    // R3-134 — « Libre · 4 h » (rien de prévu : pas de « 0 tâche · 0 min pour 4 h ») ; « 2 tâches · 1 h 30 sur 4 h » sinon
+    const texte = ouvertes.length === 0 && minutes === 0
+      ? `Libre · ${dureeTexte(capacite) || '0 min'}`
+      : `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} sur ${dureeTexte(capacite) || '0 min'}`
     // R2-114 — un jour qui dépasse son temps libre le DIT (« 3 h 30 de trop »), pas seulement par un segment orange
     const trop = minutes > capacite ? dureeTexte(minutes - capacite) : ''
     return {
       texte: trop ? `${texte} · ${trop} de trop` : texte, base: texte, trop: trop ? `${trop} de trop` : '',
       charge: capacite > 0 ? { minutes, capacite } : null,
+      // R3-134 — le rendez-vous qui RÉDUIT la capacité est écrit sous le jour (« Rendez-vous : 1 h 30 »), calculé de `rendez_vous_minutes`
+      rdv: pris > 0 ? dureeTexte(pris) : '',
     }
   }
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
@@ -91,7 +96,7 @@ function CartesDuJour({ jour }) {
 }
 
 function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onDeposer, onOuvrirJour, refBouton }) {
-  const { passe, repos, texte, base, trop, charge } = resume(jour, aujourdhui, capacite)
+  const { passe, repos, texte, base, trop, charge, rdv } = resume(jour, aujourdhui, capacite)
   const nom = nomJour(jour.jour)
   const classes = ['ag-pj', passe ? 'passe' : '', repos ? 'repos' : '', jour.jour === aujourdhui ? 'auj' : '',
     posee ? 'nouveau' : ''].filter(Boolean).join(' ')
@@ -104,6 +109,7 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onDepo
         className={classes}
         disabled={passe}
         aria-current={jour.jour === aujourdhui ? 'date' : undefined}
+        aria-describedby={rdv ? `pj-rdv-${jour.jour}` : undefined}
         onClick={poser}
         onDragOver={(e) => { if (!passe) e.preventDefault() }}
         // R3-120 — le dépôt d'une tâche GLISSÉE (la page la retient sans la « choisir ») ; sinon la tâche choisie
@@ -121,6 +127,8 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onDepo
         <span className="n" aria-hidden="true">
           {trop ? <>{insecables(base)}{' · '}<b className="trop">{insecables(trop)}</b></> : insecables(texte)}
         </span>
+        {/* R3-134 — le rendez-vous qui réduit la capacité, sous le jour ; lu comme DESCRIPTION du jour (le nom reste le même) */}
+        {rdv ? <span className="ag-pj-rdv" id={`pj-rdv-${jour.jour}`} aria-hidden="true">{`Rendez-vous : ${rdv}`}</span> : null}
         {charge ? <BarreCharge {...charge} /> : null}
         <CartesDuJour jour={jour} />
         {posee ? (
