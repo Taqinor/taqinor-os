@@ -175,7 +175,8 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const champ = useRef(null)
 
   // Le curseur est dans le champ à l'ouverture : on tape directement (R2-129)
-  useEffect(() => { champ.current?.focus() }, [])
+  // après le focus que l'ERP pose sur la zone de contenu à chaque navigation (RouteFocus, un effet parent qui passe APRÈS celui-ci)
+  const poserChamp = useCallback((el) => { champ.current = el; if (el) { el.focus(); requestAnimationFrame(() => { if (document.activeElement !== el) el.focus() }) } }, [])
 
   // la saisie reste TELLE QUE TAPÉE ; l'adresse (`?q=`) la suit après une courte pause
   useEffect(() => {
@@ -354,7 +355,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         <label className="es-champ">
           <Search className="i" aria-hidden="true" />
           <input
-            ref={champ}
+            ref={poserChamp}
             type="search"
             className="valeur"
             aria-label="Chercher dans mes tâches"

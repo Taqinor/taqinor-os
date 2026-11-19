@@ -134,6 +134,7 @@ function MettreSurAccueil({ fait }) {
         <span>Mettre Tâches sur l'écran d'accueil</span>
         <span className="compte">{fait ? 'Fait' : 'À faire'}</span>
       </h2>
+      <div className="ep-etape-ouverte">
       {fait ? <p className="rassure">Tu l'ouvres depuis son icône.</p> : (
         <>
           <ol className="list-decimal">
@@ -144,6 +145,7 @@ function MettreSurAccueil({ fait }) {
           <p className="rassure">Il faut iOS 16.4 ou plus récent pour les notifications.</p>
         </>
       )}
+      </div>
     </section>
   )
 }

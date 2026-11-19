@@ -141,7 +141,8 @@ describe('TCH87 — Recherche', () => {
 
   it('R2-129 — le curseur est dans le champ à l\'ouverture : on tape directement', async () => {
     monter('/taches/recherche')
-    expect(await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveFocus()
+    const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    await waitFor(() => expect(champ).toHaveFocus()) // pris APRÈS le focus que l'ERP pose sur le contenu à chaque navigation
   })
 
   it('R2-129 — une croix à nous efface la recherche et rend le curseur au champ ; absente quand le champ est vide', async () => {

@@ -228,7 +228,7 @@ function AjoutAgenda({ onAjoute }) {
       <input className="es-champ" type="text" autoComplete="off" aria-label="Nom (facultatif)" placeholder="Nom (facultatif)"
         value={libelle} onChange={(e) => setLibelle(e.target.value)} />
       {erreur ? <p id="err-agenda" className="es-erreur" role="alert">{erreur}</p> : null}
-      {lecture ? <p className="es-sous" role="status">{"Lecture de l'agenda…"}</p> : null}
+      {lecture ? <p className="sr-only" role="status">{"Lecture de l'agenda…"}</p> : null}
       <button type="button" className="bouton second" disabled={lecture} aria-busy={lecture || undefined} onClick={ajouter}>
         {lecture ? "Lecture de l'agenda…" : 'Ajouter'}
       </button>
