@@ -1739,6 +1739,7 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                      _montant(eco1.get('valeur'))
                      if isinstance(eco1, dict) else _montant(eco1)),
                  'retour_ans': _indicateur(bloc, 'retour_ans'),
+                 'retour_dixieme_ans': _options.retour_au_dixieme(bloc),  # D-SENS-1
                  'tri_pct': _indicateur(bloc, 'tri_pct'),
                  # AMOT97 — le cumul net de la dernière année du MÊME flux.
                  'cumul_25_ans_mad': ((bloc or {}).get('flux') or [{}])[-1].get(

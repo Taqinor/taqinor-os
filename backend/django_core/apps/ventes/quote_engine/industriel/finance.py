@@ -681,6 +681,17 @@ def _nom_scenario(s, L):
             if variation is not None else nom)
 
 
+def _retour_scenario(d, s):
+    """D-SENS-1 (niveau 14, fondateur 19/11/2026) — le retour d'un scénario au
+    dixième SERVI (``retour_dixieme_ans``, même interpolation que la ligne
+    centrale) ; un devis sous le niveau 14 (``regles_sensibilites_historique``)
+    ou une ligne sans ce dixième garde l'entier servi d'hier."""
+    dixieme = s.get("retour_dixieme_ans")
+    if dixieme is None or d.get("regles_sensibilites_historique"):
+        return s.get("retour_ans")
+    return dixieme
+
+
 def _tableau_sensibilites(d, argent, fmt_mad, L):
     """AMOT97 (D-ACI-15=a) — le scénario central puis chaque scénario servi
     (``argent.sensibilites``) : délai de retour, TRI, cumul net de la dernière
@@ -697,7 +708,7 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
                 ci_couverture.retour_dixieme(argent, _num(
                     indicateurs.get("retour_ans"))), indicateurs.get("tri_pct"),
                 (flux[-1] if flux else {}).get("cumul_mad"), "")]
-    rangees += [(_nom_scenario(s, L), s.get("retour_ans"), s.get("tri_pct"),
+    rangees += [(_nom_scenario(s, L), _retour_scenario(d, s), s.get("tri_pct"),
                  s.get("cumul_25_ans_mad"), _source_propre(
                      ci_couverture.texte_client(
                          d, s.get("motif") if s.get("motif") and s.get(

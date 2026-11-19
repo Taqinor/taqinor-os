@@ -373,3 +373,27 @@ class SensibilitesTest(SimpleTestCase):
         self.assertEqual(commercial['sensibilites'],
                          industriel['sensibilites'])
         self.assertIsNotNone(commercial['sensibilites'][0]['retour_ans'])
+
+    def test_retour_au_dixieme_servi_sur_chaque_scenario(self):
+        """D-SENS-1 (19/11/2026) — chaque ligne sert ``retour_dixieme_ans``,
+        l'interpolation de la ligne centrale sur le flux du scénario : dans
+        l'année entière servie (retour_ans − 1 < dixième ≤ retour_ans)."""
+        apercu = _apercu_profil('usine')
+        bloc = eco.assembler_economie_ci(
+            apercu, tarif_declare=TARIF_MT_DECLARE, investissement=INVESTISSEMENT,
+            mode_installation='industriel', reglages={'sensibilites_ci': SCENARIOS_P90})
+        dixiemes = []
+        for sc in bloc['sensibilites']:
+            with self.subTest(sc=sc['cle'], v=sc['variation_pct']):
+                self.assertIsNotNone(sc['retour_dixieme_ans'])
+                self.assertGreater(sc['retour_dixieme_ans'], sc['retour_ans'] - 1)
+                self.assertLessEqual(sc['retour_dixieme_ans'], sc['retour_ans'])
+                dixiemes.append(sc['retour_dixieme_ans'])
+        self.assertTrue(any(d != int(d) for d in dixiemes), dixiemes)
+
+    def test_retour_au_dixieme_none_sans_passage_a_zero(self):
+        # 3 267 MAD/an pour 300 000 MAD : le cumul ne passe jamais à zéro en 25 ans.
+        sc = _bloc(_apercu_main(), [
+            {'cle': 'tarif_kwh', 'variation_pct': 10, 'source': 's'}])['sensibilites'][0]
+        self.assertIsNone(sc['retour_ans'])
+        self.assertIsNone(sc['retour_dixieme_ans'])
