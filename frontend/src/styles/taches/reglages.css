@@ -57,7 +57,10 @@
 .tch .ep-champs label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9375rem; }
 .tch .ep-champs input[type="date"] { min-height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); color: var(--tch-texte); }
 .tch .ep-champs-objectif { padding: 8px var(--tch-gouttiere) 0; }
-.tch .es-champ { min-height: 44px; min-width: 0; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 1rem; color: var(--tch-texte); }
+/* R3-091 — un champ se voit sur la carte d'une étape (même couleur `--tch-panneau` : les champs de Mes agendas étaient
+   invisibles) : surface et filet. Le champ de la Recherche garde son fond de recherche (plus bas). */
+.tch .es-champ { min-height: 44px; min-width: 0; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-surface);
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
 .tch .es-champ[aria-invalid="true"] { box-shadow: inset 0 0 0 1.5px var(--tch-alerte); }
 .tch .es-erreur { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 0.875rem; line-height: 1.4; font-weight: 600; color: var(--tch-alerte); }
 .tch .es-attente-rythme { display: flex; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 14px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
@@ -75,7 +78,8 @@
   min-height: 64px; padding: 10px var(--tch-gouttiere); text-align: left; }
 .tch .es-rubrique::after { content: ""; position: absolute; left: var(--tch-gouttiere); right: 0; bottom: 0; height: 1px; background: var(--tch-trait); }
 .tch .es-rubriques > div:last-child .es-rubrique::after { display: none; }
-.tch .es-rubrique b { display: block; font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; }
+/* R3-091 — le titre de rangée en texte plein (18:1), le sous-titre doux : ils avaient la même couleur (5,8:1) */
+.tch .es-rubrique b { display: block; font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; color: var(--tch-texte); }
 .tch .es-rubrique span { display: block; margin-top: 1px; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
 .tch .es-rubrique > svg { color: var(--tch-texte-doux); }
 .tch .es-retour { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 var(--tch-gouttiere); font-size: 0.9375rem; font-weight: 600; color: var(--tch-accent); }
@@ -145,6 +149,7 @@
 .tch .es-geste .titre-geste { color: var(--tch-texte-doux); overflow-wrap: anywhere; }
 
 /* R2-129 — Recherche : la croix est la nôtre (celle du navigateur est masquée), les résultats gardent leur écart sous les filtres */
+.tch .es-recherche .es-champ { background: var(--tch-panneau); box-shadow: none; } /* R3-091 : le fond de recherche reste */
 .tch .es-recherche .valeur::-webkit-search-cancel-button, .tch .es-recherche .valeur::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
 .tch .es-recherche .es-effacer { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-right: -2px; border-radius: 999px; color: var(--tch-texte-doux); }
 @media (hover: hover) { .tch .es-recherche .es-effacer:hover { color: var(--tch-texte); } }
