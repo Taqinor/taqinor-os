@@ -74,6 +74,38 @@ class StockAgentActionsCatalogueTest(TestCase):
         self.assertEqual(
             BROUILLON_COMMANDE_FOURNISSEUR.required_permission, 'stock_creer')
 
+    def test_mouvement_entree_sortie_seulement_et_a_confirmer(self):
+        """REP1 — « ajustement » fixe le stock À la quantité (niveau visé,
+        ``perform_create``) : il n'est plus offert ; les deux sens offerts
+        sont des valeurs EXACTES du modèle ; quantité entière ≥ 1 ; une
+        quantité de stock change → proposition à confirmer."""
+        from core.champs_stricts import QUANTITE_MAX
+        from apps.agent.registry import RISK_OUTWARD
+        props = AJUSTER_STOCK.inputs['properties']
+        sens = props['type_mouvement']['enum']
+        self.assertEqual(sens, ['entree', 'sortie'])
+        self.assertLessEqual(set(sens), set(MouvementStock.TypeMouvement.values))
+        self.assertNotIn('ajustement', str(AJUSTER_STOCK.inputs).lower())
+        self.assertEqual((props['quantite']['type'], props['quantite']['minimum'],
+                          props['quantite']['maximum']),
+                         ('integer', 1, QUANTITE_MAX))
+        self.assertEqual(AJUSTER_STOCK.risk, RISK_OUTWARD)
+        self.assertIn('AJOUTE', AJUSTER_STOCK.confirm_summary)
+        self.assertIn('RETIRE', AJUSTER_STOCK.confirm_summary)
+        desc = AJUSTER_STOCK.description
+        self.assertLessEqual(len(desc), 600)
+        for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                        'Résultat :'):
+            self.assertIn(section, desc)
+
+    def test_permission_du_catalogue_est_la_garde_de_la_route(self):
+        """REP1 — le code du catalogue est un code que la route EXIGE
+        (gardes lues sur la vue, comme le test de parité de l'agent)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        for action in (AJUSTER_STOCK,):
+            codes, _admin, _modules = _gardes_de_la_route(action)
+            self.assertIn(action.required_permission, codes, action.key)
+
     def test_inputs_never_include_company(self):
         for action in (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR):
             props = action.inputs.get('properties', {})
@@ -121,3 +153,14 @@ class StockAgentActionRelayedCallTest(TestCase):
         self.assertEqual(mv.quantite, 5)
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 5)
+
+    def test_sortie_retire_la_quantite_du_stock(self):
+        """REP1 — une sortie relayée RETIRE la quantité (5 → 2), elle ne fixe
+        jamais le stock à la valeur envoyée."""
+        Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=5)
+        resp = auth(self.user).post(AJUSTER_STOCK.endpoint, {
+            'produit': self.produit.id, 'type_mouvement': 'sortie',
+            'quantite': 3}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 2)
