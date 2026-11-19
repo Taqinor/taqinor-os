@@ -38,6 +38,7 @@ from .technicien_scorecard import technicien_scorecard
 from .vitals import collect_vital, vitals_p75
 from .demo_views import demo_resume_view, kpi_onboarding_interne  # NTDMO21/41
 from .assistant_diagnostic import DiagnosticAssistantView
+from .views_assistant import ca_trois_chiffres  # RPT3
 from .journal_problemes import resume_problemes_service, signaler_probleme
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
@@ -180,4 +181,8 @@ urlpatterns = [
     # (carte « diagnostic » de l'assistant).
     path('assistant/diagnostic/', DiagnosticAssistantView.as_view(),
          name='reporting-assistant-diagnostic'),
+    # RPT3 — « combien on a fait ? » : signé, facturé et encaissé HT, étiquetés
+    # (carte « chiffres_ca » de l'assistant).
+    path('assistant/ca/', ca_trois_chiffres,
+         name='reporting-assistant-ca'),
 ]

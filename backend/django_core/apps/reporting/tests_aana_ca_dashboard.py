@@ -337,3 +337,176 @@ class TestTroisChiffresCa(TestCase):
             with self.assertRaises(MetriqueNonResolvable) as ctx:
                 adaptateur(self.company, filters={'statut': 'payee'})
             self.assertIn('aucun filtre', str(ctx.exception))
+
+    # ── RPT3 — la route de l'assistant et son action ────────────────────────
+
+    URL_CA = '/api/django/reporting/assistant/ca/'
+
+    def _compte(self, nom, permissions):
+        from apps.roles.models import Role
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=permissions)
+        user = User.objects.create_user(
+            username=nom, password='x', company=self.company, role=role)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return user, api
+
+    def _ca(self, api=None, **params):
+        return (api or self.api).get(self.URL_CA, params)
+
+    def _exemple(self):
+        import json
+        from pathlib import Path
+        chemin = (Path(__file__).parent / 'contract_samples'
+                  / 'assistant_ca.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))
+
+    def test_route_rend_les_trois_chiffres_etiquetes(self):
+        facture = self._facture('FAC-RPT3-1', self.dedans)
+        self._paye(facture, '600', Facture.Statut.EMISE)
+        self._devis('DEV-RPT3-1', self.dedans)
+        resp = self._ca(du='2026-03-01', au='2026-03-31')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        exemple = self._exemple()['exemple']
+        self.assertEqual(set(resp.data), set(exemple))
+        chiffres = resp.data['chiffres']
+        self.assertEqual([c['cle'] for c in chiffres],
+                         ['signe_ht', 'facture_ht', 'encaisse_ht'])
+        self.assertEqual([c['libelle'] for c in chiffres],
+                         ['Signé HT', 'Facturé HT', 'Encaissé HT'])
+        for chiffre in chiffres:
+            self.assertEqual(set(chiffre), set(exemple['chiffres'][0]))
+            self.assertTrue(chiffre['definition'])
+        self.assertEqual({c['cle']: c['montant_ht'] for c in chiffres}, {
+            'signe_ht': '1000.00', 'facture_ht': '1000.00',
+            'encaisse_ht': '500.00'})
+        self.assertEqual((resp.data['du'], resp.data['au']),
+                         ('2026-03-01', '2026-03-31'))
+        self.assertEqual(resp.data['devise'], 'MAD')
+        self.assertEqual(resp.data['a_faire'], 'voir_impayes')
+        self.assertEqual(resp.data['lien'], exemple['lien'])
+        self.assertNotIn('marge', str(resp.data).lower())
+        # L'encaissé est LE chiffre du tableau de bord.
+        self.assertAlmostEqual(float(chiffres[2]['montant_ht']),
+                               self.api.get(URL).data['kpis']['ca_paye'],
+                               places=2)
+
+    def test_route_rien_a_faire_quand_tout_est_encaisse(self):
+        facture = self._facture('FAC-RPT3-2', self.dedans)
+        self._paye(facture, '1200', Facture.Statut.PAYEE)
+        resp = self._ca(du='2026-03-01', au='2026-03-31')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['a_faire'], 'rien')
+
+    def test_route_refuse_en_nommant_le_parametre(self):
+        refus = self._exemple()['exemple_400_periode']
+        resp = self._ca(du='2026-03-31', au='2026-03-01')
+        self.assertEqual(resp.status_code, 400)
+        for cle in ('detail', 'field', 'code'):
+            self.assertEqual(resp.data[cle], refus[cle])
+        for params, champ, code in (
+                ({'au': '2026-03-31'}, 'du', 'parametre_manquant'),
+                ({'du': '2026-02-30', 'au': '2026-03-31'}, 'du',
+                 'date_illisible'),
+                ({'du': '2026-03-01', 'au': '2027-03-31'}, 'au',
+                 'periode_trop_longue'),
+                ({'du': '2024-01-01', 'au': '2025-01-01'}, 'au',
+                 'periode_trop_longue'),
+                ({'du': '2026-03-01', 'au': '2026-03-31', 'q': '1'}, 'q',
+                 'parametre_inconnu')):
+            with self.subTest(params=params):
+                resp = self._ca(**params)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual((resp.data['field'], resp.data['code']),
+                                 (champ, code))
+                self.assertIn(champ, resp.data['detail'])
+        resp = self.api.get(
+            self.URL_CA + '?du=2026-03-01&du=2026-03-02&au=2026-03-31')
+        self.assertEqual((resp.status_code, resp.data['code']),
+                         (400, 'parametre_repete'))
+
+    def test_route_borne_la_fenetre_a_366_jours(self):
+        for du, au in (('2026-01-01', '2026-12-31'),
+                       ('2024-01-01', '2024-12-31')):
+            self.assertEqual(self._ca(du=du, au=au).status_code, 200, du)
+
+    def test_route_portee_du_role_comme_le_tableau_de_bord(self):
+        from apps.roles.permissions_registre import SCOPE_SELF
+        droits = ['ventes_voir', 'ventes_creer', 'reporting_voir', SCOPE_SELF]
+        c1, api_c1 = self._compte('rpt3-c1', droits)
+        c2, _api = self._compte('rpt3-c2', droits)
+        for nom, auteur, ht in (('1', c1, '1000'), ('2', c2, '500')):
+            self._facture('FAC-RPT3-P' + nom, self.dedans, ht, auteur)
+            self._devis('DEV-RPT3-P' + nom, self.dedans, ht, auteur)
+        parametres = {'du': '2026-03-01', 'au': '2026-03-31'}
+        propre = self._ca(api_c1, **parametres)
+        societe = self._ca(**parametres)
+        self.assertEqual(propre.status_code, 200, propre.data)
+        for resp, attendu in ((propre, '1000.00'), (societe, '1500.00')):
+            self.assertEqual({c['cle']: c['montant_ht']
+                              for c in resp.data['chiffres']}['facture_ht'],
+                             attendu)
+        self.assertIn('portée', propre.data['note'])
+        self.assertNotIn('portée', societe.data['note'])
+
+    def test_route_refuse_un_compte_sans_les_droits_du_tableau_de_bord(self):
+        parametres = {'du': '2026-03-01', 'au': '2026-03-31'}
+        for nom, droits in (
+                ('rpt3-sans-ventes', ['reporting_voir', 'sav_gerer']),
+                ('rpt3-sans-reporting', ['ventes_voir', 'ventes_creer'])):
+            _user, api = self._compte(nom, droits)
+            with self.subTest(nom=nom):
+                self.assertEqual(self._ca(api, **parametres).status_code, 403)
+                self.assertEqual(api.get(URL).status_code, 403)  # idem
+        self.assertEqual(
+            APIClient().get(self.URL_CA, parametres).status_code, 401)
+
+    def test_action_reporting_ca_lire(self):
+        from apps.agent.registry import (
+            CARTES, LOT_COPILOTE, RISK_INTERNAL, all_actions)
+        action = {a.key: a for a in all_actions()}['reporting.ca.lire']
+        self.assertEqual((action.method, action.endpoint, action.risk,
+                          action.carte, action.lot),
+                         ('GET', self.URL_CA, RISK_INTERNAL, 'chiffres_ca',
+                          LOT_COPILOTE))
+        self.assertIn(action.carte, CARTES)
+        self.assertEqual(action.required_permission, 'reporting_voir')
+        self.assertEqual(action.inputs['required'], ['du', 'au'])
+        self.assertEqual(set(action.inputs['properties']), {'du', 'au'})
+        self.assertLessEqual(len(action.description), 600)
+        for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                        'Résultat :'):
+            self.assertIn(section, action.description)
+
+    def test_la_permission_du_catalogue_est_la_garde_de_la_route(self):
+        """RPT5 — la route est jouée comme le fait le test de parité du
+        catalogue ; la permission est un code du module que ses gardes lisent."""
+        from apps.agent.registry import all_actions
+        from apps.agent.tests.test_registry import (
+            _gardes_de_la_route, _verdict_permission)
+        action = {a.key: a for a in all_actions()}['reporting.ca.lire']
+        juste, detail = _verdict_permission(action)
+        self.assertTrue(juste, detail)
+        _codes, _admin, modules = _gardes_de_la_route(action)
+        self.assertEqual(modules, {'reporting', 'ventes'})
+
+    def test_le_catalogue_suit_les_droits_de_la_route(self):
+        from django.test import override_settings
+
+        from apps.agent.registry import for_user
+        from apps.roles.permissions_registre import SCOPE_SELF
+        commercial, _a = self._compte(
+            'rpt3-cat-c', ['ventes_voir', 'ventes_creer', 'reporting_voir',
+                           SCOPE_SELF])
+        sans, _b = self._compte('rpt3-cat-s', ['ventes_voir', 'ventes_creer'])
+        with override_settings(ASSISTANT_COPILOTE='tous'):
+            for user, attendu in ((self.admin, True), (commercial, True),
+                                  (sans, False)):
+                cles = {a.key for a in for_user(user)}
+                self.assertEqual('reporting.ca.lire' in cles, attendu,
+                                 user.username)
+        with override_settings(ASSISTANT_COPILOTE='aucun'):
+            self.assertNotIn('reporting.ca.lire',
+                             {a.key for a in for_user(self.admin)})
