@@ -546,3 +546,98 @@ class ATraiterTest(BaseAssistantCalepinage):
 
         self.assertEqual(set(calepinages_a_traiter(self.user, limite=5)),
                          {'total', 'limite', 'lignes'})
+
+
+class ContenanceTest(BaseAssistantCalepinage):
+    """CALA10 — l'ESTIMATION avant dessin (D-W2-Q3) : étiquetée, jamais écrite."""
+
+    def setUp(self):
+        super().setUp()
+        self.panneau = self._panneau('Panneau 710', longueur_mm=2384,
+                                     largeur_mm=1303, pmax_wc=710)
+
+    def _panneau(self, nom, **fiche):
+        from decimal import Decimal
+
+        from apps.stock.models import FicheTechnique, Produit
+
+        produit = Produit.objects.create(
+            company=self.company, nom=nom, sku=f'CALA10-{nom}',
+            prix_achat=Decimal('900'), prix_vente=Decimal('1500'), quantite_stock=1)
+        FicheTechnique.objects.create(company=self.company, produit=produit,
+                                      type_fiche='module', **fiche)
+        return produit
+
+    def _estimer(self, api=None, **params):
+        return (api or self.api).get(url_assistant('contenance/'), params)
+
+    def _dicte(self, **extra):
+        return self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
+                             largeur_m='6', produit=str(self.panneau.pk), **extra)
+
+    def test_dimensions_dictees_forme_du_contrat_sans_ecriture(self):
+        from apps.calepinage.models import CalepinageVersion
+
+        avant = (Calepinage.objects.count(), CalepinageVersion.objects.count())
+        reponse = self._dicte(toit_plat='true')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = echantillon('calepinage_assistant_contenance.json', 'exemple_dicte')
+        self.assertEqual(set(reponse.data), set(attendu))
+        self.assertEqual(set(reponse.data['zones'][0]), set(attendu['zones'][0]))
+        self.assertEqual(set(reponse.data['produit']), set(attendu['produit']))
+        zone = reponse.data['zones'][0]
+        self.assertEqual(zone['politique'], 'anti_ombrage')
+        self.assertLessEqual(zone['modules_min'], zone['modules_max'])
+        self.assertTrue(reponse.data['libelle'].startswith('Estimation sur dimensions dictées'))
+        self.assertEqual(reponse.data['a_faire'], 'preparer_calepinage')
+        self.assertEqual(_cles(reponse.data) & {'prix', 'prix_achat', 'p50_kwh', 'production'},
+                         set())
+        self.assertEqual((Calepinage.objects.count(), CalepinageVersion.objects.count()), avant)
+
+    def test_toit_plat_espace_les_rangees(self):
+        plat = self._dicte(toit_plat='true').data['total']['modules_max']
+        en_pente = self._dicte(pente_deg='15').data['total']['modules_max']
+        self.assertLess(plat, en_pente)
+
+    def test_fiche_incomplete_refusee_en_la_nommant(self):
+        incomplet = self._panneau('Panneau sans cotes', pmax_wc=710)
+        reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
+                                largeur_m='6', toit_plat='true', produit=str(incomplet.pk))
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'fiche_incomplete')
+
+    def test_sans_panneau_designe(self):
+        reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
+                                largeur_m='6', toit_plat='true')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'panneau_non_designe')
+
+    def test_visite_non_validee_et_aucun_trace(self):
+        visite = self._estimer(lead=self.lead_2.pk, origine='visite', produit=str(self.panneau.pk))
+        self.assertEqual(visite.status_code, 409, visite.data)
+        self.assertEqual(set(visite.data), set(echantillon(
+            'calepinage_assistant_contenance.json', 'exemple_409_sans_visite')))
+        self.assertEqual(visite.data['code'], 'visite_non_validee')
+        trace = self._estimer(lead=self.lead_2.pk, origine='trace', produit=str(self.panneau.pk))
+        self.assertEqual(trace.status_code, 409, trace.data)
+        self.assertEqual(trace.data['code'], 'aucun_trace')
+
+    def test_parametres_refuses_en_les_nommant(self):
+        cas = (
+            ({'origine': 'dicte', 'longueur_m': '10', 'largeur_m': '6', 'toit_plat': 'true',
+              'company': '2'}, 'company'),
+            ({'origine': 'visite', 'longueur_m': '10'}, 'longueur_m'),
+            ({'origine': 'dicte', 'longueur_m': '900', 'largeur_m': '6', 'toit_plat': 'true'},
+             'longueur_m'),
+            ({'origine': 'dicte', 'longueur_m': '10', 'largeur_m': '6'}, 'pente_deg'),
+            ({'origine': 'satellite'}, 'origine'),
+        )
+        for params, champ in cas:
+            with self.subTest(champ=champ):
+                reponse = self._estimer(lead=self.lead_2.pk, **params)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.data['field'], champ)
+
+    def test_lead_d_une_autre_societe_introuvable(self):
+        reponse = self._dicte(api=self.api_autre, toit_plat='true')
+        self.assertEqual(reponse.status_code, 404, reponse.data)

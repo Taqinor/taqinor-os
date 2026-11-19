@@ -306,8 +306,45 @@ A_TRAITER = AgentAction(
     lot=LOT_COPILOTE,
 )
 
+CONTENANCE = AgentAction(
+    key='calepinage.contenance',
+    label='Estimer combien de panneaux tiennent',
+    description=(
+        "Sert à : ESTIMER, avant tout dessin, combien de panneaux tiennent sur "
+        "un toit : depuis la visite validée (origine=visite), le tracé du "
+        "calepinage ouvert (origine=trace) ou des dimensions que "
+        "l'utilisateur te dicte (origine=dicte, avec longueur_m, largeur_m et "
+        "pente_deg ou toit_plat). Ne pas utiliser pour : un nombre à mettre au "
+        "devis ou à promettre au client — ce n'est JAMAIS un engagement, le "
+        "calepinage dessiné fait foi. Exemple : « 10 m sur 6, toit plat, "
+        "combien de panneaux ? » → lead=1665, origine=dicte, longueur_m=10, "
+        "largeur_m=6, toit_plat=true. Résultat : une fourchette min–max par "
+        "zone et au total, avec « libelle » (à répéter tel quel), « regles » "
+        "et « suppositions » (à dire) ; aucune production, aucun prix. "
+        "Sans panneau désigné, le refus dit d'en choisir un (produit)."),
+    endpoint=BASE + 'contenance/',
+    method='GET',
+    inputs=_schema({
+        'lead': dict(ENTIER, description='Identifiant du lead.'),
+        'origine': {'type': 'string', 'enum': ['visite', 'trace', 'dicte']},
+        'longueur_m': {'type': 'number', 'minimum': 0.5, 'maximum': 200,
+                       'description': 'Dictée seulement (m).'},
+        'largeur_m': {'type': 'number', 'minimum': 0.5, 'maximum': 200,
+                      'description': 'Dictée seulement (m).'},
+        'pente_deg': {'type': 'number', 'minimum': 0, 'maximum': 60,
+                      'description': 'Dictée seulement (degrés).'},
+        'toit_plat': {'type': 'boolean', 'description': 'Dictée seulement.'},
+        'produit': dict(ENTIER, description='Panneau du catalogue (facultatif).'),
+    }, ('lead', 'origine')),
+    required_permission=VOIR,
+    risk=RISK_INTERNAL,
+    carte='contenance',
+    lot=LOT_COPILOTE,
+)
+
 ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER,
-           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS, RETENIR, A_TRAITER)
+           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS, RETENIR, A_TRAITER,
+           CONTENANCE)
 
 
 def register_actions() -> None:

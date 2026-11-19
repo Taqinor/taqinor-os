@@ -33,7 +33,7 @@ from ..services.assistant import (
 from .calepinages import CalepinageViewSet
 
 __all__ = ['resume', 'du_lead', 'preparer', 'publier_devis_apercu', 'publier_devis',
-           'a_traiter']
+           'a_traiter', 'contenance']
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
@@ -249,6 +249,92 @@ def a_traiter(self, request):
     return Response(calepinages_a_traiter(request.user, limite=limite))
 
 
+#: CALA10 — les paramètres de ``contenance/`` ; les cotes ne valent que pour
+#: ``origine=dicte``.
+PARAMS_CONTENANCE = ('lead', 'origine', 'produit', 'longueur_m', 'largeur_m',
+                     'pente_deg', 'toit_plat')
+PARAMS_DICTES = ('longueur_m', 'largeur_m', 'pente_deg', 'toit_plat')
+
+
+def _nombre_borne(brut, champ, bornes):
+    """Un nombre fini dans ``bornes``, sinon :class:`RefusAssistant` (400)."""
+    try:
+        valeur = float(brut)
+    except ValueError:
+        valeur = None
+    if valeur is None or valeur != valeur or not (bornes[0] <= valeur <= bornes[1]):
+        raise RefusAssistant(f'{champ} : un nombre entre {bornes[0]:g} et {bornes[1]:g}.',
+                             champ, 'parametre_invalide', status.HTTP_400_BAD_REQUEST)
+    return valeur
+
+
+def _lire_contenance(params):
+    """``(origine, cotes, produit_id)`` validés ; :class:`RefusAssistant` 400
+    nommé pour un paramètre inconnu, répété, hors borne ou hors origine."""
+    from ..services.contenance import BORNES_COTE_M, BORNES_PENTE_DEG, ORIGINES
+
+    for cle in params:
+        if cle not in PARAMS_CONTENANCE or len(params.getlist(cle)) > 1:
+            raise RefusAssistant(f'Paramètre refusé : {cle} (inconnu ou répété).', cle,
+                                 'parametre_refuse', status.HTTP_400_BAD_REQUEST)
+    origine = params.get('origine')
+    if origine not in ORIGINES:
+        raise RefusAssistant('origine : visite, trace ou dicte.', 'origine',
+                             'origine_invalide', status.HTTP_400_BAD_REQUEST)
+    dictes = [cle for cle in PARAMS_DICTES if cle in params]
+    if dictes and origine != 'dicte':
+        raise RefusAssistant(f'{dictes[0]} : seulement avec origine=dicte.', dictes[0],
+                             'parametre_refuse', status.HTTP_400_BAD_REQUEST)
+    cotes = {}
+    if origine == 'dicte':
+        for cle in ('longueur_m', 'largeur_m'):
+            cotes[cle] = _nombre_borne(params.get(cle, ''), cle, BORNES_COTE_M)
+        plat = str(params.get('toit_plat', '')).strip().lower()
+        cotes['toit_plat'] = plat in ('true', '1', 'oui')
+        cotes['pente_deg'] = (_nombre_borne(params['pente_deg'], 'pente_deg', BORNES_PENTE_DEG)
+                              if 'pente_deg' in params else None)
+        if not cotes['toit_plat'] and cotes['pente_deg'] is None:
+            raise RefusAssistant('pente_deg : donnez la pente, ou toit_plat=true.',
+                                 'pente_deg', 'pente_manquante', status.HTTP_400_BAD_REQUEST)
+    produit = str(params.get('produit', '')).strip()
+    if produit and not (produit.isascii() and produit.isdigit() and len(produit) < 19):
+        raise RefusAssistant("produit : l'identifiant entier du panneau.", 'produit',
+                             'parametre_invalide', status.HTTP_400_BAD_REQUEST)
+    return origine, cotes, (int(produit) if produit else None)
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True),
+        OpenApiParameter('origine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=True,
+                         enum=['visite', 'trace', 'dicte']),
+        OpenApiParameter('produit', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('longueur_m', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('largeur_m', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('pente_deg', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('toit_plat', OpenApiTypes.BOOL, OpenApiParameter.QUERY, required=False)],
+    responses={200: forme_du_contrat('CalepinageAssistantContenance',
+                                     'calepinage_assistant_contenance.json')})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.contenance)
+@action(detail=False, methods=['get'], url_path='contenance',
+        permission_classes=[PeutVoirCalepinage])
+def contenance(self, request):
+    """CALA10 — l'ESTIMATION du nombre de panneaux avant dessin ; n'écrit rien."""
+    from ..services.contenance import estimer
+
+    lead_id, refuse = lead_du_parametre(request)
+    if refuse is not None:
+        return refuse
+    try:
+        origine, cotes, produit_id = _lire_contenance(request.query_params)
+        return Response(estimer(request.user, lead_id=lead_id, origine=origine,
+                                cotes=cotes, produit_id=produit_id))
+    except LeadIntrouvable:
+        return refus(*LEAD_INTROUVABLE)
+    except RefusAssistant as refuse_metier:
+        return Response(refuse_metier.corps(), status=refuse_metier.statut)
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.resume = resume
@@ -257,3 +343,4 @@ CalepinageViewSet.preparer = preparer
 CalepinageViewSet.publier_devis_apercu = publier_devis_apercu
 CalepinageViewSet.publier_devis = publier_devis
 CalepinageViewSet.a_traiter = a_traiter
+CalepinageViewSet.contenance = contenance
