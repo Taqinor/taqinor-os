@@ -85,10 +85,17 @@ def taches_de_la_journee(user, jour):
     faites ce jour-là (heure locale) QUEL QUE SOIT l'état de leur projet : une faite du jour reste dans
     « Faites », l'essentiel et les gardées faites même si son projet est terminé ou mis en pause le
     jour même — comme `compte_faites` la compte (revue F2 tour 2 #1). Une faite est toujours triée
-    (clore pose `triee_le`)."""
+    (clore pose `triee_le`).
+
+    R2-031 (choix C-5, « ce que j'ai posé reste posé ») : une tâche ouverte d'un projet mis en pause CE
+    jour-là (ou plus tard) reste dans la journée si elle est prévue ce jour-là (jour, et donc heure,
+    posés) ; la pause la retire de Proposé (elle n'est pas candidate : elle est déjà posée), d'À trier
+    et des jours suivants (`statut_depuis` antérieur à ces jours)."""
     debut, fin = bornes_du_jour(jour)
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
-                 | Q(projet__isnull=True, triee_le__isnull=False))
+                 | Q(projet__isnull=True, triee_le__isnull=False)
+                 | Q(projet__isnull=False, projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False,
+                     projet__statut_depuis__gte=debut, jour_prevu=jour))
     ouverte = Q(statut__in=OUVERTS, quelque_jour=False)
     faite = Q(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
     return (taches_de(user).filter(parent__isnull=True).filter((rattachee & ouverte) | faite)
