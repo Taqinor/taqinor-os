@@ -50,15 +50,7 @@ export function Vide({ texte }) {
   return <p className="text-sm text-muted-foreground">{texte}</p>
 }
 
-export function Rangee({ titre, detail, children }) {
-  return (
-    <li className="min-w-0 rounded-md border border-border bg-background/60 p-2">
-      <p className="break-words text-sm font-medium">{titre}</p>
-      {detail && <p className="break-words text-xs text-muted-foreground">{detail}</p>}
-      {children}
-    </li>
-  )
-}
+export { Rangee } from './partsTerrain'
 
 /** Une ligne « libellé : valeur » ; sans valeur, rien n'est affiché. */
 export function Ligne({ nom, valeur }) {

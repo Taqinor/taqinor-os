@@ -7,10 +7,11 @@ import { useEffect, useEffectEvent, useMemo, useState } from 'react'
    Un id absent des éléments chargés (liste filtrée côté serveur — « Mes chantiers » —,
    ou objet que la fiche autorise mais que la liste ne montre pas) : si l'appelant donne
    `fetchById` (id -> promesse axios), l'objet est lu PAR SON ID, une fois la liste prête
-   (`pret`). Pendant la lecture `deepLoading` est vrai ; si le serveur répond une erreur
+   (`pret`, ou `chargement` = l'indicateur de chargement de la liste : elle est « lue » quand
+   un chargement a eu lieu ET s'est terminé — avant, `items` est vide sans rien dire). Pendant la lecture `deepLoading` est vrai ; si le serveur répond une erreur
    (404 compris), `deepItem` reste null une fois `deepLoading` retombé : l'appelant affiche
    alors « introuvable » — jamais un chargement sans fin. */
-export function useDeepLinkId(searchParams, setSearchParams, items, { fetchById, pret = true } = {}) {
+export function useDeepLinkId(searchParams, setSearchParams, items, { fetchById, pret = true, chargement } = {}) {
   const wantedId = searchParams.get('id')
   const dansListe = useMemo(() => {
     if (!wantedId) return null
@@ -18,7 +19,10 @@ export function useDeepLinkId(searchParams, setSearchParams, items, { fetchById,
   }, [wantedId, items])
   // Résultat de la lecture par id : { id, item } (item null = introuvable).
   const [lu, setLu] = useState(null)
-  const aLire = !!wantedId && !dansListe && pret && !!fetchById
+  const [chargementVu, setChargementVu] = useState(false)
+  if (chargement && !chargementVu) setChargementVu(true)
+  const listePrete = chargement === undefined ? pret : chargementVu && !chargement
+  const aLire = !!wantedId && !dansListe && listePrete && !!fetchById
   const lire = useEffectEvent((id) => fetchById(id))
   useEffect(() => {
     if (!aLire) return undefined
