@@ -10,7 +10,7 @@ import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
 import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
-import ChampSaisie, { morceauxSurlignes } from '../ui/ChampSaisie'
+import ChampSaisie, { morceauxSurlignes, phraseAlerte } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -941,6 +941,48 @@ describe('TCH82 — feuille de saisie', () => {
       expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
       expect(container.querySelector('.voile')).not.toBeNull()
     })
+  })
+
+  it('R3-042 — chaque alerte `deux_*` se lit au pluriel accordé ; « plusieurs projets » sans nom vide', () => {
+    expect(Object.fromEntries([
+      'jour', 'heure', 'moment', 'echeance', 'quelque_jour', 'projet', 'section', 'priorite', 'etiquette', 'duree',
+      'recurrence', 'rappel',
+    ].map((type) => [type, phraseAlerte(`deux_${type}`)]))).toEqual({
+      jour: 'Deux jours lus : le second reste dans le titre.',
+      heure: 'Deux heures lues : la seconde reste dans le titre.',
+      moment: 'Deux moments lus : le second reste dans le titre.',
+      echeance: 'Deux échéances lues : la seconde reste dans le titre.',
+      quelque_jour: 'Deux « un jour » lus : le second reste dans le titre.',
+      projet: 'Deux projets lus : le second reste dans le titre.',
+      section: 'Deux étapes lues : la seconde reste dans le titre.',
+      priorite: 'Deux priorités lues : la seconde reste dans le titre.',
+      etiquette: 'Deux étiquettes lues : la seconde reste dans le titre.',
+      duree: 'Deux durées lues : la seconde reste dans le titre.',
+      recurrence: 'Deux répétitions lues : la seconde reste dans le titre.',
+      rappel: 'Deux rappels lus : le second reste dans le titre.',
+    })
+    // le serveur n'envoie que le code (`analyseur.resoudre_projet`) : jamais « s'appellent «  » »
+    expect(phraseAlerte('plusieurs_projets')).toBe('Plusieurs projets commencent ainsi : le premier est choisi.')
+    expect(phraseAlerte({ code: 'plusieurs_projets' })).not.toMatch(/«\s*»/)
+  })
+
+  it('R3-042 — « plusieurs projets » se tait tant que la liste `#` est ouverte (elle montre déjà les projets)', async () => {
+    mocks.listerTousLesProjets.mockResolvedValue([
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+      { id: 13, nom: 'Site web', couleur: 'ciel', statut: 'actif' },
+    ])
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+      ...apercu, projets_nouveaux: [],
+      lignes: [{ ...apercu.lignes[0], titre: 'Photos', jetons: [], alertes: ['plusieurs_projets'], champs: {} }],
+    } : creation }))
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Photos #s')
+    await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled(), { timeout: 3000 })
+    await waitFor(() => expect(screen.getByRole('listbox', { name: 'Projets' })).toBeInTheDocument())
+    expect(screen.queryByText(/Plusieurs projets/)).toBeNull()
+    await user.keyboard('{Escape}') // la liste fermée : l'alerte se dit
+    expect(await screen.findByText('Plusieurs projets commencent ainsi : le premier est choisi.')).toBeInTheDocument()
   })
 
   it('messageChamps lit le champ fautif, par ligne ou non', () => {

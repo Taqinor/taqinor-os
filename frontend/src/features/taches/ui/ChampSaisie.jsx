@@ -21,10 +21,12 @@ export const INDICATION = 'Ajouter une tâche… demain, 10 h, #projet, !!'
 // eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export const PRIORITES_PROJET = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]]
 
+/** R3-042 — `deux_<type>` : le type lu au PLURIEL et son genre (f = féminin), pour accorder « lus/lues » et
+ *  « le second / la seconde » (« Deux jours lus », « Deux échéances lues »). */
 const TYPES_LUS = {
-  jour: 'jour', heure: 'heure', moment: 'moment', echeance: 'échéance', quelque_jour: 'jour',
-  projet: 'projet', section: 'étape', priorite: 'priorité', etiquette: 'étiquette', duree: 'durée',
-  recurrence: 'répétition', rappel: 'rappel',
+  jour: ['jours'], heure: ['heures', 'f'], moment: ['moments'], echeance: ['échéances', 'f'],
+  quelque_jour: ['« un jour »'], projet: ['projets'], section: ['étapes', 'f'], priorite: ['priorités', 'f'],
+  etiquette: ['étiquettes', 'f'], duree: ['durées', 'f'], recurrence: ['répétitions', 'f'], rappel: ['rappels'],
 }
 
 /** Phrase d'une alerte (textes.md §2.3) ; `alerte` = `{ code, ...variables }` ou le code seul. */
@@ -34,13 +36,16 @@ export function phraseAlerte(alerte) {
   const nom = a.nom ?? a.projet ?? a.texte ?? ''
   const cite = `« ${nom} »`
   if (a.code?.startsWith('deux_')) {
-    const type = TYPES_LUS[a.code.slice(5)] ?? a.code.slice(5)
-    return `Deux ${type} lus : le second reste dans le titre.`
+    const [type, genre] = TYPES_LUS[a.code.slice(5)] ?? [a.code.slice(5)]
+    return genre === 'f'
+      ? `Deux ${type} lues : la seconde reste dans le titre.`
+      : `Deux ${type} lus : le second reste dans le titre.`
   }
   switch (a.code) {
     case 'date_passee': return a.date ? `Date passée : ${a.date}.` : 'Date passée.'
     case 'heure_passee': return a.heure ? `${a.heure} est passée${a.jour ? ` : prévue ${a.jour}` : ''}.` : 'Cette heure est passée.'
-    case 'plusieurs_projets': return `Plusieurs projets s'appellent ${cite} : le premier est choisi.`
+    // R3-042 — le serveur n'envoie que le code (`analyseur.resoudre_projet`) : une phrase sans nom, jamais « «  » »
+    case 'plusieurs_projets': return 'Plusieurs projets commencent ainsi : le premier est choisi.'
     case 'projet_archive': return `${nom ? cite : 'Ce projet'} est archivé : la tâche ira dans À trier.`
     case 'date_invalide': return `${nom ? cite : 'Ce texte'} n'est pas une date : laissé dans le titre.`
     case 'duree_hors_bornes': return `Une durée va de 5 min à 16 h : ${nom ? cite : 'le texte'} reste dans le titre.`
@@ -217,11 +222,14 @@ export default function ChampSaisie({
     curseurVoulu.current = null
     el.setSelectionRange?.(voulu.pos, voulu.pos)
   })
-  const phrases = alertes.map(phraseAlerte).filter(Boolean)
-
   const mot = projets ? motDiese(valeur, curseur) : null
   const proposes = mot ? projetsPour(projets, mot.q) : []
   const listeOuverte = proposes.length > 0 && fermeePour !== valeur
+  // R3-042 — « plusieurs projets » se tait tant que la liste `#` est ouverte : elle montre déjà les projets candidats
+  const codeAlerte = (a) => (typeof a === 'string' ? a : a?.code)
+  const phrases = alertes
+    .filter((a) => !(listeOuverte && codeAlerte(a) === 'plusieurs_projets'))
+    .map(phraseAlerte).filter(Boolean)
   const courant = Math.min(actif, Math.max(proposes.length - 1, 0))
   const lireCurseur = (e) => setCurseur(e.target.selectionStart ?? null)
   /** Le choix réécrit le champ à partir de sa valeur COURANTE (celle du champ à l'instant du choix, jamais une copie
