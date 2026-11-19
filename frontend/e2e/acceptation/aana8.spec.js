@@ -22,7 +22,6 @@ const m = Date.now().toString(36)
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const plat = (s) => String(s).replace(/[\s\u00a0\u202f]+/g, '')
 const chiffresSeuls = (s) => String(s).replace(/[^\d/]/g, '')
-const pct = (v) => `${Math.round(Number(v))}`
 test.describe.configure({ timeout: 600_000 })
 test.beforeEach(async ({ page }) => { await assurerSessionPage(page) })
 
@@ -252,15 +251,34 @@ etape('P2.taux_de_gain', ['AANA65', 'AANA90'], async ({ page, suivi, testInfo })
   const { a } = w
   const c2 = `acc90-${m}-roi`
   const c2p = `acc90-${m}-perdu`
-  const tels = [1, 2, 3, 4].map(() => telephoneMobileUnique())
+  const c2v = `acc90-${m}-vente`
+  const tels = [1, 2, 3, 4, 5, 6].map(() => telephoneMobileUnique())
   const ids = await py(`from apps.crm.models import Lead
 from apps.crm import stages as S
 def lead(i, nom, camp, stage, perdu=False):
     return Lead.objects.create(company_id=${a.co}, nom=nom, telephone=${J(tels)}[i], email='acc90r%d${m}@example.invalid' % i,
         owner_id=${a.com_id}, canal='site_web', utm_campaign=camp, stage=stage, perdu=perdu).pk
 sortie([lead(0, 'ACC90 signe ${m}', '${c2}', S.SIGNED), lead(1, 'ACC90 perdu ${m}', '${c2}', S.COLD, True),
-        lead(2, 'ACC90 ouvert ${m}', '${c2}', S.NEW), lead(3, 'ACC90 tout perdu ${m}', '${c2p}', S.COLD, True)])`)
+        lead(2, 'ACC90 ouvert ${m}', '${c2}', S.NEW), lead(3, 'ACC90 tout perdu ${m}', '${c2p}', S.COLD, True),
+        lead(4, 'ACC90 envoye ${m}', '${c2v}', S.NEW), lead(5, 'ACC90 accepte ${m}', '${c2v}', S.NEW)])`)
+  // « Mes chiffres » du commercial : deux devis du mois À SON NOM (un envoyé, un envoyé puis accepté), sur une campagne à
+  // part (hors des groupes roi-sources ci-dessus), pour que « affiché = servi » se prouve sur des effectifs NON nuls.
+  const produit = await py(`from decimal import Decimal
+from apps.stock.models import Produit
+sortie(Produit.objects.create(company_id=${a.co}, sku='ACC90-MC-${m}', nom='Kit ACC90 MC ${m}', prix_vente=Decimal('1000'), quantite_stock=0).pk)`)
+  const devisMc = []
   try {
+    for (const [lead, accepte] of [[ids[4], false], [ids[5], true]]) {
+      const dv = await lireJson(await appel(w.dA, 'post', `${API}/ventes/devis/atomic/`, { data: { taux_tva: '20.00', remise_globale: '0', lead,
+        lignes: [{ produit, designation: 'Kit ACC90 MC', quantite: '1', prix_unitaire: '1000.00', remise: '0.00', taux_tva: '20.00', type_ligne: 'produit', ordre: 0 }] } }), `devis « Mes chiffres » du lead ${lead}`)
+      devisMc.push(dv.id)
+      await lireJson(await appel(w.dA, 'post', `${API}/ventes/devis/${dv.id}/share-link/`, { data: { envoi: true } }), `envoi ${dv.id}`)
+      if (accepte) await lireJson(await appel(w.dA, 'post', `${API}/ventes/devis/${dv.id}/accepter/`, { data: { nom: 'Client ACC90 MC' } }), `acceptation ${dv.id}`)
+    }
+    await py(`from apps.ventes.models import Devis
+Devis.objects.filter(pk__in=${J(devisMc)}).update(created_by_id=${a.com_id})
+sortie(1)`)
+    const caSigneMc = Number((await lire(w.dA, `${API}/ventes/devis/${devisMc[1]}/`, 'devis accepté relu')).total_ttc)
     const ligne = (rows, camp) => (rows || []).find((r) => r.utm_campaign === camp)
     // ── API, directeur puis commercial de A (deux portées) : 1 signé, 1 perdu, 1 ouvert ⇒ 50.0 ; tout perdu ⇒ null.
     for (const [u, qui] of [[w.dA, 'directeur'], [w.cA, 'commercial']]) {
@@ -288,18 +306,26 @@ sortie([taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(0, 3))})), taux_gain(
       expect(plat(await tr.innerText()), `[AANA65] écran : « 1 (50 %) » (rechargé=${recharger})`).toContain('1(50%)')
       expect(plat(await pd.locator('tr', { hasText: c2p }).innerText()), '[AANA65] écran : groupe tout perdu « (—) »').toContain('(—)')
     }
-    // ── Accueil du commercial : « Mes chiffres » affiche le taux SERVI (D-AANA-VER-1), identique au rechargement.
+    // ── Accueil du commercial : « Mes chiffres » affiche les effectifs et le taux SERVIS (D-AANA-VER-1), identiques au
+    // rechargement. On lit les QUATRE cases de chiffres une fois la carte posée sur les valeurs servies (la carte se
+    // peint d'abord à 0 puis reçoit le Quote-to-cash ; le bloc « Leads chauds » arrive ensuite) — jamais le texte brut.
     const pc = await ouvrir(w.cA, suivi)
-    const mine = pc.waitForResponse((x) => /\/ventes\/dashboard\//.test(x.url()) && /mine=1/.test(x.url()), { timeout: 60_000 })
-    await pc.goto('/dashboard')
-    const q2c = await (await mine).json()
-    const carte = pc.getByTestId('mes-chiffres-card')
-    await expect(carte).toBeVisible({ timeout: 60_000 })
-    const texte = plat(await carte.innerText()).toLowerCase()
-    expect(texte, `« Mes chiffres » : taux servi ${q2c.devis?.taux_acceptation_pct}`).toContain(`tauxdesignature${pct(q2c.devis?.taux_acceptation_pct ?? 0)}`)
-    await pc.reload({ waitUntil: 'domcontentloaded' })
-    await expect(pc.getByTestId('mes-chiffres-card')).toBeVisible({ timeout: 60_000 })
-    expect(plat(await pc.getByTestId('mes-chiffres-card').innerText()).toLowerCase(), '« Mes chiffres » : identique au rechargement').toBe(texte)
+    const kpis = async () => {
+      const t = (await pc.getByTestId('mes-chiffres-card').locator('div.grid > div').allInnerTexts()).map((x) => plat(x).toLowerCase())
+      return t.length === 4 ? [t[0], t[1], t[2], chiffresSeuls(t[3])] : t
+    }
+    for (const recharger of [false, true]) {
+      const mine = pc.waitForResponse((x) => /\/ventes\/dashboard\//.test(x.url()) && /mine=1/.test(x.url()), { timeout: 60_000 })
+      if (recharger) await pc.reload({ waitUntil: 'domcontentloaded' })
+      else await pc.goto('/dashboard')
+      const q2c = await (await mine).json()
+      expect([q2c.devis?.envoyes_periode, q2c.devis?.acceptes_periode], `Quote-to-cash servi au commercial : 2 envoyés, 1 accepté (${J(q2c.devis)})`).toEqual([2, 1])
+      await expect(pc.getByTestId('mes-chiffres-card')).toBeVisible({ timeout: 60_000 })
+      await expect.poll(kpis, { timeout: 60_000, message: `« Mes chiffres » = valeurs servies (rechargé=${recharger})` }).toEqual([
+        `devisenvoyés${q2c.devis.envoyes_periode}`, `devisacceptés${q2c.devis.acceptes_periode}`,
+        `tauxdesignature${Math.round(Number(q2c.devis.taux_acceptation_pct))}%`, String(Math.round(caSigneMc)),
+      ])
+    }
     // ── (5) Société B : ni le directeur ni le commercial de B ne voient les groupes de A.
     for (const [u, qui] of [[w.dB, 'directeur B'], [w.cB, 'commercial B']]) {
       const rows = await lire(u, `${API}/crm/leads/roi-sources/`, `roi-sources ${qui}`)
@@ -310,6 +336,8 @@ sortie([taux_gain(Lead.objects.filter(pk__in=${J(ids.slice(0, 3))})), taux_gain(
     await page.close()
   } finally {
     await py(`from apps.crm.models import Lead
+from apps.ventes.models import Devis
+Devis.objects.filter(pk__in=${J(devisMc)}).update(is_active=False)
 Lead.objects.filter(pk__in=${J(ids)}).update(is_archived=True)
 sortie(1)`).catch(() => null)
   }
@@ -321,7 +349,7 @@ etape('P3.une_vente_par_revision', ['AANA68', 'AANA75', 'AANA76', 'AANA90'], asy
   const { a, b } = w
   const c3 = `acc90-${m}-ca`
   const equipeNom = `ACC90 équipe ${m}`
-  const tels = [1, 2, 3].map(() => telephoneMobileUnique())
+  const tels = [1, 2, 3, 4, 5].map(() => telephoneMobileUnique())
   const f = await py(`import datetime
 from decimal import Decimal
 from apps.crm.models import Lead, EquipeCommerciale, ObjectifCommercial
@@ -334,7 +362,20 @@ for i, canal in enumerate(['site_web', 'site_web', 'meta_ads']):
         email='acc90v%d${m}@example.invalid' % i, owner_id=${a.com_id}, canal=canal, utm_campaign='${c3}', stage=S.NEW).pk)
 eq = EquipeCommerciale.objects.create(company_id=${a.co}, nom='${equipeNom}', responsable_id=${a.dir_id}, actif=True)
 eq.membres.add(${a.com_id})
-sortie(dict(p=p.pk, leads=leads, equipe=eq.pk))`)
+# Le sélecteur « Commercial » du « Contrôle du suivi » ne liste que les responsables ayant une étape de suivi dans la
+# période (controle_suivi.py, concernes -> commerciaux) et ne s'affiche qu'à partir de DEUX (ControleSuiviPanel.jsx,
+# commerciaux.length > 1) : une étape d'appel FAITE aujourd'hui sur un lead témoin (non signé, sans devis, campagne à
+# part) du commercial et une sur un lead témoin du directeur — hors des leads à devis, donc sans effet sur les
+# résultats (devis envoyés / acceptés) ni sur le CA ; l'arrêt de cadence à l'acceptation ne peut pas les toucher.
+from apps.crm.models_cadence import RelanceEtape
+temoins = [Lead.objects.create(company_id=${a.co}, nom='ACC90 temoin %d ${m}' % k, telephone=${J(tels)}[3 + k],
+    email='acc90t%d${m}@example.invalid' % k, owner_id=par, canal='site_web', utm_campaign='acc90-${m}-temoin',
+    stage=S.CONTACTED).pk for k, par in enumerate((${a.com_id}, ${a.dir_id}))]
+maintenant = timezone.now()
+etapes = [RelanceEtape.objects.create(company_id=${a.co}, lead_id=lid, cadence='contact', ordre=0, canal='appel',
+    due_date=timezone.localdate(), due_at=maintenant, statut='fait', traite_le=maintenant, traite_par_id=par).pk
+    for lid, par in zip(temoins, (${a.com_id}, ${a.dir_id}))]
+sortie(dict(p=p.pk, leads=leads, equipe=eq.pk, temoins=temoins, etapes=etapes))`)
   const [L1, L2, L3] = f.leads
   const devisCrees = []
   let objectif = null
@@ -445,13 +486,19 @@ sortie(dict(source={s['canal']: str(s['ca_signe']) for s in r['par_source']}, ca
       await expect(carte).toContainText('50% de la cible')
     }
     for (const recharger of [false, true]) {
+      const equipeEntiere = pd.waitForResponse((x) => /\/relance-etapes\/controle\//.test(x.url()) && !new URL(x.url()).searchParams.get('owner'), { timeout: 60_000 })
       if (recharger) await pd.reload({ waitUntil: 'domcontentloaded' })
       else await pd.goto('/crm/cockpit')
+      const commerciaux = ((await (await equipeEntiere).json()).commerciaux || []).map((c) => c.nom)
+      expect(commerciaux, 'contrôle servi : le commercial d\'essai fait partie des responsables proposés au filtre').toContain(a.com)
       const bascule = pd.getByTestId('controle-bascule-detail')
       await expect(bascule).toBeVisible({ timeout: 60_000 })
       if ((await bascule.getAttribute('aria-expanded')) !== 'true') await bascule.click()
+      await expect(bascule).toHaveAttribute('aria-expanded', 'true')
+      const selecteur = pd.getByTestId('controle-selecteurs').getByRole('combobox', { name: 'Commercial' })
+      await expect(selecteur, 'sélecteur « Commercial » affiché (deux responsables concernés)').toBeVisible({ timeout: 60_000 })
       const filtre = pd.waitForResponse((x) => /\/relance-etapes\/controle\//.test(x.url()) && new URL(x.url()).searchParams.get('owner') === String(a.com_id), { timeout: 60_000 })
-      await pd.getByRole('combobox', { name: 'Commercial' }).click()
+      await selecteur.click()
       await pd.getByRole('option', { name: a.com, exact: true }).click()
       const servi = await (await filtre).json()
       expect(servi.resultats.devis_acceptes, `[AANA68] écran : le cockpit lit 3 acceptations (rechargé=${recharger})`).toBe(3)
@@ -476,6 +523,9 @@ from apps.ventes.models import Devis
 Devis.objects.filter(pk__in=${J(devisCrees)}).update(is_active=False)
 Lead.objects.filter(pk__in=${J(f.leads)}).update(is_archived=True)
 EquipeCommerciale.objects.filter(pk=${f.equipe}).update(actif=False)
+from apps.crm.models_cadence import RelanceEtape
+RelanceEtape.objects.filter(pk__in=${J(f.etapes)}).delete()
+Lead.objects.filter(pk__in=${J(f.temoins)}).update(is_archived=True)
 ObjectifCommercial.objects.filter(pk=${objectif ?? 0}).delete()
 sortie(1)`).catch(() => null)
   }
