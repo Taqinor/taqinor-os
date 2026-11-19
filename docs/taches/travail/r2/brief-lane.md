@@ -96,3 +96,47 @@ Un vrai blocage sur une correction : ne la bâcle pas ; écris pourquoi et passe
 La branche, le SHA de tête, puis par correction : SHA, fichiers, test écrit (rouge avant → vert après, commande et
 résultat), capture « après » (chemin) et ce qu'on y voit, ce qui n'a PAS pu être vérifié, ce qui reste à rejouer après
 le pli, et tout ce que tu as vu d'autre en passant (défaut voisin non corrigé, fichier d'une autre lane à changer).
+
+---
+
+## Vague 3 — corrections du TOUR 2 (identifiants `R3-NNN`)
+
+Tout ce qui précède reste vrai, avec ces changements :
+- Ta liste de travail est dans `…\r2\tour2\consolidation.md` (pas `tour1`) : § 0 (les six sujets majeurs M1-M6 : la
+  conception d'ensemble à respecter), § 1 (le texte de chacune de tes corrections `R3-NNN`), § 3 (choix C-13 à C-24 :
+  TRANCHÉS, applique la recommandation), § 4 (ta fiche de lane et la table fichier → lane : tu ne touches QUE tes
+  fichiers). Lis aussi `…\r2\vague3-ajouts.md` : s'il nomme un de TES fichiers, la correction est à toi.
+- Base : `git fetch origin dev-taches-r2 && git checkout -B lane/r3-<ta lane> origin/dev-taches-r2` ; vérifie
+  `git merge-base --is-ancestor 2d65165d6 HEAD`.
+- Les références `docs/taches/reference/*.md` se mettent à jour dans le MÊME commit que le libellé, la règle ou la
+  forme changés (le code fait foi, la référence dit ce qui est servi et affiché).
+- Une correction qui dépend du CONTRAT d'une autre lane (dit dans ta fiche : « après le contrat de L1 », « après le
+  pli de L5 ») se fait EN DERNIER : l'orchestrateur te préviendra par message quand la base est prête
+  (`git fetch origin dev-taches-r2 && git merge --no-edit origin/dev-taches-r2`, jamais de rebase). Si tu arrives au
+  bout de ta liste sans ce message, rends ton rapport en disant ce qui reste et pourquoi.
+
+Fautes qui ont rougi la CI de la vague précédente — ne les refais pas :
+1. **Spec e2e** : jamais `setTimeout(` ni `page.waitForTimeout(` (garde ADEP24, liste d'exceptions fermée). Pour
+   simuler un serveur lent : une PORTE que le test lâche lui-même
+   (`let lacher; const porte = new Promise((r) => { lacher = r }); await page.route(motif, async (route) => { await porte; await route.continue() })`,
+   assertions pendant que la requête est retenue, `lacher()`, assertions après).
+2. **axe-core** : la CI joue axe 4.14.0, le poste 4.12.1 (une spec axe verte ici ne prouve rien). Un bouton dont le
+   texte visible n'est pas un MOT séparé de son `aria-label` est refusé (« Notifications (14) » avec la pastille « 14 »
+   → écrire « Notifications : 14 »). Pour vérifier : `…\scratchpad\r2\orchestrateur\axe414\package\axe.min.js`
+   (`page.addScriptTag` puis `axe.run(el, { runOnly: [règle] })`, exemple dans `axe-cloche3.cjs` à côté).
+3. **`api/tachesApi.js`** : chaque `import { … } from '…/tachesApi'` tient sur UNE ligne (plusieurs imports d'une
+   ligne si c'est long) ; une liste paginée se lit EN ENTIER (`listerTous…` / `toutesLesPages`), jamais la page 1 ; un
+   appel dont les arguments ne sont pas lisibles statiquement porte « // parametres-requete: » au-dessus ; tout
+   paramètre de requête nouveau est DÉCLARÉ sur la vue (`OpenApiParameter`) et lu par elle.
+4. **CSS** : aucun `z-index` en dur, pas même `auto` (jetons `--tch-z-*`, `isolation`, ou rien) ; aucune couleur en
+   hex ; `:hover` sous `@media (hover: hover)` ; jamais `@media (max-width: 768px)` tel quel (`screen and (…)`) ; une
+   règle qui regarde l'enveloppe de l'ERP s'écrit `.layout:has(> .layout-main > .layout-content > .route-fade > .tch)`,
+   jamais `.layout:has(.tch)`.
+5. **Serveur** : un test de plafond de requêtes existe par lecture (`tests/test_plafonds.py`) : n'ajoute aucune
+   requête à une lecture sans le dire ; le schéma OpenAPI doit dire la vérité du serveur (toute contrainte d'un champ
+   de requête déclarée sur le sérialiseur : sinon api-fuzz échoue sur « requête valide refusée ») ; un texte de
+   gabarit changé a des tests qui le citent ailleurs (`grep -rn "<phrase>" backend/django_core/apps/taches/tests`).
+6. **Fichier de test NEUF** : dis-le dans ton rapport avec la raison en une phrase (l'orchestrateur l'inscrit au plan,
+   sinon la garde de placement des tests échoue).
+7. **Une frappe ne se perd JAMAIS** : toute écriture dans un champ contrôlé part de la valeur COURANTE (mise à jour
+   fonctionnelle), jamais d'une valeur capturée avant un `await` ; le test tape la suite sans attendre.
