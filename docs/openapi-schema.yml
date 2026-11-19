@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4178}
+counts: {paths: 5228, operations: 8060, components: 4177}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2837,7 +2837,7 @@ operations:
 - post /api/django/sav/alarmes-onduleur/{id}/escalader/ -> django_sav_alarmes_onduleur_escalader_create
 - get /api/django/sav/assistant/parc/ -> django_sav_assistant_parc_retrieve
 - get /api/django/sav/assistant/tickets/ -> django_sav_assistant_tickets_retrieve
-- get /api/django/sav/assistant/tickets/{id}/ -> django_sav_assistant_tickets_retrieve_2
+- get /api/django/sav/assistant/tickets/{id}/fiche/ -> django_sav_assistant_tickets_fiche_retrieve
 - post /api/django/sav/assistant/tickets/{id}/resoudre/ -> django_sav_assistant_tickets_resoudre_create
 - post /api/django/sav/assistant/tickets/{id}/transition/ -> django_sav_assistant_tickets_transition_create
 - get /api/django/sav/categories-equipement/ -> django_sav_categories_equipement_list
@@ -6874,7 +6874,7 @@ operations:
 - post /api/v1/sav/alarmes-onduleur/{id}/escalader/ -> v1_sav_alarmes_onduleur_escalader_create
 - get /api/v1/sav/assistant/parc/ -> v1_sav_assistant_parc_retrieve
 - get /api/v1/sav/assistant/tickets/ -> v1_sav_assistant_tickets_retrieve
-- get /api/v1/sav/assistant/tickets/{id}/ -> v1_sav_assistant_tickets_retrieve_2
+- get /api/v1/sav/assistant/tickets/{id}/fiche/ -> v1_sav_assistant_tickets_fiche_retrieve
 - post /api/v1/sav/assistant/tickets/{id}/resoudre/ -> v1_sav_assistant_tickets_resoudre_create
 - post /api/v1/sav/assistant/tickets/{id}/transition/ -> v1_sav_assistant_tickets_transition_create
 - get /api/v1/sav/categories-equipement/ -> v1_sav_categories_equipement_list
@@ -10314,7 +10314,7 @@ components:
 - CanalOuvertureEnum
 - CanalRelanceEnum
 - CanalRequest
-- CanalResolution3deEnum
+- CanalResolutionEnum
 - CanauxAutorisesEnum
 - CandidatureFournisseurReponse
 - CandidatureFournisseurRequest
@@ -13918,6 +13918,5 @@ components:
 - _DecisionGabaritRequest
 - _DecisionGabaritStatutApprobationEnum
 - _ItemDecisionRequest
-- _ResoudreRequeteCanalResolutionEnum
 - _ResoudreRequeteRequest
 - _TransitionRequeteRequest
