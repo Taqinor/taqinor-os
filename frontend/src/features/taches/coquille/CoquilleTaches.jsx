@@ -58,6 +58,9 @@ const DESTINATIONS = [
   ['Réglages', '/taches/reglages'],
 ]
 
+/** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
+const ECRANS_AVEC_FAB = new Set(['aujourdhui', 'a-trier', 'projets', 'projet', 'agenda'])
+
 /** Le message dit à qui touche un geste grisé hors ligne (textes.md §2.1). */
 export const PHRASE_GESTE_GRISE = 'Possible une fois connecté'
 
@@ -236,6 +239,11 @@ export default function CoquilleTaches({
   const [file, setFile] = useState({ enAttente: 0, conflits: [] })
   const [saisieOuverte, setSaisieOuverte] = useState(false)
   const tacheId = params.get('tache')
+  // R2-084 — le + n'apparaît que là où l'on ajoute des tâches à une liste ; jamais dans un parcours (Planifier le
+  // projet, Planifier ma semaine, Revue) ni dans Réglages, Recherche, Mon rythme, Supprimées (journée vide : base.css)
+  const avecFab = ECRANS_AVEC_FAB.has(ecran)
+    && !(ecran === 'agenda' && params.get('placer') === '1')
+    && !(ecran === 'projet' && params.get('planifier') === '1')
   const barre = useRef(null)
   const titreH1 = useRef(null)
   const replie = useTitreReplie(barre, titreH1)
@@ -373,11 +381,11 @@ export default function CoquilleTaches({
 
       {selection && selection.n > 0 ? (
         <BarreSelection {...selection} />
-      ) : (
+      ) : avecFab ? (
         <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={demanderSaisie}>
           <Plus className="i" aria-hidden="true" />
         </button>
-      )}
+      ) : null}
 
       {tacheId ? <Fiche id={tacheId} onFermer={fermerFiche} /> : null}
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />

@@ -21,7 +21,11 @@
 :where(.tch) button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
 /* Mise en page de la page (l'ERP fournit barre latérale, barre d'onglets et en-tête) */
-.tch .tch-page { max-width: 760px; margin-inline: auto; padding-bottom: 112px; background: var(--tch-surface); }
+/* R2-084 — bas de page : le scrolleur de l'ERP réserve déjà ~78 px (barre d'onglets + zone sûre) ; 24 px de plus et
+   le dernier élément remonte au-dessus du bouton + (72 px au-dessus du bas du scrolleur), sans 112 px de vide. */
+.tch .tch-page { max-width: 760px; margin-inline: auto; padding-bottom: 24px; background: var(--tch-surface); }
+/* …et la journée vide n'a pas de + : « Coller mes listes » est son seul bouton plein */
+.tch[data-ecran="aujourdhui"]:has(.vide-plein) > .fab { display: none; }
 @media (min-width: 768px) {
   .tch .tch-page { padding: 20px 16px 56px; }
   .tch .entete { padding-inline: 24px; }

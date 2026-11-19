@@ -36,6 +36,9 @@ const ATTENDU = {
   '/taches/reglages/iphone': 'Réglages',
 }
 
+// R2-084 — les écrans qui portent le bouton flottant « Ajouter une tâche »
+const AVEC_FAB = new Set(['/taches/aujourdhui', '/taches/a-trier', '/taches/projets', '/taches/projets/42', '/taches/agenda'])
+
 function monter(url) {
   const router = createMemoryRouter(
     config.routes.map((route) => {
@@ -127,9 +130,19 @@ describe('TCH43 — routes du module', () => {
     const coquille = container.querySelector('.tch')
     expect(coquille).not.toBeNull()
     expect(within(coquille).getByRole('heading', { level: 1, name: titre })).toBeInTheDocument()
-    // la coquille est UNIQUE : un seul bouton « Ajouter une tâche » flottant
+    // la coquille est UNIQUE ; R2-084 — le + flottant seulement sur les listes où l'on ajoute (un seul)
     expect(container.querySelectorAll('.tch')).toHaveLength(1)
-    expect(container.querySelectorAll('.fab')).toHaveLength(1)
+    expect(container.querySelectorAll('.fab'), url).toHaveLength(AVEC_FAB.has(url) ? 1 : 0)
+  })
+
+  it.each([
+    ['/taches/projets/42?planifier=1', 'Planifier le projet'],
+    ['/taches/agenda?vue=semaine&placer=1', 'Planifier ma semaine'],
+  ])('R2-084 — %s (%s) : pas de + dans un parcours', async (url) => {
+    const { container } = monter(url)
+    await screen.findByRole('heading', { level: 1 }, { timeout: 5000 })
+    expect(container.querySelector('.tch')).not.toBeNull()
+    expect(container.querySelectorAll('.fab')).toHaveLength(0)
   })
 
   it('/taches mène à /taches/aujourdhui', async () => {
