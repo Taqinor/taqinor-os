@@ -112,15 +112,9 @@ def assignable_users(request):
     fonctionner pour elle, pas seulement pour l'admin) — contrairement à
     /users/ réservé à l'admin. Avatar Odoo (initiales/photo), nom, prénom, poste.
     """
-    from authentication.models import CustomUser
     from authentication.avatars import presign_avatar
-    user = request.user
-    qs = CustomUser.objects.filter(is_active=True)
-    if user.company_id:
-        qs = qs.filter(company=user.company)
-    elif not user.is_superuser:
-        qs = qs.none()
-    qs = qs.order_by('username')
+    from .collegues import collegues_assignables
+    qs = collegues_assignables(request.user).order_by('username')
     return Response([
         {
             'id': u.id,

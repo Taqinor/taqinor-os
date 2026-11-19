@@ -1,0 +1,48 @@
+{
+  "endpoint": "GET /api/django/crm/assistant/collegues/",
+  "pourquoi": "Incident du 19/11/2026 : le fondateur demande à l'assistant de confier ses dossiers à une collègue ; l'assistant lui réclame « l'identifiant utilisateur » de la collègue, qu'un fondateur non technicien ne connaît pas. Une personne se désigne par son NOM : cette lecture (action `crm.collegues.lister`) rend les collègues à qui l'appelant peut confier du travail — EXACTEMENT la liste du sélecteur de responsable des écrans (`GET /crm/assignable-users/`, même définition `apps/crm/collegues.collegues_assignables` : comptes actifs de la société de l'appelant), jamais une liste plus large. `?q=` (facultatif, 80 signes) : un fragment de nom, comparé sans accent ni casse au prénom, au nom de famille et à l'identifiant de connexion ; chaque mot doit s'y trouver. `?limite=` : 20 par défaut, de 1 à 50. Aucun e-mail, aucun téléphone, aucun droit.",
+  "exemple": {
+    "q": "salma",
+    "total": 1,
+    "limite": 20,
+    "collegues": [
+      {
+        "id": 12,
+        "nom": "Salma Idrissi",
+        "prenom": "Salma",
+        "nom_de_famille": "Idrissi",
+        "identifiant": "salma",
+        "poste": "Commerciale",
+        "role": "Commercial",
+        "actif": true
+      }
+    ],
+    "proches": []
+  },
+  "exemple_aucun": {
+    "q": "selma",
+    "total": 0,
+    "limite": 20,
+    "collegues": [],
+    "proches": [
+      {
+        "id": 12,
+        "nom": "Salma Idrissi",
+        "prenom": "Salma",
+        "nom_de_famille": "Idrissi",
+        "identifiant": "salma",
+        "poste": "Commerciale",
+        "role": "Commercial",
+        "actif": true
+      }
+    ]
+  },
+  "notes": {
+    "total": "Nombre de collègues qui correspondent à `q` (tous sans `q`) ; `collegues` en porte au plus `limite`.",
+    "nom": "Prénom et nom de famille ; à défaut, l'identifiant de connexion. C'est le nom à redire à l'utilisateur.",
+    "identifiant": "Identifiant de connexion du compte (jamais un e-mail).",
+    "role": "Nom du rôle du compte (vide sans rôle fin) ; aucun droit n'est servi.",
+    "actif": "Toujours vrai : un compte désactivé n'est jamais dans la liste, comme à l'écran.",
+    "proches": "Rempli seulement quand `q` ne trouve personne : trois collègues au plus dont le nom ressemble à `q` (« selma » → Salma), à citer à l'utilisateur ; jamais choisis à sa place."
+  }
+}
