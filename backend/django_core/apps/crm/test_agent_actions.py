@@ -1854,7 +1854,8 @@ class CrmAssistantRangementLeadTest(_CopiloteBase):
                 self.assertEqual(
                     (action.lot, action.risk, action.objets,
                      action.required_permission),
-                    (LOT_COPILOTE, 'outward', {'id': 'lead'},
+                    (LOT_COPILOTE, 'outward', {'id': 'lead', **(
+                        {'owner': 'utilisateur'} if action is REAFFECTER_LEAD else {})},
                      permissions[action.key]))
                 self.assertIn(action, _ACTIONS)
                 self.assertEqual(action.inputs['properties']['id'],

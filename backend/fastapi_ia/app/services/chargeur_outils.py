@@ -38,7 +38,8 @@ AUSSI_DANS = {
 
 #: Libellés FIXES de l'index (jamais générés).
 LIBELLES = {
-    "crm": "leads, fiche, suivi et touches, étapes, étiquettes, visite à planifier",
+    "crm": ("leads, fiche, suivi et touches, étapes, étiquettes, visite à planifier, "
+            "réaffecter un lead, déléguer tous ses dossiers à un collègue"),
     "ventes": ("catalogue, devis (composer, lignes, taille, remise, PDF), état d'une vente, "
                "factures, impayés, paiements"),
     "calepinage": ("calepinages à traiter, état d'un calepinage, nombre de panneaux qui "

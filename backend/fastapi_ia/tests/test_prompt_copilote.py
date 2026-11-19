@@ -28,6 +28,8 @@ CLES_CANONIQUES = {
     # Copilote v2 (18/11/2026) — devis composé et lead créé par l'assistant.
     "crm.lead.creer", "ventes.catalogue.chercher", "ventes.devis.composer",
     "ventes.devis.lignes",
+    # 19/11/2026 — une personne se désigne par son NOM (jamais un id demandé).
+    "crm.collegues.lister",
 }
 
 #: Mots à majuscule admis dans les consignes : débuts de phrase, titres,
@@ -103,6 +105,17 @@ class ConsignesTests(unittest.TestCase):
                         self.TEXTE.index("Agir d'abord en lecture"))
         self.assertLess(self.TEXTE.index("Agir d'abord en lecture"),
                         self.TEXTE.index("Le travail du jour"))
+
+    def test_une_personne_se_designe_par_son_nom(self):
+        """Incident du 19/11/2026 — l'assistant demandait au fondateur
+        « l'identifiant utilisateur » d'une collègue : jamais un id demandé,
+        la personne se cherche par son nom, et jamais un choix silencieux."""
+        for extrait in ("ou demandé à l'utilisateur", "se désigne par son NOM",
+                        "crm.collegues.lister", "redis son nom complet",
+                        "demande laquelle en citant les noms",
+                        "cite les plus proches", "Jamais de choix silencieux"):
+            self.assertIn(extrait, self.TEXTE)
+        self.assertNotIn("déduit d'un nom", self.TEXTE)
 
     def test_aucun_prenom(self):
         mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", self.TEXTE))
@@ -316,7 +329,7 @@ class ConsignesDomainesTests(unittest.TestCase):
     aucune date, aucune clé d'outil hors de son domaine ou du noyau."""
 
     NOYAU = {"crm.lead.chercher", "crm.lead.resume", "crm.digest_matin",
-             "crm.leads.a_relancer", "erp.ouvrir"}
+             "crm.leads.a_relancer", "erp.ouvrir", "crm.collegues.lister"}
 
     def setUp(self):
         from app.services import chargeur_outils, consignes_domaines

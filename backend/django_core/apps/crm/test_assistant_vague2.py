@@ -309,3 +309,129 @@ class ControleSuiviAssistantTest(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         modele = _echantillon('controle_suivi.json')['exemple']
         self.assertEqual(set(reponse.data), set(modele))
+
+
+COLLEGUES = '/api/django/crm/assistant/collegues/'
+DELEGATION = ('crm.collegues.lister', 'crm.dossiers.deleguer_apercu',
+              'crm.dossiers.deleguer')
+
+
+class CollegueParSonNomTest(TestCase):
+    """19/11/2026 — une personne se désigne par son NOM : ``crm.collegues.lister``
+    rend la liste du sélecteur de responsable, filtrée sans accent ni casse ;
+    la délégation des dossiers est servie par la route EXISTANTE."""
+
+    def setUp(self):
+        from apps.crm.agent_actions import register_crm_actions
+        register_crm_actions()
+        from apps.parametres.models import CompanyProfile
+        self.company = Company.objects.create(nom='COL Co', slug='col-co')
+        CompanyProfile.objects.get_or_create(company=self.company)
+        autre = Company.objects.create(nom='COL Autre', slug='col-autre')
+        gestion = Role.objects.create(
+            company=self.company, nom='Gestionnaire',
+            permissions=['crm_voir', 'crm_modifier', 'crm_reassign'])
+        commercial = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier'])
+        self.moi = User.objects.create_user(
+            username='col_moi', password='x', role=gestion,
+            company=self.company, first_name='Karim', last_name='Bennani')
+        self.cible = User.objects.create_user(
+            username='col_cible', password='x', role=commercial,
+            company=self.company, first_name='Méryem', last_name='Alaoui',
+            poste='Commerciale')
+        self.commercial = User.objects.create_user(
+            username='col_com', password='x', role=commercial,
+            company=self.company, first_name='Nadia', last_name='Tazi')
+        self.inactif = User.objects.create_user(
+            username='col_parti', password='x', company=self.company,
+            first_name='Meryem', last_name='Partie', is_active=False)
+        self.etranger = User.objects.create_user(
+            username='col_etranger', password='x', company=autre,
+            first_name='Meryem', last_name='Ailleurs')
+
+    def _ids(self, reponse, cle='collegues'):
+        return {ligne['id'] for ligne in reponse.data[cle]}
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_liste_de_la_societe_comptes_actifs_forme_du_contrat(self):
+        reponse = _api(self.moi).get(COLLEGUES)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(self._ids(reponse),
+                         {self.moi.pk, self.cible.pk, self.commercial.pk})
+        exemple = _echantillon('assistant_collegues.json')['exemple']
+        self.assertEqual(set(reponse.data), set(exemple))
+        ligne = next(x for x in reponse.data['collegues'] if x['id'] == self.cible.pk)
+        self.assertEqual(set(ligne), set(exemple['collegues'][0]))
+        self.assertEqual((ligne['nom'], ligne['poste'], ligne['role'], ligne['actif']),
+                         ('Méryem Alaoui', 'Commerciale', 'Commercial', True))
+        self.assertNotIn('email', ligne)
+
+    def test_meme_liste_que_le_selecteur_de_responsable(self):
+        ecran = _api(self.moi).get('/api/django/crm/assignable-users/')
+        assistant = _api(self.moi).get(COLLEGUES, {'limite': 50})
+        self.assertEqual({u['id'] for u in ecran.data}, self._ids(assistant))
+
+    def test_nom_sans_accent_ni_casse_et_noms_proches(self):
+        for q in ('MERYEM', 'méryem alaoui', 'alaoui'):
+            with self.subTest(q=q):
+                reponse = _api(self.moi).get(COLLEGUES, {'q': q})
+                self.assertEqual(self._ids(reponse), {self.cible.pk})
+                self.assertEqual((reponse.data['total'], reponse.data['proches']), (1, []))
+        aucun = _api(self.moi).get(COLLEGUES, {'q': 'meriem'})
+        self.assertEqual((aucun.data['total'], aucun.data['collegues']), (0, []))
+        self.assertIn(self.cible.pk, self._ids(aucun, 'proches'))
+        self.assertNotIn(self.etranger.pk, self._ids(aucun, 'proches'))
+        self.assertNotIn(self.inactif.pk, self._ids(aucun, 'proches'))
+
+    def test_catalogue_selon_le_role_et_l_interrupteur(self):
+        from apps.agent.registry import NOYAU, for_user
+        self.assertIn('crm.collegues.lister', NOYAU)
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            gestion = {a.key for a in for_user(self.moi)}
+            commercial = {a.key for a in for_user(self.commercial)}
+        self.assertLessEqual(set(DELEGATION), gestion)
+        self.assertEqual(set(DELEGATION) & commercial, {'crm.collegues.lister'})
+        with self.settings(ASSISTANT_COPILOTE='aucun'):
+            self.assertFalse(set(DELEGATION) & {a.key for a in for_user(self.moi)})
+
+    def test_declarations_et_carte_qui_nomme_la_personne(self):
+        from apps.crm.agent_actions import (
+            COLLEGUES_LISTER, DELEGUER_APERCU, DELEGUER_DOSSIERS, REAFFECTER_LEAD)
+        self.assertEqual(
+            [(a.method, a.risk, a.required_permission)
+             for a in (COLLEGUES_LISTER, DELEGUER_APERCU, DELEGUER_DOSSIERS)],
+            [('GET', 'internal', 'crm_voir'), ('GET', 'internal', 'crm_reassign'),
+             ('POST', 'outward', 'crm_reassign')])
+        self.assertNotIn('prevenir_clients', DELEGUER_DOSSIERS.inputs['properties'])
+        self.assertEqual(next(iter(DELEGUER_DOSSIERS.objets.items())), ('vers', 'utilisateur'))
+        self.assertEqual(REAFFECTER_LEAD.objets['owner'], 'utilisateur')
+        for action in (COLLEGUES_LISTER, DELEGUER_APERCU, DELEGUER_DOSSIERS, REAFFECTER_LEAD):
+            self.assertLessEqual(len(action.description), 600)
+            self.assertNotIn('identifiant donné', action.description)
+        libelles = _api(self.moi).get('/api/django/agent/libelles/',
+                                      {'utilisateur': self.cible.pk})
+        self.assertEqual(libelles.status_code, 200, libelles.data)
+        self.assertEqual(libelles.data, {'utilisateur': 'Méryem Alaoui'})
+
+    def test_deleguer_par_la_route_de_l_action(self):
+        from apps.crm import stages
+        from apps.crm.agent_actions import DELEGUER_APERCU, DELEGUER_DOSSIERS
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(company=self.company, nom='Alami', owner=self.moi,
+                                   stage=stages.CONTACTED)
+        apercu = _api(self.moi).get(DELEGUER_APERCU.endpoint, {'vers': self.cible.pk})
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        modele = _echantillon('lead_deleguer.json')
+        self.assertEqual(set(apercu.data), set(modele['exemple_apercu']))
+        self.assertEqual(apercu.data['dossiers'], 1)
+        refus = _api(self.commercial).post(DELEGUER_DOSSIERS.endpoint,
+                                           {'vers': self.cible.pk}, format='json')
+        self.assertEqual(refus.status_code, 403, refus.data)
+        reponse = _api(self.moi).post(DELEGUER_DOSSIERS.endpoint,
+                                      {'vers': self.cible.pk}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(set(reponse.data), set(modele['exemple']))
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.cible.pk)

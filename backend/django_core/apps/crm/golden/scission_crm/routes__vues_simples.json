@@ -31,6 +31,12 @@
  },
  {
   "actions_map": null,
+  "motif": "assistant/collegues/",
+  "nom": "assistant-collegues",
+  "vue": "collegues_assistant"
+ },
+ {
+  "actions_map": null,
   "motif": "assistant/digest-matin/",
   "nom": "assistant-digest-matin",
   "vue": "digest_matin"

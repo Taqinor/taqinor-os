@@ -48,6 +48,27 @@ def _avec_option_batterie(data):
     return data
 
 
+def _option_avec_chiffree(data, decalage=250000.0, **surcharges):
+    """Deux options ENTIÈREMENT chiffrées (fondateur 19/11/2026) : l'option
+    « avec batterie » porte son ``economie_ci`` calculé et son flux 25 ans
+    (``economie_flux``) — ici le bloc de l'offre réseau, cumul décalé de
+    ``decalage`` et TRI / coût du kWh propres, pour distinguer les deux."""
+    data = _avec_option_batterie(data)
+    bloc = copy.deepcopy(data["economie_ci"])
+    for cle in ("flux_ht", "flux_ttc"):
+        for ligne in (bloc.get(cle) or {}).get("flux") or []:
+            ligne["cumul_mad"] = round(ligne["cumul_mad"] - decalage, 2)
+    bloc["indicateurs"] = dict(bloc["indicateurs"], tri_pct=17.26,
+                               lcoe_mad_kwh=0.4567)
+    bloc.update(copy.deepcopy(surcharges))
+    avec = data["etude"]["etude_ci"]["option_avec"]
+    avec["economie_ci"] = bloc
+    avec["economie_flux"] = {cle: bloc[cle] for cle in (
+        "base", "indicateurs", "flux_ht", "flux_ttc", "remplacements",
+        "om", "entretien") if cle in bloc}
+    return data
+
+
 class OptionAvecValeurTests(SimpleTestCase):
     def test_valeur_chiffree_par_le_moteur(self):
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
@@ -124,6 +145,31 @@ class PagesCiTests(SimpleTestCase):
                 self.assertIn("964 000,00 MAD", texte)
                 self.assertIn("Batterie Dyness 10 kWh", texte)
                 self.assertIn("Retour sur investissement", texte)
+
+    def test_deux_options_chiffrees_la_page_finance_tient(self):
+        """Fondateur 19/11/2026 — la page finance à DEUX options (cartes,
+        courbe à deux lignes, tableau côte à côte, indicateurs, bases) tient
+        le contrat de l'usine dans les trois langues : 4 pages, rien sous le
+        pied, et la courbe reste (pleine ou compacte)."""
+        import fitz
+        from apps.ventes.tests.test_qjr120_hypotheses_industriel import _data
+        for langue in ("fr", "en", "ar"):
+            with self.subTest(langue=langue):
+                data = _option_avec_chiffree(_data())
+                data["cgv_ci"] = _puces(15)
+                data["langue_sortie"] = langue
+                doc = fitz.open(stream=i_renderer.render_pdf_bytes(data),
+                                filetype="pdf")
+                self.assertEqual(len(doc), 4)
+                page = doc[2]
+                pied = page.rect.height * (1 - equip.PIED_MM / 297.0)
+                for bloc in page.get_text("blocks"):
+                    self.assertFalse(bloc[1] < pied - 1 and bloc[3] > pied + 1,
+                                     (langue, bloc[4][:60]))
+                # Les deux lignes de la courbe sont dessinées (traits épais).
+                traits = [t for t in page.get_drawings()
+                          if (t.get("width") or 0) > 1.5 and len(t["items"]) > 10]
+                self.assertEqual(len(traits), 2, langue)
 
     def test_d_hyb_5_extension_onduleur_sans_page_de_plus(self):
         """D-HYB-5 (fondateur 17/11/2026) — la phrase de l'onduleur gardé pour

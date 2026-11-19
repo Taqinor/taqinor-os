@@ -398,6 +398,12 @@ CHEMINS_BASCULES = {
     # ``MODE_ECRIRE`` (sous la transaction du geste) puis ``MODE_RAFRAICHIR``,
     # comme CORC2. Golden : ``test_ciq120_devis_auto_ci.RecomposerBatteriesTests``.
     'domain/recomposition_batteries_ci.py': 2,
+    # Copilote (19/11/2026) — la taille d'un devis COMPOSÉ SUR DEMANDE changée
+    # en place par l'assistant (``taille_assistant._reconcilier_au_compte``) :
+    # le MÊME mode « réconcilier » que ``offres_tailles.py``, sur un compte
+    # contrôlé d'abord par la composition imposée. Golden :
+    # ``test_agent_actions.TailleComposeeSurDemandeTest``.
+    'domain/taille_assistant.py': 1,
 }
 
 
