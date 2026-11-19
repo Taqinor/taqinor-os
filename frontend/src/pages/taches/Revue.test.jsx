@@ -146,6 +146,37 @@ describe('TCH93 — Revue : décisions', () => {
     expect(api.deciderRevue).toHaveBeenLastCalledWith(5, expect.objectContaining({ decision: 'passe', prochaine_action_id: null, focus: false }))
   })
 
+  it("C-5 — « Pause » dit, en une phrase, ce qui reste prévu aujourd'hui (nombre SERVI) ; sans nombre servi, rien", async () => {
+    const un = revue()
+    un.cartes[0].prevues_aujourdhui_nb = 1
+    api.lireRevue.mockResolvedValue({ data: un })
+    const { unmount } = monter()
+    const user = userEvent.setup()
+    let carte = await screen.findByRole('region', { name: 'Ventes' })
+    expect(within(carte).queryByText(/dans ta journée/)).toBeNull() // Garder : rien
+    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+    expect(within(carte).getByText("1 tâche prévue aujourd'hui reste dans ta journée.")).toBeInTheDocument()
+    await user.click(within(carte).getByRole('radio', { name: 'Garder' }))
+    expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+    unmount()
+
+    const deux = revue()
+    deux.cartes[0].prevues_aujourdhui_nb = 2
+    api.lireRevue.mockResolvedValue({ data: deux })
+    const second = monter()
+    carte = await screen.findByRole('region', { name: 'Ventes' })
+    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+    expect(within(carte).getByText("2 tâches prévues aujourd'hui restent dans ta journée.")).toBeInTheDocument()
+    second.unmount()
+
+    // le serveur ne sert pas le nombre (ou 0) : aucune phrase, aucun chiffre inventé
+    api.lireRevue.mockResolvedValue(reponseContrat('taches', 'revue_projets'))
+    monter()
+    carte = await screen.findByRole('region', { name: 'Ventes' })
+    await user.click(within(carte).getByRole('radio', { name: 'Pause' }))
+    expect(within(carte).queryByText(/dans ta journée/)).toBeNull()
+  })
+
   it('Terminer demande « Atteint ou abandonné ? » : Suivant → reste éteint jusqu\'au choix, puis envoie l\'issue', async () => {
     monter()
     const user = userEvent.setup()

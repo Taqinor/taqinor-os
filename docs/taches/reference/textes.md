@@ -221,6 +221,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 |---|---|
 | Titre · bouton | Projets · **Nouveau projet** |
 | Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
+| Bureau ≥ 1024 px (R2-067) | maître-détail : la liste des projets à gauche (en-tête « Projets » + ⋯ : Trier par priorité · Archive · Modèles ; « Nouveau projet » ; « En pause ({n}) »), le projet ouvert surligné, le projet choisi à droite ; `/taches/projets` ouvre le premier projet actif ; `j`/`k` ou ↓/↑ (le focus dans la colonne) changent de projet ; la puce de priorité n'est pas dans la colonne (elle se lit et se change dans le projet) ; pas de « ‹ Projets » (la liste est à l'écran) ; en dessous de 1024 px et sur iPhone : la liste, puis le projet avec « ‹ Projets » au-dessus du titre (R2-093) |
 | Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
@@ -272,6 +273,7 @@ Santé (`sante[].phrase`) :
 | Carte par projet | « Faites cette semaine : {titres, 3 au plus} » · « « {titre} » attend « {titre} » » · « Prochaine action : {titre} » [Changer] (sinon champ « Prochaine action ») · santé · « Intention de la semaine (facultatif) » · case « Projet de la semaine » |
 | Intention (R2-068) | UNE seule, en tête de la revue : « Intention de la semaine (facultatif) » (la carte ne la porte plus) |
 | Boutons | segmenté « Décision » : Garder (d'office) · Pause · Terminer (« Atteint ou abandonné ? » : Suivant → éteint jusqu'au choix) ; **Suivant →** écrit la décision ; « Passer » (décision `passe`) ; la revue reprend à la première carte non décidée ; toutes décidées = résumé (« Gardé · En pause · Terminé · Passé ») + **Planifier ma semaine** |
+| Pause (C-5) | sous le choix « Pause », UNE phrase si le serveur sert `prevues_aujourdhui_nb` ≥ 1 pour la carte : « 1 tâche prévue aujourd'hui reste dans ta journée. » · « {n} tâches prévues aujourd'hui restent dans ta journée. » (la pause arrête Proposé, À trier et les jours suivants, jamais ce qui est déjà prévu aujourd'hui) ; clé absente ou 0 : rien |
 | Vide | « Aucun projet actif » |
 | Erreur | « Déjà « {projet} » cette semaine. » |
 

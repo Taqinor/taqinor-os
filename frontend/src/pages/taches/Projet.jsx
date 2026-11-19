@@ -5,7 +5,6 @@ import {
   annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
   reordonnerTache, rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
-import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe, echeanceProjet, jourProjet } from '../../features/taches/projets/LigneProjet'
@@ -15,6 +14,7 @@ import {
 } from '../../features/taches/projets/Dialogues'
 import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
+import { AsideProjets, signalerProjetEcrit, useMaitreDetail, useProjetEcrit } from '../../features/taches/projets/ListeProjets'
 import VueListe from '../../features/taches/projets/VueListe'
 import VueChronologie, { Burnup } from '../../features/taches/projets/VueChronologie'
 import FeuilleACrans from '../../features/taches/ui/FeuilleACrans'
@@ -25,7 +25,7 @@ import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
-import { useCompteTaches } from '../../features/taches/lib/enLigne'
+import { estEnLigne, useCompteTaches } from '../../features/taches/lib/enLigne'
 import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
@@ -170,6 +170,12 @@ function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
   const [texte, setTexte] = useState(nom)
   const fini = useRef(false)
   const champ = useRef(null)
+  // le titre est rendu deux fois par la coquille (grand titre et titre compact, aria-hidden) : le focus va au champ VISIBLE,
+  // jamais à la copie cachée (deux `autoFocus` se volaient le focus et le champ se refermait aussitôt)
+  useEffect(() => {
+    const c = champ.current
+    if (c && !c.closest('[aria-hidden="true"]')) c.focus()
+  }, [])
   const valider = async () => {
     if (fini.current) return
     const propre = texte.trim()
@@ -184,7 +190,7 @@ function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
   }
   return (
     <>
-      <input ref={champ} className="ep-titre-champ" type="text" value={texte} maxLength={120} autoFocus aria-label="Nom du projet"
+      <input ref={champ} className="ep-titre-champ" type="text" value={texte} maxLength={120} aria-label="Nom du projet"
         onChange={(e) => setTexte(e.target.value)} onKeyDown={touche} onBlur={valider} onFocus={(e) => e.target.select()}
         aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-nom-erreur' : undefined} />
       {erreur ? <span id="ep-nom-erreur" className="ep-erreur ep-titre-erreur" role="alert">{erreur}</span> : null}
@@ -274,8 +280,11 @@ export default function Projet() {
       ecrireProjetsCache(userId, `projet-${id}`, data)
     } catch (err) {
       if (classerErreur(err).code === 'introuvable') { setIntrouvable(true); return }
-      setErreur(frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
       const cache = dejaLu.current ? null : lireProjetsCache(userId, `projet-${id}`)
+      // hors ligne, la ligne « Hors ligne » de la coquille est le seul signal tant qu'une vue (déjà lue, ou la dernière
+      // gardée) est à l'écran ; sans réseau ET sans rien à montrer, l'erreur reste dite
+      const vueAEcran = dejaLu.current || Boolean(cache?.donnees)
+      setErreur(vueAEcran && !estEnLigne() ? '' : frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
       if (cache?.donnees) { dejaLu.current = true; setVue(cache.donnees) }
     }
   }, [id, userId])
@@ -604,6 +613,22 @@ export default function Projet() {
   }
 
   const projet = vue?.projet
+  // R2-067 — au bureau (≥ 1024 px) la liste des projets est à gauche et ce projet à droite ; la liste et le projet ouvert
+  // se tiennent à jour (nom, couleur, priorité, statut, avancement) sans relecture
+  const maitreDetail = useMaitreDetail()
+  const champsAuxListes = projet && vue.avancement ? {
+    id: projet.id, nom: projet.nom, couleur: projet.couleur, priorite: projet.priorite, echeance: projet.echeance, statut: projet.statut,
+    lock_version: projet.lock_version, compteurs: { faites: vue.avancement.faites, ouvertes: vue.avancement.total - vue.avancement.faites },
+  } : null
+  const empreinteListe = champsAuxListes ? JSON.stringify(champsAuxListes) : ''
+  useEffect(() => {
+    if (maitreDetail && empreinteListe) signalerProjetEcrit(JSON.parse(empreinteListe), 'detail')
+  }, [maitreDetail, empreinteListe])
+  // la liste (à gauche) a écrit le projet ouvert (priorité, pause) : sa nouvelle version de verrou vaut aussi ici
+  useProjetEcrit('detail', (ecrit) => {
+    if (String(ecrit.id) !== String(id)) return
+    setVue((v) => (v ? { ...v, projet: { ...v.projet, ...ecrit } } : v))
+  })
   // R2-071 — un projet sans aucune tâche (ni ouverte ni faite) : l'invite « Ajoute la première tâche » + « Planifier le projet »
   const projetVide = Boolean(vue) && !((vue.faites_nb ?? 0) > 0)
     && (vue.sans_section ?? []).length === 0 && (vue.sections ?? []).every((s) => (s.taches ?? []).length === 0)
@@ -640,11 +665,14 @@ export default function Projet() {
     </span>
   ) : 'Projet'
   return (
+    // R2-093 — « ‹ Projets » est celui de la coquille, au-dessus du titre (un seul retour, jamais deux). Au bureau, la
+    // liste des projets est à l'écran (maître-détail) : aucun retour à y proposer, et la loupe et le Copilote restent.
     <CoquilleTaches ecran="projet" titre={titre} actionsEcran={actionsEcran}
+      retour={maitreDetail ? null : { libelle: 'Projets', vers: '/taches/projets' }}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
-      {/* Passe visuelle n° 43 — « ‹ Projets » et la vue (puce sur iPhone, segmenté au bureau) sur UNE rangée */}
+      {maitreDetail ? <AsideProjets ouvertId={id} /> : null}
+      {/* Passe visuelle n° 43 — la vue (puce sur iPhone, segmenté au bureau) à droite de la rangée */}
       <div className="ep-barre-projet">
-        <BarreRetourProjets />
         {vue && !planifier ? <SelecteurVue vue={vueCode} onChoisir={choisirVue} /> : null}
       </div>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}

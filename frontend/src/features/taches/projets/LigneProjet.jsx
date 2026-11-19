@@ -10,6 +10,7 @@ import { ABR_JOURS, ABR_MOIS, aujourdhuiIso, ecartJours, echeanceTexte, jourCour
    `contract_samples/projets_liste.json`). Maquette : docs/taches/maquettes/projets-liste.html.
    Textes : reference/textes.md §2.6 (puce de priorité « Haute · Moyenne · Basse · — »,
    « {faites} sur {total} », « à surveiller », « À planifier », « Projet de la semaine »).
+   R2-067 — `ouvert` : le projet affiché à droite au bureau (maître-détail), surligné, `aria-current` sur son nom.
    La ligne ne parle jamais au serveur : elle appelle `onPriorite(projet, valeur)` et
    `onAction(code, projet)` ; le parent écrit, met à jour sans relire la liste et annule.
    ========================================================================== */
@@ -114,17 +115,17 @@ function useAppuiLong(ouvrir) {
   }
 }
 
-export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOuvrir, onPriorite, onAction, enPause = false }) {
+export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOuvrir, onPriorite, onAction, enPause = false, ouvert = false }) {
   const { texte, part } = avancementDe(projet)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const surveiller = Array.isArray(projet.sante) && projet.sante.length > 0
   const [menuOuvert, setMenuOuvert] = useState(false)
   const appui = useAppuiLong(() => setMenuOuvert(true))
   return (
-    <div className="ligne projet" role="listitem" data-p={projet.couleur} data-projet={projet.id} {...appui.gestes}>
+    <div className={`ligne projet${ouvert ? ' ouvert-bureau' : ''}`} role="listitem" data-p={projet.couleur} data-projet={projet.id} {...appui.gestes}>
       <span className="point-projet" aria-hidden="true" />
       <div className="ligne-corps">
-        <button type="button" className="ligne-corps-bouton ep-ouvrir" onClickCapture={appui.surClic} onClick={() => onOuvrir?.(projet)}>
+        <button type="button" className="ligne-corps-bouton ep-ouvrir" aria-current={ouvert ? 'true' : undefined} onClickCapture={appui.surClic} onClick={() => onOuvrir?.(projet)}>
           <span className="titre">{projet.nom}</span>
         </button>
         <div className="meta">

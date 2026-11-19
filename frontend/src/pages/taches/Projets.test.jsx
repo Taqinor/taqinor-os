@@ -250,6 +250,23 @@ describe('R2-070 — Projets : jamais « Aucun projet » sans réponse ; hors li
     expect(screen.queryByText('Aucun projet')).toBeNull()
   })
 
+  it('hors ligne, la dernière liste lue est montrée SANS la phrase rouge « Connexion perdue » (la ligne « Hors ligne » de la coquille suffit)', async () => {
+    const premier = monterConnecte()
+    await screen.findByRole('button', { name: 'Ventes' })
+    premier.unmount()
+    api.listerProjets.mockRejectedValue(new Error('Network Error'))
+    const enLigne = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    try {
+      monterConnecte()
+      expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+      expect(document.querySelector('.entete-date[role="status"]')).toHaveTextContent('Hors ligne')
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByText('Aucun projet')).toBeNull()
+    } finally {
+      enLigne.mockRestore()
+    }
+  })
+
   it('la liste gardée par un AUTRE compte n\'est jamais montrée ; la déconnexion vide le cache', async () => {
     const premier = monterConnecte(42)
     await screen.findByRole('button', { name: 'Ventes' })
@@ -261,7 +278,8 @@ describe('R2-070 — Projets : jamais « Aucun projet » sans réponse ; hors li
     autre.unmount()
     const { viderCacheProjets } = await import('../../features/taches/horsligne/cacheProjets')
     expect(viderCacheProjets()).toBeGreaterThan(0)
-    expect(window.localStorage.length).toBe(0)
+    // plus aucune entrée de CACHE DES PROJETS (d'autres clés du module, ex. « messages sans délai », ne sont pas à vider)
+    expect(Object.keys(window.localStorage).filter((c) => c.startsWith('taches:projets:'))).toEqual([])
   })
 
   it('R2-085 — la page Projets ne porte plus la date du jour en sous-titre', async () => {
@@ -352,5 +370,41 @@ describe('Raccord F2 — Projets : chargement', () => {
     await act(async () => { finir(reponseContrat('taches', 'projets_liste')); await vi.advanceTimersByTimeAsync(0) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
     vi.useRealTimers()
+  })
+})
+
+describe('R2-067 — Projets au bureau (≥ 1024 px) : /taches/projets ouvre le premier projet', () => {
+  const ancienne = window.matchMedia
+  const media = (bureau) => vi.fn().mockImplementation((requete) => ({
+    matches: bureau, media: requete, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+  }))
+  afterEach(() => { window.matchMedia = ancienne })
+
+  it('le premier projet actif s\'ouvre à droite (l\'adresse devient /taches/projets/<id>) ; la palette garde sa requête', async () => {
+    window.matchMedia = media(true)
+    render(
+      <MemoryRouter initialEntries={['/taches/projets?nouveau=1']}>
+        <Routes>
+          <Route path="/taches/projets" element={<Projets />} />
+          <Route path="/taches/projets/:id" element={<Lieu />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/projets/3?nouveau=1')
+  })
+
+  it('aucun projet : l\'état vide reste (rien à ouvrir)', async () => {
+    window.matchMedia = media(true)
+    api.listerProjets.mockResolvedValue(vide)
+    monter()
+    expect(await screen.findByText('Aucun projet')).toBeInTheDocument()
+    expect(screen.queryByTestId('lieu')).toBeNull()
+  })
+
+  it('< 1024 px : la liste reste la liste (puis le projet)', async () => {
+    window.matchMedia = media(false)
+    monter()
+    expect(await screen.findByRole('button', { name: 'Ventes' })).toBeInTheDocument()
+    expect(screen.queryByTestId('lieu')).toBeNull()
   })
 })
