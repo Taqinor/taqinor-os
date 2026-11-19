@@ -230,11 +230,12 @@ def echeance_menacee(taches, projet, J, travailles, rythme=False):
     if calcul is None:
         return None
     besoin, reste, f28, j28 = calcul
-    # R2-034 — la conséquence d'abord ; chaque chiffre est calculé (rythme F28/J28, ouvertes, échéance du projet)
+    # R2-034 — la conséquence d'abord ; R3-011 — UN chiffre à lire, déjà soustrait (« il manque environ 2 jours »),
+    # jamais un calcul à refaire de tête ; le détail (besoin, reste, F28, J28) reste dans `donnees`
     jour = format_jour(ech, J)
     quand = jour if jour in ("aujourd'hui", 'demain') else f'le {jour}'
-    phrase = (f'À ce rythme, pas prêt pour {quand} : il faudrait {besoin} jours travaillés, il en reste {reste} '
-              f'({f28} faites en {j28} jours travaillés ces 4 dernières semaines).')
+    manque = besoin - reste
+    phrase = f"À ce rythme, pas prêt pour {quand} : il manque environ {manque} jour{'s' if manque > 1 else ''}."
     return _signal_menace('d', phrase, {'besoin': besoin, 'reste': reste, 'f28': f28, 'j28': j28,
                                         'echeance': ech.isoformat()})
 

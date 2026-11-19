@@ -260,7 +260,7 @@ Santé (`sante[].phrase`) :
 | `echeance_menacee` (a) | « Échéance dépassée le {jj/mm}. » |
 | `echeance_menacee` (b) | « {k} tâches sont prévues après l'échéance. » |
 | `echeance_menacee` (c) | « L'étape « {etape} » finit après l'échéance. » |
-| `echeance_menacee` (d) | « À ce rythme, pas prêt pour le {jour} : il faudrait {besoin} jours travaillés, il en reste {reste} ({f28} faites en {j28} jours travaillés ces 4 dernières semaines). » — `{jour}` = l'échéance du projet au format §0 (« jeu. 26 », « mar. 8 déc. ») ; « pour aujourd'hui », « pour demain » sans « le » (R2-034) ; `donnees.echeance` (ISO) servie pour la santé courte |
+| `echeance_menacee` (d) | « À ce rythme, pas prêt pour le {jour} : il manque environ {manque} jour(s). » ({manque} = {besoin} − {reste}, R3-011 : un seul chiffre, déjà soustrait ; besoin, reste, F28, J28 restent dans `donnees`) — `{jour}` = l'échéance du projet au format §0 (« jeu. 26 », « mar. 8 déc. ») ; « pour aujourd'hui », « pour demain » sans « le » (R2-034) ; `donnees.echeance` (ISO) servie pour la santé courte |
 | `a_l_arret` | « Rien de fait depuis {jours} jours travaillés. » |
 | `neglige` | « « {projet} » ({priorite}) n'a rien vu avancer en 14 jours ; « {autre} » ({priorite_autre}) : {d} faite(s). » |
 | `sans_prochaine_action` | « Rien à faire maintenant : tout est en réserve. » · « Tout attend quelqu'un ou une autre tâche. » · « Rien à faire maintenant : ajoute la prochaine tâche. » |
