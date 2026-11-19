@@ -8,7 +8,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { useGeste } from '../../features/taches/lib/gestes'
-import { ABR_JOURS, aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
+import { ABR_JOURS, accord, aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
 import MesJours from '../../features/taches/rythme/MesJours'
 import InterrupteurRythme from '../../features/taches/ui/InterrupteurRythme'
 
@@ -47,6 +47,9 @@ const QUESTIONS = {
 const COMPRENDRE = "Allumé : l'ERP calcule ton rythme et tes habitudes à partir de tes tâches. Éteint : plus rien n'est calculé ni gardé."
 const COMPRENDRE_ETEINT = "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."
 const JOURS_VOULUS = 10
+/** Jours évalués qu'il faut pour FIXER la référence de « Garder ce rythme » (regles.md §6.6, `JOURS_REFERENCE`). */
+const JOURS_REFERENCE = 14
+const A_CONFIRMER = `à confirmer sur ${JOURS_REFERENCE} jours travaillés.`
 const OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 
 const messageErreur = (err, champ) => {
@@ -59,7 +62,7 @@ const entier = (n) => String(n).replace('.', ',')
 function phraseObjectif(objectif) {
   if (objectif.mode === 'libre' || objectif.nb == null) return 'Sans objectif'
   if (objectif.mode === 'tenir' && Array.isArray(objectif.zone)) {
-    return `Ton rythme : environ ${objectif.nb} tâches (${objectif.zone[0]} à ${objectif.zone[1]})`
+    return `Ton rythme : environ ${accord(objectif.nb, 'tâche')} (${objectif.zone[0]} à ${objectif.zone[1]})`
   }
   return `Objectif du jour : ${objectif.nb} (${SOURCES[objectif.source] ?? ''})`.replace(/ \(\)$/, '')
 }
@@ -75,8 +78,9 @@ function confirmation(rythme, geste) {
   }
   if (rythme.mode === 'tenir') {
     const [bas, haut] = objectif.zone ?? [objectif.nb, objectif.nb]
-    return `Garder ce rythme : environ ${objectif.nb} tâches par jour (${bas} à ${haut}). `
-      + 'Je ne te pousse plus ; je te préviens seulement si tu t\'en éloignes.'
+    const provisoire = rythme.tenir?.provisoire ? ` À${A_CONFIRMER.slice(1)}` : ''
+    return `Garder ce rythme : environ ${accord(objectif.nb, 'tâche')} par jour (${bas} à ${haut}). `
+      + `Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes.${provisoire}`
   }
   return `En faire plus : objectif du jour ${objectif.nb}. Je te proposerai d'aller plus loin quand tu le tiens.`
 }
@@ -348,6 +352,9 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
       <div>
         <Aujourdhui rythme={rythme} progression={progression} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
+        {rythme.mode === 'tenir' && rythme.tenir?.provisoire ? (
+          <p className="ep-source">{`Provisoire : ${A_CONFIRMER}`}</p>
+        ) : null}
         {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (
           <div className="es-attente-rythme">

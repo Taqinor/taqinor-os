@@ -108,6 +108,31 @@ describe('TCH107 — Mon rythme', () => {
     expect(within(await screen.findByRole('group', { name: 'Geste effectué' })).getByText(/Garder ce rythme : environ 5 tâches par jour \(4 à 6\)/)).toBeInTheDocument()
   })
 
+  it('R2-121 — « Garder ce rythme » tant que R n\'est pas fixée le dit : provisoire, à confirmer sur 14 jours (page et toast)', async () => {
+    const provisoire = {
+      ...rythme(), mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] }, geste_id: 92,
+      tenir: { reference: 6, provisoire: true, fixee_le: null, silence_jusquau: null },
+    }
+    poserMode.mockResolvedValue({ data: provisoire })
+    monter()
+    await userEvent.click(await screen.findByRole('radio', { name: /Garder ce rythme/ }))
+    expect(await screen.findByText('Ton rythme : environ 6 tâches (5 à 7)')).toBeInTheDocument()
+    expect(screen.getByText('Provisoire : à confirmer sur 14 jours travaillés.')).toBeInTheDocument()
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(within(toast).getByText(/Garder ce rythme : environ 6 tâches par jour \(5 à 7\)\..*À confirmer sur 14 jours travaillés\./)).toBeInTheDocument()
+  })
+
+  it('R2-121 — une fois R fixée, plus aucune mention provisoire', async () => {
+    const fixee = {
+      ...rythme(), mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] },
+      tenir: { reference: 6, provisoire: false, fixee_le: '2026-11-10', silence_jusquau: null },
+    }
+    lireRythme.mockImplementation(() => reponse(fixee))
+    monter()
+    expect(await screen.findByText('Ton rythme : environ 6 tâches (5 à 7)')).toBeInTheDocument()
+    expect(screen.queryByText(/Provisoire/)).toBeNull()
+  })
+
   it('« Monter à 6 » répond oui, adopte le RYTHME rendu et propose Annuler', async () => {
     repondreProposition.mockResolvedValue({ data: exempleContrat('taches', 'proposition_repondue') })
     annulerGeste.mockResolvedValue({ data: {} })
