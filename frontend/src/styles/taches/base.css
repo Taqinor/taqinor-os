@@ -669,6 +669,14 @@
 @media (hover: hover) {
   .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton:hover { background: var(--tch-survol); }
 }
+/* couture L7 (M2) — sur iPhone, une question de conseil sur deux lignes et ses réponses dessous prenaient 98 pt + 32 pt
+   d'air : la première tâche tombait à y = 297. Carte resserrée (marges, réponses dessinées à 28 px, cible de 44 px
+   gardée par `::after`) et la première section qui la suit à 12 px au lieu de 20. */
+@media screen and (max-width: 768px) {
+  .tch .tch-page .carte.rythme { margin-top: 8px; padding: 8px 10px 8px 14px; row-gap: 0; }
+  .tch .tch-page .carte.rythme .carte-actions .bouton { height: 28px; }
+  .tch .tch-page .carte.rythme + div > .section:first-child { margin-top: 12px; }
+}
 .tch .pas-a-jour {
   display: flex; align-items: center; gap: 10px; margin: 8px var(--tch-gouttiere) 0; padding: 0 4px 0 12px;
   min-height: 44px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
