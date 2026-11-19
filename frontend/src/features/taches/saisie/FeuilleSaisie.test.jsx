@@ -766,7 +766,7 @@ describe('TCH82 — feuille de saisie', () => {
     const liste = () => screen.queryByRole('listbox', { name: 'Projets' })
     const options = () => screen.getAllByRole('option').map((o) => o.textContent)
 
-    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon_Solaire_Expo sans envoyer la phrase', async () => {
+    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon Solaire Expo (R3-047 : le nom avec ses espaces) sans envoyer la phrase', async () => {
       const user = userEvent.setup()
       monter()
       await user.type(champ(), 'Stand #')
@@ -777,7 +777,7 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Sal')
       expect(options()).toEqual(['Salon Solaire Expo'])
       await user.keyboard('{Enter}')
-      expect(champ()).toHaveValue('Stand #Salon_Solaire_Expo ')
+      expect(champ()).toHaveValue('Stand #Salon Solaire Expo ')
       expect(liste()).toBeNull()
       expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
     })
@@ -794,10 +794,10 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Photos #s')
       await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
       await user.keyboard('{ArrowDown}{Enter}')
-      expect(champ()).toHaveValue('Photos #Site_web ')
+      expect(champ()).toHaveValue('Photos #Site web ')
       await user.type(champ(), 'et #cha')
       await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
-      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+      expect(champ()).toHaveValue('Photos #Site web et #Chantier Bénali 9 kWc ')
     })
 
     it('vague 3 — la lettre tapée juste après le choix d\'un projet n\'est jamais avalée (frappes enchaînées, une image passe entre deux)', async () => {
@@ -812,7 +812,7 @@ describe('TCH82 — feuille de saisie', () => {
       await user.keyboard('t #cha')
       await waitFor(() => expect(options()).toEqual(['Chantier Bénali 9 kWc']))
       await user.keyboard('{Enter}suite')
-      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc suite')
+      expect(champ()).toHaveValue('Photos #Site web et #Chantier Bénali 9 kWc suite')
       expect(champ().selectionStart).toBe(champ().value.length)
     })
 
@@ -825,7 +825,7 @@ describe('TCH82 — feuille de saisie', () => {
       await user.keyboard('#sit')
       await waitFor(() => expect(options()).toEqual(['Site web']))
       await user.keyboard('{Enter}x ')
-      expect(champ()).toHaveValue('Photos #Site_web x demain')
+      expect(champ()).toHaveValue('Photos #Site web x demain')
     })
 
     it('couture r2 — « #Nom » déjà tapé EN ENTIER : Entrée envoie la phrase (la liste ne mange pas la touche)', async () => {
@@ -1070,6 +1070,52 @@ describe('TCH82 — feuille de saisie', () => {
       const puce = container.querySelector('[data-jeton="projet"]')
       expect(puce.querySelector('.point')).not.toBeNull()
       expect(puce).not.toHaveTextContent('●')
+    })
+  })
+
+  describe('R3-047 — la puce « Projet » du pied montre le projet lu par `#`', () => {
+    const PROJETS = [
+      { id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' },
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+    ]
+    const lu = (source, debut) => ({ type: 'projet', source, debut, fin: debut + source.length, libelle: '● Ventes',
+      valeur: { id: 3, nom: 'Ventes', nouveau: false } })
+    beforeEach(() => {
+      mocks.listerTousLesProjets.mockResolvedValue(PROJETS)
+      mocks.saisieRapide.mockImplementation((corps) => {
+        const i = corps.texte?.indexOf('#Ventes') ?? -1
+        return Promise.resolve({ data: corps.apercu ? {
+          ...apercu, projets_nouveaux: [],
+          lignes: [{ ...apercu.lignes[0], titre: 'Appeler', jetons: i >= 0 ? [lu('#Ventes', i)] : [], alertes: [], champs: i >= 0 ? { projet_id: 3 } : {} }],
+        } : creation })
+      })
+    })
+
+    it('une seule puce, DANS le pied : le nom et le point de couleur du projet ; « Projet » vide n\'y est plus ; × la retire', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Ventes')
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      expect(container.querySelectorAll('[data-jeton="projet"]')).toHaveLength(1)
+      const puce = pied.querySelector('[data-jeton="projet"]')
+      expect(puce).toHaveTextContent(/^Ventes$/)
+      expect(puce).toHaveAttribute('data-p', 'vert')
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(within(pied).queryByRole('button', { name: 'Projet' })).toBeNull()
+      await user.click(within(puce).getByRole('button', { name: 'Retirer Ventes' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].ignorer).toEqual([{ type: 'projet', source: '#Ventes' }]))
+    })
+
+    it('la toucher ouvre le sélecteur ; un autre projet REMPLACE `#Ventes` dans la phrase (jamais deux `#`)', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Ventes demain')
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      await user.click(within(pied).getByRole('button', { name: 'Ventes' }))
+      await user.click(await screen.findByRole('option', { name: 'Salon Solaire Expo' }))
+      expect(champ()).toHaveValue('Appeler #Salon Solaire Expo demain')
     })
   })
 

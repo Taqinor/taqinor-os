@@ -295,6 +295,29 @@ class SortieEtOptionsTests(unittest.TestCase):
                 self.assertEqual(a.alertes, ())
         self.assertEqual(lire('Stand #Sal', projets=self.PROJETS_LONGS).jetons[0]['libelle'], '● Salon Solaire Expo')
 
+    def test_r3_047_un_nom_de_projet_avec_ses_espaces_apres_diese(self):
+        # le choix de la liste `#` insère le nom tel qu'il s'écrit (« #Chantier Benali 9 kWc ») : lu en entier
+        for saisie, attendu, titre in (
+                ('Visite #Chantier Benali 9 kWc demain', 12, 'Visite'),
+                ('Photos #Site web', 13, 'Photos'),
+                ('Stand #salon solaire expo, vite', 11, 'Stand , vite'),
+                ('#Site Polydesign relancer', 14, 'relancer')):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertEqual((a.champs.get('projet_id'), a.titre), (attendu, titre))
+                projet = next(jt for jt in a.jetons if jt['type'] == 'projet')
+                self.assertEqual(projet['source'], saisie[projet['debut']:projet['fin']])
+                self.assertTrue(projet['source'].startswith('#'))
+        # « demain » après le nom reste un jour ; un nom INCONNU à espaces : seul le premier mot est le projet
+        self.assertEqual(lire('Visite #Chantier Benali 9 kWc demain', projets=self.PROJETS_LONGS).champs['jour_prevu'],
+                         j(18))
+        b = lire('Plan #Nouveau site web', projets=self.PROJETS_LONGS)
+        self.assertEqual((b.champs['nouveau_projet']['nom'], b.titre), ('Nouveau', 'Plan site web'))
+        # un projet archivé nommé en entier : « Projet archivé », la tâche reste À trier
+        c = lire('Ranger #Vieux dossiers', projets=(ProjetConnu(9, 'Vieux dossiers', 'archive', 1),))
+        self.assertNotIn('projet_id', c.champs)
+        self.assertEqual(c.alertes, ('projet_archive',))
+
     def test_r2_003_plusieurs_projets_le_premier_par_rang_et_l_alerte(self):
         a = lire('Photos #Site', projets=self.PROJETS_LONGS)
         self.assertEqual(a.champs['projet_id'], 13)

@@ -118,7 +118,8 @@ test.describe('Tâches — saisie', () => {
     await champSaisie(page).pressSequentially(`${titre} #Sal`, { delay: 10 })
     await expect(feuilleSaisie(page).getByRole('listbox', { name: 'Projets' }).getByRole('option', { name: nom })).toBeVisible()
     await champSaisie(page).press('Enter')
-    await expect(champSaisie(page)).toHaveValue(`${titre} #${nom.replace(/ /g, '_')} `)
+    // R3-047 — le nom s'insère avec ses espaces ; le serveur lit en entier le nom d'un projet existant
+    await expect(champSaisie(page)).toHaveValue(`${titre} #${nom} `)
     await expect(feuilleSaisie(page).locator('[data-jeton="projet"]')).toContainText(nom)
     await champSaisie(page).press('Enter')
     await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)

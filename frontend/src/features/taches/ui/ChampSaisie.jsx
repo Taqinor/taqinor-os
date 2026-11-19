@@ -158,11 +158,19 @@ export function projetsPour(projets, q) {
   }).slice(0, MAX_PROPOSES)
 }
 
-/** `#Nom_Avec_Soulignés` : espaces → `_`, coupé au premier signe que la grammaire ne lit pas dans un nom. */
+/** `#Nom_Avec_Soulignés` : espaces → `_`, coupé au premier signe que la grammaire ne lit pas dans un nom. Sert un
+ *  NOUVEAU projet (« Créer « nom » ») : un nom inconnu n'est lu par le serveur que d'un seul mot. */
 // eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function jetonProjet(nom) {
   const souligne = String(nom ?? '').trim().replace(/\s+/gu, '_')
   return souligne.split(/[^\p{L}\p{N}_-]/u)[0]
+}
+
+/** R3-047 — le jeton d'un projet EXISTANT, tel qu'il s'écrit (« Chantier Bénali 9 kWc », espaces gardés) : le serveur
+ *  lit en entier, après `#`, le nom d'un projet existant (`analyseur.projets_nommes_en_entier`). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function jetonProjetExistant(nom) {
+  return String(nom ?? '').trim().replace(/\s+/gu, ' ')
 }
 
 export function PrioriteProjet({ nom, valeur, onChoisir }) {
@@ -197,6 +205,7 @@ export default function ChampSaisie({
   autoFocus = true,
   indication = INDICATION,
   projets = null,
+  typesAuPied = [],
 }) {
   const idErreur = useId()
   const idListe = useId()
@@ -245,7 +254,8 @@ export default function ChampSaisie({
   /** Le choix réécrit le champ à partir de sa valeur COURANTE (celle du champ à l'instant du choix, jamais une copie
    *  d'un rendu plus ancien) ; la valeur et le curseur sont posés dans la même image, sans rien d'asynchrone entre. */
   const choisirProjet = (projet) => {
-    const jeton = jetonProjet(projet.nom)
+    // R3-047 — le nom avec ses espaces (« #Chantier Bénali 9 kWc »), plus « #Chantier_Bénali_9_kWc »
+    const jeton = jetonProjetExistant(projet.nom)
     const el = champ.current
     const courante = el ? el.value : String(valeur ?? '')
     const motCourant = motDiese(courante, el ? el.selectionStart : curseur)
@@ -338,9 +348,10 @@ export default function ChampSaisie({
         </div>
       ) : null}
       {erreur ? <p id={idErreur} className="erreur-champ" role="alert">{erreur}</p> : null}
-      {jetons.length > 0 ? (
+      {/* R3-047 — un type que la feuille montre dans son pied (le projet lu) n'a pas une 2e puce ici */}
+      {jetons.some((j) => !typesAuPied.includes(j.type)) ? (
         <div className="puces saisie" aria-label="Ce que j'ai lu">
-          {jetons.map((jeton) => (
+          {jetons.filter((j) => !typesAuPied.includes(j.type)).map((jeton) => (
             <PuceJeton key={`${jeton.type}:${jeton.debut}:${jeton.source}`} jeton={jeton} couleur={couleurDuJeton(jeton, projets)} onIgnorer={onIgnorer} />
           ))}
         </div>

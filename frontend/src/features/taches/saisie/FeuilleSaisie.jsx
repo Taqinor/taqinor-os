@@ -10,7 +10,7 @@ import { MESSAGE_EN_FILE, avecContexte, enfilerAjout, enfilerPhrase } from '../h
 import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
 import { aujourdhuiIso, jourCourt } from '../lib/textes'
-import ChampSaisie, { jetonProjet } from '../ui/ChampSaisie'
+import ChampSaisie, { jetonProjet, jetonProjetExistant } from '../ui/ChampSaisie'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
 import SelecteurQuand from '../ui/SelecteurQuand'
@@ -196,6 +196,9 @@ function trouverAncre() {
   if (!ancre) return null
   return typeof ancre.checkVisibility === 'function' && !ancre.checkVisibility() ? null : ancre
 }
+
+/** R3-047 — le projet lu par `#` a sa puce dans le pied de la feuille (« Projet »), pas une seconde sous le champ. */
+const TYPES_AU_PIED = ['projet']
 
 /** R3-041 — un bouton qui ne vole pas le focus au champ (le doigt ou la souris le touchent, le clavier reste ouvert). */
 const garderLeFocus = (e) => e.preventDefault()
@@ -399,22 +402,37 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // un vrai collage replie — une suggestion du clavier, une dictée ou un mot collé grandissent aussi le texte d'un coup
   const surColle = (colle) => { if (colle.includes('\n')) setChampReplie(true) }
   /** R2-003 — la puce « Projet » : le projet choisi devient celui de l'écran (puce « ● Nom », retirable). */
+  /** R3-047 — un `#projet` déjà lu dans la phrase : le choix du pied le REMPLACE dans le texte (jamais deux `#`, jamais
+   *  un « #Ventes » laissé dans le titre), écrit sur la valeur COURANTE du champ. */
+  const remplacerProjetLu = (jeton) => setTexte((t) => (
+    t.slice(projetLu.debut, projetLu.fin) === projetLu.source
+      ? `${t.slice(0, projetLu.debut)}#${jeton}${t.slice(projetLu.fin)}` : t))
   const choisirProjet = (projetId) => {
     const projet = projetsOuverts.find((p) => p.id === projetId)
-    setContexte((c) => ({ ...c, projetId: projet ? projet.id : null, projetNom: projet?.nom ?? '', sectionId: null }))
+    if (projetLu && projet) remplacerProjetLu(jetonProjetExistant(projet.nom))
+    else setContexte((c) => ({ ...c, projetId: projet ? projet.id : null, projetNom: projet?.nom ?? '', sectionId: null }))
     setProjetOuvert(false)
   }
   /** « + Nouveau projet » / « Créer « nom » » : `#Nom` s'ajoute à la phrase, le serveur le lit « Nouveau projet ». */
   const nouveauProjet = (nom) => {
     const jeton = jetonProjet(nom)
-    setTexte((t) => `${t.trimEnd()}${t.trim() ? ' ' : ''}#${jeton}${jeton ? ' ' : ''}`)
+    if (projetLu && jeton) remplacerProjetLu(jeton)
+    else setTexte((t) => `${t.trimEnd()}${t.trim() ? ' ' : ''}#${jeton}${jeton ? ' ' : ''}`)
     setProjetOuvert(false)
     requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
   }
   const basculerQuand = () => { setQuandOuvert((v) => !v); setProjetOuvert(false) }
+  const basculerProjet = () => { setProjetOuvert((v) => !v); setQuandOuvert(false) }
   /** R3-045 — le `#projet` lu dans la phrase (il l'emporte sur le projet de l'écran) et la couleur de ce dernier. */
   const projetLu = modeListe ? null : (ligne?.jetons ?? []).find((j) => j.type === 'projet') ?? null
-  const couleurContexte = contexte.projetId == null ? null : (projets ?? []).find((p) => p.id === contexte.projetId)?.couleur ?? null
+  const couleurDe = (id) => (id == null ? null : (projets ?? []).find((p) => p.id === id)?.couleur ?? null)
+  const couleurContexte = couleurDe(contexte.projetId)
+  /** R3-047 — ce que la puce « Projet » du pied montre du projet lu : son nom (existant), sinon le libellé servi
+   *  (« Nouveau projet : X », « Projet archivé : X ») ; la couleur d'un projet existant seulement. */
+  const valeurLue = projetLu?.valeur ?? {}
+  const existantLu = Boolean(projetLu) && !valeurLue.nouveau && !valeurLue.archive
+  const nomLu = existantLu ? valeurLue.nom ?? String(projetLu.libelle ?? '').replace(/^●\s*/u, '') : projetLu?.libelle ?? ''
+  const couleurLu = existantLu ? valeurLue.couleur ?? couleurDe(valeurLue.id) : null
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
@@ -626,6 +644,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             onSoumettre={envoyer}
             erreur={modeListe ? '' : erreur || erreurLue}
             projets={modeListe ? null : projetsOuverts}
+            typesAuPied={TYPES_AU_PIED}
           />
         ) : null}
         {titreTropLong ? (
@@ -684,9 +703,26 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                     <span className="chiffres">{libelleQuand(quandVu)}</span>
                   </button>
                 )}
-                {/* R3-045 — le projet de l'écran : un point de SA couleur (`data-p`), jamais un « ● » de texte noir ; un
-                    `#projet` lu dans la phrase l'emporte (`avecContexte`) : sa puce à lui suffit, celle-ci s'efface */}
-                {contexte.projetId != null && nomProjet && projetLu ? null : contexte.projetId != null && nomProjet ? (
+                {/* R3-047 — la puce « Projet » du pied MONTRE le projet lu par `#` (une seule puce : celle de dessous le
+                    champ ne se répète pas) ; la toucher ouvre le sélecteur, qui remplace le `#projet` dans la phrase.
+                    R3-045 — le projet de l'écran : un point de SA couleur (`data-p`), jamais un « ● » de texte noir ; un
+                    `#projet` lu dans la phrase l'emporte (`avecContexte`) : il prend sa place */}
+                {projetLu ? (
+                  <span
+                    className={valeurLue.nouveau ? 'puce nouveau' : couleurLu ? 'puce projet-lu' : 'puce lue'}
+                    data-jeton="projet"
+                    data-p={couleurLu || undefined}
+                  >
+                    {couleurLu ? <i className="point" aria-hidden="true" /> : null}
+                    <button type="button" className="cible" aria-expanded={projetOuvert} onClick={basculerProjet}>
+                      <span className="projet-nom">{nomLu}</span>
+                    </button>
+                    <button type="button" className="retirer" aria-label={`Retirer ${nomLu}`}
+                      onClick={() => surIgnorer({ type: projetLu.type, source: projetLu.source })}>
+                      <X aria-hidden="true" />
+                    </button>
+                  </span>
+                ) : contexte.projetId != null && nomProjet ? (
                   <button type="button" className={couleurContexte ? 'puce projet-lu' : 'puce lue'} data-p={couleurContexte || undefined}
                     aria-label={`Retirer « ${nomProjet} »`}
                     onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
@@ -695,8 +731,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : (
-                  <button type="button" className="puce vide" aria-expanded={projetOuvert}
-                    onClick={() => { setProjetOuvert((v) => !v); setQuandOuvert(false) }}>
+                  <button type="button" className="puce vide" aria-expanded={projetOuvert} onClick={basculerProjet}>
                     <Folder className="i i-16" aria-hidden="true" />
                     <span>Projet</span>
                   </button>
