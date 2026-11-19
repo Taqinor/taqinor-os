@@ -1,0 +1,40 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/publier-devis/apercu/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — l'APERÇU, sans aucune écriture, de « publier la conception au devis » : l'assistant le lit AVANT de proposer `calepinage.publier_devis`, parce que la confirmation doit montrer l'ANCIEN et le NOUVEAU total TTC (le fondateur l'exige, en particulier quand le devis est déjà ENVOYÉ : le client a ses chiffres). Garde `calepinage_gerer` (il joue le chemin de l'écriture, verrous compris, dans une transaction annulée). Calculé par le MÊME service que la publication (génération ou resynchronisation du devis lié) dans une transaction annulée : rien n'est écrit, aucun PDF (règle #4), aucun statut. `geste` ∈ generer | resynchroniser ; `devis` null quand aucun devis n'est lié (alors `ancien_total_ttc` null) ; `corrige_apres_envoi` vrai quand le devis lié est ENVOYÉ (la correction se fait en place, tracée « corrigé après envoi », D-QJR5-5). Les mêmes refus que la publication (devis figé, verdict électrique bloquant, approbation exigée non à jour) sortent ICI d'abord, en 400/409 nommés. `a_faire` (ensemble FERMÉ) : publier | rien (rien = totaux et composition inchangés) ; `lien` : le devis lié, sinon le calepinage. Montants en texte décimal ; aucun prix d'achat ni marge ; aucune ligne de prix détaillée.",
+  "exemple": {
+    "calepinage": 12,
+    "reference": "CAL-2611-0012",
+    "geste": "resynchroniser",
+    "devis": {"id": 45, "reference": "DEV-202611-0045", "statut": "envoye"},
+    "corrige_apres_envoi": true,
+    "kwc_avant": 7.2,
+    "kwc_apres": 8.64,
+    "ancien_total_ttc": "84500.00",
+    "nouveau_total_ttc": "86900.00",
+    "a_faire": "publier",
+    "lien": "/ventes/devis?devis=45"
+  },
+  "exemple_generer": {
+    "calepinage": 15,
+    "reference": "CAL-2611-0015",
+    "geste": "generer",
+    "devis": null,
+    "corrige_apres_envoi": false,
+    "kwc_avant": null,
+    "kwc_apres": 5.68,
+    "ancien_total_ttc": null,
+    "nouveau_total_ttc": "61200.00",
+    "a_faire": "publier",
+    "lien": "/calepinage/15"
+  },
+  "exemple_409_devis_fige": {
+    "detail": "Devis DEV-202610-0021 accepté : il ne se corrige plus. Révisez-le (V2 brouillon) puis publiez la conception sur la V2.",
+    "field": "devis",
+    "code": "devis_fige"
+  },
+  "exemple_409_bloquant_electrique": {
+    "detail": "Verdict électrique bloquant (tension de chaîne au-dessus de l'entrée MPPT) : un approbateur doit corriger ou déroger à l'écran, onglet « Verdict électrique » du calepinage.",
+    "field": "electrique",
+    "code": "verdict_bloquant"
+  }
+}

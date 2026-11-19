@@ -1,0 +1,63 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/assistant/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CHTA3) — la liste COMPACTE des chantiers pour l'assistant (action `installations.chantiers.liste`, carte `liste_chantiers`) et la source des lignes du bloc `chantiers` du point du matin (`brief_chantiers`). Portée de l'écran (`get_queryset`, `installation_voir`) ; annulés et clôturés exclus. Paramètres : `vue` ∈ en_cours | bloques | poses_semaine (défaut en_cours), `q` (référence ou nom du client), `lead` (id du lead d'origine), `statut` (statut canonique sauf clôturé), `technicien` (id d'un compte), `debut` (lundi de la semaine pour poses_semaine), `limite` (10 par défaut, 1 à 25) ; hors liste ou hors borne → 400 nommé. `blocages` = ensemble FERMÉ calculé SANS le besoin matériel (trop coûteux par ligne) : sans_date | sans_technicien | pose_sans_intervention | pose_depassee | acompte_non_encaisse (ce dernier seulement si le réglage société exige l'acompte avant la planification) ; le matériel se lit par `installations.chantier.etat` (`note` le dit). `a_faire` par ligne : même ensemble que `assistant_chantier_etat.json` (commander_materiel n'y apparaît jamais : non calculé en liste) ; `lien` = `/chantiers?id={id}`, `lien` racine = la liste des chantiers. Délibérément ABSENTS : tout prix ou coût, téléphone du client, position des techniciens.",
+  "exemple": {
+    "vue": "bloques",
+    "total": 2,
+    "limite": 10,
+    "lignes": [
+      {
+        "id": 12,
+        "reference": "CHT-202611-0012",
+        "client_nom": "Driss Lahlou",
+        "statut": "materiel_commande",
+        "date_pose_prevue": null,
+        "technicien_nom": "",
+        "pose_intervention": null,
+        "blocages": ["sans_date", "sans_technicien"],
+        "a_faire": "planifier_pose",
+        "lien": "/chantiers?id=12"
+      },
+      {
+        "id": 9,
+        "reference": "CHT-202610-0009",
+        "client_nom": "Ferme Ait Lahcen SARL",
+        "statut": "signe",
+        "date_pose_prevue": "2026-11-17",
+        "technicien_nom": "Hamza Idrissi",
+        "pose_intervention": null,
+        "blocages": ["pose_sans_intervention", "pose_depassee", "acompte_non_encaisse"],
+        "a_faire": "encaisser_acompte",
+        "lien": "/chantiers?id=9"
+      }
+    ],
+    "note": "Matériel : lire installations.chantier.etat (non calculé en liste).",
+    "lien": "/chantiers"
+  },
+  "exemple_poses_semaine": {
+    "vue": "poses_semaine",
+    "total": 1,
+    "limite": 10,
+    "lignes": [
+      {
+        "id": 14,
+        "reference": "CHT-202611-0014",
+        "client_nom": "Fatima Zahra Amrani",
+        "statut": "planifie",
+        "date_pose_prevue": "2026-11-24",
+        "technicien_nom": "Hamza Idrissi",
+        "pose_intervention": {"id": 55, "date_prevue": "2026-11-24", "technicien_nom": "Hamza Idrissi"},
+        "blocages": [],
+        "a_faire": "poser",
+        "lien": "/chantiers?id=14"
+      }
+    ],
+    "note": "Matériel : lire installations.chantier.etat (non calculé en liste).",
+    "lien": "/chantiers"
+  },
+  "exemple_400_vue": {
+    "detail": "vue : en_cours, bloques ou poses_semaine.",
+    "field": "vue",
+    "code": "vue_inconnue"
+  }
+}

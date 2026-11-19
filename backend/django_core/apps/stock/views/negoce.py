@@ -12,21 +12,23 @@ from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from core.champs_stricts import MOTIF_SANS_NUL
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
-from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, choix_ou_vide, corps
+from ..openapi_helpers import BOOL, ID_OU_VIDE, INT, P, STR, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
 from ..utils.params import (
-    corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, statut_requete_ou_400, types_corps_ou_400,
-    valeur_unique_ou_400,
+    booleen_requete_ou_400, corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, statut_requete_ou_400,
+    texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 
 from ..models import (
@@ -648,3 +650,56 @@ def parametres_negoce_view(request):
         serializer.save(company=params.company)
         params.refresh_from_db()
     return Response(ParametresNegoceSerializer(params).data)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Copilote vague 2 (STK3) — niveaux de stock lus par l'assistant
+# ═══════════════════════════════════════════════════════════════════════════
+
+NIVEAUX_LIMITE_MAX = 25
+NIVEAUX_Q_MAX = 100
+
+
+class NiveauxStockAssistantView(APIView):
+    """``GET stock/assistant/niveaux/`` (action ``stock.produit.niveau``,
+    contrat ``assistant_niveaux.json``) : stock, réservé, disponible, en
+    commande, quarantaine et seuil des produits de la société — des QUANTITÉS
+    seulement, jamais un prix ni une valeur de stock, pour aucun compte.
+    Garde de la liste produits (lecture du module Stock) ; portée = la sienne
+    (société, entités du rôle, archivés exclus). Paramètre hors borne → 400
+    qui le nomme."""
+
+    permission_classes = [LectureDuModule]
+    permission_module = 'stock'
+    http_method_names = ['get', 'head', 'options']
+
+    @extend_schema(parameters=[
+        P('q', {'type': 'string', 'maxLength': 100, 'pattern': MOTIF_SANS_NUL},
+          desc='Nom, marque ou référence cherchés (100 caractères au plus).'),
+        P('categorie', ID_OU_VIDE),
+        P('sous_seuil', BOOL, desc="Seulement les produits sous leur seuil d'alerte."),
+        P('limite', INT, desc='Lignes rendues (10 par défaut).', mini=1, maxi=NIVEAUX_LIMITE_MAX),
+    ], responses={200: inline_serializer('StockNiveauxAssistant', {
+        'q': serializers.CharField(),
+        'sous_seuil': serializers.BooleanField(),
+        'total': serializers.IntegerField(),
+        'limite': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'lien': serializers.CharField(),
+    }), 400: inline_serializer('StockNiveauxAssistantErreur', {
+        'detail': serializers.CharField(required=False)})})
+    def get(self, request):
+        from rest_framework.exceptions import ValidationError
+
+        from ..selectors_assistant import LIEN_STOCK, niveaux_stock
+
+        q = (texte_sans_nul_ou_400(valeur_unique_ou_400(request, 'q'), 'q') or '').strip()
+        if len(q) > NIVEAUX_Q_MAX:
+            raise ValidationError({'q': [f'Texte de {NIVEAUX_Q_MAX} caractères au plus.']})
+        sous_seuil = bool(booleen_requete_ou_400(request, 'sous_seuil'))
+        limite = entier_ou_400(valeur_unique_ou_400(request, 'limite'), 'limite', 10, 1, NIVEAUX_LIMITE_MAX)
+        total, lignes = niveaux_stock(
+            request.user, q=q, categorie=id_requete_ou_400(request, 'categorie'),
+            sous_seuil=sous_seuil, limite=limite)
+        return Response({'q': q, 'sous_seuil': sous_seuil, 'total': total, 'limite': limite,
+                         'lignes': lignes, 'lien': LIEN_STOCK})

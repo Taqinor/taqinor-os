@@ -104,6 +104,32 @@ class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, se
         return value
 
 
+#: Un caractère ni blanc (``str.isspace``) ni nul : la brique du motif ci-dessous.
+_NON_BLANC = r'[^\s\u0000\u001c-\u001f\u0085]'
+#: Motif publié d'une annulation : au moins TROIS caractères non blancs. Le
+#: serveur applique exactement cette règle (``validate_motif``) : ni un corps
+#: conforme refusé, ni un corps hors schéma accepté (api-fuzz).
+MOTIF_ANNULATION = (r'^[^\u0000]*' + (_NON_BLANC + r'[^\u0000]*') * 3 + '$')
+
+
+class _MotifAnnulation(ChaineStricte):
+    motif_publie = MOTIF_ANNULATION
+
+
+class VisiteAnnulerSerializer(serializers.Serializer):
+    """Copilote vague 2 (VIS7) — corps de ``annuler`` : le MOTIF seul, de 3 à
+    300 caractères (au moins trois non blancs). Jamais de société, de date ni de
+    statut : l'annulation se fait sur la visite désignée par l'URL."""
+
+    motif = _MotifAnnulation(min_length=3, max_length=300)
+
+    def validate_motif(self, value):
+        if sum(1 for caractere in value if not caractere.isspace()) < 3:
+            raise serializers.ValidationError(
+                'Le motif de l’annulation est obligatoire (3 caractères au moins).')
+        return value
+
+
 class VisiteRenvoiSerializer(serializers.Serializer):
     """VT3 — corps de l'action ``renvoyer`` (motif OBLIGATOIRE)."""
 

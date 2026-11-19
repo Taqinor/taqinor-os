@@ -1,0 +1,47 @@
+{
+  "endpoint": "GET /api/django/ventes/assistant/impayes/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VAD2) — « qui me doit de l'argent ? » (action `ventes.impayes.lister`, carte `liste_impayes`) et la source des lignes du bloc `impayes` du point du matin (`brief_ventes`). Code dans `apps/facturation/recouvrement.py` à côté de la liste des relances (mêmes calculs d'exigible, de niveau de relance et de promesse), route déclarée dans `apps/ventes/urls.py`. Portée de l'utilisateur (`scope_queryset`, comme l'écran des relances), lecture `ventes_voir`. Paramètres facultatifs : `q` (référence ou nom du client), `client` (id), `mes_relances` (booléen), `limite` (10 par défaut, 1 à 25) ; hors borne → 400 nommé. `total_du`, `nb_factures` et les quatre `tranches` d'âge portent sur TOUTES les factures exigibles de la portée ; `lignes` = les plus en retard d'abord. Montants en texte décimal. `a_faire` par ligne, ensemble FERMÉ : relancer | attendre_promesse | traiter_contestation | rien ; `lien` = la facture (`/ventes/factures?facture={id}`), `lien` racine = l'écran des relances. Délibérément ABSENTS : téléphone et e-mail du client (une relance WhatsApp passe par `ventes.facture.whatsapp_relance`, texte serveur), note de recouvrement, score de crédit, prix d'achat, marge.",
+  "exemple": {
+    "total_du": "40600.00",
+    "nb_factures": 2,
+    "tranches": {"b0_30": "22000.00", "b31_60": "18600.00", "b61_90": "0.00", "b90_plus": "0.00"},
+    "limite": 10,
+    "lignes": [
+      {
+        "facture_id": 140,
+        "reference": "FAC-202610-0015",
+        "client_id": 61,
+        "client_nom": "Ferme Ait Lahcen SARL",
+        "montant_du": "18600.00",
+        "jours_retard": 34,
+        "niveau": "Relance 2",
+        "promesse": null,
+        "contestee": false,
+        "a_faire": "relancer",
+        "lien": "/ventes/factures?facture=140"
+      },
+      {
+        "facture_id": 133,
+        "reference": "FAC-202610-0012",
+        "client_id": 52,
+        "client_nom": "Rachid Ouazzani",
+        "montant_du": "22000.00",
+        "jours_retard": 12,
+        "niveau": "Relance 1",
+        "promesse": {"statut": "en_cours", "date_promise": "2026-11-30"},
+        "contestee": false,
+        "a_faire": "attendre_promesse",
+        "lien": "/ventes/factures?facture=133"
+      }
+    ],
+    "lien": "/ventes/relances"
+  },
+  "exemple_vide": {
+    "total_du": "0.00",
+    "nb_factures": 0,
+    "tranches": {"b0_30": "0.00", "b31_60": "0.00", "b61_90": "0.00", "b90_plus": "0.00"},
+    "limite": 10,
+    "lignes": [],
+    "lien": "/ventes/relances"
+  }
+}

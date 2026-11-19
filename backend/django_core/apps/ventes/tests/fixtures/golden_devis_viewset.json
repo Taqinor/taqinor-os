@@ -47,6 +47,24 @@
       ]
     },
     {
+      "nom": "assistant_taille",
+      "url_path": "assistant-taille",
+      "url_name": "assistant-taille",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_taille_apercu",
+      "url_path": "assistant-taille/apercu",
+      "url_name": "assistant-taille-apercu",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "atomic",
       "url_path": "atomic",
       "url_name": "atomic",
@@ -595,6 +613,15 @@
       ]
     },
     {
+      "nom": "vente_assistant",
+      "url_path": "vente-assistant",
+      "url_name": "vente-assistant",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "whatsapp",
       "url_path": "whatsapp",
       "url_name": "whatsapp",
@@ -633,6 +660,8 @@
     "allowed_methods",
     "approuver_remise",
     "as_view",
+    "assistant_taille",
+    "assistant_taille_apercu",
     "atomic",
     "authentication_classes",
     "auto",
@@ -766,6 +795,7 @@
     "update",
     "variante_config",
     "variantes",
+    "vente_assistant",
     "versioning_class",
     "view_is_async",
     "whatsapp",

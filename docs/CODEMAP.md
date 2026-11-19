@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: c2d6fd5659766d880c70064f253a53172335feb0b1dbb0f8b45ed96d6f43fa4e
-Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
+Structure fingerprint: b273b4d3b17bf65dac9d377aab26b5f5f4f9ebae6790863fe959b74ce8a50376
+Plan fingerprint: 45ba315e05042d7214985e15f518bd562d3dce0bc6fe1723345598ee57ba0cad
 
 
 
@@ -399,6 +399,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **Vague dev-all-94854b (14/11)** : FastAPI `GET sql-agent/progression/<id>` (étapes d'un tour en cours, `action_tools.noter_etape`, AIC91) ; crm `manage.py opposer_fiches_soeurs` (dry-run par défaut, `--appliquer` : coche les fiches sœurs d'une opposition antérieure, AMSG97) ; ventes `ventes.devis.expliquer` / `ventes.devis.envoyer_email` (lot copilote, AIC99).
 - **Copilote v2 (19/11/2026, PR #1473)** : ventes — `domain/resolution_catalogue.py` (UN résolveur catalogue, celui du compositeur), `domain/composition_imposee.py` (composition imposée de `POST ventes/devis/auto/` et du dry-run `devis/composition/` : `nb_panneaux`, `onduleur_kw`+`onduleur_phase` ou `onduleur_produit_id`, `batterie_kwh` ou `batterie_produit_id` ; résidentiel seulement ; 409 `choix` sans jamais choisir en silence ; marqueur `etude_params['composition_imposee']` honoré par la resynchronisation), `views/assistant.py` (`GET ventes/assistant/catalogue/`), `GET ventes/devis/<pk>/lignes-assistant/` ; actions `ventes.catalogue.chercher`, `ventes.devis.composer`, `ventes.devis.lignes` (lot `copilote`) ; carte `devis_cree`. crm — `leads_creation.py` (LE chemin de création d'un lead saisi : écran et assistant), `POST crm/assistant/leads/creer/` (garde de doublon dans la portée, 400 PII) ; actions `crm.lead.creer`, `perdu`, `archiver`, `restaurer`, `reaffecter`, `etiqueter` (lot `copilote`), `crm.lead.create` au lot `herite` ; recherche par numéro normalisé. fastapi_ia — consignes « Agir d'abord en lecture », détails d'un refus 400/409 remontés au modèle, aperçu d'une proposition une ligne par entrée, question de 6 000 caractères copilote allumé, `GET sql-agent/capacites`, images jointes (moteur natif seulement, jamais gardées). frontend — `features/ia/cartes/CarteDevisCree.jsx`, `features/ia/images.js`, `features/ia/useImagesJointes.js`.
 - **Copilote, vague 2A — fondation de « l'assistant de tout l'ERP » (19/11/2026)** : agent — `registry.py` (`NOYAU` : outils jamais différés ; champ `lecture` : un POST qui n'écrit rien ; objets `calepinage`, `variante`, `visite`, `chantier`, `intervention`, `ticket`, `equipement`, `produit`, `bcf`, `fournisseur`, `utilisateur` ; cartes des modules réservées ; action `erp.ouvrir`), `libelles.py` (résolveurs de libellés par app, import paresseux), `GET agent/ouvrir/` (chemin d'écran construit par le serveur depuis `contract_samples/assistant_ecrans.json`), `AgentActionLog.origine` (`confirmee` | `interne` : journal des écritures que l'assistant fait sans confirmation). fastapi_ia — moteur natif : outils DIFFÉRÉS (`defer_loading`) chargés par domaine avec l'outil `outils_charger` (références seules dans son résultat), index des domaines en fin de bloc système, `consignes_domaines.py` (consignes livrées avec le domaine chargé), plafond de cinq écritures silencieuses par tour, repli Groq et LangChain limités au noyau, `metrique_gouvernee` servi au moteur natif, garde SQL des tables `authentication_` / `roles_` / `parametres_`. frontend — `features/ia/cartes/CarteLienEcran.jsx`, `ecrans.js`, `registre.js`, `modules/Cartes<Module>.jsx` (un fichier par module). Outils existants réparés (confirmation, permission réelle de la route, valeurs exactes) dans les `agent_actions.py` de stock, sav, installations, ventes, crm, adsengine ; `ged.docqa.retrieve` réservé aux administrateurs.
+- **Copilote, vague 2B — l'assistant dans chaque module (19/11/2026)** : contrats d'abord (`apps/<app>/contract_samples/assistant_*.json`), puis une lane par module, toutes au lot `copilote`, servies au seul moteur natif et chargées par domaine. calepinage — `agent_actions.py`, `views/assistant.py`, `services/assistant.py`, `services/contenance.py` (estimation du nombre de panneaux, étiquetée, jamais mise au devis), `selectors_libelles.py`, `contrats_assistant.py` ; actions `calepinage.{du_lead, resume, a_traiter, variantes_comparer, simulation_suivre, contenance, simuler, preparer, retenir, publier_apercu, publier_devis}`. visites — `agent_actions.py`, `assistant.py`, `selectors_libelles.py` ; `visites.{agenda, charge, visite.resume, visite.replanifier, visite.annuler, visite.valider}`. installations — `views/assistant.py`, `selectors_assistant.py`, `planification_pose.py` ; `installations.{chantier.etat, chantiers.liste, planning.suggerer, chantier.planifier}`. ventes — `selectors_assistant.py`, `domain/taille_assistant.py` (aperçu à blanc puis écriture qui porte l'ancien et le nouveau total, 409 `apercu_perime`), `domain/relance_assistant.py`, `views/openapi_assistant.py` ; `ventes.{vente.etat, impayes.lister, facture.chercher, devis.taille_apercu, devis.taille, devis.prolonger, devis.refuser, devis.reviser, vente.facturer (brouillon seulement), facture.whatsapp_relance}`. stock — `selectors_assistant.py`, `exports_valorisation.py` ; `stock.produit.niveau` (prix d'achat et valeur aux seuls ayants droit). sav — `views_assistant.py`, `selectors_assistant.py` ; `sav.{parc.chercher, tickets.chercher, ticket.fiche, ticket.transition, ticket.resoudre, ticket.noter}` (un geste qui prévient le client est refusé hors fenêtre d'envoi). reporting — `views_assistant.py`, `agent_actions.py`, `metriques_ca.py` ; `reporting.ca.lire` (signé, facturé, encaissé, HT, étiquetés) ; semantic — migrations de données 0007 (deux métriques de CA) et 0008 (marge brute et DSO désactivées, sans adaptateur). fastapi_ia — `app/services/consignes_domaines.py` (consignes par domaine), `tests/eval/cases_vague2.py`. Sélecteurs `brief_<app>(user, aujourdhui)` prêts pour le point du matin.
 
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
@@ -618,7 +619,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1333)**
+**Done (1336)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1667,6 +1668,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
+- `COPW1` — Cartes de l'assistant pour l'après-devis, le stock, le SAV et le pilotage
+- `COPW2` — Cartes de l'assistant pour le calepinage, les visites et les chantiers
+- `COPW3` — Point du matin étendu et dossier du lead
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — Contrat d'abord (PACT10)
 - `CRXB4` — UN round-robin

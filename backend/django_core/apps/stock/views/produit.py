@@ -31,7 +31,7 @@ from ..corps_achats import ProduitDecoupeCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
-from ..permissions import PeutSupprimerStock, PeutVoirPrixAchat
+from ..permissions import MasqueAchatRapportsProduitMixin, PeutSupprimerStock, PeutVoirPrixAchat
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC70
 from authentication.permissions import (
     LectureDuModule,
@@ -330,7 +330,7 @@ def _texte_references(comptes):
                                                      'true pour inclure les produits archivés', ['true', 'false']),
                                                    P('entite', ID_OU_VIDE, False,
                                                      'Filtre optionnel par entité juridique (NTADM2)')]))
-class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
+class ProduitViewSet(MasqueAchatRapportsProduitMixin, ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      IdempotentCreateMixin, CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
@@ -687,8 +687,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
     def valorisation_xlsx(self, request):
         """Export Excel de la valorisation du stock (admin/INTERNE) —
         les prix d'achat/coûts ne sont jamais client-facing."""
-        from ..services import export_valorisation_xlsx
-        return export_valorisation_xlsx(request.user.company)
+        from ..exports_valorisation import export_valorisation_selon_droit  # STK1 : coûts selon le droit
+        return export_valorisation_selon_droit(request)
 
     @extend_schema(parameters=[P('date', DATE, True, 'Date de valorisation (AAAA-MM-JJ)')], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='valorisation-a-date',

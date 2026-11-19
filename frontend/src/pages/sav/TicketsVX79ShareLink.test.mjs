@@ -17,8 +17,8 @@ test('VX79 : ?id=<pk> ouvre le ticket ciblé (état dérivé, patron ?lead=)', (
   assert.match(SRC, /useSearchParams/)
   // Logique PARTAGÉE : hooks/useDeepLinkId.js (ENF19), consommée par cet écran.
   assert.match(HOOK, /const wantedId = searchParams\.get\('id'\)/)
-  assert.match(HOOK, /const deepItem = useMemo\(/)
-  assert.match(SRC, /deepItem: deepTicket, clearDeepLink \} = useDeepLinkId\(searchParams, setSearchParams, items\)/)
+  assert.match(HOOK, /const dansListe = useMemo\(/)
+  assert.match(SRC, /deepItem: deepTicket, deepLoading, clearDeepLink \} = useDeepLinkId\(\s*searchParams, setSearchParams, items,/)
   assert.match(SRC, /const detailTicket = selected \?\? deepTicket/)
   assert.match(SRC, /<TicketDetail ticket=\{detailTicket\}/)
 })
@@ -38,7 +38,7 @@ test('VX79 : « Copier le lien » pointe vers l\'URL INTERNE /sav?id=<pk>', () =
 })
 
 test('VX79 : ?id=<pk> introuvable → EmptyState inline (pas de page blanche)', () => {
-  assert.match(SRC, /const deepMissing = !!wantedId && !loading && !error && !deepTicket/)
+  assert.match(SRC, /const deepMissing = !!wantedId && !loading && !deepLoading && !deepTicket/)
   const block = SRC.slice(
     SRC.indexOf('{deepMissing && ('),
     SRC.indexOf('{deepMissing && (') + 400)

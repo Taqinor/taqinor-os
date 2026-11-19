@@ -16,8 +16,29 @@ Un adaptateur rend UN SCALAIRE (registre ``apps.semantic.adapters``) :
 ``period`` borne ``date_emission`` ; ``filters`` = filtres de la définition
 puis de l'appelant, sur une liste blanche (un filtre inconnu est refusé, en
 français, jamais ignoré).
+
+TROIS CHIFFRES D'AFFAIRES, JAMAIS CONFONDUS (copilote vague 2, RPT1) — le
+« CA » de l'ERP a trois sens, chacun calculé ICI, par le calcul que son écran
+utilise déjà :
+
+* FACTURÉ HT (``ca_ht``) — HT net d'avoirs des factures émises, payées ou en
+  retard, à la date d'ÉMISSION ;
+* ENCAISSÉ HT (``encaisse_ht``) — part HT des paiements reçus sur ces mêmes
+  factures (``ca_encaisse_ht``, le calcul du tableau de bord), à la date
+  d'ÉMISSION de la facture ;
+* SIGNÉ HT (``ca_signe_ht``) — HT remisé de l'option acceptée des devis
+  signés en vigueur, à la date de SIGNATURE (``devis_signes_de_la_fenetre``,
+  le calcul du classement commercial).
+
+Un adaptateur reçoit ``user`` : renseigné, il borne les documents à la portée
+de son rôle (``borner_portee``, comme le tableau de bord) ; ``None`` = toute
+la société (alertes, système).
 """
 from decimal import Decimal
+
+#: AANA55 — population du CA facturé / encaissé / en attente : brouillons et
+#: annulées exclues (une seule liste, lue par le tableau de bord).
+STATUTS_CA = ('emise', 'en_retard', 'payee')
 
 #: Filtres admis → lookup ORM sur ``Facture``.
 _FILTRES = {
@@ -29,7 +50,9 @@ _FILTRES = {
 }
 
 
-def _factures(company, period, filters):
+def _factures_qs(company, period, filters, user=None):
+    """Factures de la société filtrées (liste blanche), bornées à ``period``
+    sur ``date_emission`` ; ``user`` renseigné → portée de son rôle."""
     from apps.semantic.services import MetriqueNonResolvable
     from apps.ventes.models import Facture
 
@@ -41,12 +64,20 @@ def _factures(company, period, filters):
                 '(admis : %s).' % (cle, ', '.join(sorted(_FILTRES))))
         criteres[_FILTRES[cle]] = valeur
     qs = Facture.objects.filter(company=company, **criteres)
+    if user is not None:
+        from apps.reporting.services import borner_portee
+        qs = borner_portee(qs, user, 'factures')  # ALEC22
     debut, fin = _bornes(period)
     if debut is not None:
         qs = qs.filter(date_emission__gte=debut)
     if fin is not None:
         qs = qs.filter(date_emission__lte=fin)
+    return qs
+
+
+def _factures(company, period, filters, user=None):
     from apps.facturation.selectors import factures_avec_montant_du
+    qs = _factures_qs(company, period, filters, user)
     return list(factures_avec_montant_du(qs))  # lignes + avoirs (ASOC73)
 
 
@@ -66,6 +97,34 @@ def _part_ht(facture, montant_ttc):
         return Decimal('0')
     montant = min(Decimal(montant_ttc or 0), total_ttc)
     return montant * Decimal(facture.total_ht or 0) / total_ttc
+
+
+def avec_du(factures):
+    """APRF13 (C-APRF-025) — ``[(facture, montant_du)]``.
+
+    Un queryset passe par ``facturation.selectors.factures_avec_montant_du``
+    (APRF11 : les six relations lues par ``montant_du`` préchargées) et
+    ``montant_du`` n'est évalué qu'UNE fois par facture. Une liste déjà
+    calculée (paires) est rendue telle quelle.
+    """
+    if isinstance(factures, list):
+        return factures
+    from apps.facturation.selectors import factures_avec_montant_du
+    return [(f, f.montant_du) for f in factures_avec_montant_du(factures)]
+
+
+def ht_encaisse(facture):
+    """AANA55 — HT réellement encaissé : la part HT des paiements reçus
+    (``montant_paye``), jamais ``total_ht`` d'une facture « payée » (un avoir
+    qui solde une facture n'encaisse rien)."""
+    return _part_ht(facture, facture.montant_paye)
+
+
+def ca_encaisse_ht(factures):
+    """AANA20 / AANA55 — CA encaissé HT (queryset ou paires ``avec_du``) : LE
+    calcul du tableau de bord Reporting, lu aussi par l'assistant."""
+    return sum((ht_encaisse(f) for f, _du in avec_du(factures)),
+               Decimal('0'))
 
 
 def ttc_net(facture):
@@ -88,21 +147,62 @@ def _somme(factures, valeur):
 
 
 def ca_ht(company, user=None, *, period=None, filters=None):
-    """Somme des HT nets d'avoirs (ASOC73) de la population."""
-    return _somme(_factures(company, period, filters), ht_net)
+    """Somme des HT nets d'avoirs (ASOC73) de la population — bornée à la
+    portée du rôle de ``user`` quand il est fourni (comme signé et encaissé)."""
+    return _somme(_factures(company, period, filters, user), ht_net)
 
 
 def ca_ttc(company, user=None, *, period=None, filters=None):
-    """Somme des TTC nets d'avoirs (ASOC73) de la population."""
-    return _somme(_factures(company, period, filters), ttc_net)
+    """Somme des TTC nets d'avoirs (ASOC73) de la population (même portée)."""
+    return _somme(_factures(company, period, filters, user), ttc_net)
 
 
 def panier_moyen(company, user=None, *, period=None, filters=None):
     """CA TTC ÷ nombre de factures ; ``None`` sur une population vide."""
-    factures = _factures(company, period, filters)
+    factures = _factures(company, period, filters, user)
     if not factures:
         return None
     return _somme(factures, ttc_net) / len(factures)
+
+
+def ca_facture_ht_periode(company, debut, fin, *, user=None):
+    """FACTURÉ HT de ``[debut, fin]`` (date d'émission) : l'adaptateur ``ca_ht``
+    sur les statuts du CA, borné à la portée du rôle de ``user``."""
+    return _somme(_factures(company, (debut, fin),
+                            {'statut__in': list(STATUTS_CA)}, user), ht_net)
+
+
+def _sans_filtre(nom, filters):
+    from apps.semantic.services import MetriqueNonResolvable
+    if filters:
+        raise MetriqueNonResolvable(
+            'Le chiffre « %s » ne prend aucun filtre (reçu : %s).'
+            % (nom, ', '.join(sorted(filters))))
+
+
+def encaisse_ht(company, user=None, *, period=None, filters=None):
+    """ENCAISSÉ HT : part HT des paiements reçus sur les factures émises,
+    payées ou en retard émises dans ``period`` (date d'émission) — exactement
+    ``ca_encaisse_ht`` du tableau de bord Reporting."""
+    _sans_filtre('encaissé HT', filters)
+    return ca_encaisse_ht(_factures_qs(
+        company, period, {'statut__in': list(STATUTS_CA)}, user))
+
+
+def ca_signe_ht(company, user=None, *, period=None, filters=None):
+    """SIGNÉ HT : HT remisé de l'option acceptée des devis signés en vigueur
+    dont la signature (``date_acceptation``) tombe dans ``period`` — la
+    population et le montant du classement commercial."""
+    from apps.reporting.services import (
+        borner_portee, devis_signes_de_la_fenetre)
+    from apps.ventes.utils.options import option_totaux
+
+    _sans_filtre('signé HT', filters)
+    devis = devis_signes_de_la_fenetre({'company': company}, *_bornes(period))
+    if user is not None:
+        devis = borner_portee(devis, user, 'devis')
+    return sum((Decimal(str(option_totaux(d)['ht'])) for d in devis),
+               Decimal('0'))
 
 
 def taux_conversion(company, user=None, *, period=None, filters=None):
@@ -124,3 +224,5 @@ def register_metric_adapters():
     register_adapter('reporting.ca_ttc', ca_ttc)
     register_adapter('reporting.panier_moyen', panier_moyen)
     register_adapter('reporting.taux_gain', taux_conversion)
+    register_adapter('reporting.ca_signe_ht', ca_signe_ht)
+    register_adapter('reporting.encaisse_ht', encaisse_ht)

@@ -122,3 +122,23 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   -Parallel 1 -Modules …`), les modules de test neufs ; les tests sans base se jouent dans le conteneur par
   `manage.py shell` + `unittest`. Les registres de routes à tenir quand on ajoute une route à ventes : marqueur
   `# api-only`, `NB_ACTIONS`, golden du `DevisViewSet`, garde de portée.
+
+## Vague 2B (19/11/2026) — l'assistant dans chaque module : ce qui gouverne la suite
+- Construit : outils de calepinage, visites, chantiers, après-devis, stock, SAV, pilotage ; point du matin étendu ;
+  dix-sept cartes d'écran. Détail et essai : `docs/assistant-copilote.md` §14.
+- **Règles posées par les revues, à tenir pour tout outil futur** : un aperçu qui joue le chemin d'une écriture prend la
+  garde de cette écriture ; une confirmation qui touche un devis déjà envoyé NOMME ce devis et montre les deux totaux ;
+  une lecture par identifiant passe par la portée du rôle (jamais la société seule) ; un client qui s'est opposé ne
+  reçoit rien, quel que soit le module qui notifie.
+- **Leçons de l'essai avec une vraie clé** (à refaire à chaque vague, AVANT le merge) : (1) le manuel de l'assistant se
+  régénère DANS la PR qui ajoute des outils — sinon le modèle affirme qu'il ne peut pas ; (2) l'index des domaines doit
+  nommer les GESTES (« planifier, résoudre… »), pas seulement les objets, et dire de charger le domaine avant de
+  répondre ; (3) un refus doit dire le geste qui marche, pas seulement non ; (4) un test qui remplace le moteur par un
+  faux ne prouve pas le chemin réel (la taille d'un devis sans étude de consommation est refusée par le vrai moteur).
+- **Ouvert** : recalcul en place d'un devis composé sur demande (aujourd'hui : un nouveau devis est composé) ; vague 2C
+  (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; en production,
+  `ASSISTANT_MOTEUR=natif` et l'ouverture du copilote au-delà des administrateurs restent des gestes de Reda.
+- **Leçons de run** : les gardes de l'hôte se jouent d'un coup par `python scripts/ci_guards.py stage-names` (192
+  gardes ; sous Windows le test du script de deploy ne finit pas : l'arrêter) ; un fichier de test neuf exige une tâche
+  cochée qui le cite avec « Nouveau fichier car : » (groupe COPW de PLAN2) et un préfixe neuf se déclare dans
+  `docs/BUILD_ORDER.yml` ; le budget du bundle se relève au juste-dessus de la mesure du runner.

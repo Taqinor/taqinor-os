@@ -66,6 +66,12 @@ GARDEES_409 = {
     # CADV82 — garde de statut propre (seul un ENVOYÉ se prolonge) : 409
     # ``{detail, code: 'statut'}``, rien d'écrit.
     'prolonger_validite': [('post', {'date': '2027-01-10'})],
+    # VAD7 — « mets-lui N panneaux » : refus d'état 409 ``revision_possible``
+    # par le MÊME prédicat unique (``domain/modifiabilite.verdict(devis,
+    # TAILLE)``, via ``taille_assistant.refus_de_statut``) avant toute écriture.
+    'assistant_taille': [('post', {
+        'nb_panneaux': 9, 'ancien_total_ttc': '10800',
+        'nouveau_total_ttc': '10800'})],
 }
 
 #: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son

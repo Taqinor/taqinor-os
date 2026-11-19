@@ -278,6 +278,38 @@ class EnteteTests(unittest.TestCase):
         self.assertEqual(avec.splitlines()[-1], pc.FIN_ENTETE)
 
 
+#: TXT7 — domaines du chargeur SANS consignes propres, et pourquoi.
+DOMAINES_SANS_CONSIGNES = {
+    "crm": "ses règles sont le bloc fixe CONSIGNES_COMMERCIALES, servi à chaque tour",
+    "taches": "ses règles sont CONSIGNES_TACHES, servi avec le module",
+    "adsengine": "trois lectures de publicité, aucune règle propre au domaine",
+}
+
+#: TXT7 — extraits qui portent les règles de chaque domaine.
+REGLES_PAR_DOMAINE = {
+    "calepinage": ("étude technique interne, jamais la production du client", "« borne haute »",
+                   "sans P90 ni PR", "est une estimation", "(visite, tracé ou dicté)",
+                   "ni un chiffre de devis", "erp.ouvrir", "deux fois au plus",
+                   "calepinage.publier_apercu d'abord", "l'ancien et le nouveau total"),
+    "visites": ("demande qui fait la visite", "« moi » convient", "jamais un « créneau libre »",
+                "Un geste, une carte", "irréversible", "Jamais de dérogation"),
+    "installations": ("une seule carte", "la date, le technicien et l'intervention de pose",
+                      "sans passe-outre", "Le statut du chantier ne change jamais par toi",
+                      "jamais de dérogation", "rien ne part au fournisseur"),
+    "ventes": ("BROUILLON de facture", "demande sur quelle facture",
+               "jamais un montant réparti sur deux factures", "« paiement similaire »",
+               "ne le repropose jamais", "l'ancien et le nouveau total", "même sur un devis envoyé",
+               "ventes.devis.reviser, puis ventes.devis.taille sur la V2",
+               "ventes.devis.composer crée un devis séparé", "Jamais de relance ni de facture par e-mail"),
+    "sav": ("demande lequel", "dis-le avant de proposer", "une donnée", "Jamais de clôture sans facture",
+            "jamais visible du client"),
+    "stock": ("dis « disponible »", "jamais le stock brut", "Aucun prix ni valeur de stock",
+              "entrée ou sortie seulement", "jamais un ajustement"),
+    "reporting": ("les trois chiffres", "signé, facturé, encaissé", "Jamais un « CA » seul",
+                  "Aucun classement ni chiffre par personne"),
+}
+
+
 class ConsignesDomainesTests(unittest.TestCase):
     """Vague 2 (FND4) — consignes par domaine (remplies par la lane TXT) :
     120 mots par domaine, 900 au total, aucun prénom, aucun pourcentage,
@@ -302,8 +334,49 @@ class ConsignesDomainesTests(unittest.TestCase):
                 self.assertLessEqual(mots, MAJUSCULES_ADMISES, "est-ce un prénom ?")
                 for cle in re.findall(r"\b[a-z_]+\.[a-z_]+\.[a-z_]+\b|\b[a-z_]+\.[a-z_]+\b", texte):
                     if "." in cle and cle.split(".")[0] in self.chargeur.DOMAINES + ("erp",):
-                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU, cle)
+                        # Une clé listée aussi dans ce domaine (AUSSI_DANS) arrive
+                        # avec lui : crm.visite.planifier pour visites.
+                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU
+                                        or domaine in self.chargeur.AUSSI_DANS.get(cle, ()), cle)
         self.assertLessEqual(sum(len(t.split()) for t in textes.values()), 900)
+
+    def test_chaque_domaine_a_des_consignes_ou_une_raison(self):
+        """TXT7 — tout domaine du chargeur a ses consignes, ou figure dans
+        DOMAINES_SANS_CONSIGNES avec sa raison ; jamais les deux."""
+        avec = set(self.consignes.CONSIGNES)
+        self.assertFalse(avec & set(DOMAINES_SANS_CONSIGNES))
+        self.assertEqual(avec | set(DOMAINES_SANS_CONSIGNES), set(self.chargeur.DOMAINES))
+        self.assertTrue(all(raison.strip() for raison in DOMAINES_SANS_CONSIGNES.values()))
+
+    def test_cles_citees_du_vocabulaire_ferme(self):
+        """TXT7 — chaque clé citée est au vocabulaire des scénarios de la vague 2
+        (tests/eval/cases_vague2.py) ; chaque domaine cite au moins une de ses
+        clés."""
+        from tests.eval.cases_vague2 import CLES_VAGUE2
+        for domaine, texte in self.consignes.CONSIGNES.items():
+            with self.subTest(domaine=domaine):
+                cles = set(re.findall(r"\b[a-z_]+(?:\.[a-z_]+){1,2}\b", texte))
+                self.assertLessEqual(cles, set(CLES_VAGUE2))
+                self.assertTrue(any(c.startswith(domaine + ".") for c in cles))
+
+    def test_rien_de_repete_du_bloc_fixe(self):
+        """TXT7 — les règles générales sont dites UNE fois (CONSIGNES_COMMERCIALES) :
+        aucune suite de six mots du bloc fixe n'est reprise dans un domaine."""
+        def suites(texte):
+            mots = re.findall(r"[a-zà-ÿ0-9_.']+", texte.lower())
+            return {tuple(mots[i:i + 6]) for i in range(len(mots) - 5)}
+        fixe = suites(pc.CONSIGNES_COMMERCIALES)
+        for domaine, texte in self.consignes.CONSIGNES.items():
+            with self.subTest(domaine=domaine):
+                self.assertFalse(suites(texte) & fixe)
+
+    def test_regles_du_fondateur_presentes(self):
+        """TXT7 — les règles propres à chaque domaine (plan C.3 lane TXT et
+        décisions du 19/11) restent écrites."""
+        for domaine, extraits in REGLES_PAR_DOMAINE.items():
+            for extrait in extraits:
+                with self.subTest(domaine=domaine, extrait=extrait):
+                    self.assertIn(extrait, self.consignes.CONSIGNES[domaine])
 
     def test_bloc_borne_ou_rien(self):
         self.assertEqual(self.consignes.bloc_consignes("domaine_sans_texte"), [])

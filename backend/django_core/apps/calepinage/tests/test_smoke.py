@@ -86,7 +86,9 @@ class ManifestePlateformeTest(SimpleTestCase):
         for surface in ('import_specs', 'automation_state_fields',
                         'kpi_providers'):
             self.assertEqual(PLATFORM[surface], [], surface)
-        self.assertEqual(PLATFORM['agent_actions_module'], '')
+        # CALA4 — câblée : apps/calepinage/agent_actions.py (register_actions).
+        self.assertEqual(PLATFORM['agent_actions_module'],
+                         'apps.calepinage.agent_actions')
 
 
 class CablageUrlsTest(SimpleTestCase):

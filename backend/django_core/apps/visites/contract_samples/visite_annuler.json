@@ -1,0 +1,35 @@
+{
+  "endpoint": "POST /api/django/visites/visites/<int:pk>/annuler/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VIS7) — route NEUVE : annuler un rendez-vous de visite EN ATTENTE (action `visites.visite.annuler`, risque irreversible, CONFIRMÉE ; carte `fiche_visite`). Corps : `motif` SEUL (3 à 300 caractères, obligatoire). Garde `visites_modifier` (à ajouter à `PERMISSIONS_ECRITURE`). Seulement une visite au statut `brouillon`, avec une date prévue, sans départ ni arrivée — sinon 409 qui le dit. Effets (service existant) : statut annulée, date vidée, ligne de notes, assigné prévenu, rendez-vous d'agenda annulé ; une nouvelle visite devra être planifiée. Jamais DELETE. La réponse a EXACTEMENT la forme de `assistant_visite_resume.json` (la fiche relue après l'annulation) : la carte `fiche_visite` la rend sans autre forme. Aucun téléphone, aucune adresse, aucun montant.",
+  "corps_exemple": {"motif": "Le client a reporté : il rappelle après son retour de voyage."},
+  "exemple": {
+    "id": 94,
+    "lead": {"id": 1641, "nom": "Salma Berrada", "ville": "Bouskoura"},
+    "statut": "annulee",
+    "statut_libelle": "Annulée",
+    "gabarit": "toiture",
+    "date_prevue": null,
+    "date_realisee": null,
+    "commercial": {"id": 7, "nom": "Youssef Alami"},
+    "jalons": {"en_route_le": null, "arrivee_le": null, "validee_le": null},
+    "completude": {"complet": false, "nb_manquants": 9, "manquants": ["Photo : façade", "Photo : toiture", "Photo : tableau électrique", "Mesure : longueur de la zone utile", "Mesure : largeur de la zone utile", "Mesure : pente du toit", "Mesure : orientation", "Photo : compteur", "Mesure : type de couverture"]},
+    "qualification": null,
+    "retour_terrain": "",
+    "mesures_cles": "",
+    "photos": {"nb": 0, "a_refaire": []},
+    "modifiable": false,
+    "a_faire": "rien",
+    "lien": "/visites/94",
+    "liens": {"visite": "/visites/94", "calage": "/visites/94/calage", "revue": "/visites/revue"}
+  },
+  "exemple_409_pas_en_attente": {
+    "detail": "Seul un rendez-vous en attente (pas encore commencé) s'annule ici : cette visite est en cours. Ouvrez-la pour la terminer ou la marquer à refaire.",
+    "field": "statut",
+    "code": "visite_pas_en_attente"
+  },
+  "exemple_400_motif": {
+    "detail": "motif : obligatoire, de 3 à 300 caractères.",
+    "field": "motif",
+    "code": "motif_invalide"
+  }
+}

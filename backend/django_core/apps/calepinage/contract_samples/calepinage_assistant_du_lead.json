@@ -1,0 +1,64 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/du-lead/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA3) — « où en est le calepinage de ce lead ? » (action `calepinage.du_lead`, carte `fiche_calepinage`) : la route `GET calepinages/?lead=` est une liste paginée et non compacte, l'action n'existait pas. Paramètre obligatoire `lead` (400 absent ou illisible ; 404 lead hors de la portée CRM de l'appelant). Lecture `calepinage_voir`. `calepinage` = le calepinage OUVERT du lead dans la forme EXACTE de `calepinage_assistant_resume.json` (même service), ou null s'il n'y en a pas. `visite` vient de `visites.selectors.releve_pour_calepinage(lead)` : `visite_id`, `validee_le`, `motif_absence` SEULEMENT (jamais les mesures ni les photos). `trace_disponible` = le lead porte un contour exploitable (≥ 3 points). `a_faire` : même ensemble FERMÉ que le résumé (creer | reprendre_visite | dessiner | simuler | corriger_electrique | retenir | faire_approuver | publier | rien), `creer` seulement quand `calepinage` est null — la suite est alors `calepinage.preparer` (confirmé). `lien` : le calepinage s'il existe, sinon la fiche du lead. Aucun prix, aucune géométrie, aucune donnée personnelle du client.",
+  "exemple": {
+    "lead": 1489,
+    "calepinage": {
+      "calepinage": 12,
+      "reference": "CAL-2611-0012",
+      "lead": 1489,
+      "statut": "brouillon",
+      "archive": false,
+      "variante": null,
+      "conception": {
+        "modules": 12,
+        "kwc": 8.64,
+        "variantes": 3,
+        "retenue": 7,
+        "pans": [
+          {"pan": "PAN-A", "modules": 8, "kwc": 5.76, "azimut_deg": 180, "inclinaison_deg": 15, "ombrage_pct": 4.2},
+          {"pan": "PAN-B", "modules": 4, "kwc": 2.88, "azimut_deg": 90, "inclinaison_deg": 15, "ombrage_pct": null}
+        ],
+        "pans_autres": 0
+      },
+      "simulation": {"etat": "a_jour", "calcule_le": "2026-11-18T10:15:00+00:00", "motif": ""},
+      "production": {
+        "p50_kwh": 13000,
+        "p90_kwh": 11900,
+        "rendement_kwh_kwc": 1504.6,
+        "complete": true,
+        "mention": "",
+        "portee": "etude_technique_interne"
+      },
+      "pertes": [
+        {"poste": "temperature", "pct": 8.0, "source": "hypothese"},
+        {"poste": "shading", "pct": 3.4, "source": "mesure"},
+        {"poste": "soiling", "pct": 3.0, "source": "hypothese"}
+      ],
+      "electrique": {"verdict": "conforme", "bloquants": []},
+      "devis": {"id": 45, "reference": "DEV-202611-0045", "statut": "envoye", "a_jour": false, "ecart_pct": -1.9},
+      "approbation": {"exigee": false, "etat": ""},
+      "visite": {"validee_le": "2026-11-17T16:40:00+01:00", "reprise": true, "a_jour": true},
+      "avertissements": [],
+      "a_faire": "publier",
+      "lien": "/calepinage/12"
+    },
+    "visite": {"visite_id": 88, "validee_le": "2026-11-17T16:40:00+01:00", "motif_absence": null},
+    "trace_disponible": false,
+    "a_faire": "publier",
+    "lien": "/calepinage/12"
+  },
+  "exemple_sans_calepinage": {
+    "lead": 1637,
+    "calepinage": null,
+    "visite": {"visite_id": 91, "validee_le": "2026-11-18T12:05:00+01:00", "motif_absence": null},
+    "trace_disponible": false,
+    "a_faire": "creer",
+    "lien": "/crm/leads/1637"
+  },
+  "exemple_400_lead": {
+    "detail": "Paramètre `lead` obligatoire : l'identifiant entier du lead.",
+    "field": "lead",
+    "code": "lead_invalide"
+  }
+}

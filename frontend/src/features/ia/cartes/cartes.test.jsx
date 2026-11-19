@@ -155,6 +155,44 @@ describe('cartes — tout échantillon du contrat rend sans erreur', () => {
     expect(screen.getByText('Votre matin')).toBeInTheDocument()
   })
 
+  it('matin vague 2 : les cinq blocs, chacun avec son compte, ses rangées et « Tout voir »', async () => {
+    monter([resultat('matin', touche('assistant_digest_matin'))])
+    for (const titre of [
+      /Visites de l’équipe \(4\)/, /Calepinages à traiter \(3\)/, /Visites validées sans calepinage \(1\)/,
+      /Chantiers bloqués \(2\)/, /Poses de la semaine \(1\)/, /Factures impayées \(2\)/, /Tickets ouverts \(2\)/,
+    ]) {
+      expect(screen.getByText(titre)).toBeInTheDocument()
+    }
+    expect(screen.getByText('CAL-2611-0014')).toBeInTheDocument()
+    expect(screen.getByText(/FAC-202610-0015 — Ferme Ait Lahcen SARL/)).toBeInTheDocument()
+    expect(screen.getByText(/SAV-2026-11-0031 — Nadia Chraibi/)).toBeInTheDocument()
+    const impayes = screen.getByText(/Factures impayées/).closest('div')
+    await userEvent.click(within(impayes).getByRole('button', { name: 'Tout voir' }))
+    expect(screen.getByTestId('route')).toHaveTextContent('/ventes/relances')
+  })
+
+  it('matin vague 2 : sans les cinq blocs, la carte reste celle d’avant', () => {
+    const {
+      visites_equipe: a, calepinages: b, chantiers: c, impayes: d, tickets: e, ...ancien
+    } = touche('assistant_digest_matin')
+    monter([resultat('matin', ancien)])
+    expect(screen.getByText('Votre matin')).toBeInTheDocument()
+    expect(screen.queryByText(/Tickets ouverts/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Factures impayées/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Calepinages à traiter/)).not.toBeInTheDocument()
+    expect([a, b, c, d, e].every(Boolean)).toBe(true)
+  })
+
+  it('matin vague 2 : un lien qui n’est pas un écran de la table ne donne aucun bouton', () => {
+    const matin = touche('assistant_digest_matin')
+    const tickets = { ...matin.tickets, lien: 'https://evil.example/x',
+      lignes: matin.tickets.lignes.map((l) => ({ ...l, lien: '//evil.example/y' })) }
+    monter([resultat('matin', { tickets })])
+    expect(screen.getByText(/Tickets ouverts/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tout voir' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ouvrir' })).not.toBeInTheDocument()
+  })
+
   it('recherche de leads : « Préparer » seulement quand une touche est ouverte', () => {
     monter([resultat('liste_leads', touche('assistant_leads_recherche'))])
     expect(screen.getByText('Karim Alami')).toBeInTheDocument()
@@ -179,6 +217,30 @@ describe('cartes — tout échantillon du contrat rend sans erreur', () => {
     monter([resultat('fiche_lead', touche('assistant_lead_resume', 'exemple_sans_touche'))])
     expect(screen.queryByRole('button', { name: 'Préparer' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Télécharger' })).not.toBeInTheDocument()
+  })
+
+  it('fiche lead : le dossier, une ligne par module, chacune avec son bouton', async () => {
+    monter([resultat('fiche_lead', touche('assistant_lead_resume'))])
+    expect(screen.getByText('Dossier')).toBeInTheDocument()
+    expect(screen.getByText(/Visite · validée/)).toBeInTheDocument()
+    expect(screen.getByText(/Calepinage CAL-2610-0009/)).toBeInTheDocument()
+    expect(screen.getByText(/Chantier CHT-202611-0012/)).toBeInTheDocument()
+    expect(screen.getByText(/Reste à facturer/)).toBeInTheDocument()
+    expect(screen.getByText('Tickets ouverts : 0')).toBeInTheDocument()
+    const ligne = screen.getByText(/Chantier CHT-202611-0012/).closest('li')
+    await userEvent.click(within(ligne).getByRole('button', { name: 'Ouvrir' }))
+    expect(screen.getByTestId('route')).toHaveTextContent('/chantiers')
+  })
+
+  it('fiche lead : dossier d’un début de dossier (rien d’existant) et sans dossier', () => {
+    const debut = touche('assistant_lead_resume', 'vague2').exemple_dossier_debut
+    const { unmount } = monter([resultat('fiche_lead', {
+      ...touche('assistant_lead_resume', 'exemple_sans_touche'), dossier: debut })])
+    expect(screen.getByText('Calepinage : aucun')).toBeInTheDocument()
+    expect(screen.getByText('Chantier : aucun')).toBeInTheDocument()
+    unmount()
+    monter([resultat('fiche_lead', touche('assistant_lead_resume', 'exemple_sans_touche'))])
+    expect(screen.queryByText('Dossier')).not.toBeInTheDocument()
   })
 
   it('suite de touche : la prochaine touche du lead', () => {
