@@ -25,7 +25,7 @@ from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
 from apps.calepinage.services.parametres import enregistrer_parametres
 from apps.roles.models import Role
 
-from .test_api_liste import BaseApiCalepinage
+from .test_api_liste import URL, BaseApiCalepinage
 
 User = get_user_model()
 
@@ -98,3 +98,108 @@ class LibellesTest(BaseAssistantCalepinage):
         sortie = libelles_objets(self.user, {'calepinage': self.cal.pk,
                                              'variante': self.variante.pk})
         self.assertEqual(set(sortie), {'calepinage', 'variante'})
+
+
+def _cles(objet):
+    """Les clés de tous les niveaux d'un objet JSON (listes traversées)."""
+    if isinstance(objet, dict):
+        return set(objet) | set().union(*(_cles(v) for v in objet.values()))
+    if isinstance(objet, list):
+        return set().union(*(_cles(v) for v in objet)) if objet else set()
+    return set()
+
+
+def url_assistant(suffixe, pk=None):
+    """``/api/django/calepinage/calepinages/[<pk>/]<suffixe>``."""
+    return f'{URL}{pk}/{suffixe}' if pk is not None else f'{URL}{suffixe}'
+
+
+class PremierBlocageTest(BaseAssistantCalepinage):
+    """CALA2 — LA règle ``a_faire``, écrite une fois (ensemble fermé)."""
+
+    def test_ordre_des_gestes(self):
+        from apps.calepinage.services.assistant import A_FAIRE, premier_blocage
+
+        cas = (
+            ((), 'rien'),
+            (('devis_desynchronise',), 'publier'),
+            (('bloquant_electrique', 'devis_absent', 'approbation_attendue'),
+             'corriger_electrique'),
+            (('visite_non_reprise', 'sans_pose'), 'reprendre_visite'),
+            (('sans_pose', 'simulation_jamais'), 'dessiner'),
+            (('simulation_perimee', 'devis_absent'), 'simuler'),
+            (('approbation_perimee', 'devis_absent'), 'faire_approuver'),
+        )
+        for signaux, attendu in cas:
+            with self.subTest(signaux=signaux):
+                self.assertEqual(premier_blocage(signaux), attendu)
+                self.assertIn(attendu, A_FAIRE)
+        self.assertEqual(premier_blocage(('devis_absent',), a_retenir=True),
+                         'retenir')
+        self.assertEqual(premier_blocage(('sans_pose',), archive=True), 'rien')
+
+    def test_lien_par_la_table_des_ecrans(self):
+        from apps.calepinage.services.assistant import lien_du_geste
+
+        self.assertEqual(lien_du_geste(14, 'corriger_electrique'),
+                         '/calepinage/14?onglet=verdict-electrique')
+        self.assertEqual(lien_du_geste(12, 'publier'), '/calepinage/12')
+
+
+class ResumeCompactTest(BaseAssistantCalepinage):
+    """CALA2 — ``GET calepinages/<pk>/resume/`` : la forme du contrat."""
+
+    def test_forme_exacte_du_contrat(self):
+        reponse = self.api.get(url_assistant('resume/', self.cal.pk))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = echantillon('calepinage_assistant_resume.json')
+        self.assertEqual(set(reponse.data), set(attendu))
+        for bloc in ('conception', 'simulation', 'production', 'approbation',
+                     'visite', 'electrique'):
+            self.assertEqual(set(reponse.data[bloc]), set(attendu[bloc]), bloc)
+        self.assertEqual(reponse.data['production']['portee'],
+                         'etude_technique_interne')
+        self.assertEqual(reponse.data['simulation']['etat'], 'jamais')
+        self.assertIsNone(reponse.data['production']['p90_kwh'])
+        self.assertEqual(reponse.data['a_faire'], 'dessiner')
+        self.assertLessEqual(len(json.dumps(reponse.data, ensure_ascii=False)), 1500)
+
+    def test_aucune_cle_interdite(self):
+        reponse = self.api.get(url_assistant('resume/', self.cal.pk))
+        interdites = {'prix', 'prix_achat', 'marge', 'roof_layout', 'maptilerKey',
+                      'telephone', 'nom_client', 'cascade', 'serie'}
+        self.assertEqual(_cles(reponse.data) & interdites, set())
+
+    def test_le_contrat_tient_en_1500_caracteres(self):
+        for cle in ('exemple', 'exemple_borne_haute'):
+            texte = json.dumps(echantillon('calepinage_assistant_resume.json', cle),
+                               ensure_ascii=False, separators=(',', ':'))
+            self.assertLessEqual(len(texte), 1500, cle)
+
+    def test_borne_haute_masque_le_p90(self):
+        from apps.calepinage.services.assistant import _bloc_production
+
+        resultat = {'simule': True, 'simulation_perimee': False, 'pertes': [],
+                    'production': {'total': {
+                        'p50_kwh': 11200, 'p90_kwh': 10100, 'complete': False,
+                        'mention': 'borne haute — 2 pertes non renseignées'}}}
+        _simulation, production, _pertes, signaux = _bloc_production(resultat)
+        self.assertIsNone(production['p90_kwh'])
+        self.assertEqual(production['p50_kwh'], 11200)
+        self.assertEqual(signaux, [])
+        resultat['production']['total'].update(complete=True, mention='')
+        self.assertEqual(_bloc_production(resultat)[1]['p90_kwh'], 10100)
+
+    def test_autre_societe_et_vue_restreinte_404(self):
+        url = url_assistant('resume/', self.cal.pk)
+        self.assertEqual(self.api_autre.get(url).status_code, 404)
+        self.restreindre()
+        self.assertEqual(self.api_u.get(url).status_code, 404)
+
+    def test_variante_validee(self):
+        url = url_assistant('resume/', self.cal.pk)
+        self.assertEqual(self.api.get(url, {'variante': 'x'}).status_code, 400)
+        self.assertEqual(self.api.get(url, {'variante': '999999'}).status_code, 404)
+        reponse = self.api.get(url, {'variante': str(self.variante.pk)})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'variante_sans_conception')

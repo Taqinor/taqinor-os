@@ -139,6 +139,9 @@ from . import consommation as _consommation_action  # noqa: F401 — import d'en
 # et ÉCRIT l'underlay par section). Fichier À PART de ``import_plan`` : la
 # porte ``importer-plan`` reste une LECTURE (CALX39).
 from . import fond_plan as _fond_plan_action  # noqa: F401 — import d'enregistrement (D-ENF22)
+# CALA2 — même patron : rattache les routes MINCES de l'assistant (résumé,
+# du-lead, a-traiter, contenance, preparer, publier-devis), ``views/assistant.py``.
+from . import assistant as _assistant_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -177,6 +180,7 @@ MODULES_RATTACHES = (
     'suggestion_pente',  # ACAL65
     'consommation',  # ACAL310
     'fond_plan',  # ACAL72
+    'assistant',  # CALA2
 )
 
 __all__ = ['MODULES_RATTACHES']
