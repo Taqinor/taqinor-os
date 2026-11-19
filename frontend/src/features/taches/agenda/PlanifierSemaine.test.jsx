@@ -69,8 +69,8 @@ describe('TCH106 — PlanifierSemaine', () => {
   it('Raccord F2 — « {n} tâches · {h} pour {cap} » seulement si la capacité du jour est servie', () => {
     monter({ capacite: 420 })
     const liste = screen.getByRole('list', { name: 'Jours de la semaine' })
-    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 7 h' })).toBeInTheDocument()
-    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 7 h' }).querySelector('.ag-charge')).not.toBeNull()
+    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 6 h' })).toBeInTheDocument()
+    expect(within(liste).getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 6 h' }).querySelector('.ag-charge')).not.toBeNull()
   })
 
   it('Raccord F2 — chaque jour porte ses cartes (colonnes du bureau), décor muet : le nom du jour reste celui du bouton', () => {

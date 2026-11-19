@@ -131,6 +131,23 @@ class AgendaTests(TestCase):
     def test_rendez_vous_externes_vides_sans_agenda(self):
         self.assertTrue(all(j['externes'] == [] for j in self.periode()['jours']))
 
+    def test_rendez_vous_minutes_par_jour(self):
+        """R2-100 — chaque jour sert `rendez_vous_minutes` (durée des rendez-vous horodatés, invariant 35) : le
+        front retranche cette durée de la capacité, il ne la devine pas. La journée entière vaut 0."""
+        from unittest import mock
+
+        from apps.taches.moteur.ics import RendezVousPur
+        from apps.taches.selectors import journee as sel
+        jour_t = datetime.datetime.combine(self.T, datetime.time(0, 0))
+        rdv = RendezVousPur('2-x', 2, 'Réunion banque', jour_t.replace(hour=11), jour_t.replace(hour=12), False)
+        entiere = RendezVousPur('2-y', 2, 'Congé', jour_t + datetime.timedelta(days=2),
+                                jour_t + datetime.timedelta(days=3), True)
+        with mock.patch.object(sel, 'rendez_vous_pour', return_value=((rdv, entiere), {2: 'Microsoft 365'})):
+            rendu = self.periode()
+        self.assertEqual(self.le_jour(rendu, self.T)['rendez_vous_minutes'], 60)
+        self.assertEqual(self.le_jour(rendu, self.jour(2))['rendez_vous_minutes'], 0)
+        self.assertEqual(self.le_jour(rendu, self.jour(1))['rendez_vous_minutes'], 0)
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""

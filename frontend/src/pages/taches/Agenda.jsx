@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CalendarCheck, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
 
 import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
@@ -351,6 +351,16 @@ function LignesDuJour({ lignes, max }) {
   const reste = lignes.length - montrees.length
   return montrees.map((t, rang) => {
     const plus = reste > 0 && rang === montrees.length - 1 ? <span className="plus">{`+${reste}`}</span> : null
+    if (t.externe) { // R2-100 — un rendez-vous de l'agenda externe : heure + titre, lecture seule
+      return (
+        <span key={`ext:${t.cle}`} className="ag-sj-l ext">
+          <span className="h">{t.heure}</span>
+          <CalendarClock className="i i-16" aria-hidden="true" />
+          <span className="t">{t.titre}</span>
+          {plus}
+        </span>
+      )
+    }
     if (t.erp) {
       return (
         <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
@@ -372,6 +382,24 @@ function LignesDuJour({ lignes, max }) {
   })
 }
 
+/** R2-100 — les lignes d'un jour à venir : l'ERP (Toute la journée), les rendez-vous de l'agenda externe (journée
+ *  entière d'abord), puis blocs et rendez-vous à l'heure, puis les tâches sans heure. */
+function lignesSemaine(j) {
+  const externes = j.externes ?? []
+  const heureDe = (iso) => String(iso ?? '').slice(11, 16)
+  const aLHeure = [
+    ...(j.blocs ?? []).map((t) => ({ ...t, heure: t.heure_debut ? t.heure_debut.slice(0, 5) : '' })),
+    ...externes.filter((e) => !e.journee_entiere)
+      .map((e) => ({ externe: true, cle: e.cle, titre: e.titre, heure: heureDe(e.debut) })),
+  ].sort((a, b) => (a.heure < b.heure ? -1 : a.heure > b.heure ? 1 : 0))
+  return [
+    ...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })),
+    ...externes.filter((e) => e.journee_entiere).map((e) => ({ externe: true, cle: e.cle, titre: e.titre, heure: '' })),
+    ...aLHeure,
+    ...(j.sans_heure ?? []),
+  ]
+}
+
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
@@ -391,7 +419,7 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
               {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
               {j.jour < aujourdhui
                 ? <LignesDuJour lignes={taches.filter((t) => t.statut === 'fait')} max={1} />
-                : <LignesDuJour lignes={[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches]} max={3} />}
+                : <LignesDuJour lignes={lignesSemaine(j)} max={3} />}
             </span>
           </button>
         )

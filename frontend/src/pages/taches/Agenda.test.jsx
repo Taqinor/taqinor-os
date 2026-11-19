@@ -145,7 +145,7 @@ describe('TCH104 — vues et navigation', () => {
     const { container } = monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
     // mar. 17 du contrat : Timbres (15 min) + Devis Settat (60 min) ; capacité servie `capacite.minutes` = 240
-    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
   it('F2 acceptation — Semaine sur iPhone : un jour passé dit « {n} faites » (maquette agenda-semaine.html, `ag-sj passe`)', async () => {
@@ -200,7 +200,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(lignes[0].querySelector('.h')).toHaveTextContent('')
     expect(lignes[0].querySelector('svg')).not.toBeNull()
     expect(lignes[1].querySelector('.t')).toHaveTextContent('Devis Settat')
-    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
   it('Passe visuelle n° 59 — Semaine sur iPhone : un jour passé tient une ligne (ses faites), un jour chargé trois, le reste en « +N »', async () => {
@@ -220,12 +220,34 @@ describe('TCH104 — vues et navigation', () => {
     expect(lundi.querySelectorAll('.ag-sj-l')).toHaveLength(1)
     expect(lundi.querySelector('.ag-sj-l .t')).toHaveTextContent('Faite A')
     expect(lundi.querySelector('.ag-sj-l .plus')).toHaveTextContent('+2')
-    // mar. 17 : visite + Devis Settat + Timbres + 2 = 5 lignes → 3 montrées, « +2 » sur la dernière
+    // mar. 17 : visite + Devis Settat + Réunion banque (R2-100) + Timbres + 2 = 6 lignes → 3 montrées, « +3 » sur la dernière
     const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
     const lignes = mardi.querySelectorAll('.ag-sj-l')
     expect(lignes).toHaveLength(3)
-    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+2')
+    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+3')
     expect(lignes[0].querySelector('.plus')).toBeNull()
+  })
+
+  it('R2-100 — Semaine sur iPhone : le rendez-vous de l\'agenda externe est dans son jour (heure + titre), et son temps est retranché', async () => {
+    const d = agenda()
+    d.jours.push({
+      ...d.jours[0], jour: '2026-11-18', toute_la_journee: [], sans_heure: [], blocs: [], echeances: [],
+      externes: [{ cle: '2-b', agenda_id: 2, agenda: 'Microsoft 365', titre: 'Rendez-vous banque',
+        debut: '2026-11-18T14:30:00+01:00', fin: '2026-11-18T16:00:00+01:00', journee_entiere: false }],
+      rendez_vous_minutes: 90,
+    })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    const mercredi = [...container.querySelectorAll('.ag-sem .ag-sj')].find((b) => b.textContent.startsWith('mer.18'))
+    const rdv = mercredi.querySelector('.ag-sj-l.ext')
+    expect(rdv.querySelector('.h')).toHaveTextContent('14:30')
+    expect(rdv.querySelector('.t')).toHaveTextContent('Rendez-vous banque')
+    // 240 min de capacité − 90 min de rendez-vous servis = 2 h 30 de temps libre
+    expect(mercredi.querySelector('.ag-sj-tete')).toHaveTextContent('0 tâche · 0 min pour 2 h 30')
+    // et le rendez-vous de mardi (11:00) est dans sa ligne, avant les tâches sans heure
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    expect(mardi.querySelector('.ag-sj-l.ext .t')).toHaveTextContent('Réunion banque')
   })
 
   const semaineAvecRepos = () => {
@@ -291,7 +313,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-nav b')).toHaveTextContent(/^Novembre 2026$/)
     const tete = container.querySelector('.ag-jour-tete')
     expect(tete.querySelector('b')).toHaveTextContent('Mardi 17 novembre')
-    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {

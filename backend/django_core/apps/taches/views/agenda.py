@@ -161,10 +161,14 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     jours = []
     for n in range((au - du).days + 1):
         jour = du + datetime.timedelta(days=n)
-        jours.append(formes_journee.jour_d_agenda(
+        externes = [r for r in rendez_vous if sel.touche_le_jour(r, jour)]
+        entree = formes_journee.jour_d_agenda(
             rendu, jour, ouvre=jour in travailles, ferie=jour.weekday() < 5 and jour not in ouvres,
-            cles_jour=cles, toute_la_journee=bande if jour == J else (),
-            externes=[r for r in rendez_vous if sel.touche_le_jour(r, jour)]))
+            cles_jour=cles, toute_la_journee=bande if jour == J else (), externes=externes)
+        # R2-100 — le temps pris par les rendez-vous (unis, bornés aux heures de travail : invariant 35) : le
+        # front retranche cette durée de la capacité du jour, il ne la devine pas.
+        entree['rendez_vous_minutes'] = sel.minutes_de_rendez_vous(user, jour, externes)
+        jours.append(entree)
     # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
     volet = vue in (VUE_JOUR, VUE_SEMAINE)
     minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)

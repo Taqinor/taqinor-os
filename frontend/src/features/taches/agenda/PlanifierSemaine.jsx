@@ -44,11 +44,14 @@ export function resume(jour, aujourdhui, capaciteServie = null) {
   const minutes = ouvertes.reduce((n, t) => n + (t.estimation_minutes || 0), 0)
   // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) et la barre de charge SEULEMENT si `agenda/` sert
   // la capacité (`capacite: {minutes, source}`) ; sinon elles sont omises, jamais devinées.
-  const capacite = Number.isFinite(capaciteServie) && capaciteServie > 0 ? capaciteServie : null
-  if (capacite) {
+  const base = Number.isFinite(capaciteServie) && capaciteServie > 0 ? capaciteServie : null
+  if (base) {
+    // R2-100 — le temps libre du jour = la capacité moins ses rendez-vous (servi : `rendez_vous_minutes`, invariant 35)
+    const pris = Number.isFinite(jour.rendez_vous_minutes) && jour.rendez_vous_minutes > 0 ? jour.rendez_vous_minutes : 0
+    const capacite = Math.max(0, base - pris)
     return {
-      texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite)}`,
-      charge: { minutes, capacite },
+      texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite) || '0 min'}`,
+      charge: capacite > 0 ? { minutes, capacite } : null,
     }
   }
   return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
