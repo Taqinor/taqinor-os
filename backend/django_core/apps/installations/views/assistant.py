@@ -8,7 +8,10 @@ mêmes gardes : chaque action est rangée dans la liste qui convient de
   (``contract_samples/assistant_chantier_etat.json``) ;
 * ``GET chantiers/assistant/`` — la liste compacte
   (``contract_samples/assistant_chantiers.json``) ; un paramètre hors liste ou
-  hors borne → 400 ``{detail, field, code}``.
+  hors borne → 400 ``{detail, field, code}`` ;
+* ``POST chantiers/{id}/planifier-pose/`` — date + technicien + intervention
+  de pose en un geste (``contract_samples/chantier_planifier_pose.json``),
+  service :mod:`apps.installations.planification_pose` ; rend la fiche relue.
 
 Les dictionnaires renvoyés sont construits par
 :mod:`apps.installations.selectors_assistant` (littéraux, clés de
@@ -17,11 +20,15 @@ l'échantillon). Aucun prix, aucun coût, aucune position de personne.
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
+from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from .. import selectors_assistant
+from core.champs_stricts import BooleenStrict, DateStricte, EntierStrict
+from core.conflit_etat import ConflitEtat
+
+from .. import planification_pose, selectors_assistant
 from ..models import Installation
 from . import _openapi as oa
 
@@ -81,6 +88,31 @@ def _lire_liste(params):
             'limite': limite or selectors_assistant.LIMITE_DEFAUT}
 
 
+class PlanifierPoseRequete(serializers.Serializer):
+    """CHTA5 — corps de ``planifier-pose`` : RIEN d'autre (jamais un motif de
+    passe-outre d'acompte, de réouverture ni de dérogation)."""
+    date_pose_prevue = DateStricte()
+    date_pose_fin_prevue = DateStricte(required=False, allow_null=True)
+    technicien = EntierStrict(min_value=1, max_value=oa.ID_MAX, required=False,
+                              allow_null=True)
+    creer_intervention = BooleenStrict(required=False, default=True)
+
+
+CHAMPS_PLANIFIER = ('date_pose_prevue', 'date_pose_fin_prevue', 'technicien',
+                    'creer_intervention')
+
+
+def _corps_planifier(request):
+    """Corps validé ; un champ hors liste → 400 qui le nomme (un motif de
+    passe-outre envoyé ici n'est jamais lu en silence)."""
+    donnees = request.data if hasattr(request.data, 'keys') else {}
+    inconnus = sorted(set(donnees) - set(CHAMPS_PLANIFIER))
+    if inconnus:
+        raise _refus(inconnus[0], 'champ_refuse', f'{inconnus[0]} : champ non accepté '
+                     f'(seulement {", ".join(CHAMPS_PLANIFIER)}).')
+    return oa.corps_valide(PlanifierPoseRequete, request)
+
+
 class ChantierAssistantMixin:
     """Actions de l'assistant d'``InstallationViewSet`` (voir le module)."""
 
@@ -112,3 +144,26 @@ class ChantierAssistantMixin:
         base = self.get_queryset().prefetch_related(None)
         return Response(selectors_assistant.liste_chantiers(
             base, request.user.company, aujourdhui=timezone.localdate(), **lus))
+
+    # headless: écrit par l'action d'assistant `installations.chantier.planifier`.
+    @oa.extend_schema(request=PlanifierPoseRequete,
+                      responses={200: oa.OBJ, 400: oa.OBJ, 404: oa.OBJ, 409: oa.OBJ})
+    @action(detail=True, methods=['post'], url_path='planifier-pose')
+    def planifier_pose(self, request, pk=None):
+        """CHTA5 — pose la date et le technicien du chantier ET l'intervention
+        de pose ; le statut ne change pas ; refus nommés (409 / 400)."""
+        corps = _corps_planifier(request)
+        inst = self._chantier_assistant()
+        try:
+            inst = planification_pose.planifier_pose(
+                inst, request.user, date_pose=corps['date_pose_prevue'],
+                date_fin=corps.get('date_pose_fin_prevue'),
+                technicien_id=corps.get('technicien'),
+                creer_intervention=corps['creer_intervention'],
+                aujourdhui=timezone.localdate())
+        except planification_pose.PoseRefusee as refus:
+            motif = {'detail': refus.detail, 'field': refus.champ, 'code': refus.code}
+            raise (ConflitEtat(motif) if refus.statut_http == 409
+                   else ValidationError(motif)) from refus
+        return Response(selectors_assistant.etat_chantier(
+            inst, aujourdhui=timezone.localdate()))

@@ -185,6 +185,35 @@ class ToggleOnSansAcompteTests(TestCase):
         r = self.api.get(f'{BASE}/chantiers/assistant/', {'vue': 'bloques'})
         self.assertEqual(r.data['total'], 0)
 
+    def test_planifier_pose_assistant_sans_passe_outre(self):
+        """Copilote vague 2 (CHTA5) — la garde d'acompte de l'écran s'applique
+        à ``planifier-pose`` (409 `date_prevue` nommé, rien d'écrit) et aucun
+        motif de passe-outre n'y entre ; acompte encaissé : la pose est créée
+        et le statut du chantier ne bouge pas."""
+        import datetime
+
+        from apps.installations.models import Intervention
+        url = f'{BASE}/chantiers/{self.inst.id}/planifier-pose/'
+        jour = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+        r = self.api.post(url, {'date_pose_prevue': jour}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual((r.data['field'], r.data['code']),
+                         ('date_prevue', 'acompte_non_encaisse'))
+        self.inst.refresh_from_db()
+        self.assertIsNone(self.inst.date_pose_prevue)
+        self.assertFalse(Intervention.objects.filter(installation=self.inst).exists())
+        r = self.api.post(url, {'date_pose_prevue': jour,
+                                'motif_override_acompte': 'Client VIP'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        make_facture_acompte(self.company, self.devis, self.client_)
+        r = self.api.post(url, {'date_pose_prevue': jour}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(Intervention.objects.filter(
+            installation=self.inst, type_intervention=Intervention.Type.POSE).exists())
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.statut, Installation.Statut.MATERIEL_COMMANDE)
+        self.assertEqual(r.data['acompte'], {'exige': True, 'encaisse': True})
+
     def test_patch_dater_pose_refusee_sans_acompte(self):
         """ACSV12 (C-ACSV-133) — dater par PATCH une pose sans acompte
         encaissé : 409 `date_prevue`, date nulle ; avec motif : 200 + note ;

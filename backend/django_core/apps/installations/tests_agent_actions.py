@@ -12,6 +12,7 @@ from apps.agent.registry import all_actions
 from apps.installations.agent_actions import (
     ETAT_CHANTIER,
     LISTE_CHANTIERS,
+    PLANIFIER_POSE,
     PLANIFIER_VISITE_MAINTENANCE,
     SUGGERER_CRENEAU,
     BROUILLON_COMMANDE_CHANTIER,
@@ -158,6 +159,32 @@ class InstallationsAgentActionsTest(TestCase):
         _codes, _admin, modules = _gardes_de_la_route(a)
         self.assertIn('installations', modules)
         self.assertEqual(a.required_permission, 'installation_voir')
+
+    def test_planifier_pose_metadata(self):
+        """CHTA5 — écriture À CONFIRMER, objets nommés (chantier, technicien),
+        le LABEL seul dit les deux effets ; aucun motif de passe-outre dans les
+        entrées ; le code est celui que la route exige."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        a = self._by_key('installations.chantier.planifier')
+        self.assertEqual(a, PLANIFIER_POSE)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte, a.lecture),
+                         ('POST', 'outward', 'copilote', 'fiche_chantier', False))
+        self.assertEqual(a.endpoint,
+                         '/api/django/installations/chantiers/{id}/planifier-pose/')
+        self.assertEqual(a.objets, {'id': 'chantier', 'technicien': 'utilisateur'})
+        self.assertEqual(a.inputs['required'], ['id', 'date_pose_prevue'])
+        self.assertEqual(set(a.inputs['properties']), {
+            'id', 'date_pose_prevue', 'date_pose_fin_prevue', 'technicien',
+            'creer_intervention'})
+        self.assertIn('intervention', a.label)
+        self.assertIn('notifié', a.label)
+        self.assertLessEqual(len(a.label), 90)
+        self.assertLessEqual(len(a.description), 600)
+        self.assertIn('ne change pas', a.confirm_summary)
+        codes, _admin, _modules = _gardes_de_la_route(a)
+        self.assertIn(a.required_permission, codes)
+        self.assertLessEqual({'installation_gerer', 'intervention_gerer',
+                              'technicien_assign'}, codes)
 
     def test_company_never_in_inputs(self):
         for a in INSTALLATIONS_ACTIONS:

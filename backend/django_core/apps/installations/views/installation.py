@@ -265,6 +265,10 @@ class InstallationViewSet(ChantierAssistantMixin, oa.JsonOnlyMixin, CompanyScope
             # ACHT54 — crée un BCF : `achats_commander` en plus du module.
             return [IsResponsableOrAdmin(),
                     HasPermissionOrLegacy('achats_commander')()]
+        if self.action == 'planifier_pose':  # CHTA5 — date + technicien + intervention de pose.
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('installation_gerer')(),
+                    DroitDeLaGrille('intervention_gerer')(),
+                    DroitDeLaGrille('technicien_assign', champ='technicien')()]
         if self.action == 'creer_depuis_devis':
             return [(IsResponsableOrAdmin
                      | HasPermissionOrLegacy('ventes_creer'))()]

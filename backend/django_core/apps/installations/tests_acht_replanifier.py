@@ -11,6 +11,8 @@ Run :
         -Modules "apps.installations.tests_acht_replanifier"
 """
 import datetime
+import json
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -21,6 +23,8 @@ from authentication.models import Company
 
 from apps.installations import services
 from apps.installations.models import Installation, Intervention
+from apps.roles.models import Role
+from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
 
 User = get_user_model()
 BASE = '/api/django/installations/interventions'
@@ -150,3 +154,113 @@ class ReplanifierTests(TestCase):
             self.assertEqual(r.status_code, 400, r.data)
         self.iv.refresh_from_db()
         self.assertTrue(self.iv.rdv_confirme)
+
+
+CONTRAT_PLANIFIER = (Path(__file__).resolve().parent / 'contract_samples'
+                     / 'chantier_planifier_pose.json')
+
+
+class PlanifierPoseAssistantTests(TestCase):
+    """Copilote vague 2 (CHTA5) — ``POST chantiers/<pk>/planifier-pose/`` :
+    la pose OUVERTE est déplacée par le service unique ``replanifier``
+    (compteur, confirmation remise à zéro), sinon créée ; date et technicien du
+    chantier posés ; statut INCHANGÉ ; refus nommés sans rien écrire.
+    Même jeu de données que :class:`ReplanifierTests`."""
+
+    setUp = ReplanifierTests.setUp
+
+    def _url(self, chantier=None):
+        chantier = chantier or self.iv.installation
+        return f'/api/django/installations/chantiers/{chantier.id}/planifier-pose/'
+
+    def _jour(self, jours):
+        return datetime.date.today() + datetime.timedelta(days=jours)
+
+    def test_deplace_la_pose_ouverte_statut_inchange(self):
+        inst = self.iv.installation
+        statut_avant = inst.statut
+        jour = self._jour(4)
+        r = self.api.post(self._url(), {
+            'date_pose_prevue': jour.isoformat(),
+            'date_pose_fin_prevue': self._jour(5).isoformat()}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        exemple = json.loads(CONTRAT_PLANIFIER.read_text(encoding='utf-8'))['exemple']
+        self.assertEqual(set(r.data), set(exemple))
+        self.assertEqual(set(r.data['planning']), set(exemple['planning']))
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.date_prevue, jour)
+        self.assertEqual(self.iv.rdv_reschedule_count, 1)
+        self.assertFalse(self.iv.rdv_confirme)
+        self.assertEqual(Intervention.objects.filter(
+            installation=inst, type_intervention='pose').count(), 1)
+        inst.refresh_from_db()
+        self.assertEqual((inst.date_pose_prevue, inst.date_pose_fin_prevue),
+                         (jour, self._jour(5)))
+        self.assertEqual(inst.statut, statut_avant)
+        self.assertEqual(r.data['planning']['intervention_pose']['id'], self.iv.id)
+        self.assertEqual(r.data['liens']['intervention_pose'], f'/interventions?id={self.iv.id}')
+
+    def test_cree_la_pose_au_technicien_donne(self):
+        inst = self.iv.installation
+        self.iv.delete()
+        tech = User.objects.create_user(username='tech-chta5', password='x',
+                                        company=self.company, role_legacy='responsable')
+        jour = self._jour(6)
+        r = self.api.post(self._url(inst), {'date_pose_prevue': jour.isoformat(),
+                                            'technicien': tech.id}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        pose = Intervention.objects.get(installation=inst, type_intervention='pose')
+        self.assertEqual((pose.technicien_id, pose.date_prevue), (tech.id, jour))
+        inst.refresh_from_db()
+        self.assertEqual(inst.technicien_responsable_id, tech.id)
+        self.assertEqual(r.data['planning']['technicien']['id'], tech.id)
+        self.assertEqual(r.data['planning']['intervention_pose']['id'], pose.id)
+
+    def test_refus_nommes_sans_ecriture(self):
+        demain = self._jour(1).isoformat()
+        cas = [
+            ({'date_pose_prevue': self._jour(-1).isoformat()}, 409, 'date_pose_prevue', 'date_passee'),
+            ({'date_pose_prevue': demain, 'motif_override_acompte': 'VIP'}, 400,
+             'motif_override_acompte', 'champ_refuse'),
+            ({'date_pose_prevue': demain, 'technicien': 2147483000}, 400, 'technicien',
+             'technicien_inconnu'),
+            ({'date_pose_prevue': demain, 'date_pose_fin_prevue': self._jour(0).isoformat()},
+             400, 'date_pose_fin_prevue', 'fin_avant_debut'),
+        ]
+        for corps, statut, champ, code in cas:
+            r = self.api.post(self._url(), corps, format='json')
+            self.assertEqual(r.status_code, statut, (corps, r.data))
+            self.assertEqual((r.data['field'], r.data['code']), (champ, code))
+        Intervention.objects.filter(pk=self.iv.pk).update(statut='en_route')
+        r = self.api.post(self._url(), {'date_pose_prevue': demain}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'pose_commencee')
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.date_prevue, datetime.date(2026, 11, 2))
+        self.assertIsNone(Installation.objects.get(pk=self.iv.installation_id).date_pose_prevue)
+
+    def test_annule_409_et_autre_societe_404(self):
+        Installation.objects.filter(pk=self.iv.installation_id).update(annule=True)
+        r = self.api.post(self._url(), {'date_pose_prevue': self._jour(2).isoformat()},
+                          format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'chantier_annule')
+        autre, _ = Company.objects.get_or_create(slug='co-chta5-autre',
+                                                 defaults={'nom': 'Autre CHTA5'})
+        chantier_autre = Installation.objects.create(company=autre, reference='CH-CHTA5-AUTRE')
+        r = self.api.post(self._url(chantier_autre),
+                          {'date_pose_prevue': self._jour(2).isoformat()}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+
+    def test_affecter_un_technicien_exige_technicien_assign(self):
+        role = Role.objects.create(company=self.company, nom='Technicien CHTA5',
+                                   permissions=list(TECHNICIEN_PERMISSIONS))
+        technicien = User.objects.create_user(username='tech-sans-assign-chta5', password='x',
+                                              company=self.company, role=role)
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(technicien)}')
+        r = api.post(self._url(), {'date_pose_prevue': self._jour(2).isoformat(),
+                                   'technicien': self.user.id}, format='json')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.date_prevue, datetime.date(2026, 11, 2))

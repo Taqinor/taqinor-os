@@ -311,6 +311,65 @@ SUGGERER_CRENEAU = AgentAction(
 )
 
 
+#: CHTA5 — garde de ``planifier-pose`` (``InstallationViewSet.get_permissions``) :
+#: ``installation_gerer`` + ``intervention_gerer`` toujours, ``technicien_assign``
+#: quand le corps porte ``technicien``.
+_PERM_PLANIFIER = 'installation_gerer'
+
+
+# CHTA5 (B-18, D-W2-CHT-1) — UNE confirmation qui pose la date et le technicien
+# du chantier ET l'intervention de pose (sans elle, la pose n'est dans la
+# journée de personne). Jamais le statut, jamais un passe-outre d'acompte.
+PLANIFIER_POSE = AgentAction(
+    key='installations.chantier.planifier',
+    label='Pose : date et technicien du chantier + intervention dans sa journée, notifié',
+    description=(
+        "Sert à : planifier, après confirmation, la POSE d'un chantier en un "
+        "geste : date de pose (et de fin), technicien du chantier, ET "
+        "l'intervention de pose créée ou déplacée — c'est elle qui entre dans "
+        "la journée du technicien (notifié). Le statut ne change pas. Ne pas "
+        "utiliser pour : une visite de maintenance ni changer le statut. "
+        "Exemple : « pose du chantier 12 le 2026-11-24 avec le technicien 9 "
+        "» → id=12, date_pose_prevue, technicien=9. Résultat : la fiche du "
+        "chantier relue ; 409 nommé si annulé, clôturé, date passée, pose "
+        "commencée ou acompte exigé non encaissé (aucun passe-outre)."
+    ),
+    endpoint='/api/django/installations/chantiers/{id}/planifier-pose/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'title': 'Chantier (id)',
+                   'description': 'Chantier dont on planifie la pose.'},
+            'date_pose_prevue': {'type': 'string', 'format': 'date',
+                                 'title': 'Date de pose',
+                                 'description': "AAAA-MM-JJ, aujourd'hui ou plus tard."},
+            'date_pose_fin_prevue': {'type': 'string', 'format': 'date',
+                                     'title': 'Fin de pose prévue',
+                                     'description': 'Facultative, pas avant la date de pose.'},
+            'technicien': {'type': 'integer', 'title': 'Technicien (id)',
+                           'description': ('Qui pose (demande-le) ; absent : celui '
+                                           "du chantier. L'affecter exige le droit "
+                                           'technicien_assign.')},
+            'creer_intervention': {'type': 'boolean',
+                                   'title': 'Intervention de pose',
+                                   'description': ('Défaut vrai : crée ou déplace '
+                                                   "l'intervention de pose.")},
+        },
+        'required': ['id', 'date_pose_prevue'],
+    },
+    required_permission=_PERM_PLANIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Planifier la pose du chantier à cette date : date et technicien du "
+        "chantier, intervention de pose créée ou déplacée dans la journée du "
+        "technicien (notifié) ; le statut du chantier ne change pas."),
+    carte='fiche_chantier',
+    lot=LOT_COPILOTE,
+    objets={'id': 'chantier', 'technicien': 'utilisateur'},
+)
+
+
 # Catalogue déclaré par cette app (ordre stable).
 INSTALLATIONS_ACTIONS = (
     PLANIFIER_VISITE_MAINTENANCE,
@@ -318,6 +377,7 @@ INSTALLATIONS_ACTIONS = (
     ETAT_CHANTIER,
     LISTE_CHANTIERS,
     SUGGERER_CRENEAU,
+    PLANIFIER_POSE,
 )
 
 
