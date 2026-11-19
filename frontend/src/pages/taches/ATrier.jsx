@@ -320,7 +320,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
         onNouveau: (nom) => { setProjetPour(null); if (cible) nouveauProjet(cible, nom) },
       }}
       feuille={{
-        ouverte: Boolean(jourPour), onFermer: () => setJourPour(null), titre: 'Choisir un jour',
+        ouverte: Boolean(jourPour), onFermer: () => setJourPour(null), titre: 'Quand ?', // L4 (R3-067) : le titre de la feuille Quand
         children: <SelecteurQuand aujourdhui={aujourdhui} onChoisir={poserJour} />,
       }}
     >

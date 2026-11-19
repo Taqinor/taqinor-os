@@ -87,6 +87,11 @@
     overflow: hidden; animation: tch-reportee-part 450ms ease-in 1.4s forwards;
   }
 }
+/* R3-021 — reportée, mais son échéance d'aujourd'hui la garde dans la journée : elle ne part pas, sa pastille le dit */
+.tch .ligne-reste { display: contents; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch[data-ecran="aujourdhui"] .ligne-reste .ligne-cadre:has(> .ligne.estampillee) { animation: none; overflow: visible; }
+}
 @keyframes tch-reportee-part {
   from { opacity: 1; max-height: 160px; }
   to { opacity: 0; max-height: 0; visibility: hidden; }

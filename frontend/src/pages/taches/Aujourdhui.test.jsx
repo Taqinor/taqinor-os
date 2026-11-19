@@ -499,10 +499,10 @@ describe('TCH76 — gestes optimistes', () => {
     api.post.mockResolvedValue({ data: { ...ecrite, geste_id: 70, progression: { ...d.progression, faites: 2 } } })
     monter()
     await screen.findByText('Devis Settat')
-    expect(screen.getByRole('button', { name: /^1 sur \d+ faites/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^1 sur \d+[ .]/ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
-    expect(await screen.findByRole('button', { name: /^2 sur \d+ faites/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^2 sur \d+[ .]/ })).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
@@ -567,11 +567,11 @@ describe('TCH76 — gestes optimistes', () => {
       await attendre(50)
       expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
       expect(ligneTimbres(document).querySelector('.ligne.faite')).not.toBeNull() // barrée
-      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^2 sur 5[ .]/ })).toBeInTheDocument()
       expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
       await attendre(2100)
       expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
-      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^2 sur 5[ .]/ })).toBeInTheDocument()
     })
 
     it('Annuler AVANT la réponse : la ligne et « 1 sur 5 » reviennent tout de suite, puis le geste rendu est annulé', async () => {
@@ -582,12 +582,12 @@ describe('TCH76 — gestes optimistes', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
       await attendre(50)
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       expect(api.post).not.toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
       await attendre(2100)
       expect(api.post).toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
     })
 
     it('le serveur refuse : la case et le compteur reviennent, et le refus s\'affiche', async () => {
@@ -598,7 +598,7 @@ describe('TCH76 — gestes optimistes', () => {
       expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
       await attendre(2100)
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Tâche verrouillée.')
     })
 
@@ -611,7 +611,7 @@ describe('TCH76 — gestes optimistes', () => {
       await attendre(50)
       expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       await attendre(2100)
       const ecritures = api.post.mock.calls.map(([url]) => url).filter((url) => /\/42\/(terminer|rouvrir)\/$/.test(url))
       expect(ecritures).toEqual(['/taches/taches/42/terminer/', '/taches/taches/42/rouvrir/'])
@@ -653,11 +653,11 @@ describe('TCH76 — gestes optimistes', () => {
 
     it('cocher : la ligne passe cochée et le compteur +1 TOUT DE SUITE ; « Close dans l\'ERP · Annuler » ; rien ne part encore', async () => {
       await monterActivite()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
       await attendre(0)
       expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
-      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^2 sur 5[ .]/ })).toBeInTheDocument()
       const toast = screen.getByRole('group', { name: 'Geste effectué' })
       expect(toast).toHaveTextContent("Close dans l'ERP")
       expect(within(toast).getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
@@ -671,7 +671,7 @@ describe('TCH76 — gestes optimistes', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
       await attendre(0)
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       await attendre(20000)
       expect(appelsClose()).toHaveLength(0)
     })
@@ -686,7 +686,7 @@ describe('TCH76 — gestes optimistes', () => {
       await attendre(10000)
       expect(appelsClose()).toHaveLength(1)
       expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
-      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^2 sur 5[ .]/ })).toBeInTheDocument()
       expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
     })
 
@@ -707,7 +707,7 @@ describe('TCH76 — gestes optimistes', () => {
       fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
       await attendre(8100)
       expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
-      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^1 sur 5[ .]/ })).toBeInTheDocument()
       expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Pas close dans l'ERP : Action refusée.")
     })
 
@@ -849,24 +849,96 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 73, progression: null } })
     monter()
     await screen.findByText('Devis Settat')
-    expect(screen.getByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^1 sur 5 · essentiel 0\/2\./ })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Payer la CNSS »' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
-    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 1\./ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^1 sur 5 · essentiel 0\/1\./ })).toBeInTheDocument()
     // Annuler : elle revient dans la journée affichée
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
-    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^1 sur 5 · essentiel 0\/2\./ })).toBeInTheDocument()
   })
 
-  it('R2-035 — au toucher : « 1 faite sur 5 visées · 4 tâches gardées », sans « (accepté) »', async () => {
+  it('R3-020 — au toucher : « 1 faite sur 5 », le temps contre le disponible ; ni « visées » ni « gardées » ni « (accepté) »', async () => {
     servir(donnees())
     monter()
     await screen.findByText('Devis Settat')
     await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
     const detail = screen.getByRole('group', { name: 'Détail de la journée' })
-    expect(detail).toHaveTextContent('1 faite sur 5 visées · 4 tâches gardées')
-    expect(detail).not.toHaveTextContent('accepté')
-    expect(detail).not.toHaveTextContent('Objectif du jour')
+    expect(detail).toHaveTextContent('1 faite sur 5')
+    expect(detail).toHaveTextContent('Temps : 1 h 15 prévues pour 3 h disponibles · 1 sans durée')
+    for (const absent of ['visée', 'gardée', 'accepté', 'Objectif du jour', 'Temps libre']) expect(detail).not.toHaveTextContent(absent)
+  })
+
+  it('R3-020 — « essentiel f/p » est celui que le serveur SERT (jamais recompté sur les lignes) ; une journée qui déborde le dit', async () => {
+    const d = donnees()
+    // trois ★ affichées, mais le serveur compte 1/2 (une gardée par son échéance, une reportée sans échéance…) : c'est lui qui dit
+    d.essentiel = [...d.essentiel, { ...d.essentiel[0], id: 23, titre: 'Payer la CNSS', heure_debut: null }, { ...d.essentiel[0], id: 24, titre: 'Relire le bail', heure_debut: null }]
+    d.progression = { ...d.progression, essentiel_faites: 1, essentiel_prevues: 2, minutes_prevues: 270, sans_estimation: 0, disponible_minutes: 240 }
+    servir(d)
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    expect(container.querySelector('button.progression')).toHaveTextContent('1 sur 5 · essentiel 1/2')
+    await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
+    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Temps : 4 h 30 prévues pour 4 h disponibles · 30 min de trop')
+  })
+
+  it('R3-020 — cocher une ★ : « essentiel 1/1 » AU TOUCHER, puis la progression SERVIE par la réponse remplace tout', async () => {
+    let lacher
+    const porte = new Promise((r) => { lacher = r })
+    const servie = { ...donnees().progression, faites: 2, essentiel_faites: 1, essentiel_prevues: 1, minutes_prevues: 15 }
+    servir(donnees())
+    api.post.mockImplementation((url) => (url === '/taches/taches/20/terminer/'
+      ? porte.then(() => ({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 75, progression: servie } }))
+      : Promise.resolve({ data: {} })))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    expect(container.querySelector('button.progression')).toHaveTextContent('1 sur 5 · essentiel 0/1')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    expect(container.querySelector('button.progression')).toHaveTextContent('2 sur 5 · essentiel 1/1') // la réponse est retenue
+    await act(async () => { lacher() })
+    await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
+    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Temps : 15 min prévues pour 3 h disponibles')
+  })
+
+  it('R3-021 — reporter une tâche dont l\'échéance EST aujourd\'hui : la ligne reste et le dit ; « Repousser l\'échéance » envoie `echeance`', async () => {
+    const d = donnees()
+    d.essentiel = [{ ...d.essentiel[0], echeance: d.jour }]
+    servir(d)
+    const ecrite = exempleContrat('taches', 'tache_ecrite')
+    api.post.mockResolvedValue({ data: { ...ecrite, tache: { ...ecrite.tache, id: 20, lock_version: 5 }, geste_id: 76,
+      avertissements: [{ code: 'echeance_aujourdhui', message: "L'échéance reste aujourd'hui." }], progression: d.progression } })
+    // la réponse du PATCH sert la progression d'après : la ★ a quitté Essentiel
+    api.patch.mockResolvedValue({ data: { ...ecrite, tache: { ...ecrite.tache, id: 20, echeance: d.prochain_jour_ouvre, lock_version: 6 }, geste_id: 77,
+      progression: { ...d.progression, essentiel_faites: 0, essentiel_prevues: 0 } } })
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Devis Settat »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    const ligne = container.querySelector('[data-ligne="tache:20"]')
+    expect(ligne).not.toBeNull()
+    expect(ligne.closest('.ligne-reste')).not.toBeNull() // jamais le fondu de départ
+    expect(ligne).toHaveTextContent("→ jeu. 19 · échéance aujourd'hui")
+    expect(container.querySelector('button.progression')).toHaveTextContent('essentiel 0/1') // la ★ est affichée, donc comptée
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Prévue jeu. 19 — l'échéance reste aujourd'hui")
+    await userEvent.click(within(toast).getByRole('button', { name: "Repousser l'échéance" }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/taches/taches/20/', { echeance: d.prochain_jour_ouvre, lock_version: 5 }))
+    await waitFor(() => expect(container.querySelector('[data-ligne="tache:20"]')?.closest('.ligne-reste') ?? null).toBeNull())
+    expect(container.querySelector('button.progression')).not.toHaveTextContent('essentiel 0/1')
+  })
+
+  it('R3-021 — une échéance PASSÉE ne garde rien : la ligne part comme tout report (`===`, pas `<=`)', async () => {
+    const d = donnees()
+    d.essentiel = [{ ...d.essentiel[0], echeance: '2026-11-10' }]
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 78, progression: null } })
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Devis Settat »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(container.querySelector('[data-ligne="tache:20"]').closest('.ligne-reste')).toBeNull()
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).not.toHaveTextContent("l'échéance reste")
+    expect(container.querySelector('button.progression')).not.toHaveTextContent('essentiel')
   })
 
   it('R3-029 — premier jour (objectif par défaut) : « 1 faite », jamais « 1 sur 5 » ; le détail dit la valeur par défaut', async () => {
@@ -947,7 +1019,7 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     await userEvent.keyboard('d')
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
-    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Quand ?' })).toBeNull()
     await userEvent.click(within(toast).getByRole('button', { name: 'Ouvrir' }))
     await waitFor(() => expect(screen.getByTestId('chemin')).toHaveTextContent('/crm/leads?lead=1637'))
   })
@@ -1045,12 +1117,12 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     await screen.findByText('Timbres')
     focaliser(42)
     await userEvent.keyboard('d')
-    const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
+    const feuille = await screen.findByRole('dialog', { name: 'Quand ?' })
     // R2-022 — le sélecteur « Quand » du module ; la tuile « Reporter à jeu. 19 » a le focus : Entrée reporte
     expect(within(feuille).getByRole('radio', { name: 'Reporter à jeu. 19' })).toHaveFocus()
     await userEvent.keyboard('{Enter}')
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: expect.anything() })))
-    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Quand ?' })).toBeNull()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
   })
 
@@ -1061,12 +1133,12 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     await screen.findByText('Timbres')
     await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Choisir un jour' }))
-    const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
+    const feuille = await screen.findByRole('dialog', { name: 'Quand ?' })
     const tuiles = within(feuille).getAllByRole('radio').map((t) => t.querySelector('b').textContent)
-    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Choisir un jour', 'En réserve', 'Sans jour'])
+    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Calendrier…', 'En réserve', 'Sans jour'])
     await userEvent.click(within(feuille).getByRole('radio', { name: /^Demain/ }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-18' })))
-    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Quand ?' })).toBeNull()
     expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 

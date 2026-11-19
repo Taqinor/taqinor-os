@@ -195,7 +195,9 @@ describe('TCH86 — écran À trier', () => {
     await screen.findByText('Appeler Karim')
     await user.click(within(lignes()[0]).getByRole('button', { name: /Autres gestes pour/ }))
     await user.click(await screen.findByRole('menuitem', { name: 'Choisir un jour' }))
-    await user.click(await screen.findByRole('radio', { name: /Demain/ }))
+    // la feuille porte le titre de toute feuille « Quand » (R3-067, comme celle d'une ligne)
+    const feuille = await screen.findByRole('dialog', { name: 'Quand ?' })
+    await user.click(await within(feuille).findByRole('radio', { name: /Demain/ }))
     await waitFor(() => expect(api.traiterLot).toHaveBeenCalledWith({ ids: [41], action: 'planifier', valeurs: { jour_prevu: '2026-11-18' } }))
   })
 

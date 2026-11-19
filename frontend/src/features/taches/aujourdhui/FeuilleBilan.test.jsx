@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ReactReduxContext } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -56,7 +57,8 @@ describe('TCH80 — contenu du bilan', () => {
     const f = await feuille()
     expect(await within(f).findByText('4 sur 5')).toBeInTheDocument()
     expect(f).toHaveTextContent('essentiel 1 sur 2')
-    expect(f).toHaveTextContent('4 des 5 gardées')
+    // R3-020 — plus de second chiffre « x des y gardées » (le serveur sert `texte_gardees: ""`, et l'écran ne le rend plus)
+    expect(f).not.toHaveTextContent('gardées')
     expect(within(f).getByText('Dossier subvention')).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' })).toBeInTheDocument()
     const reste = f.querySelector('[data-ligne="tache:42"]')
@@ -246,5 +248,52 @@ describe('TCH80 — le bilan d\'hier', () => {
     const f = await feuille()
     expect(await within(f).findByText("Le bilan d'hier n'est plus modifiable après midi.")).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Valider' })).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+describe('R3-020 / R3-021 / L4 — le bilan ne redit pas « gardées », dit une échéance du jour, et ne perd jamais « Un mot »', () => {
+  const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
+  const monterConnecte = () => render(
+    <ReactReduxContext.Provider value={{ store }}>
+      <MemoryRouter initialEntries={['/taches/aujourdhui?ouvrir=bilan']}><Aujourdhui /></MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+
+  it('un ancien `texte_gardees` servi n\'est plus rendu', async () => {
+    const cloture = contrat('journee_cloture')
+    cloture.bilan.texte_gardees = '4 des 5 gardées'
+    servir({ cloture })
+    monter()
+    const f = await feuille()
+    await within(f).findByText('4 sur 5')
+    expect(f).not.toHaveTextContent('gardées')
+  })
+
+  it('un reste dont l\'échéance est ce jour-là le dit (« échéance aujourd\'hui »)', async () => {
+    const cloture = contrat('journee_cloture')
+    cloture.restes = cloture.restes.map((it) => (it.id === 42 ? { ...it, echeance: cloture.jour } : it))
+    servir({ cloture })
+    monter()
+    const f = await feuille()
+    const reste = await waitFor(() => { const r = f.querySelector('[data-ligne="tache:42"]'); expect(r).not.toBeNull(); return r })
+    expect(reste).toHaveTextContent("échéance aujourd'hui")
+  })
+
+  it('« Un mot » tapé, feuille fermée sans valider, rouverte : le mot est là ; Valider l\'envoie puis l\'oublie', async () => {
+    servir()
+    const premier = monterConnecte()
+    let f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: /Un mot sur ta journée/ }))
+    await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Bonne journée, le devis Settat est parti')
+    await userEvent.click(within(f).getByRole('button', { name: 'Passer' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Bilan du soir' })).toBeNull())
+    premier.unmount()
+    monterConnecte()
+    f = await feuille()
+    expect(await within(f).findByRole('textbox', { name: 'Un mot sur ta journée' })).toHaveValue('Bonne journée, le devis Settat est parti')
+    await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(cloturer()).toBeTruthy())
+    expect(cloturer()[1].reflexion).toBe('Bonne journée, le devis Settat est parti')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
   })
 })
