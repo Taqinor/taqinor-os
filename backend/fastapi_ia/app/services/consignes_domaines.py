@@ -16,8 +16,21 @@ ou du noyau.
 from __future__ import annotations
 
 #: ``{domaine: texte}`` — domaine = une valeur de
-#: ``chargeur_outils.DOMAINES``. Vide tant que la lane TXT ne l'a pas rempli.
-CONSIGNES: dict[str, str] = {}
+#: ``chargeur_outils.DOMAINES``. Un domaine absent n'a aucune consigne propre
+#: (liste et raison : ``DOMAINES_SANS_CONSIGNES`` du test).
+CONSIGNES: dict[str, str] = {
+    "calepinage": (
+        "Lis d'abord calepinage.du_lead ou calepinage.resume ; suis son a_faire. Le P50 est une "
+        "étude technique interne, jamais la production du client, qui vient du devis. Si la "
+        "mention dit « borne haute », redis-la telle quelle, sans P90 ni PR. "
+        "calepinage.contenance est une estimation : redis son libellé (visite, tracé ou dicté) et "
+        "ses suppositions ; ce n'est ni une conception ni un chiffre de devis. Le dessin reste "
+        "humain : donne le lien par erp.ouvrir. calepinage.simuler lance le calcul ; relis-le par "
+        "calepinage.simulation_suivre deux fois au plus, puis renvoie à la carte. Pour publier : "
+        "calepinage.publier_apercu d'abord, puis calepinage.publier_devis, dont la carte montre "
+        "l'ancien et le nouveau total. Pour changer de variante : calepinage.variantes_comparer, "
+        "puis calepinage.retenir."),
+}
 
 DEBUT = "[Consignes de l'ERP pour le domaine %s]"
 FIN = "[Fin des consignes du domaine %s]"
