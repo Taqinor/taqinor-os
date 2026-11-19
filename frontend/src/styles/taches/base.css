@@ -1003,6 +1003,10 @@
     visibility: visible;
   }
 }
+/* R2-081 — UNE surface jusqu'en bas de l'écran : le scrolleur de l'ERP prend la surface du module (sur iPhone, plus de
+   cassure grise sous une page courte ; au bureau, plus de « carte » blanche à angles vifs posée sur le gris : le
+   contenu est sur le fond, comme Things). */
+.layout-content:has(> .route-fade > .tch) { background: var(--tch-surface); }
 /* …et le « filet noir de 1 px » autour du module était l'anneau de focus du scrolleur `main#contenu` (tabIndex −1,
    focalisé par l'ERP à chaque navigation) : un conteneur non interactif ne montre pas d'anneau ; le focus y reste. */
 .layout-content:has(> .route-fade > .tch):focus { outline: none; }
