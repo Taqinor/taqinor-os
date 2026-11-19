@@ -42,6 +42,7 @@ const CONFIRMER_RELECTURE = 'Les modifications non enregistrées des lignes sero
 function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, recomposer }) {
   const { editDevis, recharger } = ecran || {}
   const [refus, setRefus] = useState(null)
+  const [calcul, setCalcul] = useState(false)
   const options = editDevis?.etude_params?.options || {}
   const cochee = options.phrase_une_batterie === true
   const etudeCi = editDevis?.etude_params?.etude_ci || {}
@@ -58,6 +59,7 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, re
     if (coche) suivantes.phrase_une_batterie = true
     else delete suivantes.phrase_une_batterie
     setOccupe(true)
+    setCalcul(true)
     try {
       await ventesApi.patchEtudeParams(editDevis.id, { options: suivantes })
       recharger?.()
@@ -65,6 +67,7 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, re
       setRefus(messageRefus(err))
     } finally {
       setOccupe(false)
+      setCalcul(false)
     }
   }
 
@@ -76,6 +79,11 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, re
                onChange={(e) => basculer(e.target.checked)} />
         Indiquer au client le prix pour démarrer avec une seule batterie
       </label>
+      {calcul && (
+        <p className="text-xs text-muted-foreground" role="status" data-testid="gen-phrase-une-batterie-calcul">
+          Enregistrement et calcul du prix à une batterie…
+        </p>
+      )}
       {cochee && depart && (
         <p className="text-xs text-muted-foreground" data-testid="gen-phrase-une-batterie-apercu">
           Phrase imprimée : 1 batterie, {formatNumber(depart.nb_panneaux)} panneaux

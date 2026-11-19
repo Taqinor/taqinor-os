@@ -13,6 +13,7 @@ import { devisVersEtat } from '../etatDevis'
 import crmApi from '../../../../api/crmApi'
 import { withKeys } from '../ligneFabrique.js'
 import { ATTESTATION_VIDE, ECO_CI_VIDE, TARIF_SAISIE_VIDE, ecoDepuisSaisies } from '../etudeMarcheBloc'
+import { etudeParamsBatteries } from '../../calc/batteriesDepart.js'
 
 export function useChargeurEdition(ctx) {
   const {
@@ -76,6 +77,9 @@ export function useChargeurEdition(ctx) {
                      layout_stale: d.layout_stale ?? null,
                      // RGEN5 — niveau de règles servi : l'aperçu local suit le PDF.
                      regles_calcul: d.regles_calcul ?? null,
+                     // « Batteries au départ » et sa case « une seule batterie » lisent
+                     // l'état ENREGISTRÉ du devis (options, banque, prix calculé).
+                     etude_params: etudeParamsBatteries(d.etude_params),
                      layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR658 — LE MAPPEUR EST UN MODULE PUR (`quote/etatDevis.js`,

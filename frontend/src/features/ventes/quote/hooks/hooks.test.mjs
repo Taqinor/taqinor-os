@@ -121,3 +121,14 @@ test('ligne_sans_produit_deux_clics', () => {
   assert.equal(sig(lignes), 'Câble×2')
   assert.notEqual(sig([{ ...lignes[0], quantite: '3' }, lignes[1]]), sig(lignes))
 })
+
+// ── useChargeurEdition : l'état ENREGISTRÉ que « Batteries au départ » relit ──
+// Devis DEV-202611-0084 (19/11/2026) : la case « démarrer avec une seule batterie »
+// restait décochée à l'écran alors que le serveur l'avait enregistrée — `editDevis`
+// ne gardait aucune clé de `etude_params`, et les tests du contrôle fabriquaient un
+// devis qui les portait déjà.
+
+test('le chargeur `?edit=` pose dans editDevis l’etude_params gardé pour les batteries', () => {
+  const source = readFileSync(new URL('./useChargeurEdition.js', import.meta.url), 'utf8')
+  assert.match(source, /etude_params:\s*etudeParamsBatteries\(d\.etude_params\)/)
+})
