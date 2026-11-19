@@ -17,6 +17,10 @@
     position: relative; right: auto; top: auto; flex: none; margin-right: -10px;
     opacity: 1; pointer-events: auto; background: none;
   }
+  /* le corps (méta, barre) garde toute la largeur ; seul le titre laisse la place de la puce et du ⋯ */
+  .tch .ligne.projet .ligne-corps { grid-column: 2 / -1; grid-row: 1; }
+  .tch .ligne.projet .ligne-fin { grid-column: 3; grid-row: 1; }
+  .tch .ligne.projet .ligne-corps .titre { padding-right: 8.5rem; }
 }
 .tch .ligne.projet .barre-avance { max-width: 120px; margin-top: 7px; }
 .tch .ligne.projet .meta { column-gap: 8px; }
@@ -235,8 +239,11 @@
 }
 @media (min-width: 768px) {
   .tch .ep-onglets-etapes { display: none; }
-  .tch .ep-tableau { padding: 16px 24px 0; overflow: hidden; }
-  .tch .ep-col { flex: 0 0 264px; }
+  /* R2-064 — le Tableau (et la Chronologie) sortent de la colonne de lecture de 760 px : sinon 2,5 colonnes et la dernière
+     (« Pose ») inatteignable. La page s'élargit ; au-delà, le Tableau DÉFILE à l'horizontale au lieu de couper. */
+  .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) { max-width: 1320px; }
+  .tch .ep-tableau { padding: 16px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain; }
+  .tch .ep-col { flex: 0 0 264px; min-width: 260px; }
   .tch .ep-col-tete { display: flex; }
 }
 /* Chronologie : iPhone, frise verticale par date */
