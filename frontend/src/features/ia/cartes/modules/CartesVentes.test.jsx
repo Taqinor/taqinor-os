@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { exempleContrat } from '../../../../test/fixtures/contractSamples'
 import iaReducer from '../../store/iaSlice'
-import { CONTRATS_CARTES } from '../contrats'
+import { CONTRATS_CARTES, VARIANTES_CARTES } from '../contrats'
 import { COMPOSANTS } from '../registre'
 
 /* Nouveau fichier car : composant neuf, aucun module de test existant. Chaque carte
@@ -51,6 +51,29 @@ describe('carte liste_factures', () => {
   it('aucune facture : un message', () => {
     monter('liste_factures', ex('liste_factures', 'exemple_aucune'))
     expect(screen.getByText(/Aucune facture ne correspond/)).toBeInTheDocument()
+  })
+})
+
+describe('carte facture_brouillon', () => {
+  const brouillon = () => ex('facture_brouillon', VARIANTES_CARTES.facture_brouillon)
+
+  it('dit clairement brouillon, montre la référence provisoire et ne parle pas de facture émise', () => {
+    monter('facture_brouillon', brouillon())
+    expect(screen.getByText(/Brouillon — à vérifier puis émettre à l’écran/)).toBeInTheDocument()
+    expect(screen.getByText(/Référence provisoire BROUILLON-126/)).toBeInTheDocument()
+    expect(screen.getByText(/Intermédiaire : /)).toBeInTheDocument()
+    expect(screen.getByText(/Reste à facturer TTC/)).toBeInTheDocument()
+    expect(screen.queryByText(/FAC-/)).not.toBeInTheDocument()
+  })
+
+  it('le bouton vers l’écran des factures vient du champ lien, validé ; sans lien, aucun bouton', () => {
+    monter('facture_brouillon', { ...brouillon(), lien: '/ventes/factures?facture=126' })
+    expect(screen.getByRole('button', { name: /pour l’émettre/ })).toBeInTheDocument()
+  })
+
+  it('un lien hors de la table des écrans ne donne aucun bouton', () => {
+    monter('facture_brouillon', { ...brouillon(), lien: 'https://exemple.test/x' })
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })
 

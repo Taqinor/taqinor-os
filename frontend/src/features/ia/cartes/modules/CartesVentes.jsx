@@ -115,9 +115,39 @@ function CarteFactures({ carte }) {
   )
 }
 
+// `facture_brouillon` — la facture que l'assistant a PRÉPARÉE (action `ventes.vente.facturer`,
+// décision D-W2-Q2) : un BROUILLON sans numéro légal, l'émission reste un geste d'écran. La carte
+// le dit en toutes lettres et ne ressemble jamais à une facture émise. Le serveur ne sert pas de
+// `lien` dans cette réponse : le bouton n'apparaît que si la charge utile en porte un.
+function CarteFactureBrouillon({ carte }) {
+  const d = carte.donnees ?? {}
+  const f = d.facture ?? {}
+  const v = d.vente ?? {}
+  return (
+    <div className="min-w-0 border-l-4 border-warning pl-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-warning">
+        Brouillon — à vérifier puis émettre à l’écran
+      </p>
+      <Titre>{libelle(NATURES_FACTURE, f.nature)} : {montant(f.total_ttc)} TTC</Titre>
+      <p className="break-words text-xs text-muted-foreground">
+        Référence provisoire {f.reference} · aucun numéro de facture légal tant qu’elle n’est pas émise.
+      </p>
+      <dl className="mt-2 space-y-0.5">
+        <Ligne nom="Prix convenu TTC" valeur={montant(v.prix_convenu_ttc)} />
+        <Ligne nom="Déjà émis TTC" valeur={montant(v.emis_ttc)} />
+        <Ligne nom="Brouillons TTC" valeur={montant(v.brouillons_ttc)} />
+        <Ligne nom="Reste à facturer TTC" valeur={montant(v.reste_a_facturer_ttc)} />
+        <Ligne nom="Reste à payer TTC" valeur={montant(v.reste_a_payer_ttc)} />
+      </dl>
+      <BoutonLien lien={d.lien} texte="Ouvrir la facture pour l’émettre" />
+    </div>
+  )
+}
+
 const CARTES_VENTES = Object.freeze({
   vente_etat: CarteVenteEtat,
   liste_impayes: CarteImpayes,
   liste_factures: CarteFactures,
+  facture_brouillon: CarteFactureBrouillon,
 })
 export default CARTES_VENTES
