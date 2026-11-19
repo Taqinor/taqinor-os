@@ -115,7 +115,7 @@ SCHEMA = {
     'devis_final': _cle((bool,), ECRAN, ENTREE,
                         'Fondateur 19/11/2026 — case « Devis final » (visite '
                         'faite), tout marché : `true` ou clé absente. Lue par '
-                        '`quote_engine/builder.py` (`_devis_final_enregistre`) : '
+                        '`quote_engine/options_pdf.py` (`devis_final_enregistre`) : '
                         'le document ne dit plus « préliminaire » / « à '
                         'confirmer par la visite » (résidentiel : paiement + '
                         'RIB). Ne nourrit aucun calcul.'),

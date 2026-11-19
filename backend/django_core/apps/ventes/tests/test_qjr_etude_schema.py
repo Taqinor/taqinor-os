@@ -166,12 +166,13 @@ class EntreesDuMoteurTests(SimpleTestCase):
         par le schéma, qui ne relance aucune étude ; le builder le lit."""
         from types import SimpleNamespace
 
-        from apps.ventes.quote_engine.builder import _devis_final_enregistre
+        from apps.ventes.quote_engine.options_pdf import (
+            devis_final_enregistre)
         self.assertEqual(S.valider({'devis_final': True}), [])
         self.assertEqual(S.valider({'devis_final': None}), [])
         self.assertTrue(S.valider({'devis_final': 'oui'}))
         self.assertNotIn('devis_final', S.entrees_du_moteur())
-        lu = lambda etude: _devis_final_enregistre(  # noqa: E731
+        lu = lambda etude: devis_final_enregistre(  # noqa: E731
             SimpleNamespace(etude_params=etude))
         self.assertTrue(lu({'devis_final': True}))
         for etude in (None, {}, {'devis_final': False},

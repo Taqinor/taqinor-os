@@ -53,7 +53,9 @@ from .conditions_commerciales import (  # noqa: F401
 )
 # SPL165 — la liste blanche des options PDF vit dans ``options_pdf`` (move
 # only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .options_pdf import LANGUES_SORTIE_PDF, VARIANTES_PDF, clean_pdf_options
+from .options_pdf import (
+    LANGUES_SORTIE_PDF, VARIANTES_PDF, clean_pdf_options,
+    devis_final_enregistre)
 # SPL165 — ré-export (noqa: F401) pour d'autres propriétaires : tests
 # facturation test_pdf et devis test_agr303_options_agricoles_mortes,
 # test_amot68_note_calcul_proposal, test_apdf_options_relayees
@@ -476,16 +478,6 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
         if texte.strip():
             puces.append(texte)
     return puces or None
-
-
-def _devis_final_enregistre(devis):
-    """Fondateur 19/11/2026 (« where is final quote button, the visit was
-    done for this guy ») — la case « Devis final » ENREGISTRÉE sur le devis
-    (``etude_params.devis_final is True``, contrat ``devis_final.json``) :
-    tout rendu de ce devis est final (PDF, pièce jointe, page client), sans
-    option de rendu à repasser. Absente ⇒ rendu d'hier, octet pour octet."""
-    etude = getattr(devis, "etude_params", None)
-    return isinstance(etude, dict) and etude.get("devis_final") is True
 
 
 def build_quote_data(devis, pdf_options=None) -> dict:
@@ -1815,7 +1807,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "nb_options": nb_options,
         "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
-        "devis_final": opts['devis_final'] or _devis_final_enregistre(devis),
+        "devis_final": opts['devis_final'] or devis_final_enregistre(devis),
         "include_etude": include_etude,
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas
