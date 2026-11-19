@@ -633,6 +633,111 @@ class ChargeAssistantTests(VtaBase):
         self.assertIn(APIClient().get(self.URL).status_code, (401, 403))
 
 
+def echantillon_digest():
+    """Le bloc ``vague2.exemple_copilote`` du contrat du point du matin (crm)."""
+    chemin = (Path(__file__).resolve().parents[2] / 'crm' / 'contract_samples'
+              / 'assistant_digest_matin.json')
+    return json.loads(chemin.read_text(encoding='utf-8'))['vague2']['exemple_copilote']
+
+
+class BriefVisitesAssistantTests(VtaBase):
+    """Copilote vague 2 (VIS9) — les deux lectures PUBLIQUES du point du matin :
+    ``selectors.brief_visites(user, aujourdhui)`` (bloc ``visites_equipe``) et
+    ``selectors.visites_validees_sans_calepinage(company, depuis)`` (les
+    candidats « visite validée, calepinage à préparer »)."""
+
+    def _jour(self, jours):
+        return self.aujourdhui + timedelta(days=jours)
+
+    def _brief(self, user):
+        from apps.visites import selectors
+        return selectors.brief_visites(user, self.aujourdhui)
+
+    def test_le_bloc_porte_la_forme_du_contrat_du_matin(self):
+        S = VisiteTerrain.Statut
+        orpheline = self._visite(None, date_prevue=self._jour(2))
+        self._visite(self.terrain, date_prevue=self._jour(3))            # assignée, rien à signaler
+        en_retard = self._visite(self.terrain, date_prevue=self._jour(-3))
+        a_valider = self._visite(self.terrain, date_prevue=self._jour(-1), statut=S.TERMINEE)
+        realisee = timezone.now() - timedelta(days=2)
+        VisiteTerrain.objects.filter(pk=a_valider.pk).update(date_realisee=realisee)
+        self._visite(self.terrain, date_prevue=self._jour(1), statut=S.ANNULEE)
+        bloc = self._brief(self.bureau)
+        contrat = echantillon_digest()['visites_equipe']
+        self.assertEqual(set(bloc), set(contrat))
+        self.assertEqual((bloc['sans_technicien'], bloc['a_valider'], bloc['en_retard']), (1, 1, 1))
+        self.assertEqual(bloc['plus_ancienne_a_valider_le'],
+                         timezone.localtime(realisee).date().isoformat())
+        self.assertEqual(bloc['lien'], '/visites/revue')
+        # Les lignes sont celles de l'agenda : date croissante, mêmes clés.
+        self.assertEqual([ligne['id'] for ligne in bloc['lignes']],
+                         [en_retard.id, a_valider.id, orpheline.id])
+        for ligne in bloc['lignes']:
+            self.assertEqual(set(ligne), set(contrat['lignes'][0]))
+
+    def test_cinq_lignes_au_plus_les_compteurs_portent_sur_tout(self):
+        for jour in range(8):
+            self._visite(None, date_prevue=self._jour(jour % 3))
+        bloc = self._brief(self.bureau)
+        self.assertEqual((bloc['sans_technicien'], len(bloc['lignes'])), (8, 5))
+
+    def test_sans_visite_a_signaler_le_bloc_est_vide_mais_present(self):
+        bloc = self._brief(self.bureau)
+        self.assertEqual((bloc['sans_technicien'], bloc['a_valider'], bloc['en_retard'],
+                          bloc['plus_ancienne_a_valider_le'], bloc['lignes']), (0, 0, 0, None, []))
+
+    def test_le_bloc_est_reserve_a_qui_valide_et_borne_a_la_societe(self):
+        self._visite(None, date_prevue=self._jour(1))
+        self._visite(None, date_prevue=self._jour(1), company=self.autre, lead=self.lead_autre)
+        self.assertIsNone(self._brief(self.terrain))   # un terrain ne valide pas
+        self.assertEqual(self._brief(self.bureau)['sans_technicien'], 1)
+
+    def test_requetes_independantes_du_nombre_de_visites(self):
+        def requetes(combien):
+            VisiteTerrain.objects.all().delete()
+            for _ in range(combien):
+                self._visite(None, date_prevue=self._jour(1))
+            with CaptureQueriesContext(connection) as capture:
+                self._brief(self.bureau)
+            return len(capture)
+        requetes(1)  # caches froids
+        self.assertEqual(requetes(5), requetes(40))
+
+    def test_visites_validees_une_par_lead_depuis_la_date(self):
+        from apps.crm.models import Lead
+        from apps.visites import selectors
+        S, maintenant = VisiteTerrain.Statut, timezone.now()
+        autre_lead = Lead.objects.create(company=self.company, nom='Alami', prenom='Karim')
+        recente = self._visite(self.terrain, statut=S.VALIDEE)
+        ancienne_meme_lead = self._visite(self.terrain, statut=S.VALIDEE)
+        vieille = self._visite(self.terrain, lead=autre_lead, statut=S.VALIDEE)
+        etrangere = self._visite(self.etranger, company=self.autre, lead=self.lead_autre,
+                                 statut=S.VALIDEE)
+        sans_date = self._visite(self.terrain, lead=autre_lead, statut=S.VALIDEE)
+        terminee = self._visite(self.terrain, statut=S.TERMINEE)
+        for visite, delai in ((recente, 1), (ancienne_meme_lead, 5), (vieille, 40),
+                              (etrangere, 1), (terminee, 1)):
+            VisiteTerrain.objects.filter(pk=visite.pk).update(validee_le=maintenant - timedelta(days=delai))
+        lignes = selectors.visites_validees_sans_calepinage(
+            self.company, self.aujourdhui - timedelta(days=30))
+        self.assertEqual([ligne['visite_id'] for ligne in lignes], [recente.id])
+        ligne = lignes[0]
+        contrat = echantillon_digest()['calepinages']['sans_calepinage']['lignes'][0]
+        self.assertEqual(set(ligne), set(contrat))
+        self.assertEqual((ligne['lead_id'], ligne['lead_nom'], ligne['a_faire'], ligne['lien']),
+                         (self.lead.id, 'Karim Bennani', 'preparer_calepinage',
+                          f'/crm/leads/{self.lead.id}'))
+        # Sans date de feu vert (validée avant CIQ604) : jamais datée après coup.
+        self.assertNotIn(sans_date.id, [ligne['visite_id'] for ligne in lignes])
+        # La fenêtre s'élargit : l'autre lead (validée il y a 40 jours) apparaît.
+        large = selectors.visites_validees_sans_calepinage(
+            self.company, self.aujourdhui - timedelta(days=60))
+        self.assertEqual({ligne['visite_id'] for ligne in large}, {recente.id, vieille.id})
+        # Un horodatage est accepté comme une date.
+        recent = selectors.visites_validees_sans_calepinage(self.company, maintenant - timedelta(days=2))
+        self.assertEqual([ligne['visite_id'] for ligne in recent], [recente.id])
+
+
 class AccueilMobileTests(TestCase):
     """NTMOB6 — ``/visites`` est persistable, et c'est l'accueil du terrain."""
 

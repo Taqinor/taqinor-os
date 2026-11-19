@@ -22,7 +22,7 @@ Règles tenues partout :
 import json
 from datetime import datetime, timedelta
 
-from django.db.models import Count, F, Q
+from django.db.models import Count, F, Min, Q
 from django.utils import timezone
 
 from . import selectors, services
@@ -152,12 +152,16 @@ def _en_retard_q(aujourdhui):
 
 
 def _filtre_q(filtre, aujourdhui):
+    """Le critère d'un filtre de l'agenda ; ``a_traiter`` (interne, hors de
+    ``FILTRES``) réunit ce que le point du matin met en avant."""
     return {
         'tout': Q(),
         'sans_technicien': _sans_technicien_q(),
         'a_valider': Q(statut=Statut.TERMINEE),
         'en_retard': _en_retard_q(aujourdhui),
         'a_refaire': Q(statut=Statut.A_REFAIRE),
+        'a_traiter': (_sans_technicien_q() | Q(statut=Statut.TERMINEE)
+                      | _en_retard_q(aujourdhui)),
     }[filtre]
 
 
@@ -501,3 +505,71 @@ def charge_equipe(user, params, aujourdhui):
         'a_faire': 'assigner_visites' if sans_technicien else 'rien',
         'lien': LIEN_PLANIFIER,
     }
+
+
+# ── Pour le point du matin (``crm.digest_matin``, lane BRF) ──────────────────
+#
+# Deux lectures PUBLIQUES de l'app (``selectors.brief_visites`` et
+# ``selectors.visites_validees_sans_calepinage``) : le CRM les appelle, il
+# n'importe jamais les modèles de cette app ; le calepinage n'est jamais lu ici
+# (frontière M3 : ``apps.visites`` ne dépend pas de ``apps.calepinage``).
+
+BRIEF_LIGNES = 5
+LIEN_REVUE = '/visites/revue'
+VALIDEES_LIMITE = 200
+
+
+def brief_visites(user, aujourdhui):
+    """Le bloc ``visites_equipe`` du point du matin : ``{sans_technicien,
+    a_valider, en_retard, plus_ancienne_a_valider_le, lignes[≤ 5], lien}``, pour
+    qui valide les visites (``visites_valider``) ; ``None`` sinon. Mêmes
+    définitions que l'agenda (fenêtre d'aujourd'hui à + 7 jours, retards et
+    visites à valider quelle que soit leur date), même portée que l'écran ;
+    les lignes sont celles de l'agenda (``assistant_agenda.json``). Deux
+    agrégats + au plus 5 lignes : aucune complétude calculée hors de elles."""
+    from core.permissions import _user_has_or_legacy
+
+    if not _user_has_or_legacy(user, 'visites_valider'):
+        return None
+    fin = plus_jours(aujourdhui, FENETRE_DEFAUT_JOURS, 'du')
+    perimetre = perimetre_agenda(selectors.visites_visibles(user), aujourdhui, fin, aujourdhui)
+    totaux = totaux_agenda(perimetre, aujourdhui, fin, aujourdhui)
+    ancienne = perimetre.filter(statut=Statut.TERMINEE).aggregate(
+        premiere=Min('date_realisee'))['premiere']
+    return {
+        'sans_technicien': totaux['sans_technicien'],
+        'a_valider': totaux['a_valider'],
+        'en_retard': totaux['en_retard'],
+        'plus_ancienne_a_valider_le': (timezone.localtime(ancienne).date().isoformat()
+                                       if ancienne else None),
+        'lignes': lignes_agenda(perimetre, 'a_traiter', BRIEF_LIGNES, aujourdhui),
+        'lien': LIEN_REVUE,
+    }
+
+
+def visites_validees(company, depuis):
+    """Les visites VALIDÉES depuis ``depuis`` (une date, ou un horodatage) dans
+    ``company`` — au plus une par lead (la plus récente), la plus récente d'abord,
+    ``VALIDEES_LIMITE`` au plus : ``[{visite_id, lead_id, lead_nom, validee_le,
+    a_faire: 'preparer_calepinage', lien}]``. La date du feu vert (``validee_le``)
+    est celle posée par le serveur à la validation : une visite validée avant son
+    introduction n'en a pas et n'est jamais datée après coup."""
+    depart = ({'validee_le__gte': depuis} if isinstance(depuis, datetime)
+              else {'validee_le__date__gte': depuis})
+    visites = (VisiteTerrain.objects
+               .filter(company=company, statut=Statut.VALIDEE, validee_le__isnull=False, **depart)
+               .select_related('lead').order_by('-validee_le', '-id'))
+    lignes, vus = [], set()
+    for visite in visites[:VALIDEES_LIMITE]:
+        if visite.lead_id in vus:
+            continue
+        vus.add(visite.lead_id)
+        lignes.append({
+            'visite_id': visite.id,
+            'lead_id': visite.lead_id,
+            'lead_nom': _nom_lead(visite.lead),
+            'validee_le': horodatage(visite.validee_le),
+            'a_faire': 'preparer_calepinage',
+            'lien': f'/crm/leads/{visite.lead_id}',
+        })
+    return lignes

@@ -1151,6 +1151,34 @@ def ma_journee_du_commercial(company, user, *, aujourdhui):
     return ma_journee(visites, aujourdhui=aujourdhui)
 
 
+def brief_visites(user, aujourdhui):
+    """Copilote vague 2 (BRF) — le bloc « visites de l'équipe » du point du
+    matin, pour ``user`` : ``{sans_technicien, a_valider, en_retard,
+    plus_ancienne_a_valider_le, lignes[≤ 5], lien}`` — des compteurs entiers, la
+    date ISO de la plus ancienne visite à valider (``None`` s'il n'y en a pas),
+    et au plus 5 lignes de la forme de ``contract_samples/assistant_agenda.json``.
+    ``None`` pour un compte qui ne valide pas les visites (``visites_valider``) :
+    c'est le droit de lire le bloc. Portée de l'écran (``visites_visibles``).
+    Lecture seule ; deux agrégats et au plus 5 lignes (``aujourdhui`` : la date
+    du jour, passée par l'appelant)."""
+    from . import assistant
+
+    return assistant.brief_visites(user, aujourdhui)
+
+
+def visites_validees_sans_calepinage(company, depuis):
+    """Copilote vague 2 (BRF) — les visites VALIDÉES depuis ``depuis`` (date ou
+    horodatage) dans ``company``, au plus une par lead (la plus récente),
+    la plus récente d'abord : ``[{visite_id, lead_id, lead_nom, validee_le,
+    a_faire: 'preparer_calepinage', lien}]``. Ce sont les CANDIDATS « visite
+    validée, calepinage à préparer » : le calepinage n'est jamais lu ici
+    (frontière M3), l'appelant écarte les leads qui ont déjà un calepinage ouvert
+    (via les selectors du calepinage) et applique sa propre portée de leads."""
+    from . import assistant
+
+    return assistant.visites_validees(company, depuis)
+
+
 # -- CALX363 -- LA PORTE VISITE TECHNIQUE -> CALEPINAGE ------------------------
 #
 # Jusqu'ici la seule porte de sortie de cette app vers le reste de l'ERP etait
