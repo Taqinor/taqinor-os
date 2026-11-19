@@ -250,7 +250,8 @@ class RequetesBorneesTest(AssertQueryBudgetMixin, TestCase):
         from apps.ventes.models import Devis
         from apps.visites.models import VisiteTerrain
         client = Client.objects.create(company=self.company, nom='BRF6')
-        for i in range(nb):
+        deja = Devis.objects.filter(company=self.company).count()
+        for i in range(deja, deja + nb):
             lead = Lead.objects.create(
                 company=self.company, nom=f'Lead {i}', owner=self.admin)
             VisiteTerrain.objects.create(
