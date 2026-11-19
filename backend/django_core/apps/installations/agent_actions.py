@@ -30,7 +30,9 @@ appelée depuis ``InstallationsConfig.ready()``.
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_OUTWARD, register
+from apps.agent.registry import (
+    AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register,
+)
 
 
 # Type d'intervention d'une visite de maintenance : valeur exacte de
@@ -175,10 +177,50 @@ BROUILLON_COMMANDE_CHANTIER = AgentAction(
 )
 
 
+#: Copilote vague 2 — lecture du module : ``LectureDuModule`` (installations)
+#: des routes de l'assistant (``InstallationViewSet.get_permissions``).
+_PERM_LIRE = 'installation_voir'
+
+
+# CHTA2 — la fiche compacte d'UN chantier (GET chantiers/{id}/etat-assistant/,
+# contrat `assistant_chantier_etat.json`). Lecture : exécutée sans proposition.
+ETAT_CHANTIER = AgentAction(
+    key='installations.chantier.etat',
+    label="État d'un chantier : prêt à poser ?",
+    description=(
+        "Sert à : dire où en est UN chantier — prêt à poser ou non et "
+        "pourquoi (manques de matériel en quantités, date de pose, "
+        "technicien, acompte exigé et encaissé, intervention de pose, étape "
+        "suivante), la prochaine chose à faire (`a_faire`) et les liens des "
+        "écrans. Ne pas utiliser pour : changer le statut (jamais par "
+        "l'assistant : lien de la fiche) ni chercher un chantier "
+        "(installations.chantiers.liste). Exemple : « le chantier 12 est-il "
+        "prêt ? » → id=12. Résultat : la fiche, sans aucun prix ni coût ; "
+        "404 si le chantier est hors de ta portée."
+    ),
+    endpoint='/api/django/installations/chantiers/{id}/etat-assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'title': 'Chantier (id)',
+                   'description': 'Chantier lu (consommé par le chemin).'},
+        },
+        'required': ['id'],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    carte='fiche_chantier',
+    lot=LOT_COPILOTE,
+    objets={'id': 'chantier'},
+)
+
+
 # Catalogue déclaré par cette app (ordre stable).
 INSTALLATIONS_ACTIONS = (
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
+    ETAT_CHANTIER,
 )
 
 

@@ -10,6 +10,7 @@ from django.test import TestCase
 
 from apps.agent.registry import all_actions
 from apps.installations.agent_actions import (
+    ETAT_CHANTIER,
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
     INSTALLATIONS_ACTIONS,
@@ -60,8 +61,9 @@ class InstallationsAgentActionsTest(TestCase):
         # le compte peut ne pas avoir.
         du_lot = {x.key for x in all_actions() if x.lot == 'copilote'}
         for action in INSTALLATIONS_ACTIONS:
-            self.assertFalse([k for k in du_lot if k in action.description],
-                             action.key)
+            if action.lot is None:
+                self.assertFalse([k for k in du_lot if k in action.description],
+                                 action.key)
 
     def test_commander_besoin_metadata(self):
         a = self._by_key('installations.chantier.commander_besoin')
@@ -99,6 +101,26 @@ class InstallationsAgentActionsTest(TestCase):
             codes, _admin, _modules = _gardes_de_la_route(a)
             self.assertIn(a.required_permission, codes, a.key)
 
+    def test_etat_chantier_metadata(self):
+        """CHTA2 — lecture du lot copilote : carte, objet nommé, code de
+        lecture du module que la route exige (LectureDuModule)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from authentication.permissions import codes_du_module
+        a = self._by_key('installations.chantier.etat')
+        self.assertEqual(a, ETAT_CHANTIER)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte),
+                         ('GET', 'internal', 'copilote', 'fiche_chantier'))
+        self.assertEqual(
+            a.endpoint, '/api/django/installations/chantiers/{id}/etat-assistant/')
+        self.assertEqual(a.objets, {'id': 'chantier'})
+        self.assertEqual(a.inputs['required'], ['id'])
+        self.assertTrue(a.description.startswith('Sert à'))
+        for section in ('Ne pas utiliser pour', 'Exemple', 'Résultat'):
+            self.assertIn(section, a.description)
+        _codes, _admin, modules = _gardes_de_la_route(a)
+        self.assertIn('installations', modules)
+        self.assertIn(a.required_permission, codes_du_module('installations'))
+
     def test_company_never_in_inputs(self):
         for a in INSTALLATIONS_ACTIONS:
             self.assertNotIn(
@@ -114,7 +136,7 @@ class InstallationsAgentActionsTest(TestCase):
     def test_as_dict_serialisable(self):
         for a in INSTALLATIONS_ACTIONS:
             d = a.as_dict()
-            self.assertEqual(d['method'], 'POST')
+            self.assertEqual(d['method'], a.method.upper())
             self.assertEqual(d['required_permission'], a.required_permission)
             self.assertIn('endpoint', d)
 
