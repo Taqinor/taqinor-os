@@ -1,0 +1,47 @@
+{
+  "endpoint": "GET /api/django/ventes/assistant/factures/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VAD3) — retrouver une facture par sa référence, le nom ou le téléphone du client (action `ventes.facture.chercher`, carte `liste_factures`) : « il a payé 20 000 par virement » commence ici quand aucun devis n'est ouvert. Vue mince dans `ventes/views/assistant.py`. Portée de la liste des factures (`scope_queryset(['created_by'])`), lecture `ventes_voir`. Paramètres facultatifs : `q` (référence, nom du client, ou téléphone normalisé par `crm.selectors.normalize_phone_key` — le téléphone sert à CHERCHER, il n'est jamais rendu), `client` (id), `statut` (statut de facture du modèle : brouillon, emise, en_retard, payee, annulee), `limite` (10 par défaut, 1 à 25) ; hors liste ou hors borne → 400 nommé. Montants en texte décimal. Plusieurs factures candidates pour un paiement → l'assistant DEMANDE laquelle, il ne répartit jamais. `a_faire` par ligne, ensemble FERMÉ : emettre | encaisser | relancer | rien ; `lien` = `/ventes/factures?facture={id}`. Délibérément ABSENTS : téléphone, e-mail, adresse du client, lignes de la facture, prix d'achat, marge.",
+  "exemple": {
+    "q": "lahlou",
+    "statut": "",
+    "total": 2,
+    "limite": 10,
+    "lignes": [
+      {
+        "facture_id": 126,
+        "reference": "BROUILLON-126",
+        "client_nom": "Driss Lahlou",
+        "nature": "intermediaire",
+        "statut": "brouillon",
+        "total_ttc": "29400.00",
+        "montant_du": "0.00",
+        "date_emission": null,
+        "date_echeance": null,
+        "jours_retard": 0,
+        "a_faire": "emettre",
+        "lien": "/ventes/factures?facture=126"
+      },
+      {
+        "facture_id": 118,
+        "reference": "FAC-202610-0007",
+        "client_nom": "Driss Lahlou",
+        "nature": "acompte",
+        "statut": "payee",
+        "total_ttc": "15000.00",
+        "montant_du": "0.00",
+        "date_emission": "2026-10-12",
+        "date_echeance": "2026-10-19",
+        "jours_retard": 0,
+        "a_faire": "rien",
+        "lien": "/ventes/factures?facture=118"
+      }
+    ]
+  },
+  "exemple_aucune": {
+    "q": "zzz",
+    "statut": "",
+    "total": 0,
+    "limite": 10,
+    "lignes": []
+  }
+}

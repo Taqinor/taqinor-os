@@ -364,6 +364,50 @@ valider, annuler avec motif), chantiers (état et blocages, liste, planifier la 
 d'un client, tickets), pilotage (chiffre d'affaires signé / facturé / encaissé, toujours étiquetés). Puis les cartes
 d'écran de chaque module, le point du matin étendu, la mémoire de préférences.
 
-**Non fait, dit tel quel.** Rien de la vague 2B n'est construit. Aucune recette sur un vrai téléphone. Le texte du tri
+**Non fait, dit tel quel.** (La vague 2B est décrite au §14.) Aucune recette sur un vrai téléphone. Le texte du tri
 nocturne (FAQ) dit encore que l'assistant n'envoie jamais d'e-mail. Les rôles de terrain n'ont pas le copilote
 (`ASSISTANT_COPILOTE=admins`).
+
+## 14. Vague 2B (19/11/2026) — l'assistant dans chaque module
+
+**Ce qui est construit** (lot `copilote`, moteur natif seulement, outils chargés par domaine ; contrats d'abord).
+- **Calepinage** : calepinages à traiter, état et résumé, comparaison et choix d'une variante, lancement et suivi d'une
+  simulation, préparation depuis une visite, estimation du nombre de panneaux (visite validée, tracé ou dimensions
+  dictées — toujours étiquetée, jamais mise au devis ; sans panneau précisé, celui du devis automatique, dit dans les
+  suppositions), publication au devis en deux temps (aperçu à blanc, puis confirmation qui porte l'ancien et le nouveau
+  total et nomme le devis ; refusée si les totaux ont bougé).
+- **Visites** : agenda, charge de l'équipe au jour près, compte rendu, replanifier, annuler avec motif, valider.
+- **Chantiers** : état et blocages, liste, créneaux proposés, pose planifiée en une confirmation (la garde d'acompte
+  reste, sans dérogation).
+- **Après-devis** : état d'une vente, impayés, recherche de factures, prolonger, refuser, réviser, changer le nombre de
+  panneaux (aperçu puis confirmation aux deux totaux), facture en BROUILLON seulement, relance WhatsApp au seul modèle
+  validé (rien n'est envoyé).
+- **Stock** : niveaux en quantités (« disponible » = stock moins réservé et quarantaine), jamais un prix.
+- **SAV** : parc d'un client, tickets, fiche, transitions et résolution avec confirmation, note interne.
+- **Pilotage** : chiffre d'affaires signé, facturé, encaissé (HT), chacun avec sa définition, dans la portée du rôle.
+- **Point du matin étendu** (visites de l'équipe, calepinages, chantiers, impayés, tickets), bloc « dossier » du résumé
+  d'un lead, lecture du contrôle du suivi ; **dix-sept cartes d'écran** et liens profonds vers un chantier ou un ticket.
+
+**Comment c'est vérifié.** Deux revues adverses indépendantes sur le code assemblé : 1 défaut bloquant et 5 à corriger,
+tous corrigés (client opposé jamais prévenu par le SAV ; portée du rôle sur la suggestion de créneau, le suivi d'une
+simulation et les trois chiffres d'affaires ; les deux aperçus sous la garde de leur écriture ; la confirmation de
+publication nomme le devis). Tests du lot joués en local ; gardes de l'hôte ; suite complète dans la merge queue.
+
+**Essai avec une vraie clé (pile locale, 19/11).** Point du matin avec les blocs neufs ; calepinages à traiter puis
+résumé du premier ; estimation dictée (10 à 12 panneaux sur 10 m × 8 m, toutes les suppositions dites) ; chantiers
+bloqués ; impayés par ancienneté ; les trois chiffres d'affaires du mois ; agenda et charge des visites ; tickets en
+retard et stock disponible. Quatre défauts trouvés PAR l'essai et corrigés dans la même PR : l'assistant répondait
+depuis le point du matin ou une requête de données au lieu de charger le domaine (l'index des domaines dit maintenant
+de charger d'abord, et nomme les gestes) ; l'estimation demandait quel panneau ; le changement de taille d'un devis
+composé sur demande était refusé sans dire quoi faire (le refus dit maintenant de recomposer, ce que l'assistant fait) ;
+le manuel de l'assistant, pas encore régénéré, lui faisait dire qu'il ne pouvait pas changer le statut d'un ticket.
+
+**Non fait, dit tel quel.**
+- Le **recalcul en place d'un devis composé sur demande** (né de « 10 panneaux, onduleur 10 kW, batterie 5 kWh ») :
+  aujourd'hui l'assistant en compose un nouveau, l'ancien brouillon se supprime à l'écran.
+- Aucun essai sur un vrai téléphone ; les écritures confirmées de la vague 2B (publication au devis, taille, pose,
+  transitions SAV) sont couvertes par les tests, pas toutes par l'essai avec une vraie clé.
+- Vague suivante (2C) : mémoire de préférences, carte « plan », relances par e-mail, enchaînement visite → calepinage →
+  devis en un seul travail, rôles de terrain.
+- En production : rien de neuf pour le modèle sans `ASSISTANT_MOTEUR=natif`, et le copilote reste réservé aux
+  administrateurs tant que `ASSISTANT_COPILOTE=admins` — deux gestes de Reda, comme tout déploiement.

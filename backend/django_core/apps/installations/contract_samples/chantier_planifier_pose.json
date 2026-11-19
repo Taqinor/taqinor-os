@@ -1,0 +1,45 @@
+{
+  "endpoint": "POST /api/django/installations/chantiers/<int:pk>/planifier-pose/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CHTA5, D-W2-CHT-1) — route NEUVE : « planifie la pose » en UNE confirmation (action `installations.chantier.planifier`, risque outward ; carte `fiche_chantier`) qui pose la date et le technicien du chantier ET l'intervention de pose (création, ou replanification de l'intervention de pose ouverte). Corps : `date_pose_prevue` (obligatoire, ≥ aujourd'hui), `date_pose_fin_prevue` (facultatif), `technicien` (id d'un compte actif de la société), `creer_intervention` (booléen, défaut vrai) — RIEN d'autre : jamais de motif de dérogation d'acompte, de réouverture ou 82-21. Gardes : `installation_gerer` (+ `technicien_assign` sur le champ technicien, + `intervention_gerer` quand une intervention est créée ou déplacée). Le statut du chantier NE CHANGE PAS. Refus : chantier annulé ou clôturé → 409 ; date passée → 409 ; technicien inconnu ou inactif → 409 ; fin avant le début → 409 ; acompte exigé non encaissé → 409 `date_prevue` avec la raison (jamais de passe-outre par l'assistant). La réponse a EXACTEMENT la forme de `assistant_chantier_etat.json` (l'état relu après l'écriture). Aucun prix, aucun coût.",
+  "corps_exemple": {"date_pose_prevue": "2026-11-26", "date_pose_fin_prevue": "2026-11-27", "technicien": 9, "creer_intervention": true},
+  "exemple": {
+    "id": 12,
+    "reference": "CHT-202611-0012",
+    "client_nom": "Driss Lahlou",
+    "statut": "materiel_commande",
+    "statut_libelle": "Matériel commandé",
+    "annule": false,
+    "etape_courante": {"cle": "approvisionnement", "libelle": "Approvisionnement"},
+    "planning": {
+      "date_pose_prevue": "2026-11-26",
+      "date_pose_fin_prevue": "2026-11-27",
+      "technicien": {"id": 9, "nom": "Hamza Idrissi"},
+      "intervention_pose": {"id": 57, "date_prevue": "2026-11-26", "technicien_nom": "Hamza Idrissi", "statut": "a_preparer"}
+    },
+    "pret_a_poser": false,
+    "raisons": ["1 article en manque"],
+    "materiel": {
+      "nb_lignes": 6,
+      "nb_manques": 1,
+      "nb_en_commande": 1,
+      "nb_recues": 4,
+      "bcf_brouillons": 0,
+      "manques": [{"produit_id": 60, "designation": "Tableau de protection AC/DC", "manque": 1}]
+    },
+    "acompte": {"exige": true, "encaisse": true},
+    "prochaine_etape": {"cle": "pose", "bloquante": true, "raisons": ["Matériel incomplet"]},
+    "a_faire": "commander_materiel",
+    "lien": "/chantiers?id=12",
+    "liens": {"chantier": "/chantiers?id=12", "approvisionnement": "/chantiers/approvisionnement", "intervention_pose": "/interventions?id=57"}
+  },
+  "exemple_409_acompte": {
+    "detail": "Acompte exigé avant la planification et pas encore encaissé (facture FAC-202610-0015) : encaissez-le, ou un responsable passe outre depuis la fiche du chantier.",
+    "field": "date_prevue",
+    "code": "acompte_non_encaisse"
+  },
+  "exemple_409_date_passee": {
+    "detail": "date_pose_prevue : la date est passée ; choisissez aujourd'hui ou plus tard.",
+    "field": "date_pose_prevue",
+    "code": "date_passee"
+  }
+}

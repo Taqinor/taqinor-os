@@ -247,8 +247,17 @@ def lead_resume(request, lead_id):
     (chatter ici ; devis via ``ventes.selectors`` ; visites via
     ``visites.selectors`` ; touche via ``cadence_selectors``). Aucun
     ``prix_achat``, aucune marge ; lead d'une autre société : 404."""
+    from apps.agent.registry import copilote_allume_pour
+
+    from .assistant_brief import bloc_dossier
+
     lead = _lead_en_portee_ou_404(request.user, lead_id)
-    return Response(construire_resume(request.user, lead))
+    resume = construire_resume(request.user, lead)
+    if copilote_allume_pour(request.user):
+        # Vague 2 : le dossier du lead dans chaque module (copilote éteint :
+        # le résumé reste celui d'avant).
+        resume['dossier'] = bloc_dossier(request.user, lead, resume['devis'])
+    return Response(resume)
 
 
 #: Objectifs du brouillon de suivi -> mot-clé du modèle société à reprendre
@@ -452,11 +461,15 @@ def digest_matin(request):
     from core.permissions import _user_has_or_legacy
 
     from apps.agent import selectors as agent
+    from apps.agent.registry import copilote_allume_pour
+
+    from .assistant_brief import blocs_du_matin, borner_taille
 
     user = request.user
     aujourdhui = aujourd_hui_local()
     reponse = {'visites': _bloc_visites_du_jour(user, aujourdhui)}
-    if _user_has_or_legacy(user, 'crm_voir'):
+    voit_les_leads = _user_has_or_legacy(user, 'crm_voir')
+    if voit_les_leads:
         total, lignes = lignes_a_relancer(user, 'all', LIMITE_DIGEST)
         reponse['relances'] = {'total': total, 'lignes': lignes}
         reponse['devis_sans_reponse'] = _bloc_devis_sans_reponse(
@@ -464,6 +477,22 @@ def digest_matin(request):
         reponse['manques_signales_hier'] = {
             'total': agent.manques_signales_hier(
                 user.company, user, aujourdhui)}
+    if copilote_allume_pour(user):
+        # Vague 2 : blocs de plus (chacun derrière son droit), jamais pour un
+        # compte copilote éteint — sa réponse reste celle d'avant.
+        # Clés littérales une à une : la forme reste lisible par le contrat.
+        blocs = blocs_du_matin(user, aujourdhui, voit_les_leads)
+        if 'visites_equipe' in blocs:
+            reponse['visites_equipe'] = blocs['visites_equipe']
+        if 'calepinages' in blocs:
+            reponse['calepinages'] = blocs['calepinages']
+        if 'chantiers' in blocs:
+            reponse['chantiers'] = blocs['chantiers']
+        if 'impayes' in blocs:
+            reponse['impayes'] = blocs['impayes']
+        if 'tickets' in blocs:
+            reponse['tickets'] = blocs['tickets']
+        borner_taille(reponse)
     return Response(reponse)
 
 

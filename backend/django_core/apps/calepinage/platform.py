@@ -7,9 +7,9 @@ le collecte GÉNÉRIQUEMENT (aucun import de ``core`` vers l'app).
 
 RÈGLE D'HONNÊTETÉ : ne déclarer une surface QUE si elle est réellement câblée.
 Un identifiant listé ici sans le câblage réel est un « mensonge » que la
-matrice de couverture (``core.platform_coverage``) détecte à l'envers. Trois
-surfaces ont été câblées dans le lot (CAL27 recherche, CAL26 chatter, ARC31
-champs perso) et sont donc déclarées ; les quatre autres restent VIDES tant
+matrice de couverture (``core.platform_coverage``) détecte à l'envers. Quatre
+surfaces sont câblées et donc déclarées (CAL27 recherche, CAL26 chatter, ARC31
+champs perso, CALA4 actions agentiques) ; les trois autres restent VIDES tant
 que leur câblage n'existe pas — voir le commentaire qui les accompagne.
 """
 from __future__ import annotations
@@ -41,12 +41,14 @@ PLATFORM = {
     #  * import/export : aucune spec ``dataimport`` n'existe pour ce module
     #    (un calepinage s'importerait mal : c'est une géométrie, pas une ligne
     #    de tableur) ;
-    #  * actions agentiques : aucun module ``agent_actions`` n'est écrit ;
     #  * automatisation : le statut du calepinage ne déclenche aucune règle
     #    no-code aujourd'hui ;
     #  * KPI : aucun agrégat n'est publié dans ``reporting/reports.py``.
     'import_specs': [],
-    'agent_actions_module': '',
+    # CALA4 (copilote vague 2) — ACTIONS AGENTIQUES câblées : le module expose
+    # ``register_actions()`` (convention ARC33) ; ses actions disparaissent
+    # quand le module calepinage est éteint pour la société.
+    'agent_actions_module': 'apps.calepinage.agent_actions',
     'automation_state_fields': [],
     'kpi_providers': [],
 }

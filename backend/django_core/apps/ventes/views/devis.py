@@ -48,6 +48,7 @@ from .devis_pdf import DevisPdfActionsMixin  # SPL139
 from .devis_calepinage import DevisCalepinageActionsMixin  # SPL140
 from .devis_facturation import DevisFacturationActionsMixin  # SPL141
 from .devis_cadence import DevisCadenceActionsMixin  # SPL142
+from .assistant import DevisAssistantActionsMixin  # copilote vague 2 (VAD)
 from authentication.scoping import visible_user_ids
 import logging
 
@@ -166,6 +167,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
                    DevisCalepinageActionsMixin,
                    DevisFacturationActionsMixin,
                    DevisCadenceActionsMixin,
+                   DevisAssistantActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # ENF17 / api-fuzz-full — ``DevisWriteSerializer`` porte ``IdInconnu404Mixin``

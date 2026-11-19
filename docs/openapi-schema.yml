@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5174, operations: 8006, components: 4126}
+counts: {paths: 5228, operations: 8060, components: 4180}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -536,11 +536,15 @@ operations:
 - get /api/django/automation/templates/ -> django_automation_templates_list
 - get /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_list
 - post /api/django/calepinage/calepinages/ -> django_calepinage_calepinages_create
+- get /api/django/calepinage/calepinages/a-traiter/ -> django_calepinage_calepinages_a_traiter_retrieve
 - post /api/django/calepinage/calepinages/comparer-projets/ -> django_calepinage_calepinages_comparer_projets_create
+- get /api/django/calepinage/calepinages/contenance/ -> django_calepinage_calepinages_contenance_retrieve
 - post /api/django/calepinage/calepinages/depuis-lead/ -> django_calepinage_calepinages_depuis_lead_create
 - post /api/django/calepinage/calepinages/depuis-modele/ -> django_calepinage_calepinages_depuis_modele_create
+- get /api/django/calepinage/calepinages/du-lead/ -> django_calepinage_calepinages_du_lead_retrieve
 - post /api/django/calepinage/calepinages/import-projet/ -> django_calepinage_calepinages_import_projet_create
 - get /api/django/calepinage/calepinages/modeles/ -> django_calepinage_calepinages_modeles_list
+- post /api/django/calepinage/calepinages/preparer/ -> django_calepinage_calepinages_preparer_create
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
 - get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
@@ -619,6 +623,8 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/pose-reelle/ -> django_calepinage_calepinages_pose_reelle_create
 - delete /api/django/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> django_calepinage_calepinages_pose_reelle_destroy
 - get /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> django_calepinage_calepinages_presentation_compacte.pdf_retrieve
+- post /api/django/calepinage/calepinages/{id}/publier-devis/ -> django_calepinage_calepinages_publier_devis_create
+- get /api/django/calepinage/calepinages/{id}/publier-devis/apercu/ -> django_calepinage_calepinages_publier_devis_apercu_retrieve
 - get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
 - post /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_create
 - get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/ -> django_calepinage_calepinages_rapport_etude.pdf_retrieve
@@ -634,6 +640,7 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/remettre-document/ -> django_calepinage_calepinages_remettre_document_create
 - post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
 - get /api/django/calepinage/calepinages/{id}/resultat/ -> django_calepinage_calepinages_resultat_retrieve
+- get /api/django/calepinage/calepinages/{id}/resume/ -> django_calepinage_calepinages_resume_retrieve
 - post /api/django/calepinage/calepinages/{id}/roof-image/ -> django_calepinage_calepinages_roof_image_create
 - get /api/django/calepinage/calepinages/{id}/roof-image/fichier/ -> django_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/django/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> django_calepinage_calepinages_schema_unifilaire.dxf_retrieve
@@ -1694,6 +1701,7 @@ operations:
 - get /api/django/installations/chantiers/ -> django_installations_chantiers_list
 - post /api/django/installations/chantiers/ -> django_installations_chantiers_create
 - get /api/django/installations/chantiers/a-facturer/ -> django_installations_chantiers_a_facturer_list
+- get /api/django/installations/chantiers/assistant/ -> django_installations_chantiers_assistant_retrieve
 - post /api/django/installations/chantiers/creer-depuis-devis/ -> django_installations_chantiers_creer_depuis_devis_create
 - get /api/django/installations/chantiers/gantt/ -> django_installations_chantiers_gantt_list
 - get /api/django/installations/chantiers/regime-suggestion/ -> django_installations_chantiers_regime_suggestion_retrieve
@@ -1713,11 +1721,13 @@ operations:
 - get /api/django/installations/chantiers/{id}/cout/ -> django_installations_chantiers_cout_retrieve
 - post /api/django/installations/chantiers/{id}/creer-interventions-standard/ -> django_installations_chantiers_creer_interventions_standard_create
 - get /api/django/installations/chantiers/{id}/etapes/ -> django_installations_chantiers_etapes_retrieve
+- get /api/django/installations/chantiers/{id}/etat-assistant/ -> django_installations_chantiers_etat_assistant_retrieve
 - get /api/django/installations/chantiers/{id}/historique/ -> django_installations_chantiers_historique_list
 - post /api/django/installations/chantiers/{id}/mise-en-service/ -> django_installations_chantiers_mise_en_service_create
 - post /api/django/installations/chantiers/{id}/noter/ -> django_installations_chantiers_noter_create
 - get /api/django/installations/chantiers/{id}/pack-remise/ -> django_installations_chantiers_pack_remise_retrieve
 - post /api/django/installations/chantiers/{id}/pack-remise/ -> django_installations_chantiers_pack_remise_create
+- post /api/django/installations/chantiers/{id}/planifier-pose/ -> django_installations_chantiers_planifier_pose_create
 - get /api/django/installations/chantiers/{id}/rapport-energie/ -> django_installations_chantiers_rapport_energie_retrieve
 - post /api/django/installations/chantiers/{id}/reactiver/ -> django_installations_chantiers_reactiver_create
 - get /api/django/installations/chantiers/{id}/readiness/ -> django_installations_chantiers_readiness_retrieve
@@ -2704,6 +2714,7 @@ operations:
 - post /api/django/reporting/approbations-en-attente/decider/ -> django_reporting_approbations_en_attente_decider_create
 - get /api/django/reporting/archive/chantier/{id}/ -> django_reporting_archive_chantier_retrieve
 - get /api/django/reporting/archive/client/{id}/ -> django_reporting_archive_client_retrieve
+- get /api/django/reporting/assistant/ca/ -> django_reporting_assistant_ca_retrieve
 - get /api/django/reporting/assistant/diagnostic/ -> django_reporting_assistant_diagnostic_retrieve
 - get /api/django/reporting/balance-agee/export/ -> django_reporting_balance_agee_export_retrieve
 - get /api/django/reporting/calendar.ics -> django_reporting_calendar.ics_retrieve
@@ -2824,6 +2835,11 @@ operations:
 - put /api/django/sav/alarmes-onduleur/{id}/ -> django_sav_alarmes_onduleur_update
 - post /api/django/sav/alarmes-onduleur/{id}/acquitter/ -> django_sav_alarmes_onduleur_acquitter_create
 - post /api/django/sav/alarmes-onduleur/{id}/escalader/ -> django_sav_alarmes_onduleur_escalader_create
+- get /api/django/sav/assistant/parc/ -> django_sav_assistant_parc_retrieve
+- get /api/django/sav/assistant/tickets/ -> django_sav_assistant_tickets_retrieve
+- get /api/django/sav/assistant/tickets/{id}/fiche/ -> django_sav_assistant_tickets_fiche_retrieve
+- post /api/django/sav/assistant/tickets/{id}/resoudre/ -> django_sav_assistant_tickets_resoudre_create
+- post /api/django/sav/assistant/tickets/{id}/transition/ -> django_sav_assistant_tickets_transition_create
 - get /api/django/sav/categories-equipement/ -> django_sav_categories_equipement_list
 - post /api/django/sav/categories-equipement/ -> django_sav_categories_equipement_create
 - delete /api/django/sav/categories-equipement/{id}/ -> django_sav_categories_equipement_destroy
@@ -3051,6 +3067,7 @@ operations:
 - put /api/django/stock/alertes-rappel/{id}/ -> django_stock_alertes_rappel_update
 - post /api/django/stock/alertes-rappel/{id}/cloturer/ -> django_stock_alertes_rappel_cloturer_create
 - get /api/django/stock/alertes-rappel/{id}/impact/ -> django_stock_alertes_rappel_impact_retrieve
+- get /api/django/stock/assistant/niveaux/ -> django_stock_assistant_niveaux_retrieve
 - get /api/django/stock/avoirs-fournisseur/ -> django_stock_avoirs_fournisseur_list
 - post /api/django/stock/avoirs-fournisseur/ -> django_stock_avoirs_fournisseur_create
 - delete /api/django/stock/avoirs-fournisseur/{id}/ -> django_stock_avoirs_fournisseur_destroy
@@ -3673,6 +3690,9 @@ operations:
 - put /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_update
 - post /api/django/uxviews/saved-views/{id}/definir-par-defaut-role/ -> django_uxviews_saved_views_definir_par_defaut_role_create
 - get /api/django/ventes/assistant/catalogue/ -> django_ventes_assistant_catalogue_retrieve
+- get /api/django/ventes/assistant/factures/ -> django_ventes_assistant_factures_retrieve
+- post /api/django/ventes/assistant/factures/{id}/relance-whatsapp/ -> django_ventes_assistant_factures_relance_whatsapp_create
+- get /api/django/ventes/assistant/impayes/ -> django_ventes_assistant_impayes_retrieve
 - get /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_list
 - post /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_create
 - delete /api/django/ventes/attestations-conformite/{id}/ -> django_ventes_attestations_conformite_destroy
@@ -3739,6 +3759,8 @@ operations:
 - post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- post /api/django/ventes/devis/{id}/assistant-taille/ -> django_ventes_devis_assistant_taille_create
+- get /api/django/ventes/devis/{id}/assistant-taille/apercu/ -> django_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/django/ventes/devis/{id}/avenant/demander-signature/ -> django_ventes_devis_avenant_demander_signature_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
@@ -3802,6 +3824,7 @@ operations:
 - post /api/django/ventes/devis/{id}/sync-layout/ -> django_ventes_devis_sync_layout_create
 - get /api/django/ventes/devis/{id}/telecharger-pdf/ -> django_ventes_devis_telecharger_pdf_retrieve
 - get /api/django/ventes/devis/{id}/variantes/ -> django_ventes_devis_variantes_list
+- get /api/django/ventes/devis/{id}/vente-assistant/ -> django_ventes_devis_vente_assistant_retrieve
 - post /api/django/ventes/devis/{id}/whatsapp-preview/ -> django_ventes_devis_whatsapp_preview_create
 - post /api/django/ventes/devis/{id}/whatsapp/ -> django_ventes_devis_whatsapp_create
 - get /api/django/ventes/dossiers-checklist/ -> django_ventes_dossiers_checklist_list
@@ -4002,10 +4025,13 @@ operations:
 - get /api/django/visites/ma-journee/ -> django_visites_ma_journee_retrieve
 - get /api/django/visites/visites/ -> django_visites_visites_list
 - post /api/django/visites/visites/ -> django_visites_visites_create
+- get /api/django/visites/visites/agenda/ -> django_visites_visites_agenda_retrieve
+- get /api/django/visites/visites/charge/ -> django_visites_visites_charge_retrieve
 - delete /api/django/visites/visites/{id}/ -> django_visites_visites_destroy
 - get /api/django/visites/visites/{id}/ -> django_visites_visites_retrieve
 - patch /api/django/visites/visites/{id}/ -> django_visites_visites_partial_update
 - put /api/django/visites/visites/{id}/ -> django_visites_visites_update
+- post /api/django/visites/visites/{id}/annuler/ -> django_visites_visites_annuler_create
 - post /api/django/visites/visites/{id}/arriver/ -> django_visites_visites_arriver_create
 - post /api/django/visites/visites/{id}/assembler-photos/ -> django_visites_visites_assembler_photos_create
 - patch /api/django/visites/visites/{id}/calage/ -> django_visites_visites_calage_partial_update
@@ -4016,6 +4042,7 @@ operations:
 - delete /api/django/visites/visites/{id}/photos/{media_id}/ -> django_visites_visites_photos_destroy
 - post /api/django/visites/visites/{id}/qualification/ -> django_visites_visites_qualification_create
 - post /api/django/visites/visites/{id}/renvoyer/ -> django_visites_visites_renvoyer_create
+- get /api/django/visites/visites/{id}/resume/ -> django_visites_visites_resume_retrieve
 - post /api/django/visites/visites/{id}/terminer/ -> django_visites_visites_terminer_create
 - post /api/django/visites/visites/{id}/valider/ -> django_visites_visites_valider_create
 - get /api/public/v1/achats/demandes-achat/ -> public_v1_achats_demandes_achat_list
@@ -4580,11 +4607,15 @@ operations:
 - get /api/v1/automation/templates/ -> v1_automation_templates_list
 - get /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_list
 - post /api/v1/calepinage/calepinages/ -> v1_calepinage_calepinages_create
+- get /api/v1/calepinage/calepinages/a-traiter/ -> v1_calepinage_calepinages_a_traiter_retrieve
 - post /api/v1/calepinage/calepinages/comparer-projets/ -> v1_calepinage_calepinages_comparer_projets_create
+- get /api/v1/calepinage/calepinages/contenance/ -> v1_calepinage_calepinages_contenance_retrieve
 - post /api/v1/calepinage/calepinages/depuis-lead/ -> v1_calepinage_calepinages_depuis_lead_create
 - post /api/v1/calepinage/calepinages/depuis-modele/ -> v1_calepinage_calepinages_depuis_modele_create
+- get /api/v1/calepinage/calepinages/du-lead/ -> v1_calepinage_calepinages_du_lead_retrieve
 - post /api/v1/calepinage/calepinages/import-projet/ -> v1_calepinage_calepinages_import_projet_create
 - get /api/v1/calepinage/calepinages/modeles/ -> v1_calepinage_calepinages_modeles_list
+- post /api/v1/calepinage/calepinages/preparer/ -> v1_calepinage_calepinages_preparer_create
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
 - get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
@@ -4663,6 +4694,8 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/pose-reelle/ -> v1_calepinage_calepinages_pose_reelle_create
 - delete /api/v1/calepinage/calepinages/{id}/pose-reelle/{zone_id}/ -> v1_calepinage_calepinages_pose_reelle_destroy
 - get /api/v1/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> v1_calepinage_calepinages_presentation_compacte.pdf_retrieve
+- post /api/v1/calepinage/calepinages/{id}/publier-devis/ -> v1_calepinage_calepinages_publier_devis_create
+- get /api/v1/calepinage/calepinages/{id}/publier-devis/apercu/ -> v1_calepinage_calepinages_publier_devis_apercu_retrieve
 - get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
 - post /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_create
 - get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/ -> v1_calepinage_calepinages_rapport_etude.pdf_retrieve
@@ -4678,6 +4711,7 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/remettre-document/ -> v1_calepinage_calepinages_remettre_document_create
 - post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
 - get /api/v1/calepinage/calepinages/{id}/resultat/ -> v1_calepinage_calepinages_resultat_retrieve
+- get /api/v1/calepinage/calepinages/{id}/resume/ -> v1_calepinage_calepinages_resume_retrieve
 - post /api/v1/calepinage/calepinages/{id}/roof-image/ -> v1_calepinage_calepinages_roof_image_create
 - get /api/v1/calepinage/calepinages/{id}/roof-image/fichier/ -> v1_calepinage_calepinages_roof_image_fichier_retrieve
 - get /api/v1/calepinage/calepinages/{id}/schema-unifilaire.dxf/ -> v1_calepinage_calepinages_schema_unifilaire.dxf_retrieve
@@ -5738,6 +5772,7 @@ operations:
 - get /api/v1/installations/chantiers/ -> v1_installations_chantiers_list
 - post /api/v1/installations/chantiers/ -> v1_installations_chantiers_create
 - get /api/v1/installations/chantiers/a-facturer/ -> v1_installations_chantiers_a_facturer_list
+- get /api/v1/installations/chantiers/assistant/ -> v1_installations_chantiers_assistant_retrieve
 - post /api/v1/installations/chantiers/creer-depuis-devis/ -> v1_installations_chantiers_creer_depuis_devis_create
 - get /api/v1/installations/chantiers/gantt/ -> v1_installations_chantiers_gantt_list
 - get /api/v1/installations/chantiers/regime-suggestion/ -> v1_installations_chantiers_regime_suggestion_retrieve
@@ -5757,11 +5792,13 @@ operations:
 - get /api/v1/installations/chantiers/{id}/cout/ -> v1_installations_chantiers_cout_retrieve
 - post /api/v1/installations/chantiers/{id}/creer-interventions-standard/ -> v1_installations_chantiers_creer_interventions_standard_create
 - get /api/v1/installations/chantiers/{id}/etapes/ -> v1_installations_chantiers_etapes_retrieve
+- get /api/v1/installations/chantiers/{id}/etat-assistant/ -> v1_installations_chantiers_etat_assistant_retrieve
 - get /api/v1/installations/chantiers/{id}/historique/ -> v1_installations_chantiers_historique_list
 - post /api/v1/installations/chantiers/{id}/mise-en-service/ -> v1_installations_chantiers_mise_en_service_create
 - post /api/v1/installations/chantiers/{id}/noter/ -> v1_installations_chantiers_noter_create
 - get /api/v1/installations/chantiers/{id}/pack-remise/ -> v1_installations_chantiers_pack_remise_retrieve
 - post /api/v1/installations/chantiers/{id}/pack-remise/ -> v1_installations_chantiers_pack_remise_create
+- post /api/v1/installations/chantiers/{id}/planifier-pose/ -> v1_installations_chantiers_planifier_pose_create
 - get /api/v1/installations/chantiers/{id}/rapport-energie/ -> v1_installations_chantiers_rapport_energie_retrieve
 - post /api/v1/installations/chantiers/{id}/reactiver/ -> v1_installations_chantiers_reactiver_create
 - get /api/v1/installations/chantiers/{id}/readiness/ -> v1_installations_chantiers_readiness_retrieve
@@ -6714,6 +6751,7 @@ operations:
 - post /api/v1/reporting/approbations-en-attente/decider/ -> v1_reporting_approbations_en_attente_decider_create
 - get /api/v1/reporting/archive/chantier/{id}/ -> v1_reporting_archive_chantier_retrieve
 - get /api/v1/reporting/archive/client/{id}/ -> v1_reporting_archive_client_retrieve
+- get /api/v1/reporting/assistant/ca/ -> v1_reporting_assistant_ca_retrieve
 - get /api/v1/reporting/assistant/diagnostic/ -> v1_reporting_assistant_diagnostic_retrieve
 - get /api/v1/reporting/balance-agee/export/ -> v1_reporting_balance_agee_export_retrieve
 - get /api/v1/reporting/calendar.ics -> v1_reporting_calendar.ics_retrieve
@@ -6834,6 +6872,11 @@ operations:
 - put /api/v1/sav/alarmes-onduleur/{id}/ -> v1_sav_alarmes_onduleur_update
 - post /api/v1/sav/alarmes-onduleur/{id}/acquitter/ -> v1_sav_alarmes_onduleur_acquitter_create
 - post /api/v1/sav/alarmes-onduleur/{id}/escalader/ -> v1_sav_alarmes_onduleur_escalader_create
+- get /api/v1/sav/assistant/parc/ -> v1_sav_assistant_parc_retrieve
+- get /api/v1/sav/assistant/tickets/ -> v1_sav_assistant_tickets_retrieve
+- get /api/v1/sav/assistant/tickets/{id}/fiche/ -> v1_sav_assistant_tickets_fiche_retrieve
+- post /api/v1/sav/assistant/tickets/{id}/resoudre/ -> v1_sav_assistant_tickets_resoudre_create
+- post /api/v1/sav/assistant/tickets/{id}/transition/ -> v1_sav_assistant_tickets_transition_create
 - get /api/v1/sav/categories-equipement/ -> v1_sav_categories_equipement_list
 - post /api/v1/sav/categories-equipement/ -> v1_sav_categories_equipement_create
 - delete /api/v1/sav/categories-equipement/{id}/ -> v1_sav_categories_equipement_destroy
@@ -7061,6 +7104,7 @@ operations:
 - put /api/v1/stock/alertes-rappel/{id}/ -> v1_stock_alertes_rappel_update
 - post /api/v1/stock/alertes-rappel/{id}/cloturer/ -> v1_stock_alertes_rappel_cloturer_create
 - get /api/v1/stock/alertes-rappel/{id}/impact/ -> v1_stock_alertes_rappel_impact_retrieve
+- get /api/v1/stock/assistant/niveaux/ -> v1_stock_assistant_niveaux_retrieve
 - get /api/v1/stock/avoirs-fournisseur/ -> v1_stock_avoirs_fournisseur_list
 - post /api/v1/stock/avoirs-fournisseur/ -> v1_stock_avoirs_fournisseur_create
 - delete /api/v1/stock/avoirs-fournisseur/{id}/ -> v1_stock_avoirs_fournisseur_destroy
@@ -7680,6 +7724,9 @@ operations:
 - put /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_update
 - post /api/v1/uxviews/saved-views/{id}/definir-par-defaut-role/ -> v1_uxviews_saved_views_definir_par_defaut_role_create
 - get /api/v1/ventes/assistant/catalogue/ -> v1_ventes_assistant_catalogue_retrieve
+- get /api/v1/ventes/assistant/factures/ -> v1_ventes_assistant_factures_retrieve
+- post /api/v1/ventes/assistant/factures/{id}/relance-whatsapp/ -> v1_ventes_assistant_factures_relance_whatsapp_create
+- get /api/v1/ventes/assistant/impayes/ -> v1_ventes_assistant_impayes_retrieve
 - get /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_list
 - post /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_create
 - delete /api/v1/ventes/attestations-conformite/{id}/ -> v1_ventes_attestations_conformite_destroy
@@ -7746,6 +7793,8 @@ operations:
 - post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- post /api/v1/ventes/devis/{id}/assistant-taille/ -> v1_ventes_devis_assistant_taille_create
+- get /api/v1/ventes/devis/{id}/assistant-taille/apercu/ -> v1_ventes_devis_assistant_taille_apercu_retrieve
 - post /api/v1/ventes/devis/{id}/avenant/demander-signature/ -> v1_ventes_devis_avenant_demander_signature_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
@@ -7809,6 +7858,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/sync-layout/ -> v1_ventes_devis_sync_layout_create
 - get /api/v1/ventes/devis/{id}/telecharger-pdf/ -> v1_ventes_devis_telecharger_pdf_retrieve
 - get /api/v1/ventes/devis/{id}/variantes/ -> v1_ventes_devis_variantes_list
+- get /api/v1/ventes/devis/{id}/vente-assistant/ -> v1_ventes_devis_vente_assistant_retrieve
 - post /api/v1/ventes/devis/{id}/whatsapp-preview/ -> v1_ventes_devis_whatsapp_preview_create
 - post /api/v1/ventes/devis/{id}/whatsapp/ -> v1_ventes_devis_whatsapp_create
 - get /api/v1/ventes/dossiers-checklist/ -> v1_ventes_dossiers_checklist_list
@@ -8009,10 +8059,13 @@ operations:
 - get /api/v1/visites/ma-journee/ -> v1_visites_ma_journee_retrieve
 - get /api/v1/visites/visites/ -> v1_visites_visites_list
 - post /api/v1/visites/visites/ -> v1_visites_visites_create
+- get /api/v1/visites/visites/agenda/ -> v1_visites_visites_agenda_retrieve
+- get /api/v1/visites/visites/charge/ -> v1_visites_visites_charge_retrieve
 - delete /api/v1/visites/visites/{id}/ -> v1_visites_visites_destroy
 - get /api/v1/visites/visites/{id}/ -> v1_visites_visites_retrieve
 - patch /api/v1/visites/visites/{id}/ -> v1_visites_visites_partial_update
 - put /api/v1/visites/visites/{id}/ -> v1_visites_visites_update
+- post /api/v1/visites/visites/{id}/annuler/ -> v1_visites_visites_annuler_create
 - post /api/v1/visites/visites/{id}/arriver/ -> v1_visites_visites_arriver_create
 - post /api/v1/visites/visites/{id}/assembler-photos/ -> v1_visites_visites_assembler_photos_create
 - patch /api/v1/visites/visites/{id}/calage/ -> v1_visites_visites_calage_partial_update
@@ -8023,6 +8076,7 @@ operations:
 - delete /api/v1/visites/visites/{id}/photos/{media_id}/ -> v1_visites_visites_photos_destroy
 - post /api/v1/visites/visites/{id}/qualification/ -> v1_visites_visites_qualification_create
 - post /api/v1/visites/visites/{id}/renvoyer/ -> v1_visites_visites_renvoyer_create
+- get /api/v1/visites/visites/{id}/resume/ -> v1_visites_visites_resume_retrieve
 - post /api/v1/visites/visites/{id}/terminer/ -> v1_visites_visites_terminer_create
 - post /api/v1/visites/visites/{id}/valider/ -> v1_visites_visites_valider_create
 query_params:
@@ -8139,6 +8193,9 @@ query_params:
   get /api/django/automation/rules/: enabled ordering page page_size trigger_type
   get /api/django/automation/runs/: ordering page page_size rule status
   get /api/django/calepinage/calepinages/: client depuis etiquette lead ordering page page_size q responsable statut
+  get /api/django/calepinage/calepinages/a-traiter/: limite
+  get /api/django/calepinage/calepinages/contenance/: largeur_m lead longueur_m origine pente_deg produit toit_plat
+  get /api/django/calepinage/calepinages/du-lead/: lead
   get /api/django/calepinage/calepinages/modeles/: ordering
   get /api/django/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/django/calepinage/calepinages/{id}/bom-fixation/: systeme
@@ -8151,6 +8208,7 @@ query_params:
   get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/django/calepinage/calepinages/{id}/resultat/: variante
+  get /api/django/calepinage/calepinages/{id}/resume/: variante
   get /api/django/calepinage/calepinages/{id}/variantes/: ordering
   get /api/django/calepinage/calepinages/{id}/versions/: ordering
   get /api/django/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
@@ -8362,6 +8420,7 @@ query_params:
   get /api/django/installations/categories-stockage/: ordering page page_size search
   get /api/django/installations/chantiers/: annule art33 dossier_statut mine ordering page page_size parc regime search statut technicien type_installation
   get /api/django/installations/chantiers/a-facturer/: ordering search
+  get /api/django/installations/chantiers/assistant/: debut lead limite q statut technicien vue
   get /api/django/installations/chantiers/gantt/: ordering search
   get /api/django/installations/chantiers/regime-suggestion/: hors_reseau kw_ac kwc niveau type_installation
   get /api/django/installations/chantiers/{id}/cout/: tarif_jour
@@ -8554,6 +8613,7 @@ query_params:
   get /api/django/reporting/approbations-en-attente/: categorie priorite source trier
   get /api/django/reporting/archive/chantier/{id}/: export
   get /api/django/reporting/archive/client/{id}/: export
+  get /api/django/reporting/assistant/ca/: au du
   get /api/django/reporting/assistant/diagnostic/: jours
   get /api/django/reporting/calendar.ics: token
   get /api/django/reporting/calendar/: assignee from to types
@@ -8594,6 +8654,8 @@ query_params:
   get /api/django/roles/postes/: ordering page page_size search
   get /api/django/roles/revue-acces/: dormant_days format
   get /api/django/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
+  get /api/django/sav/assistant/parc/: limite q
+  get /api/django/sav/assistant/tickets/: client equipement limite priorite q retard_sla statut
   get /api/django/sav/categories-equipement/: ordering page page_size search
   get /api/django/sav/categories-ticket/: actif ordering page page_size search
   get /api/django/sav/causes-defaillance/: archived ordering page page_size search
@@ -8641,6 +8703,7 @@ query_params:
   get /api/django/stock/achats-parametres/checklist-cloture/: periode seuil_jours
   get /api/django/stock/acomptes-fournisseur/: bon_commande ordering page page_size
   get /api/django/stock/alertes-rappel/: ordering page page_size produit search statut
+  get /api/django/stock/assistant/niveaux/: categorie limite q sous_seuil
   get /api/django/stock/avoirs-fournisseur/: fournisseur ordering page page_size search
   get /api/django/stock/blocages-qualite/: bin ordering page page_size produit search statut
   get /api/django/stock/bons-commande-fournisseur/: fournisseur ordering page page_size search
@@ -8780,6 +8843,8 @@ query_params:
   get /api/django/uxviews/saved-views/: ecran ordering page page_size search
   get /api/django/uxviews/saved-views/toutes-company/: ordering search
   get /api/django/ventes/assistant/catalogue/: famille genre kw kwh limite phase q wc
+  get /api/django/ventes/assistant/factures/: client limite q statut
+  get /api/django/ventes/assistant/impayes/: client limite mes_relances q
   get /api/django/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/django/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/django/ventes/avoirs/: facture ordering page page_size search
@@ -8791,6 +8856,7 @@ query_params:
   get /api/django/ventes/devis-lignes/: ordering page page_size search
   get /api/django/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/django/ventes/devis/prefill-site/: client
+  get /api/django/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/django/ventes/devis/{id}/declaration-raccordement/: format regime
   post /api/django/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/django/ventes/devis/{id}/historique-configuration/: a b
@@ -8838,6 +8904,8 @@ query_params:
   get /api/django/visites/leads-recherche/: limit q
   get /api/django/visites/ma-journee/: tous
   get /api/django/visites/visites/: lead mine ordering page page_size search
+  get /api/django/visites/visites/agenda/: au commercial du filtre limite
+  get /api/django/visites/visites/charge/: du jours
   get /api/public/v1/achats/demandes-achat/: ordering page page_size
   get /api/public/v1/achats/rfq/: ordering page page_size
   get /api/public/v1/calepinages/: ordering page page_size
@@ -8963,6 +9031,9 @@ query_params:
   get /api/v1/automation/rules/: enabled ordering page page_size trigger_type
   get /api/v1/automation/runs/: ordering page page_size rule status
   get /api/v1/calepinage/calepinages/: client depuis etiquette lead ordering page page_size q responsable statut
+  get /api/v1/calepinage/calepinages/a-traiter/: limite
+  get /api/v1/calepinage/calepinages/contenance/: largeur_m lead longueur_m origine pente_deg produit toit_plat
+  get /api/v1/calepinage/calepinages/du-lead/: lead
   get /api/v1/calepinage/calepinages/modeles/: ordering
   get /api/v1/calepinage/calepinages/{id}/apercu-document/: code langue
   get /api/v1/calepinage/calepinages/{id}/bom-fixation/: systeme
@@ -8975,6 +9046,7 @@ query_params:
   get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/: langue
   get /api/v1/calepinage/calepinages/{id}/resultat/: variante
+  get /api/v1/calepinage/calepinages/{id}/resume/: variante
   get /api/v1/calepinage/calepinages/{id}/variantes/: ordering
   get /api/v1/calepinage/calepinages/{id}/versions/: ordering
   get /api/v1/calepinage/calepinages/{id}/versions/{version_id}/diff/: contre
@@ -9186,6 +9258,7 @@ query_params:
   get /api/v1/installations/categories-stockage/: ordering page page_size search
   get /api/v1/installations/chantiers/: annule art33 dossier_statut mine ordering page page_size parc regime search statut technicien type_installation
   get /api/v1/installations/chantiers/a-facturer/: ordering search
+  get /api/v1/installations/chantiers/assistant/: debut lead limite q statut technicien vue
   get /api/v1/installations/chantiers/gantt/: ordering search
   get /api/v1/installations/chantiers/regime-suggestion/: hors_reseau kw_ac kwc niveau type_installation
   get /api/v1/installations/chantiers/{id}/cout/: tarif_jour
@@ -9376,6 +9449,7 @@ query_params:
   get /api/v1/reporting/approbations-en-attente/: categorie priorite source trier
   get /api/v1/reporting/archive/chantier/{id}/: export
   get /api/v1/reporting/archive/client/{id}/: export
+  get /api/v1/reporting/assistant/ca/: au du
   get /api/v1/reporting/assistant/diagnostic/: jours
   get /api/v1/reporting/calendar.ics: token
   get /api/v1/reporting/calendar/: assignee from to types
@@ -9416,6 +9490,8 @@ query_params:
   get /api/v1/roles/postes/: ordering page page_size search
   get /api/v1/roles/revue-acces/: dormant_days format
   get /api/v1/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
+  get /api/v1/sav/assistant/parc/: limite q
+  get /api/v1/sav/assistant/tickets/: client equipement limite priorite q retard_sla statut
   get /api/v1/sav/categories-equipement/: ordering page page_size search
   get /api/v1/sav/categories-ticket/: actif ordering page page_size search
   get /api/v1/sav/causes-defaillance/: archived ordering page page_size search
@@ -9463,6 +9539,7 @@ query_params:
   get /api/v1/stock/achats-parametres/checklist-cloture/: periode seuil_jours
   get /api/v1/stock/acomptes-fournisseur/: bon_commande ordering page page_size
   get /api/v1/stock/alertes-rappel/: ordering page page_size produit search statut
+  get /api/v1/stock/assistant/niveaux/: categorie limite q sous_seuil
   get /api/v1/stock/avoirs-fournisseur/: fournisseur ordering page page_size search
   get /api/v1/stock/blocages-qualite/: bin ordering page page_size produit search statut
   get /api/v1/stock/bons-commande-fournisseur/: fournisseur ordering page page_size search
@@ -9602,6 +9679,8 @@ query_params:
   get /api/v1/uxviews/saved-views/: ecran ordering page page_size search
   get /api/v1/uxviews/saved-views/toutes-company/: ordering search
   get /api/v1/ventes/assistant/catalogue/: famille genre kw kwh limite phase q wc
+  get /api/v1/ventes/assistant/factures/: client limite q statut
+  get /api/v1/ventes/assistant/impayes/: client limite mes_relances q
   get /api/v1/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/v1/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/v1/ventes/avoirs/: facture ordering page page_size search
@@ -9613,6 +9692,7 @@ query_params:
   get /api/v1/ventes/devis-lignes/: ordering page page_size search
   get /api/v1/ventes/devis/: concevable entite lead ordering page page_size search statut
   get /api/v1/ventes/devis/prefill-site/: client
+  get /api/v1/ventes/devis/{id}/assistant-taille/apercu/: batterie_nb_modules nb_panneaux
   get /api/v1/ventes/devis/{id}/declaration-raccordement/: format regime
   post /api/v1/ventes/devis/{id}/dupliquer-variante/: ordering search
   get /api/v1/ventes/devis/{id}/historique-configuration/: a b
@@ -9660,6 +9740,8 @@ query_params:
   get /api/v1/visites/leads-recherche/: limit q
   get /api/v1/visites/ma-journee/: tous
   get /api/v1/visites/visites/: lead mine ordering page page_size search
+  get /api/v1/visites/visites/agenda/: au commercial du filtre limite
+  get /api/v1/visites/visites/charge/: du jours
 components:
 - AbandonMotifEnum
 - AbonnementMonitoring
@@ -9934,6 +10016,11 @@ components:
 - AsBuiltPackRequest
 - AssetTypeEnum
 - AssistantBudget
+- AssistantCaChiffre
+- AssistantCaChiffreCleEnum
+- AssistantCaRefus
+- AssistantCaReponse
+- AssistantCaReponseAFaireEnum
 - AssistantDiagnostic
 - AssistantEvenement
 - AssistantEvenementNote
@@ -9941,6 +10028,10 @@ components:
 - AssistantEvenementsPage
 - AssistantLibelles
 - AssistantOuvrir
+- AssistantSavErreur
+- AssistantSavParc
+- AssistantSavTicketFiche
+- AssistantSavTickets
 - AssistantStats
 - AssumptionNode
 - AssumptionNodeRequest
@@ -10081,6 +10172,16 @@ components:
 - CalepinageApprobationRequeteDecisionEnum
 - CalepinageApprobationRequeteRequest
 - CalepinageArchivage
+- CalepinageAssistantATraiter
+- CalepinageAssistantContenance
+- CalepinageAssistantDuLead
+- CalepinageAssistantPreparer
+- CalepinageAssistantPreparerCorpsRequest
+- CalepinageAssistantPublierApercu
+- CalepinageAssistantPublierCorpsRequest
+- CalepinageAssistantPublierDevis
+- CalepinageAssistantRefus
+- CalepinageAssistantResume
 - CalepinageChampsDossierCorpsParDossierRequest
 - CalepinageChampsDossierCorpsParGabaritRequest
 - CalepinageChampsDossierCorpsRequest
@@ -10824,6 +10925,8 @@ components:
 - ErreurApi
 - ErreurAuthentification
 - ErreurCalendrierIcs
+- ErreurRelanceWhatsappAssistant
+- ErreurTailleAssistant
 - EtapeApprobationAchat
 - EtapeAssemblage
 - EtapeAssemblageRequest
@@ -10939,6 +11042,9 @@ components:
 - FactureWhatsappResponse
 - FactureWrite
 - FactureWriteRequest
+- FacturesAssistantLigne
+- FacturesAssistantLigneAFaireEnum
+- FacturesAssistantResponse
 - FacturesKpis
 - FacturesLicenceListe
 - FamilleEnum
@@ -11117,6 +11223,11 @@ components:
 - IdentityProvider
 - IdentityProviderRequest
 - ImpactEnum
+- ImpayesAssistantLigne
+- ImpayesAssistantLigneAFaireEnum
+- ImpayesAssistantPromesse
+- ImpayesAssistantResponse
+- ImpayesAssistantTranches
 - ImpersonationCibles
 - ImpersonationDemandeRequest
 - ImpersonationDemarree
@@ -12408,6 +12519,7 @@ components:
 - ProblemeClientRequeteRequest
 - ProblemeRequest
 - ProblemeStatutEnum
+- ProchaineActionEnum
 - ProchaineToucheCrm
 - ProductTour
 - ProductTourEtape
@@ -12673,6 +12785,9 @@ components:
 - RelanceNiveauCourant
 - RelanceNiveauSuivant
 - RelancePromesse
+- RelanceWhatsappAssistantRequestLangueEnum
+- RelanceWhatsappAssistantRequestRequest
+- RelanceWhatsappAssistantResponse
 - RelancerFactureRequest
 - RelationModuleEnum
 - ReleveClient
@@ -13001,6 +13116,8 @@ components:
 - StockFournisseurDelaiMesure
 - StockFournisseurOtif
 - StockHistoriqueCasier
+- StockNiveauxAssistant
+- StockNiveauxAssistantErreur
 - StockPlanChargementAjout
 - StockPlanChargementCapacite
 - StockPortailCreneauReservationRequest
@@ -13517,6 +13634,12 @@ components:
 - TagRequest
 - TaggedItem
 - TaggedItemRequest
+- TailleAssistantAlerte
+- TailleAssistantApercuResponse
+- TailleAssistantApercuResponseAFaireEnum
+- TailleAssistantLigne
+- TailleAssistantRequestRequest
+- TailleAssistantResponse
 - TamponSociete
 - TamponSocieteRequest
 - TargetEnum
@@ -13684,6 +13807,11 @@ components:
 - VeilleAnnonceur
 - VeilleDecouverte
 - VeilleDecouverteStatutEnum
+- VenteEtatAssistantEcheance
+- VenteEtatAssistantFacture
+- VenteEtatAssistantResponse
+- VenteEtatAssistantResponseAFaireEnum
+- VenteEtatAssistantRevision
 - VentesDetail
 - VentesEmailConfig
 - VentesExportAsync
@@ -13692,6 +13820,7 @@ components:
 - VentesRoofConfig
 - VerdictEnum
 - VerifierCertificatReponse
+- VersEnum
 - ViewsAutomationTemplatesReponse
 - ViewsCommitReponse
 - ViewsConfigPackageViewSetAppliquerReponse
@@ -13726,13 +13855,18 @@ components:
 - VisibiliteEnum
 - VisitWindowPartEnum
 - VisitWindowWeekEnum
+- VisiteAnnulerRequest
 - VisiteExterne
 - VisiteRenvoiRequest
+- VisiteResumeAssistant
 - VisiteTerrain
 - VisiteTerrainContexte
 - VisiteTerrainLigne
 - VisiteTerrainRequest
 - VisiteTerrainStatutEnum
+- VisitesAgendaAssistant
+- VisitesChargeAssistant
+- VisitesErreurAssistant
 - VisitesLeadsRecherche
 - VisitesMaJournee
 - VitalsVitalsP75Reponse
@@ -13787,3 +13921,5 @@ components:
 - _DecisionGabaritRequest
 - _DecisionGabaritStatutApprobationEnum
 - _ItemDecisionRequest
+- _ResoudreRequeteRequest
+- _TransitionRequeteRequest

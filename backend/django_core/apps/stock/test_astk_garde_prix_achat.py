@@ -437,6 +437,48 @@ class GardePrixAchat(TestCase):
         self.assertEqual(commercial.get(tableau).status_code, 403)
         self.assertTrue(refus_declare(tableau, self.commercial))
 
+    def test_palier_admin_sans_prix_achat_voir_rapports_masques(self):
+        """STK1 (D-ASTK-2 / D-W2-Q6) — les rapports produit gardés par le seul
+        palier administrateur retirent leurs valeurs d'achat pour un rôle
+        administrateur SANS `prix_achat_voir` (mêmes lignes, quantités
+        gardées) ; l'Administrateur qui porte le droit reçoit tout, inchangé."""
+        Produit.objects.filter(pk=self.produit.pk).update(quantite_stock=12, seuil_alerte=20)
+        perms = [c for c in dict(CANONICAL_SYSTEM_ROLES)['Administrateur'] if c != 'prix_achat_voir']
+        sans = User.objects.create_user(
+            username='astk14-admin-sans-prix', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Admin sans prix', permissions=perms))
+        self.assertEqual((sans.is_admin_role, sans.can_view_buy_prices), (True, False))
+        masquees = {'total', 'valeur', 'cout_moyen', 'prix_achat', 'valeur_stock', 'valeur_totale'}
+
+        def cles(donnees):
+            if isinstance(donnees, dict):
+                return set(donnees).union(*(cles(v) for v in donnees.values()))
+            return set().union(*(cles(v) for v in donnees)) if isinstance(donnees, list) else set()
+        base = '/api/django/stock/produits/'
+        routes = {'valorisation/': ({}, {'total', 'valeur', 'cout_moyen'}),
+                  'valorisation-a-date/': ({'date': self.aujourdhui}, {'total'}),
+                  'a-reapprovisionner/': ({}, {'prix_achat'}),
+                  'rotation/': ({}, {'valeur_stock'}),
+                  f'{self.produit.id}/comparer-fournisseurs/': ({}, {'prix_achat'}),
+                  'previsions-reappro/': ({}, set()), 'rapport-pertes/': ({}, set())}
+        servis = {}
+        for suffixe, (params, achat) in routes.items():
+            plein, masque = (_api(u).get(base + suffixe, params) for u in (self.admin, sans))
+            self.assertEqual((plein.status_code, masque.status_code), (200, 200), suffixe)
+            self.assertLessEqual(achat, cles(plein.json()), suffixe)
+            self.assertEqual(cles(masque.json()) & masquees, set(), suffixe)
+            self.assertEqual(cles_interdites(masque.json()), set(), suffixe)
+            servis[suffixe] = masque.json()
+        self.assertEqual(servis['valorisation/']['lignes'][0]['quantite'], 12)
+        self.assertEqual([(r['produit_id'], r['fournisseur_id']) for r in servis['a-reapprovisionner/']],
+                         [(self.produit.id, self.fournisseur.id)])
+        self.assertEqual(servis[f'{self.produit.id}/comparer-fournisseurs/'][0]['fournisseur_id'],
+                         self.fournisseur.id)
+        export = base + 'valorisation-xlsx/'
+        self.assertEqual(entetes_achat(_api(sans).get(export).content), [])
+        self.assertEqual(entetes_achat(_api(self.admin).get(export).content),
+                         ['Coût moyen (HT)', 'Valeur (HT)'])
+
     def test_controle_positif_administrateur(self):
         """L'Administrateur voit ces clés sur les mêmes données : la garde
         scanne donc un jeu de données qui en contient réellement."""

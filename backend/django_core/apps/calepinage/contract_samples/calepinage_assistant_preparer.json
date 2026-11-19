@@ -1,0 +1,32 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/preparer/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA6) — « prépare le calepinage de ce lead » en UN geste CONFIRMÉ (action `calepinage.preparer`, risque outward, carte `lien_ecran`) : ouvre le calepinage du lead s'il n'existe pas (même service idempotent que `depuis-lead` : jamais un second calepinage ouvert) puis reprend les mesures et les photos de la visite VALIDÉE (même service que `releve-visite`, `remplacer` toujours faux : rien n'est converti, la conception ne change pas). Corps : `lead` SEUL (400 tout autre champ ; jamais de titre, jamais `remplacer`). Garde `calepinage_gerer` ; lead hors portée CRM → 404 ; calepinage existant hors de la vue de l'appelant → 409. Sans visite validée, le calepinage est quand même ouvert et `reprise_visite` vaut `aucune_visite_validee` (ensemble FERMÉ : reprise | deja_reprise | aucune_visite_validee). Le dessin et le pavage restent humains : la réponse porte les quatre clés de la carte `lien_ecran` (`ecran`, `chemin`, `libelle`, `titre` — forme de apps/agent/contract_samples/assistant_ouvrir.json, chemin construit par le serveur depuis assistant_ecrans.json) pour ouvrir l'atelier. Aucun prix, aucune mesure, aucune donnée personnelle du client.",
+  "corps_exemple": {"lead": 1637},
+  "exemple": {
+    "ecran": "calepinage",
+    "chemin": "/calepinage/16?onglet=reprise-visite",
+    "libelle": "CAL-2611-0016 — Karim Alami",
+    "titre": "Ouvrir le calepinage pour dessiner le toit",
+    "calepinage": 16,
+    "reference": "CAL-2611-0016",
+    "lead": 1637,
+    "cree": true,
+    "reprise_visite": "reprise"
+  },
+  "exemple_deja_ouvert": {
+    "ecran": "calepinage",
+    "chemin": "/calepinage/12",
+    "libelle": "CAL-2611-0012 — Aziz Benali",
+    "titre": "Ouvrir le calepinage",
+    "calepinage": 12,
+    "reference": "CAL-2611-0012",
+    "lead": 1489,
+    "cree": false,
+    "reprise_visite": "deja_reprise"
+  },
+  "exemple_409_hors_vue": {
+    "detail": "Ce lead a déjà un calepinage ouvert que vous ne voyez pas : demandez au responsable du calepinage de vous l'ouvrir.",
+    "field": "lead",
+    "code": "calepinage_hors_vue"
+  }
+}

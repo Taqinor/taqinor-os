@@ -1,0 +1,50 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/a-traiter/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA9) — la file « calepinages à traiter » (action `calepinage.a_traiter`, carte `liste_calepinages`) et la source du bloc `calepinages` du point du matin (`selectors.calepinages_a_traiter(user, limite=…)`, public, lu par crm). Calepinages OUVERTS visibles par l'appelant (`calepinages_visibles`), modifiés dans les 30 derniers jours, plus récents d'abord. Paramètre `limite` (10 par défaut, 1 à 20 ; hors borne → 400 qui le nomme). Lecture `calepinage_voir`. `signaux` = ensemble FERMÉ, chacun produit par UN lecteur unique : visite_non_reprise | visite_changee | sans_pose | simulation_jamais | simulation_perimee | bloquant_electrique | devis_absent | devis_desynchronise | approbation_attendue | approbation_perimee | approbation_refusee. Les signaux coûteux (simulation, électrique) ne sont évalués que pour les 5 premières lignes : au-delà `evalue: false` et ces signaux sont absents (jamais devinés). `a_faire` : même ensemble que `calepinage_assistant_resume.json` ; `lien` : `/calepinage/{id}` avec l'onglet du premier blocage. Aucun score, aucun classement de personnes, aucun prix, aucune donnée du client (le nom vient des libellés).",
+  "exemple": {
+    "total": 3,
+    "limite": 10,
+    "lignes": [
+      {
+        "calepinage": 12,
+        "reference": "CAL-2611-0012",
+        "lead": 1489,
+        "modifie_le": "2026-11-18T10:15:00+00:00",
+        "signaux": ["devis_desynchronise"],
+        "a_faire": "publier",
+        "lien": "/calepinage/12",
+        "evalue": true
+      },
+      {
+        "calepinage": 14,
+        "reference": "CAL-2611-0014",
+        "lead": 1670,
+        "modifie_le": "2026-11-18T15:02:00+00:00",
+        "signaux": ["bloquant_electrique", "devis_absent", "approbation_attendue"],
+        "a_faire": "corriger_electrique",
+        "lien": "/calepinage/14?onglet=verdict-electrique",
+        "evalue": true
+      },
+      {
+        "calepinage": 15,
+        "reference": "CAL-2611-0015",
+        "lead": 1665,
+        "modifie_le": "2026-11-19T08:40:00+00:00",
+        "signaux": ["visite_non_reprise", "sans_pose"],
+        "a_faire": "reprendre_visite",
+        "lien": "/calepinage/15?onglet=reprise-visite",
+        "evalue": true
+      }
+    ]
+  },
+  "exemple_vide": {
+    "total": 0,
+    "limite": 10,
+    "lignes": []
+  },
+  "exemple_400_limite": {
+    "detail": "limite : un entier entre 1 et 20.",
+    "field": "limite",
+    "code": "limite_invalide"
+  }
+}

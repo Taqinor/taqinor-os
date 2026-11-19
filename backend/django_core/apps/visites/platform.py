@@ -21,7 +21,10 @@ chacune avec sa raison :
   personnalisés qui accepte la saisie et la jette en silence.
 * ``import_specs`` reste VIDE : une visite se saisit sur le terrain, elle ne
   s'importe pas d'un fichier.
-* ``agent_actions_module`` reste VIDE : aucun module ``agent_actions`` ici.
+* ``agent_actions_module`` (copilote vague 2) : ``apps.visites.agent_actions``,
+  les actions ``visites.*`` de l'assistant (agenda, fiche, charge d'équipe,
+  déplacer, annuler, valider). Le module décrit des routes EXISTANTES du viewset
+  des visites ; il ne crée aucune surface et ne contourne aucune garde.
 * ``automation_state_fields`` reste VIDE. ``VisiteTerrain.statut`` ne change
   que par les transitions dédiées (``terminer``/``valider``/``renvoyer``) —
   l'ouvrir aux automatisations temporelles contournerait ce point de passage
@@ -39,7 +42,7 @@ PLATFORM = {
     'record_targets': [],
     'customfield_models': [],
     'import_specs': [],
-    'agent_actions_module': '',
+    'agent_actions_module': 'apps.visites.agent_actions',
     'automation_state_fields': [],
     'kpi_providers': [],
 }

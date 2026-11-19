@@ -22,6 +22,7 @@ Run :
         -Modules "apps.installations.tests_revue_chantier_appro"
 """
 import json
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -51,6 +52,7 @@ User = get_user_model()
 BASE = '/api/django/installations/chantiers'
 CONTRAT = (Path(__file__).resolve().parent / 'contract_samples'
            / 'chantier_approvisionnement.json')
+CONTRAT_ETAT = CONTRAT.with_name('assistant_chantier_etat.json')
 
 
 class ApproBase(TestCase):
@@ -426,3 +428,80 @@ class PreparationAccordTests(ApproBase):
         data = self.api.get(
             f'{BASE}/{self.chantier.id}/approvisionnement/').json()
         self.assertEqual(self._lignes(data)[self.batterie.id]['manque'], 5)
+
+
+class EtatAssistantTests(ApproBase):
+    """Copilote vague 2 (CHTA2) — ``GET chantiers/<pk>/etat-assistant/`` :
+    clés EXACTES de ``assistant_chantier_etat.json``, matériel en quantités
+    (UN calcul du besoin, jamais un prix), pose, ``a_faire``, portée."""
+
+    def _etat(self, chantier=None):
+        r = self.api.get(f'{BASE}/{(chantier or self.chantier).id}/etat-assistant/')
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()
+
+    def test_cles_exactes_du_contrat_sans_prix(self):
+        echantillon = json.loads(CONTRAT_ETAT.read_text(encoding='utf-8'))
+        data = self._etat()
+        for exemple in (echantillon['exemple'], echantillon['exemple_pret']):
+            self.assertEqual(set(data), set(exemple))
+            for bloc in ('planning', 'materiel', 'acompte', 'liens'):
+                self.assertEqual(set(data[bloc]), set(exemple[bloc]), bloc)
+        self.assertEqual(set(data['materiel']['manques'][0]),
+                         set(echantillon['exemple']['materiel']['manques'][0]))
+        texte = json.dumps(data)
+        for interdit in ('prix', 'total_achat', 'cout', 'telephone'):
+            self.assertNotIn(interdit, texte)
+
+    def test_materiel_en_quantites_et_a_faire_commander(self):
+        self._bcf(self.four_a, BonCommandeFournisseur.Statut.BROUILLON,
+                  [(self.panneau, 4, 0)])
+        data = self._etat()
+        self.assertEqual((data['statut'], data['statut_libelle']), ('signe', 'Signé'))
+        materiel = data['materiel']
+        self.assertEqual((materiel['nb_lignes'], materiel['nb_manques'],
+                          materiel['bcf_brouillons']), (3, 2, 1))
+        self.assertEqual({li['produit_id']: li['manque'] for li in materiel['manques']},
+                         {self.panneau.id: 10, self.batterie.id: 2})
+        self.assertFalse(data['pret_a_poser'])
+        self.assertIn('Date de pose non fixée', data['raisons'])
+        self.assertEqual(data['a_faire'], 'commander_materiel')
+        self.assertEqual(data['acompte'], {'exige': False, 'encaisse': False})
+        self.assertIsNone(data['etape_courante'])
+        self.assertIsNone(data['prochaine_etape'])
+        self.assertEqual(data['lien'], f'/chantiers?id={self.chantier.id}')
+        self.assertIsNone(data['planning']['intervention_pose'])
+        self.assertIsNone(data['liens']['intervention_pose'])
+
+    def test_pose_planifiee_a_faire_poser(self):
+        Produit.objects.filter(pk__in=[self.panneau.pk, self.batterie.pk]).update(
+            quantite_stock=50)
+        jour = date.today() + timedelta(days=3)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            date_pose_prevue=jour, technicien_responsable=self.admin)
+        pose = Intervention.objects.create(
+            company=self.company, installation=self.chantier,
+            type_intervention='pose', technicien=self.admin, date_prevue=jour)
+        data = self._etat()
+        planning = data['planning']
+        self.assertEqual(planning['date_pose_prevue'], jour.isoformat())
+        self.assertEqual(planning['technicien']['id'], self.admin.id)
+        self.assertEqual(planning['intervention_pose']['id'], pose.id)
+        self.assertEqual(planning['intervention_pose']['statut'], 'a_preparer')
+        self.assertEqual(data['liens']['intervention_pose'], f'/interventions?id={pose.id}')
+        self.assertEqual(data['materiel']['nb_manques'], 0)
+        self.assertEqual(data['a_faire'], 'poser')
+
+    def test_portee_autre_societe_404_et_sans_lecture_403(self):
+        autre = Company.objects.create(nom='Autre etat', slug='autre-etat-assistant')
+        chantier_autre = Installation.objects.create(company=autre, reference='CH-ETAT-AUTRE')
+        r = self.api.get(f'{BASE}/{chantier_autre.id}/etat-assistant/')
+        self.assertEqual(r.status_code, 404, r.content)
+        lecteur_crm = User.objects.create_user(
+            username='crm-etat-assistant', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='CRM seul',
+                                     permissions=['crm_voir']))
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(lecteur_crm)}')
+        r = api.get(f'{BASE}/{self.chantier.id}/etat-assistant/')
+        self.assertEqual(r.status_code, 403, r.content)

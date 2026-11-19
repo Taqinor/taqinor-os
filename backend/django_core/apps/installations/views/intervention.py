@@ -2645,11 +2645,11 @@ class InterventionViewSet(intervention_liens.CouperLienRapportMixin, PhotosPrech
         """XFSM2 — les 3 meilleures propositions (technicien, date) pour un
         chantier/type/durée cible. Lecture seule, NE MUTE RIEN. Corps :
         {chantier, type_intervention, [duree_jours], [date_cible]}."""
-        from .. import selectors
+        from .. import selectors_assistant
 
         corps = oa.corps_valide(oa.SuggererCreneauRequete, request)
-        data = selectors.suggerer_creneau(
-            request.user.company, chantier_id=corps['chantier'],
+        data = selectors_assistant.suggerer_creneau_visible(
+            request.user, chantier_id=corps['chantier'],
             type_intervention=corps['type_intervention'],
             duree_jours=corps['duree_jours'], date_cible=corps.get('date_cible'))
         return Response(data)

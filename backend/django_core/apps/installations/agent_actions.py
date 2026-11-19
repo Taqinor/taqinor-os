@@ -30,7 +30,9 @@ appelée depuis ``InstallationsConfig.ready()``.
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_OUTWARD, register
+from apps.agent.registry import (
+    AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register,
+)
 
 
 # Type d'intervention d'une visite de maintenance : valeur exacte de
@@ -175,10 +177,207 @@ BROUILLON_COMMANDE_CHANTIER = AgentAction(
 )
 
 
+#: Copilote vague 2 — lecture du module : ``LectureDuModule`` (installations)
+#: des routes de l'assistant (``InstallationViewSet.get_permissions``).
+_PERM_LIRE = 'installation_voir'
+
+
+# CHTA2 — la fiche compacte d'UN chantier (GET chantiers/{id}/etat-assistant/,
+# contrat `assistant_chantier_etat.json`). Lecture : exécutée sans proposition.
+ETAT_CHANTIER = AgentAction(
+    key='installations.chantier.etat',
+    label="État d'un chantier : prêt à poser ?",
+    description=(
+        "Sert à : dire où en est UN chantier — prêt à poser ou non et "
+        "pourquoi (manques de matériel en quantités, date de pose, "
+        "technicien, acompte exigé et encaissé, intervention de pose, étape "
+        "suivante), la prochaine chose à faire (`a_faire`) et les liens des "
+        "écrans. Ne pas utiliser pour : changer le statut (jamais par "
+        "l'assistant : lien de la fiche) ni chercher un chantier "
+        "(installations.chantiers.liste). Exemple : « le chantier 12 est-il "
+        "prêt ? » → id=12. Résultat : la fiche, sans aucun prix ni coût ; "
+        "404 si le chantier est hors de ta portée."
+    ),
+    endpoint='/api/django/installations/chantiers/{id}/etat-assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'title': 'Chantier (id)',
+                   'description': 'Chantier lu (consommé par le chemin).'},
+        },
+        'required': ['id'],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    carte='fiche_chantier',
+    lot=LOT_COPILOTE,
+    objets={'id': 'chantier'},
+)
+
+
+#: Statuts filtrables de la liste (canoniques, sauf « Clôturé »).
+_STATUTS_LISTE = ['signe', 'materiel_commande', 'planifie', 'en_cours',
+                  'installe', 'receptionne']
+
+
+# CHTA3 — la liste compacte (GET chantiers/assistant/, contrat
+# `assistant_chantiers.json`). Lecture : exécutée sans proposition.
+LISTE_CHANTIERS = AgentAction(
+    key='installations.chantiers.liste',
+    label='Chantiers en cours, bloqués ou posés cette semaine',
+    description=(
+        "Sert à : lister les chantiers de ta portée — vue en_cours, bloques "
+        "(sans date, sans technicien, date sans intervention de pose, date "
+        "dépassée, acompte exigé non encaissé) ou poses_semaine — ou "
+        "retrouver un chantier par référence, nom du client (q) ou lead. Le "
+        "matériel n'y est PAS calculé : lis installations.chantier.etat sur "
+        "une ligne. Ne pas utiliser pour : l'état détaillé d'un chantier. "
+        "Exemple : « quels chantiers sont bloqués ? » → vue=bloques. "
+        "Résultat : {vue, total, limite, lignes[], note, lien}, sans prix."
+    ),
+    endpoint='/api/django/installations/chantiers/assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'vue': {'type': 'string', 'title': 'Vue',
+                    'enum': ['en_cours', 'bloques', 'poses_semaine'],
+                    'description': 'Défaut en_cours.'},
+            'q': {'type': 'string', 'title': 'Recherche', 'maxLength': 100,
+                  'description': 'Référence du chantier ou nom du client.'},
+            'lead': {'type': 'integer', 'title': 'Lead (id)',
+                     'description': "Lead d'origine du chantier."},
+            'statut': {'type': 'string', 'title': 'Statut du chantier',
+                       'enum': _STATUTS_LISTE},
+            'technicien': {'type': 'integer', 'title': 'Technicien (id)',
+                           'description': 'Technicien responsable.'},
+            'debut': {'type': 'string', 'format': 'date', 'title': 'Semaine du',
+                      'description': 'poses_semaine : un jour de la semaine voulue.'},
+            'limite': {'type': 'integer', 'title': 'Nombre de lignes',
+                       'minimum': 1, 'maximum': 25, 'description': 'Défaut 10.'},
+        },
+        'required': [],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    carte='liste_chantiers',
+    lot=LOT_COPILOTE,
+    objets={'technicien': 'utilisateur', 'lead': 'lead'},
+)
+
+
+# CHTA4 — POST interventions/suggerer-creneau/ (XFSM2) : une route de LECTURE
+# (LectureDuModule ; « NE MUTE RIEN ») servie en POST — `lecture=True` : ni
+# proposition, ni décompte dans le plafond des écritures silencieuses.
+SUGGERER_CRENEAU = AgentAction(
+    key='installations.planning.suggerer',
+    label='Créneaux proposés (technicien, jour) pour une intervention',
+    description=(
+        "Sert à : proposer 3 créneaux (technicien, jour) pour une "
+        "intervention d'un chantier — jour sans autre intervention ni "
+        "indisponibilité, charge la plus faible, puis distance. Seuls les "
+        "comptes déjà affectés à une intervention sont proposés ; les "
+        "visites techniques ne comptent pas ; rien n'est réservé. Ne pas "
+        "utiliser pour : planifier (c'est une proposition à confirmer, à "
+        "part) ni une visite de lead. Exemple : « quand poser le chantier "
+        "12 ? » → chantier=12, type_intervention=pose. Résultat : "
+        "{chantier_id, propositions[]}."
+    ),
+    endpoint='/api/django/installations/interventions/suggerer-creneau/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'chantier': {'type': 'integer', 'title': 'Chantier (id)'},
+            'type_intervention': {
+                'type': 'string', 'title': "Type d'intervention",
+                'enum': ['pose', 'raccordement', 'mise_en_service',
+                         'controle', 'depannage']},
+            'duree_jours': {'type': 'integer', 'title': 'Durée (jours)',
+                            'minimum': 1, 'maximum': 30,
+                            'description': 'Défaut 1.'},
+            'date_cible': {'type': 'string', 'format': 'date',
+                           'title': 'À partir du',
+                           'description': "Défaut aujourd'hui."},
+        },
+        'required': ['chantier'],
+    },
+    required_permission=_PERM_LIRE,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    lecture=True,
+    objets={'chantier': 'chantier'},
+)
+
+
+#: CHTA5 — garde de ``planifier-pose`` (``InstallationViewSet.get_permissions``) :
+#: ``installation_gerer`` + ``intervention_gerer`` toujours, ``technicien_assign``
+#: quand le corps porte ``technicien``.
+_PERM_PLANIFIER = 'installation_gerer'
+
+
+# CHTA5 (B-18, D-W2-CHT-1) — UNE confirmation qui pose la date et le technicien
+# du chantier ET l'intervention de pose (sans elle, la pose n'est dans la
+# journée de personne). Jamais le statut, jamais un passe-outre d'acompte.
+PLANIFIER_POSE = AgentAction(
+    key='installations.chantier.planifier',
+    label='Pose : date et technicien du chantier + intervention dans sa journée, notifié',
+    description=(
+        "Sert à : planifier, après confirmation, la POSE d'un chantier en un "
+        "geste : date de pose (et de fin), technicien du chantier, ET "
+        "l'intervention de pose créée ou déplacée — c'est elle qui entre dans "
+        "la journée du technicien (notifié). Le statut ne change pas. Ne pas "
+        "utiliser pour : une visite de maintenance ni changer le statut. "
+        "Exemple : « pose du chantier 12 le 2026-11-24 avec le technicien 9 "
+        "» → id=12, date_pose_prevue, technicien=9. Résultat : la fiche du "
+        "chantier relue ; 409 nommé si annulé, clôturé, date passée, pose "
+        "commencée ou acompte exigé non encaissé (aucun passe-outre)."
+    ),
+    endpoint='/api/django/installations/chantiers/{id}/planifier-pose/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'title': 'Chantier (id)',
+                   'description': 'Chantier dont on planifie la pose.'},
+            'date_pose_prevue': {'type': 'string', 'format': 'date',
+                                 'title': 'Date de pose',
+                                 'description': "AAAA-MM-JJ, aujourd'hui ou plus tard."},
+            'date_pose_fin_prevue': {'type': 'string', 'format': 'date',
+                                     'title': 'Fin de pose prévue',
+                                     'description': 'Facultative, pas avant la date de pose.'},
+            'technicien': {'type': 'integer', 'title': 'Technicien (id)',
+                           'description': ('Qui pose (demande-le) ; absent : celui '
+                                           "du chantier. L'affecter exige le droit "
+                                           'technicien_assign.')},
+            'creer_intervention': {'type': 'boolean',
+                                   'title': 'Intervention de pose',
+                                   'description': ('Défaut vrai : crée ou déplace '
+                                                   "l'intervention de pose.")},
+        },
+        'required': ['id', 'date_pose_prevue'],
+    },
+    required_permission=_PERM_PLANIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Planifier la pose du chantier à cette date : date et technicien du "
+        "chantier, intervention de pose créée ou déplacée dans la journée du "
+        "technicien (notifié) ; le statut du chantier ne change pas."),
+    carte='fiche_chantier',
+    lot=LOT_COPILOTE,
+    objets={'id': 'chantier', 'technicien': 'utilisateur'},
+)
+
+
 # Catalogue déclaré par cette app (ordre stable).
 INSTALLATIONS_ACTIONS = (
     PLANIFIER_VISITE_MAINTENANCE,
     BROUILLON_COMMANDE_CHANTIER,
+    ETAT_CHANTIER,
+    LISTE_CHANTIERS,
+    SUGGERER_CRENEAU,
+    PLANIFIER_POSE,
 )
 
 

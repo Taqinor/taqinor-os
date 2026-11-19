@@ -10,7 +10,11 @@ from django.test import TestCase
 
 from apps.agent.registry import all_actions
 from apps.installations.agent_actions import (
+    ETAT_CHANTIER,
+    LISTE_CHANTIERS,
+    PLANIFIER_POSE,
     PLANIFIER_VISITE_MAINTENANCE,
+    SUGGERER_CRENEAU,
     BROUILLON_COMMANDE_CHANTIER,
     INSTALLATIONS_ACTIONS,
     register_installation_actions,
@@ -60,8 +64,9 @@ class InstallationsAgentActionsTest(TestCase):
         # le compte peut ne pas avoir.
         du_lot = {x.key for x in all_actions() if x.lot == 'copilote'}
         for action in INSTALLATIONS_ACTIONS:
-            self.assertFalse([k for k in du_lot if k in action.description],
-                             action.key)
+            if action.lot is None:
+                self.assertFalse([k for k in du_lot if k in action.description],
+                                 action.key)
 
     def test_commander_besoin_metadata(self):
         a = self._by_key('installations.chantier.commander_besoin')
@@ -99,6 +104,107 @@ class InstallationsAgentActionsTest(TestCase):
             codes, _admin, _modules = _gardes_de_la_route(a)
             self.assertIn(a.required_permission, codes, a.key)
 
+    def test_etat_chantier_metadata(self):
+        """CHTA2 — lecture du lot copilote : carte, objet nommé, code de
+        lecture du module que la route exige (LectureDuModule)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from authentication.permissions import codes_du_module
+        a = self._by_key('installations.chantier.etat')
+        self.assertEqual(a, ETAT_CHANTIER)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte),
+                         ('GET', 'internal', 'copilote', 'fiche_chantier'))
+        self.assertEqual(
+            a.endpoint, '/api/django/installations/chantiers/{id}/etat-assistant/')
+        self.assertEqual(a.objets, {'id': 'chantier'})
+        self.assertEqual(a.inputs['required'], ['id'])
+        self.assertTrue(a.description.startswith('Sert à'))
+        for section in ('Ne pas utiliser pour', 'Exemple', 'Résultat'):
+            self.assertIn(section, a.description)
+        _codes, _admin, modules = _gardes_de_la_route(a)
+        self.assertIn('installations', modules)
+        self.assertIn(a.required_permission, codes_du_module('installations'))
+
+    def test_liste_chantiers_metadata(self):
+        """CHTA3 — lecture du lot copilote ; les statuts offerts au modèle
+        sont exactement ceux que la route accepte."""
+        from apps.installations.views.assistant import STATUTS_LISTE
+        a = self._by_key('installations.chantiers.liste')
+        self.assertEqual(a, LISTE_CHANTIERS)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte),
+                         ('GET', 'internal', 'copilote', 'liste_chantiers'))
+        self.assertEqual(a.endpoint, '/api/django/installations/chantiers/assistant/')
+        props = a.inputs['properties']
+        self.assertEqual(props['vue']['enum'], ['en_cours', 'bloques', 'poses_semaine'])
+        self.assertEqual(tuple(props['statut']['enum']), STATUTS_LISTE)
+        self.assertEqual(props['limite']['maximum'], 25)
+        self.assertEqual(a.inputs['required'], [])
+        self.assertEqual(a.required_permission, 'installation_voir')
+
+    def test_suggerer_creneau_borne_a_la_portee(self):
+        """Revue 2B — un chantier hors de la portée de l'utilisateur répond
+        comme un chantier inconnu : aucune proposition, le calcul n'est pas
+        lancé (ni indice d'existence, ni planning d'une autre équipe)."""
+        from unittest import mock
+
+        from apps.installations import selectors, selectors_assistant
+        from apps.installations.models import Installation
+
+        utilisateur = mock.Mock()
+        with mock.patch.object(selectors, 'chantiers_visibles',
+                               return_value=Installation.objects.none()), \
+                mock.patch.object(selectors, 'suggerer_creneau') as calcul:
+            rendu = selectors_assistant.suggerer_creneau_visible(
+                utilisateur, chantier_id=41, type_intervention='pose',
+                duree_jours=1, date_cible=None)
+        self.assertEqual(rendu, {'chantier_id': 41, 'propositions': []})
+        calcul.assert_not_called()
+
+    def test_suggerer_creneau_est_une_lecture(self):
+        """CHTA4 — POST qui ne fait que lire (XFSM2, « NE MUTE RIEN ») :
+        ``lecture=True``, jamais une proposition ; code de lecture du module
+        (la route est dans les lectures d'InterventionViewSet)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from apps.installations.models import Intervention
+        a = self._by_key('installations.planning.suggerer')
+        self.assertEqual(a, SUGGERER_CRENEAU)
+        self.assertEqual((a.method, a.risk, a.lot, a.lecture),
+                         ('POST', 'internal', 'copilote', True))
+        self.assertEqual(a.endpoint,
+                         '/api/django/installations/interventions/suggerer-creneau/')
+        self.assertEqual(a.inputs['required'], ['chantier'])
+        self.assertEqual(a.objets, {'chantier': 'chantier'})
+        valeurs = {c for c, _l in Intervention.Type.choices}
+        self.assertLessEqual(set(a.inputs['properties']['type_intervention']['enum']), valeurs)
+        _codes, _admin, modules = _gardes_de_la_route(a)
+        self.assertIn('installations', modules)
+        self.assertEqual(a.required_permission, 'installation_voir')
+
+    def test_planifier_pose_metadata(self):
+        """CHTA5 — écriture À CONFIRMER, objets nommés (chantier, technicien),
+        le LABEL seul dit les deux effets ; aucun motif de passe-outre dans les
+        entrées ; le code est celui que la route exige."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        a = self._by_key('installations.chantier.planifier')
+        self.assertEqual(a, PLANIFIER_POSE)
+        self.assertEqual((a.method, a.risk, a.lot, a.carte, a.lecture),
+                         ('POST', 'outward', 'copilote', 'fiche_chantier', False))
+        self.assertEqual(a.endpoint,
+                         '/api/django/installations/chantiers/{id}/planifier-pose/')
+        self.assertEqual(a.objets, {'id': 'chantier', 'technicien': 'utilisateur'})
+        self.assertEqual(a.inputs['required'], ['id', 'date_pose_prevue'])
+        self.assertEqual(set(a.inputs['properties']), {
+            'id', 'date_pose_prevue', 'date_pose_fin_prevue', 'technicien',
+            'creer_intervention'})
+        self.assertIn('intervention', a.label)
+        self.assertIn('notifié', a.label)
+        self.assertLessEqual(len(a.label), 90)
+        self.assertLessEqual(len(a.description), 600)
+        self.assertIn('ne change pas', a.confirm_summary)
+        codes, _admin, _modules = _gardes_de_la_route(a)
+        self.assertIn(a.required_permission, codes)
+        self.assertLessEqual({'installation_gerer', 'intervention_gerer',
+                              'technicien_assign'}, codes)
+
     def test_company_never_in_inputs(self):
         for a in INSTALLATIONS_ACTIONS:
             self.assertNotIn(
@@ -114,7 +220,7 @@ class InstallationsAgentActionsTest(TestCase):
     def test_as_dict_serialisable(self):
         for a in INSTALLATIONS_ACTIONS:
             d = a.as_dict()
-            self.assertEqual(d['method'], 'POST')
+            self.assertEqual(d['method'], a.method.upper())
             self.assertEqual(d['required_permission'], a.required_permission)
             self.assertIn('endpoint', d)
 

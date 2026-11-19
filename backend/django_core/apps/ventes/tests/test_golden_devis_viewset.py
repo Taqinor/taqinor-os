@@ -52,8 +52,10 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: ``prix-negocie`` et ``avenant/demander-signature`` (VNT60) +
 #: ``echeancier`` (VNT66, PUT) + ``prolonger-validite`` (CADV82, POST) +
 #: ``overrides/<chemin>`` (ENF11, DELETE sorti de la collection) +
-#: ``confirmer-avoir-revision`` (ATOT62, POST).
-NB_ROUTES = 67
+#: ``confirmer-avoir-revision`` (ATOT62, POST) + les routes de l'assistant
+#: (copilote vague 2, ``views/assistant.py`` : ``vente-assistant``,
+#: ``assistant-taille`` POST et ``assistant-taille/apercu`` GET).
+NB_ROUTES = 70
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches
