@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -127,16 +127,83 @@ describe('TCH87 — Recherche', () => {
     expect(await screen.findByRole('region', { name: 'Faites (1)' })).toBeInTheDocument()
   })
 
-  it('Projet ▾ : le sélecteur choisit le projet, la puce le dit, un 2e toucher l\'enlève', async () => {
+  it('Projet : le sélecteur choisit le projet, la puce le dit, un 2e toucher l\'enlève', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
-    await user.click(screen.getByRole('button', { name: 'Projet ▾' }))
+    await user.click(screen.getByRole('button', { name: 'Projet' }))
     await user.click(await screen.findByRole('option', { name: 'Ventes' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ projet: 3 })))
     expect(await screen.findByRole('button', { name: 'Projet : Ventes ×' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Projet : Ventes ×' }))
-    expect(await screen.findByRole('button', { name: 'Projet ▾' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Projet' })).toBeInTheDocument()
+  })
+
+  it('R2-129 — le curseur est dans le champ à l\'ouverture : on tape directement', async () => {
+    monter('/taches/recherche')
+    expect(await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveFocus()
+  })
+
+  it('R2-129 — une croix à nous efface la recherche et rend le curseur au champ ; absente quand le champ est vide', async () => {
+    const user = userEvent.setup()
+    monter('/taches/recherche')
+    const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+    expect(screen.queryByRole('button', { name: 'Effacer la recherche' })).toBeNull()
+    await user.type(champ, 'devis')
+    await user.click(screen.getByRole('button', { name: 'Effacer la recherche' }))
+    expect(champ).toHaveValue('')
+    expect(champ).toHaveFocus()
+    expect(screen.queryByRole('button', { name: 'Effacer la recherche' })).toBeNull()
+  })
+
+  it('R2-129 — une faute de frappe trouve quand même : « fourniseur » rend « Appeler le fournisseur », dit pourquoi', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    api.listerToutesLesTaches.mockResolvedValue([
+      item(60, 'Appeler le fournisseur'), item(61, 'Déclaration TVA'), item(62, 'Commander les panneaux', { statut: 'fait' }),
+    ])
+    monter('/taches/recherche?q=fourniseur')
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (1)' })
+    expect(within(ouvertes).getByText('Appeler le fournisseur')).toBeInTheDocument()
+    expect(screen.getByText('Rien de tel pour « fourniseur » : voici ce qui s\'en approche.')).toBeInTheDocument()
+    expect(screen.queryByText('Rien pour « fourniseur »')).toBeNull()
+  })
+
+  it('R2-129 — la tolérance ignore les accents et ne devine pas au hasard : deux fautes ou un mot trop court ne trouvent rien', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    api.listerToutesLesTaches.mockResolvedValue([item(70, 'Déclaration TVA'), item(71, 'Appeler le fournisseur')])
+    monter('/taches/recherche?q=declaraton')
+    expect(await screen.findByRole('region', { name: 'Ouvertes (1)' })).toHaveTextContent('Déclaration TVA')
+    cleanup()
+    monter('/taches/recherche?q=fornisseurs')
+    expect(await screen.findByText('Rien pour « fornisseurs »')).toBeInTheDocument()
+    cleanup()
+    monter('/taches/recherche?q=tba')
+    expect(await screen.findByText('Rien pour « tba »')).toBeInTheDocument()
+  })
+
+  it('R2-129 — rien de trouvé : un pictogramme au-dessus de la phrase ; les filtres n\'ont plus de ▾ en texte', async () => {
+    api.rechercher.mockResolvedValue({ data: { projets: [], taches: [] } })
+    const { container } = monter('/taches/recherche?q=zzz')
+    expect(await screen.findByText('Rien pour « zzz »')).toBeInTheDocument()
+    expect(container.querySelector('.vide-etat .vide-picto svg')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Projet' }).textContent).not.toContain('▾')
+    expect(screen.getByRole('button', { name: 'Projet' }).querySelector('svg')).not.toBeNull()
+  })
+
+  it('R2-036 — j et k parcourent les résultats ; dans le champ ce sont des lettres', async () => {
+    const user = userEvent.setup()
+    monter()
+    const ouvertes = await screen.findByRole('region', { name: 'Ouvertes (2)' })
+    const titres = () => [...ouvertes.querySelectorAll('[data-ligne] .ligne-corps-bouton')]
+    await user.type(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' }), 'jk')
+    expect(screen.getByRole('searchbox', { name: 'Chercher dans mes tâches' })).toHaveValue('devisjk')
+    await user.click(document.body)
+    await user.keyboard('j')
+    expect(titres()[0]).toHaveFocus()
+    await user.keyboard('j')
+    expect(titres()[1]).toHaveFocus()
+    await user.keyboard('k')
+    expect(titres()[0]).toHaveFocus()
   })
 
   it('filtres repliés : « Sans date » ne garde que les lignes sans jour ; Étiquette ▾ et le tri sont là', async () => {
@@ -270,9 +337,10 @@ describe('TCH87 — Supprimées récemment', () => {
     expect(metas).toEqual([['Restaurer', 'dim. 15/11'], ['Restaurer', 'Sans projet', 'lun. 16/11'], ['Restaurer', 'Ventes', 'lun. 16/11']])
     expect(lignes[1].querySelector('.meta > button')).toHaveClass('es-action')
     // Derniers gestes : l'heure du geste (le jour même) ou son jour, le message, puis « Annuler » en lien
-    const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getByRole('listitem')
+    const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getAllByRole('listitem')[0]
     expect(geste).toHaveClass('es-geste')
-    expect([...geste.children].map((e) => e.textContent)).toEqual(['09:20', 'Reportée à jeu. 19', 'Annuler'])
+    // R2-125 : la tâche touchée suit le message (`titre`, servi par `gestes/`)
+    expect([...geste.children].map((e) => e.textContent)).toEqual(['09:20', 'Reportée à jeu. 19 · Appeler le fournisseur', 'Annuler'])
   })
 
   it('Restaurer un projet : la ligne part ; 409 nom_pris : « Un projet actif porte déjà ce nom. » sous la ligne', async () => {
@@ -306,7 +374,7 @@ describe('TCH87 — Supprimées récemment', () => {
     monterSupprimees()
     const section = await screen.findByRole('region', { name: 'Derniers gestes' })
     expect(within(section).getByText('Déjà annulé')).toBeInTheDocument()
-    await user.click(within(section).getByRole('button', { name: 'Annuler : Reportée à jeu. 19' }))
+    await user.click(within(section).getByRole('button', { name: 'Annuler : Reportée à jeu. 19 · Appeler le fournisseur' }))
     await waitFor(() => expect(api.annulerGeste).toHaveBeenCalledWith(77))
     expect(await screen.findByRole('status')).toBeDefined()
   })

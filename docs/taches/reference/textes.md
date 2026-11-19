@@ -330,7 +330,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 
 Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites aussi · Projet ▾ · Priorité haute » ; repliés « Aujourd'hui · À
 revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
-(« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste. Bouton des repliés « Plus de
+(« Nom de la vue ») ; vide « Rien pour « {q} » » (picto loupe au-dessus) ; si les mots seuls ne trouvent rien, une seconde lecture tolère les accents et UNE faute de frappe (mots de 4 lettres au moins) : « Rien de tel pour « {q} » : voici ce qui s'en approche. » (R2-129) ; le curseur est dans le champ à l'ouverture, une croix « Effacer la recherche » à nous, `j`/`k` sur les résultats (R2-036) ; hors ligne : la dernière liste. Bouton des repliés « Plus de
 filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
 étiquettes sont servies. Chaque résultat porte son statut en tête de méta : son jour, sinon « En réserve » ou
 « À trier » (ni jour, ni réserve, ni projet), puis « Suggéré par l'ERP » ; les mots cherchés sont en gras dans le

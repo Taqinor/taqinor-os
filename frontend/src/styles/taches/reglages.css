@@ -136,3 +136,10 @@
 
 /* R2-125 — « Reportée à jeu. 19 · Appeler le fournisseur » : la tâche touchée, en gris sous le verbe */
 .tch .es-geste .titre-geste { color: var(--tch-texte-doux); overflow-wrap: anywhere; }
+
+/* R2-129 — Recherche : la croix est la nôtre (celle du navigateur est masquée), les résultats gardent leur écart sous les filtres */
+.tch .es-recherche .valeur::-webkit-search-cancel-button, .tch .es-recherche .valeur::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.tch .es-recherche .es-effacer { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-right: -2px; border-radius: 999px; color: var(--tch-texte-doux); }
+@media (hover: hover) { .tch .es-recherche .es-effacer:hover { color: var(--tch-texte); } }
+.tch .es-resultats > .section:first-child { margin-top: 18px; }
+.tch .es-approche { margin: 14px var(--tch-gouttiere) 0; }
