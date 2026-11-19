@@ -6,7 +6,7 @@ import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { avancementDe, echeanceProjet } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 
 /* ============================================================================
    TCH93 — Écran Revue de la semaine (`/taches/revue`). Maquette : docs/taches/maquettes/revue-semaine.html.
@@ -60,6 +60,7 @@ function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, o
   const { texte } = avancementDe(projet)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const faites = (carte.faites_semaine ?? []).slice(0, 3)
+  const prevuesAujourdhui = Number.isInteger(carte.prevues_aujourdhui_nb) ? carte.prevues_aujourdhui_nb : 0
   const corps = (decision, lissue = null) => ({
     intention, prochaine_action_id: action?.id ?? null, decision, focus: focusId === projet.id, issue: lissue,
   })
@@ -120,6 +121,13 @@ function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, o
             onClick={() => { setChoix(code); setIssue('') }}>{libelle}</button>
         ))}
       </div>
+      {choix === 'pause' && prevuesAujourdhui > 0 ? (
+        // C-5 — mettre en pause arrête Proposé, À trier et les jours suivants, jamais ce qui est déjà prévu aujourd'hui.
+        // Le nombre est CELUI QUE LE SERVEUR SERT (`prevues_aujourdhui_nb`) : sans lui, rien n'est dit.
+        <p className="ep-revue-ligne ep-pause-reste" role="status">
+          {`${accord(prevuesAujourdhui, 'tâche prévue', 'tâches prévues')} aujourd'hui ${prevuesAujourdhui >= 2 ? 'restent' : 'reste'} dans ta journée.`}
+        </p>
+      ) : null}
       {choix === 'terminer' ? (
         <div className="ep-groupe">
           <div className="ep-etiquette" id="rv-issue">Atteint ou abandonné ?</div>
