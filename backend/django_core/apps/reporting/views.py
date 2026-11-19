@@ -13,6 +13,12 @@ from .gardes_lecture import lecture_source  # ADRG70
 from apps.roles.permissions import DroitDeLaGrille  # ADRG73
 from core.analytics_db import analytics_queryset
 from .metriques_ca import _part_ht  # ASOC73 — déplacé (1 définition)
+# RPT1 — le calcul du CA encaissé vit dans ``metriques_ca`` (l'assistant lit le
+# MÊME) ; les noms d'origine restent ceux de ce module.
+from .metriques_ca import STATUTS_CA as _STATUTS_CA
+from .metriques_ca import avec_du as _avec_du
+from .metriques_ca import ca_encaisse_ht as _ca_encaisse_ht
+from .metriques_ca import ht_encaisse as _ht_encaisse
 from .services import borner_portee, portee_du_role  # ALEC22 / ALEC55 — portée du rôle
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -341,39 +347,6 @@ def dashboard(request):
         'creances': creances_list,
         'comparison': comparison,
     })
-
-
-def _avec_du(factures):
-    """APRF13 (C-APRF-025) — ``[(facture, montant_du)]``.
-
-    Un queryset passe par ``facturation.selectors.factures_avec_montant_du``
-    (APRF11 : les six relations lues par ``montant_du`` préchargées) et
-    ``montant_du`` n'est évalué qu'UNE fois par facture. Une liste déjà
-    calculée (paires) est rendue telle quelle.
-    """
-    if isinstance(factures, list):
-        return factures
-    from apps.facturation.selectors import factures_avec_montant_du
-    return [(f, f.montant_du) for f in factures_avec_montant_du(factures)]
-
-
-#: AANA55 — population du CA encaissé / en attente (comme ``nb_factures`` :
-#: brouillons et annulées exclues).
-_STATUTS_CA = (Facture.Statut.EMISE, Facture.Statut.EN_RETARD,
-               Facture.Statut.PAYEE)
-
-
-def _ht_encaisse(facture):
-    """AANA55 — HT réellement encaissé : la part HT des paiements reçus
-    (``montant_paye``), jamais ``total_ht`` d'une facture « payée » (un avoir
-    qui solde une facture n'encaisse rien)."""
-    return _part_ht(facture, facture.montant_paye)
-
-
-def _ca_encaisse_ht(factures):
-    """AANA20 / AANA55 — CA encaissé HT (queryset ou paires ``_avec_du``)."""
-    return sum((_ht_encaisse(f) for f, _du in _avec_du(factures)),
-               Decimal('0'))
 
 
 def _ca_attente_ht(factures):

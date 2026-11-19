@@ -1,8 +1,8 @@
-"""NTDATA11 — `seed_metriques` : les 8 métriques cœur, semées par société.
+"""NTDATA11 — `seed_metriques` : les métriques cœur, semées par société.
 
 Couvre :
-  * les 8 clés sont créées, par société ;
-  * IDEMPOTENCE : deux exécutions = mêmes 8 métriques, valeurs INCHANGÉES ;
+  * les clés cœur sont créées, par société ;
+  * IDEMPOTENCE : deux exécutions = mêmes métriques, valeurs INCHANGÉES ;
   * ADDITIVITÉ : une métrique éditée par le fondateur n'est jamais réécrite ;
   * les adaptateurs compta/crm sont bien enregistrés (registre `semantic`) ;
   * une métrique d'adaptateur refuse un regroupement (un scalaire n'a pas de
@@ -30,6 +30,7 @@ from authentication.models import Company
 CLES_ATTENDUES = {
     'ca_ht', 'ca_ttc', 'panier_moyen', 'taux_conversion', 'mrr',
     'marge_brute', 'dso', 'valeur_pipeline_ponderee',
+    'ca_signe_ht', 'encaisse_ht',  # RPT1 — les trois « CA » : signé, facturé, encaissé
 }
 
 
@@ -44,7 +45,7 @@ class SeedMetriquesTests(TestCase):
         call_command('seed_metriques', company=self.company.id, stdout=sortie)
         return sortie.getvalue()
 
-    def test_huit_metriques_coeur(self):
+    def test_metriques_coeur(self):
         self.assertEqual({s['cle'] for s in METRIQUES_COEUR}, CLES_ATTENDUES)
         self._seed()
         cles = set(MetricDefinition.objects
@@ -65,7 +66,7 @@ class SeedMetriquesTests(TestCase):
                     m.format, m.updated_at)
             for m in MetricDefinition.objects.filter(company=self.company)
         }
-        self.assertEqual(len(apres), 8)
+        self.assertEqual(len(apres), len(CLES_ATTENDUES))
         self.assertEqual(avant, apres)
 
     def test_metrique_editee_par_le_fondateur_intacte(self):
@@ -298,6 +299,67 @@ class SeedMetriquesTests(TestCase):
         mig.realigner(parc, None)  # second passage : rien d'écrit
         self.assertEqual(tc.versions.count(), nb + 1)
 
+    def test_trois_ca_portent_chacun_leur_nom(self):
+        """RPT1 — « CA » n'est jamais nu : signé, facturé, encaissé, avec leur
+        adaptateur ; le libellé de la liste est celui que lit l'assistant."""
+        self._seed()
+        libelles = dict(MetricDefinition.objects.filter(
+            company=self.company, cle__in=['ca_signe_ht', 'ca_ht',
+                                           'encaisse_ht']
+        ).values_list('cle', 'libelle'))
+        self.assertEqual(libelles, {
+            'ca_signe_ht': 'CA signé HT', 'ca_ht': 'CA facturé HT',
+            'encaisse_ht': 'Encaissé HT'})
+        for cle in ('ca_signe_ht', 'encaisse_ht'):
+            metrique = MetricDefinition.objects.get(company=self.company,
+                                                    cle=cle)
+            self.assertEqual(metrique.mesure,
+                             {'adapter': 'reporting.%s' % cle})
+            self.assertEqual(metrique.unite, MetricDefinition.Unite.MAD)
+
+    def test_migration_0007_pose_les_deux_ca_et_nomme_le_facture(self):
+        """RPT1 — société semée avant : ``ca_signe_ht`` / ``encaisse_ht``
+        créées (v1) ; libellés d'origine de ``ca_ht`` / ``ca_ttc`` réalignés
+        (v dernier + 1) ; libellé retouché jamais touché ; société sans
+        semis laissée vide ; second passage sans écriture."""
+        import importlib
+
+        from django.apps import apps as parc
+        mig = importlib.import_module(
+            'apps.semantic.migrations.0007_rpt_trois_ca')
+        vide = Company.objects.create(nom='RPT1 Vide', slug='rpt1-vide')
+        self._seed()
+        MetricDefinition.objects.filter(
+            company=self.company,
+            cle__in=['ca_signe_ht', 'encaisse_ht']).delete()
+        for cle, (libelle, description) in mig.ANCIEN.items():
+            MetricDefinition.objects.filter(
+                company=self.company, cle=cle).update(
+                libelle=libelle, description=description)
+        MetricDefinition.objects.filter(
+            company=self.company, cle='ca_ttc').update(libelle='Mon CA TTC')
+        nb_ttc = MetricDefinition.objects.get(
+            company=self.company, cle='ca_ttc').versions.count()
+        mig.poser(parc, None)
+        par_cle = {m.cle: m for m in MetricDefinition.objects.filter(
+            company=self.company)}
+        self.assertEqual(par_cle['ca_signe_ht'].libelle, 'CA signé HT')
+        self.assertEqual(par_cle['encaisse_ht'].mesure,
+                         {'adapter': 'reporting.encaisse_ht'})
+        self.assertEqual(par_cle['ca_signe_ht'].versions.count(), 1)
+        self.assertEqual(par_cle['ca_ht'].libelle, 'CA facturé HT')
+        self.assertEqual(par_cle['ca_ht'].description,
+                         mig.NOUVEAU['ca_ht'][1])
+        self.assertEqual(par_cle['ca_ttc'].libelle, 'Mon CA TTC')
+        self.assertEqual(par_cle['ca_ttc'].versions.count(), nb_ttc)
+        self.assertFalse(MetricDefinition.objects.filter(
+            company=vide).exists())
+        nb_ht = par_cle['ca_ht'].versions.count()
+        mig.poser(parc, None)  # second passage : rien d'écrit
+        self.assertEqual(par_cle['ca_ht'].versions.count(), nb_ht)
+        self.assertEqual(MetricDefinition.objects.filter(
+            company=self.company, cle='ca_signe_ht').count(), 1)
+
     def test_seed_par_societe(self):
         autre = Company.objects.create(nom='NTDATA11 Autre',
                                        slug='ntdata11-autre')
@@ -306,7 +368,8 @@ class SeedMetriquesTests(TestCase):
             MetricDefinition.objects.filter(company=autre).count(), 0)
         call_command('seed_metriques', company=autre.id, stdout=StringIO())
         self.assertEqual(
-            MetricDefinition.objects.filter(company=autre).count(), 8)
+            MetricDefinition.objects.filter(company=autre).count(),
+            len(CLES_ATTENDUES))
 
     def test_adaptateurs_enregistres(self):
         enregistres = adapters.list_adapters()
@@ -314,6 +377,8 @@ class SeedMetriquesTests(TestCase):
         # fichier — compta est parqué, plus enregistré.
         self.assertIn('crm.pipeline_pondere', enregistres)
         for cle in ('ca_ht', 'ca_ttc', 'panier_moyen'):  # AANA77
+            self.assertIn('reporting.%s' % cle, enregistres)
+        for cle in ('ca_signe_ht', 'encaisse_ht'):  # RPT1
             self.assertIn('reporting.%s' % cle, enregistres)
         self.assertNotIn('compta.dso', enregistres)
         self.assertNotIn('compta.marge_brute', enregistres)

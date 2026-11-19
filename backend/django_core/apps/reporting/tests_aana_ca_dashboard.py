@@ -20,7 +20,7 @@ from apps.crm.models import Client
 from apps.reporting.kpi_alertes import _resolve_representative_user
 from apps.stock.models import Produit
 from apps.ventes.models import (
-    Avoir, Facture, LigneAvoir, LigneFacture, Paiement)
+    Avoir, Devis, Facture, LigneAvoir, LigneDevis, LigneFacture, Paiement)
 from authentication.models import Company
 
 User = get_user_model()
@@ -199,3 +199,141 @@ class TestUtilisateurDeCalculKpi(TestCase):
             username='aana20_normal2', password='x', role_legacy='normal',
             company=company)
         self.assertIsNone(_resolve_representative_user(company))
+
+
+class TestTroisChiffresCa(TestCase):
+    """RPT1 — « signé », « facturé » et « encaissé » HT : chacun lit le calcul
+    que son écran utilise déjà (tableau de bord, ``ca_ht``, classement)."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='rpt1-co', defaults={'nom': 'RPT1 Co'})[0]
+        self.admin = User.objects.create_user(
+            username='rpt1_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Cli RPT1')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku='RPT1-P',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        self.du, self.au = date(2026, 3, 1), date(2026, 3, 31)
+        self.dedans, self.dehors = date(2026, 3, 15), date(2026, 2, 10)
+
+    def _facture(self, reference, jour, ht='1000', auteur=None,
+                 statut=Facture.Statut.EMISE):
+        facture = Facture.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            statut=statut, date_emission=jour, created_by=auteur)
+        LigneFacture.objects.create(
+            facture=facture, produit=self.produit, designation='Kit',
+            quantite=Decimal('1'), prix_unitaire=Decimal(ht))
+        return facture
+
+    def _paye(self, facture, montant, statut):
+        Paiement.objects.create(
+            company=self.company, facture=facture, client=self.client_obj,
+            montant=Decimal(montant), date_paiement=date.today(),
+            mode=Paiement.Mode.VIREMENT)
+        Facture.objects.filter(pk=facture.pk).update(statut=statut)
+
+    def _devis(self, reference, jour, ht='1000', auteur=None,
+               remise=Decimal('0')):
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=jour,
+            created_by=auteur, remise_globale=remise)
+        LigneDevis.objects.create(
+            devis=devis, produit=self.produit, designation='Kit',
+            quantite=Decimal('1'), prix_unitaire=Decimal(ht))
+        return devis
+
+    def _agent(self, nom):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_SELF
+        role = Role.objects.create(
+            company=self.company, nom=nom,
+            permissions=['ventes_voir', 'reporting_voir', SCOPE_SELF])
+        return User.objects.create_user(
+            username=nom, password='x', company=self.company, role=role)
+
+    def test_encaisse_est_celui_du_tableau_de_bord(self):
+        from apps.reporting.metriques_ca import encaisse_ht
+        dedans = self._facture('FAC-RPT1-E1', self.dedans)
+        self._paye(dedans, '600', Facture.Statut.EMISE)  # 600 TTC = 500 HT
+        dehors = self._facture('FAC-RPT1-E2', self.dehors)
+        self._paye(dehors, '1200', Facture.Statut.PAYEE)  # 1 000 HT
+        self.assertEqual(encaisse_ht(self.company, period=(self.du, self.au)),
+                         Decimal('500'))
+        tout = encaisse_ht(self.company)
+        self.assertEqual(tout, Decimal('1500'))
+        resp = self.api.get(URL)
+        self.assertEqual(resp.status_code, 200)
+        self.assertAlmostEqual(resp.data['kpis']['ca_paye'], float(tout),
+                               places=2)
+
+    def test_facture_net_d_avoirs_hors_brouillon_dans_la_fenetre(self):
+        from apps.reporting.metriques_ca import (
+            STATUTS_CA, ca_facture_ht_periode, ca_ht)
+        facture = self._facture('FAC-RPT1-F1', self.dedans)
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AV-RPT1-F1', facture=facture,
+            client=self.client_obj)
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Avoir', quantite=Decimal('1'),
+            prix_unitaire=Decimal('250'))
+        self._facture('FAC-RPT1-F2', self.dehors)
+        self._facture('FAC-RPT1-F3', self.dedans,
+                      statut=Facture.Statut.BROUILLON)
+        valeur = ca_facture_ht_periode(self.company, self.du, self.au)
+        self.assertEqual(valeur, Decimal('750'))
+        self.assertEqual(valeur, ca_ht(
+            self.company, period=(self.du, self.au),
+            filters={'statut__in': list(STATUTS_CA)}))
+
+    def test_signe_remise_revision_et_fenetre(self):
+        from apps.reporting.metriques_ca import ca_signe_ht
+        self._devis('DEV-RPT1-S1', self.dedans, remise=Decimal('10'))  # 900
+        self._devis('DEV-RPT1-S2', self.dehors)
+        v1 = self._devis('DEV-RPT1-V1', self.dedans)
+        v2 = self._devis('DEV-RPT1-V2', self.dedans, ht='2000')
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2)
+        Devis.objects.create(
+            company=self.company, reference='DEV-RPT1-B',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            date_acceptation=self.dedans)
+        self.assertEqual(ca_signe_ht(self.company, period=(self.du, self.au)),
+                         Decimal('2900'))
+
+    def test_portee_du_role_comme_le_tableau_de_bord(self):
+        from apps.reporting.metriques_ca import (
+            ca_facture_ht_periode, ca_signe_ht, encaisse_ht)
+        c1, c2 = self._agent('rpt1-c1'), self._agent('rpt1-c2')
+        periode = (self.du, self.au)
+        for nom, auteur, ht in (('1', c1, '1000'), ('2', c2, '500')):
+            facture = self._facture('FAC-RPT1-P' + nom, self.dedans, ht, auteur)
+            self._paye(facture, '600', Facture.Statut.EMISE)
+            self._devis('DEV-RPT1-P' + nom, self.dedans, ht, auteur)
+        self.assertEqual(ca_facture_ht_periode(
+            self.company, *periode, user=c1), Decimal('1000'))
+        self.assertEqual(ca_facture_ht_periode(
+            self.company, *periode), Decimal('1500'))
+        self.assertEqual(ca_signe_ht(self.company, c1, period=periode),
+                         Decimal('1000'))
+        self.assertEqual(ca_signe_ht(self.company, period=periode),
+                         Decimal('1500'))
+        self.assertEqual(encaisse_ht(self.company, c1, period=periode),
+                         Decimal('500'))  # 600 TTC payés sur 1 200 TTC
+        self.assertEqual(encaisse_ht(self.company, period=periode),
+                         Decimal('1000'))  # + 600 TTC payés sur 600 TTC
+
+    def test_un_filtre_est_refuse_en_francais(self):
+        from apps.reporting.metriques_ca import ca_signe_ht, encaisse_ht
+        from apps.semantic.services import MetriqueNonResolvable
+        for adaptateur in (ca_signe_ht, encaisse_ht):
+            with self.assertRaises(MetriqueNonResolvable) as ctx:
+                adaptateur(self.company, filters={'statut': 'payee'})
+            self.assertIn('aucun filtre', str(ctx.exception))

@@ -104,6 +104,23 @@ def borner_portee(qs, user, sorte):
     return qs.filter(**{('owner' if sorte == 'leads' else 'created_by') + '__in': visibles})
 
 
+def devis_signes_de_la_fenetre(co, start=None, end=None):
+    """AANA62 — LA population des devis signés du reporting : signés en
+    vigueur (``_devis_signes``), bornes ``date_acceptation`` INCLUSIVES, totaux
+    préchargés. Classement commercial ET chiffre « signé HT » de l'assistant la
+    lisent ici : jamais une seconde construction de la population."""
+    from apps.reporting.pipeline import _devis_signes
+    from apps.ventes.selectors import devis_avec_totaux
+    # APRF42 — lead.owner, created_by et option_totaux préchargés.
+    signed_devis = devis_avec_totaux(_devis_signes(co).select_related(
+        'lead', 'lead__owner', 'created_by', 'company'))
+    if start:
+        signed_devis = signed_devis.filter(date_acceptation__gte=start)
+    if end:
+        signed_devis = signed_devis.filter(date_acceptation__lte=end)
+    return signed_devis
+
+
 def build_leaderboard(kwc_by_devis, co, start=None, end=None, visibles=None):
     """WIR82 — calcul UNIQUE du classement commercial.
 
@@ -129,15 +146,7 @@ def build_leaderboard(kwc_by_devis, co, start=None, end=None, visibles=None):
     # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique QX1),
     # jamais le HT brut : le classement/CA reflète le vrai revenu signé.
     from apps.ventes.utils.options import option_totaux
-    from apps.reporting.pipeline import _devis_signes
-    from apps.ventes.selectors import devis_avec_totaux
-    # APRF42 — lead.owner, created_by et option_totaux préchargés.
-    signed_devis = devis_avec_totaux(_devis_signes(co).select_related(
-        'lead', 'lead__owner', 'created_by', 'company'))
-    if start:
-        signed_devis = signed_devis.filter(date_acceptation__gte=start)
-    if end:
-        signed_devis = signed_devis.filter(date_acceptation__lte=end)
+    signed_devis = devis_signes_de_la_fenetre(co, start, end)
 
     agg = {}
     for d in signed_devis:
