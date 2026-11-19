@@ -148,6 +148,12 @@
   .tch .es-rubrique:not([aria-current="page"]):hover { background: color-mix(in oklch, var(--tch-texte) 4%, transparent); }
 }
 
+/* R3-090 — Revue : chaque ligne du résumé est un bouton qui rouvre sa carte ; l'intention de la semaine en tête */
+.tch .ep-resume-revue .ep-resume-ligne { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; text-align: left; }
+.tch .ep-resume-revue .ep-resume-ligne > svg { flex: none; color: var(--tch-texte-doux); }
+@media (hover: hover) { .tch .ep-resume-revue .ep-resume-ligne:hover .nom { color: var(--tch-accent); } }
+.tch .ep-resume-intention b { font-weight: 600; color: var(--tch-texte); }
+
 /* R3-098 — « Mettre Tâches sur l'écran d'accueil » : l'étape 1, dessinée comme les étapes 2 à 6 (presence.css) */
 .tch .ep-installer > h2.ep-etape-i { margin: 0; font: inherit; color: inherit; letter-spacing: normal; }
 
