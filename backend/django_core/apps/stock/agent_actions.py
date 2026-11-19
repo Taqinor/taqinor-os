@@ -78,6 +78,8 @@ AJUSTER_STOCK = AgentAction(
     confirm_summary=(
         "Poser un mouvement de stock : une entrée AJOUTE la quantité au "
         "stock, une sortie la RETIRE (rien n'est fixé à une valeur)."),
+    # Vague 2 — l'aperçu NOMME le produit (`selectors_libelles.libelles_stock`).
+    objets={'produit': 'produit'},
 )
 
 
@@ -142,6 +144,7 @@ BROUILLON_COMMANDE_FOURNISSEUR = AgentAction(
     confirm_summary=(
         "Créer un bon de commande fournisseur BROUILLON (rien n'est envoyé ; "
         "les prix se règlent à l'écran)."),
+    objets={'fournisseur': 'fournisseur'},
 )
 
 

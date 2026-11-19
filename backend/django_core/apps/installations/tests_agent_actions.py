@@ -103,3 +103,48 @@ class InstallationsAgentActionsTest(TestCase):
             self.assertEqual(d['method'], 'POST')
             self.assertEqual(d['required_permission'], a.required_permission)
             self.assertIn('endpoint', d)
+
+
+class InstallationsLibellesAssistantTest(TestCase):
+    """Copilote vague 2 — l'aperçu d'une proposition NOMME le chantier et
+    l'intervention (``selectors_libelles.libelles_installations`` via la
+    table de l'agent) : société, droit de lecture du module et portée des
+    listes ; sinon absent."""
+
+    def test_objets_declares_et_nommes_dans_la_portee(self):
+        from datetime import date
+
+        from django.contrib.auth import get_user_model
+
+        from authentication.models import Company
+        from apps.agent.libelles import libelles_objets
+        from apps.crm.models import Client
+        from apps.installations.models import Installation, Intervention
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import SCOPE_SELF
+        self.assertEqual(PLANIFIER_VISITE_MAINTENANCE.objets,
+                         {'installation': 'chantier', 'technicien': 'utilisateur'})
+        self.assertEqual(BROUILLON_COMMANDE_CHANTIER.objets,
+                         {'id': 'chantier', 'fournisseur': 'fournisseur'})
+        company = Company.objects.create(nom='AG9 Lib', slug='ag9-lib')
+        client = Client.objects.create(company=company, nom='Benali')
+        chantier = Installation.objects.create(
+            company=company, reference='CHT-LIB-1', client=client, site_ville='Casablanca')
+        intervention = Intervention.objects.create(
+            company=company, installation=chantier, date_prevue=date(2026, 11, 25),
+            type_intervention=Intervention.Type.CONTROLE)
+        ids = {'chantier': chantier.pk, 'intervention': intervention.pk}
+
+        def libelles(permissions, societe=company):
+            user = get_user_model().objects.create_user(
+                username=f'ag9_lib_{len(permissions)}_{societe.pk}', password='x', company=societe,
+                role=Role.objects.create(company=societe, nom=f'L{len(permissions)}',
+                                         permissions=permissions))
+            return libelles_objets(user, ids)
+        self.assertEqual(libelles(['intervention_gerer']), {
+            'chantier': 'CHT-LIB-1 — Benali, Casablanca (Signé)',
+            'intervention': 'Contrôle — chantier CHT-LIB-1, 25/11/2026'})
+        self.assertEqual(libelles(['crm_voir', 'ventes_voir']), {})
+        self.assertEqual(libelles(['intervention_gerer', 'installation_gerer', SCOPE_SELF]), {})
+        autre = Company.objects.create(nom='AG9 Lib 2', slug='ag9-lib-2')
+        self.assertEqual(libelles(['intervention_gerer'], autre), {})

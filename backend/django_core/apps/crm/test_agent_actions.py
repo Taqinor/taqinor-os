@@ -108,6 +108,16 @@ class CrmAgentActionsCatalogueTest(TestCase):
         self.assertEqual(RESUME_LEAD.required_permission, 'crm_voir')
         self.assertEqual(BROUILLON_SUIVI.required_permission, 'crm_modifier')
 
+    def test_lecture_seulement_sur_les_post_qui_ne_font_que_lire(self):
+        """Vague 2 — ``lecture`` (hors plafond des écritures silencieuses) :
+        les trois POST de rendu sans trace (« rien d'écrit » prouvé par les
+        tests de leur route) ; jamais une note ni une écriture confirmée."""
+        from apps.crm.agent_actions import MESSAGE_MANUEL
+        self.assertEqual({a.key for a in _ACTIONS if a.lecture}, {
+            PREPARER_ENVOI_WHATSAPP.key, BROUILLON_SUIVI.key, MESSAGE_MANUEL.key})
+        self.assertEqual({a.method for a in _ACTIONS if a.lecture}, {'POST'})
+        self.assertFalse(NOTER_LEAD.lecture or NOTER_LEAD.as_dict()['lecture'])
+
     def test_inputs_never_include_company(self):
         for action in _ACTIONS:
             props = action.inputs.get('properties', {})
@@ -1472,7 +1482,7 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
             (PLANIFIER_VISITE.risk, PLANIFIER_VISITE.carte,
              PLANIFIER_VISITE.lot, PLANIFIER_VISITE.objets),
             ('outward', 'visite', LOT_COPILOTE,
-             {'id': 'lead', 'etape': 'touche'}))
+             {'id': 'lead', 'etape': 'touche', 'commercial': 'utilisateur'}))
         self.assertEqual(
             (MESSAGE_VISITE.risk, MESSAGE_VISITE.carte, MESSAGE_VISITE.lot),
             ('internal', 'wa_message', LOT_COPILOTE))

@@ -182,6 +182,10 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
     required_permission='crm_modifier',
     risk=RISK_INTERNAL,
     carte='wa_devis',
+    # REP9 — POST qui ne fait que LIRE : `enregistrer=False` (ni envoi, ni
+    # note, ni AuditLog — `views_assistant.lead_whatsapp_devis_apercu`) ; seul
+    # le jeton du lien public est réutilisé ou posé (`ShareLink.for_devis`).
+    lecture=True,
 )
 
 
@@ -287,6 +291,7 @@ BROUILLON_SUIVI = AgentAction(
     # textes VALIDÉS du suivi) : il ne reste servi que copilote éteint.
     carte='wa_message',
     lot=LOT_HERITE,
+    lecture=True,  # REP9 — `lead_brouillon_suivi` rend un texte, n'écrit rien
 )
 
 
@@ -653,7 +658,8 @@ PLANIFIER_VISITE = AgentAction(
     risk=RISK_OUTWARD,
     carte='visite',
     lot=LOT_COPILOTE,
-    objets={'id': 'lead', 'etape': 'touche'},
+    # Vague 2 — l'aperçu NOMME qui fait la visite (résolu par l'agent).
+    objets={'id': 'lead', 'etape': 'touche', 'commercial': 'utilisateur'},
 )
 
 MESSAGE_VISITE = AgentAction(
@@ -743,6 +749,9 @@ MESSAGE_MANUEL = AgentAction(
     risk=RISK_INTERNAL,
     carte='wa_message',
     lot=LOT_COPILOTE,
+    # REP9 — `_message_manuel` rend le texte d'une touche NON enregistrée
+    # (aucune ligne du fil, aucune touche) : une lecture.
+    lecture=True,
 )
 
 

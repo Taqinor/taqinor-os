@@ -192,3 +192,38 @@ class StockAgentActionRelayedCallTest(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 2)
+
+
+class StockLibellesAssistantTest(TestCase):
+    """Copilote vague 2 — l'aperçu d'une proposition NOMME le produit, le
+    fournisseur et le bon de commande (``selectors_libelles.libelles_stock``
+    via la table de l'agent) : jamais un prix ni un montant ; un rôle sans
+    code du module Stock, ou d'une autre société, ne reçoit rien."""
+
+    def test_objets_declares_et_nommes_sans_prix(self):
+        from apps.agent.libelles import libelles_objets
+        from apps.stock.models import BonCommandeFournisseur, Fournisseur
+        self.assertEqual(AJUSTER_STOCK.objets, {'produit': 'produit'})
+        self.assertEqual(BROUILLON_COMMANDE_FOURNISSEUR.objets, {'fournisseur': 'fournisseur'})
+        company = Company.objects.create(nom='AG7 Lib', slug='ag7-lib')
+        produit = Produit.objects.create(company=company, nom='Panneau 550', sku='PAN-550',
+                                         prix_vente=1234, prix_achat=987)
+        fournisseur = Fournisseur.objects.create(company=company, nom='Atlas Solaire')
+        bcf = BonCommandeFournisseur.objects.create(
+            company=company, reference='BCF-LIB-1', fournisseur=fournisseur)
+        ids = {'produit': produit.pk, 'fournisseur': fournisseur.pk, 'bcf': bcf.pk}
+
+        def libelles(permissions, societe=company):
+            user = User.objects.create_user(
+                username=f'ag7_lib_{len(permissions)}_{societe.pk}', password='x', company=societe,
+                role=Role.objects.create(company=societe, nom=f'L{len(permissions)}',
+                                         permissions=permissions))
+            return libelles_objets(user, ids)
+        out = libelles(['stock_voir'])
+        self.assertEqual(out, {'produit': 'Panneau 550 — PAN-550', 'fournisseur': 'Atlas Solaire',
+                               'bcf': 'BCF-LIB-1 — Atlas Solaire (brouillon)'})
+        self.assertNotIn('1234', str(out))
+        self.assertNotIn('987', str(out))
+        self.assertEqual(libelles(['crm_voir', 'crm_creer']), {})
+        autre = Company.objects.create(nom='AG7 Lib 2', slug='ag7-lib-2')
+        self.assertEqual(libelles(['stock_voir'], autre), {})

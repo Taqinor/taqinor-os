@@ -99,6 +99,9 @@ PLANIFIER_VISITE_MAINTENANCE = AgentAction(
     confirm_summary=(
         "Planifier une visite de maintenance (contrôle) sur le chantier, à "
         "cette date ; le technicien désigné est notifié."),
+    # Vague 2 — l'aperçu NOMME le chantier et le technicien
+    # (`selectors_libelles.libelles_installations`, compte résolu par l'agent).
+    objets={'installation': 'chantier', 'technicien': 'utilisateur'},
 )
 
 
@@ -167,6 +170,7 @@ BROUILLON_COMMANDE_CHANTIER = AgentAction(
         "Créer les bons de commande fournisseur BROUILLONS des manques du "
         "chantier (rien n'est envoyé) ; un chantier « Signé » peut passer à "
         "« Matériel commandé »."),
+    objets={'id': 'chantier', 'fournisseur': 'fournisseur'},
 )
 
 
