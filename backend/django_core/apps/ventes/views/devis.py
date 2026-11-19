@@ -766,6 +766,7 @@ class DevisViewSet(OrdreTotalMixin, DevisEditionActionsMixin,
         return Response(_reponse_devis_auto(devis, alertes),
                         status=status.HTTP_201_CREATED)
 
+    # api-only: lue par l'assistant (action `ventes.devis.lignes`), aucun écran ne l'appelle.
     @extend_schema(request=None,
                    responses={200: D.LignesAssistantResponse,
                               404: D.ErreurDetail})
