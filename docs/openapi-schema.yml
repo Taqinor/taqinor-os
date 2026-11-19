@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4181}
+counts: {paths: 5228, operations: 8060, components: 4163}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13272,7 +13272,6 @@ components:
 - TachesEchAujourdhui_CarteDuMoment
 - TachesEchAujourdhui_CarteDuMoment_Proposition
 - TachesEchAujourdhui_CarteDuMoment_Proposition_Boutons_Element
-- TachesEchAujourdhui_CarteDuMoment_Proposition_Donnees
 - TachesEchAujourdhui_CeSoir_Element
 - TachesEchAujourdhui_CeSoir_Element_Projet
 - TachesEchAujourdhui_EnAttente_Element
@@ -13326,7 +13325,6 @@ components:
 - TachesEchJourneeCloture_Bilan
 - TachesEchJourneeCloture_Constat
 - TachesEchJourneeCloture_Constat_Boutons_Element
-- TachesEchJourneeCloture_Constat_Donnees
 - TachesEchJourneeCloture_Faites_Element
 - TachesEchJourneeCloture_Faites_Element_Projet
 - TachesEchJourneeCloture_Restes_Element
@@ -13340,7 +13338,6 @@ components:
 - TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment
 - TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition
 - TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition_Boutons_Element
-- TachesEchJourneeEcrite_Aujourdhui_CarteDuMoment_Proposition_Donnees
 - TachesEchJourneeEcrite_Aujourdhui_CeSoir_Element
 - TachesEchJourneeEcrite_Aujourdhui_CeSoir_Element_Projet
 - TachesEchJourneeEcrite_Aujourdhui_EnAttente_Element
@@ -13373,7 +13370,6 @@ components:
 - TachesEchJourneeProposition_Proposition_Element_Item_Raison
 - TachesEchJourneeProposition_Rythme
 - TachesEchJourneeProposition_Rythme_Boutons_Element
-- TachesEchJourneeProposition_Rythme_Donnees
 - TachesEchJourneeProposition_SuiteParProjet_Element
 - TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element
 - TachesEchJourneeProposition_SuiteParProjet_Element_Items_Element_Projet
@@ -13402,7 +13398,6 @@ components:
 - TachesEchMesDonnees_Projet_Element_Affichage
 - TachesEchMesDonnees_Projet_Element_Compteurs
 - TachesEchMesDonnees_Projet_Element_Sante_Element
-- TachesEchMesDonnees_Projet_Element_Sante_Element_Donnees
 - TachesEchMesDonnees_ReglagesRythme_Element
 - TachesEchMesDonnees_Tache_Element
 - TachesEchMesDonnees_Tache_Element_Checklist
@@ -13445,10 +13440,8 @@ components:
 - TachesEchPlanification_Projet_Affichage
 - TachesEchPlanification_Projet_Compteurs
 - TachesEchPlanification_Projet_Sante_Element
-- TachesEchPlanification_Projet_Sante_Element_Donnees
 - TachesEchPoint
 - TachesEchPoint_CarteDuMoment
-- TachesEchPoint_CarteDuMoment_Donnees
 - TachesEchPoint_EssentielRestant_Element
 - TachesEchPoint_EssentielRestant_Element_Projet
 - TachesEchPoint_Objectif
@@ -13476,7 +13469,6 @@ components:
 - TachesEchProjetVue_Projet_Affichage
 - TachesEchProjetVue_Projet_Compteurs
 - TachesEchProjetVue_Projet_Sante_Element
-- TachesEchProjetVue_Projet_Sante_Element_Donnees
 - TachesEchProjetVue_SansSectionCompteurs
 - TachesEchProjetVue_SansSection_Element
 - TachesEchProjetVue_Sections_Element
@@ -13489,20 +13481,16 @@ components:
 - TachesEchProjetsListe_Results_Element_Affichage
 - TachesEchProjetsListe_Results_Element_Compteurs
 - TachesEchProjetsListe_Results_Element_Sante_Element
-- TachesEchProjetsListe_Results_Element_Sante_Element_Donnees
 - TachesEchPropositionRepondue
 - TachesEchPropositionRepondue_Proposition
-- TachesEchPropositionRepondue_Proposition_Donnees
 - TachesEchPropositionRepondue_Rythme
 - TachesEchPropositionRepondue_Rythme_Bloc
 - TachesEchPropositionRepondue_Rythme_Constats_Element
 - TachesEchPropositionRepondue_Rythme_Constats_Element_Boutons_Element
-- TachesEchPropositionRepondue_Rythme_Constats_Element_Donnees
 - TachesEchPropositionRepondue_Rythme_Objectif
 - TachesEchPropositionRepondue_Rythme_Preferences_Element
 - TachesEchPropositionRepondue_Rythme_Proposition
 - TachesEchPropositionRepondue_Rythme_Proposition_Boutons_Element
-- TachesEchPropositionRepondue_Rythme_Proposition_Donnees
 - TachesEchPropositionRepondue_Rythme_Repere
 - TachesEchPropositionRepondue_Rythme_Serie_Element
 - TachesEchRappelRepeter
@@ -13521,11 +13509,9 @@ components:
 - TachesEchRevueDecision_Projet_Affichage
 - TachesEchRevueDecision_Projet_Compteurs
 - TachesEchRevueDecision_Projet_Sante_Element
-- TachesEchRevueDecision_Projet_Sante_Element_Donnees
 - TachesEchRevueDecision_Revue
 - TachesEchRevueProjets
 - TachesEchRevueProjets_BilanSemaine
-- TachesEchRevueProjets_BilanSemaine_Donnees
 - TachesEchRevueProjets_Cartes_Element
 - TachesEchRevueProjets_Cartes_Element_Bloquees_Element
 - TachesEchRevueProjets_Cartes_Element_Bloquees_Element_Attend
@@ -13536,18 +13522,15 @@ components:
 - TachesEchRevueProjets_Cartes_Element_Projet_Affichage
 - TachesEchRevueProjets_Cartes_Element_Projet_Compteurs
 - TachesEchRevueProjets_Cartes_Element_Projet_Sante_Element
-- TachesEchRevueProjets_Cartes_Element_Projet_Sante_Element_Donnees
 - TachesEchRevueProjets_Cartes_Element_Revue
 - TachesEchRythme
 - TachesEchRythme_Bloc
 - TachesEchRythme_Constats_Element
 - TachesEchRythme_Constats_Element_Boutons_Element
-- TachesEchRythme_Constats_Element_Donnees
 - TachesEchRythme_Objectif
 - TachesEchRythme_Preferences_Element
 - TachesEchRythme_Proposition
 - TachesEchRythme_Proposition_Boutons_Element
-- TachesEchRythme_Proposition_Donnees
 - TachesEchRythme_Repere
 - TachesEchRythme_Serie_Element
 - TachesEchSaisieApercu
@@ -13595,7 +13578,6 @@ components:
 - TachesEchVu_CarteDuMoment
 - TachesEchVu_CarteDuMoment_Proposition
 - TachesEchVu_CarteDuMoment_Proposition_Boutons_Element
-- TachesEchVu_CarteDuMoment_Proposition_Donnees
 - TachesEchVues
 - TachesEchVues_Results_Element
 - TachesEchVues_Results_Element_Filtres

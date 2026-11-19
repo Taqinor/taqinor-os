@@ -75,7 +75,7 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=SAISIE_RAPIDE, responses={
-        **reponses(forme_echantillon('saisie_rapide'), statut=201, erreurs=(400,), conflit=ERREUR_CODE),
+        **reponses(forme_echantillon('saisie_rapide'), statut=201, erreurs=(400, 404), conflit=ERREUR_CODE),
         200: forme_echantillon('saisie_apercu'),
     })
     def post(self, request):

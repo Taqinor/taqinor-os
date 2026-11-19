@@ -1027,7 +1027,8 @@ class ReordonnerTests(BaseApi):
         tache = fabriques.tache(self.u1)
         voisin = fabriques.tache(self.u1)
         reponse = self._reordonner(tache, {'liste': 'jour', 'apres_id': voisin.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'liste': ['Valeur inconnue.']}))
+        # refus d'ÉTAT de la tâche (elle n'a pas de jour) : 409, même champ (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['liste']), (409, ['Valeur inconnue.']))
 
     def test_un_voisin_d_un_collegue_repond_comme_inconnu(self):
         projet, (a, b, c) = self._trois()

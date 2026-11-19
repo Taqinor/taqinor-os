@@ -1064,7 +1064,7 @@ class BilanTests(_Base):
         self.assertIsNotNone(ecrit.json()['geste_id'])
         trop_vieux = client.get('/api/django/taches/journee/cloture/',
                                 {'jour': (aujourdhui - datetime.timedelta(days=3)).isoformat()})
-        self.assertEqual(trop_vieux.status_code, 400)
+        self.assertEqual(trop_vieux.status_code, 409)  # bilan fermé : refus d'ÉTAT, même corps (api-fuzz r2)
 
 
 class PassageAMinuitTests(_Base):

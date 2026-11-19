@@ -496,9 +496,9 @@ class LotTests(BaseApi):
         for projet_id in (999_999, fabriques.projet(self.ext).pk):
             with self.subTest(projet_id=projet_id):
                 reponse = self._lot([a.pk], 'deplacer', {'projet_id': projet_id})
-                # 404 au corps inchangé : la ressource cible manque (api-fuzz r2, règle d'IdInconnu404Mixin).
-                self.assertEqual((reponse.status_code, champs(reponse.json())),
-                                 (404, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
+                # 404 : la ressource cible manque (api-fuzz r2) ; le champ fautif + `detail` publié des 404.
+                self.assertEqual((reponse.status_code, reponse.json()['valeurs']),
+                                 (404, {'projet_id': ['Projet inexistant.']}))
         self.assertIsNone(_relue(a).projet_id)
 
     def test_deplacer_une_sous_tache_est_refuse(self):
