@@ -396,6 +396,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     setProjetOuvert(false)
     requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
   }
+  const basculerQuand = () => { setQuandOuvert((v) => !v); setProjetOuvert(false) }
+  /** R3-045 — le `#projet` lu dans la phrase (il l'emporte sur le projet de l'écran) et la couleur de ce dernier. */
+  const projetLu = modeListe ? null : (ligne?.jetons ?? []).find((j) => j.type === 'projet') ?? null
+  const couleurContexte = contexte.projetId == null ? null : (projets ?? []).find((p) => p.id === contexte.projetId)?.couleur ?? null
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
@@ -603,24 +607,32 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             ) : null}
             <div className="saisie-pied">
               <span className="puces">
-                <button
-                  type="button"
-                  className={quandVu ? 'puce lue' : 'puce vide'}
-                  aria-expanded={quandOuvert}
-                  onClick={() => { setQuandOuvert((v) => !v); setProjetOuvert(false) }}
-                >
-                  <Calendar className="i i-16" aria-hidden="true" />
-                  <span className="chiffres">{libelleQuand(quandVu)}</span>
-                </button>
+                {/* R3-045 — le × du jour est DANS sa puce (comme les puces lues), plus une bulle qui ne contient qu'une
+                    croix ; la puce ouvre « Quand », son × le retire */}
                 {quandVu ? (
-                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
-                    <X className="i i-14" aria-hidden="true" />
+                  <span className="puce lue" data-jeton="quand">
+                    <Calendar className="i i-16" aria-hidden="true" />
+                    <button type="button" className="cible" aria-expanded={quandOuvert} onClick={basculerQuand}>
+                      <span className="chiffres">{libelleQuand(quandVu)}</span>
+                    </button>
+                    <button type="button" className="retirer" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
+                      <X aria-hidden="true" />
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="puce vide" aria-expanded={quandOuvert} onClick={basculerQuand}>
+                    <Calendar className="i i-16" aria-hidden="true" />
+                    <span className="chiffres">{libelleQuand(quandVu)}</span>
                   </button>
-                ) : null}
-                {contexte.projetId != null && nomProjet ? (
-                  <button type="button" className="puce lue" aria-label={`Retirer « ${nomProjet} »`}
+                )}
+                {/* R3-045 — le projet de l'écran : un point de SA couleur (`data-p`), jamais un « ● » de texte noir ; un
+                    `#projet` lu dans la phrase l'emporte (`avecContexte`) : sa puce à lui suffit, celle-ci s'efface */}
+                {contexte.projetId != null && nomProjet && projetLu ? null : contexte.projetId != null && nomProjet ? (
+                  <button type="button" className={couleurContexte ? 'puce projet-lu' : 'puce lue'} data-p={couleurContexte || undefined}
+                    aria-label={`Retirer « ${nomProjet} »`}
                     onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
-                    <span className="projet-nom">{`● ${nomProjet}`}</span>
+                    {couleurContexte ? <i className="point" aria-hidden="true" /> : null}
+                    <span className="projet-nom">{nomProjet}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : (

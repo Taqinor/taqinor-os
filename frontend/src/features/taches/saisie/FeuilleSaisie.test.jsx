@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -946,6 +946,53 @@ describe('TCH82 — feuille de saisie', () => {
       expect(dialogue).toHaveAttribute('aria-modal', 'true')
       expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
       expect(container.querySelector('.voile')).not.toBeNull()
+    })
+  })
+
+  describe('R3-045 — une puce par chose, le × DANS sa puce, le point à la couleur du projet', () => {
+    const lieu = window.location.pathname
+    afterEach(() => { window.history.pushState({}, '', lieu) })
+
+    it('le × du jour est DANS la puce « aujourd\'hui » (jamais une bulle qui ne contient qu\'une croix)', async () => {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      const { container } = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      const retirer = await screen.findByRole('button', { name: 'Retirer le jour choisi' })
+      const puce = retirer.closest('.puce')
+      expect(puce).not.toBeNull()
+      expect(within(puce).getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+      // aucune puce du pied ne se réduit à sa croix
+      const pied = container.querySelector('.saisie-pied')
+      ;[...pied.querySelectorAll('.puce')].forEach((p) => expect(p.textContent.trim()).not.toBe(''))
+    })
+
+    it('la puce du projet de l\'écran : un point de SA couleur (pas « ● » noir), retirable', async () => {
+      mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' }])
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      const retirer = await screen.findByRole('button', { name: 'Retirer « Ventes »' })
+      const puce = retirer.closest('.puce')
+      await waitFor(() => expect(puce).toHaveAttribute('data-p', 'vert'))
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(puce).toHaveTextContent(/^Ventes$/)
+    })
+
+    it('un `#projet` lu dans la phrase : la puce du projet de l\'écran s\'efface (il l\'emporte), une seule puce projet', async () => {
+      const lu = { type: 'projet', source: '#Ventes', debut: 8, fin: 15, libelle: '● Ventes', valeur: { id: 3, nom: 'Ventes', nouveau: false, couleur: 'vert' } }
+      mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' }])
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: 'Appeler', jetons: corps.texte.includes('#') ? [lu] : [], alertes: [], champs: corps.texte.includes('#') ? { projet_id: 3 } : {} }],
+      } : creation }))
+      const user = userEvent.setup()
+      const { container } = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      await user.type(champ(), 'Appeler #Ventes')
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Retirer « Ventes »' })).toBeNull(), { timeout: 3000 })
+      expect(container.querySelectorAll('[data-jeton="projet"]')).toHaveLength(1)
+      const puce = container.querySelector('[data-jeton="projet"]')
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(puce).not.toHaveTextContent('●')
     })
   })
 

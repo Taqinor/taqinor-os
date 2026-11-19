@@ -83,28 +83,38 @@ function classeJeton(jeton) {
 
 /** Le calque des surlignages, DERRIÈRE le `<textarea>` natif (même police, même retour à la ligne) : le champ reste
  *  un vrai champ iPhone, le texte n'est jamais réécrit. */
-function Surlignage({ valeur, jetons }) {
+function Surlignage({ valeur, jetons, projets }) {
   const morceaux = morceauxSurlignes(valeur, jetons)
   if (!morceaux.some((m) => m.jeton)) return null
   return (
     <div className="saisie-miroir" aria-hidden="true">
       {morceaux.map((m, i) => (m.jeton
-        ? <span key={i} className={classeJeton(m.jeton)} data-p={m.jeton.valeur?.couleur}>{m.texte}</span>
+        ? <span key={i} className={classeJeton(m.jeton)} data-p={couleurDuJeton(m.jeton, projets) || undefined}>{m.texte}</span>
         : <span key={i}>{m.texte}</span>))}
       {'​'}
     </div>
   )
 }
 
-function PuceJeton({ jeton, onIgnorer }) {
+/** R3-045 — la couleur d'un projet EXISTANT lu par `#` : servie avec le jeton, sinon celle de la liste des projets du
+ *  compte (le serveur ne la sert pas dans `jetons[].valeur`) ; jamais pour un nouveau projet. */
+function couleurDuJeton(jeton, projets) {
+  if (jeton.type !== 'projet' || jeton.valeur?.nouveau) return null
+  return jeton.valeur?.couleur ?? (projets ?? []).find((p) => p.id === jeton.valeur?.id)?.couleur ?? null
+}
+
+function PuceJeton({ jeton, couleur, onIgnorer }) {
   const nouveau = jeton.type === 'projet' && jeton.valeur?.nouveau
   // couture r2 — la puce d'un projet lu prend SA teinte (`data-p`, comme le surlignage du champ) ; sans couleur servie,
   // elle garde le fond des autres puces lues (jamais une puce nue à côté de puces pleines)
-  const couleur = jeton.type === 'projet' && !nouveau ? jeton.valeur?.couleur : null
   const classe = nouveau ? 'puce nouveau' : couleur ? 'puce projet-lu' : 'puce lue'
+  // R3-045 — un projet existant : un POINT de sa couleur, jamais le « ● » de texte du libellé servi (noir)
+  const existant = jeton.type === 'projet' && !nouveau
+  const texte = existant ? String(jeton.libelle ?? '').replace(/^●\s*/u, '') : jeton.libelle
   return (
     <span className={classe} data-jeton={jeton.type} data-p={couleur || undefined}>
-      <span className="chiffres">{jeton.libelle}</span>
+      {existant && couleur ? <i className="point" aria-hidden="true" /> : null}
+      <span className="chiffres">{texte}</span>
       <button
         type="button"
         className="retirer"
@@ -281,7 +291,7 @@ export default function ChampSaisie({
   return (
     <div className="champ-saisie">
       <div className="saisie-zone">
-        <Surlignage valeur={valeur} jetons={jetons} />
+        <Surlignage valeur={valeur} jetons={jetons} projets={projets} />
         <textarea
           className="saisie-champ"
           aria-label="Ajouter une tâche"
@@ -331,7 +341,7 @@ export default function ChampSaisie({
       {jetons.length > 0 ? (
         <div className="puces saisie" aria-label="Ce que j'ai lu">
           {jetons.map((jeton) => (
-            <PuceJeton key={`${jeton.type}:${jeton.debut}:${jeton.source}`} jeton={jeton} onIgnorer={onIgnorer} />
+            <PuceJeton key={`${jeton.type}:${jeton.debut}:${jeton.source}`} jeton={jeton} couleur={couleurDuJeton(jeton, projets)} onIgnorer={onIgnorer} />
           ))}
         </div>
       ) : null}
