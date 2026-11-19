@@ -171,7 +171,7 @@ class ChantierAssistantMixin:
             base, request.user.company, aujourdhui=timezone.localdate(), **lus))
 
     # headless: écrit par l'action d'assistant `installations.chantier.planifier`.
-    @oa.extend_schema(request=CORPS_PLANIFIER_SCHEMA,
+    @oa.extend_schema(request={'application/json': CORPS_PLANIFIER_SCHEMA},
                       responses={200: oa.OBJ, 400: oa.OBJ, 404: oa.OBJ, 409: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='planifier-pose',
             permission_classes=[IsResponsableOrAdmin,
