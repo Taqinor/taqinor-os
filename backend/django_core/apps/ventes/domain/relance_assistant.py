@@ -36,7 +36,7 @@ def _porteurs_du_lead(facture):
                         getattr(bon_commande, 'devis', None)) if o is not None]
 
 
-def refus_de_relance(facture):
+def motif_de_refus(facture):
     """Le premier refus qui s'applique, ou ``None``."""
     from apps.crm.selectors import (
         MOTIF_CONTACT_REFUSE, peut_contacter, porte_une_opposition)
@@ -65,7 +65,7 @@ def preparer_relance(request, facture, langue='fr'):
     from apps.ventes.activity import log_facture_whatsapp
     from apps.ventes.utils.whatsapp import build_facture_whatsapp, build_wa_url
 
-    refus = refus_de_relance(facture)
+    refus = motif_de_refus(facture)
     if refus is not None:
         raise refus
     texte, _lien = build_facture_whatsapp(request, facture, 'relance', langue)

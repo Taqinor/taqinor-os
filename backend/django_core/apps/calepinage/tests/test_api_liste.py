@@ -360,7 +360,7 @@ class PremierBlocageTest(BaseAssistantCalepinage):
     """CALA2 — LA règle ``a_faire``, écrite une fois (ensemble fermé)."""
 
     def test_ordre_des_gestes(self):
-        from apps.calepinage.services.assistant import A_FAIRE, premier_blocage
+        from apps.calepinage.services.assistant import A_FAIRE, _premier_blocage
 
         cas = (
             ((), 'rien'),
@@ -374,18 +374,18 @@ class PremierBlocageTest(BaseAssistantCalepinage):
         )
         for signaux, attendu in cas:
             with self.subTest(signaux=signaux):
-                self.assertEqual(premier_blocage(signaux), attendu)
+                self.assertEqual(_premier_blocage(signaux), attendu)
                 self.assertIn(attendu, A_FAIRE)
-        self.assertEqual(premier_blocage(('devis_absent',), a_retenir=True),
+        self.assertEqual(_premier_blocage(('devis_absent',), a_retenir=True),
                          'retenir')
-        self.assertEqual(premier_blocage(('sans_pose',), archive=True), 'rien')
+        self.assertEqual(_premier_blocage(('sans_pose',), archive=True), 'rien')
 
     def test_lien_par_la_table_des_ecrans(self):
-        from apps.calepinage.services.assistant import lien_du_geste
+        from apps.calepinage.services.assistant import _lien_du_geste
 
-        self.assertEqual(lien_du_geste(14, 'corriger_electrique'),
+        self.assertEqual(_lien_du_geste(14, 'corriger_electrique'),
                          '/calepinage/14?onglet=verdict-electrique')
-        self.assertEqual(lien_du_geste(12, 'publier'), '/calepinage/12')
+        self.assertEqual(_lien_du_geste(12, 'publier'), '/calepinage/12')
 
 
 class ResumeCompactTest(BaseAssistantCalepinage):

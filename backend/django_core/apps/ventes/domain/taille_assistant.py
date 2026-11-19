@@ -23,6 +23,8 @@ from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
 
+from core.money import quantize_mad
+
 #: Bornes du nombre de panneaux demandé à l'assistant.
 PANNEAUX_MIN, PANNEAUX_MAX = 1, 200
 _LIBELLES_CLOS = {'accepte': 'accepté', 'refuse': 'refusé', 'expire': 'expiré'}
@@ -147,7 +149,7 @@ def mesurer(devis, nb_panneaux, modules=None, *, utilisateur=None,
 
 def _montant_lu(valeur):
     try:
-        return Decimal(str(valeur)).quantize(Decimal('0.01'))
+        return quantize_mad(Decimal(str(valeur)))
     except (InvalidOperation, TypeError, ValueError):
         return None
 

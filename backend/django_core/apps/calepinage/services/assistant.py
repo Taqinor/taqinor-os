@@ -64,7 +64,7 @@ MAX_TEXTE = 140
 PORTEE_PRODUCTION = 'etude_technique_interne'
 
 
-def premier_blocage(signaux, *, archive=False, a_retenir=False):
+def _premier_blocage(signaux, *, archive=False, a_retenir=False):
     """LE geste suivant (clé de :data:`A_FAIRE`) depuis des signaux.
 
     ``a_retenir`` : une variante existe et aucune n'est retenue — placé après
@@ -81,7 +81,7 @@ def premier_blocage(signaux, *, archive=False, a_retenir=False):
     return 'retenir' if a_retenir else 'rien'
 
 
-def lien_du_geste(calepinage_id, a_faire):
+def _lien_du_geste(calepinage_id, a_faire):
     """``/calepinage/<id>`` + l'onglet du geste (table des écrans)."""
     from apps.agent.ecrans import chemin
 
@@ -234,7 +234,7 @@ def resume_compact(calepinage, *, variante=None):
     approbation, s_approbation = _bloc_approbation(calepinage)
     visite, s_visite = _bloc_visite(calepinage)
     archive = est_archive(calepinage)
-    a_faire = premier_blocage(
+    a_faire = _premier_blocage(
         s_visite + s_pose + s_simulation + s_electrique + s_approbation + s_devis,
         archive=archive, a_retenir=a_retenir)
     from .presentation import reference_calepinage
@@ -258,7 +258,7 @@ def resume_compact(calepinage, *, variante=None):
         'avertissements': [_texte(a) for a in (resultat.get('avertissements') or ())
                            ][:MAX_AVERTISSEMENTS],
         'a_faire': a_faire,
-        'lien': lien_du_geste(calepinage.pk, a_faire),
+        'lien': _lien_du_geste(calepinage.pk, a_faire),
     }
 
 
@@ -657,7 +657,7 @@ def _ligne_a_traiter(calepinage, *, evaluer):
     if evaluer:
         signaux = signaux + _signaux_couteux(calepinage)
     signaux = sorted(set(signaux), key=SIGNAUX.index)
-    a_faire = premier_blocage(signaux, a_retenir=a_retenir)
+    a_faire = _premier_blocage(signaux, a_retenir=a_retenir)
     if a_faire == 'rien':
         return None
     modifie = getattr(calepinage, 'updated_at', None)
@@ -668,7 +668,7 @@ def _ligne_a_traiter(calepinage, *, evaluer):
         'modifie_le': modifie.isoformat() if modifie is not None else None,
         'signaux': signaux,
         'a_faire': a_faire,
-        'lien': lien_du_geste(calepinage.pk, a_faire),
+        'lien': _lien_du_geste(calepinage.pk, a_faire),
         'evalue': bool(evaluer),
     }
 

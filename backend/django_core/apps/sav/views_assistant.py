@@ -7,8 +7,7 @@ re-vérifiées ICI). Les lectures rendent les formes compactes des échantillons
 
 Fichier à part : ``views.py`` dépasse 2 000 lignes et ne grossit plus.
 """
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import NotFound, ValidationError
@@ -25,6 +24,29 @@ from .serializers import TicketSerializer
 
 #: Longueur maximale du texte cherché (nom, téléphone, numéro de série).
 Q_MAX = 100
+
+
+_BLOCS = serializers.ListField(child=serializers.DictField())
+#: Formes publiées des trois lectures (clés = celles des ``contract_samples``).
+_PARC = inline_serializer('AssistantSavParc', {
+    'q': serializers.CharField(), 'total': serializers.IntegerField(),
+    'limite': serializers.IntegerField(), 'clients': _BLOCS})
+_TICKETS = inline_serializer('AssistantSavTickets', {
+    'q': serializers.CharField(allow_blank=True), 'statut': serializers.CharField(allow_blank=True),
+    'total': serializers.IntegerField(), 'limite': serializers.IntegerField(),
+    'lignes': _BLOCS, 'lien': serializers.CharField()})
+_FICHE = inline_serializer('AssistantSavTicketFiche', {
+    'id': serializers.IntegerField(), 'reference': serializers.CharField(),
+    'statut': serializers.CharField(), 'statut_libelle': serializers.CharField(),
+    'priorite': serializers.CharField(), 'type': serializers.CharField(),
+    'client': serializers.DictField(allow_null=True),
+    'installation': serializers.DictField(allow_null=True),
+    'equipement': serializers.DictField(allow_null=True),
+    'description': serializers.CharField(allow_blank=True),
+    'sla': serializers.DictField(), 'technicien': serializers.CharField(allow_null=True),
+    'activites': _BLOCS, 'pieces': _BLOCS,
+    'statuts_suivants': serializers.ListField(child=serializers.CharField()),
+    'a_faire': serializers.CharField(), 'lien': serializers.CharField()})
 
 
 def _societe_ou_400(request):
@@ -54,7 +76,7 @@ def _texte_cherche(request, obligatoire):
                                             'maximum': lectures.LIMITE_PARC_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
-    responses=OpenApiTypes.OBJECT)
+    responses=_PARC)
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def parc_client(request):
@@ -92,7 +114,7 @@ def _enum_ou_vide(valeurs):
                                             'maximum': lectures.LIMITE_TICKETS_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
-    responses=OpenApiTypes.OBJECT)
+    responses=_TICKETS)
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def tickets_a_traiter(request):
@@ -115,7 +137,7 @@ def tickets_a_traiter(request):
                      'lignes': lignes, 'lien': lectures.LIEN_FILE_SAV})
 
 
-@extend_schema(responses=OpenApiTypes.OBJECT)
+@extend_schema(responses=_FICHE)
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def ticket_fiche(request, pk):
