@@ -444,12 +444,13 @@ def borner_diagnostic(brut) -> Optional[dict]:
 
 def question_du_tour(question: str, contexte: Optional[dict] = None,
                      identite: Optional[dict] = None, maintenant=None,
-                     copilote: bool = True) -> str:
+                     copilote: bool = True, domaine: Optional[str] = None) -> str:
     """La question remise au modèle (LES DEUX moteurs) : en-tête posé par le
     serveur (date et heure de Casablanca, prénom, rôle, écran, foyer) puis le
     texte de l'utilisateur. Le contexte entre dans le message UTILISATEUR,
     jamais dans le bloc système (son cache reste intact). Copilote ÉTEINT :
-    le modèle ne voit rien de neuf — l'ancien format, octet pour octet."""
+    le modèle ne voit rien de neuf — l'ancien format, octet pour octet.
+    ``domaine`` (vague 2) : indice d'écran du moteur natif seulement."""
     if not copilote:
         from app.services.sql_agent_service import _question_avec_contexte
         return _question_avec_contexte(question, contexte)
@@ -458,7 +459,8 @@ def question_du_tour(question: str, contexte: Optional[dict] = None,
         maintenant=maintenant, prenom=identite.get("prenom") or "",
         role=identite.get("role") or "",
         contexte={k: contexte.get(k)
-                  for k in ("ecran", "lead_id", "devis_id", "touche_id")})
+                  for k in ("ecran", "lead_id", "devis_id", "touche_id")},
+        domaine=domaine)
     return f"{entete}\n\n{question}"
 
 
@@ -683,22 +685,28 @@ def _tracer(outil, appeles: list):
 def _preparer(service, question: str, company_id: int, ctx,
               catalogue: list, collecteur: list) -> dict[str, Any]:
     """Outils (tracés), blocs système (ordre stable, sans point de cache : le
-    moteur les pose) et réglages du modèle pour un tour natif."""
+    moteur les pose) et réglages du modèle pour un tour natif. Vague 2
+    (FND4) : hors du noyau, les actions d'un domaine sont DIFFÉRÉES, le
+    chargeur `outils_charger` les ouvre, l'index des domaines clôt le système."""
+    from app.services import chargeur_outils as chargeur
     from app.services import sql_agent_service as svc
 
     droits = service._droits_sql(ctx)
     lecture, schema = service._outils_sql(
         service._base_sql(question, company_id), company_id, droits)
     marquer_lectures_tierces([lecture, schema], ctx)  # A5
-    outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
+    outils, domaines = chargeur.differer(
+        [_outil_action(ctx, a, collecteur) for a in catalogue], catalogue)
     outils += _outils_fixes(lecture, schema, collecteur)
+    outils += [chargeur.outil_charger(domaines)] if domaines else []
     appeles: list = []
     contenu, present = svc._contenu_systeme(
         "claude", droits[0], copilote=True,
         role=(getattr(ctx, "identite", None) or {}).get("role"),
         taches=prompt_copilote.taches_au_catalogue(catalogue))
-    blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
-    return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
+    blocs = (contenu if isinstance(contenu, list) else [{"text": contenu}]) + (
+        [{"text": chargeur.index_des_domaines(domaines)}] if domaines else [])
+    return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles, "domaines": domaines,
             "manuel_present": present, "marque": lambda: marque_du_tour(ctx),
             "cles": {o.nom: a["key"] for o, a in zip(outils, catalogue)},
             "reglages": {"systeme": [{"type": "text", "text": b["text"]} for b in blocs],
@@ -788,8 +796,11 @@ def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
     vue = question_marquee(question, images)
     try:
         prep = _preparer(service, question, company_id, ctx, catalogue, collecteur)
+        from app.services.chargeur_outils import domaine_de_l_ecran
+        domaine = domaine_de_l_ecran((contexte or {}).get("ecran"), prep["domaines"])
         rendu = moteur_natif.executer(
-            question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
+            question=question_du_tour(question, contexte, getattr(ctx, "identite", None),
+                                      domaine=domaine),
             outils=prep["outils"], conversation=conversation_de(company_id, user_id),
             **({"images": images} if images else {}), **prep["reglages"], **_marques_natives(ctx))
         return _sortie_native(service, vue, user_id, rendu, collecteur, prep)

@@ -598,5 +598,66 @@ class CreationsDevisS2Tests(unittest.TestCase):
         self.assertEqual((len(appels), textes[1]), (1, at.REFUS_CREATION_DEVIS_TIERS))
 
 
+def _servir_natif(catalogue, contexte=None, fournisseur="claude", **kw):
+    """Un tour du VRAI relais (`_query` -> `tour_natif`) dont le moteur natif
+    est SIMULÉ : rend (sortie, arguments remis au moteur). Aides de
+    `test_sql_agent_endpoint` (LLM LangChain, Django et Redis simulés)."""
+    from langchain_core.messages import AIMessage
+    from app.core import config
+    from app.services import moteur_natif
+    from tests.test_sql_agent_endpoint import _ctx, _tour
+    vu = {}
+
+    def executer(**arguments):
+        vu.update(arguments)
+        return {"answer": "Natif.", "outils_appeles": [], "arret": "fin", "modele": "m", "tokens": {}}
+    with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+            mock.patch.object(moteur_natif, "executer", executer):
+        sortie, _, llm = _tour([AIMessage(content="LangChain.")], catalogue=catalogue, ctx=_ctx(),
+                               contexte=contexte, fournisseur=fournisseur, **kw)
+    return sortie, vu, llm
+
+
+def _action(cle, **champs):
+    return {"key": cle, "label": cle, "description": "Action %s." % cle, "method": "GET",
+            "endpoint": "/api/django/x/", "risk": "internal", "lot": "copilote",
+            "inputs": {"type": "object", "properties": {}}, **champs}
+
+
+class ChargeurNatifFnd4Tests(unittest.TestCase):
+    """Vague 2 (FND4) — sous le moteur natif : noyau dans le préfixe, le reste
+    différé, `outils_charger`, index des domaines en fin de système, indice
+    d'écran dans l'en-tête ; rien de tout cela sous LangChain."""
+
+    CATALOGUE = [_action("crm.digest_matin", noyau=True), _action("crm.lead.note", method="POST"),
+                 _action("ventes.devis.lignes")]
+
+    def test_differes_chargeur_index_et_indice(self):
+        from app.services import chargeur_outils as ch, prompt_copilote as pc
+        _, vu, _ = _servir_natif(self.CATALOGUE, contexte={"ecran": "/ventes/devis"})
+        differes = {o.nom: o.differe for o in vu["outils"]}
+        self.assertEqual({k: differes[k] for k in ("crm_digest_matin", "crm_lead_note",
+                                                   "ventes_devis_lignes", "sql_db_query")},
+                         {"crm_digest_matin": False, "crm_lead_note": True,
+                          "ventes_devis_lignes": True, "sql_db_query": False})
+        self.assertIn(ch.NOM_CHARGEUR, differes)
+        self.assertTrue(vu["systeme"][-1]["text"].startswith(ch.ENTETE_INDEX))
+        self.assertIn(pc.LIGNE_DOMAINE % "ventes", vu["question"])
+
+    def test_sans_ecran_connu_en_tete_sans_indice(self):
+        from app.services import prompt_copilote as pc
+        _, vu, _ = _servir_natif(self.CATALOGUE, contexte={"ecran": "/parametres"})
+        self.assertNotIn(pc.LIGNE_DOMAINE.split("%")[0], vu["question"])
+
+    def test_langchain_ne_voit_ni_chargeur_ni_index(self):
+        from app.services import chargeur_outils as ch
+        sortie, vu, llm = _servir_natif(self.CATALOGUE, contexte={"ecran": "/crm"}, fournisseur="groq")
+        self.assertEqual(vu, {})
+        noms = next(n for genre, n in llm.recus if genre == "outils")
+        self.assertNotIn(ch.NOM_CHARGEUR, noms)
+        systeme = next(m for genre, m in llm.recus if genre == "messages")[0].content
+        self.assertNotIn(ch.ENTETE_INDEX, systeme)
+
+
 if __name__ == "__main__":
     unittest.main()

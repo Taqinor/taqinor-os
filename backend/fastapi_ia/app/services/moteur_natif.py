@@ -106,6 +106,26 @@ class OutilNatif:
     #: blocs ``tool_reference`` (chargeur du relais). Défaut : non différé,
     #: corps de requête inchangé.
     differe: bool = False
+    #: Copilote vague 2 (FND4) — un appel de modèle qui n'appelle QUE des
+    #: outils ``hors_budget`` (le chargeur) ne compte pas dans
+    #: ``max_iterations`` (au plus :data:`CHARGEMENTS_HORS_BUDGET` par tour).
+    hors_budget: bool = False
+
+
+@dataclass(frozen=True)
+class ResultatOutil:
+    """Sortie riche d'un outil (vague 2, FND4) : ``contenu`` (texte ou liste
+    de blocs) va dans SON ``tool_result`` ; ``apres`` = blocs ``text`` posés
+    APRÈS tous les ``tool_result`` du même message (consignes d'un domaine
+    chargé : jamais mêlées aux ``tool_reference``) ; ``erreur`` = ``is_error``."""
+
+    contenu: Any
+    apres: tuple = ()
+    erreur: bool = False
+
+
+#: Appels de modèle « chargement seul » permis en plus de ``max_iterations``.
+CHARGEMENTS_HORS_BUDGET = 3
 
 
 class _ErreurFournisseur(Exception):
@@ -301,10 +321,22 @@ def _resultat(bloc: dict, texte: Any, erreur: bool = False) -> dict:
     return res
 
 
+def _sortie(outil: OutilNatif, entrees: dict, apres: list) -> tuple[Any, bool]:
+    """(contenu, erreur) d'un appel ; les blocs ``apres`` d'un
+    :class:`ResultatOutil` (texte seulement) s'ajoutent à ``apres``."""
+    sortie = outil.executer(entrees)
+    if not isinstance(sortie, ResultatOutil):
+        return _contenu(sortie), False
+    apres.extend(dict(b) for b in sortie.apres
+                 if isinstance(b, dict) and b.get("type") == "text")
+    return _contenu(sortie.contenu), bool(sortie.erreur)
+
+
 def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
     """TOUS les ``tool_use`` de la réponse, dans l'ordre -> UN message de
-    ``tool_result`` (mêmes identifiants, résultats d'abord — handle-tool-calls)."""
-    resultats = []
+    ``tool_result`` (mêmes identifiants, résultats d'abord — handle-tool-calls),
+    puis les blocs texte ``apres`` des outils (consignes d'un domaine)."""
+    resultats, apres = [], []
     for bloc in _blocs(contenu, "tool_use"):
         outil = _trouver_outil(bloc.get("name"), tour.outils)
         if outil is None:
@@ -315,14 +347,22 @@ def _executer_outils(contenu: list, tour: _Tour) -> list[dict]:
         tour.appeles.append(outil.nom)
         entrees = bloc.get("input") if isinstance(bloc.get("input"), dict) else {}
         try:
-            texte, erreur = _contenu(outil.executer(dict(entrees))), False
+            texte, erreur = _sortie(outil, dict(entrees), apres)
         except Exception as exc:  # l'outil ne doit pas faire tomber le tour
             logger.warning("Outil %s : %s", outil.nom, exc)
             texte, erreur = ("L'outil « %s » a échoué (%s). Ne réessaie pas à "
                              "l'identique : dis ce qui n'a pas pu être fait."
                              % (outil.nom, type(exc).__name__)), True
         resultats.append(_resultat(bloc, texte, erreur))
-    return resultats
+    return resultats + apres
+
+
+def _chargement_seul(contenu: list, tour: _Tour) -> bool:
+    """Vrai si chaque ``tool_use`` de la réponse vise un outil ``hors_budget``."""
+    appels = _blocs(contenu, "tool_use")
+    return bool(appels) and all(
+        getattr(_trouver_outil(b.get("name"), tour.outils), "hors_budget", False)
+        for b in appels)
 
 
 # ── Conversation gardée (Redis) ─────────────────────────────────────────────
@@ -528,18 +568,23 @@ def _terminer(tour: _Tour, stop: Any, contenu: list,
 
 
 def _boucle(client, tour: _Tour, max_iterations: int) -> tuple[str, str, str]:
-    """Appel -> tant que ``stop_reason == "tool_use"`` : outils -> rappel."""
+    """Appel -> tant que ``stop_reason == "tool_use"`` : outils -> rappel.
+    Un appel qui ne fait QUE charger des outils (vague 2) ne compte pas dans
+    ``max_iterations`` (au plus :data:`CHARGEMENTS_HORS_BUDGET` fois)."""
     debut = time.monotonic()
     iterations = max(1, int(max_iterations))
-    for i in range(iterations):
+    faites = gratuits = 0
+    while True:
         reponse = _appeler(client, tour)
         contenu = reponse.get("content") if isinstance(reponse.get("content"), list) else []
         tour.modele = reponse.get("model") or tour.modele
         stop = reponse.get("stop_reason")
         if stop != "tool_use" or not _blocs(contenu, "tool_use"):
             return _terminer(tour, stop, contenu, reponse)
-        if i == iterations - 1 or time.monotonic() - debut > DUREE_MAX_TOUR_S:
+        gratuit = gratuits < CHARGEMENTS_HORS_BUDGET and _chargement_seul(contenu, tour)
+        if (not gratuit and faites >= iterations - 1) or time.monotonic() - debut > DUREE_MAX_TOUR_S:
             break  # dernier appel : ses outils ne sont PAS exécutés
+        gratuits, faites = gratuits + gratuit, faites + (not gratuit)
         tour.messages.append({"role": "assistant", "content": contenu})
         if _texte(contenu):
             tour.textes.append(_texte(contenu))

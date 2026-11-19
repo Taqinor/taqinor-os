@@ -265,6 +265,55 @@ class EnteteTests(unittest.TestCase):
         self.assertFalse(pc.copilote_allume([{"lot": "herite"}, "x"]))
         self.assertFalse(pc.copilote_allume(None))
 
+    def test_indice_d_ecran_seulement_s_il_est_donne(self):
+        """Vague 2 (FND4) — `domaine=None` : l'en-tête d'avant, octet pour
+        octet ; donné, une ligne juste avant la fin de l'en-tête."""
+        instant = datetime.datetime(2026, 11, 19, 9, 30, tzinfo=pc.FUSEAU)
+        contexte = {"ecran": "/visites/12", "lead_id": 4}
+        avant = pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte)
+        self.assertEqual(pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte,
+                                        domaine=None), avant)
+        avec = pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte, domaine="visites")
+        self.assertEqual(avec.splitlines()[:-1], avant.splitlines()[:-1] + [pc.LIGNE_DOMAINE % "visites"])
+        self.assertEqual(avec.splitlines()[-1], pc.FIN_ENTETE)
+
+
+class ConsignesDomainesTests(unittest.TestCase):
+    """Vague 2 (FND4) — consignes par domaine (remplies par la lane TXT) :
+    120 mots par domaine, 900 au total, aucun prénom, aucun pourcentage,
+    aucune date, aucune clé d'outil hors de son domaine ou du noyau."""
+
+    NOYAU = {"crm.lead.chercher", "crm.lead.resume", "crm.digest_matin",
+             "crm.leads.a_relancer", "erp.ouvrir"}
+
+    def setUp(self):
+        from app.services import chargeur_outils, consignes_domaines
+        self.chargeur, self.consignes = chargeur_outils, consignes_domaines
+
+    def test_domaines_connus_et_budgets(self):
+        textes = self.consignes.CONSIGNES
+        self.assertLessEqual(set(textes), set(self.chargeur.DOMAINES))
+        for domaine, texte in textes.items():
+            with self.subTest(domaine=domaine):
+                self.assertLessEqual(len(texte.split()), 120)
+                self.assertNotRegex(texte, r"\d\s*%")
+                self.assertNotRegex(texte, r"20\d\d|\d{1,2}/\d{1,2}")
+                mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", texte))
+                self.assertLessEqual(mots, MAJUSCULES_ADMISES, "est-ce un prénom ?")
+                for cle in re.findall(r"\b[a-z_]+\.[a-z_]+\.[a-z_]+\b|\b[a-z_]+\.[a-z_]+\b", texte):
+                    if "." in cle and cle.split(".")[0] in self.chargeur.DOMAINES + ("erp",):
+                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU, cle)
+        self.assertLessEqual(sum(len(t.split()) for t in textes.values()), 900)
+
+    def test_bloc_borne_ou_rien(self):
+        self.assertEqual(self.consignes.bloc_consignes("domaine_sans_texte"), [])
+        from unittest import mock
+        with mock.patch.dict(self.consignes.CONSIGNES, {"sav": "Un ticket par panne."}):
+            bloc, = self.consignes.bloc_consignes("sav")
+        self.assertEqual(bloc["type"], "text")
+        self.assertEqual(bloc["text"].splitlines(), [
+            self.consignes.DEBUT % "sav", "Un ticket par panne.", self.consignes.FIN % "sav"])
+
 
 if __name__ == "__main__":
     unittest.main()

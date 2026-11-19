@@ -681,6 +681,86 @@ class DiffereConversationTests(_Base):
         self._verifier_recommence(self.client.appels[0]["messages"])
 
 
+CATALOGUE = [
+    {"key": "crm.digest_matin", "noyau": True},
+    {"key": "crm.lead.note"},
+    {"key": "crm.visite.planifier"},
+    {"key": "ged.docqa.retrieve"},
+    {"key": "visites.agenda"},
+]
+
+
+class ChargeurTests(_Base):
+    """Copilote vague 2 (FND4) — le chargeur `outils_charger` : domaines,
+    index, références seules, consignes APRÈS le tool_result, appels de
+    chargement hors du budget d'itérations."""
+
+    def _outils(self):
+        from app.services import chargeur_outils as ch
+        outils, domaines = ch.differer([_outil(a["key"].replace(".", "_")) for a in CATALOGUE], CATALOGUE)
+        return outils + [ch.outil_charger(domaines)], domaines
+
+    def test_noyau_et_domaine_inconnu_jamais_differes_et_liste_croisee(self):
+        outils, domaines = self._outils()
+        self.assertEqual([o.differe for o in outils[:5]], [False, True, True, False, True])
+        self.assertEqual(domaines, {"crm": ["crm_lead_note", "crm_visite_planifier"],
+                                    "visites": ["crm_visite_planifier", "visites_agenda"]})
+        self.assertTrue(outils[-1].hors_budget)
+        self.assertEqual(outils[-1].schema["properties"]["domaines"]["items"]["enum"], ["crm", "visites"])
+
+    def test_index_et_indice_d_ecran(self):
+        from app.services import chargeur_outils as ch
+        _, domaines = self._outils()
+        index = ch.index_des_domaines(domaines)
+        self.assertTrue(index.startswith(ch.ENTETE_INDEX))
+        self.assertEqual(index.count("\n- "), 2)
+        self.assertNotIn("- ventes", index)
+        self.assertEqual(ch.domaine_de_l_ecran("/visites/12/calage", domaines), "visites")
+        self.assertEqual(ch.domaine_de_l_ecran("/crm?id=4", domaines), "crm")
+        self.assertIsNone(ch.domaine_de_l_ecran("/ventes/devis", domaines))  # rien de différé
+        self.assertIsNone(ch.domaine_de_l_ecran("/crmx", domaines))
+        self.assertIsNone(ch.domaine_de_l_ecran(None, domaines))
+
+    def test_tour_scripte_chargement_puis_appel_hors_budget(self):
+        from app.services import consignes_domaines
+        vus = []
+        outils, _ = self._outils()
+        outils = [o if o.nom != "visites_agenda" else _differe("visites_agenda", lambda e: vus.append(e) or "agenda")
+                  for o in outils]
+        with mock.patch.dict(consignes_domaines.CONSIGNES, {"visites": "Demande qui fait la visite."}):
+            r = self.jouer([_rep([_appel("t1", "outils_charger", {"domaines": ["visites"]})], stop="tool_use"),
+                            _rep([_appel("t2", "visites_agenda")], stop="tool_use"),
+                            _rep([_texte("Voici l'agenda.")])], outils, max_iterations=1 + 1)
+        self.assertEqual((r["answer"], len(vus)), ("Voici l'agenda.", 1))
+        retour = self.client.appels[1]["messages"][-1]["content"]
+        self.assertEqual(retour[0]["content"], _references("crm_visite_planifier", "visites_agenda"))
+        self.assertEqual(retour[1]["type"], "text")
+        self.assertTrue(retour[1]["text"].startswith("[Consignes de l'ERP pour le domaine visites]"))
+        self.assertEqual(r["outils_appeles"], ["outils_charger", "visites_agenda"])
+
+    def test_domaine_inconnu_erreur_et_deja_charge(self):
+        outils, _ = self._outils()
+        self.jouer([_rep([_appel("t1", "outils_charger", {"domaines": ["stock"]}),
+                          _appel("t2", "outils_charger", {"domaines": ["crm"]}),
+                          _appel("t3", "outils_charger", {"domaines": ["crm"]})], stop="tool_use"),
+                    _rep([_texte("ok")])], outils)
+        inconnu, charge, deja = self.client.appels[1]["messages"][-1]["content"]
+        self.assertTrue(inconnu["is_error"])
+        self.assertIn("stock", inconnu["content"])
+        self.assertEqual(charge["content"], _references("crm_lead_note", "crm_visite_planifier"))
+        self.assertIsInstance(deja["content"], str)
+        self.assertEqual(len(self.client.appels[1]["messages"][-1]["content"]), 3)  # aucune consigne
+
+    def test_chargements_hors_budget_bornes(self):
+        from app.services.moteur_natif import CHARGEMENTS_HORS_BUDGET
+        outils, _ = self._outils()
+        boucle = [_rep([_appel("t%d" % i, "outils_charger", {"domaines": ["crm"]})], stop="tool_use")
+                  for i in range(CHARGEMENTS_HORS_BUDGET + 2)]
+        r = self.jouer(boucle, outils, max_iterations=2)
+        self.assertEqual(len(self.client.appels), CHARGEMENTS_HORS_BUDGET + 2)
+        self.assertEqual(r["arret"], mn.ARRET_LIMITE)
+
+
 class RedisAbsentTests(_Base):
     def test_tour_servi_sans_memoire(self):
         with mock.patch.object(mn, "_redis", side_effect=ConnectionError("x")):
