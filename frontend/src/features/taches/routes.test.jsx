@@ -203,6 +203,12 @@ describe('TCH43 — routes du module', () => {
       expect(within(aide).queryByText('Essentiel')).toBeNull()
       expect(within(aide).queryByText('Annuler (hors champ)')).toBeNull()
       expect(within(aide).queryByText(/\+15 min/)).toBeNull()
+      // R3-095 — les touches les plus utilisées en TÊTE : j/k, Entrée, Échap ; « Réorganiser » (Alt+↑/↓) n'est plus promis
+      expect([...aide.querySelectorAll('dt')].slice(0, 3).map((dt) => dt.textContent)).toEqual(['j / k', 'Entrée', 'Échap'])
+      expect(within(aide).getByText('Ligne suivante / précédente')).toBeInTheDocument()
+      expect(within(aide).getByText('Ouvrir')).toBeInTheDocument()
+      expect(within(aide).getByText('Fermer')).toBeInTheDocument()
+      expect(within(aide).queryByText('Réorganiser')).toBeNull()
       expect(aideErp).not.toHaveBeenCalled()
       await act(async () => { aide.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
       expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()
