@@ -223,7 +223,10 @@
 @keyframes tch-feuille-sortie { from { translate: 0 0; } to { translate: 0 100%; } }
 @keyframes tch-dialogue-sortie { from { translate: 0 0; opacity: 1; } to { translate: 0 12px; opacity: 0; } }
 @keyframes tch-panneau-sortie { from { translate: 0 0; } to { translate: 100% 0; } }
-@keyframes tch-voile-sortie { from { opacity: 1; } to { opacity: 0; } }
+/* R4-20 — sans `from` : une feuille TIRÉE vers le bas a éclairci son voile, il part de là (jamais un éclair sombre) */
+@keyframes tch-voile-sortie { to { opacity: 0; } }
+/* R4-20 — la poignée et l'en-tête d'une feuille ne défilent rien : le doigt qui s'y pose tire la feuille (FeuilleACrans) */
+.tch .feuille .poignee, .tch .feuille .feuille-entete { touch-action: none; }
 /* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
    fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
    lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */
