@@ -1022,6 +1022,9 @@
   .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
     visibility: visible;
   }
+  /* R2-083 — le tiroir FERMÉ (translateX(-105 %)) gardait son ombre de 28 px, qui débordait en bande grise sur le bord
+     gauche de chaque écran. Ouvert, il la retrouve. */
+  .layout:not(.drawer-open):has(> .layout-main > .layout-content > .route-fade > .tch) > .sidebar { box-shadow: none; }
 }
 /* R2-081 — UNE surface jusqu'en bas de l'écran : le scrolleur de l'ERP prend la surface du module (sur iPhone, plus de
    cassure grise sous une page courte ; au bureau, plus de « carte » blanche à angles vifs posée sur le gris : le
