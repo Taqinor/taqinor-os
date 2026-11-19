@@ -840,12 +840,28 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     focaliser(42)
     await userEvent.keyboard('d')
     const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
-    expect(within(feuille).getByLabelText('Jour')).toHaveValue('2026-11-19')
-    expect(within(feuille).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveFocus()
+    // R2-022 — le sélecteur « Quand » du module ; la tuile « Reporter à jeu. 19 » a le focus : Entrée reporte
+    expect(within(feuille).getByRole('radio', { name: 'Reporter à jeu. 19' })).toHaveFocus()
     await userEvent.keyboard('{Enter}')
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', { jour_prevu: '2026-11-19', lock_version: expect.anything() }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: expect.anything() })))
     expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
+  })
+
+  it('R2-022 — « Choisir un jour » : les tuiles du sélecteur Quand ; « Demain » en UN toucher', async () => {
+    servir(donnees())
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 74, progression: null } })
+    monter()
+    await screen.findByText('Timbres')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Choisir un jour' }))
+    const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
+    const tuiles = within(feuille).getAllByRole('radio').map((t) => t.querySelector('b').textContent)
+    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Choisir un jour', 'En réserve', 'Sans jour'])
+    await userEvent.click(within(feuille).getByRole('radio', { name: /^Demain/ }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-18' })))
+    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 
   it('`m` ouvre « Déplacer vers… » sur un AUTRE projet que le sien ; Entrée déplace', async () => {

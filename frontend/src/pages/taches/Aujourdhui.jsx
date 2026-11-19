@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR, SaisieBureau } from '../../features/taches/coquille/CoquilleTaches'
 import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
@@ -15,6 +15,7 @@ import ColonneBureau, { ColonneProjets } from '../../features/taches/aujourdhui/
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
+import SelecteurQuand, { QUAND_VIDE } from '../../features/taches/ui/SelecteurQuand'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
 import { annoncer, annulerToast, fermerToast, proposerAnnuler, useEtatGestes } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
@@ -225,25 +226,35 @@ function useBureau() {
 }
 
 /**
- * « Choisir un jour » : un champ date, une seule action (la tâche est prévue ce jour-là). Ouverte au clavier (`d`,
- * spec-7 §5 « Quand (Entrée = Reporter au jour nommé) »), elle arrive sur `initial` — le prochain jour travaillé — et
- * son bouton « Reporter à {jour} » a le focus : Entrée reporte. Entrée dans le champ date valide aussi (formulaire).
+ * R2-022 — « Choisir un jour » : le sélecteur « Quand » de tout le module (`ui/SelecteurQuand`, importé tel quel) —
+ * Aujourd'hui · Demain · Ce soir · Reporter à {jour} · Choisir un jour · En réserve · Sans jour : un toucher suffit.
+ * Ouverte au clavier (`d`, spec-7 §5 « Quand (Entrée = Reporter au jour nommé) »), la tuile « Reporter à {jour} » a
+ * le focus : Entrée reporte. `valeur` : le « Quand » actuel de la ligne (sa tuile est cochée).
  */
-function ChoisirJour({ item, minimum, onChoisir, initial = '', reporterA = null }) {
-  const [jour, setJour] = useState(initial ?? '')
-  const libelle = !jour ? 'Choisis un jour'
-    : jour === reporterA ? `Reporter à ${jourNomme(jour, minimum)}` : `Prévue ${jourCourt(jour, minimum)}`
-  const valider = (e) => { e.preventDefault(); if (jour) onChoisir(jour) }
+function ChoisirJour({ titre, valeur, aujourdhui, reporterA = null, clavier = false, onChoisir }) {
+  const racine = useRef(null)
+  // posé AVANT que la feuille ne cherche son action par défaut (`data-focus-initial`, effets de mise en page d'abord)
+  useLayoutEffect(() => {
+    if (!clavier) return
+    const tuiles = racine.current?.querySelectorAll('[role="radio"]') ?? []
+    const reporter = [...tuiles].find((tuile) => tuile.textContent.startsWith('Reporter à'))
+    reporter?.setAttribute('data-focus-initial', '')
+  }, [clavier])
   return (
-    <form className="choisir-jour" onSubmit={valider}>
-      <p className="carte-source">{item.titre}</p>
-      <label className="fiche-label" htmlFor="tch-choisir-jour">Jour</label>
-      <input id="tch-choisir-jour" type="date" className="champ-date" min={minimum} value={jour} onChange={(e) => setJour(e.target.value)} />
-      <button type="submit" className="bouton plein large" disabled={!jour} data-focus-initial={initial ? '' : undefined}>
-        {libelle}
-      </button>
-    </form>
+    <div className="choisir-jour" ref={racine}>
+      <p className="carte-source">{titre}</p>
+      <SelecteurQuand valeur={valeur} aujourdhui={aujourdhui} reporterA={reporterA} onChoisir={onChoisir} />
+    </div>
   )
+}
+
+/** Le toast d'un « Quand » choisi (mêmes phrases que le menu ⋯ : « Reportée à ven. 20 », « Prévue lun. 23 »…). */
+function messageQuand(quand, aujourdhui, reporterA) {
+  if (quand.quelque_jour) return 'En réserve'
+  if (!quand.jour_prevu) return 'Sans jour'
+  if (quand.jour_prevu === aujourdhui && quand.moment === 'soir') return 'Ce soir'
+  if (quand.jour_prevu === reporterA) return `Reportée à ${jourNomme(quand.jour_prevu, aujourdhui)}`
+  return `Prévue ${jourCourt(quand.jour_prevu, aujourdhui)}`
 }
 
 /**
@@ -487,38 +498,44 @@ export default function Aujourdhui() {
     })
   }, [garde, enLigne, donnees, patcher, poserProgression, closeErp, setDonnees, enchainer, toastCourant])
 
-  const poserJour = useCallback(async (item, jour, message, lockVersion = item.lock_version) => {
+  /**
+   * Prévoit la ligne un autre jour (Reporter, « Choisir un jour »). `quand` : le jour (`AAAA-MM-JJ`, seul champ envoyé)
+   * ou la valeur complète de `SelecteurQuand` (jour, moment, heure). La ligne reste à l'écran avec son estampille
+   * (« → ven. 20 », « → Sans jour ») et porte ses nouveaux champs : un autre jour ne compte plus dans la journée
+   * affichée (« essentiel f/p », gardées — R2-019).
+   */
+  const poserJour = useCallback(async (item, quand, message, lockVersion = item.lock_version) => {
     const cle = cleDe(item)
+    const champs = typeof quand === 'string' ? { jour_prevu: quand } : { ...QUAND_VIDE, ...quand }
+    const jour = champs.jour_prevu ?? null
+    const estampille = !jour ? '→ Sans jour' : jour !== donnees?.jour ? `→ ${jourNomme(jour, donnees?.jour)}` : ''
+    const avant = Object.fromEntries(Object.keys(champs).map((k) => [k, item[k] ?? QUAND_VIDE[k] ?? null]))
+    const poser = () => {
+      if (estampille) setEstampilles((e) => ({ ...e, [cle]: estampille }))
+      patcher(cle, (it) => ({ ...it, ...champs }))
+    }
+    const oter = () => {
+      setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+      patcher(cle, (it) => ({ ...it, ...avant }))
+    }
     if (!enLigne) {
       // hors ligne (TCH100) : reporter / choisir un jour part dans la file, avec le `lock_version` du cache
       try {
-        await enfilerReport(item.id, { jour_prevu: jour, moment: '', heure_debut: null, quelque_jour: false, lock_version: lockVersion })
+        await enfilerReport(item.id, { ...QUAND_VIDE, ...champs, lock_version: lockVersion })
       } catch (err) {
         annoncer(frenchError(err))
         return
       }
-      setEstampilles((e) => ({ ...e, [cle]: `→ ${jourNomme(jour, donnees?.jour)}` }))
+      poser()
       proposerAnnuler({ message: TOAST_EN_FILE, annonce: message })
       return
     }
     // R2-011 — OPTIMISTE : « → ven. 20 » et le toast AU RELÂCHER ; la réponse recale la version et la progression ;
     // un refus retire l'estampille et le dit (409 : le bandeau de conflit, « Garder la mienne » réécrit).
-    const estampille = `→ ${jourNomme(jour, donnees?.jour)}`
-    // la ligne reste à l'écran avec son estampille, mais porte son nouveau jour : elle ne compte plus dans la
-    // journée affichée (« essentiel f/p », gardées — R2-019)
-    const jourAvant = item.jour_prevu ?? null
-    const poser = () => {
-      setEstampilles((e) => ({ ...e, [cle]: estampille }))
-      patcher(cle, (it) => ({ ...it, jour_prevu: jour }))
-    }
-    const oter = () => {
-      setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
-      patcher(cle, (it) => ({ ...it, jour_prevu: jourAvant }))
-    }
     const ecrire = (version) => {
       const geste = { annule: false }
       poser()
-      const envoi = enchainer(cle, () => client.planifierTache(item.id, { jour_prevu: jour, lock_version: version }))
+      const envoi = enchainer(cle, () => client.planifierTache(item.id, { ...champs, lock_version: version }))
       const toast = proposerAnnuler({
         message,
         onAnnuler: async () => {
@@ -786,7 +803,7 @@ export default function Aujourdhui() {
     else if (!item) return
     else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
     else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
-    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, initial: donnees?.prochain_jour_ouvre ?? '' })
+    else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, clavier: true })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)
     else if (action === 'descendre') modes.deplacer(item, 1)
@@ -841,15 +858,16 @@ export default function Aujourdhui() {
       onFermer: () => setFeuille(null),
       children: (
         <ChoisirJour
-          item={feuille.item}
-          minimum={jourFeuille}
-          initial={feuille.initial}
+          titre={feuille.item.titre}
+          valeur={Object.fromEntries(Object.keys(QUAND_VIDE).map((k) => [k, feuille.item[k] ?? QUAND_VIDE[k]]))}
+          aujourdhui={jourFeuille}
           reporterA={donnees?.prochain_jour_ouvre ?? null}
-          onChoisir={(jour) => {
+          clavier={Boolean(feuille.clavier)}
+          onChoisir={(quand) => {
             setFeuille(null)
-            const message = jour === donnees?.prochain_jour_ouvre
-              ? `Reportée à ${jourNomme(jour, jourFeuille)}` : `Prévue ${jourCourt(jour, jourFeuille)}`
-            poserJour(feuille.item, jour, message)
+            // en réserve, la ligne quitte la journée : le geste commun du menu ⋯ (optimiste, Annuler)
+            if (quand.quelque_jour) actions.surAction('reserve', feuille.item)
+            else poserJour(feuille.item, quand, messageQuand(quand, jourFeuille, donnees?.prochain_jour_ouvre))
           }}
         />
       ),
@@ -882,9 +900,14 @@ export default function Aujourdhui() {
       onFermer: () => setFeuille(null),
       children: (
         <ChoisirJour
-          item={{ titre: accord(modes.selection.ids.size, 'tâche sélectionnée', 'tâches sélectionnées') }}
-          minimum={jourFeuille}
-          onChoisir={(jour) => { setFeuille(null); modes.lot('planifier', { jour_prevu: jour }) }}
+          titre={accord(modes.selection.ids.size, 'tâche sélectionnée', 'tâches sélectionnées')}
+          valeur={QUAND_VIDE}
+          aujourdhui={jourFeuille}
+          reporterA={donnees?.prochain_jour_ouvre ?? null}
+          onChoisir={(quand) => {
+            setFeuille(null)
+            modes.lot('planifier', quand.quelque_jour ? { quelque_jour: true } : { jour_prevu: quand.jour_prevu })
+          }}
         />
       ),
     }
