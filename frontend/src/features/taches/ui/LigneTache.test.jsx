@@ -292,6 +292,23 @@ describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne b
   })
 })
 
+describe('R2-017 — la pastille « → ven. 20 » prend la place de l\'heure : la ligne ne change pas de hauteur', () => {
+  it('avec une estampille, la colonne de fin montre la pastille et plus l\'heure (même largeur, jamais les deux)', () => {
+    const { container } = monter({ estampille: '→ ven. 20' })
+    const fin = container.querySelector('.ligne-fin')
+    expect(fin.querySelector('.estampille')).toHaveTextContent('→ ven. 20')
+    expect(fin.querySelector('.heure')).toBeNull()
+    // le drapeau et l'étoile restent
+    expect(within(fin).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+  })
+
+  it('sans estampille, l\'heure revient', () => {
+    const { container } = monter()
+    expect(container.querySelector('.ligne-fin .estampille')).toBeNull()
+    expect(container.querySelector('.ligne-fin .heure')).toHaveTextContent('10:00')
+  })
+})
+
 describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
   // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
   const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '')

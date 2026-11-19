@@ -318,7 +318,9 @@ export default function LigneTache({
           {/* spec-8 §2 « heure, ★ ou drapeau » : l'étoile d'une essentielle tient lieu du drapeau ; drapeau AVANT l'heure
               (maquettes ecran-aujourdhui-15h.html, ecran-bilan.html) */}
           {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
-          {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
+          {/* R2-017 — la pastille « → ven. 20 » REMPLACE l'heure (même colonne, même place) : en s'y ajoutant elle
+              poussait le titre sur deux lignes et la ligne sautait de 65 à 150 px */}
+          {item.heure_debut && !estampille ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
           <Etoile
             active={Boolean(item.essentielle)}
             onBasculer={onEssentiel ? (suivant) => onEssentiel(item, suivant) : undefined}
