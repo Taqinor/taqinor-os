@@ -1836,6 +1836,11 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 {"count":2,"next":null,"previous":null,"results":[{"id":2,"nom":"magasin","couleur":"ciel"},{"id":3,"nom":"appels","couleur":"ambre"}]}
 ```
 
+**`faites_semaine.json`** — GET taches/?periode=faites_semaine (paginé, + `total`, `activites_closes`) · consommateurs : Recherche « Faites cette semaine »
+```json
+{"count":1,"next":null,"previous":null,"results":[{"type":"tache","id":20,"titre":"Devis Settat","statut":"fait","projet":{"id":3,"nom":"Ventes","couleur":"vert","priorite":3},"section":null,"parent_id":null,"priorite":2,"jour_prevu":"2026-11-17","moment":"matin","heure_debut":"10:00","echeance":"2026-11-19","echeance_heure":null,"quelque_jour":false,"estimation_minutes":60,"reports":0,"rang":1024,"motif":null,"raison":null,"explication":"échéance jeu. 19 (1 jour travaillé) · projet prioritaire Ventes","rappel":null,"lien":null,"checklist":null,"sous_taches":null,"recurrente":false,"routine":false,"jalon":false,"bloquee_par":null,"en_attente_de":"","essentielle":true,"prevue_au_plan":true,"confidentiel":false,"confidentielle":false,"source":"rapide","peut_cloturer":true,"a_notes":true,"fait_le":"2026-11-17T11:05:00+01:00","lock_version":5}],"total":2,"activites_closes":[{"jour":"2026-11-16","titre":"Rappeler M. Alami"}]}
+```
+
 **`geste_annuler.json`** — POST gestes/{id}/annuler/ · consommateurs : toast, cartes
 ```json
 {"restaurees":[{"objet":"tache","id":41}],"conflits":[{"objet":"tache","id":12,"raison":"modifiee_depuis"}],"deja":false,"progression":{"faites":1,"detail":{"etapes":0,"routines":0,"micro_non_comptees":0,"activites_closes":0},"prevues":4,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":4,"minutes_prevues":75,"sans_estimation":1,"capacite_minutes":240,"capacite_source":"defaut","rendez_vous_minutes":60,"disponible_minutes":180,"activites_closes":0,"activites":1,"reprise":false}}
@@ -2114,6 +2119,12 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `{"code":"echeance_aujourdhui","message":"L'échéance reste aujourd'hui."}` : la règle ne change pas, l'échéance la
   garde dans la journée (`aujourdhui/` la sert encore, ★ comprise) ; « Repousser l'échéance » = le PATCH `echeance`
   qui existe. Rien pour « En réserve » (elle quitte la journée).
+- **« Faites cette semaine »** (`faites_semaine.json`, nouveau, R3-003, C-16) : `GET taches/?periode=faites_semaine`
+  garde la page paginée (`results` = ITEM, faites depuis lundi 0 h, la plus récente d'abord) et ajoute, sur chaque
+  page, `total` (LA somme de la Revue et de l'Agenda : `faites_par_jour` du lundi à aujourd'hui) et
+  `activites_closes` `[{"jour","titre"}]` (les activités ERP closes par lui cette semaine, comptées dans `total`,
+  la plus récente d'abord). `results` ne liste que ce que `total` compte : sans routines ni sous-tâches (comme
+  `compte_du_jour`). Recherche, Revue et Agenda disent le même nombre.
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
