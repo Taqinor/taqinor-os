@@ -197,7 +197,10 @@ def valeurs_ligne(ligne):
 def creer_ligne(plan, ops, *, tache_id=None, activite_id=None, **champs):
     ligne = LignePlanJour.objects.create(company_id=plan.company_id, plan=plan, tache_id=tache_id,
                                          activite_id=activite_id, **champs)
-    ops.append(op_creation('ligne_plan_jour', ligne))
+    op = op_creation('ligne_plan_jour', ligne)
+    if tache_id is not None:
+        op['tache'] = tache_id  # R3-008 : « Derniers gestes » dit le titre de la ★ sans relire une ligne disparue
+    ops.append(op)
     return ligne
 
 

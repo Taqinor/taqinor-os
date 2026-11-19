@@ -1368,10 +1368,20 @@ def supprimees_recentes(user, *, maintenant=None):
     return projets, _compteurs_par_projet(user, projets), charger_items(taches)[:PLAFOND_LISTE]
 
 
+#: R3-008 : « Derniers gestes » ne liste que les gestes sur des tâches ou des projets — jamais un réglage du rythme
+#: ni une préférence dite (« Noté : … ») ; une réponse à une carte (« OK », « Pas maintenant ») non plus : elle reste
+#: annulable par son toast.
+TYPES_HORS_DERNIERS_GESTES = ('preference', 'rythme')
+REPONSE_DE_CARTE = Q(type='decision', operations__contains=[{'objet': 'incitation_coach'}])
+
+
 def derniers_gestes(user, *, maintenant=None):
-    """`GET gestes/` : les gestes annulables des 7 derniers jours, le plus récent d'abord (200 au plus)."""
+    """`GET gestes/` : les gestes annulables des 7 derniers jours sur des tâches ou des projets, le plus récent
+    d'abord (200 au plus) ; ni réglage du rythme, ni préférence, ni réponse à une carte (R3-008)."""
     depuis = (maintenant or timezone.now()) - FENETRE_GESTES
-    return list(gestes_de(user).filter(created_at__gte=depuis).order_by('-created_at', '-pk')[:PLAFOND_LISTE])
+    gestes = (gestes_de(user).filter(created_at__gte=depuis).exclude(type__in=TYPES_HORS_DERNIERS_GESTES)
+              .exclude(REPONSE_DE_CARTE))
+    return list(gestes.order_by('-created_at', '-pk')[:PLAFOND_LISTE])
 
 
 def gestes_confidentiels(user, gestes):

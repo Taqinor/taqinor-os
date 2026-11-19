@@ -736,7 +736,10 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
             remplacer_ligne(ligne, ops, essentielle=essentielle)
         elif ligne is None and essentielle:
             creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True, prevue_au_plan=plan.planifie_le is None)
-        geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
+        # R3-008 : le message dit le sens du geste (comme le toast de l'écran) ; le titre est servi à côté (`titre` de
+        # `gestes/`, jamais à l'assistant), pas recopié dans le message
+        message = 'Essentielle' if essentielle else 'Plus essentielle'
+        geste = enregistrer_geste(user, 'essentiel', message, ops) if ops else None
     tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
     return tache_ecrite(tache, progression=sel.progression_courante(user, jour),
                         geste_id=geste.pk if geste else None)

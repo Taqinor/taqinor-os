@@ -849,6 +849,13 @@ def _enregistrer_revue(user, projet, semaine, donnees, ops):
     return revue
 
 
+def _message_pause(projet):
+    """« Revue : {projet} en pause » (R3-008) — le message d'un geste est aussi servi à l'assistant : le nom passe
+    par `nom_pour(…, 'assistant')` : un projet confidentiel n'y est que son libellé de confidentialité."""
+    nom = nom_pour(projet, 'assistant')
+    return f'Revue : {nom} en pause' if nom else 'Revue : projet en pause'
+
+
 def decider_revue(user, projet_id, donnees):
     """La décision d'une carte de revue : `garder` ne touche à rien, `pause` met le projet en pause,
     `terminer` passe par `terminer_projet` (exige `issue`), `passe` saute. Un seul projet « de la semaine »."""
@@ -860,11 +867,12 @@ def decider_revue(user, projet_id, donnees):
             raise serializers.ValidationError({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
         ops = []
         revue = _enregistrer_revue(user, projet, semaine, donnees, ops)
-        geste = None
+        geste, message = None, 'Revue enregistrée'
         if donnees['decision'] == DecisionRevue.PAUSE and projet.statut == StatutProjet.ACTIF:
             _ecrire('projet', projet, {'statut': StatutProjet.EN_PAUSE, 'statut_depuis': timezone.now()}, ops)
+            message = _message_pause(projet)
         elif donnees['decision'] == DecisionRevue.TERMINER:
             geste = terminer_projet(user, projet.pk, issue=donnees['issue'], taches_ouvertes='boite').geste
             projet.refresh_from_db()
-        geste = geste or _geste(user, 'revue', 'Revue enregistrée', ops)
+        geste = geste or _geste(user, 'revue', message, ops)
     return revue, projet, geste

@@ -372,7 +372,7 @@ jamais un titre de tâche ni un nom de projet — la liste part aussi vers l'ass
 | Tâche | « Faite » (récurrente : « Faite · prochaine {jour} ») · « Sautée » · « Rouverte » · « Reçue » · « En attente de : {qui} » · « Modifiée » · « Supprimée » · « Restaurée » (« Restaurée dans À trier ») · « Abandonnée » · « Sans jour » · « Essentielle » |
 | Check-list | « Ajoutée » · « Modifiée » · « Retirée » |
 | Lot (`n` = 1 : singulier) | « {n} déplacées » · « {n} priorisées » · « {n} étiquetées » · « {n} faites » · « {n} supprimées » · « {n} gardées sans projet » · « {n} prévues {jour} » · « {n} en réserve » |
-| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
+| Projet | « Projet créé » · « Projet supprimé » · « Projet terminé » · « Projet rouvert » · « Dates décalées » · « Revue enregistrée » (avec une pause : « Revue : {projet} en pause », R3-008) · « Étape ajoutée » · « Étape modifiée » · « Étape supprimée » |
 | Rappel | « Rappel retiré » |
 | Préférence | « Noté : {phrase} » (la phrase de l'en-tête du Copilote, §5.7 ; une note libre : « notes libres ») · « Retirée : {libellé} » |
 

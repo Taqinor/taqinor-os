@@ -2134,6 +2134,10 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 - **Réordonner dans Aujourd'hui** (R3-007) : `taches/{id}/reordonner/` `liste:"jour"` d'une tâche gardée aujourd'hui
   (`jour_prevu` = J OU `echeance` = J) range dans la liste de la JOURNÉE — toute tâche ouverte gardée aujourd'hui est
   une voisine permise ; les autres jours gardent la liste du même `jour_prevu`.
+- **Derniers gestes** (`gestes.json`, R3-008) : `GET gestes/` ne liste plus que les gestes sur des tâches ou des
+  projets — ni réglage du rythme (`rythme`), ni préférence (« Noté : … »), ni réponse à une carte (geste `decision`
+  qui touche une `incitation_coach` : il reste annulable par son toast). Un geste ★ porte son `titre` (« Essentielle
+  · Devis Benali », « Plus essentielle · … ») ; une revue qui met en pause : « Revue : {projet} en pause ».
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
