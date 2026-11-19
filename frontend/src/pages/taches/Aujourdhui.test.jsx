@@ -316,7 +316,7 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
-  it('Raccord F2 — ⋯ → En attente de… pose l\'attente sans ouvrir la fiche ; la ligne quitte la journée, Annuler la remet', async () => {
+  it('Raccord F2 + R2-013 — ⋯ → En attente de… : la ligne passe dans « En attente » (2), Annuler la remet dans Prévu', async () => {
     servir(donnees())
     api.post.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/attendre/') ? { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 88 } : {} }))
     monter()
@@ -327,11 +327,19 @@ describe('TCH76 — gestes optimistes', () => {
     await userEvent.type(within(feuille).getByLabelText('De qui ou de quoi ?'), 'Lydec')
     await userEvent.click(within(feuille).getByRole('button', { name: 'En attente' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/attendre/', { en_attente_de: 'Lydec' }))
-    expect(screen.queryByText('Timbres')).toBeNull()
+    const prevu = () => [...document.querySelectorAll('.section')].find((s) => s.textContent.startsWith('Prévu'))
+    expect(prevu().querySelector('[data-ligne="tache:42"]')).toBeNull()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('En attente de : Lydec')
+    // R2-013 — la ligne PASSE dans « En attente » (compteur compris), sans relire la journée
+    const enAttente = screen.getByRole('button', { name: /^En attente/ })
+    expect(within(enAttente).getByText('2')).toBeInTheDocument()
+    await userEvent.click(enAttente)
+    expect(within(document.querySelector('.replies')).getByText('Timbres')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/88/annuler/', {}))
-    expect(await screen.findByText('Timbres')).toBeInTheDocument()
+    await waitFor(() => expect(prevu().querySelector('[data-ligne="tache:42"]')).not.toBeNull())
+    expect(within(screen.getByRole('button', { name: /^En attente/ })).getByText('1')).toBeInTheDocument()
+    expect(document.querySelector('.replies [data-ligne="tache:42"]')).toBeNull()
     // la journée n'est jamais relue ; seule la tâche remise l'est (sa version change à l'annulation, F4 revue #7)
     expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
   })

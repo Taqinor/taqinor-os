@@ -594,6 +594,36 @@ export default function Aujourdhui() {
     return () => setDonnees((d) => remettre(d, origine))
   }, [setDonnees])
 
+  /**
+   * Les champs posés par une action de ligne (`ActionsLigne`). R2-013 — « En attente de… » ne fait pas disparaître la
+   * ligne : elle passe dans « En attente » (en tête, le compteur suit) ; son « Annuler » (statut rendu) la remet à sa
+   * place d'avant. Tout autre champ se pose sur la ligne, où qu'elle soit.
+   */
+  const placesAvantAttente = useRef(new Map())
+  const majLigne = useCallback((id, champs) => {
+    const cle = `tache:${id}`
+    if (champs.statut === 'en_attente') {
+      setDonnees((d) => {
+        const { suite, origines, item } = retirer(d, cle)
+        if (!item) return d
+        placesAvantAttente.current.set(cle, origines)
+        return { ...suite, en_attente: [{ ...item, ...champs }, ...(suite.en_attente ?? [])] }
+      })
+      return
+    }
+    const origines = champs.statut ? placesAvantAttente.current.get(cle) : null
+    if (origines) {
+      placesAvantAttente.current.delete(cle)
+      setDonnees((d) => {
+        const { suite, item } = retirer(d, cle)
+        if (!item) return d
+        return remettre(suite, { origines: origines.map((o) => ({ ...o, item: { ...item, ...champs } })) })
+      })
+      return
+    }
+    patcher(cle, (it) => ({ ...it, ...champs }))
+  }, [setDonnees, patcher])
+
   const garder = useCallback(async (items) => {
     try { garde() } catch { return }
     try {
@@ -670,11 +700,11 @@ export default function Aujourdhui() {
   const actions = useActionsLigne({
     aujourdhui: donnees?.jour,
     prochainJourOuvre: donnees?.prochain_jour_ouvre,
-    maj: (id, champs) => patcher(`tache:${id}`, (it) => ({ ...it, ...champs })),
+    maj: majLigne,
     retirer: sortirLigne,
     apresEcriture: (data) => poserProgression(data?.progression),
-    // en réserve ou en attente, la tâche quitte la journée (elle revient au relu, dans « En attente »)
-    sortApres: (code, item, valeurs) => (code === 'planifier' && Boolean(valeurs.quelque_jour)) || code === 'attente',
+    // en réserve, la tâche quitte la journée ; en attente, elle PASSE dans « En attente » (`majLigne`, R2-013)
+    sortApres: (code, item, valeurs) => code === 'planifier' && Boolean(valeurs.quelque_jour),
     actionsPropres,
   })
 
