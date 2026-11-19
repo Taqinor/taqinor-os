@@ -863,6 +863,20 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     expect(detail).not.toHaveTextContent('accepté')
     expect(detail).not.toHaveTextContent('Objectif du jour')
   })
+
+  it('R3-029 — premier jour (objectif par défaut) : « 1 faite », jamais « 1 sur 5 » ; le détail dit la valeur par défaut', async () => {
+    const d = donnees()
+    d.objectif = { ...d.objectif, source: 'defaut' }
+    servir(d)
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    expect(container.querySelector('.progression-compte')).toHaveTextContent(/^1 faite$/)
+    expect(container.querySelector('button.progression')).not.toHaveTextContent('sur 5')
+    await userEvent.click(screen.getByRole('button', { name: /^1 faite\. Détail de la journée$/ }))
+    const detail = screen.getByRole('group', { name: 'Détail de la journée' })
+    expect(detail).toHaveTextContent('Objectif : valeur par défaut, pas encore calculée sur toi')
+    expect(detail).not.toHaveTextContent('sur 5')
+  })
 })
 
 describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `section`, `focus`)', () => {
