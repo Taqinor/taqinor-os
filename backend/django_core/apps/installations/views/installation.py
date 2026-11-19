@@ -23,6 +23,7 @@ from ..serializers import (
 from .. import energy_report
 from ..services import create_installation_from_devis, ensure_checklist_items
 from . import _openapi as oa
+from .assistant import ChantierAssistantMixin  # copilote vague 2 (CHTA)
 from .intervention import dispatch_prefetches
 from apps.records.serializers import AttachmentSerializer
 from ..serializers_commissioning import (
@@ -120,7 +121,7 @@ def seed_types_intervention(company):
     p7=oa.qs('type_installation'),
     p8=oa.qi('technicien'),
 )
-class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InstallationViewSet(ChantierAssistantMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Chantiers + historique « chatter ». Tout est scopé à la société du
     user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
     """
@@ -264,6 +265,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # ACHT54 — crée un BCF : `achats_commander` en plus du module.
             return [IsResponsableOrAdmin(),
                     HasPermissionOrLegacy('achats_commander')()]
+        if self.action == 'planifier_pose':  # CHTA5 — date + technicien + intervention de pose.
+            return [IsResponsableOrAdmin(), DroitDeLaGrille('installation_gerer')(),
+                    DroitDeLaGrille('intervention_gerer')(),
+                    DroitDeLaGrille('technicien_assign', champ='technicien')()]
         if self.action == 'creer_depuis_devis':
             return [(IsResponsableOrAdmin
                      | HasPermissionOrLegacy('ventes_creer'))()]
@@ -291,6 +296,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'pack_remise',
             # CIQ628 — réserves du chantier (lecture ; POST auto-gardé).
             'reserves',
+            'etat_assistant', 'liste_assistant',  # copilote vague 2 (CHTA2/3) — lectures de l'assistant.
         ]:
             return [LectureDuModule()]
         elif self.action in WRITE_ACTIONS + [
