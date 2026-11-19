@@ -32,3 +32,28 @@ Le contrôle api-fuzz n'avait JAMAIS lu les corps des routes Tâches (le compte 
   les VRAIS codes (les mocks rendent encore 400) ; specs e2e qui attendent un message sous le champ à rejouer.
 - Peuvent encore remonter en api-fuzz (400 gardés exprès) : `projet_id` inconnu dans une ligne de `POST taches/` ou
   `saisie-rapide/` (« Projet inexistant. »), `conges` avec `au` avant `du`.
+
+## Table des réponses passées de 400 à 409 ou 404 (lane CI, tours 1 et 2 — pliée, tête `28faf43ed`)
+Corps : 409 = `{champ…, detail, code: "state_conflict"}` ; 404 = `{champ…, detail}`. Un 400 reste un refus de FORME.
+| Route | Refus | Code |
+|---|---|---|
+| POST `projets/`, PATCH `projets/{id}`, `dupliquer/`, `modeles/{id}/instancier/` | « Un projet « X » existe déjà. » | 409 |
+| POST et PATCH `sections/` | « Une étape « X » existe déjà. » | 409 |
+| `enregistrer-modele/`, PATCH `modeles/{id}` | « Un modèle « X » existe déjà. » | 409 |
+| POST et PATCH `etiquettes/` | étiquette déjà existante | 409 |
+| POST et PATCH `vues/` | vue déjà existante, « 30 au plus. » | 409 |
+| `journee/planifier/`, `journee/essentiel/` | « 3 au plus. » avec des ★ déjà posées | 409 |
+| GET `journee/cloture/`, POST `journee/cloturer/` | bilan d'hier fermé, jour trop ancien | 409 |
+| GET `agenda/` | `au` avant `du`, « 42 jours au plus. » | 409 |
+| POST `agendas-externes/` | injoignable (DNS), doublon, 3 au plus | 409 |
+| POST `taches/{id}/reordonner/` | liste « jour » d'une tâche sans jour | 409 |
+| POST `taches/lier-activite/` | titre vide et activité sans résumé | 409 |
+| POST `sections/` | `projet_id` inconnu | 404 |
+| POST `taches/lot/` (`deplacer`) | projet cible inconnu | 404 |
+| POST et PATCH `vues/` | filtres `projets` / `etiquettes` inexistants, seuls | 404 |
+| POST `taches/`, `saisie-rapide/`, PATCH `taches/{id}` | lien « Élément introuvable ou hors de ta portée. » | 404 |
+| POST `projets/{id}/terminer/` | `projet_cible_id` inconnu | 404 |
+| POST `saisie-rapide/` avec `lignes` par le canal assistant (Bearer) | refus de canal (à venir, commit suivant) | 403 |
+Côté écran (lane L2, `tachesApi.js`) : un 409 `state_conflict` ou un 404 qui porte un NOM DE CHAMP et dont l'appelant a
+demandé `erreurSousLeChamp` se dit sous le champ, sans toast. Vu en CI : `e2e/taches-projets.spec.js:164` « une adresse
+d'agenda refusée l'est sous le champ » échoue tant que ce n'est pas fait.
