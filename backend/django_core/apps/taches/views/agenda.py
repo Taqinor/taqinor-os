@@ -24,7 +24,7 @@ from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items
 from apps.taches.views.base import PARSEURS, PERMISSIONS, est_assistant, forme_echantillon, parametre, reponses
 from apps.taches.views.journee import MESSAGE_DATE, date_de, maintenant
-from core.conflit_etat import ConflitEtat
+from apps.taches.entrees import refus_etat
 
 TACHE = classement.TACHE
 JOURS_MAX = 42
@@ -64,9 +64,9 @@ def bornes(params, J):
     # Règles CROISÉES entre `du` et `au` (dont `du` par défaut, aujourd'hui) : le schéma ne sait pas les dire,
     # chaque date seule y est valide — 409 au champ `au`, même corps (règle croisée, comme `automation`).
     if au < du:
-        raise ConflitEtat({'au': [MESSAGE_DATE]})
+        raise refus_etat({'au': [MESSAGE_DATE]})
     if (au - du).days + 1 > JOURS_MAX:
-        raise ConflitEtat({'au': [MESSAGE_42]})
+        raise refus_etat({'au': [MESSAGE_42]})
     return du, au, vue
 
 
@@ -209,7 +209,7 @@ class AgendaVue(APIView):
         parametre('au', OpenApiTypes.DATE, 'Dernier jour ; 42 jours au plus.'),
         parametre('vue', OpenApiTypes.STR, 'jour, semaine, mois ou a-venir.', enum=VUES),
         parametre('projet', OpenApiTypes.INT, "Id d'un de mes projets."),
-    ], responses=reponses(forme_echantillon('agenda'), erreurs=(400, 404)))
+    ], responses=reponses(forme_echantillon('agenda'), erreurs=(400, 404, 409)))
     def get(self, request):
         heure = maintenant()
         du, au, vue = bornes(request.query_params, heure.date())

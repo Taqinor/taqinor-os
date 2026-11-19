@@ -200,36 +200,73 @@ def forme_echantillon(nom):
     return inline_serializer(composant, champs)
 
 
-#: Clés nulles PARTOUT où elles paraissent (api.md §0) : `geste_id` d'une écriture qui n'a rien changé,
-#: `carte_du_moment` d'un écran sans carte. L'exemple n'en montre qu'un cas ; le schéma dit les deux.
-TOUJOURS_NULLABLES = ('geste_id', 'carte_du_moment')
+# --- Ce qu'un exemple ne montre pas : les clés servies NULLES, les objets à clés selon le type -------------
+# Un échantillon ne montre qu'un état ; la forme publiée en est déduite (`forme_echantillon`). Ce que le serveur
+# sert aussi (api-fuzz r2, « Response violates schema ») est dit ICI, côté code — les échantillons restent la
+# copie mot pour mot d'api.md (annexe A). Règles par NOM de clé (à toute profondeur), puis par chemin.
+
+#: Nulles partout où elles paraissent (api.md §0) : le geste d'une écriture qui n'a rien changé, l'écran sans
+#: carte, la suite par projet non calculée (api.md, « suite_par_projet nul »), le jalon / la prochaine action
+#: d'un projet qui n'en a pas.
+TOUJOURS_NULLABLES = ('geste_id', 'carte_du_moment', 'suite_par_projet', 'prochain_jalon', 'prochaine_action')
+#: Valeurs SCALAIRES servies depuis une colonne nullable du modèle (ou calculées « aucune ») : nulles partout.
+COLONNES_NULLABLES = (
+    'echeance', 'echeance_heure', 'heure_debut', 'jour_prevu', 'estimation_minutes', 'duree_reelle_minutes',
+    'planification_le', 'termine_le', 'date_debut', 'date_fin', 'fait_le', 'planifie_le', 'cloture_le',
+    'allege_le', 'annule_le', 'derniere_faite_le')
+#: Objets dont les clés dépendent du `type` / `code` / `cle` de leur porteur (cartes C1-C8, santé d'un projet,
+#: révélations…) : publiés comme objets LIBRES (aucune clé exigée).
+OBJETS_LIBRES = ('donnees',)
+#: Valeurs JSON quelconques (une préférence vaut une heure, un nombre, une liste… selon sa clé).
+VALEURS_QUELCONQUES = ('valeur',)
+#: Chemins nuls servis hors des règles par nom, par échantillon.
+NULS_SERVIS = {
+    'tache_changement': ('tache.projet', 'proposition.apres'),
+    'rythme': ('bloc', 'objectif.nb'),
+    'proposition_repondue': ('rythme.bloc', 'rythme.objectif.nb', 'rythme.trace', 'rythme.proposition',
+                             'rythme.repere'),
+    'priorites': ('objectif.nb',),
+    'aujourdhui': ('objectif.nb',),
+    'point': ('objectif.nb',),
+    'journee_proposition': ('objectif.nb',),
+    'journee_ecrite': ('aujourdhui.objectif.nb',),
+}
 
 
 def nuls_de(nom):
-    """Les chemins (`"plan.planifie_le"`) que `<nom>.json` déclare nuls possibles (`"nuls"`), en plus de ceux
-    que l'exemple montre nuls — un exemple ne montre qu'un état (api-fuzz r2 : `null` servi, schéma non nul)."""
-    return json.loads((ECHANTILLONS / f'{nom}.json').read_text(encoding='utf-8')).get('nuls', ())
+    """Les chemins nuls possibles de `<nom>` : ceux du code (`NULS_SERVIS`) et ceux que l'échantillon déclare
+    (`"nuls"`), en plus de ceux que l'exemple montre nuls."""
+    document = json.loads((ECHANTILLONS / f'{nom}.json').read_text(encoding='utf-8'))
+    return (*NULS_SERVIS.get(nom, ()), *document.get('nuls', ()))
+
+
+def noeud_au_chemin(valeur, chemin):
+    """Le dict fusionné qui porte la DERNIÈRE clé de `chemin` (`None` si le chemin n'existe pas)."""
+    cible = valeur
+    for morceau in chemin.split('.')[:-1]:
+        sous = cible.get(morceau) if isinstance(cible, dict) else None
+        cible = sous[0] if sous else None
+    return cible if isinstance(cible, dict) and chemin.split('.')[-1] in cible else None
 
 
 def _nullables(valeur, chemins):
-    """Marque nuls possibles les nœuds de `valeur` (fusionné) aux `chemins`, et toute clé de
-    `TOUJOURS_NULLABLES`, à toute profondeur."""
+    """Marque nuls possibles les nœuds de `valeur` (fusionné) aux `chemins` (un chemin absent de l'exemple est
+    sauté : `test_routes` vérifie qu'aucun ne l'est), puis applique les règles par nom à toute profondeur."""
     for chemin in chemins:
-        noeud, *reste = chemin.split('.')
-        cible = valeur
-        for morceau in [noeud, *reste][:-1]:
-            sous = cible.get(morceau) if isinstance(cible, dict) else None
-            cible = sous[0] if sous else None
-        dernier = chemin.split('.')[-1]
-        if isinstance(cible, dict) and dernier in cible:
+        cible = noeud_au_chemin(valeur, chemin)
+        if cible is not None:
+            dernier = chemin.split('.')[-1]
             cible[dernier] = (cible[dernier][0], True)
-        else:
-            raise ValueError(f'nuls : chemin inconnu « {chemin} »')
 
     def parcourir(noeud):
         if isinstance(noeud, dict):
             for cle, (sous, nul) in list(noeud.items()):
-                noeud[cle] = (sous, nul or cle in TOUJOURS_NULLABLES)
+                if cle in OBJETS_LIBRES and isinstance(sous, (dict, _Carte)):
+                    sous = _Carte((None, True))
+                elif cle in VALEURS_QUELCONQUES:
+                    sous, nul = None, True
+                scalaire = not isinstance(sous, (dict, list, _Carte))
+                noeud[cle] = (sous, nul or cle in TOUJOURS_NULLABLES or (scalaire and cle in COLONNES_NULLABLES))
                 parcourir(sous)
         elif isinstance(noeud, list) and noeud:
             parcourir(noeud[0][0])
@@ -253,7 +290,9 @@ def reponses(succes, *, statut=200, erreurs=(), conflit=None):
     (400 → erreurs par champ, 404/429 → `{"detail"}`), 409 → `conflit`."""
     resultat = {statut: succes, 401: ERREUR_DETAIL, 403: ERREUR_DETAIL}
     for code in erreurs:
-        resultat[code] = ERREUR_CHAMPS if code == 400 else ERREUR_DETAIL
+        # 409 : refus d'état (`entrees.refus_etat`, `{champ…, detail, code}`) ; 404 : `{detail}` (+ le champ d'un id
+        # du corps qui ne désigne rien, `entrees.introuvable`).
+        resultat[code] = ERREUR_CHAMPS if code == 400 else ERREUR_CODE if code == 409 else ERREUR_DETAIL
     if conflit is not None:
         resultat[409] = conflit
     return resultat

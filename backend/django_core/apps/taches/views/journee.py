@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.taches.choix import Decision, RaisonPropose, SectionJournee, StatutTache
-from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, Choix, DateBornee, jour_dans_bornes
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, Choix, DateBornee, jour_dans_bornes, refus_etat
 from apps.taches.moteur import classement
 from apps.taches.selectors import journee as sel
 from apps.taches.serializers import journee as formes_journee
@@ -28,7 +28,6 @@ from apps.taches.services import journee as services
 from apps.taches.views.base import (
     PARSEURS, PERMISSIONS, corps, est_assistant, forme_echantillon, parametre, reponses)
 from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict
-from core.conflit_etat import ConflitEtat
 from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
@@ -87,7 +86,7 @@ def refus_en_400():
     try:
         yield
     except services.RefusEtat as exc:
-        raise ConflitEtat(exc.erreurs)
+        raise refus_etat(exc.erreurs)
     except services.Refus as exc:
         raise ValidationError(exc.erreurs)
 
@@ -337,7 +336,8 @@ class PlanifierJourneeVue(IdempotentCreateMixin, APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=PlanifierCorps, responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
+    @extend_schema(request=PlanifierCorps,
+                   responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400, 404, 409)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._planifier(request), suffixe=par_compte(request))
 
@@ -356,7 +356,7 @@ class EssentielVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=EssentielCorps,
-                   responses=reponses(TacheEcriteSerializer, erreurs=(400, 404)))
+                   responses=reponses(TacheEcriteSerializer, erreurs=(400, 404, 409)))
     def post(self, request):
         corps_ = valide(EssentielCorps, request.data)
         with refus_en_400():
@@ -389,7 +389,8 @@ class ClotureVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(parameters=[JOUR], responses=reponses(forme_echantillon('journee_cloture'), erreurs=(400,)))
+    @extend_schema(parameters=[JOUR],
+                   responses=reponses(forme_echantillon('journee_cloture'), erreurs=(400, 409)))
     def get(self, request):
         with refus_en_400():
             return Response(services.cloture(request.user, jour_de(request), maintenant(),
@@ -402,7 +403,8 @@ class CloturerVue(IdempotentCreateMixin, APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=CloturerCorps, responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400,)))
+    @extend_schema(request=CloturerCorps,
+                   responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400, 404, 409)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._cloturer(request), suffixe=par_compte(request))
 

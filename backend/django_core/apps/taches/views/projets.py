@@ -125,7 +125,7 @@ SECTION = inline_serializer('TachesSection', {
 PROJET_ECRIT = forme_echantillon('projet_ecrit')
 #: Dupliquer, instancier : aperçu (`apercu:true`) 200, création 201.
 APERCU_OU_CREATION = {
-    **reponses(forme_echantillon('projet_ecrit'), statut=201, erreurs=(400, 404)),
+    **reponses(forme_echantillon('projet_ecrit'), statut=201, erreurs=(400, 404, 409)),
     200: forme_echantillon('modele_instancier'),
 }
 SANS_CORPS = reponses(None, statut=204, erreurs=(400, 404))
@@ -152,7 +152,7 @@ class ProjetsVue(IdempotentCreateMixin, APIView):
         return reponse
 
     @extend_schema(request=formes_projets.ProjetCreationSerializer,
-                   responses=reponses(PROJET_ECRIT, statut=201, erreurs=(400,)))
+                   responses=reponses(PROJET_ECRIT, statut=201, erreurs=(400, 409)))
     def post(self, request):
         donnees = _valider(formes_projets.ProjetCreationSerializer, request.data)
 
@@ -259,7 +259,8 @@ class PlanificationVue(IdempotentCreateMixin, APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=formes_projets.PlanificationSerializer,
-                   responses=reponses(forme_echantillon('planification'), erreurs=(400, 404), conflit=CONFLIT_PROJET))
+                   responses=reponses(forme_echantillon('planification'), statut=201, erreurs=(400, 404),
+                                      conflit=CONFLIT_PROJET))
     def post(self, request, id):
         donnees = dict(_valider(formes_projets.PlanificationSerializer, request.data))
         version = donnees.pop('lock_version')
@@ -359,7 +360,7 @@ class EnregistrerModeleVue(IdempotentCreateMixin, APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=formes_projets.EnregistrerModeleSerializer,
-                   responses=reponses(forme_echantillon('modele'), statut=201, erreurs=(400, 404)))
+                   responses=reponses(forme_echantillon('modele'), statut=201, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = _valider(formes_projets.EnregistrerModeleSerializer, request.data)
         projet = _projet_ou_404(request, id)
@@ -380,7 +381,7 @@ class SectionsVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=formes_projets.SectionCreationSerializer,
-                   responses=reponses(SECTION, statut=201, erreurs=(400,)))
+                   responses=reponses(SECTION, statut=201, erreurs=(400, 404, 409)))
     def post(self, request):
         donnees = _valider(formes_projets.SectionCreationSerializer, request.data)
         section, geste = ecriture.creer_section(request.user, **donnees)
@@ -394,7 +395,7 @@ class SectionVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=formes_projets.SectionModificationSerializer,
-                   responses=reponses(SECTION, erreurs=(400, 404)))
+                   responses=reponses(SECTION, erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = _valider(formes_projets.SectionModificationSerializer, request.data)
         section, geste = ecriture.modifier_section(request.user, id, donnees)
@@ -446,7 +447,7 @@ class ModeleVue(APIView):
         return Response(_forme_modele(request, _modele_ou_404(request, id)))
 
     @extend_schema(request=formes_projets.ModeleModificationSerializer,
-                   responses=reponses(forme_echantillon('modele'), erreurs=(400, 404)))
+                   responses=reponses(forme_echantillon('modele'), erreurs=(400, 404, 409)))
     def patch(self, request, id):
         donnees = _valider(formes_projets.ModeleModificationSerializer, request.data)
         _modele_ou_404(request, id)

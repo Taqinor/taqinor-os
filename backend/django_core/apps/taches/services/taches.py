@@ -20,13 +20,12 @@ from django.db.models.functions import Lower
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
 from apps.taches.confidentialite import ECRAN, est_confidentielle, nom_pour
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, introuvable, jour_dans_bornes, refus_etat
 from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
@@ -419,7 +418,7 @@ def verifier_lien(user, lien):
     # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
     # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if not cible_visible(user, lien['cible'], lien.get('id')):
-        raise NotFound({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise introuvable({'lien': [MESSAGE_LIEN_INTROUVABLE]})
 
 
 def _lien(edition, lien):
@@ -790,8 +789,8 @@ def _liste_a_ordonner(user, t, liste):
     étape et du même parent (`rang_projet`, puis `id` : invariant 32)."""
     ouvertes = taches_de(user).filter(statut__in=OUVERTES)
     if liste == 'jour':
-        if t.jour_prevu is None:
-            raise serializers.ValidationError({'liste': [MESSAGE_VALEUR_INCONNUE]})
+        if t.jour_prevu is None:  # « jour » d'une tâche sans jour : refus d'ÉTAT de la tâche (409, api-fuzz r2)
+            raise refus_etat({'liste': [MESSAGE_VALEUR_INCONNUE]})
         qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
         return qs, 'rang_jour', lambda x: (x.rang_jour is None, x.rang_jour or 0,
                                            x.heure_debut or datetime.time.max, -x.priorite, x.pk)
@@ -1034,7 +1033,7 @@ def _cible_de_deplacement(user, valeurs):
     except serializers.ValidationError as exc:
         # Un projet cible qui n'est pas au compte : la ressource manque (404, corps inchangé — règle
         # d'`IdInconnu404Mixin`) ; le schéma ne peut pas dire quels projets existent (api-fuzz r2).
-        raise NotFound({'valeurs': exc.detail})
+        raise introuvable({'valeurs': exc.detail})
     return {'commun': commun, 'par_tache': par_tache}
 
 

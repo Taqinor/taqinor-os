@@ -19,11 +19,10 @@ from django.db.models import Max
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.confidentialite import nom_pour
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, introuvable, jour_dans_bornes, refus_etat
 from apps.taches.models.projets import ModeleProjet, Projet, RevueProjet, Section
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.decalage import decaler, figer_modele, instancier
@@ -99,11 +98,11 @@ def _verrouiller_projet(user, pk, version=None):
 def _nom_pris(nom):
     """Un nom déjà pris est un refus d'ÉTAT (409, le corps garde `{"nom": […]}`) : le schéma ne peut pas dire
     quels noms existent, et un 400 sur un corps conforme rougissait l'api-fuzz (r2)."""
-    return ConflitEtat({'nom': [f'Un projet « {nom} » existe déjà.']})
+    return refus_etat({'nom': [f'Un projet « {nom} » existe déjà.']})
 
 
 def _etape_prise(nom):
-    return ConflitEtat({'nom': [f'Une étape « {nom} » existe déjà.']})
+    return refus_etat({'nom': [f'Une étape « {nom} » existe déjà.']})
 
 
 def _geste(user, type_, message, ops):
@@ -216,7 +215,7 @@ def _cible_de_deplacement(user, projet, projet_cible_id):
     cible = projets_de(user).filter(pk=projet_cible_id).exclude(pk=projet.pk).first() \
         if projet_cible_id is not None else None
     if cible is None:
-        raise serializers.ValidationError({'projet_cible_id': ['Projet inexistant.']})
+        raise introuvable({'projet_cible_id': ['Projet inexistant.']})  # id qui ne désigne rien : 404
     return cible
 
 
@@ -362,7 +361,7 @@ def creer_section(user, *, projet_id, nom, date_debut=None, date_fin=None):
     with transaction.atomic():
         projet = projets_de(user).select_for_update().filter(pk=projet_id).first()
         if projet is None:  # la ressource parente manque : 404, corps inchangé (règle d'IdInconnu404Mixin)
-            raise NotFound({'projet_id': ['Projet inexistant.']})
+            raise introuvable({'projet_id': ['Projet inexistant.']})
         if Section.objects.filter(projet=projet, nom_cle=cle_nom(nom)).exists():
             raise _etape_prise(nom)
         dernier = Section.objects.filter(projet=projet).aggregate(m=Max('rang'))['m']
@@ -595,7 +594,7 @@ class ResultatInstance:
 
 
 def _modele_pris(nom):
-    return ConflitEtat({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
+    return refus_etat({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
 
 
 def _decalages(contenu):

@@ -408,6 +408,52 @@ class SchemaTests(SimpleTestCase):
                     else:
                         self.assertTrue(propriete.get('nullable') or propriete.get('anyOf'), propriete)
 
+    def test_les_chemins_nuls_du_code_existent_dans_leurs_echantillons(self):
+        """`views.base.NULS_SERVIS` saute un chemin absent (un échantillon réécrit) : ce test le dit, il ne
+        dérive jamais en silence."""
+        from apps.taches.views.base import NULS_SERVIS, _fusionner, exemple_de, noeud_au_chemin
+        for nom, chemins in NULS_SERVIS.items():
+            valeur, _ = _fusionner([exemple_de(nom)])
+            for chemin in chemins:
+                with self.subTest(echantillon=nom, chemin=chemin):
+                    self.assertIsNotNone(noeud_au_chemin(valeur, chemin))
+
+    def test_une_heure_servie_est_publiee_hh_mm(self):
+        """`FORMAT_HEURE` sert « 09:30 » ; le schéma de réponse le dit (constats r2 : « 00:00 » refusé)."""
+        from apps.taches.entrees import MOTIF_HEURE_SERVIE
+        composants = self.schema['components']['schemas']
+        for composant in ('TachesItem', 'TachesTache'):
+            for champ in ('heure_debut', 'echeance_heure'):
+                with self.subTest(composant=composant, champ=champ):
+                    propriete = composants[composant]['properties'][champ]
+                    self.assertEqual(propriete.get('pattern'), MOTIF_HEURE_SERVIE)
+
+    def test_les_objets_selon_le_type_sont_libres(self):
+        """`donnees` (santé, cartes) change de clés avec son `code`/`cle` : aucune clé exigée (constat r2 :
+        « "depuis" is a required property » sur une santé d'un autre code)."""
+        composants = self.schema['components']['schemas']
+        donnees = [(nom, c['properties']['donnees']) for nom, c in composants.items()
+                   if nom.startswith('TachesEch') and 'donnees' in c.get('properties', {})]
+        self.assertTrue(donnees)
+        for nom, propriete in donnees:
+            with self.subTest(composant=nom):
+                self.assertNotIn('$ref', propriete)
+                self.assertNotIn('required', propriete)
+
+    def test_les_refus_d_etat_et_les_ids_inconnus_ont_la_forme_publiee(self):
+        """409 `{champ…, detail, code}` (forme `TachesErreurCode`) ; 404 `{champ…, detail}` (`TachesErreurDetail`)."""
+        from apps.taches.entrees import CODE_REFUS_ETAT, introuvable, refus_etat
+        conflit = refus_etat({'nom': ['Un projet « X » existe déjà.']})
+        self.assertEqual((conflit.status_code, conflit.detail['detail'], conflit.detail['code']),
+                         (409, 'Un projet « X » existe déjà.', CODE_REFUS_ETAT))
+        manque = introuvable({'valeurs': {'projet_id': ['Projet inexistant.']}})
+        self.assertEqual((manque.status_code, manque.detail['detail']), (404, 'Projet inexistant.'))
+        for methode, chemin in (('POST', 'projets/'), ('POST', 'sections/'), ('POST', 'vues/'),
+                                ('GET', 'journee/cloture/'), ('GET', 'agenda/')):
+            with self.subTest(methode=methode, chemin=chemin):
+                self.assertIn('409', self._operation(methode, chemin)['responses'])
+        self.assertIn('201', self._operation('POST', 'projets/{id}/planification/')['responses'])
+
     def test_les_corps_conformes_des_constats_r2_passent_la_validation(self):
         """Les corps des constats r2, rendus conformes au schéma publié, passent le sérialiseur de la route ;
         leur version d'origine (hors schéma désormais) est refusée par le même sérialiseur."""

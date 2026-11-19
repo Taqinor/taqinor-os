@@ -546,7 +546,7 @@ class OrdreEtClotureTests(_Base):
         autre = api.post(_url(f'projets/{projet.pk}/terminer/'),
                          {'issue': 'atteint', 'taches_ouvertes': 'deplacer', 'projet_cible_id': etranger.pk},
                          format='json')
-        self.assertEqual(autre.status_code, 400)
+        self.assertEqual(autre.status_code, 404)  # id de corps qui ne désigne rien : 404 (api-fuzz r2)
         self.assertEqual(autre.json()['projet_cible_id'], ['Projet inexistant.'])
         projet.refresh_from_db()
         self.assertEqual(projet.statut, 'actif')

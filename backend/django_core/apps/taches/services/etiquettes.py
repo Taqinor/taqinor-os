@@ -12,16 +12,14 @@ compte (société ET propriétaire) : l'id d'un collègue répond comme un id in
 from django.db import IntegrityError, transaction
 from django.http import Http404
 from rest_framework import serializers
-from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import Couleur, Priorite, StatutTache
-from apps.taches.entrees import sans_nul
+from apps.taches.entrees import introuvable, refus_etat, sans_nul
 from apps.taches.models.taches import Etiquette, EtiquetteTache, VueEnregistree
 from apps.taches.saisie.normalisation import cle_nom
 from apps.taches.selectors.base import etiquettes_de, projets_de, vues_de
 from apps.taches.services.gestes import enregistrer_geste, op_champ, op_creation, op_suppression_dure
 from apps.taches.services.taches import GROUPES, PERIODES, TRIS
-from core.conflit_etat import ConflitEtat
 
 MESSAGE_INTROUVABLE = 'Introuvable.'
 MESSAGE_REQUIS = 'Requis.'
@@ -56,7 +54,7 @@ def _nom(valeur, maximum, message_long):
 
 def _etiquette_prise(nom):
     """Nom déjà pris : refus d'ÉTAT, 409 au corps `{"nom": […]}` (le schéma ne sait pas quels noms existent)."""
-    return ConflitEtat({'nom': [f'Une étiquette « {nom} » existe déjà.']})
+    return refus_etat({'nom': [f'Une étiquette « {nom} » existe déjà.']})
 
 
 def _couleur(valeur):
@@ -211,7 +209,7 @@ def _valider_filtres(user, filtres):
     if erreurs and all(e in ([MESSAGE_PROJET_INEXISTANT], [MESSAGE_ETIQUETTE_INEXISTANTE]) for e in erreurs.values()):
         # Seuls des ids bien formés qui ne désignent rien du compte : la ressource manque (404, corps inchangé,
         # règle d'`IdInconnu404Mixin`) ; le schéma ne peut pas dire quels ids existent.
-        raise NotFound({'filtres': erreurs})
+        raise introuvable({'filtres': erreurs})
     if erreurs:
         raise serializers.ValidationError({'filtres': erreurs})
     return propres
@@ -226,7 +224,7 @@ def _vue_du_compte(user, pk, *, verrou=False):
 
 
 def _vue_prise(nom):
-    return ConflitEtat({'nom': [f'Une vue « {nom} » existe déjà.']})
+    return refus_etat({'nom': [f'Une vue « {nom} » existe déjà.']})
 
 
 def liste_vues(user):
@@ -241,7 +239,7 @@ def creer_vue(user, *, nom, filtres=None, rang=None):
     with transaction.atomic():
         existantes = list(vues_de(user).select_for_update().values_list('nom', 'rang'))
         if len(existantes) >= MAX_VUES:
-            raise ConflitEtat({'nom': [MESSAGE_VUES_PLEINES]})  # refus d'état : 30 vues déjà (409)
+            raise refus_etat({'nom': [MESSAGE_VUES_PLEINES]})  # refus d'état : 30 vues déjà (409)
         if any(n == nom for n, _rang in existantes):
             raise _vue_prise(nom)
         if rang is None:
