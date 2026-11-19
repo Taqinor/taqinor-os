@@ -342,6 +342,30 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     expect(document.querySelector('.form-error-box')).toBeNull()
   })
 
+  it('les informations au-dessus du devis se replient (dépliées par défaut) et disent ce qu’elles cachent', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: REPONSE })
+    rendrePanneau({
+      lead: { id: 91, nom: 'Usine', type_installation: 'industriel' },
+      mode: 'auto', existingDevisId: undefined,
+    })
+    await screen.findByTestId('ldp-succes-auto')
+    const bascule = screen.getByTestId('ldp-infos-bascule')
+    // Dépliées par défaut : succès et alertes visibles, l’en-tête propose « Replier ».
+    expect(bascule).toHaveAttribute('aria-expanded', 'true')
+    expect(bascule).toHaveTextContent('Informations du devis — 1 alerte')
+    expect(bascule).toHaveTextContent('Replier')
+    expect(screen.getByTestId('ldp-alertes-auto')).toBeInTheDocument()
+    await userEvent.click(bascule)
+    // Repliées : plus rien ne prend de hauteur, mais le nombre d’alertes reste dit.
+    expect(bascule).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('ldp-succes-auto')).toBeNull()
+    expect(screen.queryByTestId('ldp-alertes-auto')).toBeNull()
+    expect(bascule).toHaveTextContent('Informations du devis — 1 alerte')
+    expect(bascule).toHaveTextContent('Afficher')
+    await userEvent.click(bascule)
+    expect(screen.getByTestId('ldp-alertes-auto')).toHaveTextContent('À chiffrer après la visite.')
+  })
+
   it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
     expect(libelleSuccesDevisAuto(null)).toBe('')
     const texte = normaliser(libelleSuccesDevisAuto({
