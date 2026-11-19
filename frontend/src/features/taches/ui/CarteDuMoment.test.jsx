@@ -313,7 +313,7 @@ describe('TCH77 — la ligne de progression', () => {
     expect(detail).toHaveTextContent('1 faite sur 5')
     expect(detail).not.toHaveTextContent('accepté')
     expect(detail).not.toHaveTextContent('gardée')
-    expect(detail).toHaveTextContent('Temps : 1 h 15 prévues pour 3 h disponibles · 1 sans durée')
+    expect(detail).toHaveTextContent('Reste : 1 h 15 pour 3 h disponibles · 1 sans durée') // R4-01 : LA charge servie
     expect(detail).not.toHaveTextContent('Temps libre')
     await userEvent.click(screen.getByRole('button', { name: /Mon rythme/ }))
     expect(onRythme).toHaveBeenCalledTimes(1)

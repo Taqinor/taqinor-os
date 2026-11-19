@@ -512,6 +512,35 @@ class CapaciteTests(unittest.TestCase):
         for rdv, dispo in ((60, 180), (120, 120), (30, 210), (0, 240), (300, 0), (30, 210)):
             self.assertEqual(temps_disponible(240, rdv), dispo)
 
+    def test_charge_du_jour_une_seule_regle(self):
+        """R4-01 (M1) — la charge d'un jour : ce qui RESTE à faire ce jour-là, durées dites seulement. Jeu du 17/11 :
+        prévue 30 min + prévue sans durée + échéance du jour sans jour prévu 60 min + ★ reportée demain gardée par
+        son échéance du jour 45 min comptent ; la faite (90), Ce soir (20), en attente (15), plus tard (10), reportée
+        3 fois (25), prévue demain (40) ne comptent pas. Calcul à la main : 30 + 60 + 45 = 135 restantes, 1 sans
+        durée, 4 tâches ; disponible = 240 − 60 = 180 ; déborde 0. Demain : la prévue demain (40) et la ★ (45, prévue
+        demain) — 85 ; l'échéance d'après-demain prévue demain ne compte qu'une fois (demain)."""
+        from apps.taches.moteur.classement import charge_du_jour
+        demain, apres = J + timedelta(days=1), J + timedelta(days=2)
+        items = [
+            tache(1, jour_prevu=J, estimation_minutes=30), tache(2, jour_prevu=J),
+            tache(3, echeance=J, estimation_minutes=60),
+            tache(4, jour_prevu=demain, echeance=J, estimation_minutes=45),
+            tache(5, jour_prevu=J, statut='fait', fait_le=datetime(2026, 11, 17, 9, 0), estimation_minutes=90),
+            tache(6, jour_prevu=J, moment='soir', estimation_minutes=20),
+            tache(7, jour_prevu=J, statut='en_attente', estimation_minutes=15),
+            tache(8, quelque_jour=True, echeance=J, estimation_minutes=10),
+            tache(9, jour_prevu=J, reports=3, estimation_minutes=25),
+            tache(10, jour_prevu=demain, echeance=apres, estimation_minutes=40),
+        ]
+        self.assertEqual(charge_du_jour(items, J, J, 240, 60), {
+            'taches': 4, 'restantes_minutes': 135, 'sans_duree': 1, 'capacite_minutes': 240,
+            'rendez_vous_minutes': 60, 'disponible_minutes': 180, 'deborde_minutes': 0})
+        self.assertEqual(charge_du_jour(items, demain, J, 240, 0)['restantes_minutes'], 85)
+        self.assertEqual(charge_du_jour(items, apres, J, 240, 0)['restantes_minutes'], 0)
+        # 4 h 30 restantes pour 4 h : 30 min de trop
+        longue = [tache(1, jour_prevu=J, estimation_minutes=270)]
+        self.assertEqual(charge_du_jour(longue, J, J, 240, 0)['deborde_minutes'], 30)
+
 
 class ExplicationTests(unittest.TestCase):
     """Faits (codes) des exemples d'`api.md` ; le texte est rendu par les gabarits (TCH30)."""

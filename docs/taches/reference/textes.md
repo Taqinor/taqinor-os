@@ -48,7 +48,7 @@ référence données/API.
 | Prochaine action | la première tâche à faire d'un projet, dans son ordre | — | `prochaine_action` (`RaisonPropose`) |
 | Rendez-vous · Mes agendas | événement d'un agenda externe, lecture seule · les adresses d'agendas ajoutées (3 au plus) | — | RENDEZ_VOUS, `AgendaExterne` |
 | Tes priorités · Reporter à {jour} | carte « Aide-moi à prioriser » · le prochain jour travaillé de la semaine | — | carte `priorites`, `plus_tard` |
-| Temps disponible · Libre | minutes de travail du jour moins ses rendez-vous ; dit « … prévues pour … disponibles » (Aujourd'hui) et « Libre · 4 h » (jour sans tâche de Planifier ma semaine) ; « Temps libre » n'est plus écrit (R3-006, R3-134) | — | `disponible_minutes` |
+| Temps disponible · Libre | minutes de travail du jour moins ses rendez-vous ; dit « Reste : … pour … disponibles · … de trop » (Aujourd'hui et « Où j'en suis ? », R4-01 : ce qui RESTE à faire, la même charge partout) et « Libre · 4 h » (jour sans tâche de Planifier ma semaine) ; « Temps libre » n'est plus écrit (R3-006, R3-134) | — | `charge.disponible_minutes` |
 | Plus tard | gardée sans jour | un jour, plus tard, peut-être | `quelque_jour` |
 | En attente de… | quelqu'un, quelque chose ou une tâche (puce « attend : Visite ») | après, bloquée | `en_attente` / `bloquee_par` |
 | Projet · Étape · Jalon | résultat · partie d'un projet · tâche-repère | section, phase | `Projet`, `Section`, `jalon` |
@@ -91,7 +91,7 @@ référence données/API.
 | Nom de l'app | Tâches |
 | Onglets (`nav.items`, dernière vague) | Aujourd'hui · À trier · Projets · Agenda |
 | Pastille d'À trier | `{boite_reception}` (masquée à 0) |
-| ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
+| ⋯ d'Aujourd'hui | Alléger ma journée · Faire le bilan (tant que la journée n'est pas close, R4-02) · Réorganiser · Sélectionner · En faire mon accueil |
 | ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées (R2-125) · Réglages |
 | Loupe | Chercher dans mes tâches |
 | Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications : {n} » (« 99+ » au-delà de 99 ; sans compte : « Notifications » ; celle de l'ERP) ; au défilement, le titre de la page en compact |
@@ -112,9 +112,9 @@ référence données/API.
 | Progression (`pousser`) | « {faites} sur {objectif} · essentiel {ef}/{ep} » ; sans essentiel : « {faites} sur {objectif} » ; tant que l'objectif est la valeur par défaut (rien de calculé ni de choisi) : « {faites} faites » (« 1 faite », jamais « 0 sur 5 », R3-029) ; jour de retour : « Reprise » (« Reprise · objectif {objectif} » seulement si l'objectif est chiffré). Tous les chiffres sont ceux de la `progression` servie (R3-020) |
 | Progression (`tenir`) | « {faites} sur {objectif} · ton rythme : {bas} à {haut} » (`OBJECTIF.zone`) |
 | Progression (`libre`) | « {faites} faites » (« 1 faite ») |
-| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} » (objectif non chiffré : « {faites} faite(s) » ; plus de « visées » ni de seconde donnée « gardées », R3-020) · si l'objectif est la valeur par défaut : « Objectif : valeur par défaut, pas encore calculée sur toi » (R2-035) · « Temps : {charge} » (ci-dessous) · « Mon rythme › » ; « Temps libre : … » n'est plus écrit |
+| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} » (objectif non chiffré : « {faites} faite(s) » ; plus de « visées » ni de seconde donnée « gardées », R3-020) · si l'objectif est la valeur par défaut : « Objectif : valeur par défaut, pas encore calculée sur toi » (R2-035) · « Reste : {charge} » (ci-dessous) · « Mon rythme › » ; « Temps libre : … » n'est plus écrit |
 | Sources de l'objectif | seule `defaut` est dite : « valeur par défaut, pas encore calculée sur toi » (Aujourd'hui : « Objectif : … » ; Mon rythme : « Objectif du jour : {objectif} (valeur par défaut, pas encore calculée sur toi) ») ; `calcule`, `accepte`, `dit` ne s'écrivent plus (R3-089 : « (accepté) », « (ta journée type) », « (ton choix) » étaient du vocabulaire du système) |
-| Charge | « Temps : {h} prévues » · « Temps : {h} prévues pour {disponible} disponibles » (quand le temps disponible est servi) · suffixes « · {n} sans durée » et, quand la charge dépasse le disponible, « · {x} de trop » (« Temps : 4 h 30 prévues pour 4 h disponibles · 30 min de trop ») ; aucune ligne sans minute prévue ni tâche sans durée · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
+| Charge | R4-01 — lue dans `progression.charge` (ce qui RESTE, la même charge que l'Agenda et le Copilote) : « Reste : {h} » · « Reste : {h} pour {disponible} disponibles » · suffixes « · {n} sans durée » et, quand ce qui reste dépasse le disponible, « · {x} de trop » (« Reste : 4 h 30 pour 4 h disponibles · 30 min de trop ») ; aucune ligne sans minute restante ni tâche sans durée · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
 | Source du temps disponible | n'est plus écrite à l'écran (`disponible_minutes` est servi seul) |
 | Titres de sections | Essentiel · Toute la journée · Prévu · Ce soir · Proposé pour aujourd'hui · À revoir · En attente · Faites · Ailleurs dans l'ERP |
 | En-têtes repliés | « À revoir ({n}) » · « En attente ({n}) » + « · {b} en attente d'une autre tâche » · « Faites ({n}) » |

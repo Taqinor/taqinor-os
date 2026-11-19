@@ -36,7 +36,7 @@ function BarreCharge({ minutes, capacite }) {
 
 /** L'en-tête d'un jour (textes.md §2.8) — partagé avec la vue Semaine de l'Agenda (F2 acceptation, P139.1). */
 // eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
-export function resume(jour, aujourdhui, capaciteServie = null) {
+export function resume(jour, aujourdhui) {
   const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   if (jour.jour < aujourdhui) {
     // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là, le nombre de Mon rythme servi par `agenda/`
@@ -46,29 +46,62 @@ export function resume(jour, aujourdhui, capaciteServie = null) {
     return { passe: true, texte: `passé · ${faites} ${faites >= 2 ? 'faites' : 'faite'}` }
   }
   if (!jour.ouvre || jour.ferie) return { repos: true, texte: jour.ferie ? 'Férié' : 'non travaillé' }
-  const ouvertes = taches.filter((t) => t.statut !== 'fait')
-  const minutes = ouvertes.reduce((n, t) => n + (t.estimation_minutes || 0), 0)
-  // Raccord F2 — « {n} tâches · {h} pour {cap} » (textes.md §2.8) et la barre de charge SEULEMENT si `agenda/` sert
-  // la capacité (`capacite: {minutes, source}`) ; sinon elles sont omises, jamais devinées.
-  const base = Number.isFinite(capaciteServie) && capaciteServie > 0 ? capaciteServie : null
-  if (base) {
-    // R2-100 — le temps libre du jour = la capacité moins ses rendez-vous (servi : `rendez_vous_minutes`, invariant 35)
-    const pris = Number.isFinite(jour.rendez_vous_minutes) && jour.rendez_vous_minutes > 0 ? jour.rendez_vous_minutes : 0
-    const capacite = Math.max(0, base - pris)
-    // R3-134 — « Libre · 4 h » (rien de prévu : pas de « 0 tâche · 0 min pour 4 h ») ; « 2 tâches · 1 h 30 sur 4 h » sinon
-    const texte = ouvertes.length === 0 && minutes === 0
-      ? `Libre · ${dureeTexte(capacite) || '0 min'}`
-      : `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} sur ${dureeTexte(capacite) || '0 min'}`
+  // R4-01 (M1) — LA charge du jour, servie par `agenda/` (`jours[].charge`, la même qu'Aujourd'hui et le Copilote) :
+  // ce qui RESTE à faire, ses tâches sans durée, le temps disponible (capacité − rendez-vous) et ce qui déborde ; l'écran
+  // ne recompte rien (un geste de l'écran la fait suivre par `chargeSuivie`, jusqu'à la relecture).
+  const c = jour.charge
+  if (c) {
+    const dispo = dureeTexte(c.disponible_minutes) || '0 min'
+    // R3-134 — « Libre · 4 h » (rien qui reste à faire) ; « 2 tâches · 1 h 30 sur 4 h · 1 sans durée » sinon
+    const texte = c.taches === 0
+      ? `Libre · ${dispo}`
+      : `${accordTaches(c.taches)} · ${dureeTexte(c.restantes_minutes) || '0 min'} sur ${dispo}${c.sans_duree ? ` · ${c.sans_duree} sans durée` : ''}`
     // R2-114 — un jour qui dépasse son temps libre le DIT (« 3 h 30 de trop »), pas seulement par un segment orange
-    const trop = minutes > capacite ? dureeTexte(minutes - capacite) : ''
+    const trop = c.deborde_minutes > 0 ? dureeTexte(c.deborde_minutes) : ''
     return {
       texte: trop ? `${texte} · ${trop} de trop` : texte, base: texte, trop: trop ? `${trop} de trop` : '',
-      charge: capacite > 0 ? { minutes, capacite } : null,
-      // R3-134 — le rendez-vous qui RÉDUIT la capacité est écrit sous le jour (« Rendez-vous : 1 h 30 »), calculé de `rendez_vous_minutes`
-      rdv: pris > 0 ? dureeTexte(pris) : '',
+      charge: c.disponible_minutes > 0 ? { minutes: c.restantes_minutes, capacite: c.disponible_minutes } : null,
+      // R3-134 — le rendez-vous qui RÉDUIT la capacité est écrit sous le jour (« Rendez-vous : 1 h 30 »)
+      rdv: c.rendez_vous_minutes > 0 ? dureeTexte(c.rendez_vous_minutes) : '',
     }
   }
-  return { texte: minutes ? `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes)}` : accordTaches(ouvertes.length) }
+  // charge non servie (capacité absente) : le nombre de tâches seul, jamais une durée devinée
+  return { texte: accordTaches(taches.filter((t) => t.statut !== 'fait').length) }
+}
+
+/** R4-01 — une tâche pèse-t-elle sur la charge d'un jour où elle est posée ? Le reflet, dans l'instant d'un geste, de
+ *  `moteur.classement.compte_dans_la_charge` (à faire, ni Ce soir, ni plus tard, ni à revoir) ; la relecture recale. */
+const pese = (t) => t?.type === 'tache' && t.statut === 'a_faire' && t.moment !== 'soir' && !t.quelque_jour
+  && t.motif !== 'reportee_3_fois'
+
+function poids(jour) {
+  const taches = [...(jour?.blocs ?? []), ...(jour?.sans_heure ?? [])].filter(pese)
+  return {
+    taches: taches.length,
+    minutes: taches.reduce((n, t) => n + (t.estimation_minutes || 0), 0),
+    sans: taches.filter((t) => t.estimation_minutes == null).length,
+  }
+}
+
+/**
+ * R4-01 — la charge SERVIE d'un jour, suivie dans l'instant d'un geste de l'Agenda (poser, cocher, changer une durée) :
+ * l'écart entre ce que le jour portait et ce qu'il porte, ajouté à la charge servie — comme `progressionApres` pour la
+ * progression. Jamais un recalcul à partir de rien : sans charge servie, rien n'est inventé.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function chargeSuivie(jourAvant, jourApres) {
+  const c = jourApres?.charge
+  if (!c || !jourAvant) return c ?? null
+  const avant = poids(jourAvant)
+  const apres = poids(jourApres)
+  const restantes = Math.max(0, c.restantes_minutes + apres.minutes - avant.minutes)
+  return {
+    ...c,
+    taches: Math.max(0, c.taches + apres.taches - avant.taches),
+    restantes_minutes: restantes,
+    sans_duree: Math.max(0, c.sans_duree + apres.sans - avant.sans),
+    deborde_minutes: Math.max(0, restantes - c.disponible_minutes),
+  }
 }
 
 /** Raccord F2 — au bureau (≥ 1024 px), chaque jour est une COLONNE à cartes (agenda-semaine-planifier.html) ; sur

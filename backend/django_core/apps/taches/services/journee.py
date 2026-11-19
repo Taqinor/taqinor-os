@@ -953,7 +953,7 @@ def _clore_pour(user, hier):
         plan.objectif_du_jour = objectif_du_jour(journee.reglages, hier, preferences)['nb']
     plan.essentiels_choisis, plan.essentiels_faits = prog['essentiel_prevues'], prog['essentiel_faites']
     plan.plan_prevues, plan.plan_faites = prog['plan_lignes'], prog['plan_tenues']
-    plan.minutes_prevues, plan.minutes_faites = prog['minutes_prevues'], _minutes_faites(user, hier)
+    plan.minutes_prevues, plan.minutes_faites = sel.minutes_prevues_du_jour(journee), _minutes_faites(user, hier)
     plan.capacite_minutes, plan.capacite_source = capacite
     plan.save()
 

@@ -12,8 +12,15 @@
     "garder_n": 2,
     "plus_tard": "2026-11-19",
     "faites": 1,
-    "minutes_restantes": 75,
-    "deborde_minutes": 0,
+    "charge": {
+      "taches": 4,
+      "restantes_minutes": 75,
+      "sans_duree": 0,
+      "capacite_minutes": 240,
+      "rendez_vous_minutes": 60,
+      "disponible_minutes": 180,
+      "deborde_minutes": 0
+    },
     "geste_propose": null,
     "lignes": [
       {

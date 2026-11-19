@@ -266,7 +266,10 @@ class ProgressionTests(_Base):
         self.assertEqual(p['prevues'], 1 + 2)
         self.assertEqual((p['plan_tenues'], p['plan_lignes']), (1, 2))
         self.assertEqual((p['essentiel_faites'], p['essentiel_prevues']), (0, 1))
-        self.assertEqual((p['minutes_prevues'], p['sans_estimation']), (75, 1))
+        # R4-01 : la charge = ce qui RESTE (la faite de 30 min ne compte plus) : 45 min, 1 sans durée, 2 tâches
+        self.assertEqual(p['charge'], {'taches': 2, 'restantes_minutes': 45, 'sans_duree': 1, 'capacite_minutes': 240,
+                                       'rendez_vous_minutes': 60, 'disponible_minutes': 180, 'deborde_minutes': 0})
+        self.assertEqual(sel.minutes_prevues_du_jour(self.journee()), 75)  # la statistique de la nuit, jamais montrée
         self.assertEqual((p['capacite_minutes'], p['rendez_vous_minutes'], p['disponible_minutes']),
                          (240, 60, 180))
 
@@ -277,7 +280,7 @@ class ProgressionTests(_Base):
 
     def test_forme_complete(self):
         cles = {'faites', 'detail', 'prevues', 'essentiel_faites', 'essentiel_prevues', 'plan_tenues',
-                'plan_lignes', 'minutes_prevues', 'sans_estimation', 'capacite_minutes', 'capacite_source',
+                'plan_lignes', 'charge', 'capacite_minutes', 'capacite_source',
                 'rendez_vous_minutes', 'disponible_minutes', 'activites_closes', 'activites', 'reprise'}
         self.assertEqual(set(self._progression()), cles)
 
@@ -1191,20 +1194,21 @@ class PrioritesTests(_Base):
         candidate = self.tache()
         self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9), estimation_minutes=30)
         rendu = self.get()
-        self.assertEqual((rendu['faites'], rendu['objectif']['nb'], rendu['minutes_restantes'],
-                          rendu['deborde_minutes'], rendu['geste_propose']), (1, 9, 525, 285, 'alleger'))
+        self.assertEqual((rendu['faites'], rendu['objectif']['nb'], rendu['charge']['restantes_minutes'],
+                          rendu['charge']['deborde_minutes'], rendu['geste_propose']), (1, 9, 525, 285, 'alleger'))
         ids = [ligne_['item']['id'] for ligne_ in rendu['lignes']]
         self.assertEqual(sorted(ids), sorted(t.pk for t in gardees))
         self.assertNotIn(candidate.pk, ids)
         self.assertTrue(all(ligne_['item']['raison'] is None for ligne_ in rendu['lignes']))
         point = vues.point(self.u, maintenant_a(15))
-        self.assertEqual((point['faites'], point['minutes_restantes'], point['deborde_minutes']), (1, 525, 285))
+        charge = point['progression']['charge']
+        self.assertEqual((point['faites'], charge['restantes_minutes'], charge['deborde_minutes']), (1, 525, 285))
         self.assertEqual(point['progression']['disponible_minutes'], 240)
 
     def test_sans_debordement_rien_ne_change(self):
         self.scenario()
         rendu = self.get()
-        self.assertEqual((rendu['deborde_minutes'], rendu['geste_propose']), (0, None))
+        self.assertEqual((rendu['charge']['deborde_minutes'], rendu['geste_propose']), (0, None))
         self.assertIn(self.premiere.pk, [ligne_['item']['id'] for ligne_ in rendu['lignes']])
 
     def test_forme_de_l_echantillon(self):
@@ -1276,6 +1280,53 @@ class PrioritesTests(_Base):
         self.assertNotIn('canari', assistant.content.decode('utf-8').lower())
         ecran = client_de(self.u).get(URL_PRIORITES, params).content.decode('utf-8')
         self.assertIn('Canari-titre-tour', ecran)  # le canari est vivant
+
+
+class UneChargeTests(_Base):
+    """R4-01 (M1, « un chiffre, une source » — la garde `UneSourceTests` étendue à la charge) : la charge du jour est
+    LA MÊME dans toutes les lectures qui la disent : Aujourd'hui (`progression.charge`), toute écriture, l'Agenda du
+    jour, la Semaine (donc Planifier ma semaine), « Aide-moi à prioriser » et « Où j'en suis ? ». Avant : Aujourd'hui comptait la faite (« 6 h prévues »), le Copilote non
+    (« déborde de 1 h 30 ») et l'Agenda Ce soir en plus (« 6 h 15 ») — quatre chiffres à la même minute (T3-F n° 1)."""
+
+    def jeu(self):
+        """Mardi 17/11, 15:00, capacité par défaut 240 min, aucun rendez-vous. Calcul à la main :
+        restent 120 + 90 + 60 (prévues) + 30 (prévue demain, échéance aujourd'hui) = 300 min ; 1 sans durée ; 5 tâches ;
+        la faite (30 min) et Ce soir (20 min) ne comptent pas ; disponible 240 ; déborde 300 − 240 = 60 min.
+        Demain : la même tâche à échéance aujourd'hui, prévue demain : 30 min."""
+        for minutes in (120, 90, 60):
+            self.tache(jour_prevu=J, estimation_minutes=minutes)
+        self.tache(jour_prevu=J)
+        self.tache(jour_prevu=jours(1), echeance=J, estimation_minutes=30)
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9), estimation_minutes=30)
+        self.tache(jour_prevu=J, moment='soir', estimation_minutes=20)
+
+    def test_les_cinq_lectures_disent_la_meme_charge(self):
+        from apps.taches.services import journee as services
+        from apps.taches.views import agenda as vues_agenda
+        from apps.taches.views import journee as vues
+        self.jeu()
+        attendu = {'taches': 5, 'restantes_minutes': 300, 'sans_duree': 1, 'capacite_minutes': 240,
+                   'rendez_vous_minutes': 0, 'disponible_minutes': 240, 'deborde_minutes': 60}
+        heure = maintenant_a(15)
+        aujourdhui = services.aujourdhui(self.u, J, heure)
+        jour = vues_agenda.lire_agenda(self.u, J, J, 'jour', heure)['jours'][0]
+        lue = vues_agenda.lire_agenda(self.u, jours(-1), jours(5), 'semaine', heure)
+        semaine = {j['jour']: j for j in lue['jours']}
+        lectures = {
+            'aujourdhui': aujourdhui['progression']['charge'],
+            'ecriture': sel.progression_courante(self.u, J)['charge'],  # toute TACHE_ECRITE recale la page avec elle
+            'agenda_jour': jour['charge'],
+            'semaine': semaine[J.isoformat()]['charge'],
+            'priorites': vues.priorites(self.u, J)['charge'],
+            'point': vues.point(self.u, heure)['progression']['charge'],
+        }
+        for lecture, charge in lectures.items():
+            with self.subTest(lecture=lecture):
+                self.assertEqual(charge, attendu)
+        self.assertEqual(semaine[jours(1).isoformat()]['charge']['restantes_minutes'], 30)
+        self.assertIsNone(semaine[jours(-1).isoformat()]['charge'])  # un jour passé dit ses faites, pas une charge
+        # la charge de « Garder ces N » part de la même base (aucune proposée ici)
+        self.assertEqual(aujourdhui['propose']['charge']['minutes_estimees'], 300)
 
 
 class PointTests(_Base):

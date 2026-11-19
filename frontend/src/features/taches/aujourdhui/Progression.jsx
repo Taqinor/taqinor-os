@@ -10,7 +10,7 @@ import { duree } from '../lib/textes'
    recompte rien. « essentiel » = les ★ de la section Essentiel servie (ouvertes, ou faites aujourd'hui).
    Trois modes (textes.md §2.2) : `pousser` « 1 sur 5 · essentiel 0/1 » ; `tenir` « 1 sur 5 · ton
    rythme : 3 à 5 » ; `libre` « 1 faite » (R3-029 : aussi tant que l'objectif est la valeur par défaut). Au toucher :
-   « 1 faite sur 5 », la source de l'objectif s'il est par défaut, « Temps : 4 h 30 prévues pour 4 h disponibles ·
+   « 1 faite sur 5 », la source de l'objectif s'il est par défaut, « Reste : 4 h 30 pour 4 h disponibles ·
    30 min de trop », puis « Mon rythme › ».
    Maquettes : ecran-aujourdhui-matin.html, ecran-aujourdhui-retour.html, ecran-aujourdhui-15h.html.
    ========================================================================== */
@@ -19,18 +19,20 @@ import { duree } from '../lib/textes'
 const OBJECTIF_PAR_DEFAUT = 'Objectif : valeur par défaut, pas encore calculée sur toi'
 
 /**
- * R3-020 (M6) — le temps du jour en une phrase : « Temps : 4 h 30 prévues pour 4 h disponibles · 30 min de trop »
- * (`minutes_prevues` contre `disponible_minutes`, servis) ; « · 2 sans durée » quand des tâches n'en ont pas ;
- * « Durée totale inconnue… » quand plus de la moitié n'en a pas.
+ * R4-01 (M1) — le temps du jour en une phrase, lue dans LA charge servie (`progression.charge`, la même que l'Agenda,
+ * Planifier ma semaine et le Copilote) : « Reste : 4 h 30 pour 4 h disponibles · 30 min de trop » (ce qui RESTE à faire,
+ * jamais les faites) ; « · 2 sans durée » quand des tâches n'en ont pas ; « Durée totale inconnue… » quand plus de la
+ * moitié n'en a pas. L'écran ne recalcule rien.
  */
-function tempsTexte(progression) {
-  const { minutes_prevues: minutes = 0, sans_estimation: sans = 0, prevues = 0, disponible_minutes: dispo = null } = progression
-  if (sans > 0 && sans * 2 > prevues) return "Durée totale inconnue : la plupart des tâches n'ont pas de durée."
-  if (!minutes && !sans) return ''
-  const pour = Number.isFinite(dispo) && dispo > 0 ? ` pour ${duree(dispo)} disponibles` : ''
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22), lu par la carte du moment
+export function tempsTexte(charge) {
+  if (!charge) return ''
+  const { restantes_minutes: reste = 0, sans_duree: sans = 0, taches = 0, disponible_minutes: dispo = 0, deborde_minutes: trop = 0 } = charge
+  if (sans > 0 && sans * 2 > taches) return "Durée totale inconnue : la plupart des tâches n'ont pas de durée."
+  if (!reste && !sans) return ''
+  const pour = dispo > 0 ? ` pour ${duree(dispo)} disponibles` : ''
   const sansDuree = sans ? ` · ${sans} sans durée` : ''
-  const trop = Number.isFinite(dispo) && dispo > 0 && minutes > dispo ? ` · ${duree(minutes - dispo)} de trop` : ''
-  return `Temps : ${minutes ? duree(minutes) : '0 min'} prévues${pour}${sansDuree}${trop}`
+  return `Reste : ${reste ? duree(reste) : '0 min'}${pour}${sansDuree}${trop > 0 ? ` · ${duree(trop)} de trop` : ''}`
 }
 
 /** R3-029 (C-24) — un objectif CHIFFRÉ à lire : ni le mode libre, ni la valeur par défaut d'avant tout usage (« 0 sur 5 »
@@ -66,7 +68,7 @@ function Faits({ objectif, progression, onRythme }) {
   const lignes = [
     phraseDuJour(objectif, progression),
     objectif.mode !== 'libre' && objectif.nb && objectif.source === 'defaut' ? OBJECTIF_PAR_DEFAUT : '',
-    tempsTexte(progression),
+    tempsTexte(progression.charge),
   ].filter(Boolean)
   return (
     <div className="progression-faits" role="group" aria-label="Détail de la journée">

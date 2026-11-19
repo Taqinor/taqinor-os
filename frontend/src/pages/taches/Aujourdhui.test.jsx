@@ -865,27 +865,34 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
     const detail = screen.getByRole('group', { name: 'Détail de la journée' })
     expect(detail).toHaveTextContent('1 faite sur 5')
-    expect(detail).toHaveTextContent('Temps : 1 h 15 prévues pour 3 h disponibles · 1 sans durée')
-    for (const absent of ['visée', 'gardée', 'accepté', 'Objectif du jour', 'Temps libre']) expect(detail).not.toHaveTextContent(absent)
+    // R4-01 — LA charge servie (`progression.charge`) : ce qui RESTE, contre le disponible
+    expect(detail).toHaveTextContent('Reste : 1 h 15 pour 3 h disponibles · 1 sans durée')
+    for (const absent of ['visée', 'gardée', 'accepté', 'Objectif du jour', 'Temps libre', 'prévues pour']) expect(detail).not.toHaveTextContent(absent)
   })
 
   it('R3-020 — « essentiel f/p » est celui que le serveur SERT (jamais recompté sur les lignes) ; une journée qui déborde le dit', async () => {
     const d = donnees()
     // trois ★ affichées, mais le serveur compte 1/2 (une gardée par son échéance, une reportée sans échéance…) : c'est lui qui dit
     d.essentiel = [...d.essentiel, { ...d.essentiel[0], id: 23, titre: 'Payer la CNSS', heure_debut: null }, { ...d.essentiel[0], id: 24, titre: 'Relire le bail', heure_debut: null }]
-    d.progression = { ...d.progression, essentiel_faites: 1, essentiel_prevues: 2, minutes_prevues: 270, sans_estimation: 0, disponible_minutes: 240 }
+    d.progression = {
+      ...d.progression, essentiel_faites: 1, essentiel_prevues: 2, disponible_minutes: 240,
+      charge: { ...d.progression.charge, restantes_minutes: 270, sans_duree: 0, disponible_minutes: 240, deborde_minutes: 30 },
+    }
     servir(d)
     const { container } = monter()
     await screen.findByText('Devis Settat')
     expect(container.querySelector('button.progression')).toHaveTextContent('1 sur 5 · essentiel 1/2')
     await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
-    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Temps : 4 h 30 prévues pour 4 h disponibles · 30 min de trop')
+    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Reste : 4 h 30 pour 4 h disponibles · 30 min de trop')
   })
 
   it('R3-020 — cocher une ★ : « essentiel 1/1 » AU TOUCHER, puis la progression SERVIE par la réponse remplace tout', async () => {
     let lacher
     const porte = new Promise((r) => { lacher = r })
-    const servie = { ...donnees().progression, faites: 2, essentiel_faites: 1, essentiel_prevues: 1, minutes_prevues: 15 }
+    const servie = {
+      ...donnees().progression, faites: 2, essentiel_faites: 1, essentiel_prevues: 1,
+      charge: { ...donnees().progression.charge, restantes_minutes: 15, sans_duree: 0, taches: 1 },
+    }
     servir(donnees())
     api.post.mockImplementation((url) => (url === '/taches/taches/20/terminer/'
       ? porte.then(() => ({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 75, progression: servie } }))
@@ -897,7 +904,32 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     expect(container.querySelector('button.progression')).toHaveTextContent('2 sur 5 · essentiel 1/1') // la réponse est retenue
     await act(async () => { lacher() })
     await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
-    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Temps : 15 min prévues pour 3 h disponibles')
+    expect(screen.getByRole('group', { name: 'Détail de la journée' })).toHaveTextContent('Reste : 15 min pour 3 h disponibles')
+  })
+
+  it('R4-05 — la carte « Alléger » suit l\'en-tête après un geste : jamais « 1 faite sur 5 » quand l\'en-tête dit « 2 sur 5 »', async () => {
+    const d = donnees()
+    d.carte_du_moment = { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } }
+    d.maintenant = '2026-11-17T15:30:00+01:00'
+    servir(d)
+    const porte = new Promise(() => {}) // la réponse du serveur est retenue : seul le geste optimiste parle
+    api.post.mockImplementation((url) => (url === '/taches/taches/20/terminer/' ? porte : Promise.resolve({ data: {} })))
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    expect(screen.getByRole('region', { name: 'Alléger ma journée' })).toHaveTextContent('1 faite sur 5 à 15 h 30')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    expect(container.querySelector('button.progression')).toHaveTextContent('2 sur 5')
+    expect(screen.getByRole('region', { name: 'Alléger ma journée' })).toHaveTextContent('2 faites sur 5 à 15 h 30')
+  })
+
+  it('R4-06 — « Reprendre » (brouillon) a le dessin unique des cartes du moment', async () => {
+    window.localStorage.setItem('taches:brouillon:0:0', JSON.stringify({ texte: 'Appeler le comptable' }))
+    try {
+      servir(donnees())
+      monter()
+      await screen.findByText('Devis Settat')
+      expect(screen.getByRole('region', { name: 'Brouillon' })).toHaveClass('carte', 'compacte')
+    } finally { window.localStorage.removeItem('taches:brouillon:0:0') }
   })
 
   it('R3-021 — reporter une tâche dont l\'échéance EST aujourd\'hui : la ligne reste et le dit ; « Repousser l\'échéance » envoie `echeance`', async () => {

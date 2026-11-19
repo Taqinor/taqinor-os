@@ -47,5 +47,9 @@
       },
       "donnees": {}
     }
-  }
+  },
+  "nuls": [
+    "carte_du_moment.proposition",
+    "carte_du_moment.proposition.expire_le"
+  ]
 }

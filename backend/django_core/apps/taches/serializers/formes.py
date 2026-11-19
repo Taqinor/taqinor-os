@@ -466,6 +466,17 @@ class DetailProgressionSerializer(serializers.Serializer):
     activites_closes = serializers.IntegerField()
 
 
+class ChargeSerializer(serializers.Serializer):
+    """Forme CHARGE (api.md §1, R4-01) : la charge d'un jour (`selectors.journee.charge_du_jour`)."""
+    taches = serializers.IntegerField()
+    restantes_minutes = serializers.IntegerField()
+    sans_duree = serializers.IntegerField()
+    capacite_minutes = serializers.IntegerField()
+    rendez_vous_minutes = serializers.IntegerField()
+    disponible_minutes = serializers.IntegerField()
+    deborde_minutes = serializers.IntegerField()
+
+
 class ProgressionSerializer(serializers.Serializer):
     """Forme PROGRESSION (api.md §1) : un dict calculé par le service du jour."""
     faites = serializers.IntegerField()
@@ -475,8 +486,7 @@ class ProgressionSerializer(serializers.Serializer):
     essentiel_prevues = serializers.IntegerField()
     plan_tenues = serializers.IntegerField()
     plan_lignes = serializers.IntegerField()
-    minutes_prevues = serializers.IntegerField()
-    sans_estimation = serializers.IntegerField()
+    charge = ChargeSerializer()
     capacite_minutes = serializers.IntegerField()
     capacite_source = serializers.CharField()
     rendez_vous_minutes = serializers.IntegerField()

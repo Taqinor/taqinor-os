@@ -4,7 +4,7 @@ import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, ListChecks, Ma
 
 import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache, trancherTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
-import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
+import PlanifierSemaine, { chargeSuivie, resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
@@ -128,16 +128,23 @@ const jourVide = (iso) => ({
 
 const LISTES_JOUR = ['sans_heure', 'blocs', 'echeances']
 
+/** R4-01 — la charge SERVIE de chaque jour suit le geste (`chargeSuivie` : l'écart de ce que le jour porte), sans
+ *  jamais être recalculée de rien ; la relecture suivante rend celle du serveur. */
+function chargesSuivies(avant, apres) {
+  const anciens = new Map((avant.jours ?? []).map((j) => [j.jour, j]))
+  return { ...apres, jours: (apres.jours ?? []).map((j) => (j.charge ? { ...j, charge: chargeSuivie(anciens.get(j.jour), j) } : j)) }
+}
+
 function avecItem(donnees, id, changer) {
   if (!donnees) return donnees
   const remplacer = (items) => (items ?? []).map((it) => (it.type === 'tache' && it.id === id ? changer(it) : it))
-  return {
+  return chargesSuivies(donnees, {
     ...donnees,
     jours: (donnees.jours ?? []).map((j) => Object.fromEntries(
       Object.entries(j).map(([cle, val]) => [cle, LISTES_JOUR.includes(cle) ? remplacer(val) : val]))),
     a_placer: remplacer(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: remplacer(g.items) })),
-  }
+  })
 }
 
 /** TCH105/TCH106 — la tâche quitte « À placer » (et toute autre place) pour le jour `jour`, à
@@ -149,25 +156,25 @@ function deplacerVers(donnees, item, jour, heureDebut) {
   const jours = (donnees.jours ?? []).map((j) => ({ ...j, blocs: sans(j.blocs), sans_heure: sans(j.sans_heure) }))
   if (!jours.some((j) => j.jour === jour)) jours.push({ ...jourVide(jour), absent: false })
   const cible = heureDebut ? 'blocs' : 'sans_heure'
-  return {
+  return chargesSuivies(donnees, {
     ...donnees,
     jours: jours.map((j) => (j.jour === jour ? { ...j, [cible]: [...j[cible], posee] } : j)),
     a_placer: sans(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
-  }
+  })
 }
 
 /** Raccord F2 — la tâche quitte l'agenda chargé (supprimée, ou prévue ailleurs : elle reparaît au relu). */
 function sansItem(donnees, id) {
   if (!donnees) return donnees
   const sans = (items) => (items ?? []).filter((it) => !(it.type === 'tache' && it.id === id))
-  return {
+  return chargesSuivies(donnees, {
     ...donnees,
     jours: (donnees.jours ?? []).map((j) => Object.fromEntries(
       Object.entries(j).map(([cle, val]) => [cle, LISTES_JOUR.includes(cle) ? sans(val) : val]))),
     a_placer: sans(donnees.a_placer),
     mes_projets: (donnees.mes_projets ?? []).map((g) => ({ ...g, items: sans(g.items) })),
-  }
+  })
 }
 
 const CHAMPS_ECRITS = ['lock_version', 'jour_prevu', 'heure_debut', 'moment', 'statut', 'estimation_minutes']
