@@ -33,6 +33,8 @@ from ..lecture_pure import nombre_ou_none
 from ..montants import decimale, regles_avant_2710
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
+# Fondateur 19/11/2026 — la page à DEUX options (poids égal).
+from . import finance_deux
 
 #: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
 JALONS_ANS = (5, 10, 15, 20, 25)
@@ -943,7 +945,7 @@ def build(ctx):
 .i2-motif b{{color:{navy};}}
 .i2-mtsrc{{margin-top:4px;font-size:7pt;color:{muted};line-height:1.35;}}
 {css_graphique("i2", navy, muted)}
-{css_tableau_hypotheses("i2", navy, muted, ink, line_soft)}
+{css_tableau_hypotheses("i2", navy, muted, ink, line_soft)}{finance_deux.css(ctx, argent)}
 </style>
 """
 
@@ -1022,7 +1024,9 @@ def build(ctx):
                      if d.get("ind_mt_mention") else "")
         # Fondateur 18/11/2026 — les DEUX options sur la page finance.
         etiquette_sans, bande_avec = _option_avec_finance(d, L, fmt)
-        corps = f"""
+        # Fondateur 19/11/2026 — deux options entièrement chiffrées : la page
+        # à poids égal (``finance_deux``) ; sinon la page de l'offre servie.
+        corps = finance_deux.corps(ctx, argent) or f"""
   {etiquette_sans if kpis else ""}{kpis}
   {bande_avec}
   {revente_html}

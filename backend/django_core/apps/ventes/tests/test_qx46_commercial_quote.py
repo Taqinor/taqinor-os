@@ -1076,6 +1076,21 @@ class TestAmot93VotreInstallation(SimpleTestCase):
         self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé · 50 kW AC "
                       "au total", self._fiche(_pages_ci(data)[2]))
 
+    def test_un_disjoncteur_qui_nomme_son_onduleur_n_est_pas_un_onduleur(self):
+        """Devis DEV-202611-0080 (19/11/2026) — la fiche listait « 1 ×
+        Disjoncteur AC 32 A 4P — sortie Onduleur réseau… » parmi les
+        onduleurs : un organe du tableau (``role_ci``) n'en est pas un."""
+        data = _data_ci()
+        data["all_items"][1]["designation"] = \
+            "Onduleur réseau Huawei 50kW Triphasé"
+        data["all_items"].append(dict(
+            data["all_items"][1], role_ci="protection_ac", prix_unit_ht=700.0,
+            designation="Disjoncteur AC 80 A 4P — sortie Onduleur réseau "
+                        "Huawei 50kW Triphasé"))
+        fiche = self._fiche(_pages_ci(data)[2])
+        self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé", fiche)
+        self.assertNotIn("Disjoncteur", fiche)
+
     def test_kw_ac_total_lu_tel_que_servi(self):
         """Le total AC vient de ``synthese_ci.installation.kw_ac_total``
         (servi une fois), imprimé tel quel ; un bloc sans ``kw_ac_total``
