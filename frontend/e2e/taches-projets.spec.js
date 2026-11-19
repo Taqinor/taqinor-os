@@ -203,7 +203,7 @@ test.describe('Tâches — réglages', () => {
 
     const [telechargement] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('button', { name: /^Exporter mes données/ }).click(),
+      page.getByRole('button', { name: /^Télécharger mes données/ }).click(),
     ])
     expect(telechargement.suggestedFilename()).toMatch(/^mes-donnees-taches-.*\.json$/)
     const exporte = JSON.parse(readFileSync(await telechargement.path(), 'utf8'))

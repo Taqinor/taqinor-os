@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ChevronDown, CircleX, Search } from 'lucide-react'
+import { Check, ChevronDown, CircleX, Search } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
@@ -60,18 +60,23 @@ function titreDuJourFait(jour, aujourdhui) {
   return `${ABR_JOURS[new Date(Date.UTC(annee, mois - 1, quantieme)).getUTCDay()]} ${quantieme}`
 }
 
-/** Les lignes groupées par jour où elles ont été faites, le plus récent en haut (ordre du serveur gardé dans un jour). */
-function parJourFait(lignes, aujourdhui) {
+/** Les lignes groupées par jour où elles ont été faites, le plus récent en haut (ordre du serveur gardé dans un jour).
+ *  R3-093 — les activités ERP closes de la semaine (`activites_closes` : `{jour, titre}`, comptées dans `total`) prennent
+ *  place dans leur jour, après les tâches : « Aujourd'hui (2) » compte ce que « 2 sur 5 » compte. */
+function parJourFait(lignes, aujourdhui, activites = []) {
   const groupes = new Map()
+  const groupe = (jour) => {
+    if (!groupes.has(jour)) groupes.set(jour, { taches: [], activites: [] })
+    return groupes.get(jour)
+  }
   lignes.forEach((t) => {
     const jour = String(t.fait_le ?? '').split('T')[0]
-    if (!jour) return
-    if (!groupes.has(jour)) groupes.set(jour, [])
-    groupes.get(jour).push(t)
+    if (jour) groupe(jour).taches.push(t)
   })
+  activites.forEach((a) => { if (a?.jour) groupe(String(a.jour).split('T')[0]).activites.push(a) })
   return [...groupes.entries()]
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([jour, taches]) => ({ jour, titre: titreDuJourFait(jour, aujourdhui), taches }))
+    .map(([jour, { taches, activites: closes }]) => ({ jour, titre: titreDuJourFait(jour, aujourdhui), taches, activites: closes }))
 }
 
 /** Puces servies par `GET taches/?periode=` (aujourdhui : jour prévu = J ; semaine : J à J+6) ; ET entre les deux = J. */
@@ -173,13 +178,26 @@ const TRI = {
   creation: (a, b) => b.id - a.id,
 }
 
-function Groupe({ titre, lignes, ...rappels }) {
-  if (lignes.length === 0) return null
+function Groupe({ titre, lignes, activites = [], ...rappels }) {
+  const n = lignes.length + activites.length
+  if (n === 0) return null
   return (
-    <section className="section" aria-label={`${titre} (${lignes.length})`}>
-      <h2 className="section-titre"><span>{`${titre} (${lignes.length})`}</span></h2>
+    <section className="section" aria-label={`${titre} (${n})`}>
+      <h2 className="section-titre"><span>{`${titre} (${n})`}</span></h2>
       <div className="liste" role="list">
         {lignes.map((item) => <LigneTache key={`${item.type}:${item.id}`} item={item} contexte="recherche" {...rappels} />)}
+        {/* R3-093 — une activité ERP close : lue seulement (elle vit dans sa fiche ERP), dite comme telle */}
+        {activites.map((a, rang) => (
+          <div key={`activite:${a.jour}:${rang}`} className="ligne-cadre es-activite-close" role="listitem">
+            <div className="ligne faite">
+              <span className="case vide"><span className="pastille-erp"><Check aria-hidden="true" /></span></span>
+              <div className="ligne-corps">
+                <div className="titre">{a.titre}</div>
+                <div className="meta"><span>Activité ERP</span></div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   )
@@ -269,7 +287,13 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
     const toutes = recentes ? listerToutesLesTaches(filtres).then((taches) => ({ projets: [], taches })) : null
     const lecture = toutes ?? (serveur
       ? listerTaches(filtres).then(async (r) => ({
-        projets: [], taches: r.data?.next ? await listerToutesLesTaches(filtres) : (r.data?.results ?? []),
+        projets: [],
+        taches: r.data?.next ? await listerToutesLesTaches(filtres) : (r.data?.results ?? []),
+        // R3-093 (contrat L1, `faites_semaine.json`) : `total` et `activites_closes` sont servis sur chaque page de
+        // `periode=faites_semaine` — la page 1 suffit pour eux ; la liste, elle, est lue en entier
+        semaineServie: periode === FAITES_SEMAINE && Number.isInteger(r.data?.total)
+          ? { total: r.data.total, activites: Array.isArray(r.data.activites_closes) ? r.data.activites_closes : [] }
+          : null,
       }))
       : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] })))
     lecture
@@ -350,7 +374,16 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const ouvertes = lignes.filter(ouverte)
   const faitesLignes = lignes.filter((t) => !ouverte(t))
   // une tâche rouverte ici reste dans son jour, case vide : on la recoche sans la chercher (geste réversible sur place)
-  const joursFaits = semaine ? parJourFait(lignes, aujourdhui) : []
+  // R3-093 — la semaine servie : total (= la tête de la Revue, l'Agenda) et les activités ERP closes. Elles ne suivent
+  // que les mots tapés : une puce de jour, un projet, une priorité ne les concernent pas (elles n'en ont pas) — on les tait alors.
+  const semaineServie = semaine && actif ? resultat.semaineServie ?? null : null
+  const autresFiltres = puces.length > 0 || faites || haute || reserve || recentes || projetId != null || etiquetteId != null
+  const motsActivite = sansAccents(mots)
+  const activitesSemaine = semaineServie && !autresFiltres
+    ? semaineServie.activites.filter((a) => !motsActivite || sansAccents(a.titre).includes(motsActivite))
+    : []
+  const joursFaits = semaine ? parJourFait(lignes, aujourdhui, activitesSemaine) : []
+  const totalSemaine = semaineServie && !autresFiltres && !mots ? semaineServie.total : lignes.length + activitesSemaine.length
   const projetsTrouves = serveur || !actif ? [] : resultat.projets
 
   const ouvrirLaFiche = useOuvrirFiche()
@@ -397,7 +430,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
 
   const basculerPuce = (cle) => setPuces((l) => (l.includes(cle) ? l.filter((c) => c !== cle) : [...l, cle]))
   const projetChoisi = projets.find((p) => p.id === projetId)
-  const rien = actif && lu && lignes.length === 0 && projetsTrouves.length === 0 && !(cherchePres && proches === null)
+  const rien = actif && lu && lignes.length === 0 && activitesSemaine.length === 0 && projetsTrouves.length === 0 && !(cherchePres && proches === null)
 
   return (
     <CoquilleTaches
@@ -514,10 +547,10 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
 
       {/* passe visuelle n° 46 (recherche.html) : le mot cherché surligné, la méta de statut de chaque résultat */}
       {approches ? <p className="es-sous es-approche" role="status">{`Rien de tel pour « ${mots} » : voici ce qui s'en approche.`}</p> : null}
-      {semaine && lignes.length > 0 ? <p className="es-sous" role="status">{`${accord(lignes.length, 'faite')} depuis lundi`}</p> : null}
+      {semaine && totalSemaine > 0 ? <p className="es-sous" role="status">{`${accord(totalSemaine, 'faite')} depuis lundi`}</p> : null}
       <div ref={racine} className="es-resultats">
         {semaine ? joursFaits.map((groupe) => (
-          <Groupe key={groupe.jour} titre={groupe.titre} lignes={groupe.taches} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+          <Groupe key={groupe.jour} titre={groupe.titre} lignes={groupe.taches} activites={groupe.activites} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
         )) : (
           <>
             <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />

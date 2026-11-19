@@ -78,7 +78,7 @@ function Etape({ nom, taches, sectionId, aujourdhui, poignees, reorganiser, comp
   const compte = compteEtape(compteurs)
   const etape = cleEtape(sectionId)
   return (
-    <section className="section ep-etape" aria-label={nom}>
+    <section className={taches.length > 0 ? 'section ep-etape' : 'section ep-etape etape-vide'} aria-label={nom}>
       <h2 className="section-titre"><span>{nom}</span>{compte ? <span className="compte chiffres">{compte}</span> : null}</h2>
       {taches.length > 0 ? (
         <div className="liste" role="list">

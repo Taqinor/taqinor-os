@@ -59,20 +59,72 @@ describe('TCH90 — Chronologie', () => {
       expect.stringContaining('Devis Settat'),
       expect.stringContaining('Échéance du projet'),
     ])
-    expect(lignes[0]).toContain('lun. 09/11 → lun. 30')
+    expect(lignes[0]).toContain('lun. 9 nov. → lun. 30 nov.') // R3-130 : UNE forme de date (« lun. 9 nov. », plus « lun. 09/11 »)
     expect(lignes[0]).toContain('4 sur 5') // 4 faites, 1 ouverte : `compteurs` du serveur, jamais recompté
     expect(lignes[2]).toContain('Jalon')
     expect(lignes[3]).toContain('mar. 15 déc.')
     expect(screen.getByText('Sans date :').parentElement).toHaveTextContent('Sans date : Timbres')
   })
 
-  it('une étape sans date se range au jour même, « Sans date »', () => {
+  it('R3-130 — une étape sans date va tout à la FIN, « Sans date » en dernier (jamais au milieu, à la place d\'aujourd\'hui)', () => {
     const vue = vueDatee()
     vue.sections[0].date_debut = null
     vue.sections[0].date_fin = null
     render(<VueChronologie vue={vue} aujourdhui={AUJOURDHUI} />)
     const frise = screen.getByRole('list', { name: 'Chronologie du projet jusqu\'à l\'échéance' })
-    expect(within(frise).getAllByRole('listitem')[0]).toHaveTextContent('Sans date')
+    const lignes = within(frise).getAllByRole('listitem').map((l) => l.textContent)
+    expect(lignes).toEqual([
+      expect.stringContaining("Aujourd'hui"), expect.stringContaining('Devis Settat'), expect.stringContaining('Échéance du projet'),
+      expect.stringContaining('Sans date'),
+    ])
+  })
+
+  it('R3-130 — un seul format de date partout : « mer. 18 nov. » (axe, jalon, étape, échéance, aujourd\'hui) — jamais « 18/11 »', () => {
+    const { container } = render(<VueChronologie vue={vueDatee()} aujourdhui={AUJOURDHUI} />)
+    const texte = container.textContent
+    expect(texte).not.toMatch(/\d{2}\/\d{2}/)
+    const axe = container.querySelector('.ep-fh-axe')
+    expect(axe).toHaveTextContent('lun. 9 nov.')
+    expect(axe).toHaveTextContent('mar. 15 déc.')
+    expect(container.querySelector('.ep-f-item.auj .ep-f-date')).toHaveTextContent("Aujourd'hui · mar. 17 nov.")
+  })
+
+  it('R3-130 — le retard est marqué : une étape dont la fin est passée, une tâche datée avant aujourd\'hui, un jalon dépassé', () => {
+    const vue = vueDatee()
+    vue.sections[0].date_fin = '2026-11-12' // fin AVANT aujourd'hui (17/11), non faite (4 sur 5)
+    vue.sections[0].taches[0].echeance = '2026-11-15' // le jalon est dépassé
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].taches.push({ ...base, id: 31, titre: 'Mesurer le toit', jalon: false, echeance: null, jour_prevu: '2026-11-13' })
+    const { container } = render(<VueChronologie vue={vue} aujourdhui={AUJOURDHUI} />)
+    expect(container.querySelector('.ep-f-item.etape')).toHaveClass('retard')
+    expect(container.querySelector('.ep-f-item.jalon')).toHaveClass('retard')
+    expect(container.querySelector('.ep-f-taches li')).toHaveClass('retard')
+    expect(container.querySelector('.ep-fh-nom-point')).toHaveClass('retard') // 9 → 12 nov. : trop court pour une barre, son nom est en alerte
+    expect(container.querySelector('.ep-fh-point')).toHaveClass('retard')
+    // à venir : jamais marqué
+    const aVenir = vueDatee()
+    const { container: c2 } = render(<VueChronologie vue={aVenir} aujourdhui={AUJOURDHUI} />)
+    expect(c2.querySelector('.ep-f-item.retard')).toBeNull()
+  })
+
+  it('R3-130 — bureau : une étape SANS dates à elle a sa barre du premier au dernier jour de ses tâches datées ; un seul jour = un point et son nom', () => {
+    const vue = vueDatee()
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].date_debut = null
+    vue.sections[0].date_fin = null
+    vue.sections[0].taches = [
+      { ...base, id: 51, titre: 'Mesurer', jalon: false, echeance: null, jour_prevu: '2026-11-18' },
+      { ...base, id: 52, titre: 'Commander', jalon: false, echeance: null, jour_prevu: '2026-12-10' },
+    ]
+    vue.sections.push({ ...vue.sections[0], id: 9, nom: 'Pose', compteurs: { ouvertes: 1, faites: 0 },
+      taches: [{ ...base, id: 53, titre: 'Poser la structure', jalon: false, echeance: null, jour_prevu: '2026-11-20' }] })
+    const { container } = render(<VueChronologie vue={vue} aujourdhui={AUJOURDHUI} />)
+    const piste = container.querySelector('.ep-frise-h')
+    const barres = [...piste.querySelectorAll('.ep-fh-barre')]
+    expect(barres.map((b) => b.textContent)).toEqual(['Études']) // 18/11 → 10/12 : large, une barre
+    expect(piste.querySelectorAll('.ep-fh-rang .ep-fh-point').length).toBe(3) // 2 points sur la barre, 1 point d'« une journée »
+    // « Pose » : un jour, pas de barre — un point et son nom, sur la même ligne (`ep-fh-nom-point`)
+    expect(piste.querySelector('.ep-fh-nom-point')).toHaveTextContent('Pose')
   })
 
   it('dessine la piste du bureau : barre de l\'étape, jalon, traits « aujourd\'hui » et « échéance »', () => {

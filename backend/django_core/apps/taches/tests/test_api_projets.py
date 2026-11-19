@@ -572,7 +572,7 @@ class OrdreEtClotureTests(_Base):
         fabriques.tache(self.u1, projet=projet)
         reponse = self._api(self.u1).post(_url(f'projets/{projet.pk}/terminer/'), {'issue': 'atteint'},
                                           format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # état : 409
         self.assertEqual(reponse.json()['taches_ouvertes'], ['Requis.'])
 
     def test_annuler_la_cloture_rend_projet_et_taches(self):

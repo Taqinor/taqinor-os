@@ -375,11 +375,13 @@ class ModifierTests(BaseApi):
         for corps, attendu in (({'estimation_minutes': 3}, {'estimation_minutes': ['Entre 5 et 960 minutes.']}),
                                ({'titre': ' '}, {'titre': [TITRE_VIDE]}),
                                ({'titre': 'x' * 281}, {'titre': ['280 caractères au plus.']}),
-                               ({'priorite': 9}, {'priorite': ['Valeur inconnue.']}),
-                               ({'echeance_heure': '10:00'}, {'echeance_heure': ['Une heure demande une échéance.']})):
+                               ({'priorite': 9}, {'priorite': ['Valeur inconnue.']})):
             with self.subTest(corps=corps):
                 reponse = self._patch(tache, corps)
                 self.assertEqual((reponse.status_code, champs(reponse.json())), (400, attendu))
+        sans_echeance = self._patch(tache, {'echeance_heure': '10:00'})  # la tâche n'a pas d'échéance : état
+        self.assertEqual((sans_echeance.status_code, sans_echeance.json()['echeance_heure']),
+                         (409, ['Une heure demande une échéance.']))
 
     def test_une_echeance_et_son_heure(self):
         tache = fabriques.tache(self.u1)
@@ -415,8 +417,8 @@ class ModifierTests(BaseApi):
         visite = fabriques.tache(self.u1, titre='Visite')
         devis = fabriques.tache(self.u1, titre='Devis', bloquee_par=visite)
         reponse = self._patch(visite, {'bloquee_par_id': devis.pk})
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'bloquee_par_id': ['Boucle : « Devis » attend déjà « Visite ».']})
+        self.assertEqual(reponse.status_code, 409)  # état : 409
+        self.assertEqual(reponse.json()['bloquee_par_id'], ['Boucle : « Devis » attend déjà « Visite ».'])
 
     def test_jamais_soi_meme(self):
         tache = fabriques.tache(self.u1)
@@ -472,7 +474,7 @@ class ModifierTests(BaseApi):
         parent = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         enfant = fabriques.tache(self.u1, parent=parent, projet=parent.projet)
         reponse = self._patch(enfant, {'projet_id': None})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'projet_id': ['Non modifiable ici.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['projet_id']), (409, ['Non modifiable ici.']))
 
     def test_les_etiquettes_sont_remplacees(self):
         tache = fabriques.tache(self.u1)
@@ -842,8 +844,8 @@ class SauterTests(BaseApi):
     def test_sauter_une_tache_qui_ne_se_repete_pas_est_refuse(self):
         tache = fabriques.tache(self.u1)
         reponse = self._post(f'taches/{tache.pk}/sauter/')
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(list(champs(reponse.json())), ['recurrence'])
+        self.assertEqual(reponse.status_code, 409)  # état : 409
+        self.assertIn('recurrence', reponse.json())
         self.assertEqual(_relue(tache).statut, StatutTache.A_FAIRE)
 
 
@@ -1087,7 +1089,7 @@ class ReordonnerTests(BaseApi):
         projet, (a, b, c) = self._trois()
         ailleurs = fabriques.tache(self.u1, projet=fabriques.projet(self.u1))
         reponse = self._reordonner(c, {'liste': 'projet', 'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['avant_id']), (409, ['Valeur inconnue.']))  # état : 409
 
     def test_liste_inconnue_ou_sans_voisin_refusees(self):
         projet, (a, b, c) = self._trois()
@@ -1181,8 +1183,8 @@ class RappelsTests(BaseApi):
             reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': f'{heure:02d}:00'})
             self.assertEqual(reponse.status_code, 200)
         reponse = self._poser(tache, {'jour': _j(1).isoformat(), 'heure': '14:00'})
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'rappel': ['5 rappels au plus par tâche.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['rappel']),
+                         (409, ['5 rappels au plus par tâche.']))  # état : 409
 
     def test_heure_requise_et_lisible(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
@@ -1316,8 +1318,8 @@ class RegleDeRecurrenceTests(BaseApi):
     def test_la_fin_ne_precede_pas_le_debut(self):
         regle, _tache = self._regle()
         reponse = self._patch(regle, {'date_fin': (regle.date_debut - datetime.timedelta(days=1)).isoformat()})
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'date_fin': ['La date de fin précède la date de début.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['date_fin']),
+                         (409, ['La date de fin précède la date de début.']))  # état : 409
 
     def test_la_regle_d_un_collegue_repond_comme_inconnue(self):
         regle = _serie_hebdo(self.u2)
@@ -1348,8 +1350,8 @@ class RegleDeRecurrenceTests(BaseApi):
         tache = fabriques.tache(self.u1, jour_prevu=_j(2))
         corps = {'recurrence': {'intervalle': 2}, 'lock_version': _relue(tache).lock_version}
         reponse = self._api().patch(f'{URL}taches/{tache.pk}/', corps, format='json')
-        self.assertEqual((reponse.status_code, champs(reponse.json())),
-                         (400, {'recurrence': {'frequence': ['Requis.']}}))
+        self.assertEqual((reponse.status_code, reponse.json()['recurrence']),
+                         (409, {'frequence': ['Requis.']}))  # état : 409
         regle, serie = self._regle()
         self._api().patch(f'{URL}taches/{serie.pk}/', {'recurrence': None, 'lock_version': _relue(serie).lock_version},
                           format='json')

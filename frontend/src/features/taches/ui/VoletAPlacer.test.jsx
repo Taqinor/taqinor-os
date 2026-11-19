@@ -112,6 +112,38 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     expect(lireAgenda).toHaveBeenCalledTimes(1)
   })
 
+  it('R3-120 — le glisser : AUCUN rendu pendant le glisser (le navigateur annule un glisser dont la page bouge), les créneaux acceptent le dépôt, le dépôt pose la tâche', async () => {
+    const { container } = monter()
+    const ligne = await screen.findByRole('button', { name: /Site web/ })
+    const donnees = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(ligne, { dataTransfer: donnees })
+    expect(donnees.setData).toHaveBeenCalledWith('text/plain', '50')
+    // aucun changement à l'écran : ni consigne ajoutée au-dessus de la liste, ni état pressé, ni créneaux « Placer à »
+    expect(ligne).toHaveAttribute('aria-pressed', 'false')
+    expect(container.querySelector('.ag-consigne')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Placer à 14:00' })).toBeNull()
+    // le créneau accepte le dépôt (dragover annulé), se surligne sans rendu, puis le dépôt pose la tâche
+    const creneau = screen.getByRole('button', { name: 'Ajouter à 14:00' })
+    expect(fireEvent.dragOver(creneau, { dataTransfer: donnees })).toBe(false)
+    fireEvent.dragEnter(creneau, { dataTransfer: donnees })
+    expect(creneau).toHaveAttribute('data-survol', 'oui')
+    fireEvent.drop(creneau, { dataTransfer: donnees })
+    expect(creneau).not.toHaveAttribute('data-survol')
+    await waitFor(() => expect(trancherTache).toHaveBeenCalledWith(50, { choix: 'jour', jour: AUJOURDHUI }))
+    await waitFor(() => expect(planifierTache).toHaveBeenCalledWith(50, expect.objectContaining({ jour_prevu: AUJOURDHUI, heure_debut: '14:00' })))
+  })
+
+  it('R3-120 — un glisser abandonné (dragend sans dépôt) : un dépôt venu d\'ailleurs ne pose rien', async () => {
+    monter()
+    const ligne = await screen.findByRole('button', { name: /Site web/ })
+    fireEvent.dragStart(ligne, { dataTransfer: { setData: vi.fn(), effectAllowed: '' } })
+    fireEvent.dragEnd(ligne)
+    fireEvent.drop(screen.getByRole('button', { name: 'Ajouter à 14:00' }))
+    expect(trancherTache).not.toHaveBeenCalled()
+    expect(planifierTache).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Site web/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('R2-105 — iPhone : choisir une tâche ramène la vue sur la grille, près de la ligne « maintenant »', async () => {
     const defile = vi.fn()
     const avant = Element.prototype.scrollIntoView

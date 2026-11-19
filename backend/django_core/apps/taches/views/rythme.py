@@ -17,7 +17,7 @@ from apps.taches.serializers.rythme import forme_proposition, forme_rythme, proj
 from apps.taches.services import rythme as service
 from core.champs_stricts import MOTIF_SANS_NUL
 from apps.taches.views.base import (
-    PARSEURS, ERREUR_CODE, PERMISSIONS, corps, est_assistant, forme_echantillon, reponses,
+    ERREUR_CODE, PARSEURS, PERMISSIONS, est_assistant, forme_echantillon, reponses,
 )
 
 RYTHME = forme_echantillon('rythme')
@@ -97,7 +97,9 @@ class RepondrePropositionVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=corps('RepondreProposition', {'reponse': 'oui'}, requis=('reponse',)),
+    @extend_schema(request={'application/json': {
+        'type': 'object', 'required': ['reponse'],
+        'properties': {'reponse': {'type': 'string', **parmi(*service.REPONSES_ECRAN)}}}},
                    responses=reponses(forme_echantillon('proposition_repondue'), erreurs=(400, 404),
                                       conflit=ERREUR_CODE))
     def post(self, request, id):

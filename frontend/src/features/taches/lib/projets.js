@@ -1,3 +1,5 @@
+import { ABR_JOURS, ABR_MOIS } from './textes'
+
 /* ============================================================================
    TCH89-TCH90 — Calculs PURS de l'écran « Un projet » (aucun rendu, aucune horloge : le jour est un argument).
    Tout vient de `projet_vue.json` ; rien n'est inventé ici : un compte absent du serveur reste absent.
@@ -52,6 +54,19 @@ export function compteursApresStatut(vue, item, sectionId, faite) {
 
 const iso = (valeur) => (typeof valeur === 'string' && valeur ? valeur.slice(0, 10) : null)
 
+/** R3-130 — UNE forme de date pour toute la Chronologie : « mer. 18 nov. » (jour, quantième ET mois, passé comme à venir ; l'année
+ *  seulement quand ce n'est pas celle d'aujourd'hui). Avant : « mer. 18/11 » dans l'axe et « sam. 21 nov. » dans les jalons. */
+export function jourFrise(date, aujourdhui) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date ?? ''))
+  if (!m) return ''
+  const [annee, mois, jour] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const texte = `${ABR_JOURS[new Date(Date.UTC(annee, mois - 1, jour)).getUTCDay()]} ${jour} ${ABR_MOIS[mois - 1]}`
+  return aujourdhui && String(annee) !== String(aujourdhui).slice(0, 4) ? `${texte} ${annee}` : texte
+}
+
+/** Un jour AVANT aujourd'hui (en retard s'il porte une tâche ouverte, une étape ou un jalon non faits). */
+export const estPasse = (jour, aujourdhui) => Boolean(jour) && Boolean(aujourdhui) && String(jour).slice(0, 10) < aujourdhui
+
 /** Toutes les tâches chargées d'une vue : les étapes, puis « Sans étape ». */
 export const toutesLesTaches = (vue) => [...(vue.sections ?? []).flatMap((s) => s.taches ?? []), ...(vue.sans_section ?? [])]
 
@@ -85,7 +100,9 @@ export function elementsChronologie(vue, aujourdhui) {
   elements.push({ type: 'auj', id: 'auj', date: aujourdhui })
   if (iso(vue.projet?.echeance)) elements.push({ type: 'fin', id: 'fin', nom: 'Échéance du projet', date: iso(vue.projet.echeance) })
   const ordre = { etape: 0, jalon: 1, auj: 2, fin: 3 }
-  const cle = (e) => e.date ?? aujourdhui
+  // R3-130 — une étape sans aucune date va tout à la FIN (« Sans date » en dernier) ; elle prenait la clé d'aujourd'hui et se
+  // rangeait AU MILIEU de la frise, avant ou après « Aujourd'hui » selon l'ordre des types
+  const cle = (e) => e.date ?? '9999-12-31'
   elements.sort((a, b) => (cle(a) < cle(b) ? -1 : cle(a) > cle(b) ? 1 : ordre[a.type] - ordre[b.type]))
   return { elements, sansDate }
 }
