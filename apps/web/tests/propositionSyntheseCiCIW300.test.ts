@@ -591,6 +591,24 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     const comp = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/ComparaisonBatterieCi.astro', import.meta.url)), 'utf-8');
     expect(comp).toContain('data-testid="ci-extension-onduleur"');
   });
+  it('fondateur 19/11/2026 — « démarrer avec une seule batterie » : phrase servie en dernier sous « avec » ; absente/malformée = rien', () => {
+    const DEP = {
+      textes: {
+        fr: 'Pour démarrer avec une seule batterie : 24 panneaux (13,2 kWc) et 1 batterie de 5,12 kWh utiles — 182 300 MAD TTC. Les 2 autres batteries pourront être ajoutées ensuite : l’onduleur est déjà prévu pour.',
+        en: 'To start with a single battery: 24 panels (13.2 kWp)…',
+        ar: 'AR-DEP',
+      },
+      prix_mad: 182300,
+    };
+    const dep = (depart_une_batterie: unknown) => ob({ ...PLEIN, depart_une_batterie });
+    const avec = comparaisonBatterieCi(dep(DEP), 78000, 114000)!.colonnes[1]!;
+    expect(avec.lignes.at(-1)!.cle).toBe('depart_une_batterie');
+    expect(avec.lignes.at(-1)!.textes).toEqual({ fr: DEP.textes.fr, en: DEP.textes.en, ar: 'AR-DEP' });
+    const base = comparaisonBatterieCi(ob(PLEIN), 78000, 114000);
+    for (const x of [undefined, null, {}, { textes: {} }, { textes: 'x' }, 3]) {
+      expect(comparaisonBatterieCi(dep(x), 78000, 114000)).toEqual(base);
+    }
+  });
   it('libellés = ceux du PDF (blocs.py LIBELLES_OPTION_AVEC, i18n_labels total_ttc)', () => {
     const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/blocs.py', import.meta.url)), 'utf-8');
     const enc = (t: string) => t.replace(/É/g, '&Eacute;').replace(/à/g, '&agrave;');

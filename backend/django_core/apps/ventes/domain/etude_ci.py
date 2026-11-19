@@ -1915,6 +1915,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
     aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
     Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
     """
+    from .depart_une_batterie_ci import empreinte_depart, poser_depart  # fondateur 19/11/2026
     from .etude_schema import MOTEUR_CI, ecrire
     from .etudes import puissances_etude_horaire
     try:
@@ -1938,7 +1939,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         # les ENTRÉES entrent dans l'empreinte (``cles_hors_empreinte``).
         hors = cles_hors_empreinte()
         stockees = {k: v for k, v in params.items() if k not in hors}
-        empreinte = _empreinte(stockees, kwc, onduleurs, imposee)
+        empreinte = empreinte_depart(devis, _empreinte(stockees, kwc, onduleurs, imposee))
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:
             return existant
@@ -1961,6 +1962,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
                           CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
         bloc = dict(bloc_etude_ci_stocke(etude, mono=mono), version=VERSION_MOTEUR, empreinte=empreinte)
+        bloc = poser_depart(devis, bloc, existant)  # « une seule batterie » (case cochée)
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production'),
                   CLE_PRODUCTION_FIGEE_RASANTE: etude.get('production_rasante')})

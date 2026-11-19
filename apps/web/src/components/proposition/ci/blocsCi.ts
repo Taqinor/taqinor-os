@@ -174,7 +174,7 @@ const TITRE_SANS_CI: TextesCi = {
 };
 
 export interface LigneComparaisonCi {
-  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour' | 'non_rentable' | 'extension_onduleur';
+  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour' | 'non_rentable' | 'extension_onduleur' | 'depart_une_batterie';
   libelle: TextesCi | null;
   /** Valeur déjà formatée (nombres) ; vide pour la phrase servie. */
   valeur: string;
@@ -218,6 +218,8 @@ export function comparaisonBatterieCi(
   if (nr) avec.push({ cle: 'non_rentable', libelle: null, valeur: '', textes: nr.ligne });
   // D-ONDULEUR-EXTENSION — phrase servie (3 langues), affichée telle quelle sous les chiffres ; absente ⇒ rien.
   if (ob.extension) avec.push({ cle: 'extension_onduleur', libelle: null, valeur: '', textes: ob.extension });
+  // Fondateur 19/11/2026 — « démarrer avec une seule batterie » : phrase servie (prix du calculateur), telle quelle.
+  if (ob.departUneBatterie) avec.push({ cle: 'depart_une_batterie', libelle: null, valeur: '', textes: ob.departUneBatterie });
   const titreAvec: TextesCi = nr
     ? { fr: `${LBL_COMPARAISON_CI.titre.fr} — ${nr.badge.fr}`, en: `${LBL_COMPARAISON_CI.titre.en} — ${nr.badge.en}`, ar: `${LBL_COMPARAISON_CI.titre.ar} — ${nr.badge.ar}` }
     : LBL_COMPARAISON_CI.titre;

@@ -17,6 +17,7 @@ from ..ci.mentions import texte_revente
 from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import bloc_option_avec, langue as _langue, libelle as _libelle
+from ..ci.blocs import phrase_depart_une_batterie  # fondateur 19/11/2026
 from ..ci.installation import lignes_client
 from ..ci.tableau import sous_lignes_html  # R2 — détail du tableau AC/DC
 from ..sequence import sequence_affichage
@@ -450,6 +451,14 @@ def _rangees_totaux(L, tot, fmt_mad, ancrer):
     return rangees
 
 
+def _phrase_mono(d, fmt_mad, couleur):
+    """Fondateur 19/11/2026 — document à UNE option dont l'offre servie est
+    « avec batterie » : la phrase « démarrer avec une seule batterie » sous
+    ses totaux ; '' sinon (rendu d'hier)."""
+    from ..ci.mentions import _batterie_servie
+    return phrase_depart_une_batterie(d, fmt_mad, couleur) if _batterie_servie(d) else ""
+
+
 def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
     """Lead nada (13/11/2026, Reda) — un devis C&I à DEUX options imprime sa
     page 2 comme le résidentiel : UN tableau « Équipement des deux options »
@@ -551,7 +560,8 @@ def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
         f'<td class="c2-dx-c"><div class="c2-dx-k" style="border-top:3px solid {gold};">'
         f'{opt} 2 &mdash; {titre_a}</div><table class="c2-tot-tbl">'
         + _rangees_totaux(L, tot_a, fmt_mad, False)
-        + '</table></td></tr></table>')
+        # Fondateur 19/11/2026 — « démarrer avec une seule batterie » ('' sans bloc).
+        + '</table>' + phrase_depart_une_batterie(d, fmt_mad, muted) + '</td></tr></table>')
     entete = (
         f'<table class="c2-tbl"><tr><th>{L("designation", "Désignation")}</th>'
         f'<th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th>'
@@ -827,7 +837,7 @@ def build(ctx):
     </div>
   </div>
 
-  {note_html}{clauses_html}
+  {_phrase_mono(d, fmt_mad, muted)}{note_html}{clauses_html}
   {bloc_option_avec(d, L, fmt_mad, (navy, muted, line_soft, wash))}
   {options_html}{injection_html}
   {block}
