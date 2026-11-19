@@ -42,9 +42,13 @@ const premierVisible = (racine, selecteur) => [...(racine?.querySelectorAll(sele
 function focusInitial(racine) {
   const voulu = premierVisible(racine, '[data-focus-initial]')
   const poignee = premierVisible(racine, '.poignee')
-  if (voulu) voulu.focus()
+  // R3-064 — ouverte à la souris ou au doigt, le focus posé d'office ne dessine aucun anneau (le × entouré de bleu du
+  // bilan et d'Alléger) ; ouverte au clavier, il le dessine (Entrée valide l'action désignée, Tab montre où l'on est)
+  const poser = (el) => { if (derniereModalite === 'clavier') el.focus(); else el.focus({ focusVisible: false }) }
+  const champ = premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES)
+  if (voulu) poser(voulu)
   else if (poignee) poignee.focus({ focusVisible: false })
-  else (premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES))?.focus()
+  else if (champ) poser(champ)
 }
 
 /** R3-060 — fermer ne perd jamais une frappe : le champ où l'on tape est QUITTÉ avant la fermeture, son `onBlur` (qui

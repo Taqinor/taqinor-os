@@ -66,11 +66,26 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
     unmount()
     focus.mockClear()
-    render(
+    fireEvent.keyDown(document.body, { key: 'Tab' }) // ouverte au clavier
+    const auClavier = render(
       <FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><button type="button" data-focus-initial>OK</button></FeuilleACrans>,
     )
     expect(screen.getByRole('button', { name: 'OK' })).toHaveFocus()
     expect(focus.mock.calls.at(-1)).toEqual([])
+    auClavier.unmount()
+    // R3-064 — ouverte à la souris (bilan, Alléger : le × est le premier focalisable) : aucun anneau
+    focus.mockClear()
+    fireEvent.pointerDown(document.body)
+    const style = document.createElement('style')
+    style.textContent = '.poignee { display: none; }'
+    document.head.appendChild(style)
+    try {
+      render(<FeuilleACrans ouverte titre="Bilan du soir" onFermer={() => {}}><button type="button">Valider</button></FeuilleACrans>)
+      expect(screen.getByRole('button', { name: 'Fermer' })).toHaveFocus()
+      expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
+    } finally {
+      style.remove()
+    }
     focus.mockRestore()
   })
 

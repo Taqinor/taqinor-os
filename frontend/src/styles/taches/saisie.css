@@ -238,14 +238,37 @@
      son bord gauche (420 px moins le rembourrage de 2 rem du scrolleur de l'ERP). Aujourd'hui rend la place de son
      Agenda (que le panneau cachait) ; un projet en maître-détail rend celle de sa liste de projets : sinon, à 1280 px,
      le panneau coupait le titre du projet en deux. La copie `.sortante` (animation de sortie) ne pousse plus rien. */
-  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) { padding-right: calc(420px - 2rem); }
-  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau { grid-template-columns: minmax(0, 1fr); }
-  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau-agenda { display: none; }
+  /* R3-064 — la copie `.sortante` (le panneau qui repart, 180 ms) pousse ENCORE : l'Agenda ne réapparaît plus d'un coup
+     SOUS le panneau qui s'en va, il revient une fois le panneau parti (et se fond, plus bas) */
+  .route-fade > .tch:has(.feuille.panneau-bureau) { padding-right: calc(420px - 2rem); }
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau { grid-template-columns: minmax(0, 1fr); }
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau-agenda { display: none; }
   .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-page:has(> .ep-md-liste) { padding-left: 0; }
   .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .ep-md-liste { display: none; }
+  /* R3-064 — la place que l'Agenda rend reste une marge : la liste garde sa largeur de lecture (à 1920 elle s'étalait sur
+     960 px, l'étoile à 800 px de son titre) */
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau-liste { max-width: 720px; }
+  /* R3-064 — UN en-tête de panneau (fiche, bilan, Alléger) : × à gauche, titre à gauche en 17 px / 650 (le titre de la
+     fiche reste masqué : son titre est le grand champ) */
+  .tch .feuille.panneau-bureau .feuille-entete { grid-template-columns: 44px minmax(0, 1fr); column-gap: 6px; }
+  .tch .feuille.panneau-bureau .feuille-entete > span { display: none; }
+  .tch .feuille.panneau-bureau .feuille-titre {
+    text-align: left; font-size: 1.0625rem; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  /* R3-064 — le pied est toujours en BAS du panneau (Alléger : « Tout renvoyer aux projets » flottait à mi-hauteur) : le
+     bloc qui le porte (`.alleger`, `.bilan`) remplit le corps, le pied y prend `margin-top: auto` (règle ci-dessus) */
+  .tch .feuille.panneau-bureau .feuille-corps { display: flex; flex-direction: column; }
+  .tch .feuille.panneau-bureau .feuille-corps > :has(> .feuille-pied) { display: flex; flex-direction: column; flex: 1 0 auto; }
 }
 @media (min-width: 1360px) {
-  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau { grid-template-columns: 216px minmax(0, 1fr); }
+  .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau { grid-template-columns: 216px minmax(0, 1fr); }
+}
+/* R3-064 — le panneau POUSSE au rythme où il glisse (260 ms), et l'Agenda revient en fondu après son départ ; rien de
+   tout cela quand la personne a demandé moins d'animations */
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  .route-fade > .tch { transition: padding-right var(--motion-slow) var(--tch-ease-entree); }
+  .tch .tch-bureau-agenda { transition: opacity var(--motion-slow) var(--ease-standard); }
+  @starting-style { .tch .tch-bureau-agenda { opacity: 0; } }
 }
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
 /* R3-061 — les blocs que la lecture complète apporte (notes, check-list, Plus) gardent leur place dès la 1re image :

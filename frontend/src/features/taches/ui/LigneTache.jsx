@@ -453,7 +453,8 @@ export default function LigneTache({
         </DropdownMenu>
       </div>
       {hote ? createPortal(
-        <FeuilleACrans ouverte={feuilleActions} onFermer={() => setFeuilleActions(false)} titre={item.titre} apresFermeture={apresFeuilleActions}>
+        // cran 85 : la feuille épouse ses 8 rangées (`cran-auto`) — au cran 50, « Supprimer » restait sous le bord
+        <FeuilleACrans ouverte={feuilleActions} onFermer={() => setFeuilleActions(false)} titre={item.titre} cranInitial="85" apresFermeture={apresFeuilleActions}>
           <div className="actions-ligne-feuille">
             {actions.map((a) => (
               <button
