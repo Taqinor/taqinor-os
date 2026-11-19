@@ -422,7 +422,10 @@ class ModifierTests(BaseApi):
 
     def test_jamais_soi_meme(self):
         tache = fabriques.tache(self.u1)
-        self.assertEqual(self._patch(tache, {'bloquee_par_id': tache.pk}).status_code, 400)
+        # se bloquer soi-même : règle croisée chemin ↔ corps que le schéma ne peut dire → refus d'état, 409
+        reponse = self._patch(tache, {'bloquee_par_id': tache.pk})
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('bloquee_par_id', reponse.json())
 
     def test_une_chaine_de_plus_de_50_maillons_est_refusee(self):
         precedente = None
@@ -430,7 +433,7 @@ class ModifierTests(BaseApi):
             precedente = fabriques.tache(self.u1, titre=f'maillon {rang}', bloquee_par=precedente)
         neuve = fabriques.tache(self.u1, titre='neuve')
         reponse = self._patch(neuve, {'bloquee_par_id': precedente.pk})
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # la chaîne lue en base : état, 409
         self.assertIn('bloquee_par_id', reponse.json())
 
     def test_le_prerequis_d_un_collegue_repond_comme_inconnu(self):
@@ -1066,11 +1069,12 @@ class ReordonnerTests(BaseApi):
             par_echeance = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1), echeance=J)
             demain = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1))
             reponse = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': par_echeance.pk})
-            self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+            self.assertEqual(reponse.status_code, 204, reponse.content[:300])  # réordonner ne rend aucun corps
             self.assertEqual([_relue(par_echeance).rang_jour, _relue(du_jour).rang_jour], [1024, 2048])
             self.assertIsNone(_relue(demain).rang_jour)  # une tâche de demain n'est pas de la liste d'aujourd'hui
             refus = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': demain.pk})
-            self.assertEqual((refus.status_code, refus.json()['avant_id']), (400, ['Valeur inconnue.']))
+            # voisin pris dans une AUTRE liste (demain) : refus d'état, 409 au même champ
+            self.assertEqual((refus.status_code, refus.json()['avant_id']), (409, ['Valeur inconnue.']))
 
     def test_la_liste_du_jour_demande_un_jour(self):
         tache = fabriques.tache(self.u1)
@@ -1175,7 +1179,8 @@ class RappelsTests(BaseApi):
     def test_une_ancre_sans_date_est_refusee(self):
         tache = fabriques.tache(self.u1)
         reponse = self._poser(tache, {'ancre': 'echeance', 'decalage_jours': -1, 'heure': '18:00'})
-        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (400, ['ancre']))
+        # la date n'est pas posée sur la tâche : état, 409 (même champ, + detail/code des 409 du module)
+        self.assertEqual((reponse.status_code, list(champs(reponse.json()))), (409, ['ancre', 'detail', 'code']))
 
     def test_cinq_rappels_au_plus_par_tache(self):
         tache = fabriques.tache(self.u1, jour_prevu=_j(1))
@@ -1194,7 +1199,7 @@ class RappelsTests(BaseApi):
 
     def test_une_tache_close_ou_d_un_collegue_est_refusee(self):
         close = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
-        self.assertEqual(self._poser(close, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 400)
+        self.assertEqual(self._poser(close, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 409)  # close
         autre = fabriques.tache(self.u2)
         self.assertEqual(self._poser(autre, {'jour': _j(1).isoformat(), 'heure': '09:00'}).status_code, 404)
         self.assertEqual(Rappel.objects.count(), 0)
@@ -1287,6 +1292,19 @@ class RegleDeRecurrenceTests(BaseApi):
         self.assertFalse(regle.actif)
         corps = self._post(f'taches/{tache.pk}/terminer/').json()
         self.assertIsNone(corps['suivante'])
+
+    def test_cocher_une_occurrence_quand_la_serie_en_a_deja_une_autre_ouverte(self):
+        """La série porte DEUX occurrences ouvertes (donnée d'avant l'invariant 5, ou née ailleurs) : cocher l'une
+        réussit (200, faite) sans faire naître une 3e — `creation._regle_existante` refuserait (409 d'état) et la
+        coche entière tomberait ; l'autre occurrence reste la seule ouverte de la série."""
+        regle, tache = self._regle()
+        autre = _occurrence(self.u1, regle, _j(8))
+        reponse = self._post(f'taches/{tache.pk}/terminer/')
+        self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+        self.assertIsNone(reponse.json()['suivante'])
+        self.assertEqual(_relue(tache).statut, StatutTache.FAIT)
+        ouvertes = Tache.objects.filter(recurrence=regle, statut__in=('a_faire', 'en_attente'))
+        self.assertEqual(list(ouvertes.values_list('pk', flat=True)), [autre.pk])
 
     def test_appliquer_a_l_ouverte_recale_sans_report(self):
         regle = _serie_hebdo(self.u1)

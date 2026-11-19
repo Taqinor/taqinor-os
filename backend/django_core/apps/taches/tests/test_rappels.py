@@ -23,6 +23,7 @@ from apps.taches.services.rappels import (
     retirer_rappel,
 )
 from apps.taches.tests import fabriques
+from core.conflit_etat import ConflitEtat
 
 NEUF_H = datetime.time(9, 0)
 
@@ -64,8 +65,12 @@ class RappelTests(TestCase):
 
     def test_ancre_sans_date_refusee(self):
         tache = fabriques.tache(self.u1)
-        with self.assertRaises(serializers.ValidationError):
+        # la tâche n'a pas d'échéance : refus d'ÉTAT de la tâche (409), même message sous `ancre`
+        with self.assertRaises(ConflitEtat) as refus:
             poser_rappel(tache, acteur=self.u1, ancre='echeance', heure='18:00')
+        self.assertEqual([str(m) for m in refus.exception.detail['ancre']],
+                         ["Cette date n'est pas posée sur la tâche."])
+        # un décalage hors de -7..0 est une erreur de FORME : 400, avant même de lire la tâche
         with self.assertRaises(serializers.ValidationError):
             poser_rappel(tache, acteur=self.u1, ancre='echeance', decalage_jours=-8, heure='18:00')
         self.assertFalse(Rappel.objects.exists())
@@ -94,8 +99,9 @@ class RappelTests(TestCase):
             with self.assertRaises(Http404):
                 poser_rappel(a_lui, acteur=acteur, jour=_j(1), heure=NEUF_H)
         faite = fabriques.tache(self.u1, statut=StatutTache.FAIT, fait_le=timezone.now())
-        with self.assertRaises(serializers.ValidationError):
+        with self.assertRaises(ConflitEtat) as refus:  # tâche close : refus d'état, 409
             poser_rappel(faite, acteur=self.u1, jour=_j(1), heure=NEUF_H)
+        self.assertEqual([str(m) for m in refus.exception.detail['rappel']], ['Cette tâche est close.'])
         self.assertFalse(Rappel.objects.exists())
 
     # --- Plafonds (invariant 19) ----------------------------------------------------------
@@ -105,9 +111,9 @@ class RappelTests(TestCase):
         self._rappel(tache, statut=StatutRappel.ANNULE)  # un annulé ne compte pas
         for n in range(5):
             poser_rappel(tache, acteur=self.u1, jour=_j(n + 1), heure=NEUF_H)
-        with self.assertRaises(serializers.ValidationError) as ctx:
+        with self.assertRaises(ConflitEtat) as ctx:  # plafond atteint : refus d'état, 409
             poser_rappel(tache, acteur=self.u1, jour=_j(9), heure=NEUF_H)
-        self.assertIn('rappel', ctx.exception.detail)
+        self.assertEqual([str(m) for m in ctx.exception.detail['rappel']], ['5 rappels au plus par tâche.'])
         self.assertEqual(Rappel.objects.filter(statut=StatutRappel.EN_ATTENTE).count(), 5)
 
     def test_cent_au_plus_par_compte(self):
@@ -116,8 +122,10 @@ class RappelTests(TestCase):
             Rappel(company=self.a, proprietaire=self.u1, tache=tache, jour=_j(1), heure=NEUF_H)
             for tache in taches for _ in range(5)])
         nouvelle = fabriques.tache(self.u1)
-        with self.assertRaises(serializers.ValidationError):
+        with self.assertRaises(ConflitEtat) as refus:  # plafond du compte atteint : refus d'état, 409
             poser_rappel(nouvelle, acteur=self.u1, jour=_j(1), heure=NEUF_H)
+        self.assertEqual([str(m) for m in refus.exception.detail['rappel']],
+                         ['100 rappels en attente au plus.'])
         autre = fabriques.tache(self.voisin)
         poser_rappel(autre, acteur=self.voisin, jour=_j(1), heure=NEUF_H)  # plafond par compte
 
