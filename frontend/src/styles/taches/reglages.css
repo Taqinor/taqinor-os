@@ -121,7 +121,6 @@
 @media (max-width: 767px) {
   .tch .es-reglages-grille.es-ouverte > .es-rubriques { display: none; }
 }
-.tch .es-barre-sous-page { margin-top: -4px; }
 .tch .es-panneau > .es-panneau-titre { margin-top: 10px; margin-bottom: 8px; }
 @media (min-width: 768px) {
   .tch .es-rubrique { width: calc(100% - 16px); margin: 0 8px; padding: 10px 16px; min-height: 60px; border-radius: 10px; }
@@ -133,7 +132,7 @@
   .tch .es-reglages-grille { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; column-gap: 32px; align-items: start; }
 }
 @media (hover: hover) {
-  .tch .es-rubrique:hover { background: var(--tch-selection); }
+  .tch .es-rubrique:not([aria-current="page"]):hover { background: var(--tch-survol); } /* R2-128 : le survol n'est plus dessiné comme la sélection */
 }
 
 /* R2-125 — « Reportée à jeu. 19 · Appeler le fournisseur » : la tâche touchée, en gris sous le verbe */

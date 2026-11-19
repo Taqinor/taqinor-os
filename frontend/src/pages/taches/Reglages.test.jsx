@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -261,6 +261,31 @@ describe('TCH108 — Réglages', () => {
     expect(await screen.findByRole('heading', { level: 2, name: 'Notifications' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Réglages' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Réglages' })).toBeNull()
+  })
+
+  it('R2-128 — bureau : /reglages ouvre « Notifications » d\'office, une seule rubrique est marquée courante', async () => {
+    const { container } = monter('/taches/reglages')
+    expect(await screen.findByRole('heading', { level: 2, name: 'Notifications' })).toBeInTheDocument()
+    expect(container.querySelectorAll('.es-rubrique[aria-current="page"]')).toHaveLength(1)
+    expect(container.querySelector('.es-rubrique[aria-current="page"]')).toHaveTextContent('Notifications')
+  })
+
+  it('R2-128 — iPhone : la sous-page a UN retour, celui de la coquille (`retour`), et la liste n\'ouvre rien d\'office', async () => {
+    const avant = window.matchMedia
+    mockMatchMedia(true)
+    try {
+      const { container } = monter('/taches/reglages/donnees')
+      await screen.findByRole('heading', { level: 1, name: 'Mes données' })
+      expect(container.querySelectorAll('.entete-retour')).toHaveLength(1)
+      expect(container.querySelector('.ep-retour')).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'Réglages' })).toHaveLength(1)
+      cleanup()
+      monter('/taches/reglages')
+      expect(await screen.findByRole('heading', { level: 1, name: 'Réglages' })).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { level: 2, name: 'Notifications' })).toBeNull()
+    } finally {
+      window.matchMedia = avant
+    }
   })
 
   it('un échec de lecture dit « Pas à jour » et garde la liste des rubriques', async () => {
