@@ -21,6 +21,17 @@ import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 const SEMAINE_COURTE = 'Semaine courte, on reprend lundi.'
 export const ROUTE_PLANIFIER_SEMAINE = '/taches/agenda?vue=semaine&placer=1'
 
+/** R3-099 — « Planifier ma semaine » depuis la Revue : à partir du jeudi (et le week-end), la semaine à planifier est la
+ *  SUIVANTE — celle qui finit n'a plus rien à planifier — : l'adresse porte son lundi (`jour`), comme le fait l'Agenda
+ *  dès le jeudi 15 h. Du lundi au mercredi, l'adresse ne dit pas de jour : l'Agenda choisit (semaine en cours). */
+function routePlanifierDepuisRevue(aujourdhui) {
+  const [a, m, j] = aujourdhui.split('-').map(Number)
+  const jourSemaine = (new Date(Date.UTC(a, m - 1, j)).getUTCDay() + 6) % 7 // lundi = 0
+  if (jourSemaine < 3) return ROUTE_PLANIFIER_SEMAINE
+  const lundi = new Date(Date.UTC(a, m - 1, j + 7 - jourSemaine)).toISOString().split('T')[0]
+  return `${ROUTE_PLANIFIER_SEMAINE}&jour=${lundi}`
+}
+
 function ChoixAction({ projetId, valeur, onChoisir }) {
   const [taches, setTaches] = useState(null)
   const [erreur, setErreur] = useState('')
@@ -244,7 +255,7 @@ export default function Revue() {
       ) : null}
       {fini ? (
         <div className="ep-revue-fin">
-          <button type="button" className="bouton plein" onClick={() => navigate(ROUTE_PLANIFIER_SEMAINE)}>Planifier ma semaine</button>
+          <button type="button" className="bouton plein" onClick={() => navigate(routePlanifierDepuisRevue(aujourdhui))}>Planifier ma semaine</button>
         </div>
       ) : null}
     </CoquilleTaches>

@@ -56,8 +56,8 @@ afterEach(() => { vi.clearAllMocks(); window.localStorage.clear() })
 describe('TCH109 — Mon iPhone', () => {
   it('compte les étapes faites sur leurs données : seul le jeton flux utilisé est fait', async () => {
     monter()
-    expect(await screen.findByText('1 sur 5')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: '1 étapes sur 5 faites' })).toBeInTheDocument()
+    expect(await screen.findByText('1 sur 6')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '1 étapes sur 6 faites' })).toBeInTheDocument()
     const calendrier = await etape(/Voir tes tâches dans le Calendrier/)
     expect(calendrier).toHaveTextContent('Fait')
     expect(calendrier).toHaveAttribute('aria-expanded', 'false')
@@ -74,11 +74,11 @@ describe('TCH109 — Mon iPhone', () => {
     expect(await etape(/Recevoir les notifications/)).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('deux jetons de plus utilisés et la permission accordée : « 4 sur 5 », les étapes faites se replient', async () => {
+  it('deux jetons de plus utilisés et la permission accordée : « 4 sur 6 », les étapes faites se replient', async () => {
     window.Notification = { permission: 'granted' }
     listerJetons.mockResolvedValue({ data: { results: [jetonFlux(), utilise('capture', 5), utilise('tuile', 6)] } })
     monter()
-    expect(await screen.findByText('4 sur 5')).toBeInTheDocument()
+    expect(await screen.findByText('4 sur 6')).toBeInTheDocument()
     expect(await etape(/Recevoir les notifications/)).toHaveTextContent('Fait')
     expect(await etape(/Ouvrir Aujourd'hui depuis l'icône/)).toHaveAttribute('aria-expanded', 'true')
   })
@@ -254,7 +254,20 @@ describe('TCH109 — Mon iPhone', () => {
     const bloc = await screen.findByRole('region', { name: "Mettre Tâches sur l'écran d'accueil" })
     expect(within(bloc).getByRole('heading')).toHaveTextContent('Fait')
     expect(within(bloc).queryByRole('listitem')).toBeNull()
+    // R3-098 — elle compte : « 2 sur 6 » (le jeton flux utilisé + l'icône)
+    expect(await screen.findByText('2 sur 6')).toBeInTheDocument()
     delete window.matchMedia
+  })
+
+  it('R3-098 — « Mettre Tâches sur l\'écran d\'accueil » est l\'étape 1, numérotée, puis 2 à 6 ; « Six étapes »', async () => {
+    const { container } = monter()
+    const bloc = await screen.findByRole('region', { name: "Mettre Tâches sur l'écran d'accueil" })
+    expect(bloc.querySelector('.num').textContent).toBe('1')
+    expect(screen.getByText('Six étapes, à faire une fois. Chacune se replie quand elle est faite.')).toBeInTheDocument()
+    await screen.findByText('1 sur 6')
+    const numeros = [...container.querySelectorAll('ol.ep-etapes > li .num')].map((n) => n.textContent)
+    // l'étape « calendrier » (3) est faite : sa coche remplace son numéro
+    expect(numeros).toEqual(['2', '', '4', '5', '6'])
   })
 
   it('R2-130 — « Oui / Non » répond à une question écrite juste au-dessus ; les guillemets ne se séparent plus de leur mot', async () => {
@@ -274,6 +287,6 @@ describe('TCH109 — Mon iPhone', () => {
     listerJetons.mockRejectedValue(new Error('Network Error'))
     monter()
     expect(await screen.findByText('Pas à jour')).toBeInTheDocument()
-    expect(screen.getByText('0 sur 5')).toBeInTheDocument()
+    expect(screen.getByText('0 sur 6')).toBeInTheDocument()
   })
 })

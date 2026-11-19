@@ -128,11 +128,13 @@ function Etape({ numero, titre, fait, ouverte, onBasculer, children }) {
 /** Les notifications et l'icône d'accueil exigent que l'ERP soit sur l'écran d'accueil : c'est la première chose
  *  de l'écran, nommée, avec « Fait » quand on l'ouvre déjà depuis son icône (R2-126, S1 n°14). */
 function MettreSurAccueil({ fait }) {
+  // R3-098 — c'est l'étape 1, numérotée et dessinée comme les cinq autres (2 à 6) : elle n'était pas numérotée et
+  // l'écran comptait « cinq étapes » sous six choses à faire
   return (
     <section className="section ep-installer" aria-label="Mettre Tâches sur l'écran d'accueil">
-      <h2 className="section-titre">
-        <span>Mettre Tâches sur l'écran d'accueil</span>
-        <span className="compte">{fait ? 'Fait' : 'À faire'}</span>
+      <h2 className={`ep-etape-i ${fait ? 'fait' : 'encours'}`}>
+        <span className="num chiffres" aria-hidden="true">{fait ? <Check className="i" aria-hidden="true" /> : 1}</span>
+        <span><b>Mettre Tâches sur l'écran d'accueil</b><span className="etat">{fait ? 'Fait' : 'À faire'}</span></span>
       </h2>
       <div className="ep-etape-ouverte">
       {fait ? <p className="rassure">Tu l'ouvres depuis son icône.</p> : (
@@ -411,7 +413,9 @@ export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDeman
   const premier = faits.indexOf(false)
   // Les étapes déjà faites À L'OUVERTURE sont repliées ; une étape qu'on vient de faire reste ouverte (Envoyer un test).
   if (jetons.pret && depart === null) setDepart(premier)
-  const nombre = faits.filter(Boolean).length
+  const installeeDeja = installee()
+  // R3-098 — six étapes : « Mettre Tâches sur l'écran d'accueil » (1) compte avec les cinq autres (2 à 6)
+  const nombre = faits.filter(Boolean).length + (installeeDeja ? 1 : 0)
   const ouverteParDefaut = (i) => i === (depart ?? 0) || i === etapeDemandee
   const bloc = (usage, libelleCreer, libelleCopie, valeurCopiee) => (
     <BlocJeton usage={usage} jeton={actif(jetons.jetons, usage)} revele={jetons.reveles[usage]} copie={jetons.copies[usage]}
@@ -433,16 +437,16 @@ export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDeman
 
   return (
     <div>
-      <MettreSurAccueil fait={installee()} />
-      <p className="ep-intro">Cinq étapes, à faire une fois. Chacune se replie quand elle est faite.</p>
+      <p className="ep-intro">Six étapes, à faire une fois. Chacune se replie quand elle est faite.</p>
       <div className="ep-progres-etapes chiffres">
-        <span>{`${nombre} sur 5`}</span>
-        <div className="ep-barre-avance" role="img" aria-label={`${nombre} étapes sur 5 faites`}><i style={{ '--avance': nombre / 5 }} /></div>
+        <span>{`${nombre} sur 6`}</span>
+        <div className="ep-barre-avance" role="img" aria-label={`${nombre} étapes sur 6 faites`}><i style={{ '--avance': nombre / 6 }} /></div>
       </div>
+      <MettreSurAccueil fait={installeeDeja} />
       {jetons.echec ? <p className="es-erreur es-aide" role="alert">Pas à jour</p> : null}
       <ol className="ep-etapes">
         {TITRES.map((titre, i) => (
-          <Etape key={titre} numero={i + 1} titre={titre} fait={faits[i]} ouverte={choix[i] ?? ouverteParDefaut(i)}
+          <Etape key={titre} numero={i + 2} titre={titre} fait={faits[i]} ouverte={choix[i] ?? ouverteParDefaut(i)}
             onBasculer={() => setChoix((c) => ({ ...c, [i]: !(c[i] ?? ouverteParDefaut(i)) }))}>
             {contenus[i]}
           </Etape>

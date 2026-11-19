@@ -264,4 +264,18 @@ describe('TCH93 — Revue : la fin', () => {
     await user.click(await screen.findByRole('button', { name: 'Planifier ma semaine' }))
     await waitFor(() => expect(screen.getByTestId('lieu')).toHaveTextContent('/taches/agenda?vue=semaine&placer=1'))
   })
+
+  it.each([
+    ['mardi', '2026-11-17T09:00:00', '/taches/agenda?vue=semaine&placer=1'],
+    ['jeudi', '2026-11-19T09:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2026-11-23'],
+    ['dimanche', '2026-11-22T18:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2026-11-23'],
+    ['jeudi de fin de mois', '2026-12-31T09:00:00', '/taches/agenda?vue=semaine&placer=1&jour=2027-01-04'],
+  ])('R3-099 — un %s (%s), « Planifier ma semaine » ouvre %s', async (_jour, maintenant, attendu) => {
+    vi.setSystemTime(new Date(maintenant))
+    monter()
+    const user = userEvent.setup()
+    await user.click(within(await screen.findByRole('region', { name: 'Ventes' })).getByRole('button', { name: 'Passer' }))
+    await user.click(await screen.findByRole('button', { name: 'Planifier ma semaine' }))
+    await waitFor(() => expect(screen.getByTestId('lieu').textContent).toBe(attendu))
+  })
 })
