@@ -34,7 +34,8 @@ const monter = (enfant) => render(
     h(CoquilleTaches, { ecran: 'aujourdhui', titre: "Aujourd'hui" }, enfant)),
 )
 
-beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); reinitialiserGestes() })
+// la coquille garde « Messages sans délai » sur l'appareil (R2-088) : un test ne la reçoit jamais d'un autre
+beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); reinitialiserGestes(); window.localStorage.clear() })
 afterEach(() => { reinitialiserGestes(); vi.useRealTimers() })
 
 describe('TCH46 — (1) annonces lues par role=status', () => {
@@ -65,6 +66,20 @@ describe('TCH46 — (1) annonces lues par role=status', () => {
     expect(onAnnuler).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('status')).toHaveTextContent('Annulé')
     expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+  })
+
+  it('vague 2 — un bouton qui n\'est pas « Annuler » (« Reprendre ») ne fait jamais annoncer « Annulé »', async () => {
+    const onAnnuler = vi.fn()
+    monter(h('p', null, 'x'))
+    act(() => { proposerAnnuler({ message: 'Pas ajoutée : réseau', libelle: 'Reprendre', onAnnuler }) })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(screen.getByRole('button', { name: 'Reprendre' }))
+    expect(onAnnuler).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).not.toHaveTextContent('Annulé')
+    // …et un geste qui le précise annonce SA phrase
+    act(() => { proposerAnnuler({ message: 'Pas ajoutée', libelle: 'Reprendre', apres: 'Phrase reprise', onAnnuler }) })
+    await user.click(screen.getByRole('button', { name: 'Reprendre' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Phrase reprise')
   })
 
   it('une annulation refusée par le serveur est DITE en français, jamais avalée', async () => {

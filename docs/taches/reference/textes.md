@@ -494,7 +494,7 @@ Toute révélation se ferme par « OK ».
 | Garder ces N | « {n} gardées » (puis le focus va sur Prévu) |
 | ★ | « Essentielle : {titre} » · « Plus essentielle : {titre} » |
 | Alléger | « {n} retournées aux projets » |
-| Annuler | « Annulé » |
+| Annuler | « Annulé » (seulement après le bouton « Annuler » : « Reprendre » n'annonce rien, la phrase revient au champ qui prend le focus) |
 | Ajout | « Ajoutée : {titre} » ; liste « {n} tâches créées » |
 | Hors ligne | « Hors ligne : gardée, elle partira dès le retour du réseau » |
 | Conflit | « Modifiée sur ton autre appareil : choisis Garder la mienne ou Prendre l'autre » |

@@ -78,13 +78,18 @@ export function annoncer(texte) {
  * Pose LE toast (le précédent disparaît). `message` s'écrit « Faite », « Reportée à lun. 23 »…
  * `annonce` (facultatif) est la phrase lue — par défaut le message. Sans `onAnnuler`, un simple
  * message (« Close dans l'ERP ») : aucun bouton Annuler.
+ * `apres` (facultatif) : la phrase lue une fois le bouton touché — par défaut « Annulé » pour « Annuler », RIEN pour un
+ * autre bouton (« Reprendre » remet la phrase au champ, qui prend le focus : l'annonce « Annulé » y était fausse).
  */
-export function proposerAnnuler({ message, annonce, onAnnuler, libelle = LIBELLE_ANNULER, duree = DUREE_TOAST_MS } = {}) {
+export function proposerAnnuler({
+  message, annonce, onAnnuler, libelle = LIBELLE_ANNULER, apres, duree = DUREE_TOAST_MS,
+} = {}) {
   jetons += 1
   const id = jetons
   minuteur.raisons.clear()
+  const phraseApres = apres === undefined ? (libelle === LIBELLE_ANNULER ? 'Annulé' : null) : apres
   poser({
-    toast: { id, message, libelle, onAnnuler: onAnnuler ?? null },
+    toast: { id, message, libelle, apres: phraseApres, onAnnuler: onAnnuler ?? null },
     annonce: annonce ?? message,
     rang: etat.rang + 1,
   })
@@ -93,14 +98,14 @@ export function proposerAnnuler({ message, annonce, onAnnuler, libelle = LIBELLE
   return id
 }
 
-/** Annule le geste du toast : `onAnnuler()` puis « Annulé » lu, le toast part. */
+/** Le bouton du toast : `onAnnuler()` puis sa phrase lue (« Annulé » pour « Annuler », voir `apres`), le toast part. */
 export async function annulerToast() {
   const { toast } = etat
   if (!toast) return
   fermerToast()
   try {
     await toast.onAnnuler?.()
-    annoncer('Annulé')
+    if (toast.apres) annoncer(toast.apres)
   } catch (err) {
     // l'échec de l'annulation est DIT (message du serveur, en français) — jamais avalé
     proposerAnnuler({ message: frenchError(err, "L'annulation a échoué. Réessayez.") })
