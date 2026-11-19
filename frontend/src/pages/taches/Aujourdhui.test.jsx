@@ -56,7 +56,7 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     expect(reperes[0]).toBe('Essentiel')
     expect(reperes.slice(1, 3).every((t) => t.endsWith('Toute la journée'))).toBe(true)
     expect(reperes.slice(3)).toEqual([
-      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', "En attente1· 1 en attente d'une autre tâche", 'Faites1', "Ailleurs dans l'ERP",
+      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', 'En attente1· Bloquées 1', 'Faites1', "Ailleurs dans l'ERP",
     ])
   })
 
@@ -763,11 +763,9 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(2)
   })
 
-  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; Annuler remet l\'état d\'avant', async () => {
+  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; R2-027 : aucun toast', async () => {
     servir(journeeEssentielleFaite())
-    api.post.mockImplementation((url) => Promise.resolve(
-      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : url === '/taches/gestes/91/annuler/' ? annulation(12) : { data: {} },
-    ))
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : { data: {} }))
     const { container } = monter()
     await screen.findByText('Devis Settat')
     await ouvrirFaites()
@@ -779,19 +777,13 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
     expect(faite).not.toBeNull()
     expect(within(faite).queryByRole('img', { name: 'Essentielle' })).toBeNull()
-    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/91/annuler/', {}))
-    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
-    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
-    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
-    expect(within(zones(container).faites.querySelector('[data-ligne="tache:12"]')).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    // R2-027 — l'étoile vide suffit : pas de toast (retoucher l'étoile la remet)
+    expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
   })
 
-  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; Annuler la rend à Faites seule', async () => {
+  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; R2-027 : aucun toast', async () => {
     servir(donnees())
-    api.post.mockImplementation((url) => Promise.resolve(
-      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : url === '/taches/gestes/92/annuler/' ? annulation(12) : { data: {} },
-    ))
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : { data: {} }))
     const { container } = monter()
     await screen.findByText('Devis Settat')
     await ouvrirFaites()
@@ -803,13 +795,7 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
     expect(faite).not.toBeNull()
     expect(within(faite).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
-    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/92/annuler/', {}))
-    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
-    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
-    const rendue = zones(container).faites.querySelector('[data-ligne="tache:12"]')
-    expect(rendue).not.toBeNull()
-    expect(within(rendue).queryByRole('img', { name: 'Essentielle' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
   })
 })
 

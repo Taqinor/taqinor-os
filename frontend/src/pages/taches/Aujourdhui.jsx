@@ -642,27 +642,12 @@ export default function Aujourdhui() {
     try {
       const { data } = await client.marquerEssentiel({ tache_id: item.id, essentielle: suivant })
       poserProgression(data.progression)
-      const avant = { origines: [] }
-      setDonnees((d) => {
-        const r = rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version)
-        avant.origines = r.origines
-        return r.suite
-      })
-      proposerAnnuler({
-        message: suivant ? 'Essentielle' : 'Plus essentielle',
-        onAnnuler: async () => {
-          const rendu = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
-          // l'état d'avant : la ★ d'avant, à chacune de ses places d'avant (une essentielle faite retrouve ses deux lignes)
-          setDonnees((d) => {
-            const { suite, item: trouve } = retirer(d, cleDe(item))
-            if (!trouve || avant.origines.length === 0) return d
-            const retour = { ...trouve, essentielle: !suivant, lock_version: versionDe(rendu, item.id, trouve.lock_version) }
-            return remettre(suite, { origines: avant.origines.map((o) => ({ ...o, item: retour })) })
-          })
-        },
-      })
+      setDonnees((d) => rangerEssentielle(d, cleDe(item), suivant, data.tache?.lock_version).suite)
+      // R2-027 — l'étoile pleine suffit : plus de toast « Essentielle · Annuler » (retoucher l'étoile la retire) ;
+      // le lecteur d'écran l'entend toujours
+      annoncer(`${suivant ? 'Essentielle' : 'Plus essentielle'} : ${item.titre}`)
     } catch (err) {
-      annoncer(frenchError(err))
+      proposerAnnuler({ message: frenchError(err) }) // un refus se VOIT
     }
   }, [garde, donnees, setDonnees, poserProgression])
 

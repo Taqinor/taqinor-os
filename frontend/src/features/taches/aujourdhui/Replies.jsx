@@ -4,7 +4,7 @@ import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { annulerEtRecaler, versionDe } from '../lib/versions'
-import { accord, jourNomme } from '../lib/textes'
+import { jourNomme } from '../lib/textes'
 import { Ligne } from './Sections'
 import { Ailleurs } from './LignesErp'
 
@@ -13,7 +13,7 @@ import { Ailleurs } from './LignesErp'
      · « À revoir (n) » : reportées 3 fois, retards de plus de 7 jours, activités ERP en retard ; un lot
        « Tout en réserve » ; par tâche : Aujourd'hui · Choisir un jour · En réserve · Abandonner
        (+ Découper si reportée 3 fois) → `taches/{id}/trancher/` ; jamais bloquant ;
-     · « En attente (n) » · « {b} en attente d'une autre tâche » ; « Faites (n) » ;
+     · « En attente (n) » · « Bloquées {b} » (R2-027) ; « Faites (n) » ;
      · « Ailleurs dans l'ERP », lu à l'ouverture seulement.
    Un en-tête vide est absent. Tout geste est optimiste, grisé hors ligne, défait par « Annuler ».
    Maquettes : ecran-aujourdhui-matin.html (« À revoir 2 », « En attente 1 »), composants-4.html.
@@ -135,7 +135,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne, dep
   const aDecider = donnees.a_decider ?? []
   const enAttente = donnees.en_attente ?? []
   const faites = donnees.faites ?? []
-  const bloquees = donnees.a_trier?.bloquees ?? 0
+  const bloquees = donnees.a_trier?.bloquees ?? 0 // R2-027 : « En attente 1 · Bloquées 2 », jamais « en attente » deux fois
   const lignes = (items, avecActions = false) => (
     <div className="liste" role="list">
       {items.map((item) => (
@@ -170,7 +170,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne, dep
         <Replie
           titre="En attente"
           compte={enAttente.length}
-          indice={bloquees > 0 ? `· ${accord(bloquees, 'en attente', 'en attente')} d'une autre tâche` : ''}
+          indice={bloquees > 0 ? `· Bloquées ${bloquees}` : ''}
         >
           {lignes(enAttente)}
         </Replie>
