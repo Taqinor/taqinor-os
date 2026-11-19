@@ -677,3 +677,78 @@ class BriefCalepinageTest(BaseAssistantCalepinage):
         compte = User.objects.create_user(username='cala_sans', password='x',
                                           company=self.company, role=sans)
         self.assertIsNone(brief_calepinage(compte))
+
+
+def _garde_de_la_route(action):
+    """Le code de permission que la ROUTE de ``action`` exige pour SA méthode :
+    la garde de l'``@action`` (``code``), ou ``read_permission`` /
+    ``write_permission`` d'une vue ``ScopedPermission`` — résolu par l'URLconf
+    réelle, jamais lu comme un texte."""
+    import re
+
+    from django.urls import resolve
+
+    chemin = re.sub(r'\{[a-z_]+\}', '1', action.endpoint)
+    vue = resolve(chemin).func
+    methode = action.method.lower()
+    classe = getattr(vue, 'cls', None) or getattr(vue, 'view_class', None)
+    nom_action = (getattr(vue, 'actions', None) or {}).get(methode)
+    if nom_action:
+        gardes = getattr(classe, nom_action).kwargs.get('permission_classes') or ()
+        codes = {getattr(garde, 'code', None) for garde in gardes}
+        return codes - {None}
+    return {classe.read_permission if methode == 'get' else classe.write_permission}
+
+
+class ManifesteEtPermissionsTest(SimpleTestCase):
+    """CALA12 — toutes les actions ``calepinage.*`` : la permission du catalogue
+    est la garde de la route (assertion LOCALE de la parité FND14), une
+    écriture exige ``calepinage_gerer``, une lecture ``calepinage_voir`` ;
+    le manifeste nomme le module et chaque clé y est attribuée (ARC33)."""
+
+    def test_permission_du_catalogue_egale_garde_de_la_route(self):
+        from apps.calepinage.agent_actions import ACTIONS
+
+        for action in ACTIONS:
+            with self.subTest(action=action.key):
+                self.assertIn(action.required_permission, _garde_de_la_route(action))
+
+    def test_ecritures_et_lectures(self):
+        from apps.calepinage.agent_actions import ACTIONS
+
+        for action in ACTIONS:
+            with self.subTest(action=action.key):
+                attendu = ('calepinage_voir' if action.method == 'GET'
+                           else 'calepinage_gerer')
+                self.assertEqual(action.required_permission, attendu)
+                if action.risk == 'outward':
+                    self.assertTrue(action.confirm_summary)
+                    self.assertTrue(action.objets)
+
+    def test_les_cles_attendues_et_rien_d_autre(self):
+        from apps.calepinage.agent_actions import ACTIONS
+
+        self.assertEqual({a.key for a in ACTIONS}, {
+            'calepinage.du_lead', 'calepinage.resume', 'calepinage.variantes_comparer',
+            'calepinage.simulation_suivre', 'calepinage.simuler', 'calepinage.preparer',
+            'calepinage.publier_apercu', 'calepinage.publier_devis', 'calepinage.retenir',
+            'calepinage.a_traiter', 'calepinage.contenance'})
+        interdites = {'calepinage.approuver', 'calepinage.pack_technique'}
+        self.assertEqual({a.key for a in ACTIONS} & interdites, set())
+
+    def test_le_manifeste_attribue_les_cles_au_module(self):
+        from apps.agent import registry
+        from apps.calepinage.agent_actions import ACTIONS
+
+        registry.autodiscover_from_platform_manifests()
+        attribuees = registry._DISCOVERED.get('apps.calepinage.agent_actions', set())
+        self.assertEqual({a.key for a in ACTIONS} - attribuees, set())
+
+    def test_chaque_route_neuve_a_son_contrat_cite(self):
+        from apps.calepinage.agent_actions import ACTIONS
+
+        neuves = [a for a in ACTIONS if any(
+            segment in a.endpoint for segment in ('resume/', 'du-lead/', 'a-traiter/',
+                                                  'contenance/', 'preparer/', 'publier-devis/'))]
+        self.assertEqual(len(neuves), 7)
+        self.assertEqual(len(CONTRATS_ASSISTANT), 7)
