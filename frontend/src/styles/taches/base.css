@@ -657,7 +657,7 @@
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton.discret { color: var(--tch-texte-doux); font-weight: 500; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton[aria-disabled="true"] { opacity: 0.5; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton::after {
-  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%);
+  content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%);
 }
 @media (hover: hover) {
   .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton:hover { background: var(--tch-survol); }
