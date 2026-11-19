@@ -84,10 +84,12 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
   })
 
   it('plan_propose : une erreur du serveur s’affiche sous le geste, la liste reste', async () => {
-    api.post.mockRejectedValueOnce({ response: { status: 400, data: { error: 'x', essentielles: ['3 au plus.'] } } })
+    // le VRAI refus servi (`services/journee.py::_verifier_essentiels` → `RefusEtat` → 409 au champ, `detail` posé)
+    api.post.mockRejectedValueOnce({ response: { status: 409, data: {
+      detail: '3 au plus.', essentielles: ['3 au plus.'], error: { code: 'state_conflict', message: '3 au plus.', fields: null } } } })
     monter('plan_propose', contrat('journee_proposition'))
     await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('3 au plus.')
     expect(screen.getByText('Déclaration TVA')).toBeInTheDocument()
   })
 
