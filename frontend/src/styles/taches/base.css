@@ -27,8 +27,8 @@
 /* R2-084 — bas de page : le scrolleur de l'ERP réserve déjà ~78 px (barre d'onglets + zone sûre) ; 24 px de plus et
    le dernier élément remonte au-dessus du bouton + (72 px au-dessus du bas du scrolleur), sans 112 px de vide. */
 .tch .tch-page { max-width: 760px; margin-inline: auto; padding-bottom: 24px; background: var(--tch-surface); }
-/* …et la journée vide n'a pas de + : « Coller mes listes » est son seul bouton plein */
-.tch[data-ecran="aujourdhui"]:has(.vide-plein) > .fab { display: none; }
+/* R3-080 — la journée vide GARDE son + : c'est le geste de tous les jours, et l'écran vide le désigne (« ou touche +
+   pour une tâche ») ; « Coller mes listes » reste son seul bouton plein DANS la page. */
 @media (min-width: 768px) {
   /* R2-085 — une seule grille au bureau : la page part toujours du bord gauche du contenu (le titre est au même x
      d'un écran à l'autre, qu'il fasse 720 px ou, pour Aujourd'hui et l'Agenda, 1 320 px) ; la droite reste libre pour

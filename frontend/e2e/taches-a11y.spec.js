@@ -281,6 +281,19 @@ test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
     await expect(page.locator('.layout-main > [role="status"].bg-warning')).toBeHidden()
     await context.setOffline(false)
   })
+
+  test('R3-080 — journée vide : « ou touche + » désigne un + VISIBLE, de 44 px au moins, qui ouvre la saisie au premier toucher', async ({ page }) => {
+    await reinitialiser(page)
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await expect(page.getByText('ou touche + pour une tâche')).toBeVisible()
+    const plus = page.locator('.tch .fab')
+    await expect(plus).toBeVisible()
+    const boite = await plus.boundingBox()
+    expect(Math.min(boite.width, boite.height), 'taille du +').toBeGreaterThanOrEqual(44)
+    await plus.tap()
+    await expect(page.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeVisible()
+  })
+
 })
 
 test.describe('Tâches — enveloppe au bureau (1440 × 900)', () => {
