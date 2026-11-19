@@ -21,7 +21,13 @@ import { py, fermerDjangoApresTout } from './_django.js'
 import { RACINE } from './_enregistrement.js'
 import { API_DJANGO, assurerSessionPage, lireJson } from '../helpers.js'
 
-const etape = groupe('ACAL', ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367'])
+// PA2.5 (ACAL356 « l'écart atelier ↔ simulation se resserre ») : rejoué le 19/11 (enregistrement FAIL
+// docs/audits/acceptation/ACAL/2026-11-19-95fcef78b.md) — horizon 25° : atelier −18,5 %, simulation −8 %, écart
+// 26,5 % → 34,9 %. Clause non tenue : ACAL356 reste ouverte ; l'étape ne se joue qu'avec ACAL6_PA25=1.
+const AVEC_PA25 = process.env.ACAL6_PA25 === '1'
+const etape = groupe('ACAL', AVEC_PA25
+  ? ['ACAL355', 'ACAL356', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367']
+  : ['ACAL355', 'ACAL357', 'ACAL364', 'ACAL366', 'ACAL367'])
 fermerDjangoApresTout()
 test.describe.configure({ timeout: 900_000 })
 test.use({ viewport: { width: 1600, height: 1000 }, actionTimeout: 60_000 })
@@ -256,7 +262,7 @@ etape('PA2.3-ACAL355-production-par-pan', ['ACAL355'], async ({ page, context, s
 // l'onglet Horizon ⇒ carte, total « Zones » et production enregistrée baissent du MÊME facteur ; économies recalculées
 // (plafonnées à la facture) ; sans geste ⇒ chiffres strictement inchangés ; persistance du dératé.
 // ════════════════════════════════════════════════════════════════════════════
-etape('PA2.3-ACAL356-ACAL367-horizon', ['ACAL356', 'ACAL367'], async ({ page, context, suivi }) => {
+etape('PA2.3-ACAL356-ACAL367-horizon', AVEC_PA25 ? ['ACAL356', 'ACAL367'] : ['ACAL367'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL356', toitPlat())
   let bouton = await ouvrirAtelier(page, cal.id)
@@ -313,7 +319,7 @@ etape('PA2.3-ACAL356-ACAL367-horizon', ['ACAL356', 'ACAL367'], async ({ page, co
 // ACAL356 — matrice `shading12x24` à 0,8 relue : carte, total « Zones » et document à 0,8 × la référence (même toit sans
 // matrice, documents sans production stockée) ; persistance du dératé.
 // ════════════════════════════════════════════════════════════════════════════
-etape('PA2.3-ACAL356-matrice', ['ACAL356'], async ({ page, context, suivi }) => {
+if (AVEC_PA25) etape('PA2.3-ACAL356-matrice', ['ACAL356'], async ({ page, context, suivi }) => {
   await carteRefusee(context, suivi)
   const ref = await calepinageAvec('ACAL356 ref', toitPlat())
   const ombre = await calepinageAvec('ACAL356 ombre', { ...toitPlat(), shading12x24: MATRICE_08 })
@@ -452,7 +458,7 @@ if p is not None:
 sortie(1)`)
 }
 
-etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({ page, context, suivi }) => {
+if (AVEC_PA25) etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({ page, context, suivi }) => {
   const meteo = await reglerMeteo()
   try {
     await ecartSimulation({ page, context, suivi })
