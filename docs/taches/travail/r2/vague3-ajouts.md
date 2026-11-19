@@ -16,3 +16,19 @@ Vus en CI (PR 1481) ou sur la pile, à donner à la lane qui possède le fichier
   `axe-cloche3.cjs` à côté).
 - L'outil `capturer-reel.cjs`, étape `menu-ligne` : touche l'étoile cachée sous le bouton invisible et modifie le
   compte (signalé par T2-B1) : corriger le geste du script (appui long ou ⋯ visible).
+
+## Après le pli de la lane CI (`1b24f3474`, tête d'intégration `74f52651b`)
+Le contrôle api-fuzz n'avait JAMAIS lu les corps des routes Tâches (le compte de fuzz recevait 403 jusqu'à TCH168) :
+≈ 46 constats latents, corrigés à la racine. Ce que ça change pour les autres lanes :
+- Toutes les vues lisent du JSON seul (sauf `capture/`).
+- Un REFUS D'ÉTAT répond maintenant **409** avec le même corps qu'avant (nom déjà pris : projet, étape, modèle,
+  étiquette, vue ; 30 vues atteintes ; 3 essentielles déjà posées ; bilan fermé ; agenda externe injoignable, en
+  doublon ou au plafond ; incohérence `du`/`au`). Un identifiant envoyé qui ne désigne rien répond **404**, même corps.
+  Un 400 reste le refus de FORME (champ manquant, mal typé, hors liste).
+- **À faire côté écran (lane L2, qui possède `api/tachesApi.js`)** : un nom déjà pris arrive en 409 → `tachesApi`
+  l'affiche en TOAST au lieu de le dire sous le champ (l'option `erreurSousLeChamp` ne couvre que les 400). L'option
+  doit couvrir les 409 de champ (corps portant un nom de champ) : message sous le champ, pas de toast ; même chose pour
+  l'agenda externe (trois messages) et tout appelant qui affichait un 400 sous un champ. Tests front à réaligner sur
+  les VRAIS codes (les mocks rendent encore 400) ; specs e2e qui attendent un message sous le champ à rejouer.
+- Peuvent encore remonter en api-fuzz (400 gardés exprès) : `projet_id` inconnu dans une ligne de `POST taches/` ou
+  `saisie-rapide/` (« Projet inexistant. »), `conges` avec `au` avant `du`.
