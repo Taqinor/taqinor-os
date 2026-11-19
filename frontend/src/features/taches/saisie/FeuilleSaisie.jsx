@@ -561,7 +561,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
               <button
                 type="button"
                 className="bouton plein"
-                aria-disabled={!texte.trim() || undefined}
+                aria-disabled={!texte.trim() || titreTropLong || undefined}
                 onClick={envoyer}
               >
                 Ajouter
