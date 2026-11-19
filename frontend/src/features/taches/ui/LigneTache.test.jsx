@@ -204,9 +204,9 @@ describe('TCH44 — Étoile : 3 au plus', () => {
 })
 
 describe('TCH44 — balayage tactile', () => {
-  const poser = (cible, type, x) => {
+  const poser = (cible, type, x, y = 100) => {
     const e = new Event(type, { bubbles: true })
-    Object.assign(e, { clientX: x, clientY: 100, pointerType: 'touch', pointerId: 1 })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
     fireEvent(cible, e)
   }
 
@@ -233,6 +233,62 @@ describe('TCH44 — balayage tactile', () => {
     poser(ligne, 'pointerup', 100)
     expect(onReporter).toHaveBeenCalledTimes(1)
     expect(ligne).not.toHaveClass('glisse-gauche')
+  })
+})
+
+describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne bloque plus le seuil)', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('un balayage droit COMPLET (au-delà de la moitié de la ligne) coche, et la ligne reste en place', async () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const onAnnonce = vi.fn()
+    const { container } = monter({ onTerminer, onAnnonce })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 120)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointermove', 300) // 280 px de doigt : le plafond d'affichage (172) ne doit pas compter
+    poser(ligne, 'pointerup', 300)
+    expect(onTerminer).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }), true)
+    expect(ligne).not.toHaveClass('glisse-droite')
+    await waitFor(() => expect(onAnnonce).toHaveBeenCalledWith('Fait : Devis Settat'))
+  })
+
+  it('un balayage droit court révèle « Fait » sans cocher ; un petit mouvement involontaire ne révèle ni ne coche rien', () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const { container } = monter({ onTerminer })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 110)
+    poser(ligne, 'pointerup', 110)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).toHaveClass('glisse-droite')
+    expect(screen.getByRole('button', { name: 'Fait : Devis Settat' })).toBeInTheDocument()
+    // refermée, puis un décalage de 30 px lâché : rien
+    fireEvent.click(screen.getByRole('button', { name: 'Devis Settat' }))
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 50)
+    poser(ligne, 'pointerup', 50)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).not.toHaveClass('glisse-droite')
+  })
+
+  it("un mouvement surtout vertical (défilement de la liste) n'est jamais pris pour un balayage", () => {
+    const onTerminer = vi.fn()
+    const onReporter = vi.fn()
+    const { container } = monter({ onTerminer, onReporter })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 100, 100)
+    poser(ligne, 'pointermove', 140, 200) // 40 px de côté, 100 px de haut : c'est du défilement
+    poser(ligne, 'pointermove', 300, 400)
+    poser(ligne, 'pointerup', 300, 400)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(onReporter).not.toHaveBeenCalled()
+    expect(ligne.getAttribute('style')).toBeNull()
   })
 })
 

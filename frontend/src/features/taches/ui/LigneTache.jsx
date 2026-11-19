@@ -38,6 +38,8 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
   const [glisse, setGlisse] = useState(false)
   const depart = useRef(null)
   const minuteur = useRef(null)
+  // où est le DOIGT (non plafonné) : l'affichage s'arrête à la largeur des actions, le seuil du balayage complet non
+  const doigt = useRef(0)
 
   const annulerAppui = () => { if (minuteur.current) { clearTimeout(minuteur.current); minuteur.current = null } }
   useEffect(() => annulerAppui, [])
@@ -63,7 +65,8 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
       setGlisse(true)
       e.currentTarget.setPointerCapture?.(e.pointerId)
     }
-    setDx(Math.max(-LARGEUR_GAUCHE - 40, Math.min(LARGEUR_DROITE + 40, d.base + ex)))
+    doigt.current = d.base + ex
+    setDx(Math.max(-LARGEUR_GAUCHE - 40, Math.min(LARGEUR_DROITE + 40, doigt.current)))
   }
   const surFin = () => {
     annulerAppui()
@@ -72,7 +75,7 @@ function useBalayage({ actif, cadre, onGauche, onDroite, onAppuiLong }) {
     if (!d?.horizontal) return
     setGlisse(false)
     const largeur = cadre.current?.offsetWidth || 360
-    const position = dx
+    const position = doigt.current
     if (position <= -largeur * 0.5) { setOuvert(null); setDx(0); onGauche(); return }
     if (position >= largeur * 0.5) { setOuvert(null); setDx(0); onDroite(); return }
     if (position <= -SEUIL_OUVERT) { setOuvert('gauche'); setDx(0); return }
