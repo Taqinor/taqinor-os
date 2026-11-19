@@ -1,0 +1,50 @@
+{
+  "endpoint": "GET /api/django/visites/visites/charge/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VIS5) — « qui peut faire la visite ? » : la charge de l'équipe AU JOUR PRÈS (action `visites.charge`, carte `charge_equipe`). Paramètres : `du` (date, défaut aujourd'hui), `jours` (1 à 14, défaut 7) ; hors borne → 400 nommé. Assignables = comptes ACTIFS de la société qui peuvent faire une visite (rôle portant `visites_modifier`, ou palier responsable/administrateur sans rôle fin), 20 au plus. Visibilité (D-W2-VIS-5) : porteur de `visites_valider` ou de `crm_modifier` → toute l'équipe ; sinon soi seul (`moi: true`). Par jour : nombre de visites planifiées, nombre d'interventions de chantier actives, indisponibilité déclarée. AUCUNE heure, AUCUN trajet calculé, jamais un « créneau libre » : la note le dit et l'assistant la répète. `a_faire` (ensemble FERMÉ) : assigner_visites (des visites sans technicien existent dans la fenêtre — un comptage) | rien ; `lien` = la planification des visites. Délibérément ABSENTS : position, téléphone, e-mail des personnes, motif d'une indisponibilité.",
+  "exemple": {
+    "du": "2026-11-19",
+    "jours": 3,
+    "note": "Charge au jour près ; aucune heure ni trajet calculés.",
+    "lignes": [
+      {
+        "id": 7,
+        "nom": "Youssef Alami",
+        "moi": false,
+        "par_jour": [
+          {"date": "2026-11-19", "visites": 2, "interventions": 0, "indisponible": false},
+          {"date": "2026-11-20", "visites": 0, "interventions": 1, "indisponible": false},
+          {"date": "2026-11-21", "visites": 1, "interventions": 0, "indisponible": false}
+        ]
+      },
+      {
+        "id": 11,
+        "nom": "Omar Fassi",
+        "moi": true,
+        "par_jour": [
+          {"date": "2026-11-19", "visites": 0, "interventions": 0, "indisponible": true},
+          {"date": "2026-11-20", "visites": 1, "interventions": 0, "indisponible": false},
+          {"date": "2026-11-21", "visites": 0, "interventions": 0, "indisponible": false}
+        ]
+      }
+    ],
+    "a_faire": "assigner_visites",
+    "lien": "/visites/planifier"
+  },
+  "exemple_soi_seul": {
+    "du": "2026-11-19",
+    "jours": 1,
+    "note": "Charge au jour près ; aucune heure ni trajet calculés.",
+    "lignes": [
+      {
+        "id": 11,
+        "nom": "Omar Fassi",
+        "moi": true,
+        "par_jour": [
+          {"date": "2026-11-19", "visites": 0, "interventions": 0, "indisponible": true}
+        ]
+      }
+    ],
+    "a_faire": "rien",
+    "lien": "/visites/planifier"
+  }
+}

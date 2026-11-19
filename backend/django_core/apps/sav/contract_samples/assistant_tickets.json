@@ -1,0 +1,51 @@
+{
+  "endpoint": "GET /api/django/sav/assistant/tickets/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, SAV3) — la liste COMPACTE des tickets SAV pour l'assistant (action `sav.tickets.chercher`, carte `liste_tickets`) et la source des lignes du bloc `tickets` du point du matin (`brief_sav`). Vue dans `sav/views_assistant.py`. Lecture `sav_voir`, portée de la file SAV de l'écran. Paramètres facultatifs : `q` (référence, nom du client, numéro de série), `statut` (nouveau | planifie | en_cours | resolu | cloture), `priorite` (basse | normale | haute | urgente), `client` (id), `equipement` (id), `retard_sla` (booléen), `limite` (10 par défaut, 1 à 25) ; hors liste ou hors borne → 400 nommé. Par défaut : tickets OUVERTS (nouveau, planifie, en_cours), en retard de SLA d'abord. `a_faire` par ligne, ensemble FERMÉ : planifier | demarrer | resoudre | cloturer | rien (lu des statuts suivants permis, jamais deviné) ; `lien` = `/sav?id={id}`, `lien` racine = les tickets à traiter. Délibérément ABSENTS : texte du client, coût, prix des pièces, téléphone, adresse.",
+  "exemple": {
+    "q": "",
+    "statut": "",
+    "total": 2,
+    "limite": 10,
+    "lignes": [
+      {
+        "ticket_id": 4815,
+        "reference": "SAV-2026-11-0031",
+        "client_id": 44,
+        "client_nom": "Nadia Chraibi",
+        "equipement": "Onduleur Deye 8 kW — DEYE-SUN8K-2304-1182",
+        "statut": "nouveau",
+        "priorite": "haute",
+        "cree_le": "2026-11-18T09:20:00+00:00",
+        "sla_due_at": "2026-11-19",
+        "en_retard_sla": true,
+        "sous_garantie": true,
+        "a_faire": "planifier",
+        "lien": "/sav?id=4815"
+      },
+      {
+        "ticket_id": 4790,
+        "reference": "SAV-2026-11-0024",
+        "client_id": 38,
+        "client_nom": "Youssef Bennani",
+        "equipement": "Panneau Canadian Solar 550W — CS-550-2201-7731",
+        "statut": "en_cours",
+        "priorite": "normale",
+        "cree_le": "2026-11-12T14:05:00+00:00",
+        "sla_due_at": "2026-11-22",
+        "en_retard_sla": false,
+        "sous_garantie": false,
+        "a_faire": "resoudre",
+        "lien": "/sav?id=4790"
+      }
+    ],
+    "lien": "/sav/action-requise"
+  },
+  "exemple_vide": {
+    "q": "",
+    "statut": "",
+    "total": 0,
+    "limite": 10,
+    "lignes": [],
+    "lien": "/sav/action-requise"
+  }
+}

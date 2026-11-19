@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/reporting/assistant/ca/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, RPT3) — « combien on a fait ce mois ? » (action `reporting.ca.lire`, carte `chiffres_ca`). Il existe TROIS « CA » dans l'ERP et ils ne se confondent jamais : le signé HT (devis acceptés en vigueur, `ventes.selectors.devis_signes_en_vigueur`), le facturé HT (factures émises, métrique gouvernée `ca_ht`) et l'encaissé HT (paiements reçus). La réponse rend TOUJOURS les trois, chacun avec son libellé et sa définition — jamais un « CA » nu ; l'assistant dit lequel il cite. Paramètres : `du`, `au` (dates, obligatoires, `au` ≥ `du`, 366 jours au plus) ; illisibles ou hors borne → 400 nommé. Lecture du module reporting, portée société. Montants en texte décimal, HT, MAD. `a_faire` (ensemble FERMÉ) : voir_impayes (le facturé de la période dépasse l'encaissé) | rien ; `lien` = le rapport commercial. Délibérément ABSENTS : marge, prix d'achat, coût, classement des commerciaux, chiffre par personne. Le point du matin ne porte AUCUN chiffre d'affaires (RPT4).",
+  "exemple": {
+    "du": "2026-11-01",
+    "au": "2026-11-19",
+    "devise": "MAD",
+    "chiffres": [
+      {"cle": "signe_ht", "libelle": "Signé HT", "montant_ht": "412500.00", "definition": "Devis acceptés en vigueur, signés dans la période."},
+      {"cle": "facture_ht", "libelle": "Facturé HT", "montant_ht": "268300.00", "definition": "Factures émises dans la période (hors brouillons et annulées)."},
+      {"cle": "encaisse_ht", "libelle": "Encaissé HT", "montant_ht": "231700.00", "definition": "Paiements reçus dans la période, ramenés au HT."}
+    ],
+    "note": "Trois chiffres différents : ne jamais dire « le CA » sans dire lequel.",
+    "a_faire": "voir_impayes",
+    "lien": "/reporting/commercial"
+  },
+  "exemple_400_periode": {
+    "detail": "au : la date de fin précède la date de début.",
+    "field": "au",
+    "code": "periode_invalide"
+  }
+}

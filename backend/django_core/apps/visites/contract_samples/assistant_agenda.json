@@ -1,0 +1,60 @@
+{
+  "endpoint": "GET /api/django/visites/visites/agenda/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VIS3) — l'agenda des visites techniques pour l'assistant (action `visites.agenda`, carte `liste_visites`) : « quelles visites cette semaine ? », « lesquelles n'ont pas de technicien ? ». Portée = celle de l'écran (`visites_visibles(user)`, lecture `visites_voir`). Paramètres : `du`, `au` (dates ; `au` ≤ `du` + 31 j, défaut `du` + 7), `filtre` ∈ tout | sans_technicien | a_valider | en_retard | a_refaire (défaut tout), `commercial` (id d'un compte), `limite` (10 par défaut, 1 à 25) ; dates illisibles, fenêtre trop longue ou filtre hors liste → 400 nommé. `totaux` = UN agrégat sur la fenêtre (sans_technicien = aucun assigné et statut ouvert ; a_valider = terminée ; en_retard = date passée et statut ouvert, horloge serveur). Statuts lus du modèle (`brouillon`, `en_cours`, `terminee`, `validee`, `a_refaire`, `annulee`), jamais STAGES.py. `a_faire` par ligne, ensemble FERMÉ : assigner | completer | valider | refaire | rien ; `lien` = `/visites/{id}` (table assistant_ecrans.json), `lien` racine = toutes les visites. Délibérément ABSENTS : téléphone, adresse, GPS, e-mail, montant, texte du terrain (lu par `visites.visite.resume`).",
+  "exemple": {
+    "du": "2026-11-19",
+    "au": "2026-11-26",
+    "filtre": "tout",
+    "totaux": {"planifiees": 7, "sans_technicien": 2, "a_valider": 1, "en_retard": 1, "a_refaire": 0},
+    "limite": 10,
+    "lignes": [
+      {
+        "id": 93,
+        "lead": 1641,
+        "lead_nom": "Salma Berrada",
+        "ville": "Bouskoura",
+        "statut": "brouillon",
+        "date_prevue": "2026-11-21",
+        "date_realisee": null,
+        "gabarit": "toiture",
+        "commercial": null,
+        "complet": false,
+        "manquants_count": 9,
+        "en_retard": false,
+        "a_faire": "assigner",
+        "lien": "/visites/93"
+      },
+      {
+        "id": 90,
+        "lead": 1652,
+        "lead_nom": "Rachid Ouazzani",
+        "ville": "Mohammedia",
+        "statut": "terminee",
+        "date_prevue": "2026-11-18",
+        "date_realisee": "2026-11-18",
+        "gabarit": "toiture",
+        "commercial": {"id": 7, "nom": "Youssef Alami"},
+        "complet": true,
+        "manquants_count": 0,
+        "en_retard": false,
+        "a_faire": "valider",
+        "lien": "/visites/90"
+      }
+    ],
+    "lien": "/visites/toutes"
+  },
+  "exemple_vide": {
+    "du": "2026-11-19",
+    "au": "2026-11-26",
+    "filtre": "a_refaire",
+    "totaux": {"planifiees": 7, "sans_technicien": 2, "a_valider": 1, "en_retard": 1, "a_refaire": 0},
+    "limite": 10,
+    "lignes": [],
+    "lien": "/visites/toutes"
+  },
+  "exemple_400_fenetre": {
+    "detail": "au : la fenêtre ne dépasse pas 31 jours après « du ».",
+    "field": "au",
+    "code": "fenetre_trop_longue"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/contenance/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA10 — n'est plus gated : décision D-W2-Q3 = OUI_AUSSI_DICTEE) — « combien de panneaux tiennent ? » AVANT tout dessin (action `calepinage.contenance`, carte `contenance`). Une ESTIMATION, jamais une conception : elle n'écrit RIEN (aucune version, aucun journal, aucun job), n'est JAMAIS mise au devis ni dite au client comme un engagement. Paramètres : `lead` (obligatoire), `origine` = visite | trace | dicte (obligatoire) ; pour `dicte` seulement : `longueur_m`, `largeur_m` (0,5 à 200), `pente_deg` (0 à 60, facultatif), `toit_plat` (booléen) ; `produit` (facultatif, panneau du catalogue de la société). `origine` dit d'où viennent les cotes : `visite` = zone utile MESURÉE à une visite VALIDÉE (date donnée par `validee_le`), `trace` = pans déjà tracés du calepinage ouvert (sans modifier le document), `dicte` = dimensions dictées par l'utilisateur. `libelle` est l'étiquette à répéter telle quelle (« Estimation — … » ou « Estimation sur dimensions dictées — … »). Le panneau vient de `produit`, sinon du module désigné ou de la ligne module du devis lié — jamais d'un kit par défaut ; ses cotes et sa puissance sont lues sur la FICHE produit (fiche incomplète → 409 qui nomme le champ). Calcul par `villa_service.calepiner_surface` AVEC la politique de pas de l'atelier (toit plat → espacement anti-ombrage), les deux sens de pose → une fourchette min–max. Tout ce qui est supposé est dit dans `suppositions` ; les réglages appliqués dans `regles`. Délibérément ABSENTS : production, prix, prix d'achat, position sur la carte. `a_faire` (ensemble FERMÉ) : preparer_calepinage | dessiner ; `lien` : le calepinage ouvert (onglet reprise-visite) ou, sans calepinage, la fiche du lead. Lecture `calepinage_voir`.",
+  "exemple": {
+    "lead": 1637,
+    "origine": "visite",
+    "libelle": "Estimation (visite validée du 18/11/2026) — rien n'est enregistré ; le calepinage dessiné fait foi",
+    "visite_id": 91,
+    "validee_le": "2026-11-18T12:05:00+01:00",
+    "produit": {"id": 34, "nom": "Panneau Canadian Solar 710W", "wc": 710, "longueur_m": 2.384, "largeur_m": 1.303},
+    "zones": [
+      {
+        "zone": "Zone utile",
+        "longueur_m": 12.5,
+        "largeur_m": 8.0,
+        "pente_deg": 15.0,
+        "plat": false,
+        "modules_min": 16,
+        "modules_max": 18,
+        "kwc_min": 11.36,
+        "kwc_max": 12.78,
+        "politique": "affleurante",
+        "optimal": true
+      }
+    ],
+    "total": {"modules_min": 16, "modules_max": 18, "kwc_min": 11.36, "kwc_max": 12.78},
+    "regles": [
+      "Retrait de rive : 0,35 m (réglage société)",
+      "Allée technique : 0,60 m (réglage société)"
+    ],
+    "suppositions": [
+      "Zone utile rectangulaire, obstacles non relevés en géométrie",
+      "Sens de pose inconnu : les deux sens sont calculés"
+    ],
+    "a_faire": "preparer_calepinage",
+    "lien": "/crm/leads/1637"
+  },
+  "exemple_dicte": {
+    "lead": 1665,
+    "origine": "dicte",
+    "libelle": "Estimation sur dimensions dictées — rien n'est enregistré ; le calepinage dessiné fait foi",
+    "visite_id": null,
+    "validee_le": null,
+    "produit": {"id": 34, "nom": "Panneau Canadian Solar 710W", "wc": 710, "longueur_m": 2.384, "largeur_m": 1.303},
+    "zones": [
+      {
+        "zone": "Dimensions dictées",
+        "longueur_m": 10.0,
+        "largeur_m": 6.0,
+        "pente_deg": 0.0,
+        "plat": true,
+        "modules_min": 8,
+        "modules_max": 10,
+        "kwc_min": 5.68,
+        "kwc_max": 7.1,
+        "politique": "anti_ombrage",
+        "optimal": true
+      }
+    ],
+    "total": {"modules_min": 8, "modules_max": 10, "kwc_min": 5.68, "kwc_max": 7.1},
+    "regles": [
+      "Retrait de rive : 0,35 m (réglage société)",
+      "Allée technique : 0,60 m (réglage société)",
+      "Espacement anti-ombrage des rangées (toit plat, latitude du lead)"
+    ],
+    "suppositions": [
+      "Dimensions dictées, non mesurées",
+      "Tables inclinées à 10° sur toit plat (valeur de l'atelier)",
+      "Sens de pose inconnu : les deux sens sont calculés"
+    ],
+    "a_faire": "dessiner",
+    "lien": "/calepinage/15"
+  },
+  "exemple_409_sans_visite": {
+    "detail": "Aucune visite validée pour ce lead : faites valider la visite, ou donnez les dimensions du toit (origine « dicte »).",
+    "field": "visite_id",
+    "code": "visite_non_validee"
+  },
+  "exemple_409_fiche_produit": {
+    "detail": "Fiche du panneau incomplète : renseignez la longueur, la largeur et la puissance dans le stock (fiche technique) avant d'estimer.",
+    "field": "produit",
+    "code": "fiche_incomplete"
+  }
+}
