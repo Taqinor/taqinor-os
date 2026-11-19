@@ -64,10 +64,18 @@ class Imposition:
     marqueur: dict = field(default_factory=dict)
 
 
-def imposition_du_corps(corps):
-    """Les champs imposés PRÉSENTS (non nuls) du corps validé, ou ``{}``."""
-    return {cle: corps.get(cle) for cle in CHAMPS_IMPOSES
-            if (corps or {}).get(cle) not in (None, '')}
+def imposition_du_corps(corps, *, nb_panneaux_seul_impose=True):
+    """Les champs imposés PRÉSENTS (non nuls) du corps validé, ou ``{}``.
+
+    ``nb_panneaux_seul_impose=False`` — le dry-run ``POST devis/composition/``,
+    où ``nb_panneaux`` est l'entrée HISTORIQUE non imposée (``{kwc |
+    nb_panneaux}``) : le mode imposé n'y commence qu'avec un des six AUTRES
+    champs ; ``nb_panneaux`` seul ⇒ ``{}`` (route strictement inchangée)."""
+    presents = {cle: corps.get(cle) for cle in CHAMPS_IMPOSES
+                if (corps or {}).get(cle) not in (None, '')}
+    if not nb_panneaux_seul_impose and set(presents) <= {'nb_panneaux'}:
+        return {}
+    return presents
 
 
 def marqueur(devis):
