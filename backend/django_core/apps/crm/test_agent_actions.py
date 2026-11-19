@@ -1482,7 +1482,7 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
             (PLANIFIER_VISITE.risk, PLANIFIER_VISITE.carte,
              PLANIFIER_VISITE.lot, PLANIFIER_VISITE.objets),
             ('outward', 'visite', LOT_COPILOTE,
-             {'id': 'lead', 'etape': 'touche'}))
+             {'id': 'lead', 'etape': 'touche', 'commercial': 'utilisateur'}))
         self.assertEqual(
             (MESSAGE_VISITE.risk, MESSAGE_VISITE.carte, MESSAGE_VISITE.lot),
             ('internal', 'wa_message', LOT_COPILOTE))

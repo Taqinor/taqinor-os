@@ -658,7 +658,8 @@ PLANIFIER_VISITE = AgentAction(
     risk=RISK_OUTWARD,
     carte='visite',
     lot=LOT_COPILOTE,
-    objets={'id': 'lead', 'etape': 'touche'},
+    # Vague 2 — l'aperçu NOMME qui fait la visite (résolu par l'agent).
+    objets={'id': 'lead', 'etape': 'touche', 'commercial': 'utilisateur'},
 )
 
 MESSAGE_VISITE = AgentAction(

@@ -46,7 +46,9 @@ class SavAgentActionsCatalogueTest(TestCase):
         self.assertEqual(a.inputs['required'], ['description'])
         self.assertLessEqual({'client', 'equipement', 'description'}, set(props))
         self.assertNotIn('company', props)
-        self.assertEqual(a.objets, {'client': 'client'})
+        self.assertEqual(a.objets, {'client': 'client', 'equipement': 'equipement',
+                                    'installation': 'chantier'})
+        self.assertEqual(_by_key('sav.ticket.update').objets, {'id': 'ticket'})
 
     def test_mettre_a_jour_ticket_shape(self):
         a = _by_key('sav.ticket.update')
@@ -126,3 +128,44 @@ class SavTicketParEquipementRelaiTest(TestCase):
         ticket = Ticket.objects.get(company=company)
         self.assertEqual((ticket.client_id, ticket.installation_id),
                          (client.id, inst.id))
+
+
+class SavLibellesAssistantTest(TestCase):
+    """Copilote vague 2 — l'aperçu d'une proposition NOMME le ticket et
+    l'équipement (``selectors_libelles.libelles_sav`` via la table de
+    l'agent) : dans la société ET la portée seulement, jamais la description
+    du problème (texte tiers)."""
+
+    def setUp(self):
+        from apps.sav.models import Equipement, Ticket
+        from apps.sav.tests import make_installation, make_produit
+        self.company = Company.objects.create(nom='SAV Lib', slug='sav-lib')
+        inst, client = make_installation(self.company, ref='CHT-LIB')
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=make_produit(self.company),
+            installation=inst, numero_serie='SN-LIB')
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-LIB-1', client=client,
+            equipement=self.eq, description='mot de passe du wifi')
+
+    def _libelles(self, permissions, company=None):
+        from apps.agent.libelles import libelles_objets
+        company = company or self.company
+        user = User.objects.create_user(
+            username=f'lib_{len(permissions)}_{company.pk}', password='x', company=company,
+            role=Role.objects.create(company=company, nom=f'R{len(permissions)}',
+                                     permissions=permissions))
+        return libelles_objets(user, {'ticket': self.ticket.pk, 'equipement': self.eq.pk})
+
+    def test_ticket_et_equipement_nommes_dans_la_portee(self):
+        out = self._libelles(['sav_voir', 'equipement_voir'])
+        self.assertEqual(out, {'ticket': 'SAV-LIB-1 — Client (Nouveau)',
+                               'equipement': 'Onduleur X — n° SN-LIB — Client'})
+        self.assertNotIn('wifi', str(out))
+
+    def test_hors_droit_hors_portee_autre_societe_absents(self):
+        from apps.roles.permissions_registre import SCOPE_SELF
+        self.assertEqual(self._libelles(['crm_voir']), {})
+        self.assertEqual(self._libelles(['sav_voir', 'equipement_voir', SCOPE_SELF]), {})
+        autre = Company.objects.create(nom='SAV Lib 2', slug='sav-lib-2')
+        self.assertEqual(self._libelles(['sav_voir', 'equipement_voir'], autre), {})

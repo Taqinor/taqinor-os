@@ -77,7 +77,10 @@ OUVRIR_TICKET_SAV = AgentAction(
     required_permission=_SAV_PERMISSION,
     risk=RISK_OUTWARD,
     confirm_summary='Ouvrir un ticket SAV.',
-    objets={'client': 'client'},
+    # Vague 2 — l'aperçu NOMME l'équipement et le chantier
+    # (`selectors_libelles.libelles_sav`, `libelles_installations`).
+    objets={'client': 'client', 'equipement': 'equipement',
+            'installation': 'chantier'},
 )
 
 
@@ -109,6 +112,7 @@ METTRE_A_JOUR_TICKET = AgentAction(
     required_permission=_SAV_PERMISSION,
     risk=RISK_OUTWARD,
     confirm_summary='Modifier ce ticket SAV.',
+    objets={'id': 'ticket'},
 )
 
 
