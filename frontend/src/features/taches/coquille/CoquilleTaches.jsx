@@ -62,8 +62,8 @@ const DESTINATIONS = [
  *  dit la VÉRITÉ de l'écran ouvert : une touche n'y figure que sur les écrans dont la liste la traite (3e terme ;
  *  absent : partout). Maj+↓ n'allonge que la tâche qu'on vient de poser dans l'Agenda. */
 const LISTES = ['aujourdhui', 'projet']
-/* R3-095 — les touches les plus utilisées d'abord : j/k, Entrée, Échap (elles manquaient). « Alt+↑/↓ Réorganiser » est
-   retiré tant que le réordonnancement au clavier n'est pas réparé (R3-007, R3-026) : l'aide ne promet que ce qui marche. */
+/* R3-095 — les touches les plus utilisées d'abord : j/k, Entrée, Échap (elles manquaient). « Alt+↑/↓ Réorganiser »
+   revient (couture L7) : R3-007 et R3-026 ont réparé le réordonnancement au clavier (Aujourd'hui et un projet). */
 const TOUCHES = [
   ['j / k', 'Ligne suivante / précédente', [...LISTES, 'a-trier', 'recherche']],
   ['Entrée', 'Ouvrir', [...LISTES, 'a-trier', 'recherche']], ['Échap', 'Fermer'],
@@ -72,6 +72,7 @@ const TOUCHES = [
   ['e', 'Renommer', [...LISTES, 'a-trier', 'recherche']], ['d', 'Quand', [...LISTES, 'a-trier']],
   ['m', 'Changer de projet', [...LISTES, 'a-trier']], ['x', 'Sélectionner', ['aujourdhui']],
   ['h', 'Heure', [...LISTES, 'a-trier', 'recherche']], ['*', 'Essentiel', LISTES],
+  ['Alt+↑/↓', 'Réorganiser', LISTES],
   ['Maj+↓', '+15 min (tâche posée)', ['agenda']],
   ['Ctrl/⌘ Z', 'Annuler (hors champ)', LISTES],
 ]
