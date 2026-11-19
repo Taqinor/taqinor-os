@@ -566,6 +566,10 @@ def _occurrence_suivante(user, t, maintenant, aujourdhui, *, apres_fait):
     regle = t.recurrence if t.recurrence_id else None
     if regle is None or not regle.actif:
         return None
+    if taches_de(user).filter(recurrence=regle, statut__in=OUVERTES).exclude(pk=t.pk).exists():
+        # La série a DÉJÀ son occurrence ouverte (invariant 5 tenu) : rien ne naît — cocher ou sauter cette
+        # occurrence-ci ne doit jamais échouer sur le refus d'état de `creation._regle_existante` (409).
+        return None
     jour = prochaine_occurrence(
         regle, t.occurrence_du, aujourdhui, fait_le=timezone.localtime(maintenant) if apres_fait else None,
         est_ouvre=est_ouvre_de(user, aujourdhui))
@@ -805,7 +809,7 @@ def _liste_a_ordonner(user, t, liste):
 
 
 def _voisin(user, pk, ids, nom):
-    """Le voisin `pk` (du compte, sinon 404) qui doit figurer dans la liste ordonnée (sinon 400)."""
+    """Le voisin `pk` (du compte, sinon 404) qui doit figurer dans la liste ordonnée (sinon 409, refus d'état)."""
     if pk is None:
         return None
     voisin = tache_du_compte(user, pk)

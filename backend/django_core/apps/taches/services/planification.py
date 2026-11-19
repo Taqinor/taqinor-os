@@ -177,7 +177,7 @@ def avertissements_du_jour(acteur, t, aujourdhui):
     return sortie
 
 
-def avertissement_echeance(t, ancien_jour, aujourdhui):
+def _avertissement_echeance(t, ancien_jour, aujourdhui):
     """R3-002 (choix C-13) : la tâche quitte le jour d'aujourd'hui (jour posé plus tard, ou retiré) alors que son
     échéance EST aujourd'hui — la règle ne change pas (`classement.gardee_aujourdhui` : l'échéance la garde dans la
     journée), le geste le DIT au lieu de la laisser revenir en silence. Rien pour « En réserve » (elle quitte alors
@@ -253,6 +253,6 @@ def planifier(tache, *, acteur, jour_prevu, moment='', heure_debut=None, quelque
             collecte.extend(ops)
         elif ops:
             geste = enregistrer_geste(acteur, 'planification', _message(t, avant, aujourdhui, report), ops)
-    avertissements = avertissements_du_jour(acteur, t, aujourdhui) + avertissement_echeance(
+    avertissements = avertissements_du_jour(acteur, t, aujourdhui) + _avertissement_echeance(
         t, avant['jour_prevu'], aujourdhui)
     return ResultatPlanification(t, avertissements, geste)

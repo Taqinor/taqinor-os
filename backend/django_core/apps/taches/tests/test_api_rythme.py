@@ -550,7 +550,11 @@ class RepondreTests(BaseRythme):
     def test_c5_n_admet_que_ok(self):
         self.reglages()
         c5 = carte(self.u1, TypeIncitationEcran.CONSTAT, 'C5', {'p': 40, 'n': 30, 'h1': 10, 'h2': 12})
-        self.assertEqual(self.repondre(c5, 'oui').status_code, 400)
+        # « oui » est une réponse de l'écran (`REPONSES_ECRAN`), mais pas permise À CETTE carte : refus d'état, 409
+        refus = self.repondre(c5, 'oui')
+        self.assertEqual((refus.status_code, refus.json()['reponse']), (409, ['Réponse inconnue.']))
+        # une réponse HORS de la liste fermée de l'écran est une erreur de forme : 400
+        self.assertEqual(self.repondre(c5, 'turbo').status_code, 400)
         self.assertEqual(self.repondre(c5, 'ok').status_code, 200)
 
     def test_pause_reactiver_retire_le_type(self):

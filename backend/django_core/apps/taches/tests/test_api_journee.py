@@ -1128,7 +1128,10 @@ URL_POINT = '/api/django/taches/journee/point/'
 
 #: Plafonds de requêtes mesurés horloge figée sur J (le Maroc est à UTC+0) : (moment -> plafond).
 MATIN_J, APRES_MIDI_J = '2026-11-17 09:00:00', '2026-11-17 15:00:00'
-PLAFONDS_PRIORITES = {MATIN_J: 16, APRES_MIDI_J: 16}
+#: `priorites/` : 16 + 1 (R3-006) — `selectors.journee._minutes_historiques`, l'historique de la capacité (les
+#: `PlanJour.minutes_faites` des 28 jours) qui donne `disponible_minutes`, donc `deborde_minutes` ; aucune autre
+#: lecture ne le porte (le plan du jour seul est lu). Le même +1 que `test_plafonds.PLAFONDS_FIGES` (22 → 23).
+PLAFONDS_PRIORITES = {MATIN_J: 17, APRES_MIDI_J: 17}
 PLAFONDS_POINT = {MATIN_J: 20, APRES_MIDI_J: 18}
 
 

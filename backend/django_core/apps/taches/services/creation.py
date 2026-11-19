@@ -498,6 +498,12 @@ def _par_ligne(ctx, rang, ligne, cid):
         if ctx.porte != 'saisie' and not ctx.par_ligne:
             raise
         raise serializers.ValidationError({'lignes': {str(ligne.get('index', rang)): exc.detail}})
+    except ConflitEtat as exc:
+        # Un refus d'ÉTAT d'une ligne (série déjà ouverte…) reste un 409, mais dit SA ligne, comme un 400 (erreurs.json)
+        if ctx.porte != 'saisie' and not ctx.par_ligne:
+            raise
+        champs = {cle: valeur for cle, valeur in exc.detail.items() if cle not in ('detail', 'code')}
+        raise refus_etat({'lignes': {str(ligne.get('index', rang)): champs}})
 
 
 def _message(ctx):
