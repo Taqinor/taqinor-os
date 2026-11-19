@@ -300,7 +300,7 @@ export function useActionsLigne({
   let feuilleProps = null
   if (feuille?.type === 'quand') {
     feuilleProps = {
-      ouverte: true, onFermer: fermer, titre: 'Choisir un jour',
+      ouverte: true, onFermer: fermer, titre: 'Quand ?', // R3-067 : la feuille du sélecteur Quand
       children: (
         <SelecteurQuand
           valeur={pris(item, CHAMPS_QUAND)} aujourdhui={aujourdhui} reporterA={prochainJourOuvre}

@@ -514,6 +514,19 @@ describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sor
     expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27' }))
   })
 
+  it('R3-067 (choix C-22) — « Reporter à {jour} » qui tombe demain n\'a plus sa tuile : une seule « Demain » ; « Choisir un jour » devient « Calendrier… »', () => {
+    const tuiles = () => screen.getAllByRole('radio').map((r) => r.querySelector('b').textContent)
+    const onChoisir = vi.fn()
+    const { unmount } = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" reporterA="2026-11-18" onChoisir={onChoisir} />)
+    expect(tuiles()).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Calendrier…', 'En réserve', 'Sans jour'])
+    fireEvent.click(screen.getByRole('radio', { name: /^Demain/ }))
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-18' }))
+    unmount()
+    // vendredi → le prochain jour travaillé est lundi : les deux tuiles disent deux jours différents, elles restent
+    render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-20" reporterA="2026-11-23" onChoisir={onChoisir} />)
+    expect(tuiles()).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à lun. 23', 'Calendrier…', 'En réserve', 'Sans jour'])
+  })
+
   it('R3-060 — démonté avec une heure ou un jour tapés et pas encore écrits (retour arrière, fiche changée) : ils partent, une seule fois', () => {
     const onChoisir = vi.fn()
     const { unmount } = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
