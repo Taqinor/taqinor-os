@@ -38,14 +38,6 @@ export const NATURES_FACTURE = Object.freeze({
   acompte: 'Acompte', intermediaire: 'Intermédiaire', solde: 'Solde', complete: 'Complète',
 })
 
-export const PRIORITES = Object.freeze({
-  basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente',
-})
-
-export const STATUTS_TICKET = Object.freeze({
-  nouveau: 'Nouveau', planifie: 'Planifié', en_cours: 'En cours', resolu: 'Résolu', cloture: 'Clôturé',
-})
-
 export const libelle = (table, cle) => table[cle] ?? cle ?? ''
 
 export const montant = (v) => formatMAD(v)
