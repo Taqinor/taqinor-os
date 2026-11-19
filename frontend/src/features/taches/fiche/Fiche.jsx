@@ -631,7 +631,10 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
               <textarea
                 id="fiche-notes"
                 className="saisie-champ fiche-notes"
-                rows={2}
+                // R2-045 — une invite, un nom lu, et une seule ligne quand c'est vide (le champ grandit avec le texte)
+                placeholder="Ajouter une note…"
+                aria-label="Notes"
+                rows={Math.min(Math.max(notes.split('\n').length, 1), 12)}
                 aria-invalid={erreurs.notes ? true : undefined}
                 value={notes}
                 onChange={(e) => taper('notes', e.target.value)}

@@ -121,6 +121,8 @@
 .tch .fiche-editeur { margin-top: 12px; }
 .tch .fiche-section { display: flex; flex-direction: column; margin-top: 22px; }
 .tch .fiche-section .fiche-notes { min-height: 0; padding: 0; font-size: 1rem; line-height: 1.5; }
+/* R2-045 — Notes vide = une ligne d'invite ; le champ épouse ensuite son texte (lignes repliées comprises) */
+.tch .fiche-section .fiche-notes { min-height: 44px; field-sizing: content; max-height: 18lh; }
 .tch .points { list-style: none; margin: 0; padding: 0; }
 .tch .point-liste { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -12px; }
 .tch .point-liste .case { margin: 0; }

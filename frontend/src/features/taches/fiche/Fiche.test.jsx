@@ -306,6 +306,17 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(screen.queryByRole('button', { name: 'Encore 10 min' })).toBeNull()
   })
 
+  it('R2-045 — le champ Notes invite : « Ajouter une note… », nommé « Notes », une ligne quand il est vide', async () => {
+    api.lireTache.mockResolvedValue({ data: { ...tache, notes: '' } })
+    monter()
+    const notes = await screen.findByRole('textbox', { name: 'Notes' })
+    expect(notes).toHaveAttribute('placeholder', 'Ajouter une note…')
+    expect(notes).toHaveAttribute('aria-label', 'Notes')
+    expect(notes).toHaveAttribute('rows', '1')
+    fireEvent.change(notes, { target: { value: 'Ligne 1\nLigne 2\nLigne 3' } })
+    expect(notes).toHaveAttribute('rows', '3')
+  })
+
   it('R2-021b — `section="decouper"` : « Plus » est déplié et le curseur est dans « Découper »', async () => {
     monter({ section: 'decouper' })
     const champ = await screen.findByRole('textbox', { name: 'Découper' })
