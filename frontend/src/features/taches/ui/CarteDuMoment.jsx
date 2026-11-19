@@ -26,7 +26,7 @@ import { lireTexte, ecrireTexte, viderALaDeconnexion } from '../lib/stockage'
    (`pointer: coarse`), les touches et le glisser vers l'agenda qu'à la souris et au clavier. Sans `matchMedia`
    (test, vieux navigateur), l'appareil est un bureau. */
 const ASTUCES = [
-  { cle: 'balayage', appareil: 'doigt', texte: 'Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.', demo: true },
+  { cle: 'balayage', appareil: 'doigt', texte: 'Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.' },
   { cle: 'appui_long', appareil: 'doigt', texte: 'Garde le doigt sur une ligne pour voir toutes ses actions.' },
   { cle: 'touches', appareil: 'bureau', texte: 'Touche n pour ajouter, ? pour voir les touches.' },
   { cle: 'glisser_agenda', appareil: 'bureau', texte: "Glisse une tâche sur l'agenda pour lui donner une heure." },
@@ -201,10 +201,9 @@ function CarteAstuce({ astuce, onOk }) {
     <div className="moment revelation" role="region" aria-label="Astuce">
       <span className="bandeau-icone"><Hand className="i i-16" aria-hidden="true" /></span>
       <div className="moment-texte">
+        {/* R4-06 — plus de miniature de démonstration sous la phrase : elle montrait une tâche qui n'existe pas
+            (« Imprimer les kakémonos », T3-S) et poussait la première tâche à y = 304 ; la phrase dit le geste */}
         <b>{astuce.texte}</b>
-        {astuce.demo ? (
-          <div className="demo-balayage" aria-hidden="true"><span><i />Imprimer les kakémonos</span><b>Reporter</b></div>
-        ) : null}
         <div className="carte-actions">
           <button type="button" className="bouton second" onClick={onOk}>OK</button>
         </div>
@@ -271,7 +270,7 @@ export default function CarteDuMoment({
     return (
       <CarteSimple
         etiquette="Bilan d'hier"
-        texte="Le bilan d'hier n'est pas fait : il reste possible jusqu'à midi."
+        texte="Bilan d'hier pas fait : possible jusqu'à midi."
         actions={[
           { libelle: "Faire le bilan d'hier", principal: true, onClick: prise(() => onBilan(carte.donnees?.jour)), desactive },
           { libelle: 'Passer', onClick: () => ecarter('bilan_hier') },

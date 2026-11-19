@@ -168,7 +168,7 @@ describe('TCH77 — chaque type de carte du moment', () => {
 
   it('`bilan_hier` : Faire le bilan d\'hier ouvre le bilan d\'hier ; Passer l\'écarte', async () => {
     const { onBilan } = monter({ carte: { type: 'bilan_hier', proposition: null, donnees: { jour: '2026-11-16' } } })
-    expect(screen.getByText("Le bilan d'hier n'est pas fait : il reste possible jusqu'à midi.")).toBeInTheDocument()
+    expect(screen.getByText("Bilan d'hier pas fait : possible jusqu'à midi.")).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: "Faire le bilan d'hier" }))
     expect(onBilan).toHaveBeenCalledWith('2026-11-16')
     await userEvent.click(screen.getByRole('button', { name: 'Passer' }))
