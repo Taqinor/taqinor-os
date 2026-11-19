@@ -187,11 +187,20 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [priorites, setPriorites] = useState({})
   const [apercu, setApercu] = useState(null)
   const [erreur, setErreur] = useState('')
-  const [envoi, setEnvoi] = useState(false)
   const [cid, setCid] = useState(() => nouvelleCle())
   const [contexte, setContexte] = useState(() => lireContexte(null))
   const [quandDepart, setQuandDepart] = useState(null)
   const enLigne = useEnLigne()
+  // R2-001 — l'envoi part en ARRIÈRE-PLAN : ce qui est à l'écran au retour du serveur est lu ici, jamais une copie figée
+  const actuel = useRef({ texte, collages, ouverte })
+  useEffect(() => { actuel.current = { texte, collages, ouverte } })
+  const montee = useRef(true)
+  useEffect(() => { montee.current = true; return () => { montee.current = false } }, [])
+  /** Les envois en vol, enchaînés : les tâches arrivent dans l'ordre tapé. */
+  const envois = useRef(Promise.resolve())
+  /** Phrases mises de côté par « Reprendre » : chacune revient dans le champ quand la précédente est partie. */
+  const suivantes = useRef([])
+  const corps = useRef(null)
 
   useEffect(() => { if (compte != null) definirProprietaire(compte) }, [compte])
 
@@ -206,9 +215,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     setPriorites({}); setApercu(null); setErreur(''); setCid(nouvelleCle()); setContexte(lireContexte(null)); setQuandDepart(null)
   }, [])
 
-  /** Chaîne : la phrase est partie, le champ se vide ; projet et jour de l'écran restent (spec-2 §1). */
+  /** Chaîne : la phrase est partie, le champ se vide ; projet et jour de l'écran restent (spec-2 §1). Appelée AU
+   *  TOUCHER, avant tout envoi (R2-001) : rien de ce qui est tapé ensuite ne peut être effacé par le retour du serveur. */
   const enchainer = useCallback(() => {
-    setTexte(''); setIgnorer([]); setApercu(null); setErreur(''); setCid(nouvelleCle())
+    setTexte(suivantes.current.shift() ?? ''); setIgnorer([]); setApercu(null); setErreur(''); setCid(nouvelleCle())
     setQuand(quandDepart); setQuandOuvert(false)
   }, [quandDepart])
 
@@ -293,76 +303,118 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     setTexte(''); setChampReplie(false); setErreur('')
   }
 
-  /** Hors ligne (TCH100) : les lignes partent dans la file, la feuille se ferme, le texte n'est jamais perdu. */
-  const mettreEnFile = async (lignes) => {
+  /* ── R2-001 — l'envoi EN ARRIÈRE-PLAN. Au toucher « Ajouter » / Entrée, la phrase et tout ce qui la décide (Quand,
+     contexte, priorités, clé) sont FIGÉS dans un `gel`, le champ se vide aussitôt et l'envoi part ; au retour, seul ce
+     gel est lu. Un échec rend la phrase au champ s'il est resté vide, sinon un toast « Pas ajoutée : … · Reprendre ».
+     Jamais un `setTexte('')` après un `await`. */
+
+  const restaurer = (gel) => {
+    setTexte(gel.texte); setCollages(gel.collages); setIgnorer(gel.ignorer); setQuand(gel.quand)
+    setPriorites(gel.priorites); setContexte(gel.contexte); setCid(gel.cid); setChampReplie(false); setApercu(null)
+  }
+  /** Rouvre la feuille fermée entre-temps (l'hôte et la coquille écoutent la même demande). */
+  const rouvrir = () => window.dispatchEvent(new CustomEvent(EVENEMENT_SAISIR, { detail: {} }))
+  const reprendre = (gel) => {
+    if (!montee.current) { rouvrir(); return } // la phrase a été remise dans le brouillon : la feuille la relit
+    if (!actuel.current.ouverte) rouvrir()
+    const enCours = actuel.current.texte
+    if (enCours.trim()) suivantes.current.push(enCours)
+    restaurer(gel)
+    // le toast parti, le focus revient au champ : Entrée renvoie la phrase reprise
+    requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
+  }
+  const echouer = (gel, message) => {
+    const libre = !actuel.current.texte.trim() && actuel.current.collages.length === 0
+    if (!montee.current) ecrireBrouillon(cle, { texte: [...gel.collages, gel.texte].filter((t) => t.trim()).join('\n\n'), quand: gel.quand })
+    else if (libre) { restaurer(gel); setErreur(message) }
+    // feuille ouverte et phrase rendue au champ : l'erreur SOUS le champ suffit ; sinon le toast le dit
+    if (montee.current && libre && actuel.current.ouverte) return
+    proposerAnnuler({
+      message: `Pas ajoutée : ${message}`,
+      libelle: 'Reprendre',
+      // la phrase est déjà dans le champ (feuille fermée entre-temps) : il suffit de la rouvrir
+      onAnnuler: () => (montee.current && libre ? rouvrir() : reprendre(gel)),
+    })
+  }
+
+  /** Hors ligne (TCH100) : les lignes partent dans la file ; la feuille se ferme si rien d'autre n'y est tapé. */
+  const mettreEnFile = async (gel, lignes) => {
     try {
       await enfilerAjout(lignes)
     } catch (err) {
-      // sans compte connecté la file refuse : la phrase reste dans le champ (et dans le brouillon)
-      setErreur(frenchError(err))
+      // sans compte connecté la file refuse : la phrase revient (champ ou brouillon), jamais perdue
+      echouer(gel, frenchError(err))
       return
     }
-    ecrireBrouillon(cle, null)
-    remettreAZero()
-    onFermer?.()
+    if (montee.current && actuel.current.ouverte && !actuel.current.texte.trim()) onFermer?.()
     proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
   }
 
-  const creer = async (lignesLues) => {
-    const lignes = lignesLues.map((l) => avecContexte(l, contexte))
-    setEnvoi(true)
-    setErreur('')
-    try {
-      if (!estEnLigne()) { await mettreEnFile(lignes); return }
-      const { data } = await saisieRapide({ lignes, apercu: false }, { cle: cid })
-      const n = data?.creees?.length ?? lignes.length
-      const geste = data?.geste_id
-      // le brouillon part AVANT les événements : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas le revoir
-      ecrireBrouillon(cle, null)
-      if (modeListe) { remettreAZero(); onFermer?.() } else enchainer()
-      window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
-      proposerAnnuler({
-        message: n > 1 ? `${n} tâches créées` : 'Ajoutée',
-        onAnnuler: geste ? () => annulerGeste(geste) : undefined,
-      })
-    } catch (err) {
-      if (sansReseau(err)) await mettreEnFile(lignes)
-      else setErreur(phraseErreur(err))
-    } finally {
-      setEnvoi(false)
-    }
-  }
-
-  const envoyer = async () => {
-    if (!texte.trim() || envoi) return
-    setEnvoi(true)
-    setErreur('')
-    let donnees = frais
-    try {
-      if (!donnees && !estEnLigne()) throw Object.assign(new Error('hors ligne'), { response: undefined })
-      donnees = donnees ?? (await saisieRapide(corpsApercu(collages, texte, ignorer), { cle: null })).data
-    } catch (err) {
-      if (sansReseau(err)) {
-        await mettreEnFile(lignesBrutes([...collages, texte], { cid, quand }).map((l) => avecContexte(l, contexte)))
-      } else {
-        setErreur(phraseErreur(err))
+  /** Les lignes du gel : déjà prêtes (liste), lues dans l'aperçu frais, ou demandées au serveur maintenant. */
+  const lignesDuGel = async (gel) => {
+    if (gel.lignes) return { lignes: gel.lignes }
+    let donnees = gel.frais
+    if (!donnees) {
+      if (!estEnLigne()) return { horsLigne: true }
+      try {
+        donnees = (await saisieRapide(corpsApercu(gel.collages, gel.texte, gel.ignorer), { cle: null })).data
+      } catch (err) {
+        return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
-      setEnvoi(false)
-      return
     }
     const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false)
-      .map((l) => construireLigne(l, { cid, quand, priorites }))
-    if (lignes.length === 0) {
-      setErreur('Aucune ligne lisible.')
-      setEnvoi(false)
+      .map((l) => construireLigne(l, { cid: gel.cid, quand: gel.quand, priorites: gel.priorites }))
+    return lignes.length === 0 ? { erreur: 'Aucune ligne lisible.' } : { lignes }
+  }
+
+  const envoyerEnFond = async (gel) => {
+    const lu = await lignesDuGel(gel)
+    if (lu.erreur) { echouer(gel, lu.erreur); return }
+    if (lu.horsLigne) {
+      await mettreEnFile(gel, lignesBrutes([...gel.collages, gel.texte], { cid: gel.cid, quand: gel.quand })
+        .map((l) => avecContexte(l, gel.contexte)))
       return
     }
-    await creer(lignes)
+    const lignes = lu.lignes.map((l) => avecContexte(l, gel.contexte))
+    if (!estEnLigne()) { await mettreEnFile(gel, lignes); return }
+    let data
+    try {
+      ({ data } = await saisieRapide({ lignes, apercu: false }, { cle: gel.cid }))
+    } catch (err) {
+      if (sansReseau(err)) await mettreEnFile(gel, lignes)
+      else echouer(gel, phraseErreur(err))
+      return
+    }
+    const n = data?.creees?.length ?? lignes.length
+    const geste = data?.geste_id
+    window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
+    proposerAnnuler({
+      message: n > 1 ? `${n} tâches créées` : 'Ajoutée',
+      onAnnuler: geste ? () => annulerGeste(geste) : undefined,
+    })
+  }
+
+  /** Fige, vide l'écran TOUT DE SUITE (une phrase : la chaîne reste ouverte ; une liste : la feuille se ferme), envoie. */
+  const lancer = (gel, liste) => {
+    if (liste) { remettreAZero(); onFermer?.() } else enchainer()
+    // le brouillon part avec la phrase : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas la revoir
+    ecrireBrouillon(cle, null)
+    // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
+    envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
+  }
+  const geler = (extra = {}) => ({ texte, collages, ignorer, quand, priorites, contexte, cid, frais, ...extra })
+
+  /** « Créer N tâches » de l'aperçu d'une liste : les lignes sont prêtes. */
+  const creer = (lignes) => lancer(geler({ lignes }), true)
+
+  const envoyer = () => {
+    if (!texte.trim()) return
+    lancer(geler(), modeListe)
   }
 
   return (
     <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
-      <div className="feuille-saisie">
+      <div className="feuille-saisie" ref={corps}>
         {!(modeListe && donneesListe) || !champReplie ? (
           <ChampSaisie
             valeur={texte}
@@ -385,7 +437,6 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             onPriorite={surPriorite}
             onCreer={creer}
             onCollerEncore={collerEncore}
-            envoi={envoi}
             erreur={erreur}
           />
         ) : null}
@@ -426,7 +477,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
               <button
                 type="button"
                 className="bouton plein"
-                aria-disabled={!texte.trim() || envoi || undefined}
+                aria-disabled={!texte.trim() || undefined}
                 onClick={envoyer}
               >
                 Ajouter

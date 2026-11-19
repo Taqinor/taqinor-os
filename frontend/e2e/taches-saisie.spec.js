@@ -60,6 +60,28 @@ test.describe('Tâches — saisie', () => {
     expect(lue.jour_prevu > jour, 'prévue demain').toBeTruthy()
   })
 
+  test('R2-001 — taper vite après Entrée : le serveur ralenti à 2 s, aucune phrase n\'est perdue ni tronquée', async ({ page }) => {
+    await reinitialiser(page)
+    // chaque création répond 2 s plus tard (le réseau d'un iPhone dans la rue) ; l'aperçu, lui, reste rapide
+    await page.route('**/api/django/taches/saisie-rapide/', async (route) => {
+      if (route.request().postDataJSON()?.apercu === false) await new Promise((r) => { setTimeout(r, 2000) })
+      await route.continue()
+    })
+    const titres = [titreUnique('Test un'), titreUnique('Rappeler Karim'), titreUnique('Meryem sur les leads')]
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    for (const titre of titres) {
+      await champSaisie(page).pressSequentially(titre, { delay: 10 })
+      await champSaisie(page).press('Enter')
+      // le champ se vide AU TOUCHER, avant le retour du serveur
+      await expect(champSaisie(page)).toHaveValue('')
+    }
+    for (const titre of titres) {
+      await expect.poll(async () => (await chercherTaches(page, titre)).filter((t) => t.titre === titre).length,
+        `« ${titre} » créée entière, une fois`).toBe(1)
+    }
+  })
+
   test('retirer une puce : le mot reste dans le titre, rien n\'est corrigé', async ({ page }) => {
     await reinitialiser(page)
     const titre = titreUnique('Appeler le fournisseur')

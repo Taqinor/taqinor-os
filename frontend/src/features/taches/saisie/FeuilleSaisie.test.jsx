@@ -416,6 +416,92 @@ describe('TCH82 — feuille de saisie', () => {
     })
   })
 
+  describe('R2-001 — taper vite après « Ajouter » ne perd jamais rien', () => {
+    /** L'aperçu rend la phrase telle quelle (une ligne, aucun jeton) ; la création reste EN VOL jusqu'à `liberer`. */
+    const enVol = () => {
+      const attentes = []
+      mocks.saisieRapide.mockImplementation((corps) => {
+        if (corps.apercu) {
+          return Promise.resolve({ data: {
+            ...apercu, projets_nouveaux: [],
+            lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: {} }],
+          } })
+        }
+        return new Promise((resoudre, rejeter) => attentes.push({ corps, resoudre, rejeter }))
+      })
+      return attentes
+    }
+    const creations = () => mocks.saisieRapide.mock.calls.filter(([corps]) => corps.apercu === false).map(([c]) => c)
+
+    it('Entrée vide le champ TOUT DE SUITE ; la 2e phrase tapée pendant que la 1re est en vol reste, puis part à son tour', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      const { onFermer } = monter()
+      // Entrée AVANT que l'aperçu ne soit revenu : l'analyse et la création partent en arrière-plan
+      await user.type(champ(), 'Test un{Enter}')
+      expect(champ()).toHaveValue('')
+      await user.type(champ(), 'Test deux')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      expect(champ()).toHaveValue('Test deux')
+      // la 1re revient du serveur : la frappe de la 2e est intacte
+      await act(async () => { attentes[0].resoudre({ data: creation }) })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Ajoutée')
+      expect(champ()).toHaveValue('Test deux')
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('')
+      await waitFor(() => expect(attentes).toHaveLength(2))
+      await act(async () => { attentes[1].resoudre({ data: creation }) })
+      expect(creations().map((c) => c.lignes.map((l) => l.titre))).toEqual([['Test un'], ['Test deux']])
+      // deux phrases, deux clés d'idempotence différentes : jamais une tâche prise pour l'autre
+      const cles = mocks.saisieRapide.mock.calls.filter(([c]) => c.apercu === false).map(([, o]) => o.cle)
+      expect(new Set(cles).size).toBe(2)
+      expect(onFermer).not.toHaveBeenCalled()
+    })
+
+    it('trois phrases enchaînées sans attendre : les trois partent, dans l\'ordre tapé', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Une{Enter}Deux{Enter}Trois{Enter}')
+      expect(champ()).toHaveValue('')
+      for (let i = 0; i < 3; i += 1) {
+        await waitFor(() => expect(attentes).toHaveLength(i + 1))
+        await act(async () => { attentes[i].resoudre({ data: creation }) })
+      }
+      expect(creations().map((c) => c.lignes[0].titre)).toEqual(['Une', 'Deux', 'Trois'])
+    })
+
+    it('un échec pendant qu\'une autre phrase est tapée : rien n\'est effacé, toast « Pas ajoutée : … · Reprendre » qui rend la phrase', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Test un{Enter}')
+      await user.type(champ(), 'Test deux')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+      const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+      expect(toast).toHaveTextContent('Pas ajoutée : Le titre est vide une fois la date et le projet retirés.')
+      expect(champ()).toHaveValue('Test deux')
+      await user.click(screen.getByRole('button', { name: 'Reprendre' }))
+      expect(champ()).toHaveValue('Test un')
+      // le focus est rendu au champ ; la phrase qu'on tapait n'est pas perdue : elle revient une fois la reprise envoyée
+      await waitFor(() => expect(champ()).toHaveFocus())
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('Test deux')
+    })
+
+    it('un échec quand le champ est resté vide : la phrase revient dans le champ, l\'erreur dessous', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Test un{Enter}')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+      expect(await screen.findByRole('alert')).toHaveTextContent('Le titre est vide une fois la date et le projet retirés.')
+      expect(champ()).toHaveValue('Test un')
+    })
+  })
+
   it('messageChamps lit le champ fautif, par ligne ou non', () => {
     expect(messageChamps(erreurs.champ)).toBe('Projet inexistant.')
     expect(messageChamps(erreurs.par_ligne)).toBe('Le titre est vide une fois la date et le projet retirés.')
