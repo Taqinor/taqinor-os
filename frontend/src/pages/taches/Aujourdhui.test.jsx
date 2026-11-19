@@ -993,6 +993,19 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 
+  it('couture r2 (R2-040) — « Fait » dans la fiche : la ligne se barre SUR PLACE, comme une case cochée (pas de relecture qui la range dans « Faites » replié)', async () => {
+    servir(donnees())
+    monter()
+    await screen.findByText('Timbres')
+    const lectures = api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/').length
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:ecrite', { detail: { tache: { id: 42, statut: 'fait', lock_version: 9 } } })) })
+    await waitFor(() => expect(document.querySelector('[data-ligne="tache:42"] .ligne.faite')).not.toBeNull())
+    expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(lectures)
+    // toute autre écriture de la fiche relit la journée (R2-040 : Quand › Aujourd'hui fait ARRIVER une ligne)
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:ecrite', { detail: { tache: { id: 99, statut: 'a_faire' } } })) })
+    await waitFor(() => expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/').length).toBeGreaterThan(lectures))
+  })
+
   it('couture r2 — `*` rend la ligne essentielle ET le focus la suit dans « Essentiel » (jamais perdu sur la page)', async () => {
     servir(donnees())
     const ecrite = exempleContrat('taches', 'tache_ecrite')

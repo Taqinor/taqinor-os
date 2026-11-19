@@ -777,7 +777,20 @@ export default function Aujourdhui() {
 
   const ouvrirFiche = useOuvrirFiche()
   // une création (saisie, collage, file rejouée) : la journée se relit une fois, sans recharger la page
-  useApresCreation(useCallback(() => { charger(); setBrouillon(lireBrouillon(societe, userId)) }, [charger, societe, userId]))
+  useApresCreation(useCallback((detail) => {
+    // couture r2 (R2-040) — « Fait » touché dans la fiche : la ligne se barre SUR PLACE et le compte avance, exactement
+    // comme une case cochée ; une relecture l'aurait rangée dans « Faites » replié (elle disparaissait sous la fiche)
+    const ecrite = detail?.tache
+    const cle = ecrite?.id != null ? `tache:${ecrite.id}` : null
+    const avant = cle && donnees ? chercher(donnees, cle) : null
+    if (avant && ecrite.statut === 'fait' && avant.statut !== 'fait') {
+      patcher(cle, (it) => ({ ...it, statut: 'fait', lock_version: ecrite.lock_version ?? it.lock_version }))
+      setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, avant, 1) } : d))
+      return
+    }
+    charger()
+    setBrouillon(lireBrouillon(societe, userId))
+  }, [charger, societe, userId, donnees, patcher, setDonnees]))
 
   // Raccord F2 — le gestionnaire commun des actions de ligne ; Aujourd'hui garde son ★ (la ligne change de section),
   // son Reporter / Choisir un jour (estampille « → jeu. 19 ») et « Lier une tâche » des activités ERP.

@@ -8,6 +8,9 @@
   --ag-repos: color-mix(in srgb, var(--muted) 50%, var(--card));
   --ag-cible: var(--tch-selection);
 }
+/* couture r2 — l'invitation « Ajoute ton agenda… » tient sur une ligne serrée : la grille de la vue Jour commence
+   toujours haut (R2-110), avec ou sans agenda externe */
+.tch .bandeau.ag-invitation { min-height: 0; margin-top: 8px; padding: 0 4px 0 14px; font-size: 0.9375rem; }
 .tch .ag-vues { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px var(--tch-gouttiere) 0; }
 /* base 280 px : les 4 segments gardent chacun ≥ 44 px de large ; « Planifier ma semaine » passe à la ligne sur iPhone */
 .tch .ag-vues .segmente { flex: 1 1 280px; max-width: 360px; margin: 0; min-width: 0; }
