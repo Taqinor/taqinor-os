@@ -15,6 +15,7 @@ import BlocEtudeReseau, {
 import CarteResultatCi from './CarteResultatCi'
 import ControleBatteriesDepart from './ControleBatteriesDepart'
 import { withKeys } from '../../../features/ventes/quote/ligneFabrique'
+import { etudeParamsBatteries } from '../../../features/ventes/calc/batteriesDepart.js'
 import PanneauIndustriel from './PanneauIndustriel'
 import PanneauCommercial from './PanneauCommercial'
 import {
@@ -628,6 +629,48 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
       await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
       expect(await screen.findByTestId('gen-phrase-une-batterie-refus')).toHaveTextContent('Ne se décoche que sur un brouillon.')
       expect(ecran.recharger).not.toHaveBeenCalled()
+    })
+
+    it('devis CHARGÉ par l’écran (forme gardée par le chargeur) : case cochée, aperçu, options conservées au clic', async () => {
+      // Devis DEV-202611-0084 : le serveur avait enregistré le choix et calculé le prix,
+      // l'écran affichait la case décochée (le chargeur ne gardait pas `etude_params`).
+      const servi = {
+        options: { ...OPTIONS, nb_batteries: 2, phrase_une_batterie: true },
+        banque_recommandee: { produit: 7, quantite: 3 },
+        scenario: 'Les deux (Sans + Avec)', consommation: { mensuelle: [1, 2, 3] },
+        etude_ci: { profil_charge: { horaire: [0, 1] }, depart_une_batterie: CONTRAT.etude_ci_depart_une_batterie,
+          option_avec: { kwc: 34.32, onduleur_extension: null } },
+      }
+      const garde = etudeParamsBatteries(servi)
+      expect(Object.keys(garde).sort()).toEqual(['banque_recommandee', 'etude_ci', 'options'])
+      expect(garde.etude_ci.profil_charge).toBeUndefined()
+      const ecran = ecranDe({ editDevis: { id: 42, modifiable: true, is_active: true, etude_params: garde } })
+      render(<ControleBatteriesDepart lines={LIGNES(2)} produits={[]} ecran={ecran} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie')).toBeChecked()
+      expect(screen.getByTestId('gen-phrase-une-batterie-apercu')).toBeInTheDocument()
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
+      // Décocher : les AUTRES options enregistrées (nb_batteries) repartent intactes.
+      await waitFor(() => expect(ventesApiMock.patchEtudeParams).toHaveBeenCalledWith(
+        42, { options: { ...OPTIONS, nb_batteries: 2 } }))
+    })
+
+    it('etudeParamsBatteries : options, banque, prix à une batterie et son refus — rien d’autre', () => {
+      expect(etudeParamsBatteries(null)).toBeNull()
+      expect(etudeParamsBatteries(undefined)).toBeNull()
+      expect(etudeParamsBatteries({})).toEqual({
+        options: null, banque_recommandee: null,
+        etude_ci: { depart_une_batterie: null, depart_une_batterie_refus: null, option_avec: null },
+      })
+      expect(etudeParamsBatteries({
+        options: { nb_batteries: 2 }, banque_recommandee: { produit: 215, quantite: 3 },
+        etude_ci: { bilan: { horaire: [1] }, depart_une_batterie_refus: { code: 'lignes_modifiees', message: 'x' },
+          option_avec: { kwc: 34.32, onduleur_extension: { batteries_max: 3 } } },
+      })).toEqual({
+        options: { nb_batteries: 2 }, banque_recommandee: { produit: 215, quantite: 3 },
+        etude_ci: { depart_une_batterie: null,
+          depart_une_batterie_refus: { code: 'lignes_modifiees', message: 'x' },
+          option_avec: { onduleur_extension: { batteries_max: 3 } } },
+      })
     })
 
     it('lignes retouchées : « Recomposer l’option avec batterie » rejoue le nombre COURANT', async () => {

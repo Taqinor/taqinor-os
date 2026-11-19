@@ -48,3 +48,32 @@ export function quantiteRecommandee(ligne, banque, apercuBatterie) {
   }
   return entier(apercuBatterie?.quantite_recommandee)
 }
+
+/**
+ * Ce que l'écran GARDE de l'`etude_params` du devis servi pour « Batteries au départ »
+ * et sa case « démarrer avec une seule batterie » : les options de l'écran, la banque
+ * recommandée, le prix à une batterie calculé par le serveur (ou son refus) et l'onduleur
+ * gardé pour l'extension.
+ *
+ * Devis DEV-202611-0084 (19/11/2026) — le chargeur `?edit=` ne gardait AUCUNE clé de
+ * `etude_params` dans `editDevis` : la case se lisait toujours décochée (le serveur avait
+ * pourtant enregistré le choix et calculé le prix), son aperçu ne s'affichait jamais et
+ * chaque clic renvoyait des options vides. `null` sans `etude_params`.
+ */
+export function etudeParamsBatteries(etudeParams) {
+  if (!etudeParams || typeof etudeParams !== 'object') return null
+  const etudeCi = etudeParams.etude_ci && typeof etudeParams.etude_ci === 'object'
+    ? etudeParams.etude_ci : {}
+  const optionAvec = etudeCi.option_avec && typeof etudeCi.option_avec === 'object'
+    ? etudeCi.option_avec : null
+  return {
+    options: etudeParams.options ?? null,
+    banque_recommandee: etudeParams.banque_recommandee ?? null,
+    etude_ci: {
+      depart_une_batterie: etudeCi.depart_une_batterie ?? null,
+      depart_une_batterie_refus: etudeCi.depart_une_batterie_refus ?? null,
+      option_avec: optionAvec
+        ? { onduleur_extension: optionAvec.onduleur_extension ?? null } : null,
+    },
+  }
+}
