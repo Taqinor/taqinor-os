@@ -1,0 +1,32 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<int:pk>/assistant-taille/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VAD7 + décision D-W2-Q1 = OUI_APRES_CONFIRMATION) — route MINCE réservée à l'assistant (action `ventes.devis.taille`, risque outward, CONFIRMÉE) : change le nombre de panneaux (et, si demandé, de modules de batterie) d'un devis BROUILLON ou ENVOYÉ en place, onduleur, structures et câbles suivant le moteur « réconcilier », prix négociés et remise globale gardés. Un devis envoyé est corrigé en place (tracé « corrigé après envoi », D-QJR5-5 ; statut inchangé) — jamais une V2 ni un devis séparé (`ventes.devis.composer` ne sert pas à cela). Corps : `nb_panneaux` (1 à 200), `batterie_nb_modules` (facultatif, ≥ 0), et `ancien_total_ttc` + `nouveau_total_ttc` recopiés de l'aperçu `assistant_devis_taille_apercu.json` : ce sont eux que la confirmation montre (« ancien total → nouveau total ») et le serveur refuse (409 `apercu_perime`) s'ils ne sont plus ceux qu'il recalcule. RIEN d'autre : ni prix, ni remise, ni forçage. Garde `ventes_modifier`. Aucun PDF produit (règle #4 : le PDF client reste `/proposal`). Refus : ceux de l'aperçu, plus `apercu_perime`. `composition` = les lignes du devis après la correction (même forme de ligne que `assistant_devis_cree.json`), prix de VENTE TTC seulement. `lien` = le devis. Montants en texte décimal ; aucun prix d'achat ni marge. Carte : générique (null) — l'assistant enchaîne sur `ventes.devis.lignes` si l'utilisateur veut le détail.",
+  "corps_exemple": {"nb_panneaux": 12, "ancien_total_ttc": "73000.00", "nouveau_total_ttc": "76400.00"},
+  "exemple": {
+    "devis_id": 451,
+    "reference": "DEV-202611-0451",
+    "statut": "envoye",
+    "corrige_apres_envoi": true,
+    "nb_panneaux": 12,
+    "kwc": 8.52,
+    "ancien_total_ttc": "73000.00",
+    "nouveau_total_ttc": "76400.00",
+    "composition": [
+      {"designation": "Onduleur hybride Deye 10kW Triphasé", "quantite": 1, "prix_unitaire_ttc": "28000.00", "total_ttc": "28000.00", "variante": ""},
+      {"designation": "Panneau Canadien Solar 710W", "quantite": 12, "prix_unitaire_ttc": "1400.00", "total_ttc": "16800.00", "variante": ""},
+      {"designation": "Batterie Dyness 5 kWh", "quantite": 1, "prix_unitaire_ttc": "14000.00", "total_ttc": "14000.00", "variante": ""}
+    ],
+    "alertes": [],
+    "lien": "/ventes/devis?devis=451"
+  },
+  "exemple_409_apercu_perime": {
+    "detail": "Les totaux ont changé depuis l'aperçu (nouveau total 76 800,00 MAD TTC) : relisez l'aperçu et faites confirmer les nouveaux chiffres.",
+    "field": "nouveau_total_ttc",
+    "code": "apercu_perime"
+  },
+  "exemple_409_devis_accepte": {
+    "detail": "Devis DEV-202610-0021 accepté : il ne se corrige plus. Proposez de le réviser (V2 brouillon), puis changez la taille sur la V2.",
+    "field": "statut",
+    "code": "revision_possible"
+  }
+}

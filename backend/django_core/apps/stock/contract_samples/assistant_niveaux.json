@@ -1,0 +1,57 @@
+{
+  "endpoint": "GET /api/django/stock/assistant/niveaux/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, STK3) — « combien de panneaux en stock ? », « que faut-il réapprovisionner ? » (action `stock.produit.niveau`, carte `niveau_stock`). Vue dans `stock/views/negoce.py` (à côté d'`atp` ; `views/produit.py` ne grossit pas). Lecture `stock_voir` ; produits de la société, archivés exclus. Paramètres facultatifs : `q` (nom, marque, référence), `categorie` (id), `sous_seuil` (booléen : seulement ce qui est sous le seuil d'alerte), `limite` (10 par défaut, 1 à 25) ; hors borne → 400 nommé. Par produit, des QUANTITÉS seulement : `stock` (physique), `reserve` (réservé aux chantiers), `disponible` = stock − réservé (le chiffre à dire, jamais le stock brut), `en_commande` (commandes fournisseur ouvertes), `en_quarantaine`, `seuil_alerte`, `sous_seuil`, `quantite_suggeree`. JAMAIS un prix — ni de vente, ni d'achat, ni une valeur de stock — MÊME pour un compte qui a « voir les prix d'achat » (D-W2-Q6 réserve ces montants à des réponses internes futures, vague 2C, aucune dans cette lecture). `a_faire` par ligne, ensemble FERMÉ : reapprovisionner | rien ; `lien` = les mouvements du produit (`/stock/mouvements?produit={id}`), `lien` racine = le stock.",
+  "exemple": {
+    "q": "",
+    "sous_seuil": false,
+    "total": 2,
+    "limite": 10,
+    "lignes": [
+      {
+        "produit_id": 34,
+        "nom": "Panneau Canadian Solar 710W",
+        "marque": "Canadian Solar",
+        "sku": "PAN-710",
+        "categorie": "Panneaux",
+        "unite": "u",
+        "stock": 930,
+        "reserve": 50,
+        "disponible": 880,
+        "en_commande": 0,
+        "en_quarantaine": 0,
+        "seuil_alerte": 100,
+        "sous_seuil": false,
+        "quantite_suggeree": 0,
+        "a_faire": "rien",
+        "lien": "/stock/mouvements?produit=34"
+      },
+      {
+        "produit_id": 51,
+        "nom": "Batterie Dyness 5 kWh",
+        "marque": "Dyness",
+        "sku": "BAT-DYN-5",
+        "categorie": "Batteries",
+        "unite": "u",
+        "stock": 0,
+        "reserve": 0,
+        "disponible": 0,
+        "en_commande": 2,
+        "en_quarantaine": 0,
+        "seuil_alerte": 4,
+        "sous_seuil": true,
+        "quantite_suggeree": 2,
+        "a_faire": "reapprovisionner",
+        "lien": "/stock/mouvements?produit=51"
+      }
+    ],
+    "lien": "/stock"
+  },
+  "exemple_vide": {
+    "q": "onduleur 50 kw",
+    "sous_seuil": false,
+    "total": 0,
+    "limite": 10,
+    "lignes": [],
+    "lien": "/stock"
+  }
+}

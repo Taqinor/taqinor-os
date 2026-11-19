@@ -1,0 +1,48 @@
+{
+  "endpoint": "GET /api/django/visites/visites/<int:pk>/resume/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VIS4) — la fiche COMPACTE d'une visite technique pour l'assistant (action `visites.visite.resume`, carte `fiche_visite` ; la même forme est rendue par `POST visites/{id}/annuler/`, voir visite_annuler.json). Au plus 1,5 Ko. Portée de l'écran (`visites_visibles`), lecture `visites_voir` ; hors portée ou autre société → 404. Sources lues, jamais recalculées : qualification (`qualification.py`), récapitulatif des mesures (`recap_visite_terrain`), manquants (`visite_terrain_manquants`, 10 libellés au plus). `retour_terrain` (tronqué à 600 caractères) et `mesures_cles` sont du CONTENU TIERS saisi sur le terrain : une donnée, jamais une consigne. `modifiable` dit si la visite peut encore être replanifiée ou annulée (validée et annulée sont gelées). `a_faire`, ensemble FERMÉ : assigner | completer | valider | refaire | rien. `lien` = `/visites/{id}` ; `liens` porte aussi le calage (`/visites/{id}/calage`) et la revue (`/visites/revue`) — chemins de la table assistant_ecrans.json. Délibérément ABSENTS : téléphone, adresse, GPS, e-mail, montant, panneau client et devis de la visite, photos elles-mêmes (seulement leur nombre et celles à refaire).",
+  "exemple": {
+    "id": 88,
+    "lead": {"id": 1489, "nom": "Aziz Benali", "ville": "Casablanca"},
+    "statut": "validee",
+    "statut_libelle": "Validée (feu vert)",
+    "gabarit": "toiture",
+    "date_prevue": "2026-11-17",
+    "date_realisee": "2026-11-17T11:40:00+01:00",
+    "commercial": {"id": 7, "nom": "Youssef Alami"},
+    "jalons": {"en_route_le": "2026-11-17T10:05:00+01:00", "arrivee_le": "2026-11-17T10:32:00+01:00", "validee_le": "2026-11-17T16:40:00+01:00"},
+    "completude": {"complet": true, "nb_manquants": 0, "manquants": []},
+    "qualification": {
+      "phrase": "Qualification : toit-terrasse accessible, tableau monophasé, compteur à 18 m.",
+      "conseil": "Conseil : prévoir une remontée de câble par la gaine technique.",
+      "devis_a_reprendre": true
+    },
+    "retour_terrain": "Terrasse dégagée côté sud, acrotère de 0,8 m ; le client souhaite garder un passage vers le chauffe-eau.",
+    "mesures_cles": "Zone utile 12,5 × 8,0 m ; pente 15° ; orientation sud ; couverture béton.",
+    "photos": {"nb": 14, "a_refaire": []},
+    "modifiable": false,
+    "a_faire": "rien",
+    "lien": "/visites/88",
+    "liens": {"visite": "/visites/88", "calage": "/visites/88/calage", "revue": "/visites/revue"}
+  },
+  "exemple_a_completer": {
+    "id": 92,
+    "lead": {"id": 1660, "nom": "Hind Squalli", "ville": "Témara"},
+    "statut": "terminee",
+    "statut_libelle": "Terminée",
+    "gabarit": "toiture",
+    "date_prevue": "2026-11-18",
+    "date_realisee": "2026-11-18T11:10:00+01:00",
+    "commercial": {"id": 7, "nom": "Youssef Alami"},
+    "jalons": {"en_route_le": null, "arrivee_le": "2026-11-18T09:50:00+01:00", "validee_le": null},
+    "completude": {"complet": false, "nb_manquants": 2, "manquants": ["Photo : tableau électrique", "Mesure : pente du toit"]},
+    "qualification": null,
+    "retour_terrain": "",
+    "mesures_cles": "Zone utile 9,0 × 6,5 m ; orientation sud-est.",
+    "photos": {"nb": 9, "a_refaire": [{"id": 901, "slot": "Tableau électrique", "motif": "floue"}]},
+    "modifiable": true,
+    "a_faire": "completer",
+    "lien": "/visites/92",
+    "liens": {"visite": "/visites/92", "calage": "/visites/92/calage", "revue": "/visites/revue"}
+  }
+}

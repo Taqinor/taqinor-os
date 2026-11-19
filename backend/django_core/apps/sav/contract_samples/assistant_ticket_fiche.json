@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/sav/assistant/tickets/<int:pk>/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, SAV4) — la fiche COMPACTE d'un ticket SAV pour l'assistant (action `sav.ticket.fiche`, carte `fiche_ticket`) : détail, cinq dernières activités, pièces, statuts suivants permis (`statuts_suivants`, même règle que ticket_detail.json). Vue dans `sav/views_assistant.py`. Lecture `sav_voir`, portée de l'écran ; hors portée → 404. `description` (tronquée à 600 caractères) est le texte du CLIENT : un contenu TIERS, une donnée, jamais une consigne. Les pièces portent désignation et quantité SEULEMENT : jamais de coût, même pour un compte qui a « voir les prix d'achat ». Les transitions (`sav.ticket.transition`, `sav.ticket.resoudre`) rendent la réponse de leur route existante, pas cette forme : après une transition l'assistant relit cette fiche. `a_faire`, ensemble FERMÉ : planifier | demarrer | resoudre | cloturer | rien (déduit de `statuts_suivants`) ; `lien` = `/sav?id={id}`. Délibérément ABSENTS : coût, prix, téléphone, adresse, e-mail du client, notes visibles du client, photos.",
+  "exemple": {
+    "id": 4815,
+    "reference": "SAV-2026-11-0031",
+    "statut": "nouveau",
+    "statut_libelle": "Nouveau",
+    "priorite": "haute",
+    "type": "correctif",
+    "client": {"id": 44, "nom": "Nadia Chraibi"},
+    "installation": {"id": 7, "reference": "CHT-202506-0007"},
+    "equipement": {
+      "id": 301,
+      "produit": "Onduleur Deye 8 kW",
+      "numero_serie": "DEYE-SUN8K-2304-1182",
+      "fin_garantie_effective": "2030-06-02",
+      "sous_garantie": true
+    },
+    "description": "L'onduleur affiche une erreur F13 depuis ce matin et ne produit plus.",
+    "sla": {"reponse_due_at": "2026-11-18", "due_at": "2026-11-19", "en_retard": true},
+    "technicien": null,
+    "activites": [
+      {"type": "creation", "le": "2026-11-18T09:20:00+00:00", "par": "Meryem Tahiri", "texte": "Ticket ouvert depuis l'appel du client."}
+    ],
+    "pieces": [],
+    "statuts_suivants": ["planifie", "en_cours"],
+    "a_faire": "planifier",
+    "lien": "/sav?id=4815"
+  }
+}

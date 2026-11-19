@@ -1,0 +1,75 @@
+{
+  "endpoint": "GET /api/django/sav/assistant/parc/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, SAV2) — « ouvre un ticket pour Mme Chraibi, son onduleur est en panne » commence ici (action `sav.parc.chercher`, carte `parc_client`) : retrouver le client, ses chantiers, ses équipements installés (garantie EFFECTIVE) et ses tickets ouverts, pour proposer `sav.ticket.create` sur le BON équipement. Vue dans `sav/views_assistant.py` (`views.py` dépasse 2 000 lignes). Paramètres : `q` (obligatoire : téléphone, numéro de série ou nom), `limite` (5 par défaut, 1 à 10). Résolution de `q` par les sélecteurs (téléphone → `crm.selectors.find_client_by_phone`, série exacte, sinon nom). Lecture `sav_voir`, portée = équipements visibles du compte. `telephone` est VIDE pour un rôle sans `client_pii_voir`. Zéro client → liste vide (la création d'un client se fait à l'écran) ; plusieurs clients ou plusieurs équipements du même genre → l'assistant DEMANDE lequel ; un ticket ouvert sur l'équipement → il le dit avant de proposer. `a_faire` par client, ensemble FERMÉ : suivre_ticket | rien ; `lien` = la fiche client (`/crm?id={id}`) ; `tickets_ouverts[].lien` = `/sav?id={id}` (aucun lien profond par équipement). Délibérément ABSENTS : tout coût, prix, prix d'achat, adresse, e-mail, texte des tickets.",
+  "exemple": {
+    "q": "chraibi",
+    "total": 1,
+    "limite": 5,
+    "clients": [
+      {
+        "client_id": 44,
+        "nom": "Nadia Chraibi",
+        "telephone": "+212661234567",
+        "chantiers": [
+          {"installation_id": 7, "reference": "CHT-202506-0007", "statut": "receptionne"}
+        ],
+        "equipements": [
+          {
+            "equipement_id": 301,
+            "produit": "Onduleur Deye 8 kW",
+            "marque": "Deye",
+            "numero_serie": "DEYE-SUN8K-2304-1182",
+            "statut": "en_service",
+            "date_pose": "2025-06-02",
+            "fin_garantie_effective": "2030-06-02",
+            "sous_garantie": true,
+            "installation_id": 7
+          },
+          {
+            "equipement_id": 302,
+            "produit": "Batterie Dyness 5 kWh",
+            "marque": "Dyness",
+            "numero_serie": "DYN-B5-2305-0419",
+            "statut": "en_service",
+            "date_pose": "2025-06-02",
+            "fin_garantie_effective": "2035-06-02",
+            "sous_garantie": true,
+            "installation_id": 7
+          }
+        ],
+        "tickets_ouverts": [
+          {"ticket_id": 4815, "reference": "SAV-2026-11-0031", "statut": "nouveau", "equipement_id": 301, "lien": "/sav?id=4815"}
+        ],
+        "contrat_actif": null,
+        "a_faire": "suivre_ticket",
+        "lien": "/crm?id=44"
+      }
+    ]
+  },
+  "exemple_sans_pii": {
+    "q": "chraibi",
+    "total": 1,
+    "limite": 5,
+    "clients": [
+      {
+        "client_id": 44,
+        "nom": "Nadia Chraibi",
+        "telephone": "",
+        "chantiers": [
+          {"installation_id": 7, "reference": "CHT-202506-0007", "statut": "receptionne"}
+        ],
+        "equipements": [],
+        "tickets_ouverts": [],
+        "contrat_actif": {"id": 5, "fin": "2026-12-31"},
+        "a_faire": "rien",
+        "lien": "/crm?id=44"
+      }
+    ]
+  },
+  "exemple_aucun": {
+    "q": "zzz",
+    "total": 0,
+    "limite": 5,
+    "clients": []
+  }
+}

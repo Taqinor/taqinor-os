@@ -34,6 +34,27 @@
       "reste_a_payer_ttc": "34000.00"
     }
   },
+  "assistant": {
+    "regle": "Copilote vague 2 (B0, 19/11/2026, VAD9 + décision D-W2-Q2 = BROUILLON_SEULEMENT) — l'action `ventes.vente.facturer` (risque outward, CONFIRMÉE, carte `facture_brouillon`) ne prépare qu'un BROUILLON : aucun numéro légal, l'émission reste un geste d'écran (`/ventes/factures?facture={id}`). Son corps ne porte QUE `nature`, `pourcentage` XOR `montant_ttc` (texte décimal) et `cle_attendue` (lue dans `ventes.vente.etat`, `prochaines_echeances[0].cle`) : jamais `emettre`, `paiements`, `remplacer_brouillons`, `utiliser_avances`, `override_credit` ni `libelle` — le relais refuse toute clé hors schéma. La réponse est la forme de `exemple` (mêmes clés), avec `facture.statut` = brouillon et une référence provisoire « BROUILLON-<id> ». Refus relayés tels quels : `erreurs_409` / `erreurs_403` ci-dessous ; `brouillons_a_remplacer` et `credit_hold` se règlent à l'écran.",
+    "corps_exemple": {"nature": "intermediaire", "montant_ttc": "29400.00", "cle_attendue": "intermediaire_1"}
+  },
+  "exemple_brouillon_assistant": {
+    "facture": {
+      "id": 126,
+      "reference": "BROUILLON-126",
+      "statut": "brouillon",
+      "total_ttc": "29400.00",
+      "nature": "intermediaire"
+    },
+    "vente": {
+      "prix_convenu_ttc": "49000.00",
+      "emis_ttc": "15000.00",
+      "brouillons_ttc": "29400.00",
+      "paye_ttc": "15000.00",
+      "reste_a_facturer_ttc": "4600.00",
+      "reste_a_payer_ttc": "34000.00"
+    }
+  },
   "apercu_get": {
     "endpoint": "GET /api/django/ventes/devis/<int:pk>/facturer/",
     "reponse_200": {

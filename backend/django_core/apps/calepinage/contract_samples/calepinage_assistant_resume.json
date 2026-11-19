@@ -1,0 +1,86 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resume/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CALA2) — résumé COMPACT d'un calepinage pour l'assistant (actions `calepinage.resume`, carte `fiche_calepinage`) : où en est la conception, la simulation, le devis lié, l'approbation et la reprise de visite, en moins de 1 500 caractères (le détail fait 2 Ko et grossit avec le contour, le résultat 15 Ko). Lecture `calepinage_voir`, portée `calepinages_visibles` ; un id hors portée ou d'une autre société → 404. Paramètre facultatif `variante` (400 vide, 404 étrangère, 409 sans conception) : la réponse décrit alors la variante et porte `variante: {id, nom}`. Tout est LU, rien n'est recalculé : `production.portee` vaut toujours `etude_technique_interne` (D-ACAL-6 : la production montrée au client est celle du devis) ; quand `production.mention` dit « borne haute », `p90_kwh` vaut null et l'assistant ne cite ni P90 ni PR. Au plus 3 pans détaillés, puis `pans_autres`. `a_faire` = le premier blocage, ensemble FERMÉ : creer | reprendre_visite | dessiner | simuler | corriger_electrique | retenir | faire_approuver | publier | rien (règle écrite UNE fois dans le service, partagée avec `du-lead` et `a-traiter`). `lien` = chemin de la table assistant_ecrans.json (`/calepinage/{id}`, `?onglet=` parmi les onglets autorisés : reprise-visite, verdict-electrique, approbation, production…). Délibérément ABSENTS : prix, prix d'achat, marge, `roof_layout`, clé de carte, série horaire, cascade complète, nom ou téléphone du client (seulement l'id du lead ; le nom vient des libellés). Calepinage archivé : 200 avec `archive: true` et `a_faire: rien`.",
+  "exemple": {
+    "calepinage": 12,
+    "reference": "CAL-2611-0012",
+    "lead": 1489,
+    "statut": "brouillon",
+    "archive": false,
+    "variante": null,
+    "conception": {
+      "modules": 12,
+      "kwc": 8.64,
+      "variantes": 3,
+      "retenue": 7,
+      "pans": [
+        {"pan": "PAN-A", "modules": 8, "kwc": 5.76, "azimut_deg": 180, "inclinaison_deg": 15, "ombrage_pct": 4.2},
+        {"pan": "PAN-B", "modules": 4, "kwc": 2.88, "azimut_deg": 90, "inclinaison_deg": 15, "ombrage_pct": null}
+      ],
+      "pans_autres": 0
+    },
+    "simulation": {"etat": "a_jour", "calcule_le": "2026-11-18T10:15:00+00:00", "motif": ""},
+    "production": {
+      "p50_kwh": 13000,
+      "p90_kwh": 11900,
+      "rendement_kwh_kwc": 1504.6,
+      "complete": true,
+      "mention": "",
+      "portee": "etude_technique_interne"
+    },
+    "pertes": [
+      {"poste": "temperature", "pct": 8.0, "source": "hypothese"},
+      {"poste": "shading", "pct": 3.4, "source": "mesure"},
+      {"poste": "soiling", "pct": 3.0, "source": "hypothese"}
+    ],
+    "electrique": {"verdict": "conforme", "bloquants": []},
+    "devis": {"id": 45, "reference": "DEV-202611-0045", "statut": "envoye", "a_jour": false, "ecart_pct": -1.9},
+    "approbation": {"exigee": false, "etat": ""},
+    "visite": {"validee_le": "2026-11-17T16:40:00+01:00", "reprise": true, "a_jour": true},
+    "avertissements": [],
+    "a_faire": "publier",
+    "lien": "/calepinage/12"
+  },
+  "exemple_borne_haute": {
+    "calepinage": 14,
+    "reference": "CAL-2611-0014",
+    "lead": 1670,
+    "statut": "brouillon",
+    "archive": false,
+    "variante": null,
+    "conception": {
+      "modules": 10,
+      "kwc": 7.1,
+      "variantes": 1,
+      "retenue": 9,
+      "pans": [
+        {"pan": "PAN-A", "modules": 10, "kwc": 7.1, "azimut_deg": 170, "inclinaison_deg": 10, "ombrage_pct": null}
+      ],
+      "pans_autres": 0
+    },
+    "simulation": {"etat": "a_jour", "calcule_le": "2026-11-18T15:02:00+00:00", "motif": ""},
+    "production": {
+      "p50_kwh": 11200,
+      "p90_kwh": null,
+      "rendement_kwh_kwc": 1577.5,
+      "complete": false,
+      "mention": "borne haute — 2 pertes non renseignées",
+      "portee": "etude_technique_interne"
+    },
+    "pertes": [
+      {"poste": "temperature", "pct": 7.6, "source": "hypothese"}
+    ],
+    "electrique": {"verdict": "bloquant", "bloquants": ["Tension de chaîne au-dessus de l'entrée MPPT par grand froid"]},
+    "devis": null,
+    "approbation": {"exigee": true, "etat": "brouillon"},
+    "visite": {"validee_le": null, "reprise": false, "a_jour": false},
+    "avertissements": ["Production en borne haute : 2 pertes non renseignées."],
+    "a_faire": "corriger_electrique",
+    "lien": "/calepinage/14?onglet=verdict-electrique"
+  },
+  "exemple_409_sans_conception": {
+    "detail": "La variante « Paysage » n'a pas de conception : dessinez-la dans l'atelier du calepinage avant de la résumer.",
+    "field": "variante",
+    "code": "variante_sans_conception"
+  }
+}

@@ -63,5 +63,54 @@
     "visites": [],
     "prochaine_touche": null,
     "alertes": []
+  },
+  "vague2": {
+    "regle": "Copilote vague 2 (B0, 19/11/2026, BRF3) — bloc ADDITIF `dossier` : où en est le lead dans CHAQUE module, une ligne par module avec son `lien` (chemin de la table agent/contract_samples/assistant_ecrans.json). Posé ici avant sa vue (absent d'`exemple` tant que BRF ne le sert pas). Servi seulement copilote ALLUMÉ pour l'utilisateur ; chaque ligne n'est présente que si l'utilisateur a la lecture du module (sinon la clé est ABSENTE, jamais une erreur) et vaut null quand rien n'existe pour ce lead. Chaque ligne vient du sélecteur de l'app propriétaire, ids et états seulement : `visite` (dernière visite : id, statut, date), `calepinage` (calepinage ouvert : id, référence, `a_faire` de calepinage/calepinage_assistant_resume.json), `devis` (tête de chaîne la plus avancée : id, référence, statut), `chantier` (id, référence, statut du chantier — couche propre, jamais STAGES.py), `factures` (vente du devis : reste à facturer, reste à payer, `a_faire` de ventes/assistant_vente_etat.json), `tickets` (nombre de tickets SAV ouverts ; `lien` = le plus ancien, null s'il n'y en a pas). Les visites restent aussi dans `visites` (forme inchangée). Aucun prix d'achat, aucune marge, aucun texte de client.",
+    "exemple_dossier": {
+      "identite": {
+        "id": 1610,
+        "nom": "Lahlou",
+        "prenom": "Driss",
+        "societe": "",
+        "ville": "Rabat",
+        "telephone": "+212662110022"
+      },
+      "etape": "SIGNED",
+      "contact_prefere": "whatsapp",
+      "chatter": [],
+      "devis": [
+        {
+          "id": 502,
+          "reference": "DEV-202610-0021",
+          "statut": "accepte",
+          "total_ttc": "49000.00",
+          "envoye_le": "2026-10-05T10:00:00+00:00"
+        }
+      ],
+      "visites": [
+        {
+          "date": "2026-10-02",
+          "resultat": "Réalisée"
+        }
+      ],
+      "prochaine_touche": null,
+      "alertes": [],
+      "dossier": {
+        "visite": {"id": 86, "statut": "validee", "date": "2026-10-02", "lien": "/visites/86"},
+        "calepinage": {"id": 9, "reference": "CAL-2610-0009", "a_faire": "rien", "lien": "/calepinage/9"},
+        "devis": {"id": 502, "reference": "DEV-202610-0021", "statut": "accepte", "lien": "/ventes/devis?devis=502"},
+        "chantier": {"id": 12, "reference": "CHT-202611-0012", "statut": "materiel_commande", "statut_libelle": "Matériel commandé", "lien": "/chantiers?id=12"},
+        "factures": {"devis_id": 502, "reste_a_facturer_ttc": "34000.00", "reste_a_payer_ttc": "34000.00", "a_faire": "facturer", "lien": "/ventes/devis?devis=502"},
+        "tickets": {"ouverts": 0, "lien": null}
+      }
+    },
+    "exemple_dossier_debut": {
+      "visite": {"id": 91, "statut": "validee", "date": "2026-11-18", "lien": "/visites/91"},
+      "calepinage": null,
+      "devis": null,
+      "chantier": null,
+      "factures": null,
+      "tickets": {"ouverts": 0, "lien": null}
+    }
   }
 }

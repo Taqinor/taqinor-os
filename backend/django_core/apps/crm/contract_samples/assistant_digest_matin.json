@@ -64,5 +64,158 @@
       "en_retard": 0,
       "lignes": []
     }
+  },
+  "vague2": {
+    "regle": "Copilote vague 2 (B0, 19/11/2026, BRF1/BRF2) — cinq blocs ADDITIFS du point du matin, posés ici AVANT leur vue (ils ne sont pas encore dans `exemple`, que la garde compare à la vue réelle : BRF les y verse quand il les sert). Chaque bloc n'est servi que si le copilote est ALLUMÉ pour l'utilisateur (`copilote_allume_pour(user)`) ET qu'il a la permission de lecture du module ; sinon la clé est ABSENTE (jamais vide, jamais une erreur) — un compte copilote éteint reçoit une réponse octet pour octet identique à aujourd'hui. Chaque bloc vient d'UN sélecteur public de l'app propriétaire, `brief_<app>(user, aujourdhui)`, et ses `lignes` ont EXACTEMENT la forme d'une ligne de l'échantillon du module (comme `relances.lignes` = une ligne d'assistant_a_relancer.json) : `visites_equipe.lignes` = une ligne de visites/assistant_agenda.json (sans technicien, à valider ou en retard, 5 au plus) ; `calepinages.lignes` = une ligne de calepinage/calepinage_assistant_a_traiter.json ; `calepinages.sans_calepinage` = visites validées des 30 derniers jours dont le lead n'a aucun calepinage ouvert (`visites.selectors.visites_validees_sans_calepinage` croisé par crm avec le calepinage) ; `chantiers.bloques.lignes` / `chantiers.poses_semaine.lignes` = une ligne d'installations/assistant_chantiers.json ; `impayes.lignes` = une ligne de ventes/assistant_impayes.json (les plus en retard d'abord) ; `tickets.lignes` = une ligne de sav/assistant_tickets.json (retard de SLA d'abord). Au plus 5 lignes par liste, les compteurs portent sur tout ; la réponse entière tient en 5 000 caractères. AUCUN chiffre d'affaires, aucun prix d'achat, aucune marge, aucun classement de personnes.",
+    "exemple_copilote": {
+      "visites": {
+        "total": 0,
+        "en_retard": 0,
+        "lignes": []
+      },
+      "relances": {
+        "total": 0,
+        "lignes": []
+      },
+      "devis_sans_reponse": {
+        "total": 0,
+        "lignes": []
+      },
+      "manques_signales_hier": {
+        "total": 0
+      },
+      "visites_equipe": {
+        "sans_technicien": 2,
+        "a_valider": 1,
+        "en_retard": 1,
+        "plus_ancienne_a_valider_le": "2026-11-18",
+        "lignes": [
+          {
+            "id": 93,
+            "lead": 1641,
+            "lead_nom": "Salma Berrada",
+            "ville": "Bouskoura",
+            "statut": "brouillon",
+            "date_prevue": "2026-11-21",
+            "date_realisee": null,
+            "gabarit": "toiture",
+            "commercial": null,
+            "complet": false,
+            "manquants_count": 9,
+            "en_retard": false,
+            "a_faire": "assigner",
+            "lien": "/visites/93"
+          }
+        ],
+        "lien": "/visites/revue"
+      },
+      "calepinages": {
+        "total": 3,
+        "lignes": [
+          {
+            "calepinage": 14,
+            "reference": "CAL-2611-0014",
+            "lead": 1670,
+            "modifie_le": "2026-11-18T15:02:00+00:00",
+            "signaux": ["bloquant_electrique", "devis_absent", "approbation_attendue"],
+            "a_faire": "corriger_electrique",
+            "lien": "/calepinage/14?onglet=verdict-electrique",
+            "evalue": true
+          }
+        ],
+        "sans_calepinage": {
+          "total": 1,
+          "lignes": [
+            {
+              "visite_id": 91,
+              "lead_id": 1637,
+              "lead_nom": "Karim Alami",
+              "validee_le": "2026-11-18T12:05:00+01:00",
+              "a_faire": "preparer_calepinage",
+              "lien": "/crm/leads/1637"
+            }
+          ]
+        }
+      },
+      "chantiers": {
+        "bloques": {
+          "total": 2,
+          "lignes": [
+            {
+              "id": 12,
+              "reference": "CHT-202611-0012",
+              "client_nom": "Driss Lahlou",
+              "statut": "materiel_commande",
+              "date_pose_prevue": null,
+              "technicien_nom": "",
+              "pose_intervention": null,
+              "blocages": ["sans_date", "sans_technicien"],
+              "a_faire": "planifier_pose",
+              "lien": "/chantiers?id=12"
+            }
+          ]
+        },
+        "poses_semaine": {
+          "total": 1,
+          "lignes": [
+            {
+              "id": 14,
+              "reference": "CHT-202611-0014",
+              "client_nom": "Fatima Zahra Amrani",
+              "statut": "planifie",
+              "date_pose_prevue": "2026-11-24",
+              "technicien_nom": "Hamza Idrissi",
+              "pose_intervention": {"id": 55, "date_prevue": "2026-11-24", "technicien_nom": "Hamza Idrissi"},
+              "blocages": [],
+              "a_faire": "poser",
+              "lien": "/chantiers?id=14"
+            }
+          ]
+        },
+        "lien": "/chantiers"
+      },
+      "impayes": {
+        "total_du": "40600.00",
+        "nb_factures": 2,
+        "lignes": [
+          {
+            "facture_id": 140,
+            "reference": "FAC-202610-0015",
+            "client_id": 61,
+            "client_nom": "Ferme Ait Lahcen SARL",
+            "montant_du": "18600.00",
+            "jours_retard": 34,
+            "niveau": "Relance 2",
+            "promesse": null,
+            "contestee": false,
+            "a_faire": "relancer",
+            "lien": "/ventes/factures?facture=140"
+          }
+        ],
+        "lien": "/ventes/relances"
+      },
+      "tickets": {
+        "ouverts": 2,
+        "en_retard_sla": 1,
+        "lignes": [
+          {
+            "ticket_id": 4815,
+            "reference": "SAV-2026-11-0031",
+            "client_id": 44,
+            "client_nom": "Nadia Chraibi",
+            "equipement": "Onduleur Deye 8 kW — DEYE-SUN8K-2304-1182",
+            "statut": "nouveau",
+            "priorite": "haute",
+            "cree_le": "2026-11-18T09:20:00+00:00",
+            "sla_due_at": "2026-11-19",
+            "en_retard_sla": true,
+            "sous_garantie": true,
+            "a_faire": "planifier",
+            "lien": "/sav?id=4815"
+          }
+        ],
+        "lien": "/sav/action-requise"
+      }
+    }
   }
 }
