@@ -1476,6 +1476,28 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
         self.assertEqual(
             (MESSAGE_VISITE.risk, MESSAGE_VISITE.carte, MESSAGE_VISITE.lot),
             ('internal', 'wa_message', LOT_COPILOTE))
+        # REP8 — sans assigné la visite n'est dans la journée de personne :
+        # ``commercial`` est requis ; la description ne promet plus une
+        # notification inconditionnelle.
+        self.assertEqual(PLANIFIER_VISITE.inputs['required'],
+                         ['id', 'date_prevue', 'commercial'])
+        self.assertNotIn('technicien est notifié', PLANIFIER_VISITE.description)
+
+    def test_motifs_perte_lecture_lot_copilote_garde_de_la_route(self):
+        """REP8 — ``crm.motifs_perte.lister`` : route EXISTANTE, lecture du
+        module crm, lot copilote ; la garde de la route admet ``crm_voir``."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from authentication.permissions import codes_du_module
+        from apps.crm.agent_actions import MOTIFS_PERTE
+        self.assertEqual((MOTIFS_PERTE.lot, MOTIFS_PERTE.risk, MOTIFS_PERTE.method),
+                         (LOT_COPILOTE, 'internal', 'GET'))
+        for action in (MOTIFS_PERTE, PLANIFIER_VISITE):
+            codes, _admin, modules = _gardes_de_la_route(action)
+            self.assertTrue(action.required_permission in codes or any(
+                action.required_permission in codes_du_module(m) for m in modules))
+        resp = auth(self.alice).get(MOTIFS_PERTE.endpoint)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('nom', resp.data['results'][0])
 
     def test_planifier_visite_forme_de_la_carte(self):
         import datetime
@@ -1484,9 +1506,12 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
         jour = aujourd_hui_local() + datetime.timedelta(days=4)
         resp = auth(self.alice).post(
             PLANIFIER_VISITE.endpoint.format(id=lead.pk),
-            {'date_prevue': jour.isoformat()}, format='json')
+            {'date_prevue': jour.isoformat(), 'commercial': self.bob.pk},
+            format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(set(resp.data), {'visite', 'prochaine_touche'})
+        # REP8 — la visite est assignée à la personne désignée.
+        self.assertEqual(resp.data['visite']['commercial_nom'], 'cop_bob')
 
     def test_message_de_visite_forme_de_la_carte_wa_message(self):
         lead = self._lead()

@@ -610,16 +610,23 @@ JOURNALISER_LEAD = AgentAction(
     objets={'id': 'lead'},
 )
 
+# REP8 (B-9) — sans ``commercial`` la route pose une visite SANS assigné
+# (``apps.visites.services.planifier_visite`` : aucun défaut sur ce chemin) :
+# elle n'est dans la journée de personne et personne n'est notifié
+# (``notifier_assignation`` : pas de destinataire, ni l'acteur lui-même).
 PLANIFIER_VISITE = AgentAction(
     key='crm.visite.planifier',
     label='Planifier une visite',
     description=(
-        "Sert à : poser la visite technique d'un lead (date, touche qui "
-        "l'a demandée) ; le technicien est notifié, après confirmation. "
+        "Sert à : poser la visite technique d'un lead (date, qui la fait, "
+        "touche qui l'a demandée), après confirmation ; la personne "
+        "désignée est notifiée, sauf si c'est toi. "
         "Ne pas utiliser pour : une visite de maintenance "
         "(installations) ni proposer la visite (crm.visite.message). "
-        "Exemple : « Il est d'accord pour une visite samedi ». "
-        "Résultat : {visite, prochaine_touche}."
+        "Exemple : « Il est d'accord pour une visite samedi » → demande "
+        "d'abord qui la fait. "
+        "Résultat : {visite, prochaine_touche} ; 404 si la personne est "
+        "inconnue, 409 si son compte est désactivé ou la date passée."
     ),
     endpoint='/api/django/crm/leads/{id}/visites/planifier/',
     method='POST',
@@ -629,6 +636,10 @@ PLANIFIER_VISITE = AgentAction(
             'id': {'type': 'integer'},
             'date_prevue': {'type': 'string', 'format': 'date',
                             'description': 'AAAA-MM-JJ, pas dans le passé.'},
+            'commercial': {
+                'type': 'integer', 'title': 'Qui fait la visite (id)',
+                'description': ("Compte qui fait la visite, demandé à "
+                                "l'utilisateur (le sien s'il la fait).")},
             'etape': {'type': 'integer',
                       'description': 'touche_id qui demande la visite.'},
             'notes': {'type': 'string'},
@@ -636,7 +647,7 @@ PLANIFIER_VISITE = AgentAction(
             'replanifier': {'type': 'boolean',
                             'description': 'Déplacer le rendez-vous en attente.'},
         },
-        'required': ['id', 'date_prevue'],
+        'required': ['id', 'date_prevue', 'commercial'],
     },
     required_permission='crm_modifier',
     risk=RISK_OUTWARD,
@@ -662,6 +673,32 @@ MESSAGE_VISITE = AgentAction(
     required_permission='crm_voir',
     risk=RISK_INTERNAL,
     carte='wa_message',
+    lot=LOT_COPILOTE,
+)
+
+
+# REP8 — lire les motifs de perte de la société (route EXISTANTE
+# ``GET /api/django/crm/motifs-perte/``, ``MotifPerteViewSet`` : lecture
+# ``LectureDuModule`` crm → ``crm_voir``) : le motif exact à reprendre quand
+# un devis est refusé ou un lead perdu (un motif hors liste est refusé).
+MOTIFS_PERTE = AgentAction(
+    key='crm.motifs_perte.lister',
+    label='Lister les motifs de perte',
+    description=(
+        "Sert à : lire les motifs de perte de la société (nom exact, archivé "
+        "ou non) avant de marquer un lead perdu ou un devis refusé. "
+        "Ne pas utiliser pour : inventer un motif ni en créer un "
+        "(Paramètres, administrateur). "
+        "Exemple : « il a signé ailleurs, marque-le perdu » → lire la liste, "
+        "reprendre le nom exact. "
+        "Résultat : liste paginée {count, results[{id, nom, archived, "
+        "est_junk, en_usage}]} ; ne reprendre qu'un motif non archivé."
+    ),
+    endpoint='/api/django/crm/motifs-perte/',
+    method='GET',
+    inputs={'type': 'object', 'properties': {}},
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
 
@@ -930,6 +967,7 @@ _ACTIONS = (
     PLANIFIER_VISITE,
     MESSAGE_VISITE,
     MESSAGE_MANUEL,
+    MOTIFS_PERTE,
 )
 
 
