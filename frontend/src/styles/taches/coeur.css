@@ -137,6 +137,8 @@
 .tch .suite-projets { margin-top: 4px; }
 .tch .groupe-projet { margin-top: 14px; font-weight: 600; color: var(--tch-texte); }
 .tch .groupe-projet [data-p] { display: inline-flex; align-items: center; gap: 8px; }
+/* R2-020 — sous le titre d'un projet, ses lignes ne répètent pas son nom */
+.tch .suite-projets .ligne .meta [data-p] { display: none; }
 @media (min-width: 768px) { .tch .propose-actions { padding-inline: 24px; } }
 .tch .demo-balayage b { position: absolute; right: 0; top: 0; bottom: 0; width: 92px; display: grid; place-items: center;
   font-size: 0.75rem; font-weight: 650; color: var(--tch-accent-texte); }
