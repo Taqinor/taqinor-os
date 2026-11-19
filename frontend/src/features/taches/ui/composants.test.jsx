@@ -268,6 +268,63 @@ describe('TCH45 — FeuilleACrans', () => {
     focus.mockRestore()
   })
 
+  describe('vague 2 — la SORTIE : une copie inerte s\'efface, le focus revient tout de suite', () => {
+    const mouvement = (permis) => vi.stubGlobal('matchMedia', (q) => ({
+      matches: permis && q === '(prefers-reduced-motion: no-preference)', media: q, addEventListener() {}, removeEventListener() {},
+    }))
+    afterEach(() => { vi.unstubAllGlobals() })
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">ouvreur</button>
+        <FeuilleACrans ouverte={ouverte} titre="Quand" onFermer={() => {}}><input aria-label="Jour" defaultValue="" /></FeuilleACrans>
+      </div>
+    )
+
+    it('fermée : plus AUCUN dialogue, le focus est à l\'ouvreur ; la copie (sans rôle, inerte, valeur tapée) part à la fin de l\'animation', async () => {
+      mouvement(true)
+      const { container, rerender } = render(page(false))
+      screen.getByRole('button', { name: 'ouvreur' }).focus()
+      rerender(page(true))
+      fireEvent.change(screen.getByRole('textbox', { name: 'Jour' }), { target: { value: 'jeudi' } })
+      rerender(page(false))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(screen.getByRole('button', { name: 'ouvreur' })).toHaveFocus()
+      await act(async () => { await Promise.resolve() })
+      const copie = container.querySelector('.feuille.sortante')
+      expect(copie).not.toBeNull()
+      expect(container.querySelector('.voile.sortante')).not.toBeNull()
+      expect(copie).toHaveAttribute('aria-hidden', 'true')
+      expect(copie.inert).toBe(true)
+      expect(copie.getAttribute('role')).toBeNull()
+      expect(copie.querySelector('input').value).toBe('jeudi')
+      fireEvent.animationEnd(copie)
+      expect(container.querySelector('.sortante')).toBeNull()
+    })
+
+    it('démontée avec son écran (la fiche) : la copie garde ses ancêtres de classe, sans leurs data-*', async () => {
+      mouvement(true)
+      const ecran = (avecFiche) => (
+        <div className="tch">
+          {avecFiche ? <div className="fiche" data-fiche="12"><FeuilleACrans ouverte titre="Fiche" onFermer={() => {}}><p>x</p></FeuilleACrans></div> : null}
+        </div>
+      )
+      const { container, rerender } = render(ecran(true))
+      rerender(ecran(false))
+      await act(async () => { await Promise.resolve() })
+      const copie = container.querySelector('.tch > .fiche > .feuille.sortante')
+      expect(copie).not.toBeNull()
+      expect(container.querySelector('[data-fiche]')).toBeNull()
+    })
+
+    it('« Réduire les animations » : rien ne reste', async () => {
+      mouvement(false)
+      const { container, rerender } = render(page(true))
+      rerender(page(false))
+      await act(async () => { await Promise.resolve() })
+      expect(container.querySelector('.sortante')).toBeNull()
+    })
+  })
+
   it('R2-043 — Échap ferme même quand le focus est DERRIÈRE la feuille ; seule la plus haute se ferme', async () => {
     const dessous = vi.fn()
     const dessus = vi.fn()

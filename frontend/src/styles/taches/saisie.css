@@ -199,6 +199,26 @@
     .tch .feuille.panneau-bureau { translate: 100% 0; opacity: 1; }
   }
 }
+/* Vague 2 (spec-8 §2 : 180 ms de sortie) — la SORTIE : FeuilleACrans laisse une copie inerte `.sortante` le temps de
+   l'animation (la vraie feuille est déjà partie, le focus déjà rendu). La feuille du bas redescend, le dialogue glisse
+   et s'efface, le panneau repart à droite, le voile se fond. Sans transition : l'entrée (`@starting-style`) ne doit
+   pas se rejouer sur la copie. */
+.tch .feuille.sortante, .tch .voile.sortante { pointer-events: none; transition: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch .feuille.sortante, .tch .voile.sortante { animation: var(--motion-base) var(--ease-standard) both; }
+  .tch .feuille.sortante { animation-name: tch-feuille-sortie; }
+  .tch .voile.sortante { animation-name: tch-voile-sortie; }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 768px) {
+  .tch .feuille.dialogue-bureau.sortante { animation-name: tch-dialogue-sortie; }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  .tch .feuille.panneau-bureau.sortante { animation-name: tch-panneau-sortie; }
+}
+@keyframes tch-feuille-sortie { from { translate: 0 0; } to { translate: 0 100%; } }
+@keyframes tch-dialogue-sortie { from { translate: 0 0; opacity: 1; } to { translate: 0 12px; opacity: 0; } }
+@keyframes tch-panneau-sortie { from { translate: 0 0; } to { translate: 100% 0; } }
+@keyframes tch-voile-sortie { from { opacity: 1; } to { opacity: 0; } }
 /* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
    fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
    lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */

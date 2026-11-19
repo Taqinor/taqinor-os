@@ -155,6 +155,30 @@ const TOAST_AJOUTEE_AUJOURDHUI = "Ajoutée à Aujourd'hui"
 /** L'écran Aujourd'hui (`/taches` y mène) : lu à la demande, la feuille se monte aussi hors d'un routeur. */
 const surAujourdhui = () => /^\/taches(\/aujourdhui)?\/?$/.test(window.location.pathname)
 
+/** R2-009 — le bureau : la ligne « Ajouter une tâche » n'existe qu'à partir de 768 px (`bureau-seul`). */
+const REQUETE_BUREAU = '(min-width: 768px)'
+
+function useBureau() {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(REQUETE_BUREAU).matches
+  const [bureau, setBureau] = useState(lire)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mq = window.matchMedia(REQUETE_BUREAU)
+    const maj = () => setBureau(mq.matches)
+    mq.addEventListener?.('change', maj)
+    return () => mq.removeEventListener?.('change', maj)
+  }, [])
+  return bureau
+}
+
+/** R2-009 (choix C-3) — l'ancre de la saisie EN PLACE : celle que pose la ligne « Ajouter une tâche » de l'écran
+ *  (`SaisieBureau`), si elle est rendue. Aucune (Agenda, Recherche, une autre app de l'ERP) : le dialogue centré. */
+function trouverAncre() {
+  const ancre = typeof document === 'undefined' ? null : document.querySelector('.tch .saisie-ancre')
+  if (!ancre) return null
+  return typeof ancre.checkVisibility === 'function' && !ancre.checkVisibility() ? null : ancre
+}
+
 /** Coupure : aucune réponse du serveur (le geste part dans la file, jamais perdu). */
 const sansReseau = (err) => classerErreur(err).code === 'reseau'
 
@@ -195,6 +219,13 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [contexte, setContexte] = useState(() => lireContexte(null))
   const [quandDepart, setQuandDepart] = useState(null)
   const enLigne = useEnLigne()
+  // R2-009 — au bureau, la saisie s'ouvre à la place de la ligne « Ajouter une tâche » de l'écran (ancre lue à
+  // l'ouverture) ; « Coller mes listes » et une liste collée gardent le dialogue centré
+  const bureau = useBureau()
+  // (la coquille ouvre toujours la feuille APRÈS le montage de l'écran : la ligne est déjà là)
+  const ancre = useMemo(() => (ouverte && bureau ? trouverAncre() : null), [ouverte, bureau])
+  /** Vrai quand la demande d'ouverture est « Coller mes listes » (chaque demande le repose, voir `recevoir`). */
+  const [demandeListe, setDemandeListe] = useState(false)
   // R2-003 — les projets du compte, lus une fois à l'ouverture : la liste à `#` et le sélecteur de la puce « Projet »
   const [projets, setProjets] = useState(null)
   const [projetOuvert, setProjetOuvert] = useState(false)
@@ -254,6 +285,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const recevoir = useCallback((detail) => {
     if (typeof detail.texte === 'string') setTexte(detail.texte)
     if (detail.liste || detail.coller) setChampReplie(false)
+    setDemandeListe(Boolean(detail.liste || detail.coller))
+    // déjà ouverte (en place au bureau, le focus parti dans la liste) : `n` ou « Ajouter une tâche » ramène au champ
+    if (actuel.current.ouverte) requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
     // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
     setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
     // R2-002 (choix C-1) — ouverte depuis Aujourd'hui sans jour dans la demande : elle part sur aujourd'hui, comme
@@ -472,8 +506,16 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   }
   const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
+  const enDialogue = modeListe || demandeListe
   return (
-    <FeuilleACrans ouverte={Boolean(ouverte)} onFermer={onFermer} titre="Ajouter une tâche" cranInitial={modeListe ? '85' : '50'}>
+    <FeuilleACrans
+      ouverte={Boolean(ouverte)}
+      onFermer={onFermer}
+      titre="Ajouter une tâche"
+      cranInitial={modeListe ? '85' : '50'}
+      variante={enDialogue ? 'dialogue' : 'popover'}
+      ancre={enDialogue ? null : ancre}
+    >
       <div className="feuille-saisie" ref={corps}>
         {!(modeListe && donneesListe) || !champReplie ? (
           <ChampSaisie

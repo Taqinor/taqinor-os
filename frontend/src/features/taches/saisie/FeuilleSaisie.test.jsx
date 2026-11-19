@@ -8,7 +8,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captureQueue'
 import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
-import { ZoneAnnonces } from '../coquille/CoquilleTaches'
+import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
 import { morceauxSurlignes } from '../ui/ChampSaisie'
 
@@ -691,6 +691,93 @@ describe('TCH82 — feuille de saisie', () => {
       expect(ligneCreee.titre.length).toBeLessThanOrEqual(280)
       expect(`${ligneCreee.titre} ${ligneCreee.notes}`).toBe(LONG)
       expect(champ()).toHaveValue('')
+    })
+  })
+
+  describe('R2-009 (choix C-3) — au bureau, la saisie s\'ouvre EN PLACE sous « Ajouter une tâche »', () => {
+    const bureau = (oui) => vi.stubGlobal('matchMedia', (q) => ({
+      matches: oui && q === '(min-width: 768px)', media: q, addEventListener() {}, removeEventListener() {},
+    }))
+    afterEach(() => { vi.unstubAllGlobals() })
+    // comme la coquille : l'écran est monté, PUIS la feuille s'ouvre
+    const monterEcran = ({ ligne = true } = {}) => {
+      const onFermer = vi.fn()
+      const ecran = (ouverte) => (
+        <ReactReduxContext.Provider value={{ store }}>
+          <div className="tch" data-ecran="aujourdhui">
+            {ligne ? <SaisieBureau onClick={() => {}} /> : null}
+            <ul aria-label="Ma liste"><li><button type="button">Appeler le fournisseur</button></li></ul>
+            <FeuilleSaisie ouverte={ouverte} onFermer={onFermer} />
+            <ZoneAnnonces />
+          </div>
+        </ReactReduxContext.Provider>
+      )
+      const rendu = render(ecran(false))
+      rendu.rerender(ecran(true))
+      return { onFermer, ...rendu }
+    }
+
+    it('en place : posée sous la ligne, sans voile, non modale ; la liste reste à la main ; Entrée ajoute, le champ reste prêt ; Échap ferme', async () => {
+      bureau(true)
+      const user = userEvent.setup()
+      const { onFermer, container } = monterEcran()
+      const dialogue = screen.getByRole('dialog', { name: 'Ajouter une tâche' })
+      expect(dialogue).toHaveClass('popover-bureau')
+      expect(dialogue).toHaveAttribute('aria-modal', 'false')
+      expect(container.querySelector('.saisie-bureau + .saisie-ancre')).toContainElement(dialogue)
+      expect(container.querySelector('.voile')).toBeNull()
+      await waitFor(() => expect(champ()).toHaveFocus())
+      // la liste derrière reste vivante : on y clique, le focus y reste, la saisie aussi
+      await user.click(screen.getByRole('button', { name: 'Appeler le fournisseur' }))
+      expect(screen.getByRole('button', { name: 'Appeler le fournisseur' })).toHaveFocus()
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeInTheDocument()
+      await user.click(champ())
+      await user.type(champ(), PHRASE)
+      await screen.findByText('Nouveau projet : SiteWeb', {}, { timeout: 3000 })
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('') // R2-001 : vidé au toucher, l'envoi part en arrière-plan
+      expect(champ()).toHaveFocus()
+      await screen.findByRole('group', { name: 'Geste effectué' })
+      expect(onFermer).not.toHaveBeenCalled()
+      await user.keyboard('{Escape}')
+      expect(onFermer).toHaveBeenCalledTimes(1)
+    })
+
+    it('une liste collée garde le dialogue centré, sur voile', async () => {
+      bureau(true)
+      const { container } = monterEcran()
+      fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
+      const dialogue = screen.getByRole('dialog', { name: 'Ajouter une tâche' })
+      expect(dialogue).toHaveClass('dialogue-bureau')
+      expect(dialogue).toHaveAttribute('aria-modal', 'true')
+      expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
+      expect(container.querySelector('.voile')).not.toBeNull()
+      await waitFor(() => expect(champ()).toHaveFocus())
+      expect(champ()).toHaveValue('Courses\nlait\npain')
+    })
+
+    it('« Coller mes listes » ouvre directement le dialogue', () => {
+      bureau(true)
+      monterEcran()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { liste: true } })) })
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('dialogue-bureau')
+    })
+
+    it('sans ligne « Ajouter une tâche » à l\'écran (Agenda, `c t` depuis une autre app) : le dialogue centré', () => {
+      bureau(true)
+      const { container } = monterEcran({ ligne: false })
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('dialogue-bureau')
+      expect(container.querySelector('.voile')).not.toBeNull()
+    })
+
+    it('iPhone : la feuille du bas, inchangée (la ligne du bureau est cachée)', () => {
+      bureau(false)
+      const { container } = monterEcran()
+      const dialogue = screen.getByRole('dialog', { name: 'Ajouter une tâche' })
+      expect(dialogue).not.toHaveClass('popover-bureau')
+      expect(dialogue).toHaveAttribute('aria-modal', 'true')
+      expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
+      expect(container.querySelector('.voile')).not.toBeNull()
     })
   })
 

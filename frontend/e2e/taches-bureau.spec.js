@@ -98,6 +98,24 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     await expect(page).not.toHaveURL(/tache=/)
   })
 
+  test('vague 2 — fiche ouverte en panneau : `n` ouvre la saisie (en place) ; fermer la fiche retire tache, section et focus', async ({ page }) => {
+    const { tache } = await journeeAvecUneTache(page)
+    await ouvrirEcran(page, `/taches/aujourdhui?tache=${tache.id}&section=decouper&focus=titre`, 'aujourdhui')
+    const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+    await expect(fiche.getByRole('textbox', { name: 'Titre' })).toHaveValue(tache.titre)
+    await page.getByRole('heading', { level: 1 }).click() // le focus quitte le champ Titre (aucune touche dans un champ)
+    await page.keyboard.press('n')
+    const saisie = page.getByRole('dialog', { name: 'Ajouter une tâche' })
+    await expect(saisie).toBeVisible()
+    await expect(saisie).toHaveAttribute('aria-modal', 'false')
+    await page.keyboard.press('Escape') // la plus haute d'abord : la saisie
+    await expect(saisie).toHaveCount(0)
+    await expect(fiche).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(fiche).toHaveCount(0)
+    await expect(page).not.toHaveURL(/[?&](tache|section|focus)=/)
+  })
+
   test('R2-043 — « ⋯ › Alléger ma journée » : le focus est DANS la feuille, Échap la ferme et le rend au bouton', async ({ page }) => {
     await journeeAvecUneTache(page)
     const menu = page.getByRole('button', { name: "Plus d'actions" }).first()

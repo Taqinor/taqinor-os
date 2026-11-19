@@ -83,6 +83,27 @@ test.describe('Tâches — saisie', () => {
     }
   })
 
+  test('R2-009 — au bureau, `n` ouvre la saisie EN PLACE sous « Ajouter une tâche » : sans voile, la liste reste dessous', async ({ page }) => {
+    await journeeNonVide(page)
+    await attendreAujourdhui(page)
+    await page.keyboard.press('n')
+    const feuille = feuilleSaisie(page)
+    await expect(feuille).toBeVisible()
+    await expect(feuille).toHaveAttribute('aria-modal', 'false')
+    expect(await feuille.evaluate((f) => Boolean(f.closest('.saisie-ancre'))), 'rendue à la place de la ligne').toBe(true)
+    await expect(page.locator('.tch .voile')).toHaveCount(0)
+    await expect(champSaisie(page)).toBeFocused()
+    const titre = titreUnique('Relancer le transporteur')
+    await champSaisie(page).fill(titre)
+    await champSaisie(page).press('Enter')
+    await expect(champSaisie(page)).toHaveValue('')
+    await expect(champSaisie(page)).toBeFocused()
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    await page.keyboard.press('Escape')
+    await expect(feuille).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Ajouter une tâche', exact: true }).first()).toBeVisible()
+  })
+
   test('R2-003 — « #Sal » propose « Salon Solaire Expo » : la tâche y va, aucun projet en double', async ({ page }) => {
     await reinitialiser(page)
     const nom = `Salon Solaire Expo ${suffixe()}`
