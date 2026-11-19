@@ -349,15 +349,21 @@ export default function FeuilleACrans({
   useEffect(() => {
     if (!ouverte) return undefined
     let geste = false
+    // R3-066 — le dernier élément focalisé DANS la feuille (le champ `autoFocus` de « Renommer ») : c'est lui qui reprend
+    // le focus quand le menu qui a ouvert la feuille le rend à son bouton — jamais la poignée à sa place
+    const ici = document.activeElement
+    let dedans = ici && feuille.current?.contains(ici) && ici !== feuille.current ? ici : null
     const surGeste = () => { geste = true }
     const surFocus = (e) => {
       const cible = e.target
       const racine = feuille.current // lue au moment : la feuille peut être rendue ailleurs (saisie en place → dialogue)
+      if (cible instanceof Element && racine?.contains(cible) && cible !== racine) dedans = cible
       if (laisserFocus.current || (enPanneau.current && geste)) return
       if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
       if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
       origine.current = cible
-      focusInitial(racine)
+      if (dedans?.isConnected && racine.contains(dedans)) dedans.focus({ focusVisible: false })
+      else focusInitial(racine)
     }
     document.addEventListener('focusin', surFocus)
     document.addEventListener('pointerdown', surGeste, true)

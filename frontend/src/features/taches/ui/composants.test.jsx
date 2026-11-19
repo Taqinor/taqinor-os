@@ -126,6 +126,9 @@ describe('TCH45 — FeuilleACrans', () => {
     act(() => { ouvreur.focus() })
     rerender(page(true))
     expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus() // pas la poignée « Agrandir la feuille »
+    // iPhone : le menu ⋯ qui a ouvert « Renommer » rend le focus à son bouton juste APRÈS : le champ le reprend
+    act(() => { ouvreur.focus() })
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
     rerender(page(false))
     expect(ouvreur).toHaveFocus()
   })
