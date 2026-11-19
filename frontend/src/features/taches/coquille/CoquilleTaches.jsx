@@ -247,14 +247,20 @@ export function ZoneAnnonces() {
 }
 
 /** La ligne « Ajouter une tâche · n » du bureau. Un écran qui la veut AILLEURS que sous l'en-tête (Aujourd'hui : sous la
- *  progression, maquette ecran-aujourdhui-matin.html) passe `saisieBureau={false}` à la coquille et la rend lui-même. */
+ *  progression, maquette ecran-aujourdhui-matin.html) passe `saisieBureau={false}` à la coquille et la rend lui-même.
+ *  R2-009 (choix C-3) — `.saisie-ancre`, juste après la ligne, reçoit la saisie EN PLACE au bureau (FeuilleSaisie la
+ *  trouve et y rend sa feuille, sans voile : la liste reste lisible et vivante dessous, comme Things et Todoist) ; vide,
+ *  elle n'a pas de boîte. */
 export function SaisieBureau({ onClick }) {
   return (
-    <button type="button" className="saisie-bureau bureau-seul" onClick={onClick}>
-      <Plus className="i" aria-hidden="true" />
-      Ajouter une tâche
-      <kbd aria-hidden="true">n</kbd>
-    </button>
+    <>
+      <button type="button" className="saisie-bureau bureau-seul" onClick={onClick}>
+        <Plus className="i" aria-hidden="true" />
+        Ajouter une tâche
+        <kbd aria-hidden="true">n</kbd>
+      </button>
+      <div className="saisie-ancre bureau-seul" />
+    </>
   )
 }
 

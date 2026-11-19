@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -8,7 +9,8 @@ import { X } from 'lucide-react'
    CLAVIER OUVERT : les crans ne valent plus (86 px utiles à 50 %) — la feuille épouse son
    contenu et se pose SUR le clavier (`sur-clavier`, hauteur du clavier lue sur
    `visualViewport`, jetée dans `--tch-clavier-h`). Au bureau (≥ 768 px) la même feuille est
-   un dialogue centré (`dialogue-bureau`) ou un popover (`popover-bureau`) — CSS seul ; `variante="panneau"`
+   un dialogue centré (`dialogue-bureau`) ; `variante="popover"` + `ancre` (R2-009 : la saisie) est rendue DANS
+   l'ancre, en place dans la page, NON modale et sans voile (`popover-bureau`) ; `variante="panneau"`
    (R2-050 : fiche, bilan, Alléger) est, dès 1024 px, un panneau fixe à droite NON modal (`panneau-bureau`).
    Dialogue modal : focus piégé, Échap ferme (écouté sur `document`, la plus haute seulement — R2-043), le focus
    revient à l'élément qui l'a ouverte.
@@ -157,11 +159,13 @@ export default function FeuilleACrans({
   titre,
   cranInitial = '50',
   variante = 'dialogue',
+  ancre = null,
   historique = true,
   children,
 }) {
   const [cran, setCran] = useState(cranInitial)
   const feuille = useRef(null)
+  const voile = useRef(null)
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
   useRetourFerme(Boolean(ouverte) && historique, onFermer)
@@ -172,8 +176,15 @@ export default function FeuilleACrans({
   // liste reste lisible et cliquable, toucher une autre ligne change la fiche. iPhone et tablette : feuille / dialogue.
   const large = useLarge(REQUETE_PANNEAU)
   const panneau = variante === 'panneau' && large
-  const enPanneau = useRef(panneau)
-  useEffect(() => { enPanneau.current = panneau })
+  // R2-009 (choix C-3) — `variante="popover"` + `ancre` (un élément de l'écran) : la feuille est rendue DANS l'ancre,
+  // dans le flux de la page (la saisie à la place de la ligne « Ajouter une tâche »), NON modale et sans voile. Sans
+  // ancre, elle reste un dialogue centré (bureau) / la feuille du bas (iPhone).
+  const enPlace = variante === 'popover' && Boolean(ancre)
+  const nonModale = panneau || enPlace
+  const enPanneau = useRef(nonModale) // non modale (panneau, saisie en place) : la liste reste à la main
+  useEffect(() => { enPanneau.current = nonModale })
+  const seulPanneau = useRef(panneau)
+  useEffect(() => { seulPanneau.current = panneau })
   const laisserFocus = useRef(false) // panneau ouvert depuis une ligne : le focus y reste
 
   useEffect(() => {
@@ -183,7 +194,7 @@ export default function FeuilleACrans({
     // R2-050 — le panneau ne vole pas le focus à la LIGNE qui l'a ouvert (`j`/`k` puis Entrée continuent dans la
     // liste) ; ouvert d'ailleurs (un menu, le bilan), il le prend comme une feuille. Fermé, il ne rend le focus que
     // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
-    laisserFocus.current = enPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
+    laisserFocus.current = seulPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
     if (!laisserFocus.current) focusInitial(racine)
     const parClavier = derniereModalite === 'clavier'
     return () => {
@@ -202,11 +213,11 @@ export default function FeuilleACrans({
   // à elle (la liste reste à la main).
   useEffect(() => {
     if (!ouverte) return undefined
-    const racine = feuille.current
     let geste = false
     const surGeste = () => { geste = true }
     const surFocus = (e) => {
       const cible = e.target
+      const racine = feuille.current // lue au moment : la feuille peut être rendue ailleurs (saisie en place → dialogue)
       if (laisserFocus.current || (enPanneau.current && geste)) return
       if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
       if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
@@ -246,11 +257,21 @@ export default function FeuilleACrans({
 
   // R2-048 — contenu plus court que le cran : la feuille épouse son contenu (`cran-auto`, plafond 85 %) — plus de
   // « 300 px de blanc sous les boutons ». Mesuré avant peinture, puis à chaque changement de taille du contenu.
+  // R2-009 — la saisie en place devient un dialogue quand on y colle une liste (et inversement) : la feuille est rendue
+  // ailleurs, le focus — parti avec l'ancienne — revient dans la nouvelle (au champ, au bureau)
+  const rendueEnPlace = useRef(enPlace)
+  useEffect(() => {
+    if (rendueEnPlace.current === enPlace) return
+    rendueEnPlace.current = enPlace
+    const ici = document.activeElement
+    if (ouverte && (!ici || ici === document.body || !ici.isConnected)) focusInitial(feuille.current)
+  }, [ouverte, enPlace])
+
   const [court, setCourt] = useState(false)
   useLayoutEffect(() => {
     const racine = feuille.current
     const corps = racine?.querySelector('.feuille-corps')
-    if (!ouverte || clavier || panneau || !corps) return undefined
+    if (!ouverte || clavier || panneau || enPlace || !corps) return undefined
     const mesurer = () => {
       const naturel = racine.offsetHeight - corps.clientHeight + corps.scrollHeight
       const cible = window.innerHeight * (cran === '85' ? 0.85 : 0.5)
@@ -262,12 +283,12 @@ export default function FeuilleACrans({
     observateur.observe(corps)
     ;[...corps.children].forEach((enfant) => observateur.observe(enfant))
     return () => observateur.disconnect()
-  }, [ouverte, clavier, panneau, cran])
+  }, [ouverte, clavier, panneau, enPlace, cran])
 
   if (!ouverte) return null
 
   const surTouche = (e) => {
-    if (e.key !== 'Tab' || panneau) return
+    if (e.key !== 'Tab' || nonModale) return
     const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])].filter(estVisible)
     if (liste.length === 0) return
     const premier = liste[0]
@@ -276,39 +297,48 @@ export default function FeuilleACrans({
     else if (!e.shiftKey && document.activeElement === dernier) { e.preventDefault(); premier.focus() }
   }
 
-  // la variante `panneau` sous 1024 px garde l'allure du dialogue (tablette) et de la feuille du bas (iPhone)
-  const bureau = variante === 'panneau' ? (panneau ? 'panneau' : 'dialogue') : variante
-  const classes = ['feuille', clavier ? 'sur-clavier' : court ? 'cran-auto' : `cran-${cran}`, `${bureau}-bureau`]
-  const style = clavier ? { '--tch-clavier-h': `${clavier}px` } : undefined
+  // la variante `panneau` sous 1024 px garde l'allure du dialogue (tablette) et de la feuille du bas (iPhone) ; le
+  // `popover` sans ancre, celle du dialogue
+  const bureau = variante === 'panneau' ? (panneau ? 'panneau' : 'dialogue') : variante === 'popover' && !enPlace ? 'dialogue' : variante
+  const classes = enPlace
+    ? ['feuille', 'popover-bureau']
+    : ['feuille', clavier ? 'sur-clavier' : court ? 'cran-auto' : `cran-${cran}`, `${bureau}-bureau`]
+  const style = clavier && !enPlace ? { '--tch-clavier-h': `${clavier}px` } : undefined
   const grand = cran === '85'
 
-  return (
-    <>
-      {panneau ? null : <div className="voile" onClick={onFermer} aria-hidden="true" />}
-      <div
-        ref={feuille}
-        className={classes.join(' ')}
-        style={style}
-        role="dialog"
-        aria-modal={panneau ? 'false' : 'true'}
-        aria-label={titre}
-        onKeyDown={surTouche}
-      >
+  const corps = (
+    <div
+      ref={feuille}
+      className={classes.join(' ')}
+      style={style}
+      role="dialog"
+      aria-modal={nonModale ? 'false' : 'true'}
+      aria-label={titre}
+      onKeyDown={surTouche}
+    >
+      {enPlace ? null : (
         <button
           type="button"
           className="poignee"
           aria-label={grand ? 'Réduire la feuille' : 'Agrandir la feuille'}
           onClick={() => setCran(grand ? '50' : '85')}
         />
-        <div className="feuille-entete">
-          <button type="button" className="bouton-icone" aria-label="Fermer" onClick={onFermer}>
-            <X className="i" aria-hidden="true" />
-          </button>
-          <div className="feuille-titre">{titre}</div>
-          <span />
-        </div>
-        <div className="feuille-corps">{children}</div>
+      )}
+      <div className="feuille-entete">
+        <button type="button" className="bouton-icone" aria-label="Fermer" onClick={onFermer}>
+          <X className="i" aria-hidden="true" />
+        </button>
+        <div className="feuille-titre">{titre}</div>
+        <span />
       </div>
+      <div className="feuille-corps">{children}</div>
+    </div>
+  )
+  if (enPlace) return createPortal(corps, ancre)
+  return (
+    <>
+      {nonModale ? null : <div ref={voile} className="voile" onClick={onFermer} aria-hidden="true" />}
+      {corps}
     </>
   )
 }
