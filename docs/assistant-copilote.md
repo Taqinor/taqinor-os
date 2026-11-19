@@ -436,3 +436,30 @@ locale : aperçu 72 900 → 79 100 MAD TTC, carte de confirmation qui nomme le d
 relu — 12 panneaux, 12 structures, 24 socles, câbles allongés, même onduleur, même batterie. Le total est celui d'un
 devis composé directement à 12 panneaux.
 
+## 16. Première question en production restée sans réponse : déléguer ses dossiers (19/11/2026)
+
+**L'incident.** Le 19/11 à 14 h 42 UTC, juste après le déploiement, Reda écrit à l'assistant : « i want to delegate to
+meriem where can i do this in parameters », puis « all my leads and my daily follow ups ». L'assistant répond qu'aucun
+réglage de délégation n'existe, qu'il ne réaffecte qu'un lead à la fois, et lui demande « l'identifiant utilisateur de
+Meriem ». Or l'ERP a ce geste depuis le 17/11 (« Déléguer mes dossiers », écran Suivi des relances et cockpit) :
+l'assistant n'avait ni l'outil, ni la ligne du manuel, ni le moyen de retrouver une collègue par son nom. Reda a délégué
+à l'écran (15 dossiers passés à Meryem, vérifié en lecture sur le serveur).
+
+**Ce qui est construit.**
+- `crm.collegues.lister` (noyau) : retrouver un collègue par son NOM, sans accent ni casse, avec les noms les plus
+  proches quand rien ne correspond (« Meriem » → « Meryem »). Même liste que le sélecteur de responsable des écrans.
+- `crm.dossiers.deleguer_apercu` puis `crm.dossiers.deleguer` (confirmé) : la route existante de l'écran, rien de plus ;
+  la carte nomme la personne et dit la conséquence. « Prévenir les clients » reste un choix de l'écran.
+- `crm.lead.reaffecter` nomme la personne sur sa carte.
+- Règle du prompt : une personne se désigne par son nom ; l'assistant ne demande JAMAIS un identifiant ; un seul
+  collègue correspond → il redit le nom complet ; plusieurs → il demande lequel ; aucun → il cite les plus proches.
+- Manuel : la délégation existe, où est le bouton, et ce n'est pas dans Paramètres.
+
+**Essai avec une vraie clé (pile locale).** Les deux phrases de Reda, mot pour mot : l'assistant dit où est le bouton et
+propose de le faire ; il trouve « Meryem Essai » pour « Meriem » et demande confirmation de la personne ; aperçu (103
+dossiers, 113 relances), carte qui nomme la personne, confirmation, 103 dossiers passés en base. Deux « Youssef » : il
+demande lequel, sans choisir.
+
+**Leçon.** Un geste qui existe à l'écran et que l'assistant ne connaît pas se voit dès la première vraie question : à
+chaque fonction livrée à l'écran, se demander si l'assistant doit la connaître (manuel) ou la faire (outil).
+
