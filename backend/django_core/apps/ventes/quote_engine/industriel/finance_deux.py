@@ -404,11 +404,12 @@ def _courbe(d, opts, fmt, L, police, teintes, noms, base_txt):
     """Le bloc de la courbe, cédable par paliers (``commercial.equip``) :
     pleine hauteur ; la page déborde (``courbe_cumul`` cédé) ⇒ la courbe
     COMPACTE, sans sa note ; elle déborde encore (``courbe_compacte`` cédé
-    avec les autres blocs, ou les bases cédées d'un coup avec la courbe —
-    troncature des conditions) ⇒ rien : le tableau porte déjà le cumul."""
+    avec les autres blocs) ⇒ rien — le tableau porte déjà le cumul. Quand une
+    AUTRE page force le retrait d'un coup de la courbe et des bases
+    (troncature des conditions), la page garde la courbe compacte : sans ses
+    bases, elle est plus courte que la page qui tenait avec elles."""
     from ..ci.graphiques import cede
-    if cede(d, "courbe_compacte") or (
-            cede(d, "courbe_cumul") and cede(d, "hypotheses")):
+    if cede(d, "courbe_compacte"):
         return ""
     if cede(d, "courbe_cumul"):
         return ('<div data-graphique="courbe_compacte">' + _svg_cumul(
@@ -588,11 +589,12 @@ def _libelle_base(ligne):
 def _lignes_bases(d, o, fmt, fmt_mad, L):
     """``(hypothèses générales, remplacements)`` d'une option — les lignes de
     ``finance._hypotheses`` ; les remplacements sont celles qui disparaissent
-    quand on retire ``argent.remplacements``."""
+    quand on retire ``argent.remplacements`` et ``argent.batterie_duree``
+    (niveau 13 : la durée de vie de la batterie, sous le nom de SON option)."""
     from . import finance as F
     flux = F.flux_principal(o["argent"])[1]
     toutes = F._hypotheses(o["argent"], flux, fmt, fmt_mad, L, d)
-    generales = F._hypotheses(dict(o["argent"], remplacements=[]), flux,
+    generales = F._hypotheses(dict(o["argent"], remplacements=[], batterie_duree=None), flux,
                               fmt, fmt_mad, L, d)
     return generales, [li for li in toutes if li not in generales]
 

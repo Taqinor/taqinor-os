@@ -2857,6 +2857,19 @@ LIBELLES = {
               'years',
         'ar': 'كل شريحة من {pas} كيلوواط ذروة معتمدة تسترد كلفتها في أقل من '
               '{n} سنوات'},
+    # Niveau 13 (fondateur 19/11/2026) — la durée de vie de la batterie lue sur
+    # ``economie_flux.batterie_duree`` (cycles publiés ÷ cycles par an de l'étude).
+    'ci_h_duree_batterie': {'fr': 'Durée de vie de la batterie',
+                            'en': 'Battery lifetime',
+                            'ar': 'عمر البطارية'},
+    'ci_h_duree_batterie_cycles': {
+        'fr': '{cycles} cycles publiés, environ {par_an} cycles par an',
+        'en': '{cycles} published cycles, about {par_an} cycles a year',
+        'ar': '{cycles} دورة منشورة، حوالي {par_an} دورة في السنة'},
+    'ci_h_duree_batterie_aucun': {
+        'fr': ' — aucun remplacement sur {n} ans',
+        'en': ' — no replacement over {n} years',
+        'ar': ' — دون استبدال خلال {n} سنة'},
     'ci_h_om': {'fr': 'Entretien (O&amp;M)', 'en': 'Maintenance (O&amp;M)',
                 'ar': 'الصيانة (التشغيل والصيانة)'},
     'ci_h_om_deduite': {

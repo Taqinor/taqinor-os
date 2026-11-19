@@ -36,7 +36,7 @@ from decimal import Decimal
 from apps.ventes.moteur_ci.taille import HORIZON_MARGINAL_CI
 
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, CLE_BANQUE_RECOMMANDEE, option_avec_de_l_etude
-from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_RETOURS_3010B, regles_au_moins
+from .regles_calcul import REGLES_CORRIGEES_2710, REGLES_CYCLES_BATTERIE_1911, REGLES_RETOURS_3010B, regles_au_moins
 from .etude_ci_visite import _couche_visite
 
 logger = logging.getLogger(__name__)
@@ -1512,7 +1512,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710), reference_sans=evaluation,
         regles_3010b=regles_au_moins(devis, REGLES_RETOURS_3010B),  # D-CI-BATTERIE-NON-RENTABLE
         talon_inconnu=(prov_charge.get('talon') or {}).get('statut') == 'borne_conservatrice',
-        nb_batteries=res.valeur('nb_batteries'))
+        nb_batteries=res.valeur('nb_batteries'), regles_cycles=regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 
@@ -1915,6 +1915,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
     aucune écriture. Plus aucun panneau ⇒ dérivées RETIRÉES, jamais périmées.
     Ne lève jamais : une étude n'empêche pas d'enregistrer un devis.
     """
+    from .depart_une_batterie_ci import empreinte_depart, poser_depart  # fondateur 19/11/2026
     from .etude_schema import MOTEUR_CI, ecrire
     from .etudes import puissances_etude_horaire
     try:
@@ -1938,7 +1939,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         # les ENTRÉES entrent dans l'empreinte (``cles_hors_empreinte``).
         hors = cles_hors_empreinte()
         stockees = {k: v for k, v in params.items() if k not in hors}
-        empreinte = _empreinte(stockees, kwc, onduleurs, imposee)
+        empreinte = empreinte_depart(devis, _empreinte(stockees, kwc, onduleurs, imposee))
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:
             return existant
@@ -1961,6 +1962,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
                           CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
         bloc = dict(bloc_etude_ci_stocke(etude, mono=mono), version=VERSION_MOTEUR, empreinte=empreinte)
+        bloc = poser_depart(devis, bloc, existant)  # « une seule batterie » (case cochée)
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production'),
                   CLE_PRODUCTION_FIGEE_RASANTE: etude.get('production_rasante')})

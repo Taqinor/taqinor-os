@@ -509,6 +509,113 @@ def extension_option_avec(data):
             "batteries_max": int(maxi), "batteries_a_ajouter": ajout}
 
 
+#: Fondateur 19/11/2026 — « démarrer avec une seule batterie » (case de
+#: l'écran) : le système à UNE batterie que le calculateur compose (panneaux
+#: de CE système, onduleur gardé pour la banque) et son prix, sous l'option
+#: « avec batterie ». Phrase française du fondateur ; ``{prix}`` = TTC, HT
+#: quand la base du document est HT. Clés : (singulier, pluriel).
+TEXTES_DEPART_UNE_BATTERIE = {
+    "debut": {
+        "fr": "Pour démarrer avec une seule batterie : {n} {panneaux} ({kwc} kWc) et 1 batterie "
+              "de {kwh} kWh utiles — {prix} MAD {base}.",
+        "en": "To start with a single battery: {n} {panneaux} ({kwc} kWp) and 1 battery of "
+              "{kwh} usable kWh — {prix} MAD {base}.",
+        "ar": "للبدء ببطارية واحدة فقط: {n} {panneaux} ({kwc} كيلوواط ذروة) وبطارية واحدة "
+              "بسعة مفيدة {kwh} كيلوواط ساعة — {prix} درهم {base}.",
+    },
+    # Arabe : 3 à 10 ⇒ pluriel, 11 et plus ⇒ singulier (tamyiz) — 3e forme.
+    "panneaux": {"fr": ("panneau", "panneaux"), "en": ("panel", "panels"),
+                 "ar": ("لوح شمسي", "ألواح شمسية", "لوحًا شمسيًا")},
+    "base": {"TTC": {"fr": "TTC", "en": "incl. VAT", "ar": "مع احتساب الضريبة"},
+             "HT": {"fr": "HT", "en": "excl. VAT", "ar": "دون احتساب الضريبة"}},
+    "suite": {
+        "fr": (" La seconde batterie pourra être ajoutée ensuite : l'onduleur est déjà prévu pour.",
+               " Les {m} autres batteries pourront être ajoutées ensuite : l'onduleur est déjà "
+               "prévu pour."),
+        "en": (" The second battery can be added later: the inverter is already sized for it.",
+               " The other {m} batteries can be added later: the inverter is already sized "
+               "for them."),
+        # Arabe : 2 ⇒ duel (3e forme), 3 à 10 ⇒ pluriel, 11 et plus ⇒ singulier (4e).
+        "ar": (" يمكن إضافة البطارية الثانية لاحقًا: العاكس مُهيّأ لها مسبقًا.",
+               " يمكن إضافة {m} بطاريات أخرى لاحقًا: العاكس مُهيّأ لها مسبقًا.",
+               " يمكن إضافة بطاريتين أخريين لاحقًا: العاكس مُهيّأ لهما مسبقًا.",
+               " يمكن إضافة {m} بطارية أخرى لاحقًا: العاكس مُهيّأ لها مسبقًا."),
+    },
+}
+
+
+def base_document_ht(data):
+    """La base d'argent du document est-elle HT (TVA récupérable déclarée) ?
+    ``synthese.argent.base`` (comme ``options_cote._ligne_prix``), à défaut
+    ``economie_ci.base`` du builder."""
+    data = _dict(data)
+    synthese = _dict(data.get("com_synthese") or data.get("ind_synthese"))
+    base = _dict(synthese.get("argent")).get("base") or _dict(data.get("economie_ci")).get("base")
+    return base == "ht"
+
+
+def valeurs_depart_une_batterie(data):
+    """``{n, kwc, kwh, prix, m, base}`` LUS sur le bloc
+    ``etude_ci.depart_une_batterie`` (calculé par le serveur,
+    ``domain.depart_une_batterie_ci``), ``None`` quand il est absent ou
+    incomplet — rien n'est recalculé ici."""
+    data = _dict(data)
+    bloc = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get("depart_une_batterie"))
+    base = "HT" if base_document_ht(data) else "TTC"
+    valeurs = {"n": nombre_normalise(bloc.get("nb_panneaux")), "kwc": nombre_normalise(bloc.get("kwc")),
+               "kwh": nombre_normalise(bloc.get("capacite_utile_kwh")),
+               "prix": nombre_normalise(bloc.get("total_ht" if base == "HT" else "total_ttc")),
+               "m": nombre_normalise(bloc.get("batteries_ensuite"))}
+    if nombre_normalise(bloc.get("nb_batteries")) != 1 or any(
+            not v or v <= 0 for v in valeurs.values()):
+        return None
+    return dict(valeurs, n=int(valeurs["n"]), m=int(valeurs["m"]), base=base)
+
+
+def gabarits_depart_une_batterie(lg, n, m, base):
+    """``(début, suite)`` de la phrase dans la langue ``lg`` (accords faits :
+    1 panneau / N panneaux, « la seconde » / « les M autres »)."""
+    t = TEXTES_DEPART_UNE_BATTERIE
+    formes = t["panneaux"][lg]
+    panneaux = formes[0] if n == 1 else formes[2] if lg == "ar" and n >= 11 else formes[1]
+    suites = t["suite"][lg]
+    rang = 0 if m == 1 else 1
+    if lg == "ar" and m == 2:
+        rang = 2
+    elif lg == "ar" and m >= 11:
+        rang = 3
+    debut = t["debut"][lg].replace("{panneaux}", panneaux) \
+        .replace("{base}", t["base"][base][lg])
+    return debut, suites[rang]
+
+
+def depart_une_batterie_option_avec(data):
+    """``{textes{fr,en,ar}, nb_panneaux, kwc, capacite_utile_kwh, prix_mad,
+    base, batteries_ensuite}`` de la phrase « démarrer avec une seule
+    batterie », ``None`` sans bloc servi (case décochée, refus) : la page
+    client la lit, le PDF l'imprime (``blocs.phrase_depart_une_batterie``)."""
+    v = valeurs_depart_une_batterie(data)
+    if v is None:
+        return None
+
+    def court(valeur, lg, decimales):
+        texte_ = _nombre_langue(valeur, lg, decimales)
+        sep = "." if lg == "en" else ","
+        return texte_.rstrip("0").rstrip(sep) if sep in texte_ else texte_
+
+    textes = {}
+    for lg in LANGUES:
+        debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"])
+        textes[lg] = debut.format(n=v["n"], kwc=court(v["kwc"], lg, 2),
+                                  kwh=court(v["kwh"], lg, 2),
+                                  prix=_nombre_langue(v["prix"], lg, 0 if float(v["prix"]).is_integer()
+                                                      else 2)) \
+            + suite.format(m=v["m"])
+    return {"textes": textes, "nb_panneaux": v["n"], "kwc": v["kwc"],
+            "capacite_utile_kwh": v["kwh"], "prix_mad": v["prix"], "base": v["base"].lower(),
+            "batteries_ensuite": v["m"]}
+
+
 def economie_ttc_option_avec(data):
     """AMOT115 — l'économie de l'année 1 TTC SERVIE de l'option « avec
     batterie » (``etude_ci.option_avec.economie_ci.economie_annee1``), jamais
@@ -534,7 +641,10 @@ def non_rentable_option_avec(avec):
     h = nombre_normalise(motif.get("horizon_annees"))
     if avec.get("batterie_rentable") is not False or not n or not h:
         return {}
-    ligne = LIBELLES_CI["ci_opt_non_rentable_ligne"]
+    # Niveau 13 — remplacement de la batterie NON compté dans ce retour : la
+    # ligne ne le dit plus « inclus » (``motif.remplacement_inclus`` servi).
+    ligne = LIBELLES_CI["ci_opt_non_rentable_ligne_sans" if motif.get("remplacement_inclus") is False
+                        else "ci_opt_non_rentable_ligne"]
     return {"batterie_rentable": False, "retour_marginal_ans": n,
             "horizon_annees": int(h),
             "textes_badge": dict(LIBELLES_CI["ci_opt_non_rentable"]),

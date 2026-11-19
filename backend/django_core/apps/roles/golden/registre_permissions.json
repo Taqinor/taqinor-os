@@ -561,8 +561,7 @@
    "ux_vue_definir_defaut_role",
    "ux_corbeille_consulter",
    "ux_corbeille_restaurer",
-   "ux_edition_masse_executer",
-   "records_scope_sous_arbre"
+   "ux_edition_masse_executer"
   ],
   "COMMERCIAL_PERMISSIONS": [
    "crm_voir",
@@ -1233,8 +1232,7 @@
      "ux_vue_definir_defaut_role",
      "ux_corbeille_consulter",
      "ux_corbeille_restaurer",
-     "ux_edition_masse_executer",
-     "records_scope_sous_arbre"
+     "ux_edition_masse_executer"
     ]
    ],
    [

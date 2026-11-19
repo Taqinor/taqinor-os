@@ -14,6 +14,7 @@ from apps.roles.permissions_registre import (
     DIRECTEUR_PERMISSIONS,
     COMMERCIAL_PERMISSIONS,
     COMMERCIAL_RESP_PERMISSIONS,
+    SCOPE_SUBTREE,
 )
 from apps.crm.models import Lead
 from apps.stock.models import Produit
@@ -77,10 +78,53 @@ class TestVisibilityScoping(TestCase):
         resp = auth(self.alice).get('/api/django/crm/leads/')
         self.assertEqual(names(resp), {'LA'})
 
-    def test_commercial_responsable_sees_subtree(self):
-        # boss : son sous-arbre = alice + bob (qui lui remontent).
+    def test_commercial_responsable_sees_all(self):
+        # Fondateur 19/11/2026 — le responsable commercial voit TOUS les
+        # leads de la société : ceux de son équipe (LA, LB), ceux d'une autre
+        # équipe (LC), ceux SANS responsable (LU) et ceux de la direction.
+        Lead.objects.create(
+            company=self.company, nom='LD', owner=self.directeur)
+        resp = auth(self.boss).get('/api/django/crm/leads/')
+        self.assertEqual(names(resp), {'LA', 'LB', 'LC', 'LU', 'LD'})
+
+    def test_commercial_responsable_opens_unowned_and_director_leads(self):
+        ld = Lead.objects.create(
+            company=self.company, nom='LD', owner=self.directeur)
+        lu = Lead.objects.get(nom='LU')
+        api = auth(self.boss)
+        for lead in (ld, lu):
+            resp = api.get(f'/api/django/crm/leads/{lead.id}/')
+            self.assertEqual(resp.status_code, 200, lead.nom)
+
+    def test_canonical_commercial_responsable_carries_no_scope_marker(self):
+        # Aucun marqueur de portée dans le rôle canonique : `init_roles` le
+        # ré-applique à chaque déploiement, un marqueur y reviendrait masquer
+        # les leads sans responsable au responsable commercial.
+        self.assertEqual(
+            [p for p in COMMERCIAL_RESP_PERMISSIONS
+             if p.startswith('records_scope')], [])
+        self.assertEqual(self.boss.record_scope(), 'all')
+
+    def test_subtree_marker_still_narrows_a_custom_role(self):
+        # Le mécanisme « sous-arbre » reste entier pour un rôle qui porte le
+        # marqueur : soi + les personnes qui lui remontent, rien d'autre.
+        role = Role.objects.create(
+            company=self.company, nom='Responsable à portée équipe',
+            permissions=[*COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE])
+        self.boss.role = role
+        self.boss.save(update_fields=['role'])
         resp = auth(self.boss).get('/api/django/crm/leads/')
         self.assertEqual(names(resp), {'LA', 'LB'})
+
+    def test_team_lead_with_commercial_role_sees_own_team_only(self):
+        # Un chef d'équipe qui ne doit voir que les siens porte « Commercial »
+        # (`records_scope_soi`) : lui-même + son sous-arbre, jamais le reste.
+        dan = CustomUser.objects.create_user(
+            username='dan', password='x', company=self.company,
+            role=self.com_role, role_legacy='normal', supervisor=self.carol)
+        Lead.objects.create(company=self.company, nom='LDan', owner=dan)
+        resp = auth(self.carol).get('/api/django/crm/leads/')
+        self.assertEqual(names(resp), {'LC', 'LDan'})
 
     def test_user_always_sees_own_even_alone(self):
         # carol : sans superviseur ni pair → uniquement son propre lead.

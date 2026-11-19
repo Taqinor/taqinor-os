@@ -88,6 +88,41 @@ class TestFluxServi(SimpleTestCase):
         self.assertNotIn("TRI sur", txt)
 
 
+class TestDureeBatterieUneOption(SimpleTestCase):
+    """Niveau 13 (fondateur 19/11/2026) — la page finance à UNE option (l'offre
+    « avec batterie » servie seule) imprime la durée de vie de la batterie lue
+    sur ``batterie_duree``, en français, anglais et arabe ; sans la clé, rien."""
+
+    DUREE = {"cycles_publies": 8000, "cycles_par_an": 289,
+             "annee_remplacement": None, "horizon_ans": 25}
+
+    def _txt(self, langue=None, **argent):
+        d = _data(**argent)
+        if langue:
+            d["langue_sortie"] = langue
+        return _visible(_page_finance(d))
+
+    def test_francais(self):
+        self.assertIn("Durée de vie de la batterie : 8 000 cycles publiés, environ "
+                      "289 cycles par an — aucun remplacement sur 25 ans",
+                      self._txt(batterie_duree=dict(self.DUREE)))
+        self.assertNotIn("Durée de vie", self._txt())
+
+    def test_anglais_et_arabe_sans_francais(self):
+        for langue, morceaux in (
+                ("en", ("Battery lifetime", "published cycles, about 289 cycles a year",
+                        "no replacement over 25 years")),
+                ("ar", ("عمر البطارية", "دورة منشورة، حوالي 289 دورة في السنة",
+                        "دون استبدال خلال 25 سنة"))):
+            with self.subTest(langue=langue):
+                txt = self._txt(langue, batterie_duree=dict(self.DUREE))
+                for morceau in morceaux:
+                    self.assertIn(morceau, txt)
+                for francais in ("Durée de vie", "cycles publiés", "cycles par an",
+                                 "aucun remplacement"):
+                    self.assertNotIn(francais, txt)
+
+
 class TestSerieNonAppariee(SimpleTestCase):
     """CIQ301 — le renderer ne republie plus la série BT du builder."""
 
@@ -263,6 +298,38 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         self.assertNotIn("Remplacement", communes)
         self.assertRegex(bases, r"Sans batterie — Remplacement onduleur")
 
+    #: Niveau 13 (fondateur 19/11/2026) — ``economie_flux.batterie_duree``.
+    DUREE = {"cycles_publies": 8000, "cycles_par_an": 289,
+             "annee_remplacement": None, "horizon_ans": 25}
+    LIGNE_DUREE = ("Durée de vie de la batterie : 8 000 cycles publiés, "
+                   "environ 289 cycles par an")
+
+    def test_duree_de_vie_batterie_sous_le_nom_de_l_option_batterie(self):
+        page = _page_finance(self._donnees(batterie_duree=dict(self.DUREE)))
+        bases = _visible(page[page.index('data-graphique="hypotheses"'):])
+        self.assertIn(self.LIGNE_DUREE + " — aucun remplacement sur 25 ans", bases)
+        par_option = [_visible(x) for x in re.findall(
+            r'<div class="i2d-hp">.*?</div>', page, flags=re.S)]
+        (sienne,) = [x for x in par_option if "Durée de vie" in x]
+        self.assertIn("Avec batterie", sienne)
+        self.assertNotIn("Sans batterie", sienne)
+        communes = _visible(re.search(
+            r'<div class="i2-hyp-c">.*?</div></div>', page, flags=re.S).group(0))
+        self.assertNotIn("Durée de vie", communes)
+        self.assertEqual(bases.count("Durée de vie"), 1)
+
+    def test_duree_de_vie_batterie_remplacement_dans_l_horizon(self):
+        remplacements = [{"composant": "batterie", "annee": 16,
+                          "montant_ht_mad": 250000.0, "montant_ttc_mad": 300000.0,
+                          "source": "x"}]
+        page = _page_finance(self._donnees(
+            remplacements=remplacements,
+            batterie_duree=dict(self.DUREE, annee_remplacement=16)))
+        bases = _visible(page[page.index('data-graphique="hypotheses"'):])
+        self.assertIn("Remplacement batterie en année 16 : 250 000,00", bases)
+        self.assertIn(self.LIGNE_DUREE, bases)
+        self.assertNotIn("aucun remplacement", bases)
+
     def test_un_indicateur_non_servi_d_un_cote_ne_retire_pas_l_autre(self):
         d = self._donnees()
         flux = d["etude"]["etude_ci"]["option_avec"]["economie_flux"]
@@ -296,10 +363,13 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         sans = _page_finance(d)
         self.assertNotIn("<polyline", sans)
         self.assertIn('class="i2-tbl i2-fx i2d-fx"', sans)   # le tableau reste
-        # Troncature des conditions (``equip.document_adaptatif``) : la courbe
-        # et les bases cèdent d'un coup — aucune courbe compacte ne revient.
+        # Une AUTRE page force le retrait d'un coup de la courbe et des bases
+        # (troncature des conditions, ``equip.document_adaptatif``) : la page
+        # finance garde sa courbe compacte, sans les bases.
         d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
-        self.assertNotIn("<svg", _page_finance(d))
+        tronquee = _page_finance(d)
+        self.assertIn('data-graphique="courbe_compacte"', tronquee)
+        self.assertNotIn('data-graphique="hypotheses"', tronquee)
 
     def test_arabe_aucun_mot_dans_le_dessin(self):
         d = self._donnees()

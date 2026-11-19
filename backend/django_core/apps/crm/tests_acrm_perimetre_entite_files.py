@@ -31,7 +31,7 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.entites.models import Entite
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
-    COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS)
+    COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE)
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.selectors_cadence import details_par_panier
@@ -190,9 +190,10 @@ class PorteeCadenceTests(TestCase):
         role_com = Role.objects.create(
             company=self.company, nom='Commercial',
             permissions=list(COMMERCIAL_PERMISSIONS))
+        # 19/11/2026 — « Commercial responsable » voit tout ; portée sous-arbre posée ici exprès.
         self.role_resp = Role.objects.create(
             company=self.company, nom='Responsable commercial',
-            permissions=list(COMMERCIAL_RESP_PERMISSIONS))
+            permissions=[*COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE])
         # Portée ``team`` sans superviseur commun : chacun ne voit que soi.
         self.commercial = User.objects.create_user(
             username='adev64-com', password='x', company=self.company,

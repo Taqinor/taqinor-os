@@ -5,9 +5,11 @@ JAMAIS verrouiller personne :
 
 * Un rôle SANS marqueur de portée (``records_scope_*``) voit TOUS les
   enregistrements de sa société — comportement historique, préservé pour les
-  comptes légacy (sans rôle fin), les rôles personnalisés, et les rôles
-  Directeur/Administrateur.
-* ``records_scope_sous_arbre`` (responsables) → soi-même + tout le sous-arbre
+  comptes légacy (sans rôle fin), les rôles personnalisés, les rôles
+  Directeur/Administrateur et « Commercial responsable » (fondateur,
+  19/11/2026 : il voit aussi les leads sans responsable et ceux de la
+  direction).
+* ``records_scope_sous_arbre`` (Technicien responsable) → soi-même + tout le sous-arbre
   (toute personne remontant à soi, récursivement via ``supervisor``).
 * ``records_scope_equipe`` (Technicien/Viewer) → soi-même + ses
   pairs (même superviseur direct) + son propre sous-arbre éventuel.

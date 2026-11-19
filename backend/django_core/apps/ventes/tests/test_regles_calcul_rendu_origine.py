@@ -303,7 +303,11 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_code_degradation_fiche_sans_annee1',
         'ci_code_degradation_defaut_fiche_muette',
         'ci_ind_h_degradation_annee1', 'ci_h_methode_autoconso',
-        'ci_h_methode_8760', 'ci_h_methode_journees')),
+        'ci_h_methode_8760', 'ci_h_methode_journees',
+        # D-BATCYC-1 (19/11/2026, niveau 13) — « Durée de vie de la batterie » :
+        # trois libellés AJOUTÉS au catalogue, sans chiffre, aucun existant reformulé.
+        'ci_h_duree_batterie', 'ci_h_duree_batterie_aucun',
+        'ci_h_duree_batterie_cycles')),
     # AMOT96 — clé AJOUTÉE au bloc ``economie_ci`` : jamais un chiffre sur un
     # devis aux règles d'origine (entretien jamais déduit).
     ('economie_ci', 'entretien'),

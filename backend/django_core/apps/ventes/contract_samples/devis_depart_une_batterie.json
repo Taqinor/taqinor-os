@@ -1,0 +1,49 @@
+{
+  "endpoint": "PATCH /api/django/ventes/devis/<id>/etude-params/",
+  "forme_serveur": "partielle",
+  "pourquoi": "Fondateur 19/11/2026 — « also add an option that when ticked the client get a sentence showing the price if he wants to start only with one battery and dont forget that the number of pannels should be the number of just those pannels ». CONTRAT D'ABORD (PACT10). La case « Indiquer au client le prix pour démarrer avec une seule batterie » de l'écran du devis C&I (à côté de « Batteries au départ ») est l'entrée ÉCRAN `etude_params.options.phrase_une_batterie` (booléen ; absente = non), posée par le PATCH FUSIONNANT `etude-params` avec l'objet `options` COMPLET (les autres clés de `options` renvoyées telles quelles). Une bascule relance l'étude C&I (`etude_ci.rafraichir_etude_ci_devis`) ; elle n'est permise que sur un BROUILLON (409 sinon). Case cochée : le rafraîchisseur pose `etude_params.etude_ci.depart_une_batterie` (calculé SERVEUR par `domain/depart_une_batterie_ci.py` : la recomposition D-HYB-4 à 1 batterie — `recomposition_batteries_ci._etude` + `_ecrire` — jouée dans un point de sauvegarde ANNULÉ ; totaux de l'option « avec » par `utils.options.option_totaux`, arrondi commercial compris ; panneaux comptés sur les LIGNES écrites), ou `etude_params.etude_ci.depart_une_batterie_refus` {code, message} (INTERNE, écran du vendeur, jamais au client) quand le calcul n'est pas sûr. Le PDF (page 2, sous les totaux « Option 2 — Avec batterie ») et la page client (`synthese_ci.option_batterie.depart_une_batterie`, contrat proposal_data.json) ne font que LIRE le bloc. Case décochée : aucune clé ajoutée, rendu d'hier octet pour octet.",
+  "corps": {
+    "options": {"batterie_souhaitee": null, "om": null, "nb_batteries": 3, "phrase_une_batterie": true}
+  },
+  "corps_regles": {
+    "options": "l'objet `options` COMPLET (le PATCH fusionne au premier niveau : une clé de `options` non renvoyée serait perdue) ; `phrase_une_batterie` : true pour cocher, clé retirée (ou false) pour décocher"
+  },
+  "exemple": {
+    "etude_params": {
+      "options": {"batterie_souhaitee": null, "om": null, "nb_batteries": 3, "phrase_une_batterie": true}
+    },
+    "updated_at": "2026-11-19T10:12:00+00:00"
+  },
+  "refus": {
+    "409": "{detail, field: 'options.phrase_une_batterie'} — la case change sur un devis non brouillon : « Devis « Envoyé » : la phrase « démarrer avec une seule batterie » ne se coche ou ne se décoche que sur un brouillon. Utilisez « Réviser ». »"
+  },
+  "etude_ci_depart_une_batterie": {
+    "nb_batteries": 1,
+    "batteries_ensuite": 2,
+    "nb_panneaux": 24,
+    "kwc": 13.2,
+    "capacite_utile_kwh": 5.12,
+    "total_ht": 151916.67,
+    "total_ttc": 182300.0,
+    "reference_option_avec": {"nb_batteries": 3, "total_ht": 248000.0, "total_ttc": 297600.0}
+  },
+  "etude_ci_depart_une_batterie_refus": {
+    "code": "lignes_modifiees",
+    "message": "Phrase « démarrer avec une seule batterie » non imprimée : les lignes de l'option « avec batterie » ne sont plus celles du calculateur (prix, quantité ou article retouché, ou catalogue changé depuis). Cliquez « Recomposer l’option avec batterie » pour la remettre au calcul, ou décochez la case."
+  },
+  "regles_sorties": {
+    "nb_batteries": "toujours 1 — le système de départ",
+    "batteries_ensuite": "batteries de l'option « avec » du devis − 1 (≥ 1) : « La seconde batterie » pour 1, « Les {m} autres batteries » au-delà",
+    "nb_panneaux": "panneaux de l'option « avec » des LIGNES recomposées pour 1 batterie (jamais ceux de la banque complète)",
+    "kwc": "kWc de ces lignes (`etudes.puissances_etude_horaire`)",
+    "capacite_utile_kwh": "capacité utile de la batterie unique (étude à 1 batterie, `option_avec.batterie.capacite_utile_kwh`)",
+    "total_ht": "Total HT net de l'option « avec » recomposée à 1 batterie (remise globale et arrondi commercial compris) — imprimé quand la base du document est HT",
+    "total_ttc": "Total TTC de l'option « avec » recomposée à 1 batterie, au centime : celui que montrerait « Batteries au départ » = 1",
+    "reference_option_avec": "les totaux de l'option « avec » du devis au moment du calcul : un devis NON brouillon garde le bloc tant qu'ils n'ont pas bougé",
+    "refus.code": "sans_option | une_batterie | sans_lead | lignes_modifiees (la recomposition au nombre COURANT de batteries ne reproduit plus, au centime, le Total HT et le Total TTC de l'option des lignes) | recomposition (le calculateur refuse le système à 1 batterie : prix manquant, étude refusée, échéancier…) | incomplet | non_brouillon | corrige_apres_envoi | erreur"
+  },
+  "interdit": [
+    "prix_achat",
+    "marge"
+  ]
+}

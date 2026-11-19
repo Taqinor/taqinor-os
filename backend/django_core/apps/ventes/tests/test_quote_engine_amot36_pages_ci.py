@@ -9,6 +9,7 @@ WeasyPrint + PyMuPDF RÉELS (sautés sans eux). Test-du-test : remettre
 ``test_contrat_de_pages`` échoue (puces sous le pied, ou page de trop).
 """
 import copy
+from decimal import Decimal
 
 from django.test import SimpleTestCase, tag
 
@@ -85,6 +86,88 @@ class OptionAvecValeurTests(SimpleTestCase):
         from apps.ventes.quote_engine.commercial import sample_data
         self.assertIsNone(valeur_option_avec(sample_data.build()))
         self.assertEqual(blocs.bloc_option_avec(sample_data.build(), None, str, ("",) * 4), "")
+
+
+def _bloc_depart(**surcharge):
+    """Le bloc ``etude_ci.depart_une_batterie`` du contrat
+    ``devis_depart_une_batterie.json`` (jamais un chiffre inventé ici)."""
+    import json
+    import os
+    chemin = os.path.join(os.path.dirname(__file__), os.pardir, "contract_samples",
+                          "devis_depart_une_batterie.json")
+    with open(chemin, encoding="utf-8") as fh:
+        bloc = json.load(fh)["etude_ci_depart_une_batterie"]
+    return dict(bloc, **surcharge)
+
+
+def _avec_depart(data, **surcharge):
+    data = _avec_option_batterie(data)
+    data["etude"]["etude_ci"]["depart_une_batterie"] = _bloc_depart(**surcharge)
+    return data
+
+
+class DepartUneBatterieTests(SimpleTestCase):
+    """Fondateur 19/11/2026 — la phrase « démarrer avec une seule batterie »
+    est LUE sur ``etude_ci.depart_une_batterie`` (calculé par le serveur) ;
+    sans bloc, le rendu d'hier."""
+
+    def _textes(self, bloc, economie_ci=None):
+        from apps.ventes.quote_engine.ci.mentions import depart_une_batterie_option_avec
+        data = {"etude": {"etude_ci": {"depart_une_batterie": bloc}}}
+        if economie_ci:
+            data["economie_ci"] = economie_ci
+        return depart_une_batterie_option_avec(data)
+
+    def test_phrase_du_fondateur_et_accords(self):
+        v = self._textes(_bloc_depart())
+        self.assertEqual(v["textes"]["fr"], (
+            "Pour démarrer avec une seule batterie : 24 panneaux (13,2 kWc) et 1 batterie de "
+            "5,12 kWh utiles — 182\u202f300 MAD TTC. Les 2 autres batteries pourront être ajoutées "
+            "ensuite : l'onduleur est déjà prévu pour."))
+        self.assertEqual((v["prix_mad"], v["base"], v["nb_panneaux"]), (182300, "ttc", 24))
+        self.assertIn("24 panels (13.2 kWp)", v["textes"]["en"])
+        self.assertIn("182,300 MAD incl. VAT", v["textes"]["en"])
+        un = self._textes(_bloc_depart(batteries_ensuite=1, nb_panneaux=1))["textes"]["fr"]
+        self.assertIn(": 1 panneau (", un)
+        self.assertTrue(un.endswith(" La seconde batterie pourra être ajoutée ensuite : "
+                                    "l'onduleur est déjà prévu pour."))
+
+    def test_base_ht_le_prix_ht(self):
+        v = self._textes(_bloc_depart(), economie_ci={"base": "ht"})
+        self.assertIn("— 151\u202f916,67 MAD HT.", v["textes"]["fr"])
+        self.assertEqual((v["prix_mad"], v["base"]), (151916.67, "ht"))
+
+    def test_bloc_absent_ou_incomplet_rien(self):
+        for bloc in (None, {}, _bloc_depart(nb_batteries=2), _bloc_depart(nb_panneaux=0),
+                     _bloc_depart(total_ttc=None), _bloc_depart(batteries_ensuite=0)):
+            with self.subTest(bloc=bloc):
+                self.assertIsNone(self._textes(bloc))
+                self.assertEqual(blocs.phrase_depart_une_batterie(
+                    {"etude": {"etude_ci": {"depart_une_batterie": bloc}}}, str, "#999"), "")
+
+    def test_page_2_sous_les_totaux_option_2_avec_ancres_trois_langues(self):
+        from apps.ventes.quote_engine.commercial import render as c_render
+        from apps.ventes.quote_engine.figures import extract_figures
+        sans = c_render.build_html(c_renderer._augment(_avec_option_batterie(c_sample.build())))
+        self.assertNotIn("data-depart-une-batterie", sans)
+        self.assertNotIn("depart_une_batterie", sans)
+        for lg in ("fr", "en", "ar"):
+            with self.subTest(langue=lg):
+                data = _avec_depart(c_sample.build())
+                data["langue_sortie"] = lg
+                html = c_render.build_html(c_renderer._augment(data))
+                self.assertEqual(html.count("data-depart-une-batterie"), 1)
+                # Sous la chaîne de totaux de l'option 2, avant la fin de sa cellule.
+                self.assertLess(html.rindex('class="c2-tot-tbl"'), html.index("data-depart-une-batterie"))
+                figures = extract_figures(html)
+                for cle, attendu in (("depart_une_batterie_panneaux", 24),
+                                     ("depart_une_batterie_kwc", Decimal("13.2")),
+                                     ("depart_une_batterie_kwh", Decimal("5.12")),
+                                     ("depart_une_batterie_prix", 182300),
+                                     ("depart_une_batterie_ajout", 2)):
+                    self.assertEqual(figures[cle + "@avec"][0].valeur, attendu, (lg, cle))
+                if lg == "ar":
+                    self.assertIn('dir="rtl"', html[html.index("data-depart-une-batterie"):][:400])
 
 
 class TroncatureDeclareeTests(SimpleTestCase):
@@ -195,6 +278,36 @@ class PagesCiTests(SimpleTestCase):
                     for bloc in page.get_text("blocks"):
                         self.assertFalse(bloc[1] < pied - 1 and bloc[3] > pied + 1,
                                          (nom, bloc[4][:60]))
+
+    def test_depart_une_batterie_sans_page_de_plus_trois_langues(self):
+        """Fondateur 19/11/2026 — la phrase « démarrer avec une seule batterie »
+        (avec, en plus, la phrase D-HYB-5 de l'onduleur gardé : le pire cas de
+        la page 2) tient le contrat de pages (commerce 3, usine 4) en fr, en,
+        ar ; aucun bloc sous le pied ; la phrase est imprimée."""
+        import fitz
+        for nom, sample, renderer, pages in GABARITS:
+            for lg in ("fr", "en", "ar"):
+                with self.subTest(gabarit=nom, langue=lg):
+                    data = _avec_depart(copy.deepcopy(sample.build()))
+                    avec = data["etude"]["etude_ci"]["option_avec"]
+                    avec["batterie"] = {"quantite": 3}
+                    avec["onduleur_extension"] = {
+                        "retenu": {"produit": 2, "nom": "Deye 20", "kw_ac": 20.0, "quantite": 2},
+                        "suffisant": {"produit": 1, "nom": "Deye 15", "kw_ac": 15.0, "quantite": 2},
+                        "batteries_max": 10}
+                    data["langue_sortie"] = lg
+                    data["cgv_ci"] = _puces(18)
+                    doc = fitz.open(stream=renderer.render_pdf_bytes(data), filetype="pdf")
+                    self.assertEqual(len(doc), pages)
+                    if lg == "fr":
+                        texte = " ".join(" ".join(page.get_text().split()) for page in doc)
+                        self.assertIn("Pour démarrer avec une seule batterie", texte)
+                        self.assertIn("Les 2 autres batteries", texte)
+                    for page in doc:
+                        pied = page.rect.height * (1 - equip.PIED_MM / 297.0)
+                        for bloc in page.get_text("blocks"):
+                            self.assertFalse(bloc[1] < pied - 1 and bloc[3] > pied + 1,
+                                             (nom, lg, bloc[4][:60]))
 
     def test_quarante_puces_renvoi_imprime(self):
         for nom, sample, renderer, _pages in GABARITS:

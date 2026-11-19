@@ -177,6 +177,10 @@ export function normaliserCorpsCi(etat) {
     options: {
       batterie_souhaitee: booleenOuNull(options.batterie_souhaitee),
       om: booleenOuNull(options.om),
+      // Fondateur 19/11/2026 — case « démarrer avec une seule batterie » : gardée
+      // à l'enregistrement (fusion `etude-params` au premier niveau) ; absente ⇒ absente.
+      ...(typeof options.phrase_une_batterie === 'boolean'
+        ? { phrase_une_batterie: options.phrase_une_batterie } : {}),
     },
     taille_explicite_kwc: explicite,
   }

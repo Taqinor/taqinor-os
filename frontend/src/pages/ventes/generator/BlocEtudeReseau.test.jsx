@@ -6,7 +6,7 @@
 // Run : npx vitest run src/pages/ventes/generator/BlocEtudeReseau.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import BlocEtudeReseau, {
@@ -20,14 +20,14 @@ import PanneauCommercial from './PanneauCommercial'
 import {
   profilCiVide, poserProfilCi, corpsCiDepuisProfil,
 } from '../../../features/ventes/quote/profilCi'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import {
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie, erreursTarifDeclare,
 } from '../../../features/ventes/quote/etudeMarcheBloc'
 import { saisieDepuisTarifDeclare } from '../../../features/ventes/quote/reouverture'
 
 const { ventesApiMock, confirmMock } = vi.hoisted(() => ({
-  ventesApiMock: { recomposerBatteriesCi: vi.fn() },
+  ventesApiMock: { recomposerBatteriesCi: vi.fn(), patchEtudeParams: vi.fn() },
   confirmMock: vi.fn(),
 }))
 vi.mock('../../../api/ventesApi', async (importOriginal) => {
@@ -40,6 +40,7 @@ vi.mock('../../../ui/confirm', async (importOriginal) => {
 })
 beforeEach(() => {
   ventesApiMock.recomposerBatteriesCi.mockReset()
+  ventesApiMock.patchEtudeParams.mockReset()
   confirmMock.mockReset()
   confirmMock.mockResolvedValue(true)
 })
@@ -576,6 +577,78 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
       + "Un onduleur de 12 kW suffirait pour l'installation de départ.")
     rerender(<ControleBatteriesDepart lines={LIGNES(1)} produits={[]} ecran={ecranDe({ optionAvec: { onduleur_extension: null } })} />)
     expect(screen.queryByTestId('gen-onduleur-extension')).toBeNull()
+  })
+
+  describe('fondateur 19/11/2026 — case « démarrer avec une seule batterie »', () => {
+    const CONTRAT = documentContrat('ventes', 'devis_depart_une_batterie')
+    const OPTIONS = { batterie_souhaitee: null, om: null, nb_batteries: 3 }
+    const devisAvec = (options, etudeCi = {}) => DEVIS({
+      etude_params: { banque_recommandee: { produit: 7, quantite: 3 }, options, etude_ci: etudeCi },
+    })
+
+    it('2 batteries ou plus : case décochée par défaut ; 1 batterie et case décochée : rien', () => {
+      const { rerender } = render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecranDe({ editDevis: devisAvec(OPTIONS) })} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie')).not.toBeChecked()
+      expect(screen.getByText('Indiquer au client le prix pour démarrer avec une seule batterie')).toBeInTheDocument()
+      rerender(<ControleBatteriesDepart lines={LIGNES(1)} produits={[]} ecran={ecranDe({ editDevis: devisAvec(OPTIONS) })} />)
+      expect(screen.queryByTestId('gen-phrase-une-batterie')).toBeNull()
+    })
+
+    it('cocher : PATCH etude-params avec l’objet options COMPLET + la case, puis relecture du devis', async () => {
+      ventesApiMock.patchEtudeParams.mockResolvedValue(reponseContrat('ventes', 'devis_depart_une_batterie'))
+      const ecran = ecranDe({ editDevis: devisAvec(OPTIONS) })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
+      await waitFor(() => expect(ecran.recharger).toHaveBeenCalledTimes(1))
+      expect(ventesApiMock.patchEtudeParams).toHaveBeenCalledWith(42, { options: { ...OPTIONS, phrase_une_batterie: true } })
+      expect(confirmMock).not.toHaveBeenCalled()
+    })
+
+    it('cochée + bloc du serveur : chiffres SERVIS affichés ; décocher retire la clé', async () => {
+      ventesApiMock.patchEtudeParams.mockResolvedValue(reponseContrat('ventes', 'devis_depart_une_batterie'))
+      const bloc = CONTRAT.etude_ci_depart_une_batterie
+      const ecran = ecranDe({ editDevis: devisAvec({ ...OPTIONS, phrase_une_batterie: true }, { depart_une_batterie: bloc }) })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie')).toBeChecked()
+      const apercu = screen.getByTestId('gen-phrase-une-batterie-apercu')
+      expect(apercu).toHaveTextContent(/Phrase imprimée : 1 batterie, 24 panneaux \(13,20 kWc\)/)
+      expect(apercu).toHaveTextContent(/182\s300 MAD TTC/)
+      expect(apercu).toHaveTextContent(/151\s916,67 MAD HT/)
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
+      await waitFor(() => expect(ventesApiMock.patchEtudeParams).toHaveBeenCalledWith(42, { options: OPTIONS }))
+    })
+
+    it('cochée sans bloc : le refus du serveur (interne) est dit ; 409 du PATCH affiché, aucune relecture', async () => {
+      const refus = CONTRAT.etude_ci_depart_une_batterie_refus
+      const ecran = ecranDe({ editDevis: devisAvec({ ...OPTIONS, phrase_une_batterie: true }, { depart_une_batterie_refus: refus }) })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie-non-imprimee')).toHaveTextContent(refus.message)
+      expect(screen.queryByTestId('gen-phrase-une-batterie-apercu')).toBeNull()
+      ventesApiMock.patchEtudeParams.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Ne se décoche que sur un brouillon.', field: 'options.phrase_une_batterie' } } })
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
+      expect(await screen.findByTestId('gen-phrase-une-batterie-refus')).toHaveTextContent('Ne se décoche que sur un brouillon.')
+      expect(ecran.recharger).not.toHaveBeenCalled()
+    })
+
+    it('lignes retouchées : « Recomposer l’option avec batterie » rejoue le nombre COURANT', async () => {
+      const refus = { code: 'lignes_modifiees', message: 'Phrase non imprimée : lignes retouchées.' }
+      const ecran = ecranDe({ editDevis: devisAvec({ ...OPTIONS, phrase_une_batterie: true }, { depart_une_batterie_refus: refus }) })
+      ventesApiMock.recomposerBatteriesCi.mockResolvedValueOnce({ data: { nb_batteries: 3, quantite_recommandee: 3 } })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie-recomposer'))
+      await waitFor(() => expect(ventesApiMock.recomposerBatteriesCi).toHaveBeenCalledWith(42, 3))
+      await waitFor(() => expect(ecran.recharger).toHaveBeenCalled())
+    })
+
+    it('brouillon local modifié : confirmation d’abord (refusée ⇒ aucun appel) ; devis envoyé : case désactivée', async () => {
+      confirmMock.mockResolvedValueOnce(false)
+      const { rerender } = render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecranDe({ dirty: true, editDevis: devisAvec(OPTIONS) })} />)
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie'))
+      await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1))
+      expect(ventesApiMock.patchEtudeParams).not.toHaveBeenCalled()
+      rerender(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecranDe({ editDevis: { ...devisAvec(OPTIONS), modifiable: false } })} />)
+      expect(screen.getByTestId('gen-phrase-une-batterie')).toBeDisabled()
+    })
   })
 
   it('carte résultat : phrase sous la tuile batterie quand l’aperçu la sert (kW sans « ,0 »), sinon absente', () => {

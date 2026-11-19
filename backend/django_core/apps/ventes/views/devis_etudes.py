@@ -371,6 +371,14 @@ class DevisEtudesActionsMixin:
         # demi-substituts Unicode normalisés (DataError 500 sinon).
         from ..utils.corps import nettoyer_json
         corps = nettoyer_json(corps)
+        # Fondateur 19/11/2026 — la case « démarrer avec une seule batterie »
+        # ne bascule que sur un brouillon ; une bascule relance l'étude C&I.
+        from ..domain.depart_une_batterie_ci import phrase_demandee, refus_bascule
+        bascule = refus_bascule(devis, corps)
+        if bascule:
+            return Response({'detail': bascule, 'field': 'options.phrase_une_batterie'},
+                            status=status.HTTP_409_CONFLICT)
+        phrase_avant = phrase_demandee(devis.etude_params)
         # QJR518 — l'option recommandée est IMPRIMÉE : sur un envoyé, sa
         # correction est tracée (instantané avant, trace après).
         from ..domain.modifiabilite import (
@@ -392,7 +400,7 @@ class DevisEtudesActionsMixin:
                 {'detail': "Clé d'étude invalide : les noms de clés doivent "
                            'être des identifiants simples.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        if entrees_du_moteur(corps.keys()):
+        if entrees_du_moteur(corps.keys()) or phrase_demandee(devis.etude_params) != phrase_avant:
             # Best-effort, comme sur les trois autres chemins d'écriture : une
             # étude qui échoue ne doit JAMAIS annuler une entrée correctement
             # enregistrée.

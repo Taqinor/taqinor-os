@@ -12,8 +12,8 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.domain.regles_calcul import (
     REGLES_ARRONDI_3010, REGLES_CENTAINE_0311, REGLES_CONSO_PUBLIQUE_0111, REGLES_CORRIGEES,
-    REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_ECARTS_0111, REGLES_ECARTS_0411, REGLES_ECARTS_3110,
-    REGLES_ORIGINE,
+    REGLES_CORRIGEES_2710, REGLES_COURANTES, REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0111,
+    REGLES_ECARTS_0411, REGLES_ECARTS_3110, REGLES_ORIGINE,
     REGLES_PANIER_UNIQUE_0211, REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010,
     calcul_corrige, regles_au_moins)
 
@@ -32,7 +32,8 @@ class ReglesCalculTests(SimpleTestCase):
         from apps.ventes.models import Devis
         defaut = Devis._meta.get_field('regles_calcul').default
         self.assertEqual(defaut, REGLES_COURANTES)
-        self.assertEqual(REGLES_COURANTES, REGLES_ECARTS_0411)
+        self.assertEqual(REGLES_COURANTES, REGLES_CYCLES_BATTERIE_1911)
+        self.assertEqual(REGLES_CYCLES_BATTERIE_1911, 13)
         self.assertEqual(REGLES_ECARTS_0411, 12)
         self.assertGreater(REGLES_ECARTS_0411, REGLES_CENTAINE_0311)
         self.assertGreater(REGLES_CENTAINE_0311, REGLES_PANIER_UNIQUE_0211)
@@ -42,6 +43,7 @@ class ReglesCalculTests(SimpleTestCase):
         self.assertGreater(REGLES_ECARTS_3110, REGLES_ARRONDI_3010)
         self.assertGreater(REGLES_ARRONDI_3010, REGLES_RETOURS_3010B)
         self.assertGreater(REGLES_RETOURS_3010B, REGLES_SENSIBILITES_3010)
+        self.assertGreater(REGLES_CYCLES_BATTERIE_1911, REGLES_ECARTS_0411)
         self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
 
     # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
@@ -316,6 +318,38 @@ class ReglesCalculTests(SimpleTestCase):
                          mock.call(regles_calcul=12))
         Devis.objects.filter.return_value.update.assert_called_once_with(
             regles_calcul=11)
+
+    def test_migration_0158_ne_touche_que_les_brouillons(self):
+        """Fondateur 19/11/2026 (cycles batterie C&I) — un devis envoyé au niveau 12 y reste."""
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0158_regles_calcul_niveau_13')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value \
+            .values_list.return_value = [51]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.brouillons_au_niveau_13(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0], mock.call(
+            statut='brouillon', date_envoi__isnull=True, regles_calcul=12))
+        Devis.objects.filter.assert_called_with(pk__in=[51])
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=13)
+        self.assertEqual(mod.Migration.dependencies,
+                         [('ventes', '0157_ntplt33_devis_fts_null')])
+
+    def test_migration_0158_retour_ramene_13_a_12(self):
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0158_regles_calcul_niveau_13')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value \
+            .values_list.return_value = [52]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.retour_niveau_12(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0],
+                         mock.call(regles_calcul=13))
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=12)
 
     def test_niveau_6_arrondi_des_seuls_nouveaux_rendus(self):
         self.assertFalse(regles_au_moins(
