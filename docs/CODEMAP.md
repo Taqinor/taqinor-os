@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: f0ef209fa234b84c28b05f4dc7563338e3fa2650670220946c0095685e67d203
+Structure fingerprint: 7de110ae290e41b4764459403ae57eb20735b87583107113d329abad8b74810a
 Plan fingerprint: 1ad6c27428053a3a10e68fa31cdb01322d6549666980f67d3aa62d6e2236274e
 
 
@@ -397,6 +397,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **frontend** : `features/ia/cartes/` (`CartesDuMessage.jsx` aiguille par `carte` ; `CarteTouche.jsx` embarque `RelanceEtapeRow` ; `useCarte.js`), `features/ia/voice/` (aucune confirmation à la voix), `CopilotPanel.jsx` (« Signaler un bug »), `lib/tamponDiagnostic.js` (relevé technique en mémoire, alimenté par `api/axios.js` et `lib/globalErrors.js`).
 - **Acceptation en direct** : `docs/audits/acceptation/AIC/2026-11-14-4242a9d9d.md` (23 étapes d'écran, deux moteurs).
 - **Vague dev-all-94854b (14/11)** : FastAPI `GET sql-agent/progression/<id>` (étapes d'un tour en cours, `action_tools.noter_etape`, AIC91) ; crm `manage.py opposer_fiches_soeurs` (dry-run par défaut, `--appliquer` : coche les fiches sœurs d'une opposition antérieure, AMSG97) ; ventes `ventes.devis.expliquer` / `ventes.devis.envoyer_email` (lot copilote, AIC99).
+- **Copilote v2 (19/11/2026, PR #1473)** : ventes — `domain/resolution_catalogue.py` (UN résolveur catalogue, celui du compositeur), `domain/composition_imposee.py` (composition imposée de `POST ventes/devis/auto/` et du dry-run `devis/composition/` : `nb_panneaux`, `onduleur_kw`+`onduleur_phase` ou `onduleur_produit_id`, `batterie_kwh` ou `batterie_produit_id` ; résidentiel seulement ; 409 `choix` sans jamais choisir en silence ; marqueur `etude_params['composition_imposee']` honoré par la resynchronisation), `views/assistant.py` (`GET ventes/assistant/catalogue/`), `GET ventes/devis/<pk>/lignes-assistant/` ; actions `ventes.catalogue.chercher`, `ventes.devis.composer`, `ventes.devis.lignes` (lot `copilote`) ; carte `devis_cree`. crm — `leads_creation.py` (LE chemin de création d'un lead saisi : écran et assistant), `POST crm/assistant/leads/creer/` (garde de doublon dans la portée, 400 PII) ; actions `crm.lead.creer`, `perdu`, `archiver`, `restaurer`, `reaffecter`, `etiqueter` (lot `copilote`), `crm.lead.create` au lot `herite` ; recherche par numéro normalisé. fastapi_ia — consignes « Agir d'abord en lecture », détails d'un refus 400/409 remontés au modèle, aperçu d'une proposition une ligne par entrée, question de 6 000 caractères copilote allumé, `GET sql-agent/capacites`, images jointes (moteur natif seulement, jamais gardées). frontend — `features/ia/cartes/CarteDevisCree.jsx`, `features/ia/images.js`, `features/ia/useImagesJointes.js`.
 
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
