@@ -1,5 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/resume/",
+  "forme_serveur": "complete",
   "pourquoi": "COP2 (PACT10, 13/11/2026) — carte « fiche_lead » de l'assistant (AIC31) : la réponse n'avait aucun échantillon, les devis ne portaient pas leur identifiant et la prochaine touche ne portait pas le sien (l'assistant savait qu'un devis existait sans pouvoir le rouvrir, l'envoyer ni préparer la touche). Ajouts (les clés existantes ne changent pas) : `devis[].id`, `prochaine_touche.touche_id` et `prochaine_touche.libelle`. Aucun prix d'achat, aucune marge. `identite.telephone` est vide pour un rôle sans `client_pii_voir`. Lead d'une autre société ou hors portée : 404.",
   "exemple": {
     "identite": {
@@ -45,7 +46,44 @@
     },
     "alertes": [
       "relance_en_retard"
-    ]
+    ],
+    "dossier": {
+      "visite": {
+        "id": 86,
+        "statut": "validee",
+        "date": "2026-10-02",
+        "lien": "/visites/86"
+      },
+      "calepinage": {
+        "id": 9,
+        "reference": "CAL-2610-0009",
+        "a_faire": "rien",
+        "lien": "/calepinage/9"
+      },
+      "devis": {
+        "id": 502,
+        "reference": "DEV-202610-0021",
+        "statut": "accepte",
+        "lien": "/ventes/devis?devis=502"
+      },
+      "chantier": {
+        "id": 12,
+        "reference": "CHT-202611-0012",
+        "statut": "materiel_commande",
+        "lien": "/chantiers?id=12"
+      },
+      "factures": {
+        "devis_id": 502,
+        "reste_a_facturer_ttc": "34000.00",
+        "reste_a_payer_ttc": "34000.00",
+        "a_faire": "facturer",
+        "lien": "/ventes/devis?devis=502"
+      },
+      "tickets": {
+        "ouverts": 0,
+        "lien": null
+      }
+    }
   },
   "exemple_sans_touche": {
     "identite": {
@@ -65,7 +103,7 @@
     "alertes": []
   },
   "vague2": {
-    "regle": "Copilote vague 2 (B0, 19/11/2026, BRF3) — bloc ADDITIF `dossier` : où en est le lead dans CHAQUE module, une ligne par module avec son `lien` (chemin de la table agent/contract_samples/assistant_ecrans.json). Servi par la vue (BRF3) ; décrit ici par `exemple_dossier`, SÉPARÉ d'`exemple` (la réponse d'un compte copilote ÉTEINT, sans `dossier`). Le libellé français du statut du chantier n'est PAS servi : l'écran le tire de la clé `statut`. Servi seulement copilote ALLUMÉ pour l'utilisateur ; chaque ligne n'est présente que si l'utilisateur a la lecture du module (sinon la clé est ABSENTE, jamais une erreur) et vaut null quand rien n'existe pour ce lead. Chaque ligne vient du sélecteur de l'app propriétaire, ids et états seulement : `visite` (dernière visite : id, statut, date), `calepinage` (calepinage ouvert : id, référence, `a_faire` de calepinage/calepinage_assistant_resume.json), `devis` (tête de chaîne la plus avancée : id, référence, statut), `chantier` (id, référence, statut du chantier — couche propre, jamais STAGES.py), `factures` (vente du devis : reste à facturer, reste à payer, `a_faire` de ventes/assistant_vente_etat.json), `tickets` (nombre de tickets SAV ouverts ; `lien` = le plus ancien, null s'il n'y en a pas). Les visites restent aussi dans `visites` (forme inchangée). Aucun prix d'achat, aucune marge, aucun texte de client.",
+    "regle": "Copilote vague 2 (B0, 19/11/2026, BRF3) — bloc ADDITIF `dossier` : où en est le lead dans CHAQUE module, une ligne par module avec son `lien` (chemin de la table agent/contract_samples/assistant_ecrans.json). Servi par la vue (BRF3) ; porté par `exemple` (carte complète de la route) ET repris dans `exemple_dossier` ; un compte copilote ÉTEINT reçoit `exemple` SANS `dossier` (comme `exemple_sans_touche`). Le libellé français du statut du chantier n'est PAS servi : l'écran le tire de la clé `statut`. Servi seulement copilote ALLUMÉ pour l'utilisateur ; chaque ligne n'est présente que si l'utilisateur a la lecture du module (sinon la clé est ABSENTE, jamais une erreur) et vaut null quand rien n'existe pour ce lead. Chaque ligne vient du sélecteur de l'app propriétaire, ids et états seulement : `visite` (dernière visite : id, statut, date), `calepinage` (calepinage ouvert : id, référence, `a_faire` de calepinage/calepinage_assistant_resume.json), `devis` (tête de chaîne la plus avancée : id, référence, statut), `chantier` (id, référence, statut du chantier — couche propre, jamais STAGES.py), `factures` (vente du devis : reste à facturer, reste à payer, `a_faire` de ventes/assistant_vente_etat.json), `tickets` (nombre de tickets SAV ouverts ; `lien` = le plus ancien, null s'il n'y en a pas). Les visites restent aussi dans `visites` (forme inchangée). Aucun prix d'achat, aucune marge, aucun texte de client.",
     "exemple_dossier": {
       "identite": {
         "id": 1610,

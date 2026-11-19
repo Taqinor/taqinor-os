@@ -480,7 +480,18 @@ def digest_matin(request):
     if copilote_allume_pour(user):
         # Vague 2 : blocs de plus (chacun derrière son droit), jamais pour un
         # compte copilote éteint — sa réponse reste celle d'avant.
-        reponse.update(blocs_du_matin(user, aujourdhui, voit_les_leads))
+        # Clés littérales une à une : la forme reste lisible par le contrat.
+        blocs = blocs_du_matin(user, aujourdhui, voit_les_leads)
+        if 'visites_equipe' in blocs:
+            reponse['visites_equipe'] = blocs['visites_equipe']
+        if 'calepinages' in blocs:
+            reponse['calepinages'] = blocs['calepinages']
+        if 'chantiers' in blocs:
+            reponse['chantiers'] = blocs['chantiers']
+        if 'impayes' in blocs:
+            reponse['impayes'] = blocs['impayes']
+        if 'tickets' in blocs:
+            reponse['tickets'] = blocs['tickets']
         borner_taille(reponse)
     return Response(reponse)
 

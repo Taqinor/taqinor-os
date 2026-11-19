@@ -88,7 +88,7 @@ class DigestVague2Test(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertFalse(BLOCS_VAGUE2 & set(reponse.data))
         exemple = _echantillon('assistant_digest_matin.json')['exemple']
-        self.assertEqual(set(reponse.data), set(exemple))
+        self.assertEqual(set(reponse.data), set(exemple) - BLOCS_VAGUE2)
 
     @override_settings(ASSISTANT_COPILOTE='tous')
     def test_copilote_allume_sans_le_droit_aucun_bloc(self):
@@ -182,7 +182,7 @@ class DossierDuLeadTest(TestCase):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertNotIn('dossier', reponse.data)
         exemple = _echantillon('assistant_lead_resume.json')['exemple']
-        self.assertEqual(set(reponse.data), set(exemple))
+        self.assertEqual(set(reponse.data), set(exemple) - {'dossier'})
 
     @override_settings(ASSISTANT_COPILOTE='tous')
     def test_dossier_toutes_les_cles_pour_qui_lit_tous_les_modules(self):
