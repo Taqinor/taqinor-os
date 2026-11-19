@@ -176,6 +176,24 @@ LIGNES = [
      {'jour_prevu': j(18), 'projet_id': 5}, (), None, 'capture', 'journee'),
     ('C6', 'Rapport pour vendredi', 'Rapport', {'echeance': j(20)}, (), None, 'capture',
      'a_trier'),
+    # R2-006 — phrases courantes que F1 et S1 ont tapées et que la grammaire laissait dans le titre
+    ('R6a', 'Voir Sami dans une semaine', 'Voir Sami', {'jour_prevu': j(24)}),
+    ('R6b', 'Relancer la banque dans un mois', 'Relancer la banque', {'jour_prevu': j(17, 12)}),
+    ('R6c', 'Facture fin du mois', 'Facture', {'jour_prevu': j(30)}),
+    ('R6d', 'Appeler maman ce midi', 'Appeler maman',
+     {'jour_prevu': j(17), 'heure_debut': '12:00', 'moment': 'apres_midi'}),
+    ('R6e', 'Appeler le notaire mercredi aprem', 'Appeler le notaire',
+     {'jour_prevu': j(18), 'moment': 'apres_midi'}),
+    ('R6f', 'Préparer le devis cet aprem', 'Préparer le devis', {'jour_prevu': j(17), 'moment': 'apres_midi'}),
+    ('R6g', 'Rapport TVA !haute', 'Rapport TVA', {'priorite': 3}),
+    ('R6h', 'Ranger le dépôt !basse', 'Ranger le dépôt', {'priorite': 1}),
+    ('R6i', 'Relire le contrat !moyenne', 'Relire le contrat', {'priorite': 2}),
+    ('R6j', 'Payer la CNSS avant le 25', 'Payer la CNSS', {'echeance': j(25)}),
+    ('R6k', 'Réunion chantier le 25 à 10h', 'Réunion chantier',
+     {'jour_prevu': j(25), 'heure_debut': '10:00', 'moment': 'matin'}),
+    ('R6l', 'Commander les rails le 15', 'Commander les rails', {'jour_prevu': j(15, 12)}),
+    ('R6m', 'Acheter le 25 kg de ciment', 'Acheter le 25 kg de ciment', {}),
+    ('R6n', 'Payer le loyer le 31', 'Payer le loyer', {'jour_prevu': j(31, 12)}),
 ]
 
 
