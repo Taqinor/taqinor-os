@@ -65,7 +65,7 @@ def format_duree(minutes):
 def format_jour(d, aujourdhui, phrase=False):
     """`{jour}` de textes.md §0 : relatif, puis « jeu. 19 », « mar. 1 déc. », « 05/11/2027 ».
 
-    Passé : « jeu. 12/11 ». `phrase=True` : le premier du mois s'écrit « 1er décembre ».
+    Passé : « jeu. 12 nov. » (la même forme que plus loin : une seule façon d'écrire une date). `phrase=True` : le premier du mois s'écrit « 1er décembre ».
     """
     ecart = (d - aujourdhui).days
     if ecart == 0:
@@ -73,12 +73,10 @@ def format_jour(d, aujourdhui, phrase=False):
     if ecart == 1:
         return 'demain'
     abr = JOURS_ABR[d.weekday()]
-    if ecart < 0:
-        return f'{abr} {d.day:02d}/{d.month:02d}'
-    if ecart <= 13:
-        return f'{abr} {d.day}'
     if d.year != aujourdhui.year:
         return f'{d.day:02d}/{d.month:02d}/{d.year}'
+    if 0 < ecart <= 13:
+        return f'{abr} {d.day}'
     if phrase and d.day == 1:
         return f'{abr} 1er {MOIS_NOM[d.month - 1]}'
     return f'{abr} {d.day} {MOIS_ABR[d.month - 1]}'

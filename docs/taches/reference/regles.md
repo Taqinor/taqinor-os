@@ -413,7 +413,7 @@ activité ERP : `priorite = pmax = 0` ; `n` = jours travaillés d avec J < d ≤
 | 7 | 30 | Préparer formation | sans date, projet Équipe prio 3 | 2 | Proposé, tour des projets (`prochaine_action`) |
 | 8 | 40 | Renouveler abonnement | éch. 07/11, prio 1 | 3 | À revoir (`retard_ancien`, 10 jours) |
 | 9 | 31 | Contrat assurance | éch. 15/04/2027, prio 3, sans projet | 3 | Proposé, tour (« Sans projet ») |
-| 10 | 41 | Ranger le bureau | prévue 12/11, créée 05/11 | 3 | Proposé, en tête (`retard`, « prévue jeu. 12/11 ») |
+| 10 | 41 | Ranger le bureau | prévue 12/11, créée 05/11 | 3 | Proposé, en tête (`retard`, « prévue jeu. 12 nov. ») |
 | 11 | 42 | Timbres | prévue 17/11 | 3 | Prévu |
 | 12 | 43 | Idée : vidéo | prévue 17/11 | 3 | Prévu |
 | 13 | 44 | Idée : post | identique à 43 | 3 | Prévu |

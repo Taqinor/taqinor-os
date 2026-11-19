@@ -18,8 +18,8 @@ référence données/API.
 - **Accord** : 0 et 1 au singulier (« 1 faite », « 0 tâche »), ≥ 2 au pluriel ; chaque gabarit existe en singulier
   et pluriel quand un nombre précède un nom.
 - **Jours** : `{jour}` = « aujourd'hui », « demain », sinon « {abr}. {jj} » dans les 13 jours (« jeu. 19 »), au-delà
-  « {abr}. {jj} {mois abr} » (« mar. 1 déc. »), autre année « {jj}/{mm}/{aaaa} » ; passé : « {abr}. {jj}/{mm} » (« jeu.
-  12/11 »). Abréviations : lun., mar., mer., jeu., ven., sam., dim. ; janv., févr., mars, avr., mai, juin, juil., août,
+  « {abr}. {jj} {mois abr} » (« mar. 1 déc. »), autre année « {jj}/{mm}/{aaaa} » ; passé : « {abr}. {jj} {mois abr} » (« jeu.
+  12 nov. », la même forme que les dates lointaines : une seule façon d'écrire une date). Abréviations : lun., mar., mer., jeu., ven., sam., dim. ; janv., févr., mars, avr., mai, juin, juil., août,
   sept., oct., nov., déc. Le premier du mois : « 1 déc. » à l'écran, « 1er décembre » dans une phrase lue.
   **Échéance et jalon d'un PROJET** (liste, en-tête, revue, chronologie) : toujours avec le mois, « {abr}. {jj} {mois
   abr} » même dans les 13 jours (« ven. 4 déc. ») ; l'année seulement au-delà de 12 mois (« ven. 15 janv. 2028 ») ;

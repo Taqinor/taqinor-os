@@ -46,7 +46,7 @@ class FormatsTests(unittest.TestCase):
         self.assertEqual(format_jour(date(2026, 11, 19), J), 'jeu. 19')
         self.assertEqual(format_jour(date(2026, 11, 30), J), 'lun. 30')  # J + 13
         self.assertEqual(format_jour(date(2026, 12, 1), J), 'mar. 1 déc.')  # J + 14
-        self.assertEqual(format_jour(date(2026, 11, 12), J), 'jeu. 12/11')
+        self.assertEqual(format_jour(date(2026, 11, 12), J), 'jeu. 12 nov.')  # passé : la même forme que « mar. 1 déc. »
         self.assertEqual(format_jour(date(2027, 1, 5), J), '05/01/2027')
 
     def test_premier_du_mois_dans_une_phrase(self):

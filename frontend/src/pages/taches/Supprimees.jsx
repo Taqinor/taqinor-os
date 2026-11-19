@@ -28,7 +28,7 @@ const PHRASE_NOM_PRIS = 'Un projet actif porte déjà ce nom.'
 /** « Faite · Appeler le fournisseur » : le message du geste puis la tâche qu'il a touchée (nulle : le message seul). */
 const phraseGeste = (geste) => (geste.titre ? `${geste.message} · ${geste.titre}` : geste.message)
 
-/** Le jour servi d'un instant ISO (« lun. 16/11 », « aujourd'hui ») : jamais l'horloge ni le fuseau du navigateur. */
+/** Le jour servi d'un instant ISO (« lun. 16 nov. », « aujourd'hui ») : jamais l'horloge ni le fuseau du navigateur. */
 const jourServi = (instant, aujourdhui) => jourCourt(String(instant ?? '').slice(0, 10), aujourdhui)
 
 /** supprimees-gestes.html : « 14:10 » le jour même, sinon « lun. 23 ». */
