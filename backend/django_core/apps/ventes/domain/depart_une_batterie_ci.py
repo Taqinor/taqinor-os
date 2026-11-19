@@ -19,7 +19,11 @@ arrondi commercial compris) et les panneaux sur les lignes écrites. Le moteur
 PDF ne fait que LIRE le bloc (règle #4) ; aucun statut, aucune ligne réelle
 n'est touché.
 
-Jamais périmé, jamais inventé — sinon le bloc est ABSENT et
+Jamais inventé, et recalculé avec l'étude du devis (entrées du lead, kWc,
+onduleurs, totaux de l'option « avec » des lignes) ; un changement du seul
+CATALOGUE ne relance pas le calcul — le devis garde ses prix de lignes, et la
+phrase reste celle de ces prix-là jusqu'au prochain rafraîchissement, qui la
+refusera (``lignes_modifiees``). Hors de ces cas le bloc est ABSENT et
 ``depart_une_batterie_refus`` (interne, écran du vendeur ; jamais au client)
 dit pourquoi :
 
@@ -54,9 +58,9 @@ MESSAGES = {
     'sans_lead': _PREFIXE + "le devis n'est rattaché à aucun lead (le calculateur lit sa fiche).",
     'lignes_modifiees': _PREFIXE + (
         "les lignes de l'option « avec batterie » ne sont plus celles du calculateur "
-        '(prix, quantité ou article retouché, ou catalogue changé depuis). Choisissez à '
-        'nouveau le nombre de « Batteries au départ » pour recomposer l’option, ou '
-        'décochez la case.'),
+        '(prix, quantité ou article retouché, ou catalogue changé depuis). Cliquez '
+        '« Recomposer l’option avec batterie » pour la remettre au calcul, ou décochez '
+        'la case.'),
     'recomposition': _PREFIXE + 'le calculateur ne compose pas le système à une batterie — %s',
     'incomplet': _PREFIXE + 'le système à une batterie ne se lit pas entièrement (%s).',
     'non_brouillon': _PREFIXE + 'elle se calcule sur un brouillon ; utilisez « Réviser ».',
@@ -124,7 +128,12 @@ def empreinte_depart(devis, empreinte):
     if not phrase_demandee(getattr(devis, 'etude_params', None)):
         return empreinte
     import hashlib
-    ht, ttc = _totaux_avec(devis)
+    try:
+        ht, ttc = _totaux_avec(devis)
+    except Exception:  # noqa: BLE001 — la phrase ne casse jamais l'étude du devis (D-ENF22-BLE001)
+        logger.warning('Devis %s : totaux « avec » illisibles pour la phrase « une seule batterie »',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return empreinte
     charge = '%s|%s|%s|%s' % (empreinte, OPTION, ht, ttc)
     return hashlib.sha256(charge.encode('utf-8')).hexdigest()[:16]
 

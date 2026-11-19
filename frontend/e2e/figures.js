@@ -52,6 +52,12 @@ export const FIGURE_KEYS = {
   pompe_hmt_m: { tolerance: FIN },
   pompe_debit_m3h: { tolerance: FIN },
   pompe_volume_m3_jour: { tolerance: POINT },
+  // Fondateur 19/11/2026 — « démarrer avec une seule batterie », miroir de figures.py.
+  depart_une_batterie_panneaux: { tolerance: POINT },
+  depart_une_batterie_kwc: { tolerance: KWC },
+  depart_une_batterie_kwh: { tolerance: FIN },
+  depart_une_batterie_prix: { tolerance: ARGENT },
+  depart_une_batterie_ajout: { tolerance: POINT },
 }
 
 const FIGURES_PY = fileURLToPath(new URL(

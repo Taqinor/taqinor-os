@@ -630,6 +630,16 @@ describe('Batteries au départ — ajout possible sur la carte + contrôle de qu
       expect(ecran.recharger).not.toHaveBeenCalled()
     })
 
+    it('lignes retouchées : « Recomposer l’option avec batterie » rejoue le nombre COURANT', async () => {
+      const refus = { code: 'lignes_modifiees', message: 'Phrase non imprimée : lignes retouchées.' }
+      const ecran = ecranDe({ editDevis: devisAvec({ ...OPTIONS, phrase_une_batterie: true }, { depart_une_batterie_refus: refus }) })
+      ventesApiMock.recomposerBatteriesCi.mockResolvedValueOnce({ data: { nb_batteries: 3, quantite_recommandee: 3 } })
+      render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecran} />)
+      await userEvent.click(screen.getByTestId('gen-phrase-une-batterie-recomposer'))
+      await waitFor(() => expect(ventesApiMock.recomposerBatteriesCi).toHaveBeenCalledWith(42, 3))
+      await waitFor(() => expect(ecran.recharger).toHaveBeenCalled())
+    })
+
     it('brouillon local modifié : confirmation d’abord (refusée ⇒ aucun appel) ; devis envoyé : case désactivée', async () => {
       confirmMock.mockResolvedValueOnce(false)
       const { rerender } = render(<ControleBatteriesDepart lines={LIGNES(3)} produits={[]} ecran={ecranDe({ dirty: true, editDevis: devisAvec(OPTIONS) })} />)

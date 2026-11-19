@@ -561,7 +561,7 @@ def tableau_deux_options(d, L, fmt_mad, couleurs, items_sans):
         f'{opt} 2 &mdash; {titre_a}</div><table class="c2-tot-tbl">'
         + _rangees_totaux(L, tot_a, fmt_mad, False)
         # Fondateur 19/11/2026 — « démarrer avec une seule batterie » ('' sans bloc).
-        + '</table>' + phrase_depart_une_batterie(d, fmt_mad, muted) + '</td></tr></table>')
+        + '</table>' + phrase_depart_une_batterie(d, fmt_mad, navy) + '</td></tr></table>')
     entete = (
         f'<table class="c2-tbl"><tr><th>{L("designation", "Désignation")}</th>'
         f'<th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th>'
@@ -837,7 +837,7 @@ def build(ctx):
     </div>
   </div>
 
-  {_phrase_mono(d, fmt_mad, muted)}{note_html}{clauses_html}
+  {_phrase_mono(d, fmt_mad, navy)}{note_html}{clauses_html}
   {bloc_option_avec(d, L, fmt_mad, (navy, muted, line_soft, wash))}
   {options_html}{injection_html}
   {block}

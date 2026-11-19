@@ -523,8 +523,9 @@ TEXTES_DEPART_UNE_BATTERIE = {
         "ar": "للبدء ببطارية واحدة فقط: {n} {panneaux} ({kwc} كيلوواط ذروة) وبطارية واحدة "
               "بسعة مفيدة {kwh} كيلوواط ساعة — {prix} درهم {base}.",
     },
+    # Arabe : 3 à 10 ⇒ pluriel, 11 et plus ⇒ singulier (tamyiz) — 3e forme.
     "panneaux": {"fr": ("panneau", "panneaux"), "en": ("panel", "panels"),
-                 "ar": ("لوح شمسي", "ألواح شمسية")},
+                 "ar": ("لوح شمسي", "ألواح شمسية", "لوحًا شمسيًا")},
     "base": {"TTC": {"fr": "TTC", "en": "incl. VAT", "ar": "مع احتساب الضريبة"},
              "HT": {"fr": "HT", "en": "excl. VAT", "ar": "دون احتساب الضريبة"}},
     "suite": {
@@ -534,8 +535,11 @@ TEXTES_DEPART_UNE_BATTERIE = {
         "en": (" The second battery can be added later: the inverter is already sized for it.",
                " The other {m} batteries can be added later: the inverter is already sized "
                "for them."),
+        # Arabe : 2 ⇒ duel (3e forme), 3 à 10 ⇒ pluriel, 11 et plus ⇒ singulier (4e).
         "ar": (" يمكن إضافة البطارية الثانية لاحقًا: العاكس مُهيّأ لها مسبقًا.",
-               " يمكن إضافة {m} بطاريات أخرى لاحقًا: العاكس مُهيّأ لها مسبقًا."),
+               " يمكن إضافة {m} بطاريات أخرى لاحقًا: العاكس مُهيّأ لها مسبقًا.",
+               " يمكن إضافة بطاريتين أخريين لاحقًا: العاكس مُهيّأ لهما مسبقًا.",
+               " يمكن إضافة {m} بطارية أخرى لاحقًا: العاكس مُهيّأ لها مسبقًا."),
     },
 }
 
@@ -572,10 +576,17 @@ def gabarits_depart_une_batterie(lg, n, m, base):
     """``(début, suite)`` de la phrase dans la langue ``lg`` (accords faits :
     1 panneau / N panneaux, « la seconde » / « les M autres »)."""
     t = TEXTES_DEPART_UNE_BATTERIE
-    seul, plusieurs = t["panneaux"][lg]
-    debut = t["debut"][lg].replace("{panneaux}", seul if n == 1 else plusieurs) \
+    formes = t["panneaux"][lg]
+    panneaux = formes[0] if n == 1 else formes[2] if lg == "ar" and n >= 11 else formes[1]
+    suites = t["suite"][lg]
+    rang = 0 if m == 1 else 1
+    if lg == "ar" and m == 2:
+        rang = 2
+    elif lg == "ar" and m >= 11:
+        rang = 3
+    debut = t["debut"][lg].replace("{panneaux}", panneaux) \
         .replace("{base}", t["base"][base][lg])
-    return debut, t["suite"][lg][0 if m == 1 else 1]
+    return debut, suites[rang]
 
 
 def depart_une_batterie_option_avec(data):

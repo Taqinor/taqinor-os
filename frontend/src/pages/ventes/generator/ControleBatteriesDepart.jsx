@@ -39,7 +39,7 @@ const CONFIRMER_RELECTURE = 'Les modifications non enregistrées des lignes sero
  * peut pas les calculer, son refus (`depart_une_batterie_refus`) est dit ici, jamais au
  * client. Aucun chiffre calculé à l'écran.
  */
-function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer }) {
+function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer, recomposer }) {
   const { editDevis, recharger } = ecran || {}
   const [refus, setRefus] = useState(null)
   const options = editDevis?.etude_params?.options || {}
@@ -47,6 +47,9 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer }) 
   const etudeCi = editDevis?.etude_params?.etude_ci || {}
   const depart = etudeCi.depart_une_batterie || null
   const refusServeur = etudeCi.depart_une_batterie_refus?.message || null
+  // Lignes retouchées : le vendeur remet l'option au calcul d'un clic (le sélecteur
+  // ignore le nombre déjà choisi).
+  const aRecomposer = etudeCi.depart_une_batterie_refus?.code === 'lignes_modifiees' && recomposer
 
   async function basculer(coche) {
     setRefus(null)
@@ -85,6 +88,13 @@ function CasePhraseUneBatterie({ ecran, raison, occupe, setOccupe, confirmer }) 
           {refusServeur || 'Phrase non imprimée : le prix à une batterie n’est pas encore calculé (il se calcule avec l’étude du devis).'}
         </p>
       )}
+      {cochee && !depart && aRecomposer && (
+        <button type="button" className="text-xs underline text-left w-fit"
+                data-testid="gen-phrase-une-batterie-recomposer"
+                disabled={occupe || raison != null} onClick={recomposer}>
+          Recomposer l’option avec batterie
+        </button>
+      )}
       {refus && <p className="text-xs text-destructive" role="alert" data-testid="gen-phrase-une-batterie-refus">{refus}</p>}
     </div>
   )
@@ -119,9 +129,12 @@ export default function ControleBatteriesDepart({ lines, produits, ecran }) {
   })
   const phraseCochee = editDevis?.etude_params?.options?.phrase_une_batterie === true
 
-  async function choisir(valeur) {
+  const choisir = (valeur) => {
     const nb = Number(valeur)
-    if (!nb || nb === courant) return
+    return !nb || nb === courant ? undefined : recomposer(nb)
+  }
+
+  async function recomposer(nb) {
     setRefus(null)
     if (dirty) {
       const ok = await confirm({
@@ -186,7 +199,8 @@ export default function ControleBatteriesDepart({ lines, produits, ecran }) {
       )}
       {((courant != null && courant >= 2) || phraseCochee) && (
         <CasePhraseUneBatterie ecran={ecran} raison={raison} occupe={occupe} setOccupe={setOccupe}
-                               confirmer={confirmerRelecture} />
+                               confirmer={confirmerRelecture}
+                               recomposer={courant != null ? () => recomposer(courant) : null} />
       )}
     </div>
   )
