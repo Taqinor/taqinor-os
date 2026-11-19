@@ -1020,6 +1020,64 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         # pas de valoriseur : le bloc se sert, sans retour
         self.assertIsNone(_bloc(self._evaluation(), None, self._ctx())['retour_simple_ans'])
 
+    # ── Niveau 13 (fondateur 19/11/2026) : « cycles publiés, usage réel » ──
+    FICHE_8000 = {'garantie_mois': 120, 'cycles_publies': 8000.0}
+    BILAN_0080 = {'production_kwh': 80000.0, 'batterie': {
+        'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 13239, 'charge_kwh_an': 13510,
+        'rendement': 0.98}}
+
+    def _evaluation_0080(self):
+        return dict(self._evaluation(), bilan=dict(self.BILAN_0080))
+
+    def test_niveau_13_bloc_sans_remplacement_batterie_niveau_12_annee_11(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        blocs = {niveau: _bloc(self._evaluation_0080(), self._Valoriseur(),
+                               dict(self._ctx(), batterie=self.FICHE_8000, regles_cycles=niveau))
+                 for niveau in (True, False)}
+        flux = blocs[True]['economie_flux']
+        self.assertEqual([r['composant'] for r in flux['remplacements']], ['onduleur'])
+        self.assertEqual(flux['batterie_duree'], {'cycles_publies': 8000, 'cycles_par_an': 289,
+                                                  'annee_remplacement': None, 'horizon_ans': 25})
+        hier = blocs[False]['economie_flux']
+        self.assertEqual([(r['composant'], r['annee']) for r in hier['remplacements']
+                          if r['composant'] == 'batterie'], [('batterie', 11)])
+        self.assertNotIn('batterie_duree', hier)
+        # Le cumul net à 25 ans ne porte plus le prix de la batterie (4 × 60 000 HT).
+        self.assertAlmostEqual(flux['flux_ht']['flux'][-1]['cumul_mad']
+                               - hier['flux_ht']['flux'][-1]['cumul_mad'], 240000.0, delta=1)
+        # Sans contexte de devis (aperçu) : les règles courantes.
+        defaut = _bloc(self._evaluation_0080(), self._Valoriseur(),
+                       dict(self._ctx(), batterie=self.FICHE_8000))['economie_flux']
+        self.assertEqual(defaut['batterie_duree'], flux['batterie_duree'])
+
+    def test_niveau_13_meme_annee_pour_le_flux_la_banque_et_le_verdict(self):
+        """La montée de la banque (``_remplacement_moteur``), le verdict marginal
+        (``_remplacement_du_bloc``, repli sans flux) et le flux lisent la MÊME
+        année pour une évaluation et un niveau donnés — le bilan du candidat."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation_0080()
+        for niveau, annee in ((True, None), (False, 11)):
+            with self.subTest(niveau=niveau):
+                _ht, moteur = m._remplacement_moteur(20, niveau)(evaluation, self.FICHE_8000)
+                self.assertEqual(moteur, annee)
+                self.assertEqual(m._remplacement_du_bloc(evaluation, {}, self.FICHE_8000, 20,
+                                                         niveau)[1], annee)
+                # Option des LIGNES : l'évaluation n'a pas de bilan, le bloc servi en a un.
+                self.assertEqual(m._remplacement_du_bloc({'composition': {}},
+                                                         {'bilan': dict(self.BILAN_0080)},
+                                                         self.FICHE_8000, 20, niveau)[1], annee)
+                bloc = m._bloc(evaluation, self._Valoriseur(),
+                               dict(self._ctx(), batterie=self.FICHE_8000, regles_cycles=niveau))
+                servie = [r['annee'] for r in bloc['economie_flux']['remplacements']
+                          if r['composant'] == 'batterie']
+                self.assertEqual(servie, [] if annee is None else [annee])
+                self.assertEqual(m._remplacement_du_bloc(evaluation, bloc, self.FICHE_8000, 20,
+                                                         niveau)[1], annee)
+        # Un candidat qui cycle plus (petite banque) peut remplacer dans l'horizon.
+        petit = dict(evaluation, bilan={'batterie': {'capacite_utile_kwh': 15.28,
+                                                     'restitue_kwh_an': 5577}})   # 365 cycles
+        self.assertEqual(m._remplacement_moteur(20, True)(petit, self.FICHE_8000)[1], 22)
+
     def test_tva_suit_le_lead_et_la_base_du_flux(self):
         from types import SimpleNamespace as L
 
@@ -1150,6 +1208,34 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
             m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
                                      tva_recuperable={'valeur': 'inconnu'})
         self.assertEqual([c['regles_2710'] for c in vus], [False, False, True])
+
+    def test_niveau_13_atteint_le_flux_la_banque_et_le_verdict_des_deux_chemins(self):
+        """``regles_cycles`` (niveau 13) passé à ``option_avec_de_l_etude`` atteint
+        le contexte du flux (étude ET lignes), la montée de la banque et le verdict ;
+        absent (aperçu, aucun devis) ⇒ règles courantes."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation()
+        resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        for niveau, attendu in ((False, False), (True, True), (None, True)):
+            vus, verdicts = [], []
+            kw = {} if niveau is None else {'regles_cycles': niveau}
+            with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                    mock.patch.object(m, '_dimensionner', return_value=resultat) as dim, \
+                    mock.patch.object(m, '_option_dominee', return_value=False), \
+                    mock.patch.object(m, 'verdict_rentabilite',
+                                      lambda *a: verdicts.append(a[-1])), \
+                    mock.patch.object(m, '_bloc', lambda ev, val, ctx, **k: vus.append(ctx) or {}), \
+                    mock.patch.object(m, '_option_imposee', lambda imp, ctx: vus.append(ctx) or {'k': 1}):
+                for imposee in (None, {'x': 1}):
+                    m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                             imposee=imposee, tva_recuperable={'valeur': 'inconnu'},
+                                             **kw)
+            with self.subTest(niveau=niveau):
+                self.assertEqual([c['regles_cycles'] for c in vus], [attendu, attendu])
+                self.assertEqual(dim.call_args.kwargs['regles_cycles'], attendu)
+                self.assertEqual(verdicts, [attendu, attendu])
 
     def test_pack_publie_sans_quantite_ne_borne_pas_a_zero(self):
         from apps.ventes.moteur_ci.batterie import puissance_decharge_kw
