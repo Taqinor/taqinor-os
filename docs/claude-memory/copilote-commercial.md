@@ -137,9 +137,14 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   faux ne prouve pas le chemin réel (la taille d'un devis sans étude de consommation est refusée par le vrai moteur).
 - **Fait le 19/11 (suite)** : un devis composé sur demande change de taille EN PLACE par les deux mêmes outils (la
   demande est rejouée par la composition imposée, écrite par le mode « réconcilier » ; dossier §15).
+- **Production, 19/11/2026 14 h UTC (décision de Reda, question interactive)** : `ASSISTANT_MOTEUR=natif` et
+  `ASSISTANT_COPILOTE=tous` sont ÉCRITS dans le `.env` du serveur (sauvegarde `.env.avant-copilote-natif-20261119-1400`),
+  sans redémarrage : ils prennent effet au prochain déploiement lancé par Reda. À cette date le serveur tournait encore
+  sur le code du 18/11 14 h (aucune des PR #1473, #1479, #1480, #1482 déployée). Reda a choisi « tout le monde », pas
+  « administrateurs d'abord » : ne pas revenir à `admins` sans qu'il le demande. Aucun plafond de dépense.
 - **Ouvert** : vague 2C
-  (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; en production,
-  `ASSISTANT_MOTEUR=natif` et l'ouverture du copilote au-delà des administrateurs restent des gestes de Reda.
+  (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; le
+  déploiement reste le geste de Reda, et l'essai sur un vrai téléphone après ce déploiement n'est pas fait.
 - **Leçons de run** : les gardes de l'hôte se jouent d'un coup par `python scripts/ci_guards.py stage-names` (192
   gardes ; sous Windows le test du script de deploy ne finit pas : l'arrêter) ; un fichier de test neuf exige une tâche
   cochée qui le cite avec « Nouveau fichier car : » (groupe COPW de PLAN2) et un préfixe neuf se déclare dans
