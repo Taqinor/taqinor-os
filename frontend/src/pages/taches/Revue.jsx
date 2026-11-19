@@ -69,7 +69,7 @@ function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, o
     <section className="ep-carte-revue" aria-label={projet.nom} data-p={projet.couleur}>
       <header className="ep-carte-tete">
         <h2 className="ep-titre"><i className="point" aria-hidden="true" />{projet.nom}</h2>
-        <span className="chiffres ep-rang">{`${index + 1}/${total}`}</span>
+        <span className="chiffres ep-rang-revue">{`${index + 1}/${total}`}</span>
       </header>
       <div className="meta">
         <span className="chiffres">{texte}</span>

@@ -200,7 +200,8 @@
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
 .tch .ep-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tch .ep-carte-tete .ep-titre { display: flex; align-items: center; gap: 8px; }
-.tch .ep-rang { color: var(--tch-texte-doux); font-size: 0.875rem; }
+/* « 1/3 » d'une carte de revue (≠ `.ep-rang`, la ligne réordonnable d'une vue Liste) */
+.tch .ep-rang-revue { color: var(--tch-texte-doux); font-size: 0.875rem; }
 .tch .ep-revue-ligne { margin: 0; font-size: 0.9375rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
@@ -219,7 +220,7 @@
 .tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
 .tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: 1.0625rem; font-weight: 650; line-height: 1.35; }
 .tch .ep-carte-revue .ep-carte-tete .point { width: 10px; height: 10px; }
-.tch .ep-carte-revue .ep-rang { font-size: var(--tch-chiffre); font-weight: 600; }
+.tch .ep-carte-revue .ep-rang-revue { font-size: var(--tch-chiffre); font-weight: 600; }
 .tch .ep-carte-revue .meta { margin-top: -6px; column-gap: 8px; }
 .tch .ep-carte-revue .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
 .tch .ep-carte-revue .meta > .ep-sante::before, .tch .ep-carte-revue .meta > .ep-aplanifier::before { content: none; }
