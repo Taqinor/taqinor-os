@@ -30,6 +30,7 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
    ========================================================================== */
 
 const DELAI_MS = 300
+const REPRISE_FOCUS_MS = 1500
 const TRIS = [['manuel', 'Manuel'], ['priorite', 'Priorité'], ['echeance', 'Échéance'], ['jour', 'Jour'], ['creation', 'Création']]
 const PUCES_JOUR = [
   ['aujourdhui', "Aujourd'hui"], ['a_revoir', 'À revoir'], ['sept_jours', '7 prochains jours'], ['sans_date', 'Sans date'],
@@ -177,6 +178,15 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   // Le curseur est dans le champ à l'ouverture : on tape directement (R2-129)
   // après le focus que l'ERP pose sur la zone de contenu à chaque navigation (RouteFocus, un effet parent qui passe APRÈS celui-ci)
   const poserChamp = useCallback((el) => { champ.current = el; if (el) { el.focus(); requestAnimationFrame(() => { if (document.activeElement !== el) el.focus() }) } }, [])
+  // L'ERP déplace aussi le focus sur la zone de contenu après la navigation, et encore quand ses textes finissent de
+  // charger (chargement direct de l'adresse) : dans la seconde et demie qui suit l'ouverture, ce déplacement rend le
+  // curseur au champ ; passé ce délai, ou dès que l'utilisateur a mis le focus ailleurs, on ne touche plus à rien.
+  useEffect(() => {
+    const ouverture = Date.now()
+    const reprendre = (e) => { if (e.target?.id === 'contenu' && Date.now() - ouverture < REPRISE_FOCUS_MS) champ.current?.focus() }
+    document.addEventListener('focusin', reprendre)
+    return () => document.removeEventListener('focusin', reprendre)
+  }, [])
 
   // la saisie reste TELLE QUE TAPÉE ; l'adresse (`?q=`) la suit après une courte pause
   useEffect(() => {

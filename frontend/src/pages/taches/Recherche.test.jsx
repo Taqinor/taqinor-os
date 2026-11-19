@@ -145,6 +145,20 @@ describe('TCH87 — Recherche', () => {
     await waitFor(() => expect(champ).toHaveFocus()) // pris APRÈS le focus que l'ERP pose sur le contenu à chaque navigation
   })
 
+  it('R2-129 — si l\'ERP déplace le focus sur la zone de contenu juste après l\'ouverture, le champ le reprend', async () => {
+    const contenu = document.createElement('main')
+    contenu.id = 'contenu'
+    contenu.tabIndex = -1
+    document.body.appendChild(contenu)
+    try {
+      monter('/taches/recherche')
+      const champ = await screen.findByRole('searchbox', { name: 'Chercher dans mes tâches' })
+      await waitFor(() => expect(champ).toHaveFocus())
+      contenu.focus()
+      expect(champ).toHaveFocus()
+    } finally { contenu.remove() }
+  })
+
   it('R2-129 — une croix à nous efface la recherche et rend le curseur au champ ; absente quand le champ est vide', async () => {
     const user = userEvent.setup()
     monter('/taches/recherche')
