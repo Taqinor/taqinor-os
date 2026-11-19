@@ -917,7 +917,8 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     const ligne = container.querySelector('[data-ligne="tache:20"]')
     expect(ligne).not.toBeNull()
     expect(ligne.closest('.ligne-reste')).not.toBeNull() // jamais le fondu de départ
-    expect(ligne).toHaveTextContent("→ jeu. 19 · échéance aujourd'hui")
+    expect(ligne).toHaveTextContent('→ jeu. 19')
+    expect(ligne).toHaveTextContent("échéance aujourd'hui") // la méta de la ligne le dit déjà
     expect(container.querySelector('button.progression')).toHaveTextContent('essentiel 0/1') // la ★ est affichée, donc comptée
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     expect(toast).toHaveTextContent("Prévue jeu. 19 — l'échéance reste aujourd'hui")

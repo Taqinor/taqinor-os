@@ -622,7 +622,9 @@ export default function Aujourdhui() {
     // `echeance_aujourdhui`) : la ligne ne s'efface pas, elle le DIT ; une échéance passée, elle, ne la garde pas (`===`)
     const reste = part && item.type === 'tache' && Boolean(aujourdhui) && item.echeance === aujourdhui
     const vers = !jour ? '→ Sans jour' : part ? `→ ${jourNomme(jour, aujourdhui)}` : ''
-    const estampille = reste ? `${vers} · échéance aujourd'hui` : vers
+    // la pastille dit OÙ (« → ven. 20 ») ; « échéance aujourd'hui » est déjà écrit sous le titre (méta de la ligne) : une
+    // pastille plus longue mangeait le titre au bureau
+    const estampille = vers
     const avant = Object.fromEntries(Object.keys(champs).map((k) => [k, item[k] ?? QUAND_VIDE[k] ?? null]))
     const quitte = part && !reste // une ★ ouverte qui quitte Essentiel : « essentiel f/p » suit (R3-020)
     const poser = () => {
