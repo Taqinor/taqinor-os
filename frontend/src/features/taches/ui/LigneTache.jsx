@@ -424,11 +424,13 @@ export default function LigneTache({
           {estampille ? <span className="estampille chiffres">{estampille}</span> : null}
           {/* spec-8 §2 « heure, ★ ou drapeau » : l'étoile d'une essentielle tient lieu du drapeau ; drapeau AVANT l'heure
               (maquettes ecran-aujourdhui-15h.html, ecran-bilan.html) */}
-          {/* R2-017 — la pastille « → ven. 20 » REMPLACE tout le reste de la colonne (heure, drapeau, étoile) le temps que la
-              ligne s'efface : en s'y ajoutant elle poussait le titre sur deux lignes et la ligne sautait de 65 à 150 px */}
-          {item.priorite === 3 && !item.essentielle && !estampille ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
-          {item.heure_debut && !estampille ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
-          {estampille ? null : (
+          {/* R2-017 — la pastille « → ven. 20 » se POSE sur la colonne (R3-086) le temps que la ligne s'efface ; couture L7 :
+              l'heure, le drapeau et l'étoile restent à leur place, CACHÉS (`visibility: hidden`, inertes) au lieu d'être
+              retirés — les retirer changeait la largeur de la colonne, donc la hauteur de la ligne (bureau : 80 → 58) */}
+          <span className={estampille ? 'ligne-fin-masque masquee' : 'ligne-fin-masque'}
+            aria-hidden={estampille ? 'true' : undefined} inert={Boolean(estampille)}>
+            {item.priorite === 3 && !item.essentielle ? <Flag className="i i-16 drapeau" role="img" aria-label="Priorité haute" /> : null}
+            {item.heure_debut ? <span className="heure chiffres">{heure(item.heure_debut)}</span> : null}
             <Etoile
               active={Boolean(item.essentielle)}
               onBasculer={onEssentiel ? (suivant) => onEssentiel(item, suivant) : undefined}
@@ -436,7 +438,7 @@ export default function LigneTache({
               onRefus={onRefusEssentiel}
               titre={item.titre}
             />
-          )}
+          </span>
         </div>
 
         <DropdownMenu open={menuOuvert} onOpenChange={setMenuOuvert}>

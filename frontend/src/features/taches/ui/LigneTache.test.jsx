@@ -59,7 +59,7 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
 
   it('passe visuelle n° 53 — fin de ligne « heure, ★ ou drapeau » : drapeau avant l\'heure, jamais à côté de ★', () => {
     const { container, unmount } = render(<LigneTache item={{ ...item(), priorite: 3, essentielle: false }} aujourdhui={AUJOURDHUI} />)
-    const fin = [...container.querySelector('.ligne-fin').children]
+    const fin = [...container.querySelector('.ligne-fin .ligne-fin-masque').children] // couture L7 : l'enveloppe qui se cache sous la pastille
     expect(fin[0]).toHaveClass('drapeau')
     expect(fin[1]).toHaveClass('heure')
     unmount()
@@ -351,11 +351,16 @@ describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne b
 })
 
 describe("R2-017 — la pastille « → ven. 20 » prend la place de la colonne de fin : la ligne ne change pas de hauteur", () => {
-  it("avec une estampille, la colonne de fin ne montre que la pastille (ni l'heure, ni le drapeau, ni l'étoile)", () => {
+  it("avec une estampille, la colonne de fin ne MONTRE que la pastille : l'heure, le drapeau et l'étoile restent à leur place, cachés (la ligne ne bouge pas)", () => {
     const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false }, estampille: '→ ven. 20' })
     const fin = container.querySelector('.ligne-fin')
-    expect([...fin.children].map((e) => e.className)).toEqual(['estampille chiffres'])
     expect(fin.querySelector('.estampille')).toHaveTextContent('→ ven. 20')
+    // couture L7 : cachés (visibility: hidden, inertes), jamais retirés — au bureau la ligne passait de 80 à 58 px
+    const masque = fin.querySelector('.ligne-fin-masque')
+    expect(masque).toHaveClass('masquee')
+    expect(masque).toHaveAttribute('aria-hidden', 'true')
+    expect(masque).toHaveAttribute('inert')
+    expect(masque.querySelector('.heure')).toHaveTextContent('10:00')
     expect(screen.queryByRole('img', { name: 'Priorité haute' })).toBeNull()
     expect(screen.queryByRole('checkbox', { name: /Essentielle/ })).toBeNull()
     expect(screen.queryByRole('img', { name: 'Essentielle' })).toBeNull()
@@ -365,6 +370,8 @@ describe("R2-017 — la pastille « → ven. 20 » prend la place de la colonne 
     const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false } })
     const fin = container.querySelector('.ligne-fin')
     expect(fin.querySelector('.estampille')).toBeNull()
+    expect(fin.querySelector('.ligne-fin-masque')).not.toHaveClass('masquee')
+    expect(fin.querySelector('.ligne-fin-masque')).not.toHaveAttribute('inert')
     expect(fin.querySelector('.heure')).toHaveTextContent('10:00')
     expect(screen.getByRole('img', { name: 'Priorité haute' })).toBeInTheDocument()
   })
@@ -510,7 +517,7 @@ describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, m
 
   it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
     const { container } = monter({ item: { ...item(), a_notes: false } }) // figé sans l'indice « note » (R2-028)
-    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
+    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="ligne-fin-masque"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></span></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
   })
 
   it('le mot cherché est surligné dans le titre, sans tenir compte de la casse ni des accents', () => {

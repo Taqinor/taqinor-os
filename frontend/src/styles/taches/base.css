@@ -359,9 +359,10 @@
    d'entrer dans le flux : plus large que l'étoile, elle poussait le titre et la méta sur deux lignes chacun (la ligne
    passait de 63 à 110 px). Elle recouvre la fin du titre, un fondu de la surface de la ligne derrière elle. */
 .tch .ligne .ligne-fin { position: relative; }
-/* la colonne garde au moins la place de l'étoile qu'elle remplace : le titre ne s'élargit pas d'un coup (la ligne ne
-   rétrécit pas plus qu'elle ne grandissait) */
-.tch .ligne .ligne-fin:has(> .estampille) { min-width: calc(var(--tch-cible) - 12px); }
+/* couture L7 — l'heure, le drapeau et l'étoile restent DANS la colonne sous la pastille, cachés : la colonne garde sa
+   largeur, le titre ne se reflue pas et la ligne garde sa hauteur (bureau : 80 → 58 quand ils étaient retirés) */
+.tch .ligne-fin-masque { display: contents; }
+.tch .ligne-fin-masque.masquee { visibility: hidden; }
 .tch .ligne .ligne-fin > .estampille {
   position: absolute; inset-inline-end: 0; top: 50%; translate: 0 -50%; white-space: nowrap;
   box-shadow: -8px 0 8px var(--tch-surface);

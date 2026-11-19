@@ -298,7 +298,8 @@
    le titre : à 280 px, sur la ligne du titre, ils ne laissaient que 50 px au titre (« Réceptionnei 09:00 ») */
 .tch .ep-col .ep-carte .ligne { background: transparent; grid-template-columns: var(--tch-cible) minmax(0, 1fr); }
 .tch .ep-col .ligne-fin { grid-column: 2; height: auto; margin-top: 4px; }
-.tch .ep-col .ligne-fin:empty { display: none; }
+/* vide = ni pastille ni heure / étoile (la colonne porte toujours son enveloppe `.ligne-fin-masque`, couture L7) */
+.tch .ep-col .ligne-fin:not(:has(> .estampille, > .ligne-fin-masque > *)) { display: none; }
 .tch .ep-col .titre { overflow-wrap: anywhere; }
 .tch .ep-carte > .ep-poignee { height: auto; min-height: var(--tch-cible); }
 /* R3-126 — avec la souris la poignée ne mange plus 44 px de la carte : elle se pose en bas à droite et se montre au survol
