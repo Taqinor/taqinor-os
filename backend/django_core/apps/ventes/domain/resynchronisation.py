@@ -198,6 +198,20 @@ MSG_PERMUTATION_PRIX_MANUEL = (
 )
 
 
+def _kit_hors_composition_residentielle(devis, agricole, multi_villa):
+    """Le kit de ce devis ne se déduit-il PAS d'une composition résidentielle ?
+
+    Agricole et multi-villa (règles d'origine), et commercial / industriel :
+    leur panier vient du moteur C&I (coffrets AC/DC, pose, raccordement…) — y
+    compléter « Accessoires », « Tableau De Protection AC/DC » et
+    « Installation » les compte en double (devis DEV-202611-0076, 19/11/2026 :
+    un calepinage enregistré avait ajouté les trois lignes à chaque option).
+    """
+    from apps.ventes.domain.etude_schema import MARCHES_CI
+    mode = (getattr(devis, 'mode_installation', '') or '').strip().lower()
+    return bool(agricole or multi_villa or mode in MARCHES_CI)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -1033,14 +1047,9 @@ def reconcilier(devis, intention):
         # ne décrit pas leur kit : l'agricole (pompage — ni structure de
         # toiture ni socles), le multi-villa (chaque villa a le sien, une série
         # de lignes hors groupe y serait fausse) et le commercial / industriel
-        # (panier du moteur C&I : coffrets AC/DC, pose, raccordement… — y
-        # ajouter Accessoires + Tableau + Installation les compte en double,
-        # devis DEV-202611-0076 du 19/11/2026).
-        from apps.ventes.domain.etude_schema import MARCHES_CI
-        marche_ci = ((verrou.mode_installation or '').strip().lower()
-                     in MARCHES_CI)
+        # (panier du moteur C&I — voir ``_kit_hors_composition_residentielle``).
         lignes_ajoutees = 0
-        if agricole or multi_villa or marche_ci:
+        if _kit_hors_composition_residentielle(verrou, agricole, multi_villa):
             if multi_villa and not agricole:
                 avertissements.append(
                     'Devis multi-villa : le kit manquant (structures, socles, '
