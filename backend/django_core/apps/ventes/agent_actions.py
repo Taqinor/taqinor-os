@@ -1048,13 +1048,62 @@ WHATSAPP_RELANCE = AgentAction(
 )
 
 
+#: VAD9 — natures de facture (``facturation_vente.NATURES`` / ``DevisFacturerVenteRequest``,
+#: recopiées : ce module n'importe aucun modèle ; tenues par le test).
+NATURES_FACTURE = ('acompte', 'intermediaire', 'solde', 'complete')
+
+# VAD9 (D-W2-Q2 = BROUILLON_SEULEMENT) — « facture l'acompte » prépare un
+# BROUILLON (route existante ``POST devis/{id}/facturer/``, garde
+# ``IsResponsableOrAdmin``, code ``ventes_valider`` : sans ``emettre`` la route
+# n'exige pas ``encaisser``). Aucun numéro légal : l'émission reste un geste
+# d'écran. Le schéma est FERMÉ (le relais refuse toute clé hors schéma) : jamais
+# ``emettre``, ``paiements``, ``utiliser_avances``, ``remplacer_brouillons``,
+# ``override_*`` ni ``libelle``. Remplace ``generer_facture`` (lot hérité).
+FACTURER_VENTE = AgentAction(
+    key='ventes.vente.facturer',
+    label='Préparer la facture en brouillon (aucun numéro légal, émission à l\'écran)',
+    description=(
+        "Sert à : préparer la facture BROUILLON de la prochaine tranche d'un "
+        "devis accepté (acompte, intermédiaire, solde ou complète) ; aucun "
+        "numéro légal, l'émission se fait à l'écran. Lis d'abord "
+        "ventes.vente.etat : cle_attendue = prochaines_echeances[0].cle. Ne "
+        "pas utiliser pour : émettre, encaisser, ni passer outre un blocage "
+        "(écran). Exemple : « facture l'acompte de 30 % » → id, "
+        "nature=acompte, pourcentage=30, cle_attendue lue. Résultat : facture "
+        "brouillon et vente ; un refus est dit tel quel."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/facturer/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis accepté (tête de chaîne).'),
+        'nature': {'type': 'string', 'enum': list(NATURES_FACTURE),
+                   'title': 'Tranche'},
+        'pourcentage': {'type': 'string', 'title': 'Pourcentage', 'description': (
+            'Texte décimal (« 30 ») ; OU montant_ttc, jamais les deux.')},
+        'montant_ttc': {'type': 'string', 'title': 'Montant TTC', 'description': (
+            'Texte décimal (« 15000.00 ») ; OU pourcentage.')},
+        'cle_attendue': {'type': 'string', 'title': 'Tranche attendue', 'description': (
+            'prochaines_echeances[0].cle lu dans ventes.vente.etat.')},
+    }, 'required': ['id', 'nature', 'cle_attendue'],
+        'additionalProperties': False},
+    required_permission=_PERM_VALIDER,
+    risk=RISK_OUTWARD,
+    confirm_summary=('Préparer la facture de cette tranche en BROUILLON : aucun '
+                     'numéro légal, l\'émission se fait à l\'écran.'),
+    carte='facture_brouillon',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
                            PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,
-                           TAILLE_APERCU, TAILLE_DEVIS, WHATSAPP_RELANCE)
+                           TAILLE_APERCU, TAILLE_DEVIS, WHATSAPP_RELANCE,
+                           FACTURER_VENTE)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

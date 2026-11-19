@@ -155,6 +155,17 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.catalogue.chercher': {},
             'ventes.devis.composer': {'lead': 'lead', 'client': 'client'},
             'ventes.devis.lignes': {'id': 'devis'},
+            # Copilote vague 2 (lane VAD).
+            'ventes.vente.etat': {'id': 'devis'},
+            'ventes.impayes.lister': {'client': 'client'},
+            'ventes.facture.chercher': {'client': 'client'},
+            'ventes.devis.prolonger': {'id': 'devis'},
+            'ventes.devis.refuser': {'id': 'devis'},
+            'ventes.devis.reviser': {'id': 'devis'},
+            'ventes.devis.taille_apercu': {'id': 'devis'},
+            'ventes.devis.taille': {'id': 'devis'},
+            'ventes.facture.whatsapp_relance': {'id': 'facture'},
+            'ventes.vente.facturer': {'id': 'devis'},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -1149,3 +1160,57 @@ class RelanceWhatsappAssistantTest(_BaseVenteAssistant):
             (RISK_INTERNAL, 'ventes_modifier', 'wa_message', LOT_COPILOTE,
              {'id': 'facture'}))
         self.assertEqual(set(WHATSAPP_RELANCE.inputs['properties']), {'id', 'langue'})
+
+
+class FacturerVenteAssistantTest(_BaseVenteAssistant):
+    """VAD9 (D-W2-Q2 = BROUILLON_SEULEMENT) — « facture l'acompte » prépare un
+    BROUILLON par la route de l'écran ; le schéma de l'action est FERMÉ : ni
+    émission, ni paiement, ni forçage ne peuvent y être posés."""
+
+    INTERDITES = ('emettre', 'paiements', 'utiliser_avances',
+                  'remplacer_brouillons', 'override_credit',
+                  'override_avertissement', 'libelle', 'company')
+
+    def test_schema_ferme_aucune_emission_ni_forcage(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import FACTURER_VENTE, NATURES_FACTURE
+        from apps.ventes.domain.facturation_vente import NATURES
+        self.assertEqual(NATURES_FACTURE, NATURES)
+        self.assertIs(FACTURER_VENTE.inputs['additionalProperties'], False)
+        proprietes = set(FACTURER_VENTE.inputs['properties'])
+        self.assertEqual(proprietes & set(self.INTERDITES), set())
+        self.assertEqual(proprietes, {'id', 'nature', 'pourcentage',
+                                      'montant_ttc', 'cle_attendue'})
+        self.assertEqual(
+            (FACTURER_VENTE.risk, FACTURER_VENTE.required_permission,
+             FACTURER_VENTE.carte, FACTURER_VENTE.lot, FACTURER_VENTE.objets),
+            (RISK_OUTWARD, 'ventes_valider', 'facture_brouillon', LOT_COPILOTE,
+             {'id': 'devis'}))
+        self.assertIn('BROUILLON', FACTURER_VENTE.confirm_summary)
+
+    def test_brouillon_prepare_sans_numero_legal_forme_du_contrat(self):
+        from apps.ventes.agent_actions import FACTURER_VENTE, VENTE_ETAT
+        from apps.ventes.models import LigneDevis
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku='VAD-KIT',
+            prix_vente=Decimal('10000'))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=produit, designation='Kit solaire',
+            quantite=Decimal('1'), prix_unitaire=Decimal('10000'), ordre=0)
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        etat = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(etat.data['a_faire'], 'facturer', etat.data)
+        echeance = etat.data['prochaines_echeances'][0]
+        resp = auth(self.user).post(
+            FACTURER_VENTE.endpoint.format(id=self.devis.pk), {
+                'nature': etat.data['prochaine_action'],
+                'montant_ttc': echeance['montant_ttc'],
+                'cle_attendue': echeance['cle']}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'devis_facturer.json', 'exemple_brouillon_assistant')))
+        self.assertEqual(resp.data['facture']['statut'], 'brouillon')
+        facture = Facture.objects.get(pk=resp.data['facture']['id'])
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        apres = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(apres.data['a_faire'], 'emettre_brouillon')
