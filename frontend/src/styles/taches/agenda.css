@@ -105,7 +105,11 @@
 .tch .ag-creneau-vide.cible { background: color-mix(in srgb, var(--tch-accent) 5%, transparent); }
 .tch .ag-colonne .bloc { display: flex; align-items: flex-start; gap: 8px; }
 .tch .ag-colonne .bloc.court { align-items: center; }
-.tch .ag-bt { flex: 1; min-width: 0; text-align: left; }
+/* R2-113 — un bloc de ≤ 30 min (ou à côté d'un autre) est étroit : son titre tient sur UNE ligne et finit par « … ». La règle
+   du module (base.css `.bloc.court b { display: inline }`) le laissait en ligne, où `text-overflow` ne s'applique pas : le
+   titre était coupé net. */
+.tch .agenda .bloc.court b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tch .ag-bt { flex: 1; min-width: 0; overflow: hidden; text-align: left; }
 .tch .ag-bt small { margin-top: 1px; }
 /* R2-104 — la règle tactile de toute l'ERP (deploy/01-base.css : `@media (pointer: coarse) { button { min-height: 44px } }`)
    étirait la case en pilule verticale sur iPhone : elle reste un rond de 18 px, la cible de 44 px est son `::after`. */
@@ -328,6 +332,8 @@
 .tch .ag-pj .j { font-size: 0.9375rem; font-weight: 650; }
 .tch .ag-pj .n { font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ag-pj.auj .j { color: var(--tch-accent); }
+/* R2-114 — « 3 h 30 de trop » : écrit sur la ligne du jour, en gras (le segment orange de la barre n'est plus seul à le dire) */
+.tch .ag-pj .n .trop { font-weight: 700; color: var(--tch-texte); }
 .tch .ag-sj.passe .ag-sj-date b { color: var(--tch-texte-doux); font-weight: 500; }
 .tch .ag-pj.passe { background: transparent; cursor: default; }
 .tch .ag-pj.passe .j { color: var(--tch-texte-doux); font-weight: 500; }

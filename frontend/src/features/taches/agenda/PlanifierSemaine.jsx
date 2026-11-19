@@ -53,8 +53,11 @@ export function resume(jour, aujourdhui, capaciteServie = null) {
     // R2-100 — le temps libre du jour = la capacité moins ses rendez-vous (servi : `rendez_vous_minutes`, invariant 35)
     const pris = Number.isFinite(jour.rendez_vous_minutes) && jour.rendez_vous_minutes > 0 ? jour.rendez_vous_minutes : 0
     const capacite = Math.max(0, base - pris)
+    const texte = `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite) || '0 min'}`
+    // R2-114 — un jour qui dépasse son temps libre le DIT (« 3 h 30 de trop »), pas seulement par un segment orange
+    const trop = minutes > capacite ? dureeTexte(minutes - capacite) : ''
     return {
-      texte: `${accordTaches(ouvertes.length)} · ${dureeTexte(minutes) || '0 min'} pour ${dureeTexte(capacite) || '0 min'}`,
+      texte: trop ? `${texte} · ${trop} de trop` : texte, base: texte, trop: trop ? `${trop} de trop` : '',
       charge: capacite > 0 ? { minutes, capacite } : null,
     }
   }
@@ -86,7 +89,7 @@ function CartesDuJour({ jour }) {
 }
 
 function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
-  const { passe, repos, texte, charge } = resume(jour, aujourdhui, capacite)
+  const { passe, repos, texte, base, trop, charge } = resume(jour, aujourdhui, capacite)
   const nom = nomJour(jour.jour)
   const classes = ['ag-pj', passe ? 'passe' : '', repos ? 'repos' : '', jour.jour === aujourdhui ? 'auj' : '',
     posee ? 'nouveau' : ''].filter(Boolean).join(' ')
@@ -107,7 +110,9 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvr
             ne peut donc pas contredire ce qui se voit (axe `label-content-name-mismatch`). */}
         <span className="sr">{choisie && !passe ? `${nom} · ${texte} · placer ${choisie.titre}` : `${nom} · ${texte}`}</span>
         <span className="j" aria-hidden="true">{nom}</span>
-        <span className="n" aria-hidden="true">{texte}</span>
+        <span className="n" aria-hidden="true">
+          {trop ? <>{base}{' · '}<b className="trop">{trop}</b></> : texte}
+        </span>
         {charge ? <BarreCharge {...charge} /> : null}
         <CartesDuJour jour={jour} />
         {posee ? (

@@ -59,6 +59,17 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(screen.getByRole('button', { name: 'lun. 16 · passé · 3 faites' })).toBeDisabled()
   })
 
+  it('R2-114 — un jour trop chargé le DIT sur sa ligne : « 7 h 30 pour 4 h · 3 h 30 de trop » (et pas seulement un segment orange)', () => {
+    const jours = septJours()
+    const base = agenda().jours[0].sans_heure[0]
+    jours[4] = { ...jours[4], sans_heure: [{ ...base, id: 501, titre: 'Gros chantier', estimation_minutes: 450 }] }
+    monter({ jours, capacite: 240 })
+    const vendredi = screen.getByRole('button', { name: 'ven. 20 · 1 tâche · 7 h 30 pour 4 h · 3 h 30 de trop' })
+    expect(vendredi.querySelector('.n')).toHaveTextContent('3 h 30 de trop')
+    // un jour dans la capacité ne dit rien de plus
+    expect(screen.getByRole('button', { name: 'mar. 17 · 2 tâches · 1 h 15 pour 3 h' })).toBeInTheDocument()
+  })
+
   it('une tâche choisie se pose sur le jour touché ; sans choix, le jour s\'ouvre', () => {
     const onPoser = vi.fn()
     const onOuvrirJour = vi.fn()
