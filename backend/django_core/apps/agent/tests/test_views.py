@@ -796,11 +796,28 @@ class LibellesObjetsTest(TestCase):
         url = '/api/django/agent/ouvrir/'
         for params in ({'ecran': 'lead', 'id': self.lead_collegue.pk},
                        {'ecran': 'lead', 'id': self.lead_autre.pk},
-                       {'ecran': 'chantier', 'id': 3}):  # module sans résolveur : jamais un indice
+                       {'ecran': 'chantier', 'id': 3},  # module sans résolveur : jamais un indice
+                       {'ecran': 'lead'}):  # écran à objet sans id : rien à ouvrir
             with self.subTest(params=params):
                 self.assertEqual(_auth(self.moi).get(url, params).status_code, 404)
-        for params in ({'ecran': 'inconnu'}, {}, {'ecran': 'lead'}, {'ecran': 'leads', 'id': 3},
-                       {'ecran': 'lead', 'id': 'x'}, {'ecran': 'calepinage', 'id': 3, 'onglet': 'reglages'},
-                       {'ecran': 'lead', 'id': self.lead.pk, 'onglet': 'production'}):
+        for params in ({'ecran': 'inconnu'}, {}, {'ecran': 'lead', 'id': 'x'},
+                       {'ecran': 'calepinage', 'id': 3, 'onglet': 'reglages'},
+                       {'ecran': 'lead', 'id': self.lead.pk, 'onglet': 'reglages'}):
             with self.subTest(params=params):
                 self.assertEqual(_auth(self.moi).get(url, params).status_code, 400)
+
+    def test_ouvrir_ignore_un_parametre_sans_objet_sur_l_ecran(self):
+        """Demande conforme au schéma publié (file de merge, fuzz du 19/11 :
+        ``?ecran=approbations&onglet=approbation`` refusé en 400) : un ``id``
+        sur un écran sans objet, un onglet sur un écran sans onglets sont
+        ignorés — l'écran s'ouvre, le chemin reste celui de la table."""
+        from apps.agent import ecrans
+        url = '/api/django/agent/ouvrir/'
+        for params, attendu in (
+                ({'ecran': 'approbations', 'onglet': 'approbation'}, '/approbations'),
+                ({'ecran': 'leads', 'id': 3}, ecrans.ecrans()['leads']['chemin']),
+                ({'ecran': 'lead', 'id': self.lead.pk, 'onglet': 'production'}, f'/crm/leads/{self.lead.pk}')):
+            with self.subTest(params=params):
+                reponse = _auth(self.moi).get(url, params)
+                self.assertEqual(reponse.status_code, 200, reponse.content)
+                self.assertEqual(reponse.json()['chemin'], attendu)

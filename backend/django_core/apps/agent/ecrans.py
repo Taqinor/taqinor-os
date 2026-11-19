@@ -50,24 +50,32 @@ def onglets_calepinage() -> list:
 
 
 class ParametreEcran(ValueError):
-    """Paramètre refusé (400 nommé) : écran inconnu, id manquant ou en trop,
-    onglet hors liste."""
+    """Paramètre refusé (400 nommé) : écran inconnu, onglet hors liste."""
+
+
+class ObjetManquant(ParametreEcran):
+    """Écran à objet demandé sans ``id`` : rien à ouvrir (404 nommé — la
+    demande est conforme au schéma publié, où ``id`` est facultatif)."""
 
 
 def chemin(ecran: str, ident: Optional[int] = None,
            onglet: Optional[str] = None) -> str:
     """Le chemin de l'écran, construit depuis la table. Lève
-    :class:`ParametreEcran` (message en français, nommant le champ)."""
+    :class:`ParametreEcran` (message en français, nommant le champ) ;
+    :class:`ObjetManquant` quand un écran à objet est demandé sans ``id``."""
     fiche = _table()['ecrans'].get(ecran)
     if fiche is None:
         raise ParametreEcran('ecran : écran inconnu.')
+    if onglet is not None and onglet not in onglets_calepinage():
+        raise ParametreEcran('onglet : onglet inconnu.')
     if fiche.get('objet') and ident is None:
-        raise ParametreEcran('id : obligatoire pour cet écran.')
-    if not fiche.get('objet') and ident is not None:
-        raise ParametreEcran("id : cet écran n'ouvre aucun objet.")
-    if onglet is not None and (not fiche.get('onglets')
-                               or onglet not in onglets_calepinage()):
-        raise ParametreEcran('onglet : onglet inconnu pour cet écran.')
+        raise ObjetManquant('id : obligatoire pour cet écran.')
+    # Un paramètre SANS OBJET sur cet écran (``id`` d'un écran sans objet,
+    # onglet d'un écran sans onglets) est ignoré : l'écran s'ouvre quand même.
+    if not fiche.get('objet'):
+        ident = None
+    if not fiche.get('onglets'):
+        onglet = None
     sortie = fiche['chemin'].replace('{id}', str(int(ident))) if ident is not None else fiche['chemin']
     if onglet is not None:
         sortie += ('&' if '?' in sortie else '?') + f'{PARAM_ONGLET}={onglet}'
