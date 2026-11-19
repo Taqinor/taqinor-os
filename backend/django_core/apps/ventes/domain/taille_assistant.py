@@ -230,8 +230,21 @@ def _recomposer_impose(devis, nb_panneaux, modules, utilisateur):
     fin_de_geste_devis(devis, utilisateur, avant=avant_geste, objet='taille')
     return {'panneaux_avant': panneaux_avant,
             'panneaux': resynchro.get('panneaux'),
-            'avertissements': alertes + list(
-                resynchro.get('avertissements') or [])}
+            'avertissements': _avertissements_de_retaille(alertes, resynchro)}
+
+
+#: Début de la phrase que la resynchronisation écrit quand UNE CONCEPTION
+#: change le compte : ici il n'y a pas de conception, la carte dit déjà le compte.
+_PHRASE_CONCEPTION = 'La conception 3D porte le devis'
+
+
+def _avertissements_de_retaille(alertes, resynchro):
+    """Les alertes de la composition, puis celles de l'écriture qui disent
+    AUTRE chose : ni une redite, ni la phrase de la conception 3D."""
+    dits = {a.get('message') if isinstance(a, dict) else str(a) for a in alertes}
+    suite = [a for a in (resynchro.get('avertissements') or [])
+             if str(a) not in dits and not str(a).startswith(_PHRASE_CONCEPTION)]
+    return alertes + suite
 
 
 def _alertes(resume):

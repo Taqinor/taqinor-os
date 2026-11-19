@@ -403,11 +403,35 @@ composé sur demande était refusé sans dire quoi faire (le refus dit maintenan
 le manuel de l'assistant, pas encore régénéré, lui faisait dire qu'il ne pouvait pas changer le statut d'un ticket.
 
 **Non fait, dit tel quel.**
-- Le **recalcul en place d'un devis composé sur demande** (né de « 10 panneaux, onduleur 10 kW, batterie 5 kWh ») :
-  aujourd'hui l'assistant en compose un nouveau, l'ancien brouillon se supprime à l'écran.
+- (Fait le 19/11, voir §15 : le changement de taille en place d'un devis composé sur demande.)
 - Aucun essai sur un vrai téléphone ; les écritures confirmées de la vague 2B (publication au devis, taille, pose,
   transitions SAV) sont couvertes par les tests, pas toutes par l'essai avec une vraie clé.
 - Vague suivante (2C) : mémoire de préférences, carte « plan », relances par e-mail, enchaînement visite → calepinage →
   devis en un seul travail, rôles de terrain.
 - En production : rien de neuf pour le modèle sans `ASSISTANT_MOTEUR=natif`, et le copilote reste réservé aux
   administrateurs tant que `ASSISTANT_COPILOTE=admins` — deux gestes de Reda, comme tout déploiement.
+
+## 15. Changer la taille d'un devis composé sur demande, en place (19/11/2026)
+
+**Demande de Reda (19/11, après le rapport de la vague 2B) : « Oui, construis-le ».** Un devis né d'une composition
+imposée (« 10 panneaux, onduleur triphasé 10 kW, batterie 5 kWh ») n'a pas d'étude de consommation : « passe-le à 12
+panneaux » était refusé par le moteur des tailles, et l'assistant composait un second devis.
+
+**Ce qui est construit.** Les deux mêmes outils (`ventes.devis.taille_apercu`, puis `ventes.devis.taille` confirmé aux
+deux totaux) — aucune route, aucun outil, aucune entrée de plus. Pour un devis qui porte le marqueur de composition
+imposée, la demande d'origine est rejouée à blanc par la composition imposée (mêmes produits, par leur identifiant —
+même onduleur, même batterie), puis écrite par le mode « réconcilier » qui sert déjà à la resynchronisation : seules les
+quantités changent (panneaux, structures, socles, câbles au mètre) ; un prix négocié ou une quantité tapée à la main
+n'est jamais réécrit ; remise, TVA, validité et notes restent. Le marqueur est mis à jour. Un devis envoyé est corrigé
+en place et tracé ; un devis accepté se révise d'abord.
+
+**Refus nommés** (rien n'est écrit) : le panneau, l'onduleur ou la batterie a été changé à la main depuis
+(`composition_modifiee` : changer la quantité à l'écran) ; le nouveau nombre rend le kit impossible
+(`composition_impossible`, même refus que la composition) ; modules de batterie demandés sans batterie imposée.
+Les alertes de la composition (couple panneau / onduleur, écrêtage) reviennent avec l'aperçu.
+
+**Vérifié.** Tests joués sur le vrai chemin (plus de moteur remplacé par un faux) ; essai avec une vraie clé sur la pile
+locale : aperçu 72 900 → 79 100 MAD TTC, carte de confirmation qui nomme le devis et les deux totaux, puis le devis
+relu — 12 panneaux, 12 structures, 24 socles, câbles allongés, même onduleur, même batterie. Le total est celui d'un
+devis composé directement à 12 panneaux.
+

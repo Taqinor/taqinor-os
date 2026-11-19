@@ -135,7 +135,9 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   nommer les GESTES (« planifier, résoudre… »), pas seulement les objets, et dire de charger le domaine avant de
   répondre ; (3) un refus doit dire le geste qui marche, pas seulement non ; (4) un test qui remplace le moteur par un
   faux ne prouve pas le chemin réel (la taille d'un devis sans étude de consommation est refusée par le vrai moteur).
-- **Ouvert** : recalcul en place d'un devis composé sur demande (aujourd'hui : un nouveau devis est composé) ; vague 2C
+- **Fait le 19/11 (suite)** : un devis composé sur demande change de taille EN PLACE par les deux mêmes outils (la
+  demande est rejouée par la composition imposée, écrite par le mode « réconcilier » ; dossier §15).
+- **Ouvert** : vague 2C
   (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; en production,
   `ASSISTANT_MOTEUR=natif` et l'ouverture du copilote au-delà des administrateurs restent des gestes de Reda.
 - **Leçons de run** : les gardes de l'hôte se jouent d'un coup par `python scripts/ci_guards.py stage-names` (192

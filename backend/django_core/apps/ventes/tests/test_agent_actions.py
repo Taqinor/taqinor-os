@@ -1206,6 +1206,11 @@ class TailleComposeeSurDemandeTest(_BaseVenteAssistant):
         self.assertEqual((apercu.data['nb_panneaux_avant'],
                           apercu.data['nb_panneaux']), (9, 12))
         self.assertFalse(apercu.data['corrige_apres_envoi'])
+        # Essai vraie clé du 19/11 : ni la phrase de la conception 3D (il n'y
+        # en a pas ici), ni la même alerte dite deux fois.
+        messages = [alerte['message'] for alerte in apercu.data['alertes']]
+        self.assertFalse([m for m in messages if m.startswith('La conception 3D')])
+        self.assertEqual(len(messages), len(set(messages)), messages)
         self.assertEqual(apercu.data['a_faire'], 'proposer')
         self.assertNotEqual(apercu.data['ancien_total_ttc'],
                             apercu.data['nouveau_total_ttc'])
