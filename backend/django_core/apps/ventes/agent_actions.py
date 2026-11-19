@@ -911,12 +911,39 @@ REFUSER_DEVIS = AgentAction(
 )
 
 
+# VAD6 — réviser un devis accepté / refusé / expiré en une V2 BROUILLON (route
+# existante ``POST devis/{id}/reviser/``, garde ``IsResponsableOrAdmin`` → code
+# d'écriture ``ventes_creer``). La route rend le devis complet : carte générique,
+# l'assistant lit ensuite ``ventes.devis.lignes`` sur la V2.
+REVISER_DEVIS = AgentAction(
+    key='ventes.devis.reviser',
+    label='Réviser le devis : créer la V2 brouillon (la V1 reste en place jusqu\'à la V2 signée)',
+    description=(
+        "Sert à : créer la nouvelle version (V2) brouillon d'un devis accepté, "
+        "refusé ou expiré ; la V1 acceptée reste « accepté » jusqu'à la "
+        "signature de la V2. Puis, pour « une V2 avec 12 panneaux », "
+        "ventes.devis.taille sur la V2. Ne pas utiliser pour : un brouillon "
+        "(il se modifie directement), la taille d'un envoyé (taille le "
+        "corrige sur place) ni un devis séparé (composer). Exemple : « fais une V2 du devis "
+        "12 » → id=12. Résultat : la V2 brouillon (id, référence)."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/reviser/',
+    method='POST',
+    inputs=_id_devis(),
+    required_permission=_PERM_CREER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Créer la V2 brouillon de ce devis.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
-                           PROLONGER_DEVIS, REFUSER_DEVIS)
+                           PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

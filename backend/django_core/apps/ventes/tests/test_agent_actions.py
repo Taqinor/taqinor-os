@@ -943,3 +943,16 @@ class CycleDevisAssistantTest(_BaseVenteAssistant):
         accepte = auth(self.user).post(url, {
             'motif': 'Prix', 'marquer_lead_perdu': False}, format='json')
         self.assertEqual(accepte.status_code, 409, accepte.data)
+
+    def test_reviser_un_accepte_cree_la_v2_brouillon_un_brouillon_409(self):
+        from apps.ventes.agent_actions import REVISER_DEVIS
+        self._ecriture_copilote(REVISER_DEVIS, 'ventes_creer')
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        resp = auth(self.user).post(
+            REVISER_DEVIS.endpoint.format(id=self.devis.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        v2 = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(v2.statut, Devis.Statut.BROUILLON)
+        brouillon = auth(self.user).post(
+            REVISER_DEVIS.endpoint.format(id=v2.pk), {}, format='json')
+        self.assertEqual(brouillon.status_code, 409, brouillon.data)
