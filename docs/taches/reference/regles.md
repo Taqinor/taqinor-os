@@ -519,7 +519,10 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 2. `en_attente` ∧ (`jour_prevu` ≤ J ∨ `echeance` ≤ J) → `en_attente` ; sans date ≤ J → absente (visible dans son projet).
 3. `reports ≥ reports_tranches + 3` ∧ `jour_prevu ≤ J` → `a_decider`, motif `reportee_3_fois`.
 4. `jour_prevu = J` ∨ `echeance = J` → `essentiel` si une ligne `essentielle` la porte ; sinon `ce_soir` si `moment =
-   soir` ; sinon `journee`.
+   soir` ; sinon `journee`. Reportée (jour posé plus tard ou retiré, hors « En réserve »), une tâche dont l'échéance
+   est J RESTE donc dans la journée, ★ comprise et comptée : `planifier` le dit par l'avertissement
+   `echeance_aujourdhui` (R3-002, choix C-13 — rien ne disparaît puis ne revient ; « Repousser l'échéance » =
+   `PATCH echeance`).
 5. `jour_prevu < J − 7` ∨ `echeance < J − 7` → `a_decider`, motif `retard_ancien`.
 6. Ce qui presse (`retard`, `echeance_passee`, `echeance_proche`, §3.4) → `propose`, en tête, avec sa `raison`.
 7. Candidate du tour des projets (§3.4) → `propose` (`pour_objectif` ou suite dépliée).

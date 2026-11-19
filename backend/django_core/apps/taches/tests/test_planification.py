@@ -208,6 +208,35 @@ class PlanifierTests(TestCase):
         self.assertEqual(codes, ['jour_non_travaille'])
         self.assertTrue(resultat.avertissements[0]['message'].endswith("n'est pas un jour travaillé."))
 
+    def test_reporter_une_tache_a_echeance_aujourdhui_le_dit_et_la_garde(self):
+        """R3-002 (choix C-13, M5) — reportée à vendredi, la ★ dont l'échéance est AUJOURD'HUI reste dans la journée
+        (son échéance la garde, règle inchangée) : `planifier` le DIT (`echeance_aujourdhui`) au lieu de la laisser
+        revenir en silence au rechargement ; `aujourdhui/` la sert encore dans Essentiel, comptée. Sans échéance, ou
+        mise « En réserve », rien n'est dit (elle quitte la journée)."""
+        from apps.taches.services import journee as services
+        from testkit.time import frozen
+        avertie = {'code': 'echeance_aujourdhui', 'message': "L'échéance reste aujourd'hui."}
+        J = datetime.date(2026, 11, 17)
+        vendredi = datetime.date(2026, 11, 20)
+        with frozen('2026-11-17 10:00:00'):
+            projet = fabriques.projet(self.u1)
+            due = fabriques.tache(self.u1, projet=projet, jour_prevu=J, echeance=J)
+            services.marquer_essentielle(self.u1, due.pk, True, timezone.localtime())
+            self.assertIn(avertie, planifier(due, acteur=self.u1, jour_prevu=vendredi).avertissements)
+            rendu = services.aujourdhui(self.u1, J, timezone.localtime())
+            self.assertEqual([i['id'] for i in rendu['essentiel']], [due.pk])
+            self.assertEqual((rendu['progression']['essentiel_faites'], rendu['progression']['essentiel_prevues']),
+                             (0, 1))
+            sans_jour = fabriques.tache(self.u1, projet=projet, jour_prevu=J, echeance=J)
+            self.assertIn(avertie, planifier(sans_jour, acteur=self.u1, jour_prevu=None).avertissements)
+            libre = fabriques.tache(self.u1, projet=projet, jour_prevu=J)
+            reserve = fabriques.tache(self.u1, projet=projet, jour_prevu=J, echeance=J)
+            for tache, options in ((libre, {'jour_prevu': vendredi}),
+                                   (reserve, {'jour_prevu': None, 'quelque_jour': True})):
+                with self.subTest(tache=tache.titre):
+                    codes = [a['code'] for a in planifier(tache, acteur=self.u1, **options).avertissements]
+                    self.assertNotIn('echeance_aujourdhui', codes)
+
 
 class LigneDuPlanTests(TestCase):
     """Acceptation F2, défaut 6 — LA règle d'une gardée qui change de jour (`_suivre_les_lignes_du_plan`,

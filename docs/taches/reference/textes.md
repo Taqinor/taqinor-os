@@ -201,7 +201,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Puce de routine | « routine » |
 | Lien ERP | « Lié à : {libellé} » ; `archive` « Élément archivé » · `introuvable` « Élément introuvable » · `inaccessible` « Hors de ta portée » · `efface` « Lead effacé » |
 | Repère Copilote | « Ajoutée par le Copilote » |
-| Avertissements | `prevue_apres_echeance` « Prévue après l'échéance. » · `jour_non_travaille` « {jour} n'est pas un jour travaillé. » · `hors_fenetre` « Hors des heures de travail : il sonnera quand même à {HH:MM}. » |
+| Avertissements | `prevue_apres_echeance` « Prévue après l'échéance. » · `jour_non_travaille` « {jour} n'est pas un jour travaillé. » · `hors_fenetre` « Hors des heures de travail : il sonnera quand même à {HH:MM}. » · `echeance_aujourdhui` « L'échéance reste aujourd'hui. » (R3-002) |
 
 ### 2.5 À trier
 
