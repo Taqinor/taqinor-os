@@ -75,7 +75,7 @@
 .tch .es-filtres + .section, .tch .es-filtres ~ .section:first-of-type { margin-top: 18px; }
 @media (min-width: 768px) { .tch .es-recherche .es-champ { height: 48px; } }
 /* le mot cherché, surligné dans le titre d'un résultat (`LigneTache` prop `surligne`) */
-.tch .titre .es-trouve { font-weight: 650; }
+.tch .titre .es-trouve { font-weight: 600; }
 /* TCH166 — Recherche, filtres repliés : vues enregistrées et « Enregistrer cette vue » */
 .tch .recherche-replies { display: grid; gap: 10px; }
 .tch .recherche-vue { display: flex; align-items: center; gap: 8px; }
@@ -101,7 +101,7 @@
 .tch .apercu-projet .nom small { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--tch-texte-doux); }
 /* Passe visuelle n° 33 (premier-usage-1-apercu.html) — l'en-tête d'un projet tient sur une ligne : point de
    couleur, nom, « {n} tâches · En faire une tâche », puis la puce de priorité « Moyenne ⌄ » */
-.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 650; }
+.tch .apercu-projet { flex-wrap: nowrap; padding-right: 6px; font-size: 1rem; font-weight: 600; }
 .tch .apercu-projet > .point { flex: none; }
 .tch .apercu-projet .nom-projet { display: block; overflow-wrap: anywhere; }
 .tch .apercu-bascule { position: relative; color: var(--tch-accent); font-weight: 500; }
@@ -139,7 +139,7 @@
 .tch .fiche-corps { display: flex; flex-direction: column; gap: 4px; }
 .tch .fiche-titre-champ {
   display: block; width: 100%; min-height: 44px; margin: 4px 0 0; padding: 0; border: 0; background: transparent; color: var(--tch-texte);
-  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 650; letter-spacing: -0.01em; outline: none;
+  font: inherit; font-size: 1.375rem; line-height: 1.75rem; font-weight: 600; letter-spacing: -0.01em; outline: none;
 }
 /* Passe visuelle (ecran-fiche.html, ecrans-coeur.css « Fiche ») — UN seul titre : la barre de la feuille n'en
    répète aucun (l'en-tête garde ✕ à gauche, ☆ et ⋯ à droite) ; le nom du dialogue reste lu */
@@ -261,12 +261,12 @@
   /* R3-064 — la place que l'Agenda rend reste une marge : la liste garde sa largeur de lecture (à 1920 elle s'étalait sur
      960 px, l'étoile à 800 px de son titre) */
   .route-fade > .tch:has(.feuille.panneau-bureau) .tch-bureau-liste { max-width: 720px; }
-  /* R3-064 — UN en-tête de panneau (fiche, bilan, Alléger) : × à gauche, titre à gauche en 17 px / 650 (le titre de la
+  /* R3-064 — UN en-tête de panneau (fiche, bilan, Alléger) : × à gauche, titre à gauche en 17 px / 600 (le titre de la
      fiche reste masqué : son titre est le grand champ) */
   .tch .feuille.panneau-bureau .feuille-entete { grid-template-columns: 44px minmax(0, 1fr); column-gap: 6px; }
   .tch .feuille.panneau-bureau .feuille-entete > span { display: none; }
   .tch .feuille.panneau-bureau .feuille-titre {
-    text-align: left; font-size: 1.0625rem; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    text-align: left; font-size: 1.0625rem; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
   /* R3-064 — le pied est toujours en BAS du panneau (Alléger : « Tout renvoyer aux projets » flottait à mi-hauteur) : le
      bloc qui le porte (`.alleger`, `.bilan`) remplit le corps, le pied y prend `margin-top: auto` (règle ci-dessus) */
@@ -399,7 +399,7 @@
     grid-column: 2; grid-row: 1 / span 2; align-self: center; width: 280px; justify-content: flex-start;
     margin: 0; flex-wrap: nowrap; gap: 0 18px;
   }
-  .tch .ligne.tri .geste { font-size: 0.875rem; }
+  .tch .ligne.tri .geste { font-size: var(--tch-taille-meta); }
 }
 /* R3-065 — au bureau large, à la souris : les gestes d'À trier n'occupent plus une colonne fixe de 280 px (titres sur 2
    lignes, « Projet… » tronqué à 1920) ; le titre prend toute la largeur, les gestes apparaissent au survol ou au focus
@@ -423,7 +423,7 @@
   display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 12px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau);
 }
-.tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
+.tch .atrier-carte-titre { margin: 0; font-size: 1.25rem; font-weight: 600; }
 .tch .atrier-compteur { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .bandeau .bouton.discret { height: 44px; }
 /* À trier : « 1 à-faire personnel dans Activités » sur une ligne, Tout convertir · Voir en liens dessous */
