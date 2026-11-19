@@ -476,3 +476,24 @@ class PublierDevisTest(BaseAssistantCalepinage):
         self.assertEqual(set(PUBLIER_DEVIS.inputs['properties']),
                          {'id', 'ancien_total_ttc', 'nouveau_total_ttc'})
         self.assertEqual(PUBLIER_DEVIS.objets, {'id': 'calepinage'})
+
+
+class RetenirTest(BaseAssistantCalepinage):
+    """CALA8 — ``calepinage.retenir`` sur la route existante, confirmé."""
+
+    def test_contrat_de_l_action(self):
+        from apps.calepinage.agent_actions import RETENIR
+
+        self.assertEqual((RETENIR.method, RETENIR.risk, RETENIR.required_permission),
+                         ('POST', 'outward', 'calepinage_gerer'))
+        self.assertEqual(RETENIR.endpoint, f'{URL}{{id}}/variantes/{{variante_id}}/retenir/')
+        self.assertEqual(RETENIR.objets, {'id': 'calepinage', 'variante_id': 'variante'})
+        self.assertIn('périmée', RETENIR.label)
+
+    def test_variante_sans_conception_refusee_sans_bascule(self):
+        reponse = self.api.post(
+            url_assistant(f'variantes/{self.variante.pk}/retenir/', self.cal.pk),
+            {}, format='json')
+        self.assertIn(reponse.status_code, (400, 409), reponse.data)
+        self.variante.refresh_from_db()
+        self.assertFalse(self.variante.retenue)

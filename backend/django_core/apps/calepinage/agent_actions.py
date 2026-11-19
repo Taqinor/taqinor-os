@@ -252,8 +252,39 @@ PUBLIER_DEVIS = AgentAction(
     objets={'id': 'calepinage'},
 )
 
+RETENIR = AgentAction(
+    key='calepinage.retenir',
+    label=('Retenir la variante comme conception (approbation périmée, devis '
+           'à resynchroniser)'),
+    description=(
+        "Sert à : retenir une variante d'un calepinage : elle devient LA "
+        "conception (nouvelle version si elle diffère). L'approbation déjà "
+        "donnée devient périmée et le devis lié devra être republié "
+        "(calepinage.publier_apercu puis calepinage.publier_devis) ; le devis "
+        "et la page du client ne changent PAS d'eux-mêmes. Ne pas utiliser "
+        "pour : approuver (geste humain) ni publier au devis. Exemple : "
+        "« retiens la variante paysage du calepinage 12 » → id=12, "
+        "variante_id=7 (lu dans calepinage.variantes_comparer). Résultat : la "
+        "variante retenue. Refus relayés tels quels : feu vert du bureau "
+        "d'études (400), verdict électrique bloquant (409, dérogation humaine), "
+        "devis lié figé (409 : il se révise), variante sans conception (409)."),
+    endpoint=BASE + '{id}/variantes/{variante_id}/retenir/',
+    method='POST',
+    inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
+                    'variante_id': dict(ENTIER, description='La variante à retenir.')},
+                   ('id', 'variante_id')),
+    required_permission=GERER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Retenir cette variante : elle devient la conception du calepinage "
+        "(nouvelle version si elle diffère) ; l'approbation donnée devient "
+        "périmée et le devis lié devra être resynchronisé."),
+    lot=LOT_COPILOTE,
+    objets={'id': 'calepinage', 'variante_id': 'variante'},
+)
+
 ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER,
-           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS)
+           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS, RETENIR)
 
 
 def register_actions() -> None:
