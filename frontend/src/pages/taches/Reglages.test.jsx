@@ -9,10 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { mockMatchMedia } from '../../test/matchMedia'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
-import {
-  ajouterAgendaExterne, exporterMesDonnees, lireReglages, listerAgendasExternes, modifierAgendaExterne,
-  listerJetons, modifierReglages, rafraichirAgendaExterne, retirerAgendaExterne, toutEffacer,
-} from '../../api/tachesApi'
+import { ajouterAgendaExterne, exporterMesDonnees, lireReglages, listerAgendasExternes, modifierAgendaExterne } from '../../api/tachesApi'
+import { listerJetons, modifierReglages, rafraichirAgendaExterne, retirerAgendaExterne, toutEffacer, lireBadge } from '../../api/tachesApi'
+import { reinitialiserBadgeTaches } from '../../features/taches/useBadgeTaches'
 import Reglages from './Reglages'
 
 vi.mock('../../api/tachesApi', async (importOriginal) => ({
@@ -27,6 +26,7 @@ vi.mock('../../api/tachesApi', async (importOriginal) => ({
   modifierAgendaExterne: vi.fn(),
   rafraichirAgendaExterne: vi.fn(),
   retirerAgendaExterne: vi.fn(),
+  lireBadge: vi.fn(),
 }))
 
 /* TCH108 — Réglages (cœur) : rubriques, Vie privée MOT POUR MOT (relue dans textes.md §6), Mes données
@@ -55,8 +55,9 @@ beforeEach(() => {
   lireReglages.mockResolvedValue({ data: exemple('reglages') })
   listerAgendasExternes.mockResolvedValue({ data: exemple('agendas_externes') })
   listerJetons.mockResolvedValue({ data: exemple('jetons_liste') })
+  lireBadge.mockResolvedValue({ data: { n: 0, jour: '2026-11-19', a_trier: 0 } })
 })
-afterEach(() => { vi.clearAllMocks(); reinitialiserGestes() })
+afterEach(() => { vi.clearAllMocks(); reinitialiserGestes(); reinitialiserBadgeTaches() })
 
 function paragraphesDeLaReference() {
   const source = readFileSync(resolve(process.cwd(), '..', 'docs', 'taches', 'reference', 'textes.md'), 'utf8')
@@ -78,7 +79,7 @@ describe('TCH108 — Réglages', () => {
     const lignes = within(liste).getAllByRole('listitem')
     expect(lignes.map((l) => l.querySelector('b').textContent)).toEqual(['Notifications', 'Mon iPhone', 'Vie privée', "L'ERP me suggère", 'Mes données', 'Avancé'])
     expect(within(liste).getByText('Ce qui part au Copilote, qui peut lire')).toBeInTheDocument()
-    expect(within(liste).getByText('Exporter, tout effacer')).toBeInTheDocument()
+    expect(within(liste).getByText('Télécharger, tout effacer')).toBeInTheDocument()
     await userEvent.click(within(liste).getByRole('button', { name: /Avancé/ }))
     expect(await screen.findByRole('switch', { name: 'Messages sans délai' })).toBeInTheDocument()
   })
@@ -133,7 +134,7 @@ describe('TCH108 — Réglages', () => {
     URL.revokeObjectURL = vi.fn()
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     monter('/taches/reglages/donnees')
-    await userEvent.click(await screen.findByRole('button', { name: 'Exporter mes données (fichier JSON)' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Télécharger mes données' }))
     expect(exporterMesDonnees).toHaveBeenCalledTimes(1)
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
 
@@ -150,6 +151,18 @@ describe('TCH108 — Réglages', () => {
     await userEvent.click(within(dialogue).getByRole('button', { name: 'Tout effacer' }))
     expect(toutEffacer).toHaveBeenCalledWith({ confirmation: 'EFFACER' })
     expect(await screen.findByTestId('lieu')).toHaveTextContent('/taches/aujourdhui')
+  })
+
+  it('R3-097 — après « Tout effacer », la pastille « À trier » se relit tout de suite (badge/ forcé)', async () => {
+    toutEffacer.mockResolvedValue({ data: exemple('tout_effacer') })
+    monter('/taches/reglages/donnees')
+    await userEvent.click(await screen.findByRole('button', { name: 'Tout effacer' }))
+    const dialogue = await screen.findByRole('dialog', { name: 'Tout effacer ?' })
+    await userEvent.type(within(dialogue).getByRole('textbox', { name: 'Confirmation' }), 'EFFACER')
+    expect(lireBadge).not.toHaveBeenCalled()
+    await userEvent.click(within(dialogue).getByRole('button', { name: 'Tout effacer' }))
+    expect(toutEffacer).toHaveBeenCalledTimes(1)
+    expect(lireBadge).toHaveBeenCalledTimes(1)
   })
 
   it('Tout effacer empêché (409 `effacement_occupe`) : la phrase du serveur sous le champ, la feuille reste, on peut réessayer', async () => {
@@ -217,10 +230,10 @@ describe('TCH108 — Réglages', () => {
 
   it('R2-130 — Mes données : les deux gestes forment UNE liste groupée de deux rangées, sans vide de 150 pt entre eux', async () => {
     const { container } = monter('/taches/reglages/donnees')
-    await screen.findByRole('button', { name: 'Exporter mes données (fichier JSON)' })
+    await screen.findByRole('button', { name: 'Télécharger mes données' })
     const groupe = container.querySelector('.es-groupe-actions')
     expect(groupe).not.toBeNull()
-    expect([...groupe.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Exporter mes données (fichier JSON)', 'Tout effacer'])
+    expect([...groupe.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Télécharger mes données', 'Tout effacer'])
     expect(container.querySelector('.es-loin')).toBeNull()
   })
 

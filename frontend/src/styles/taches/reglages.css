@@ -138,6 +138,9 @@
   .tch .es-rubrique:not([aria-current="page"]):hover { background: var(--tch-survol); } /* R2-128 : le survol n'est plus dessiné comme la sélection */
 }
 
+/* R3-098 — « Mettre Tâches sur l'écran d'accueil » : l'étape 1, dessinée comme les étapes 2 à 6 (presence.css) */
+.tch .ep-installer > h2.ep-etape-i { margin: 0; font: inherit; color: inherit; letter-spacing: normal; }
+
 /* R2-125 — « Reportée à jeu. 19 · Appeler le fournisseur » : la tâche touchée, en gris sous le verbe */
 .tch .es-geste .titre-geste { color: var(--tch-texte-doux); overflow-wrap: anywhere; }
 

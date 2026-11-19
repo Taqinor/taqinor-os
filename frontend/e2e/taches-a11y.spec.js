@@ -172,7 +172,7 @@ const ECRANS = [
     nom: 'reglages-donnees',
     ouvrir: async (page) => {
       await ouvrirEcran(page, '/taches/reglages/donnees', 'reglages')
-      await expect(page.getByRole('button', { name: /^Exporter mes données/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Télécharger mes données/ })).toBeVisible()
     },
   },
   {
