@@ -106,11 +106,11 @@ class VentesAgentCatalogueTest(TestCase):
     def test_required_permissions(self):
         self.assertEqual(CREER_AUTO.required_permission, 'ventes_creer')
         self.assertEqual(GENERER_PDF_DEVIS.required_permission, 'ventes_pdf')
-        for action in (
-            ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE, GENERER_FACTURE,
-        ):
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE):
             self.assertEqual(
                 action.required_permission, 'ventes_valider', action.key)
+        # REP6 — émettre une tranche : contrôle ``PeutEncaisser`` du CORPS.
+        self.assertEqual(GENERER_FACTURE.required_permission, 'encaisser')
         # COP-G2 — aligné sur les gardes des routes (test de parité de l'agent).
         self.assertEqual(ENREGISTRER_PAIEMENT.required_permission, 'encaisser')
         self.assertEqual(REMISE_DEVIS.required_permission, 'ventes_modifier')
@@ -131,7 +131,7 @@ class VentesAgentCatalogueTest(TestCase):
         self.assertEqual(ACCEPTER_DEVIS.risk, RISK_OUTWARD)
         # AG5
         self.assertEqual(CONVERTIR_EN_BON_COMMANDE.risk, RISK_OUTWARD)
-        self.assertEqual(GENERER_FACTURE.risk, RISK_OUTWARD)
+        self.assertEqual(GENERER_FACTURE.risk, RISK_IRREVERSIBLE)
         self.assertEqual(ENREGISTRER_PAIEMENT.risk, RISK_IRREVERSIBLE)
         # AIC99 — expliquer LIT ; l'e-mail part chez le client : à confirmer.
         self.assertEqual(EXPLIQUER_DEVIS.risk, RISK_INTERNAL)
@@ -181,6 +181,33 @@ class VentesAgentCatalogueTest(TestCase):
         with self.settings(ASSISTANT_COPILOTE='tous'):
             vus = {a.key for a in for_user(self.resp)}
         self.assertLessEqual({a.key for a in VENTES_ACTIONS_COPILOTE}, vus)
+
+    def test_rep6_emission_irreversible_herite_et_modes_exacts(self):
+        """REP6 — ``generer_facture`` ÉMET la tranche avec son numéro légal
+        (irréversible, l'aperçu le dit) ; lot ``herite`` : copilote éteint
+        seulement ; l'Admin Ventes (``ventes_valider`` sans ``encaisser``)
+        ne la voit plus. Les modes de paiement sont ceux du modèle ;
+        ``composer`` ne fait jamais une V2."""
+        from apps.agent.registry import LOT_HERITE
+        self.assertEqual(GENERER_FACTURE.lot, LOT_HERITE)
+        self.assertIn('avoir', GENERER_FACTURE.label)
+        self.assertIn('numéro légal', GENERER_FACTURE.confirm_summary)
+        admin_ventes = User.objects.create_user(
+            username='ag45_av', password='x', company=self.company,
+            role=Role.objects.create(
+                company=self.company, nom='Admin Ventes',
+                permissions=['ventes_voir', 'ventes_creer', 'ventes_valider']))
+        self.assertNotIn(GENERER_FACTURE.key,
+                         {a.key for a in for_user(admin_ventes)})
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            self.assertNotIn(GENERER_FACTURE.key,
+                             {a.key for a in for_user(self.resp)})
+        self.assertIn(GENERER_FACTURE.key, {a.key for a in for_user(self.resp)})
+        mode = ENREGISTRER_PAIEMENT.inputs['properties']['mode']
+        self.assertEqual(mode['enum'], list(Paiement.Mode.values))
+        self.assertNotIn('è', mode['description'])
+        from apps.ventes.agent_actions import COMPOSER_DEVIS
+        self.assertIn('V2', COMPOSER_DEVIS.description)
 
     def test_inputs_never_include_company(self):
         for action in VENTES_ACTIONS:

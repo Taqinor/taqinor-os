@@ -33,14 +33,25 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(a.method, 'POST')
         self.assertEqual(
             a.endpoint, '/api/django/installations/interventions/')
-        self.assertEqual(a.required_permission, 'installation_gerer')
-        self.assertEqual(a.risk, 'internal')
-        # Reproduit le comportement FastAPI : type controle + date_prevue.
+        # REP4 — garde réelle (ASEC72) ; une intervention datée entre dans la
+        # journée d'un technicien : proposition à confirmer.
+        self.assertEqual(a.required_permission, 'intervention_gerer')
+        self.assertEqual(a.risk, 'outward')
+        self.assertTrue(a.confirm_summary)
+        # Le relais n'applique pas un ``default`` : type REQUIS, valeur unique
+        # exacte du modèle (Intervention.Type.CONTROLE).
+        from apps.installations.models import Intervention
         props = a.inputs['properties']
-        self.assertEqual(props['type_intervention']['default'], 'controle')
-        self.assertIn('date_prevue', props)
+        self.assertNotIn('default', props['type_intervention'])
+        self.assertEqual(props['type_intervention']['enum'],
+                         [Intervention.Type.CONTROLE.value])
+        self.assertEqual(props['date_prevue']['format'], 'date')
         self.assertEqual(
-            set(a.inputs['required']), {'installation', 'date_prevue'})
+            set(a.inputs['required']),
+            {'installation', 'type_intervention', 'date_prevue'})
+        # Vrai : sans technicien, personne n'est notifié.
+        self.assertIn('sans technicien', a.description)
+        self.assertLessEqual(len(a.description), 600)
 
     def test_commander_besoin_metadata(self):
         a = self._by_key('installations.chantier.commander_besoin')
@@ -50,11 +61,29 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(
             a.endpoint,
             '/api/django/installations/chantiers/{id}/commander-besoin/')
-        self.assertEqual(a.required_permission, 'installation_gerer')
-        self.assertEqual(a.risk, 'internal')
+        # REP3 — garde réelle de la route (ACHT54) ; deux effets sur des
+        # données existantes (BCF brouillons + chantier Signé → Matériel
+        # commandé) : proposition à confirmer qui dit les deux.
+        self.assertEqual(a.required_permission, 'achats_commander')
+        self.assertEqual(a.risk, 'outward')
+        self.assertIn('BROUILLONS', a.confirm_summary)
+        self.assertIn('Matériel commandé', a.confirm_summary)
+        self.assertIn('Matériel commandé', a.description)
         # Le <id> chantier est un input requis consommé par le gabarit de chemin.
         self.assertIn('id', a.inputs['properties'])
         self.assertIn('id', a.inputs['required'])
+        props = a.inputs['properties']
+        self.assertEqual(props['produits']['items'], {'type': 'integer'})
+        self.assertEqual(props['fournisseurs']['additionalProperties'],
+                         {'type': 'integer'})
+
+    def test_permission_du_catalogue_est_la_garde_de_la_route(self):
+        """REP3/REP4 — chaque code du catalogue est un code que la route
+        EXIGE (gardes lues sur la vue, comme le test de parité de l'agent)."""
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        for a in (BROUILLON_COMMANDE_CHANTIER, PLANIFIER_VISITE_MAINTENANCE):
+            codes, _admin, _modules = _gardes_de_la_route(a)
+            self.assertIn(a.required_permission, codes, a.key)
 
     def test_company_never_in_inputs(self):
         for a in INSTALLATIONS_ACTIONS:
@@ -72,5 +101,5 @@ class InstallationsAgentActionsTest(TestCase):
         for a in INSTALLATIONS_ACTIONS:
             d = a.as_dict()
             self.assertEqual(d['method'], 'POST')
-            self.assertEqual(d['required_permission'], 'installation_gerer')
+            self.assertEqual(d['required_permission'], a.required_permission)
             self.assertIn('endpoint', d)

@@ -24,7 +24,8 @@ Niveaux de risque (qui pilotent le garde-fou propose→confirm) :
     le relais rend un LIEN, aucun statut ne change)
   * AG4 ``accepter_devis``     → OUTWARD   (marque le devis accepté → chantier)
   * AG5 ``convertir_en_bon_commande`` → OUTWARD (crée le BC du devis accepté)
-  * AG5 ``generer_facture``    → OUTWARD   (émet la facture de tranche suivante)
+  * AG5 ``generer_facture``    → IRREVERSIBLE (émet la tranche suivante avec son
+    numéro légal ; lot ``herite`` — REP6)
   * AG5 ``enregistrer_paiement`` → IRREVERSIBLE (encaissement comptable, gardé
     par confirmation ; écrit un Paiement scopé société, montant validé > 0)
 
@@ -38,8 +39,8 @@ compare le catalogue aux gardes réelles des routes :
   * création de devis        → ``ventes_creer``
   * remise globale           → ``ventes_modifier`` (PATCH du devis)
   * génération du PDF devis   → ``ventes_pdf``
-  * accepter / convertir / facturer → ``ventes_valider``
-  * encaisser                → ``encaisser`` (``PeutEncaisser``, ASEC29)
+  * accepter / convertir      → ``ventes_valider``
+  * émettre une tranche, encaisser → ``encaisser`` (``PeutEncaisser``, ASEC29)
 Le viewset reste l'autorité finale (il re-vérifie le rôle + la société).
 
 Cartes (COP-G3) : l'action PDF porte ``carte='document'`` ; les actions qui
@@ -55,6 +56,7 @@ from __future__ import annotations
 from apps.agent.registry import (
     AgentAction,
     LOT_COPILOTE,
+    LOT_HERITE,
     RISK_INTERNAL,
     RISK_OUTWARD,
     RISK_IRREVERSIBLE,
@@ -72,6 +74,11 @@ _PERM_VALIDER = 'ventes_valider'
 # exige ``encaisser`` (``PeutEncaisser``, ASEC29).
 _PERM_MODIFIER = 'ventes_modifier'
 _PERM_ENCAISSER = 'encaisser'
+
+#: REP6 — valeurs EXACTES de ``Paiement.Mode`` (apps/facturation/models.py),
+#: recopiées (ce module n'importe aucun modèle) et tenues par le test.
+MODES_PAIEMENT = ('especes', 'virement', 'cheque', 'carte', 'prelevement',
+                  'autre')
 
 
 # ── AG4 ─────────────────────────────────────────────────────────────────────
@@ -438,21 +445,29 @@ CONVERTIR_EN_BON_COMMANDE = AgentAction(
 )
 
 
-# Action — Générer la prochaine facture de tranche du devis. Endpoint réel :
+# Action — Émettre la prochaine facture de tranche du devis. Endpoint réel :
 # POST /api/django/ventes/devis/{id}/generer-facture/
-# (DevisViewSet.generer_facture). Crée et émet la prochaine facture de
-# l'échéancier (acompte, puis matériel, puis solde). Effet comptable visible →
-# OUTWARD, confirmation requise.
+# (DevisViewSet.generer_facture, porte « api-only » fermée côté écran). REP6
+# (copilote vague 2, B-7) : la route ÉMET la tranche suivante avec son NUMÉRO
+# LÉGAL (``creer_facture_tranche``) — ce n'est pas un brouillon ; une facture
+# émise ne s'annule que par un avoir → IRREVERSIBLE. Garde réelle :
+# ``IsResponsableOrAdmin`` (décorateur) PUIS ``PeutEncaisser`` DANS LE CORPS
+# (403 ``MOTIF_SANS_ENCAISSER``) : le code du catalogue est ``encaisser``
+# (l'Admin Ventes, ``ventes_valider`` sans ``encaisser``, voyait l'outil et
+# recevait 403). Lot ``herite`` : servi seulement copilote ÉTEINT ; sous le
+# copilote, la facturation passe par un BROUILLON (vague 2B).
 GENERER_FACTURE = AgentAction(
     key='ventes.devis.generer_facture',
-    label='Générer la facture (tranche suivante)',
+    label='Émettre la facture (numéro légal, ne s\'annule que par un avoir)',
     description=(
         "Sert à : émettre la prochaine facture de tranche de l'échéancier du "
-        "devis (acompte → matériel → solde) ; change un statut : proposition "
-        "puis confirmation obligatoire. Ne pas utiliser pour : encaisser un "
-        "paiement (enregistrer_paiement) ni un devis non accepté. Exemple : "
-        "« facture l'acompte du devis 12 » → id=12. Résultat : facture "
-        "numérotée émise, société forcée côté serveur."
+        "devis (acompte → matériel → solde) avec son numéro légal ; change "
+        "un statut : proposition puis confirmation obligatoire — irréversible, "
+        "une facture émise ne s'annule que par un avoir. Ne pas utiliser "
+        "pour : encaisser un paiement (enregistrer_paiement), préparer un "
+        "brouillon ni un devis non accepté. Exemple : « facture l'acompte du "
+        "devis 12 » → id=12. Résultat : facture numérotée émise ; 409 si rien "
+        "n'est à facturer, 403 en blocage crédit."
     ),
     endpoint='/api/django/ventes/devis/{id}/generer-facture/',
     method='POST',
@@ -466,9 +481,12 @@ GENERER_FACTURE = AgentAction(
         },
         'required': ['id'],
     },
-    required_permission=_PERM_VALIDER,
-    risk=RISK_OUTWARD,
-    confirm_summary='Émettre la prochaine facture de tranche de ce devis.',
+    required_permission=_PERM_ENCAISSER,
+    risk=RISK_IRREVERSIBLE,
+    confirm_summary=(
+        "Émettre la prochaine facture de tranche de ce devis : numéro légal, "
+        "ne s'annule que par un avoir."),
+    lot=LOT_HERITE,
     objets={'id': 'devis'},
 )
 
@@ -489,7 +507,8 @@ ENREGISTRER_PAIEMENT = AgentAction(
         "promesse de paiement ni un montant supérieur au reste à payer. "
         "Exemple : « 15 000 DH reçus par virement sur la facture 30 » → id=30, "
         "montant=15000, date_paiement, mode=virement. Résultat : paiement "
-        "enregistré ; facture soldée quand tout est réglé."
+        "enregistré ; facture soldée quand tout est réglé ; un refus « "
+        "paiement similaire » veut dire déjà enregistré : ne pas le reproposer."
     ),
     endpoint='/api/django/ventes/factures/{id}/enregistrer-paiement/',
     method='POST',
@@ -506,11 +525,17 @@ ENREGISTRER_PAIEMENT = AgentAction(
             },
             'date_paiement': {
                 'type': 'string',
-                'description': 'Date du paiement (AAAA-MM-JJ).',
+                'format': 'date',
+                'description': ('Jour du règlement (AAAA-MM-JJ), dicté ou '
+                                'du jour, jamais deviné.'),
             },
             'mode': {
                 'type': 'string',
-                'description': 'Mode de paiement (espèces, virement, chèque…).',
+                # REP6 (B-8) — valeurs EXACTES de ``Paiement.Mode``
+                # (apps/facturation/models.py) : « espèces » / « chèque »
+                # accentués étaient refusés.
+                'enum': list(MODES_PAIEMENT),
+                'description': 'Mode de paiement : ' + ', '.join(MODES_PAIEMENT) + '.',
             },
             'reference': {'type': 'string'},
             'note': {'type': 'string'},
@@ -645,8 +670,9 @@ COMPOSER_DEVIS = AgentAction(
     description=(
         "Sert à : créer un devis brouillon résidentiel au kit demandé "
         "(nombre de panneaux, onduleur, batterie), même sans facture sur le "
-        "lead. Ne pas utiliser pour : dimensionner depuis la facture "
-        "(creer_auto) ni un lead commercial ou agricole. Exemple : "
+        "lead. Ne pas utiliser pour : une V2 ni la correction d'un devis "
+        "existant (il crée TOUJOURS un devis séparé), dimensionner depuis la "
+        "facture (creer_auto) ni un lead commercial ou agricole. Exemple : "
         + _EXEMPLE_FONDATEUR + " → lead, nb_panneaux=10, onduleur_kw=10, "
         "onduleur_phase=triphase, batterie_kwh=5. Résultat : devis "
         "brouillon et ses lignes TTC ; 409 choix si un produit est ambigu."

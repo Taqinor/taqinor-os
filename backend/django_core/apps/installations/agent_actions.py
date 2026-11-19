@@ -19,34 +19,49 @@ moment-là. Le ``company`` n'apparaît JAMAIS dans les ``inputs`` (forcé côté
 serveur). Pour ``commander-besoin``, le ``<id>`` du chantier est modélisé comme
 un input requis que le gabarit de chemin consomme.
 
-Permission requise : ``installation_gerer`` (la permission ERP que les deux
-outils FastAPI exigent — ``_BC_PERMS`` / ``_VISITE_PERMS``).
+Permissions (copilote vague 2) : chacune est le code que la ROUTE exige
+(``get_permissions`` des viewsets) — ``achats_commander`` pour
+``commander-besoin`` (REP3), ``intervention_gerer`` pour la création
+d'intervention (REP4). Les deux écrivent sur des données existantes ou dans
+la journée de quelqu'un : propositions À CONFIRMER.
 
 Enregistré (idempotent) au démarrage par :func:`register_installation_actions`,
 appelée depuis ``InstallationsConfig.ready()``.
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_INTERNAL, register
+from apps.agent.registry import AgentAction, RISK_OUTWARD, register
 
 
-# Permission ERP exigée par les deux outils FastAPI d'origine
-# (_BC_PERMS / _VISITE_PERMS = installation_gerer/chantier_gerer ; on retient la
-# permission canonique installation_gerer).
-_PERM_GERER = 'installation_gerer'
-
-# Type d'intervention d'une visite de maintenance (miroir de _VISITE_TYPE).
+# Type d'intervention d'une visite de maintenance : valeur exacte de
+# ``Intervention.Type.CONTROLE`` (apps/installations/models_intervention.py).
 _VISITE_TYPE = 'controle'
 
 
+#: REP4 — garde RÉELLE de la création d'intervention : ``IsResponsableOrAdmin``
+#: + ``DroitDeLaGrille('intervention_gerer')`` (ASEC72), et
+#: ``technicien_assign`` en plus quand le corps porte ``technicien``
+#: (``InterventionViewSet.get_permissions``, ASEC50).
+_PERM_INTERVENTION = 'intervention_gerer'
+
+
+# REP4 — une intervention datée entre dans la journée d'un technicien : une
+# écriture sur l'agenda de quelqu'un → proposition À CONFIRMER. Le relais
+# n'applique pas un ``default`` du schéma alors que ``type_intervention`` est
+# obligatoire au modèle : il est REQUIS, à valeur unique (contrôle).
 PLANIFIER_VISITE_MAINTENANCE = AgentAction(
     key='installations.intervention.planifier_visite',
     label='Planifier une visite de maintenance',
     description=(
-        "Planifie une visite de maintenance (intervention de type contrôle) "
-        "sur un chantier à une date donnée (AAAA-MM-JJ). Remplaçante-catalogue "
-        "de l'outil FastAPI planifier_visite_maintenance : crée l'intervention "
-        "via l'endpoint interventions ; la société est forcée côté serveur."
+        "Sert à : planifier, après confirmation, une visite de maintenance "
+        "(intervention de type contrôle) sur un chantier à une date. Le "
+        "technicien désigné est notifié ; sans technicien, la visite n'est "
+        "dans la journée de personne (l'installateur du chantier est mis "
+        "dans l'équipe). Ne pas utiliser pour : une visite technique avant "
+        "devis (crm.visite.planifier) ni une pose. Exemple : « contrôle du "
+        "chantier 12 le 2026-12-03 par le technicien 9 » → installation=12, "
+        "type_intervention=controle, date_prevue, technicien=9. Résultat : "
+        "l'intervention créée ; 409 si le chantier est annulé."
     ),
     endpoint='/api/django/installations/interventions/',
     method='POST',
@@ -55,39 +70,64 @@ PLANIFIER_VISITE_MAINTENANCE = AgentAction(
         'properties': {
             'installation': {
                 'type': 'integer',
+                'title': 'Chantier (id)',
                 'description': 'Chantier à visiter.',
             },
             'type_intervention': {
                 'type': 'string',
-                'description': "Type d'intervention.",
-                'default': _VISITE_TYPE,
+                'title': "Type d'intervention",
+                'enum': [_VISITE_TYPE],
+                'description': 'Toujours controle.',
             },
             'date_prevue': {
                 'type': 'string',
+                'format': 'date',
+                'title': 'Date prévue',
                 'description': 'Date prévue (AAAA-MM-JJ).',
             },
             'technicien': {
                 'type': 'integer',
-                'description': 'Technicien assigné (optionnel).',
+                'title': 'Technicien (id)',
+                'description': ('Qui fait la visite (demande-le) ; '
+                                "l'affecter exige le droit technicien_assign."),
             },
         },
-        'required': ['installation', 'date_prevue'],
+        'required': ['installation', 'type_intervention', 'date_prevue'],
     },
-    required_permission=_PERM_GERER,
-    risk=RISK_INTERNAL,
-    confirm_summary='Planifier une visite de maintenance sur le chantier.',
+    required_permission=_PERM_INTERVENTION,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Planifier une visite de maintenance (contrôle) sur le chantier, à "
+        "cette date ; le technicien désigné est notifié."),
 )
 
 
+#: REP3 — garde RÉELLE de ``commander-besoin`` : ``IsResponsableOrAdmin`` +
+#: ``HasPermissionOrLegacy('achats_commander')`` (branche dédiée de
+#: ``InstallationViewSet.get_permissions``, ACHT54) — jamais
+#: ``installation_gerer`` (le Technicien voyait l'outil et recevait 403).
+_PERM_COMMANDER = 'achats_commander'
+
+
+# REP3 — la route crée des BCF BROUILLONS (un par fournisseur) ET tente de
+# faire passer un chantier « Signé » à « Matériel commandé »
+# (``_avancer_materiel_commande``, ``exiger_couverture=False``) : deux effets
+# sur des données existantes → proposition À CONFIRMER dont l'aperçu dit les
+# deux. Corps de la route (``CommanderBesoinRequete``) : ``fournisseur``,
+# ``fournisseurs`` {produit_id: fournisseur_id}, ``produits`` [ids].
 BROUILLON_COMMANDE_CHANTIER = AgentAction(
     key='installations.chantier.commander_besoin',
-    label='Brouillonner un bon de commande chantier',
+    label='Commander les manques du chantier (brouillons)',
     description=(
-        "Crée un bon de commande fournisseur BROUILLON pour les manques de "
-        "matériel d'un chantier. Remplaçante-catalogue de l'outil FastAPI "
-        "brouillon_bon_commande_chantier : appelle l'endpoint commander-besoin "
-        "du chantier ; la société est forcée côté serveur, le brouillon reste à "
-        "confirmer manuellement."
+        "Sert à : créer, après confirmation, les bons de commande "
+        "fournisseur BROUILLONS des manques de matériel d'un chantier (un "
+        "par fournisseur) ; rien n'est envoyé au fournisseur. Un chantier "
+        "« Signé » passe aussi à « Matériel commandé » quand ses étapes le "
+        "permettent. Ne pas utiliser pour : envoyer une commande ni une "
+        "commande hors chantier. Exemple : « commande ce qui manque pour le "
+        "chantier 12 » → id=12. Résultat : les BCF brouillons et le statut du "
+        "chantier ; 409 si rien ne manque, si un BCF ouvert couvre déjà ou "
+        "sans fournisseur."
     ),
     endpoint='/api/django/installations/chantiers/{id}/commander-besoin/',
     method='POST',
@@ -96,20 +136,37 @@ BROUILLON_COMMANDE_CHANTIER = AgentAction(
         'properties': {
             'id': {
                 'type': 'integer',
+                'title': 'Chantier (id)',
                 'description': 'Chantier dont on commande les manques '
                                '(consommé par le gabarit de chemin).',
             },
             'fournisseur': {
                 'type': 'integer',
-                'description': 'Fournisseur (optionnel).',
+                'title': 'Fournisseur (id)',
+                'description': ('Fournisseur imposé aux lignes ; absent : '
+                                'celui du produit.'),
+            },
+            'fournisseurs': {
+                'type': 'object',
+                'title': 'Fournisseur par produit',
+                'additionalProperties': {'type': 'integer'},
+                'description': '{"<produit_id>": <fournisseur_id>}.',
+            },
+            'produits': {
+                'type': 'array',
+                'title': 'Produits à commander (ids)',
+                'items': {'type': 'integer'},
+                'description': 'Absent : tous les manques.',
             },
         },
         'required': ['id'],
     },
-    required_permission=_PERM_GERER,
-    risk=RISK_INTERNAL,
-    confirm_summary='Créer un bon de commande fournisseur brouillon pour les '
-                    'manques du chantier.',
+    required_permission=_PERM_COMMANDER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Créer les bons de commande fournisseur BROUILLONS des manques du "
+        "chantier (rien n'est envoyé) ; un chantier « Signé » peut passer à "
+        "« Matériel commandé »."),
 )
 
 
