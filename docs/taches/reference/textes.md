@@ -493,7 +493,7 @@ Toute révélation se ferme par « OK ».
 | Ajout | « Ajoutée : {titre} » ; liste « {n} tâches créées » |
 | Hors ligne | « Hors ligne : gardée, elle partira dès le retour du réseau » |
 | Conflit | « Modifiée sur ton autre appareil : choisis Garder la mienne ou Prendre l'autre » |
-| Chargement plus long que 1 s | « Chargement » |
+| Chargement plus long que 300 ms (squelette en lignes de tâches) | « Chargement » |
 
 Noms accessibles : case « Marquer « {titre} » comme faite » ; étoile « Essentielle » (état coché lu) ; bouton de ligne
 « Actions pour « {titre} » » (menu de l'appui long : rien n'exige balayage ni glisser) ; × d'une puce « Retirer « {jeton} »

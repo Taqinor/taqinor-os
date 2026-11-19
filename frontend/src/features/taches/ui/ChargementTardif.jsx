@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 
 /* ============================================================================
-   Raccord F2 — l'état « chargement » commun aux écrans de Tâches (spec-7 « Partout » : squelette après 1 s, jamais
-   sur une liste déjà affichée ; textes.md §2.19 : annonce « Chargement »). Rien pendant la première seconde (pas de
-   clignotement), puis trois lignes « os » comme etat-chargement.html. L'écran le monte tant qu'il n'a RIEN à montrer.
+   Raccord F2 — l'état « chargement » commun aux écrans de Tâches (spec-7 « Partout » : squelette, jamais sur une liste
+   déjà affichée ; textes.md §2.19 : annonce « Chargement »). L'écran le monte tant qu'il n'a RIEN à montrer.
+   R2-089 — dès 300 ms (une réponse rapide ne fait rien clignoter ; au-delà, l'écran montre déjà SA forme) : deux
+   sections de lignes de tâches « os », comme etat-chargement.html — jamais le squelette des tableaux de bord de l'ERP.
    ========================================================================== */
 
-const DELAI_MS = 1000
-const LIGNES = [['72%', '44%'], ['84%', '38%'], ['64%', '']]
+const DELAI_MS = 300
+const SECTIONS = [
+  [['72%', '44%'], ['84%', '38%'], ['64%', '']],
+  [['78%', '48%'], ['56%', '40%']],
+]
 
 /** Une ligne « os » du squelette (case, une ou deux barres) — partagée avec le squelette d'Aujourd'hui. */
 export function LigneOs({ l1, l2 = '' }) {
@@ -33,7 +37,12 @@ export default function ChargementTardif({ actif = true }) {
   if (!actif || !visible) return null
   return (
     <div className="squelette" role="status" aria-label="Chargement">
-      {LIGNES.map(([l1, l2], rang) => <LigneOs key={rang} l1={l1} l2={l2} />)}
+      {SECTIONS.map((lignes, section) => (
+        <div key={section} className="squelette-section">
+          <span className="os titre-section" aria-hidden="true" />
+          {lignes.map(([l1, l2], rang) => <LigneOs key={rang} l1={l1} l2={l2} />)}
+        </div>
+      ))}
     </div>
   )
 }

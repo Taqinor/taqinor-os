@@ -604,6 +604,14 @@
 .tch .os.l2 {
   height: 10px; margin-top: 9px;
 }
+/* R2-089 — le squelette commun : des sections (titre « os » + lignes), comme etat-chargement.html */
+.tch .squelette-section { margin-top: 22px; }
+.tch .squelette-section > .os.titre-section { width: 96px; height: 12px; margin: 0 var(--tch-gouttiere) 8px; }
+.tch .squelette-section + .squelette-section > .os.titre-section { width: 150px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch .squelette .os { animation: tch-os-respire 1.4s var(--ease-standard) infinite alternate; }
+}
+@keyframes tch-os-respire { from { opacity: 0.45; } to { opacity: 0.8; } }
 .tch .ligne.projet .titre {
   font-weight: 600;
 }
