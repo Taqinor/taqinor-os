@@ -1104,21 +1104,10 @@ def _references_secret_column(sql: str) -> bool:
     return _references_forbidden_column(sql, allow_price=True)
 
 
-# ALEC16 (C-ALEC-014, APFS4) — prefixe de table -> prefixes de code du module
-# (au moins un exige), et tables a proprietaire refusees a une portee restreinte.
-_MODULE_DES_TABLES = (
-    ("ventes_", ("ventes_", "encaisser")), ("crm_", ("crm_",)),
-    ("installations_", ("installation_", "intervention_")),
-    ("sav_", ("sav_",)), ("stock_", ("stock_",)),
-    ("adsengine_", ("adsengine_",)),  # ALEC46 : miroirs publicitaires
-)
-_TABLES_A_PROPRIETAIRE = frozenset({
-    "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",
-    "installations_installation", "sav_ticket",
-    # ALEC41 — lignes de documents, interventions et parc : memes proprietaires.
-    "ventes_lignedevis", "ventes_lignefacture", "installations_intervention",
-    "sav_equipement", "sav_contratmaintenance",
-})
+# ALEC16 — tables -> droits du module et tables a proprietaire : `gardes_sql`
+# (FND12 : comptes, roles et reglages y exigent un droit d'administration).
+from app.services.gardes_sql import (  # noqa: E402 — table deplacee (mur des 2 000 lignes)
+    MODULE_DES_TABLES as _MODULE_DES_TABLES, TABLES_A_PROPRIETAIRE as _TABLES_A_PROPRIETAIRE)
 
 
 def _verifier_module_et_portee(sql: str, permissions) -> None:
