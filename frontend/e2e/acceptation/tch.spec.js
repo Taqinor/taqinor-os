@@ -538,6 +538,19 @@ etape('P139.2', ['TCH139', 'TCH106'], async (f) => {
   expect((await tacheNommee(p, T.demo)).jour_prevu).toBe('2026-11-26')
 })
 
+/** R2-107 — l'Agenda n'offre aucun créneau sous un bloc ou un rendez-vous : place la tâche choisie sur le premier créneau
+ *  LIBRE à partir de `voulue` (`voulue` elle-même quand elle est libre) et rend l'heure touchée, que le toast confirme. */
+async function placerDesQue(p, voulue) {
+  const creneaux = p.getByRole('button', { name: /^Placer à \d\d:\d\d$/ })
+  await expect(creneaux.first()).toBeVisible()
+  const heures = (await creneaux.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label').slice(-5))))
+    .filter((h) => h >= voulue).sort()
+  expect(heures.length, `un créneau libre à partir de ${voulue}`).toBeGreaterThan(0)
+  await p.getByRole('button', { name: `Placer à ${heures[0]}`, exact: true }).first().click()
+  await expect(toast(p)).toContainText(`Placée à ${heures[0]}`)
+  return heures[0]
+}
+
 etape('P139.3', ['TCH139', 'TCH105'], async (f) => {
   const instant = scenario(AGENDA, `${J24} 09:41`)
   const p = await ouvrir(f, { instant })
@@ -556,8 +569,7 @@ etape('P139.3', ['TCH139', 'TCH105'], async (f) => {
     } else {
       await volet(p).getByRole('button', { name: new RegExp(echapper(titre)) }).click()
     }
-    await p.getByRole('button', { name: `Placer à ${heure}`, exact: true }).click()
-    await expect(toast(p)).toContainText(`Placée à ${heure}`)
+    pose[1] = await placerDesQue(p, heure)
   }
   for (const [titre, heure] of poses) {
     await expect(p.getByRole('checkbox', { name: `Fait : ${titre}` })).toBeVisible()
@@ -634,12 +646,12 @@ etape('P139.7', ['TCH139', 'TCH105'], async (f) => {
   const p = await ouvrir(f, { instant, timezoneId: 'Africa/Casablanca' })
   await aller(p, '/taches/agenda', 'agenda')
   await volet(p).getByRole('button', { name: new RegExp(echapper(T.stand)) }).click()
-  await p.getByRole('button', { name: 'Placer à 10:00', exact: true }).click()
-  await expect(toast(p)).toContainText('Placée à 10:00')
-  // Oracle (orchestrateur) : l'heure enregistrée côté serveur reste 10:00 heure du Maroc.
+  // R2-107 — aucun créneau sous un bloc : le premier créneau libre à partir de 10:00 (10:00 lui-même s'il est libre)
+  const heure = await placerDesQue(p, '10:00')
+  // Oracle (orchestrateur) : l'heure enregistrée côté serveur reste l'heure du Maroc touchée.
   const lue = await tacheNommee(p, T.stand)
   expect(lue.jour_prevu).toBe(J24)
-  expect(String(lue.heure_debut).slice(0, 5)).toBe('10:00')
+  expect(String(lue.heure_debut).slice(0, 5)).toBe(heure)
 })
 
 // =====================================================================================================================
@@ -782,7 +794,9 @@ etape('P144.2', ['TCH144', 'TCH100'], async (f) => {
 etape('P144.3', ['TCH144', 'TCH119'], async (f) => {
   const instant = scenario(VIE, `${J24} 10:45`)
   const p = await ouvrir(f, { instant, vue: 'bureau' })
-  await aller(p, '/taches/projets', 'projets')
+  // R2-067 — au bureau, /taches/projets ouvre le premier projet actif (maître-détail : la liste est à gauche)
+  await aller(p, '/taches/projets', 'projet')
+  await expect(p.locator('[data-projet]').first()).toBeVisible()
   let touches = 0
   const touche = async (k) => { touches += 1; await p.keyboard.press(k) }
   const ligneFocus = () => p.evaluate(() => document.activeElement?.closest?.('[data-ligne]')?.getAttribute('data-ligne') ?? '')

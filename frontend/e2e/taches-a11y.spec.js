@@ -157,7 +157,8 @@ const ECRANS = [
     nom: 'supprimees',
     ouvrir: async (page, d) => {
       await ouvrirEcran(page, '/taches/supprimees', 'supprimees')
-      await expect(page.getByText(d.supprimee.titre, { exact: true })).toBeVisible()
+      // R2-125 : « Derniers gestes » nomme aussi la tâche — on lit la section des supprimées
+      await expect(page.getByRole('region', { name: 'Supprimées récemment' }).getByText(d.supprimee.titre, { exact: true })).toBeVisible()
     },
   },
   {
