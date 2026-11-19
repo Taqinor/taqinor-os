@@ -11,7 +11,9 @@
 }
 /* R3-068 — le champ grandit avec ce qu'on tape (jusqu'à 6 lignes, puis il défile) : une saisie de 3 lignes ou un collage
    ne montre plus sa 1re ligne coupée à mi-hauteur. Le miroir des jetons suit (même boîte, `inset: 0`). */
-.tch .saisie-champ { field-sizing: content; max-height: calc(6lh + 8px); }
+/* couture L7 — plafond = 6 lignes + la marge du BAS seulement : arrivé au bout (ChampSaisie y ramène le champ quand le
+   curseur est en fin de texte), la 1re ligne visible commence pile en haut, jamais coupée à mi-hauteur */
+.tch .saisie-champ { field-sizing: content; max-height: calc(6lh + 4px); }
 .tch .saisie-champ::placeholder { color: var(--tch-texte-doux); }
 /* R2-051 — le grand champ de saisie n'a pas de cadre (ecran-saisie.html) : l'anneau de focus commun le dessinait en
    deux filets pleine largeur, dont celui du haut coupait la 1re ligne d'une liste collée. Le curseur montre le focus. */
