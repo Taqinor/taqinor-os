@@ -24,6 +24,7 @@ import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/te
    heure de la colonne Agenda ; sans la prop, la ligne ne se glisse pas (iPhone : jamais de glisser, spec-7 §5).
    Passe visuelle n° 46 (recherche.html) — `surligne` (le texte cherché) : ses mots sont surlignés dans le titre ;
    `contexte="recherche"` : la méta commence par le statut du résultat. Sans ces props, la ligne ne change pas.
+   R2-018 — `groupeTitre` : le nom du projet qui TITRE le groupe où la ligne est rendue (omis de sa méta).
    ========================================================================== */
 
 const DUREE_APPUI_LONG_MS = 500
@@ -158,8 +159,13 @@ function statutRecherche(item, aujourdhui) {
   return puces
 }
 
+/** R2-018 — les puces BRÈVES : une méta qui n'en compte que deux au plus peut tenir sur la ligne du titre
+ *  (`.ligne-corps.meta-courte`, la règle CSS est celle de la coquille) ; un lien, une raison ou une attente, jamais. */
+const PUCES_BREVES = new Set(['statut', 'jour', 'ech', 'duree', 'projet'])
+const metaCourte = (meta) => meta.length > 0 && meta.length <= 2 && meta.every((p) => PUCES_BREVES.has(p.key))
+
 /** Les puces de méta d'une ligne, dans l'ordre des maquettes. */
-function metaDe(item, { contexte, aujourdhui, propose }) {
+function metaDe(item, { contexte, aujourdhui, propose, groupeTitre }) {
   const puces = contexte === 'recherche' ? statutRecherche(item, aujourdhui) : []
   if (item.type === 'activite') puces.push(<span key="erp">Activité ERP</span>)
   if (contexte === 'projet' && item.jour_prevu) {
@@ -171,7 +177,12 @@ function metaDe(item, { contexte, aujourdhui, propose }) {
   const ech = item.echeance && !raison ? echeanceTexte(item.echeance, aujourdhui) : null
   if (ech) puces.push(<span key="ech" className={ech.ton === 'alerte' ? 'alerte chiffres' : 'fort chiffres'}>{ech.texte}</span>)
   const d = duree(item.estimation_minutes)
-  if (d && item.heure_debut) puces.push(<span key="duree" className="chiffres">{d}</span>)
+  // R2-018 — « 2 h » nu se lisait « à 2 h » : la durée porte son sablier (et « Durée : » pour la lecture d'écran)
+  if (d && item.heure_debut) {
+    puces.push(
+      <span key="duree" className="chiffres"><Hourglass className="i i-14" aria-hidden="true" /><span className="sr">Durée : </span>{d}</span>,
+    )
+  }
   if (item.lien?.libelle) {
     puces.push(
       <span key="lien"><LienIcone className="i i-14" aria-hidden="true" /><span className="sr">Lié à : </span>{item.lien.libelle}</span>,
@@ -184,7 +195,8 @@ function metaDe(item, { contexte, aujourdhui, propose }) {
     puces.push(<span key="att"><Hourglass className="i i-14" aria-hidden="true" />En attente de : {item.en_attente_de}</span>)
   }
   if (item.confidentielle) puces.push(<span key="conf"><Lock className="i i-14" aria-hidden="true" />Confidentielle</span>)
-  if (contexte !== 'projet' && item.projet) puces.push(<MetaProjet key="projet" projet={item.projet} />)
+  // R2-018 — le nom du projet n'est pas répété sous un groupe qui le porte déjà en titre
+  if (contexte !== 'projet' && item.projet && item.projet.nom !== groupeTitre) puces.push(<MetaProjet key="projet" projet={item.projet} />)
   return puces
 }
 
@@ -208,6 +220,7 @@ export default function LigneTache({
   onAnnonce,
   glissable = null,
   surligne = '',
+  groupeTitre = '',
 }) {
   const cadre = useRef(null)
   const [menuOuvert, setMenuOuvert] = useState(false)
@@ -244,7 +257,7 @@ export default function LigneTache({
   if (balayage.ouvert === 'droite') classes.push('glisse-droite')
   const style = balayage.glisse ? { transform: `translateX(${balayage.dx}px)`, transition: 'none' } : undefined
 
-  const meta = metaDe(item, { contexte, aujourdhui, propose })
+  const meta = metaDe(item, { contexte, aujourdhui, propose, groupeTitre })
   const aRevelation = balayage.glisse || balayage.ouvert
 
   return (
@@ -299,7 +312,7 @@ export default function LigneTache({
           <span className="case vide"><span className="pastille-erp"><LienIcone className="i" aria-hidden="true" /></span></span>
         )}
 
-        <div className="ligne-corps">
+        <div className={!propose && metaCourte(meta) ? 'ligne-corps meta-courte' : 'ligne-corps'}>
           <button type="button" className="ligne-corps-bouton" onClick={ouvrir}>
             <span className="titre">{surligne ? <TitreSurligne titre={item.titre} surligne={surligne} /> : item.titre}</span>
           </button>

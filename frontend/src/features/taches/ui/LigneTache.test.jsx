@@ -309,13 +309,47 @@ describe('R2-017 — la pastille « → ven. 20 » prend la place de l\'heure : 
   })
 })
 
+describe('R2-018 — « 2 h » se lit comme une durée, pas comme « à 2 h »', () => {
+  it('la durée porte un sablier et se lit « Durée : 1 h »', () => {
+    const { container } = monter()
+    const duree = [...container.querySelectorAll('.meta > span')].find((s) => s.textContent.includes('1 h'))
+    expect(duree.querySelector('svg')).not.toBeNull()
+    expect(duree).toHaveTextContent('Durée : 1 h')
+    expect(duree.querySelector('.sr')).toHaveTextContent('Durée :')
+  })
+
+  it('dans un groupe titré du nom du projet, le nom n\'est pas répété sur la ligne ; ailleurs il reste', () => {
+    const { container, unmount } = monter({ groupeTitre: 'Ventes' })
+    expect(container.querySelector('.meta .projet-nom')).toBeNull()
+    expect(container.querySelector('.meta')).toHaveTextContent('échéance jeu. 19')
+    unmount()
+    const { container: autre } = monter({ groupeTitre: 'Salon Solaire Expo' })
+    expect(autre.querySelector('.meta .projet-nom')).toHaveTextContent('Ventes')
+  })
+
+  it('une méta courte (au plus deux puces brèves) pose `meta-courte` : la méta peut tenir sur la ligne du titre', () => {
+    const courte = { ...item(), projet: null }
+    const { container, unmount } = monter({ item: courte })
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte')
+    unmount()
+    // trois puces (échéance, durée, projet) : trop pour la ligne du titre
+    const { container: longue, unmount: u2 } = monter()
+    expect(longue.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+    u2()
+    // un lien ou une raison longue : jamais courte
+    const { container: lien } = monter({ item: { ...courte, lien: { cible: 'ventes.devis', id: 1, libelle: 'DEV-2026-11-0042', url: '/x', etat: 'ok' } } })
+    expect(lien.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+  })
+})
+
 describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
   // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
-  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '')
+  // (les alias de classe d'icône changent d'une version de lucide à l'autre : `lucide-more-horizontal` n'est pas comparé)
+  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '').replace(/ lucide-more-horizontal/g, '')
 
   it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
     const { container } = monter()
-    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres">1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis lucide-more-horizontal i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
+    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
   })
 
   it('le mot cherché est surligné dans le titre, sans tenir compte de la casse ni des accents', () => {
