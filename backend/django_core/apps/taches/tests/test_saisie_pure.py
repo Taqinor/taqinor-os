@@ -406,6 +406,21 @@ class SortieEtOptionsTests(unittest.TestCase):
                 self.assertEqual((a.titre, a.champs), (saisie, {'priorite': 0}))
         self.assertEqual(lire('Payer dans 3 jours').champs['jour_prevu'], j(20))  # inchangé dans le calendrier
 
+    def test_r3_047_decalage_en_lettres_de_un_a_trente(self):
+        # « dans quinze jours » (F1) : le nombre écrit en lettres se lit comme en chiffres (J+N, regles.md §1.3)
+        cas = (('Relancer dans quinze jours', j(2, 12)), ('Relancer dans deux semaines', j(1, 12)),
+               ('Relancer dans trois mois', j(17, 2, 2027)), ('Relancer dans dix-sept jours', j(4, 12)),
+               ('Relancer dans vingt et un jours', j(8, 12)), ('Relancer dans vingt-deux jours', j(9, 12)),
+               ('Relancer dans trente jours', j(17, 12)), ('Relancer dans Huit jours', j(25)))
+        for saisie, attendu in cas:
+            with self.subTest(saisie=saisie):
+                a = lire(saisie)
+                self.assertEqual((a.titre, a.champs.get('jour_prevu')), ('Relancer', attendu))
+        # au-delà de trente, ou un mot qui n'est pas un nombre : le texte reste
+        for saisie in ('Relancer dans trente et un jours', 'Relancer dans quelques jours'):
+            with self.subTest(saisie=saisie):
+                self.assertNotIn('jour_prevu', lire(saisie).champs)
+
     def test_capture_ne_lit_ni_recurrence_ni_etape_ni_nouveau_projet(self):
         a = lire('Payer tous les 2 jours #Maison /Achats #Inconnu', porte='capture')
         self.assertEqual(a.titre, 'Payer tous les 2 jours /Achats #Inconnu')
