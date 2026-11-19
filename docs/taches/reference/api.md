@@ -1445,7 +1445,10 @@ propres à `taches`, tous distincts, + 2 routes étrangères consommées.
 par `lot/` `deplacer` `valeurs.par_tache`) ; création : `{"lignes":[{"index":0,"collage":0,"client_id":"c1f4b2a0-5d1e-4b9a-9a51-2b7f0c3e8d11:0","titre":"Appeler Karim","projet_id":null,"nouveau_projet":{"nom":"SiteWeb","priorite":2},"section_id":null,"nouvelle_section":null,"priorite":0,"jour_prevu":"2026-11-18","moment":"","heure_debut":null,"echeance":null,"echeance_heure":null,"quelque_jour":false,"estimation_minutes":null,"etiquettes":[2,{"nom":"magasin"}],"recurrence":null,"rappel":{"jour":"2026-11-18","heure":"09:00"},"notes":"","checklist":["Numéro"],"lien":{"cible":"crm.lead","id":1637}}],"proprietaire_attendu":7,"apercu":false}` ; LIGNE = un élément de `lignes`, forme ci-contre.
 (`projet_id` et `nouveau_projet` exclusifs ; `section_id` et `nouvelle_section` exclusifs ; `rappel` absolu ou
 `{"ancre":"echeance","decalage_jours":-1,"heure":"18:00"}`). Plafonds 200 lignes, 20 000 car. (2 000 via le Copilote).
-Venant de l'assistant, `titre` est ignoré (ligne source). Chaque « Nouveau projet » de l'aperçu porte sa priorité,
+Venant de l'assistant (en-tête `X-Taqinor-Assistant` ou `Authorization: Bearer`), seul l'aperçu (`apercu:true`,
+`ids`, `texte`) est servi : des `lignes` à créer répondent **403** `{"lignes":["L'assistant ne crée pas ces lignes : il
+les propose, tu les valides à l'écran."],"detail":"…"}` (refus du canal, échec fermé ; rien n'est écrit) — la personne
+valide la carte à l'écran (cookie + `X-Taqinor-Carte-Assistant: 1`, source `assistant`). Chaque « Nouveau projet » de l'aperçu porte sa priorité,
 Moyenne (2) par défaut. Erreurs : `{"lignes":{"3":{"titre":["Le titre est vide une fois la date et le projet retirés."]}}}` ·
 `{"texte":["Liste trop longue : 200 lignes au plus (ici 340). Colle-la en deux fois."]}` · `{"projet_id":["Projet inexistant."]}` ·
 `{"lien":["Élément introuvable ou hors de ta portée."]}` · `{"lien":["Ce type d'élément ne peut pas être lié à une tâche."]}` ·
