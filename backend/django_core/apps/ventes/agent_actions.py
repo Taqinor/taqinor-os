@@ -742,9 +742,368 @@ LIGNES_DEVIS = AgentAction(
 )
 
 
+# ── Copilote vague 2 (lane VAD) — la vie du devis après sa création ─────────
+
+def _id_devis():
+    return {'type': 'object',
+            'properties': {'id': _entier('Identifiant du devis.')},
+            'required': ['id'], 'additionalProperties': False}
+
+
+# VAD1 — l'état COMPACT d'une vente (``GET devis/{id}/vente-assistant/``,
+# garde ``LectureVentes`` = ``ventes_voir``, contrat ``assistant_vente_etat.json``).
+VENTE_ETAT = AgentAction(
+    key='ventes.vente.etat',
+    label="Lire l'état de la vente d'un devis",
+    description=(
+        "Sert à : dire où en est la vente d'un devis (prix convenu, émis, "
+        "payé, reste à facturer et à payer, prochaine tranche, factures) ; "
+        "lecture OBLIGATOIRE avant de facturer (la clé de tranche devient "
+        "cle_attendue). Ne pas utiliser pour : facturer ni encaisser. "
+        "Exemple : « où en est la vente de Lahlou ? » → id du devis. "
+        "Résultat : montants en texte, raison_bloquee dite telle quelle, "
+        "a_faire et lien ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/vente-assistant/',
+    method='GET',
+    inputs=_id_devis(),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='vente_etat',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+def _entrees_liste(**extra):
+    """Entrées d'une liste de facturation de l'assistant (q, client, limite)."""
+    return {'type': 'object', 'properties': {
+        'q': {'type': 'string', 'description': (
+            'Référence de facture ou nom du client.')},
+        'client': _entier('Identifiant du client.'),
+        **extra,
+        'limite': _entier('Lignes rendues (1 à 25, défaut 10).'),
+    }, 'additionalProperties': False}
+
+
+# VAD2 — « qui me doit de l'argent ? » (``GET ventes/assistant/impayes/``,
+# garde ``LectureFactures`` = ``ventes_voir``, contrat ``assistant_impayes.json``).
+IMPAYES_LISTER = AgentAction(
+    key='ventes.impayes.lister',
+    label='Lister ce que les clients doivent',
+    description=(
+        "Sert à : dire qui doit de l'argent : total exigible, nombre de "
+        "factures, tranches d'âge et les factures les plus en retard (montant "
+        "dû, jours, niveau de relance, promesse, contestée). Ne pas utiliser "
+        "pour : relancer un client ni enregistrer un paiement. Exemple : "
+        "« qui me doit de l'argent ? » → aucune entrée ; « et Lahlou ? » → "
+        "q=Lahlou. Résultat : total, tranches et lignes avec a_faire et "
+        "lien ; jamais de téléphone ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/assistant/impayes/',
+    method='GET',
+    inputs=_entrees_liste(mes_relances={
+        'type': 'boolean',
+        'description': 'Seulement mes clients en relance.'}),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_impayes',
+    lot=LOT_COPILOTE,
+    objets={'client': 'client'},
+)
+
+
+#: VAD3 — statuts de facture du modèle (recopiés : ce module n'importe aucun
+#: modèle ; tenus par le test).
+STATUTS_FACTURE = ('brouillon', 'emise', 'en_retard', 'payee', 'annulee')
+
+# VAD3 — retrouver une facture (``GET ventes/assistant/factures/``, garde
+# ``LectureFactures`` = ``ventes_voir``, contrat ``assistant_factures.json``).
+FACTURE_CHERCHER = AgentAction(
+    key='ventes.facture.chercher',
+    label='Chercher une facture',
+    description=(
+        "Sert à : retrouver une facture par sa référence, le nom ou le "
+        "téléphone du client, avant d'enregistrer un paiement quand aucun "
+        "devis n'est ouvert. Plusieurs factures candidates : DEMANDE "
+        "laquelle, ne répartis jamais un paiement. Ne pas utiliser pour : "
+        "lister les impayés (ventes.impayes.lister). Exemple : « il a payé "
+        "20 000 par virement » → q=<nom du client>. Résultat : factures "
+        "(statut, total, reste dû, échéance, a_faire, lien) ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/assistant/factures/',
+    method='GET',
+    inputs=_entrees_liste(statut={
+        'type': 'string', 'enum': list(STATUTS_FACTURE),
+        'description': 'Statut de la facture.'}),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_factures',
+    lot=LOT_COPILOTE,
+    objets={'client': 'client'},
+)
+
+
+# VAD4 — prolonger un devis ENVOYÉ (route existante ``POST
+# devis/{id}/prolonger-validite/``, garde ``IsResponsableOrAdmin`` : un code
+# d'ÉCRITURE du module, ``ventes_modifier``). Un expiré se révise (409).
+PROLONGER_DEVIS = AgentAction(
+    key='ventes.devis.prolonger',
+    label='Prolonger la validité du devis envoyé (nouvelle date de fin)',
+    description=(
+        "Sert à : repousser la date de fin de validité d'un devis ENVOYÉ "
+        "(jamais plus courte) ; proposition puis confirmation obligatoire. "
+        "Ne pas utiliser pour : un devis expiré (réviser, pas prolonger : "
+        "ventes.devis.reviser) ni un brouillon. Exemple : « prolonge le devis "
+        "de Benali jusqu'au 15 décembre » → id, date=2026-12-15 ; sans date, "
+        "le délai de validité de la société. Résultat : nouvelle date de "
+        "validité ; aucun statut ne change."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/prolonger-validite/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis envoyé.'),
+        'date': {'type': 'string', 'format': 'date', 'title': 'Valable jusqu\'au',
+                 'description': 'Nouvelle date de fin (AAAA-MM-JJ), facultative.'},
+    }, 'required': ['id'], 'additionalProperties': False},
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Prolonger la validité de ce devis envoyé.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# VAD5 — le client refuse le devis (route existante ``POST devis/{id}/refuser/``,
+# garde ``HasPermissionOrLegacy('ventes_valider')``). ``marquer_lead_perdu`` est
+# REQUIS : l'assistant l'a demandé, il ne le suppose jamais ; pas de ``date``
+# (le serveur pose aujourd'hui). Un accepté ne se refuse pas (dés-acceptation =
+# geste d'écran, 409).
+REFUSER_DEVIS = AgentAction(
+    key='ventes.devis.refuser',
+    label='Marquer le devis refusé par le client (lead perdu si demandé)',
+    description=(
+        "Sert à : marquer refusé un devis brouillon ou envoyé que le client a "
+        "décliné, avec le motif de la liste de la société (crm.motifs_perte."
+        "lister) ; demande TOUJOURS s'il faut aussi marquer le lead perdu. Ne "
+        "pas utiliser pour : un devis accepté (la dés-acceptation se fait à "
+        "l'écran) ni une version remplacée. Exemple : « Benali ne veut plus, "
+        "trop cher » → id, motif=Prix, marquer_lead_perdu=true si confirmé. "
+        "Résultat : devis refusé ; une V2 refusée réactive la V1."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/refuser/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis.'),
+        'motif': {'type': 'string', 'title': 'Motif',
+                  'description': 'Nom EXACT d\'un motif de perte de la société.'},
+        'note': {'type': 'string', 'maxLength': 255, 'title': 'Note interne',
+                 'description': 'Note interne au chatter du devis (facultative).'},
+        'marquer_lead_perdu': {'type': 'boolean', 'title': 'Lead perdu',
+                               'description': 'Demandé à l\'utilisateur, jamais supposé.'},
+    }, 'required': ['id', 'motif', 'marquer_lead_perdu'],
+        'additionalProperties': False},
+    required_permission=_PERM_VALIDER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Marquer ce devis refusé par le client.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# VAD6 — réviser un devis accepté / refusé / expiré en une V2 BROUILLON (route
+# existante ``POST devis/{id}/reviser/``, garde ``IsResponsableOrAdmin`` → code
+# d'écriture ``ventes_creer``). La route rend le devis complet : carte générique,
+# l'assistant lit ensuite ``ventes.devis.lignes`` sur la V2.
+REVISER_DEVIS = AgentAction(
+    key='ventes.devis.reviser',
+    label='Réviser le devis : créer la V2 brouillon (la V1 reste en place jusqu\'à la V2 signée)',
+    description=(
+        "Sert à : créer la nouvelle version (V2) brouillon d'un devis accepté, "
+        "refusé ou expiré ; la V1 acceptée reste « accepté » jusqu'à la "
+        "signature de la V2. Puis, pour « une V2 avec 12 panneaux », "
+        "ventes.devis.taille sur la V2. Ne pas utiliser pour : un brouillon "
+        "(il se modifie directement), la taille d'un envoyé (taille le "
+        "corrige sur place) ni un devis séparé (composer). Exemple : « fais une V2 du devis "
+        "12 » → id=12. Résultat : la V2 brouillon (id, référence)."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/reviser/',
+    method='POST',
+    inputs=_id_devis(),
+    required_permission=_PERM_CREER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Créer la V2 brouillon de ce devis.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+def _entrees_taille(*, avec_totaux):
+    proprietes = {
+        'id': _entier('Identifiant du devis (brouillon ou envoyé).'),
+        'nb_panneaux': {'type': 'integer', 'minimum': 1, 'maximum': 200,
+                        'title': 'Panneaux', 'description': 'Nombre de panneaux voulu.'},
+        'batterie_nb_modules': {'type': 'integer', 'minimum': 1,
+                                'title': 'Modules de batterie',
+                                'description': 'Absent : inchangés.'},
+    }
+    requis = ['id', 'nb_panneaux']
+    if avec_totaux:
+        for cle, titre in (('ancien_total_ttc', 'Ancien total TTC'),
+                           ('nouveau_total_ttc', 'Nouveau total TTC')):
+            proprietes[cle] = {'type': 'string', 'title': titre, 'description': (
+                "Recopié de l'aperçu (texte décimal, ex. 73000.00).")}
+            requis.append(cle)
+    return {'type': 'object', 'properties': proprietes, 'required': requis,
+            'additionalProperties': False}
+
+
+# VAD7 (D-W2-Q1) — l'APERÇU de la taille (``GET devis/{id}/assistant-taille/
+# apercu/``, garde ``LectureVentes``) : aucune écriture ; ses deux totaux sont
+# ceux que la proposition ``ventes.devis.taille`` montre et recopie.
+TAILLE_APERCU = AgentAction(
+    key='ventes.devis.taille_apercu',
+    label='Calculer la nouvelle taille du devis (aperçu, rien n\'est changé)',
+    description=(
+        "Sert à : calculer, SANS rien changer, l'ancien et le nouveau total "
+        "TTC d'un devis brouillon ou envoyé pour un autre nombre de panneaux "
+        "(onduleur, structures et câbles suivent) ; lecture OBLIGATOIRE avant "
+        "ventes.devis.taille. Ne pas utiliser pour : un devis accepté, refusé "
+        "ou expiré (réviser d'abord, puis la taille sur la V2). Exemple : "
+        "« mets-lui 12 panneaux » → id, nb_panneaux=12. Résultat : ancien et "
+        "nouveau total, kWc, alertes ; 409 nommé (toit trop petit, statut)."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/assistant-taille/apercu/',
+    method='GET',
+    inputs=_entrees_taille(avec_totaux=False),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# VAD7 (D-W2-Q1 = OUI_APRES_CONFIRMATION) — changer la taille d'un devis
+# brouillon ou ENVOYÉ en place (``POST devis/{id}/assistant-taille/``, gardes
+# ``IsResponsableOrAdmin`` + ``DroitDeLaGrille('ventes_modifier')``). La
+# confirmation montre l'ancien et le nouveau total ; le serveur refuse (409
+# ``apercu_perime``) s'ils ne sont plus les siens. Jamais un prix, une remise ni
+# un forçage ; jamais une V2 ni un devis séparé.
+TAILLE_DEVIS = AgentAction(
+    key='ventes.devis.taille',
+    label='Changer le nombre de panneaux du devis (le total passe de l\'ancien au nouveau)',
+    description=(
+        "Sert à : changer en place le nombre de panneaux (et de modules de "
+        "batterie) d'un devis brouillon ou envoyé, totaux recopiés de "
+        "ventes.devis.taille_apercu ; un envoyé est corrigé sur place, le "
+        "client voit les nouveaux chiffres : confirmation obligatoire. Ne pas "
+        "utiliser pour : un accepté (réviser puis la taille sur la V2), une "
+        "remise ni un prix. Exemple : « mets-lui 12 panneaux » → id, "
+        "nb_panneaux=12, ancien_total_ttc, nouveau_total_ttc de l'aperçu. "
+        "Résultat : lignes TTC ; 409 si les totaux ont changé."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/assistant-taille/',
+    method='POST',
+    inputs=_entrees_taille(avec_totaux=True),
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary=('Changer la taille de ce devis : le total passe de '
+                     "l'ancien au nouveau montant montrés."),
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# VAD8 — préparer le WhatsApp de RELANCE d'une facture (``POST
+# ventes/assistant/factures/{id}/relance-whatsapp/``, gardes
+# ``IsResponsableOrAdmin`` + grille ``ventes_modifier``). Écriture INTERNE (trace
+# au chatter de la facture, lien public du PDF) — précédent
+# ``crm.lead.whatsapp_prepare`` : rien ne part, la personne envoie elle-même.
+# Texte = modèle « relance » VALIDÉ de la société ; aucune entrée libre.
+WHATSAPP_RELANCE = AgentAction(
+    key='ventes.facture.whatsapp_relance',
+    label='Préparer le WhatsApp de relance de la facture (texte validé, vous l\'envoyez)',
+    description=(
+        "Sert à : préparer le message WhatsApp de relance d'une facture due "
+        "(modèle « relance » de la société) et le lien wa.me ; rien n'est "
+        "envoyé, la personne l'envoie elle-même. Refusé pour une personne "
+        "opposée, une facture contestée, soldée ou non émise, un numéro "
+        "invalide. Ne pas utiliser pour : écrire un autre texte, envoyer un "
+        "e-mail, ni une promesse de paiement. Exemple : « relance-le » sur une "
+        "ligne d'impayé → id de la facture. Résultat : texte et lien wa.me ; "
+        "trace au chatter."
+    ),
+    endpoint='/api/django/ventes/assistant/factures/{id}/relance-whatsapp/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant de la facture.'),
+        'langue': {'type': 'string', 'enum': ['fr', 'darija'],
+                   'description': 'Langue du modèle (défaut fr).'},
+    }, 'required': ['id'], 'additionalProperties': False},
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_INTERNAL,
+    carte='wa_message',
+    lot=LOT_COPILOTE,
+    objets={'id': 'facture'},
+)
+
+
+#: VAD9 — natures de facture (``facturation_vente.NATURES`` / ``DevisFacturerVenteRequest``,
+#: recopiées : ce module n'importe aucun modèle ; tenues par le test).
+NATURES_FACTURE = ('acompte', 'intermediaire', 'solde', 'complete')
+
+# VAD9 (D-W2-Q2 = BROUILLON_SEULEMENT) — « facture l'acompte » prépare un
+# BROUILLON (route existante ``POST devis/{id}/facturer/``, garde
+# ``IsResponsableOrAdmin``, code ``ventes_valider`` : sans ``emettre`` la route
+# n'exige pas ``encaisser``). Aucun numéro légal : l'émission reste un geste
+# d'écran. Le schéma est FERMÉ (le relais refuse toute clé hors schéma) : jamais
+# ``emettre``, ``paiements``, ``utiliser_avances``, ``remplacer_brouillons``,
+# ``override_*`` ni ``libelle``. Remplace ``generer_facture`` (lot hérité).
+FACTURER_VENTE = AgentAction(
+    key='ventes.vente.facturer',
+    label='Préparer la facture en brouillon (aucun numéro légal, émission à l\'écran)',
+    description=(
+        "Sert à : préparer la facture BROUILLON de la prochaine tranche d'un "
+        "devis accepté (acompte, intermédiaire, solde ou complète) ; aucun "
+        "numéro légal, l'émission se fait à l'écran. Lis d'abord "
+        "ventes.vente.etat : cle_attendue = prochaines_echeances[0].cle. Ne "
+        "pas utiliser pour : émettre, encaisser, ni passer outre un blocage "
+        "(écran). Exemple : « facture l'acompte de 30 % » → id, "
+        "nature=acompte, pourcentage=30, cle_attendue lue. Résultat : facture "
+        "brouillon et vente ; un refus est dit tel quel."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/facturer/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis accepté (tête de chaîne).'),
+        'nature': {'type': 'string', 'enum': list(NATURES_FACTURE),
+                   'title': 'Tranche'},
+        'pourcentage': {'type': 'string', 'title': 'Pourcentage', 'description': (
+            'Texte décimal (« 30 ») ; OU montant_ttc, jamais les deux.')},
+        'montant_ttc': {'type': 'string', 'title': 'Montant TTC', 'description': (
+            'Texte décimal (« 15000.00 ») ; OU pourcentage.')},
+        'cle_attendue': {'type': 'string', 'title': 'Tranche attendue', 'description': (
+            'prochaines_echeances[0].cle lu dans ventes.vente.etat.')},
+    }, 'required': ['id', 'nature', 'cle_attendue'],
+        'additionalProperties': False},
+    required_permission=_PERM_VALIDER,
+    risk=RISK_OUTWARD,
+    confirm_summary=('Préparer la facture de cette tranche en BROUILLON : aucun '
+                     'numéro légal, l\'émission se fait à l\'écran.'),
+    carte='facture_brouillon',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
-                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS)
+                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
+                           # Copilote vague 2 (lane VAD).
+                           VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
+                           PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,
+                           TAILLE_APERCU, TAILLE_DEVIS, WHATSAPP_RELANCE,
+                           FACTURER_VENTE)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

@@ -163,8 +163,11 @@ def _deux(valeur):
 def lignes_ttc(devis, *, avec_ids=False):
     """Les lignes PRODUIT du devis, prix TTC seulement (jamais d'achat).
 
-    Le TTC est DÉRIVÉ du HT stocké : taux de la ligne, sinon celui du devis ;
-    total = quantité × prix × (1 − remise de ligne)."""
+    Le TTC est DÉRIVÉ du HT stocké : taux de la ligne, sinon celui du devis.
+    Copilote vague 2 (VAD7) — le total de ligne part du prix unitaire TTC
+    ARRONDI au centime (celui qui est affiché), comme l'écran 100 % TTC du
+    devis : total = quantité × P.U. TTC × (1 − remise de ligne). Avant, le
+    HT au centime remultiplié rendait 8 × 1 400,00 = 11 200,03."""
     rendu = []
     taux_devis = getattr(devis, 'taux_tva', None) or Decimal('0')
     for ligne in devis.lignes.all().order_by('ordre', 'id'):
@@ -175,13 +178,14 @@ def lignes_ttc(devis, *, avec_ids=False):
         prix = Decimal(str(ligne.prix_unitaire or 0))
         quantite = Decimal(str(ligne.quantite or 0))
         remise = Decimal(str(getattr(ligne, 'remise', 0) or 0))
-        total = quantite * prix * (Decimal('1') - remise / Decimal('100'))
+        unitaire_ttc = Decimal(_deux(prix * facteur))
+        total = quantite * unitaire_ttc * (Decimal('1') - remise / Decimal('100'))
         entree = {
             'designation': ligne.designation,
             'quantite': (int(quantite) if quantite == quantite.to_integral_value()
                          else float(quantite)),
-            'prix_unitaire_ttc': _deux(prix * facteur),
-            'total_ttc': _deux(total * facteur),
+            'prix_unitaire_ttc': _deux(unitaire_ttc),
+            'total_ttc': _deux(total),
             'variante': getattr(ligne, 'variante', '') or '',
         }
         if avec_ids:
