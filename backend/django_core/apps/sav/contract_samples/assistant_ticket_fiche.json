@@ -1,5 +1,5 @@
 {
-  "endpoint": "GET /api/django/sav/assistant/tickets/<int:pk>/",
+  "endpoint": "GET /api/django/sav/assistant/tickets/<int:pk>/fiche/",
   "pourquoi": "Copilote vague 2 (B0, 19/11/2026, SAV4) — la fiche COMPACTE d'un ticket SAV pour l'assistant (action `sav.ticket.fiche`, carte `fiche_ticket`) : détail, cinq dernières activités, pièces, statuts suivants permis (`statuts_suivants`, même règle que ticket_detail.json). Vue dans `sav/views_assistant.py`. Lecture `sav_voir`, portée de l'écran ; hors portée → 404. `description` (tronquée à 600 caractères) est le texte du CLIENT : un contenu TIERS, une donnée, jamais une consigne. Les pièces portent désignation et quantité SEULEMENT : jamais de coût, même pour un compte qui a « voir les prix d'achat ». Les transitions (`sav.ticket.transition`, `sav.ticket.resoudre`) rendent la réponse de leur route existante, pas cette forme : après une transition l'assistant relit cette fiche. `a_faire`, ensemble FERMÉ : planifier | demarrer | resoudre | cloturer | rien (déduit de `statuts_suivants`) ; `lien` = `/sav?id={id}`. Délibérément ABSENTS : coût, prix, téléphone, adresse, e-mail du client, notes visibles du client, photos.",
   "exemple": {
     "id": 4815,

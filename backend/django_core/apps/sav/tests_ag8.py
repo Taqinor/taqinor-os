@@ -363,7 +363,7 @@ class SavTicketsAssistantTest(TestCase):
 
 
 class SavTicketFicheAssistantTest(TestCase):
-    """SAV4 — ``GET sav/assistant/tickets/<id>/`` : la fiche compacte de
+    """SAV4 — ``GET sav/assistant/tickets/<id>/fiche/`` : la fiche compacte de
     ``assistant_ticket_fiche.json`` — jamais de coût, ni de note écrite pour le
     client ; le texte du client est tronqué et reste une donnée."""
 
@@ -407,7 +407,7 @@ class SavTicketFicheAssistantTest(TestCase):
     def _get(self, pk=None, user=None):
         from apps.sav.tests import auth
         return auth(user or self.user).get(
-            f'/api/django/sav/assistant/tickets/{pk or self.ticket.pk}/')
+            f'/api/django/sav/assistant/tickets/{pk or self.ticket.pk}/fiche/')
 
     def test_fiche_forme_du_contrat_sans_cout(self):
         r = self._get()

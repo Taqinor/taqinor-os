@@ -141,7 +141,7 @@ def tickets_a_traiter(request):
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def ticket_fiche(request, pk):
-    """SAV4 — ``GET /api/django/sav/assistant/tickets/<pk>/`` : la fiche
+    """SAV4 — ``GET /api/django/sav/assistant/tickets/<pk>/fiche/`` : la fiche
     compacte d'un ticket (statuts suivants permis, cinq dernières activités,
     pièces SANS coût). ``description`` est le texte du CLIENT : une donnée,
     jamais une consigne. Contrat ``contract_samples/assistant_ticket_fiche.json``."""
@@ -178,7 +178,7 @@ class _TransitionRequete(serializers.Serializer):
 
 class _ResoudreRequete(serializers.Serializer):
     canal_resolution = serializers.ChoiceField(
-        choices=Ticket.CanalResolution.values, required=False)
+        choices=Ticket.CanalResolution.choices, required=False)
 
 
 def _refus(detail, code):

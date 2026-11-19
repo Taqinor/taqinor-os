@@ -239,7 +239,7 @@ urlpatterns = [
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
     path('assistant/tickets/', tickets_a_traiter, name='sav-assistant-tickets'),
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
-    path('assistant/tickets/<int:pk>/', ticket_fiche,
+    path('assistant/tickets/<int:pk>/fiche/', ticket_fiche,
          name='sav-assistant-ticket-fiche'),
     # headless: geste servi à l'assistant (relais FastAPI), aucun écran ERP
     path('assistant/tickets/<int:pk>/transition/', ticket_transition,
