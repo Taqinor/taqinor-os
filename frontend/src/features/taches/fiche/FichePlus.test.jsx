@@ -115,6 +115,54 @@ describe('TCH85 — fiche → Plus', () => {
     await waitFor(() => expect(api.modifierReglages).toHaveBeenCalledWith({ titres_notifications: false }))
   })
 
+  describe('R4-24 — rappel d\'une tâche SANS jour ni échéance', () => {
+    const sansJour = { ...tache, jour_prevu: null, echeance: null, quelque_jour: false, heure_debut: null, rappels: [] }
+
+    it('« Le jour même » / « La veille » ne sont pas proposés : le jour du rappel se choisit, la fiche le dit et propose de poser le jour', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: sansJour })
+      monter()
+      await ouvrirPlus(user)
+      const bloc = screen.getByRole('region', { name: 'Rappel' })
+      expect(within(bloc).queryByRole('radio', { name: 'Le jour même' })).toBeNull()
+      expect(within(bloc).queryByRole('radio', { name: 'La veille' })).toBeNull()
+      expect(bloc).toHaveTextContent("Cette tâche n'a pas de jour : choisis la date du rappel.")
+      expect(within(bloc).getByLabelText('Jour du rappel')).toBeInTheDocument()
+      // « Poser le jour » ouvre « Quand je la fais » de la fiche
+      await user.click(within(bloc).getByRole('button', { name: 'Poser le jour' }))
+      expect(screen.getByRole('button', { name: /^Quand je la fais/ })).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    it('« Poser le rappel » sans jour choisi : rien ne part, « Choisis le jour du rappel. » SOUS le champ (jamais « Jour : Ce champ ne peut être nul. »)', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: sansJour })
+      monter()
+      await ouvrirPlus(user)
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      expect(api.poserRappel).not.toHaveBeenCalled()
+      const message = screen.getByText('Choisis le jour du rappel.')
+      expect(message).toHaveAttribute('role', 'alert')
+      expect(screen.getByLabelText('Jour du rappel')).toHaveAttribute('aria-invalid', 'true')
+      // le jour choisi : le rappel part avec lui
+      await user.type(screen.getByLabelText('Jour du rappel'), '2026-11-20')
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-20', heure: '09:00' }))
+      expect(screen.queryByText('Choisis le jour du rappel.')).toBeNull()
+    })
+
+    it('un jour prévu sans échéance : « Le jour prévu » et « La veille » (jamais un rappel sur une échéance absente)', async () => {
+      const user = userEvent.setup()
+      api.lireTache.mockResolvedValue({ data: { ...sansJour, jour_prevu: '2026-11-19' } })
+      monter()
+      await ouvrirPlus(user)
+      const bloc = screen.getByRole('region', { name: 'Rappel' })
+      expect(within(bloc).getByRole('radio', { name: 'Le jour même' })).toHaveAttribute('aria-checked', 'true')
+      expect(bloc).not.toHaveTextContent("Cette tâche n'a pas de jour")
+      await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-19', heure: '09:00' }))
+    })
+  })
+
   it('rouvrir le volet montre les mêmes valeurs (durée, jalon, confidentielle, lien, sous-tâches)', async () => {
     const user = userEvent.setup()
     monter()

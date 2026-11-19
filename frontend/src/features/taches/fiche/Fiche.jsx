@@ -445,6 +445,11 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   }
   const demanderSuppression = () => { setPlusOuvert(true); setSupprimerDemande((n) => n + 1) }
   const basculer = (champ) => setOuvert((o) => (o === champ ? '' : champ))
+  // R4-24 — « Poser le jour » (rappel d'une tâche sans jour) : « Quand je la fais » s'ouvre, et la fiche y remonte
+  const poserLeJour = () => {
+    setOuvert('quand')
+    racineFiche.current?.querySelector('.fiche-champs')?.scrollIntoView?.({ block: 'start' })
+  }
   const essentielle = async (suivant) => {
     await ecrire(() => marquerEssentiel({ tache_id: id, essentielle: suivant }), 'essentielle')
   }
@@ -802,6 +807,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
                 charger={charger}
                 onFermer={onFermer}
                 supprimerDemande={supprimerDemande}
+                onPoserJour={poserLeJour}
               />
             ) : null}
             <Erreur message={erreurs.general} />
