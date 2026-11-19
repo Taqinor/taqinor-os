@@ -102,6 +102,13 @@ class StockAgentActionsCatalogueTest(TestCase):
         self.assertEqual(AJUSTER_STOCK.risk, RISK_OUTWARD)
         self.assertIn('AJOUTE', AJUSTER_STOCK.confirm_summary)
         self.assertIn('RETIRE', AJUSTER_STOCK.confirm_summary)
+        # Avec un objet nommé, le relais n'affiche que le LABEL en 1re ligne
+        # de l'aperçu (confirm_summary écarté) : le label dit le sens.
+        self.assertIn('entrée AJOUTE, une sortie RETIRE', AJUSTER_STOCK.label)
+        self.assertIn("rien n'est envoyé", BROUILLON_COMMANDE_FOURNISSEUR.label)
+        for action in (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR):
+            self.assertTrue(action.objets)
+            self.assertLessEqual(len(action.label), 90, action.key)
         desc = AJUSTER_STOCK.description
         self.assertLessEqual(len(desc), 600)
         for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',

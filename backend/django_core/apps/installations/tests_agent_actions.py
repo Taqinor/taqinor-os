@@ -38,6 +38,10 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(a.required_permission, 'intervention_gerer')
         self.assertEqual(a.risk, 'outward')
         self.assertTrue(a.confirm_summary)
+        # Objets nommés : le relais n'affiche que le LABEL en 1re ligne de
+        # l'aperçu (confirm_summary écarté) — il dit dans la journée de qui.
+        self.assertIn('journée du technicien désigné', a.label)
+        self.assertLessEqual(len(a.label), 90)
         # Le relais n'applique pas un ``default`` : type REQUIS, valeur unique
         # exacte du modèle (Intervention.Type.CONTROLE).
         from apps.installations.models import Intervention
@@ -52,6 +56,12 @@ class InstallationsAgentActionsTest(TestCase):
         # Vrai : sans technicien, personne n'est notifié.
         self.assertIn('sans technicien', a.description)
         self.assertLessEqual(len(a.description), 600)
+        # Servie à TOUS (hors lot) : ne cite aucun outil du lot copilote, que
+        # le compte peut ne pas avoir.
+        du_lot = {x.key for x in all_actions() if x.lot == 'copilote'}
+        for action in INSTALLATIONS_ACTIONS:
+            self.assertFalse([k for k in du_lot if k in action.description],
+                             action.key)
 
     def test_commander_besoin_metadata(self):
         a = self._by_key('installations.chantier.commander_besoin')
@@ -69,6 +79,10 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertIn('BROUILLONS', a.confirm_summary)
         self.assertIn('Matériel commandé', a.confirm_summary)
         self.assertIn('Matériel commandé', a.description)
+        # Le LABEL seul (1re ligne de l'aperçu nommé) dit les deux effets.
+        self.assertIn('BROUILLONS', a.label)
+        self.assertIn('Matériel commandé', a.label)
+        self.assertLessEqual(len(a.label), 90)
         # Le <id> chantier est un input requis consommé par le gabarit de chemin.
         self.assertIn('id', a.inputs['properties'])
         self.assertIn('id', a.inputs['required'])

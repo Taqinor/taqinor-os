@@ -39,7 +39,7 @@ TYPES_MOUVEMENT_ASSISTANT = ('entree', 'sortie')
 # exécution au vol. La société est forcée côté serveur.
 AJUSTER_STOCK = AgentAction(
     key='stock.mouvement.create',
-    label='Entrée ou sortie de stock',
+    label='Mouvement de stock : une entrée AJOUTE, une sortie RETIRE',
     description=(
         "Sert à : poser une entrée (réception, retour) ou une sortie "
         "(consommation, chantier) d'une quantité entière d'un produit, après "
@@ -114,7 +114,7 @@ _LIGNE_BCF = {
 # engage la société même en brouillon.
 BROUILLON_COMMANDE_FOURNISSEUR = AgentAction(
     key='stock.bon_commande_fournisseur.create',
-    label='Créer un brouillon de bon de commande fournisseur',
+    label="Bon de commande fournisseur en BROUILLON (rien n'est envoyé au fournisseur)",
     description=(
         "Sert à : préparer un bon de commande fournisseur BROUILLON "
         "(fournisseur, produits et quantités), après confirmation ; rien "

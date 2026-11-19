@@ -621,7 +621,7 @@ JOURNALISER_LEAD = AgentAction(
 # (``notifier_assignation`` : pas de destinataire, ni l'acteur lui-même).
 PLANIFIER_VISITE = AgentAction(
     key='crm.visite.planifier',
-    label='Planifier une visite',
+    label='Planifier une visite : elle entre dans la journée de la personne désignée',
     description=(
         "Sert à : poser la visite technique d'un lead (date, qui la fait, "
         "touche qui l'a demandée), après confirmation ; la personne "

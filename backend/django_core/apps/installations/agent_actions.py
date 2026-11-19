@@ -51,14 +51,15 @@ _PERM_INTERVENTION = 'intervention_gerer'
 # obligatoire au modèle : il est REQUIS, à valeur unique (contrôle).
 PLANIFIER_VISITE_MAINTENANCE = AgentAction(
     key='installations.intervention.planifier_visite',
-    label='Planifier une visite de maintenance',
+    label='Visite de maintenance : entre dans la journée du technicien désigné, notifié',
     description=(
         "Sert à : planifier, après confirmation, une visite de maintenance "
         "(intervention de type contrôle) sur un chantier à une date. Le "
         "technicien désigné est notifié ; sans technicien, la visite n'est "
         "dans la journée de personne (l'installateur du chantier est mis "
-        "dans l'équipe). Ne pas utiliser pour : une visite technique avant "
-        "devis (crm.visite.planifier) ni une pose. Exemple : « contrôle du "
+        "dans l'équipe). Ne pas utiliser pour : une pose ni la visite "
+        "technique d'un lead avant devis (elle se planifie depuis la fiche "
+        "du lead). Exemple : « contrôle du "
         "chantier 12 le 2026-12-03 par le technicien 9 » → installation=12, "
         "type_intervention=controle, date_prevue, technicien=9. Résultat : "
         "l'intervention créée ; 409 si le chantier est annulé."
@@ -120,7 +121,7 @@ _PERM_COMMANDER = 'achats_commander'
 # ``fournisseurs`` {produit_id: fournisseur_id}, ``produits`` [ids].
 BROUILLON_COMMANDE_CHANTIER = AgentAction(
     key='installations.chantier.commander_besoin',
-    label='Commander les manques du chantier (brouillons)',
+    label="Manques en BCF BROUILLONS (rien n'est envoyé) ; Signé → Matériel commandé",
     description=(
         "Sert à : créer, après confirmation, les bons de commande "
         "fournisseur BROUILLONS des manques de matériel d'un chantier (un "
