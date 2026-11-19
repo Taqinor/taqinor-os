@@ -64,15 +64,45 @@ SOURCE_DEFAUT_BATTERIE = (
     "défaut fondateur (à revoir) : garantie usuelle de 10 ans, aucune "
     "garantie ni nombre de cycles saisis sur la fiche batterie")
 CYCLES_PAR_AN = 365  # une décharge par jour (pricing.BATTERY_CYCLES_PER_DAY)
+#: Niveau 13 (fondateur 19/11/2026) — la source d'une année lue sur les cycles.
+SOURCE_CYCLES_ETUDE = ("{cycles} cycles publiés par le fabricant, {par_an} cycles par an "
+                       "d'après l'étude")
 MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'fusible', 'support',
                    'rack', 'coffret')
 
 
-def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
+def cycles_par_an_du_bilan(bilan):
+    """Cycles COMPLETS par an que l'étude fait faire à la batterie :
+    ``bilan.batterie.restitue_kwh_an`` ÷ ``bilan.batterie.capacite_utile_kwh``
+    (la seule formule). ``None`` sans bilan batterie ou sans chiffre positif."""
+    batterie = bilan.get('batterie') if isinstance(bilan, dict) else None
+    if not isinstance(batterie, dict):
+        return None
+    restitue = fini(_montant(batterie.get('restitue_kwh_an')))
+    capacite = fini(_montant(batterie.get('capacite_utile_kwh')))
+    if not restitue or not capacite or restitue <= 0 or capacite <= 0:
+        return None
+    return restitue / capacite
+
+
+def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None, cycles_par_an=None):
     """``{annee, source}`` du remplacement de la batterie : l'année qui suit
     la fin de la garantie constructeur, ou l'épuisement des cycles publiés à
     une décharge par jour si c'est plus tôt (le plus prudent des deux) ; sans
-    l'un ni l'autre, :data:`DEFAUT_GARANTIE_BATTERIE_ANS` étiqueté."""
+    l'un ni l'autre, :data:`DEFAUT_GARANTIE_BATTERIE_ANS` étiqueté.
+
+    ``cycles_par_an`` (niveau 13, décision fondateur du 19/11/2026 : « cycles
+    publiés, usage réel ») — les cycles par an de l'étude
+    (:func:`cycles_par_an_du_bilan`) : avec des cycles publiés, l'année est
+    ⌊cycles publiés ÷ cycles par an⌋ + 1 et la garantie n'est PAS un plafond ;
+    la sortie porte alors ``duree`` (``cycles_publies``, ``cycles_par_an``).
+    ``None`` (niveaux ≤ 12), aucun cycle publié ou aucun cycle annuel utilisable
+    ⇒ la règle d'hier, à l'identique."""
+    par_an, publies = fini(_montant(cycles_par_an)), fini(_montant(cycles_publies))
+    if par_an and par_an > 0 and publies and publies > 0:
+        return {'annee': int(publies // par_an) + 1,
+                'source': SOURCE_CYCLES_ETUDE.format(cycles=int(publies), par_an=int(round(par_an))),
+                'duree': {'cycles_publies': int(publies), 'cycles_par_an': int(round(par_an))}}
     candidats = []
     mois = _montant(garantie_mois)
     if mois and mois > 0:
@@ -161,7 +191,19 @@ def flux_option_avec(base_eco, *, lignes, batterie=None, **kw):
     principal = 'flux_ttc' if base_eco['base'] == eco.BASE_TTC else 'flux_ht'
     sortie['indicateurs']['retour_dixieme_ans'] = retour_au_dixieme(
         sortie[principal])
+    if comptees and isinstance(batterie.get('duree'), dict):
+        sortie['batterie_duree'] = batterie_duree(batterie, eco.HORIZON_CI_ANS)
     return sortie
+
+
+def batterie_duree(batterie, horizon):
+    """Niveau 13 (fondateur 19/11/2026) — clé PUBLIQUE ADDITIVE du flux de
+    l'option « avec » quand les cycles ont fixé l'année : ``{cycles_publies,
+    cycles_par_an, annee_remplacement (None au-delà de l'horizon),
+    horizon_ans}``. Le PDF lit ces nombres, il n'en recalcule aucun."""
+    annee = batterie['annee']
+    return dict(batterie['duree'], annee_remplacement=annee if annee <= horizon else None,
+                horizon_ans=horizon)
 
 
 #: CEC9 — décision prise pour le fondateur (à revoir) : la charge annuelle

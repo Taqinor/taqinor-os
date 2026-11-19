@@ -575,6 +575,65 @@ class OptionAvecBatterieTest(SimpleTestCase):
         self.assertEqual(defaut['annee'], 11)
         self.assertIn('défaut fondateur', defaut['source'])
 
+    # ── Niveau 13 (fondateur 19/11/2026) : « cycles publiés, usage réel » ──
+    BILAN_0080 = {'batterie': {'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 13239,
+                               'charge_kwh_an': 13510, 'rendement': 0.98}}
+
+    def test_cycles_par_an_du_bilan_une_seule_formule(self):
+        from apps.ventes import economie_ci_options as opt
+        self.assertAlmostEqual(opt.cycles_par_an_du_bilan(self.BILAN_0080), 13239 / 45.81)
+        for bilan in (None, {}, {'batterie': None}, {'batterie': {'capacite_utile_kwh': 45.81}},
+                      {'batterie': {'capacite_utile_kwh': 0, 'restitue_kwh_an': 100}},
+                      {'batterie': {'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 0}},
+                      {'batterie': {'capacite_utile_kwh': 'x', 'restitue_kwh_an': 100}}):
+            self.assertIsNone(opt.cycles_par_an_du_bilan(bilan), bilan)
+
+    def test_niveau_13_cycles_publies_sur_usage_reel_garantie_pas_un_plafond(self):
+        from apps.ventes import economie_ci_options as opt
+        par_an = opt.cycles_par_an_du_bilan(self.BILAN_0080)       # ≈ 289
+        regle = opt.annee_remplacement_batterie(120, 8000, cycles_par_an=par_an)
+        self.assertEqual(regle['annee'], 28)                        # ⌊8000 ÷ 289⌋ + 1
+        self.assertEqual(regle['duree'], {'cycles_publies': 8000, 'cycles_par_an': 289})
+        self.assertEqual(regle['source'], "8000 cycles publiés par le fabricant, 289 cycles "
+                                          "par an d'après l'étude")
+        # Usage intense : les cycles fixent une année AVANT la garantie.
+        self.assertEqual(opt.annee_remplacement_batterie(120, 3000, cycles_par_an=400)['annee'], 8)
+
+    def test_niveau_13_sans_cycles_ou_sans_usage_regle_d_hier_a_l_identique(self):
+        from apps.ventes import economie_ci_options as opt
+        for args in ((120, 6000), (120, 3000), (120, None), (None, 6000), (None, None)):
+            hier = opt.annee_remplacement_batterie(*args)
+            self.assertEqual(opt.annee_remplacement_batterie(*args, cycles_par_an=None), hier)
+            self.assertEqual(opt.annee_remplacement_batterie(*args, cycles_par_an=0), hier)
+            self.assertNotIn('duree', hier)
+        # Pas de cycles publiés : fin de garantie + 1 ; ni l'un ni l'autre : le défaut.
+        self.assertEqual(opt.annee_remplacement_batterie(120, None, cycles_par_an=289),
+                         opt.annee_remplacement_batterie(120))
+        self.assertEqual(opt.annee_remplacement_batterie(cycles_par_an=289),
+                         opt.annee_remplacement_batterie())
+
+    def test_niveau_13_flux_sans_remplacement_et_batterie_duree_servie(self):
+        from apps.ventes import economie_ci_options as opt
+        regle = opt.annee_remplacement_batterie(120, 8000, cycles_par_an=13239 / 45.81)
+        avec = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                    batterie=regle)
+        self.assertEqual([r['composant'] for r in avec['remplacements']], ['onduleur'])
+        self.assertEqual(avec['batterie_duree'], {'cycles_publies': 8000, 'cycles_par_an': 289,
+                                                  'annee_remplacement': None,
+                                                  'horizon_ans': eco.HORIZON_CI_ANS})
+        self.assertIn('batterie_duree', eco.economie_ci_publique(avec))
+        # Dans l'horizon : remplacement compté ET année servie.
+        dedans = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                      batterie=opt.annee_remplacement_batterie(
+                                          120, 6000, cycles_par_an=400))
+        self.assertEqual(dedans['batterie_duree']['annee_remplacement'], 16)
+        self.assertEqual([r['annee'] for r in dedans['remplacements']
+                          if r['composant'] == 'batterie'], [16])
+        # Règle d'hier : aucune clé neuve.
+        hier = opt.flux_option_avec(_base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+                                    batterie=opt.annee_remplacement_batterie(120, 8000))
+        self.assertNotIn('batterie_duree', hier)
+
     def test_base_deux_jalons_ttc_suivent_le_remplacement(self):
         from apps.ventes import economie_ci_options as opt
         base = _base(tva='inconnu')
@@ -633,3 +692,202 @@ class ReglagesSansTariffSettingsTest(SimpleTestCase):
             lus = eco.reglages_economie_ci(object())
         self.assertEqual(lus['sensibilites_ci'],
                          [dict(s) for s in SENSIBILITES_CI_DEFAUT])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Niveau 13 (fondateur 19/11/2026, D-BATCYC-1) — « cycles publiés, usage réel » :
+# le remplacement de la batterie de l'option « avec » sur le flux 25 ans. Les
+# jeux de données sont ceux de ``test_ciq120_devis_auto_ci`` (fichier-mur : ces
+# tests vivent ici, avec le flux qu'ils éprouvent).
+# ═════════════════════════════════════════════════════════════════════════════
+from unittest import mock  # noqa: E402 — bloc ajouté en fin de module
+
+from apps.ventes.tests import test_ciq120_devis_auto_ci as ciq120  # noqa: E402
+
+
+class RemplacementCyclesNiveau13FluxTests(ciq120.RetourOptionAvecFluxTests):
+    """Le bloc de l'option, la montée de la banque et le verdict lisent la même
+    année (jeux de ``RetourOptionAvecFluxTests``, sans rejouer ses tests)."""
+
+    # ── Niveau 13 (fondateur 19/11/2026) : « cycles publiés, usage réel » ──
+    FICHE_8000 = {'garantie_mois': 120, 'cycles_publies': 8000.0}
+    BILAN_0080 = {'production_kwh': 80000.0, 'batterie': {
+        'capacite_utile_kwh': 45.81, 'restitue_kwh_an': 13239, 'charge_kwh_an': 13510,
+        'rendement': 0.98}}
+
+    def _evaluation_0080(self):
+        return dict(self._evaluation(), bilan=dict(self.BILAN_0080))
+
+    def test_niveau_13_bloc_sans_remplacement_batterie_niveau_12_annee_11(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        blocs = {niveau: _bloc(self._evaluation_0080(), self._Valoriseur(),
+                               dict(self._ctx(), batterie=self.FICHE_8000, regles_cycles=niveau))
+                 for niveau in (True, False)}
+        flux = blocs[True]['economie_flux']
+        self.assertEqual([r['composant'] for r in flux['remplacements']], ['onduleur'])
+        self.assertEqual(flux['batterie_duree'], {'cycles_publies': 8000, 'cycles_par_an': 289,
+                                                  'annee_remplacement': None, 'horizon_ans': 25})
+        hier = blocs[False]['economie_flux']
+        self.assertEqual([(r['composant'], r['annee']) for r in hier['remplacements']
+                          if r['composant'] == 'batterie'], [('batterie', 11)])
+        self.assertNotIn('batterie_duree', hier)
+        # Le cumul net à 25 ans ne porte plus le prix de la batterie (4 × 60 000 HT).
+        self.assertAlmostEqual(flux['flux_ht']['flux'][-1]['cumul_mad']
+                               - hier['flux_ht']['flux'][-1]['cumul_mad'], 240000.0, delta=1)
+        # Sans contexte de devis (aperçu) : les règles courantes.
+        defaut = _bloc(self._evaluation_0080(), self._Valoriseur(),
+                       dict(self._ctx(), batterie=self.FICHE_8000))['economie_flux']
+        self.assertEqual(defaut['batterie_duree'], flux['batterie_duree'])
+
+    def test_niveau_13_meme_annee_pour_le_flux_la_banque_et_le_verdict(self):
+        """La montée de la banque (``_remplacement_moteur``), le verdict marginal
+        (``_remplacement_du_bloc``, repli sans flux) et le flux lisent la MÊME
+        année pour une évaluation et un niveau donnés — le bilan du candidat."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation_0080()
+        for niveau, annee in ((True, None), (False, 11)):
+            with self.subTest(niveau=niveau):
+                _ht, moteur = m._remplacement_moteur(20, niveau)(evaluation, self.FICHE_8000)
+                self.assertEqual(moteur, annee)
+                self.assertEqual(m._remplacement_du_bloc(evaluation, {}, self.FICHE_8000, 20,
+                                                         niveau)[1], annee)
+                # Option des LIGNES : l'évaluation n'a pas de bilan, le bloc servi en a un.
+                self.assertEqual(m._remplacement_du_bloc({'composition': {}},
+                                                         {'bilan': dict(self.BILAN_0080)},
+                                                         self.FICHE_8000, 20, niveau)[1], annee)
+                bloc = m._bloc(evaluation, self._Valoriseur(),
+                               dict(self._ctx(), batterie=self.FICHE_8000, regles_cycles=niveau))
+                servie = [r['annee'] for r in bloc['economie_flux']['remplacements']
+                          if r['composant'] == 'batterie']
+                self.assertEqual(servie, [] if annee is None else [annee])
+                self.assertEqual(m._remplacement_du_bloc(evaluation, bloc, self.FICHE_8000, 20,
+                                                         niveau)[1], annee)
+        # Un candidat qui cycle plus (petite banque) peut remplacer dans l'horizon.
+        petit = dict(evaluation, bilan={'batterie': {'capacite_utile_kwh': 15.28,
+                                                     'restitue_kwh_an': 5577}})   # 365 cycles
+        self.assertEqual(m._remplacement_moteur(20, True)(petit, self.FICHE_8000)[1], 22)
+
+    def test_niveau_13_atteint_le_flux_la_banque_et_le_verdict_des_deux_chemins(self):
+        """``regles_cycles`` (niveau 13) passé à ``option_avec_de_l_etude`` atteint
+        le contexte du flux (étude ET lignes), la montée de la banque et le verdict ;
+        absent (aperçu, aucun devis) ⇒ règles courantes."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation()
+        resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        for niveau, attendu in ((False, False), (True, True), (None, True)):
+            vus, verdicts = [], []
+            kw = {} if niveau is None else {'regles_cycles': niveau}
+            with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                    mock.patch.object(m, '_dimensionner', return_value=resultat) as dim, \
+                    mock.patch.object(m, '_option_dominee', return_value=False), \
+                    mock.patch.object(m, 'verdict_rentabilite',
+                                      lambda *a: verdicts.append(a[-1])), \
+                    mock.patch.object(m, '_bloc', lambda ev, val, ctx, **k: vus.append(ctx) or {}), \
+                    mock.patch.object(m, '_option_imposee', lambda imp, ctx: vus.append(ctx) or {'k': 1}):
+                for imposee in (None, {'x': 1}):
+                    m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                             imposee=imposee, tva_recuperable={'valeur': 'inconnu'},
+                                             **kw)
+            with self.subTest(niveau=niveau):
+                self.assertEqual([c['regles_cycles'] for c in vus], [attendu, attendu])
+                self.assertEqual(dim.call_args.kwargs['regles_cycles'], attendu)
+                self.assertEqual(verdicts, [attendu, attendu])
+
+    def test_niveau_13_verdict_dit_si_le_remplacement_est_compte(self):
+        """Le verdict « non rentable » ne compte plus un remplacement que le
+        flux ne modélise pas : ``remplacement_inclus: False`` (niveau 13), clé
+        ABSENTE au niveau 12 où l'année 11 le compte toujours."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        sans = {'cout': 100000.0, 'economie': 20000.0}
+        # Supplément de 240 000 HT pour 20 000 MAD/an de plus : 12 ans.
+        evaluation = dict(self._evaluation_0080(), cout=340000.0, economie=40000.0)
+        nouveau = m.verdict_rentabilite(sans, evaluation, {}, self.FICHE_8000, 20, True)
+        self.assertEqual(nouveau['retour_marginal_ans'], 12.0)
+        self.assertIs(nouveau['remplacement_inclus'], False)
+        hier = m.verdict_rentabilite(sans, evaluation, {}, self.FICHE_8000, 20, False)
+        self.assertNotIn('remplacement_inclus', hier)
+        self.assertGreater(hier['retour_marginal_ans'], 12.0)
+
+    def test_niveau_13_jeton_d_empreinte_des_lignes(self):
+        """Un brouillon passé de 12 à 13 change d'empreinte : son étude est
+        recalculée au prochain rafraîchissement ; un devis ≤ 12 garde la sienne."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.etude_ci_batterie import _jeton_cycles
+        self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=12)), [])
+        self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=13)), ['cycles13'])
+        ligne = SimpleNamespace(devis=SimpleNamespace(regles_calcul=12))
+        self.assertEqual(_jeton_cycles([ligne]), [])
+
+
+class RemplacementCyclesNiveau13DevisTests(ciq120.OptionBatterieCITests):
+    """Un devis au niveau 12 garde l'année 11 ; au niveau 13 l'année suit ses
+    cycles (jeux de ``OptionBatterieCITests``, sans rejouer ses tests)."""
+
+    def test_niveau_13_cycles_publies_niveau_12_garde_l_annee_11(self):
+        """Décision fondateur du 19/11/2026 (« cycles publiés, usage réel ») —
+        fiche Dyness à 8 000 cycles et 10 ans de garantie : un devis au niveau
+        12 (envoyé) garde son remplacement en année 11 ; au niveau 13 l'année
+        est ⌊8 000 ÷ cycles par an de SON bilan⌋ + 1, aucun remplacement au-delà
+        de 25 ans, et la durée de vie est imprimée dans « Bases du calcul »."""
+        from functools import partial
+
+        from apps.ventes.economie_ci_options import cycles_par_an_du_bilan
+        from apps.ventes.quote_engine.ci import blocs as ci_blocs
+        from apps.ventes.quote_engine.ci.synthese import _argent_option_avec
+        from apps.ventes.quote_engine.industriel.finance import rangees_hypotheses
+        from apps.ventes.quote_engine.residential.theme import fmt
+        ids = [self.b5.id, self.b10.id, self.b16.id]
+        ciq120.Produit.objects.filter(pk__in=ids).update(garantie_mois=120)
+        ciq120.FicheTechnique.objects.filter(produit_id__in=ids).update(bat_cycles_publies=8000)
+        options = {}
+        for niveau in (12, 13):
+            devis = self._auto(self._boulangerie())
+            ciq120.Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+            devis.refresh_from_db()
+            with mock.patch.object(ciq120.tarif_ci, 'tarif_applicable', side_effect=ciq120._tarif_grille):
+                ciq120.etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+            devis.refresh_from_db()
+            self.assertEqual(devis.regles_calcul, niveau)
+            options[niveau] = devis.etude_params['etude_ci']['option_avec']
+            self.assertIsNotNone(options[niveau]['economie_flux'], niveau)
+
+        def annees_batterie(option):
+            return [r['annee'] for r in option['economie_flux']['remplacements']
+                    if r['composant'] == 'batterie']
+        self.assertEqual(annees_batterie(options[12]), [11])
+        self.assertNotIn('batterie_duree', options[12]['economie_flux'])
+        par_an = cycles_par_an_du_bilan(options[13]['bilan'])
+        self.assertTrue(par_an and par_an > 0)
+        annee = int(8000 // par_an) + 1
+        dans = annee <= 25
+        self.assertEqual(options[13]['economie_flux']['batterie_duree'], {
+            'cycles_publies': 8000, 'cycles_par_an': int(round(par_an)),
+            'annee_remplacement': annee if dans else None, 'horizon_ans': 25})
+        self.assertEqual(annees_batterie(options[13]), [annee] if dans else [])
+        # Imprimé (« Bases du calcul » : les rangées de la page finance et de la
+        # page 3 commerciale), chaque nombre lu sur ``batterie_duree``.
+        argent, _motif = _argent_option_avec(options[13], 'industriel')
+        rangees = dict((libelle, valeur) for libelle, valeur in rangees_hypotheses(
+            {}, {'argent': argent}, fmt, fmt, partial(ci_blocs.libelle, {})) if libelle)
+        attendu = '%s cycles publiés, environ %s cycles par an' % (fmt(8000), fmt(round(par_an)))
+        self.assertEqual(rangees['Durée de vie de la batterie'],
+                         attendu if dans else attendu + ' — aucun remplacement sur 25 ans')
+        argent_12, _motif = _argent_option_avec(options[12], 'industriel')
+        self.assertNotIn('Durée de vie de la batterie', dict(rangees_hypotheses(
+            {}, {'argent': argent_12}, fmt, fmt, partial(ci_blocs.libelle, {}))))
+
+
+def _sans_tests_herites(classe):
+    """Ces classes n'héritent que des JEUX DE DONNÉES : les tests du parent ne
+    sont pas rejoués ici."""
+    for parent in classe.__mro__[1:]:
+        for nom in vars(parent):
+            if nom.startswith('test_') and nom not in vars(classe):
+                setattr(classe, nom, None)
+
+
+_sans_tests_herites(RemplacementCyclesNiveau13FluxTests)
+_sans_tests_herites(RemplacementCyclesNiveau13DevisTests)

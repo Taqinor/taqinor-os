@@ -641,7 +641,10 @@ def non_rentable_option_avec(avec):
     h = nombre_normalise(motif.get("horizon_annees"))
     if avec.get("batterie_rentable") is not False or not n or not h:
         return {}
-    ligne = LIBELLES_CI["ci_opt_non_rentable_ligne"]
+    # Niveau 13 — remplacement de la batterie NON compté dans ce retour : la
+    # ligne ne le dit plus « inclus » (``motif.remplacement_inclus`` servi).
+    ligne = LIBELLES_CI["ci_opt_non_rentable_ligne_sans" if motif.get("remplacement_inclus") is False
+                        else "ci_opt_non_rentable_ligne"]
     return {"batterie_rentable": False, "retour_marginal_ans": n,
             "horizon_annees": int(h),
             "textes_badge": dict(LIBELLES_CI["ci_opt_non_rentable"]),

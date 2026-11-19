@@ -213,6 +213,26 @@ class TestTableMentions(SimpleTestCase):
         self.assertEqual(_badge_non_rentable({"com_synthese": {"option_batterie": {
             "valeur_chiffree": valeur_option_avec(data)}}}, "com"), "")
 
+    def test_niveau_13_batterie_non_remplacee_la_ligne_ne_le_dit_plus_inclus(self):
+        """Fondateur 19/11/2026 (D-BATCYC-1) — quand le retour du supplément ne
+        compte PAS le remplacement de la batterie (cycles publiés au-delà de
+        l'horizon), l'étude sert ``remplacement_inclus: False`` et la ligne
+        perd sa parenthèse, dans les trois langues."""
+        data = self._deux_options(31000)
+        data["etude"]["etude_ci"]["option_avec"].update(
+            batterie_rentable=False, motif_non_rentable={
+                "retour_marginal_ans": 12.4, "horizon_annees": 10,
+                "code": "retour_au_dela_horizon", "remplacement_inclus": False})
+        textes = valeur_option_avec(data)["textes_non_rentable"]
+        self.assertEqual(textes["fr"], (
+            "Retour estimé 12,4 ans, au-delà de l'horizon de 10 ans retenu : "
+            "l'option solaire seule est recommandée."))
+        self.assertEqual(textes["en"], (
+            "Estimated payback 12.4 years, beyond the 10-year horizon used: "
+            "the solar-only option is recommended."))
+        for lg, mot in (("fr", "inclus"), ("en", "included"), ("ar", "استبدال")):
+            self.assertNotIn(mot, textes[lg], lg)
+
     def test_d_hyb_5_onduleur_garde_pour_l_extension_fr_en_ar(self):
         """D-HYB-5 (fondateur 17/11/2026) — 1 batterie chiffrée sur 3
         calculées, hybride 20 kW gardé, un 15 kW suffirait : UNE phrase sous
