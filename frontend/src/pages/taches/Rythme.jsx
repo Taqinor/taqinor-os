@@ -36,6 +36,9 @@ const COMPRENDRE_ETEINT = "C'est éteint : plus rien n'est calculé ni gardé su
 const JOURS_VOULUS = 10
 /** Jours évalués qu'il faut pour FIXER la référence de « Garder ce rythme » (regles.md §6.6, `JOURS_REFERENCE`). */
 const JOURS_REFERENCE = 14
+/** Jours évalués à partir desquels « Garder ce rythme » mesure le pas réel (regles.md §6.6, R3-004) ; lus dans la série
+ *  servie (les 10 derniers jours travaillés). */
+const JOURS_MESURE = 5
 const A_CONFIRMER = `à confirmer sur ${JOURS_REFERENCE} jours travaillés.`
 const OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 
@@ -195,16 +198,22 @@ const nomDuJour = (iso) => {
 
 function Graphique({ rythme, aujourdhui }) {
   const { serie, objectif, trace } = rythme
+  // R3-003 / C-21 (contrat L1) — un jour NON travaillé où il a quand même fait quelque chose (un samedi) est servi avec
+  // `hors_objectif` : une barre grise à sa date, comptée dans les faites de la période, jamais dans « N jours sur 10 »
+  // (`trace`, servi) ni comparée à l'objectif
+  const hors = (s) => Boolean(s.hors_objectif)
   const evalues = serie.filter((s) => s.statut_jour === 'evalue')
-  const total = evalues.reduce((somme, s) => somme + s.faites, 0)
-  const ferie = serie.filter((s) => s.statut_jour === 'non_ouvre' || s.statut_jour === 'conge')
-  const barres = serie.filter((s) => s.statut_jour === 'evalue' || s.statut_jour === 'sans_donnees')
+  const total = [...evalues, ...serie.filter(hors)].reduce((somme, s) => somme + s.faites, 0)
+  const ferie = serie.filter((s) => !hors(s) && (s.statut_jour === 'non_ouvre' || s.statut_jour === 'conge'))
+  const barres = serie.filter((s) => s.statut_jour === 'evalue' || s.statut_jour === 'sans_donnees' || hors(s))
   const vide = (s) => s.statut_jour === 'sans_donnees'
   const lecture = `Tâches faites, jour par jour travaillé : ${barres
-    .map((s) => `${nomDuJour(s.jour)} : ${vide(s) ? 'sans données' : s.faites}`).join(', ')}.`
+    .map((s) => `${nomDuJour(s.jour)} : ${vide(s) ? 'sans données' : s.faites}${hors(s) ? ' (hors objectif)' : ''}`).join(', ')}.`
   const sansDonnees = barres.filter(vide).map((s) => nomDuJour(s.jour))
+  const horsObjectif = barres.filter(hors).map((s) => nomDuJour(s.jour))
   const reste = ferie.map((s) => `${jourNomme(s.jour, aujourdhui)} : ${s.statut_jour === 'conge' ? 'congé' : 'férié'}`)
   if (sansDonnees.length > 0) reste.push(`Sans données : ${sansDonnees.join(', ')}`)
+  if (horsObjectif.length > 0) reste.push(`Hors objectif : ${horsObjectif.join(', ')}`)
   return (
     <section className="section">
       <h2 className="section-titre">
@@ -222,7 +231,8 @@ function Graphique({ rythme, aujourdhui }) {
                 key={s.jour}
                 data-jour={s.jour}
                 data-vide={vide(s) ? '' : undefined}
-                className={`ep-b${s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`}
+                data-hors-objectif={hors(s) ? '' : undefined}
+                className={`ep-b${!hors(s) && s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`}
                 style={{ '--n': s.faites }}
               >
                 <small className="chiffres">{vide(s) ? '–' : s.faites}</small><i />
@@ -235,7 +245,7 @@ function Graphique({ rythme, aujourdhui }) {
             {barres.map((s) => {
               const date = new Date(`${s.jour}T12:00:00Z`)
               return (
-                <div key={s.jour} className="ep-b">
+                <div key={s.jour} className="ep-b" data-hors-objectif={hors(s) ? '' : undefined}>
                   <small>{ABR_JOURS[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
                 </div>
               )
@@ -336,7 +346,13 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
         <Aujourdhui rythme={rythme} progression={progression} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
         {rythme.mode === 'tenir' && rythme.tenir?.provisoire ? (
-          <p className="ep-source">{`Provisoire : ${A_CONFIRMER}`}</p>
+          <p className="ep-source">
+            {/* R3-004 (C-15, contrat L1) — dès 5 jours évalués, R part du pas réel (provisoire) ; en dessous, le palier
+                est gardé, et la page le dit franchement (textes.md « Garder ce rythme ») */}
+            {evalues < JOURS_MESURE
+              ? `Pas encore assez de jours pour mesurer ton rythme : je garde ${rythme.objectif.nb} pour l'instant.`
+              : `Provisoire : ${A_CONFIRMER}`}
+          </p>
         ) : null}
         {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (

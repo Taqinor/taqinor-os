@@ -70,8 +70,9 @@ describe('TCH107 — Mon rythme', () => {
   it('R2-120 — dix barres, un jour sans données est une barre vide nommée, jamais un jour absent', async () => {
     const { container } = monter()
     await screen.findByText('Objectif du jour : 5')
-    expect(screen.getByRole('heading', { name: /Les 10 derniers jours travaillés/ })).toHaveTextContent('46 faites')
-    const barres = container.querySelectorAll('.ep-graph-zone .ep-b')
+    // 46 faites sur les jours travaillés + 3 le samedi 14 (hors objectif, contrat L1)
+    expect(screen.getByRole('heading', { name: /Les 10 derniers jours travaillés/ })).toHaveTextContent('49 faites')
+    const barres = [...container.querySelectorAll('.ep-graph-zone .ep-b')].filter((b) => !b.hasAttribute('data-hors-objectif'))
     expect(barres).toHaveLength(10)
     const vides = [...barres].filter((b) => b.hasAttribute('data-vide'))
     expect(vides.map((b) => b.getAttribute('data-jour'))).toEqual(['2026-11-10'])
@@ -79,11 +80,39 @@ describe('TCH107 — Mon rythme', () => {
     expect(screen.getByText(/Sans données : mar\. 10/)).toBeInTheDocument()
   })
 
+  it('R3-003 — un samedi où il a fait 3 tâches : une barre grise « hors objectif » à sa date, hors de « 7 jours sur 10 »', async () => {
+    const { container } = monter()
+    await screen.findByText('Objectif du jour : 5')
+    const hors = container.querySelectorAll('.ep-graph-zone .ep-b[data-hors-objectif]')
+    expect([...hors].map((b) => `${b.getAttribute('data-jour')}:${b.textContent}`)).toEqual(['2026-11-14:3'])
+    expect(hors[0]).not.toHaveClass('tenu')
+    expect(screen.getByRole('img')).toHaveAccessibleName(/sam\. 14 : 3 \(hors objectif\)/)
+    const legende = container.querySelector('.ep-graph-legende')
+    expect(legende).toHaveTextContent('5 faites ou plus 7 jours sur 10')
+    expect(legende).toHaveTextContent('Hors objectif : sam. 14')
+    expect(legende).not.toHaveTextContent(/férié/)
+  })
+
   it("R2-120 — l'axe écrit « lun. 9 », « mar. 10 » : plus de lettre ambiguë (m = mardi ou mercredi)", async () => {
     const { container } = monter()
     await screen.findByText('Objectif du jour : 5')
     const axe = [...container.querySelectorAll('.ep-graph-axe .ep-b small')].map((n) => n.textContent)
-    expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'lun.16'])
+    expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'sam.14', 'lun.16'])
+  })
+
+  it('R3-004 — « Garder ce rythme » sous 5 jours évalués dit qu\'il garde le palier ; dès 5, « Provisoire »', async () => {
+    const tenir = (serie) => ({
+      ...rythme(), serie, mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] },
+      tenir: { reference: 6, provisoire: true, fixee_le: null, silence_jusquau: null },
+    })
+    lireRythme.mockImplementation(() => reponse(tenir(rythme().serie.slice(0, 4))))
+    const { unmount } = monter()
+    expect(await screen.findByText("Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant.")).toBeInTheDocument()
+    expect(screen.queryByText(/^Provisoire/)).toBeNull()
+    unmount()
+    lireRythme.mockImplementation(() => reponse(tenir(rythme().serie)))
+    monter()
+    expect(await screen.findByText('Provisoire : à confirmer sur 14 jours travaillés.')).toBeInTheDocument()
   })
 
   it('passe visuelle n° 44 — pas de section « Objectif du jour » en plus : Moins · Plus · Choisir sous la ligne de l\'objectif', async () => {

@@ -20,6 +20,9 @@
 .tch .ep-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; flex: 1 1 0; min-width: 0; }
 .tch .ep-b i { display: block; width: 8px; border-radius: 4px 4px 2px 2px; background: var(--tch-piste); height: calc(var(--n) * 14px); }
 .tch .ep-b.tenu i { background: var(--tch-fait); }
+/* R3-003 / C-21 — un jour non travaillé où il a fait quelque chose : barre grise claire, hors de l'objectif */
+.tch .ep-b[data-hors-objectif] i { background: var(--tch-trait); }
+.tch .ep-b[data-hors-objectif] small, .tch .ep-graph-axe .ep-b[data-hors-objectif] small b { color: var(--tch-texte-doux); font-weight: 400; }
 .tch .ep-b[data-vide] i { height: 10px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); opacity: 0.7; }
 .tch .ep-b small { position: relative; margin-bottom: 4px; padding: 0 3px; border-radius: 4px; background: var(--tch-surface); font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux); }
 .tch .ep-graph-objectif { position: absolute; left: 0; right: 44px; bottom: calc(var(--obj) * 14px); border-top: 1.5px dashed var(--tch-texte); }
