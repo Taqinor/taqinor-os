@@ -264,6 +264,7 @@ class CreationTest(BaseApiCalepinage):
                                      format='json')
         self.assertEqual(reponse.status_code, 403)
 
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Copilote vague 2 (lane CALA) — ce que l'assistant lit et écrit du calepinage.
 # Les formes servies sont comparées aux échantillons COMMITTÉS
