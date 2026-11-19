@@ -256,6 +256,10 @@
 .tch .ep-carte-revue .ep-revue-ligne .bouton.discret { position: relative; min-height: 0; height: auto; margin-left: auto; padding: 0;
   font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); background: none; }
 .tch .ep-carte-revue .ep-revue-ligne .bouton.discret::after { content: ""; position: absolute; inset: -14px -8px; }
+/* couture L7 — la phrase de santé (« À ce rythme, pas prêt pour le dim. 29… ») est faite pour une RANGÉE (`flex: 1 1
+   220px`, en-tête d'un projet) : dans la carte de revue, colonne, ses 220 px de base devenaient une HAUTEUR (≈ 110 px
+   vides au-dessus et au-dessous). Ici elle prend sa hauteur de texte. */
+.tch .ep-carte-revue .ep-sante-ligne { flex: none; min-height: 0; }
 .tch .ep-focus { position: relative; font-weight: 400; color: var(--tch-texte-doux); }
 .tch .ep-focus input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .tch .ep-focus svg { color: var(--tch-etoile); }
