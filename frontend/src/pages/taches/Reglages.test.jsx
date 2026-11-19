@@ -200,6 +200,15 @@ describe('TCH108 — Réglages', () => {
     expect(screen.queryByText('Microsoft 365 · outlook.office365.com')).toBeNull()
   })
 
+  it('R2-130 — Mes données : les deux gestes forment UNE liste groupée de deux rangées, sans vide de 150 pt entre eux', async () => {
+    const { container } = monter('/taches/reglages/donnees')
+    await screen.findByRole('button', { name: 'Exporter mes données (fichier JSON)' })
+    const groupe = container.querySelector('.es-groupe-actions')
+    expect(groupe).not.toBeNull()
+    expect([...groupe.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['Exporter mes données (fichier JSON)', 'Tout effacer'])
+    expect(container.querySelector('.es-loin')).toBeNull()
+  })
+
   it('R2-127 — pendant la lecture d\'une adresse : « Lecture de l\'agenda… », le bouton est tenu, puis l\'injoignable se dit sous le champ', async () => {
     let refuser
     ajouterAgendaExterne.mockReturnValueOnce(new Promise((_resolve, rejeter) => { refuser = rejeter }))

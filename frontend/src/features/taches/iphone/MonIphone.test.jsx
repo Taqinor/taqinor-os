@@ -242,7 +242,7 @@ describe('TCH109 — Mon iPhone', () => {
     expect(within(bloc).getByRole('heading', { name: /Mettre Tâches sur l'écran d'accueil/ })).toHaveTextContent('À faire')
     const marches = within(bloc).getAllByRole('listitem').map((li) => li.textContent)
     expect(marches[0]).toMatch(/^Dans Safari, touche le bouton Partager/)
-    expect(marches[1]).toMatch(/« Sur l'écran d'accueil »/)
+    expect(marches[1]).toMatch(/«\sSur l'écran d'accueil\s»/)
     // il précède les cinq étapes (qui restent cinq) dans l'écran
     expect(bloc.compareDocumentPosition(container.querySelector('ol.ep-etapes')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(container.querySelectorAll('ol.ep-etapes > li')).toHaveLength(5)
@@ -255,6 +255,19 @@ describe('TCH109 — Mon iPhone', () => {
     expect(within(bloc).getByRole('heading')).toHaveTextContent('Fait')
     expect(within(bloc).queryByRole('listitem')).toBeNull()
     delete window.matchMedia
+  })
+
+  it('R2-130 — « Oui / Non » répond à une question écrite juste au-dessus ; les guillemets ne se séparent plus de leur mot', async () => {
+    monter()
+    const question = await screen.findByText('Montrer le titre sur l\'écran verrouillé ?', { selector: 'p' })
+    const groupe = screen.getByRole('group', { name: 'Montrer le titre sur l\'écran verrouillé ?' })
+    expect(question.nextElementSibling).toBe(groupe)
+    expect(within(groupe).getAllByRole('button').map((b) => b.textContent)).toEqual(['Oui', 'Non'])
+    // « Autoriser les notifications » n'est plus dans la même rangée que Oui / Non
+    expect(within(groupe).queryByRole('button', { name: 'Autoriser les notifications' })).toBeNull()
+    const marche = (await screen.findAllByRole('listitem')).find((li) => li.textContent.includes('Autoriser les notifications')).textContent
+    expect(marche).toContain('« Autoriser les notifications »')
+    expect(marche).not.toMatch(/« | »/)
   })
 
   it('un échec de lecture des jetons dit « Pas à jour » et garde l\'écran', async () => {

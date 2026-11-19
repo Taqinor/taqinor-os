@@ -143,14 +143,16 @@ export function MesDonnees({ onEfface }) {
 
   return (
     <div>
-      <button type="button" className="es-action-ligne" onClick={exporter}>
-        <Download className="i" aria-hidden="true" />Exporter mes données (fichier JSON)
-      </button>
+      {/* R2-130 : une liste groupée de deux rangées (plus deux liens séparés par 150 pt de vide) */}
+      <div className="es-groupe-actions">
+        <button type="button" className="es-action-ligne" onClick={exporter}>
+          <Download className="i" aria-hidden="true" />Exporter mes données (fichier JSON)
+        </button>
+        <button type="button" className="es-action-ligne danger" onClick={() => setDialogue(true)}>
+          <Trash2 className="i" aria-hidden="true" />Tout effacer
+        </button>
+      </div>
       {erreur ? <p className="es-erreur es-aide" role="alert">{erreur}</p> : null}
-      <div className="es-loin" />
-      <button type="button" className="es-action-ligne danger" onClick={() => setDialogue(true)}>
-        <Trash2 className="i" aria-hidden="true" />Tout effacer
-      </button>
       <DialogueEffacer ouvert={dialogue} onFermer={() => setDialogue(false)} onEfface={onEfface} />
     </div>
   )
@@ -189,7 +191,7 @@ function LigneAgenda({ agenda, onChange, onRetirer }) {
       <p className={`es-agenda-etat${refus ? ' refus' : ''}`}>{texteEtat(agenda)}</p>
       {erreur ? <p className="es-erreur" role="alert">{erreur}</p> : null}
       <FeuilleACrans ouverte={confirme} onFermer={() => setConfirme(false)} titre={`Retirer « ${nom} » ?`}>
-        <p className="es-dialogue-texte">{`Retirer « ${nom} » ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché.`}</p>
+        <p className="es-dialogue-texte">{`Retirer «\u00A0${nom}\u00A0» ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché.`}</p>
         <div className="es-dialogue-pied">
           <button type="button" className="bouton second" onClick={() => setConfirme(false)}>Fermer</button>
           <button type="button" className="bouton danger" onClick={retirer}>Retirer</button>
@@ -277,7 +279,7 @@ export function Avance({ sansDelai, onSansDelai, erreur = '' }) {
         <div className="es-reglage">
           <span className="txt">
             <b>Messages sans délai</b>
-            <small>Le message « Annuler » reste jusqu'à ce que tu le fermes.</small>
+            <small>Le message «&nbsp;Annuler&nbsp;» reste jusqu'à ce que tu le fermes.</small>
           </span>
           <button type="button" className="interrupteur" role="switch" aria-checked={sansDelai}
             aria-label="Messages sans délai" onClick={() => onSansDelai(!sansDelai)} />

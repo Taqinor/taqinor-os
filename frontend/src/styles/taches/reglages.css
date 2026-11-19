@@ -94,7 +94,9 @@
 .tch .es-action-ligne { display: flex; align-items: center; gap: 12px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 52px;
   margin: 0 var(--tch-gouttiere); font-size: 1.0625rem; font-weight: 600; color: var(--tch-accent); text-align: left; }
 .tch .es-action-ligne.danger { color: var(--tch-alerte); }
-.tch .es-loin { margin-top: 64px; }
+.tch .es-groupe-actions { margin: 6px var(--tch-gouttiere) 0; border-radius: var(--tch-rayon-bloc); background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); overflow: hidden; }
+.tch .es-groupe-actions .es-action-ligne { width: 100%; margin: 0; padding: 0 14px; }
+.tch .es-groupe-actions .es-action-ligne + .es-action-ligne { box-shadow: inset 0 1px 0 var(--tch-trait); } /* R2-130 : deux rangées d une même liste */
 .tch .es-dialogue-titre { margin: 4px 0 0; font-size: 1.25rem; line-height: 1.3; font-weight: 650; }
 .tch .es-dialogue-texte { margin: 10px 0 0; font-size: 1rem; line-height: 1.5; }
 .tch .es-dialogue-texte b { font-weight: 650; }
