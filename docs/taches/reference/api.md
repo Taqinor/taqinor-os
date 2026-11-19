@@ -1796,7 +1796,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`gestes.json`** — GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes
 ```json
-{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
+{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","titre":"Appeler le fournisseur","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
 ```
 
 **`item.json`** — forme ITEM · consommateurs : toutes les listes

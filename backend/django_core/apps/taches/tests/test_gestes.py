@@ -10,6 +10,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.http import Http404
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from apps.taches.choix import StatutRappel, StatutTache
 from apps.taches.models.gestes import GesteAnnulable
@@ -22,6 +23,7 @@ from apps.taches.services.gestes import (
     op_creation,
     op_suppression_douce,
     op_suppression_dure,
+    titres_des_gestes,
 )
 from apps.taches.selectors.base import taches_de
 from apps.taches.tests import fabriques
@@ -387,3 +389,58 @@ class GesteTests(TestCase):
         annuler_geste(self.u1, geste.pk)
         tache.refresh_from_db()
         self.assertEqual((tache.statut, tache.fait_le), (StatutTache.A_FAIRE, None))
+
+
+class TitresDesGestesTests(TestCase):
+    """R2-125 — « 09:12 Faite · Appeler le fournisseur » : le titre de la tâche touchée, lu côté serveur."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.a, cls.b = fabriques.societe('a'), fabriques.societe('b')
+        cls.u1 = fabriques.compte(cls.a, nom='u1')
+        cls.ailleurs = fabriques.compte(cls.b, nom='u1')
+
+    def _geste(self, type_, message, *taches):
+        return enregistrer_geste(self.u1, type_, message, [op_creation('tache', t) for t in taches])
+
+    def test_un_geste_sur_une_tache_dit_son_titre(self):
+        tache = fabriques.tache(self.u1, titre='Appeler le fournisseur')
+        geste = self._geste('terminaison', 'Faite', tache)
+        self.assertEqual(titres_des_gestes(self.u1, [geste]), {geste.pk: 'Appeler le fournisseur'})
+
+    def test_le_titre_est_celui_d_aujourd_hui_et_une_tache_supprimee_garde_le_sien(self):
+        tache = fabriques.tache(self.u1, titre='Avant')
+        geste = self._geste('modification', 'Modifiée', tache)
+        Tache.all_objects.filter(pk=tache.pk).update(titre='Après', is_deleted=True)
+        self.assertEqual(titres_des_gestes(self.u1, [geste]), {geste.pk: 'Après'})
+
+    def test_un_geste_sur_plusieurs_taches_n_a_pas_de_titre_sauf_une_terminaison(self):
+        premiere, seconde = fabriques.tache(self.u1, titre='Routine'), fabriques.tache(self.u1, titre='Suivante')
+        lot = self._geste('lot', '2 reportées', premiere, seconde)
+        faite = self._geste('terminaison', 'Faite', premiere, seconde)
+        self.assertEqual(titres_des_gestes(self.u1, [lot, faite]), {faite.pk: 'Routine'})
+
+    def test_un_geste_sans_tache_n_a_pas_de_titre(self):
+        geste = enregistrer_geste(self.u1, 'rythme', 'Garder ce rythme', [])
+        self.assertEqual(titres_des_gestes(self.u1, [geste]), {})
+
+    def test_jamais_le_titre_d_une_tache_d_un_autre_compte(self):
+        chez_lui = fabriques.tache(self.ailleurs, titre='Secret')
+        geste = self._geste('terminaison', 'Faite', chez_lui)  # un geste mal formé : l'id d'une tâche étrangère
+        self.assertEqual(titres_des_gestes(self.u1, [geste]), {})
+
+    def test_la_route_sert_le_titre_a_l_ecran_et_jamais_a_l_assistant(self):
+        tache = fabriques.tache(self.u1, titre='Appeler le fournisseur')
+        geste = self._geste('terminaison', 'Faite', tache)
+        api = APIClient()
+        api.force_authenticate(self.u1)
+        ecran = api.get('/api/django/taches/gestes/').json()['results']
+        self.assertEqual([(g['id'], g['message'], g['titre']) for g in ecran],
+                         [(geste.pk, 'Faite', 'Appeler le fournisseur')])
+        assistant = api.get('/api/django/taches/gestes/', HTTP_X_TAQINOR_ASSISTANT='1').json()['results']
+        self.assertEqual([(g['id'], g['titre']) for g in assistant], [(geste.pk, None)])
+
+    def test_une_seule_requete_pour_tous_les_gestes(self):
+        gestes = [self._geste('terminaison', 'Faite', fabriques.tache(self.u1)) for _ in range(4)]
+        with self.assertNumQueries(1):
+            titres_des_gestes(self.u1, gestes)

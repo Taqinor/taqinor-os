@@ -341,7 +341,7 @@ titre (casse et accents ignorés). La loupe est dans le champ.
 « Supprimées récemment » — « Supprimées depuis moins de 30 jours. » — un projet = une ligne « « {projet} » et ses {n}
 tâches » · Restaurer ; une tâche = une ligne : Restaurer · {projet ou « Sans projet »} · {jour de suppression} ; vide
 « Rien de supprimé » ; « Derniers gestes » (7 jours), une rangée par geste : heure le jour même (sinon le jour),
-`GesteAnnulable.message` + « Annuler » (ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
+`GesteAnnulable.message` · {titre de la tâche touchée, servi à part par `gestes/` (`titre`, nul pour un geste de plusieurs tâches ou sous l'en-tête assistant)} + « Annuler » (ou « Déjà annulé ») : « 09:12 Faite · Appeler le fournisseur » ; un squelette tient la place pendant la lecture. Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
 Restaurée dans À trier · Annuler ».
 
 Messages servis par le serveur (`GesteAnnulable.message`, raccord F2 : posés par les lanes, validés et inscrits ici ;

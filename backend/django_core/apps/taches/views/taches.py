@@ -36,7 +36,7 @@ from apps.taches.services.creation import creer_taches
 from apps.taches.services.etiquettes import (
     creer_etiquette, creer_vue, liste_vues, modifier_etiquette, modifier_vue, supprimer_etiquette, supprimer_vue,
 )
-from apps.taches.services.gestes import annuler_geste
+from apps.taches.services.gestes import annuler_geste, titres_des_gestes
 from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
@@ -602,8 +602,10 @@ class GestesVue(APIView):
     @extend_schema(responses=reponses(forme_echantillon('gestes')))
     def get(self, request):
         gestes = derniers_gestes(request.user)
-        masques = gestes_confidentiels(request.user, gestes) if est_assistant(request) else frozenset()
-        return Response(reponse_gestes(gestes, masques))
+        assistant = est_assistant(request)
+        masques = gestes_confidentiels(request.user, gestes) if assistant else frozenset()
+        titres = {} if assistant else titres_des_gestes(request.user, gestes)  # le Copilote ne reçoit aucun titre
+        return Response(reponse_gestes(gestes, masques, titres))
 
 
 class GesteAnnulerVue(APIView):

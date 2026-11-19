@@ -133,3 +133,6 @@
 @media (hover: hover) {
   .tch .es-rubrique:hover { background: var(--tch-selection); }
 }
+
+/* R2-125 — « Reportée à jeu. 19 · Appeler le fournisseur » : la tâche touchée, en gris sous le verbe */
+.tch .es-geste .titre-geste { color: var(--tch-texte-doux); overflow-wrap: anywhere; }
