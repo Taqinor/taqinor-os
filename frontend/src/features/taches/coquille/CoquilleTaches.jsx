@@ -155,11 +155,14 @@ function ClocheErp() {
   if (etiquette === null) return null
   const trouve = etiquette.match(/\((\d+)\)/)
   const compte = trouve ? Number(trouve[1]) : 0
+  // le nom lu contient EXACTEMENT ce qui est écrit sur la pastille (« 99+ » au-delà de 99) : sinon le nom accessible
+  // contredit le texte visible (axe : label-content-name-mismatch)
+  const affiche = compte > 99 ? '99+' : String(compte)
   return (
     <button
       type="button"
       className="bouton-icone entete-cloche"
-      aria-label={`Notifications (${compte})`}
+      aria-label={`Notifications (${affiche})`}
       // le panneau de l'ERP se ferme de lui-même au premier appui hors de sa cloche : un appui sur CETTE cloche,
       // panneau ouvert, doit le laisser fermé (sinon il se rouvrirait aussitôt)
       onPointerDown={() => { ouverteAuPointeur.current = Boolean(document.querySelector(SELECTEUR_PANNEAU_ERP)) }}
@@ -171,7 +174,7 @@ function ClocheErp() {
       }}
     >
       <Bell className="i" aria-hidden="true" />
-      {compte > 0 ? <span className="entete-cloche-compte chiffres" aria-hidden="true">{compte > 99 ? '99+' : compte}</span> : null}
+      {compte > 0 ? <span className="entete-cloche-compte chiffres" aria-hidden="true">{affiche}</span> : null}
     </button>
   )
 }

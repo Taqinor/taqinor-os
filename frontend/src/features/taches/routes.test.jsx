@@ -312,6 +312,9 @@ describe('R2-080 — sur iPhone, la rangée du haut de Tâches remplace la barre
     // le compteur suit celui de l'ERP
     await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (5)') })
     expect(within(coquille).getByRole('button', { name: 'Notifications (5)' })).toBeInTheDocument()
+    // au-delà de 99, le nom lu dit ce que la pastille écrit (« 99+ ») : jamais un nom qui contredit le texte visible
+    await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (120)') })
+    expect(within(coquille).getByRole('button', { name: 'Notifications (99+)' })).toHaveTextContent('99+')
   })
 
   it('le titre compact (rangée du haut) répète le titre de la page, caché aux lecteurs d\'écran', async () => {
