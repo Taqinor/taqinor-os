@@ -355,26 +355,37 @@ describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le 
     expect(toastError).toHaveBeenCalledTimes(1)
   })
 
-  // Un refus d'ÉTAT au champ (`core.conflit_etat.ConflitEtat({champ: [message]})`) : le serveur répond 409 avec le corps
-  // d'un 400 (+ `detail` = le premier message, + l'enveloppe `error` de l'ERP), SANS `code` racine. Corps exacts servis
-  // par `services/projets.py::_nom_pris` et `views/agenda_externe.py` (injoignable, doublon, plafond).
+  // Un refus d'ÉTAT au champ (`apps/taches/entrees.py::refus_etat`) : 409 `{champ: [message], detail, code:
+  // "state_conflict"}` (+ l'enveloppe `error` de l'ERP) ; un identifiant du corps qui ne désigne rien
+  // (`entrees.py::introuvable`) : 404 `{champ: [message], detail}`. Corps de la table de vague3-ajouts.md.
   const refusChamp = (champ, message) => ({
-    detail: message, [champ]: [message], error: { code: 'state_conflict', message, fields: null, request_id: 'r' },
+    [champ]: [message], detail: message, code: 'state_conflict', error: { code: 'state_conflict', message, fields: null, request_id: 'r' },
   })
+  const introuvableChamp = (champ, message) => ({ [champ]: [message], detail: message })
 
-  it('409 au champ dit SOUS LE CHAMP (`erreurSousLeChamp`) : aucun toast, la même erreur qu\'un 400 (statut 409 gardé)', async () => {
+  it('409 `state_conflict` au champ, avec `erreurSousLeChamp` : aucun toast, rendu SOUS LA FORME D\'UN 400 de champ', async () => {
     api.patch.mockImplementation(pont(409, refusChamp('nom', 'Un projet « Ventes » existe déjà.')))
     let err = await client.modifierProjet(3, { nom: 'Ventes' }, { erreurSousLeChamp: true }).catch((e) => e)
     expect(toastError).not.toHaveBeenCalled()
     expect(err).toBeInstanceOf(Error)
-    expect(err.response.status).toBe(409)
-    expect(client.classerErreur(err)).toMatchObject({ statut: 409, code: 'validation', champs: { nom: ['Un projet « Ventes » existe déjà.'] } })
+    expect(err.response).toMatchObject({ status: 400, statutServeur: 409, data: { nom: ['Un projet « Ventes » existe déjà.'] } })
+    expect(client.classerErreur(err)).toMatchObject({ statut: 400, code: 'validation', champs: { nom: ['Un projet « Ventes » existe déjà.'] } })
     expect(api.defaults.validateStatus).toBe(valider)
     for (const message of ['Adresse injoignable : vérifie le lien.', 'Cet agenda est déjà ajouté.', '3 agendas au plus.']) {
       api.post.mockImplementation(pont(409, refusChamp('url', message)))
       err = await client.ajouterAgendaExterne({ url: 'https://x' }, { erreurSousLeChamp: true }).catch((e) => e)
-      expect(client.classerErreur(err).champs.url).toEqual([message])
+      expect(err.response.status).toBe(400)
+      expect(err.response.data.url).toEqual([message])
     }
+    // 404 au champ (projet cible inconnu) : la même forme
+    api.post.mockImplementation(pont(404, introuvableChamp('projet_cible_id', 'Projet inexistant.')))
+    err = await client.terminerProjet(3, { issue: 'atteint', projet_cible_id: 99 }, { erreurSousLeChamp: true }).catch((e) => e)
+    expect(err.response).toMatchObject({ status: 400, statutServeur: 404 })
+    expect(client.classerErreur(err).champs).toMatchObject({ projet_cible_id: ['Projet inexistant.'] })
+    // 404 sans champ (`{detail}`) : reste un 404 `introuvable`, sans toast (le pont n'en fait pas non plus)
+    api.patch.mockImplementation(pont(404, erreurs.introuvable))
+    err = await client.modifierProjet(3, { nom: 'x' }, { erreurSousLeChamp: true }).catch((e) => e)
+    expect(client.classerErreur(err)).toMatchObject({ statut: 404, code: 'introuvable' })
     api.post.mockImplementation(pont(409, refusChamp('nom', 'Un projet « Ventes » existe déjà.')))
     await client.creerProjet({ nom: 'Ventes' }, { erreurSousLeChamp: true }).catch((e) => e)
     await client.dupliquerProjet(3, { nom: 'Ventes' }, { erreurSousLeChamp: true }).catch((e) => e)
@@ -384,10 +395,11 @@ describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le 
     expect(toastError).not.toHaveBeenCalled()
   })
 
-  it('409 au champ SANS `erreurSousLeChamp` : le toast reste (une fois), comme un 400 ; les 409 nommés ne changent pas', async () => {
+  it('409 au champ SANS `erreurSousLeChamp` : rien ne change (409 gardé, toast une fois) ; les 409 nommés ne changent pas', async () => {
     api.post.mockImplementation(pont(409, refusChamp('nom', 'Une étiquette « x » existe déjà.')))
     const err = await client.creerEtiquette({ nom: 'x' }).catch((e) => e)
     expect(err.response.status).toBe(409)
+    expect(client.classerErreur(err)).toMatchObject({ statut: 409, code: 'state_conflict', champs: null })
     expect(toastError).toHaveBeenCalledTimes(1)
     toastError.mockClear()
     // nommé, avec ou sans l'option : son code, son lock_version, jamais de toast ni de `champs`
