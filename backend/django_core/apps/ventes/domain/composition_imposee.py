@@ -37,6 +37,8 @@ CHAMPS_IMPOSES = ('nb_panneaux', 'panneau_produit_id', 'onduleur_produit_id',
 
 #: Seuil « recommander ET signaler » (décision du 23/10, > 120 panneaux).
 PANNEAUX_A_SIGNALER = 120
+#: La borne publiée de ``DevisAutoRequest.nb_panneaux``.
+NB_PANNEAUX_MAX = 200
 RATIO_DC_AC = (0.8, 1.4)
 
 
@@ -178,6 +180,12 @@ def _refuser_modes(imposes, *, target_kwc, scenario, lead):
         raise AutoDevisError(
             'Composition imposée : indiquez le nombre de panneaux '
             '(nb_panneaux).', field='nb_panneaux')
+    if not 1 <= int(imposes['nb_panneaux']) <= NB_PANNEAUX_MAX:
+        # Borne de ``DevisAutoRequest`` ; le dry-run (``devis/composition/``)
+        # publie une borne plus large et passe aussi par ici.
+        raise AutoDevisError(
+            'Composition imposée : %d panneaux au plus (nb_panneaux).'
+            % NB_PANNEAUX_MAX, field='nb_panneaux')
     if target_kwc not in (None, ''):
         raise AutoDevisError(
             'Composition imposée : la puissance cible (target_kwc) ne se '
