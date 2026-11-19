@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: c7f814bcfe92a81be219ae18b7407a904749a226d44d67a7bd391ec3bc9a5f0e
-Plan fingerprint: ac66dc773775986f18bed714ff2a30b589602d8941bc818c39c13077e73c4d67
+Plan fingerprint: 45ba315e05042d7214985e15f518bd562d3dce0bc6fe1723345598ee57ba0cad
 
 
 
@@ -619,7 +619,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1335)**
+**Done (1336)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1670,6 +1670,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `COPW1` — Cartes de l'assistant pour l'après-devis, le stock, le SAV et le pilotage
 - `COPW2` — Cartes de l'assistant pour le calepinage, les visites et les chantiers
+- `COPW3` — Point du matin étendu et dossier du lead
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — Contrat d'abord (PACT10)
 - `CRXB4` — UN round-robin
