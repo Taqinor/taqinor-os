@@ -15,6 +15,9 @@
   color: var(--tch-texte);
   -webkit-font-smoothing: antialiased;
   font-feature-settings: 'ss01' 0;
+  /* R2-092 — quatre tailles au plus : titre de page, tâche, section (15 px), méta (les chiffres prennent sa taille) */
+  --tch-section: 0.9375rem;
+  --tch-chiffre: var(--tch-meta);
 }
 .tch *, .tch *::before, .tch *::after { box-sizing: border-box; }
 /* :where() = spécificité nulle : ne bat jamais une classe utilitaire de l'ERP */
@@ -37,12 +40,11 @@
 /* Desktop 768 px : mêmes valeurs que les maquettes (--tch-section, --tch-tache… ajustés) */
 @media (min-width: 768px) {
   .tch {
-    --tch-section: 1rem;
+    --tch-section: 0.9375rem;
     --tch-tache: 1rem;
     --tch-tache-lh: 1.375rem;
     --tch-meta: 0.8125rem;
     --tch-meta-lh: 1.125rem;
-    --tch-chiffre: 0.75rem;
     --tch-gouttiere: 24px;
     --tch-ligne-h: 44px;
   }
@@ -211,6 +213,7 @@
 .tch .section-titre {
   display: flex; align-items: baseline; justify-content: space-between;
   margin: 0; padding: 0 var(--tch-gouttiere) 4px; font-size: var(--tch-section); font-weight: 650; line-height: 1.4;
+  color: var(--tch-texte-doux); /* R2-092 : la section se détache du titre de tâche par la taille ET la couleur */
 }
 .tch .section-titre .compte {
   font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux);
@@ -1324,3 +1327,23 @@
 .tch .conflit .carte-actions { margin-top: 10px; }
 .tch .conflit .bouton { height: 40px; padding: 0 14px; font-size: 0.9375rem; position: relative; }
 .tch .conflit .bouton::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+
+/* ── R2-092 — un seul langage ─────────────────────────────────────────────────────────────────────────────────
+   « Sélectionné » = un fond d'accent léger et le texte en accent, partout (tuiles de « Quand », segments, puces
+   cochées, sélecteur de projet) : plus de cadre bleu de 2 px, de pilule blanche sur gris ni de pilule pleine. Le
+   disque plein reste réservé au jour choisi d'un calendrier. L'anneau de focus n'est jamais retiré. */
+.tch .quand-tuile[aria-checked="true"],
+.tch .segmente button[aria-checked="true"],
+.tch .puce[aria-checked="true"],
+.tch .puce.active,
+.tch .selecteur-projet-item[aria-checked="true"] {
+  background: var(--tch-selection); color: var(--tch-accent);
+}
+.tch .quand-tuile[aria-checked="true"]:not(:focus-visible),
+.tch .segmente button[aria-checked="true"]:not(:focus-visible) { box-shadow: none; }
+.tch .quand-tuile[aria-checked="true"] b { color: var(--tch-accent); }
+/* R2-018b — méta sur la ligne du titre quand elle est courte (`LigneTache` pose `meta-en-ligne`, R2-018 L3) : le titre
+   et sa méta partagent une ligne ; trop longs, la méta repasse dessous d'elle-même (retour à la ligne du flex). */
+.tch .ligne.meta-en-ligne .ligne-corps { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+.tch .ligne.meta-en-ligne .ligne-corps-bouton { width: auto; flex: 0 1 auto; min-width: 0; }
+.tch .ligne.meta-en-ligne .meta { margin-top: 0; }
