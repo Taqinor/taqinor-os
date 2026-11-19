@@ -223,6 +223,10 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const [cid, setCid] = useState(() => nouvelleCle())
   const [contexte, setContexte] = useState(() => lireContexte(null))
   const [quandDepart, setQuandDepart] = useState(null)
+  /** Vrai quand le « Quand » affiché est celui que l'écran a posé d'office (jamais choisi à la main) : gardé avec le
+   *  brouillon, il ne suit pas la saisie rouverte depuis un écran qui n'en pose pas. */
+  const quandAuto = useRef(Boolean(initial?.quandAuto))
+  const choisirQuand = (valeur) => { quandAuto.current = false; setQuand(valeur) }
   const enLigne = useEnLigne()
   // R2-009 — au bureau, la saisie s'ouvre à la place de la ligne « Ajouter une tâche » de l'écran (ancre lue à
   // l'ouverture) ; « Coller mes listes » et une liste collée gardent le dialogue centré
@@ -244,6 +248,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     return () => { vivant = false }
   }, [ouverte, enLigne, projets])
   const projetsOuverts = useMemo(() => (projets ?? []).filter((p) => !p.statut || p.statut !== 'archive'), [projets])
+  // couture r2 — le projet de l'écran nommé même quand la demande ne portait que son id (vue pas encore lue)
+  const nomProjet = contexte.projetId == null ? ''
+    : contexte.projetNom || (projets ?? []).find((p) => p.id === contexte.projetId)?.nom || ''
   // R2-001 — l'envoi part en ARRIÈRE-PLAN : ce qui est à l'écran au retour du serveur est lu ici, jamais une copie figée
   const actuel = useRef({ texte, collages, ouverte })
   useEffect(() => { actuel.current = { texte, collages, ouverte } })
@@ -260,7 +267,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // le brouillon suit la frappe ; une phrase vide l'efface
   useEffect(() => {
     const tout = [...collages, texte].filter((t) => t.trim()).join('\n\n')
-    ecrireBrouillon(cle, tout ? { texte: tout, quand, collages, courant: texte } : null)
+    ecrireBrouillon(cle, tout ? { texte: tout, quand, quandAuto: Boolean(quand) && quandAuto.current, collages, courant: texte } : null)
   }, [cle, texte, collages, quand])
 
   const remettreAZero = useCallback(() => {
@@ -301,8 +308,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
       : surAujourdhui() ? aujourdhuiIso() : null
     if (jour) {
       const depart = { jour_prevu: jour, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+      quandAuto.current = true
       setQuand(depart)
       setQuandDepart(depart)
+    } else if (quandAuto.current) {
+      // couture r2 — le jour posé d'office par un AUTRE écran (brouillon d'Aujourd'hui) ne suit pas : rien de choisi
+      quandAuto.current = false
+      setQuand(null)
+      setQuandDepart(null)
     }
   }, [])
   // Dans /taches la feuille est montée avec la coquille : elle écoute l'événement elle-même. Hors de /taches elle est
@@ -389,6 +402,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
 
   const restaurer = (gel) => {
     setTexte(gel.texte); setCollages(gel.collages); setIgnorer(gel.ignorer); setQuand(gel.quand)
+    quandAuto.current = gel.quand != null && gel.quand === gel.quandDepart
     setPriorites(gel.priorites); setContexte(gel.contexte); setCid(gel.cid); setChampReplie(false); setApercu(null)
   }
   /** Rouvre la feuille fermée entre-temps (l'hôte et la coquille écoutent la même demande). */
@@ -570,7 +584,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         ) : null}
         {modeListe ? null : (
           <>
-            {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={setQuand} /> : null}
+            {quandOuvert ? <SelecteurQuand valeur={quand ?? undefined} onChoisir={choisirQuand} /> : null}
             {projetOuvert ? (
               <SelecteurProjet
                 projets={projetsOuverts}
@@ -592,14 +606,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                   <span className="chiffres">{libelleQuand(quand)}</span>
                 </button>
                 {quand ? (
-                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { setQuand(null); setQuandOuvert(false) }}>
+                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : null}
-                {contexte.projetId != null && contexte.projetNom ? (
-                  <button type="button" className="puce lue" aria-label={`Retirer « ${contexte.projetNom} »`}
+                {contexte.projetId != null && nomProjet ? (
+                  <button type="button" className="puce lue" aria-label={`Retirer « ${nomProjet} »`}
                     onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
-                    <span className="projet-nom">{`● ${contexte.projetNom}`}</span>
+                    <span className="projet-nom">{`● ${nomProjet}`}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : (

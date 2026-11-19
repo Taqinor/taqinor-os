@@ -180,6 +180,33 @@ describe('TCH82 — feuille de saisie', () => {
     expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
   })
 
+  it('couture r2 — `n` sur un projet avant sa lecture (projet_id seul) : la puce nomme le projet, lu dans la liste', async () => {
+    mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', priorite: 3, statut: 'actif' }])
+    monter()
+    act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3 } })) })
+    expect(await screen.findByRole('button', { name: 'Retirer « Ventes »' })).toBeInTheDocument()
+  })
+
+  it('couture r2 — le « Quand » posé d\'office par Aujourd\'hui ne suit pas le brouillon rouvert depuis un autre écran', async () => {
+    const user = userEvent.setup()
+    const lieu = window.location.pathname
+    try {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      const premiere = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      expect(await screen.findByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), 'Relancer le client')
+      premiere.unmount()
+      window.history.pushState({}, '', '/taches/projets/3')
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      expect(champ()).toHaveValue('Relancer le client') // la phrase suit
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull() // pas le jour d'Aujourd'hui
+    } finally {
+      window.history.pushState({}, '', lieu)
+    }
+  })
+
   it('la déconnexion vide le brouillon, à l\'écran et dans le stockage', async () => {
     const user = userEvent.setup()
     monter()
