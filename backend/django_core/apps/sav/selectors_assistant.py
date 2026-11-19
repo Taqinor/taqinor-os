@@ -14,11 +14,14 @@ ses modèles.
 """
 import re
 
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from core.scoping import scope_client_queryset, scope_queryset, visible_user_ids
 
+from . import machine_etats
+from .models import ContratMaintenance, Ticket
+from .selectors import ticket_en_retard_sla
 from .selectors_libelles import _equipements_visibles as equipements_visibles
 
 #: Parc : 5 clients par défaut, 10 au plus ; au plus 20 équipements par client.
@@ -39,8 +42,6 @@ _TELEPHONE = re.compile(r'^\+?[\d\s.\-()]{6,}$')
 def tickets_visibles(user):
     """Tickets de la société de ``user`` dans sa portée — la même que la liste
     de ``TicketViewSet`` (jamais ``Ticket.objects.filter(company=…)`` nu)."""
-    from .models import Ticket
-
     return scope_queryset(
         Ticket.objects.filter(company_id=user.company_id), user,
         ['technicien_responsable', 'created_by'])
@@ -154,8 +155,6 @@ def _equipements_par_client(user, ids, aujourdhui):
 
 
 def _tickets_ouverts_par_client(user, ids):
-    from .models import Ticket
-
     par_client = {}
     lignes = (tickets_visibles(user)
               .filter(client_id__in=ids, statut__in=Ticket.OPEN_STATUTS, annule=False)
@@ -174,8 +173,6 @@ def _tickets_ouverts_par_client(user, ids):
 def _contrats_actifs_par_client(user, ids, aujourdhui):
     """``{client_id: {id, fin}}`` du contrat de maintenance ACTIF (début, échéance
     et grâce compris : ``est_actif``) le plus récent de chaque client."""
-    from .models import ContratMaintenance
-
     par_client = {}
     for contrat in ContratMaintenance.objects.filter(
             company_id=user.company_id, client_id__in=ids,
@@ -223,3 +220,108 @@ def parc_clients(user, q, limite=LIMITE_PARC_DEFAUT, aujourdhui=None):
             'lien': LIEN_FICHE_CLIENT.format(pk),
         })
     return len(ids), lignes
+
+
+# ── Tickets ─────────────────────────────────────────────────────────────────
+
+LIMITE_TICKETS_DEFAUT = 10
+LIMITE_TICKETS_MAX = 25
+#: Lignes lues pour répondre à ``retard_sla`` (calculé en Python, jamais en SQL).
+SCAN_RETARD_MAX = 500
+LIEN_FILE_SAV = '/sav/action-requise'
+
+#: Le geste que fait avancer chaque statut cible (jamais déduit du seul
+#: statut courant : ``a_faire_du_ticket`` le lit de la machine d'états).
+_GESTE_DU_STATUT_CIBLE = {
+    Ticket.Statut.PLANIFIE: 'planifier', Ticket.Statut.EN_COURS: 'demarrer',
+    Ticket.Statut.RESOLU: 'resoudre', Ticket.Statut.CLOTURE: 'cloturer',
+}
+
+
+def a_faire_du_ticket(ticket):
+    """Le prochain geste du ticket, ensemble FERMÉ : ``planifier | demarrer |
+    resoudre | cloturer | rien``. C'est, parmi les statuts suivants que
+    ``machine_etats.statuts_suivants`` PERMET, le plus proche EN AVANT dans
+    l'ordre d'entonnoir (``Ticket.STATUT_ORDER``) ; une réouverture n'est jamais
+    un « à faire », ni un ticket annulé."""
+    if ticket.annule:
+        return 'rien'
+    ordre = list(Ticket.STATUT_ORDER)
+    courant = ordre.index(ticket.statut)
+    en_avant = [s for s in machine_etats.statuts_suivants(ticket)
+                if ordre.index(s) > courant]
+    if not en_avant:
+        return 'rien'
+    return _GESTE_DU_STATUT_CIBLE.get(min(en_avant, key=ordre.index), 'rien')
+
+
+def _equipement_en_clair(ticket):
+    """« Onduleur Deye 8 kW — DEYE-SUN8K-2304-1182 » (vide sans équipement)."""
+    equipement = ticket.equipement
+    if equipement is None:
+        return ''
+    return ' — '.join(m for m in (equipement.produit.nom or '',
+                                  equipement.numero_serie or '') if m)
+
+
+def ligne_ticket(ticket, aujourdhui=None):
+    """Une ligne compacte (``assistant_tickets.json``) ; ``ticket`` chargé avec
+    ``select_related('client', 'equipement__produit')``. Ni texte du client, ni
+    coût, ni téléphone."""
+    due = ticket.sla_due_at_effectif(today=aujourdhui) if ticket.sla_due_at else None
+    return {
+        'ticket_id': ticket.pk,
+        'reference': ticket.reference,
+        'client_id': ticket.client_id,
+        'client_nom': nom_du_client(ticket.client),
+        'equipement': _equipement_en_clair(ticket),
+        'statut': ticket.statut,
+        'priorite': ticket.priorite,
+        'cree_le': ticket.date_creation.isoformat(),
+        'sla_due_at': due.isoformat() if due else None,
+        'en_retard_sla': bool(ticket_en_retard_sla(ticket, aujourdhui)),
+        'sous_garantie': ticket.sous_garantie_calcule == Ticket.SousGarantie.OUI,
+        'a_faire': a_faire_du_ticket(ticket),
+        'lien': LIEN_TICKET.format(ticket.pk),
+    }
+
+
+def _tickets_filtres(user, *, q='', statut='', priorite='', client=None,
+                     equipement=None):
+    """Tickets visibles NON annulés : les ouverts par défaut, ``statut`` sinon ;
+    ``q`` = chaque mot dans la référence, le client ou le numéro de série ;
+    les plus en retard d'abord (échéance SLA croissante, sans échéance en
+    dernier)."""
+    qs = tickets_visibles(user).filter(annule=False)
+    qs = qs.filter(statut=statut) if statut else qs.filter(
+        statut__in=Ticket.OPEN_STATUTS)
+    if priorite:
+        qs = qs.filter(priorite=priorite)
+    if client:
+        qs = qs.filter(client_id=client)
+    if equipement:
+        qs = qs.filter(equipement_id=equipement)
+    for mot in (q or '').split()[:4]:
+        qs = qs.filter(
+            Q(reference__icontains=mot) | Q(client__nom__icontains=mot)
+            | Q(client__prenom__icontains=mot)
+            | Q(equipement__numero_serie__icontains=mot))
+    return (qs.select_related('client', 'equipement__produit')
+            .order_by(F('sla_due_at').asc(nulls_last=True), '-date_creation', '-id'))
+
+
+def tickets_compacts(user, *, retard_sla=None, limite=LIMITE_TICKETS_DEFAUT,
+                     aujourdhui=None, **filtres):
+    """``(total, lignes)`` des tickets (voir :func:`_tickets_filtres`).
+    ``retard_sla`` vrai/faux ne garde que les tickets en retard (ou non) selon
+    ``selectors.ticket_en_retard_sla`` — la définition unique du retard — lus
+    parmi les ``SCAN_RETARD_MAX`` premiers."""
+    aujourdhui = aujourdhui or timezone.localdate()
+    qs = _tickets_filtres(user, **filtres)
+    if retard_sla is None:
+        return qs.count(), [ligne_ticket(t, aujourdhui) for t in qs[:limite]]
+    if retard_sla:
+        qs = qs.filter(sla_due_at__lte=aujourdhui)  # tout retard a une échéance échue
+    gardes = [t for t in qs[:SCAN_RETARD_MAX]
+              if bool(ticket_en_retard_sla(t, aujourdhui)) == retard_sla]
+    return len(gardes), [ligne_ticket(t, aujourdhui) for t in gardes[:limite]]

@@ -25,6 +25,8 @@ from __future__ import annotations
 from apps.agent.registry import (
     AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register)
 
+from .models import Ticket
+
 
 # Permission ERP requise pour ouvrir/mettre à jour un ticket SAV
 # (identique au TicketViewSet : write actions → 'sav_gerer').
@@ -151,6 +153,40 @@ CHERCHER_PARC = AgentAction(
 )
 
 
+CHERCHER_TICKETS = AgentAction(
+    key='sav.tickets.chercher',
+    label='Lister les tickets SAV (ouverts par défaut, retard de SLA en premier)',
+    description=(
+        "Sert à : lister les tickets SAV avec leur prochain geste (a_faire) : "
+        "les ouverts par défaut, filtrables par statut, priorité, client, "
+        "équipement, texte ou retard de SLA. Ne pas utiliser pour : lire un "
+        "ticket en détail (sav.ticket.fiche) ni retrouver un client "
+        "(sav.parc.chercher). Exemple : « mes tickets en retard » → "
+        "retard_sla=true. Résultat : {total, limite, lignes[], lien} ; chaque "
+        "ligne porte ticket_id, statut, a_faire et lien."
+    ),
+    endpoint='/api/django/sav/assistant/tickets/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'title': 'Recherche',
+                  'description': 'Référence, nom du client ou numéro de série.'},
+            'statut': {'type': 'string', 'enum': list(Ticket.Statut.values)},
+            'priorite': {'type': 'string', 'enum': list(PRIORITES_TICKET)},
+            'client': {'type': 'integer', 'title': 'Client (id)'},
+            'equipement': {'type': 'integer', 'title': 'Équipement (id)'},
+            'retard_sla': {'type': 'boolean', 'title': 'En retard de SLA'},
+            'limite': {'type': 'integer', 'minimum': 1, 'maximum': 25},
+        },
+    },
+    required_permission='sav_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_tickets',
+    lot=LOT_COPILOTE,
+)
+
+
 def register_actions() -> None:
     """Enregistre les actions SAV dans le registre AG1 (idempotent).
 
@@ -158,7 +194,8 @@ def register_actions() -> None:
     silencieusement les ré-enregistrements pour rester sûr si ``ready()`` est
     appelé plusieurs fois (tests, autoreload).
     """
-    for action in (OUVRIR_TICKET_SAV, METTRE_A_JOUR_TICKET, CHERCHER_PARC):
+    for action in (OUVRIR_TICKET_SAV, METTRE_A_JOUR_TICKET, CHERCHER_PARC,
+                   CHERCHER_TICKETS):
         try:
             register(action)
         except ValueError:

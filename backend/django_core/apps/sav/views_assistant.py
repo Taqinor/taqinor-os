@@ -16,7 +16,8 @@ from rest_framework.response import Response
 from authentication.permissions import HasPermissionOrLegacy
 
 from . import selectors_assistant as lectures
-from .query_params import entier_param, valeur_param
+from .models import Ticket
+from .query_params import ENTIER_ID, choix_param, entier_param, valeur_param
 
 #: Longueur maximale du texte cherché (nom, téléphone, numéro de série).
 Q_MAX = 100
@@ -62,3 +63,49 @@ def parc_client(request):
                           mini=1, maxi=lectures.LIMITE_PARC_MAX)
     total, clients = lectures.parc_clients(request.user, q, limite)
     return Response({'q': q, 'total': total, 'limite': limite, 'clients': clients})
+
+
+def _enum_ou_vide(valeurs):
+    """Schéma publié d'un paramètre à valeurs fermées : ``choix_param`` lit une
+    valeur vide comme « absent », le schéma le dit."""
+    return {'type': 'string', 'enum': [*valeurs, '']}
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX},
+                         OpenApiParameter.QUERY, required=False,
+                         description='Référence, nom du client ou numéro de série.'),
+        OpenApiParameter('statut', _enum_ou_vide(Ticket.Statut.values),
+                         OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('priorite', _enum_ou_vide(Ticket.Priorite.values),
+                         OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('client', ENTIER_ID, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('equipement', ENTIER_ID, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('retard_sla', _enum_ou_vide(('true', 'false')),
+                         OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                    'maximum': lectures.LIMITE_TICKETS_MAX},
+                         OpenApiParameter.QUERY, required=False),
+    ],
+    responses=OpenApiTypes.OBJECT)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('sav_voir')])
+def tickets_a_traiter(request):
+    """SAV3 — ``GET /api/django/sav/assistant/tickets/`` : les tickets SAV en
+    lignes compactes (ouverts non annulés par défaut, retard de SLA d'abord).
+    Contrat ``contract_samples/assistant_tickets.json``."""
+    _societe_ou_400(request)
+    q = _texte_cherche(request, obligatoire=False)
+    statut = choix_param(request, 'statut', Ticket.Statut.values, '')
+    retard = choix_param(request, 'retard_sla', ('true', 'false'), '')
+    limite = entier_param(request, 'limite', lectures.LIMITE_TICKETS_DEFAUT,
+                          mini=1, maxi=lectures.LIMITE_TICKETS_MAX)
+    total, lignes = lectures.tickets_compacts(
+        request.user, q=q, statut=statut, limite=limite,
+        priorite=choix_param(request, 'priorite', Ticket.Priorite.values, ''),
+        client=entier_param(request, 'client'),
+        equipement=entier_param(request, 'equipement'),
+        retard_sla=None if not retard else retard == 'true')
+    return Response({'q': q, 'statut': statut, 'total': total, 'limite': limite,
+                     'lignes': lignes, 'lien': lectures.LIEN_FILE_SAV})

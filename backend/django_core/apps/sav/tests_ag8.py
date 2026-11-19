@@ -268,3 +268,93 @@ class SavParcAssistantTest(TestCase):
         ligne = self._get(self.voit, q='chraibi').data['clients'][0]
         self.assertEqual([e['numero_serie'] for e in ligne['equipements']], ['SN-PARC'])
         self.assertEqual(ligne['contrat_actif'], {'id': contrat.pk, 'fin': None})
+
+
+class SavTicketsAssistantTest(TestCase):
+    """SAV3 — ``GET sav/assistant/tickets/`` : lignes compactes de
+    ``assistant_tickets.json`` (ouverts non annulés, retard de SLA d'abord)."""
+
+    LIGNE = {
+        'ticket_id', 'reference', 'client_id', 'client_nom', 'equipement',
+        'statut', 'priorite', 'cree_le', 'sla_due_at', 'en_retard_sla',
+        'sous_garantie', 'a_faire', 'lien'}
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.sav.models import Ticket
+        from apps.sav.tests import make_installation
+        self.company = Company.objects.create(nom='SAV Liste', slug='sav-liste')
+        self.inst, self.client_obj = make_installation(self.company, ref='CHT-LST')
+        aujourdhui = timezone.localdate()
+        self.user = User.objects.create_user(
+            username='lst', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Lst',
+                                     permissions=['sav_voir']))
+
+        def ticket(ref, statut, due=None, **kw):
+            return Ticket.objects.create(
+                company=self.company, reference=ref, client=self.client_obj,
+                installation=self.inst, statut=statut, sla_due_at=due,
+                description='texte du client', **kw)
+        self.tard = ticket('SAV-LST-1', 'nouveau', aujourdhui - timedelta(days=2),
+                           priorite='haute')
+        self.ok = ticket('SAV-LST-2', 'en_cours', aujourdhui + timedelta(days=5))
+        self.sans_sla = ticket('SAV-LST-3', 'planifie')
+        self.resolu = ticket('SAV-LST-4', 'resolu')
+        self.annule = ticket('SAV-LST-5', 'nouveau', annule=True)
+
+    def _get(self, **params):
+        from apps.sav.tests import auth
+        return auth(self.user).get('/api/django/sav/assistant/tickets/', params)
+
+    def test_ouverts_non_annules_le_plus_en_retard_d_abord(self):
+        r = self._get()
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(set(r.data), {'q', 'statut', 'total', 'limite', 'lignes', 'lien'})
+        self.assertEqual((r.data['total'], r.data['limite'], r.data['lien']),
+                         (3, 10, '/sav/action-requise'))
+        self.assertEqual([x['reference'] for x in r.data['lignes']],
+                         ['SAV-LST-1', 'SAV-LST-2', 'SAV-LST-3'])
+        for ligne in r.data['lignes']:
+            self.assertEqual(set(ligne), self.LIGNE)
+        premier = r.data['lignes'][0]
+        self.assertTrue(premier['en_retard_sla'])
+        self.assertEqual((premier['a_faire'], premier['lien']),
+                         ('planifier', f'/sav?id={self.tard.pk}'))
+        self.assertEqual([x['a_faire'] for x in r.data['lignes']],
+                         ['planifier', 'resoudre', 'demarrer'])
+        self.assertNotIn('texte du client', str(r.data))
+
+    def test_filtres_statut_retard_et_texte(self):
+        self.assertEqual([x['reference'] for x in self._get(statut='resolu').data['lignes']],
+                         ['SAV-LST-4'])
+        self.assertEqual(self._get(statut='resolu').data['lignes'][0]['a_faire'], 'cloturer')
+        retard = self._get(retard_sla='true')
+        self.assertEqual([x['reference'] for x in retard.data['lignes']], ['SAV-LST-1'])
+        self.assertEqual(retard.data['total'], 1)
+        self.assertEqual(self._get(q='lst-2').data['total'], 1)
+        self.assertEqual(self._get(priorite='haute').data['total'], 1)
+        self.assertEqual(self._get(client=self.client_obj.pk, limite=2).data['limite'], 2)
+
+    def test_valeur_hors_liste_400_et_droit_403(self):
+        from apps.sav.tests import auth
+        for params in ({'statut': 'ferme'}, {'retard_sla': 'peut-etre'},
+                       {'limite': 26}, {'client': 'abc'}):
+            self.assertEqual(self._get(**params).status_code, 400, params)
+        sans_droit = User.objects.create_user(
+            username='lst_crm', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='LstCrm',
+                                     permissions=['crm_voir']))
+        self.assertEqual(
+            auth(sans_droit).get('/api/django/sav/assistant/tickets/').status_code, 403)
+
+    def test_autre_societe_absente(self):
+        autre = Company.objects.create(nom='SAV Liste 2', slug='sav-liste-2')
+        user = User.objects.create_user(
+            username='lst_autre', password='x', company=autre,
+            role=Role.objects.create(company=autre, nom='LstAutre',
+                                     permissions=['sav_voir']))
+        from apps.sav.tests import auth
+        r = auth(user).get('/api/django/sav/assistant/tickets/')
+        self.assertEqual((r.data['total'], r.data['lignes']), (0, []))

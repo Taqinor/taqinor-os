@@ -234,6 +234,8 @@ urlpatterns = [
     # Copilote vague 2 — lectures et gestes de l'assistant (relais FastAPI).
     path('assistant/parc/', views_assistant.parc_client,
          name='sav-assistant-parc'),
+    path('assistant/tickets/', views_assistant.tickets_a_traiter,
+         name='sav-assistant-tickets'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),
