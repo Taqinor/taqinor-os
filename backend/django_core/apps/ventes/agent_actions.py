@@ -844,11 +844,42 @@ FACTURE_CHERCHER = AgentAction(
 )
 
 
+# VAD4 — prolonger un devis ENVOYÉ (route existante ``POST
+# devis/{id}/prolonger-validite/``, garde ``IsResponsableOrAdmin`` : un code
+# d'ÉCRITURE du module, ``ventes_modifier``). Un expiré se révise (409).
+PROLONGER_DEVIS = AgentAction(
+    key='ventes.devis.prolonger',
+    label='Prolonger la validité du devis envoyé (nouvelle date de fin)',
+    description=(
+        "Sert à : repousser la date de fin de validité d'un devis ENVOYÉ "
+        "(jamais plus courte) ; proposition puis confirmation obligatoire. "
+        "Ne pas utiliser pour : un devis expiré (réviser, pas prolonger : "
+        "ventes.devis.reviser) ni un brouillon. Exemple : « prolonge le devis "
+        "de Benali jusqu'au 15 décembre » → id, date=2026-12-15 ; sans date, "
+        "le délai de validité de la société. Résultat : nouvelle date de "
+        "validité ; aucun statut ne change."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/prolonger-validite/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis envoyé.'),
+        'date': {'type': 'string', 'format': 'date', 'title': 'Valable jusqu\'au',
+                 'description': 'Nouvelle date de fin (AAAA-MM-JJ), facultative.'},
+    }, 'required': ['id'], 'additionalProperties': False},
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Prolonger la validité de ce devis envoyé.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
-                           VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER)
+                           VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
+                           PROLONGER_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

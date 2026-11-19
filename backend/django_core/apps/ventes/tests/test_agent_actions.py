@@ -893,3 +893,30 @@ class FacturesAssistantTest(_BaseVenteAssistant):
             (FACTURE_CHERCHER.lot, FACTURE_CHERCHER.risk,
              FACTURE_CHERCHER.required_permission, FACTURE_CHERCHER.carte),
             (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_factures'))
+
+
+class CycleDevisAssistantTest(_BaseVenteAssistant):
+    """VAD4-VAD6 — prolonger, refuser, réviser : les routes EXISTANTES de
+    l'écran, appelées comme le relais les appelle (JWT de l'utilisateur, corps
+    = entrées de l'action) ; propositions à confirmer, objet nommé."""
+
+    def _ecriture_copilote(self, action, permission):
+        from apps.agent.registry import LOT_COPILOTE
+        self.assertEqual(
+            (action.lot, action.risk, action.required_permission, action.objets),
+            (LOT_COPILOTE, RISK_OUTWARD, permission, {'id': 'devis'}))
+        self.assertTrue(action.confirm_summary)
+        self.assertFalse(action.inputs.get('additionalProperties', True))
+        self.assertLessEqual(len(action.description), 600)
+
+    def test_prolonger_un_envoye_puis_refus_d_un_expire(self):
+        from apps.ventes.agent_actions import PROLONGER_DEVIS
+        self._ecriture_copilote(PROLONGER_DEVIS, 'ventes_modifier')
+        url = PROLONGER_DEVIS.endpoint.format(id=self.devis.pk)
+        resp = auth(self.user).post(url, {'date': '2030-01-15'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['date_validite'], '2030-01-15')
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.EXPIRE)
+        refus = auth(self.user).post(url, {}, format='json')
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertIn('réviser', refus.data['detail'])
