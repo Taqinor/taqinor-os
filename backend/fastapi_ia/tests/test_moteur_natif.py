@@ -736,7 +736,7 @@ class ChargeurTests(_Base):
         self.assertEqual(retour[0]["content"], _references("crm_visite_planifier", "visites_agenda"))
         self.assertEqual(retour[1]["type"], "text")
         self.assertTrue(retour[1]["text"].startswith("[Consignes de l'ERP pour le domaine visites]"))
-        self.assertEqual(r["outils_appeles"], ["outils_charger", "visites_agenda"])
+        self.assertEqual(r["outils_appeles"], ["visites_agenda"])  # le chargeur n'est jamais « fait »
 
     def test_domaine_inconnu_erreur_et_deja_charge(self):
         outils, _ = self._outils()
@@ -750,6 +750,29 @@ class ChargeurTests(_Base):
         self.assertEqual(charge["content"], _references("crm_lead_note", "crm_visite_planifier"))
         self.assertIsInstance(deja["content"], str)
         self.assertEqual(len(self.client.appels[1]["messages"][-1]["content"]), 3)  # aucune consigne
+
+    def test_panne_apres_le_seul_chargeur_reste_rejouable(self):
+        """Revue 2A (S2) — 529 juste après `outils_charger` : rien n'a été
+        écrit, le tour part sur LangChain (MoteurIndisponible) ; après un vrai
+        outil, la fin honnête ne nomme jamais le chargeur."""
+        outils, _ = self._outils()
+        charger = _rep([_appel("t1", "outils_charger", {"domaines": ["crm"]})], stop="tool_use")
+        with self.assertRaises(mn.MoteurIndisponible):
+            self.jouer([charger, RuntimeError("529 overloaded")], outils)
+        r = self.jouer([charger, _rep([_appel("t2", "crm_lead_note")], stop="tool_use"),
+                        RuntimeError("529 overloaded")], outils)
+        self.assertEqual((r["arret"], r["outils_appeles"]), (mn.ARRET_ERREUR, ["crm_lead_note"]))
+        self.assertNotIn("outils_charger", r["answer"])
+
+    def test_relais_ne_trace_pas_le_chargeur(self):
+        from app.services import relais_copilote as relais
+        outils, _ = self._outils()
+        appeles = []
+        traces = {o.nom: relais._tracer(o, appeles) for o in outils}
+        traces["outils_charger"].executer({"domaines": ["crm"]})
+        self.assertEqual(appeles, [])
+        traces["crm_lead_note"].executer({})
+        self.assertEqual(appeles, ["crm_lead_note"])
 
     def test_chargements_hors_budget_bornes(self):
         from app.services.moteur_natif import CHARGEMENTS_HORS_BUDGET

@@ -717,8 +717,13 @@ def _outil_metrique(ctx, allow_price: bool) -> list:
 
 def _tracer(outil, appeles: list):
     """L'outil, dont chaque appel est NOTÉ dans `appeles` (SQL et signalement
-    compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs."""
+    compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs.
+    Sauf le chargeur (`hors_budget`, vague 2) : il n'écrit rien, un tour où
+    lui seul a tourné reste rejouable sur LangChain."""
     import dataclasses
+
+    if outil.hors_budget:
+        return outil
 
     def executer(args, _f=outil.executer, _nom=outil.nom):
         appeles.append(_nom)
