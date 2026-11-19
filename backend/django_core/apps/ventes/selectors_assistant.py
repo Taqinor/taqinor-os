@@ -166,6 +166,25 @@ def _ligne_facture(facture):
     }
 
 
+def _factures_de_la_portee(user):
+    from authentication.scoping import scope_queryset
+    from .models import Facture
+
+    return scope_queryset(Facture.objects.filter(company_id=user.company_id),
+                          user, ['created_by'])
+
+
+def facture_de_la_portee(user, facture_id):
+    """VAD8 — la facture ``facture_id`` si elle est dans la portée de la liste
+    des factures de ``user`` (société + ``created_by``), sinon ``None``."""
+    if not getattr(user, 'company_id', None):
+        return None
+    return (_factures_de_la_portee(user)
+            .select_related('client', 'company', 'lead', 'devis__lead',
+                            'bon_commande__devis__lead')
+            .filter(pk=facture_id).first())
+
+
 def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
     """VAD3 — les factures de la portée de ``user`` (celle de la liste des
     factures : société + ``scope_queryset(['created_by'])``) qui répondent à
@@ -173,13 +192,10 @@ def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
     les plus récentes d'abord. ``{total, lignes}`` (contrat
     ``assistant_factures.json``)."""
     from apps.facturation.selectors import factures_avec_montant_du
-    from authentication.scoping import scope_queryset
-    from .models import Facture
 
     if not getattr(user, 'company_id', None):
         return {'total': 0, 'lignes': []}
-    qs = scope_queryset(Facture.objects.filter(company_id=user.company_id),
-                        user, ['created_by'])
+    qs = _factures_de_la_portee(user)
     if q:
         qs = _factures_du_texte(qs, user.company_id, q)
     if client_id is not None:

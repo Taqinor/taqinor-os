@@ -35,6 +35,7 @@ from .views import (
 from .views.assistant import CatalogueAssistantView  # COP2-V2
 from .views.assistant import ImpayesAssistantView  # copilote vague 2 (VAD2)
 from .views.assistant import FacturesAssistantView  # copilote vague 2 (VAD3)
+from .views.assistant import RelanceWhatsappAssistantView  # copilote vague 2 (VAD8)
 from apps.facturation.recouvrement import (  # ODX18 — mêmes vues sous facturation/
     FollowupLevelViewSet,
     ParametrageRelanceClientViewSet,  # ZFAC8
@@ -312,5 +313,10 @@ urlpatterns = [
     # ``assistant_factures.json``).
     path('assistant/factures/', FacturesAssistantView.as_view(),
          name='assistant-factures'),
+    # Copilote vague 2 (VAD8) — WhatsApp de relance d'une facture (modèle
+    # « relance » validé, opposition et contestation refusées).
+    path('assistant/factures/<int:pk>/relance-whatsapp/',
+         RelanceWhatsappAssistantView.as_view(),
+         name='assistant-relance-whatsapp'),
     path('', include(router.urls)),
 ]

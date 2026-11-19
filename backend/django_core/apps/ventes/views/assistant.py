@@ -317,6 +317,48 @@ class FacturesAssistantView(APIView):
         })
 
 
+class RelanceWhatsappAssistantView(APIView):
+    """VAD8 — le WhatsApp de RELANCE d'une facture, préparé pour l'assistant
+    (action ``ventes.facture.whatsapp_relance``, carte ``wa_message``) : texte
+    du modèle « relance » VALIDÉ de la société, lien wa.me que la personne
+    envoie elle-même ; opposition, contestation, facture non relançable et
+    numéro inexploitable refusés (409 nommé) — voir
+    ``domain/relance_assistant.py``. Portée de la liste des factures ; trace au
+    chatter de la facture. Sans le droit de voir les coordonnées du client,
+    ``wa_url`` vaut null."""
+
+    permission_classes = [IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')]
+    http_method_names = ['post', 'options']
+
+    @extend_schema(request=DA.RelanceWhatsappRequest,
+                   responses={200: DA.RelanceWhatsappResponse,
+                              400: D.ErreurDetail, 404: D.ErreurDetail,
+                              409: DA.ErreurRelanceWhatsapp})
+    def post(self, request, pk):
+        from rest_framework import status
+        from rest_framework.exceptions import NotFound
+        from ..domain.relance_assistant import RelanceRefusee, preparer_relance
+        from ..utils.corps import valider_corps
+        facture = SA.facture_de_la_portee(request.user, pk)
+        if facture is None:
+            raise NotFound('Facture introuvable.')
+        langue = valider_corps(request, DA.RelanceWhatsappRequest).get('langue') or 'fr'
+        try:
+            texte, wa_url = preparer_relance(request, facture, langue)
+        except RelanceRefusee as refus:
+            return Response(refus.corps, status=status.HTTP_409_CONFLICT)
+        if not getattr(request.user, 'can_view_client_pii', True):
+            wa_url = None
+        return Response({
+            'facture_id': facture.pk,
+            'reference': facture.reference,
+            'texte': texte,
+            'wa_url': wa_url,
+            'langue_servie': langue,
+            'lien': SA.lien_facture(facture.pk),
+        })
+
+
 # ── VAD7 — la taille d'un devis (aperçu puis écriture confirmée) ────────────
 
 PARAMETRES_TAILLE = [

@@ -1014,13 +1014,47 @@ TAILLE_DEVIS = AgentAction(
 )
 
 
+# VAD8 — préparer le WhatsApp de RELANCE d'une facture (``POST
+# ventes/assistant/factures/{id}/relance-whatsapp/``, gardes
+# ``IsResponsableOrAdmin`` + grille ``ventes_modifier``). Écriture INTERNE (trace
+# au chatter de la facture, lien public du PDF) — précédent
+# ``crm.lead.whatsapp_prepare`` : rien ne part, la personne envoie elle-même.
+# Texte = modèle « relance » VALIDÉ de la société ; aucune entrée libre.
+WHATSAPP_RELANCE = AgentAction(
+    key='ventes.facture.whatsapp_relance',
+    label='Préparer le WhatsApp de relance de la facture (texte validé, vous l\'envoyez)',
+    description=(
+        "Sert à : préparer le message WhatsApp de relance d'une facture due "
+        "(modèle « relance » de la société) et le lien wa.me ; rien n'est "
+        "envoyé, la personne l'envoie elle-même. Refusé pour une personne "
+        "opposée, une facture contestée, soldée ou non émise, un numéro "
+        "invalide. Ne pas utiliser pour : écrire un autre texte, envoyer un "
+        "e-mail, ni une promesse de paiement. Exemple : « relance-le » sur une "
+        "ligne d'impayé → id de la facture. Résultat : texte et lien wa.me ; "
+        "trace au chatter."
+    ),
+    endpoint='/api/django/ventes/assistant/factures/{id}/relance-whatsapp/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant de la facture.'),
+        'langue': {'type': 'string', 'enum': ['fr', 'darija'],
+                   'description': 'Langue du modèle (défaut fr).'},
+    }, 'required': ['id'], 'additionalProperties': False},
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_INTERNAL,
+    carte='wa_message',
+    lot=LOT_COPILOTE,
+    objets={'id': 'facture'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
                            PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,
-                           TAILLE_APERCU, TAILLE_DEVIS)
+                           TAILLE_APERCU, TAILLE_DEVIS, WHATSAPP_RELANCE)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

@@ -1091,3 +1091,61 @@ class TailleAssistantTest(_BaseVenteAssistant):
             'nouveau_total_ttc'})
         self.assertLessEqual({'ancien_total_ttc', 'nouveau_total_ttc'},
                              set(TAILLE_DEVIS.inputs['required']))
+
+
+class RelanceWhatsappAssistantTest(_BaseVenteAssistant):
+    """VAD8 — le WhatsApp de relance : modèle « relance » validé forcé, lien
+    wa.me, trace au chatter ; personne opposée, contestée, brouillon refusés
+    (409 nommé, rien de tracé) ; portée société."""
+
+    def _url(self, facture):
+        from apps.ventes.agent_actions import WHATSAPP_RELANCE
+        return WHATSAPP_RELANCE.endpoint.format(id=facture.pk)
+
+    def _traces(self, facture):
+        from apps.ventes.models_facturation import FactureActivity
+        return FactureActivity.objects.filter(facture=facture).count()
+
+    def test_relance_preparee_texte_valide_et_trace(self):
+        facture = self._facture('21', retard_jours=9)
+        resp = auth(self.user).post(self._url(facture), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'facture_id', 'reference', 'texte',
+                                          'wa_url', 'langue_servie', 'lien'})
+        self.assertTrue(resp.data['wa_url'].startswith('https://wa.me/'))
+        self.assertEqual(resp.data['langue_servie'], 'fr')
+        self.assertEqual(self._traces(facture), 1)
+
+    def test_opposition_contestee_et_brouillon_refuses_sans_trace(self):
+        lead = Lead.objects.create(company=self.company, nom='Lahlou',
+                                   prenom='Driss', ne_plus_contacter=True)
+        opposee = self._facture('22', retard_jours=9, lead=lead)
+        contestee = self._facture('23', retard_jours=9,
+                                  contestee_le=timezone.localdate())
+        brouillon = self._facture('24', statut=Facture.Statut.BROUILLON)
+        for facture, code in ((opposee, 'opposition'),
+                              (contestee, 'non_relancable'),
+                              (brouillon, 'non_relancable')):
+            with self.subTest(code=code, facture=facture.reference):
+                resp = auth(self.user).post(self._url(facture), {}, format='json')
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data['code'], code)
+                self.assertEqual(self._traces(facture), 0)
+
+    def test_autre_societe_404_et_langue_hors_liste_400(self):
+        facture = self._facture('25', retard_jours=9)
+        hors = auth(self._hors_societe()).post(self._url(facture), {}, format='json')
+        self.assertEqual(hors.status_code, 404)
+        refus = auth(self.user).post(self._url(facture), {'langue': 'en'},
+                                     format='json')
+        self.assertEqual(refus.status_code, 400)
+
+    def test_action_interne_texte_jamais_ecrit_par_le_modele(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import WHATSAPP_RELANCE
+        self.assertEqual(
+            (WHATSAPP_RELANCE.risk, WHATSAPP_RELANCE.required_permission,
+             WHATSAPP_RELANCE.carte, WHATSAPP_RELANCE.lot, WHATSAPP_RELANCE.objets),
+            (RISK_INTERNAL, 'ventes_modifier', 'wa_message', LOT_COPILOTE,
+             {'id': 'facture'}))
+        self.assertEqual(set(WHATSAPP_RELANCE.inputs['properties']), {'id', 'langue'})

@@ -124,6 +124,7 @@ ROUTES_EXEMPTEES = {
     'assistant-catalogue': 'catalogue vendable de la société lu par l’assistant (aucun devis).',
     'assistant-impayes': 'impayés de FACTURES lus par l’assistant — portée facturation.',
     'assistant-factures': 'recherche de FACTURES par l’assistant — portée facturation.',
+    'assistant-relance-whatsapp': 'relance WhatsApp d’une FACTURE (assistant) — portée facturation.',
     'relances-list': 'relances de FACTURES — portée facturation.',
     'balance-agee': 'balance âgée des factures — portée facturation.',
     'client-releve': 'relevé client (factures) — portée facturation.',
