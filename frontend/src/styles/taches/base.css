@@ -715,7 +715,9 @@
 .tch .squelette-section { margin-top: 22px; }
 .tch .squelette-section > .os.titre-section { width: 96px; height: 12px; margin: 0 var(--tch-gouttiere) 8px; }
 .tch .squelette-section + .squelette-section > .os.titre-section { width: 150px; }
-@media (prefers-reduced-motion: no-preference) {
+/* R4-41 — le repli de chargement d'un écran (module.config.jsx) : le grand titre est connu (texte, même pixel que le vrai)
+   ou, pour la page d'un projet dont le nom ne l'est pas encore, une barre de la hauteur d'une ligne de titre. */
+.tch.tch-chargement .entete-titre .os.titre-os { width: 9rem; max-width: 60%; height: 1.75rem; margin-block: 0.2rem; }@media (prefers-reduced-motion: no-preference) {
   .tch .squelette .os { animation: tch-os-respire 1.4s var(--ease-standard) infinite alternate; }
 }
 @keyframes tch-os-respire { from { opacity: 0.45; } to { opacity: 0.8; } }

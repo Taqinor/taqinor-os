@@ -4,7 +4,7 @@ import process from 'node:process'
 import { act, render, screen, within } from '@testing-library/react'
 import { Suspense } from 'react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { appNavItems } from '../../lib/apps/ActiveAppContext'
 import { MANIFESTES } from '../../lib/apps/appSkus'
@@ -12,7 +12,7 @@ import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
 import { estAutoriseEntree } from '../../router/moduleGating'
 import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
 import { configurerGestes, proposerAnnuler, reinitialiserGestes } from './lib/gestes'
-import config from './module.config'
+import config, { CHARGEURS, prechargerEcrans, reinitialiserPrechargement } from './module.config'
 import CoquilleTaches from './coquille/CoquilleTaches'
 import { useEnLigne } from './lib/enLigne'
 
@@ -53,6 +53,65 @@ function monter(url) {
 }
 
 afterEach(() => { vi.restoreAllMocks() })
+
+/* R4-41 — PREMIER describe du fichier, exprès : un écran paresseux ne suspend qu'à son premier rendu (ensuite son morceau
+   est là) ; ces deux tests voient donc des morceaux pas encore arrivés. */
+describe('R4-41 — pas de page blanche au premier passage sur un écran', () => {
+  // le préchargement lancé par le montage d'un écran ne tourne pas pour de vrai pendant ces tests (il appellerait les espions)
+  beforeEach(() => { reinitialiserPrechargement(); vi.stubGlobal('requestIdleCallback', () => 0) })
+  afterEach(() => { vi.unstubAllGlobals(); reinitialiserPrechargement() })
+
+  it('pendant le morceau d\'un écran, la coquille du module reste montée : titre, même enveloppe, squelette', async () => {
+    const { container } = monter('/taches/projets')
+    // synchrone : le morceau n'est pas encore là ; le repli du module (pas le vide, pas celui de l'ERP) tient la place
+    const repli = container.querySelector('.tch.tch-chargement')
+    expect(repli).not.toBeNull()
+    expect(repli).toHaveAttribute('data-ecran', 'projets')
+    expect(repli.querySelector('.entete-titre')).toHaveTextContent('Projets')
+    expect(within(repli).queryByRole('heading')).toBeNull() // le repli ne pose pas de titre : le vrai écran a le sien
+    expect(within(repli).getByRole('status', { name: 'Chargement' })).toBeInTheDocument() // squelette dès la 1re image
+    // le vrai écran remplace le repli : une seule coquille, plus de repli
+    expect(await screen.findByRole('button', { name: 'Chercher dans mes tâches' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(container.querySelector('.tch-chargement')).toBeNull()
+    expect(container.querySelectorAll('.tch')).toHaveLength(1)
+  })
+
+  it('les écrans qui s\'ouvrent en pleine largeur gardent cette largeur dans leur repli ; la page d\'un projet, sans titre connu, a une barre', () => {
+    const agenda = monter('/taches/agenda')
+    expect(agenda.container.querySelector('.tch-chargement')).toHaveAttribute('data-largeur', 'pleine')
+    agenda.unmount()
+    const projet = monter('/taches/projets/42')
+    const repli = projet.container.querySelector('.tch-chargement')
+    expect(repli.querySelector('.entete-titre .os')).not.toBeNull()
+    expect(repli.querySelector('.entete-titre').textContent).toBe('')
+  })
+
+  it('à l\'entrée dans le module, les écrans des onglets se chargent à l\'inactivité, un par un, une seule fois', async () => {
+    vi.stubGlobal('requestIdleCallback', (rappel) => setTimeout(rappel, 0))
+    const espions = ['atrier', 'projets', 'agenda', 'aujourdhui', 'projet'].map((cle) => vi.spyOn(CHARGEURS, cle).mockResolvedValue({ default: () => null }))
+    const fin = prechargerEcrans()
+    // rien avant l'inactivité : ni le premier rendu ni le réseau du premier écran n'attendent après lui
+    espions.forEach((espion) => expect(espion).not.toHaveBeenCalled())
+    expect(prechargerEcrans()).toBe(fin) // un second appel ne relance rien
+    await fin
+    espions.forEach((espion) => expect(espion).toHaveBeenCalledTimes(1))
+    await prechargerEcrans()
+    espions.forEach((espion) => expect(espion).toHaveBeenCalledTimes(1))
+  })
+
+  it('un échec de réseau n\'arrête rien : le préchargement se retente à l\'écran suivant', async () => {
+    vi.stubGlobal('requestIdleCallback', (rappel) => setTimeout(rappel, 0))
+    const echec = vi.spyOn(CHARGEURS, 'atrier').mockRejectedValueOnce(new Error('réseau'))
+    const projets = vi.spyOn(CHARGEURS, 'projets').mockResolvedValue({ default: () => null })
+    ;['agenda', 'aujourdhui', 'projet'].forEach((cle) => vi.spyOn(CHARGEURS, cle).mockResolvedValue({ default: () => null }))
+    await prechargerEcrans()
+    expect(echec).toHaveBeenCalledTimes(1)
+    expect(projets).not.toHaveBeenCalled() // arrêté au premier échec
+    await prechargerEcrans() // le prochain écran monté relance
+    expect(echec).toHaveBeenCalledTimes(2)
+    expect(projets).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('TCH43 — routes du module', () => {
   it('déclare exactement les 13 routes de la table api.md §7, toutes sous /taches', () => {
