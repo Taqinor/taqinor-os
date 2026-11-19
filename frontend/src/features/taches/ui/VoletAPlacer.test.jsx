@@ -48,6 +48,16 @@ describe('TCH105 — VoletAPlacer', () => {
     expect(screen.getByRole('button', { name: /Préparer formation/ })).toHaveTextContent('45 min')
   })
 
+  it('R4 couture — une tâche SANS durée n\'affiche aucune durée (jamais « 30 min » inventé)', () => {
+    const sans = { ...aujourdhuiEnPlus(), id: 52, titre: 'Appeler le fournisseur', estimation_minutes: null }
+    render(<VoletAPlacer aPlacer={[sans, { ...aujourdhuiEnPlus(), id: 53, titre: 'Durée nulle', estimation_minutes: 0 }]}
+      aujourdhui={AUJOURDHUI} onChoisir={vi.fn()} />)
+    const ligne = screen.getByRole('button', { name: /Appeler le fournisseur/ })
+    expect(ligne).not.toHaveTextContent('min')
+    expect(ligne.querySelector('.d')).toBeNull()
+    expect(screen.getByRole('button', { name: /Durée nulle/ })).not.toHaveTextContent('min')
+  })
+
   it('toucher choisit (une seule), la consigne nomme la tâche, « Annuler la sélection » libère', () => {
     const onChoisir = vi.fn()
     const { rerender } = render(<VoletAPlacer aPlacer={aPlacer()} aujourdhui={AUJOURDHUI} onChoisir={onChoisir} />)
