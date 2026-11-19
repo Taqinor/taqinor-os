@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { apercu, oublierApercus } from '../lib/fiche'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
 import LigneTache from './LigneTache'
@@ -90,6 +91,17 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     const garder = screen.getByRole('button', { name: 'Garder' })
     expect(garder.querySelector('svg')).toBeNull()
     expect(garder).toHaveTextContent(/^Garder$/)
+  })
+})
+
+describe('R3-061 — chaque ligne dépose ce qu\'elle sait de sa tâche : la fiche s\'ouvre dessus sans attendre', () => {
+  afterEach(() => { oublierApercus() })
+
+  it('une ligne de tâche rendue : son item est l\'aperçu de la fiche ; changé, l\'aperçu suit', () => {
+    const { rerender } = monter()
+    expect(apercu(20)).toMatchObject({ id: 20, titre: 'Devis Settat', lock_version: 4 })
+    rerender(<div role="list"><LigneTache item={{ ...item(), titre: 'Devis Settat signé', lock_version: 5 }} aujourdhui={AUJOURDHUI} /></div>)
+    expect(apercu(20)).toMatchObject({ titre: 'Devis Settat signé', lock_version: 5 })
   })
 })
 

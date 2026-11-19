@@ -7,6 +7,7 @@ import {
 } from '../../../ui/DropdownMenu'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
+import { retenirApercu } from '../lib/fiche'
 import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/textes'
 
 /* ============================================================================
@@ -282,6 +283,8 @@ export default function LigneTache({
 }) {
   const cadre = useRef(null)
   const [menuOuvert, setMenuOuvert] = useState(false)
+  // R3-061 — ce que la ligne sait de sa tâche est l'aperçu de la fiche : elle s'ouvre dessus, sans « Chargement… »
+  useEffect(() => { retenirApercu(item) }, [item])
   const activite = item.type === 'activite'
   const fait = item.statut === 'fait'
   const attente = item.statut === 'en_attente' || Boolean(item.bloquee_par) || Boolean(item.en_attente_de)

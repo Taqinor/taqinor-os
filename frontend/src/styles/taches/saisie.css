@@ -248,6 +248,19 @@
   .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau { grid-template-columns: 216px minmax(0, 1fr); }
 }
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
+/* R3-061 — les blocs que la lecture complète apporte (notes, check-list, Plus) gardent leur place dès la 1re image :
+   même hauteur que le bloc qui arrive (rangées de 44 px), aucun saut quand il remplace la place réservée */
+.tch .squelette {
+  height: calc(var(--tch-squelette-lignes, 1) * 44px); border-radius: var(--tch-rayon-champ);
+  background: var(--tch-panneau); opacity: 0.7;
+}
+.tch .squelette[data-squelette="titre"] { height: 44px; margin-top: 4px; width: 70%; }
+.tch .squelette[data-squelette="puces"] { height: 36px; margin-top: 14px; width: 85%; border-radius: 999px; }
+.tch .squelette[data-squelette="plus"] { margin-top: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch .squelette { animation: tch-squelette 1.4s var(--ease-standard) infinite alternate; }
+}
+@keyframes tch-squelette { from { opacity: 0.45; } to { opacity: 0.8; } }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
 .tch .fiche-ligne {
   display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; width: 100%; text-align: left;

@@ -12,7 +12,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
-import { signalerEcrite } from '../lib/fiche'
+import { apercu, signalerEcrite } from '../lib/fiche'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import {
   aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
@@ -261,8 +261,23 @@ function RappelOuvert({ rappel, onRepeter }) {
   )
 }
 
+/** R3-061 — une place réservée (même hauteur que le bloc qui arrive) : la lecture complète le remplace sans saut. */
+function Squelette({ nom, lignes = 1 }) {
+  return <div className="squelette" data-squelette={nom} aria-hidden="true" style={{ '--tch-squelette-lignes': lignes }} />
+}
+
+/** La lecture complète (`GET taches/{id}/`) porte la check-list détaillée ; l'aperçu d'une ligne (ITEM) ne l'a pas. */
+const estComplete = (t) => Array.isArray(t?.elements_checklist)
+
+/** R3-061 — une lecture lancée à l'ouverture qui revient APRÈS une écriture ne la défait pas (version plus ancienne). */
+const garderLaPlusRecente = (lue) => (avant) => (
+  estComplete(avant) && String(avant.id) === String(lue?.id) && (avant.lock_version ?? -1) > (lue?.lock_version ?? -1) ? avant : lue
+)
+
 export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), section, focus }) {
-  const [tache, setTache] = useState(null)
+  // R3-061 — la fiche s'ouvre sur l'aperçu de la ligne (titre, Quand, projet, priorité, ★, version) : lisible et
+  // modifiable à la première image ; notes, check-list et « Plus » ont leur place réservée jusqu'à la lecture
+  const [tache, setTache] = useState(() => apercu(id))
   const [chargement, setChargement] = useState(true)
   const [echec, setEchec] = useState('')
   const [erreurs, setErreurs] = useState({})
@@ -280,13 +295,13 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const [fichePour, setFichePour] = useState(id)
   if (fichePour !== id) {
     setFichePour(id)
-    setTache(null); setChargement(true); setEchec(''); setErreurs({}); setSaisie({}); setConflit(null)
+    setTache(apercu(id)); setChargement(true); setEchec(''); setErreurs({}); setSaisie({}); setConflit(null)
     setAvertissements([]); setOuvert(''); setQuestionTitres(false); setPlusOuvert(false); setSupprimerDemande(0)
   }
 
   // lecture (et relecture après un « Annuler ») : la réponse n'est gardée que pour la fiche encore ouverte
   const charger = useCallback(() => lireTache(id)
-    .then((r) => { if (courant.current === id) { setTache(r.data); setEchec('') } })
+    .then((r) => { if (courant.current === id) { setTache(garderLaPlusRecente(r.data)); setEchec('') } })
     .catch((err) => { if (courant.current === id) setEchec(classerErreur(err).code === 'introuvable' ? 'Introuvable.' : frenchError(err)) })
     .finally(() => { if (courant.current === id) setChargement(false) }), [id])
 
@@ -447,6 +462,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const titre = saisie.titre ?? tache?.titre ?? ''
   const notes = saisie.notes ?? tache?.notes ?? ''
   const points = tache?.elements_checklist ?? []
+  const complete = estComplete(tache)
 
   /** Envoie le texte en cours d'un champ (titre, notes). La frappe reste à l'écran tant qu'elle est plus récente que
    *  ce qui est parti : on ne retire la saisie que si elle n'a pas bougé pendant l'envoi. */
@@ -518,8 +534,17 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
       ) : null}
       {/* la fiche vit dans l'adresse (`?tache=`) : le retour arrière la ferme déjà, pas d'entrée d'historique en plus */}
       <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false} variante="panneau">
-        {chargement && !tache ? <p className="vide-phrase" role="status">Chargement…</p> : null}
-        {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
+        {/* R3-061 — sans aperçu (lien direct, rappel) : la fiche a déjà sa forme ; jamais une petite feuille qui saute */}
+        {chargement && !tache && !echec ? (
+          <div className="fiche-corps">
+            <p className="sr" role="status">Chargement de la tâche</p>
+            <Squelette nom="titre" />
+            <Squelette nom="puces" />
+            <div className="fiche-section"><Squelette nom="notes" /></div>
+            <div className="fiche-section"><Squelette nom="checklist" lignes={2} /></div>
+          </div>
+        ) : null}
+        {echec && !complete ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (
           <div className="fiche-corps">
             {conflit ? <BandeauConflit heure={heureDuConflit(conflit.actuel)} onGarder={garderLaMienne} onPrendre={prendreLautre} /> : null}
@@ -652,7 +677,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
 
             <div className="fiche-section">
               <label className="fiche-label" htmlFor="fiche-notes">Notes</label>
-              <textarea
+              {/* R3-061 — l'aperçu n'a pas les notes : leur place est gardée, jamais un champ vide qu'on écraserait */}
+              {complete ? <textarea
                 id="fiche-notes"
                 className="saisie-champ fiche-notes"
                 // R2-045 — une invite, un nom lu, et une seule ligne quand c'est vide (le champ grandit avec le texte)
@@ -663,21 +689,24 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
                 value={notes}
                 onChange={(e) => taper('notes', e.target.value)}
                 onBlur={() => enregistrerTexte('notes')}
-              />
+              /> : <Squelette nom="notes" />}
               <Erreur message={erreurs.notes} />
             </div>
 
             <div className="fiche-section">
               <p className="fiche-label">
                 <span>Check-list</span>
-                {points.length > 0 ? <span className="compte chiffres">{`${points.filter((p) => p.fait).length}/${points.length}`}</span> : null}
+                {complete && points.length > 0 ? <span className="compte chiffres">{`${points.filter((p) => p.fait).length}/${points.length}`}</span> : null}
+                {!complete && tache.checklist?.total > 0 ? <span className="compte chiffres">{`${tache.checklist.faits}/${tache.checklist.total}`}</span> : null}
               </p>
-              <CheckList
-                key={tache.id}
-                tache={tache}
-                onChange={(liste) => (liste ? setTache((t) => ({ ...t, elements_checklist: liste })) : charger())}
-                onErreur={erreur}
-              />
+              {complete ? (
+                <CheckList
+                  key={tache.id}
+                  tache={tache}
+                  onChange={(liste) => (liste ? setTache((t) => ({ ...t, elements_checklist: liste })) : charger())}
+                  onErreur={erreur}
+                />
+              ) : <Squelette nom="checklist" lignes={(tache.checklist?.total ?? 0) + 1} />}
               <Erreur message={erreurs.checklist} />
             </div>
 
@@ -687,7 +716,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
               <span className="indice" aria-hidden="true">Répéter, durée, étiquettes, en attente de…</span>
               <ChevronDown className="i i-16" aria-hidden="true" />
             </button>
-            {plusOuvert ? (
+            {plusOuvert && !complete ? <Squelette nom="plus" lignes={4} /> : null}
+            {plusOuvert && complete ? (
               <FichePlus
                 tache={tache}
                 aujourdhui={aujourdhui}
