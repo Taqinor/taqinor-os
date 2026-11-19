@@ -2106,6 +2106,8 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   l'ordre de la journée), `raison` nulle, et `geste_propose` = `"alleger"` ; sinon `lignes` inchangées (non gardées)
   et `geste_propose` nul. `garder_n` reste N de Proposé (0 n'est pas « objectif atteint » : comparer `faites` à
   `objectif.nb`). Une requête de plus (l'historique de la capacité) : plafond 22 → 23.
+- **« Où j'en suis ? »** (`point.json`, R3-006) : + `faites`, `minutes_restantes`, `deborde_minutes`, mêmes
+  définitions que `priorites/` (et `faites` = `progression.faites`) ; aucune requête de plus.
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
