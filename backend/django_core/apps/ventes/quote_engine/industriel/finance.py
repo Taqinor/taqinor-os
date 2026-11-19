@@ -681,6 +681,11 @@ def _nom_scenario(s, L):
             if variation is not None else nom)
 
 
+def retour_scenario(scenario):
+    """Le délai de retour imprimé d'un scénario de sensibilité."""
+    return scenario.get("retour_ans")
+
+
 def _tableau_sensibilites(d, argent, fmt_mad, L):
     """AMOT97 (D-ACI-15=a) — le scénario central puis chaque scénario servi
     (``argent.sensibilites``) : délai de retour, TRI, cumul net de la dernière
