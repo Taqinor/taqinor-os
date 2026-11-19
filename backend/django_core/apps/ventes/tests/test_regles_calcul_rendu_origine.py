@@ -218,6 +218,9 @@ CLES_HORS_RENDU_ORIGINE = (
     # AMOT123/AMOT126 (04/11/2026) — drapeau de GABARIT du niveau 12 (carte
     # d'option C&I et une-page d'hier) : aucun chiffre.
     ('regles_0411_historique',),
+    # D-SENS-1 (19/11/2026) — drapeau de GABARIT du niveau 14 (retour des
+    # scénarios de sensibilité à l'entier servi d'hier) : aucun chiffre.
+    ('regles_sensibilites_historique',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),
