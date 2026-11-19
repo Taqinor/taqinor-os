@@ -249,9 +249,7 @@ def _garantie_ans(produit):
     serait un mensonge sur une garantie de six mois.
     """
     mois = _num(getattr(produit, 'garantie_mois', None), 0.0)
-    if mois < 12:
-        return None
-    return int(mois // 12)
+    return None if mois < 12 else int(mois // 12)
 
 
 def _materiel_de_composition(lignes, roles, substitutions=None):
@@ -1456,7 +1454,9 @@ def deriver(devis, data):
     # la carte Recommandé d'un dossier dont l'optimum EST déjà le devis — le
     # cas le plus fréquent d'un devis bien dimensionné.
     offres, champs_vus = [], {}
-    for cle in ('recommande', 'eco', 'max'):
+    # COP2-V3 — un devis à composition IMPOSÉE ne sert que « Recommandé » :
+    # Éco / Max composeraient un autre kit que celui imposé.
+    for cle in cles_tailles_servies(devis):
         nb_panneaux = champs.get(cle)
         entree = stockees.get(cle) or {}
         config = entree.get('config') or {}
@@ -2162,3 +2162,11 @@ def _ecrire_colonne(devis, valeur):
     type(devis).objects.filter(pk=devis.pk).update(
         offres_tailles_config=valeur)
     devis.offres_tailles_config = valeur
+
+
+# COP2-V3 — pont de bas de fichier (anti-cycle) : les tailles servies d'un
+# devis à composition imposée. Le marqueur est effacé par les deux gestes
+# explicites (« appliquer » / « régénérer ») dans ``views/devis_etudes.py``.
+from apps.ventes.domain.composition_imposee import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    cles_tailles_servies,
+)

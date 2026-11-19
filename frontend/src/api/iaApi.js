@@ -152,13 +152,25 @@ iaApi_instance.interceptors.response.use(
   }
 )
 
+// COP2-W2 — capacités de l'assistant pour CE compte (`limite_question`, `images_acceptees`). L'adresse vit ICI,
+// à UN seul endroit : la rapprocher du service si celui-ci la sert ailleurs.
+export const URL_CAPACITES_ASSISTANT = '/sql-agent/capacites'
+
 const iaApi = {
   // AIC9 — `contexte` {ecran, lead_id} facultatif (écran d'où part la question).
   // AIC91 — `progressionId` facultatif : identifiant aléatoire sondé par `getProgression`.
-  queryAgent: (question, contexte = null, progressionId = null) =>
+  // COP2-W2 — `images` facultatif : `[{media_type: 'image/jpeg', data: <base64 SANS préfixe data:>}]`,
+  // déjà réduites par l'écran ; la clé est OMISE quand il n'y en a pas (corps identique à l'ancien).
+  queryAgent: (question, contexte = null, progressionId = null, images = null) =>
     iaApi_instance.post('/sql-agent/query', {
       question, ...(contexte ? { contexte } : {}), ...(progressionId ? { progression_id: progressionId } : {}),
+      ...(Array.isArray(images) && images.length ? { images } : {}),
     }, { timeout: DELAI_AGENT_SQL_MS }),
+
+  // COP2-W2 — lecture seule, à l'ouverture de l'assistant ; l'appelant retombe sur les valeurs par défaut
+  // (2000 caractères, pas d'image) si elle échoue.
+  getCapacitesAssistant: () =>
+    iaApi_instance.get(URL_CAPACITES_ASSISTANT, { suppressErrorToast: true }),
 
   // AIC91 — étapes du tour en cours `{etapes: [{libelle, t}], fini}`
   // (contrat assistant_reponse.json → `progression`), sondées toutes les 1,5 s.

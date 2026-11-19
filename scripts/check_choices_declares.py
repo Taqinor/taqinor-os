@@ -650,6 +650,13 @@ REFUS = {
     # liste littérale : rien de déclarable.
     "frontend/src/lib/apps/useInstalledApps.js": [
         ("miroir des `sku`", "SANS_SOURCE")],
+    # Copilote vague 2A (FND10, 19/11/2026) — la table des ecrans que
+    # l'assistant peut ouvrir : sa source est le CONTRAT
+    # `apps/agent/contract_samples/assistant_ecrans.json` (un fichier JSON, pas
+    # un champ `choices=`), et la parite est tenue par un test qui EXECUTE la
+    # comparaison (`cartes.test.jsx`, « le miroir ecrans.js est egal au contrat »).
+    "frontend/src/features/ia/cartes/ecrans.js": [
+        ("MIROIR de la table des écrans", "SANS_SOURCE")],
     "frontend/src/features/installations/InterventionFieldExecution.materiel.test.jsx": [
         ("InterventionPreparationSerializer", "TEST")],
     "frontend/src/features/installations/statuses.js": [

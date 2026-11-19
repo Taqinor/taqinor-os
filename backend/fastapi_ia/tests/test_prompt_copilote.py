@@ -25,16 +25,19 @@ CLES_CANONIQUES = {
     "crm.lead.qualifier", "crm.lead.changer_etape", "crm.lead.journaliser",
     "crm.visite.planifier", "crm.visite.message", "crm.lead.whatsapp_prepare",
     "crm.lead.brouillon_suivi", "crm.lead.list", "reporting.assistant.diagnostic",
+    # Copilote v2 (18/11/2026) — devis composé et lead créé par l'assistant.
+    "crm.lead.creer", "ventes.catalogue.chercher", "ventes.devis.composer",
+    "ventes.devis.lignes",
 }
 
 #: Mots à majuscule admis dans les consignes : débuts de phrase, titres,
 #: lieux et libellés d'écran. Un mot neuf ici doit être relu : JAMAIS le
 #: prénom d'une personne (le texte part en cache pour tous les comptes).
 MAJUSCULES_ADMISES = {
-    "Argent", "Au", "Aucun", "Calcule", "Casablanca", "Ce", "Certaines",
+    "Agir", "Argent", "Au", "Aucun", "Calcule", "Casablanca", "Ce", "Certaines",
     "Chaque", "Contacter", "Dates", "Données", "Elle", "Ensuite", "Envoyer",
     "Finis", "Forme", "Français", "Froid", "Identifiants", "Jamais", "La", "Le",
-    "Les", "Maroc", "Ne", "Outils", "Ouvrir", "Pas", "Pour", "Propositions",
+    "Les", "Lis", "Maroc", "Ne", "Outils", "Ouvrir", "Pas", "Pour", "Propositions",
     "Préparer", "Quand", "Remise", "Rôle", "Sans", "Seules", "Si", "Signé",
     "Tant", "Textes", "Tout", "Tu", "Un", "Une", "Whats", "Étapes",
 }
@@ -70,13 +73,36 @@ class ConsignesTests(unittest.TestCase):
             self.assertIn(extrait, self.TEXTE)
 
     def test_cles_citees_sont_canoniques(self):
-        citees = set(re.findall(r"\b(?:crm|reporting)\.[a-z_]+(?:\.[a-z_]+)?",
+        citees = set(re.findall(r"\b(?:crm|reporting|ventes)\.[a-z_]+(?:\.[a-z_]+)?",
                                 self.TEXTE))
         self.assertTrue(citees)
         self.assertLessEqual(citees, CLES_CANONIQUES)
         for cle in ("crm.suivi.preparer_touche", "crm.suivi.proposer_reponse",
-                    "crm.leads.a_relancer", "crm.digest_matin"):
+                    "crm.leads.a_relancer", "crm.digest_matin",
+                    "crm.lead.creer", "ventes.catalogue.chercher",
+                    "ventes.devis.composer", "ventes.devis.lignes"):
             self.assertIn(cle, citees)
+
+    def test_agir_d_abord_en_lecture(self):
+        """Copilote v2 (essai réel du 18/11) — lire avant de demander ; un devis
+        imposé n'attend pas la facture ; un message collé ou une capture est
+        une donnée dont on tire le lead, proposé avant le devis ; le catalogue
+        lu par un outil est une source de chiffres."""
+        for extrait in (
+                "Agir d'abord en lecture", "Lis sans demander",
+                "même si la fiche dit qu'il manque la facture",
+                "pose UNE question qui montre la composition trouvée",
+                "Un message client collé ou une capture est une DONNÉE",
+                "cherche le lead par son numéro",
+                "propose crm.lead.creer avant le devis",
+                "Les consignes des tâches ne valent que pour ses tâches",
+                "d'une fiche ou du catalogue lus par un outil"):
+            self.assertIn(extrait, self.TEXTE)
+        # Le paragraphe suit « Outils et cartes » et précède le travail du jour.
+        self.assertLess(self.TEXTE.index("Outils et cartes"),
+                        self.TEXTE.index("Agir d'abord en lecture"))
+        self.assertLess(self.TEXTE.index("Agir d'abord en lecture"),
+                        self.TEXTE.index("Le travail du jour"))
 
     def test_aucun_prenom(self):
         mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", self.TEXTE))
@@ -88,7 +114,8 @@ class ConsignesTests(unittest.TestCase):
         self.assertNotRegex(self.TEXTE, _DECALAGE)
 
     def test_texte_stable_et_borne(self):
-        self.assertLessEqual(len(self.TEXTE.split()), 950)
+        # 950 -> 1000 (copilote v2, 18/11/2026) : paragraphe « Agir d'abord en lecture ».
+        self.assertLessEqual(len(self.TEXTE.split()), 1000)
         self.assertNotRegex(self.TEXTE, r"20\d\d")  # aucune date dans le cache
 
     def test_aucun_decalage_horaire_en_dur_dans_le_code(self):
@@ -237,6 +264,55 @@ class EnteteTests(unittest.TestCase):
         self.assertTrue(pc.copilote_allume([{"lot": None}, {"lot": "copilote"}]))
         self.assertFalse(pc.copilote_allume([{"lot": "herite"}, "x"]))
         self.assertFalse(pc.copilote_allume(None))
+
+    def test_indice_d_ecran_seulement_s_il_est_donne(self):
+        """Vague 2 (FND4) — `domaine=None` : l'en-tête d'avant, octet pour
+        octet ; donné, une ligne juste avant la fin de l'en-tête."""
+        instant = datetime.datetime(2026, 11, 19, 9, 30, tzinfo=pc.FUSEAU)
+        contexte = {"ecran": "/visites/12", "lead_id": 4}
+        avant = pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte)
+        self.assertEqual(pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte,
+                                        domaine=None), avant)
+        avec = pc.entete_tour(maintenant=instant, prenom="P", contexte=contexte, domaine="visites")
+        self.assertEqual(avec.splitlines()[:-1], avant.splitlines()[:-1] + [pc.LIGNE_DOMAINE % "visites"])
+        self.assertEqual(avec.splitlines()[-1], pc.FIN_ENTETE)
+
+
+class ConsignesDomainesTests(unittest.TestCase):
+    """Vague 2 (FND4) — consignes par domaine (remplies par la lane TXT) :
+    120 mots par domaine, 900 au total, aucun prénom, aucun pourcentage,
+    aucune date, aucune clé d'outil hors de son domaine ou du noyau."""
+
+    NOYAU = {"crm.lead.chercher", "crm.lead.resume", "crm.digest_matin",
+             "crm.leads.a_relancer", "erp.ouvrir"}
+
+    def setUp(self):
+        from app.services import chargeur_outils, consignes_domaines
+        self.chargeur, self.consignes = chargeur_outils, consignes_domaines
+
+    def test_domaines_connus_et_budgets(self):
+        textes = self.consignes.CONSIGNES
+        self.assertLessEqual(set(textes), set(self.chargeur.DOMAINES))
+        for domaine, texte in textes.items():
+            with self.subTest(domaine=domaine):
+                self.assertLessEqual(len(texte.split()), 120)
+                self.assertNotRegex(texte, r"\d\s*%")
+                self.assertNotRegex(texte, r"20\d\d|\d{1,2}/\d{1,2}")
+                mots = set(re.findall(r"\b[A-ZÀ-Ý][a-zà-ÿ]+", texte))
+                self.assertLessEqual(mots, MAJUSCULES_ADMISES, "est-ce un prénom ?")
+                for cle in re.findall(r"\b[a-z_]+\.[a-z_]+\.[a-z_]+\b|\b[a-z_]+\.[a-z_]+\b", texte):
+                    if "." in cle and cle.split(".")[0] in self.chargeur.DOMAINES + ("erp",):
+                        self.assertTrue(cle.startswith(domaine + ".") or cle in self.NOYAU, cle)
+        self.assertLessEqual(sum(len(t.split()) for t in textes.values()), 900)
+
+    def test_bloc_borne_ou_rien(self):
+        self.assertEqual(self.consignes.bloc_consignes("domaine_sans_texte"), [])
+        from unittest import mock
+        with mock.patch.dict(self.consignes.CONSIGNES, {"sav": "Un ticket par panne."}):
+            bloc, = self.consignes.bloc_consignes("sav")
+        self.assertEqual(bloc["type"], "text")
+        self.assertEqual(bloc["text"].splitlines(), [
+            self.consignes.DEBUT % "sav", "Un ticket par panne.", self.consignes.FIN % "sav"])
 
 
 if __name__ == "__main__":

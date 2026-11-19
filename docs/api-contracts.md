@@ -211,7 +211,7 @@
 - frontend/src/api/iaApi.js :: statsAssistant -> /api/django/agent/evenements/stats
     commerciaux_actifs:inconnu, cout_estime_usd:nombre, manques_recents:liste, par_intention:inconnu, part_repli:nombre, questions:inconnu, questions_par_commercial_semaine:nombre, taux_non_supporte:nombre
 - frontend/src/api/iaApi.js :: undoAgentAction -> /api/django/agent/logs/<>/annuler
-    action_key:inconnu, confirmed_at:inconnu, detail:texte, executed_at:inconnu, id:inconnu, is_undoable:inconnu, object_repr:inconnu, risk_level:inconnu, undone_at:inconnu, user:inconnu
+    action_key:inconnu, confirmed_at:inconnu, detail:texte, executed_at:inconnu, id:inconnu, is_undoable:inconnu, object_repr:inconnu, origine:inconnu, risk_level:inconnu, undone_at:inconnu, user:inconnu
 - frontend/src/api/identityApi.js :: acknowledge -> /api/django/identity/login-banner
     acknowledged:booleen
 - frontend/src/api/identityApi.js :: get -> /api/django/identity/login-banner
@@ -561,7 +561,7 @@
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: creerDevisAuto -> /api/django/ventes/devis/auto
-    alertes:inconnu, detail:inconnu, economie_an_1_ht:inconnu, economie_an_1_ht_avec:inconnu, field:inconnu, id:inconnu, kwc:inconnu, kwc_avec:inconnu, nb_lignes:nombre, postes_apres_visite:inconnu, proposal_path:inconnu, proposal_token:inconnu, reference:inconnu, retour_ans:inconnu, retour_ans_avec:inconnu, statut:inconnu, total_ttc:inconnu
+    alertes:liste, choix:inconnu, composition:inconnu, detail:inconnu, devis_id:inconnu, economie_an_1_ht:inconnu, economie_an_1_ht_avec:inconnu, field:inconnu, id:inconnu, kwc:inconnu, kwc_avec:inconnu, lead_id:inconnu, nb_lignes:nombre, postes_apres_visite:inconnu, proposal_path:inconnu, proposal_token:inconnu, reference:inconnu, retour_ans:inconnu, retour_ans_avec:inconnu, statut:inconnu, total_ttc:inconnu
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
 - frontend/src/api/ventesApi.js :: demanderSignatureAvenant -> /api/django/ventes/devis/<>/avenant/demander-signature

@@ -1,24 +1,26 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, CheckCircle2, Bug, Sparkles,
+  Bot, MessageSquare, CheckCircle2, Bug, Sparkles,
 } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-  Button, IconButton, EmptyState, Textarea,
+  Button, EmptyState, Textarea,
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import {
-  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent,
+  MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent, MarqueurImages,
+  BoutonEnvoyer,
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
-  closeCopilot, openCopilot,
+  closeCopilot, openCopilot, chargerCapacitesAssistant,
 } from './store/iaSlice'
+import useImagesJointes from './useImagesJointes'
 import iaApi from '../../api/iaApi'
 import {
   displayMessageText, canSendQuestion, enterSubmits,
-  EVENEMENT_OUVRIR, routeNormalisee, PHRASE_SIGNALEMENT,
+  EVENEMENT_OUVRIR, routeNormalisee, PHRASE_SIGNALEMENT, CAPACITES_PAR_DEFAUT,
 } from './copilotMessages'
 import { instantaneDiagnostic } from '../../lib/tamponDiagnostic'
 import { signalerPanneauMonte, prendreEnAttente } from './ecouteurOuverture'
@@ -62,6 +64,7 @@ function MessageTaches({ msg, index }) {
           <p className={msg.role === 'user' ? 'ep-bulle-moi' : 'ep-bulle-ia'}>{texte}</p>
         </div>
       ) : null}
+      <MarqueurImages msg={msg} />
       {msg.action_performed && (
         <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 className="size-3.5" aria-hidden="true" />
@@ -78,6 +81,9 @@ export default function CopilotPanel() {
   const dispatch = useDispatch()
   const open = useSelector((s) => s.ia.copilotOpen)
   const { messages, agentLoading, agentError, etapes } = useSelector((s) => s.ia)
+  // COP2-W2 — ce que le serveur permet à ce compte (longueur d'une question, images) ; défauts tant qu'il n'a pas répondu.
+  const capacites = useSelector((s) => s.ia.capacites) ?? CAPACITES_PAR_DEFAUT
+  const joints = useImagesJointes({ acceptees: capacites.images_acceptees })
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -109,11 +115,20 @@ export default function CopilotPanel() {
     if (open) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, agentLoading, open])
 
+  // COP2-W2 — les capacités se relisent à chaque ouverture (le réglage du compte a pu changer).
+  useEffect(() => {
+    if (open) dispatch(chargerCapacitesAssistant())
+  }, [open, dispatch])
+
   // COP-F5 — le contexte (route, fiche ouverte, foyer) est lu par `queryAgent`
   // AU MOMENT de l'envoi : jamais l'état d'une ouverture précédente.
-  const send = (q) => {
-    if (!canSendQuestion(q, agentLoading)) return
-    dispatch(queryAgent(q.trim()))
+  // Rend `true` quand la question est partie (la saisie ne se vide qu'alors : une question trop longue reste là).
+  const send = (q, images = []) => {
+    if (!canSendQuestion(q, agentLoading, capacites.limite_question)) return false
+    dispatch(queryAgent(images.length
+      ? { question: q.trim(), images: images.map(({ media_type, data }) => ({ media_type, data })) }
+      : q.trim()))
+    return true
   }
 
   // AIC9 — un module ouvre le panneau avec le contexte de SON écran ; ce
@@ -180,8 +195,11 @@ export default function CopilotPanel() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    send(input)
-    setInput('')
+    if (joints.occupe) return // une image est encore en cours de réduction
+    if (send(input, joints.images)) {
+      setInput('')
+      joints.vider()
+    }
   }
 
   const handleSuggestion = (text) => {
@@ -300,6 +318,7 @@ export default function CopilotPanel() {
                       {displayMessageText(msg)}
                     </p>
                   )}
+                  <MarqueurImages msg={msg} />
                   {msg.action_performed && (
                     <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
@@ -345,15 +364,10 @@ export default function CopilotPanel() {
           ) : (
           <QuestionForm onSubmit={handleSubmit} inputRef={inputRef} input={input} setInput={setInput}
               onKeyDown={handleKeyDown} disabled={agentLoading}
+              limite={capacites.limite_question} joints={joints}
               {...(demandesTaches ? { placeholder: CHAMP_TACHES } : {})}>
-            <IconButton
-              type="submit"
-              variant="default"
-              label="Envoyer"
-              disabled={!canSendQuestion(input, agentLoading)}
-            >
-              <Send />
-            </IconButton>
+            <BoutonEnvoyer input={input} loading={agentLoading}
+              limite={capacites.limite_question} occupe={joints.occupe} />
           </QuestionForm>
           )}
           <p className="mt-2 text-center text-xs text-muted-foreground">

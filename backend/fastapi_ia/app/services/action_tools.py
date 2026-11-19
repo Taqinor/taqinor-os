@@ -45,6 +45,7 @@ from app.core.config import (
     internal_headers,
     REDIS_PROPOSAL_URL,
 )
+from app.services import prompt_copilote
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,9 @@ class ActionContext:
         # catalogue déjà lu ce tour (une seule lecture Django par question).
         self.identite: dict[str, str] = {}
         self.catalogue_tour: Optional[list[dict[str, Any]]] = None
+        # Vague 2 (FND6) — le catalogue COMPLET de Django, pour recalculer le
+        # jeu d'un tour servi par le repli sans le relire.
+        self.catalogue_complet: Optional[list[dict[str, Any]]] = None
         # AIC91 — clé Redis de la progression du tour (posée par la route).
         self.progression_cle: Optional[str] = None
         # AIC97 — identifiant du tour (un contexte par requête = un tour) :
@@ -275,9 +279,73 @@ def _normalize_error(resp, data) -> dict[str, Any]:
         detail = detail or "Vous n'avez pas les droits pour cette action."
     if len(detail) > _MESSAGE_MAX:
         detail = detail[:_MESSAGE_MAX - 1].rstrip() + "…"
-    return {"ok": False, "status": resp.status_code,
-            "error": detail or "La demande a ete refusee.",
-            "request_id": _request_id(resp, data)}
+    erreur = {"ok": False, "status": resp.status_code,
+              "error": detail or "La demande a ete refusee.",
+              "request_id": _request_id(resp, data)}
+    if resp.status_code in STATUTS_REFUS_DETAILLES:
+        details = details_du_refus(data)
+        if details:
+            erreur["details"] = details
+        code = _code_du_refus(data)
+        if code:
+            erreur["code"] = code
+    return erreur
+
+
+def _code_du_refus(data: Any) -> Optional[str]:
+    """Vague 2 (FND5) — code METIER d'un refus (`code` du corps ou de
+    l'enveloppe d'erreur), borne ; jamais montre tel quel au modele."""
+    if not isinstance(data, dict):
+        return None
+    enveloppe = data.get("error") if isinstance(data.get("error"), dict) else {}
+    code = data.get("code") or enveloppe.get("code")
+    return code[:64] if isinstance(code, str) and code else None
+
+
+# Copilote v2 (F2) — un refus METIER (400/409) dit souvent QUOI choisir : les
+# candidats d'une composition imposee (`choix`), le lead deja existant
+# (`doublon`, `lead_id`, `archive`, `ne_plus_contacter`), le champ fautif
+# (`field`). Seul `detail` (300 caracteres) survivait : le modele ne voyait
+# jamais les candidats. Liste BLANCHE de cles et de valeurs scalaires bornees ;
+# relayee au modele seulement copilote allume (`run_catalogue_action`).
+STATUTS_REFUS_DETAILLES = frozenset({400, 409})
+CHOIX_MAX = 10
+_CLES_CHOIX = ("produit_id", "nom", "marque", "kw", "kwh", "phase", "prix_ttc")
+_CLES_BOOLEENNES_REFUS = ("doublon", "archive", "ne_plus_contacter")
+_TEXTE_REFUS_MAX = 120
+
+
+def _scalaire_borne(valeur: Any) -> Any:
+    """Nombre, booleen, None ou texte tronque ; toute autre forme -> None."""
+    if valeur is None or isinstance(valeur, (bool, int, float)):
+        return valeur
+    if isinstance(valeur, str):
+        return valeur[:_TEXTE_REFUS_MAX]
+    return None
+
+
+def details_du_refus(data: Any) -> dict[str, Any]:
+    """Cles relayees d'un corps de refus (liste blanche) ; {} sans aucune."""
+    if not isinstance(data, dict):
+        return {}
+    details: dict[str, Any] = {}
+    champ = data.get("field")
+    if isinstance(champ, str) and champ.strip():
+        details["field"] = champ.strip()[:64]
+    choix = data.get("choix")
+    if isinstance(choix, list):
+        lignes = [{k: _scalaire_borne(c.get(k)) for k in _CLES_CHOIX if k in c}
+                  for c in choix[:CHOIX_MAX] if isinstance(c, dict)]
+        lignes = [ligne for ligne in lignes if ligne]
+        if lignes:
+            details["choix"] = lignes
+    for cle in _CLES_BOOLEENNES_REFUS:
+        if isinstance(data.get(cle), bool):
+            details[cle] = data[cle]
+    lead = data.get("lead_id")
+    if isinstance(lead, int) and not isinstance(lead, bool) and lead > 0:
+        details["lead_id"] = lead
+    return details
 
 
 # COP-A4 — message d'erreur court, sans enveloppe technique brute.
@@ -435,11 +503,53 @@ def _valider_valeur(name: str, spec: dict[str, Any], value: Any) -> Any:
             f"Champ '{name}' : valeur {value!r} non permise (valeurs "
             "permises : " + ", ".join(str(v) for v in permises) + ")."
         )
+    _valider_bornes(name, spec, value)
     items = spec.get("items")
     if expected == "array" and isinstance(items, dict):
         value = [_valider_valeur(f"{name}[{i}]", items, v)
                  for i, v in enumerate(value)]
+    if expected == "object" and isinstance(spec.get("properties"), dict):
+        value = _valider_objet(name, spec, value)
     return value
+
+
+def _valider_bornes(name: str, spec: dict[str, Any], value: Any) -> None:
+    """Revue 2A — `minimum` / `maximum` d'un nombre, `minItems` / `maxItems`
+    d'un tableau. Un mot-cle absent, ou d'une forme inattendue, est ignore."""
+    est_nombre = isinstance(value, (int, float)) and not isinstance(value, bool)
+    for cle, viole, texte in (("minimum", lambda b: value < b, "au moins"),
+                              ("maximum", lambda b: value > b, "au plus")):
+        borne = spec.get(cle)
+        if est_nombre and isinstance(borne, (int, float)) and not isinstance(borne, bool) and viole(borne):
+            raise ActionValidationError(f"Champ '{name}' : {texte} {borne} attendu.")
+    for cle, viole, texte in (("minItems", lambda b: len(value) < b, "au moins"),
+                              ("maxItems", lambda b: len(value) > b, "au plus")):
+        borne = spec.get(cle)
+        if isinstance(value, list) and isinstance(borne, int) and not isinstance(borne, bool) and viole(borne):
+            raise ActionValidationError(f"Champ '{name}' : {texte} {borne} élément(s) attendu(s).")
+
+
+def _valider_objet(name: str, spec: dict[str, Any], value: dict[str, Any]) -> dict[str, Any]:
+    """Revue 2A — un objet IMBRIQUE (ligne de commande…) contre ses
+    `properties` : types, `enum`, bornes (recursif), `required`, et
+    `additionalProperties: false` (une cle non declaree, ex. un prix choisi
+    par le modele, est REFUSEE en nommant son chemin). Sans
+    `additionalProperties: false`, les cles non declarees passent comme avant."""
+    proprietes = spec["properties"]
+    if spec.get("additionalProperties") is False:
+        en_trop = sorted(k for k in value if k not in proprietes)
+        if en_trop:
+            raise ActionValidationError(
+                "Entrees non autorisees : " + ", ".join(f"{name}.{k}" for k in en_trop))
+    sortie = dict(value)
+    for cle, sous_spec in proprietes.items():
+        if sortie.get(cle) is not None and isinstance(sous_spec, dict):
+            sortie[cle] = _valider_valeur(f"{name}.{cle}", sous_spec, sortie[cle])
+    requis = spec.get("required") if isinstance(spec.get("required"), list) else []
+    manquants = [f"{name}.{r}" for r in requis if sortie.get(r) in (None, "")]
+    if manquants:
+        raise ActionValidationError("Champs requis manquants : " + ", ".join(manquants))
+    return sortie
 
 
 _ENTIER_RE = re.compile(r"-?\d+")
@@ -706,11 +816,82 @@ def _libelles_objets(
             if isinstance(data.get(genre), str) and data[genre].strip()}
 
 
+#: Copilote v2 (F3) — libellé humain des entrées courantes d'une proposition
+#: (repli : `title` du schéma, sinon la clé lisible).
+LIBELLES_ENTREES = {
+    "nom": "Nom", "prenom": "Prénom", "societe": "Société", "telephone": "Téléphone",
+    "whatsapp": "WhatsApp", "email": "E-mail", "ville": "Ville", "adresse": "Adresse",
+    "type_installation": "Type d'installation", "raccordement": "Raccordement",
+    "batterie_souhaitee": "Batterie souhaitée", "taille_souhaitee_kwc": "Taille souhaitée (kWc)",
+    "note": "Note", "creer_quand_meme": "Créer même si un lead existe",
+    "perdu": "Perdu", "motif_perte": "Motif de perte", "tags": "Étiquettes",
+    "owner": "Responsable", "lead": "Lead", "lead_id": "Lead", "client": "Client",
+    "nb_panneaux": "Nombre de panneaux", "panneau_produit_id": "Panneau (produit)",
+    "onduleur_produit_id": "Onduleur (produit)", "onduleur_kw": "Onduleur (kW)",
+    "onduleur_phase": "Phase de l'onduleur", "batterie_produit_id": "Batterie (produit)",
+    "batterie_kwh": "Batterie (kWh)", "taux_tva": "Taux de TVA", "jours": "Jours",
+}
+#: Texte libre d'une entrée (une note, un message) tronqué dans l'aperçu.
+APERCU_TEXTE_MAX = 200
+
+
+def _libelle_entree(action: dict[str, Any], cle: str) -> str:
+    spec = ((action.get("inputs") or {}).get("properties") or {}).get(cle)
+    titre = spec.get("title") if isinstance(spec, dict) else None
+    if isinstance(titre, str) and titre.strip():
+        return titre.strip()
+    if cle in LIBELLES_ENTREES:
+        return LIBELLES_ENTREES[cle]
+    lisible = cle.replace("_", " ").strip()
+    return lisible[:1].upper() + lisible[1:]
+
+
+def _valeur_apercu(valeur: Any) -> str:
+    """Valeur lisible sur UNE ligne : jamais un repr Python d'une liste ou d'un
+    dict ; texte replié sur une ligne et tronqué à `APERCU_TEXTE_MAX`."""
+    if isinstance(valeur, bool):
+        return "oui" if valeur else "non"
+    if isinstance(valeur, float) and valeur.is_integer():
+        return str(int(valeur))
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(_valeur_apercu(v) for v in valeur if v is not None)
+    if isinstance(valeur, dict):
+        return " ; ".join(f"{k} : {_valeur_apercu(v)}" for k, v in valeur.items()
+                          if v is not None)
+    texte = " ".join(str(valeur).split())
+    if len(texte) > APERCU_TEXTE_MAX:
+        texte = texte[:APERCU_TEXTE_MAX - 1].rstrip() + "…"
+    return texte
+
+
+def _apercu_multiligne(action: dict[str, Any], inputs: dict[str, Any],
+                       libelles: dict[str, str] | None) -> str:
+    """Copilote v2 (F3) — première ligne : l'action (et le NOM des objets
+    désignés) ; puis UNE ligne par autre entrée, « Libellé : valeur »."""
+    summary = action.get("confirm_summary") or action.get("label") or action["key"]
+    lignes = [(action.get("label") or summary) + " — " + " ; ".join(libelles.values())
+              if libelles else summary]
+    proprietes = list(((action.get("inputs") or {}).get("properties") or {}))
+    ordre = [c for c in proprietes if c in inputs] + sorted(c for c in inputs if c not in proprietes)
+    for cle in ordre:
+        if libelles and cle in libelles:
+            continue
+        valeur = _valeur_apercu(inputs[cle])
+        if valeur:
+            lignes.append(f"{_libelle_entree(action, cle)} : {valeur}")
+    return "\n".join(lignes)
+
+
 def _human_preview(action: dict[str, Any], inputs: dict[str, Any],
-                   libelles: dict[str, str] | None = None) -> str:
+                   libelles: dict[str, str] | None = None,
+                   multiligne: bool = False) -> str:
     """Texte court montre a l'utilisateur avant confirmation. Avec des
     libelles (COP-A5) : « Label — <libelle(s)> (autres entrees k=v) », les
-    entrees deja nommees n'etant pas repetees ; sinon la forme historique."""
+    entrees deja nommees n'etant pas repetees ; sinon la forme historique.
+    `multiligne` (copilote allume, F3) : une ligne par entree, libelles
+    humains, texte libre tronque."""
+    if multiligne:
+        return _apercu_multiligne(action, inputs, libelles)
     summary = action.get("confirm_summary") or action.get("label") or action["key"]
     if libelles:
         texte = (action.get("label") or summary) + " — " + " ; ".join(libelles.values())
@@ -822,6 +1003,50 @@ def noter_contenu_tiers(ctx: Optional[ActionContext], origine: str) -> None:
 
 def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
+
+
+def noter_message_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+    """Le MESSAGE de l'utilisateur porte lui-même un texte tiers (texte collé
+    ou cité, liste — `relais_copilote.question_porte_un_texte_tiers`) ou une
+    image : marque A5 du tour ET borne serrée des créations de devis."""
+    noter_contenu_tiers(ctx, origine)
+    if ctx is not None:
+        ctx.message_tiers = True
+
+
+# Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` ÉCRIVENT (un
+# devis brouillon) sans confirmation : bornés par tour, sous les deux moteurs
+# (ce chemin est le seul qui exécute une action du catalogue). Au plus deux
+# devis par message ; un seul quand le message porte un texte tiers (collé,
+# cité) ou une image. Un refus métier net (400/403/404/409 : rien d'écrit) ne
+# compte pas ; tout autre échec compte (issue incertaine).
+CREATIONS_DEVIS = frozenset({"ventes.devis.composer", "ventes.devis.creer_auto"})
+CREATIONS_DEVIS_PAR_TOUR = 2
+CREATIONS_DEVIS_MESSAGE_TIERS = 1
+REFUS_CREATION_DEVIS_TIERS = (
+    "Action refusée : un seul devis par message collé ou par image ; rien n'est "
+    "créé. Dis-lui de confirmer ou de reformuler pour en créer un autre.")
+REFUS_CREATIONS_DEVIS = (
+    "Action refusée : deux devis déjà créés pour ce message ; rien n'est créé. "
+    "Dis-lui de le demander dans un nouveau message.")
+
+
+def garde_creations_devis(ctx: Optional[ActionContext], action: dict[str, Any]) -> Optional[str]:
+    """None = la création part ; sinon le refus rendu au modèle."""
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return None
+    faites = int(getattr(ctx, "creations_devis", 0) or 0)
+    if getattr(ctx, "message_tiers", False) and faites >= CREATIONS_DEVIS_MESSAGE_TIERS:
+        return REFUS_CREATION_DEVIS_TIERS
+    return REFUS_CREATIONS_DEVIS if faites >= CREATIONS_DEVIS_PAR_TOUR else None
+
+
+def compter_creation_devis(ctx: Optional[ActionContext], action: dict[str, Any],
+                           res: dict[str, Any]) -> None:
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return
+    if res.get("ok") or res.get("status") not in STATUTS_REPONSE_NORMALE:
+        ctx.creations_devis = int(getattr(ctx, "creations_devis", 0) or 0) + 1
 
 
 def _lire_pour_echo(ctx: ActionContext, gabarit: str, ident: Any) -> Optional[dict]:
@@ -944,6 +1169,45 @@ def _sortie_ecriture_sans_texte(result: dict[str, Any]) -> str:
         "textes": "retirés : la carte les montre"})
 
 
+# Vague 2 (FND5) — plafond des ecritures SILENCIEUSES d'un tour, tous domaines :
+# une action `internal` qui n'est ni un GET, ni une lecture declaree
+# (`lecture`), ni un lien de document, ni une action `taches.*` (qui garde SA
+# garde) s'execute sans carte ; au-dela de cinq dans le meme tour, refus. Le
+# contexte est par requete : une reprise apres confirmation repart a zero
+# (c'est un nouveau tour voulu par un doigt).
+ECRITURES_INTERNES_PAR_TOUR = 5
+REFUS_ECRITURES_INTERNES = (
+    "Action refusée : cinq écritures déjà faites dans ce tour ; dis à "
+    "l'utilisateur ce qui reste et laisse-le relancer.")
+
+
+def est_ecriture_interne(action: dict[str, Any]) -> bool:
+    """Vraie pour une ecriture qui part SANS carte (voir le bloc ci-dessus)."""
+    return (action.get("risk", RISK_INTERNAL) == RISK_INTERNAL
+            and str(action.get("method", "POST")).upper() != "GET"
+            and not action.get("lecture") and action.get("carte") != "document"
+            and not str(action.get("key", "")).startswith(PREFIXE_TACHES))
+
+
+def garde_ecritures_internes(ctx: Optional[ActionContext], action: dict[str, Any]) -> Optional[str]:
+    """None = l'ecriture part (et compte) ; sinon le refus rendu au modele."""
+    if ctx is None or not est_ecriture_interne(action):
+        return None
+    faites = int(getattr(ctx, "ecritures_internes", 0) or 0)
+    if faites >= ECRITURES_INTERNES_PAR_TOUR:
+        return REFUS_ECRITURES_INTERNES
+    ctx.ecritures_internes = faites + 1
+    return None
+
+
+def copilote_du_tour(ctx: Optional[ActionContext]) -> bool:
+    """Copilote allume pour l'appelant ? Lu sur le catalogue COMPLET du tour
+    (vague 2, FND6 : le jeu de Groq est reduit au noyau), sinon sur celui du
+    tour."""
+    return prompt_copilote.copilote_allume(
+        getattr(ctx, "catalogue_complet", None) or getattr(ctx, "catalogue_tour", None))
+
+
 def _execute_catalogue_action(
     ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any],
     *, idempotency_key: str | None = None,
@@ -1001,7 +1265,9 @@ def run_catalogue_action(
 
     risk = action.get("risk", RISK_INTERNAL)
     if risk in _RISK_NEEDS_CONFIRM:
-        preview = _human_preview(action, inputs, _libelles_objets(ctx, action, inputs))
+        preview = _human_preview(
+            action, inputs, _libelles_objets(ctx, action, inputs),
+            multiligne=copilote_du_tour(ctx))
         token = _stash_proposal(ctx, action, inputs, preview)
         proposal = {
             "type": "proposal",
@@ -1026,8 +1292,13 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
+    # revue S2 — devis bornes par tour ; FND5 — cinq ecritures silencieuses au plus.
+    refus = garde_creations_devis(ctx, action) or garde_ecritures_internes(ctx, action)
+    if refus is not None:
+        return refus
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
+    compter_creation_devis(ctx, action, res)
     if not res.get("ok"):
         # A5 (revue F3 #1) — le texte d'erreur de l'ERP entre dans le tour.
         noter_contenu_tiers(ctx, action["key"])
@@ -1037,7 +1308,13 @@ def run_catalogue_action(
                 "type": "erreur", "intention": "bug", "status": res.get("status"),
                 "outil": action["key"], "message": str(res.get("error", ""))[:200],
                 "request_id": res.get("request_id")})
-        return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
+        texte = f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
+        # Copilote v2 (F2) — les candidats / le doublon du refus, copilote
+        # allume seulement (eteint : le texte d'avant, octet pour octet).
+        details = res.get("details")
+        if details and copilote_du_tour(ctx):
+            texte += " Détails du refus : " + json.dumps(details, ensure_ascii=False)
+        return texte
     result = {
         "type": "result", "action_key": action["key"],
         "libelle": _libelle_action(action), "carte": action.get("carte"),
@@ -1045,6 +1322,8 @@ def run_catalogue_action(
     }
     if collector is not None:
         collector.append(result)  # entier : les cartes ne sont jamais coupees
+    if est_ecriture_interne(action):  # FND7 — trace durable, sans texte libre
+        _journaliser_ecriture_interne(ctx, action, inputs, res.get("data"))
     if est_ecriture_taches(action):
         return _sortie_ecriture_sans_texte(result)
     return _sortie_pour_modele(result)
@@ -1120,6 +1399,28 @@ _SANS_REPONSE = (" La proposition est consommée et le résultat est incertain (
                  "été faite avant de la redemander.")
 
 
+#: Vague 2 (FND5) — 409 `paiement_similaire` (meme montant, meme date sur la
+#: facture) : la phrase de l'ERP finit par « confirmer ? » alors que la carte
+#: ne peut plus rien confirmer, et « redemande-la » poussait a une seconde
+#: proposition. Rien n'est ecrit : le doigt de l'utilisateur tranche a l'ecran.
+MESSAGE_PAIEMENT_SIMILAIRE = (
+    "Un paiement identique (même montant, même date) est déjà enregistré sur "
+    "cette facture : rien n'a été enregistré. Vérifie la facture ; s'il "
+    "s'agit bien d'un second paiement, enregistre-le depuis l'écran de la "
+    "facture, qui te demandera de le confirmer.")
+
+
+def texte_echec_confirmation(res: dict[str, Any]) -> str:
+    """Texte d'une confirmation refusee par Django. Sans reponse (0) ou erreur
+    serveur (5xx) : l'action a PEUT-ETRE ete faite — ne jamais affirmer « non
+    executee », ne jamais pousser a rejouer."""
+    if res.get("code") == "paiement_similaire":
+        return MESSAGE_PAIEMENT_SIMILAIRE
+    statut = int(res.get("status") or 0)
+    suite = _SANS_REPONSE if (not statut or statut >= 500) else _NON_EXECUTEE
+    return (res.get("error") or "L'action a échoué.") + suite
+
+
 def _preparer_confirmation(
     ctx: ActionContext, record: dict[str, Any],
 ) -> tuple[Optional[dict[str, Any]], dict[str, Any], str]:
@@ -1169,12 +1470,8 @@ def confirm_proposal(ctx: ActionContext, token: str) -> dict[str, Any]:
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_idempotence(token))
     if not res.get("ok"):
-        # Sans reponse (0) ou erreur serveur (5xx) : l'action a PEUT-ETRE ete
-        # faite — ne jamais affirmer « non executee », ne jamais pousser a rejouer.
-        statut = int(res.get("status") or 0)
-        suite = _SANS_REPONSE if (not statut or statut >= 500) else _NON_EXECUTEE
         return {"ok": False, "status": res.get("status"),
-                "error": (res.get("error") or "L'action a échoué.") + suite,
+                "error": texte_echec_confirmation(res),
                 "request_id": res.get("request_id")}
 
     # AUDV27 (YHARD2) — journalise la confirmation APRES exécution réelle.
@@ -1284,6 +1581,31 @@ def _log_confirmed_action(
         logger.warning(
             "Journalisation de l'action confirmee echouee (%s): %s",
             action_key, log_res.get("error"))
+
+
+def _journaliser_ecriture_interne(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any], resulted_data: Any,
+) -> None:
+    """Vague 2 (FND7) — une ecriture SILENCIEUSE reussie (`est_ecriture_interne`,
+    jamais `taches.*`) laisse une trace durable : `agent/logs/confirmer/` avec
+    `origine=interne`, entrees SANS texte libre (`_sans_texte` : ids, nombres,
+    dates), l'id rendu par Django s'il est entier, et la meme preuve HMAC que
+    les confirmations. Best-effort : sans secret, Django refuserait (fail-closed)
+    — rien n'est poste ; un echec est journalise, jamais propage."""
+    ident = resulted_data.get("id") if isinstance(resulted_data, dict) else None
+    object_id = ident if isinstance(ident, int) and not isinstance(ident, bool) else None
+    entrees = _sans_texte(inputs)
+    preuve = calculer_preuve_confirmation(
+        action_key=action["key"], company_id=ctx.company_id,
+        user_id=_caller_user_id(ctx), inputs=entrees, object_id=object_id)
+    if not preuve:
+        logger.warning("Ecriture interne non journalisee (%s) : AGENT_HMAC_SECRET absent.", action["key"])
+        return
+    res = _django_call(ctx, "/api/django/agent/logs/confirmer/", method="POST", payload={
+        "action_key": action["key"], "risk_level": RISK_INTERNAL, "origine": "interne",
+        "inputs": entrees, "object_id": object_id, "proposal_hash": preuve, "preuve": preuve})
+    if not res.get("ok"):
+        logger.warning("Ecriture interne non journalisee (%s): %s", action["key"], res.get("error"))
 
 
 # ── AIC7 — outil `report_gap` (silencieux, sans confirmation) ────────────────
@@ -1409,9 +1731,12 @@ def build_action_tools(
     """
     from langchain_core.tools import StructuredTool
 
+    from app.services.relais_copilote import pour_langchain
+
     tools = []
     catalogue = getattr(ctx, "catalogue_tour", None)
-    for action in (fetch_catalogue(ctx) if catalogue is None else catalogue):
+    # FND6 — jamais une action `natif_seul` (vague 2) chez LangChain.
+    for action in pour_langchain(fetch_catalogue(ctx) if catalogue is None else catalogue):
         try:
             args_model = _args_model_for(action)
         except Exception as exc:  # pragma: no cover - schema malforme

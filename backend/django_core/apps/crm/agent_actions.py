@@ -70,6 +70,10 @@ CREER_LEAD = AgentAction(
     # COP-C5 — UNE seule définition effective de ``crm.lead.create`` : la
     # création reste CONFIRMÉE (la lane REGISTRE retire le doublon du registre).
     risk=RISK_OUTWARD,
+    # COP2-C — copilote ALLUMÉ, c'est ``crm.lead.creer`` (garde de doublon,
+    # note, fiche) qui sert ; ``create`` reste tel quel pour les comptes dont
+    # le copilote est éteint (ils gardent exactement ce qu'ils avaient).
+    lot=LOT_HERITE,
 )
 
 
@@ -178,6 +182,10 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
     required_permission='crm_modifier',
     risk=RISK_INTERNAL,
     carte='wa_devis',
+    # REP9 — POST qui ne fait que LIRE : `enregistrer=False` (ni envoi, ni
+    # note, ni AuditLog — `views_assistant.lead_whatsapp_devis_apercu`) ; seul
+    # le jeton du lien public est réutilisé ou posé (`ShareLink.for_devis`).
+    lecture=True,
 )
 
 
@@ -283,6 +291,7 @@ BROUILLON_SUIVI = AgentAction(
     # textes VALIDÉS du suivi) : il ne reste servi que copilote éteint.
     carte='wa_message',
     lot=LOT_HERITE,
+    lecture=True,  # REP9 — `lead_brouillon_suivi` rend un texte, n'écrit rien
 )
 
 
@@ -606,16 +615,23 @@ JOURNALISER_LEAD = AgentAction(
     objets={'id': 'lead'},
 )
 
+# REP8 (B-9) — sans ``commercial`` la route pose une visite SANS assigné
+# (``apps.visites.services.planifier_visite`` : aucun défaut sur ce chemin) :
+# elle n'est dans la journée de personne et personne n'est notifié
+# (``notifier_assignation`` : pas de destinataire, ni l'acteur lui-même).
 PLANIFIER_VISITE = AgentAction(
     key='crm.visite.planifier',
-    label='Planifier une visite',
+    label='Planifier une visite : elle entre dans la journée de la personne désignée',
     description=(
-        "Sert à : poser la visite technique d'un lead (date, touche qui "
-        "l'a demandée) ; le technicien est notifié, après confirmation. "
+        "Sert à : poser la visite technique d'un lead (date, qui la fait, "
+        "touche qui l'a demandée), après confirmation ; la personne "
+        "désignée est notifiée, sauf si c'est toi. "
         "Ne pas utiliser pour : une visite de maintenance "
         "(installations) ni proposer la visite (crm.visite.message). "
-        "Exemple : « Il est d'accord pour une visite samedi ». "
-        "Résultat : {visite, prochaine_touche}."
+        "Exemple : « Il est d'accord pour une visite samedi » → demande "
+        "d'abord qui la fait. "
+        "Résultat : {visite, prochaine_touche} ; 404 si la personne est "
+        "inconnue, 409 si son compte est désactivé ou la date passée."
     ),
     endpoint='/api/django/crm/leads/{id}/visites/planifier/',
     method='POST',
@@ -625,6 +641,10 @@ PLANIFIER_VISITE = AgentAction(
             'id': {'type': 'integer'},
             'date_prevue': {'type': 'string', 'format': 'date',
                             'description': 'AAAA-MM-JJ, pas dans le passé.'},
+            'commercial': {
+                'type': 'integer', 'title': 'Qui fait la visite (id)',
+                'description': ("Compte qui fait la visite, demandé à "
+                                "l'utilisateur (le sien s'il la fait).")},
             'etape': {'type': 'integer',
                       'description': 'touche_id qui demande la visite.'},
             'notes': {'type': 'string'},
@@ -632,13 +652,14 @@ PLANIFIER_VISITE = AgentAction(
             'replanifier': {'type': 'boolean',
                             'description': 'Déplacer le rendez-vous en attente.'},
         },
-        'required': ['id', 'date_prevue'],
+        'required': ['id', 'date_prevue', 'commercial'],
     },
     required_permission='crm_modifier',
     risk=RISK_OUTWARD,
     carte='visite',
     lot=LOT_COPILOTE,
-    objets={'id': 'lead', 'etape': 'touche'},
+    # Vague 2 — l'aperçu NOMME qui fait la visite (résolu par l'agent).
+    objets={'id': 'lead', 'etape': 'touche', 'commercial': 'utilisateur'},
 )
 
 MESSAGE_VISITE = AgentAction(
@@ -658,6 +679,32 @@ MESSAGE_VISITE = AgentAction(
     required_permission='crm_voir',
     risk=RISK_INTERNAL,
     carte='wa_message',
+    lot=LOT_COPILOTE,
+)
+
+
+# REP8 — lire les motifs de perte de la société (route EXISTANTE
+# ``GET /api/django/crm/motifs-perte/``, ``MotifPerteViewSet`` : lecture
+# ``LectureDuModule`` crm → ``crm_voir``) : le motif exact à reprendre quand
+# un devis est refusé ou un lead perdu (un motif hors liste est refusé).
+MOTIFS_PERTE = AgentAction(
+    key='crm.motifs_perte.lister',
+    label='Lister les motifs de perte',
+    description=(
+        "Sert à : lire les motifs de perte de la société (nom exact, archivé "
+        "ou non) avant de marquer un lead perdu ou un devis refusé. "
+        "Ne pas utiliser pour : inventer un motif ni en créer un "
+        "(Paramètres, administrateur). "
+        "Exemple : « il a signé ailleurs, marque-le perdu » → lire la liste, "
+        "reprendre le nom exact. "
+        "Résultat : liste paginée {count, results[{id, nom, archived, "
+        "est_junk, en_usage}]} ; ne reprendre qu'un motif non archivé."
+    ),
+    endpoint='/api/django/crm/motifs-perte/',
+    method='GET',
+    inputs={'type': 'object', 'properties': {}},
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
 
@@ -702,11 +749,217 @@ MESSAGE_MANUEL = AgentAction(
     risk=RISK_INTERNAL,
     carte='wa_message',
     lot=LOT_COPILOTE,
+    # REP9 — `_message_manuel` rend le texte d'une touche NON enregistrée
+    # (aucune ligne du fil, aucune touche) : une lecture.
+    lecture=True,
+)
+
+
+def _entrees_creer_lead():
+    champs = ('type_installation', 'raccordement', 'batterie_souhaitee',
+              'taille_souhaitee_kwc')
+    proprietes = {
+        'nom': {'type': 'string', 'description': 'Nom de famille (ou société).'},
+        'prenom': {'type': 'string'},
+        'societe': {'type': 'string'},
+        'telephone': {'type': 'string',
+                      'description': 'Tel que dans le message du client.'},
+        'whatsapp': {'type': 'string'},
+        'email': {'type': 'string'},
+        'ville': {'type': 'string'},
+        'adresse': {'type': 'string'},
+    }
+    proprietes.update({c: _propriete_du_champ(c) for c in champs})
+    proprietes['note'] = {
+        'type': 'string',
+        'description': ("La demande du client, telle qu'écrite (versée au fil "
+                        "du lead, interne)."),
+    }
+    proprietes['creer_quand_meme'] = {
+        'type': 'boolean',
+        'description': ("Seulement sur ordre exprès, après un refus de "
+                        "doublon."),
+    }
+    return {'type': 'object', 'properties': proprietes, 'required': ['nom']}
+
+
+CREER_LEAD_ASSISTANT = AgentAction(
+    key='crm.lead.creer',
+    label='Créer un lead',
+    description=(
+        "Sert à : créer le lead d'une demande de client (message collé, "
+        "capture, appel) : nom, téléphone, besoin. Société, responsable et "
+        "étape sont posés par le serveur. "
+        "Ne pas utiliser pour : un lead déjà connu (cherche-le par son "
+        "téléphone avec crm.lead.chercher) ni modifier une fiche. "
+        "Exemple : « Karim, 0661007731 : 10 panneaux, onduleur triphasé "
+        "10 kW, batterie 5 kWh ». "
+        "Résultat : la fiche créée (cree) ; un lead de la portée au même "
+        "numéro ou e-mail = refus 409 qui le nomme, rien n'est créé."
+    ),
+    endpoint='/api/django/crm/assistant/leads/creer/',
+    method='POST',
+    inputs=_entrees_creer_lead(),
+    required_permission='crm_creer',
+    risk=RISK_OUTWARD,
+    carte='fiche_lead',
+    lot=LOT_COPILOTE,
+)
+
+
+# COP2-C3 — gestes de rangement d'un lead, tous proposés puis CONFIRMÉS (la
+# carte nomme le lead par ``objets``) et tous portés par une route EXISTANTE
+# du ``LeadViewSet`` (permission + société re-vérifiées par elle). Jamais
+# Signé (l'acceptation d'un devis), jamais Froid (parcage avec sa raison),
+# jamais ``ne_plus_contacter`` : aucune de ces entrées n'existe ici.
+LEAD_PERDU = AgentAction(
+    key='crm.lead.perdu',
+    label='Marquer un lead perdu',
+    description=(
+        "Sert à : marquer un lead perdu, avec son motif (refus, acheté "
+        "ailleurs, injoignable). "
+        "Ne pas utiliser pour : parquer au Froid ni changer d'étape "
+        "(crm.lead.changer_etape). "
+        "Exemple : « Le lead 12 a signé chez un concurrent : perdu, motif "
+        "prix ». "
+        "Résultat : le lead mis à jour, après confirmation ; sans motif le "
+        "serveur refuse (409)."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'perdu': {'type': 'boolean', 'enum': [True],
+                      'description': 'Toujours true.'},
+            'motif_perte': {'type': 'string',
+                            'description': 'Motif court (obligatoire).'},
+        },
+        'required': ['id', 'perdu', 'motif_perte'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+ARCHIVER_LEAD = AgentAction(
+    key='crm.lead.archiver',
+    label='Archiver un lead',
+    description=(
+        "Sert à : archiver un lead (il quitte les vues par défaut, "
+        "réversible). "
+        "Ne pas utiliser pour : supprimer ni marquer perdu "
+        "(crm.lead.perdu) ; le serveur refuse un lead signé. "
+        "Exemple : « Archive le lead 12, c'est un doublon ». "
+        "Résultat : le lead archivé, après confirmation."
+    ),
+    endpoint='/api/django/crm/leads/{id}/archiver/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+RESTAURER_LEAD = AgentAction(
+    key='crm.lead.restaurer',
+    label='Restaurer un lead archivé',
+    description=(
+        "Sert à : sortir un lead de l'archive (retour dans les vues par "
+        "défaut). "
+        "Ne pas utiliser pour : un lead jamais archivé ni rouvrir un lead "
+        "perdu. "
+        "Exemple : « Remets le lead 12 dans la liste ». "
+        "Résultat : le lead restauré, après confirmation."
+    ),
+    endpoint='/api/django/crm/leads/{id}/restaurer/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+REAFFECTER_LEAD = AgentAction(
+    key='crm.lead.reaffecter',
+    label='Réaffecter un lead',
+    description=(
+        "Sert à : confier un lead au responsable que l'utilisateur désigne. "
+        "Ne pas utiliser pour : choisir un responsable à sa place ni "
+        "répartir plusieurs leads. "
+        "Exemple : « Passe le lead 12 à l'utilisateur 7 » (identifiant "
+        "donné par la personne). "
+        "Résultat : le lead réaffecté, après confirmation ; sans le droit "
+        "de réaffecter, le serveur refuse (403)."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'owner': {'type': 'integer',
+                      'description': ("Identifiant de l'utilisateur "
+                                      "responsable, donné par la personne.")},
+        },
+        'required': ['id', 'owner'],
+    },
+    required_permission='crm_reassign',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
+)
+
+ETIQUETER_LEAD = AgentAction(
+    key='crm.lead.etiqueter',
+    label='Étiqueter un lead',
+    description=(
+        "Sert à : poser les étiquettes d'un lead (libellés séparés par des "
+        "virgules). "
+        "Ne pas utiliser pour : l'étape, le motif de perte ni une note "
+        "(crm.lead.note). "
+        "Exemple : « Étiquette le lead 12 : villa, urgent ». "
+        "Résultat : le lead mis à jour, après confirmation ; la liste "
+        "REMPLACE les étiquettes actuelles."
+    ),
+    endpoint='/api/django/crm/leads/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'tags': {'type': 'string',
+                     'description': 'Libellés séparés par des virgules.'},
+        },
+        'required': ['id', 'tags'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'lead'},
 )
 
 
 _ACTIONS = (
     CREER_LEAD,
+    CREER_LEAD_ASSISTANT,
+    LEAD_PERDU,
+    ARCHIVER_LEAD,
+    RESTAURER_LEAD,
+    REAFFECTER_LEAD,
+    ETIQUETER_LEAD,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
@@ -723,6 +976,7 @@ _ACTIONS = (
     PLANIFIER_VISITE,
     MESSAGE_VISITE,
     MESSAGE_MANUEL,
+    MOTIFS_PERTE,
 )
 
 

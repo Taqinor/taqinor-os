@@ -1,9 +1,10 @@
-"""AIC — vues de LECTURE servies à l'assistant (actions ``crm.*`` du registre).
+"""AIC — vues servies à l'assistant (actions ``crm.*`` du registre).
 
 Ces routes sont internes : elles n'ont d'autre consommateur que le relais
 FastAPI de l'assistant (JWT de l'utilisateur relayé, permission et société
-re-vérifiées ICI). Aucune n'écrit, aucune n'envoie : elles LISENT ce que les
-écrans lisent déjà (``selectors``), sans recopier leurs règles.
+re-vérifiées ICI). Aucune n'envoie : elles LISENT ce que les écrans lisent
+déjà (``selectors``), sans recopier leurs règles. Seule ``lead_creer`` (COP2-C,
+sur confirmation) écrit — par le MÊME chemin que l'écran « nouveau lead ».
 
 Fichier à part car ``apps/crm/views.py`` appartient au propriétaire crm
 (fichier-dieu en découpe SPL).
@@ -12,18 +13,21 @@ import datetime
 import re
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes)
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin)
 from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
 
 from . import schema_docs as sd
 from . import stages
+from .models import Lead
 
 #: Plafond de lignes servies à l'assistant (le total, lui, est complet).
 LIMITE_LIGNES = 20
@@ -207,27 +211,21 @@ def _alertes_lead(lead, devis, touche, today):
     return alertes
 
 
-@extend_schema(responses=sd.OBJ)
-@api_view(['GET'])
-@permission_classes([HasPermissionOrLegacy('crm_voir')])
-def lead_resume(request, lead_id):
-    """AIC31 — ``GET /api/django/crm/leads/<id>/resume/`` : le lead en un
-    objet pour préparer un appel. Chaque bloc est lu chez son propriétaire
-    (chatter ici ; devis via ``ventes.selectors`` ; visites via
-    ``visites.selectors`` ; touche via ``cadence_selectors``). Aucun
-    ``prix_achat``, aucune marge ; lead d'une autre société : 404."""
+def construire_resume(user, lead):
+    """Le résumé d'un lead (corps de ``lead_resume``) pour ``user`` — partagé
+    avec la création par l'assistant, dont la réponse est ce même objet : la
+    carte « fiche_lead » n'a qu'une forme."""
     from core.dates import aujourd_hui_local
 
     from .serializers import pii_masquee_pour
 
-    lead = _lead_en_portee_ou_404(request.user, lead_id)
     devis = _bloc_devis(lead)
     touche = _bloc_prochaine_touche(lead)
-    return Response({
+    return {
         'identite': {
             'id': lead.pk, 'nom': lead.nom, 'prenom': lead.prenom or '',
             'societe': lead.societe or '', 'ville': lead.ville or '',
-            'telephone': ('' if pii_masquee_pour(request.user)
+            'telephone': ('' if pii_masquee_pour(user)
                           else lead.telephone or ''),
         },
         'etape': lead.stage,
@@ -237,7 +235,20 @@ def lead_resume(request, lead_id):
         'visites': _bloc_visites(lead),
         'prochaine_touche': touche,
         'alertes': _alertes_lead(lead, devis, touche, aujourd_hui_local()),
-    })
+    }
+
+
+@extend_schema(responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('crm_voir')])
+def lead_resume(request, lead_id):
+    """AIC31 — ``GET /api/django/crm/leads/<id>/resume/`` : le lead en un
+    objet pour préparer un appel. Chaque bloc est lu chez son propriétaire
+    (chatter ici ; devis via ``ventes.selectors`` ; visites via
+    ``visites.selectors`` ; touche via ``cadence_selectors``). Aucun
+    ``prix_achat``, aucune marge ; lead d'une autre société : 404."""
+    lead = _lead_en_portee_ou_404(request.user, lead_id)
+    return Response(construire_resume(request.user, lead))
 
 
 #: Objectifs du brouillon de suivi -> mot-clé du modèle société à reprendre
@@ -463,12 +474,32 @@ LIMITE_RECHERCHE = 10
 LIMITE_RECHERCHE_MAX = 25
 
 
+#: Un terme de recherche « ressemble à un numéro » : chiffres, espaces, points,
+#: tirets, parenthèses, ``+`` initial, au moins 6 chiffres (« 0661 00 77 31 »,
+#: « +212 661-007-731 »). Moins, ce serait un morceau de nom ou de référence.
+_FORME_NUMERO = re.compile(r'^\+?[\d\s().-]+$')
+
+
+def _cle_numero(terme):
+    """Clé de numéro normalisée (celle des colonnes ``phone_normalise`` /
+    ``whatsapp_normalise``) si ``terme`` ressemble à un numéro, sinon ``''``."""
+    if not _FORME_NUMERO.match(terme or ''):
+        return ''
+    from .leads_doublons import normalize_phone
+
+    cle = normalize_phone(terme)
+    return cle if len(cle) >= 6 else ''
+
+
 def _leads_trouves(request, terme, etape):
     """Les leads de la PORTÉE de l'appelant (société + visibilité de son rôle,
     comme la liste) filtrés par la recherche de ``LeadViewSet`` (mêmes
-    ``search_fields``, jamais une troisième recherche) et par étape. Sans
+    ``search_fields``) et par étape. Un terme qui ressemble à un numéro cherche
+    AUSSI les colonnes normalisées du téléphone et du WhatsApp (« +212 661… »
+    retrouve « 0661… », et un lead connu seulement par son WhatsApp). Sans
     ``client_pii_voir``, ni le téléphone ni l'e-mail ne servent de critère
     (la recherche ne devient pas un oracle du numéro masqué)."""
+    from django.db.models import Q
     from rest_framework.filters import SearchFilter
 
     from .portee_selectors import leads_visibles
@@ -484,8 +515,15 @@ def _leads_trouves(request, terme, etape):
                   if not (masque and c in ('telephone', 'email'))]
         filtre = SearchFilter()
         filtre.search_param = 'q'
-        leads = filtre.filter_queryset(
+        par_texte = filtre.filter_queryset(
             request, leads, type('VueRecherche', (), {'search_fields': champs}))
+        cle = '' if masque else _cle_numero(terme)
+        if cle:
+            leads = leads.filter(
+                Q(pk__in=par_texte.order_by().values('pk'))
+                | Q(phone_normalise=cle) | Q(whatsapp_normalise=cle))
+        else:
+            leads = par_texte
     return leads.select_related('owner').order_by('-date_creation', 'id')
 
 
@@ -547,6 +585,106 @@ def leads_recherche(request):
         'q': terme, 'etape': etape, 'total': total, 'limite': limite,
         'lignes': [_ligne_lead(x, touches.get(x.pk), masque) for x in page],
     })
+
+
+# ── COP2-C — créer un lead depuis une demande de client (message collé…) ────
+
+# ``sd.corps(nom, **champs)`` ne peut pas porter un champ nommé ``nom`` (il
+# heurte son premier paramètre) : le sérialiseur est décrit par un dict.
+_CORPS_LEAD_CREER = sd.inline_serializer(
+    'CrmAssistantLeadCreerRequest', dict(
+        nom=serializers.CharField(max_length=255),
+        prenom=serializers.CharField(
+            max_length=255, required=False, allow_blank=True),
+        societe=serializers.CharField(
+            max_length=255, required=False, allow_blank=True),
+        telephone=serializers.CharField(
+            max_length=50, required=False, allow_blank=True),
+        whatsapp=serializers.CharField(
+            max_length=50, required=False, allow_blank=True),
+        email=serializers.EmailField(
+            max_length=254, required=False, allow_blank=True),
+        ville=serializers.CharField(
+            max_length=120, required=False, allow_blank=True),
+        adresse=serializers.CharField(
+            max_length=500, required=False, allow_blank=True),
+        type_installation=ChoixDocumente(
+            Lead.TypeInstallation.values, required=False),
+        raccordement=ChoixDocumente(Lead.Raccordement.values, required=False),
+        batterie_souhaitee=ChoixDocumente(
+            Lead.BatterieSouhaitee.values, required=False),
+        taille_souhaitee_kwc=serializers.DecimalField(
+            max_digits=10, decimal_places=2, min_value=0, required=False),
+        note=serializers.CharField(
+            max_length=2000, required=False, allow_blank=True),
+        creer_quand_meme=serializers.BooleanField(required=False, default=False),
+    ))
+
+#: Entrées du corps qui ne sont PAS des champs du lead.
+_HORS_FICHE = ('note', 'creer_quand_meme')
+
+
+def _refus_doublon(lead, par):
+    """Le 409 « doublon » (contrat ``exemple_409_doublon``) : le lead existant
+    de la portée de l'appelant, nommé de façon autosuffisante — le modèle
+    n'a pas d'autre écran pour décider."""
+    from .serializers import nom_affichable_responsable
+
+    nom = f'{lead.prenom or ""} {lead.nom}'.strip()
+    etape = stages.STAGE_LABELS.get(lead.stage, lead.stage)
+    responsable = nom_affichable_responsable(lead.owner) or ''
+    precisions = [f'lead {lead.pk}', f'étape {etape}',
+                  f'responsable {responsable}' if responsable
+                  else 'sans responsable']
+    if lead.is_archived:
+        precisions.append('archivé')
+    if lead.ne_plus_contacter:
+        precisions.append('ne plus contacter')
+    return Response({
+        'detail': (
+            "Ce %s est déjà celui du lead « %s » (%s). Rien n'a été créé. "
+            'Pour créer un second lead malgré tout, redemande avec '
+            'creer_quand_meme.'
+            % ('numéro' if par == 'numero' else 'e-mail', nom,
+               ', '.join(precisions))),
+        'doublon': True, 'lead_id': lead.pk, 'nom': nom, 'etape': lead.stage,
+        'responsable': responsable, 'archive': bool(lead.is_archived),
+        'ne_plus_contacter': bool(lead.ne_plus_contacter),
+    }, status=409)
+
+
+@extend_schema(
+    request=_CORPS_LEAD_CREER,
+    responses={201: sd.OBJ, 409: OpenApiResponse(description=(
+        "Doublon : un lead de la portée porte déjà ce téléphone, ce WhatsApp "
+        "ou cet e-mail (rien n'est créé ; `creer_quand_meme` le permet)."))})
+@api_view(['POST'])
+@parser_classes(PARSEURS_JSON)
+@permission_classes([IsResponsableOrAdmin, DroitDeLaGrille('crm_creer')])
+def lead_creer(request):
+    """COP2-C — ``POST /api/django/crm/assistant/leads/creer/`` : crée un lead
+    depuis ce qu'une demande de client contient (contrat
+    ``assistant_lead_creer.json``). MÊME chemin de création que l'écran
+    « nouveau lead » (``leads_creation.creer_lead_saisi``) ; société,
+    responsable, étape et source sont posés par le serveur, jamais lus du
+    corps. Doublon de la portée de l'appelant → 409 sans rien créer (sauf
+    ``creer_quand_meme``) ; coordonnées sans ``client_pii_voir`` → 400 qui
+    nomme le champ. La réponse est le résumé du lead (carte « fiche_lead »)
+    plus ``cree``."""
+    from .leads_creation import DoublonLead, creer_lead_pour_assistant
+
+    donnees = corps_valide(request, _CORPS_LEAD_CREER)
+    try:
+        lead = creer_lead_pour_assistant(
+            request,
+            {cle: valeur for cle, valeur in donnees.items()
+             if cle not in _HORS_FICHE},
+            note=(donnees.get('note') or '').strip(),
+            creer_quand_meme=bool(donnees.get('creer_quand_meme')))
+    except DoublonLead as doublon:
+        return _refus_doublon(doublon.lead, doublon.par)
+    return Response(
+        {**construire_resume(request.user, lead), 'cree': True}, status=201)
 
 
 # ── COP-C7 — l'aperçu WhatsApp d'un devis, avec de quoi appeler le commit ──

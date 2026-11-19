@@ -27,8 +27,9 @@ from .public_affiner_views import lead_affiner_pro
 from .views_visite import lead_photo_toit
 # AIC — lectures servies à l'assistant (relais FastAPI, aucun écran en face).
 from .views_assistant import (
-    digest_matin, lead_brouillon_suivi, lead_message_visite, lead_resume,
-    lead_whatsapp_devis_apercu, leads_a_relancer, leads_recherche)
+    digest_matin, lead_brouillon_suivi, lead_creer, lead_message_visite,
+    lead_resume, lead_whatsapp_devis_apercu, leads_a_relancer,
+    leads_recherche)
 from .assistant_touches import touche_assistant
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
 from .clients_views import (
@@ -210,6 +211,9 @@ urlpatterns = [
     path('assistant/digest-matin/', digest_matin, name='assistant-digest-matin'),
     # headless: recherche compacte de leads servie à l'assistant (COP-C1)
     path('assistant/leads/', leads_recherche, name='assistant-leads'),
+    # headless: création d'un lead depuis une demande de client, servie à
+    # l'assistant sur confirmation (COP2-C) — même chemin que l'écran
+    path('assistant/leads/creer/', lead_creer, name='assistant-leads-creer'),
     # headless: aperçu WhatsApp d'un devis + de quoi appeler le commit (COP-C7)
     path('assistant/leads/<int:lead_id>/whatsapp-devis-apercu/',
          lead_whatsapp_devis_apercu, name='assistant-whatsapp-devis-apercu'),

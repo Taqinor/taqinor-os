@@ -43,6 +43,8 @@ import {
   preparerCartes, messageDeReponse, etatAffiche, foyerTouche, lienWhatsAppSur, idDevisSur, ETATS,
 } from './cartes'
 import { texteDiagnostic } from './diagnosticTexte'
+import { ECRANS, ECRANS_A_ONGLETS, ONGLETS_CALEPINAGE, cheminAutorise } from './ecrans'
+import { CARTES_CONNUES, COMPOSANTS } from './registre'
 
 const REPONSE = documentContrat('agent', 'assistant_reponse')
 const touche = (nom, variante = 'exemple') => exempleContrat('crm', nom, variante)
@@ -307,6 +309,77 @@ describe('cartes — Préparer (zéro appel au modèle)', () => {
   })
 })
 
+describe('cartes — devis_cree (COP2-W1, échantillon assistant_devis_cree)', () => {
+  const devis = () => exempleContrat('ventes', 'assistant_devis_cree')
+
+  it('référence, kWc, lignes empilées, total TTC et alertes viennent de l\'échantillon', () => {
+    monter([resultat('devis_cree', devis())])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte).toHaveTextContent('DEV-202611-0451')
+    expect(carte).toHaveTextContent('7,1 kWc')
+    expect(within(carte).getAllByTestId('devis-cree-ligne')).toHaveLength(3)
+    expect(carte).toHaveTextContent('Onduleur hybride Deye 10kW Triphasé')
+    // « qté × prix TTC » puis le total de la ligne, au format MAD.
+    expect(carte).toHaveTextContent(/10 × 1\s?400,00\s?MAD TTC/)
+    expect(within(carte).getByTestId('devis-cree-total')).toHaveTextContent(/73\s?000,00\s?MAD/)
+    expect(within(carte).getByTestId('devis-cree-alertes')).toHaveTextContent(/Composition imposée : 10 panneaux/)
+    // `nb_lignes` compte aussi les sections et les notes : la carte n'en déduit
+    // jamais un nombre de « lignes manquantes » (revue du 19/11).
+    expect(within(carte).queryByTestId('devis-cree-autres')).toBeNull()
+  })
+
+  it('ne montre jamais le jeton ni le chemin de la proposition, ni un prix d\'achat', () => {
+    monter([resultat('devis_cree', {
+      ...devis(), proposal_token: 'JETON-SECRET', proposal_path: '/api/django/ventes/devis/451/proposal/?t=JETON-SECRET',
+      prix_achat: '999', marge: '12',
+    })])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte.innerHTML).not.toMatch(/JETON-SECRET|proposal\/|prix_achat|marge/i)
+    expect(carte.querySelector('a')).toBeNull()
+  })
+
+  it('le PDF passe par /proposal authentifié (ventesApi.getProposalPdf), jamais par un lien', async () => {
+    monter([resultat('devis_cree', devis())])
+    await userEvent.click(screen.getByRole('button', { name: 'Télécharger le PDF' }))
+    expect(downloadBlobInGesture).toHaveBeenCalled()
+    await waitFor(() => expect(ventesApi.getProposalPdf).toHaveBeenCalledWith(451, {}))
+  })
+
+  it('« Ouvrir le devis » mène au devis (?devis=<id>) ET referme le tiroir', async () => {
+    const { store } = monter([resultat('devis_cree', devis())], { copilotOpen: true })
+    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le devis' }))
+    expect(screen.getByTestId('route')).toHaveTextContent('/ventes/devis')
+    expect(store.getState().ia.copilotOpen).toBe(false)
+  })
+
+  it('l\'identifiant se lit dans `devis_id` ou `id` ; sans identifiant entier, aucun bouton', () => {
+    const sansDevisId = { ...devis(), devis_id: undefined }
+    const { unmount } = monter([resultat('devis_cree', sansDevisId)])
+    expect(screen.getByRole('button', { name: 'Ouvrir le devis' })).toBeInTheDocument()
+    unmount()
+    monter([resultat('devis_cree', { ...devis(), devis_id: 'abc', id: null })])
+    expect(screen.queryByRole('button', { name: 'Ouvrir le devis' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Télécharger le PDF' })).not.toBeInTheDocument()
+  })
+
+  it('un serveur plus ancien (référence seule) : la carte rend sans planter', () => {
+    monter([resultat('devis_cree', { id: 12, reference: 'DEV-202611-0012' })])
+    const carte = screen.getByTestId('carte-devis_cree')
+    expect(carte).toHaveTextContent('DEV-202611-0012')
+    expect(within(carte).queryByTestId('devis-cree-ligne')).not.toBeInTheDocument()
+    expect(within(carte).queryByTestId('devis-cree-total')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir le devis' })).toBeInTheDocument()
+  })
+
+  it('une proposition à aperçu multi-lignes garde ses retours à la ligne (une ligne par entrée)', () => {
+    const apercu = 'Créer un lead\nNom : Aziz Benali\nTéléphone : 0661 23 45 67\nNote : veut 10 panneaux'
+    monter([{ type: 'proposition', action_key: 'crm.lead.creer', libelle: 'Créer un lead', apercu, confirm_token: 't', expire_dans_s: 300 }])
+    const p = screen.getByTestId('proposal-card').querySelector('p.whitespace-pre-wrap')
+    expect(p).not.toBeNull()
+    expect(p.textContent).toBe(apercu)
+  })
+})
+
 describe('diagnostic — texte « Copier pour Claude Code »', () => {
   it('routes, statuts, identifiants de requête, erreurs — aucune question ni nom', () => {
     const d = exempleContrat('reporting', 'assistant_diagnostic')
@@ -417,5 +490,49 @@ describe('cartes — Tâches (TCH118) : branchement dans CartesDuMessage', () =>
     monter([resultat('point', tache('point')), resultat('visite', touche('lead_visite_planifier'))])
     expect(screen.getByTestId('carte-taches-point')).toBeInTheDocument()
     expect(screen.getByText(/Visite \(brouillon\)/)).toBeInTheDocument()
+  })
+})
+
+// Copilote vague 2 (FND10) — carte `lien_ecran` (action `erp.ouvrir`) : le chemin vient du SERVEUR ; l'écran ne le suit
+// que s'il a la forme d'un écran du miroir `ecrans.js`, lui-même égal au contrat `assistant_ecrans.json`.
+describe('carte lien_ecran et miroir des écrans', () => {
+  const OUVRIR = (variante = 'exemple') => exempleContrat('agent', 'assistant_ouvrir', variante)
+
+  it('le miroir ecrans.js est égal au contrat (gabarits, onglets, écrans à onglets)', () => {
+    const contrat = documentContrat('agent', 'assistant_ecrans')
+    expect(ECRANS).toEqual(Object.fromEntries(Object.entries(contrat.ecrans).map(([cle, f]) => [cle, f.chemin])))
+    expect(ONGLETS_CALEPINAGE).toEqual(contrat.onglets_calepinage)
+    expect(ECRANS_A_ONGLETS).toEqual(Object.keys(contrat.ecrans).filter((cle) => contrat.ecrans[cle].onglets))
+    expect(cheminAutorise(contrat.exemple.chemin)).toBe(true)
+  })
+
+  it('le bouton ouvre le chemin du serveur et referme le tiroir', async () => {
+    const { store } = monter([resultat('lien_ecran', OUVRIR())], { copilotOpen: true })
+    expect(screen.getByText(OUVRIR().libelle)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: OUVRIR().titre }))
+    expect(screen.getByTestId('route')).toHaveTextContent(OUVRIR().chemin)
+    expect(store.getState().ia.copilotOpen).toBe(false)
+  })
+
+  it.each([
+    'https://exemple.invalid/crm', '//exemple.invalid', '/parametres/utilisateurs', '/crm/leads/abc',
+    '/calepinage/12?onglet=reglages', '/crm/leads/12?onglet=production', '/crm/leads/0', ' /crm', null,
+  ])('chemin hors de la table (%s) : aucun bouton', (chemin) => {
+    monter([resultat('lien_ecran', { ...OUVRIR(), chemin })])
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText(/Lien indisponible/)).toBeInTheDocument()
+  })
+
+  it('téléphone : le libellé se coupe et le bouton tient dans la largeur', () => {
+    monter([resultat('lien_ecran', OUVRIR('exemple_sans_objet'))])
+    expect(screen.getByText(OUVRIR('exemple_sans_objet').libelle, { selector: 'p' }).className).toMatch(/break-words/)
+    expect(screen.getByRole('button').className).toMatch(/w-full/)
+    expect(screen.getByRole('button').className).toMatch(/max-w-full/)
+  })
+
+  it('CARTES_CONNUES dérive des composants et chaque clé est au contrat de la réponse', () => {
+    expect(CARTES_CONNUES).toEqual(Object.keys(COMPOSANTS))
+    expect(CARTES_CONNUES).toContain('lien_ecran')
+    expect(CARTES_CONNUES.filter((cle) => !(cle in REPONSE.cartes_donnees))).toEqual([])
   })
 })

@@ -39,7 +39,6 @@ from .cadence_views import (
     _geste_atomique, _parse_rappel, rappel_saisi)
 from . import activity, lead_devis_payload, stages
 from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; ENF6 l'expose au schéma
-from .leads_attribution import default_responsable_for
 from . import schema_docs as sd
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin, LectureDuModule,
@@ -440,47 +439,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         )
 
     def perform_create(self, serializer):
-        # Société toujours côté serveur (TenantMixin). Si aucun responsable
-        # n'est choisi à la création, on applique le responsable par défaut
-        # de la société (Paramètres). Un responsable explicite est respecté.
-        user = self.request.user
-        extra = {'company': user.company}
-        if not serializer.validated_data.get('owner'):
-            # Un utilisateur à portée restreinte (Feature F) garde la propriété
-            # de ce qu'il crée — sinon il perdrait de vue son propre lead. Les
-            # comptes « voit tout » conservent l'assignation au responsable par
-            # défaut de la société (comportement historique).
-            if user.record_scope() != 'all':
-                extra['owner'] = user
-            else:
-                # NTCRM1 — territoire consulté en premier, repli XSAL11.
-                default = default_responsable_for(
-                    user.company, lead_attrs=serializer.validated_data)
-                if default is not None:
-                    extra['owner'] = default
-        serializer.save(**extra)
-        activity.log_creation(serializer.instance, user)
-        from .leads_score import recompute_lead_score
-        from .cadence_plan import demarrer_cadence_contact, sync_relance_activity
-        # CAD90 — un lead saisi à la main entre dans la cadence comme ceux du
-        # site : il doit donc, comme eux, exister au registre de consentement.
-        # La personne a elle-même sollicité le contact (appel entrant,
-        # message reçu, demande au salon) : c'est la base légale tracée ici.
-        from .leads_consentement import (
-            BASE_LEGALE_SOLLICITATION,
-            CONSENT_SOURCE_SAISIE_MANUELLE,
-            enregistrer_base_legale_lead,
-        )
-        enregistrer_base_legale_lead(
-            serializer.instance, source=CONSENT_SOURCE_SAISIE_MANUELLE,
-            base_legale=BASE_LEGALE_SOLLICITATION)
-        sync_relance_activity(serializer.instance, user)
-        recompute_lead_score(serializer.instance)
-        # MRY6 — un lead saisi à la main est une demande réelle : il entre
-        # dans la cadence comme ceux du site. Best-effort intégral — la
-        # création répond 201 même si la cadence échoue.
-        demarrer_cadence_contact(
-            serializer.instance, user=user, origine='saisie manuelle')
+        # COP2-C — UN SEUL chemin de création d'un lead saisi : le même que la
+        # route de l'assistant (``leads_creation.creer_lead_saisi`` : société
+        # serveur, responsable par défaut, journal, base légale, relance,
+        # score, cadence).
+        from .leads_creation import creer_lead_saisi
+        creer_lead_saisi(serializer, self.request.user)
 
     #: CRX25 — colonnes DÉRIVÉES recalculées par ``Lead.save()`` (QW10) : sans
     #: elles dans ``update_fields``, un changement de téléphone/email ne serait

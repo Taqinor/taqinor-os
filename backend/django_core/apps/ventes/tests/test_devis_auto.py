@@ -20,7 +20,7 @@ Run:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -463,6 +463,216 @@ class AutoEndpointTest(TestCase):
             company=self.company, nom='NoAuth', facture_hiver=Decimal('1800'))
         resp = APIClient().post(AUTO_URL, {'lead': lead.id}, format='json')
         self.assertIn(resp.status_code, (401, 403))
+
+
+class CompositionImposeeTest(TestCase):
+    """COP2-V3 — « 10 panneaux, onduleur triphasé de 10 kW, batterie de
+    5 kWh » : composition IMPOSÉE sur ``POST devis/auto/`` (résidentiel),
+    résolue par le résolveur catalogue unique ; 409 ``choix`` quand un élément
+    a zéro ou plusieurs candidats ; jamais un prix d'achat dans la réponse."""
+
+    CORPS = {'nb_panneaux': 10, 'onduleur_kw': 10, 'onduleur_phase': 'triphase',
+             'batterie_kwh': 5}
+
+    def setUp(self):
+        self.company = make_company('cop2-impose')
+        self.user = User.objects.create_user(
+            username='cop2imp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth_client(self.user)
+
+        def mk(nom, prix, company=None, stock=100):
+            return Produit.objects.create(
+                company=company or self.company, nom=nom,
+                sku='CI-%s' % Produit.objects.count(),
+                prix_vente=Decimal(prix), prix_achat=Decimal('123.45'),
+                quantite_stock=stock)
+        self.mk = mk
+        self.panneau = mk('Panneau Canadien Solar 710W', '1400')
+        mk('Panneau Jinko 550W', '1100')
+        self.hybride = mk('Onduleur hybride Deye 10kW Triphasé', '28000')
+        mk('Onduleur réseau Huawei 10kW Triphasé', '20000')
+        mk('Onduleur hybride Deye 5kW Monophasé', '17000')
+        self.batterie = mk('Batterie Dyness 5 kWh', '14000')
+
+    def _lead(self, **extra):
+        extra.setdefault('ville', VILLE_ANCRE)
+        return Lead.objects.create(company=self.company, nom='Imp',
+                                   prenom='Lead', **extra)
+
+    def _post(self, lead, **corps):
+        return self.api.post(AUTO_URL, {'lead': lead.id, **self.CORPS, **corps},
+                             format='json')
+
+    def test_lead_sans_facture_compose_le_kit_demande(self):
+        lead = self._lead()
+        resp = self._post(lead)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['devis_id'], resp.data['id'])
+        self.assertEqual(resp.data['lead_id'], lead.id)
+        par_nom = {li['designation']: li for li in resp.data['composition']}
+        self.assertEqual(par_nom['Panneau Canadien Solar 710W']['quantite'], 10)
+        self.assertEqual(
+            par_nom['Onduleur hybride Deye 10kW Triphasé']['quantite'], 1)
+        self.assertEqual(par_nom['Batterie Dyness 5 kWh']['quantite'], 1)
+        self.assertNotIn('Onduleur réseau Huawei 10kW Triphasé', par_nom)
+        # Sans consommation : aucune économie inventée.
+        self.assertIsNone(resp.data['economie_an_1_ht'])
+        self.assertIsNone(resp.data['retour_ans'])
+        codes = {a['code'] for a in resp.data['alertes']}
+        self.assertIn('composition_imposee', codes)
+        self.assertIn('raccordement_suppose', codes)
+        texte = str(resp.data).lower()
+        self.assertNotIn('prix_achat', texte)
+        self.assertNotIn('123.45', texte)
+        devis = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        marqueur = devis.etude_params['composition_imposee']
+        self.assertEqual(marqueur['produits']['onduleur'], self.hybride.pk)
+        self.assertEqual(marqueur['par'], self.user.pk)
+
+    def test_la_contradiction_kwh_bloque_toujours(self):
+        lead = self._lead(facture_hiver=Decimal('1800'),
+                          conso_mensuelle_kwh=Decimal('40'))
+        resp = self._post(lead)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'conso_mensuelle_kwh')
+
+    def test_deux_batteries_candidates_409_choix_sans_rien_creer(self):
+        self.mk('Batterie Dyness BX 5 kWh', '14500')
+        resp = self._post(self._lead())
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'batterie_produit_id')
+        self.assertEqual(len(resp.data['choix']), 2)
+        self.assertTrue(all(c['produit_id'] for c in resp.data['choix']))
+        for choix in resp.data['choix']:
+            self.assertIn('produit %s' % choix['produit_id'],
+                          resp.data['detail'])
+        self.assertNotIn('123.45', str(resp.data))
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+
+    def test_aucune_batterie_de_7_kwh_409_nomme_les_tailles(self):
+        resp = self._post(self._lead(), batterie_kwh=7)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'batterie_kwh')
+        self.assertEqual(resp.data['choix'], [])
+        self.assertIn('5 kWh', resp.data['detail'])
+
+    def test_triphase_impose_sur_lead_monophase_refuse(self):
+        resp = self._post(self._lead(raccordement='monophase'))
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'raccordement')
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+
+    def test_produit_etranger_ou_sans_prix_refuse(self):
+        etranger = self.mk('Onduleur hybride Deye 10kW Triphasé', '28000',
+                           company=make_company('cop2-imp-autre'))
+        sans_prix = self.mk('Onduleur hybride Solis 10kW Triphasé', '0')
+        for produit in (etranger, sans_prix):
+            with self.subTest(produit=produit.pk):
+                resp = self.api.post(AUTO_URL, {
+                    'lead': self._lead().id, 'nb_panneaux': 10,
+                    'onduleur_produit_id': produit.pk, 'batterie_kwh': 5},
+                    format='json')
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data['field'], 'onduleur_produit_id')
+
+    def test_target_kwc_les_deux_et_marche_non_residentiel_refuses(self):
+        for corps, champ in (({'target_kwc': 6}, 'target_kwc'),
+                             ({'scenario': 'les_deux'}, 'scenario')):
+            with self.subTest(champ=champ):
+                resp = self._post(self._lead(), **corps)
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data['field'], champ)
+        resp = self._post(self._lead(type_installation='commercial'))
+        self.assertEqual(resp.data['field'], 'type_installation')
+
+    def test_rejeu_idempotent_rend_la_meme_composition(self):
+        lead = self._lead()
+        premier = self._post(lead)
+        second = self._post(lead)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data['id'], premier.data['id'])
+        self.assertEqual(second.data['composition'],
+                         premier.data['composition'])
+        self.assertEqual(second.data['lead_id'], lead.id)
+
+    def test_le_marqueur_ne_se_forge_pas_par_le_corps(self):
+        resp = self.api.post(AUTO_URL, {
+            'lead': self._lead(facture_hiver=Decimal('1800')).id,
+            'etude_params': {'composition_imposee': {'par': 1}}},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'etude_params')
+        self.assertFalse(any(
+            'composition_imposee' in (d.etude_params or {})
+            for d in Devis.objects.filter(company=self.company)))
+
+    def test_marque_epinglee_absente_sur_un_role_non_impose_refuse(self):
+        """Revue E — une marque épinglée (Gammes) sans produit sur un rôle NON
+        imposé (structure) refuse comme le devis automatique ordinaire :
+        jamais un devis qui perd sa ligne en silence."""
+        from apps.ventes.models import ParametresGammes
+        ParametresGammes.objects.create(
+            company=self.company,
+            marques={'Essentielle': {'structure_acier': 'Inexistante'}})
+        resp = self._post(self._lead())
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['field'], 'marques')
+        self.assertFalse(Devis.objects.filter(company=self.company).exists())
+
+    def test_regenerer_sans_configuration_garde_le_marqueur(self):
+        """Revue D — « régénérer » une taille qui n'a rien de stocké ne fait
+        rien : le marqueur de composition imposée reste."""
+        cree = self._post(self._lead())
+        self.assertEqual(cree.status_code, 201, cree.data)
+        resp = self.api.post(
+            '/api/django/ventes/devis/%s/offres-tailles/regenerer/'
+            % cree.data['id'], {'cle': 'eco'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis = Devis.objects.get(pk=cree.data['id'])
+        self.assertIn('composition_imposee', devis.etude_params)
+
+    def test_sans_imposition_la_reponse_porte_aussi_la_composition(self):
+        resp = self.api.post(AUTO_URL, {
+            'lead': self._lead(facture_hiver=Decimal('1800')).id},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['devis_id'], resp.data['id'])
+        self.assertTrue(resp.data['composition'])
+        devis = Devis.objects.get(pk=resp.data['id'])
+        self.assertNotIn('composition_imposee', devis.etude_params or {})
+
+
+class MarqueurCompositionImposeeTest(SimpleTestCase):
+    """Revue B / C — le marqueur ``composition_imposee`` (sans base)."""
+
+    def test_permutation_abstenue_seulement_si_un_onduleur_est_impose(self):
+        from types import SimpleNamespace
+        from apps.ventes.domain.composition_imposee import abstention_onduleur
+        ligne = SimpleNamespace(designation='Onduleur réseau Huawei 5kW')
+        impose = SimpleNamespace(etude_params={'composition_imposee': {
+            'produits': {'onduleur': 88, 'panneau': 12}}})
+        panneaux_seuls = SimpleNamespace(etude_params={'composition_imposee': {
+            'produits': {'onduleur': None, 'panneau': 12}}})
+        avertissements = []
+        self.assertTrue(abstention_onduleur(impose, ligne, avertissements))
+        self.assertEqual(len(avertissements), 1)
+        avertissements = []
+        self.assertFalse(abstention_onduleur(panneaux_seuls, ligne,
+                                             avertissements))
+        self.assertFalse(abstention_onduleur(
+            SimpleNamespace(etude_params={}), ligne, avertissements))
+        self.assertEqual(avertissements, [])
+
+    def test_le_marqueur_ne_passe_jamais_a_une_copie(self):
+        from apps.ventes.domain.etudes import etude_params_pour_copie
+        copie = etude_params_pour_copie({
+            'composition_imposee': {'produits': {'onduleur': 88}},
+            'scenario': 'Avec batterie'})
+        self.assertNotIn('composition_imposee', copie)
+        self.assertEqual(copie.get('scenario'), 'Avec batterie')
 
 
 class GuardrailTest(TestCase):

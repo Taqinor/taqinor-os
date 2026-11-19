@@ -80,3 +80,35 @@ class AgentActionsTests(TestCase):
             self.assertIn(key, _REGISTRY)
             self.assertEqual(_REGISTRY[key].risk, RISK_INTERNAL)
             self.assertEqual(_REGISTRY[key].method, 'GET')
+
+    def test_rep7_depense_bornee_par_debut_et_fin(self):
+        """REP7 — « cette semaine » exige deux dates : sans elles la route
+        rendait TOUT l'historique. Les bornes déclarées sont lues par la route
+        (dépense d'il y a 30 jours exclue) et la garde est ``adsengine_view``."""
+        from django.contrib.auth import get_user_model
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from apps.roles.models import Role
+        action = agent_actions.DEPENSE_SEMAINE
+        self.assertEqual(action.inputs['required'], ['debut', 'fin'])
+        self.assertIn(action.required_permission, _gardes_de_la_route(action)[0])
+        company = Company.objects.create(nom='Rep7 Co', slug='rep7-co')
+        camp = AdCampaignMirror.objects.create(
+            company=company, meta_id='c7', name='Camp', status='PAUSED')
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        today = datetime.date.today()
+        for jour, montant in ((today, '300.00'), (today - datetime.timedelta(days=30), '999.00')):
+            InsightSnapshot.objects.create(
+                company=company, content_type=ct, object_id=camp.pk,
+                date=jour, spend=Decimal(montant))
+        user = get_user_model().objects.create_user(
+            username='rep7', password='x', company=company,
+            role=Role.objects.create(company=company, nom='Pub',
+                                     permissions=['adsengine_view']))
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        resp = api.get(action.endpoint, {'debut': today.isoformat(),
+                                         'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(Decimal(resp.data['spend']), Decimal('300.00'))

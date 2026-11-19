@@ -158,6 +158,11 @@ class CibleDevis:
     #: (``geometrie.modeles_designes`` : ``[{produit_id, watt, count}]``) ;
     #: ``None`` (LE DÉFAUT) ⇒ composition au wattage, inchangée.
     modeles: object = None
+    #: COP2-V3 — COMPOSITION IMPOSÉE (``domain/composition_imposee``) :
+    #: l'onduleur vendu (id) et la banque ``{'produit_id', 'nombre'}``.
+    #: ``None`` (LE DÉFAUT) ⇒ pipeline strictement inchangé.
+    onduleur_impose: object = None
+    batterie_imposee: object = None
 
 
 @dataclass(frozen=True)
@@ -405,6 +410,9 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         ville=ville_du_lead(intention.lead),
         # ACAL63 — une ligne panneau PAR MODÈLE désigné par le calepinage.
         modeles=getattr(cible, 'modeles', None),
+        # COP2-V3 — l'onduleur et la banque IMPOSÉS voyagent avec la cible.
+        onduleur_impose=getattr(cible, 'onduleur_impose', None),
+        batterie_imposee=getattr(cible, 'batterie_imposee', None),
         # RSIZ2/3/5 — un devis recomposé aux règles d'origine (< 3) garde ses
         # règles, comme ses cartes de taille (``contexte_sonde_du_devis``).
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
@@ -761,7 +769,14 @@ def _reconcilier_sur_le_lead(devis, lead, company, user):
     impossible : on le DIT et le reste du geste continue)."""
     from apps.ventes import offres_tailles
     from apps.ventes.services import SyncLayoutError, extract_roof_config
+    from apps.ventes.domain.composition_imposee import marqueur
 
+    if marqueur(devis) is not None:
+        # COP2-V3 — la composition a été IMPOSÉE : reprendre le lead ne
+        # redimensionne pas le kit (le compte imposé est souverain).
+        return ['Taille non recalculée : la composition de ce devis a été '
+                'imposée (nombre de panneaux, onduleur, batterie) ; '
+                'appliquez une taille pour revenir au dimensionnement.']
     try:
         nb, _watt, _source, _avec = _panneaux_dimensionnement_horaire(
             lead=lead, company=company,

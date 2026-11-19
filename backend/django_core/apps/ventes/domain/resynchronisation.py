@@ -198,6 +198,38 @@ MSG_PERMUTATION_PRIX_MANUEL = (
 )
 
 
+def _avertir_sans_batterie(avertissements, hybride):
+    """La batterie voulue n'a pas pu être ajoutée : on dit POURQUOI (aucune
+    batterie compatible avec la plage de l'onduleur, ou aucune tarifée).
+    Extrait tel quel de :func:`reconcilier` (COP2-V3, aucun changement)."""
+    _plage_devis = _plage_batterie_de_l_onduleur(hybride)
+    if _plage_devis and _plage_devis[1] > 0:
+        avertissements.append(
+            'Aucune batterie compatible tarifée pour cet onduleur '
+            '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
+            'ajoutée.'
+            % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
+    else:
+        avertissements.append(
+            'Aucune batterie tarifée au catalogue : la ligne '
+            'batterie n\'a pas pu être ajoutée. Ajoutez une '
+            'batterie tarifée.')
+
+
+def _kit_hors_composition_residentielle(devis, agricole, multi_villa):
+    """Le kit de ce devis ne se déduit-il PAS d'une composition résidentielle ?
+
+    Agricole et multi-villa (règles d'origine), et commercial / industriel :
+    leur panier vient du moteur C&I (coffrets AC/DC, pose, raccordement…) — y
+    compléter « Accessoires », « Tableau De Protection AC/DC » et
+    « Installation » les compte en double (devis DEV-202611-0076, 19/11/2026 :
+    un calepinage enregistré avait ajouté les trois lignes à chaque option).
+    """
+    from apps.ventes.domain.etude_schema import MARCHES_CI
+    mode = (getattr(devis, 'mode_installation', '') or '').strip().lower()
+    return bool(agricole or multi_villa or mode in MARCHES_CI)
+
+
 def reconcilier(devis, intention):
     """QJR97 — L'ÉTAPE « RÉCONCILIER » du pipeline (``MODE_RECONCILIER``).
 
@@ -258,8 +290,9 @@ def reconcilier(devis, intention):
       Meter + clé Wifi derrière un onduleur Huawei. Ces classes sont AJOUTÉES
       quand elles manquent, jamais re-tarifées quand elles sont là ; un
       composant introuvable ou non tarifé est sauté ET annoncé en français.
-      Ni sur un devis agricole (pompage) ni sur un multi-villa : les deux
-      demandent un kit qui ne se déduit pas d'une composition résidentielle ;
+      Ni sur un devis agricole (pompage), ni sur un multi-villa, ni sur un
+      commercial / industriel (panier du moteur C&I) : tous demandent un kit
+      qui ne se déduit pas d'une composition résidentielle ;
     * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
       sections, notes, ordre d'affichage, groupes multi-villa, et les produits
       des lignes non touchées ne sont JAMAIS re-choisis ;
@@ -803,25 +836,18 @@ def reconcilier(devis, intention):
                 _hybride_du_devis = _pick_product(
                     verrou.company, _is_hybrid_inverter,
                     role='onduleur_hybride', gamme=gamme)
-            batterie = _pick_batterie(
-                verrou.company, onduleur=_hybride_du_devis, gamme=gamme)
-            if batterie is None:
-                _plage_devis = _plage_batterie_de_l_onduleur(_hybride_du_devis)
-                if _plage_devis and _plage_devis[1] > 0:
-                    avertissements.append(
-                        'Aucune batterie compatible tarifée pour cet onduleur '
-                        '(plage %s-%s V) : la ligne batterie n\'a pas pu être '
-                        'ajoutée.'
-                        % (_v_txt(_plage_devis[0]), _v_txt(_plage_devis[1])))
-                else:
-                    avertissements.append(
-                        'Aucune batterie tarifée au catalogue : la ligne '
-                        'batterie n\'a pas pu être ajoutée. Ajoutez une '
-                        'batterie tarifée.')
-            else:
+            # COP2-V3 — un devis à composition IMPOSÉE reprend SA batterie
+            # (jamais le choix catalogue) ; plus tarifée : rien n'est posé.
+            batterie, nombre_impose, imposee_manquante = batterie_de_resynchro(
+                verrou, _pick_batterie(
+                    verrou.company, onduleur=_hybride_du_devis, gamme=gamme),
+                avertissements)
+            if batterie is None and not imposee_manquante:
+                _avertir_sans_batterie(avertissements, _hybride_du_devis)
+            elif batterie is not None:
                 creer_ligne(
                     verrou, produit=batterie, designation=batterie.nom,
-                    quantite=Decimal('1'),
+                    quantite=Decimal(str(nombre_impose or 1)),
                     prix_unitaire=Decimal(batterie.prix_vente),
                     # QJR226 — même correction que la ligne panneau : la
                     # batterie créée par la resynchro SUIT l'existant.
@@ -931,6 +957,9 @@ def reconcilier(devis, intention):
             # du client), plus jamais « le moins cher de la marque préférée ».
             from apps.ventes.domain.catalogue import (
                 choisir_onduleur_permutation)
+            # COP2-V3 — un onduleur IMPOSÉ n'est jamais permuté (abstention DITE).
+            if abstention_onduleur(verrou, ligne, avertissements):
+                return False
             phase = _phase_du_client(ligne)
             remplacant = choisir_onduleur_permutation(
                 verrou.company, predicat, kwc=kwc, phase=phase, role=role,
@@ -1028,12 +1057,13 @@ def reconcilier(devis, intention):
         # Le squelette des devis d'hier devient le kit réellement installé. La
         # complétion n'AJOUTE que : les lignes en place, leurs prix négociés et
         # leur ordre ne sont jamais touchés (voir le bloc PVHEAL plus haut).
-        # Deux devis en sont écartés, parce qu'une composition RÉSIDENTIELLE ne
-        # décrit pas leur kit : l'agricole (pompage — ni structure de toiture
-        # ni socles) et le multi-villa (chaque villa a le sien, une série de
-        # lignes hors groupe y serait fausse).
+        # Trois devis en sont écartés, parce qu'une composition RÉSIDENTIELLE
+        # ne décrit pas leur kit : l'agricole (pompage — ni structure de
+        # toiture ni socles), le multi-villa (chaque villa a le sien, une série
+        # de lignes hors groupe y serait fausse) et le commercial / industriel
+        # (panier du moteur C&I — voir ``_kit_hors_composition_residentielle``).
         lignes_ajoutees = 0
-        if agricole or multi_villa:
+        if _kit_hors_composition_residentielle(verrou, agricole, multi_villa):
             if multi_villa and not agricole:
                 avertissements.append(
                     'Devis multi-villa : le kit manquant (structures, socles, '
@@ -1603,4 +1633,9 @@ from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-
     puissance_kwc_du_devis,
     scenario_effectif,
     scenario_servable,
+)
+# COP2-V3 — le marqueur de composition imposée (abstentions de la resynchro).
+from apps.ventes.domain.composition_imposee import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    abstention_onduleur,
+    batterie_de_resynchro,
 )

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -15,10 +15,19 @@ vi.mock('../../api/iaApi', () => ({
     clearChatHistory: vi.fn(() => Promise.resolve({})),
     noterEvenement: vi.fn(),
     getSuggestions: vi.fn(),
+    // COP2-W2 — capacités de l'assistant pour ce compte (limite de question, images).
+    getCapacitesAssistant: vi.fn(),
   },
+}))
+// COP2-W2 — jsdom n'a ni canvas ni URL d'objet : la réduction (Image + canvas) est simulée, le reste
+// du module (fonctions pures) est le vrai.
+vi.mock('./images', async (importOriginal) => ({
+  ...(await importOriginal()),
+  reduireImage: vi.fn(async () => ({ media_type: 'image/jpeg', data: 'QUJD', apercu: 'blob:apercu-test' })),
 }))
 
 import iaApi from '../../api/iaApi'
+import { reduireImage } from './images'
 import iaReducer from './store/iaSlice'
 import CopilotPanel from './CopilotPanel'
 import { EVENEMENT_OUVRIR } from './copilotMessages'
@@ -63,6 +72,8 @@ beforeEach(() => {
   })
   iaApi.noterEvenement.mockResolvedValue({ data: CONTRAT.ecriture_commercial.exemple })
   iaApi.getSuggestions.mockResolvedValue({ data: [] })
+  iaApi.getCapacitesAssistant.mockReset()
+  iaApi.getCapacitesAssistant.mockResolvedValue({ data: { limite_question: 2000, images_acceptees: false } })
 })
 
 async function poserUneQuestion(user) {
@@ -397,5 +408,204 @@ describe('CopilotPanel — les quatre demandes prêtes de Tâches (A12, TCH118)'
     monterAvecDroits(['crm_voir'])
     await screen.findByRole('button', { name: 'Q1 ?' })
     expect(screen.queryByRole('group', { name: 'Demandes prêtes' })).toBeNull()
+  })
+})
+
+/* COP2-W2 — longueur maximale lue chez le serveur, compteur, images jointes. Les capacités viennent de
+   `iaApi.getCapacitesAssistant` (GET /sql-agent/capacites) ; absentes ou en échec : 2000 caractères, pas d'image. */
+describe('CopilotPanel — limite de question et images jointes (COP2-W2)', () => {
+  const capacites = (c) => iaApi.getCapacitesAssistant.mockResolvedValue({ data: c })
+  const champ = () => screen.getByPlaceholderText(/Posez votre question/)
+  const png = (nom = 'capture.png') => new File(['x'], nom, { type: 'image/png' })
+  const reduite = (data) => ({ media_type: 'image/jpeg', data, apercu: `blob:${data}` })
+
+  afterEach(() => { vi.mocked(reduireImage).mockClear() })
+
+  it('compteur : invisible loin de la limite, visible près d\'elle, rouge au-delà ; la limite vient du serveur', async () => {
+    capacites({ limite_question: 100, images_acceptees: false })
+    const user = userEvent.setup()
+    monter()
+    await waitFor(() => expect(iaApi.getCapacitesAssistant).toHaveBeenCalledTimes(1))
+    await user.click(champ())
+    await user.paste('a'.repeat(50))
+    expect(screen.queryByTestId('compteur-question')).toBeNull()
+    await user.paste('a'.repeat(35))
+    await waitFor(() => expect(screen.getByTestId('compteur-question')).toHaveTextContent('85 / 100'))
+    await user.paste('a'.repeat(16))
+    expect(screen.getByTestId('compteur-question')).toHaveTextContent('Trop long : 101 / 100 caractères.')
+    expect(screen.getByRole('button', { name: 'Envoyer' })).toBeDisabled()
+  })
+
+  it('une question trop longue n\'est ni envoyée ni effacée (Entrée)', async () => {
+    capacites({ limite_question: 100, images_acceptees: false })
+    const user = userEvent.setup()
+    monter()
+    await waitFor(() => expect(iaApi.getCapacitesAssistant).toHaveBeenCalled())
+    await user.click(champ())
+    await user.paste('b'.repeat(101))
+    await user.keyboard('{Enter}')
+    expect(iaApi.queryAgent).not.toHaveBeenCalled()
+    expect(champ()).toHaveValue('b'.repeat(101))
+  })
+
+  it('sans réponse du serveur (route absente), la limite par défaut est 2000 et aucune image n\'est proposée', async () => {
+    iaApi.getCapacitesAssistant.mockRejectedValue(new Error('404'))
+    const user = userEvent.setup()
+    monter()
+    await waitFor(() => expect(iaApi.getCapacitesAssistant).toHaveBeenCalled())
+    await user.click(champ())
+    await user.paste('c'.repeat(1700))
+    expect(screen.getByTestId('compteur-question')).toHaveTextContent('1700 / 2000')
+    expect(screen.queryByRole('button', { name: 'Joindre une image' })).toBeNull()
+  })
+
+  it('le bouton « Joindre une image » n\'existe que si le serveur accepte les images', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    monter()
+    expect(await screen.findByRole('button', { name: 'Joindre une image' })).toBeInTheDocument()
+    expect(screen.getByTestId('images-input')).toHaveAttribute('accept', 'image/*')
+    expect(screen.getByTestId('images-input')).toHaveAttribute('multiple')
+  })
+
+  it('image jointe : miniature, avertissement, envoi `images` sans l\'aperçu, magasin sans base64, « [image jointe] »', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    vi.mocked(reduireImage).mockResolvedValueOnce(reduite('QUJD'))
+    const user = userEvent.setup()
+    const store = monter()
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    await user.upload(screen.getByTestId('images-input'), png())
+    expect(await screen.findByAltText('Image jointe 1')).toBeInTheDocument()
+    expect(screen.getByTestId('images-avertissement')).toHaveTextContent('Jamais de facture ni de pièce d\'identité.')
+    await user.type(champ(), 'Prépare-lui un devis')
+    await user.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await screen.findByText('[image jointe]')
+    expect(iaApi.queryAgent).toHaveBeenCalledTimes(1)
+    const [question, , , images] = iaApi.queryAgent.mock.calls[0]
+    expect(question).toBe('Prépare-lui un devis')
+    expect(images).toEqual([{ media_type: 'image/jpeg', data: 'QUJD' }])
+    // Le magasin ne garde que le nombre : ni le base64, ni l'URL d'objet.
+    const etat = JSON.stringify(store.getState().ia)
+    expect(etat).not.toContain('QUJD')
+    expect(etat).not.toContain('blob:')
+    expect(store.getState().ia.messages[0]).toMatchObject({ role: 'user', images_jointes: 1 })
+    // La saisie est vidée : plus de miniature ni d'avertissement.
+    expect(screen.queryByAltText('Image jointe 1')).toBeNull()
+    expect(screen.queryByTestId('images-avertissement')).toBeNull()
+  })
+
+  it('sans image, la requête garde sa forme d\'avant (trois arguments, aucune clé `images`)', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    await user.type(champ(), 'Bonjour')
+    await user.click(screen.getByRole('button', { name: 'Envoyer' }))
+    await waitFor(() => expect(iaApi.queryAgent).toHaveBeenCalledTimes(1))
+    expect(iaApi.queryAgent.mock.calls[0]).toHaveLength(3)
+  })
+
+  it('retirer une miniature la supprime ; trois images au plus', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    vi.mocked(reduireImage)
+      .mockResolvedValueOnce(reduite('A')).mockResolvedValueOnce(reduite('B'))
+      .mockResolvedValueOnce(reduite('C')).mockResolvedValueOnce(reduite('D'))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    await user.upload(screen.getByTestId('images-input'), [png('1.png'), png('2.png'), png('3.png'), png('4.png')])
+    await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(3))
+    expect(screen.getByTestId('images-erreur')).toHaveTextContent('3 images au maximum.')
+    expect(screen.getByRole('button', { name: 'Joindre une image' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Retirer l\'image 2' }))
+    expect(screen.getAllByRole('img')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Joindre une image' })).toBeEnabled()
+  })
+
+  it('un fichier qui n\'est pas une image est refusé avec une phrase', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    const user = userEvent.setup({ applyAccept: false })
+    monter()
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    await user.upload(screen.getByTestId('images-input'), new File(['x'], 'note.pdf', { type: 'application/pdf' }))
+    expect(await screen.findByTestId('images-erreur')).toHaveTextContent('Seules les images sont acceptées.')
+    expect(reduireImage).not.toHaveBeenCalled()
+  })
+
+  it('coller une image dans le champ la joint ; coller du texte reste un collage normal', async () => {
+    capacites({ limite_question: 6000, images_acceptees: true })
+    vi.mocked(reduireImage).mockResolvedValueOnce(reduite('P'))
+    const user = userEvent.setup()
+    monter()
+    await screen.findByRole('button', { name: 'Joindre une image' })
+    fireEvent.paste(champ(), { clipboardData: { files: [png('colle.png')], getData: () => '' } })
+    expect(await screen.findByAltText('Image jointe 1')).toBeInTheDocument()
+    await user.click(champ())
+    await user.paste('du texte')
+    expect(champ()).toHaveValue('du texte')
+    expect(reduireImage).toHaveBeenCalledTimes(1)
+  })
+
+  describe('réduction réelle (Image + canvas simulés)', () => {
+    let vraie
+    let appels
+    let contexte
+    const AncienneImage = globalThis.Image
+    const ancienGetContext = HTMLCanvasElement.prototype.getContext
+    const ancienToDataURL = HTMLCanvasElement.prototype.toDataURL
+
+    beforeEach(async () => {
+      vraie = (await vi.importActual('./images')).reduireImage
+      appels = []
+      contexte = { fillRect: vi.fn(), drawImage: vi.fn(), fillStyle: '' }
+      URL.createObjectURL = vi.fn(() => 'blob:apercu')
+      URL.revokeObjectURL = vi.fn()
+      globalThis.Image = class {
+        constructor() { this.naturalWidth = 4000; this.naturalHeight = 3000 }
+        set src(v) { this._src = v; queueMicrotask(() => this.onload?.()) }
+      }
+      HTMLCanvasElement.prototype.getContext = () => contexte
+    })
+    afterEach(() => {
+      globalThis.Image = AncienneImage
+      HTMLCanvasElement.prototype.getContext = ancienGetContext
+      HTMLCanvasElement.prototype.toDataURL = ancienToDataURL
+      delete URL.createObjectURL
+      delete URL.revokeObjectURL
+    })
+
+    it('4000×3000 → 1280×960, JPEG qualité 0,8, base64 SANS préfixe data:', async () => {
+      HTMLCanvasElement.prototype.toDataURL = function (type, qualite) {
+        appels.push([this.width, this.height, type, qualite])
+        return 'data:image/jpeg;base64,QUJD'
+      }
+      const r = await vraie(png())
+      expect(appels).toEqual([[1280, 960, 'image/jpeg', 0.8]])
+      expect(r).toEqual({ media_type: 'image/jpeg', data: 'QUJD', apercu: 'blob:apercu' })
+      expect(contexte.drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1280, 960)
+    })
+
+    it('trop lourde à 0,8 : qualité réduite ; toujours trop lourde : refusée et l\'URL d\'objet révoquée', async () => {
+      const lourde = `data:image/jpeg;base64,${'A'.repeat(1900001)}`
+      HTMLCanvasElement.prototype.toDataURL = (type, qualite) => { appels.push(qualite); return qualite > 0.7 ? lourde : 'data:image/jpeg;base64,PETIT' }
+      expect((await vraie(png())).data).toBe('PETIT')
+      expect(appels).toEqual([0.8, 0.6])
+      HTMLCanvasElement.prototype.toDataURL = () => lourde
+      await expect(vraie(png())).rejects.toThrow('image trop lourde')
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:apercu')
+    })
+  })
+
+  it('un message d\'historique qui portait une image montre « [image jointe] »', async () => {
+    const initial = iaReducer(undefined, { type: '@@init' })
+    const store = configureStore({
+      reducer: { ia: iaReducer },
+      preloadedState: { ia: { ...initial, copilotOpen: true, messages: [
+        { role: 'user', content: 'Prépare-lui un devis', images_jointes: 1 },
+        { role: 'user', content: 'Et celle-ci', images_jointes: 2 },
+      ] } },
+    })
+    render(<Provider store={store}><CopilotPanel /></Provider>)
+    expect(await screen.findByText('[image jointe]')).toBeInTheDocument()
+    expect(screen.getByText('[2 images jointes]')).toBeInTheDocument()
   })
 })

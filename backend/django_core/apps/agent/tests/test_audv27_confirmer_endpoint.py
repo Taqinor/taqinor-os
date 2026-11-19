@@ -68,6 +68,38 @@ class AgentActionConfirmerViewTests(TestCase):
         self.assertEqual(log.action_key, 'crm.client.create')
         self.assertEqual(log.risk_level, 'outward')
         self.assertIsNotNone(log.executed_at)
+        # Vague 2 (FND7) — sans `origine`, le journal est « confirmee ».
+        self.assertEqual((log.origine, resp.data['origine']), ('confirmee', 'confirmee'))
+
+    def _interne(self, corps_en_plus, action_key='tmp.fnd7.noter', inputs=None, object_id=None):
+        from apps.agent.registry import AgentAction, _REGISTRY, register, unregister
+        if 'tmp.fnd7.noter' not in _REGISTRY:
+            register(AgentAction(key='tmp.fnd7.noter', label='Noter', description='d',
+                                 endpoint='/x/', method='POST'))
+            self.addCleanup(unregister, 'tmp.fnd7.noter')
+        return _api(self.user).post(URL, {
+            'action_key': action_key, 'inputs': inputs or {}, 'object_id': object_id,
+            'preuve': _preuve(self.user, action_key, inputs, object_id), **corps_en_plus}, format='json')
+
+    def test_ecriture_interne_journalisee_origine_interne(self):
+        """FND7 — une écriture silencieuse du relais : `origine=interne`, pour
+        une action `internal` du catalogue de l'appelant ; jamais annulable."""
+        resp = self._interne({'risk_level': 'internal', 'origine': 'interne'},
+                             inputs={'id': 1489}, object_id=9921)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        log = AgentActionLog.objects.get(pk=resp.data['id'])
+        self.assertEqual((log.origine, log.inputs_json, log.risk_level), ('interne', {'id': 1489}, 'internal'))
+        self.assertFalse(resp.data['is_undoable'])
+
+    def test_origine_interne_refusee_pour_une_action_confirmee_et_valeur_inconnue(self):
+        resp = self._interne({'risk_level': 'outward', 'origine': 'interne'},
+                             action_key='crm.client.create')
+        self.assertEqual(resp.status_code, 403)
+        for valeur in ('autre', ['interne'], 3):
+            with self.subTest(origine=valeur):
+                resp = self._interne({'risk_level': 'internal', 'origine': valeur})
+                self.assertEqual(resp.status_code, 400)
+        self.assertEqual(AgentActionLog.objects.count(), 0)
 
     def test_resout_le_client_cree_pour_l_action_pilote(self):
         client_obj = Client.objects.create(

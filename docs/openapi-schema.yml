@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5166, operations: 7998, components: 4114}
+counts: {paths: 5174, operations: 8006, components: 4126}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -452,6 +452,7 @@ operations:
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
 - post /api/django/agent/logs/{id}/annuler/ -> django_agent_logs_annuler_create
+- get /api/django/agent/ouvrir/ -> django_agent_ouvrir_retrieve
 - get /api/django/audit/analytics/ -> django_audit_analytics_retrieve
 - get /api/django/audit/entries/ -> django_audit_entries_list
 - get /api/django/audit/entries/{id}/ -> django_audit_entries_retrieve
@@ -916,6 +917,7 @@ operations:
 - get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
 - get /api/django/crm/assistant/digest-matin/ -> django_crm_assistant_digest_matin_retrieve
 - get /api/django/crm/assistant/leads/ -> django_crm_assistant_leads_retrieve
+- post /api/django/crm/assistant/leads/creer/ -> django_crm_assistant_leads_creer_create
 - get /api/django/crm/assistant/leads/{lead_id}/message-visite/ -> django_crm_assistant_leads_message_visite_retrieve
 - post /api/django/crm/assistant/leads/{lead_id}/whatsapp-devis-apercu/ -> django_crm_assistant_leads_whatsapp_devis_apercu_create
 - get /api/django/crm/assistant/touches/{touche_id}/ -> django_crm_assistant_touches_retrieve
@@ -3670,6 +3672,7 @@ operations:
 - patch /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_partial_update
 - put /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_update
 - post /api/django/uxviews/saved-views/{id}/definir-par-defaut-role/ -> django_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/django/ventes/assistant/catalogue/ -> django_ventes_assistant_catalogue_retrieve
 - get /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_list
 - post /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_create
 - delete /api/django/ventes/attestations-conformite/{id}/ -> django_ventes_attestations_conformite_destroy
@@ -3765,6 +3768,7 @@ operations:
 - get /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_retrieve
 - post /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_create
 - get /api/django/ventes/devis/{id}/lecture-client/ -> django_ventes_devis_lecture_client_retrieve
+- get /api/django/ventes/devis/{id}/lignes-assistant/ -> django_ventes_devis_lignes_assistant_retrieve
 - get /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_retrieve
 - post /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_create
 - post /api/django/ventes/devis/{id}/noter/ -> django_ventes_devis_noter_create
@@ -4492,6 +4496,7 @@ operations:
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
 - post /api/v1/agent/logs/{id}/annuler/ -> v1_agent_logs_annuler_create
+- get /api/v1/agent/ouvrir/ -> v1_agent_ouvrir_retrieve
 - get /api/v1/audit/analytics/ -> v1_audit_analytics_retrieve
 - get /api/v1/audit/entries/ -> v1_audit_entries_list
 - get /api/v1/audit/entries/{id}/ -> v1_audit_entries_retrieve
@@ -4956,6 +4961,7 @@ operations:
 - get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
 - get /api/v1/crm/assistant/digest-matin/ -> v1_crm_assistant_digest_matin_retrieve
 - get /api/v1/crm/assistant/leads/ -> v1_crm_assistant_leads_retrieve
+- post /api/v1/crm/assistant/leads/creer/ -> v1_crm_assistant_leads_creer_create
 - get /api/v1/crm/assistant/leads/{lead_id}/message-visite/ -> v1_crm_assistant_leads_message_visite_retrieve
 - post /api/v1/crm/assistant/leads/{lead_id}/whatsapp-devis-apercu/ -> v1_crm_assistant_leads_whatsapp_devis_apercu_create
 - get /api/v1/crm/assistant/touches/{touche_id}/ -> v1_crm_assistant_touches_retrieve
@@ -7673,6 +7679,7 @@ operations:
 - patch /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_partial_update
 - put /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_update
 - post /api/v1/uxviews/saved-views/{id}/definir-par-defaut-role/ -> v1_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/v1/ventes/assistant/catalogue/ -> v1_ventes_assistant_catalogue_retrieve
 - get /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_list
 - post /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_create
 - delete /api/v1/ventes/attestations-conformite/{id}/ -> v1_ventes_attestations_conformite_destroy
@@ -7768,6 +7775,7 @@ operations:
 - get /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_retrieve
 - post /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_create
 - get /api/v1/ventes/devis/{id}/lecture-client/ -> v1_ventes_devis_lecture_client_retrieve
+- get /api/v1/ventes/devis/{id}/lignes-assistant/ -> v1_ventes_devis_lignes_assistant_retrieve
 - get /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_retrieve
 - post /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_create
 - post /api/v1/ventes/devis/{id}/noter/ -> v1_ventes_devis_noter_create
@@ -8111,7 +8119,8 @@ query_params:
   get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/django/agent/evenements/export/: depuis jusqu_a
   get /api/django/agent/evenements/stats/: semaines
-  get /api/django/agent/libelles/: client devis facture lead touche
+  get /api/django/agent/libelles/: bcf calepinage chantier client devis equipement facture fournisseur intervention lead produit ticket touche utilisateur variante visite
+  get /api/django/agent/ouvrir/: ecran id onglet
   get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
@@ -8770,6 +8779,7 @@ query_params:
   post /api/django/uxviews/favoris/{id}/reordonner/: ordering search
   get /api/django/uxviews/saved-views/: ecran ordering page page_size search
   get /api/django/uxviews/saved-views/toutes-company/: ordering search
+  get /api/django/ventes/assistant/catalogue/: famille genre kw kwh limite phase q wc
   get /api/django/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/django/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/django/ventes/avoirs/: facture ordering page page_size search
@@ -8933,7 +8943,8 @@ query_params:
   get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/v1/agent/evenements/export/: depuis jusqu_a
   get /api/v1/agent/evenements/stats/: semaines
-  get /api/v1/agent/libelles/: client devis facture lead touche
+  get /api/v1/agent/libelles/: bcf calepinage chantier client devis equipement facture fournisseur intervention lead produit ticket touche utilisateur variante visite
+  get /api/v1/agent/ouvrir/: ecran id onglet
   get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
@@ -9590,6 +9601,7 @@ query_params:
   post /api/v1/uxviews/favoris/{id}/reordonner/: ordering search
   get /api/v1/uxviews/saved-views/: ecran ordering page page_size search
   get /api/v1/uxviews/saved-views/toutes-company/: ordering search
+  get /api/v1/ventes/assistant/catalogue/: famille genre kw kwh limite phase q wc
   get /api/v1/ventes/attestations-conformite/: chantier ordering page page_size search statut
   get /api/v1/ventes/attestations-re/: chantier ordering page page_size search statut
   get /api/v1/ventes/avoirs/: facture ordering page page_size search
@@ -9928,6 +9940,7 @@ components:
 - AssistantEvenementsExport
 - AssistantEvenementsPage
 - AssistantLibelles
+- AssistantOuvrir
 - AssistantStats
 - AssumptionNode
 - AssumptionNodeRequest
@@ -10223,6 +10236,9 @@ components:
 - CatalogueAchatFavorisCorpsRequest
 - CatalogueAchatFavorisReponse
 - CatalogueAchatFavorisReponsePut
+- CatalogueAssistantLigne
+- CatalogueAssistantResponse
+- CatalogueAssistantResponseStatutEnum
 - Categorie
 - CategorieCommercialeEnum
 - CategorieEquipement
@@ -10348,6 +10364,7 @@ components:
 - ConfigImportRequestRequest
 - ConfigImportResultat
 - ConfigPackage
+- ConfirmationActionOrigineEnum
 - ConfirmationActionRequest
 - ConfirmerRdvRequeteRequest
 - ConsentRecord
@@ -10414,6 +10431,7 @@ components:
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
 - CrmAssistantBrouillonSuiviRequestRequest
+- CrmAssistantLeadCreerRequestRequest
 - CrmAssistantWhatsappApercuRequestRequest
 - CrmBulkLeadsRequestActionEnum
 - CrmBulkLeadsRequestRequest
@@ -10584,6 +10602,9 @@ components:
 - DevisActivity
 - DevisAjouterBoqResponse
 - DevisAtomicRequest
+- DevisAutoChoix
+- DevisAutoErreur
+- DevisAutoLigneComposition
 - DevisAutoRequestRequest
 - DevisAutoResponse
 - DevisAvenantSignatureReponse
@@ -10638,6 +10659,8 @@ components:
 - DevisHistoriqueConfiguration
 - DevisLayoutResponse
 - DevisLectureClient
+- DevisLigneAssistant
+- DevisLignesAssistantResponse
 - DevisLotCreationRequestRequest
 - DevisLotsResponse
 - DevisMarqueManquante
@@ -11472,6 +11495,7 @@ components:
 - OndLimitationExportEnum
 - OndPhasesEnum
 - OndRelaisDecouplageEnum
+- OnduleurPhaseEnum
 - OperateurEnum
 - OperationHorsLigneRequest
 - OptionAccepteeEnum

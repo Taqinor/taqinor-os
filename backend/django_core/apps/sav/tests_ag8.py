@@ -4,8 +4,8 @@ Couvre :
 - le catalogue porte les deux actions SAV (`sav.ticket.create`,
   `sav.ticket.update`) après `SavConfig.ready()` ;
 - `ouvrir_ticket_sav` reproduit le comportement de l'outil FastAPI hard-codé :
-  endpoint `POST /api/django/sav/tickets/`, permission `sav_gerer`, `client`
-  requis, et la société N'EST PAS dans le schéma d'entrée (posée côté serveur) ;
+  endpoint `POST /api/django/sav/tickets/`, permission `sav_gerer`, client OU
+  équipement (REP5), et la société N'EST PAS dans le schéma d'entrée ;
 - `mettre_a_jour_ticket` cible `PATCH …/tickets/{id}/` (id requis) ;
 - `for_user` ne propose les actions SAV qu'à un utilisateur portant `sav_gerer`.
 """
@@ -40,12 +40,15 @@ class SavAgentActionsCatalogueTest(TestCase):
         self.assertEqual(a.method, 'POST')
         # Même permission que le TicketViewSet (write → sav_gerer).
         self.assertEqual(a.required_permission, 'sav_gerer')
-        # client requis ; company JAMAIS dans le schéma (posée côté serveur).
+        # REP5 — client OU équipement (la route déduit client + chantier de
+        # l'équipement) ; company JAMAIS dans le schéma (posée côté serveur).
         props = a.inputs['properties']
-        self.assertIn('client', a.inputs['required'])
-        self.assertIn('client', props)
-        self.assertIn('description', props)
+        self.assertEqual(a.inputs['required'], ['description'])
+        self.assertLessEqual({'client', 'equipement', 'description'}, set(props))
         self.assertNotIn('company', props)
+        self.assertEqual(a.objets, {'client': 'client', 'equipement': 'equipement',
+                                    'installation': 'chantier'})
+        self.assertEqual(_by_key('sav.ticket.update').objets, {'id': 'ticket'})
 
     def test_mettre_a_jour_ticket_shape(self):
         a = _by_key('sav.ticket.update')
@@ -55,6 +58,29 @@ class SavAgentActionsCatalogueTest(TestCase):
         self.assertEqual(a.required_permission, 'sav_gerer')
         self.assertIn('id', a.inputs['required'])
         self.assertNotIn('company', a.inputs['properties'])
+        # REP5 — réaffecter exige sav_reassign (garde par champ) : retiré.
+        self.assertEqual(set(a.inputs['properties']),
+                         {'id', 'priorite', 'description'})
+
+    def test_rep5_a_confirmer_et_valeurs_exactes_du_modele(self):
+        from apps.agent.registry import RISK_OUTWARD
+        from apps.agent.tests.test_registry import _gardes_de_la_route
+        from apps.sav.models import Ticket
+        for key in ('sav.ticket.create', 'sav.ticket.update'):
+            a = _by_key(key)
+            self.assertEqual(a.risk, RISK_OUTWARD, key)
+            self.assertTrue(a.confirm_summary, key)
+            # Objet nommé : seul le LABEL est montré en 1re ligne de l'aperçu.
+            self.assertLessEqual(len(a.label), 90, key)
+            self.assertEqual(a.inputs['properties']['priorite']['enum'],
+                             list(Ticket.Priorite.values), key)
+            self.assertLessEqual(len(a.description), 600, key)
+            self.assertIn(a.required_permission, _gardes_de_la_route(a)[0], key)
+        self.assertEqual(
+            _by_key('sav.ticket.create').inputs['properties']['type']['enum'],
+            list(Ticket.Type.values))
+        self.assertIn("client n'est pas prévenu", _by_key('sav.ticket.create').label)
+        self.assertIn('statut inchangé', _by_key('sav.ticket.update').label)
 
 
 class SavAgentActionsPermissionTest(TestCase):
@@ -80,3 +106,70 @@ class SavAgentActionsPermissionTest(TestCase):
         keys = {a.key for a in for_user(self.other_user)}
         self.assertNotIn('sav.ticket.create', keys)
         self.assertNotIn('sav.ticket.update', keys)
+
+
+class SavTicketParEquipementRelaiTest(TestCase):
+    """REP5 — un ticket ouvert par l'équipement SEUL (corps de l'action)
+    porte le client et le chantier déduits par la route."""
+
+    def test_post_par_equipement_deduit_client_et_chantier(self):
+        from apps.sav.models import Equipement, Ticket
+        from apps.sav.tests import auth, make_installation, make_produit
+        company = Company.objects.create(nom='SAV Eq', slug='sav-eq')
+        user = User.objects.create_user(
+            username='sav_eq', password='x', company=company,
+            role=Role.objects.create(company=company, nom='SAV',
+                                     permissions=['sav_voir', 'sav_gerer']))
+        inst, client = make_installation(company, ref='CHT-REP5')
+        eq = Equipement.objects.create(
+            company=company, produit=make_produit(company),
+            installation=inst, numero_serie='SN-REP5')
+        a = _by_key('sav.ticket.create')
+        r = auth(user).post(a.endpoint, {
+            'equipement': eq.id, 'description': 'Onduleur en panne',
+            'type': 'correctif', 'priorite': 'haute'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        ticket = Ticket.objects.get(company=company)
+        self.assertEqual((ticket.client_id, ticket.installation_id),
+                         (client.id, inst.id))
+
+
+class SavLibellesAssistantTest(TestCase):
+    """Copilote vague 2 — l'aperçu d'une proposition NOMME le ticket et
+    l'équipement (``selectors_libelles.libelles_sav`` via la table de
+    l'agent) : dans la société ET la portée seulement, jamais la description
+    du problème (texte tiers)."""
+
+    def setUp(self):
+        from apps.sav.models import Equipement, Ticket
+        from apps.sav.tests import make_installation, make_produit
+        self.company = Company.objects.create(nom='SAV Lib', slug='sav-lib')
+        inst, client = make_installation(self.company, ref='CHT-LIB')
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=make_produit(self.company),
+            installation=inst, numero_serie='SN-LIB')
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-LIB-1', client=client,
+            equipement=self.eq, description='mot de passe du wifi')
+
+    def _libelles(self, permissions, company=None):
+        from apps.agent.libelles import libelles_objets
+        company = company or self.company
+        user = User.objects.create_user(
+            username=f'lib_{len(permissions)}_{company.pk}', password='x', company=company,
+            role=Role.objects.create(company=company, nom=f'R{len(permissions)}',
+                                     permissions=permissions))
+        return libelles_objets(user, {'ticket': self.ticket.pk, 'equipement': self.eq.pk})
+
+    def test_ticket_et_equipement_nommes_dans_la_portee(self):
+        out = self._libelles(['sav_voir', 'equipement_voir'])
+        self.assertEqual(out, {'ticket': 'SAV-LIB-1 — Client (Nouveau)',
+                               'equipement': 'Onduleur X — n° SN-LIB — Client'})
+        self.assertNotIn('wifi', str(out))
+
+    def test_hors_droit_hors_portee_autre_societe_absents(self):
+        from apps.roles.permissions_registre import SCOPE_SELF
+        self.assertEqual(self._libelles(['crm_voir']), {})
+        self.assertEqual(self._libelles(['sav_voir', 'equipement_voir', SCOPE_SELF]), {})
+        autre = Company.objects.create(nom='SAV Lib 2', slug='sav-lib-2')
+        self.assertEqual(self._libelles(['sav_voir', 'equipement_voir'], autre), {})

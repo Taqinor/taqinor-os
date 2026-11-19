@@ -163,6 +163,58 @@ class LeDryRunEtLaCreationNeDiverguentPas(_Base):
         # ci-dessus sans rien prouver.
         self.assertGreater(len(blanc.data['lignes']), 5)
 
+    def test_composition_imposee_meme_kit_a_blanc_et_a_la_creation(self):
+        """COP2-V3 (règle U3) — la composition IMPOSÉE compose le MÊME kit
+        par le dry-run et par la création : onduleur imposé à l'unité,
+        batterie imposée, compte de panneaux souverain."""
+        corps = {'nb_panneaux': 9, 'onduleur_kw': 5,
+                 'onduleur_phase': 'monophase', 'batterie_kwh': 5}
+        lead = self.lead(ville='Casablanca')
+        cree = self.api.post(AUTO_URL, {'lead': lead.id, **corps},
+                             format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        from apps.ventes.models import Devis
+        devis = Devis.objects.get(pk=cree.data['id'])
+        blanc = self.api.post(COMPO_URL, {'lead': lead.id, **corps},
+                              format='json')
+        self.assertEqual(blanc.status_code, 200, blanc.data)
+        self.assertEqual(self._empreinte_devis(devis),
+                         self._empreinte_dry_run(blanc.data))
+        par_nom = {d: q for d, q, _p in self._empreinte_devis(devis)}
+        self.assertEqual(par_nom['Onduleur hybride Deye 5kW Monophasé'], 1)
+        self.assertEqual(par_nom['Panneau Canadien Solar 710W'], 9)
+        self.assertEqual(par_nom['Batterie Dyness 5 kWh'], 1)
+        self.assertNotIn('Onduleur réseau Huawei 5kW Monophasé', par_nom)
+        # 10 kWh : deux banques servent (Dyness 5 × 2, Dyness 10 × 1) — le
+        # serveur ne choisit pas : 409 ``choix`` nommant les deux, à blanc
+        # comme à la création.
+        for url in (COMPO_URL, AUTO_URL):
+            refus = self.api.post(url, {'lead': lead.id, **corps,
+                                        'batterie_kwh': 10}, format='json')
+            self.assertEqual(refus.status_code, 409, refus.data)
+            self.assertEqual(len(refus.data['choix']), 2)
+
+    def test_nb_panneaux_seul_reste_l_entree_non_imposee_du_dry_run(self):
+        """COP2-V3 — sur le dry-run, ``nb_panneaux`` SEUL est l'entrée
+        historique ``{kwc | nb_panneaux}`` : aucun mode imposé (le wattage
+        demandé est lu, ni 409 de panneau 710 Wc, ni alerte « imposée »),
+        avec ou sans lead."""
+        lead = self.lead(ville='Casablanca')
+        for corps in ({'nb_panneaux': 8, 'panel_watt': 550},
+                      {'lead': lead.id, 'nb_panneaux': 8, 'panel_watt': 550},
+                      {'nb_panneaux': 250, 'panel_watt': 550}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(COMPO_URL, corps, format='json')
+                self.assertEqual(reponse.status_code, 200, reponse.data)
+                self.assertEqual(reponse.data['nb_panneaux'],
+                                 corps['nb_panneaux'])
+                self.assertIn('Panneau Jinko 550W',
+                              [li['designation'] for li in reponse.data['lignes']])
+                self.assertFalse(any(
+                    'imposée' in a for a in reponse.data['avertissements']))
+                from apps.ventes.domain.scenario import SCENARIO_LES_DEUX
+                self.assertEqual(reponse.data['scenario'], SCENARIO_LES_DEUX)
+
     def test_le_dry_run_ne_cree_rien(self):
         """« À blanc » veut dire à blanc : aucun devis, aucune ligne."""
         from apps.ventes.models import Devis, LigneDevis

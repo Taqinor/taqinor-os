@@ -4,7 +4,7 @@ from .views import (AgentActionConfirmerView, AssistantBudgetView, AgentActionLo
                     AgentActionsView, AgentActionUndoView,
                     AssistantEventExportView, AssistantEventNoteView,
                     AssistantEventStatsView, AssistantEventView,
-                    AutomationDraftView, LibellesObjetsView)
+                    AutomationDraftView, LibellesObjetsView, OuvrirEcranView)
 
 urlpatterns = [
     path('actions/', AgentActionsView.as_view(), name='agent-actions'),
@@ -30,4 +30,6 @@ urlpatterns = [
          name='agent-assistant-budget'),
     # COP-G4 — libellés des objets nommés dans l'aperçu d'une proposition.
     path('libelles/', LibellesObjetsView.as_view(), name='agent-libelles'),
+    # Copilote vague 2 (FND8) — écran à ouvrir (action erp.ouvrir, carte lien_ecran).
+    path('ouvrir/', OuvrirEcranView.as_view(), name='agent-ouvrir'),
 ]

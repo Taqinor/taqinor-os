@@ -241,6 +241,34 @@ class TenantIsolationTests(unittest.TestCase):
         self.assertIn("company_id = 7", svc._validate_and_secure(
             siege, self.CID, allow_pii=True))
 
+    def test_comptes_roles_et_reglages_sous_un_droit_d_administration(self):
+        """Copilote vague 2 (FND12) — `authentication_`, `roles_`,
+        `parametres_` (utilisateurs, société, rôles et leurs permissions,
+        profil : RIB, ICE, politique de sécurité) : un Commercial (qui a
+        `parametres_voir`, donné à presque tous les rôles) est refusé « module » ;
+        l'Administrateur passe (SQL réécrit) ; sans `permissions`
+        (super-utilisateur, appel direct) inchangé."""
+        import importlib.util
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            "django_core", "apps", "roles", "permissions_registre.py")
+        spec = importlib.util.spec_from_file_location("_registre_livre", chemin)
+        registre = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(registre)
+        roles = dict(registre.CANONICAL_SYSTEM_ROLES)
+        requetes = ("SELECT nom, permissions FROM roles_role",
+                    "SELECT rib, lockout_max_attempts FROM parametres_companyprofile",
+                    "SELECT nom FROM authentication_company")
+        for sql in requetes:
+            with self.subTest(sql=sql):
+                with self.assertRaisesRegex(svc.SQLSecurityError, "droit du module"):
+                    svc._validate_and_secure(sql, self.CID, permissions=list(roles["Commercial"]))
+                # `authentication_company` est filtrée sur `id`, les autres sur `company_id`.
+                self.assertRegex(svc._validate_and_secure(
+                    sql, self.CID, permissions=list(roles["Administrateur"])), r"\bid = 7\b|company_id = 7")
+                self.assertRegex(svc._validate_and_secure(sql, self.CID), r"\bid = 7\b|company_id = 7")
+
     def test_miroirs_publicitaires_sous_le_droit_du_module(self):
         """ALEC46 (C-ALEC-VER2-202) — miroirs `adsengine_` : Admin Ventes,
         Admin RH, Commercial terrain (sans `adsengine_*`) refuses « module » ;

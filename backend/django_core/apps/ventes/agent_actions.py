@@ -24,7 +24,8 @@ Niveaux de risque (qui pilotent le garde-fou propose→confirm) :
     le relais rend un LIEN, aucun statut ne change)
   * AG4 ``accepter_devis``     → OUTWARD   (marque le devis accepté → chantier)
   * AG5 ``convertir_en_bon_commande`` → OUTWARD (crée le BC du devis accepté)
-  * AG5 ``generer_facture``    → OUTWARD   (émet la facture de tranche suivante)
+  * AG5 ``generer_facture``    → IRREVERSIBLE (émet la tranche suivante avec son
+    numéro légal ; lot ``herite`` — REP6)
   * AG5 ``enregistrer_paiement`` → IRREVERSIBLE (encaissement comptable, gardé
     par confirmation ; écrit un Paiement scopé société, montant validé > 0)
 
@@ -38,8 +39,8 @@ compare le catalogue aux gardes réelles des routes :
   * création de devis        → ``ventes_creer``
   * remise globale           → ``ventes_modifier`` (PATCH du devis)
   * génération du PDF devis   → ``ventes_pdf``
-  * accepter / convertir / facturer → ``ventes_valider``
-  * encaisser                → ``encaisser`` (``PeutEncaisser``, ASEC29)
+  * accepter / convertir      → ``ventes_valider``
+  * émettre une tranche, encaisser → ``encaisser`` (``PeutEncaisser``, ASEC29)
 Le viewset reste l'autorité finale (il re-vérifie le rôle + la société).
 
 Cartes (COP-G3) : l'action PDF porte ``carte='document'`` ; les actions qui
@@ -55,6 +56,7 @@ from __future__ import annotations
 from apps.agent.registry import (
     AgentAction,
     LOT_COPILOTE,
+    LOT_HERITE,
     RISK_INTERNAL,
     RISK_OUTWARD,
     RISK_IRREVERSIBLE,
@@ -72,6 +74,11 @@ _PERM_VALIDER = 'ventes_valider'
 # exige ``encaisser`` (``PeutEncaisser``, ASEC29).
 _PERM_MODIFIER = 'ventes_modifier'
 _PERM_ENCAISSER = 'encaisser'
+
+#: REP6 — valeurs EXACTES de ``Paiement.Mode`` (apps/facturation/models.py),
+#: recopiées (ce module n'importe aucun modèle) et tenues par le test.
+MODES_PAIEMENT = ('especes', 'virement', 'cheque', 'carte', 'prelevement',
+                  'autre')
 
 
 # ── AG4 ─────────────────────────────────────────────────────────────────────
@@ -142,6 +149,9 @@ CREER_AUTO = AgentAction(
     },
     required_permission=_PERM_CREER,
     risk=RISK_INTERNAL,
+    # COP2-V4 — changement d'ÉCRAN seulement : la réponse (contrat
+    # ``assistant_devis_cree.json``) se rend en carte « devis créé ».
+    carte='devis_cree',
     objets={'lead': 'lead', 'client': 'client'},
 )
 
@@ -188,8 +198,8 @@ LIGNE_AJOUTER = AgentAction(
 
 # Action — Modifier une ligne de devis. Endpoint réel : PATCH
 # /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). L'id est celui de la
-# LIGNE (aucune action ne liste les lignes d'un devis : l'agent le demande s'il
-# ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
+# LIGNE (COP2-V5 : ``ventes.devis.lignes``, lot copilote, les liste ; sans
+# copilote, l'agent le demande s'il ne l'a pas). Prix, quantité et remise changent le montant du devis : COP-G3,
 # proposition à confirmer — AIC98 : une baisse de prix de ligne (prix tapé) compte
 # comme une remise pour le seuil d'approbation T17 (``profondeur_remise_effective``).
 LIGNE_MODIFIER = AgentAction(
@@ -435,21 +445,29 @@ CONVERTIR_EN_BON_COMMANDE = AgentAction(
 )
 
 
-# Action — Générer la prochaine facture de tranche du devis. Endpoint réel :
+# Action — Émettre la prochaine facture de tranche du devis. Endpoint réel :
 # POST /api/django/ventes/devis/{id}/generer-facture/
-# (DevisViewSet.generer_facture). Crée et émet la prochaine facture de
-# l'échéancier (acompte, puis matériel, puis solde). Effet comptable visible →
-# OUTWARD, confirmation requise.
+# (DevisViewSet.generer_facture, porte « api-only » fermée côté écran). REP6
+# (copilote vague 2, B-7) : la route ÉMET la tranche suivante avec son NUMÉRO
+# LÉGAL (``creer_facture_tranche``) — ce n'est pas un brouillon ; une facture
+# émise ne s'annule que par un avoir → IRREVERSIBLE. Garde réelle :
+# ``IsResponsableOrAdmin`` (décorateur) PUIS ``PeutEncaisser`` DANS LE CORPS
+# (403 ``MOTIF_SANS_ENCAISSER``) : le code du catalogue est ``encaisser``
+# (l'Admin Ventes, ``ventes_valider`` sans ``encaisser``, voyait l'outil et
+# recevait 403). Lot ``herite`` : servi seulement copilote ÉTEINT ; sous le
+# copilote, la facturation passe par un BROUILLON (vague 2B).
 GENERER_FACTURE = AgentAction(
     key='ventes.devis.generer_facture',
-    label='Générer la facture (tranche suivante)',
+    label='Émettre la facture (numéro légal, ne s\'annule que par un avoir)',
     description=(
         "Sert à : émettre la prochaine facture de tranche de l'échéancier du "
-        "devis (acompte → matériel → solde) ; change un statut : proposition "
-        "puis confirmation obligatoire. Ne pas utiliser pour : encaisser un "
-        "paiement (enregistrer_paiement) ni un devis non accepté. Exemple : "
-        "« facture l'acompte du devis 12 » → id=12. Résultat : facture "
-        "numérotée émise, société forcée côté serveur."
+        "devis (acompte → matériel → solde) avec son numéro légal ; change "
+        "un statut : proposition puis confirmation obligatoire — irréversible, "
+        "une facture émise ne s'annule que par un avoir. Ne pas utiliser "
+        "pour : encaisser un paiement (enregistrer_paiement), préparer un "
+        "brouillon ni un devis non accepté. Exemple : « facture l'acompte du "
+        "devis 12 » → id=12. Résultat : facture numérotée émise ; 409 si rien "
+        "n'est à facturer, 403 en blocage crédit."
     ),
     endpoint='/api/django/ventes/devis/{id}/generer-facture/',
     method='POST',
@@ -463,9 +481,12 @@ GENERER_FACTURE = AgentAction(
         },
         'required': ['id'],
     },
-    required_permission=_PERM_VALIDER,
-    risk=RISK_OUTWARD,
-    confirm_summary='Émettre la prochaine facture de tranche de ce devis.',
+    required_permission=_PERM_ENCAISSER,
+    risk=RISK_IRREVERSIBLE,
+    confirm_summary=(
+        "Émettre la prochaine facture de tranche de ce devis : numéro légal, "
+        "ne s'annule que par un avoir."),
+    lot=LOT_HERITE,
     objets={'id': 'devis'},
 )
 
@@ -486,7 +507,8 @@ ENREGISTRER_PAIEMENT = AgentAction(
         "promesse de paiement ni un montant supérieur au reste à payer. "
         "Exemple : « 15 000 DH reçus par virement sur la facture 30 » → id=30, "
         "montant=15000, date_paiement, mode=virement. Résultat : paiement "
-        "enregistré ; facture soldée quand tout est réglé."
+        "enregistré ; facture soldée quand tout est réglé ; un refus « "
+        "paiement similaire » veut dire déjà enregistré : ne pas le reproposer."
     ),
     endpoint='/api/django/ventes/factures/{id}/enregistrer-paiement/',
     method='POST',
@@ -503,11 +525,17 @@ ENREGISTRER_PAIEMENT = AgentAction(
             },
             'date_paiement': {
                 'type': 'string',
-                'description': 'Date du paiement (AAAA-MM-JJ).',
+                'format': 'date',
+                'description': ('Jour du règlement (AAAA-MM-JJ), dicté ou '
+                                'du jour, jamais deviné.'),
             },
             'mode': {
                 'type': 'string',
-                'description': 'Mode de paiement (espèces, virement, chèque…).',
+                # REP6 (B-8) — valeurs EXACTES de ``Paiement.Mode``
+                # (apps/facturation/models.py) : « espèces » / « chèque »
+                # accentués étaient refusés.
+                'enum': list(MODES_PAIEMENT),
+                'description': 'Mode de paiement : ' + ', '.join(MODES_PAIEMENT) + '.',
             },
             'reference': {'type': 'string'},
             'note': {'type': 'string'},
@@ -586,8 +614,137 @@ ENVOYER_EMAIL_DEVIS = AgentAction(
 )
 
 
+#: COP2 — l'exemple commun des actions de composition : la phrase du fondateur.
+_EXEMPLE_FONDATEUR = (
+    "« prépare-lui un devis : 10 panneaux solaires avec onduleur triphasé de "
+    "10kw et une batterie de 5kwh »")
+
+# COP2-V2 — lire le catalogue vendable (route ``ventes/assistant/catalogue/``,
+# garde ``LectureVentes`` = ``ventes_voir``) : même classement que la
+# composition imposée, jamais de prix d'achat, de marge ni de stock chiffré.
+CHERCHER_CATALOGUE = AgentAction(
+    key='ventes.catalogue.chercher',
+    label='Chercher dans le catalogue',
+    description=(
+        "Sert à : lire le catalogue vendable (panneaux, onduleurs, batteries) "
+        "avec prix TTC ; un genre et une taille donnent un verdict unique, "
+        "ambigu ou aucun. Ne pas utiliser pour : créer un devis ni demander "
+        "une puissance au client. Exemple : " + _EXEMPLE_FONDATEUR + " → "
+        "genre=onduleur, kw=10, phase=triphase, famille=hybride ; puis "
+        "genre=batterie, kwh=5. Résultat : produits (produit_id, nom, "
+        "marque, prix TTC), statut et raison."
+    ),
+    endpoint='/api/django/ventes/assistant/catalogue/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'description': 'Texte cherché (nom ou marque).'},
+            'genre': {'type': 'string', 'enum': ['panneau', 'onduleur', 'batterie']},
+            'kw': {'type': 'number', 'description': "Puissance d'onduleur en kW (0,5 à 100)."},
+            'kwh': {'type': 'number', 'description': 'Capacité de batterie en kWh (0,5 à 100).'},
+            'wc': {'type': 'number', 'description': 'Puissance de panneau en Wc (100 à 1000).'},
+            'phase': {'type': 'string', 'enum': ['monophase', 'triphase']},
+            'famille': {'type': 'string', 'enum': ['hybride', 'reseau', 'offgrid'],
+                        'description': 'Famille d\'onduleur (hybride = avec batterie).'},
+            'limite': {'type': 'integer', 'description': 'Lignes rendues (1 à 25, défaut 10).'},
+        },
+    },
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+
+def _entier(description):
+    return {'type': 'integer', 'description': description}
+
+
+# COP2-V4 — composer un devis au kit IMPOSÉ (route ``POST ventes/devis/auto/``,
+# garde ``ventes_creer``) : un brouillon est une écriture INTERNE (précédent
+# ``creer_auto``). Entrées = sous-ensemble de ``DevisAutoRequest`` ; ni remise
+# globale (montant), ni puissance cible (refusée en mode imposé).
+COMPOSER_DEVIS = AgentAction(
+    key='ventes.devis.composer',
+    label='Composer un devis (kit imposé)',
+    description=(
+        "Sert à : créer un devis brouillon résidentiel au kit demandé "
+        "(nombre de panneaux, onduleur, batterie), même sans facture sur le "
+        "lead. Ne pas utiliser pour : une V2 ni la correction d'un devis "
+        "existant (il crée TOUJOURS un devis séparé), dimensionner depuis la "
+        "facture (creer_auto) ni un lead commercial ou agricole. Exemple : "
+        + _EXEMPLE_FONDATEUR + " → lead, nb_panneaux=10, onduleur_kw=10, "
+        "onduleur_phase=triphase, batterie_kwh=5. Résultat : devis "
+        "brouillon et ses lignes TTC ; 409 choix si un produit est ambigu."
+    ),
+    endpoint='/api/django/ventes/devis/auto/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'lead': _entier('Identifiant du lead (résidentiel).'),
+            'client': _entier('Identifiant du client — on remonte à son lead '
+                              'le plus récent.'),
+            'nb_panneaux': _entier('Nombre de panneaux (1 à 200), obligatoire.'),
+            'panneau_produit_id': _entier('Produit panneau (catalogue) ; '
+                                          'absent : 710 Wc du catalogue.'),
+            'onduleur_produit_id': _entier('Produit onduleur, OU onduleur_kw '
+                                           '+ onduleur_phase.'),
+            'onduleur_kw': {'type': 'number',
+                            'description': "Puissance de l'onduleur (0,5 à 100 kW)."},
+            'onduleur_phase': {'type': 'string',
+                               'enum': ['monophase', 'triphase']},
+            'batterie_produit_id': _entier('Produit batterie, OU batterie_kwh.'),
+            'batterie_kwh': {'type': 'number',
+                             'description': 'Capacité de batterie (0,5 à 100 kWh).'},
+            'scenario': {'type': 'string', 'enum': ['sans', 'avec'],
+                         'description': 'Avec ou sans batterie (une batterie '
+                                        'donnée vaut « avec »).'},
+            'taux_tva': {'type': 'number',
+                         'description': 'Taux de TVA en % (défaut : taux '
+                                        'standard de la société).'},
+        },
+        'required': ['nb_panneaux'],
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_INTERNAL,
+    carte='devis_cree',
+    lot=LOT_COPILOTE,
+    objets={'lead': 'lead', 'client': 'client'},
+)
+
+
+# COP2-V5 — lire les lignes d'UN devis (``GET devis/{id}/lignes-assistant/``,
+# garde ``LectureVentes`` = ``ventes_voir``) : l'id de ligne que
+# ``ligne_modifier`` / ``ligne_supprimer`` demandent. Prix TTC seulement.
+LIGNES_DEVIS = AgentAction(
+    key='ventes.devis.lignes',
+    label='Lire les lignes du devis',
+    description=(
+        "Sert à : lire les lignes d'un devis (ligne_id, produit, quantité, "
+        "prix TTC) avant de modifier ou retirer une ligne. Ne pas utiliser "
+        "pour : modifier le devis ni lire un prix d'achat (jamais servi). "
+        "Exemple : « passe la batterie du devis 451 à 2 » → id=451, puis "
+        "ligne_modifier avec le ligne_id lu. Résultat : référence, statut, "
+        "total TTC et lignes du devis."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/lignes-assistant/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {'id': _entier('Identifiant du devis.')},
+        'required': ['id'],
+    },
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
-VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS)
+VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
+                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

@@ -500,7 +500,8 @@ def _moteur_sqlite():
 
 
 def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
-          ctx=None, fournisseur="groq", reglages=None, question="Prépare ma relance"):
+          ctx=None, fournisseur="groq", reglages=None, question="Prépare ma relance",
+          images=None):
     """Un tour du VRAI service (`_query` -> `_run_agent` : executeur, outils,
     gardes) : seuls le LLM, Django et Redis sont simules. Rend (sortie,
     historique ecrit, llm). `reglages` : attributs du service a surcharger."""
@@ -529,7 +530,8 @@ def _tour(reponses, catalogue=(), django=None, contexte=None, historique=(),
     with contextlib.ExitStack() as pile:
         for p in patches:
             pile.enter_context(p)
-        sortie = asyncio.run(service._query(question, 1, 7, ctx, contexte))
+        sortie = asyncio.run(service._query(question, 1, 7, ctx, contexte,
+                                            **({"images": images} if images else {})))
     return sortie, ecrit, llm
 
 
@@ -706,12 +708,18 @@ class TourReelCartesTests(unittest.TestCase):
         # Compte sans le module Tâches : consignes commerciales SEULES (pas les ~280 mots de plus).
         self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, allume[0]["text"])
         self.assertNotIn(prompt_copilote.CONSIGNES_TACHES, allume[0]["text"])
+        # Copilote v2 (F1) — le rôle du copilote AVANT le guide SQL.
+        self.assertTrue(allume[0]["text"].startswith(prompt_copilote.CONSIGNES_COMMERCIALES))
+        self.assertLess(allume[0]["text"].index(prompt_copilote.TRANSITION_GUIDE_SQL),
+                        allume[0]["text"].index(svc._AGENT_PREFIX))
         taches = systeme([dict(_CAT_LEAD_LIST, lot="copilote"),
                           dict(_CAT_LEAD_LIST, key="taches.journee.lire", lot="copilote")])
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, taches[0]["text"])
         eteint = systeme([dict(_CAT_LEAD_LIST, lot="herite")])
         self.assertEqual(eteint, svc._contenu_systeme("claude", False)[0])
         self.assertNotIn(prompt_copilote.CONSIGNES_COPILOTE, str(eteint))
+        self.assertTrue(eteint[0]["text"].startswith(svc._AGENT_PREFIX))
+        self.assertNotIn(prompt_copilote.TRANSITION_GUIDE_SQL, str(eteint))
         groq, _ = svc._contenu_systeme("groq", True, copilote=True, taches=True)
         self.assertIn(prompt_copilote.CONSIGNES_COPILOTE, groq)
         groq_sans, _ = svc._contenu_systeme("groq", True, copilote=True)
@@ -858,6 +866,26 @@ class TourReelCartesTests(unittest.TestCase):
         self.assertTrue(ligne.startswith("Références : touche 5000 (lead 1000) ; "))
         self.assertEqual(relais.references_des_cartes([{"donnees": {}}]), "")
 
+    def test_references_des_nouvelles_cartes(self):
+        """Copilote v2 (F2) — devis composé, lead créé, lignes d'un devis : la
+        ligne « Références » nomme le nouveau lead et le nouveau devis (formes
+        des contrats ventes / crm)."""
+        from app.services import relais_copilote as relais
+        racine = os.path.join(os.path.dirname(__file__), "..", "..", "django_core", "apps")
+
+        def exemple(app, nom):
+            with open(os.path.join(racine, app, "contract_samples", nom), encoding="utf-8") as f:
+                return json.load(f)["exemple"]
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("ventes", "assistant_devis_cree.json")}]),
+            "Références : lead 1637 ; devis 451")
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("crm", "assistant_lead_creer.json")}]),
+            "Références : lead 1701")
+        self.assertEqual(relais.references_des_cartes(
+            [{"donnees": exemple("ventes", "assistant_devis_lignes.json")}]),
+            "Références : devis 451")
+
 
 def _rendu_natif(answer="Natif.", outils=(), arret="fin"):
     return {"answer": answer, "outils_appeles": list(outils), "arret": arret,
@@ -913,8 +941,8 @@ class MoteurNatifCop6Tests(unittest.TestCase):
             outils["report_gap"].executer({"intention": "manque", "resume": "x"})
             return _rendu_natif(outils=["crm_lead_list", "sql_db_query", "report_gap"])
         sortie, ecrit, llm = self._servir("natif", _CAT_COPILOTE, executer)
-        self.assertEqual(vu["noms"], ["crm_lead_list", "ventes_devis_proposal_pdf",
-                                      "sql_db_query", "sql_db_schema", "report_gap"])
+        self.assertEqual(vu["noms"], ["crm_lead_list", "ventes_devis_proposal_pdf", "sql_db_query",
+                                      "sql_db_schema", "report_gap", "outils_charger"])  # vague 2 : chargeur
         self.assertEqual(vu["conversation"], "7:1")
         self.assertTrue(all("cache_control" not in b for b in vu["systeme"]))
         self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, vu["systeme"][0]["text"])
@@ -1254,6 +1282,42 @@ class ContexteEcranAic9Tests(unittest.TestCase):
             r = self.client.get("/sql-agent/suggestions",
                                 params={"ecran": "/stock"})
             self.assertEqual(r.json(), [])
+
+    def test_capacites_de_l_appelant(self):
+        """Copilote v2 (F4) — `GET /sql-agent/capacites` : la forme du contrat
+        (`assistant_reponse.json` → `capacites.exemple`) ; 2 000 / aucune image
+        copilote éteint ou sans relais Django ; 6 000 copilote allumé."""
+        from app.services import relais_copilote as relais
+        chemin = os.path.join(os.path.dirname(__file__), "..", "..", "django_core",
+                              "apps", "agent", "contract_samples", "assistant_reponse.json")
+        with open(chemin, encoding="utf-8") as f:
+            contrat = json.load(f)["capacites"]
+        self.assertEqual(contrat["endpoint"], "GET /api/fastapi/sql-agent/capacites")
+
+        def lire(lot, url="http://dj:8000"):
+            def appel(ctx, path, method="POST", payload=None, **kwargs):
+                if path == _at._CATALOGUE_PATH:
+                    return {"ok": True, "status": 200, "data": {"actions": [
+                        {"key": "crm.lead.chercher", "lot": lot}]}}
+                return self._me(ctx, path, method, payload)
+            with mock.patch.multiple(_at, _django_call=appel, DJANGO_INTERNAL_URL=url):
+                r = self.client.get("/sql-agent/capacites")
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(set(r.json()), set(contrat["exemple"]))
+            return r.json()
+        from app.core import config
+        self.assertEqual(lire("herite"), {"limite_question": 2000, "images_acceptees": False})
+        self.assertEqual(lire("copilote", url=""), {"limite_question": 2000, "images_acceptees": False})
+        # Images (F5) : moteur natif ET fournisseur claude ET copilote allumé.
+        for moteur, fournisseur, lot, images in (
+                ("langchain", "claude", "copilote", False), ("natif", "groq", "copilote", False),
+                ("natif", "claude", "herite", False), ("natif", "claude", "copilote", True)):
+            with self.subTest(moteur=moteur, fournisseur=fournisseur, lot=lot), \
+                    mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
+                    mock.patch.object(self.svc, "SQL_AGENT_PROVIDER", fournisseur):
+                attendu = (relais.LIMITE_QUESTION_COPILOTE if (lot, fournisseur) == ("copilote", "claude")
+                           else relais.LIMITE_QUESTION)  # revue S3 : Groq refuse > 2 000
+                self.assertEqual(lire(lot), {"limite_question": attendu, "images_acceptees": images})
 
 
 # ── A5 (revue F3) — la garde des écritures `taches.*` : ce que le tour a lu ─────────────────────────────
@@ -1678,6 +1742,251 @@ class GardeA5ConversationTests(unittest.TestCase):
         sortie, ecrit, _ = self._natif(client, "ajoute appeler Ali", redis)
         self.assertEqual([e[1] for e in self.ecritures], ["/api/django/taches/taches/"])
         self.assertIs(ecrit[1]["contenu_tiers"], False)
+
+
+# ── Copilote v2 (F2, F3) — refus détaillés et aperçu d'une proposition ──────────────────────────────────
+# (dans ce module et non dans test_action_tools.py : celui-là passerait 2 000 lignes, garde C20).
+
+_APPS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core", "apps")
+
+
+def _contrat_app(app, nom):
+    with open(os.path.join(_APPS, app, "contract_samples", nom), encoding="utf-8") as f:
+        return json.load(f)
+
+
+class _Resp:
+    def __init__(self, status_code, payload):
+        self.status_code, self._payload, self.headers = status_code, payload, {}
+
+
+class RefusDetaillesF2Tests(unittest.TestCase):
+    """Copilote v2 (F2) — un refus métier garde ses candidats / son doublon
+    (liste blanche) ; le modèle ne les lit que copilote allumé."""
+
+    def test_choix_du_contrat_ventes(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        erreur = _at._normalize_error(_Resp(409, corps), corps)
+        self.assertEqual(erreur["error"], corps["detail"])
+        self.assertEqual(erreur["details"]["field"], "batterie_produit_id")
+        self.assertEqual([c["produit_id"] for c in erreur["details"]["choix"]], [147, 152])
+        self.assertEqual(erreur["details"]["choix"][0], corps["choix"][0])
+
+    def test_doublon_du_contrat_crm(self):
+        corps = _contrat_app("crm", "assistant_lead_creer.json")["exemple_409_doublon"]
+        details = _at._normalize_error(_Resp(409, corps), corps)["details"]
+        self.assertEqual(details, {"doublon": True, "archive": False,
+                                   "ne_plus_contacter": False, "lead_id": 1637})
+
+    def test_liste_blanche_et_bornes(self):
+        corps = {"detail": "Plusieurs.", "field": "x" * 200, "prix_achat": "1",
+                 "choix": [{"produit_id": i, "nom": "n" * 500, "prix_achat": "9",
+                            "marge": "3", "kw": {"brut": 1}} for i in range(15)]}
+        details = _at._normalize_error(_Resp(409, corps), corps)["details"]
+        self.assertEqual(len(details["choix"]), _at.CHOIX_MAX)
+        self.assertEqual(len(details["field"]), 64)
+        self.assertNotIn("prix_achat", json.dumps(details))
+        self.assertNotIn("marge", json.dumps(details))
+        self.assertLessEqual(len(details["choix"][0]["nom"]), 120)
+        self.assertIsNone(details["choix"][0]["kw"])
+        # Ni un 500 ni un refus sans clé connue ne portent `details`.
+        self.assertNotIn("details", _at._normalize_error(_Resp(500, corps), corps))
+        self.assertNotIn("details", _at._normalize_error(_Resp(409, {"detail": "Non."}), {"detail": "Non."}))
+
+    def test_relaye_au_modele_copilote_allume_seulement(self):
+        corps = _contrat_app("ventes", "assistant_devis_cree.json")["exemple_409_choix"]
+        refus = _at._normalize_error(_Resp(409, corps), corps)
+        textes = {}
+        for lot in ("herite", "copilote"):
+            ctx = _ctx()
+            ctx.catalogue_tour = [dict(_CAT_LEAD_LIST, lot=lot)]
+            with mock.patch.object(_at, "_django_call", lambda *a, **k: dict(refus)):
+                textes[lot] = _at.run_catalogue_action(ctx, _CAT_LEAD_LIST, {}, [])
+        self.assertEqual(textes["herite"],
+                         f"L'action « {_CAT_LEAD_LIST['label']} » a echoue. {corps['detail']}")
+        self.assertTrue(textes["copilote"].startswith(textes["herite"] + " Détails du refus : "))
+        details = json.loads(textes["copilote"].split(" Détails du refus : ", 1)[1])
+        self.assertEqual([c["produit_id"] for c in details["choix"]], [147, 152])
+
+
+class ApercuMultiligneF3Tests(unittest.TestCase):
+    """Copilote v2 (F3) — une ligne par entrée, libellé humain, note longue
+    tronquée, jamais le repr Python d'une liste ; l'objet nommé garde la forme
+    du contrat ; copilote éteint, l'aperçu d'avant."""
+
+    def setUp(self):
+        p = mock.patch.multiple(_at, ACTION_PROPOSAL_SECRET="sig-secret",
+                                DJANGO_INTERNAL_URL="http://dj:8000",
+                                _proposal_redis=lambda: _FakeRedis())
+        p.start()
+        self.addCleanup(p.stop)
+        with open(os.path.join(_APPS, "agent", "contract_samples", "assistant_libelles.json"),
+                  encoding="utf-8") as f:
+            self.libelles = json.load(f)["exemple"]
+
+    @staticmethod
+    def _apercu(action, entrees, reponse, lot="copilote"):
+        collector: list = []
+        ctx = _ctx()
+        ctx.catalogue_tour = [dict(action, lot=lot)]
+        with mock.patch.object(_at, "_django_call", lambda *a, **k: reponse):
+            _at.run_catalogue_action(ctx, action, entrees, collector)
+        return collector[0]["human_preview"]
+
+    def test_une_ligne_par_entree(self):
+        creer = {
+            "key": "crm.lead.creer", "label": "Créer un lead",
+            "endpoint": "/api/django/crm/assistant/leads/creer/", "method": "POST",
+            "inputs": {"type": "object", "properties": {
+                "nom": {"type": "string"}, "prenom": {"type": "string"},
+                "telephone": {"type": "string"}, "tags": {"type": "array"},
+                "note": {"type": "string"}, "creer_quand_meme": {"type": "boolean"},
+                "taille_souhaitee_kwc": {"type": "number"}}, "required": ["nom"]},
+            "risk": "outward"}
+        entrees = {"nom": "Alami", "prenom": "Karim", "telephone": "0661007731",
+                   "tags": ["villa", "batterie"], "creer_quand_meme": False,
+                   "note": "Demande : 10 panneaux,\nonduleur triphasé 10 kW. " + "x" * 400,
+                   "taille_souhaitee_kwc": 7.0}
+        lignes = self._apercu(creer, entrees, {"ok": True, "status": 200, "data": {}}).split("\n")
+        self.assertEqual(lignes[:5], ["Créer un lead", "Nom : Alami", "Prénom : Karim",
+                                      "Téléphone : 0661007731", "Étiquettes : villa, batterie"])
+        self.assertTrue(lignes[5].startswith("Note : Demande : 10 panneaux, onduleur triphasé 10 kW. x"))
+        self.assertLessEqual(len(lignes[5]), len("Note : ") + _at.APERCU_TEXTE_MAX)
+        self.assertTrue(lignes[5].endswith("…"))
+        self.assertEqual(lignes[6:], ["Créer même si un lead existe : non", "Taille souhaitée (kWc) : 7"])
+        self.assertNotIn("[", "\n".join(lignes))
+        # Copilote éteint : la forme d'avant, inchangée (« k=v », repr des listes compris).
+        eteint = self._apercu(creer, entrees, {"ok": True, "status": 200, "data": {}}, lot="herite")
+        self.assertEqual(eteint, _at._human_preview(creer, entrees))
+        self.assertTrue(eteint.startswith("Créer un lead (creer_quand_meme=False, nom=Alami"))
+
+    def test_objet_nomme_garde_la_forme_du_contrat(self):
+        accepter = {"key": "ventes.devis.accepter", "label": "Accepter un devis",
+                    "confirm_summary": "Accepter ce devis.",
+                    "endpoint": "/api/django/ventes/devis/{id}/accepter/", "method": "POST",
+                    "inputs": {"type": "object", "properties": {"id": {"type": "integer"}},
+                               "required": ["id"]},
+                    "risk": "outward", "objets": {"id": "devis"}}
+        lu = {"ok": True, "status": 200, "data": self.libelles}
+        attendu = _contrat_app("agent", "assistant_reponse.json")[
+            "exemple_deux_propositions"]["cartes"][0]["apercu"]
+        self.assertEqual(self._apercu(accepter, {"id": 45}, lu), attendu)
+        reporter = {"key": "crm.suivi.reporter", "label": "Reporter une touche",
+                    "endpoint": "/api/django/crm/relance-etapes/{touche_id}/reporter/", "method": "POST",
+                    "inputs": {"type": "object", "properties": {
+                        "touche_id": {"type": "integer"}, "lead_id": {"type": "integer"},
+                        "jours": {"type": "integer"}}, "required": ["touche_id"]},
+                    "risk": "outward", "objets": {"lead_id": "lead", "touche_id": "touche"}}
+        apercu = self._apercu(reporter, {"touche_id": 412, "lead_id": 1489, "jours": 3}, lu)
+        self.assertEqual(apercu.split("\n"), [
+            "Reporter une touche — " + self.libelles["lead"] + " ; " + self.libelles["touche"], "Jours : 3"])
+
+
+# ── Copilote v2 (F5) — images jointes à une question ─────────────────────────────────────────────────────
+
+_PNG = {"media_type": "image/png",
+        "data": __import__("base64").b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 24).decode()}
+
+
+class ImagesF5Tests(unittest.TestCase):
+    """Copilote v2 (F5) — corps borné et vérifié ; moteur natif seulement ;
+    ailleurs le tour le DIT ; l'image n'entre ni dans l'historique de l'écran
+    ni dans le journal (marqueur) ; le tour est marqué contenu tiers (A5)."""
+
+    def test_corps_borne_et_verifie(self):
+        import base64
+        from pydantic import ValidationError
+        jpeg = base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 20).decode()
+        webp = base64.b64encode(b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"\x00" * 12).decode()
+        ok = _ep.SQLQuery.model_validate({"question": "q", "images": [
+            _PNG, {"media_type": "image/jpeg", "data": jpeg}, {"media_type": "image/webp", "data": webp}]})
+        self.assertEqual(len(ok.images), 3)
+        self.assertIsNone(_ep.SQLQuery.model_validate({"question": "q"}).images)
+        for images in ([_PNG] * 4,                                        # plus de 3
+                       [{"media_type": "image/jpeg", "data": _PNG["data"]}],  # signature d'un PNG
+                       [{"media_type": "image/gif", "data": _PNG["data"]}],   # type hors contrat
+                       [{"media_type": "image/png", "data": "pas du base64 !!!!"}],
+                       [{"media_type": "image/png", "data": "A" * (_ep.IMAGE_BASE64_MAX + 4)}]):
+            with self.subTest(n=len(images), type=images[0]["media_type"]):
+                with self.assertRaises(ValidationError):
+                    _ep.SQLQuery.model_validate({"question": "q", "images": images})
+
+    def test_l_endpoint_ne_transmet_les_images_que_si_elles_sont_la(self):
+        from app.core.security import exiger_compte_interne, get_raw_token, verify_token
+        app = _FastAPI()
+        app.include_router(_ep.router, prefix="/sql-agent")
+        app.dependency_overrides[verify_token] = lambda: {"user_id": 1, "company_id": 7, "role": "admin"}
+        app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        app.dependency_overrides[exiger_compte_interne] = lambda: {}
+        recus = []
+
+        async def fake_query(question, user_id=None, company_id=None, action_ctx=None, **options):
+            recus.append(options)
+            return {"answer": "ok", "sql_query": "", "data": None}
+        with mock.patch.multiple(_ep._database, check_rate_limit=lambda *a, **k: None,
+                                 require_sql_agent_enabled=lambda: None), \
+                mock.patch.object(_at, "_django_call", lambda *a, **k: {"ok": True, "status": 200, "data": {}}), \
+                mock.patch.object(_ep.sql_agent_service, "query", fake_query):
+            client = _TestClient(app)
+            self.assertEqual(client.post("/sql-agent/query", json={"question": "q"}).status_code, 200)
+            r = client.post("/sql-agent/query", json={"question": "q", "images": [_PNG]})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(client.post("/sql-agent/query", json={
+                "question": "q", "images": [dict(_PNG, media_type="image/jpeg")]}).status_code, 422)
+        self.assertEqual(recus, [{}, {"images": [_PNG]}])
+
+    def test_hors_moteur_natif_le_tour_le_dit(self):
+        """Moteur LangChain (ou natif sans copilote, ou moteur natif qui ne sert
+        pas le tour) : MESSAGE_IMAGE_ILLISIBLE, aucun appel au modèle,
+        historique et journal marqués, jamais l'image."""
+        from langchain_core.messages import AIMessage
+        from app.core import config
+        from app.services import moteur_natif, relais_copilote as relais, sql_agent_service as svc
+
+        def indisponible(**kw):
+            raise moteur_natif.MoteurIndisponible("pas de clé")
+        for moteur, lot, executer in (("langchain", "copilote", None), ("natif", "herite", None),
+                                      ("natif", "copilote", indisponible)):
+            with self.subTest(moteur=moteur, lot=lot):
+                ctx = _ctx()
+                with mock.patch.object(config, "ASSISTANT_MOTEUR", moteur), \
+                        mock.patch.object(moteur_natif, "executer", executer or indisponible):
+                    sortie, ecrit, llm = _tour([AIMessage(content="LangChain.")], ctx=ctx,
+                                               catalogue=[dict(_CAT_LEAD_LIST, lot=lot)],
+                                               fournisseur="claude", question="Lis ça", images=[_PNG])
+                self.assertEqual(sortie["answer"], relais.MESSAGE_IMAGE_ILLISIBLE)
+                self.assertFalse([g for g, _ in llm.recus if g == "messages"])
+                self.assertEqual(ecrit[0], {"role": "user", "content": "Lis ça\n\n[image jointe]"})
+                self.assertEqual(ecrit[1]["content"], relais.MESSAGE_IMAGE_ILLISIBLE)
+                self.assertNotIn(_PNG["data"], json.dumps(ecrit))
+                journal = []
+                with mock.patch.object(_at, "journaliser_evenement_assistant",
+                                       lambda c, corps: journal.append(corps) or 1):
+                    svc.SQLAgentService._journaliser("Lis ça", sortie, ctx)
+                self.assertEqual(journal[0]["question"], "Lis ça\n\n[image jointe]")
+                self.assertTrue(_at.contenu_tiers_du_tour(ctx))
+
+    def test_moteur_natif_recoit_les_images(self):
+        from app.core import config
+        from app.services import moteur_natif
+        vu = {}
+
+        def executer(**kw):
+            vu.update(kw)
+            return _rendu_natif(answer="C'est M. Essai, 10 panneaux.")
+        ctx = _ctx()
+        with mock.patch.object(config, "ASSISTANT_MOTEUR", "natif"), \
+                mock.patch.object(moteur_natif, "executer", executer):
+            sortie, ecrit, _ = _tour([], catalogue=_CAT_COPILOTE, ctx=ctx, fournisseur="claude",
+                                     question="Lis ça", images=[_PNG, _PNG])
+        self.assertEqual(vu["images"], [_PNG, _PNG])
+        self.assertTrue(vu["question"].endswith("\n\nLis ça"))
+        self.assertNotIn(_PNG["data"], vu["question"])
+        self.assertEqual((sortie["moteur"], sortie["answer"]), ("natif", "C'est M. Essai, 10 panneaux."))
+        self.assertEqual(ecrit[0]["content"], "Lis ça\n\n[image jointe] [image jointe]")
+        self.assertNotIn(_PNG["data"], json.dumps(ecrit))
+        self.assertEqual(sortie["question_journal"], "Lis ça\n\n[image jointe] [image jointe]")
+        self.assertEqual(ctx.contenu_tiers, "image")
 
 
 if __name__ == "__main__":

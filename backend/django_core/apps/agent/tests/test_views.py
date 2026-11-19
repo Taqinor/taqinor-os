@@ -7,6 +7,8 @@ Couvre :
   avec le même nom de permission voient leur catalogue filtré par LEUR rôle,
   sans fuite de l'autre société.
 """
+from unittest import mock
+
 from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -656,7 +658,10 @@ class LibellesObjetsTest(TestCase):
                          touche=self.touche.pk, facture=self.facture.pk,
                          client=self.client_moi.pk)
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(set(resp.data), set(CONTRAT_LIBELLES['exemple']))
+        # Vague 2 : le contrat liste aussi les 11 nouveaux types (leurs résolveurs
+        # arrivent avec les lanes 2B) ; ces cinq-là sont rendus aujourd'hui.
+        self.assertEqual(set(resp.data), {'lead', 'devis', 'touche', 'facture', 'client'})
+        self.assertLessEqual(set(resp.data), set(CONTRAT_LIBELLES['exemple']))
         corps = {k: self._blanc(v) for k, v in resp.data.items()}
         self.assertEqual(corps['lead'], 'Aziz Benali — Casablanca')
         self.assertEqual(corps['client'], 'Benali Aziz')
@@ -724,3 +729,95 @@ class LibellesObjetsTest(TestCase):
 
     def test_authentification_requise(self):
         self.assertIn(APIClient().get(URL_LIBELLES).status_code, (401, 403))
+
+    # ── Copilote vague 2 (FND8) — libellés des nouveaux types, agent/ouvrir/ ──
+
+    def test_module_sans_resolveur_type_absent_et_utilisateur(self):
+        """Un type dont l'app n'a pas encore `selectors_libelles.py` est absent
+        (200, jamais une erreur) ; `utilisateur` : prénom et nom d'un compte
+        de la même société, jamais son e-mail."""
+        from apps.agent import libelles
+        self.moi.first_name, self.moi.last_name, self.moi.email = 'Youssef', 'Alami', 'y@example.com'
+        self.moi.save()
+        etranger = User.objects.create_user(username='lib_etr', password='x', company=self.autre,
+                                            first_name='Zed', last_name='Etranger')
+        with mock.patch.object(libelles, 'RESOLVEURS', dict(
+                libelles.RESOLVEURS, visite=('apps.agent.module_qui_n_existe_pas', 'libelles_visites'))):
+            resp = self._get(self.moi, visite=4, utilisateur=self.moi.pk, lead=self.lead.pk)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), {'utilisateur', 'lead'})
+        self.assertEqual(resp.data['utilisateur'], 'Youssef Alami')
+        self.assertNotIn('y@example.com', json.dumps(resp.data))
+        self.assertEqual(self._get(self.moi, utilisateur=etranger.pk).data, {})
+
+    def test_ouvrir_chemin_construit_par_le_serveur(self):
+        from apps.agent import ecrans
+        url = '/api/django/agent/ouvrir/'
+        resp = _auth(self.moi).get(url, {'ecran': 'lead', 'id': self.lead.pk})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        contrat = json.loads((Path(__file__).resolve().parents[1] / 'contract_samples'
+                              / 'assistant_ouvrir.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(resp.data), set(contrat['exemple']))
+        self.assertEqual(resp.data['chemin'], f'/crm/leads/{self.lead.pk}')
+        self.assertEqual(resp.data['libelle'], 'Aziz Benali — Casablanca')
+        sans_objet = _auth(self.moi).get(url, {'ecran': 'relances_crm'})
+        self.assertEqual((sans_objet.data['chemin'], sans_objet.data['libelle']),
+                         ('/crm/relances', ecrans.ecrans()['relances_crm']['titre']))
+        for cle, fiche in ecrans.ecrans().items():
+            with self.subTest(ecran=cle):
+                attendu = fiche['chemin'].replace('{id}', '7')
+                self.assertEqual(ecrans.chemin(cle, 7 if fiche['objet'] else None), attendu)
+        self.assertEqual(ecrans.chemin('calepinage', 12, 'production'), '/calepinage/12?onglet=production')
+
+    def test_ecrans_offerts_seulement_si_le_resolveur_existe(self):
+        """Revue 2A — un écran à objet n'est OFFERT au modèle que si le module
+        du résolveur de son type existe (sinon 404 garanti) ; calculé : il
+        apparaît dès que le module arrive. Les écrans sans objet restent."""
+        from apps.agent import ecrans, libelles
+        offerts = ecrans.cles_offertes()
+        for cle, fiche in ecrans.ecrans().items():
+            with self.subTest(ecran=cle):
+                attendu = not fiche['objet'] or libelles.type_resolu(fiche['objet'])
+                self.assertEqual(cle in offerts, attendu)
+        self.assertIn('lead', offerts)
+        self.assertIn('relances_crm', offerts)
+        manquant = dict(libelles.RESOLVEURS, chantier=('apps.agent.module_absent', 'libelles_x'),
+                        calepinage=('apps.module_absent_aussi.selectors_libelles', 'libelles_y'))
+        with mock.patch.object(libelles, 'RESOLVEURS', manquant):
+            sans = ecrans.cles_offertes()
+            self.assertNotIn('chantier', sans)
+            self.assertNotIn('demandes_achat', sans)
+            self.assertNotIn('calepinage', sans)
+            self.assertIn('chantiers', sans)  # liste sans objet : toujours offerte
+        self.assertFalse(libelles.type_resolu('type_inconnu'))
+        self.assertTrue(libelles.type_resolu('utilisateur'))
+
+    def test_ouvrir_hors_portee_404_parametres_400(self):
+        url = '/api/django/agent/ouvrir/'
+        for params in ({'ecran': 'lead', 'id': self.lead_collegue.pk},
+                       {'ecran': 'lead', 'id': self.lead_autre.pk},
+                       {'ecran': 'chantier', 'id': 3},  # module sans résolveur : jamais un indice
+                       {'ecran': 'lead'}):  # écran à objet sans id : rien à ouvrir
+            with self.subTest(params=params):
+                self.assertEqual(_auth(self.moi).get(url, params).status_code, 404)
+        for params in ({'ecran': 'inconnu'}, {}, {'ecran': 'lead', 'id': 'x'},
+                       {'ecran': 'calepinage', 'id': 3, 'onglet': 'reglages'},
+                       {'ecran': 'lead', 'id': self.lead.pk, 'onglet': 'reglages'}):
+            with self.subTest(params=params):
+                self.assertEqual(_auth(self.moi).get(url, params).status_code, 400)
+
+    def test_ouvrir_ignore_un_parametre_sans_objet_sur_l_ecran(self):
+        """Demande conforme au schéma publié (file de merge, fuzz du 19/11 :
+        ``?ecran=approbations&onglet=approbation`` refusé en 400) : un ``id``
+        sur un écran sans objet, un onglet sur un écran sans onglets sont
+        ignorés — l'écran s'ouvre, le chemin reste celui de la table."""
+        from apps.agent import ecrans
+        url = '/api/django/agent/ouvrir/'
+        for params, attendu in (
+                ({'ecran': 'approbations', 'onglet': 'approbation'}, '/approbations'),
+                ({'ecran': 'leads', 'id': 3}, ecrans.ecrans()['leads']['chemin']),
+                ({'ecran': 'lead', 'id': self.lead.pk, 'onglet': 'production'}, f'/crm/leads/{self.lead.pk}')):
+            with self.subTest(params=params):
+                reponse = _auth(self.moi).get(url, params)
+                self.assertEqual(reponse.status_code, 200, reponse.content)
+                self.assertEqual(reponse.json()['chemin'], attendu)

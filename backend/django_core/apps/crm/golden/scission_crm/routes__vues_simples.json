@@ -55,6 +55,12 @@
  },
  {
   "actions_map": null,
+  "motif": "assistant/leads/creer/",
+  "nom": "assistant-leads-creer",
+  "vue": "lead_creer"
+ },
+ {
+  "actions_map": null,
   "motif": "assistant/touches/<int:touche_id>/",
   "nom": "assistant-touche",
   "vue": "touche_assistant"

@@ -250,9 +250,18 @@ class TestLienRapportToken(TestCase):
         field_services.seed_shotlist_slots(self.company)
         slot = next(s for s in field_services.active_shotlist(self.company)
                     if s.phase == 'avant')
-        maintenant = timezone.now()
-        cas = (({'cloturee_notifiee_le': maintenant - datetime.timedelta(days=91)}, 404),
-               ({'cloturee_notifiee_le': maintenant - datetime.timedelta(days=89)}, 200),
+
+        # La règle compte en JOURS CALENDAIRES locaux : la clôture est posée à
+        # midi local d'un jour J-n, jamais à « maintenant − n × 24 h » (qui
+        # tombe sur J-(n−1) entre 23 h et minuit UTC dès qu'un changement
+        # d'heure sépare les deux dates — rouge de la file du 18/11/2026).
+        def cloture(jours):
+            jour = timezone.localdate() - datetime.timedelta(days=jours)
+            return timezone.make_aware(
+                datetime.datetime.combine(jour, datetime.time(12)))
+
+        cas = (({'cloturee_notifiee_le': cloture(91)}, 404),
+               ({'cloturee_notifiee_le': cloture(89)}, 200),
                ({'date_realisee': timezone.localdate() - datetime.timedelta(days=120)}, 404))
         pub = APIClient()
         jetons = []

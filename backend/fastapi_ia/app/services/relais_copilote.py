@@ -126,13 +126,35 @@ def _ecran_taches(contexte: Optional[dict]) -> bool:
 def _jeu_du_fournisseur(catalogue: list[dict], fournisseur: str,
                         contexte: Optional[dict]) -> list[dict]:
     """Sous claude : le catalogue entier. Ailleurs : sur `/taches…`, le jeu
-    réduit des tâches seul ; hors `/taches`, aucune action `taches.*`."""
+    réduit des tâches seul ; hors `/taches`, aucune action `taches.*` — et,
+    copilote ALLUMÉ (vague 2, FND6), le NOYAU seul (Groq : 8 000 jetons par
+    minute ; copilote éteint, la règle d'avant octet pour octet)."""
     if fournisseur == "claude":
         return catalogue
     if _ecran_taches(contexte):
         return [a for a in catalogue if isinstance(a, dict) and a.get("key") in JEU_GROQ_TACHES]
+    if prompt_copilote.copilote_allume(catalogue):
+        return [a for a in catalogue if isinstance(a, dict) and a.get("noyau")]
     return [a for a in catalogue
             if not (isinstance(a, dict) and str(a.get("key", "")).startswith("taches."))]
+
+
+def pour_langchain(catalogue: Optional[list]) -> list:
+    """Vague 2 (FND6) — le catalogue remis au moteur LangChain : jamais une
+    action `natif_seul` (née dans la vague 2 du lot copilote, hors noyau ;
+    seul le moteur natif sait la différer). Copilote éteint : aucune action
+    n'en porte, liste inchangée."""
+    return [a for a in catalogue or [] if not (isinstance(a, dict) and a.get("natif_seul"))]
+
+
+def catalogue_pour_repli(ctx, fournisseur: Optional[str], contexte: Optional[dict]) -> None:
+    """FND6 — au début d'un tour servi par le REPLI (`_run_agent(provider=…)`) :
+    le catalogue du tour est recalculé pour CE fournisseur depuis le catalogue
+    complet gardé par :func:`catalogue_du_tour` (aucun nouvel appel à Django).
+    Sans lui, le catalogue entier de claude partait chez Groq, `taches.*` hors
+    `/taches` compris (TCH114). Sans fournisseur forcé (tour principal) : rien."""
+    if fournisseur and ctx is not None and getattr(ctx, "catalogue_complet", None) is not None:
+        ctx.catalogue_tour = _jeu_du_fournisseur(ctx.catalogue_complet, (fournisseur or "").lower(), contexte)
 
 
 def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
@@ -149,9 +171,106 @@ def catalogue_du_tour(ctx, contexte: Optional[dict] = None,
         from app.services.sql_agent_service import SQL_AGENT_PROVIDER
         fournisseur = SQL_AGENT_PROVIDER
     ctx.contexte_tour = dict(contexte or {})
-    # Gardé pour le tour : `build_action_tools` ne relit pas Django.
-    ctx.catalogue_tour = _jeu_du_fournisseur(fetch_catalogue(ctx), (fournisseur or "").lower(), contexte)
+    # Gardé pour le tour : `build_action_tools` ne relit pas Django ; le
+    # catalogue complet sert au repli (`catalogue_pour_repli`, FND6).
+    ctx.catalogue_complet = fetch_catalogue(ctx)
+    ctx.catalogue_tour = _jeu_du_fournisseur(ctx.catalogue_complet, (fournisseur or "").lower(), contexte)
     return ctx.catalogue_tour
+
+
+# ── Copilote v2 (F4) — ce que l'appelant peut envoyer ────────────────────────
+
+#: Longueur d'une question (caractères) : 2 000 comme avant (422 au-delà),
+#: 6 000 quand le copilote est allumé pour l'appelant (message de client collé).
+LIMITE_QUESTION = 2000
+LIMITE_QUESTION_COPILOTE = 6000
+#: Le modèle de repli (Groq : 8 000 jetons par minute) ne prend jamais plus
+#: que la limite d'avant : au-delà, le tour le dit au lieu de partir.
+MESSAGE_QUESTION_LONGUE = (
+    "Ta demande est trop longue pour le modèle de secours en service en ce "
+    "moment (2 000 caractères au plus). Raccourcis-la ou colle seulement "
+    "l'essentiel du message, puis renvoie-la.")
+
+
+def question_trop_longue_pour(fournisseur: Optional[str], question) -> bool:
+    """Vrai si un tour servi par ``fournisseur`` (hors claude) recevrait une
+    question au-delà de :data:`LIMITE_QUESTION`."""
+    return ((fournisseur or "").lower() != "claude"
+            and len(question or "") > LIMITE_QUESTION)
+
+
+def reponse_question_longue(fournisseur: Optional[str]) -> dict[str, Any]:
+    """Le tour refusé, dit en français, à la forme du retour de `_run_agent`
+    (aucun appel au modèle ; l'appelant pose `repli` et `modele`)."""
+    return {"answer": MESSAGE_QUESTION_LONGUE, "sql_query": "", "data": None,
+            "action_performed": False, "proposal": None, "result": None,
+            "cartes": [], "moteur": MOTEUR_LANGCHAIN, "manuel_present": False,
+            "intention": None, "erreur": None, "outils_appeles": [],
+            "tokens": {"cache_read": 0, "cache_write": 0, "input": 0, "output": 0}}
+
+
+def capacites(ctx) -> dict[str, Any]:
+    """Contrat `assistant_reponse.json` → `capacites` : la longueur de question
+    permise à l'appelant et s'il peut joindre des images. Lu du catalogue de
+    Django (copilote allumé ou non pour CE compte), jamais d'un réglage du
+    navigateur. Sans relais Django : les valeurs d'avant (2 000, aucune image)."""
+    from app.services.sql_agent_service import SQL_AGENT_PROVIDER
+    catalogue = catalogue_du_tour(ctx)
+    # FND6 — l'interrupteur se lit sur le catalogue COMPLET (le jeu de Groq,
+    # réduit au noyau, ne porte pas forcément une action du lot copilote).
+    copilote = prompt_copilote.copilote_allume(getattr(ctx, "catalogue_complet", None) or catalogue)
+    # Revue S3 — 6 000 seulement si claude sert le tour : ailleurs (Groq)
+    # `_run_agent` refuse tout au-delà de 2 000 (`question_trop_longue_pour`).
+    longue = copilote and (SQL_AGENT_PROVIDER or "").lower() == "claude"
+    return {"limite_question": LIMITE_QUESTION_COPILOTE if longue else LIMITE_QUESTION,
+            "images_acceptees": bool(IMAGES_ACCEPTEES and copilote
+                                     and moteur_natif_actif(catalogue, SQL_AGENT_PROVIDER))}
+
+
+#: Images jointes à une question (F5) : servies par le moteur natif seulement.
+IMAGES_ACCEPTEES = True
+#: Réponse du tour quand une image ne peut pas être lue (jamais ignorée en silence).
+MESSAGE_IMAGE_ILLISIBLE = "Je ne peux pas lire l'image ici : colle le texte du message."
+#: Marqueur d'une image dans l'historique de l'écran et dans le journal
+#: (l'image elle-même n'y entre jamais).
+MARQUEUR_IMAGE = "[image jointe]"
+
+
+def question_marquee(question: str, images: Optional[list]) -> str:
+    """La question telle que l'historique et le journal la gardent : son
+    texte, puis un marqueur par image jointe (jamais l'image)."""
+    if not images:
+        return question
+    return f"{question}\n\n" + " ".join([MARQUEUR_IMAGE] * len(images))
+
+
+def tour_avec_images(service, question: str, company_id: int, user_id: int, ctx,
+                     contexte: Optional[dict], catalogue: list, images: list) -> dict[str, Any]:
+    """F5 — un tour dont la question porte des images : moteur natif (claude,
+    copilote allumé, budget du jour non atteint) seulement. Ailleurs, ou si le
+    moteur natif ne sert pas le tour, le tour répond `MESSAGE_IMAGE_ILLISIBLE`
+    — jamais un tour LangChain qui aurait laissé l'image de côté. L'image est
+    un CONTENU TIERS : le tour est marqué (A5)."""
+    from app.services.action_tools import noter_message_tiers
+    from app.services import sql_agent_service as svc
+    vue = question_marquee(question, images)
+    noter_message_tiers(ctx, "image")
+    sortie = None
+    try:
+        if moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER) and not service._budget_atteint(ctx):
+            sortie = tour_natif(service, question, company_id, user_id, ctx, contexte, catalogue,
+                                images=images)
+    except Exception as exc:  # le tour répond quand même, honnêtement
+        logger.warning("Tour avec images impossible : %s", exc)
+    if sortie is None:
+        service._ajouter_historique(user_id, [
+            {"role": "user", "content": vue},
+            {"role": "agent", "content": MESSAGE_IMAGE_ILLISIBLE, "cartes": [],
+             "contenu_tiers": True}])
+        sortie = {"answer": MESSAGE_IMAGE_ILLISIBLE, "sql_query": "", "data": None,
+                  "action_performed": False, "proposal": None, "result": None,
+                  "cartes": [], "moteur": MOTEUR_LANGCHAIN, "outils_appeles": []}
+    return {**sortie, "question_journal": vue}
 
 
 # ── A5 — un texte tiers est-il entré dans le tour ? (le SERVEUR le dit) ──────
@@ -188,10 +307,11 @@ def question_porte_un_texte_tiers(question) -> bool:
 
 
 def noter_question_du_tour(ctx, question) -> None:
-    """Une liste ou un texte collé dans la question marque le tour (A5)."""
+    """Une liste ou un texte collé dans la question marque le tour (A5) et
+    borne ses créations de devis à une (revue S2)."""
     if ctx is not None and question_porte_un_texte_tiers(question):
-        from app.services.action_tools import noter_contenu_tiers
-        noter_contenu_tiers(ctx, "question")
+        from app.services.action_tools import noter_message_tiers
+        noter_message_tiers(ctx, "question")
 
 
 # ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────
@@ -350,12 +470,13 @@ def borner_diagnostic(brut) -> Optional[dict]:
 
 def question_du_tour(question: str, contexte: Optional[dict] = None,
                      identite: Optional[dict] = None, maintenant=None,
-                     copilote: bool = True) -> str:
+                     copilote: bool = True, domaine: Optional[str] = None) -> str:
     """La question remise au modèle (LES DEUX moteurs) : en-tête posé par le
     serveur (date et heure de Casablanca, prénom, rôle, écran, foyer) puis le
     texte de l'utilisateur. Le contexte entre dans le message UTILISATEUR,
     jamais dans le bloc système (son cache reste intact). Copilote ÉTEINT :
-    le modèle ne voit rien de neuf — l'ancien format, octet pour octet."""
+    le modèle ne voit rien de neuf — l'ancien format, octet pour octet.
+    ``domaine`` (vague 2) : indice d'écran du moteur natif seulement."""
     if not copilote:
         from app.services.sql_agent_service import _question_avec_contexte
         return _question_avec_contexte(question, contexte)
@@ -364,7 +485,8 @@ def question_du_tour(question: str, contexte: Optional[dict] = None,
         maintenant=maintenant, prenom=identite.get("prenom") or "",
         role=identite.get("role") or "",
         contexte={k: contexte.get(k)
-                  for k in ("ecran", "lead_id", "devis_id", "touche_id")})
+                  for k in ("ecran", "lead_id", "devis_id", "touche_id")},
+        domaine=domaine)
     return f"{entete}\n\n{question}"
 
 
@@ -575,10 +697,33 @@ def _outils_fixes(lecture, schema, collecteur: list) -> list:
     ]
 
 
+def _outil_metrique(ctx, allow_price: bool) -> list:
+    """Vague 2 (FND9) — `metrique_gouvernee` au moteur natif aussi (il n'était
+    donné qu'à LangChain : sous le natif, tout chiffre de CA passait par du SQL
+    ad hoc). Même outil, mêmes règles (catalogue `pour-agent`, filtre marge),
+    sortie étiquetée NON FIABLE et lecture tierce (A5) ; non différé."""
+    from app.services.metriques_gouvernees import outil_metrique_gouvernee
+    from app.services.moteur_natif import OutilNatif
+    from app.services.sql_agent_service import _etiqueter_outils
+
+    metrique = outil_metrique_gouvernee(ctx, allow_price)
+    if metrique is None:
+        return []
+    marquer_lectures_tierces(_etiqueter_outils([metrique]), ctx)
+    return [OutilNatif("metrique_gouvernee", metrique.description, {
+        "type": "object", "properties": {"cle": {"type": "string"}}, "required": ["cle"]},
+        lambda a: metrique.invoke({"cle": str((a or {}).get("cle") or "")}))]
+
+
 def _tracer(outil, appeles: list):
     """L'outil, dont chaque appel est NOTÉ dans `appeles` (SQL et signalement
-    compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs."""
+    compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs.
+    Sauf le chargeur (`hors_budget`, vague 2) : il n'écrit rien, un tour où
+    lui seul a tourné reste rejouable sur LangChain."""
     import dataclasses
+
+    if outil.hors_budget:
+        return outil
 
     def executer(args, _f=outil.executer, _nom=outil.nom):
         appeles.append(_nom)
@@ -589,22 +734,28 @@ def _tracer(outil, appeles: list):
 def _preparer(service, question: str, company_id: int, ctx,
               catalogue: list, collecteur: list) -> dict[str, Any]:
     """Outils (tracés), blocs système (ordre stable, sans point de cache : le
-    moteur les pose) et réglages du modèle pour un tour natif."""
+    moteur les pose) et réglages du modèle pour un tour natif. Vague 2
+    (FND4) : hors du noyau, les actions d'un domaine sont DIFFÉRÉES, le
+    chargeur `outils_charger` les ouvre, l'index des domaines clôt le système."""
+    from app.services import chargeur_outils as chargeur
     from app.services import sql_agent_service as svc
 
     droits = service._droits_sql(ctx)
     lecture, schema = service._outils_sql(
         service._base_sql(question, company_id), company_id, droits)
     marquer_lectures_tierces([lecture, schema], ctx)  # A5
-    outils = [_outil_action(ctx, a, collecteur) for a in catalogue]
-    outils += _outils_fixes(lecture, schema, collecteur)
+    outils, domaines = chargeur.differer(
+        [_outil_action(ctx, a, collecteur) for a in catalogue], catalogue)
+    outils += _outils_fixes(lecture, schema, collecteur) + _outil_metrique(ctx, droits[0])
+    outils += [chargeur.outil_charger(domaines)] if domaines else []
     appeles: list = []
     contenu, present = svc._contenu_systeme(
         "claude", droits[0], copilote=True,
         role=(getattr(ctx, "identite", None) or {}).get("role"),
         taches=prompt_copilote.taches_au_catalogue(catalogue))
-    blocs = contenu if isinstance(contenu, list) else [{"text": contenu}]
-    return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles,
+    blocs = (contenu if isinstance(contenu, list) else [{"text": contenu}]) + (
+        [{"text": chargeur.index_des_domaines(domaines)}] if domaines else [])
+    return {"outils": [_tracer(o, appeles) for o in outils], "appeles": appeles, "domaines": domaines,
             "manuel_present": present, "marque": lambda: marque_du_tour(ctx),
             "cles": {o.nom: a["key"] for o, a in zip(outils, catalogue)},
             "reglages": {"systeme": [{"type": "text", "text": b["text"]} for b in blocs],
@@ -676,11 +827,14 @@ def _outil_deja_appele(prep: Optional[dict], collecteur: list) -> bool:
 
 
 def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
-               contexte: Optional[dict], catalogue: list) -> Optional[dict]:
+               contexte: Optional[dict], catalogue: list,
+               images: Optional[list] = None) -> Optional[dict]:
     """Un tour servi par le moteur natif quand il est actif pour ce compte ;
     None = le tour est servi par LangChain (moteur éteint, indisponible, ou
     panne AVANT tout appel d'outil — journalisée). Une panne APRÈS un appel
-    d'outil n'est jamais rejouée (doublon) : réponse honnête + cartes."""
+    d'outil n'est jamais rejouée (doublon) : réponse honnête + cartes.
+    `images` (F5) : blocs image du tour ; l'historique de l'écran garde la
+    question marquée (`question_marquee`), jamais l'image."""
     from app.services import moteur_natif
     from app.services import sql_agent_service as svc
 
@@ -688,20 +842,24 @@ def tour_natif(service, question: str, company_id: int, user_id: int, ctx,
         return None
     collecteur: list = []
     prep = None
+    vue = question_marquee(question, images)
     try:
         prep = _preparer(service, question, company_id, ctx, catalogue, collecteur)
+        from app.services.chargeur_outils import domaine_de_l_ecran
+        domaine = domaine_de_l_ecran((contexte or {}).get("ecran"), prep["domaines"])
         rendu = moteur_natif.executer(
-            question=question_du_tour(question, contexte, getattr(ctx, "identite", None)),
+            question=question_du_tour(question, contexte, getattr(ctx, "identite", None),
+                                      domaine=domaine),
             outils=prep["outils"], conversation=conversation_de(company_id, user_id),
-            **prep["reglages"], **_marques_natives(ctx))
-        return _sortie_native(service, question, user_id, rendu, collecteur, prep)
+            **({"images": images} if images else {}), **prep["reglages"], **_marques_natives(ctx))
+        return _sortie_native(service, vue, user_id, rendu, collecteur, prep)
     except Exception as exc:
         if prep is None or not _outil_deja_appele(prep, collecteur):
             logger.warning("Moteur natif indisponible (%s) : tour servi par LangChain.", exc)
             return None
         logger.error("Moteur natif en panne après un appel d'outil : %s", exc)
         return _reponse_native(
-            service, question, user_id, MESSAGE_ACTION_INTERROMPUE, collecteur,
+            service, vue, user_id, MESSAGE_ACTION_INTERROMPUE, collecteur,
             prep, {}, {"status": 500, "outil": "moteur_natif", "message": str(exc)[:200]})
 
 
@@ -729,7 +887,9 @@ def reprise_native(service, ctx, company_id: int, user_id: int, libelle: str,
             and (svc.SQL_AGENT_PROVIDER or "").lower() == "claude"):
         return None
     catalogue = catalogue_du_tour(ctx)
-    if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER):
+    # FND6 — plafond du jour atteint : pas de suite automatique (la carte du
+    # résultat s'affiche ; la question suivante part sur le repli, D-COP-1).
+    if not moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER) or service._budget_atteint(ctx):
         return None
     collecteur: list = []
     # A5 — le résultat de l'ERP entre dans le tour de reprise : marqué.

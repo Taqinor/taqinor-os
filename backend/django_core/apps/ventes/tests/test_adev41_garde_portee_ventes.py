@@ -121,6 +121,7 @@ ROUTES_EXEMPTEES = {
     'export-comptable': 'export comptable (factures), palier comptable.',
     'numerotation-audit': 'audit de numérotation (références seules).',
     'numerotation-preview': 'aperçu du prochain numéro (aucun devis).',
+    'assistant-catalogue': 'catalogue vendable de la société lu par l’assistant (aucun devis).',
     'relances-list': 'relances de FACTURES — portée facturation.',
     'balance-agee': 'balance âgée des factures — portée facturation.',
     'client-releve': 'relevé client (factures) — portée facturation.',

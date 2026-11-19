@@ -38,6 +38,12 @@ langchain-openai==0.2.14
 # AIC3 — derniere 0.3.x (compatible langchain 0.3.30 / langchain-core 0.3) :
 # cache_control + model_kwargs (output_config.effort transmis tel quel).
 langchain-anthropic==0.3.22
+# Copilote vague 2 (FND1) — le moteur natif parle à l'API Messages par ce SDK
+# (defer_loading, blocs tool_reference) : version de l'image où l'essai clé
+# réelle FND0 a été mené (19/11/2026). Sans épingle, langchain-anthropic tire
+# la plus récente < 1.0 au build. Dans la borne de langchain-anthropic 0.3.22
+# (anthropic>=0.69.0,<1.0.0).
+anthropic==0.125.0
 openai==1.59.6
 sentence-transformers>=2.0,<4.0
 
