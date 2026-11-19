@@ -58,10 +58,51 @@ export function PucesLues({ jetons }) {
   )
 }
 
+const cleNom = (nom) => String(nom ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[\s_-]+/g, '')
+
+/** Le projet qu'une ligne REÇOIT de son titre de groupe (aucun `#projet` à elle) : `{ cle, nom?, id?, nouveau }`. */
+function projetHerite(ligne) {
+  if ((ligne.jetons ?? []).some((j) => j.type === 'projet')) return null
+  const champs = ligne.champs ?? {}
+  if (champs.nouveau_projet?.nom) return { cle: `n:${cleNom(champs.nouveau_projet.nom)}`, nom: champs.nouveau_projet.nom, nouveau: true }
+  if (champs.projet_id != null) return { cle: `p:${champs.projet_id}`, id: champs.projet_id, nouveau: false }
+  return null
+}
+
+/**
+ * R2-004 — les groupes d'un collage, dans l'ordre : chaque suite de lignes qui reçoivent le MÊME projet de leur titre
+ * (« Hôtel Atlas Marrakech » puis ses lignes à tiret) est un groupe, montré sous son en-tête. Le projet commun de la
+ * première ligne (`projets_communs`) garde son en-tête à lui (`commun: true`). `projets` donne le nom d'un projet
+ * existant ; sans lui, son groupe n'a pas d'en-tête (jamais un nom inventé).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur partagé avec ColleListes (D-ENF22)
+export function groupesDuCollage(apercu, collage, projets = []) {
+  const commun = (apercu?.projets_communs ?? []).find((p) => p.collage === collage)
+  const cleCommun = commun ? (commun.nouveau ? `n:${cleNom(commun.nom)}` : `p:${commun.id}`) : null
+  const groupes = []
+  ;(apercu?.lignes ?? []).filter((l) => l.collage === collage && l.etape_de == null).forEach((ligne) => {
+    const herite = projetHerite(ligne)
+    const cle = herite?.cle ?? null
+    const dernier = groupes.at(-1)
+    // une ligne qui nomme son propre projet (`#Autre`) reste dans le groupe où elle est écrite
+    if (dernier && (dernier.cle === cle || cle === null)) { dernier.lignes.push(ligne); return }
+    const existant = herite && !herite.nouveau ? projets.find((p) => p.id === herite.id) : null
+    groupes.push({
+      cle,
+      commun: cle !== null && cle === cleCommun,
+      cleModif: `g${ligne.index}`,
+      projet: herite ? { nom: herite.nouveau ? herite.nom : existant?.nom ?? '', nouveau: herite.nouveau, couleur: existant?.couleur } : null,
+      lignes: [ligne],
+    })
+  })
+  return groupes
+}
+
 function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
   const note = noteDeLigne(ligne)
   const alertes = (ligne.alertes ?? []).map(phraseAlerte).filter(Boolean)
-  const jetons = (ligne.jetons ?? []).filter((j) => j.type !== 'projet' || !j.valeur?.nouveau)
+  // R2-004 — la puce du projet lu sur la ligne se voit, projet existant OU nouveau
+  const jetons = ligne.jetons ?? []
   return (
     <div className={`apercu-ligne${coche ? '' : ' decochee'}`}>
       <CocheCarree coche={coche} titre={titre} onBasculer={onCocher} />
@@ -149,8 +190,21 @@ function EnteteProjet({ commun, nbTaches, priorite, enTache, onPriorite, onEnTac
   )
 }
 
+/** La ligne « titre devenu tâche » (« En faire une tâche ») : `cle` = `p{collage}` (projet commun) ou `g{index}`. */
+function LigneTitreEnTache({ cle, nom, modifs, onCocher, onTitre }) {
+  return (
+    <LigneApercu
+      ligne={{ titre: nom, jetons: [], alertes: [] }}
+      coche={modifs.cochees[cle] !== false}
+      titre={modifs.titres[cle] ?? nom}
+      onCocher={() => onCocher(cle, modifs.cochees[cle] === false)}
+      onTitre={(valeur) => onTitre(cle, valeur)}
+    />
+  )
+}
+
 export default function ApercuListe({
-  apercu, modifs, priorites = {}, onCocher, onTitre, onEnTache, onSousTaches, onPriorite, nbCreer, nbProjets,
+  apercu, modifs, priorites = {}, projets = [], onCocher, onTitre, onEnTache, onSousTaches, onPriorite, nbCreer, nbProjets,
 }) {
   const lignes = apercu?.lignes ?? []
   const communs = apercu?.projets_communs ?? []
@@ -158,6 +212,7 @@ export default function ApercuListe({
     return <p className="vide-phrase">Aucune ligne lisible.</p>
   }
   const collages = [...new Set([...lignes.map((l) => l.collage), ...communs.map((c) => c.collage)])].sort((a, b) => a - b)
+  const titreDeLigne = { modifs, onCocher, onTitre }
   return (
     <div className="apercu-liste" aria-label={TITRE_APERCU}>
       <div className="apercu-entete">
@@ -169,9 +224,49 @@ export default function ApercuListe({
         const deCollage = lignes.filter((l) => l.collage === c)
         const taches = deCollage.filter((l) => l.etape_de == null)
         const enTache = Boolean(modifs.enTache[c])
-        return (
-          <div key={c} className="apercu-groupe" role="group" aria-label={commun ? commun.nom : `Liste ${c + 1}`}>
-            {commun ? (
+        const rendreTache = (ligne) => {
+          const points = deCollage.filter((l) => l.etape_de === ligne.index)
+          const sousTaches = Boolean(modifs.sousTaches[ligne.index])
+          return (
+            <div key={ligne.index}>
+              <LigneApercu
+                ligne={ligne}
+                coche={modifs.cochees[ligne.index] ?? ligne.cochee !== false}
+                titre={modifs.titres[ligne.index] ?? ligne.titre}
+                onCocher={() => onCocher(ligne.index, !(modifs.cochees[ligne.index] ?? ligne.cochee !== false))}
+                onTitre={(valeur) => onTitre(ligne.index, valeur)}
+              />
+              {points.length > 0 && !sousTaches ? (
+                <PointsDeListe
+                  points={points}
+                  sousTaches={sousTaches}
+                  titre={modifs.titres[ligne.index] ?? ligne.titre}
+                  onSousTaches={() => onSousTaches(ligne.index)}
+                />
+              ) : null}
+              {points.length > 0 && sousTaches ? (
+                <>
+                  {points.map((p) => (
+                    <LigneApercu
+                      key={p.index}
+                      ligne={p}
+                      coche={modifs.cochees[p.index] ?? p.cochee !== false}
+                      titre={modifs.titres[p.index] ?? p.titre}
+                      onCocher={() => onCocher(p.index, !(modifs.cochees[p.index] ?? p.cochee !== false))}
+                      onTitre={(valeur) => onTitre(p.index, valeur)}
+                    />
+                  ))}
+                  <button type="button" className="bouton discret" aria-pressed onClick={() => onSousTaches(ligne.index)}>
+                    En faire des sous-tâches
+                  </button>
+                </>
+              ) : null}
+            </div>
+          )
+        }
+        if (commun) {
+          return (
+            <div key={c} className="apercu-groupe" role="group" aria-label={commun.nom}>
               <EnteteProjet
                 commun={commun}
                 nbTaches={taches.length}
@@ -180,58 +275,34 @@ export default function ApercuListe({
                 onPriorite={onPriorite}
                 onEnTache={() => onEnTache(c)}
               />
-            ) : null}
-            {commun && enTache ? (
-              <LigneApercu
-                ligne={{ titre: commun.nom, jetons: [], alertes: [] }}
-                coche={modifs.cochees[`p${c}`] !== false}
-                titre={modifs.titres[`p${c}`] ?? commun.nom}
-                onCocher={() => onCocher(`p${c}`, modifs.cochees[`p${c}`] === false)}
-                onTitre={(valeur) => onTitre(`p${c}`, valeur)}
-              />
-            ) : null}
-            {taches.map((ligne) => {
-              const points = deCollage.filter((l) => l.etape_de === ligne.index)
-              const sousTaches = Boolean(modifs.sousTaches[ligne.index])
-              return (
-                <div key={ligne.index}>
-                  <LigneApercu
-                    ligne={ligne}
-                    coche={modifs.cochees[ligne.index] ?? ligne.cochee !== false}
-                    titre={modifs.titres[ligne.index] ?? ligne.titre}
-                    onCocher={() => onCocher(ligne.index, !(modifs.cochees[ligne.index] ?? ligne.cochee !== false))}
-                    onTitre={(valeur) => onTitre(ligne.index, valeur)}
-                  />
-                  {points.length > 0 && !sousTaches ? (
-                    <PointsDeListe
-                      points={points}
-                      sousTaches={sousTaches}
-                      titre={modifs.titres[ligne.index] ?? ligne.titre}
-                      onSousTaches={() => onSousTaches(ligne.index)}
-                    />
-                  ) : null}
-                  {points.length > 0 && sousTaches ? (
-                    <>
-                      {points.map((p) => (
-                        <LigneApercu
-                          key={p.index}
-                          ligne={p}
-                          coche={modifs.cochees[p.index] ?? p.cochee !== false}
-                          titre={modifs.titres[p.index] ?? p.titre}
-                          onCocher={() => onCocher(p.index, !(modifs.cochees[p.index] ?? p.cochee !== false))}
-                          onTitre={(valeur) => onTitre(p.index, valeur)}
-                        />
-                      ))}
-                      <button type="button" className="bouton discret" aria-pressed onClick={() => onSousTaches(ligne.index)}>
-                        En faire des sous-tâches
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        )
+              {enTache ? <LigneTitreEnTache cle={`p${c}`} nom={commun.nom} {...titreDeLigne} /> : null}
+              {taches.map(rendreTache)}
+            </div>
+          )
+        }
+        // R2-004 — sans projet commun : un groupe par titre (« Hôtel Atlas Marrakech »), chacun sous son en-tête
+        const groupes = groupesDuCollage(apercu, c, projets)
+        if (groupes.length === 0) return <div key={c} className="apercu-groupe" role="group" aria-label={`Liste ${c + 1}`} />
+        return groupes.map((g) => {
+          const nom = g.projet?.nom ?? ''
+          const gEnTache = Boolean(modifs.enTache[g.cleModif])
+          return (
+            <div key={`${c}:${g.cleModif}`} className="apercu-groupe" role="group" aria-label={nom || `Liste ${c + 1}`}>
+              {nom ? (
+                <EnteteProjet
+                  commun={g.projet}
+                  nbTaches={g.lignes.length}
+                  priorite={priorites[nom] ?? 2}
+                  enTache={gEnTache}
+                  onPriorite={onPriorite}
+                  onEnTache={() => onEnTache(g.cleModif)}
+                />
+              ) : null}
+              {nom && gEnTache ? <LigneTitreEnTache cle={`t${g.cleModif}`} nom={nom} {...titreDeLigne} /> : null}
+              {g.lignes.map(rendreTache)}
+            </div>
+          )
+        })
       })}
     </div>
   )

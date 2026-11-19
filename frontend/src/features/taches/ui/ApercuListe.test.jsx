@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -158,6 +158,58 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
     await user.click(screen.getByRole('button', { name: 'Coller encore' }))
     expect(onCollerEncore).toHaveBeenCalledTimes(1)
     expect(onCreer).not.toHaveBeenCalled()
+  })
+
+  describe('R2-004 — une liste « comme dans Notes » : un en-tête par titre de groupe', () => {
+    const groupe = (index, titre, champs, plus = {}) => ({ ...ligne(index, 0, titre), champs: { priorite: 0, ...champs }, ...plus })
+    const villa = { nouveau_projet: { nom: 'Villa Benjelloun', priorite: 2 } }
+    const hotel = { nouveau_projet: { nom: 'Hôtel Atlas', priorite: 2 } }
+    const NOTES = {
+      projets_communs: [],
+      lignes: [
+        groupe(0, 'envoyer le devis', villa),
+        groupe(1, 'appeler l\'architecte', villa),
+        groupe(2, 'relancer le directeur', hotel),
+        groupe(3, 'visite technique', hotel),
+        groupe(4, 'devis variateur', { projet_id: 7 }),
+        groupe(5, 'stand', { nouveau_projet: { nom: 'Salon', priorite: 2 } }, {
+          jetons: [{ type: 'projet', source: '#Salon', debut: 6, fin: 12, libelle: 'Nouveau projet : Salon', valeur: { nouveau: true, nom: 'Salon' } }],
+        }),
+      ],
+      projets_nouveaux: [{ nom: 'Villa Benjelloun', priorite: 2 }, { nom: 'Hôtel Atlas', priorite: 2 }, { nom: 'Salon', priorite: 2 }],
+    }
+    const PROJETS = [{ id: 7, nom: 'Pompage Berrechid', couleur: 'terre', statut: 'actif' }]
+
+    it('chaque groupe est nommé AVANT « Créer » ; la puce d\'un projet nouveau se voit sur sa ligne', () => {
+      monter(NOTES, { projets: PROJETS })
+      const entetes = [...document.querySelectorAll('.apercu-projet .nom-projet')].map((e) => e.textContent)
+      expect(entetes).toEqual(['Nouveau projet : Villa Benjelloun', 'Nouveau projet : Hôtel Atlas', 'Projet : Pompage Berrechid'])
+      expect(screen.getByRole('group', { name: 'Hôtel Atlas' })).toHaveTextContent('2 tâches')
+      const pompage = within(screen.getByRole('group', { name: 'Pompage Berrechid' }))
+      expect(pompage.getByRole('textbox', { name: 'Titre : devis variateur' })).toBeInTheDocument()
+      // la ligne qui nomme son propre projet reste dans le groupe où elle est écrite, avec sa puce
+      expect(pompage.getByRole('textbox', { name: 'Titre : stand' })).toBeInTheDocument()
+      expect(pompage.getByText('Nouveau projet : Salon')).toHaveClass('puce')
+      expect(screen.getByRole('button', { name: 'Priorité du projet Villa Benjelloun : moyenne' })).toBeInTheDocument()
+      expect(screen.getByText('6 tâches · 4 projets')).toBeInTheDocument()
+    })
+
+    it('« En faire une tâche » sur un groupe : son titre devient une tâche, ses lignes n\'ont plus ce projet', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(NOTES, { projets: PROJETS })
+      await user.click(screen.getByRole('button', { name: 'En faire une tâche : Hôtel Atlas' }))
+      expect(screen.getByText('7 tâches · 3 projets')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Créer 7 tâches' }))
+      const [lignes] = onCreer.mock.calls[0]
+      expect(lignes.map((l) => l.titre)).toEqual([
+        'envoyer le devis', 'appeler l\'architecte', 'Hôtel Atlas', 'relancer le directeur', 'visite technique', 'devis variateur', 'stand'])
+      expect(lignes[2]).toMatchObject({ client_id: 'cid1:g2', collage: 0 })
+      expect(lignes[2].nouveau_projet).toBeUndefined()
+      expect(lignes[3].nouveau_projet).toBeUndefined()
+      expect(lignes[0].nouveau_projet.nom).toBe('Villa Benjelloun')
+      expect(lignes[5].projet_id).toBe(7)
+      expect(lignes[6].nouveau_projet.nom).toBe('Salon')
+    })
   })
 
   it('aperçu sans ligne lisible : « Aucune ligne lisible. », rien à créer', async () => {

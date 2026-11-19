@@ -8,6 +8,7 @@
 // Chaque test repart d'un compte effacé et crée ses propres données (titres uniques) : rejouable, indépendant de
 // l'ordre. « Le deuxième appareil » du conflit est joué par l'API (`page.request`), qui écrit exactement ce
 // qu'écrirait l'autre navigateur.
+import { readFileSync } from 'node:fs'
 import { test, expect } from '@playwright/test'
 import {
   API, attendreAujourdhui, boutonGarder, chercherTaches, creerProjet, creerTaches, etatJournee, jourServeur, ligne, listerProjets,
@@ -187,6 +188,20 @@ test.describe('Tâches — saisie', () => {
     const etat = await etatJournee(page)
     expect(etat.lignes, 'le serveur propose au moins une tâche').toBeGreaterThan(0)
     await expect(boutonGarder(page, etat.lignes)).toBeVisible()
+  })
+
+  test('R2-004 — coller une liste « comme dans Notes » (titres sans « : ») : 7 groupes nommés AVANT « Créer »', async ({ page }) => {
+    await reinitialiser(page)
+    const liste = readFileSync(new URL('../../backend/django_core/apps/taches/tests/donnees/liste30.txt', import.meta.url), 'utf8')
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await page.getByRole('button', { name: 'Coller mes listes' }).click()
+    await champSaisie(page).fill(liste.trim())
+    for (const nom of ['Villa Benjelloun Dar Bouazza', 'Hôtel Atlas Marrakech', 'Pompage Ferme Berrechid',
+      'Boulangerie Ain Sebaa', 'Admin', 'Recrutement', 'Divers']) {
+      await expect(feuilleSaisie(page).getByText(`Nouveau projet : ${nom}`, { exact: true })).toBeVisible()
+    }
+    await expect(feuilleSaisie(page).getByText('28 tâches · 7 projets', { exact: true })).toBeVisible()
+    await expect(feuilleSaisie(page).getByRole('button', { name: 'Créer 28 tâches' })).toBeVisible()
   })
 
   test('brouillon : fermer la saisie en cours de frappe, la rouvrir, tout est repris', async ({ page }) => {

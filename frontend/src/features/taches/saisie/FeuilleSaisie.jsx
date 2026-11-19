@@ -478,6 +478,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             apercu={donneesListe}
             cid={cid}
             priorites={priorites}
+            projets={projetsOuverts}
             onPriorite={surPriorite}
             onCreer={creer}
             onCollerEncore={collerEncore}

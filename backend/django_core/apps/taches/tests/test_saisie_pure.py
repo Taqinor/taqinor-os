@@ -7,6 +7,7 @@ actif, étape Achats id 8) ; aucun férié, aucune étiquette existante.
 """
 import unittest
 from datetime import date, datetime, time
+from pathlib import Path
 
 from apps.taches.saisie.analyseur import analyser, classer_capture
 from apps.taches.saisie.collage import decouper_collage, erreurs_limites
@@ -534,6 +535,61 @@ class CollageTests(unittest.TestCase):
         self.assertEqual(champs[2]['nouveau_projet'], {'nom': 'Bricolage', 'priorite': 2})
         self.assertEqual(apercu['projets_communs'], [])
         self.assertEqual(apercu['projets_nouveaux'], [{'nom': 'Bricolage', 'priorite': 2}])
+
+    def _projets_par_ligne(self, apercu):
+        noms = {5: 'Maison', 3: 'Polydesign'}
+        sortie = []
+        for ligne in apercu['lignes']:
+            champs = ligne['champs']
+            nom = champs.get('nouveau_projet', {}).get('nom') or noms.get(champs.get('projet_id'))
+            sortie.append((ligne['titre'], nom))
+        return sortie
+
+    def test_r2_004_liste30_comme_dans_notes_sept_groupes_nommes(self):
+        texte = (Path(__file__).parent / 'donnees' / 'liste30.txt').read_text(encoding='utf-8')
+        apercu = coller(texte)
+        groupes = {}
+        for titre, nom in self._projets_par_ligne(apercu):
+            groupes.setdefault(nom, []).append(titre)
+        self.assertEqual(list(groupes), [
+            'Villa Benjelloun Dar Bouazza', 'Hôtel Atlas Marrakech', 'Pompage Ferme Berrechid',
+            'Boulangerie Ain Sebaa', 'Admin', 'Recrutement', 'Divers'])
+        self.assertEqual([len(t) for t in groupes.values()], [3, 4, 4, 2, 4, 2, 9])
+        self.assertEqual(len(apercu['lignes']), 28)
+        self.assertNotIn('Recrutement', titres(apercu))  # un titre n'est jamais une tâche
+        self.assertTrue(groupes['Admin'][0].startswith('payer la CNSS'))
+        self.assertEqual(apercu['projets_communs'], [])
+        self.assertEqual(len(apercu['projets_nouveaux']), 7)
+
+    def test_r2_004_un_titre_sans_deux_points_suivi_de_lignes_a_tiret(self):
+        apercu = coller('Villa\n- poser les rails\n- câbler\nHôtel Atlas\n- relancer\n- visiter')
+        self.assertEqual(self._projets_par_ligne(apercu), [
+            ('poser les rails', 'Villa'), ('câbler', 'Villa'), ('relancer', 'Hôtel Atlas'), ('visiter', 'Hôtel Atlas')])
+        self.assertEqual(apercu['projets_communs'], [])
+
+    def test_r2_004_un_titre_precede_d_une_ligne_vide(self):
+        apercu = coller('Courses\nlait\npain\n\nBricolage\nvis\nclous')
+        self.assertEqual(self._projets_par_ligne(apercu), [
+            ('lait', 'Courses'), ('pain', 'Courses'), ('vis', 'Bricolage'), ('clous', 'Bricolage')])
+
+    def test_r2_004_sans_structure_rien_ne_change(self):
+        # une marque en majuscule au milieu d'une liste de courses reste une tâche
+        apercu = coller('Courses\nlait\nNutella\nbeurre\npain')
+        self.assertEqual([c['nom'] for c in apercu['projets_communs']], ['Courses'])
+        self.assertEqual(titres(apercu), ['lait', 'Nutella', 'beurre', 'pain'])
+        # deux blocs de deux lignes : pas un titre
+        bloc = coller('Appeler Karim\nRelancer Salma\n\nPayer\nlait')
+        self.assertIn('Payer', titres(bloc))
+
+    def test_r2_004_un_titre_avec_date_ou_puce_reste_une_tache(self):
+        apercu = coller('Villa\n- câbler\nRelancer demain\n- devis\n- facture')
+        self.assertIn('Relancer', titres(apercu))
+        self.assertEqual(self._projets_par_ligne(apercu)[1], ('Relancer', 'Villa'))
+
+    def test_r2_004_les_points_en_retrait_restent_une_check_list(self):
+        apercu = coller('Villa\n- câbler\nPréparer la valise\n    - passeport\n    - chargeur')
+        self.assertEqual([ligne['etape_de'] for ligne in apercu['lignes']], [None, None, 1, 1])
+        self.assertEqual(titres(apercu)[1], 'Préparer la valise')
 
     def test_derniere_ligne_avec_deux_points_reste_une_tache(self):
         apercu = coller('Une chose\nUne autre\nPenser à :',
