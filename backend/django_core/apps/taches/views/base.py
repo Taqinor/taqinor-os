@@ -24,8 +24,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import APIException, MethodNotAllowed
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import BasePermission
 
+from apps.taches.entrees import MOTIF_ANNEE_BORNEE
 from authentication.permissions import IsAuthenticatedInterne
 
 DROIT = 'taches_voir'
@@ -65,6 +67,11 @@ class PermissionTaches(BasePermission):
 
 
 PERMISSIONS = [IsAuthenticatedInterne, PermissionTaches]
+#: Le module ne lit que du JSON (api.md §0 ; écran et relais de l'assistant n'envoient rien d'autre). Déclaré sur
+#: chaque vue, le schéma ne publie plus que `application/json` : en formulaire, un `null`, une liste d'entiers ou un
+#: objet imbriqué ne se transportent pas, et l'api-fuzz envoyait des corps « conformes » que DRF ne pouvait pas lire
+#: (400). Seule exception : `capture/` (raccourci Siri, formulaire possible), qui garde les lecteurs par défaut.
+PARSEURS = [JSONParser]
 
 
 def est_assistant(request):
@@ -188,8 +195,47 @@ def forme_echantillon(nom):
     composant = f'TachesEch{_camel(nom)}'
     COMPOSANTS_ECHANTILLON[composant] = nom
     valeur, _ = _fusionner([exemple_de(nom)])
+    _nullables(valeur, nuls_de(nom))
     champs = {cle: _champ(sous, f'{composant}_{_camel(cle)}') for cle, sous in valeur.items()}
     return inline_serializer(composant, champs)
+
+
+#: Clés nulles PARTOUT où elles paraissent (api.md §0) : `geste_id` d'une écriture qui n'a rien changé,
+#: `carte_du_moment` d'un écran sans carte. L'exemple n'en montre qu'un cas ; le schéma dit les deux.
+TOUJOURS_NULLABLES = ('geste_id', 'carte_du_moment')
+
+
+def nuls_de(nom):
+    """Les chemins (`"plan.planifie_le"`) que `<nom>.json` déclare nuls possibles (`"nuls"`), en plus de ceux
+    que l'exemple montre nuls — un exemple ne montre qu'un état (api-fuzz r2 : `null` servi, schéma non nul)."""
+    return json.loads((ECHANTILLONS / f'{nom}.json').read_text(encoding='utf-8')).get('nuls', ())
+
+
+def _nullables(valeur, chemins):
+    """Marque nuls possibles les nœuds de `valeur` (fusionné) aux `chemins`, et toute clé de
+    `TOUJOURS_NULLABLES`, à toute profondeur."""
+    for chemin in chemins:
+        noeud, *reste = chemin.split('.')
+        cible = valeur
+        for morceau in [noeud, *reste][:-1]:
+            sous = cible.get(morceau) if isinstance(cible, dict) else None
+            cible = sous[0] if sous else None
+        dernier = chemin.split('.')[-1]
+        if isinstance(cible, dict) and dernier in cible:
+            cible[dernier] = (cible[dernier][0], True)
+        else:
+            raise ValueError(f'nuls : chemin inconnu « {chemin} »')
+
+    def parcourir(noeud):
+        if isinstance(noeud, dict):
+            for cle, (sous, nul) in list(noeud.items()):
+                noeud[cle] = (sous, nul or cle in TOUJOURS_NULLABLES)
+                parcourir(sous)
+        elif isinstance(noeud, list) and noeud:
+            parcourir(noeud[0][0])
+        elif isinstance(noeud, _Carte):
+            parcourir(noeud.valeur[0])
+    parcourir(valeur)
 
 
 def corps(nom, exemple, requis=()):
@@ -213,9 +259,17 @@ def reponses(succes, *, statut=200, erreurs=(), conflit=None):
     return resultat
 
 
-def parametre(nom, type_=OpenApiTypes.STR, description=''):
-    """Paramètre de requête facultatif (`?nom=`)."""
-    return OpenApiParameter(nom, type_, OpenApiParameter.QUERY, required=False, description=description)
+#: Une date reçue en paramètre : `AAAA-MM-JJ` dans la plage de `entrees.DateBornee` (2000 → 2100), publiée.
+DATE_BORNEE = {'type': 'string', 'format': 'date', 'pattern': MOTIF_ANNEE_BORNEE}
+
+
+def parametre(nom, type_=OpenApiTypes.STR, description='', *, enum=None, requis=False):
+    """Paramètre de requête (`?nom=`), facultatif sauf `requis` ; `enum` : sa liste fermée publiée. Une date
+    publie sa plage d'années (api-fuzz r2 : ce que le schéma déclare valide, le serveur l'accepte)."""
+    if type_ == OpenApiTypes.DATE:
+        type_ = DATE_BORNEE
+    return OpenApiParameter(nom, type_, OpenApiParameter.QUERY, required=requis, description=description,
+                            enum=list(enum) if enum is not None else None)
 
 
 PAGINATION = [parametre('page', OpenApiTypes.INT), parametre('page_size', OpenApiTypes.INT)]

@@ -130,5 +130,8 @@
         "prevues": 4
       }
     }
-  }
+  },
+  "nuls": [
+    "prochaine"
+  ]
 }

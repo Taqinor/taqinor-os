@@ -4,9 +4,12 @@ Un jeton n'est JAMAIS servi par son empreinte ; son clair ne l'est qu'une fois, 
 création (`forme_jeton_cree`), avec l'adresse qu'il ouvre.
 """
 from django.urls import reverse
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from apps.taches.choix import UsageJeton
+from apps.taches.entrees import Choix
+from core.champs_stricts import ChaineStricte
 
 MESSAGE_USAGE = 'Valeur inconnue.'
 MESSAGE_REQUIS = 'Requis.'
@@ -16,13 +19,14 @@ ROUTE_USAGE = {UsageJeton.CAPTURE: 'taches-capture', UsageJeton.TUILE: 'taches-t
 SUFFIXE_CAPTURE = '?reponse=texte'
 
 
+@extend_schema_serializer(component_name='TachesCorpsJeton')
 class JetonEntreeSerializer(serializers.Serializer):
-    """Corps de `POST jetons/` : `{"usage","libelle"?}`."""
+    """Corps de `POST jetons/` : `{"usage","libelle"?}` ; c'est aussi le schéma publié (api-fuzz r2)."""
 
-    usage = serializers.ChoiceField(choices=UsageJeton.choices, error_messages={
+    usage = Choix(choices=UsageJeton.choices, error_messages={
         'invalid_choice': MESSAGE_USAGE, 'required': MESSAGE_REQUIS, 'null': MESSAGE_REQUIS})
-    libelle = serializers.CharField(max_length=60, allow_blank=True, required=False, default='',
-                                    error_messages={'max_length': MESSAGE_LIBELLE})
+    libelle = ChaineStricte(max_length=60, allow_blank=True, required=False, default='',
+                            error_messages={'max_length': MESSAGE_LIBELLE})
 
 
 class JetonSerializer(serializers.Serializer):

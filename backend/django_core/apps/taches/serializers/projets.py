@@ -8,16 +8,19 @@ jamais recopiées ; ce que ces formes ne calculent pas seules (santé, compteurs
 `selectors/projets.etat_projets` par `contexte(calculs=…)`.
 """
 from django.db.models import F
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from apps.taches.choix import Couleur, DecisionRevue, IssueProjet, Priorite, StatutProjet, StatutTache
 from apps.taches.confidentialite import est_confidentielle, nom_pour
-from apps.taches.entrees import MESSAGE_DATE, DateBornee, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, Choix, ChoixEntier, DateBornee, sans_nul
 from apps.taches.saisie.collage import MAX_LIGNES, MESSAGE_TROP_DE_LIGNES, erreurs_limites
 from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import journee as journee_lue
 from apps.taches.selectors import projets as lecture
 from apps.taches.selectors.base import sections_de, taches_de
+from apps.taches.serializers.corps import ENTIER, CorpsTaches, parmi, present, valeur
+from core.champs_stricts import MOTIF_SANS_NUL, BooleenStrict, ChaineStricte, EntierStrict
 from apps.taches.serializers.formes import (
     AFFICHAGE_DEFAUT, ItemSerializer, ProjetSerializer, TacheSerializer, charger_items, charger_taches, contexte,
 )
@@ -41,43 +44,55 @@ def _messages(longueur=None, **plus):
 
 
 def _texte(longueur, **options):
-    return serializers.CharField(max_length=longueur, error_messages=_messages(longueur), **options)
+    return ChaineStricte(max_length=longueur, error_messages=_messages(longueur), **options)
 
 
 def _version():
-    return serializers.IntegerField(min_value=0, error_messages=_messages(min_value='Valeur inconnue.'))
+    return EntierStrict(min_value=0, error_messages=_messages(min_value='Valeur inconnue.'))
 
 
 # --- Corps reçus ---------------------------------------------------------------------------------
 
-class ProjetCreationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsProjet')
+class ProjetCreationSerializer(CorpsTaches):
     """POST projets/ — seul `nom` est exigé (couleur d'office, priorité 0)."""
 
     nom = _texte(120)
-    priorite = serializers.ChoiceField(choices=Priorite.values, required=False, default=Priorite.AUCUNE,
-                                       error_messages=_messages())
-    couleur = serializers.ChoiceField(choices=Couleur.values, required=False, error_messages=_messages())
+    priorite = ChoixEntier(choices=Priorite.values, required=False, default=Priorite.AUCUNE,
+                           error_messages=_messages())
+    couleur = Choix(choices=Couleur.values, required=False, error_messages=_messages())
     icone = _texte(8, required=False, allow_blank=True)
-    objectif = serializers.CharField(required=False, allow_blank=True, error_messages=_messages())
+    objectif = ChaineStricte(required=False, allow_blank=True, error_messages=_messages())
     domaine = _texte(40, required=False, allow_blank=True)
 
 
-class ProjetModificationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsProjetPatch')
+class ProjetModificationSerializer(CorpsTaches):
     """PATCH projets/{id}/ — tout champ facultatif sauf `lock_version` ; `termine` passe par « Terminer »."""
 
     nom = _texte(120, required=False)
-    objectif = serializers.CharField(required=False, allow_blank=True, error_messages=_messages())
+    objectif = ChaineStricte(required=False, allow_blank=True, error_messages=_messages())
     icone = _texte(8, required=False, allow_blank=True)
-    couleur = serializers.ChoiceField(choices=Couleur.values, required=False, error_messages=_messages())
-    priorite = serializers.ChoiceField(choices=Priorite.values, required=False, error_messages=_messages())
-    statut = serializers.ChoiceField(choices=StatutProjet.values, required=False, error_messages=_messages())
+    couleur = Choix(choices=Couleur.values, required=False, error_messages=_messages())
+    priorite = ChoixEntier(choices=Priorite.values, required=False, error_messages=_messages())
+    statut = Choix(choices=StatutProjet.values, required=False, error_messages=_messages())
     date_debut = DateBornee(required=False, allow_null=True)
     echeance = DateBornee(required=False, allow_null=True)
     domaine = _texte(40, required=False, allow_blank=True)
-    confidentiel = serializers.BooleanField(required=False)
+    confidentiel = BooleenStrict(required=False)
     affichage = serializers.DictField(required=False)
     risque = _texte(280, required=False, allow_blank=True)
     lock_version = _version()
+
+    regles_croisees = (
+        (present('lock_version', ENTIER),),
+        (valeur('statut', *(s for s in StatutProjet.values if s != StatutProjet.TERMINE)),),
+        ({'properties': {'affichage': {
+            'type': 'object', 'additionalProperties': False, 'properties': {
+                'vue': parmi(*VUES), 'montrer_faites': {'type': 'boolean'},
+                **{cle: {'type': 'string', 'minLength': 1, 'maxLength': 20, 'pattern': MOTIF_SANS_NUL}
+                   for cle in ('tri', 'groupe')}}}}},),
+    )
 
     def validate_statut(self, valeur):
         if valeur == StatutProjet.TERMINE:
@@ -98,17 +113,20 @@ class ProjetModificationSerializer(serializers.Serializer):
         return valeur
 
 
-class TerminerSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsProjetTerminer')
+class TerminerSerializer(CorpsTaches):
     """POST projets/{id}/terminer/ — `issue` obligatoire ; sort des tâches ouvertes."""
 
-    issue = serializers.ChoiceField(choices=ISSUES,
-                                    error_messages={**_messages(), 'required': ATTEINT_OU_ABANDONNE,
-                                                    'null': ATTEINT_OU_ABANDONNE, 'blank': ATTEINT_OU_ABANDONNE,
-                                                    'invalid_choice': ATTEINT_OU_ABANDONNE})
+    issue = Choix(choices=ISSUES,
+                  error_messages={**_messages(), 'required': ATTEINT_OU_ABANDONNE,
+                                  'null': ATTEINT_OU_ABANDONNE, 'blank': ATTEINT_OU_ABANDONNE,
+                                  'invalid_choice': ATTEINT_OU_ABANDONNE})
     bilan = _texte(280, required=False, allow_blank=True)
-    taches_ouvertes = serializers.ChoiceField(choices=['boite', 'annuler', 'deplacer'], required=False,
-                                              error_messages=_messages())
-    projet_cible_id = serializers.IntegerField(required=False, allow_null=True)
+    taches_ouvertes = Choix(choices=['boite', 'annuler', 'deplacer'], required=False,
+                            error_messages=_messages())
+    projet_cible_id = EntierStrict(required=False, allow_null=True)
+
+    regles_croisees = ((valeur('taches_ouvertes', 'boite', 'annuler'), present('projet_cible_id', ENTIER)),)
 
     def validate(self, donnees):
         if donnees.get('taches_ouvertes') == 'deplacer' and donnees.get('projet_cible_id') is None:
@@ -116,18 +134,22 @@ class TerminerSerializer(serializers.Serializer):
         return donnees
 
 
-class ReordonnerSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsReordonnerProjet')
+class ReordonnerSerializer(CorpsTaches):
     """POST …/reordonner/ — la place entre deux voisins (`avant_id` : juste avant lui ; `apres_id` : juste après)."""
 
-    avant_id = serializers.IntegerField(required=False, allow_null=True)
-    apres_id = serializers.IntegerField(required=False, allow_null=True)
-    liste = serializers.CharField(required=False, allow_blank=True)  # sans objet pour un projet ou une étape
+    avant_id = EntierStrict(required=False, allow_null=True)
+    apres_id = EntierStrict(required=False, allow_null=True)
+    liste = ChaineStricte(required=False, allow_blank=True)  # sans objet pour un projet ou une étape
+
+    regles_croisees = ((present('avant_id', ENTIER), present('apres_id', ENTIER)),)
 
 
-class SectionCreationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsSection')
+class SectionCreationSerializer(CorpsTaches):
     """POST sections/ — `{projet_id, nom, date_debut?, date_fin?}`."""
 
-    projet_id = serializers.IntegerField(error_messages=_messages())
+    projet_id = EntierStrict(error_messages=_messages())
     nom = _texte(120)
     date_debut = DateBornee(required=False, allow_null=True)
     date_fin = DateBornee(required=False, allow_null=True)
@@ -136,7 +158,8 @@ class SectionCreationSerializer(serializers.Serializer):
         return _dates_ordonnees(donnees)
 
 
-class SectionModificationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsSectionPatch')
+class SectionModificationSerializer(CorpsTaches):
     """PATCH sections/{id}/ — renommer, dates."""
 
     nom = _texte(120, required=False)
@@ -154,13 +177,14 @@ def _dates_ordonnees(donnees):
     return donnees
 
 
-class ApercuPlanSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsPlanificationApercu')
+class ApercuPlanSerializer(CorpsTaches):
     """POST projets/{id}/planification/apercu/ — `{texte, mode?}`, jamais écrit. `mode` : `plan` (défaut, la liste
     collée : « : » ouvre une étape) ou `etapes` (le champ « Étapes » : une ligne non indentée = une étape)."""
 
-    texte = serializers.CharField(trim_whitespace=False, error_messages=_messages())
-    mode = serializers.ChoiceField(choices=['plan', 'etapes'], required=False, default='plan',
-                                   error_messages=_messages())
+    texte = ChaineStricte(trim_whitespace=False, error_messages=_messages())
+    mode = Choix(choices=['plan', 'etapes'], required=False, default='plan',
+                 error_messages=_messages())
 
     def validate_texte(self, texte):
         erreurs = erreurs_limites(texte)
@@ -169,28 +193,32 @@ class ApercuPlanSerializer(serializers.Serializer):
         return texte
 
 
-class _TachePlanSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsPlanificationTache')
+class _TachePlanSerializer(CorpsTaches):
     titre = _texte(280)
-    jalon = serializers.BooleanField(required=False, default=False)
+    jalon = BooleenStrict(required=False, default=False)
     sous_taches = serializers.ListField(child=_texte(280), required=False)
 
 
-class _EtapePlanSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsPlanificationSection')
+class _EtapePlanSerializer(CorpsTaches):
     nom = _texte(120, required=False, allow_null=True, allow_blank=True)
     taches = _TachePlanSerializer(many=True)
 
 
-class _ActionPlanSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsPlanificationAction')
+class _ActionPlanSerializer(CorpsTaches):
     titre = _texte(280)
-    quand = serializers.ChoiceField(choices=['aujourdhui', 'demain', 'plus_tard', ''], required=False,
-                                    allow_blank=True, error_messages=_messages())
+    quand = Choix(choices=['aujourdhui', 'demain', 'plus_tard', ''], required=False,
+                  allow_blank=True, error_messages=_messages())
 
 
-class PlanificationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsPlanification')
+class PlanificationSerializer(CorpsTaches):
     """POST projets/{id}/planification/ — tout créer, priorité comprise (verrou 409)."""
 
-    priorite = serializers.ChoiceField(choices=Priorite.values, required=False, error_messages=_messages())
-    objectif = serializers.CharField(required=False, allow_blank=True, error_messages=_messages())
+    priorite = ChoixEntier(choices=Priorite.values, required=False, error_messages=_messages())
+    objectif = ChaineStricte(required=False, allow_blank=True, error_messages=_messages())
     echeance = DateBornee(required=False, allow_null=True)
     risque = _texte(280, required=False, allow_blank=True)
     sections = _EtapePlanSerializer(many=True, required=False)
@@ -205,53 +233,64 @@ class PlanificationSerializer(serializers.Serializer):
         return donnees
 
 
-class DecalerSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsDecaler')
+class DecalerSerializer(CorpsTaches):
     """POST projets/{id}/decaler/ — `{delta_jours, apercu}` (sans `apercu`, rien n'est écrit)."""
 
-    delta_jours = serializers.IntegerField(min_value=-3650, max_value=3650, error_messages=_messages(
+    delta_jours = EntierStrict(min_value=-3650, max_value=3650, error_messages=_messages(
         min_value=VALEUR_INCONNUE, max_value=VALEUR_INCONNUE))
-    apercu = serializers.BooleanField(required=False, default=True)
+    apercu = BooleenStrict(required=False, default=True)
 
 
-class DupliquerSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsDupliquer')
+class DupliquerSerializer(CorpsTaches):
     """POST projets/{id}/dupliquer/ — `{nom, date_debut?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
     date_debut = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
-    apercu = serializers.BooleanField(required=False, default=True)
+    apercu = BooleenStrict(required=False, default=True)
 
 
-class EnregistrerModeleSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsEnregistrerModele')
+class EnregistrerModeleSerializer(CorpsTaches):
     """POST projets/{id}/enregistrer-modele/ — `{nom, inclure_notes}` (notes exclues par défaut)."""
 
     nom = _texte(120)
-    inclure_notes = serializers.BooleanField(required=False, default=False)
+    inclure_notes = BooleenStrict(required=False, default=False)
 
 
-class ModeleModificationSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsModelePatch')
+class ModeleModificationSerializer(CorpsTaches):
     """PATCH modeles/{id}/ — le nom seul."""
 
     nom = _texte(120)
 
+    regles_croisees = ((present('nom', {'type': 'string'}),),)
 
-class ModeleInstancierSerializer(serializers.Serializer):
+
+@extend_schema_serializer(component_name='TachesCorpsModeleInstancier')
+class ModeleInstancierSerializer(CorpsTaches):
     """POST modeles/{id}/instancier/ — `{nom, date_lancement?, apercu}` (sans `apercu`, rien n'est écrit)."""
 
     nom = _texte(120)
     date_lancement = DateBornee(required=False, allow_null=True, error_messages={'invalid': MESSAGE_DATE})
-    apercu = serializers.BooleanField(required=False, default=True)
+    apercu = BooleenStrict(required=False, default=True)
 
 
-class RevueDecisionSerializer(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsRevueDecision')
+class RevueDecisionSerializer(CorpsTaches):
     """PUT revue/projets/{projet_id}/ — la décision d'une carte (`terminer` exige `issue`)."""
 
     semaine = DateBornee(error_messages=_messages())
     intention = _texte(200, required=False, allow_blank=True)
-    prochaine_action_id = serializers.IntegerField(required=False, allow_null=True)
-    decision = serializers.ChoiceField(choices=[c for c in DecisionRevue.values if c], error_messages=_messages())
-    focus = serializers.BooleanField(required=False, default=False)
-    issue = serializers.ChoiceField(choices=ISSUES, required=False,
-                                    allow_null=True, allow_blank=True, error_messages=_messages())
+    prochaine_action_id = EntierStrict(required=False, allow_null=True)
+    decision = Choix(choices=[c for c in DecisionRevue.values if c], error_messages=_messages())
+    focus = BooleenStrict(required=False, default=False)
+    issue = Choix(choices=ISSUES, required=False,
+                  allow_null=True, allow_blank=True, error_messages=_messages())
+
+    regles_croisees = ((valeur('decision', *(d for d in DecisionRevue.values if d and d != DecisionRevue.TERMINER)),
+                        present('issue', parmi(*ISSUES))),)
 
     def validate(self, donnees):
         if donnees['decision'] == DecisionRevue.TERMINER and not donnees.get('issue'):
@@ -262,7 +301,7 @@ class RevueDecisionSerializer(serializers.Serializer):
 class VueProjetSerializer(serializers.Serializer):
     """GET projets/{id}/vue/?vue= — la vue demandée (les trois servent le même contenu)."""
 
-    vue = serializers.ChoiceField(choices=VUES, required=False, error_messages=_messages())
+    vue = Choix(choices=VUES, required=False, error_messages=_messages())
 
 
 # --- Réponses ------------------------------------------------------------------------------------

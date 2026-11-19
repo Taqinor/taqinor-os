@@ -28,6 +28,7 @@ from django.db.models import Max
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from apps.notifications.calendar_utils import jours_ouvres_entre
 from apps.taches.choix import (
@@ -237,8 +238,10 @@ def _lien_verifie(user, lien):
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     from apps.taches.selectors.liens import libelle_de_cible
     libelle = libelle_de_cible(user, lien['cible'], objet_id)
+    # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
+    # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if libelle is None:
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise NotFound({'lien': [MESSAGE_LIEN_INTROUVABLE]})
     app_label, modele = lien['cible'].split('.', 1)
     return ContentType.objects.get_by_natural_key(app_label, modele), objet_id, libelle
 

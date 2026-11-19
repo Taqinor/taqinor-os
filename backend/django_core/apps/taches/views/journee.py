@@ -10,22 +10,25 @@ from contextlib import contextmanager
 
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.taches.choix import RaisonPropose, SectionJournee, StatutTache
-from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, DateBornee, jour_dans_bornes
+from apps.taches.choix import Decision, RaisonPropose, SectionJournee, StatutTache
+from apps.taches.entrees import LONGUEUR_ID_MAX, MESSAGE_DATE, Choix, DateBornee, jour_dans_bornes
 from apps.taches.moteur import classement
 from apps.taches.selectors import journee as sel
 from apps.taches.serializers import journee as formes_journee
+from apps.taches.serializers.corps import DATE, CorpsTaches, present, valeur
 from apps.taches.serializers.formes import TacheEcriteSerializer, charger_items, contexte
 from apps.taches.serializers.journee import PLAFOND_LIGNES
 from apps.taches.services import journee as services
 from apps.taches.views.base import (
-    PERMISSIONS, corps, est_assistant, forme_echantillon, parametre, reponses)
+    PARSEURS, PERMISSIONS, corps, est_assistant, forme_echantillon, parametre, reponses)
+from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict
+from core.conflit_etat import ConflitEtat
 from core.idempotency import IdempotentCreateMixin
 
 JOUR = parametre('jour', OpenApiTypes.DATE, 'Jour (AAAA-MM-JJ) ; défaut : aujourd\'hui.')
@@ -79,55 +82,71 @@ def valide(classe, donnees):
 
 @contextmanager
 def refus_en_400():
-    """`services.journee.Refus` → 400 au champ nommé."""
+    """`services.journee.Refus` → 400 au champ nommé ; un refus d'ÉTAT (`RefusEtat` : bilan fermé, ★ déjà
+    posées) → 409, même corps (le schéma ne peut pas dire l'heure qu'il est ni ce qui est déjà posé)."""
     try:
         yield
+    except services.RefusEtat as exc:
+        raise ConflitEtat(exc.erreurs)
     except services.Refus as exc:
         raise ValidationError(exc.erreurs)
 
 
-class LigneCorps(serializers.Serializer):
-    type = serializers.ChoiceField(choices=(services.TACHE, services.ACTIVITE))
-    id = serializers.IntegerField(min_value=1)
+# Les corps reçus SONT les schémas publiés (api-fuzz r2) : listes fermées, bornes et types stricts.
+@extend_schema_serializer(component_name='TachesJourneeLigne')
+class LigneCorps(CorpsTaches):
+    type = Choix(choices=(services.TACHE, services.ACTIVITE))
+    id = EntierStrict(min_value=1)
 
 
-class PlanifierCorps(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsJourneePlanifier')
+class PlanifierCorps(CorpsTaches):
     jour = DateBornee()
-    mode = serializers.CharField()
+    mode = Choix(choices=(services.MODE_EXPRESS,), error_messages={'invalid_choice': services.MESSAGE_MODE})
     lignes = serializers.ListField(child=LigneCorps(), max_length=PLAFOND_LIGNES)
-    essentielles = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False,
-                                         default=list)
+    essentielles = serializers.ListField(child=EntierStrict(min_value=1), required=False, default=list,
+                                         max_length=classement.ESSENTIELS_MAX,
+                                         error_messages={'max_length': services.MESSAGE_ESSENTIELS})
     triage = serializers.ListField(required=False, default=list)
 
 
-class EssentielCorps(serializers.Serializer):
-    tache_id = serializers.IntegerField(min_value=1)
-    essentielle = serializers.BooleanField()
+@extend_schema_serializer(component_name='TachesCorpsJourneeEssentiel')
+class EssentielCorps(CorpsTaches):
+    tache_id = EntierStrict(min_value=1)
+    essentielle = BooleenStrict()
 
 
-class AllegerCorps(serializers.Serializer):
+@extend_schema_serializer(component_name='TachesCorpsJourneeAlleger')
+class AllegerCorps(CorpsTaches):
     jour = DateBornee()
-    garder = serializers.ListField(child=serializers.IntegerField(min_value=1), max_length=PLAFOND_LIGNES)
+    garder = serializers.ListField(child=EntierStrict(min_value=1), max_length=PLAFOND_LIGNES)
 
 
-class ChoixBilanCorps(serializers.Serializer):
-    id = serializers.IntegerField(min_value=1)
-    choix = serializers.CharField()
+@extend_schema_serializer(component_name='TachesJourneeChoixBilan')
+class ChoixBilanCorps(CorpsTaches):
+    id = EntierStrict(min_value=1)
+    choix = Choix(choices=services.CHOIX_BILAN, error_messages={'invalid_choice': services.MESSAGE_CHOIX})
     jour = DateBornee(required=False)
 
+    # « Un jour précis » exige son jour (`services.journee._appliquer_choix`).
+    regles_croisees = ((valeur('choix', *(c for c in services.CHOIX_BILAN if c != Decision.JOUR)),
+                        present('jour', DATE)),)
 
-class CloturerCorps(serializers.Serializer):
+
+@extend_schema_serializer(component_name='TachesCorpsJourneeCloturer')
+class CloturerCorps(CorpsTaches):
     jour = DateBornee()
     choix = serializers.ListField(child=ChoixBilanCorps(), required=False, default=list,
                                   max_length=PLAFOND_LIGNES)
-    le_reste = serializers.BooleanField(required=False, default=False)
-    reflexion = serializers.CharField(required=False, allow_blank=True, default='', max_length=280)
+    le_reste = BooleenStrict(required=False, default=False)
+    reflexion = ChaineStricte(required=False, allow_blank=True, default='', max_length=280)
 
 
 class AujourdhuiVue(APIView):
     """GET aujourdhui/ — LE contrat de la journée (§2)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[JOUR, TOUT], responses=reponses(forme_echantillon('aujourdhui'), erreurs=(400,)))
     def get(self, request):
@@ -139,6 +158,7 @@ class BadgeVue(APIView):
     """GET badge/ — la pastille : ouverts GARDÉS d'Essentiel, Prévu et Ce soir."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('badge')))
     def get(self, request):
@@ -149,6 +169,7 @@ class VuVue(APIView):
     """POST vu/ — ouverture du jour ; carte de retour."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=corps('Vu', {'ecran': 'aujourdhui'}),
                    responses=reponses(forme_echantillon('vu'), erreurs=(400,)))
@@ -161,6 +182,7 @@ class PropositionJourneeVue(APIView):
     """GET journee/proposition/ — la proposition du jour, sans écriture."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[
         JOUR, TOUT,
@@ -291,6 +313,7 @@ class PrioritesVue(APIView):
     """GET journee/priorites/ — « Aide-moi à prioriser »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[JOUR], responses=reponses(forme_echantillon('priorites'), erreurs=(400,)))
     def get(self, request):
@@ -301,6 +324,7 @@ class PointVue(APIView):
     """GET journee/point/ — « Où j'en suis ? »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('point')))
     def get(self, request):
@@ -311,11 +335,9 @@ class PlanifierJourneeVue(IdempotentCreateMixin, APIView):
     """POST journee/planifier/ — « Garder ces N » (mode `express`)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('JourneePlanifier', {
-        'jour': '2026-11-17', 'mode': 'express', 'lignes': [{'type': 'tache', 'id': 30}],
-        'essentielles': [20], 'triage': [],
-    }, requis=('jour', 'mode', 'lignes')), responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
+    @extend_schema(request=PlanifierCorps, responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._planifier(request), suffixe=par_compte(request))
 
@@ -331,9 +353,9 @@ class EssentielVue(APIView):
     """POST journee/essentiel/ — ★."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('JourneeEssentiel', {'tache_id': 20, 'essentielle': True},
-                                 requis=('tache_id', 'essentielle')),
+    @extend_schema(request=EssentielCorps,
                    responses=reponses(TacheEcriteSerializer, erreurs=(400, 404)))
     def post(self, request):
         corps_ = valide(EssentielCorps, request.data)
@@ -348,9 +370,9 @@ class AllegerVue(IdempotentCreateMixin, APIView):
     """POST journee/alleger/ — garder k, le reste aux projets sans report."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('JourneeAlleger', {'jour': '2026-11-17', 'garder': [20, 42]},
-                                 requis=('jour', 'garder')),
+    @extend_schema(request=AllegerCorps,
                    responses=reponses(forme_echantillon('journee_ecrite'), erreurs=(400,)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._alleger(request), suffixe=par_compte(request))
@@ -365,6 +387,7 @@ class ClotureVue(APIView):
     """GET journee/cloture/ — le contenu du bilan du soir."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[JOUR], responses=reponses(forme_echantillon('journee_cloture'), erreurs=(400,)))
     def get(self, request):
@@ -377,11 +400,9 @@ class CloturerVue(IdempotentCreateMixin, APIView):
     """POST journee/cloturer/ — clore la journée."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('JourneeCloturer', {
-        'jour': '2026-11-17', 'choix': [{'id': 52, 'choix': 'jour', 'jour': '2026-11-23'}],
-        'le_reste': True, 'reflexion': '',
-    }, requis=('jour',)), responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400,)))
+    @extend_schema(request=CloturerCorps, responses=reponses(forme_echantillon('journee_cloturee'), erreurs=(400,)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._cloturer(request), suffixe=par_compte(request))
 

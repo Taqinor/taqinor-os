@@ -2,7 +2,8 @@
 
 Toutes les routes sont construites (dupliquer, modèles : TCH64). Schémas :
 l'échantillon de la route quand il existe (`forme_echantillon`), sinon la forme PROJET partagée ;
-`GESTE` et `REORDONNER` viennent de `views/taches.py` (déclarés une fois).
+`GESTE` vient de `views/taches.py` (déclaré une fois) ; les corps reçus SONT les sérialiseurs de validation
+(`serializers/projets.py`, publiés tels quels : api-fuzz r2).
 """
 import datetime
 import json
@@ -24,9 +25,9 @@ from apps.taches.serializers import projets as formes_projets
 from apps.taches.serializers.formes import ProjetSerializer
 from apps.taches.services import projets as ecriture
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PERMISSIONS, corps, est_assistant, forme_echantillon, parametre, reponses,
+    ERREUR_CODE, PAGINATION, PARSEURS, PERMISSIONS, est_assistant, forme_echantillon, parametre, reponses,
 )
-from apps.taches.views.taches import GESTE, REORDONNER
+from apps.taches.views.taches import GESTE
 from core.idempotency import IdempotentCreateMixin
 from core.openapi_operations import mots_operation
 from core.pagination import StandardPagination
@@ -134,6 +135,7 @@ class ProjetsVue(IdempotentCreateMixin, APIView):
     """GET projets/ (liste paginée + constat) · POST projets/ (créer)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
     schema = mots_operation(get='list')  # sinon même operationId que GET projets/{id}/
 
     @extend_schema(parameters=[parametre('statut', OpenApiTypes.STR, 'actif, en_pause ou archive.'), *PAGINATION],
@@ -149,8 +151,7 @@ class ProjetsVue(IdempotentCreateMixin, APIView):
         reponse.data['constat'] = etat.constat
         return reponse
 
-    @extend_schema(request=corps('Projet', {'nom': 'Chantier X', 'priorite': 2, 'couleur': 'vert', 'icone': '',
-                                            'objectif': '', 'domaine': ''}, requis=('nom',)),
+    @extend_schema(request=formes_projets.ProjetCreationSerializer,
                    responses=reponses(PROJET_ECRIT, statut=201, erreurs=(400,)))
     def post(self, request):
         donnees = _valider(formes_projets.ProjetCreationSerializer, request.data)
@@ -167,6 +168,7 @@ class ProjetVue(APIView):
     """GET (PROJET) · PATCH (verrou 409) · DELETE (avec ses tâches) projets/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(ProjetSerializer, erreurs=(404,)))
     def get(self, request, id):
@@ -174,21 +176,8 @@ class ProjetVue(APIView):
         _, ctx = _etat(request)
         return Response(formes_projets.forme_projet(projet, ctx))
 
-    @extend_schema(request=inline_serializer('TachesCorpsProjetPatch', {
-        'nom': serializers.CharField(required=False, max_length=120),
-        'objectif': serializers.CharField(required=False, allow_blank=True),
-        'icone': serializers.CharField(required=False, allow_blank=True),
-        'couleur': serializers.CharField(required=False),
-        'priorite': serializers.IntegerField(required=False),
-        'statut': serializers.CharField(required=False),
-        'date_debut': serializers.DateField(required=False, allow_null=True),
-        'echeance': serializers.DateField(required=False, allow_null=True),
-        'domaine': serializers.CharField(required=False, allow_blank=True),
-        'confidentiel': serializers.BooleanField(required=False),
-        'affichage': serializers.DictField(required=False),
-        'risque': serializers.CharField(required=False, allow_blank=True),
-        'lock_version': serializers.IntegerField(),
-    }), responses=reponses(ProjetSerializer, erreurs=(400, 404), conflit=CONFLIT_PROJET))
+    @extend_schema(request=formes_projets.ProjetModificationSerializer,
+                   responses=reponses(ProjetSerializer, erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def patch(self, request, id):
         donnees = dict(_valider(formes_projets.ProjetModificationSerializer, request.data))
         version = donnees.pop('lock_version')
@@ -209,8 +198,9 @@ class ProjetReordonnerVue(APIView):
     """POST projets/{id}/reordonner/ — ordre manuel, « Mettre en haut »."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=REORDONNER, responses=SANS_CORPS)
+    @extend_schema(request=formes_projets.ReordonnerSerializer, responses=SANS_CORPS)
     def post(self, request, id):
         donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
         ecriture.reordonner_projet(request.user, id, avant_id=donnees.get('avant_id'),
@@ -222,6 +212,7 @@ class TrierParPrioriteVue(APIView):
     """POST projets/trier-par-priorite/ — ordre par priorité, une fois."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(None, statut=204))
     def post(self, request):
@@ -233,8 +224,10 @@ class ProjetAffichageVue(APIView):
     """GET projets/{id}/vue/ — sections, ITEM, avancement, santé, jalon, burn-up."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(parameters=[parametre('vue', OpenApiTypes.STR, 'liste, tableau ou chronologie.')],
+    @extend_schema(parameters=[parametre('vue', OpenApiTypes.STR, 'liste, tableau ou chronologie.',
+                                         enum=formes_projets.VUES)],
                    responses=reponses(forme_echantillon('projet_vue'), erreurs=(400, 404)))
     def get(self, request, id):
         _valider(formes_projets.VueProjetSerializer, {k: v for k, v in request.query_params.items() if k == 'vue'})
@@ -247,9 +240,9 @@ class PlanificationApercuVue(APIView):
     """POST projets/{id}/planification/apercu/ — lire une liste, rien n'est écrit."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('PlanificationApercu', {'texte': 'Études :\nVisite\n- photos\n◆ Mise en service'},
-                                 requis=('texte',)),
+    @extend_schema(request=formes_projets.ApercuPlanSerializer,
                    responses=reponses(forme_echantillon('planification_apercu'), erreurs=(400, 404)))
     def post(self, request, id):
         projet = _projet_ou_404(request, id)
@@ -263,26 +256,10 @@ class PlanificationVue(IdempotentCreateMixin, APIView):
     """POST projets/{id}/planification/ — tout créer, priorité comprise (verrou 409)."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsPlanification', {
-        'priorite': serializers.IntegerField(required=False),
-        'objectif': serializers.CharField(required=False, allow_blank=True),
-        'echeance': serializers.DateField(required=False, allow_null=True),
-        'risque': serializers.CharField(required=False, allow_blank=True),
-        'sections': serializers.ListField(required=False, child=inline_serializer('TachesCorpsPlanificationSection', {
-            'nom': serializers.CharField(),
-            'taches': serializers.ListField(child=inline_serializer('TachesCorpsPlanificationTache', {
-                'titre': serializers.CharField(max_length=280),
-                'jalon': serializers.BooleanField(required=False),
-                'sous_taches': serializers.ListField(required=False, child=serializers.CharField()),
-            })),
-        })),
-        'actions': serializers.ListField(required=False, child=inline_serializer('TachesCorpsPlanificationAction', {
-            'titre': serializers.CharField(max_length=280),
-            'quand': serializers.CharField(required=False),
-        })),
-        'lock_version': serializers.IntegerField(),
-    }), responses=reponses(forme_echantillon('planification'), erreurs=(400, 404), conflit=CONFLIT_PROJET))
+    @extend_schema(request=formes_projets.PlanificationSerializer,
+                   responses=reponses(forme_echantillon('planification'), erreurs=(400, 404), conflit=CONFLIT_PROJET))
     def post(self, request, id):
         donnees = dict(_valider(formes_projets.PlanificationSerializer, request.data))
         version = donnees.pop('lock_version')
@@ -300,8 +277,9 @@ class DecalerVue(IdempotentCreateMixin, APIView):
     """POST projets/{id}/decaler/ — `{"delta_jours","apercu"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('Decaler', {'delta_jours': 7, 'apercu': True}, requis=('delta_jours',)),
+    @extend_schema(request=formes_projets.DecalerSerializer,
                    responses=reponses(forme_echantillon('decalage'), erreurs=(400, 404)))
     def post(self, request, id):
         donnees = _valider(formes_projets.DecalerSerializer, request.data)
@@ -323,13 +301,9 @@ class ProjetTerminerVue(APIView):
     """POST projets/{id}/terminer/ — clôture."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsProjetTerminer', {
-        'issue': serializers.CharField(),
-        'bilan': serializers.CharField(required=False, allow_blank=True),
-        'taches_ouvertes': serializers.CharField(required=False),
-        'projet_cible_id': serializers.IntegerField(required=False, allow_null=True),
-    }), responses=reponses(PROJET_ECRIT, erreurs=(400, 404)))
+    @extend_schema(request=formes_projets.TerminerSerializer, responses=reponses(PROJET_ECRIT, erreurs=(400, 404)))
     def post(self, request, id):
         donnees = _valider(formes_projets.TerminerSerializer, request.data)
         resultat = ecriture.terminer_projet(request.user, id, **donnees)
@@ -340,6 +314,7 @@ class ProjetRouvrirVue(APIView):
     """POST projets/{id}/rouvrir/ — réouverture."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,)))
     def post(self, request, id):
@@ -350,6 +325,7 @@ class ProjetRestaurerVue(APIView):
     """POST projets/{id}/restaurer/ — le projet et les tâches supprimées avec lui."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(PROJET_ECRIT, erreurs=(404,), conflit=ERREUR_CODE))
     def post(self, request, id):
@@ -360,9 +336,9 @@ class DupliquerVue(IdempotentCreateMixin, APIView):
     """POST projets/{id}/dupliquer/ — `{"nom","date_debut","apercu"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('Dupliquer', {'nom': 'Salon 2027', 'date_debut': '2027-03-01', 'apercu': True},
-                                 requis=('nom',)),
+    @extend_schema(request=formes_projets.DupliquerSerializer,
                    responses=APERCU_OU_CREATION)
     def post(self, request, id):
         donnees = _valider(formes_projets.DupliquerSerializer, request.data)
@@ -380,8 +356,9 @@ class EnregistrerModeleVue(IdempotentCreateMixin, APIView):
     """POST projets/{id}/enregistrer-modele/ — `{"nom","inclure_notes"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('EnregistrerModele', {'nom': 'Salon', 'inclure_notes': False}, requis=('nom',)),
+    @extend_schema(request=formes_projets.EnregistrerModeleSerializer,
                    responses=reponses(forme_echantillon('modele'), statut=201, erreurs=(400, 404)))
     def post(self, request, id):
         donnees = _valider(formes_projets.EnregistrerModeleSerializer, request.data)
@@ -400,13 +377,10 @@ class SectionsVue(APIView):
     """POST sections/ — `{"projet_id","nom","date_debut"?,"date_fin"?}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsSection', {
-        'projet_id': serializers.IntegerField(),
-        'nom': serializers.CharField(max_length=120),
-        'date_debut': serializers.DateField(required=False, allow_null=True),
-        'date_fin': serializers.DateField(required=False, allow_null=True),
-    }), responses=reponses(SECTION, statut=201, erreurs=(400,)))
+    @extend_schema(request=formes_projets.SectionCreationSerializer,
+                   responses=reponses(SECTION, statut=201, erreurs=(400,)))
     def post(self, request):
         donnees = _valider(formes_projets.SectionCreationSerializer, request.data)
         section, geste = ecriture.creer_section(request.user, **donnees)
@@ -417,12 +391,10 @@ class SectionVue(APIView):
     """PATCH (renommer, dates) · DELETE (tâches « Sans étape ») sections/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsSectionPatch', {
-        'nom': serializers.CharField(required=False, max_length=120),
-        'date_debut': serializers.DateField(required=False, allow_null=True),
-        'date_fin': serializers.DateField(required=False, allow_null=True),
-    }), responses=reponses(SECTION, erreurs=(400, 404)))
+    @extend_schema(request=formes_projets.SectionModificationSerializer,
+                   responses=reponses(SECTION, erreurs=(400, 404)))
     def patch(self, request, id):
         donnees = _valider(formes_projets.SectionModificationSerializer, request.data)
         section, geste = ecriture.modifier_section(request.user, id, donnees)
@@ -438,8 +410,9 @@ class SectionReordonnerVue(APIView):
     """POST sections/{id}/reordonner/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=REORDONNER, responses=SANS_CORPS)
+    @extend_schema(request=formes_projets.ReordonnerSerializer, responses=SANS_CORPS)
     def post(self, request, id):
         donnees = _valider(formes_projets.ReordonnerSerializer, request.data)
         ecriture.reordonner_section(request.user, id, avant_id=donnees.get('avant_id'),
@@ -451,6 +424,7 @@ class ModelesVue(APIView):
     """GET modeles/ — liste paginée."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
     schema = mots_operation(get='list')  # sinon même operationId que GET modeles/{id}/
 
     @extend_schema(parameters=PAGINATION, responses=reponses(forme_echantillon('modeles_liste')))
@@ -465,12 +439,13 @@ class ModeleVue(APIView):
     """GET · PATCH `{"nom"}` · DELETE modeles/{id}/."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('modele'), erreurs=(404,)))
     def get(self, request, id):
         return Response(_forme_modele(request, _modele_ou_404(request, id)))
 
-    @extend_schema(request=corps('ModelePatch', {'nom': 'Salon'}, requis=('nom',)),
+    @extend_schema(request=formes_projets.ModeleModificationSerializer,
                    responses=reponses(forme_echantillon('modele'), erreurs=(400, 404)))
     def patch(self, request, id):
         donnees = _valider(formes_projets.ModeleModificationSerializer, request.data)
@@ -489,9 +464,9 @@ class ModeleInstancierVue(IdempotentCreateMixin, APIView):
     """POST modeles/{id}/instancier/ — `{"nom","date_lancement","apercu"}`."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('ModeleInstancier', {'nom': 'Salon', 'date_lancement': '2026-11-23',
-                                                      'apercu': True}, requis=('nom',)),
+    @extend_schema(request=formes_projets.ModeleInstancierSerializer,
                    responses=APERCU_OU_CREATION)
     def post(self, request, id):
         donnees = _valider(formes_projets.ModeleInstancierSerializer, request.data)
@@ -507,6 +482,7 @@ class RevueProjetsVue(APIView):
     """GET revue/projets/ — bilan de la semaine (ou Semaine courte) et cartes."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[parametre('semaine', OpenApiTypes.DATE, 'Lundi de la semaine ; défaut : courante.')],
                    responses=reponses(forme_echantillon('revue_projets'), erreurs=(400,)))
@@ -526,15 +502,10 @@ class RevueDecisionVue(APIView):
     """PUT revue/projets/{projet_id}/ — la décision d'une carte de revue."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
-    @extend_schema(request=inline_serializer('TachesCorpsRevueDecision', {
-        'semaine': serializers.DateField(),
-        'intention': serializers.CharField(required=False, allow_blank=True),
-        'prochaine_action_id': serializers.IntegerField(required=False, allow_null=True),
-        'decision': serializers.CharField(),
-        'focus': serializers.BooleanField(required=False),
-        'issue': serializers.CharField(required=False, allow_null=True),
-    }), responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404)))
+    @extend_schema(request=formes_projets.RevueDecisionSerializer,
+                   responses=reponses(forme_echantillon('revue_decision'), erreurs=(400, 404)))
     def put(self, request, projet_id):
         donnees = _valider(formes_projets.RevueDecisionSerializer, request.data)
         revue, projet, geste = ecriture.decider_revue(request.user, projet_id, donnees)

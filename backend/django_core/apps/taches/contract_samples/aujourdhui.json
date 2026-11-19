@@ -637,5 +637,8 @@
       "a_convertir": 7
     },
     "tronque": false
-  }
+  },
+  "nuls": [
+    "plan.planifie_le"
+  ]
 }

@@ -329,6 +329,112 @@ class SchemaTests(SimpleTestCase):
         tous = {f.stem for f in ECHANTILLONS.glob('*.json')} - ECHANTILLONS_PARTIELS
         self.assertEqual(tous - verifies, set(), 'échantillon dont la route est introuvable')
 
+    # --- api-fuzz (r2) : ce que le schéma déclare valide, le serveur l'accepte ------------------------------
+
+    def _corps(self, methode, chemin):
+        contenu = self._operation(methode, chemin).get('requestBody', {}).get('content', {})
+        schema = next(iter(contenu.values()), {}).get('schema', {})
+        if '$ref' in schema:
+            schema = self.schema['components']['schemas'][schema['$ref'].rsplit('/', 1)[-1]]
+        return contenu, schema
+
+    def test_les_corps_ne_se_lisent_qu_en_json_sauf_capture(self):
+        """Un formulaire ne transporte ni `null`, ni liste d'entiers, ni objet : le fuzz y envoyait des corps
+        « conformes » que DRF ne pouvait pas lire (400). Seul `capture/` (raccourci Siri) garde le formulaire."""
+        for methode, chemin in ROUTES:
+            contenu, _ = self._corps(methode, chemin)
+            if not contenu:
+                continue
+            with self.subTest(methode=methode, chemin=chemin):
+                attendus = {'application/json'} if chemin != 'capture/' else set(contenu)
+                self.assertEqual(set(contenu), attendus)
+
+    def test_les_listes_fermees_sont_publiees(self):
+        """Les valeurs que le serveur refuse « Valeur inconnue. » ne sont plus déclarées libres (constats r2)."""
+        def valeurs(propriete):
+            return [v for branche in propriete.get('anyOf', ()) for v in branche.get('enum', ())]
+        cas = [
+            ('POST', 'taches/{id}/trancher/', 'choix', {'aujourdhui', 'garder', 'jour', 'un_jour', 'abandonner'}),
+            ('POST', 'taches/{id}/reordonner/', 'liste', {'jour', 'projet'}),
+            ('POST', 'taches/{id}/changement/apercu/', 'geste', {'renommer', 'abandonner', 'supprimer'}),
+            ('POST', 'taches/lot/', 'action', {'deplacer', 'planifier', 'prioriser', 'etiqueter', 'terminer',
+                                               'supprimer', 'garder_sans_projet'}),
+            ('POST', 'projets/{id}/terminer/', 'issue', {'atteint', 'abandonne'}),
+            ('POST', 'projets/{id}/terminer/', 'taches_ouvertes', {'boite', 'annuler', 'deplacer'}),
+            ('PUT', 'revue/projets/{projet_id}/', 'decision', {'garder', 'pause', 'terminer', 'passe'}),
+            ('POST', 'journee/planifier/', 'mode', {'express'}),
+            ('POST', 'jetons/', 'usage', None),
+        ]
+        for methode, chemin, champ, attendu in cas:
+            with self.subTest(chemin=chemin, champ=champ):
+                propriete = self._corps(methode, chemin)[1]['properties'][champ]
+                self.assertTrue(valeurs(propriete))
+                if attendu is not None:
+                    self.assertEqual(set(valeurs(propriete)), attendu)
+
+    def test_un_patch_publie_son_lock_version_exige(self):
+        """drf-spectacular rend facultatif tout champ d'un PATCH ; le serveur exige `lock_version` (« Requis. ») :
+        la règle est publiée en `allOf`/`anyOf` (`CorpsTaches.regles_croisees`)."""
+        for chemin, champ in (('taches/{id}/', 'lock_version'), ('projets/{id}/', 'lock_version'),
+                              ('modeles/{id}/', 'nom')):
+            with self.subTest(chemin=chemin):
+                regles = self._corps('PATCH', chemin)[1].get('allOf', [])
+                self.assertIn([champ], [b.get('required') for regle in regles for b in regle['anyOf']])
+
+    def test_une_heure_est_publiee_hh_mm(self):
+        from apps.taches.entrees import MOTIF_HEURE
+        for methode, chemin, champ in (('POST', 'taches/{id}/planifier/', 'heure_debut'),
+                                       ('POST', 'taches/{id}/rappels/', 'heure'),
+                                       ('PATCH', 'taches/{id}/', 'echeance_heure')):
+            with self.subTest(chemin=chemin):
+                propriete = self._corps(methode, chemin)[1]['properties'][champ]
+                self.assertEqual(propriete.get('pattern'), MOTIF_HEURE)
+                self.assertNotIn('format', propriete)
+
+    def test_les_nuls_servis_sont_publies(self):
+        """Une clé que le serveur sert `null` (constats « Response violates schema » r2) est `nullable`."""
+        composants = self.schema['components']['schemas']
+        for composant, champs in (('TachesEchRythme', ('trace', 'proposition', 'repere', 'geste_id')),
+                                  ('TachesEchRevueProjets', ('focus_projet_id', 'bilan_semaine')),
+                                  ('TachesEchJourneeProposition', ('suite_par_projet', 'rythme')),
+                                  ('TachesEchVu', ('carte_du_moment',)),
+                                  ('TachesEchConvertirActivite', ('geste_id',)),
+                                  ('TachesEchPoint', ('carte_du_moment', 'prochaine'))):
+            for champ in champs:
+                with self.subTest(composant=composant, champ=champ):
+                    propriete = composants[composant]['properties'][champ]
+                    if '$ref' in propriete or 'allOf' in propriete:
+                        self.assertTrue(propriete.get('nullable'), propriete)
+                    else:
+                        self.assertTrue(propriete.get('nullable') or propriete.get('anyOf'), propriete)
+
+    def test_les_corps_conformes_des_constats_r2_passent_la_validation(self):
+        """Les corps des constats r2, rendus conformes au schéma publié, passent le sérialiseur de la route ;
+        leur version d'origine (hors schéma désormais) est refusée par le même sérialiseur."""
+        from apps.taches.serializers import projets as formes_projets
+        from apps.taches.serializers import saisie
+        cas = [
+            (saisie.TrancherEntreeSerializer, {'choix': 'garder'}, {'choix': '0'}),
+            (saisie.AttendreEntreeSerializer, {'en_attente_de': 'Lydec'}, {'en_attente_de': ''}),
+            (saisie.ChangementEntreeSerializer, {'geste': 'supprimer'}, {'geste': ''}),
+            (saisie.PlanifierEntreeSerializer, {'jour_prevu': '2026-11-20', 'heure_debut': '09:30',
+                                                'lock_version': 0}, {'heure_debut': '0', 'lock_version': 0}),
+            (saisie.RappelEntreeSerializer, {'jour': '2026-11-20', 'heure': '09:30'}, {}),
+            (saisie.ReordonnerEntreeSerializer, {'liste': 'projet', 'apres_id': 3}, {'liste': '0'}),
+            (saisie.RepeterEntreeSerializer, {'dans_minutes': 10}, {'dans_minutes': 0}),
+            (saisie.TachePatchSerializer, {'echeance_heure': '18:30', 'lock_version': 0},
+             {'echeance_heure': '00:00:00Z', 'lock_version': 0}),
+            (saisie.EtiquettePatchSerializer, {'couleur': 'ciel'}, {'couleur': ''}),
+            (formes_projets.ProjetModificationSerializer, {'couleur': 'vert', 'statut': 'actif', 'lock_version': 0},
+             {'couleur': '0', 'statut': '0', 'lock_version': 0}),
+            (formes_projets.TerminerSerializer, {'issue': 'atteint', 'taches_ouvertes': 'boite'}, {'issue': '0'}),
+        ]
+        for classe, conforme, refuse in cas:
+            with self.subTest(classe=classe.__name__):
+                entree = classe(data=conforme)
+                self.assertTrue(entree.is_valid(), entree.errors)
+                self.assertFalse(classe(data=refuse).is_valid())
+
 
 class PermissionSansBaseTests(SimpleTestCase):
     def _compte(self, *, permissions=None, legacy='', superuser=False):
