@@ -18,6 +18,21 @@
   /* R2-092 — quatre tailles au plus : titre de page, tâche, section (15 px), méta (les chiffres prennent sa taille) */
   --tch-section: 0.9375rem;
   --tch-chiffre: var(--tch-meta);
+  /* R3-092 — UN langage, en jetons (base.css et reglages.css les appliquent ; agenda.css et projets.css aussi, lane L6) :
+     · « sélectionné » : fond d'accent léger, texte d'accent, filet d'accent de 1,5 px — le DISQUE plein est réservé à
+       « aujourd'hui » (calendriers) ;
+     · boutons : 44 px, rayon 12, graisse 600 (principal or, secondaire blanc à filet) ;
+     · tailles 28 / 17 / 15 / 13, graisses 400 / 600 / 700, un seul trait d'icône (1,75). */
+  --tch-choisi-fond: var(--tch-selection);
+  --tch-choisi-texte: var(--tch-accent);
+  --tch-choisi-trait: inset 0 0 0 1.5px var(--tch-accent);
+  --tch-bouton-h: 44px;
+  --tch-bouton-rayon: 12px;
+  --tch-taille-titre: 1.75rem;
+  --tch-taille-tache: 1.0625rem;
+  --tch-taille-texte: 0.9375rem;
+  --tch-taille-meta: 0.8125rem;
+  --tch-trait-icone: 1.75;
 }
 .tch *, .tch *::before, .tch *::after { box-sizing: border-box; }
 /* :where() = spécificité nulle : ne bat jamais une classe utilitaire de l'ERP */
@@ -91,7 +106,7 @@
   stroke-linecap: round; stroke-linejoin: round; flex: none;
 }
 .tch svg.i-14 {
-  width: 14px; height: 14px; stroke-width: 2;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch svg.i-16 {
   width: 16px; height: 16px;
@@ -241,7 +256,7 @@
 }
 .tch .section-titre {
   display: flex; align-items: baseline; justify-content: space-between;
-  margin: 0; padding: 0 var(--tch-gouttiere) 4px; font-size: var(--tch-section); font-weight: 650; line-height: 1.4;
+  margin: 0; padding: 0 var(--tch-gouttiere) 4px; font-size: var(--tch-section); font-weight: 600; line-height: 1.4;
   color: var(--tch-texte-doux); /* R2-092 : la section se détache du titre de tâche par la taille ET la couleur */
 }
 .tch .section-titre .compte {
@@ -325,7 +340,7 @@
   font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte);
 }
 .tch svg.i.etoile {
-  color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-width: 1.5;
+  color: var(--tch-etoile); fill: var(--tch-etoile-fond); stroke-width: var(--tch-trait-icone);
 }
 .tch .drapeau {
   color: var(--tch-texte);
@@ -407,7 +422,7 @@
   background: var(--tch-panneau); color: var(--tch-texte);
 }
 .tch .pastille-erp svg {
-  width: 14px; height: 14px; stroke-width: 2;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch .case.vide {
   cursor: default;
@@ -439,7 +454,7 @@
   width: 96px; font-size: 0.8125rem; font-weight: 600; line-height: 1.1; text-align: center;
 }
 .tch .action svg {
-  width: 20px; height: 20px; stroke-width: 2;
+  width: 20px; height: 20px; stroke-width: var(--tch-trait-icone);
 }
 .tch .action small {
   font-size: 0.75rem; font-weight: 500; opacity: 0.92;
@@ -510,7 +525,7 @@
   width: 20px; height: 20px; margin-right: -6px; border-radius: 999px; display: grid; place-items: center; color: var(--tch-texte-doux);
 }
 .tch .puce .retirer svg {
-  width: 14px; height: 14px; stroke-width: 2.25;
+  width: 14px; height: 14px; stroke-width: var(--tch-trait-icone);
 }
 .tch .puce.active {
   background: var(--tch-accent); color: var(--tch-accent-texte);
@@ -534,8 +549,8 @@
   display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px;
 }
 .tch .bouton {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 18px;
-  border-radius: calc(var(--radius) + 2px); font-size: 0.9375rem; font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: var(--tch-bouton-h); padding: 0 18px;
+  border-radius: var(--tch-bouton-rayon); font-size: var(--tch-taille-texte); font-weight: 600; white-space: nowrap;
   transition: background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
 }
 .tch .bouton.plein {
@@ -707,7 +722,7 @@
   background: var(--tch-accent-doux); color: var(--tch-accent); margin-bottom: 16px;
 }
 .tch .vide-picto svg {
-  width: 34px; height: 34px; stroke-width: 1.5;
+  width: 34px; height: 34px; stroke-width: var(--tch-trait-icone);
 }
 .tch .vide-phrase {
   margin: 0 0 16px; max-width: 26ch; font-size: 1.0625rem; line-height: 1.45; font-weight: 500;
@@ -719,7 +734,7 @@
   background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-md);
 }
 .tch .fab svg {
-  width: 26px; height: 26px; stroke-width: 2.25;
+  width: 26px; height: 26px; stroke-width: 2;
 }
 .tch .toast-place {
   position: fixed; left: 16px; right: 16px; bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom) + 12px);
@@ -769,7 +784,7 @@
   display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; margin: 0 -10px 4px;
 }
 .tch .feuille-titre {
-  text-align: center; font-size: 1.0625rem; font-weight: 650;
+  text-align: center; font-size: 1.0625rem; font-weight: 600;
 }
 .tch .quand-tuiles {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
@@ -839,11 +854,12 @@
 .tch .jour.repos {
   color: var(--tch-texte-doux);
 }
-.tch .jour.auj span {
-  box-shadow: inset 0 0 0 1.5px var(--tch-accent); color: var(--tch-accent); font-weight: 700;
-}
+/* R3-092 — le jour choisi a le dessin « sélectionné » ; le disque plein est réservé à aujourd'hui (choisi ou non) */
 .tch .jour.choisi span {
-  background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 700;
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait); font-weight: 700;
+}
+.tch .jour.auj span {
+  background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; font-weight: 700;
 }
 .tch .jour.hors {
   visibility: hidden;
@@ -901,7 +917,7 @@
 }
 .tch .replie {
   display: flex; align-items: center; gap: 8px; min-height: 48px; margin-top: 8px; padding: 0 var(--tch-gouttiere);
-  font-size: var(--tch-section); font-weight: 650; color: var(--tch-texte-doux);
+  font-size: var(--tch-section); font-weight: 600; color: var(--tch-texte-doux);
 }
 .tch .replie .compte {
   font-size: var(--tch-chiffre); font-weight: 500;
@@ -928,7 +944,7 @@
   display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px;
 }
 .tch .agenda-tete b {
-  font-size: 1rem; font-weight: 650;
+  font-size: 1rem; font-weight: 600;
 }
 .tch .agenda-tete span {
   font-size: 0.8125rem; color: var(--tch-texte-doux);
@@ -1227,10 +1243,10 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .maintenant-heure {
   background: var(--tch-fond-colonne); border-radius: 4px; padding: 3px 4px; top: -12px; margin-right: 6px;
 }
-.tch .bande-jours [aria-current="date"] b {
-  background: transparent; color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent);
-}
 .tch .bande-jours [aria-selected="true"] b {
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait);
+}
+.tch .bande-jours [aria-current="date"] b {
   background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none;
 }
 .tch .agenda-journee {
@@ -1267,7 +1283,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
   padding: 0 var(--tch-gouttiere); text-align: left; font-size: 0.9375rem; line-height: 1.3;
 }
 .tch .progression-compte {
-  font-weight: 650;
+  font-weight: 600;
 }
 .tch .progression-detail {
   color: var(--tch-texte-doux);
@@ -1280,7 +1296,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
   flex: 1; min-width: 0; font-size: 0.9375rem; line-height: 1.35;
 }
 .tch .moment-texte b {
-  display: block; font-size: 1rem; font-weight: 650;
+  display: block; font-size: 1rem; font-weight: 600;
 }
 .tch .moment-texte span {
   color: var(--tch-texte-doux);
@@ -1294,7 +1310,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
   background: var(--tch-bloc-erp); font-size: 0.9375rem;
 }
 .tch .bande-journee b {
-  min-width: 0; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .tch .bande-journee small {
   font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap;
@@ -1316,7 +1332,7 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 }
 .tch .garder {
   position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: var(--tch-rayon-puce);
-  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 650;
+  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 600;
 }
 .tch .garder::after {
   content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%);
@@ -1481,10 +1497,14 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .puce[aria-checked="true"],
 .tch .puce.active,
 .tch .selecteur-projet-item[aria-checked="true"] {
-  background: var(--tch-selection); color: var(--tch-accent);
+  background: var(--tch-choisi-fond); color: var(--tch-choisi-texte);
 }
+/* R3-092 — …et un filet d'accent de 1,5 px (le survol, lui, reste un simple fond neutre) ; l'anneau de focus passe devant */
 .tch .quand-tuile[aria-checked="true"]:not(:focus-visible),
-.tch .segmente button[aria-checked="true"]:not(:focus-visible) { box-shadow: none; }
+.tch .segmente button[aria-checked="true"]:not(:focus-visible),
+.tch .puce[aria-checked="true"]:not(:focus-visible),
+.tch .puce.active:not(:focus-visible),
+.tch .selecteur-projet-item[aria-checked="true"]:not(:focus-visible) { box-shadow: var(--tch-choisi-trait); }
 .tch .quand-tuile[aria-checked="true"] b { color: var(--tch-accent); }
 /* R2-018b — méta sur la ligne du titre quand elle est courte (`LigneTache` pose `meta-courte` sur `.ligne-corps`, R2-018 L3) : le titre
    et sa méta partagent une ligne ; trop longs, la méta repasse dessous d'elle-même (retour à la ligne du flex). */
