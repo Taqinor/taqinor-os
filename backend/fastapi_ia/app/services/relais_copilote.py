@@ -147,13 +147,13 @@ def pour_langchain(catalogue: Optional[list]) -> list:
     return [a for a in catalogue or [] if not (isinstance(a, dict) and a.get("natif_seul"))]
 
 
-def catalogue_pour_repli(ctx, fournisseur: str, contexte: Optional[dict]) -> None:
-    """FND6 — avant un tour servi par le REPLI : le catalogue du tour est
-    recalculé pour CE fournisseur depuis le catalogue complet gardé par
-    :func:`catalogue_du_tour` (aucun nouvel appel à Django). Sans lui, le
-    catalogue entier de claude partait chez Groq, `taches.*` hors `/taches`
-    compris (TCH114)."""
-    if ctx is not None and getattr(ctx, "catalogue_complet", None) is not None:
+def catalogue_pour_repli(ctx, fournisseur: Optional[str], contexte: Optional[dict]) -> None:
+    """FND6 — au début d'un tour servi par le REPLI (`_run_agent(provider=…)`) :
+    le catalogue du tour est recalculé pour CE fournisseur depuis le catalogue
+    complet gardé par :func:`catalogue_du_tour` (aucun nouvel appel à Django).
+    Sans lui, le catalogue entier de claude partait chez Groq, `taches.*` hors
+    `/taches` compris (TCH114). Sans fournisseur forcé (tour principal) : rien."""
+    if fournisseur and ctx is not None and getattr(ctx, "catalogue_complet", None) is not None:
         ctx.catalogue_tour = _jeu_du_fournisseur(ctx.catalogue_complet, (fournisseur or "").lower(), contexte)
 
 

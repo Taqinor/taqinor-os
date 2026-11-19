@@ -1104,10 +1104,22 @@ def _references_secret_column(sql: str) -> bool:
     return _references_forbidden_column(sql, allow_price=True)
 
 
-# ALEC16 — tables -> droits du module et tables a proprietaire : `gardes_sql`
-# (FND12 : comptes, roles et reglages y exigent un droit d'administration).
-from app.services.gardes_sql import (  # noqa: E402 — table deplacee (mur des 2 000 lignes)
-    MODULE_DES_TABLES as _MODULE_DES_TABLES, TABLES_A_PROPRIETAIRE as _TABLES_A_PROPRIETAIRE)
+# ALEC16 (C-ALEC-014, APFS4) — prefixe de table -> prefixes de code du module (au moins un exige) ;
+# tables a proprietaire refusees a une portee restreinte. FND12 : comptes, roles, reglages = droit d'admin.
+_MODULE_DES_TABLES = (
+    ("ventes_", ("ventes_", "encaisser")), ("crm_", ("crm_",)),
+    ("installations_", ("installation_", "intervention_")), ("parametres_", ("parametres_modifier",)),
+    ("sav_", ("sav_",)), ("stock_", ("stock_",)), ("roles_", ("roles_gerer",)),
+    ("adsengine_", ("adsengine_",)),  # ALEC46 : miroirs publicitaires
+    ("authentication_", ("users_gerer", "roles_gerer", "parametres_modifier")),
+)
+_TABLES_A_PROPRIETAIRE = frozenset({
+    "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",
+    "installations_installation", "sav_ticket",
+    # ALEC41 — lignes de documents, interventions et parc : memes proprietaires.
+    "ventes_lignedevis", "ventes_lignefacture", "installations_intervention",
+    "sav_equipement", "sav_contratmaintenance",
+})
 
 
 def _verifier_module_et_portee(sql: str, permissions) -> None:
@@ -1630,6 +1642,7 @@ class SQLAgentService:
         from app.services import relais_copilote as relais
         if relais.question_trop_longue_pour(provider or SQL_AGENT_PROVIDER, question):  # F4 — repli Groq
             return relais.reponse_question_longue(provider or SQL_AGENT_PROVIDER)
+        relais.catalogue_pour_repli(action_ctx, provider, contexte)  # FND6 — jeu du REPLI (sans effet sinon)
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
         # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
@@ -1892,7 +1905,6 @@ class SQLAgentService:
             if await asyncio.to_thread(self._budget_atteint, action_ctx):
                 repli = (SQL_AGENT_FALLBACK_PROVIDER or "").lower()
                 if repli and repli != SQL_AGENT_PROVIDER.lower():
-                    relais.catalogue_pour_repli(action_ctx, repli, contexte)  # FND6
                     out = await asyncio.to_thread(
                         self._run_agent, question, company_id or 0, user_id or 0,
                         action_ctx, repli, contexte, copilote,
@@ -1921,7 +1933,6 @@ class SQLAgentService:
                 # AIC4 — UN rejeu : meme question, memes outils, meme historique.
                 logger.warning("Agent SQL : %s a refuse (%s) — repli sur %s",
                                SQL_AGENT_PROVIDER, refus, repli)
-                relais.catalogue_pour_repli(action_ctx, repli, contexte)  # FND6
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
                     action_ctx, repli, contexte, copilote,
