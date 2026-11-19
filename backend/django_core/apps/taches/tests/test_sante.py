@@ -94,9 +94,9 @@ class CasDuTableau(unittest.TestCase):
         s = sante.echeance_menacee(ouvertes + faites_8, projet(echeance=ech), J, trav, rythme=True)
         self.assertEqual((s.code, s.donnees['signal']), ('echeance_menacee', 'd'))
         self.assertEqual((s.donnees['besoin'], s.donnees['reste']), (30, 15))
-        # R2-034 — la conséquence d'abord, chaque chiffre calculé (rythme F28/J28, ouvertes, échéance)
-        self.assertEqual(s.phrase, 'À ce rythme, pas prêt pour le mar. 8 déc. : il faudrait 30 jours travaillés, '
-                                   'il en reste 15 (8 faites en 20 jours travaillés ces 4 dernières semaines).')
+        # R2-034 — la conséquence d'abord ; R3-011 — un seul chiffre à lire, calculé : besoin 30 − reste 15 = 15 jours
+        self.assertEqual(s.phrase, 'À ce rythme, pas prêt pour le mar. 8 déc. : il manque environ 15 jours.')
+        self.assertEqual((s.donnees['f28'], s.donnees['j28']), (8, 20))  # le détail reste servi
         self.assertEqual(s.donnees['echeance'], '2026-12-08')
         faites_4 = [faite(d) for d in (2, 3, 4, 5)]
         self.assertIsNone(sante.echeance_menacee(ouvertes + faites_4, projet(echeance=ech), J, trav, rythme=True))
@@ -107,6 +107,11 @@ class CasDuTableau(unittest.TestCase):
         self.assertTrue(proche.phrase.startswith('À ce rythme, pas prêt pour le jeu. 26 : '), proche.phrase)
         demain = sante.echeance_menacee(ouvertes + faites_8, projet(echeance=date(2026, 11, 18)), J, trav, rythme=True)
         self.assertTrue(demain.phrase.startswith('À ce rythme, pas prêt pour demain : '), demain.phrase)
+        # R3-011 — accord : 6 ouvertes × 20 / 8 = 15 jours de besoin, 14 travaillés jusqu'au lun. 7 déc. → « 1 jour »
+        un_jour = sante.echeance_menacee(ouvertes[:6] + faites_8, projet(echeance=date(2026, 12, 7)), J, trav,
+                                         rythme=True)
+        self.assertEqual((un_jour.donnees['besoin'], un_jour.donnees['reste']), (15, 14))
+        self.assertEqual(un_jour.phrase, 'À ce rythme, pas prêt pour le lun. 7 déc. : il manque environ 1 jour.')
 
     def test_08_retour_de_conge(self):
         trav = jours_travailles(feries={date(2026, 11, 6)}, conges=[(date(2026, 11, 2), date(2026, 11, 13))])

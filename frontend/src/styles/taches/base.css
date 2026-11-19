@@ -965,9 +965,10 @@
   /* R2-009 (choix C-3, ecran-saisie.html / ecrans-coeur.css « .saisie-place ») — la saisie EN PLACE : rendue dans
      `.saisie-ancre`, à la place de la ligne « Ajouter une tâche », DANS le flux de la page (la liste reste lisible et
      vivante dessous, comme Things et Todoist). Ni voile, ni crans, ni position fixe : elle défile avec la liste et ne
-     passe jamais au-dessus de la barre de l'ERP (z-index auto). Le ✕ seul reste de l'en-tête (Échap ferme aussi). */
+     passe jamais au-dessus de la barre de l'ERP (aucun z-index : la règle des calques `.tch .feuille` plus bas
+     l'exclut, garde MB3). Le ✕ seul reste de l'en-tête (Échap ferme aussi). */
   .tch .feuille.popover-bureau {
-    position: relative; inset: auto; z-index: auto; width: auto; height: auto; max-height: none;
+    position: relative; inset: auto; width: auto; height: auto; max-height: none;
     margin: 16px 8px 0; padding: 12px 16px; border-radius: var(--tch-rayon-champ);
     background: var(--tch-surface); box-shadow: inset 0 0 0 1.5px var(--tch-accent), var(--shadow-sm);
   }
@@ -1112,7 +1113,9 @@
 .tch .voile {
   z-index: var(--z-modal);
 }
-.tch .feuille,
+/* La saisie EN PLACE (`.popover-bureau`, R2-009) reste dans le flux, sans calque : exclue ici plutôt qu'un
+   `z-index: auto` en dur (garde MB3 de mobile-foundation.test.mjs). */
+.tch .feuille:not(.popover-bureau),
 .tch .menu {
   z-index: calc(var(--z-modal) + 1);
 }

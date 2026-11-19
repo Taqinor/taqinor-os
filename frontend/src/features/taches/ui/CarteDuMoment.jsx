@@ -261,6 +261,9 @@ export default function CarteDuMoment({
       </div>
     )
   }
+  // R3-022 (C-17) — au plus UNE carte de conseil par jour : une fois la journée « prise » (une carte répondue, écartée
+  // ou suivie — astuce comprise), ni astuce ni révélation ne viennent prendre sa place, ni au rechargement
+  if (lireAstuces().jour === jour) return null
   const astuce = avecAstuce ? prochaineAstuce(jour) : null
   if (astuce) {
     return <CarteAstuce astuce={astuce} onOk={() => { noterAstuce(astuce.cle, jour); relire((v) => v + 1) }} />

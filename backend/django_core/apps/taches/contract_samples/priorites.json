@@ -11,6 +11,10 @@
     },
     "garder_n": 2,
     "plus_tard": "2026-11-19",
+    "faites": 1,
+    "minutes_restantes": 75,
+    "deborde_minutes": 0,
+    "geste_propose": null,
     "lignes": [
       {
         "rang": 1,

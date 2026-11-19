@@ -99,6 +99,37 @@ class ListeTests(BaseApi):
         self.assertEqual(list(ligne), list(exemple('item')))
         self.assertIsNotNone(ligne['fait_le'])
 
+    def test_faites_cette_semaine_dit_son_total_et_ses_activites_closes(self):
+        """R3-003 (choix C-16, `faites_semaine.json`) — calcul à la main, jeudi 19/11/2026 : 2 tâches lundi + 1 activité
+        ERP close mercredi + 1 tâche aujourd'hui = `total` 4 ; une routine (0) et une sous-tâche (0) faites ne sont ni
+        comptées ni listées ; le dimanche 15 est la semaine d'avant. `results` (3) + `activites_closes`
+        (1) = `total`."""
+        from testkit.time import frozen
+
+        def a_l_heure(jour, heure=10):
+            return timezone.make_aware(datetime.datetime(2026, 11, jour, heure, 0))
+        projet = fabriques.projet(self.u1)
+        lundis = [fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(16, h))
+                  for h in (9, 10)]
+        jeudi = fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(19))
+        regle = RegleRecurrence.objects.create(company=self.u1.company, proprietaire=self.u1, frequence='quotidien',
+                                               date_debut=datetime.date(2026, 11, 16))
+        fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(17), recurrence=regle)
+        fabriques.tache(self.u1, projet=projet, parent=jeudi, statut=StatutTache.FAIT, fait_le=a_l_heure(19, 11))
+        fabriques.tache(self.u1, projet=projet, statut=StatutTache.FAIT, fait_le=a_l_heure(15))
+        activite = fabriques.activite(self.u1, summary='Rappeler M. Alami', due_date=datetime.date(2026, 11, 18))
+        activite.done, activite.done_by, activite.done_at = True, self.u1, a_l_heure(18, 12)
+        activite.save(update_fields=['done', 'done_by', 'done_at'])
+        with frozen('2026-11-19 15:00:00'):
+            corps = self._liste('periode=faites_semaine').json()
+            simple = self._liste('vue=boite').json()
+        self.assertEqual(list(corps), list(exemple('faites_semaine')))
+        self.assertEqual([ligne['id'] for ligne in corps['results']], [jeudi.pk, lundis[1].pk, lundis[0].pk])
+        self.assertEqual(corps['activites_closes'], [{'jour': '2026-11-18', 'titre': 'Rappeler M. Alami'}])
+        self.assertEqual(corps['total'], 4)
+        self.assertEqual(len(corps['results']) + len(corps['activites_closes']), corps['total'])
+        self.assertEqual(list(simple), ['count', 'next', 'previous', 'results'])  # les autres listes : inchangées
+
     def test_filtres_projet_priorite_et_mots(self):
         projet = fabriques.projet(self.u1)
         voulue = fabriques.tache(self.u1, projet=projet, titre='Devis Settat', priorite=3)
@@ -1023,11 +1054,28 @@ class ReordonnerTests(BaseApi):
         self.assertEqual(classes, [c.pk, a.pk, b.pk])
         self.assertEqual(_relue(c).rang_jour, 1024)
 
+    def test_la_liste_d_aujourdhui_est_celle_de_la_journee(self):
+        """R3-007 — Alt+↓ entre une tâche du jour et une ★ GARDÉE par son échéance (prévue demain, échéance aujourd'hui)
+        : les deux sont des voisines d'Aujourd'hui (`gardee_aujourdhui`), 200 — plus « Avant id : Valeur inconnue. »."""
+        from testkit.time import frozen
+        J = datetime.date(2026, 11, 17)
+        with frozen('2026-11-17 10:00:00'):
+            du_jour = fabriques.tache(self.u1, jour_prevu=J)
+            par_echeance = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1), echeance=J)
+            demain = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1))
+            reponse = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': par_echeance.pk})
+            self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+            self.assertEqual([_relue(par_echeance).rang_jour, _relue(du_jour).rang_jour], [1024, 2048])
+            self.assertIsNone(_relue(demain).rang_jour)  # une tâche de demain n'est pas de la liste d'aujourd'hui
+            refus = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': demain.pk})
+            self.assertEqual((refus.status_code, refus.json()['avant_id']), (400, ['Valeur inconnue.']))
+
     def test_la_liste_du_jour_demande_un_jour(self):
         tache = fabriques.tache(self.u1)
         voisin = fabriques.tache(self.u1)
         reponse = self._reordonner(tache, {'liste': 'jour', 'apres_id': voisin.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'liste': ['Valeur inconnue.']}))
+        # refus d'ÉTAT de la tâche (elle n'a pas de jour) : 409, même champ (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['liste']), (409, ['Valeur inconnue.']))
 
     def test_un_voisin_d_un_collegue_repond_comme_inconnu(self):
         projet, (a, b, c) = self._trois()

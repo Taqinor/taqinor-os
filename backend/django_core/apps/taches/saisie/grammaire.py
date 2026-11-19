@@ -176,8 +176,41 @@ def conv_jour_periode(m, ctx, texte):
     return Lu(d, libelle_jour(d))
 
 
+# R3-047 — « dans quinze jours » : un nombre de un à trente écrit en lettres (forme normalisée : minuscules, sans
+# accents ; trait d'union ou espace entre les mots) vaut le même nombre en chiffres.
+_UNITES_LETTRES = ('un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf')
+NOMBRES_EN_LETTRES = {
+    **{mot: i for i, mot in enumerate(_UNITES_LETTRES, start=1)}, 'une': 1,
+    **{mot: i for i, mot in enumerate(
+        ('dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'), start=10)},
+    'dix-sept': 17, 'dix-huit': 18, 'dix-neuf': 19, 'vingt': 20, 'vingt et un': 21, 'vingt et une': 21,
+    **{f'vingt-{mot}': 20 + i for i, mot in enumerate(_UNITES_LETTRES[1:], start=2)},
+    'trente': 30}
+_SEPARATEUR_NOMBRE = re.compile(r'[\s-]+')
+
+
+def _cle_nombre(texte):
+    """« vingt-et-un », « vingt et un » et « vingt et-un » ont la même clé (mots séparés par une espace)."""
+    return _SEPARATEUR_NOMBRE.sub(' ', texte.strip())
+
+
+_NOMBRES_PAR_CLE = {_cle_nombre(mot): n for mot, n in NOMBRES_EN_LETTRES.items()}
+# les plus longs d'abord : « dix-sept » avant « dix », « vingt et un » avant « vingt », « une » avant « un »
+_ALT_NOMBRES_LETTRES = '|'.join(
+    r'[\s-]+'.join(cle.split(' ')) for cle in sorted(_NOMBRES_PAR_CLE, key=len, reverse=True))
+
+
+def _nombre_ecrit(texte):
+    """Le nombre d'un décalage : en chiffres, « a/an/one » (R2-006), ou en lettres de un à trente (R3-047)."""
+    if texte.isdigit():
+        return int(texte)
+    if texte in ('a', 'an', 'one'):
+        return 1
+    return _NOMBRES_PAR_CLE[_cle_nombre(texte)]
+
+
 def conv_jour_decalage(m, ctx, texte):
-    n = 1 if m.group('n') in ('un', 'une', 'a', 'an', 'one') else int(m.group('n'))  # R2-006 « dans une semaine »
+    n = _nombre_ecrit(m.group('n'))
     unite = m.group('u')
     if n < 1:
         return None
@@ -423,7 +456,7 @@ MOTIFS = (
     _m('jour', r'(?<!\w)(?P<p>(?:la\s+)?semaine\s+prochaine|next\s+week|ce\s+week[- ]?end'
        r'|this\s+week[- ]?end|fin\s+de\s+semaine|end\s+of\s+(?:the\s+)?week)(?!\w)',
        'jour_periode'),
-    _m('jour', r'(?<!\w)(?:dans|in)\s+(?P<n>\d+|une?|an?|one)\s+'
+    _m('jour', rf'(?<!\w)(?:dans|in)\s+(?P<n>\d+|{_ALT_NOMBRES_LETTRES}|an?|one)\s+'
        r'(?P<u>jours?|semaines?|mois|days?|weeks?|months?)(?!\w)', 'jour_decalage'),
     _m('jour', _JOUR_DEBUT + r'(?P<d>\d{1,2})/(?P<m>\d{1,2})(?:/(?P<y>\d{4}|\d{2}))?(?![\w/])',
        'jour_date_slash'),

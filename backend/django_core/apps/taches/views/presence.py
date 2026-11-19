@@ -42,7 +42,7 @@ from apps.taches.serializers.presence import JetonEntreeSerializer, JetonSeriali
 from apps.taches.services import journee as services_journee
 from apps.taches.throttles import ThrottleFlux, ThrottleTuile
 from apps.taches.views.base import (
-    ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, corps, est_assistant, forme_echantillon,
+    ERREUR_CODE, ERREUR_DETAIL, PARSEURS, PERMISSIONS, MethodeAvantJeton, est_assistant, forme_echantillon,
     reponses,
 )
 from core import chemins_sensibles
@@ -159,6 +159,7 @@ class JetonsVue(APIView):
     """GET jetons/ (sans empreinte) · POST jetons/ `{usage}` (clair rendu UNE fois)."""
 
     permission_classes = [*PERMISSIONS, HorsAssistant]
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('jetons_liste')))
     def get(self, request):
@@ -166,7 +167,7 @@ class JetonsVue(APIView):
                   .order_by(F('revoque_le').desc(nulls_first=True), '-created_at', '-pk')[:PLAFOND_JETONS])
         return Response({'results': JetonSerializer(jetons, many=True).data})
 
-    @extend_schema(request=corps('Jeton', {'usage': 'flux', 'libelle': ''}, requis=('usage',)),
+    @extend_schema(request=JetonEntreeSerializer,
                    responses=reponses(forme_echantillon('jeton'), statut=201, erreurs=(400,)))
     def post(self, request):
         entree = JetonEntreeSerializer(data=request.data)
@@ -182,6 +183,7 @@ class JetonRevoquerVue(APIView):
     """POST jetons/{id}/revoquer/ — l'id d'un autre compte répond comme un id inconnu (404)."""
 
     permission_classes = [*PERMISSIONS, HorsAssistant]
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(None, statut=204, erreurs=(404,)))
     def post(self, request, id):
@@ -198,6 +200,7 @@ class TestNotificationVue(APIView):
     réponse le DIT (409 `envoi_coupe`, `detail` montré par Mon iPhone) — jamais un 204 muet."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=None, responses=reponses(None, statut=204, conflit=ERREUR_CODE))
     def post(self, request):
@@ -211,6 +214,7 @@ class TuileVue(MethodeAvantJeton, APIView):
 
     authentication_classes = [JetonTuile]
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
     throttle_classes = [*DEBITS, ThrottleTuile]
 
     @extend_schema(responses={200: forme_echantillon('tuile'), 401: ERREUR_DETAIL, 429: ERREUR_DETAIL})
@@ -227,6 +231,7 @@ class FluxVue(MethodeAvantJeton, APIView):
 
     authentication_classes = [JetonFlux]
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
     throttle_classes = [*DEBITS, ThrottleFlux]
     renderer_classes = [JSONRenderer]
     content_negotiation_class = SansNegociation

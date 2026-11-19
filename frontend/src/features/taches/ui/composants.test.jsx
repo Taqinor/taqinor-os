@@ -1,10 +1,16 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import {
+  MemoryRouter, useLocation, useNavigationType, useSearchParams,
+} from 'react-router-dom'
+import { useLayoutEffect, useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import CoquilleTaches from '../coquille/CoquilleTaches'
+import { useClavierListe } from '../lib/clavierListe'
+import { useOuvrirFiche } from '../lib/fiche'
+import { FeuilleAttente } from './ActionsLigne'
 import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
 import FeuilleACrans, { naviguerApresFeuille } from './FeuilleACrans'
@@ -61,11 +67,26 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
     unmount()
     focus.mockClear()
-    render(
+    fireEvent.keyDown(document.body, { key: 'Tab' }) // ouverte au clavier
+    const auClavier = render(
       <FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><button type="button" data-focus-initial>OK</button></FeuilleACrans>,
     )
     expect(screen.getByRole('button', { name: 'OK' })).toHaveFocus()
     expect(focus.mock.calls.at(-1)).toEqual([])
+    auClavier.unmount()
+    // R3-064 — ouverte à la souris (bilan, Alléger : le × est le premier focalisable) : aucun anneau
+    focus.mockClear()
+    fireEvent.pointerDown(document.body)
+    const style = document.createElement('style')
+    style.textContent = '.poignee { display: none; }'
+    document.head.appendChild(style)
+    try {
+      render(<FeuilleACrans ouverte titre="Bilan du soir" onFermer={() => {}}><button type="button">Valider</button></FeuilleACrans>)
+      expect(screen.getByRole('button', { name: 'Fermer' })).toHaveFocus()
+      expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
+    } finally {
+      style.remove()
+    }
     focus.mockRestore()
   })
 
@@ -88,6 +109,92 @@ describe('TCH45 — FeuilleACrans', () => {
     render(<div className="tch"><FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><p>long</p></FeuilleACrans></div>)
     expect(screen.getByRole('dialog')).toHaveClass('cran-50')
     vi.unstubAllGlobals()
+  })
+
+  it('R3-066 — un champ `autoFocus` (Renommer, Nouveau projet) GARDE le curseur ; fermée, le focus revient à l\'ouvreur', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Renommer le projet</button>
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}>
+            <input aria-label="Nom" autoFocus defaultValue="Site web" />
+          </FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false))
+    const ouvreur = screen.getByRole('button', { name: 'Renommer le projet' })
+    act(() => { ouvreur.focus() })
+    rerender(page(true))
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus() // pas la poignée « Agrandir la feuille »
+    // iPhone : le menu ⋯ qui a ouvert « Renommer » rend le focus à son bouton juste APRÈS : le champ le reprend
+    act(() => { ouvreur.focus() })
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
+    rerender(page(false))
+    expect(ouvreur).toHaveFocus()
+  })
+
+  it('R3-066 — iPhone, ouverte depuis le menu ⋯ (Radix) : le menu reprend le focus au champ `autoFocus` dès le montage, puis le rend à son bouton ; le champ le récupère, jamais la poignée', () => {
+    function MenuQuiReprend() {
+      // ce que fait le FocusScope du menu Radix encore ouvert : il ramène le focus chez lui, au montage même
+      useLayoutEffect(() => { document.getElementById('item-renommer')?.focus() }, [])
+      return null
+    }
+    const page = (ouverte, menu) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        {menu ? <div role="menu"><button type="button" id="item-renommer">Renommer</button></div> : null}
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}>
+            <input aria-label="Nom" autoFocus defaultValue="Site web" />
+            <MenuQuiReprend />
+          </FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false, true))
+    const bouton = screen.getByRole('button', { name: "Plus d'actions" })
+    rerender(page(true, true))
+    expect(screen.getByRole('button', { name: 'Renommer' })).toHaveFocus() // le menu le tient encore
+    rerender(page(true, false)) // le menu se referme…
+    act(() => { bouton.focus() }) // … et rend le focus à son bouton
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
+  })
+
+  it('R3-066 — … et quand le menu REFUSE le focus au champ dès sa sortie (FocusScope Radix : `focusout` qui le reprend), le champ n\'a jamais eu le focus : la feuille le retrouve quand même', () => {
+    function Menu() {
+      const ref = useRef(null)
+      useLayoutEffect(() => { ref.current.querySelector('button').focus() }, [])
+      return <div role="menu" ref={ref}><button type="button">Renommer</button></div>
+    }
+    // ce que Chrome fait (relevé sur l'écran réel, debug-renommer.cjs) : la sortie du menu est annoncée (`focusout`, vers
+    // le champ), le FocusScope la refuse et le champ ne reçoit JAMAIS `focusin` — jsdom, lui, focaliserait quand même
+    const focusReel = HTMLElement.prototype.focus
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function focusRefuse(...args) {
+      const item = document.querySelector('[role="menu"] button')
+      if (this.tagName === 'INPUT' && item) {
+        item.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: this }))
+        return undefined
+      }
+      return focusReel.apply(this, args)
+    })
+    const page = (ouverte, menu) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        {menu ? <Menu /> : null}
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}><input aria-label="Nom" autoFocus defaultValue="Site web" /></FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false, true))
+    const bouton = screen.getByRole('button', { name: "Plus d'actions" })
+    expect(screen.getByRole('button', { name: 'Renommer' })).toHaveFocus()
+    rerender(page(true, true))
+    expect(screen.getByRole('textbox', { name: 'Nom' })).not.toHaveFocus() // le menu l'a gardé
+    rerender(page(true, false))
+    act(() => { bouton.focus() })
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus()
   })
 
   it('peut s\'ouvrir directement à 85 %', () => {
@@ -387,6 +494,49 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(navigate).toHaveBeenCalledWith('/taches/aujourdhui', {})
   })
 
+  it('R3-060 — fermer (Échap, croix, voile, retour arrière) quitte d\'abord le champ en cours : son `onBlur` enregistre AVANT `onFermer`', async () => {
+    const ordre = []
+    const onFermer = vi.fn(() => { ordre.push('fermer') })
+    const { container } = render(
+      <div className="tch">
+        <FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><input aria-label="Heure" onBlur={() => { ordre.push('blur') }} /></FeuilleACrans>
+      </div>,
+    )
+    const champ = screen.getByLabelText('Heure')
+    const fermerPar = async (geste) => {
+      ordre.length = 0
+      act(() => { champ.focus() })
+      await geste()
+      expect(ordre).toEqual(['blur', 'fermer'])
+    }
+    await fermerPar(() => { fireEvent.keyDown(champ, { key: 'Escape' }) })
+    // iPhone : toucher un bouton ne lui donne pas le focus, le champ le gardait jusqu'au démontage
+    await fermerPar(() => { fireEvent.click(screen.getByRole('button', { name: 'Fermer' })) })
+    await fermerPar(() => { fireEvent.click(container.querySelector('.voile')) })
+    await vi.waitFor(() => expect(window.history.state?.tchFeuille).toBeTruthy())
+    await fermerPar(async () => {
+      act(() => { window.history.back() })
+      await vi.waitFor(() => expect(ordre).toContain('fermer'))
+    })
+  })
+
+  it('R3-063 — `apresFermeture` part une fois l\'entrée d\'historique de la feuille RETIRÉE : la feuille suivante pose la sienne sans être fermée par ce retour', async () => {
+    const pose = vi.spyOn(window.history, 'pushState')
+    const apres = vi.fn(() => window.history.state?.tchFeuille ?? null)
+    const page = (ouverte) => <FeuilleACrans ouverte={ouverte} titre="Devis Settat" onFermer={() => {}} apresFermeture={apres}><button type="button">x</button></FeuilleACrans>
+    const { rerender } = render(page(true))
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(1))
+    rerender(page(false))
+    expect(apres).not.toHaveBeenCalled() // le retour arrière est en route
+    await vi.waitFor(() => expect(apres).toHaveBeenCalledTimes(1))
+    expect(apres.mock.results[0].value).toBeNull() // appelée APRÈS le retour : l'entrée de la feuille n'est plus là
+    // fermée avant d'avoir posé son entrée : tout de suite
+    apres.mockClear()
+    rerender(page(true))
+    rerender(page(false))
+    expect(apres).toHaveBeenCalledTimes(1)
+  })
+
   it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
     const pose = vi.spyOn(window.history, 'pushState')
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
@@ -429,6 +579,114 @@ describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sor
     fireEvent.blur(jour)
     expect(onChoisir).toHaveBeenCalledTimes(1)
     expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27' }))
+  })
+
+  it('R3-067 (choix C-22) — « Reporter à {jour} » qui tombe demain n\'a plus sa tuile : une seule « Demain » ; « Choisir un jour » devient « Calendrier… »', () => {
+    const tuiles = () => screen.getAllByRole('radio').map((r) => r.querySelector('b').textContent)
+    const onChoisir = vi.fn()
+    const { unmount } = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" reporterA="2026-11-18" onChoisir={onChoisir} />)
+    expect(tuiles()).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Calendrier…', 'En réserve', 'Sans jour'])
+    fireEvent.click(screen.getByRole('radio', { name: /^Demain/ }))
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-18' }))
+    unmount()
+    // vendredi → le prochain jour travaillé est lundi : les deux tuiles disent deux jours différents, elles restent
+    render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-20" reporterA="2026-11-23" onChoisir={onChoisir} />)
+    expect(tuiles()).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à lun. 23', 'Calendrier…', 'En réserve', 'Sans jour'])
+  })
+
+  it('R3-060 — démonté avec une heure ou un jour tapés et pas encore écrits (retour arrière, fiche changée) : ils partent, une seule fois', () => {
+    const onChoisir = vi.fn()
+    const { unmount } = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '16:30' } })
+    unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '16:30' }))
+    // déjà écrite à la sortie du champ : le démontage n'écrit rien de plus
+    onChoisir.mockClear()
+    const second = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const champ = screen.getByLabelText('Heure')
+    fireEvent.change(champ, { target: { value: '09:15' } })
+    fireEvent.blur(champ)
+    second.unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    // un jour entier tapé part avec l'heure tapée, en une écriture
+    onChoisir.mockClear()
+    const troisieme = render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Choisir un jour|Calendrier/ }))
+    fireEvent.change(screen.getByLabelText('Choisir un jour'), { target: { value: '2026-11-27' } })
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '08:00' } })
+    troisieme.unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27', heure_debut: '08:00' }))
+  })
+})
+
+describe('R3-062 — fiche ouverte (panneau du bureau) : `j` / `k` font suivre la fiche, comme Linear', () => {
+  function Liste() {
+    const ouvrirFiche = useOuvrirFiche()
+    const [params] = useSearchParams()
+    const lieu = useLocation()
+    const type = useNavigationType()
+    const racine = useClavierListe(() => {})
+    const ouverte = params.get('tache')
+    return (
+      <div className="tch">
+        <div ref={racine}>
+          {[['tache', 1], ['activite', 7], ['tache', 2]].map(([genre, id]) => (
+            <div key={`${genre}:${id}`} data-ligne={`${genre}:${id}`}>
+              <button type="button" className="ligne-corps-bouton" onClick={() => { if (genre === 'tache') ouvrirFiche(id) }}>{`ligne ${genre} ${id}`}</button>
+            </div>
+          ))}
+        </div>
+        {ouverte ? <div data-fiche={ouverte}>{`fiche ${ouverte}`}</div> : null}
+        <output data-testid="lieu">{`${lieu.search} ${type}`}</output>
+      </div>
+    )
+  }
+
+  it('j sur la ligne suivante change la fiche ouverte (entrée d\'historique REMPLACÉE) ; une activité ne la change pas', () => {
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Liste /></MemoryRouter>)
+    // sans fiche ouverte, j ne fait que parcourir (comme avant)
+    fireEvent.keyDown(document.body, { key: 'j' })
+    expect(screen.getByText('ligne tache 1')).toHaveFocus()
+    expect(screen.queryByText(/^fiche/)).toBeNull()
+    fireEvent.click(screen.getByText('ligne tache 1'))
+    expect(screen.getByText('fiche 1')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByText('ligne tache 1'), { key: 'j' })
+    expect(screen.getByText('ligne activite 7')).toHaveFocus()
+    expect(screen.getByText('fiche 1')).toBeInTheDocument() // une activité n'a pas de fiche de tâche
+    fireEvent.keyDown(screen.getByText('ligne activite 7'), { key: 'j' })
+    expect(screen.getByText('ligne tache 2')).toHaveFocus()
+    expect(screen.getByText('fiche 2')).toBeInTheDocument()
+    expect(screen.getByTestId('lieu')).toHaveTextContent('?tache=2 REPLACE')
+    fireEvent.keyDown(screen.getByText('ligne tache 2'), { key: 'k' })
+    fireEvent.keyDown(screen.getByText('ligne activite 7'), { key: 'k' })
+    expect(screen.getByText('fiche 1')).toBeInTheDocument()
+  })
+})
+
+describe('R3-060 — « En attente de… » : un nom tapé n\'est jamais perdu à la fermeture', () => {
+  const item = { id: 20, type: 'tache', titre: 'Devis Settat', en_attente_de: '' }
+
+  it('fermée sans « En attente » (Échap, croix, retour) : le nom tapé est enregistré, une seule fois', () => {
+    const onValider = vi.fn()
+    const { unmount } = render(<FeuilleAttente item={item} onValider={onValider} />)
+    fireEvent.change(screen.getByLabelText('De qui ou de quoi ?'), { target: { value: 'Karim ' } })
+    unmount()
+    expect(onValider).toHaveBeenCalledTimes(1)
+    expect(onValider).toHaveBeenCalledWith('Karim')
+  })
+
+  it('validée par « En attente » : rien de plus à la fermeture ; rien tapé, rien d\'écrit', () => {
+    const onValider = vi.fn()
+    const premiere = render(<FeuilleAttente item={item} onValider={onValider} />)
+    fireEvent.change(screen.getByLabelText('De qui ou de quoi ?'), { target: { value: 'Karim' } })
+    fireEvent.click(screen.getByRole('button', { name: 'En attente' }))
+    premiere.unmount()
+    expect(onValider).toHaveBeenCalledTimes(1)
+    onValider.mockClear()
+    render(<FeuilleAttente item={{ ...item, en_attente_de: 'Nadia' }} onValider={onValider} />).unmount()
+    expect(onValider).not.toHaveBeenCalled()
   })
 })
 

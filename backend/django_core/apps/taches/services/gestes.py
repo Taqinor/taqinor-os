@@ -200,11 +200,29 @@ def titres_des_gestes(user, gestes):
         ids = [op.get('id') for op in geste.operations if op.get('objet') == 'tache' and op.get('id') is not None]
         if ids and (len(set(ids)) == 1 or geste.type in TYPES_TITRE_PREMIERE):
             visees[geste.pk] = ids[0]
+    visees.update(_taches_des_etoiles([g for g in gestes if g.type == 'essentiel' and g.pk not in visees]))
     if not visees:
         return {}
     titres = dict(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=set(visees.values()))
                   .values_list('pk', 'titre'))
     return {geste: titres[tache] for geste, tache in visees.items() if tache in titres}
+
+
+def _taches_des_etoiles(gestes):
+    """`{geste.pk: tâche}` des gestes ★ (`essentiel`, R3-008 : « Essentielle · {titre} », jamais « Essentielle » seul) :
+    ils n'écrivent que des lignes de plan — la tâche se lit dans les valeurs d'une ligne remplacée, ou dans l'opération
+    de création d'une ligne (`planification.creer_ligne` y pose `tache`). Aucune requête : la société et le propriétaire
+    sont vérifiés par la lecture des titres."""
+    rendu = {}
+    for geste in gestes:
+        for op in geste.operations:
+            if op.get('objet') != 'ligne_plan_jour':
+                continue
+            tache = op.get('tache') if op.get('op') == 'creation' else (op.get('valeurs') or {}).get('tache')
+            if tache is not None:
+                rendu[geste.pk] = tache
+                break
+    return rendu
 
 
 # --- Retrouver un objet du compte ---------------------------------------------------------

@@ -33,6 +33,9 @@
       "activites": 1,
       "reprise": false
     },
+    "faites": 1,
+    "minutes_restantes": 75,
+    "deborde_minutes": 0,
     "essentiel_restant": [
       {
         "type": "tache",
@@ -130,5 +133,8 @@
         "prevues": 4
       }
     }
-  }
+  },
+  "nuls": [
+    "prochaine"
+  ]
 }

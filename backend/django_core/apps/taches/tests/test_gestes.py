@@ -440,6 +440,52 @@ class TitresDesGestesTests(TestCase):
         assistant = api.get('/api/django/taches/gestes/', HTTP_X_TAQINOR_ASSISTANT='1').json()['results']
         self.assertEqual([(g['id'], g['titre']) for g in assistant], [(geste.pk, None)])
 
+    def test_derniers_gestes_seulement_sur_des_taches_ou_des_projets(self):
+        """R3-008 — « Derniers gestes » : une réponse de carte (« OK »), une préférence (« Noté : … ») et un réglage du
+        rythme n'y sont plus ; un report et une décision d'À revoir sur une tâche y restent, avec leur titre ; une ★
+        dit le titre de sa tâche (« Essentielle · … »), posée sur une ligne neuve comme sur une ligne remplacée."""
+        from apps.taches.models.rythme import IncitationCoach
+        from apps.taches.services import journee as services_journee
+        from apps.taches.services import rythme
+        from apps.taches.services.planification import planifier
+        from apps.taches.services.taches import trancher_tache
+        fabriques.reglages(self.u1)
+        jour = timezone.localdate()
+        carte = IncitationCoach.objects.create(company=self.a, proprietaire=self.u1, type='constat', cle='C5',
+                                               canal='ecran', jour=jour, expire_le=jour + datetime.timedelta(days=7),
+                                               donnees={'p': 57, 'n': 51, 'h1': 10, 'h2': 12})
+        rythme.repondre_carte(self.u1, carte.pk, 'ok', jour)
+        rythme.poser_preference(self.u1, 'heure_limite', '19:00', 'ecran')
+        rythme.regler_rythme(self.u1, {'mode': 'pousser', 'objectif': 7}, jour)
+        projet = fabriques.projet(self.u1)
+        reportee = fabriques.tache(self.u1, projet=projet, titre='Appeler le notaire', jour_prevu=jour)
+        planifier(reportee, acteur=self.u1, jour_prevu=jour + datetime.timedelta(days=2))
+        a_revoir = fabriques.tache(self.u1, projet=projet, titre='Relancer Settat', reports=3,
+                                   jour_prevu=jour - datetime.timedelta(days=2))
+        trancher_tache(self.u1, a_revoir.pk, 'garder')
+        etoile = fabriques.tache(self.u1, projet=projet, titre='Devis Benali', jour_prevu=jour)
+        maintenant = timezone.localtime()
+        services_journee.marquer_essentielle(self.u1, etoile.pk, True, maintenant)
+        services_journee.marquer_essentielle(self.u1, etoile.pk, False, maintenant)
+        api = APIClient()
+        api.force_authenticate(self.u1)
+        lignes = [(g['message'], g['titre']) for g in api.get('/api/django/taches/gestes/').json()['results']]
+        self.assertEqual([titre for _message, titre in lignes],
+                         ['Devis Benali', 'Devis Benali', 'Relancer Settat', 'Appeler le notaire'])
+        self.assertEqual([message for message, _titre in lignes][:2], ['Plus essentielle', 'Essentielle'])
+        self.assertFalse([m for m, _t in lignes if m == 'OK' or m.startswith('Noté') or m.startswith('Objectif')])
+
+    def test_la_revue_qui_met_en_pause_le_dit(self):
+        from apps.taches.services.projets import decider_revue
+        projet = fabriques.projet(self.u1, nom='Salon Solaire')
+        _revue, _projet, geste = decider_revue(self.u1, projet.pk, {'semaine': timezone.localdate(),
+                                                                    'decision': 'pause'})
+        self.assertEqual(geste.message, 'Revue : Salon Solaire en pause')
+        autre = fabriques.projet(self.u1)
+        _revue, _projet, geste = decider_revue(self.u1, autre.pk, {'semaine': timezone.localdate(),
+                                                                   'decision': 'garder'})
+        self.assertEqual(geste.message, 'Revue enregistrée')
+
     def test_une_seule_requete_pour_tous_les_gestes(self):
         gestes = [self._geste('terminaison', 'Faite', fabriques.tache(self.u1)) for _ in range(4)]
         with self.assertNumQueries(1):

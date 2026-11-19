@@ -25,7 +25,7 @@ from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
 )
 from apps.taches.confidentialite import ECRAN, est_confidentielle, nom_pour
-from apps.taches.entrees import MESSAGE_DATE, jour_dans_bornes
+from apps.taches.entrees import MESSAGE_DATE, introuvable, jour_dans_bornes, refus_etat
 from apps.taches.models.projets import Projet
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, EtiquetteTache, RegleRecurrence, Tache
@@ -36,6 +36,7 @@ from apps.taches.selectors.base import (
     sections_de, taches_de,
 )
 from apps.taches.selectors.base import normalise_sql
+from apps.taches.selectors.journee import ROUTINE, faites_de_la_semaine
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
 from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
@@ -146,9 +147,20 @@ def _filtrer_periode(qs, periode, aujourdhui):
     if periode == 'retard':
         return qs.filter(Q(jour_prevu__lt=aujourdhui) | Q(echeance__lt=aujourdhui))
     if periode == FAITES_SEMAINE:
+        # R3-003 : la liste ne porte que ce que `total` compte (`compte_du_jour` : une routine vaut 0)
         lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
-        return qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
+        return (qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
+                .exclude(ROUTINE))
     return qs
+
+
+def entete_de_liste(user, params, *, aujourdhui=None):
+    """Les clés que `GET taches/` ajoute à sa page : pour `periode=faites_semaine` seulement, `total` (LA somme des
+    faites de la semaine, celle de la Revue et de l'Agenda) et `activites_closes` `[{jour, titre}]` (comptées dans
+    `total`, absentes de `results`) — R3-003, choix C-16 ; `{}` sinon (aucune requête)."""
+    if _choix(params, 'periode', PERIODES) != FAITES_SEMAINE:
+        return {}
+    return faites_de_la_semaine(user, aujourdhui or timezone.localdate())
 
 
 def _filtrer_lien(qs, params):
@@ -400,11 +412,13 @@ def _lien_courant(tache):
 
 
 def verifier_lien(user, lien):
-    """400 sur `lien` si la cible n'est pas liable ou pas visible (refus = introuvable)."""
+    """400 sur `lien` si la cible n'est pas liable ; 404 (même corps) si elle n'est pas visible."""
     if lien.get('cible') not in CibleLiable.values:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
+    # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
+    # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if not cible_visible(user, lien['cible'], lien.get('id')):
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise introuvable({'lien': [MESSAGE_LIEN_INTROUVABLE]})
 
 
 def _lien(edition, lien):
@@ -775,9 +789,15 @@ def _liste_a_ordonner(user, t, liste):
     étape et du même parent (`rang_projet`, puis `id` : invariant 32)."""
     ouvertes = taches_de(user).filter(statut__in=OUVERTES)
     if liste == 'jour':
-        if t.jour_prevu is None:
-            raise serializers.ValidationError({'liste': [MESSAGE_VALEUR_INCONNUE]})
-        qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
+        aujourdhui = timezone.localdate()
+        if aujourdhui in (t.jour_prevu, t.echeance):
+            # R3-007 : la liste d'AUJOURD'HUI est celle de la journée — `classement.gardee_aujourdhui` (jour prévu OU
+            # échéance aujourd'hui) : une ★ gardée par son échéance (prévue demain) est une voisine comme une autre
+            qs = ouvertes.filter(parent__isnull=True).filter(Q(jour_prevu=aujourdhui) | Q(echeance=aujourdhui))
+        elif t.jour_prevu is None:  # « jour » d'une tâche sans jour : refus d'ÉTAT de la tâche (409, api-fuzz r2)
+            raise refus_etat({'liste': [MESSAGE_VALEUR_INCONNUE]})
+        else:
+            qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
         return qs, 'rang_jour', lambda x: (x.rang_jour is None, x.rang_jour or 0,
                                            x.heure_debut or datetime.time.max, -x.priorite, x.pk)
     qs = ouvertes.filter(projet_id=t.projet_id, section_id=t.section_id, parent_id=t.parent_id)
@@ -1017,7 +1037,9 @@ def _cible_de_deplacement(user, valeurs):
         for projet_id in {c['projet_id'] for c in (commun, *par_tache.values()) if c.get('projet_id') is not None}:
             _projet(user, projet_id)
     except serializers.ValidationError as exc:
-        raise serializers.ValidationError({'valeurs': exc.detail})
+        # Un projet cible qui n'est pas au compte : la ressource manque (404, corps inchangé — règle
+        # d'`IdInconnu404Mixin`) ; le schéma ne peut pas dire quels projets existent (api-fuzz r2).
+        raise introuvable({'valeurs': exc.detail})
     return {'commun': commun, 'par_tache': par_tache}
 
 
@@ -1346,10 +1368,20 @@ def supprimees_recentes(user, *, maintenant=None):
     return projets, _compteurs_par_projet(user, projets), charger_items(taches)[:PLAFOND_LISTE]
 
 
+#: R3-008 : « Derniers gestes » ne liste que les gestes sur des tâches ou des projets — jamais un réglage du rythme
+#: ni une préférence dite (« Noté : … ») ; une réponse à une carte (« OK », « Pas maintenant ») non plus : elle reste
+#: annulable par son toast.
+TYPES_HORS_DERNIERS_GESTES = ('preference', 'rythme')
+REPONSE_DE_CARTE = Q(type='decision', operations__contains=[{'objet': 'incitation_coach'}])
+
+
 def derniers_gestes(user, *, maintenant=None):
-    """`GET gestes/` : les gestes annulables des 7 derniers jours, le plus récent d'abord (200 au plus)."""
+    """`GET gestes/` : les gestes annulables des 7 derniers jours sur des tâches ou des projets, le plus récent
+    d'abord (200 au plus) ; ni réglage du rythme, ni préférence, ni réponse à une carte (R3-008)."""
     depuis = (maintenant or timezone.now()) - FENETRE_GESTES
-    return list(gestes_de(user).filter(created_at__gte=depuis).order_by('-created_at', '-pk')[:PLAFOND_LISTE])
+    gestes = (gestes_de(user).filter(created_at__gte=depuis).exclude(type__in=TYPES_HORS_DERNIERS_GESTES)
+              .exclude(REPONSE_DE_CARTE))
+    return list(gestes.order_by('-created_at', '-pk')[:PLAFOND_LISTE])
 
 
 def gestes_confidentiels(user, gestes):

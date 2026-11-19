@@ -34,7 +34,8 @@ from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import Tache
 from apps.taches.selectors.base import gestes_de, taches_de
 from apps.taches.selectors.liens import libelle_de_cible
-from apps.taches.services.creation import creer_taches
+from apps.taches.entrees import refus_etat
+from apps.taches.services.creation import MESSAGE_TITRE_VIDE, creer_taches
 from apps.taches.services.gestes import enregistrer_geste, op_champ
 from core.conflit_etat import ConflitEtat
 
@@ -86,6 +87,10 @@ def lier_activite(user, *, activite_id, titre='', jour_prevu=None):
         raise Http404('Introuvable.')
     lien, _libelle = _lien_de_l_activite(user, activite)
     ligne = {'titre': (titre or '').strip() or (activite.summary or '').strip(), 'jour_prevu': jour_prevu}
+    if not ligne['titre']:
+        # `titre` vide = « celui de l'activité » (api.md §4) : c'est l'activité sans résumé qui s'y oppose, un
+        # refus d'ÉTAT (409, même corps) — le corps est conforme (api-fuzz r2).
+        raise refus_etat({'titre': [MESSAGE_TITRE_VIDE]})
     # `creer_taches` pose le libellé du lien à la liaison (même porte `selectors/liens`).
     return creer_taches(user, [ligne], source=Source.ACTIVITE, porte='lien_activite', lien=lien,
                         activite=activite)

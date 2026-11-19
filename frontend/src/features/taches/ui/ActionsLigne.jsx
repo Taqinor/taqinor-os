@@ -41,11 +41,24 @@ const pris = (item, champs) => Object.fromEntries(champs.map((c) => [c, item[c] 
 
 export function FeuilleAttente({ item, onValider }) {
   const [texte, setTexte] = useState(item.en_attente_de ?? '')
+  // R3-060 — la feuille fermée (Échap, croix, voile, retour arrière) avec un nom tapé et pas validé : il est enregistré
+  // quand même (le toast « En attente de : … · Annuler » le dit) — jamais perdu en silence
+  const etat = useRef({ texte: item.en_attente_de ?? '', envoye: false })
+  const valider = (t) => { etat.current.envoye = true; onValider(t) }
+  const auDemontage = useRef(null)
+  useEffect(() => {
+    auDemontage.current = () => {
+      const tape = etat.current.texte.trim()
+      if (!etat.current.envoye && tape && tape !== (item.en_attente_de ?? '').trim()) valider(tape)
+    }
+  })
+  useEffect(() => () => auDemontage.current?.(), [])
   return (
-    <form className="choisir-jour" noValidate onSubmit={(e) => { e.preventDefault(); if (texte.trim()) onValider(texte.trim()) }}>
+    <form className="choisir-jour" noValidate onSubmit={(e) => { e.preventDefault(); if (texte.trim()) valider(texte.trim()) }}>
       <p className="carte-source">{item.titre}</p>
       <label className="fiche-label" htmlFor="tch-attente-qui">De qui ou de quoi ?</label>
-      <input id="tch-attente-qui" type="text" className="champ" maxLength={200} value={texte} onChange={(e) => setTexte(e.target.value)} />
+      <input id="tch-attente-qui" type="text" className="champ" maxLength={200} value={texte}
+        onChange={(e) => { etat.current.texte = e.target.value; setTexte(e.target.value) }} />
       <button type="submit" className="bouton plein large" disabled={!texte.trim()}>En attente</button>
     </form>
   )
@@ -287,7 +300,7 @@ export function useActionsLigne({
   let feuilleProps = null
   if (feuille?.type === 'quand') {
     feuilleProps = {
-      ouverte: true, onFermer: fermer, titre: 'Choisir un jour',
+      ouverte: true, onFermer: fermer, titre: 'Quand ?', // R3-067 : la feuille du sélecteur Quand
       children: (
         <SelecteurQuand
           valeur={pris(item, CHAMPS_QUAND)} aujourdhui={aujourdhui} reporterA={prochainJourOuvre}

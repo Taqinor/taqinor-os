@@ -35,7 +35,8 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    chaque jour sur son iPhone. Il lit `GET aujourdhui/` (contract_samples/aujourdhui.json) et
    rend les sections dans l'ordre vertical de regles.md §4.1 (features/taches/aujourdhui/Sections).
    Règles tenues ici, une fois pour toutes :
-     · squelette seulement après 1 s sans réponse, jamais sur une liste déjà affichée ;
+     · R3-025 — la dernière journée connue du compte (cache du jour) s'affiche au montage, puis se relit en silence ;
+       squelette seulement après 300 ms sans réponse ET sans journée connue, jamais sur une liste déjà affichée ;
      · un rafraîchissement en échec GARDE la liste : bandeau « Pas à jour · HH:MM » [Réessayer] ;
      · relecture au retour du focus ; hors ligne, la lecture reste affichée et les gestes sont
        grisés (« Possible une fois connecté ») ;
@@ -46,7 +47,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    Maquettes : ecran-aujourdhui-*.html, etat-chargement.html, etat-pas-a-jour.html.
    ========================================================================== */
 
-const DELAI_SQUELETTE_MS = 1000
+const DELAI_SQUELETTE_MS = 300 // R3-025 (R2-089) : le même délai que les autres écrans, et seulement sans journée connue
 const CONSTAT_REPORTEES = 'C7' // moteur/gabarits.py : « {n} tâches reportées {reports} fois ou plus. » · « Les revoir maintenant ? »
 const MAX_ESSENTIELLES = 3 // regles.md §4.1 « 3 au plus » (même plafond que `ui/Etoile`)
 /** R2-012 — la 4e étoile est refusée À L'ÉCRAN (un toast), pas seulement au lecteur d'écran. */
@@ -54,6 +55,13 @@ const refuserEssentielle = () => proposerAnnuler({ message: "3 essentielles au p
 const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
+
+/** R3-028 — les touches qui ne valent que pour une TÂCHE (`clavierListe`) : sur une activité ERP, l'écran le dit. */
+const TOUCHES_DE_TACHE = new Set(['quand', 'renommer', 'heure', 'deplacer', 'selectionner', 'essentiel'])
+const PHRASE_ACTIVITE_ERP = "Une activité ERP s'ouvre dans l'ERP"
+
+/** R3-024 — les champs d'une TACHE écrite par la fiche qu'une ligne de la journée reprend telle quelle. */
+const CHAMPS_FICHE = ['titre', 'jour_prevu', 'moment', 'heure_debut', 'quelque_jour', 'estimation_minutes', 'echeance', 'lock_version']
 
 /** Les listes d'items du contrat (hors `propose`), dans l'ordre vertical. */
 const LISTES_ITEMS = ['essentiel', 'journee', 'ce_soir', 'a_decider', 'en_attente', 'faites']
@@ -92,20 +100,25 @@ function heureLocale(iso) {
  * s'ouvre sur ce cache (« Hors ligne · dernière synchro à {HH:MM} ») au lieu d'un écran vide.
  */
 function useAujourdhui(tout, userId) {
-  const [donnees, setDonnees] = useState(null)
+  // R3-025 — revenir sur Aujourd'hui montre AUSSITÔT la dernière journée connue du compte (le cache du jour), puis la
+  // relit en silence : jamais un écran blanc entre deux onglets ; le squelette ne vient qu'au tout premier chargement
+  const [cache] = useState(() => (userId === null ? null : lireJournee(userId, aujourdhuiIso())))
+  const initiale = cache?.donnees ?? null
+  const [donnees, setDonnees] = useState(initiale)
   const [erreur, setErreur] = useState(false)
-  const [derniere, setDerniere] = useState('')
+  const [derniere, setDerniere] = useState(() => (initiale ? heureLocale(cache.ecrit_a) : ''))
   const [squelette, setSquelette] = useState(false)
   const enLigne = useEnLigne()
   const vivant = useRef(true)
-  const presentes = useRef(false)
+  const presentes = useRef(Boolean(initiale))
   const vuFait = useRef(false)
   const synchro = useRef(null)
 
   const charger = useCallback(async () => {
     const minuteur = presentes.current ? null : setTimeout(() => setSquelette(true), DELAI_SQUELETTE_MS)
     try {
-      const { data } = await client.lireAujourdhui(tout ? { tout: 1 } : undefined)
+      // l'échec se DIT à l'écran (bandeau « Pas à jour · Réessayer », liste gardée) : le toast de l'ERP ne le redit pas
+      const { data } = await client.lireAujourdhui(tout ? { tout: 1 } : undefined, { suppressErrorToast: true })
       if (!vivant.current) return
       presentes.current = true
       synchro.current = new Date()
@@ -441,10 +454,18 @@ export default function Aujourdhui() {
   const { userId, societe } = useCompteTaches()
   // la carte « Ta saisie de tout à l'heure t'attend. » [Reprendre] lit le brouillon de la feuille de saisie
   const [brouillon, setBrouillon] = useState(() => lireBrouillon(societe, userId))
+  // R3-022 — pas de « Reprendre » sur une saisie OUVERTE (le brouillon y est déjà, sous les yeux) : la coquille ouvre
+  // toute saisie par `EVENEMENT_SAISIR` et prévient à sa fermeture par `EVENEMENT_SAISIE_FERMEE`
+  const [saisieOuverte, setSaisieOuverte] = useState(false)
   useEffect(() => {
-    const relire = () => setBrouillon(lireBrouillon(societe, userId))
+    const ouverte = () => setSaisieOuverte(true)
+    const relire = () => { setSaisieOuverte(false); setBrouillon(lireBrouillon(societe, userId)) }
+    window.addEventListener(EVENEMENT_SAISIR, ouverte)
     window.addEventListener(EVENEMENT_SAISIE_FERMEE, relire)
-    return () => window.removeEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+    return () => {
+      window.removeEventListener(EVENEMENT_SAISIR, ouverte)
+      window.removeEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+    }
   }, [societe, userId])
   const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout, userId)
   const [estampilles, setEstampilles] = useState({})
@@ -788,6 +809,9 @@ export default function Aujourdhui() {
       setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, avant, 1) } : d))
       return
     }
+    // R3-024 — une écriture de la fiche (Quand, heure, titre…) se pose SUR PLACE, à l'instant (la ligne et le bloc de
+    // l'Agenda suivent sans attendre) ; la relecture qui suit range la ligne là où le serveur la met
+    if (avant) patcher(cle, (it) => ({ ...it, ...Object.fromEntries(CHAMPS_FICHE.filter((c) => c in ecrite).map((c) => [c, ecrite[c]])) }))
     charger()
     setBrouillon(lireBrouillon(societe, userId))
   }, [charger, societe, userId, donnees, patcher, setDonnees]))
@@ -811,11 +835,21 @@ export default function Aujourdhui() {
     actionsPropres,
   })
 
+  /** R3-028 — une touche de tâche (`d`, `e`, `h`, `m`, `x`, Entrée sans adresse) sur une activité ERP : le dire, avec le
+   *  chemin vers l'ERP quand l'activité en a un — jamais un geste qui ne fait rien sans un mot. */
+  const direActiviteErp = useCallback((item) => {
+    const url = item.lien?.url
+    proposerAnnuler({
+      message: PHRASE_ACTIVITE_ERP,
+      ...(url ? { libelle: 'Ouvrir', apres: null, onAnnuler: () => navigate(url) } : {}),
+    })
+  }, [navigate])
+
   const geste = useMemo(() => ({
     terminer,
     reporter,
     choisirJour: (item) => setFeuille({ type: 'jour', item }),
-    ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : null) : ouvrirFiche(item.id)),
+    ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : direActiviteErp(item)) : ouvrirFiche(item.id)),
     decouper: (item) => ouvrirFiche(item.id, { section: 'decouper' }), // R2-021 : la fiche s'ouvre SUR « Découper »
     action: actions.surAction,
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
@@ -834,7 +868,7 @@ export default function Aujourdhui() {
     refusEssentiel: refuserEssentielle,
     annoncer,
     naviguer: (url) => navigate(url),
-  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])
+  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction, direActiviteErp])
 
   const glissable = useMemo(() => (bureau ? { onDebut: setGlisse, onFin: () => setGlisse(null) } : null), [bureau])
   // La ligne glissée peut quitter le DOM en cours de route (elle prend son heure et change de place) : `dragend` ne
@@ -856,6 +890,8 @@ export default function Aujourdhui() {
     poserProgression(data?.progression)
   }, [patcher, poserProgression])
   const replacee = useCallback((item) => patcher(cleDe(item), () => item), [patcher])
+  // R3-024 — la colonne Agenda tire ses blocs des MÊMES items que la liste : un geste ici se voit là-bas à l'instant
+  const itemsDuJour = useMemo(() => (donnees ? LISTES_ITEMS.flatMap((cle) => donnees[cle] ?? []) : []), [donnees])
 
   const contexte = useMemo(() => ({
     donnees,
@@ -883,6 +919,7 @@ export default function Aujourdhui() {
         document.querySelector(`[data-ligne="${cle}"] .ligne-corps-bouton`)?.focus()
       }))
     }
+    else if (item.type === 'activite' && TOUCHES_DE_TACHE.has(action)) direActiviteErp(item)
     else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, clavier: true })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)
@@ -1044,7 +1081,7 @@ export default function Aujourdhui() {
           bilanFait={Boolean(donnees.plan?.cloture_le)}
           onNaviguer={navigate}
           onCopilote={geste.copilote}
-          brouillon={brouillon ? (
+          brouillon={brouillon && !saisieOuverte ? (
             <div className="carte" role="region" aria-label="Brouillon">
               <p className="carte-texte">Ta saisie de tout à l&apos;heure t&apos;attend.</p>
               <div className="carte-actions">
@@ -1102,7 +1139,7 @@ export default function Aujourdhui() {
         <div className="tch-bureau">
           <ColonneProjets ecarts={ecartsProjets} />
           <div className="tch-bureau-liste">{contenu}</div>
-          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
+          {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} items={itemsDuJour} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
         </div>
       ) : contenu}
     </CoquilleTaches>

@@ -20,6 +20,7 @@ from rest_framework import serializers
 
 from apps.taches.choix import Frequence, LienEtat, StatutRappel, StatutTache
 from apps.taches.confidentialite import ASSISTANT, ECRAN, est_confidentielle, nom_pour
+from apps.taches.entrees import HeureServie
 from apps.taches.models.taches import Tache
 from apps.taches.moteur.recurrence import libelle_regle
 from apps.taches.selectors.liens import url_de_cible
@@ -173,7 +174,7 @@ class ElementChecklistFormeSerializer(serializers.Serializer):
 class RappelSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     jour = serializers.DateField()
-    heure = serializers.TimeField(format=FORMAT_HEURE)
+    heure = HeureServie(format=FORMAT_HEURE)
     ancre = serializers.CharField(allow_blank=True)
     decalage_jours = serializers.IntegerField()
     statut = serializers.CharField()
@@ -219,9 +220,9 @@ class ItemSerializer(_FormeSerializer):
     priorite = serializers.IntegerField()
     jour_prevu = serializers.DateField(allow_null=True)
     moment = serializers.CharField(allow_blank=True)
-    heure_debut = serializers.TimeField(format=FORMAT_HEURE, allow_null=True)
+    heure_debut = HeureServie(format=FORMAT_HEURE, allow_null=True)
     echeance = serializers.DateField(allow_null=True)
-    echeance_heure = serializers.TimeField(format=FORMAT_HEURE, allow_null=True)
+    echeance_heure = HeureServie(format=FORMAT_HEURE, allow_null=True)
     quelque_jour = serializers.BooleanField()
     estimation_minutes = serializers.IntegerField(allow_null=True)
     reports = serializers.IntegerField()

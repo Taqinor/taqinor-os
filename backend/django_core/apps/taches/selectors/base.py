@@ -116,13 +116,15 @@ def _conges(valeur):
     return periodes
 
 
-def jours_travailles_de(user, du, au):
+def jours_travailles_de(user, du, au, prefs=None):
     """Ensemble des jours travaillés de `user` dans `[du, au]` : jours ouvrés de la société
     (`notifications.calendar_utils.jours_ouvres_entre`, fériés compris) ∩ son masque
-    `jours_travailles` (lun→dim) − ses `conges`. Trois requêtes, quel que soit l'écart."""
+    `jours_travailles` (lun→dim) − ses `conges`. Trois requêtes, quel que soit l'écart ; deux quand
+    l'appelant a DÉJÀ lu les préférences du compte (`prefs` : `{clé: valeur}`, jamais relues)."""
     if getattr(user, 'company_id', None) is None:
         return set()
-    prefs = _preferences(user, ClePreference.JOURS_TRAVAILLES, ClePreference.CONGES)
+    if prefs is None:
+        prefs = _preferences(user, ClePreference.JOURS_TRAVAILLES, ClePreference.CONGES)
     masque = prefs.get(ClePreference.JOURS_TRAVAILLES)
     if not (isinstance(masque, str) and len(masque) == 7):
         masque = TOUS_LES_JOURS

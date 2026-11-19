@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { frenchError } from '../../../lib/frenchError'
@@ -68,15 +68,30 @@ function BandeJournee({ jour }) {
   )
 }
 
+/** R3-024 — les blocs du jour tirés des items de la PAGE (la même source que la liste) : une tâche de ce jour, à heure,
+ *  une seule fois (une ★ faite est servie dans `essentiel` ET `faites`), dans l'ordre de l'heure. */
+function blocsDuJour(items, jour) {
+  const vus = new Set()
+  return (items ?? [])
+    .filter((t) => t?.type === 'tache' && t.jour_prevu === jour && t.heure_debut && t.statut !== 'annule')
+    .filter((t) => (vus.has(t.id) ? false : vus.add(t.id)))
+    .sort((a, b) => String(a.heure_debut).localeCompare(String(b.heure_debut)) || a.id - b.id)
+}
+
 /**
  * `jour` : le jour affiché (`AAAA-MM-JJ`) ; `maintenant` : l'instant du serveur (ISO) pour la ligne « maintenant » ;
- * `glisse` : la ligne en train d'être glissée (nulle sinon) ; `onPlacee(item, data)` / `onRetiree(item)` : la page
- * met sa liste à jour (heure sur la ligne ; ligne rendue comme avant après « Annuler »).
+ * `items` (R3-024) : les items de la journée tenue par la page — les blocs en sont tirés, si bien que cocher, reporter,
+ * supprimer ou changer l'heure depuis la fiche se voit à l'instant ; l'agenda n'est plus lu que pour les rendez-vous
+ * et « Toute la journée ». Sans `items`, les blocs de l'agenda lu. `glisse` : la ligne en train d'être glissée (nulle
+ * sinon) ; `onPlacee(item, data)` / `onRetiree(item)` : la page met sa liste à jour (heure sur la ligne ; ligne rendue
+ * comme avant après « Annuler »).
  */
-export default function ColonneBureau({ jour, maintenant = '', glisse = null, onPlacee, onRetiree }) {
+export default function ColonneBureau({ jour, maintenant = '', items = null, glisse = null, onPlacee, onRetiree }) {
   const [agenda, setAgenda] = useState(null)
   const [echec, setEchec] = useState(false)
   const [erreur, setErreur] = useState('')
+  // les placements en vol (la page n'a pas encore l'heure) : le bloc est là tout de suite, retiré sur refus
+  const [enVol, setEnVol] = useState({})
 
   const charger = useCallback(() => lireAgenda({ du: jour, au: jour })
     .then((reponse) => {
@@ -88,31 +103,44 @@ export default function ColonneBureau({ jour, maintenant = '', glisse = null, on
 
   useEffect(() => { charger() }, [charger])
 
+  const suitLaPage = Array.isArray(items)
+  const affiche = useMemo(() => {
+    if (!agenda && !suitLaPage) return null
+    const base = agenda ?? JOUR_VIDE(jour)
+    const blocs = suitLaPage ? blocsDuJour(items, jour) : (base.blocs ?? [])
+    const poses = Object.values(enVol)
+    return poses.length === 0 ? { ...base, blocs } : poses.reduce((j, { item, heure }) => avecPose(j, item, heure), { ...base, blocs })
+  }, [agenda, suitLaPage, items, jour, enVol])
+
+  const finVol = (id) => setEnVol((v) => Object.fromEntries(Object.entries(v).filter(([k]) => Number(k) !== id)))
+
   /** Pose `item` à `heure` : le bloc apparaît tout de suite ; le serveur confirme, ou l'agenda revient comme avant. */
   const placer = async (item, heure) => {
     const avant = agenda
     setErreur('')
-    setAgenda((a) => avecPose(a ?? JOUR_VIDE(jour), item, heure))
+    setEnVol((v) => ({ ...v, [item.id]: { item, heure } }))
     const corps = { jour_prevu: jour, heure_debut: heure, moment: '', quelque_jour: false }
     if (item.lock_version != null) corps.lock_version = item.lock_version
     let reponse
     try {
       reponse = await planifierTache(item.id, corps)
     } catch (err) {
-      setAgenda(avant)
+      finVol(item.id)
       if (classerErreur(err).code === 'conflit_version') annoncer(PHRASE_CHANGEE)
       else setErreur(frenchError(err, "La tâche n'a pas pu être placée."))
       return
     }
     const { data } = reponse
-    setAgenda((a) => reconcilie(a, data?.tache))
+    // la page prend l'heure (sa ligne, donc le bloc) ; sans page, l'agenda lu la garde
+    if (!suitLaPage) setAgenda((a) => reconcilie(avecPose(a ?? JOUR_VIDE(jour), item, heure), data?.tache))
+    finVol(item.id)
     onPlacee?.(item, data, heure)
     proposerAnnuler({
       message: `Placée à ${heure}`,
       onAnnuler: async () => {
         // « Annuler » change la version de la tâche côté serveur : la ligne rendue garde celle que le serveur rend
         const retour = data?.geste_id ? await annulerEtRecaler(data.geste_id, [item.id]) : null
-        setAgenda(avant)
+        if (!suitLaPage) setAgenda(avant)
         onRetiree?.({ ...item, lock_version: versionDe(retour, item.id, item.lock_version) })
       },
     })
@@ -124,15 +152,22 @@ export default function ColonneBureau({ jour, maintenant = '', glisse = null, on
   return (
     <aside className="tch-bureau-agenda bureau-seul" aria-label="Agenda du jour">
       <div className="agenda-tete"><b>Agenda</b><span className="chiffres">{jourNomme(jour, jour)}</span></div>
-      {echec ? <BandeauPasAJour derniere={String(maintenant).slice(11, 16)} onReessayer={charger} /> : null}
-      {agenda ? (
+      {/* R3-024 — en échec, le dire et offrir de réessayer, jamais l'invite à glisser (un agenda qu'on n'a pas lu) */}
+      {echec && !agenda ? (
+        <p className="agenda-echec" role="status">
+          <span>L&apos;agenda n&apos;a pas pu être lu</span>
+          <button type="button" className="bouton lien" onClick={charger}>Réessayer</button>
+        </p>
+      ) : null}
+      {echec && agenda ? <BandeauPasAJour derniere={String(maintenant).slice(11, 16)} onReessayer={charger} /> : null}
+      {affiche ? (
         <>
-          <BandeJournee jour={agenda} />
-          <GrilleAgenda jours={[agenda]} aujourdhui={jour} maintenant={horloge} placement={placement} />
+          <BandeJournee jour={affiche} />
+          <GrilleAgenda jours={[affiche]} aujourdhui={jour} maintenant={horloge} placement={placement} />
         </>
       ) : null}
       {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
-      <p className="agenda-libre">{PHRASE_AIDE}</p>
+      {echec && !agenda ? null : <p className="agenda-libre">{PHRASE_AIDE}</p>}
     </aside>
   )
 }

@@ -11,7 +11,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.taches.services.donnees import EffacementOccupe, exporter, tout_effacer
-from apps.taches.views.base import ERREUR_CODE, PERMISSIONS, corps, forme_echantillon, reponses
+from apps.taches.serializers.corps import parmi
+from apps.taches.views.base import ERREUR_CODE, PARSEURS, PERMISSIONS, forme_echantillon, reponses
 from apps.taches.views.presence import HorsAssistant
 
 CONFIRMATION = 'EFFACER'
@@ -30,6 +31,7 @@ class MesDonneesVue(APIView):
     """GET mes-donnees/ — export JSON des modèles de l'app ; jamais servi au relais de l'assistant."""
 
     permission_classes = [*PERMISSIONS, ExportHorsAssistant]
+    parser_classes = PARSEURS
 
     @extend_schema(responses=reponses(forme_echantillon('mes_donnees')))
     def get(self, request):
@@ -48,12 +50,16 @@ class ToutEffacerVue(APIView):
     """POST tout-effacer/ — `{"confirmation":"EFFACER"}`, suppression DURE ; jamais par l'assistant."""
 
     permission_classes = [*PERMISSIONS, EffacementHorsAssistant]
+    parser_classes = PARSEURS
 
-    @extend_schema(request=corps('ToutEffacer', {'confirmation': 'EFFACER'}, requis=('confirmation',)),
+    @extend_schema(request={'application/json': {
+        'type': 'object', 'required': ['confirmation'],
+        'properties': {'confirmation': {'type': 'string', **parmi(CONFIRMATION)}}}},
                    responses=reponses(forme_echantillon('tout_effacer'), erreurs=(400,), conflit=ERREUR_CODE))
     def post(self, request):
         donnees = request.data if isinstance(request.data, Mapping) else {}
-        if str(donnees.get('confirmation') or '').strip() != CONFIRMATION:
+        # Le mot EXACT (l'écran le compare tel quel) : ce que le schéma publie, rien de plus (api-fuzz r2).
+        if donnees.get('confirmation') != CONFIRMATION:
             raise serializers.ValidationError({'confirmation': [MESSAGE_CONFIRMATION]})
         try:
             return Response(tout_effacer(request.user))
