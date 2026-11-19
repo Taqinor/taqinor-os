@@ -48,6 +48,14 @@ function focusInitial(racine) {
 /** Ce qui garde son focus même hors d'une feuille modale : menus et listes (portails Radix), autres dialogues, toast. */
 const HORS_PIEGE = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], .toast-place'
 
+/** R2-049 — le dernier geste était-il au clavier ? (lu à l'ouverture d'une feuille) Au doigt ou à la souris, le focus
+ *  rendu à la fermeture ne dessine pas d'anneau épais sur le bouton touché (« ⋯ » après Alléger). */
+let derniereModalite = 'pointeur'
+if (typeof document !== 'undefined') {
+  document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
+  document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
+}
+
 /** R2-050 — seuil du panneau à droite (bureau large) : en dessous, la variante `panneau` reste un dialogue/feuille. */
 const REQUETE_PANNEAU = '(min-width: 1024px)'
 
@@ -177,10 +185,13 @@ export default function FeuilleACrans({
     // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
     laisserFocus.current = enPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
     if (!laisserFocus.current) focusInitial(racine)
+    const parClavier = derniereModalite === 'clavier'
     return () => {
       const ici = document.activeElement
       const libre = !ici || ici === document.body || racine?.contains(ici) || !ici.isConnected
-      if (!enPanneau.current || libre) origine.current?.focus?.()
+      if (enPanneau.current && !libre) return
+      if (parClavier) origine.current?.focus?.()
+      else origine.current?.focus?.({ focusVisible: false })
     }
   }, [ouverte])
 
@@ -197,7 +208,7 @@ export default function FeuilleACrans({
     const surFocus = (e) => {
       const cible = e.target
       if (laisserFocus.current || (enPanneau.current && geste)) return
-      if (!racine || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return
+      if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
       if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
       origine.current = cible
       focusInitial(racine)

@@ -241,6 +241,33 @@ describe('TCH45 — FeuilleACrans', () => {
     vi.unstubAllGlobals()
   })
 
+  it('R2-049 — ouverte au doigt, la feuille rend le focus SANS anneau ; ouverte au clavier, avec', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte={ouverte} titre="Alléger ma journée" onFermer={() => {}}><button type="button">Garder</button></FeuilleACrans>
+      </div>
+    )
+    const { rerender } = render(page(false))
+    const ouvreur = screen.getByRole('button', { name: "Plus d'actions" })
+    ouvreur.focus()
+    fireEvent.pointerDown(ouvreur)
+    rerender(page(true))
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    rerender(page(false))
+    expect(ouvreur).toHaveFocus()
+    expect(focus.mock.contexts.at(-1)).toBe(ouvreur)
+    expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
+    focus.mockClear()
+    ouvreur.focus()
+    fireEvent.keyDown(ouvreur, { key: 'Enter' })
+    rerender(page(true))
+    rerender(page(false))
+    expect(focus.mock.contexts.at(-1)).toBe(ouvreur)
+    expect(focus.mock.calls.at(-1)).toEqual([])
+    focus.mockRestore()
+  })
+
   it('R2-043 — Échap ferme même quand le focus est DERRIÈRE la feuille ; seule la plus haute se ferme', async () => {
     const dessous = vi.fn()
     const dessus = vi.fn()
