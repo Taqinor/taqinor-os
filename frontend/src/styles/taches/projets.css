@@ -185,6 +185,14 @@
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
 .tch .ep-revue-boutons { flex-wrap: wrap; }
 .tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
+/* R2-068 — une intention en tête, décision en segmenté + « Suivant → », résumé de la revue */
+.tch .ep-intention { margin: 8px var(--tch-gouttiere) 0; }
+.tch .ep-carte-revue .ep-decision { margin: 0; }
+.tch .ep-carte-revue .ep-revue-boutons { justify-content: space-between; align-items: center; }
+.tch .ep-resume-revue { list-style: none; margin: 8px var(--tch-gouttiere) 0; padding: 0; }
+.tch .ep-resume-revue li { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.tch .ep-resume-revue .nom { flex: 1; min-width: 0; font-size: 1rem; font-weight: 600; }
+.tch .ep-resume-revue .decision { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 /* Passe visuelle n° 45 — la carte de revue-semaine.html (`.ep-carte-projet`) : fond de page cerné d'un filet, nom en
    1.0625rem (plus le titre de page), méta séparée par « · », « Projet de la semaine » à l'étoile */
 .tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }

@@ -490,7 +490,7 @@ etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
     const carte = p.locator('section.ep-carte-revue')
     await expect(carte).toBeVisible()
     const nom = await carte.getAttribute('aria-label')
-    await carte.getByRole('button', { name: 'Garder', exact: true }).click()
+    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // R2-068 : « Garder » est d'office coché
     await expect(p.locator('.tch .annonce')).toContainText(`« ${nom} » : décision enregistrée`)
   }
   // Oracle : fin → Planifier ma semaine

@@ -20,7 +20,6 @@ import { aujourdhuiIso } from '../../features/taches/lib/textes'
 
 const SEMAINE_COURTE = 'Semaine courte, on reprend lundi.'
 export const ROUTE_PLANIFIER_SEMAINE = '/taches/agenda?vue=semaine&placer=1'
-const DECISIONS = [['garder', 'Garder'], ['pause', 'Pause'], ['terminer', 'Terminer'], ['passe', 'Suivant']]
 
 function ChoixAction({ projetId, valeur, onChoisir }) {
   const [taches, setTaches] = useState(null)
@@ -48,17 +47,21 @@ function ChoixAction({ projetId, valeur, onChoisir }) {
   )
 }
 
-function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, occupe, erreurs }) {
+const CHOIX = [['garder', 'Garder'], ['pause', 'Pause'], ['terminer', 'Terminer']]
+const DECISION_DITE = { garder: 'Gardé', pause: 'En pause', terminer: 'Terminé', passe: 'Passé' }
+
+function Carte({ carte, index, total, aujourdhui, intention, focusId, onFocus, onDecider, occupe, erreurs }) {
   const { projet } = carte
-  const [intention, setIntention] = useState(carte.revue?.intention ?? '')
   const [action, setAction] = useState(carte.prochaine_action)
   const [change, setChange] = useState(false)
-  const [terminer, setTerminer] = useState(false)
+  // Garder d'office ; la décision déjà écrite cette semaine (carte rouverte) est celle qui est cochée
+  const [choix, setChoix] = useState(CHOIX.some(([code]) => code === carte.revue?.decision) ? carte.revue.decision : 'garder')
+  const [issue, setIssue] = useState('')
   const { texte } = avancementDe(projet)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const faites = (carte.faites_semaine ?? []).slice(0, 3)
-  const corps = (decision, issue = null) => ({
-    intention, prochaine_action_id: action?.id ?? null, decision, focus: focusId === projet.id, issue,
+  const corps = (decision, lissue = null) => ({
+    intention, prochaine_action_id: action?.id ?? null, decision, focus: focusId === projet.id, issue: lissue,
   })
 
   return (
@@ -95,10 +98,6 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
         />
       )}
       <div className="ep-groupe">
-        <label className="ep-etiquette" htmlFor={`rv-intention-${projet.id}`}>Intention de la semaine (facultatif)</label>
-        <input id={`rv-intention-${projet.id}`} className="champ" value={intention} onChange={(e) => setIntention(e.target.value)} />
-      </div>
-      <div className="ep-groupe">
         {/* Passe visuelle n° 45 — « Projet de la semaine » : l'étoile de revue-semaine.html (`.ep-focus`), plus une case
             carrée ; la case native reste dessous (clavier, lecteur d'écran, `aria-invalid`). */}
         <label className="ep-case ep-focus">
@@ -115,30 +114,28 @@ function Carte({ carte, index, total, aujourdhui, focusId, onFocus, onDecider, o
         {erreurs.focus ? <p id="rv-focus-err" className="ep-erreur" role="alert">{erreurs.focus}</p> : null}
         {erreurs.general ? <p className="ep-erreur" role="alert">{erreurs.general}</p> : null}
       </div>
-      {terminer ? (
+      <div className="segmente ep-decision" role="radiogroup" aria-label="Décision">
+        {CHOIX.map(([code, libelle]) => (
+          <button key={code} type="button" role="radio" aria-checked={choix === code} disabled={occupe}
+            onClick={() => { setChoix(code); setIssue('') }}>{libelle}</button>
+        ))}
+      </div>
+      {choix === 'terminer' ? (
         <div className="ep-groupe">
           <div className="ep-etiquette" id="rv-issue">Atteint ou abandonné ?</div>
           <div className="puces" role="radiogroup" aria-labelledby="rv-issue">
-            <button type="button" className="puce" role="radio" aria-checked="false" disabled={occupe}
-              onClick={() => onDecider(carte, corps('terminer', 'atteint'))}>Atteint</button>
-            <button type="button" className="puce" role="radio" aria-checked="false" disabled={occupe}
-              onClick={() => onDecider(carte, corps('terminer', 'abandonne'))}>Abandonné</button>
+            <button type="button" className="puce" role="radio" aria-checked={issue === 'atteint'} disabled={occupe}
+              onClick={() => setIssue('atteint')}>Atteint</button>
+            <button type="button" className="puce" role="radio" aria-checked={issue === 'abandonne'} disabled={occupe}
+              onClick={() => setIssue('abandonne')}>Abandonné</button>
           </div>
           {erreurs.issue ? <p className="ep-erreur" role="alert">{erreurs.issue}</p> : null}
         </div>
       ) : null}
       <div className="carte-actions ep-revue-boutons">
-        {DECISIONS.map(([code, libelle]) => (
-          <button
-            key={code}
-            type="button"
-            className={`bouton ${code === 'garder' ? 'plein' : 'second'}`}
-            disabled={occupe}
-            onClick={() => (code === 'terminer' ? setTerminer(true) : onDecider(carte, corps(code)))}
-          >
-            {libelle}
-          </button>
-        ))}
+        <button type="button" className="bouton discret" disabled={occupe} onClick={() => onDecider(carte, corps('passe'))}>Passer</button>
+        <button type="button" className="bouton plein" disabled={occupe || (choix === 'terminer' && !issue)}
+          onClick={() => onDecider(carte, corps(choix, choix === 'terminer' ? issue : null))}>Suivant →</button>
       </div>
     </section>
   )
@@ -148,6 +145,10 @@ export default function Revue() {
   const navigate = useNavigate()
   const aujourdhui = useMemo(() => aujourdhuiIso(), [])
   const [revue, setRevue] = useState(null)
+  // R2-068 — où en est la revue : la décision de chaque projet cette semaine (servie, puis écrite au fil du parcours) ;
+  // la carte montrée est la première non décidée (reprise après une interruption) ; UNE intention, en tête
+  const [decisions, setDecisions] = useState({})
+  const [intention, setIntention] = useState('')
   const [index, setIndex] = useState(0)
   const [focusId, setFocusId] = useState(null)
   const [occupe, setOccupe] = useState(false)
@@ -157,8 +158,13 @@ export default function Revue() {
   const lire = useCallback(async () => {
     try {
       const { data } = await lireRevue()
+      const cartesLues = data.cartes ?? []
       setRevue(data)
       setFocusId(data.focus_projet_id ?? null)
+      setDecisions(Object.fromEntries(cartesLues.map((c) => [c.projet.id, c.revue?.decision ?? ''])))
+      setIntention(cartesLues.map((c) => c.revue?.intention).find(Boolean) ?? '')
+      const reprise = cartesLues.findIndex((c) => !c.revue?.decision)
+      setIndex(reprise < 0 ? cartesLues.length : reprise)
       setErreur('')
     } catch (err) {
       setErreur(frenchError(err, 'La revue n\'a pas pu être lue. Réessaie.'))
@@ -174,6 +180,7 @@ export default function Revue() {
     try {
       await deciderRevue(carte.projet.id, { semaine: revue.semaine, ...corps })
       annoncer(`« ${carte.projet.nom} » : décision enregistrée`)
+      setDecisions((d) => ({ ...d, [carte.projet.id]: corps.decision }))
       setIndex((i) => i + 1)
     } catch (err) {
       const champs = err?.response?.status === 400 ? err.response.data : null
@@ -197,18 +204,35 @@ export default function Revue() {
       ) : null}
       {revue && cartes.length === 0 ? <p className="ep-constat">Aucun projet actif</p> : null}
       {revue && !fini ? (
+        <div className="ep-groupe ep-intention">
+          <label className="ep-etiquette" htmlFor="rv-intention">Intention de la semaine (facultatif)</label>
+          <input id="rv-intention" className="champ" value={intention} onChange={(e) => setIntention(e.target.value)} />
+        </div>
+      ) : null}
+      {revue && !fini ? (
         <Carte
           key={cartes[index].projet.id}
           carte={cartes[index]}
           index={index}
           total={cartes.length}
           aujourdhui={aujourdhui}
+          intention={intention}
           focusId={focusId}
           onFocus={setFocusId}
           onDecider={decider}
           occupe={occupe}
           erreurs={erreurs}
         />
+      ) : null}
+      {fini && cartes.length > 0 ? (
+        <ul className="ep-resume-revue" aria-label="Résumé de la revue">
+          {cartes.map((c) => (
+            <li key={c.projet.id} data-p={c.projet.couleur}>
+              <i className="point" aria-hidden="true" /><span className="nom">{c.projet.nom}</span>
+              <span className="decision">{DECISION_DITE[decisions[c.projet.id]] ?? ''}</span>
+            </li>
+          ))}
+        </ul>
       ) : null}
       {fini ? (
         <div className="ep-revue-fin">

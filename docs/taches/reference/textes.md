@@ -268,7 +268,8 @@ Santé (`sante[].phrase`) :
 | Titre | Revue de la semaine |
 | En tête | bilan §4.6, ou « Semaine courte, on reprend lundi. » (`semaine_courte`) |
 | Carte par projet | « Faites cette semaine : {titres, 3 au plus} » · « « {titre} » attend « {titre} » » · « Prochaine action : {titre} » [Changer] (sinon champ « Prochaine action ») · santé · « Intention de la semaine (facultatif) » · case « Projet de la semaine » |
-| Boutons | Garder · Pause · Terminer · Suivant ; fin **Terminer** → « Planifier ma semaine » |
+| Intention (R2-068) | UNE seule, en tête de la revue : « Intention de la semaine (facultatif) » (la carte ne la porte plus) |
+| Boutons | segmenté « Décision » : Garder (d'office) · Pause · Terminer (« Atteint ou abandonné ? » : Suivant → éteint jusqu'au choix) ; **Suivant →** écrit la décision ; « Passer » (décision `passe`) ; la revue reprend à la première carte non décidée ; toutes décidées = résumé (« Gardé · En pause · Terminé · Passé ») + **Planifier ma semaine** |
 | Vide | « Aucun projet actif » |
 | Erreur | « Déjà « {projet} » cette semaine. » |
 
