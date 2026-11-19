@@ -247,8 +247,17 @@ def lead_resume(request, lead_id):
     (chatter ici ; devis via ``ventes.selectors`` ; visites via
     ``visites.selectors`` ; touche via ``cadence_selectors``). Aucun
     ``prix_achat``, aucune marge ; lead d'une autre société : 404."""
+    from apps.agent.registry import copilote_allume_pour
+
+    from .assistant_brief import bloc_dossier
+
     lead = _lead_en_portee_ou_404(request.user, lead_id)
-    return Response(construire_resume(request.user, lead))
+    resume = construire_resume(request.user, lead)
+    if copilote_allume_pour(request.user):
+        # Vague 2 : le dossier du lead dans chaque module (copilote éteint :
+        # le résumé reste celui d'avant).
+        resume['dossier'] = bloc_dossier(request.user, lead, resume['devis'])
+    return Response(resume)
 
 
 #: Objectifs du brouillon de suivi -> mot-clé du modèle société à reprendre

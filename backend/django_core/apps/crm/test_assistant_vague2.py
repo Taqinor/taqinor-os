@@ -153,3 +153,69 @@ class SansCalepinageTest(TestCase):
             company=self.company, lead_id=self.lead.pk, titre='Toiture')
         bloc = _api(self.admin).get(DIGEST).data['calepinages']
         self.assertEqual(bloc['sans_calepinage']['total'], 0)
+
+
+class DossierDuLeadTest(TestCase):
+    """BRF3 — ``dossier`` du résumé : copilote allumé et droit du module."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = Company.objects.create(nom='BRF3 Co', slug='brf3-co')
+        role = Role.objects.create(
+            company=self.company, nom='Commercial', permissions=['crm_voir'])
+        self.commercial = User.objects.create_user(
+            username='brf3_com', password='x', role=role, company=self.company)
+        self.admin = User.objects.create_user(
+            username='brf3_admin', password='x', company=self.company,
+            is_superuser=True)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lahlou', owner=self.admin)
+        self.url = f'/api/django/crm/leads/{self.lead.pk}/resume/'
+
+    @override_settings(ASSISTANT_COPILOTE='aucun')
+    def test_copilote_eteint_pas_de_dossier(self):
+        with mock.patch('apps.crm.assistant_brief.bloc_dossier',
+                        side_effect=AssertionError('copilote éteint')):
+            reponse = _api(self.admin).get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertNotIn('dossier', reponse.data)
+        exemple = _echantillon('assistant_lead_resume.json')['exemple']
+        self.assertEqual(set(reponse.data), set(exemple))
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_dossier_toutes_les_cles_pour_qui_lit_tous_les_modules(self):
+        reponse = _api(self.admin).get(self.url)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        modele = _echantillon('assistant_lead_resume.json')['vague2'][
+            'exemple_dossier_debut']
+        self.assertEqual(set(reponse.data['dossier']), set(modele))
+        self.assertEqual(reponse.data['dossier']['tickets'],
+                         {'ouverts': 0, 'lien': None})
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_dossier_sans_le_droit_du_module_la_cle_est_absente(self):
+        dossier = _api(self.commercial).get(self.url).data['dossier']
+        self.assertNotIn('visite', dossier)
+        self.assertNotIn('calepinage', dossier)
+        self.assertNotIn('tickets', dossier)
+        self.assertNotIn('factures', dossier)
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_dossier_visite_et_devis_accepte(self):
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+        client = Client.objects.create(company=self.company, nom='BRF3')
+        devis = Devis.objects.create(
+            company=self.company, lead=self.lead, client=client,
+            statut='accepte', reference='DEV-BRF3')
+        visite = VisiteTerrain.objects.create(
+            company=self.company, lead=self.lead, commercial=self.admin)
+        dossier = _api(self.admin).get(self.url).data['dossier']
+        self.assertEqual(dossier['visite']['id'], visite.pk)
+        self.assertEqual(dossier['devis']['id'], devis.pk)
+        self.assertEqual(dossier['factures']['devis_id'], devis.pk)
+        modele = _echantillon('assistant_lead_resume.json')['vague2'][
+            'exemple_dossier']['dossier']
+        self.assertEqual(set(dossier['factures']), set(modele['factures']))
+        self.assertEqual(set(dossier['devis']), set(modele['devis']))

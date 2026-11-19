@@ -96,3 +96,112 @@ def borner_taille(reponse, limite=LIMITE_CARACTERES):
             break
         max(listes, key=_taille).pop()
     return reponse
+
+
+# ── Dossier d'un lead (``crm.lead.resume``) ──────────────────────────────────
+
+def _bloc_visite(lead):
+    from apps.agent.ecrans import chemin
+    from apps.visites.selectors import visites_pour_lead
+
+    visites = visites_pour_lead(lead)
+    if not visites:
+        return None
+    visite = visites[0]
+    return {'id': visite['id'], 'statut': visite['statut'],
+            'date': visite['date_realisee'] or visite['date_prevue'],
+            'lien': chemin('visite', visite['id'])}
+
+
+def _bloc_calepinage(user, lead):
+    from apps.calepinage.services.assistant import (
+        calepinage_ouvert_visible, resume_compact)
+
+    ouvert, _hors_vue = calepinage_ouvert_visible(user, lead.pk)
+    if ouvert is None:
+        return None
+    resume = resume_compact(ouvert)
+    return {'id': resume['calepinage'], 'reference': resume['reference'],
+            'a_faire': resume['a_faire'], 'lien': resume['lien']}
+
+
+def _tete_de_devis(devis):
+    """Le devis le plus avancé de ``devis`` (lignes du résumé, le plus récent
+    d'abord) : un accepté d'abord, sinon le plus récent ; ``None`` sans devis."""
+    acceptes = [d for d in devis if d['statut'] == 'accepte']
+    return (acceptes or devis or [None])[0]
+
+
+def _bloc_devis(tete):
+    from apps.agent.ecrans import chemin
+
+    if tete is None:
+        return None
+    return {'id': tete['id'], 'reference': tete['reference'],
+            'statut': tete['statut'], 'lien': chemin('devis', tete['id'])}
+
+
+def _bloc_chantier(user, lead):
+    from apps.installations.selectors import chantiers_visibles
+    from apps.installations.selectors_assistant import liste_chantiers
+
+    lu = liste_chantiers(chantiers_visibles(user), user.company,
+                         lead=lead.pk, limite=1)
+    if not lu['lignes']:
+        return None
+    ligne = lu['lignes'][0]
+    return {'id': ligne['id'], 'reference': ligne['reference'],
+            'statut': ligne['statut'], 'lien': ligne['lien']}
+
+
+def _bloc_factures(user, tete):
+    """Reste à facturer / à payer de la vente du devis accepté ``tete``."""
+    from apps.ventes.selectors import get_devis_by_pk
+    from apps.ventes.selectors_assistant import vente_etat_compacte
+
+    if tete is None or tete['statut'] != 'accepte':
+        return None
+    devis = get_devis_by_pk(tete['id'])
+    if devis is None or devis.company_id != user.company_id:
+        return None
+    vente = vente_etat_compacte(devis, user)
+    return {'devis_id': devis.pk,
+            'reste_a_facturer_ttc': vente['etat']['reste_a_facturer_ttc'],
+            'reste_a_payer_ttc': vente['etat']['reste_a_payer_ttc'],
+            'a_faire': vente['a_faire'], 'lien': vente['lien']}
+
+
+def _bloc_tickets(user, lead):
+    from apps.sav.selectors_assistant import tickets_compacts
+
+    if not lead.client_id:
+        return {'ouverts': 0, 'lien': None}
+    total, lignes = tickets_compacts(user, client=lead.client_id, limite=1)
+    return {'ouverts': total, 'lien': lignes[0]['lien'] if lignes else None}
+
+
+def bloc_dossier(user, lead, devis):
+    """Le bloc ``dossier`` du résumé du lead : où il en est dans chaque module,
+    ids et états seulement. Une clé n'est présente que si ``user`` lit le
+    module ; elle vaut ``None`` quand rien n'existe pour ce lead. ``devis`` :
+    la liste ``devis`` déjà lue par le résumé (jamais relue)."""
+    from authentication.permissions import peut_lire_module
+    from core.permissions import _user_has_or_legacy
+
+    from apps.ventes.selectors_assistant import lit_les_factures
+
+    tete = _tete_de_devis(devis)
+    dossier = {}
+    if _user_has_or_legacy(user, 'visites_voir'):
+        dossier['visite'] = _bloc_visite(lead)
+    if _user_has_or_legacy(user, 'calepinage_voir'):
+        dossier['calepinage'] = _bloc_calepinage(user, lead)
+    if lit_les_factures(user):
+        dossier['devis'] = _bloc_devis(tete)
+    if peut_lire_module(user, 'installations'):
+        dossier['chantier'] = _bloc_chantier(user, lead)
+    if lit_les_factures(user):
+        dossier['factures'] = _bloc_factures(user, tete)
+    if _user_has_or_legacy(user, 'sav_voir'):
+        dossier['tickets'] = _bloc_tickets(user, lead)
+    return dossier
