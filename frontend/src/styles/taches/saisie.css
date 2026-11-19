@@ -153,6 +153,29 @@
 @media (min-width: 768px) {
   .tch .fiche .dialogue-bureau .fiche-entete-actions { top: 20px; right: 10px; }
 }
+/* R2-048 — feuille au contenu court (FeuilleACrans `cran-auto`) : sa hauteur est celle du contenu, plafonnée à 85 % */
+.tch .feuille.cran-auto { height: auto; max-height: 85vh; }
+/* R2-048 (spec-8 §2 : 260 ms d'entrée) — la feuille MONTE du bas, le voile se fond ; au bureau le dialogue glisse de
+   quelques pixels, le panneau arrive de la droite. `translate` (pas `transform`) : le dialogue centré garde son
+   `transform: translateX(-50%)`. Jamais quand la personne a demandé de réduire les animations. */
+@media (prefers-reduced-motion: no-preference) {
+  .tch .feuille { transition: translate var(--motion-slow) var(--tch-ease-entree), opacity var(--motion-slow) var(--ease-standard); }
+  .tch .voile { transition: opacity var(--motion-slow) var(--ease-standard); }
+  @starting-style {
+    .tch .feuille { translate: 0 100%; }
+    .tch .voile { opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 768px) {
+  @starting-style {
+    .tch .feuille.dialogue-bureau, .tch .feuille.popover-bureau { translate: 0 12px; opacity: 0; }
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (min-width: 1024px) {
+  @starting-style {
+    .tch .feuille.panneau-bureau { translate: 100% 0; opacity: 1; }
+  }
+}
 /* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
    fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
    lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */

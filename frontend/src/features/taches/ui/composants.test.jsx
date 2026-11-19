@@ -69,6 +69,27 @@ describe('TCH45 — FeuilleACrans', () => {
     focus.mockRestore()
   })
 
+  it('R2-048 — un contenu court : la feuille épouse son contenu (`cran-auto`, plafond 85 %) au lieu de laisser du blanc', () => {
+    const hauteurs = (feuilleH, corpsClient, corpsScroll) => {
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille') ? feuilleH : 0 })
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille-corps') ? corpsClient : 0 })
+      vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille-corps') ? corpsScroll : 0 })
+    }
+    vi.stubGlobal('innerHeight', 844)
+    // feuille à 85 % (717 px), contenu de 260 px : 717 − 600 + 260 = 377 px suffisent
+    hauteurs(717, 600, 260)
+    const { unmount } = render(<div className="tch"><FeuilleACrans ouverte titre="Alléger ma journée" cranInitial="85" onFermer={() => {}}><p>court</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog')).toHaveClass('cran-auto')
+    expect(screen.getByRole('dialog')).not.toHaveClass('cran-85')
+    unmount()
+    vi.restoreAllMocks()
+    // contenu plus haut que le cran : le cran reste (le corps défile)
+    hauteurs(422, 300, 900)
+    render(<div className="tch"><FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><p>long</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog')).toHaveClass('cran-50')
+    vi.unstubAllGlobals()
+  })
+
   it('peut s\'ouvrir directement à 85 %', () => {
     feuille({ cranInitial: '85' })
     expect(screen.getByRole('dialog')).toHaveClass('cran-85')

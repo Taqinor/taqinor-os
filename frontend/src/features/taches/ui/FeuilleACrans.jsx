@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -233,6 +233,26 @@ export default function FeuilleACrans({
     }
   }, [ouverte])
 
+  // R2-048 — contenu plus court que le cran : la feuille épouse son contenu (`cran-auto`, plafond 85 %) — plus de
+  // « 300 px de blanc sous les boutons ». Mesuré avant peinture, puis à chaque changement de taille du contenu.
+  const [court, setCourt] = useState(false)
+  useLayoutEffect(() => {
+    const racine = feuille.current
+    const corps = racine?.querySelector('.feuille-corps')
+    if (!ouverte || clavier || panneau || !corps) return undefined
+    const mesurer = () => {
+      const naturel = racine.offsetHeight - corps.clientHeight + corps.scrollHeight
+      const cible = window.innerHeight * (cran === '85' ? 0.85 : 0.5)
+      setCourt(naturel > 0 && naturel < cible)
+    }
+    mesurer()
+    if (typeof ResizeObserver !== 'function') return undefined
+    const observateur = new ResizeObserver(mesurer)
+    observateur.observe(corps)
+    ;[...corps.children].forEach((enfant) => observateur.observe(enfant))
+    return () => observateur.disconnect()
+  }, [ouverte, clavier, panneau, cran])
+
   if (!ouverte) return null
 
   const surTouche = (e) => {
@@ -247,7 +267,7 @@ export default function FeuilleACrans({
 
   // la variante `panneau` sous 1024 px garde l'allure du dialogue (tablette) et de la feuille du bas (iPhone)
   const bureau = variante === 'panneau' ? (panneau ? 'panneau' : 'dialogue') : variante
-  const classes = ['feuille', clavier ? 'sur-clavier' : `cran-${cran}`, `${bureau}-bureau`]
+  const classes = ['feuille', clavier ? 'sur-clavier' : court ? 'cran-auto' : `cran-${cran}`, `${bureau}-bureau`]
   const style = clavier ? { '--tch-clavier-h': `${clavier}px` } : undefined
   const grand = cran === '85'
 
