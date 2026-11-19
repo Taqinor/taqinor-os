@@ -186,8 +186,31 @@ ANNULER = AgentAction(
     objets={'id': 'visite'},
 )
 
+VALIDER = AgentAction(
+    key='visites.visite.valider',
+    label="Valider la visite : feu vert au calepinage, la visite est figée et son assigné est prévenu",
+    description=(
+        "Sert à : donner le feu vert du bureau d'études à une visite TERMINÉE et complète, après "
+        "confirmation : la visite passe « validée » (figée), le récapitulatif des mesures est écrit sur la "
+        "fiche du lead, le calepinage peut démarrer et la personne qui l'a faite est prévenue. "
+        "Ne pas utiliser pour : renvoyer la visite au terrain (écran de revue), une visite non terminée ou "
+        "incomplète (409 qui liste ce qui manque). Lis visites.visite.resume dans le même tour avant de "
+        "proposer, et dis-le à l'utilisateur si c'est lui qui a fait la visite (l'aperçu nomme la personne "
+        "qui l'a faite). "
+        "Exemple : « Valide la visite de Benali ». "
+        "Résultat : l'agrégat complet de la visite (statut « validée ») ; 409 avec la liste des manquants "
+        "ou le statut qui l'interdit."),
+    endpoint=PREFIXE + '{id}/valider/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {'id': _ID_VISITE}, 'required': ['id']},
+    required_permission='visites_valider',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    objets={'id': 'visite'},
+)
+
 #: Les actions de ce module, dans l'ordre d'enregistrement.
-ACTIONS = (AGENDA, RESUME, CHARGE, REPLANIFIER, ANNULER)
+ACTIONS = (AGENDA, RESUME, CHARGE, REPLANIFIER, ANNULER, VALIDER)
 
 
 def register_actions() -> None:

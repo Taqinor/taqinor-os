@@ -1194,6 +1194,68 @@ class AnnulerAssistantTests(VisiteDateeMixin, VisiteTerrainBase):
         self.assertEqual(self._annuler(visite, api=self.api).status_code, 200)
 
 
+class ValiderAssistantTests(VisiteTerrainBase):
+    """Copilote vague 2 (VIS8) — ``visites.visite.valider`` est le POST EXISTANT
+    du feu vert (``visites_valider``), sans règle serveur neuve : l'aperçu NOMME
+    la visite, son statut et QUI l'a faite — c'est ce que voit celui qui valide,
+    y compris quand il valide la visite dont il est l'assigné."""
+
+    def _terminee(self, api, assigne=None):
+        self.api = api
+        visite_id = self.creer_visite()
+        if assigne is not None:
+            VisiteTerrain.objects.filter(pk=visite_id).update(commercial=assigne)
+        self.remplir(visite_id)
+        resp = api.post(f'/api/django/visites/visites/{visite_id}/terminer/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return visite_id
+
+    def test_l_apercu_nomme_la_visite_son_statut_et_son_assigne(self):
+        from apps.agent.libelles import libelles_objets
+        self.commercial.first_name, self.commercial.last_name = 'Youssef', 'Alami'
+        self.commercial.save(update_fields=['first_name', 'last_name'])
+        visite_id = self._terminee(auth(self.commercial))
+        libelle = libelles_objets(self.bureau, {'visite': visite_id})['visite']
+        self.assertIn('Karim Bennani (Bouskoura)', libelle)
+        self.assertIn('Youssef Alami (terminée)', libelle)
+
+    def test_le_feu_vert_donne_une_visite_figee(self):
+        visite_id = self._terminee(auth(self.commercial))
+        resp = auth(self.bureau).post(
+            f'/api/django/visites/visites/{visite_id}/valider/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['statut'], resp.data['modifiable']), ('validee', False))
+        visite = VisiteTerrain.objects.get(pk=visite_id)
+        self.assertEqual((visite.validee_par_id, visite.statut), (self.bureau.id, 'validee'))
+        # La fiche relue par l'assistant le dit : validée, plus rien à faire.
+        fiche = auth(self.bureau).get(f'/api/django/visites/visites/{visite_id}/resume/')
+        self.assertEqual((fiche.data['a_faire'], fiche.data['jalons']['validee_le'] is not None),
+                         ('rien', True))
+
+    def test_valider_sa_propre_visite_reste_permis_le_serveur_est_inchange(self):
+        """Aucune règle serveur neuve : le garde-fou est l'aperçu, qui montre
+        l'assigné (ici, celui qui valide)."""
+        visite_id = self._terminee(auth(self.bureau))
+        self.assertEqual(VisiteTerrain.objects.get(pk=visite_id).commercial_id, self.bureau.id)
+        resp = auth(self.bureau).post(
+            f'/api/django/visites/visites/{visite_id}/valider/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_une_visite_non_terminee_ou_incomplete_est_refusee_avec_son_motif(self):
+        visite_id = self.creer_visite()
+        resp = auth(self.bureau).post(
+            f'/api/django/visites/visites/{visite_id}/valider/', {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('statut', resp.data['erreurs'])
+        visite_id = self._terminee(auth(self.commercial))
+        VisiteMedia.objects.filter(visite_id=visite_id).first().delete()
+        resp = auth(self.bureau).post(
+            f'/api/django/visites/visites/{visite_id}/valider/', {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertTrue(resp.data['manquants'])
+        self.assertEqual(VisiteTerrain.objects.get(pk=visite_id).statut, 'terminee')
+
+
 class ActionsAssistantVisitesTests(SimpleTestCase):
     """Copilote vague 2 (VIS3-VIS8) — le catalogue ``visites.*`` de l'assistant :
     déclaré par le manifeste, dans le lot ``copilote``, la permission du
@@ -1254,6 +1316,7 @@ class ActionsAssistantVisitesTests(SimpleTestCase):
         'visites.visite.replanifier': (
             'outward', 'partial_update', {'id': 'visite', 'commercial': 'utilisateur'}),
         'visites.visite.annuler': ('irreversible', 'annuler', {'id': 'visite'}),
+        'visites.visite.valider': ('outward', 'valider', {'id': 'visite'}),
     }
 
     def test_les_ecritures_sont_confirmees_et_leur_apercu_nomme_la_visite(self):
@@ -1282,7 +1345,10 @@ class ActionsAssistantVisitesTests(SimpleTestCase):
     def test_chaque_role_ne_recoit_que_ce_qu_il_peut_executer(self):
         from apps.agent.registry import for_user
         terrain = {a.key for a in for_user(self._compte(TERRAIN)) if a.key.startswith('visites.')}
-        self.assertTrue(set(self.LECTURES) | set(self.ECRITURES) <= terrain, terrain)
+        # Le feu vert est le geste du bureau d'études : un terrain ne le reçoit pas.
+        self.assertEqual(terrain, (set(self.LECTURES) | set(self.ECRITURES)) - {'visites.visite.valider'})
+        bureau = {a.key for a in for_user(self._compte(BUREAU)) if a.key.startswith('visites.')}
+        self.assertEqual(bureau, set(self.LECTURES) | set(self.ECRITURES))
         sans_droit = {a.key for a in for_user(self._compte(['crm_voir']))
                       if a.key.startswith('visites.')}
         self.assertEqual(sans_droit, set())
