@@ -25,7 +25,7 @@ from ..ci import couverture as ci_couverture
 from ..ci import options_cote
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none as _num
-from ..montants import decimale
+from ..montants import decimale, regles_avant_2710
 
 #: Libellés propres à cette page (fr / en / ar), comme
 #: ``ci.blocs.LIBELLES_OPTION_AVEC``.
@@ -83,10 +83,11 @@ def options(d, argent):
     """``[sans, avec]`` — chaque option avec son argent, son flux principal
     et ses indicateurs — ou ``None`` : document à une option, économies
     masquées, option batterie sans flux 25 ans, ou bases / horizons
-    différents (une courbe et un tableau communs n'auraient pas de sens)."""
+    différents (une courbe et un tableau communs n'auraient pas de sens),
+    devis envoyé sous les règles d'avant le 27/10 (il garde sa page)."""
     from . import finance as F
     if not options_cote.deux_options(d, "ind") \
-            or d.get("ind_masquer_economies"):
+            or d.get("ind_masquer_economies") or regles_avant_2710():
         return None
     sorties = []
     for cle, bloc in (("sans", argent), ("avec", _argent_avec(d))):
@@ -142,22 +143,25 @@ def _retour(d, o):
 
 def _investissement(d, o, fmt_mad, L):
     """CIQ315 — ``(titre, montant, précision)`` de l'investissement de
-    l'option sur la base SERVIE (les mots du pied de la page à une option)."""
+    l'option sur la base SERVIE (les mots du pied de la page à une option),
+    ou ``None`` quand le montant n'est pas servi (jamais « 0 MAD »)."""
     if o["cle"] == "sans":
-        ht = (d.get("totaux_all") or {}).get("ht_net")
-        ttc = d.get("_invest_ttc") or 0
+        ht = _num((d.get("totaux_all") or {}).get("ht_net"))
+        ttc = _num(d.get("_invest_ttc"))
     else:
         option, _valeur = _valeur_avec(d)
         totaux = (option.get("totaux")
                   if isinstance(option.get("totaux"), dict)
                   else (d.get("totaux_avec") or {}))
-        ht, ttc = _num(totaux.get("ht_net")), _num(totaux.get("ttc")) or 0
+        ht, ttc = _num(totaux.get("ht_net")), _num(totaux.get("ttc"))
     base = o["argent"].get("base")
     synthese = d.get("ind_synthese")
-    if base == "ht" and ht is not None:
+    if base == "ht" and ht:
         return (ci_couverture.titre_investissement(d, synthese, "ht"),
                 f"{fmt_mad(ht)}&#160;MAD", "")
-    if base == "deux" and ht is not None:
+    if not ttc:
+        return None
+    if base == "deux" and ht:
         return (ci_couverture.titre_investissement(d, synthese, "deux"),
                 f"{fmt_mad(ttc)}&#160;MAD&#160;{L('ci_ttc', 'TTC')}",
                 f"{L('ci_soit', 'soit')} {fmt_mad(ht)}&#160;MAD&#160;"
@@ -185,12 +189,12 @@ def _titre_option(d, o, L):
 
 def _bas_de_carte(d, o, systeme, fmt_mad, L):
     """Sous les chiffres : l'investissement (titre et système à gauche,
-    montants à droite)."""
-    titre, montant, precision = _investissement(d, o, fmt_mad, L)
+    montants à droite) ; sans montant servi, le système seul."""
+    titre, montant, precision = _investissement(d, o, fmt_mad, L) or ("", "", "")
+    droite = (f'<td class="i2d-im"><b>{montant}</b>'
+              f'<div class="i2d-sys">{precision}</div></td>') if montant else ""
     return (f'<table class="i2d-inv"><tr><td>{titre}'
-            f'<div class="i2d-sys">{systeme}</div></td>'
-            f'<td class="i2d-im"><b>{montant}</b>'
-            f'<div class="i2d-sys">{precision}</div></td></tr></table>')
+            f'<div class="i2d-sys">{systeme}</div></td>{droite}</tr></table>')
 
 
 def _petit_kpi(valeur, unite, libelle, fig=""):
@@ -299,7 +303,7 @@ def _axes(x, y, bornes, fmt, teintes, hauteur):
     return formes
 
 
-def _etiquettes_fin(d, opts, x, y, bornes, fmt, noms, encre):
+def _etiquettes_fin(d, opts, x, y, bornes, fmt, noms, encre, hauteur):
     """À droite de chaque ligne : le nom de l'option et son cumul net de la
     dernière année (servi). Deux étiquettes trop proches sont écartées."""
     a_max = bornes[0]
@@ -312,8 +316,11 @@ def _etiquettes_fin(d, opts, x, y, bornes, fmt, noms, encre):
     mots = _mots_dans_le_dessin(d)
     # Le nom se pose au-dessus du montant : jamais hors du haut du dessin.
     remontee = (14 if mots else 6) - min(fins)
+    descente = max(fins) + (16 if mots else 7) - hauteur
     if remontee > 0:
         fins = [fin + remontee for fin in fins]
+    elif descente > 0:
+        fins = [fin - descente for fin in fins]
     formes = []
     gauche = x(a_max) + 10
     for o, fin in zip(opts, fins):
@@ -368,7 +375,8 @@ def _svg_cumul(d, opts, fmt, police, teintes, noms, hauteur):
             'stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>')
     encre = teintes[3]
     formes += _points_retour(d, opts, x, y, encre)
-    formes += _etiquettes_fin(d, opts, x, y, bornes, fmt, noms, encre)
+    formes += _etiquettes_fin(d, opts, x, y, bornes, fmt, noms, encre,
+                              hauteur)
     largeur_mm = 182
     return (f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'viewBox="0 0 {LARGEUR} {hauteur}" style="width:{largeur_mm}mm;'
@@ -396,9 +404,11 @@ def _courbe(d, opts, fmt, L, police, teintes, noms, base_txt):
     """Le bloc de la courbe, cédable par paliers (``commercial.equip``) :
     pleine hauteur ; la page déborde (``courbe_cumul`` cédé) ⇒ la courbe
     COMPACTE, sans sa note ; elle déborde encore (``courbe_compacte`` cédé
-    avec les autres blocs) ⇒ rien — le tableau porte déjà le cumul."""
+    avec les autres blocs, ou les bases cédées d'un coup avec la courbe —
+    troncature des conditions) ⇒ rien : le tableau porte déjà le cumul."""
     from ..ci.graphiques import cede
-    if cede(d, "courbe_compacte"):
+    if cede(d, "courbe_compacte") or (
+            cede(d, "courbe_cumul") and cede(d, "hypotheses")):
         return ""
     if cede(d, "courbe_cumul"):
         return ('<div data-graphique="courbe_compacte">' + _svg_cumul(
@@ -483,38 +493,52 @@ def _tableau(opts, fmt_mad, L, noms, base_txt):
             f'{rangees}</table>')
 
 
-def _rangees_indicateurs(d, opts, fmt_mad, L, base_txt):
-    """``[(libellé, [valeur sans, valeur avec])]`` : coût du kWh produit,
-    prix moyen du kWh évité, VAN sur le taux déclaré — tels que servis."""
+def _rangee_lcoe(opts, L, base_txt):
+    """Le coût du kWh produit de chaque option (ancré), ou ``None``."""
     from . import finance as F
     from .cover import _taux_declare
     lcoes = [_num(o["indicateurs"].get("lcoe_mad_kwh")) for o in opts]
-    rangees = []
-    if all(v is not None for v in lcoes):
-        actualise = all(o["indicateurs"].get("lcoe_actualise")
-                        or _taux_declare(o["argent"]) is not None for o in opts)
-        libelle = (L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
-                     base=base_txt) if actualise else
-                   L("ci_ind_lcoe_non_actualise",
-                     "Coût moyen non actualisé du kWh produit ({base})",
-                     base=base_txt))
-        rangees.append((libelle, [
-            f"<b>{F._decimal_3(v)}&#160;MAD/kWh</b>" + ancre(
-                "lcoe_mad_kwh", F._decimal_3(v),
-                option=None if o["cle"] == "sans" else "avec")
-            for v, o in zip(lcoes, opts)]))
+    if all(v is None for v in lcoes):
+        return None
+    actualise = all(o["indicateurs"].get("lcoe_actualise")
+                    or _taux_declare(o["argent"]) is not None
+                    for o, v in zip(opts, lcoes) if v is not None)
+    libelle = (L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
+                 base=base_txt) if actualise else
+               L("ci_ind_lcoe_non_actualise",
+                 "Coût moyen non actualisé du kWh produit ({base})",
+                 base=base_txt))
+    return libelle, [
+        "—" if v is None else
+        f"<b>{F._decimal_3(v)}&#160;MAD/kWh</b>" + ancre(
+            "lcoe_mad_kwh", F._decimal_3(v),
+            option=None if o["cle"] == "sans" else "avec")
+        for v, o in zip(lcoes, opts)]
+
+
+def _rangees_indicateurs(d, opts, fmt_mad, L, base_txt):
+    """``[(libellé, [valeur sans, valeur avec])]`` : coût du kWh produit,
+    prix moyen du kWh évité, VAN sur le taux déclaré — tels que servis ; une
+    valeur qu'une option ne sert pas est un tiret, jamais une rangée perdue
+    pour l'autre."""
+    from . import finance as F
+    from .cover import _taux_declare
+    rangees = [r for r in (_rangee_lcoe(opts, L, base_txt),) if r]
     tarifs = [_num(o["indicateurs"].get("tarif_kwh_evite_moyen")) for o in opts]
-    if all(v is not None for v in tarifs):
+    if any(v is not None for v in tarifs):
         rangees.append((f'{_t(d, "kwh_evite")} ({base_txt})', [
-            f"{F._decimal_3(v)}&#160;MAD/kWh" for v in tarifs]))
-    vans = [_num(o["indicateurs"].get("van_mad")) for o in opts]
+            "—" if v is None else f"{F._decimal_3(v)}&#160;MAD/kWh"
+            for v in tarifs]))
     taux = [_taux_declare(o["argent"]) for o in opts]
-    if all(v is not None for v in vans) and taux[0] is not None \
-            and taux[0] == taux[1]:
+    vans = [_num(o["indicateurs"].get("van_mad")) if t is not None else None
+            for o, t in zip(opts, taux)]
+    declares = {t for t, v in zip(taux, vans) if v is not None}
+    if len(declares) == 1:
         rangees.append((
             L("ci_ind_van", "VAN au taux déclaré de {taux} %",
-              taux=F._decimal_txt(taux[0])),
-            [f"<b>{fmt_mad(v)}&#160;MAD</b>" for v in vans]))
+              taux=F._decimal_txt(declares.pop())),
+            ["—" if v is None else f"<b>{fmt_mad(v)}&#160;MAD</b>"
+             for v in vans]))
     return rangees
 
 
@@ -561,22 +585,35 @@ def _libelle_base(ligne):
     return ligne.split("&#160;:", 1)[0]
 
 
+def _lignes_bases(d, o, fmt, fmt_mad, L):
+    """``(hypothèses générales, remplacements)`` d'une option — les lignes de
+    ``finance._hypotheses`` ; les remplacements sont celles qui disparaissent
+    quand on retire ``argent.remplacements``."""
+    from . import finance as F
+    flux = F.flux_principal(o["argent"])[1]
+    toutes = F._hypotheses(o["argent"], flux, fmt, fmt_mad, L, d)
+    generales = F._hypotheses(dict(o["argent"], remplacements=[]), flux,
+                              fmt, fmt_mad, L, d)
+    return generales, [li for li in toutes if li not in generales]
+
+
 def _bases(d, opts, fmt, fmt_mad, L, noms):
-    """« Bases du calcul » : les hypothèses communes UNE fois, puis celles
-    qui diffèrent (même libellé, autre valeur — ou propres à l'option
-    batterie) sous le nom de leur option. Aucune n'est écrite ici : ce sont
-    les lignes de ``finance._hypotheses`` de chaque option."""
+    """« Bases du calcul » : les hypothèses communes UNE fois ; sous le nom
+    de chaque option, ses remplacements (toujours : l'onduleur et son année
+    diffèrent) et ses hypothèses de valeur différente. Une hypothèse que
+    seule l'offre réseau sert (tarif, valorisation : faits du document) est
+    commune. Aucune ligne n'est écrite ici."""
     from ..ci.graphiques import cede
     from . import finance as F
     if cede(d, "hypotheses"):
         return ""
-    sans, avec = (F._hypotheses(o["argent"], F.flux_principal(o["argent"])[1],
-                                fmt, fmt_mad, L, d) for o in opts)
+    (sans, rempl_sans), (avec, rempl_avec) = (
+        _lignes_bases(d, o, fmt, fmt_mad, L) for o in opts)
     libelles_avec = {_libelle_base(li) for li in avec}
     communes = [li for li in sans
                 if li in avec or _libelle_base(li) not in libelles_avec]
-    propres = {"sans": [li for li in sans if li not in communes],
-               "avec": [li for li in avec if li not in sans]}
+    propres = {"sans": [li for li in sans if li not in communes] + rempl_sans,
+               "avec": [li for li in avec if li not in sans] + rempl_avec}
     if not communes and not any(propres.values()):
         return ""
     items = "".join(f'<div class="i2-hyp-i">{li}</div>' for li in communes)

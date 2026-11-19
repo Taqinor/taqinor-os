@@ -256,6 +256,35 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         self.assertEqual(bases.count("Horizon"), 1)
         self.assertIn("Avec batterie — ", bases)
         self.assertIn("Remplacement batterie en année 11 : 250 000,00", bases)
+        # Un remplacement n'est JAMAIS une base commune : celui de l'offre
+        # réseau (autre année que l'option batterie) est sous SON nom.
+        communes = _visible(re.search(
+            r'<div class="i2-hyp-c">.*?</div></div>', page, flags=re.S).group(0))
+        self.assertNotIn("Remplacement", communes)
+        self.assertRegex(bases, r"Sans batterie — Remplacement onduleur")
+
+    def test_un_indicateur_non_servi_d_un_cote_ne_retire_pas_l_autre(self):
+        d = self._donnees()
+        flux = d["etude"]["etude_ci"]["option_avec"]["economie_flux"]
+        flux["indicateurs"] = dict(flux["indicateurs"], lcoe_mad_kwh=None)
+        d["etude"]["etude_ci"]["option_avec"]["economie_ci"]["indicateurs"] = \
+            flux["indicateurs"]
+        page = _page_finance(d)
+        ligne = re.search(r"<tr><td>Coût[^<]*</td>.*?</tr>", page, flags=re.S)
+        self.assertIsNotNone(ligne)
+        self.assertIn('data-figure="lcoe_mad_kwh"', ligne.group(0))
+        self.assertIn("—", _visible(ligne.group(0)))
+
+    def test_investissement_non_servi_jamais_zero(self):
+        d = self._donnees()
+        d["option_batterie"]["totaux"] = {}
+        d["totaux_avec"] = {}
+        page = _page_finance(d)
+        carte = _visible(re.findall(
+            r'<td class="i2d-opt">.*?</table></div></td>', page,
+            flags=re.S)[1])
+        self.assertNotIn("0,00", carte)
+        self.assertNotIn("Investissement", carte)
 
     def test_la_courbe_cede_par_paliers(self):
         d = self._donnees()
@@ -267,6 +296,10 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         sans = _page_finance(d)
         self.assertNotIn("<polyline", sans)
         self.assertIn('class="i2-tbl i2-fx i2d-fx"', sans)   # le tableau reste
+        # Troncature des conditions (``equip.document_adaptatif``) : la courbe
+        # et les bases cèdent d'un coup — aucune courbe compacte ne revient.
+        d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
+        self.assertNotIn("<svg", _page_finance(d))
 
     def test_arabe_aucun_mot_dans_le_dessin(self):
         d = self._donnees()
@@ -275,7 +308,11 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         svg = re.search(r"<svg.*?</svg>", page, flags=re.S).group(0)
         self.assertIsNone(re.search("[\u0600-\u06FF]", svg))
         # Les noms des options passent dans la légende, sous la courbe.
-        self.assertIn("بدون بطارية", page[page.index("</svg>"):])
+        legende = re.search(r'</svg><div class="i2d-note">(.*?)</div>', page,
+                            flags=re.S)
+        self.assertIsNotNone(legende)
+        self.assertIn("بدون بطارية", legende.group(1))
+        self.assertIn("مع بطارية", legende.group(1))
 
     def test_bases_differentes_la_page_d_hier(self):
         page = _page_finance(self._donnees(base="ttc"))
