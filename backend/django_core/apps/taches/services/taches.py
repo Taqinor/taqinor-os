@@ -789,9 +789,15 @@ def _liste_a_ordonner(user, t, liste):
     étape et du même parent (`rang_projet`, puis `id` : invariant 32)."""
     ouvertes = taches_de(user).filter(statut__in=OUVERTES)
     if liste == 'jour':
-        if t.jour_prevu is None:  # « jour » d'une tâche sans jour : refus d'ÉTAT de la tâche (409, api-fuzz r2)
+        aujourdhui = timezone.localdate()
+        if aujourdhui in (t.jour_prevu, t.echeance):
+            # R3-007 : la liste d'AUJOURD'HUI est celle de la journée — `classement.gardee_aujourdhui` (jour prévu OU
+            # échéance aujourd'hui) : une ★ gardée par son échéance (prévue demain) est une voisine comme une autre
+            qs = ouvertes.filter(parent__isnull=True).filter(Q(jour_prevu=aujourdhui) | Q(echeance=aujourdhui))
+        elif t.jour_prevu is None:  # « jour » d'une tâche sans jour : refus d'ÉTAT de la tâche (409, api-fuzz r2)
             raise refus_etat({'liste': [MESSAGE_VALEUR_INCONNUE]})
-        qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
+        else:
+            qs = ouvertes.filter(parent__isnull=True, jour_prevu=t.jour_prevu)
         return qs, 'rang_jour', lambda x: (x.rang_jour is None, x.rang_jour or 0,
                                            x.heure_debut or datetime.time.max, -x.priorite, x.pk)
     qs = ouvertes.filter(projet_id=t.projet_id, section_id=t.section_id, parent_id=t.parent_id)

@@ -1054,6 +1054,22 @@ class ReordonnerTests(BaseApi):
         self.assertEqual(classes, [c.pk, a.pk, b.pk])
         self.assertEqual(_relue(c).rang_jour, 1024)
 
+    def test_la_liste_d_aujourdhui_est_celle_de_la_journee(self):
+        """R3-007 — Alt+↓ entre une tâche du jour et une ★ GARDÉE par son échéance (prévue demain, échéance aujourd'hui)
+        : les deux sont des voisines d'Aujourd'hui (`gardee_aujourdhui`), 200 — plus « Avant id : Valeur inconnue. »."""
+        from testkit.time import frozen
+        J = datetime.date(2026, 11, 17)
+        with frozen('2026-11-17 10:00:00'):
+            du_jour = fabriques.tache(self.u1, jour_prevu=J)
+            par_echeance = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1), echeance=J)
+            demain = fabriques.tache(self.u1, jour_prevu=J + datetime.timedelta(days=1))
+            reponse = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': par_echeance.pk})
+            self.assertEqual(reponse.status_code, 200, reponse.content[:300])
+            self.assertEqual([_relue(par_echeance).rang_jour, _relue(du_jour).rang_jour], [1024, 2048])
+            self.assertIsNone(_relue(demain).rang_jour)  # une tâche de demain n'est pas de la liste d'aujourd'hui
+            refus = self._reordonner(du_jour, {'liste': 'jour', 'avant_id': demain.pk})
+            self.assertEqual((refus.status_code, refus.json()['avant_id']), (400, ['Valeur inconnue.']))
+
     def test_la_liste_du_jour_demande_un_jour(self):
         tache = fabriques.tache(self.u1)
         voisin = fabriques.tache(self.u1)

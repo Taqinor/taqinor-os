@@ -2131,6 +2131,9 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
 - **Constat des projets** (`projets_liste.json` `constat`, R3-010) : `{actifs, avances_7j}` ne compte que les projets
   actifs créés il y a 7 jours ou plus (« 0 a avancé ces 7 jours » une minute après leur création était faux) ;
   aucun → `constat: null` (la phrase est omise).
+- **Réordonner dans Aujourd'hui** (R3-007) : `taches/{id}/reordonner/` `liste:"jour"` d'une tâche gardée aujourd'hui
+  (`jour_prevu` = J OU `echeance` = J) range dans la liste de la JOURNÉE — toute tâche ouverte gardée aujourd'hui est
+  une voisine permise ; les autres jours gardent la liste du même `jour_prevu`.
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
