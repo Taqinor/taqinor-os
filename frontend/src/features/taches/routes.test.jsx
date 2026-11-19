@@ -32,7 +32,7 @@ const ATTENDU = {
   '/taches/revue': 'Revue de la semaine',
   '/taches/rythme': 'Mon rythme',
   '/taches/recherche': 'Recherche',
-  '/taches/supprimees': 'Supprimées récemment',
+  '/taches/supprimees': 'Supprimées et derniers gestes',
   '/taches/reglages': 'Réglages',
   '/taches/reglages/iphone': 'Réglages',
 }

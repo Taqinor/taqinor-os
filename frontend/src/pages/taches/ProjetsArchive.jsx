@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listerProjets, listerTousLesProjets, rouvrirProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
-import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { avancementDe } from '../../features/taches/projets/LigneProjet'
 import { annoncer } from '../../features/taches/lib/gestes'
@@ -55,8 +54,7 @@ export default function ProjetsArchive() {
   const cherche = sansAccents(q.trim())
   const visibles = projets.filter((p) => !cherche || sansAccents(p.nom).includes(cherche))
   return (
-    <CoquilleTaches ecran="projets-archive" titre="Archive">
-      <BarreRetourProjets />
+    <CoquilleTaches ecran="projets-archive" titre="Archive" retour={{ libelle: 'Projets', vers: '/taches/projets' }}>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {projets.length > 0 ? (
         <div className="ep-recherche">

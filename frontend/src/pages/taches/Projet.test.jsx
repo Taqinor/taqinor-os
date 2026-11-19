@@ -597,14 +597,14 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     ])
   })
 
-  it('F2 acceptation (S5) — Déplacer… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
+  it('F2 acceptation (S5) — Changer de projet… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
     api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
       response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.type(await screen.findByRole('combobox', { name: 'Chercher un projet' }), 'Chantier')
     await user.click(await screen.findByRole('option', { name: 'Créer « Chantier »' }))
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Un projet actif porte déjà ce nom.')
@@ -612,12 +612,12 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     expect(api.traiterLot).not.toHaveBeenCalled()
   })
 
-  it('Déplacer… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
+  it('Changer de projet… vers un autre projet : la ligne part tout de suite, Annuler la remet', async () => {
     api.traiterLot.mockResolvedValue({ data: { appliquees: [20], refusees: [], geste_id: 91 } })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.click(await screen.findByRole('option', { name: 'Site web' }))
     expect(api.traiterLot).toHaveBeenCalledWith({ ids: [20], action: 'deplacer', valeurs: { projet_id: 5 } })
     await waitFor(() => expect(within(etape).queryByRole('button', { name: 'Devis Settat' })).toBeNull())
@@ -684,7 +684,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     const etape = await ouvrirMenu(user, 'Devis Settat')
-    await user.click(await screen.findByRole('menuitem', { name: 'Déplacer…' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Changer de projet…' }))
     await user.click(await screen.findByRole('option', { name: 'Site web' }))
     expect(await within(etape).findByRole('button', { name: 'Devis Settat' })).toBeInTheDocument()
   })

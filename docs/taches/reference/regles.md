@@ -529,8 +529,10 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 `views/agenda.py::taches_de_la_periode`, R2-031b) : une tâche OUVERTE (`a_faire`, `en_attente`, hors réserve) d'un projet
 `en_pause` prévue AUJOURD'HUI (`jour_prevu = J`) reste dans le jour J ; la pause continue de retirer ses tâches des autres
 jours, de Proposé, d'À trier et du tour des projets. Moitié journée (`aujourdhui/`, `selectors/journee.py::
-taches_de_la_journee`) : à la révision de ce paragraphe, le préfiltre ne garde encore que les projets `actif` (une faite du
-jour reste quel que soit l'état de son projet) — la tâche du projet en pause n'y est donc pas encore.
+taches_de_la_journee`, même règle) : le préfiltre garde une tâche ouverte d'un projet mis en pause CE jour-là ou plus tard
+(`statut_depuis` ≥ début de J) quand elle est prévue J (`jour_prevu = J`) ; une pause antérieure à J la retire (une faite
+du jour reste quel que soit l'état de son projet). La Revue sert, par carte, `prevues_aujourdhui_nb` : le nombre de ces
+tâches qu'une pause posée maintenant laisserait dans la journée.
 
 Activité ERP (`activites_ouvertes_pour`, si `erp_dans_journee`) : due J → `journee` ; due < J → `a_decider` motif
 `activite_passee`. `obligations` (`FamilleObligation` : `visite`, `pose`, `intervention`, `touches`) : chacune une fois,

@@ -54,14 +54,14 @@ export const EVENEMENT_SAISIE_FERMEE = 'taqinor:taches:saisie-fermee'
 const DESTINATIONS = [
   ['Revue de la semaine', '/taches/revue'],
   ['Mon rythme', '/taches/rythme'],
-  ['Supprimées récemment', '/taches/supprimees'],
+  ['Supprimées et derniers gestes', '/taches/supprimees'],
   ['Réglages', '/taches/reglages'],
 ]
 
 /** R2-087 — l'aide des touches de Tâches (`?`), mot pour mot textes.md §2.1 « Aide des touches ». */
 const TOUCHES = [
   ['c t', 'Créer une tâche'], ['g j', "Aujourd'hui"], ['n', 'Ajouter ici'], ['/', 'Chercher'], ['Espace', 'Fait'],
-  ['e', 'Renommer'], ['d', 'Quand'], ['m', 'Déplacer'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
+  ['e', 'Renommer'], ['d', 'Quand'], ['m', 'Changer de projet'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
   ['Alt+↑/↓', 'Réorganiser'], ['Maj+↓', '+15 min'], ['Ctrl/⌘ Z', 'Annuler (hors champ)'],
 ]
 

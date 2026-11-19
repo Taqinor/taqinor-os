@@ -185,6 +185,14 @@ describe('TCH92 — Archive', () => {
     expect(screen.getByText('Chantier Salé')).toBeInTheDocument()
   })
 
+  it('couture r2 — UN seul « ‹ Projets », celui de la coquille (plus de barre de retour dans la page)', async () => {
+    api.listerProjets.mockResolvedValue(archive())
+    monter()
+    await screen.findByText('Chantier Salé')
+    expect(screen.getAllByRole('button', { name: 'Projets' })).toHaveLength(1)
+    expect(document.querySelector('.ep-barre')).toBeNull()
+  })
+
   it('Rouvrir retire la ligne sur place ; un refus la remet et le dit', async () => {
     api.listerProjets.mockResolvedValue(archive())
     api.rouvrirProjet.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'Un projet « Chantier Salé » existe déjà.', code: 'nom_pris' } } })

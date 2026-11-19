@@ -14,7 +14,7 @@ import SelecteurQuand, { QUAND_VIDE } from './SelecteurQuand'
 
 /* ============================================================================
    Raccord F2 — LE gestionnaire des actions d'une ligne de tâche (menu ⋯ et gestes de `LigneTache`), partagé par
-   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · En réserve · Déplacer vers un
+   Aujourd'hui, Un projet, Recherche et l'Agenda : Choisir un jour · Reporter · En réserve · Changer de projet (vers un
    projet · En attente de… · Priorité · ★ · Supprimer. Chaque geste est OPTIMISTE (la ligne change au toucher),
    réconcilié par la réponse, défait par le toast « Annuler » (`gestes/{id}/annuler/`) — jamais une relecture de
    toute la liste. Un refus remet la ligne comme avant et le DIT.
@@ -319,7 +319,7 @@ export function useActionsLigne({
   const selecteurProjet = feuille?.type === 'projet' ? {
     ouverte: true,
     onFermer: fermer,
-    titre: 'Déplacer vers…',
+    titre: 'Changer de projet',
     projets: projets ?? [],
     chargement: projets === null,
     focusChamp: Boolean(feuille.clavier),

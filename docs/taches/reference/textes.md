@@ -91,7 +91,7 @@ référence données/API.
 | Onglets (`nav.items`, dernière vague) | Aujourd'hui · À trier · Projets · Agenda |
 | Pastille d'À trier | `{boite_reception}` (masquée à 0) |
 | ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
-| ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées récemment · Réglages |
+| ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées et derniers gestes (R2-125) · Réglages |
 | Loupe | Chercher dans mes tâches |
 | Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications ({n}) » (celle de l'ERP) ; au défilement, le titre de la page en compact |
 | Écran enfant (projet ouvert, sous-page de Réglages) | « ‹ {écran parent} » au-dessus du titre (« ‹ Projets », « ‹ Réglages ») ; ni loupe ni Copilote, le ⋯ reste |
@@ -133,8 +133,8 @@ référence données/API.
 | Ailleurs dans l'ERP (déplié) | une ligne par famille SERVIE et non nulle, « {famille} {n} › » : « Chantiers » · « Tickets » · « Demandes d'achat à commander » · « Leads chauds » · « Rappels » · « Devis expirant » · « Relances » · « Mentions » ; famille absente de la réponse ou à 0 : pas de ligne ; toutes à 0 : « Rien à signaler. » |
 | Modes Réorganiser · Sélectionner | bandeau « Réorganiser » / « Sélectionner » + « OK » (sortie du mode) ; lot : « Quand » · « Terminer » |
 | En faire mon accueil | toast « L'icône ouvrira Aujourd'hui » |
-| Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · En réserve · Déplacer… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
-| Feuilles de ces actions | « Déplacer vers… » (sélecteur de projet) · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
+| Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · En réserve · Changer de projet… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
+| Feuilles de ces actions | « Changer de projet » (sélecteur de projet ; R2-063 : « Déplacer » se lisait « dans le temps ») · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
 
 États :
 
@@ -353,6 +353,9 @@ filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le
 titre (casse et accents ignorés). La loupe est dans le champ.
 
 ### 2.13 Supprimées récemment et derniers gestes
+
+Titre de l'écran et entrée du menu ⋯ : « Supprimées et derniers gestes » (R2-125) ; la section des éléments supprimés garde
+son nom « Supprimées récemment ».
 
 « Supprimées récemment » — « Supprimées depuis moins de 30 jours. » — un projet = une ligne « « {projet} » et ses {n}
 tâches » · Restaurer ; une tâche = une ligne : Restaurer · {projet ou « Sans projet »} · {jour de suppression} ; vide

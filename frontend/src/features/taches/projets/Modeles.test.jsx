@@ -66,6 +66,13 @@ describe('TCH157 — la liste des modèles', () => {
     expect(api.listerTousLesModeles).toHaveBeenCalledTimes(1)
   })
 
+  it('couture r2 — UN seul « ‹ Projets », celui de la coquille (plus de barre de retour dans la page)', async () => {
+    monter()
+    await screen.findByText('Salon')
+    expect(screen.getAllByRole('button', { name: 'Projets' })).toHaveLength(1)
+    expect(document.querySelector('.ep-barre')).toBeNull()
+  })
+
   it('« Aucun modèle » quand le serveur n\'en sert aucun', async () => {
     api.listerTousLesModeles.mockResolvedValue([])
     monter()

@@ -64,14 +64,10 @@
 .tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
 
 /* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
-.tch .ep-barre { display: flex; align-items: center; min-height: 44px; padding: 0 var(--tch-gouttiere); }
-.tch .ep-retour { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px 0 0; font-size: 1.0625rem; font-weight: 500; color: var(--tch-accent); }
-.tch .ep-retour svg { width: 24px; height: 24px; stroke-width: 2; }
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
 /* Passe visuelle n° 43 — en-tête de projet-liste.html (ecrans-projets.css « En-tête d'un projet ») */
 /* R2-093 : « ‹ Projets » est celui de la coquille ; il ne reste ici que le sélecteur de vue, à droite */
 .tch .ep-barre-projet { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: var(--tch-gouttiere); }
-.tch .ep-barre-projet > .ep-barre { padding-right: 0; }
 .tch .ep-barre-projet > .ep-entre { padding: 0; }
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
 .tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
@@ -121,7 +117,7 @@
 .tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-accent); font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-ajout { padding: 4px var(--tch-gouttiere) 8px; display: flex; flex-direction: column; gap: 6px; }
 @media (hover: hover) {
-  .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
+  .tch .ep-ajouter:hover { background: var(--tch-survol); }
 }
 
 /* R2-063 — l'ordre des tâches d'une étape : une poignée dans la gouttière (au survol sur bureau ; sous « Réorganiser »

@@ -414,7 +414,7 @@ export default function LigneTache({
             ) : null}
             {!activite ? <DropdownMenuItem onSelect={action('choisir_jour')}>Choisir un jour</DropdownMenuItem> : null}
             {!activite && !item.quelque_jour ? <DropdownMenuItem onSelect={action('reserve')}>En réserve</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Déplacer…</DropdownMenuItem> : null}
+            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Changer de projet…</DropdownMenuItem> : null}
             {!activite ? (
               <DropdownMenuItem onSelect={action('essentiel')}>
                 {item.essentielle ? 'Plus essentielle' : 'Essentielle'}

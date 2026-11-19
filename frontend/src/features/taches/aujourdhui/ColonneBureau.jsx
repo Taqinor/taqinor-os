@@ -139,7 +139,7 @@ export default function ColonneBureau({ jour, maintenant = '', glisse = null, on
 
 /**
  * « Mes projets » : les projets actifs ou en pause, leur nombre de tâches ouvertes (lu du serveur), un lien chacun.
- * R2-029 — `ecarts` ({ projet_id: ±n }) : les gestes de la page depuis cette lecture (« Déplacer… », et son Annuler)
+ * R2-029 — `ecarts` ({ projet_id: ±n }) : les gestes de la page depuis cette lecture (« Changer de projet… », et son Annuler)
  * — le compte suit sans relire la liste.
  */
 export function ColonneProjets({ ecarts = {} }) {

@@ -676,7 +676,7 @@ export default function Aujourdhui() {
   useEffect(() => { donneesCourantes.current = donnees }, [donnees])
   const majLigne = useCallback((id, champs) => {
     const cle = `tache:${id}`
-    // R2-029 — une tâche ouverte change de projet (« Déplacer… », ou son Annuler) : « Mes projets » (bureau) suit
+    // R2-029 — une tâche ouverte change de projet (« Changer de projet… », ou son Annuler) : « Mes projets » (bureau) suit
     if (Object.prototype.hasOwnProperty.call(champs, 'projet')) {
       const actuel = chercher(donneesCourantes.current, cle)
       const avant = actuel?.projet?.id ?? null

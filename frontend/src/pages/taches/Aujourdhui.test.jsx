@@ -993,7 +993,7 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 
-  it('`m` ouvre « Déplacer vers… » sur un AUTRE projet que le sien ; Entrée déplace', async () => {
+  it('`m` ouvre « Changer de projet » sur un AUTRE projet que le sien ; Entrée déplace', async () => {
     servir(donnees())
     const autres = { results: [{ id: 3, nom: 'Ventes', couleur: 'indigo', priorite: 1 }, { id: 7, nom: 'Salon', couleur: 'vert', priorite: 2 }], next: null, count: 2 }
     api.get.mockImplementation((url) => Promise.resolve({ data: url === '/taches/projets/' ? autres : donnees() }))
@@ -1002,7 +1002,7 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     await screen.findByText('Devis Settat')
     focaliser(20)
     await userEvent.keyboard('m')
-    const feuille = await screen.findByRole('dialog', { name: 'Déplacer vers…' })
+    const feuille = await screen.findByRole('dialog', { name: 'Changer de projet' })
     expect(within(feuille).getByRole('combobox', { name: 'Chercher un projet' })).toHaveFocus()
     // Entrée frappée avant même l'arrivée de la liste des projets : elle n'est pas perdue
     await userEvent.keyboard('{Enter}')
