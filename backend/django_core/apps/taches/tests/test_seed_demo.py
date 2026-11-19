@@ -311,5 +311,5 @@ class ScenarioTests(TestCase):
         self.semer()
         revue = self.lire('revue/projets/', _instant_du(datetime.date(2026, 11, 20), '17:40'))
         self.assertEqual(revue['bilan_semaine']['texte'],
-                         'Du lun. 16 au ven. 20 : 21 tâches en 4 jours (précédente : 23). '
+                         'Cette semaine : 21 faites (23 la précédente). '
                          'Objectif atteint 3 jours sur 4 · essentiel 3 sur 4.')
