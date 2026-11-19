@@ -122,7 +122,7 @@ class DepartUneBatterieTests(SimpleTestCase):
         v = self._textes(_bloc_depart())
         self.assertEqual(v["textes"]["fr"], (
             "Pour démarrer avec une seule batterie : 24 panneaux (13,2 kWc) et 1 batterie de "
-            "5,12 kWh utiles — 182 300 MAD TTC. Les 2 autres batteries pourront être ajoutées "
+            "5,12 kWh utiles — 182\u202f300 MAD TTC. Les 2 autres batteries pourront être ajoutées "
             "ensuite : l'onduleur est déjà prévu pour."))
         self.assertEqual((v["prix_mad"], v["base"], v["nb_panneaux"]), (182300, "ttc", 24))
         self.assertIn("24 panels (13.2 kWp)", v["textes"]["en"])
@@ -134,7 +134,7 @@ class DepartUneBatterieTests(SimpleTestCase):
 
     def test_base_ht_le_prix_ht(self):
         v = self._textes(_bloc_depart(), economie_ci={"base": "ht"})
-        self.assertIn("— 151 916,67 MAD HT.", v["textes"]["fr"])
+        self.assertIn("— 151\u202f916,67 MAD HT.", v["textes"]["fr"])
         self.assertEqual((v["prix_mad"], v["base"]), (151916.67, "ht"))
 
     def test_bloc_absent_ou_incomplet_rien(self):
