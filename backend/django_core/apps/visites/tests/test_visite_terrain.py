@@ -989,6 +989,106 @@ class ResumeAssistantTests(VisiteTerrainBase):
         self.assertIn(APIClient().get(self._url(visite_id)).status_code, (401, 403))
 
 
+class ReplanifierAssistantTests(VisiteTerrainBase):
+    """Copilote vague 2 (VIS6) — ``visites.visite.replanifier`` est le PATCH
+    EXISTANT de la visite (date et/ou assigné), tel que le relais l'appelle : le
+    serveur reste l'autorité (visite en attente seulement, date non passée,
+    compte actif de la société, portée de l'écran)."""
+
+    def _visite_datee(self, jours=5):
+        jour = timezone.localdate() + datetime.timedelta(days=jours)
+        resp = self.api.post('/api/django/visites/visites/',
+                             {'lead': self.lead.id, 'date_prevue': jour.isoformat()},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return VisiteTerrain.objects.get(pk=resp.data['id']), jour
+
+    def _patch(self, visite, corps, api=None):
+        return (api or auth(self.bureau)).patch(
+            f'/api/django/visites/visites/{visite.id}/', corps, format='json')
+
+    def test_la_date_et_l_assigne_changent_en_un_seul_geste(self):
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        visite, jour = self._visite_datee()
+        collegue = make_user(self.company, 'vt4-collegue', TERRAIN)
+        nouvelle = jour + datetime.timedelta(days=3)
+        resp = self._patch(visite, {'date_prevue': nouvelle.isoformat(),
+                                    'commercial': collegue.id})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        visite.refresh_from_db()
+        self.assertEqual((visite.date_prevue, visite.commercial_id), (nouvelle, collegue.id))
+        self.assertIn(f'Rendez-vous du {jour:%d/%m/%Y} déplacé au {nouvelle:%d/%m/%Y}.',
+                      visite.notes)
+        # La personne désignée est prévenue UNE fois (date et assigné changent ensemble).
+        self.assertEqual(Notification.objects.filter(
+            recipient=collegue, event_type=EventType.VISITE_TERRAIN_ASSIGNEE).count(), 1)
+
+    def test_changer_seulement_l_assigne_previent_le_nouvel_assigne(self):
+        from apps.notifications.models import Notification
+        from apps.notifications.types_evenements import EventType
+        visite, jour = self._visite_datee()
+        collegue = make_user(self.company, 'vt4-collegue', TERRAIN)
+        resp = self._patch(visite, {'commercial': collegue.id})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        visite.refresh_from_db()
+        self.assertEqual((visite.date_prevue, visite.commercial_id), (jour, collegue.id))
+        self.assertEqual(Notification.objects.filter(
+            recipient=collegue, event_type=EventType.VISITE_TERRAIN_ASSIGNEE).count(), 1)
+
+    def test_une_date_passee_est_refusee_et_la_visite_ne_bouge_pas(self):
+        visite, jour = self._visite_datee()
+        hier = timezone.localdate() - datetime.timedelta(days=1)
+        resp = self._patch(visite, {'date_prevue': hier.isoformat()})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('date_prevue', resp.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.date_prevue, jour)
+
+    def test_une_visite_realisee_ne_se_deplace_plus(self):
+        visite, jour = self._visite_datee()
+        VisiteTerrain.objects.filter(pk=visite.pk).update(statut=VisiteTerrain.Statut.TERMINEE)
+        resp = self._patch(visite, {'date_prevue': (jour + datetime.timedelta(days=2)).isoformat()})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('date_prevue', resp.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.date_prevue, jour)
+
+    def test_une_visite_validee_ou_annulee_est_gelee(self):
+        for statut in (VisiteTerrain.Statut.VALIDEE, VisiteTerrain.Statut.ANNULEE):
+            with self.subTest(statut=statut):
+                visite, jour = self._visite_datee()
+                VisiteTerrain.objects.filter(pk=visite.pk).update(statut=statut)
+                resp = self._patch(visite, {'commercial': self.bureau.id})
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertIn('statut', resp.data['erreurs'])
+                visite.refresh_from_db()
+                self.assertEqual(visite.commercial_id, self.commercial.id)
+
+    def test_un_compte_desactive_ou_d_une_autre_societe_est_refuse(self):
+        visite, _ = self._visite_datee()
+        inactif = make_user(self.company, 'vt4-inactif', TERRAIN)
+        inactif.is_active = False
+        inactif.save(update_fields=['is_active'])
+        for compte in (inactif, self.etranger):
+            with self.subTest(compte=compte.username):
+                resp = self._patch(visite, {'commercial': compte.id})
+                self.assertIn(resp.status_code, (400, 404), resp.data)
+                visite.refresh_from_db()
+                self.assertEqual(visite.commercial_id, self.commercial.id)
+
+    def test_la_portee_de_l_ecran_s_applique(self):
+        visite, jour = self._visite_datee()
+        collegue = make_user(self.company, 'vt4-collegue', TERRAIN)
+        resp = self._patch(visite, {'commercial': collegue.id}, api=auth(collegue))
+        self.assertEqual(resp.status_code, 404, resp.data)
+        autre_societe = self._patch(visite, {'commercial': self.bureau.id},
+                                    api=auth(self.etranger))
+        self.assertEqual(autre_societe.status_code, 404)
+        visite.refresh_from_db()
+        self.assertEqual((visite.date_prevue, visite.commercial_id), (jour, self.commercial.id))
+
+
 class ActionsAssistantVisitesTests(SimpleTestCase):
     """Copilote vague 2 (VIS3-VIS8) — le catalogue ``visites.*`` de l'assistant :
     déclaré par le manifeste, dans le lot ``copilote``, la permission du
@@ -1044,6 +1144,27 @@ class ActionsAssistantVisitesTests(SimpleTestCase):
                              or n.startswith(('override_', 'derogation'))}
                 self.assertEqual(interdits, set())
 
+    #: clé -> (risque, action du viewset qui porte le code d'écriture, objets nommés)
+    ECRITURES = {
+        'visites.visite.replanifier': (
+            'outward', 'partial_update', {'id': 'visite', 'commercial': 'utilisateur'}),
+    }
+
+    def test_les_ecritures_sont_confirmees_et_leur_apercu_nomme_la_visite(self):
+        from apps.visites.views import VisiteTerrainViewSet
+        actions = self._actions()
+        for cle, (risque, geste, objets) in self.ECRITURES.items():
+            with self.subTest(cle=cle):
+                action = actions[cle]
+                self.assertEqual((action.lot, action.risk, action.lecture),
+                                 ('copilote', risque, False))
+                self.assertEqual(action.objets, objets)
+                # Le code du catalogue EST celui que le viewset fige pour ce geste.
+                self.assertEqual(action.required_permission,
+                                 VisiteTerrainViewSet.PERMISSIONS_ECRITURE[geste])
+                # Le libellé dit la conséquence (le relais n'affiche que lui).
+                self.assertTrue(any(s in action.label for s in (' : ', ' — ')), action.label)
+
     def test_la_permission_du_catalogue_est_la_garde_de_la_route(self):
         from apps.agent.tests.test_registry import _verdict_permission
         for cle, action in self._actions().items():
@@ -1055,7 +1176,7 @@ class ActionsAssistantVisitesTests(SimpleTestCase):
     def test_chaque_role_ne_recoit_que_ce_qu_il_peut_executer(self):
         from apps.agent.registry import for_user
         terrain = {a.key for a in for_user(self._compte(TERRAIN)) if a.key.startswith('visites.')}
-        self.assertTrue(set(self.LECTURES) <= terrain, terrain)
+        self.assertTrue(set(self.LECTURES) | set(self.ECRITURES) <= terrain, terrain)
         sans_droit = {a.key for a in for_user(self._compte(['crm_voir']))
                       if a.key.startswith('visites.')}
         self.assertEqual(sans_droit, set())
