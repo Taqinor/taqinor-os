@@ -85,12 +85,13 @@ describe('TCH89 — Un projet : en-tête', () => {
 
   it('passe visuelle n° 43 — point de couleur devant le nom ; échéance menacée (d) : « À ce rythme : … » en une ligne, le détail au toucher', async () => {
     const vue = exempleContrat('taches', 'projet_vue')
-    const longue = 'Au rythme des 4 dernières semaines (12 faites en 20 jours travaillés), il faudrait 10 jours travaillés ; il en reste 8.'
-    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd' } }]
+    // la phrase SERVIE (R3-011) : la conséquence, puis UN chiffre déjà soustrait
+    const longue = 'À ce rythme, pas prêt pour le mar. 8 déc. : il manque environ 2 jours.'
+    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-12-08' } }]
     api.lireVueProjet.mockResolvedValue({ data: vue })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const sante = await screen.findByRole('button', { name: 'À ce rythme : 10 jours travaillés, il en reste 8' })
+    const sante = await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour le mar. 8 déc.' })
     const titre = screen.getByRole('heading', { level: 1 })
     expect(titre.querySelector('.ep-projet-nom[data-p="vert"] > .point')).not.toBeNull()
     expect(screen.queryByText(longue)).toBeNull()
@@ -101,7 +102,7 @@ describe('TCH89 — Un projet : en-tête', () => {
 
   it("R2-034 — échéance servie : la santé courte dit la conséquence « À ce rythme, pas prêt pour le jeu. 26 »", async () => {
     const vue = exempleContrat('taches', 'projet_vue')
-    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il faudrait 10 jours travaillés, il en reste 8 (12 faites en 20 jours travaillés ces 4 dernières semaines).'
+    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il manque environ 2 jours.'
     vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-11-26' } }]
     api.lireVueProjet.mockResolvedValue({ data: vue })
     const { unmount } = monter()
@@ -445,7 +446,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
 
   it('un nom refusé (déjà pris) s\'affiche SOUS le champ, le texte tapé reste et le titre garde l\'ancien nom', async () => {
     api.modifierProjet.mockRejectedValue(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -460,7 +461,7 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
 
   it('⋯ → Renommer : une feuille avec le nom ; Enregistrer l\'écrit, un refus s\'affiche sous le champ', async () => {
     api.modifierProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     api.modifierProjet.mockResolvedValueOnce(envoye({ nom: 'Ventes 2027' }))
     monter()
@@ -664,7 +665,7 @@ describe('Raccord F2 — Un projet : le menu ⋯ d\'une ligne passe par le gesti
 
   it('F2 acceptation (S5) — Changer de projet… → Créer « Chantier » refusé (409 `nom_pris`) : le refus s\'affiche', async () => {
     api.creerProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
-      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+      response: { status: 400, statutServeur: 409, headers: {}, data: { nom: ['Un projet actif porte déjà ce nom.'], detail: 'Un projet actif porte déjà ce nom.', code: 'state_conflict' } },
     }))
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
