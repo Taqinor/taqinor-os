@@ -7,6 +7,7 @@ import {
 import { frenchError } from '../../../lib/frenchError'
 import { jourCourt } from '../lib/textes'
 import FeuilleACrans from '../ui/FeuilleACrans'
+import { chargerBadgeTaches } from '../useBadgeTaches'
 
 /* ============================================================================
    TCH108 — Réglages (cœur) : la liste des rubriques, « Mes données » (Exporter, Tout effacer
@@ -18,10 +19,10 @@ import FeuilleACrans from '../ui/FeuilleACrans'
 
 const RUBRIQUES = [
   ['notifications', 'Notifications', 'Plan du matin, message de 15 h, bilan du soir'],
-  ['iphone', 'Mon iPhone', 'Cinq étapes, à faire une fois'],
+  ['iphone', 'Mon iPhone', 'Six étapes, à faire une fois'],
   ['vie-privee', 'Vie privée', 'Ce qui part au Copilote, qui peut lire'],
   ['suggestions', "L'ERP me suggère", ''], // le résumé « {k} suggestions sur 4 » vient des réglages lus (`resumes`)
-  ['donnees', 'Mes données', 'Exporter, tout effacer'],
+  ['donnees', 'Mes données', 'Télécharger, tout effacer'],
   ['avance', 'Avancé', 'Messages sans délai'],
 ]
 /** Le titre d'une rubrique (« Mes données ») : celui de la sous-page qu'elle ouvre ; '' si inconnue. */
@@ -104,7 +105,13 @@ function DialogueEffacer({ ouvert, onFermer, onEfface }) {
   const confirmer = async () => {
     if (saisie !== CONFIRMATION) { setErreur('Tape EFFACER pour confirmer.'); return }
     setErreur('')
-    try { await toutEffacer({ confirmation: saisie }); onEfface() } catch (err) { setErreur(messageDe(err, 'confirmation')) }
+    try {
+      await toutEffacer({ confirmation: saisie })
+      // R3-097 — la pastille « À trier » (et celle de l'icône) se relit tout de suite : « À trier 4 » restait après
+      // l'effacement, jusqu'à la fin du cache de 60 s
+      chargerBadgeTaches({ force: true })
+      onEfface()
+    } catch (err) { setErreur(messageDe(err, 'confirmation')) }
   }
 
   return (
@@ -146,7 +153,8 @@ export function MesDonnees({ onEfface }) {
       {/* R2-130 : une liste groupée de deux rangées (plus deux liens séparés par 150 pt de vide) */}
       <div className="es-groupe-actions">
         <button type="button" className="es-action-ligne" onClick={exporter}>
-          <Download className="i" aria-hidden="true" />Exporter mes données (fichier JSON)
+          {/* R3-098 (M6) — le geste dit ce qu'il fait pour Reda, pas le format du fichier */}
+          <Download className="i" aria-hidden="true" />Télécharger mes données
         </button>
         <button type="button" className="es-action-ligne danger" onClick={() => setDialogue(true)}>
           <Trash2 className="i" aria-hidden="true" />Tout effacer

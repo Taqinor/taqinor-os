@@ -172,7 +172,7 @@ const ECRANS = [
     nom: 'reglages-donnees',
     ouvrir: async (page) => {
       await ouvrirEcran(page, '/taches/reglages/donnees', 'reglages')
-      await expect(page.getByRole('button', { name: /^Exporter mes données/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /^Télécharger mes données/ })).toBeVisible()
     },
   },
   {
@@ -280,6 +280,80 @@ test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
     await expect(page.locator('.tch [role="status"]').filter({ hasText: 'Hors ligne' })).toBeVisible()
     await expect(page.locator('.layout-main > [role="status"].bg-warning')).toBeHidden()
     await context.setOffline(false)
+  })
+
+  test('R3-083/084 — en-tête : cinq icônes de 44 × 44 dans l\'écran, au même x au défilement et hors ligne ; titre au même y partout', async ({ page, context }) => {
+    await semer(page)
+    const barre = () => page.locator('.tch .entete-barre button').evaluateAll((els) => els
+      .filter((el) => el.getBoundingClientRect().width > 0)
+      .map((el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), l: Math.round(r.width), h: Math.round(r.height), droite: Math.round(r.right), cache: getComputedStyle(el).visibility === 'hidden' } }))
+    const titres = {}
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'], ['/taches/projets', 'projets'],
+      ['/taches/agenda', 'agenda'], ['/taches/revue', 'revue'], ['/taches/rythme', 'rythme'], ['/taches/reglages', 'reglages']]) {
+      await ouvrirEcran(page, chemin, ecran)
+      titres[ecran] = Math.round((await page.locator('h1.entete-titre').boundingBox()).y)
+    }
+    expect(new Set(Object.values(titres)).size, `y du grand titre : ${JSON.stringify(titres)}`).toBe(1)
+    await attendreAujourdhui(page)
+    const auRepos = await barre()
+    expect(auRepos, 'cinq commandes').toHaveLength(5)
+    for (const b of auRepos) {
+      expect(Math.min(b.l, b.h), `cible ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(44)
+      expect(b.droite, 'dans l\'écran').toBeLessThanOrEqual(390)
+    }
+    await page.locator('main#contenu').evaluate((el) => el.scrollBy(0, 600))
+    await expect(page.locator('.tch .entete-barre.entete-repliee')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'au défilement, rien ne glisse').toEqual(auRepos.map((b) => b.x))
+    await page.locator('main#contenu').evaluate((el) => el.scrollTo(0, 0))
+    await context.setOffline(true)
+    await expect(page.locator('.tch[data-hors-ligne]')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'hors ligne, rien ne glisse (le Copilote garde sa place)').toEqual(auRepos.map((b) => b.x))
+    await context.setOffline(false)
+  })
+
+  test('R3-080 — journée vide : « ou touche + » désigne un + VISIBLE, de 44 px au moins, qui ouvre la saisie au premier toucher', async ({ page }) => {
+    await reinitialiser(page)
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await expect(page.getByText('ou touche + pour une tâche')).toBeVisible()
+    const plus = page.locator('.tch .fab')
+    await expect(plus).toBeVisible()
+    const boite = await plus.boundingBox()
+    expect(Math.min(boite.width, boite.height), 'taille du +').toBeGreaterThanOrEqual(44)
+    await plus.tap()
+    await expect(page.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeVisible()
+  })
+
+  test('R3-081 — en sombre, la cloche ouvre un panneau du thème du module, voile et poignée ; hors de Tâches rien ne change', async ({ page }) => {
+    await page.addInitScript(() => { try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* privé */ } })
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await semer(page)
+    await attendreAujourdhui(page)
+    await page.locator('.tch').getByRole('button', { name: /^Notifications/ }).click()
+    const panneau = page.locator('.nb-panel')
+    await expect(panneau).toBeVisible()
+    const mesure = await panneau.evaluate((el) => {
+      const sonde = document.createElement('div')
+      sonde.style.background = 'var(--tch-surface-haute)'
+      document.body.appendChild(sonde)
+      const attendu = getComputedStyle(sonde).backgroundColor
+      sonde.remove()
+      const entete = el.closest('.header')
+      return {
+        fond: getComputedStyle(el).backgroundColor, attendu,
+        voile: getComputedStyle(entete, '::after').content !== 'none' && getComputedStyle(entete, '::after').position === 'fixed',
+        poignee: getComputedStyle(el, '::before').width,
+      }
+    })
+    expect(mesure.fond, 'le panneau a la surface haute du module, pas le blanc de l\'ERP').toBe(mesure.attendu)
+    expect(mesure.voile, 'un voile derrière le panneau').toBe(true)
+    expect(mesure.poignee, 'la poignée de 36 px').toBe('36px')
+    // toucher le voile ferme le panneau
+    await page.mouse.click(195, 120)
+    await expect(panneau).toBeHidden()
+    // hors de Tâches : l'en-tête de l'ERP n'a pas de voile
+    await page.goto('/apps')
+    await expect(page.locator('.layout-main > .header')).toBeVisible()
+    expect(await page.locator('.layout-main > .header').evaluate((el) => getComputedStyle(el, '::after').content)).toBe('none')
   })
 })
 
