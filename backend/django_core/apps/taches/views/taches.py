@@ -27,7 +27,8 @@ from apps.taches.serializers.saisie import (
     ElementChecklistEntreeSerializer, EtiquetteEntreeSerializer, EtiquettePatchSerializer, forme_etiquette,
     forme_vue, lire_corps, LotEntreeSerializer, PlanifierEntreeSerializer,
     ProprietaireEntreeSerializer, RappelEntreeSerializer, RecurrenceEntreeSerializer,
-    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, reponse_ecrite,
+    ReordonnerElementEntreeSerializer, ReordonnerEntreeSerializer, RepeterEntreeSerializer, calculs_du_plan,
+    reponse_ecrite,
     reponse_etiquette, reponse_gestes, reponse_recherche, reponse_supprimees, reponse_vue, TacheCreationSerializer,
     TachePatchSerializer, taches_chargees, TrancherEntreeSerializer, valider_patch, verifier_proprietaire,
     VueEntreeSerializer, VuePatchSerializer,
@@ -215,7 +216,10 @@ class TacheVue(APIView):
         if not trouvees:
             raise Http404('Introuvable.')
         tache = reverifier_lien(request.user, trouvees[0])
-        return Response(TacheSerializer(tache, context=contexte(assistant=est_assistant(request))).data)
+        # +1 requête (plafond `test_plafonds.py`) : les lignes du plan du jour, pour la MÊME ★ que la journée
+        calculs = calculs_du_plan(request.user, [tache])
+        contexte_ = contexte(assistant=est_assistant(request), calculs=calculs)
+        return Response(TacheSerializer(tache, context=contexte_).data)
 
     @extend_schema(request=TachePatchSerializer,
                    responses=reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=CONFLIT_TACHE))

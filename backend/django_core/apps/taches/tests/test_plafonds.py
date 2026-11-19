@@ -32,7 +32,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.taches.models.rythme import ReglagesRythme
-from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel
+from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, Rappel, Tache
 from apps.taches.tests import fabriques
 from core.test_utils import AssertQueryBudgetMixin
 from testkit.time import frozen
@@ -46,6 +46,7 @@ URL_BADGE = '/api/django/taches/badge/'
 URL_PROPOSITION = '/api/django/taches/journee/proposition/'
 URL_AGENDA = '/api/django/taches/agenda/'
 URL_TACHES = '/api/django/taches/taches/'
+URL_FICHE = '/api/django/taches/taches/{id}/'
 URL_PROJETS = '/api/django/taches/projets/'
 URL_VUE_PROJET = '/api/django/taches/projets/{id}/vue/'
 URL_SAISIE = '/api/django/taches/saisie-rapide/'
@@ -174,6 +175,16 @@ class PlafondsTests(AssertQueryBudgetMixin, TestCase):
         self._lire(URL_TACHES)
         with self.assertMaxQueries(12):
             self._lire(URL_TACHES)
+
+    def test_fiche_d_une_tache(self):
+        # Couture L7 (vague 3) : la fiche lit en plus les lignes du plan du jour (`calculs_du_plan`, UNE requête,
+        # `selectors.journee.lignes_de_taches_du_jour`) pour servir la MÊME ★ que la journée. Plafond estimé
+        # (liste 12 + la tâche et ses relations de fiche + cette lecture) : la CI rend le compte réel s'il déborde.
+        premiere = Tache.objects.filter(proprietaire=self.compte, parent__isnull=True, jour_prevu=self.jour)
+        url = URL_FICHE.format(id=premiere.order_by('pk').first().pk)
+        self._lire(url)
+        with self.assertMaxQueries(16):
+            self._lire(url)
 
     def test_liste_des_projets(self):
         self._lire(URL_PROJETS)
