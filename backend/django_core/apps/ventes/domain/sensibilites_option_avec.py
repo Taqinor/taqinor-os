@@ -40,7 +40,13 @@ def scenarios_du_devis(company, devis):
     devis envoyé avant garde l'option « avec » sans sensibilités."""
     from apps.ventes.economie_ci import reglages_economie_ci
 
+    from .depart_une_batterie_ci import _EN_SIMULATION
     from .regles_calcul import REGLES_SENSIBILITES_1911, regles_au_moins
+    # Étude sans devis (première passe du devis automatique : le rafraîchisseur
+    # la recalcule avec le devis) et simulation « une seule batterie » (résultat
+    # jeté) : aucune ré-évaluation de l'option pour rien.
+    if devis is None or _EN_SIMULATION.get():
+        return None
     if not regles_au_moins(devis, REGLES_SENSIBILITES_1911):
         return None
     return list(reglages_economie_ci(company).get('sensibilites_ci') or [])

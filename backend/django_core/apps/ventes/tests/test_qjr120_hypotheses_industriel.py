@@ -354,28 +354,28 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         self.assertNotIn("Investissement", carte)
 
     def test_la_page_cede_par_paliers(self):
-        """Pleine courbe → courbe COMPACTE (contenu de la page, plus un bloc
-        cédable) → les bases du calcul cèdent, la courbe compacte reste →
-        dernier recours : rien d'optionnel, le tableau des flux reste."""
+        """Pleine courbe → courbe COMPACTE → elle cède avec les autres blocs
+        optionnels ; quand une AUTRE page force le retrait d'un coup de la
+        courbe et des bases, la courbe compacte reste. Le tableau des flux
+        reste toujours."""
         d = self._donnees()
-        pleine = _page_finance(d)
-        self.assertIn('data-graphique="courbe_cumul"', pleine)
+        self.assertIn('data-graphique="courbe_cumul"', _page_finance(d))
         d["_sans_graphiques"] = frozenset({"courbe_cumul"})
         compacte = _page_finance(d)
-        self.assertIn('class="i2d-compacte"', compacte)
-        self.assertNotIn('data-graphique="courbe_cumul"', compacte)
+        self.assertIn('data-graphique="courbe_compacte"', compacte)
         self.assertEqual(compacte.count("<polyline"), 2)
         self.assertIn('data-graphique="hypotheses"', compacte)
-        # Encore trop long (ou une AUTRE page force le retrait d'un coup,
-        # ``equip.document_adaptatif``) : seules les bases cèdent.
         d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
-        sans_bases = _page_finance(d)
-        self.assertEqual(sans_bases.count("<polyline"), 2)
-        self.assertNotIn('data-graphique="hypotheses"', sans_bases)
-        d["_sans_graphiques"] = True
-        rien = _page_finance(d)
-        self.assertNotIn("<svg", rien)
-        self.assertIn('class="i2-tbl i2-fx i2d-fx"', rien)   # le tableau reste
+        tronquee = _page_finance(d)
+        self.assertEqual(tronquee.count("<polyline"), 2)
+        self.assertNotIn('data-graphique="hypotheses"', tronquee)
+        for etat in (frozenset({"courbe_cumul", "courbe_compacte", "hypotheses",
+                                "sensibilites"}), True):
+            d["_sans_graphiques"] = etat
+            rien = _page_finance(d)
+            self.assertNotIn("<svg", rien)
+            self.assertNotIn("data-graphique=", rien)
+            self.assertIn('class="i2-tbl i2-fx i2d-fx"', rien)   # le tableau reste
 
     SCENARIOS = [
         {"cle": "production", "variation_pct": -7.7, "source": "x",
@@ -393,8 +393,8 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         d["economie_ci"]["sensibilites"] = copy.deepcopy(self.SCENARIOS)
         option = d["etude"]["etude_ci"]["option_avec"]
         siens = copy.deepcopy(self.SCENARIOS)
-        siens[0].update(retour_ans=10, retour_dixieme_ans=9.1, tri_pct=15.4,
-                        cumul_25_ans_mad=1500000.5, **avec)
+        siens[0].update(dict(dict(retour_ans=10, retour_dixieme_ans=9.1, tri_pct=15.4,
+                                  cumul_25_ans_mad=1500000.5), **avec))
         siens[1].update(retour_ans=9, retour_dixieme_ans=8.6, tri_pct=16.9,
                         cumul_25_ans_mad=1650000.25)
         for bloc in (option["economie_ci"], option["economie_flux"]):
@@ -437,6 +437,19 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
             flags=re.S)][3]
         self.assertIn("3,3 ans", production)       # l'offre réseau garde sa rangée
         self.assertEqual(production.count("—"), 3)  # l'option batterie : rien d'inventé
+
+    def test_scenario_sans_chiffres_dit_son_motif_et_le_tableau_est_cedable(self):
+        d = self._avec_scenarios(retour_ans=None, retour_dixieme_ans=None, tri_pct=None,
+                                 cumul_25_ans_mad=None,
+                                 motif="scénario non reproductible sur ce site")
+        page = _page_finance(d)
+        production = [_visible(li) for li in re.findall(
+            r"<tr>.*?</tr>", self._tableau_sensibilites(page).group(0), flags=re.S)][3]
+        self.assertIn("scénario non reproductible sur ce site", production)
+        self.assertIn("3,3 ans", production)
+        self.assertIn('<div data-graphique="sensibilites">', page)
+        d["_sans_graphiques"] = frozenset({"sensibilites"})
+        self.assertIsNone(self._tableau_sensibilites(_page_finance(d)))
 
     def test_devis_sous_le_niveau_14_l_annee_servie(self):
         d = self._avec_scenarios()

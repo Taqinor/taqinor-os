@@ -348,9 +348,13 @@ def _sensibilites(evaluation, economie, flux, investissement, ctx, valoriser):
     def flux_de(ev, eco, collecteur):
         kw = ctx if collecteur is None else dict(ctx, flux=dict(ctx.get('flux') or {}, collecteur=collecteur))
         return _flux_option_avec(ev, eco, investissement, kw)
-    return sensibilites_option_avec(
-        ctx['sensibilites'], evaluation, economie, flux, flux_de=flux_de, reevaluer=ctx.get('reevaluer'),
-        complet=getattr(valoriser, 'complet', None), valorisation=getattr(valoriser, 'contexte', None))
+    try:
+        return sensibilites_option_avec(
+            ctx['sensibilites'], evaluation, economie, flux, flux_de=flux_de, reevaluer=ctx.get('reevaluer'),
+            complet=getattr(valoriser, 'complet', None), valorisation=getattr(valoriser, 'contexte', None))
+    except Exception:  # noqa: BLE001 — un scénario ne casse jamais l'étude du devis (D-ENF22-BLE001)
+        logger.warning("Sensibilités de l'option « avec batterie » non calculées", exc_info=True)
+        return []
 
 
 def _reevaluer_dimensionnee(evalue, fiche, bat, contexte, production_rasante):
@@ -764,7 +768,27 @@ def _jeton_cycles(lignes, devis=None):
     devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
                            if d is not None), None)
     return (['cycles13'] if regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911) else []) + (
-        ['sensibilites14'] if regles_au_moins(devis, REGLES_SENSIBILITES_1911) else [])
+        ['sensibilites14' + _empreinte_scenarios(devis)]
+        if regles_au_moins(devis, REGLES_SENSIBILITES_1911) else [])
+
+
+def _empreinte_scenarios(devis):
+    """Niveau 14 — la liste des scénarios de la société entre dans l'empreinte :
+    quand elle change, l'étude du brouillon est recalculée et les deux options
+    gardent les MÊMES scénarios (l'offre réseau les lit au rendu). '' sans
+    société (doublure de test) ou quand la liste ne se lit pas."""
+    import hashlib
+    import json
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return ''
+    try:
+        from .sensibilites_option_avec import scenarios_du_devis
+        charge = json.dumps(scenarios_du_devis(company, devis), sort_keys=True, default=str)
+    except Exception:  # noqa: BLE001 — l'empreinte ne casse jamais l'étude (D-ENF22-BLE001)
+        logger.warning('Scénarios de sensibilité illisibles pour l’empreinte', exc_info=True)
+        return ''
+    return ':' + hashlib.sha256(charge.encode('utf-8')).hexdigest()[:8]
 
 
 def _recommandee_des_lignes(lignes, devis=None):

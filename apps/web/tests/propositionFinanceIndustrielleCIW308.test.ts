@@ -106,6 +106,23 @@ describe('CIW308 — rentabiliteCi (extracteur pur)', () => {
     expect(r1.financement?.dureeMois).toBe(84);
   });
 
+  it('D-SENS-1 — un scénario imprime son retour au dixième servi, sinon l'année servie', () => {
+    const r = rentabiliteCi(
+      syntheseCi(
+        payload(
+          'industriel',
+          argent({
+            sensibilites: [
+              { cle: 'production', variation_pct: -7.7, retour_ans: 4, retour_dixieme_ans: 3.3, tri_pct: 29.5 },
+              { cle: 'degradation', variation_pct: 0.75, retour_ans: 4, tri_pct: 30.2 },
+            ],
+          }),
+        ),
+      ),
+    )!;
+    expect(r.sensibilites.map((sn) => sn.retourAns)).toEqual([3.3, 4]);
+  });
+
   it('argent omis, absent ou hors industriel → null (section omise)', () => {
     expect(rentabiliteCi(syntheseCi(payload('industriel', argent({ statut: 'omis' }))))).toBeNull();
     expect(rentabiliteCi(syntheseCi(payload('industriel', undefined)))).toBeNull();

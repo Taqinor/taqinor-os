@@ -46,11 +46,6 @@ LARGEUR, HAUTEUR, HAUTEUR_COMPACTE = 1000, 200, 132
 MARGE_G, MARGE_D, MARGE_H, MARGE_B = 118, 172, 18, 26
 
 
-def _tout_cede(d):
-    """Dernier recours du rendu adaptatif : tous les blocs optionnels cèdent."""
-    return d.get("_sans_graphiques") is True
-
-
 def _texte_svg(texte):
     """Un libellé pour un ``<text>`` du dessin : sans balise (l'arabe du
     catalogue arrive dans un ``<span dir="rtl">``, qu'un SVG ne lit pas)."""
@@ -406,17 +401,18 @@ def _legende(d, opts, L, noms):
 
 
 def _courbe(d, opts, fmt, L, police, teintes, noms, base_txt):
-    """Le bloc de la courbe. La page cède par PALIERS (``commercial.equip``) :
-    pleine hauteur (seul bloc cédable « courbe_cumul ») ; la page déborde ⇒ la
-    courbe COMPACTE, sans sa note — contenu de la page, plus un bloc cédable ;
-    elle déborde encore ⇒ ce sont les bases du calcul (« hypotheses ») qui
-    cèdent, la courbe compacte et les sensibilités restent ; dernier recours
-    (tout cède) ⇒ rien : le tableau porte déjà le cumul."""
+    """Le bloc de la courbe, cédable par paliers (``commercial.equip``) :
+    pleine hauteur (« courbe_cumul ») ; la page déborde ⇒ la courbe COMPACTE,
+    sans sa note (« courbe_compacte ») ; elle déborde encore ⇒ elle cède avec
+    les autres blocs optionnels de la page (bases, sensibilités) : le tableau
+    porte déjà le cumul. Quand une AUTRE page force le retrait d'un coup de la
+    courbe et des bases (troncature des conditions), la page garde la courbe
+    compacte : sans ses bases, elle est plus courte que la page qui tenait."""
     from ..ci.graphiques import cede
-    if _tout_cede(d):
+    if cede(d, "courbe_compacte"):
         return ""
     if cede(d, "courbe_cumul"):
-        return ('<div class="i2d-compacte">' + _svg_cumul(
+        return ('<div data-graphique="courbe_compacte">' + _svg_cumul(
             d, opts, fmt, police, teintes, noms, HAUTEUR_COMPACTE)
             + _legende(d, opts, L, noms) + "</div>")
     note = L("ci_gr_retour_note",
@@ -557,8 +553,11 @@ def _retour_scenario(d, scenario):
 
 def _cellules_scenario(d, valeurs, fmt_mad):
     """Les trois cellules d'une option pour un scénario : délai de retour, TRI,
-    cumul net — un tiret pour une valeur non servie, jamais un nombre de repli."""
-    retour, tri, cumul = valeurs
+    cumul net — un tiret pour une valeur non servie, jamais un nombre de repli ;
+    un scénario servi SANS chiffres dit son motif (mots du client)."""
+    retour, tri, cumul, motif = valeurs
+    if motif and retour is None and tri is None and cumul is None:
+        return f'<td colspan="3" class="i2-mini i2d-g">{motif}</td>'
     textes = []
     if retour is None:
         textes.append("—")
@@ -584,22 +583,32 @@ def _rangees_sensibilites(d, opts, L):
     avec = {(sc.get("cle"), sc.get("variation_pct")): sc for sc in listes[1]}
     rangees = [(L("ci_sens_central", "Scénario central"), [
         (_retour(d, o), _num(o["indicateurs"].get("tri_pct")),
-         _num(o["flux"][-1].get("cumul_mad"))) for o in opts])]
+         _num(o["flux"][-1].get("cumul_mad")), "") for o in opts])]
     for sc in listes[0]:
         paire = (sc, avec.get((sc.get("cle"), sc.get("variation_pct"))))
         rangees.append((F._nom_scenario(sc, L), [
-            (None, None, None) if x is None else
+            (None, None, None, "") if x is None else
             (_retour_scenario(d, x), _num(x.get("tri_pct")),
-             _num(x.get("cumul_25_ans_mad"))) for x in paire]))
+             _num(x.get("cumul_25_ans_mad")), _motif_scenario(d, x)) for x in paire]))
     return rangees
+
+
+def _motif_scenario(d, scenario):
+    """Le motif d'un scénario servi sans chiffres, dans les mots du client
+    (``finance._tableau_sensibilites`` fait de même) ; '' sinon."""
+    from . import finance as F
+    if not scenario.get("motif"):
+        return ""
+    return F._source_propre(ci_couverture.texte_client(d, scenario.get("motif")))
 
 
 def _sensibilites_deux(d, opts, fmt_mad, L, noms):
     """AMOT97 — UN tableau des sensibilités pour les deux options (fondateur
     19/11/2026) : chaque scénario saisi par la société, ses trois chiffres
-    SERVIS par option. '' quand une option n'en sert pas, ou en dernier recours
-    du rendu adaptatif (les bases du calcul cèdent avant lui)."""
-    rangees = None if _tout_cede(d) else _rangees_sensibilites(d, opts, L)
+    SERVIS par option. '' quand une option n'en sert pas, ou cédé par le rendu
+    adaptatif (bloc « sensibilites », avec les autres blocs optionnels)."""
+    from ..ci.graphiques import cede
+    rangees = None if cede(d, "sensibilites") else _rangees_sensibilites(d, opts, L)
     if not rangees:
         return ""
     horizon = f'{opts[0]["horizon"]:g}'
@@ -617,10 +626,10 @@ def _sensibilites_deux(d, opts, fmt_mad, L, noms):
         for nom, valeurs in rangees)
     base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
              "base : 0 % d'indexation du tarif.")
-    return (f'<div class="i2d-st i2d-stn">{base}</div>'
+    return (f'<div data-graphique="sensibilites"><div class="i2d-st i2d-stn">{base}</div>'
             f'<table class="i2-tbl i2-fx i2d-fx i2d-sens"><tr><th></th>{groupes}</tr>'
             f'<tr><th>{L("ci_sens_scenario", "Scénario")}</th>{entete}</tr>'
-            f'{lignes}</table>')
+            f'{lignes}</table></div>')
 
 
 def _indicateurs(d, opts, fmt, fmt_mad, L, noms, base_txt, teintes_cfo):
