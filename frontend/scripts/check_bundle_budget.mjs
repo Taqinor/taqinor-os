@@ -219,7 +219,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // et volet « À placer », en-tête d'un projet, réglages en sous-page, Copilote ouvert depuis Tâches ; l'hôte de présence
 // passe dans le bundle initial, un morceau de moins) : mesure RÉELLE 3847,5 Ko sur l'arbre fusionné (≈ 3848,1 Ko sur le
 // runner, qui mesure 0,6 Ko de plus). Gras prouvé absent : diff package.json vide. Budget : 3850 -> 3855.
-const TOTAL_BUDGET_KB = 3855
+// 19/11/2026 (copilote, vague 2B : dix-sept cartes d'écran de l'assistant — calepinage, visites, chantiers, après-devis,
+// stock, SAV, pilotage — et le lien profond lu par identifiant) : mesure RÉELLE 3861,5 Ko sur le runner (run 44484022026).
+// Aucune dépendance ajoutée : diff package.json vide. Budget monté au juste-dessus de la mesure : 3855 -> 3870.
+const TOTAL_BUDGET_KB = 3870
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

@@ -123,6 +123,15 @@ ROUTES_HORS_VERROU = {
     ('POST', 'depuis-modele'): 'création depuis un modèle',
     ('POST', 'depuis-lead'): 'création / ouverture depuis un lead',
     ('POST', 'import-projet'): 'création par import de projet',
+    ('POST', 'preparer'): 'assistant : ouvre/retrouve le calepinage du lead '
+                          '(porte unique depuis-lead) puis reprend la visite '
+                          '(même service que releve-visite), mêmes motifs que '
+                          'ces deux routes',
+    ('POST', 'publier-devis'): 'assistant : publication au devis par les '
+                               'services de generer-devis / sync-devis ; refuse '
+                               'lui-même un devis lié figé (409 devis_fige, '
+                               'services/assistant.py::_refuser_avant_publication, '
+                               'via est_verrouille)',
     ('POST', 'comparer-projets'): 'lecture : le POST ne porte que des ids',
     ('POST', 'importer-plan'): 'analyse d\'un plan déposé (calques rendus, '
                                'rien d\'écrit)',

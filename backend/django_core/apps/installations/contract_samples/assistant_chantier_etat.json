@@ -1,0 +1,64 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/etat-assistant/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, CHTA2) — l'état COMPACT d'un chantier pour l'assistant (action `installations.chantier.etat`, carte `fiche_chantier` ; `POST chantiers/{id}/planifier-pose/` rend la MÊME forme, voir chantier_planifier_pose.json). Au plus 2 Ko. Portée de l'écran (`get_queryset` du viewset, `installation_voir`) ; hors portée → 404. Prêt à poser ? et pourquoi : `pret_a_poser` + `raisons` (lues de `approvisionnement_chantier(...)['resume']`, UN seul calcul du besoin matériel), matériel en QUANTITÉS seulement (8 lignes en manque au plus), acompte (exigé par le réglage société ? encaissé ?), pose (date prévue, technicien, intervention de pose la plus proche), étape suivante et ses raisons de blocage. Statut chantier = couche propre du chantier (`signe`, `materiel_commande`, `planifie`, `en_cours`, `installe`, `receptionne`, `cloture`), jamais STAGES.py. `a_faire`, ensemble FERMÉ : commander_materiel | encaisser_acompte | planifier_pose | assigner_technicien | poser | rien. `lien` = `/chantiers?id={id}` ; `liens` ajoute l'approvisionnement et l'intervention de pose (chemins de la table assistant_ecrans.json). Délibérément ABSENTS : tout prix, coût, prix d'achat, montant de commande fournisseur, position GPS de personne, téléphone du client.",
+  "exemple": {
+    "id": 12,
+    "reference": "CHT-202611-0012",
+    "client_nom": "Driss Lahlou",
+    "statut": "materiel_commande",
+    "statut_libelle": "Matériel commandé",
+    "annule": false,
+    "etape_courante": {"cle": "approvisionnement", "libelle": "Approvisionnement"},
+    "planning": {
+      "date_pose_prevue": null,
+      "date_pose_fin_prevue": null,
+      "technicien": null,
+      "intervention_pose": null
+    },
+    "pret_a_poser": false,
+    "raisons": ["1 article en manque", "Date de pose non fixée"],
+    "materiel": {
+      "nb_lignes": 6,
+      "nb_manques": 1,
+      "nb_en_commande": 1,
+      "nb_recues": 4,
+      "bcf_brouillons": 0,
+      "manques": [{"produit_id": 60, "designation": "Tableau de protection AC/DC", "manque": 1}]
+    },
+    "acompte": {"exige": true, "encaisse": true},
+    "prochaine_etape": {"cle": "pose", "bloquante": true, "raisons": ["Matériel incomplet"]},
+    "a_faire": "commander_materiel",
+    "lien": "/chantiers?id=12",
+    "liens": {"chantier": "/chantiers?id=12", "approvisionnement": "/chantiers/approvisionnement", "intervention_pose": null}
+  },
+  "exemple_pret": {
+    "id": 14,
+    "reference": "CHT-202611-0014",
+    "client_nom": "Fatima Zahra Amrani",
+    "statut": "planifie",
+    "statut_libelle": "Planifié",
+    "annule": false,
+    "etape_courante": {"cle": "pose", "libelle": "Pose"},
+    "planning": {
+      "date_pose_prevue": "2026-11-24",
+      "date_pose_fin_prevue": "2026-11-25",
+      "technicien": {"id": 9, "nom": "Hamza Idrissi"},
+      "intervention_pose": {"id": 55, "date_prevue": "2026-11-24", "technicien_nom": "Hamza Idrissi", "statut": "prete"}
+    },
+    "pret_a_poser": true,
+    "raisons": [],
+    "materiel": {
+      "nb_lignes": 7,
+      "nb_manques": 0,
+      "nb_en_commande": 0,
+      "nb_recues": 7,
+      "bcf_brouillons": 0,
+      "manques": []
+    },
+    "acompte": {"exige": true, "encaisse": true},
+    "prochaine_etape": {"cle": "pose", "bloquante": false, "raisons": []},
+    "a_faire": "poser",
+    "lien": "/chantiers?id=14",
+    "liens": {"chantier": "/chantiers?id=14", "approvisionnement": "/chantiers/approvisionnement", "intervention_pose": "/interventions?id=55"}
+  }
+}

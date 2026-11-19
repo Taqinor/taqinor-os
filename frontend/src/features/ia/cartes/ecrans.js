@@ -67,6 +67,18 @@ function motif(ecran, gabarit) {
 
 const MOTIFS = Object.entries(ECRANS).map(([ecran, gabarit]) => motif(ecran, gabarit))
 
+/**
+ * Chemin de l'écran `ecran` pour l'objet `id` (entier > 0), construit depuis le gabarit de la
+ * table — pour une carte dont la réponse du serveur porte l'identifiant sans champ `lien`.
+ * `null` hors table ou sans identifiant valide.
+ */
+export function cheminDeLEcran(ecran, id) {
+  const gabarit = Object.hasOwn(ECRANS, ecran) ? ECRANS[ecran] : null
+  if (!gabarit || !Number.isInteger(id) || id <= 0) return null
+  const chemin = gabarit.replace('{id}', String(id))
+  return cheminAutorise(chemin) ? chemin : null
+}
+
 /** Vrai si `chemin` est un chemin INTERNE de la table (sinon : aucun bouton). */
 export function cheminAutorise(chemin) {
   if (typeof chemin !== 'string' || !chemin.startsWith('/') || chemin.startsWith('//')) return false

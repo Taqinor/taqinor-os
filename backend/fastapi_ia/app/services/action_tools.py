@@ -73,6 +73,12 @@ _BC_PERMS = ("installation_gerer", "chantier_gerer")
 _VISITE_PERMS = ("installation_gerer", "chantier_gerer")
 
 _TIMEOUT = httpx.Timeout(20.0, connect=5.0)
+# Vague 2B — ces gestes recalculent tout un devis (etudes comprises) : sous le
+# delai court, le relais abandonnait un appel que Django menait a son terme.
+_TIMEOUT_LENT = httpx.Timeout(75.0, connect=5.0)
+ACTIONS_LENTES = frozenset({
+    "calepinage.publier_apercu", "calepinage.publier_devis",
+    "ventes.devis.taille_apercu", "ventes.devis.taille"})
 
 
 class ActionContext:
@@ -1225,6 +1231,8 @@ def _execute_catalogue_action(
     path, body = _build_path(action.get("endpoint", ""), inputs)
     methode = action.get("method", "POST")
     extra: dict[str, Any] = {}
+    if action.get("key") in ACTIONS_LENTES:
+        extra["timeout"] = _TIMEOUT_LENT
     if str(action.get("key", "")).startswith(PREFIXE_TACHES):
         extra["headers"] = dict(ENTETE_ASSISTANT)
         body = _avec_lien_du_contexte(ctx, action, body)

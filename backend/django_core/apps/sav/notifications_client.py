@@ -72,6 +72,20 @@ def remettre_brouillon_whatsapp(ticket, result, user=None):
         created_by=user, assigned_to=assigne)
 
 
+def client_oppose(ticket):
+    """Vrai quand le client du ticket porte une opposition (STOP) sur son
+    e-mail ou son téléphone : il ne reçoit AUCUNE notification SAV (règle du
+    fondateur : un client opposé ne reçoit rien). Lu par le sélecteur du CRM."""
+    from apps.crm.selectors import peut_contacter, porte_une_opposition
+
+    client = ticket.client
+    if client is None:
+        return False
+    return not peut_contacter(client) or bool(porte_une_opposition(
+        ticket.company_id, email=getattr(client, 'email', None) or None,
+        telephone=getattr(client, 'telephone', None) or None))
+
+
 def notify_ticket_transition(ticket, statut, *, request=None):
     """XSAV4 — Notifie le client d'une transition de ticket (best-effort).
 
@@ -92,7 +106,7 @@ def notify_ticket_transition(ticket, statut, *, request=None):
 
     try:
         sla = SavSlaSettings.get(ticket.company)
-        if not sla.notifications_client_sav:
+        if not sla.notifications_client_sav or client_oppose(ticket):
             return result
 
         wa_corps, email = build_ticket_transition_message(

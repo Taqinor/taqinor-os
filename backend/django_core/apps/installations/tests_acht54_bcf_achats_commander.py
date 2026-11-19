@@ -8,6 +8,7 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.installations.tests_acht54_bcf_achats_commander"
 """
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -117,3 +118,31 @@ class BcfAchatsCommanderTests(TestCase):
             r = api.post(url, {'fournisseur': self.fournisseur.id},
                          format='json')
             self.assertNotEqual(r.status_code, 403, (url, r.data))
+
+    def test_commander_besoin_sans_prix_achat_voir_aucun_montant(self):
+        """Copilote vague 2 (CHTA6, D-W2-Q6) — la réponse de commander-besoin
+        (rendue telle quelle au modèle par l'action
+        ``installations.chantier.commander_besoin``) ne porte un montant
+        d'achat qu'aux porteurs de ``prix_achat_voir`` : un compte qui commande
+        sans ce droit reçoit ses BCF brouillons sans total, prix ni acompte."""
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur CHTA6', sku='OND-CHTA6',
+            prix_vente=Decimal('5000'), prix_achat=Decimal('3000'),
+            quantite_stock=0, fournisseur=self.fournisseur)
+        Installation.objects.filter(pk=self.chantier.pk).update(bom=[
+            {'produit_id': produit.id, 'designation': 'Onduleur', 'quantite': 1.0}])
+        codes = [c for c in dict(CANONICAL_SYSTEM_ROLES)['Administrateur']
+                 if c != 'prix_achat_voir']
+        acheteur = User.objects.create_user(
+            username='acheteur-chta6', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Achats sans prix',
+                                     permissions=codes))
+        r = self._api(acheteur).post(
+            f'{BASE}/chantiers/{self.chantier.id}/commander-besoin/', {}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        data = r.json()
+        self.assertEqual(len(data['bons_commande']), 1)
+        texte = json.dumps(data)
+        for cle in ('total_achat', 'prix_achat_unitaire', 'acomptes', 'frais_annexes'):
+            self.assertNotIn(cle, texte)

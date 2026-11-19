@@ -1,0 +1,85 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/vente-assistant/",
+  "pourquoi": "Copilote vague 2 (B0, 19/11/2026, VAD1) — l'état COMPACT d'une vente pour l'assistant (action `ventes.vente.etat`, carte `vente_etat`) : « où en est la vente de Lahlou ? », « que reste-t-il à facturer ? », et la lecture OBLIGATOIRE avant `ventes.vente.facturer` (la clé de tranche `prochaines_echeances[0].cle` y devient `cle_attendue`). Vue mince dans `ventes/views/assistant.py` qui sert `vente_facturation.etat_vente(devis, user)` RÉDUIT (la clé `vente` de la fiche devis, vente_etat.json, garde sa forme complète). Lecture `ventes_voir` ; hors société ou hors portée → 404. Montants en texte décimal à deux décimales ; au plus 2 Ko (5 factures au plus, les plus récentes). `prochaine_action` ∈ acompte | intermediaire | solde | complete | aucune et `raison_bloquee` sont ceux du serveur, dits tels quels. `a_faire`, ensemble FERMÉ : facturer | emettre_brouillon | encaisser | reviser | rien (`reviser` : ce devis n'est pas la tête de chaîne). `lien` = la fiche du devis (`/ventes/devis?devis={id}`). Délibérément ABSENTS : prix d'achat, marge, coût, téléphone et e-mail du client, détail des lignes.",
+  "exemple": {
+    "devis_id": 502,
+    "reference": "DEV-202610-0021",
+    "statut": "accepte",
+    "client": "Driss Lahlou",
+    "est_tete": true,
+    "tete_id": 502,
+    "revision_en_cours": null,
+    "date_validite": "2026-12-12",
+    "prix_convenu_ttc": "49000.00",
+    "emis_ttc": "15000.00",
+    "brouillons_ttc": "0.00",
+    "paye_ttc": "15000.00",
+    "reste_a_facturer_ttc": "34000.00",
+    "reste_a_payer_ttc": "34000.00",
+    "prochaine_action": "intermediaire",
+    "raison_bloquee": "",
+    "prochaines_echeances": [
+      {"cle": "intermediaire_1", "libelle": "Livraison du matériel", "montant_ttc": "29400.00"},
+      {"cle": "solde", "libelle": "Solde", "montant_ttc": "4600.00"}
+    ],
+    "factures": [
+      {
+        "facture_id": 118,
+        "reference": "FAC-202610-0007",
+        "nature": "acompte",
+        "statut": "payee",
+        "total_ttc": "15000.00",
+        "montant_paye": "15000.00",
+        "montant_du": "0.00",
+        "date_emission": "2026-10-12"
+      }
+    ],
+    "a_faire": "facturer",
+    "lien": "/ventes/devis?devis=502"
+  },
+  "exemple_brouillon_a_emettre": {
+    "devis_id": 502,
+    "reference": "DEV-202610-0021",
+    "statut": "accepte",
+    "client": "Driss Lahlou",
+    "est_tete": true,
+    "tete_id": 502,
+    "revision_en_cours": null,
+    "date_validite": "2026-12-12",
+    "prix_convenu_ttc": "49000.00",
+    "emis_ttc": "15000.00",
+    "brouillons_ttc": "29400.00",
+    "paye_ttc": "15000.00",
+    "reste_a_facturer_ttc": "4600.00",
+    "reste_a_payer_ttc": "34000.00",
+    "prochaine_action": "aucune",
+    "raison_bloquee": "La facture « Livraison du matériel » est en brouillon : émettez-la depuis l'écran des factures.",
+    "prochaines_echeances": [
+      {"cle": "solde", "libelle": "Solde", "montant_ttc": "4600.00"}
+    ],
+    "factures": [
+      {
+        "facture_id": 118,
+        "reference": "FAC-202610-0007",
+        "nature": "acompte",
+        "statut": "payee",
+        "total_ttc": "15000.00",
+        "montant_paye": "15000.00",
+        "montant_du": "0.00",
+        "date_emission": "2026-10-12"
+      },
+      {
+        "facture_id": 126,
+        "reference": "BROUILLON-126",
+        "nature": "intermediaire",
+        "statut": "brouillon",
+        "total_ttc": "29400.00",
+        "montant_paye": "0.00",
+        "montant_du": "0.00",
+        "date_emission": null
+      }
+    ],
+    "a_faire": "emettre_brouillon",
+    "lien": "/ventes/devis?devis=502"
+  }
+}

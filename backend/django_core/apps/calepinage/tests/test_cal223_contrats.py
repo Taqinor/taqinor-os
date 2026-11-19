@@ -126,6 +126,30 @@ SANS_PRODUCTEUR_PUR = {
     'calepinage_simulation.json':
         'document écrit par services/simulation.py (CALX5) : son producteur '
         'lit le document, les fiches produit et les réglages société en base',
+    # Copilote vague 2 (CALA2-CALA10) — routes minces de l'assistant
+    # (``views/assistant.py``) ; chacune est comparée à son échantillon par
+    # tests/test_api_liste.py (contrat de forme, sur base de test).
+    'calepinage_assistant_resume.json':
+        'résumé compact lu sur un calepinage et ses variantes en base '
+        '(services/assistant.py::resume_compact) — comparé par test_api_liste.py',
+    'calepinage_assistant_du_lead.json':
+        "état du calepinage OUVERT d'un lead lu en base, visibilité de "
+        "l'appelant comprise (etat_du_lead) — comparé par test_api_liste.py",
+    'calepinage_assistant_a_traiter.json':
+        "file « à traiter » lue en base par le sélecteur "
+        'calepinages_a_traiter — comparée par test_api_liste.py',
+    'calepinage_assistant_contenance.json':
+        'estimation lue sur la visite validée, le catalogue panneaux et le '
+        'lead en base (services/contenance.py) — comparée par test_api_liste.py',
+    'calepinage_assistant_preparer.json':
+        'ouvre ou retrouve le calepinage du lead en base (écriture) — '
+        'comparé par test_api_liste.py',
+    'calepinage_assistant_publier_apercu.json':
+        'aperçu calculé par le service de devis dans une transaction annulée '
+        '(devis et lignes en base) — comparé par test_api_liste.py',
+    'calepinage_assistant_publier_devis.json':
+        'publication au devis : écrit devis et lignes en base — comparée par '
+        'test_api_liste.py',
     # CALX45
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "

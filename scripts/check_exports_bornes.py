@@ -142,10 +142,6 @@ EXCEPTIONS: dict = {
         '2026-10-09',
         "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
         ' propriétaire de stock'),
-    'backend/django_core/apps/stock/services.py::export_valorisation_xlsx': (
-        '2026-10-09',
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
-        ' propriétaire de stock'),
     'backend/django_core/apps/stock/views/fournisseur.py::FournisseurViewSet.export_conformite': (
         '2026-10-09',
         "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"

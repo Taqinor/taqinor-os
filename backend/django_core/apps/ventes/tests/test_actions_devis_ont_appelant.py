@@ -37,8 +37,10 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: (VNT66, même raison) + ``prolonger-validite`` (CADV82, api-only jusqu'au
 #: bouton « Prolonger ») + ``confirmer-avoir-revision`` (ATOT62, appelé par
 #: ``ventesApi.confirmerAvoirRevision``) + ``lignes-assistant`` (COP2-V5,
-#: api-only : lue par l'assistant, action ``ventes.devis.lignes``).
-NB_ACTIONS = 67
+#: api-only : lue par l'assistant, action ``ventes.devis.lignes``) + les
+#: routes de l'assistant de la vague 2 (``views/assistant.py``, api-only :
+#: ``vente-assistant``, ``assistant-taille``, ``assistant-taille/apercu``).
+NB_ACTIONS = 70
 
 
 def _vues_devis():

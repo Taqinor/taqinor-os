@@ -524,6 +524,12 @@ def _politique(plat, pente, latitude_deg, mode_pose=None):
     return Affleurant()
 
 
+#: CALA10 — LA politique de pas de l'atelier sous un nom PUBLIC (même objet,
+#: comportement inchangé) : l'estimation de contenance de l'assistant
+#: (``services/contenance.py``) l'applique sans recopier la règle.
+politique_de_pose = _politique
+
+
 def _allee_du_document(roof_layout):
     """ACAL256 — ``alleeTechnique.largeurM`` du document (> 0), ou ``None``."""
     bloc = (roof_layout or {}).get('alleeTechnique')

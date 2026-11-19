@@ -1258,3 +1258,45 @@ def resultat_servi(calepinage, *, variante=None):
             'motif': str(refus),
             'avertissements': [str(refus)],
         }
+
+
+def calepinages_a_traiter(user, *, limite=10):
+    """CALA9 (copilote vague 2) — la file « calepinages à traiter » de
+    ``user`` : ``{total, limite, lignes}``, forme du contrat
+    ``calepinage_assistant_a_traiter.json``. Public : lu par la route
+    ``a-traiter/`` et par crm (point du matin). Lecture pure, bornée par
+    ``calepinages_visibles`` ; détail dans ``services.assistant.file_a_traiter``."""
+    from .services.assistant import file_a_traiter
+
+    return file_a_traiter(user, limite=limite)
+
+
+#: CALA11 — au plus N lignes dans le bloc du point du matin.
+LIGNES_BRIEF = 5
+
+
+def brief_calepinage(user, aujourdhui=None):
+    """CALA11 (copilote vague 2) — le bloc ``calepinages`` du point du matin
+    (``apps/crm/contract_samples/assistant_digest_matin.json``, clé
+    ``vague2.exemple_copilote.calepinages``, hors ``sans_calepinage`` que crm
+    compose) : ``{total, lignes}``, ``lignes`` = au plus 5 lignes EXACTEMENT
+    de la forme de ``calepinage_assistant_a_traiter.json``, ``total`` sur
+    toute la file. ``None`` quand ``user`` ne peut pas lire un calepinage (le
+    bloc est alors ABSENT, jamais vide). ``aujourdhui`` (date) borne la
+    fenêtre de 30 jours ; absent, maintenant. Lecture pure ; aucun prix."""
+    from datetime import date, datetime, time
+
+    from django.utils import timezone
+
+    from core.permissions import _user_has_or_legacy
+
+    from .permissions import CAL_VOIR
+    from .services.assistant import file_a_traiter
+
+    if user is None or not _user_has_or_legacy(user, CAL_VOIR):
+        return None
+    maintenant = aujourdhui if isinstance(aujourdhui, datetime) else None
+    if isinstance(aujourdhui, date) and not isinstance(aujourdhui, datetime):
+        maintenant = timezone.make_aware(datetime.combine(aujourdhui, time(23, 59, 59)))
+    file = file_a_traiter(user, limite=LIGNES_BRIEF, maintenant=maintenant)
+    return {'total': file['total'], 'lignes': file['lignes']}

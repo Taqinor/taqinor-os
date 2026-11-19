@@ -155,6 +155,17 @@ class VentesAgentCatalogueTest(TestCase):
             'ventes.catalogue.chercher': {},
             'ventes.devis.composer': {'lead': 'lead', 'client': 'client'},
             'ventes.devis.lignes': {'id': 'devis'},
+            # Copilote vague 2 (lane VAD).
+            'ventes.vente.etat': {'id': 'devis'},
+            'ventes.impayes.lister': {'client': 'client'},
+            'ventes.facture.chercher': {'client': 'client'},
+            'ventes.devis.prolonger': {'id': 'devis'},
+            'ventes.devis.refuser': {'id': 'devis'},
+            'ventes.devis.reviser': {'id': 'devis'},
+            'ventes.devis.taille_apercu': {'id': 'devis'},
+            'ventes.devis.taille': {'id': 'devis'},
+            'ventes.facture.whatsapp_relance': {'id': 'facture'},
+            'ventes.vente.facturer': {'id': 'devis'},
         }
         for action in VENTES_ACTIONS_COPILOTE:
             self.assertIn(action.key, cles)
@@ -562,6 +573,20 @@ class LignesAssistantTest(TestCase):
         self.assertNotIn('777.77', texte)
         self.assertNotIn('prix_achat', texte)
 
+    def test_total_de_ligne_arrondi_comme_le_prix_ttc_affiche(self):
+        """VAD7 — 8 × 1 400,00 TTC (HT 1 166,67) = 11 200,00, pas 11 200,03 :
+        le total part du prix unitaire TTC arrondi, celui qui est affiché."""
+        from apps.ventes.models import LigneDevis
+        LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit,
+            designation='Panneau Canadien Solar 710W', quantite=Decimal('8'),
+            prix_unitaire=Decimal('1166.67'), ordre=1)
+        resp = auth(self.user).get(LIGNES_DEVIS.endpoint.format(id=self.devis.pk))
+        panneau = [li for li in resp.data['lignes']
+                   if li['designation'].startswith('Panneau')][0]
+        self.assertEqual((panneau['prix_unitaire_ttc'], panneau['total_ttc']),
+                         ('1400.00', '11200.00'))
+
     def test_devis_d_une_autre_societe_404(self):
         autre_user = User.objects.create_user(
             username='cop2_lg_autre', password='x', role_legacy='responsable',
@@ -682,3 +707,625 @@ class CatalogueAssistantTest(TestCase):
         for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
                         'Résultat :'):
             self.assertIn(section, CHERCHER_CATALOGUE.description)
+
+
+def _exemple_contrat(nom, cle='exemple'):
+    """L'exemple d'un contrat ``apps/ventes/contract_samples/<nom>`` (donnée
+    JSON partagée avec l'écran — jamais une source Python lue comme texte)."""
+    import json
+    from pathlib import Path
+    chemin = Path(__file__).resolve().parent.parent / 'contract_samples' / nom
+    return json.loads(chemin.read_text(encoding='utf-8'))[cle]
+
+
+class _BaseVenteAssistant(TestCase):
+    """Copilote vague 2 (lane VAD) — une société, un responsable ventes, un
+    devis ENVOYÉ d'un client au téléphone connu (qui ne doit jamais sortir)."""
+
+    TEL = '+212600004242'
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='VAD Co', slug='vad-co')
+        self.autre = Company.objects.create(nom='VAD Autre', slug='vad-autre')
+        self.user = User.objects.create_user(
+            username='vad_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_ = Client.objects.create(
+            company=self.company, nom='Lahlou', prenom='Driss',
+            email='lahlou@example.com', telephone=self.TEL, adresse='Rabat')
+        self.devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{self.company.id}502',
+            client=self.client_, taux_tva=Decimal('20.00'),
+            created_by=self.user, statut=Devis.Statut.ENVOYE)
+
+    def _hors_societe(self):
+        return User.objects.create_user(
+            username='vad_autre', password='x', role_legacy='responsable',
+            company=self.autre)
+
+    def _facture(self, rang, *, ht='1000', statut=Facture.Statut.EMISE,
+                 retard_jours=10, **extra):
+        """Une facture de ``self.devis`` (TTC = HT × 1,2), échue de
+        ``retard_jours`` jours."""
+        from datetime import timedelta
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku=f'VAD-{rang}',
+            prix_vente=Decimal(ht), quantite_stock=10)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-{self.company.id}{rang}',
+            client=self.client_, devis=self.devis, statut=statut,
+            taux_tva=Decimal('20.00'), created_by=self.user,
+            date_echeance=timezone.localdate() - timedelta(days=retard_jours),
+            **extra)
+        LigneFacture.objects.create(
+            facture=facture, produit=produit, designation='Panneau',
+            quantite=Decimal('1'), prix_unitaire=Decimal(ht),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        return facture
+
+
+class VenteEtatAssistantTest(_BaseVenteAssistant):
+    """VAD1 — ``GET devis/<pk>/vente-assistant/`` : forme du contrat
+    ``assistant_vente_etat.json``, ``a_faire`` fermé, portée ``get_object``,
+    jamais le téléphone ni l'e-mail du client."""
+
+    def test_forme_du_contrat_et_rien_du_client_hors_son_nom(self):
+        from apps.ventes.agent_actions import VENTE_ETAT
+        resp = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data),
+                         set(_exemple_contrat('assistant_vente_etat.json')))
+        self.assertEqual(resp.data['client'], 'Lahlou Driss')
+        self.assertEqual(resp.data['lien'], f'/ventes/devis?devis={self.devis.pk}')
+        self.assertIn(resp.data['a_faire'], {
+            'facturer', 'emettre_brouillon', 'encaisser', 'reviser', 'rien'})
+        # Un devis envoyé (non accepté) n'a rien à facturer.
+        self.assertEqual(resp.data['a_faire'], 'rien')
+        self.assertEqual(resp.data['factures'], [])
+        texte = str(resp.data)
+        for interdit in (self.TEL, 'lahlou@example.com', 'prix_achat', 'marge'):
+            self.assertNotIn(interdit, texte)
+
+    def test_devis_d_une_autre_societe_404(self):
+        from apps.ventes.agent_actions import VENTE_ETAT
+        resp = auth(self._hors_societe()).get(
+            VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_action_lecture_lot_copilote_carte_vente_etat(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import VENTE_ETAT
+        self.assertEqual(
+            (VENTE_ETAT.lot, VENTE_ETAT.risk, VENTE_ETAT.required_permission,
+             VENTE_ETAT.carte, VENTE_ETAT.objets),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'vente_etat',
+             {'id': 'devis'}))
+
+
+class ImpayesAssistantTest(_BaseVenteAssistant):
+    """VAD2 — ``GET ventes/assistant/impayes/`` : forme du contrat
+    ``assistant_impayes.json``, contestée comptée, plus en retard d'abord,
+    portée société, jamais de téléphone."""
+
+    URL = '/api/django/ventes/assistant/impayes/'
+
+    def test_forme_totaux_ordre_et_a_faire(self):
+        recente = self._facture('01', ht='1000', retard_jours=5)
+        ancienne = self._facture('02', ht='2000', retard_jours=40)
+        contestee = self._facture('03', ht='500', retard_jours=70,
+                                  contestee_le=timezone.localdate())
+        self._facture('04', ht='9000', statut=Facture.Statut.BROUILLON)
+        resp = auth(self.user).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data),
+                         set(_exemple_contrat('assistant_impayes.json')))
+        self.assertEqual(resp.data['nb_factures'], 3)
+        self.assertEqual(resp.data['total_du'], '4200.00')
+        self.assertEqual(resp.data['tranches'], {
+            'b0_30': '1200.00', 'b31_60': '2400.00', 'b61_90': '600.00',
+            'b90_plus': '0.00'})
+        ids = [li['facture_id'] for li in resp.data['lignes']]
+        self.assertEqual(ids, [contestee.pk, ancienne.pk, recente.pk])
+        ligne = resp.data['lignes'][0]
+        exemple = _exemple_contrat('assistant_impayes.json')['lignes'][0]
+        self.assertEqual(set(ligne), set(exemple))
+        self.assertEqual((ligne['contestee'], ligne['a_faire']),
+                         (True, 'traiter_contestation'))
+        self.assertEqual(resp.data['lignes'][1]['a_faire'], 'relancer')
+        self.assertEqual(ligne['lien'], f'/ventes/factures?facture={contestee.pk}')
+        self.assertNotIn(self.TEL, str(resp.data))
+
+    def test_filtres_limite_et_parametre_inconnu_400(self):
+        self._facture('05', retard_jours=3)
+        self._facture('06', retard_jours=8)
+        resp = auth(self.user).get(self.URL, {'limite': 1, 'q': 'lahlou'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['nb_factures'], len(resp.data['lignes'])),
+                         (2, 1))
+        vide = auth(self.user).get(self.URL, {'q': 'zzz'})
+        self.assertEqual(vide.data['lignes'], [])
+        self.assertEqual(vide.data['total_du'], '0.00')
+        for params, champ in (({'inconnu': 1}, 'inconnu'), ({'limite': 99}, 'limite'),
+                              ({'mes_relances': 'peut-etre'}, 'mes_relances'),
+                              ({'client': 'x'}, 'client')):
+            with self.subTest(params=params):
+                refus = auth(self.user).get(self.URL, params)
+                self.assertEqual(refus.status_code, 400)
+                self.assertIn(champ, str(refus.data))
+
+    def test_autre_societe_ne_voit_rien(self):
+        self._facture('07', retard_jours=12)
+        resp = auth(self._hors_societe()).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['nb_factures'], resp.data['lignes']), (0, []))
+
+    def test_action_lecture_lot_copilote_carte_liste_impayes(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import IMPAYES_LISTER
+        self.assertEqual(
+            (IMPAYES_LISTER.lot, IMPAYES_LISTER.risk,
+             IMPAYES_LISTER.required_permission, IMPAYES_LISTER.carte),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_impayes'))
+        self.assertNotIn('telephone', str(IMPAYES_LISTER.inputs))
+
+
+class FacturesAssistantTest(_BaseVenteAssistant):
+    """VAD3 — ``GET ventes/assistant/factures/`` : forme du contrat
+    ``assistant_factures.json``, recherche par référence / nom / téléphone
+    (jamais rendu), statut fermé, portée société."""
+
+    URL = '/api/django/ventes/assistant/factures/'
+
+    def test_forme_par_nom_et_par_telephone_sans_le_rendre(self):
+        brouillon = self._facture('11', statut=Facture.Statut.BROUILLON)
+        emise = self._facture('12', retard_jours=4)
+        for q in ('lahlou', '06 00 00 42 42'):
+            with self.subTest(q=q):
+                resp = auth(self.user).get(self.URL, {'q': q})
+                self.assertEqual(resp.status_code, 200, resp.data)
+                self.assertEqual(set(resp.data),
+                                 set(_exemple_contrat('assistant_factures.json')))
+                self.assertEqual(resp.data['total'], 2)
+                par_id = {li['facture_id']: li for li in resp.data['lignes']}
+                self.assertEqual(set(par_id), {brouillon.pk, emise.pk})
+                self.assertEqual(par_id[brouillon.pk]['a_faire'], 'emettre')
+                self.assertEqual(par_id[brouillon.pk]['montant_du'], '0.00')
+                self.assertEqual(par_id[emise.pk]['a_faire'], 'relancer')
+                self.assertEqual(par_id[emise.pk]['montant_du'], '1200.00')
+                self.assertNotIn('600004242', str(resp.data))
+        exemple = _exemple_contrat('assistant_factures.json')['lignes'][0]
+        self.assertEqual(set(resp.data['lignes'][0]), set(exemple))
+
+    def test_statut_filtre_et_valeur_hors_liste_400(self):
+        self._facture('13', statut=Facture.Statut.BROUILLON)
+        self._facture('14')
+        resp = auth(self.user).get(self.URL, {'statut': 'brouillon'})
+        self.assertEqual(resp.data['total'], 1)
+        refus = auth(self.user).get(self.URL, {'statut': 'perdue'})
+        self.assertEqual(refus.status_code, 400)
+        self.assertIn('statut', str(refus.data))
+
+    def test_autre_societe_ne_voit_rien(self):
+        self._facture('15')
+        resp = auth(self._hors_societe()).get(self.URL, {'q': 'lahlou'})
+        self.assertEqual((resp.data['total'], resp.data['lignes']), (0, []))
+
+    def test_action_statuts_du_modele_et_lot_copilote(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import FACTURE_CHERCHER, STATUTS_FACTURE
+        self.assertEqual(set(STATUTS_FACTURE), set(Facture.Statut.values))
+        self.assertEqual(
+            (FACTURE_CHERCHER.lot, FACTURE_CHERCHER.risk,
+             FACTURE_CHERCHER.required_permission, FACTURE_CHERCHER.carte),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_factures'))
+
+
+class CycleDevisAssistantTest(_BaseVenteAssistant):
+    """VAD4-VAD6 — prolonger, refuser, réviser : les routes EXISTANTES de
+    l'écran, appelées comme le relais les appelle (JWT de l'utilisateur, corps
+    = entrées de l'action) ; propositions à confirmer, objet nommé."""
+
+    def _ecriture_copilote(self, action, permission):
+        from apps.agent.registry import LOT_COPILOTE
+        self.assertEqual(
+            (action.lot, action.risk, action.required_permission, action.objets),
+            (LOT_COPILOTE, RISK_OUTWARD, permission, {'id': 'devis'}))
+        self.assertTrue(action.confirm_summary)
+        self.assertFalse(action.inputs.get('additionalProperties', True))
+        self.assertLessEqual(len(action.description), 600)
+
+    def test_prolonger_un_envoye_puis_refus_d_un_expire(self):
+        from apps.ventes.agent_actions import PROLONGER_DEVIS
+        self._ecriture_copilote(PROLONGER_DEVIS, 'ventes_modifier')
+        url = PROLONGER_DEVIS.endpoint.format(id=self.devis.pk)
+        resp = auth(self.user).post(url, {'date': '2030-01-15'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['date_validite'], '2030-01-15')
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.EXPIRE)
+        refus = auth(self.user).post(url, {}, format='json')
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertIn('réviser', refus.data['detail'])
+
+    def test_refuser_motif_de_la_liste_lead_perdu_requis_accepte_409(self):
+        from apps.crm.models import MotifPerte
+        from apps.ventes.agent_actions import REFUSER_DEVIS
+        self._ecriture_copilote(REFUSER_DEVIS, 'ventes_valider')
+        self.assertIn('marquer_lead_perdu', REFUSER_DEVIS.inputs['required'])
+        self.assertNotIn('date', REFUSER_DEVIS.inputs['properties'])
+        MotifPerte.objects.create(company=self.company, nom='Prix')
+        url = REFUSER_DEVIS.endpoint.format(id=self.devis.pk)
+        inconnu = auth(self.user).post(url, {
+            'motif': 'Météo', 'marquer_lead_perdu': False}, format='json')
+        self.assertEqual(inconnu.status_code, 409, inconnu.data)
+        resp = auth(self.user).post(url, {
+            'motif': 'prix', 'note': 'trop cher', 'marquer_lead_perdu': False},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.devis.refresh_from_db()
+        self.assertEqual((self.devis.statut, self.devis.motif_refus),
+                         (Devis.Statut.REFUSE, 'Prix'))
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        accepte = auth(self.user).post(url, {
+            'motif': 'Prix', 'marquer_lead_perdu': False}, format='json')
+        self.assertEqual(accepte.status_code, 409, accepte.data)
+
+    def test_reviser_un_accepte_cree_la_v2_brouillon_un_brouillon_409(self):
+        from apps.ventes.agent_actions import REVISER_DEVIS
+        self._ecriture_copilote(REVISER_DEVIS, 'ventes_creer')
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        resp = auth(self.user).post(
+            REVISER_DEVIS.endpoint.format(id=self.devis.pk), {}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        v2 = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(v2.statut, Devis.Statut.BROUILLON)
+        brouillon = auth(self.user).post(
+            REVISER_DEVIS.endpoint.format(id=v2.pk), {}, format='json')
+        self.assertEqual(brouillon.status_code, 409, brouillon.data)
+
+
+def _taille_simulee(quantite):
+    """Remplace ``taille_assistant._appliquer`` (le moteur « réconcilier »,
+    couvert par les tests des offres de taille) : la ligne panneau passe à
+    ``quantite`` — l'effet que l'aperçu doit ANNULER et l'écriture garder."""
+    from apps.ventes.models import LigneDevis
+
+    def appliquer(devis, nb, modules, utilisateur, ttc_avant):
+        LigneDevis.objects.filter(devis=devis).update(quantite=Decimal(quantite))
+        return {'panneaux_avant': 10, 'panneaux': quantite, 'avertissements': []}
+    return appliquer
+
+
+class TailleAssistantTest(_BaseVenteAssistant):
+    """VAD7 (D-W2-Q1) — l'aperçu n'écrit RIEN ; l'écriture exige l'ancien et
+    le nouveau total de l'aperçu ; un accepté se révise d'abord ; formes des
+    contrats ``assistant_devis_taille_apercu.json`` / ``assistant_devis_taille.json``."""
+
+    def setUp(self):
+        from apps.ventes.models import LigneDevis
+        super().setUp()
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='VAD-PV710', prix_vente=Decimal('1400'),
+            prix_achat=Decimal('555.55'))
+        self.ligne = LigneDevis.objects.create(
+            devis=self.devis, produit=produit,
+            designation='Panneau Canadien Solar 710W', quantite=Decimal('10'),
+            prix_unitaire=Decimal('1166.67'), ordre=0)
+
+    def _url(self, apercu=False):
+        from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
+        action = TAILLE_APERCU if apercu else TAILLE_DEVIS
+        return action.endpoint.format(id=self.devis.pk)
+
+    def test_apercu_annule_puis_ecriture_confirmee_et_apercu_perime(self):
+        from unittest import mock
+        with mock.patch('apps.ventes.domain.taille_assistant._appliquer',
+                        _taille_simulee(12)):
+            apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+            self.assertEqual(apercu.status_code, 200, apercu.data)
+            self.assertEqual(set(apercu.data), set(_exemple_contrat(
+                'assistant_devis_taille_apercu.json')))
+            self.ligne.refresh_from_db()
+            self.assertEqual(self.ligne.quantite, Decimal('10'))  # rien d'écrit
+            self.assertTrue(apercu.data['corrige_apres_envoi'])
+            self.assertEqual(apercu.data['a_faire'], 'proposer')
+            self.assertNotEqual(apercu.data['ancien_total_ttc'],
+                                apercu.data['nouveau_total_ttc'])
+            perime = auth(self.user).post(self._url(), {
+                'nb_panneaux': 12, 'ancien_total_ttc': apercu.data['ancien_total_ttc'],
+                'nouveau_total_ttc': '1.00'}, format='json')
+            self.assertEqual(perime.status_code, 409, perime.data)
+            self.assertEqual(perime.data['code'], 'apercu_perime')
+            self.ligne.refresh_from_db()
+            self.assertEqual(self.ligne.quantite, Decimal('10'))
+            resp = auth(self.user).post(self._url(), {
+                'nb_panneaux': 12,
+                'ancien_total_ttc': apercu.data['ancien_total_ttc'],
+                'nouveau_total_ttc': apercu.data['nouveau_total_ttc']},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'assistant_devis_taille.json')))
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('12'))
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)  # règle #4
+        self.assertEqual(resp.data['composition'][0]['total_ttc'], '16800.00')
+        self.assertNotIn('555.55', str(resp.data))
+
+    def test_devis_compose_sur_demande_le_refus_dit_de_recomposer(self):
+        """Essai vraie clé du 19/11 — un devis né d'une composition imposée n'a
+        pas d'étude : le refus nomme le geste qui marche (un nouveau devis)."""
+        from unittest import mock
+
+        from apps.ventes import offres_tailles
+        from apps.ventes.domain.composition_imposee import poser_marqueur
+        poser_marqueur(self.devis, {'demande': {'nb_panneaux': 10}})
+        with mock.patch.object(offres_tailles, 'enregistrer_config'), \
+                mock.patch.object(
+                    offres_tailles, 'appliquer_au_devis',
+                    side_effect=offres_tailles.ApplicationImpossible('sans profil')):
+            apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+        self.assertEqual(apercu.status_code, 409, apercu.data)
+        self.assertEqual(apercu.data['code'], 'composition_imposee')
+        self.assertIn('composez un nouveau devis', apercu.data['detail'])
+        self.assertIn('12 panneaux', apercu.data['detail'])
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('10'))
+
+    def test_accepte_refuse_avec_la_phrase_de_revision_sans_rien_ecrire(self):
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        for reponse in (
+                auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12}),
+                auth(self.user).post(self._url(), {
+                    'nb_panneaux': 12, 'ancien_total_ttc': '1.00',
+                    'nouveau_total_ttc': '2.00'}, format='json')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertEqual((reponse.data['code'], reponse.data['field']),
+                             ('revision_possible', 'statut'))
+            self.assertIn('réviser', reponse.data['detail'])
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('10'))
+
+    def test_parametres_bornes_et_devis_hors_societe_404(self):
+        for params in ({}, {'nb_panneaux': 0}, {'nb_panneaux': 201},
+                       {'nb_panneaux': 12, 'batterie_nb_modules': 0},
+                       {'nb_panneaux': 12, 'forcer': 1}):
+            with self.subTest(params=params):
+                resp = auth(self.user).get(self._url(apercu=True), params)
+                self.assertEqual(resp.status_code, 400, resp.data)
+        hors = auth(self._hors_societe()).get(self._url(apercu=True),
+                                              {'nb_panneaux': 12})
+        self.assertEqual(hors.status_code, 404)
+
+    def test_apercu_perime_compare_les_deux_totaux_au_centime(self):
+        from apps.ventes.domain.taille_assistant import (
+            TailleRefusee, exiger_apercu_a_jour)
+        mesure = {'ancien_total_ttc': '73000.00', 'nouveau_total_ttc': '76400.00'}
+        self.assertIsNone(exiger_apercu_a_jour(mesure, {
+            'ancien_total_ttc': '73000', 'nouveau_total_ttc': '76400.0'}))
+        with self.assertRaises(TailleRefusee) as refus:
+            exiger_apercu_a_jour(mesure, {'ancien_total_ttc': '73000.00',
+                                          'nouveau_total_ttc': '76800.00'})
+        self.assertEqual(refus.exception.corps['code'], 'apercu_perime')
+
+    def test_actions_lecture_puis_ecriture_confirmee_sans_prix_ni_forcage(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
+        self.assertEqual((TAILLE_APERCU.risk, TAILLE_APERCU.required_permission,
+                          TAILLE_APERCU.lot), (RISK_INTERNAL, 'ventes_modifier', LOT_COPILOTE))
+        self.assertEqual((TAILLE_DEVIS.risk, TAILLE_DEVIS.required_permission,
+                          TAILLE_DEVIS.lot, TAILLE_DEVIS.objets),
+                         (RISK_OUTWARD, 'ventes_modifier', LOT_COPILOTE, {'id': 'devis'}))
+        self.assertEqual(set(TAILLE_DEVIS.inputs['properties']), {
+            'id', 'nb_panneaux', 'batterie_nb_modules', 'ancien_total_ttc',
+            'nouveau_total_ttc'})
+        self.assertLessEqual({'ancien_total_ttc', 'nouveau_total_ttc'},
+                             set(TAILLE_DEVIS.inputs['required']))
+
+
+class RelanceWhatsappAssistantTest(_BaseVenteAssistant):
+    """VAD8 — le WhatsApp de relance : modèle « relance » validé forcé, lien
+    wa.me, trace au chatter ; personne opposée, contestée, brouillon refusés
+    (409 nommé, rien de tracé) ; portée société."""
+
+    def _url(self, facture):
+        from apps.ventes.agent_actions import WHATSAPP_RELANCE
+        return WHATSAPP_RELANCE.endpoint.format(id=facture.pk)
+
+    def _traces(self, facture):
+        from apps.ventes.models_facturation import FactureActivity
+        return FactureActivity.objects.filter(facture=facture).count()
+
+    def test_relance_preparee_texte_valide_et_trace(self):
+        facture = self._facture('21', retard_jours=9)
+        resp = auth(self.user).post(self._url(facture), {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'facture_id', 'reference', 'texte',
+                                          'wa_url', 'langue_servie', 'lien'})
+        self.assertTrue(resp.data['wa_url'].startswith('https://wa.me/'))
+        self.assertEqual(resp.data['langue_servie'], 'fr')
+        self.assertEqual(self._traces(facture), 1)
+
+    def test_opposition_contestee_et_brouillon_refuses_sans_trace(self):
+        lead = Lead.objects.create(company=self.company, nom='Lahlou',
+                                   prenom='Driss', ne_plus_contacter=True)
+        opposee = self._facture('22', retard_jours=9, lead=lead)
+        contestee = self._facture('23', retard_jours=9,
+                                  contestee_le=timezone.localdate())
+        brouillon = self._facture('24', statut=Facture.Statut.BROUILLON)
+        for facture, code in ((opposee, 'opposition'),
+                              (contestee, 'non_relancable'),
+                              (brouillon, 'non_relancable')):
+            with self.subTest(code=code, facture=facture.reference):
+                resp = auth(self.user).post(self._url(facture), {}, format='json')
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data['code'], code)
+                self.assertEqual(self._traces(facture), 0)
+
+    def test_autre_societe_404_et_langue_hors_liste_400(self):
+        facture = self._facture('25', retard_jours=9)
+        hors = auth(self._hors_societe()).post(self._url(facture), {}, format='json')
+        self.assertEqual(hors.status_code, 404)
+        refus = auth(self.user).post(self._url(facture), {'langue': 'en'},
+                                     format='json')
+        self.assertEqual(refus.status_code, 400)
+
+    def test_action_interne_texte_jamais_ecrit_par_le_modele(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import WHATSAPP_RELANCE
+        self.assertEqual(
+            (WHATSAPP_RELANCE.risk, WHATSAPP_RELANCE.required_permission,
+             WHATSAPP_RELANCE.carte, WHATSAPP_RELANCE.lot, WHATSAPP_RELANCE.objets),
+            (RISK_INTERNAL, 'ventes_modifier', 'wa_message', LOT_COPILOTE,
+             {'id': 'facture'}))
+        self.assertEqual(set(WHATSAPP_RELANCE.inputs['properties']), {'id', 'langue'})
+
+
+class FacturerVenteAssistantTest(_BaseVenteAssistant):
+    """VAD9 (D-W2-Q2 = BROUILLON_SEULEMENT) — « facture l'acompte » prépare un
+    BROUILLON par la route de l'écran ; le schéma de l'action est FERMÉ : ni
+    émission, ni paiement, ni forçage ne peuvent y être posés."""
+
+    INTERDITES = ('emettre', 'paiements', 'utiliser_avances',
+                  'remplacer_brouillons', 'override_credit',
+                  'override_avertissement', 'libelle', 'company')
+
+    def test_schema_ferme_aucune_emission_ni_forcage(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import FACTURER_VENTE, NATURES_FACTURE
+        from apps.ventes.domain.facturation_vente import NATURES
+        self.assertEqual(NATURES_FACTURE, NATURES)
+        self.assertIs(FACTURER_VENTE.inputs['additionalProperties'], False)
+        proprietes = set(FACTURER_VENTE.inputs['properties'])
+        self.assertEqual(proprietes & set(self.INTERDITES), set())
+        self.assertEqual(proprietes, {'id', 'nature', 'pourcentage',
+                                      'montant_ttc', 'cle_attendue'})
+        self.assertEqual(
+            (FACTURER_VENTE.risk, FACTURER_VENTE.required_permission,
+             FACTURER_VENTE.carte, FACTURER_VENTE.lot, FACTURER_VENTE.objets),
+            (RISK_OUTWARD, 'ventes_valider', 'facture_brouillon', LOT_COPILOTE,
+             {'id': 'devis'}))
+        self.assertIn('BROUILLON', FACTURER_VENTE.confirm_summary)
+
+    def test_brouillon_prepare_sans_numero_legal_forme_du_contrat(self):
+        from apps.ventes.agent_actions import FACTURER_VENTE, VENTE_ETAT
+        from apps.ventes.models import LigneDevis
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku='VAD-KIT',
+            prix_vente=Decimal('10000'))
+        LigneDevis.objects.create(
+            devis=self.devis, produit=produit, designation='Kit solaire',
+            quantite=Decimal('1'), prix_unitaire=Decimal('10000'), ordre=0)
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        etat = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(etat.data['a_faire'], 'facturer', etat.data)
+        echeance = etat.data['prochaines_echeances'][0]
+        resp = auth(self.user).post(
+            FACTURER_VENTE.endpoint.format(id=self.devis.pk), {
+                'nature': etat.data['prochaine_action'],
+                'montant_ttc': echeance['montant_ttc'],
+                'cle_attendue': echeance['cle']}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'devis_facturer.json', 'exemple_brouillon_assistant')))
+        self.assertEqual(resp.data['facture']['statut'], 'brouillon')
+        facture = Facture.objects.get(pk=resp.data['facture']['id'])
+        self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
+        apres = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(apres.data['a_faire'], 'emettre_brouillon')
+
+
+class BriefVentesTest(_BaseVenteAssistant):
+    """VAD10 — ``selectors_assistant.brief_ventes(user, aujourdhui)`` : le bloc
+    ``impayes`` du point du matin (forme de l'échantillon du digest), cinq
+    lignes au plus, compteurs sur tout ; absent (None) sans lecture des
+    factures."""
+
+    def _exemple_bloc(self):
+        import json
+        from pathlib import Path
+        chemin = (Path(__file__).resolve().parents[2] / 'crm' / 'contract_samples'
+                  / 'assistant_digest_matin.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))[
+            'vague2']['exemple_copilote']['impayes']
+
+    def test_forme_cinq_lignes_compteurs_sur_tout(self):
+        from apps.ventes.selectors_assistant import brief_ventes
+        for rang in range(6):
+            self._facture(f'3{rang}', ht='100', retard_jours=10 + rang)
+        bloc = brief_ventes(self.user, timezone.localdate())
+        exemple = self._exemple_bloc()
+        self.assertEqual(set(bloc), set(exemple))
+        self.assertEqual((bloc['nb_factures'], bloc['total_du']), (6, '720.00'))
+        self.assertEqual(len(bloc['lignes']), 5)
+        self.assertEqual(set(bloc['lignes'][0]), set(exemple['lignes'][0]))
+        retards = [li['jours_retard'] for li in bloc['lignes']]
+        self.assertEqual(retards, sorted(retards, reverse=True))
+        self.assertNotIn(self.TEL, str(bloc))
+
+    def test_absent_sans_lecture_des_factures(self):
+        from apps.ventes.selectors_assistant import brief_ventes
+        crm_seul = User.objects.create_user(
+            username='vad_crm', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='CRM seul',
+                                     permissions=['crm_voir']))
+        self.assertIsNone(brief_ventes(crm_seul, timezone.localdate()))
+
+
+class PermissionsVenteAssistantTest(_BaseVenteAssistant):
+    """VAD11 — qui voit les outils de la lane VAD (copilote allumé), rôles
+    CANONIQUES du registre ; l'Admin Ventes (``ventes_valider`` sans
+    ``encaisser``) prépare un brouillon de facture mais n'émet ni n'encaisse ;
+    une route d'écriture refuse le lecteur seul (403) — catalogue et garde de
+    la route disent la même chose."""
+
+    LECTURES = {'ventes.vente.etat', 'ventes.impayes.lister',
+                'ventes.facture.chercher'}
+    ECRITURES = {'ventes.devis.prolonger', 'ventes.devis.refuser',
+                 'ventes.devis.reviser', 'ventes.devis.taille',
+                 'ventes.devis.taille_apercu',
+                 'ventes.facture.whatsapp_relance', 'ventes.vente.facturer'}
+
+    def _compte(self, nom, permissions):
+        return User.objects.create_user(
+            username=f'vad11_{nom}', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom=f'VAD11 {nom}',
+                                     permissions=list(permissions)))
+
+    def _vus(self, user):
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            return {a.key for a in for_user(user)}
+
+    def test_catalogue_par_role_canonique(self):
+        from apps.roles import permissions_registre as R
+        toutes = self.LECTURES | self.ECRITURES
+        for nom, permissions, attendu in (
+                ('admin_ventes', R.ADMIN_VENTES_PERMISSIONS, toutes),
+                ('commercial', R.COMMERCIAL_PERMISSIONS, toutes),
+                ('lecture', R.VIEWER_PERMISSIONS, self.LECTURES),
+                ('technicien', R.TECHNICIEN_PERMISSIONS, set()),
+                ('admin_rh', R.ADMIN_RH_PERMISSIONS, set())):
+            with self.subTest(role=nom):
+                self.assertEqual(self._vus(self._compte(nom, permissions)) & toutes,
+                                 attendu)
+
+    def test_admin_ventes_brouillon_oui_emission_et_encaissement_non(self):
+        from apps.roles import permissions_registre as R
+        admin_ventes = self._compte('av', R.ADMIN_VENTES_PERMISSIONS)
+        vus = self._vus(admin_ventes)
+        self.assertIn('ventes.vente.facturer', vus)
+        self.assertNotIn(GENERER_FACTURE.key, vus)
+        self.assertNotIn(ENREGISTRER_PAIEMENT.key, vus)
+
+    def test_lecteur_seul_route_d_ecriture_403_lecture_200(self):
+        from apps.roles import permissions_registre as R
+        from apps.ventes.agent_actions import PROLONGER_DEVIS, VENTE_ETAT
+        lecteur = self._compte('ro', R.VIEWER_PERMISSIONS)
+        self.devis.created_by = lecteur
+        self.devis.save(update_fields=['created_by'])
+        ecriture = auth(lecteur).post(
+            PROLONGER_DEVIS.endpoint.format(id=self.devis.pk), {}, format='json')
+        self.assertEqual(ecriture.status_code, 403, ecriture.data)
+        lecture = auth(lecteur).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(lecture.status_code, 200, lecture.data)

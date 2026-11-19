@@ -35,13 +35,15 @@ from rest_framework.views import APIView
 from authentication.permissions import HasPermissionOrLegacy
 from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, entier_ou_400
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
-from core.permissions import _user_has_or_legacy
+from core.permissions import ScopedPermission, _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
+from . import assistant
 from . import qualification as vocabulaire_qualification
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
-from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
+from .serializers import (
+    VisiteAnnulerSerializer, VisiteRenvoiSerializer, VisiteTerrainSerializer)
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser, MultiPartParser
 
@@ -110,6 +112,83 @@ _VISITE_CONTEXTE = inline_serializer('VisiteTerrainContexte', {
     'qualification': serializers.JSONField(allow_null=True),
     '_non_releves': serializers.JSONField(required=False, allow_null=True),
     'releve_ci': serializers.JSONField(required=False, allow_null=True),
+})
+
+
+#: Copilote vague 2 (VIS3) — l'agenda de l'assistant : ``contract_samples/
+#: assistant_agenda.json``. Les paramètres sont DÉCLARÉS ici : un paramètre de
+#: requête non déclaré est refusé (400, ``core.parametres_requete``).
+_PARAMETRES_AGENDA = [
+    OpenApiParameter('du', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description="Début de la fenêtre (défaut : aujourd'hui)."),
+    OpenApiParameter('au', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description='Fin de la fenêtre (défaut : du + 7 j ; au plus du + 31 j).'),
+    OpenApiParameter('filtre', {'type': 'string', 'enum': list(assistant.FILTRES)},
+                     OpenApiParameter.QUERY, required=False),
+    OpenApiParameter('commercial', {'type': 'integer', 'minimum': 1, 'maximum': 2 ** 31 - 1},
+                     OpenApiParameter.QUERY, required=False,
+                     description="Id du compte qui fait la visite."),
+    OpenApiParameter('limite', {'type': 'integer', 'minimum': 1, 'maximum': assistant.LIMITE_MAX},
+                     OpenApiParameter.QUERY, required=False),
+]
+
+#: Refus nommé de l'assistant : ``{detail, field, code}`` (400 paramètre, 409 règle
+#: d'ensemble ou d'état que le schéma ne dit pas).
+_ERREUR_ASSISTANT = inline_serializer('VisitesErreurAssistant', {
+    'detail': serializers.CharField(required=False), 'field': serializers.CharField(required=False),
+    'code': serializers.CharField(required=False)})
+
+_AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
+    'du': serializers.CharField(),
+    'au': serializers.CharField(),
+    'filtre': serializers.CharField(),
+    'totaux': serializers.DictField(child=serializers.IntegerField()),
+    'limite': serializers.IntegerField(),
+    'lignes': serializers.ListField(child=serializers.DictField()),
+    'lien': serializers.CharField(),
+})
+
+#: Copilote vague 2 (VIS5) — la charge d'équipe, au jour près
+#: (``assistant_charge.json``).
+_PARAMETRES_CHARGE = [
+    OpenApiParameter('du', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description="Premier jour (défaut : aujourd'hui)."),
+    OpenApiParameter('jours', {'type': 'integer', 'minimum': 1,
+                               'maximum': assistant.JOURS_CHARGE_MAX},
+                     OpenApiParameter.QUERY, required=False,
+                     description='Nombre de jours lus (défaut 7).'),
+]
+
+_CHARGE_ASSISTANT = inline_serializer('VisitesChargeAssistant', {
+    'du': serializers.CharField(),
+    'jours': serializers.IntegerField(),
+    'note': serializers.CharField(),
+    'lignes': serializers.ListField(child=serializers.DictField()),
+    'a_faire': serializers.CharField(),
+    'lien': serializers.CharField(),
+})
+
+#: Copilote vague 2 (VIS4) — la fiche compacte (``assistant_visite_resume.json``),
+#: aussi la réponse de ``annuler`` (``visite_annuler.json``).
+_RESUME_ASSISTANT = inline_serializer('VisiteResumeAssistant', {
+    'id': serializers.IntegerField(),
+    'lead': serializers.DictField(),
+    'statut': serializers.CharField(),
+    'statut_libelle': serializers.CharField(),
+    'gabarit': serializers.CharField(),
+    'date_prevue': serializers.CharField(allow_null=True),
+    'date_realisee': serializers.CharField(allow_null=True),
+    'commercial': serializers.JSONField(allow_null=True),
+    'jalons': serializers.DictField(),
+    'completude': serializers.DictField(),
+    'qualification': serializers.JSONField(allow_null=True),
+    'retour_terrain': serializers.CharField(allow_blank=True),
+    'mesures_cles': serializers.CharField(allow_blank=True),
+    'photos': serializers.DictField(),
+    'modifiable': serializers.BooleanField(),
+    'a_faire': serializers.CharField(),
+    'lien': serializers.CharField(),
+    'liens': serializers.DictField(),
 })
 
 
@@ -245,6 +324,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         'assembler_photos': 'visites_modifier',
         'calage': 'visites_modifier',
         'valider': 'visites_valider',
+        # Copilote vague 2 (VIS7) — annuler un rendez-vous EN ATTENTE : un geste
+        # de celui qui planifie (comme le PATCH de la date), pas du bureau d'études.
+        'annuler': 'visites_modifier',
         # ALEA8 — renvoyer est un geste du BUREAU D'ÉTUDES (« celui qui
         # relève n'est pas celui qui donne — ou retire — le feu vert ») : le
         # Technicien responsable (sans ``visites_modifier``) renvoie, le
@@ -289,10 +371,6 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # historique reste accepte : il RESTREINT encore un valideur a ses propres
     # visites, il n'elargit jamais la portee de personne.
 
-    def _voit_toute_l_equipe(self):
-        """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
-        return _user_has_or_legacy(self.request.user, 'visites_valider')
-
     def destroy(self, request, *args, **kwargs):
         # ALEA58 — une visite validée reste refusée (VT3 : gelée).
         return (self._refus_si_gelee(self.get_object())
@@ -318,21 +396,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             # ACVI82 — la LISTE seule : une action qui écrit puis relit
             # l'agrégat ne doit pas lire des photos préchargées avant l'écriture.
             qs = qs.prefetch_related('medias__attachment')
-        if not self._voit_toute_l_equipe():
-            return qs.filter(commercial=self.request.user)
-        # ACVI8 (D-ACVI-3) — un valideur lit les visites de SES leads en portée
-        # (portée « all » : bureau d'études, toute la société), et celles qui
-        # lui sont assignées : jamais moins qu'un non-valideur. Le bureau d'études
-        # dédié (valide sans relever, ALEA8 : Technicien responsable) voit toute la
-        # société, quelle que soit sa portée : aucun lead n'est dans son arbre.
-        if _user_has_or_legacy(self.request.user, 'visites_modifier'):
-            from apps.crm import selectors as crm_selectors
-            qs = (qs.filter(lead__in=crm_selectors.leads_en_portee(self.request.user).values('pk'))
-                  | qs.filter(commercial=self.request.user))
+        # La règle de portée (VTA6 + ACVI8 / D-ACVI-3) vit dans
+        # ``selectors.visites_visibles`` : l'assistant lit la même.
         mine = str(self.request.query_params.get('mine', '')).strip()
-        if mine in ('1', 'true'):
-            qs = qs.filter(commercial=self.request.user)
-        return qs
+        return selectors.visites_visibles(
+            self.request.user, base=qs, mine=mine in ('1', 'true'))
 
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)
@@ -879,6 +947,71 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite.texture_calage = normalise
         visite.save(update_fields=['texture_calage'])
         return self._agregat(visite)
+
+    # ── Copilote vague 2 — lectures et gestes de l'assistant ─────────────────
+    #
+    # Les formes sont celles de ``contract_samples/assistant_*.json`` et
+    # ``visite_annuler.json`` (construites par ``assistant.py``) ; la portée est
+    # celle de l'écran (``selectors.visites_visibles``). Un refus nomme son
+    # champ : ``{detail, field, code}``.
+
+    @extend_schema(parameters=_PARAMETRES_AGENDA,
+                   responses={200: _AGENDA_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              409: _ERREUR_ASSISTANT})
+    @action(detail=False, methods=['get'], url_path='agenda',
+            permission_classes=[ScopedPermission])
+    def agenda(self, request):
+        """VIS3 — l'agenda des visites (carte ``liste_visites``) : totaux de la
+        fenêtre et lignes compactes ; lecture ``visites_voir``."""
+        try:
+            return Response(assistant.agenda(
+                request.user, request.query_params, timezone.localdate()))
+        except assistant.ErreurAssistant as erreur:
+            return Response(erreur.corps(), status=erreur.statut)
+
+    @extend_schema(responses={200: _RESUME_ASSISTANT, 404: _ERREUR_ASSISTANT})
+    @action(detail=True, methods=['get'], url_path='resume',
+            permission_classes=[ScopedPermission])
+    def resume(self, request, pk=None):
+        """VIS4 — la fiche COMPACTE d'une visite (carte ``fiche_visite``, ≤ 1,5 Ko) :
+        jalons, complétude, qualification, retour terrain, photos à refaire.
+        Hors portée ou autre société : 404, comme le détail."""
+        return Response(assistant.resume_visite(self.get_object()))
+
+    @extend_schema(parameters=_PARAMETRES_CHARGE,
+                   responses={200: _CHARGE_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              409: _ERREUR_ASSISTANT})
+    @action(detail=False, methods=['get'], url_path='charge',
+            permission_classes=[ScopedPermission])
+    def charge(self, request):
+        """VIS5 — « qui peut faire la visite ? » : la CHARGE de chaque assignable
+        au jour près (visites, interventions de chantier, indisponibilité). Une
+        visite n'a qu'une date : aucune heure ni trajet n'est calculé."""
+        try:
+            return Response(assistant.charge_equipe(
+                request.user, request.query_params, timezone.localdate()))
+        except assistant.ErreurAssistant as erreur:
+            return Response(erreur.corps(), status=erreur.statut)
+
+    @extend_schema(request=VisiteAnnulerSerializer,
+                   responses={200: _RESUME_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              404: _ERREUR_ASSISTANT, 409: _ERREUR_ASSISTANT})
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[ScopedPermission])
+    def annuler(self, request, pk=None):
+        """VIS7 — annule un rendez-vous de visite EN ATTENTE (brouillon daté,
+        jamais commencé), motif obligatoire : la visite passe ``annulee`` (gelée,
+        ses photos restent), sa date est vidée, l'assigné est prévenu, le
+        rendez-vous d'agenda est annulé et le lead compensé — par la porte
+        d'annulation existante, jamais un DELETE. Réponse : la fiche compacte."""
+        visite = self.get_object()
+        corps = VisiteAnnulerSerializer(data=request.data)
+        refus = None if corps.is_valid() else assistant.refus_motif()
+        refus = refus or assistant.refus_annulation(visite)
+        if refus is not None:
+            return Response(refus.corps(), status=refus.statut)
+        services.annuler_visite(visite, request.user, motif=corps.validated_data['motif'])
+        return Response(assistant.resume_visite(visite))
 
 
 def _coordonnee(brute, limite):

@@ -30,9 +30,29 @@ jamais passer `--bare`.
 
 - **Chaque semaine** (le lundi matin) ;
 - **après tout merge** qui touche les routes (`frontend/src/**/routes*`, `urls.py`), les permissions
-  (`backend/django_core/apps/roles/permissions_registre.py`) ou le registre d'actions
-  (`backend/django_core/apps/*/agent_actions.py`) — sinon le manifeste ne couvre plus le registre et le
-  prochain passage échoue à la parité.
+  (`backend/django_core/apps/roles/permissions_registre.py`), le registre d'actions
+  (`backend/django_core/apps/*/agent_actions.py` et les actions natives de
+  `backend/django_core/apps/agent/registry.py`) ou les domaines de l'assistant
+  (`backend/fastapi_ia/app/services/chargeur_outils.py`, écrans d'`erp.ouvrir` dans
+  `apps/agent/contract_samples/assistant_ecrans.json`) — sinon le manifeste ne couvre plus le registre
+  et le prochain passage échoue à la parité.
+
+## Ce que couvre la régénération
+
+- **Toutes les clés enregistrées**, sous leurs trois formes : `AgentAction(key='…')` littéral d'un
+  `apps/*/agent_actions.py`, actions natives de `apps/agent/registry.py` (`erp.ouvrir`,
+  `crm.client.create`, `reporting.assistant.diagnostic`…) et clés construites par une fabrique
+  (`_action('taches.…', …)` de `apps/taches/agent_actions.py`). L'ancien contrôle ne lisait que la
+  première forme : il ignorait `erp.ouvrir` et les `taches.*`.
+- **Les domaines** : l'assistant (moteur natif) charge ses outils par domaine (`chargeur_outils.DOMAINES`)
+  autour d'un noyau toujours présent ; `erp.ouvrir` rend un bouton vers un écran de la liste fermée,
+  pour tout geste qui reste humain, et n'écrit rien. Le manuel le dit en une section courte.
+- **Ce qui n'y va pas** : les procédures propres à un domaine (comment l'assistant enchaîne ses outils)
+  vivent dans `backend/fastapi_ia/app/services/consignes_domaines.py`, servies au chargement du domaine.
+- **Étiquettes** : le manuel est servi à tous les comptes ; une action du lot `copilote` porte
+  « [copilote activé] », une action réservée au moteur natif « [copilote activé, moteur natif] ».
+- **Budget** : +10 000 caractères au plus par régénération (le prompt système est refusé au-delà de
+  60 000 tokens).
 
 ## Planification
 
@@ -48,10 +68,12 @@ Au choix, une seule des deux :
 
 ## Vérification de parité
 
-Le skill **échoue** (§6 du SKILL.md) si une clé `AgentAction(key=…)` d'un
-`backend/django_core/apps/*/agent_actions.py` manque à la section `fait` de `capacites.yml`, si une des
-quatre clés (`fait`, `ne_fait_pas`, `droits`, `suggestions`) manque, ou si le manuel sort de
-15 000 – 60 000 tokens (plafond de la garde AIC5). Rouge ⇒ on corrige la génération, jamais le contrôle.
+`capacites.yml` liste **chaque clé enregistrée et rien d'autre**. Le skill **échoue** (§6 du SKILL.md)
+si une clé du registre (les trois formes ci-dessus) manque à la section `fait`, si `fait` cite une clé
+que le registre n'a pas (clé d'un plan pas encore construite, clé retirée), si une action est déclarée
+hors des sources lues, si une des quatre clés (`fait`, `ne_fait_pas`, `droits`, `suggestions`) manque,
+si le manuel grossit de plus de 10 000 caractères, ou s'il sort de 15 000 – 60 000 tokens (plafond de
+la garde AIC5). Rouge ⇒ on corrige la génération, jamais le contrôle.
 
 ## Sortie
 

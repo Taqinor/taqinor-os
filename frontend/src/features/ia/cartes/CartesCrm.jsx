@@ -2,6 +2,7 @@ import { Button } from '../../../ui'
 import { formatDate, formatMAD } from '../../../lib/format'
 import { STAGE_LABELS } from '../../crm/stages'
 import BoutonTelechargerDevis from './BoutonTelechargerDevis'
+import { cheminAutorise } from './ecrans'
 import { useOuvrirEcran, usePreparerTouche } from './useCarte'
 
 /* COP-F3 — la file, le matin, la recherche, la fiche. Les boutons appellent
@@ -37,7 +38,7 @@ function BoutonPreparer({ toucheId, preparer, occupe }) {
 
 function Rangee({ titre, detail, children }) {
   return (
-    <li className="rounded-md border border-border bg-background/60 p-2">
+    <li className="min-w-0 break-words rounded-md border border-border bg-background/60 p-2">
       <p className="text-sm font-medium">{titre}</p>
       {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
       <div className="mt-1.5 flex flex-wrap gap-2">{children}</div>
@@ -132,6 +133,160 @@ function BlocVisites({ bloc }) {
   )
 }
 
+// Copilote vague 2 (BRF8) — les blocs du point du matin servis seulement quand le
+// copilote est allumé ET que le compte lit le module (sinon la clé est absente :
+// rien ne s'affiche). Les liens viennent du serveur et ne sont suivis que s'ils sont
+// un écran de la table `ecrans.js` ; les « à faire » sont des ensembles fermés du
+// serveur, jamais du texte de modèle ; les noms de clients sont rendus en texte brut.
+const GESTES = {
+  assigner: 'à assigner', completer: 'à compléter', valider: 'à valider', refaire: 'à refaire',
+  creer: 'à créer', reprendre_visite: 'reprendre la visite', dessiner: 'à dessiner', simuler: 'à simuler',
+  corriger_electrique: 'corriger l’électrique', retenir: 'retenir une variante',
+  faire_approuver: 'à faire approuver', publier: 'à publier', preparer_calepinage: 'calepinage à préparer',
+  commander_materiel: 'commander le matériel', encaisser_acompte: 'encaisser l’acompte',
+  planifier_pose: 'planifier la pose', assigner_technicien: 'assigner un technicien', poser: 'à poser',
+  relancer: 'à relancer', encaisser: 'à encaisser', emettre: 'à émettre', facturer: 'à facturer',
+  emettre_brouillon: 'brouillon à émettre', reviser: 'à réviser',
+  planifier: 'à planifier', demarrer: 'à démarrer', resoudre: 'à résoudre', cloturer: 'à clôturer',
+}
+const BLOCAGES = {
+  sans_date: 'sans date', sans_technicien: 'sans technicien', pose_sans_intervention: 'pose sans intervention',
+  pose_depassee: 'pose dépassée', acompte_non_encaisse: 'acompte non encaissé',
+}
+const STATUTS = {
+  brouillon: 'brouillon', en_cours: 'en cours', terminee: 'terminée', validee: 'validée', a_refaire: 'à refaire',
+  annulee: 'annulée', envoye: 'envoyé', accepte: 'accepté', refuse: 'refusé', expire: 'expiré',
+}
+const mot = (table, cle) => table[cle] ?? String(cle ?? '').replace(/_/g, ' ')
+const suite = (cle) => (cle && cle !== 'rien' ? mot(GESTES, cle) : null)
+const joindre = (...morceaux) => morceaux.filter(Boolean).join(' · ')
+const montant = (texte) => (texte == null || texte === '' ? null : formatMAD(Number(texte)))
+
+function OuvrirLien({ lien, label = 'Ouvrir' }) {
+  const ouvrir = useOuvrirEcran()
+  if (!cheminAutorise(lien)) return null
+  return (
+    <Button variant="outline" size="sm" className="min-h-10" onClick={() => ouvrir(lien)}>
+      {label}
+    </Button>
+  )
+}
+
+// Un bloc du matin : titre + compte, quelques rangées (celles du serveur, jamais
+// retriées ni refiltrées), puis « Tout voir » vers l'écran quand le serveur en donne un.
+function BlocMatin({ titre, nombre, resume, lignes, lien, decrire }) {
+  if (!nombre && !lignes?.length) return null
+  return (
+    <div className="mt-3 min-w-0">
+      <p className="mb-1.5 text-sm font-semibold">{titre} ({nombre ?? lignes.length})</p>
+      {resume && <p className="mb-1.5 text-xs text-muted-foreground">{resume}</p>}
+      {lignes?.length > 0 && (
+        <ul className="space-y-2">
+          {lignes.map((l, i) => {
+            const r = decrire(l)
+            return (
+              <Rangee key={r.cle ?? i} titre={r.titre} detail={r.detail}>
+                <OuvrirLien lien={r.lien} />
+              </Rangee>
+            )
+          })}
+        </ul>
+      )}
+      {lien && <div className="mt-1.5"><OuvrirLien lien={lien} label="Tout voir" /></div>}
+    </div>
+  )
+}
+
+function BlocVisitesEquipe({ bloc }) {
+  if (!bloc) return null
+  const nombre = (bloc.sans_technicien ?? 0) + (bloc.a_valider ?? 0) + (bloc.en_retard ?? 0)
+  return (
+    <BlocMatin titre="Visites de l’équipe" nombre={nombre} lignes={bloc.lignes} lien={bloc.lien}
+      resume={`${bloc.sans_technicien ?? 0} sans technicien · ${bloc.a_valider ?? 0} à valider · ${bloc.en_retard ?? 0} en retard`}
+      decrire={(l) => ({
+        cle: l.id,
+        titre: l.lead_nom || 'Visite',
+        detail: joindre(l.ville, l.date_prevue && `prévue le ${dateCourte(l.date_prevue)}`, l.en_retard && 'en retard', suite(l.a_faire)),
+        lien: l.lien,
+      })} />
+  )
+}
+
+function BlocCalepinages({ bloc }) {
+  if (!bloc) return null
+  const sans = bloc.sans_calepinage
+  return (
+    <>
+      <BlocMatin titre="Calepinages à traiter" nombre={bloc.total} lignes={bloc.lignes}
+        decrire={(l) => ({
+          cle: l.calepinage,
+          titre: l.reference,
+          detail: joindre(l.modifie_le && `modifié le ${dateCourte(l.modifie_le)}`, suite(l.a_faire)),
+          lien: l.lien,
+        })} />
+      {sans && (
+        <BlocMatin titre="Visites validées sans calepinage" nombre={sans.total} lignes={sans.lignes}
+          decrire={(l) => ({
+            cle: l.visite_id,
+            titre: l.lead_nom || 'Visite',
+            detail: joindre(l.validee_le && `validée le ${dateCourte(l.validee_le)}`, suite(l.a_faire)),
+            lien: l.lien,
+          })} />
+      )}
+    </>
+  )
+}
+
+function BlocChantiers({ bloc }) {
+  if (!bloc) return null
+  const rangee = (l) => ({
+    cle: l.id,
+    titre: `${l.reference} — ${l.client_nom}`,
+    detail: joindre(
+      (l.blocages ?? []).map((b) => mot(BLOCAGES, b)).join(', '),
+      l.date_pose_prevue && `pose le ${dateCourte(l.date_pose_prevue)}`,
+      l.technicien_nom, suite(l.a_faire),
+    ),
+    lien: l.lien,
+  })
+  return (
+    <>
+      <BlocMatin titre="Chantiers bloqués" nombre={bloc.bloques?.total} lignes={bloc.bloques?.lignes} decrire={rangee} />
+      <BlocMatin titre="Poses de la semaine" nombre={bloc.poses_semaine?.total} lignes={bloc.poses_semaine?.lignes}
+        lien={bloc.lien} decrire={rangee} />
+    </>
+  )
+}
+
+function BlocImpayes({ bloc }) {
+  if (!bloc) return null
+  return (
+    <BlocMatin titre="Factures impayées" nombre={bloc.nb_factures} lignes={bloc.lignes} lien={bloc.lien}
+      resume={montant(bloc.total_du) && `Total dû : ${montant(bloc.total_du)}`}
+      decrire={(l) => ({
+        cle: l.facture_id,
+        titre: `${l.reference} — ${l.client_nom}`,
+        detail: joindre(montant(l.montant_du), l.jours_retard > 0 && `${l.jours_retard} j de retard`, l.niveau,
+          l.contestee && 'contestée', suite(l.a_faire)),
+        lien: l.lien,
+      })} />
+  )
+}
+
+function BlocTickets({ bloc }) {
+  if (!bloc) return null
+  return (
+    <BlocMatin titre="Tickets ouverts" nombre={bloc.ouverts} lignes={bloc.lignes} lien={bloc.lien}
+      resume={bloc.en_retard_sla ? `${bloc.en_retard_sla} en retard de délai de service` : null}
+      decrire={(l) => ({
+        cle: l.ticket_id,
+        titre: `${l.reference} — ${l.client_nom}`,
+        detail: joindre(l.equipement, l.priorite, l.en_retard_sla && 'en retard', l.sous_garantie && 'sous garantie', suite(l.a_faire)),
+        lien: l.lien,
+      })} />
+  )
+}
+
 export function CarteMatin({ carte }) {
   const d = carte.donnees
   return (
@@ -145,6 +300,11 @@ export function CarteMatin({ carte }) {
       )}
       <BlocVisites bloc={d.visites} />
       <BlocDevisSansReponse bloc={d.devis_sans_reponse} />
+      <BlocVisitesEquipe bloc={d.visites_equipe} />
+      <BlocCalepinages bloc={d.calepinages} />
+      <BlocChantiers bloc={d.chantiers} />
+      <BlocImpayes bloc={d.impayes} />
+      <BlocTickets bloc={d.tickets} />
     </div>
   )
 }
@@ -187,6 +347,59 @@ function DevisDeLaFiche({ devis }) {
   )
 }
 
+// Copilote vague 2 (BRF8) — où en est le lead dans chaque module (`dossier`, servi
+// seulement copilote allumé) : une ligne par module que le compte lit, ids et états.
+// Une clé absente = module non lisible (rien affiché) ; `null` = rien pour ce lead.
+function lignesDossier(dossier) {
+  const { visite, calepinage, devis, chantier, factures, tickets } = dossier
+  const lignes = []
+  if ('visite' in dossier) {
+    lignes.push({ cle: 'visite', lien: visite?.lien, texte: visite
+      ? joindre('Visite', mot(STATUTS, visite.statut), visite.date && dateCourte(visite.date)) : 'Visite : aucune' })
+  }
+  if ('calepinage' in dossier) {
+    lignes.push({ cle: 'calepinage', lien: calepinage?.lien, texte: calepinage
+      ? joindre(`Calepinage ${calepinage.reference}`, suite(calepinage.a_faire)) : 'Calepinage : aucun' })
+  }
+  if ('devis' in dossier) {
+    lignes.push({ cle: 'devis', lien: devis?.lien, texte: devis
+      ? joindre(`Devis ${devis.reference}`, mot(STATUTS, devis.statut)) : 'Devis : aucun' })
+  }
+  if ('chantier' in dossier) {
+    lignes.push({ cle: 'chantier', lien: chantier?.lien, texte: chantier
+      ? joindre(`Chantier ${chantier.reference}`, mot(STATUTS, chantier.statut)) : 'Chantier : aucun' })
+  }
+  if (factures) {
+    lignes.push({ cle: 'factures', lien: factures.lien, texte: joindre(
+      montant(factures.reste_a_facturer_ttc) && `Reste à facturer ${montant(factures.reste_a_facturer_ttc)}`,
+      montant(factures.reste_a_payer_ttc) && `reste à payer ${montant(factures.reste_a_payer_ttc)}`,
+      suite(factures.a_faire)) })
+  }
+  if (tickets) {
+    lignes.push({ cle: 'tickets', lien: tickets.lien, texte: `Tickets ouverts : ${tickets.ouverts ?? 0}` })
+  }
+  return lignes
+}
+
+function DossierDuLead({ dossier }) {
+  if (!dossier) return null
+  const lignes = lignesDossier(dossier)
+  if (!lignes.length) return null
+  return (
+    <div className="mt-2 min-w-0">
+      <p className="text-xs font-semibold">Dossier</p>
+      <ul className="mt-1 space-y-1.5">
+        {lignes.map((l) => (
+          <li key={l.cle} className="flex flex-wrap items-center justify-between gap-2 break-words text-xs">
+            <span className="min-w-0">{l.texte}</span>
+            <OuvrirLien lien={l.lien} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function CarteFicheLead({ carte }) {
   const { preparer, occupe, erreur } = usePreparerTouche()
   const d = carte.donnees
@@ -208,6 +421,7 @@ export function CarteFicheLead({ carte }) {
         </ul>
       )}
       <DevisDeLaFiche devis={d.devis} />
+      <DossierDuLead dossier={d.dossier} />
       {prochaine && (
         <p className="mt-2 text-xs">
           Prochaine touche : {prochaine.libelle} — {dateCourte(prochaine.due_date)}

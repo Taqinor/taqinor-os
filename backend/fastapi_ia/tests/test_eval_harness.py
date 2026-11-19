@@ -128,6 +128,11 @@ class EvalHarnessTests(unittest.TestCase):
             coach = runner.run_eval_commerciaux(
                 repondre, runner.juge_reel(juge), modele, juge, cases=CASES_COACH)
             self.assertTrue(os.path.exists(runner.ecrire_rapport(coach, nom=f"coach_{modele}.json")))
+            # Copilote vague 2 (TXT5) — scenarios par domaine (moteur natif, copilote allume).
+            from tests.eval.cases_vague2 import CASES_VAGUE2
+            vague2 = runner.run_eval_commerciaux(
+                repondre, runner.juge_reel(juge), modele, juge, cases=CASES_VAGUE2)
+            self.assertTrue(os.path.exists(runner.ecrire_rapport(vague2, nom=f"vague2_{modele}.json")))
 
 
 class EvalCommerciauxTests(unittest.TestCase):
@@ -287,6 +292,66 @@ class EvalCommerciauxTests(unittest.TestCase):
         rapport = runner.run_eval_commerciaux(
             sans_carte, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=[prioriser])
         self.assertEqual(rapport["questions"][0]["echecs"], ["bonne_carte"])
+
+    def test_scenarios_vague2(self):
+        """Copilote vague 2 (TXT5) — un jeu par domaine charge + deux travaux en
+        etapes : totaux par domaine, ids uniques et distincts des autres jeux ;
+        la reponse ideale passe a 100 %."""
+        from tests.eval.cases_commerciaux import CASES_COACH, CASES_COPILOTE
+        from tests.eval.cases_vague2 import CASES_PAR_DOMAINE, CASES_VAGUE2
+        self.assertEqual({d: len(c) for d, c in CASES_PAR_DOMAINE.items()}, {
+            "calepinage": 6, "visites": 7, "installations": 6, "ventes": 8, "stock": 6,
+            "sav": 7, "reporting": 4, "travail": 8})
+        ids = [c["id"] for c in CASES_VAGUE2]
+        self.assertEqual(len(set(ids)), 52)
+        self.assertFalse(set(ids) & {c["id"] for c in CASES_COPILOTE + CASES_COACH})
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5", cases=CASES_VAGUE2)
+        self.assertEqual(rapport["taux"], 1.0, [q for q in rapport["questions"] if q["echecs"]])
+
+    def test_format_des_scenarios_vague2(self):
+        """TXT5 — chaque cas ne cite que des cles du vocabulaire ferme ; toute
+        ecriture attendue non silencieuse est dans `a_confirmer` ; une injection
+        porte son texte piege et ses interdits ; un levier nomme son champ ;
+        chaque domaine a ses familles (sauf absence declaree) ; chaque domaine a
+        consignes a ses scenarios."""
+        from app.services import chargeur_outils, consignes_domaines
+        from tests.eval import cases_vague2 as v2
+        self.assertEqual(v2.SILENCIEUSES, {"calepinage.simuler", "sav.ticket.noter", "crm.lead.note",
+                                           "ventes.devis.composer", "ventes.devis.creer_auto"})
+        self.assertLessEqual(set(v2.CLES_VAGUE2.values()), set(v2.GENRES))
+        for cle, genre in v2.CLES_VAGUE2.items():
+            self.assertEqual(genre == "silencieuse", cle in v2.SILENCIEUSES, cle)
+            if genre != "outil_fixe":
+                self.assertIn(cle.split(".")[0], chargeur_outils.DOMAINES + ("erp",), cle)
+        for c in v2.CASES_VAGUE2:
+            with self.subTest(cas=c["id"]):
+                attendus = set(runner.outils_requis(c)) | set(c.get("un_parmi") or ())
+                cites = attendus | set(c.get("interdits") or ()) | set(c.get("a_confirmer") or ())
+                self.assertTrue(cites)
+                self.assertLessEqual(cites, set(v2.CLES_VAGUE2))
+                self.assertFalse(set(c.get("interdits") or ()) & attendus)
+                self.assertLessEqual({k for k in attendus if v2.CLES_VAGUE2[k] == "confirmee"},
+                                     set(c.get("a_confirmer") or ()))
+                self.assertEqual({v2.CLES_VAGUE2[k] for k in c.get("a_confirmer") or ()} - {"confirmee"},
+                                 set())
+                self.assertIn(c["famille"], v2.FAMILLES)
+                self.assertEqual(c["source"], "vague2")
+                if c["famille"] == "injection":
+                    self.assertTrue(c.get("interdits") and c.get("donnees_piegees"))
+                self.assertEqual(c["famille"] == "levier", bool(c.get("leviers")))
+                self.assertLessEqual(set(c.get("leviers") or ()), set(v2.LEVIERS))
+                self.assertEqual(c["famille"] == "etape", c["domaine"] == "travail")
+                for question in c.get("avant") or ():
+                    self.assertIsInstance(question, str)
+        for domaine, cas in v2.CASES_PAR_DOMAINE.items():
+            if domaine == "travail":
+                continue
+            familles = {c["famille"] for c in cas}
+            absentes = set(v2.FAMILLES_ABSENTES.get(domaine, ()))
+            self.assertEqual(familles, set(v2.FAMILLES) - {"etape"} - absentes, domaine)
+            self.assertTrue(all(c["domaine"] == domaine for c in cas), domaine)
+        self.assertLessEqual(set(consignes_domaines.CONSIGNES), set(v2.CASES_PAR_DOMAINE))
 
     def test_ecriture_sans_carte_ou_interdite_fait_echouer(self):
         from tests.eval.cases_commerciaux import CASES_COPILOTE
