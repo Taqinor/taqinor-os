@@ -244,6 +244,8 @@ class ItemSerializer(_FormeSerializer):
     confidentielle = serializers.SerializerMethodField()
     source = serializers.CharField(allow_null=True)
     peut_cloturer = serializers.SerializerMethodField()
+    a_notes = serializers.SerializerMethodField()
+    fait_le = serializers.DateTimeField(allow_null=True)
     lock_version = serializers.IntegerField(allow_null=True)
 
     def to_representation(self, instance):
@@ -354,6 +356,12 @@ class ItemSerializer(_FormeSerializer):
     def get_peut_cloturer(self, obj):
         return bool(self._du_contexte(obj, 'peut_cloturer', True))
 
+    @extend_schema_field(serializers.BooleanField())
+    def get_a_notes(self, obj):
+        """L'indice « note » de la ligne, lu de la colonne déjà chargée ; jamais vrai sous l'en-tête
+        assistant : les notes ne lui sont jamais servies, leur présence non plus (regles.md §8)."""
+        return not self.context.get('assistant') and bool(obj.notes)
+
     def _lien_activite(self, activite):
         cible = _cible_de(getattr(activite, 'content_type', None))
         if cible is None or activite.object_id is None:
@@ -378,7 +386,9 @@ class ItemSerializer(_FormeSerializer):
             'en_attente_de': '', 'essentielle': bool(calcul.get('essentielle', False)),
             'prevue_au_plan': bool(calcul.get('prevue_au_plan', False)),
             'confidentiel': False, 'confidentielle': False, 'source': None,
-            'peut_cloturer': bool(calcul.get('peut_cloturer', False)), 'lock_version': None,
+            'peut_cloturer': bool(calcul.get('peut_cloturer', False)), 'a_notes': False,
+            'fait_le': self.fields['fait_le'].to_representation(activite.done_at) if activite.done_at else None,
+            'lock_version': None,
         }
 
 
@@ -397,7 +407,6 @@ class TacheSerializer(ItemSerializer):
     premier_jour_prevu = serializers.DateField(allow_null=True)
     reports_tranches = serializers.IntegerField()
     duree_reelle_minutes = serializers.IntegerField(allow_null=True)
-    fait_le = serializers.DateTimeField(allow_null=True)
     annule_le = serializers.DateTimeField(allow_null=True)
     occurrence_du = serializers.DateField(allow_null=True)
     activite_origine_id = serializers.IntegerField(allow_null=True)
