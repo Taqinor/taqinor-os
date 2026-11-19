@@ -604,6 +604,38 @@
 .tch .carte-actions {
   display: flex; gap: 8px;
 }
+/* R3-085 (M2) — une carte de CONSEIL (rythme, pause, astuce, révélation) tient en une rangée de 48 à 56 pt : la phrase
+   (15 px) puis ses réponses en texte d'accent (« OK », « Oui · Pas maintenant »), 32 px dessinés, 44 px de cible par
+   `::after`. Elle prenait 136 pt pour une phrase et poussait la première tâche à y = 335 sur iPhone. Trop longue, la
+   phrase garde sa largeur et les réponses passent dessous, à droite. (`.tch-page` en tête : ces règles passent devant
+   celles, plus anciennes, de coeur.css — importée après base.css — qui dessinaient la carte haute.) */
+.tch .tch-page .carte.rythme {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px;
+  padding: 10px 12px 10px 16px; min-height: 48px;
+}
+.tch .tch-page .carte.rythme .carte-texte {
+  flex: 1 1 200px; min-width: 0; margin: 0; font-size: 0.9375rem; line-height: 1.4; font-weight: 500;
+}
+.tch .tch-page .moment.revelation { align-items: center; padding: 10px 12px 10px 16px; min-height: 48px; }
+.tch .tch-page .moment.revelation .moment-texte {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding-top: 0;
+}
+.tch .tch-page .moment.revelation .moment-texte b { font-size: 0.9375rem; font-weight: 500; line-height: 1.4; }
+.tch .tch-page .moment.revelation .moment-texte .demo-balayage { grid-column: 1 / -1; grid-row: 2; }
+.tch .tch-page .moment.revelation .carte-actions { grid-column: 2; grid-row: 1; margin: 0; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton {
+  position: relative; height: 32px; min-height: 0; padding: 0 8px; background: transparent; box-shadow: none;
+  color: var(--tch-accent);
+}
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton.discret { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton[aria-disabled="true"] { opacity: 0.5; }
+.tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%);
+}
+@media (hover: hover) {
+  .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton:hover { background: var(--tch-survol); }
+}
 .tch .pas-a-jour {
   display: flex; align-items: center; gap: 10px; margin: 8px var(--tch-gouttiere) 0; padding: 0 4px 0 12px;
   min-height: 44px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
