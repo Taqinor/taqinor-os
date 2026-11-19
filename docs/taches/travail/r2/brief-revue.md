@@ -80,3 +80,19 @@ Rapport `docs/taches/travail/r2/<tour>/<ton nom>.md` : verdict en trois lignes ;
 ligne par `R2-NNN` : état, capture, remarque) ; tableau des constats NEUFS (même forme qu'au tour 1) ; ce qui est bien ;
 non essayé. Message final : verdict + nombre de réglés / à moitié / pas réglés / régressions + constats A neufs,
 15 lignes au plus.
+
+---
+
+## Tour 3 — dernier tour avant de rendre le module à Reda
+
+Le tour 2 (cinq relecteurs neufs) a donné 84 corrections `R3-NNN` (`tour2/consolidation.md` : § 0 les six sujets
+majeurs M1-M6, § 1 le texte de chaque correction, § 3 les choix C-13 à C-24), corrigées par sept lanes ; ce qui a été
+laissé est dans `vague3-restes.md`. La pile sert le code final de la branche `dev-taches-r2`, front et serveur. Tu es
+un relecteur NEUF. Même méthode qu'au tour 2 (contre-vérifier, puis regard neuf), avec trois différences :
+1. La contre-vérification porte sur les `R3-NNN` de ton périmètre (et, par sondage, sur les `R2-NNN` graves du tour 1 :
+   une correction du tour 1 a pu être cassée par la vague 3 — cherche les régressions).
+2. Chaque constat neuf porte, en plus de sa gravité, un avis net : **avant le merge** (Reda le verrait dans sa première
+   heure d'usage, ou c'est une perte de données, un chiffre faux, un geste courant cassé) ou **peut attendre** (finition).
+3. Ton rapport se termine par un jugement en dix lignes au plus : ce module, tel qu'il est sur l'écran, peut-il être
+   mis entre les mains de Reda aujourd'hui en disant « voici le meilleur que nous sachions faire » ? Si non, les CINQ
+   choses qui manquent, dans l'ordre. Sans politesse : un « oui » complaisant coûte plus cher qu'un « non » argumenté.
