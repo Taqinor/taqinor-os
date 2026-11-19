@@ -24,6 +24,14 @@ describe('ChargementTardif', () => {
     expect(container.querySelectorAll('[aria-hidden="true"].ligne').length).toBe(squelette.querySelectorAll('.ligne').length)
   })
 
+  it('R4-42 — le squelette de liste n\'est pas un `.squelette` (le bloc d\'une barre de 44 px de saisie.css : la liste y tenait écrasée)', () => {
+    render(<ChargementTardif />)
+    act(() => { vi.advanceTimersByTime(300) })
+    const squelette = screen.getByRole('status', { name: 'Chargement' })
+    expect(squelette).toHaveClass('squelette-liste')
+    expect(squelette).not.toHaveClass('squelette')
+  })
+
   it('inactif (l\'écran a sa réponse) : rien, même après le délai', () => {
     render(<ChargementTardif actif={false} />)
     act(() => { vi.advanceTimersByTime(2000) })

@@ -93,7 +93,7 @@ function ChargementEcran({ ecran, titre = null, pleine = false }) {
             <p className="entete-titre" aria-hidden="true">{titre ?? <span className="os titre-os" />}</p>
           </div>
         </header>
-        <div className="squelette" role="status" aria-label="Chargement">
+        <div className="squelette-liste" role="status" aria-label="Chargement">
           {SQUELETTE.map((lignes, section) => (
             <div key={section} className="squelette-section">
               <span className="os titre-section" aria-hidden="true" />
