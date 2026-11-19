@@ -1673,8 +1673,10 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
         resp = self._creer(note='  10 panneaux, onduleur triphasé 10 kW.  ')
         lead = Lead.objects.get(pk=resp.data['identite']['id'])
         # La création pose aussi la note du plan de relance : on lit CELLE de la demande.
+        # La demande est préfixée : la garde du premier contact la reconnaît (ACVI23).
         note = LeadActivity.objects.get(
-            lead=lead, kind='note', body='10 panneaux, onduleur triphasé 10 kW.')
+            lead=lead, kind='note', body__endswith='10 panneaux, onduleur triphasé 10 kW.')
+        self.assertTrue(note.body.startswith('Demande du client (saisie à la création) : '))
         self.assertEqual((note.user_id, note.company_id),
                          (self.alice.pk, self.company.pk))
         self.assertIsNone(lead.first_contacted_at)
