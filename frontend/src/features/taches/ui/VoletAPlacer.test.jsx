@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { annulerGeste, lireAgenda, modifierTache, planifierTache } from '../../../api/tachesApi'
+import { annulerGeste, lireAgenda, modifierTache, planifierTache, trancherTache } from '../../../api/tachesApi'
 import Agenda from '../../../pages/taches/Agenda'
 import VoletAPlacer from './VoletAPlacer'
 
@@ -11,6 +11,7 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({
   ...(await importOriginal()),
   lireAgenda: vi.fn(),
   planifierTache: vi.fn(),
+  trancherTache: vi.fn(),
   modifierTache: vi.fn(),
   annulerGeste: vi.fn(),
   terminerTache: vi.fn(),
@@ -87,6 +88,7 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
   beforeEach(() => {
     lireAgenda.mockResolvedValue({ data: agenda() })
     planifierTache.mockResolvedValue(placee())
+    trancherTache.mockResolvedValue({ data: { tache: { ...aPlacer()[0], jour_prevu: AUJOURDHUI, lock_version: 7 }, geste_id: 98 } })
     modifierTache.mockImplementation((id, corps) => Promise.resolve(placee(8, { estimation_minutes: corps.estimation_minutes })))
     annulerGeste.mockResolvedValue({ data: { restaurees: [], conflits: [], deja: false } })
   })
@@ -97,8 +99,10 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
     expect(screen.queryByRole('button', { name: 'Ajouter à 11:00' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    // R2-106 — « Site web » est reportée 3 fois (À revoir) : la poser la DÉCIDE (`trancher/`), puis l'heure
+    await waitFor(() => expect(trancherTache).toHaveBeenCalledWith(50, { choix: 'jour', jour: AUJOURDHUI }))
     await waitFor(() => expect(planifierTache).toHaveBeenCalledWith(50, {
-      jour_prevu: AUJOURDHUI, heure_debut: '11:00', moment: '', quelque_jour: false, lock_version: 6,
+      jour_prevu: AUJOURDHUI, heure_debut: '11:00', moment: '', quelque_jour: false, lock_version: 7,
     }))
     const grille = container.querySelector('.grille-agenda')
     expect(within(grille).getByRole('button', { name: /Site web/ }).closest('.bloc')).toHaveClass('choisi')
@@ -161,6 +165,25 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument()
     expect(within(screen.getByRole('complementary', { name: 'À placer' })).getByRole('button', { name: /Site web/ }))
       .toBeInTheDocument()
+  })
+
+  it('R2-106 — « Annuler » défait la pose ET la décision (deux gestes, le dernier d\'abord)', async () => {
+    monter()
+    fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
+    fireEvent.click(within(duree).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(annulerGeste).toHaveBeenCalledTimes(2))
+    expect(annulerGeste.mock.calls.map((a) => a[0])).toEqual([99, 98])
+  })
+
+  it('R2-106 — la pose échoue après la décision : la décision est défaite, la tâche reste dans « À placer »', async () => {
+    planifierTache.mockRejectedValue({ response: { status: 500, data: {} } })
+    monter()
+    fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    await waitFor(() => expect(annulerGeste).toHaveBeenCalledWith(98))
   })
 
   it('« Annuler » de la durée défait la pose par le geste', async () => {

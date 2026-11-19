@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { lireAgenda, planifierTache } from '../../../api/tachesApi'
+import { lireAgenda, planifierTache, trancherTache } from '../../../api/tachesApi'
 import Agenda from '../../../pages/taches/Agenda'
 import PlanifierSemaine from './PlanifierSemaine'
 
@@ -11,6 +11,7 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({
   ...(await importOriginal()),
   lireAgenda: vi.fn(),
   planifierTache: vi.fn(),
+  trancherTache: vi.fn(),
   annulerGeste: vi.fn(),
   modifierTache: vi.fn(),
   terminerTache: vi.fn(),
@@ -226,6 +227,20 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     expect(container.querySelector('.ag-nav')).toBeNull()
     expect(container.querySelector('.saisie-bureau')).toBeNull()
     expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))
+  })
+
+  it('R2-106 — poser sur un jour une tâche « À revoir » (reportée 3 fois) la DÉCIDE : `trancher/` avec le jour, jamais `planifier/`', async () => {
+    trancherTache.mockResolvedValue({ data: { tache: { ...agenda().a_placer[0], jour_prevu: '2026-11-19', lock_version: 7 }, geste_id: 8 } })
+    monter()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^jeu\. 19 · .* · placer Site web$/ }))
+    await waitFor(() => expect(trancherTache).toHaveBeenCalledWith(50, { choix: 'jour', jour: '2026-11-19' }))
+    expect(planifierTache).not.toHaveBeenCalled()
+    // la tâche sort d'« À revoir » ET prend sa place dans le jour
+    expect(await screen.findByRole('button', { name: /^jeu\. 19 · 1 tâche/ })).toHaveClass('nouveau')
+    expect(screen.queryByRole('group', { name: 'À revoir (1)' })).toBeNull()
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Placée jeu. 19')
   })
 
   it('pose une tâche sur un jour sans ouvrir de fiche, puis Terminer', async () => {

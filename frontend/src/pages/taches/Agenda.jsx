@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin, X } from 'lucide-react'
 
-import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache, trancherTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
@@ -568,6 +568,7 @@ function useGestes(setDonnees) {
 
 // --- TCH105 — Placer à une heure (et TCH106 : sur un jour) ------------------------------------
 
+const MOTIF_A_TRANCHER = 'reportee_3_fois'
 const PAS_DUREE = 15
 const DUREE_MIN = 15
 const DUREE_MAX = 960
@@ -579,30 +580,53 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
   const [posees, setPosees] = useState({})
   const annulerPose = useRef(null)
 
-  /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable. */
+  /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable.
+   *  R2-106 — une tâche « À revoir » (reportée 3 fois) ne sort d'À revoir que par `trancher/` : la poser sur un jour EST
+   *  la décision (`choix: 'jour'`), puis, si un créneau est choisi, l'heure par `planifier/`. */
   const poser = useCallback(async (item, jour, heureDebut = null) => {
     let precedent = null
+    const aTrancher = item.motif === MOTIF_A_TRANCHER
+    const posable = aTrancher ? { ...item, motif: null } : item
     setChoisie(null)
     setErreur('')
-    setDonnees((d) => { precedent = d; return deplacerVers(d, item, jour, heureDebut) })
+    setDonnees((d) => { precedent = d; return deplacerVers(d, posable, jour, heureDebut) })
     const corps = { jour_prevu: jour, heure_debut: heureDebut, moment: '', quelque_jour: false }
     if (item.lock_version != null) corps.lock_version = item.lock_version
+    const gestes = []
     let reponse
     try {
-      reponse = await planifierTache(item.id, corps)
+      if (aTrancher) {
+        reponse = await trancherTache(item.id, { choix: 'jour', jour })
+        if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+        if (heureDebut) {
+          const version = reponse?.data?.tache?.lock_version
+          const suite = { jour_prevu: jour, heure_debut: heureDebut, moment: '', quelque_jour: false }
+          if (version != null) suite.lock_version = version
+          reponse = await planifierTache(item.id, suite)
+          if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+        }
+      } else {
+        reponse = await planifierTache(item.id, corps)
+        if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+      }
     } catch (err) {
       setDonnees(precedent)
       setErreur(frenchError(err, "La tâche n'a pas pu être placée."))
+      // la décision déjà prise (R2-106) est défaite : la tâche ne reste pas à moitié placée côté serveur
+      if (gestes.length) {
+        annulerGeste(gestes[0]).catch((echec) => setErreur(frenchError(echec, "La tâche n'a pas pu être placée, et sa décision n'a pas pu être défaite. Relis l'agenda.")))
+      }
       return
     }
     reconcilier(setDonnees, reponse?.data?.tache)
-    const placee = { ...item, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
+    const placee = { ...posable, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
     if (heureDebut) setPosee(placee)
     else setPosees((p) => ({ ...p, [jour]: placee }))
-    const gesteId = reponse?.data?.geste_id
     const annuler = async () => {
-      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend
-      const retour = gesteId ? await annulerEtRecaler(gesteId, [item.id]) : null
+      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend ;
+      // deux gestes (décision + heure) se défont le dernier d'abord
+      let retour = null
+      for (const geste of [...gestes].reverse()) retour = await annulerEtRecaler(geste, [item.id])
       setDonnees(precedent)
       if (retour?.taches?.[item.id]) reconcilier(setDonnees, retour.taches[item.id])
       setPosee(null)
