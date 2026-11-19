@@ -87,6 +87,9 @@
 .tch .apercu-liste { display: flex; flex-direction: column; }
 .tch .apercu-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 2px; }
 .tch .apercu-entete .feuille-titre { text-align: left; font-size: 1.25rem; margin: 0; }
+/* R4-28 — saisie EN PLACE au bureau : le × de fermeture (44 px, posé en haut à droite, base.css) couvrait le compteur
+   « 6 tâches · 3 projets » (« proj×ts ») ; l'en-tête de l'aperçu s'arrête avant lui */
+.tch .feuille.popover-bureau .apercu-entete { padding-inline-end: 48px; }
 .tch .apercu-source { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
 .tch .apercu-groupe { margin-top: 18px; }
 .tch .apercu-projet {
