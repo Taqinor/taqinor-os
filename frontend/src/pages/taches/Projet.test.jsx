@@ -326,7 +326,7 @@ describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
 
 describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran', () => {
   it('⋯ → Mettre en haut place le projet avant le premier projet actif', async () => {
-    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }], next: null } })
+    api.listerTousLesProjets.mockResolvedValue([{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }])
     api.reordonnerProjet.mockResolvedValue({ data: {} })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -334,17 +334,17 @@ describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran',
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
     await waitFor(() => expect(api.reordonnerProjet).toHaveBeenCalledWith(3, { avant_id: 7 }))
-    expect(api.listerProjets).toHaveBeenCalledWith({ statut: 'actif' })
+    expect(api.listerTousLesProjets).toHaveBeenCalledWith({ statut: 'actif' })
   })
 
   it('déjà premier : rien n\'est écrit', async () => {
-    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 3, nom: 'Ventes' }], next: null } })
+    api.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes' }])
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await screen.findByText('12 sur 20')
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
-    await waitFor(() => expect(api.listerProjets).toHaveBeenCalled())
+    await waitFor(() => expect(api.listerTousLesProjets).toHaveBeenCalledWith({ statut: 'actif' }))
     expect(api.reordonnerProjet).not.toHaveBeenCalled()
   })
 })
