@@ -114,6 +114,17 @@ describe('R2-066 — Chronologie : les tâches datées et les étapes sans date'
     expect(pose).toHaveTextContent('Poser la structure')
   })
 
+  it("iPhone : des étapes sans date à la suite portent « Sans date » UNE seule fois, en tête du groupe", () => {
+    render(<VueChronologie vue={vueRiche()} aujourdhui={AUJOURDHUI} />)
+    const frise = screen.getByRole('list', { name: "Chronologie du projet jusqu'à l'échéance" })
+    const items = within(frise).getAllByRole('listitem')
+    const pose = items.find((l) => l.textContent.includes('Pose'))
+    const livraison = items.find((l) => l.textContent.includes('Livraison'))
+    expect(pose).toHaveTextContent('Sans date')
+    expect(livraison).not.toHaveTextContent('Sans date')
+    expect(items.filter((l) => l.textContent.includes('Sans date'))).toHaveLength(1)
+  })
+
   it('bureau : un point par jour de tâche sur la piste, groupé par étape ; une étape sans date ni tâche datée va dans « Sans date »', () => {
     render(<VueChronologie vue={vueRiche()} aujourdhui={AUJOURDHUI} />)
     const piste = screen.getByRole('group', { name: /Chronologie : étapes et jalons/ })
@@ -133,6 +144,21 @@ describe('R2-066 — Chronologie : les tâches datées et les étapes sans date'
     expect(auj.className).toMatch(/bord-g/) // 09/11 = le début de l'axe
     const fin = piste.querySelector('.ep-fh-trait.fin')
     expect(fin.className).toMatch(/bord-d/) // fin de l'axe
+  })
+
+  it("un point au premier jour de l'axe, comme au dernier, est posé par une position BORNÉE au cadre (le CSS la borne : preuve sur capture)", () => {
+    // axe : 09/11 (début de l'étape) → 15/12 (échéance) ; une tâche datée le 09/11 et une le 15/12 tombent sur les bords
+    const vue = vueDatee()
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].taches = [
+      base,
+      { ...base, id: 41, titre: 'Premier jour', jalon: false, echeance: null, jour_prevu: '2026-11-09' },
+      { ...base, id: 42, titre: 'Dernier jour', jalon: false, echeance: null, jour_prevu: '2026-12-15' },
+    ]
+    render(<VueChronologie vue={vue} aujourdhui={AUJOURDHUI} />)
+    const piste = screen.getByRole('group', { name: /Chronologie : étapes et jalons/ })
+    expect(within(piste).getByRole('img', { name: /Premier jour/ }).style.getPropertyValue('--x')).toBe('0.00%')
+    expect(within(piste).getByRole('img', { name: /Dernier jour/ }).style.getPropertyValue('--x')).toBe('100.00%')
   })
 })
 

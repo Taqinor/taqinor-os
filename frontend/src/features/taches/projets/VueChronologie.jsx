@@ -61,14 +61,18 @@ function ListeTaches({ taches, aujourdhui }) {
   )
 }
 
+/** Une étape qui n'a ni début ni fin. */
+const sansDate = (e) => e?.type === 'etape' && !e.debut && !e.fin
+
 function FriseVerticale({ elements, taches, aujourdhui }) {
   const sans = taches.sans
   return (
     <div className="ep-frise" role="list" aria-label="Chronologie du projet jusqu'à l'échéance">
-      {elements.map((e) => (
+      {elements.map((e, rang) => (
         <div key={e.id} className={`ep-f-item ${e.type}${e.faite ? ' faite' : ''}`} role="listitem">
           {e.type === 'jalon' ? <Diamond className="i ep-f-glyphe" aria-hidden="true" /> : null}
-          <div className="ep-f-date"><EtiquetteDate element={e} aujourdhui={aujourdhui} /></div>
+          {/* des étapes sans date à la suite : « Sans date » une seule fois, en tête du groupe (jamais quatre fois de suite) */}
+          {sansDate(e) && sansDate(elements[rang - 1]) ? null : <div className="ep-f-date"><EtiquetteDate element={e} aujourdhui={aujourdhui} /></div>}
           {e.nom ? <div className="ep-f-titre">{e.nom}</div> : null}
           {e.detail ? <div className="ep-f-detail">{e.detail}</div> : null}
           {e.type === 'etape' ? <ListeTaches taches={taches[e.id] ?? []} aujourdhui={aujourdhui} /> : null}
@@ -88,11 +92,15 @@ function FriseVerticale({ elements, taches, aujourdhui }) {
 /** « bord-g » / « bord-d » : une pastille collée à un bord de l'axe se pose du côté intérieur, jamais hors du cadre. */
 const bordDe = (pourcent) => (pourcent < 12 ? ' bord-g' : pourcent > 88 ? ' bord-d' : '')
 
-function Points({ points, pct, style, aujourdhui }) {
+/** La position (`--x`, en %) d'une pastille posée SUR l'axe : le CSS la borne au cadre (`clamp`) — un point au premier ou au
+ *  dernier jour de l'axe ne déborde plus de la moitié de sa largeur (R2-066, reste de L5). */
+const surAxe = (pourcent) => ({ '--x': `${pourcent.toFixed(2)}%` })
+
+function Points({ points, pct, aujourdhui }) {
   return (
     <div className="ep-fh-points">
       {points.map((p) => (
-        <span key={p.jour} className="ep-fh-point" role="img" style={style(pct(p.jour))} data-n={p.titres.length > 1 ? p.titres.length : undefined}
+        <span key={p.jour} className="ep-fh-point" role="img" style={surAxe(pct(p.jour))} data-n={p.titres.length > 1 ? p.titres.length : undefined}
           aria-label={`${p.titres.join(', ')} · ${jourProjet(p.jour, aujourdhui)}`} title={p.titres.join(', ')} />
       ))}
     </div>
@@ -126,7 +134,7 @@ function FriseHorizontale({ elements, taches, aujourdhui }) {
         <div className="ep-fh-jalons">
           {jalons.map((j) => (
             <span key={j.id}>
-              <Diamond className="i ep-fh-losange" style={style(pct(j.date))} aria-hidden="true" />
+              <Diamond className="i ep-fh-losange" style={surAxe(pct(j.date))} aria-hidden="true" />
               <span className={`ep-fh-etiquette${pct(j.date) < 25 ? ' bord-g' : ''}`} style={style(pct(j.date))}>{`${j.nom} · ${jourProjet(j.date, aujourdhui)}`}</span>
             </span>
           ))}
@@ -139,7 +147,7 @@ function FriseHorizontale({ elements, taches, aujourdhui }) {
               <div className="ep-fh-rang">
                 <div className={`ep-fh-barre${e.faite ? ' faite' : ''}`} style={style(pct(de), Math.max(4, pct(a) - pct(de)))}>{e.nom}</div>
               </div>
-              {(taches[e.id] ?? []).length > 0 ? <Points points={pointsDe(taches[e.id])} pct={pct} style={style} aujourdhui={aujourdhui} /> : null}
+              {(taches[e.id] ?? []).length > 0 ? <Points points={pointsDe(taches[e.id])} pct={pct} aujourdhui={aujourdhui} /> : null}
               {e.detail ? <div className="ep-fh-sous-rang"><span className="ep-fh-sous chiffres" style={style(pct(de))}>{e.detail}</span></div> : null}
             </div>
           )
@@ -147,13 +155,13 @@ function FriseHorizontale({ elements, taches, aujourdhui }) {
         {libresAvecPoints.map((e) => (
           <div key={e.id} className="ep-fh-libre">
             <span className="ep-fh-nom">{e.nom}</span>
-            <Points points={pointsDe(taches[e.id])} pct={pct} style={style} aujourdhui={aujourdhui} />
+            <Points points={pointsDe(taches[e.id])} pct={pct} aujourdhui={aujourdhui} />
           </div>
         ))}
         {taches.sans.length > 0 ? (
           <div className="ep-fh-libre">
             <span className="ep-fh-nom">Sans étape</span>
-            <Points points={pointsDe(taches.sans)} pct={pct} style={style} aujourdhui={aujourdhui} />
+            <Points points={pointsDe(taches.sans)} pct={pct} aujourdhui={aujourdhui} />
           </div>
         ) : null}
         <div className={`ep-fh-trait auj${bordDe(pctAuj)}`} style={style(pctAuj)}><span>{`Aujourd'hui · ${jourNomme(aujourdhui, aujourdhui)}`}</span></div>
