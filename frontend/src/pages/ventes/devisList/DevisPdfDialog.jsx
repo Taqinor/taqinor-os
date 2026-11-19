@@ -148,7 +148,10 @@ export default function DevisPdfDialog({
 
           <label className="flex items-start gap-2 text-sm">
             <Checkbox checked={devisFinal} onCheckedChange={v => setDevisFinal(!!v)} className="mt-0.5" />
-            <span>Devis Final <span className="text-muted-foreground">(ajoute modalités de paiement + RIB)</span></span>
+            <span>Devis Final <span className="text-muted-foreground">{batchPdf ? '(ajoute modalités de paiement + RIB)'
+              : targetIsCi ? '(visite faite — retire la mention « Devis préliminaire »)'
+                : targetIsAgricole ? '(visite faite — retire « à confirmer par la visite »)'
+                  : '(ajoute modalités de paiement + RIB)'}</span></span>
           </label>
 
           {devisFinal && (

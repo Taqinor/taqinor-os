@@ -255,6 +255,29 @@ describe('CPRW3 — bandeau préliminaire toujours présent en C&I', () => {
   });
 });
 
+// Devis final (19/11/2026) — visite faite : plus de bandeau préliminaire.
+describe("Devis final C&I — bandeau retiré", () => {
+  const avec = (extra: Record<string, unknown>) => ({
+    mode_installation: 'industriel', synthese_ci: { hypotheses: [], ...extra },
+  }) as unknown as ProposalResponse;
+  it("devis_final: true ⇒ aucun bandeau ; clé absente ou autre valeur ⇒ bandeau", () => {
+    expect(bandeauPreliminaireCi(syntheseCi(avec({ devis_final: true })))).toBeNull();
+    expect(syntheseCi(avec({ devis_final: true }))?.devisFinal).toBe(true);
+    expect(bandeauPreliminaireCi(syntheseCi(avec({})))).toEqual(CI_DEVIS_PRELIMINAIRE);
+    expect(syntheseCi(avec({}))?.devisFinal).toBe(false);
+    expect(bandeauPreliminaireCi(syntheseCi(avec({ devis_final: 'true' })))).toEqual(CI_DEVIS_PRELIMINAIRE);
+  });
+  it("la page ne propose plus la visite technique dans « Et après ? »", () => {
+    const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+    expect(page).toContain("!(isAutoconso && ci?.devisFinal && st.id === 'visite')");
+    expect(page).toContain('data-fr="Et ensuite : pose, mise en service"');
+  });
+  it("même avec l'hypothèse visite servie, le bandeau disparaît", () => {
+    const hyp = [{ cle: 'visite', textes: { fr: 'A', en: 'B', ar: 'C' }, source: null }];
+    expect(bandeauPreliminaireCi(syntheseCi(avec({ devis_final: true, hypotheses: hyp })))).toBeNull();
+  });
+});
+
 // CPRW4 (27/10/2026) — plus de badge « estimation » ni de motifs d'omission bruts côté client.
 describe('CPRW4 — ni badge estimation ni « Ce qu\'il nous manque »', () => {
   it('le composant ne rend plus ces deux blocs', () => {

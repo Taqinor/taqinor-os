@@ -164,11 +164,17 @@ def bandeau_reserve(d, cle, prefixe):
     Décision fondateur 26/10/2026 — le bandeau garde son titre et la ligne
     des postes « À chiffrer après la visite technique (hors total) », mais
     plus JAMAIS la liste interne « À confirmer : … » (puissance souscrite,
-    toiture…) : ``synthese_ci['a_confirmer']`` reste servi, pas imprimé."""
+    toiture…) : ``synthese_ci['a_confirmer']`` reste servi, pas imprimé.
+
+    Fondateur 19/11/2026 — « Devis final » (visite faite, ``devis_final``) :
+    plus de titre « Devis préliminaire » ; la ligne des postes hors total
+    reste (ils ne sont pas dans le total), '' sans poste."""
     liste = ""
     postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
     if postes:
         liste = f'<div class="{prefixe}-reserve-l">' + postes + "</div>"
+    if d.get("devis_final"):
+        return f'<div class="{prefixe}-reserve">{liste}</div>' if liste else ""
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
@@ -823,11 +829,14 @@ def bloc_etapes(d, prefixe, couleurs, en_ligne=False):
     définitive, pose et mise en service — sans date promise) et, quand un
     lien de partage existe, le QR de la proposition en ligne.
     ``couleurs`` = (navy, muted, gold) ; ``en_ligne`` : les étapes sur une
-    ligne et le QR à droite (couverture industrielle, plus dense)."""
+    ligne et le QR à droite (couverture industrielle, plus dense).
+    Fondateur 19/11/2026 — « Devis final » : la visite est faite, l'étape
+    « Visite technique » n'est plus annoncée."""
     navy, muted, gold = couleurs
+    etapes = ETAPES_SUIVANTES[1:] if d.get("devis_final") else ETAPES_SUIVANTES
     puces = [f'<span style="color:{gold};font-weight:700;">{i}</span>&#160;'
              f'{libelle(d, cle, fr)}'
-             for i, (cle, fr) in enumerate(ETAPES_SUIVANTES, start=1)]
+             for i, (cle, fr) in enumerate(etapes, start=1)]
     corps = (" &#160;·&#160; ".join(puces) if en_ligne else "".join(
         f'<div style="margin-top:2px;">{p}</div>' for p in puces))
     uri, lien = qr_proposition(d)

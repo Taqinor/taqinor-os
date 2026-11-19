@@ -114,6 +114,20 @@ describe('AGW303 — syntheseAgricole : lecture défensive', () => {
   });
 });
 
+describe("Devis final agricole — la page ne dit plus « à confirmer par la visite »", () => {
+  it("devis_final: true servi ⇒ devisFinal ; absent ⇒ false", () => {
+    expect(syntheseAgricole(payload({ ...SERVIE, devis_final: true }))?.devisFinal).toBe(true);
+    expect(syntheseAgricole(payload({ ...SERVIE }))?.devisFinal).toBe(false);
+  });
+  it("la section masque les entrées de provenance « à confirmer » quand le devis est final", () => {
+    const section = lire('../src/components/proposition/agricole/SectionAgricole.astro');
+    expect(section).toContain('synth.devisFinal');
+    expect(section).toContain("provenanceKind(e).kind !== 'a_confirmer'");
+    expect(section).toContain('provenanceAffichee.map(');
+    expect(section).not.toContain('synth.provenance.map(');
+  });
+});
+
 describe('AGW303 — provenance : déclaré / mesuré / à confirmer', () => {
   it('la date ISO est reformatée JJ/MM/AAAA, une date illisible → null', () => {
     expect(dateJjMmAaaa('2026-09-12')).toBe('12/09/2026');

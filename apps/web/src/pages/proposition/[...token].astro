@@ -2125,7 +2125,9 @@ const typeToitLabel = paramSite?.typeToit ? (TYPE_TOIT_LABELS[paramSite.typeToit
 const estPreVisite = ok && !heroHasRealPrice;
 
 // AGQ33 (D-AGQ-11) — agricole : les étapes servies (AGQ30), sans délai chiffré.
-const steps = nextSteps(installMode, synth?.etapesSuivantes ?? null);
+// Devis final C&I (visite faite, `synthese_ci.devis_final`) : la visite technique n’est plus annoncée.
+const steps = nextSteps(installMode, synth?.etapesSuivantes ?? null)
+  .filter((st) => !(isAutoconso && ci?.devisFinal && st.id === 'visite'));
 const assumptions = ok ? proposalAssumptions(data!) : [];
 // (fondateur 2026-08-18) « Suivi de production via l'application de votre
 // onduleur » n'est plus un point inconditionnel : il n'est dit que si le devis
@@ -7165,6 +7167,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             {isAgricole ? (
             <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
               data-fr={AGR_LBL_AGQ.etEnsuite.fr} data-en={AGR_LBL_AGQ.etEnsuite.en} data-ar={AGR_LBL_AGQ.etEnsuite.ar}>{AGR_LBL_AGQ.etEnsuite.fr}</summary>
+            ) : isAutoconso && ci?.devisFinal ? (
+            <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+              data-fr="Et ensuite : pose, mise en service"
+              data-en="And then: installation, commissioning"
+              data-ar="ثم: التركيب، التشغيل">Et ensuite : pose, mise en service</summary>
             ) : (
             <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
               data-fr="Et ensuite : visite technique, pose, mise en service"

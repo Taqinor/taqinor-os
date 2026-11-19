@@ -29,3 +29,12 @@ Décisions de Reda prises en construisant le devis automatique d'une boulangerie
 
 **Why:** chaque point vient d'une erreur vue sur un vrai devis envoyable (2 × 15 kW au lieu de 1 × 50, double comptage des coffrets, prix vides, jargon interne au client, horaires ignorés).
 **How to apply:** toute session C&I part de ces décisions sans les re-demander ; voir aussi [[ci-decisions-fondateur]].
+
+**19/11/2026 — « Devis final » (lead 1742, visite faite).** Reda : « the visit was done for this guy so i should not show him that this is a preliminary quote », puis « add the final quote button for every kind of quote ». La décision du 26/10 (« le devis C&I entier est préliminaire ») tient TANT QUE la case n'est pas cochée :
+
+- Une case **« Devis final »** sur le panneau devis du lead, pour TOUT marché, ENREGISTRÉE sur le devis (`etude_params.devis_final`, contrat `apps/ventes/contract_samples/devis_final.json`) : tout rendu la suit (aperçu, PDF, pièce jointe, page client).
+- Commercial / industriel : plus de bandeau « Devis préliminaire », plus d'étape « Visite technique » ; la ligne des postes « à chiffrer (hors total) » reste, ces postes n'étant pas dans le total.
+- Agricole : plus de « à confirmer par la visite », plus d'étape « Visite du point d'eau ».
+- Résidentiel : effet d'avant (modalités de paiement + RIB), désormais enregistré lui aussi.
+- La case ne change aucun chiffre ni aucun statut ; elle n'est pas déduite de la visite enregistrée sur le lead (choix explicite du vendeur).
+

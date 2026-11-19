@@ -57,7 +57,11 @@ test('proposalParams : « Devis final » n’envoie devis_final=1 qu’en Premiu
 
 test('le panneau devis du lead offre « Devis final » et le transmet à /proposal', () => {
   assert.match(PANEL, /Devis final/, 'la bascule « Devis final » existe dans la barre de format')
-  assert.match(PANEL, /setDevisFinal\(/, 'elle pilote un état devisFinal')
+  // Fondateur 19/11/2026 — la case est ENREGISTRÉE sur le devis (tout marché) :
+  // elle lit `etude_params.devis_final` et l’écrit par le PATCH fusionnant.
+  assert.match(PANEL, /etude_params\?\.devis_final === true/, 'elle lit l’état enregistré du devis')
+  assert.match(PANEL, /patchEtudeParams\(devisId, \{ devis_final: coche \? true : null \}\)/,
+    'elle enregistre le choix (null retire la clé)')
   // Aperçu, téléchargement et « ouvrir dans un onglet » : les TROIS appels
   // passent l’option (même source, donc aperçu et PDF téléchargé concordent).
   const appels = PANEL.match(/proposalParams\(pdfMode, includeEtude, \{ devisFinal \}\)/g) || []

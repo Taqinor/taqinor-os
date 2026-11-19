@@ -72,6 +72,8 @@ export function ventesApiPanneauMock() {
       reviserDevis: vi.fn(),
       // CIQ127 — le devis automatique C&I part au serveur.
       creerDevisAuto: vi.fn(),
+      // Devis final enregistré sur le devis (etude_params.devis_final).
+      patchEtudeParams: vi.fn(),
       getParametresGammes: vi.fn(vide),
     },
   }

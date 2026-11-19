@@ -193,6 +193,15 @@ class Amot82OnePageSousReserve(SimpleTestCase):
                 self.assertIn(self.BANDEAU, unescape(html))
                 self.assertIn(methode, unescape(html))
 
+    def test_devis_final_sans_bandeau(self):
+        """Fondateur 19/11/2026 — « Devis final » : le une-page C&I ne dit
+        plus « Devis préliminaire »."""
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage_reserve(mode, False, devis_final=True)
+                self.assertTrue(data["devis_final"])
+                self.assertNotIn("Devis préliminaire", unescape(html))
+
     def test_sans_reserve_ni_bandeau_ni_methode(self):
         for mode, *_ in GABARITS:
             with self.subTest(mode=mode):
