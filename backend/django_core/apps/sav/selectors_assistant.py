@@ -462,3 +462,26 @@ def hors_fenetre_d_envoi(company, instant=None):
     from apps.crm.selectors import hors_heures_ouvrees
 
     return hors_heures_ouvrees(company, instant)
+
+
+# ── Point du matin ──────────────────────────────────────────────────────────
+
+NB_LIGNES_BRIEF = 5
+
+
+def brief_sav(user, aujourdhui=None):
+    """Le bloc ``tickets`` du point du matin (``crm.digest_matin``) :
+    ``{'ouverts': int, 'en_retard_sla': int, 'lignes': [≤ 5 lignes de
+    assistant_tickets.json, retard de SLA d'abord], 'lien': '/sav/action-requise'}``.
+    Les compteurs portent sur tous les tickets ouverts non annulés de la portée
+    de ``user`` ; ni coût, ni texte du client, ni chiffre d'affaires. ``None``
+    sans le droit ``sav_voir`` (ou sans société) : l'appelant omet la clé."""
+    from core.permissions import _user_has_or_legacy
+
+    if getattr(user, 'company_id', None) is None or not _user_has_or_legacy(user, 'sav_voir'):
+        return None
+    aujourdhui = aujourdhui or timezone.localdate()
+    ouverts, lignes = tickets_compacts(user, limite=NB_LIGNES_BRIEF, aujourdhui=aujourdhui)
+    en_retard, _ = tickets_compacts(user, retard_sla=True, limite=0, aujourdhui=aujourdhui)
+    return {'ouverts': ouverts, 'en_retard_sla': en_retard, 'lignes': lignes,
+            'lien': LIEN_FILE_SAV}

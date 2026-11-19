@@ -531,3 +531,45 @@ class SavNoterActionTest(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         note = TicketActivity.objects.get(ticket=ticket, kind=TicketActivity.Kind.NOTE)
         self.assertEqual((note.body, note.visible_client), ('client rappelé', False))
+
+
+class SavBriefTest(TestCase):
+    """SAV7 — ``brief_sav(user, aujourdhui)`` : le bloc ``tickets`` du point du
+    matin — compteurs complets, cinq lignes au plus, retard de SLA d'abord."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.sav.models import Ticket
+        from apps.sav.tests import make_installation
+        self.aujourdhui = timezone.localdate()
+        self.company = Company.objects.create(nom='SAV Brief', slug='sav-brief')
+        _, client = make_installation(self.company, ref='CHT-BRF')
+        self.user = User.objects.create_user(
+            username='brf', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Brf',
+                                     permissions=['sav_voir']))
+        for n in range(7):
+            Ticket.objects.create(
+                company=self.company, reference=f'SAV-BRF-{n}', client=client,
+                sla_due_at=self.aujourdhui - timedelta(days=3 - n) if n < 3 else None)
+        Ticket.objects.create(company=self.company, reference='SAV-BRF-OK',
+                              client=client, statut='cloture')
+
+    def test_compteurs_complets_lignes_bornees_retard_d_abord(self):
+        from apps.sav.selectors_assistant import brief_sav
+        bloc = brief_sav(self.user, self.aujourdhui)
+        self.assertEqual(set(bloc), {'ouverts', 'en_retard_sla', 'lignes', 'lien'})
+        self.assertEqual((bloc['ouverts'], bloc['en_retard_sla'], bloc['lien']),
+                         (7, 3, '/sav/action-requise'))
+        self.assertEqual(len(bloc['lignes']), 5)
+        self.assertEqual([x['en_retard_sla'] for x in bloc['lignes']][:2], [True, True])
+        self.assertEqual(bloc['lignes'][0]['reference'], 'SAV-BRF-0')
+
+    def test_sans_droit_sav_voir_aucun_bloc(self):
+        from apps.sav.selectors_assistant import brief_sav
+        sans = User.objects.create_user(
+            username='brf_crm', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='BrfCrm',
+                                     permissions=['crm_voir']))
+        self.assertIsNone(brief_sav(sans, self.aujourdhui))
