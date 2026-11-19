@@ -87,7 +87,7 @@ def plus_jours(jour, jours, champ):
         return jour + timedelta(days=jours)
     except OverflowError:
         raise ErreurAssistant(f'{champ} : date hors des limites du calendrier.',
-                              champ, 'date_invalide')
+                              champ, 'date_invalide', 409)
 
 
 def fenetre(params, aujourdhui):
@@ -96,12 +96,13 @@ def fenetre(params, aujourdhui):
     du = _date(params.get('du'), 'du') or aujourdhui
     au = _date(params.get('au'), 'au') or plus_jours(du, FENETRE_DEFAUT_JOURS, 'du')
     if au < du:
+        # Règle d'ENSEMBLE que le schéma ne dit pas (``au`` >= ``du``) : refus d'état 409.
         raise ErreurAssistant('au : la date de fin ne précède pas « du ».', 'au',
-                              'fenetre_inversee')
+                              'fenetre_inversee', 409)
     if au > plus_jours(du, FENETRE_MAX_JOURS, 'du'):
         raise ErreurAssistant(
             f'au : la fenêtre ne dépasse pas {FENETRE_MAX_JOURS} jours après « du ».',
-            'au', 'fenetre_trop_longue')
+            'au', 'fenetre_trop_longue', 409)
     return du, au
 
 

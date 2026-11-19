@@ -65,7 +65,7 @@ def _verifier_chantier(inst, date_pose, date_fin, aujourdhui):
                           "date_pose_prevue : la date est passée ; choisissez "
                           "aujourd'hui ou plus tard.")
     if date_fin is not None and date_fin < date_pose:
-        raise PoseRefusee(400, 'date_pose_fin_prevue', 'fin_avant_debut',
+        raise PoseRefusee(409, 'date_pose_fin_prevue', 'fin_avant_debut',
                           'date_pose_fin_prevue : la fin précède le début de la pose.')
 
 
@@ -76,7 +76,7 @@ def _technicien(company_id, technicien_id):
     tech = (get_user_model().objects
             .filter(pk=technicien_id, company_id=company_id, is_active=True).first())
     if tech is None:
-        raise PoseRefusee(400, 'technicien', 'technicien_inconnu',
+        raise PoseRefusee(409, 'technicien', 'technicien_inconnu',
                           "technicien : compte inconnu, inactif ou d'une autre société.")
     return tech
 

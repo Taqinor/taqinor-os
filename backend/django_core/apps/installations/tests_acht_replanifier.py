@@ -222,10 +222,10 @@ class PlanifierPoseAssistantTests(TestCase):
             ({'date_pose_prevue': self._jour(-1).isoformat()}, 409, 'date_pose_prevue', 'date_passee'),
             ({'date_pose_prevue': demain, 'motif_override_acompte': 'VIP'}, 400,
              'motif_override_acompte', 'champ_refuse'),
-            ({'date_pose_prevue': demain, 'technicien': 2147483000}, 400, 'technicien',
+            ({'date_pose_prevue': demain, 'technicien': 2147483000}, 409, 'technicien',
              'technicien_inconnu'),
             ({'date_pose_prevue': demain, 'date_pose_fin_prevue': self._jour(0).isoformat()},
-             400, 'date_pose_fin_prevue', 'fin_avant_debut'),
+             409, 'date_pose_fin_prevue', 'fin_avant_debut'),
         ]
         for corps, statut, champ, code in cas:
             r = self.api.post(self._url(), corps, format='json')

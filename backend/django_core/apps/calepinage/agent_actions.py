@@ -29,10 +29,6 @@ from apps.agent.registry import (
     AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register, _REGISTRY,
 )
 
-#: Les deux codes de la garde réelle des routes (``permissions.py``).
-VOIR = CAL_VOIR
-GERER = CAL_GERER
-
 BASE = '/api/django/calepinage/calepinages/'
 
 #: La règle de lecture de la production, répétée dans chaque description qui
@@ -67,7 +63,7 @@ DU_LEAD = AgentAction(
     method='GET',
     inputs=_schema({'lead': dict(ENTIER, description='Identifiant du lead.')},
                    ('lead',)),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     carte='fiche_calepinage',
     lot=LOT_COPILOTE,
@@ -88,7 +84,7 @@ RESUME = AgentAction(
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
                     'variante': dict(ENTIER, description='Variante du même calepinage (facultatif).')},
                    ('id',)),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     carte='fiche_calepinage',
     lot=LOT_COPILOTE,
@@ -109,7 +105,7 @@ VARIANTES_COMPARER = AgentAction(
     method='GET',
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.')},
                    ('id',)),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
@@ -130,7 +126,7 @@ SIMULATION_SUIVRE = AgentAction(
     method='GET',
     inputs=_schema({'job_id': dict(ENTIER, description='Le job_id rendu par calepinage.simuler.')},
                    ('job_id',)),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
@@ -157,7 +153,7 @@ SIMULER = AgentAction(
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
                     'variante_id': dict(ENTIER, description='Variante du même calepinage (facultatif).')},
                    ('id',)),
-    required_permission=GERER,
+    required_permission=CAL_GERER,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
     objets={'id': 'calepinage', 'variante_id': 'variante'},
@@ -181,7 +177,7 @@ PREPARER = AgentAction(
     method='POST',
     inputs=_schema({'lead': dict(ENTIER, description='Identifiant du lead.')},
                    ('lead',)),
-    required_permission=GERER,
+    required_permission=CAL_GERER,
     risk=RISK_OUTWARD,
     confirm_summary=(
         "Ouvrir le calepinage de ce lead (créé s'il n'existe pas) et y "
@@ -211,7 +207,7 @@ PUBLIER_APERCU = AgentAction(
     method='GET',
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.')},
                    ('id',)),
-    required_permission=GERER,
+    required_permission=CAL_GERER,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
@@ -248,7 +244,7 @@ PUBLIER_DEVIS = AgentAction(
                                   "absent quand l'aperçu dit devis null. Obligatoire si ce "
                                   "devis est déjà envoyé."),
     }, ('id', 'nouveau_total_ttc')),
-    required_permission=GERER,
+    required_permission=CAL_GERER,
     risk=RISK_OUTWARD,
     confirm_summary=(
         "Mettre le devis à jour depuis la conception de ce calepinage, aux "
@@ -279,7 +275,7 @@ RETENIR = AgentAction(
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.'),
                     'variante_id': dict(ENTIER, description='La variante à retenir.')},
                    ('id', 'variante_id')),
-    required_permission=GERER,
+    required_permission=CAL_GERER,
     risk=RISK_OUTWARD,
     confirm_summary=(
         "Retenir cette variante : elle devient la conception du calepinage "
@@ -306,7 +302,7 @@ A_TRAITER = AgentAction(
     method='GET',
     inputs=_schema({'limite': {'type': 'integer', 'minimum': 1, 'maximum': 20,
                                'description': 'Nombre de lignes (10 par défaut).'}}),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     carte='liste_calepinages',
     lot=LOT_COPILOTE,
@@ -343,7 +339,7 @@ CONTENANCE = AgentAction(
         'toit_plat': {'type': 'boolean', 'description': 'Dictée seulement.'},
         'produit': dict(ENTIER, description='Panneau du catalogue (facultatif).'),
     }, ('lead', 'origine')),
-    required_permission=VOIR,
+    required_permission=CAL_VOIR,
     risk=RISK_INTERNAL,
     carte='contenance',
     lot=LOT_COPILOTE,

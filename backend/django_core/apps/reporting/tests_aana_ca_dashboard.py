@@ -414,24 +414,24 @@ class TestTroisChiffresCa(TestCase):
         self.assertIn('q', str(resp.data))
 
     def _refus_nommes(self):
-        refus = self._exemple()['exemple_400_periode']
+        refus = self._exemple()['exemple_409_periode']
         resp = self._ca(du='2026-03-31', au='2026-03-01')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         for cle in ('detail', 'field', 'code'):
             self.assertEqual(resp.data[cle], refus[cle])
-        for params, champ, code in (
-                ({'au': '2026-03-31'}, 'du', 'parametre_manquant'),
+        for params, champ, code, statut in (
+                ({'au': '2026-03-31'}, 'du', 'parametre_manquant', 400),
                 ({'du': '2026-02-30', 'au': '2026-03-31'}, 'du',
-                 'date_illisible'),
+                 'date_illisible', 400),
                 ({'du': '2026-03-01', 'au': '2027-03-31'}, 'au',
-                 'periode_trop_longue'),
+                 'periode_trop_longue', 409),
                 ({'du': '2024-01-01', 'au': '2025-01-01'}, 'au',
-                 'periode_trop_longue'),
+                 'periode_trop_longue', 409),
                 ({'du': '2026-03-01', 'au': '2026-03-31', 'q': '1'}, 'q',
-                 'parametre_inconnu')):
+                 'parametre_inconnu', 400)):
             with self.subTest(params=params):
                 resp = self._ca(**params)
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, statut, resp.data)
                 self.assertEqual((resp.data['field'], resp.data['code']),
                                  (champ, code))
                 self.assertIn(champ, resp.data['detail'])

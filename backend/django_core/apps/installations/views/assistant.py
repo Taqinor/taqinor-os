@@ -25,6 +25,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
+from authentication.permissions import IsResponsableOrAdmin, LectureDuModule
+from apps.roles.permissions import DroitDeLaGrille
 from core.champs_stricts import BooleenStrict, DateStricte, EntierStrict
 from core.conflit_etat import ConflitEtat
 
@@ -37,16 +39,36 @@ STATUTS_LISTE = tuple(s.value for s in Installation.STATUT_ORDER
                       if s != Installation.Statut.CLOTURE)
 Q_MAX = 100
 
+#: Bornes RÉELLES lues par ``_lire_liste`` (le schéma publié = ce que la vue lit) :
+#: un identifiant vaut 1..ID_MAX ; la chaîne vide pose le défaut / n'applique rien.
+_Q_SCHEMA = {'type': 'string', 'maxLength': Q_MAX, 'pattern': r'^[^\u0000]*$'}
 PARAMETRES_LISTE = [
     oa.qs('vue', enum=selectors_assistant.VUES,
           desc='en_cours (défaut), bloques ou poses_semaine.'),
-    oa.qs('q', desc='Référence du chantier ou nom du client (100 caractères au plus).'),
-    oa.qi('lead', desc="Id du lead d'origine du chantier."),
+    oa.q('q', _Q_SCHEMA,
+         desc='Référence du chantier ou nom du client (100 caractères au plus).'),
+    oa.qid('lead', desc="Id du lead d'origine du chantier."),
     oa.qs('statut', enum=STATUTS_LISTE, desc='Statut du chantier (couche propre).'),
-    oa.qi('technicien', desc='Id du technicien responsable.'),
-    oa.qd('debut', desc='Un jour de la semaine voulue (poses_semaine) ; ramené au lundi.'),
-    oa.qi('limite', desc='Nombre de lignes, 1 à 25 (défaut 10).'),
+    oa.qid('technicien', desc='Id du technicien responsable.'),
+    oa.qdv('debut', desc='Un jour de la semaine voulue (poses_semaine) ; ramené au lundi.'),
+    oa.q('limite', {'type': 'integer', 'minimum': 1,
+                    'maximum': selectors_assistant.LIMITE_MAX},
+         desc='Nombre de lignes, 1 à 25 (défaut 10).'),
 ]
+
+#: Corps publié de ``planifier-pose`` : tel que ``_corps_planifier`` le lit
+#: (un champ hors liste est refusé 400 qui le nomme — publié ``additionalProperties: false``).
+CORPS_PLANIFIER_SCHEMA = {
+    'type': 'object', 'additionalProperties': False,
+    'required': ['date_pose_prevue'],
+    'properties': {
+        'date_pose_prevue': {'type': 'string', 'format': 'date'},
+        'date_pose_fin_prevue': {'type': 'string', 'format': 'date', 'nullable': True},
+        'technicien': {'type': 'integer', 'minimum': 1, 'maximum': oa.ID_MAX,
+                       'nullable': True},
+        'creer_intervention': {'type': 'boolean'},
+    },
+}
 
 
 def _refus(champ, code, detail):
@@ -120,13 +142,15 @@ class ChantierAssistantMixin:
         """Le chantier ``pk`` DANS la portée de l'écran (404 sinon), sans les
         préchargements de la liste (inutiles à une fiche compacte)."""
         qs = self.get_queryset().prefetch_related(None)
-        inst = get_object_or_404(qs, pk=self.kwargs.get('pk'))
+        inst = get_object_or_404(qs, pk=self.kwargs.get('pk'),
+                                 company=self.request.user.company)
         self.check_object_permissions(self.request, inst)
         return inst
 
     # headless: lu par l'action d'assistant `installations.chantier.etat`.
     @oa.extend_schema(responses={200: oa.OBJ, 404: oa.OBJ})
-    @action(detail=True, methods=['get'], url_path='etat-assistant')
+    @action(detail=True, methods=['get'], url_path='etat-assistant',
+            permission_classes=[LectureDuModule])
     def etat_assistant(self, request, pk=None):
         """CHTA2 — prêt à poser ? pourquoi ? matériel (quantités), acompte,
         pose, étape suivante, ``a_faire`` et liens. Lecture seule."""
@@ -136,7 +160,8 @@ class ChantierAssistantMixin:
 
     # headless: lu par l'action d'assistant `installations.chantiers.liste`.
     @oa.extend_schema(parameters=PARAMETRES_LISTE, responses={200: oa.OBJ, 400: oa.OBJ})
-    @action(detail=False, methods=['get'], url_path='assistant')
+    @action(detail=False, methods=['get'], url_path='assistant',
+            permission_classes=[LectureDuModule])
     def liste_assistant(self, request):
         """CHTA3 — chantiers en cours, bloqués (sans le besoin matériel) ou
         posés dans la semaine, dans la portée de l'écran. Lecture seule."""
@@ -146,14 +171,18 @@ class ChantierAssistantMixin:
             base, request.user.company, aujourdhui=timezone.localdate(), **lus))
 
     # headless: écrit par l'action d'assistant `installations.chantier.planifier`.
-    @oa.extend_schema(request=PlanifierPoseRequete,
+    @oa.extend_schema(request=CORPS_PLANIFIER_SCHEMA,
                       responses={200: oa.OBJ, 400: oa.OBJ, 404: oa.OBJ, 409: oa.OBJ})
-    @action(detail=True, methods=['post'], url_path='planifier-pose')
+    @action(detail=True, methods=['post'], url_path='planifier-pose',
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('installation_gerer'),
+                                DroitDeLaGrille('intervention_gerer'),
+                                DroitDeLaGrille('technicien_assign', champ='technicien')])
     def planifier_pose(self, request, pk=None):
         """CHTA5 — pose la date et le technicien du chantier ET l'intervention
         de pose ; le statut ne change pas ; refus nommés (409 / 400)."""
+        inst = self._chantier_assistant()  # 404 AVANT le corps : un autre id = 404
         corps = _corps_planifier(request)
-        inst = self._chantier_assistant()
         try:
             inst = planification_pose.planifier_pose(
                 inst, request.user, date_pose=corps['date_pose_prevue'],

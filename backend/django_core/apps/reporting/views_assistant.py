@@ -85,20 +85,22 @@ def _date(request, nom):
 
 def lire_periode(request):
     """``(du, au)`` validées : paramètres connus, ``au`` ≥ ``du``, 366 jours
-    au plus. Toute faute → 400 ``{detail, field, code}`` nommant le paramètre."""
+    au plus. Toute faute → 400 (paramètre) ou 409 (``au`` < ``du``, plus de 366 jours :
+    règles d'ensemble) ``{detail, field, code}`` nommant le paramètre."""
     for nom in sorted(set(request.query_params.keys()) - NOMS):
         raise RefusAssistant(
             f'{nom} : paramètre non déclaré pour cette lecture (du et au '
             'seulement).', nom, 'parametre_inconnu')
     du, au = _date(request, 'du'), _date(request, 'au')
     if au < du:
+        # Règles d'ENSEMBLE que le schéma publié ne dit pas : refus d'état 409.
         raise RefusAssistant(
             'au : la date de fin précède la date de début.', 'au',
-            'periode_invalide')
+            'periode_invalide', statut=status.HTTP_409_CONFLICT)
     if (au - du).days + 1 > JOURS_MAX:
         raise RefusAssistant(
             f'au : la période couvre plus de {JOURS_MAX} jours.', 'au',
-            'periode_trop_longue')
+            'periode_trop_longue', statut=status.HTTP_409_CONFLICT)
     return du, au
 
 
@@ -141,7 +143,7 @@ _REFUS = inline_serializer('AssistantCaRefus', {
 
 
 @extend_schema(parameters=_PARAMETRES,
-               responses={200: _REPONSE, 400: _REFUS, 403: _REFUS})
+               responses={200: _REPONSE, 400: _REFUS, 403: _REFUS, 409: _REFUS})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin, lecture_source('ventes')])
 def ca_trois_chiffres(request):

@@ -14,6 +14,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
 from core.conflit_etat import ConflitEtat
 from core.parseurs import PARSEURS_JSON
 
@@ -25,6 +26,12 @@ from .serializers import TicketSerializer
 #: Longueur maximale du texte cherché (nom, téléphone, numéro de série).
 Q_MAX = 100
 
+
+#: Refus nommé : ``{detail, code}`` (409, 404) ou ``{champ: [messages]}`` (400,
+#: libre) — seules clés communes déclarées.
+_ERREUR = inline_serializer('AssistantSavErreur', {
+    'detail': serializers.CharField(required=False),
+    'code': serializers.CharField(required=False)})
 
 _BLOCS = serializers.ListField(child=serializers.DictField())
 #: Formes publiées des trois lectures (clés = celles des ``contract_samples``).
@@ -69,14 +76,15 @@ def _texte_cherche(request, obligatoire):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('q', {'type': 'string', 'minLength': 1, 'maxLength': Q_MAX},
+        OpenApiParameter('q', {'type': 'string', 'minLength': 1, 'maxLength': Q_MAX,
+                               'pattern': MOTIF_NON_BLANC_SANS_NUL},
                          OpenApiParameter.QUERY, required=True,
                          description='Nom, téléphone ou numéro de série.'),
         OpenApiParameter('limite', ou_vide({'type': 'integer', 'minimum': 1,
                                             'maximum': lectures.LIMITE_PARC_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
-    responses=_PARC)
+    responses={200: _PARC, 400: _ERREUR})
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def parc_client(request):
@@ -99,7 +107,8 @@ def _enum_ou_vide(valeurs):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX},
+        OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX,
+                               'pattern': MOTIF_SANS_NUL},
                          OpenApiParameter.QUERY, required=False,
                          description='Référence, nom du client ou numéro de série.'),
         OpenApiParameter('statut', _enum_ou_vide(Ticket.Statut.values),
@@ -114,7 +123,7 @@ def _enum_ou_vide(valeurs):
                                             'maximum': lectures.LIMITE_TICKETS_MAX}),
                          OpenApiParameter.QUERY, required=False),
     ],
-    responses=_TICKETS)
+    responses={200: _TICKETS, 400: _ERREUR})
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def tickets_a_traiter(request):
@@ -137,7 +146,7 @@ def tickets_a_traiter(request):
                      'lignes': lignes, 'lien': lectures.LIEN_FILE_SAV})
 
 
-@extend_schema(responses=_FICHE)
+@extend_schema(responses={200: _FICHE, 404: _ERREUR})
 @api_view(['GET'])
 @permission_classes([HasPermissionOrLegacy('sav_voir')])
 def ticket_fiche(request, pk):
@@ -221,12 +230,18 @@ def _garde_de_la_transition(user, ticket, geste, cible):
             'hors_fenetre_envoi')
 
 
-def _changer_statut(request, pk, geste, canal_resolution=None):
-    """Applique le geste par LE service des écrans (graphe, garde de clôture,
-    SLA, chatter, notification) ; réponse = celle des routes existantes."""
+def _ticket_ou_404(request, pk):
+    """Le ticket dans la portée de l'appelant, sinon 404 : résolu AVANT de lire
+    le corps (l'id d'une autre société répond 404, jamais 400)."""
     ticket = lectures.ticket_pour_fiche(request.user, pk)
     if ticket is None:
         raise NotFound('Ticket introuvable.')
+    return ticket
+
+
+def _changer_statut(request, ticket, geste, canal_resolution=None):
+    """Applique le geste par LE service des écrans (graphe, garde de clôture,
+    SLA, chatter, notification) ; réponse = celle des routes existantes."""
     cible = lectures.STATUT_DU_GESTE[geste]
     _garde_de_la_transition(request.user, ticket, geste, cible)
     if canal_resolution:
@@ -239,7 +254,9 @@ def _changer_statut(request, pk, geste, canal_resolution=None):
     return Response(TicketSerializer(ticket, context={'request': request}).data)
 
 
-@extend_schema(request=_TransitionRequete, responses=TicketSerializer)
+@extend_schema(request=_TransitionRequete,
+               responses={200: TicketSerializer, 400: _ERREUR,
+                          404: _ERREUR, 409: _ERREUR})
 @api_view(['POST'])
 @parser_classes(PARSEURS_JSON)
 @permission_classes([HasPermissionOrLegacy('sav_gerer')])
@@ -250,12 +267,15 @@ def ticket_transition(request, pk):
     facturé répond 409). Même service et même réponse que les routes de
     l'écran ; hors fenêtre d'envoi, une transition qui préviendrait le client
     est refusée."""
+    ticket = _ticket_ou_404(request, pk)
     corps = _TransitionRequete(data=request.data)
     corps.is_valid(raise_exception=True)
-    return _changer_statut(request, pk, corps.validated_data['vers'])
+    return _changer_statut(request, ticket, corps.validated_data['vers'])
 
 
-@extend_schema(request=_ResoudreRequete, responses=TicketSerializer)
+@extend_schema(request=_ResoudreRequete,
+               responses={200: TicketSerializer, 400: _ERREUR,
+                          404: _ERREUR, 409: _ERREUR})
 @api_view(['POST'])
 @parser_classes(PARSEURS_JSON)
 @permission_classes([HasPermissionOrLegacy('sav_gerer')])
@@ -263,7 +283,8 @@ def ticket_resoudre(request, pk):
     """SAV5 — ``POST /api/django/sav/assistant/tickets/<pk>/resoudre/`` :
     résout un ticket (``canal_resolution`` facultatif) ; mêmes gardes que
     ``ticket_transition`` (le client est prévenu à la résolution)."""
+    ticket = _ticket_ou_404(request, pk)
     corps = _ResoudreRequete(data=request.data)
     corps.is_valid(raise_exception=True)
-    return _changer_statut(request, pk, 'resoudre',
+    return _changer_statut(request, ticket, 'resoudre',
                            corps.validated_data.get('canal_resolution'))

@@ -21,6 +21,8 @@ from rest_framework.views import APIView
 
 from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import MOTIF_SANS_NUL
+from core.parseurs import PARSEURS_JSON
 
 from .. import selectors_assistant as SA
 from ..domain import resolution_catalogue as rc
@@ -40,7 +42,8 @@ Q_MAX = 100
 FAMILLES_RECHERCHE = rc.FAMILLES_DEMANDABLES + (rc.FAMILLE_OFFGRID,)
 
 PARAMETRES = [
-    OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX},
+    OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX,
+                           'pattern': MOTIF_SANS_NUL},
                      OpenApiParameter.QUERY, required=False,
                      description='Texte cherché dans le nom ou la marque.'),
     OpenApiParameter('genre', {'type': 'string', 'enum': list(rc.GENRES)},
@@ -202,13 +205,15 @@ class CatalogueAssistantView(APIView):
 # ── Les listes de facturation de l'assistant (VAD2, VAD3) ───────────────────
 
 def _q_param():
-    return OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX},
+    return OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX,
+                                'pattern': MOTIF_SANS_NUL},
                             OpenApiParameter.QUERY, required=False)
 
 
 def _parametres_liste(*extra):
     return [_q_param(),
-            OpenApiParameter('client', {'type': 'integer', 'minimum': 1},
+            OpenApiParameter('client', {'type': 'integer', 'minimum': 1,
+                                        'maximum': ID_MAX},
                              OpenApiParameter.QUERY, required=False,
                              description='Identifiant du client.'),
             *extra,
@@ -221,6 +226,7 @@ PARAMETRES_IMPAYES = _parametres_liste(OpenApiParameter(
     'mes_relances', {'type': 'boolean'}, OpenApiParameter.QUERY,
     required=False, description='Seulement les clients dont je suis le '
                                 'responsable de relance.'))
+ID_MAX = 2 ** 31 - 1  # borne d'une clé primaire entière PostgreSQL
 BOOLEENS = {'true': True, '1': True, 'false': False, '0': False}
 
 
@@ -235,7 +241,7 @@ def _lire_liste(request, parametres, statuts=()):
            'client': None, 'mes_relances': False, 'statut': ''}
     brut = params.get('client')
     if brut is not None:
-        if not brut.isdigit() or int(brut) < 1:
+        if not brut.isdigit() or not 1 <= int(brut) <= ID_MAX:
             erreurs['client'] = ['Identifiant de client entier positif attendu.']
         else:
             lus['client'] = int(brut)
@@ -328,6 +334,7 @@ class RelanceWhatsappAssistantView(APIView):
     ``wa_url`` vaut null."""
 
     permission_classes = [IsResponsableOrAdmin, DroitDeLaGrille('ventes_modifier')]
+    parser_classes = PARSEURS_JSON  # corps JSON : pas de multipart publié
     http_method_names = ['post', 'options']
 
     @extend_schema(request=DA.RelanceWhatsappRequest,

@@ -19,6 +19,7 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, LectureDuModule, IsResponsableOrAdmin,
 )
+from core.champs_stricts import MOTIF_SANS_NUL
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC92
@@ -673,7 +674,8 @@ class NiveauxStockAssistantView(APIView):
     http_method_names = ['get', 'head', 'options']
 
     @extend_schema(parameters=[
-        P('q', STR, desc='Nom, marque ou référence cherchés (100 caractères au plus).'),
+        P('q', {'type': 'string', 'maxLength': 100, 'pattern': MOTIF_SANS_NUL},
+          desc='Nom, marque ou référence cherchés (100 caractères au plus).'),
         P('categorie', ID_OU_VIDE),
         P('sous_seuil', BOOL, desc="Seulement les produits sous leur seuil d'alerte."),
         P('limite', INT, desc='Lignes rendues (10 par défaut).', mini=1, maxi=NIVEAUX_LIMITE_MAX),
@@ -684,7 +686,8 @@ class NiveauxStockAssistantView(APIView):
         'limite': serializers.IntegerField(),
         'lignes': serializers.ListField(child=serializers.DictField()),
         'lien': serializers.CharField(),
-    })})
+    }), 400: inline_serializer('StockNiveauxAssistantErreur', {
+        'detail': serializers.CharField(required=False)})})
     def get(self, request):
         from rest_framework.exceptions import ValidationError
 

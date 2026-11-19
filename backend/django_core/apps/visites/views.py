@@ -35,7 +35,7 @@ from rest_framework.views import APIView
 from authentication.permissions import HasPermissionOrLegacy
 from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, entier_ou_400
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
-from core.permissions import _user_has_or_legacy
+from core.permissions import ScopedPermission, _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import assistant
@@ -125,12 +125,18 @@ _PARAMETRES_AGENDA = [
                      required=False, description='Fin de la fenêtre (défaut : du + 7 j ; au plus du + 31 j).'),
     OpenApiParameter('filtre', {'type': 'string', 'enum': list(assistant.FILTRES)},
                      OpenApiParameter.QUERY, required=False),
-    OpenApiParameter('commercial', {'type': 'integer', 'minimum': 1},
+    OpenApiParameter('commercial', {'type': 'integer', 'minimum': 1, 'maximum': 2 ** 31 - 1},
                      OpenApiParameter.QUERY, required=False,
                      description="Id du compte qui fait la visite."),
     OpenApiParameter('limite', {'type': 'integer', 'minimum': 1, 'maximum': assistant.LIMITE_MAX},
                      OpenApiParameter.QUERY, required=False),
 ]
+
+#: Refus nommé de l'assistant : ``{detail, field, code}`` (400 paramètre, 409 règle
+#: d'ensemble ou d'état que le schéma ne dit pas).
+_ERREUR_ASSISTANT = inline_serializer('VisitesErreurAssistant', {
+    'detail': serializers.CharField(), 'field': serializers.CharField(),
+    'code': serializers.CharField()})
 
 _AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
     'du': serializers.CharField(),
@@ -949,8 +955,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # celle de l'écran (``selectors.visites_visibles``). Un refus nomme son
     # champ : ``{detail, field, code}``.
 
-    @extend_schema(parameters=_PARAMETRES_AGENDA, responses=_AGENDA_ASSISTANT)
-    @action(detail=False, methods=['get'], url_path='agenda')
+    @extend_schema(parameters=_PARAMETRES_AGENDA,
+                   responses={200: _AGENDA_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              409: _ERREUR_ASSISTANT})
+    @action(detail=False, methods=['get'], url_path='agenda',
+            permission_classes=[ScopedPermission])
     def agenda(self, request):
         """VIS3 — l'agenda des visites (carte ``liste_visites``) : totaux de la
         fenêtre et lignes compactes ; lecture ``visites_voir``."""
@@ -960,16 +969,20 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         except assistant.ErreurAssistant as erreur:
             return Response(erreur.corps(), status=erreur.statut)
 
-    @extend_schema(responses=_RESUME_ASSISTANT)
-    @action(detail=True, methods=['get'], url_path='resume')
+    @extend_schema(responses={200: _RESUME_ASSISTANT, 404: _ERREUR_ASSISTANT})
+    @action(detail=True, methods=['get'], url_path='resume',
+            permission_classes=[ScopedPermission])
     def resume(self, request, pk=None):
         """VIS4 — la fiche COMPACTE d'une visite (carte ``fiche_visite``, ≤ 1,5 Ko) :
         jalons, complétude, qualification, retour terrain, photos à refaire.
         Hors portée ou autre société : 404, comme le détail."""
         return Response(assistant.resume_visite(self.get_object()))
 
-    @extend_schema(parameters=_PARAMETRES_CHARGE, responses=_CHARGE_ASSISTANT)
-    @action(detail=False, methods=['get'], url_path='charge')
+    @extend_schema(parameters=_PARAMETRES_CHARGE,
+                   responses={200: _CHARGE_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              409: _ERREUR_ASSISTANT})
+    @action(detail=False, methods=['get'], url_path='charge',
+            permission_classes=[ScopedPermission])
     def charge(self, request):
         """VIS5 — « qui peut faire la visite ? » : la CHARGE de chaque assignable
         au jour près (visites, interventions de chantier, indisponibilité). Une
@@ -980,8 +993,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         except assistant.ErreurAssistant as erreur:
             return Response(erreur.corps(), status=erreur.statut)
 
-    @extend_schema(request=VisiteAnnulerSerializer, responses=_RESUME_ASSISTANT)
-    @action(detail=True, methods=['post'], url_path='annuler')
+    @extend_schema(request=VisiteAnnulerSerializer,
+                   responses={200: _RESUME_ASSISTANT, 400: _ERREUR_ASSISTANT,
+                              404: _ERREUR_ASSISTANT, 409: _ERREUR_ASSISTANT})
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[ScopedPermission])
     def annuler(self, request, pk=None):
         """VIS7 — annule un rendez-vous de visite EN ATTENTE (brouillon daté,
         jamais commencé), motif obligatoire : la visite passe ``annulee`` (gelée,

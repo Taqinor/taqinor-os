@@ -482,22 +482,24 @@ class AgendaAssistantTests(VtaBase):
 
     def test_les_refus_nomment_le_champ_fautif(self):
         du = self.aujourdhui
+        # 409 = règle d'ensemble / calendrier que le schéma publié ne dit pas.
         cas = (
-            ({'au': (du + timedelta(days=32)).isoformat()}, 'au', 'fenetre_trop_longue'),
-            ({'au': (du - timedelta(days=1)).isoformat()}, 'au', 'fenetre_inversee'),
-            ({'du': 'demain'}, 'du', 'date_invalide'),
-            ({'du': '9999-12-31'}, 'du', 'date_invalide'),
-            ({'filtre': 'tout_le_monde'}, 'filtre', 'filtre_invalide'),
-            ({'limite': '26'}, 'limite', 'limite_invalide'),
-            ({'commercial': 'moi'}, 'commercial', 'commercial_invalide'),
+            ({'au': (du + timedelta(days=32)).isoformat()}, 'au', 'fenetre_trop_longue', 409),
+            ({'au': (du - timedelta(days=1)).isoformat()}, 'au', 'fenetre_inversee', 409),
+            ({'au': '2000-01-01', 'commercial': '1'}, 'au', 'fenetre_inversee', 409),
+            ({'du': 'demain'}, 'du', 'date_invalide', 400),
+            ({'du': '9999-12-31'}, 'du', 'date_invalide', 409),
+            ({'filtre': 'tout_le_monde'}, 'filtre', 'filtre_invalide', 400),
+            ({'limite': '26'}, 'limite', 'limite_invalide', 400),
+            ({'commercial': 'moi'}, 'commercial', 'commercial_invalide', 400),
         )
-        for parametres, champ, code in cas:
+        for parametres, champ, code, statut in cas:
             with self.subTest(parametres=parametres):
                 reponse = auth(self.bureau).get(self.URL, parametres)
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.status_code, statut, reponse.data)
                 self.assertEqual(set(reponse.data), {'detail', 'field', 'code'})
                 self.assertEqual((reponse.data['field'], reponse.data['code']), (champ, code))
-        contrat = echantillon('assistant_agenda')['exemple_400_fenetre']
+        contrat = echantillon('assistant_agenda')['exemple_409_fenetre']
         refus = auth(self.bureau).get(self.URL, {'au': (du + timedelta(days=32)).isoformat()})
         self.assertEqual(refus.data, contrat)
 
@@ -605,14 +607,14 @@ class ChargeAssistantTests(VtaBase):
         self.assertEqual(set(self._par_compte(reponse)), {self.terrain.id, self.bureau.id})
 
     def test_les_refus_nomment_le_champ_fautif(self):
-        for parametres, champ, code in (
-                ({'jours': '15'}, 'jours', 'jours_invalide'),
-                ({'jours': '0'}, 'jours', 'jours_invalide'),
-                ({'du': 'hier'}, 'du', 'date_invalide'),
-                ({'du': '9999-12-31', 'jours': '14'}, 'du', 'date_invalide')):
+        for parametres, champ, code, statut in (
+                ({'jours': '15'}, 'jours', 'jours_invalide', 400),
+                ({'jours': '0'}, 'jours', 'jours_invalide', 400),
+                ({'du': 'hier'}, 'du', 'date_invalide', 400),
+                ({'du': '9999-12-31', 'jours': '14'}, 'du', 'date_invalide', 409)):
             with self.subTest(parametres=parametres):
                 reponse = auth(self.bureau).get(self.URL, parametres)
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.status_code, statut, reponse.data)
                 self.assertEqual((reponse.data['field'], reponse.data['code']), (champ, code))
 
     def test_requetes_independantes_du_nombre_de_visites(self):
