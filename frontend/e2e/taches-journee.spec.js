@@ -121,14 +121,22 @@ test.describe('Tâches — la journée', () => {
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut).toBe('a_faire')
   })
 
-  test('R2-011 — serveur ralenti à 2 s : cocher, Annuler et reporter répondent au doigt, pas au serveur', async ({ page }) => {
+  test('R2-011 — serveur retenu : cocher, Annuler et reporter répondent au doigt, pas au serveur', async ({ page }) => {
     const { titres, taches, base } = await journeeDeQuatre(page, { gardees: true })
-    const lent = (route) => setTimeout(() => route.continue(), 2000)
-    await page.route(/\/taches\/taches\/\d+\/(terminer|planifier)\/$/, lent)
-    await page.route(/\/taches\/gestes\/\d+\/annuler\/$/, lent)
+    // PORTE explicite (pas de délai) : le serveur ne reçoit rien tant que le test n'a pas lâché la porte
+    let porte = null
+    const fermerPorte = () => {
+      const p = {}
+      p.promesse = new Promise((r) => { p.lacher = r })
+      porte = p
+    }
+    const retenir = async (route) => { const p = porte; await p.promesse; await route.continue() }
+    fermerPorte()
+    await page.route(/\/taches\/taches\/\d+\/(terminer|planifier)\/$/, retenir)
+    await page.route(/\/taches\/gestes\/\d+\/annuler\/$/, retenir)
     await attendreAujourdhui(page)
     await expect(section(page, 'Prévu')).toBeVisible()
-    const rapide = { timeout: 600 } // bien avant les 2 s du serveur
+    const rapide = {} // l'écran répond pendant que la requête est retenue : aucune réponse du serveur n'est possible
 
     const caseA = ligne(page, taches[0].id).getByRole('checkbox', { name: `Marquer « ${titres[0]} » comme faite` })
     await caseA.click()
@@ -138,14 +146,18 @@ test.describe('Tâches — la journée', () => {
     await toast(page).getByRole('button', { name: 'Annuler' }).click()
     await expect(caseA).not.toBeChecked(rapide)
     await expect(progression(page, base)).toBeVisible(rapide)
+    porte.lacher() // le serveur reçoit enfin les requêtes
     // le serveur finit par suivre : la tâche est rouverte (terminer puis annuler, dans l'ordre)
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut, { timeout: 15000 }).toBe('a_faire')
 
+    fermerPorte() // le report est retenu à son tour
     const cible = ligne(page, taches[3].id)
     await ouvrirActions(page, cible, titres[3])
     await page.getByRole('menuitem', { name: /^Reporter à / }).click()
     await expect(cible).toContainText('→', rapide)
     await expect(toast(page)).toContainText('Reportée à', rapide)
+    porte.lacher()
+    await expect.poll(async () => (await lireTache(page, taches[3].id)).jour_prevu > (await jourServeur(page)), { timeout: 15000 }).toBeTruthy()
   })
 
   test('Reporter : la ligne dit où elle va, le serveur la prévoit plus tard, Annuler la rend', async ({ page }) => {
