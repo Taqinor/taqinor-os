@@ -1158,6 +1158,11 @@
   .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active { color: var(--tch-accent); }
   .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active::after { background: currentColor; }
   .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab-label { font-size: 0.75rem; }
+  /* R3-096 — en sombre, l'onglet actif est le plus lumineux : les inactifs passent de 9:1 à environ 5,5:1 (le texte doux
+     mêlé au fond), l'actif garde l'accent (≥ 7:1) — il était MOINS contrasté que les autres */
+  .dark .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab:not(.active) {
+    color: color-mix(in oklch, var(--tch-texte-doux) 75%, var(--tch-surface));
+  }
   /* R2-083 — le tiroir FERMÉ (translateX(-105 %)) gardait son ombre de 28 px, qui débordait en bande grise sur le bord
      gauche de chaque écran. Ouvert, il la retrouve. */
   .layout:not(.drawer-open):has(> .layout-main > .layout-content > .route-fade > .tch) > .sidebar { box-shadow: none; }

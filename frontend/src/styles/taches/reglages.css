@@ -31,7 +31,10 @@
 .tch .ep-graph-axe .ep-b small b { display: block; font-weight: 600; color: var(--tch-texte); }
 .tch .ep-graph-legende { margin: 10px var(--tch-gouttiere) 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ep-remarque { list-style: none; margin: 4px 0 0; padding: 0; }
-.tch .ep-remarque li { display: grid; grid-template-columns: 8px 1fr; padding: 8px var(--tch-gouttiere); font-size: 0.9375rem; line-height: 1.45; }
+/* R3-096 — la phrase d'un constat commence à la gouttière, comme les titres de section (elle était à x = 24 derrière une
+   colonne vide de 8 px) */
+.tch .ep-remarque li { display: grid; grid-template-columns: minmax(0, 1fr); padding: 8px var(--tch-gouttiere); font-size: 0.9375rem; line-height: 1.45; }
+.tch .ep-remarque li > span[aria-hidden="true"]:empty { display: none; }
 .tch .ep-remarque .action-lien { display: inline-flex; align-items: center; min-height: 44px; margin: -6px 0 -12px; font-size: var(--tch-meta); font-weight: 600; color: var(--tch-accent); text-align: left; }
 /* R3-088 — les réponses servies d'un constat, sur une ligne sous sa phrase : « Oui » en accent, « Pas maintenant » doux */
 .tch .ep-remarque-reponses { display: flex; flex-wrap: wrap; column-gap: 20px; }
