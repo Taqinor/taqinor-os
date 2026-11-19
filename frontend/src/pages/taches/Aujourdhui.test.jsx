@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { memoryStore } from '../../lib/offlineOutbox'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
-import { creerFile, definirCompteFile, remplacerFile } from '../../features/taches/horsligne/captureQueue'
+import { creerFile, definirCompteFile, enfilerAjout, remplacerFile } from '../../features/taches/horsligne/captureQueue'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -201,6 +201,41 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       await waitFor(async () => expect((await file.pending()).map((op) => op.op_type)).toEqual(['cocher', 'reporter']))
       const [, report] = await file.pending()
       expect(report.payload.corps).toMatchObject({ jour_prevu: donnees().prochain_jour_ouvre, lock_version: expect.any(Number) })
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('R2-008b — une tâche ajoutée hors ligne apparaît tout de suite, grisée « En attente d’envoi » (lue dans la file)', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      fixerEnLigne(false)
+      definirCompteFile(42, 7)
+      // l'ancienne forme (lignes lues) et la nouvelle (la phrase, analysée au rejeu — R2-008a) se lisent toutes deux
+      await act(async () => {
+        // posées directement dans le magasin (sans prévenir l'écran), puis un ajout par la voie normale, qui prévient
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { texte: 'Test ce soir' }, userId: 42, companyId: 7 }, { queuedAt: new Date().toISOString() })
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { texte: 'Pas à moi' }, userId: 99, companyId: 7 }, { queuedAt: new Date().toISOString() })
+        await enfilerAjout([{ titre: 'Appeler le notaire', client_id: 'c-1' }], file)
+      })
+      const bloc = await screen.findByRole('region', { name: 'En attente d’envoi' })
+      await waitFor(() => expect(within(bloc).getByText('Test ce soir')).toBeInTheDocument())
+      expect(within(bloc).getByText('Appeler le notaire')).toBeInTheDocument()
+      expect(within(bloc).queryByText('Pas à moi')).toBeNull() // une op d'un autre compte n'est jamais montrée
+      expect(bloc.querySelectorAll('[data-en-file]')).toHaveLength(2)
+      expect(within(bloc).queryByRole('checkbox')).toBeNull()
+    })
+
+    it('R2-008b — décocher hors ligne : « Décocher attend le réseau » se VOIT, rien ne part, la case reste cochée', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      api.post.mockClear()
+      fixerEnLigne(false)
+      await userEvent.click(screen.getByRole('button', { name: /^Faites/ }))
+      const caseFaite = screen.getByRole('checkbox', { name: 'Marquer « Dossier subvention » comme faite' })
+      await userEvent.click(caseFaite)
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Décocher attend le réseau')
+      expect(caseFaite).toBeChecked()
       expect(api.post).not.toHaveBeenCalled()
     })
 

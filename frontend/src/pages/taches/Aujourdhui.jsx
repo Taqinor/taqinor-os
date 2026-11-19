@@ -21,7 +21,7 @@ import { annoncer, annulerToast, fermerToast, proposerAnnuler, useEtatGestes } f
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
 import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cacheJournee'
-import { MESSAGE_EN_FILE as TOAST_EN_FILE, enfilerCoche, enfilerReport } from '../../features/taches/horsligne/captureQueue'
+import { MESSAGE_EN_FILE as TOAST_EN_FILE, compteFile, enfilerCoche, enfilerReport, fileTaches, TYPES as OPS_FILE, useVersionFile } from '../../features/taches/horsligne/captureQueue'
 import { accord, aujourdhuiIso, heureDuConflit, jourCourt, jourLong, jourNomme } from '../../features/taches/lib/textes'
 import * as client from '../../api/tachesApi'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
@@ -375,6 +375,55 @@ function useClotureDifferee({ patcher, setDonnees }) {
   return useMemo(() => ({ cocher, decocher }), [cocher, decocher])
 }
 
+/** Les titres d'un ajout en file : la phrase tapée (R2-008a, analysée au rejeu) ou, forme d'avant, ses lignes lues. */
+function titresEnFile(op) {
+  const corps = op.payload?.corps ?? {}
+  if (typeof corps.texte === 'string' && corps.texte.trim()) return [corps.texte.trim()]
+  return (corps.lignes ?? []).map((ligne) => ligne?.titre).filter(Boolean)
+}
+
+/**
+ * R2-008b — les tâches ajoutées HORS LIGNE (file `captureQueue`, op « ajouter » de CE compte) : l'écran les montre tout
+ * de suite, grisées « En attente d'envoi », jusqu'au rejeu (la journée se relit alors et elles y prennent leur place).
+ */
+function useAjoutsEnFile() {
+  const version = useVersionFile()
+  const [ajouts, setAjouts] = useState([])
+  useEffect(() => {
+    let courant = true
+    const moi = compteFile()?.userId
+    fileTaches().pending().then((ops) => {
+      if (!courant) return
+      const miens = (ops ?? []).filter((op) => op.op_type === OPS_FILE.AJOUTER && !op.serverError && op.payload?.userId === moi)
+      setAjouts(miens.flatMap((op) => titresEnFile(op).map((titre, rang) => ({ cle: `${op.client_op_id}:${rang}`, titre }))))
+    }, (err) => { if (courant) annoncer(frenchError(err)) })
+    return () => { courant = false }
+  }, [version])
+  return ajouts
+}
+
+/** « En attente d'envoi » : les ajouts hors ligne, grisés, sans case ni geste (ils n'existent pas encore). */
+function AjoutsEnFile({ ajouts }) {
+  if (ajouts.length === 0) return null
+  return (
+    <section className="section en-file" role="region" aria-label="En attente d’envoi">
+      <h2 className="section-titre"><span>En attente d&apos;envoi</span></h2>
+      <div className="liste" role="list">
+        {ajouts.map((ajout) => (
+          <div key={ajout.cle} className="ligne lecture-seule en-file" role="listitem" data-en-file="">
+            <span className="case vide" aria-hidden="true" />
+            <div className="ligne-corps">
+              <div className="titre">{ajout.titre}</div>
+              <div className="meta"><span>{TOAST_EN_FILE}</span></div>
+            </div>
+            <div className="ligne-fin" />
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 /** L'identifiant du toast affiché, lu par les gestes (fermer SON toast, jamais celui d'un autre geste). */
 function useToastCourant() {
   const { toast } = useEtatGestes()
@@ -403,6 +452,7 @@ export default function Aujourdhui() {
   const [focusPrevu, setFocusPrevu] = useState(0)
   const [deplierARevoir, setDeplierARevoir] = useState(0)
   const bureau = useBureau()
+  const ajoutsEnFile = useAjoutsEnFile()
   const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
   const garde = useCallback(() => {
@@ -443,6 +493,11 @@ export default function Aujourdhui() {
       patcher(cle, (it) => ({ ...it, statut: 'fait' }))
       proposerAnnuler({ message: TOAST_EN_FILE, annonce: `Fait : ${item.titre}` })
       return
+    }
+    // R2-008b — décocher hors ligne : le refus se VOIT (un toast), pas seulement au lecteur d'écran ; la case revient
+    if (!enLigne && item.type === 'tache' && !suivant) {
+      proposerAnnuler({ message: 'Décocher attend le réseau' })
+      throw new Error('Décocher attend le réseau')
     }
     garde()
     if (item.type === 'activite') {
@@ -944,6 +999,7 @@ export default function Aujourdhui() {
           bouton flottant dans ces états-là aussi) — on ne retire jamais le moyen d'ajouter une tâche. */}
       <SaisieBureau onClick={() => ouvrirSaisie({})} />
       {bandeau}
+      <AjoutsEnFile ajouts={ajoutsEnFile} />
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment
           carte={donnees.carte_du_moment}

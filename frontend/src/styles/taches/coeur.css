@@ -31,6 +31,9 @@
 
 /* « Prévu » : rendez-vous externe en lecture seule, ligne repliable des activités ERP, bande « Toute la journée » */
 .tch .ligne.lecture-seule { cursor: default; }
+/* R2-008b — ajout hors ligne pas encore envoyé : grisé, rond en pointillés (il n'existe pas encore côté serveur) */
+.tch .ligne.en-file .titre { color: var(--tch-texte-doux); }
+.tch .ligne.en-file .case.vide { border-radius: 999px; outline: 1.5px dashed var(--tch-texte-doux); outline-offset: -11px; }
 .tch button.ligne.ligne-repli { width: 100%; text-align: left; align-items: center; }
 .tch button.bande-journee { text-align: left; min-height: var(--tch-cible); }
 
