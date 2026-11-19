@@ -220,11 +220,16 @@ export function naviguerApresFeuille(navigate, vers, options = {}) {
  * la feuille ; une fermeture par la croix, Échap ou le voile retire l'entrée. La pose est différée d'un tour pour
  * que le double montage du mode strict (développement) n'en laisse aucune.
  */
-function useRetourFerme(actif, onFermer) {
+function useRetourFerme(ouverte, historique, onFermer, apres) {
   const fermer = useRef(onFermer)
   useEffect(() => { fermer.current = onFermer })
   useEffect(() => {
-    if (!actif || typeof window === 'undefined' || typeof window.history?.pushState !== 'function') return undefined
+    if (!ouverte) return undefined
+    if (!historique || typeof window === 'undefined' || typeof window.history?.pushState !== 'function') {
+      // sans entrée d'historique (la fiche, déjà dans l'adresse) : la suite part dès la fermeture — la DERNIÈRE suite
+      // posée (lue à la fermeture, voulue : le geste est choisi après l'ouverture)
+      return () => apres.current?.()
+    }
     const marque = `tch-feuille-${Math.random().toString(36).slice(2)}`
     let posee = false
     let parRetour = false
@@ -242,9 +247,22 @@ function useRetourFerme(actif, onFermer) {
       const voulue = navigationVoulue
       navigationVoulue = false
       // une navigation demandée en fermant remplace l'entrée marquée : surtout pas de retour arrière qui l'annulerait
-      if (posee && !parRetour && !voulue && window.history.state?.tchFeuille === marque) window.history.back()
+      // la DERNIÈRE suite posée, lue à la fermeture (voulu : le geste est choisi après l'ouverture)
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      const suite = apres.current
+      if (posee && !parRetour && !voulue && window.history.state?.tchFeuille === marque) {
+        // R3-063 — la suite (un geste qui ouvre SA feuille) attend que ce retour soit fait : lancée avant, la feuille
+        // suivante posait son entrée, puis ce retour asynchrone la retirait — et la fermait aussitôt
+        if (suite) {
+          const unefois = () => { window.removeEventListener('popstate', unefois); suite() }
+          window.addEventListener('popstate', unefois)
+        }
+        window.history.back()
+      } else {
+        suite?.()
+      }
     }
-  }, [actif])
+  }, [ouverte, historique, apres])
 }
 
 export default function FeuilleACrans({
@@ -255,6 +273,7 @@ export default function FeuilleACrans({
   variante = 'dialogue',
   ancre = null,
   historique = true,
+  apresFermeture = null,
   children,
 }) {
   const [cran, setCran] = useState(cranInitial)
@@ -269,7 +288,11 @@ export default function FeuilleACrans({
     quitterLeChamp(feuille.current)
     fermer.current?.()
   }, [])
-  useRetourFerme(Boolean(ouverte) && historique, fermerSansPerte)
+  // R3-063 — `apresFermeture` : ce qui suit la fermeture (le geste choisi dans la feuille), une fois son entrée
+  // d'historique retirée
+  const apres = useRef(apresFermeture)
+  useEffect(() => { apres.current = apresFermeture })
+  useRetourFerme(Boolean(ouverte), historique, fermerSansPerte, apres)
   const moiRef = useRef(null) // l'entrée de cette feuille dans `pileOuvertes`
   // R2-050 — `variante="panneau"` au bureau large : panneau fixe à droite, NON modal (ni voile, ni piège de Tab) ; la
   // liste reste lisible et cliquable, toucher une autre ligne change la fiche. iPhone et tablette : feuille / dialogue.

@@ -418,6 +418,23 @@ describe('TCH45 — FeuilleACrans', () => {
     })
   })
 
+  it('R3-063 — `apresFermeture` part une fois l\'entrée d\'historique de la feuille RETIRÉE : la feuille suivante pose la sienne sans être fermée par ce retour', async () => {
+    const pose = vi.spyOn(window.history, 'pushState')
+    const apres = vi.fn(() => window.history.state?.tchFeuille ?? null)
+    const page = (ouverte) => <FeuilleACrans ouverte={ouverte} titre="Devis Settat" onFermer={() => {}} apresFermeture={apres}><button type="button">x</button></FeuilleACrans>
+    const { rerender } = render(page(true))
+    await vi.waitFor(() => expect(pose).toHaveBeenCalledTimes(1))
+    rerender(page(false))
+    expect(apres).not.toHaveBeenCalled() // le retour arrière est en route
+    await vi.waitFor(() => expect(apres).toHaveBeenCalledTimes(1))
+    expect(apres.mock.results[0].value).toBeNull() // appelée APRÈS le retour : l'entrée de la feuille n'est plus là
+    // fermée avant d'avoir posé son entrée : tout de suite
+    apres.mockClear()
+    rerender(page(true))
+    rerender(page(false))
+    expect(apres).toHaveBeenCalledTimes(1)
+  })
+
   it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
     const pose = vi.spyOn(window.history, 'pushState')
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)

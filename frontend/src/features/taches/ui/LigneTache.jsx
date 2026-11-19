@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   AlignLeft, ArrowRight, Bell, Calendar, Check, Flag, Hourglass, Link as LienIcone, ListChecks, Lock, Repeat, Ellipsis,
 } from 'lucide-react'
@@ -7,6 +8,7 @@ import {
 } from '../../../ui/DropdownMenu'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
+import FeuilleACrans from './FeuilleACrans'
 import { retenirApercu } from '../lib/fiche'
 import { aujourdhuiIso, duree, echeanceTexte, heure, jourCourt } from '../lib/textes'
 
@@ -296,12 +298,22 @@ export default function LigneTache({
     await onTerminer?.(item, suivant)
     onAnnonce?.(suivant ? `Fait : ${item.titre}` : `Rouverte : ${item.titre}`)
   }
+  // R3-063 (choix C-23) — l'appui long au doigt ouvre une FEUILLE DU BAS titrée de la tâche (rangées de 48 px, la ligne
+  // surlignée tant qu'elle est ouverte) ; le menu ⋯ du bureau (souris, clic droit, clavier) ne change pas
+  const [feuilleActions, setFeuilleActions] = useState(false)
+  const [hote, setHote] = useState(null) // `.tch` : la feuille est rendue hors de la ligne (ni listitem, ni overflow)
+  const geste = useRef(null) // le geste choisi dans la feuille : il part une fois la feuille fermée
+  const dernierToucher = useRef(false)
+  const ouvrirFeuilleActions = () => {
+    setHote(cadre.current?.closest('.tch') ?? document.body)
+    setFeuilleActions(true)
+  }
   const balayage = useBalayage({
     actif: balayable,
     cadre,
     onGauche: reporter,
     onDroite: () => { terminer(true).catch(() => {}) },
-    onAppuiLong: () => setMenuOuvert(true),
+    onAppuiLong: ouvrirFeuilleActions,
   })
 
   const ouvrir = () => {
@@ -310,10 +322,27 @@ export default function LigneTache({
   }
   const action = (code) => () => onAction?.(code, item)
 
+  /** Les actions de la ligne : les MÊMES dans le menu ⋯ (bureau) et la feuille de l'appui long (doigt). */
+  const actions = activite
+    ? [{ cle: 'lier', libelle: 'Lier une tâche', faire: action('lier') }]
+    : [
+      ...(reporterLibelle ? [{ cle: 'reporter', libelle: `Reporter à ${reporterLibelle}`, faire: reporter }] : []),
+      { cle: 'choisir_jour', libelle: 'Choisir un jour', faire: action('choisir_jour') },
+      ...(item.quelque_jour ? [] : [{ cle: 'reserve', libelle: 'En réserve', faire: action('reserve') }]),
+      { cle: 'deplacer', libelle: 'Changer de projet…', faire: action('deplacer') },
+      { cle: 'essentiel', libelle: item.essentielle ? 'Plus essentielle' : 'Essentielle', faire: action('essentiel') },
+      { cle: 'attente', libelle: 'En attente de…', faire: action('attente') },
+      { cle: 'priorite', libelle: 'Priorité', faire: action('priorite') },
+      { cle: 'supprimer', libelle: 'Supprimer', faire: action('supprimer'), destructive: true, separe: true },
+    ]
+  const choisirDansLaFeuille = (faire) => { geste.current = faire; setFeuilleActions(false) }
+  const apresFeuilleActions = () => { const faire = geste.current; geste.current = null; faire?.() }
+
   const classes = ['ligne']
   if (fait) classes.push('faite')
   if (estampille) classes.push('estampillee')
   if (selection?.selectionnee) classes.push('selectionnee')
+  if (feuilleActions) classes.push('en-actions')
   if (balayage.ouvert === 'gauche') classes.push('glisse-gauche')
   if (balayage.ouvert === 'droite') classes.push('glisse-droite')
   const style = balayage.glisse ? { transform: `translateX(${balayage.dx}px)`, transition: 'none' } : undefined
@@ -363,8 +392,10 @@ export default function LigneTache({
         className={classes.join(' ')}
         style={style}
         aria-live={estampille ? 'polite' : undefined}
-        onContextMenu={(e) => { e.preventDefault(); setMenuOuvert(true) }}
+        // au doigt, Android envoie aussi `contextmenu` à l'appui long : la feuille suffit, jamais le menu en plus
+        onContextMenu={(e) => { e.preventDefault(); if (!dernierToucher.current) setMenuOuvert(true) }}
         {...balayage.gestes}
+        onPointerDown={(e) => { dernierToucher.current = e.pointerType === 'touch'; balayage.gestes.onPointerDown(e) }}
       >
         {selection?.actif ? (
           <CaseRonde coche={Boolean(selection.selectionnee)} selection titre={item.titre} onBasculer={() => selection.onBasculer?.(item)} />
@@ -414,25 +445,30 @@ export default function LigneTache({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {!activite && reporterLibelle ? (
-              <DropdownMenuItem onSelect={reporter}>Reporter à {reporterLibelle}</DropdownMenuItem>
-            ) : null}
-            {!activite ? <DropdownMenuItem onSelect={action('choisir_jour')}>Choisir un jour</DropdownMenuItem> : null}
-            {!activite && !item.quelque_jour ? <DropdownMenuItem onSelect={action('reserve')}>En réserve</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('deplacer')}>Changer de projet…</DropdownMenuItem> : null}
-            {!activite ? (
-              <DropdownMenuItem onSelect={action('essentiel')}>
-                {item.essentielle ? 'Plus essentielle' : 'Essentielle'}
-              </DropdownMenuItem>
-            ) : null}
-            {!activite ? <DropdownMenuItem onSelect={action('attente')}>En attente de…</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuItem onSelect={action('priorite')}>Priorité</DropdownMenuItem> : null}
-            {activite ? <DropdownMenuItem onSelect={action('lier')}>Lier une tâche</DropdownMenuItem> : null}
-            {!activite ? <DropdownMenuSeparator /> : null}
-            {!activite ? <DropdownMenuItem destructive onSelect={action('supprimer')}>Supprimer</DropdownMenuItem> : null}
+            {actions.map((a) => [
+              a.separe ? <DropdownMenuSeparator key={`${a.cle}-sep`} /> : null,
+              <DropdownMenuItem key={a.cle} destructive={a.destructive} onSelect={a.faire}>{a.libelle}</DropdownMenuItem>,
+            ])}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {hote ? createPortal(
+        <FeuilleACrans ouverte={feuilleActions} onFermer={() => setFeuilleActions(false)} titre={item.titre} apresFermeture={apresFeuilleActions}>
+          <div className="actions-ligne-feuille">
+            {actions.map((a) => (
+              <button
+                key={a.cle}
+                type="button"
+                className={[a.destructive ? 'action-ligne destructif' : 'action-ligne', a.separe ? 'separee' : ''].join(' ').trim()}
+                onClick={() => choisirDansLaFeuille(a.faire)}
+              >
+                {a.libelle}
+              </button>
+            ))}
+          </div>
+        </FeuilleACrans>,
+        hote,
+      ) : null}
     </div>
   )
 }

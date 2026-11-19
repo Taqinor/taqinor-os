@@ -287,6 +287,20 @@
 }
 .tch .fiche-question p { margin: 0 0 8px; }
 
+/* R3-063 (choix C-23) — l'appui long au doigt : une feuille du bas titrée de la tâche, des rangées pleine largeur de
+   48 px (jamais le menu déroulant de 32 px du bureau) ; la ligne d'où elle vient reste surlignée tant qu'elle est ouverte */
+.tch .ligne.en-actions { background: var(--tch-selection); }
+.tch .actions-ligne-feuille { display: flex; flex-direction: column; margin: 0 calc(-1 * var(--tch-gouttiere)); padding-bottom: 4px; }
+.tch .action-ligne {
+  display: flex; align-items: center; min-height: 48px; padding: 0 var(--tch-gouttiere); width: 100%;
+  font-size: 1.0625rem; color: var(--tch-texte); text-align: left;
+}
+.tch .action-ligne.separee { margin-top: 6px; box-shadow: inset 0 1px 0 var(--tch-trait); }
+.tch .action-ligne.destructif { color: var(--tch-alerte); }
+.tch .action-ligne:active { background: var(--tch-survol); }
+@media (hover: hover) { .tch .action-ligne:hover { background: var(--tch-survol); } }
+.tch .feuille:has(.actions-ligne-feuille) .feuille-titre { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
 /* TCH85 — fiche → Plus (ecran-fiche-plus.html) */
 .tch .fiche-plus { display: flex; flex-direction: column; gap: 4px; }
 .tch .fiche-bloc { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 12px; box-shadow: inset 0 -1px 0 var(--tch-trait); }
