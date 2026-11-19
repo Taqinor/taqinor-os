@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, X } from 'lucide-react'
 import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
-import { aujourdhuiIso } from '../lib/textes'
-import { PRIORITES } from './LigneProjet'
+import { accord, aujourdhuiIso } from '../lib/textes'
+import { PRIORITES, jourProjet } from './LigneProjet'
 
 /* ============================================================================
    TCH91 — « Planifier le projet » : un rituel en deux pas (`?planifier=1` sur l'écran Un projet).
@@ -86,6 +86,7 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
           onChange={(e) => maj({ echeance: e.target.value })}
           aria-invalid={erreurs.echeance ? 'true' : undefined} aria-describedby={erreurs.echeance ? 'pp-echeance-err' : undefined}
         />
+        {etat.echeance ? <p className="es-aide chiffres">{jourProjet(etat.echeance, aujourdhui)}</p> : null}
         <Erreur id="pp-echeance-err" texte={erreurs.echeance} />
       </div>
       <div className="ep-groupe">
@@ -104,6 +105,13 @@ function PasUn({ etat, maj, erreurs, aujourdhui }) {
   )
 }
 
+/** « 3 étapes · 0 tâche » : ce que l'aperçu a lu (une section sans nom = des tâches sans étape, non comptée comme étape). */
+function resumeDuPlan(sections) {
+  const etapes = sections.filter((s) => s.nom != null).length
+  const taches = sections.reduce((n, s) => n + s.taches.length, 0)
+  return `${accord(etapes, 'étape')} · ${accord(taches, 'tâche')}`
+}
+
 function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   const jalons = (apercu?.sections ?? []).flatMap((s) => s.taches.filter((t) => t.jalon))
   return (
@@ -111,20 +119,25 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
       <summary>Plus</summary>
       <div className="ep-groupe">
         <label className="ep-etiquette" htmlFor="pp-etapes">Étapes</label>
+        <p className="es-aide" id="pp-etapes-aide">Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret.</p>
         <textarea id="pp-etapes" className="champ ep-zone" value={etat.texte} rows={4}
           onChange={(e) => maj({ texte: e.target.value })}
-          aria-invalid={erreurs.sections ? 'true' : undefined} aria-describedby={erreurs.sections ? 'pp-etapes-err' : undefined} />
+          aria-invalid={erreurs.sections ? 'true' : undefined}
+          aria-describedby={erreurs.sections ? 'pp-etapes-aide pp-etapes-err' : 'pp-etapes-aide'} />
         <Erreur id="pp-etapes-err" texte={erreurs.sections} />
         <button type="button" className="bouton second" disabled={occupe || !etat.texte.trim()} onClick={onApercu}>Lire la liste</button>
         {apercu ? (
-          <ul className="ep-apercu" aria-label="Étapes lues">
-            {apercu.sections.map((s) => (
-              <li key={s.nom}>
-                <b>{s.nom}</b>
-                <ul>{s.taches.map((t) => <li key={t.titre}>{t.titre}</li>)}</ul>
-              </li>
-            ))}
-          </ul>
+          <>
+            <p className="ep-resume chiffres" role="status">{resumeDuPlan(apercu.sections)}</p>
+            <ul className="ep-apercu" aria-label="Étapes lues">
+              {apercu.sections.map((s, i) => (
+                <li key={`${s.nom}:${i}`}>
+                  <b>{s.nom ?? 'Sans étape'}</b>
+                  {s.taches.length > 0 ? <ul>{s.taches.map((t, j) => <li key={`${t.titre}:${j}`}>{t.titre}</li>)}</ul> : null}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
         {jalons.length > 0 ? (
           <div className="ep-jalons">
@@ -139,7 +152,7 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
           aria-invalid={erreurs.risque ? 'true' : undefined} aria-describedby={erreurs.risque ? 'pp-risque-err' : undefined} />
         <Erreur id="pp-risque-err" texte={erreurs.risque} />
         <button type="button" className="bouton second" disabled={!etat.risque.trim()}
-          onClick={() => maj({ actions: [...etat.actions, { titre: etat.risque.trim(), quand: '' }], risque: '' })}>
+          onClick={() => maj({ actions: [...etat.actions, { titre: `Parer : ${etat.risque.trim()}`, quand: '' }], risque: '' })}>
           En faire une tâche
         </button>
       </div>
@@ -164,7 +177,13 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe }) {
         <h3 className="ep-etiquette">Premières actions</h3>
         {etat.actions.map((a, i) => (
           <div key={`${a.titre}:${i}`} className="ep-action">
-            <span className="ep-action-titre">{a.titre}</span>
+            <div className="ep-action-tete">
+              <span className="ep-action-titre">{a.titre}</span>
+              <button type="button" className="ep-action-retirer" aria-label={`Retirer « ${a.titre} »`}
+                onClick={() => maj({ actions: etat.actions.filter((_, j) => j !== i) })}>
+                <X className="i i-16" aria-hidden="true" />
+              </button>
+            </div>
             <div className="puces" role="radiogroup" aria-label={`Quand : ${a.titre}`}>
               {QUAND.map(([code, libelle]) => (
                 <button key={code} type="button" className="puce" role="radio" aria-checked={quandServi(a.quand) === code}
@@ -223,7 +242,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   const lireListe = async () => {
     setOccupe(true)
     try {
-      const { data } = await apercuPlanification(projet.id, { texte: etat.texte })
+      // ce champ lit des ÉTAPES (R2-062) : une ligne non indentée = une étape, sans « : » à taper
+      const { data } = await apercuPlanification(projet.id, { texte: etat.texte, mode: 'etapes' })
       setApercu(data)
       setErreurs((e) => ({ ...e, sections: '' }))
       return data
@@ -279,6 +299,10 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
         </div>
         <button type="button" className="bouton discret" onClick={onPasser}>Passer</button>
       </header>
+      <ol className="ep-pas" aria-label="Étapes du rituel">
+        <li className={etat.pas >= 1 ? 'fait' : ''} aria-current={etat.pas === 1 ? 'step' : undefined}><i /></li>
+        <li className={etat.pas >= 2 ? 'fait' : ''} aria-current={etat.pas === 2 ? 'step' : undefined}><i /></li>
+      </ol>
       {erreurs.general ? <p className="ep-erreur" role="alert">{erreurs.general}</p> : null}
       {etat.pas === 1
         ? <PasUn etat={etat} maj={maj} erreurs={erreurs} aujourdhui={aujourdhui} />

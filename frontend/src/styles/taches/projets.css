@@ -10,6 +10,18 @@
 .tch .ligne.projet .ligne-fin { height: var(--tch-tache-lh); align-items: center; }
 /* `.tch .ligne-fin button { position: relative }` (base.css) remettait le bouton « Actions » dans le flux : 52 px vides */
 .tch .ligne.projet .ligne-fin .ligne-actions { position: absolute; }
+/* R2-060 — sur écran tactile (aucun survol), le ⋯ d'un projet est TOUJOURS visible, posé APRÈS la puce de priorité
+   (dans le flux : plus de recouvrement) ; « Mettre en haut » n'existe que dans ce menu. */
+@media (hover: none) {
+  .tch .ligne.projet .ligne-fin .ligne-actions {
+    position: relative; right: auto; top: auto; flex: none; margin-right: -10px;
+    opacity: 1; pointer-events: auto; background: none;
+  }
+  /* le corps (méta, barre) garde toute la largeur ; seul le titre laisse la place de la puce et du ⋯ */
+  .tch .ligne.projet .ligne-corps { grid-column: 2 / -1; grid-row: 1; }
+  .tch .ligne.projet .ligne-fin { grid-column: 3; grid-row: 1; }
+  .tch .ligne.projet .ligne-corps .titre { padding-right: 8.5rem; }
+}
 .tch .ligne.projet .barre-avance { max-width: 120px; margin-top: 7px; }
 .tch .ligne.projet .meta { column-gap: 8px; }
 .tch .ligne.projet .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }
@@ -62,6 +74,23 @@
 .tch .ep-barre-projet > .ep-entre { padding: 0; }
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
 .tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
+/* R2-061 — le nom du projet se renomme au toucher (le bouton reprend la typographie du titre) */
+.tch .entete-titre .ep-titre-nom { display: inline; min-height: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: text; }
+.tch .entete-titre .ep-titre-champ { width: calc(100% - 24px); max-width: 100%; min-height: 0; padding: 2px 8px; font: inherit; color: inherit;
+  border: 0; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
+.tch .entete-titre .ep-titre-erreur { display: block; margin-top: 4px; font-family: var(--tch-font-texte); font-size: 0.875rem; line-height: 1.35; font-weight: 600; letter-spacing: 0; }
+/* « Fini quand… » : le texte est un bouton discret (toucher = corriger) */
+.tch .ep-objectif { display: block; width: 100%; min-height: var(--tch-cible); padding: 0; text-align: left; font: inherit; color: var(--tch-texte); }
+.tch .ep-objectif.vide { color: var(--tch-accent); font-weight: 600; }
+/* « Couleur » : dix pastilles, le nom dessous */
+.tch .ep-couleurs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 4px; }
+.tch .ep-couleur { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: var(--tch-cible); padding: 6px 0; border-radius: var(--tch-rayon-champ);
+  font-size: 0.75rem; color: var(--tch-texte-doux); }
+.tch .ep-couleur .point { display: grid; place-items: center; width: 32px; height: 32px; color: var(--tch-accent-texte); }
+.tch .ep-couleur[aria-checked="true"] { color: var(--tch-texte); font-weight: 600; background: var(--tch-selection); }
+@media (hover: hover) {
+  .tch .ep-couleur:hover { background: var(--tch-survol); }
+}
 .tch .ep-ligne-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 .tch .ep-ligne-info .fort { color: var(--tch-texte); font-weight: 600; }
 .tch .ep-ligne-info .alerte { color: var(--tch-alerte); font-weight: 600; }
@@ -94,6 +123,31 @@
   .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
 }
 
+/* R2-063 — l'ordre des tâches d'une étape : une poignée dans la gouttière (au survol sur bureau ; sous « Réorganiser »
+   partout), ▲▼ sous « Réorganiser » (classes `reorg-controles` de coeur.css) */
+.tch .ep-rang { position: relative; display: flex; align-items: stretch; }
+.tch .ep-rang-ligne { flex: 1; min-width: 0; }
+.tch .ep-rang.saisi { opacity: 0.6; }
+.tch .ep-poignee-ordre { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--tch-gouttiere); min-height: 0; padding: 0;
+  align-items: center; justify-content: center; color: var(--tch-texte-doux); touch-action: none; cursor: grab;
+  z-index: calc(var(--z-base) + 3); /* au-dessus de la zone cliquable étirée du titre (`.ligne-corps-bouton::after`) */ }
+.tch .ep-poignee-ordre::after { content: ""; position: absolute; inset: 0 -6px 0 0; }
+/* sous « Réorganiser » : la poignée passe à DROITE, après ▲▼ (au bord gauche d'un iPhone, le geste « retour » du système la prendrait) */
+.tch .ep-rang.reorg .ep-rang-ligne { order: 1; }
+.tch .ep-rang.reorg .reorg-controles { order: 2; }
+.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: 36px; }
+.tch .ep-rang.reorg .ep-poignee-ordre::after { inset: 0; }
+.tch .ep-rang.reorg .reorg-controles .bouton-icone:disabled { opacity: 0.35; }
+@media (hover: hover) {
+  .tch .ep-poignee-ordre { display: flex; opacity: 0; }
+  .tch .ep-rang:hover .ep-poignee-ordre, .tch .ep-rang:focus-within .ep-poignee-ordre, .tch .ep-poignee-ordre:focus-visible { opacity: 1; }
+  .tch .ep-rang.reorg .ep-poignee-ordre { opacity: 1; }
+}
+
+/* R2-071 — projet vide : l'invite */
+.tch .ep-vide-projet { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 12px var(--tch-gouttiere) 0; }
+.tch .ep-vide-invite { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); font-size: 1.0625rem; font-weight: 600; color: var(--tch-accent); }
+
 /* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
 .tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
 .tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -104,14 +158,34 @@
 .tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
   border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
 .tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
-.tch .ep-choix-ligne[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--tch-accent); background: var(--tch-selection); }
+/* R2-069 — UN dessin de « choisi » dans le rituel : le plein d'accent des puces (plus un filet pour les priorités) */
+.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); }
+.tch .ep-choix-ligne[aria-checked="true"] span { color: inherit; opacity: 0.85; }
+/* priorités : trois colonnes, jamais trois lignes pleine largeur */
+.tch .ep-planifier .ep-choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.tch .ep-planifier .ep-choix-ligne { align-items: center; text-align: center; min-height: 64px; padding: 8px 6px; }
+.tch .ep-planifier .ep-choix-ligne span { font-size: 0.75rem; text-wrap: balance; }
+/* barre d'étapes du rituel (deux segments) */
+.tch .ep-pas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.tch .ep-pas li i { display: block; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); }
+.tch .ep-pas li.fait i { background: var(--tch-accent); }
 .tch .ep-action { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
-.tch .ep-action-titre { font-size: 1rem; font-weight: 600; }
+.tch .ep-action-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tch .ep-action-titre { font-size: 1rem; font-weight: 600; min-width: 0; }
+.tch .ep-action-retirer { position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; color: var(--tch-texte-doux); min-height: 0; }
+.tch .ep-action-retirer::after { content: ""; position: absolute; left: 50%; top: 50%; width: var(--tch-cible); height: var(--tch-cible); transform: translate(-50%, -50%); }
+@media (hover: hover) {
+  .tch .ep-action-retirer:hover { background: var(--tch-survol); }
+}
 .tch .ep-ajout-action { display: flex; gap: 8px; align-items: center; }
 .tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
 .tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
 .tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
-.tch .ep-planifier-pied { margin-top: 4px; }
+/* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets */
+.tch .ep-planifier-pied { position: sticky; bottom: 0; margin-top: 4px; padding: 10px 0 12px; background: var(--tch-surface); z-index: var(--z-sticky); }
+@media screen and (max-width: 767px) {
+  .tch .ep-planifier-pied { bottom: calc(var(--tch-onglets-h) + env(safe-area-inset-bottom)); }
+}
 /* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
 .tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
 .tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
@@ -135,6 +209,14 @@
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
 .tch .ep-revue-boutons { flex-wrap: wrap; }
 .tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
+/* R2-068 — une intention en tête, décision en segmenté + « Suivant → », résumé de la revue */
+.tch .ep-intention { margin: 8px var(--tch-gouttiere) 0; }
+.tch .ep-carte-revue .ep-decision { margin: 0; }
+.tch .ep-carte-revue .ep-revue-boutons { justify-content: space-between; align-items: center; }
+.tch .ep-resume-revue { list-style: none; margin: 8px var(--tch-gouttiere) 0; padding: 0; }
+.tch .ep-resume-revue li { display: flex; align-items: center; gap: 10px; min-height: 48px; }
+.tch .ep-resume-revue .nom { flex: 1; min-width: 0; font-size: 1rem; font-weight: 600; }
+.tch .ep-resume-revue .decision { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 /* Passe visuelle n° 45 — la carte de revue-semaine.html (`.ep-carte-projet`) : fond de page cerné d'un filet, nom en
    1.0625rem (plus le titre de page), méta séparée par « · », « Projet de la semaine » à l'étoile */
 .tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
@@ -193,8 +275,11 @@
 }
 @media (min-width: 768px) {
   .tch .ep-onglets-etapes { display: none; }
-  .tch .ep-tableau { padding: 16px 24px 0; overflow: hidden; }
-  .tch .ep-col { flex: 0 0 264px; }
+  /* R2-064 — le Tableau (et la Chronologie) sortent de la colonne de lecture de 760 px : sinon 2,5 colonnes et la dernière
+     (« Pose ») inatteignable. La page s'élargit ; au-delà, le Tableau DÉFILE à l'horizontale au lieu de couper. */
+  .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) { max-width: 1320px; }
+  .tch .ep-tableau { padding: 16px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain; }
+  .tch .ep-col { flex: 0 0 264px; min-width: 260px; }
   .tch .ep-col-tete { display: flex; }
 }
 /* Chronologie : iPhone, frise verticale par date */
@@ -213,6 +298,10 @@
 .tch .ep-f-titre { font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; margin-top: 1px; }
 .tch .ep-f-item.etape .ep-f-titre { font-weight: 650; }
 .tch .ep-f-detail { font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); margin-top: 1px; }
+/* R2-066 — tâches datées sous leur étape (iPhone) */
+.tch .ep-f-taches { list-style: none; margin: 4px 0 0; padding: 0; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
+.tch .ep-f-taches li { display: flex; gap: 8px; }
+.tch .ep-f-taches .chiffres { flex: none; font-weight: 600; color: var(--tch-texte); }
 .tch .ep-sans-dates { margin: 6px var(--tch-gouttiere) 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.875rem; color: var(--tch-texte-doux); }
 .tch .ep-sans-dates b { color: var(--tch-texte); font-weight: 600; }
 /* Chronologie : bureau, UNE piste, les étapes bout à bout, le jalon au-dessus (pas un Gantt) */
@@ -239,6 +328,16 @@
   .tch .ep-fh-trait span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-size: 0.75rem; font-weight: 700; }
   .tch .ep-fh-trait.auj span { background: var(--tch-accent); color: var(--tch-accent-texte); }
   .tch .ep-fh-trait.fin span { background: var(--tch-texte); color: var(--tch-surface); }
+  /* R2-066 — un point par jour de tâche sous la barre de son étape ; rangée nommée pour une étape sans date ; pastilles bornées au cadre */
+  .tch .ep-fh-points { position: relative; height: 18px; }
+  .tch .ep-fh-point { position: absolute; top: 4px; width: 10px; height: 10px; margin-left: -5px; border-radius: 999px;
+    background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-point); }
+  .tch .ep-fh-point[data-n] { background: var(--tch-point); }
+  .tch .ep-fh-libre { margin-top: 6px; }
+  .tch .ep-fh-nom { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux); }
+  .tch .ep-fh-trait.bord-g span { left: 0; transform: none; }
+  .tch .ep-fh-trait.bord-d span { left: auto; right: -1px; transform: none; }
+  .tch .ep-fh-etiquette.bord-g { transform: translateX(14px); }
 }
 /* Avancement par semaine (burn-up) */
 .tch .ep-burnup { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }

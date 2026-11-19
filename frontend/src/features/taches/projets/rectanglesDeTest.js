@@ -10,7 +10,9 @@ export function poserRectangles() {
     const carte = this.classList?.contains('ep-carte')
     const gauche = rang * 300 + (carte ? 8 : 0)
     const largeur = carte ? 264 : 280
-    const haut = carte ? 40 : 0
+    // R2-063 : les cartes d'une colonne se suivent (70 px chacune) — sans cela elles se superposeraient toutes
+    const rangCarte = carte ? Array.from(colonne.querySelectorAll('.ep-carte')).indexOf(this) : 0
+    const haut = carte ? 40 + rangCarte * 70 : 0
     const hauteur = carte ? 60 : 400
     return { x: gauche, y: haut, left: gauche, top: haut, right: gauche + largeur, bottom: haut + hauteur, width: largeur, height: hauteur, toJSON() { return this } }
   }

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
@@ -27,6 +28,9 @@ vi.mock('../../api/tachesApi', async (original) => ({
   supprimerProjet: vi.fn(),
   creerProjet: vi.fn(),
   lireTache: vi.fn(),
+  listerProjets: vi.fn(),
+  reordonnerProjet: vi.fn(),
+  reordonnerTache: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -245,6 +249,303 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
     expect(await screen.findByText('En pause')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
+  })
+})
+
+describe('R2-071 — Un projet vide : l\'invite', () => {
+  it('sans aucune tâche : « Ajoute la première tâche » et « Planifier le projet » ; l\'invite ouvre la saisie du projet', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { s.taches = [] })
+    vue.sans_section = []
+    vue.faites_nb = 0
+    vue.avancement = { ...vue.avancement, faites: 0, total: 0 }
+    vue.projet.compteurs = { ouvertes: 0, faites: 0 }
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const ouverture = vi.fn()
+    window.addEventListener('taqinor:taches:saisir', ouverture)
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const invite = await screen.findByRole('region', { name: 'Projet vide' })
+    expect(invite).toHaveTextContent('Ajoute la première tâche')
+    await user.click(within(invite).getByRole('button', { name: 'Ajoute la première tâche' }))
+    expect(ouverture.mock.calls[0][0].detail).toEqual({ projet_id: 3, projet_nom: 'Ventes', section_id: null })
+    await user.click(within(invite).getByRole('button', { name: 'Planifier le projet' }))
+    expect(await screen.findByRole('region', { name: 'Planifier le projet' })).toBeInTheDocument()
+    window.removeEventListener('taqinor:taches:saisir', ouverture)
+  })
+
+  it('un projet qui a des tâches ne montre pas l\'invite', async () => {
+    monter()
+    await screen.findByText('12 sur 20')
+    expect(screen.queryByRole('region', { name: 'Projet vide' })).toBeNull()
+  })
+})
+
+describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
+  const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
+  const monterConnecte = (id = 42) => render(
+    <ReactReduxContext.Provider value={{ store: connecte(id) }}>
+      <MemoryRouter initialEntries={['/taches/projets/3']}>
+        <Routes><Route path="/taches/projets/:id" element={<Projet />} /></Routes>
+      </MemoryRouter>
+    </ReactReduxContext.Provider>,
+  )
+  beforeEach(() => { window.localStorage.clear() })
+  afterEach(() => { window.localStorage.clear() })
+
+  it('relu sans réseau, le projet gardé s\'affiche (l\'erreur est dite) ; un autre compte ne le voit pas', async () => {
+    const premier = monterConnecte(42)
+    await screen.findByText('12 sur 20')
+    premier.unmount()
+    api.lireVueProjet.mockRejectedValue(new Error('Network Error'))
+    const hors = monterConnecte(42)
+    expect(await screen.findByText('12 sur 20')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Études' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Connexion perdue')
+    hors.unmount()
+    monterConnecte(43)
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('12 sur 20')).toBeNull()
+  })
+})
+
+describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran', () => {
+  it('⋯ → Mettre en haut place le projet avant le premier projet actif', async () => {
+    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }], next: null } })
+    api.reordonnerProjet.mockResolvedValue({ data: {} })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
+    await waitFor(() => expect(api.reordonnerProjet).toHaveBeenCalledWith(3, { avant_id: 7 }))
+    expect(api.listerProjets).toHaveBeenCalledWith({ statut: 'actif' })
+  })
+
+  it('déjà premier : rien n\'est écrit', async () => {
+    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 3, nom: 'Ventes' }], next: null } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
+    await waitFor(() => expect(api.listerProjets).toHaveBeenCalled())
+    expect(api.reordonnerProjet).not.toHaveBeenCalled()
+  })
+})
+
+describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand… »', () => {
+  const envoye = (champs) => ({ data: { ...exempleContrat('taches', 'projet_vue').projet, lock_version: 5, ...champs } })
+  const ouvrirMenu = async (user, libelle) => {
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: libelle }))
+  }
+
+  it('toucher le titre le rend éditable ; Entrée enregistre le nom (lock_version de la vue) et le titre suit', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ nom: 'Ventes Maroc' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
+    await user.clear(champ)
+    await user.type(champ, 'Ventes Maroc{Enter}')
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { nom: 'Ventes Maroc', lock_version: 4 })
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes Maroc »' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Projet renommé')
+  })
+
+  it('Échap annule : rien n\'est écrit, l\'ancien nom reste', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    await user.type(screen.getByRole('textbox', { name: 'Nom du projet' }), ' X{Escape}')
+    expect(api.modifierProjet).not.toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes »' })).toBeInTheDocument()
+  })
+
+  it('un nom refusé (déjà pris) s\'affiche SOUS le champ, le texte tapé reste et le titre garde l\'ancien nom', async () => {
+    api.modifierProjet.mockRejectedValue(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Renommer « Ventes »' }))
+    const champ = screen.getByRole('textbox', { name: 'Nom du projet' })
+    await user.clear(champ)
+    await user.type(champ, 'Chantier{Enter}')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(screen.getByRole('textbox', { name: 'Nom du projet' })).toHaveValue('Chantier')
+    expect(screen.getByRole('textbox', { name: 'Nom du projet' })).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('⋯ → Renommer : une feuille avec le nom ; Enregistrer l\'écrit, un refus s\'affiche sous le champ', async () => {
+    api.modifierProjet.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: exempleContrat('taches', 'erreurs').nom_pris, headers: {} },
+    }))
+    api.modifierProjet.mockResolvedValueOnce(envoye({ nom: 'Ventes 2027' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Renommer')
+    const dialogue = await screen.findByRole('dialog', { name: 'Renommer' })
+    const champ = within(dialogue).getByLabelText('Nom du projet')
+    expect(champ).toHaveValue('Ventes')
+    await user.clear(champ)
+    await user.type(champ, 'Ventes 2027')
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(await within(dialogue).findByRole('alert')).toHaveTextContent('Un projet actif porte déjà ce nom.')
+    expect(champ).toHaveAttribute('aria-invalid', 'true')
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { nom: 'Ventes 2027', lock_version: 4 })
+    expect(await screen.findByRole('button', { name: 'Renommer « Ventes 2027 »' })).toBeInTheDocument()
+  })
+
+  it('⋯ → Couleur… : dix couleurs ; en choisir une l\'écrit et change le point du titre', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ couleur: 'bleu' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Couleur…')
+    const groupe = await screen.findByRole('radiogroup', { name: 'Couleur du projet' })
+    expect(within(groupe).getAllByRole('radio')).toHaveLength(10)
+    expect(within(groupe).getByRole('radio', { name: 'Vert' })).toBeChecked()
+    await user.click(within(groupe).getByRole('radio', { name: 'Bleu' }))
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { couleur: 'bleu', lock_version: 4 })
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 }).querySelector('.ep-projet-nom')).toHaveAttribute('data-p', 'bleu'))
+  })
+
+  it('⋯ → Échéance… : une date enregistrée ; Retirer l\'échéance écrit null', async () => {
+    api.modifierProjet.mockResolvedValueOnce(envoye({ echeance: '2026-12-31' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await ouvrirMenu(user, 'Échéance…')
+    const dialogue = await screen.findByRole('dialog', { name: 'Échéance' })
+    fireEvent.change(within(dialogue).getByLabelText('Échéance du projet'), { target: { value: '2026-12-31' } })
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }))
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { echeance: '2026-12-31', lock_version: 4 })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Échéance' })).toBeNull())
+    expect(await screen.findByText('échéance jeu. 31 déc.')).toBeInTheDocument()
+
+    api.modifierProjet.mockResolvedValueOnce(envoye({ echeance: null, lock_version: 6 }))
+    await ouvrirMenu(user, 'Échéance…')
+    await user.click(await screen.findByRole('button', { name: "Retirer l'échéance" }))
+    expect(api.modifierProjet).toHaveBeenLastCalledWith(3, { echeance: null, lock_version: 5 })
+  })
+
+  it('« Fini quand… » se corrige sur place : le texte devient un champ, la sortie enregistre l\'objectif', async () => {
+    api.modifierProjet.mockResolvedValue(envoye({ objectif: 'les 5 devis sont signés' }))
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await user.click(await screen.findByRole('button', { name: 'Fini quand…' }))
+    await user.click(screen.getByRole('button', { name: 'Modifier « Fini quand… »' }))
+    const champ = screen.getByRole('textbox', { name: 'Fini quand…' })
+    await user.clear(champ)
+    await user.type(champ, 'les 5 devis sont signés')
+    await user.tab()
+    expect(api.modifierProjet).toHaveBeenCalledWith(3, { objectif: 'les 5 devis sont signés', lock_version: 4 })
+    expect(await screen.findByText('Fini quand : les 5 devis sont signés')).toBeInTheDocument()
+  })
+})
+
+describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et tableau)', () => {
+  // trois tâches dans « Études » : A (20), B (21), C (22)
+  const vueTrois = () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].taches = [
+      { ...base, id: 20, titre: 'Devis Settat' },
+      { ...base, id: 21, titre: 'Préparer le matériel' },
+      { ...base, id: 22, titre: 'Appeler le client' },
+    ]
+    return vue
+  }
+  const ordre = () => [...screen.getByRole('region', { name: 'Études' }).querySelectorAll('.ligne-corps-bouton')].map((b) => b.textContent)
+  const reorganiser = async (user) => {
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Réorganiser' }))
+  }
+  beforeEach(() => {
+    api.lireVueProjet.mockResolvedValue({ data: vueTrois() })
+    api.reordonnerTache.mockResolvedValue({ data: {} })
+  })
+
+  it('⋯ → Réorganiser : « Descendre » change l\'ordre TOUT DE SUITE et écrit avec les deux voisines', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    await user.click(screen.getByRole('button', { name: 'Descendre « Devis Settat »' }))
+    expect(ordre()).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
+    expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 })
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Ordre changé')
+  })
+
+  it('« Monter » de la première et « Descendre » de la dernière sont éteints', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    expect(screen.getByRole('button', { name: 'Monter « Devis Settat »' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Descendre « Appeler le client »' })).toBeDisabled()
+  })
+
+  it('Annuler remet les voisines d\'avant ; un refus du serveur remet l\'ordre et le dit', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
+    expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
+    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 20, apres_id: 21 })
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client']))
+    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 21, apres_id: null })
+
+    api.reordonnerTache.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client'])
+  })
+
+  it('Alt+↓ sur une ligne la descend (clavier, sans mode) ; j puis j parcourt les lignes (R2-036)', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await user.keyboard('j')
+    expect(document.activeElement).toHaveTextContent('Devis Settat')
+    await user.keyboard('j')
+    expect(document.activeElement).toHaveTextContent('Préparer le matériel')
+    await user.keyboard('{Alt>}{ArrowDown}{/Alt}')
+    expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
+    expect(api.reordonnerTache).toHaveBeenCalledWith(21, { liste: 'projet', avant_id: 22, apres_id: null })
+  })
+
+  describe('Tableau', () => {
+    let remettreRectangles = () => {}
+    beforeEach(() => { remettreRectangles = poserRectangles() })
+    afterEach(() => { remettreRectangles() })
+    const touche = async (cible, code) => {
+      await act(async () => {
+        fireEvent.keyDown(cible, { code, key: code === 'Space' ? ' ' : code })
+        await new Promise((fin) => { setTimeout(fin, 15) })
+      })
+    }
+
+    it('au clavier, ↓ sur la poignée d\'une carte la descend DANS sa colonne : l\'ordre est écrit', async () => {
+      monter('/taches/projets/3?vue=tableau')
+      await screen.findByRole('region', { name: 'Études' })
+      const poignee = screen.getByRole('button', { name: 'Déplacer « Devis Settat »' })
+      poignee.focus()
+      await touche(poignee, 'Space')
+      await touche(document, 'ArrowDown')
+      await touche(document, 'Space')
+      await waitFor(() => expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 }))
+      expect(api.modifierTache).not.toHaveBeenCalled() // la carte n'a pas changé d'étape
+      const cartes = [...screen.getByRole('region', { name: 'Études' }).querySelectorAll('.ep-carte .ligne-corps-bouton')].map((b) => b.textContent)
+      expect(cartes).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
+    })
   })
 })
 

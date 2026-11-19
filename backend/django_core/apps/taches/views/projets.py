@@ -256,7 +256,7 @@ class PlanificationApercuVue(APIView):
         if est_assistant(request) and est_confidentielle(projet):
             raise PermissionDenied("Ce projet est confidentiel : l'assistant ne lit pas sa liste.")
         donnees = _valider(formes_projets.ApercuPlanSerializer, request.data)
-        return Response(formes_projets.apercu_du_plan(projet, donnees['texte']))
+        return Response(formes_projets.apercu_du_plan(projet, donnees['texte'], donnees['mode']))
 
 
 class PlanificationVue(IdempotentCreateMixin, APIView):

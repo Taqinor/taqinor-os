@@ -218,30 +218,33 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Élément | Texte |
 |---|---|
 | Titre · bouton | Projets · **Nouveau projet** |
-| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « — »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
-| Appui long | Mettre en haut · Mettre en pause · Supprimer |
+| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
+| Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
-| Vide | « Aucun projet » · **Coller mes listes** |
+| Vide | « Aucun projet » · **Coller mes listes** — seulement sur RÉPONSE du serveur (R2-070) : lecture échouée = l'erreur dite ; hors ligne, la dernière liste lue du compte (cache `taches:projets:<user>:…`, vidé à la déconnexion) ; la page ne porte pas la date du jour en sous-titre (R2-085) |
 | Nouveau projet | « Nom du projet » · Créer · « Depuis un modèle » ; aussitôt : Planifier le projet |
 | En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
-| Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
+| Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre ; R2-066 : les tâches datées d'une étape se lisent sous elle (iPhone) ou en points sur la piste (bureau), une étape sans date a sa rangée ou la bande « Sans date : … ») — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
-| ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
+| Titre d'un projet · « Fini quand… » | le nom se touche pour le renommer (Entrée ou la sortie enregistre, Échap annule ; refus sous le champ) · « Fini quand… » se corrige sur place (vide : « Ce sera fini quand… ») · toasts « Projet renommé » · « Couleur changée » · « Échéance changée » · « Échéance retirée » · « Objectif enregistré » (tous avec Annuler) |
+| Ordre des tâches d'une étape (R2-063) | glisser la poignée (souris : au survol ; Tableau : la poignée de la carte) · ⋯ → **Réorganiser** : bandeau « Réorganiser · OK », ▲ « Monter « {titre} » » / ▼ « Descendre « {titre} » » (éteints en tête et en queue) · clavier : Alt+↑/↓ sur une ligne, `j`/`k` pour parcourir ; toast « Ordre changé · Annuler » ; annonce « {titre} : position {n} sur {m} » |
+| ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Réorganiser (vue Liste) · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
-| Projet vide | « Planifier le projet » · Passer |
+| Projet vide | « Ajoute la première tâche » · « Planifier le projet » (R2-071) · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |
 | Planifier — étape 1 | « Priorité : Haute · Moyenne · Basse » ; « Ce sera fini quand… » |
 | Planifier — étape 2 | « Échéance : 1 semaine · 2 semaines · 1 mois · 6 semaines · 3 mois · Choisir » |
 | Planifier — étape 3 | « Premières actions » ; par action « Aujourd'hui · Demain · Sans jour » ; « Planifier avec le Copilote » |
-| Planifier — Plus | Étapes · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
+| Planifier — Plus | Étapes (aide : « Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret. » ; aperçu : « 3 étapes · 0 tâche ») · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
 | Boutons du rituel | Suivant · Passer · **Terminer** |
 | Décaler | « +1 semaine · −1 semaine · Choisir » ; « {n} dates changent. » ; **Appliquer** |
 | Pause | « Mettre en pause « {nom} » ? Ses {k} tâches datées sortent d'Aujourd'hui jusqu'à la reprise. » |
 | Terminer | « Atteint ou abandonné ? » [Atteint] [Abandonné] · « Bilan (facultatif) » · « Ses {n} tâches encore ouvertes : » [Les remettre dans À trier] [Les abandonner] [Les déplacer vers…] · **Terminer** |
 | Supprimer | « Supprimer « {nom} » et ses {n} tâches ? Ils restent 30 jours dans Supprimées récemment. » [Supprimer] [Fermer] |
 | Modèles | « Enregistrer comme modèle » · « Inclure les notes » · « Date de lancement » · « {n} tâches, première le {jour} » · Créer ; vide « Aucun modèle » |
+| Dupliquer · Utiliser ce modèle (R2-065) | nom prérempli (« {nom} (copie) » ; le nom du modèle), l'aperçu « {n} tâches, première le {jour} » lu dès l'ouverture, UN seul **Créer** qui écrit |
 | Dupliquer · Enregistrer comme modèle (sous l'aperçu, seulement si n > 0) | « {n} tâche confidentielle non reprise » / « {n} tâches confidentielles non reprises » |
 | Archive | « Chercher un projet archivé » · Rouvrir ; vide « Aucun projet archivé » |
 
@@ -265,7 +268,8 @@ Santé (`sante[].phrase`) :
 | Titre | Revue de la semaine |
 | En tête | bilan §4.6, ou « Semaine courte, on reprend lundi. » (`semaine_courte`) |
 | Carte par projet | « Faites cette semaine : {titres, 3 au plus} » · « « {titre} » attend « {titre} » » · « Prochaine action : {titre} » [Changer] (sinon champ « Prochaine action ») · santé · « Intention de la semaine (facultatif) » · case « Projet de la semaine » |
-| Boutons | Garder · Pause · Terminer · Suivant ; fin **Terminer** → « Planifier ma semaine » |
+| Intention (R2-068) | UNE seule, en tête de la revue : « Intention de la semaine (facultatif) » (la carte ne la porte plus) |
+| Boutons | segmenté « Décision » : Garder (d'office) · Pause · Terminer (« Atteint ou abandonné ? » : Suivant → éteint jusqu'au choix) ; **Suivant →** écrit la décision ; « Passer » (décision `passe`) ; la revue reprend à la première carte non décidée ; toutes décidées = résumé (« Gardé · En pause · Terminé · Passé ») + **Planifier ma semaine** |
 | Vide | « Aucun projet actif » |
 | Erreur | « Déjà « {projet} » cette semaine. » |
 

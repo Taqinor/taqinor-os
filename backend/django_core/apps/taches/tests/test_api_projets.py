@@ -16,9 +16,11 @@ from rest_framework.test import APIClient
 
 from apps.taches.models.projets import ModeleProjet, Projet, Section
 from apps.taches.models.taches import ElementChecklist, Tache
+from apps.taches.saisie.plan import decouper_plan
 from apps.taches.selectors import projets as lecture_projets
 from apps.taches.selectors.base import jours_travailles_de
 from apps.taches.services.gestes import annuler_geste
+from apps.taches.serializers import projets as formes_projets
 from apps.taches.services.projets import _rangs_apres_insertion
 from apps.taches.tests import fabriques
 from apps.taches.views.base import exemple_de
@@ -64,6 +66,55 @@ class OrdreSansBaseTests(SimpleTestCase):
     def test_seul_dans_la_liste(self):
         with self.assertRaises(Http404):
             _rangs_apres_insertion([], 9, None, 7)
+
+
+class PlanEtapesSansBaseTests(SimpleTestCase):
+    """R2-062 — `decouper_plan(mode='etapes')` : dans le champ « Étapes » de « Planifier le projet », une ligne non
+    indentée sans puce EST une étape (plus de « : » exigé) ; ses lignes en retrait ou à tiret sont ses tâches
+    (pas de base)."""
+
+    def test_trois_lignes_sont_trois_etapes_sans_tache(self):
+        plan = decouper_plan('Transport\nHébergement\nSur place', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], ['Transport', 'Hébergement', 'Sur place'])
+        self.assertEqual([s['taches'] for s in plan['sections']], [[], [], []])
+
+    def test_lignes_en_retrait_ou_a_tiret_sont_les_taches_de_l_etape(self):
+        plan = decouper_plan('Transport\n  Réserver le bus\n- Louer un camion\nSur place\n\tInstaller', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], ['Transport', 'Sur place'])
+        self.assertEqual([t['titre'] for t in plan['sections'][0]['taches']], ['Réserver le bus', 'Louer un camion'])
+        self.assertEqual([t['titre'] for t in plan['sections'][1]['taches']], ['Installer'])
+
+    def test_les_deux_points_de_fin_restent_acceptes_et_ne_font_pas_partie_du_nom(self):
+        plan = decouper_plan('Études :\n  Visite', mode='etapes')
+        self.assertEqual(plan['sections'][0]['nom'], 'Études')
+        self.assertEqual(plan['sections'][0]['taches'][0]['titre'], 'Visite')
+
+    def test_jalon_et_sous_tache_plus_en_retrait(self):
+        plan = decouper_plan('Pose\n  Câbler\n    - test 1\n    - test 2\n  ◆ Réception', mode='etapes')
+        taches = plan['sections'][0]['taches']
+        self.assertEqual([t['titre'] for t in taches], ['Câbler', 'Réception'])
+        self.assertEqual(taches[0]['sous_taches'], ['test 1', 'test 2'])
+        self.assertEqual([t['jalon'] for t in taches], [False, True])
+
+    def test_ligne_en_retrait_avant_toute_etape_va_dans_une_section_sans_nom(self):
+        plan = decouper_plan('  Réserver\nÉtape', mode='etapes')
+        self.assertEqual([s['nom'] for s in plan['sections']], [None, 'Étape'])
+
+    def test_le_mode_par_defaut_ne_change_pas(self):
+        self.assertEqual(decouper_plan('Transport\nHébergement'), {'sections': [{'nom': None, 'taches': [
+            {'titre': 'Transport', 'jalon': False, 'sous_taches': []},
+            {'titre': 'Hébergement', 'jalon': False, 'sous_taches': []}]}]})
+
+    def test_le_serializer_connait_le_mode_et_refuse_une_valeur_inconnue(self):
+        ok = formes_projets.ApercuPlanSerializer(data={'texte': 'A\nB', 'mode': 'etapes'})
+        self.assertTrue(ok.is_valid(), ok.errors)
+        self.assertEqual(ok.validated_data['mode'], 'etapes')
+        defaut = formes_projets.ApercuPlanSerializer(data={'texte': 'A'})
+        self.assertTrue(defaut.is_valid())
+        self.assertEqual(defaut.validated_data['mode'], 'plan')
+        mauvais = formes_projets.ApercuPlanSerializer(data={'texte': 'A', 'mode': 'x'})
+        self.assertFalse(mauvais.is_valid())
+        self.assertEqual(mauvais.errors['mode'][0], 'Valeur inconnue.')
 
 
 class _Base(TestCase):
@@ -737,6 +788,19 @@ class PlanificationTests(_Base):
         # le projet OÙ écrire et son verrou : la carte `plan_projet` du Copilote n'a que cette réponse
         self.assertEqual(reponse.json()['projet'], {'id': projet.pk, 'lock_version': projet.lock_version})
         self.assertEqual(Tache.objects.count(), 0)
+        self.assertEqual(Section.objects.count(), 0)
+
+    def test_apercu_mode_etapes_lit_trois_lignes_comme_trois_etapes(self):
+        projet = fabriques.projet(self.u1)
+        url = _url(f'projets/{projet.pk}/planification/apercu/')
+        reponse = self._api(self.u1).post(url, {'texte': 'Transport\nHébergement\nSur place', 'mode': 'etapes'},
+                                          format='json')
+        self.assertEqual(reponse.status_code, 200)
+        self.assertEqual([s['nom'] for s in reponse.json()['sections']], ['Transport', 'Hébergement', 'Sur place'])
+        self.assertEqual(set(reponse.json()), set(exemple_de('planification_apercu')))
+        sans = self._api(self.u1).post(url, {'texte': 'Transport\nHébergement'}, format='json')
+        # sans `mode` : la grammaire du plan, inchangée
+        self.assertEqual([s['nom'] for s in sans.json()['sections']], [None])
         self.assertEqual(Section.objects.count(), 0)
 
     def test_apercu_limites_et_projet_etranger(self):
