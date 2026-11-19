@@ -8,7 +8,7 @@ import {
   annulerGeste, classerErreur, creerVue, listerToutesLesEtiquettes, listerTousLesProjets, listerVues, rouvrirTache,
   terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
-import { useClavierListe } from '../../features/taches/lib/clavierListe'
+import { parcourir, useClavierListe } from '../../features/taches/lib/clavierListe'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { ABR_JOURS, accord, aujourdhuiIso, ecartJours } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
@@ -40,6 +40,11 @@ const PUCES_JOUR = [
 
 // StatutTache : a_faire · en_attente · fait · annule (« abandonnée » à l'écran)
 const ouverte = (t) => t.statut !== 'fait' && t.statut !== 'annule'
+
+/* R3-093 — « Ajoutées récemment » (« où est la tâche notée hier ? ») : les tâches ouvertes, la dernière notée en haut
+   (ordre de création = numéro croissant), les RECENTES_MAX premières. La ligne d'une tâche ne porte pas sa date de
+   création (forme ITEM) : la fenêtre « 7 jours » demandera ce champ au serveur ; aucune date n'est devinée ici. */
+const RECENTES_MAX = 10
 
 /* R2-124 — « Faites cette semaine » (le Journal de Things) : `GET taches/?periode=faites_semaine` sert les faites depuis
    lundi, la plus récente d'abord ; l'écran les groupe par jour de `fait_le` (heure murale servie : la date est la
@@ -82,8 +87,8 @@ const TRI_SERVI = { priorite: 'priorite', echeance: 'echeance' }
 /** Ce que l'écran garde d'une vue (clés FERMÉES du serveur, donnees.md §2.16). `null` quand un filtre n'a pas de
  *  clé (En réserve, À revoir, Sans date, tris Jour et Création) : l'enregistrer perdrait ce filtre à la
  *  réouverture, donc on ne l'enregistre pas. */
-function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine }) {
-  if (reserve || puces.includes('a_revoir') || puces.includes('sans_date') || tri === 'jour' || tri === 'creation') return null
+function filtresDeLEcran({ q, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine, recentes }) {
+  if (recentes || reserve || puces.includes('a_revoir') || puces.includes('sans_date') || tri === 'jour' || tri === 'creation') return null
   const filtres = { inclure_faites: Boolean(faites) }
   if (q.trim()) filtres.q = q.trim()
   if (projetId != null) filtres.projets = [projetId]
@@ -187,6 +192,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const [saisie, setSaisie] = useState(q)
   const [faites, setFaites] = useState(false)
   const [haute, setHaute] = useState(false)
+  const [recentes, setRecentes] = useState(false)
   const [reserve, setReserve] = useState(false)
   const [projetId, setProjetId] = useState(null)
   const [etiquetteId, setEtiquetteId] = useState(null)
@@ -241,7 +247,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   }, { replace: true }), [setParams])
   const periode = semaine ? FAITES_SEMAINE : periodeServie(puces)
   const triServi = TRI_SERVI[tri]
-  const serveur = faites || haute || reserve || projetId != null || etiquetteId != null || periode != null
+  const serveur = recentes || faites || haute || reserve || projetId != null || etiquetteId != null || periode != null
   const mots = q.trim()
 
   useEffect(() => {
@@ -258,16 +264,19 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       tri: triServi,
     }
     // Liste paginée (50) : la page 1 suffit tant que `next` est vide, sinon on lit tout (api.md §0).
-    const lecture = serveur
+    // R3-093 — « Ajoutées récemment » lit TOUTES les ouvertes (les dernières notées peuvent être sur n'importe quelle page).
+    // parametres-requete: q, projet, etiquette, priorite_min, inclure_faites, vue, periode, tri
+    const toutes = recentes ? listerToutesLesTaches(filtres).then((taches) => ({ projets: [], taches })) : null
+    const lecture = toutes ?? (serveur
       ? listerTaches(filtres).then(async (r) => ({
         projets: [], taches: r.data?.next ? await listerToutesLesTaches(filtres) : (r.data?.results ?? []),
       }))
-      : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] }))
+      : rechercher({ q: mots, limite: 25 }).then((r) => ({ projets: r.data?.projets ?? [], taches: r.data?.taches ?? [] })))
     lecture
       .then((suite) => { if (courant) { setResultat(suite); setLu(true); setErreur('') } })
       .catch((err) => { if (courant) setErreur(frenchError(err)) })
     return () => { courant = false }
-  }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId, periode, triServi])
+  }, [mots, serveur, recentes, faites, haute, reserve, projetId, etiquetteId, periode, triServi])
 
   // Rien trouvé par les mots seuls : une seconde lecture, tolérante aux accents et à une faute de frappe
   const aucunResultat = lu && !serveur && mots.length > 0 && resultat.taches.length === 0 && resultat.projets.length === 0
@@ -306,10 +315,10 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       .finally(() => setVuesLues(true))
   }, [replie, vuesLues])
 
-  const filtresAEnregistrer = filtresDeLEcran({ q: saisie, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine })
+  const filtresAEnregistrer = filtresDeLEcran({ q: saisie, faites, haute, reserve, projetId, etiquetteId, puces, tri, semaine, recentes })
   const rouvrirVue = (vue) => {
     const suite = ecranDeLaVue(vue.filtres ?? {})
-    setSaisie(suite.q); setFaites(suite.faites); setHaute(suite.haute); setReserve(false)
+    setSaisie(suite.q); setFaites(suite.faites); setHaute(suite.haute); setReserve(false); setRecentes(false)
     setProjetId(suite.projetId); setEtiquetteId(suite.etiquetteId); setPuces(suite.puces); setTri(suite.tri)
     poserSemaine(suite.semaine)
     if (suite.projetId != null) chargerProjets()
@@ -333,9 +342,11 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const actif = serveur || Boolean(mots)
   const approches = cherchePres && proches !== null && proches.length > 0
   const source = approches ? proches : resultat.taches
-  const lignes = useMemo(() => (actif ? source : [])
-    .filter((t) => puces.every((p) => correspond(t, p, aujourdhui)))
-    .sort(TRI[tri]), [actif, source, puces, tri, aujourdhui])
+  const lignes = useMemo(() => {
+    const filtrees = (actif ? source : []).filter((t) => puces.every((p) => correspond(t, p, aujourdhui)))
+    if (!recentes) return filtrees.sort(TRI[tri])
+    return filtrees.filter(ouverte).sort(TRI.creation).slice(0, RECENTES_MAX)
+  }, [actif, source, puces, tri, aujourdhui, recentes])
   const ouvertes = lignes.filter(ouverte)
   const faitesLignes = lignes.filter((t) => !ouverte(t))
   // une tâche rouverte ici reste dans son jour, case vide : on la recoche sans la chercher (geste réversible sur place)
@@ -413,6 +424,11 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
             autoComplete="off"
             value={saisie}
             onChange={(e) => setSaisie(e.target.value)}
+            // R3-093 — ↓ depuis le champ va au premier résultat (puis j/k, Espace, Entrée) ; sans résultat, rien ne bouge
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowDown' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || !racine.current) return
+              if (parcourir(racine.current, 1)) e.preventDefault()
+            }}
           />
           {saisie ? (
             <button type="button" className="es-effacer" aria-label="Effacer la recherche" onClick={() => { setSaisie(''); champ.current?.focus() }}>
@@ -423,6 +439,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       </div>
 
       <div className="puces es-filtres" aria-label="Filtres">
+        <button type="button" className="puce" role="checkbox" aria-checked={recentes} onClick={() => setRecentes((v) => !v)}>Ajoutées récemment</button>
         <button type="button" className="puce" role="checkbox" aria-checked={semaine} onClick={() => poserSemaine(!semaine)}>Faites cette semaine</button>
         <button type="button" className="puce" role="checkbox" aria-checked={faites} onClick={() => setFaites((v) => !v)}>Faites aussi</button>
         <button
