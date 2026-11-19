@@ -27,7 +27,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -987,6 +987,78 @@ class ResumeAssistantTests(VisiteTerrainBase):
         sans_droit = make_user(self.company, 'vt4-sans-droit', ['crm_voir'])
         self.assertEqual(auth(sans_droit).get(self._url(visite_id)).status_code, 403)
         self.assertIn(APIClient().get(self._url(visite_id)).status_code, (401, 403))
+
+
+class ActionsAssistantVisitesTests(SimpleTestCase):
+    """Copilote vague 2 (VIS3-VIS8) — le catalogue ``visites.*`` de l'assistant :
+    déclaré par le manifeste, dans le lot ``copilote``, la permission du
+    catalogue est la garde RÉELLE de la route, aucune entrée ne porte la
+    société ni un contournement, et chaque rôle ne reçoit que ce qu'il peut
+    exécuter. Sans base : rien n'est joué, les métadonnées sont lues."""
+
+    LECTURES = {
+        'visites.agenda': 'liste_visites',
+        'visites.visite.resume': 'fiche_visite',
+        'visites.charge': 'charge_equipe',
+    }
+
+    def _actions(self):
+        from apps.agent.registry import all_actions
+        return {a.key: a for a in all_actions() if a.key.startswith('visites.')}
+
+    def _compte(self, permissions):
+        from apps.roles.models import Role
+        compte = User(pk=2 ** 31 - 9, username='visites-catalogue')
+        compte.role = Role(pk=2 ** 31 - 9, nom='Catalogue', permissions=list(permissions))
+        return compte
+
+    def test_le_manifeste_declare_le_module_et_les_actions_sont_decouvertes(self):
+        from apps.agent import registry
+        from apps.visites.platform import PLATFORM
+        self.assertEqual(PLATFORM['agent_actions_module'], 'apps.visites.agent_actions')
+        decouvertes = registry._DISCOVERED['apps.visites.agent_actions']
+        self.assertTrue(set(self.LECTURES) <= decouvertes, decouvertes)
+        self.assertTrue(decouvertes <= set(self._actions()))
+
+    def test_les_lectures_sont_au_lot_copilote_et_a_la_garde_de_lecture(self):
+        actions = self._actions()
+        for cle, carte in self.LECTURES.items():
+            with self.subTest(cle=cle):
+                action = actions[cle]
+                self.assertEqual(
+                    (action.lot, action.risk, action.method, action.carte,
+                     action.required_permission),
+                    ('copilote', 'internal', 'GET', carte, 'visites_voir'))
+        self.assertEqual(actions['visites.visite.resume'].objets, {'id': 'visite'})
+        self.assertEqual(actions['visites.agenda'].objets, {'commercial': 'utilisateur'})
+
+    def test_description_en_quatre_sections_et_aucune_entree_interdite(self):
+        for cle, action in self._actions().items():
+            with self.subTest(cle=cle):
+                places = [action.description.find(s) for s in (
+                    'Sert à :', 'Ne pas utiliser pour :', 'Exemple :', 'Résultat :')]
+                self.assertEqual(places, sorted(places), cle)
+                self.assertNotIn(-1, places)
+                noms = set((action.inputs or {}).get('properties', {}))
+                interdits = {n for n in noms if n in ('company', 'forcer', 'emettre')
+                             or n.startswith(('override_', 'derogation'))}
+                self.assertEqual(interdits, set())
+
+    def test_la_permission_du_catalogue_est_la_garde_de_la_route(self):
+        from apps.agent.tests.test_registry import _verdict_permission
+        for cle, action in self._actions().items():
+            with self.subTest(cle=cle):
+                juste, detail = _verdict_permission(action)
+                self.assertTrue(juste, detail)
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_chaque_role_ne_recoit_que_ce_qu_il_peut_executer(self):
+        from apps.agent.registry import for_user
+        terrain = {a.key for a in for_user(self._compte(TERRAIN)) if a.key.startswith('visites.')}
+        self.assertTrue(set(self.LECTURES) <= terrain, terrain)
+        sans_droit = {a.key for a in for_user(self._compte(['crm_voir']))
+                      if a.key.startswith('visites.')}
+        self.assertEqual(sans_droit, set())
 
 
 class SchemaVisitesPublieTests(SimpleTestCase):
