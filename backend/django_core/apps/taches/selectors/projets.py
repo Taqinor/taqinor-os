@@ -418,17 +418,19 @@ def _prevues_aujourdhui(user, projets, aujourdhui):
 
 
 def cartes_de_revue(user, etat, lundi, *, aujourdhui=None):
-    """Une `CarteRevue` par projet ACTIF (priorité décroissante, puis rang) pour la semaine de `lundi`."""
-    actifs = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF),
-                    key=lambda p: (-p.priorite, p.rang, p.pk))
-    faites, bloquees = _faites_de_la_semaine(user, actifs, lundi), _bloquees_ouvertes(user, actifs)
-    prevues = _prevues_aujourdhui(user, actifs, aujourdhui or timezone.localdate())
+    """Une `CarteRevue` par projet ACTIF, et par projet NON actif (en pause, terminé) qui a sa `RevueProjet` de la
+    semaine de `lundi` — la revue rechargée garde le projet qu'on vient de mettre en pause, avec sa décision (R3-009) ;
+    un seul ordre : priorité décroissante, puis rang."""
     revues = {r.projet_id: r for r in RevueProjet.objects.filter(
-        company_id=user.company_id, proprietaire=user, semaine=lundi, projet__in=actifs)}
+        company_id=user.company_id, proprietaire=user, semaine=lundi)}
+    servis = sorted((p for p in etat.projets if p.statut == StatutProjet.ACTIF or p.pk in revues),
+                    key=lambda p: (-p.priorite, p.rang, p.pk))
+    faites, bloquees = _faites_de_la_semaine(user, servis, lundi), _bloquees_ouvertes(user, servis)
+    prevues = _prevues_aujourdhui(user, servis, aujourdhui or timezone.localdate())
     return [CarteRevue(projet=p, faites=faites.get(p.pk, []), bloquees=bloquees.get(p.pk, []),
                        prochaine_id=_prochaine_choisie(etat, p, revues.get(p.pk)), revue=revues.get(p.pk),
                        prevues_aujourdhui=prevues.get(p.pk, 0))
-            for p in actifs]
+            for p in servis]
 
 
 def _semaine_de_plans(plans, lundi):

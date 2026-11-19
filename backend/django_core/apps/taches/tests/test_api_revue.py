@@ -394,7 +394,23 @@ class DecisionDeRevueTests(_Base):
         reponse = self._put(projet, decision='pause')
         self.assertEqual(reponse.json()['projet']['statut'], 'en_pause')
         self.assertEqual(Projet.objects.get(pk=projet.pk).statut, 'en_pause')
-        self.assertNotIn(projet.pk, [c['projet']['id'] for c in self._cartes()['cartes']])
+
+    def test_la_revue_rechargee_garde_le_projet_mis_en_pause(self):
+        """R3-009 — rechargée, la Revue sert encore la carte du projet mis en pause CETTE semaine, à sa place, avec sa
+        décision ; un projet en pause sans revue de la semaine n'a pas de carte ; la semaine suivante non plus."""
+        haute = fabriques.projet(self.u1, priorite=3, rang=1024)
+        mis_en_pause = fabriques.projet(self.u1, priorite=2, rang=2048)
+        basse = fabriques.projet(self.u1, priorite=1, rang=3072)
+        fabriques.projet(self.u1, statut='en_pause')  # en pause depuis longtemps, jamais revu cette semaine
+        self._put(mis_en_pause, decision='pause')
+        cartes = self._cartes()['cartes']
+        self.assertEqual([c['projet']['id'] for c in cartes], [haute.pk, mis_en_pause.pk, basse.pk])
+        carte = cartes[1]
+        self.assertEqual((carte['projet']['statut'], carte['revue']['decision'], carte['projet']['sante']),
+                         ('en_pause', 'pause', []))
+        self.assertEqual(set(carte), set(exemple_de('revue_projets')['cartes'][1]))
+        suivante = (_lundi() + datetime.timedelta(days=7)).isoformat()
+        self.assertNotIn(mis_en_pause.pk, [c['projet']['id'] for c in self._cartes(f'?semaine={suivante}')['cartes']])
 
     def test_terminer_exige_l_issue(self):
         projet = fabriques.projet(self.u1)
