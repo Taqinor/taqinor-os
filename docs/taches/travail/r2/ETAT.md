@@ -32,15 +32,24 @@ simplicité et la beauté. Règle en vigueur : AUCUNE question à Reda (décider
    lexique + couture, plus quatre passes de CI (api-fuzz entièrement vert, refus d'état en 409). Tête d'intégration
    `4422ae885` ; plan : TCH190 à TCH197 ; restes : `vague3-restes.md` ; budget du bundle posé à 3 905 Ko.
    Suite front du module : 1 198 verts ; specs `taches-*.spec.js` : 92 / 92 contre le build assemblé.
-5. Tour 3 EN COURS : quatre relecteurs neufs (T3-F fonctions, T3-S simplicité, T3-B1 beauté iPhone, T3-B2 beauté
-   bureau), rapports `tour3/` ; chaque constat neuf est marqué « avant le merge » ou « peut attendre ».
-6. Ensuite : trier le tour 3 (ne corriger que les « avant le merge » + les régressions), une dernière lane de
-   correction, CI verte sur la PR #1481 (dernier run connu : rouge seulement sur le budget du bundle, la garde
-   anti-jargon et À trier — corrigés par L7, à confirmer), critique finale (un passage Fable permis), sortir la PR du
-   brouillon, `gh pr merge 1481 --auto --merge` (ne plus toucher la PR une fois en file), relâcher les claims
+5. Tour 3 FAIT : quatre relecteurs neufs (`tour3/T3-F.md`, `T3-S.md`, `T3-B1.md`, `T3-B2.md`). Verdict commun : le
+   cœur tient, « pas encore le meilleur », écart petit et précis. CI de la tête `c285e13b0` : tout vert sauf UN constat
+   api-fuzz (forme de la carte « faire_bilan »).
+6. Vague 4 EN COURS (19/11, soir) : `vague4.md` — V4-A le moment et la charge du jour (opus, branche `lane/r4-V4A`,
+   port 5182, compte lane2), V4-B les doigts et la frappe (opus, `lane/r4-V4B`, 5184, lane4), V4-C enveloppe,
+   chargement, discipline visuelle, README (sonnet, `lane/r4-V4C`, 5185, lane5). À chaque rapport : `git merge --no-ff
+   <sha>` dans `taches-r2-ci`, `check_openapi_schema.py --write` et `codemap_fingerprint.py --write` si besoin, pousser
+   `HEAD:dev-taches-r2`.
+7. Ensuite (quota hebdomadaire à 71 % le 19/11 au soir : PAS de tour 4 complet) : mettre la pile à jour
+   (`git merge --ff-only origin/dev-taches-r2` dans `taches-r2`, `npm run build`, `lancer-django.sh` si migrations),
+   UNE vérification ciblée des `R4-NN` sur l'écran réel par un relecteur neuf, inscrire la vague 4 au plan (TCH198+),
+   CI verte sur la PR #1481, sortir la PR du brouillon, `gh pr merge 1481 --auto --merge` (ne plus toucher la PR une fois
+   en file), relâcher les claims
    (`python scripts/plan_claims.py release file:docs/plans/PLAN_TACHES.md app:taches --owner Reda_Laptop/dev-taches-r2`),
    arrêter la pile privée (`docker rm -f taches-r2-django taches-r2-redis`, tuer le `vite preview` du port 5180,
-   `DROP DATABASE erp_taches_r2`), mémoire partagée, rapport à Reda (deploy = lui).
+   `DROP DATABASE erp_taches_r2`), retirer les worktrees de lanes pliées (jonction `frontend
+ode_modules` d'abord),
+   mémoire partagée, rapport à Reda (deploy = lui).
 
 ## À dire à Reda dans le rapport final
 - Rien n'a été vu sur un vrai iPhone (tout en Chromium émulé) ; notifications, Siri, tuile, calendrier abonné : ses
