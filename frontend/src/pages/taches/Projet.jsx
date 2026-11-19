@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Diamond, Plus, TriangleAlert } from 'lucide-react'
-import {
-  annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
-  reordonnerTache, rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
+import { annulerGeste, classerErreur, listerTousLesProjets, modifierProjet, modifierTache } from '../../api/tachesApi'
+import { reordonnerProjet, restaurerProjet, rouvrirProjet, reordonnerTache, rouvrirTache } from '../../api/tachesApi'
+import { terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
@@ -545,8 +545,7 @@ export default function Projet() {
   const mettreEnHaut = async () => {
     const projet = vue.projet
     try {
-      const { data } = await listerProjets({ statut: 'actif' })
-      const premier = (Array.isArray(data) ? data : (data?.results ?? []))[0]
+      const premier = (await listerTousLesProjets({ statut: 'actif' }))[0]
       if (!premier || premier.id === projet.id) { annoncer(`« ${projet.nom} » est déjà en haut`); return }
       await reordonnerProjet(projet.id, { avant_id: premier.id })
       annoncer(`« ${projet.nom} » en haut`)
