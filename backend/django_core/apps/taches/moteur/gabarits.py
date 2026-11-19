@@ -380,16 +380,10 @@ def _ligne_bilan(v):
     return ' · '.join(parties)
 
 
-def _gardees(v):
-    """« {pt} des {pl} gardées » ; vide quand rien n'était gardé."""
-    if not v.get('pl'):
-        return ''
-    return _rendre('{pt} des {pl} gardée{pl?|s}', v)
-
-
 def _bilan(cle, v, var, nom_pour):
-    lignes = (_ligne_bilan(v), _gardees(v))
-    return '\n'.join(ligne for ligne in lignes if ligne)
+    """Une seule ligne (R3-001, choix C-14) : « x des y gardées », second chiffre de la même journée, n'est plus
+    jamais rendu — ni au bilan ni à la revue."""
+    return _ligne_bilan(v)
 
 
 # --- Constats (textes.md §4.4) --------------------------------------------------------
@@ -454,9 +448,6 @@ def _chiffres_revue(v):
         parties.append(_rendre('Objectif atteint {oa} jour{oa?|s} sur {jours}', v))
     if v.get('je'):
         parties.append(_rendre('essentiel {e} sur {je}', v))
-    gardees = _gardees(v)
-    if gardees:
-        parties.append(gardees)
     if not parties:
         return ''
     return ' · '.join(parties) + '.'

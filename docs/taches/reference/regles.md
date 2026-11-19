@@ -498,7 +498,7 @@ Recalculés par `integ2/propose.py`.
 
 | # | Bloc (clé) | Contenu | Replié |
 |---|---|---|---|
-| 1 | `progression` | « N sur OBJECTIF » + essentiel ; au toucher : gardées faites, temps (`disponible_minutes`), Mon rythme | — |
+| 1 | `progression` | « N sur OBJECTIF » + essentiel ; au toucher : temps (`disponible_minutes`), Mon rythme (R3-001 : plus de « gardées faites ») | — |
 | 2 | `carte_du_moment` | UN objet au plus, choisi par le serveur (§4.10) ; le navigateur insère le brouillon et l'astuce | — |
 | 3 | `essentiel` | lignes du plan de J marquées `essentielle` (≤ 3), ouvertes ou faites aujourd'hui | non |
 | 4a | `obligations` (« Toute la journée ») | visites, poses, interventions du jour (date seule, A16-N4) ; rendez-vous externes « journée entière » ; `touches` → ligne « Suivi des relances : n » dans Prévu | non |
@@ -586,7 +586,7 @@ vide** (`replie: true`, `places = 0`, A16-N6).
   nommées, elles RESTENT en place (jamais de 400, parcours 8 de spec-7).
 - Effets : `planifier()` (reports comptés, §4.3), lignes `reportee = True`, `cloture_le` = maintenant, `reflexion`
   (≤ 280). Possible jusqu'à J+1 12:00 (`possible_jusqua`) ; « demain » est relatif au jour clos.
-- Contenu affiché : « N sur OBJECTIF » en première ligne, « gardées faites » en seconde (A16-M2), UN constat au plus
+- Contenu affiché : « N sur OBJECTIF » sur UNE ligne (R3-001, choix C-14 : plus de « gardées faites »), UN constat au plus
   (A14-M4, §6.9). Sauté : rien ne bouge, aucune trace négative. **Bilan d'hier** : `journee/cloture/?jour=` J−1 reste
   ouvert jusqu'à J 12:00 ; la carte du moment `bilan_hier` le propose si hier a des restes et `cloture_le` est nul.
 
@@ -614,7 +614,11 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **Capacité** : §3.6. `minutes_prevues` = Σ estimations des tâches (ouvertes et faites aujourd'hui) d'Essentiel et
   de Prévu.
 - **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
-  d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` (« gardées faites ») = lignes `prevue_au_plan` faites /
+  d'Essentiel, Prévu, Ce soir. **Essentiel** (R3-001, choix C-14) : `essentiel_faites`/`essentiel_prevues` = les ★
+  de la section Essentiel SERVIE (ouvertes, ou faites aujourd'hui), comptées une fois (`selectors.journee.
+  essentiel_servi`, seule définition : page, TACHE_ECRITE, bilan, nuit) — une ★ reportée sans échéance quitte la
+  section et le compte, une ★ gardée par son échéance y reste et compte. `plan_tenues`/`plan_lignes` (« gardées
+  faites », servies pour la nuit, plus jamais montrées) = lignes `prevue_au_plan` faites /
   lignes `prevue_au_plan` (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger
   n'y sont plus). Une gardée qui change de jour (tout chemin de `planifier`) GARDE sa ligne, marquée `reportee` et
   non tenue : seul Alléger retire une ligne (la déplacer ne gonfle jamais le taux). La ligne d'une activité ERP qui
@@ -730,7 +734,7 @@ totaux, jamais dans un bloc. Statut posé par la tâche nocturne sur le `PlanJou
 ### 6.4 Journée réussie et les quatre faits
 
 `journee_reussie(compte, objectif, choisis, faits)` = compte ≥ objectif ET (aucun essentiel choisi OU ≥ 1 fait) ;
-`None` sans objectif. Toujours montrée par ses quatre faits (compte, objectif, essentiel, gardées faites), jamais par le
+`None` sans objectif. Toujours montrée par ses faits (compte, objectif, essentiel), jamais par le
 mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le compte seul).
 
 ### 6.5 POUSSER — l'objectif déclaré prime (A2)

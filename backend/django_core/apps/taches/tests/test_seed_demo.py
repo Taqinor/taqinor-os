@@ -282,7 +282,7 @@ class ScenarioTests(TestCase):
         # jeu. 26, garde sa ligne (non tenue). L'activité ERP « Rappeler pour le devis », gardée le matin puis LIÉE
         # à une tâche à 10:30, n'est pas une gardée de plus : sa tâche la représente (`sel.ligne_gardee`).
         self.assertEqual((bilan['plan_tenues'], bilan['plan_lignes']), (4, 5))
-        self.assertEqual(bilan['texte_gardees'], '4 des 5 gardées')
+        self.assertEqual(bilan['texte_gardees'], '')  # R3-001 : servies pour la nuit, plus jamais montrées
         self.assertEqual(_titres(cloture['restes']), [CONTRAT])
         self.assertEqual(sorted(_titres(cloture['faites'])), sorted([DEVIS, FOURNISSEUR, RAILS, STAND]))
         self.assertEqual(cloture['prochain_jour_ouvre'], '2026-11-25')

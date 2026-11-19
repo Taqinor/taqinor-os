@@ -447,11 +447,21 @@ def _minutes_prevues(journee):
     return sum(i.estimation_minutes or 0 for i in taches), sum(1 for i in taches if i.estimation_minutes is None)
 
 
+def essentiel_servi(journee):
+    """(faites, prévues) de l'essentiel : LES ★ de la section Essentiel SERVIE (ouvertes, ou faites aujourd'hui),
+    chacune comptée une fois — ce que l'écran montre est ce qui est compté (R3-001, choix C-14) : une ★ reportée
+    sans échéance quitte la section et le compte ; une ★ gardée par son échéance y reste et compte. La SEULE
+    définition : `aujourdhui/`, toute TACHE_ECRITE, le bilan du soir, la nuit (donc la revue) la lisent ici."""
+    cles = list(dict.fromkeys(journee.sections.get(SectionJournee.ESSENTIEL, ())))
+    return sum(1 for cle in cles if journee.items[cle].statut == StatutTache.FAIT), len(cles)
+
+
 def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
-    ouverts gardés ; gardées faites sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les
-    activités ERP closes du jour, lues pour `faites`)."""
-    essentielles = [ligne for ligne in journee.lignes if ligne_essentielle(ligne)]
+    ouverts gardés ; essentiel = `essentiel_servi` ; `plan_tenues`/`plan_lignes` (servis pour la nuit, plus
+    jamais montrés) sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les activités ERP closes du jour,
+    lues pour `faites`)."""
+    essentiel_faites, essentiel_prevues = essentiel_servi(journee)
     au_plan = [ligne for ligne in journee.lignes if ligne_gardee(ligne)]
     minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
@@ -459,8 +469,7 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
     closes = frozenset(closes)
     return {
         'faites': faites, 'detail': dict(detail), 'prevues': faites + len(gardes_ouverts(journee)),
-        'essentiel_faites': sum(1 for ligne in essentielles if ligne_faite(journee, ligne, closes)),
-        'essentiel_prevues': len(essentielles),
+        'essentiel_faites': essentiel_faites, 'essentiel_prevues': essentiel_prevues,
         'plan_tenues': sum(1 for ligne in au_plan if ligne_faite(journee, ligne, closes)),
         'plan_lignes': len(au_plan), 'minutes_prevues': minutes, 'sans_estimation': sans,
         'capacite_minutes': capacite_minutes, 'capacite_source': capacite_source,

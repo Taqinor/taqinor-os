@@ -309,7 +309,7 @@ ligne d'une tâche prévue « prévue {jour} », « ce soir ».
 |---|---|
 | Titre | Bilan du soir ; le lendemain matin : « Bilan d'hier » |
 | Première ligne | « {faites} sur {objectif} » (§4.3) |
-| Seconde ligne | « {pt} des {pl} gardées » ; détail « {c} micro-tâches comptées sur {t} » · « {n} sous-tâches faites (non comptées) » · « {n} routines faites (à part) » |
+| Seconde ligne | — (R3-001 : « {pt} des {pl} gardées » n'est plus rendu) ; détail « {c} micro-tâches comptées sur {t} » · « {n} sous-tâches faites (non comptées) » · « {n} routines faites (à part) » |
 | Par reste | Reporter à {jour} · Choisir un jour · En réserve · Abandonner |
 | Reportée 3 fois (`a_trancher`) | puce « À revoir : reportée 3 fois » ; « Sans choix, elle reste à sa place. » |
 | Bouton de lot | **Tout reporter à {jour}** (prochain jour travaillé : « Tout reporter à mer. 25 ») |
@@ -624,17 +624,18 @@ Factuelles ; jamais de reproche, de récompense, de points ni de « série ».
 `{moyenne}` à une décimale (« 3,4 ») ; `{R}`, `{m}`, `{bas}`, `{haut}` arrondis (demie vers le bas). Carte expirée :
 retirée sans phrase.
 
-### 4.3 Bilan (`bilan.texte`) — deux lignes, parties sans objet omises
+### 4.3 Bilan (`bilan.texte`) — UNE ligne, parties sans objet omises
 
-| Mode · cas | Première ligne | Seconde ligne |
-|---|---|---|
-| `pousser`, atteint | « {faites} sur {objectif} · objectif atteint · essentiel fait » | « {pt} des {pl} gardées » |
-| `pousser`, non atteint | « {faites} sur {objectif} · essentiel {ef} sur {ep} » | « {pt} des {pl} gardées » |
-| `tenir` | « {faites} sur {objectif} (ton rythme : {bas} à {haut}) · essentiel {ef} sur {ep} » | idem |
-| `libre` | « {faites} faites · essentiel {ef} sur {ep} » | idem |
+| Mode · cas | Ligne |
+|---|---|
+| `pousser`, atteint | « {faites} sur {objectif} · objectif atteint · essentiel fait » |
+| `pousser`, non atteint | « {faites} sur {objectif} · essentiel {ef} sur {ep} » |
+| `tenir` | « {faites} sur {objectif} (ton rythme : {bas} à {haut}) · essentiel {ef} sur {ep} » |
+| `libre` | « {faites} faites · essentiel {ef} sur {ep} » |
 
-Aucun essentiel choisi → sans « essentiel… » ; rien de gardé → sans seconde ligne ; jour court : « (jour court :
-objectif {objectif}) ».
+Aucun essentiel choisi → sans « essentiel… » ; jour court : « (jour court : objectif {objectif}) ». R3-001 (choix
+C-14) : plus de seconde ligne « {pt} des {pl} gardées » (`bilan.texte_gardees` est toujours vide) ; l'essentiel
+`{ef}`/`{ep}` = les ★ de la section Essentiel servie, comme sur la page.
 
 ### 4.4 Constats (Mon rythme ; un seul au bilan)
 
@@ -661,7 +662,7 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 ### 4.6 Revue de la semaine (en tête)
 
 « Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
-· essentiel {e} sur {je} · {pt} des {pl} gardées. {Jour non travaillé} : {n}. » — parties sans objet omises (`libre` :
+· essentiel {e} sur {je}. {Jour non travaillé} : {n}. » (R3-001 : sans « {pt} des {pl} gardées ») — parties sans objet omises (`libre` :
 sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
 (`courante` faux dans les données du gabarit : `selectors/projets.py::bilan_de_semaine` le pose quand le lundi lu
 n'est pas celui de la semaine du jour) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la

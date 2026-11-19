@@ -762,16 +762,15 @@ def _bilan_chiffres(ctx, prog):
     objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
     mode = ctx.objectif['mode']
     variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
-                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes'],
-                 'jour_court': ctx.jour_court and objectif is not None}
+                 'ep': prog['essentiel_prevues'], 'jour_court': ctx.jour_court and objectif is not None}
     if ctx.objectif['zone']:
         variables['bas'], variables['haut'] = ctx.objectif['zone']
-    lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
+    # R3-001 : `texte_gardees` reste une clé du contrat, toujours vide (plus de « x des y gardées »)
     return {'faites': ctx.compte, 'objectif': objectif,
             'objectif_atteint': bool(sel.objectif_atteint(ctx.compte, objectif)),
             'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
             'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
-            'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
+            'texte': gabarits.texte('bilan', 'texte', variables), 'texte_gardees': ''}
 
 
 def _restes_et_a_trancher(journee):

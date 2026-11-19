@@ -989,7 +989,7 @@ class BilanTests(_Base):
         self.assertEqual([i['id'] for i in rendu['a_trancher']], [self.a_trancher.pk])
         self.assertEqual([i['id'] for i in rendu['activites_a_clore']], [self.activite.pk])
         self.assertEqual(rendu['bilan']['texte'], '1 sur 5 · essentiel 0 sur 1')
-        self.assertEqual(rendu['bilan']['texte_gardees'], '1 des 2 gardées')
+        self.assertEqual(rendu['bilan']['texte_gardees'], '')  # R3-001 : plus de « x des y gardées »
         self.assertFalse(rendu['bilan']['objectif_atteint'])
         from apps.taches.services.journee import _possible_jusqua
         self.assertEqual(rendu['possible_jusqua'], _possible_jusqua(J).isoformat())
@@ -1332,7 +1332,7 @@ class ChiffresDuJourTests(_Base):
         from apps.taches.services.projets import terminer_projet
         self.garder_et_faire()
         avant = self.chiffres()
-        self.assertEqual(avant, ((3, 3, 3, 3, 1, 1), ('3 sur 5 · essentiel 1 sur 1', '3 des 3 gardées')))
+        self.assertEqual(avant, ((3, 3, 3, 3, 1, 1), ('3 sur 5 · essentiel 1 sur 1', '')))
         terminer_projet(self.u, self.pr.pk, issue='atteint')
         self.assertEqual(self.chiffres(), avant)
         self.assertEqual(self.nuit(), (3, 3, 3, 1, 1))
@@ -1341,7 +1341,7 @@ class ChiffresDuJourTests(_Base):
         from apps.taches.services.projets import modifier_projet
         self.garder_et_faire(n=2, essentielles=0)
         avant = self.chiffres()
-        self.assertEqual(avant, ((2, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.assertEqual(avant, ((2, 2, 2, 2, 0, 0), ('2 sur 5', '')))
         self.pr.refresh_from_db()
         modifier_projet(self.u, self.pr.pk, {'statut': StatutProjet.EN_PAUSE}, version=self.pr.lock_version)
         self.assertEqual(self.chiffres(), avant)
@@ -1361,7 +1361,7 @@ class ChiffresDuJourTests(_Base):
         terminer_tache(self.u, t.pk, maintenant=a(J, 11), aujourdhui=J)
         activite.done, activite.done_by, activite.done_at = True, self.u, a(J, 12)
         activite.save(update_fields=['done', 'done_by', 'done_at'])
-        self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '2 des 2 gardées')))
+        self.assertEqual(self.chiffres(), ((1, 2, 2, 2, 0, 0), ('2 sur 5', '')))
         self.assertEqual(sel.progression_courante(self.u, J)['plan_tenues'], 2)
         self.assertEqual(self.nuit(), (2, 2, 2, 0, 0))
 
@@ -1469,3 +1469,63 @@ class ChiffresDuJourTests(_Base):
         ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
         self.assertNotIn(ouverte.pk, ids)
         self.assertIn(faite.pk, ids)
+
+
+class UneSourceTests(_Base):
+    """M1 (vague 3) — un chiffre, UNE source, et toutes ses lectures rendent le même nombre sur le même jeu."""
+
+    def trois_etoiles(self):
+        """3 ★ du jour ; une REPORTÉE à demain sans échéance, une COCHÉE à 11:00 (R3-001)."""
+        from apps.taches.services import journee as services
+        from apps.taches.services.planification import planifier
+        from apps.taches.services.taches import terminer_tache
+        fabriques.reglages(self.u)
+        faite, reportee, ouverte = (self.tache(jour_prevu=J, titre=f'Étoile {n}') for n in range(3))
+        for t in (faite, reportee, ouverte):
+            services.marquer_essentielle(self.u, t.pk, True, maintenant_a(8))
+        planifier(reportee, acteur=self.u, jour_prevu=jours(1))
+        terminer_tache(self.u, faite.pk, maintenant=a(J, 11), aujourdhui=J)
+        return faite, reportee, ouverte
+
+    def test_essentiel_le_meme_couple_sur_la_page_le_bilan_l_ecriture_et_la_nuit(self):
+        """Calcul à la main : 3 ★ posées ; la reportée sans échéance quitte la section Essentiel (prévues 3 → 2) ;
+        la cochée y reste, barrée (faites 1) : « essentiel 1/2 » partout — page (`aujourdhui/`), bilan du soir
+        (`journee/cloture/`), toute TACHE_ECRITE (`progression_courante`, ce que Mon rythme et la page
+        recalent), et la nuit (`PlanJour.essentiels_*`, lue par la revue)."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services.journee import clore_jour_precedent
+        faite, reportee, ouverte = self.trois_etoiles()
+        page = services.aujourdhui(self.u, J, maintenant_a(18, 30))
+        self.assertEqual([i['id'] for i in page['essentiel']], [faite.pk, ouverte.pk])
+        bilan = services.cloture(self.u, J, maintenant_a(18, 30))['bilan']
+        ecriture = sel.progression_courante(self.u, J)
+        lectures = {
+            'page': (page['progression']['essentiel_faites'], page['progression']['essentiel_prevues']),
+            'bilan': (bilan['essentiel_faites'], bilan['essentiel_prevues']),
+            'ecriture': (ecriture['essentiel_faites'], ecriture['essentiel_prevues']),
+        }
+        self.assertEqual(lectures, {nom: (1, 2) for nom in lectures})
+        self.assertEqual(bilan['texte'], '1 sur 5 · essentiel 1 sur 2')
+        self.assertEqual(bilan['texte_gardees'], '')
+        clore_jour_precedent(self.societe.pk, jours(1))
+        nuit = PlanJour.objects.get(proprietaire=self.u, jour=J)
+        self.assertEqual((nuit.essentiels_faits, nuit.essentiels_choisis), (1, 2))
+
+    def test_faites_du_jour_le_meme_nombre_sur_la_page_le_bilan_et_la_nuit(self):
+        """Calcul à la main : 1 ★ cochée + 2 tâches faites (dont une sous-tâche = 0, `compte_du_jour`) + 1 tâche
+        faite d'un projet mis en pause = 3 ; page, bilan, écriture et nuit disent 3."""
+        from apps.taches.models.journee import PlanJour
+        from apps.taches.services import journee as services
+        from apps.taches.services.journee import clore_jour_precedent
+        faite, _reportee, _ouverte = self.trois_etoiles()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 12))
+        self.tache(parent=faite, statut=StatutTache.FAIT, fait_le=a(J, 12))
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        self.tache(projet=en_pause, statut=StatutTache.FAIT, fait_le=a(J, 13))
+        page = services.aujourdhui(self.u, J, maintenant_a(18, 30))['progression']['faites']
+        bilan = services.cloture(self.u, J, maintenant_a(18, 30))['bilan']['faites']
+        ecriture = sel.progression_courante(self.u, J)['faites']
+        clore_jour_precedent(self.societe.pk, jours(1))
+        nuit = PlanJour.objects.get(proprietaire=self.u, jour=J).compte_rythme
+        self.assertEqual((page, bilan, ecriture, nuit), (3, 3, 3, 3))
