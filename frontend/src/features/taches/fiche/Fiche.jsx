@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import {
   Calendar, CalendarClock, Check, ChevronDown, Ellipsis, Flag, Folder, Plus, X,
 } from 'lucide-react'
@@ -12,7 +13,9 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
-import { apercu, signalerEcrite } from '../lib/fiche'
+import {
+  apercu, cleBrouillonFiche, envoyerEnPartant, garderBrouillonFiche, lireBrouillonFiche, oublierBrouillonFiche, signalerEcrite,
+} from '../lib/fiche'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import {
   aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
@@ -142,6 +145,16 @@ function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
 /** R2-044 — délai après la dernière frappe avant l'enregistrement continu (titre, notes). */
 const DELAI_ENREGISTREMENT_MS = 1000
 const CHAMPS_TEXTE = ['titre', 'notes']
+/** R4-23 — dit à la réouverture d'une fiche dont la frappe n'avait pas pu partir (textes.md, Fiche). */
+const NOTE_REPRISE = 'Note non enregistrée reprise'
+const TITRE_REPRIS = 'Titre non enregistré repris'
+
+/** Compte connecté, lu sans exiger un Provider (la fiche se monte aussi sans store dans les tests). */
+function useCompte() {
+  const contexte = useContext(ReactReduxContext)
+  const user = contexte?.store?.getState?.()?.auth?.user
+  return { societe: user?.active_company_id ?? user?.company_id ?? null, compte: user?.id ?? null }
+}
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
 
 const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : texte)
@@ -290,6 +303,9 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const [plusOuvert, setPlusOuvert] = useState(false)
   const [supprimerDemande, setSupprimerDemande] = useState(0)
   const courant = useRef(id)
+  const { societe, compte } = useCompte()
+  const cleBrouillon = useRef(cleBrouillonFiche(societe, compte, id))
+  useEffect(() => { cleBrouillon.current = cleBrouillonFiche(societe, compte, id) })
   // R2-050 — au bureau, le panneau reste ouvert quand on touche une autre ligne : la fiche change de tâche sans se
   // refermer. Rien de la précédente ne survit (saisie, erreurs, conflit, volets ouverts) — on repart de la lecture.
   const [fichePour, setFichePour] = useState(id)
@@ -355,12 +371,16 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   useEffect(() => { saisieRef.current = saisie; tacheRef.current = tache; conflitRef.current = conflit })
 
   /** Un enregistrement : `appel(lock_version)` ; 400 → sous le champ, 409 → bandeau, la saisie reste. */
+  const enVol = useRef(0) // R4-23 — écritures en cours (un envoi en partant ne part pas par-dessus : même verrou)
   const ecrire = useCallback((appel, champ, lock, relire = false) => {
     const tour = file.current.then(async () => {
+      enVol.current += 1
       try {
         const { data } = await appel(lock ?? verrou.current)
         const ecrite = data?.tache ?? (data?.id ? data : null)
         if (ecrite?.lock_version != null) verrou.current = ecrite.lock_version
+        // R4-23 — le serveur a le texte de ce champ : un brouillon gardé en partant n'a plus rien à reprendre
+        if (CHAMPS_TEXTE.includes(champ)) oublierBrouillonFiche(cleBrouillon.current, [champ])
         erreur(champ, '')
         setConflit(null)
         // R2-040 — l'écran sous la fiche (Aujourd'hui, Agenda, Projet…) se relit : la ligne suit ce qu'on vient de faire
@@ -377,6 +397,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
           erreur(champ, frenchError(err))
         }
         return null
+      } finally {
+        enVol.current -= 1
       }
     })
     file.current = tour
@@ -490,16 +512,67 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
       if (!conflitRef.current) enregistrerRef.current(champ)
     }, DELAI_ENREGISTREMENT_MS)
   }
+  /** R4-23 — la page s'en va (rechargement, retour arrière, appli fermée) ou passe en arrière-plan (iOS la tue sans
+   *  prévenir) : la frappe pas encore partie (titre, notes) est gardée en brouillon local PUIS envoyée en UN `fetch`
+   *  keepalive avec le verrou courant — l'appel ordinaire (axios) serait coupé avec la page. Une écriture déjà en vol
+   *  (même verrou : un 409 de soi-même) ou un conflit en attente : le brouillon seul, repris à la réouverture. La page
+   *  revenue, la réponse rend le verrou ; les écritures suivantes l'attendent (file). */
+  const partirEnPartant = () => {
+    const t = tacheRef.current
+    const s = saisieRef.current
+    if (!t || String(t.id) !== String(id)) return
+    const champs = CHAMPS_TEXTE.filter((c) => s[c] !== undefined && s[c] !== (t[c] ?? '') && !(c === 'titre' && !s[c].trim()))
+    if (champs.length === 0) return
+    champs.forEach((c) => { clearTimeout(minuteurs.current[c]); delete minuteurs.current[c] })
+    const corps = Object.fromEntries(champs.map((c) => [c, s[c]]))
+    garderBrouillonFiche(cleBrouillon.current, corps)
+    if (enVol.current > 0 || conflitRef.current) return
+    const cle = cleBrouillon.current
+    enVol.current += 1
+    const envoi = envoyerEnPartant(id, { ...corps, lock_version: verrou.current })
+    const tour = file.current.then(() => envoi).then(async (reponse) => {
+      if (!reponse?.ok) return null // refusé (session, conflit) : le brouillon reste, repris à la réouverture
+      const data = await reponse.json()
+      const rendue = data?.tache ?? data
+      oublierBrouillonFiche(cle, champs)
+      signalerEcrite(rendue)
+      if (courant.current !== id) return null
+      if (rendue?.lock_version != null) verrou.current = rendue.lock_version
+      if (rendue?.id != null) setTache(rendue)
+      setSaisie((x) => champs.reduce((acc, c) => (acc[c] === corps[c] ? sansCle(acc, c) : acc), x))
+      return null
+    }, () => null) // aucun envoi possible (hors ligne, page partie) : le brouillon est là
+      .finally(() => { enVol.current -= 1 })
+    file.current = tour
+  }
+  const partirRef = useRef(partirEnPartant)
+  useEffect(() => { partirRef.current = partirEnPartant })
   useEffect(() => {
-    const vider = () => { Object.keys(minuteurs.current).forEach((champ) => enregistrerRef.current(champ)) }
-    const surVisibilite = () => { if (document.visibilityState === 'hidden') vider() }
-    window.addEventListener('pagehide', vider)
+    const partir = () => partirRef.current()
+    const surVisibilite = () => { if (document.visibilityState === 'hidden') partir() }
+    window.addEventListener('pagehide', partir)
     document.addEventListener('visibilitychange', surVisibilite)
     return () => {
-      window.removeEventListener('pagehide', vider)
+      window.removeEventListener('pagehide', partir)
       document.removeEventListener('visibilitychange', surVisibilite)
     }
   }, [])
+  // R4-23 — rouverte après une page partie trop tôt : le brouillon que le serveur n'a pas reçu revient dans son champ,
+  // est DIT, et repart (enregistrement continu) ; celui que le serveur a déjà s'efface sans un mot. Une fois par tâche,
+  // sur la lecture complète (jamais sur l'aperçu de la ligne, qui ne porte pas les notes).
+  const repriseFaite = useRef(null)
+  useEffect(() => {
+    if (!complete || String(tache.id) !== String(id) || repriseFaite.current === id) return
+    repriseFaite.current = id
+    const brouillon = lireBrouillonFiche(cleBrouillon.current)
+    if (!brouillon) return
+    const repris = Object.keys(brouillon).filter((c) => brouillon[c] !== (tache[c] ?? '') && !(c === 'titre' && !brouillon[c].trim()))
+    const deja = Object.keys(brouillon).filter((c) => !repris.includes(c))
+    if (deja.length > 0) oublierBrouillonFiche(cleBrouillon.current, deja)
+    if (repris.length === 0) return
+    repris.forEach((c) => taper(c, brouillon[c]))
+    proposerAnnuler({ message: repris.includes('notes') ? NOTE_REPRISE : TITRE_REPRIS })
+  })
   // fiche fermée ou changée de tâche avec une frappe pas encore partie : elle part quand même, pour CETTE tâche
   useEffect(() => () => {
     const champs = Object.keys(minuteurs.current)

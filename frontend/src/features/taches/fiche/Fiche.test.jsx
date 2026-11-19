@@ -258,13 +258,78 @@ describe('TCH84 — fiche d\'une tâche', () => {
       expect(champ).toHaveValue('abc def')
     })
 
-    it('la page passe en arrière-plan : la frappe part tout de suite', async () => {
+    it('la page passe en arrière-plan : la frappe part tout de suite, par un envoi qui survit à la page (R4-23)', async () => {
+      const envoi = vi.spyOn(window, 'fetch').mockResolvedValue({
+        ok: true, json: async () => ({ ...ecrite, tache: { ...ecrite.tache, titre: 'Devis Settat signé', lock_version: 5 } }),
+      })
       monter()
       const champ = await screen.findByRole('textbox', { name: 'Titre' })
       fireEvent.change(champ, { target: { value: 'Devis Settat signé' } })
       vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
       act(() => { document.dispatchEvent(new Event('visibilitychange')) })
-      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { titre: 'Devis Settat signé', lock_version: 4 }))
+      expect(envoi).toHaveBeenCalledTimes(1)
+      const [adresse, options] = envoi.mock.calls[0]
+      expect(adresse).toBe('/api/django/taches/taches/20/')
+      expect(options).toMatchObject({ method: 'PATCH', keepalive: true, credentials: 'include' })
+      expect(JSON.parse(options.body)).toEqual({ titre: 'Devis Settat signé', lock_version: 4 })
+      // la page revient : la réponse a rendu le verrou, la frappe suivante part avec lui (jamais un 409 de soi-même)
+      await act(async () => {})
+      fireEvent.change(champ, { target: { value: 'Devis Settat signé et envoyé' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { titre: 'Devis Settat signé et envoyé', lock_version: 5 }))
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+    })
+
+    describe('R4-23 — une note tapée juste avant que la page s\'en aille n\'est jamais perdue', () => {
+      afterEach(() => { window.localStorage.clear() })
+
+      it('rechargement 200 ms après la frappe (`pagehide`) : notes ET titre partent en UN envoi keepalive, avec le verrou courant', async () => {
+        const envoi = vi.spyOn(window, 'fetch').mockResolvedValue({ ok: true, json: async () => ecrite })
+        monter()
+        const notes = await screen.findByRole('textbox', { name: 'Notes' })
+        fireEvent.change(screen.getByRole('textbox', { name: 'Titre' }), { target: { value: 'Devis Settat v2' } })
+        fireEvent.change(notes, { target: { value: 'Recharge 200' } })
+        await act(async () => { vi.advanceTimersByTime(200) })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        expect(envoi).toHaveBeenCalledTimes(1)
+        expect(JSON.parse(envoi.mock.calls[0][1].body)).toEqual({ titre: 'Devis Settat v2', notes: 'Recharge 200', lock_version: 4 })
+        // aucun second envoi par le chemin ordinaire (il partirait avec le même verrou : 409)
+        await act(async () => { vi.advanceTimersByTime(1500) })
+        expect(api.modifierTache).not.toHaveBeenCalled()
+      })
+
+      it('l\'envoi n\'a pas pu partir : la note revient à la réouverture de la fiche, « Note non enregistrée reprise », et part', async () => {
+        vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+        const premier = monter()
+        const notes = await screen.findByRole('textbox', { name: 'Notes' })
+        fireEvent.change(notes, { target: { value: 'Note de la dernière seconde' } })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await act(async () => {})
+        premier.unmount()
+        api.modifierTache.mockClear()
+        // la page rechargée : la fiche relit la tâche (sans la note) et reprend le brouillon
+        monter()
+        await waitFor(() => expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Note de la dernière seconde'))
+        expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Note non enregistrée reprise')
+        await act(async () => { vi.advanceTimersByTime(1100) })
+        await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Note de la dernière seconde', lock_version: 4 }))
+      })
+
+      it('l\'envoi était arrivé (le serveur a déjà la note) : rien n\'est repris ni dit, le brouillon s\'efface', async () => {
+        vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+        const premier = monter()
+        fireEvent.change(await screen.findByRole('textbox', { name: 'Notes' }), { target: { value: 'Arrivée quand même' } })
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await act(async () => {})
+        premier.unmount()
+        api.lireTache.mockResolvedValue({ data: { ...tache, notes: 'Arrivée quand même', lock_version: 5 } })
+        monter()
+        await waitFor(() => expect(screen.getByRole('textbox', { name: 'Notes' })).toHaveValue('Arrivée quand même'))
+        await act(async () => { vi.advanceTimersByTime(1500) })
+        expect(screen.queryByText('Note non enregistrée reprise')).toBeNull()
+        expect(api.modifierTache).not.toHaveBeenCalled()
+        expect(Object.keys(window.localStorage).filter((c) => c.startsWith('taches:fiche:'))).toEqual([])
+      })
     })
 
     it('fiche fermée avant la pause : la frappe part quand même pour cette tâche', async () => {
