@@ -283,6 +283,37 @@ class ImpayesAssistantView(APIView):
         })
 
 
+PARAMETRES_FACTURES = _parametres_liste(OpenApiParameter(
+    'statut', {'type': 'string', 'enum': list(SA.STATUTS_FACTURE)},
+    OpenApiParameter.QUERY, required=False))
+
+
+class FacturesAssistantView(APIView):
+    """VAD3 — retrouver une facture par sa référence, le nom ou le téléphone
+    du client (contrat ``assistant_factures.json``, action
+    ``ventes.facture.chercher``). Portée de la liste des factures. Le
+    téléphone sert à chercher, il n'est jamais rendu."""
+
+    permission_classes = [LectureFactures]
+    http_method_names = ['get', 'head', 'options']
+
+    @extend_schema(parameters=PARAMETRES_FACTURES,
+                   responses={200: DA.FacturesAssistantResponse,
+                              400: D.ErreurDetail})
+    def get(self, request):
+        lus = _lire_liste(request, PARAMETRES_FACTURES, SA.STATUTS_FACTURE)
+        lu = SA.factures_cherchees(
+            request.user, q=lus['q'], client_id=lus['client'],
+            statut=lus['statut'], limite=lus['limite'])
+        return Response({
+            'q': lus['q'],
+            'statut': lus['statut'],
+            'total': lu['total'],
+            'limite': lus['limite'],
+            'lignes': lu['lignes'],
+        })
+
+
 class DevisAssistantActionsMixin:
     """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
     l'assistant (mixin, aucune base). Portée = ``get_object`` (société +

@@ -813,11 +813,42 @@ IMPAYES_LISTER = AgentAction(
 )
 
 
+#: VAD3 — statuts de facture du modèle (recopiés : ce module n'importe aucun
+#: modèle ; tenus par le test).
+STATUTS_FACTURE = ('brouillon', 'emise', 'en_retard', 'payee', 'annulee')
+
+# VAD3 — retrouver une facture (``GET ventes/assistant/factures/``, garde
+# ``LectureFactures`` = ``ventes_voir``, contrat ``assistant_factures.json``).
+FACTURE_CHERCHER = AgentAction(
+    key='ventes.facture.chercher',
+    label='Chercher une facture',
+    description=(
+        "Sert à : retrouver une facture par sa référence, le nom ou le "
+        "téléphone du client, avant d'enregistrer un paiement quand aucun "
+        "devis n'est ouvert. Plusieurs factures candidates : DEMANDE "
+        "laquelle, ne répartis jamais un paiement. Ne pas utiliser pour : "
+        "lister les impayés (ventes.impayes.lister). Exemple : « il a payé "
+        "20 000 par virement » → q=<nom du client>. Résultat : factures "
+        "(statut, total, reste dû, échéance, a_faire, lien) ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/assistant/factures/',
+    method='GET',
+    inputs=_entrees_liste(statut={
+        'type': 'string', 'enum': list(STATUTS_FACTURE),
+        'description': 'Statut de la facture.'}),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_factures',
+    lot=LOT_COPILOTE,
+    objets={'client': 'client'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
-                           VENTE_ETAT, IMPAYES_LISTER)
+                           VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

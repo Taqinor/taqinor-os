@@ -842,3 +842,54 @@ class ImpayesAssistantTest(_BaseVenteAssistant):
              IMPAYES_LISTER.required_permission, IMPAYES_LISTER.carte),
             (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_impayes'))
         self.assertNotIn('telephone', str(IMPAYES_LISTER.inputs))
+
+
+class FacturesAssistantTest(_BaseVenteAssistant):
+    """VAD3 — ``GET ventes/assistant/factures/`` : forme du contrat
+    ``assistant_factures.json``, recherche par référence / nom / téléphone
+    (jamais rendu), statut fermé, portée société."""
+
+    URL = '/api/django/ventes/assistant/factures/'
+
+    def test_forme_par_nom_et_par_telephone_sans_le_rendre(self):
+        brouillon = self._facture('11', statut=Facture.Statut.BROUILLON)
+        emise = self._facture('12', retard_jours=4)
+        for q in ('lahlou', '06 00 00 42 42'):
+            with self.subTest(q=q):
+                resp = auth(self.user).get(self.URL, {'q': q})
+                self.assertEqual(resp.status_code, 200, resp.data)
+                self.assertEqual(set(resp.data),
+                                 set(_exemple_contrat('assistant_factures.json')))
+                self.assertEqual(resp.data['total'], 2)
+                par_id = {li['facture_id']: li for li in resp.data['lignes']}
+                self.assertEqual(set(par_id), {brouillon.pk, emise.pk})
+                self.assertEqual(par_id[brouillon.pk]['a_faire'], 'emettre')
+                self.assertEqual(par_id[brouillon.pk]['montant_du'], '0.00')
+                self.assertEqual(par_id[emise.pk]['a_faire'], 'relancer')
+                self.assertEqual(par_id[emise.pk]['montant_du'], '1200.00')
+                self.assertNotIn('600004242', str(resp.data))
+        exemple = _exemple_contrat('assistant_factures.json')['lignes'][0]
+        self.assertEqual(set(resp.data['lignes'][0]), set(exemple))
+
+    def test_statut_filtre_et_valeur_hors_liste_400(self):
+        self._facture('13', statut=Facture.Statut.BROUILLON)
+        self._facture('14')
+        resp = auth(self.user).get(self.URL, {'statut': 'brouillon'})
+        self.assertEqual(resp.data['total'], 1)
+        refus = auth(self.user).get(self.URL, {'statut': 'perdue'})
+        self.assertEqual(refus.status_code, 400)
+        self.assertIn('statut', str(refus.data))
+
+    def test_autre_societe_ne_voit_rien(self):
+        self._facture('15')
+        resp = auth(self._hors_societe()).get(self.URL, {'q': 'lahlou'})
+        self.assertEqual((resp.data['total'], resp.data['lignes']), (0, []))
+
+    def test_action_statuts_du_modele_et_lot_copilote(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import FACTURE_CHERCHER, STATUTS_FACTURE
+        self.assertEqual(set(STATUTS_FACTURE), set(Facture.Statut.values))
+        self.assertEqual(
+            (FACTURE_CHERCHER.lot, FACTURE_CHERCHER.risk,
+             FACTURE_CHERCHER.required_permission, FACTURE_CHERCHER.carte),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_factures'))

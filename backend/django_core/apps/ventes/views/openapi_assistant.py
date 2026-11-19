@@ -50,6 +50,29 @@ VenteEtatAssistantResponse = _ser('VenteEtatAssistantResponse', {
     'lien': s.CharField(),
 })
 
+#: VAD3 — ``GET ventes/assistant/factures/`` (``assistant_factures.json``).
+FacturesAssistantResponse = _ser('FacturesAssistantResponse', {
+    'q': s.CharField(allow_blank=True),
+    'statut': s.CharField(allow_blank=True),
+    'total': s.IntegerField(),
+    'limite': s.IntegerField(),
+    'lignes': s.ListField(child=_ser('FacturesAssistantLigne', {
+        'facture_id': s.IntegerField(),
+        'reference': s.CharField(),
+        'client_nom': s.CharField(allow_blank=True),
+        'nature': s.CharField(),
+        'statut': s.CharField(),
+        'total_ttc': _MONTANT,
+        'montant_du': _MONTANT,
+        'date_emission': s.DateField(allow_null=True),
+        'date_echeance': s.DateField(allow_null=True),
+        'jours_retard': s.IntegerField(),
+        'a_faire': s.ChoiceField(choices=[
+            'emettre', 'encaisser', 'relancer', 'rien']),
+        'lien': s.CharField(),
+    })),
+})
+
 #: VAD2 — ``GET ventes/assistant/impayes/`` (``assistant_impayes.json``).
 ImpayesAssistantResponse = _ser('ImpayesAssistantResponse', {
     'total_du': _MONTANT,

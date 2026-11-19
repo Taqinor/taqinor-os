@@ -34,6 +34,7 @@ from .views import (
 )
 from .views.assistant import CatalogueAssistantView  # COP2-V2
 from .views.assistant import ImpayesAssistantView  # copilote vague 2 (VAD2)
+from .views.assistant import FacturesAssistantView  # copilote vague 2 (VAD3)
 from apps.facturation.recouvrement import (  # ODX18 — mêmes vues sous facturation/
     FollowupLevelViewSet,
     ParametrageRelanceClientViewSet,  # ZFAC8
@@ -307,5 +308,9 @@ urlpatterns = [
     # ``assistant_impayes.json``).
     path('assistant/impayes/', ImpayesAssistantView.as_view(),
          name='assistant-impayes'),
+    # Copilote vague 2 (VAD3) — retrouver une facture (contrat
+    # ``assistant_factures.json``).
+    path('assistant/factures/', FacturesAssistantView.as_view(),
+         name='assistant-factures'),
     path('', include(router.urls)),
 ]

@@ -98,3 +98,95 @@ def vente_etat_compacte(devis, user):
         'a_faire': _a_faire_vente(etat, factures),
         'lien': lien_devis(devis.pk),
     }
+
+
+# ── VAD3 — retrouver une facture ─────────────────────────────────────────────
+
+#: VAD3 — statuts de facture acceptés par ``statut`` (ceux du modèle).
+STATUTS_FACTURE = ('brouillon', 'emise', 'en_retard', 'payee', 'annulee')
+#: Un ``q`` d'au moins ce nombre de chiffres est AUSSI cherché comme téléphone.
+CHIFFRES_TELEPHONE = 8
+
+
+def _clients_par_telephone(company_id, q):
+    """Les clients de la société dont le téléphone normalisé est celui de
+    ``q`` (``crm.selectors.normalize_phone_key``). Le téléphone sert à
+    CHERCHER, il n'est jamais rendu."""
+    from apps.crm.selectors import client_base_qs, normalize_phone_key
+
+    if sum(c.isdigit() for c in q) < CHIFFRES_TELEPHONE:
+        return []
+    cle = normalize_phone_key(q)
+    if not cle:
+        return []
+    return [pk for pk, tel in client_base_qs().filter(company_id=company_id)
+            .exclude(telephone='').values_list('id', 'telephone')
+            if tel and normalize_phone_key(tel) == cle]
+
+
+def _factures_du_texte(qs, company_id, q):
+    from django.db.models import Q
+
+    filtre = (Q(reference__icontains=q) | Q(client__nom__icontains=q)
+              | Q(client__prenom__icontains=q))
+    par_tel = _clients_par_telephone(company_id, q)
+    if par_tel:
+        filtre |= Q(client_id__in=par_tel)
+    return qs.filter(filtre)
+
+
+def _a_faire_facture(facture, du, jours_retard):
+    """Ensemble FERMÉ : emettre | encaisser | relancer | rien."""
+    if facture.statut == 'brouillon':
+        return 'emettre'
+    if facture.statut not in STATUTS_EMIS or du <= 0:
+        return 'rien'
+    if jours_retard > 0 and not getattr(facture, 'contestee_le', None):
+        return 'relancer'
+    return 'encaisser'
+
+
+def _ligne_facture(facture):
+    du = facture.montant_du if facture.statut in STATUTS_EMIS else Decimal('0')
+    jours = int(getattr(facture, 'jours_retard', 0) or 0)
+    emission, echeance = facture.date_emission, facture.date_echeance
+    return {
+        'facture_id': facture.pk,
+        'reference': facture.reference,
+        'client_nom': nom_du_client(facture.client if facture.client_id else None),
+        'nature': facture.type_facture,
+        'statut': facture.statut,
+        'total_ttc': texte_montant(facture.total_ttc),
+        'montant_du': texte_montant(du),
+        'date_emission': emission.isoformat() if emission else None,
+        'date_echeance': echeance.isoformat() if echeance else None,
+        'jours_retard': jours,
+        'a_faire': _a_faire_facture(facture, du, jours),
+        'lien': lien_facture(facture.pk),
+    }
+
+
+def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
+    """VAD3 — les factures de la portée de ``user`` (celle de la liste des
+    factures : société + ``scope_queryset(['created_by'])``) qui répondent à
+    ``q`` (référence, nom ou téléphone du client), ``client``, ``statut`` ;
+    les plus récentes d'abord. ``{total, lignes}`` (contrat
+    ``assistant_factures.json``)."""
+    from apps.facturation.selectors import factures_avec_montant_du
+    from authentication.scoping import scope_queryset
+    from .models import Facture
+
+    if not getattr(user, 'company_id', None):
+        return {'total': 0, 'lignes': []}
+    qs = scope_queryset(Facture.objects.filter(company_id=user.company_id),
+                        user, ['created_by'])
+    if q:
+        qs = _factures_du_texte(qs, user.company_id, q)
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
+    if statut:
+        qs = qs.filter(statut=statut)
+    total = qs.count()
+    page = factures_avec_montant_du(
+        qs.select_related('client').order_by('-id'))[:limite]
+    return {'total': total, 'lignes': [_ligne_facture(f) for f in page]}

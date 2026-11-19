@@ -123,6 +123,7 @@ ROUTES_EXEMPTEES = {
     'numerotation-preview': 'aperçu du prochain numéro (aucun devis).',
     'assistant-catalogue': 'catalogue vendable de la société lu par l’assistant (aucun devis).',
     'assistant-impayes': 'impayés de FACTURES lus par l’assistant — portée facturation.',
+    'assistant-factures': 'recherche de FACTURES par l’assistant — portée facturation.',
     'relances-list': 'relances de FACTURES — portée facturation.',
     'balance-agee': 'balance âgée des factures — portée facturation.',
     'client-releve': 'relevé client (factures) — portée facturation.',
