@@ -48,3 +48,22 @@ L3 `945c9ee63`. En cours à l'écriture de ce fichier : L2, L4, L6, L7, L8.
 - L5 : Planifier le projet › Plus › Étapes « Transport / Hébergement / Sur place » → « 3 étapes · 0 tâche ».
 - L3 : carte « 3 tâches reportées 3 fois ou plus. Les revoir maintenant ? » (Oui / Pas maintenant) ; Revue « Cette
   semaine : … faites (… la précédente). ».
+
+## Après le pli de L4 (`935f8a38e`)
+Interface exposée par L4, à consommer telle quelle :
+- `useOuvrirFiche()(id, { section, focus })` : `section: 'decouper'` ; `focus: 'titre' | 'heure'` (adresse
+  `?tache=12&section=decouper` / `&focus=titre|heure`). R2-021 : `ouvrirFiche(item.id, { section: 'decouper' })` ;
+  R2-025 : `{ focus: 'titre' }` et `{ focus: 'heure' }`.
+- Bilan et Alléger en panneau : ajouter `variante: 'panneau'` dans l'objet `feuille` que `Aujourdhui.jsx` passe à la
+  coquille (≥ 1024 px : panneau fixe à droite, `aria-modal="false"`, sans voile ; en dessous : inchangé).
+- La fiche émet `taqinor:taches:ecrite` (`detail = { tache }`, constantes `EVENEMENT_ECRITE` / `signalerEcrite` de
+  `lib/fiche.js`) ; `useApresCreation` écoute les deux événements.
+Demandes de L4 :
+- (→ L6 `CoquilleTaches.jsx`) `fermerFiche` sans marque d'historique ne retire que `tache` : retirer aussi `section`
+  et `focus` ; la touche `n` est bloquée dès qu'un `[role="dialog"]` existe (donc avec le panneau non modal de la
+  fiche) : filtrer sur `[aria-modal="true"]`.
+- (→ L2) `taches-journee.spec.js` attend encore « Garder ces 0 » (texte changé par R2-026).
+- Pas joué à l'écran par L4 : « Supprimer » et « Quand › Aujourd'hui » depuis la fiche (R2-040) ; notes tapées puis
+  rechargement (R2-044) ; rappel (R2-046) ; specs `taches-bureau.spec.js` jamais lancées (CI).
+- Animation de SORTIE des feuilles absente (la feuille disparaît d'un coup) : à juger au tour 2.
+- Textes changés notés dans les messages de commit de L4 (référence `textes.md` non mise à jour) : à reporter.
