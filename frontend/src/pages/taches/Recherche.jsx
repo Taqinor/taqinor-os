@@ -18,7 +18,7 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 /* ============================================================================
    TCH87 — Recherche (`/taches/recherche?q=`) : un champ « Chercher dans mes tâches », deux groupes
    « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites aussi · Projet ▾ · Priorité haute ;
-   repliés : Aujourd'hui · À revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance ·
+   repliés : Aujourd'hui · À revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance ·
    Étiquette ▾, le tri, « Enregistrer cette vue » (« Nom de la vue ») et les vues déjà enregistrées (TCH166 : un
    appui les rouvre, mêmes filtres). Vide : « Rien pour « {q} » ».
    D'OÙ VIENNENT LES LIGNES : sans filtre côté serveur, `recherche/` (projets + tâches par mots) ; dès que
@@ -31,7 +31,7 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 const DELAI_MS = 300
 const TRIS = [['manuel', 'Manuel'], ['priorite', 'Priorité'], ['echeance', 'Échéance'], ['jour', 'Jour'], ['creation', 'Création']]
 const PUCES_JOUR = [
-  ['aujourdhui', "Aujourd'hui"], ['a_revoir', 'À revoir'], ['sept_jours', '7 jours'], ['sans_date', 'Sans date'],
+  ['aujourdhui', "Aujourd'hui"], ['a_revoir', 'À revoir'], ['sept_jours', '7 prochains jours'], ['sans_date', 'Sans date'],
   ['en_attente', 'En attente'], ['avec_echeance', 'Avec échéance'],
 ]
 

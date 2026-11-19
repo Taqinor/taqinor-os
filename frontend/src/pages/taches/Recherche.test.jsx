@@ -155,12 +155,12 @@ describe('TCH87 — Recherche', () => {
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ vue: 'quelque_jour' })))
   })
 
-  it('Raccord F2 — « Aujourd\'hui » et « 7 jours » passent par `periode` du serveur, le tri servi suit', async () => {
+  it('Raccord F2 — « Aujourd\'hui » et « 7 prochains jours » passent par `periode` du serveur, le tri servi suit', async () => {
     const user = userEvent.setup()
     monter()
     await screen.findByRole('region', { name: 'Ouvertes (2)' })
     await user.click(screen.getByRole('button', { name: 'Plus de filtres' }))
-    await user.click(screen.getByRole('checkbox', { name: '7 jours' }))
+    await user.click(screen.getByRole('checkbox', { name: '7 prochains jours' }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'devis', periode: 'semaine' })))
     await user.click(screen.getByRole('checkbox', { name: "Aujourd'hui" }))
     await waitFor(() => expect(api.listerTaches).toHaveBeenLastCalledWith(expect.objectContaining({ periode: 'aujourdhui' })))

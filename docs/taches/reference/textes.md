@@ -329,7 +329,7 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 ### 2.12 Recherche
 
 Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites aussi · Projet ▾ · Priorité haute » ; repliés « Aujourd'hui · À
-revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
+revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
 (« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste. Bouton des repliés « Plus de
 filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
 étiquettes sont servies. Chaque résultat porte son statut en tête de méta : son jour, sinon « En réserve » ou
