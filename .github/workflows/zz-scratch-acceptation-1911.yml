@@ -6,6 +6,7 @@ name: zz scratch - acceptation 19/11 (AERR169, ACAL, AANA90 - TEMPORAIRE)
 on:
   push:
     branches: [claude/acceptation-acal-aana-aerr]
+    paths-ignore: ['.github/zz-acceptation-base.txt', '.github/workflows/zz-scratch-acceptation-1911-base.yml', '.github/workflows/zz-scratch-acceptation-1911.yml']
 
 concurrency:
   group: zz-scratch-acceptation-1911-${{ github.sha }}
