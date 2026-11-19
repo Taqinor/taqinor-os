@@ -141,6 +141,11 @@ const ANNONCE_EN_FILE = 'Hors ligne : gardée, elle partira dès le retour du r�
 
 /** Longueur maximale d'un titre (api.md §4, `CHAMPS_LIGNE.titre`). */
 const TITRE_MAX = 280
+/** Une phrase déjà là (le serveur la décoche : `doublon_de`, `deja_faite`) : dit sous le champ, jamais « Aucune ligne
+ *  lisible. » ; « Ajouter quand même » l'envoie (textes.md §2.3). */
+const DEJA_DANS_LISTE = 'Déjà dans ta liste'
+const DEJA_FAITE = 'Déjà faite'
+const raisonDouble = (l) => (l?.doublon_de != null ? DEJA_DANS_LISTE : l?.deja_faite ? DEJA_FAITE : '')
 
 /** R2-007 — un titre trop long coupé au dernier espace avant 280 caractères ; la suite devient la note. */
 function couperTitre(titre) {
@@ -344,6 +349,8 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // R2-007 — l'erreur de la ligne lue (« Le titre est trop long : 280 caractères au plus. ») se dit sous le champ
   // (seul le « trop long » se dit pendant la frappe : un titre encore vide, « demain… », n'est pas une faute)
   const titreTropLong = !modeListe && (ligne?.titre?.length ?? 0) > TITRE_MAX && Boolean(ligne?.erreurs?.titre)
+  // la phrase lue est déjà là (tâche ouverte identique, ou déjà faite) : Entrée le dit, « Ajouter quand même » l'envoie
+  const doubleLu = !modeListe && ligne?.cochee === false ? raisonDouble(ligne) : ''
   const erreurLue = titreTropLong ? messageChamps(ligne.erreurs) : ''
   const nouveauxProjets = useMemo(
     () => (frais?.projets_nouveaux ?? []).map((p) => ({ nom: p.nom, priorite: priorites[p.nom] ?? p.priorite })),
@@ -447,15 +454,17 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     const depart = gel.quand != null && gel.quand === gel.quandDepart
     // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
     const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l)).map((l) => {
+    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
+    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
       const base = construireLigne(l, {
         cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
       })
       return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
     })
     if (lignes.length > 0) return { lignes }
-    // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), sinon le générique
-    const message = (donnees.lignes ?? []).map((l) => messageChamps(l.erreurs)).find(Boolean)
+    // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), « Déjà dans ta liste » pour
+    // une phrase déjà là, sinon le générique
+    const message = (donnees.lignes ?? []).map((l) => messageChamps(l.erreurs) || raisonDouble(l)).find(Boolean)
     return { erreur: message || 'Aucune ligne lisible.' }
   }
 
@@ -502,8 +511,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (!texte.trim()) return
     // R2-007 — un titre trop long ne part pas : le message du serveur reste sous le champ, rien n'est effacé
     if (titreTropLong) { setErreur(erreurLue); return }
+    if (doubleLu) { setErreur(doubleLu); return }
     lancer(geler(), modeListe)
   }
+  const envoyerQuandMeme = () => { if (texte.trim()) lancer(geler({ memeSiDouble: true }), false) }
+  const double = !modeListe && (erreur === DEJA_DANS_LISTE || erreur === DEJA_FAITE)
   const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
   const enDialogue = modeListe || demandeListe
@@ -537,6 +549,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             <span className="chiffres">{`${ligne.titre.length} / ${TITRE_MAX}`}</span>
             {' · '}
             <button type="button" className="bouton discret" onClick={envoyerResteEnNote}>Mettre le reste en note</button>
+          </p>
+        ) : null}
+        {double ? (
+          <p className="aide-champ">
+            <button type="button" className="bouton discret" onClick={envoyerQuandMeme}>Ajouter quand même</button>
           </p>
         ) : null}
         {modeListe && donneesListe ? (

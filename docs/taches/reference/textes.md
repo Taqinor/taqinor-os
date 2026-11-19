@@ -171,6 +171,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Par ligne | case ; titre modifiable ; puces ; « Déjà faite » (décochée) ; « Déjà dans « {projet} » » / « Déjà dans À trier » (décochée) ; « En double dans cette liste » (décochée) ; points de check-list en retrait ; « En faire des sous-tâches » |
 | Boutons | **Créer {n} tâches** (« Créer 1 tâche ») · Coller encore · Ranger avec le Copilote (si disponible) |
 | Vide | « Aucune ligne lisible. » |
+| Une phrase déjà là | sous le champ : « Déjà dans ta liste » (une tâche ouverte identique) · « Déjà faite » ; bouton « Ajouter quand même » (l'envoie) — jamais « Aucune ligne lisible. » |
 | Hors ligne | « Hors ligne : elle partira dès le retour du réseau. » (sous le champ, tant que le réseau manque ; « Ajouter » met la phrase dans la file, toast §2.15) |
 | Ouverte depuis un écran | le contexte de l'écran est posé : puce « ● {projet} » (Un projet, × pour la retirer), « Quand » au jour de l'agenda |
 | Rangées par le Copilote | repère « Rangée par le Copilote » ; « Non rangée » pour une ligne omise |

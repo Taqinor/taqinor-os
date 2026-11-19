@@ -655,6 +655,32 @@ describe('TCH82 — feuille de saisie', () => {
     })
   })
 
+  describe('couture r2 — une phrase identique à une tâche ouverte : « Déjà dans ta liste » et « Ajouter quand même »', () => {
+    beforeEach(() => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: { priorite: 0 },
+          cochee: false, doublon_de: 31, doublon_projet: null }],
+      } : creation }))
+    })
+
+    it('Entrée ne crée rien et dit « Déjà dans ta liste » (jamais « Aucune ligne lisible. ») ; « Ajouter quand même » la crée', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Appeler Karim')
+      await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled(), { timeout: 3000 })
+      await user.keyboard('{Enter}')
+      expect(await screen.findByRole('alert')).toHaveTextContent('Déjà dans ta liste')
+      expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
+      expect(champ()).toHaveValue('Appeler Karim')
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+      await user.click(screen.getByRole('button', { name: 'Ajouter quand même' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const [creee] = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0].lignes
+      expect(creee.titre).toBe('Appeler Karim')
+    })
+  })
+
   describe('R2-007 — un titre de plus de 280 caractères : le vrai message, le compte, « Mettre le reste en note »', () => {
     const LONG = `${'Préparer le dossier de raccordement '.repeat(8)}et le reste`.trim()
     const MESSAGE = 'Le titre est trop long : 280 caractères au plus.'
