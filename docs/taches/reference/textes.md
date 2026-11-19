@@ -474,7 +474,8 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `ranger_copilote` | À trier ≥ 5 | « {n} tâches à trier : le Copilote peut les ranger dans tes projets. » · Ranger avec le Copilote |
 | `planifier_projet` | 1er projet créé | « Ton premier projet : le planifier en quelques questions ? » · Planifier le projet |
 | `revue` | fin de la 1re semaine | « Fin de ta première semaine : fais le point, projet par projet. » · Ouvrir la revue |
-| astuces (navigateur) | — | « Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher. » · « Touche n pour ajouter, ? pour voir les touches. » · « Tape #nom pour ranger dans un projet. » |
+| astuces (navigateur) | une par jour, jamais le jour où une carte a été répondue ; au doigt (`pointer: coarse`) | « Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher. » · « Garde le doigt sur une ligne pour voir toutes ses actions. » · « Tape #nom pour ranger dans un projet. » |
+| astuces (navigateur) | idem ; à la souris et au clavier | « Touche n pour ajouter, ? pour voir les touches. » · « Glisse une tâche sur l'agenda pour lui donner une heure. » · « Tape #nom pour ranger dans un projet. » |
 
 Toute révélation se ferme par « OK ».
 
@@ -627,6 +628,10 @@ objectif {objectif}) ».
 | C6 | « Tes tâches « {projet} » ont pris {ratio} fois leur durée ({n} tâches). » | « Corriger leur durée à l'avenir ? » |
 | C7 | « {n} tâches reportées 3 fois ou plus. » | « Les revoir maintenant ? » |
 | C8 | « Ton projet prioritaire n'a pas avancé depuis 14 jours. » (écran : « « {projet} » n'a pas avancé depuis 14 jours. ») | « Mettre une de ses tâches dans Proposé demain ? » |
+
+Le texte SERVI d'une carte de constat (`proposition.texte`) est la phrase **suivie de sa question**, séparées par une
+espace : « 3 tâches reportées 3 fois ou plus. Les revoir maintenant ? » — les boutons « Oui · Pas maintenant » répondent
+à cette question (R2-014). C5, information sans action, reste la phrase seule (bouton « OK »). `C1.detail` se sert seul.
 
 ### 4.5 Retour d'absence
 

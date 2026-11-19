@@ -417,12 +417,18 @@ _CONSTATS = {
 
 
 def _constat(cle, v, var, nom_pour):
+    """La phrase du constat, SUIVIE de sa question quand il en a une (R2-014) : « 2 tâches reportées 3 fois ou plus.
+    Les revoir maintenant ? » — les boutons « Oui · Pas maintenant » répondent à une question posée à l'écran.
+    `C1.detail` et `Cn.question` se rendent seuls ; C5, information, n'a pas de question."""
     if cle == 'C3':
         jour = v['jour']
         v['Jour'] = JOURS_NOM[jour] if isinstance(jour, int) else jour[:1].upper() + jour[1:]
     if cle in ('C6', 'C8.ecran'):
         v['nom'] = _nom(v, 'projet', nom_pour, 'ecran') or 'un projet'
-    return _rendre(_CONSTATS[cle], v)
+    phrase = _rendre(_CONSTATS[cle], v)
+    base, _, suite = cle.partition('.')
+    question = None if suite in ('detail', 'question') else _CONSTATS.get(f'{base}.question')
+    return f'{phrase} {_rendre(question, v)}' if question else phrase
 
 
 # --- Revue de la semaine (textes.md §4.6) ---------------------------------------------
