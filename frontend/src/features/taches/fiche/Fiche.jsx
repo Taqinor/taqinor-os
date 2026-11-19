@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
 import { signalerEcrite } from '../lib/fiche'
-import { proposerAnnuler } from '../lib/gestes'
+import { annoncer, proposerAnnuler } from '../lib/gestes'
 import {
   aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
 } from '../lib/textes'
@@ -31,7 +31,8 @@ import SelecteurQuand, { ajouterJours, dateComplete } from '../ui/SelecteurQuand
    Check-list ; pied : Reporter à {jour} · Fait (faite : Rouvrir). Le reste est dans « Plus »
    (TCH85). Source : textes.md « Fiche d'une tâche, Quand, Rappel » ; arbitrage A16-N8.
    Règles tenues ici :
-     · chaque champ s'enregistre SEUL (PATCH `{champ, lock_version}`), la réponse remplace la tâche ;
+     · chaque champ s'enregistre SEUL (PATCH `{champ, lock_version}`), la réponse remplace la tâche ; les
+       écritures partent l'une après l'autre ; titre et notes s'enregistrent en continu (R2-044) ;
      · une erreur s'affiche SOUS le champ fautif (400) ; rien n'est corrigé d'office ;
      · CONFLIT (409 `conflit_version`, modifiée sur un autre appareil) : la saisie en cours reste à
        l'écran ; « Garder la mienne » la renvoie avec la version de l'autre, « Prendre l'autre »
@@ -125,6 +126,9 @@ function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
   )
 }
 
+/** R2-044 — délai après la dernière frappe avant l'enregistrement continu (titre, notes). */
+const DELAI_ENREGISTREMENT_MS = 1000
+const CHAMPS_TEXTE = ['titre', 'notes']
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
 
 const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : texte)
@@ -311,28 +315,45 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
     return data?.geste_id ?? null
   }, [])
 
+  // R2-044 — les écritures partent L'UNE APRÈS L'AUTRE, chacune avec la `lock_version` rendue par la précédente :
+  // l'enregistrement continu des notes (une écriture par pause de frappe) ne se heurte plus à son propre verrou (409).
+  const verrou = useRef(null)
+  const file = useRef(Promise.resolve())
+  useEffect(() => { if (tache) verrou.current = tache.lock_version }, [tache])
+  const minuteurs = useRef({}) // champ → minuteur d'enregistrement continu
+  const saisieRef = useRef(saisie)
+  const tacheRef = useRef(tache)
+  const conflitRef = useRef(conflit)
+  useEffect(() => { saisieRef.current = saisie; tacheRef.current = tache; conflitRef.current = conflit })
+
   /** Un enregistrement : `appel(lock_version)` ; 400 → sous le champ, 409 → bandeau, la saisie reste. */
-  const ecrire = useCallback(async (appel, champ, lock, relire = false) => {
-    try {
-      const { data } = await appel(lock ?? tache.lock_version)
-      erreur(champ, '')
-      setConflit(null)
-      // R2-040 — l'écran sous la fiche (Aujourd'hui, Agenda, Projet…) se relit : la ligne suit ce qu'on vient de faire
-      signalerEcrite(data?.tache ?? (data?.id ? data : null))
-      if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
-      return { data, geste: appliquer(data) }
-    } catch (err) {
-      const classee = classerErreur(err)
-      if (classee.code === 'conflit_version') {
-        setConflit({ appel, champ, lock: classee.lockVersion, actuel: classee.actuel })
-      } else if (classee.code === 'validation') {
-        setErreurs((e) => ({ ...e, ...erreursParChamp(classee.champs), [champ]: erreursParChamp(classee.champs)[champ] ?? e[champ] }))
-      } else {
-        erreur(champ, frenchError(err))
+  const ecrire = useCallback((appel, champ, lock, relire = false) => {
+    const tour = file.current.then(async () => {
+      try {
+        const { data } = await appel(lock ?? verrou.current)
+        const ecrite = data?.tache ?? (data?.id ? data : null)
+        if (ecrite?.lock_version != null) verrou.current = ecrite.lock_version
+        erreur(champ, '')
+        setConflit(null)
+        // R2-040 — l'écran sous la fiche (Aujourd'hui, Agenda, Projet…) se relit : la ligne suit ce qu'on vient de faire
+        signalerEcrite(ecrite)
+        if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
+        return { data, geste: appliquer(data) }
+      } catch (err) {
+        const classee = classerErreur(err)
+        if (classee.code === 'conflit_version') {
+          setConflit({ appel, champ, lock: classee.lockVersion, actuel: classee.actuel })
+        } else if (classee.code === 'validation') {
+          setErreurs((e) => ({ ...e, ...erreursParChamp(classee.champs), [champ]: erreursParChamp(classee.champs)[champ] ?? e[champ] }))
+        } else {
+          erreur(champ, frenchError(err))
+        }
+        return null
       }
-      return null
-    }
-  }, [tache, erreur, appliquer, charger])
+    })
+    file.current = tour
+    return tour
+  }, [erreur, appliquer, charger])
 
   const annulable = (message, geste) => proposerAnnuler({
     message,
@@ -343,7 +364,9 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
 
   const garderLaMienne = async () => {
     const { appel, champ, lock } = conflit
-    await ecrire(appel, champ, lock ?? tache.lock_version)
+    // un texte en cours (notes, titre) : c'est la frappe d'AUJOURD'HUI qui part, pas celle d'avant le conflit
+    if (CHAMPS_TEXTE.includes(champ) && saisieRef.current[champ] !== undefined) { await enregistrerTexte(champ, lock); return }
+    await ecrire(appel, champ, lock ?? verrou.current)
   }
   const prendreLautre = () => {
     if (conflit.actuel) setTache(conflit.actuel)
@@ -412,11 +435,55 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const notes = saisie.notes ?? tache?.notes ?? ''
   const points = tache?.elements_checklist ?? []
 
-  const enregistrerTexte = (champ) => {
-    const valeur = saisie[champ]
-    if (valeur === undefined || valeur === tache?.[champ]) { setSaisie((s) => sansCle(s, champ)); return }
-    patcher({ [champ]: valeur }, champ).then((r) => { if (r) setSaisie((s) => sansCle(s, champ)) })
+  /** Envoie le texte en cours d'un champ (titre, notes). La frappe reste à l'écran tant qu'elle est plus récente que
+   *  ce qui est parti : on ne retire la saisie que si elle n'a pas bougé pendant l'envoi. */
+  const enregistrerTexte = (champ, lock) => {
+    clearTimeout(minuteurs.current[champ])
+    delete minuteurs.current[champ]
+    const valeur = saisieRef.current[champ]
+    const garderSiInchangee = (s) => (s[champ] === valeur ? sansCle(s, champ) : s)
+    if (valeur === undefined || valeur === tacheRef.current?.[champ]) { setSaisie(garderSiInchangee); return Promise.resolve(null) }
+    return ecrire((l) => modifierTache(id, { [champ]: valeur, lock_version: l }), champ, lock)
+      .then((r) => { if (r) setSaisie(garderSiInchangee); return r })
   }
+  const enregistrerRef = useRef(enregistrerTexte)
+  useEffect(() => { enregistrerRef.current = enregistrerTexte })
+
+  // R2-044 — enregistrement CONTINU : ~1 s après la dernière frappe (et à la sortie du champ), plus quand la page passe
+  // en arrière-plan ou se ferme (iOS tue l'appli sans « blur ») ; jamais pendant un conflit (la personne choisit).
+  const taper = (champ, valeur) => {
+    saisieRef.current = { ...saisieRef.current, [champ]: valeur }
+    setSaisie((s) => ({ ...s, [champ]: valeur }))
+    clearTimeout(minuteurs.current[champ])
+    if (champ === 'titre' && !valeur.trim()) { delete minuteurs.current[champ]; return } // un titre vidé se retape
+    minuteurs.current[champ] = setTimeout(() => {
+      delete minuteurs.current[champ]
+      if (!conflitRef.current) enregistrerRef.current(champ)
+    }, DELAI_ENREGISTREMENT_MS)
+  }
+  useEffect(() => {
+    const vider = () => { Object.keys(minuteurs.current).forEach((champ) => enregistrerRef.current(champ)) }
+    const surVisibilite = () => { if (document.visibilityState === 'hidden') vider() }
+    window.addEventListener('pagehide', vider)
+    document.addEventListener('visibilitychange', surVisibilite)
+    return () => {
+      window.removeEventListener('pagehide', vider)
+      document.removeEventListener('visibilitychange', surVisibilite)
+    }
+  }, [])
+  // fiche fermée ou changée de tâche avec une frappe pas encore partie : elle part quand même, pour CETTE tâche
+  useEffect(() => () => {
+    const champs = Object.keys(minuteurs.current)
+    champs.forEach((champ) => clearTimeout(minuteurs.current[champ]))
+    minuteurs.current = {}
+    const t = tacheRef.current
+    const s = saisieRef.current
+    const aEnvoyer = champs.filter((champ) => t && s[champ] !== undefined && s[champ] !== t[champ])
+    aEnvoyer.reduce((suite, champ) => suite
+      .then((lock) => modifierTache(id, { [champ]: s[champ], lock_version: lock }))
+      .then(({ data }) => { signalerEcrite(data?.tache ?? data); return (data?.tache ?? data)?.lock_version }), Promise.resolve(verrou.current))
+      .catch((err) => annoncer(`Modification non enregistrée : ${frenchError(err)}`))
+  }, [id])
 
   return (
     <div ref={racineFiche} data-fiche={id} className="fiche">
@@ -451,7 +518,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
               aria-label="Titre"
               aria-invalid={erreurs.titre ? true : undefined}
               value={titre}
-              onChange={(e) => setSaisie((s) => ({ ...s, titre: e.target.value }))}
+              onChange={(e) => taper('titre', e.target.value)}
               onBlur={() => enregistrerTexte('titre')}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
@@ -567,7 +634,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
                 rows={2}
                 aria-invalid={erreurs.notes ? true : undefined}
                 value={notes}
-                onChange={(e) => setSaisie((s) => ({ ...s, notes: e.target.value }))}
+                onChange={(e) => taper('notes', e.target.value)}
                 onBlur={() => enregistrerTexte('notes')}
               />
               <Erreur message={erreurs.notes} />

@@ -220,6 +220,75 @@ describe('TCH84 — fiche d\'une tâche', () => {
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Conflit entre appareils' })).toBeNull())
   })
 
+  describe('R2-044 — enregistrement continu des notes et du titre', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
+    afterEach(() => { vi.useRealTimers() })
+
+    it('les notes partent ~1 s après la dernière frappe, sans quitter le champ, une seule fois', async () => {
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'Appeler' } })
+      await act(async () => { vi.advanceTimersByTime(500) })
+      fireEvent.change(champ, { target: { value: 'Appeler Karim' } })
+      await act(async () => { vi.advanceTimersByTime(900) })
+      expect(api.modifierTache).not.toHaveBeenCalled()
+      await act(async () => { vi.advanceTimersByTime(200) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Appeler Karim', lock_version: 4 })
+    })
+
+    it('la frappe continue pendant l\'envoi : rien n\'est perdu, la suite part avec le verrou rendu (jamais un 409 de soi-même)', async () => {
+      let rendre
+      api.modifierTache.mockImplementationOnce(() => new Promise((ok) => { rendre = ok }))
+      api.modifierTache.mockResolvedValueOnce({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), notes: 'abc def', lock_version: 10 } } })
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'abc' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      fireEvent.change(champ, { target: { value: 'abc def' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1) // la 2e attend la 1re
+      await act(async () => { rendre({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), notes: 'abc', lock_version: 9 } } }) })
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+      expect(api.modifierTache).toHaveBeenLastCalledWith(20, { notes: 'abc def', lock_version: 9 })
+      expect(champ).toHaveValue('abc def')
+    })
+
+    it('la page passe en arrière-plan : la frappe part tout de suite', async () => {
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Titre' })
+      fireEvent.change(champ, { target: { value: 'Devis Settat signé' } })
+      vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { titre: 'Devis Settat signé', lock_version: 4 }))
+    })
+
+    it('fiche fermée avant la pause : la frappe part quand même pour cette tâche', async () => {
+      const { unmount } = monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'Note de dernière seconde' } })
+      unmount()
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { notes: 'Note de dernière seconde', lock_version: 4 }))
+    })
+
+    it('409 pendant l\'enregistrement continu : la frappe reste, plus d\'envoi jusqu\'au choix ; « Garder la mienne » envoie le texte d\'aujourd\'hui', async () => {
+      api.modifierTache.mockRejectedValueOnce(erreurHttp(erreurs.conflit_version, 409))
+      monter()
+      const champ = await screen.findByRole('textbox', { name: 'Notes' })
+      fireEvent.change(champ, { target: { value: 'v1' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(await screen.findByRole('group', { name: 'Conflit entre appareils' })).toBeInTheDocument()
+      fireEvent.change(champ, { target: { value: 'v1 et v2' } })
+      await act(async () => { vi.advanceTimersByTime(1100) })
+      expect(api.modifierTache).toHaveBeenCalledTimes(1)
+      expect(champ).toHaveValue('v1 et v2')
+      fireEvent.click(screen.getByRole('button', { name: 'Garder la mienne' }))
+      await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(2))
+      expect(api.modifierTache).toHaveBeenLastCalledWith(20, { notes: 'v1 et v2', lock_version: erreurs.conflit_version.lock_version })
+    })
+  })
+
   it('ouverte par un rappel envoyé : Encore 10 min · Encore 1 h · Demain 9 h', async () => {
     const user = userEvent.setup()
     api.lireTache.mockResolvedValue({ data: { ...tache, rappels: [{ id: 31, jour: AUJOURDHUI, heure: '09:45', ancre: '', decalage_jours: 0, statut: 'envoye' }] } })
