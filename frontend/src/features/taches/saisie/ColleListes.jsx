@@ -15,19 +15,28 @@ import ApercuListe from '../ui/ApercuListe'
 
 const MODIFS_VIDES = { cochees: {}, titres: {}, enTache: {}, sousTaches: {} }
 
-/** La ligne à créer : les champs lus, puis ce que la personne a posé à la main (Quand, priorité du projet). */
+/** Les champs d'une ligne lue qui disent QUAND la faire : la phrase en a dit un, le jour de l'écran s'efface. */
+const CHAMPS_QUAND = ['jour_prevu', 'moment', 'heure_debut', 'quelque_jour']
+
+/**
+ * La ligne à créer : les champs lus, puis ce que la personne a posé à la main (Quand, priorité du projet).
+ * R2-002 — `quandDefaut` est le jour de l'ÉCRAN (Aujourd'hui, case de l'Agenda) : il ne vaut que si la phrase n'a lu
+ * aucun jour (« demain » l'emporte) ; `quand`, choisi à la main dans « Quand », l'emporte sur la phrase.
+ */
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, partagé avec FeuilleSaisie et testé directement (D-ENF22)
-export function construireLigne(ligne, { cid, quand, priorites }) {
+export function construireLigne(ligne, { cid, quand, quandDefaut, priorites }) {
   const champs = { ...(ligne.champs ?? {}) }
   if (champs.nouveau_projet) {
     const nom = champs.nouveau_projet.nom
     champs.nouveau_projet = { ...champs.nouveau_projet, priorite: priorites?.[nom] ?? champs.nouveau_projet.priorite }
   }
+  const phraseDitQuand = CHAMPS_QUAND.some((cle) => Boolean(champs[cle]))
   return {
     index: ligne.index,
     collage: ligne.collage,
     client_id: `${cid}:${ligne.index}`,
     titre: ligne.titre,
+    ...(quandDefaut && !phraseDitQuand ? quandDefaut : {}),
     ...champs,
     ...(quand ?? {}),
   }

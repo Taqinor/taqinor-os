@@ -9,7 +9,7 @@ import {
 import { MESSAGE_EN_FILE, enfilerAjout } from '../horsligne/captureQueue'
 import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
-import { jourCourt } from '../lib/textes'
+import { aujourdhuiIso, jourCourt } from '../lib/textes'
 import ChampSaisie from '../ui/ChampSaisie'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurQuand from '../ui/SelecteurQuand'
@@ -138,6 +138,12 @@ function phraseErreur(err) {
 const TOAST_EN_FILE = MESSAGE_EN_FILE
 const ANNONCE_EN_FILE = 'Hors ligne : gardée, elle partira dès le retour du réseau'
 
+/** R2-002 — toast d'une tâche ajoutée depuis Aujourd'hui et posée aujourd'hui. */
+const TOAST_AJOUTEE_AUJOURDHUI = "Ajoutée à Aujourd'hui"
+
+/** L'écran Aujourd'hui (`/taches` y mène) : lu à la demande, la feuille se monte aussi hors d'un routeur. */
+const surAujourdhui = () => /^\/taches(\/aujourdhui)?\/?$/.test(window.location.pathname)
+
 /** Coupure : aucune réponse du serveur (le geste part dans la file, jamais perdu). */
 const sansReseau = (err) => classerErreur(err).code === 'reseau'
 
@@ -239,8 +245,12 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     if (detail.liste || detail.coller) setChampReplie(false)
     // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
     setContexte(lireContexte({ ...detail, lien: detail.lien ?? lienDefaut.current }))
-    if (typeof detail.jour_prevu === 'string' && detail.jour_prevu) {
-      const depart = { jour_prevu: detail.jour_prevu, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
+    // R2-002 (choix C-1) — ouverte depuis Aujourd'hui sans jour dans la demande : elle part sur aujourd'hui, comme
+    // l'Agenda part sur sa case (puce visible et retirable ; une date lue dans la phrase l'emporte)
+    const jour = typeof detail.jour_prevu === 'string' && detail.jour_prevu ? detail.jour_prevu
+      : surAujourdhui() ? aujourdhuiIso() : null
+    if (jour) {
+      const depart = { jour_prevu: jour, moment: '', heure_debut: detail.heure_debut ?? null, quelque_jour: false }
       setQuand(depart)
       setQuandDepart(depart)
     }
@@ -362,8 +372,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
     }
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false)
-      .map((l) => construireLigne(l, { cid: gel.cid, quand: gel.quand, priorites: gel.priorites }))
+    // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
+    const depart = gel.quand != null && gel.quand === gel.quandDepart
+    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false).map((l) => construireLigne(l, {
+      cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
+    }))
     return lignes.length === 0 ? { erreur: 'Aucune ligne lisible.' } : { lignes }
   }
 
@@ -388,8 +401,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     const n = data?.creees?.length ?? lignes.length
     const geste = data?.geste_id
     window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
+    const aujourdhui = gel.depuisAujourdhui && n === 1 && lignes[0]?.jour_prevu === aujourdhuiIso()
     proposerAnnuler({
-      message: n > 1 ? `${n} tâches créées` : 'Ajoutée',
+      message: n > 1 ? `${n} tâches créées` : aujourdhui ? TOAST_AJOUTEE_AUJOURDHUI : 'Ajoutée',
       onAnnuler: geste ? () => annulerGeste(geste) : undefined,
     })
   }
@@ -402,7 +416,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
     envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
   }
-  const geler = (extra = {}) => ({ texte, collages, ignorer, quand, priorites, contexte, cid, frais, ...extra })
+  const geler = (extra = {}) => ({
+    texte, collages, ignorer, quand, quandDepart, priorites, contexte, cid, frais, depuisAujourdhui: surAujourdhui(), ...extra,
+  })
 
   /** « Créer N tâches » de l'aperçu d'une liste : les lignes sont prêtes. */
   const creer = (lignes) => lancer(geler({ lignes }), true)

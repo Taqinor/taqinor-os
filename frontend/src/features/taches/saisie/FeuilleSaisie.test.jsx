@@ -7,6 +7,7 @@ import { memoryStore } from '../../../lib/offlineOutbox'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captureQueue'
 import { reinitialiserGestes } from '../lib/gestes'
+import { aujourdhuiIso } from '../lib/textes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
 import { morceauxSurlignes } from '../ui/ChampSaisie'
@@ -499,6 +500,75 @@ describe('TCH82 — feuille de saisie', () => {
       await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
       expect(await screen.findByRole('alert')).toHaveTextContent('Le titre est vide une fois la date et le projet retirés.')
       expect(champ()).toHaveValue('Test un')
+    })
+  })
+
+  describe('R2-002 — ajoutée depuis Aujourd\'hui, elle est dans Aujourd\'hui', () => {
+    const apercuDe = (champs) => (corps) => Promise.resolve({ data: corps.apercu ? {
+      ...apercu, projets_nouveaux: [],
+      lignes: [{ ...apercu.lignes[0], titre: 'Rappeler M. Benjelloun', jetons: [], alertes: [], champs }],
+    } : creation })
+    const demander = (detail = {}) => act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail }))
+    })
+    const corpsCree = () => mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
+    afterEach(() => { window.history.pushState({}, '', '/') })
+
+    it.each(['/taches/aujourdhui', '/taches'])('sur %s : « Quand » part sur aujourd\'hui (puce retirable), toast « Ajoutée à Aujourd\'hui »', async (chemin) => {
+      window.history.pushState({}, '', chemin)
+      mocks.saisieRapide.mockImplementation(apercuDe({}))
+      const user = userEvent.setup()
+      monter()
+      demander()
+      expect(screen.getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), 'Rappeler M. Benjelloun')
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0]).toMatchObject({ titre: 'Rappeler M. Benjelloun', jour_prevu: aujourdhuiIso() })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Ajoutée à Aujourd'hui")
+      // la chaîne repart sur aujourd'hui pour la suivante
+      expect(screen.getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+    })
+
+    it.each([
+      ['Aujourd\'hui', '/taches/aujourdhui', {}],
+      ['l\'Agenda', '/taches/agenda', { jour_prevu: '2026-11-20', heure_debut: '10:00' }],
+    ])('une date lue dans la phrase (« demain ») l\'emporte sur le jour de départ (%s)', async (_ecran, chemin, detail) => {
+      window.history.pushState({}, '', chemin)
+      mocks.saisieRapide.mockImplementation(apercuDe({ jour_prevu: '2026-11-18' }))
+      const user = userEvent.setup()
+      monter()
+      demander(detail)
+      await user.type(champ(), 'Rappeler M. Benjelloun demain')
+      await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled())
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0].jour_prevu).toBe('2026-11-18')
+      // l'heure du créneau de départ ne s'accroche pas au jour lu dans la phrase
+      expect(corpsCree().lignes[0].heure_debut ?? null).toBeNull()
+    })
+
+    it('le jour de départ retiré (×) : la tâche va dans À trier', async () => {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      mocks.saisieRapide.mockImplementation(apercuDe({}))
+      const user = userEvent.setup()
+      monter()
+      demander()
+      await user.click(screen.getByRole('button', { name: 'Retirer le jour choisi' }))
+      await user.type(champ(), 'Rappeler M. Benjelloun')
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0].jour_prevu).toBeUndefined()
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(/^Ajoutée/)
+    })
+
+    it('ailleurs dans Tâches (un projet, À trier) : aucun jour de départ', () => {
+      window.history.pushState({}, '', '/taches/a-trier')
+      monter()
+      demander()
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Quand' })).toBeInTheDocument()
     })
   })
 

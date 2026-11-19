@@ -100,7 +100,27 @@ test.describe('Tâches — saisie', () => {
     const [creee] = await chercherTaches(page, titre)
     const lue = await lireTache(page, creee.id)
     expect(lue.titre).toBe(`${titre} demain`)
-    expect(lue.jour_prevu, 'aucun jour posé : la puce a été retirée').toBeNull()
+    // R2-002 — la puce « demain » retirée, c'est le jour de l'écran (Aujourd'hui) qui reste
+    expect(lue.jour_prevu, 'le jour lu a été retiré : la tâche part sur le jour de l\'écran').toBe(await jourServeur(page))
+  })
+
+  test('R2-002 — ajoutée depuis Aujourd\'hui, elle arrive dans Aujourd\'hui (et la puce du jour se retire)', async ({ page }) => {
+    await reinitialiser(page)
+    const [titre, sansJour] = [titreUnique('Rappeler M. Benjelloun'), titreUnique('Idée à trier')]
+    await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')
+    await boutonAjouter(page).click()
+    await expect(feuilleSaisie(page).getByRole('button', { name: 'Retirer le jour choisi' })).toBeVisible()
+    await champSaisie(page).fill(titre)
+    await champSaisie(page).press('Enter')
+    await expect(toast(page)).toContainText("Ajoutée à Aujourd'hui")
+    await feuilleSaisie(page).getByRole('button', { name: 'Retirer le jour choisi' }).click()
+    await champSaisie(page).fill(sansJour)
+    await champSaisie(page).press('Enter')
+    const jour = await jourServeur(page)
+    await expect.poll(async () => (await chercherTaches(page, titre)).length).toBe(1)
+    await expect.poll(async () => (await chercherTaches(page, sansJour)).length).toBe(1)
+    expect((await lireTache(page, (await chercherTaches(page, titre))[0].id)).jour_prevu).toBe(jour)
+    expect((await lireTache(page, (await chercherTaches(page, sansJour))[0].id)).jour_prevu, 'jour retiré : À trier').toBeNull()
   })
 
   test('Coller mes listes : 4 collages deviennent 4 « Nouveau projet » (Moyenne) et 12 tâches', async ({ page }) => {
