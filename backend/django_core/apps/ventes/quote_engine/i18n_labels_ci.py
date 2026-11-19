@@ -106,6 +106,15 @@ LIBELLES_CI = {
               'the {h}-year horizon used: the solar-only option is recommended.',
         'ar': 'مدة استرداد تقديرية {n} سنوات (مع احتساب استبدال البطارية)، تتجاوز '
               'أفق {h} سنوات المعتمد: يوصى بخيار الطاقة الشمسية وحدها.'},
+    # Niveau 13 (fondateur 19/11/2026) — la batterie n'est pas remplacée dans ce
+    # retour (cycles publiés au-delà de l'horizon) : la même ligne, sans la parenthèse.
+    'ci_opt_non_rentable_ligne_sans': {
+        'fr': "Retour estimé {n} ans, au-delà de l'horizon de {h} ans retenu : "
+              "l'option solaire seule est recommandée.",
+        'en': 'Estimated payback {n} years, beyond the {h}-year horizon used: '
+              'the solar-only option is recommended.',
+        'ar': 'مدة استرداد تقديرية {n} سنوات، تتجاوز أفق {h} سنوات المعتمد: '
+              'يوصى بخيار الطاقة الشمسية وحدها.'},
     # Lead nada (13/11/2026) — page 2 à deux options, sur le modèle résidentiel.
     'ci_equipement_deux_options': {
         'fr': 'Équipement des deux options', 'en': 'Equipment of both options',

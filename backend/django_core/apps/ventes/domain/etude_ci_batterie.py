@@ -500,7 +500,13 @@ def verdict_rentabilite(sans, evaluation, bloc, fiche=None, taux_tva_pct=None,
         return None
     ht, annee = _remplacement_du_bloc(evaluation, bloc, fiche, taux_tva_pct, regles_cycles)
     retour = retour_marginal_batterie(cout_s, eco_s, cout_a, eco_a, ht, annee)
-    return {'retour_marginal_ans': round(retour, 1), 'horizon_annees': HORIZON_MARGINAL_CI}
+    verdict = {'retour_marginal_ans': round(retour, 1), 'horizon_annees': HORIZON_MARGINAL_CI}
+    if regles_cycles and retour == simple:
+        # Niveau 13 — batterie non remplacée dans ce retour (cycles au-delà de
+        # l'horizon, ou supplément remboursé avant) : clé ADDITIVE, absente
+        # quand le remplacement est compté (les verdicts d'hier, à l'identique).
+        verdict['remplacement_inclus'] = False
+    return verdict
 
 
 def _marquer_non_rentable(sortie, verdict):
@@ -508,11 +514,12 @@ def _marquer_non_rentable(sortie, verdict):
     batterie est rentable) et l'alerte interne, informative."""
     sortie['bloc'].update(batterie_rentable=False, motif_non_rentable=dict(
         verdict, code='retour_au_dela_horizon'))
+    inclus = '' if verdict.get('remplacement_inclus') is False else ' (remplacement batterie inclus)'
     sortie['alertes'].append(_alerte('OPTION_BATTERIE_NON_COMPOSEE', (
         'Option « avec batterie » montrée mais NON RENTABLE sur les seuls critères financiers : '
-        "supplément remboursé en %.1f ans (remplacement batterie inclus), au-delà de l'horizon "
+        "supplément remboursé en %.1f ans%s, au-delà de l'horizon "
         "de %d ans ; l'option solaire seule reste recommandée (D-CI-BATTERIE-NON-RENTABLE)."
-        % (verdict['retour_marginal_ans'], verdict['horizon_annees'])), niveau='info'))
+        % (verdict['retour_marginal_ans'], inclus, verdict['horizon_annees'])), niveau='info'))
     return sortie
 
 
@@ -707,7 +714,19 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
             'hybrides': list(hybrides.values()),
             'recommandee': _recommandee_des_lignes(lignes, devis),
             'module_spec': catalogue.get('module_spec'),  # D-HYB-5 (chaînes du suffisant)
-            'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())]}
+            'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())] + _jeton_cycles(lignes, devis)}
+
+
+def _jeton_cycles(lignes, devis=None):
+    """Niveau 13 (fondateur 19/11/2026) — le jeton que l'empreinte de l'option
+    des LIGNES porte quand le devis suit la règle des cycles : un brouillon
+    passé de 12 à 13 (migration 0158) n'a plus l'empreinte stockée, son étude
+    est donc recalculée au prochain rafraîchissement. Niveaux ≤ 12 : aucun
+    jeton, l'empreinte d'hier (un devis envoyé n'est pas recalculé)."""
+    from .regles_calcul import REGLES_CYCLES_BATTERIE_1911, regles_au_moins
+    devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
+                           if d is not None), None)
+    return ['cycles13'] if regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911) else []
 
 
 def _recommandee_des_lignes(lignes, devis=None):

@@ -795,6 +795,32 @@ class RemplacementCyclesNiveau13FluxTests(ciq120.RetourOptionAvecFluxTests):
                 self.assertEqual(dim.call_args.kwargs['regles_cycles'], attendu)
                 self.assertEqual(verdicts, [attendu, attendu])
 
+    def test_niveau_13_verdict_dit_si_le_remplacement_est_compte(self):
+        """Le verdict « non rentable » ne compte plus un remplacement que le
+        flux ne modélise pas : ``remplacement_inclus: False`` (niveau 13), clé
+        ABSENTE au niveau 12 où l'année 11 le compte toujours."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        sans = {'cout': 100000.0, 'economie': 20000.0}
+        # Supplément de 240 000 HT pour 20 000 MAD/an de plus : 12 ans.
+        evaluation = dict(self._evaluation_0080(), cout=340000.0, economie=40000.0)
+        nouveau = m.verdict_rentabilite(sans, evaluation, {}, self.FICHE_8000, 20, True)
+        self.assertEqual(nouveau['retour_marginal_ans'], 12.0)
+        self.assertIs(nouveau['remplacement_inclus'], False)
+        hier = m.verdict_rentabilite(sans, evaluation, {}, self.FICHE_8000, 20, False)
+        self.assertNotIn('remplacement_inclus', hier)
+        self.assertGreater(hier['retour_marginal_ans'], 12.0)
+
+    def test_niveau_13_jeton_d_empreinte_des_lignes(self):
+        """Un brouillon passé de 12 à 13 change d'empreinte : son étude est
+        recalculée au prochain rafraîchissement ; un devis ≤ 12 garde la sienne."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.etude_ci_batterie import _jeton_cycles
+        self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=12)), [])
+        self.assertEqual(_jeton_cycles([], SimpleNamespace(regles_calcul=13)), ['cycles13'])
+        ligne = SimpleNamespace(devis=SimpleNamespace(regles_calcul=12))
+        self.assertEqual(_jeton_cycles([ligne]), [])
+
 
 class RemplacementCyclesNiveau13DevisTests(ciq120.OptionBatterieCITests):
     """Un devis au niveau 12 garde l'année 11 ; au niveau 13 l'année suit ses
