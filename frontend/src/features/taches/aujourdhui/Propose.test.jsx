@@ -174,7 +174,7 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Masquer' }))
     // replié, la suite n'est plus lue : le lien ne porte un chiffre que s'il est celui des lignes (jamais `reste_nb`)
     const lien = await screen.findByRole('button', { name: /^Voir toutes les tâches de mes projets/ })
-    expect(lien.textContent).toMatch(new RegExp(`^Voir toutes les tâches de mes projets( \(${total}\))?$`))
+    expect(lien.textContent).toMatch(new RegExp(`^Voir toutes les tâches de mes projets( \\(${total}\\))?$`))
   })
 
   it('R2-020 — journée close par le bilan : plus de Proposé ni de « Garder »', async () => {
