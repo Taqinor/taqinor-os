@@ -289,10 +289,6 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     # historique reste accepte : il RESTREINT encore un valideur a ses propres
     # visites, il n'elargit jamais la portee de personne.
 
-    def _voit_toute_l_equipe(self):
-        """Vrai si l'appelant porte ``visites_valider`` (ou en tient lieu)."""
-        return _user_has_or_legacy(self.request.user, 'visites_valider')
-
     def destroy(self, request, *args, **kwargs):
         # ALEA58 — une visite validée reste refusée (VT3 : gelée).
         return (self._refus_si_gelee(self.get_object())
@@ -318,21 +314,11 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             # ACVI82 — la LISTE seule : une action qui écrit puis relit
             # l'agrégat ne doit pas lire des photos préchargées avant l'écriture.
             qs = qs.prefetch_related('medias__attachment')
-        if not self._voit_toute_l_equipe():
-            return qs.filter(commercial=self.request.user)
-        # ACVI8 (D-ACVI-3) — un valideur lit les visites de SES leads en portée
-        # (portée « all » : bureau d'études, toute la société), et celles qui
-        # lui sont assignées : jamais moins qu'un non-valideur. Le bureau d'études
-        # dédié (valide sans relever, ALEA8 : Technicien responsable) voit toute la
-        # société, quelle que soit sa portée : aucun lead n'est dans son arbre.
-        if _user_has_or_legacy(self.request.user, 'visites_modifier'):
-            from apps.crm import selectors as crm_selectors
-            qs = (qs.filter(lead__in=crm_selectors.leads_en_portee(self.request.user).values('pk'))
-                  | qs.filter(commercial=self.request.user))
+        # La règle de portée (VTA6 + ACVI8 / D-ACVI-3) vit dans
+        # ``selectors.visites_visibles`` : l'assistant lit la même.
         mine = str(self.request.query_params.get('mine', '')).strip()
-        if mine in ('1', 'true'):
-            qs = qs.filter(commercial=self.request.user)
-        return qs
+        return selectors.visites_visibles(
+            self.request.user, base=qs, mine=mine in ('1', 'true'))
 
     def filter_queryset(self, queryset):
         queryset = super().filter_queryset(queryset)

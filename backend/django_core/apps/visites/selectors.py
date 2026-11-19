@@ -1014,6 +1014,43 @@ def visites_pour_lead(lead):
     return [ligne_visite_pour_lead(visite) for visite in visites]
 
 
+def visites_visibles(user, *, base=None, mine=False):
+    """LA portée de lecture des visites d'un compte (VTA6 + ACVI8) — une seule
+    copie, lue par le viewset (``get_queryset``) ET par tout ce que l'assistant
+    sert (agenda, fiche, libellés, charge) : un GET sur la visite d'un collègue
+    rend 404, jamais 403.
+
+    * sans ``visites_valider`` : SES visites seulement (``commercial=user``) ;
+    * avec ``visites_valider`` : l'équipe — les visites des leads en portée du
+      compte (ACVI8, D-ACVI-3) et celles qui lui sont assignées ; le bureau
+      d'études dédié (``visites_valider`` sans ``visites_modifier``) voit toute
+      la société ;
+    * ``mine`` (le ``?mine=1`` historique) RESTREINT encore un valideur à ses
+      propres visites, il n'élargit jamais la portée de personne.
+
+    ``base`` : le queryset de départ (le viewset passe le sien, déjà borné à la
+    société) ; absent, toutes les visites de la société de ``user``.
+    """
+    from core.mixins import company_qs
+    from core.permissions import _user_has_or_legacy
+
+    from .models import VisiteTerrain
+
+    if base is None:
+        base = company_qs(
+            VisiteTerrain.objects.select_related('lead', 'commercial'), user)
+    if not _user_has_or_legacy(user, 'visites_valider'):
+        return base.filter(commercial=user)
+    if _user_has_or_legacy(user, 'visites_modifier'):
+        from apps.crm import selectors as crm_selectors
+        base = (base.filter(
+            lead__in=crm_selectors.leads_en_portee(user).values('pk'))
+            | base.filter(commercial=user))
+    if mine:
+        base = base.filter(commercial=user)
+    return base
+
+
 def ligne_visite_terrain(visite):
     """UNE ligne de la liste ``GET /visites/visites/`` (badge de complétude)."""
     manquants = visite_terrain_manquants(visite)
