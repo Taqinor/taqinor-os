@@ -56,3 +56,27 @@ comme lui, de le regarder, et de dire sans complaisance ce qui n'est pas au nive
 3. Ce qui est bien et doit rester.
 4. Non essayé, et pourquoi.
 Ton message final : le verdict + les constats A, en 15 lignes au plus.
+
+---
+
+## Tours 2 et suivants — ce qui change pour toi
+
+Le tour 1 a trouvé 152 constats, consolidés en 102 corrections (`tour1/consolidation.md`, identifiants `R2-NNN`),
+corrigées par onze lanes puis une lane de couture ; les restes connus sont dans `vague2.md`. La pile sert maintenant
+le code CORRIGÉ (branche `dev-taches-r2`), front et serveur. Tu es un relecteur NEUF : tu n'as pas vu le tour 1.
+
+Ton travail a deux moitiés, dans cet ordre :
+1. **Contre-vérifier** (adversaire, pas complaisant) : pour chaque correction `R2-NNN` de ton périmètre (liste dans ton
+   prompt), rejoue sur l'écran réel le geste du constat d'origine (lis-le dans `consolidation.md` ; le rapport du
+   relecteur d'origine est dans `tour1/`) et classe : **réglé** (capture), **réglé à moitié** (ce qui manque),
+   **pas réglé**, **régression** (la correction a cassé autre chose : quoi). Cherche surtout les jumeaux oubliés : le
+   même défaut sur l'autre écran, l'autre thème, l'autre taille, l'autre chemin (clavier / doigt / menu).
+2. **Regard neuf** : refais le parcours de ton rôle comme si tu découvrais l'outil et relève ce qui reste sous le
+   niveau des meilleurs (mêmes règles de preuve et de gravité que plus haut). Ne répète pas un constat écarté au
+   tour 1 pour une raison écrite (`consolidation.md` § 2 : artefacts de la pile, hors module) sauf si tu as une
+   raison nouvelle.
+
+Rapport `docs/taches/travail/r2/<tour>/<ton nom>.md` : verdict en trois lignes ; tableau de contre-vérification (une
+ligne par `R2-NNN` : état, capture, remarque) ; tableau des constats NEUFS (même forme qu'au tour 1) ; ce qui est bien ;
+non essayé. Message final : verdict + nombre de réglés / à moitié / pas réglés / régressions + constats A neufs,
+15 lignes au plus.
