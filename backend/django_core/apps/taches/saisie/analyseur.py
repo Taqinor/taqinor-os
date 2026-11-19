@@ -324,6 +324,48 @@ def projet_en_tete(masque, texte, ctx):
     return None
 
 
+# ------------------------------------------------- « #Nom avec espaces » (R3-047)
+
+_DIESE = re.compile(r'(?<!\S)#(?=[^\W\d_])')
+_MOT = re.compile(r'\S+')
+_PONCTUATION_FINALE = '.,;:!?)»"'
+
+
+def _fins_possibles(segment, mots, k):
+    """Fin (dans `segment`) du k-ième mot, brute puis sans sa ponctuation finale (« expo, » → « expo »)."""
+    dernier = mots[k - 1]
+    nette = dernier.start() + len(dernier.group().rstrip(_PONCTUATION_FINALE))
+    return (dernier.end(), nette) if nette != dernier.end() else (dernier.end(),)
+
+
+def projets_nommes_en_entier(masque, texte, ctx):
+    """R3-047 — après `#`, le plus long nom de projet EXISTANT de deux mots ou plus, écrit avec ses espaces (le choix
+    de la liste `#` l'insère ainsi : « #Chantier Benali 9 kWc »), comparé par `cle_nom`. Un nom inconnu n'est jamais
+    lu au-delà de son premier mot (motif `#mot`, qui reste le seul pour un mot seul ou un nouveau projet)."""
+    longueur_max = max((len(p.nom.split()) for p in ctx.projets), default=0)
+    if longueur_max < 2:
+        return []
+    cles = {cle_nom(p.nom) for p in ctx.projets if len(p.nom.split()) >= 2}
+    trouves = []
+    for diese in _DIESE.finditer(masque):
+        segment = masque[diese.end():]
+        mots = []
+        for mot in _MOT.finditer(segment):
+            if mot.group()[0] in '#/%!':
+                break
+            mots.append(mot)
+        for k in range(min(len(mots), longueur_max), 1, -1):
+            fin = next((diese.end() + f for f in _fins_possibles(segment, mots, k)
+                        if cle_nom(texte[diese.end():diese.end() + f]) in cles), None)
+            if fin is None:
+                continue
+            lu = resoudre_projet(texte[diese.end():fin], ctx)
+            if lu is not None and not lu.valeur['nouveau']:
+                trouves.append(Candidat(diese.start(), fin, 'projet', lu.valeur, lu.libelle, tuple(lu.alertes)))
+            break
+    return trouves
+
+
 # --------------------------------------------------------------------- lecture
 
 def types_permis(porte):
@@ -355,6 +397,7 @@ def lire(texte, ctx):
     if ctx.porte == 'capture':
         en_tete = projet_en_tete(masque, texte, ctx)
         bases += [en_tete] if en_tete is not None else []
+    bases += projets_nommes_en_entier(masque, texte, ctx)
     bases = filtrer_contexte(retirer_ignores(bases, ctx.ignorer, texte), masque)
     retenus, doubles = choisir(bases + _composes(masque, texte, bases, ctx))
     alertes = list(rejets) + doubles
