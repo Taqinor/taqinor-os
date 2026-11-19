@@ -254,5 +254,21 @@
 @media (hover: hover) {
   .tch .tch-bureau-projets .nav-item:hover { background: var(--tch-survol); }
 }
+/* R3-027 — les trois têtes du bureau (progression · « Mes projets » · « Agenda ») sur UNE ligne : même départ (aucune
+   marge ni rembourrage en haut des colonnes), même hauteur de 44 px, texte centré ; « Mes projets » rentre de 12 px pour
+   tomber sur l'alignement du texte de ses lignes. La progression elle-même est réglée dans base.css (R3-094, L5). */
+@media (min-width: 1024px) {
+  .tch .tch-bureau-projets { padding-left: 12px; }
+  .tch .tch-bureau-agenda { padding-top: 0; }
+  .tch .tch-bureau-projets .nav-titre, .tch .tch-bureau-agenda .agenda-tete {
+    margin-top: 0; min-height: 44px; display: flex; align-items: center;
+  }
+  .tch .tch-bureau-projets .nav-titre { margin-bottom: 0; }
+  .tch .tch-bureau-liste > .progression { margin-top: 0; } /* les 2 px de base.css décalaient la tête de la liste */
+}
 .tch .tch-bureau-agenda .agenda-libre { margin: 14px 0 0 56px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .tch-bureau-agenda .agenda-journee .bloc.erp { display: block; text-decoration: none; }
+/* R3-024 — l'agenda n'a pas pu être lu : la phrase et « Réessayer » sur une ligne, jamais l'invite à glisser */
+.tch .tch-bureau-agenda .agenda-echec { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; margin: 8px 0 4px;
+  font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .tch-bureau-agenda .agenda-echec .bouton.lien { min-height: 44px; font-weight: 600; color: var(--tch-accent); }

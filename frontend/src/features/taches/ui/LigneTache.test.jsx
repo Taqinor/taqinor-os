@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { apercu, oublierApercus } from '../lib/fiche'
 import CaseRonde from './CaseRonde'
 import Etoile from './Etoile'
 import LigneTache from './LigneTache'
@@ -90,6 +91,17 @@ describe('TCH44 — LigneTache rend l\'ITEM du contrat', () => {
     const garder = screen.getByRole('button', { name: 'Garder' })
     expect(garder.querySelector('svg')).toBeNull()
     expect(garder).toHaveTextContent(/^Garder$/)
+  })
+})
+
+describe('R3-061 — chaque ligne dépose ce qu\'elle sait de sa tâche : la fiche s\'ouvre dessus sans attendre', () => {
+  afterEach(() => { oublierApercus() })
+
+  it('une ligne de tâche rendue : son item est l\'aperçu de la fiche ; changé, l\'aperçu suit', () => {
+    const { rerender } = monter()
+    expect(apercu(20)).toMatchObject({ id: 20, titre: 'Devis Settat', lock_version: 4 })
+    rerender(<div role="list"><LigneTache item={{ ...item(), titre: 'Devis Settat signé', lock_version: 5 }} aujourdhui={AUJOURDHUI} /></div>)
+    expect(apercu(20)).toMatchObject({ titre: 'Devis Settat signé', lock_version: 5 })
   })
 })
 
@@ -233,6 +245,52 @@ describe('TCH44 — balayage tactile', () => {
     poser(ligne, 'pointerup', 100)
     expect(onReporter).toHaveBeenCalledTimes(1)
     expect(ligne).not.toHaveClass('glisse-gauche')
+  })
+})
+
+describe('R3-063 (choix C-23) — l\'appui long au doigt ouvre une feuille du bas TITRÉE de la tâche, pas un menu de bureau', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+  const appuiLong = async (ligne) => {
+    poser(ligne, 'pointerdown', 200)
+    await act(async () => { vi.advanceTimersByTime(520) })
+  }
+  afterEach(() => { vi.useRealTimers() })
+
+  it('feuille « Devis Settat » : les mêmes actions que ⋯, rangées pleine largeur ; la ligne reste surlignée tant qu\'elle est ouverte', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const onAction = vi.fn()
+    const { container } = render(
+      <div className="tch"><div role="list"><LigneTache item={item()} aujourdhui={AUJOURDHUI} onAction={onAction} onReporter={() => {}} reporterLibelle="lun. 23" /></div></div>,
+    )
+    const ligne = container.querySelector('.ligne')
+    await appuiLong(ligne)
+    const feuille = screen.getByRole('dialog', { name: 'Devis Settat' })
+    expect(screen.queryByRole('menu')).toBeNull() // plus le menu déroulant du bureau
+    expect(within(feuille).getByText('Devis Settat')).toHaveClass('feuille-titre')
+    expect(within(feuille).getAllByRole('button').filter((b) => b.classList.contains('action-ligne')).map((b) => b.textContent)).toEqual([
+      'Reporter à lun. 23', 'Choisir un jour', 'En réserve', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
+    ])
+    expect(ligne).toHaveClass('en-actions')
+    fireEvent.click(within(feuille).getByRole('button', { name: 'Choisir un jour' }))
+    // la feuille se ferme d'abord (son entrée d'historique retirée), PUIS le geste ouvre la sienne
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 })))
+    expect(screen.queryByRole('dialog', { name: 'Devis Settat' })).toBeNull()
+    expect(ligne).not.toHaveClass('en-actions')
+  })
+
+  it('le clic droit (souris) ouvre toujours le menu ⋯ ; au doigt, Android qui envoie aussi `contextmenu` n\'ouvre pas les deux', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { container } = monter()
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 200)
+    fireEvent.contextMenu(ligne)
+    await act(async () => { vi.advanceTimersByTime(520) })
+    expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })
 

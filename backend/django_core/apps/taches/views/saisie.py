@@ -18,9 +18,9 @@ from django.db import transaction
 from django.http import Http404, HttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_serializer, inline_serializer
 from rest_framework import serializers
-from rest_framework.exceptions import ParseError
+from rest_framework.exceptions import ParseError, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
@@ -33,16 +33,17 @@ from apps.taches.moteur.gabarits import format_heure_dite, format_jour
 from apps.taches.saisie.analyseur import analyser
 from apps.taches.saisie.grammaire import ProjetConnu
 from apps.taches.selectors.base import projets_de
+from apps.taches.serializers.corps import CorpsTaches, parmi, present
 from apps.taches.serializers.saisie import (
-    CHAMPS_LIGNE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation, valider_lignes,
-    verifier_proprietaire,
+    CHAMPS_LIGNE, CHAMPS_SAISIE, SaisieEntreeSerializer, apercu_ids, apercu_saisie, reponse_creation,
+    valider_lignes, verifier_proprietaire,
 )
 from apps.taches.services.creation import creer_taches
 from apps.taches.services.taches import verifier_lien
 from apps.taches.throttles import ThrottleCapture, ThrottleCaptureJour
 from apps.taches.views.base import (
-    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PERMISSIONS, MethodeAvantJeton, carte_assistant, corps, est_assistant,
-    forme_echantillon, parametre, reponses,
+    ERREUR_CHAMPS, ERREUR_CODE, ERREUR_DETAIL, PARSEURS, PERMISSIONS, MethodeAvantJeton, carte_assistant, corps,
+    est_assistant, forme_echantillon, parametre, reponses,
 )
 from core.idempotency import IdempotentCreateMixin
 
@@ -50,19 +51,23 @@ MESSAGE_REQUIS = 'Requis.'
 
 LIGNE = inline_serializer('TachesLigne', dict(CHAMPS_LIGNE))
 
-SAISIE_RAPIDE = inline_serializer('TachesCorpsSaisieRapide', {
-    'textes': serializers.ListField(child=serializers.CharField(), required=False),
-    'texte': serializers.CharField(required=False),
-    'ids': serializers.ListField(child=serializers.IntegerField(), required=False),
-    'client_id': serializers.CharField(max_length=64, required=False),
-    'projet_id': serializers.IntegerField(allow_null=True, required=False),
-    'lien': serializers.JSONField(allow_null=True, required=False),
-    'parent_id': serializers.IntegerField(allow_null=True, required=False),
-    'proprietaire_attendu': serializers.IntegerField(required=False),
-    'ignorer': serializers.ListField(child=serializers.JSONField(), required=False),
-    'lignes': serializers.ListField(child=LIGNE, required=False),
-    'apercu': serializers.BooleanField(required=False),
+#: Le corps publié est celui que `SaisieEntreeSerializer` lit (mêmes champs), `lignes` = des LIGNES.
+_SaisieRapide = type('TachesCorpsSaisieRapide', (CorpsTaches,), {
+    **CHAMPS_SAISIE, 'lignes': serializers.ListField(child=LIGNE, required=False),
+    # `SaisieRapideVue.post` : des `ids` (« Range ma liste »), un texte (aperçu), ou des `lignes` à créer.
+    'regles_croisees': ((present('ids', {'type': 'array', 'minItems': 1}),
+                         present('textes', {'type': 'array', 'minItems': 1}),
+                         present('texte', {'type': 'string', 'minLength': 1}),
+                         {'required': ['lignes'], 'properties': {'lignes': {'type': 'array', 'minItems': 1},
+                                                                 'apercu': parmi(False)}}),),
 })
+SAISIE_RAPIDE = extend_schema_serializer(component_name='TachesCorpsSaisieRapide')(_SaisieRapide)
+
+
+#: L'assistant (en-tête ou Bearer : `est_assistant`) ne CRÉE pas de lignes par `saisie-rapide/` : il propose un
+#: aperçu (`apercu: true`, action `taches.liste.ranger`), la personne valide à l'écran (toucher de carte : cookie +
+#: `X-Taqinor-Carte-Assistant`, sans Bearer). Refus lié au CANAL, échec fermé (api.md §4).
+MESSAGE_LIGNES_ASSISTANT = "L'assistant ne crée pas ces lignes : il les propose, tu les valides à l'écran."
 
 
 def _a_un_texte(donnees):
@@ -73,9 +78,10 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
     """POST saisie-rapide/ — analyse, aperçu (`apercu:true`) ou création."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(request=SAISIE_RAPIDE, responses={
-        **reponses(forme_echantillon('saisie_rapide'), statut=201, erreurs=(400,), conflit=ERREUR_CODE),
+        **reponses(forme_echantillon('saisie_rapide'), statut=201, erreurs=(400, 404), conflit=ERREUR_CODE),
         200: forme_echantillon('saisie_apercu'),
     })
     def post(self, request):
@@ -92,17 +98,17 @@ class SaisieRapideVue(IdempotentCreateMixin, APIView):
             return Response(apercu_saisie(request.user, donnees, assistant=assistant))
         if not donnees.get('lignes'):
             raise serializers.ValidationError({'lignes': [MESSAGE_REQUIS]})
+        if assistant:
+            raise PermissionDenied({'lignes': [MESSAGE_LIGNES_ASSISTANT], 'detail': MESSAGE_LIGNES_ASSISTANT})
         return self._avec_idempotence(
             request, lambda: self._creer(request, donnees, assistant), suffixe=f'u{request.user.pk}')
 
     def _creer(self, request, donnees, assistant):
-        """Création TOUT OU RIEN (`creer_taches`, une transaction) → 201 `saisie_rapide.json`. Venant de
-        l'assistant, le `titre` d'une ligne est IGNORÉ : sans ligne source, la ligne n'a plus de titre
-        et est refusée (échec fermé)."""
+        """Création TOUT OU RIEN (`creer_taches`, une transaction) → 201 `saisie_rapide.json`. Jamais sous
+        l'assistant (403 plus haut, `MESSAGE_LIGNES_ASSISTANT`) ; une carte du Copilote touchée à l'écran crée avec
+        la source `assistant`."""
         user = request.user
         lignes = valider_lignes(donnees['lignes'])
-        if assistant:
-            lignes = [{cle: valeur for cle, valeur in ligne.items() if cle != 'titre'} for ligne in lignes]
         if donnees.get('lien'):
             verifier_lien(user, donnees['lien'])
         # Une carte du Copilote validée au doigt : source `assistant`, porte de l'écran (ERR 5).

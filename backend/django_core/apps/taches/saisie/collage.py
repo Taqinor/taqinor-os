@@ -9,6 +9,7 @@ résultat est l'aperçu que l'écran montre avant « Créer N tâches ».
 import re
 from dataclasses import dataclass, replace
 
+from apps.taches.choix import AlerteSaisie
 from apps.taches.saisie.analyseur import analyser, resoudre_projet
 from apps.taches.saisie.grammaire import ContexteSaisie
 from apps.taches.saisie.normalisation import cle_nom, normaliser
@@ -186,6 +187,20 @@ def _contexte(base, projets):
     return ContexteSaisie(base['aujourdhui'], base['maintenant'], projets=tuple(projets))
 
 
+def resoudre_groupe(nom, ctx):
+    """R3-043 — le projet d'un titre de groupe ou d'une première ligne : le nom exact, sinon le projet OUVERT dont un
+    mot commence ainsi (« Recrutement » → « Recrutement technicien », au lieu d'un « Nouveau projet : Recrutement » à
+    côté) — mais seulement s'il est le SEUL (règle de R2-003) : un début partagé par deux projets ne rattache le
+    groupe à aucun, il reste un nouveau projet. Rend la valeur de projet (`resoudre_projet`)."""
+    exact = resoudre_projet(nom, ctx).valeur
+    if exact is None or not exact['nouveau']:
+        return exact
+    par_debut = resoudre_projet(nom, ctx, par_debut=True)
+    if par_debut.valeur['nouveau'] or AlerteSaisie.PLUSIEURS_PROJETS.value in par_debut.alertes:
+        return exact
+    return par_debut.valeur
+
+
 def _champs_projet(valeur):
     """Champs `projet_id` / `nouveau_projet` d'un projet résolu ({} si archivé)."""
     if valeur is None or valeur.get('archive'):
@@ -210,7 +225,7 @@ def projet_premiere_ligne(nettes, base, projets):
     lecture = analyser(premiere.texte, base['aujourdhui'], base['maintenant'], projets=projets)
     if lecture.jetons:
         return None
-    return resoudre_projet(premiere.texte, _contexte(base, projets)).valeur
+    return resoudre_groupe(premiere.texte, _contexte(base, projets))
 
 
 def _projet_suggere(titre, projets):
@@ -269,7 +284,7 @@ def _lignes_du_collage(numero, nettes, base, projets, depart, commun):
     for nette in nettes:
         if nette.titre_groupe:
             nom = nette.texte.rstrip().rstrip(':：').strip()
-            projet = resoudre_projet(nom, _contexte(base, projets)).valeur
+            projet = resoudre_groupe(nom, _contexte(base, projets))
             parent, base_retrait = None, None
             continue
         sous = _est_sous_tache(nette, base_retrait)

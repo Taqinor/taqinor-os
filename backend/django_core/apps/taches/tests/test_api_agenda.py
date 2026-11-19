@@ -12,7 +12,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.tests import fabriques
-from apps.taches.tests.test_api_saisie import champs
 
 URL = '/api/django/taches/agenda/'
 
@@ -90,9 +89,10 @@ class AgendaTests(TestCase):
         self.assertEqual(self.periode()['capacite']['minutes'], 300)
 
     def test_42_jours_au_plus(self):
+        """Règle croisée `du`/`au` (chaque date seule est valide au schéma) : 409, même corps (api-fuzz r2)."""
         self.periode(au=self.jour(41).isoformat())
-        rendu = self.periode(statut=400, au=self.jour(42).isoformat())
-        self.assertEqual(champs(rendu), {'au': ['42 jours au plus.']})
+        rendu = self.periode(statut=409, au=self.jour(42).isoformat())
+        self.assertEqual(rendu['au'], ['42 jours au plus.'])
 
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))
@@ -166,6 +166,13 @@ class AgendaTests(TestCase):
         faites = {j['jour']: j['faites_nb'] for j in rendu['jours']}
         self.assertEqual(faites, {avant.isoformat(): 0, hier.isoformat(): 2, self.T.isoformat(): 1,
                                   demain.isoformat(): 0})
+
+    def test_faites_par_jour_vit_dans_les_selecteurs(self):
+        """R3-003 (choix C-16) — « faites d'une période » a UNE source, `selectors.journee.faites_par_jour`, que
+        l'Agenda importe (la Revue et la Recherche la lisent aussi) : plus de copie dans la vue."""
+        from apps.taches.selectors import journee as sel
+        from apps.taches.views import agenda
+        self.assertIs(agenda.faites_par_jour, sel.faites_par_jour)
 
     def test_pause_la_tache_posee_aujourdhui_reste_dans_l_agenda(self):
         """R2-031b (règle C-5, « ce que j'ai posé reste posé ») — une tâche OUVERTE d'un projet en pause prévue

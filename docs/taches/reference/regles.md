@@ -498,7 +498,7 @@ Recalculés par `integ2/propose.py`.
 
 | # | Bloc (clé) | Contenu | Replié |
 |---|---|---|---|
-| 1 | `progression` | « N sur OBJECTIF » + essentiel ; au toucher : gardées faites, temps (`disponible_minutes`), Mon rythme | — |
+| 1 | `progression` | « N sur OBJECTIF » + essentiel ; au toucher : temps (`disponible_minutes`), Mon rythme (R3-001 : plus de « gardées faites ») | — |
 | 2 | `carte_du_moment` | UN objet au plus, choisi par le serveur (§4.10) ; le navigateur insère le brouillon et l'astuce | — |
 | 3 | `essentiel` | lignes du plan de J marquées `essentielle` (≤ 3), ouvertes ou faites aujourd'hui | non |
 | 4a | `obligations` (« Toute la journée ») | visites, poses, interventions du jour (date seule, A16-N4) ; rendez-vous externes « journée entière » ; `touches` → ligne « Suivi des relances : n » dans Prévu | non |
@@ -519,7 +519,10 @@ a une tâche ouverte (A11) : à défaut de toute ligne, Proposé montre au moins
 2. `en_attente` ∧ (`jour_prevu` ≤ J ∨ `echeance` ≤ J) → `en_attente` ; sans date ≤ J → absente (visible dans son projet).
 3. `reports ≥ reports_tranches + 3` ∧ `jour_prevu ≤ J` → `a_decider`, motif `reportee_3_fois`.
 4. `jour_prevu = J` ∨ `echeance = J` → `essentiel` si une ligne `essentielle` la porte ; sinon `ce_soir` si `moment =
-   soir` ; sinon `journee`.
+   soir` ; sinon `journee`. Reportée (jour posé plus tard ou retiré, hors « En réserve »), une tâche dont l'échéance
+   est J RESTE donc dans la journée, ★ comprise et comptée : `planifier` le dit par l'avertissement
+   `echeance_aujourdhui` (R3-002, choix C-13 — rien ne disparaît puis ne revient ; « Repousser l'échéance » =
+   `PATCH echeance`).
 5. `jour_prevu < J − 7` ∨ `echeance < J − 7` → `a_decider`, motif `retard_ancien`.
 6. Ce qui presse (`retard`, `echeance_passee`, `echeance_proche`, §3.4) → `propose`, en tête, avec sa `raison`.
 7. Candidate du tour des projets (§3.4) → `propose` (`pour_objectif` ou suite dépliée).
@@ -586,7 +589,7 @@ vide** (`replie: true`, `places = 0`, A16-N6).
   nommées, elles RESTENT en place (jamais de 400, parcours 8 de spec-7).
 - Effets : `planifier()` (reports comptés, §4.3), lignes `reportee = True`, `cloture_le` = maintenant, `reflexion`
   (≤ 280). Possible jusqu'à J+1 12:00 (`possible_jusqua`) ; « demain » est relatif au jour clos.
-- Contenu affiché : « N sur OBJECTIF » en première ligne, « gardées faites » en seconde (A16-M2), UN constat au plus
+- Contenu affiché : « N sur OBJECTIF » sur UNE ligne (R3-001, choix C-14 : plus de « gardées faites »), UN constat au plus
   (A14-M4, §6.9). Sauté : rien ne bouge, aucune trace négative. **Bilan d'hier** : `journee/cloture/?jour=` J−1 reste
   ouvert jusqu'à J 12:00 ; la carte du moment `bilan_hier` le propose si hier a des restes et `cloture_le` est nul.
 
@@ -614,7 +617,11 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 - **Capacité** : §3.6. `minutes_prevues` = Σ estimations des tâches (ouvertes et faites aujourd'hui) d'Essentiel et
   de Prévu.
 - **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
-  d'Essentiel, Prévu, Ce soir. `plan_tenues`/`plan_lignes` (« gardées faites ») = lignes `prevue_au_plan` faites /
+  d'Essentiel, Prévu, Ce soir. **Essentiel** (R3-001, choix C-14) : `essentiel_faites`/`essentiel_prevues` = les ★
+  de la section Essentiel SERVIE (ouvertes, ou faites aujourd'hui), comptées une fois (`selectors.journee.
+  essentiel_servi`, seule définition : page, TACHE_ECRITE, bilan, nuit) — une ★ reportée sans échéance quitte la
+  section et le compte, une ★ gardée par son échéance y reste et compte. `plan_tenues`/`plan_lignes` (« gardées
+  faites », servies pour la nuit, plus jamais montrées) = lignes `prevue_au_plan` faites /
   lignes `prevue_au_plan` (les ajouts comptent dans `faites`, pas au dénominateur ; les lignes retirées par Alléger
   n'y sont plus). Une gardée qui change de jour (tout chemin de `planifier`) GARDE sa ligne, marquée `reportee` et
   non tenue : seul Alléger retire une ligne (la déplacer ne gonfle jamais le taux). La ligne d'une activité ERP qui
@@ -638,9 +645,19 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 | `garder` | rien n'est encore gardé (`planifie_le` nul) et `pour_objectif` non vide | `{"n","objectif"}` |
 | `alleger` | à partir de `relance_jour`, `allege_le` nul, ≥ 1 gardée ouverte et `faites` < objectif / 2 (le seuil de la dérive, §7) | `{"faites","prevues"}` |
 | `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite | `{}` |
-| `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`) | PROPOSITION |
-| `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) | PROPOSITION |
-| `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres | PROPOSITION |
+| `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, ou un `constat` qui pose une QUESTION — jamais C5) et aucun conseil répondu aujourd'hui | PROPOSITION |
+| `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) et aucun conseil répondu aujourd'hui | PROPOSITION |
+| `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres ; aucun conseil répondu aujourd'hui | PROPOSITION |
+
+**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `garder`, `alleger`,
+`faire_bilan`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
+les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
+(`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
+plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee.conseil_deja_donne` ;
+l'écran note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
+astuce, révélation. **Une statistique sans geste n'apparaît jamais le matin** : C5 (et tout constat sans question)
+vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir (§6.9) ; un constat AVEC question (C7
+« Les revoir maintenant ? ») peut être le conseil du jour. Même règle pour `rythme` de `journee/proposition/`.
 
 ### 4.11 Hors ligne et conflit entre appareils
 
@@ -667,7 +684,7 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 | `a_l_arret` | ≥ 1 ouverte ∧ jours travaillés dans ]réf, J] ≥ N ; réf = max(dernier `fait_le` du projet, tous niveaux ; date de `statut_depuis`) ; N = `projet_arret_jours` (10, 5-30) |
 | `echeance_menacee` | `echeance` ∧ ≥ 1 ouverte ∧ un signal : (a) `echeance < J` ; (b) k ouvertes datées (`jour_prevu` ou `echeance`) après elle ; (c) une étape finit après elle ; (d) si « comprendre mon rythme » allumé ET F28 ≥ 5 : besoin = ⌈O × J28 / F28⌉ > reste |
 | `neglige(projets, faites_14j)` | P actif, ≥ 1 actionnable, `statut_depuis` ≤ J − 14 : négligé ⇔ d(P) = 0 ∧ ∃ Q actif de priorité strictement inférieure avec d(Q) ≥ 1 ; d = tâches du projet faites (tous niveaux) sur 14 jours calendaires ; Q nommé = le plus avancé (d max), égalité → priorité plus haute, puis `rang` |
-| `constat_projets` | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (≥ 1 faite tous niveaux en 7 jours calendaires) |
+| `constat_projets` | « {actifs} projets actifs, {k} ont avancé ces 7 jours » (≥ 1 faite tous niveaux en 7 jours calendaires) ; seuls les projets actifs nés il y a 7 jours ou plus comptent, aucun → constat omis (R3-010) |
 
 F28 = tâches comptées DU PROJET faites sur les 28 derniers jours calendaires ; J28 = jours travaillés de
 l'utilisateur dans ]J − 28, J] ; O = ouvertes du projet ; reste = jours travaillés dans ]J, échéance] (verif-specs-4-6
@@ -710,8 +727,16 @@ activités ERP closes par lui ce jour (moins celles qu'une tâche porte, déjà 
 ### 6.2 La journée évaluée (`statut_jour(ouvre, conge, compte, plan, app)`)
 
 Écran Mon rythme (rév. 3.1) : la série montrée (`RYTHME.serie`) est la fenêtre de la proposition, les 10 derniers
-jours TRAVAILLÉS ; un jour férié ou en congé n'y a pas de barre (il est nommé sous la trace) ; un jour `sans_donnees`
-a une barre vide.
+jours TRAVAILLÉS ; un jour férié ou en congé n'y a pas de barre d'objectif (il est nommé sous la trace) ; un jour
+`sans_donnees` a une barre vide. R3-003 (choix C-21) : un jour NON travaillé (`non_ouvre`, `conge`) de la même fenêtre
+où il a fait au moins une chose est servi à sa date avec `hors_objectif: true` (barre grise, le compte de la nuit),
+jamais dans la trace, un bloc ni l'objectif — le calendrier de la société fait foi (§0).
+
+**Faites d'une période (R3-003, choix C-16).** UNE définition : `selectors.journee.faites_par_jour(du, au, J)` —
+chaque jour vaut `compte_du_jour` (§6.1), la période = la somme de ses jours, du premier jour à aujourd'hui compris,
+week-end compris. La tête de la Revue (« Cette semaine : N faites (P la précédente) »), « Faites cette semaine » de la
+Recherche (`total`) et l'Agenda (`faites_nb`) la lisent ; rien d'autre ne recompte. « Objectif atteint X jours sur
+N » n'est plus dans la Revue (Mon rythme garde « 5 faites ou plus X jours sur 10 »).
 
 `conge` · `non_ouvre` (non travaillé pour lui) · `sans_donnees` (travaillé, 0 compté, aucun plan validé, app non
 ouverte) · `evalue`. Seul `evalue` entre dans un bloc, une référence ou un constat. Un samedi travaillé va dans les
@@ -730,7 +755,7 @@ totaux, jamais dans un bloc. Statut posé par la tâche nocturne sur le `PlanJou
 ### 6.4 Journée réussie et les quatre faits
 
 `journee_reussie(compte, objectif, choisis, faits)` = compte ≥ objectif ET (aucun essentiel choisi OU ≥ 1 fait) ;
-`None` sans objectif. Toujours montrée par ses quatre faits (compte, objectif, essentiel, gardées faites), jamais par le
+`None` sans objectif. Toujours montrée par ses faits (compte, objectif, essentiel), jamais par le
 mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le compte seul).
 
 ### 6.5 POUSSER — l'objectif déclaré prime (A2)
@@ -775,7 +800,9 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 
 - `plafonner_jours(comptes)` : chaque jour de la fenêtre plafonné à 2 × médiane(fenêtre) + 1 (A2.3).
 - R = moyenne non arrondie des 14 derniers jours évalués (≤ 42 jours calendaires), plafonnés ; il en manque → R
-  provisoire = palier courant (ou 5), fixée après 14 jours évalués. b = max(1 ; 0,2 R) ; affichage « environ
+  PROVISOIRE = la moyenne plafonnée des jours évalués disponibles dès 5 (le pas réel, R3-004, choix C-15 : « if i
+  say that is enough it should help me keep the same pace »), sinon (moins de 5) le palier courant (ou 5), dit
+  franchement ; fixée après 14 jours évalués (`moteur.rythme.reference_provisoire`). b = max(1 ; 0,2 R) ; affichage « environ
   arrondir(R) », zone « arrondir(R − b) à arrondir(R + b) ».
 - Dérive = moyenne plafonnée des 14 derniers jours évalués DEPUIS la fixation de R, strictement hors zone → carte
   `derive_tenir` (`sous` / `au_dessus`), puis **28 jours de silence** quelle que soit la réponse ; `garder` garde R ;
@@ -785,7 +812,8 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 
 ### 6.7 Bascules (`basculer(etat, mode, jour)`)
 
-POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel). TENIR → POUSSER : palier = `arrondir(R)`, plancher
+POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel) ; avant 14, R provisoire = moyenne des jours
+évalués disponibles dès 5, sinon le palier (§6.6, R3-004). TENIR → POUSSER : palier = `arrondir(R)`, plancher
 1. → LIBRE : objectif nul, le palier est GARDÉ. LIBRE → POUSSER : on rend le dernier palier (celui d'avant « Sans
 objectif », R2-122, choix C-7) ; sans palier encore, journée type des 10 derniers jours évalués (≤ 42 j), sinon
 démarrage à froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les
@@ -1108,6 +1136,13 @@ Jeu de §3.4 (N = 5) : R1, R2, A1, V1, M2, D3, A2, S1, V2, M3, D4, A3, S2, V3…
 
 **`plus_tard`** = le prochain jour travaillé APRÈS J dans la même semaine (lundi-dimanche), sinon le premier jour
 travaillé de la semaine suivante. Mar. 17/11 (18 férié) → jeu. 19 ; ven. 20 → lun. 23 ; jeu. 19 → ven. 20.
+
+**Le temps de la journée (R3-006).** `priorites/` et `point/` servent `faites` (= `progression.faites`),
+`minutes_restantes` (estimations des tâches OUVERTES d'Essentiel et de Prévu, hors Ce soir :
+`selectors.journee.minutes_restantes`) et `deborde_minutes` = max(0, restantes − `disponible_minutes`). Quand la
+journée DÉBORDE, « Aide-moi à prioriser » ne pousse plus à en ajouter : ses `lignes` sont les GARDÉES ouvertes
+(Essentiel, Prévu, Ce soir, dans l'ordre de la journée), sans raison, et `geste_propose` = `alleger` (« Alléger ma
+journée »). `garder_n` = 0 ne veut jamais dire « objectif atteint » : seul `faites` ≥ `objectif.nb` le dit.
 
 **`journee/point/`** : `objectif`, `progression` (avec `disponible_minutes`) ; `essentiel_restant` = essentielles
 ouvertes ; `prochaine` = la première ligne ouverte de Prévu hors essentielles, blocs encore à venir d'abord (heure ≥

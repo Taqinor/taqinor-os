@@ -24,8 +24,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import APIException, MethodNotAllowed
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import BasePermission
 
+from apps.taches.entrees import MOTIF_ANNEE_BORNEE
 from authentication.permissions import IsAuthenticatedInterne
 
 DROIT = 'taches_voir'
@@ -65,6 +67,11 @@ class PermissionTaches(BasePermission):
 
 
 PERMISSIONS = [IsAuthenticatedInterne, PermissionTaches]
+#: Le module ne lit que du JSON (api.md §0 ; écran et relais de l'assistant n'envoient rien d'autre). Déclaré sur
+#: chaque vue, le schéma ne publie plus que `application/json` : en formulaire, un `null`, une liste d'entiers ou un
+#: objet imbriqué ne se transportent pas, et l'api-fuzz envoyait des corps « conformes » que DRF ne pouvait pas lire
+#: (400). Seule exception : `capture/` (raccourci Siri, formulaire possible), qui garde les lecteurs par défaut.
+PARSEURS = [JSONParser]
 
 
 def est_assistant(request):
@@ -177,8 +184,33 @@ def _champ(noeud, nom, requis=True):
     if isinstance(valeur, list):
         enfant = _champ(valeur[0], f'{nom}_Element') if valeur else serializers.JSONField()
         return serializers.ListField(child=enfant, **options)
-    champs = {cle: _champ(sous, f'{nom}_{_camel(cle)}') for cle, sous in valeur.items()}
+    connue = _forme_connue(valeur)
+    if connue is not None:
+        return connue(**options)
+    partiel = isinstance(valeur, _Partiel)
+    champs = {cle: _champ(sous, f'{nom}_{_camel(cle)}', requis=not partiel) for cle, sous in valeur.items()}
     return inline_serializer(nom, champs, **options)
+
+
+class _Partiel(dict):
+    """Objet dont chaque clé ne paraît que si elle a été LUE (les `champs` d'une ligne d'aperçu) : aucune exigée."""
+
+
+def _formes_connues():
+    from apps.taches.serializers.formes import ItemSerializer, ProjetSerializer, TacheSerializer
+    return (TacheSerializer, ItemSerializer, ProjetSerializer)
+
+
+def _forme_connue(valeur):
+    """Le sérialiseur de forme (TACHE, ITEM, PROJET) dont l'objet de l'exemple a EXACTEMENT les clés : une forme
+    embarquée (`creees`, `tache`, `projet`…) est alors publiée par SON sérialiseur — ses nuls (`rappel`, `lien`,
+    `checklist`, `projet` d'une tâche À trier…) compris — au lieu d'être redéduite d'un seul exemple (api-fuzz
+    r2 : `null` servi, objet exigé)."""
+    cles = set(valeur)
+    for classe in _formes_connues():
+        if cles == set(classe().fields):
+            return classe
+    return None
 
 
 @lru_cache(maxsize=None)
@@ -188,8 +220,89 @@ def forme_echantillon(nom):
     composant = f'TachesEch{_camel(nom)}'
     COMPOSANTS_ECHANTILLON[composant] = nom
     valeur, _ = _fusionner([exemple_de(nom)])
+    _nullables(valeur, nuls_de(nom))
     champs = {cle: _champ(sous, f'{composant}_{_camel(cle)}') for cle, sous in valeur.items()}
     return inline_serializer(composant, champs)
+
+
+# --- Ce qu'un exemple ne montre pas : les clés servies NULLES, les objets à clés selon le type -------------
+# Un échantillon ne montre qu'un état ; la forme publiée en est déduite (`forme_echantillon`). Ce que le serveur
+# sert aussi (api-fuzz r2, « Response violates schema ») est dit ICI, côté code — les échantillons restent la
+# copie mot pour mot d'api.md (annexe A). Règles par NOM de clé (à toute profondeur), puis par chemin.
+
+#: Nulles partout où elles paraissent (api.md §0) : le geste d'une écriture qui n'a rien changé, l'écran sans
+#: carte, la suite par projet non calculée (api.md, « suite_par_projet nul »), le jalon / la prochaine action
+#: d'un projet qui n'en a pas.
+TOUJOURS_NULLABLES = ('geste_id', 'carte_du_moment', 'suite_par_projet', 'prochain_jalon', 'prochaine_action')
+#: Valeurs SCALAIRES servies depuis une colonne nullable du modèle (ou calculées « aucune ») : nulles partout.
+COLONNES_NULLABLES = (
+    'echeance', 'echeance_heure', 'heure_debut', 'jour_prevu', 'estimation_minutes', 'duree_reelle_minutes',
+    'planification_le', 'termine_le', 'date_debut', 'date_fin', 'fait_le', 'planifie_le', 'cloture_le',
+    'allege_le', 'annule_le', 'derniere_faite_le')
+#: Objets dont les clés dépendent du `type` / `code` / `cle` de leur porteur (cartes C1-C8, santé d'un projet,
+#: révélations…) : publiés comme objets LIBRES (aucune clé exigée).
+OBJETS_LIBRES = ('donnees',)
+#: Objets dont chaque clé ne paraît que si elle a été lue (les `champs` d'une ligne d'aperçu de la saisie : seulement
+#: ce que la phrase a dit) : leurs clés sont publiées, aucune n'est exigée.
+OBJETS_PARTIELS = ('champs',)
+#: Valeurs JSON quelconques (une préférence vaut une heure, un nombre, une liste… selon sa clé).
+VALEURS_QUELCONQUES = ('valeur',)
+#: Chemins nuls servis hors des règles par nom, par échantillon.
+NULS_SERVIS = {
+    'tache_changement': ('tache.projet', 'proposition.apres'),
+    'rythme': ('bloc', 'objectif.nb'),
+    'proposition_repondue': ('rythme.bloc', 'rythme.objectif.nb', 'rythme.trace', 'rythme.proposition',
+                             'rythme.repere'),
+    'priorites': ('objectif.nb',),
+    'aujourdhui': ('objectif.nb',),
+    'point': ('objectif.nb',),
+    'journee_proposition': ('objectif.nb',),
+    'journee_ecrite': ('aujourdhui.objectif.nb',),
+}
+
+
+def nuls_de(nom):
+    """Les chemins nuls possibles de `<nom>` : ceux du code (`NULS_SERVIS`) et ceux que l'échantillon déclare
+    (`"nuls"`), en plus de ceux que l'exemple montre nuls."""
+    document = json.loads((ECHANTILLONS / f'{nom}.json').read_text(encoding='utf-8'))
+    return (*NULS_SERVIS.get(nom, ()), *document.get('nuls', ()))
+
+
+def noeud_au_chemin(valeur, chemin):
+    """Le dict fusionné qui porte la DERNIÈRE clé de `chemin` (`None` si le chemin n'existe pas)."""
+    cible = valeur
+    for morceau in chemin.split('.')[:-1]:
+        sous = cible.get(morceau) if isinstance(cible, dict) else None
+        cible = sous[0] if sous else None
+    return cible if isinstance(cible, dict) and chemin.split('.')[-1] in cible else None
+
+
+def _nullables(valeur, chemins):
+    """Marque nuls possibles les nœuds de `valeur` (fusionné) aux `chemins` (un chemin absent de l'exemple est
+    sauté : `test_routes` vérifie qu'aucun ne l'est), puis applique les règles par nom à toute profondeur."""
+    for chemin in chemins:
+        cible = noeud_au_chemin(valeur, chemin)
+        if cible is not None:
+            dernier = chemin.split('.')[-1]
+            cible[dernier] = (cible[dernier][0], True)
+
+    def parcourir(noeud):
+        if isinstance(noeud, dict):
+            for cle, (sous, nul) in list(noeud.items()):
+                if cle in OBJETS_LIBRES and isinstance(sous, (dict, _Carte)):
+                    sous = _Carte((None, True))
+                elif cle in OBJETS_PARTIELS and isinstance(sous, dict):
+                    sous = _Partiel(sous)
+                elif cle in VALEURS_QUELCONQUES:
+                    sous, nul = None, True
+                scalaire = not isinstance(sous, (dict, list, _Carte))
+                noeud[cle] = (sous, nul or cle in TOUJOURS_NULLABLES or (scalaire and cle in COLONNES_NULLABLES))
+                parcourir(sous)
+        elif isinstance(noeud, list) and noeud:
+            parcourir(noeud[0][0])
+        elif isinstance(noeud, _Carte):
+            parcourir(noeud.valeur[0])
+    parcourir(valeur)
 
 
 def corps(nom, exemple, requis=()):
@@ -207,15 +320,25 @@ def reponses(succes, *, statut=200, erreurs=(), conflit=None):
     (400 → erreurs par champ, 404/429 → `{"detail"}`), 409 → `conflit`."""
     resultat = {statut: succes, 401: ERREUR_DETAIL, 403: ERREUR_DETAIL}
     for code in erreurs:
-        resultat[code] = ERREUR_CHAMPS if code == 400 else ERREUR_DETAIL
+        # 409 : refus d'état (`entrees.refus_etat`, `{champ…, detail, code}`) ; 404 : `{detail}` (+ le champ d'un id
+        # du corps qui ne désigne rien, `entrees.introuvable`).
+        resultat[code] = ERREUR_CHAMPS if code == 400 else ERREUR_CODE if code == 409 else ERREUR_DETAIL
     if conflit is not None:
         resultat[409] = conflit
     return resultat
 
 
-def parametre(nom, type_=OpenApiTypes.STR, description=''):
-    """Paramètre de requête facultatif (`?nom=`)."""
-    return OpenApiParameter(nom, type_, OpenApiParameter.QUERY, required=False, description=description)
+#: Une date reçue en paramètre : `AAAA-MM-JJ` dans la plage de `entrees.DateBornee` (2000 → 2100), publiée.
+DATE_BORNEE = {'type': 'string', 'format': 'date', 'pattern': MOTIF_ANNEE_BORNEE}
+
+
+def parametre(nom, type_=OpenApiTypes.STR, description='', *, enum=None, requis=False):
+    """Paramètre de requête (`?nom=`), facultatif sauf `requis` ; `enum` : sa liste fermée publiée. Une date
+    publie sa plage d'années (api-fuzz r2 : ce que le schéma déclare valide, le serveur l'accepte)."""
+    if type_ == OpenApiTypes.DATE:
+        type_ = DATE_BORNEE
+    return OpenApiParameter(nom, type_, OpenApiParameter.QUERY, required=requis, description=description,
+                            enum=list(enum) if enum is not None else None)
 
 
 PAGINATION = [parametre('page', OpenApiTypes.INT), parametre('page_size', OpenApiTypes.INT)]

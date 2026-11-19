@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -134,15 +134,33 @@ describe('TCH152 — la colonne Agenda du bureau', () => {
     expect(within(agenda).queryByRole('checkbox', { name: 'Fait : Timbres' })).toBeNull()
   })
 
-  it('une lecture qui échoue dit « Pas à jour » et se réessaie sans masquer le reste', async () => {
+  it('R3-024 — une lecture qui échoue dit « L\'agenda n\'a pas pu être lu » (jamais l\'invite à glisser) et se réessaie', async () => {
     let essais = 0
     servir({ agenda: () => (++essais === 1 ? Promise.reject(new Error('Network Error')) : Promise.resolve({ data: exemple('agenda') })) })
     monter()
     const agenda = await colonne()
-    expect(await within(agenda).findByText('Pas à jour · 09:12')).toBeInTheDocument()
+    expect(await within(agenda).findByText("L'agenda n'a pas pu être lu")).toBeInTheDocument()
+    expect(within(agenda).queryByText('Glisse une tâche sur un créneau pour lui donner une heure.')).toBeNull()
     await userEvent.setup().click(within(agenda).getByRole('button', { name: 'Réessayer' }))
     expect(await within(agenda).findByRole('checkbox', { name: 'Fait : Devis Settat' })).toBeInTheDocument()
-    expect(within(agenda).queryByText(/Pas à jour/)).toBeNull()
+    expect(within(agenda).queryByText("L'agenda n'a pas pu être lu")).toBeNull()
+    expect(within(agenda).getByText('Glisse une tâche sur un créneau pour lui donner une heure.')).toBeInTheDocument()
+  })
+
+  it('R3-024 — les blocs viennent des items de la page (`items`) : l\'agenda lu ne sert que les rendez-vous', async () => {
+    const items = exemple('aujourdhui').essentiel // Devis Settat, 10:00 — l'agenda lu, lui, ne le sert plus
+    const lu = exemple('agenda')
+    lu.jours[0].blocs = []
+    servir({ agenda: lu })
+    const { rerender } = render(<MemoryRouter><ColonneBureau jour={JOUR} maintenant={MAINTENANT} items={items} /></MemoryRouter>)
+    const agenda = await colonne()
+    expect(await within(agenda).findByRole('checkbox', { name: 'Fait : Devis Settat' })).toHaveAttribute('aria-checked', 'false')
+    expect(within(agenda).getByRole('button', { name: /Réunion banque · 11:00–12:00/ })).toBeInTheDocument()
+    rerender(<MemoryRouter><ColonneBureau jour={JOUR} maintenant={MAINTENANT} items={[{ ...items[0], statut: 'fait' }]} /></MemoryRouter>)
+    expect(within(agenda).getByRole('checkbox', { name: 'Fait : Devis Settat' })).toHaveAttribute('aria-checked', 'true')
+    rerender(<MemoryRouter><ColonneBureau jour={JOUR} maintenant={MAINTENANT} items={[{ ...items[0], jour_prevu: '2026-11-19' }]} /></MemoryRouter>)
+    expect(within(agenda).queryByRole('checkbox', { name: 'Fait : Devis Settat' })).toBeNull()
+    expect(api.get.mock.calls.filter(([url]) => url === '/taches/agenda/')).toHaveLength(1)
   })
 })
 
@@ -285,13 +303,39 @@ describe('TCH152 — la page Aujourd\'hui, au bureau et sur iPhone', () => {
     expect(api.get.mock.calls.filter(([url]) => url === '/taches/projets/').length).toBe(lectures + 1) // la feuille lit la liste ; « Mes projets » ne se relit pas
   })
 
+  it('R3-024 — la colonne SUIT la liste : cocher barre le bloc, la fiche qui change l\'heure ou le jour le déplace, sans relire l\'agenda', async () => {
+    window.matchMedia = media(true)
+    let lacher
+    const porte = new Promise((r) => { lacher = r })
+    api.post.mockImplementation((url) => (url === '/taches/taches/20/terminer/'
+      ? porte.then(() => ({ data: { ...exemple('tache_ecrite'), tache: { ...exemple('tache_ecrite').tache, id: 20, statut: 'fait', lock_version: 5 } } }))
+      : Promise.resolve({ data: {} })))
+    monterPage()
+    const agenda = await screen.findByRole('complementary', { name: 'Agenda du jour' })
+    const bloc = () => within(agenda).queryByRole('checkbox', { name: 'Fait : Devis Settat' })
+    await waitFor(() => expect(bloc()).toHaveAttribute('aria-checked', 'false'))
+    const lectures = () => api.get.mock.calls.filter(([url]) => url === '/taches/agenda/').length
+    const avant = lectures()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Devis Settat » comme faite' }))
+    expect(bloc()).toHaveAttribute('aria-checked', 'true') // tout de suite, la réponse est encore retenue
+    lacher()
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/20/terminer/', expect.anything()))
+    // la fiche (montée par la coquille) a changé l'heure puis le jour : le bloc suit à l'instant
+    const { signalerEcrite } = await import('../lib/fiche')
+    act(() => signalerEcrite({ ...exemple('tache_ecrite').tache, id: 20, statut: 'a_faire', jour_prevu: JOUR, heure_debut: '15:00', lock_version: 6 }))
+    expect(within(agenda).getByRole('checkbox', { name: 'Fait : Devis Settat' }).closest('.bloc')).toHaveTextContent('15:00')
+    act(() => signalerEcrite({ ...exemple('tache_ecrite').tache, id: 20, statut: 'a_faire', jour_prevu: '2026-11-19', heure_debut: '15:00', lock_version: 7 }))
+    expect(bloc()).toBeNull()
+    expect(lectures()).toBe(avant)
+  })
+
   it('une activité ERP ne se glisse pas, une tâche faite non plus', async () => {
     window.matchMedia = media(true)
     const donnees = exemple('aujourdhui')
     donnees.journee = donnees.journee.map((it) => (it.id === 42 ? { ...it, statut: 'fait' } : it))
     servir({ aujourdhui: donnees })
     const { container } = monterPage()
-    await screen.findByText('Devis Settat')
+    await waitFor(() => expect(container.querySelector('[data-ligne="tache:20"]')).not.toBeNull()) // le bloc dit aussi « Devis Settat »
     const activite = container.querySelector('[data-ligne^="activite:"]')
     expect(activite).not.toBeNull()
     expect(activite).not.toHaveAttribute('draggable')

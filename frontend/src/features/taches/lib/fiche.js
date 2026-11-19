@@ -22,6 +22,32 @@ export function signalerEcrite(tache = null) {
   window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache } }))
 }
 
+/* R3-061 — l'APERÇU : chaque ligne de tâche (`LigneTache`) dépose ici l'ITEM qu'elle affiche ; la fiche s'ouvre AU MÊME
+   INSTANT sur lui (titre, Quand, projet, priorité, ★ et `lock_version` : modifiable tout de suite), la lecture complète
+   arrive ensuite et le remplace. Clé = l'identifiant seul (une tâche ; jamais une activité de l'ERP) ; mémoire bornée ;
+   vidé à la déconnexion (`taqinor:auth-logout`) : un poste partagé ne montre jamais la tâche d'un autre compte. */
+const APERCUS_MAX = 500
+const apercus = new Map()
+
+export function retenirApercu(item) {
+  if (!item || item.type !== 'tache' || item.id == null) return
+  const cle = String(item.id)
+  apercus.delete(cle) // la plus récente en dernier : la plus ancienne part la première
+  apercus.set(cle, item)
+  if (apercus.size > APERCUS_MAX) apercus.delete(apercus.keys().next().value)
+}
+
+/** L'item retenu pour la tâche `id`, ou `null`. */
+export function apercu(id) {
+  return apercus.get(String(id)) ?? null
+}
+
+export function oublierApercus() {
+  apercus.clear()
+}
+
+if (typeof window !== 'undefined') window.addEventListener('taqinor:auth-logout', oublierApercus)
+
 /** Ce que la fiche ouvre d'elle-même (R2-021b/025b) : `section` (`decouper` : « Plus » déplié, curseur dans
  *  « Découper ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */
 export const SECTIONS_FICHE = ['decouper']

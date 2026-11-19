@@ -12,6 +12,7 @@ from django.http import Http404
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import Couleur, StatutProjet, StatutRappel, StatutTache
 from apps.taches.models.projets import Projet
@@ -161,9 +162,10 @@ class CreationTests(TestCase):
 
     def test_lien_introuvable_refuse(self):
         # Porte unique de visibilité : selectors/liens.cible_visible (TCH13, même fusion F1).
-        with self.assertRaises(serializers.ValidationError) as ctx:
+        # 404 au corps inchangé : la fiche liée manque (api-fuzz r2, règle d'IdInconnu404Mixin).
+        with self.assertRaises(NotFound) as ctx:
             self._creer(_ligne(), lien={'cible': 'crm.lead', 'id': 987654321}, porte='ecran', source='manuel')
-        self.assertEqual(ctx.exception.detail, {'lien': ['Élément introuvable ou hors de ta portée.']})
+        self.assertEqual(ctx.exception.detail['lien'], ['Élément introuvable ou hors de ta portée.'])
         self.assertFalse(Tache.objects.exists())
 
     # --- Invariant 29 : réglages du rythme nés à la première tâche ----------------------------

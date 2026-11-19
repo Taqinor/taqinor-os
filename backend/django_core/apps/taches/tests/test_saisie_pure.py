@@ -295,6 +295,29 @@ class SortieEtOptionsTests(unittest.TestCase):
                 self.assertEqual(a.alertes, ())
         self.assertEqual(lire('Stand #Sal', projets=self.PROJETS_LONGS).jetons[0]['libelle'], '● Salon Solaire Expo')
 
+    def test_r3_047_un_nom_de_projet_avec_ses_espaces_apres_diese(self):
+        # le choix de la liste `#` insère le nom tel qu'il s'écrit (« #Chantier Benali 9 kWc ») : lu en entier
+        for saisie, attendu, titre in (
+                ('Visite #Chantier Benali 9 kWc demain', 12, 'Visite'),
+                ('Photos #Site web', 13, 'Photos'),
+                ('Stand #salon solaire expo, vite', 11, 'Stand , vite'),
+                ('#Site Polydesign relancer', 14, 'relancer')):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertEqual((a.champs.get('projet_id'), a.titre), (attendu, titre))
+                projet = next(jt for jt in a.jetons if jt['type'] == 'projet')
+                self.assertEqual(projet['source'], saisie[projet['debut']:projet['fin']])
+                self.assertTrue(projet['source'].startswith('#'))
+        # « demain » après le nom reste un jour ; un nom INCONNU à espaces : seul le premier mot est le projet
+        self.assertEqual(lire('Visite #Chantier Benali 9 kWc demain', projets=self.PROJETS_LONGS).champs['jour_prevu'],
+                         j(18))
+        b = lire('Plan #Nouveau site web', projets=self.PROJETS_LONGS)
+        self.assertEqual((b.champs['nouveau_projet']['nom'], b.titre), ('Nouveau', 'Plan site web'))
+        # un projet archivé nommé en entier : « Projet archivé », la tâche reste À trier
+        c = lire('Ranger #Vieux dossiers', projets=(ProjetConnu(9, 'Vieux dossiers', 'archive', 1),))
+        self.assertNotIn('projet_id', c.champs)
+        self.assertEqual(c.alertes, ('projet_archive',))
+
     def test_r2_003_plusieurs_projets_le_premier_par_rang_et_l_alerte(self):
         a = lire('Photos #Site', projets=self.PROJETS_LONGS)
         self.assertEqual(a.champs['projet_id'], 13)
@@ -405,6 +428,21 @@ class SortieEtOptionsTests(unittest.TestCase):
                 a = lire(saisie)
                 self.assertEqual((a.titre, a.champs), (saisie, {'priorite': 0}))
         self.assertEqual(lire('Payer dans 3 jours').champs['jour_prevu'], j(20))  # inchangé dans le calendrier
+
+    def test_r3_047_decalage_en_lettres_de_un_a_trente(self):
+        # « dans quinze jours » (F1) : le nombre écrit en lettres se lit comme en chiffres (J+N, regles.md §1.3)
+        cas = (('Relancer dans quinze jours', j(2, 12)), ('Relancer dans deux semaines', j(1, 12)),
+               ('Relancer dans trois mois', j(17, 2, 2027)), ('Relancer dans dix-sept jours', j(4, 12)),
+               ('Relancer dans vingt et un jours', j(8, 12)), ('Relancer dans vingt-deux jours', j(9, 12)),
+               ('Relancer dans trente jours', j(17, 12)), ('Relancer dans Huit jours', j(25)))
+        for saisie, attendu in cas:
+            with self.subTest(saisie=saisie):
+                a = lire(saisie)
+                self.assertEqual((a.titre, a.champs.get('jour_prevu')), ('Relancer', attendu))
+        # au-delà de trente, ou un mot qui n'est pas un nombre : le texte reste
+        for saisie in ('Relancer dans trente et un jours', 'Relancer dans quelques jours'):
+            with self.subTest(saisie=saisie):
+                self.assertNotIn('jour_prevu', lire(saisie).champs)
 
     def test_capture_ne_lit_ni_recurrence_ni_etape_ni_nouveau_projet(self):
         a = lire('Payer tous les 2 jours #Maison /Achats #Inconnu', porte='capture')
@@ -578,6 +616,38 @@ class CollageTests(unittest.TestCase):
         self.assertTrue(groupes['Admin'][0].startswith('payer la CNSS'))
         self.assertEqual(apercu['projets_communs'], [])
         self.assertEqual(len(apercu['projets_nouveaux']), 7)
+
+    def test_r3_043_un_titre_de_groupe_retrouve_le_projet_qui_commence_ainsi(self):
+        # « Recrutement » colle sous « Recrutement technicien » (et pas « Nouveau projet : Recrutement » à côté)
+        texte = (Path(__file__).parent / 'donnees' / 'liste30.txt').read_text(encoding='utf-8')
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),
+                             ProjetConnu(32, 'Administratif', 'actif', 4))
+        apercu = coller(texte, projets=projets)
+        par_titre = {ligne['titre']: ligne['champs'] for ligne in apercu['lignes']}
+        self.assertEqual(par_titre["publier l'annonce technicien"].get('projet_id'), 31)
+        cnss = next(champs for titre, champs in par_titre.items() if titre.startswith('payer la CNSS'))
+        self.assertEqual(cnss.get('projet_id'), 32)
+        noms_nouveaux = [p['nom'] for p in apercu['projets_nouveaux']]
+        self.assertNotIn('Recrutement', noms_nouveaux)
+        self.assertNotIn('Admin', noms_nouveaux)
+        self.assertEqual(len(noms_nouveaux), 5)
+
+    def test_r3_043_la_premiere_ligne_retrouve_aussi_le_projet_par_son_debut(self):
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),)
+        apercu = coller('Recrutement\npublier l’annonce\nappeler les candidats', projets=projets)
+        self.assertEqual([(c['id'], c['nouveau']) for c in apercu['projets_communs']], [(31, False)])
+        self.assertEqual(apercu['projets_nouveaux'], [])
+
+    def test_r3_043_un_debut_partage_par_deux_projets_ne_rattache_a_aucun(self):
+        # la règle de R2-003 : le préfixe d'UN SEUL projet ouvert ; à deux, le groupe reste un nouveau projet
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),
+                             ProjetConnu(33, 'Recrutement commercial', 'actif', 5))
+        apercu = coller('Recrutement :\npublier l’annonce\nappeler les candidats', projets=projets)
+        self.assertEqual({ligne['champs'].get('nouveau_projet', {}).get('nom') for ligne in apercu['lignes']},
+                         {'Recrutement'})
+        # un projet archivé n'est jamais pris par son début
+        archive = coller('Vieux :\nranger\ntrier', projets=PROJETS + (ProjetConnu(9, 'Vieux dossiers', 'archive', 1),))
+        self.assertEqual(archive['lignes'][0]['champs'].get('nouveau_projet'), {'nom': 'Vieux', 'priorite': 2})
 
     def test_r2_004_un_titre_sans_deux_points_suivi_de_lignes_a_tiret(self):
         apercu = coller('Villa\n- poser les rails\n- câbler\nHôtel Atlas\n- relancer\n- visiter')

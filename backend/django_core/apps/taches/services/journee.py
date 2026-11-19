@@ -44,8 +44,16 @@ MIDI = datetime.time(12, 0)
 DUREE_CARTE_RETOUR = datetime.timedelta(days=7)
 #: Suggestions visibles 7 jours (spec-6a §3.7).
 DUREE_SUGGESTION = datetime.timedelta(days=7)
+#: Propositions du rythme servies le matin (carte `rythme`) ; un constat ne l'est que s'il pose une QUESTION
+#: (`_rythme_du_matin`, R3-005, choix C-17 : une statistique sans geste — C5 — n'apparaît jamais le matin, elle
+#: vit dans Mon rythme et, une fois, au bilan du soir, regles.md §6.9).
 TYPES_RYTHME = (TypeIncitationEcran.PROPOSITION_PALIER, TypeIncitationEcran.DERIVE_TENIR,
-                TypeIncitationEcran.GARDE_TAILLE, TypeIncitationEcran.CONSTAT)
+                TypeIncitationEcran.GARDE_TAILLE)
+#: Cartes « de conseil » (C-17) : au plus UNE par jour — répondue (écartée, suivie) aujourd'hui, plus aucune
+#: jusqu'au lendemain, ni au rechargement ni sur un autre appareil. Les cartes liées à l'heure (`retour`,
+#: `bilan_hier`, `garder`, `alleger`, `faire_bilan`) n'en sont pas.
+TYPES_CONSEIL = TYPES_RYTHME + (TypeIncitationEcran.CONSTAT, TypeIncitationEcran.PAUSE,
+                                TypeIncitationEcran.REVELATION)
 #: Compteurs « Ailleurs dans l'ERP » : clé du contrat → `kind` des files publiques (spec-6a §3.5).
 KINDS_AILLEURS = {
     'chantiers': 'chantier_assigne', 'tickets': 'ticket_transfere', 'da_a_commander': 'da_approuvee_a_commander',
@@ -90,13 +98,23 @@ class Contexte:
 
 
 def _cartes_ouvertes(user, jour):
-    """Cartes à réponse d'écran encore ouvertes au jour `jour` (et la carte `retour` du jour, même
-    répondue : elle dit la « Reprise ») — une requête."""
+    """Cartes à réponse d'écran encore ouvertes au jour `jour`, la carte `retour` du jour même répondue (elle dit
+    la « Reprise ») et les cartes de conseil RÉPONDUES ce jour (`TYPES_CONSEIL`, R3-005 : elles éteignent le conseil
+    du jour) — une requête. Seules les non répondues sont jamais servies."""
+    debut, fin = sel.bornes_du_jour(jour)
     vivantes = Q(expire_le__isnull=True) | Q(expire_le__gte=jour)
+    repondue_ce_jour = Q(type__in=TYPES_CONSEIL, repondu_le__gte=debut, repondu_le__lt=fin)
     return list(IncitationCoach.objects.filter(
         company_id=user.company_id, proprietaire=user, canal=CanalIncitation.ECRAN, jour__lte=jour)
-        .filter(vivantes).filter(Q(reponse='') | Q(jour=jour, type=TypeIncitationEcran.RETOUR))
+        .filter(vivantes).filter(Q(reponse='') | Q(jour=jour, type=TypeIncitationEcran.RETOUR) | repondue_ce_jour)
         .order_by('jour', 'pk'))
+
+
+def conseil_deja_donne(ctx):
+    """Une carte de conseil (`TYPES_CONSEIL`) a-t-elle été répondue AUJOURD'HUI ? (R3-005, choix C-17)."""
+    debut, fin = sel.bornes_du_jour(ctx.jour)
+    return any(c.type in TYPES_CONSEIL and c.repondu_le is not None and debut <= c.repondu_le < fin
+               for c in ctx.cartes)
 
 
 def _jour_court(preferences, jour):
@@ -212,9 +230,20 @@ def _carte(type_, *, proposition_=None, donnees=None):
     return {'type': str(type_), 'proposition': proposition_, 'donnees': dict(donnees or {})}
 
 
-def _carte_proposition(ctx, type_carte, types):
+def _rythme_du_matin(incitation):
+    """Une proposition du rythme (`TYPES_RYTHME`), ou un constat qui pose une QUESTION (C7 « Les revoir
+    maintenant ? ») ; jamais un constat d'information (C5) — R3-005, choix C-17."""
+    if incitation.type in TYPES_RYTHME:
+        return True
+    return (incitation.type == TypeIncitationEcran.CONSTAT
+            and incitation.cle not in service_rythme.CONSTATS_INFORMATION)
+
+
+def _carte_proposition(ctx, type_carte, types=None, *, garder=None):
+    """La première carte ouverte dont le type est dans `types` (ou que `garder` retient), rendue en PROPOSITION."""
     for incitation in ctx.cartes:
-        if incitation.type in types and incitation.reponse == '':
+        retenue = garder(incitation) if garder is not None else incitation.type in types
+        if retenue and incitation.reponse == '':
             forme = proposition(incitation)
             if forme is not None:
                 return _carte(type_carte, proposition_=forme)
@@ -277,18 +306,24 @@ def _carte_faire_bilan(ctx, propose):
 
 
 def _carte_rythme(ctx, propose):
-    return _carte_proposition(ctx, CarteDuMoment.RYTHME, TYPES_RYTHME)
+    if conseil_deja_donne(ctx):
+        return None
+    return _carte_proposition(ctx, CarteDuMoment.RYTHME, garder=_rythme_du_matin)
 
 
 def _carte_pause(ctx, propose):
+    if conseil_deja_donne(ctx):
+        return None
     return _carte_proposition(ctx, CarteDuMoment.PAUSE, (TypeIncitationEcran.PAUSE,))
 
 
 def _carte_revelation(ctx, propose):
     """La révélation ouverte la plus récente (I14), rendue par les textes de `serializers/rythme.py`
     (`TEXTES_REVELATION`, un seul bouton « OK ») ; dernière de l'ordre : elle ne passe jamais devant
-    une autre carte (regles.md §4.10)."""
+    une autre carte (regles.md §4.10) ; rien quand un conseil a déjà été répondu aujourd'hui (R3-005)."""
     from apps.taches.serializers.rythme import TEXTES_REVELATION, forme_proposition  # la forme lit le rythme
+    if conseil_deja_donne(ctx):
+        return None
     ouvertes = [c for c in ctx.cartes if c.type == TypeIncitationEcran.REVELATION and c.reponse == ''
                 and c.cle in TEXTES_REVELATION]
     if not ouvertes:
@@ -553,7 +588,7 @@ def proposition_du_jour(user, jour, maintenant, *, exclure=(), inclure=(), tout=
     cles = [(TACHE, item.id) for item, _ in plan_propose.pour_objectif]
     lignes = [{'item': forme, 'deja_prevue': ctx.journee.items[cle].jour_prevu is not None, 'cochee': True}
               for cle, forme in zip(cles, rendu.items(cles, raisons))]
-    rythme = _carte_proposition(ctx, CarteDuMoment.RYTHME, TYPES_RYTHME)
+    rythme = _carte_proposition(ctx, CarteDuMoment.RYTHME, garder=_rythme_du_matin)
     capacite, source = ctx.capacite
     return {
         'jour': jour.isoformat(), 'objectif': dict(ctx.objectif),
@@ -579,6 +614,11 @@ class Refus(Exception):
     def __init__(self, erreurs):
         super().__init__(erreurs)
         self.erreurs = erreurs
+
+
+class RefusEtat(Refus):
+    """Refus d'ÉTAT : le corps est bien formé, c'est l'état (l'heure, les ★ déjà posées) qui s'y oppose — la vue
+    répond 409, même corps `{champ: [message]}` (api-fuzz r2 : un 400 sur un corps conforme au schéma)."""
 
 
 def _plan_verrouille(user, jour, ops):
@@ -653,7 +693,7 @@ def _verifier_essentiels(plan, essentielles, champ='essentielles'):
     """« 3 au plus. » sur les ★ qui comptent (`sel.ESSENTIELLE_VIVANTE` : tâche vivante, non abandonnée)."""
     deja = set(plan.ligneplanjour_set.filter(sel.ESSENTIELLE_VIVANTE).values_list('tache_id', flat=True))
     if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
-        raise Refus({champ: [MESSAGE_ESSENTIELS]})
+        raise RefusEtat({champ: [MESSAGE_ESSENTIELS]})
 
 
 def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=MODE_EXPRESS, assistant=False):
@@ -696,7 +736,10 @@ def marquer_essentielle(user, tache_id, essentielle, maintenant):
             remplacer_ligne(ligne, ops, essentielle=essentielle)
         elif ligne is None and essentielle:
             creer_ligne(plan, ops, tache_id=tache.pk, essentielle=True, prevue_au_plan=plan.planifie_le is None)
-        geste = enregistrer_geste(user, 'essentiel', 'Essentielle', ops) if ops else None
+        # R3-008 : le message dit le sens du geste (comme le toast de l'écran) ; le titre est servi à côté (`titre` de
+        # `gestes/`, jamais à l'assistant), pas recopié dans le message
+        message = 'Essentielle' if essentielle else 'Plus essentielle'
+        geste = enregistrer_geste(user, 'essentiel', message, ops) if ops else None
     tache = charger_taches(taches_de(user).filter(pk=tache.pk)).get()
     return tache_ecrite(tache, progression=sel.progression_courante(user, jour),
                         geste_id=geste.pk if geste else None)
@@ -750,23 +793,22 @@ def _possible_jusqua(jour):
 def _verifier_jour_du_bilan(jour, maintenant):
     """J, ou J − 1 jusqu'à midi ; sinon 400 au champ `jour`."""
     if jour > maintenant.date() or maintenant >= _possible_jusqua(jour):
-        raise Refus({'jour': [MESSAGE_BILAN_FERME]})
+        raise RefusEtat({'jour': [MESSAGE_BILAN_FERME]})
 
 
 def _bilan_chiffres(ctx, prog):
     objectif = ctx.plan.objectif_du_jour if ctx.plan and ctx.plan.objectif_du_jour else ctx.objectif['nb']
     mode = ctx.objectif['mode']
     variables = {'mode': mode, 'faites': ctx.compte, 'objectif': objectif, 'ef': prog['essentiel_faites'],
-                 'ep': prog['essentiel_prevues'], 'pt': prog['plan_tenues'], 'pl': prog['plan_lignes'],
-                 'jour_court': ctx.jour_court and objectif is not None}
+                 'ep': prog['essentiel_prevues'], 'jour_court': ctx.jour_court and objectif is not None}
     if ctx.objectif['zone']:
         variables['bas'], variables['haut'] = ctx.objectif['zone']
-    lignes = gabarits.texte('bilan', 'texte', variables).split('\n')
+    # R3-001 : `texte_gardees` reste une clé du contrat, toujours vide (plus de « x des y gardées »)
     return {'faites': ctx.compte, 'objectif': objectif,
             'objectif_atteint': bool(sel.objectif_atteint(ctx.compte, objectif)),
             'essentiel_faites': prog['essentiel_faites'], 'essentiel_prevues': prog['essentiel_prevues'],
             'plan_tenues': prog['plan_tenues'], 'plan_lignes': prog['plan_lignes'],
-            'texte': lignes[0], 'texte_gardees': lignes[1] if len(lignes) > 1 else ''}
+            'texte': gabarits.texte('bilan', 'texte', variables), 'texte_gardees': ''}
 
 
 def _restes_et_a_trancher(journee):

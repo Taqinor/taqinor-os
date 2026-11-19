@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,8 +9,8 @@ import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captur
 import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
 import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
-import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
-import ChampSaisie, { morceauxSurlignes } from '../ui/ChampSaisie'
+import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, EVENEMENT_ENVOI, lireBrouillon, messageChamps } from './FeuilleSaisie'
+import ChampSaisie, { morceauxSurlignes, phraseAlerte } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
@@ -127,6 +127,25 @@ describe('TCH82 — feuille de saisie', () => {
     expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
   })
 
+  it('R3-041 — après le bouton « Ajouter », le curseur est dans le champ : la phrase suivante se tape aussitôt', async () => {
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Appeler Karim')
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    expect(champ()).toHaveValue('')
+    expect(champ()).toHaveFocus()
+    await user.keyboard('Relancer Salma')
+    expect(champ()).toHaveValue('Relancer Salma')
+    // au clavier (Tab jusqu'au bouton, Entrée) : le focus revient aussi au champ
+    await user.tab()
+    await user.tab()
+    await user.tab()
+    expect(screen.getByRole('button', { name: 'Ajouter' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(champ()).toHaveValue('')
+    expect(champ()).toHaveFocus()
+  })
+
   it('le brouillon est effacé AVANT l\'événement « tâches créées » : l\'écran qui le relit n\'affiche pas la carte « Brouillon »', async () => {
     const user = userEvent.setup()
     const vusALInstant = []
@@ -178,6 +197,27 @@ describe('TCH82 — feuille de saisie', () => {
     unmount()
     monter()
     expect(champ()).toHaveValue('Relancer l\'imprimeur jeudi')
+  })
+
+  it('R3-040 — un brouillon repris : le curseur est APRÈS la phrase, la frappe s\'y ajoute (jamais « DeuxBrouillon un »)', async () => {
+    const user = userEvent.setup()
+    const { rouvrir, unmount } = monter()
+    await user.type(champ(), 'Brouillon un')
+    rouvrir(false)
+    rouvrir(true)
+    await waitFor(() => expect(champ()).toHaveFocus())
+    expect(champ().selectionStart).toBe('Brouillon un'.length)
+    expect(champ().selectionEnd).toBe('Brouillon un'.length)
+    // `keyboard` (pas `type`, qui clique d'abord et poserait lui-même le curseur) : la frappe va où le champ l'a mis
+    await user.keyboard(' Deux')
+    expect(champ()).toHaveValue('Brouillon un Deux')
+    // une nouvelle feuille qui relit le brouillon du stockage : même règle
+    unmount()
+    monter()
+    await waitFor(() => expect(champ()).toHaveFocus())
+    expect(champ().selectionStart).toBe('Brouillon un Deux'.length)
+    await user.keyboard(' trois')
+    expect(champ()).toHaveValue('Brouillon un Deux trois')
   })
 
   it('couture r2 — `n` sur un projet avant sa lecture (projet_id seul) : la puce nomme le projet, lu dans la liste', async () => {
@@ -434,6 +474,25 @@ describe('TCH82 — feuille de saisie', () => {
       expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
     })
 
+    it('R3-046 — sans réseau : l\'envoi annoncé `part` finit par `en_file` (la ligne « En attente d\'envoi » prend le relais)', async () => {
+      const annonces = []
+      const ecouter = (e) => annonces.push(e.detail)
+      window.addEventListener(EVENEMENT_ENVOI, ecouter)
+      try {
+        const user = userEvent.setup()
+        act(() => {
+          Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+          window.dispatchEvent(new Event('offline'))
+        })
+        monter()
+        await user.type(champ(), 'Rappeler Salma{Enter}')
+        await waitFor(() => expect(annonces.map((a) => a.etat)).toEqual(['part', 'en_file']))
+        expect(annonces[1].envoi).toBe(annonces[0].envoi)
+      } finally {
+        window.removeEventListener(EVENEMENT_ENVOI, ecouter)
+      }
+    })
+
     it('la mise en file efface le brouillon avant de fermer la feuille (et avant tout rejeu qui émet l\'événement)', async () => {
       const user = userEvent.setup()
       const vusALaFermeture = []
@@ -557,6 +616,64 @@ describe('TCH82 — feuille de saisie', () => {
       expect(champ()).toHaveValue('Test deux')
     })
 
+    describe('R3-046 — l\'envoi est ANNONCÉ (`taqinor:taches:envoi`) ; une rafale = un seul toast', () => {
+      let annonces
+      let creationsAuDepart
+      const ecouter = (e) => { annonces.push(e.detail); if (e.detail.etat === 'part') creationsAuDepart.push(creations().length) }
+      beforeEach(() => { annonces = []; creationsAuDepart = []; window.addEventListener(EVENEMENT_ENVOI, ecouter) })
+      afterEach(() => { window.removeEventListener(EVENEMENT_ENVOI, ecouter) })
+
+      it('au toucher, AVANT tout envoi : `part` avec la ligne (client_id, titre, jour) ; au retour : `creees`', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Test un{Enter}')
+        expect(annonces[0]).toEqual({
+          etat: 'part', envoi: expect.any(String), lignes: [{ client_id: expect.stringMatching(/:0$/), titre: 'Test un', jour: null }],
+        })
+        expect(creationsAuDepart).toEqual([0]) // annoncée avant la création
+        const { envoi } = annonces[0]
+        expect(annonces[0].lignes[0].client_id).toBe(`${envoi}:0`)
+        await waitFor(() => expect(attentes).toHaveLength(1))
+        // l'identifiant d'envoi est la clé d'idempotence de la création : la même phrase, partout
+        expect(mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[1].cle).toBe(envoi)
+        expect(attentes[0].corps.lignes[0].client_id).toBe(`${envoi}:0`)
+        await act(async () => { attentes[0].resoudre({ data: creation }) })
+        await waitFor(() => expect(annonces).toHaveLength(2))
+        expect(annonces[1]).toEqual({ etat: 'creees', envoi, creees: creation.creees })
+      })
+
+      it('un échec : `echec` pour cet envoi (la ligne provisoire s\'efface, la phrase revient)', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Test un{Enter}')
+        await waitFor(() => expect(attentes).toHaveLength(1))
+        await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+        await waitFor(() => expect(annonces.map((a) => a.etat)).toEqual(['part', 'echec']))
+        expect(annonces[1]).toEqual({ etat: 'echec', envoi: annonces[0].envoi })
+      })
+
+      it('trois phrases en rafale : trois `part` tout de suite, puis UN toast « 3 tâches ajoutées » dont « Annuler » défait les trois', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Une{Enter}Deux{Enter}Trois{Enter}')
+        expect(annonces.map((a) => [a.etat, a.lignes[0].titre])).toEqual([['part', 'Une'], ['part', 'Deux'], ['part', 'Trois']])
+        expect(new Set(annonces.map((a) => a.envoi)).size).toBe(3)
+        for (let i = 0; i < 3; i += 1) {
+          await waitFor(() => expect(attentes).toHaveLength(i + 1))
+          await act(async () => { attentes[i].resoudre({ data: { ...creation, geste_id: 70 + i } }) })
+          // pas de toast tant que la rafale n'est pas finie
+          if (i < 2) expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
+        }
+        const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+        expect(toast).toHaveTextContent('3 tâches ajoutées')
+        await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
+        await waitFor(() => expect(mocks.annulerGeste.mock.calls.map(([g]) => g)).toEqual([70, 71, 72]))
+      })
+    })
+
     it('un échec quand le champ est resté vide : la phrase revient dans le champ, l\'erreur dessous', async () => {
       const attentes = enVol()
       const user = userEvent.setup()
@@ -649,7 +766,7 @@ describe('TCH82 — feuille de saisie', () => {
     const liste = () => screen.queryByRole('listbox', { name: 'Projets' })
     const options = () => screen.getAllByRole('option').map((o) => o.textContent)
 
-    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon_Solaire_Expo sans envoyer la phrase', async () => {
+    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon Solaire Expo (R3-047 : le nom avec ses espaces) sans envoyer la phrase', async () => {
       const user = userEvent.setup()
       monter()
       await user.type(champ(), 'Stand #')
@@ -660,7 +777,7 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Sal')
       expect(options()).toEqual(['Salon Solaire Expo'])
       await user.keyboard('{Enter}')
-      expect(champ()).toHaveValue('Stand #Salon_Solaire_Expo ')
+      expect(champ()).toHaveValue('Stand #Salon Solaire Expo ')
       expect(liste()).toBeNull()
       expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
     })
@@ -677,10 +794,38 @@ describe('TCH82 — feuille de saisie', () => {
       await user.type(champ(), 'Photos #s')
       await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
       await user.keyboard('{ArrowDown}{Enter}')
-      expect(champ()).toHaveValue('Photos #Site_web ')
+      expect(champ()).toHaveValue('Photos #Site web ')
       await user.type(champ(), 'et #cha')
       await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
-      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+      expect(champ()).toHaveValue('Photos #Site web et #Chantier Bénali 9 kWc ')
+    })
+
+    it('vague 3 — la lettre tapée juste après le choix d\'un projet n\'est jamais avalée (frappes enchaînées, une image passe entre deux)', async () => {
+      // `delay: null` : aucune attente entre les touches, comme une frappe rapide sous charge
+      const user = userEvent.setup({ delay: null })
+      monter()
+      await user.type(champ(), 'Photos #s')
+      await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
+      await user.keyboard('{ArrowDown}{Enter}e')
+      // une image passe (rAF) entre la 1re lettre et la suite : rien de ce qui suit le choix ne doit bouger le curseur
+      await act(() => new Promise((r) => { requestAnimationFrame(() => r()) }))
+      await user.keyboard('t #cha')
+      await waitFor(() => expect(options()).toEqual(['Chantier Bénali 9 kWc']))
+      await user.keyboard('{Enter}suite')
+      expect(champ()).toHaveValue('Photos #Site web et #Chantier Bénali 9 kWc suite')
+      expect(champ().selectionStart).toBe(champ().value.length)
+    })
+
+    it('vague 3 — choix au MILIEU de la phrase : le curseur se pose juste après le jeton, la suite reste derrière', async () => {
+      const user = userEvent.setup({ delay: null })
+      monter()
+      await user.type(champ(), 'Photos  demain')
+      // le curseur revient entre les deux espaces, on tape « #sit »
+      act(() => { champ().setSelectionRange(7, 7) })
+      await user.keyboard('#sit')
+      await waitFor(() => expect(options()).toEqual(['Site web']))
+      await user.keyboard('{Enter}x ')
+      expect(champ()).toHaveValue('Photos #Site web x demain')
     })
 
     it('couture r2 — « #Nom » déjà tapé EN ENTIER : Entrée envoie la phrase (la liste ne mange pas la touche)', async () => {
@@ -837,24 +982,30 @@ describe('TCH82 — feuille de saisie', () => {
       expect(onFermer).toHaveBeenCalledTimes(1)
     })
 
-    it('une liste collée garde le dialogue centré, sur voile', async () => {
+    it('R3-044 — une liste collée reste EN PLACE sous la ligne, sans voile (jamais une boîte centrée)', async () => {
       bureau(true)
       const { container } = monterEcran()
       fireEvent.change(champ(), { target: { value: 'Courses\nlait\npain' } })
       const dialogue = screen.getByRole('dialog', { name: 'Ajouter une tâche' })
-      expect(dialogue).toHaveClass('dialogue-bureau')
-      expect(dialogue).toHaveAttribute('aria-modal', 'true')
-      expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
-      expect(container.querySelector('.voile')).not.toBeNull()
+      expect(dialogue).toHaveClass('popover-bureau')
+      expect(dialogue).not.toHaveClass('dialogue-bureau')
+      expect(dialogue).toHaveAttribute('aria-modal', 'false')
+      expect(container.querySelector('.saisie-bureau + .saisie-ancre')).toContainElement(dialogue)
+      expect(container.querySelector('.voile')).toBeNull()
       await waitFor(() => expect(champ()).toHaveFocus())
       expect(champ()).toHaveValue('Courses\nlait\npain')
+      // l'aperçu arrive : toujours en place
+      expect(await screen.findByText('Aperçu de ta liste', {}, { timeout: 3000 })).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('popover-bureau')
+      expect(container.querySelector('.voile')).toBeNull()
     })
 
-    it('« Coller mes listes » ouvre directement le dialogue', () => {
+    it('R3-044 — « Coller mes listes » s\'ouvre aussi en place quand la ligne est là', () => {
       bureau(true)
-      monterEcran()
+      const { container } = monterEcran()
       act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { liste: true } })) })
-      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('dialogue-bureau')
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toHaveClass('popover-bureau')
+      expect(container.querySelector('.voile')).toBeNull()
     })
 
     it('sans ligne « Ajouter une tâche » à l\'écran (Agenda, `c t` depuis une autre app) : le dialogue centré', () => {
@@ -873,6 +1024,141 @@ describe('TCH82 — feuille de saisie', () => {
       expect(container.querySelector('.saisie-ancre')).not.toContainElement(dialogue)
       expect(container.querySelector('.voile')).not.toBeNull()
     })
+  })
+
+  describe('R3-045 — une puce par chose, le × DANS sa puce, le point à la couleur du projet', () => {
+    const lieu = window.location.pathname
+    afterEach(() => { window.history.pushState({}, '', lieu) })
+
+    it('le × du jour est DANS la puce « aujourd\'hui » (jamais une bulle qui ne contient qu\'une croix)', async () => {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      const { container } = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: {} })) })
+      const retirer = await screen.findByRole('button', { name: 'Retirer le jour choisi' })
+      const puce = retirer.closest('.puce')
+      expect(puce).not.toBeNull()
+      expect(within(puce).getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+      // aucune puce du pied ne se réduit à sa croix
+      const pied = container.querySelector('.saisie-pied')
+      ;[...pied.querySelectorAll('.puce')].forEach((p) => expect(p.textContent.trim()).not.toBe(''))
+    })
+
+    it('la puce du projet de l\'écran : un point de SA couleur (pas « ● » noir), retirable', async () => {
+      mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' }])
+      monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      const retirer = await screen.findByRole('button', { name: 'Retirer « Ventes »' })
+      const puce = retirer.closest('.puce')
+      await waitFor(() => expect(puce).toHaveAttribute('data-p', 'vert'))
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(puce).toHaveTextContent(/^Ventes$/)
+    })
+
+    it('un `#projet` lu dans la phrase : la puce du projet de l\'écran s\'efface (il l\'emporte), une seule puce projet', async () => {
+      const lu = { type: 'projet', source: '#Ventes', debut: 8, fin: 15, libelle: '● Ventes', valeur: { id: 3, nom: 'Ventes', nouveau: false, couleur: 'vert' } }
+      mocks.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' }])
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: 'Appeler', jetons: corps.texte.includes('#') ? [lu] : [], alertes: [], champs: corps.texte.includes('#') ? { projet_id: 3 } : {} }],
+      } : creation }))
+      const user = userEvent.setup()
+      const { container } = monter()
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } })) })
+      await user.type(champ(), 'Appeler #Ventes')
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Retirer « Ventes »' })).toBeNull(), { timeout: 3000 })
+      expect(container.querySelectorAll('[data-jeton="projet"]')).toHaveLength(1)
+      const puce = container.querySelector('[data-jeton="projet"]')
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(puce).not.toHaveTextContent('●')
+    })
+  })
+
+  describe('R3-047 — la puce « Projet » du pied montre le projet lu par `#`', () => {
+    const PROJETS = [
+      { id: 3, nom: 'Ventes', couleur: 'vert', statut: 'actif' },
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+    ]
+    const lu = (source, debut) => ({ type: 'projet', source, debut, fin: debut + source.length, libelle: '● Ventes',
+      valeur: { id: 3, nom: 'Ventes', nouveau: false } })
+    beforeEach(() => {
+      mocks.listerTousLesProjets.mockResolvedValue(PROJETS)
+      mocks.saisieRapide.mockImplementation((corps) => {
+        const i = corps.texte?.indexOf('#Ventes') ?? -1
+        return Promise.resolve({ data: corps.apercu ? {
+          ...apercu, projets_nouveaux: [],
+          lignes: [{ ...apercu.lignes[0], titre: 'Appeler', jetons: i >= 0 ? [lu('#Ventes', i)] : [], alertes: [], champs: i >= 0 ? { projet_id: 3 } : {} }],
+        } : creation })
+      })
+    })
+
+    it('une seule puce, DANS le pied : le nom et le point de couleur du projet ; « Projet » vide n\'y est plus ; × la retire', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Ventes')
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      expect(container.querySelectorAll('[data-jeton="projet"]')).toHaveLength(1)
+      const puce = pied.querySelector('[data-jeton="projet"]')
+      expect(puce).toHaveTextContent(/^Ventes$/)
+      expect(puce).toHaveAttribute('data-p', 'vert')
+      expect(puce.querySelector('.point')).not.toBeNull()
+      expect(within(pied).queryByRole('button', { name: 'Projet' })).toBeNull()
+      await user.click(within(puce).getByRole('button', { name: 'Retirer Ventes' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.at(-1)[0].ignorer).toEqual([{ type: 'projet', source: '#Ventes' }]))
+    })
+
+    it('la toucher ouvre le sélecteur ; un autre projet REMPLACE `#Ventes` dans la phrase (jamais deux `#`)', async () => {
+      const user = userEvent.setup()
+      const { container } = monter()
+      await user.type(champ(), 'Appeler #Ventes demain')
+      const pied = container.querySelector('.saisie-pied')
+      await waitFor(() => expect(pied.querySelector('[data-jeton="projet"]')).not.toBeNull(), { timeout: 3000 })
+      await user.click(within(pied).getByRole('button', { name: 'Ventes' }))
+      await user.click(await screen.findByRole('option', { name: 'Salon Solaire Expo' }))
+      expect(champ()).toHaveValue('Appeler #Salon Solaire Expo demain')
+    })
+  })
+
+  it('R3-042 — chaque alerte `deux_*` se lit au pluriel accordé ; « plusieurs projets » sans nom vide', () => {
+    expect(Object.fromEntries([
+      'jour', 'heure', 'moment', 'echeance', 'quelque_jour', 'projet', 'section', 'priorite', 'etiquette', 'duree',
+      'recurrence', 'rappel',
+    ].map((type) => [type, phraseAlerte(`deux_${type}`)]))).toEqual({
+      jour: 'Deux jours lus : le second reste dans le titre.',
+      heure: 'Deux heures lues : la seconde reste dans le titre.',
+      moment: 'Deux moments lus : le second reste dans le titre.',
+      echeance: 'Deux échéances lues : la seconde reste dans le titre.',
+      quelque_jour: 'Deux « un jour » lus : le second reste dans le titre.',
+      projet: 'Deux projets lus : le second reste dans le titre.',
+      section: 'Deux étapes lues : la seconde reste dans le titre.',
+      priorite: 'Deux priorités lues : la seconde reste dans le titre.',
+      etiquette: 'Deux étiquettes lues : la seconde reste dans le titre.',
+      duree: 'Deux durées lues : la seconde reste dans le titre.',
+      recurrence: 'Deux répétitions lues : la seconde reste dans le titre.',
+      rappel: 'Deux rappels lus : le second reste dans le titre.',
+    })
+    // le serveur n'envoie que le code (`analyseur.resoudre_projet`) : jamais « s'appellent «  » »
+    expect(phraseAlerte('plusieurs_projets')).toBe('Plusieurs projets commencent ainsi : le premier est choisi.')
+    expect(phraseAlerte({ code: 'plusieurs_projets' })).not.toMatch(/«\s*»/)
+  })
+
+  it('R3-042 — « plusieurs projets » se tait tant que la liste `#` est ouverte (elle montre déjà les projets)', async () => {
+    mocks.listerTousLesProjets.mockResolvedValue([
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+      { id: 13, nom: 'Site web', couleur: 'ciel', statut: 'actif' },
+    ])
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+      ...apercu, projets_nouveaux: [],
+      lignes: [{ ...apercu.lignes[0], titre: 'Photos', jetons: [], alertes: ['plusieurs_projets'], champs: {} }],
+    } : creation }))
+    const user = userEvent.setup()
+    monter()
+    await user.type(champ(), 'Photos #s')
+    await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled(), { timeout: 3000 })
+    await waitFor(() => expect(screen.getByRole('listbox', { name: 'Projets' })).toBeInTheDocument())
+    expect(screen.queryByText(/Plusieurs projets/)).toBeNull()
+    await user.keyboard('{Escape}') // la liste fermée : l'alerte se dit
+    expect(await screen.findByText('Plusieurs projets commencent ainsi : le premier est choisi.')).toBeInTheDocument()
   })
 
   it('messageChamps lit le champ fautif, par ligne ou non', () => {

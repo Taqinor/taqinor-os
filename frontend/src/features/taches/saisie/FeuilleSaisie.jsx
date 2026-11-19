@@ -10,7 +10,7 @@ import { MESSAGE_EN_FILE, avecContexte, enfilerAjout, enfilerPhrase } from '../h
 import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
 import { aujourdhuiIso, jourCourt } from '../lib/textes'
-import ChampSaisie, { jetonProjet } from '../ui/ChampSaisie'
+import ChampSaisie, { jetonProjet, jetonProjetExistant } from '../ui/ChampSaisie'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
 import SelecteurQuand from '../ui/SelecteurQuand'
@@ -38,6 +38,19 @@ export const PREFIXE_BROUILLON = 'taches:brouillon:'
 export const EVENEMENT_DECONNEXION = 'taqinor:auth-logout'
 /** Annoncé après une création réussie : les listes ouvertes se rafraîchissent d'elles-mêmes. */
 export const EVENEMENT_CREEES = 'taqinor:taches:creees'
+/**
+ * R3-046 — INTERFACE (figée pour l'écran Aujourd'hui, R3-030) : chaque envoi de la saisie est annoncé sur `window`
+ * par `taqinor:taches:envoi`, `detail` =
+ *   · `{ etat: 'part', envoi, lignes: [{ client_id, titre, jour }] }` — AU TOUCHER (« Ajouter », Entrée, « Créer N
+ *     tâches »), avant tout appel réseau ; `envoi` = la clé d'idempotence de la création (`client_id` = `{envoi}:{n}`),
+ *     `jour` = 'AAAA-MM-JJ' ou `null`. Le titre est celui de l'aperçu lu ; sans aperçu encore revenu, la phrase tapée.
+ *   · `{ etat: 'creees', envoi, creees: [ITEM…] }` — le serveur a créé (émis juste avant `taqinor:taches:creees`) ;
+ *   · `{ etat: 'echec', envoi }` — rien de créé (la phrase est rendue au champ ou par « Reprendre ») ;
+ *   · `{ etat: 'en_file', envoi }` — hors ligne : mis en file (les lignes « En attente d'envoi » de la file prennent le
+ *     relais). Un envoi finit TOUJOURS par l'un de ces trois.
+ */
+export const EVENEMENT_ENVOI = 'taqinor:taches:envoi'
+const annoncerEnvoi = (detail) => window.dispatchEvent(new CustomEvent(EVENEMENT_ENVOI, { detail }))
 const EVENEMENT_SAISIR = 'taqinor:taches:saisir'
 const DELAI_APERCU_MS = 300
 
@@ -184,6 +197,12 @@ function trouverAncre() {
   return typeof ancre.checkVisibility === 'function' && !ancre.checkVisibility() ? null : ancre
 }
 
+/** R3-047 — le projet lu par `#` a sa puce dans le pied de la feuille (« Projet »), pas une seconde sous le champ. */
+const TYPES_AU_PIED = ['projet']
+
+/** R3-041 — un bouton qui ne vole pas le focus au champ (le doigt ou la souris le touchent, le clavier reste ouvert). */
+const garderLeFocus = (e) => e.preventDefault()
+
 /** Coupure : aucune réponse du serveur (le geste part dans la file, jamais perdu). */
 const sansReseau = (err) => classerErreur(err).code === 'reseau'
 
@@ -229,12 +248,11 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const choisirQuand = (valeur) => { quandAuto.current = false; setQuand(valeur) }
   const enLigne = useEnLigne()
   // R2-009 — au bureau, la saisie s'ouvre à la place de la ligne « Ajouter une tâche » de l'écran (ancre lue à
-  // l'ouverture) ; « Coller mes listes » et une liste collée gardent le dialogue centré
+  // l'ouverture). R3-044 — une liste collée et « Coller mes listes » y restent aussi (plus de bascule en boîte centrée
+  // sur voile) ; sans ligne à l'écran (Agenda, autre app), le dialogue centré
   const bureau = useBureau()
   // (la coquille ouvre toujours la feuille APRÈS le montage de l'écran : la ligne est déjà là)
   const ancre = useMemo(() => (ouverte && bureau ? trouverAncre() : null), [ouverte, bureau])
-  /** Vrai quand la demande d'ouverture est « Coller mes listes » (chaque demande le repose, voir `recevoir`). */
-  const [demandeListe, setDemandeListe] = useState(false)
   // R2-003 — les projets du compte, lus une fois à l'ouverture : la liste à `#` et le sélecteur de la puce « Projet »
   const [projets, setProjets] = useState(null)
   const [projetOuvert, setProjetOuvert] = useState(false)
@@ -258,6 +276,8 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   useEffect(() => { montee.current = true; return () => { montee.current = false } }, [])
   /** Les envois en vol, enchaînés : les tâches arrivent dans l'ordre tapé. */
   const envois = useRef(Promise.resolve())
+  /** R3-046 — la rafale en cours : envois pas encore revenus, et ce qui a été créé (un seul toast à la fin). */
+  const rafale = useRef({ enVol: 0, envois: 0, n: 0, gestes: [], message: '' })
   /** Phrases mises de côté par « Reprendre » : chacune revient dans le champ quand la précédente est partie. */
   const suivantes = useRef([])
   const corps = useRef(null)
@@ -280,6 +300,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const enchainer = useCallback(() => {
     setTexte(suivantes.current.shift() ?? ''); setIgnorer([]); setApercu(null); setErreur(''); setCid(nouvelleCle())
     setQuand(quandDepart); setQuandOuvert(false)
+    // R3-041 — le champ reprend le focus TOUT DE SUITE (« Ajouter » au clavier, Tab puis Entrée) : la phrase suivante
+    // se tape aussitôt. Au doigt et à la souris, le bouton ne l'a jamais pris (voir `garderLeFocus`).
+    corps.current?.querySelector('.saisie-champ')?.focus()
   }, [quandDepart])
 
   // déconnexion : plus aucune trace de la phrase (écran, stockage)
@@ -297,7 +320,6 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const recevoir = useCallback((detail) => {
     if (typeof detail.texte === 'string') setTexte(detail.texte)
     if (detail.liste || detail.coller) setChampReplie(false)
-    setDemandeListe(Boolean(detail.liste || detail.coller))
     // déjà ouverte (en place au bureau, le focus parti dans la liste) : `n` ou « Ajouter une tâche » ramène au champ
     if (actuel.current.ouverte) requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
     // TCH102 — `c t` / palette : sans lien dans l'événement, la saisie se lie à l'objet de l'écran (puce retirable)
@@ -380,18 +402,37 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   // un vrai collage replie — une suggestion du clavier, une dictée ou un mot collé grandissent aussi le texte d'un coup
   const surColle = (colle) => { if (colle.includes('\n')) setChampReplie(true) }
   /** R2-003 — la puce « Projet » : le projet choisi devient celui de l'écran (puce « ● Nom », retirable). */
+  /** R3-047 — un `#projet` déjà lu dans la phrase : le choix du pied le REMPLACE dans le texte (jamais deux `#`, jamais
+   *  un « #Ventes » laissé dans le titre), écrit sur la valeur COURANTE du champ. */
+  const remplacerProjetLu = (jeton) => setTexte((t) => (
+    t.slice(projetLu.debut, projetLu.fin) === projetLu.source
+      ? `${t.slice(0, projetLu.debut)}#${jeton}${t.slice(projetLu.fin)}` : t))
   const choisirProjet = (projetId) => {
     const projet = projetsOuverts.find((p) => p.id === projetId)
-    setContexte((c) => ({ ...c, projetId: projet ? projet.id : null, projetNom: projet?.nom ?? '', sectionId: null }))
+    if (projetLu && projet) remplacerProjetLu(jetonProjetExistant(projet.nom))
+    else setContexte((c) => ({ ...c, projetId: projet ? projet.id : null, projetNom: projet?.nom ?? '', sectionId: null }))
     setProjetOuvert(false)
   }
   /** « + Nouveau projet » / « Créer « nom » » : `#Nom` s'ajoute à la phrase, le serveur le lit « Nouveau projet ». */
   const nouveauProjet = (nom) => {
     const jeton = jetonProjet(nom)
-    setTexte((t) => `${t.trimEnd()}${t.trim() ? ' ' : ''}#${jeton}${jeton ? ' ' : ''}`)
+    if (projetLu && jeton) remplacerProjetLu(jeton)
+    else setTexte((t) => `${t.trimEnd()}${t.trim() ? ' ' : ''}#${jeton}${jeton ? ' ' : ''}`)
     setProjetOuvert(false)
     requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
   }
+  const basculerQuand = () => { setQuandOuvert((v) => !v); setProjetOuvert(false) }
+  const basculerProjet = () => { setProjetOuvert((v) => !v); setQuandOuvert(false) }
+  /** R3-045 — le `#projet` lu dans la phrase (il l'emporte sur le projet de l'écran) et la couleur de ce dernier. */
+  const projetLu = modeListe ? null : (ligne?.jetons ?? []).find((j) => j.type === 'projet') ?? null
+  const couleurDe = (id) => (id == null ? null : (projets ?? []).find((p) => p.id === id)?.couleur ?? null)
+  const couleurContexte = couleurDe(contexte.projetId)
+  /** R3-047 — ce que la puce « Projet » du pied montre du projet lu : son nom (existant), sinon le libellé servi
+   *  (« Nouveau projet : X », « Projet archivé : X ») ; la couleur d'un projet existant seulement. */
+  const valeurLue = projetLu?.valeur ?? {}
+  const existantLu = Boolean(projetLu) && !valeurLue.nouveau && !valeurLue.archive
+  const nomLu = existantLu ? valeurLue.nom ?? String(projetLu.libelle ?? '').replace(/^●\s*/u, '') : projetLu?.libelle ?? ''
+  const couleurLu = existantLu ? valeurLue.couleur ?? couleurDe(valeurLue.id) : null
   const surIgnorer = (jeton) => setIgnorer((liste) => [...liste, jeton])
   const surPriorite = (nom, niveau) => setPriorites((p) => ({ ...p, [nom]: niveau }))
   const collerEncore = () => {
@@ -421,11 +462,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
   }
   const echouer = (gel, message) => {
+    annoncerEnvoi({ etat: 'echec', envoi: gel.cid })
     const libre = !actuel.current.texte.trim() && actuel.current.collages.length === 0
     if (!montee.current) ecrireBrouillon(cle, { texte: [...gel.collages, gel.texte].filter((t) => t.trim()).join('\n\n'), quand: gel.quand })
     else if (libre) { restaurer(gel); setErreur(message) }
     // feuille ouverte et phrase rendue au champ : l'erreur SOUS le champ suffit ; sinon le toast le dit
     if (montee.current && libre && actuel.current.ouverte) return
+    // R3-046 — ce toast-là (« Reprendre ») n'est jamais recouvert par celui de la fin de la rafale
+    rafale.current.echecDit = true
     proposerAnnuler({
       message: `Pas ajoutée : ${message}`,
       libelle: 'Reprendre',
@@ -452,8 +496,33 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
       echouer(gel, frenchError(err))
       return
     }
+    annoncerEnvoi({ etat: 'en_file', envoi: gel.cid })
     if (montee.current && actuel.current.ouverte && !actuel.current.texte.trim()) onFermer?.()
     proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
+  }
+
+  /** Les lignes à créer que l'aperçu `donnees` donne pour ce gel (cochées, ou forcées par « Ajouter quand même » /
+   *  « Mettre le reste en note »). */
+  const lignesLues = (gel, donnees) => {
+    // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
+    const depart = gel.quand != null && gel.quand === gel.quandDepart
+    // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
+    const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
+    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
+    return (donnees?.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
+      const base = construireLigne(l, {
+        cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
+      })
+      return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
+    })
+  }
+  /** R3-046 — les lignes annoncées au toucher : les lignes prêtes (liste), celles de l'aperçu frais, sinon la phrase
+   *  tapée (une ligne provisoire, que le retour du serveur remplace). */
+  const lignesAnnoncees = (gel) => {
+    const lignes = gel.lignes ?? (gel.frais ? lignesLues(gel, gel.frais) : [])
+    if (lignes.length > 0) return lignes.map((l) => ({ client_id: l.client_id, titre: l.titre, jour: l.jour_prevu ?? null }))
+    const titre = [...gel.collages, gel.texte].map((t) => t.trim()).filter(Boolean).join(' ')
+    return [{ client_id: `${gel.cid}:0`, titre, jour: gel.quand?.quelque_jour ? null : gel.quand?.jour_prevu ?? null }]
   }
 
   /** Les lignes du gel : déjà prêtes (liste), lues dans l'aperçu frais, ou demandées au serveur maintenant. */
@@ -468,17 +537,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
     }
-    // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
-    const depart = gel.quand != null && gel.quand === gel.quandDepart
-    // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
-    const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
-    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
-      const base = construireLigne(l, {
-        cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
-      })
-      return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
-    })
+    const lignes = lignesLues(gel, donnees)
     if (lignes.length > 0) return { lignes }
     // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), « Déjà dans ta liste » pour
     // une phrase déjà là, sinon le générique
@@ -502,21 +561,47 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     }
     const n = data?.creees?.length ?? lignes.length
     const geste = data?.geste_id
+    annoncerEnvoi({ etat: 'creees', envoi: gel.cid, creees: data?.creees ?? [] })
     window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
     const aujourdhui = gel.depuisAujourdhui && n === 1 && lignes[0]?.jour_prevu === aujourdhuiIso()
+    // R3-046 — le toast attend la fin de la rafale (`terminerEnvoi`) : un seul pour cinq phrases, pas cinq « Ajoutée »
+    const r = rafale.current
+    r.envois += 1
+    r.n += n
+    if (geste) r.gestes.push(geste)
+    r.message = n > 1 ? `${n} tâches créées` : aujourdhui ? TOAST_AJOUTEE_AUJOURDHUI : 'Ajoutée'
+  }
+
+  /** R3-046 — un envoi est revenu ; le dernier de la rafale dit ce qui a été créé, en UN toast (« 5 tâches ajoutées »),
+   *  dont « Annuler » défait tous les gestes de la rafale. */
+  const terminerEnvoi = () => {
+    const r = rafale.current
+    r.enVol -= 1
+    if (r.enVol > 0) return
+    if (r.envois === 0 || r.echecDit) {
+      rafale.current = { enVol: 0, envois: 0, n: 0, gestes: [], message: '' }
+      return
+    }
+    const gestes = [...r.gestes]
+    const message = r.envois > 1 ? `${r.n} tâches ajoutées` : r.message
+    rafale.current = { enVol: 0, envois: 0, n: 0, gestes: [], message: '' }
     proposerAnnuler({
-      message: n > 1 ? `${n} tâches créées` : aujourdhui ? TOAST_AJOUTEE_AUJOURDHUI : 'Ajoutée',
-      onAnnuler: geste ? () => annulerGeste(geste) : undefined,
+      message,
+      onAnnuler: gestes.length > 0 ? () => Promise.all(gestes.map((g) => annulerGeste(g))) : undefined,
     })
   }
 
   /** Fige, vide l'écran TOUT DE SUITE (une phrase : la chaîne reste ouverte ; une liste : la feuille se ferme), envoie. */
   const lancer = (gel, liste) => {
+    // R3-046 — annoncé AVANT tout : l'écran montre la ligne « envoi… » à l'instant du toucher
+    annoncerEnvoi({ etat: 'part', envoi: gel.cid, lignes: lignesAnnoncees(gel) })
+    rafale.current.enVol += 1
     if (liste) { remettreAZero(); onFermer?.() } else enchainer()
     // le brouillon part avec la phrase : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas la revoir
     ecrireBrouillon(cle, null)
     // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
     envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
+      .finally(terminerEnvoi)
   }
   const geler = (extra = {}) => ({
     texte, collages, ignorer, quand, quandDepart, priorites, contexte, cid, frais, depuisAujourdhui: surAujourdhui(), ...extra,
@@ -536,15 +621,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const double = !modeListe && (erreur === DEJA_DANS_LISTE || erreur === DEJA_FAITE)
   const envoyerResteEnNote = () => { if (texte.trim()) lancer(geler({ resteEnNote: true }), false) }
 
-  const enDialogue = modeListe || demandeListe
   return (
     <FeuilleACrans
       ouverte={Boolean(ouverte)}
       onFermer={onFermer}
       titre="Ajouter une tâche"
       cranInitial={modeListe ? '85' : '50'}
-      variante={enDialogue ? 'dialogue' : 'popover'}
-      ancre={enDialogue ? null : ancre}
+      variante="popover"
+      ancre={ancre}
     >
       <div className="feuille-saisie" ref={corps}>
         {!(modeListe && donneesListe) || !champReplie ? (
@@ -560,6 +644,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             onSoumettre={envoyer}
             erreur={modeListe ? '' : erreur || erreurLue}
             projets={modeListe ? null : projetsOuverts}
+            typesAuPied={TYPES_AU_PIED}
           />
         ) : null}
         {titreTropLong ? (
@@ -600,29 +685,53 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
             ) : null}
             <div className="saisie-pied">
               <span className="puces">
-                <button
-                  type="button"
-                  className={quandVu ? 'puce lue' : 'puce vide'}
-                  aria-expanded={quandOuvert}
-                  onClick={() => { setQuandOuvert((v) => !v); setProjetOuvert(false) }}
-                >
-                  <Calendar className="i i-16" aria-hidden="true" />
-                  <span className="chiffres">{libelleQuand(quandVu)}</span>
-                </button>
+                {/* R3-045 — le × du jour est DANS sa puce (comme les puces lues), plus une bulle qui ne contient qu'une
+                    croix ; la puce ouvre « Quand », son × le retire */}
                 {quandVu ? (
-                  <button type="button" className="puce vide" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
-                    <X className="i i-14" aria-hidden="true" />
+                  <span className="puce lue" data-jeton="quand">
+                    <Calendar className="i i-16" aria-hidden="true" />
+                    <button type="button" className="cible" aria-expanded={quandOuvert} onClick={basculerQuand}>
+                      <span className="chiffres">{libelleQuand(quandVu)}</span>
+                    </button>
+                    <button type="button" className="retirer" aria-label="Retirer le jour choisi" onClick={() => { choisirQuand(null); setQuandOuvert(false) }}>
+                      <X aria-hidden="true" />
+                    </button>
+                  </span>
+                ) : (
+                  <button type="button" className="puce vide" aria-expanded={quandOuvert} onClick={basculerQuand}>
+                    <Calendar className="i i-16" aria-hidden="true" />
+                    <span className="chiffres">{libelleQuand(quandVu)}</span>
                   </button>
-                ) : null}
-                {contexte.projetId != null && nomProjet ? (
-                  <button type="button" className="puce lue" aria-label={`Retirer « ${nomProjet} »`}
+                )}
+                {/* R3-047 — la puce « Projet » du pied MONTRE le projet lu par `#` (une seule puce : celle de dessous le
+                    champ ne se répète pas) ; la toucher ouvre le sélecteur, qui remplace le `#projet` dans la phrase.
+                    R3-045 — le projet de l'écran : un point de SA couleur (`data-p`), jamais un « ● » de texte noir ; un
+                    `#projet` lu dans la phrase l'emporte (`avecContexte`) : il prend sa place */}
+                {projetLu ? (
+                  <span
+                    className={valeurLue.nouveau ? 'puce nouveau' : couleurLu ? 'puce projet-lu' : 'puce lue'}
+                    data-jeton="projet"
+                    data-p={couleurLu || undefined}
+                  >
+                    {couleurLu ? <i className="point" aria-hidden="true" /> : null}
+                    <button type="button" className="cible" aria-expanded={projetOuvert} onClick={basculerProjet}>
+                      <span className="projet-nom">{nomLu}</span>
+                    </button>
+                    <button type="button" className="retirer" aria-label={`Retirer ${nomLu}`}
+                      onClick={() => surIgnorer({ type: projetLu.type, source: projetLu.source })}>
+                      <X aria-hidden="true" />
+                    </button>
+                  </span>
+                ) : contexte.projetId != null && nomProjet ? (
+                  <button type="button" className={couleurContexte ? 'puce projet-lu' : 'puce lue'} data-p={couleurContexte || undefined}
+                    aria-label={`Retirer « ${nomProjet} »`}
                     onClick={() => setContexte((c) => ({ ...c, projetId: null, projetNom: '', sectionId: null }))}>
-                    <span className="projet-nom">{`● ${nomProjet}`}</span>
+                    {couleurContexte ? <i className="point" aria-hidden="true" /> : null}
+                    <span className="projet-nom">{nomProjet}</span>
                     <X className="i i-14" aria-hidden="true" />
                   </button>
                 ) : (
-                  <button type="button" className="puce vide" aria-expanded={projetOuvert}
-                    onClick={() => { setProjetOuvert((v) => !v); setQuandOuvert(false) }}>
+                  <button type="button" className="puce vide" aria-expanded={projetOuvert} onClick={basculerProjet}>
                     <Folder className="i i-16" aria-hidden="true" />
                     <span>Projet</span>
                   </button>
@@ -639,6 +748,9 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
                 type="button"
                 className="bouton plein"
                 aria-disabled={!texte.trim() || titreTropLong || undefined}
+                // R3-041 — toucher « Ajouter » ne prend pas le focus au champ : le clavier de l'iPhone reste ouvert et
+                // la frappe suivante va dans le champ (même geste que la liste des projets `#`)
+                onMouseDown={garderLeFocus}
                 onClick={envoyer}
               >
                 Ajouter

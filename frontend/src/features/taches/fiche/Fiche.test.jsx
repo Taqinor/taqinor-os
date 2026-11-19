@@ -1,11 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { EVENEMENT_CREEES, EVENEMENT_ECRITE, useApresCreation, useOuvrirFiche } from '../lib/fiche'
+import {
+  EVENEMENT_CREEES, EVENEMENT_ECRITE, apercu, oublierApercus, retenirApercu, useApresCreation, useOuvrirFiche,
+} from '../lib/fiche'
 import { reinitialiserGestes } from '../lib/gestes'
 import Fiche from './Fiche'
 
@@ -362,6 +365,39 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 })
   })
 
+  it('R3-060 — « 16:30 » tapé puis Échap : l\'heure part au serveur, la fiche se ferme ; rien n\'est perdu en silence', async () => {
+    const user = userEvent.setup()
+    function Hote() {
+      const [ouverte, setOuverte] = useState(true)
+      return ouverte ? <Fiche id={20} aujourdhui={AUJOURDHUI} onFermer={() => setOuverte(false)} /> : <p>fiche fermée</p>
+    }
+    render(<div className="tch"><Hote /><ZoneAnnonces /></div>)
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    const champ = screen.getByLabelText('Heure')
+    act(() => { champ.focus() })
+    fireEvent.change(champ, { target: { value: '16:30' } })
+    await user.keyboard('{Escape}')
+    expect(screen.getByText('fiche fermée')).toBeInTheDocument()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledTimes(1))
+    expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '16:30', lock_version: 4 }))
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Prévue')
+  })
+
+  it('R3-060 — fiche démontée sans Échap (retour arrière, autre écran) avec une heure ou une échéance tapées : elles partent', async () => {
+    const user = userEvent.setup()
+    const premier = monter()
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '16:30' } })
+    premier.unmount()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ heure_debut: '16:30' })))
+    const second = monter()
+    await user.click(await screen.findByRole('button', { name: 'Échéance : jeu. 19' }))
+    fireEvent.change(screen.getByLabelText('Échéance'), { target: { value: '2026-11-27' } })
+    second.unmount()
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 }))
+    expect(api.modifierTache).toHaveBeenCalledTimes(1)
+  })
+
   it('R2-042 — une année partielle n\'est jamais envoyée : « Date incomplète. » sous le champ', async () => {
     const user = userEvent.setup()
     monter()
@@ -432,6 +468,77 @@ describe('TCH84 — fiche d\'une tâche', () => {
     expect(await screen.findByText('Devis signé')).toBeInTheDocument()
     expect(api.ajouterPoint).toHaveBeenCalledWith({ tache_id: 20, libelle: 'Devis signé' })
     expect(api.lireTache).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('R3-061 — la fiche s\'ouvre tout de suite sur ce que la ligne sait déjà', () => {
+  const item = exempleContrat('taches', 'item')
+  /** `lireTache` retenue par une PORTE : la réponse n'arrive que quand le test la lâche. */
+  const retenirLecture = (reponse = tache) => {
+    let lacher
+    api.lireTache.mockImplementation(() => new Promise((ok) => { lacher = () => ok({ data: reponse }) }))
+    return () => act(async () => { lacher() })
+  }
+  afterEach(() => { oublierApercus() })
+
+  it('avant la réponse du serveur : titre, Quand, projet, priorité et ★ sont là ; notes et check-list réservent leur place', async () => {
+    retenirApercu(item)
+    const lacher = retenirLecture()
+    const { container } = monter()
+    // à la PREMIÈRE image, sans attendre : rien ne dit « Chargement… »
+    expect(screen.getByRole('textbox', { name: 'Titre' })).toHaveValue('Devis Settat')
+    expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+    expect(screen.queryByText('Chargement…')).toBeNull()
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Aujourd\'hui · 10:00')
+    expect(screen.getByRole('button', { name: 'Projet : Ventes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Priorité : moyenne' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Essentielle : Devis Settat' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('button', { name: 'Fait' })).toBeInTheDocument()
+    // les blocs qui arrivent ont leur squelette (la hauteur est réservée), aucun champ Notes vide qu'on écraserait
+    expect(screen.queryByRole('textbox', { name: 'Notes' })).toBeNull()
+    expect(container.querySelector('.fiche-section [data-squelette="notes"]')).not.toBeNull()
+    expect(container.querySelector('[data-squelette="checklist"]')).not.toBeNull()
+    await lacher()
+    expect(await screen.findByRole('textbox', { name: 'Notes' })).toHaveValue('Appeler avant 11 h.')
+    expect(container.querySelector('[data-squelette]')).toBeNull()
+    expect(screen.getByText('Prix')).toBeInTheDocument()
+  })
+
+  it('modifiable tout de suite (la version est connue) ; une lecture qui revient APRÈS une écriture ne la défait pas', async () => {
+    const user = userEvent.setup()
+    retenirApercu(item)
+    const lacher = retenirLecture({ ...tache, jour_prevu: '2026-11-17' })
+    api.planifierTache.mockResolvedValue({ data: { ...ecrite, tache: { ...(ecrite.tache ?? ecrite), jour_prevu: '2026-11-18', heure_debut: null, lock_version: 5 } } })
+    monter()
+    await user.click(screen.getByRole('button', { name: /Quand je la fais/ }))
+    await user.click(screen.getByRole('radio', { name: /Demain/ }))
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ jour_prevu: '2026-11-18', lock_version: 4 })))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Demain'))
+    await lacher() // la lecture lancée à l'ouverture (version 4) arrive après l'écriture (version 5)
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveTextContent('Demain')
+  })
+
+  it('sans aperçu (lien direct, rappel) : un squelette de fiche, pas une petite feuille « Chargement… » qui saute', () => {
+    retenirLecture()
+    const { container } = monter()
+    expect(screen.queryByText('Chargement…')).toBeNull()
+    expect(screen.getByText('Chargement de la tâche')).toHaveAttribute('role', 'status')
+    expect(container.querySelector('[data-squelette="titre"]')).not.toBeNull()
+  })
+
+  it('le registre ne sert jamais la tâche d\'un autre compte : vidé à la déconnexion', () => {
+    retenirApercu(item)
+    expect(apercu(20)).toMatchObject({ titre: 'Devis Settat' })
+    act(() => { window.dispatchEvent(new Event('taqinor:auth-logout')) })
+    expect(apercu(20)).toBeNull()
+    retenirLecture()
+    monter()
+    expect(screen.queryByRole('textbox', { name: 'Titre' })).toBeNull()
+  })
+
+  it('une activité de l\'ERP n\'est jamais retenue (même identifiant, autre objet)', () => {
+    retenirApercu({ ...item, type: 'activite', titre: 'Rappeler Karim' })
+    expect(apercu(20)).toBeNull()
   })
 })
 

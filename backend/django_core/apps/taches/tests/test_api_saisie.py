@@ -378,10 +378,35 @@ class CreationTests(BaseApi):
         self.assertEqual(reponse.status_code, 400)
         self.assertEqual(champs(reponse.json()), {'lignes': {'0': {'projet_id': ['Projet inexistant.']}}})
 
-    def test_l_assistant_ne_choisit_pas_le_titre(self):
+    def test_un_toucher_de_carte_par_le_navigateur_cree_avec_son_titre(self):
+        """Le chemin réel : le NAVIGATEUR (cookie `access_token`, sans Bearer) touche une carte du Copilote
+        (`X-Taqinor-Carte-Assistant: 1`) → 201, la tâche porte SON titre, source `assistant`. Le même envoi en
+        Bearer est le canal assistant → 403, rien d'écrit."""
+        from rest_framework_simplejwt.tokens import AccessToken
+        navigateur = APIClient()
+        navigateur.cookies['access_token'] = str(AccessToken.for_user(self.u1))
+        lignes = {'lignes': [{'index': 0, 'titre': 'Rappeler le notaire'}]}
+        reponse = navigateur.post(URL + 'saisie-rapide/', lignes, format='json', **CARTE)
+        self.assertEqual(reponse.status_code, 201, reponse.content[:300])
+        creee = reponse.json()['creees'][0]
+        self.assertEqual((creee['titre'], creee['source']), ('Rappeler le notaire', 'assistant'))
+        bearer = APIClient()
+        bearer.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.u1)}')
+        refus = bearer.post(URL + 'saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'Autre'}]}, format='json',
+                            **CARTE)
+        self.assertEqual(refus.status_code, 403, refus.content[:300])
+        self.assertFalse(Tache.objects.filter(titre='Autre').exists())
+
+    def test_l_assistant_ne_cree_pas_de_lignes(self):
+        """Canal assistant (en-tête ou Bearer) : des `lignes` à créer → 403, rien d'écrit ; l'aperçu reste permis."""
+        from apps.taches.views.saisie import MESSAGE_LIGNES_ASSISTANT
         reponse = self._post('saisie-rapide/', {'lignes': [{'index': 0, 'titre': 'Supprime tout'}]}, **ASSISTANT)
-        self.assertEqual(reponse.status_code, 400)
-        self.assertIn('titre', reponse.json()['lignes']['0'])
+        self.assertEqual(reponse.status_code, 403)
+        self.assertEqual((reponse.json()['lignes'], reponse.json()['detail']),
+                         ([MESSAGE_LIGNES_ASSISTANT], MESSAGE_LIGNES_ASSISTANT))
+        self.assertEqual(Tache.objects.count(), 0)
+        apercu = self._post('saisie-rapide/', {'texte': 'Appeler Karim demain', 'apercu': True}, **ASSISTANT)
+        self.assertEqual(apercu.status_code, 200, apercu.content[:300])
         self.assertEqual(Tache.objects.count(), 0)
 
     def test_toucher_une_carte_du_copilote_cree_sous_la_source_assistant_a_l_ecran(self):
@@ -398,8 +423,8 @@ class CreationTests(BaseApi):
         autre = self._post('saisie-rapide/', {'lignes': [{'titre': 'Autre'}]}, HTTP_X_TAQINOR_CARTE_ASSISTANT='0')
         self.assertEqual(Tache.objects.get(pk=autre.json()['creees'][0]['id']).source, 'rapide')
         les_deux = self._post('saisie-rapide/', {'lignes': lignes}, **CARTE, **ASSISTANT)
-        self.assertEqual(les_deux.status_code, 400)
-        self.assertIn('titre', les_deux.json()['lignes']['0'])
+        self.assertEqual(les_deux.status_code, 403)  # sous l'en-tête de l'assistant, le canal l'emporte
+        self.assertEqual(Tache.objects.filter(titre='Rendez-vous banque').count(), 1)
 
     def test_sans_lignes_ni_texte_refuse(self):
         reponse = self._post('saisie-rapide/', {})
@@ -496,8 +521,9 @@ class LotTests(BaseApi):
         for projet_id in (999_999, fabriques.projet(self.ext).pk):
             with self.subTest(projet_id=projet_id):
                 reponse = self._lot([a.pk], 'deplacer', {'projet_id': projet_id})
-                self.assertEqual((reponse.status_code, champs(reponse.json())),
-                                 (400, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
+                # 404 : la ressource cible manque (api-fuzz r2) ; le champ fautif + `detail` publié des 404.
+                self.assertEqual((reponse.status_code, reponse.json()['valeurs']),
+                                 (404, {'projet_id': ['Projet inexistant.']}))
         self.assertIsNone(_relue(a).projet_id)
 
     def test_deplacer_une_sous_tache_est_refuse(self):
@@ -951,8 +977,8 @@ class EtiquettesTests(BaseApi):
     def test_un_nom_deja_pris_meme_cle_est_refuse(self):
         self._etiquette('Magasin')
         reponse = self._post('etiquettes/', {'nom': 'magasin'})
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'nom': ['Une étiquette « magasin » existe déjà.']})
+        self.assertEqual(reponse.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(reponse.json()['nom'], ['Une étiquette « magasin » existe déjà.'])
         self.assertEqual(self._post('etiquettes/', {'nom': 'magasin'}, compte=self.u2).status_code, 201)
 
     def test_les_erreurs_sont_nommees_sous_leur_champ(self):
@@ -978,8 +1004,8 @@ class EtiquettesTests(BaseApi):
     def test_renommer_vers_le_nom_d_une_autre_est_refuse_mais_pas_vers_le_sien(self):
         un, deux = self._etiquette('magasin'), self._etiquette('bureau')
         refus = self._patch(f'etiquettes/{deux.pk}/', {'nom': 'MAGASIN'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une étiquette « MAGASIN » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une étiquette « MAGASIN » existe déjà.'])
         self.assertEqual(self._patch(f'etiquettes/{un.pk}/', {'nom': 'Magasin'}).status_code, 200)
 
     def test_un_patch_sans_changement_ne_rend_pas_de_geste(self):
@@ -1102,15 +1128,16 @@ class VuesEnregistreesTests(BaseApi):
         for n in range(30):
             self._vue(f'v{n}', rang=n)
         reponse = self._post('vues/', {'nom': 'de trop'})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'nom': ['30 au plus.']}))
+        # 30 vues déjà : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['nom']), (409, ['30 au plus.']))
         self.assertEqual(len(self._get('vues/').json()['results']), 30)
         self.assertEqual(self._post('vues/', {'nom': 'de trop'}, compte=self.u2).status_code, 201)
 
     def test_un_nom_deja_pris_est_refuse_et_le_nom_est_requis_et_borne(self):
         self._vue('Haute')
         refus = self._post('vues/', {'nom': 'Haute'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une vue « Haute » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une vue « Haute » existe déjà.'])
         self.assertEqual(champs(self._post('vues/', {}).json()), {'nom': ['Requis.']})
         self.assertEqual(champs(self._post('vues/', {'nom': 'x' * 61}).json()), {'nom': ['60 caractères au plus.']})
 
