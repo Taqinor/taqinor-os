@@ -1214,3 +1214,40 @@ class FacturerVenteAssistantTest(_BaseVenteAssistant):
         self.assertEqual(facture.statut, Facture.Statut.BROUILLON)
         apres = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
         self.assertEqual(apres.data['a_faire'], 'emettre_brouillon')
+
+
+class BriefVentesTest(_BaseVenteAssistant):
+    """VAD10 — ``selectors_assistant.brief_ventes(user, aujourdhui)`` : le bloc
+    ``impayes`` du point du matin (forme de l'échantillon du digest), cinq
+    lignes au plus, compteurs sur tout ; absent (None) sans lecture des
+    factures."""
+
+    def _exemple_bloc(self):
+        import json
+        from pathlib import Path
+        chemin = (Path(__file__).resolve().parents[2] / 'crm' / 'contract_samples'
+                  / 'assistant_digest_matin.json')
+        return json.loads(chemin.read_text(encoding='utf-8'))[
+            'vague2']['exemple_copilote']['impayes']
+
+    def test_forme_cinq_lignes_compteurs_sur_tout(self):
+        from apps.ventes.selectors_assistant import brief_ventes
+        for rang in range(6):
+            self._facture(f'3{rang}', ht='100', retard_jours=10 + rang)
+        bloc = brief_ventes(self.user, timezone.localdate())
+        exemple = self._exemple_bloc()
+        self.assertEqual(set(bloc), set(exemple))
+        self.assertEqual((bloc['nb_factures'], bloc['total_du']), (6, '720.00'))
+        self.assertEqual(len(bloc['lignes']), 5)
+        self.assertEqual(set(bloc['lignes'][0]), set(exemple['lignes'][0]))
+        retards = [li['jours_retard'] for li in bloc['lignes']]
+        self.assertEqual(retards, sorted(retards, reverse=True))
+        self.assertNotIn(self.TEL, str(bloc))
+
+    def test_absent_sans_lecture_des_factures(self):
+        from apps.ventes.selectors_assistant import brief_ventes
+        crm_seul = User.objects.create_user(
+            username='vad_crm', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='CRM seul',
+                                     permissions=['crm_voir']))
+        self.assertIsNone(brief_ventes(crm_seul, timezone.localdate()))

@@ -206,3 +206,43 @@ def factures_cherchees(user, *, q='', client_id=None, statut='', limite=10):
     page = factures_avec_montant_du(
         qs.select_related('client').order_by('-id'))[:limite]
     return {'total': total, 'lignes': [_ligne_facture(f) for f in page]}
+
+
+# ── VAD10 — le bloc « impayés » du point du matin ───────────────────────────
+
+#: Au plus cinq lignes par liste du point du matin (contrat du digest).
+BRIEF_LIGNES = 5
+
+
+def lit_les_factures(user):
+    """La règle de lecture des factures (``LectureFactures``) sans requête :
+    compte interne authentifié portant un code du module Ventes (ou palier
+    administrateur / compte hérité)."""
+    from apps.roles.permissions import is_portal_user
+    from authentication.permissions import peut_lire_module
+
+    return bool(user is not None and getattr(user, 'is_authenticated', False)
+                and not is_portal_user(user) and peut_lire_module(user, 'ventes'))
+
+
+def brief_ventes(user, aujourdhui=None):
+    """Sélecteur PUBLIC du point du matin (lu par ``apps/crm``, BRF1) : le bloc
+    ``impayes`` de ``crm/contract_samples/assistant_digest_matin.json``
+    (``vague2.exemple_copilote.impayes``) — ``{total_du, nb_factures, lignes,
+    lien}``, ``lignes`` = au plus cinq lignes de
+    ``ventes/contract_samples/assistant_impayes.json``, les plus en retard
+    d'abord ; total et nombre portent sur TOUTES les factures exigibles de la
+    portée. ``None`` (bloc absent) pour un compte qui ne lit pas les factures.
+    Le copilote allumé (``copilote_allume_pour``) reste vérifié par l'appelant.
+    Lecture pure ; aucun chiffre d'affaires, aucun téléphone."""
+    from apps.facturation.recouvrement import impayes_assistant
+
+    if not lit_les_factures(user):
+        return None
+    lu = impayes_assistant(user, limite=BRIEF_LIGNES, aujourdhui=aujourdhui)
+    return {
+        'total_du': lu['total_du'],
+        'nb_factures': lu['nb_factures'],
+        'lignes': lu['lignes'],
+        'lien': '/ventes/relances',
+    }
