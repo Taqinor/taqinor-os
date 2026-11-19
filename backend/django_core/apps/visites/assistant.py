@@ -356,3 +356,117 @@ def resume_visite(visite):
         if octets(fiche) <= BUDGET_FICHE_OCTETS:
             break
     return fiche
+
+
+# ── La charge de l'équipe, au jour près (``visites.charge``) ─────────────────
+#
+# Une visite a une DATE, pas d'heure : aucune disponibilité n'est calculée, ni
+# aucun trajet. La carte « charge d'équipe » dit combien de visites et
+# d'interventions de chantier chacun porte chaque jour, et si une indisponibilité
+# est déclarée — jamais un « créneau libre ».
+
+JOURS_CHARGE_DEFAUT, JOURS_CHARGE_MAX = 7, 14
+MAX_ASSIGNABLES = 20
+NOTE_CHARGE = 'Charge au jour près ; aucune heure ni trajet calculés.'
+LIEN_PLANIFIER = '/visites/planifier'
+
+
+def _voit_toute_l_equipe(user):
+    """D-W2-VIS-5 — la charge de TOUTE l'équipe pour qui valide les visites ou
+    modifie le CRM ; les autres ne voient que la leur."""
+    from core.permissions import _user_has_or_legacy
+
+    return (_user_has_or_legacy(user, 'visites_valider')
+            or _user_has_or_legacy(user, 'crm_modifier'))
+
+
+def assignables(user):
+    """Les comptes ACTIFS de la société de ``user`` qui peuvent faire une visite
+    (rôle fin portant ``visites_modifier``, ou compte sans rôle fin au palier
+    responsable/administrateur — la règle de ``notifier_valideurs_visite``),
+    ``MAX_ASSIGNABLES`` au plus, par nom."""
+    from django.contrib.auth import get_user_model
+
+    return list(
+        get_user_model().objects
+        .filter(company_id=user.company_id, is_active=True)
+        .filter(Q(role__permissions__contains=['visites_modifier'])
+                | Q(role__isnull=True, role_legacy__in=['admin', 'responsable']))
+        .distinct().order_by('first_name', 'last_name', 'id')[:MAX_ASSIGNABLES])
+
+
+def _visites_par_jour(company_id, ids, du, fin):
+    """``{(compte, jour): nombre}`` de visites planifiées (hors annulées) — UN
+    agrégat."""
+    lignes = (VisiteTerrain.objects
+              .filter(company_id=company_id, commercial_id__in=ids,
+                      date_prevue__range=(du, fin))
+              .exclude(statut=Statut.ANNULEE)
+              .values_list('commercial_id', 'date_prevue').annotate(n=Count('id'))
+              .order_by())
+    return {(compte, jour): n for compte, jour, n in lignes}
+
+
+def _interventions_par_jour(company, ids, du, fin):
+    """``{(compte, jour): nombre}`` d'interventions de chantier actives (membre
+    d'équipe ou technicien) — lues par ``installations.selectors``, la notion
+    « ressource occupée » de la planification."""
+    from apps.installations import selectors as installations
+
+    comptes = set(ids)
+    par_jour = {}
+    for intervention in installations.interventions_actives(company, du, fin).only(
+            'id', 'technicien_id', 'date_prevue', 'equipe_ref_id'):
+        for membre in installations.membres_intervention(intervention) & comptes:
+            cle = (membre, intervention.date_prevue)
+            par_jour[cle] = par_jour.get(cle, 0) + 1
+    return par_jour
+
+
+def _jours_indisponibles(company, ids, jours):
+    """``{compte: {jour…}}`` : un contrôle sur la fenêtre par compte, puis jour
+    par jour seulement pour qui est indisponible quelque part (≤ 20 + 14 × n)."""
+    from apps.installations import selectors as installations
+
+    sortie = {}
+    for compte in ids:
+        if installations.ressource_indisponible(company, compte, jours[0], jours[-1]):
+            sortie[compte] = {j for j in jours
+                              if installations.ressource_indisponible(company, compte, j, j)}
+    return sortie
+
+
+def charge_equipe(user, params, aujourdhui):
+    """``GET visites/charge/`` — paramètres ``du`` (défaut aujourd'hui) et
+    ``jours`` (1 à 14, défaut 7). Les comptes lus sont ``assignables`` pour qui
+    voit l'équipe, sinon le compte lui-même."""
+    du = _date(params.get('du'), 'du') or aujourdhui
+    nombre = _entier(params.get('jours'), 'jours', mini=1, maxi=JOURS_CHARGE_MAX,
+                     defaut=JOURS_CHARGE_DEFAUT)
+    jours = [plus_jours(du, i, 'du') for i in range(nombre)]
+    comptes = assignables(user) if _voit_toute_l_equipe(user) else [user]
+    ids = [compte.id for compte in comptes]
+    visites = _visites_par_jour(user.company_id, ids, jours[0], jours[-1])
+    interventions = _interventions_par_jour(user.company, ids, jours[0], jours[-1])
+    absences = _jours_indisponibles(user.company, ids, jours)
+    sans_technicien = (selectors.visites_visibles(user)
+                       .filter(_sans_technicien_q(), date_prevue__range=(jours[0], jours[-1]))
+                       .exists())
+    return {
+        'du': du.isoformat(),
+        'jours': nombre,
+        'note': NOTE_CHARGE,
+        'lignes': [{
+            'id': compte.id,
+            'nom': nom_personne(compte),
+            'moi': compte.id == user.id,
+            'par_jour': [{
+                'date': jour.isoformat(),
+                'visites': visites.get((compte.id, jour), 0),
+                'interventions': interventions.get((compte.id, jour), 0),
+                'indisponible': jour in absences.get(compte.id, ()),
+            } for jour in jours],
+        } for compte in comptes],
+        'a_faire': 'assigner_visites' if sans_technicien else 'rien',
+        'lien': LIEN_PLANIFIER,
+    }

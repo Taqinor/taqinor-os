@@ -525,6 +525,114 @@ class AgendaAssistantTests(VtaBase):
         self.assertIn(APIClient().get(self.URL).status_code, (401, 403))
 
 
+class ChargeAssistantTests(VtaBase):
+    """Copilote vague 2 (VIS5) — ``GET visites/visites/charge/`` : la CHARGE de
+    chaque assignable au jour près (``assistant_charge.json``). Une visite a une
+    date, pas d'heure : aucune disponibilité n'est calculée, jamais un
+    « créneau libre »."""
+
+    URL = '/api/django/visites/visites/charge/'
+
+    def _par_compte(self, reponse):
+        return {ligne['id']: ligne for ligne in reponse.data['lignes']}
+
+    def test_la_charge_au_jour_et_la_forme_du_contrat(self):
+        from apps.crm.models import Client
+        from apps.installations.models import (
+            IndisponibiliteRessource, Installation, Intervention)
+
+        jour, demain = self.aujourdhui, self.aujourdhui + timedelta(days=1)
+        self._visite(self.terrain, date_prevue=jour)
+        self._visite(self.terrain, date_prevue=jour)
+        self._visite(self.terrain, date_prevue=demain)
+        self._visite(self.terrain, date_prevue=jour, statut=VisiteTerrain.Statut.ANNULEE)
+        chantier = Installation.objects.create(
+            company=self.company, reference='CHT-VIS5-1',
+            client=Client.objects.create(company=self.company, nom='Site'))
+        Intervention.objects.create(
+            company=self.company, installation=chantier, type_intervention='pose',
+            technicien=self.collegue, date_prevue=demain)
+        IndisponibiliteRessource.objects.create(
+            company=self.company, technicien=self.bureau, date_debut=jour, date_fin=jour)
+
+        reponse = auth(self.bureau).get(self.URL, {'jours': 3})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        contrat = echantillon('assistant_charge')['exemple']
+        self.assertEqual(set(reponse.data), set(contrat))
+        self.assertEqual(set(reponse.data['lignes'][0]), set(contrat['lignes'][0]))
+        self.assertEqual(set(reponse.data['lignes'][0]['par_jour'][0]),
+                         set(contrat['lignes'][0]['par_jour'][0]))
+        self.assertEqual((reponse.data['du'], reponse.data['jours']), (jour.isoformat(), 3))
+        self.assertEqual(reponse.data['note'], contrat['note'])
+        self.assertEqual(reponse.data['lien'], '/visites/planifier')
+
+        lignes = self._par_compte(reponse)
+        self.assertEqual(set(lignes), {self.terrain.id, self.collegue.id, self.bureau.id})
+        compte = [(j['visites'], j['interventions'], j['indisponible'])
+                  for j in lignes[self.terrain.id]['par_jour']]
+        self.assertEqual(compte, [(2, 0, False), (1, 0, False), (0, 0, False)])
+        self.assertEqual(lignes[self.collegue.id]['par_jour'][1]['interventions'], 1)
+        self.assertEqual([j['indisponible'] for j in lignes[self.bureau.id]['par_jour']],
+                         [True, False, False])
+        self.assertTrue(lignes[self.bureau.id]['moi'])
+        self.assertFalse(lignes[self.terrain.id]['moi'])
+        self.assertEqual(reponse.data['a_faire'], 'rien')
+
+    def test_aucun_creneau_libre_n_est_annonce(self):
+        reponse = auth(self.bureau).get(self.URL)
+        self.assertIn('aucune heure ni trajet calculés', reponse.data['note'])
+        self.assertNotIn('libre', json.dumps(reponse.data, ensure_ascii=False))
+
+    def test_des_visites_sans_technicien_se_signalent(self):
+        self._visite(None, date_prevue=self.aujourdhui + timedelta(days=2))
+        reponse = auth(self.bureau).get(self.URL, {'jours': 7})
+        self.assertEqual(reponse.data['a_faire'], 'assigner_visites')
+        # Hors de la fenêtre lue : rien à signaler.
+        proche = auth(self.bureau).get(self.URL, {'jours': 1})
+        self.assertEqual(proche.data['a_faire'], 'rien')
+
+    def test_un_terrain_ne_voit_que_sa_propre_charge(self):
+        self._visite(self.collegue, date_prevue=self.aujourdhui)
+        reponse = auth(self.terrain).get(self.URL, {'jours': 1})
+        self.assertEqual([ligne['id'] for ligne in reponse.data['lignes']], [self.terrain.id])
+        self.assertTrue(reponse.data['lignes'][0]['moi'])
+        self.assertEqual(reponse.data['lignes'][0]['par_jour'][0]['visites'], 0)
+
+    def test_comptes_inactifs_et_autre_societe_exclus(self):
+        self.collegue.is_active = False
+        self.collegue.save(update_fields=['is_active'])
+        reponse = auth(self.bureau).get(self.URL)
+        self.assertEqual(set(self._par_compte(reponse)), {self.terrain.id, self.bureau.id})
+
+    def test_les_refus_nomment_le_champ_fautif(self):
+        for parametres, champ, code in (
+                ({'jours': '15'}, 'jours', 'jours_invalide'),
+                ({'jours': '0'}, 'jours', 'jours_invalide'),
+                ({'du': 'hier'}, 'du', 'date_invalide'),
+                ({'du': '9999-12-31', 'jours': '14'}, 'du', 'date_invalide')):
+            with self.subTest(parametres=parametres):
+                reponse = auth(self.bureau).get(self.URL, parametres)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual((reponse.data['field'], reponse.data['code']), (champ, code))
+
+    def test_requetes_independantes_du_nombre_de_visites(self):
+        auth(self.bureau).get(self.URL)  # caches froids
+
+        def requetes(combien):
+            VisiteTerrain.objects.all().delete()
+            for _ in range(combien):
+                self._visite(self.terrain, date_prevue=self.aujourdhui)
+            with CaptureQueriesContext(connection) as capture:
+                auth(self.bureau).get(self.URL)
+            return len(capture)
+        self.assertEqual(requetes(1), requetes(9))
+
+    def test_sans_droit_de_lecture_ou_anonyme_refuse(self):
+        sans_droit = self._user(self.company, 'vta6-charge-sans-droit', ['crm_voir'])
+        self.assertEqual(auth(sans_droit).get(self.URL).status_code, 403)
+        self.assertIn(APIClient().get(self.URL).status_code, (401, 403))
+
+
 class AccueilMobileTests(TestCase):
     """NTMOB6 — ``/visites`` est persistable, et c'est l'accueil du terrain."""
 

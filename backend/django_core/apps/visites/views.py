@@ -141,6 +141,26 @@ _AGENDA_ASSISTANT = inline_serializer('VisitesAgendaAssistant', {
     'lien': serializers.CharField(),
 })
 
+#: Copilote vague 2 (VIS5) — la charge d'équipe, au jour près
+#: (``assistant_charge.json``).
+_PARAMETRES_CHARGE = [
+    OpenApiParameter('du', OpenApiTypes.DATE, OpenApiParameter.QUERY,
+                     required=False, description="Premier jour (défaut : aujourd'hui)."),
+    OpenApiParameter('jours', {'type': 'integer', 'minimum': 1,
+                               'maximum': assistant.JOURS_CHARGE_MAX},
+                     OpenApiParameter.QUERY, required=False,
+                     description='Nombre de jours lus (défaut 7).'),
+]
+
+_CHARGE_ASSISTANT = inline_serializer('VisitesChargeAssistant', {
+    'du': serializers.CharField(),
+    'jours': serializers.IntegerField(),
+    'note': serializers.CharField(),
+    'lignes': serializers.ListField(child=serializers.DictField()),
+    'a_faire': serializers.CharField(),
+    'lien': serializers.CharField(),
+})
+
 #: Copilote vague 2 (VIS4) — la fiche compacte (``assistant_visite_resume.json``),
 #: aussi la réponse de ``annuler`` (``visite_annuler.json``).
 _RESUME_ASSISTANT = inline_serializer('VisiteResumeAssistant', {
@@ -943,6 +963,18 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         jalons, complétude, qualification, retour terrain, photos à refaire.
         Hors portée ou autre société : 404, comme le détail."""
         return Response(assistant.resume_visite(self.get_object()))
+
+    @extend_schema(parameters=_PARAMETRES_CHARGE, responses=_CHARGE_ASSISTANT)
+    @action(detail=False, methods=['get'], url_path='charge')
+    def charge(self, request):
+        """VIS5 — « qui peut faire la visite ? » : la CHARGE de chaque assignable
+        au jour près (visites, interventions de chantier, indisponibilité). Une
+        visite n'a qu'une date : aucune heure ni trajet n'est calculé."""
+        try:
+            return Response(assistant.charge_equipe(
+                request.user, request.query_params, timezone.localdate()))
+        except assistant.ErreurAssistant as erreur:
+            return Response(erreur.corps(), status=erreur.statut)
 
 
 def _coordonnee(brute, limite):
