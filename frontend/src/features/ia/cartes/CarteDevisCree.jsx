@@ -1,6 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import { Button } from '../../../ui'
-import { formatMAD } from '../../../lib/format'
+import { formatMAD, formatNumber } from '../../../lib/format'
 import { idDevisSur } from './cartes'
 import BoutonTelechargerDevis from './BoutonTelechargerDevis'
 import { useOuvrirEcran } from './useCarte'
@@ -18,12 +18,12 @@ const estObjet = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
 const kwcTexte = (kwc) => {
   const n = Number(kwc)
   if (kwc == null || kwc === '' || !Number.isFinite(n) || n <= 0) return ''
-  return `${n.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`
+  return `${formatNumber(n)} kWc`
 }
 
 const quantiteTexte = (q) => {
   const n = Number(q)
-  return Number.isFinite(n) ? n.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : ''
+  return Number.isFinite(n) ? formatNumber(n) : ''
 }
 
 function LigneComposition({ ligne }) {

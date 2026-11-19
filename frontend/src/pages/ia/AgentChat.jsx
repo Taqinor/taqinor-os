@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, CheckCircle2,
+  Bot, MessageSquare, CheckCircle2,
   Mic, MicOff, Volume2, Loader2, Headphones, Square,
 } from 'lucide-react'
 import {
@@ -16,6 +16,7 @@ import {
 import { cn } from '../../lib/cn'
 import {
   MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent, MarqueurImages,
+  BoutonEnvoyer,
 } from '../../features/ia/ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory, chargerCapacitesAssistant,
@@ -456,14 +457,8 @@ export default function AgentChat() {
                 </SimpleTooltip>
               )}
               <SimpleTooltip label="Envoyer">
-                <IconButton
-                  type="submit"
-                  variant="default"
-                  label="Envoyer"
-                  disabled={!canSendQuestion(input, agentLoading, capacites.limite_question) || joints.occupe}
-                >
-                  <Send />
-                </IconButton>
+                <BoutonEnvoyer input={input} loading={agentLoading}
+                  limite={capacites.limite_question} occupe={joints.occupe} />
               </SimpleTooltip>
             </QuestionForm>
             <p className="mt-2 text-center text-xs text-muted-foreground">

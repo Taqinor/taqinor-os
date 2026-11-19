@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, CheckCircle2, Bug, Sparkles,
+  Bot, MessageSquare, CheckCircle2, Bug, Sparkles,
 } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-  Button, IconButton, EmptyState, Textarea,
+  Button, EmptyState, Textarea,
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import {
   MessageActions, NoteReponse, SuggestionButtons, BulleAttente, QuestionForm, ErreurAgent, MarqueurImages,
+  BoutonEnvoyer,
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -365,14 +366,8 @@ export default function CopilotPanel() {
               onKeyDown={handleKeyDown} disabled={agentLoading}
               limite={capacites.limite_question} joints={joints}
               {...(demandesTaches ? { placeholder: CHAMP_TACHES } : {})}>
-            <IconButton
-              type="submit"
-              variant="default"
-              label="Envoyer"
-              disabled={!canSendQuestion(input, agentLoading, capacites.limite_question) || joints.occupe}
-            >
-              <Send />
-            </IconButton>
+            <BoutonEnvoyer input={input} loading={agentLoading}
+              limite={capacites.limite_question} occupe={joints.occupe} />
           </QuestionForm>
           )}
           <p className="mt-2 text-center text-xs text-muted-foreground">

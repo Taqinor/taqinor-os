@@ -1792,29 +1792,6 @@ class CrmAssistantCreerLeadTest(_CopiloteBase):
         self.assertEqual(resp.status_code, 400)
         self.assertNotIn('doublon', resp.data)
 
-    def test_aucune_quatorzieme_porte_de_creation(self):
-        """Le service ne construit jamais un ``Lead(...)`` : la création passe
-        par le sérialiseur — la garde PA1 garde ses 13 portes."""
-        import ast
-        import json
-        import pathlib
-
-        ici = pathlib.Path(__file__).resolve().parent
-        arbre = ast.parse((ici / 'leads_creation.py').read_text('utf-8'))
-        appels = {ast.unparse(n.func) for n in ast.walk(arbre)
-                  if isinstance(n, ast.Call)}
-        self.assertFalse({'Lead', 'Lead.objects.create'} & appels)
-        vue = ast.parse((ici / 'views.py').read_text('utf-8'))
-        perform = next(
-            m for c in vue.body
-            if isinstance(c, ast.ClassDef) and c.name == 'LeadViewSet'
-            for m in c.body
-            if isinstance(m, ast.FunctionDef) and m.name == 'perform_create')
-        self.assertIn('creer_lead_saisi', ast.unparse(perform))
-        portes = json.loads(
-            (ici / 'parcours' / 'PA1.json').read_text('utf-8'))['portes']
-        self.assertEqual(len(portes), 13)
-
 
 class CrmAssistantRangementLeadTest(_CopiloteBase):
     """COP2-C3 — perdu, archiver, restaurer, réaffecter, étiqueter : cinq

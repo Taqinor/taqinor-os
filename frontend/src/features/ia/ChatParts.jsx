@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { Code2, ChevronDown, ThumbsUp, ThumbsDown, Paperclip, X } from 'lucide-react'
+import { Code2, ChevronDown, ThumbsUp, ThumbsDown, Paperclip, Send, X } from 'lucide-react'
 import { Button, IconButton, Textarea } from '../../ui'
 import { noterEvenement } from './store/iaSlice'
 import CartesDuMessage from './cartes/CartesDuMessage'
 import StateBlock from '../../components/StateBlock'
 import {
   COMMENTAIRE_MAX, NOTE_NEGATIVE, NOTE_POSITIVE, IMAGES_MAX, LIMITE_QUESTION_DEFAUT,
-  formatAgentError, etatCompteur, marqueurImages,
+  formatAgentError, etatCompteur, marqueurImages, canSendQuestion,
 } from './copilotMessages'
 import { fichierImageOk } from './images'
 
@@ -240,5 +240,20 @@ export function QuestionForm({
         </p>
       )}
     </form>
+  )
+}
+
+/** Bouton « Envoyer » des deux écrans de l'assistant (tiroir et page) : éteint
+ *  tant que la question n'est pas envoyable ou qu'une image se réduit encore. */
+export function BoutonEnvoyer({ input, loading, limite, occupe }) {
+  return (
+    <IconButton
+      type="submit"
+      variant="default"
+      label="Envoyer"
+      disabled={!canSendQuestion(input, loading, limite) || occupe}
+    >
+      <Send />
+    </IconButton>
   )
 }

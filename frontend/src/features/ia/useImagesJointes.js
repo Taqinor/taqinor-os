@@ -12,9 +12,7 @@ export const MESSAGE_SEULEMENT_IMAGES = 'Seules les images sont acceptées.'
 export const MESSAGE_IMAGES_MAX = `${IMAGES_MAX} images au maximum.`
 export const MESSAGE_IMAGE_ILLISIBLE = 'Image illisible ou trop lourde : essayez une autre capture.'
 
-const revoquer = (images) => images.forEach((im) => {
-  try { URL.revokeObjectURL(im.apercu) } catch { /* révocation best-effort */ }
-})
+const revoquer = (images) => images.forEach((im) => URL.revokeObjectURL(im.apercu))
 
 let compteur = 0
 
