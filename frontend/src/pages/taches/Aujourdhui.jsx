@@ -863,7 +863,13 @@ export default function Aujourdhui() {
     if (action === 'annuler') annulerToast()
     else if (!item) return
     else if (action === 'terminer') terminer(item, item.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
-    else if (action === 'essentiel' && item.type === 'tache') basculerEssentiel(item, !item.essentielle)
+    else if (action === 'essentiel' && item.type === 'tache') {
+      // couture r2 — la ligne change de section (Prévu ↔ Essentiel) : son bouton est remonté ailleurs, le focus le suit
+      basculerEssentiel(item, !item.essentielle).then(() => requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return
+        document.querySelector(`[data-ligne="${cle}"] .ligne-corps-bouton`)?.focus()
+      }))
+    }
     else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, clavier: true })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)

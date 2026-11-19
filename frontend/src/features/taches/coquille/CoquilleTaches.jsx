@@ -58,19 +58,27 @@ const DESTINATIONS = [
   ['Réglages', '/taches/reglages'],
 ]
 
-/** R2-087 — l'aide des touches de Tâches (`?`), mot pour mot textes.md §2.1 « Aide des touches ». */
+/** R2-087 — l'aide des touches de Tâches (`?`), mot pour mot textes.md §2.1 « Aide des touches ». Couture r2 — l'aide
+ *  dit la VÉRITÉ de l'écran ouvert : une touche n'y figure que sur les écrans dont la liste la traite (3e terme ;
+ *  absent : partout). Maj+↓ n'allonge que la tâche qu'on vient de poser dans l'Agenda. */
+const LISTES = ['aujourdhui', 'projet']
 const TOUCHES = [
-  ['c t', 'Créer une tâche'], ['g j', "Aujourd'hui"], ['n', 'Ajouter ici'], ['/', 'Chercher'], ['Espace', 'Fait'],
-  ['e', 'Renommer'], ['d', 'Quand'], ['m', 'Changer de projet'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
-  ['Alt+↑/↓', 'Réorganiser'], ['Maj+↓', '+15 min'], ['Ctrl/⌘ Z', 'Annuler (hors champ)'],
+  ['c t', 'Créer une tâche'], ['g j', "Aujourd'hui"], ['n', 'Ajouter ici'], ['/', 'Chercher'],
+  ['Espace', 'Fait', [...LISTES, 'recherche']],
+  ['e', 'Renommer', [...LISTES, 'a-trier', 'recherche']], ['d', 'Quand', [...LISTES, 'a-trier']],
+  ['m', 'Changer de projet', [...LISTES, 'a-trier']], ['x', 'Sélectionner', ['aujourdhui']],
+  ['h', 'Heure', [...LISTES, 'a-trier', 'recherche']], ['*', 'Essentiel', LISTES],
+  ['Alt+↑/↓', 'Réorganiser', LISTES], ['Maj+↓', '+15 min (tâche posée)', ['agenda']],
+  ['Ctrl/⌘ Z', 'Annuler (hors champ)', LISTES],
 ]
 
-function AideTouches() {
+function AideTouches({ ecran }) {
+  const visibles = TOUCHES.filter(([, , ecrans]) => !ecrans || ecrans.includes(ecran))
   return (
     // focus initial sur la liste : au bureau, la poignée (premier focalisable de la feuille) est masquée et ne prend
     // pas le focus — sans lui, Échap (écouté par la feuille) ne fermait pas l'aide
     <dl className="touches" tabIndex={-1} data-focus-initial>
-      {TOUCHES.map(([touche, effet]) => (
+      {visibles.map(([touche, effet]) => (
         <div key={touche} className="touches-ligne">
           <dt><kbd>{touche}</kbd></dt>
           <dd>{effet}</dd>
@@ -478,7 +486,7 @@ export default function CoquilleTaches({
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />
       {feuille ? <FeuilleACrans {...feuille} /> : null}
       <FeuilleACrans ouverte={aideTouches} onFermer={() => setAideTouches(false)} titre="Touches de Tâches" cranInitial="85">
-        <AideTouches />
+        <AideTouches ecran={ecran} />
       </FeuilleACrans>
       <ZoneAnnonces />
       {selecteurProjet ? (

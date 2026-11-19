@@ -283,7 +283,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     const id = Number(String(cle ?? '').split(':')[1])
     const tache = [...lignes, ...reserveLignes].find((l) => l.id === id)
     if (!tache) return
-    if (action === 'renommer' || action === 'heure') ouvrirFiche(tache.id)
+    if (action === 'renommer' || action === 'heure') ouvrirFiche(tache.id, { focus: action === 'renommer' ? 'titre' : 'heure' })
     else if (action === 'quand') choisirJour(tache)
     else if (action === 'deplacer') ouvrirProjet(tache)
   }, { actif: !jourPour && !projetPour && !uneParUne })

@@ -993,6 +993,20 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 
+  it('couture r2 — `*` rend la ligne essentielle ET le focus la suit dans « Essentiel » (jamais perdu sur la page)', async () => {
+    servir(donnees())
+    const ecrite = exempleContrat('taches', 'tache_ecrite')
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/journee/essentiel/'
+      ? { data: { ...ecrite, tache: { ...ecrite.tache, id: 42, essentielle: true }, progression: donnees().progression } }
+      : { data: {} }))
+    monter()
+    await screen.findByText('Timbres')
+    focaliser(42)
+    await userEvent.keyboard('*')
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/journee/essentiel/', { tache_id: 42, essentielle: true }))
+    await waitFor(() => expect(document.activeElement.closest('[data-ligne="tache:42"]')).not.toBeNull())
+  })
+
   it('`m` ouvre « Changer de projet » sur un AUTRE projet que le sien ; Entrée déplace', async () => {
     servir(donnees())
     const autres = { results: [{ id: 3, nom: 'Ventes', couleur: 'indigo', priorite: 1 }, { id: 7, nom: 'Salon', couleur: 'vert', priorite: 2 }], next: null, count: 2 }

@@ -509,7 +509,7 @@ export default function Projet() {
     else if (action === 'essentiel') actions.essentiel(tache)
     else if (action === 'quand') actions.surAction('choisir_jour', tache)
     else if (action === 'deplacer') actions.surAction('deplacer', tache, { clavier: true })
-    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id)
+    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id, { focus: action === 'renommer' ? 'titre' : 'heure' })
   }, { actif: Boolean(vue) && !planifier && !dialogue && !actions.feuille && !actions.selecteurProjet })
 
   const poserPriorite = async (projet, valeur) => {
