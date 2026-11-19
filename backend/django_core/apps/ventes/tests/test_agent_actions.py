@@ -1054,22 +1054,28 @@ class TailleAssistantTest(_BaseVenteAssistant):
         self.assertNotIn('555.55', str(resp.data))
 
     def test_devis_compose_sur_demande_le_refus_dit_de_recomposer(self):
-        """Essai vraie clé du 19/11 — un devis né d'une composition imposée n'a
-        pas d'étude : le refus nomme le geste qui marche (un nouveau devis)."""
-        from unittest import mock
-
-        from apps.ventes import offres_tailles
+        """Un devis composé sur demande se recompose EN PLACE (classe
+        ``TailleComposeeSurDemandeTest``) ; seul un marqueur SANS ses produits
+        enregistrés ne le peut pas : le refus nomme le geste qui marche (un
+        nouveau devis). Chemin réel, aucun moteur simulé."""
         from apps.ventes.domain.composition_imposee import poser_marqueur
         poser_marqueur(self.devis, {'demande': {'nb_panneaux': 10}})
-        with mock.patch.object(offres_tailles, 'enregistrer_config'), \
-                mock.patch.object(
-                    offres_tailles, 'appliquer_au_devis',
-                    side_effect=offres_tailles.ApplicationImpossible('sans profil')):
-            apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+        apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
         self.assertEqual(apercu.status_code, 409, apercu.data)
         self.assertEqual(apercu.data['code'], 'composition_imposee')
         self.assertIn('composez un nouveau devis', apercu.data['detail'])
         self.assertIn('12 panneaux', apercu.data['detail'])
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('10'))
+
+    def test_devis_sans_marqueur_passe_par_les_offres_de_taille(self):
+        """Sans marqueur, la taille passe TOUJOURS par les offres de taille
+        (moteur réel) : sans étude de consommation, leur refus en clair."""
+        apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+        self.assertEqual(apercu.status_code, 409, apercu.data)
+        self.assertEqual((apercu.data['code'], apercu.data['field']),
+                         ('taille_impossible', 'nb_panneaux'))
+        self.assertIn('dériver des tailles', apercu.data['detail'])
         self.ligne.refresh_from_db()
         self.assertEqual(self.ligne.quantite, Decimal('10'))
 
@@ -1122,6 +1128,188 @@ class TailleAssistantTest(_BaseVenteAssistant):
             'nouveau_total_ttc'})
         self.assertLessEqual({'ancien_total_ttc', 'nouveau_total_ttc'},
                              set(TAILLE_DEVIS.inputs['required']))
+
+
+class TailleComposeeSurDemandeTest(_BaseVenteAssistant):
+    """Copilote vague 2B — un devis COMPOSÉ SUR DEMANDE (``POST devis/auto/``
+    à composition imposée, sans étude de consommation) change de taille EN
+    PLACE par les deux routes réelles : même onduleur, même batterie,
+    structures et socles suivent, marqueur mis à jour, statut gardé. Aucun
+    moteur simulé : le devis est composé par le vrai chemin imposé."""
+
+    PRIX = {'Panneau Canadien Solar 710W': '1400',
+            'Panneau Jinko 550W': '1100',
+            'Onduleur hybride Deye 5kW Monophasé': '17000',
+            'Onduleur réseau Huawei 5kW Monophasé': '14000',
+            'Batterie Dyness 5 kWh': '14000',
+            'Structures acier': '500', 'Socles': '80'}
+    DEMANDE = {'nb_panneaux': 9, 'onduleur_kw': 5,
+               'onduleur_phase': 'monophase', 'batterie_kwh': 5}
+    PANNEAU, HYBRIDE, BATTERIE = ('Panneau Canadien Solar 710W',
+                                  'Onduleur hybride Deye 5kW Monophasé',
+                                  'Batterie Dyness 5 kWh')
+
+    def setUp(self):
+        super().setUp()
+        self.produits = {
+            nom: Produit.objects.create(
+                company=self.company, nom=nom, sku='VADC-%d' % rang,
+                prix_vente=Decimal(prix), prix_achat=Decimal('123.45'),
+                quantite_stock=100)
+            for rang, (nom, prix) in enumerate(self.PRIX.items())}
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Bennani', prenom='Sara',
+            ville='Casablanca')
+
+    def _composer(self, demande=None):
+        resp = auth(self.user).post('/api/django/ventes/devis/auto/', {
+            'lead': self.lead.id, **(demande or self.DEMANDE)}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        return Devis.objects.get(pk=resp.data['id'])
+
+    def _url(self, devis, apercu=False):
+        from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
+        action = TAILLE_APERCU if apercu else TAILLE_DEVIS
+        return action.endpoint.format(id=devis.pk)
+
+    def _apercu(self, devis, nb=12, **params):
+        return auth(self.user).get(self._url(devis, apercu=True),
+                                   {'nb_panneaux': nb, **params})
+
+    def _ecrire(self, devis, apercu, nb=12, **corps):
+        return auth(self.user).post(self._url(devis), {
+            'nb_panneaux': nb,
+            'ancien_total_ttc': apercu.data['ancien_total_ttc'],
+            'nouveau_total_ttc': apercu.data['nouveau_total_ttc'], **corps},
+            format='json')
+
+    @staticmethod
+    def _quantites(devis):
+        return {li.designation: int(li.quantite) for li in devis.lignes.all()}
+
+    def _rien_ecrit(self, devis, quantites, nb_marqueur=9):
+        devis.refresh_from_db()
+        self.assertEqual(self._quantites(devis), quantites)
+        self.assertEqual(devis.etude_params['composition_imposee']['demande']
+                         ['nb_panneaux'], nb_marqueur)
+
+    def test_apercu_annule_puis_ecriture_recompose_en_place(self):
+        from apps.ventes.domain.modifiabilite import ttc_du_devis
+        from core.money import quantize_mad
+        devis = self._composer()
+        avant = self._quantites(devis)
+        self.assertEqual((avant[self.PANNEAU], avant['Structures acier']), (9, 9))
+        apercu = self._apercu(devis)
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertEqual(set(apercu.data), set(_exemple_contrat(
+            'assistant_devis_taille_apercu.json')))
+        self.assertEqual((apercu.data['nb_panneaux_avant'],
+                          apercu.data['nb_panneaux']), (9, 12))
+        self.assertFalse(apercu.data['corrige_apres_envoi'])
+        self.assertEqual(apercu.data['a_faire'], 'proposer')
+        self.assertNotEqual(apercu.data['ancien_total_ttc'],
+                            apercu.data['nouveau_total_ttc'])
+        # 12 × 710 Wc sur 5 kW : l'alerte du chemin imposé, pas un refus.
+        self.assertIn('ratio_dc_ac', {a.get('code') for a in apercu.data['alertes']})
+        self._rien_ecrit(devis, avant)
+        perime = self._ecrire(devis, apercu, nouveau_total_ttc='1.00')
+        self.assertEqual((perime.status_code, perime.data['code']),
+                         (409, 'apercu_perime'))
+        self._rien_ecrit(devis, avant)
+        resp = self._ecrire(devis, apercu)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'assistant_devis_taille.json')))
+        devis.refresh_from_db()
+        apres = self._quantites(devis)
+        self.assertEqual((apres[self.PANNEAU], apres['Structures acier'],
+                          apres['Socles']), (12, 12, 24))
+        self.assertEqual((apres[self.HYBRIDE], apres[self.BATTERIE]), (1, 1))
+        self.assertNotIn('Onduleur réseau Huawei 5kW Monophasé', apres)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)  # règle #4
+        self.assertEqual(resp.data['nouveau_total_ttc'],
+                         apercu.data['nouveau_total_ttc'])
+        self.assertEqual(Decimal(resp.data['nouveau_total_ttc']),
+                         quantize_mad(ttc_du_devis(devis)))
+        marqueur = devis.etude_params['composition_imposee']
+        self.assertEqual(marqueur['demande']['nb_panneaux'], 12)
+        self.assertIn('onduleur_kw', marqueur['demande'])
+        self.assertEqual((marqueur['produits']['onduleur'],
+                          marqueur['produits']['batterie'],
+                          marqueur['par']),
+                         (self.produits[self.HYBRIDE].pk,
+                          self.produits[self.BATTERIE].pk, self.user.pk))
+        self.assertNotIn('123.45', str(resp.data) + str(apercu.data))
+
+    def test_envoye_corrige_en_place_statut_garde(self):
+        devis = self._composer()
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        apercu = self._apercu(devis, nb=10)
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        self.assertTrue(apercu.data['corrige_apres_envoi'])
+        resp = self._ecrire(devis, apercu, nb=10)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['corrige_apres_envoi'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(self._quantites(devis)[self.PANNEAU], 10)
+
+    def test_accepte_refuse_avec_la_phrase_de_revision(self):
+        devis = self._composer()
+        avant = self._quantites(devis)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        refus = self._apercu(devis)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual((refus.data['code'], refus.data['field']),
+                         ('revision_possible', 'statut'))
+        self.assertIn('réviser', refus.data['detail'])
+        self._rien_ecrit(devis, avant)
+
+    def test_refus_du_chemin_impose_meme_refus_rien_ecrit(self):
+        """La batterie imposée n'est plus vendable : le chemin imposé refuse
+        en nommant son champ ; rien n'est écrit, aucun remplaçant choisi."""
+        devis = self._composer()
+        avant = self._quantites(devis)
+        Produit.objects.filter(pk=self.produits[self.BATTERIE].pk).update(
+            prix_vente=Decimal('0'))
+        for reponse in (self._apercu(devis), auth(self.user).post(
+                self._url(devis), {'nb_panneaux': 12, 'ancien_total_ttc': '1.00',
+                                   'nouveau_total_ttc': '2.00'}, format='json')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertEqual((reponse.data['code'], reponse.data['field']),
+                             ('composition_impossible', 'batterie_produit_id'))
+        self._rien_ecrit(devis, avant)
+
+    def test_composition_changee_a_la_main_409_nomme(self):
+        from apps.ventes.models import LigneDevis
+        devis = self._composer()
+        LigneDevis.objects.filter(
+            devis=devis, produit=self.produits[self.PANNEAU]).update(
+                produit=self.produits['Panneau Jinko 550W'],
+                designation='Panneau Jinko 550W')
+        avant = self._quantites(devis)
+        refus = self._apercu(devis)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(refus.data['code'], 'composition_modifiee')
+        self.assertIn('écran du devis', refus.data['detail'])
+        self._rien_ecrit(devis, avant)
+
+    def test_modules_de_la_batterie_imposee_et_refus_sans_batterie(self):
+        devis = self._composer()
+        apercu = self._apercu(devis, batterie_nb_modules=2)
+        self.assertEqual(apercu.status_code, 200, apercu.data)
+        resp = self._ecrire(devis, apercu, batterie_nb_modules=2)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis.refresh_from_db()
+        self.assertEqual(self._quantites(devis)[self.BATTERIE], 2)
+        self.assertEqual(devis.etude_params['composition_imposee']['produits']
+                         ['batterie_nombre'], 2)
+        sans = self._composer({'nb_panneaux': 9, 'onduleur_kw': 5,
+                               'onduleur_phase': 'monophase', 'scenario': 'sans'})
+        refus = self._apercu(sans, batterie_nb_modules=2)
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual((refus.data['code'], refus.data['field']),
+                         ('batterie_non_imposee', 'batterie_nb_modules'))
 
 
 class RelanceWhatsappAssistantTest(_BaseVenteAssistant):
