@@ -292,20 +292,23 @@ describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne b
   })
 })
 
-describe('R2-017 — la pastille « → ven. 20 » prend la place de l\'heure : la ligne ne change pas de hauteur', () => {
-  it('avec une estampille, la colonne de fin montre la pastille et plus l\'heure (même largeur, jamais les deux)', () => {
-    const { container } = monter({ estampille: '→ ven. 20' })
+describe("R2-017 — la pastille « → ven. 20 » prend la place de la colonne de fin : la ligne ne change pas de hauteur", () => {
+  it("avec une estampille, la colonne de fin ne montre que la pastille (ni l'heure, ni le drapeau, ni l'étoile)", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false }, estampille: '→ ven. 20' })
     const fin = container.querySelector('.ligne-fin')
+    expect([...fin.children].map((e) => e.className)).toEqual(['estampille chiffres'])
     expect(fin.querySelector('.estampille')).toHaveTextContent('→ ven. 20')
-    expect(fin.querySelector('.heure')).toBeNull()
-    // le drapeau et l'étoile restent
-    expect(within(fin).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Priorité haute' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /Essentielle/ })).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Essentielle' })).toBeNull()
   })
 
-  it('sans estampille, l\'heure revient', () => {
-    const { container } = monter()
-    expect(container.querySelector('.ligne-fin .estampille')).toBeNull()
-    expect(container.querySelector('.ligne-fin .heure')).toHaveTextContent('10:00')
+  it("sans estampille, l'heure, le drapeau et l'étoile reviennent", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false } })
+    const fin = container.querySelector('.ligne-fin')
+    expect(fin.querySelector('.estampille')).toBeNull()
+    expect(fin.querySelector('.heure')).toHaveTextContent('10:00')
+    expect(screen.getByRole('img', { name: 'Priorité haute' })).toBeInTheDocument()
   })
 })
 
