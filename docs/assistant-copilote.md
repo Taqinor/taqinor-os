@@ -408,8 +408,9 @@ le manuel de l'assistant, pas encore régénéré, lui faisait dire qu'il ne pou
   transitions SAV) sont couvertes par les tests, pas toutes par l'essai avec une vraie clé.
 - Vague suivante (2C) : mémoire de préférences, carte « plan », relances par e-mail, enchaînement visite → calepinage →
   devis en un seul travail, rôles de terrain.
-- En production : rien de neuf pour le modèle sans `ASSISTANT_MOTEUR=natif`, et le copilote reste réservé aux
-  administrateurs tant que `ASSISTANT_COPILOTE=admins` — deux gestes de Reda, comme tout déploiement.
+- En production (19/11, 14 h UTC, décision de Reda) : `ASSISTANT_MOTEUR=natif` et `ASSISTANT_COPILOTE=tous` sont écrits
+  dans le `.env` du serveur, sans redémarrage ; ils prennent effet au prochain déploiement, que Reda lance. Le serveur
+  tournait alors sur le code de la veille : rien de ce dossier §12-§15 n'était encore en ligne.
 
 ## 15. Changer la taille d'un devis composé sur demande, en place (19/11/2026)
 
