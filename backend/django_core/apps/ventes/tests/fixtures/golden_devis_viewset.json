@@ -595,6 +595,15 @@
       ]
     },
     {
+      "nom": "vente_assistant",
+      "url_path": "vente-assistant",
+      "url_name": "vente-assistant",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "whatsapp",
       "url_path": "whatsapp",
       "url_name": "whatsapp",
@@ -766,6 +775,7 @@
     "update",
     "variante_config",
     "variantes",
+    "vente_assistant",
     "versioning_class",
     "view_is_async",
     "whatsapp",

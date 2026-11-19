@@ -742,9 +742,44 @@ LIGNES_DEVIS = AgentAction(
 )
 
 
+# ── Copilote vague 2 (lane VAD) — la vie du devis après sa création ─────────
+
+def _id_devis():
+    return {'type': 'object',
+            'properties': {'id': _entier('Identifiant du devis.')},
+            'required': ['id'], 'additionalProperties': False}
+
+
+# VAD1 — l'état COMPACT d'une vente (``GET devis/{id}/vente-assistant/``,
+# garde ``LectureVentes`` = ``ventes_voir``, contrat ``assistant_vente_etat.json``).
+VENTE_ETAT = AgentAction(
+    key='ventes.vente.etat',
+    label="Lire l'état de la vente d'un devis",
+    description=(
+        "Sert à : dire où en est la vente d'un devis (prix convenu, émis, "
+        "payé, reste à facturer et à payer, prochaine tranche, factures) ; "
+        "lecture OBLIGATOIRE avant de facturer (la clé de tranche devient "
+        "cle_attendue). Ne pas utiliser pour : facturer ni encaisser. "
+        "Exemple : « où en est la vente de Lahlou ? » → id du devis. "
+        "Résultat : montants en texte, raison_bloquee dite telle quelle, "
+        "a_faire et lien ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/vente-assistant/',
+    method='GET',
+    inputs=_id_devis(),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='vente_etat',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
-                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS)
+                           CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
+                           # Copilote vague 2 (lane VAD).
+                           VENTE_ETAT)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

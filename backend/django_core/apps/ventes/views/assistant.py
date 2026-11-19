@@ -14,12 +14,15 @@ paramètre inconnu, répété ou hors borne répond 400 en le nommant (aussi qua
 le contrôle de plateforme ``API_QUERY_PARAMS_STRICT`` est éteint).
 """
 from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .. import selectors_assistant as SA
 from ..domain import resolution_catalogue as rc
 from ..gardes_lecture import LectureVentes
+from . import openapi_assistant as DA
 from . import openapi_docs as D
 
 #: Bornes PUBLIÉES (schéma) et APPLIQUÉES (ci-dessous) de chaque paramètre.
@@ -68,20 +71,38 @@ TAILLE_DU_GENRE = {rc.GENRE_PANNEAU: 'wc', rc.GENRE_ONDULEUR: 'kw',
 _ORDRE_GENRE = {g: i for i, g in enumerate(rc.GENRES)}
 
 
+def _non_declares(params, noms, erreurs):
+    """Un paramètre inconnu ou répété : 400 qui le nomme."""
+    for nom in sorted(set(params.keys()) - noms):
+        erreurs[nom] = ['Paramètre de requête non déclaré pour cette opération.']
+    for nom in noms & set(params.keys()):
+        if len(params.getlist(nom)) > 1:
+            erreurs[nom] = [f"Le paramètre « {nom} » ne doit figurer qu'une fois."]
+
+
+def _texte_q(params, erreurs):
+    q = (params.get('q') or '').strip()
+    if len(q) > Q_MAX or '\x00' in q:
+        erreurs['q'] = [f'Texte de {Q_MAX} caractères au plus, sans caractère nul.']
+    return q
+
+
+def _limite(params, erreurs):
+    brut = params.get('limite')
+    if brut is None:
+        return LIMITE_DEFAUT
+    if not brut.isdigit() or not (1 <= int(brut) <= LIMITE_MAX):
+        erreurs['limite'] = ['Entier attendu entre 1 et %d.' % LIMITE_MAX]
+        return LIMITE_DEFAUT
+    return int(brut)
+
+
 def _lire(request):
     """Les paramètres validés ; 400 nommant chaque paramètre fautif."""
     params = request.query_params
     erreurs = {}
-    for nom in sorted(set(params.keys()) - NOMS):
-        erreurs[nom] = ['Paramètre de requête non déclaré pour cette opération.']
-    for nom in NOMS & set(params.keys()):
-        if len(params.getlist(nom)) > 1:
-            erreurs[nom] = [f"Le paramètre « {nom} » ne doit figurer qu'une fois."]
-    lus = {}
-    q = (params.get('q') or '').strip()
-    if len(q) > Q_MAX or '\x00' in q:
-        erreurs['q'] = [f'Texte de {Q_MAX} caractères au plus, sans caractère nul.']
-    lus['q'] = q
+    _non_declares(params, NOMS, erreurs)
+    lus = {'q': _texte_q(params, erreurs)}
     for nom, choix in (('genre', rc.GENRES), ('phase', rc.PHASES),
                        ('famille', FAMILLES_RECHERCHE)):
         valeur = params.get(nom)
@@ -104,13 +125,7 @@ def _lire(request):
                 rc._fmt(mini), rc._fmt(maxi))]
             continue
         lus[nom] = valeur
-    brut = params.get('limite')
-    lus['limite'] = LIMITE_DEFAUT
-    if brut is not None:
-        if not brut.isdigit() or not (1 <= int(brut) <= LIMITE_MAX):
-            erreurs['limite'] = ['Entier attendu entre 1 et %d.' % LIMITE_MAX]
-        else:
-            lus['limite'] = int(brut)
+    lus['limite'] = _limite(params, erreurs)
     if erreurs:
         raise ValidationError(erreurs)
     return lus
@@ -179,3 +194,45 @@ class CatalogueAssistantView(APIView):
         return rc.resoudre_batterie(company, entrees, kwh=taille,
                                     haute_tension='haute tension' in
                                     rc._sans_accents(lus['q']))
+
+
+class DevisAssistantActionsMixin:
+    """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
+    l'assistant (mixin, aucune base). Portée = ``get_object`` (société +
+    visibilité du rôle, celle de la liste des devis) : hors portée → 404."""
+
+    # api-only: lue par l'assistant (action `ventes.vente.etat`), aucun écran ne l'appelle.
+    @extend_schema(request=None,
+                   responses={200: DA.VenteEtatAssistantResponse,
+                              404: D.ErreurDetail})
+    @action(detail=True, methods=['get'], url_path='vente-assistant',
+            permission_classes=[LectureVentes])
+    def vente_assistant(self, request, pk=None):
+        """VAD1 — l'état COMPACT de la vente (contrat
+        ``assistant_vente_etat.json``) : la lecture obligatoire avant
+        ``ventes.vente.facturer`` (``prochaines_echeances[0].cle``)."""
+        devis = self.get_object()
+        lu = SA.vente_etat_compacte(devis, request.user)
+        etat = lu['etat']
+        return Response({
+            'devis_id': devis.pk,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'client': lu['client'],
+            'est_tete': etat['est_tete'],
+            'tete_id': etat['tete_id'],
+            'revision_en_cours': etat['revision_en_cours'],
+            'date_validite': lu['date_validite'],
+            'prix_convenu_ttc': etat['prix_convenu_ttc'],
+            'emis_ttc': etat['emis_ttc'],
+            'brouillons_ttc': etat['brouillons_ttc'],
+            'paye_ttc': etat['paye_ttc'],
+            'reste_a_facturer_ttc': etat['reste_a_facturer_ttc'],
+            'reste_a_payer_ttc': etat['reste_a_payer_ttc'],
+            'prochaine_action': etat['prochaine_action'],
+            'raison_bloquee': etat['raison_bloquee'],
+            'prochaines_echeances': etat['prochaines_echeances'],
+            'factures': lu['factures'],
+            'a_faire': lu['a_faire'],
+            'lien': lu['lien'],
+        })

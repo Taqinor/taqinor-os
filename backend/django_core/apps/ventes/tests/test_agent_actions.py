@@ -682,3 +682,76 @@ class CatalogueAssistantTest(TestCase):
         for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
                         'Résultat :'):
             self.assertIn(section, CHERCHER_CATALOGUE.description)
+
+
+def _exemple_contrat(nom, cle='exemple'):
+    """L'exemple d'un contrat ``apps/ventes/contract_samples/<nom>`` (donnée
+    JSON partagée avec l'écran — jamais une source Python lue comme texte)."""
+    import json
+    from pathlib import Path
+    chemin = Path(__file__).resolve().parent.parent / 'contract_samples' / nom
+    return json.loads(chemin.read_text(encoding='utf-8'))[cle]
+
+
+class _BaseVenteAssistant(TestCase):
+    """Copilote vague 2 (lane VAD) — une société, un responsable ventes, un
+    devis ENVOYÉ d'un client au téléphone connu (qui ne doit jamais sortir)."""
+
+    TEL = '+212600004242'
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='VAD Co', slug='vad-co')
+        self.autre = Company.objects.create(nom='VAD Autre', slug='vad-autre')
+        self.user = User.objects.create_user(
+            username='vad_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.client_ = Client.objects.create(
+            company=self.company, nom='Lahlou', prenom='Driss',
+            email='lahlou@example.com', telephone=self.TEL, adresse='Rabat')
+        self.devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-{self.company.id}502',
+            client=self.client_, taux_tva=Decimal('20.00'),
+            created_by=self.user, statut=Devis.Statut.ENVOYE)
+
+    def _hors_societe(self):
+        return User.objects.create_user(
+            username='vad_autre', password='x', role_legacy='responsable',
+            company=self.autre)
+
+
+class VenteEtatAssistantTest(_BaseVenteAssistant):
+    """VAD1 — ``GET devis/<pk>/vente-assistant/`` : forme du contrat
+    ``assistant_vente_etat.json``, ``a_faire`` fermé, portée ``get_object``,
+    jamais le téléphone ni l'e-mail du client."""
+
+    def test_forme_du_contrat_et_rien_du_client_hors_son_nom(self):
+        from apps.ventes.agent_actions import VENTE_ETAT
+        resp = auth(self.user).get(VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data),
+                         set(_exemple_contrat('assistant_vente_etat.json')))
+        self.assertEqual(resp.data['client'], 'Lahlou Driss')
+        self.assertEqual(resp.data['lien'], f'/ventes/devis?devis={self.devis.pk}')
+        self.assertIn(resp.data['a_faire'], {
+            'facturer', 'emettre_brouillon', 'encaisser', 'reviser', 'rien'})
+        # Un devis envoyé (non accepté) n'a rien à facturer.
+        self.assertEqual(resp.data['a_faire'], 'rien')
+        self.assertEqual(resp.data['factures'], [])
+        texte = str(resp.data)
+        for interdit in (self.TEL, 'lahlou@example.com', 'prix_achat', 'marge'):
+            self.assertNotIn(interdit, texte)
+
+    def test_devis_d_une_autre_societe_404(self):
+        from apps.ventes.agent_actions import VENTE_ETAT
+        resp = auth(self._hors_societe()).get(
+            VENTE_ETAT.endpoint.format(id=self.devis.pk))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_action_lecture_lot_copilote_carte_vente_etat(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import VENTE_ETAT
+        self.assertEqual(
+            (VENTE_ETAT.lot, VENTE_ETAT.risk, VENTE_ETAT.required_permission,
+             VENTE_ETAT.carte, VENTE_ETAT.objets),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'vente_etat',
+             {'id': 'devis'}))

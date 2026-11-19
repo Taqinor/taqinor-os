@@ -117,6 +117,9 @@ FIGEE = {
     # COP2-V5 — les lignes d'un devis lues par l'assistant : LECTURE du
     # module (garde de ``retrieve``, code ``ventes_voir``).
     'lignes_assistant': LECTURE,
+    # Copilote vague 2 (VAD1) — l'état compact de la vente lu par
+    # l'assistant : LECTURE du module (code ``ventes_voir``).
+    'vente_assistant': LECTURE,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).
