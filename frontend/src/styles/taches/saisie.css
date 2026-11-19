@@ -234,6 +234,18 @@
   .tch .feuille.panneau-bureau .feuille-pied { margin: auto -24px 0; padding: 14px 24px 20px; }
   .tch .fiche .panneau-bureau .fiche-entete-actions { top: 14px; right: 14px; }
   .tch .fiche .panneau-bureau .fiche-titre-champ { font-size: 1.5rem; line-height: 2rem; }
+  /* Couture r2 — le panneau POUSSE la page au lieu de la recouvrir (même règle sur tous les écrans) : la page s'arrête à
+     son bord gauche (420 px moins le rembourrage de 2 rem du scrolleur de l'ERP). Aujourd'hui rend la place de son
+     Agenda (que le panneau cachait) ; un projet en maître-détail rend celle de sa liste de projets : sinon, à 1280 px,
+     le panneau coupait le titre du projet en deux. La copie `.sortante` (animation de sortie) ne pousse plus rien. */
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) { padding-right: calc(420px - 2rem); }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau { grid-template-columns: minmax(0, 1fr); }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau-agenda { display: none; }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-page:has(> .ep-md-liste) { padding-left: 0; }
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .ep-md-liste { display: none; }
+}
+@media (min-width: 1360px) {
+  .route-fade > .tch:has(.feuille.panneau-bureau:not(.sortante)) .tch-bureau { grid-template-columns: 216px minmax(0, 1fr); }
 }
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
@@ -253,6 +265,9 @@
 .tch .fiche-point .titre.faite { color: var(--tch-texte-doux); text-decoration: line-through; }
 .tch .fiche-ajout { display: flex; align-items: center; gap: 8px; min-height: 48px; color: var(--tch-texte-doux); }
 .tch .fiche-ajout input { flex: 1; }
+/* couture r2 — « après fait » (Répéter) : la case garde sa taille, collée à son libellé (`flex: 1` la centrait seule) */
+.tch .fiche-ajout input[type="checkbox"] { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--tch-accent); }
+.tch .fiche-ajout:has(input[type="checkbox"]) { color: var(--tch-texte); cursor: pointer; }
 .tch .fiche-rappel { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .tch .fiche-question {
   padding: 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); margin-bottom: 8px;
