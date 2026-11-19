@@ -4726,3 +4726,13 @@ decisions:
     date: "2026-11-19"
     source: "Reda, question interactive, 19/11/2026 (« why would be replace the battery after 10 years ? the 16kwh have 8000 cycle so it is roughly 20 to 25 years ! ») ; construit au niveau de règles 13 (nouveaux rendus seulement) ; fichier docs/claude-memory/batterie-duree-cycles.md"
     taches: []
+
+  - id: D-SENS-1
+    question: "Faut-il corriger le tableau des sensibilités C&I (page 3 « Analyse financière ») : retour de chaque scénario imprimé « 4,0 ans » (l'entier servi) quand la même interpolation que la ligne centrale donne 3,3 / 3,2 (DEV-202611-0080), et aucune sensibilité pour l'option « avec batterie » ?"
+    options:
+      - cle: corriger_les_deux_niveau_14
+        texte: "Corriger les deux au niveau de règles 14 (nouveaux rendus seulement) : retour de chaque scénario au dixième (retour_dixieme_ans) ; l'option « avec batterie » sert ses propres sensibilités (mêmes scénarios société, production re-simulée avec la batterie, remplacement au niveau 13 sur le bilan du scénario)"
+    reponse: corriger_les_deux_niveau_14
+    date: "2026-11-19"
+    source: "Reda, 19/11/2026 : « Yes, fix it » à la question « Should I fix the sensitivity table next (exact payback, plus the battery option's own rows)? » ; construit au niveau de règles 14 (migration 0159, brouillons 13 → 14) ; fichier docs/claude-memory/sensibilites-deux-options.md"
+    taches: []
