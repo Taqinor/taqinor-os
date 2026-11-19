@@ -61,11 +61,14 @@ test.describe('Tâches — saisie', () => {
     expect(lue.jour_prevu > jour, 'prévue demain').toBeTruthy()
   })
 
-  test('R2-001 — taper vite après Entrée : le serveur ralenti à 2 s, aucune phrase n\'est perdue ni tronquée', async ({ page }) => {
+  test('R2-001 — taper vite après Entrée : le serveur retenu, aucune phrase n\'est perdue ni tronquée', async ({ page }) => {
     await reinitialiser(page)
-    // chaque création répond 2 s plus tard (le réseau d'un iPhone dans la rue) ; l'aperçu, lui, reste rapide
+    // chaque création est RETENUE sur une porte que le test lâche après la saisie des trois phrases (le réseau
+    // d'un iPhone dans la rue) ; l'aperçu, lui, passe tout de suite
+    let lacher
+    const porte = new Promise((r) => { lacher = r })
     await page.route('**/api/django/taches/saisie-rapide/', async (route) => {
-      if (route.request().postDataJSON()?.apercu === false) await new Promise((r) => { setTimeout(r, 2000) })
+      if (route.request().postDataJSON()?.apercu === false) await porte
       await route.continue()
     })
     const titres = [titreUnique('Test un'), titreUnique('Rappeler Karim'), titreUnique('Meryem sur les leads')]
@@ -77,6 +80,7 @@ test.describe('Tâches — saisie', () => {
       // le champ se vide AU TOUCHER, avant le retour du serveur
       await expect(champSaisie(page)).toHaveValue('')
     }
+    lacher() // seulement maintenant le serveur reçoit les trois créations
     for (const titre of titres) {
       await expect.poll(async () => (await chercherTaches(page, titre)).filter((t) => t.titre === titre).length,
         `« ${titre} » créée entière, une fois`).toBe(1)
