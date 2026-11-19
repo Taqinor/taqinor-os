@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4177}
+counts: {paths: 5228, operations: 8060, components: 4180}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10028,6 +10028,7 @@ components:
 - AssistantEvenementsPage
 - AssistantLibelles
 - AssistantOuvrir
+- AssistantSavErreur
 - AssistantSavParc
 - AssistantSavTicketFiche
 - AssistantSavTickets
@@ -10179,6 +10180,7 @@ components:
 - CalepinageAssistantPublierApercu
 - CalepinageAssistantPublierCorpsRequest
 - CalepinageAssistantPublierDevis
+- CalepinageAssistantRefus
 - CalepinageAssistantResume
 - CalepinageChampsDossierCorpsParDossierRequest
 - CalepinageChampsDossierCorpsParGabaritRequest
@@ -12450,7 +12452,6 @@ components:
 - PlanEchantillonnageRequest
 - PlanificationDocument
 - PlanificationDocumentRequest
-- PlanifierPoseRequeteRequest
 - PlanifierTourneeReponse
 - PlanifierTourneeRequeteRequest
 - Playbook
@@ -13116,6 +13117,7 @@ components:
 - StockFournisseurOtif
 - StockHistoriqueCasier
 - StockNiveauxAssistant
+- StockNiveauxAssistantErreur
 - StockPlanChargementAjout
 - StockPlanChargementCapacite
 - StockPortailCreneauReservationRequest
@@ -13864,6 +13866,7 @@ components:
 - VisiteTerrainStatutEnum
 - VisitesAgendaAssistant
 - VisitesChargeAssistant
+- VisitesErreurAssistant
 - VisitesLeadsRecherche
 - VisitesMaJournee
 - VitalsVitalsP75Reponse
