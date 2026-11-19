@@ -7,9 +7,11 @@ Couvre :
   endpoint `POST /api/django/sav/tickets/`, permission `sav_gerer`, client OU
   équipement (REP5), et la société N'EST PAS dans le schéma d'entrée ;
 - `mettre_a_jour_ticket` cible `PATCH …/tickets/{id}/` (id requis) ;
-- `for_user` ne propose les actions SAV qu'à un utilisateur portant `sav_gerer`.
+- `for_user` ne propose les actions SAV qu'à un utilisateur portant `sav_gerer` ;
+- copilote vague 2 : les lectures compactes (parc, tickets, fiche), le bloc du
+  point du matin, les actions du lot copilote et leur parité de permission.
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.contrib.auth import get_user_model
 
 from authentication.models import Company
@@ -573,3 +575,57 @@ class SavBriefTest(TestCase):
             role=Role.objects.create(company=self.company, nom='BrfCrm',
                                      permissions=['crm_voir']))
         self.assertIsNone(brief_sav(sans, self.aujourdhui))
+
+
+class SavParitePermissionsAssistantTest(SimpleTestCase):
+    """SAV8 — la permission déclarée de chaque clé SAV du lot copilote est le
+    code que la route EXIGE (la route est jouée par la sonde de
+    ``apps.agent.tests.test_registry``) ; lire = ``sav_voir``, écrire =
+    ``sav_gerer`` (un code qui accorde une écriture)."""
+
+    LECTURES = ('sav.parc.chercher', 'sav.tickets.chercher', 'sav.ticket.fiche')
+    ECRITURES = ('sav.ticket.transition', 'sav.ticket.resoudre', 'sav.ticket.noter')
+
+    def test_la_permission_du_catalogue_est_la_garde_de_la_route(self):
+        from apps.agent.tests.test_registry import _verdict_permission
+        for cle in self.LECTURES + self.ECRITURES:
+            juste, detail = _verdict_permission(_by_key(cle))
+            self.assertTrue(juste, detail)
+
+    def test_codes_de_lecture_et_d_ecriture(self):
+        for cle in self.LECTURES:
+            self.assertEqual(_by_key(cle).required_permission, 'sav_voir', cle)
+        for cle in self.ECRITURES:
+            code = _by_key(cle).required_permission
+            self.assertEqual(code, 'sav_gerer', cle)
+            self.assertTrue(User._role_grants_write([code]), cle)
+
+    def test_aucune_cle_du_lot_ne_demande_un_droit_hors_sav(self):
+        for cle in self.LECTURES + self.ECRITURES:
+            a = _by_key(cle)
+            self.assertEqual(a.lot, 'copilote', cle)
+            self.assertTrue(a.required_permission.startswith('sav_'), cle)
+
+
+class SavCatalogueParDroitTest(TestCase):
+    """SAV8 — ce que le catalogue sert selon le droit du compte."""
+
+    def _cles(self, permissions):
+        company = Company.objects.create(
+            nom=f'SAV Cat {len(permissions)}', slug=f'sav-cat-{len(permissions)}')
+        user = User.objects.create_user(
+            username=f'cat{len(permissions)}', password='x', company=company,
+            role=Role.objects.create(company=company, nom='Cat', permissions=permissions))
+        with self.settings(ASSISTANT_COPILOTE='tous'):
+            return {a.key for a in for_user(user) if a.key.startswith('sav.')}
+
+    def test_lecteur_voit_les_lectures_pas_les_ecritures(self):
+        cles = self._cles(['sav_voir'])
+        self.assertEqual(cles, set(SavParitePermissionsAssistantTest.LECTURES))
+
+    def test_gestionnaire_voit_tout_le_lot_et_les_deux_ecritures_historiques(self):
+        cles = self._cles(['sav_voir', 'sav_gerer'])
+        self.assertEqual(cles, {
+            'sav.ticket.create', 'sav.ticket.update',
+            *SavParitePermissionsAssistantTest.LECTURES,
+            *SavParitePermissionsAssistantTest.ECRITURES})
