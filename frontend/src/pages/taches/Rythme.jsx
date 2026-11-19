@@ -362,7 +362,7 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
           </div>
         ) : null}
         <Proposition proposition={rythme.proposition} onRepondre={actions.repondre} erreur={erreurs.proposition} />
-        {avantDixJours ? null : <Graphique rythme={rythme} aujourdhui={aujourdhui} />}
+        {evalues > 0 ? <Graphique rythme={rythme} aujourdhui={aujourdhui} /> : null}
         {rythme.repere ? (
           <p className="ep-source">
             {`Repère : 6 de tes journées sur 10 sont à ${entier(rythme.repere.p60)} tâches ou moins (sur ${rythme.repere.jours} jours).`}

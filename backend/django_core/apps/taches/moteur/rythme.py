@@ -430,7 +430,9 @@ def _vers_pousser(etat, jour):
         palier = max(PALIER_MIN, arrondir(float(reference)))
         return {'palier': palier, 'palier_source': SourceObjectif.CALCULE,
                 'bloc_debut': jour + timedelta(days=1)}
-    recents = list(etat.comptes_recents)[-JOURS_TYPE:]  # LIBRE -> POUSSER : journée type
+    if etat.palier is not None:  # LIBRE -> POUSSER (R2-122, C-7) : « Sans objectif » garde le dernier palier, on le rend
+        return {'bloc_debut': jour + timedelta(days=1)}
+    recents = list(etat.comptes_recents)[-JOURS_TYPE:]  # sans palier : journée type
     if len(recents) < JOURS_TYPE:
         return {'palier': None, 'palier_source': '', 'bloc_debut': None}  # démarrage à froid
     palier = palier_initial(recents, None)[1]

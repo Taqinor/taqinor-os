@@ -296,6 +296,13 @@ class RythmeEcritureTests(BaseRythme):
         self.assertEqual(reglages.mode, ModeRythme.LIBRE)
         self.assertIsNone(self.api.get(URL).json()['objectif']['nb'])
 
+    def test_r2_122_aller_retour_des_modes_rend_l_objectif_d_avant(self):
+        """F2 n°5 : Garder ce rythme → Sans objectif → En faire plus rend « 6 » (dit), pas la valeur par défaut."""
+        self.reglages(palier=6, palier_source=SourceObjectif.DIT)
+        for mode in ('tenir', 'libre', 'pousser'):
+            corps = self.api.post(URL, {'mode': mode}, format='json').json()
+        self.assertEqual(corps['objectif'], {'nb': 6, 'source': 'dit', 'mode': 'pousser', 'zone': None})
+
     def test_compte_neuf_dit_son_objectif_avant_sa_premiere_tache(self):
         """Parcours « compte neuf → aujourdhui/ → dire son objectif → première tâche » : la lecture ne
         crée rien, le geste crée les réglages, la première tâche les retrouve (une seule ligne)."""

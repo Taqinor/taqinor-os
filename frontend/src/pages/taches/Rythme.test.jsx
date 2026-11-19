@@ -227,14 +227,22 @@ describe('TCH107 — Mon rythme', () => {
     expect(ouvert.mock.calls[0][0].detail.question).toBe('Parler de mon rythme')
   })
 
-  it('avant 10 jours : la phrase d\'attente remplace le graphique', async () => {
-    const neuf = { ...rythme(), serie: rythme().serie.slice(0, 1), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
+  it('avant 10 jours : la phrase d\'attente dit le compte ; sans jour évalué il n\'y a pas de graphique', async () => {
+    const neuf = { ...rythme(), serie: [], objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
     lireRythme.mockImplementation(() => reponse(neuf))
     monter()
-    expect(await screen.findByText("1 jour sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
+    expect(await screen.findByText("0 jour sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
     expect(screen.getByText('Objectif du jour : 5 (valeur par défaut, pas encore calculée sur toi)')).toBeInTheDocument()
     expect(screen.getByText("Rien de remarqué pour l'instant.")).toBeInTheDocument()
     expect(screen.queryByRole('img')).toBeNull()
+  })
+
+  it('R2-122 — le graphique ne dépend jamais de la source de l\'objectif : il suit les jours lus', async () => {
+    const neuf = { ...rythme(), serie: rythme().serie.slice(0, 3), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null } }
+    lireRythme.mockImplementation(() => reponse(neuf))
+    monter()
+    expect(await screen.findByText("3 jours sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : mar\. 3 : 5, mer\. 4 : 6, jeu\. 5 : 4\./ })).toBeInTheDocument()
   })
 
   it('un échec de lecture dit « Pas à jour » et Réessayer relit', async () => {

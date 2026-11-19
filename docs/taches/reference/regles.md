@@ -762,8 +762,9 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 ### 6.7 Bascules (`basculer(etat, mode, jour)`)
 
 POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel). TENIR → POUSSER : palier = `arrondir(R)`, plancher
-1. → LIBRE : objectif nul. LIBRE → POUSSER : journée type des 10 derniers jours évalués (≤ 42 j), sinon démarrage à
-froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les
+1. → LIBRE : objectif nul, le palier est GARDÉ. LIBRE → POUSSER : on rend le dernier palier (celui d'avant « Sans
+objectif », R2-122, choix C-7) ; sans palier encore, journée type des 10 derniers jours évalués (≤ 42 j), sinon
+démarrage à froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les
 échecs sont gardés.
 
 ### 6.8 Ce qui fait faire plus au quotidien (A2.4 — à rendre visible)

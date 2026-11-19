@@ -520,9 +520,27 @@ class BasculerTests(unittest.TestCase):
         self.assertEqual((neuf.palier, neuf.bloc_debut), (3, jour_n(1)))
 
     def test_libre_vers_pousser_sans_historique_demarrage_a_froid(self):
-        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=(3,) * 4, palier=7)
+        etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=(3,) * 4)
         neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
         self.assertEqual((neuf.palier, neuf.bloc_debut, neuf.objectif), (None, None, 5))
+
+    def test_r2_122_libre_vers_pousser_rend_le_dernier_palier(self):
+        # C-7 : « Sans objectif » ne perd pas l'objectif d'avant ; revenir à « En faire plus » le rend, même
+        # avec moins de 10 jours évalués (aucun démarrage à froid) et même avec 10 jours d'une autre allure.
+        for comptes in ((3,) * 4, (2,) * 10):
+            with self.subTest(jours=len(comptes)):
+                etat = EtatRythme(mode=ModeRythme.LIBRE, comptes_recents=comptes, palier=6,
+                                  palier_source=SourceObjectif.DIT)
+                neuf = rythme.basculer(etat, ModeRythme.POUSSER, jour_n(0))
+                self.assertEqual((neuf.palier, neuf.palier_source, neuf.objectif), (6, SourceObjectif.DIT, 6))
+                self.assertEqual(neuf.bloc_debut, jour_n(1))
+
+    def test_r2_122_aller_retour_des_modes_garde_l_objectif(self):
+        # F2 n°5 : Plus (6) -> Garder ce rythme -> Sans objectif -> En faire plus : « 6 », pas la valeur par défaut.
+        etat = EtatRythme(palier=6, palier_source=SourceObjectif.DIT, comptes_recents=(5,) * 6)
+        for mode in (ModeRythme.TENIR, ModeRythme.LIBRE, ModeRythme.POUSSER):
+            etat = rythme.basculer(etat, mode, jour_n(0))
+        self.assertEqual((etat.mode, etat.objectif, etat.palier_source), (ModeRythme.POUSSER, 6, SourceObjectif.DIT))
 
     def test_remet_a_zero_et_garde_les_echecs(self):
         neuf = rythme.basculer(self._tenir(5), ModeRythme.POUSSER, jour_n(0))
