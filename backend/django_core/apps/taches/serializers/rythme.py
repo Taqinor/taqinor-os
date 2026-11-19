@@ -133,7 +133,7 @@ def _barre(plan):
             'plan_lignes': plan.plan_prevues}
 
 
-def _serie(user, plans, jour, prefs):
+def _serie(user, plans, jour, prefs=None):
     """Les 10 derniers jours TRAVAILLÉS (R2-120, regles.md §6.2) : une entrée par jour travaillé (calendrier de
     la société ∩ ses jours dits − ses congés), du premier jour lu à la veille. Un jour évalué porte ses
     nombres ; un jour travaillé que la nuit n'a pas évalué (aucune ligne, ou ligne sans statut) est servi

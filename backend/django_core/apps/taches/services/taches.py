@@ -20,6 +20,7 @@ from django.db.models.functions import Lower
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import (
     CibleLiable, Frequence, LienEtat, ModeRecurrence, Priorite, Source, StatutRappel, StatutTache,
@@ -400,11 +401,13 @@ def _lien_courant(tache):
 
 
 def verifier_lien(user, lien):
-    """400 sur `lien` si la cible n'est pas liable ou pas visible (refus = introuvable)."""
+    """400 sur `lien` si la cible n'est pas liable ; 404 (même corps) si elle n'est pas visible."""
     if lien.get('cible') not in CibleLiable.values:
         raise serializers.ValidationError({'lien': [MESSAGE_LIEN_TYPE]})
+    # Un id bien formé qui ne désigne rien de visible : la ressource liée manque — 404 au corps inchangé (règle
+    # d'`IdInconnu404Mixin`, api-fuzz r2 : le schéma ne peut pas dire quelles fiches existent).
     if not cible_visible(user, lien['cible'], lien.get('id')):
-        raise serializers.ValidationError({'lien': [MESSAGE_LIEN_INTROUVABLE]})
+        raise NotFound({'lien': [MESSAGE_LIEN_INTROUVABLE]})
 
 
 def _lien(edition, lien):
@@ -1017,7 +1020,9 @@ def _cible_de_deplacement(user, valeurs):
         for projet_id in {c['projet_id'] for c in (commun, *par_tache.values()) if c.get('projet_id') is not None}:
             _projet(user, projet_id)
     except serializers.ValidationError as exc:
-        raise serializers.ValidationError({'valeurs': exc.detail})
+        # Un projet cible qui n'est pas au compte : la ressource manque (404, corps inchangé — règle
+        # d'`IdInconnu404Mixin`) ; le schéma ne peut pas dire quels projets existent (api-fuzz r2).
+        raise NotFound({'valeurs': exc.detail})
     return {'commun': commun, 'par_tache': par_tache}
 
 

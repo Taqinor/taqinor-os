@@ -496,8 +496,9 @@ class LotTests(BaseApi):
         for projet_id in (999_999, fabriques.projet(self.ext).pk):
             with self.subTest(projet_id=projet_id):
                 reponse = self._lot([a.pk], 'deplacer', {'projet_id': projet_id})
+                # 404 au corps inchangé : la ressource cible manque (api-fuzz r2, règle d'IdInconnu404Mixin).
                 self.assertEqual((reponse.status_code, champs(reponse.json())),
-                                 (400, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
+                                 (404, {'valeurs': {'projet_id': ['Projet inexistant.']}}))
         self.assertIsNone(_relue(a).projet_id)
 
     def test_deplacer_une_sous_tache_est_refuse(self):
@@ -951,8 +952,8 @@ class EtiquettesTests(BaseApi):
     def test_un_nom_deja_pris_meme_cle_est_refuse(self):
         self._etiquette('Magasin')
         reponse = self._post('etiquettes/', {'nom': 'magasin'})
-        self.assertEqual(reponse.status_code, 400)
-        self.assertEqual(champs(reponse.json()), {'nom': ['Une étiquette « magasin » existe déjà.']})
+        self.assertEqual(reponse.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(reponse.json()['nom'], ['Une étiquette « magasin » existe déjà.'])
         self.assertEqual(self._post('etiquettes/', {'nom': 'magasin'}, compte=self.u2).status_code, 201)
 
     def test_les_erreurs_sont_nommees_sous_leur_champ(self):
@@ -978,8 +979,8 @@ class EtiquettesTests(BaseApi):
     def test_renommer_vers_le_nom_d_une_autre_est_refuse_mais_pas_vers_le_sien(self):
         un, deux = self._etiquette('magasin'), self._etiquette('bureau')
         refus = self._patch(f'etiquettes/{deux.pk}/', {'nom': 'MAGASIN'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une étiquette « MAGASIN » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une étiquette « MAGASIN » existe déjà.'])
         self.assertEqual(self._patch(f'etiquettes/{un.pk}/', {'nom': 'Magasin'}).status_code, 200)
 
     def test_un_patch_sans_changement_ne_rend_pas_de_geste(self):
@@ -1102,15 +1103,16 @@ class VuesEnregistreesTests(BaseApi):
         for n in range(30):
             self._vue(f'v{n}', rang=n)
         reponse = self._post('vues/', {'nom': 'de trop'})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'nom': ['30 au plus.']}))
+        # 30 vues déjà : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual((reponse.status_code, reponse.json()['nom']), (409, ['30 au plus.']))
         self.assertEqual(len(self._get('vues/').json()['results']), 30)
         self.assertEqual(self._post('vues/', {'nom': 'de trop'}, compte=self.u2).status_code, 201)
 
     def test_un_nom_deja_pris_est_refuse_et_le_nom_est_requis_et_borne(self):
         self._vue('Haute')
         refus = self._post('vues/', {'nom': 'Haute'})
-        self.assertEqual(refus.status_code, 400)
-        self.assertEqual(champs(refus.json()), {'nom': ['Une vue « Haute » existe déjà.']})
+        self.assertEqual(refus.status_code, 409)  # nom déjà pris : refus d'état, 409 (api-fuzz r2)
+        self.assertEqual(refus.json()['nom'], ['Une vue « Haute » existe déjà.'])
         self.assertEqual(champs(self._post('vues/', {}).json()), {'nom': ['Requis.']})
         self.assertEqual(champs(self._post('vues/', {'nom': 'x' * 61}).json()), {'nom': ['60 caractères au plus.']})
 

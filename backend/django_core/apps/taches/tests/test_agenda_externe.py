@@ -332,8 +332,10 @@ class MessagesDAjoutTests(SimpleTestCase):
         from rest_framework.exceptions import ValidationError
 
         from apps.taches.views import agenda_externe as vue
+        from core.conflit_etat import ConflitEtat
         with mock.patch.object(lecteur, 'verifier_adresse', side_effect=leve):
-            with self.assertRaises(ValidationError) as contexte:
+            # « injoignable » (DNS, hôte interne) est un refus d'ÉTAT : 409 (api-fuzz r2) ; les autres, 400.
+            with self.assertRaises((ValidationError, ConflitEtat)) as contexte:
                 vue._url_acceptee(object(), brute)
         return [str(m) for m in contexte.exception.detail['url']]
 
@@ -397,21 +399,22 @@ class RoutesAgendasExternesTests(TestCase):
         stocke = AgendaExterne.objects.get(proprietaire=self.u)
         self.assertTrue(stocke.url.startswith('https://'))
 
-    def test_4e_adresse_400_au_champ_url(self):
+    # Refus d'ÉTAT (3 déjà posés, doublon, hôte injoignable) : 409 au même corps `{"url": […]}` (api-fuzz r2).
+    def test_4e_adresse_409_au_champ_url(self):
         for n in range(3):
             fabriques.agenda_externe(self.u, url=f'https://agenda.example/{n}.ics')
-        rendu = self.ajouter('https://agenda.example/4.ics', statut=400).json()
-        self.assertEqual(champs(rendu), {'url': ['3 agendas au plus.']})
+        rendu = self.ajouter('https://agenda.example/4.ics', statut=409).json()
+        self.assertEqual(rendu['url'], ['3 agendas au plus.'])
 
-    def test_doublon_400(self):
+    def test_doublon_409(self):
         fabriques.agenda_externe(self.u, url='https://agenda.example/a.ics')
-        self.assertEqual(champs(self.ajouter('https://agenda.example/a.ics', statut=400).json()),
-                         {'url': ['Cet agenda est déjà ajouté.']})
+        self.assertEqual(self.ajouter('https://agenda.example/a.ics', statut=409).json()['url'],
+                         ['Cet agenda est déjà ajouté.'])
 
-    def test_adresse_non_publique_400(self):
+    def test_adresse_non_publique_409(self):
         self.verifier.side_effect = UnsafeWebhookURL('interne')
-        self.assertEqual(champs(self.ajouter('https://intranet.local/a.ics', statut=400).json()),
-                         {'url': ['Adresse injoignable : vérifie le lien.']})
+        self.assertEqual(self.ajouter('https://intranet.local/a.ics', statut=409).json()['url'],
+                         ['Adresse injoignable : vérifie le lien.'])
 
     def test_r2_127_trois_refus_trois_messages(self):
         """F2 n°18 : « pas une adresse », « il faut https », « injoignable » ne se disent plus d'une seule phrase."""
@@ -420,8 +423,8 @@ class RoutesAgendasExternesTests(TestCase):
         self.assertEqual(champs(self.ajouter('http://agenda.example/a.ics', statut=400).json()),
                          {'url': ["L'adresse doit commencer par https."]})
         self.verifier.side_effect = UnsafeWebhookURL("L'hôte du webhook est introuvable (DNS).")
-        self.assertEqual(champs(self.ajouter('https://agenda-introuvable.example/a.ics', statut=400).json()),
-                         {'url': ['Adresse injoignable : vérifie le lien.']})
+        self.assertEqual(self.ajouter('https://agenda-introuvable.example/a.ics', statut=409).json()['url'],
+                         ['Adresse injoignable : vérifie le lien.'])
 
     def test_liste(self):
         fabriques.agenda_externe(self.u, libelle='Bureau')

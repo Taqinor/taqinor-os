@@ -19,6 +19,7 @@ from django.db.models import Max
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from apps.taches.choix import DecisionRevue, Source, StatutProjet, StatutRappel, StatutTache
 from apps.taches.confidentialite import nom_pour
@@ -96,11 +97,13 @@ def _verrouiller_projet(user, pk, version=None):
 
 
 def _nom_pris(nom):
-    return serializers.ValidationError({'nom': [f'Un projet « {nom} » existe déjà.']})
+    """Un nom déjà pris est un refus d'ÉTAT (409, le corps garde `{"nom": […]}`) : le schéma ne peut pas dire
+    quels noms existent, et un 400 sur un corps conforme rougissait l'api-fuzz (r2)."""
+    return ConflitEtat({'nom': [f'Un projet « {nom} » existe déjà.']})
 
 
 def _etape_prise(nom):
-    return serializers.ValidationError({'nom': [f'Une étape « {nom} » existe déjà.']})
+    return ConflitEtat({'nom': [f'Une étape « {nom} » existe déjà.']})
 
 
 def _geste(user, type_, message, ops):
@@ -358,8 +361,8 @@ def creer_section(user, *, projet_id, nom, date_debut=None, date_fin=None):
     """Ajoute une étape à la fin du projet ; nom repris dans ce projet → 400."""
     with transaction.atomic():
         projet = projets_de(user).select_for_update().filter(pk=projet_id).first()
-        if projet is None:
-            raise serializers.ValidationError({'projet_id': ['Projet inexistant.']})
+        if projet is None:  # la ressource parente manque : 404, corps inchangé (règle d'IdInconnu404Mixin)
+            raise NotFound({'projet_id': ['Projet inexistant.']})
         if Section.objects.filter(projet=projet, nom_cle=cle_nom(nom)).exists():
             raise _etape_prise(nom)
         dernier = Section.objects.filter(projet=projet).aggregate(m=Max('rang'))['m']
@@ -592,7 +595,7 @@ class ResultatInstance:
 
 
 def _modele_pris(nom):
-    return serializers.ValidationError({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
+    return ConflitEtat({'nom': [MESSAGE_MODELE_PRIS.format(nom=nom)]})
 
 
 def _decalages(contenu):

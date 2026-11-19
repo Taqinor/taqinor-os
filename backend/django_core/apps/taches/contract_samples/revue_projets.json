@@ -128,5 +128,9 @@
         }
       }
     ]
-  }
+  },
+  "nuls": [
+    "focus_projet_id",
+    "bilan_semaine"
+  ]
 }

@@ -215,12 +215,10 @@ def _abandons(user, jour, etat, neuf, sauf=None):
 # --- POST rythme/ ----------------------------------------------------------------------------
 
 def _entier(valeur):
-    if isinstance(valeur, bool):
+    """Un entier JSON réel (le schéma publie `integer`) : `"5"`, `5.0` ou `true` → 400 (api-fuzz r2)."""
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
         raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
-    try:
-        return int(valeur)
-    except (TypeError, ValueError, OverflowError):  # OverflowError : `1e400` lu comme l'infini (#12)
-        raise ErreursRythme({'objectif': [moteur.OBJECTIF_INVALIDE]})
+    return valeur
 
 
 def _lire_corps(donnees):

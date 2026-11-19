@@ -54,7 +54,7 @@ class SerieDesJoursTravaillesTests(SimpleTestCase):
         from apps.taches.serializers import rythme as forme
         jours = set(travailles or self.LUN_A_VEN)
 
-        def calendrier(_user, du, au):
+        def calendrier(_user, du, au, **_options):  # `prefs` : les préférences déjà lues par forme_rythme
             return {jour for jour in jours if du <= jour <= au}
 
         with mock.patch.object(forme, 'jours_travailles_de', side_effect=calendrier):

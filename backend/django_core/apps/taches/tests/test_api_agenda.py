@@ -12,7 +12,6 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.tests import fabriques
-from apps.taches.tests.test_api_saisie import champs
 
 URL = '/api/django/taches/agenda/'
 
@@ -90,9 +89,10 @@ class AgendaTests(TestCase):
         self.assertEqual(self.periode()['capacite']['minutes'], 300)
 
     def test_42_jours_au_plus(self):
+        """Règle croisée `du`/`au` (chaque date seule est valide au schéma) : 409, même corps (api-fuzz r2)."""
         self.periode(au=self.jour(41).isoformat())
-        rendu = self.periode(statut=400, au=self.jour(42).isoformat())
-        self.assertEqual(champs(rendu), {'au': ['42 jours au plus.']})
+        rendu = self.periode(statut=409, au=self.jour(42).isoformat())
+        self.assertEqual(rendu['au'], ['42 jours au plus.'])
 
     def test_vue_inconnue_400(self):
         self.assertIn('vue', self.get(statut=400, vue='annee'))

@@ -581,6 +581,11 @@ class Refus(Exception):
         self.erreurs = erreurs
 
 
+class RefusEtat(Refus):
+    """Refus d'ÉTAT : le corps est bien formé, c'est l'état (l'heure, les ★ déjà posées) qui s'y oppose — la vue
+    répond 409, même corps `{champ: [message]}` (api-fuzz r2 : un 400 sur un corps conforme au schéma)."""
+
+
 def _plan_verrouille(user, jour, ops):
     """Le `PlanJour` du jour sous verrou (créé si absent : une opération de création)."""
     plan, cree = PlanJour.objects.get_or_create(company_id=user.company_id, proprietaire=user, jour=jour)
@@ -653,7 +658,7 @@ def _verifier_essentiels(plan, essentielles, champ='essentielles'):
     """« 3 au plus. » sur les ★ qui comptent (`sel.ESSENTIELLE_VIVANTE` : tâche vivante, non abandonnée)."""
     deja = set(plan.ligneplanjour_set.filter(sel.ESSENTIELLE_VIVANTE).values_list('tache_id', flat=True))
     if len(deja | set(essentielles)) > classement.ESSENTIELS_MAX:
-        raise Refus({champ: [MESSAGE_ESSENTIELS]})
+        raise RefusEtat({champ: [MESSAGE_ESSENTIELS]})
 
 
 def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=MODE_EXPRESS, assistant=False):
@@ -750,7 +755,7 @@ def _possible_jusqua(jour):
 def _verifier_jour_du_bilan(jour, maintenant):
     """J, ou J − 1 jusqu'à midi ; sinon 400 au champ `jour`."""
     if jour > maintenant.date() or maintenant >= _possible_jusqua(jour):
-        raise Refus({'jour': [MESSAGE_BILAN_FERME]})
+        raise RefusEtat({'jour': [MESSAGE_BILAN_FERME]})
 
 
 def _bilan_chiffres(ctx, prog):

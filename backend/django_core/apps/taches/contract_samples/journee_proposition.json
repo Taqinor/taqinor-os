@@ -256,5 +256,9 @@
         ]
       }
     ]
-  }
+  },
+  "nuls": [
+    "suite_par_projet",
+    "rythme"
+  ]
 }

@@ -26,8 +26,9 @@ from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, projets_de, taches_de
 from apps.taches.serializers import journee as formes_journee
 from apps.taches.serializers.formes import charger_items
-from apps.taches.views.base import PERMISSIONS, est_assistant, forme_echantillon, parametre, reponses
+from apps.taches.views.base import PARSEURS, PERMISSIONS, est_assistant, forme_echantillon, parametre, reponses
 from apps.taches.views.journee import MESSAGE_DATE, date_de, maintenant
+from core.conflit_etat import ConflitEtat
 
 TACHE = classement.TACHE
 JOURS_MAX = 42
@@ -64,10 +65,12 @@ def bornes(params, J):
         du, au = debut, debut + (au - du)
     if params.get('au'):
         au = date_de(params['au'], 'au')
+    # Règles CROISÉES entre `du` et `au` (dont `du` par défaut, aujourd'hui) : le schéma ne sait pas les dire,
+    # chaque date seule y est valide — 409 au champ `au`, même corps (règle croisée, comme `automation`).
     if au < du:
-        raise ValidationError({'au': [MESSAGE_DATE]})
+        raise ConflitEtat({'au': [MESSAGE_DATE]})
     if (au - du).days + 1 > JOURS_MAX:
-        raise ValidationError({'au': [MESSAGE_42]})
+        raise ConflitEtat({'au': [MESSAGE_42]})
     return du, au, vue
 
 
@@ -225,11 +228,12 @@ class AgendaVue(APIView):
     """GET agenda/ — jours, À placer, Mes projets ; rendez-vous externes du jour."""
 
     permission_classes = PERMISSIONS
+    parser_classes = PARSEURS
 
     @extend_schema(parameters=[
         parametre('du', OpenApiTypes.DATE, 'Premier jour (AAAA-MM-JJ).'),
         parametre('au', OpenApiTypes.DATE, 'Dernier jour ; 42 jours au plus.'),
-        parametre('vue', OpenApiTypes.STR, 'jour, semaine, mois ou a-venir.'),
+        parametre('vue', OpenApiTypes.STR, 'jour, semaine, mois ou a-venir.', enum=VUES),
         parametre('projet', OpenApiTypes.INT, "Id d'un de mes projets."),
     ], responses=reponses(forme_echantillon('agenda'), erreurs=(400, 404)))
     def get(self, request):

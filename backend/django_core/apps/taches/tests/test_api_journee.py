@@ -888,11 +888,12 @@ class EssentielTests(_Base):
         self.etoile(t, essentielle=False)
         self.assertFalse(self.ligne_de(t).essentielle)
 
-    def test_4e_etoile_400(self):
+    def test_4e_etoile_409(self):
+        """Trois ★ DÉJÀ posées : refus d'état, 409 au même corps (api-fuzz r2)."""
         for _ in range(3):
             self.etoile(self.tache(jour_prevu=self.jour))
-        rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=400)
-        self.assertEqual(champs(rendu), {'essentielle': ['3 au plus.']})
+        rendu = self.etoile(self.tache(jour_prevu=self.jour), statut=409)
+        self.assertEqual(rendu['essentielle'], ['3 au plus.'])
 
     def test_tache_d_un_autre_404(self):
         autre = fabriques.compte(self.societe, nom='u2')

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4180}
+counts: {paths: 5228, operations: 8060, components: 4181}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13213,10 +13213,8 @@ components:
 - TachesCorpsJetonRequest
 - TachesCorpsJourneeAllegerRequest
 - TachesCorpsJourneeCloturerRequest
-- TachesCorpsJourneeCloturer_Choix_ElementRequest
 - TachesCorpsJourneeEssentielRequest
 - TachesCorpsJourneePlanifierRequest
-- TachesCorpsJourneePlanifier_Lignes_ElementRequest
 - TachesCorpsLierActiviteRequest
 - TachesCorpsLotRequest
 - TachesCorpsModeleInstancierRequest
@@ -13226,23 +13224,22 @@ components:
 - TachesCorpsPlanificationSectionRequest
 - TachesCorpsPlanificationTacheRequest
 - TachesCorpsPlanifierRequest
-- TachesCorpsPreferenceRequest
 - TachesCorpsProjetRequest
 - TachesCorpsProjetTerminerRequest
 - TachesCorpsProprietaireAttenduRequest
 - TachesCorpsRappelRequest
+- TachesCorpsReordonnerElementRequest
+- TachesCorpsReordonnerProjetRequest
 - TachesCorpsReordonnerRequest
 - TachesCorpsRepeterRequest
 - TachesCorpsRepondrePropositionRequest
 - TachesCorpsRevueDecisionRequest
-- TachesCorpsRythmeRequest
 - TachesCorpsSaisieRapideRequest
 - TachesCorpsSectionRequest
 - TachesCorpsSuggestionAccepterRequest
 - TachesCorpsTacheAttendreRequest
 - TachesCorpsTacheChangementApercuRequest
 - TachesCorpsTacheRequest
-- TachesCorpsToutEffacerRequest
 - TachesCorpsTrancherRequest
 - TachesCorpsVuRequest
 - TachesCorpsVueRequest
@@ -13608,11 +13605,15 @@ components:
 - TachesEtiquetteCourte
 - TachesEtiquetteEcrite
 - TachesGeste
+- TachesIgnorerRequest
 - TachesItem
+- TachesJourneeChoixBilanRequest
+- TachesJourneeLigneRequest
 - TachesLien
-- TachesLigneLienRequest
 - TachesLigneNouveauProjetRequest
 - TachesLigneNouvelleSectionRequest
+- TachesLigneRappelRequest
+- TachesLigneRegleNeuveRequest
 - TachesLigneRequest
 - TachesPageItems
 - TachesProgression
