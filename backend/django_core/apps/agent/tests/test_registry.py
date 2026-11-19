@@ -845,8 +845,16 @@ class FondationVague2Tests(SimpleTestCase):
         from apps.agent.registry import OBJETS
         action = self._par_cle()['erp.ouvrir']
         proprietes = action.inputs['properties']
-        self.assertEqual(proprietes['ecran']['enum'], ecrans.cles())
-        self.assertEqual(proprietes['onglet']['enum'], ecrans.onglets_calepinage())
+        # Revue 2A — seuls les écrans OFFERTS (objet résoluble) ; la table reste complète.
+        self.assertEqual(proprietes['ecran']['enum'], ecrans.cles_offertes())
+        self.assertLessEqual(set(ecrans.cles_offertes()), set(ecrans.cles()))
+        self.assertEqual('onglet' in proprietes, 'calepinage' in ecrans.cles_offertes())
+        if 'onglet' in proprietes:
+            self.assertEqual(proprietes['onglet']['enum'], ecrans.onglets_calepinage())
+        # L'exemple de la description nomme un écran toujours offert (lead : crm).
+        self.assertIn('ecran=lead', action.description)
+        self.assertIn('lead', proprietes['ecran']['enum'])
+        self.assertNotIn('calepinage', action.description)
         self.assertEqual((action.method, action.risk, action.lot, action.carte,
                           action.required_permission),
                          ('GET', RISK_INTERNAL, 'copilote', 'lien_ecran', None))

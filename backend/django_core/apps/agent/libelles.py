@@ -11,6 +11,7 @@ ABSENTS de la réponse — jamais une erreur. ``utilisateur`` est résolu ici
 from __future__ import annotations
 
 import importlib
+import importlib.util
 
 #: type -> (module, fonction) du résolveur. Un objet inconnu, d'une autre
 #: société ou hors portée est ABSENT de ce que rend le résolveur.
@@ -45,6 +46,20 @@ def _resolveur(module: str, nom: str):
         if exc.name and module.startswith(exc.name):
             return None
         raise
+
+
+def type_resolu(type_objet: str) -> bool:
+    """Vrai si le résolveur de ``type_objet`` EXISTE (module présent dans le
+    dépôt), sans l'importer (sûr avant que les apps Django soient prêtes) :
+    un écran à objet n'est offert au modèle que pour un type résoluble."""
+    if type_objet == UTILISATEUR:
+        return True
+    if type_objet not in RESOLVEURS:
+        return False
+    try:
+        return importlib.util.find_spec(RESOLVEURS[type_objet][0]) is not None
+    except ModuleNotFoundError:  # paquet parent absent : app pas encore livrée
+        return False
 
 
 def _libelle_utilisateur(user, ident: int) -> dict:

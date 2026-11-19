@@ -769,6 +769,29 @@ class LibellesObjetsTest(TestCase):
                 self.assertEqual(ecrans.chemin(cle, 7 if fiche['objet'] else None), attendu)
         self.assertEqual(ecrans.chemin('calepinage', 12, 'production'), '/calepinage/12?onglet=production')
 
+    def test_ecrans_offerts_seulement_si_le_resolveur_existe(self):
+        """Revue 2A — un écran à objet n'est OFFERT au modèle que si le module
+        du résolveur de son type existe (sinon 404 garanti) ; calculé : il
+        apparaît dès que le module arrive. Les écrans sans objet restent."""
+        from apps.agent import ecrans, libelles
+        offerts = ecrans.cles_offertes()
+        for cle, fiche in ecrans.ecrans().items():
+            with self.subTest(ecran=cle):
+                attendu = not fiche['objet'] or libelles.type_resolu(fiche['objet'])
+                self.assertEqual(cle in offerts, attendu)
+        self.assertIn('lead', offerts)
+        self.assertIn('relances_crm', offerts)
+        manquant = dict(libelles.RESOLVEURS, chantier=('apps.agent.module_absent', 'libelles_x'),
+                        calepinage=('apps.module_absent_aussi.selectors_libelles', 'libelles_y'))
+        with mock.patch.object(libelles, 'RESOLVEURS', manquant):
+            sans = ecrans.cles_offertes()
+            self.assertNotIn('chantier', sans)
+            self.assertNotIn('demandes_achat', sans)
+            self.assertNotIn('calepinage', sans)
+            self.assertIn('chantiers', sans)  # liste sans objet : toujours offerte
+        self.assertFalse(libelles.type_resolu('type_inconnu'))
+        self.assertTrue(libelles.type_resolu('utilisateur'))
+
     def test_ouvrir_hors_portee_404_parametres_400(self):
         url = '/api/django/agent/ouvrir/'
         for params in ({'ecran': 'lead', 'id': self.lead_collegue.pk},
