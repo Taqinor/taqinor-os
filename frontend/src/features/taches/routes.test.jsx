@@ -155,6 +155,54 @@ describe('TCH43 — routes du module', () => {
   })
 })
 
+/* Une coque d'ERP minimale (en-tête + cloche) posée dans le document, comme le fait `components/layout/Layout.jsx`. */
+function poserEnteteErp({ notifications = 0 } = {}) {
+  const main = document.createElement('div')
+  main.className = 'layout-main'
+  main.innerHTML = `<header class="header"><button type="button" class="header-menu-btn" aria-label="Ouvrir le menu"></button>
+    <div class="nb-wrap"><button type="button" class="nb-btn" aria-label="Notifications (${notifications})"></button></div></header>`
+  document.body.appendChild(main)
+  const menu = vi.fn()
+  const cloche = vi.fn()
+  main.querySelector('.header-menu-btn').addEventListener('click', menu)
+  main.querySelector('.nb-btn').addEventListener('click', cloche)
+  return { main, menu, cloche, boutonCloche: main.querySelector('.nb-btn') }
+}
+
+describe('R2-080 — sur iPhone, la rangée du haut de Tâches remplace la barre de l\'ERP', () => {
+  afterEach(() => { document.querySelectorAll('body > .layout-main').forEach((n) => n.remove()) })
+
+  it('☰ ouvre le tiroir de l\'ERP par son propre bouton', async () => {
+    const erp = poserEnteteErp()
+    const { container } = monter('/taches/aujourdhui')
+    await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+    const coquille = container.querySelector('.tch')
+    await act(async () => { within(coquille).getByRole('button', { name: 'Ouvrir le menu' }).click() })
+    expect(erp.menu).toHaveBeenCalledTimes(1)
+  })
+
+  it('la cloche de l\'ERP s\'atteint en un toucher : compteur lu sur l\'ERP, son panneau ouvert', async () => {
+    const erp = poserEnteteErp({ notifications: 3 })
+    const { container } = monter('/taches/aujourdhui')
+    await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+    const coquille = container.querySelector('.tch')
+    const cloche = within(coquille).getByRole('button', { name: 'Notifications (3)' })
+    await act(async () => { cloche.click() })
+    expect(erp.cloche).toHaveBeenCalledTimes(1)
+    // le compteur suit celui de l'ERP
+    await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (5)') })
+    expect(within(coquille).getByRole('button', { name: 'Notifications (5)' })).toBeInTheDocument()
+  })
+
+  it('le titre compact (rangée du haut) répète le titre de la page, caché aux lecteurs d\'écran', async () => {
+    const { container } = monter('/taches/a-trier')
+    await screen.findByRole('heading', { level: 1, name: 'À trier' })
+    const compact = container.querySelector('.entete-barre .entete-compact')
+    expect(compact?.textContent).toBe('À trier')
+    expect(compact.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
 describe('TCH43 — useEnLigne', () => {
   function Sonde() {
     return <p>{useEnLigne() ? 'en ligne' : 'hors ligne'}</p>

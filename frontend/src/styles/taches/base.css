@@ -92,8 +92,52 @@
 .tch .entete {
   padding: 6px var(--tch-gouttiere) 0;
 }
-.tch .entete-haut {
-  display: flex; align-items: center; justify-content: space-between; min-height: 44px;
+/* R2-080 — l'en-tête = une rangée du haut (`.entete-barre` : ☰ · titre compact · actions) puis les titres
+   (`.entete-titres` : sur-titre, grand titre). Bureau : la rangée n'a pas de boîte, ses actions se posent à droite du
+   titre ; ☰, la cloche et le titre compact n'existent que sur iPhone, où l'en-tête de l'ERP est masqué. */
+.tch .entete-menu, .tch .entete-cloche, .tch .entete-compact { display: none; }
+.tch .entete-cloche { position: relative; }
+.tch .entete-cloche-compte {
+  position: absolute; top: 5px; right: 3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--destructive); color: var(--destructive-foreground); box-shadow: 0 0 0 2px var(--tch-surface);
+  font-size: 0.6875rem; font-weight: 700; line-height: 18px; text-align: center;
+}
+@media (min-width: 769px) {
+  .tch .entete {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "titres actions";
+    align-items: center; column-gap: 12px;
+  }
+  .tch .entete-barre { display: contents; }
+  .tch .entete-titres { grid-area: titres; min-width: 0; }
+  .tch .entete-actions { grid-area: actions; }
+}
+/* Même seuil que la coque de l'ERP (768 px), écrit `screen and (…)` (voir la note du bloc `.layout-content` plus bas). */
+@media screen and (max-width: 768px) {
+  /* `contents` : la rangée colle sur toute la hauteur de la page (sa boîte englobante devient `.tch-page`) */
+  .tch .entete { display: contents; }
+  .tch .entete-barre {
+    position: sticky; top: 0; z-index: var(--z-sticky); grid-column: 1;
+    display: flex; align-items: center; min-height: calc(44px + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) max(6px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+    background: var(--tch-surface);
+  }
+  .tch .entete-barre.replie {
+    background: var(--tch-barre-fond); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    box-shadow: inset 0 -0.5px 0 var(--tch-trait);
+  }
+  .tch .entete-menu, .tch .entete-cloche { display: inline-grid; flex: none; }
+  .tch .entete-compact {
+    display: block; flex: 1; min-width: 0; padding: 0 4px; text-align: center; opacity: 0;
+    font-size: 1.0625rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tch .entete-barre.replie .entete-compact { opacity: 1; }
+  .tch .entete-actions { flex: none; margin: 0 0 0 auto; }
+  /* replié, le Copilote garde son étoile et cède son libellé au titre compact (son nom accessible reste « Copilote ») */
+  .tch .entete-barre.replie .copilote { width: 44px; height: 44px; margin: 0; padding: 0; gap: 0; justify-content: center; font-size: 0; }
+  .tch .entete-titres { grid-column: 1 / -1; padding: 0 var(--tch-gouttiere); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tch .entete-compact { transition: opacity var(--motion-fast) var(--ease-standard); }
 }
 .tch .entete-date {
   font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux);
@@ -942,6 +986,21 @@
     padding-top: 0;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+}
+/* R2-080 (choix C-6) — sur iPhone, la barre de l'ERP (53 pt : ☰, logo, fil d'Ariane coupé, second Copilote) ne
+   surmonte plus Tâches : la rangée du haut de la coquille porte ☰ et la cloche. Le sélecteur ne vise QUE la coque dont
+   la page affichée est le module (`.route-fade > .tch`) : jamais l'hôte global de Tâches ni le bouton ✓+ (eux aussi
+   `.tch`, montés sur toutes les apps). L'en-tête reste MONTÉ (ses boutons servent à ☰ et à la cloche) mais n'a plus
+   de boîte visible ; seul le panneau de la cloche (`.nb-panel`, feuille du bas fixe sous 768 px) redevient visible,
+   au-dessus de la barre d'onglets. */
+@media screen and (max-width: 768px) {
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header {
+    position: fixed; top: 0; left: 0; width: 0; height: 0; min-height: 0; padding: 0; border: 0; overflow: visible;
+    visibility: hidden; z-index: var(--z-popover);
+  }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
+    visibility: visible;
   }
 }
 /* …et le « filet noir de 1 px » autour du module était l'anneau de focus du scrolleur `main#contenu` (tabIndex −1,

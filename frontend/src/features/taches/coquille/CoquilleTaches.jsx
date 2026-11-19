@@ -1,7 +1,7 @@
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { CloudOff, Ellipsis, Plus, Search, X } from 'lucide-react'
+import { Bell, CloudOff, Ellipsis, Menu, Plus, Search, X } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
@@ -39,6 +39,10 @@ import { MARQUE_FICHE } from '../lib/fiche'
        grisage de tout geste marqué `data-necessite-reseau` (« Possible une fois connecté », textes.md §2.1).
    L'ERP fournit lui-même barre latérale, barre d'onglets et en-tête global : la coquille
    n'invente aucune navigation (le module reste invisible jusqu'à l'activation, TCH131).
+   R2-080 (choix C-6) — sur iPhone (≤ 768 px, le seuil de la coque de l'ERP), l'en-tête de l'ERP est masqué DANS Tâches
+   (styles/taches/base.css, sélecteur limité aux pages du module) : la rangée du haut de la coquille porte alors ☰ (le
+   tiroir de l'ERP, par son propre bouton) et la cloche de l'ERP (son propre panneau) ; le grand titre se replie en
+   titre compact collant au défilement (maquette ecran-aujourdhui-matin-bas.html). Bureau : rien ne change.
    Maquettes : docs/taches/maquettes/composants-5.html, ecran-aujourdhui-matin.html.
    ========================================================================== */
 
@@ -56,6 +60,84 @@ const DESTINATIONS = [
 
 /** Le message dit à qui touche un geste grisé hors ligne (textes.md §2.1). */
 export const PHRASE_GESTE_GRISE = 'Possible une fois connecté'
+
+/* R2-080 — sur iPhone, l'en-tête de l'ERP est masqué dans Tâches (base.css) mais reste MONTÉ : ses boutons gardent
+   leur effet. ☰ et la cloche de la coquille les actionnent, sans rien dupliquer (un seul tiroir, un seul panneau de
+   notifications, un seul sondage du compteur). */
+const SELECTEUR_MENU_ERP = '.layout-main > .header .header-menu-btn'
+const SELECTEUR_CLOCHE_ERP = '.layout-main > .header .nb-wrap > .nb-btn'
+const SELECTEUR_PANNEAU_ERP = '.layout-main > .header .nb-panel'
+
+function BoutonMenuErp() {
+  return (
+    <button
+      type="button"
+      className="bouton-icone entete-menu"
+      aria-label="Ouvrir le menu"
+      onClick={() => document.querySelector(SELECTEUR_MENU_ERP)?.click()}
+    >
+      <Menu className="i" aria-hidden="true" />
+    </button>
+  )
+}
+
+// L'étiquette de la cloche de l'ERP (« Notifications (3) ») porte son compteur : on la lit, on suit ses changements.
+const etiquetteClocheErp = () => document.querySelector(SELECTEUR_CLOCHE_ERP)?.getAttribute('aria-label') ?? null
+function suivreClocheErp(rappel) {
+  const cloche = document.querySelector(SELECTEUR_CLOCHE_ERP)
+  if (!cloche || typeof MutationObserver === 'undefined') return () => {}
+  const observateur = new MutationObserver(rappel)
+  observateur.observe(cloche, { attributes: true, attributeFilter: ['aria-label'] })
+  return () => observateur.disconnect()
+}
+
+/** La cloche de l'ERP, atteinte en un toucher depuis Tâches : son compteur est lu sur le bouton de l'ERP, le panneau
+ *  ouvert est celui de l'ERP. Rien n'est rendu hors de la coque de l'ERP (tests, pages sans en-tête). */
+function ClocheErp() {
+  const etiquette = useSyncExternalStore(suivreClocheErp, etiquetteClocheErp, () => null)
+  const ouverteAuPointeur = useRef(null)
+  if (etiquette === null) return null
+  const trouve = etiquette.match(/\((\d+)\)/)
+  const compte = trouve ? Number(trouve[1]) : 0
+  return (
+    <button
+      type="button"
+      className="bouton-icone entete-cloche"
+      aria-label={`Notifications (${compte})`}
+      // le panneau de l'ERP se ferme de lui-même au premier appui hors de sa cloche : un appui sur CETTE cloche,
+      // panneau ouvert, doit le laisser fermé (sinon il se rouvrirait aussitôt)
+      onPointerDown={() => { ouverteAuPointeur.current = Boolean(document.querySelector(SELECTEUR_PANNEAU_ERP)) }}
+      onClick={() => {
+        const etaitOuverte = ouverteAuPointeur.current
+        ouverteAuPointeur.current = null
+        if (etaitOuverte) return
+        document.querySelector(SELECTEUR_CLOCHE_ERP)?.click()
+      }}
+    >
+      <Bell className="i" aria-hidden="true" />
+      {compte > 0 ? <span className="entete-cloche-compte chiffres" aria-hidden="true">{compte > 99 ? '99+' : compte}</span> : null}
+    </button>
+  )
+}
+
+/** R2-080 — le grand titre se replie en titre compact (rangée du haut) quand il passe sous elle au défilement. */
+function useTitreReplie(barre, titre) {
+  const [replie, setReplie] = useState(false)
+  useEffect(() => {
+    const rangee = barre.current
+    const h1 = titre.current
+    if (!rangee || !h1 || typeof IntersectionObserver === 'undefined') return undefined
+    const bas = Math.round(rangee.getBoundingClientRect().bottom)
+    if (bas <= 0) return undefined // bureau : la rangée n'a pas de boîte, pas de titre compact
+    const observateur = new IntersectionObserver(
+      ([entree]) => setReplie(!entree.isIntersecting && entree.boundingClientRect.top < bas),
+      { rootMargin: `-${bas}px 0px 0px 0px` },
+    )
+    observateur.observe(h1)
+    return () => observateur.disconnect()
+  }, [barre, titre])
+  return replie
+}
 
 function MenuPlus({ actionsEcran, navigate, enLigne }) {
   const aller = (vers) => (e) => {
@@ -149,6 +231,9 @@ export default function CoquilleTaches({
   const [file, setFile] = useState({ enAttente: 0, conflits: [] })
   const [saisieOuverte, setSaisieOuverte] = useState(false)
   const tacheId = params.get('tache')
+  const barre = useRef(null)
+  const titreH1 = useRef(null)
+  const replie = useTitreReplie(barre, titreH1)
 
   const ouvrirSaisie = useCallback(() => setSaisieOuverte(true), [])
   const fermerSaisie = useCallback(() => {
@@ -224,25 +309,14 @@ export default function CoquilleTaches({
   return (
     <div className="tch" data-ecran={ecran} data-hors-ligne={enLigne ? undefined : 'true'} onClickCapture={surClicCapture}>
       <div className="tch-page">
+        {/* R2-080 — la rangée du haut (☰, titre compact, actions) colle en haut de l'écran sur iPhone ; au bureau elle
+            n'a pas de boîte (`display: contents`) et ses actions se posent à droite du titre, comme avant. */}
         <header className="entete">
-          <div className="entete-haut">
-            <div>
-              {enLigne ? (
-                sousTitre ? <div className="entete-date">{sousTitre}</div> : null
-              ) : (
-                <div className="entete-date" role="status">
-                  <CloudOff className="i i-14" aria-hidden="true" />
-                  <span className="chiffres">
-                    {synchro ? ` Hors ligne · dernière synchro à ${synchro}` : ' Hors ligne'}
-                  </span>
-                </div>
-              )}
-              {file.enAttente > 0 ? (
-                <div className="entete-date" role="status"><span className="chiffres">{`En attente d'envoi (${file.enAttente})`}</span></div>
-              ) : null}
-              <h1 className="entete-titre">{titre}</h1>
-            </div>
+          <div className={`entete-barre${replie ? ' replie' : ''}`} ref={barre}>
+            <BoutonMenuErp />
+            <div className="entete-compact" aria-hidden="true">{titre}</div>
             <div className="entete-actions">
+              <ClocheErp />
               <button
                 type="button"
                 className="bouton-icone"
@@ -254,6 +328,22 @@ export default function CoquilleTaches({
               <BoutonCopilote ecran={pathname} {...copilote} />
               <MenuPlus actionsEcran={actionsEcran} navigate={navigate} enLigne={enLigne} />
             </div>
+          </div>
+          <div className="entete-titres">
+            {enLigne ? (
+              sousTitre ? <div className="entete-date">{sousTitre}</div> : null
+            ) : (
+              <div className="entete-date" role="status">
+                <CloudOff className="i i-14" aria-hidden="true" />
+                <span className="chiffres">
+                  {synchro ? ` Hors ligne · dernière synchro à ${synchro}` : ' Hors ligne'}
+                </span>
+              </div>
+            )}
+            {file.enAttente > 0 ? (
+              <div className="entete-date" role="status"><span className="chiffres">{`En attente d'envoi (${file.enAttente})`}</span></div>
+            ) : null}
+            <h1 className="entete-titre" ref={titreH1}>{titre}</h1>
           </div>
         </header>
 

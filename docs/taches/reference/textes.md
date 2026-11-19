@@ -93,6 +93,7 @@ référence données/API.
 | ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
 | ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées récemment · Réglages |
 | Loupe | Chercher dans mes tâches |
+| Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications ({n}) » (celle de l'ERP) ; au défilement, le titre de la page en compact |
 | Bouton flottant (seul bouton plein) | Ajouter |
 | Bouton global | Copilote |
 | Palette | Créer une tâche · Chercher « {q} » dans mes tâches · Copilote : Planifie ma journée · Aide-moi à prioriser · Range ma liste · Où j'en suis ? · Nouveau projet · Faire le bilan · Aujourd'hui · À trier · Projets · Agenda · Supprimer « {titre} » · Abandonner « {titre} » |
