@@ -406,7 +406,7 @@ describe('TCH82 — feuille de saisie', () => {
       expect(vusALaFermeture).toEqual([null])
     })
 
-    it('une coupure pendant l\'envoi met la ligne en file au lieu d\'une erreur ; sans analyse, le texte entier sert de titre', async () => {
+    it('une coupure pendant l\'envoi met la PHRASE en file (R2-008a : le serveur la lira au rejeu), jamais une erreur', async () => {
       const user = userEvent.setup()
       mocks.saisieRapide.mockRejectedValue(new Error('Network Error'))
       const { onFermer } = monter()
@@ -414,8 +414,28 @@ describe('TCH82 — feuille de saisie', () => {
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
       await waitFor(() => expect(onFermer).toHaveBeenCalled())
       const [op] = await file.pending()
-      expect(op.payload.corps.lignes).toEqual([expect.objectContaining({ index: 0, titre: 'Rappeler Salma' })])
+      expect(op.payload.corps.lignes).toBeUndefined()
+      expect(op.payload.corps.phrase).toMatchObject({ textes: ['Rappeler Salma'], ignorer: [] })
       expect(screen.queryByText(/Pas de réseau/)).toBeNull()
+    })
+
+    it('R2-008a — hors ligne dès la frappe : « Test ce soir » part en file avec son contexte, « ce soir » n\'est pas mis dans un titre', async () => {
+      const user = userEvent.setup()
+      act(() => {
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+        window.dispatchEvent(new Event('offline'))
+      })
+      monter()
+      act(() => {
+        window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } }))
+      })
+      await user.type(champ(), 'Test ce soir{Enter}')
+      await waitFor(async () => expect(await file.pending()).toHaveLength(1))
+      const [op] = await file.pending()
+      expect(op.payload.corps.lignes).toBeUndefined()
+      expect(op.payload.corps.phrase).toMatchObject({ textes: ['Test ce soir'], contexte: { projetId: 3 } })
+      expect(op.payload.corps.phrase.cid).toEqual(expect.any(String))
+      expect(mocks.saisieRapide).not.toHaveBeenCalled()
     })
   })
 

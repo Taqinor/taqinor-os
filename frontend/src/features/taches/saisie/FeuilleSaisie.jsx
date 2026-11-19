@@ -6,7 +6,7 @@ import { frenchError } from '../../../lib/frenchError'
 import {
   annulerGeste, classerErreur, definirProprietaire, listerTousLesProjets, nouvelleCle, saisieRapide,
 } from '../../../api/tachesApi'
-import { MESSAGE_EN_FILE, enfilerAjout } from '../horsligne/captureQueue'
+import { MESSAGE_EN_FILE, avecContexte, enfilerAjout, enfilerPhrase } from '../horsligne/captureQueue'
 import { estEnLigne, useEnLigne } from '../lib/enLigne'
 import { proposerAnnuler } from '../lib/gestes'
 import { aujourdhuiIso, jourCourt } from '../lib/textes'
@@ -166,19 +166,6 @@ function lireContexte(detail) {
   }
 }
 
-function avecContexte(origine, contexte) {
-  const ligne = contexte?.lien && origine.lien == null
-    ? { ...origine, lien: { cible: contexte.lien.cible, id: contexte.lien.id } }
-    : origine
-  if (contexte?.projetId == null || ligne.projet_id != null || ligne.nouveau_projet) return ligne
-  return { ...ligne, projet_id: contexte.projetId, ...(contexte.sectionId != null ? { section_id: contexte.sectionId } : {}) }
-}
-
-/** Sans analyse du serveur (coupure) : une ligne par ligne non vide, le texte entier pour titre — rien n'est perdu. */
-function lignesBrutes(textes, { cid, quand }) {
-  return textes.flatMap((t) => t.split('\n')).map((t) => t.trim()).filter(Boolean)
-    .map((titre, index) => ({ index, client_id: `${cid}:${index}`, titre, ...(quand ?? {}) }))
-}
 
 export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null, demandes = null }) {
   const { societe, compte } = useCompte()
@@ -374,10 +361,19 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     })
   }
 
-  /** Hors ligne (TCH100) : les lignes partent dans la file ; la feuille se ferme si rien d'autre n'y est tapé. */
+  /** Hors ligne (TCH100) : les lignes lues partent dans la file — ou, si personne n'a encore lu la phrase, la PHRASE
+   *  elle-même, que le serveur lira au rejeu (R2-008a : « ce soir » devient un jour, plus un mot du titre). La feuille
+   *  se ferme si rien d'autre n'y est tapé. */
   const mettreEnFile = async (gel, lignes) => {
+    const depart = gel.quand != null && gel.quand === gel.quandDepart
     try {
-      await enfilerAjout(lignes)
+      if (lignes) await enfilerAjout(lignes)
+      else {
+        await enfilerPhrase({
+          textes: [...gel.collages, gel.texte], ignorer: gel.ignorer, cid: gel.cid, priorites: gel.priorites,
+          quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, contexte: gel.contexte,
+        })
+      }
     } catch (err) {
       // sans compte connecté la file refuse : la phrase revient (champ ou brouillon), jamais perdue
       echouer(gel, frenchError(err))
@@ -410,11 +406,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   const envoyerEnFond = async (gel) => {
     const lu = await lignesDuGel(gel)
     if (lu.erreur) { echouer(gel, lu.erreur); return }
-    if (lu.horsLigne) {
-      await mettreEnFile(gel, lignesBrutes([...gel.collages, gel.texte], { cid: gel.cid, quand: gel.quand })
-        .map((l) => avecContexte(l, gel.contexte)))
-      return
-    }
+    if (lu.horsLigne) { await mettreEnFile(gel, null); return }
     const lignes = lu.lignes.map((l) => avecContexte(l, gel.contexte))
     if (!estEnLigne()) { await mettreEnFile(gel, lignes); return }
     let data
