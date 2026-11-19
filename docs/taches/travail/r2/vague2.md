@@ -115,3 +115,22 @@ Demandes de L6 :
   `TachesPresence.test` (« 1 ouvertes »), `routes.test` (délai 5 s à froid).
 - À rejouer après le pli (serveur servi) : `rythme/` de 10 entrées dont 5 `sans_donnees` ; tenir → libre → pousser
   rend le palier dit ; `gestes/` avec `titre` ; 3 messages d'agenda externe.
+
+## Après le pli de L2 (`a10817e98`) — les 8 lanes de la vague 1 sont pliées (tête `cfdcd415d`)
+Suite front du module sur l'assemblage (`npm run test:unit -- src/features/taches src/pages/taches`) : 889 verts,
+11 rouges :
+- `ui/CarteDuMoment.test.jsx` (2 : « sans essentiel : 1 sur 5 seul », « au toucher : objectif et source… ») :
+  conséquence de R2-019/R2-035 (L2) : il faut aussi `d.essentiel = []` ; attendu « 1 faite sur 5 visées · 4 tâches gardées ».
+- `pages/taches/Projet.test.jsx` (6 : TCH89 ×2, R2-071, R2-061 ×3) et `Projets.test.jsx` (1 : R2-070 autre compte) :
+  couture L5 × (L1 saisie, L6 coquille) — V2-A travaille sur ces fichiers.
+- `lib/gestes.test.js` (1 : « Messages sans délai — allumé ») : couture L6 (R2-088) — V2-B possède `lib/gestes.js`.
+- `projets/PlanifierProjet.test.jsx` (1 : « Terminer envoie… ») : brouillon non vidé (`savedAt` encore présent) ;
+  L5 le disait instable sous charge : à rejouer seul.
+Demandes de L2 :
+- `tests/test_flux_tuile.py` l.137 : poser `statut_depuis` à la veille pour « Projet-Z pause » (sous C-5 « Pause-Z »
+  sortirait sinon dans le flux).
+- Optionnel serveur : `reste_nb` ne compte pas les lignes de la suite (permettrait de réafficher le chiffre quand
+  Proposé est replié).
+- À rejouer : carte C7 « Oui » → déplie « À revoir » ; pause d'un projet + tâche à 16:00 aujourd'hui.
+- Vu : au bureau le panneau (fiche, bilan, Alléger) RECOUVRE la colonne Agenda (une lettre du titre « Agenda » dépasse
+  à gauche du panneau) ; le toast reste figé tant que la souris le survole.
