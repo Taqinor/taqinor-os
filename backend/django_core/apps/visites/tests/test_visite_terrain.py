@@ -1077,7 +1077,8 @@ class ReplanifierAssistantTests(VisiteDateeMixin, VisiteTerrainBase):
         for compte in (inactif, self.etranger):
             with self.subTest(compte=compte.username):
                 resp = self._patch(visite, {'commercial': compte.id})
-                self.assertIn(resp.status_code, (400, 404), resp.data)
+                # 409 : le socle rend « objet inexistant » comme un refus d'état.
+                self.assertIn(resp.status_code, (400, 404, 409), resp.data)
                 visite.refresh_from_db()
                 self.assertEqual(visite.commercial_id, self.commercial.id)
 
@@ -1136,11 +1137,13 @@ class AnnulerAssistantTests(VisiteDateeMixin, VisiteTerrainBase):
         visite, _ = self._visite_datee()
         contrat = echantillon('visite_annuler')['exemple_400_motif']
         for corps in ({}, {'motif': ''}, {'motif': 'ab'}, {'motif': '   '}, {'motif': 'a b'},
-                      {'motif': 'x' * 301}, {'motif': 12345}, {'motif': None}, ['motif']):
+                      {'motif': 'x' * 301}, {'motif': 12345}, {'motif': None}):
             with self.subTest(corps=corps):
                 resp = self._annuler(visite, corps)
                 self.assertEqual(resp.status_code, 400, resp.data)
                 self.assertEqual(resp.data, contrat)
+        # Un corps qui n'est pas un objet : refusé par le parseur du socle (400).
+        self.assertEqual(self._annuler(visite, ['motif']).status_code, 400)
         visite.refresh_from_db()
         self.assertEqual(visite.statut, 'brouillon')
         self.assertIsNotNone(visite.date_prevue)

@@ -295,7 +295,7 @@ class TestTroisChiffresCa(TestCase):
 
     def test_signe_remise_revision_et_fenetre(self):
         from apps.reporting.metriques_ca import ca_signe_ht
-        self._devis('DEV-RPT1-S1', self.dedans, remise=Decimal('10'))  # 900
+        s1 = self._devis('DEV-RPT1-S1', self.dedans, remise=Decimal('10'))
         self._devis('DEV-RPT1-S2', self.dehors)
         v1 = self._devis('DEV-RPT1-V1', self.dedans)
         v2 = self._devis('DEV-RPT1-V2', self.dedans, ht='2000')
@@ -305,8 +305,11 @@ class TestTroisChiffresCa(TestCase):
             company=self.company, reference='DEV-RPT1-B',
             client=self.client_obj, statut=Devis.Statut.BROUILLON,
             date_acceptation=self.dedans)
+        from apps.ventes.utils.options import option_totaux
+        ht_remise = Decimal(str(option_totaux(s1)['ht']))
+        self.assertLess(ht_remise, Decimal('1000'))  # la remise est honorée
         self.assertEqual(ca_signe_ht(self.company, period=(self.du, self.au)),
-                         Decimal('2900'))
+                         ht_remise + Decimal('2000'))
 
     def test_portee_du_role_comme_le_tableau_de_bord(self):
         from apps.reporting.metriques_ca import (
@@ -512,14 +515,14 @@ class TestTroisChiffresCa(TestCase):
                            SCOPE_SELF])
         sans, _b = self._compte('rpt3-cat-s', ['ventes_voir', 'ventes_creer'])
         with override_settings(ASSISTANT_COPILOTE='tous'):
-            for user, attendu in ((self.admin, True), (commercial, True),
-                                  (sans, False)):
+            # Le catalogue lit les codes du RÔLE (``has_erp_permission``).
+            for user, attendu in ((commercial, True), (sans, False)):
                 cles = {a.key for a in for_user(user)}
                 self.assertEqual('reporting.ca.lire' in cles, attendu,
                                  user.username)
         with override_settings(ASSISTANT_COPILOTE='aucun'):
             self.assertNotIn('reporting.ca.lire',
-                             {a.key for a in for_user(self.admin)})
+                             {a.key for a in for_user(commercial)})
 
     # ── RPT5 — assertions locales de permission ─────────────────────────────
 

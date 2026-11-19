@@ -793,6 +793,7 @@ class ATraiterTest(BaseAssistantCalepinage):
 
         for rang in range(service.COUTEUX_MAX + 2):
             Calepinage.objects.create(company=self.company, titre=f'Toit {rang}',
+                                      client=self.client_a,
                                       responsable=self.user, cree_par=self.user)
         sortie = service.file_a_traiter(self.user, limite=20)
         evalues = [ligne['evalue'] for ligne in sortie['lignes']]
@@ -916,6 +917,7 @@ class BriefCalepinageTest(BaseAssistantCalepinage):
 
         for rang in range(LIGNES_BRIEF + 2):
             Calepinage.objects.create(company=self.company, titre=f'Brief {rang}',
+                                      client=self.client_a,
                                       responsable=self.user, cree_par=self.user)
         bloc = brief_calepinage(self.user, datetime.date.today())
         self.assertEqual(set(bloc), {'total', 'lignes'})

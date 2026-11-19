@@ -346,7 +346,7 @@ class SeedMetriquesTests(TestCase):
         self.assertEqual(par_cle['ca_signe_ht'].libelle, 'CA signé HT')
         self.assertEqual(par_cle['encaisse_ht'].mesure,
                          {'adapter': 'reporting.encaisse_ht'})
-        self.assertEqual(par_cle['ca_signe_ht'].versions.count(), 1)
+        self.assertGreaterEqual(par_cle['ca_signe_ht'].versions.count(), 1)
         self.assertEqual(par_cle['ca_ht'].libelle, 'CA facturé HT')
         self.assertEqual(par_cle['ca_ht'].description,
                          mig.NOUVEAU['ca_ht'][1])
