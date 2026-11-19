@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 
 /* ============================================================================
@@ -8,13 +8,73 @@ import { X } from 'lucide-react'
    CLAVIER OUVERT : les crans ne valent plus (86 px utiles à 50 %) — la feuille épouse son
    contenu et se pose SUR le clavier (`sur-clavier`, hauteur du clavier lue sur
    `visualViewport`, jetée dans `--tch-clavier-h`). Au bureau (≥ 768 px) la même feuille est
-   un dialogue centré (`dialogue-bureau`) ou un popover (`popover-bureau`) — CSS seul.
-   Dialogue modal : focus piégé, Échap ferme, le focus revient à l'élément qui l'a ouverte.
+   un dialogue centré (`dialogue-bureau`) ou un popover (`popover-bureau`) — CSS seul ; `variante="panneau"`
+   (R2-050 : fiche, bilan, Alléger) est, dès 1024 px, un panneau fixe à droite NON modal (`panneau-bureau`).
+   Dialogue modal : focus piégé, Échap ferme (écouté sur `document`, la plus haute seulement — R2-043), le focus
+   revient à l'élément qui l'a ouverte.
    Maquettes : docs/taches/maquettes/composants-5.html, composants-6.html.
    ========================================================================== */
 
 const SEUIL_CLAVIER_PX = 120
 const FOCALISABLES = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const CHAMPS = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])'
+
+/** R2-043 — vrai si l'élément est rendu (la poignée est `display:none` au bureau : `focus()` y échouait, le focus
+ *  restait DERRIÈRE la feuille). `checkVisibility` quand le navigateur l'a, sinon la chaîne des styles calculés. */
+function estVisible(el) {
+  if (typeof el.checkVisibility === 'function') return el.checkVisibility()
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    const style = window.getComputedStyle(n)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+  }
+  return true
+}
+
+const premierVisible = (racine, selecteur) => [...(racine?.querySelectorAll(selecteur) ?? [])].find(estVisible) ?? null
+
+/** F2 acceptation (P144.3) — une feuille ouverte au clavier peut désigner son action par défaut (`data-focus-initial`) :
+ *  Entrée la valide aussitôt. Sinon (R2-043) le premier élément VISIBLE : la poignée sur l'iPhone (aucun clavier qui
+ *  surgit), au bureau — poignée cachée — le premier champ, sinon « Fermer ».
+ *  Passe visuelle n° 26 — posé d'office sur la poignée, le focus ne dessine pas d'anneau (« poignée discrète »,
+ *  ecran-bilan.html) : il chevauchait l'écran du dessous. Tab le rend visible ; une action désignée garde le sien. */
+function focusInitial(racine) {
+  const voulu = premierVisible(racine, '[data-focus-initial]')
+  const poignee = premierVisible(racine, '.poignee')
+  if (voulu) voulu.focus()
+  else if (poignee) poignee.focus({ focusVisible: false })
+  else (premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES))?.focus()
+}
+
+/** Ce qui garde son focus même hors d'une feuille modale : menus et listes (portails Radix), autres dialogues, toast. */
+const HORS_PIEGE = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-radix-popper-content-wrapper], .toast-place'
+
+/** R2-049 — le dernier geste était-il au clavier ? (lu à l'ouverture d'une feuille) Au doigt ou à la souris, le focus
+ *  rendu à la fermeture ne dessine pas d'anneau épais sur le bouton touché (« ⋯ » après Alléger). */
+let derniereModalite = 'pointeur'
+if (typeof document !== 'undefined') {
+  document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
+  document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
+}
+
+/** R2-050 — seuil du panneau à droite (bureau large) : en dessous, la variante `panneau` reste un dialogue/feuille. */
+const REQUETE_PANNEAU = '(min-width: 1024px)'
+
+function useLarge(requete) {
+  const lire = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(requete).matches
+  const [large, setLarge] = useState(lire)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mq = window.matchMedia(requete)
+    const maj = () => setLarge(mq.matches)
+    mq.addEventListener?.('change', maj)
+    return () => mq.removeEventListener?.('change', maj)
+  }, [requete])
+  return large
+}
+
+/** R2-043 — les feuilles ouvertes, de la plus ancienne à la plus haute : Échap (écouté sur `document`) ne ferme que
+ *  la plus haute, même quand le focus est resté derrière elle. */
+const pileOuvertes = []
 
 /** Hauteur (px) du clavier virtuel, 0 s'il est fermé ou si `visualViewport` n'existe pas. */
 function lireClavier() {
@@ -105,28 +165,110 @@ export default function FeuilleACrans({
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
   useRetourFerme(Boolean(ouverte) && historique, onFermer)
+  const fermer = useRef(onFermer)
+  useEffect(() => { fermer.current = onFermer })
+  const moiRef = useRef(null) // l'entrée de cette feuille dans `pileOuvertes`
+  // R2-050 — `variante="panneau"` au bureau large : panneau fixe à droite, NON modal (ni voile, ni piège de Tab) ; la
+  // liste reste lisible et cliquable, toucher une autre ligne change la fiche. iPhone et tablette : feuille / dialogue.
+  const large = useLarge(REQUETE_PANNEAU)
+  const panneau = variante === 'panneau' && large
+  const enPanneau = useRef(panneau)
+  useEffect(() => { enPanneau.current = panneau })
+  const laisserFocus = useRef(false) // panneau ouvert depuis une ligne : le focus y reste
 
   useEffect(() => {
     if (!ouverte) return undefined
     origine.current = document.activeElement
-    // F2 acceptation (P144.3) — une feuille ouverte au clavier peut désigner son action par défaut
-    // (`data-focus-initial`) : Entrée la valide aussitôt ; sinon le premier élément focalisable (la poignée)
-    const voulu = feuille.current?.querySelector('[data-focus-initial]')
-    const premier = voulu ?? feuille.current?.querySelector(FOCALISABLES)
-    // passe visuelle n° 26 — posé d'office sur la poignée, le focus ne dessine pas d'anneau (« poignée discrète »,
-    // ecran-bilan.html) : il chevauchait l'écran du dessous. Tab le rend visible ; une action désignée garde le sien.
-    if (voulu) premier.focus()
-    else premier?.focus({ focusVisible: false })
-    return () => origine.current?.focus?.()
+    const racine = feuille.current
+    // R2-050 — le panneau ne vole pas le focus à la LIGNE qui l'a ouvert (`j`/`k` puis Entrée continuent dans la
+    // liste) ; ouvert d'ailleurs (un menu, le bilan), il le prend comme une feuille. Fermé, il ne rend le focus que
+    // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
+    laisserFocus.current = enPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
+    if (!laisserFocus.current) focusInitial(racine)
+    const parClavier = derniereModalite === 'clavier'
+    return () => {
+      const ici = document.activeElement
+      const libre = !ici || ici === document.body || racine?.contains(ici) || !ici.isConnected
+      if (enPanneau.current && !libre) return
+      if (parClavier) origine.current?.focus?.()
+      else origine.current?.focus?.({ focusVisible: false })
+    }
   }, [ouverte])
+
+  // R2-043 — feuille MODALE : le focus ne repart jamais derrière elle. Un menu Radix qui l'a ouverte (« ⋯ > Alléger »)
+  // rend le focus à son bouton juste APRÈS l'ouverture : on le ramène dans la feuille, et ce bouton devient celui
+  // où il reviendra à la fermeture. Un menu, une liste, un autre dialogue ou le toast « Annuler » gardent le leur.
+  // Le panneau (non modal) ne fait que ce rattrapage d'ouverture : dès que la personne touche ou tape, le focus est
+  // à elle (la liste reste à la main).
+  useEffect(() => {
+    if (!ouverte) return undefined
+    const racine = feuille.current
+    let geste = false
+    const surGeste = () => { geste = true }
+    const surFocus = (e) => {
+      const cible = e.target
+      if (laisserFocus.current || (enPanneau.current && geste)) return
+      if (!racine?.isConnected || pileOuvertes[pileOuvertes.length - 1] !== moiRef.current) return // fermée : on rend
+      if (!(cible instanceof Element) || racine.contains(cible) || cible.closest?.(HORS_PIEGE)) return
+      origine.current = cible
+      focusInitial(racine)
+    }
+    document.addEventListener('focusin', surFocus)
+    document.addEventListener('pointerdown', surGeste, true)
+    document.addEventListener('keydown', surGeste, true)
+    return () => {
+      document.removeEventListener('focusin', surFocus)
+      document.removeEventListener('pointerdown', surGeste, true)
+      document.removeEventListener('keydown', surGeste, true)
+    }
+  }, [ouverte])
+
+  // R2-043 — Échap écouté sur `document` tant que cette feuille est la plus haute ouverte : au bureau le focus peut
+  // être derrière (clic à la souris sur la liste), l'écouteur posé sur la feuille ne recevait alors jamais la touche.
+  // Un menu ouvert (Radix) prend Échap pour lui d'abord (`preventDefault`, en capture) : on le laisse faire.
+  useEffect(() => {
+    if (!ouverte) return undefined
+    const moi = {}
+    moiRef.current = moi
+    pileOuvertes.push(moi)
+    const surEchap = (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || pileOuvertes[pileOuvertes.length - 1] !== moi) return
+      e.preventDefault() // un seul Échap = une seule fermeture (la saisie a aussi son écouteur, il voit `defaultPrevented`)
+      fermer.current?.()
+    }
+    document.addEventListener('keydown', surEchap)
+    return () => {
+      document.removeEventListener('keydown', surEchap)
+      const rang = pileOuvertes.indexOf(moi)
+      if (rang >= 0) pileOuvertes.splice(rang, 1)
+    }
+  }, [ouverte])
+
+  // R2-048 — contenu plus court que le cran : la feuille épouse son contenu (`cran-auto`, plafond 85 %) — plus de
+  // « 300 px de blanc sous les boutons ». Mesuré avant peinture, puis à chaque changement de taille du contenu.
+  const [court, setCourt] = useState(false)
+  useLayoutEffect(() => {
+    const racine = feuille.current
+    const corps = racine?.querySelector('.feuille-corps')
+    if (!ouverte || clavier || panneau || !corps) return undefined
+    const mesurer = () => {
+      const naturel = racine.offsetHeight - corps.clientHeight + corps.scrollHeight
+      const cible = window.innerHeight * (cran === '85' ? 0.85 : 0.5)
+      setCourt(naturel > 0 && naturel < cible)
+    }
+    mesurer()
+    if (typeof ResizeObserver !== 'function') return undefined
+    const observateur = new ResizeObserver(mesurer)
+    observateur.observe(corps)
+    ;[...corps.children].forEach((enfant) => observateur.observe(enfant))
+    return () => observateur.disconnect()
+  }, [ouverte, clavier, panneau, cran])
 
   if (!ouverte) return null
 
   const surTouche = (e) => {
-    // relecture adverse F4 n° 5 — un menu ouvert dans la feuille (Radix) a déjà pris Échap pour lui (`preventDefault`)
-    if (e.key === 'Escape') { if (!e.defaultPrevented) { e.stopPropagation(); onFermer?.() } return }
-    if (e.key !== 'Tab') return
-    const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])]
+    if (e.key !== 'Tab' || panneau) return
+    const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])].filter(estVisible)
     if (liste.length === 0) return
     const premier = liste[0]
     const dernier = liste[liste.length - 1]
@@ -134,19 +276,21 @@ export default function FeuilleACrans({
     else if (!e.shiftKey && document.activeElement === dernier) { e.preventDefault(); premier.focus() }
   }
 
-  const classes = ['feuille', clavier ? 'sur-clavier' : `cran-${cran}`, `${variante}-bureau`]
+  // la variante `panneau` sous 1024 px garde l'allure du dialogue (tablette) et de la feuille du bas (iPhone)
+  const bureau = variante === 'panneau' ? (panneau ? 'panneau' : 'dialogue') : variante
+  const classes = ['feuille', clavier ? 'sur-clavier' : court ? 'cran-auto' : `cran-${cran}`, `${bureau}-bureau`]
   const style = clavier ? { '--tch-clavier-h': `${clavier}px` } : undefined
   const grand = cran === '85'
 
   return (
     <>
-      <div className="voile" onClick={onFermer} aria-hidden="true" />
+      {panneau ? null : <div className="voile" onClick={onFermer} aria-hidden="true" />}
       <div
         ref={feuille}
         className={classes.join(' ')}
         style={style}
         role="dialog"
-        aria-modal="true"
+        aria-modal={panneau ? 'false' : 'true'}
         aria-label={titre}
         onKeyDown={surTouche}
       >

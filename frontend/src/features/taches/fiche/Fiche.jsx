@@ -12,7 +12,8 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
-import { proposerAnnuler } from '../lib/gestes'
+import { signalerEcrite } from '../lib/fiche'
+import { annoncer, proposerAnnuler } from '../lib/gestes'
 import {
   aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
 } from '../lib/textes'
@@ -22,7 +23,7 @@ import CaseRonde from '../ui/CaseRonde'
 import Etoile from '../ui/Etoile'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
-import SelecteurQuand, { ajouterJours } from '../ui/SelecteurQuand'
+import SelecteurQuand, { ajouterJours, dateComplete } from '../ui/SelecteurQuand'
 
 /* ============================================================================
    TCH84 — Fiche d'une tâche (`?tache=<id>`, ouverte par un clic sur une ligne ou par un rappel).
@@ -30,7 +31,8 @@ import SelecteurQuand, { ajouterJours } from '../ui/SelecteurQuand'
    Check-list ; pied : Reporter à {jour} · Fait (faite : Rouvrir). Le reste est dans « Plus »
    (TCH85). Source : textes.md « Fiche d'une tâche, Quand, Rappel » ; arbitrage A16-N8.
    Règles tenues ici :
-     · chaque champ s'enregistre SEUL (PATCH `{champ, lock_version}`), la réponse remplace la tâche ;
+     · chaque champ s'enregistre SEUL (PATCH `{champ, lock_version}`), la réponse remplace la tâche ; les
+       écritures partent l'une après l'autre ; titre et notes s'enregistrent en continu (R2-044) ;
      · une erreur s'affiche SOUS le champ fautif (400) ; rien n'est corrigé d'office ;
      · CONFLIT (409 `conflit_version`, modifiée sur un autre appareil) : la saisie en cours reste à
        l'écran ; « Garder la mienne » la renvoie avec la version de l'autre, « Prendre l'autre »
@@ -49,16 +51,84 @@ const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de texte
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
 const CLES_HORS_CHAMP = new Set(['error', 'code', 'detail'])
 
+/** R2-042 — le message de format de date de l'API (« Date has wrong format. Use … YYYY-MM-DD. ») n'est jamais montré
+ *  tel quel : il devient « Date incomplète. ». */
+const MESSAGE_FORMAT_DATE = /YYYY|AAAA-MM-JJ|wrong format|format de date/i
+const DATE_INCOMPLETE = 'Date incomplète.'
+
 function erreursParChamp(champs) {
   const sortie = {}
   Object.entries(champs ?? {}).forEach(([cle, liste]) => {
     if (CLES_HORS_CHAMP.has(cle)) return // le 400 porte aussi `error` (et `code`) à la racine : jamais un champ
     const message = Array.isArray(liste) && typeof liste[0] === 'string' ? liste[0] : ''
-    if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = message
+    if (message) sortie[CHAMP_DE_ERREUR[cle] ?? 'general'] = MESSAGE_FORMAT_DATE.test(message) ? DATE_INCOMPLETE : message
   })
   return sortie
 }
 
+/** R2-042 — les raccourcis d'échéance, comme ceux de « Quand » : Demain · Vendredi (le prochain, jamais aujourd'hui) ·
+ *  Fin de mois ; calculés en UTC à partir du jour de la fiche (jamais décalés par l'heure d'été). */
+function raccourcisEcheance(aujourdhui) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(aujourdhui ?? ''))
+  if (!m) return []
+  const jour = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  const versVendredi = ((5 - jour.getUTCDay() + 7) % 7) || 7
+  const finDeMois = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).toISOString().split('T')[0]
+  return [
+    { cle: 'demain', titre: 'Demain', jour: ajouterJours(aujourdhui, 1) },
+    { cle: 'vendredi', titre: 'Vendredi', jour: ajouterJours(aujourdhui, versVendredi) },
+    { cle: 'mois', titre: 'Fin de mois', jour: finDeMois },
+  ]
+}
+
+/** R2-042 — l'échéance : raccourcis + un champ date qui n'écrit qu'à la SORTIE (ou Entrée) et seulement une date
+ *  entière — le champ rendait « 0002-11-27 » au 1er chiffre de l'année, envoyé au serveur (400, « YYYY-MM-DD »). */
+function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
+  const [frappe, setFrappe] = useState(null) // { pour: échéance reçue, valeur tapée }
+  const valeur = frappe && frappe.pour === (echeance ?? '') ? frappe.valeur : echeance ?? ''
+  const ecrire = () => {
+    if (!frappe || frappe.pour !== (echeance ?? '') || frappe.valeur === (echeance ?? '')) return
+    if (frappe.valeur && !dateComplete(frappe.valeur)) { onIncomplete(); return } // la frappe reste, à corriger
+    setFrappe(null)
+    if (!frappe.valeur) return // champ vidé : « Aucune » retire l'échéance, un champ vide ne l'efface pas en silence
+    onPoser(frappe.valeur)
+  }
+  const raccourcis = raccourcisEcheance(aujourdhui)
+  return (
+    <>
+      <div className="quand-tuiles" role="radiogroup" aria-label="Choisir l'échéance">
+        {raccourcis.map((r) => (
+          <button key={r.cle} type="button" role="radio" className="quand-tuile" aria-checked={echeance === r.jour} onClick={() => onPoser(r.jour)}>
+            <b>{r.titre}</b>
+            <span className="chiffres">{jourNomme(r.jour, aujourdhui)}</span>
+          </button>
+        ))}
+        {echeance ? (
+          <button type="button" role="radio" className="quand-tuile" aria-checked={false} onClick={() => onPoser(null)}>
+            <b>Aucune</b>
+          </button>
+        ) : null}
+      </div>
+      <label className="champ-etiquette" htmlFor="fiche-echeance">
+        <span>Choisir un jour</span>
+        <input
+          id="fiche-echeance"
+          type="date"
+          className="champ chiffres"
+          aria-label="Échéance"
+          value={valeur}
+          onChange={(e) => setFrappe({ pour: echeance ?? '', valeur: e.target.value })}
+          onBlur={ecrire}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ecrire() } }}
+        />
+      </label>
+    </>
+  )
+}
+
+/** R2-044 — délai après la dernière frappe avant l'enregistrement continu (titre, notes). */
+const DELAI_ENREGISTREMENT_MS = 1000
+const CHAMPS_TEXTE = ['titre', 'notes']
 const sansCle = (objet, cle) => Object.fromEntries(Object.entries(objet).filter(([k]) => k !== cle))
 
 const majuscule = (texte) => (texte ? texte.charAt(0).toUpperCase() + texte.slice(1) : texte)
@@ -112,6 +182,7 @@ function CheckList({ tache, onChange, onErreur }) {
       const { data } = await ajouterPoint({ tache_id: tache.id, libelle })
       const element = data?.element ?? data
       onChange(element?.id ? [...points, element] : null)
+      signalerEcrite()
       setNouveau('')
       onErreur('checklist', '')
     } catch (err) {
@@ -122,6 +193,7 @@ function CheckList({ tache, onChange, onErreur }) {
     onChange(points.map((p) => (p.id === point.id ? { ...p, fait } : p)))
     try {
       await modifierPoint(point.id, { fait })
+      signalerEcrite()
     } catch (err) {
       onChange(points)
       onErreur('checklist', frenchError(err))
@@ -132,6 +204,7 @@ function CheckList({ tache, onChange, onErreur }) {
     onChange(points.filter((p) => p.id !== point.id))
     try {
       await retirerPoint(point.id)
+      signalerEcrite()
     } catch (err) {
       onChange(points)
       onErreur('checklist', frenchError(err))
@@ -175,7 +248,7 @@ function RappelOuvert({ rappel, onRepeter }) {
   )
 }
 
-export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
+export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), section, focus }) {
   const [tache, setTache] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [echec, setEchec] = useState('')
@@ -189,6 +262,14 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const [plusOuvert, setPlusOuvert] = useState(false)
   const [supprimerDemande, setSupprimerDemande] = useState(0)
   const courant = useRef(id)
+  // R2-050 — au bureau, le panneau reste ouvert quand on touche une autre ligne : la fiche change de tâche sans se
+  // refermer. Rien de la précédente ne survit (saisie, erreurs, conflit, volets ouverts) — on repart de la lecture.
+  const [fichePour, setFichePour] = useState(id)
+  if (fichePour !== id) {
+    setFichePour(id)
+    setTache(null); setChargement(true); setEchec(''); setErreurs({}); setSaisie({}); setConflit(null)
+    setAvertissements([]); setOuvert(''); setQuestionTitres(false); setPlusOuvert(false); setSupprimerDemande(0)
+  }
 
   // lecture (et relecture après un « Annuler ») : la réponse n'est gardée que pour la fiche encore ouverte
   const charger = useCallback(() => lireTache(id)
@@ -197,6 +278,33 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
     .finally(() => { if (courant.current === id) setChargement(false) }), [id])
 
   useEffect(() => { courant.current = id; charger() }, [id, charger])
+  // R2-040 — la fiche fermée (croix, Échap, retour arrière), l'écran se relit une dernière fois
+  useEffect(() => () => signalerEcrite(), [])
+
+  // R2-021b / R2-025b — ouverte pour un geste précis (`useOuvrirFiche()(id, { section, focus })`, lu dans l'adresse
+  // ou passé en prop) : « Découper » déplie « Plus » et y met le curseur ; `titre` le met dans le titre ; `heure`
+  // ouvre Quand sur le champ Heure. Une seule fois par tâche, dès qu'elle est lue.
+  const racineFiche = useRef(null)
+  const curseurPose = useRef(null) // l'identifiant dont la demande a déjà été servie
+  const [demande, setDemande] = useState(null) // { pour: id, cible: 'decouper' | 'titre' | 'heure' | null }
+  if (tache && String(tache.id) === String(id) && demande?.pour !== id) {
+    const adresse = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const voulue = section ?? adresse?.get('section')
+    const curseur = focus ?? adresse?.get('focus')
+    const cible = voulue === 'decouper' ? 'decouper' : ['titre', 'heure'].includes(curseur) ? curseur : null
+    setDemande({ pour: id, cible })
+    if (cible === 'decouper') setPlusOuvert(true)
+    if (cible === 'heure') setOuvert('quand')
+  }
+  useEffect(() => {
+    if (!demande?.cible || curseurPose.current === demande.pour) return
+    const cibles = { decouper: 'input[aria-label="Découper"]', titre: '.fiche-titre-champ', heure: 'input[aria-label="Heure"]' }
+    const champ = racineFiche.current?.querySelector(cibles[demande.cible])
+    if (!champ) return
+    curseurPose.current = demande.pour
+    champ.focus()
+    champ.scrollIntoView?.({ block: 'center' })
+  })
 
   const erreur = useCallback((champ, message) => setErreurs((e) => ({ ...e, [champ]: message })), [])
 
@@ -207,37 +315,58 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
     return data?.geste_id ?? null
   }, [])
 
+  // R2-044 — les écritures partent L'UNE APRÈS L'AUTRE, chacune avec la `lock_version` rendue par la précédente :
+  // l'enregistrement continu des notes (une écriture par pause de frappe) ne se heurte plus à son propre verrou (409).
+  const verrou = useRef(null)
+  const file = useRef(Promise.resolve())
+  useEffect(() => { if (tache) verrou.current = tache.lock_version }, [tache])
+  const minuteurs = useRef({}) // champ → minuteur d'enregistrement continu
+  const saisieRef = useRef(saisie)
+  const tacheRef = useRef(tache)
+  const conflitRef = useRef(conflit)
+  useEffect(() => { saisieRef.current = saisie; tacheRef.current = tache; conflitRef.current = conflit })
+
   /** Un enregistrement : `appel(lock_version)` ; 400 → sous le champ, 409 → bandeau, la saisie reste. */
-  const ecrire = useCallback(async (appel, champ, lock, relire = false) => {
-    try {
-      const { data } = await appel(lock ?? tache.lock_version)
-      erreur(champ, '')
-      setConflit(null)
-      if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
-      return { data, geste: appliquer(data) }
-    } catch (err) {
-      const classee = classerErreur(err)
-      if (classee.code === 'conflit_version') {
-        setConflit({ appel, champ, lock: classee.lockVersion, actuel: classee.actuel })
-      } else if (classee.code === 'validation') {
-        setErreurs((e) => ({ ...e, ...erreursParChamp(classee.champs), [champ]: erreursParChamp(classee.champs)[champ] ?? e[champ] }))
-      } else {
-        erreur(champ, frenchError(err))
+  const ecrire = useCallback((appel, champ, lock, relire = false) => {
+    const tour = file.current.then(async () => {
+      try {
+        const { data } = await appel(lock ?? verrou.current)
+        const ecrite = data?.tache ?? (data?.id ? data : null)
+        if (ecrite?.lock_version != null) verrou.current = ecrite.lock_version
+        erreur(champ, '')
+        setConflit(null)
+        // R2-040 — l'écran sous la fiche (Aujourd'hui, Agenda, Projet…) se relit : la ligne suit ce qu'on vient de faire
+        signalerEcrite(ecrite)
+        if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
+        return { data, geste: appliquer(data) }
+      } catch (err) {
+        const classee = classerErreur(err)
+        if (classee.code === 'conflit_version') {
+          setConflit({ appel, champ, lock: classee.lockVersion, actuel: classee.actuel })
+        } else if (classee.code === 'validation') {
+          setErreurs((e) => ({ ...e, ...erreursParChamp(classee.champs), [champ]: erreursParChamp(classee.champs)[champ] ?? e[champ] }))
+        } else {
+          erreur(champ, frenchError(err))
+        }
+        return null
       }
-      return null
-    }
-  }, [tache, erreur, appliquer, charger])
+    })
+    file.current = tour
+    return tour
+  }, [erreur, appliquer, charger])
 
   const annulable = (message, geste) => proposerAnnuler({
     message,
-    onAnnuler: geste ? async () => { await annulerGeste(geste); await charger() } : undefined,
+    onAnnuler: geste ? async () => { await annulerGeste(geste); signalerEcrite(); await charger() } : undefined,
   })
 
   const patcher = (corps, champ) => ecrire((lock) => modifierTache(id, { ...corps, lock_version: lock }), champ)
 
   const garderLaMienne = async () => {
     const { appel, champ, lock } = conflit
-    await ecrire(appel, champ, lock ?? tache.lock_version)
+    // un texte en cours (notes, titre) : c'est la frappe d'AUJOURD'HUI qui part, pas celle d'avant le conflit
+    if (CHAMPS_TEXTE.includes(champ) && saisieRef.current[champ] !== undefined) { await enregistrerTexte(champ, lock); return }
+    await ecrire(appel, champ, lock ?? verrou.current)
   }
   const prendreLautre = () => {
     if (conflit.actuel) setTache(conflit.actuel)
@@ -287,6 +416,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const repeter = async (rappel, corps, message) => {
     try {
       const { data } = await repeterRappel(rappel.id, corps)
+      signalerEcrite()
       annulable(message, data?.geste_id)
       await charger()
     } catch (err) {
@@ -305,16 +435,65 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const notes = saisie.notes ?? tache?.notes ?? ''
   const points = tache?.elements_checklist ?? []
 
-  const enregistrerTexte = (champ) => {
-    const valeur = saisie[champ]
-    if (valeur === undefined || valeur === tache?.[champ]) { setSaisie((s) => sansCle(s, champ)); return }
-    patcher({ [champ]: valeur }, champ).then((r) => { if (r) setSaisie((s) => sansCle(s, champ)) })
+  /** Envoie le texte en cours d'un champ (titre, notes). La frappe reste à l'écran tant qu'elle est plus récente que
+   *  ce qui est parti : on ne retire la saisie que si elle n'a pas bougé pendant l'envoi. */
+  const enregistrerTexte = (champ, lock) => {
+    clearTimeout(minuteurs.current[champ])
+    delete minuteurs.current[champ]
+    const valeur = saisieRef.current[champ]
+    const garderSiInchangee = (s) => (s[champ] === valeur ? sansCle(s, champ) : s)
+    if (valeur === undefined || valeur === tacheRef.current?.[champ]) { setSaisie(garderSiInchangee); return Promise.resolve(null) }
+    return ecrire((l) => modifierTache(id, { [champ]: valeur, lock_version: l }), champ, lock)
+      .then((r) => { if (r) setSaisie(garderSiInchangee); return r })
   }
+  const enregistrerRef = useRef(enregistrerTexte)
+  useEffect(() => { enregistrerRef.current = enregistrerTexte })
+
+  // R2-044 — enregistrement CONTINU : ~1 s après la dernière frappe (et à la sortie du champ), plus quand la page passe
+  // en arrière-plan ou se ferme (iOS tue l'appli sans « blur ») ; jamais pendant un conflit (la personne choisit).
+  const taper = (champ, valeur) => {
+    saisieRef.current = { ...saisieRef.current, [champ]: valeur }
+    setSaisie((s) => ({ ...s, [champ]: valeur }))
+    clearTimeout(minuteurs.current[champ])
+    if (champ === 'titre' && !valeur.trim()) { delete minuteurs.current[champ]; return } // un titre vidé se retape
+    minuteurs.current[champ] = setTimeout(() => {
+      delete minuteurs.current[champ]
+      if (!conflitRef.current) enregistrerRef.current(champ)
+    }, DELAI_ENREGISTREMENT_MS)
+  }
+  useEffect(() => {
+    const vider = () => { Object.keys(minuteurs.current).forEach((champ) => enregistrerRef.current(champ)) }
+    const surVisibilite = () => { if (document.visibilityState === 'hidden') vider() }
+    window.addEventListener('pagehide', vider)
+    document.addEventListener('visibilitychange', surVisibilite)
+    return () => {
+      window.removeEventListener('pagehide', vider)
+      document.removeEventListener('visibilitychange', surVisibilite)
+    }
+  }, [])
+  // fiche fermée ou changée de tâche avec une frappe pas encore partie : elle part quand même, pour CETTE tâche
+  useEffect(() => () => {
+    const champs = Object.keys(minuteurs.current)
+    champs.forEach((champ) => clearTimeout(minuteurs.current[champ]))
+    minuteurs.current = {}
+    const t = tacheRef.current
+    const s = saisieRef.current
+    const aEnvoyer = champs.filter((champ) => t && s[champ] !== undefined && s[champ] !== t[champ])
+    aEnvoyer.reduce((suite, champ) => suite
+      .then((lock) => modifierTache(id, { [champ]: s[champ], lock_version: lock }))
+      .then(({ data }) => { signalerEcrite(data?.tache ?? data); return (data?.tache ?? data)?.lock_version }), Promise.resolve(verrou.current))
+      .catch((err) => annoncer(`Modification non enregistrée : ${frenchError(err)}`))
+  }, [id])
 
   return (
-    <div data-fiche={id} className="fiche">
+    <div ref={racineFiche} data-fiche={id} className="fiche">
+      {/* R2-050 — la ligne de la tâche ouverte est surlignée dans la liste restée visible (ecran-fiche.html
+          « ligne selectionnee ») ; règle limitée à `.tch`, l'identifiant passé par Number (jamais du texte libre) */}
+      {Number.isFinite(Number(id)) ? (
+        <style>{`.tch [data-ligne="tache:${Number(id)}"] > .ligne { background: var(--tch-selection); }`}</style>
+      ) : null}
       {/* la fiche vit dans l'adresse (`?tache=`) : le retour arrière la ferme déjà, pas d'entrée d'historique en plus */}
-      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false}>
+      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false} variante="panneau">
         {chargement && !tache ? <p className="vide-phrase" role="status">Chargement…</p> : null}
         {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (
@@ -339,7 +518,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
               aria-label="Titre"
               aria-invalid={erreurs.titre ? true : undefined}
               value={titre}
-              onChange={(e) => setSaisie((s) => ({ ...s, titre: e.target.value }))}
+              onChange={(e) => taper('titre', e.target.value)}
               onBlur={() => enregistrerTexte('titre')}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
             />
@@ -410,16 +589,12 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
             {ouvert === 'echeance' ? (
               <div className="fiche-editeur">
-                <label className="fiche-ligne" htmlFor="fiche-echeance">
-                  <span className="fiche-etiquette">Échéance</span>
-                  <input
-                    id="fiche-echeance"
-                    type="date"
-                    className="champ-discret chiffres"
-                    value={tache.echeance ?? ''}
-                    onChange={(e) => patcher({ echeance: e.target.value || null }, 'echeance')}
-                  />
-                </label>
+                <EditeurEcheance
+                  echeance={tache.echeance}
+                  aujourdhui={aujourdhui}
+                  onPoser={(jour) => { erreur('echeance', ''); patcher({ echeance: jour }, 'echeance') }}
+                  onIncomplete={() => erreur('echeance', DATE_INCOMPLETE)}
+                />
               </div>
             ) : null}
             <Erreur id="fiche-err-echeance" message={erreurs.echeance} />
@@ -456,10 +631,13 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
               <textarea
                 id="fiche-notes"
                 className="saisie-champ fiche-notes"
-                rows={2}
+                // R2-045 — une invite, un nom lu, et une seule ligne quand c'est vide (le champ grandit avec le texte)
+                placeholder="Ajouter une note…"
+                aria-label="Notes"
+                rows={Math.min(Math.max(notes.split('\n').length, 1), 12)}
                 aria-invalid={erreurs.notes ? true : undefined}
                 value={notes}
-                onChange={(e) => setSaisie((s) => ({ ...s, notes: e.target.value }))}
+                onChange={(e) => taper('notes', e.target.value)}
                 onBlur={() => enregistrerTexte('notes')}
               />
               <Erreur message={erreurs.notes} />
@@ -471,6 +649,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
                 {points.length > 0 ? <span className="compte chiffres">{`${points.filter((p) => p.fait).length}/${points.length}`}</span> : null}
               </p>
               <CheckList
+                key={tache.id}
                 tache={tache}
                 onChange={(liste) => (liste ? setTache((t) => ({ ...t, elements_checklist: liste })) : charger())}
                 onErreur={erreur}
