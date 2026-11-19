@@ -1,7 +1,8 @@
 """Copilote vague 2 (CHTA2, CHTA3, CHTA7) — lectures COMPACTES des chantiers
 pour l'assistant (actions ``installations.chantier.etat`` et
 ``installations.chantiers.liste``, cartes ``fiche_chantier`` /
-``liste_chantiers``).
+``liste_chantiers``) et le bloc ``chantiers`` du point du matin
+(:func:`brief_chantiers`, lu par crm — BRF1).
 
 Contrats : ``contract_samples/assistant_chantier_etat.json`` (une fiche, aussi
 rendue par ``POST chantiers/{id}/planifier-pose/``) et
@@ -35,6 +36,8 @@ BLOCAGES = ('sans_date', 'sans_technicien', 'pose_sans_intervention',
             'pose_depassee', 'acompte_non_encaisse')
 VUES = ('en_cours', 'bloques', 'poses_semaine')
 LIMITE_DEFAUT, LIMITE_MAX = 10, 25
+#: Lignes au plus par liste du point du matin (les compteurs portent sur tout).
+LIGNES_BRIEF = 5
 #: Lectures « acompte encaissé ? » au plus par liste (une par devis).
 ACOMPTE_BUDGET = 25
 MANQUES_MAX = 8
@@ -381,4 +384,33 @@ def etat_chantier(inst, aujourdhui=None):
             'approvisionnement': LIEN_APPRO,
             'intervention_pose': f'/interventions?id={pose.pk}' if pose else None,
         },
+    }
+
+
+def brief_chantiers(user, aujourdhui):
+    """Bloc ``chantiers`` du point du matin (contrat
+    ``crm/contract_samples/assistant_digest_matin.json``, ``vague2``) :
+    ``{'bloques': {'total', 'lignes'}, 'poses_semaine': {'total', 'lignes'},
+    'lien'}`` — chaque ligne EXACTEMENT une ligne de
+    ``assistant_chantiers.json``, :data:`LIGNES_BRIEF` au plus par liste ;
+    bloqués SANS le besoin matériel ; poses de la semaine de ``aujourdhui``.
+    Portée de ``user`` (``chantiers_visibles``). ``None`` — la clé du matin est
+    alors ABSENTE — sans société ou sans lecture du module installations
+    (un lecteur entré par l'octroi ``ventes_voir`` compris, comme les
+    libellés). L'interrupteur copilote reste la décision de l'appelant."""
+    from authentication.permissions import peut_lire_module
+
+    from .selectors import chantiers_visibles
+    if (getattr(user, 'company_id', None) is None
+            or not peut_lire_module(user, 'installations')):
+        return None
+    base = chantiers_visibles(user).select_related('client', 'technicien_responsable')
+    bloques = liste_chantiers(base, user.company, vue='bloques',
+                              limite=LIGNES_BRIEF, aujourdhui=aujourdhui)
+    semaine = liste_chantiers(base, user.company, vue='poses_semaine',
+                              limite=LIGNES_BRIEF, aujourdhui=aujourdhui)
+    return {
+        'bloques': {'total': bloques['total'], 'lignes': bloques['lignes']},
+        'poses_semaine': {'total': semaine['total'], 'lignes': semaine['lignes']},
+        'lien': LIEN_LISTE,
     }

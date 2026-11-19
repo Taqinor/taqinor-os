@@ -155,3 +155,46 @@ class ListeAssistantTests(TestCase):
         r = self._api(self.admin).get(f'{BASE}/chantiers/assistant/', {'limite': '26'})
         self.assertEqual(r.status_code, 400, r.content)
         self.assertEqual(r.data['field'], 'limite')
+
+
+class BriefChantiersTests(TestCase):
+    """Copilote vague 2 (CHTA7) — ``selectors_assistant.brief_chantiers`` :
+    forme du bloc ``chantiers`` du matin (contrat du digest crm), lignes =
+    lignes de la liste, portée de l'utilisateur, ``None`` sans lecture du
+    module. Même jeu de données que :class:`PorteeCalendrierGanttTests`."""
+
+    setUp = PorteeCalendrierGanttTests.setUp
+
+    def test_forme_du_contrat_et_portee(self):
+        from apps.installations.selectors_assistant import brief_chantiers
+        digest = json.loads((Path(__file__).resolve().parents[1] / 'crm' / 'contract_samples'
+                             / 'assistant_digest_matin.json').read_text(encoding='utf-8'))
+        attendu = digest['vague2']['exemple_copilote']['chantiers']
+        ligne_liste = json.loads(CONTRAT_LISTE.read_text(encoding='utf-8'))['exemple']['lignes'][0]
+        jour = self.i1.date_prevue
+        bloc = brief_chantiers(self.admin, jour)
+        self.assertEqual(set(bloc), set(attendu))
+        self.assertEqual(set(bloc['bloques']), set(attendu['bloques']))
+        self.assertEqual(bloc['bloques']['total'], 1)
+        self.assertEqual(set(bloc['bloques']['lignes'][0]), set(ligne_liste))
+        self.assertEqual(bloc['bloques']['lignes'][0]['blocages'], ['sans_date'])
+        self.assertEqual(bloc['poses_semaine']['total'], 1)
+        self.assertEqual(bloc['lien'], '/chantiers')
+        self.assertEqual(brief_chantiers(self.t1, jour)['bloques']['total'], 0)
+
+    def test_sans_lecture_du_module_none(self):
+        from apps.installations.selectors_assistant import brief_chantiers
+        crm = User.objects.create_user(
+            username='crm-brief-chta7', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='CRM brief',
+                                     permissions=['crm_voir']))
+        self.assertIsNone(brief_chantiers(crm, datetime.date.today()))
+
+    def test_cinq_lignes_au_plus_compteur_sur_tout(self):
+        from apps.installations.selectors_assistant import LIGNES_BRIEF, brief_chantiers
+        for n in range(LIGNES_BRIEF + 2):
+            Installation.objects.create(company=self.company, reference=f'CH-BRIEF-{n}',
+                                        created_by=self.admin)
+        bloc = brief_chantiers(self.admin, datetime.date.today())
+        self.assertEqual(bloc['bloques']['total'], LIGNES_BRIEF + 3)
+        self.assertEqual(len(bloc['bloques']['lignes']), LIGNES_BRIEF)
