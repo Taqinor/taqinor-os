@@ -384,6 +384,105 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
+  describe('R2-011 — cocher, Annuler et reporter n\'attendent PAS le serveur (réponse retenue 2 s)', () => {
+    const CASE = 'Marquer « Timbres » comme faite'
+    const ecrite = (gesteId, extra = {}) => {
+      const e = exempleContrat('taches', 'tache_ecrite')
+      return { data: { ...e, tache: { ...e.tache, id: 42, statut: 'fait', lock_version: 2 }, geste_id: gesteId, progression: null, ...extra } }
+    }
+    /** `api.post` dont la réponse à `url` attend 2 s (minuteur factice) ; les autres répondent tout de suite. */
+    function retarder(suffixe, reponse) {
+      api.post.mockImplementation((url) => (url.endsWith(suffixe)
+        ? new Promise((resolu, rejete) => setTimeout(() => (reponse instanceof Error ? rejete(reponse) : resolu(reponse)), 2000))
+        : Promise.resolve(url.endsWith('/annuler/') ? { data: { restaurees: [{ objet: 'tache', id: 42 }], conflits: [], deja: false } } : { data: {} })))
+    }
+    async function monterLent({ figer = true } = {}) {
+      servir(donnees())
+      api.get.mockImplementation((url) => (url === '/taches/aujourdhui/' ? Promise.resolve({ data: donnees() })
+        : url === '/taches/taches/42/' ? Promise.resolve({ data: { ...exempleContrat('taches', 'tache_ecrite').tache, id: 42, lock_version: 3 } })
+          : Promise.reject(new Error(`appel inattendu : GET ${url}`))))
+      monter()
+      await screen.findByText('Devis Settat')
+      if (figer) vi.useFakeTimers()
+    }
+    const attendre = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+    const ligneTimbres = (container) => container.querySelector('[data-ligne="tache:42"]')
+
+    it('cocher : barré, « 2 sur 5 » et le toast « Faite » AVANT la réponse ; la réponse ne change rien de visible', async () => {
+      retarder('/terminer/', ecrite(80))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(ligneTimbres(document).querySelector('.ligne.faite')).not.toBeNull() // barrée
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
+      await attendre(2100)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+    })
+
+    it('Annuler AVANT la réponse : la ligne et « 1 sur 5 » reviennent tout de suite, puis le geste rendu est annulé', async () => {
+      retarder('/terminer/', ecrite(81))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(api.post).not.toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
+      await attendre(2100)
+      expect(api.post).toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+    })
+
+    it('le serveur refuse : la case et le compteur reviennent, et le refus s\'affiche', async () => {
+      retarder('/terminer/', Object.assign(new Error('400'), { response: { status: 400, data: { detail: 'Tâche verrouillée.' } } }))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      await attendre(2100)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Tâche verrouillée.')
+    })
+
+    it('double toucher : décocher ferme le toast « Faite » et les deux écritures partent dans l\'ordre', async () => {
+      retarder('/terminer/', ecrite(82))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      await attendre(2100)
+      const ecritures = api.post.mock.calls.map(([url]) => url).filter((url) => /\/42\/(terminer|rouvrir)\/$/.test(url))
+      expect(ecritures).toEqual(['/taches/taches/42/terminer/', '/taches/taches/42/rouvrir/'])
+      expect(ligneTimbres(document)).not.toBeNull()
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+    })
+
+    it('reporter : « → jeu. 19 » et le toast AU RELÂCHER, avant la réponse ; un refus les retire et le dit', async () => {
+      retarder('/planifier/', Object.assign(new Error('500'), { response: { status: 500, data: { detail: 'Le serveur ne répond pas.' } } }))
+      await monterLent({ figer: false })
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+      const reporter = await screen.findByRole('menuitem', { name: /^Reporter à/ })
+      vi.useFakeTimers()
+      fireEvent.click(reporter)
+      await attendre(50)
+      expect(ligneTimbres(document)).toHaveTextContent('→ jeu. 19')
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
+      await attendre(2100)
+      expect(ligneTimbres(document)).not.toHaveTextContent('→ jeu. 19')
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Le serveur ne répond pas.')
+    })
+  })
+
   describe('R2-010 — activité ERP cochée : envoi DIFFÉRÉ jusqu\'au départ du toast (choix C-9)', () => {
     const CASE = 'Marquer « Rappeler Benali » comme faite'
     const CLOSE = '/records/activities/101/done/'

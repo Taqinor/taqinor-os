@@ -360,6 +360,14 @@ function useClotureDifferee({ patcher, setDonnees }) {
   return useMemo(() => ({ cocher, decocher }), [cocher, decocher])
 }
 
+/** L'identifiant du toast affiché, lu par les gestes (fermer SON toast, jamais celui d'un autre geste). */
+function useToastCourant() {
+  const { toast } = useEtatGestes()
+  const courant = useRef(null)
+  useEffect(() => { courant.current = toast?.id ?? null }, [toast])
+  return courant
+}
+
 export default function Aujourdhui() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -395,6 +403,16 @@ export default function Aujourdhui() {
     if (progression && typeof progression.faites === 'number') setDonnees((d) => (d ? { ...d, progression } : d))
   }, [setDonnees])
   const closeErp = useClotureDifferee({ patcher, setDonnees })
+  const toastCourant = useToastCourant()
+  const rangGeste = useRef(0) // dernier geste optimiste : seule SA réponse recale le statut et le compteur
+  const dernierFaite = useRef(null) // { cle, toast } du dernier « Faite » : décocher la même ligne le ferme
+  const ecritures = useRef(new Map()) // `tache:42` → dernière écriture en vol : une tâche, une écriture à la fois
+  const enchainer = useCallback((cle, ecrire) => {
+    const avant = ecritures.current.get(cle) ?? Promise.resolve()
+    const envoi = avant.then(ecrire)
+    ecritures.current.set(cle, envoi.then(() => null, () => null))
+    return envoi
+  }, [])
 
   const terminer = useCallback(async (item, suivant) => {
     const cle = cleDe(item)
@@ -416,22 +434,53 @@ export default function Aujourdhui() {
       else if (!closeErp.decocher(item)) throw new Error('Une activité de l’ERP close ne se rouvre pas ici.')
       return
     }
-    const avant = donnees?.progression
-    const { data } = suivant ? await client.terminerTache(item.id) : await client.rouvrirTache(item.id)
-    patcher(cle, (it) => ({ ...it, statut: data.tache?.statut ?? (suivant ? 'fait' : 'a_faire'), lock_version: data.tache?.lock_version ?? it.lock_version }))
-    poserProgression(data.progression)
-    if (!suivant) return
-    const prochaine = data.suivante?.jour_prevu
-    proposerAnnuler({
-      message: prochaine ? `Faite · prochaine ${jourNomme(prochaine, donnees?.jour)}` : 'Faite',
-      annonce: `Fait : ${item.titre}`,
-      onAnnuler: async () => {
-        const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
-        patcher(cle, (it) => ({ ...it, statut: 'a_faire', lock_version: versionDe(retour, item.id, it.lock_version) }))
-        poserProgression(avant)
-      },
+    // R2-011 — OPTIMISTE : barré, compteur et toast AU TOUCHER ; la réponse recale (version, statut, progression) ;
+    // un refus remet tout et s'affiche. Les écritures d'une même tâche partent dans l'ordre des gestes.
+    const geste = { annule: false, rang: (rangGeste.current += 1) }
+    const marquer = (fait) => {
+      patcher(cle, (it) => ({ ...it, statut: fait ? 'fait' : 'a_faire' }))
+      setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, item, fait ? 1 : -1) } : d))
+    }
+    marquer(suivant)
+    const envoi = enchainer(cle, () => (suivant ? client.terminerTache(item.id) : client.rouvrirTache(item.id)))
+    const annuler = async () => {
+      geste.annule = true
+      rangGeste.current += 1 // une réponse en retard ne recale plus l'écran
+      marquer(false)
+      const reponse = await envoi.then((r) => r, () => null)
+      if (!reponse) return // l'écriture a échoué : rien n'est à défaire côté serveur
+      try {
+        const retour = await annulerEtRecaler(reponse.data.geste_id, [item.id]) // la version change : on garde celle du serveur
+        patcher(cle, (it) => ({ ...it, lock_version: versionDe(retour, item.id, it.lock_version) }))
+      } catch (err) {
+        marquer(true) // l'annulation est refusée : la tâche reste faite, et le toast le dit
+        throw err
+      }
+    }
+    let toastFaite = null
+    if (suivant) toastFaite = proposerAnnuler({ message: 'Faite', annonce: `Fait : ${item.titre}`, onAnnuler: annuler })
+    else if (dernierFaite.current?.cle === cle && dernierFaite.current.toast === toastCourant.current) fermerToast()
+    dernierFaite.current = toastFaite ? { cle, toast: toastFaite } : null
+    envoi.then(({ data }) => {
+      const aJour = !geste.annule && geste.rang === rangGeste.current
+      patcher(cle, (it) => ({
+        ...it,
+        lock_version: data.tache?.lock_version ?? it.lock_version,
+        ...(aJour && data.tache?.statut ? { statut: data.tache.statut } : {}),
+      }))
+      if (aJour) poserProgression(data.progression)
+      const prochaine = data.suivante?.jour_prevu
+      if (suivant && prochaine && !geste.annule && toastCourant.current === toastFaite) {
+        const message = `Faite · prochaine ${jourNomme(prochaine, donnees?.jour)}`
+        toastFaite = proposerAnnuler({ message, onAnnuler: annuler })
+        dernierFaite.current = { cle, toast: toastFaite }
+      }
+    }, (err) => {
+      if (geste.annule) return
+      marquer(!suivant)
+      proposerAnnuler({ message: frenchError(err) })
     })
-  }, [garde, enLigne, donnees, patcher, poserProgression, closeErp])
+  }, [garde, enLigne, donnees, patcher, poserProgression, closeErp, setDonnees, enchainer, toastCourant])
 
   const poserJour = useCallback(async (item, jour, message, lockVersion = item.lock_version) => {
     const cle = cleDe(item)
@@ -447,33 +496,53 @@ export default function Aujourdhui() {
       proposerAnnuler({ message: TOAST_EN_FILE, annonce: message })
       return
     }
-    try {
-      const { data } = await client.planifierTache(item.id, { jour_prevu: jour, lock_version: lockVersion })
-      setConflit(null)
-      poserProgression(data.progression) // `tache_ecrite.progression` : la progression suit sans relire la journée
-      setEstampilles((e) => ({ ...e, [cle]: `→ ${jourNomme(jour, donnees?.jour)}` }))
-      patcher(cle, (it) => ({ ...it, lock_version: data.tache?.lock_version ?? it.lock_version }))
-      proposerAnnuler({
+    // R2-011 — OPTIMISTE : « → ven. 20 » et le toast AU RELÂCHER ; la réponse recale la version et la progression ;
+    // un refus retire l'estampille et le dit (409 : le bandeau de conflit, « Garder la mienne » réécrit).
+    const estampille = `→ ${jourNomme(jour, donnees?.jour)}`
+    const poser = () => setEstampilles((e) => ({ ...e, [cle]: estampille }))
+    const oter = () => setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+    const ecrire = (version) => {
+      const geste = { annule: false }
+      poser()
+      const envoi = enchainer(cle, () => client.planifierTache(item.id, { jour_prevu: jour, lock_version: version }))
+      const toast = proposerAnnuler({
         message,
         onAnnuler: async () => {
-          const retour = await annulerEtRecaler(data.geste_id, [item.id]) // la version change : on garde celle du serveur
-          setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
-          patcher(cle, (it) => ({ ...it, lock_version: versionDe(retour, item.id, it.lock_version) }))
+          geste.annule = true
+          oter()
+          const reponse = await envoi.then((r) => r, () => null)
+          if (!reponse) return // le report a échoué : rien n'est à défaire côté serveur
+          try {
+            const retour = await annulerEtRecaler(reponse.data.geste_id, [item.id]) // la version change : on garde celle du serveur
+            patcher(cle, (it) => ({ ...it, lock_version: versionDe(retour, item.id, it.lock_version) }))
+          } catch (err) {
+            poser() // l'annulation est refusée : la tâche reste reportée, et le toast le dit
+            throw err
+          }
         },
       })
-    } catch (err) {
-      if (err?.response?.status === 409 && err.response.data?.code === 'conflit_version') {
-        const actuel = err.response.data.actuel ?? {}
-        setConflit({
-          heure: heureDuConflit(actuel),
-          onGarder: () => poserJour(item, jour, message, err.response.data.lock_version ?? actuel.lock_version),
-          onPrendre: () => { patcher(cle, (it) => ({ ...it, ...actuel })); setConflit(null) },
-        })
-        return
-      }
-      annoncer(frenchError(err))
+      envoi.then(({ data }) => {
+        setConflit(null)
+        patcher(cle, (it) => ({ ...it, lock_version: data.tache?.lock_version ?? it.lock_version }))
+        if (!geste.annule) poserProgression(data.progression) // `tache_ecrite.progression` : la progression suit sans relire la journée
+      }, (err) => {
+        if (geste.annule) return
+        oter()
+        if (err?.response?.status === 409 && err.response.data?.code === 'conflit_version') {
+          if (toastCourant.current === toast) fermerToast()
+          const actuel = err.response.data.actuel ?? {}
+          setConflit({
+            heure: heureDuConflit(actuel),
+            onGarder: () => ecrire(err.response.data.lock_version ?? actuel.lock_version),
+            onPrendre: () => { patcher(cle, (it) => ({ ...it, ...actuel })); setConflit(null) },
+          })
+          return
+        }
+        proposerAnnuler({ message: frenchError(err) })
+      })
     }
-  }, [enLigne, donnees, patcher, poserProgression])
+    ecrire(lockVersion)
+  }, [enLigne, donnees, patcher, poserProgression, enchainer, toastCourant])
 
   const reporter = useCallback((item) => {
     const jour = donnees?.prochain_jour_ouvre

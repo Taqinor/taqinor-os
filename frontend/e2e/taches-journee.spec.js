@@ -121,6 +121,33 @@ test.describe('Tâches — la journée', () => {
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut).toBe('a_faire')
   })
 
+  test('R2-011 — serveur ralenti à 2 s : cocher, Annuler et reporter répondent au doigt, pas au serveur', async ({ page }) => {
+    const { titres, taches, base } = await journeeDeQuatre(page, { gardees: true })
+    const lent = (route) => setTimeout(() => route.continue(), 2000)
+    await page.route(/\/taches\/taches\/\d+\/(terminer|planifier)\/$/, lent)
+    await page.route(/\/taches\/gestes\/\d+\/annuler\/$/, lent)
+    await attendreAujourdhui(page)
+    await expect(section(page, 'Prévu')).toBeVisible()
+    const rapide = { timeout: 600 } // bien avant les 2 s du serveur
+
+    const caseA = ligne(page, taches[0].id).getByRole('checkbox', { name: `Marquer « ${titres[0]} » comme faite` })
+    await caseA.click()
+    await expect(caseA).toBeChecked(rapide)
+    await expect(progression(page, { ...base, faites: base.faites + 1 })).toBeVisible(rapide)
+    await expect(toast(page)).toContainText('Faite', rapide)
+    await toast(page).getByRole('button', { name: 'Annuler' }).click()
+    await expect(caseA).not.toBeChecked(rapide)
+    await expect(progression(page, base)).toBeVisible(rapide)
+    // le serveur finit par suivre : la tâche est rouverte (terminer puis annuler, dans l'ordre)
+    await expect.poll(async () => (await lireTache(page, taches[0].id)).statut, { timeout: 15000 }).toBe('a_faire')
+
+    const cible = ligne(page, taches[3].id)
+    await ouvrirActions(page, cible, titres[3])
+    await page.getByRole('menuitem', { name: /^Reporter à / }).click()
+    await expect(cible).toContainText('→', rapide)
+    await expect(toast(page)).toContainText('Reportée à', rapide)
+  })
+
   test('Reporter : la ligne dit où elle va, le serveur la prévoit plus tard, Annuler la rend', async ({ page }) => {
     const { titres, taches } = await journeeDeQuatre(page, { gardees: true })
     await attendreAujourdhui(page)
