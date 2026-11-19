@@ -9,12 +9,31 @@ import { X } from 'lucide-react'
    contenu et se pose SUR le clavier (`sur-clavier`, hauteur du clavier lue sur
    `visualViewport`, jetée dans `--tch-clavier-h`). Au bureau (≥ 768 px) la même feuille est
    un dialogue centré (`dialogue-bureau`) ou un popover (`popover-bureau`) — CSS seul.
-   Dialogue modal : focus piégé, Échap ferme, le focus revient à l'élément qui l'a ouverte.
+   Dialogue modal : focus piégé, Échap ferme (écouté sur `document`, la plus haute seulement — R2-043), le focus
+   revient à l'élément qui l'a ouverte.
    Maquettes : docs/taches/maquettes/composants-5.html, composants-6.html.
    ========================================================================== */
 
 const SEUIL_CLAVIER_PX = 120
 const FOCALISABLES = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const CHAMPS = 'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])'
+
+/** R2-043 — vrai si l'élément est rendu (la poignée est `display:none` au bureau : `focus()` y échouait, le focus
+ *  restait DERRIÈRE la feuille). `checkVisibility` quand le navigateur l'a, sinon la chaîne des styles calculés. */
+function estVisible(el) {
+  if (typeof el.checkVisibility === 'function') return el.checkVisibility()
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    const style = window.getComputedStyle(n)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+  }
+  return true
+}
+
+const premierVisible = (racine, selecteur) => [...(racine?.querySelectorAll(selecteur) ?? [])].find(estVisible) ?? null
+
+/** R2-043 — les feuilles ouvertes, de la plus ancienne à la plus haute : Échap (écouté sur `document`) ne ferme que
+ *  la plus haute, même quand le focus est resté derrière elle. */
+const pileOuvertes = []
 
 /** Hauteur (px) du clavier virtuel, 0 s'il est fermé ou si `visualViewport` n'existe pas. */
 function lireClavier() {
@@ -105,28 +124,51 @@ export default function FeuilleACrans({
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
   useRetourFerme(Boolean(ouverte) && historique, onFermer)
+  const fermer = useRef(onFermer)
+  useEffect(() => { fermer.current = onFermer })
 
   useEffect(() => {
     if (!ouverte) return undefined
     origine.current = document.activeElement
+    const racine = feuille.current
     // F2 acceptation (P144.3) — une feuille ouverte au clavier peut désigner son action par défaut
-    // (`data-focus-initial`) : Entrée la valide aussitôt ; sinon le premier élément focalisable (la poignée)
-    const voulu = feuille.current?.querySelector('[data-focus-initial]')
-    const premier = voulu ?? feuille.current?.querySelector(FOCALISABLES)
+    // (`data-focus-initial`) : Entrée la valide aussitôt. Sinon (R2-043) le premier élément VISIBLE : la poignée sur
+    // l'iPhone (aucun clavier qui surgit), au bureau — poignée cachée — le premier champ, sinon « Fermer ».
+    const voulu = premierVisible(racine, '[data-focus-initial]')
+    const poignee = premierVisible(racine, '.poignee')
     // passe visuelle n° 26 — posé d'office sur la poignée, le focus ne dessine pas d'anneau (« poignée discrète »,
     // ecran-bilan.html) : il chevauchait l'écran du dessous. Tab le rend visible ; une action désignée garde le sien.
-    if (voulu) premier.focus()
-    else premier?.focus({ focusVisible: false })
+    if (voulu) voulu.focus()
+    else if (poignee) poignee.focus({ focusVisible: false })
+    else (premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES))?.focus()
     return () => origine.current?.focus?.()
+  }, [ouverte])
+
+  // R2-043 — Échap écouté sur `document` tant que cette feuille est la plus haute ouverte : au bureau le focus peut
+  // être derrière (clic à la souris sur la liste), l'écouteur posé sur la feuille ne recevait alors jamais la touche.
+  // Un menu ouvert (Radix) prend Échap pour lui d'abord (`preventDefault`, en capture) : on le laisse faire.
+  useEffect(() => {
+    if (!ouverte) return undefined
+    const moi = {}
+    pileOuvertes.push(moi)
+    const surEchap = (e) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || pileOuvertes[pileOuvertes.length - 1] !== moi) return
+      e.preventDefault() // un seul Échap = une seule fermeture (la saisie a aussi son écouteur, il voit `defaultPrevented`)
+      fermer.current?.()
+    }
+    document.addEventListener('keydown', surEchap)
+    return () => {
+      document.removeEventListener('keydown', surEchap)
+      const rang = pileOuvertes.indexOf(moi)
+      if (rang >= 0) pileOuvertes.splice(rang, 1)
+    }
   }, [ouverte])
 
   if (!ouverte) return null
 
   const surTouche = (e) => {
-    // relecture adverse F4 n° 5 — un menu ouvert dans la feuille (Radix) a déjà pris Échap pour lui (`preventDefault`)
-    if (e.key === 'Escape') { if (!e.defaultPrevented) { e.stopPropagation(); onFermer?.() } return }
     if (e.key !== 'Tab') return
-    const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])]
+    const liste = [...(feuille.current?.querySelectorAll(FOCALISABLES) ?? [])].filter(estVisible)
     if (liste.length === 0) return
     const premier = liste[0]
     const dernier = liste[liste.length - 1]

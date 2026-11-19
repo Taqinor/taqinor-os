@@ -129,6 +129,43 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(screen.getByRole('button', { name: 'ouvreur' })).toHaveFocus()
   })
 
+  it('R2-043 — poignée cachée (bureau) : le focus va au premier champ VISIBLE, sinon à « Fermer » ; jamais derrière', () => {
+    const style = document.createElement('style')
+    style.textContent = '.poignee { display: none; }'
+    document.head.appendChild(style)
+    try {
+      const { unmount } = render(
+        <div className="tch">
+          <button type="button">ouvreur</button>
+          <FeuilleACrans ouverte titre="Fiche" onFermer={() => {}}><button type="button">Quand</button><input aria-label="Titre" /></FeuilleACrans>
+        </div>,
+      )
+      expect(screen.getByRole('textbox', { name: 'Titre' })).toHaveFocus()
+      unmount()
+      render(<FeuilleACrans ouverte titre="Supprimer" onFermer={() => {}}><button type="button">Supprimer</button></FeuilleACrans>)
+      expect(screen.getByRole('button', { name: 'Fermer' })).toHaveFocus()
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('R2-043 — Échap ferme même quand le focus est DERRIÈRE la feuille ; seule la plus haute se ferme', async () => {
+    const dessous = vi.fn()
+    const dessus = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <div className="tch">
+        <button type="button">derrière</button>
+        <FeuilleACrans ouverte titre="Fiche" onFermer={dessous}><button type="button">a</button></FeuilleACrans>
+        <FeuilleACrans ouverte titre="Quand" onFermer={dessus}><button type="button">b</button></FeuilleACrans>
+      </div>,
+    )
+    screen.getByRole('button', { name: 'derrière' }).focus()
+    await user.keyboard('{Escape}')
+    expect(dessus).toHaveBeenCalledTimes(1)
+    expect(dessous).not.toHaveBeenCalled()
+  })
+
   it('Raccord F2 — le retour arrière du navigateur ferme la feuille (l\'écran reste) ; fermée autrement, l\'entrée est retirée', async () => {
     const onFermer = vi.fn()
     const pose = vi.spyOn(window.history, 'pushState')
