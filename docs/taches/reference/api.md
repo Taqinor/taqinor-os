@@ -701,7 +701,8 @@ où la tâche a été faite (`done_at` d'une activité close), `null` sinon — 
 aucune requête de plus par ligne. TACHE = ITEM + champs de fiche (`updated_at` sert le bandeau de conflit). TACHE_ECRITE :
 `suivante` = occurrence née (terminer, sauter) ; `progression` posée par terminer/rouvrir ; `question_titres` vrai au
 premier rappel tant que `titres_notifications_demande_le` est nul (A17-T4) ; avertissements `prevue_apres_echeance`,
-`jour_non_travaille`, `hors_fenetre`. CARTE_DU_MOMENT : une seule, choisie par le serveur (`retour`, `rythme`, `pause`,
+`jour_non_travaille`, `hors_fenetre`, `echeance_aujourdhui` (R3-002 : « L'échéance reste aujourd'hui. », la tâche
+reportée reste dans la journée). CARTE_DU_MOMENT : une seule, choisie par le serveur (`retour`, `rythme`, `pause`,
 `revelation` portent une PROPOSITION ; `bilan_hier` `{"jour"}` ; `garder` `{"n","objectif"}` ; `alleger` `{"faites",
 "prevues"}` ; `faire_bilan` `{}`). OBJECTIF : `zone` `[bas, haut]` en `tenir`, `nb:null` en `libre`. PROGRESSION :
 l'écran montre « faites sur OBJECTIF » ; `essentiel_faites`/`essentiel_prevues` = les ★ de la section Essentiel
@@ -2108,6 +2109,11 @@ jour »), compté en UNE requête pour toutes les cartes ; 0 quand il n'y en a p
   `objectif.nb`). Une requête de plus (l'historique de la capacité) : plafond 22 → 23.
 - **« Où j'en suis ? »** (`point.json`, R3-006) : + `faites`, `minutes_restantes`, `deborde_minutes`, mêmes
   définitions que `priorites/` (et `faites` = `progression.faites`) ; aucune requête de plus.
+- **Reporter une tâche à échéance aujourd'hui** (`tache_ecrite.json` `avertissements_possibles`, R3-002, C-13) :
+  `taches/{id}/planifier/` vers un autre jour (ou sans jour) d'une tâche dont `echeance` = aujourd'hui sert
+  `{"code":"echeance_aujourdhui","message":"L'échéance reste aujourd'hui."}` : la règle ne change pas, l'échéance la
+  garde dans la journée (`aujourdhui/` la sert encore, ★ comprise) ; « Repousser l'échéance » = le PATCH `echeance`
+  qui existe. Rien pour « En réserve » (elle quitte la journée).
 
 
 ## Révision 3.2 — raccord F2 (serveur), ce que le serveur sert réellement
