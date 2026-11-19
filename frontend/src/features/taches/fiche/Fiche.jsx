@@ -85,14 +85,27 @@ function raccourcisEcheance(aujourdhui) {
  *  entière — le champ rendait « 0002-11-27 » au 1er chiffre de l'année, envoyé au serveur (400, « YYYY-MM-DD »). */
 function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
   const [frappe, setFrappe] = useState(null) // { pour: échéance reçue, valeur tapée }
+  // R3-060 — la frappe aussi dans une ref : lue au démontage (fiche fermée par le retour arrière ou changée de tâche)
+  const frappeRef = useRef(null)
   const valeur = frappe && frappe.pour === (echeance ?? '') ? frappe.valeur : echeance ?? ''
-  const ecrire = () => {
-    if (!frappe || frappe.pour !== (echeance ?? '') || frappe.valeur === (echeance ?? '')) return
-    if (frappe.valeur && !dateComplete(frappe.valeur)) { onIncomplete(); return } // la frappe reste, à corriger
-    setFrappe(null)
-    if (!frappe.valeur) return // champ vidé : « Aucune » retire l'échéance, un champ vide ne l'efface pas en silence
-    onPoser(frappe.valeur)
+  const taper = (texte) => {
+    frappeRef.current = { pour: echeance ?? '', valeur: texte }
+    setFrappe(frappeRef.current)
   }
+  const ecrire = () => {
+    const f = frappeRef.current
+    if (!f || f.pour !== (echeance ?? '') || f.valeur === (echeance ?? '')) return
+    if (f.valeur && !dateComplete(f.valeur)) { onIncomplete(); return } // la frappe reste, à corriger
+    frappeRef.current = null
+    setFrappe(null)
+    if (!f.valeur) return // champ vidé : « Aucune » retire l'échéance, un champ vide ne l'efface pas en silence
+    onPoser(f.valeur)
+  }
+  const auDemontage = useRef(null)
+  useEffect(() => {
+    auDemontage.current = () => { if (dateComplete(frappeRef.current?.valeur)) ecrire() }
+  })
+  useEffect(() => () => auDemontage.current?.(), [])
   const raccourcis = raccourcisEcheance(aujourdhui)
   return (
     <>
@@ -117,7 +130,7 @@ function EditeurEcheance({ echeance, aujourdhui, onPoser, onIncomplete }) {
           className="champ chiffres"
           aria-label="Échéance"
           value={valeur}
-          onChange={(e) => setFrappe({ pour: echeance ?? '', valeur: e.target.value })}
+          onChange={(e) => taper(e.target.value)}
           onBlur={ecrire}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ecrire() } }}
         />
@@ -479,10 +492,21 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
     const t = tacheRef.current
     const s = saisieRef.current
     const aEnvoyer = champs.filter((champ) => t && s[champ] !== undefined && s[champ] !== t[champ])
-    aEnvoyer.reduce((suite, champ) => suite
+    if (aEnvoyer.length === 0) return
+    const lockDepart = verrou.current
+    // R3-060 — dans la FILE des écritures : une heure ou une échéance tapées, envoyées au même démontage, partent après
+    // avec le verrou rendu (jamais deux écritures concurrentes sur le même `lock_version` : un 409 de soi-même)
+    const suite = aEnvoyer.reduce((chaine, champ) => chaine
       .then((lock) => modifierTache(id, { [champ]: s[champ], lock_version: lock }))
-      .then(({ data }) => { signalerEcrite(data?.tache ?? data); return (data?.tache ?? data)?.lock_version }), Promise.resolve(verrou.current))
+      .then(({ data }) => {
+        const rendue = data?.tache ?? data
+        signalerEcrite(rendue)
+        // la fiche a pu passer à une autre tâche (panneau du bureau) : son verrou n'est pas celui-ci
+        if (rendue?.lock_version != null && courant.current === id) verrou.current = rendue.lock_version
+        return rendue?.lock_version
+      }), file.current.then(() => (courant.current === id ? verrou.current : lockDepart)))
       .catch((err) => annoncer(`Modification non enregistrée : ${frenchError(err)}`))
+    file.current = suite
   }, [id])
 
   return (

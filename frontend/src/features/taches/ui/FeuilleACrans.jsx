@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
@@ -45,6 +45,15 @@ function focusInitial(racine) {
   if (voulu) voulu.focus()
   else if (poignee) poignee.focus({ focusVisible: false })
   else (premierVisible(racine, CHAMPS) ?? premierVisible(racine, FOCALISABLES))?.focus()
+}
+
+/** R3-060 — fermer ne perd jamais une frappe : le champ où l'on tape est QUITTÉ avant la fermeture, son `onBlur` (qui
+ *  enregistre : heure, échéance, titre, notes, « De qui ou de quoi ? »…) part pendant que la feuille est encore montée.
+ *  Échap, la croix, le voile et le retour arrière passent tous par là ; sur l'iPhone, toucher la croix ne retire PAS le
+ *  focus du champ (un bouton touché ne le prend pas) : sans ce détour, la valeur partait avec la feuille, sans un mot. */
+function quitterLeChamp(racine) {
+  const ici = typeof document !== 'undefined' ? document.activeElement : null
+  if (ici && ici !== document.body && racine?.contains(ici) && typeof ici.blur === 'function') ici.blur()
 }
 
 /** Ce qui garde son focus même hors d'une feuille modale : menus et listes (portails Radix), autres dialogues, toast. */
@@ -253,9 +262,14 @@ export default function FeuilleACrans({
   const voile = useRef(null)
   const origine = useRef(null)
   const clavier = useClavier(Boolean(ouverte))
-  useRetourFerme(Boolean(ouverte) && historique, onFermer)
   const fermer = useRef(onFermer)
   useEffect(() => { fermer.current = onFermer })
+  // R3-060 — toute fermeture voulue (Échap, croix, voile, retour arrière) quitte d'abord le champ en cours
+  const fermerSansPerte = useCallback(() => {
+    quitterLeChamp(feuille.current)
+    fermer.current?.()
+  }, [])
+  useRetourFerme(Boolean(ouverte) && historique, fermerSansPerte)
   const moiRef = useRef(null) // l'entrée de cette feuille dans `pileOuvertes`
   // R2-050 — `variante="panneau"` au bureau large : panneau fixe à droite, NON modal (ni voile, ni piège de Tab) ; la
   // liste reste lisible et cliquable, toucher une autre ligne change la fiche. iPhone et tablette : feuille / dialogue.
@@ -330,7 +344,7 @@ export default function FeuilleACrans({
     const surEchap = (e) => {
       if (e.key !== 'Escape' || e.defaultPrevented || pileOuvertes[pileOuvertes.length - 1] !== moi) return
       e.preventDefault() // un seul Échap = une seule fermeture (la saisie a aussi son écouteur, il voit `defaultPrevented`)
-      fermer.current?.()
+      fermerSansPerte()
     }
     document.addEventListener('keydown', surEchap)
     return () => {
@@ -338,7 +352,7 @@ export default function FeuilleACrans({
       const rang = pileOuvertes.indexOf(moi)
       if (rang >= 0) pileOuvertes.splice(rang, 1)
     }
-  }, [ouverte])
+  }, [ouverte, fermerSansPerte])
 
   // R2-048 — contenu plus court que le cran : la feuille épouse son contenu (`cran-auto`, plafond 85 %) — plus de
   // « 300 px de blanc sous les boutons ». Mesuré avant peinture, puis à chaque changement de taille du contenu.
@@ -412,7 +426,7 @@ export default function FeuilleACrans({
         />
       )}
       <div className="feuille-entete">
-        <button type="button" className="bouton-icone" aria-label="Fermer" onClick={onFermer}>
+        <button type="button" className="bouton-icone" aria-label="Fermer" onClick={fermerSansPerte}>
           <X className="i" aria-hidden="true" />
         </button>
         <div className="feuille-titre">{titre}</div>
@@ -424,7 +438,7 @@ export default function FeuilleACrans({
   if (enPlace) return createPortal(corps, ancre)
   return (
     <>
-      {nonModale ? null : <div ref={voile} className="voile" onClick={onFermer} aria-hidden="true" />}
+      {nonModale ? null : <div ref={voile} className="voile" onClick={fermerSansPerte} aria-hidden="true" />}
       {corps}
     </>
   )

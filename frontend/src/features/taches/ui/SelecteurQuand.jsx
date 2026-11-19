@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { aujourdhuiIso, jourNomme } from '../lib/textes'
 
 /* ============================================================================
@@ -34,16 +34,23 @@ export function dateComplete(iso) {
 }
 
 /** Valeur tapée dans un champ, gardée LOCALEMENT tant qu'on n'en sort pas ; elle cède la place à la valeur reçue
- *  dès que celle-ci change (réponse du serveur). `{ pour, valeur }` : la valeur reçue au moment de la frappe. */
+ *  dès que celle-ci change (réponse du serveur). `{ pour, valeur }` : la valeur reçue au moment de la frappe.
+ *  R3-060 — la frappe vit aussi dans une ref (lue au DÉMONTAGE, où l'état du dernier rendu n'est plus sûr) ; « déjà
+ *  écrite » y est noté tout de suite : la sortie du champ puis le démontage n'écrivent jamais deux fois. */
 function useFrappe(recue) {
   const [frappe, setFrappe] = useState(null)
-  const vivante = frappe && frappe.pour === recue ? frappe : null
-  const affichee = vivante ? vivante.valeur : recue
-  const taper = (valeur) => setFrappe({ pour: recue, valeur, envoyee: false })
+  const derniere = useRef(null)
+  const affichee = frappe && frappe.pour === recue ? frappe.valeur : recue
+  const taper = (valeur) => {
+    derniere.current = { pour: recue, valeur, envoyee: false }
+    setFrappe(derniere.current)
+  }
   /** La valeur à écrire (une seule fois), ou `undefined` s'il n'y a rien de neuf. */
   const aEcrire = () => {
-    if (!vivante || vivante.envoyee || vivante.valeur === recue) return undefined
-    setFrappe({ ...vivante, envoyee: true })
+    const vivante = derniere.current
+    if (!vivante || vivante.envoyee || vivante.pour !== recue || vivante.valeur === recue) return undefined
+    derniere.current = { ...vivante, envoyee: true }
+    setFrappe(derniere.current)
     return vivante.valeur
   }
   return [affichee, taper, aEcrire]
@@ -109,6 +116,22 @@ export default function SelecteurQuand({
     choisir({ jour_prevu: valeur.jour_prevu, moment: valeur.moment ?? '', heure_debut: h || null })
   }
   const surEntree = (ecrire) => (e) => { if (e.key === 'Enter') { e.preventDefault(); ecrire() } }
+
+  // R3-060 — démonté avec une frappe pas encore écrite (retour arrière, fiche changée, éditeur replié d'un toucher qui
+  // n'a pas quitté le champ) : elle part quand même, en UNE écriture (jour entier + heure), jamais en silence perdue
+  const auDemontage = useRef(null)
+  useEffect(() => {
+    auDemontage.current = () => {
+      const jour = jourAEcrire()
+      const h = heureAEcrire()
+      if (jour !== undefined && dateComplete(jour)) {
+        choisir({ jour_prevu: jour, heure_debut: h !== undefined ? h || null : heureAffichee || null })
+      } else if (h !== undefined && valeur.jour_prevu) {
+        choisir({ jour_prevu: valeur.jour_prevu, moment: valeur.moment ?? '', heure_debut: h || null })
+      }
+    }
+  })
+  useEffect(() => () => auDemontage.current?.(), [])
 
   const montrerDate = dateOuverte || courante === 'choisir'
   return (

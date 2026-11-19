@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
@@ -360,6 +361,39 @@ describe('TCH84 — fiche d\'une tâche', () => {
     fireEvent.blur(champ)
     await waitFor(() => expect(api.modifierTache).toHaveBeenCalledTimes(1))
     expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 })
+  })
+
+  it('R3-060 — « 16:30 » tapé puis Échap : l\'heure part au serveur, la fiche se ferme ; rien n\'est perdu en silence', async () => {
+    const user = userEvent.setup()
+    function Hote() {
+      const [ouverte, setOuverte] = useState(true)
+      return ouverte ? <Fiche id={20} aujourdhui={AUJOURDHUI} onFermer={() => setOuverte(false)} /> : <p>fiche fermée</p>
+    }
+    render(<div className="tch"><Hote /><ZoneAnnonces /></div>)
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    const champ = screen.getByLabelText('Heure')
+    act(() => { champ.focus() })
+    fireEvent.change(champ, { target: { value: '16:30' } })
+    await user.keyboard('{Escape}')
+    expect(screen.getByText('fiche fermée')).toBeInTheDocument()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledTimes(1))
+    expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '16:30', lock_version: 4 }))
+    expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Prévue')
+  })
+
+  it('R3-060 — fiche démontée sans Échap (retour arrière, autre écran) avec une heure ou une échéance tapées : elles partent', async () => {
+    const user = userEvent.setup()
+    const premier = monter()
+    await user.click(await screen.findByRole('button', { name: /Quand je la fais/ }))
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '16:30' } })
+    premier.unmount()
+    await waitFor(() => expect(api.planifierTache).toHaveBeenCalledWith(20, expect.objectContaining({ heure_debut: '16:30' })))
+    const second = monter()
+    await user.click(await screen.findByRole('button', { name: 'Échéance : jeu. 19' }))
+    fireEvent.change(screen.getByLabelText('Échéance'), { target: { value: '2026-11-27' } })
+    second.unmount()
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { echeance: '2026-11-27', lock_version: 4 }))
+    expect(api.modifierTache).toHaveBeenCalledTimes(1)
   })
 
   it('R2-042 — une année partielle n\'est jamais envoyée : « Date incomplète. » sous le champ', async () => {

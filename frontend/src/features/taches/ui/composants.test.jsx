@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import CoquilleTaches from '../coquille/CoquilleTaches'
+import { FeuilleAttente } from './ActionsLigne'
 import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
 import FeuilleACrans, { naviguerApresFeuille } from './FeuilleACrans'
@@ -387,6 +388,32 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(navigate).toHaveBeenCalledWith('/taches/aujourdhui', {})
   })
 
+  it('R3-060 — fermer (Échap, croix, voile, retour arrière) quitte d\'abord le champ en cours : son `onBlur` enregistre AVANT `onFermer`', async () => {
+    const ordre = []
+    const onFermer = vi.fn(() => { ordre.push('fermer') })
+    const { container } = render(
+      <div className="tch">
+        <FeuilleACrans ouverte titre="Quand" onFermer={onFermer}><input aria-label="Heure" onBlur={() => { ordre.push('blur') }} /></FeuilleACrans>
+      </div>,
+    )
+    const champ = screen.getByLabelText('Heure')
+    const fermerPar = async (geste) => {
+      ordre.length = 0
+      act(() => { champ.focus() })
+      await geste()
+      expect(ordre).toEqual(['blur', 'fermer'])
+    }
+    await fermerPar(() => { fireEvent.keyDown(champ, { key: 'Escape' }) })
+    // iPhone : toucher un bouton ne lui donne pas le focus, le champ le gardait jusqu'au démontage
+    await fermerPar(() => { fireEvent.click(screen.getByRole('button', { name: 'Fermer' })) })
+    await fermerPar(() => { fireEvent.click(container.querySelector('.voile')) })
+    await vi.waitFor(() => expect(window.history.state?.tchFeuille).toBeTruthy())
+    await fermerPar(async () => {
+      act(() => { window.history.back() })
+      await vi.waitFor(() => expect(ordre).toContain('fermer'))
+    })
+  })
+
   it('Raccord F2 — `historique={false}` (la fiche, déjà dans l\'adresse) ne pose aucune entrée', async () => {
     const pose = vi.spyOn(window.history, 'pushState')
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
@@ -429,6 +456,57 @@ describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sor
     fireEvent.blur(jour)
     expect(onChoisir).toHaveBeenCalledTimes(1)
     expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27' }))
+  })
+
+  it('R3-060 — démonté avec une heure ou un jour tapés et pas encore écrits (retour arrière, fiche changée) : ils partent, une seule fois', () => {
+    const onChoisir = vi.fn()
+    const { unmount } = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '16:30' } })
+    unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '16:30' }))
+    // déjà écrite à la sortie du champ : le démontage n'écrit rien de plus
+    onChoisir.mockClear()
+    const second = render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const champ = screen.getByLabelText('Heure')
+    fireEvent.change(champ, { target: { value: '09:15' } })
+    fireEvent.blur(champ)
+    second.unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    // un jour entier tapé part avec l'heure tapée, en une écriture
+    onChoisir.mockClear()
+    const troisieme = render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Choisir un jour|Calendrier/ }))
+    fireEvent.change(screen.getByLabelText('Choisir un jour'), { target: { value: '2026-11-27' } })
+    fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '08:00' } })
+    troisieme.unmount()
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27', heure_debut: '08:00' }))
+  })
+})
+
+describe('R3-060 — « En attente de… » : un nom tapé n\'est jamais perdu à la fermeture', () => {
+  const item = { id: 20, type: 'tache', titre: 'Devis Settat', en_attente_de: '' }
+
+  it('fermée sans « En attente » (Échap, croix, retour) : le nom tapé est enregistré, une seule fois', () => {
+    const onValider = vi.fn()
+    const { unmount } = render(<FeuilleAttente item={item} onValider={onValider} />)
+    fireEvent.change(screen.getByLabelText('De qui ou de quoi ?'), { target: { value: 'Karim ' } })
+    unmount()
+    expect(onValider).toHaveBeenCalledTimes(1)
+    expect(onValider).toHaveBeenCalledWith('Karim')
+  })
+
+  it('validée par « En attente » : rien de plus à la fermeture ; rien tapé, rien d\'écrit', () => {
+    const onValider = vi.fn()
+    const premiere = render(<FeuilleAttente item={item} onValider={onValider} />)
+    fireEvent.change(screen.getByLabelText('De qui ou de quoi ?'), { target: { value: 'Karim' } })
+    fireEvent.click(screen.getByRole('button', { name: 'En attente' }))
+    premiere.unmount()
+    expect(onValider).toHaveBeenCalledTimes(1)
+    onValider.mockClear()
+    render(<FeuilleAttente item={{ ...item, en_attente_de: 'Nadia' }} onValider={onValider} />).unmount()
+    expect(onValider).not.toHaveBeenCalled()
   })
 })
 
