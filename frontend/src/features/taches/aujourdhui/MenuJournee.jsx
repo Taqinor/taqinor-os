@@ -54,9 +54,10 @@ function recomposer(liste, taches) {
   return liste.map((item) => (item.type === 'tache' ? suite.shift() : item))
 }
 
-function mapStatut(donnees, ids, statut, versions = null) {
+/** Pose `champs` (statut, jour…) sur les tâches `ids` de toutes les listes ; `versions` : leur `lock_version` rendu. */
+function mapChamps(donnees, ids, champs, versions = null) {
   const fn = (item) => (item.type === 'tache' && ids.has(item.id)
-    ? { ...item, statut, ...(versions?.[item.id] != null ? { lock_version: versions[item.id] } : {}) }
+    ? { ...item, ...(typeof champs === 'function' ? champs(item) : champs), ...(versions?.[item.id] != null ? { lock_version: versions[item.id] } : {}) }
     : item)
   const propose = donnees.propose
     ? { ...donnees.propose, pour_objectif: (donnees.propose.pour_objectif ?? []).map(fn) }
@@ -112,11 +113,16 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try {
       const { data } = await client.traiterLot({ ids, action: code, ...(valeurs ? { valeurs } : {}) })
       const appliquees = new Set(data.appliquees ?? [])
+      let joursAvant = {}
       if (code === 'terminer') {
-        setDonnees((d) => mapStatut(d, appliquees, 'fait'))
+        setDonnees((d) => mapChamps(d, appliquees, { statut: 'fait' }))
       } else if (code === 'planifier' && valeurs?.jour_prevu) {
         const estampille = `→ ${jourNomme(valeurs.jour_prevu, donnees.jour)}`
         setEstampilles((e) => ({ ...e, ...Object.fromEntries([...appliquees].map((id) => [`tache:${id}`, estampille])) }))
+        // leur nouveau jour : elles ne comptent plus dans la journée affichée (R2-019)
+        joursAvant = Object.fromEntries(TOUTES_LES_LISTES.flatMap((cle) => donnees[cle] ?? [])
+          .filter((it) => it.type === 'tache' && appliquees.has(it.id)).map((it) => [it.id, it.jour_prevu ?? null]))
+        setDonnees((d) => mapChamps(d, appliquees, { jour_prevu: valeurs.jour_prevu }))
       }
       quitterSelection()
       proposerAnnuler({
@@ -125,8 +131,11 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
           // « Annuler » change la version de chaque tâche remise : on garde celle que le serveur rend
           const retour = await annulerEtRecaler(data.geste_id, [...appliquees])
           const versions = Object.fromEntries(Object.entries(retour.taches).map(([id, t]) => [id, t.lock_version]))
-          if (code === 'terminer') setDonnees((d) => mapStatut(d, appliquees, 'a_faire', versions))
-          else setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
+          if (code === 'terminer') setDonnees((d) => mapChamps(d, appliquees, { statut: 'a_faire' }, versions))
+          else {
+            setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
+            setDonnees((d) => mapChamps(d, appliquees, (it) => ({ jour_prevu: joursAvant[it.id] ?? it.jour_prevu }), versions))
+          }
         },
       })
       if ((data.refusees ?? []).length > 0) annoncer(accord(data.refusees.length, 'tâche refusée', 'tâches refusées'))

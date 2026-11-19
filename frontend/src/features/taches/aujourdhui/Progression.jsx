@@ -5,19 +5,16 @@ import { duree } from '../lib/textes'
 
 /* ============================================================================
    TCH77 — La ligne de progression d'Aujourd'hui : « {faites} sur {objectif} · essentiel {ef}/{ep} »
-   (valeurs lues dans `aujourdhui.json`, jamais recalculées), « Reprise » le jour d'un retour.
+   (« faites » et l'objectif lus dans `aujourdhui.json` ; « essentiel » compté sur la section affichée, R2-019),
+   « Reprise » le jour d'un retour.
    Trois modes (textes.md §2.2) : `pousser` « 1 sur 5 · essentiel 0/1 » ; `tenir` « 1 sur 5 · ton
-   rythme : 3 à 5 » ; `libre` « 1 faite ». Au toucher : les faits qui expliquent le chiffre
-   (objectif et sa source, gardées faites, temps, temps libre) puis « Mon rythme › ».
+   rythme : 3 à 5 » ; `libre` « 1 faite ». Au toucher : « 1 faite sur 5 visées · 6 tâches gardées » (R2-035),
+   la source de l'objectif s'il est par défaut, le temps, le temps libre, puis « Mon rythme › ».
    Maquettes : ecran-aujourdhui-matin.html, ecran-aujourdhui-retour.html, ecran-aujourdhui-15h.html.
    ========================================================================== */
 
-const SOURCES = {
-  defaut: 'valeur par défaut, pas encore calculée sur toi',
-  calcule: 'ta journée type',
-  accepte: 'accepté',
-  dit: 'ton choix',
-}
+/** La seule source d'objectif qui change sa lecture : il n'est pas encore calculé sur la personne. */
+const OBJECTIF_PAR_DEFAUT = 'Objectif : valeur par défaut, pas encore calculée sur toi'
 
 /** « 1 h 15 prévues + 2 sans durée » ; « Durée totale inconnue… » quand plus de la moitié n'a pas de durée. */
 function chargeTexte(progression) {
@@ -37,6 +34,29 @@ function tempsLibreTexte(progression) {
     : `Temps libre : ${duree(cap)}`
 }
 
+/** Une ligne encore prévue AUJOURD'HUI à l'écran : pas reportée à un autre jour (estampille « → ven. 20 »). */
+const resteAujourdhui = (item, jour) => !(item.jour_prevu && jour && item.jour_prevu > jour)
+
+/**
+ * R2-019 — « essentiel f/p » et les gardées se comptent sur ce que l'écran MONTRE : une ★ reportée à demain ne compte
+ * plus (le serveur, lui, garde la mesure du plan du matin, `progression.essentiel_*` / `plan_*`, pour le bilan et le
+ * rythme). Une essentielle faite est servie deux fois (Essentiel et Faites) : chaque ligne ne compte qu'une fois.
+ */
+function comptesAffiches(donnees) {
+  const jour = donnees.jour
+  const essentielles = (donnees.essentiel ?? []).filter((it) => resteAujourdhui(it, jour))
+  const vues = new Set()
+  const gardees = ['essentiel', 'journee', 'ce_soir', 'faites']
+    .flatMap((cle) => donnees[cle] ?? [])
+    .filter((it) => it.prevue_au_plan && resteAujourdhui(it, jour))
+    .filter((it) => (vues.has(`${it.type}:${it.id}`) ? false : vues.add(`${it.type}:${it.id}`)))
+  return {
+    essentiel_faites: essentielles.filter((it) => it.statut === 'fait').length,
+    essentiel_prevues: essentielles.length,
+    gardees: gardees.length,
+  }
+}
+
 /** Les deux morceaux du texte : le compte (gras) et son détail (doux). */
 function textesProgression(objectif, progression) {
   const { faites = 0, essentiel_faites: ef = 0, essentiel_prevues: ep = 0, reprise = false } = progression
@@ -53,12 +73,22 @@ function textesProgression(objectif, progression) {
   return { compte, detail, parole }
 }
 
-function Faits({ objectif, progression, onRythme }) {
-  const { plan_tenues: pt = 0, plan_lignes: pl = 0 } = progression
-  const source = objectif.mode === 'tenir' && objectif.source === 'calcule' ? 'ton rythme' : SOURCES[objectif.source]
+/**
+ * R2-035 — UNE phrase pour le compte du jour : « 1 faite sur 5 visées · 6 tâches gardées » (sans objectif : « 1 faite ·
+ * 6 tâches gardées ») ; la source de l'objectif n'est dite que quand elle change sa lecture (valeur par défaut).
+ */
+function phraseDuJour(objectif, progression, gardees) {
+  const { faites = 0 } = progression
+  const fait = `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
+  const vise = objectif.mode !== 'libre' && objectif.nb ? ` sur ${objectif.nb} ${objectif.nb >= 2 ? 'visées' : 'visée'}` : ''
+  const garde = gardees > 0 ? ` · ${gardees} ${gardees >= 2 ? 'tâches gardées' : 'tâche gardée'}` : ''
+  return `${fait}${vise}${garde}`
+}
+
+function Faits({ objectif, progression, gardees, onRythme }) {
   const lignes = [
-    objectif.nb && source ? `Objectif du jour : ${objectif.nb} (${source})` : '',
-    pl > 0 ? `${pt} des ${pl} gardées` : '',
+    phraseDuJour(objectif, progression, gardees),
+    objectif.mode !== 'libre' && objectif.nb && objectif.source === 'defaut' ? OBJECTIF_PAR_DEFAUT : '',
     chargeTexte(progression) ? `Temps : ${chargeTexte(progression)}` : '',
     tempsLibreTexte(progression),
   ].filter(Boolean)
@@ -78,7 +108,8 @@ export default function Progression({ donnees, onRythme }) {
   const objectif = donnees?.objectif
   const progression = donnees?.progression
   if (!objectif || !progression) return null
-  const { compte, detail, parole } = textesProgression(objectif, progression)
+  const { gardees, ...essentiel } = comptesAffiches(donnees)
+  const { compte, detail, parole } = textesProgression(objectif, { ...progression, ...essentiel })
   return (
     <>
       <button
@@ -96,7 +127,7 @@ export default function Progression({ donnees, onRythme }) {
         </span>
       </button>
       <div id={identifiant} hidden={!ouverte}>
-        {ouverte ? <Faits objectif={objectif} progression={progression} onRythme={onRythme} /> : null}
+        {ouverte ? <Faits objectif={objectif} progression={progression} gardees={gardees} onRythme={onRythme} /> : null}
       </div>
     </>
   )

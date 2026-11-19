@@ -504,8 +504,17 @@ export default function Aujourdhui() {
     // R2-011 — OPTIMISTE : « → ven. 20 » et le toast AU RELÂCHER ; la réponse recale la version et la progression ;
     // un refus retire l'estampille et le dit (409 : le bandeau de conflit, « Garder la mienne » réécrit).
     const estampille = `→ ${jourNomme(jour, donnees?.jour)}`
-    const poser = () => setEstampilles((e) => ({ ...e, [cle]: estampille }))
-    const oter = () => setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+    // la ligne reste à l'écran avec son estampille, mais porte son nouveau jour : elle ne compte plus dans la
+    // journée affichée (« essentiel f/p », gardées — R2-019)
+    const jourAvant = item.jour_prevu ?? null
+    const poser = () => {
+      setEstampilles((e) => ({ ...e, [cle]: estampille }))
+      patcher(cle, (it) => ({ ...it, jour_prevu: jour }))
+    }
+    const oter = () => {
+      setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+      patcher(cle, (it) => ({ ...it, jour_prevu: jourAvant }))
+    }
     const ecrire = (version) => {
       const geste = { annule: false }
       poser()

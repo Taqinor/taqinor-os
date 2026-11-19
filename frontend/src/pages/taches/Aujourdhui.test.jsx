@@ -740,7 +740,37 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
   })
 })
 
-describe('R2-014b — « Oui » de la carte « tâches reportées » (constat C7) mène à « À revoir »', () => {
+describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et se lit en une phrase', () => {
+  it('R2-019 — reporter une ★ : « essentiel 0/2 » devient « essentiel 0/1 » tout de suite', async () => {
+    const d = donnees()
+    d.essentiel = [...d.essentiel, { ...d.essentiel[0], id: 23, titre: 'Payer la CNSS', heure_debut: null }]
+    d.progression = { ...d.progression, essentiel_prevues: 2 }
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 73, progression: null } })
+    monter()
+    await screen.findByText('Devis Settat')
+    expect(screen.getByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Payer la CNSS »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 1\./ })).toBeInTheDocument()
+    // Annuler : elle revient dans la journée affichée
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+  })
+
+  it('R2-035 — au toucher : « 1 faite sur 5 visées · 4 tâches gardées », sans « (accepté) »', async () => {
+    servir(donnees())
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
+    const detail = screen.getByRole('group', { name: 'Détail de la journée' })
+    expect(detail).toHaveTextContent('1 faite sur 5 visées · 4 tâches gardées')
+    expect(detail).not.toHaveTextContent('accepté')
+    expect(detail).not.toHaveTextContent('Objectif du jour')
+  })
+})
+
+describe('R2-014b —« Oui » de la carte « tâches reportées » (constat C7) mène à « À revoir »', () => {
   it('Oui : « À revoir » se déplie (aria-expanded) et vient à l\'écran', async () => {
     const d = donnees()
     // la carte elle-même (son type, sa question) est rendue par ui/CarteDuMoment (lane L3) : ici, le chemin de la RÉPONSE
