@@ -62,11 +62,36 @@ def _nom_du_mot(m, texte):
     return texte[m.start() + 1:m.end()].replace('_', ' ')
 
 
-def resoudre_projet(nom, ctx):
-    """`Lu` du projet nommé `nom` : connu, archivé ou nouveau ; None si la porte l'interdit."""
+_SEPARATEURS_NOM = re.compile(r'[\s\-_]+')
+
+
+def _debute_un_mot(cle, nom):
+    """`cle` est le DÉBUT d'un mot du nom, lu jusqu'au bout du nom (« sal » → « Salon Solaire Expo », « salonsol »
+    aussi, « solaire » aussi ; « alon » non) — par `cle_nom`, donc sans accents, casse, espaces ni `_`."""
+    mots = [m for m in _SEPARATEURS_NOM.split(nom) if m]
+    return any(cle_nom(''.join(mots[i:])).startswith(cle) for i in range(len(mots)))
+
+
+def _ouverts_par_debut(cle, ctx):
+    """R2-003 — sans égalité : les projets OUVERTS dont un mot commence par `cle`, par rang."""
+    if not cle:
+        return []
+    return sorted((p for p in ctx.projets if p.statut in STATUTS_OUVERTS and _debute_un_mot(cle, p.nom)),
+                  key=lambda p: p.rang)
+
+
+def resoudre_projet(nom, ctx, *, par_debut=False):
+    """`Lu` du projet nommé `nom` : connu, archivé ou nouveau ; None si la porte l'interdit.
+
+    `par_debut` (le `#mot` de la saisie, R2-003) : sans projet de ce nom exact, un projet OUVERT dont un mot
+    commence par `nom` le prend (« #Salon » → « Salon Solaire Expo ») au lieu d'en créer un en double ; plusieurs →
+    le premier par rang + `plusieurs_projets`. L'égalité reste prioritaire ; la porte `capture` ne lit jamais par début.
+    """
     cle = cle_nom(nom)
     trouves = sorted((p for p in ctx.projets if cle_nom(p.nom) == cle), key=lambda p: p.rang)
     ouverts = [p for p in trouves if p.statut in STATUTS_OUVERTS]
+    if not trouves and par_debut and ctx.porte != 'capture':
+        ouverts = _ouverts_par_debut(cle, ctx)
     if ouverts:
         p = ouverts[0]
         alertes = (AlerteSaisie.PLUSIEURS_PROJETS.value,) if len(ouverts) > 1 else ()
@@ -82,7 +107,7 @@ def resoudre_projet(nom, ctx):
 
 
 def conv_projet(m, ctx, texte):
-    return resoudre_projet(_nom_du_mot(m, texte), ctx)
+    return resoudre_projet(_nom_du_mot(m, texte), ctx, par_debut=True)
 
 
 def conv_section(m, ctx, texte):

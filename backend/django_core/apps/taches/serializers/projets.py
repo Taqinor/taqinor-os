@@ -155,9 +155,12 @@ def _dates_ordonnees(donnees):
 
 
 class ApercuPlanSerializer(serializers.Serializer):
-    """POST projets/{id}/planification/apercu/ — `{texte}`, jamais écrit."""
+    """POST projets/{id}/planification/apercu/ — `{texte, mode?}`, jamais écrit. `mode` : `plan` (défaut, la liste
+    collée : « : » ouvre une étape) ou `etapes` (le champ « Étapes » : une ligne non indentée = une étape)."""
 
     texte = serializers.CharField(trim_whitespace=False, error_messages=_messages())
+    mode = serializers.ChoiceField(choices=['plan', 'etapes'], required=False, default='plan',
+                                   error_messages=_messages())
 
     def validate_texte(self, texte):
         erreurs = erreurs_limites(texte)
@@ -295,10 +298,11 @@ def section_ecrite(section, geste):
             'geste_id': geste.pk if geste is not None else None}
 
 
-def apercu_du_plan(projet, texte):
+def apercu_du_plan(projet, texte, mode='plan'):
     """`planification_apercu.json` : la liste collée lue (étapes, tâches, jalons, sous-tâches), rien d'écrit ;
-    `projet` = où l'écrire et son verrou (la carte `plan_projet` du Copilote n'a que cette réponse)."""
-    return {'projet': {'id': projet.pk, 'lock_version': projet.lock_version}, **decouper_plan(texte)}
+    `projet` = où l'écrire et son verrou (la carte `plan_projet` du Copilote n'a que cette réponse). Même forme
+    pour les deux `mode` : seule la lecture du texte change."""
+    return {'projet': {'id': projet.pk, 'lock_version': projet.lock_version}, **decouper_plan(texte, mode)}
 
 
 def planification_rendue(user, resultat, ctx):

@@ -11,7 +11,9 @@ import { MANIFESTES } from '../../lib/apps/appSkus'
 import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
 import { estAutoriseEntree } from '../../router/moduleGating'
 import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
+import { configurerGestes, proposerAnnuler, reinitialiserGestes } from './lib/gestes'
 import config from './module.config'
+import CoquilleTaches from './coquille/CoquilleTaches'
 import { useEnLigne } from './lib/enLigne'
 
 /* TCH43 — les 13 routes de api.md §7 rendent leur page DANS la coquille ; `/taches` mène
@@ -34,6 +36,9 @@ const ATTENDU = {
   '/taches/reglages': 'Réglages',
   '/taches/reglages/iphone': 'Réglages',
 }
+
+// R2-084 — les écrans qui portent le bouton flottant « Ajouter une tâche »
+const AVEC_FAB = new Set(['/taches/aujourdhui', '/taches/a-trier', '/taches/projets', '/taches/projets/42', '/taches/agenda'])
 
 function monter(url) {
   const router = createMemoryRouter(
@@ -126,9 +131,80 @@ describe('TCH43 — routes du module', () => {
     const coquille = container.querySelector('.tch')
     expect(coquille).not.toBeNull()
     expect(within(coquille).getByRole('heading', { level: 1, name: titre })).toBeInTheDocument()
-    // la coquille est UNIQUE : un seul bouton « Ajouter une tâche » flottant
+    // la coquille est UNIQUE ; R2-084 — le + flottant seulement sur les listes où l'on ajoute (un seul)
     expect(container.querySelectorAll('.tch')).toHaveLength(1)
-    expect(container.querySelectorAll('.fab')).toHaveLength(1)
+    expect(container.querySelectorAll('.fab'), url).toHaveLength(AVEC_FAB.has(url) ? 1 : 0)
+  })
+
+  it.each([
+    ['/taches/projets/42?planifier=1', 'Planifier le projet'],
+    ['/taches/agenda?vue=semaine&placer=1', 'Planifier ma semaine'],
+  ])('R2-084 — %s (%s) : pas de + dans un parcours', async (url) => {
+    const { container } = monter(url)
+    await screen.findByRole('heading', { level: 1 }, { timeout: 5000 })
+    expect(container.querySelector('.tch')).not.toBeNull()
+    expect(container.querySelectorAll('.fab')).toHaveLength(0)
+  })
+
+  it('R2-086 — Recherche : un seul champ, pas de loupe vers… la recherche, pas d\'« Ajouter une tâche »', async () => {
+    const { container } = monter('/taches/recherche')
+    await screen.findByRole('heading', { level: 1, name: 'Recherche' }, { timeout: 5000 })
+    const coquille = container.querySelector('.tch')
+    expect(within(coquille).queryByRole('button', { name: 'Chercher dans mes tâches' })).toBeNull()
+    expect(coquille.querySelector('.saisie-bureau')).toBeNull()
+  })
+
+  it('R2-086 — hors de la Recherche, la loupe et « Ajouter une tâche » restent', async () => {
+    const { container } = monter('/taches/a-trier')
+    await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+    const coquille = container.querySelector('.tch')
+    expect(within(coquille).getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    expect(coquille.querySelector('.saisie-bureau')).not.toBeNull()
+  })
+
+  it('R2-087 — « ? » montre les touches de Tâches ; « / » va à la Recherche', async () => {
+    const aideErp = vi.fn()
+    window.addEventListener('keydown', aideErp) // l'aide générale de l'ERP écoute sur `window`
+    try {
+      const { router } = monter('/taches/a-trier')
+      await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true })) })
+      const aide = screen.getByRole('dialog', { name: 'Touches de Tâches' })
+      expect(within(aide).getByText('Ajouter ici')).toBeInTheDocument()
+      expect(within(aide).getByText('Annuler (hors champ)')).toBeInTheDocument()
+      expect(aideErp).not.toHaveBeenCalled()
+      await act(async () => { aide.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+      expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })) })
+      expect(router.state.location.pathname).toBe('/taches/recherche')
+    } finally {
+      window.removeEventListener('keydown', aideErp)
+    }
+  })
+
+  it('R2-088 — « Messages sans délai » vaut dès l\'ouverture (après un rechargement), sans repasser par Réglages', async () => {
+    const CLE = 'taqinor:taches:sans-delai:anonyme' // compte de test : aucun utilisateur connecté
+    reinitialiserGestes()
+    window.localStorage.removeItem(CLE)
+    try {
+      // 1) Réglages l'allume (configurerGestes) pendant que la coquille est montée : la valeur est gardée sur l'appareil
+      const premier = monter('/taches/a-trier')
+      await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+      await act(async () => { configurerGestes({ sansDelai: true }) })
+      expect(window.localStorage.getItem(CLE)).toBe('1')
+      premier.unmount()
+      // 2) « rechargement » : le magasin des gestes repart à zéro ; la coquille rend le réglage dès son montage
+      reinitialiserGestes()
+      monter('/taches/a-trier')
+      await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+      await act(async () => { proposerAnnuler({ message: 'Faite', onAnnuler: () => {} }) })
+      // « sans délai » : le toast porte sa croix « Fermer » et ne part pas seul
+      const toast = screen.getByRole('group', { name: 'Geste effectué' })
+      expect(within(toast).getByRole('button', { name: 'Fermer' })).toBeInTheDocument()
+    } finally {
+      reinitialiserGestes()
+      window.localStorage.removeItem(CLE)
+    }
   })
 
   it('/taches mène à /taches/aujourdhui', async () => {
@@ -152,6 +228,85 @@ describe('TCH43 — routes du module', () => {
     const { container } = monter('/taches/aujourdhui')
     await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
     expect(container.querySelector('.entete-date').textContent).toMatch(/^[A-ZÉ][a-zéû]+ \d{1,2} [a-zéû]+$/)
+  })
+})
+
+/* Une coque d'ERP minimale (en-tête + cloche) posée dans le document, comme le fait `components/layout/Layout.jsx`. */
+function poserEnteteErp({ notifications = 0 } = {}) {
+  const main = document.createElement('div')
+  main.className = 'layout-main'
+  main.innerHTML = `<header class="header"><button type="button" class="header-menu-btn" aria-label="Ouvrir le menu"></button>
+    <div class="nb-wrap"><button type="button" class="nb-btn" aria-label="Notifications (${notifications})"></button></div></header>`
+  document.body.appendChild(main)
+  const menu = vi.fn()
+  const cloche = vi.fn()
+  main.querySelector('.header-menu-btn').addEventListener('click', menu)
+  main.querySelector('.nb-btn').addEventListener('click', cloche)
+  return { main, menu, cloche, boutonCloche: main.querySelector('.nb-btn') }
+}
+
+describe('R2-080 — sur iPhone, la rangée du haut de Tâches remplace la barre de l\'ERP', () => {
+  afterEach(() => { document.querySelectorAll('body > .layout-main').forEach((n) => n.remove()) })
+
+  it('☰ ouvre le tiroir de l\'ERP par son propre bouton', async () => {
+    const erp = poserEnteteErp()
+    const { container } = monter('/taches/aujourdhui')
+    await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+    const coquille = container.querySelector('.tch')
+    await act(async () => { within(coquille).getByRole('button', { name: 'Ouvrir le menu' }).click() })
+    expect(erp.menu).toHaveBeenCalledTimes(1)
+  })
+
+  it('la cloche de l\'ERP s\'atteint en un toucher : compteur lu sur l\'ERP, son panneau ouvert', async () => {
+    const erp = poserEnteteErp({ notifications: 3 })
+    const { container } = monter('/taches/aujourdhui')
+    await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+    const coquille = container.querySelector('.tch')
+    const cloche = within(coquille).getByRole('button', { name: 'Notifications (3)' })
+    await act(async () => { cloche.click() })
+    expect(erp.cloche).toHaveBeenCalledTimes(1)
+    // le compteur suit celui de l'ERP
+    await act(async () => { erp.boutonCloche.setAttribute('aria-label', 'Notifications (5)') })
+    expect(within(coquille).getByRole('button', { name: 'Notifications (5)' })).toBeInTheDocument()
+  })
+
+  it('le titre compact (rangée du haut) répète le titre de la page, caché aux lecteurs d\'écran', async () => {
+    const { container } = monter('/taches/a-trier')
+    await screen.findByRole('heading', { level: 1, name: 'À trier' })
+    const compact = container.querySelector('.entete-barre .entete-compact')
+    expect(compact?.textContent).toBe('À trier')
+    expect(compact.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
+describe('R2-093 — écran enfant : « ‹ parent » au-dessus du titre, ni loupe ni Copilote', () => {
+  function monterEnfant(props) {
+    const router = createMemoryRouter([
+      { path: '/taches/projets/:id', element: <CoquilleTaches ecran="projet" titre="Chantier Benali 9 kWc" {...props}><p>contenu</p></CoquilleTaches> },
+      { path: '/taches/projets', element: <p>liste des projets</p> },
+    ], { initialEntries: ['/taches/projets/7'] })
+    return { router, ...render(<RouterProvider router={router} />) }
+  }
+
+  it('rend le retour AVANT le titre et mène au parent', async () => {
+    const { router, container } = monterEnfant({ retour: { libelle: 'Projets', vers: '/taches/projets' } })
+    const titre = screen.getByRole('heading', { level: 1, name: 'Chantier Benali 9 kWc' })
+    const retour = screen.getByRole('button', { name: 'Projets' })
+    expect(retour.compareDocumentPosition(titre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // écran enfant : pas de loupe, pas de Copilote ; le ⋯ reste ; ☰ cède sa place au retour
+    expect(screen.queryByRole('button', { name: 'Chercher dans mes tâches' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copilote' })).toBeNull()
+    expect(screen.getByRole('button', { name: "Plus d'actions" })).toBeInTheDocument()
+    expect(within(container.querySelector('.tch')).queryByRole('button', { name: 'Ouvrir le menu' })).toBeNull()
+    await act(async () => { retour.click() })
+    expect(router.state.location.pathname).toBe('/taches/projets')
+  })
+
+  it('sans `retour`, l\'écran garde loupe, Copilote et ☰', () => {
+    monterEnfant({})
+    expect(screen.getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copilote' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir le menu' })).toBeInTheDocument()
   })
 })
 

@@ -17,7 +17,7 @@ vi.mock('../../../api/tachesApi', async (original) => ({
 
 const api = await import('../../../api/tachesApi')
 const {
-  abandonner, brancherRejeu, creerFile, definirCompteFile, enfilerAjout, enfilerCoche, enfilerReport, etatFile,
+  abandonner, brancherRejeu, creerFile, definirCompteFile, enfilerAjout, enfilerCoche, enfilerPhrase, enfilerReport, etatFile,
   garderLaMienne, prendreLAutre, remplacerFile, rejouerFile,
 } = await import('./captureQueue')
 const { default: CoquilleTaches } = await import('../coquille/CoquilleTaches')
@@ -108,6 +108,60 @@ describe('TCH100 — file d\'envoi : rejeu au retour du réseau', () => {
     // le réseau revient : le rejeu aboutit, les envois déjà passés repartent avec la même clé
     api.planifierTache.mockResolvedValue({ data: {} })
     await rejouerFile(file)
+    expect(await file.count()).toBe(0)
+  })
+})
+
+describe('R2-008a — hors ligne, la PHRASE part en file : le serveur la lit au rejeu', () => {
+  const lue = (titre, champs) => ({ data: { projets_communs: [], projets_nouveaux: [], lignes: [{
+    ...exempleContrat('taches', 'saisie_apercu').lignes[0], index: 0, collage: 0, titre, jetons: [], alertes: [], champs,
+  }] } })
+  const creations = () => api.saisieRapide.mock.calls.filter(([c]) => c.apercu === false)
+
+  it('« Test ce soir » hors ligne → au retour : aperçu de la phrase puis création de « Test » ce soir, une seule fois', async () => {
+    api.saisieRapide.mockImplementation((corps) => Promise.resolve(corps.apercu
+      ? lue('Test', { priorite: 0, jour_prevu: '2026-11-17', moment: 'soir' }) : { data: {} }))
+    enLigne(false)
+    const id = await enfilerPhrase({ textes: ['Test ce soir'], cid: 'k1', contexte: { projetId: 3, sectionId: 8 } })
+    enLigne(true)
+    await rejouerFile(file)
+    expect(api.saisieRapide).toHaveBeenNthCalledWith(1, { texte: 'Test ce soir', ignorer: [], apercu: true }, { proprietaire: 7, cle: null })
+    expect(creations()).toHaveLength(1)
+    const [corps, options] = creations()[0]
+    expect(corps.lignes).toEqual([expect.objectContaining({
+      client_id: 'k1:0', titre: 'Test', jour_prevu: '2026-11-17', moment: 'soir', projet_id: 3, section_id: 8,
+    })])
+    expect(options).toEqual({ proprietaire: 7, cle: id })
+    expect(await file.count()).toBe(0)
+    // un second rejeu ne recrée rien : la file est vide
+    await rejouerFile(file)
+    expect(creations()).toHaveLength(1)
+  })
+
+  it('le jour de DÉPART de l\'écran cède à la date lue ; un Quand choisi à la main l\'emporte', async () => {
+    api.saisieRapide.mockImplementation((corps) => Promise.resolve(corps.apercu
+      ? lue('Appeler', { priorite: 0, jour_prevu: '2026-11-18' }) : { data: {} }))
+    await enfilerPhrase({ textes: ['Appeler demain'], cid: 'k2', quandDefaut: { jour_prevu: '2026-11-17', moment: '', heure_debut: null, quelque_jour: false } })
+    await enfilerPhrase({ textes: ['Appeler demain'], cid: 'k3', quand: { jour_prevu: null, moment: '', heure_debut: null, quelque_jour: true } })
+    await rejouerFile(file)
+    expect(creations().map(([c]) => [c.lignes[0].jour_prevu, Boolean(c.lignes[0].quelque_jour)]))
+      .toEqual([['2026-11-18', false], [null, true]])
+  })
+
+  it('une coupure pendant l\'aperçu du rejeu laisse la phrase en file ; rien n\'est créé', async () => {
+    api.saisieRapide.mockRejectedValue(new Error('Network Error'))
+    await enfilerPhrase({ textes: ['Test ce soir'], cid: 'k4' })
+    await rejouerFile(file)
+    expect(creations()).toHaveLength(0)
+    const [op] = await file.pending()
+    expect(op.serverError ?? null).toBeNull()
+  })
+
+  it('une op ANCIENNE (format `lignes`, déjà en file sur un appareil) se rejoue toujours telle quelle', async () => {
+    await file.enqueue('ajouter', { type: 'ajouter', corps: { lignes: [LIGNE] }, userId: 7, companyId: 1 }, { queuedAt: '2026-11-16T10:00:00Z' })
+    await rejouerFile(file)
+    expect(api.saisieRapide).toHaveBeenCalledTimes(1)
+    expect(api.saisieRapide).toHaveBeenCalledWith({ lignes: [LIGNE], apercu: false }, { proprietaire: 7, cle: expect.any(String) })
     expect(await file.count()).toBe(0)
   })
 })

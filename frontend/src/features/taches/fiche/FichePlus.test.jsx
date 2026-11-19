@@ -68,6 +68,26 @@ describe('TCH85 — fiche → Plus', () => {
     expect([...places].sort((x, y) => x - y)).toEqual(places)
   })
 
+  it('R2-046 — un rappel ancré se lit sans « 0 jour avant l\'échéance » : jour prévu, jour même, n jours avant', async () => {
+    const user = userEvent.setup()
+    const rappels = [
+      { id: 1, jour: '2026-11-17', heure: '22:00', ancre: 'jour_prevu', decalage_jours: 0, statut: 'en_attente' },
+      { id: 2, jour: '2026-11-19', heure: '09:00', ancre: 'echeance', decalage_jours: 0, statut: 'en_attente' },
+      { id: 3, jour: '2026-11-18', heure: '18:00', ancre: 'echeance', decalage_jours: -1, statut: 'en_attente' },
+      { id: 4, jour: '2026-11-15', heure: '08:00', ancre: 'jour_prevu', decalage_jours: -2, statut: 'en_attente' },
+    ]
+    api.lireTache.mockResolvedValue({ data: { ...tache, rappels } })
+    monter()
+    await ouvrirPlus(user)
+    const lignes = [...document.querySelectorAll('.fiche-rappel-ligne')].map((p) => p.firstChild.textContent)
+    expect(lignes).toEqual([
+      'Le jour prévu à 22:00',
+      'Le jour même à 09:00',
+      "1 jour avant l'échéance à 18:00",
+      '2 jours avant le jour prévu à 08:00',
+    ])
+  })
+
   it('rappel : posé sur l\'échéance ; la question du titre (1er rappel) écrit PATCH reglages/', async () => {
     const user = userEvent.setup()
     api.poserRappel.mockResolvedValue({ data: { ...ecrite, question_titres: true, rappel: { jour: '2026-11-19', heure: '09:00' } } })
@@ -226,6 +246,18 @@ describe('TCH85 — fiche → Plus', () => {
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.restaurerTache).toHaveBeenCalledWith(20))
+  })
+
+  it('R2-047 — la confirmation « Supprimer » est sur SA ligne (hors de la rangée Abandonner · Supprimer), Annuler dedans', async () => {
+    const user = userEvent.setup()
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }))
+    const dialogue = screen.getByRole('alertdialog', { name: 'Supprimer « Devis Settat »' })
+    const rangee = screen.getByRole('button', { name: 'Abandonner' }).parentElement
+    expect(rangee.contains(dialogue)).toBe(false)
+    expect(dialogue).toHaveClass('fiche-supprimer')
+    expect(within(dialogue).getAllByRole('button').map((b) => b.textContent)).toEqual(['Supprimer « Devis Settat »', 'Annuler'])
   })
 
   it('Supprimer puis Annuler : le geste rendu par le serveur est défait (A7), jamais `restaurer/`', async () => {

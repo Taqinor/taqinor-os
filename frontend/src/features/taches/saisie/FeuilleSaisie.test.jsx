@@ -7,15 +7,17 @@ import { memoryStore } from '../../../lib/offlineOutbox'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captureQueue'
 import { reinitialiserGestes } from '../lib/gestes'
+import { aujourdhuiIso } from '../lib/textes'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
 import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
 import { morceauxSurlignes } from '../ui/ChampSaisie'
 
-const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn() }))
+const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
 vi.mock('../../../api/tachesApi', async (importOriginal) => ({
   ...(await importOriginal()),
   saisieRapide: mocks.saisieRapide,
   annulerGeste: mocks.annulerGeste,
+  listerTousLesProjets: mocks.listerTousLesProjets,
 }))
 
 /* TCH82 — Feuille de saisie : puces lues (retirables), « Nouveau projet » et sa priorité, Entrée
@@ -52,6 +54,7 @@ beforeEach(() => {
   window.localStorage.clear()
   mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? apercu : creation }))
   mocks.annulerGeste.mockResolvedValue({ data: {} })
+  mocks.listerTousLesProjets.mockResolvedValue([])
 })
 afterEach(() => {
   vi.clearAllMocks()
@@ -403,7 +406,7 @@ describe('TCH82 — feuille de saisie', () => {
       expect(vusALaFermeture).toEqual([null])
     })
 
-    it('une coupure pendant l\'envoi met la ligne en file au lieu d\'une erreur ; sans analyse, le texte entier sert de titre', async () => {
+    it('une coupure pendant l\'envoi met la PHRASE en file (R2-008a : le serveur la lira au rejeu), jamais une erreur', async () => {
       const user = userEvent.setup()
       mocks.saisieRapide.mockRejectedValue(new Error('Network Error'))
       const { onFermer } = monter()
@@ -411,8 +414,283 @@ describe('TCH82 — feuille de saisie', () => {
       await user.click(screen.getByRole('button', { name: 'Ajouter' }))
       await waitFor(() => expect(onFermer).toHaveBeenCalled())
       const [op] = await file.pending()
-      expect(op.payload.corps.lignes).toEqual([expect.objectContaining({ index: 0, titre: 'Rappeler Salma' })])
+      expect(op.payload.corps.lignes).toBeUndefined()
+      expect(op.payload.corps.phrase).toMatchObject({ textes: ['Rappeler Salma'], ignorer: [] })
       expect(screen.queryByText(/Pas de réseau/)).toBeNull()
+    })
+
+    it('R2-008a — hors ligne dès la frappe : « Test ce soir » part en file avec son contexte, « ce soir » n\'est pas mis dans un titre', async () => {
+      const user = userEvent.setup()
+      act(() => {
+        Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+        window.dispatchEvent(new Event('offline'))
+      })
+      monter()
+      act(() => {
+        window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail: { projet_id: 3, projet_nom: 'Ventes' } }))
+      })
+      await user.type(champ(), 'Test ce soir{Enter}')
+      await waitFor(async () => expect(await file.pending()).toHaveLength(1))
+      const [op] = await file.pending()
+      expect(op.payload.corps.lignes).toBeUndefined()
+      expect(op.payload.corps.phrase).toMatchObject({ textes: ['Test ce soir'], contexte: { projetId: 3 } })
+      expect(op.payload.corps.phrase.cid).toEqual(expect.any(String))
+      expect(mocks.saisieRapide).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('R2-001 — taper vite après « Ajouter » ne perd jamais rien', () => {
+    /** L'aperçu rend la phrase telle quelle (une ligne, aucun jeton) ; la création reste EN VOL jusqu'à `liberer`. */
+    const enVol = () => {
+      const attentes = []
+      mocks.saisieRapide.mockImplementation((corps) => {
+        if (corps.apercu) {
+          return Promise.resolve({ data: {
+            ...apercu, projets_nouveaux: [],
+            lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: {} }],
+          } })
+        }
+        return new Promise((resoudre, rejeter) => attentes.push({ corps, resoudre, rejeter }))
+      })
+      return attentes
+    }
+    const creations = () => mocks.saisieRapide.mock.calls.filter(([corps]) => corps.apercu === false).map(([c]) => c)
+
+    it('Entrée vide le champ TOUT DE SUITE ; la 2e phrase tapée pendant que la 1re est en vol reste, puis part à son tour', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      const { onFermer } = monter()
+      // Entrée AVANT que l'aperçu ne soit revenu : l'analyse et la création partent en arrière-plan
+      await user.type(champ(), 'Test un{Enter}')
+      expect(champ()).toHaveValue('')
+      await user.type(champ(), 'Test deux')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      expect(champ()).toHaveValue('Test deux')
+      // la 1re revient du serveur : la frappe de la 2e est intacte
+      await act(async () => { attentes[0].resoudre({ data: creation }) })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Ajoutée')
+      expect(champ()).toHaveValue('Test deux')
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('')
+      await waitFor(() => expect(attentes).toHaveLength(2))
+      await act(async () => { attentes[1].resoudre({ data: creation }) })
+      expect(creations().map((c) => c.lignes.map((l) => l.titre))).toEqual([['Test un'], ['Test deux']])
+      // deux phrases, deux clés d'idempotence différentes : jamais une tâche prise pour l'autre
+      const cles = mocks.saisieRapide.mock.calls.filter(([c]) => c.apercu === false).map(([, o]) => o.cle)
+      expect(new Set(cles).size).toBe(2)
+      expect(onFermer).not.toHaveBeenCalled()
+    })
+
+    it('trois phrases enchaînées sans attendre : les trois partent, dans l\'ordre tapé', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Une{Enter}Deux{Enter}Trois{Enter}')
+      expect(champ()).toHaveValue('')
+      for (let i = 0; i < 3; i += 1) {
+        await waitFor(() => expect(attentes).toHaveLength(i + 1))
+        await act(async () => { attentes[i].resoudre({ data: creation }) })
+      }
+      expect(creations().map((c) => c.lignes[0].titre)).toEqual(['Une', 'Deux', 'Trois'])
+    })
+
+    it('un échec pendant qu\'une autre phrase est tapée : rien n\'est effacé, toast « Pas ajoutée : … · Reprendre » qui rend la phrase', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Test un{Enter}')
+      await user.type(champ(), 'Test deux')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+      const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+      expect(toast).toHaveTextContent('Pas ajoutée : Le titre est vide une fois la date et le projet retirés.')
+      expect(champ()).toHaveValue('Test deux')
+      await user.click(screen.getByRole('button', { name: 'Reprendre' }))
+      expect(champ()).toHaveValue('Test un')
+      // le focus est rendu au champ ; la phrase qu'on tapait n'est pas perdue : elle revient une fois la reprise envoyée
+      await waitFor(() => expect(champ()).toHaveFocus())
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('Test deux')
+    })
+
+    it('un échec quand le champ est resté vide : la phrase revient dans le champ, l\'erreur dessous', async () => {
+      const attentes = enVol()
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Test un{Enter}')
+      await waitFor(() => expect(attentes).toHaveLength(1))
+      await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+      expect(await screen.findByRole('alert')).toHaveTextContent('Le titre est vide une fois la date et le projet retirés.')
+      expect(champ()).toHaveValue('Test un')
+    })
+  })
+
+  describe('R2-002 — ajoutée depuis Aujourd\'hui, elle est dans Aujourd\'hui', () => {
+    const apercuDe = (champs) => (corps) => Promise.resolve({ data: corps.apercu ? {
+      ...apercu, projets_nouveaux: [],
+      lignes: [{ ...apercu.lignes[0], titre: 'Rappeler M. Benjelloun', jetons: [], alertes: [], champs }],
+    } : creation })
+    const demander = (detail = {}) => act(() => {
+      window.dispatchEvent(new CustomEvent('taqinor:taches:saisir', { detail }))
+    })
+    const corpsCree = () => mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
+    afterEach(() => { window.history.pushState({}, '', '/') })
+
+    it.each(['/taches/aujourdhui', '/taches'])('sur %s : « Quand » part sur aujourd\'hui (puce retirable), toast « Ajoutée à Aujourd\'hui »', async (chemin) => {
+      window.history.pushState({}, '', chemin)
+      mocks.saisieRapide.mockImplementation(apercuDe({}))
+      const user = userEvent.setup()
+      monter()
+      demander()
+      expect(screen.getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Retirer le jour choisi' })).toBeInTheDocument()
+      await user.type(champ(), 'Rappeler M. Benjelloun')
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0]).toMatchObject({ titre: 'Rappeler M. Benjelloun', jour_prevu: aujourdhuiIso() })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Ajoutée à Aujourd'hui")
+      // la chaîne repart sur aujourd'hui pour la suivante
+      expect(screen.getByRole('button', { name: "aujourd'hui" })).toBeInTheDocument()
+    })
+
+    it.each([
+      ['Aujourd\'hui', '/taches/aujourdhui', {}],
+      ['l\'Agenda', '/taches/agenda', { jour_prevu: '2026-11-20', heure_debut: '10:00' }],
+    ])('une date lue dans la phrase (« demain ») l\'emporte sur le jour de départ (%s)', async (_ecran, chemin, detail) => {
+      window.history.pushState({}, '', chemin)
+      mocks.saisieRapide.mockImplementation(apercuDe({ jour_prevu: '2026-11-18' }))
+      const user = userEvent.setup()
+      monter()
+      demander(detail)
+      await user.type(champ(), 'Rappeler M. Benjelloun demain')
+      await waitFor(() => expect(mocks.saisieRapide).toHaveBeenCalled())
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0].jour_prevu).toBe('2026-11-18')
+      // l'heure du créneau de départ ne s'accroche pas au jour lu dans la phrase
+      expect(corpsCree().lignes[0].heure_debut ?? null).toBeNull()
+    })
+
+    it('le jour de départ retiré (×) : la tâche va dans À trier', async () => {
+      window.history.pushState({}, '', '/taches/aujourdhui')
+      mocks.saisieRapide.mockImplementation(apercuDe({}))
+      const user = userEvent.setup()
+      monter()
+      demander()
+      await user.click(screen.getByRole('button', { name: 'Retirer le jour choisi' }))
+      await user.type(champ(), 'Rappeler M. Benjelloun')
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      expect(corpsCree().lignes[0].jour_prevu).toBeUndefined()
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(/^Ajoutée/)
+    })
+
+    it('ailleurs dans Tâches (un projet, À trier) : aucun jour de départ', () => {
+      window.history.pushState({}, '', '/taches/a-trier')
+      monter()
+      demander()
+      expect(screen.queryByRole('button', { name: 'Retirer le jour choisi' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Quand' })).toBeInTheDocument()
+    })
+  })
+
+  describe('R2-003 — « # » propose les projets ; une puce « Projet » dans le pied', () => {
+    const PROJETS = [
+      { id: 11, nom: 'Salon Solaire Expo', couleur: 'terre', statut: 'actif' },
+      { id: 12, nom: 'Chantier Bénali 9 kWc', couleur: 'mer', statut: 'actif' },
+      { id: 13, nom: 'Site web', couleur: 'ciel', statut: 'en_pause' },
+      { id: 14, nom: 'Salle archivée', couleur: 'terre', statut: 'archive' },
+    ]
+    beforeEach(() => { mocks.listerTousLesProjets.mockResolvedValue(PROJETS) })
+    const liste = () => screen.queryByRole('listbox', { name: 'Projets' })
+    const options = () => screen.getAllByRole('option').map((o) => o.textContent)
+
+    it('« Stand #Sal » : la liste filtrée (projets ouverts) ; Entrée insère #Salon_Solaire_Expo sans envoyer la phrase', async () => {
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Stand #')
+      await waitFor(() => expect(liste()).not.toBeNull())
+      expect(options()).toEqual(['Salon Solaire Expo', 'Chantier Bénali 9 kWc', 'Site web'])
+      expect(champ()).toHaveAttribute('aria-expanded', 'true')
+      await user.type(champ(), 'Sal')
+      expect(options()).toEqual(['Salon Solaire Expo'])
+      await user.keyboard('{Enter}')
+      expect(champ()).toHaveValue('Stand #Salon_Solaire_Expo ')
+      expect(liste()).toBeNull()
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+    })
+
+    it('sans accents ni casse, flèches puis Entrée, ou au doigt ; Échap ferme la liste, pas la feuille', async () => {
+      const user = userEvent.setup()
+      const { onFermer } = monter()
+      await user.type(champ(), 'Visite #benal')
+      await waitFor(() => expect(options()).toEqual(['Chantier Bénali 9 kWc']))
+      await user.keyboard('{Escape}')
+      expect(liste()).toBeNull()
+      expect(onFermer).not.toHaveBeenCalled()
+      await user.clear(champ())
+      await user.type(champ(), 'Photos #s')
+      await waitFor(() => expect(options()).toEqual(['Salon Solaire Expo', 'Site web']))
+      await user.keyboard('{ArrowDown}{Enter}')
+      expect(champ()).toHaveValue('Photos #Site_web ')
+      await user.type(champ(), 'et #cha')
+      await user.click(await screen.findByRole('option', { name: 'Chantier Bénali 9 kWc' }))
+      expect(champ()).toHaveValue('Photos #Site_web et #Chantier_Bénali_9_kWc ')
+    })
+
+    it('la puce « Projet » ouvre le sélecteur ; le projet choisi part avec la ligne et se retire', async () => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [], lignes: [{ ...apercu.lignes[0], titre: 'Réserver le stand', jetons: [], alertes: [], champs: {} }],
+      } : creation }))
+      const user = userEvent.setup()
+      monter()
+      await user.type(champ(), 'Réserver le stand')
+      await user.click(screen.getByRole('button', { name: 'Projet' }))
+      await user.click(await screen.findByRole('option', { name: 'Salon Solaire Expo' }))
+      expect(screen.getByRole('button', { name: 'Retirer « Salon Solaire Expo »' })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const envoi = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0]
+      expect(envoi.lignes[0]).toMatchObject({ titre: 'Réserver le stand', projet_id: 11 })
+    })
+  })
+
+  describe('R2-007 — un titre de plus de 280 caractères : le vrai message, le compte, « Mettre le reste en note »', () => {
+    const LONG = `${'Préparer le dossier de raccordement '.repeat(8)}et le reste`.trim()
+    const MESSAGE = 'Le titre est trop long : 280 caractères au plus.'
+    beforeEach(() => {
+      mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? {
+        ...apercu, projets_nouveaux: [],
+        lignes: [{ ...apercu.lignes[0], titre: corps.texte, jetons: [], alertes: [], champs: { priorite: 0 },
+          cochee: false, erreurs: { titre: [MESSAGE] } }],
+      } : creation }))
+    })
+
+    it('le message du serveur sous le champ et « 300 / 280 » ; Entrée ne crée rien et ne dit pas « Aucune ligne lisible. »', async () => {
+      expect(LONG.length).toBeGreaterThan(280)
+      const user = userEvent.setup()
+      monter()
+      fireEvent.change(champ(), { target: { value: LONG } })
+      expect(await screen.findByRole('alert', {}, { timeout: 3000 })).toHaveTextContent(MESSAGE)
+      expect(screen.getByText(`${LONG.length} / 280`)).toBeInTheDocument()
+      await user.click(champ())
+      await user.keyboard('{End}{Enter}')
+      await waitFor(() => expect(champ()).toHaveValue(LONG))
+      expect(await screen.findByRole('alert')).toHaveTextContent(MESSAGE)
+      expect(screen.queryByText('Aucune ligne lisible.')).toBeNull()
+      expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(false)
+    })
+
+    it('« Mettre le reste en note » crée la tâche : 280 caractères au plus en titre, le reste en note', async () => {
+      const user = userEvent.setup()
+      monter()
+      fireEvent.change(champ(), { target: { value: LONG } })
+      await user.click(await screen.findByRole('button', { name: 'Mettre le reste en note' }, { timeout: 3000 }))
+      await waitFor(() => expect(mocks.saisieRapide.mock.calls.some(([c]) => c.apercu === false)).toBe(true))
+      const [ligneCreee] = mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[0].lignes
+      expect(ligneCreee.titre.length).toBeLessThanOrEqual(280)
+      expect(`${ligneCreee.titre} ${ligneCreee.notes}`).toBe(LONG)
+      expect(champ()).toHaveValue('')
     })
   })
 

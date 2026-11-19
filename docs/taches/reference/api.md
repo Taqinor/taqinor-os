@@ -1467,7 +1467,9 @@ RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` 
 → `projet.json` ; `statut=termine` → 400 `{"statut":["Passe par « Terminer »."]}`. **DELETE**, **`terminer/`**
 `{"issue":"atteint","bilan":"","taches_ouvertes":"boite","projet_cible_id":null}` (400 `{"issue":["Atteint ou abandonné ?"]}`),
 **`restaurer/`** (409 `nom_pris`) → `projet_ecrit.json`. **`planification/apercu/`**
-`{"texte":"Études :\nVisite\n- photos\n◆ Mise en service"}` → `planification_apercu.json` (`projet` {id, lock_version} : où
+`{"texte":"Études :\nVisite\n- photos\n◆ Mise en service","mode":"plan"}` (`mode` facultatif : `plan` par défaut ; `etapes` =
+le champ « Étapes » de l'écran, où une ligne non indentée EST une étape — `regles.md` §1.10 ; 400 « Valeur inconnue. » sinon)
+→ `planification_apercu.json` (même forme dans les deux modes ; `projet` {id, lock_version} : où
 écrire et le verrou à renvoyer — la carte `plan_projet` n'a que cette réponse). **`planification/`**
 `{"priorite":3,"objectif":"Stand monté","echeance":"2026-12-29","risque":"","sections":[{"nom":"Études","taches":[{"titre":"Visite","jalon":false,"sous_taches":["photos"]}]}],"actions":[{"titre":"Réserver le stand","quand":"aujourdhui"}],"lock_version":4}`
 → `planification.json`. **`decaler/`** `{"delta_jours":7,"apercu":true}` (sans `apercu` : aperçu) → `decalage.json`

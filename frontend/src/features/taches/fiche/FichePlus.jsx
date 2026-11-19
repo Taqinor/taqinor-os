@@ -6,6 +6,7 @@ import {
   annulerGeste, attendreTache, classerErreur, creerEtiquette, creerTache, listerToutesLesEtiquettes, modifierRecurrence,
   nouvelleCle, poserRappel, recevoirTache, restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache,
   rechercher } from '../../../api/tachesApi'
+import { signalerEcrite } from '../lib/fiche'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { ETATS_LIEN, accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'
@@ -45,6 +46,15 @@ function reglesProposees(jour) {
   ]
 }
 
+/** R2-046 — un rappel ancré, dit comme on le dirait : « Le jour prévu à 22:00 », « Le jour même à 09:00 » (échéance,
+ *  décalage 0), « 1 jour avant l'échéance à 18:00 », « 2 jours avant le jour prévu à 08:00 » — jamais « 0 jour avant ». */
+function texteRappelAncre(r) {
+  const n = Math.abs(Number(r.decalage_jours) || 0)
+  const a = heure(r.heure)
+  if (r.ancre === 'jour_prevu') return n === 0 ? `Le jour prévu à ${a}` : `${accord(n, 'jour')} avant le jour prévu à ${a}`
+  return n === 0 ? `Le jour même à ${a}` : `${accord(n, 'jour')} avant l'échéance à ${a}`
+}
+
 function Rappel({ tache, aujourdhui, ecrire, annulable }) {
   const [mode, setMode] = useState('meme')
   const [heureRappel, setHeureRappel] = useState('09:00')
@@ -72,7 +82,7 @@ function Rappel({ tache, aujourdhui, ecrire, annulable }) {
       <h3 className="fiche-bloc-titre">Rappel</h3>
       {actifs.map((r) => (
         <p key={r.id} className="fiche-rappel-ligne chiffres">
-          {r.ancre ? `${accord(Math.abs(r.decalage_jours), 'jour')} avant l'échéance à ${heure(r.heure)}` : `${jourCourt(r.jour, aujourdhui)} ${heure(r.heure)}`}
+          {r.ancre ? texteRappelAncre(r) : `${jourCourt(r.jour, aujourdhui)} ${heure(r.heure)}`}
           <button type="button" className="bouton-icone" aria-label={`Retirer le rappel de ${heure(r.heure)}`} onClick={() => retirer(r)}>
             <X className="i i-16" aria-hidden="true" />
           </button>
@@ -270,6 +280,7 @@ function SousTaches({ tache, charger, erreur }) {
     if (!titre.trim()) return
     try {
       await creerTache({ titre: titre.trim(), parent_id: tache.id, client_id: nouvelleCle() })
+      signalerEcrite()
       setTitre('')
       await charger()
     } catch (err) {
@@ -292,7 +303,7 @@ function SousTaches({ tache, charger, erreur }) {
 }
 
 /** `demande` > 0 : « Supprimer » choisi dans le ⋯ de l'en-tête — la question s'ouvre d'elle-même et se montre. */
-function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
+function Supprimer({ tache, onFermer, erreur, demande = 0, avant = null }) {
   const [confirmation, setConfirmation] = useState(demande > 0)
   const question = useRef(null)
   useEffect(() => { if (demande > 0) question.current?.scrollIntoView?.({ block: 'center' }) }, [demande])
@@ -302,29 +313,38 @@ function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
       const { data } = await supprimerTache(tache.id)
       // « Annuler » défait le geste côté serveur (A7) ; sans `geste_id` (hors ligne, file), repli sur la restauration.
       const defaire = async () => {
-        if (!data?.geste_id) { await restaurerTache(tache.id); return }
+        if (!data?.geste_id) { await restaurerTache(tache.id); signalerEcrite(); return }
         const { data: bilan } = await annulerGeste(data.geste_id)
+        signalerEcrite()
         const conflits = bilan?.conflits?.length ?? 0
         if (conflits > 0) annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`)
       }
+      signalerEcrite() // R2-040 — la ligne quitte la liste sous la fiche, sans rechargement
       proposerAnnuler({ message: 'Supprimée', onAnnuler: defaire })
       onFermer?.()
     } catch (err) {
       erreur('general', frenchError(err))
     }
   }
-  if (!confirmation) {
-    return <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>
-  }
+  // R2-047 — la question se pose SOUS la rangée « Abandonner · Supprimer », sur sa propre ligne et pleine largeur :
+  // posée dans la rangée, elle débordait de l'écran de l'iPhone (« Annuler » hors d'atteinte)
   return (
-    <div ref={question} className="fiche-question" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
-      <p>{`Supprimer « ${tache.titre} » ?`}</p>
-      {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
-      <div className="carte-actions">
-        <button type="button" className="bouton second destructif" onClick={supprimer}>{`Supprimer « ${tache.titre} »`}</button>
-        <button type="button" className="bouton second" onClick={() => setConfirmation(false)}>Annuler</button>
+    <>
+      <div className="carte-actions fiche-plus-pied">
+        {avant}
+        {confirmation ? null : <button type="button" className="bouton discret destructif" onClick={() => setConfirmation(true)}>Supprimer</button>}
       </div>
-    </div>
+      {confirmation ? (
+        <div ref={question} className="fiche-question fiche-supprimer" role="alertdialog" aria-label={`Supprimer « ${tache.titre} »`}>
+          <p>{`Supprimer « ${tache.titre} » ?`}</p>
+          {nb > 0 ? <p className="aide-champ">{nb === 1 ? '1 sous-tâche sera supprimée aussi.' : `${nb} sous-tâches seront supprimées aussi.`}</p> : null}
+          <div className="carte-actions">
+            <button type="button" className="bouton second destructif" onClick={supprimer}>{`Supprimer « ${tache.titre} »`}</button>
+            <button type="button" className="bouton second" onClick={() => setConfirmation(false)}>Annuler</button>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -406,10 +426,14 @@ export default function FichePlus({
       <SousTaches tache={tache} charger={charger} erreur={erreur} />
       {erreurs.sous_taches ? <p className="erreur-champ" role="alert">{erreurs.sous_taches}</p> : null}
 
-      <div className="carte-actions">
-        <button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>
-        <Supprimer key={supprimerDemande} demande={supprimerDemande} tache={tache} onFermer={onFermer} erreur={erreur} />
-      </div>
+      <Supprimer
+        key={supprimerDemande}
+        demande={supprimerDemande}
+        tache={tache}
+        onFermer={onFermer}
+        erreur={erreur}
+        avant={<button type="button" className="bouton discret" onClick={abandonner}>Abandonner</button>}
+      />
     </div>
   )
 }

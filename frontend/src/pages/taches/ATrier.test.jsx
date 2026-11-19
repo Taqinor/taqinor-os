@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../test/fixtures/contractSamples'
@@ -12,6 +12,10 @@ const api = vi.hoisted(() => ({
   listerTousLesProjets: vi.fn(), creerProjet: vi.fn(), annulerGeste: vi.fn(), saisieRapide: vi.fn(), listerSuggestions: vi.fn(),
 }))
 vi.mock('../../api/tachesApi', async (importOriginal) => ({ ...(await importOriginal()), ...api }))
+// R2-024 — la pastille d'À trier : ses deux gestes (corriger tout de suite, relire du serveur) sont observés, pas lus d'un faux serveur
+const ordre = vi.hoisted(() => [])
+const badge = vi.hoisted(() => ({ chargerBadgeTaches: vi.fn(), ajusterBadgeATrier: vi.fn() }))
+vi.mock('../../features/taches/useBadgeTaches', async (importOriginal) => ({ ...(await importOriginal()), ...badge }))
 
 /* TCH86 — À trier : bandeau à convertir, Aujourd'hui · Demain · Projet… · ⋯, Trier une par une,
    En réserve, Tout ranger. Réponses = `lot.json`, `convertir_activite.json` (et le reste du contrat). */
@@ -27,8 +31,11 @@ const ligne = (id, titre) => ({ ...modele, id, titre, projet: null, jour_prevu: 
 const TACHES = [ligne(41, 'Appeler Karim'), ligne(42, 'Timbres'), ligne(43, 'Ranger le bureau')]
 const erreurHttp = (data, status) => Object.assign(new Error('http'), { response: { status, data } })
 
+function Position() {
+  return <output data-testid="position">{useLocation().search}</output>
+}
 const monter = () => render(
-  <MemoryRouter initialEntries={['/taches/a-trier']}><ATrier aujourdhui={AUJOURD} /></MemoryRouter>,
+  <MemoryRouter initialEntries={['/taches/a-trier']}><ATrier aujourdhui={AUJOURD} /><Position /></MemoryRouter>,
 )
 const RESERVE = [
   { ...ligne(51, 'Comparer deux devis'), projet: { id: 9, nom: 'Salon Solaire Expo', couleur: 'indigo', priorite: 3 } },
@@ -38,6 +45,9 @@ const lignes = () => within(screen.getAllByRole('list')[0]).getAllByRole('listit
 const appelsBoite = () => api.listerToutesLesTaches.mock.calls.filter(([f]) => f.vue === 'boite').length
 
 beforeEach(() => {
+  ordre.length = 0
+  badge.ajusterBadgeATrier.mockImplementation((delta) => { ordre.push(`ajuster:${delta}`) })
+  badge.chargerBadgeTaches.mockImplementation((options) => { ordre.push(`relire:${options?.force ? 'force' : 'cache'}`); return Promise.resolve() })
   api.listerToutesLesTaches.mockImplementation(({ vue }) => Promise.resolve(vue === 'quelque_jour' ? RESERVE : TACHES))
   api.lireAujourdhui.mockResolvedValue({ data: aujourdhui })
   api.traiterLot.mockImplementation((corps) => Promise.resolve({ data: { appliquees: corps.ids, refusees: [], geste_id: lot.geste_id } }))
@@ -281,3 +291,100 @@ describe('TCH86 — écran À trier', () => {
     expect(screen.queryByRole('menuitem', { name: 'Ranger avec le Copilote' })).toBeNull()
   })
 })
+
+describe('R2-024 — la pastille rouge d\'À trier suit les gestes tout de suite', () => {
+  it('un geste corrige la pastille AVANT le serveur (−1) puis la relit du serveur (relecture forcée)', async () => {
+    const user = userEvent.setup()
+    api.traiterLot.mockImplementation((corps) => { ordre.push('lot'); return Promise.resolve({ data: { appliquees: corps.ids, refusees: [], geste_id: lot.geste_id } }) })
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Demain' }))
+    await waitFor(() => expect(ordre).toEqual(['ajuster:-1', 'lot', 'relire:force']))
+  })
+
+  it('une ligne refusée ou un échec réseau : la pastille revient (+1) puis se relit', async () => {
+    const user = userEvent.setup()
+    api.traiterLot.mockImplementation(() => { ordre.push('lot'); return Promise.reject(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' })) })
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.click(within(lignes()[0]).getByRole('button', { name: 'Aujourd\'hui' }))
+    await waitFor(() => expect(ordre).toEqual(['ajuster:-1', 'lot', 'ajuster:1', 'relire:force']))
+  })
+
+  it('Annuler remet la ligne : la pastille se relit encore', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Timbres')
+    await user.click(within(lignes()[1]).getByRole('button', { name: 'Demain' }))
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    ordre.length = 0
+    await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(ordre).toEqual(['ajuster:1', 'relire:force']))
+  })
+
+  it('une ligne de la réserve n\'est pas dans la pastille : aucun ajustement, mais une relecture', async () => {
+    const user = userEvent.setup()
+    monter()
+    await user.click(await screen.findByRole('button', { name: /^En réserve\s*2/ }))
+    const reserve = screen.getByRole('region', { name: 'En réserve' })
+    await user.click(within(within(reserve).getAllByRole('listitem')[0]).getByRole('button', { name: 'Demain' }))
+    await waitFor(() => expect(ordre).toContain('relire:force'))
+    expect(ordre).not.toContain('ajuster:-1')
+  })
+
+  it('Tout ranger (un lot de n cartes) : −n tout de suite', async () => {
+    const user = userEvent.setup()
+    const cinq = [41, 42, 43, 44, 45].map((id) => ligne(id, `Tâche ${id}`))
+    api.listerToutesLesTaches.mockResolvedValue(cinq)
+    api.saisieRapide.mockResolvedValue({ data: { lignes: [
+      { tache_id: 41, champs: {}, projet_suggere: { id: 3, nom: 'Ventes' } },
+      { tache_id: 42, champs: {}, projet_suggere: { id: 3, nom: 'Ventes' } },
+    ] } })
+    api.traiterLot.mockResolvedValue({ data: { appliquees: [41, 42], refusees: [], geste_id: 80 } })
+    monter()
+    await screen.findByText('Tâche 41')
+    await user.click(screen.getByRole('button', { name: 'Plus d\'actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Ranger avec le Copilote' }))
+    expect(await screen.findAllByText('Projet suggéré : Ventes')).toHaveLength(2)
+    ordre.length = 0
+    await user.click(screen.getByRole('button', { name: 'Tout ranger' }))
+    await waitFor(() => expect(ordre).toEqual(['ajuster:-2', 'relire:force']))
+  })
+})
+
+describe('R2-036 — j / k parcourent les cartes d\'À trier, Entrée ouvre la fiche', () => {
+  it('j j Entrée : la 2e carte s\'ouvre (sa fiche), sans rien cocher ni faire disparaître', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.keyboard('jj')
+    expect(within(lignes()[1]).getByRole('button', { name: 'Timbres' })).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(screen.getByTestId('position')).toHaveTextContent('?tache=42')
+    expect(api.traiterLot).not.toHaveBeenCalled()
+    expect(lignes()).toHaveLength(3)
+  })
+
+  it('k remonte, jamais au-delà de la première ; Espace ne fait disparaître aucune carte', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.keyboard('jjjjk')
+    expect(within(lignes()[1]).getByRole('button', { name: 'Timbres' })).toHaveFocus()
+    await user.keyboard('kkk')
+    expect(within(lignes()[0]).getByRole('button', { name: 'Appeler Karim' })).toHaveFocus()
+    await user.keyboard(' ')
+    expect(api.traiterLot).not.toHaveBeenCalled()
+    expect(lignes()).toHaveLength(3)
+  })
+
+  it('d choisit un jour pour la carte focalisée ; la frappe dans un champ n\'est jamais un raccourci', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByText('Appeler Karim')
+    await user.keyboard('j')
+    await user.keyboard('d')
+    expect(await screen.findByRole('radio', { name: /Demain/ })).toBeInTheDocument()
+  })
+})
+

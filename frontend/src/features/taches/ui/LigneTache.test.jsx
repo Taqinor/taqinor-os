@@ -204,9 +204,9 @@ describe('TCH44 — Étoile : 3 au plus', () => {
 })
 
 describe('TCH44 — balayage tactile', () => {
-  const poser = (cible, type, x) => {
+  const poser = (cible, type, x, y = 100) => {
     const e = new Event(type, { bubbles: true })
-    Object.assign(e, { clientX: x, clientY: 100, pointerType: 'touch', pointerId: 1 })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
     fireEvent(cible, e)
   }
 
@@ -236,13 +236,220 @@ describe('TCH44 — balayage tactile', () => {
   })
 })
 
+describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne bloque plus le seuil)', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('un balayage droit COMPLET (au-delà de la moitié de la ligne) coche, et la ligne reste en place', async () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const onAnnonce = vi.fn()
+    const { container } = monter({ onTerminer, onAnnonce })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 120)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointermove', 300) // 280 px de doigt : le plafond d'affichage (172) ne doit pas compter
+    poser(ligne, 'pointerup', 300)
+    expect(onTerminer).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }), true)
+    expect(ligne).not.toHaveClass('glisse-droite')
+    await waitFor(() => expect(onAnnonce).toHaveBeenCalledWith('Fait : Devis Settat'))
+  })
+
+  it('un balayage droit court révèle « Fait » sans cocher ; un petit mouvement involontaire ne révèle ni ne coche rien', () => {
+    const onTerminer = vi.fn().mockResolvedValue({})
+    const { container } = monter({ onTerminer })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 110)
+    poser(ligne, 'pointerup', 110)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).toHaveClass('glisse-droite')
+    expect(screen.getByRole('button', { name: 'Fait : Devis Settat' })).toBeInTheDocument()
+    // refermée, puis un décalage de 30 px lâché : rien
+    fireEvent.click(screen.getByRole('button', { name: 'Devis Settat' }))
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 50)
+    poser(ligne, 'pointerup', 50)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(ligne).not.toHaveClass('glisse-droite')
+  })
+
+  it("un mouvement surtout vertical (défilement de la liste) n'est jamais pris pour un balayage", () => {
+    const onTerminer = vi.fn()
+    const onReporter = vi.fn()
+    const { container } = monter({ onTerminer, onReporter })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 100, 100)
+    poser(ligne, 'pointermove', 140, 200) // 40 px de côté, 100 px de haut : c'est du défilement
+    poser(ligne, 'pointermove', 300, 400)
+    poser(ligne, 'pointerup', 300, 400)
+    expect(onTerminer).not.toHaveBeenCalled()
+    expect(onReporter).not.toHaveBeenCalled()
+    expect(ligne.getAttribute('style')).toBeNull()
+  })
+})
+
+describe("R2-017 — la pastille « → ven. 20 » prend la place de la colonne de fin : la ligne ne change pas de hauteur", () => {
+  it("avec une estampille, la colonne de fin ne montre que la pastille (ni l'heure, ni le drapeau, ni l'étoile)", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false }, estampille: '→ ven. 20' })
+    const fin = container.querySelector('.ligne-fin')
+    expect([...fin.children].map((e) => e.className)).toEqual(['estampille chiffres'])
+    expect(fin.querySelector('.estampille')).toHaveTextContent('→ ven. 20')
+    expect(screen.queryByRole('img', { name: 'Priorité haute' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /Essentielle/ })).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Essentielle' })).toBeNull()
+  })
+
+  it("sans estampille, l'heure, le drapeau et l'étoile reviennent", () => {
+    const { container } = monter({ item: { ...item(), priorite: 3, essentielle: false } })
+    const fin = container.querySelector('.ligne-fin')
+    expect(fin.querySelector('.estampille')).toBeNull()
+    expect(fin.querySelector('.heure')).toHaveTextContent('10:00')
+    expect(screen.getByRole('img', { name: 'Priorité haute' })).toBeInTheDocument()
+  })
+})
+
+describe('R2-018 — « 2 h » se lit comme une durée, pas comme « à 2 h »', () => {
+  it('la durée porte un sablier et se lit « Durée : 1 h »', () => {
+    const { container } = monter()
+    const duree = [...container.querySelectorAll('.meta > span')].find((s) => s.textContent.includes('1 h'))
+    expect(duree.querySelector('svg')).not.toBeNull()
+    expect(duree).toHaveTextContent('Durée : 1 h')
+    expect(duree.querySelector('.sr')).toHaveTextContent('Durée :')
+  })
+
+  it('dans un groupe titré du nom du projet, le nom n\'est pas répété sur la ligne ; ailleurs il reste', () => {
+    const { container, unmount } = monter({ groupeTitre: 'Ventes' })
+    expect(container.querySelector('.meta .projet-nom')).toBeNull()
+    expect(container.querySelector('.meta')).toHaveTextContent('échéance jeu. 19')
+    unmount()
+    const { container: autre } = monter({ groupeTitre: 'Salon Solaire Expo' })
+    expect(autre.querySelector('.meta .projet-nom')).toHaveTextContent('Ventes')
+  })
+
+  it('une méta courte (au plus deux puces brèves) pose `meta-courte` : la méta peut tenir sur la ligne du titre', () => {
+    const courte = { ...item(), projet: null }
+    const { container, unmount } = monter({ item: courte })
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte')
+    unmount()
+    // trois puces (échéance, durée, projet) : trop pour la ligne du titre
+    const { container: longue, unmount: u2 } = monter()
+    expect(longue.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+    u2()
+    // un lien ou une raison longue : jamais courte
+    const { container: lien } = monter({ item: { ...courte, lien: { cible: 'ventes.devis', id: 1, libelle: 'DEV-2026-11-0042', url: '/x', etat: 'ok' } } })
+    expect(lien.querySelector('.ligne-corps')).not.toHaveClass('meta-courte')
+  })
+})
+
+describe('R2-032 — balayage : actions dévoilées proportionnellement, ligne ouverte qui se referme', () => {
+  const poser = (cible, type, x, y = 100) => {
+    const e = new Event(type, { bubbles: true })
+    Object.assign(e, { clientX: x, clientY: y, pointerType: 'touch', pointerId: 1 })
+    fireEvent(cible, e)
+  }
+
+  it('à mi-course, les actions se partagent la largeur découverte : plus de bande grise seule à côté de la ligne', () => {
+    const { container } = monter({ reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 200)
+    const actions = container.querySelector('.actions.droite')
+    expect(actions.style.width).toBe('100px')
+    expect(actions.style.left).toBe('auto')
+    const boutons = [...actions.querySelectorAll('.action')]
+    expect(boutons).toHaveLength(2)
+    boutons.forEach((b) => { expect(b.style.flexGrow).toBe('1'); expect(b.style.flexBasis).toBe('0px'); expect(b.style.width).toBe('auto') })
+    poser(ligne, 'pointerup', 200)
+  })
+
+  it('un balayage vers la droite dévoile « Fait » à la largeur du doigt', () => {
+    const { container } = monter()
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 20)
+    poser(ligne, 'pointermove', 90)
+    const actions = container.querySelector('.actions:not(.droite)')
+    expect(actions.style.width).toBe('70px')
+    expect(actions.style.right).toBe('auto')
+    poser(ligne, 'pointerup', 90)
+  })
+
+  it("une ligne ouverte se referme au premier toucher ailleurs, et ce toucher n'ouvre rien d'autre", async () => {
+    const onOuvrir = vi.fn()
+    render(
+      <div role="list">
+        <LigneTache item={{ ...item(), id: 1, titre: 'Première' }} aujourdhui={AUJOURDHUI} reporterLibelle="lun. 23" onOuvrir={onOuvrir} />
+        <LigneTache item={{ ...item(), id: 2, titre: 'Seconde' }} aujourdhui={AUJOURDHUI} onOuvrir={onOuvrir} />
+      </div>,
+    )
+    const [premiere] = document.querySelectorAll('.ligne')
+    poser(premiere, 'pointerdown', 300)
+    poser(premiere, 'pointermove', 220)
+    poser(premiere, 'pointerup', 220)
+    expect(premiere).toHaveClass('glisse-gauche')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(premiere).not.toHaveClass('glisse-gauche')
+    expect(onOuvrir).not.toHaveBeenCalled() // le toucher a refermé la première, il n'a pas ouvert la seconde
+    // et le toucher d'après, lui, ouvre normalement
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Seconde' }))
+    expect(onOuvrir).toHaveBeenCalledWith(expect.objectContaining({ id: 2 }))
+  })
+
+  it("toucher la ligne ouverte elle-même ne la referme pas par le toucher « ailleurs » (ses boutons restent actifs)", async () => {
+    const onChoisirJour = vi.fn()
+    const { container } = monter({ onChoisirJour, reporterLibelle: 'lun. 23' })
+    const ligne = container.querySelector('.ligne')
+    poser(ligne, 'pointerdown', 300)
+    poser(ligne, 'pointermove', 220)
+    poser(ligne, 'pointerup', 220)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Choisir un jour' }))
+    expect(onChoisirJour).toHaveBeenCalledWith(expect.objectContaining({ id: 20 }))
+  })
+})
+
+describe('R2-028 — la ligne dit qu\'il y a une note, une check-list, un rappel (comme Things)', () => {
+  const indices = (container) => [...container.querySelectorAll('.meta .indice')].map((e) => e.textContent)
+
+  it('une tâche avec note, check-list et rappel porte trois indices discrets, dans cet ordre', () => {
+    const riche = { ...item(), notes: 'Appeler avant 11 h.', checklist: { faits: 1, total: 2 }, rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    const { container } = monter({ item: riche })
+    expect(indices(container)).toEqual(['Note', 'Check-list : 1/2', 'Rappel à 09:45'])
+    // des icônes décoratives : la lecture d'écran n'entend que les libellés
+    container.querySelectorAll('.meta .indice svg').forEach((svg) => expect(svg).toHaveAttribute('aria-hidden', 'true'))
+  })
+
+  it('la note se lit aussi du drapeau `a_notes` d\'une liste (les notes elles-mêmes ne sont servies que par la fiche)', () => {
+    const { container } = monter({ item: { ...item(), a_notes: true } })
+    expect(indices(container)).toEqual(['Note'])
+  })
+
+  it('rien à dire, rien d\'affiché : ni note vide, ni check-list absente, ni rappel d\'une tâche faite', () => {
+    const { container, unmount } = monter({ item: { ...item(), notes: '', checklist: null, rappel: null } })
+    expect(indices(container)).toEqual([])
+    unmount()
+    const faite = { ...item(), statut: 'fait', rappel: { jour: AUJOURDHUI, heure: '09:45' } }
+    expect(indices(monter({ item: faite }).container)).toEqual([])
+  })
+
+  it('un rappel d\'un autre jour dit son jour ; les indices ne comptent pas dans la méta brève', () => {
+    const autre = { ...item(), projet: null, rappel: { jour: '2026-11-20', heure: '09:45' }, checklist: { faits: 0, total: 3 } }
+    const { container } = monter({ item: autre })
+    expect(indices(container)).toEqual(['Check-list : 0/3', 'Rappel ven. 20 à 09:45'])
+    expect(container.querySelector('.ligne-corps')).toHaveClass('meta-courte') // échéance + durée seulement
+  })
+})
+
 describe('Passe visuelle n° 46 — résultats de la Recherche (mot surligné, méta de statut)', () => {
   // le balisage d'une ligne SANS les props de la recherche, figé AVANT leur ajout (ids de Radix et tracés des icônes retirés)
-  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '')
+  // (les alias de classe d'icône changent d'une version de lucide à l'autre : `lucide-more-horizontal` n'est pas comparé)
+  const balisage = (container) => container.innerHTML.replace(/ (id|aria-controls|d)="[^"]*"/g, '').replace(/ lucide-more-horizontal/g, '')
 
   it('une ligne sans ces props rend exactement comme avant (balisage figé)', () => {
     const { container } = monter()
-    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres">1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis lucide-more-horizontal i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
+    expect(balisage(container)).toMatchInlineSnapshot(`"<div role="list"><div class="ligne-cadre" role="listitem" data-ligne="tache:20"><div class="ligne"><button type="button" role="checkbox" aria-checked="false" aria-label="Marquer « Devis Settat » comme faite" class="case"><span class="rond"><svg viewBox="0 0 24 24" aria-hidden="true"><path></path></svg></span></button><div class="ligne-corps"><button type="button" class="ligne-corps-bouton"><span class="titre">Devis Settat</span></button><div class="meta"><span class="fort chiffres">échéance jeu. 19</span><span class="chiffres"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hourglass i i-14" aria-hidden="true"><path></path><path></path><path></path><path></path></svg><span class="sr">Durée : </span>1 h</span><span data-p="vert"><i class="point"></i><span class="projet-nom">Ventes</span></span></div></div><div class="ligne-fin"><span class="heure chiffres">10:00</span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-star i i-16 etoile" aria-label="Essentielle" role="img"><path></path></svg></div><button type="button" class="ligne-actions" aria-label="Actions pour « Devis Settat »" aria-haspopup="menu" aria-expanded="false" data-state="closed"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ellipsis i" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button></div></div></div>"`)
   })
 
   it('le mot cherché est surligné dans le titre, sans tenir compte de la casse ni des accents', () => {

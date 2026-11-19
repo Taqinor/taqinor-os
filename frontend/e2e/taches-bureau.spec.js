@@ -2,7 +2,8 @@
 //
 // Parcours joués ici (maquette `ecran-aujourdhui-matin.html`, spec-3 §1 « Placer à une heure » : 1 glisser) :
 //   les trois colonnes (Mes projets · la liste · l'Agenda du jour) mesurées à 1440 px, puis glisser une ligne sur une
-//   heure de l'Agenda → `planifier/` → « Placée à 10:00 · Annuler » → Annuler.
+//   heure de l'Agenda → `planifier/` → « Placée à 10:00 · Annuler » → Annuler ; puis (R2-040) ce qu'on fait dans la
+//   fiche (Quand › Aujourd'hui, Fait, Supprimer) se voit dans la liste sous elle, sans rechargement.
 // NON joué ici : l'iPhone (aucune colonne : `Aujourdhui.test.jsx` / `ColonneBureau.test.jsx`, avec `matchMedia`),
 // la ligne « maintenant » (horloge) — acceptation en direct.
 //
@@ -10,7 +11,7 @@
 // rejouable, indépendante de l'ordre des autres specs.
 import { test, expect } from '@playwright/test'
 import {
-  attendreAujourdhui, creerProjet, creerTaches, jourServeur, ligne, lireTache, reinitialiser, titreUnique, toast,
+  attendreAujourdhui, creerProjet, creerTaches, jourServeur, ligne, lireTache, ouvrirEcran, reinitialiser, titreUnique, toast,
 } from './taches-aides'
 
 test.use({ viewport: { width: 1440, height: 900 } })
@@ -70,5 +71,91 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     await expect(laLigne.locator('.heure')).toHaveCount(0)
     await expect(page.locator('.tch-bureau-agenda').getByRole('checkbox', { name: `Fait : ${tache.titre}` })).toHaveCount(0)
     await expect.poll(async () => (await lireTache(page, tache.id)).heure_debut).toBeNull()
+  })
+
+  test('R2-050 / R2-043 — la fiche est un panneau à droite : la liste reste visible, `j` puis Entrée change de fiche, Échap ferme', async ({ page }) => {
+    await reinitialiser(page)
+    const jour = await jourServeur(page)
+    const [a, b] = await creerTaches(page, [titreUnique('Envoyer le devis'), titreUnique('Appeler le client')], { jour_prevu: jour })
+    await attendreAujourdhui(page)
+    await ligne(page, a.id).locator('.ligne-corps-bouton').click()
+    const ficheA = page.locator(`[data-fiche="${a.id}"]`)
+    await expect(ficheA.getByRole('textbox', { name: 'Titre' })).toHaveValue(a.titre)
+    const panneau = page.getByRole('dialog', { name: a.titre })
+    await expect(panneau).toHaveAttribute('aria-modal', 'false')
+    await expect(page.locator('.tch .voile')).toHaveCount(0)
+    const boite = await panneau.boundingBox()
+    expect(boite.x + boite.width, 'collé au bord droit').toBeGreaterThanOrEqual(1439)
+    expect(boite.width, 'environ 420 px').toBeLessThanOrEqual(430)
+    await expect(ligne(page, b.id), 'la liste reste visible à côté').toBeVisible()
+    // le focus est resté sur la ligne : `j` va à la suivante, Entrée ouvre SA fiche dans le même panneau
+    await page.keyboard.press('j')
+    await expect(ligne(page, b.id).locator('.ligne-corps-bouton')).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.locator(`[data-fiche="${b.id}"]`).getByRole('textbox', { name: 'Titre' })).toHaveValue(b.titre)
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-fiche]')).toHaveCount(0)
+    await expect(page).not.toHaveURL(/tache=/)
+  })
+
+  test('R2-043 — « ⋯ › Alléger ma journée » : le focus est DANS la feuille, Échap la ferme et le rend au bouton', async ({ page }) => {
+    await journeeAvecUneTache(page)
+    const menu = page.getByRole('button', { name: "Plus d'actions" }).first()
+    await menu.click()
+    await page.getByRole('menuitem', { name: /Alléger/ }).click()
+    const feuille = page.getByRole('dialog', { name: 'Alléger ma journée' })
+    await expect(feuille).toBeVisible()
+    // modale (aujourd'hui) ou panneau (R2-050, quand Alléger passe `variante="panneau"`) : le focus est dedans
+    await expect.poll(() => feuille.evaluate((f) => f.contains(document.activeElement))).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect(feuille).toHaveCount(0)
+    await expect(menu).toBeFocused()
+  })
+
+  test.describe('iPhone (390 px)', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+    test('R2-047 — Plus › Supprimer : la confirmation tient dans l\'écran, « Annuler » visible', async ({ page }) => {
+      const { tache } = await journeeAvecUneTache(page)
+      await ligne(page, tache.id).locator('.ligne-corps-bouton').click()
+      const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+      await fiche.getByRole('button', { name: 'Plus', exact: true }).click()
+      await fiche.getByRole('button', { name: 'Supprimer', exact: true }).click()
+      const question = page.getByRole('alertdialog', { name: `Supprimer « ${tache.titre} »` })
+      await question.scrollIntoViewIfNeeded()
+      for (const nom of [`Supprimer « ${tache.titre} »`, 'Annuler']) {
+        const boite = await question.getByRole('button', { name: nom, exact: true }).boundingBox()
+        expect(boite.x, `${nom} commence dans l'écran`).toBeGreaterThanOrEqual(0)
+        expect(boite.x + boite.width, `${nom} finit dans l'écran`).toBeLessThanOrEqual(390)
+      }
+    })
+  })
+
+  test('R2-040 — la fiche met la liste à jour sans rechargement : Quand › Aujourd\'hui, Fait, Supprimer', async ({ page }) => {
+    await reinitialiser(page)
+    const jour = await jourServeur(page)
+    const demain = new Date(Date.parse(`${jour}T00:00:00Z`) + 86400000).toISOString().split('T')[0]
+    const [tache] = await creerTaches(page, [titreUnique('Relancer le client')], { jour_prevu: demain })
+    const [autre] = await creerTaches(page, [titreUnique('Commander les rails')], { jour_prevu: jour })
+    await ouvrirEcran(page, `/taches/aujourdhui?tache=${tache.id}`, 'aujourdhui')
+    await expect(ligne(page, tache.id)).toHaveCount(0)
+    const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+    await fiche.getByRole('button', { name: /^Quand je la fais/ }).click()
+    await fiche.getByRole('radio', { name: /^Aujourd'hui/ }).click()
+    // la ligne arrive dans la liste (sous la fiche) sans qu'on recharge la page
+    await expect(ligne(page, tache.id)).toHaveCount(1)
+    await fiche.getByRole('button', { name: 'Fait', exact: true }).click()
+    await expect(ligne(page, tache.id).locator('.ligne.faite')).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(fiche).toHaveCount(0)
+
+    // Supprimer depuis la fiche (ouverte par sa ligne) : la ligne part
+    await ligne(page, autre.id).locator('.ligne-corps-bouton').click()
+    const fiche2 = page.locator(`[data-fiche="${autre.id}"]`)
+    await fiche2.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('menuitem', { name: 'Supprimer' }).click()
+    await fiche2.getByRole('button', { name: `Supprimer « ${autre.titre} »` }).click()
+    await expect(fiche2).toHaveCount(0)
+    await expect(ligne(page, autre.id)).toHaveCount(0)
   })
 })

@@ -93,10 +93,12 @@ référence données/API.
 | ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
 | ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées récemment · Réglages |
 | Loupe | Chercher dans mes tâches |
+| Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications ({n}) » (celle de l'ERP) ; au défilement, le titre de la page en compact |
+| Écran enfant (projet ouvert, sous-page de Réglages) | « ‹ {écran parent} » au-dessus du titre (« ‹ Projets », « ‹ Réglages ») ; ni loupe ni Copilote, le ⋯ reste |
 | Bouton flottant (seul bouton plein) | Ajouter |
 | Bouton global | Copilote |
 | Palette | Créer une tâche · Chercher « {q} » dans mes tâches · Copilote : Planifie ma journée · Aide-moi à prioriser · Range ma liste · Où j'en suis ? · Nouveau projet · Faire le bilan · Aujourd'hui · À trier · Projets · Agenda · Supprimer « {titre} » · Abandonner « {titre} » |
-| Aide des touches (`?`) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
+| Aide des touches (`?`, feuille « Touches de Tâches » ; dans Tâches, `?` n'ouvre plus l'aide générale de l'ERP, `/` va à la Recherche) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
 | Raccourci de manifeste (AVANCÉ) | Tâches |
 | Carte cockpit | « Tâches · Aujourd'hui » · « {faites} sur {objectif} » · 3 lignes cochables · Ouvrir ; vide : « Rien de gardé » |
 
@@ -218,30 +220,33 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Élément | Texte |
 |---|---|
 | Titre · bouton | Projets · **Nouveau projet** |
-| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « — »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
-| Appui long | Mettre en haut · Mettre en pause · Supprimer |
+| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
+| Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
-| Vide | « Aucun projet » · **Coller mes listes** |
+| Vide | « Aucun projet » · **Coller mes listes** — seulement sur RÉPONSE du serveur (R2-070) : lecture échouée = l'erreur dite ; hors ligne, la dernière liste lue du compte (cache `taches:projets:<user>:…`, vidé à la déconnexion) ; la page ne porte pas la date du jour en sous-titre (R2-085) |
 | Nouveau projet | « Nom du projet » · Créer · « Depuis un modèle » ; aussitôt : Planifier le projet |
 | En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
-| Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
+| Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre ; R2-066 : les tâches datées d'une étape se lisent sous elle (iPhone) ou en points sur la piste (bureau), une étape sans date a sa rangée ou la bande « Sans date : … ») — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
-| ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
+| Titre d'un projet · « Fini quand… » | le nom se touche pour le renommer (Entrée ou la sortie enregistre, Échap annule ; refus sous le champ) · « Fini quand… » se corrige sur place (vide : « Ce sera fini quand… ») · toasts « Projet renommé » · « Couleur changée » · « Échéance changée » · « Échéance retirée » · « Objectif enregistré » (tous avec Annuler) |
+| Ordre des tâches d'une étape (R2-063) | glisser la poignée (souris : au survol ; Tableau : la poignée de la carte) · ⋯ → **Réorganiser** : bandeau « Réorganiser · OK », ▲ « Monter « {titre} » » / ▼ « Descendre « {titre} » » (éteints en tête et en queue) · clavier : Alt+↑/↓ sur une ligne, `j`/`k` pour parcourir ; toast « Ordre changé · Annuler » ; annonce « {titre} : position {n} sur {m} » |
+| ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Réorganiser (vue Liste) · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
-| Projet vide | « Planifier le projet » · Passer |
+| Projet vide | « Ajoute la première tâche » · « Planifier le projet » (R2-071) · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |
 | Planifier — étape 1 | « Priorité : Haute · Moyenne · Basse » ; « Ce sera fini quand… » |
 | Planifier — étape 2 | « Échéance : 1 semaine · 2 semaines · 1 mois · 6 semaines · 3 mois · Choisir » |
 | Planifier — étape 3 | « Premières actions » ; par action « Aujourd'hui · Demain · Sans jour » ; « Planifier avec le Copilote » |
-| Planifier — Plus | Étapes · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
+| Planifier — Plus | Étapes (aide : « Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret. » ; aperçu : « 3 étapes · 0 tâche ») · Jalons · « Si ça échoue, ce sera sans doute parce que… » (« En faire une tâche ») |
 | Boutons du rituel | Suivant · Passer · **Terminer** |
 | Décaler | « +1 semaine · −1 semaine · Choisir » ; « {n} dates changent. » ; **Appliquer** |
 | Pause | « Mettre en pause « {nom} » ? Ses {k} tâches datées sortent d'Aujourd'hui jusqu'à la reprise. » |
 | Terminer | « Atteint ou abandonné ? » [Atteint] [Abandonné] · « Bilan (facultatif) » · « Ses {n} tâches encore ouvertes : » [Les remettre dans À trier] [Les abandonner] [Les déplacer vers…] · **Terminer** |
 | Supprimer | « Supprimer « {nom} » et ses {n} tâches ? Ils restent 30 jours dans Supprimées récemment. » [Supprimer] [Fermer] |
 | Modèles | « Enregistrer comme modèle » · « Inclure les notes » · « Date de lancement » · « {n} tâches, première le {jour} » · Créer ; vide « Aucun modèle » |
+| Dupliquer · Utiliser ce modèle (R2-065) | nom prérempli (« {nom} (copie) » ; le nom du modèle), l'aperçu « {n} tâches, première le {jour} » lu dès l'ouverture, UN seul **Créer** qui écrit |
 | Dupliquer · Enregistrer comme modèle (sous l'aperçu, seulement si n > 0) | « {n} tâche confidentielle non reprise » / « {n} tâches confidentielles non reprises » |
 | Archive | « Chercher un projet archivé » · Rouvrir ; vide « Aucun projet archivé » |
 
@@ -265,7 +270,8 @@ Santé (`sante[].phrase`) :
 | Titre | Revue de la semaine |
 | En tête | bilan §4.6, ou « Semaine courte, on reprend lundi. » (`semaine_courte`) |
 | Carte par projet | « Faites cette semaine : {titres, 3 au plus} » · « « {titre} » attend « {titre} » » · « Prochaine action : {titre} » [Changer] (sinon champ « Prochaine action ») · santé · « Intention de la semaine (facultatif) » · case « Projet de la semaine » |
-| Boutons | Garder · Pause · Terminer · Suivant ; fin **Terminer** → « Planifier ma semaine » |
+| Intention (R2-068) | UNE seule, en tête de la revue : « Intention de la semaine (facultatif) » (la carte ne la porte plus) |
+| Boutons | segmenté « Décision » : Garder (d'office) · Pause · Terminer (« Atteint ou abandonné ? » : Suivant → éteint jusqu'au choix) ; **Suivant →** écrit la décision ; « Passer » (décision `passe`) ; la revue reprend à la première carte non décidée ; toutes décidées = résumé (« Gardé · En pause · Terminé · Passé ») + **Planifier ma semaine** |
 | Vide | « Aucun projet actif » |
 | Erreur | « Déjà « {projet} » cette semaine. » |
 
@@ -474,7 +480,8 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `ranger_copilote` | À trier ≥ 5 | « {n} tâches à trier : le Copilote peut les ranger dans tes projets. » · Ranger avec le Copilote |
 | `planifier_projet` | 1er projet créé | « Ton premier projet : le planifier en quelques questions ? » · Planifier le projet |
 | `revue` | fin de la 1re semaine | « Fin de ta première semaine : fais le point, projet par projet. » · Ouvrir la revue |
-| astuces (navigateur) | — | « Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher. » · « Touche n pour ajouter, ? pour voir les touches. » · « Tape #nom pour ranger dans un projet. » |
+| astuces (navigateur) | une par jour, jamais le jour où une carte a été répondue ; au doigt (`pointer: coarse`) | « Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher. » · « Garde le doigt sur une ligne pour voir toutes ses actions. » · « Tape #nom pour ranger dans un projet. » |
+| astuces (navigateur) | idem ; à la souris et au clavier | « Touche n pour ajouter, ? pour voir les touches. » · « Glisse une tâche sur l'agenda pour lui donner une heure. » · « Tape #nom pour ranger dans un projet. » |
 
 Toute révélation se ferme par « OK ».
 
@@ -491,7 +498,7 @@ Toute révélation se ferme par « OK ».
 | Ajout | « Ajoutée : {titre} » ; liste « {n} tâches créées » |
 | Hors ligne | « Hors ligne : gardée, elle partira dès le retour du réseau » |
 | Conflit | « Modifiée sur ton autre appareil : choisis Garder la mienne ou Prendre l'autre » |
-| Chargement plus long que 1 s | « Chargement » |
+| Chargement plus long que 300 ms (squelette en lignes de tâches) | « Chargement » |
 
 Noms accessibles : case « Marquer « {titre} » comme faite » ; étoile « Essentielle » (état coché lu) ; bouton de ligne
 « Actions pour « {titre} » » (menu de l'appui long : rien n'exige balayage ni glisser) ; × d'une puce « Retirer « {jeton} »
@@ -628,6 +635,10 @@ objectif {objectif}) ».
 | C7 | « {n} tâches reportées 3 fois ou plus. » | « Les revoir maintenant ? » |
 | C8 | « Ton projet prioritaire n'a pas avancé depuis 14 jours. » (écran : « « {projet} » n'a pas avancé depuis 14 jours. ») | « Mettre une de ses tâches dans Proposé demain ? » |
 
+Le texte SERVI d'une carte de constat (`proposition.texte`) est la phrase **suivie de sa question**, séparées par une
+espace : « 3 tâches reportées 3 fois ou plus. Les revoir maintenant ? » — les boutons « Oui · Pas maintenant » répondent
+à cette question (R2-014). C5, information sans action, reste la phrase seule (bouton « OK »). `C1.detail` se sert seul.
+
 ### 4.5 Retour d'absence
 
 Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Proposé · Annuler » ; « Les voir une par une »
@@ -635,9 +646,11 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 
 ### 4.6 Revue de la semaine (en tête)
 
-« Du {lun.} au {ven.} : {faites} tâches en {jours} jours (précédente : {prec}). Objectif atteint {oa} jours sur {jours}
+« Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
 · essentiel {e} sur {je} · {pt} des {pl} gardées. {Jour non travaillé} : {n}. » — parties sans objet omises (`libre` :
-sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Semaine courte (`semaine_courte`) : « Semaine
+sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
+(`courante` faux dans les données du gabarit) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
+précédente). » (R2-034 ; avant : « Du lun. 16 au ven. 20 : 4 tâches en 1 jour (précédente : 9). ») Semaine courte (`semaine_courte`) : « Semaine
 courte, on reprend lundi. » à la place. UN constat au plus en dessous. Bouton final « Planifier ma semaine ».
 
 ## 5. Le Copilote

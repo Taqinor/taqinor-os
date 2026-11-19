@@ -7,6 +7,7 @@ actif, étape Achats id 8) ; aucun férié, aucune étiquette existante.
 """
 import unittest
 from datetime import date, datetime, time
+from pathlib import Path
 
 from apps.taches.saisie.analyseur import analyser, classer_capture
 from apps.taches.saisie.collage import decouper_collage, erreurs_limites
@@ -175,6 +176,24 @@ LIGNES = [
      {'jour_prevu': j(18), 'projet_id': 5}, (), None, 'capture', 'journee'),
     ('C6', 'Rapport pour vendredi', 'Rapport', {'echeance': j(20)}, (), None, 'capture',
      'a_trier'),
+    # R2-006 — phrases courantes que F1 et S1 ont tapées et que la grammaire laissait dans le titre
+    ('R6a', 'Voir Sami dans une semaine', 'Voir Sami', {'jour_prevu': j(24)}),
+    ('R6b', 'Relancer la banque dans un mois', 'Relancer la banque', {'jour_prevu': j(17, 12)}),
+    ('R6c', 'Facture fin du mois', 'Facture', {'jour_prevu': j(30)}),
+    ('R6d', 'Appeler maman ce midi', 'Appeler maman',
+     {'jour_prevu': j(17), 'heure_debut': '12:00', 'moment': 'apres_midi'}),
+    ('R6e', 'Appeler le notaire mercredi aprem', 'Appeler le notaire',
+     {'jour_prevu': j(18), 'moment': 'apres_midi'}),
+    ('R6f', 'Préparer le devis cet aprem', 'Préparer le devis', {'jour_prevu': j(17), 'moment': 'apres_midi'}),
+    ('R6g', 'Rapport TVA !haute', 'Rapport TVA', {'priorite': 3}),
+    ('R6h', 'Ranger le dépôt !basse', 'Ranger le dépôt', {'priorite': 1}),
+    ('R6i', 'Relire le contrat !moyenne', 'Relire le contrat', {'priorite': 2}),
+    ('R6j', 'Payer la CNSS avant le 25', 'Payer la CNSS', {'echeance': j(25)}),
+    ('R6k', 'Réunion chantier le 25 à 10h', 'Réunion chantier',
+     {'jour_prevu': j(25), 'heure_debut': '10:00', 'moment': 'matin'}),
+    ('R6l', 'Commander les rails le 15', 'Commander les rails', {'jour_prevu': j(15, 12)}),
+    ('R6m', 'Acheter le 25 kg de ciment', 'Acheter le 25 kg de ciment', {}),
+    ('R6n', 'Payer le loyer le 31', 'Payer le loyer', {'jour_prevu': j(31, 12)}),
 ]
 
 
@@ -258,6 +277,55 @@ class SortieEtOptionsTests(unittest.TestCase):
         a = lire('Lait #maison', projets=projets)
         self.assertEqual(a.champs['projet_id'], 5)
         self.assertEqual(a.alertes, ('plusieurs_projets',))
+
+    # R2-003 — « #Salon » prend « Salon Solaire Expo » : le début d'un mot du nom suffit, sans créer de doublon.
+    PROJETS_LONGS = (
+        ProjetConnu(11, 'Salon Solaire Expo', 'actif', 1), ProjetConnu(12, 'Chantier Benali 9 kWc', 'actif', 2),
+        ProjetConnu(13, 'Site web', 'actif', 3), ProjetConnu(14, 'Site Polydesign', 'en_pause', 4),
+        ProjetConnu(15, 'Salle', 'archive', 5))
+
+    def test_r2_003_debut_d_un_mot_d_un_seul_projet_le_prend(self):
+        for saisie, attendu in (('Stand #Sal', 11), ('Stand #Salon', 11), ('Stand #solaire', 11),
+                                ('Stand #Salon_Sol', 11), ('Visite #Chantier', 12), ('Visite #benali', 12)):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertEqual(a.champs.get('projet_id'), attendu)
+                self.assertNotIn('nouveau_projet', a.champs)
+                self.assertEqual(a.titre, saisie.split(' #')[0])
+                self.assertEqual(a.alertes, ())
+        self.assertEqual(lire('Stand #Sal', projets=self.PROJETS_LONGS).jetons[0]['libelle'], '● Salon Solaire Expo')
+
+    def test_r2_003_plusieurs_projets_le_premier_par_rang_et_l_alerte(self):
+        a = lire('Photos #Site', projets=self.PROJETS_LONGS)
+        self.assertEqual(a.champs['projet_id'], 13)
+        self.assertEqual(a.alertes, ('plusieurs_projets',))
+
+    def test_r2_003_l_egalite_reste_prioritaire(self):
+        projets = (ProjetConnu(21, 'Salon Expo', 'actif', 1), ProjetConnu(22, 'Salon', 'actif', 2))
+        a = lire('Stand #Salon', projets=projets)
+        self.assertEqual(a.champs['projet_id'], 22)
+        self.assertEqual(a.alertes, ())
+
+    def test_r2_003_aucun_debut_de_mot_reste_un_nouveau_projet(self):
+        for saisie in ('Plan #Nouveau', 'Plan #alon', 'Plan #Salles'):
+            with self.subTest(saisie=saisie):
+                a = lire(saisie, projets=self.PROJETS_LONGS)
+                self.assertNotIn('projet_id', a.champs)
+                self.assertEqual(a.champs['nouveau_projet']['nom'], saisie.split('#')[1])
+
+    def test_r2_003_un_projet_archive_n_est_jamais_pris_par_son_debut(self):
+        a = lire('Ranger #Sall', projets=self.PROJETS_LONGS)
+        self.assertNotIn('projet_id', a.champs)
+        self.assertEqual(a.champs['nouveau_projet']['nom'], 'Sall')
+
+    def test_r2_003_la_porte_capture_est_inchangee(self):
+        # capture : jamais de projet par son début (ni par `#`, ni par « projet <nom> » en tête)
+        a = lire('Stand #Sal', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertNotIn('projet_id', a.champs)
+        b = lire('projet Salon stand', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertNotIn('projet_id', b.champs)
+        c = lire('projet Salon Solaire Expo stand', projets=self.PROJETS_LONGS, porte='capture')
+        self.assertEqual(c.champs['projet_id'], 11)
 
     def test_projet_archive_reste_a_trier(self):
         projets = (ProjetConnu(9, 'Vieux', 'archive', 1),)
@@ -485,6 +553,61 @@ class CollageTests(unittest.TestCase):
         self.assertEqual(champs[2]['nouveau_projet'], {'nom': 'Bricolage', 'priorite': 2})
         self.assertEqual(apercu['projets_communs'], [])
         self.assertEqual(apercu['projets_nouveaux'], [{'nom': 'Bricolage', 'priorite': 2}])
+
+    def _projets_par_ligne(self, apercu):
+        noms = {5: 'Maison', 3: 'Polydesign'}
+        sortie = []
+        for ligne in apercu['lignes']:
+            champs = ligne['champs']
+            nom = champs.get('nouveau_projet', {}).get('nom') or noms.get(champs.get('projet_id'))
+            sortie.append((ligne['titre'], nom))
+        return sortie
+
+    def test_r2_004_liste30_comme_dans_notes_sept_groupes_nommes(self):
+        texte = (Path(__file__).parent / 'donnees' / 'liste30.txt').read_text(encoding='utf-8')
+        apercu = coller(texte)
+        groupes = {}
+        for titre, nom in self._projets_par_ligne(apercu):
+            groupes.setdefault(nom, []).append(titre)
+        self.assertEqual(list(groupes), [
+            'Villa Benjelloun Dar Bouazza', 'Hôtel Atlas Marrakech', 'Pompage Ferme Berrechid',
+            'Boulangerie Ain Sebaa', 'Admin', 'Recrutement', 'Divers'])
+        self.assertEqual([len(t) for t in groupes.values()], [3, 4, 4, 2, 4, 2, 9])
+        self.assertEqual(len(apercu['lignes']), 28)
+        self.assertNotIn('Recrutement', titres(apercu))  # un titre n'est jamais une tâche
+        self.assertTrue(groupes['Admin'][0].startswith('payer la CNSS'))
+        self.assertEqual(apercu['projets_communs'], [])
+        self.assertEqual(len(apercu['projets_nouveaux']), 7)
+
+    def test_r2_004_un_titre_sans_deux_points_suivi_de_lignes_a_tiret(self):
+        apercu = coller('Villa\n- poser les rails\n- câbler\nHôtel Atlas\n- relancer\n- visiter')
+        self.assertEqual(self._projets_par_ligne(apercu), [
+            ('poser les rails', 'Villa'), ('câbler', 'Villa'), ('relancer', 'Hôtel Atlas'), ('visiter', 'Hôtel Atlas')])
+        self.assertEqual(apercu['projets_communs'], [])
+
+    def test_r2_004_un_titre_precede_d_une_ligne_vide(self):
+        apercu = coller('Courses\nlait\npain\n\nBricolage\nvis\nclous')
+        self.assertEqual(self._projets_par_ligne(apercu), [
+            ('lait', 'Courses'), ('pain', 'Courses'), ('vis', 'Bricolage'), ('clous', 'Bricolage')])
+
+    def test_r2_004_sans_structure_rien_ne_change(self):
+        # une marque en majuscule au milieu d'une liste de courses reste une tâche
+        apercu = coller('Courses\nlait\nNutella\nbeurre\npain')
+        self.assertEqual([c['nom'] for c in apercu['projets_communs']], ['Courses'])
+        self.assertEqual(titres(apercu), ['lait', 'Nutella', 'beurre', 'pain'])
+        # deux blocs de deux lignes : pas un titre
+        bloc = coller('Appeler Karim\nRelancer Salma\n\nPayer\nlait')
+        self.assertIn('Payer', titres(bloc))
+
+    def test_r2_004_un_titre_avec_date_ou_puce_reste_une_tache(self):
+        apercu = coller('Villa\n- câbler\nRelancer demain\n- devis\n- facture')
+        self.assertIn('Relancer', titres(apercu))
+        self.assertEqual(self._projets_par_ligne(apercu)[1], ('Relancer', 'Villa'))
+
+    def test_r2_004_les_points_en_retrait_restent_une_check_list(self):
+        apercu = coller('Villa\n- câbler\nPréparer la valise\n    - passeport\n    - chargeur')
+        self.assertEqual([ligne['etape_de'] for ligne in apercu['lignes']], [None, None, 1, 1])
+        self.assertEqual(titres(apercu)[1], 'Préparer la valise')
 
     def test_derniere_ligne_avec_deux_points_reste_une_tache(self):
         apercu = coller('Une chose\nUne autre\nPenser à :',

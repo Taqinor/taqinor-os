@@ -16,11 +16,20 @@ import { heureDite } from '../lib/textes'
    etat-astuce.html. Textes : reference/textes.md §2.17, §2.18, §4.2.
    ========================================================================== */
 
+/* R2-015 — une astuce n'est montrée que sur l'appareil où elle sert : le balayage et l'appui long n'existent qu'au doigt
+   (`pointer: coarse`), les touches et le glisser vers l'agenda qu'à la souris et au clavier. Sans `matchMedia`
+   (test, vieux navigateur), l'appareil est un bureau. */
 const ASTUCES = [
-  { cle: 'balayage', texte: 'Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.', demo: true },
-  { cle: 'touches', texte: 'Touche n pour ajouter, ? pour voir les touches.' },
+  { cle: 'balayage', appareil: 'doigt', texte: 'Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.', demo: true },
+  { cle: 'appui_long', appareil: 'doigt', texte: 'Garde le doigt sur une ligne pour voir toutes ses actions.' },
+  { cle: 'touches', appareil: 'bureau', texte: 'Touche n pour ajouter, ? pour voir les touches.' },
+  { cle: 'glisser_agenda', appareil: 'bureau', texte: "Glisse une tâche sur l'agenda pour lui donner une heure." },
   { cle: 'diese', texte: 'Tape #nom pour ranger dans un projet.' },
 ]
+
+const auDoigt = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  ? window.matchMedia('(pointer: coarse)').matches
+  : false)
 
 /** Pour chaque révélation : le bouton qui mène quelque part (en plus d'OK) et sa destination. */
 const REVELATIONS = {
@@ -42,21 +51,23 @@ function lireAstuces() {
   }
 }
 
+/** `cle` : l'astuce vue (une seule fois chacune) ; `null` : seulement « ce jour est pris » (R2-014). */
 function noterAstuce(cle, jour) {
   const { vues } = lireAstuces()
   try {
-    window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify({ vues: [...new Set([...vues, cle])], jour }))
+    window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify({ vues: cle ? [...new Set([...vues, cle])] : vues, jour }))
     return true
   } catch {
     return false // stockage indisponible (navigation privée) : l'astuce ne sera pas retenue, rien d'autre
   }
 }
 
-/** La prochaine astuce à montrer aujourd'hui (une par jour, chacune une seule fois), ou `null`. */
+/** La prochaine astuce à montrer aujourd'hui (une par jour, chacune une seule fois, propre à l'appareil), ou `null`. */
 function prochaineAstuce(jour) {
   const { vues, jour: dernier } = lireAstuces()
   if (dernier === jour) return null
-  return ASTUCES.find((a) => !vues.includes(a.cle)) ?? null
+  const surDoigt = auDoigt()
+  return ASTUCES.find((a) => !vues.includes(a.cle) && (!a.appareil || (a.appareil === 'doigt') === surDoigt)) ?? null
 }
 
 function Boutons({ boutons, onRepondre, desactive }) {
@@ -183,6 +194,7 @@ export default function CarteDuMoment({
   objectif = 0,
   enLigne = true,
   avecAstuce = true,
+  bilanFait = false,
   brouillon = null,
   onRepondre,
   onGarder,
@@ -193,27 +205,32 @@ export default function CarteDuMoment({
 }) {
   const [, relire] = useState(0)
   const desactive = !enLigne
-  const ecarter = (cle) => { ecartees.add(`${cle}:${jour}`); relire((v) => v + 1) }
-  const repondre = (proposition) => (reponse) => onRepondre(proposition, reponse)
+  // R2-014 — UNE carte au plus par matin : dès qu'une carte est répondue, écartée ou agie, la journée est « prise » et
+  // aucune astuce ne vient prendre sa place (ni maintenant, ni au rechargement : `taches:astuces`)
+  const prise = (rappel) => (...args) => { noterAstuce(null, jour); return rappel?.(...args) }
+  const ecarter = (cle) => { ecartees.add(`${cle}:${jour}`); noterAstuce(null, jour); relire((v) => v + 1) }
+  const repondre = (proposition) => prise((reponse) => onRepondre(proposition, reponse))
   const type = carte?.type
+  const constatApresBilan = bilanFait && carte?.proposition?.type === 'constat' // la carte « 57 % » ne remonte pas après le bilan
 
   if (type === 'retour' && carte.proposition) {
     return <CarteRetour proposition={carte.proposition} onRepondre={repondre(carte.proposition)} desactive={desactive} />
   }
   if (brouillon) return brouillon
+  if (constatApresBilan) return null
   if (type === 'bilan_hier' && !ecartees.has(`bilan_hier:${jour}`)) {
     return (
       <CarteSimple
         etiquette="Bilan d'hier"
         texte="Le bilan d'hier n'est pas fait : il reste possible jusqu'à midi."
         actions={[
-          { libelle: "Faire le bilan d'hier", principal: true, onClick: () => onBilan(carte.donnees?.jour), desactive },
+          { libelle: "Faire le bilan d'hier", principal: true, onClick: prise(() => onBilan(carte.donnees?.jour)), desactive },
           { libelle: 'Passer', onClick: () => ecarter('bilan_hier') },
         ]}
       />
     )
   }
-  if (type === 'garder') return <CarteGarder donnees={carte.donnees ?? {}} onGarder={onGarder} desactive={desactive} />
+  if (type === 'garder') return <CarteGarder donnees={carte.donnees ?? {}} onGarder={prise(onGarder)} desactive={desactive} />
   if (type === 'alleger' && !ecartees.has(`alleger:${jour}`)) {
     const { faites = 0 } = carte.donnees ?? {}
     return (
@@ -221,7 +238,7 @@ export default function CarteDuMoment({
         etiquette="Alléger ma journée"
         texte={`${faites} sur ${objectif} à ${heureDite(String(maintenant).slice(11, 16))}`}
         actions={[
-          { libelle: 'Alléger ma journée', principal: true, onClick: onAlleger, desactive },
+          { libelle: 'Alléger ma journée', principal: true, onClick: prise(onAlleger), desactive },
           { libelle: 'Pas maintenant', onClick: () => ecarter('alleger') },
         ]}
       />
@@ -232,7 +249,7 @@ export default function CarteDuMoment({
       <CarteSimple
         etiquette="Bilan du soir"
         texte="Ta journée se termine."
-        actions={[{ libelle: 'Faire le bilan', principal: true, onClick: () => onBilan(null), desactive }]}
+        actions={[{ libelle: 'Faire le bilan', principal: true, onClick: prise(() => onBilan(null)), desactive }]}
       />
     )
   }

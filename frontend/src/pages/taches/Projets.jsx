@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, FolderPlus } from 'lucide-react'
 import {
@@ -10,7 +10,9 @@ import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import LigneProjet from '../../features/taches/projets/LigneProjet'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
-import { accord, aujourdhuiIso, jourLong } from '../../features/taches/lib/textes'
+import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
+import { useCompteTaches } from '../../features/taches/lib/enLigne'
+import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 
 /* ============================================================================
    TCH88 — Écran Projets (`/taches/projets`). Maquette : docs/taches/maquettes/projets-liste.html.
@@ -77,6 +79,11 @@ export default function Projets() {
   const [enPause, setEnPause] = useState([])
   const [constat, setConstat] = useState(null)
   const [charge, setCharge] = useState(false)
+  // R2-070 — `lu` : la liste vient d'une RÉPONSE du serveur (ou, hors ligne, de la dernière lue et gardée) ; sans cela,
+  // jamais « Aucun projet » : un écran vide n'est pas une réponse
+  const [lu, setLu] = useState(false)
+  const { userId } = useCompteTaches()
+  const luDuServeur = useRef(false)
   const [erreur, setErreur] = useState('')
   const [pauseOuverte, setPauseOuverte] = useState(false)
   // « Nouveau projet » de la palette arrive par `?nouveau=1` : la feuille s'ouvre, le paramètre part à la fermeture
@@ -100,20 +107,36 @@ export default function Projets() {
     }
     try {
       const [a, p] = await Promise.all([lireStatut('actif'), lireStatut('en_pause')])
-      setActifs(lignes(a))
-      setConstat(a?.data?.constat ?? null)
-      setEnPause(lignes(p))
+      const actifsLus = lignes(a)
+      const pauseLus = lignes(p)
+      const constatLu = a?.data?.constat ?? null
+      setActifs(actifsLus)
+      setConstat(constatLu)
+      setEnPause(pauseLus)
       setErreur('')
+      luDuServeur.current = true
+      setLu(true)
+      ecrireProjetsCache(userId, 'liste', { actifs: actifsLus, enPause: pauseLus, constat: constatLu })
     } catch (err) {
-      // la liste déjà à l'écran reste : on dit seulement que le rafraîchissement a échoué
+      // la liste déjà à l'écran reste : on dit seulement que le rafraîchissement a échoué ; sans rien à l'écran, la
+      // dernière liste LUE du compte (cache) tient lieu de lecture — jamais un écran « vide » inventé
       setErreur(frenchError(err, 'La liste n\'a pas pu être mise à jour. Réessaie.'))
+      const cache = luDuServeur.current ? null : lireProjetsCache(userId, 'liste')
+      if (cache?.donnees) {
+        setActifs(cache.donnees.actifs ?? [])
+        setEnPause(cache.donnees.enPause ?? [])
+        setConstat(cache.donnees.constat ?? null)
+        luDuServeur.current = true
+        setLu(true)
+      }
     } finally {
       setCharge(true)
     }
-  }, [])
+  }, [userId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'écran (D-ENF22)
   useEffect(() => { lire() }, [lire])
+  useEffect(() => viderCacheProjetsALaDeconnexion(), [])
 
   const remplacer = (projet) => {
     const maj = (liste) => liste.map((p) => (p.id === projet.id ? { ...p, ...projet } : p))
@@ -229,12 +252,11 @@ export default function Projets() {
     { libelle: 'Modèles', onSelect: () => navigate('/taches/projets/modeles') },
   ]
 
-  const vide = charge && actifs.length === 0 && enPause.length === 0
+  const vide = lu && actifs.length === 0 && enPause.length === 0
   return (
     <CoquilleTaches
       ecran="projets"
       titre="Projets"
-      sousTitre={jourLong(aujourdhui)}
       actionsEcran={actionsEcran}
       feuille={{
         ouverte: nouveau,

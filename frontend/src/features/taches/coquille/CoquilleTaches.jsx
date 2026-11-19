@@ -1,13 +1,13 @@
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ReactReduxContext } from 'react-redux'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { CloudOff, Ellipsis, Plus, Search, X } from 'lucide-react'
+import { Bell, ChevronLeft, CloudOff, Ellipsis, Menu, Plus, Search, X } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
 import Fiche from '../fiche/Fiche'
 import FeuilleSaisie from '../saisie/FeuilleSaisie'
-import { annulerToast, fermerToast, pauserToast, proposerAnnuler, reprendreToast, useEtatGestes } from '../lib/gestes'
+import { annulerToast, configurerGestes, fermerToast, pauserToast, proposerAnnuler, reprendreToast, useEtatGestes } from '../lib/gestes'
 import BandeauConflit from '../ui/BandeauConflit'
 import BarreSelection from '../ui/BarreSelection'
 import BoutonCopilote from '../ui/BoutonCopilote'
@@ -39,6 +39,10 @@ import { MARQUE_FICHE } from '../lib/fiche'
        grisage de tout geste marqué `data-necessite-reseau` (« Possible une fois connecté », textes.md §2.1).
    L'ERP fournit lui-même barre latérale, barre d'onglets et en-tête global : la coquille
    n'invente aucune navigation (le module reste invisible jusqu'à l'activation, TCH131).
+   R2-080 (choix C-6) — sur iPhone (≤ 768 px, le seuil de la coque de l'ERP), l'en-tête de l'ERP est masqué DANS Tâches
+   (styles/taches/base.css, sélecteur limité aux pages du module) : la rangée du haut de la coquille porte alors ☰ (le
+   tiroir de l'ERP, par son propre bouton) et la cloche de l'ERP (son propre panneau) ; le grand titre se replie en
+   titre compact collant au défilement (maquette ecran-aujourdhui-matin-bas.html). Bureau : rien ne change.
    Maquettes : docs/taches/maquettes/composants-5.html, ecran-aujourdhui-matin.html.
    ========================================================================== */
 
@@ -54,8 +58,130 @@ const DESTINATIONS = [
   ['Réglages', '/taches/reglages'],
 ]
 
+/** R2-087 — l'aide des touches de Tâches (`?`), mot pour mot textes.md §2.1 « Aide des touches ». */
+const TOUCHES = [
+  ['c t', 'Créer une tâche'], ['g j', "Aujourd'hui"], ['n', 'Ajouter ici'], ['/', 'Chercher'], ['Espace', 'Fait'],
+  ['e', 'Renommer'], ['d', 'Quand'], ['m', 'Déplacer'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
+  ['Alt+↑/↓', 'Réorganiser'], ['Maj+↓', '+15 min'], ['Ctrl/⌘ Z', 'Annuler (hors champ)'],
+]
+
+function AideTouches() {
+  return (
+    // focus initial sur la liste : au bureau, la poignée (premier focalisable de la feuille) est masquée et ne prend
+    // pas le focus — sans lui, Échap (écouté par la feuille) ne fermait pas l'aide
+    <dl className="touches" tabIndex={-1} data-focus-initial>
+      {TOUCHES.map(([touche, effet]) => (
+        <div key={touche} className="touches-ligne">
+          <dt><kbd>{touche}</kbd></dt>
+          <dd>{effet}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/** R2-088 — « Messages sans délai », gardé sur l'appareil par compte (stockage indisponible : rien n'est gardé). */
+const cleSansDelai = (compte) => `taqinor:taches:sans-delai:${compte}`
+function lireSansDelaiGarde(compte) {
+  try {
+    const valeur = window.localStorage.getItem(cleSansDelai(compte))
+    return valeur === null ? null : valeur === '1'
+  } catch {
+    return null
+  }
+}
+function garderSansDelai(compte, valeur) {
+  try {
+    window.localStorage.setItem(cleSansDelai(compte), valeur ? '1' : '0')
+    return true
+  } catch {
+    return false // stockage indisponible (navigation privée) : le réglage vaudra au prochain passage dans Réglages
+  }
+}
+
+/** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
+const ECRANS_AVEC_FAB = new Set(['aujourdhui', 'a-trier', 'projets', 'projet', 'agenda'])
+
 /** Le message dit à qui touche un geste grisé hors ligne (textes.md §2.1). */
 export const PHRASE_GESTE_GRISE = 'Possible une fois connecté'
+
+/* R2-080 — sur iPhone, l'en-tête de l'ERP est masqué dans Tâches (base.css) mais reste MONTÉ : ses boutons gardent
+   leur effet. ☰ et la cloche de la coquille les actionnent, sans rien dupliquer (un seul tiroir, un seul panneau de
+   notifications, un seul sondage du compteur). */
+const SELECTEUR_MENU_ERP = '.layout-main > .header .header-menu-btn'
+const SELECTEUR_CLOCHE_ERP = '.layout-main > .header .nb-wrap > .nb-btn'
+const SELECTEUR_PANNEAU_ERP = '.layout-main > .header .nb-panel'
+
+function BoutonMenuErp() {
+  return (
+    <button
+      type="button"
+      className="bouton-icone entete-menu"
+      aria-label="Ouvrir le menu"
+      onClick={() => document.querySelector(SELECTEUR_MENU_ERP)?.click()}
+    >
+      <Menu className="i" aria-hidden="true" />
+    </button>
+  )
+}
+
+// L'étiquette de la cloche de l'ERP (« Notifications (3) ») porte son compteur : on la lit, on suit ses changements.
+const etiquetteClocheErp = () => document.querySelector(SELECTEUR_CLOCHE_ERP)?.getAttribute('aria-label') ?? null
+function suivreClocheErp(rappel) {
+  const cloche = document.querySelector(SELECTEUR_CLOCHE_ERP)
+  if (!cloche || typeof MutationObserver === 'undefined') return () => {}
+  const observateur = new MutationObserver(rappel)
+  observateur.observe(cloche, { attributes: true, attributeFilter: ['aria-label'] })
+  return () => observateur.disconnect()
+}
+
+/** La cloche de l'ERP, atteinte en un toucher depuis Tâches : son compteur est lu sur le bouton de l'ERP, le panneau
+ *  ouvert est celui de l'ERP. Rien n'est rendu hors de la coque de l'ERP (tests, pages sans en-tête). */
+function ClocheErp() {
+  const etiquette = useSyncExternalStore(suivreClocheErp, etiquetteClocheErp, () => null)
+  const ouverteAuPointeur = useRef(null)
+  if (etiquette === null) return null
+  const trouve = etiquette.match(/\((\d+)\)/)
+  const compte = trouve ? Number(trouve[1]) : 0
+  return (
+    <button
+      type="button"
+      className="bouton-icone entete-cloche"
+      aria-label={`Notifications (${compte})`}
+      // le panneau de l'ERP se ferme de lui-même au premier appui hors de sa cloche : un appui sur CETTE cloche,
+      // panneau ouvert, doit le laisser fermé (sinon il se rouvrirait aussitôt)
+      onPointerDown={() => { ouverteAuPointeur.current = Boolean(document.querySelector(SELECTEUR_PANNEAU_ERP)) }}
+      onClick={() => {
+        const etaitOuverte = ouverteAuPointeur.current
+        ouverteAuPointeur.current = null
+        if (etaitOuverte) return
+        document.querySelector(SELECTEUR_CLOCHE_ERP)?.click()
+      }}
+    >
+      <Bell className="i" aria-hidden="true" />
+      {compte > 0 ? <span className="entete-cloche-compte chiffres" aria-hidden="true">{compte > 99 ? '99+' : compte}</span> : null}
+    </button>
+  )
+}
+
+/** R2-080 — le grand titre se replie en titre compact (rangée du haut) quand il passe sous elle au défilement. */
+function useTitreReplie(barre, titre) {
+  const [replie, setReplie] = useState(false)
+  useEffect(() => {
+    const rangee = barre.current
+    const h1 = titre.current
+    if (!rangee || !h1 || typeof IntersectionObserver === 'undefined') return undefined
+    const bas = Math.round(rangee.getBoundingClientRect().bottom)
+    if (bas <= 0) return undefined // bureau : la rangée n'a pas de boîte, pas de titre compact
+    const observateur = new IntersectionObserver(
+      ([entree]) => setReplie(!entree.isIntersecting && entree.boundingClientRect.top < bas),
+      { rootMargin: `-${bas}px 0px 0px 0px` },
+    )
+    observateur.observe(h1)
+    return () => observateur.disconnect()
+  }, [barre, titre])
+  return replie
+}
 
 function MenuPlus({ actionsEcran, navigate, enLigne }) {
   const aller = (vers) => (e) => {
@@ -132,10 +258,15 @@ export function SaisieBureau({ onClick }) {
   )
 }
 
+/**
+ * `retour` (R2-093, écrans enfants) : `{ libelle, vers }` — `libelle` est le nom de l'écran parent (« Projets »,
+ * « Réglages »), `vers` son chemin (`/taches/projets`). Exemple : `retour={{ libelle: 'Projets', vers: '/taches/projets' }}`.
+ * Rendu « ‹ {libelle} » au-dessus du titre ; l'écran enfant n'a alors ni loupe ni Copilote (le ⋯ reste).
+ */
 export default function CoquilleTaches({
   ecran, titre, sousTitre = null, actionsEcran = [], derniereSynchro = null,
   feuille = null, selecteurProjet = null, selection = null, copilote = {}, conflit = null, contexteSaisie = null,
-  saisieBureau = true, children,
+  saisieBureau = true, retour = null, children,
 }) {
   const navigate = useNavigate()
   const { pathname, state: etatLieu } = useLocation()
@@ -148,7 +279,18 @@ export default function CoquilleTaches({
   const versionFile = useVersionFile()
   const [file, setFile] = useState({ enAttente: 0, conflits: [] })
   const [saisieOuverte, setSaisieOuverte] = useState(false)
+  const [aideTouches, setAideTouches] = useState(false)
   const tacheId = params.get('tache')
+  // R2-084 — le + n'apparaît que là où l'on ajoute des tâches à une liste ; jamais dans un parcours (Planifier le
+  // projet, Planifier ma semaine, Revue) ni dans Réglages, Recherche, Mon rythme, Supprimées (journée vide : base.css)
+  const avecFab = ECRANS_AVEC_FAB.has(ecran)
+    && !(ecran === 'agenda' && params.get('placer') === '1')
+    && !(ecran === 'projet' && params.get('planifier') === '1')
+  // R2-086 — sur la Recherche, son champ EST l'en-tête : ni loupe (qui ouvrait… la recherche) ni « Ajouter une tâche »
+  const surRecherche = ecran === 'recherche'
+  const barre = useRef(null)
+  const titreH1 = useRef(null)
+  const replie = useTitreReplie(barre, titreH1)
 
   const ouvrirSaisie = useCallback(() => setSaisieOuverte(true), [])
   const fermerSaisie = useCallback(() => {
@@ -181,6 +323,18 @@ export default function CoquilleTaches({
     return () => { retirer(); retirerCache() }
   }, [userId, companyId])
 
+  // R2-088 — « Messages sans délai » vaut dès l'ouverture de Tâches (et après un rechargement), pas seulement après un
+  // passage dans Réglages : la dernière valeur connue (celle que Réglages a lue au serveur ou posée) est gardée sur
+  // l'appareil et rendue aux gestes au montage — sans requête de plus (aucun écran ne paie un GET pour elle, hors ligne
+  // compris). Un réglage changé sur un AUTRE appareil vaut ici au premier passage dans Réglages.
+  const { sansDelai } = useEtatGestes()
+  const compteGestes = userId ?? 'anonyme'
+  useEffect(() => {
+    const garde = lireSansDelaiGarde(compteGestes)
+    if (garde !== null) configurerGestes({ sansDelai: garde })
+  }, [compteGestes])
+  useEffect(() => { garderSansDelai(compteGestes, sansDelai) }, [compteGestes, sansDelai])
+
   // L'état de la file (en attente, conflits) se relit quand elle bouge.
   useEffect(() => {
     let vivant = true
@@ -207,6 +361,25 @@ export default function CoquilleTaches({
     return () => document.removeEventListener('keydown', surTouche)
   }, [demanderSaisie])
 
+  // R2-087 — dans Tâches, `?` montre les touches DU MODULE (pas l'aide générale de l'ERP) et `/` va à la Recherche
+  // (sur la Recherche : dans son champ). Écouté sur `document`, donc AVANT l'écouteur de l'ERP (posé sur `window`),
+  // qui ne reçoit plus la touche. Jamais dans un champ ni sous une boîte ouverte ; aucune des deux n'écrit rien.
+  useEffect(() => {
+    const surTouche = (e) => {
+      if ((e.key !== '?' && e.key !== '/') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === '?') { setAideTouches(true); return }
+      const champ = document.querySelector('.tch input[type="search"]')
+      if (champ) champ.focus()
+      else navigate('/taches/recherche')
+    }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [navigate])
+
   const synchro = derniereSynchro ?? (userId === null ? null : lireDerniereSynchro(userId))
   const premierConflit = file.conflits[0]
   const conflitFile = premierConflit ? {
@@ -224,9 +397,38 @@ export default function CoquilleTaches({
   return (
     <div className="tch" data-ecran={ecran} data-hors-ligne={enLigne ? undefined : 'true'} onClickCapture={surClicCapture}>
       <div className="tch-page">
+        {/* R2-080 — la rangée du haut (☰, titre compact, actions) colle en haut de l'écran sur iPhone ; au bureau elle
+            n'a pas de boîte (`display: contents`) et ses actions se posent à droite du titre, comme avant. */}
         <header className="entete">
-          <div className="entete-haut">
-            <div>
+          <div className={`entete-barre${replie ? ' replie' : ''}`} ref={barre}>
+            {/* R2-093 — un écran ENFANT (projet, sous-page de Réglages) passe `retour` : « ‹ {libelle} » se pose
+                AU-DESSUS du titre (iPhone : à la place de ☰ ; bureau : sur la ligne du sur-titre), et l'écran
+                enfant ne répète ni la loupe ni le Copilote. */}
+            {retour ? (
+              <button type="button" className="entete-retour" onClick={() => navigate(retour.vers)}>
+                <ChevronLeft className="i" aria-hidden="true" />{retour.libelle}
+              </button>
+            ) : <BoutonMenuErp />}
+            <div className="entete-compact" aria-hidden="true">{titre}</div>
+            <div className="entete-actions">
+              <ClocheErp />
+              {retour || surRecherche ? null : (
+                <button
+                  type="button"
+                  className="bouton-icone"
+                  aria-label="Chercher dans mes tâches"
+                  onClick={() => navigate('/taches/recherche')}
+                >
+                  <Search className="i" aria-hidden="true" />
+                </button>
+              )}
+              {retour ? null : <BoutonCopilote ecran={pathname} {...copilote} />}
+              <MenuPlus actionsEcran={actionsEcran} navigate={navigate} enLigne={enLigne} />
+            </div>
+          </div>
+          <div className="entete-titres">
+            {/* le sur-titre garde sa ligne même vide : le grand titre est au même endroit sur tous les écrans */}
+            <div className="entete-surtitre">
               {enLigne ? (
                 sousTitre ? <div className="entete-date">{sousTitre}</div> : null
               ) : (
@@ -240,24 +442,12 @@ export default function CoquilleTaches({
               {file.enAttente > 0 ? (
                 <div className="entete-date" role="status"><span className="chiffres">{`En attente d'envoi (${file.enAttente})`}</span></div>
               ) : null}
-              <h1 className="entete-titre">{titre}</h1>
             </div>
-            <div className="entete-actions">
-              <button
-                type="button"
-                className="bouton-icone"
-                aria-label="Chercher dans mes tâches"
-                onClick={() => navigate('/taches/recherche')}
-              >
-                <Search className="i" aria-hidden="true" />
-              </button>
-              <BoutonCopilote ecran={pathname} {...copilote} />
-              <MenuPlus actionsEcran={actionsEcran} navigate={navigate} enLigne={enLigne} />
-            </div>
+            <h1 className="entete-titre" ref={titreH1}>{titre}</h1>
           </div>
         </header>
 
-        {saisieBureau ? <SaisieBureau onClick={demanderSaisie} /> : null}
+        {saisieBureau && !surRecherche ? <SaisieBureau onClick={demanderSaisie} /> : null}
 
         {conflit ?? conflitFile ? <BandeauConflit {...(conflit ?? conflitFile)} /> : null}
 
@@ -266,15 +456,18 @@ export default function CoquilleTaches({
 
       {selection && selection.n > 0 ? (
         <BarreSelection {...selection} />
-      ) : (
+      ) : avecFab ? (
         <button type="button" className="fab mobile-seul" aria-label="Ajouter une tâche" onClick={demanderSaisie}>
           <Plus className="i" aria-hidden="true" />
         </button>
-      )}
+      ) : null}
 
       {tacheId ? <Fiche id={tacheId} onFermer={fermerFiche} /> : null}
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />
       {feuille ? <FeuilleACrans {...feuille} /> : null}
+      <FeuilleACrans ouverte={aideTouches} onFermer={() => setAideTouches(false)} titre="Touches de Tâches" cranInitial="85">
+        <AideTouches />
+      </FeuilleACrans>
       <ZoneAnnonces />
       {selecteurProjet ? (
         <FeuilleACrans

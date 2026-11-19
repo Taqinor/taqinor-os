@@ -222,6 +222,90 @@ function ciblesTropPetites() {
   return fautives
 }
 
+/* r2, lane L6 — l'enveloppe du module (coquille + base.css), mesurée dans le navigateur. Les règles qui atteignent la
+   coque de l'ERP (en-tête, tiroir, barre d'onglets, bandeau hors ligne) ne valent que dans les pages de Tâches. */
+const fondDe = (page, selecteur) => page.locator(selecteur).first().evaluate((el) => getComputedStyle(el).backgroundColor)
+
+test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
+
+  test('R2-080/083/091 — pas de barre de l\'ERP ; ☰ et cloche dans la rangée du haut ; bord gauche net ; onglet actif lisible', async ({ page }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    // R2-080 : l'en-tête de l'ERP n'a plus de boîte visible ; un seul Copilote ; le titre est en haut de l'écran
+    await expect(page.locator('.layout-main > .header')).toBeHidden()
+    // (le Copilote de l'ERP s'appelle « Ouvrir le Copilote », celui du module « Copilote »)
+    await expect(page.getByRole('button', { name: /^(Ouvrir le )?Copilote$/ })).toHaveCount(1)
+    expect((await page.locator('h1.entete-titre').boundingBox()).y, 'le titre commence en haut de l\'écran').toBeLessThan(120)
+    await page.locator('.tch').getByRole('button', { name: 'Ouvrir le menu' }).click()
+    await expect(page.locator('.layout.drawer-open')).toHaveCount(1)
+    await page.locator('.drawer-overlay').click({ position: { x: 370, y: 400 } })
+    await expect(page.locator('.layout.drawer-open')).toHaveCount(0)
+    await page.locator('.tch').getByRole('button', { name: /^Notifications/ }).click()
+    await expect(page.locator('.nb-panel')).toBeVisible()
+    // R2-083 : le tiroir fermé ne projette plus d'ombre sur le bord gauche
+    await page.keyboard.press('Escape')
+    expect(await page.locator('.sidebar').evaluate((el) => getComputedStyle(el).boxShadow)).toBe('none')
+    // R2-091 : onglet actif ≥ 4,5:1 sur la barre, libellé ≥ 11 px
+    const onglet = await page.locator('.bottom-tabbar--app .bottom-tab.active').evaluate((el) => {
+      const rgb = (s) => s.match(/[\d.]+/g).slice(0, 3).map(Number)
+      const lum = ([r, g, b]) => {
+        const c = [r, g, b].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 })
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+      }
+      const fond = getComputedStyle(el.closest('.bottom-tabbar')).backgroundColor
+      const [l1, l2] = [lum(rgb(getComputedStyle(el).color)), lum(rgb(fond))].sort((a, b) => b - a)
+      return { contraste: (l1 + 0.05) / (l2 + 0.05), taille: parseFloat(getComputedStyle(el.querySelector('.bottom-tab-label')).fontSize) }
+    })
+    expect(onglet.contraste, 'contraste de l\'onglet actif').toBeGreaterThanOrEqual(4.5)
+    expect(onglet.taille, 'taille du libellé de l\'onglet').toBeGreaterThanOrEqual(11)
+  })
+
+  test('R2-081/082 — une surface jusqu\'en bas ; interrupteurs de 51 × 31 au toucher', async ({ page }) => {
+    await semer(page)
+    await ouvrirEcran(page, '/taches/supprimees', 'supprimees')
+    expect(await fondDe(page, 'main.layout-content'), 'le bas de l\'écran a la surface du module').toBe(await fondDe(page, '.tch-page'))
+    await ouvrirEcran(page, '/taches/reglages/notifications', 'reglages')
+    const boite = await page.locator('.tch .interrupteur').first().boundingBox()
+    expect([Math.round(boite.width), Math.round(boite.height)]).toEqual([51, 31])
+  })
+
+  test('R2-090 — hors ligne : un seul signal, celui du module', async ({ page, context }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    await context.setOffline(true)
+    await expect(page.locator('.tch [role="status"]').filter({ hasText: 'Hors ligne' })).toBeVisible()
+    await expect(page.locator('.layout-main > [role="status"].bg-warning')).toBeHidden()
+    await context.setOffline(false)
+  })
+})
+
+test.describe('Tâches — enveloppe au bureau (1440 × 900)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } })
+
+  test('R2-085 — le titre est au même pixel sur chaque écran', async ({ page }) => {
+    await semer(page)
+    const positions = {}
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'], ['/taches/projets', 'projets'],
+      ['/taches/revue', 'revue'], ['/taches/recherche', 'recherche'], ['/taches/supprimees', 'supprimees']]) {
+      await ouvrirEcran(page, chemin, ecran)
+      const b = await page.locator('h1.entete-titre').boundingBox()
+      positions[ecran] = `${Math.round(b.x)},${Math.round(b.y)}`
+    }
+    expect(new Set(Object.values(positions)).size, JSON.stringify(positions)).toBe(1)
+  })
+
+  test('R2-094 — au clavier, la ligne entière est encadrée', async ({ page }) => {
+    await semer(page)
+    await attendreAujourdhui(page)
+    await page.locator('[data-ligne^="tache:"] .case').first().focus()
+    await page.keyboard.press('Tab')
+    const encadree = page.locator('.tch .ligne:has(.ligne-corps-bouton:focus-visible)')
+    await expect(encadree).toHaveCount(1)
+    expect(await encadree.evaluate((el) => getComputedStyle(el).boxShadow)).toContain('inset')
+  })
+})
+
 for (const vp of VIEWPORTS) {
   test.describe(`Tâches — accessibilité mesurée à ${vp.nom}`, () => {
     for (const ecran of ECRANS) {
