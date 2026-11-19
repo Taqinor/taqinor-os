@@ -8,27 +8,44 @@ FastAPI relaie le JWT vers l'``endpoint`` nommé et Django re-vérifie permissio
 
 `ouvrir_ticket_sav` est la version « registre » de l'outil FastAPI hard-codé du
 même nom : même endpoint (`POST /api/django/sav/tickets/`), même permission
-(`sav_gerer`), `client` requis, et la société est posée côté serveur (jamais
-dans le corps). `mettre_a_jour_ticket` met à jour un ticket existant
+(`sav_gerer`) ; la société est posée côté serveur (jamais dans le corps).
+`mettre_a_jour_ticket` met à jour un ticket existant
 (`PATCH …/tickets/<id>/`).
+
+REP5 (copilote vague 2) — les deux écrivent (un ticket neuf, un ticket
+existant) : propositions À CONFIRMER, plus jamais exécutées au vol ; les
+valeurs des indices sont les valeurs EXACTES du modèle (sans accent).
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_INTERNAL, register
+from apps.agent.registry import AgentAction, RISK_OUTWARD, register
 
 
 # Permission ERP requise pour ouvrir/mettre à jour un ticket SAV
 # (identique au TicketViewSet : write actions → 'sav_gerer').
 _SAV_PERMISSION = 'sav_gerer'
 
+#: Valeurs EXACTES de ``Ticket.Priorite`` / ``Ticket.Type``
+#: (apps/sav/models.py) — « préventif » accentué était refusé (400).
+PRIORITES_TICKET = ('basse', 'normale', 'haute', 'urgente')
+TYPES_TICKET = ('correctif', 'preventif')
+
+_PRIORITE = {'type': 'string', 'title': 'Priorité',
+             'enum': list(PRIORITES_TICKET)}
+
 
 OUVRIR_TICKET_SAV = AgentAction(
     key='sav.ticket.create',
     label='Ouvrir un ticket SAV',
     description=(
-        "Ouvre un nouveau ticket SAV (service après-vente) pour un client. À "
-        "utiliser quand l'utilisateur demande de créer/ouvrir un ticket ou de "
-        "signaler une panne. La société est posée côté serveur."
+        "Sert à : ouvrir, après confirmation, un ticket SAV (panne, "
+        "réclamation) pour un client OU pour un équipement du parc (client "
+        "et chantier sont alors déduits de l'équipement). Ne pas utiliser "
+        "pour : changer le statut d'un ticket ni noter un ticket existant. "
+        "Exemple : « l'onduleur de M. Benali est en panne » → equipement (ou "
+        "client), description avec ses mots, type=correctif. Résultat : le "
+        "ticket créé ; 409 si un ticket identique vient d'être ouvert ou si "
+        "le client ne peut pas être déduit."
     ),
     endpoint='/api/django/sav/tickets/',
     method='POST',
@@ -36,30 +53,31 @@ OUVRIR_TICKET_SAV = AgentAction(
         'type': 'object',
         'properties': {
             'client': {
-                'type': 'integer',
-                'description': 'Identifiant du client concerné.',
+                'type': 'integer', 'title': 'Client',
+                'description': 'Client concerné (ou equipement).',
+            },
+            'equipement': {
+                'type': 'integer', 'title': 'Équipement (id)',
+                'description': 'Équipement du parc concerné (ou client).',
             },
             'description': {
-                'type': 'string',
-                'description': 'Description du problème SAV.',
+                'type': 'string', 'title': 'Description',
+                'description': 'Le problème, avec les mots du client.',
             },
             'installation': {
-                'type': 'integer',
+                'type': 'integer', 'title': 'Chantier (id)',
                 'description': 'Chantier concerné (optionnel).',
             },
-            'priorite': {
-                'type': 'string',
-                'description': 'basse, normale, haute ou urgente.',
-            },
-            'type': {
-                'type': 'string',
-                'description': 'correctif ou préventif.',
-            },
+            'priorite': _PRIORITE,
+            'type': {'type': 'string', 'title': 'Type',
+                     'enum': list(TYPES_TICKET)},
         },
-        'required': ['client'],
+        'required': ['description'],
     },
     required_permission=_SAV_PERMISSION,
-    risk=RISK_INTERNAL,
+    risk=RISK_OUTWARD,
+    confirm_summary='Ouvrir un ticket SAV.',
+    objets={'client': 'client'},
 )
 
 
@@ -67,12 +85,12 @@ METTRE_A_JOUR_TICKET = AgentAction(
     key='sav.ticket.update',
     label='Mettre à jour un ticket SAV',
     description=(
-        "Met à jour un ticket SAV existant (priorité, description, "
-        "technicien responsable…). La société reste celle du ticket. "
-        "YDOCF1 — le statut ne se change plus par ce PATCH (machine d'états "
-        "gardée) : utiliser les actions dédiées "
-        "planifier/demarrer/resoudre/cloturer sur "
-        "/api/django/sav/tickets/{id}/<action>/."
+        "Sert à : changer, après confirmation, la priorité ou la description "
+        "d'un ticket SAV existant. Ne pas utiliser pour : changer le statut "
+        "(planifier, démarrer, résoudre, clôturer : gestes de l'écran SAV) "
+        "ni réaffecter le ticket. Exemple : « passe le ticket 88 en urgent » "
+        "→ id=88, priorite=urgente. Résultat : le ticket mis à jour ; la "
+        "société reste celle du ticket."
     ),
     endpoint='/api/django/sav/tickets/{id}/',
     method='PATCH',
@@ -80,17 +98,17 @@ METTRE_A_JOUR_TICKET = AgentAction(
         'type': 'object',
         'properties': {
             'id': {
-                'type': 'integer',
+                'type': 'integer', 'title': 'Ticket (id)',
                 'description': 'Identifiant du ticket à mettre à jour.',
             },
-            'priorite': {'type': 'string'},
-            'description': {'type': 'string'},
-            'technicien_responsable': {'type': 'integer'},
+            'priorite': _PRIORITE,
+            'description': {'type': 'string', 'title': 'Description'},
         },
         'required': ['id'],
     },
     required_permission=_SAV_PERMISSION,
-    risk=RISK_INTERNAL,
+    risk=RISK_OUTWARD,
+    confirm_summary='Modifier ce ticket SAV.',
 )
 
 
