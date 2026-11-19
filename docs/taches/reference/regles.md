@@ -642,9 +642,19 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 | `garder` | rien n'est encore gardé (`planifie_le` nul) et `pour_objectif` non vide | `{"n","objectif"}` |
 | `alleger` | à partir de `relance_jour`, `allege_le` nul, ≥ 1 gardée ouverte et `faites` < objectif / 2 (le seuil de la dérive, §7) | `{"faites","prevues"}` |
 | `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite | `{}` |
-| `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`) | PROPOSITION |
-| `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) | PROPOSITION |
-| `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres | PROPOSITION |
+| `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, ou un `constat` qui pose une QUESTION — jamais C5) et aucun conseil répondu aujourd'hui | PROPOSITION |
+| `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) et aucun conseil répondu aujourd'hui | PROPOSITION |
+| `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres ; aucun conseil répondu aujourd'hui | PROPOSITION |
+
+**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `garder`, `alleger`,
+`faire_bilan`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
+les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
+(`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
+plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee.conseil_deja_donne` ;
+l'écran note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
+astuce, révélation. **Une statistique sans geste n'apparaît jamais le matin** : C5 (et tout constat sans question)
+vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir (§6.9) ; un constat AVEC question (C7
+« Les revoir maintenant ? ») peut être le conseil du jour. Même règle pour `rythme` de `journee/proposition/`.
 
 ### 4.11 Hors ligne et conflit entre appareils
 

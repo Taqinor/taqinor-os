@@ -588,6 +588,38 @@ class CarteDuMomentTests(_Base):
                                        expire_le=jours(7))
         self.assertEqual(self.carte()['type'], 'rythme')
 
+    def incitation(self, type_, cle='', jour=J, **champs):
+        from apps.taches.models.rythme import IncitationCoach
+        champs.setdefault('donnees', {})
+        return IncitationCoach.objects.create(company=self.societe, proprietaire=self.u, jour=jour, type=type_,
+                                              cle=cle, canal='ecran', expire_le=jours(7), **champs)
+
+    def test_un_constat_sans_question_n_est_jamais_la_carte_du_matin(self):
+        """R3-005 (choix C-17) — C5 (« 57 % de tes tâches… », une information sans geste) ouvert : aucune carte le
+        matin ; il reste au bilan du soir (et dans Mon rythme). C7, qui pose une question, peut l'être."""
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.incitation('constat', 'C5', donnees={'p': 57, 'n': 51, 'h1': 10, 'h2': 12})
+        self.assertIsNone(self.carte())
+        self.incitation('constat', 'C7', donnees={'n': 2})
+        carte = self.carte()
+        self.assertEqual((carte['type'], carte['proposition']['cle']), ('rythme', 'C7'))
+
+    def test_une_carte_de_conseil_par_jour(self):
+        """R3-005 — C7 répondu ce matin : ni la pause ni la révélation ouvertes ne prennent sa place, rechargé autant
+        de fois qu'on veut ; le lendemain, la révélation vient ; les cartes liées à l'heure restent (bilan du soir)."""
+        fabriques.reglages(self.u)
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.incitation('constat', 'C7', donnees={'n': 2}, reponse='pas_maintenant', repondu_le=a(J, 9, 10))
+        self.incitation('pause', 'plan_matin', donnees={'type_pause': 'plan_matin', 'ignorees': 3})
+        self.incitation('revelation', 'mon_iphone')
+        for _ in range(3):
+            self.assertIsNone(self.carte(9, 30))
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+        from apps.taches.services import journee as services
+        demain = services.aujourdhui(self.u, jours(1), timezone.localtime(a(jours(1), 9, 12)))['carte_du_moment']
+        self.assertEqual(demain['type'], 'pause')
+
 
 class BadgeEtVuTests(_Base):
     def test_badge(self):
