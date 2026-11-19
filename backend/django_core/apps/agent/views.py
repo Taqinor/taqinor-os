@@ -798,7 +798,9 @@ class OuvrirEcranView(APIView):
     par le SERVEUR depuis ``contract_samples/assistant_ecrans.json`` (jamais
     depuis une chaîne du modèle). Un écran à objet vérifie l'objet par le
     résolveur de libellés : inconnu, autre société, hors portée, ou module
-    sans résolveur -> 404 « introuvable ». Paramètre refusé -> 400 nommé.
+    sans résolveur -> 404 « introuvable » ; écran à objet demandé sans ``id``
+    -> 404 nommé. Écran ou onglet hors liste -> 400 nommé ; un ``id`` ou un
+    onglet sans objet sur l'écran demandé est ignoré (l'écran s'ouvre).
     Aucun écran d'administration. Lecture seule."""
 
     # ASEC43 — vue INTERNE : un compte portail reçoit 403.
@@ -806,7 +808,7 @@ class OuvrirEcranView(APIView):
 
     @extend_schema(parameters=[
         OpenApiParameter('ecran', str, required=True, enum=_ecrans.cles()),
-        OpenApiParameter('id', int, required=False),
+        OpenApiParameter('id', {'type': 'integer', 'minimum': 1, 'maximum': 2 ** 31 - 1}, required=False),
         OpenApiParameter('onglet', str, required=False, enum=_ecrans.onglets_calepinage()),
     ], responses=inline_serializer('AssistantOuvrir', {
         'ecran': drf_serializers.CharField(), 'chemin': drf_serializers.CharField(),
@@ -817,6 +819,8 @@ class OuvrirEcranView(APIView):
         ident = _entier_positif(request, 'id')
         try:
             chemin = _ecrans.chemin(ecran, ident, onglet)
+        except _ecrans.ObjetManquant as exc:
+            raise NotFound(str(exc)) from exc
         except _ecrans.ParametreEcran as exc:
             raise ParseError(str(exc)) from exc
         fiche = _ecrans.ecrans()[ecran]
