@@ -681,6 +681,11 @@ class CarteDuMomentTests(_Base):
         self.incitation('revelation', 'mon_iphone')
         for _ in range(3):
             self.assertIsNone(self.carte(9, 30))
+        # R4-10 (T3-F n° 9) — le serveur le DIT : un autre appareil n'y ajoute pas son astuce
+        from apps.taches.services import journee as services_
+        self.assertIs(services_.aujourdhui(self.u, J, maintenant_a(9, 30))['conseil_donne'], True)
+        self.assertIs(services_.aujourdhui(self.u, jours(1), timezone.localtime(a(jours(1), 9, 12)))['conseil_donne'],
+                      False)
         self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
         from apps.taches.services import journee as services
         demain = services.aujourdhui(self.u, jours(1), timezone.localtime(a(jours(1), 9, 12)))['carte_du_moment']
@@ -1348,8 +1353,9 @@ class PrioritesTests(_Base):
 class UneChargeTests(_Base):
     """R4-01 (M1, « un chiffre, une source » — la garde `UneSourceTests` étendue à la charge) : la charge du jour est
     LA MÊME dans toutes les lectures qui la disent : Aujourd'hui (`progression.charge`), toute écriture, l'Agenda du
-    jour, la Semaine (donc Planifier ma semaine), « Aide-moi à prioriser » et « Où j'en suis ? ». Avant : Aujourd'hui comptait la faite (« 6 h prévues »), le Copilote non
-    (« déborde de 1 h 30 ») et l'Agenda Ce soir en plus (« 6 h 15 ») — quatre chiffres à la même minute (T3-F n° 1)."""
+    jour, la Semaine (donc Planifier ma semaine), « Aide-moi à prioriser » et « Où j'en suis ? ». Avant : Aujourd'hui
+    comptait la faite (« 6 h prévues »), le Copilote non (« déborde de 1 h 30 ») et l'Agenda Ce soir en plus
+    (« 6 h 15 ») — quatre chiffres à la même minute (T3-F n° 1)."""
 
     def jeu(self):
         """Mardi 17/11, 15:00, capacité par défaut 240 min, aucun rendez-vous. Calcul à la main :

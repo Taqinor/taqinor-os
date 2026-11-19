@@ -74,6 +74,7 @@
         },
         "donnees": {}
       },
+      "conseil_donne": false,
       "essentiel": [
         {
           "type": "tache",

@@ -404,6 +404,17 @@ describe('R3-022 — au plus UNE carte de conseil par jour (astuce ou révélati
     expect(screen.getAllByRole('region', { name: 'Astuce' })).toHaveLength(1)
   })
 
+  it('R4-10 (T3-F n° 9) — un conseil répondu aujourd\'hui sur un AUTRE appareil (`conseil_donne` servi) : aucune astuce ici, sur un appareil neuf', () => {
+    appareil(true)
+    const jour = '2032-07-01'
+    const poignees = { onRepondre: vi.fn(), onNaviguer: vi.fn(), onCopilote: vi.fn() }
+    const { unmount } = render(<CarteDuMoment jour={jour} carte={null} conseilDonne {...poignees} />)
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+    unmount()
+    render(<CarteDuMoment jour={jour} carte={null} {...poignees} />) // témoin : sans conseil répondu, l'astuce du jour vient
+    expect(screen.getByRole('region', { name: 'Astuce' })).toBeInTheDocument()
+  })
+
   it('OK sur une révélation : aucune astuce ni autre révélation ce jour-là', async () => {
     appareil(true)
     const jour = '2032-06-01'

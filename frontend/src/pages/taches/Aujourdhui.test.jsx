@@ -1112,17 +1112,19 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull() // aucun toast ici : la saisie dit le sien
   })
 
-  it('R3-028 — Entrée sur une activité ERP SANS adresse le dit aussi (jamais rien sans un mot)', async () => {
+  it('R3-028 / R4-10 — Entrée sur une activité ERP SANS adresse le dit aussi, et « Ouvrir » y MÈNE : « Mes activités » de l\'ERP', async () => {
+    function Chemin() { const { pathname } = useLocation(); return <output data-testid="chemin">{pathname}</output> }
     const d = donnees()
     d.journee = d.journee.map((it) => (it.type === 'activite' ? { ...it, lien: null } : it))
     servir(d)
-    monter()
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /><Chemin /></MemoryRouter>)
     await screen.findByText('Rappeler Benali')
     act(() => { document.querySelector('[data-ligne="activite:101"] .ligne-corps-bouton').focus() })
     await userEvent.keyboard('{Enter}')
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
-    expect(within(toast).queryByRole('button', { name: 'Ouvrir' })).toBeNull()
+    await userEvent.click(within(toast).getByRole('button', { name: 'Ouvrir' }))
+    await waitFor(() => expect(screen.getByTestId('chemin')).toHaveTextContent('/activites'))
   })
 })
 

@@ -79,12 +79,16 @@ export function progressionApres(progression, item, { fait, quitte } = {}) {
 }
 
 /** R3-026 — une ligne qui se réordonne : une tâche OUVERTE (une faite, servie aussi dans Essentiel, n'est la voisine de
- *  personne : le serveur ne l'ordonne pas). */
-const ordonnable = (item) => item.type === 'tache' && item.statut !== 'fait'
+ *  personne : le serveur ne l'ordonne pas). R4-10 (R3-007/R3-026) — et SANS heure : le serveur range les lignes à
+ *  heure par leur heure, avant les autres (`classement.cle_section`) ; leur rang n'y change rien. */
+const aHeure = (item) => Boolean(item.heure_debut)
+const ordonnable = (item) => item.type === 'tache' && item.statut !== 'fait' && !aHeure(item)
 const PHRASE_DEPLACEMENT_REFUSE = 'Impossible de déplacer cette tâche ici.'
+/** R4-10 — une ligne à heure ne bouge pas au rang : l'écran le DIT (le geste réussissait puis se défaisait en silence). */
+const PHRASE_RANGEE_PAR_HEURE = "Rangée par son heure : change l'heure pour la déplacer."
 
-/** Remplace, dans `liste`, les tâches ouvertes par `taches` (dans cet ordre) en laissant chaque activité ERP et chaque
- *  tâche faite à sa place. */
+/** Remplace, dans `liste`, les tâches ouvertes sans heure par `taches` (dans cet ordre) en laissant chaque activité
+ *  ERP, chaque tâche faite et chaque tâche à heure à sa place. */
 function recomposer(liste, taches) {
   const suite = [...taches]
   return liste.map((item) => (ordonnable(item) ? suite.shift() : item))
@@ -125,10 +129,13 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try { garde() } catch { return }
     const liste = LISTES_JOUR.find((cle) => donnees[cle]?.some((it) => cleDe(it) === cleDe(item)))
     if (!liste) return
+    if (item.type === 'tache' && aHeure(item)) { proposerAnnuler({ message: PHRASE_RANGEE_PAR_HEURE }); return }
     const taches = donnees[liste].filter(ordonnable)
     const i = taches.findIndex((it) => it.id === item.id)
     const j = i + sens
-    if (i < 0 || j < 0 || j >= taches.length) return
+    if (i < 0) return
+    // au bout de la liste, le geste ne fait rien : le lecteur d'écran l'entend (jamais un silence)
+    if (j < 0 || j >= taches.length) { annoncer(`${item.titre} : ${j < 0 ? 'déjà en tête' : 'déjà en dernier'}`); return }
     const suite = [...taches]
     suite[i] = taches[j]
     suite[j] = taches[i]

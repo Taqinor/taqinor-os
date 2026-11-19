@@ -688,8 +688,9 @@ Le menu ⋯ d'Aujourd'hui propose toujours « Faire le bilan » tant que la jour
 `alleger`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
 les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
 (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
-plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne` ;
-l'écran note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
+plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne`,
+servi à l'écran par `aujourdhui.conseil_donne` : vrai, l'appareil ne montre pas son astuce locale, R4-10 ; l'écran
+note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
 astuce, révélation. **Une statistique sans geste n'apparaît jamais le matin** : C5 (et tout constat sans question)
 vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir (§6.9) ; un constat AVEC question (C7
 « Les revoir maintenant ? ») peut être le conseil du jour. Même règle pour `rythme` de `journee/proposition/`.

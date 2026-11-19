@@ -235,6 +235,30 @@ describe('TCH79 — Réorganiser et Sélectionner', () => {
     expect(titres.indexOf('Appeler Lydec')).toBeLessThan(titres.indexOf('Timbres'))
   })
 
+  it('R4-10 (R3-007/R3-026) — une ligne À HEURE ne bouge pas au rang (le serveur la range par son heure) : l\'écran le DIT et rien ne part ; une ligne sans heure ne prend jamais une ligne à heure pour voisine', async () => {
+    const d = deuxTaches()
+    d.journee = [
+      { ...d.journee[0], id: 45, titre: 'Rendez-vous chantier', heure_debut: '09:00' },
+      { ...d.journee[0], id: 42, titre: 'Timbres', heure_debut: null },
+      { ...d.journee[1], heure_debut: null },
+    ]
+    servir(d)
+    monter()
+    await screen.findByText('Timbres')
+    await ouvrirMenu('Réorganiser')
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre « Rendez-vous chantier »' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Rangée par son heure : change l'heure pour la déplacer.")
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/45/reordonner/', expect.anything(), expect.anything())
+    // « Timbres » (sans heure) monte : elle est déjà la première SANS heure — rien ne part, rien ne saute
+    await userEvent.click(screen.getByRole('button', { name: 'Monter « Timbres »' }))
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/42/reordonner/', expect.anything(), expect.anything())
+    const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
+    expect(titres).toEqual(['Rendez-vous chantier', 'Timbres', 'Appeler Lydec'])
+    // et descend sous « Appeler Lydec », seule voisine sans heure
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre « Timbres »' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }, { erreurSousLeChamp: true }))
+  })
+
   it('Sélectionner : on coche deux tâches, « 2 sélectionnées », Terminer poste lot/', async () => {
     servir(deuxTaches())
     monter()

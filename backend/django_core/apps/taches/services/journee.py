@@ -447,6 +447,9 @@ def _forme_aujourdhui(ctx, *, tout=False):
         [journee.sections.get(s, []) for s in ordre] + [propose] + [journee.sections.get(s, []) for s in replies])
     forme = _entete(ctx)
     forme['carte_du_moment'] = _carte_du_moment(ctx, plan_propose)
+    # R4-10 (R3-022, T3-F n° 9) — un conseil répondu aujourd'hui sur UN appareil éteint aussi l'astuce locale des
+    # autres (au plus une carte de conseil par jour, C-17) : le serveur le dit, l'écran ne le devine pas
+    forme['conseil_donne'] = _conseil_deja_donne(ctx)
     forme['essentiel'] = rendu.items(listes[0])
     forme['obligations'] = list(ctx.obligations.lignes)
     forme['rendez_vous'] = _rendez_vous(ctx, rendu)
