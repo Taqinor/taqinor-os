@@ -362,9 +362,9 @@ etape('P137.7', ['TCH137', 'TCH80', 'TCH58'], async (f) => {
   const bilan = feuille(p, 'Bilan du soir')
   await expect(bilan.locator('.bilan-compte')).toBeVisible()
   await capturer(p, 'bilan')
-  // Oracle : bilan « 4 sur 5 · essentiel 2 sur 2 », « 4 des 5 gardées »
+  // Oracle : bilan « 4 sur 5 · essentiel 2 sur 2 » ; R3-020 (C-14) : plus de second chiffre « 4 des 5 gardées »
   await expect(bilan.locator('.bilan-compte')).toHaveText('4 sur 5 · essentiel 2 sur 2')
-  await expect(bilan).toContainText('4 des 5 gardées')
+  await expect(bilan).not.toContainText('gardées')
   // Tout reporter → contrat à mer. 25
   await bilan.getByRole('button', { name: 'Tout reporter à mer. 25' }).click()
   await bilan.getByRole('button', { name: 'Valider', exact: true }).click()
@@ -482,16 +482,17 @@ etape('P138.4', ['TCH138', 'TCH65', 'TCH93', 'TCH106'], async (f) => {
   await aller(p, '/taches/revue', 'revue')
   await expect(p.locator('.ep-constat').first()).toBeVisible()
   await capturer(p, 'revue')
-  // Oracle (plan corrigé) : Revue « 21 tâches en 4 jours » — mots de textes.md §4.5
-  await expect(p.locator('.ep-constat').first()).toContainText(/\b21 tâches en 4 jours/)
-  // décisions : une carte par projet actif, « Garder » chacune
+  // Oracle (plan corrigé) : Revue « Cette semaine : 21 faites » — R3-003 (C-16) : le total de la semaine est celui des
+  // faites, le nombre de jours n'est plus écrit (gabarits._debut_revue)
+  await expect(p.locator('.ep-constat').first()).toContainText(/Cette semaine : 21 faites/)
+  // décisions : une carte par projet actif, « Continuer » chacune (décision `garder`, R3-090)
   for (let n = 0; n < 10; n += 1) {
     const fin = p.locator('.ep-revue-fin')
     if (await fin.isVisible()) break
     const carte = p.locator('section.ep-carte-revue')
     await expect(carte).toBeVisible()
     const nom = await carte.getAttribute('aria-label')
-    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // R2-068 : « Garder » est d'office coché
+    await carte.getByRole('button', { name: 'Suivant →', exact: true }).click() // R2-068 : « Continuer » est d'office coché
     await expect(p.locator('.tch .annonce')).toContainText(`« ${nom} » : décision enregistrée`)
   }
   // Oracle : fin → Planifier ma semaine
@@ -519,8 +520,8 @@ etape('P139.1', ['TCH139', 'TCH59', 'TCH104'], async (f) => {
   const jeudi = p.locator('.ag-sj').filter({ has: p.locator('.ag-sj-date b', { hasText: /^26$/ }) })
   await expect(jeudi).toBeVisible()
   await capturer(p, 'agenda-semaine')
-  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h pour 4 h »
-  await expect(jeudi).toContainText('2 tâches · 2 h pour 4 h')
+  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h sur 4 h » (vague 3 : « sur », plus « pour »)
+  await expect(jeudi).toContainText('2 tâches · 2 h sur 4 h')
 })
 
 etape('P139.2', ['TCH139', 'TCH106'], async (f) => {
@@ -533,8 +534,8 @@ etape('P139.2', ['TCH139', 'TCH106'], async (f) => {
   const jours = p.getByRole('list', { name: 'Jours de la semaine' })
   await jours.getByRole('button', { name: new RegExp(`^jeu\\.? 26 · .* · placer ${echapper(T.demo)}$`) }).click()
   await expect(toast(p)).toContainText('Placée')
-  // Oracle : « 3 · 4 h pour 4 h » (textes.md §2.8 : « {n} tâches · {h} pour {cap} »)
-  await expect(jours.getByRole('button', { name: /^jeu\.? 26 · / })).toHaveAccessibleName(/^jeu\.? 26 · 3 tâches · 4 h pour 4 h/)
+  // Oracle : « 3 · 4 h sur 4 h » (textes.md §2.8 : « {n} tâches · {h} sur {cap} »)
+  await expect(jours.getByRole('button', { name: /^jeu\.? 26 · / })).toHaveAccessibleName(/^jeu\.? 26 · 3 tâches · 4 h sur 4 h/)
   expect((await tacheNommee(p, T.demo)).jour_prevu).toBe('2026-11-26')
 })
 
@@ -603,7 +604,9 @@ etape('P139.5', ['TCH139', 'TCH122', 'TCH121', 'TCH104'], async (f) => {
   expect(journee.progression.disponible_minutes).toBe(journee.progression.capacite_minutes - 30)
   await aujourdhui(p)
   await progression(p).click()
-  await expect(p.getByRole('group', { name: 'Détail de la journée' })).toContainText('Temps libre : 3 h 30 (4 h moins 30 min de rendez-vous)')
+  // R3-020 (M6) : « Temps : {prévu} prévues pour {disponible} disponibles » — le disponible porte déjà les 30 min de
+  // rendez-vous (« Temps libre : 3 h 30 (4 h moins 30 min de rendez-vous) » n'est plus écrit)
+  await expect(p.getByRole('group', { name: 'Détail de la journée' })).toContainText('pour 3 h 30 disponibles')
 })
 
 etape('P139.6', ['TCH139', 'TCH108', 'TCH121'], async (f) => {
@@ -621,6 +624,8 @@ etape('P139.6', ['TCH139', 'TCH108', 'TCH121'], async (f) => {
   expect(await nb(), "l'agenda de démonstration du semis").toBe(1)
   // Oracle : adresse `http://…` → « L'adresse doit commencer par https. »
   f.suivi.attendre(/\/taches\/agendas-externes\/$/, 400)
+  // injoignable et « 3 agendas au plus. » sont des refus d'ÉTAT : 409 state_conflict (lane CI, vague 3)
+  f.suivi.attendre(/\/taches\/agendas-externes\/$/, 409)
   await ajouter('http://agenda.example.com/mon-agenda.ics')
   await expect(erreur.filter({ hasText: "L'adresse doit commencer par https." })).toBeVisible()
   // Oracle : adresse vers 127.0.0.1 → refus
@@ -664,7 +669,9 @@ etape('P140.1', ['TCH140', 'TCH66', 'TCH107'], async (f) => {
   await aller(p, '/taches/rythme', 'rythme')
   // Oracle : « Les 10 derniers jours travaillés » 5, 5, 4, 6, 3, 5, 4, 7, 5, 4 ; « 6 jours sur 10 »
   await expect(p.getByRole('heading', { name: /^Les 10 derniers jours travaillés/ })).toBeVisible()
-  await expect(p.getByRole('img', { name: /^Tâches faites, jour par jour travaillé : 5, 5, 4, 6, 3, 5, 4, 7, 5, 4\./ })).toBeVisible()
+  // R2-120 : chaque chiffre est lu avec son jour (« lun. 9 : 5, … ») ; on retire les jours avant de comparer
+  const nomGraphe = await p.getByRole('img', { name: /^Tâches faites, jour par jour travaillé : / }).getAttribute('aria-label')
+  expect(nomGraphe.replace(/[a-zé]+\.? \d+ : /g, '')).toMatch(/^Tâches faites, jour par jour travaillé : 5, 5, 4, 6, 3, 5, 4, 7, 5, 4\./)
   await expect(p.locator('.ep-graph-legende')).toContainText('6 jours sur 10')
   // Oracle : proposition « … On passe à 6 ? » avec « Monter à 6 » · « Pas maintenant »
   await expect(p.getByText('Ces 10 jours travaillés, tu as fait au moins 5 tâches 6 fois. On passe à 6 ?')).toBeVisible()
@@ -878,8 +885,8 @@ etape('P144.4', ['TCH144', 'TCH108', 'TCH74'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aller(p, '/taches/reglages/donnees', 'reglages')
   await capturer(p, 'mes-donnees')
-  // Oracle : Exporter (JSON des 21 modèles)
-  const [telechargement] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: /^Exporter mes données/ }).click()])
+  // Oracle : Télécharger mes données (JSON des 21 modèles) — R3 (M6) : « Exporter mes données (fichier JSON) » renommé
+  const [telechargement] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: /^Télécharger mes données/ }).click()])
   const exporte = JSON.parse(readFileSync(await telechargement.path(), 'utf8'))
   expect(Object.keys(exporte).filter((k) => k !== 'exporte_le'), 'les modèles exportés').toHaveLength(21)
   // Oracle : Tout effacer sans EFFACER → erreur sous le champ
