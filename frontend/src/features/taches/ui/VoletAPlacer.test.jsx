@@ -59,6 +59,12 @@ describe('TCH105 — VoletAPlacer', () => {
     expect(onChoisir).toHaveBeenLastCalledWith(null)
   })
 
+  it('R2-105 — l\'aide du pied a deux phrases : « Glisse » au bureau, « Touche une tâche, puis un créneau » sur iPhone', () => {
+    const { container } = render(<VoletAPlacer aPlacer={aPlacer()} aujourdhui={AUJOURDHUI} onChoisir={vi.fn()} />)
+    expect(container.querySelector('.ag-aside-pied .bureau-seul')).toHaveTextContent('Glisse une tâche sur un créneau')
+    expect(container.querySelector('.ag-aside-pied .mobile-seul')).toHaveTextContent('Touche une tâche, puis un créneau.')
+  })
+
   it('vide : « Tout est placé »', () => {
     render(<VoletAPlacer aPlacer={[]} aujourdhui={AUJOURDHUI} onChoisir={vi.fn()} />)
     expect(screen.getByText('Tout est placé')).toBeInTheDocument()
@@ -99,6 +105,38 @@ describe('TCH105 — Placer à une heure, dans l\'Agenda', () => {
     expect(screen.queryByRole('group', { name: 'À revoir (1)' })).toBeNull() // sortie d'« À placer »
     expect(screen.getByRole('heading', { name: 'À placer · 1' })).toBeInTheDocument() // reste Mes projets
     expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Placée à 11:00')
+    expect(lireAgenda).toHaveBeenCalledTimes(1)
+  })
+
+  it('R2-105 — iPhone : choisir une tâche ramène la vue sur la grille, près de la ligne « maintenant »', async () => {
+    const defile = vi.fn()
+    const avant = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = defile
+    try {
+      monter()
+      fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
+      await waitFor(() => expect(defile).toHaveBeenCalledTimes(1))
+      expect(defile.mock.contexts[0]).toHaveClass('maintenant')
+      expect(defile.mock.calls[0][0]).toMatchObject({ block: 'center' })
+    } finally { Element.prototype.scrollIntoView = avant }
+  })
+
+  it('R2-105 — « Déplacer » reprend la tâche posée : un autre créneau la déplace, sans fiche ni relecture', async () => {
+    const { container } = monter()
+    fireEvent.click(await screen.findByRole('button', { name: /Site web/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 11:00' }))
+    const duree = await screen.findByRole('group', { name: 'Durée de Site web' })
+    fireEvent.click(within(duree).getByRole('button', { name: 'Déplacer' }))
+    expect(screen.queryByRole('group', { name: 'Durée de Site web' })).toBeNull()
+    expect(screen.getByText('Touche un créneau pour déplacer Site web')).toBeInTheDocument()
+    planifierTache.mockResolvedValue(placee(8, { heure_debut: '15:00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer à 15:00' }))
+    await waitFor(() => expect(planifierTache).toHaveBeenLastCalledWith(50, {
+      jour_prevu: AUJOURDHUI, heure_debut: '15:00', moment: '', quelque_jour: false, lock_version: 7,
+    }))
+    const grille = container.querySelector('.grille-agenda')
+    expect(grille.querySelectorAll('[data-bloc="50"]')).toHaveLength(1)
+    expect(within(grille).getByRole('button', { name: /Site web/ }).closest('.bloc').style.top).not.toBe('')
     expect(lireAgenda).toHaveBeenCalledTimes(1)
   })
 

@@ -150,8 +150,21 @@ export default function PlanifierSemaine({
 }) {
   const boutons = useRef([])
   useFlechesJours(Boolean(choisie), boutons)
+  // R2-105 — sur iPhone les jours et le volet « À placer » sont l'un sous l'autre : une tâche choisie, la vue monte sur
+  // les jours ; la tâche posée (ou le choix annulé), elle revient sur le volet : on place trois tâches sans défiler.
+  const racine = useRef(null)
+  const avait = useRef(false)
+  useEffect(() => {
+    const actif = Boolean(choisie)
+    if (actif === avait.current) return
+    avait.current = actif
+    if (window.matchMedia?.('(min-width: 1024px)').matches) return // au bureau tout est visible d'un coup
+    const cible = racine.current?.querySelector(actif ? '.ag-jours' : '.ag-aside')
+    const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    cible?.scrollIntoView?.({ block: 'start', behavior: reduit ? 'auto' : 'smooth' })
+  }, [choisie])
   return (
-    <div className="ag-planifier">
+    <div className="ag-planifier" ref={racine}>
       <div className="ag-planifier-tete">
         <span className="raccourci bureau-seul">
           Glisse une tâche sur un jour · ou <kbd>Entrée</kbd> puis <kbd>←</kbd> <kbd>→</kbd>
@@ -183,7 +196,7 @@ export default function PlanifierSemaine({
           aPlacer={aPlacer} mesProjets={mesProjets} aujourdhui={aujourdhui} choisie={choisie?.id ?? null}
           onChoisir={onChoisir} projetsOuverts
           consigne={(titre) => `Touche un jour pour placer ${titre}`}
-          aide="Glisse une tâche sur un jour · ou Entrée puis ← →"
+          aide="Glisse une tâche sur un jour · ou Entrée puis ← →" aideTactile="Touche une tâche, puis un jour."
         />
       </div>
     </div>

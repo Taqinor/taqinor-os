@@ -89,6 +89,35 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(screen.getByRole('button', { name: 'dim. 22 · non travaillé' }).closest('.ag-pj-place')).toHaveClass('repos')
   })
 
+  it('R2-105 — iPhone : tâche choisie, la vue monte sur les jours ; posée ou annulée, elle revient sur le volet', () => {
+    const defile = vi.fn()
+    const avant = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = defile
+    try {
+      const formation = agenda().mes_projets[0].items[0]
+      const { rerender } = monter()
+      expect(defile).not.toHaveBeenCalled()
+      const avecChoix = (choisie) => (
+        <PlanifierSemaine jours={septJours()} aujourdhui={AUJOURDHUI} aPlacer={agenda().a_placer}
+          mesProjets={agenda().mes_projets} choisie={choisie} onChoisir={vi.fn()} onPoser={vi.fn()}
+          onOuvrirJour={vi.fn()} onTerminer={vi.fn()} />)
+      rerender(avecChoix(formation))
+      expect(defile).toHaveBeenCalledTimes(1)
+      expect(defile.mock.contexts[0]).toHaveClass('ag-jours')
+      rerender(avecChoix(null))
+      expect(defile).toHaveBeenCalledTimes(2)
+      expect(defile.mock.contexts[1]).toHaveClass('ag-aside')
+      rerender(avecChoix(null))
+      expect(defile).toHaveBeenCalledTimes(2)
+    } finally { Element.prototype.scrollIntoView = avant }
+  })
+
+  it("R2-105 — l'aide du volet dit « Touche une tâche, puis un jour. » sur iPhone", () => {
+    const { container } = monter()
+    expect(container.querySelector('.ag-aside-pied .mobile-seul')).toHaveTextContent('Touche une tâche, puis un jour.')
+    expect(container.querySelector('.ag-aside-pied .bureau-seul')).toHaveTextContent('Glisse une tâche sur un jour')
+  })
+
   it('tâche choisie : → et ← vont d\'un jour posable à l\'autre (le passé est sauté)', () => {
     monter({ choisie: agenda().mes_projets[0].items[0] })
     fireEvent.keyDown(window, { key: 'ArrowRight' })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin, X } from 'lucide-react'
 
 import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
@@ -305,10 +305,11 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
   )
 }
 
-function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, onChoisir }) {
+function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, consigne = null, onChoisir }) {
   return (
     <div className="ag-corps">
       <div className="ag-principal">
+        {consigne}
         <VueJourGrille jour={jour} dates={dates} parJour={parJour} aujourdhui={aujourdhui} maintenant={maintenant}
           gestes={gestes} placement={placement} choisi={choisi} onChoisir={onChoisir} />
       </div>
@@ -648,6 +649,13 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     return () => window.removeEventListener('keydown', surTouche)
   }, [posee, changerDuree])
 
+  /** R2-105 — « Déplacer » : la tâche qu'on vient de poser redevient la tâche choisie, un autre créneau la reprend. */
+  const deplacer = useCallback(() => {
+    if (!posee) return
+    setChoisie(posee.id)
+    setPosee(null)
+  }, [posee])
+
   const annulerLaPose = useCallback(() => {
     const annuler = annulerPose.current
     annulerPose.current = null
@@ -655,10 +663,10 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     annuler?.().catch((err) => setErreur(frenchError(err, "L'annulation a échoué. Réessayez.")))
   }, [setErreur])
 
-  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose }
+  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose, deplacer }
 }
 
-function DureePosee({ posee, onDuree, onAnnuler }) {
+function DureePosee({ posee, onDuree, onAnnuler, onDeplacer }) {
   const actuelle = posee.estimation_minutes || 30
   return (
     <div className="ag-duree" role="group" aria-label={`Durée de ${posee.titre}`}>
@@ -667,6 +675,7 @@ function DureePosee({ posee, onDuree, onAnnuler }) {
           <b>{`Placée à ${posee.heure_debut}`}</b>
           <small>{posee.titre}</small>
         </div>
+        <button type="button" className="bouton lien" onClick={onDeplacer}>Déplacer</button>
         <button type="button" className="bouton lien" onClick={onAnnuler}>Annuler</button>
       </div>
       <div className="segmente" role="radiogroup" aria-label="Durée">
@@ -770,10 +779,31 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       gestes.basculer(item, item.statut !== 'fait').catch((err) => setErreurGeste(frenchError(err)))
     },
   }
+  // R2-105 — sur iPhone le volet « À placer » est SOUS la grille : une tâche choisie, la vue remonte sur la grille, près de
+  // la ligne « maintenant » (sinon en haut de la grille) — jamais de défilement manuel pour trouver où la poser.
+  useEffect(() => {
+    if (placement.choisie == null || vue !== 'jour' || planifier || !donnees) return
+    if (window.matchMedia?.('(min-width: 1024px)').matches) return // au bureau le volet est à côté de la grille
+    const grille = document.querySelector('.tch .grille-agenda')
+    const cible = grille?.querySelector('.maintenant') ?? grille
+    const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    cible?.scrollIntoView?.({ block: cible === grille ? 'start' : 'center', behavior: reduit ? 'auto' : 'smooth' })
+  }, [placement.choisie, vue, planifier, donnees])
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
   const planifierSemaine = () => changer({ placer: '1' })
   const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
-  const choisie = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
+  // R2-105 — la tâche choisie peut aussi être un bloc déjà posé (« Déplacer ») : on la cherche dans les jours aussi
+  const dansLeVolet = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
+  const choisie = dansLeVolet ?? (placement.choisie == null ? null
+    : jours.flatMap((j) => [...(j.blocs ?? []), ...(j.sans_heure ?? [])]).find((it) => it.id === placement.choisie) ?? null)
+  const consigneDeplacement = choisie && !dansLeVolet && vue === 'jour' ? (
+    <div className="ag-consigne" role="status">
+      <span>{`Touche un créneau pour déplacer ${choisie.titre}`}</span>
+      <button type="button" className="bouton" aria-label="Annuler le déplacement" onClick={() => placement.setChoisie(null)}>
+        <X className="i" aria-hidden="true" />
+      </button>
+    </div>
+  ) : null
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
   const volet = (
     <VoletAPlacer
@@ -844,11 +874,12 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet}
+          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet} consigne={consigneDeplacement}
           onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
       {donnees && vue === 'jour' && placement.posee ? (
-        <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
+        <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose}
+          onDeplacer={placement.deplacer} />
       ) : null}
       {donnees && vue === 'semaine' ? (
         <>
