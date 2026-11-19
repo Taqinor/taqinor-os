@@ -1014,6 +1014,43 @@ def visites_pour_lead(lead):
     return [ligne_visite_pour_lead(visite) for visite in visites]
 
 
+def visites_visibles(user, *, base=None, mine=False):
+    """LA portée de lecture des visites d'un compte (VTA6 + ACVI8) — une seule
+    copie, lue par le viewset (``get_queryset``) ET par tout ce que l'assistant
+    sert (agenda, fiche, libellés, charge) : un GET sur la visite d'un collègue
+    rend 404, jamais 403.
+
+    * sans ``visites_valider`` : SES visites seulement (``commercial=user``) ;
+    * avec ``visites_valider`` : l'équipe — les visites des leads en portée du
+      compte (ACVI8, D-ACVI-3) et celles qui lui sont assignées ; le bureau
+      d'études dédié (``visites_valider`` sans ``visites_modifier``) voit toute
+      la société ;
+    * ``mine`` (le ``?mine=1`` historique) RESTREINT encore un valideur à ses
+      propres visites, il n'élargit jamais la portée de personne.
+
+    ``base`` : le queryset de départ (le viewset passe le sien, déjà borné à la
+    société) ; absent, toutes les visites de la société de ``user``.
+    """
+    from core.mixins import company_qs
+    from core.permissions import _user_has_or_legacy
+
+    from .models import VisiteTerrain
+
+    if base is None:
+        base = company_qs(
+            VisiteTerrain.objects.select_related('lead', 'commercial'), user)
+    if not _user_has_or_legacy(user, 'visites_valider'):
+        return base.filter(commercial=user)
+    if _user_has_or_legacy(user, 'visites_modifier'):
+        from apps.crm import selectors as crm_selectors
+        base = (base.filter(
+            lead__in=crm_selectors.leads_en_portee(user).values('pk'))
+            | base.filter(commercial=user))
+    if mine:
+        base = base.filter(commercial=user)
+    return base
+
+
 def ligne_visite_terrain(visite):
     """UNE ligne de la liste ``GET /visites/visites/`` (badge de complétude)."""
     manquants = visite_terrain_manquants(visite)
@@ -1112,6 +1149,34 @@ def ma_journee_du_commercial(company, user, *, aujourdhui):
                .prefetch_related('medias__attachment')
                .filter(company=company, commercial=user))
     return ma_journee(visites, aujourdhui=aujourdhui)
+
+
+def brief_visites(user, aujourdhui):
+    """Copilote vague 2 (BRF) — le bloc « visites de l'équipe » du point du
+    matin, pour ``user`` : ``{sans_technicien, a_valider, en_retard,
+    plus_ancienne_a_valider_le, lignes[≤ 5], lien}`` — des compteurs entiers, la
+    date ISO de la plus ancienne visite à valider (``None`` s'il n'y en a pas),
+    et au plus 5 lignes de la forme de ``contract_samples/assistant_agenda.json``.
+    ``None`` pour un compte qui ne valide pas les visites (``visites_valider``) :
+    c'est le droit de lire le bloc. Portée de l'écran (``visites_visibles``).
+    Lecture seule ; deux agrégats et au plus 5 lignes (``aujourdhui`` : la date
+    du jour, passée par l'appelant)."""
+    from . import assistant
+
+    return assistant.brief_visites(user, aujourdhui)
+
+
+def visites_validees_sans_calepinage(company, depuis):
+    """Copilote vague 2 (BRF) — les visites VALIDÉES depuis ``depuis`` (date ou
+    horodatage) dans ``company``, au plus une par lead (la plus récente),
+    la plus récente d'abord : ``[{visite_id, lead_id, lead_nom, validee_le,
+    a_faire: 'preparer_calepinage', lien}]``. Ce sont les CANDIDATS « visite
+    validée, calepinage à préparer » : le calepinage n'est jamais lu ici
+    (frontière M3), l'appelant écarte les leads qui ont déjà un calepinage ouvert
+    (via les selectors du calepinage) et applique sa propre portée de leads."""
+    from . import assistant
+
+    return assistant.visites_validees(company, depuis)
 
 
 # -- CALX363 -- LA PORTE VISITE TECHNIQUE -> CALEPINAGE ------------------------

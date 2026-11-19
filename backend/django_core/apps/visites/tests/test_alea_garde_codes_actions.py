@@ -40,9 +40,13 @@ class GardeCodesActionsTests(SimpleTestCase):
         noms = actions_ecriture()
         for attendu in ('photos', 'supprimer_photo', 'mesures', 'terminer',
                         'valider', 'renvoyer', 'qualification', 'calage',
-                        'assembler_photos', 'arriver', 'demarrer_route'):
+                        'assembler_photos', 'arriver', 'demarrer_route',
+                        'annuler'):
             self.assertIn(attendu, noms)
-        self.assertNotIn('photo_toit', noms)  # GET seulement
+        # GET seulement : jamais une action d'écriture (copilote vague 2 : les
+        # lectures de l'assistant n'ont pas à figurer dans la table).
+        for lecture in ('photo_toit', 'agenda', 'resume', 'charge'):
+            self.assertNotIn(lecture, noms)
 
     def test_toute_action_ecriture_a_un_code_explicite(self):
         table = VisiteTerrainViewSet.PERMISSIONS_ECRITURE
@@ -69,3 +73,6 @@ class GardeCodesActionsTests(SimpleTestCase):
         self.assertEqual(_vue('renvoyer').write_permission, 'visites_valider')
         self.assertEqual(_vue('terminer').write_permission,
                          'visites_modifier')
+        # Copilote vague 2 (VIS7) — annuler un rendez-vous en attente : un
+        # geste de celui qui planifie, jamais refusé faute de code déclaré.
+        self.assertEqual(_vue('annuler').write_permission, 'visites_modifier')

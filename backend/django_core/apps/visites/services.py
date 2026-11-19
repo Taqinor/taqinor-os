@@ -287,6 +287,19 @@ def visite_en_attente(lead):
             .order_by('-date_prevue', '-id').first())
 
 
+def est_rendez_vous_en_attente(visite):
+    """Jumeau PYTHON de ``visite_en_attente`` pour une visite déjà chargée : un
+    rendez-vous EN ATTENTE est un BROUILLON avec une date prévue, jamais
+    commencé (ni départ ni arrivée pointés) — les mêmes critères que
+    ``annuler_rendez_vous``. Seul celui-là s'annule par le geste de
+    l'assistant (une visite commencée, terminée ou validée a eu lieu)."""
+    from .models import VisiteTerrain
+
+    return (visite.statut == VisiteTerrain.Statut.BROUILLON
+            and visite.en_route_le is None and visite.arrivee_le is None
+            and visite.date_prevue is not None)
+
+
 def gabarit_pour_lead(lead):
     """AGR412 (D-AGR-4) — le gabarit d'une visite d'après le TYPE du lead que
     le CRM passe (l'objet lead lui-même : aucun import de ``apps.crm``) :
