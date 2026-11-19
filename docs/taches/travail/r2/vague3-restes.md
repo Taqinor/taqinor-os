@@ -32,3 +32,22 @@ Plis faits (worktree `taches-r2-ci`) : CI api-fuzz ×4 (`d0bc4a9ff`), L2 temps 1
 - L3 : « Visite #cha » + Entrée lit tout « #Chantier Benali 9 kWc » ; « Relancer dans quinze jours » ; coller
   `liste30.txt` → « Projet : Recrutement technicien », « Projet : Administratif ».
 - L2 : nom de projet pris → 409 `state_conflict`, toujours sous le champ ; `e2e/taches-journee.spec.js` jamais jouée.
+
+## Après les plis de L1 (`ae490d3e3`) et L4 (`5ff286cb9`) — tête d'intégration `5f3a687d5`
+- Contrat de L1 : `tour2/contrat-L1.md` ; nouvel échantillon `contract_samples/faites_semaine.json` ; plafond de
+  requêtes de `priorites/` 22 → 23 (`test_plafonds.py`, `docs/query-budgets.yml`) : calculé, pas mesuré → la CI tranche.
+- Écarts de L1 à la consolidation : l'avertissement `echeance_aujourdhui` reste `{code, message}` (pas de clé
+  `echeance`) ; `total` / `activites_closes` sont dans l'enveloppe de `taches/?periode=faites_semaine`.
+- Conséquence voulue de R3-001 : une ★ reportée au bilan du soir n'est plus comptée par la nuit ni dans l'essentiel de
+  la Revue (« ce qui est montré est compté »).
+- (L4 → L2, transmis) `Aujourdhui.test.jsx` l.989 rouge (« Calendrier… ») ; titres « Quand ? » (`Aujourdhui.jsx` l.940,
+  `ATrier.jsx` l.323) ; mot du bilan perdu à la fermeture (`FeuilleBilan.jsx`) ; étoile qui change entre la liste et la
+  fiche (deux valeurs d'`essentielle`).
+- (L4 → L7) `textes.md` §2.4 l.195 : « Calendrier… », « Quand ? ».
+- (L4 → L6, transmis) `GrilleAgenda` : appeler `retenirApercu(item)`.
+- (L4) Échap avalé quelques millisecondes juste après un choix dans un menu ⋯ (Radix ; pareil sur main) ; l'appui long
+  cache souvent la ligne surlignée sous la feuille ; `field-sizing: content` (champ de saisie qui grandit) à vérifier sur
+  Safari réel.
+- À rejouer sur l'écran (liste de L1, 10 gestes) : essentiel 1/2 partout ; ★ échue reportée ; une carte par jour ;
+  semaine = 5 partout ; « Garder ce rythme » sur le pas réel ; Copilote sur journée trop pleine ; Alt+↓ près d'une ★ due ;
+  derniers gestes ; pause puis recharger la Revue ; projets neufs sans « 0 a avancé ».
