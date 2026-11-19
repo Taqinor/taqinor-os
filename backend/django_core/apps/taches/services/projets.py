@@ -266,7 +266,7 @@ def terminer_projet(user, projet_id, *, issue, bilan='', taches_ouvertes='', pro
             return ResultatProjet(projet)
         ouvertes, suivent = _a_traiter(user, projet)
         if ouvertes and not taches_ouvertes:
-            raise serializers.ValidationError({'taches_ouvertes': [MESSAGE_REQUIS]})
+            raise refus_etat({'taches_ouvertes': [MESSAGE_REQUIS]})  # le projet a des ouvertes : état
         ops, deplacees = [], 0
         if ouvertes and taches_ouvertes == 'annuler':
             _abandonner(user, ouvertes, ops)
@@ -864,7 +864,7 @@ def decider_revue(user, projet_id, donnees):
         projet = _verrouiller_projet(user, projet_id)
         autre = _autre_focus(user, projet, semaine) if donnees.get('focus') else None
         if autre is not None:
-            raise serializers.ValidationError({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
+            raise refus_etat({'focus': [f'Déjà « {autre.nom} » cette semaine.']})
         ops = []
         revue = _enregistrer_revue(user, projet, semaine, donnees, ops)
         geste, message = None, 'Revue enregistrée'

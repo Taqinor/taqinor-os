@@ -68,6 +68,8 @@ CONFLIT_TACHE = inline_serializer('TachesConflitTache', {
     'actuel': TacheSerializer(required=False),
 })
 ECRITE = reponses(TacheEcriteSerializer, erreurs=(400, 404))
+#: Action qu'un ÉTAT de la tâche peut refuser (non récurrente, close, date d'ancre absente…) : 409 `refus_etat`.
+ECRITE_OU_ETAT = reponses(TacheEcriteSerializer, erreurs=(400, 404, 409))
 ECRITE_AVEC_COMPTE = reponses(TacheEcriteSerializer, erreurs=(400, 404), conflit=ERREUR_CODE)
 #: Toute écriture rend son `geste_id` (api.md §0), une étiquette ou une vue enregistrée comprise.
 VUE_ENREGISTREE = inline_serializer('TachesVueEnregistree', {
@@ -299,7 +301,7 @@ class TacheSauterVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=None, responses=ECRITE)
+    @extend_schema(request=None, responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         return _reponse(request, sauter_occurrence(request.user, id))
 
@@ -311,7 +313,7 @@ class TacheAttendreVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=AttendreEntreeSerializer,
-                   responses=ECRITE)
+                   responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         donnees = lire_corps(AttendreEntreeSerializer, request.data)
         return _reponse(request, attendre_tache(request.user, id, donnees['en_attente_de']))
@@ -359,7 +361,7 @@ class TacheRappelsVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=RappelEntreeSerializer, responses=ECRITE)
+    @extend_schema(request=RappelEntreeSerializer, responses=ECRITE_OU_ETAT)
     def post(self, request, id):
         donnees = lire_corps(RappelEntreeSerializer, request.data)
         resultat = poser_rappel(
@@ -424,7 +426,7 @@ class RappelRepeterVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=RepeterEntreeSerializer,
-                   responses=reponses(forme_echantillon('rappel_repeter'), erreurs=(400, 404)))
+                   responses=reponses(forme_echantillon('rappel_repeter'), erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(RepeterEntreeSerializer, request.data)
         resultat = repeter_rappel(request.user, id, dans_minutes=donnees.get('dans_minutes'),
@@ -440,7 +442,7 @@ class RecurrenceVue(APIView):
     permission_classes = PERMISSIONS
     parser_classes = PARSEURS
 
-    @extend_schema(request=RecurrenceEntreeSerializer, responses=ECRITE)
+    @extend_schema(request=RecurrenceEntreeSerializer, responses=ECRITE_OU_ETAT)
     def patch(self, request, id):
         donnees = lire_corps(RecurrenceEntreeSerializer, request.data)
         return _reponse(request, modifier_regle(request.user, id, donnees))
@@ -485,7 +487,7 @@ class ElementChecklistReordonnerVue(APIView):
     parser_classes = PARSEURS
 
     @extend_schema(request=ReordonnerElementEntreeSerializer,
-                   responses=reponses(None, statut=204, erreurs=(400, 404)))
+                   responses=reponses(None, statut=204, erreurs=(400, 404, 409)))
     def post(self, request, id):
         donnees = lire_corps(ReordonnerElementEntreeSerializer, request.data)
         reordonner_element(request.user, id, donnees.get('avant_id'), donnees.get('apres_id'))

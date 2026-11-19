@@ -689,7 +689,7 @@ class ChecklistTests(BaseApi):
         ailleurs = ElementChecklist.objects.create(company=self.a, tache=fabriques.tache(self.u1), libelle='y')
         self.assertEqual(self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': etranger.pk}).status_code, 404)
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {'avant_id': ailleurs.pk})
-        self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Valeur inconnue.']}))
+        self.assertEqual((reponse.status_code, reponse.json()['avant_id']), (409, ['Valeur inconnue.']))  # état : 409
         reponse = self._post(f'checklist/{b.pk}/reordonner/', {})
         self.assertEqual((reponse.status_code, champs(reponse.json())), (400, {'avant_id': ['Requis.']}))
         self.assertEqual(self._ordre(tache), ['a', 'b'])

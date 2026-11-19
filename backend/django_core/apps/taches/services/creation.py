@@ -40,7 +40,7 @@ from apps.taches.choix import (
     StatutProjet,
     StatutTache,
 )
-from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, introuvable, jour_dans_bornes, sans_nul
+from apps.taches.entrees import MESSAGE_DATE, MESSAGE_VALEUR, introuvable, jour_dans_bornes, refus_etat, sans_nul
 from apps.taches.models.projets import Projet, Section
 from apps.taches.models.rythme import ReglagesRythme
 from apps.taches.models.taches import ElementChecklist, Etiquette, EtiquetteTache, RegleRecurrence, Tache
@@ -331,7 +331,7 @@ def _regle_existante(user, regle_id):
     if regle is None:
         raise Http404('Introuvable.')
     if taches_de(user).filter(recurrence=regle, statut__in=OUVERTS).exists():
-        raise serializers.ValidationError({'recurrence': ['Une occurrence de cette série est déjà ouverte.']})
+        raise refus_etat({'recurrence': ['Une occurrence de cette série est déjà ouverte.']})
     return regle
 
 
