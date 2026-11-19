@@ -1,10 +1,14 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import {
+  MemoryRouter, useLocation, useNavigationType, useSearchParams,
+} from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import CoquilleTaches from '../coquille/CoquilleTaches'
+import { useClavierListe } from '../lib/clavierListe'
+import { useOuvrirFiche } from '../lib/fiche'
 import { FeuilleAttente } from './ActionsLigne'
 import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
@@ -482,6 +486,50 @@ describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sor
     troisieme.unmount()
     expect(onChoisir).toHaveBeenCalledTimes(1)
     expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27', heure_debut: '08:00' }))
+  })
+})
+
+describe('R3-062 — fiche ouverte (panneau du bureau) : `j` / `k` font suivre la fiche, comme Linear', () => {
+  function Liste() {
+    const ouvrirFiche = useOuvrirFiche()
+    const [params] = useSearchParams()
+    const lieu = useLocation()
+    const type = useNavigationType()
+    const racine = useClavierListe(() => {})
+    const ouverte = params.get('tache')
+    return (
+      <div className="tch">
+        <div ref={racine}>
+          {[['tache', 1], ['activite', 7], ['tache', 2]].map(([genre, id]) => (
+            <div key={`${genre}:${id}`} data-ligne={`${genre}:${id}`}>
+              <button type="button" className="ligne-corps-bouton" onClick={() => { if (genre === 'tache') ouvrirFiche(id) }}>{`ligne ${genre} ${id}`}</button>
+            </div>
+          ))}
+        </div>
+        {ouverte ? <div data-fiche={ouverte}>{`fiche ${ouverte}`}</div> : null}
+        <output data-testid="lieu">{`${lieu.search} ${type}`}</output>
+      </div>
+    )
+  }
+
+  it('j sur la ligne suivante change la fiche ouverte (entrée d\'historique REMPLACÉE) ; une activité ne la change pas', () => {
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Liste /></MemoryRouter>)
+    // sans fiche ouverte, j ne fait que parcourir (comme avant)
+    fireEvent.keyDown(document.body, { key: 'j' })
+    expect(screen.getByText('ligne tache 1')).toHaveFocus()
+    expect(screen.queryByText(/^fiche/)).toBeNull()
+    fireEvent.click(screen.getByText('ligne tache 1'))
+    expect(screen.getByText('fiche 1')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByText('ligne tache 1'), { key: 'j' })
+    expect(screen.getByText('ligne activite 7')).toHaveFocus()
+    expect(screen.getByText('fiche 1')).toBeInTheDocument() // une activité n'a pas de fiche de tâche
+    fireEvent.keyDown(screen.getByText('ligne activite 7'), { key: 'j' })
+    expect(screen.getByText('ligne tache 2')).toHaveFocus()
+    expect(screen.getByText('fiche 2')).toBeInTheDocument()
+    expect(screen.getByTestId('lieu')).toHaveTextContent('?tache=2 REPLACE')
+    fireEvent.keyDown(screen.getByText('ligne tache 2'), { key: 'k' })
+    fireEvent.keyDown(screen.getByText('ligne activite 7'), { key: 'k' })
+    expect(screen.getByText('fiche 1')).toBeInTheDocument()
   })
 })
 

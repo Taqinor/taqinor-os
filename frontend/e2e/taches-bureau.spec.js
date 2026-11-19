@@ -73,7 +73,7 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     await expect.poll(async () => (await lireTache(page, tache.id)).heure_debut).toBeNull()
   })
 
-  test('R2-050 / R2-043 — la fiche est un panneau à droite : la liste reste visible, `j` puis Entrée change de fiche, Échap ferme', async ({ page }) => {
+  test('R2-050 / R2-043 / R3-062 — la fiche est un panneau à droite : la liste reste visible, `j` fait suivre la fiche, Échap ferme', async ({ page }) => {
     await reinitialiser(page)
     const jour = await jourServeur(page)
     const [a, b] = await creerTaches(page, [titreUnique('Envoyer le devis'), titreUnique('Appeler le client')], { jour_prevu: jour })
@@ -88,11 +88,17 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     expect(boite.x + boite.width, 'collé au bord droit').toBeGreaterThanOrEqual(1439)
     expect(boite.width, 'environ 420 px').toBeLessThanOrEqual(430)
     await expect(ligne(page, b.id), 'la liste reste visible à côté').toBeVisible()
-    // le focus est resté sur la ligne : `j` va à la suivante, Entrée ouvre SA fiche dans le même panneau
+    // le focus est resté sur la ligne : `j` va à la suivante et le panneau la SUIT (R3-062), sans nouvelle entrée
+    const entrees = await page.evaluate(() => window.history.length)
     await page.keyboard.press('j')
     await expect(ligne(page, b.id).locator('.ligne-corps-bouton')).toBeFocused()
-    await page.keyboard.press('Enter')
     await expect(page.locator(`[data-fiche="${b.id}"]`).getByRole('textbox', { name: 'Titre' })).toHaveValue(b.titre)
+    await expect(page).toHaveURL(new RegExp(`tache=${b.id}`))
+    expect(await page.evaluate(() => window.history.length), "l'entrée d'historique est remplacée").toBe(entrees)
+    await page.keyboard.press('k')
+    await expect(page.locator(`[data-fiche="${a.id}"]`).getByRole('textbox', { name: 'Titre' })).toHaveValue(a.titre)
+    await page.keyboard.press('j')
+    await expect(page.locator(`[data-fiche="${b.id}"]`)).toHaveCount(1)
     await page.keyboard.press('Escape')
     await expect(page.locator('[data-fiche]')).toHaveCount(0)
     await expect(page).not.toHaveURL(/tache=/)
