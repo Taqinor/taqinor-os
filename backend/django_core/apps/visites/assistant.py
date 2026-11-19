@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from django.db.models import Count, F, Q
 from django.utils import timezone
 
-from . import selectors
+from . import selectors, services
 from . import visite_checklist as checklist
 from .models import VisiteTerrain
 
@@ -356,6 +356,37 @@ def resume_visite(visite):
         if octets(fiche) <= BUDGET_FICHE_OCTETS:
             break
     return fiche
+
+
+# ── L'annulation d'un rendez-vous en attente (``visites.visite.annuler``) ────
+
+def refus_motif():
+    """Le 400 d'un motif absent, trop court ou trop long (``visite_annuler.json``)."""
+    return ErreurAssistant('motif : obligatoire, de 3 à 300 caractères.', 'motif',
+                           'motif_invalide')
+
+
+def refus_annulation(visite):
+    """Le refus 409 d'une annulation que l'état de la visite interdit, ``None``
+    si c'est un rendez-vous EN ATTENTE (brouillon daté, jamais commencé). Une
+    visite annulée est gelée : on ne l'annule pas deux fois ; une visite
+    commencée, terminée ou validée a eu lieu."""
+    if services.est_rendez_vous_en_attente(visite):
+        return None
+    statut = visite.statut
+    if statut == Statut.ANNULEE:
+        detail = 'Cette visite est déjà annulée.'
+    elif statut == Statut.BROUILLON and visite.date_prevue is None:
+        detail = ("Cette visite n'a pas de date prévue : il n'y a pas de rendez-vous à annuler.")
+    else:
+        etat = ("déjà commencée (le départ ou l'arrivée est pointé)" if statut == Statut.BROUILLON
+                else visite.get_statut_display().lower())
+        suite = ('Ouvrez-la pour la valider ou la renvoyer.'
+                 if statut in (Statut.TERMINEE, Statut.VALIDEE)
+                 else 'Ouvrez-la pour la terminer ou la marquer à refaire.')
+        detail = (f"Seul un rendez-vous en attente (pas encore commencé) s'annule ici : "
+                  f'cette visite est {etat}. {suite}')
+    return ErreurAssistant(detail, 'statut', 'visite_pas_en_attente', 409)
 
 
 # ── La charge de l'équipe, au jour près (``visites.charge``) ─────────────────

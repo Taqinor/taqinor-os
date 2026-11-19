@@ -989,11 +989,8 @@ class ResumeAssistantTests(VisiteTerrainBase):
         self.assertIn(APIClient().get(self._url(visite_id)).status_code, (401, 403))
 
 
-class ReplanifierAssistantTests(VisiteTerrainBase):
-    """Copilote vague 2 (VIS6) — ``visites.visite.replanifier`` est le PATCH
-    EXISTANT de la visite (date et/ou assigné), tel que le relais l'appelle : le
-    serveur reste l'autorité (visite en attente seulement, date non passée,
-    compte actif de la société, portée de l'écran)."""
+class VisiteDateeMixin:
+    """Une visite en attente (brouillon daté, assignée au commercial créateur)."""
 
     def _visite_datee(self, jours=5):
         jour = timezone.localdate() + datetime.timedelta(days=jours)
@@ -1002,6 +999,13 @@ class ReplanifierAssistantTests(VisiteTerrainBase):
                              format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         return VisiteTerrain.objects.get(pk=resp.data['id']), jour
+
+
+class ReplanifierAssistantTests(VisiteDateeMixin, VisiteTerrainBase):
+    """Copilote vague 2 (VIS6) — ``visites.visite.replanifier`` est le PATCH
+    EXISTANT de la visite (date et/ou assigné), tel que le relais l'appelle : le
+    serveur reste l'autorité (visite en attente seulement, date non passée,
+    compte actif de la société, portée de l'écran)."""
 
     def _patch(self, visite, corps, api=None):
         return (api or auth(self.bureau)).patch(
@@ -1089,6 +1093,107 @@ class ReplanifierAssistantTests(VisiteTerrainBase):
         self.assertEqual((visite.date_prevue, visite.commercial_id), (jour, self.commercial.id))
 
 
+class AnnulerAssistantTests(VisiteDateeMixin, VisiteTerrainBase):
+    """Copilote vague 2 (VIS7) — ``POST visites/visites/<id>/annuler/`` : annule
+    un rendez-vous EN ATTENTE, motif obligatoire, par la porte d'annulation
+    existante (jamais un DELETE : la visite et ses photos restent). Forme =
+    ``visite_annuler.json`` ; un refus nomme son champ."""
+
+    MOTIF = 'Le client a reporté : il rappelle après son retour de voyage.'
+
+    def _annuler(self, visite, corps=None, api=None):
+        return (api or auth(self.bureau)).post(
+            f'/api/django/visites/visites/{visite.id}/annuler/',
+            {'motif': self.MOTIF} if corps is None else corps, format='json')
+
+    def test_le_rendez_vous_est_annule_par_la_porte_existante(self):
+        from apps.notifications.models import Notification
+        visite, jour = self._visite_datee()
+        photo = self.poster_photo(visite.id, 'toiture_vue_generale')
+        self.assertEqual(photo.status_code, 200, photo.data)
+        # Une photo passe la visite « en cours » ; on la remet en attente pour
+        # prouver que l'annulation GARDE les photos déjà posées.
+        VisiteTerrain.objects.filter(pk=visite.pk).update(statut='brouillon')
+        resp = self._annuler(visite)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        contrat = echantillon('visite_annuler')['exemple']
+        self.assertEqual(set(resp.data), set(contrat))
+        self.assertEqual((resp.data['statut'], resp.data['date_prevue'], resp.data['a_faire'],
+                          resp.data['modifiable']), ('annulee', None, 'rien', False))
+        visite.refresh_from_db()
+        self.assertEqual((visite.statut, visite.date_prevue), ('annulee', None))
+        self.assertIn(f'Rendez-vous du {jour:%d/%m/%Y} annulé — {self.MOTIF.rstrip(".")}.',
+                      visite.notes)
+        # Jamais un DELETE : la visite et sa photo restent consultables.
+        self.assertEqual(VisiteMedia.objects.filter(visite=visite).count(), 1)
+        lue = self.api.get(f'/api/django/visites/visites/{visite.id}/')
+        self.assertEqual((lue.status_code, lue.data['statut']), (200, 'annulee'))
+        # La personne qui la faisait est prévenue.
+        self.assertEqual(Notification.objects.filter(
+            recipient=self.commercial, title='Visite technique annulée').count(), 1)
+
+    def test_le_motif_est_obligatoire_de_3_a_300_caracteres(self):
+        visite, _ = self._visite_datee()
+        contrat = echantillon('visite_annuler')['exemple_400_motif']
+        for corps in ({}, {'motif': ''}, {'motif': 'ab'}, {'motif': '   '}, {'motif': 'a b'},
+                      {'motif': 'x' * 301}, {'motif': 12345}, {'motif': None}, ['motif']):
+            with self.subTest(corps=corps):
+                resp = self._annuler(visite, corps)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data, contrat)
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, 'brouillon')
+        self.assertIsNotNone(visite.date_prevue)
+        self.assertEqual(self._annuler(visite, {'motif': 'x' * 300}).status_code, 200)
+
+    def test_seul_un_rendez_vous_en_attente_s_annule(self):
+        contrat = echantillon('visite_annuler')['exemple_409_pas_en_attente']
+        cas = {
+            'en_cours': {'statut': 'en_cours'},
+            'terminee': {'statut': 'terminee'},
+            'validee': {'statut': 'validee'},
+            'a_refaire': {'statut': 'a_refaire'},
+            'annulee': {'statut': 'annulee'},
+            'depart_pointe': {'en_route_le': timezone.now()},
+            'arrivee_pointee': {'arrivee_le': timezone.now()},
+            'sans_date': {'date_prevue': None},
+        }
+        for nom, champs in cas.items():
+            with self.subTest(etat=nom):
+                visite, jour = self._visite_datee()
+                VisiteTerrain.objects.filter(pk=visite.pk).update(**champs)
+                resp = self._annuler(visite)
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(set(resp.data), {'detail', 'field', 'code'})
+                self.assertEqual((resp.data['field'], resp.data['code']),
+                                 ('statut', 'visite_pas_en_attente'))
+                if nom == 'en_cours':  # le message du contrat, mot pour mot
+                    self.assertEqual(resp.data, contrat)
+                visite.refresh_from_db()
+                self.assertNotIn('annulé', visite.notes)
+
+    def test_une_visite_annulee_ne_s_annule_pas_deux_fois(self):
+        visite, _ = self._visite_datee()
+        self.assertEqual(self._annuler(visite).status_code, 200)
+        deuxieme = self._annuler(visite)
+        self.assertEqual(deuxieme.status_code, 409, deuxieme.data)
+        visite.refresh_from_db()
+        self.assertEqual(visite.notes.count('annulé'), 1)
+
+    def test_portee_droits_et_societe(self):
+        visite, _ = self._visite_datee()
+        collegue = make_user(self.company, 'vt4-collegue', TERRAIN)
+        self.assertEqual(self._annuler(visite, api=auth(collegue)).status_code, 404)
+        self.assertEqual(self._annuler(visite, api=auth(self.etranger)).status_code, 404)
+        lecture = make_user(self.company, 'vt4-lecture', ['crm_voir', 'visites_voir'])
+        self.assertEqual(self._annuler(visite, api=auth(lecture)).status_code, 403)
+        self.assertIn(self._annuler(visite, api=APIClient()).status_code, (401, 403))
+        visite.refresh_from_db()
+        self.assertEqual(visite.statut, 'brouillon')
+        # L'assigné lui-même (terrain, visites_modifier) peut annuler la sienne.
+        self.assertEqual(self._annuler(visite, api=self.api).status_code, 200)
+
+
 class ActionsAssistantVisitesTests(SimpleTestCase):
     """Copilote vague 2 (VIS3-VIS8) — le catalogue ``visites.*`` de l'assistant :
     déclaré par le manifeste, dans le lot ``copilote``, la permission du
@@ -1148,6 +1253,7 @@ class ActionsAssistantVisitesTests(SimpleTestCase):
     ECRITURES = {
         'visites.visite.replanifier': (
             'outward', 'partial_update', {'id': 'visite', 'commercial': 'utilisateur'}),
+        'visites.visite.annuler': ('irreversible', 'annuler', {'id': 'visite'}),
     }
 
     def test_les_ecritures_sont_confirmees_et_leur_apercu_nomme_la_visite(self):

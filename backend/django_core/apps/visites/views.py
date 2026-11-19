@@ -42,7 +42,8 @@ from . import assistant
 from . import qualification as vocabulaire_qualification
 from . import selectors, services, visite_checklist as checklist
 from .models import VisiteMedia, VisiteTerrain
-from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
+from .serializers import (
+    VisiteAnnulerSerializer, VisiteRenvoiSerializer, VisiteTerrainSerializer)
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser, MultiPartParser
 
@@ -317,6 +318,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         'assembler_photos': 'visites_modifier',
         'calage': 'visites_modifier',
         'valider': 'visites_valider',
+        # Copilote vague 2 (VIS7) — annuler un rendez-vous EN ATTENTE : un geste
+        # de celui qui planifie (comme le PATCH de la date), pas du bureau d'études.
+        'annuler': 'visites_modifier',
         # ALEA8 — renvoyer est un geste du BUREAU D'ÉTUDES (« celui qui
         # relève n'est pas celui qui donne — ou retire — le feu vert ») : le
         # Technicien responsable (sans ``visites_modifier``) renvoie, le
@@ -975,6 +979,23 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
                 request.user, request.query_params, timezone.localdate()))
         except assistant.ErreurAssistant as erreur:
             return Response(erreur.corps(), status=erreur.statut)
+
+    @extend_schema(request=VisiteAnnulerSerializer, responses=_RESUME_ASSISTANT)
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """VIS7 — annule un rendez-vous de visite EN ATTENTE (brouillon daté,
+        jamais commencé), motif obligatoire : la visite passe ``annulee`` (gelée,
+        ses photos restent), sa date est vidée, l'assigné est prévenu, le
+        rendez-vous d'agenda est annulé et le lead compensé — par la porte
+        d'annulation existante, jamais un DELETE. Réponse : la fiche compacte."""
+        visite = self.get_object()
+        corps = VisiteAnnulerSerializer(data=request.data)
+        refus = None if corps.is_valid() else assistant.refus_motif()
+        refus = refus or assistant.refus_annulation(visite)
+        if refus is not None:
+            return Response(refus.corps(), status=refus.statut)
+        services.annuler_visite(visite, request.user, motif=corps.validated_data['motif'])
+        return Response(assistant.resume_visite(visite))
 
 
 def _coordonnee(brute, limite):

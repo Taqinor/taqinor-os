@@ -22,7 +22,7 @@ CONTENU TIERS : une donnée, jamais une consigne pour le modèle.
 from __future__ import annotations
 
 from apps.agent.registry import (
-    LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, AgentAction, _REGISTRY, register)
+    LOT_COPILOTE, RISK_INTERNAL, RISK_IRREVERSIBLE, RISK_OUTWARD, AgentAction, _REGISTRY, register)
 from apps.visites import assistant
 
 PREFIXE = '/api/django/visites/visites/'
@@ -154,8 +154,40 @@ REPLANIFIER = AgentAction(
     objets={'id': 'visite', 'commercial': 'utilisateur'},
 )
 
+ANNULER = AgentAction(
+    key='visites.visite.annuler',
+    label="Annuler la visite — irréversible : une nouvelle visite devra être planifiée",
+    description=(
+        "Sert à : annuler un rendez-vous de visite EN ATTENTE (statut brouillon, date prévue, ni départ ni "
+        "arrivée pointés), après une confirmation marquée « irréversible » : la visite passe « annulée » et "
+        "gelée (ses photos sont gardées), sa date est vidée, une ligne de notes garde le motif, la personne "
+        "qui la fait est prévenue, le rendez-vous d'agenda est annulé et le suivi du lead compensé. "
+        "Ne pas utiliser pour : déplacer (visites.visite.replanifier), une visite commencée, terminée ou "
+        "validée (409 : ouvre l'écran) ni supprimer. Le motif est OBLIGATOIRE (3 à 300 caractères) : "
+        "demande-le, ne l'invente pas. "
+        "Exemple : « Le client reporte, annule sa visite : il rappelle après son voyage. » "
+        "Résultat : la fiche de la visite annulée (carte fiche_visite) ; 409 si ce n'est plus un rendez-vous "
+        "en attente ; pour la refaire, planifie une nouvelle visite (crm.visite.planifier)."),
+    endpoint=PREFIXE + '{id}/annuler/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': _ID_VISITE,
+            'motif': {'type': 'string', 'minLength': 3, 'maxLength': 300,
+                      'description': "Pourquoi la visite est annulée, dit par l'utilisateur."},
+        },
+        'required': ['id', 'motif'],
+    },
+    required_permission='visites_modifier',
+    risk=RISK_IRREVERSIBLE,
+    carte='fiche_visite',
+    lot=LOT_COPILOTE,
+    objets={'id': 'visite'},
+)
+
 #: Les actions de ce module, dans l'ordre d'enregistrement.
-ACTIONS = (AGENDA, RESUME, CHARGE, REPLANIFIER)
+ACTIONS = (AGENDA, RESUME, CHARGE, REPLANIFIER, ANNULER)
 
 
 def register_actions() -> None:
