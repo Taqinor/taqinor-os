@@ -16,7 +16,7 @@ import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
 import CarteDuMoment from '../../features/taches/ui/CarteDuMoment'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
-import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annoncer, annulerToast, fermerToast, proposerAnnuler, useEtatGestes } from '../../features/taches/lib/gestes'
 import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { useCompteTaches, useEnLigne } from '../../features/taches/lib/enLigne'
 import { ecrireJournee, lireJournee } from '../../features/taches/horsligne/cacheJournee'
@@ -25,6 +25,7 @@ import { accord, aujourdhuiIso, heureDuConflit, jourCourt, jourLong, jourNomme }
 import * as client from '../../api/tachesApi'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import recordsApi from '../../api/recordsApi'
+import { originFrom } from '../../api/origin'
 import { frenchError } from '../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 
@@ -241,6 +242,124 @@ function ChoisirJour({ item, minimum, onChoisir, initial = '', reporterA = null 
   )
 }
 
+/**
+ * Le compteur suit un geste (± 1 faite) sans attendre le serveur ; la réponse le recale ensuite quand elle en porte
+ * un (`progression` d'une TACHE_ECRITE). Une ligne du plan compte aussi dans « gardées tenues ».
+ */
+function avancer(progression, item, delta) {
+  if (!progression || typeof progression.faites !== 'number') return progression
+  const borne = (n) => Math.max(0, n)
+  const suite = { ...progression, faites: borne(progression.faites + delta) }
+  if (item.prevue_au_plan && typeof progression.plan_tenues === 'number') suite.plan_tenues = borne(progression.plan_tenues + delta)
+  if (item.type === 'activite' && typeof progression.activites_closes === 'number') {
+    suite.activites_closes = borne(progression.activites_closes + delta)
+  }
+  return suite
+}
+
+/** L'adresse de clôture d'une activité ERP (`recordsApi.markActivityDone`), écrite en entier pour l'envoi qui survit à la page. */
+const adresseClore = (id) => `${originFrom(import.meta.env.VITE_API_URL)}/api/django/records/activities/${id}/done/`
+
+/**
+ * Clore en PARTANT (onglet fermé, appli passée en arrière-plan) : un `fetch` keepalive, que le navigateur termine
+ * même après la page. Refusé (session à rafraîchir…) ou impossible, et la page encore là : l'appel ordinaire
+ * (rafraîchissement de session compris) prend le relais.
+ */
+function cloreEnPartant(id, ordinaire) {
+  const envoi = typeof fetch === 'function'
+    ? fetch(adresseClore(id), {
+      method: 'POST', credentials: 'include', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: '{}',
+    })
+    : Promise.reject(new Error('fetch indisponible'))
+  return envoi.then((reponse) => (reponse.ok ? reponse : ordinaire()), () => ordinaire())
+}
+
+/**
+ * R2-010 (choix C-9) — Cocher une activité ERP depuis Tâches se DÉFAIT : la ligne passe cochée et le compteur +1 tout
+ * de suite, le toast dit « Close dans l'ERP · Annuler », et la clôture (`records/activities/{id}/done/`, sans retour
+ * possible côté ERP) ne part qu'au DÉPART du toast — son échéance, sa fermeture, ou un autre toast qui le remplace.
+ * « Annuler » (ou décocher pendant le toast) remet la ligne : rien n'est parti. En quittant l'écran, la clôture part
+ * aussitôt ; en quittant la PAGE (`pagehide`, onglet caché), par un envoi qui survit à la page : sans cela,
+ * l'activité ne serait jamais close. Un refus de l'ERP remet la ligne et s'affiche.
+ */
+function useClotureDifferee({ patcher, setDonnees }) {
+  const enAttente = useRef(new Map()) // `activite:101` → { item, toast } : cochées, pas encore envoyées
+  const toastCourant = useRef(null)
+  const vivant = useRef(true)
+  const { toast } = useEtatGestes()
+
+  const marquer = useCallback((item, fait) => {
+    patcher(cleDe(item), (it) => ({ ...it, statut: fait ? 'fait' : 'a_faire' }))
+    setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, item, fait ? 1 : -1) } : d))
+  }, [patcher, setDonnees])
+
+  const envoyer = useCallback((cle, enPartant = false) => {
+    const attente = enAttente.current.get(cle)
+    if (!attente) return
+    enAttente.current.delete(cle)
+    const { item } = attente
+    const ordinaire = () => recordsApi.markActivityDone(item.id)
+    const envoi = enPartant ? cloreEnPartant(item.id, ordinaire) : ordinaire()
+    envoi.catch((err) => {
+      if (vivant.current) marquer(item, false)
+      proposerAnnuler({ message: `Pas close dans l'ERP : ${frenchError(err)}` })
+    })
+  }, [marquer])
+
+  // le toast d'une activité cochée est parti (échéance, ×, remplacé) : sa clôture part maintenant
+  useEffect(() => {
+    toastCourant.current = toast?.id ?? null
+    for (const [cle, attente] of enAttente.current) if (attente.toast !== toastCourant.current) envoyer(cle)
+  }, [toast, envoyer])
+
+  const partirRef = useRef(() => {})
+  useEffect(() => {
+    partirRef.current = (enPartant) => {
+      if (enAttente.current.size === 0) return
+      const leSien = [...enAttente.current.values()].some((a) => a.toast === toastCourant.current)
+      for (const cle of [...enAttente.current.keys()]) envoyer(cle, enPartant)
+      if (leSien) fermerToast() // son « Annuler » ne pourrait plus rien défaire
+    }
+  }, [envoyer])
+  // abonné une seule fois : un nouveau rendu ne doit jamais « quitter l'écran » (et tout envoyer) au passage
+  useEffect(() => {
+    vivant.current = true
+    const quitterPage = () => partirRef.current(true)
+    const cachee = () => { if (document.visibilityState === 'hidden') partirRef.current(true) }
+    window.addEventListener('pagehide', quitterPage)
+    document.addEventListener('visibilitychange', cachee)
+    return () => {
+      window.removeEventListener('pagehide', quitterPage)
+      document.removeEventListener('visibilitychange', cachee)
+      vivant.current = false
+      partirRef.current(false) // on quitte l'écran : la page vit encore, l'appel ordinaire suffit
+    }
+  }, [])
+
+  const cocher = useCallback((item) => {
+    const cle = cleDe(item)
+    marquer(item, true)
+    const id = proposerAnnuler({
+      message: "Close dans l'ERP",
+      onAnnuler: () => { if (enAttente.current.delete(cle)) marquer(item, false) },
+    })
+    enAttente.current.set(cle, { item, toast: id })
+  }, [marquer])
+
+  /** Décocher pendant le toast = Annuler (vrai) ; une activité déjà envoyée ne se rouvre pas ici (faux). */
+  const decocher = useCallback((item) => {
+    const cle = cleDe(item)
+    const attente = enAttente.current.get(cle)
+    if (!attente) return false
+    enAttente.current.delete(cle)
+    marquer(item, false)
+    if (attente.toast === toastCourant.current) fermerToast()
+    return true
+  }, [marquer])
+
+  return useMemo(() => ({ cocher, decocher }), [cocher, decocher])
+}
+
 export default function Aujourdhui() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -275,6 +394,7 @@ export default function Aujourdhui() {
   const poserProgression = useCallback((progression) => {
     if (progression && typeof progression.faites === 'number') setDonnees((d) => (d ? { ...d, progression } : d))
   }, [setDonnees])
+  const closeErp = useClotureDifferee({ patcher, setDonnees })
 
   const terminer = useCallback(async (item, suivant) => {
     const cle = cleDe(item)
@@ -292,10 +412,8 @@ export default function Aujourdhui() {
     }
     garde()
     if (item.type === 'activite') {
-      if (!suivant) throw new Error('Une activité de l’ERP close ne se rouvre pas ici.')
-      await recordsApi.markActivityDone(item.id)
-      patcher(cle, (it) => ({ ...it, statut: 'fait' }))
-      proposerAnnuler({ message: "Close dans l'ERP" })
+      if (suivant) closeErp.cocher(item)
+      else if (!closeErp.decocher(item)) throw new Error('Une activité de l’ERP close ne se rouvre pas ici.')
       return
     }
     const avant = donnees?.progression
@@ -313,7 +431,7 @@ export default function Aujourdhui() {
         poserProgression(avant)
       },
     })
-  }, [garde, enLigne, donnees, patcher, poserProgression])
+  }, [garde, enLigne, donnees, patcher, poserProgression, closeErp])
 
   const poserJour = useCallback(async (item, jour, message, lockVersion = item.lock_version) => {
     const cle = cleDe(item)

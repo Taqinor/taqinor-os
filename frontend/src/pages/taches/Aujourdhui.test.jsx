@@ -384,17 +384,123 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
-  it('une activité ERP cochée close dans l\'ERP, sans Annuler', async () => {
-    const d = donnees()
-    d.journee.find((i) => i.type === 'activite').peut_cloturer = true
-    servir(d)
-    api.post.mockResolvedValue({ data: {} })
-    monter()
-    await screen.findByText('Devis Settat')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Rappeler Benali » comme faite' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/records/activities/101/done/', {}))
-    expect(await screen.findByText("Close dans l'ERP")).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+  describe('R2-010 — activité ERP cochée : envoi DIFFÉRÉ jusqu\'au départ du toast (choix C-9)', () => {
+    const CASE = 'Marquer « Rappeler Benali » comme faite'
+    const CLOSE = '/records/activities/101/done/'
+    const appelsClose = () => api.post.mock.calls.filter(([url]) => url === CLOSE)
+    async function monterActivite() {
+      const d = donnees()
+      d.journee.find((i) => i.type === 'activite').peut_cloturer = true
+      servir(d)
+      api.post.mockResolvedValue({ data: {} })
+      const rendu = monter()
+      await screen.findByText('Devis Settat')
+      vi.useFakeTimers()
+      return rendu
+    }
+    const attendre = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+
+    it('cocher : la ligne passe cochée et le compteur +1 TOUT DE SUITE ; « Close dans l\'ERP · Annuler » ; rien ne part encore', async () => {
+      await monterActivite()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      const toast = screen.getByRole('group', { name: 'Geste effectué' })
+      expect(toast).toHaveTextContent("Close dans l'ERP")
+      expect(within(toast).getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+      expect(appelsClose()).toHaveLength(0)
+    })
+
+    it('Annuler : la ligne et le compteur reviennent, et RIEN ne part vers l\'ERP (même après le délai du toast)', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+      await attendre(0)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      await attendre(20000)
+      expect(appelsClose()).toHaveLength(0)
+    })
+
+    it('sans Annuler : l\'activité est close à la disparition du toast (8 s), une seule fois, compteur juste sans relire', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(7900)
+      expect(appelsClose()).toHaveLength(0)
+      await attendre(200)
+      expect(appelsClose()).toEqual([[CLOSE, {}]])
+      await attendre(10000)
+      expect(appelsClose()).toHaveLength(1)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
+    })
+
+    it('un autre geste remplace le toast : l\'activité part à ce moment-là (le toast a disparu)', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+      await attendre(0)
+      expect(appelsClose()).toHaveLength(1)
+    })
+
+    it('l\'ERP refuse : la ligne et le compteur reviennent, et le refus s\'affiche', async () => {
+      await monterActivite()
+      api.post.mockImplementation((url) => (url === CLOSE
+        ? Promise.reject(Object.assign(new Error('403'), { response: { status: 403, data: { detail: 'Action refusée.' } } }))
+        : Promise.resolve({ data: {} })))
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(8100)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Pas close dans l'ERP : Action refusée.")
+    })
+
+    it('l\'onglet se ferme (`pagehide`) avant la fin du toast : la clôture part quand même, par un envoi qui survit à la page', async () => {
+      const envoi = vi.fn(() => Promise.resolve({ ok: true, status: 200 }))
+      vi.stubGlobal('fetch', envoi)
+      try {
+        await monterActivite()
+        fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+        await attendre(0)
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await attendre(0)
+        expect(envoi).toHaveBeenCalledTimes(1)
+        const [url, options] = envoi.mock.calls[0]
+        expect(url).toMatch(/\/api\/django\/records\/activities\/101\/done\/$/)
+        expect(options).toMatchObject({ method: 'POST', keepalive: true, credentials: 'include' })
+        // le toast est parti avec l'envoi : plus d'« Annuler » trompeur, et rien ne repart à son échéance
+        expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+        await attendre(10000)
+        expect(envoi).toHaveBeenCalledTimes(1)
+        expect(appelsClose()).toHaveLength(0)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('quitter l\'écran avant la fin du toast : la clôture part au démontage', async () => {
+      const { unmount } = await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      unmount()
+      await attendre(0)
+      expect(appelsClose()).toHaveLength(1)
+    })
+
+    it('décocher pendant le toast vaut Annuler : rien ne part', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(10000)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(appelsClose()).toHaveLength(0)
+    })
   })
 })
 
