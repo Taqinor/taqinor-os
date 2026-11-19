@@ -668,8 +668,26 @@ export default function Aujourdhui() {
    * place d'avant. Tout autre champ se pose sur la ligne, où qu'elle soit.
    */
   const placesAvantAttente = useRef(new Map())
+  const [ecartsProjets, setEcartsProjets] = useState({})
+  // la journée À JOUR (un « Annuler » rappelle le `maj` d'avant le geste : sa journée à lui serait périmée)
+  const donneesCourantes = useRef(donnees)
+  useEffect(() => { donneesCourantes.current = donnees }, [donnees])
   const majLigne = useCallback((id, champs) => {
     const cle = `tache:${id}`
+    // R2-029 — une tâche ouverte change de projet (« Déplacer… », ou son Annuler) : « Mes projets » (bureau) suit
+    if (Object.prototype.hasOwnProperty.call(champs, 'projet')) {
+      const actuel = chercher(donneesCourantes.current, cle)
+      const avant = actuel?.projet?.id ?? null
+      const apres = champs.projet?.id ?? null
+      if (actuel && actuel.statut !== 'fait' && avant !== apres) {
+        setEcartsProjets((e) => {
+          const suite = { ...e }
+          if (avant !== null) suite[avant] = (suite[avant] ?? 0) - 1
+          if (apres !== null) suite[apres] = (suite[apres] ?? 0) + 1
+          return suite
+        })
+      }
+    }
     if (champs.statut === 'en_attente') {
       setDonnees((d) => {
         const { suite, origines, item } = retirer(d, cle)
@@ -1055,7 +1073,7 @@ export default function Aujourdhui() {
     >
       {bureau ? (
         <div className="tch-bureau">
-          <ColonneProjets />
+          <ColonneProjets ecarts={ecartsProjets} />
           <div className="tch-bureau-liste">{contenu}</div>
           {donnees ? <ColonneBureau jour={donnees.jour} maintenant={donnees.maintenant} glisse={glisse} onPlacee={placee} onRetiree={replacee} /> : null}
         </div>
