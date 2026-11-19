@@ -150,6 +150,76 @@ describe('TCH45 — FeuilleACrans', () => {
     }
   })
 
+  it('R2-043 — un menu qui rend le focus à son bouton APRÈS l\'ouverture ne le garde pas derrière la feuille ; il y revient à la fermeture', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte={ouverte} titre="Alléger ma journée" onFermer={() => {}}><button type="button">Garder</button></FeuilleACrans>
+      </div>
+    )
+    const { rerender } = render(page(true))
+    const dialogue = screen.getByRole('dialog', { name: 'Alléger ma journée' })
+    expect(dialogue.contains(document.activeElement)).toBe(true)
+    // ce que fait le menu Radix en se refermant : le focus repart sur son déclencheur, derrière la feuille
+    act(() => { screen.getByRole('button', { name: "Plus d'actions" }).focus() })
+    expect(dialogue.contains(document.activeElement)).toBe(true)
+    rerender(page(false))
+    expect(screen.getByRole('button', { name: "Plus d'actions" })).toHaveFocus()
+  })
+
+  it('R2-050 — `variante="panneau"` au bureau large : panneau à droite NON modal (sans voile), le focus reste à la ligne, Échap ferme', async () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: q === '(min-width: 1024px)', media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    const onFermer = vi.fn()
+    const user = userEvent.setup()
+    const page = (ouverte) => (
+      <div className="tch">
+        <div data-ligne="tache:21"><button type="button">Ligne suivante</button></div>
+        <div data-ligne="tache:20"><button type="button">Ligne ouverte</button></div>
+        <FeuilleACrans ouverte={ouverte} variante="panneau" titre="Fiche" onFermer={onFermer}><input aria-label="Titre" /></FeuilleACrans>
+      </div>
+    )
+    const { container, rerender } = render(page(false))
+    screen.getByRole('button', { name: 'Ligne ouverte' }).focus()
+    rerender(page(true))
+    const panneau = screen.getByRole('dialog', { name: 'Fiche' })
+    expect(panneau).toHaveClass('panneau-bureau')
+    expect(panneau).toHaveAttribute('aria-modal', 'false')
+    expect(container.querySelector('.voile')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ligne ouverte' })).toHaveFocus()
+    // la liste reste à la main : le focus peut aller sur une autre ligne sans être ramené dans le panneau
+    act(() => { screen.getByRole('button', { name: 'Ligne suivante' }).focus() })
+    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalledTimes(1)
+    rerender(page(false))
+    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toHaveFocus() // jamais ramené en arrière
+    vi.unstubAllGlobals()
+  })
+
+  it('R2-050 — un panneau ouvert depuis un MENU (pas une ligne) prend le focus, même quand le menu le rend à son bouton', () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: true, media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    render(
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte variante="panneau" titre="Bilan du soir" onFermer={() => {}}><button type="button">Valider</button></FeuilleACrans>
+      </div>,
+    )
+    const panneau = screen.getByRole('dialog', { name: 'Bilan du soir' })
+    expect(panneau.contains(document.activeElement)).toBe(true)
+    act(() => { screen.getByRole('button', { name: "Plus d'actions" }).focus() }) // le menu Radix rend le focus
+    expect(panneau.contains(document.activeElement)).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('R2-050 — sous 1024 px, `variante="panneau"` reste un dialogue modal (iPhone : feuille du bas)', () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    const { container } = render(<div className="tch"><FeuilleACrans ouverte variante="panneau" titre="Fiche" onFermer={() => {}}><p>x</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog', { name: 'Fiche' })).toHaveClass('dialogue-bureau')
+    expect(screen.getByRole('dialog', { name: 'Fiche' })).toHaveAttribute('aria-modal', 'true')
+    expect(container.querySelector('.voile')).not.toBeNull()
+    vi.unstubAllGlobals()
+  })
+
   it('R2-043 — Échap ferme même quand le focus est DERRIÈRE la feuille ; seule la plus haute se ferme', async () => {
     const dessous = vi.fn()
     const dessus = vi.fn()

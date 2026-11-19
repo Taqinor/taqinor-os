@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 
 /* ============================================================================
    Raccord F2 — les écrans se parlent : une SEULE façon d'ouvrir la fiche d'une tâche (`?tache=<id>`, la coquille
@@ -24,14 +24,19 @@ export function signalerEcrite(tache = null) {
 
 /** `(id) => void` : ouvre la fiche de la tâche `id` sur l'écran courant. */
 export function useOuvrirFiche() {
-  const [, setParams] = useSearchParams()
+  const [params, setParams] = useSearchParams()
+  const { state } = useLocation()
+  const dejaOuverte = params.has('tache')
+  const marquee = Boolean(state?.[MARQUE_FICHE])
   return useCallback((id) => {
     setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
       suite.set('tache', String(id))
       return suite
-    }, { state: { [MARQUE_FICHE]: true } })
-  }, [setParams])
+    // R2-050 — une fiche déjà ouverte (panneau du bureau) CHANGE de tâche en place : l'entrée est remplacée et garde sa
+    // marque, sinon la fermeture (retour arrière) rouvrirait la tâche précédente au lieu de rendre la liste
+    }, dejaOuverte ? { replace: true, state: { [MARQUE_FICHE]: marquee } } : { state: { [MARQUE_FICHE]: true } })
+  }, [setParams, dejaOuverte, marquee])
 }
 
 /** Appelle `rappel(detail)` après chaque création (saisie, collage, file rejouée) ET (R2-040) après chaque écriture

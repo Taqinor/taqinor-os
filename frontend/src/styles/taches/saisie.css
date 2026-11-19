@@ -151,6 +151,22 @@
 @media (min-width: 768px) {
   .tch .fiche .dialogue-bureau .fiche-entete-actions { top: 20px; right: 10px; }
 }
+/* R2-050 (choix C-2, ecran-fiche.html « col-fiche ») — au bureau large, la fiche, le bilan et Alléger sont un PANNEAU
+   fixe à droite, pleine hauteur sous la barre de l'ERP (`.header` collante, 52 px), sans voile : la liste reste
+   lisible et cliquable, la ligne ouverte surlignée (Fiche.jsx) ; toucher une autre ligne change la fiche. */
+@media (min-width: 1024px) {
+  .tch .feuille.panneau-bureau {
+    --tch-panneau-haut: 52px;
+    left: auto; right: 0; top: var(--tch-panneau-haut); bottom: 0; width: 420px; height: auto; max-height: none;
+    border-radius: 0; padding: 14px 24px 0; transform: none;
+    background: var(--tch-surface-haute); box-shadow: var(--shadow-lg), inset 1px 0 0 var(--tch-trait);
+  }
+  .tch .feuille.panneau-bureau .poignee { display: none; }
+  .tch .feuille.panneau-bureau .feuille-corps { margin: 0 -24px; padding: 4px 24px 0; }
+  .tch .feuille.panneau-bureau .feuille-pied { margin: auto -24px 0; padding: 14px 24px 20px; }
+  .tch .fiche .panneau-bureau .fiche-entete-actions { top: 14px; right: 14px; }
+  .tch .fiche .panneau-bureau .fiche-titre-champ { font-size: 1.5rem; line-height: 2rem; }
+}
 .tch .fiche-titre-champ:focus-visible { box-shadow: inset 0 -2px 0 var(--tch-accent); }
 .tch .fiche-champ { display: flex; flex-direction: column; box-shadow: inset 0 -1px 0 var(--tch-trait); padding-bottom: 4px; }
 .tch .fiche-ligne {

@@ -258,6 +258,14 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const [plusOuvert, setPlusOuvert] = useState(false)
   const [supprimerDemande, setSupprimerDemande] = useState(0)
   const courant = useRef(id)
+  // R2-050 — au bureau, le panneau reste ouvert quand on touche une autre ligne : la fiche change de tâche sans se
+  // refermer. Rien de la précédente ne survit (saisie, erreurs, conflit, volets ouverts) — on repart de la lecture.
+  const [fichePour, setFichePour] = useState(id)
+  if (fichePour !== id) {
+    setFichePour(id)
+    setTache(null); setChargement(true); setEchec(''); setErreurs({}); setSaisie({}); setConflit(null)
+    setAvertissements([]); setOuvert(''); setQuestionTitres(false); setPlusOuvert(false); setSupprimerDemande(0)
+  }
 
   // lecture (et relecture après un « Annuler ») : la réponse n'est gardée que pour la fiche encore ouverte
   const charger = useCallback(() => lireTache(id)
@@ -387,8 +395,13 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
   return (
     <div data-fiche={id} className="fiche">
+      {/* R2-050 — la ligne de la tâche ouverte est surlignée dans la liste restée visible (ecran-fiche.html
+          « ligne selectionnee ») ; règle limitée à `.tch`, l'identifiant passé par Number (jamais du texte libre) */}
+      {Number.isFinite(Number(id)) ? (
+        <style>{`.tch [data-ligne="tache:${Number(id)}"] > .ligne { background: var(--tch-selection); }`}</style>
+      ) : null}
       {/* la fiche vit dans l'adresse (`?tache=`) : le retour arrière la ferme déjà, pas d'entrée d'historique en plus */}
-      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false}>
+      <FeuilleACrans ouverte onFermer={onFermer} titre={tache?.titre ?? "Fiche d'une tâche"} cranInitial="85" historique={false} variante="panneau">
         {chargement && !tache ? <p className="vide-phrase" role="status">Chargement…</p> : null}
         {echec && !tache ? <p className="erreur-champ" role="alert">{echec}</p> : null}
         {tache ? (
@@ -541,6 +554,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
                 {points.length > 0 ? <span className="compte chiffres">{`${points.filter((p) => p.fait).length}/${points.length}`}</span> : null}
               </p>
               <CheckList
+                key={tache.id}
                 tache={tache}
                 onChange={(liste) => (liste ? setTache((t) => ({ ...t, elements_checklist: liste })) : charger())}
                 onErreur={erreur}
