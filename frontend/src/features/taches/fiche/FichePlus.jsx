@@ -59,7 +59,7 @@ function texteRappelAncre(r) {
 const SANS_JOUR = "Cette tâche n'a pas de jour : choisis la date du rappel."
 const JOUR_MANQUANT = 'Choisis le jour du rappel.'
 
-function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour }) {
+function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour, refus }) {
   const [choix, setMode] = useState('meme')
   const [heureRappel, setHeureRappel] = useState('09:00')
   const [jourChoisi, setJourChoisi] = useState('')
@@ -77,7 +77,7 @@ function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour }) {
     if (mode === 'choisir') corps = { jour: jourChoisi, heure: heureRappel }
     else if (ancre) corps = { ancre: 'echeance', decalage_jours: mode === 'veille' ? -1 : 0, heure: heureRappel }
     else corps = { jour: mode === 'veille' ? ajouterJours(pivot, -1) : pivot, heure: heureRappel }
-    const r = await ecrire(() => poserRappel(tache.id, corps), 'rappel')
+    const r = await ecrire(() => poserRappel(tache.id, corps, { erreurSousLeChamp: true }), 'rappel')
     if (r) {
       const pose = r.data?.rappel ?? corps
       const quand = pose.jour ? `${jourCourt(pose.jour, aujourdhui)} à ${heure(pose.heure ?? heureRappel)}` : `à ${heure(heureRappel)}`
@@ -117,7 +117,10 @@ function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour }) {
           onChange={(e) => { setJourChoisi(e.target.value); setManque(false) }} />
       ) : null}
       {mode === 'choisir' && manque ? <p id={`rappel-jour-${tache.id}`} className="erreur-champ" role="alert">{JOUR_MANQUANT}</p> : null}
-      <input type="time" className="champ-discret chiffres" aria-label="Heure du rappel" value={heureRappel} onChange={(e) => setHeureRappel(e.target.value)} />
+      <input type="time" className="champ-discret chiffres" aria-label="Heure du rappel" value={heureRappel}
+        aria-invalid={refus || undefined} aria-describedby={refus ? `rappel-refus-${tache.id}` : undefined}
+        onChange={(e) => setHeureRappel(e.target.value)} />
+      {refus ? <p id={`rappel-refus-${tache.id}`} className="erreur-champ" role="alert">{refus}</p> : null}
       <button type="button" className="bouton second" onClick={poser}>Poser le rappel</button>
     </section>
   )
@@ -399,8 +402,7 @@ export default function FichePlus({
 
   return (
     <div className="fiche-plus">
-      <Rappel tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} annulable={annulable} onPoserJour={onPoserJour} />
-      {erreurs.rappel ? <p className="erreur-champ" role="alert">{erreurs.rappel}</p> : null}
+      <Rappel tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} annulable={annulable} onPoserJour={onPoserJour} refus={erreurs.rappel} />
       <Repeter tache={tache} aujourdhui={aujourdhui} ecrire={ecrire} patcher={patcher} erreur={erreur} />
       {erreurs.repeter ? <p className="erreur-champ" role="alert">{erreurs.repeter}</p> : null}
 

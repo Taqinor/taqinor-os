@@ -230,7 +230,9 @@ export const reordonnerTache = (id, corps, options) =>
   // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.post(`/taches/taches/${id}/reordonner/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const restaurerTache = (id) => api.post(`/taches/taches/${id}/restaurer/`, {})
-export const poserRappel = (id, corps) => api.post(`/taches/taches/${id}/rappels/`, corps)
+export const poserRappel = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.post(`/taches/taches/${id}/rappels/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const apercuChangement = (id, corps) => api.post(`/taches/taches/${id}/changement/apercu/`, corps)
 export const traiterLot = (corps, options) => api.post('/taches/taches/lot/', corps, avecCle(options))
 export const lierActivite = (corps, options) => api.post('/taches/taches/lier-activite/', corps, avecCle(options))

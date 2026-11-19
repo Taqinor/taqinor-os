@@ -94,7 +94,7 @@ describe('TCH85 — fiche → Plus', () => {
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }))
+    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }, { erreurSousLeChamp: true }))
     const question = await screen.findByRole('group', { name: "Question sur l'écran verrouillé" })
     expect(question).toHaveTextContent('Montrer le titre sur l\'écran verrouillé ?')
     expect(question).toHaveTextContent('Sans réponse, l\'écran verrouillé n\'affiche que des nombres.')
@@ -110,9 +110,26 @@ describe('TCH85 — fiche → Plus', () => {
     await ouvrirPlus(user)
     await user.click(screen.getByRole('radio', { name: 'La veille' }))
     await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: -1, heure: '09:00' }))
+    await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: -1, heure: '09:00' }, { erreurSousLeChamp: true }))
     await user.click(await screen.findByRole('button', { name: 'Non' }))
     await waitFor(() => expect(api.modifierReglages).toHaveBeenCalledWith({ titres_notifications: false }))
+  })
+
+  it('R4 couture — un refus du serveur se dit SOUS le champ du rappel, jamais en toast (l\'appel porte erreurSousLeChamp)', async () => {
+    const user = userEvent.setup()
+    api.poserRappel.mockRejectedValueOnce(erreurHttp({ heure: ['Heure attendue (HH:MM).'] }, 400))
+    monter()
+    await ouvrirPlus(user)
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    const bloc = screen.getByRole('region', { name: 'Rappel' })
+    expect(await within(bloc).findByText('Heure attendue (HH:MM).')).toHaveAttribute('role', 'alert')
+    expect(api.poserRappel).toHaveBeenCalledWith(20, { ancre: 'echeance', decalage_jours: 0, heure: '09:00' }, { erreurSousLeChamp: true })
+    // un refus d'ÉTAT nommé `rappel` (plafond de 5 par tâche) se dit au même endroit, et se retire à la pose suivante
+    api.poserRappel.mockRejectedValueOnce(erreurHttp({ rappel: ['5 rappels au plus par tâche.'] }, 400))
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    expect(await within(bloc).findByText('5 rappels au plus par tâche.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
+    await waitFor(() => expect(within(bloc).queryByRole('alert')).toBeNull())
   })
 
   describe('R4-24 — rappel d\'une tâche SANS jour ni échéance', () => {
@@ -146,7 +163,7 @@ describe('TCH85 — fiche → Plus', () => {
       // le jour choisi : le rappel part avec lui
       await user.type(screen.getByLabelText('Jour du rappel'), '2026-11-20')
       await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-20', heure: '09:00' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-20', heure: '09:00' }, { erreurSousLeChamp: true }))
       expect(screen.queryByText('Choisis le jour du rappel.')).toBeNull()
     })
 
@@ -159,7 +176,7 @@ describe('TCH85 — fiche → Plus', () => {
       expect(within(bloc).getByRole('radio', { name: 'Le jour même' })).toHaveAttribute('aria-checked', 'true')
       expect(bloc).not.toHaveTextContent("Cette tâche n'a pas de jour")
       await user.click(screen.getByRole('button', { name: 'Poser le rappel' }))
-      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-19', heure: '09:00' }))
+      await waitFor(() => expect(api.poserRappel).toHaveBeenCalledWith(20, { jour: '2026-11-19', heure: '09:00' }, { erreurSousLeChamp: true }))
     })
   })
 
