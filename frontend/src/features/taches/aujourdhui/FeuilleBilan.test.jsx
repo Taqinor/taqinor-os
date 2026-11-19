@@ -11,6 +11,9 @@ vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }))
 
+const toasts = vi.hoisted(() => ({ toastError: vi.fn() }))
+vi.mock('../../../lib/toast', async (importOriginal) => ({ ...(await importOriginal()), toastError: toasts.toastError }))
+
 const api = (await import('../../../api/axios')).default
 const { default: Aujourdhui } = await import('../../../pages/taches/Aujourdhui')
 
@@ -235,7 +238,7 @@ describe('TCH80 — le bilan d\'hier', () => {
     monter('/taches/aujourdhui')
     await userEvent.click(await screen.findByRole('button', { name: "Faire le bilan d'hier" }))
     const f = await screen.findByRole('dialog', { name: "Bilan d'hier" })
-    expect(api.get).toHaveBeenCalledWith('/taches/journee/cloture/', { params: { jour: '2026-11-16' } })
+    expect(api.get).toHaveBeenCalledWith('/taches/journee/cloture/', { params: { jour: '2026-11-16' }, erreurSousLeChamp: true })
     await within(f).findByText('Timbres')
     expect(f).not.toHaveTextContent('plus modifiable')
   })
@@ -248,6 +251,36 @@ describe('TCH80 — le bilan d\'hier', () => {
     const f = await feuille()
     expect(await within(f).findByText("Le bilan d'hier n'est plus modifiable après midi.")).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Valider' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('critique serveur n° 7 — le bilan refusé hors délai (409 `state_conflict` au champ `jour`) : le message du serveur dans la feuille, aucun toast', async () => {
+    servir()
+    const message = "Le bilan d'hier n'est plus modifiable après midi."
+    api.get.mockImplementation((url) => {
+      if (url === '/taches/aujourdhui/') return Promise.resolve({ data: journee() })
+      if (url === '/taches/journee/cloture/') {
+        return Promise.resolve({ status: 409, data: { jour: [message], detail: message, code: 'state_conflict' } })
+      }
+      return Promise.reject(new Error(`GET inattendu ${url}`))
+    })
+    monter()
+    const f = await feuille()
+    expect(await within(f).findByText(message)).toBeInTheDocument()
+    expect(f).not.toHaveTextContent('state_conflict')
+    expect(toasts.toastError).not.toHaveBeenCalled()
+  })
+
+  it('critique serveur n° 7 — Valider refusé (409 au champ `jour`) : le message sous le bouton, aucun toast', async () => {
+    servir()
+    const message = "Le bilan d'hier n'est plus modifiable après midi."
+    api.post.mockImplementation((url) => (url === '/taches/journee/cloturer/'
+      ? Promise.resolve({ status: 409, data: { jour: [message], detail: message, code: 'state_conflict' } })
+      : Promise.resolve({ data: {} })))
+    monter()
+    const f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: 'Valider' }))
+    expect(await within(f).findByRole('alert')).toHaveTextContent(message)
+    expect(toasts.toastError).not.toHaveBeenCalled()
   })
 })
 

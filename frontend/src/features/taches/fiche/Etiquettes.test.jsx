@@ -20,6 +20,8 @@ vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importO
    (Enregistrer, rouvrir : une vue rouverte = mêmes filtres). Réponses = `tache.json`, `tache_ecrite.json`,
    `etiquettes.json`, `vues.json`, `projets_liste.json`, `recherche.json` du contrat. */
 
+/** Critique serveur n° 7 — la fiche écrit ses champs en disant ses refus SOUS le champ (`erreurSousLeChamp`). */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const tache = exempleContrat('taches', 'tache')
 const ecrite = exempleContrat('taches', 'tache_ecrite')
 const etiquettes = exempleContrat('taches', 'etiquettes')
@@ -64,7 +66,7 @@ describe('TCH166 — étiquettes dans la fiche → Plus', () => {
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('button', { name: 'appels' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { etiquettes: [2, 3], lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { etiquettes: [2, 3], lock_version: 4 }, SOUS_LE_CHAMP))
     await waitFor(() => expect(within(puces()).getByRole('button', { name: 'appels' })).toHaveAttribute('aria-pressed', 'true'))
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
     await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
@@ -78,7 +80,7 @@ describe('TCH166 — étiquettes dans la fiche → Plus', () => {
     monter()
     await ouvrirPlus(user)
     await user.click(screen.getByRole('button', { name: 'magasin' }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { etiquettes: [], lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenCalledWith(20, { etiquettes: [], lock_version: 4 }, SOUS_LE_CHAMP))
     await waitFor(() => expect(within(puces()).getByRole('button', { name: 'magasin' })).toHaveAttribute('aria-pressed', 'false'))
   })
 
@@ -89,12 +91,12 @@ describe('TCH166 — étiquettes dans la fiche → Plus', () => {
     const champ = screen.getByRole('textbox', { name: 'Ajouter une étiquette' })
     await user.type(champ, 'urgent{Enter}')
     await waitFor(() => expect(api.creerEtiquette).toHaveBeenCalledWith({ nom: 'urgent' }, { erreurSousLeChamp: true }))
-    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 9], lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 9], lock_version: 4 }, SOUS_LE_CHAMP))
     expect(champ).toHaveValue('')
     expect(within(puces()).getByRole('button', { name: 'urgent' })).toBeInTheDocument()
 
     await user.type(champ, 'Appels{Enter}')
-    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 3], lock_version: 4 }))
+    await waitFor(() => expect(api.modifierTache).toHaveBeenLastCalledWith(20, { etiquettes: [2, 3], lock_version: 4 }, SOUS_LE_CHAMP))
     expect(api.creerEtiquette).toHaveBeenCalledTimes(1)
   })
 

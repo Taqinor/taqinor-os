@@ -202,7 +202,9 @@ export const marquerEssentiel = (corps, options) =>
   // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
   api.post('/taches/journee/essentiel/', corps, ...[sousLeChamp(options)].filter(Boolean))
 export const alleger = (corps, options) => api.post('/taches/journee/alleger/', corps, avecCle(options))
-export const lireCloture = (params) => api.get('/taches/journee/cloture/', { params })
+// Critique serveur n° 7 — `{ erreurSousLeChamp: true }` : le bilan hors délai (409 au champ `jour`) se dit DANS la feuille,
+// sans toast ; sans l'option, le pont dit le `detail` du serveur.
+export const lireCloture = (params, options) => api.get('/taches/journee/cloture/', { params, ...sousLeChamp(options) })
 export const cloturerJournee = (corps, options) => api.post('/taches/journee/cloturer/', corps, avecCle(options))
 export const lireAgenda = (params) => api.get('/taches/agenda/', { params })
 export const rechercher = (params) => api.get('/taches/recherche/', { params })
@@ -215,7 +217,9 @@ export const capturer = (corps, jeton) => api.post('/taches/capture/', corps, be
 export const listerTaches = (params) => api.get('/taches/taches/', { params })
 export const creerTache = (corps, options) => api.post('/taches/taches/', corps, avecCle(options))
 export const lireTache = (id) => api.get(`/taches/taches/${id}/`)
-export const modifierTache = (id, corps) => api.patch(`/taches/taches/${id}/`, corps)
+export const modifierTache = (id, corps, options) =>
+  // parametres-requete: (aucun — le 3e argument est la config axios `erreurSousLeChamp`, jamais des paramètres de requête)
+  api.patch(`/taches/taches/${id}/`, corps, ...[sousLeChamp(options)].filter(Boolean))
 export const supprimerTache = (id) => api.delete(`/taches/taches/${id}/`)
 export const planifierTache = (id, corps, options) =>
   api.post(`/taches/taches/${id}/planifier/`, avecProprietaire(corps, options))

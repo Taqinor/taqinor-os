@@ -26,6 +26,8 @@ import { ecrireTexte, lireTexte, viderALaDeconnexion } from '../lib/stockage'
    ========================================================================== */
 
 const REPORTER = 'prochain_jour_ouvre'
+/** Un refus au champ (bilan fermé, jour trop ancien) est dit par la feuille elle-même : jamais aussi en toast. */
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const LIMITE_MOT = 280
 
 /** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu), gardé
@@ -40,7 +42,8 @@ function useCloture(jour, aujourdhui) {
   const [etat, setEtat] = useState({ chargement: true, erreur: '', donnees: null })
   const charger = useCallback(async () => {
     try {
-      const { data } = await client.lireCloture(jour && jour !== aujourdhui ? { jour } : undefined)
+      // critique serveur n° 7 — le bilan fermé (409 au champ `jour`) se dit DANS la feuille, une fois, sans toast
+      const { data } = await client.lireCloture(jour && jour !== aujourdhui ? { jour } : undefined, SOUS_LE_CHAMP)
       setEtat({ chargement: false, erreur: '', donnees: data })
     } catch (err) {
       setEtat((avant) => ({ ...avant, chargement: false, erreur: frenchError(err) }))
@@ -315,7 +318,7 @@ export default function FeuilleBilan({ jour = null, aujourdhui, maintenant = '',
       reflexion: mot.trim(),
     }
     try {
-      const { data } = await client.cloturerJournee(corps)
+      const { data } = await client.cloturerJournee(corps, SOUS_LE_CHAMP)
       garderMot(cleMot, '') // enregistré avec le bilan : le brouillon n'a plus lieu d'être
       onValide(data)
     } catch (err) {

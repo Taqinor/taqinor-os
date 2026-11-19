@@ -48,9 +48,12 @@ const CHAMP_DE_ERREUR = {
   jour_prevu: 'quand', heure_debut: 'quand', moment: 'quand', quelque_jour: 'quand',
   echeance: 'echeance', echeance_heure: 'echeance', titre: 'titre', notes: 'notes', priorite: 'priorite',
   projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist', etiquettes: 'etiquettes',
+  // critique serveur n° 7 — la boucle de blocage sous « En attente de », une règle de répétition refusée sous « Répéter »
+  bloquee_par_id: 'attente', recurrence: 'repeter', estimation_minutes: 'duree',
   // R4 couture — le refus d'un rappel (jour hors bornes, heure illisible, plafond de 5 par tâche…) se dit sous le champ du rappel
   jour: 'rappel', heure: 'rappel', ancre: 'rappel', decalage_jours: 'rappel', rappel: 'rappel',
 }
+const SOUS_LE_CHAMP = { erreurSousLeChamp: true }
 const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 
 /** `{champ: [messages]}` d'un 400 → `{ champDeLaFiche: premier message }` (le reste : `general`). */
@@ -305,6 +308,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
   const [plusOuvert, setPlusOuvert] = useState(false)
   const [supprimerDemande, setSupprimerDemande] = useState(0)
   const courant = useRef(id)
+  const montee = useRef(true) // critique serveur n° 7 : la fiche peut-elle encore dire un refus sous son champ ?
+  useEffect(() => { montee.current = true; return () => { montee.current = false } }, [])
   const { societe, compte } = useCompte()
   const cleBrouillon = useRef(cleBrouillonFiche(societe, compte, id))
   useEffect(() => { cleBrouillon.current = cleBrouillonFiche(societe, compte, id) })
@@ -394,7 +399,10 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
         if (classee.code === 'conflit_version') {
           setConflit({ appel, champ, lock: classee.lockVersion, actuel: classee.actuel })
         } else if (classee.code === 'validation') {
-          setErreurs((e) => ({ ...e, ...erreursParChamp(classee.champs), [champ]: erreursParChamp(classee.champs)[champ] ?? e[champ] }))
+          // un refus sans message lisible au premier niveau (`{recurrence: {frequence: […]}}`) se dit sous le champ du geste
+          const parChamp = erreursParChamp(classee.champs)
+          const repli = Object.keys(parChamp).length === 0 ? frenchError(err) : undefined
+          setErreurs((e) => ({ ...e, ...parChamp, [champ]: parChamp[champ] ?? repli ?? e[champ] }))
         } else {
           erreur(champ, frenchError(err))
         }
@@ -412,7 +420,11 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), sect
     onAnnuler: geste ? async () => { await annulerGeste(geste); signalerEcrite(); await charger() } : undefined,
   })
 
-  const patcher = (corps, champ) => ecrire((lock) => modifierTache(id, { ...corps, lock_version: lock }), champ)
+  // Critique serveur n° 7 — un refus au champ (400, ou 409 d'ÉTAT : heure sans échéance, sous-tâche non déplaçable, boucle
+  // de blocage) se dit SOUS son champ de la fiche, sans toast par-dessus ; une écriture partie au démontage (la fiche
+  // n'est plus là pour le dire) garde le toast du pont
+  const patcher = (corps, champ) => ecrire((lock) => modifierTache(id, { ...corps, lock_version: lock },
+    ...(montee.current ? [SOUS_LE_CHAMP] : [])), champ)
 
   const garderLaMienne = async () => {
     const { appel, champ, lock } = conflit
