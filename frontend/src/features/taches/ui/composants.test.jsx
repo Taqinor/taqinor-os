@@ -9,6 +9,7 @@ import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
 import FeuilleACrans, { naviguerApresFeuille } from './FeuilleACrans'
 import SelecteurProjet from './SelecteurProjet'
+import SelecteurQuand from './SelecteurQuand'
 
 /* TCH45 — FeuilleACrans (crans 50 / 85 %, clavier ouvert), SelecteurProjet (« Nouveau projet »
    fixe), BarreSelection (lot), BoutonCopilote (`taqinor:assistant:ouvrir`, une phrase sans clé
@@ -216,6 +217,43 @@ describe('TCH45 — FeuilleACrans', () => {
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
     await new Promise((fin) => { setTimeout(fin, 5) })
     expect(pose).not.toHaveBeenCalled()
+  })
+})
+
+describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sortie du champ', () => {
+  const valeur = { jour_prevu: '2026-11-17', moment: '', heure_debut: null, quelque_jour: false }
+
+  it('taper 1145 pas à pas n\'écrit rien ; la sortie du champ écrit 11:45 une seule fois', () => {
+    const onChoisir = vi.fn()
+    render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const champ = screen.getByLabelText('Heure')
+    // le navigateur rend une heure « valide » dès le 3e chiffre (11:04), puis 11:45
+    fireEvent.change(champ, { target: { value: '11:04' } })
+    fireEvent.change(champ, { target: { value: '11:45' } })
+    expect(onChoisir).not.toHaveBeenCalled()
+    expect(champ).toHaveValue('11:45')
+    fireEvent.blur(champ)
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '11:45' }))
+    fireEvent.blur(champ) // rien de neuf : pas de seconde écriture
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+  })
+
+  it('Entrée valide l\'heure ; le jour choisi s\'écrit aussi à la sortie, jamais une année partielle', () => {
+    const onChoisir = vi.fn()
+    render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const heure = screen.getByLabelText('Heure')
+    fireEvent.change(heure, { target: { value: '09:30' } })
+    fireEvent.keyDown(heure, { key: 'Enter' })
+    expect(onChoisir).toHaveBeenLastCalledWith(expect.objectContaining({ heure_debut: '09:30' }))
+    onChoisir.mockClear()
+    const jour = screen.getByLabelText('Choisir un jour')
+    fireEvent.change(jour, { target: { value: '0002-11-27' } })
+    fireEvent.change(jour, { target: { value: '2026-11-27' } })
+    expect(onChoisir).not.toHaveBeenCalled()
+    fireEvent.blur(jour)
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27' }))
   })
 })
 

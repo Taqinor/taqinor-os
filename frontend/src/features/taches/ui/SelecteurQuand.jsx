@@ -25,6 +25,30 @@ export function ajouterJours(iso, n) {
   return d.toISOString().split('T')[0]
 }
 
+/** R2-041/R2-042 — vrai pour une date ENTIÈRE (`AAAA-MM-JJ`, année ≥ 1900) : pendant la frappe au clavier le champ
+ *  date rend déjà « 0002-11-27 » au premier chiffre de l'année, qui partait au serveur (400). */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
+export function dateComplete(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''))
+  return Boolean(m) && Number(m[1]) >= 1900
+}
+
+/** Valeur tapée dans un champ, gardée LOCALEMENT tant qu'on n'en sort pas ; elle cède la place à la valeur reçue
+ *  dès que celle-ci change (réponse du serveur). `{ pour, valeur }` : la valeur reçue au moment de la frappe. */
+function useFrappe(recue) {
+  const [frappe, setFrappe] = useState(null)
+  const vivante = frappe && frappe.pour === recue ? frappe : null
+  const affichee = vivante ? vivante.valeur : recue
+  const taper = (valeur) => setFrappe({ pour: recue, valeur, envoyee: false })
+  /** La valeur à écrire (une seule fois), ou `undefined` s'il n'y a rien de neuf. */
+  const aEcrire = () => {
+    if (!vivante || vivante.envoyee || vivante.valeur === recue) return undefined
+    setFrappe({ ...vivante, envoyee: true })
+    return vivante.valeur
+  }
+  return [affichee, taper, aEcrire]
+}
+
 function tuileCourante(valeur, { aujourdhui, demain, reporterA }) {
   if (valeur.quelque_jour) return 'reserve'
   if (!valeur.jour_prevu) return 'sans'
@@ -45,7 +69,11 @@ export default function SelecteurQuand({
   const demain = ajouterJours(aujourdhui, 1)
   const courante = tuileCourante({ ...QUAND_VIDE, ...valeur }, { aujourdhui, demain, reporterA })
   const choisir = (suite) => onChoisir?.({ ...QUAND_VIDE, ...suite })
-  const gardeHeure = (jour) => (jour ? valeur.heure_debut ?? null : null)
+  // R2-041 — l'heure et le jour tapés restent ici tant qu'on est dans le champ : écrire à chaque frappe valide
+  // enregistrait « 11:04 » pour « 1145 » (la fiche redessinait et le 4e chiffre se perdait)
+  const [heureAffichee, taperHeure, heureAEcrire] = useFrappe(valeur.heure_debut ?? '')
+  const [jourAffiche, taperJour, jourAEcrire] = useFrappe(valeur.jour_prevu ?? '')
+  const gardeHeure = (jour) => (jour ? heureAffichee || null : null)
 
   const tuiles = [
     { cle: 'aujourdhui', titre: "Aujourd'hui", detail: jourNomme(aujourdhui, aujourdhui) || '', pose: () => choisir({ jour_prevu: aujourdhui, heure_debut: gardeHeure(aujourdhui) }) },
@@ -70,14 +98,17 @@ export default function SelecteurQuand({
     if (tuile.cle !== 'choisir') setDateOuverte(false)
     tuile.pose()
   }
-  const surDate = (e) => {
-    const jour = e.target.value
-    if (jour) choisir({ jour_prevu: jour, heure_debut: valeur.heure_debut ?? null })
+  // à la sortie du champ (sur l'iPhone, la roue se referme : c'est aussi une sortie) ou à Entrée
+  const ecrireJour = () => {
+    const jour = jourAEcrire()
+    if (jour !== undefined && dateComplete(jour)) choisir({ jour_prevu: jour, heure_debut: heureAffichee || null })
   }
-  const surHeure = (e) => {
-    if (!valeur.jour_prevu) return
-    choisir({ jour_prevu: valeur.jour_prevu, moment: valeur.moment ?? '', heure_debut: e.target.value || null })
+  const ecrireHeure = () => {
+    const h = heureAEcrire()
+    if (h === undefined || !valeur.jour_prevu) return
+    choisir({ jour_prevu: valeur.jour_prevu, moment: valeur.moment ?? '', heure_debut: h || null })
   }
+  const surEntree = (ecrire) => (e) => { if (e.key === 'Enter') { e.preventDefault(); ecrire() } }
 
   const montrerDate = dateOuverte || courante === 'choisir'
   return (
@@ -104,8 +135,10 @@ export default function SelecteurQuand({
             type="date"
             className="champ"
             aria-label="Choisir un jour"
-            value={valeur.jour_prevu ?? ''}
-            onChange={surDate}
+            value={jourAffiche}
+            onChange={(e) => taperJour(e.target.value)}
+            onBlur={ecrireJour}
+            onKeyDown={surEntree(ecrireJour)}
           />
         </label>
       ) : null}
@@ -117,8 +150,10 @@ export default function SelecteurQuand({
           aria-label="Heure"
           aria-describedby={valeur.jour_prevu ? undefined : idAide}
           disabled={!valeur.jour_prevu}
-          value={valeur.heure_debut ?? ''}
-          onChange={surHeure}
+          value={heureAffichee}
+          onChange={(e) => taperHeure(e.target.value)}
+          onBlur={ecrireHeure}
+          onKeyDown={surEntree(ecrireHeure)}
         />
       </label>
       {valeur.jour_prevu ? null : <p id={idAide} className="aide-champ">Une heure demande un jour prévu.</p>}
