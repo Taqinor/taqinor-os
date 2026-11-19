@@ -40,13 +40,19 @@ class StockAgentActionsCatalogueTest(TestCase):
         # ready() les enregistre déjà au démarrage ; idempotent ici aussi.
         register_stock_actions()
         self.company = Company.objects.create(nom='AG7 Co', slug='ag7-co')
-        # Magasinier : porte stock_mouvement + stock_creer (les deux codes).
+        # Magasinier : stock_mouvement + stock_creer, PAS achats_commander
+        # (REP2 : la garde réelle de la création d'un BCF).
         self.magasinier_role = Role.objects.create(
             company=self.company, nom='Magasinier',
             permissions=['stock_voir', 'stock_creer', 'stock_mouvement'])
         self.magasinier = User.objects.create_user(
             username='ag7_mag', password='x', role=self.magasinier_role,
             company=self.company)
+        # Acheteur : porte achats_commander (Directeur / Administrateur).
+        self.acheteur = User.objects.create_user(
+            username='ag7_ach', password='x', company=self.company,
+            role=Role.objects.create(company=self.company, nom='Acheteur',
+                                     permissions=['stock_voir', 'achats_commander']))
         # Lecture seule : ne porte que stock_voir → ne voit aucune des deux.
         self.readonly_role = Role.objects.create(
             company=self.company, nom='Lecture', permissions=['stock_voir'])
@@ -62,7 +68,10 @@ class StockAgentActionsCatalogueTest(TestCase):
     def test_permitted_user_sees_both_actions(self):
         keys = {a.key for a in for_user(self.magasinier)}
         self.assertIn(AJUSTER_STOCK.key, keys)
-        self.assertIn(BROUILLON_COMMANDE_FOURNISSEUR.key, keys)
+        # REP2 — stock_creer sans achats_commander : la route refuserait (403).
+        self.assertNotIn(BROUILLON_COMMANDE_FOURNISSEUR.key, keys)
+        self.assertIn(BROUILLON_COMMANDE_FOURNISSEUR.key,
+                      {a.key for a in for_user(self.acheteur)})
 
     def test_readonly_user_sees_neither_action(self):
         keys = {a.key for a in for_user(self.readonly)}
@@ -72,7 +81,8 @@ class StockAgentActionsCatalogueTest(TestCase):
     def test_actions_required_permissions(self):
         self.assertEqual(AJUSTER_STOCK.required_permission, 'stock_mouvement')
         self.assertEqual(
-            BROUILLON_COMMANDE_FOURNISSEUR.required_permission, 'stock_creer')
+            BROUILLON_COMMANDE_FOURNISSEUR.required_permission,
+            'achats_commander')
 
     def test_mouvement_entree_sortie_seulement_et_a_confirmer(self):
         """REP1 — « ajustement » fixe le stock À la quantité (niveau visé,
@@ -99,12 +109,28 @@ class StockAgentActionsCatalogueTest(TestCase):
             self.assertIn(section, desc)
 
     def test_permission_du_catalogue_est_la_garde_de_la_route(self):
-        """REP1 — le code du catalogue est un code que la route EXIGE
+        """REP1/REP2 — le code du catalogue est un code que la route EXIGE
         (gardes lues sur la vue, comme le test de parité de l'agent)."""
         from apps.agent.tests.test_registry import _gardes_de_la_route
-        for action in (AJUSTER_STOCK,):
+        for action in (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR):
             codes, _admin, _modules = _gardes_de_la_route(action)
             self.assertIn(action.required_permission, codes, action.key)
+
+    def test_bcf_brouillon_a_confirmer_et_lignes_sans_prix(self):
+        """REP2 — un BCF engage la société même en brouillon : proposition à
+        confirmer qui dit « rien n'est envoyé » ; une ligne n'accepte que
+        produit / désignation / quantité entière, jamais un prix."""
+        from apps.agent.registry import RISK_OUTWARD
+        self.assertEqual(BROUILLON_COMMANDE_FOURNISSEUR.risk, RISK_OUTWARD)
+        self.assertIn("rien n'est envoyé",
+                      BROUILLON_COMMANDE_FOURNISSEUR.confirm_summary)
+        ligne = BROUILLON_COMMANDE_FOURNISSEUR.inputs['properties']['lignes']['items']
+        self.assertEqual(set(ligne['properties']),
+                         {'produit', 'designation', 'quantite'})
+        self.assertIs(ligne['additionalProperties'], False)
+        self.assertEqual(ligne['properties']['quantite']['type'], 'integer')
+        self.assertNotIn('prix', str(BROUILLON_COMMANDE_FOURNISSEUR.inputs))
+        self.assertLessEqual(len(BROUILLON_COMMANDE_FOURNISSEUR.description), 600)
 
     def test_inputs_never_include_company(self):
         for action in (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR):
@@ -117,7 +143,9 @@ class StockAgentActionsCatalogueTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         keys = {a['key'] for a in resp.data['actions']}
         self.assertIn(AJUSTER_STOCK.key, keys)
-        self.assertIn(BROUILLON_COMMANDE_FOURNISSEUR.key, keys)
+        resp = auth(self.acheteur).get('/api/django/agent/actions/')
+        self.assertIn(BROUILLON_COMMANDE_FOURNISSEUR.key,
+                      {a['key'] for a in resp.data['actions']})
 
 
 class StockAgentActionRelayedCallTest(TestCase):

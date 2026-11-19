@@ -18,8 +18,7 @@ from __future__ import annotations
 
 from core.champs_stricts import QUANTITE_MAX
 
-from apps.agent.registry import (
-    AgentAction, RISK_INTERNAL, RISK_OUTWARD, register, _REGISTRY)
+from apps.agent.registry import AgentAction, RISK_OUTWARD, register, _REGISTRY
 
 
 #: REP1 (copilote vague 2, B-1) — valeurs EXACTES de
@@ -82,38 +81,67 @@ AJUSTER_STOCK = AgentAction(
 )
 
 
+#: REP2 — UNE ligne de BCF telle que l'assistant peut l'écrire
+#: (``LigneBonCommandeFournisseurSerializer``) : produit OU désignation libre,
+#: quantité entière > 0. JAMAIS un prix (``prix_achat_unitaire``,
+#: ``prix_achat_unitaire_devise``, ``frais_annexes``) : la ligne naît à 0
+#: (défaut du modèle ``achats.LigneBonCommandeFournisseur``), l'acheteur règle
+#: les prix à l'écran avant l'envoi.
+_LIGNE_BCF = {
+    'type': 'object',
+    'properties': {
+        'produit': {'type': 'integer',
+                    'description': 'Produit du catalogue (id).'},
+        'designation': {'type': 'string',
+                        'description': 'Désignation libre si pas de produit.'},
+        'quantite': {'type': 'integer', 'minimum': 1},
+    },
+    'required': ['quantite'],
+    'additionalProperties': False,
+}
+
+
 # Action 2 — Créer un brouillon de bon de commande fournisseur (achat).
 # Endpoint réel : POST /api/django/stock/bons-commande-fournisseur/
 # (BonCommandeFournisseurViewSet) — le BC naît en statut BROUILLON ; il faut
-# l'action `envoyer` pour le passer ENVOYE (donc « brouillon » par défaut).
-# Permission : le viewset exige IsResponsableOrAdmin à la création — un gardien
-# basé sur le RÔLE, pas un code de permission ERP. Comme le filtre catalogue
-# AG1 (for_user) ne sait raisonner que sur des codes ERP, on adosse cette
-# action au code « stock_creer » (porté par Responsable/Admin/Directeur), qui
-# est le pendant ERP le plus proche de IsResponsableOrAdmin pour les achats. Le
-# viewset reste l'autorité finale (il re-vérifie le rôle + la société).
+# l'action `envoyer` (geste de l'écran) pour le passer ENVOYE. REP2 — garde
+# RÉELLE de la route à la création : ``HasPermissionOrLegacy(
+# 'achats_commander')`` (``COMMANDER_ACTIONS``, ASTK17) — l'ancien code
+# « stock_creer » montrait l'outil au Commercial responsable (403) et le
+# cachait à l'Administrateur (accepté). Proposition À CONFIRMER : une commande
+# engage la société même en brouillon.
 BROUILLON_COMMANDE_FOURNISSEUR = AgentAction(
     key='stock.bon_commande_fournisseur.create',
     label='Créer un brouillon de bon de commande fournisseur',
     description=(
-        "Crée un bon de commande fournisseur (achat) en statut BROUILLON. La "
-        "référence numérotée (préfixe BCF) et la société sont attribuées côté "
-        "serveur ; les prix d'achat restent internes."
+        "Sert à : préparer un bon de commande fournisseur BROUILLON "
+        "(fournisseur, produits et quantités), après confirmation ; rien "
+        "n'est envoyé au fournisseur. Ne pas utiliser pour : les manques "
+        "d'un chantier (installations.chantier.commander_besoin), fixer un "
+        "prix ni envoyer la commande. Exemple : « commande 20 panneaux chez "
+        "le fournisseur 3 » → fournisseur=3, lignes=[{produit, "
+        "quantite=20}]. Résultat : le BCF brouillon numéroté ; les prix "
+        "naissent à 0 et se règlent à l'écran avant l'envoi."
     ),
     endpoint='/api/django/stock/bons-commande-fournisseur/',
     method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'fournisseur': {'type': 'integer'},
-            'date_commande': {'type': 'string', 'format': 'date'},
-            'note': {'type': 'string'},
-            'lignes': {'type': 'array', 'items': {'type': 'object'}},
+            'fournisseur': {'type': 'integer', 'title': 'Fournisseur (id)'},
+            'date_commande': {'type': 'string', 'format': 'date',
+                              'title': 'Date de commande'},
+            'note': {'type': 'string', 'title': 'Note'},
+            'lignes': {'type': 'array', 'title': 'Lignes',
+                       'minItems': 1, 'items': _LIGNE_BCF},
         },
         'required': ['fournisseur', 'lignes'],
     },
-    required_permission='stock_creer',
-    risk=RISK_INTERNAL,
+    required_permission='achats_commander',
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Créer un bon de commande fournisseur BROUILLON (rien n'est envoyé ; "
+        "les prix se règlent à l'écran)."),
 )
 
 
