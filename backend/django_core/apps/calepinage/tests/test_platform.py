@@ -31,7 +31,9 @@ class ManifestePlateformeTest(BaseApiCalepinage):
         for surface in ('import_specs', 'automation_state_fields',
                         'kpi_providers'):
             self.assertEqual(PLATFORM[surface], [], surface)
-        self.assertEqual(PLATFORM['agent_actions_module'], '')
+        # CALA4 — les actions de l'assistant sont câblées (agent_actions.py).
+        self.assertEqual(PLATFORM['agent_actions_module'],
+                         'apps.calepinage.agent_actions')
 
     def test_le_calepinage_est_une_cible_de_chatter(self):
         from apps.records.models import ALLOWED_TARGETS

@@ -18,7 +18,9 @@ import json
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, override_settings
 
+from apps.agent.registry import LOT_COPILOTE, RISK_INTERNAL
 from apps.calepinage.contrats_assistant import CONTRATS_ASSISTANT
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
@@ -250,3 +252,77 @@ class DuLeadTest(BaseAssistantCalepinage):
         if reponse.status_code == 200:
             self.assertIsNone(reponse.data['calepinage'])
             self.assertEqual(reponse.data['a_faire'], 'rien')
+
+
+#: Entrées qu'aucune action de l'assistant ne déclare jamais.
+ENTREES_INTERDITES = {'company', 'forcer', 'remplacer', 'derogation_electrique',
+                      'taux_tva', 'remise_globale', 'titre'}
+
+
+class ActionsDeclareesTest(SimpleTestCase):
+    """CALA4 — les actions ``calepinage.*`` : lot, garde, entrées, carte."""
+
+    def _actions(self):
+        from apps.calepinage import agent_actions
+
+        return {a.key: a for a in agent_actions.ACTIONS}
+
+    def test_lecture_internes_et_gardees_par_calepinage_voir(self):
+        actions = self._actions()
+        for cle in ('calepinage.du_lead', 'calepinage.resume',
+                    'calepinage.variantes_comparer', 'calepinage.simulation_suivre'):
+            with self.subTest(action=cle):
+                action = actions[cle]
+                self.assertEqual(action.method, 'GET')
+                self.assertEqual(action.risk, RISK_INTERNAL)
+                self.assertEqual(action.required_permission, 'calepinage_voir')
+        self.assertEqual(actions['calepinage.du_lead'].carte, 'fiche_calepinage')
+        self.assertEqual(actions['calepinage.resume'].carte, 'fiche_calepinage')
+
+    def test_lot_copilote_entrees_et_quatre_sections(self):
+        for cle, action in self._actions().items():
+            with self.subTest(action=cle):
+                self.assertTrue(cle.startswith('calepinage.'))
+                self.assertEqual(action.lot, LOT_COPILOTE)
+                self.assertTrue(action.as_dict()['natif_seul'])
+                proprietes = set((action.inputs or {}).get('properties') or {})
+                self.assertEqual(proprietes & ENTREES_INTERDITES, set())
+                self.assertFalse(any(p.startswith(('override_', 'derogation'))
+                                     for p in proprietes))
+                for section in ('Sert à', 'Ne pas utiliser pour', 'Exemple', 'Résultat'):
+                    self.assertIn(section, action.description)
+
+    def test_register_actions_idempotent(self):
+        from apps.agent import registry
+        from apps.calepinage.agent_actions import register_actions
+
+        avant = len(registry.all_actions())
+        register_actions()
+        register_actions()
+        self.assertEqual(len(registry.all_actions()), avant)
+        for cle in self._actions():
+            self.assertIn(cle, {a.key for a in registry.all_actions()})
+
+
+@override_settings(ASSISTANT_COPILOTE='tous')
+class ActionsServiesTest(BaseAssistantCalepinage):
+    """CALA4 — servies copilote allumé, cachées module calepinage éteint (ARC33)."""
+
+    def _cles(self, user):
+        from apps.agent import registry
+
+        return {a.key for a in registry.for_user(user)}
+
+    def test_servies_au_porteur_du_droit(self):
+        self.assertIn('calepinage.du_lead', self._cles(self.user))
+
+    def test_module_eteint_les_cache(self):
+        from core.models import ModuleToggle
+
+        ModuleToggle.objects.create(company=self.company, module='calepinage',
+                                    actif=False)
+        self.assertNotIn('calepinage.du_lead', self._cles(self.user))
+
+    @override_settings(ASSISTANT_COPILOTE='aucun')
+    def test_copilote_eteint_les_cache(self):
+        self.assertNotIn('calepinage.du_lead', self._cles(self.user))
