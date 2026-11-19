@@ -783,6 +783,9 @@ etape('P144.2', ['TCH144', 'TCH100'], async (f) => {
   await p.getByRole('button', { name: 'Ajouter une tâche', exact: true }).first().click()
   await champSaisie(p).fill(ajoutee)
   await champSaisie(p).press('Enter')
+  // R4-22 — hors ligne comme en ligne : le champ se vide et la feuille reste ouverte (chaîne) ; Échap la ferme
+  await expect(champSaisie(p)).toHaveValue('')
+  await p.keyboard.press('Escape')
   await expect(saisie(p)).toHaveCount(0)
   // cocher
   await ligneNommee(p, T.stand).getByRole('checkbox', { name: `Marquer « ${T.stand} » comme faite` }).click()
