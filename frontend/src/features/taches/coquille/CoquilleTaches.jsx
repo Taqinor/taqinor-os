@@ -438,7 +438,10 @@ export default function CoquilleTaches({
         {/* R2-080 — la rangée du haut (☰, titre compact, actions) colle en haut de l'écran sur iPhone ; au bureau elle
             n'a pas de boîte (`display: contents`) et ses actions se posent à droite du titre, comme avant. */}
         <header className="entete">
-          <div className={`entete-barre${replie ? ' replie' : ''}`} ref={barre}>
+          {/* R3-083 — l'état replié s'appelle `entete-repliee` : la classe `replie` est celle des sections repliées
+              d'Aujourd'hui (`.tch .replie` : marge, rembourrage de 16, espacement de 8, texte doux) et la rangée en
+              héritait au défilement — ses icônes glissaient de 10 pt et le titre compact passait en gris. */}
+          <div className={`entete-barre${replie ? ' entete-repliee' : ''}`} ref={barre}>
             {/* R2-093 — un écran ENFANT (projet, sous-page de Réglages) passe `retour` : « ‹ {libelle} » se pose
                 AU-DESSUS du titre (iPhone : à la place de ☰ ; bureau : sur la ligne du sur-titre), et l'écran
                 enfant ne répète ni la loupe ni le Copilote. */}
@@ -447,9 +450,11 @@ export default function CoquilleTaches({
                 <ChevronLeft className="i" aria-hidden="true" />{retour.libelle}
               </button>
             ) : <BoutonMenuErp />}
+            {/* R3-083 — sur iPhone la cloche se range à GAUCHE, à côté de ☰ : deux icônes à gauche, trois à droite (loupe ·
+                Copilote · ⋯), le titre compact centré sur l'écran entre les deux groupes. Bureau : elle n'est pas rendue. */}
+            <ClocheErp />
             <div className="entete-compact" aria-hidden="true" inert>{titre}</div>
             <div className="entete-actions">
-              <ClocheErp />
               {retour || surRecherche ? null : (
                 <button
                   type="button"

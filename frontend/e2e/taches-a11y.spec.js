@@ -282,6 +282,35 @@ test.describe('Tâches — enveloppe sur iPhone (390 × 844, tactile)', () => {
     await context.setOffline(false)
   })
 
+  test('R3-083/084 — en-tête : cinq icônes de 44 × 44 dans l\'écran, au même x au défilement et hors ligne ; titre au même y partout', async ({ page, context }) => {
+    await semer(page)
+    const barre = () => page.locator('.tch .entete-barre button').evaluateAll((els) => els
+      .filter((el) => el.getBoundingClientRect().width > 0)
+      .map((el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), l: Math.round(r.width), h: Math.round(r.height), droite: Math.round(r.right), cache: getComputedStyle(el).visibility === 'hidden' } }))
+    const titres = {}
+    for (const [chemin, ecran] of [['/taches/aujourdhui', 'aujourdhui'], ['/taches/a-trier', 'a-trier'], ['/taches/projets', 'projets'],
+      ['/taches/agenda', 'agenda'], ['/taches/revue', 'revue'], ['/taches/rythme', 'rythme'], ['/taches/reglages', 'reglages']]) {
+      await ouvrirEcran(page, chemin, ecran)
+      titres[ecran] = Math.round((await page.locator('h1.entete-titre').boundingBox()).y)
+    }
+    expect(new Set(Object.values(titres)).size, `y du grand titre : ${JSON.stringify(titres)}`).toBe(1)
+    await attendreAujourdhui(page)
+    const auRepos = await barre()
+    expect(auRepos, 'cinq commandes').toHaveLength(5)
+    for (const b of auRepos) {
+      expect(Math.min(b.l, b.h), `cible ${JSON.stringify(b)}`).toBeGreaterThanOrEqual(44)
+      expect(b.droite, 'dans l\'écran').toBeLessThanOrEqual(390)
+    }
+    await page.locator('main#contenu').evaluate((el) => el.scrollBy(0, 600))
+    await expect(page.locator('.tch .entete-barre.entete-repliee')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'au défilement, rien ne glisse').toEqual(auRepos.map((b) => b.x))
+    await page.locator('main#contenu').evaluate((el) => el.scrollTo(0, 0))
+    await context.setOffline(true)
+    await expect(page.locator('.tch[data-hors-ligne]')).toHaveCount(1)
+    expect((await barre()).map((b) => b.x), 'hors ligne, rien ne glisse (le Copilote garde sa place)').toEqual(auRepos.map((b) => b.x))
+    await context.setOffline(false)
+  })
+
   test('R3-080 — journée vide : « ou touche + » désigne un + VISIBLE, de 44 px au moins, qui ouvre la saisie au premier toucher', async ({ page }) => {
     await reinitialiser(page)
     await ouvrirEcran(page, '/taches/aujourdhui', 'aujourdhui')

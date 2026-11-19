@@ -165,18 +165,32 @@
     background: var(--tch-surface);
   }
   /* couture r2 — repliée, la rangée reste OPAQUE (le fond translucide laissait lire le texte qui défile dessous) */
-  .tch .entete-barre.replie { background: var(--tch-surface); box-shadow: inset 0 -0.5px 0 var(--tch-trait); }
+  .tch .entete-barre.entete-repliee { background: var(--tch-surface); box-shadow: inset 0 -0.5px 0 var(--tch-trait); }
   .tch .entete-barre .entete-menu, .tch .entete-barre .entete-cloche { display: inline-grid; flex: none; }
+  /* R3-083 — le titre compact est centré sur l'ÉCRAN (barre iOS), entre les deux groupes d'icônes : ☰ · cloche à gauche
+     (88 + 6), loupe · Copilote · ⋯ à droite (132) ; sa largeur laisse 132 px de chaque côté, « … » au-delà. Sur un écran
+     enfant (« ‹ Projets », de largeur variable), il reste dans l'espace entre le retour et les actions. */
   .tch .entete-barre .entete-compact {
-    display: block; flex: 1; min-width: 0; padding: 0 4px; text-align: center; opacity: 0;
+    display: block; flex: 1; min-width: 0; padding: 0 4px; text-align: center; opacity: 0; pointer-events: none;
     font-size: 1.0625rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .tch .entete-barre.replie .entete-compact { opacity: 1; }
-  .tch .entete-actions { flex: none; margin: 0 0 0 auto; }
-  /* replié, le Copilote garde son étoile et cède son libellé au titre compact (son nom accessible reste « Copilote ») */
-  .tch .entete-barre.replie .copilote { width: 44px; height: 44px; margin: 0; padding: 0; gap: 0; justify-content: center; font-size: 0; }
+  .tch .entete-barre:not(:has(> .entete-retour)) .entete-compact {
+    position: absolute; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * 132px);
+  }
+  .tch .entete-barre.entete-repliee .entete-compact { opacity: 1; }
+  /* R3-083 — cinq commandes de 44 × 44, toutes en icône et sans fond : la pilule « Copilote » (104 × 36, fond)
+     dominait l'écran et changeait de forme au défilement, ce qui faisait glisser la cloche et la loupe. Le ⋯ touche le
+     bord droit de l'écran (cible de 44) sans en sortir (il en débordait de 4 pt) ; son dessin est à 12 pt du bord. */
+  .tch .entete-barre .entete-actions { flex: none; margin: 0 -6px 0 auto; }
+  .tch .entete-barre .copilote {
+    width: 44px; height: 44px; margin: 0; padding: 0; gap: 0; justify-content: center; font-size: 0;
+    border-radius: 999px; background: transparent;
+  }
+  .tch .entete-barre .copilote svg { width: 20px; height: 20px; stroke-width: 1.75; }
   .tch .entete-titres { grid-column: 1 / -1; padding: 0 var(--tch-gouttiere); }
-  .tch .entete-surtitre:empty { display: none; }
+  /* R3-084 — le sur-titre garde sa ligne même vide, comme au bureau : le grand titre est au même y sur chaque onglet
+     (il sautait de 20 pt entre Aujourd'hui et Projets) */
+  .tch .entete-surtitre:empty { display: block; min-height: 1.25rem; }
   .tch .entete-retour { height: 44px; padding: 0 8px 0 4px; font-size: 1.0625rem; }
   .tch .entete-retour svg { width: 24px; height: 24px; }
 }
@@ -549,13 +563,14 @@
 }
 /* Passe visuelle n° 64 (etat-hors-ligne.html, `.entete-date.es-hors-ligne`) : « Hors ligne · dernière synchro à
    {HH:MM} » tient sur UNE ligne au-dessus du titre, icône et texte côte à côte ; sur iPhone le Copilote, qui a besoin
-   du réseau, lui cède sa place. La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
+   du réseau, s'efface (sa place reste, R3-083). La ligne d'état est l'`entete-date` qui porte l'icône (« En attente d'envoi » n'en a pas). */
 .tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) {
   display: flex; align-items: center; gap: 6px; color: var(--tch-texte);
 }
 .tch[data-hors-ligne] .entete-date[role="status"]:has(> svg) > span { white-space: nowrap; }
 @media (max-width: 767px) {
-  .tch[data-hors-ligne] .entete-actions .copilote-groupe { display: none; }
+  /* R3-083 — hors ligne, le Copilote garde sa place (invisible) : la cloche et la loupe ne glissent plus de 150 pt */
+  .tch[data-hors-ligne] .entete-actions .copilote-groupe { visibility: hidden; }
 }
 .tch .bandeau {
   display: flex; align-items: center; gap: 12px; margin: 16px var(--tch-gouttiere) 0; padding: 12px 8px 12px 14px;
