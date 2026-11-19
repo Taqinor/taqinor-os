@@ -490,7 +490,7 @@ etape('P143.3', ['TCH143', 'TCH117'], async (f) => {
   const garder = carte.getByRole('button', { name: n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci', exact: true })
   await expect(garder, `bouton d'adoption du Proposé (${n} : ${propose.map((t) => t.titre).join(' · ')})`).toBeVisible()
   await garder.click()
-  await expect(carte.getByRole('status')).toContainText(`${n} gardée`)
+  await expect(carte.getByRole('status')).toContainText(`${n} prévue`) // R4-07 : « {n} prévue(s) aujourd'hui »
   const journee = await lire(p, 'aujourdhui/')
   const gardees = [...journee.essentiel, ...journee.journee].map((it) => it.titre)
   for (const t of propose) expect(gardees, `« ${t.titre} » gardée`).toContain(t.titre)
