@@ -968,7 +968,8 @@ TAILLE_APERCU = AgentAction(
     description=(
         "Sert à : calculer, SANS rien changer, l'ancien et le nouveau total "
         "TTC d'un devis brouillon ou envoyé pour un autre nombre de panneaux "
-        "(onduleur, structures et câbles suivent) ; lecture OBLIGATOIRE avant "
+        "(structures et câbles suivent ; un devis composé sur demande garde "
+        "son onduleur et sa batterie) ; lecture OBLIGATOIRE avant "
         "ventes.devis.taille. Ne pas utiliser pour : un devis accepté, refusé "
         "ou expiré (réviser d'abord, puis la taille sur la V2). Exemple : "
         "« mets-lui 12 panneaux » → id, nb_panneaux=12. Résultat : ancien et "
