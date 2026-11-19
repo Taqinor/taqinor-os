@@ -192,18 +192,25 @@ class SqlAgentLimitesTests(unittest.TestCase):
                 self.assertEqual(r.json(), TestClient(avant).post("/q", json=corps).json())
 
     def test_question_copilote_allume_6000(self):
-        """F4 — copilote ALLUMÉ : 6 000 caractères acceptés (message collé),
-        422 au-delà avec la borne 6 000."""
+        """F4 — copilote ALLUMÉ et claude : 6 000 caractères acceptés (message
+        collé), 422 au-delà avec la borne 6 000. Revue S3 : copilote allumé sous
+        Groq, la borne reste 2 000 (le tour refuserait tout au-delà)."""
+        from app.services import sql_agent_service as svc
         calls = self._patch_llm()
         self._patch_redis(_FakeRedis())
         self._patch_catalogue("copilote")
         client = self._client(107)
-        r = client.post("/sql-agent/query", json={"question": "x" * 6000})
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(len(calls), 1)
-        r = client.post("/sql-agent/query", json={"question": "x" * 6001})
-        self.assertEqual(r.status_code, 422)
-        self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 6000})
+        with mock.patch.object(svc, "SQL_AGENT_PROVIDER", "claude"):
+            r = client.post("/sql-agent/query", json={"question": "x" * 6000})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(len(calls), 1)
+            r = client.post("/sql-agent/query", json={"question": "x" * 6001})
+            self.assertEqual(r.status_code, 422)
+            self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 6000})
+        with mock.patch.object(svc, "SQL_AGENT_PROVIDER", "groq"):
+            r = client.post("/sql-agent/query", json={"question": "x" * 2001})
+            self.assertEqual(r.status_code, 422)
+            self.assertEqual(r.json()["detail"][0]["ctx"], {"max_length": 2000})
         self.assertEqual(len(calls), 1)
 
     def test_debit_limite_429(self):

@@ -193,7 +193,10 @@ def capacites(ctx) -> dict[str, Any]:
     from app.services.sql_agent_service import SQL_AGENT_PROVIDER
     catalogue = catalogue_du_tour(ctx)
     copilote = prompt_copilote.copilote_allume(catalogue)
-    return {"limite_question": LIMITE_QUESTION_COPILOTE if copilote else LIMITE_QUESTION,
+    # Revue S3 — 6 000 seulement si claude sert le tour : ailleurs (Groq)
+    # `_run_agent` refuse tout au-delà de 2 000 (`question_trop_longue_pour`).
+    longue = copilote and (SQL_AGENT_PROVIDER or "").lower() == "claude"
+    return {"limite_question": LIMITE_QUESTION_COPILOTE if longue else LIMITE_QUESTION,
             "images_acceptees": bool(IMAGES_ACCEPTEES and copilote
                                      and moteur_natif_actif(catalogue, SQL_AGENT_PROVIDER))}
 
