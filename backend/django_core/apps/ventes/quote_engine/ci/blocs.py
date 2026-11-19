@@ -547,6 +547,39 @@ def texte_extension(d, lg):
     return html.escape(str(textes.get(lg) or textes.get("fr") or ""), quote=False)
 
 
+def phrase_depart_une_batterie(d, fmt_mad, couleur):
+    """Fondateur 19/11/2026 — la phrase « Pour démarrer avec une seule
+    batterie : … » (HTML, ``<div>``) sous les totaux de l'option « avec
+    batterie », chaque nombre suivi de son ancre ``data-figure``
+    (``option="avec"``) ; '' sans bloc servi (case décochée, refus) : rendu
+    d'hier, octet pour octet. Tout est LU sur
+    ``etude_ci.depart_une_batterie`` (``mentions.valeurs_depart_une_batterie``),
+    seul le formatage est fait ici."""
+    from ..figures import ancre
+    from ..premium_base import kwc_str
+    from .mentions import gabarits_depart_une_batterie, valeurs_depart_une_batterie
+    v = valeurs_depart_une_batterie(d)
+    if v is None:
+        return ""
+    lg = langue(d)
+
+    def marque(cle, texte):
+        return f"{texte}{ancre(cle, texte, option='avec')}"
+
+    debut, suite = gabarits_depart_une_batterie(lg, v["n"], v["m"], v["base"])
+    texte = debut.format(n=marque("depart_une_batterie_panneaux", str(v["n"])),
+                         kwc=marque("depart_une_batterie_kwc", kwc_str(v["kwc"])),
+                         kwh=marque("depart_une_batterie_kwh", kwc_str(v["kwh"])),
+                         prix=marque("depart_une_batterie_prix", fmt_mad(v["prix"]))) \
+        + suite.format(m=marque("depart_une_batterie_ajout", str(v["m"])))
+    if lg != "fr":
+        from .. import i18n_labels
+        if i18n_labels.est_rtl(lg):
+            texte = f'<span class="i18n-rtl" dir="rtl">{texte}</span>'
+    return (f'<div class="c2-dep" data-depart-une-batterie style="font-size:7pt;'
+            f'color:{couleur};padding:4px 8px 2px;line-height:1.35;">{texte}</div>')
+
+
 def bloc_option_avec(d, L, fmt_mad, couleurs):
     """Fondateur 26/10/2026 — un C&I à DEUX options imprime, sous le tableau
     de l'offre réseau, l'option « avec batterie » comme le résidentiel : ses

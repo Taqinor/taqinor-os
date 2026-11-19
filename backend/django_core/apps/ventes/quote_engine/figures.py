@@ -150,6 +150,19 @@ FIGURE_KEYS: dict[str, Cle] = {
     "pompe_debit_m3h": Cle("Débit de la pompe à la HMT", "m³/h", _UNITE_FINE),
     "pompe_volume_m3_jour": Cle("Volume d'eau pompé par jour", "m³/jour",
                                 _POINT),
+    # ── C&I : « démarrer avec une seule batterie » (fondateur 19/11/2026) ──
+    # Lus sur ``etude_ci.depart_une_batterie`` (option « avec »).
+    "depart_une_batterie_panneaux": Cle(
+        "Panneaux du système à une seule batterie", "panneaux", _POINT),
+    "depart_une_batterie_kwc": Cle(
+        "Puissance du système à une seule batterie", "kWc", _KWC),
+    "depart_une_batterie_kwh": Cle(
+        "Capacité utile de la batterie unique du départ", "kWh", _UNITE_FINE),
+    "depart_une_batterie_prix": Cle(
+        "Prix du départ à une seule batterie (TTC, HT si base HT)", "MAD",
+        _ARGENT),
+    "depart_une_batterie_ajout": Cle(
+        "Batteries à ajouter ensuite", "batteries", _POINT),
 }
 
 
