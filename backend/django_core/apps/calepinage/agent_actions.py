@@ -24,13 +24,14 @@ Règles qui bornent ce que l'assistant DIT (décisions D-ACAL) :
 """
 from __future__ import annotations
 
+from apps.calepinage.permissions import CAL_GERER, CAL_VOIR
 from apps.agent.registry import (
     AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register, _REGISTRY,
 )
 
 #: Les deux codes de la garde réelle des routes (``permissions.py``).
-VOIR = 'calepinage_voir'
-GERER = 'calepinage_gerer'
+VOIR = CAL_VOIR
+GERER = CAL_GERER
 
 BASE = '/api/django/calepinage/calepinages/'
 

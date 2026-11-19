@@ -883,8 +883,12 @@ class ContenanceTest(BaseAssistantCalepinage):
                             for s in reponse.data['suppositions']), reponse.data['suppositions'])
 
     def test_sans_panneau_designe(self):
-        reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
-                                largeur_m='6', toit_plat='true')
+        from unittest import mock
+
+        with mock.patch('apps.ventes.selectors_assistant.panneau_par_defaut_id',
+                        return_value=None):
+            reponse = self._estimer(lead=self.lead_2.pk, origine='dicte', longueur_m='10',
+                                    largeur_m='6', toit_plat='true')
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['code'], 'panneau_non_designe')
 
@@ -899,19 +903,22 @@ class ContenanceTest(BaseAssistantCalepinage):
         self.assertEqual(trace.data['code'], 'aucun_trace')
 
     def test_parametres_refuses_en_les_nommant(self):
+        # 400 : hors du schéma publié (inconnu, hors borne, hors énumération) ;
+        # 409 : règles ENTRE paramètres, qu'un schéma ne sait pas dire.
         cas = (
             ({'origine': 'dicte', 'longueur_m': '10', 'largeur_m': '6', 'toit_plat': 'true',
-              'company': '2'}, 'company'),
-            ({'origine': 'visite', 'longueur_m': '10'}, 'longueur_m'),
+              'company': '2'}, 'company', 400),
+            ({'origine': 'visite', 'longueur_m': '10'}, 'longueur_m', 409),
             ({'origine': 'dicte', 'longueur_m': '900', 'largeur_m': '6', 'toit_plat': 'true'},
-             'longueur_m'),
-            ({'origine': 'dicte', 'longueur_m': '10', 'largeur_m': '6'}, 'pente_deg'),
-            ({'origine': 'satellite'}, 'origine'),
+             'longueur_m', 400),
+            ({'origine': 'dicte', 'longueur_m': '10', 'largeur_m': '6'}, 'pente_deg', 409),
+            ({'origine': 'dicte', 'largeur_m': '6', 'toit_plat': 'true'}, 'longueur_m', 409),
+            ({'origine': 'satellite'}, 'origine', 400),
         )
-        for params, champ in cas:
+        for params, champ, statut in cas:
             with self.subTest(champ=champ):
                 reponse = self._estimer(lead=self.lead_2.pk, **params)
-                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.status_code, statut, reponse.data)
                 self.assertEqual(reponse.data['field'], champ)
 
     def test_lead_d_une_autre_societe_introuvable(self):

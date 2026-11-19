@@ -18,11 +18,15 @@ borné par ``selectors.calepinages_visibles``). Aucun prix, aucune géométrie.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from core.parseurs import PARSEURS_JSON
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import forme_du_contrat
@@ -30,10 +34,26 @@ from ..services.assistant import (
     LeadIntrouvable, RefusAssistant, etat_du_lead, preparer as preparer_calepinage,
     resume_compact,
 )
+from ..services.contenance import BORNES_COTE_M, BORNES_PENTE_DEG, ORIGINES
 from .calepinages import CalepinageViewSet
 
 __all__ = ['resume', 'du_lead', 'preparer', 'publier_devis_apercu', 'publier_devis',
            'a_traiter', 'contenance']
+
+
+#: Borne haute des identifiants numériques lus en paramètre (``len < 19``).
+ID_MAX = 999999999999999999
+#: Un identifiant publié AVEC ses bornes : une valeur du schéma est acceptée.
+ENTIER_ID = {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX}
+
+#: Le refus NOMMÉ ``{detail, field, code}`` (404 / 409), DOCUMENTÉ.
+REPONSE_REFUS = OpenApiResponse(
+    response=inline_serializer('CalepinageAssistantRefus', {
+        'detail': drf_serializers.CharField(),
+        'field': drf_serializers.CharField(),
+        'code': drf_serializers.CharField()}),
+    description='Refus nommé : introuvable (404) ou état qui ne le permet pas (409).')
+REFUS_404_409 = {404: REPONSE_REFUS, 409: REPONSE_REFUS}
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
@@ -82,10 +102,11 @@ def _variante_demandee(request, calepinage):
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'variante', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+        'variante', ENTIER_ID, OpenApiParameter.QUERY, required=False,
         description='Variante du même calepinage à résumer.')],
     responses={200: forme_du_contrat('CalepinageAssistantResume',
-                                     'calepinage_assistant_resume.json')})
+                                     'calepinage_assistant_resume.json'),
+               **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.resume)
 @action(detail=True, methods=['get'], url_path='resume',
         permission_classes=[PeutVoirCalepinage])
@@ -113,10 +134,11 @@ LEAD_INTROUVABLE = ('Lead introuvable.', 'lead', 'lead_introuvable',
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True,
+        'lead', ENTIER_ID, OpenApiParameter.QUERY, required=True,
         description='Le lead dont on veut le calepinage.')],
     responses={200: forme_du_contrat('CalepinageAssistantDuLead',
-                                     'calepinage_assistant_du_lead.json')})
+                                     'calepinage_assistant_du_lead.json'),
+               **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.du_lead)
 @action(detail=False, methods=['get'], url_path='du-lead',
         permission_classes=[PeutVoirCalepinage])
@@ -137,11 +159,11 @@ _FORME_PREPARER = forme_du_contrat('CalepinageAssistantPreparer',
 
 @extend_schema(
     request=inline_serializer('CalepinageAssistantPreparerCorps', {
-        'lead': drf_serializers.IntegerField(min_value=1)}),
-    responses={200: _FORME_PREPARER, 201: _FORME_PREPARER})
+        'lead': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)}),
+    responses={200: _FORME_PREPARER, 201: _FORME_PREPARER, **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.preparer)
 @action(detail=False, methods=['post'], url_path='preparer',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage], parser_classes=PARSEURS_JSON)
 def preparer(self, request):
     """CALA6 — ouvre (ou retrouve) le calepinage du lead et reprend la visite
     validée, en UN geste ; rend le bouton qui ouvre l'atelier."""
@@ -179,7 +201,8 @@ def _publication(fonction, calepinage, user, **kwargs):
 
 
 @extend_schema(responses={200: forme_du_contrat(
-    'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json')})
+    'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json'),
+    **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, aperçu de calepinage.publier_devis)
 @action(detail=True, methods=['get'], url_path='publier-devis/apercu',
         permission_classes=[PeutGererCalepinage])
@@ -191,6 +214,8 @@ def publier_devis_apercu(self, request, pk=None):
     return _publication(apercu_publication, self.get_object(), user=request.user)
 
 
+#: Un total TTC recopié de l'aperçu : texte décimal, deux décimales au plus.
+MONTANT = r'^\d{1,12}(\.\d{1,2})?$'
 #: CALA7 — ce que le corps de ``publier-devis`` accepte, et rien d'autre.
 CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis')
 CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acceptés ; '
@@ -199,19 +224,22 @@ CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acc
 
 @extend_schema(
     request=inline_serializer('CalepinageAssistantPublierCorps', {
-        'ancien_total_ttc': drf_serializers.CharField(allow_null=True),
-        'nouveau_total_ttc': drf_serializers.CharField(),
-        'devis': drf_serializers.IntegerField(required=False, allow_null=True, min_value=1)}),
+        'ancien_total_ttc': drf_serializers.RegexField(MONTANT, allow_null=True),
+        'nouveau_total_ttc': drf_serializers.RegexField(MONTANT),
+        'devis': drf_serializers.IntegerField(
+            required=False, allow_null=True, min_value=1, max_value=ID_MAX)}),
     responses={200: forme_du_contrat('CalepinageAssistantPublierDevis',
-                                     'calepinage_assistant_publier_devis.json')})
+                                     'calepinage_assistant_publier_devis.json'),
+               **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.publier_devis)
 @action(detail=True, methods=['post'], url_path='publier-devis',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage], parser_classes=PARSEURS_JSON)
 def publier_devis(self, request, pk=None):
     """CALA7 — publie la conception au devis (génère le brouillon ou
     resynchronise le devis lié, envoyé compris) aux SEULS totaux confirmés."""
     from ..services.assistant import publier
 
+    calepinage = self.get_object()  # 404 AVANT toute lecture du corps
     corps, refuse = corps_borne(request, CHAMPS_PUBLIER, CONSIGNE_PUBLIER)
     if refuse is not None:
         return refuse
@@ -224,14 +252,15 @@ def publier_devis(self, request, pk=None):
     if devis_vu is not None and (isinstance(devis_vu, bool) or not isinstance(devis_vu, int)):
         return refus('devis : l\'identifiant du devis lié, recopié de l\'aperçu.',
                      'devis', 'devis_invalide')
-    return _publication(publier, self.get_object(), user=request.user,
+    return _publication(publier, calepinage, user=request.user,
                         ancien_vu=corps.get('ancien_total_ttc'),
                         nouveau_vu=corps.get('nouveau_total_ttc'), devis_vu=devis_vu)
 
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'limite', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+        'limite', {'type': 'integer', 'minimum': 1, 'maximum': 20},
+        OpenApiParameter.QUERY, required=False,
         description='Nombre de lignes, de 1 à 20 (10 par défaut).')],
     responses={200: forme_du_contrat('CalepinageAssistantATraiter',
                                      'calepinage_assistant_a_traiter.json')})
@@ -261,6 +290,11 @@ PARAMS_CONTENANCE = ('lead', 'origine', 'produit', 'longueur_m', 'largeur_m',
 PARAMS_DICTES = ('longueur_m', 'largeur_m', 'pente_deg', 'toit_plat')
 
 
+def _nombre_schema(bornes):
+    """Le schéma publié d'un nombre borné (mêmes bornes que la lecture)."""
+    return {'type': 'number', 'minimum': bornes[0], 'maximum': bornes[1]}
+
+
 def _nombre_borne(brut, champ, bornes):
     """Un nombre fini dans ``bornes``, sinon :class:`RefusAssistant` (400)."""
     try:
@@ -276,8 +310,6 @@ def _nombre_borne(brut, champ, bornes):
 def _lire_contenance(params):
     """``(origine, cotes, produit_id)`` validés ; :class:`RefusAssistant` 400
     nommé pour un paramètre inconnu, répété, hors borne ou hors origine."""
-    from ..services.contenance import BORNES_COTE_M, BORNES_PENTE_DEG, ORIGINES
-
     for cle in params:
         if cle not in PARAMS_CONTENANCE or len(params.getlist(cle)) > 1:
             raise RefusAssistant(f'Paramètre refusé : {cle} (inconnu ou répété).', cle,
@@ -286,21 +318,26 @@ def _lire_contenance(params):
     if origine not in ORIGINES:
         raise RefusAssistant('origine : visite, trace ou dicte.', 'origine',
                              'origine_invalide', status.HTTP_400_BAD_REQUEST)
+    # Règles ENTRE paramètres : le schéma ne sait pas les dire, donc un 409
+    # nommé (jamais un 400 sur une requête conforme au schéma publié).
     dictes = [cle for cle in PARAMS_DICTES if cle in params]
     if dictes and origine != 'dicte':
         raise RefusAssistant(f'{dictes[0]} : seulement avec origine=dicte.', dictes[0],
-                             'parametre_refuse', status.HTTP_400_BAD_REQUEST)
+                             'parametre_refuse')
     cotes = {}
     if origine == 'dicte':
         for cle in ('longueur_m', 'largeur_m'):
-            cotes[cle] = _nombre_borne(params.get(cle, ''), cle, BORNES_COTE_M)
+            if cle not in params:
+                raise RefusAssistant(f'{cle} : obligatoire avec origine=dicte.', cle,
+                                     'parametre_manquant')
+            cotes[cle] = _nombre_borne(params[cle], cle, BORNES_COTE_M)
         plat = str(params.get('toit_plat', '')).strip().lower()
         cotes['toit_plat'] = plat in ('true', '1', 'oui')
         cotes['pente_deg'] = (_nombre_borne(params['pente_deg'], 'pente_deg', BORNES_PENTE_DEG)
                               if 'pente_deg' in params else None)
         if not cotes['toit_plat'] and cotes['pente_deg'] is None:
             raise RefusAssistant('pente_deg : donnez la pente, ou toit_plat=true.',
-                                 'pente_deg', 'pente_manquante', status.HTTP_400_BAD_REQUEST)
+                                 'pente_deg', 'pente_manquante')
     produit = str(params.get('produit', '')).strip()
     if produit and not (produit.isascii() and produit.isdigit() and len(produit) < 19):
         raise RefusAssistant("produit : l'identifiant entier du panneau.", 'produit',
@@ -310,16 +347,20 @@ def _lire_contenance(params):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True),
-        OpenApiParameter('origine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=True,
-                         enum=['visite', 'trace', 'dicte']),
-        OpenApiParameter('produit', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False),
-        OpenApiParameter('longueur_m', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
-        OpenApiParameter('largeur_m', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
-        OpenApiParameter('pente_deg', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('lead', ENTIER_ID, OpenApiParameter.QUERY, required=True),
+        OpenApiParameter('origine', {'type': 'string', 'enum': list(ORIGINES)},
+                         OpenApiParameter.QUERY, required=True),
+        OpenApiParameter('produit', ENTIER_ID, OpenApiParameter.QUERY, required=False),
+        OpenApiParameter('longueur_m', _nombre_schema(BORNES_COTE_M), OpenApiParameter.QUERY,
+                         required=False, description='Avec origine=dicte (obligatoire).'),
+        OpenApiParameter('largeur_m', _nombre_schema(BORNES_COTE_M), OpenApiParameter.QUERY,
+                         required=False, description='Avec origine=dicte (obligatoire).'),
+        OpenApiParameter('pente_deg', _nombre_schema(BORNES_PENTE_DEG), OpenApiParameter.QUERY,
+                         required=False, description='Avec origine=dicte, ou toit_plat=true.'),
         OpenApiParameter('toit_plat', OpenApiTypes.BOOL, OpenApiParameter.QUERY, required=False)],
     responses={200: forme_du_contrat('CalepinageAssistantContenance',
-                                     'calepinage_assistant_contenance.json')})
+                                     'calepinage_assistant_contenance.json'),
+               **REFUS_404_409})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.contenance)
 @action(detail=False, methods=['get'], url_path='contenance',
         permission_classes=[PeutVoirCalepinage])

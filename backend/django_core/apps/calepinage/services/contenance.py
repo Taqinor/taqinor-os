@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from .assistant import RefusAssistant
+from .valeurs import nombre as _nombre
 
 ORIGINES = ('visite', 'trace', 'dicte')
 #: Bornes des dimensions dictées (contrat).
@@ -88,14 +89,6 @@ def _panneau(company, produit_id, ouvert):
     if kit is None:
         raise _refus_fiche()
     return produit, kit, (SUPPOSE_PANNEAU % produit.nom if par_defaut else None)
-
-
-def _nombre(valeur):
-    try:
-        nombre = float(valeur)
-    except (TypeError, ValueError):
-        return None
-    return nombre if nombre == nombre else None
 
 
 def _mesures(liste):
