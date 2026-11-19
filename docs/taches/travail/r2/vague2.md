@@ -99,3 +99,19 @@ Demandes de L6 :
   `regles.md` : règle « faites » C-12, pause C-5).
 - À rejouer sans interception après le pli : `rendez_vous_minutes`, `faites_nb` ; projet en pause + tâche à 16:00.
 - Specs `e2e/taches-agenda.spec.js` jamais jouées (CI).
+
+## Après le pli de L8 (`2bb1cf6fd`)
+- R2-124 « Faites cette semaine » NON livré : la liste serveur ne dit pas quand une tâche a été faite. Il faut
+  `fait_le` dans l'ITEM de liste (`serializers/formes.py` + `contract_samples/item.json` + tous les échantillons qui
+  embarquent des items, tests clés-ET-ordre) ou `periode=faites_semaine` + date servie (`services/taches.py`,
+  `views/taches.py`) ; puis le front de la Recherche (puce + groupes par jour).
+- Libellé du menu ⋯ « Supprimées et derniers gestes » : vit dans `coquille/CoquilleTaches.jsx` (DESTINATIONS,
+  « Supprimées récemment ») ; titre de page à aligner.
+- `contract_samples/proposition_repondue.json` embarque un `rythme` sans `jours_travailles` : aligner.
+- Toast global en doublon du message sous le champ : aussi au POST d'un agenda externe en erreur (« Url : Adresse
+  injoignable… ») — même cause que le « Nom : … » des projets (pont d'erreurs de l'ERP).
+- `RouteFocus` de l'ERP vole le curseur de la Recherche au chargement direct (repris par L8 dans les 1,5 s).
+- Tests hors lane qui échouent en local selon l'horloge ou la charge : `LigneTache.test` (snapshot daté),
+  `TachesPresence.test` (« 1 ouvertes »), `routes.test` (délai 5 s à froid).
+- À rejouer après le pli (serveur servi) : `rythme/` de 10 entrées dont 5 `sans_donnees` ; tenir → libre → pousser
+  rend le palier dit ; `gestes/` avec `titre` ; 3 messages d'agenda externe.
