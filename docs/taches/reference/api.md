@@ -2075,7 +2075,10 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
   `sans_section_compteurs`. « Faites (n) » : `GET taches/?projet={id}&statut=fait&tri=fait_le` (paginé, la plus récente
   d'abord).
 - **`GET taches/`** : `vue` ∈ `boite`, `quelque_jour` · `periode` ∈ `aujourdhui`, `semaine` (J à J+6), `retard`
-  (`jour_prevu` < J ou `echeance` < J) · `tri` ∈ `rang` (défaut), `echeance`, `priorite`, `fait_le` · `groupe` ∈
+  (`jour_prevu` < J ou `echeance` < J), `faites_semaine` (R2-124, « Faites cette semaine » de la Recherche : les
+  FAITES dont `fait_le` ≥ lundi 0 h de la semaine de J — statut `fait` imposé, tri `fait_le` par défaut, la plus
+  récente d'abord ; mêmes filtres de société et de propriétaire que toute liste ; valeur acceptée aussi dans les
+  `filtres` d'une vue) · `tri` ∈ `rang` (défaut), `echeance`, `priorite`, `fait_le` · `groupe` ∈
   `projet` · `statut` ∈ valeurs de `StatutTache` (sans lui : ouvertes ; `inclure_faites=1` : + faites) · toute autre
   valeur → 400 « Valeur inconnue. ».
 - **Réordonner — deux sens, à ne pas confondre** : `taches/{id}/reordonner/` et `checklist/{id}/reordonner/` : `avant_id`
