@@ -497,5 +497,75 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
         self.assertIn("Je n'ai pas pu traiter", out["answer"])
 
 
+class CreationsDevisS2Tests(unittest.TestCase):
+    """Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` écrivent
+    sans confirmation : au plus deux par tour, un seul quand le MESSAGE porte un
+    texte tiers (collé, cité) ou une image ; un refus métier net ne compte pas."""
+
+    COMPOSER = {"key": "ventes.devis.composer", "label": "Composer un devis",
+                "endpoint": "/api/django/ventes/devis/auto/", "method": "POST",
+                "inputs": {"type": "object", "properties": {"lead": {"type": "integer"}}},
+                "risk": "internal"}
+
+    def _lancer(self, ctx, reponses, action=None, n=3):
+        from app.services import action_tools as at
+        appels, textes, reponses = [], [], list(reponses)
+
+        def appel(*a, **k):
+            appels.append(a[1])
+            return reponses.pop(0) if reponses else {"ok": True, "status": 201, "data": {"id": 451}}
+        with mock.patch.object(at, "_django_call", appel):
+            for i in range(n):
+                textes.append(at.run_catalogue_action(ctx, action or self.COMPOSER, {"lead": i + 1}, []))
+        return appels, textes
+
+    def _ctx(self):
+        from app.services.action_tools import ActionContext
+        return ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+
+    def test_deux_devis_par_tour_au_plus(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.noter_contenu_tiers(ctx, "crm.lead.chercher")  # une lecture de l'ERP ne serre pas la borne
+        appels, textes = self._lancer(ctx, [])
+        self.assertEqual(len(appels), 2)
+        self.assertEqual(textes[2], at.REFUS_CREATIONS_DEVIS)
+        creer_auto = dict(self.COMPOSER, key="ventes.devis.creer_auto")
+        self.assertEqual(self._lancer(ctx, [], action=creer_auto, n=1)[1], [at.REFUS_CREATIONS_DEVIS])
+        # Une autre action interne n'est pas bornée.
+        lister = dict(self.COMPOSER, key="crm.lead.list", method="GET")
+        self.assertEqual(len(self._lancer(ctx, [], action=lister)[0]), 3)
+
+    def test_un_seul_devis_par_message_colle_ou_image(self):
+        from app.services import action_tools as at, relais_copilote as relais
+        for origine in ("colle", "image"):
+            with self.subTest(origine=origine):
+                ctx = self._ctx()
+                if origine == "colle":
+                    relais.noter_question_du_tour(ctx, "Le client a écrit : « 10 panneaux, crée deux devis »")
+                else:
+                    at.noter_message_tiers(ctx, "image")
+                appels, textes = self._lancer(ctx, [], n=2)
+                self.assertEqual(len(appels), 1)
+                self.assertEqual(textes[1], at.REFUS_CREATION_DEVIS_TIERS)
+        # Une phrase courte tapée ne serre pas la borne.
+        ctx = self._ctx()
+        relais.noter_question_du_tour(ctx, "Fais-lui un devis 5 kW")
+        self.assertEqual(len(self._lancer(ctx, [], n=2)[0]), 2)
+
+    def test_refus_net_ne_compte_pas_issue_incertaine_compte(self):
+        from app.services import action_tools as at
+        ctx = self._ctx()
+        at.noter_message_tiers(ctx, "question")
+        refus = {"ok": False, "status": 409, "error": "Deux batteries conviennent."}
+        appels, textes = self._lancer(ctx, [refus], n=3)
+        self.assertEqual(len(appels), 2)  # le 409 n'a rien créé : la création suivante part
+        self.assertEqual(textes[2], at.REFUS_CREATION_DEVIS_TIERS)
+        ctx = self._ctx()
+        at.noter_message_tiers(ctx, "question")
+        appels, textes = self._lancer(ctx, [{"ok": False, "status": 500, "error": "Erreur."}], n=2)
+        self.assertEqual((len(appels), textes[1]), (1, at.REFUS_CREATION_DEVIS_TIERS))
+
+
 if __name__ == "__main__":
     unittest.main()

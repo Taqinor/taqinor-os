@@ -222,10 +222,10 @@ def tour_avec_images(service, question: str, company_id: int, user_id: int, ctx,
     moteur natif ne sert pas le tour, le tour répond `MESSAGE_IMAGE_ILLISIBLE`
     — jamais un tour LangChain qui aurait laissé l'image de côté. L'image est
     un CONTENU TIERS : le tour est marqué (A5)."""
-    from app.services.action_tools import noter_contenu_tiers
+    from app.services.action_tools import noter_message_tiers
     from app.services import sql_agent_service as svc
     vue = question_marquee(question, images)
-    noter_contenu_tiers(ctx, "image")
+    noter_message_tiers(ctx, "image")
     sortie = None
     try:
         if moteur_natif_actif(catalogue, svc.SQL_AGENT_PROVIDER) and not service._budget_atteint(ctx):
@@ -278,10 +278,11 @@ def question_porte_un_texte_tiers(question) -> bool:
 
 
 def noter_question_du_tour(ctx, question) -> None:
-    """Une liste ou un texte collé dans la question marque le tour (A5)."""
+    """Une liste ou un texte collé dans la question marque le tour (A5) et
+    borne ses créations de devis à une (revue S2)."""
     if ctx is not None and question_porte_un_texte_tiers(question):
-        from app.services.action_tools import noter_contenu_tiers
-        noter_contenu_tiers(ctx, "question")
+        from app.services.action_tools import noter_message_tiers
+        noter_message_tiers(ctx, "question")
 
 
 # ── A5 (revue F3 #3) — la marque suit la CONVERSATION ────────────────────────

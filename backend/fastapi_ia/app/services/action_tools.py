@@ -947,6 +947,50 @@ def contenu_tiers_du_tour(ctx: Optional[ActionContext]) -> bool:
     return bool(getattr(ctx, "contenu_tiers", None))
 
 
+def noter_message_tiers(ctx: Optional[ActionContext], origine: str) -> None:
+    """Le MESSAGE de l'utilisateur porte lui-même un texte tiers (texte collé
+    ou cité, liste — `relais_copilote.question_porte_un_texte_tiers`) ou une
+    image : marque A5 du tour ET borne serrée des créations de devis."""
+    noter_contenu_tiers(ctx, origine)
+    if ctx is not None:
+        ctx.message_tiers = True
+
+
+# Revue S2 (copilote v2) — `ventes.devis.composer` / `creer_auto` ÉCRIVENT (un
+# devis brouillon) sans confirmation : bornés par tour, sous les deux moteurs
+# (ce chemin est le seul qui exécute une action du catalogue). Au plus deux
+# devis par message ; un seul quand le message porte un texte tiers (collé,
+# cité) ou une image. Un refus métier net (400/403/404/409 : rien d'écrit) ne
+# compte pas ; tout autre échec compte (issue incertaine).
+CREATIONS_DEVIS = frozenset({"ventes.devis.composer", "ventes.devis.creer_auto"})
+CREATIONS_DEVIS_PAR_TOUR = 2
+CREATIONS_DEVIS_MESSAGE_TIERS = 1
+REFUS_CREATION_DEVIS_TIERS = (
+    "Action refusée : un seul devis par message collé ou par image ; rien n'est "
+    "créé. Dis-lui de confirmer ou de reformuler pour en créer un autre.")
+REFUS_CREATIONS_DEVIS = (
+    "Action refusée : deux devis déjà créés pour ce message ; rien n'est créé. "
+    "Dis-lui de le demander dans un nouveau message.")
+
+
+def garde_creations_devis(ctx: Optional[ActionContext], action: dict[str, Any]) -> Optional[str]:
+    """None = la création part ; sinon le refus rendu au modèle."""
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return None
+    faites = int(getattr(ctx, "creations_devis", 0) or 0)
+    if getattr(ctx, "message_tiers", False) and faites >= CREATIONS_DEVIS_MESSAGE_TIERS:
+        return REFUS_CREATION_DEVIS_TIERS
+    return REFUS_CREATIONS_DEVIS if faites >= CREATIONS_DEVIS_PAR_TOUR else None
+
+
+def compter_creation_devis(ctx: Optional[ActionContext], action: dict[str, Any],
+                           res: dict[str, Any]) -> None:
+    if ctx is None or action.get("key") not in CREATIONS_DEVIS:
+        return
+    if res.get("ok") or res.get("status") not in STATUTS_REPONSE_NORMALE:
+        ctx.creations_devis = int(getattr(ctx, "creations_devis", 0) or 0) + 1
+
+
 def _lire_pour_echo(ctx: ActionContext, gabarit: str, ident: Any) -> Optional[dict]:
     """Lecture (forme ASSISTANT : objet confidentiel masque) d'une tache ou
     d'un projet a montrer sur la carte a valider ; None si illisible."""
@@ -1151,8 +1195,12 @@ def run_catalogue_action(
         return json.dumps(proposal, ensure_ascii=False)
 
     # Action interne -> execution immediate (AIC97 : une ecriture porte la cle du tour).
+    refus = garde_creations_devis(ctx, action)  # revue S2 — devis bornes par tour
+    if refus is not None:
+        return refus
     res = _execute_catalogue_action(
         ctx, action, inputs, idempotency_key=_cle_ecriture_interne(ctx, action, inputs))
+    compter_creation_devis(ctx, action, res)
     if not res.get("ok"):
         # A5 (revue F3 #1) — le texte d'erreur de l'ERP entre dans le tour.
         noter_contenu_tiers(ctx, action["key"])
