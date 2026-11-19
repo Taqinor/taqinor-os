@@ -50,6 +50,55 @@ VenteEtatAssistantResponse = _ser('VenteEtatAssistantResponse', {
     'lien': s.CharField(),
 })
 
+_ALERTE = _ser('TailleAssistantAlerte', {
+    'code': s.CharField(), 'message': s.CharField()})
+_TAILLE_COMMUN = {
+    'devis_id': s.IntegerField(),
+    'reference': s.CharField(),
+    'statut': s.CharField(),
+    'corrige_apres_envoi': s.BooleanField(),
+    'nb_panneaux': s.IntegerField(),
+    'kwc': s.FloatField(allow_null=True),
+    'ancien_total_ttc': _MONTANT,
+    'nouveau_total_ttc': _MONTANT,
+    'alertes': s.ListField(child=_ALERTE),
+    'lien': s.CharField(),
+}
+
+#: VAD7 — ``GET ventes/devis/<pk>/assistant-taille/apercu/``
+#: (``assistant_devis_taille_apercu.json``) : aucune écriture.
+TailleAssistantApercuResponse = _ser('TailleAssistantApercuResponse', {
+    **_TAILLE_COMMUN,
+    'nb_panneaux_avant': s.IntegerField(allow_null=True),
+    'kwc_avant': s.FloatField(allow_null=True),
+    'a_faire': s.ChoiceField(choices=['proposer', 'rien']),
+})
+
+#: VAD7 — corps de ``POST ventes/devis/<pk>/assistant-taille/`` : le nombre de
+#: panneaux (et de modules) et les DEUX totaux recopiés de l'aperçu. Rien
+#: d'autre : ni prix, ni remise, ni forçage.
+TailleAssistantRequest = _ser('TailleAssistantRequest', {
+    'nb_panneaux': s.IntegerField(min_value=1, max_value=200),
+    'batterie_nb_modules': s.IntegerField(min_value=1, required=False),
+    'ancien_total_ttc': s.RegexField(r'^\d{1,9}(\.\d{1,2})?$'),
+    'nouveau_total_ttc': s.RegexField(r'^\d{1,9}(\.\d{1,2})?$'),
+})
+
+#: VAD7 — réponse de l'écriture (``assistant_devis_taille.json``).
+TailleAssistantResponse = _ser('TailleAssistantResponse', {
+    **_TAILLE_COMMUN,
+    'composition': s.ListField(child=_ser('TailleAssistantLigne', {
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'prix_unitaire_ttc': _MONTANT,
+        'total_ttc': _MONTANT,
+        'variante': s.CharField(allow_blank=True),
+    })),
+})
+
+ErreurTailleAssistant = _ser('ErreurTailleAssistant', {
+    'detail': s.CharField(), 'field': s.CharField(), 'code': s.CharField()})
+
 #: VAD3 — ``GET ventes/assistant/factures/`` (``assistant_factures.json``).
 FacturesAssistantResponse = _ser('FacturesAssistantResponse', {
     'q': s.CharField(allow_blank=True),

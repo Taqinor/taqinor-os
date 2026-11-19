@@ -938,12 +938,89 @@ REVISER_DEVIS = AgentAction(
 )
 
 
+def _entrees_taille(*, avec_totaux):
+    proprietes = {
+        'id': _entier('Identifiant du devis (brouillon ou envoyé).'),
+        'nb_panneaux': {'type': 'integer', 'minimum': 1, 'maximum': 200,
+                        'title': 'Panneaux', 'description': 'Nombre de panneaux voulu.'},
+        'batterie_nb_modules': {'type': 'integer', 'minimum': 1,
+                                'title': 'Modules de batterie',
+                                'description': 'Absent : inchangés.'},
+    }
+    requis = ['id', 'nb_panneaux']
+    if avec_totaux:
+        for cle, titre in (('ancien_total_ttc', 'Ancien total TTC'),
+                           ('nouveau_total_ttc', 'Nouveau total TTC')):
+            proprietes[cle] = {'type': 'string', 'title': titre, 'description': (
+                "Recopié de l'aperçu (texte décimal, ex. 73000.00).")}
+            requis.append(cle)
+    return {'type': 'object', 'properties': proprietes, 'required': requis,
+            'additionalProperties': False}
+
+
+# VAD7 (D-W2-Q1) — l'APERÇU de la taille (``GET devis/{id}/assistant-taille/
+# apercu/``, garde ``LectureVentes``) : aucune écriture ; ses deux totaux sont
+# ceux que la proposition ``ventes.devis.taille`` montre et recopie.
+TAILLE_APERCU = AgentAction(
+    key='ventes.devis.taille_apercu',
+    label='Calculer la nouvelle taille du devis (aperçu, rien n\'est changé)',
+    description=(
+        "Sert à : calculer, SANS rien changer, l'ancien et le nouveau total "
+        "TTC d'un devis brouillon ou envoyé pour un autre nombre de panneaux "
+        "(onduleur, structures et câbles suivent) ; lecture OBLIGATOIRE avant "
+        "ventes.devis.taille. Ne pas utiliser pour : un devis accepté, refusé "
+        "ou expiré (réviser d'abord, puis la taille sur la V2). Exemple : "
+        "« mets-lui 12 panneaux » → id, nb_panneaux=12. Résultat : ancien et "
+        "nouveau total, kWc, alertes ; 409 nommé (toit trop petit, statut)."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/assistant-taille/apercu/',
+    method='GET',
+    inputs=_entrees_taille(avec_totaux=False),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
+# VAD7 (D-W2-Q1 = OUI_APRES_CONFIRMATION) — changer la taille d'un devis
+# brouillon ou ENVOYÉ en place (``POST devis/{id}/assistant-taille/``, gardes
+# ``IsResponsableOrAdmin`` + ``DroitDeLaGrille('ventes_modifier')``). La
+# confirmation montre l'ancien et le nouveau total ; le serveur refuse (409
+# ``apercu_perime``) s'ils ne sont plus les siens. Jamais un prix, une remise ni
+# un forçage ; jamais une V2 ni un devis séparé.
+TAILLE_DEVIS = AgentAction(
+    key='ventes.devis.taille',
+    label='Changer le nombre de panneaux du devis (le total passe de l\'ancien au nouveau)',
+    description=(
+        "Sert à : changer en place le nombre de panneaux (et de modules de "
+        "batterie) d'un devis brouillon ou envoyé, totaux recopiés de "
+        "ventes.devis.taille_apercu ; un envoyé est corrigé sur place, le "
+        "client voit les nouveaux chiffres : confirmation obligatoire. Ne pas "
+        "utiliser pour : un accepté (réviser puis la taille sur la V2), une "
+        "remise ni un prix. Exemple : « mets-lui 12 panneaux » → id, "
+        "nb_panneaux=12, ancien_total_ttc, nouveau_total_ttc de l'aperçu. "
+        "Résultat : lignes TTC ; 409 si les totaux ont changé."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/assistant-taille/',
+    method='POST',
+    inputs=_entrees_taille(avec_totaux=True),
+    required_permission=_PERM_MODIFIER,
+    risk=RISK_OUTWARD,
+    confirm_summary=('Changer la taille de ce devis : le total passe de '
+                     "l'ancien au nouveau montant montrés."),
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
-                           PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS)
+                           PROLONGER_DEVIS, REFUSER_DEVIS, REVISER_DEVIS,
+                           TAILLE_APERCU, TAILLE_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.

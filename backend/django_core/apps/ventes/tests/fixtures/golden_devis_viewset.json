@@ -47,6 +47,24 @@
       ]
     },
     {
+      "nom": "assistant_taille",
+      "url_path": "assistant-taille",
+      "url_name": "assistant-taille",
+      "detail": true,
+      "methodes": [
+        "post"
+      ]
+    },
+    {
+      "nom": "assistant_taille_apercu",
+      "url_path": "assistant-taille/apercu",
+      "url_name": "assistant-taille-apercu",
+      "detail": true,
+      "methodes": [
+        "get"
+      ]
+    },
+    {
       "nom": "atomic",
       "url_path": "atomic",
       "url_name": "atomic",
@@ -642,6 +660,8 @@
     "allowed_methods",
     "approuver_remise",
     "as_view",
+    "assistant_taille",
+    "assistant_taille_apercu",
     "atomic",
     "authentication_classes",
     "auto",

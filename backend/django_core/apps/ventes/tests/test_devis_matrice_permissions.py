@@ -120,6 +120,11 @@ FIGEE = {
     # Copilote vague 2 (VAD1) — l'état compact de la vente lu par
     # l'assistant : LECTURE du module (code ``ventes_voir``).
     'vente_assistant': LECTURE,
+    # Copilote vague 2 (VAD7, D-W2-Q1) — l'aperçu de la taille (LECTURE, rien
+    # n'est écrit) et la taille changée en place (écriture : palier + grille
+    # « Modifier », comme les autres écritures du devis).
+    'assistant_taille_apercu': LECTURE,
+    'assistant_taille': (RESP, 'DroitDeLaGrille_ventes_modifier'),
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

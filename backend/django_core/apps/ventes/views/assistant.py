@@ -19,6 +19,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.roles.permissions import DroitDeLaGrille
+from authentication.permissions import IsResponsableOrAdmin
+
 from .. import selectors_assistant as SA
 from ..domain import resolution_catalogue as rc
 from ..gardes_lecture import LectureFactures, LectureVentes
@@ -314,6 +317,47 @@ class FacturesAssistantView(APIView):
         })
 
 
+# ── VAD7 — la taille d'un devis (aperçu puis écriture confirmée) ────────────
+
+PARAMETRES_TAILLE = [
+    OpenApiParameter('nb_panneaux', {'type': 'integer', 'minimum': 1,
+                                     'maximum': 200},
+                     OpenApiParameter.QUERY, required=True),
+    OpenApiParameter('batterie_nb_modules', {'type': 'integer', 'minimum': 1},
+                     OpenApiParameter.QUERY, required=False,
+                     description='Modules de batterie ; absent : inchangés.'),
+]
+
+
+def _entier_borne(params, nom, erreurs, mini, maxi=None, requis=False):
+    brut = params.get(nom)
+    if brut is None:
+        if requis:
+            erreurs[nom] = ['Paramètre obligatoire.']
+        return None
+    if not brut.isdigit() or int(brut) < mini or (maxi and int(brut) > maxi):
+        erreurs[nom] = ['Entier attendu entre %d et %s.' % (mini, maxi or '∞')]
+        return None
+    return int(brut)
+
+
+def _lire_taille(request):
+    """``(nb_panneaux, batterie_nb_modules)`` de l'aperçu ; 400 nommé."""
+    params, erreurs = request.query_params, {}
+    _non_declares(params, frozenset(p.name for p in PARAMETRES_TAILLE)
+                  | {'format'}, erreurs)
+    nb = _entier_borne(params, 'nb_panneaux', erreurs, 1, 200, requis=True)
+    modules = _entier_borne(params, 'batterie_nb_modules', erreurs, 1)
+    if erreurs:
+        raise ValidationError(erreurs)
+    return nb, modules
+
+
+def _refus_taille(refus):
+    from rest_framework import status
+    return Response(refus.corps, status=status.HTTP_409_CONFLICT)
+
+
 class DevisAssistantActionsMixin:
     """Copilote vague 2 (lane VAD) — routes de ``DevisViewSet`` réservées à
     l'assistant (mixin, aucune base). Portée = ``get_object`` (société +
@@ -353,4 +397,81 @@ class DevisAssistantActionsMixin:
             'factures': lu['factures'],
             'a_faire': lu['a_faire'],
             'lien': lu['lien'],
+        })
+
+    # api-only: lue par l'assistant avant `ventes.devis.taille` (ancien → nouveau total), aucun écran.
+    @extend_schema(request=None, parameters=PARAMETRES_TAILLE,
+                   responses={200: DA.TailleAssistantApercuResponse,
+                              400: D.ErreurDetail, 404: D.ErreurDetail,
+                              409: DA.ErreurTailleAssistant})
+    @action(detail=True, methods=['get'], url_path='assistant-taille/apercu',
+            permission_classes=[LectureVentes])
+    def assistant_taille_apercu(self, request, pk=None):
+        """VAD7 — l'APERÇU de « mets-lui N panneaux » (contrat
+        ``assistant_devis_taille_apercu.json``) : le chemin de l'écriture joué
+        dans une transaction annulée — rien n'est écrit."""
+        from ..domain.taille_assistant import TailleRefusee, mesurer
+        devis = self.get_object()
+        nb, modules = _lire_taille(request)
+        try:
+            m = mesurer(devis, nb, modules, utilisateur=request.user)
+        except TailleRefusee as refus:
+            return _refus_taille(refus)
+        inchange = (m['nouveau_total_ttc'] == m['ancien_total_ttc']
+                    and m['nb_panneaux'] == m['nb_panneaux_avant'])
+        return Response({
+            'devis_id': devis.pk,
+            'reference': devis.reference,
+            'statut': m['statut'],
+            'corrige_apres_envoi': m['corrige_apres_envoi'],
+            'nb_panneaux_avant': m['nb_panneaux_avant'],
+            'nb_panneaux': m['nb_panneaux'],
+            'kwc_avant': m['kwc_avant'],
+            'kwc': m['kwc'],
+            'ancien_total_ttc': m['ancien_total_ttc'],
+            'nouveau_total_ttc': m['nouveau_total_ttc'],
+            'alertes': m['alertes'],
+            'a_faire': 'rien' if inchange else 'proposer',
+            'lien': SA.lien_devis(devis.pk),
+        })
+
+    # api-only: écrite par l'assistant (action `ventes.devis.taille`, confirmée), aucun écran.
+    @extend_schema(request=DA.TailleAssistantRequest,
+                   responses={200: DA.TailleAssistantResponse,
+                              400: D.ErreurDetail, 404: D.ErreurDetail,
+                              409: DA.ErreurTailleAssistant})
+    @action(detail=True, methods=['post'], url_path='assistant-taille',
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('ventes_modifier')])
+    def assistant_taille(self, request, pk=None):
+        """VAD7 — change la taille d'un devis BROUILLON ou ENVOYÉ en place
+        (contrat ``assistant_devis_taille.json``) ; l'ancien et le nouveau
+        total confirmés doivent être ceux que le serveur recalcule (409
+        ``apercu_perime`` sinon, rien n'est écrit). Statut jamais écrit ;
+        aucun PDF produit (règle #4)."""
+        from ..domain.composition_imposee import lignes_ttc
+        from ..domain.taille_assistant import TailleRefusee, mesurer
+        from ..domain.verrou_devis import toucher
+        from ..utils.corps import valider_corps
+        devis = self.get_object()
+        corps = valider_corps(request, DA.TailleAssistantRequest)
+        try:
+            m = mesurer(devis, corps['nb_panneaux'],
+                        corps.get('batterie_nb_modules'),
+                        utilisateur=request.user, ecrire=True, attendus=corps)
+        except TailleRefusee as refus:
+            return _refus_taille(refus)
+        toucher(devis)
+        return Response({
+            'devis_id': devis.pk,
+            'reference': devis.reference,
+            'statut': m['statut'],
+            'corrige_apres_envoi': m['corrige_apres_envoi'],
+            'nb_panneaux': m['nb_panneaux'],
+            'kwc': m['kwc'],
+            'ancien_total_ttc': m['ancien_total_ttc'],
+            'nouveau_total_ttc': m['nouveau_total_ttc'],
+            'composition': lignes_ttc(devis),
+            'alertes': m['alertes'],
+            'lien': SA.lien_devis(devis.pk),
         })

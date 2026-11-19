@@ -39,8 +39,8 @@ MARQUEUR = re.compile(r'#\s*api-only\s*:\s*(\S.*)$')
 #: ``ventesApi.confirmerAvoirRevision``) + ``lignes-assistant`` (COP2-V5,
 #: api-only : lue par l'assistant, action ``ventes.devis.lignes``) + les
 #: routes de l'assistant de la vague 2 (``views/assistant.py``, api-only :
-#: ``vente-assistant``).
-NB_ACTIONS = 68
+#: ``vente-assistant``, ``assistant-taille``, ``assistant-taille/apercu``).
+NB_ACTIONS = 70
 
 
 def _vues_devis():

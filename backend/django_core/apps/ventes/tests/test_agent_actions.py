@@ -562,6 +562,20 @@ class LignesAssistantTest(TestCase):
         self.assertNotIn('777.77', texte)
         self.assertNotIn('prix_achat', texte)
 
+    def test_total_de_ligne_arrondi_comme_le_prix_ttc_affiche(self):
+        """VAD7 — 8 × 1 400,00 TTC (HT 1 166,67) = 11 200,00, pas 11 200,03 :
+        le total part du prix unitaire TTC arrondi, celui qui est affiché."""
+        from apps.ventes.models import LigneDevis
+        LigneDevis.objects.create(
+            devis=self.devis, produit=self.produit,
+            designation='Panneau Canadien Solar 710W', quantite=Decimal('8'),
+            prix_unitaire=Decimal('1166.67'), ordre=1)
+        resp = auth(self.user).get(LIGNES_DEVIS.endpoint.format(id=self.devis.pk))
+        panneau = [li for li in resp.data['lignes']
+                   if li['designation'].startswith('Panneau')][0]
+        self.assertEqual((panneau['prix_unitaire_ttc'], panneau['total_ttc']),
+                         ('1400.00', '11200.00'))
+
     def test_devis_d_une_autre_societe_404(self):
         autre_user = User.objects.create_user(
             username='cop2_lg_autre', password='x', role_legacy='responsable',
@@ -956,3 +970,124 @@ class CycleDevisAssistantTest(_BaseVenteAssistant):
         brouillon = auth(self.user).post(
             REVISER_DEVIS.endpoint.format(id=v2.pk), {}, format='json')
         self.assertEqual(brouillon.status_code, 409, brouillon.data)
+
+
+def _taille_simulee(quantite):
+    """Remplace ``taille_assistant._appliquer`` (le moteur « réconcilier »,
+    couvert par les tests des offres de taille) : la ligne panneau passe à
+    ``quantite`` — l'effet que l'aperçu doit ANNULER et l'écriture garder."""
+    from apps.ventes.models import LigneDevis
+
+    def appliquer(devis, nb, modules, utilisateur, ttc_avant):
+        LigneDevis.objects.filter(devis=devis).update(quantite=Decimal(quantite))
+        return {'panneaux_avant': 10, 'panneaux': quantite, 'avertissements': []}
+    return appliquer
+
+
+class TailleAssistantTest(_BaseVenteAssistant):
+    """VAD7 (D-W2-Q1) — l'aperçu n'écrit RIEN ; l'écriture exige l'ancien et
+    le nouveau total de l'aperçu ; un accepté se révise d'abord ; formes des
+    contrats ``assistant_devis_taille_apercu.json`` / ``assistant_devis_taille.json``."""
+
+    def setUp(self):
+        from apps.ventes.models import LigneDevis
+        super().setUp()
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            sku='VAD-PV710', prix_vente=Decimal('1400'),
+            prix_achat=Decimal('555.55'))
+        self.ligne = LigneDevis.objects.create(
+            devis=self.devis, produit=produit,
+            designation='Panneau Canadien Solar 710W', quantite=Decimal('10'),
+            prix_unitaire=Decimal('1166.67'), ordre=0)
+
+    def _url(self, apercu=False):
+        from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
+        action = TAILLE_APERCU if apercu else TAILLE_DEVIS
+        return action.endpoint.format(id=self.devis.pk)
+
+    def test_apercu_annule_puis_ecriture_confirmee_et_apercu_perime(self):
+        from unittest import mock
+        with mock.patch('apps.ventes.domain.taille_assistant._appliquer',
+                        _taille_simulee(12)):
+            apercu = auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12})
+            self.assertEqual(apercu.status_code, 200, apercu.data)
+            self.assertEqual(set(apercu.data), set(_exemple_contrat(
+                'assistant_devis_taille_apercu.json')))
+            self.ligne.refresh_from_db()
+            self.assertEqual(self.ligne.quantite, Decimal('10'))  # rien d'écrit
+            self.assertTrue(apercu.data['corrige_apres_envoi'])
+            self.assertEqual(apercu.data['a_faire'], 'proposer')
+            self.assertNotEqual(apercu.data['ancien_total_ttc'],
+                                apercu.data['nouveau_total_ttc'])
+            perime = auth(self.user).post(self._url(), {
+                'nb_panneaux': 12, 'ancien_total_ttc': apercu.data['ancien_total_ttc'],
+                'nouveau_total_ttc': '1.00'}, format='json')
+            self.assertEqual(perime.status_code, 409, perime.data)
+            self.assertEqual(perime.data['code'], 'apercu_perime')
+            self.ligne.refresh_from_db()
+            self.assertEqual(self.ligne.quantite, Decimal('10'))
+            resp = auth(self.user).post(self._url(), {
+                'nb_panneaux': 12,
+                'ancien_total_ttc': apercu.data['ancien_total_ttc'],
+                'nouveau_total_ttc': apercu.data['nouveau_total_ttc']},
+                format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), set(_exemple_contrat(
+            'assistant_devis_taille.json')))
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('12'))
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)  # règle #4
+        self.assertEqual(resp.data['composition'][0]['total_ttc'], '16800.00')
+        self.assertNotIn('555.55', str(resp.data))
+
+    def test_accepte_refuse_avec_la_phrase_de_revision_sans_rien_ecrire(self):
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        for reponse in (
+                auth(self.user).get(self._url(apercu=True), {'nb_panneaux': 12}),
+                auth(self.user).post(self._url(), {
+                    'nb_panneaux': 12, 'ancien_total_ttc': '1.00',
+                    'nouveau_total_ttc': '2.00'}, format='json')):
+            self.assertEqual(reponse.status_code, 409, reponse.data)
+            self.assertEqual((reponse.data['code'], reponse.data['field']),
+                             ('revision_possible', 'statut'))
+            self.assertIn('réviser', reponse.data['detail'])
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('10'))
+
+    def test_parametres_bornes_et_devis_hors_societe_404(self):
+        for params in ({}, {'nb_panneaux': 0}, {'nb_panneaux': 201},
+                       {'nb_panneaux': 12, 'batterie_nb_modules': 0},
+                       {'nb_panneaux': 12, 'forcer': 1}):
+            with self.subTest(params=params):
+                resp = auth(self.user).get(self._url(apercu=True), params)
+                self.assertEqual(resp.status_code, 400, resp.data)
+        hors = auth(self._hors_societe()).get(self._url(apercu=True),
+                                              {'nb_panneaux': 12})
+        self.assertEqual(hors.status_code, 404)
+
+    def test_apercu_perime_compare_les_deux_totaux_au_centime(self):
+        from apps.ventes.domain.taille_assistant import (
+            TailleRefusee, exiger_apercu_a_jour)
+        mesure = {'ancien_total_ttc': '73000.00', 'nouveau_total_ttc': '76400.00'}
+        self.assertIsNone(exiger_apercu_a_jour(mesure, {
+            'ancien_total_ttc': '73000', 'nouveau_total_ttc': '76400.0'}))
+        with self.assertRaises(TailleRefusee) as refus:
+            exiger_apercu_a_jour(mesure, {'ancien_total_ttc': '73000.00',
+                                          'nouveau_total_ttc': '76800.00'})
+        self.assertEqual(refus.exception.corps['code'], 'apercu_perime')
+
+    def test_actions_lecture_puis_ecriture_confirmee_sans_prix_ni_forcage(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
+        self.assertEqual((TAILLE_APERCU.risk, TAILLE_APERCU.required_permission,
+                          TAILLE_APERCU.lot), (RISK_INTERNAL, 'ventes_voir', LOT_COPILOTE))
+        self.assertEqual((TAILLE_DEVIS.risk, TAILLE_DEVIS.required_permission,
+                          TAILLE_DEVIS.lot, TAILLE_DEVIS.objets),
+                         (RISK_OUTWARD, 'ventes_modifier', LOT_COPILOTE, {'id': 'devis'}))
+        self.assertEqual(set(TAILLE_DEVIS.inputs['properties']), {
+            'id', 'nb_panneaux', 'batterie_nb_modules', 'ancien_total_ttc',
+            'nouveau_total_ttc'})
+        self.assertLessEqual({'ancien_total_ttc', 'nouveau_total_ttc'},
+                             set(TAILLE_DEVIS.inputs['required']))
