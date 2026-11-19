@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 
+from .sensibilites_option_avec import reevaluateur, sensibilites_option_avec
+
 logger = logging.getLogger(__name__)
 
 #: Choix du lead / du corps (``Lead.batterie_souhaitee``, même champ que le
@@ -337,6 +339,39 @@ def _flux_option_avec(evaluation, economie, investissement, ctx):
         kwh_evites_an=kwh, **(ctx.get('flux') or {}))
 
 
+def _sensibilites(evaluation, economie, flux, investissement, ctx, valoriser):
+    """Niveau 14 (D-SENS-1) — ``economie_flux.sensibilites`` de l'option servie
+    (``sensibilites_option_avec``) : le flux de chaque scénario par
+    :func:`_flux_option_avec` (même base, même remplacement de la batterie lu
+    sur le bilan du scénario), les entrées exactes du central par son
+    ``collecteur``."""
+    def flux_de(ev, eco, collecteur):
+        kw = ctx if collecteur is None else dict(ctx, flux=dict(ctx.get('flux') or {}, collecteur=collecteur))
+        return _flux_option_avec(ev, eco, investissement, kw)
+    return sensibilites_option_avec(
+        ctx['sensibilites'], evaluation, economie, flux, flux_de=flux_de, reevaluer=ctx.get('reevaluer'),
+        complet=getattr(valoriser, 'complet', None), valorisation=getattr(valoriser, 'contexte', None))
+
+
+def _reevaluer_dimensionnee(evalue, fiche, bat, contexte, production_rasante):
+    """D-SENS-1 — ``reevaluer(facteur)`` de l'option composée par l'étude : la
+    banque de la fiche au nombre retenu, les onduleurs et les hybrides de
+    l'évaluation, la production de la pose qui loge son champ (R1) ; ``None``
+    sans fiche ni production (scénario production non chiffré, motif nommé)."""
+    if not fiche or contexte.get('production') is None:
+        return None
+
+    def production():
+        # Lue au premier scénario production seulement (série rasante paresseuse).
+        return _production_de_la_pose(contexte.get('borne_toit'), production_rasante,
+                                      contexte['production'])[0](evalue['kwc'])
+    return reevaluateur(
+        evalue['kwc'], evalue.get('onduleurs'), dict(fiche, quantite=(evalue.get('batterie') or {}).get('quantite')),
+        hybrides=bat.get('hybrides') or (), charge=contexte.get('charge'), production=production,
+        tension=contexte.get('tension'), revente_choisie=contexte.get('revente_choisie'),
+        valoriser=contexte.get('valoriser'))
+
+
 def _bloc(evaluation, valoriser=None, ctx=None, investissement=None, recommandee=None):
     """La forme servie ``etude['option_avec']`` (jamais ``prix_achat``) : le
     bilan SANS sa ventilation horaire (le PDF et l'écran lisent les totaux),
@@ -370,6 +405,8 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None, recommandee
             investissement = _investissement_composition(
                 evaluation, ctx.get('taux_tva_pct'), ctx.get('regles_2710', True))
         flux = _flux_option_avec(evaluation, economie_ci, investissement, ctx)
+    if flux and ctx.get('sensibilites') is not None:
+        flux['sensibilites'] = _sensibilites(evaluation, economie_ci, flux, investissement, ctx, valoriser)
     return {
         'kwc': evaluation['kwc'], 'nb_panneaux': _nb_panneaux(evaluation.get('composition')),
         'puissance_ac_kw': evaluation.get('puissance_ac'),
@@ -723,10 +760,11 @@ def _jeton_cycles(lignes, devis=None):
     passé de 12 à 13 (migration 0158) n'a plus l'empreinte stockée, son étude
     est donc recalculée au prochain rafraîchissement. Niveaux ≤ 12 : aucun
     jeton, l'empreinte d'hier (un devis envoyé n'est pas recalculé)."""
-    from .regles_calcul import REGLES_CYCLES_BATTERIE_1911, regles_au_moins
+    from .regles_calcul import REGLES_CYCLES_BATTERIE_1911, REGLES_SENSIBILITES_1911, regles_au_moins
     devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
                            if d is not None), None)
-    return ['cycles13'] if regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911) else []
+    return (['cycles13'] if regles_au_moins(devis, REGLES_CYCLES_BATTERIE_1911) else []) + (
+        ['sensibilites14'] if regles_au_moins(devis, REGLES_SENSIBILITES_1911) else [])
 
 
 def _recommandee_des_lignes(lignes, devis=None):
@@ -749,6 +787,8 @@ def _ctx_flux(contexte, batterie):
             'regles_2710': contexte.get('regles_2710', True),
             # Niveau 13 (``REGLES_CYCLES_BATTERIE_1911``) : remplacement lu sur les cycles.
             'regles_cycles': contexte.get('regles_cycles', True),
+            # Niveau 14 (D-SENS-1) : scénarios société de l'option, None en dessous.
+            'sensibilites': contexte.get('sensibilites'),
             'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
@@ -817,15 +857,20 @@ def _option_imposee(imposee, contexte):
     # rasante figée au-delà de 30°), jamais avec la production de l'option « sans ».
     production_de, bornes_pub = _production_de_la_pose(
         contexte.get('borne_toit'), contexte.get('production_rasante'), contexte['production'])
+    production = production_de(imposee['kwc'])
     evaluation = evaluer_option_avec(
         # CORC10 : la composition RECOMPOSÉE des lignes (coût) ; R1 (B2) : la
         # production de la pose qui loge ce champ.
         imposee['kwc'], imposee['onduleurs'], imposee.get('composition'), imposee['banque'],
-        charge=contexte['charge'], production=production_de(imposee['kwc']),
+        charge=contexte['charge'], production=production,
         tension=contexte['tension'], revente_choisie=contexte['revente_choisie'],
         valoriser=contexte['valoriser'], simuler=simuler_batterie_jour,
         hybrides=imposee['hybrides'], taux_tva_pct=contexte.get('taux_tva_pct'))
-    bloc = _bloc(evaluation, contexte['valoriser'], _ctx_flux(contexte, imposee['banque']),
+    ctx = dict(_ctx_flux(contexte, imposee['banque']), reevaluer=reevaluateur(  # D-SENS-1
+        imposee['kwc'], imposee['onduleurs'], imposee['banque'], hybrides=imposee['hybrides'],
+        charge=contexte['charge'], production=lambda: production, tension=contexte['tension'],
+        revente_choisie=contexte['revente_choisie'], valoriser=contexte['valoriser']))
+    bloc = _bloc(evaluation, contexte['valoriser'], ctx,
                  investissement=imposee.get('investissement'),
                  recommandee=imposee.get('recommandee'))
     bloc['nb_panneaux'] = imposee.get('nb_panneaux') or bloc['nb_panneaux']
@@ -861,6 +906,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     regles_3010b = contexte.pop('regles_3010b', True)
     # Niveau 13 (fondateur 19/11/2026) : remplacement de la batterie lu sur ses cycles.
     flux['regles_cycles'] = regles_cycles = contexte.pop('regles_cycles', True)
+    flux['sensibilites'] = contexte.pop('sensibilites', None)  # niveau 14 (D-SENS-1)
     talon_inconnu = contexte.pop('talon_inconnu', False)
     nb_batteries = contexte.pop('nb_batteries', None)  # D-HYB-4 (options.nb_batteries)
     reference_sans = contexte.pop('reference_sans', None) or evaluation
@@ -933,7 +979,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
     # D4 — l'option composée EST la recommandation (ajout possible : 0) ;
     # D-HYB-4 : N batteries choisies ⇒ la banque calculée R (ajout R − N).
-    sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche),
+    sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), dict(
+        _ctx_flux(flux, fiche), reevaluer=_reevaluer_dimensionnee(evalue, fiche, bat, contexte, production_rasante)),
                            recommandee=resultat.get('banque_max') or evalue['batterie'])
     if evalue.get('inclinaison_retenue_deg') is not None:
         # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
