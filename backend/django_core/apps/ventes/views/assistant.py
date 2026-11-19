@@ -39,6 +39,7 @@ BORNES = {
 LIMITE_DEFAUT = 10
 LIMITE_MAX = 25
 Q_MAX = 100
+ID_MAX = 2 ** 31 - 1  # borne d'une clé primaire entière PostgreSQL
 FAMILLES_RECHERCHE = rc.FAMILLES_DEMANDABLES + (rc.FAMILLE_OFFGRID,)
 
 PARAMETRES = [
@@ -205,9 +206,8 @@ class CatalogueAssistantView(APIView):
 # ── Les listes de facturation de l'assistant (VAD2, VAD3) ───────────────────
 
 def _q_param():
-    return OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX,
-                                'pattern': MOTIF_SANS_NUL},
-                            OpenApiParameter.QUERY, required=False)
+    schema = {'type': 'string', 'maxLength': Q_MAX, 'pattern': MOTIF_SANS_NUL}
+    return OpenApiParameter('q', schema, OpenApiParameter.QUERY, required=False)
 
 
 def _parametres_liste(*extra):
@@ -226,7 +226,6 @@ PARAMETRES_IMPAYES = _parametres_liste(OpenApiParameter(
     'mes_relances', {'type': 'boolean'}, OpenApiParameter.QUERY,
     required=False, description='Seulement les clients dont je suis le '
                                 'responsable de relance.'))
-ID_MAX = 2 ** 31 - 1  # borne d'une clé primaire entière PostgreSQL
 BOOLEENS = {'true': True, '1': True, 'false': False, '0': False}
 
 
