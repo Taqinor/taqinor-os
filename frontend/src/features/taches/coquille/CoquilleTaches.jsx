@@ -99,6 +99,10 @@ function garderSansDelai(compte, valeur) {
   }
 }
 
+/** Une boîte qui prend la main (dialogue modal, confirmation) : les touches du module se taisent dessous. Le panneau
+ *  de la fiche et la saisie en place (`aria-modal="false"`) laissent la liste — et les touches — à la personne. */
+const MODALE = '[role="dialog"]:not([aria-modal="false"]), [role="alertdialog"]'
+
 /** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
 const ECRANS_AVEC_FAB = new Set(['aujourdhui', 'a-trier', 'projets', 'projet', 'agenda'])
 
@@ -313,7 +317,8 @@ export default function CoquilleTaches({
     if (etatLieu?.[MARQUE_FICHE]) { navigate(-1); return }
     setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
-      suite.delete('tache')
+      // la fiche et ce qu'elle a ouvert (`section=decouper`, `focus=titre|heure` — useOuvrirFiche) partent ensemble
+      ;['tache', 'section', 'focus'].forEach((cle) => suite.delete(cle))
       return suite
     }, { replace: true })
   }, [setParams, navigate, etatLieu])
@@ -354,12 +359,13 @@ export default function CoquilleTaches({
   }, [ouvrirSaisie])
 
   // Touche `n` « Ajouter ici » (textes.md §2.1) : la saisie, avec le contexte de l'écran. Jamais dans un champ ni
-  // sous une feuille ouverte ; elle n'écrit rien (aucun raccourci destructif).
+  // sous une feuille MODALE ; le panneau de la fiche et la saisie en place (non modaux, la liste reste à la main) ne
+  // la bloquent pas. Elle n'écrit rien (aucun raccourci destructif).
   useEffect(() => {
     const surTouche = (e) => {
       if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
-      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
-      if (document.querySelector('.tch [role="dialog"]')) return
+      if (e.target?.closest?.(`input, textarea, select, [contenteditable="true"], ${MODALE}`)) return
+      if (document.querySelector(MODALE)) return
       e.preventDefault()
       demanderSaisie()
     }
@@ -373,8 +379,8 @@ export default function CoquilleTaches({
   useEffect(() => {
     const surTouche = (e) => {
       if ((e.key !== '?' && e.key !== '/') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
-      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      if (e.target?.closest?.(`input, textarea, select, [contenteditable="true"], ${MODALE}`)) return
+      if (document.querySelector(MODALE)) return
       e.preventDefault()
       e.stopPropagation()
       if (e.key === '?') { setAideTouches(true); return }

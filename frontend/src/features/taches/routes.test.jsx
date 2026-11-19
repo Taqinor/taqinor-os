@@ -224,6 +224,45 @@ describe('TCH43 — routes du module', () => {
     expect(screen.queryByRole('dialog', { name: 'Ajouter une tâche' })).toBeNull()
   })
 
+  describe('vague 2 — la fiche en panneau (non modal, bureau large)', () => {
+    const large = () => vi.stubGlobal('matchMedia', (q) => ({
+      matches: q === '(min-width: 1024px)', media: q, addEventListener() {}, removeEventListener() {},
+    }))
+    afterEach(() => { vi.unstubAllGlobals() })
+    const touche = (key) => act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+    })
+
+    it('fermer la fiche retire `tache`, `section` et `focus` de l\'adresse', async () => {
+      large()
+      const { router } = monter('/taches/aujourdhui?tache=12&section=decouper&focus=titre&vue=x')
+      await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+      const panneau = await screen.findByRole('dialog', { name: /Fiche d'une tâche|.+/ })
+      expect(panneau).toHaveAttribute('aria-modal', 'false')
+      await touche('Escape')
+      const restes = new URLSearchParams(router.state.location.search)
+      expect([...restes.keys()]).toEqual(['vue'])
+    })
+
+    it('`n`, `?` et `/` marchent, panneau de la fiche ouvert', async () => {
+      large()
+      const { router } = monter('/taches/aujourdhui?tache=12')
+      await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
+      expect(await screen.findByRole('dialog')).toHaveAttribute('aria-modal', 'false')
+      await touche('n')
+      expect(screen.getByRole('dialog', { name: 'Ajouter une tâche' })).toBeInTheDocument()
+      await touche('Escape') // ferme la saisie (la plus haute), pas la fiche
+      expect(screen.queryByRole('dialog', { name: 'Ajouter une tâche' })).toBeNull()
+      expect(new URLSearchParams(router.state.location.search).get('tache')).toBe('12')
+      await touche('?')
+      expect(screen.getByRole('dialog', { name: 'Touches de Tâches' })).toBeInTheDocument()
+      await touche('Escape')
+      expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()
+      await touche('/')
+      expect(router.state.location.pathname).toBe('/taches/recherche')
+    })
+  })
+
   it('le jour s\'affiche au-dessus du titre d\'Aujourd\'hui, en majuscule initiale', async () => {
     const { container } = monter('/taches/aujourdhui')
     await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })
