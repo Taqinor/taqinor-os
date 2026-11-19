@@ -102,8 +102,7 @@ class DigestVague2Test(TestCase):
             'vague2']['exemple_copilote']
         for cle in BLOCS_VAGUE2:
             self.assertIn(cle, reponse.data)
-            self.assertEqual(set(reponse.data[cle]),
-                             set(modele[cle]) - {'sans_calepinage'}, cle)
+            self.assertEqual(set(reponse.data[cle]), set(modele[cle]), cle)
 
     @override_settings(ASSISTANT_COPILOTE='tous')
     def test_reponse_dans_la_limite_de_taille(self):
@@ -111,3 +110,46 @@ class DigestVague2Test(TestCase):
         self.assertLessEqual(
             len(json.dumps(reponse.data, ensure_ascii=False, default=str)),
             LIMITE_CARACTERES)
+
+
+class SansCalepinageTest(TestCase):
+    """BRF2 — « visite validée sans calepinage » : visite chez visites,
+    calepinage chez calepinage, lead dans la portée de l'appelant."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = Company.objects.create(nom='BRF2 Co', slug='brf2-co')
+        self.admin = User.objects.create_user(
+            username='brf2_admin', password='x', company=self.company,
+            is_superuser=True)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alami', owner=self.admin)
+
+    def _visite_validee(self, lead):
+        from django.utils import timezone
+        from apps.visites.models import VisiteTerrain
+        return VisiteTerrain.objects.create(
+            company=self.company, lead=lead, commercial=self.admin,
+            statut=VisiteTerrain.Statut.VALIDEE,
+            validee_le=timezone.now())
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_lead_sans_calepinage_est_liste(self):
+        visite = self._visite_validee(self.lead)
+        bloc = _api(self.admin).get(DIGEST).data['calepinages']
+        sans = bloc['sans_calepinage']
+        self.assertEqual(sans['total'], 1)
+        self.assertEqual(sans['lignes'][0]['visite_id'], visite.pk)
+        self.assertEqual(sans['lignes'][0]['lead_id'], self.lead.pk)
+        modele = _echantillon('assistant_digest_matin.json')['vague2'][
+            'exemple_copilote']['calepinages']['sans_calepinage']
+        self.assertEqual(set(sans['lignes'][0]), set(modele['lignes'][0]))
+
+    @override_settings(ASSISTANT_COPILOTE='tous')
+    def test_lead_avec_calepinage_est_ecarte(self):
+        from apps.calepinage.models import Calepinage
+        self._visite_validee(self.lead)
+        Calepinage.objects.create(
+            company=self.company, lead_id=self.lead.pk, titre='Toiture')
+        bloc = _api(self.admin).get(DIGEST).data['calepinages']
+        self.assertEqual(bloc['sans_calepinage']['total'], 0)
