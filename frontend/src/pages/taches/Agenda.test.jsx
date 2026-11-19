@@ -326,6 +326,17 @@ describe('TCH104 — vues et navigation', () => {
   })
 })
 
+describe('R2-101 — À venir ne montre pas deux fois la même tâche', () => {
+  it('le jour de son échéance, une tâche est une puce « · échéance » et rien d\'autre', async () => {
+    monter('/taches/agenda?vue=a-venir')
+    const mardi = await screen.findByRole('region', { name: 'Mardi 17 novembre' })
+    expect(within(mardi).getAllByText(/Dossier subvention/)).toHaveLength(1)
+    expect(within(mardi).getByText('Dossier subvention · échéance')).toBeInTheDocument()
+    // les tâches du jour restent des lignes
+    expect(within(mardi).getByRole('button', { name: 'Timbres' })).toBeInTheDocument()
+  })
+})
+
 describe('TCH104 — une lecture en échec ne vide rien', () => {
   it('l\'agenda reste, bandeau « Pas à jour · HH:MM » et Réessayer', async () => {
     monter()

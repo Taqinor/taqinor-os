@@ -271,8 +271,8 @@ function EtatDuJour({ jour }) {
 }
 
 function ListeDuJour({ jour, aujourdhui, gestes }) {
-  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? []),
-    ...(jour.echeances ?? []).filter((t) => !(jour.blocs ?? []).some((b) => b.id === t.id))]
+  // R2-101 — le jour d'une échéance, la tâche est la puce « · échéance » de « Toute la journée » : jamais une ligne de plus
+  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   const vus = new Set()
   const uniques = taches.filter((t) => (vus.has(t.id) ? false : vus.add(t.id)))
   const externes = (jour.externes ?? []).filter((e) => !e.journee_entiere)
