@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Diamond, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Diamond, Plus, TriangleAlert } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, modifierProjet, modifierTache, restaurerProjet, rouvrirProjet,
-  rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
+  annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
+  reordonnerTache, rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import { PuchePriorite, avancementDe, echeanceProjet, jourProjet } from '../../features/taches/projets/LigneProjet'
 import {
-  DialogueDecaler, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer, DialogueUtiliser,
+  DialogueCouleur, DialogueDecaler, DialogueEcheance, DialogueEnregistrerModele, DialogueSupprimer, DialogueTerminer,
+  DialogueRenommerProjet, DialogueUtiliser,
 } from '../../features/taches/projets/Dialogues'
 import { naviguerApresFeuille } from '../../features/taches/ui/FeuilleACrans'
 import PlanifierProjet from '../../features/taches/projets/PlanifierProjet'
@@ -22,7 +23,10 @@ import Tableau from '../../features/taches/ui/Tableau'
 import { CODES_VUES, compteursApresDeplacement, compteursApresStatut, nomsDesEtapes } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
-import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { useClavierListe } from '../../features/taches/lib/clavierListe'
+import { useCompteTaches } from '../../features/taches/lib/enLigne'
+import { ecrireProjetsCache, lireProjetsCache, viderCacheProjetsALaDeconnexion } from '../../features/taches/horsligne/cacheProjets'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 
@@ -63,6 +67,40 @@ const sansTache = (vue, id) => ({
   sans_section: (vue.sans_section ?? []).filter((t) => t.id !== id),
 })
 
+/** Les tâches ouvertes d'une étape (`null` : « Sans étape »). */
+const listeDe = (vue, sectionId) => (sectionId == null
+  ? (vue.sans_section ?? [])
+  : ((vue.sections ?? []).find((s) => s.id === sectionId)?.taches ?? []))
+
+const avecListe = (vue, sectionId, taches) => (sectionId == null
+  ? { ...vue, sans_section: taches }
+  : { ...vue, sections: (vue.sections ?? []).map((s) => (s.id === sectionId ? { ...s, taches } : s)) })
+
+/**
+ * R2-063 — place la tâche `id` à la position `vers` de SON étape (retirée puis insérée : `arrayMove`). Rend la vue
+ * suivante, les deux voisines que le serveur attend (`avant_id` la précède, `apres_id` la suit) et les voisines d'AVANT
+ * (de quoi la remettre à sa place), ou `null` si rien ne bouge.
+ */
+function deplacerDans(vue, id, vers) {
+  const place = placeDe(vue, id)
+  if (!place) return null
+  const liste = [...listeDe(vue, place.sectionId)]
+  const cible = Math.max(0, Math.min(liste.length - 1, vers))
+  if (cible === place.rang) return null
+  const anciennes = { avant: liste[place.rang - 1]?.id ?? null, apres: liste[place.rang + 1]?.id ?? null }
+  const [item] = liste.splice(place.rang, 1)
+  liste.splice(cible, 0, item)
+  return {
+    vue: avecListe(vue, place.sectionId, liste),
+    avant: liste[cible - 1]?.id ?? null,
+    apres: liste[cible + 1]?.id ?? null,
+    anciennes,
+    de: place.rang,
+    vers: cible,
+    total: liste.length,
+  }
+}
+
 function remettreTache(vue, place) {
   if (!place) return vue
   const inserer = (liste) => { const suite = [...(liste ?? [])]; suite.splice(Math.min(place.rang, suite.length), 0, place.tache); return suite }
@@ -90,7 +128,71 @@ function santeCourte(signal) {
   return signal?.phrase ?? ''
 }
 
-function Entete({ vue, aujourdhui, onPriorite }) {
+/** R2-061 — « Fini quand… » se lit et se corrige sur place : toucher le texte ouvre le champ ; Entrée ou la sortie
+ *  enregistre, Échap annule ; un refus du serveur s'affiche sous le champ et le texte tapé reste. */
+function Objectif({ objectif, onEnregistrer }) {
+  const [edition, setEdition] = useState(false)
+  const [texte, setTexte] = useState('')
+  const [erreur, setErreur] = useState('')
+  const fini = useRef(false)
+  const commencer = () => { fini.current = false; setTexte(objectif ?? ''); setErreur(''); setEdition(true) }
+  const valider = async () => {
+    if (fini.current) return
+    fini.current = true
+    if (texte.trim() === (objectif ?? '').trim()) { setEdition(false); return }
+    const retour = await onEnregistrer(texte.trim())
+    if (retour.ok) setEdition(false)
+    else { fini.current = false; setErreur(retour.message) }
+  }
+  const touche = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); fini.current = true; setEdition(false) }
+    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); valider() }
+  }
+  if (!edition) {
+    return (
+      <button type="button" className={`ep-objectif${objectif ? '' : ' vide'}`} aria-label="Modifier « Fini quand… »" onClick={commencer}>
+        {objectif ? (/^fini quand/i.test(objectif) ? objectif : `Fini quand : ${objectif}`) : 'Ce sera fini quand…'}
+      </button>
+    )
+  }
+  return (
+    <div className="ep-groupe">
+      <textarea className="champ ep-zone" rows={2} value={texte} autoFocus aria-label="Fini quand…" placeholder="Une phrase"
+        onChange={(e) => setTexte(e.target.value)} onKeyDown={touche} onBlur={valider}
+        aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-objectif-erreur' : undefined} />
+      {erreur ? <p id="ep-objectif-erreur" className="ep-erreur" role="alert">{erreur}</p> : null}
+    </div>
+  )
+}
+
+/** R2-061 — le nom du projet, dans le titre : le toucher le rend éditable (Entrée ou la sortie enregistre, Échap annule). */
+function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
+  const [texte, setTexte] = useState(nom)
+  const fini = useRef(false)
+  const champ = useRef(null)
+  const valider = async () => {
+    if (fini.current) return
+    const propre = texte.trim()
+    fini.current = true
+    if (!propre || propre === nom) { onAbandonner(); return }
+    const ok = await onEnregistrer(propre)
+    if (!ok) { fini.current = false; champ.current?.focus() }
+  }
+  const touche = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); fini.current = true; onAbandonner() }
+    else if (e.key === 'Enter') { e.preventDefault(); valider() }
+  }
+  return (
+    <>
+      <input ref={champ} className="ep-titre-champ" type="text" value={texte} maxLength={120} autoFocus aria-label="Nom du projet"
+        onChange={(e) => setTexte(e.target.value)} onKeyDown={touche} onBlur={valider} onFocus={(e) => e.target.select()}
+        aria-invalid={erreur ? 'true' : undefined} aria-describedby={erreur ? 'ep-nom-erreur' : undefined} />
+      {erreur ? <span id="ep-nom-erreur" className="ep-erreur ep-titre-erreur" role="alert">{erreur}</span> : null}
+    </>
+  )
+}
+
+function Entete({ vue, aujourdhui, onPriorite, onObjectif }) {
   const [details, setDetails] = useState(false)
   const [detailSante, setDetailSante] = useState(false)
   const { projet, avancement, prochain_jalon: jalon } = vue
@@ -137,9 +239,7 @@ function Entete({ vue, aujourdhui, onPriorite }) {
       </button>
       {details ? (
         <div className="ep-details-corps">
-          {projet.objectif ? (
-            <p>{/^fini quand/i.test(projet.objectif) ? projet.objectif : `Fini quand : ${projet.objectif}`}</p>
-          ) : null}
+          <Objectif objectif={projet.objectif} onEnregistrer={onObjectif} />
           {avancement.derniere_faite_le ? <p className="chiffres">{`dernière faite le ${jjmm(avancement.derniere_faite_le)}`}</p> : null}
         </div>
       ) : null}
@@ -160,20 +260,29 @@ export default function Projet() {
   const projetRef = useRef(null)
   const chaineVue = useRef(Promise.resolve())
 
+  // R2-070 — la dernière vue LUE du projet est gardée par compte (`cacheProjets`) : sans réseau et sans rien à l'écran,
+  // elle tient lieu de lecture (l'erreur reste dite) — jamais un écran muet
+  const { userId } = useCompteTaches()
+  const dejaLu = useRef(false)
   const charger = useCallback(async () => {
     try {
       const { data } = await lireVueProjet(id, { vue: 'liste' })
       setVue(data)
       setErreur('')
       setIntrouvable(false)
+      dejaLu.current = true
+      ecrireProjetsCache(userId, `projet-${id}`, data)
     } catch (err) {
-      if (classerErreur(err).code === 'introuvable') setIntrouvable(true)
-      else setErreur(frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
+      if (classerErreur(err).code === 'introuvable') { setIntrouvable(true); return }
+      setErreur(frenchError(err, 'Le projet n\'a pas pu être chargé. Réessaie.'))
+      const cache = dejaLu.current ? null : lireProjetsCache(userId, `projet-${id}`)
+      if (cache?.donnees) { dejaLu.current = true; setVue(cache.donnees) }
     }
-  }, [id])
+  }, [id, userId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'écran (D-ENF22)
   useEffect(() => { charger() }, [charger])
+  useEffect(() => viderCacheProjetsALaDeconnexion(), [])
 
   // Le dernier projet lu (verrou de version) : les écritures de vue en file le relisent ici.
   useEffect(() => { projetRef.current = vue?.projet ?? null })
@@ -202,6 +311,68 @@ export default function Projet() {
     if (code !== vueUrl) setParams((p) => { const s = new URLSearchParams(p); s.set('vue', code); return s }, { replace: true })
     memoriserVue(code) // sans effet si le serveur la garde déjà
   }
+
+  // R2-061 — écrire des champs du PROJET (nom, couleur, échéance, objectif) : l'écran suit tout de suite, le serveur
+  // confirme (verrou de version, écritures en file), « Annuler » remet les valeurs d'avant, un refus remet l'écran
+  // comme avant et rend `{ ok: false, message }` (le message du champ fautif, sinon le message français général).
+  const ecrireProjet = (champs, message = null, repli = 'Le projet n\'a pas été modifié. Réessaie.') => {
+    const suite = chaineVue.current.then(async () => {
+      const projet = projetRef.current
+      if (!projet) return { ok: false, message: repli }
+      const avant = Object.fromEntries(Object.keys(champs).map((c) => [c, projet[c]]))
+      setVue((v) => (v ? { ...v, projet: { ...v.projet, ...champs } } : v))
+      try {
+        const { data } = await modifierProjet(projet.id, { ...champs, lock_version: projet.lock_version })
+        projetRef.current = { ...projet, ...champs, ...data }
+        setVue((v) => (v ? { ...v, projet: { ...v.projet, ...data } } : v))
+        if (message) {
+          proposerAnnuler({
+            message,
+            onAnnuler: async () => {
+              const retour = await ecrireProjet(avant, null, 'Le projet n\'a pas été remis comme avant. Réessaie.')
+              if (!retour.ok) throw new Error(retour.message)
+            },
+          })
+        }
+        return { ok: true }
+      } catch (err) {
+        projetRef.current = projet
+        setVue((v) => (v ? { ...v, projet: { ...v.projet, ...avant } } : v))
+        const champ = classerErreur(err).champs ?? err?.response?.data
+        const premier = Object.keys(champs).map((c) => champ?.[c]).find((m) => Array.isArray(m) && m.length > 0)
+        return { ok: false, message: premier?.[0] ?? frenchError(err, repli) }
+      }
+    })
+    chaineVue.current = suite
+    return suite
+  }
+
+  const [renommage, setRenommage] = useState(false)
+  const [erreurNom, setErreurNom] = useState('')
+  const renommer = async (nom) => {
+    const retour = await ecrireProjet({ nom }, 'Projet renommé', 'Le projet n\'a pas été renommé. Réessaie.')
+    if (retour.ok) { setRenommage(false); setErreurNom('') } else setErreurNom(retour.message)
+    return retour.ok
+  }
+  // « Renommer » du ⋯ : une feuille (le menu qui se referme rendrait le focus à son bouton et ferait « sortir » du champ du titre)
+  const renommerParFeuille = async (nom) => {
+    const retour = await ecrireProjet({ nom }, 'Projet renommé', 'Le projet n\'a pas été renommé. Réessaie.')
+    if (!retour.ok) throw Object.assign(new Error(retour.message), { response: { status: 400, data: { nom: [retour.message] } } })
+    setDialogue(null)
+  }
+  const fermerRenommage = () => { setRenommage(false); setErreurNom('') }
+  const changerCouleur = async (couleur) => {
+    setDialogue(null)
+    if (couleur === vue.projet.couleur) return
+    const retour = await ecrireProjet({ couleur }, 'Couleur changée', 'La couleur n\'a pas été changée. Réessaie.')
+    if (!retour.ok) setErreur(retour.message)
+  }
+  const changerEcheance = async (echeance) => {
+    const retour = await ecrireProjet({ echeance }, echeance ? 'Échéance changée' : 'Échéance retirée', 'L\'échéance n\'a pas été changée. Réessaie.')
+    if (!retour.ok) throw Object.assign(new Error(retour.message), { response: { status: 400, data: { echeance: [retour.message] } } })
+    setDialogue(null)
+  }
+  const changerObjectif = (objectif) => ecrireProjet({ objectif }, 'Objectif enregistré', 'L\'objectif n\'a pas été enregistré. Réessaie.')
 
   const majTache = (tache) => setVue((v) => (v ? remplacerTache(v, tache) : v))
   // L'avancement du projet ET le compteur de l'étape de la carte suivent le geste (même règle que le serveur).
@@ -282,6 +453,50 @@ export default function Projet() {
     }
   }
 
+  // R2-063 — l'ORDRE des tâches d'une étape : il décide ce qui remonte dans Proposé. `{ sens: ±1 }` (▲▼, Alt+↑/↓) ou
+  // `{ vers }` (glissé) ; l'écran suit tout de suite, le serveur confirme (`reordonner/`, liste « projet » : aucun
+  // verrou ne bouge), « Annuler » remet les voisines d'avant, un refus remet l'ordre d'avant et le DIT.
+  const [reorganiser, setReorganiser] = useState(false)
+  const reordonner = async (item, { sens = 0, vers = null }) => {
+    const avant = vue
+    const place = placeDe(avant, item.id)
+    if (!place) return
+    const suite = deplacerDans(avant, item.id, vers ?? place.rang + sens)
+    if (!suite) return
+    setVue(suite.vue)
+    const position = `${item.titre} : position ${suite.vers + 1} sur ${suite.total}`
+    try {
+      await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.avant, apres_id: suite.apres })
+      proposerAnnuler({
+        message: 'Ordre changé',
+        annonce: position,
+        onAnnuler: async () => {
+          await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.anciennes.avant, apres_id: suite.anciennes.apres })
+          setVue((v) => (v ? (deplacerDans(v, item.id, suite.de)?.vue ?? v) : v))
+        },
+      })
+    } catch (err) {
+      setVue(avant)
+      setErreur(frenchError(err, 'L\'ordre n\'a pas été changé. Réessaie.'))
+    }
+  }
+
+  // Clavier des listes (spec-7 §5) : j/k, Espace, Alt+↑/↓ … ; jamais une touche seule qui fait disparaître une ligne (R2-036)
+  const racine = useClavierListe((action, { cle }) => {
+    if (action === 'annuler') { annulerToast(); return }
+    const id = cle?.startsWith('tache:') ? Number(cle.slice(6)) : null
+    const place = id && vue ? placeDe(vue, id) : null
+    if (!place) return
+    const tache = place.tache
+    if (action === 'monter') reordonner(tache, { sens: -1 })
+    else if (action === 'descendre') reordonner(tache, { sens: 1 })
+    else if (action === 'terminer') terminer(tache, tache.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
+    else if (action === 'essentiel') actions.essentiel(tache)
+    else if (action === 'quand') actions.surAction('choisir_jour', tache)
+    else if (action === 'deplacer') actions.surAction('deplacer', tache, { clavier: true })
+    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id)
+  }, { actif: Boolean(vue) && !planifier && !dialogue && !actions.feuille && !actions.selecteurProjet })
+
   const poserPriorite = async (projet, valeur) => {
     if (valeur === projet.priorite) return
     setVue((v) => ({ ...v, projet: { ...v.projet, priorite: valeur } }))
@@ -308,6 +523,20 @@ export default function Projet() {
       })
     } catch (err) {
       setErreur(frenchError(err, 'Le projet n\'a pas été mis en pause. Réessaie.'))
+    }
+  }
+
+  // R2-060 — « Mettre en haut » : le projet passe devant le premier projet actif (même geste que la liste Projets)
+  const mettreEnHaut = async () => {
+    const projet = vue.projet
+    try {
+      const { data } = await listerProjets({ statut: 'actif' })
+      const premier = (Array.isArray(data) ? data : (data?.results ?? []))[0]
+      if (!premier || premier.id === projet.id) { annoncer(`« ${projet.nom} » est déjà en haut`); return }
+      await reordonnerProjet(projet.id, { avant_id: premier.id })
+      annoncer(`« ${projet.nom} » en haut`)
+    } catch (err) {
+      setErreur(frenchError(err, "L'ordre n'a pas été changé. Réessaie."))
     }
   }
 
@@ -375,21 +604,40 @@ export default function Projet() {
   }
 
   const projet = vue?.projet
+  // R2-071 — un projet sans aucune tâche (ni ouverte ni faite) : l'invite « Ajoute la première tâche » + « Planifier le projet »
+  const projetVide = Boolean(vue) && !((vue.faites_nb ?? 0) > 0)
+    && (vue.sans_section ?? []).length === 0 && (vue.sections ?? []).every((s) => (s.taches ?? []).length === 0)
   const actionsEcran = projet ? [
+    { libelle: 'Renommer', onSelect: () => setDialogue('renommer') },
+    { libelle: 'Couleur…', onSelect: () => setDialogue('couleur') },
+    { libelle: 'Échéance…', onSelect: () => setDialogue('echeance') },
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
     { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
+    ...(vueCode === 'liste' ? [{ libelle: 'Réorganiser', onSelect: () => setReorganiser((v) => !v) }] : []),
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
     { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
-    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
+    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en haut', onSelect: mettreEnHaut }, { libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
     { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []
 
   // Passe visuelle n° 43 — le point de couleur du projet devant son nom (projet-liste.html, `.ep-projet-nom`)
   const titre = projet ? (
-    <span className="ep-projet-nom" data-p={projet.couleur}><i className="point" aria-hidden="true" />{projet.nom}</span>
+    <span className="ep-projet-nom" data-p={projet.couleur}>
+      <i className="point" aria-hidden="true" />
+      {renommage ? (
+        <ChampNom nom={projet.nom} erreur={erreurNom} onEnregistrer={renommer} onAbandonner={fermerRenommage} />
+      ) : (
+        <button type="button" className="ep-titre-nom" aria-label={`Renommer « ${projet.nom} »`}
+          onClick={() => {
+            // doigt : la feuille (champ pleine largeur, clavier géré) ; souris : le titre lui-même devient le champ
+            if (window.matchMedia?.('(hover: none)')?.matches) setDialogue('renommer')
+            else { setErreurNom(''); setRenommage(true) }
+          }}>{projet.nom}</button>
+      )}
+    </span>
   ) : 'Projet'
   return (
     <CoquilleTaches ecran="projet" titre={titre} actionsEcran={actionsEcran}
@@ -408,12 +656,13 @@ export default function Projet() {
       {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
-          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} />
+          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} onObjectif={changerObjectif} />
           {vueCode === 'tableau' ? (
             <Tableau
               vue={vue}
               aujourdhui={aujourdhui}
               onDeplacer={deplacerVersEtape}
+              onReordonner={reordonner}
               onTerminer={terminer}
               onOuvrir={(t) => ouvrirFiche(t.id)}
               onAction={actions.surAction}
@@ -422,8 +671,27 @@ export default function Projet() {
             />
           ) : null}
           {vueCode === 'chronologie' ? <VueChronologie vue={vue} aujourdhui={aujourdhui} /> : null}
-          {vueCode === 'liste' ? (
+          {vueCode === 'liste' && projetVide ? (
+            <section className="ep-vide-projet" aria-label="Projet vide">
+              <button type="button" className="ep-vide-invite" onClick={() => ajouter(null)}>
+                <Plus className="i i-16" aria-hidden="true" />Ajoute la première tâche
+              </button>
+              <button type="button" className="bouton second" onClick={() => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s })}>
+                Planifier le projet
+              </button>
+            </section>
+          ) : null}
+          {vueCode === 'liste' && reorganiser ? (
+            <div className="mode-ecran" role="status">
+              <span>Réorganiser</span>
+              <button type="button" className="bouton lien" onClick={() => setReorganiser(false)}>OK</button>
+            </div>
+          ) : null}
+          {vueCode === 'liste' && !(projetVide && (vue.sections ?? []).length === 0) ? (
             <VueListe
+              racine={racine}
+              reorganiser={reorganiser}
+              onReordonner={reordonner}
               vue={vue}
               aujourdhui={aujourdhui}
               onTerminer={terminer}
@@ -450,6 +718,15 @@ export default function Projet() {
         <FeuilleACrans ouverte onFermer={() => setDialogue(null)} titre="Avancement par semaine">
           <Burnup vue={vue} aujourdhui={aujourdhui} />
         </FeuilleACrans>
+      ) : null}
+      {vue && dialogue === 'renommer' ? (
+        <DialogueRenommerProjet projet={vue.projet} onEnregistrer={renommerParFeuille} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'couleur' ? (
+        <DialogueCouleur projet={vue.projet} onChoisir={changerCouleur} onFermer={() => setDialogue(null)} />
+      ) : null}
+      {vue && dialogue === 'echeance' ? (
+        <DialogueEcheance projet={vue.projet} aujourdhui={aujourdhui} onEnregistrer={changerEcheance} onFermer={() => setDialogue(null)} />
       ) : null}
       {vue && dialogue === 'terminer' ? <DialogueTerminer projet={vue.projet} onFait={termine} onFermer={() => setDialogue(null)} /> : null}
       {vue && dialogue === 'supprimer' ? <DialogueSupprimer projet={vue.projet} onFait={supprime} onFermer={() => setDialogue(null)} /> : null}

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Ellipsis, TriangleAlert } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -18,7 +19,7 @@ export const PRIORITES = [
   { valeur: 3, libelle: 'Haute', classe: '' },
   { valeur: 2, libelle: 'Moyenne', classe: 'moyenne' },
   { valeur: 1, libelle: 'Basse', classe: 'basse' },
-  { valeur: 0, libelle: '—', classe: 'aucune' },
+  { valeur: 0, libelle: 'Aucune', classe: 'aucune' }, // R2-071 : écrit, jamais « — »
 ]
 
 // eslint-disable-next-line react-refresh/only-export-components -- idem
@@ -82,15 +83,48 @@ export function PuchePriorite({ projet, onChoisir }) {
   )
 }
 
+const DUREE_APPUI_LONG_MS = 500
+const DEPLACEMENT_MAX = 8
+
+/** R2-060 — l'appui long (500 ms, doigt immobile) sur la ligne ouvre le menu ⋯ ; le clic qui suit est avalé. */
+function useAppuiLong(ouvrir) {
+  const minuteur = useRef(null)
+  const depart = useRef(null)
+  const avale = useRef(false)
+  const arreter = () => { if (minuteur.current) { clearTimeout(minuteur.current); minuteur.current = null } }
+  useEffect(() => arreter, [])
+  return {
+    surClic: (e) => { if (avale.current) { avale.current = false; e.preventDefault(); e.stopPropagation() } },
+    gestes: {
+      onPointerDown: (e) => {
+        if (e.pointerType !== 'touch') return
+        avale.current = false
+        depart.current = { x: e.clientX, y: e.clientY }
+        arreter()
+        minuteur.current = setTimeout(() => { minuteur.current = null; avale.current = true; ouvrir() }, DUREE_APPUI_LONG_MS)
+      },
+      onPointerMove: (e) => {
+        const d = depart.current
+        if (d && (Math.abs(e.clientX - d.x) > DEPLACEMENT_MAX || Math.abs(e.clientY - d.y) > DEPLACEMENT_MAX)) arreter()
+      },
+      onPointerUp: arreter,
+      onPointerCancel: arreter,
+      onContextMenu: (e) => { e.preventDefault(); ouvrir() },
+    },
+  }
+}
+
 export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOuvrir, onPriorite, onAction, enPause = false }) {
   const { texte, part } = avancementDe(projet)
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
   const surveiller = Array.isArray(projet.sante) && projet.sante.length > 0
+  const [menuOuvert, setMenuOuvert] = useState(false)
+  const appui = useAppuiLong(() => setMenuOuvert(true))
   return (
-    <div className="ligne projet" role="listitem" data-p={projet.couleur} data-projet={projet.id}>
+    <div className="ligne projet" role="listitem" data-p={projet.couleur} data-projet={projet.id} {...appui.gestes}>
       <span className="point-projet" aria-hidden="true" />
       <div className="ligne-corps">
-        <button type="button" className="ligne-corps-bouton ep-ouvrir" onClick={() => onOuvrir?.(projet)}>
+        <button type="button" className="ligne-corps-bouton ep-ouvrir" onClickCapture={appui.surClic} onClick={() => onOuvrir?.(projet)}>
           <span className="titre">{projet.nom}</span>
         </button>
         <div className="meta">
@@ -106,7 +140,7 @@ export default function LigneProjet({ projet, aujourdhui = aujourdhuiIso(), onOu
       </div>
       <div className="ligne-fin">
         {enPause ? null : <PuchePriorite projet={projet} onChoisir={onPriorite} />}
-        <DropdownMenu>
+        <DropdownMenu open={menuOuvert} onOpenChange={setMenuOuvert}>
           <DropdownMenuTrigger asChild>
             <button type="button" className="ligne-actions" aria-label={`Actions pour « ${projet.nom} »`}>
               <Ellipsis className="i" aria-hidden="true" />

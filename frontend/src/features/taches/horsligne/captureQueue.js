@@ -62,11 +62,60 @@ const transitoire = (err) => {
   return !statut || statut === 401 || statut === 408 || statut === 429 || statut >= 500
 }
 
-function envoyer(op) {
+// ── Les lignes d'une phrase (partagées avec la feuille de saisie) ───────────
+
+/** Les champs d'une ligne lue qui disent QUAND la faire : la phrase en a dit un, le jour de l'écran s'efface. */
+const CHAMPS_QUAND = ['jour_prevu', 'moment', 'heure_debut', 'quelque_jour']
+
+/**
+ * La ligne à créer : les champs lus, puis ce que la personne a posé à la main (Quand, priorité du projet).
+ * R2-002 — `quandDefaut` est le jour de l'ÉCRAN (Aujourd'hui, case de l'Agenda) : il ne vaut que si la phrase n'a lu
+ * aucun jour (« demain » l'emporte) ; `quand`, choisi à la main dans « Quand », l'emporte sur la phrase.
+ */
+export function construireLigne(ligne, { cid, quand, quandDefaut, priorites }) {
+  const champs = { ...(ligne.champs ?? {}) }
+  if (champs.nouveau_projet) {
+    const nom = champs.nouveau_projet.nom
+    champs.nouveau_projet = { ...champs.nouveau_projet, priorite: priorites?.[nom] ?? champs.nouveau_projet.priorite }
+  }
+  const phraseDitQuand = CHAMPS_QUAND.some((cle) => Boolean(champs[cle]))
+  return {
+    index: ligne.index,
+    collage: ligne.collage,
+    client_id: `${cid}:${ligne.index}`,
+    titre: ligne.titre,
+    ...(quandDefaut && !phraseDitQuand ? quandDefaut : {}),
+    ...champs,
+    ...(quand ?? {}),
+  }
+}
+
+/** Le contexte de l'écran (`{ projetId, sectionId, lien }`) posé sur une ligne qui ne nomme ni projet ni lien. */
+export function avecContexte(origine, contexte) {
+  const ligne = contexte?.lien && origine.lien == null
+    ? { ...origine, lien: { cible: contexte.lien.cible, id: contexte.lien.id } }
+    : origine
+  if (contexte?.projetId == null || ligne.projet_id != null || ligne.nouveau_projet) return ligne
+  return { ...ligne, projet_id: contexte.projetId, ...(contexte.sectionId != null ? { section_id: contexte.sectionId } : {}) }
+}
+
+/** R2-008a — une phrase mise en file SANS analyse : le serveur la lit au rejeu (aperçu), puis la crée. */
+async function lignesDeLaPhrase(phrase, options) {
+  const textes = phrase.textes ?? []
+  const corps = textes.length > 1 ? { textes } : { texte: textes[0] ?? '' }
+  const { data } = await saisieRapide({ ...corps, ignorer: phrase.ignorer ?? [], apercu: true }, { ...options, cle: null })
+  return (data?.lignes ?? []).filter((l) => l.cochee !== false)
+    .map((l) => avecContexte(construireLigne(l, phrase), phrase.contexte))
+}
+
+async function envoyer(op) {
   const { corps, tacheId, userId } = op.payload
   const options = { proprietaire: userId }
   if (op.op_type === TYPES.AJOUTER) {
-    return saisieRapide({ ...corps, apercu: false }, { ...options, cle: op.client_op_id })
+    // une op ANCIENNE (ou une phrase déjà lue) porte ses `lignes` ; une phrase hors ligne porte sa `phrase`
+    const lignes = corps.phrase ? await lignesDeLaPhrase(corps.phrase, options) : corps.lignes
+    if (!lignes?.length) throw Object.assign(new Error('Aucune ligne lisible.'), { response: { status: 400, data: { detail: 'Aucune ligne lisible.' } } })
+    return saisieRapide({ lignes, apercu: false }, { ...options, cle: op.client_op_id })
   }
   if (op.op_type === TYPES.COCHER) return terminerTache(tacheId, {}, options)
   return planifierTache(tacheId, corps, options)
@@ -144,6 +193,24 @@ async function enfiler(type, donnees, cible, f = fileTaches()) {
 
 /** Ajouter : `lignes` = les lignes de `saisie-rapide/` (chacune porte son `client_id`). */
 export const enfilerAjout = (lignes, f) => enfiler(TYPES.AJOUTER, { corps: { lignes } }, undefined, f)
+/**
+ * R2-008a — Ajouter une PHRASE que personne n'a encore lue (coupure avant l'aperçu) : `{ textes, ignorer, cid, quand,
+ * quandDefaut, priorites, contexte }`. Au rejeu, le serveur la lit (« ce soir » devient un jour, plus un mot du
+ * titre) ; les `client_id` `{cid}:{index}` et la clé de l'op rendent le rejeu sans doublon.
+ */
+export const enfilerPhrase = (phrase, f) => enfiler(TYPES.AJOUTER, {
+  corps: {
+    phrase: {
+      textes: (phrase.textes ?? []).filter((t) => String(t).trim()),
+      ignorer: phrase.ignorer ?? [],
+      cid: phrase.cid,
+      quand: phrase.quand ?? null,
+      quandDefaut: phrase.quandDefaut ?? null,
+      priorites: phrase.priorites ?? {},
+      contexte: phrase.contexte ?? null,
+    },
+  },
+}, undefined, f)
 /** Cocher une tâche (`terminer/`). */
 export const enfilerCoche = (tacheId, f) => enfiler(TYPES.COCHER, { tacheId }, tacheId, f)
 /** Reporter : `corps` = `{ jour_prevu, moment, heure_debut, quelque_jour, lock_version }` (version du cache). */

@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useLocation, useSearchParams } from 'react-router-dom'
 
 /* ============================================================================
    Raccord F2 — les écrans se parlent : une SEULE façon d'ouvrir la fiche d'une tâche (`?tache=<id>`, la coquille
@@ -11,25 +11,54 @@ import { useSearchParams } from 'react-router-dom'
    ========================================================================== */
 
 export const EVENEMENT_CREEES = 'taqinor:taches:creees'
+/** R2-040 — émis par la fiche après chaque écriture réussie et à sa fermeture : `detail = { tache }` (la tâche
+ *  rendue par le serveur, ou `null` quand la fiche n'a rien de plus frais que l'identifiant). */
+export const EVENEMENT_ECRITE = 'taqinor:taches:ecrite'
 export const MARQUE_FICHE = 'tchFiche'
 
-/** `(id) => void` : ouvre la fiche de la tâche `id` sur l'écran courant. */
+/** R2-040 — la fiche est montée par la coquille, pas par l'écran : elle prévient l'écran qu'une tâche a changé. */
+export function signalerEcrite(tache = null) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache } }))
+}
+
+/** Ce que la fiche ouvre d'elle-même (R2-021b/025b) : `section` (`decouper` : « Plus » déplié, curseur dans
+ *  « Découper ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */
+export const SECTIONS_FICHE = ['decouper']
+export const FOCUS_FICHE = ['titre', 'heure']
+
+/** `(id, { section, focus } = {}) => void` : ouvre la fiche de la tâche `id` sur l'écran courant ; `section` et
+ *  `focus` (valeurs ci-dessus, toute autre est ignorée) vont dans l'adresse : `?tache=12&section=decouper`. */
 export function useOuvrirFiche() {
-  const [, setParams] = useSearchParams()
-  return useCallback((id) => {
+  const [params, setParams] = useSearchParams()
+  const { state } = useLocation()
+  const dejaOuverte = params.has('tache')
+  const marquee = Boolean(state?.[MARQUE_FICHE])
+  return useCallback((id, { section, focus } = {}) => {
     setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
       suite.set('tache', String(id))
+      if (SECTIONS_FICHE.includes(section)) suite.set('section', section)
+      else suite.delete('section')
+      if (FOCUS_FICHE.includes(focus)) suite.set('focus', focus)
+      else suite.delete('focus')
       return suite
-    }, { state: { [MARQUE_FICHE]: true } })
-  }, [setParams])
+    // R2-050 — une fiche déjà ouverte (panneau du bureau) CHANGE de tâche en place : l'entrée est remplacée et garde sa
+    // marque, sinon la fermeture (retour arrière) rouvrirait la tâche précédente au lieu de rendre la liste
+    }, dejaOuverte ? { replace: true, state: { [MARQUE_FICHE]: marquee } } : { state: { [MARQUE_FICHE]: true } })
+  }, [setParams, dejaOuverte, marquee])
 }
 
-/** Appelle `rappel(detail)` après chaque création (saisie, collage, file rejouée) — l'écran se met à jour seul. */
+/** Appelle `rappel(detail)` après chaque création (saisie, collage, file rejouée) ET (R2-040) après chaque écriture
+ *  de la fiche (Fait, Supprimer, Quand… : `{ tache }`) — l'écran se met à jour seul, sans rechargement. */
 export function useApresCreation(rappel) {
   useEffect(() => {
-    const surCreees = (e) => rappel(e?.detail ?? {})
-    window.addEventListener(EVENEMENT_CREEES, surCreees)
-    return () => window.removeEventListener(EVENEMENT_CREEES, surCreees)
+    const surEvenement = (e) => rappel(e?.detail ?? {})
+    window.addEventListener(EVENEMENT_CREEES, surEvenement)
+    window.addEventListener(EVENEMENT_ECRITE, surEvenement)
+    return () => {
+      window.removeEventListener(EVENEMENT_CREEES, surEvenement)
+      window.removeEventListener(EVENEMENT_ECRITE, surEvenement)
+    }
   }, [rappel])
 }

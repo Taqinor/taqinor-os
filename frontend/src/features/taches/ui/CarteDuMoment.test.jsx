@@ -34,10 +34,16 @@ function monter(props) {
   return { ...rendu, ...poignees }
 }
 
+/** R2-015 — l'appareil simulé : `doigt` = `(pointer: coarse)` vrai (iPhone), sinon un bureau. */
+const appareil = (doigt) => {
+  window.matchMedia = (q) => ({ matches: Boolean(doigt) && q.includes('coarse'), media: q, addEventListener() {}, removeEventListener() {} })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   window.localStorage.clear()
   reinitialiserGestes()
+  appareil(false)
 })
 
 describe('TCH77 — chaque type de carte du moment', () => {
@@ -118,7 +124,8 @@ describe('TCH77 — chaque type de carte du moment', () => {
     expect(onNaviguer).toHaveBeenCalledWith('/taches/reglages/iphone')
   })
 
-  it('aucune carte du serveur : une astuce par jour, chacune une seule fois, « OK » la retient', async () => {
+  it('aucune carte du serveur : une astuce par jour, chacune une seule fois, « OK » la retient (au doigt)', async () => {
+    appareil(true)
     const { unmount } = monter({ carte: null, avecAstuce: true, jour: '2030-02-01' })
     expect(screen.getByText('Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'OK' }))
@@ -128,7 +135,7 @@ describe('TCH77 — chaque type de carte du moment', () => {
     expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull() // déjà une aujourd'hui
     document.body.innerHTML = ''
     monter({ carte: null, avecAstuce: true, jour: '2030-02-02' })
-    expect(screen.getByText('Touche n pour ajouter, ? pour voir les touches.')).toBeInTheDocument()
+    expect(screen.getByText('Garde le doigt sur une ligne pour voir toutes ses actions.')).toBeInTheDocument()
   })
 
   it('une carte du serveur passe avant l\'astuce', () => {
@@ -140,6 +147,105 @@ describe('TCH77 — chaque type de carte du moment', () => {
   it('hors ligne : les boutons à réponse sont grisés', () => {
     monter({ carte: carteRythme(), enLigne: false })
     expect(screen.getByRole('button', { name: 'Monter à 6' })).toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+describe('R2-015 — une astuce par appareil : le balayage n\'est jamais appris à la souris', () => {
+  const lesAstuces = async (jours, doigt) => {
+    appareil(doigt)
+    const vues = []
+    for (const jour of jours) {
+      const { unmount } = monter({ carte: null, avecAstuce: true, jour })
+      const region = screen.queryByRole('region', { name: 'Astuce' })
+      vues.push(region ? region.querySelector('b').textContent : null)
+      if (region) await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+      unmount()
+    }
+    return vues
+  }
+
+  it('au bureau : jamais « Balaie » ni l\'appui long ; touches, glisser vers l\'agenda, puis #nom', async () => {
+    const vues = await lesAstuces(['2031-01-01', '2031-01-02', '2031-01-03', '2031-01-04'], false)
+    expect(vues).toEqual([
+      'Touche n pour ajouter, ? pour voir les touches.',
+      "Glisse une tâche sur l'agenda pour lui donner une heure.",
+      'Tape #nom pour ranger dans un projet.',
+      null,
+    ])
+  })
+
+  it('au doigt : le balayage, puis l\'appui long, puis #nom ; jamais les touches du clavier', async () => {
+    const vues = await lesAstuces(['2031-02-01', '2031-02-02', '2031-02-03', '2031-02-04'], true)
+    expect(vues).toEqual([
+      'Balaie une ligne vers la gauche pour la reporter, vers la droite pour la cocher.',
+      'Garde le doigt sur une ligne pour voir toutes ses actions.',
+      'Tape #nom pour ranger dans un projet.',
+      null,
+    ])
+  })
+})
+
+describe('R2-014 — une carte au plus par matin, et aucun constat qui remonte après le bilan', () => {
+  it('répondre à une carte du serveur ne fait pas venir une astuce à sa place, ni maintenant ni après rechargement', async () => {
+    appareil(true)
+    const jour = '2031-03-01'
+    const onRepondre = vi.fn()
+    const props = { jour, maintenant: '2026-11-17T09:10:00+01:00', objectif: 5, avecAstuce: true, onRepondre }
+    const { rerender } = render(<CarteDuMoment carte={carteRythme()} {...props} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Monter à 6' }))
+    expect(onRepondre).toHaveBeenCalledWith(expect.objectContaining({ id: 41 }), 'oui')
+    rerender(<CarteDuMoment carte={null} {...props} />) // le parent retire la carte répondue
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+    expect(screen.queryByText(/Balaie une ligne/)).toBeNull()
+    document.body.innerHTML = ''
+    render(<CarteDuMoment carte={null} {...props} />) // rechargement : la journée reste prise
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+  })
+
+  it('« Pas maintenant » écarte la carte sans faire venir une astuce ; le lendemain une astuce revient', async () => {
+    appareil(true)
+    monter({ carte: { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } }, avecAstuce: true, jour: '2031-03-02' })
+    await userEvent.click(screen.getByRole('button', { name: 'Pas maintenant' }))
+    expect(screen.queryByRole('region')).toBeNull()
+    document.body.innerHTML = ''
+    monter({ carte: null, avecAstuce: true, jour: '2031-03-03' })
+    expect(screen.getByRole('region', { name: 'Astuce' })).toBeInTheDocument()
+  })
+
+  it('Garder compte aussi comme une carte répondue', async () => {
+    const { onGarder } = monter({ carte: { type: 'garder', proposition: null, donnees: { n: 2, objectif: 5 } }, avecAstuce: true, jour: '2031-03-04' })
+    await userEvent.click(screen.getByRole('button', { name: 'Garder ces 2' }))
+    expect(onGarder).toHaveBeenCalledTimes(1)
+    document.body.innerHTML = ''
+    monter({ carte: null, avecAstuce: true, jour: '2031-03-04' })
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+  })
+
+  it('un constat n\'est plus montré une fois le bilan fait ; avant le bilan il l\'est', () => {
+    const constat = () => {
+      const c = carteRythme()
+      c.proposition = Object.assign(proposition(), {
+        type: 'constat', cle: 'C5', texte: '57 % de tes 51 tâches finies entre 10 h et 12 h.', boutons: [{ reponse: 'ok', libelle: 'OK' }],
+      })
+      return c
+    }
+    const { unmount } = monter({ carte: constat(), jour: '2031-03-05' })
+    expect(screen.getByText('57 % de tes 51 tâches finies entre 10 h et 12 h.')).toBeInTheDocument()
+    unmount()
+    const { container } = monter({ carte: constat(), jour: '2031-03-06', bilanFait: true, avecAstuce: true })
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('un constat à question se lit « phrase + question » et « Oui » y répond', async () => {
+    const c = carteRythme()
+    c.proposition = Object.assign(proposition(), {
+      type: 'constat', cle: 'C7', texte: '2 tâches reportées 3 fois ou plus. Les revoir maintenant ?',
+      boutons: [{ reponse: 'oui', libelle: 'Oui' }, { reponse: 'pas_maintenant', libelle: 'Pas maintenant' }],
+    })
+    const { onRepondre } = monter({ carte: c, jour: '2031-03-07' })
+    expect(screen.getByText('2 tâches reportées 3 fois ou plus. Les revoir maintenant ?')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Oui' }))
+    expect(onRepondre).toHaveBeenCalledWith(expect.objectContaining({ cle: 'C7' }), 'oui')
   })
 })
 

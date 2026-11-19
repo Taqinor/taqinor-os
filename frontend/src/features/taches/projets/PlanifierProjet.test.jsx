@@ -90,6 +90,32 @@ describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
     }))
   })
 
+  it('R2-069 — la barre d\'étapes dit où l\'on en est ; chaque action se retire par ×', async () => {
+    monter()
+    const user = utilisateur()
+    const barre = screen.getByRole('list', { name: 'Étapes du rituel' })
+    expect(within(barre).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(barre).getAllByRole('listitem')[0]).toHaveAttribute('aria-current', 'step')
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(within(screen.getByRole('list', { name: 'Étapes du rituel' })).getAllByRole('listitem')[1]).toHaveAttribute('aria-current', 'step')
+    for (const titre of ['Réserver le stand', 'Imprimer les badges']) {
+      await user.type(screen.getByLabelText('Nouvelle action'), titre)
+      await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    }
+    await user.click(screen.getByRole('button', { name: 'Retirer « Réserver le stand »' }))
+    expect(screen.queryByText('Réserver le stand')).toBeNull()
+    expect(screen.getByText('Imprimer les badges')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({ actions: [{ titre: 'Imprimer les badges', quand: '' }] }))
+  })
+
+  it('R2-069 — la date choisie se lit en français sous le champ (jamais seulement le format du navigateur)', async () => {
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('radio', { name: '2 semaines' }))
+    expect(screen.getByText('mar. 1 déc.')).toBeInTheDocument() // 17/11 + 14 j = 01/12/2026
+  })
+
   it('Passer rend la main sans rien écrire', async () => {
     const onPasser = vi.fn()
     monter({ onPasser })
@@ -108,12 +134,29 @@ describe('TCH91 — Planifier le projet : liste collée, risque, Copilote', () =
     await user.click(screen.getByText('Plus'))
     await user.type(screen.getByLabelText('Étapes'), 'Études :{Enter}Visite')
     await user.click(screen.getByRole('button', { name: 'Lire la liste' }))
-    expect(api.apercuPlanification).toHaveBeenCalledWith(3, { texte: 'Études :\nVisite' })
+    // R2-062 — ce champ lit des ÉTAPES (une ligne non indentée = une étape), pas une liste de tâches
+    expect(api.apercuPlanification).toHaveBeenCalledWith(3, { texte: 'Études :\nVisite', mode: 'etapes' })
     const lues = await screen.findByRole('list', { name: 'Étapes lues' })
     expect(within(lues).getByText('Études')).toBeInTheDocument()
     expect(within(lues).getByText('Visite')).toBeInTheDocument()
     expect(screen.getByText('Jalons').parentElement).toHaveTextContent('Mise en service')
     expect(api.planifierProjet).not.toHaveBeenCalled()
+  })
+
+  it('R2-062 — « Transport / Hébergement / Sur place » : l\'aperçu dit « 3 étapes · 0 tâche » et Terminer envoie ces 3 étapes', async () => {
+    api.apercuPlanification.mockResolvedValue({ data: { projet: { id: 3, lock_version: 4 }, sections: [
+      { nom: 'Transport', taches: [] }, { nom: 'Hébergement', taches: [] }, { nom: 'Sur place', taches: [] }] } })
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await user.click(screen.getByText('Plus'))
+    expect(screen.getByText(/Une ligne par étape/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Étapes'), 'Transport{Enter}Hébergement{Enter}Sur place')
+    await user.click(screen.getByRole('button', { name: 'Lire la liste' }))
+    expect(await screen.findByText('3 étapes · 0 tâche')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    expect(api.planifierProjet).toHaveBeenCalledTimes(1)
+    expect(api.planifierProjet.mock.calls[0][1].sections.map((s) => s.nom)).toEqual(['Transport', 'Hébergement', 'Sur place'])
   })
 
   it('« En faire une tâche » ajoute le risque aux premières actions', async () => {
@@ -123,7 +166,8 @@ describe('TCH91 — Planifier le projet : liste collée, risque, Copilote', () =
     await user.click(screen.getByText('Plus'))
     await user.type(screen.getByLabelText('Si ça échoue, ce sera sans doute parce que…'), 'le stand est complet')
     await user.click(screen.getByRole('button', { name: 'En faire une tâche' }))
-    expect(screen.getByText('le stand est complet')).toBeInTheDocument()
+    // R2-069 — la tâche née d'un risque est titrée « Parer : … », jamais la phrase brute du risque
+    expect(screen.getByText('Parer : le stand est complet')).toBeInTheDocument()
   })
 
   it('« Planifier avec le Copilote » ouvre le Copilote avec la question et le projet ; absent si confidentiel', async () => {

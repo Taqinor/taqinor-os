@@ -7,7 +7,9 @@ import { SuggereParLErp } from '../../features/taches/atrier/Suggestions'
 import TrierUneParUne from '../../features/taches/atrier/TrierUneParUne'
 import CaseRonde from '../../features/taches/ui/CaseRonde'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
-import { useApresCreation } from '../../features/taches/lib/fiche'
+import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
+import { useClavierListe } from '../../features/taches/lib/clavierListe'
+import { ajusterBadgeATrier, chargerBadgeTaches } from '../../features/taches/useBadgeTaches'
 import { frenchError } from '../../lib/frenchError'
 import {
   annulerGeste, classerErreur, convertirActivites, creerProjet, listerToutesLesTaches,
@@ -28,6 +30,10 @@ import SelecteurQuand, { ajouterJours } from '../../features/taches/ui/Selecteur
    UN seul chemin d'écriture : `taches/lot/` (une action, `ids`), la ligne quitte la liste TOUT DE SUITE et
    revient à sa place si le serveur refuse ; la liste ne se vide jamais sur un échec de lecture et un geste ne
    la relit pas. « Suggéré par l'ERP » (TCH167, `atrier/Suggestions.jsx`) ouvre la liste À trier : Ajouter / Pas utile.
+   R2-024 — la pastille rouge de l'onglet suit chaque geste : corrigée tout de suite (−1 par carte qui part), puis relue du
+   serveur (`chargerBadgeTaches({ force: true })`) ; elle revient (+1) si la carte revient.
+   R2-036 — j / k parcourent les cartes, Entrée ouvre la fiche, e · d · m comme sur Aujourd'hui ; aucune touche seule ne
+   coche ni ne retire une carte (spec-7 §5).
    Maquette : docs/taches/maquettes/ecran-a-trier.html. Source : textes.md §2.5.
    ========================================================================== */
 
@@ -64,13 +70,16 @@ function MetaATrier({ tache, propose, aujourdhui }) {
 
 /** Une ligne (ecran-a-trier.html) : case ronde, titre, mentions, puis les gestes en LIENS (Aujourd'hui · Demain ·
  *  Projet… · ⋯) — jamais de grosses pilules. Cocher = `lot/` `terminer`, comme les autres gestes. */
-function LigneATrier({ tache, propose, reserve, actions, aujourdhui, onChoisirJour, onProjet }) {
+function LigneATrier({ tache, propose, reserve, actions, aujourdhui, onChoisirJour, onProjet, onOuvrir }) {
   const [menu, setMenu] = useState(false)
   return (
     <div className="ligne tri" role="listitem" data-ligne={`tache:${tache.id}`}>
       <CaseRonde titre={tache.titre} onBasculer={() => actions.terminer(tache)} />
       <div className="ligne-corps">
-        <div className="titre">{tache.titre}</div>
+        {/* le titre est un bouton (la fiche s'ouvre d'un toucher ou d'Entrée) : c'est aussi ce que j / k focalisent */}
+        <button type="button" className="ligne-corps-bouton" onClick={() => onOuvrir(tache)}>
+          <span className="titre">{tache.titre}</span>
+        </button>
         <MetaATrier tache={tache} propose={propose} aujourdhui={aujourdhui} />
         <div className="tri-gestes">
           <button type="button" className="geste" onClick={() => actions.aujourdhui(tache)}>Aujourd'hui</button>
@@ -128,6 +137,8 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
   useEffect(() => { lire(); lireReserve() }, [lire, lireReserve])
   // une création ailleurs (saisie, collage, file rejouée) : les listes se relisent une fois, sans recharger la page
   useApresCreation(useCallback(() => { lire(); lireReserve() }, [lire, lireReserve]))
+  const ouvrirFiche = useOuvrirFiche()
+  const relirePastille = useCallback(() => chargerBadgeTaches({ force: true }), [])
 
   useEffect(() => {
     lireAujourdhui({ jour: aujourdhui })
@@ -148,8 +159,10 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     const versReserve = !enReserve && action === 'planifier' && Boolean(valeurs?.quelque_jour)
     setErreur('')
     setSource((liste) => liste.filter((l) => l.id !== tache.id))
+    if (!enReserve) ajusterBadgeATrier(-1) // R2-024 : la carte quitte la boîte, la pastille la suit tout de suite
     if (versReserve) setReserveLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, { ...tache, quelque_jour: true }]))
     const remettre = () => {
+      if (!enReserve) ajusterBadgeATrier(1)
       if (versReserve) setReserveLignes((liste) => liste.filter((l) => l.id !== tache.id))
       setSource((liste) => {
         if (liste.some((l) => l.id === tache.id)) return liste
@@ -163,13 +176,15 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       if ((data?.refusees ?? []).some((r) => r.id === tache.id)) { remettre(); setErreur('Cette tâche a changé : elle est restée dans la liste.'); return }
       proposerAnnuler({
         message,
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); remettre() } : undefined,
+        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); remettre(); relirePastille() } : undefined,
       })
     } catch (err) {
       remettre()
       setErreur(classerErreur(err).code === 'reseau' ? 'Possible une fois connecté' : frenchError(err))
+    } finally {
+      relirePastille()
     }
-  }, [lignes, reserveLignes])
+  }, [lignes, reserveLignes, relirePastille])
 
   const actions = {
     aujourdhui: (t) => appliquer(t, 'planifier', { jour_prevu: aujourdhui }, 'Mise à aujourd\'hui'),
@@ -205,11 +220,13 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
         await lire()
         proposerAnnuler({
           message: n > 1 ? `${n} tâches créées` : 'Ajoutée',
-          onAnnuler: data.geste_id ? async () => { await annulerGeste(data.geste_id); await lire() } : undefined,
+          onAnnuler: data.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(); relirePastille() } : undefined,
         })
       }
     } catch (err) {
       setErreur(frenchError(err))
+    } finally {
+      relirePastille()
     }
   }
 
@@ -233,17 +250,21 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     if (ids.length === 0) return
     const avant = lignes
     setLignes((liste) => liste.filter((l) => !ids.includes(l.id)))
+    ajusterBadgeATrier(-ids.length)
     try {
       const { data } = await traiterLot({ ids, action: 'deplacer', valeurs: { par_tache: parTache } })
       setPropositions(null)
       const n = data?.appliquees?.length ?? ids.length
       proposerAnnuler({
         message: n >= 2 ? `${n} tâches rangées` : `${n} tâche rangée`, // accord sur le même nombre que l'affiché
-        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire() } : undefined,
+        onAnnuler: data?.geste_id ? async () => { await annulerGeste(data.geste_id); await lire(); relirePastille() } : undefined,
       })
     } catch (err) {
       setLignes(avant)
+      ajusterBadgeATrier(ids.length)
       setErreur(frenchError(err))
+    } finally {
+      relirePastille()
     }
   }
 
@@ -256,6 +277,16 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
     if (quand.quelque_jour) actions.reserve(tache)
     else if (quand.jour_prevu) appliquer(tache, 'planifier', { jour_prevu: quand.jour_prevu, ...(quand.heure_debut ? { heure_debut: quand.heure_debut } : {}) }, `Prévue ${jourCourt(quand.jour_prevu, aujourdhui)}`)
   }
+
+  // R2-036 — j / k, Entrée, e · d · m : jamais Espace ni une touche qui coche ou retire une carte
+  const racine = useClavierListe((action, { cle }) => {
+    const id = Number(String(cle ?? '').split(':')[1])
+    const tache = [...lignes, ...reserveLignes].find((l) => l.id === id)
+    if (!tache) return
+    if (action === 'renommer' || action === 'heure') ouvrirFiche(tache.id)
+    else if (action === 'quand') choisirJour(tache)
+    else if (action === 'deplacer') ouvrirProjet(tache)
+  }, { actif: !jourPour && !projetPour && !uneParUne })
 
   const actionsEcran = []
   if (lignes.length > 0) actionsEcran.push({ libelle: 'Trier une par une', onSelect: () => { chargerProjets(); setUneParUne(true) } })
@@ -272,6 +303,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
       aujourdhui={aujourdhui}
       onChoisirJour={choisirJour}
       onProjet={ouvrirProjet}
+      onOuvrir={(t) => ouvrirFiche(t.id)}
     />
   )
 
@@ -330,11 +362,13 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
 
       {!uneParUne ? (
         <SuggereParLErp
-          onAjoutee={(tache) => setLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, tache]))}
-          onRetiree={(id) => setLignes((liste) => liste.filter((l) => l.id !== id))}
+          onAjoutee={(tache) => { setLignes((liste) => (liste.some((l) => l.id === tache.id) ? liste : [...liste, tache])); relirePastille() }}
+          onRetiree={(id) => { setLignes((liste) => liste.filter((l) => l.id !== id)); relirePastille() }}
         />
       ) : null}
 
+      {/* `display: contents` : le clavier a sa racine sans toucher à la mise en page des sections */}
+      <div ref={racine} style={{ display: 'contents' }}>
       {!uneParUne ? (
         <section className="section premiere" aria-label="À trier">
           <div className="liste" role="list">{lignes.map((tache) => ligneDe(tache, false))}</div>
@@ -363,6 +397,7 @@ export default function ATrier({ aujourdhui = aujourdhuiIso() }) {
           ) : null}
         </div>
       ) : null}
+      </div>
     </CoquilleTaches>
   )
 }

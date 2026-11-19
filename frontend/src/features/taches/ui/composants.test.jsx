@@ -9,6 +9,7 @@ import BarreSelection from './BarreSelection'
 import BoutonCopilote, { PHRASE_HORS_LIGNE, PHRASE_SANS_CLE } from './BoutonCopilote'
 import FeuilleACrans, { naviguerApresFeuille } from './FeuilleACrans'
 import SelecteurProjet from './SelecteurProjet'
+import SelecteurQuand from './SelecteurQuand'
 
 /* TCH45 — FeuilleACrans (crans 50 / 85 %, clavier ouvert), SelecteurProjet (« Nouveau projet »
    fixe), BarreSelection (lot), BoutonCopilote (`taqinor:assistant:ouvrir`, une phrase sans clé
@@ -66,6 +67,27 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(screen.getByRole('button', { name: 'OK' })).toHaveFocus()
     expect(focus.mock.calls.at(-1)).toEqual([])
     focus.mockRestore()
+  })
+
+  it('R2-048 — un contenu court : la feuille épouse son contenu (`cran-auto`, plafond 85 %) au lieu de laisser du blanc', () => {
+    const hauteurs = (feuilleH, corpsClient, corpsScroll) => {
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille') ? feuilleH : 0 })
+      vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille-corps') ? corpsClient : 0 })
+      vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function h() { return this.classList.contains('feuille-corps') ? corpsScroll : 0 })
+    }
+    vi.stubGlobal('innerHeight', 844)
+    // feuille à 85 % (717 px), contenu de 260 px : 717 − 600 + 260 = 377 px suffisent
+    hauteurs(717, 600, 260)
+    const { unmount } = render(<div className="tch"><FeuilleACrans ouverte titre="Alléger ma journée" cranInitial="85" onFermer={() => {}}><p>court</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog')).toHaveClass('cran-auto')
+    expect(screen.getByRole('dialog')).not.toHaveClass('cran-85')
+    unmount()
+    vi.restoreAllMocks()
+    // contenu plus haut que le cran : le cran reste (le corps défile)
+    hauteurs(422, 300, 900)
+    render(<div className="tch"><FeuilleACrans ouverte titre="Quand" onFermer={() => {}}><p>long</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog')).toHaveClass('cran-50')
+    vi.unstubAllGlobals()
   })
 
   it('peut s\'ouvrir directement à 85 %', () => {
@@ -129,6 +151,140 @@ describe('TCH45 — FeuilleACrans', () => {
     expect(screen.getByRole('button', { name: 'ouvreur' })).toHaveFocus()
   })
 
+  it('R2-043 — poignée cachée (bureau) : le focus va au premier champ VISIBLE, sinon à « Fermer » ; jamais derrière', () => {
+    const style = document.createElement('style')
+    style.textContent = '.poignee { display: none; }'
+    document.head.appendChild(style)
+    try {
+      const { unmount } = render(
+        <div className="tch">
+          <button type="button">ouvreur</button>
+          <FeuilleACrans ouverte titre="Fiche" onFermer={() => {}}><button type="button">Quand</button><input aria-label="Titre" /></FeuilleACrans>
+        </div>,
+      )
+      expect(screen.getByRole('textbox', { name: 'Titre' })).toHaveFocus()
+      unmount()
+      render(<FeuilleACrans ouverte titre="Supprimer" onFermer={() => {}}><button type="button">Supprimer</button></FeuilleACrans>)
+      expect(screen.getByRole('button', { name: 'Fermer' })).toHaveFocus()
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('R2-043 — un menu qui rend le focus à son bouton APRÈS l\'ouverture ne le garde pas derrière la feuille ; il y revient à la fermeture', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte={ouverte} titre="Alléger ma journée" onFermer={() => {}}><button type="button">Garder</button></FeuilleACrans>
+      </div>
+    )
+    const { rerender } = render(page(true))
+    const dialogue = screen.getByRole('dialog', { name: 'Alléger ma journée' })
+    expect(dialogue.contains(document.activeElement)).toBe(true)
+    // ce que fait le menu Radix en se refermant : le focus repart sur son déclencheur, derrière la feuille
+    act(() => { screen.getByRole('button', { name: "Plus d'actions" }).focus() })
+    expect(dialogue.contains(document.activeElement)).toBe(true)
+    rerender(page(false))
+    expect(screen.getByRole('button', { name: "Plus d'actions" })).toHaveFocus()
+  })
+
+  it('R2-050 — `variante="panneau"` au bureau large : panneau à droite NON modal (sans voile), le focus reste à la ligne, Échap ferme', async () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: q === '(min-width: 1024px)', media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    const onFermer = vi.fn()
+    const user = userEvent.setup()
+    const page = (ouverte) => (
+      <div className="tch">
+        <div data-ligne="tache:21"><button type="button">Ligne suivante</button></div>
+        <div data-ligne="tache:20"><button type="button">Ligne ouverte</button></div>
+        <FeuilleACrans ouverte={ouverte} variante="panneau" titre="Fiche" onFermer={onFermer}><input aria-label="Titre" /></FeuilleACrans>
+      </div>
+    )
+    const { container, rerender } = render(page(false))
+    screen.getByRole('button', { name: 'Ligne ouverte' }).focus()
+    rerender(page(true))
+    const panneau = screen.getByRole('dialog', { name: 'Fiche' })
+    expect(panneau).toHaveClass('panneau-bureau')
+    expect(panneau).toHaveAttribute('aria-modal', 'false')
+    expect(container.querySelector('.voile')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ligne ouverte' })).toHaveFocus()
+    // la liste reste à la main : le focus peut aller sur une autre ligne sans être ramené dans le panneau
+    act(() => { screen.getByRole('button', { name: 'Ligne suivante' }).focus() })
+    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(onFermer).toHaveBeenCalledTimes(1)
+    rerender(page(false))
+    expect(screen.getByRole('button', { name: 'Ligne suivante' })).toHaveFocus() // jamais ramené en arrière
+    vi.unstubAllGlobals()
+  })
+
+  it('R2-050 — un panneau ouvert depuis un MENU (pas une ligne) prend le focus, même quand le menu le rend à son bouton', () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: true, media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    render(
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte variante="panneau" titre="Bilan du soir" onFermer={() => {}}><button type="button">Valider</button></FeuilleACrans>
+      </div>,
+    )
+    const panneau = screen.getByRole('dialog', { name: 'Bilan du soir' })
+    expect(panneau.contains(document.activeElement)).toBe(true)
+    act(() => { screen.getByRole('button', { name: "Plus d'actions" }).focus() }) // le menu Radix rend le focus
+    expect(panneau.contains(document.activeElement)).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it('R2-050 — sous 1024 px, `variante="panneau"` reste un dialogue modal (iPhone : feuille du bas)', () => {
+    vi.stubGlobal('matchMedia', (q) => ({ matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {} }))
+    const { container } = render(<div className="tch"><FeuilleACrans ouverte variante="panneau" titre="Fiche" onFermer={() => {}}><p>x</p></FeuilleACrans></div>)
+    expect(screen.getByRole('dialog', { name: 'Fiche' })).toHaveClass('dialogue-bureau')
+    expect(screen.getByRole('dialog', { name: 'Fiche' })).toHaveAttribute('aria-modal', 'true')
+    expect(container.querySelector('.voile')).not.toBeNull()
+    vi.unstubAllGlobals()
+  })
+
+  it('R2-049 — ouverte au doigt, la feuille rend le focus SANS anneau ; ouverte au clavier, avec', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Plus d'actions</button>
+        <FeuilleACrans ouverte={ouverte} titre="Alléger ma journée" onFermer={() => {}}><button type="button">Garder</button></FeuilleACrans>
+      </div>
+    )
+    const { rerender } = render(page(false))
+    const ouvreur = screen.getByRole('button', { name: "Plus d'actions" })
+    ouvreur.focus()
+    fireEvent.pointerDown(ouvreur)
+    rerender(page(true))
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+    rerender(page(false))
+    expect(ouvreur).toHaveFocus()
+    expect(focus.mock.contexts.at(-1)).toBe(ouvreur)
+    expect(focus.mock.calls.at(-1)).toEqual([{ focusVisible: false }])
+    focus.mockClear()
+    ouvreur.focus()
+    fireEvent.keyDown(ouvreur, { key: 'Enter' })
+    rerender(page(true))
+    rerender(page(false))
+    expect(focus.mock.contexts.at(-1)).toBe(ouvreur)
+    expect(focus.mock.calls.at(-1)).toEqual([])
+    focus.mockRestore()
+  })
+
+  it('R2-043 — Échap ferme même quand le focus est DERRIÈRE la feuille ; seule la plus haute se ferme', async () => {
+    const dessous = vi.fn()
+    const dessus = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <div className="tch">
+        <button type="button">derrière</button>
+        <FeuilleACrans ouverte titre="Fiche" onFermer={dessous}><button type="button">a</button></FeuilleACrans>
+        <FeuilleACrans ouverte titre="Quand" onFermer={dessus}><button type="button">b</button></FeuilleACrans>
+      </div>,
+    )
+    screen.getByRole('button', { name: 'derrière' }).focus()
+    await user.keyboard('{Escape}')
+    expect(dessus).toHaveBeenCalledTimes(1)
+    expect(dessous).not.toHaveBeenCalled()
+  })
+
   it('Raccord F2 — le retour arrière du navigateur ferme la feuille (l\'écran reste) ; fermée autrement, l\'entrée est retirée', async () => {
     const onFermer = vi.fn()
     const pose = vi.spyOn(window.history, 'pushState')
@@ -179,6 +335,43 @@ describe('TCH45 — FeuilleACrans', () => {
     render(<FeuilleACrans ouverte titre="Fiche" historique={false} onFermer={() => {}}><button type="button">x</button></FeuilleACrans>)
     await new Promise((fin) => { setTimeout(fin, 5) })
     expect(pose).not.toHaveBeenCalled()
+  })
+})
+
+describe('R2-041 — SelecteurQuand : l\'heure et le jour s\'écrivent à la sortie du champ', () => {
+  const valeur = { jour_prevu: '2026-11-17', moment: '', heure_debut: null, quelque_jour: false }
+
+  it('taper 1145 pas à pas n\'écrit rien ; la sortie du champ écrit 11:45 une seule fois', () => {
+    const onChoisir = vi.fn()
+    render(<SelecteurQuand valeur={valeur} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const champ = screen.getByLabelText('Heure')
+    // le navigateur rend une heure « valide » dès le 3e chiffre (11:04), puis 11:45
+    fireEvent.change(champ, { target: { value: '11:04' } })
+    fireEvent.change(champ, { target: { value: '11:45' } })
+    expect(onChoisir).not.toHaveBeenCalled()
+    expect(champ).toHaveValue('11:45')
+    fireEvent.blur(champ)
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-17', heure_debut: '11:45' }))
+    fireEvent.blur(champ) // rien de neuf : pas de seconde écriture
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+  })
+
+  it('Entrée valide l\'heure ; le jour choisi s\'écrit aussi à la sortie, jamais une année partielle', () => {
+    const onChoisir = vi.fn()
+    render(<SelecteurQuand valeur={{ ...valeur, jour_prevu: '2026-11-20' }} aujourdhui="2026-11-17" onChoisir={onChoisir} />)
+    const heure = screen.getByLabelText('Heure')
+    fireEvent.change(heure, { target: { value: '09:30' } })
+    fireEvent.keyDown(heure, { key: 'Enter' })
+    expect(onChoisir).toHaveBeenLastCalledWith(expect.objectContaining({ heure_debut: '09:30' }))
+    onChoisir.mockClear()
+    const jour = screen.getByLabelText('Choisir un jour')
+    fireEvent.change(jour, { target: { value: '0002-11-27' } })
+    fireEvent.change(jour, { target: { value: '2026-11-27' } })
+    expect(onChoisir).not.toHaveBeenCalled()
+    fireEvent.blur(jour)
+    expect(onChoisir).toHaveBeenCalledTimes(1)
+    expect(onChoisir).toHaveBeenCalledWith(expect.objectContaining({ jour_prevu: '2026-11-27' }))
   })
 })
 

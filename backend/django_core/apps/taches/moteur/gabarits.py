@@ -417,12 +417,18 @@ _CONSTATS = {
 
 
 def _constat(cle, v, var, nom_pour):
+    """La phrase du constat, SUIVIE de sa question quand il en a une (R2-014) : « 2 tâches reportées 3 fois ou plus.
+    Les revoir maintenant ? » — les boutons « Oui · Pas maintenant » répondent à une question posée à l'écran.
+    `C1.detail` et `Cn.question` se rendent seuls ; C5, information, n'a pas de question."""
     if cle == 'C3':
         jour = v['jour']
         v['Jour'] = JOURS_NOM[jour] if isinstance(jour, int) else jour[:1].upper() + jour[1:]
     if cle in ('C6', 'C8.ecran'):
         v['nom'] = _nom(v, 'projet', nom_pour, 'ecran') or 'un projet'
-    return _rendre(_CONSTATS[cle], v)
+    phrase = _rendre(_CONSTATS[cle], v)
+    base, _, suite = cle.partition('.')
+    question = None if suite in ('detail', 'question') else _CONSTATS.get(f'{base}.question')
+    return f'{phrase} {_rendre(question, v)}' if question else phrase
 
 
 # --- Revue de la semaine (textes.md §4.6) ---------------------------------------------
@@ -432,10 +438,13 @@ def _jour_court(d):
 
 
 def _debut_revue(v):
-    phrase = 'Du {debut} au {fin} : {faites} tâche{faites?|s} en {jours} jour{jours?|s}'
+    """« Cette semaine : 4 faites (9 la précédente). » (R2-034) ; une revue demandée pour une AUTRE semaine
+    (`courante` faux) garde ses dates : « Du lun. 9 au ven. 13 : 4 faites (9 la précédente). »"""
+    tete = 'Cette semaine' if v.get('courante', True) else 'Du {debut} au {fin}'
+    phrase = tete + ' : {faites} faite{faites?|s}'
     v = dict(v, debut=_jour_court(v['debut']), fin=_jour_court(v['fin']))
     if v.get('prec') is not None:
-        phrase += ' (précédente : {prec})'
+        phrase += ' ({prec} la précédente)'
     return _rendre(phrase, v) + '.'
 
 

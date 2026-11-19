@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { lireAujourdhui, lireBadge } from '../../api/tachesApi'
+import { EVENEMENT_CREEES } from './lib/fiche'
 
 /* ============================================================================
    TCH101 — Pastille de l'app Tâches. Deux nombres, jamais confondus :
@@ -20,12 +21,14 @@ const TTL_MS = 60_000
 
 let cache = null // { expire, n, jour, aTrier }
 let enVol = null
+let suivante = null // R2-024 : la relecture forcée qui attend la fin de la lecture en vol
 const ecouteurs = new Set()
 
 /** Vide le cache partagé (tests, changement de compte). */
 export function reinitialiserBadgeTaches() {
   cache = null
   enVol = null
+  suivante = null
 }
 
 /** Pose le nombre sur l'icône de l'app : rien si le navigateur n'a pas l'API, effacé à 0. */
@@ -43,11 +46,8 @@ export async function poserBadgeApp(n, nav = typeof navigator === 'undefined' ? 
   }
 }
 
-/** Lit les deux nombres du serveur, les garde en cache, pose la pastille de l'icône. */
-export function chargerBadgeTaches({ force = false } = {}) {
-  if (!force && cache && cache.expire > Date.now()) return Promise.resolve(cache)
-  if (enVol) return enVol
-  // une seule requête quand `badge/` porte `a_trier` ; sinon (serveur plus ancien) l'ancien chemin
+/** Une lecture : une seule requête quand `badge/` porte `a_trier` ; sinon (serveur plus ancien) l'ancien chemin. */
+function lancer() {
   enVol = lireBadge()
     .then(async (badge) => {
       const direct = badge.data?.a_trier
@@ -76,11 +76,29 @@ export function chargerBadgeTaches({ force = false } = {}) {
   return enVol
 }
 
+/** Lit les deux nombres du serveur, les garde en cache, pose la pastille de l'icône. `force` : un geste vient de les
+ *  changer — la lecture déjà en vol est partie AVANT lui, donc la relecture forcée se met derrière elle (R2-024). */
+export function chargerBadgeTaches({ force = false } = {}) {
+  if (!force && cache && cache.expire > Date.now()) return Promise.resolve(cache)
+  if (!enVol) return lancer()
+  if (!force) return enVol
+  if (!suivante) suivante = enVol.then(() => { suivante = null; return enVol ?? lancer() })
+  return suivante
+}
+
+/** Corrige TOUT DE SUITE la pastille d'À trier d'un geste qui vient de partir (une carte rangée = −1) ; la relecture
+ *  forcée qui suit la confirme ou la corrige. Sans lecture préalable, rien n'est inventé. */
+export function ajusterBadgeATrier(delta) {
+  if (!cache || !Number.isFinite(delta)) return
+  cache = { ...cache, aTrier: Math.max(0, (cache.aTrier ?? 0) + delta) }
+  ecouteurs.forEach((fn) => fn(cache))
+}
+
 const VIDE = { n: 0, jour: null, aTrier: 0, erreur: false }
 
 /**
  * `{ n, jour, aTrier, erreur }` : zéros tant que la réponse n'est pas là (jamais bloquant). Se
- * rafraîchit à l'arrivée sur l'écran, au retour au premier plan et à la reconnexion.
+ * rafraîchit à l'arrivée sur l'écran, au retour au premier plan, à la reconnexion et après une création.
  * `actif: false` (compte sans Tâches) : aucune requête.
  */
 export function useBadgeTaches({ actif = true } = {}) {
@@ -93,12 +111,16 @@ export function useBadgeTaches({ actif = true } = {}) {
     // au retour au premier plan : le cache de 60 s suffit ; à la reconnexion : relecture forcée
     const auPremierPlan = () => { if (document.visibilityState === 'visible') chargerBadgeTaches() }
     const aLaReconnexion = () => { chargerBadgeTaches({ force: true }) }
+    // R2-024 : une création (saisie, collage, file rejouée) change le compte d'À trier, sur n'importe quel écran
+    const apresCreation = () => { chargerBadgeTaches({ force: true }) }
     document.addEventListener('visibilitychange', auPremierPlan)
     window.addEventListener('online', aLaReconnexion)
+    window.addEventListener(EVENEMENT_CREEES, apresCreation)
     return () => {
       ecouteurs.delete(setEtat)
       document.removeEventListener('visibilitychange', auPremierPlan)
       window.removeEventListener('online', aLaReconnexion)
+      window.removeEventListener(EVENEMENT_CREEES, apresCreation)
     }
   }, [actif])
 

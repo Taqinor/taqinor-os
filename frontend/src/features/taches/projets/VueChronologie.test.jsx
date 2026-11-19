@@ -86,6 +86,56 @@ describe('TCH90 — Chronologie', () => {
   })
 })
 
+describe('R2-066 — Chronologie : les tâches datées et les étapes sans date', () => {
+  /** « Études » (datée) porte deux tâches datées ; « Pose » n'a aucune date mais une tâche datée ; « Livraison » rien. */
+  function vueRiche() {
+    const vue = vueDatee()
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].taches = [
+      base,
+      { ...base, id: 31, titre: 'Mesurer le toit', jalon: false, echeance: null, jour_prevu: '2026-11-20' },
+      { ...base, id: 32, titre: 'Commander le câble', jalon: false, echeance: null, jour_prevu: '2026-11-21' },
+    ]
+    vue.sections.push({ ...vue.sections[0], id: 9, nom: 'Pose', date_debut: null, date_fin: null, compteurs: { ouvertes: 1, faites: 0 },
+      taches: [{ ...base, id: 33, titre: 'Poser la structure', jalon: false, echeance: null, jour_prevu: '2026-11-28' }] })
+    vue.sections.push({ ...vue.sections[0], id: 10, nom: 'Livraison', date_debut: null, date_fin: null, compteurs: { ouvertes: 0, faites: 0 },
+      taches: [] })
+    return vue
+  }
+
+  it('iPhone : les tâches datées d\'une étape se lisent sous elle, avec leur jour', () => {
+    render(<VueChronologie vue={vueRiche()} aujourdhui={AUJOURDHUI} />)
+    const frise = screen.getByRole('list', { name: 'Chronologie du projet jusqu\'à l\'échéance' })
+    const etudes = within(frise).getAllByRole('listitem').find((l) => l.textContent.includes('Études'))
+    expect(etudes).toHaveTextContent('Mesurer le toit')
+    expect(etudes).toHaveTextContent('ven. 20 nov.')
+    expect(etudes).toHaveTextContent('Commander le câble')
+    const pose = within(frise).getAllByRole('listitem').find((l) => l.textContent.includes('Pose'))
+    expect(pose).toHaveTextContent('Poser la structure')
+  })
+
+  it('bureau : un point par jour de tâche sur la piste, groupé par étape ; une étape sans date ni tâche datée va dans « Sans date »', () => {
+    render(<VueChronologie vue={vueRiche()} aujourdhui={AUJOURDHUI} />)
+    const piste = screen.getByRole('group', { name: /Chronologie : étapes et jalons/ })
+    expect(within(piste).getByRole('img', { name: 'Mesurer le toit · ven. 20 nov.' })).toBeInTheDocument()
+    expect(within(piste).getByRole('img', { name: 'Commander le câble · sam. 21 nov.' })).toBeInTheDocument()
+    expect(within(piste).getByRole('img', { name: 'Poser la structure · sam. 28 nov.' })).toBeInTheDocument()
+    // l'étape « Pose » (sans date) a sa rangée, nommée ; « Livraison » (rien de daté) est dite « Sans date »
+    expect(within(piste).getAllByText('Pose').length).toBeGreaterThan(0)
+    expect(within(piste).getByText('Sans date :').parentElement).toHaveTextContent('Livraison')
+  })
+
+  it('les pastilles « aujourd\'hui » et « échéance » restent dans le cadre : celle du bord prend le côté intérieur', () => {
+    // aujourd'hui = le 09/11, début de l'axe ; l'échéance (15/12) en est la fin : les deux pastilles sont aux bords
+    render(<VueChronologie vue={vueDatee()} aujourdhui="2026-11-09" />)
+    const piste = screen.getByRole('group', { name: /Chronologie : étapes et jalons/ })
+    const auj = piste.querySelector('.ep-fh-trait.auj')
+    expect(auj.className).toMatch(/bord-g/) // 09/11 = le début de l'axe
+    const fin = piste.querySelector('.ep-fh-trait.fin')
+    expect(fin.className).toMatch(/bord-d/) // fin de l'axe
+  })
+})
+
 describe('TCH90 — Burn-up « Avancement par semaine »', () => {
   it('rend les points SERVIS et la légende du serveur', () => {
     render(<Burnup vue={exempleContrat('taches', 'projet_vue')} aujourdhui={AUJOURDHUI} />)
