@@ -102,7 +102,7 @@ function Rappel({ tache, aujourdhui, ecrire, annulable, onPoserJour }) {
         <p className="aide-champ">
           {SANS_JOUR}
           {' '}
-          {onPoserJour ? <button type="button" className="bouton discret" onClick={onPoserJour}>Poser le jour</button> : null}
+          {onPoserJour ? <button type="button" className="apercu-bascule" onClick={onPoserJour}>Poser le jour</button> : null}
         </p>
       ) : (
         <div className="segmente" role="radiogroup" aria-label="Quand sonner">
