@@ -12,6 +12,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../../ui/DropdownMenu'
+import { signalerEcrite } from '../lib/fiche'
 import { proposerAnnuler } from '../lib/gestes'
 import {
   aujourdhuiIso, ecartJours, echeanceTexte, heure, heureDuConflit, jourCourt, jourNomme,
@@ -112,6 +113,7 @@ function CheckList({ tache, onChange, onErreur }) {
       const { data } = await ajouterPoint({ tache_id: tache.id, libelle })
       const element = data?.element ?? data
       onChange(element?.id ? [...points, element] : null)
+      signalerEcrite()
       setNouveau('')
       onErreur('checklist', '')
     } catch (err) {
@@ -122,6 +124,7 @@ function CheckList({ tache, onChange, onErreur }) {
     onChange(points.map((p) => (p.id === point.id ? { ...p, fait } : p)))
     try {
       await modifierPoint(point.id, { fait })
+      signalerEcrite()
     } catch (err) {
       onChange(points)
       onErreur('checklist', frenchError(err))
@@ -132,6 +135,7 @@ function CheckList({ tache, onChange, onErreur }) {
     onChange(points.filter((p) => p.id !== point.id))
     try {
       await retirerPoint(point.id)
+      signalerEcrite()
     } catch (err) {
       onChange(points)
       onErreur('checklist', frenchError(err))
@@ -197,6 +201,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
     .finally(() => { if (courant.current === id) setChargement(false) }), [id])
 
   useEffect(() => { courant.current = id; charger() }, [id, charger])
+  // R2-040 — la fiche fermée (croix, Échap, retour arrière), l'écran se relit une dernière fois
+  useEffect(() => () => signalerEcrite(), [])
 
   const erreur = useCallback((champ, message) => setErreurs((e) => ({ ...e, [champ]: message })), [])
 
@@ -213,6 +219,8 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
       const { data } = await appel(lock ?? tache.lock_version)
       erreur(champ, '')
       setConflit(null)
+      // R2-040 — l'écran sous la fiche (Aujourd'hui, Agenda, Projet…) se relit : la ligne suit ce qu'on vient de faire
+      signalerEcrite(data?.tache ?? (data?.id ? data : null))
       if (relire) { await charger(); return { data, geste: data?.geste_id ?? null } }
       return { data, geste: appliquer(data) }
     } catch (err) {
@@ -230,7 +238,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
 
   const annulable = (message, geste) => proposerAnnuler({
     message,
-    onAnnuler: geste ? async () => { await annulerGeste(geste); await charger() } : undefined,
+    onAnnuler: geste ? async () => { await annulerGeste(geste); signalerEcrite(); await charger() } : undefined,
   })
 
   const patcher = (corps, champ) => ecrire((lock) => modifierTache(id, { ...corps, lock_version: lock }), champ)
@@ -287,6 +295,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   const repeter = async (rappel, corps, message) => {
     try {
       const { data } = await repeterRappel(rappel.id, corps)
+      signalerEcrite()
       annulable(message, data?.geste_id)
       await charger()
     } catch (err) {

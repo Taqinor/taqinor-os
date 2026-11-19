@@ -11,7 +11,16 @@ import { useSearchParams } from 'react-router-dom'
    ========================================================================== */
 
 export const EVENEMENT_CREEES = 'taqinor:taches:creees'
+/** R2-040 — émis par la fiche après chaque écriture réussie et à sa fermeture : `detail = { tache }` (la tâche
+ *  rendue par le serveur, ou `null` quand la fiche n'a rien de plus frais que l'identifiant). */
+export const EVENEMENT_ECRITE = 'taqinor:taches:ecrite'
 export const MARQUE_FICHE = 'tchFiche'
+
+/** R2-040 — la fiche est montée par la coquille, pas par l'écran : elle prévient l'écran qu'une tâche a changé. */
+export function signalerEcrite(tache = null) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache } }))
+}
 
 /** `(id) => void` : ouvre la fiche de la tâche `id` sur l'écran courant. */
 export function useOuvrirFiche() {
@@ -25,11 +34,16 @@ export function useOuvrirFiche() {
   }, [setParams])
 }
 
-/** Appelle `rappel(detail)` après chaque création (saisie, collage, file rejouée) — l'écran se met à jour seul. */
+/** Appelle `rappel(detail)` après chaque création (saisie, collage, file rejouée) ET (R2-040) après chaque écriture
+ *  de la fiche (Fait, Supprimer, Quand… : `{ tache }`) — l'écran se met à jour seul, sans rechargement. */
 export function useApresCreation(rappel) {
   useEffect(() => {
-    const surCreees = (e) => rappel(e?.detail ?? {})
-    window.addEventListener(EVENEMENT_CREEES, surCreees)
-    return () => window.removeEventListener(EVENEMENT_CREEES, surCreees)
+    const surEvenement = (e) => rappel(e?.detail ?? {})
+    window.addEventListener(EVENEMENT_CREEES, surEvenement)
+    window.addEventListener(EVENEMENT_ECRITE, surEvenement)
+    return () => {
+      window.removeEventListener(EVENEMENT_CREEES, surEvenement)
+      window.removeEventListener(EVENEMENT_ECRITE, surEvenement)
+    }
   }, [rappel])
 }

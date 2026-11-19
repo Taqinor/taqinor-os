@@ -6,6 +6,7 @@ import {
   annulerGeste, attendreTache, classerErreur, creerEtiquette, creerTache, listerToutesLesEtiquettes, modifierRecurrence,
   nouvelleCle, poserRappel, recevoirTache, restaurerTache, retirerRappel, sauterTache, supprimerTache, trancherTache,
   rechercher } from '../../../api/tachesApi'
+import { signalerEcrite } from '../lib/fiche'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { ETATS_LIEN, accord, duree, heure, jourCourt } from '../lib/textes'
 import CaseRonde from '../ui/CaseRonde'
@@ -270,6 +271,7 @@ function SousTaches({ tache, charger, erreur }) {
     if (!titre.trim()) return
     try {
       await creerTache({ titre: titre.trim(), parent_id: tache.id, client_id: nouvelleCle() })
+      signalerEcrite()
       setTitre('')
       await charger()
     } catch (err) {
@@ -302,11 +304,13 @@ function Supprimer({ tache, onFermer, erreur, demande = 0 }) {
       const { data } = await supprimerTache(tache.id)
       // « Annuler » défait le geste côté serveur (A7) ; sans `geste_id` (hors ligne, file), repli sur la restauration.
       const defaire = async () => {
-        if (!data?.geste_id) { await restaurerTache(tache.id); return }
+        if (!data?.geste_id) { await restaurerTache(tache.id); signalerEcrite(); return }
         const { data: bilan } = await annulerGeste(data.geste_id)
+        signalerEcrite()
         const conflits = bilan?.conflits?.length ?? 0
         if (conflits > 0) annoncer(`Annulé, sauf ${conflits} modifiée${conflits > 1 ? 's' : ''} depuis.`)
       }
+      signalerEcrite() // R2-040 — la ligne quitte la liste sous la fiche, sans rechargement
       proposerAnnuler({ message: 'Supprimée', onAnnuler: defaire })
       onFermer?.()
     } catch (err) {

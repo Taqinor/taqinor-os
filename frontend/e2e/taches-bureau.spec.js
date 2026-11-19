@@ -2,7 +2,8 @@
 //
 // Parcours joués ici (maquette `ecran-aujourdhui-matin.html`, spec-3 §1 « Placer à une heure » : 1 glisser) :
 //   les trois colonnes (Mes projets · la liste · l'Agenda du jour) mesurées à 1440 px, puis glisser une ligne sur une
-//   heure de l'Agenda → `planifier/` → « Placée à 10:00 · Annuler » → Annuler.
+//   heure de l'Agenda → `planifier/` → « Placée à 10:00 · Annuler » → Annuler ; puis (R2-040) ce qu'on fait dans la
+//   fiche (Quand › Aujourd'hui, Fait, Supprimer) se voit dans la liste sous elle, sans rechargement.
 // NON joué ici : l'iPhone (aucune colonne : `Aujourdhui.test.jsx` / `ColonneBureau.test.jsx`, avec `matchMedia`),
 // la ligne « maintenant » (horloge) — acceptation en direct.
 //
@@ -10,7 +11,7 @@
 // rejouable, indépendante de l'ordre des autres specs.
 import { test, expect } from '@playwright/test'
 import {
-  attendreAujourdhui, creerProjet, creerTaches, jourServeur, ligne, lireTache, reinitialiser, titreUnique, toast,
+  attendreAujourdhui, creerProjet, creerTaches, jourServeur, ligne, lireTache, ouvrirEcran, reinitialiser, titreUnique, toast,
 } from './taches-aides'
 
 test.use({ viewport: { width: 1440, height: 900 } })
@@ -70,5 +71,33 @@ test.describe('Tâches — Aujourd\'hui au bureau', () => {
     await expect(laLigne.locator('.heure')).toHaveCount(0)
     await expect(page.locator('.tch-bureau-agenda').getByRole('checkbox', { name: `Fait : ${tache.titre}` })).toHaveCount(0)
     await expect.poll(async () => (await lireTache(page, tache.id)).heure_debut).toBeNull()
+  })
+
+  test('R2-040 — la fiche met la liste à jour sans rechargement : Quand › Aujourd\'hui, Fait, Supprimer', async ({ page }) => {
+    await reinitialiser(page)
+    const jour = await jourServeur(page)
+    const demain = new Date(Date.parse(`${jour}T00:00:00Z`) + 86400000).toISOString().split('T')[0]
+    const [tache] = await creerTaches(page, [titreUnique('Relancer le client')], { jour_prevu: demain })
+    const [autre] = await creerTaches(page, [titreUnique('Commander les rails')], { jour_prevu: jour })
+    await ouvrirEcran(page, `/taches/aujourdhui?tache=${tache.id}`, 'aujourdhui')
+    await expect(ligne(page, tache.id)).toHaveCount(0)
+    const fiche = page.locator(`[data-fiche="${tache.id}"]`)
+    await fiche.getByRole('button', { name: /^Quand je la fais/ }).click()
+    await fiche.getByRole('radio', { name: /^Aujourd'hui/ }).click()
+    // la ligne arrive dans la liste (sous la fiche) sans qu'on recharge la page
+    await expect(ligne(page, tache.id)).toHaveCount(1)
+    await fiche.getByRole('button', { name: 'Fait', exact: true }).click()
+    await expect(ligne(page, tache.id).locator('.ligne.faite')).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(fiche).toHaveCount(0)
+
+    // Supprimer depuis la fiche (ouverte par sa ligne) : la ligne part
+    await ligne(page, autre.id).locator('.ligne-corps-bouton').click()
+    const fiche2 = page.locator(`[data-fiche="${autre.id}"]`)
+    await fiche2.getByRole('button', { name: 'Actions' }).click()
+    await page.getByRole('menuitem', { name: 'Supprimer' }).click()
+    await fiche2.getByRole('button', { name: `Supprimer « ${autre.titre} »` }).click()
+    await expect(fiche2).toHaveCount(0)
+    await expect(ligne(page, autre.id)).toHaveCount(0)
   })
 })

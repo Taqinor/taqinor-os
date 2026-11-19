@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
+import { EVENEMENT_CREEES, EVENEMENT_ECRITE, useApresCreation } from '../lib/fiche'
 import { reinitialiserGestes } from '../lib/gestes'
 import Fiche from './Fiche'
 
@@ -233,6 +234,37 @@ describe('TCH84 — fiche d\'une tâche', () => {
     monter()
     await screen.findByRole('textbox', { name: 'Titre' })
     expect(screen.queryByRole('button', { name: 'Encore 10 min' })).toBeNull()
+  })
+
+  it('R2-040 — chaque écriture réussie (Fait, Quand) et la fermeture préviennent les écrans : `taqinor:taches:ecrite`', async () => {
+    const user = userEvent.setup()
+    const recu = vi.fn()
+    window.addEventListener('taqinor:taches:ecrite', recu)
+    try {
+      const { unmount } = monter()
+      await screen.findByRole('textbox', { name: 'Titre' })
+      expect(recu).not.toHaveBeenCalled() // une simple lecture ne dérange personne
+      await user.click(screen.getByRole('button', { name: 'Fait' }))
+      await waitFor(() => expect(recu).toHaveBeenCalledTimes(1))
+      expect(recu.mock.calls[0][0].detail.tache).toEqual(recurrente.tache ?? recurrente)
+      await user.click(screen.getByRole('button', { name: /Quand je la fais/ }))
+      await user.click(screen.getByRole('radio', { name: /Demain/ }))
+      await waitFor(() => expect(recu).toHaveBeenCalledTimes(2))
+      unmount()
+      expect(recu).toHaveBeenCalledTimes(3)
+    } finally {
+      window.removeEventListener('taqinor:taches:ecrite', recu)
+    }
+  })
+
+  it('R2-040 — `useApresCreation` relit l\'écran après une création ET après une écriture de la fiche', () => {
+    const rappel = vi.fn()
+    function Ecran() { useApresCreation(rappel); return null }
+    render(<Ecran />)
+    act(() => { window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: [] } })) })
+    act(() => { window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache: { id: 20 } } })) })
+    expect(rappel).toHaveBeenCalledTimes(2)
+    expect(rappel.mock.calls[1][0]).toEqual({ tache: { id: 20 } })
   })
 
   it('check-list : « Ajouter un point » écrit au serveur, le point apparaît sans relire la tâche', async () => {
