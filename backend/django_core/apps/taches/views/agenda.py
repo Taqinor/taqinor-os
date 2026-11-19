@@ -80,12 +80,17 @@ def _projet_du_compte(user, valeur):
     return int(valeur)
 
 
-def taches_de_la_periode(user, du, au, projet_id=None):
+def taches_de_la_periode(user, du, au, projet_id=None, J=None):
     """Tâches vivantes non abandonnées de `user` prévues ou à échéance dans [du, au] (parent nul,
     projet actif ou triées, une faite quel que soit l'état de son projet : le préfiltre de la journée,
-    étendu à la période — revue F2 tour 2 #1)."""
+    étendu à la période — revue F2 tour 2 #1). `J` : aujourd'hui — R2-031b (règle C-5, « ce que j'ai posé reste
+    posé ») : une tâche OUVERTE d'un projet EN PAUSE prévue CE jour-là reste dans l'agenda du jour ; la pause
+    continue de retirer celles des jours à venir."""
     rattachee = (Q(projet__isnull=False, projet__statut=StatutProjet.ACTIF, projet__is_deleted=False)
                  | Q(projet__isnull=True, triee_le__isnull=False))
+    if J is not None:
+        rattachee |= Q(projet__statut=StatutProjet.EN_PAUSE, projet__is_deleted=False, jour_prevu=J,
+                       quelque_jour=False, statut__in=sel.OUVERTS)
     qs = (taches_de(user).filter(parent__isnull=True).filter(rattachee | Q(statut=StatutTache.FAIT))
           .exclude(statut=StatutTache.ANNULE)
           .filter(Q(jour_prevu__range=(du, au)) | Q(echeance__range=(du, au))))
@@ -97,7 +102,7 @@ def taches_journee_et_periode(user, J, du, au, projet_id=None):
     ET celles de la période, lues d'un seul tenant (`dans_journee` / `dans_periode` : appartenance,
     sans seconde lecture des rappels, check-lists et sous-tâches). → (tâches de J, tâches de la période)."""
     dans_j = Exists(sel.taches_de_la_journee(user, J).filter(pk=OuterRef('pk')))
-    dans_p = Exists(taches_de_la_periode(user, du, au, projet_id).filter(pk=OuterRef('pk')))
+    dans_p = Exists(taches_de_la_periode(user, du, au, projet_id, J).filter(pk=OuterRef('pk')))
     qs = taches_de(user).annotate(dans_journee=dans_j, dans_periode=dans_p).filter(
         Q(dans_journee=True) | Q(dans_periode=True))
     toutes = list(charger_items(qs))

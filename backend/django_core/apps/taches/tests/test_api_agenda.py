@@ -167,6 +167,17 @@ class AgendaTests(TestCase):
         self.assertEqual(faites, {avant.isoformat(): 0, hier.isoformat(): 2, self.T.isoformat(): 1,
                                   demain.isoformat(): 0})
 
+    def test_pause_la_tache_posee_aujourdhui_reste_dans_l_agenda(self):
+        """R2-031b (règle C-5, « ce que j'ai posé reste posé ») — une tâche OUVERTE d'un projet en pause prévue
+        AUJOURD'HUI (à 16:00) reste dans l'agenda du jour ; la pause continue de retirer les jours à venir."""
+        from apps.taches.choix import StatutProjet
+        en_pause = fabriques.projet(self.u, nom='Salon', statut=StatutProjet.EN_PAUSE)
+        posee = self.tache(projet=en_pause, jour_prevu=self.T, heure_debut=datetime.time(16, 0))
+        self.tache(projet=en_pause, jour_prevu=self.jour(2))
+        rendu = self.periode()
+        self.assertEqual([i['id'] for i in self.le_jour(rendu, self.T)['blocs']], [posee.pk])
+        self.assertEqual(self.le_jour(rendu, self.jour(2))['sans_heure'], [])
+
     def test_toute_la_journee_sans_la_ligne_des_relances(self):
         """« Toute la journée » = les éléments de l'ERP sans heure (visites, poses, interventions) ; « Suivi des
         relances » est une ligne de Prévu d'Aujourd'hui, jamais une bande d'agenda (textes.md §2, SCENARIO §4)."""
