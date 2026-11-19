@@ -22,6 +22,7 @@ from .views import (
     sav_resume_par_equipe, sav_file_action, sav_file_attente,
     sav_fcr_insight, sav_performance_agent_insight,
 )
+from . import views_assistant
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
 from .query_params import DATE_OU_VIDE, EXPORT_XLSX, LIMITE, ou_vide
@@ -230,6 +231,9 @@ urlpatterns = [
          name='sav-whatsapp-inbound'),
     # NTSRV8 — File d'attente par équipe (+ proposition de débordement).
     path('file-attente/', file_attente_view, name='sav-file-attente'),
+    # Copilote vague 2 — lectures et gestes de l'assistant (relais FastAPI).
+    path('assistant/parc/', views_assistant.parc_client,
+         name='sav-assistant-parc'),
     path('', include(router.urls)),
     path('insights/sav-parts-forecast/', parts_forecast_view,
          name='sav-parts-forecast'),

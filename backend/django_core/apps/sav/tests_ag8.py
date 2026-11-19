@@ -173,3 +173,98 @@ class SavLibellesAssistantTest(TestCase):
         self.assertEqual(self._libelles(['sav_voir', 'equipement_voir', SCOPE_SELF]), {})
         autre = Company.objects.create(nom='SAV Lib 2', slug='sav-lib-2')
         self.assertEqual(self._libelles(['sav_voir', 'equipement_voir'], autre), {})
+
+
+class SavParcAssistantTest(TestCase):
+    """SAV2 — ``GET sav/assistant/parc/`` : le parc d'un client retrouvé par
+    nom, téléphone ou série, avec garantie effective, tickets ouverts et
+    contrat actif (forme de ``assistant_parc.json``)."""
+
+    def setUp(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.crm.models import Client
+        from apps.sav.models import Equipement, Ticket
+        from apps.sav.tests import make_installation, make_produit
+        self.company = Company.objects.create(nom='SAV Parc', slug='sav-parc')
+        self.inst, self.client_obj = make_installation(self.company, ref='CHT-PARC')
+        Client.objects.filter(pk=self.client_obj.pk).update(
+            nom='Chraibi', prenom='Nadia', telephone='0661234567')
+        self.pose = timezone.localdate() - timedelta(days=30)
+        self.eq = Equipement.objects.create(
+            company=self.company, produit=make_produit(self.company),
+            installation=self.inst, numero_serie='SN-PARC', date_pose=self.pose)
+        self.ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-PARC-1', client=self.client_obj,
+            installation=self.inst, equipement=self.eq, description='panne')
+        self.voit = self._user('parc_pii', ['sav_voir', 'client_pii_voir'])
+        self.sans_pii = self._user('parc_nopii', ['sav_voir'])
+
+    def _user(self, nom, permissions, company=None):
+        company = company or self.company
+        return User.objects.create_user(
+            username=nom, password='x', company=company,
+            role=Role.objects.create(company=company, nom=nom, permissions=permissions))
+
+    def _get(self, user, **params):
+        from apps.sav.tests import auth
+        return auth(user).get('/api/django/sav/assistant/parc/', params)
+
+    def test_parc_par_nom_forme_du_contrat(self):
+        r = self._get(self.voit, q='chraibi')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(set(r.data), {'q', 'total', 'limite', 'clients'})
+        self.assertEqual((r.data['total'], r.data['limite']), (1, 5))
+        ligne = r.data['clients'][0]
+        self.assertEqual(set(ligne), {
+            'client_id', 'nom', 'telephone', 'chantiers', 'equipements',
+            'tickets_ouverts', 'contrat_actif', 'a_faire', 'lien'})
+        self.assertEqual((ligne['nom'], ligne['telephone']), ('Chraibi Nadia', '0661234567'))
+        self.assertEqual(ligne['chantiers'][0]['installation_id'], self.inst.pk)
+        equipement = ligne['equipements'][0]
+        self.assertEqual(equipement['equipement_id'], self.eq.pk)
+        self.assertTrue(equipement['sous_garantie'])
+        self.assertEqual(equipement['fin_garantie_effective'],
+                         self.eq.date_fin_garantie_effective.isoformat())
+        self.assertEqual(ligne['tickets_ouverts'][0]['ticket_id'], self.ticket.pk)
+        self.assertEqual(ligne['tickets_ouverts'][0]['lien'], f'/sav?id={self.ticket.pk}')
+        self.assertEqual((ligne['a_faire'], ligne['contrat_actif']), ('suivre_ticket', None))
+        self.assertEqual(ligne['lien'], f'/crm?id={self.client_obj.pk}')
+
+    def test_parc_par_telephone_et_par_serie(self):
+        for q in ('06 61 23 45 67', 'sn-parc'):
+            r = self._get(self.voit, q=q)
+            self.assertEqual([c['client_id'] for c in r.data['clients']],
+                             [self.client_obj.pk], q)
+
+    def test_telephone_vide_sans_client_pii_voir(self):
+        r = self._get(self.sans_pii, q='chraibi')
+        self.assertEqual(r.data['clients'][0]['telephone'], '')
+        self.assertNotIn('0661234567', str(r.data))
+
+    def test_q_obligatoire_et_limite_bornee_400(self):
+        self.assertEqual(self._get(self.voit).status_code, 400)
+        self.assertEqual(self._get(self.voit, q='x', limite=11).status_code, 400)
+
+    def test_aucun_resultat_et_autre_societe_absente(self):
+        self.assertEqual(self._get(self.voit, q='zzz').data['clients'], [])
+        autre = Company.objects.create(nom='SAV Parc 2', slug='sav-parc-2')
+        r = self._get(self._user('parc_autre', ['sav_voir'], autre), q='chraibi')
+        self.assertEqual((r.data['total'], r.data['clients']), (0, []))
+
+    def test_sans_droit_sav_voir_403(self):
+        self.assertEqual(
+            self._get(self._user('parc_crm', ['crm_voir']), q='chraibi').status_code, 403)
+
+    def test_equipement_remplace_exclu_et_contrat_actif_dit(self):
+        from apps.sav.models import ContratMaintenance, Equipement
+        from apps.sav.tests import make_produit
+        Equipement.objects.create(
+            company=self.company, produit=make_produit(self.company, sku='OND-R'),
+            installation=self.inst, numero_serie='SN-OLD', statut='remplace')
+        contrat = ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj, date_debut=self.pose,
+            actif=True)
+        ligne = self._get(self.voit, q='chraibi').data['clients'][0]
+        self.assertEqual([e['numero_serie'] for e in ligne['equipements']], ['SN-PARC'])
+        self.assertEqual(ligne['contrat_actif'], {'id': contrat.pk, 'fin': None})

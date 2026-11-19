@@ -15,10 +15,15 @@ même nom : même endpoint (`POST /api/django/sav/tickets/`), même permission
 REP5 (copilote vague 2) — les deux écrivent (un ticket neuf, un ticket
 existant) : propositions À CONFIRMER, plus jamais exécutées au vol ; les
 valeurs des indices sont les valeurs EXACTES du modèle (sans accent).
+
+Copilote vague 2 — les lectures compactes et les gestes du lot ``copilote``
+(parc d'un client, tickets, fiche, transitions, note) sont servis par
+``views_assistant.py`` ; leurs formes sont celles de ``contract_samples/``.
 """
 from __future__ import annotations
 
-from apps.agent.registry import AgentAction, RISK_OUTWARD, register
+from apps.agent.registry import (
+    AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register)
 
 
 # Permission ERP requise pour ouvrir/mettre à jour un ticket SAV
@@ -116,6 +121,36 @@ METTRE_A_JOUR_TICKET = AgentAction(
 )
 
 
+CHERCHER_PARC = AgentAction(
+    key='sav.parc.chercher',
+    label="Retrouver le parc et les tickets ouverts d'un client",
+    description=(
+        "Sert à : retrouver un client par nom, téléphone ou numéro de série, "
+        "avec ses chantiers, ses équipements (garantie effective) et ses "
+        "tickets ouverts. Ne pas utiliser pour : créer un client ni lister "
+        "tous les tickets (sav.tickets.chercher). Exemple : « l'onduleur de "
+        "Mme Chraibi est en panne » → q=chraibi. Résultat : {q, total, limite, "
+        "clients[]} ; plusieurs clients ou équipements : demander lequel ; un "
+        "ticket déjà ouvert sur l'équipement : le dire avant de proposer."
+    ),
+    endpoint='/api/django/sav/assistant/parc/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'title': 'Recherche',
+                  'description': 'Nom, téléphone ou numéro de série.'},
+            'limite': {'type': 'integer', 'minimum': 1, 'maximum': 10},
+        },
+        'required': ['q'],
+    },
+    required_permission='sav_voir',
+    risk=RISK_INTERNAL,
+    carte='parc_client',
+    lot=LOT_COPILOTE,
+)
+
+
 def register_actions() -> None:
     """Enregistre les actions SAV dans le registre AG1 (idempotent).
 
@@ -123,7 +158,7 @@ def register_actions() -> None:
     silencieusement les ré-enregistrements pour rester sûr si ``ready()`` est
     appelé plusieurs fois (tests, autoreload).
     """
-    for action in (OUVRIR_TICKET_SAV, METTRE_A_JOUR_TICKET):
+    for action in (OUVRIR_TICKET_SAV, METTRE_A_JOUR_TICKET, CHERCHER_PARC):
         try:
             register(action)
         except ValueError:
