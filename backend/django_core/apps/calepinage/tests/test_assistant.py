@@ -203,3 +203,50 @@ class ResumeCompactTest(BaseAssistantCalepinage):
         reponse = self.api.get(url, {'variante': str(self.variante.pk)})
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['code'], 'variante_sans_conception')
+
+
+class DuLeadTest(BaseAssistantCalepinage):
+    """CALA3 — ``GET calepinages/du-lead/?lead=`` : l'ouvert, résumé."""
+
+    def test_forme_exacte_avec_calepinage(self):
+        reponse = self.api.get(url_assistant('du-lead/'), {'lead': self.lead.pk})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = echantillon('calepinage_assistant_du_lead.json')
+        self.assertEqual(set(reponse.data), set(attendu))
+        self.assertEqual(set(reponse.data['visite']), set(attendu['visite']))
+        self.assertEqual(reponse.data['calepinage']['calepinage'], self.cal.pk)
+        self.assertEqual(set(reponse.data['calepinage']),
+                         set(echantillon('calepinage_assistant_resume.json')))
+        self.assertEqual(reponse.data['a_faire'], reponse.data['calepinage']['a_faire'])
+
+    def test_sans_calepinage_le_geste_est_creer(self):
+        reponse = self.api.get(url_assistant('du-lead/'), {'lead': self.lead_2.pk})
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertIsNone(reponse.data['calepinage'])
+        self.assertEqual(reponse.data['a_faire'], 'creer')
+        self.assertEqual(reponse.data['lien'], f'/crm/leads/{self.lead_2.pk}')
+        self.assertEqual(set(reponse.data),
+                         set(echantillon('calepinage_assistant_du_lead.json',
+                                         'exemple_sans_calepinage')))
+
+    def test_parametre_lead_obligatoire(self):
+        for valeur in (None, '', 'abc', '-3', '0'):
+            with self.subTest(lead=valeur):
+                params = {} if valeur is None else {'lead': valeur}
+                reponse = self.api.get(url_assistant('du-lead/'), params)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.data['code'], 'lead_invalide')
+
+    def test_lead_d_une_autre_societe_introuvable(self):
+        reponse = self.api_autre.get(url_assistant('du-lead/'), {'lead': self.lead.pk})
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+
+    def test_ouvert_hors_vue_jamais_nomme(self):
+        self.restreindre()
+        reponse = self.api_u.get(url_assistant('du-lead/'), {'lead': self.lead.pk})
+        # Le lead peut aussi être hors de la portée CRM de U (404) : dans les
+        # deux cas, le calepinage de K n'est jamais servi ni nommé.
+        self.assertIn(reponse.status_code, (200, 404), reponse.data)
+        if reponse.status_code == 200:
+            self.assertIsNone(reponse.data['calepinage'])
+            self.assertEqual(reponse.data['a_faire'], 'rien')

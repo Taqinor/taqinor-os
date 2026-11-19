@@ -260,3 +260,70 @@ def resume_compact(calepinage, *, variante=None):
         'a_faire': a_faire,
         'lien': lien_du_geste(calepinage.pk, a_faire),
     }
+
+
+class LeadIntrouvable(LookupError):
+    """Le lead n'est pas dans la portée CRM de l'appelant (404, sans oracle)."""
+
+
+def lead_de_l_appelant(user, lead_id):
+    """Le lead ``lead_id`` DANS la portée CRM de ``user``, sinon
+    :class:`LeadIntrouvable` (même réponse qu'un identifiant absent)."""
+    from .creation import lead_en_portee
+
+    company = getattr(user, 'company', None)
+    lead = lead_en_portee(company, lead_id, user) if company is not None else None
+    if lead is None:
+        raise LeadIntrouvable(lead_id)
+    return lead
+
+
+def calepinage_ouvert_visible(user, lead_id):
+    """``(calepinage | None, hors_vue)`` — L'ouvert du lead (D-ACAL-12), et
+    s'il existe mais reste HORS de la vue de ``user`` (jamais servi alors)."""
+    from .. import selectors
+
+    ouvert = selectors.calepinage_ouvert_du_lead(getattr(user, 'company', None),
+                                                 lead_id)
+    if ouvert is None:
+        return None, False
+    if not selectors.calepinages_visibles(user, inclure_archives=True).filter(
+            pk=ouvert.pk).exists():
+        return None, True
+    return ouvert, False
+
+
+def etat_du_lead(user, lead_id):
+    """CALA3 — « où en est le calepinage de ce lead ? » (contrat
+    ``calepinage_assistant_du_lead.json``).
+
+    ``calepinage`` = le résumé EXACT de l'ouvert, ou ``None`` ; sans
+    calepinage, ``a_faire`` vaut ``creer`` (suite : ``calepinage.preparer``) —
+    sauf s'il en existe un hors de la vue de l'appelant : ``rien`` (il n'est
+    pas à lui de le créer, et l'existant n'est jamais nommé).
+
+    Raises:
+        LeadIntrouvable: lead hors de la portée CRM de ``user``.
+    """
+    from apps.agent.ecrans import chemin
+    from apps.crm.selectors import contour_lnglat
+    from apps.visites.selectors import releve_pour_calepinage
+
+    lead = lead_de_l_appelant(user, lead_id)
+    ouvert, hors_vue = calepinage_ouvert_visible(user, lead.pk)
+    resume = resume_compact(ouvert) if ouvert is not None else None
+    releve = releve_pour_calepinage(lead) or {}
+    if resume is not None:
+        a_faire, lien = resume['a_faire'], resume['lien']
+    else:
+        a_faire, lien = ('rien' if hors_vue else 'creer'), chemin('lead', lead.pk)
+    return {
+        'lead': lead.pk,
+        'calepinage': resume,
+        'visite': {'visite_id': releve.get('visite_id'),
+                   'validee_le': releve.get('validee_le'),
+                   'motif_absence': releve.get('motif_absence')},
+        'trace_disponible': len(contour_lnglat(lead)) >= 3,
+        'a_faire': a_faire,
+        'lien': lien,
+    }

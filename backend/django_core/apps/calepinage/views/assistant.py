@@ -25,10 +25,10 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..serializers import forme_du_contrat
-from ..services.assistant import resume_compact
+from ..services.assistant import LeadIntrouvable, etat_du_lead, resume_compact
 from .calepinages import CalepinageViewSet
 
-__all__ = ['resume']
+__all__ = ['resume', 'du_lead']
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
@@ -78,6 +78,40 @@ def resume(self, request, pk=None):
     return Response(resume_compact(calepinage, variante=variante))
 
 
+def lead_du_parametre(request):
+    """``(lead_id | None, refus | None)`` — ``?lead=`` obligatoire, entier > 0."""
+    brut = str(request.query_params.get('lead') or '').strip()
+    if not (brut.isascii() and brut.isdigit() and 0 < len(brut) < 19 and int(brut) > 0):
+        return None, refus("Paramètre `lead` obligatoire : l'identifiant entier "
+                           'du lead.', 'lead', 'lead_invalide')
+    return int(brut), None
+
+
+LEAD_INTROUVABLE = ('Lead introuvable.', 'lead', 'lead_introuvable',
+                    status.HTTP_404_NOT_FOUND)
+
+
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'lead', OpenApiTypes.INT, OpenApiParameter.QUERY, required=True,
+        description='Le lead dont on veut le calepinage.')],
+    responses={200: forme_du_contrat('CalepinageAssistantDuLead',
+                                     'calepinage_assistant_du_lead.json')})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.du_lead)
+@action(detail=False, methods=['get'], url_path='du-lead',
+        permission_classes=[PeutVoirCalepinage])
+def du_lead(self, request):
+    """CALA3 — le calepinage OUVERT d'un lead, résumé, et le geste suivant."""
+    lead_id, refuse = lead_du_parametre(request)
+    if refuse is not None:
+        return refuse
+    try:
+        return Response(etat_du_lead(request.user, lead_id))
+    except LeadIntrouvable:
+        return refus(*LEAD_INTROUVABLE)
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.resume = resume
+CalepinageViewSet.du_lead = du_lead
