@@ -218,6 +218,40 @@ FICHE_TICKET = AgentAction(
 )
 
 
+# SAV6 — écriture SILENCIEUSE (précédent ``crm.lead.journaliser``), plafonnée
+# et journalisée par le relais : une note INTERNE, jamais ``visible_client`` ni
+# ``reponse_type_id`` (une macro applique un statut) — le relais refuse toute
+# entrée hors de ce schéma.
+NOTER_TICKET = AgentAction(
+    key='sav.ticket.noter',
+    label='Ajouter une note interne au ticket SAV (le client ne la voit pas)',
+    description=(
+        "Sert à : consigner, avec les mots de l'utilisateur, une note INTERNE "
+        "au journal d'un ticket SAV (appel passé, constat, piste). Ne pas "
+        "utiliser pour : écrire au client, changer le statut ni la priorité. "
+        "Exemple : « note sur le ticket 88 : client rappelé, onduleur "
+        "redémarré » → id=88, body=le texte. Résultat : la note enregistrée "
+        "au journal ; elle n'est jamais visible du client ni envoyée."
+    ),
+    endpoint='/api/django/sav/tickets/{id}/noter/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer', 'title': 'Ticket (id)',
+                   'description': 'Identifiant du ticket (ticket_id des listes).'},
+            'body': {'type': 'string', 'title': 'Note',
+                     'description': "Le texte de la note, avec les mots de l'utilisateur."},
+        },
+        'required': ['id', 'body'],
+    },
+    required_permission=_SAV_PERMISSION,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+    objets={'id': 'ticket'},
+)
+
+
 #: SAV5 — la notification client des transitions : écrite par
 #: ``services.appliquer_transition_ticket`` (``notifications_client.
 #: STATUT_TO_CLE``), allumée par ``SavSlaSettings.notifications_client_sav``
@@ -299,7 +333,7 @@ def register_actions() -> None:
     """
     for action in (OUVRIR_TICKET_SAV, METTRE_A_JOUR_TICKET, CHERCHER_PARC,
                    CHERCHER_TICKETS, FICHE_TICKET, TRANSITION_TICKET,
-                   RESOUDRE_TICKET):
+                   RESOUDRE_TICKET, NOTER_TICKET):
         try:
             register(action)
         except ValueError:

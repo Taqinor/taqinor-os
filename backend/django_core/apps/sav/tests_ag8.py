@@ -497,3 +497,37 @@ class SavTransitionActionsTest(TestCase):
         self.assertEqual(previennent, {'planifier', 'reouvrir', 'resoudre'})
         self.assertNotIn(Ticket.Statut.CLOTURE, STATUT_TO_CLE)
         self.assertNotIn(Ticket.Statut.EN_COURS, STATUT_TO_CLE)
+
+
+class SavNoterActionTest(TestCase):
+    """SAV6 — ``sav.ticket.noter`` : écriture silencieuse d'une note INTERNE ;
+    ``visible_client`` et ``reponse_type_id`` ne sont pas des entrées."""
+
+    def test_declaration_silencieuse_entree_body_seulement(self):
+        from apps.agent.registry import LOT_COPILOTE, RISK_INTERNAL
+        a = _by_key('sav.ticket.noter')
+        self.assertEqual((a.risk, a.lot, a.method, a.required_permission, a.lecture),
+                         (RISK_INTERNAL, LOT_COPILOTE, 'POST', 'sav_gerer', False))
+        self.assertEqual(a.endpoint, '/api/django/sav/tickets/{id}/noter/')
+        self.assertEqual(set(a.inputs['properties']), {'id', 'body'})
+        self.assertEqual(a.inputs['required'], ['id', 'body'])
+        self.assertEqual(a.objets, {'id': 'ticket'})
+        self.assertLessEqual(len(a.description), 600)
+
+    def test_la_note_posee_par_la_route_reste_interne(self):
+        from apps.sav.models import Ticket, TicketActivity
+        from apps.sav.tests import auth, make_installation
+        company = Company.objects.create(nom='SAV Note', slug='sav-note')
+        _, client = make_installation(company, ref='CHT-NOTE')
+        user = User.objects.create_user(
+            username='note', password='x', company=company,
+            role=Role.objects.create(company=company, nom='Note',
+                                     permissions=['sav_voir', 'sav_gerer']))
+        ticket = Ticket.objects.create(
+            company=company, reference='SAV-NOTE-1', client=client, created_by=user)
+        a = _by_key('sav.ticket.noter')
+        r = auth(user).post(a.endpoint.format(id=ticket.pk),
+                            {'body': 'client rappelé'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        note = TicketActivity.objects.get(ticket=ticket, kind=TicketActivity.Kind.NOTE)
+        self.assertEqual((note.body, note.visible_client), ('client rappelé', False))
