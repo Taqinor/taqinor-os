@@ -67,3 +67,22 @@ Demandes de L4 :
   rechargement (R2-044) ; rappel (R2-046) ; specs `taches-bureau.spec.js` jamais lancées (CI).
 - Animation de SORTIE des feuilles absente (la feuille disparaît d'un coup) : à juger au tour 2.
 - Textes changés notés dans les messages de commit de L4 (référence `textes.md` non mise à jour) : à reporter.
+
+## Après le pli de L6 (`e9f532586`)
+Interface exposée par L6 : prop de `CoquilleTaches` `retour={{ libelle, vers }}` (ex.
+`<CoquilleTaches ecran="projet" titre={titre} retour={{ libelle: 'Projets', vers: '/taches/projets' }}>`) : « ‹ libellé »
+au-dessus du titre ; iPhone : à la place de ☰ ; pas de loupe ni Copilote sur un écran qui la passe. L5 doit retirer
+`BarreRetourProjets` de la page Projet en la passant (sinon deux retours). Rien de visible tant qu'aucune page ne la passe.
+ATTENTION (leçon L6) : `.layout:has(.tch)` fuit sur toutes les apps (`TachesPresence` et le bouton ✓+ portent `.tch`
+partout) ; le bon sélecteur est `.layout:has(> .layout-main > .layout-content > .route-fade > .tch)`.
+Demandes de L6 :
+- NOM DE CLASSE À ALIGNER : L3 pose `meta-courte` sur `.ligne-corps`, L6 a écrit la règle pour `meta-en-ligne`
+  (`base.css`). Garder UN nom (celui du CSS ou celui du JSX) : sinon la méta ne monte jamais sur la ligne du titre.
+- (→ L2) `Aujourdhui.jsx` garde son délai de squelette à 1 s ; aligner sur 300 ms (R2-089).
+- (→ L5, R2-070) Projets hors ligne : il resterait la phrase rouge « Connexion perdue… » et « Aucun projet » (à
+  revérifier après assemblage : L5 dit l'avoir réglé).
+- R2-125 : libellé « Supprimées et derniers gestes » du menu ⋯ non fait.
+- R2-088 : le réglage « sans délai » d'annulation est gardé sur l'appareil (localStorage) ; changé sur un AUTRE
+  appareil, il ne vaut ici qu'après un passage dans Réglages.
+- R2-092 : encore 6 à 7 tailles de texte sur Aujourd'hui (agenda, cartes, bandeaux), pas 4.
+- Hors module : squelette générique de l'ERP au chargement à froid (Suspense du routeur, `module.config.jsx`).
