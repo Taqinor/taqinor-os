@@ -218,7 +218,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Élément | Texte |
 |---|---|
 | Titre · bouton | Projets · **Nouveau projet** |
-| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « — »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
+| Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « Aucune »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
 | Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
@@ -232,7 +232,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Ordre des tâches d'une étape (R2-063) | glisser la poignée (souris : au survol ; Tableau : la poignée de la carte) · ⋯ → **Réorganiser** : bandeau « Réorganiser · OK », ▲ « Monter « {titre} » » / ▼ « Descendre « {titre} » » (éteints en tête et en queue) · clavier : Alt+↑/↓ sur une ligne, `j`/`k` pour parcourir ; toast « Ordre changé · Annuler » ; annonce « {titre} : position {n} sur {m} » |
 | ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Réorganiser (vue Liste) · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
-| Projet vide | « Planifier le projet » · Passer |
+| Projet vide | « Ajoute la première tâche » · « Planifier le projet » (R2-071) · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |
 | Planifier — étape 1 | « Priorité : Haute · Moyenne · Basse » ; « Ce sera fini quand… » |
 | Planifier — étape 2 | « Échéance : 1 semaine · 2 semaines · 1 mois · 6 semaines · 3 mois · Choisir » |

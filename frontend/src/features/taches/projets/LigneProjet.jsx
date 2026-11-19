@@ -19,7 +19,7 @@ export const PRIORITES = [
   { valeur: 3, libelle: 'Haute', classe: '' },
   { valeur: 2, libelle: 'Moyenne', classe: 'moyenne' },
   { valeur: 1, libelle: 'Basse', classe: 'basse' },
-  { valeur: 0, libelle: '—', classe: 'aucune' },
+  { valeur: 0, libelle: 'Aucune', classe: 'aucune' }, // R2-071 : écrit, jamais « — »
 ]
 
 // eslint-disable-next-line react-refresh/only-export-components -- idem

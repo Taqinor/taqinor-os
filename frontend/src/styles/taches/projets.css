@@ -144,6 +144,10 @@
   .tch .ep-rang.reorg .ep-poignee-ordre { opacity: 1; }
 }
 
+/* R2-071 — projet vide : l'invite */
+.tch .ep-vide-projet { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 12px var(--tch-gouttiere) 0; }
+.tch .ep-vide-invite { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); font-size: 1.0625rem; font-weight: 600; color: var(--tch-accent); }
+
 /* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
 .tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
 .tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

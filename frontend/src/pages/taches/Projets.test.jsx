@@ -204,6 +204,21 @@ describe('R2-060 — Projets : « Mettre en haut » atteignable au doigt', () =>
   })
 })
 
+describe('R2-071 — Projets : priorité « Aucune » écrite', () => {
+  it('un projet sans priorité porte la pastille « Aucune » (jamais « — »), et le menu offre Aucune', async () => {
+    const liste = projets()
+    liste.results[0].priorite = 0
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    const puce = within(ligne).getByRole('button', { name: 'Priorité aucune, changer' })
+    expect(puce).toHaveTextContent('Aucune')
+    expect(puce).not.toHaveTextContent('—')
+    await userEvent.setup().click(puce)
+    expect(await screen.findByRole('menuitem', { name: 'Aucune' })).toBeInTheDocument()
+  })
+})
+
 describe('R2-070 — Projets : jamais « Aucun projet » sans réponse ; hors ligne, la dernière liste lue', () => {
   const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
   const monterConnecte = (id = 42) => render(

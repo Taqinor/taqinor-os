@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Diamond, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronRight, Diamond, Plus, TriangleAlert } from 'lucide-react'
 import {
   annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
   reordonnerTache, rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
@@ -604,6 +604,9 @@ export default function Projet() {
   }
 
   const projet = vue?.projet
+  // R2-071 — un projet sans aucune tâche (ni ouverte ni faite) : l'invite « Ajoute la première tâche » + « Planifier le projet »
+  const projetVide = Boolean(vue) && !((vue.faites_nb ?? 0) > 0)
+    && (vue.sans_section ?? []).length === 0 && (vue.sections ?? []).every((s) => (s.taches ?? []).length === 0)
   const actionsEcran = projet ? [
     { libelle: 'Renommer', onSelect: () => setDialogue('renommer') },
     { libelle: 'Couleur…', onSelect: () => setDialogue('couleur') },
@@ -668,13 +671,23 @@ export default function Projet() {
             />
           ) : null}
           {vueCode === 'chronologie' ? <VueChronologie vue={vue} aujourdhui={aujourdhui} /> : null}
+          {vueCode === 'liste' && projetVide ? (
+            <section className="ep-vide-projet" aria-label="Projet vide">
+              <button type="button" className="ep-vide-invite" onClick={() => ajouter(null)}>
+                <Plus className="i i-16" aria-hidden="true" />Ajoute la première tâche
+              </button>
+              <button type="button" className="bouton second" onClick={() => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s })}>
+                Planifier le projet
+              </button>
+            </section>
+          ) : null}
           {vueCode === 'liste' && reorganiser ? (
             <div className="mode-ecran" role="status">
               <span>Réorganiser</span>
               <button type="button" className="bouton lien" onClick={() => setReorganiser(false)}>OK</button>
             </div>
           ) : null}
-          {vueCode === 'liste' ? (
+          {vueCode === 'liste' && !(projetVide && (vue.sections ?? []).length === 0) ? (
             <VueListe
               racine={racine}
               reorganiser={reorganiser}

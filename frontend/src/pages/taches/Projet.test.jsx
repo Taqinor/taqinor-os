@@ -252,6 +252,35 @@ describe('TCH89 — Un projet : priorité', () => {
   })
 })
 
+describe('R2-071 — Un projet vide : l\'invite', () => {
+  it('sans aucune tâche : « Ajoute la première tâche » et « Planifier le projet » ; l\'invite ouvre la saisie du projet', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { s.taches = [] })
+    vue.sans_section = []
+    vue.faites_nb = 0
+    vue.avancement = { ...vue.avancement, faites: 0, total: 0 }
+    vue.projet.compteurs = { ouvertes: 0, faites: 0 }
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const ouverture = vi.fn()
+    window.addEventListener('taqinor:taches:saisir', ouverture)
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const invite = await screen.findByRole('region', { name: 'Projet vide' })
+    expect(invite).toHaveTextContent('Ajoute la première tâche')
+    await user.click(within(invite).getByRole('button', { name: 'Ajoute la première tâche' }))
+    expect(ouverture.mock.calls[0][0].detail).toEqual({ projet_id: 3, projet_nom: 'Ventes', section_id: null })
+    await user.click(within(invite).getByRole('button', { name: 'Planifier le projet' }))
+    expect(await screen.findByRole('region', { name: 'Planifier le projet' })).toBeInTheDocument()
+    window.removeEventListener('taqinor:taches:saisir', ouverture)
+  })
+
+  it('un projet qui a des tâches ne montre pas l\'invite', async () => {
+    monter()
+    await screen.findByText('12 sur 20')
+    expect(screen.queryByRole('region', { name: 'Projet vide' })).toBeNull()
+  })
+})
+
 describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
   const connecte = (id) => ({ getState: () => ({ auth: { user: { id, active_company_id: 7 } } }) })
   const monterConnecte = (id = 42) => render(
