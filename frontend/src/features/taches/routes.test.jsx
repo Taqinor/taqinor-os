@@ -11,6 +11,8 @@ import { MANIFESTES } from '../../lib/apps/appSkus'
 import { buildInstalledApps } from '../../lib/apps/useInstalledApps'
 import { estAutoriseEntree } from '../../router/moduleGating'
 import { moduleConfigs, moduleNavSections } from '../../router/moduleRoutes'
+import { lireReglages } from '../../api/tachesApi'
+import { proposerAnnuler, reinitialiserGestes } from './lib/gestes'
 import config from './module.config'
 import CoquilleTaches from './coquille/CoquilleTaches'
 import { useEnLigne } from './lib/enLigne'
@@ -50,6 +52,12 @@ function monter(url) {
   const rendu = render(<RouterProvider router={router} />)
   return { router, ...rendu }
 }
+
+// R2-088 — `lireReglages` reste l'appel réel (aucun serveur : il échoue) sauf quand un test lui donne une réponse
+vi.mock('../../api/tachesApi', async (importOriginal) => {
+  const reel = await importOriginal()
+  return { ...reel, lireReglages: vi.fn(reel.lireReglages) }
+})
 
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -178,6 +186,22 @@ describe('TCH43 — routes du module', () => {
       expect(router.state.location.pathname).toBe('/taches/recherche')
     } finally {
       window.removeEventListener('keydown', aideErp)
+    }
+  })
+
+  it('R2-088 — « Messages sans délai » allumé vaut dès l\'ouverture (sans passer par Réglages)', async () => {
+    reinitialiserGestes()
+    lireReglages.mockResolvedValueOnce({ data: { messages_sans_delai: true } })
+    try {
+      monter('/taches/a-trier')
+      await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+      await act(async () => {})
+      await act(async () => { proposerAnnuler({ message: 'Faite', onAnnuler: () => {} }) })
+      // « sans délai » : le toast porte sa croix « Fermer » et ne part pas seul
+      const toast = screen.getByRole('group', { name: 'Geste effectué' })
+      expect(within(toast).getByRole('button', { name: 'Fermer' })).toBeInTheDocument()
+    } finally {
+      reinitialiserGestes()
     }
   })
 

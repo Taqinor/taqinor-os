@@ -7,14 +7,14 @@ import {
 } from '../../../ui/DropdownMenu'
 import Fiche from '../fiche/Fiche'
 import FeuilleSaisie from '../saisie/FeuilleSaisie'
-import { annulerToast, fermerToast, pauserToast, proposerAnnuler, reprendreToast, useEtatGestes } from '../lib/gestes'
+import { annulerToast, configurerGestes, fermerToast, pauserToast, proposerAnnuler, reprendreToast, useEtatGestes } from '../lib/gestes'
 import BandeauConflit from '../ui/BandeauConflit'
 import BarreSelection from '../ui/BarreSelection'
 import BoutonCopilote from '../ui/BoutonCopilote'
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
 import { useEnLigne } from '../lib/enLigne'
-import { definirProprietaire } from '../../../api/tachesApi'
+import { definirProprietaire, lireReglages } from '../../../api/tachesApi'
 import { derniereSynchro as lireDerniereSynchro, viderCacheALaDeconnexion } from '../horsligne/cacheJournee'
 import {
   MESSAGE_AUTRE_COMPTE, brancherRejeu, definirCompteFile, etatFile, garderLaMienne, prendreLAutre, rejouerFile, useVersionFile,
@@ -301,6 +301,16 @@ export default function CoquilleTaches({
     rejouerFile()
     return () => { retirer(); retirerCache() }
   }, [userId, companyId])
+
+  // R2-088 — « Messages sans délai » vaut dès l'ouverture de Tâches, pas seulement après un passage dans Réglages :
+  // la coquille lit les réglages à son montage. Échec (hors ligne, serveur absent) : le réglage déjà appliqué reste.
+  useEffect(() => {
+    let actif = true
+    lireReglages()
+      .then((reponse) => { if (actif) configurerGestes({ sansDelai: Boolean(reponse?.data?.messages_sans_delai) }) })
+      .catch(() => { /* rien à défaire : sans réponse, les gestes gardent leur réglage courant */ })
+    return () => { actif = false }
+  }, [])
 
   // L'état de la file (en attente, conflits) se relit quand elle bouge.
   useEffect(() => {
