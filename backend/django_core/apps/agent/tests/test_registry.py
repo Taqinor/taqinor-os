@@ -295,7 +295,7 @@ class PariteCataloguePermissionRouteTest(SimpleTestCase):
     PROPRES_A_L_AGENT = ('automation.rule.propose_draft', 'crm.client.create',
                          'crm.lead.list', 'ged.docqa.retrieve',
                          'reporting.assistant.diagnostic',
-                         'stock.produit.delete')
+                         'stock.produit.delete', 'stock.produit.supprimer')
     # clé -> raison pour laquelle la garde de la route n'est pas lisible.
     NON_LISIBLES = {
         'ged.docqa.retrieve': (
@@ -645,3 +645,75 @@ class CartesTachesTests(SimpleTestCase):
             if action.key.startswith('taches.'):
                 with self.subTest(cle=action.key):
                     self.assertIn(action.carte, CARTES_TACHES)
+
+
+class FondationVague2Tests(SimpleTestCase):
+    """Copilote vague 2 (FND2) — champs `lecture` / `noyau` / `natif_seul`,
+    objets et cartes réservés, action `erp.ouvrir`, description de la
+    suppression d'un produit."""
+
+    def _par_cle(self):
+        return {a.key: a for a in all_actions()}
+
+    def test_as_dict_porte_lecture_noyau_et_natif_seul(self):
+        neuve = AgentAction(key='demo.neuve', label='L', description='d',
+                            endpoint='/x/', lot='copilote')
+        d = neuve.as_dict()
+        self.assertEqual((d['lecture'], d['noyau'], d['natif_seul']), (False, False, True))
+        lue = AgentAction(key='demo.lue', label='L', description='d', endpoint='/x/',
+                          method='POST', lecture=True)
+        self.assertEqual((lue.as_dict()['lecture'], lue.as_dict()['natif_seul']), (True, False))
+        par_cle = self._par_cle()
+        self.assertTrue(par_cle['erp.ouvrir'].as_dict()['noyau'])
+        self.assertFalse(par_cle['erp.ouvrir'].as_dict()['natif_seul'])
+        self.assertFalse(par_cle['crm.lead.chercher'].as_dict()['natif_seul'])
+
+    def test_noyau_et_vague1_ne_nomment_que_des_actions_enregistrees(self):
+        from apps.agent.registry import CLES_COPILOTE_VAGUE1, LOT_HERITE, NOYAU
+        par_cle = self._par_cle()
+        self.assertEqual(sorted(NOYAU - set(par_cle)), [])
+        self.assertEqual(sorted(CLES_COPILOTE_VAGUE1 - set(par_cle)), [])
+        self.assertEqual([k for k in NOYAU if par_cle[k].lot == LOT_HERITE], [])
+        self.assertEqual(sorted(k for k in CLES_COPILOTE_VAGUE1
+                                if par_cle[k].lot != 'copilote'), [])
+
+    def test_objets_et_cartes_reserves(self):
+        from apps.agent.registry import CARTES, OBJETS
+        self.assertLessEqual({
+            'calepinage', 'variante', 'visite', 'chantier', 'intervention', 'ticket',
+            'equipement', 'produit', 'bcf', 'fournisseur', 'utilisateur'}, OBJETS)
+        self.assertLessEqual({
+            'lien_ecran', 'fiche_calepinage', 'liste_calepinages', 'contenance',
+            'liste_visites', 'fiche_visite', 'charge_equipe', 'liste_chantiers',
+            'fiche_chantier', 'vente_etat', 'liste_impayes', 'liste_factures',
+            'facture_brouillon', 'niveau_stock', 'parc_client', 'liste_tickets',
+            'fiche_ticket', 'chiffres_ca', 'plan', 'preference', 'liste_devis', 'bcf',
+            'comparaison_variantes'}, CARTES)
+
+    def test_erp_ouvrir_suit_la_table_des_ecrans(self):
+        from apps.agent import ecrans
+        from apps.agent.registry import OBJETS
+        action = self._par_cle()['erp.ouvrir']
+        proprietes = action.inputs['properties']
+        self.assertEqual(proprietes['ecran']['enum'], ecrans.cles())
+        self.assertEqual(proprietes['onglet']['enum'], ecrans.onglets_calepinage())
+        self.assertEqual((action.method, action.risk, action.lot, action.carte,
+                          action.required_permission),
+                         ('GET', RISK_INTERNAL, 'copilote', 'lien_ecran', None))
+        for cle, fiche in ecrans.ecrans().items():
+            with self.subTest(ecran=cle):
+                self.assertTrue(fiche['chemin'].startswith('/'))
+                self.assertNotIn('//', fiche['chemin'])
+                self.assertIn(fiche['objet'], OBJETS | {None})
+                self.assertEqual('{id}' in fiche['chemin'], bool(fiche['objet']))
+        self.assertFalse({'parametres', 'utilisateurs', 'roles', 'securite'} & set(ecrans.cles()))
+
+    def test_suppression_de_produit_eteint_identique_allume_vraie(self):
+        par_cle = self._par_cle()
+        ancienne, neuve = par_cle['stock.produit.delete'], par_cle['stock.produit.supprimer']
+        self.assertEqual((ancienne.lot, neuve.lot), ('herite', 'copilote'))
+        self.assertEqual(ancienne.description,
+                         'Supprime définitivement un produit du catalogue.')
+        self.assertIn('ARCHIVE', neuve.description)
+        for champ in ('endpoint', 'method', 'required_permission', 'risk', 'inputs'):
+            self.assertEqual(getattr(ancienne, champ), getattr(neuve, champ), champ)
