@@ -13,7 +13,7 @@
 # préfixe+numéro quand le fichier n'en donne pas (D-ASEC-4, D-QJR5-659...) ; `ouverte` quand le fichier ne donne pas la réponse.
 
 version: 1
-date_maj: "2026-11-17"
+date_maj: "2026-11-19"
 
 decisions:
 
@@ -4716,3 +4716,13 @@ decisions:
     date: "2026-11-17"
     source: "Reda, question interactive, 17/11/2026 (session loop work on all plans) ; avant : enregistrement docs/audits/acceptation/ADCG/2026-11-13-8c4a0a109.md (ADCG14 FAIL hors couvre, l. 51) ; vague d'acceptation 6 (16-17/11/2026) : non posée (option recommandée en premier)"
     taches: [ADCG119]
+
+  - id: D-BATCYC-1
+    question: "Sur le flux 25 ans de l'option C&I « avec batterie », quand la batterie est-elle remplacée ? (DEV-202611-0080 : remplacée en année 11, l'année après la garantie de 10 ans, alors que la fiche publie 8 000 cycles)"
+    options:
+      - cle: cycles_usage_reel
+        texte: "Cycles publiés, usage réel : cycles publiés de la fiche ÷ cycles par an calculés par l'étude pour ce client, + 1 ; la garantie n'est plus un plafond ; aucun remplacement compté au-delà de l'horizon de 25 ans (8 000 ÷ ≈ 289 ≈ 27 ans → aucun)"
+    reponse: cycles_usage_reel
+    date: "2026-11-19"
+    source: "Reda, question interactive, 19/11/2026 (« why would be replace the battery after 10 years ? the 16kwh have 8000 cycle so it is roughly 20 to 25 years ! ») ; construit au niveau de règles 13 (nouveaux rendus seulement) ; fichier docs/claude-memory/batterie-duree-cycles.md"
+    taches: []
