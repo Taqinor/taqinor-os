@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5228, operations: 8060, components: 4013}
+counts: {paths: 5230, operations: 8062, components: 4013}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -922,6 +922,7 @@ operations:
 - put /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_update
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_list
 - get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
+- get /api/django/crm/assistant/collegues/ -> django_crm_assistant_collegues_retrieve
 - get /api/django/crm/assistant/digest-matin/ -> django_crm_assistant_digest_matin_retrieve
 - get /api/django/crm/assistant/leads/ -> django_crm_assistant_leads_retrieve
 - post /api/django/crm/assistant/leads/creer/ -> django_crm_assistant_leads_creer_create
@@ -4993,6 +4994,7 @@ operations:
 - put /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_update
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_list
 - get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
+- get /api/v1/crm/assistant/collegues/ -> v1_crm_assistant_collegues_retrieve
 - get /api/v1/crm/assistant/digest-matin/ -> v1_crm_assistant_digest_matin_retrieve
 - get /api/v1/crm/assistant/leads/ -> v1_crm_assistant_leads_retrieve
 - post /api/v1/crm/assistant/leads/creer/ -> v1_crm_assistant_leads_creer_create
@@ -8258,6 +8260,7 @@ query_params:
   get /api/django/crm/appointments/: lead ordering page page_size search
   get /api/django/crm/apporteurs/: ordering page page_size search
   get /api/django/crm/assistant/a-relancer/: portee
+  get /api/django/crm/assistant/collegues/: limite q
   get /api/django/crm/assistant/leads/: etape limite q
   get /api/django/crm/assistant/leads/{lead_id}/message-visite/: cle langue
   get /api/django/crm/assistant/touches/{touche_id}/: geste langue mode motif_perte motif_refus note outcome perdu_junk raison_attente rappel_heure rappel_le reponse
@@ -9096,6 +9099,7 @@ query_params:
   get /api/v1/crm/appointments/: lead ordering page page_size search
   get /api/v1/crm/apporteurs/: ordering page page_size search
   get /api/v1/crm/assistant/a-relancer/: portee
+  get /api/v1/crm/assistant/collegues/: limite q
   get /api/v1/crm/assistant/leads/: etape limite q
   get /api/v1/crm/assistant/leads/{lead_id}/message-visite/: cle langue
   get /api/v1/crm/assistant/touches/{touche_id}/: geste langue mode motif_perte motif_refus note outcome perdu_junk raison_attente rappel_heure rappel_le reponse

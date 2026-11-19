@@ -13,7 +13,8 @@ import datetime
 import re
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import (
+    OpenApiParameter, OpenApiResponse, extend_schema)
 from rest_framework import serializers
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes)
@@ -23,6 +24,7 @@ from rest_framework.response import Response
 from apps.roles.permissions import DroitDeLaGrille
 from authentication.permissions import (
     HasPermissionOrLegacy, IsResponsableOrAdmin)
+from core.champs_stricts import MOTIF_SANS_NUL
 from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
 
 from . import schema_docs as sd
@@ -806,4 +808,48 @@ def lead_message_visite(request, lead_id):
         'texte': rendu['corps_' + suffixe], 'wa_url': rendu['wa_url_' + suffixe],
         'lien_wa_me': rendu['wa_url_' + suffixe],
         'modele_source': cle, 'langue_servie': suffixe,
+    })
+
+
+# ── 19/11/2026 — trouver un collègue par son NOM (crm.collegues.lister) ──────
+
+#: ``?limite=`` : 20 collègues par défaut, 50 au plus ; ``?q=`` : 80 signes.
+LIMITE_COLLEGUES = 20
+LIMITE_COLLEGUES_MAX = 50
+LONGUEUR_Q_COLLEGUE = 80
+
+
+@extend_schema(
+    parameters=[
+        OpenApiParameter(
+            'q', {'type': 'string', 'maxLength': LONGUEUR_Q_COLLEGUE,
+                  'pattern': MOTIF_SANS_NUL},
+            OpenApiParameter.QUERY, required=False,
+            description='Fragment de nom (prénom, nom ou identifiant), sans '
+                        'accent ni casse ; vide = tous les collègues.'),
+        OpenApiParameter(
+            'limite', {'type': 'integer', 'minimum': 1,
+                       'maximum': LIMITE_COLLEGUES_MAX},
+            OpenApiParameter.QUERY, required=False,
+            description='20 par défaut, 50 au plus.')],
+    responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin, HasPermissionOrLegacy('crm_voir')])
+def collegues_assistant(request):
+    """``GET /api/django/crm/assistant/collegues/?q=&limite=`` (contrat
+    ``assistant_collegues.json``) : les collègues à qui l'appelant peut confier
+    du travail — la liste du sélecteur de responsable (``assignable-users``,
+    même définition ``collegues.collegues_assignables``), filtrée par nom. Rend
+    l'identifiant à partir du NOM : l'assistant ne le demande jamais à
+    l'utilisateur. Ni e-mail, ni téléphone, ni droit."""
+    from .collegues import chercher_collegues
+    from .params_requete import entier_param
+
+    terme = (request.query_params.get('q') or '').strip()[:LONGUEUR_Q_COLLEGUE]
+    limite = entier_param(request, 'limite', LIMITE_COLLEGUES, mini=1,
+                          maxi=LIMITE_COLLEGUES_MAX, tolerant=True)
+    total, collegues, proches = chercher_collegues(request.user, terme, limite)
+    return Response({
+        'q': terme, 'total': total, 'limite': limite,
+        'collegues': collegues, 'proches': proches,
     })

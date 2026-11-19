@@ -335,8 +335,13 @@ def _rangees_installation(d, L, fmt):
                if watt else [])
             + ([L("ci_inst_kwc_total", "{kwc} kWc au total", kwc=kwc)]
                if kwc else []))))
+    # Devis DEV-202611-0080 (19/11/2026) — un organe du tableau de protection
+    # qui NOMME son onduleur (« Disjoncteur AC 32 A 4P — sortie Onduleur
+    # réseau… », ``role_ci`` du tableau) n'est pas un onduleur.
+    from apps.ventes.moteur_ci.composition import ROLES_TABLEAU_CI
     onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
-                 for it in items if sc.is_inverter(it.get("designation") or "")]
+                 for it in items if sc.is_inverter(it.get("designation") or "")
+                 and it.get("role_ci") not in ROLES_TABLEAU_CI]
     # AMOT93 — le total AC SERVI par ``synthese_ci.installation`` (jamais
     # recalculé ici) ; absent ⇒ aucun total imprimé.
     kw_ac = _num(installation.get("kw_ac_total"), None)

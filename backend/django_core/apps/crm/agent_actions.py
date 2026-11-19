@@ -643,8 +643,8 @@ PLANIFIER_VISITE = AgentAction(
                             'description': 'AAAA-MM-JJ, pas dans le passé.'},
             'commercial': {
                 'type': 'integer', 'title': 'Qui fait la visite (id)',
-                'description': ("Compte qui fait la visite, demandé à "
-                                "l'utilisateur (le sien s'il la fait).")},
+                'description': ("Compte que l'utilisateur NOMME (id lu par "
+                                "crm.collegues.lister), le sien s'il la fait.")},
             'etape': {'type': 'integer',
                       'description': 'touche_id qui demande la visite.'},
             'notes': {'type': 'string'},
@@ -926,11 +926,12 @@ REAFFECTER_LEAD = AgentAction(
     key='crm.lead.reaffecter',
     label='Réaffecter un lead',
     description=(
-        "Sert à : confier un lead au responsable que l'utilisateur désigne. "
-        "Ne pas utiliser pour : choisir un responsable à sa place ni "
-        "répartir plusieurs leads. "
-        "Exemple : « Passe le lead 12 à l'utilisateur 7 » (identifiant "
-        "donné par la personne). "
+        "Sert à : confier UN lead au collègue que l'utilisateur NOMME ; son "
+        "id se lit par crm.collegues.lister, jamais demandé à l'utilisateur. "
+        "Ne pas utiliser pour : choisir un responsable à sa place ni confier "
+        "tous ses dossiers (crm.dossiers.deleguer). "
+        "Exemple : « Passe le lead 12 à Nadia » → crm.collegues.lister "
+        "(q=nadia), puis owner = son id. "
         "Résultat : le lead réaffecté, après confirmation ; sans le droit "
         "de réaffecter, le serveur refuse (403)."
     ),
@@ -940,16 +941,17 @@ REAFFECTER_LEAD = AgentAction(
         'type': 'object',
         'properties': {
             'id': {'type': 'integer'},
-            'owner': {'type': 'integer',
-                      'description': ("Identifiant de l'utilisateur "
-                                      "responsable, donné par la personne.")},
+            'owner': {'type': 'integer', 'minimum': 1,
+                      'description': ("Id du collègue nommé par l'utilisateur, "
+                                      "lu par crm.collegues.lister.")},
         },
         'required': ['id', 'owner'],
     },
     required_permission='crm_reassign',
     risk=RISK_OUTWARD,
     lot=LOT_COPILOTE,
-    objets={'id': 'lead'},
+    # La carte de confirmation NOMME le lead ET la personne qui le reçoit.
+    objets={'id': 'lead', 'owner': 'utilisateur'},
 )
 
 ETIQUETER_LEAD = AgentAction(
@@ -982,6 +984,108 @@ ETIQUETER_LEAD = AgentAction(
 )
 
 
+# 19/11/2026 (incident : l'assistant demandait au fondateur « l'identifiant
+# utilisateur » d'une collègue) — une personne se désigne par son NOM. Lecture
+# de la route ``assistant/collegues/`` : la même liste que le sélecteur de
+# responsable des écrans (``collegues.collegues_assignables``).
+COLLEGUES_LISTER = AgentAction(
+    key='crm.collegues.lister',
+    label='Retrouver un collègue par son nom',
+    description=(
+        "Sert à : retrouver par son NOM (prénom, nom ou identifiant, sans "
+        "accent ni casse) le collègue à qui confier un lead, des dossiers, "
+        "une visite ou un chantier ; rend son id. "
+        "Ne pas utiliser pour : demander un id à l'utilisateur ni choisir "
+        "seul entre plusieurs personnes. "
+        "Exemple : « confie mes dossiers à Nadia » → q=nadia. "
+        "Résultat : {q, total, limite, collegues[{id, nom, poste, role}], "
+        "proches[]} ; un seul : redis son nom complet ; plusieurs : demande "
+        "lequel en citant les noms ; aucun : dis-le et cite proches."
+    ),
+    endpoint='/api/django/crm/assistant/collegues/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'maxLength': 80,
+                  'description': "Le nom dit par l'utilisateur ; vide = tous."},
+            'limite': {'type': 'integer', 'minimum': 1, 'maximum': 50},
+        },
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+#: Entrées communes de la délégation (route EXISTANTE ``leads/deleguer/``,
+#: ``LeadViewSet.deleguer``) : ``prevenir_clients`` n'y est PAS — la touche
+#: de passation vers les clients reste un choix fait sur la boîte de dialogue.
+_ENTREES_DELEGATION = {
+    'type': 'object',
+    'properties': {
+        'vers': {'type': 'integer', 'minimum': 1,
+                 'title': 'Collègue qui reçoit (id)',
+                 'description': 'Id lu par crm.collegues.lister.'},
+        'de': {'type': 'integer', 'minimum': 1,
+               'title': 'Dossiers de (id)',
+               'description': ("Facultatif : propriétaire actuel des dossiers "
+                               "(un collègue de sa portée) ; défaut : soi.")},
+    },
+    'required': ['vers'],
+}
+
+DELEGUER_APERCU = AgentAction(
+    key='crm.dossiers.deleguer_apercu',
+    label='Aperçu de la délégation des dossiers',
+    description=(
+        "Sert à : compter, sans rien écrire, ce qui passerait à un collègue : "
+        "dossiers encore à travailler, relances ouvertes, dont en retard. "
+        "Ne pas utiliser pour : déléguer (crm.dossiers.deleguer) ni un seul "
+        "lead (crm.lead.reaffecter). "
+        "Exemple : « Combien de dossiers passeraient à Nadia ? » → "
+        "crm.collegues.lister, puis vers = son id. "
+        "Résultat : {de, vers, vers_nom, dossiers, etapes_ouvertes, "
+        "etapes_en_retard} ; 409 si le collègue est désactivé, sans CRM ou "
+        "déjà propriétaire."
+    ),
+    endpoint='/api/django/crm/leads/deleguer/',
+    method='GET',
+    inputs=_ENTREES_DELEGATION,
+    required_permission='crm_reassign',
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+DELEGUER_DOSSIERS = AgentAction(
+    key='crm.dossiers.deleguer',
+    # Le relais n'affiche que CE libellé suivi du nom de la personne : il dit
+    # seul la conséquence.
+    label=("Déléguer tous les dossiers encore à travailler et leurs relances "
+           "ouvertes à cette personne, qui est prévenue (seul retour : "
+           "déléguer à nouveau)"),
+    description=(
+        "Sert à : confier à un collègue TOUS les dossiers encore à travailler "
+        "d'un responsable (les siens par défaut) avec leurs relances "
+        "ouvertes, après confirmation ; le collègue est prévenu. "
+        "Ne pas utiliser pour : un seul lead (crm.lead.reaffecter) ni "
+        "prévenir les clients : ce choix se fait sur l'écran (« Déléguer mes "
+        "dossiers »). "
+        "Exemple : « confie mes leads et mes relances à Nadia » → "
+        "crm.collegues.lister, crm.dossiers.deleguer_apercu, puis ceci. "
+        "Résultat : {de, vers, vers_nom, dossiers, confies, …} ; aucune "
+        "annulation : seul retour, déléguer à nouveau."
+    ),
+    endpoint='/api/django/crm/leads/deleguer/',
+    method='POST',
+    inputs=_ENTREES_DELEGATION,
+    required_permission='crm_reassign',
+    risk=RISK_OUTWARD,
+    lot=LOT_COPILOTE,
+    # La carte NOMME qui reçoit (``vers``, résolu en premier par le relais).
+    objets={'vers': 'utilisateur', 'de': 'utilisateur'},
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     CREER_LEAD_ASSISTANT,
@@ -1008,6 +1112,9 @@ _ACTIONS = (
     MESSAGE_MANUEL,
     MOTIFS_PERTE,
     CONTROLE_SUIVI,
+    COLLEGUES_LISTER,
+    DELEGUER_APERCU,
+    DELEGUER_DOSSIERS,
 )
 
 

@@ -403,11 +403,63 @@ composé sur demande était refusé sans dire quoi faire (le refus dit maintenan
 le manuel de l'assistant, pas encore régénéré, lui faisait dire qu'il ne pouvait pas changer le statut d'un ticket.
 
 **Non fait, dit tel quel.**
-- Le **recalcul en place d'un devis composé sur demande** (né de « 10 panneaux, onduleur 10 kW, batterie 5 kWh ») :
-  aujourd'hui l'assistant en compose un nouveau, l'ancien brouillon se supprime à l'écran.
+- (Fait le 19/11, voir §15 : le changement de taille en place d'un devis composé sur demande.)
 - Aucun essai sur un vrai téléphone ; les écritures confirmées de la vague 2B (publication au devis, taille, pose,
   transitions SAV) sont couvertes par les tests, pas toutes par l'essai avec une vraie clé.
 - Vague suivante (2C) : mémoire de préférences, carte « plan », relances par e-mail, enchaînement visite → calepinage →
   devis en un seul travail, rôles de terrain.
-- En production : rien de neuf pour le modèle sans `ASSISTANT_MOTEUR=natif`, et le copilote reste réservé aux
-  administrateurs tant que `ASSISTANT_COPILOTE=admins` — deux gestes de Reda, comme tout déploiement.
+- En production (19/11, 14 h UTC, décision de Reda) : `ASSISTANT_MOTEUR=natif` et `ASSISTANT_COPILOTE=tous` sont écrits
+  dans le `.env` du serveur, sans redémarrage ; ils prennent effet au prochain déploiement, que Reda lance. Le serveur
+  tournait alors sur le code de la veille : rien de ce dossier §12-§15 n'était encore en ligne.
+
+## 15. Changer la taille d'un devis composé sur demande, en place (19/11/2026)
+
+**Demande de Reda (19/11, après le rapport de la vague 2B) : « Oui, construis-le ».** Un devis né d'une composition
+imposée (« 10 panneaux, onduleur triphasé 10 kW, batterie 5 kWh ») n'a pas d'étude de consommation : « passe-le à 12
+panneaux » était refusé par le moteur des tailles, et l'assistant composait un second devis.
+
+**Ce qui est construit.** Les deux mêmes outils (`ventes.devis.taille_apercu`, puis `ventes.devis.taille` confirmé aux
+deux totaux) — aucune route, aucun outil, aucune entrée de plus. Pour un devis qui porte le marqueur de composition
+imposée, la demande d'origine est rejouée à blanc par la composition imposée (mêmes produits, par leur identifiant —
+même onduleur, même batterie), puis écrite par le mode « réconcilier » qui sert déjà à la resynchronisation : seules les
+quantités changent (panneaux, structures, socles, câbles au mètre) ; un prix négocié ou une quantité tapée à la main
+n'est jamais réécrit ; remise, TVA, validité et notes restent. Le marqueur est mis à jour. Un devis envoyé est corrigé
+en place et tracé ; un devis accepté se révise d'abord.
+
+**Refus nommés** (rien n'est écrit) : le panneau, l'onduleur ou la batterie a été changé à la main depuis
+(`composition_modifiee` : changer la quantité à l'écran) ; le nouveau nombre rend le kit impossible
+(`composition_impossible`, même refus que la composition) ; modules de batterie demandés sans batterie imposée.
+Les alertes de la composition (couple panneau / onduleur, écrêtage) reviennent avec l'aperçu.
+
+**Vérifié.** Tests joués sur le vrai chemin (plus de moteur remplacé par un faux) ; essai avec une vraie clé sur la pile
+locale : aperçu 72 900 → 79 100 MAD TTC, carte de confirmation qui nomme le devis et les deux totaux, puis le devis
+relu — 12 panneaux, 12 structures, 24 socles, câbles allongés, même onduleur, même batterie. Le total est celui d'un
+devis composé directement à 12 panneaux.
+
+## 16. Première question en production restée sans réponse : déléguer ses dossiers (19/11/2026)
+
+**L'incident.** Le 19/11 à 14 h 42 UTC, juste après le déploiement, Reda écrit à l'assistant : « i want to delegate to
+meriem where can i do this in parameters », puis « all my leads and my daily follow ups ». L'assistant répond qu'aucun
+réglage de délégation n'existe, qu'il ne réaffecte qu'un lead à la fois, et lui demande « l'identifiant utilisateur de
+Meriem ». Or l'ERP a ce geste depuis le 17/11 (« Déléguer mes dossiers », écran Suivi des relances et cockpit) :
+l'assistant n'avait ni l'outil, ni la ligne du manuel, ni le moyen de retrouver une collègue par son nom. Reda a délégué
+à l'écran (15 dossiers passés à Meryem, vérifié en lecture sur le serveur).
+
+**Ce qui est construit.**
+- `crm.collegues.lister` (noyau) : retrouver un collègue par son NOM, sans accent ni casse, avec les noms les plus
+  proches quand rien ne correspond (« Meriem » → « Meryem »). Même liste que le sélecteur de responsable des écrans.
+- `crm.dossiers.deleguer_apercu` puis `crm.dossiers.deleguer` (confirmé) : la route existante de l'écran, rien de plus ;
+  la carte nomme la personne et dit la conséquence. « Prévenir les clients » reste un choix de l'écran.
+- `crm.lead.reaffecter` nomme la personne sur sa carte.
+- Règle du prompt : une personne se désigne par son nom ; l'assistant ne demande JAMAIS un identifiant ; un seul
+  collègue correspond → il redit le nom complet ; plusieurs → il demande lequel ; aucun → il cite les plus proches.
+- Manuel : la délégation existe, où est le bouton, et ce n'est pas dans Paramètres.
+
+**Essai avec une vraie clé (pile locale).** Les deux phrases de Reda, mot pour mot : l'assistant dit où est le bouton et
+propose de le faire ; il trouve « Meryem Essai » pour « Meriem » et demande confirmation de la personne ; aperçu (103
+dossiers, 113 relances), carte qui nomme la personne, confirmation, 103 dossiers passés en base. Deux « Youssef » : il
+demande lequel, sans choisir.
+
+**Leçon.** Un geste qui existe à l'écran et que l'assistant ne connaît pas se voit dès la première vraie question : à
+chaque fonction livrée à l'écran, se demander si l'assistant doit la connaître (manuel) ou la faire (outil).
+

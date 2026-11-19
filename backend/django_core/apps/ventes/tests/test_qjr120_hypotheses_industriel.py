@@ -132,7 +132,10 @@ class TestOandM(SimpleTestCase):
 class TestDeuxOptionsPageFinance(SimpleTestCase):
     """Fondateur 18/11/2026 — la page 3 d'un devis à DEUX options dit aussi
     l'économie annuelle, le retour et le TRI de l'option « avec batterie »,
-    lus de l'étude (jamais recalculés)."""
+    lus de l'étude (jamais recalculés). Depuis le 19/11/2026 cette bande
+    n'est plus que le REPLI d'une option batterie sans flux 25 ans : avec
+    son flux, la page montre les deux options à poids égal
+    (``TestDeuxOptionsPoidsEgal``)."""
 
     def _avec(self, **option):
         from apps.ventes.tests.test_quote_engine_amot36_pages_ci import (
@@ -167,6 +170,154 @@ class TestDeuxOptionsPageFinance(SimpleTestCase):
         page = _page_finance(_data())
         self.assertNotIn('class="i2-avec"', page)
         self.assertNotIn('class="i2-optl"', page)
+
+
+class TestDeuxOptionsPoidsEgal(SimpleTestCase):
+    """Fondateur 19/11/2026 (« the page 3 is still all about the ongrid
+    option ») — deux options entièrement chiffrées : la page finance les
+    montre à POIDS ÉGAL, chaque nombre LU de l'étude (``finance_deux``)."""
+
+    def _donnees(self, **surcharges):
+        from apps.ventes.tests.test_quote_engine_amot36_pages_ci import (
+            _option_avec_chiffree)
+        return _option_avec_chiffree(_data(), **surcharges)
+
+    def _flux_avec(self, d):
+        return d["etude"]["etude_ci"]["option_avec"]["economie_flux"][
+            "flux_ht"]["flux"]
+
+    def test_deux_cartes_aux_memes_chiffres(self):
+        page = _page_finance(self._donnees())
+        cartes = re.findall(r'<td class="i2d-opt">.*?</table></div></td>',
+                            page, flags=re.S)
+        self.assertEqual(len(cartes), 2)
+        sans, avec = (_visible(c) for c in cartes)
+        self.assertIn("Option 1 — Sans batterie", sans)
+        self.assertIn("Option 2 — Avec batterie", avec)
+        for carte in (sans, avec):
+            for libelle in ("Économie de l'année 1", "Délai de retour",
+                            "TRI sur 25 ans", "Cumul net sur 25 ans",
+                            "Investissement"):
+                self.assertIn(libelle, carte)
+        # L'option batterie : SES nombres servis (économie et retour de la
+        # valeur chiffrée, TRI de son flux, totaux de son panier).
+        self.assertIn("120 000", avec)
+        self.assertIn("8,4 ans", avec)
+        self.assertIn("17,3 %", avec)
+        self.assertIn("964 000,00", avec)
+        # La bande d'une phrase (repli) n'est plus imprimée.
+        self.assertNotIn('class="i2-avec"', page)
+
+    def test_la_courbe_porte_les_deux_lignes_et_leurs_retours(self):
+        d = self._donnees()
+        page = _page_finance(d)
+        svg = re.search(r'<div data-graphique="courbe_cumul">(.*?)</svg>',
+                        page, flags=re.S).group(1)
+        self.assertEqual(svg.count("<polyline"), 2)
+        self.assertEqual(svg.count("<circle"), 2)
+        # Le point de retour de chaque option porte le délai de SA carte.
+        self.assertIn("8,4", svg)
+        # Chaque ligne finit sur le cumul SERVI de sa dernière année.
+        dernier = self._flux_avec(d)[-1]["cumul_mad"]
+        self.assertIn(f"{round(dernier):,}".replace(",", " "), _visible(svg))
+
+    def test_le_tableau_met_les_deux_flux_cote_a_cote(self):
+        d = self._donnees()
+        page = _page_finance(d)
+        tableau = re.search(r'<table class="i2-tbl i2-fx i2d-fx">.*?</table>',
+                            page, flags=re.S).group(0)
+        rangees = re.findall(r"<tr><td>\d+</td>", tableau)
+        self.assertEqual(len(rangees), len(self._flux_avec(d)))
+        texte = _visible(tableau)
+        self.assertIn("Sans batterie", texte)
+        self.assertIn("Avec batterie", texte)
+        # Le cumul de la dernière année est ancré pour CHAQUE option.
+        ancres = re.findall(
+            r'data-figure="cumul_net_25_ans_mad"( data-figure-option="avec")?',
+            tableau)
+        self.assertEqual(sorted(ancres), ["", ' data-figure-option="avec"'])
+        for ligne in self._flux_avec(d)[1:4]:
+            cumul = f"{ligne['cumul_mad']:,.2f}".replace(",", " ").replace(".", ",")
+            self.assertIn(cumul, texte)
+
+    def test_indicateurs_des_deux_options(self):
+        txt = _visible(_page_finance(self._donnees()))
+        bloc = txt[txt.index("Indicateurs pour votre direction financière"):]
+        self.assertIn("0,457 MAD/kWh", bloc)       # coût du kWh, option batterie
+
+    def test_bases_communes_une_fois_puis_par_option(self):
+        remplacements = [
+            {"composant": "onduleur", "annee": 12, "montant_ht_mad": 80000.0,
+             "montant_ttc_mad": 96000.0, "source": "x"},
+            {"composant": "batterie", "annee": 11, "montant_ht_mad": 250000.0,
+             "montant_ttc_mad": 300000.0, "source": "x"}]
+        page = _page_finance(self._donnees(remplacements=remplacements))
+        bases = _visible(page[page.index('data-graphique="hypotheses"'):])
+        self.assertEqual(bases.count("Horizon"), 1)
+        self.assertIn("Avec batterie — ", bases)
+        self.assertIn("Remplacement batterie en année 11 : 250 000,00", bases)
+        # Un remplacement n'est JAMAIS une base commune : celui de l'offre
+        # réseau (autre année que l'option batterie) est sous SON nom.
+        communes = _visible(re.search(
+            r'<div class="i2-hyp-c">.*?</div></div>', page, flags=re.S).group(0))
+        self.assertNotIn("Remplacement", communes)
+        self.assertRegex(bases, r"Sans batterie — Remplacement onduleur")
+
+    def test_un_indicateur_non_servi_d_un_cote_ne_retire_pas_l_autre(self):
+        d = self._donnees()
+        flux = d["etude"]["etude_ci"]["option_avec"]["economie_flux"]
+        flux["indicateurs"] = dict(flux["indicateurs"], lcoe_mad_kwh=None)
+        d["etude"]["etude_ci"]["option_avec"]["economie_ci"]["indicateurs"] = \
+            flux["indicateurs"]
+        page = _page_finance(d)
+        ligne = re.search(r"<tr><td>Coût[^<]*</td>.*?</tr>", page, flags=re.S)
+        self.assertIsNotNone(ligne)
+        self.assertIn('data-figure="lcoe_mad_kwh"', ligne.group(0))
+        self.assertIn("—", _visible(ligne.group(0)))
+
+    def test_investissement_non_servi_jamais_zero(self):
+        d = self._donnees()
+        d["option_batterie"]["totaux"] = {}
+        d["totaux_avec"] = {}
+        page = _page_finance(d)
+        carte = _visible(re.findall(
+            r'<td class="i2d-opt">.*?</table></div></td>', page,
+            flags=re.S)[1])
+        self.assertNotIn("0,00", carte)
+        self.assertNotIn("Investissement", carte)
+
+    def test_la_courbe_cede_par_paliers(self):
+        d = self._donnees()
+        d["_sans_graphiques"] = frozenset({"courbe_cumul"})
+        compacte = _page_finance(d)
+        self.assertIn('data-graphique="courbe_compacte"', compacte)
+        self.assertEqual(compacte.count("<polyline"), 2)
+        d["_sans_graphiques"] = frozenset({"courbe_cumul", "courbe_compacte"})
+        sans = _page_finance(d)
+        self.assertNotIn("<polyline", sans)
+        self.assertIn('class="i2-tbl i2-fx i2d-fx"', sans)   # le tableau reste
+        # Troncature des conditions (``equip.document_adaptatif``) : la courbe
+        # et les bases cèdent d'un coup — aucune courbe compacte ne revient.
+        d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
+        self.assertNotIn("<svg", _page_finance(d))
+
+    def test_arabe_aucun_mot_dans_le_dessin(self):
+        d = self._donnees()
+        d["langue_sortie"] = "ar"
+        page = _page_finance(d)
+        svg = re.search(r"<svg.*?</svg>", page, flags=re.S).group(0)
+        self.assertIsNone(re.search("[\u0600-\u06FF]", svg))
+        # Les noms des options passent dans la légende, sous la courbe.
+        legende = re.search(r'</svg><div class="i2d-note">(.*?)</div>', page,
+                            flags=re.S)
+        self.assertIsNotNone(legende)
+        self.assertIn("بدون بطارية", legende.group(1))
+        self.assertIn("مع بطارية", legende.group(1))
+
+    def test_bases_differentes_la_page_d_hier(self):
+        page = _page_finance(self._donnees(base="ttc"))
+        self.assertNotIn('class="i2d-opt"', page)
+        self.assertIn('class="i2-kpis"', page)
 
 
 class TestPaybackMemeFlux(SimpleTestCase):

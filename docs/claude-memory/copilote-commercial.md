@@ -135,9 +135,21 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   nommer les GESTES (« planifier, résoudre… »), pas seulement les objets, et dire de charger le domaine avant de
   répondre ; (3) un refus doit dire le geste qui marche, pas seulement non ; (4) un test qui remplace le moteur par un
   faux ne prouve pas le chemin réel (la taille d'un devis sans étude de consommation est refusée par le vrai moteur).
-- **Ouvert** : recalcul en place d'un devis composé sur demande (aujourd'hui : un nouveau devis est composé) ; vague 2C
-  (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; en production,
-  `ASSISTANT_MOTEUR=natif` et l'ouverture du copilote au-delà des administrateurs restent des gestes de Reda.
+- **Fait le 19/11 (suite)** : un devis composé sur demande change de taille EN PLACE par les deux mêmes outils (la
+  demande est rejouée par la composition imposée, écrite par le mode « réconcilier » ; dossier §15).
+- **Production, 19/11/2026 14 h UTC (décision de Reda, question interactive)** : `ASSISTANT_MOTEUR=natif` et
+  `ASSISTANT_COPILOTE=tous` sont ÉCRITS dans le `.env` du serveur (sauvegarde `.env.avant-copilote-natif-20261119-1400`),
+  sans redémarrage : ils prennent effet au prochain déploiement lancé par Reda. À cette date le serveur tournait encore
+  sur le code du 18/11 14 h (aucune des PR #1473, #1479, #1480, #1482 déployée). Reda a choisi « tout le monde », pas
+  « administrateurs d'abord » : ne pas revenir à `admins` sans qu'il le demande. Aucun plafond de dépense.
+- **Incident du 19/11 (première question en production)** : Reda a demandé de déléguer ses dossiers à Meryem ;
+  l'assistant ne connaissait pas « Déléguer mes dossiers » (livré à l'écran le 17/11) et a demandé un identifiant
+  d'utilisateur. Corrigé (dossier §16) : collègue retrouvé par son NOM, délégation par l'assistant après confirmation.
+  **Règle** : l'assistant ne demande jamais un identifiant à une personne ; et toute fonction livrée à l'écran pose la
+  question « l'assistant doit-il la connaître (manuel) ou la faire (outil) ? ».
+- **Ouvert** : vague 2C
+  (mémoire de préférences, relances par e-mail, travail visite → calepinage → devis, rôles de terrain) ; le
+  déploiement reste le geste de Reda, et l'essai sur un vrai téléphone après ce déploiement n'est pas fait.
 - **Leçons de run** : les gardes de l'hôte se jouent d'un coup par `python scripts/ci_guards.py stage-names` (192
   gardes ; sous Windows le test du script de deploy ne finit pas : l'arrêter) ; un fichier de test neuf exige une tâche
   cochée qui le cite avec « Nouveau fichier car : » (groupe COPW de PLAN2) et un préfixe neuf se déclare dans
