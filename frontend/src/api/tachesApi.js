@@ -39,12 +39,18 @@ import { fetchAllPages } from '../utils/fetchAllPages'
 // (`validateStatus`), donc le pont ne le voit pas ; il est aussitôt rejeté ici avec la même forme d'erreur
 // (`response`, `config`) que lisent `classerErreur`, la file hors ligne et les écrans. Nommé (`CODES_409`) ou
 // `idempotency_en_cours` (que le pont ne toaste pas non plus) : silence ; tout autre 409 : le même toast que le pont.
-// Un 400 que l'écran dit SOUS LE CHAMP (l'appelant passe `{ erreurSousLeChamp: true }` dans ses options : nom de
-// projet refusé, agenda externe injoignable, phrase de saisie refusée) suit la même voie, sans aucun toast : le
-// message ne se dit qu'une fois, là où il faut agir. Toute autre erreur (400 d'un appelant qui ne le dit pas, 5xx,
-// délai, réseau) suit le pont exactement comme avant. Jamais `suppressErrorToast` (il tairait aussi les 5xx).
+// Un refus AU CHAMP que l'écran dit SOUS LE CHAMP (l'appelant passe `{ erreurSousLeChamp: true }` dans ses options)
+// suit la même voie, sans aucun toast : le message ne se dit qu'une fois, là où il faut agir. Trois statuts portent un
+// refus au champ (`apps/taches/entrees.py`) : le 400 (refus de FORME : nom trop long, adresse qui n'est pas https), le
+// 409 `state_conflict` (refus d'ÉTAT, `{champ: […], detail, code: "state_conflict"}` : nom déjà pris, agenda externe
+// injoignable / en doublon / au plafond, ★ déjà posées…) et le 404 `{champ: […], detail}` (un identifiant du corps qui
+// ne désigne rien). Les deux derniers, quand le corps nomme un champ, sont rendus à l'appelant SOUS LA FORME D'UN 400 DE
+// CHAMP (`response.status` 400, même corps ; le statut servi reste lisible dans `response.statutServeur`) : chaque écran
+// qui disait un 400 sous son champ dit aussi ceux-là, sans rien changer chez lui. Sans l'option, rien ne change. Toute
+// autre erreur (409 nommé ou sans champ, 5xx, délai, réseau) suit le pont exactement comme avant. Jamais
+// `suppressErrorToast` sur une écriture (il tairait aussi les 5xx).
 const garde409 = (statut) => (statut >= 200 && statut < 300) || statut === 409
-const garde409Et400 = (statut) => garde409(statut) || statut === 400
+const garde409Et400 = (statut) => garde409(statut) || statut === 400 || statut === 404
 
 function refusResolu(reponse, { toaster }) {
   const erreur = Object.assign(new Error(`Request failed with status code ${reponse.status}`), {
@@ -55,6 +61,27 @@ function refusResolu(reponse, { toaster }) {
 }
 
 const nomme409 = (reponse) => CODES_409.includes(reponse.data?.code) || reponse.data?.code === 'idempotency_en_cours'
+
+// Clés que l'enveloppe d'erreur de l'ERP pose à la racine de tout refus (`core/exceptions.py`) : jamais un champ.
+const CLES_ENVELOPPE = new Set(['detail', 'code', 'error', 'lock_version', 'actuel'])
+/** Le `code` racine d'un refus d'ÉTAT au champ (`apps/taches/entrees.py::CODE_REFUS_ETAT`). */
+const CODE_REFUS_ETAT = 'state_conflict'
+
+/** Vrai quand le corps NOMME un champ (une clé hors enveloppe portant ses messages, ou `lignes: {n: {…}}`). */
+const nommeUnChamp = (corps) => Boolean(corps) && typeof corps === 'object'
+  && Object.entries(corps).some(([cle, valeur]) => !CLES_ENVELOPPE.has(cle)
+    && ((Array.isArray(valeur) && valeur.length > 0) || (valeur !== null && typeof valeur === 'object' && !Array.isArray(valeur))))
+
+/** Un refus d'ÉTAT au champ (409 `state_conflict`, ou sans `code`) ou un 404 au champ : jamais un 409 nommé. */
+function refusAuChamp(reponse) {
+  const corps = reponse?.data
+  if (!nommeUnChamp(corps)) return false
+  if (reponse.status === 404) return true
+  return reponse.status === 409 && (corps.code === undefined || corps.code === CODE_REFUS_ETAT)
+}
+
+/** La réponse d'un refus au champ rendue SOUS LA FORME D'UN 400 de champ (même corps, `statutServeur` = le vrai). */
+const commeUn400 = (reponse) => ({ ...reponse, status: 400, statutServeur: reponse.status })
 
 function appeler(verbe, args) {
   const config = args[verbe === 'get' || verbe === 'delete' ? 1 : 2]
@@ -69,8 +96,10 @@ function appeler(verbe, args) {
     if (defauts) defauts.validateStatus = regle // l'instance de l'ERP retrouve sa règle dès l'appel parti
   }
   return Promise.resolve(promesse).then((reponse) => {
+    if (sousLeChamp && refusAuChamp(reponse)) throw refusResolu(commeUn400(reponse), { toaster: false })
     if (reponse?.status === 409) throw refusResolu(reponse, { toaster: !nomme409(reponse) })
-    if (reponse?.status === 400 && sousLeChamp) throw refusResolu(reponse, { toaster: false })
+    // 400 de forme, ou 404 sans champ (le pont ne toaste jamais un 404 non plus) : dits par l'écran
+    if (sousLeChamp && (reponse?.status === 400 || reponse?.status === 404)) throw refusResolu(reponse, { toaster: false })
     return reponse
   })
 }
@@ -94,8 +123,14 @@ export function nouvelleCle() {
  *  le serveur la range `source='assistant'` (A5). Jamais `X-Taqinor-Assistant`, qui masquerait la réponse. */
 export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
 
-/** `{ erreurSousLeChamp: true }` de l'appelant : son 400 ne passe pas par le toast global (voir `appeler`). */
+/** `{ erreurSousLeChamp: true }` de l'appelant : son refus au champ (400, ou 409 au champ) ne passe pas par le toast
+ *  global (voir `appeler`). */
 const sousLeChamp = (options) => (options?.erreurSousLeChamp ? { erreurSousLeChamp: true } : undefined)
+
+/** R3-025 — `{ suppressErrorToast: true }` d'un appelant qui DIT déjà l'échec d'une lecture à l'écran (Aujourd'hui :
+ *  le bandeau « Pas à jour · Réessayer », la liste gardée) : le toast global de l'ERP ne le redit pas. Une lecture
+ *  seulement ; une écriture garde le pont (ou `erreurSousLeChamp` pour un refus au champ). */
+const silencieux = (options) => (options?.suppressErrorToast ? { suppressErrorToast: true } : {})
 
 const avecCle = (options = {}) => {
   const { cle, carteAssistant } = options ?? {}
@@ -121,7 +156,8 @@ export const CODES_409 = ['conflit_version', 'nom_pris', 'proposition_expiree', 
  * Classe une erreur axios en une forme unique :
  *   { statut, code, message, champs, lockVersion, actuel }
  * `code` ∈ CODES_409 pour un 409 reconnu, `'idempotency_en_cours'` (l'écran
- * réessaie seul avec la même clé), `'validation'` (400), `'introuvable'`,
+ * réessaie seul avec la même clé), `'validation'` (400 — dont, pour un appel
+ * `erreurSousLeChamp`, les 409/404 au champ rendus sous sa forme), `'introuvable'`,
  * `'limite'` (429), `'reseau'` (aucune réponse) ou `'autre'`. `champs` = le corps
  * d'un 400 (`{champ: [messages]}`, ou `{lignes: {n: {champ: […]}}}`).
  */
@@ -154,7 +190,7 @@ export const estAutreCompte = (err) => classerErreur(err).code === 'autre_compte
 
 // ── 3.1 Journée, rituels, agenda ──────────────────────────────────────────────
 
-export const lireAujourdhui = (params) => api.get('/taches/aujourdhui/', { params })
+export const lireAujourdhui = (params, options) => api.get('/taches/aujourdhui/', { params, ...silencieux(options) })
 export const lireAilleurs = () => api.get('/taches/aujourdhui/ailleurs/')
 export const lireBadge = () => api.get('/taches/badge/')
 export const marquerVu = (corps) => api.post('/taches/vu/', corps ?? {})

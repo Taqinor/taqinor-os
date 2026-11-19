@@ -4,7 +4,7 @@ import { saisieRapide } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { construireLigne } from '../horsligne/captureQueue'
 import { accord } from '../lib/textes'
-import ApercuListe, { groupesDuCollage } from '../ui/ApercuListe'
+import ApercuListe, { groupesDuCollage, projetDuGroupe } from '../ui/ApercuListe'
 
 /* ============================================================================
    TCH83 — « Coller mes listes » : le corps de la feuille de saisie quand on colle plus d'une ligne
@@ -16,7 +16,7 @@ import ApercuListe, { groupesDuCollage } from '../ui/ApercuListe'
    Boutons (textes.md §2.3) : Créer {n} tâches · Coller encore.
    ========================================================================== */
 
-const MODIFS_VIDES = { cochees: {}, titres: {}, enTache: {}, sousTaches: {} }
+const MODIFS_VIDES = { cochees: {}, titres: {}, enTache: {}, sousTaches: {}, projets: {} }
 const SANS_PROJETS = []
 
 // La ligne à créer (`construireLigne`) vit avec la file hors ligne, qui la refait au rejeu d'une phrase (R2-008a) ;
@@ -48,6 +48,19 @@ function texteDeLigne(ligne) {
 
 const estCochee = (ligne, modifs) => modifs.cochees[ligne.index] ?? ligne.cochee !== false
 
+/** R3-043 — le projet choisi dans l'en-tête de son groupe remplace celui que la ligne en recevait (jamais le sien,
+ *  `#Autre`) : un existant (`projet_id`), un nouveau (`nouveau_projet`, priorité choisie ou Moyenne) ou aucun. */
+function avecProjetChoisi(base, choix, priorites) {
+  if (!choix) return base
+  const sortie = { ...base }
+  delete sortie.nouveau_projet
+  delete sortie.projet_id
+  const vu = projetDuGroupe(null, choix)
+  if (vu.id != null) sortie.projet_id = vu.id
+  else if (vu.nouveau) sortie.nouveau_projet = { nom: vu.nom, priorite: priorites?.[vu.nom] ?? 2 }
+  return sortie
+}
+
 /** Les lignes à envoyer, dans l'ordre de la liste : cochées seulement, points repliés dans la check-list. */
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, testé directement (D-ENF22)
 export function lignesACreer(apercu, modifs, { cid, priorites, projets = [] }) {
@@ -65,9 +78,11 @@ export function lignesACreer(apercu, modifs, { cid, priorites, projets = [] }) {
   sansCommun.forEach((c) => groupesDuCollage(apercu, c, projets).forEach((g) => {
     g.lignes.forEach((l, rang) => groupeDe.set(l.index, { g, premier: rang === 0 }))
   }))
+  const avecCommun = new Set((apercu?.projets_communs ?? []).map((p) => p.collage))
   lignes.forEach((ligne) => {
     const groupe = groupeDe.get(ligne.index)
     const titreEnTache = groupe && modifs.enTache[groupe.g.cleModif]
+    const cleGroupe = avecCommun.has(ligne.collage) ? `p${ligne.collage}` : groupe?.g.cleModif
     if (groupe?.premier && titreEnTache && modifs.cochees[`t${groupe.g.cleModif}`] !== false) {
       const premierIndex = groupe.g.lignes[0].index
       sorties.push({
@@ -77,8 +92,10 @@ export function lignesACreer(apercu, modifs, { cid, priorites, projets = [] }) {
     }
     const point = ligne.etape_de != null && !modifs.sousTaches[ligne.etape_de]
     if (point || !estCochee(ligne, modifs)) return
-    const base = construireLigne({ ...ligne, titre: modifs.titres[ligne.index] ?? ligne.titre }, { cid, priorites })
-    const heriteDuTitre = titreEnTache && !(ligne.jetons ?? []).some((j) => j.type === 'projet')
+    const sonProjet = (ligne.jetons ?? []).some((j) => j.type === 'projet')
+    const lue = construireLigne({ ...ligne, titre: modifs.titres[ligne.index] ?? ligne.titre }, { cid, priorites })
+    const base = sonProjet ? lue : avecProjetChoisi(lue, modifs.projets?.[cleGroupe], priorites)
+    const heriteDuTitre = titreEnTache && !sonProjet
     if (modifs.enTache[ligne.collage] || heriteDuTitre) { delete base.nouveau_projet; delete base.projet_id }
     const points = lignes.filter((l) => l.etape_de === ligne.index)
     if (points.length > 0 && !modifs.sousTaches[ligne.index]) {
@@ -161,6 +178,7 @@ export default function ColleListes({
         onRetirer={surRetirer}
         onEnTache={(collage) => maj('enTache', collage, !modifs.enTache[collage])}
         onSousTaches={(index) => maj('sousTaches', index, !modifs.sousTaches[index])}
+        onProjet={(cle, choix) => maj('projets', cle, choix)}
         onPriorite={onPriorite}
       />
       {erreur || erreurRelecture ? <p className="erreur-champ" role="alert">{erreur || erreurRelecture}</p> : null}

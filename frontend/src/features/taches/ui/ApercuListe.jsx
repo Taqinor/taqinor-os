@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Check, ChevronDown, X } from 'lucide-react'
 
 import {
@@ -5,6 +6,7 @@ import {
 } from '../../../ui/DropdownMenu'
 import { accord } from '../lib/textes'
 import { PRIORITES_PROJET, phraseAlerte } from './ChampSaisie'
+import SelecteurProjet from './SelecteurProjet'
 
 /* ============================================================================
    TCH83 — « Aperçu de ta liste » : ce que le serveur a lu d'un collage (`saisie-rapide/` aperçu,
@@ -173,30 +175,80 @@ function PucePriorite({ nom, valeur, onChoisir }) {
   )
 }
 
-function EnteteProjet({ commun, nbTaches, priorite, enTache, onPriorite, onEnTache }) {
+/**
+ * R3-043 — le projet d'un groupe tel qu'il est montré et envoyé : celui que le serveur a lu (`defaut`), ou celui que
+ * la personne a choisi dans l'en-tête (`choix` : `{ id }` projet existant, `{ sans: true }`, `{ nom }` nouveau).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur partagé avec ColleListes (D-ENF22)
+export function projetDuGroupe(defaut, choix, projets = []) {
+  if (!choix) return defaut
+  if (choix.sans) return { nom: '', sans: true, nouveau: false }
+  if (choix.id != null) {
+    const existant = projets.find((p) => p.id === choix.id)
+    return { id: choix.id, nom: existant?.nom ?? '', nouveau: false, couleur: existant?.couleur }
+  }
+  return { nom: choix.nom, nouveau: true }
+}
+
+function EnteteProjet({ commun, nbTaches, priorite, enTache, ouvert, onPriorite, onEnTache, onChanger }) {
   const nouveau = Boolean(commun.nouveau)
+  const libelle = commun.sans ? 'Sans projet' : nouveau ? `Nouveau projet : ${commun.nom}` : `Projet : ${commun.nom}`
+  const nom = commun.sans ? 'Sans projet' : commun.nom
   return (
     <div className="apercu-projet" data-p={commun.couleur || undefined}>
       {/* la couleur d'un projet n'est servie que pour un projet existant : sans elle, pas de point muet */}
       {commun.couleur ? <i className="point" aria-hidden="true" /> : null}
       <span className="nom">
-        <span className="nom-projet">{nouveau ? `Nouveau projet : ${commun.nom}` : `Projet : ${commun.nom}`}</span>
+        <span className="nom-projet">{libelle}</span>
         <small>
           {accord(nbTaches, 'tâche')}
-          {' · '}
-          <button
-            type="button"
-            className="apercu-bascule"
-            aria-label={`En faire une tâche : ${commun.nom}`}
-            aria-pressed={enTache}
-            onClick={onEnTache}
-          >
-            En faire une tâche
-          </button>
+          {commun.sans ? null : (
+            <>
+              {' · '}
+              <button
+                type="button"
+                className="apercu-bascule"
+                aria-label={`En faire une tâche : ${commun.nom}`}
+                aria-pressed={enTache}
+                onClick={onEnTache}
+              >
+                En faire une tâche
+              </button>
+            </>
+          )}
+          {enTache || !onChanger ? null : (
+            <>
+              {' · '}
+              {/* R3-043 — le projet lu se change avant « Créer » : un existant, « Sans projet » ou un nouveau */}
+              <button
+                type="button"
+                className="apercu-bascule"
+                aria-label={`Changer le projet : ${nom}`}
+                aria-expanded={ouvert}
+                onClick={onChanger}
+              >
+                Changer
+              </button>
+            </>
+          )}
         </small>
       </span>
       {nouveau && !enTache ? <PucePriorite nom={commun.nom} valeur={priorite} onChoisir={onPriorite} /> : null}
     </div>
+  )
+}
+
+/** Le sélecteur de l'en-tête ouvert (R3-043) : `valeur` = l'id montré, `null` pour « Sans projet » ; un projet nouveau
+ *  n'est aucune des options (`-1`, jamais un id). */
+function ChoixDuProjet({ projet, projets, onChoisir }) {
+  return (
+    <SelecteurProjet
+      projets={projets}
+      valeur={projet.sans ? null : projet.id ?? -1}
+      sansProjet
+      onChoisir={(id) => onChoisir(id == null ? { sans: true } : { id })}
+      onNouveau={(nom) => { if (nom.trim()) onChoisir({ nom: nom.trim() }) }}
+    />
   )
 }
 
@@ -215,8 +267,12 @@ function LigneTitreEnTache({ cle, nom, modifs, onCocher, onTitre }) {
 
 export default function ApercuListe({
   apercu, modifs, priorites = {}, projets = [], onCocher, onTitre, onRelire, onRetirer, onEnTache, onSousTaches, onPriorite,
-  nbCreer, nbProjets,
+  onProjet, nbCreer, nbProjets,
 }) {
+  // R3-043 — l'en-tête dont le sélecteur de projet est ouvert (une clé de groupe), un seul à la fois
+  const [changeant, setChangeant] = useState(null)
+  const changer = (cle) => (onProjet ? () => setChangeant((c) => (c === cle ? null : cle)) : undefined)
+  const choisir = (cle) => (choix) => { onProjet?.(cle, choix); setChangeant(null) }
   const lignes = apercu?.lignes ?? []
   const communs = apercu?.projets_communs ?? []
   if (lignes.length === 0 && communs.length === 0) {
@@ -280,16 +336,22 @@ export default function ApercuListe({
           )
         }
         if (commun) {
+          const cle = `p${c}`
+          const choix = modifs.projets?.[cle]
+          const vu = projetDuGroupe(commun, choix, projets)
           return (
-            <div key={c} className="apercu-groupe" role="group" aria-label={commun.nom}>
+            <div key={c} className="apercu-groupe" role="group" aria-label={vu.sans ? 'Sans projet' : vu.nom}>
               <EnteteProjet
-                commun={commun}
+                commun={vu}
                 nbTaches={taches.length}
-                priorite={priorites[commun.nom] ?? commun.priorite ?? 2}
+                priorite={priorites[vu.nom] ?? (choix ? 2 : commun.priorite ?? 2)}
                 enTache={enTache}
+                ouvert={changeant === cle}
                 onPriorite={onPriorite}
                 onEnTache={() => onEnTache(c)}
+                onChanger={changer(cle)}
               />
+              {changeant === cle ? <ChoixDuProjet projet={vu} projets={projets} onChoisir={choisir(cle)} /> : null}
               {enTache ? <LigneTitreEnTache cle={`p${c}`} nom={commun.nom} {...titreDeLigne} /> : null}
               {taches.map(rendreTache)}
             </div>
@@ -301,17 +363,24 @@ export default function ApercuListe({
         return groupes.map((g) => {
           const nom = g.projet?.nom ?? ''
           const gEnTache = Boolean(modifs.enTache[g.cleModif])
+          const vu = g.projet ? projetDuGroupe(g.projet, modifs.projets?.[g.cleModif], projets) : null
+          const titreVu = vu?.sans ? 'Sans projet' : vu?.nom
           return (
-            <div key={`${c}:${g.cleModif}`} className="apercu-groupe" role="group" aria-label={nom || `Liste ${c + 1}`}>
+            <div key={`${c}:${g.cleModif}`} className="apercu-groupe" role="group" aria-label={(nom && titreVu) || `Liste ${c + 1}`}>
               {nom ? (
                 <EnteteProjet
-                  commun={g.projet}
+                  commun={vu}
                   nbTaches={g.lignes.length}
-                  priorite={priorites[nom] ?? 2}
+                  priorite={priorites[vu.nom] ?? 2}
                   enTache={gEnTache}
+                  ouvert={changeant === g.cleModif}
                   onPriorite={onPriorite}
                   onEnTache={() => onEnTache(g.cleModif)}
+                  onChanger={changer(g.cleModif)}
                 />
+              ) : null}
+              {nom && changeant === g.cleModif ? (
+                <ChoixDuProjet projet={vu} projets={projets} onChoisir={choisir(g.cleModif)} />
               ) : null}
               {nom && gEnTache ? <LigneTitreEnTache cle={`t${g.cleModif}`} nom={nom} {...titreDeLigne} /> : null}
               {g.lignes.map(rendreTache)}

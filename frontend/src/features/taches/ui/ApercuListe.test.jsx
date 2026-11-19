@@ -217,6 +217,73 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
     })
   })
 
+  describe('R3-043 — l\'en-tête d\'un groupe se change : un projet existant, « Sans projet » ou un nouveau', () => {
+    const PROJETS = [
+      { id: 31, nom: 'Recrutement technicien', couleur: 'vert', statut: 'actif' },
+      { id: 32, nom: 'Administratif', couleur: 'terre', statut: 'actif' },
+    ]
+    const aFaire = { nouveau_projet: { nom: 'à faire', priorite: 2 } }
+    const recrutement = { nouveau_projet: { nom: 'Recrutement', priorite: 2 } }
+    const GROUPES = {
+      projets_communs: [],
+      lignes: [
+        { ...ligne(0, 0, 'publier l\'annonce'), champs: { priorite: 0, ...recrutement } },
+        { ...ligne(1, 0, 'appeler les candidats'), champs: { priorite: 0, ...recrutement } },
+        { ...ligne(2, 0, 'ranger le bureau'), champs: { priorite: 0, ...aFaire } },
+        { ...ligne(3, 0, 'stand'), champs: { priorite: 0, nouveau_projet: { nom: 'Salon', priorite: 2 } },
+          jetons: [{ type: 'projet', source: '#Salon', debut: 6, fin: 12, libelle: 'Nouveau projet : Salon', valeur: { nouveau: true, nom: 'Salon' } }] },
+      ],
+      projets_nouveaux: [{ nom: 'Recrutement', priorite: 2 }, { nom: 'à faire', priorite: 2 }, { nom: 'Salon', priorite: 2 }],
+    }
+
+    it('« Changer » ouvre le sélecteur (avec « Sans projet ») ; un projet existant remplace le nouveau, pour ses lignes', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(GROUPES, { projets: PROJETS })
+      await user.click(screen.getByRole('button', { name: 'Changer le projet : Recrutement' }))
+      expect(screen.getByRole('option', { name: 'Sans projet' })).toBeInTheDocument()
+      await user.click(screen.getByRole('option', { name: 'Recrutement technicien' }))
+      expect(screen.queryByRole('listbox', { name: 'Projets' })).toBeNull()
+      const entetes = [...document.querySelectorAll('.apercu-projet .nom-projet')].map((e) => e.textContent)
+      expect(entetes).toEqual(['Projet : Recrutement technicien', 'Nouveau projet : à faire'])
+      // un projet existant n'a pas de priorité à choisir
+      expect(screen.queryByRole('button', { name: /Priorité du projet Recrutement/ })).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'Créer 4 tâches' }))
+      const [lignes] = onCreer.mock.calls[0]
+      expect(lignes.slice(0, 2).map((l) => [l.projet_id, l.nouveau_projet])).toEqual([[31, undefined], [31, undefined]])
+      expect(lignes[2].nouveau_projet.nom).toBe('à faire')
+      // la ligne qui nomme son propre projet (`#Salon`) le garde
+      expect(lignes[3].nouveau_projet.nom).toBe('Salon')
+    })
+
+    it('« Sans projet » sur « à faire » : ses lignes partent sans projet, l\'en-tête le dit', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(GROUPES, { projets: PROJETS })
+      await user.click(screen.getByRole('button', { name: 'Changer le projet : à faire' }))
+      await user.click(screen.getByRole('option', { name: 'Sans projet' }))
+      expect(within(screen.getByRole('group', { name: 'Sans projet' })).getByText('Sans projet')).toBeInTheDocument()
+      expect(screen.getByText('4 tâches · 2 projets')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Créer 4 tâches' }))
+      const [lignes] = onCreer.mock.calls[0]
+      expect(lignes[2].nouveau_projet).toBeUndefined()
+      expect(lignes[2].projet_id).toBeUndefined()
+      expect(lignes[0].nouveau_projet.nom).toBe('Recrutement')
+    })
+
+    it('le projet commun (première ligne) se change aussi ; « Créer « nom » » en fait un nouveau projet, priorité Moyenne', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter(APERCU, { projets: PROJETS })
+      await user.click(screen.getByRole('button', { name: 'Changer le projet : Salon Solaire Expo' }))
+      await user.type(screen.getByRole('combobox', { name: 'Chercher un projet' }), 'Salon 2026')
+      await user.click(screen.getByRole('option', { name: 'Créer « Salon 2026 »' }))
+      expect(screen.getByText('Nouveau projet : Salon 2026')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Priorité du projet Salon 2026 : moyenne' })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Créer 6 tâches' }))
+      const [lignes] = onCreer.mock.calls[0]
+      expect(lignes.slice(0, 3).map((l) => l.nouveau_projet)).toEqual(Array(3).fill({ nom: 'Salon 2026', priorite: 2 }))
+      expect(lignes[3].nouveau_projet.nom).toBe('Recrutement technicien')
+    })
+  })
+
   describe('R2-005 — un titre corrigé est relu ; chaque puce se retire', () => {
     const jour = { type: 'jour', source: 'mardi', debut: 9, fin: 14, libelle: 'mar. 24 nov.', valeur: '2026-11-24' }
     const relue = (titre, jetons, champs) => ({ data: { projets_communs: [], projets_nouveaux: [], lignes: [{ ...modele, index: 0, collage: 0, titre, jetons, alertes: [], champs }] } })

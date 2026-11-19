@@ -124,13 +124,14 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
 })
 
 describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
-  it('affiche le squelette seulement après 1 s, jamais avant', async () => {
+  it('R3-025 — affiche le squelette seulement après 300 ms, jamais avant', async () => {
     vi.useFakeTimers()
     let finir
     servir(() => new Promise((resolu) => { finir = () => resolu({ data: donnees() }) }))
     monter()
+    await act(async () => { await vi.advanceTimersByTimeAsync(290) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
     expect(screen.getByRole('status', { name: 'Chargement' })).toBeInTheDocument()
     await act(async () => { finir(); await vi.advanceTimersByTimeAsync(0) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
@@ -204,6 +205,26 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
+    it('R3-025 — revenir sur Aujourd\'hui : la dernière journée connue est là AU MONTAGE (aucun squelette), puis se relit en silence', async () => {
+      const { ecrireJournee } = await import('../../features/taches/horsligne/cacheJournee')
+      const { aujourdhuiIso } = await import('../../features/taches/lib/textes')
+      ecrireJournee(42, aujourdhuiIso(), donnees(), new Date())
+      let lacher
+      const porte = new Promise((r) => { lacher = r })
+      const relue = donnees()
+      relue.essentiel = [{ ...relue.essentiel[0], titre: 'Devis Settat (relu)' }]
+      servir(() => porte.then(() => ({ data: relue })))
+      monterConnecte()
+      // la lecture est encore retenue : la liste du cache est déjà là, sans squelette
+      expect(screen.getByText('Devis Settat')).toBeInTheDocument()
+      expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
+      // (« vu » part d'abord) : la relecture part ensuite, sans toast de l'ERP si elle échoue — le bandeau le dira
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/aujourdhui/', expect.objectContaining({ suppressErrorToast: true })))
+      expect(screen.getByText('Devis Settat')).toBeInTheDocument()
+      await act(async () => { lacher() })
+      expect(await screen.findByText('Devis Settat (relu)')).toBeInTheDocument()
+    })
+
     it('R2-008b — une tâche ajoutée hors ligne apparaît tout de suite, grisée « En attente d’envoi » (lue dans la file)', async () => {
       servir(donnees())
       monterConnecte()
@@ -265,7 +286,12 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       await userEvent.click(within(carte).getByRole('button', { name: 'Reprendre' }))
       expect(ouverture).toHaveBeenCalledTimes(1)
       expect(await screen.findByRole('textbox', { name: 'Ajouter une tâche' })).toHaveValue('Appeler le notaire')
+      // R3-022 — la saisie ouverte porte déjà le brouillon : plus de « Reprendre » par-dessus
+      expect(screen.queryByRole('region', { name: 'Brouillon' })).toBeNull()
       window.removeEventListener('taqinor:taches:saisir', ouverture)
+      // à la fermeture (brouillon gardé), la carte revient
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisie-fermee')) })
+      expect(await screen.findByRole('region', { name: 'Brouillon' })).toBeInTheDocument()
     })
 
     it('une création ailleurs (`taqinor:taches:creees`) relit la journée une fois', async () => {
@@ -842,6 +868,20 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     expect(detail).not.toHaveTextContent('accepté')
     expect(detail).not.toHaveTextContent('Objectif du jour')
   })
+
+  it('R3-029 — premier jour (objectif par défaut) : « 1 faite », jamais « 1 sur 5 » ; le détail dit la valeur par défaut', async () => {
+    const d = donnees()
+    d.objectif = { ...d.objectif, source: 'defaut' }
+    servir(d)
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    expect(container.querySelector('.progression-compte')).toHaveTextContent(/^1 faite$/)
+    expect(container.querySelector('button.progression')).not.toHaveTextContent('sur 5')
+    await userEvent.click(screen.getByRole('button', { name: /^1 faite\. Détail de la journée$/ }))
+    const detail = screen.getByRole('group', { name: 'Détail de la journée' })
+    expect(detail).toHaveTextContent('Objectif : valeur par défaut, pas encore calculée sur toi')
+    expect(detail).not.toHaveTextContent('sur 5')
+  })
 })
 
 describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `section`, `focus`)', () => {
@@ -896,6 +936,33 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     await userEvent.keyboard('h')
     await waitFor(() => expect(adresse().get('focus')).toBe('heure'))
     expect(adresse().get('tache')).toBe('42')
+  })
+
+  it('R3-028 — `d` (ou `e`, `h`) sur une activité ERP le DIT : « Une activité ERP s\'ouvre dans l\'ERP · Ouvrir »', async () => {
+    function Chemin() { const { pathname, search } = useLocation(); return <output data-testid="chemin">{pathname + search}</output> }
+    servir(donnees())
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /><Chemin /></MemoryRouter>)
+    await screen.findByText('Rappeler Benali')
+    act(() => { document.querySelector('[data-ligne="activite:101"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('d')
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
+    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    await userEvent.click(within(toast).getByRole('button', { name: 'Ouvrir' }))
+    await waitFor(() => expect(screen.getByTestId('chemin')).toHaveTextContent('/crm/leads?lead=1637'))
+  })
+
+  it('R3-028 — Entrée sur une activité ERP SANS adresse le dit aussi (jamais rien sans un mot)', async () => {
+    const d = donnees()
+    d.journee = d.journee.map((it) => (it.type === 'activite' ? { ...it, lien: null } : it))
+    servir(d)
+    monter()
+    await screen.findByText('Rappeler Benali')
+    act(() => { document.querySelector('[data-ligne="activite:101"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('{Enter}')
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
+    expect(within(toast).queryByRole('button', { name: 'Ouvrir' })).toBeNull()
   })
 })
 

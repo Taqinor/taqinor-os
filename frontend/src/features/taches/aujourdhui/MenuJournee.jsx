@@ -50,10 +50,16 @@ export function actionsJournee({ enLigne, peutAlleger = true, onAlleger, onReorg
   ]
 }
 
-/** Remplace, dans `liste`, les TÂCHES par `taches` (dans cet ordre) en laissant chaque activité ERP à sa place. */
+/** R3-026 — une ligne qui se réordonne : une tâche OUVERTE (une faite, servie aussi dans Essentiel, n'est la voisine de
+ *  personne : le serveur ne l'ordonne pas). */
+const ordonnable = (item) => item.type === 'tache' && item.statut !== 'fait'
+const PHRASE_DEPLACEMENT_REFUSE = 'Impossible de déplacer cette tâche ici.'
+
+/** Remplace, dans `liste`, les tâches ouvertes par `taches` (dans cet ordre) en laissant chaque activité ERP et chaque
+ *  tâche faite à sa place. */
 function recomposer(liste, taches) {
   const suite = [...taches]
-  return liste.map((item) => (item.type === 'tache' ? suite.shift() : item))
+  return liste.map((item) => (ordonnable(item) ? suite.shift() : item))
 }
 
 /** Pose `champs` (statut, jour…) sur les tâches `ids` de toutes les listes ; `versions` : leur `lock_version` rendu. */
@@ -91,7 +97,7 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try { garde() } catch { return }
     const liste = LISTES_JOUR.find((cle) => donnees[cle]?.some((it) => cleDe(it) === cleDe(item)))
     if (!liste) return
-    const taches = donnees[liste].filter((it) => it.type === 'tache')
+    const taches = donnees[liste].filter(ordonnable)
     const i = taches.findIndex((it) => it.id === item.id)
     const j = i + sens
     if (i < 0 || j < 0 || j >= taches.length) return
@@ -102,9 +108,10 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try {
       await client.reordonnerTache(item.id, { liste: 'jour', avant_id: suite[j - 1]?.id ?? null, apres_id: suite[j + 1]?.id ?? null })
       annoncer(`${item.titre} : position ${j + 1} sur ${suite.length}`)
-    } catch (err) {
+    } catch {
+      // R3-026 — le refus se VOIT, en mots humains : la ligne revient à sa place (le détail serveur n'aide pas Reda)
       setDonnees((d) => ({ ...d, [liste]: recomposer(d[liste], taches) }))
-      annoncer(frenchError(err))
+      proposerAnnuler({ message: PHRASE_DEPLACEMENT_REFUSE })
     }
   }, [donnees, garde, setDonnees])
 
