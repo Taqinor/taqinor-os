@@ -165,3 +165,17 @@ Demandes de L2 :
 - Le brouillon garde le « Quand » d'Aujourd'hui quand on rouvre la saisie depuis un autre écran.
 - Fiche bureau, section Répéter : une case isolée et « après fait » mal alignés.
 - iPhone réel : toast en haut avec clavier ouvert (`visualViewport` iOS) non vérifiable ici.
+
+## Après le pli de V2-C (`35ca4c1f7`) — tout est plié (tête `da20ddfd0`)
+- `docs/openapi-schema.yml` à régénérer (ITEM + `a_notes`/`fait_le`, 409 de `tout-effacer/`, `periode`).
+- `pages/taches/Revue.test.jsx` l.64 attend l'ancienne phrase « Du lun. 16 au ven. 20 : 26 tâches en 5 jours
+  (précédente : 23). … » : l'adapter puis passer `contract_samples/revue_projets.json` + annexe A d'`api.md` à
+  « Cette semaine : 26 faites (23 la précédente). … ».
+- `regles.md` §4.2 dit que la moitié « journée » de la pause C-5 n'est pas dans le code : FAUX depuis le pli de L2
+  (R2-031, `selectors/journee.py`) : corriger la phrase.
+- `pages/taches/Projet.jsx::santeCourte` (≈ l.123-129) peut dire « À ce rythme, pas prêt pour {jour} »
+  (`donnees.echeance` est servie).
+- `tout_effacer` : la cause du 500 était l'attente d'un verrou tenu par le semis (`reinit-compte.sh`) ; maintenant
+  409 `effacement_occupe` propre au bout de 5 s. À rejouer : 200 au calme.
+- À rejouer sur l'écran, serveur servi : « Faites cette semaine » (loupe › puce) ; indice note ; revue d'une semaine
+  passée ; santé « À ce rythme, pas prêt pour le … ».
