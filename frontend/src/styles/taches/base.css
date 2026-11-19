@@ -1174,6 +1174,10 @@
    le titre, centré dans 44 px, tombait sous la case et l'heure, et la puce Garder grossissait. Leur cible tactile
    est déjà ≥ 44 px par leur ::after (la ligne entière ; 44 px autour de la puce). */
 .tch .ligne-corps-bouton, .tch .ligne .garder { min-height: 0; }
+/* R2-082 — même règle tactile : l'interrupteur (51 × 31) devenait une « goutte » de 51 × 44, pastille collée en haut ;
+   les puces (34), leur croix (20), le Copilote (36), les segments (40) et les boutons du bandeau de conflit (40)
+   grossissaient de même. Tous ont déjà leur cible de 44 px par un `::after` : leur dessin reste celui des maquettes. */
+.tch .interrupteur, .tch .puce, .tch .puce .retirer, .tch .copilote, .tch .segmente button, .tch .conflit .bouton { min-height: 0; }
 .tch .ligne .case, .tch .ligne .garder, .tch .ligne-fin button { position: relative; z-index: 1; }
 .tch .ligne-actions { z-index: calc(var(--z-base) + 2); }
 /* Étoile interactive : cible de 44 px, alignée sur la première ligne du titre */
