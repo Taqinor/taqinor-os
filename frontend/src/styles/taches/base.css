@@ -1037,6 +1037,12 @@
   .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > .header .nb-panel {
     visibility: visible;
   }
+  /* R2-091 — barre d'onglets dans Tâches : l'onglet actif en accent du module (8,6:1 en clair, 6,8:1 en sombre ; l'or
+     #b8860b de l'ERP tombait à 3,25:1) et des libellés de 12 px (9,9 px dans l'ERP), comme la maquette coque.js. */
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab { color: var(--tch-texte-doux); }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active { color: var(--tch-accent); }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab.active::after { background: currentColor; }
+  .layout:has(> .layout-main > .layout-content > .route-fade > .tch) .bottom-tabbar--app .bottom-tab-label { font-size: 0.75rem; }
   /* R2-083 — le tiroir FERMÉ (translateX(-105 %)) gardait son ombre de 28 px, qui débordait en bande grise sur le bord
      gauche de chaque écran. Ouvert, il la retrouve. */
   .layout:not(.drawer-open):has(> .layout-main > .layout-content > .route-fade > .tch) > .sidebar { box-shadow: none; }
