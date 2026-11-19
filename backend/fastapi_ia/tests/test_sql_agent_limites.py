@@ -14,6 +14,7 @@ de test configuree (DB_HOST absent), comme dans test_sql_security.py.
 unittest (stdlib). A lancer depuis backend/fastapi_ia :
     python -m unittest discover -s tests
 """
+import json
 import os
 import sys
 import unittest
@@ -679,6 +680,49 @@ class EcrituresInternesFnd5Tests(unittest.TestCase):
                 mock.patch.object(at, "_execute_catalogue_action", return_value=res):
             sortie = at.confirm_proposal(self._ctx(), "jeton")
         self.assertEqual((sortie["ok"], sortie["error"]), (False, at.MESSAGE_PAIEMENT_SIMILAIRE))
+
+
+class JournalEcrituresInternesFnd7Tests(unittest.TestCase):
+    """Vague 2 (FND7) — une écriture silencieuse réussie est journalisée
+    (`origine=interne`, entrées SANS texte libre, preuve HMAC) ; jamais une
+    lecture, une action `taches.*`, un échec, ni sans secret."""
+
+    NOTE = dict(EcrituresInternesFnd5Tests.NOTE, inputs={"type": "object", "properties": {
+        "id": {"type": "integer"}, "texte": {"type": "string"}}})
+
+    def _lancer(self, action, reponse=None, secret="s"):
+        from app.services import action_tools as at
+        from app.services.action_tools import ActionContext
+        appels = []
+
+        def appel(ctx, path, method="POST", payload=None, **k):
+            appels.append((path, payload))
+            return reponse or {"ok": True, "status": 201, "data": {"id": 9921}}
+        ctx = ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        with mock.patch.object(at, "_django_call", appel), mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": secret}):
+            at.run_catalogue_action(ctx, action, {"id": 1489, "texte": "Le client rappelle jeudi"}, [])
+        return [(p, c) for p, c in appels if p == "/api/django/agent/logs/confirmer/"]
+
+    def test_ecriture_reussie_journalisee_sans_texte(self):
+        from app.services import action_tools as at
+        (_, corps), = self._lancer(self.NOTE)
+        self.assertEqual({k: corps[k] for k in ("action_key", "risk_level", "origine", "inputs", "object_id")},
+                         {"action_key": "crm.lead.note", "risk_level": "internal", "origine": "interne",
+                          "inputs": {"id": 1489}, "object_id": 9921})
+        self.assertEqual(corps["preuve"], at.calculer_preuve_confirmation(
+            secret="s", action_key="crm.lead.note", company_id=7, user_id=0,
+            inputs={"id": 1489}, object_id=9921))
+        self.assertNotIn("jeudi", json.dumps(corps, ensure_ascii=False))
+
+    def test_jamais_lecture_taches_echec_ni_sans_secret(self):
+        echec = {"ok": False, "status": 409, "error": "Refus."}
+        for nom, action, reponse, secret in (
+                ("get", dict(self.NOTE, method="GET"), None, "s"),
+                ("lecture", dict(self.NOTE, lecture=True), None, "s"),
+                ("taches", dict(self.NOTE, key="taches.tache.creer"), None, "s"),
+                ("echec", self.NOTE, echec, "s"), ("sans_secret", self.NOTE, None, "")):
+            with self.subTest(cas=nom):
+                self.assertEqual(self._lancer(action, reponse, secret), [])
 
 
 def _servir_natif(catalogue, contexte=None, fournisseur="claude", **kw):

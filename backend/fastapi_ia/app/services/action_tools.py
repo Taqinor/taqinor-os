@@ -1280,6 +1280,8 @@ def run_catalogue_action(
     }
     if collector is not None:
         collector.append(result)  # entier : les cartes ne sont jamais coupees
+    if est_ecriture_interne(action):  # FND7 — trace durable, sans texte libre
+        _journaliser_ecriture_interne(ctx, action, inputs, res.get("data"))
     if est_ecriture_taches(action):
         return _sortie_ecriture_sans_texte(result)
     return _sortie_pour_modele(result)
@@ -1537,6 +1539,31 @@ def _log_confirmed_action(
         logger.warning(
             "Journalisation de l'action confirmee echouee (%s): %s",
             action_key, log_res.get("error"))
+
+
+def _journaliser_ecriture_interne(
+    ctx: ActionContext, action: dict[str, Any], inputs: dict[str, Any], resulted_data: Any,
+) -> None:
+    """Vague 2 (FND7) — une ecriture SILENCIEUSE reussie (`est_ecriture_interne`,
+    jamais `taches.*`) laisse une trace durable : `agent/logs/confirmer/` avec
+    `origine=interne`, entrees SANS texte libre (`_sans_texte` : ids, nombres,
+    dates), l'id rendu par Django s'il est entier, et la meme preuve HMAC que
+    les confirmations. Best-effort : sans secret, Django refuserait (fail-closed)
+    — rien n'est poste ; un echec est journalise, jamais propage."""
+    ident = resulted_data.get("id") if isinstance(resulted_data, dict) else None
+    object_id = ident if isinstance(ident, int) and not isinstance(ident, bool) else None
+    entrees = _sans_texte(inputs)
+    preuve = calculer_preuve_confirmation(
+        action_key=action["key"], company_id=ctx.company_id,
+        user_id=_caller_user_id(ctx), inputs=entrees, object_id=object_id)
+    if not preuve:
+        logger.warning("Ecriture interne non journalisee (%s) : AGENT_HMAC_SECRET absent.", action["key"])
+        return
+    res = _django_call(ctx, "/api/django/agent/logs/confirmer/", method="POST", payload={
+        "action_key": action["key"], "risk_level": RISK_INTERNAL, "origine": "interne",
+        "inputs": entrees, "object_id": object_id, "proposal_hash": preuve, "preuve": preuve})
+    if not res.get("ok"):
+        logger.warning("Ecriture interne non journalisee (%s): %s", action["key"], res.get("error"))
 
 
 # ── AIC7 — outil `report_gap` (silencieux, sans confirmation) ────────────────

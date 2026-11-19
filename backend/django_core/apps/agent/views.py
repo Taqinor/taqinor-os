@@ -52,6 +52,9 @@ class ConfirmationActionSerializer(drf_serializers.Serializer):
     inputs = drf_serializers.DictField(required=False)
     object_id = drf_serializers.IntegerField(required=False, allow_null=True)
     preuve = drf_serializers.CharField(required=False)
+    # Copilote vague 2 (FND7) — ``interne`` : écriture silencieuse d'un tour.
+    origine = drf_serializers.ChoiceField(
+        choices=list(AgentActionLog.Origine.values), required=False)
 
 
 def sans_nul(valeur):
@@ -105,6 +108,7 @@ _JournalAgent = inline_serializer('AgentActionJournal', {
     'object_repr': drf_serializers.CharField(),
     'undone_at': drf_serializers.DateTimeField(allow_null=True),
     'is_undoable': drf_serializers.BooleanField(),
+    'origine': drf_serializers.CharField(),
 })
 
 
@@ -134,6 +138,7 @@ def _serialize_log(log: AgentActionLog) -> dict:
         'object_repr': log.object_repr,
         'undone_at': log.undone_at,
         'is_undoable': log.is_undoable,
+        'origine': log.origine,
     }
 
 
@@ -187,6 +192,20 @@ class AgentActionUndoView(APIView):
         return Response(_serialize_log(log))
 
 
+def _origine_du_journal(brut, action) -> str:
+    """Copilote vague 2 (FND7) — ``interne`` seulement pour une action
+    ``internal`` du catalogue de l'appelant (écriture silencieuse d'un tour,
+    journalisée par le relais) ; ``confirmee`` (défaut) : la règle d'avant.
+    Valeur hors liste : 400 ; ``interne`` sur une autre action : 403."""
+    origine = AgentActionLog.Origine.CONFIRMEE if brut in (None, '') else brut
+    if origine not in AgentActionLog.Origine.values:
+        raise ParseError('origine : confirmee ou interne.')
+    if (action is not None and origine == AgentActionLog.Origine.INTERNE
+            and action.risk != AgentActionLog.RiskLevel.INTERNAL):
+        raise PermissionDenied("Action non autorisée pour ce compte.")
+    return origine
+
+
 class AgentActionConfirmerView(APIView):
     """AUDV27 (YHARD2) — ``POST /api/django/agent/logs/confirmer/`` :
     journalise la CONFIRMATION d'une action IA APRÈS son exécution réelle
@@ -215,6 +234,7 @@ class AgentActionConfirmerView(APIView):
             'object_repr': drf_serializers.CharField(),
             'undone_at': drf_serializers.DateTimeField(allow_null=True),
             'is_undoable': drf_serializers.BooleanField(),
+            'origine': drf_serializers.CharField(),
         })})
     def post(self, request):
         data = request.data or {}
@@ -251,6 +271,7 @@ class AgentActionConfirmerView(APIView):
         #      + société de CETTE requête. Sinon 403, aucun journal créé.
         action = next(
             (a for a in for_user(request.user) if a.key == action_key), None)
+        origine = _origine_du_journal(data.get('origine'), action)
         if action is None or action.risk != risk_level or (
                 action.required_permission
                 and not request.user.has_erp_permission(
@@ -283,6 +304,7 @@ class AgentActionConfirmerView(APIView):
             # jamais un jeton brut ni une valeur libre du corps.
             proposal_hash=preuve,
             resulted_object=resulted_object,
+            origine=origine,
         )
         return Response(_serialize_log(log), status=status.HTTP_201_CREATED)
 

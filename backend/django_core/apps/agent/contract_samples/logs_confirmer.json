@@ -38,7 +38,7 @@
     "is_undoable": true,
     "origine": "confirmee"
   },
-  "origine": "Copilote vague 2 (A0, 19/11/2026) — `origine` dit d'où vient le journal : `confirmee` (défaut, ancien comportement : une action outward/irreversible confirmée par le doigt de l'utilisateur) ou `interne` (une écriture INTERNE faite sans carte par l'assistant pendant un tour — note, préparation, calcul ; le relais la journalise après sa réussite). `interne` n'est accepté que pour une action `internal` du catalogue de l'appelant, et `confirmee` que pour une action outward/irreversible ; ses `inputs` ne portent QUE des identifiants, nombres, booléens, dates et heures (aucun texte libre : ni note, ni message — `action_tools._sans_texte`). Jamais une action `taches.*` (espace privé). Une écriture interne n'est jamais annulable (`is_undoable` faux).",
+  "origine": "Copilote vague 2 (A0, 19/11/2026) — `origine` dit d'où vient le journal : `confirmee` (défaut, ancien comportement : une action outward/irreversible confirmée par le doigt de l'utilisateur) ou `interne` (une écriture INTERNE faite sans carte par l'assistant pendant un tour — note, préparation, calcul ; le relais la journalise après sa réussite). `interne` n'est accepté que pour une action `internal` du catalogue de l'appelant (403 sinon ; valeur hors liste : 400) ; ses `inputs` ne portent QUE des identifiants, nombres, booléens, dates et heures (aucun texte libre : ni note, ni message — `action_tools._sans_texte`). Jamais une action `taches.*` (espace privé). Une écriture interne n'est jamais annulable (`is_undoable` faux).",
   "exemple_interne": {
     "id": 502,
     "action_key": "crm.lead.note",
