@@ -289,6 +289,33 @@ describe('R2-071 — Un projet vide : l\'invite', () => {
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
+  it('R3-139 — sans aucune tâche : ni « 0 sur 0 » ni barre d\'avancement vide au-dessus de l\'invite', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.forEach((s) => { s.taches = [] })
+    vue.sans_section = []
+    vue.faites_nb = 0
+    vue.avancement = { ...vue.avancement, faites: 0, total: 0 }
+    vue.projet.compteurs = { ouvertes: 0, faites: 0 }
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const { container } = monter()
+    await screen.findByRole('region', { name: 'Projet vide' })
+    expect(screen.queryByText(/0 sur 0/)).toBeNull()
+    expect(container.querySelector('.ep-barre-avance')).toBeNull()
+    expect(container.querySelector('.ep-avance')).toBeNull()
+    // le reste de la ligne (priorité, vues) est là
+    expect(screen.getByRole('button', { name: 'Priorité haute, changer' })).toBeInTheDocument()
+  })
+
+  it('R3-127 — une étape VIDE garde « Ajouter une tâche » visible en permanence (sa seule invite) ; les étapes à tâches le montrent au survol', async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    vue.sections.push({ ...vue.sections[0], id: 99, nom: 'Démarches', taches: [], compteurs: { ouvertes: 0, faites: 0 } })
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    monter()
+    await screen.findByText('12 sur 20')
+    expect(screen.getByRole('region', { name: 'Démarches' })).toHaveClass('etape-vide')
+    expect(screen.getByRole('region', { name: vue.sections[0].nom })).not.toHaveClass('etape-vide')
+  })
+
   it('un projet qui a des tâches ne montre pas l\'invite', async () => {
     monter()
     await screen.findByText('12 sur 20')
@@ -325,8 +352,11 @@ describe('R2-070 — Un projet : sans réseau, la dernière vue lue', () => {
 })
 
 describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran', () => {
-  it('⋯ → Mettre en haut place le projet avant le premier projet actif', async () => {
-    api.listerTousLesProjets.mockResolvedValue([{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }])
+  it('⋯ → Mettre en haut place le projet avant le premier projet actif DE SA PRIORITÉ (R3-129 : la liste est groupée)', async () => {
+    // « Ventes » est de priorité haute (3) : le projet 9, de priorité basse, est en tête de la liste mais pas de son groupe
+    api.listerTousLesProjets.mockResolvedValue([
+      { id: 9, nom: 'Admin', priorite: 1 }, { id: 7, nom: 'Chantier', priorite: 3 }, { id: 3, nom: 'Ventes', priorite: 3 },
+    ])
     api.reordonnerProjet.mockResolvedValue({ data: {} })
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
@@ -338,7 +368,7 @@ describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran',
   })
 
   it('déjà premier : rien n\'est écrit', async () => {
-    api.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes' }])
+    api.listerTousLesProjets.mockResolvedValue([{ id: 3, nom: 'Ventes', priorite: 3 }])
     monter()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     await screen.findByText('12 sur 20')

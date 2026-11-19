@@ -47,6 +47,10 @@
 .tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-surveiller); font-weight: 500; }
 .tch .ep-aplanifier { font-size: var(--tch-chiffre); font-weight: 600; line-height: 1.375rem; padding: 0 9px; border-radius: var(--tch-rayon-puce);
   color: var(--tch-accent); background: var(--tch-accent-doux); }
+/* R3-129 — les groupes de priorité de la liste (Haute · Moyenne · Basse · Aucune) */
+.tch .ep-groupe-prio { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 0; padding: 0 var(--tch-gouttiere) 2px;
+  font-size: var(--tch-meta); font-weight: 650; line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
+.tch .ep-groupe-prio .compte { font-weight: 500; }
 .tch .ep-nouveau {
   display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 48px;
   margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: 1rem; font-weight: 600; color: var(--tch-accent);
@@ -122,7 +126,15 @@
 .tch .ep-details-corps p { margin: 0; }
 .tch .ep-etape { margin-top: 8px; }
 .tch .ep-faites { display: flex; align-items: center; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-weight: 600; }
-.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-accent); font-size: 0.9375rem; font-weight: 600; }
+/* R3-127 — « + Ajouter une tâche » d'une étape est un geste DISCRET : gris et normal (il était bleu et gras sous CHAQUE étape,
+   plus lourd que les tâches) ; avec la souris il n'apparaît qu'au survol de l'étape (ou au focus), sauf dans une étape vide
+   où il est la seule invite ; au doigt il reste visible */
+.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-size: 0.9375rem; font-weight: 500; }
+@media (hover: hover) and (min-width: 768px) {
+  .tch .ep-etape:not(.etape-vide) .ep-ajouter { opacity: 0; }
+  .tch .ep-etape:hover .ep-ajouter, .tch .ep-etape:focus-within .ep-ajouter, .tch .ep-ajouter:focus-visible { opacity: 1; }
+  .tch .ep-ajouter:hover { color: var(--tch-accent); }
+}
 .tch .ep-ajout { padding: 4px var(--tch-gouttiere) 8px; display: flex; flex-direction: column; gap: 6px; }
 @media (hover: hover) {
   .tch .ep-ajouter:hover { background: var(--tch-survol); }
@@ -163,8 +175,9 @@
 .tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
   border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
 .tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
-/* R2-069 — UN dessin de « choisi » dans le rituel : le plein d'accent des puces (plus un filet pour les priorités) */
-.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); }
+/* R3-128 (R3-092) — UN seul dessin de « sélectionné » : la lavande, le texte d'accent et le filet d'accent ; plus un bloc
+   bleu plein pour une seule ligne (la priorité choisie criait plus fort que « Terminer ») */
+.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-selection); color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
 .tch .ep-choix-ligne[aria-checked="true"] span { color: inherit; opacity: 0.85; }
 /* priorités : trois colonnes, jamais trois lignes pleine largeur */
 .tch .ep-planifier .ep-choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -183,7 +196,10 @@
   .tch .ep-action-retirer:hover { background: var(--tch-survol); }
 }
 .tch .ep-ajout-action { display: flex; gap: 8px; align-items: center; }
-.tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+.tch .ep-plus > summary { min-height: var(--tch-cible); display: flex; align-items: center; gap: 6px; font-weight: 600; cursor: pointer; list-style: none; }
+.tch .ep-plus > summary::-webkit-details-marker { display: none; }
+.tch .ep-plus > summary svg { color: var(--tch-texte-doux); }
+.tch .ep-plus[open] > summary svg { transform: rotate(180deg); }
 .tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
 .tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
 /* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets.
@@ -191,6 +207,8 @@
    réserve sa hauteur en bas (`.layout-content`) ; ajouter `--tch-onglets-h` la comptait deux fois et le pied, remonté de
    52 px, recouvrait le bas des choix de priorité (« passe avant » coupé). */
 .tch .ep-planifier-pied { position: sticky; bottom: 0; margin-top: 4px; padding: 10px 0 12px; background: var(--tch-surface); z-index: var(--z-sticky); }
+/* R3-128 — pas 1 : trois priorités et un bouton, tout tient : le pied suit le contenu, il ne le recouvre jamais */
+.tch .ep-planifier-pied.pas-un { position: static; }
 /* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
 .tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
 .tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
@@ -342,6 +360,8 @@
 .tch .ep-f-item.auj .ep-f-date { color: var(--tch-accent); }
 .tch .ep-f-titre { font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; margin-top: 1px; }
 .tch .ep-f-item.etape .ep-f-titre { font-weight: 650; }
+/* R3-130 — ce qui est en retard (étape, jalon, échéance, tâche datée avant aujourd'hui) s'écrit en couleur d'alerte */
+.tch .ep-f-item.retard .ep-f-date, .tch .ep-f-taches li.retard .chiffres { color: var(--tch-alerte); }
 .tch .ep-f-detail { font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); margin-top: 1px; }
 /* R2-066 — tâches datées sous leur étape (iPhone) */
 .tch .ep-f-taches { list-style: none; margin: 4px 0 0; padding: 0; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
@@ -373,14 +393,22 @@
   .tch .ep-fh-trait span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-size: 0.75rem; font-weight: 700; }
   .tch .ep-fh-trait.auj span { background: var(--tch-accent); color: var(--tch-accent-texte); }
   .tch .ep-fh-trait.fin span { background: var(--tch-texte); color: var(--tch-surface); }
-  /* R2-066 — un point par jour de tâche sous la barre de son étape ; rangée nommée pour une étape sans date ; pastilles bornées au cadre */
-  .tch .ep-fh-points { position: relative; height: 18px; }
-  /* `--x` : la place sur l'axe (JSX) ; bornée pour que le point, centré, ne déborde jamais du cadre (5 px de rayon) */
-  .tch .ep-fh-point { position: absolute; top: 4px; left: clamp(5px, var(--x), calc(100% - 5px)); width: 10px; height: 10px; margin-left: -5px; border-radius: 999px;
-    background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-point); }
+  /* R2-066 / R3-130 — un point par jour de tâche, POSÉ SUR la barre de son étape (centré sur la ligne de son nom) ; pastilles bornées au cadre.
+     Une étape d'un jour est un point seul, son nom à côté (`.ep-fh-nom-point`). */
+  .tch .ep-fh-points { position: absolute; inset: 0; pointer-events: none; }
+  /* `--x` : la place sur l'axe (JSX) ; bornée pour que le point, centré, ne déborde jamais du cadre (6 px de rayon) */
+  .tch .ep-fh-point { position: absolute; top: 50%; left: clamp(6px, var(--x), calc(100% - 6px)); width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 999px; pointer-events: auto;
+    background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-point), 0 0 0 2px var(--tch-bloc-fond); }
   .tch .ep-fh-point[data-n] { background: var(--tch-point); }
-  .tch .ep-fh-libre { margin-top: 6px; }
-  .tch .ep-fh-nom { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--tch-texte-doux); }
+  .tch .ep-fh-point.retard { box-shadow: inset 0 0 0 2.5px var(--tch-alerte), 0 0 0 2px var(--tch-bloc-fond); }
+  .tch .ep-fh-nom-point { position: absolute; top: 50%; transform: translate(16px, -50%); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; }
+  .tch .ep-fh-nom-point.a-gauche { transform: translate(-16px, -50%); }
+  .tch .ep-fh-nom-point.retard { color: var(--tch-alerte); }
+  .tch .ep-fh-barre.retard { box-shadow: inset 3px 0 0 var(--tch-alerte); }
+  .tch .ep-fh-barre.faite.retard { box-shadow: inset 3px 0 0 var(--tch-point), inset 0 0 0 1px var(--tch-trait); }
+  .tch .ep-fh-etiquette.retard { color: var(--tch-alerte); }
+  .tch .ep-fh-trait.fin.retard { background: var(--tch-alerte); }
+  .tch .ep-fh-trait.fin.retard span { background: var(--tch-alerte); color: var(--tch-accent-texte); }
   .tch .ep-fh-trait.bord-g span { left: 0; transform: none; }
   .tch .ep-fh-trait.bord-d span { left: auto; right: -1px; transform: none; }
   .tch .ep-fh-etiquette.bord-g { transform: translateX(14px); }

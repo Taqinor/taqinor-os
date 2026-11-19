@@ -226,10 +226,13 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, ver
         ) : null}
         <PuchePriorite projet={projet} onChoisir={onPriorite} />
         {ech ? <span className={`chiffres ${ech.ton === 'alerte' ? 'alerte' : 'fort'}`}>{ech.texte}</span> : null}
-        <span className="ep-avance">
-          <span className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></span>
-          <span className="chiffres ep-avance-texte"><b>{texte}</b></span>
-        </span>
+        {/* R3-139 — un projet SANS aucune tâche n'a pas d'avancement : ni « 0 sur 0 » ni barre vide au-dessus de l'invite */}
+        {avancement.total > 0 ? (
+          <span className="ep-avance">
+            <span className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></span>
+            <span className="chiffres ep-avance-texte"><b>{texte}</b></span>
+          </span>
+        ) : null}
         {jalon ? (
           <span className="ep-jalon-proche">
             <Diamond className="i i-14 ep-losange" aria-hidden="true" />
@@ -552,7 +555,8 @@ export default function Projet() {
   const mettreEnHaut = async () => {
     const projet = vue.projet
     try {
-      const premier = (await listerTousLesProjets({ statut: 'actif' }))[0]
+      // R3-129 — la liste est groupée par priorité : « en haut » = en tête de SON groupe (devant le premier de même priorité)
+      const premier = (await listerTousLesProjets({ statut: 'actif' })).find((p) => (p.priorite ?? 0) === (projet.priorite ?? 0))
       if (!premier || premier.id === projet.id) { annoncer(`« ${projet.nom} » est déjà en haut`); return }
       await reordonnerProjet(projet.id, { avant_id: premier.id })
       annoncer(`« ${projet.nom} » en haut`)

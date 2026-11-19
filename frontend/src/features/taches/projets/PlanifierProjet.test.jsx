@@ -51,6 +51,17 @@ describe('TCH91 — Planifier le projet : pas 1 et pas 2', () => {
     expect(api.planifierProjet).not.toHaveBeenCalled()
   })
 
+  it('R3-128 — pas 1 : le pied « Suivant » suit le contenu (jamais collé sur les priorités), il reste en bas au pas 2 ; « Plus » porte son chevron', async () => {
+    const { container } = monter()
+    const user = utilisateur()
+    expect(container.querySelector('.ep-planifier-pied')).toHaveClass('pas-un')
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(container.querySelector('.ep-planifier-pied')).not.toHaveClass('pas-un')
+    const resume = container.querySelector('.ep-plus > summary')
+    expect(resume).toHaveTextContent('Plus')
+    expect(resume.querySelector('svg')).not.toBeNull()
+  })
+
   it('Terminer envoie priorité, objectif, échéance, actions et lock_version d\'un coup, puis rend la main', async () => {
     const onTermine = vi.fn()
     monter({ onTermine })

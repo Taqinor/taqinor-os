@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, X } from 'lucide-react'
+import { ChevronDown, Sparkles, X } from 'lucide-react'
 import { apercuPlanification, planifierProjet } from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
@@ -116,7 +116,7 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
   const jalons = (apercu?.sections ?? []).flatMap((s) => s.taches.filter((t) => t.jalon))
   return (
     <details className="ep-plus">
-      <summary>Plus</summary>
+      <summary>Plus<ChevronDown className="i i-16" aria-hidden="true" /></summary>
       <div className="ep-groupe">
         <label className="ep-etiquette" htmlFor="pp-etapes">Étapes</label>
         <p className="es-aide" id="pp-etapes-aide">Une ligne par étape ; ses tâches dessous, en retrait ou avec un tiret.</p>
@@ -228,10 +228,11 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   }
 
   // brouillon gardé : écrit peu après la dernière frappe, vidé à la déconnexion
+  const minuteur = useRef(null)
   useEffect(() => {
     if (!modifie.current) return undefined
-    const minuteur = setTimeout(() => ecrireBrouillon(cle, etat), DELAI_ECRITURE_MS)
-    return () => clearTimeout(minuteur)
+    minuteur.current = setTimeout(() => ecrireBrouillon(cle, etat), DELAI_ECRITURE_MS)
+    return () => clearTimeout(minuteur.current)
   }, [cle, etat])
   useEffect(() => {
     const vider = () => ecrireBrouillon(cle, null)
@@ -274,6 +275,9 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
         lock_version: projet.lock_version,
       }
       const { data } = await planifierProjet(projet.id, corps)
+      // le projet est planifié : le brouillon part, et l'écriture différée d'une frappe récente ne le ressuscite pas
+      clearTimeout(minuteur.current)
+      modifie.current = false
       ecrireBrouillon(cle, null)
       onTermine?.(data)
     } catch (err) {
@@ -307,7 +311,8 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
       {etat.pas === 1
         ? <PasUn etat={etat} maj={maj} erreurs={erreurs} aujourdhui={aujourdhui} />
         : <PasDeux etat={etat} maj={maj} erreurs={erreurs} projet={projet} apercu={apercu} onApercu={lireListe} occupe={occupe} />}
-      <div className="carte-actions ep-planifier-pied">
+      {/* R3-128 — au pas 1 le pied suit le contenu (jamais collé au-dessus des trois priorités) ; au pas 2, long, il reste en bas */}
+      <div className={etat.pas === 1 ? 'carte-actions ep-planifier-pied pas-un' : 'carte-actions ep-planifier-pied'}>
         {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => maj({ pas: 1 })}>Précédent</button> : null}
         {etat.pas === 1
           ? <button type="button" className="bouton plein" onClick={() => maj({ pas: 2 })}>Suivant</button>
