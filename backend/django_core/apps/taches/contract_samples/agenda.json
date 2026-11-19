@@ -158,7 +158,9 @@
             "fin": "2026-11-17T12:00:00+01:00",
             "journee_entiere": false
           }
-        ]
+        ],
+        "rendez_vous_minutes": 60,
+        "faites_nb": 1
       }
     ],
     "a_placer": [

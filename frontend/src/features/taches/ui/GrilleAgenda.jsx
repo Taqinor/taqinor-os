@@ -126,9 +126,13 @@ function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
   )
 }
 
-function BlocExterne({ ev, style, cascade, ouvert, onBasculer }) {
+/** R2-112 — l'adresse d'un rendez-vous (si l'agenda en sert une) ne devient un lien que si elle est http(s). */
+const adresseSure = (url) => (/^https?:\/\//i.test(String(url ?? '')) ? url : null)
+
+function BlocExterne({ ev, style, cascade, ouvert, versGauche, onBasculer }) {
   const { item } = ev
   const plage = `${enHeure(ev.debut)}–${enHeure(ev.fin)}`
+  const adresse = adresseSure(item.url)
   const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev, cascade)].filter(Boolean).join(' ')
   return (
     <>
@@ -145,19 +149,34 @@ function BlocExterne({ ev, style, cascade, ouvert, onBasculer }) {
         <span className="ag-agenda">{item.agenda}</span>
       </button>
       {ouvert ? (
-        <p className="ag-bulle" role="status" style={{ top: style.top }}>
-          {`${item.titre} · ${plage} · ${item.agenda} · Ouvrir dans ton agenda d'origine`}
+        <p className={versGauche ? 'ag-bulle vers-gauche' : 'ag-bulle'} role="status" style={{ top: style.top }}>
+          {`${item.titre} · ${plage} · ${item.agenda}`}
+          {adresse ? (
+            <>
+              {' · '}
+              <a href={adresse} target="_blank" rel="noopener noreferrer">Ouvrir dans ton agenda d&apos;origine</a>
+            </>
+          ) : null}
         </p>
       ) : null}
     </>
   )
 }
 
-function Creneaux({ jour, debut, fin, pas, plusieurs, placement, onCreneau }) {
-  const creneaux = []
-  for (let m = debut * 60; m < fin * 60; m += pas) creneaux.push(m)
+/** R2-107 — les heures (en minutes) où un créneau vide est offert : toutes, ou (`libres`) seulement celles qui ne
+ *  tombent pas SOUS un bloc ou un rendez-vous (un créneau caché sous un bloc ne se voit ni ne se touche). */
+function heuresOffertes(jour, debut, fin, pas, libres) {
+  const occupes = libres ? evenements(jour) : []
+  const heures = []
+  for (let m = debut * 60; m < fin * 60; m += pas) {
+    if (!occupes.some((ev) => ev.debut <= m && m < ev.fin)) heures.push(m)
+  }
+  return heures
+}
+
+function Creneaux({ jour, debut, heures, pas, plusieurs, placement, arret, onArret, onCreneau }) {
   const verbe = placement ? 'Placer' : 'Ajouter'
-  return creneaux.map((m) => {
+  return heures.map((m) => {
     const h = enHeure(m)
     const libelle = `${verbe} à ${h}`
     return (
@@ -165,11 +184,14 @@ function Creneaux({ jour, debut, fin, pas, plusieurs, placement, onCreneau }) {
         key={m}
         type="button"
         className={placement ? 'ag-creneau-vide cible' : 'ag-creneau-vide'}
+        data-m={m}
+        tabIndex={arret.jour === jour.jour && arret.m === m ? 0 : -1}
         style={{
           top: `calc(var(--tch-heure-h) * ${(m - debut * 60) / 60})`,
           height: `calc(var(--tch-heure-h) * ${pas / 60})`,
         }}
         aria-label={plusieurs ? `${libelle} · ${plusieurs}` : libelle}
+        onFocus={() => onArret({ jour: jour.jour, m })}
         onClick={() => (placement ? placement.onPoser(jour.jour, h) : onCreneau?.(jour.jour, h))}
         onDragOver={placement ? (e) => e.preventDefault() : undefined}
         onDrop={placement ? (e) => { e.preventDefault(); placement.onPoser(jour.jour, h) } : undefined}
@@ -191,8 +213,9 @@ function Maintenant({ maintenant, debut, fin }) {
   )
 }
 
-function Colonne({ jour, nomJour, props }) {
+function Colonne({ jour, nomJour, props, versGauche = false }) {
   const { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir } = props
+  const heures = props.heuresParJour[jour.jour]
   const [ouvert, setOuvert] = useState(null)
   const repos = !jour.ouvre || jour.ferie
   return (
@@ -202,8 +225,8 @@ function Colonne({ jour, nomJour, props }) {
       data-jour={jour.jour}
     >
       <Creneaux
-        jour={jour} debut={debut} fin={fin} pas={pas} plusieurs={props.plusieurs ? nomJour : ''}
-        placement={placement} onCreneau={onCreneau}
+        jour={jour} debut={debut} heures={heures} pas={pas} plusieurs={props.plusieurs ? nomJour : ''}
+        placement={placement} arret={props.arret} onArret={props.onArret} onCreneau={onCreneau}
       />
       {disposer(evenements(jour)).filter((ev) => ev.voie < VOIES_VISIBLES).map((ev) => {
         const cascade = Boolean(props.plusieurs)
@@ -211,7 +234,7 @@ function Colonne({ jour, nomJour, props }) {
         if (ev.type === 'externe') {
           return (
             <BlocExterne
-              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle}
+              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle} versGauche={versGauche}
               onBasculer={() => setOuvert((actuel) => (actuel === ev.cle ? null : ev.cle))}
             />
           )
@@ -233,25 +256,62 @@ function TeteJour({ nom }) {
 }
 
 /** Passe visuelle n° 36 — colonnes de la Semaine (maquette agenda-semaine.html `.ag-semgrille`) : gouttière des heures
- *  de 68 px, jours travaillés larges, jours non travaillés de 64 px ; la rangée « Toute la journée » suit les mêmes. */
-const colonnesSemaine = (jours) => ['68px', ...jours.map((j) => (j.ouvre === false ? '64px' : 'minmax(0, 1fr)'))].join(' ')
+ *  (R2-111 : 92 px, « Toute la journée » y tient sur une ligne), jours travaillés larges, jours non travaillés VIDES de
+ *  64 px (R2-108 : un week-end qui porte des tâches garde une colonne entière) ; la rangée « Toute la journée » suit les mêmes. */
+const jourEtroit = (j) => j.ouvre === false
+  && !['blocs', 'sans_heure', 'toute_la_journee', 'externes'].some((cle) => j[cle]?.length)
+const colonnesSemaine = (jours) => ['92px', ...jours.map((j) => (jourEtroit(j) ? '64px' : 'minmax(0, 1fr)'))].join(' ')
 
 /**
  * `jours` : les jours d'`agenda.json` ; `nomsJours` : `{iso: « mar. 17 »}` (tête de la Semaine) ;
  * `placement` : `{ onPoser(jour, 'HH:MM') }` pendant « Placer à une heure » (TCH105), sinon nul ;
- * `ligneJournee` : la rangée « Toute la journée » de la Semaine, posée sous la tête des jours, dans la grille.
+ * `ligneJournee` : la rangée « Toute la journée » de la Semaine, posée sous la tête des jours, dans la grille ;
+ * `creneauxLibres` : n'offrir aucun créneau sous un bloc ou un rendez-vous (R2-107 ; l'Agenda le demande).
  */
+/** R2-107 — au clavier la grille est UN seul arrêt de Tab (créneau d'arrêt, `tabIndex=0`) ; ↑ ↓ passent d'un créneau à
+ *  l'autre dans le jour, ← → au même moment du jour voisin, Début / Fin aux bouts. Entrée ou Espace le valident (bouton). */
+function surTouche(e) {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+  const creneau = e.target?.closest?.('.ag-creneau-vide')
+  const colonne = creneau?.closest('.ag-colonne')
+  if (!colonne) return
+  const dans = (col) => [...col.querySelectorAll('.ag-creneau-vide')]
+  let suivant = null
+  if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+    const liste = dans(colonne)
+    const rang = liste.indexOf(creneau)
+    suivant = { ArrowDown: liste[rang + 1], ArrowUp: liste[rang - 1], Home: liste[0], End: liste[liste.length - 1] }[e.key]
+  } else if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    const colonnes = [...colonne.parentElement.querySelectorAll('.ag-colonne')]
+    const voisine = colonnes[colonnes.indexOf(colonne) + (e.key === 'ArrowRight' ? 1 : -1)]
+    const m = Number(creneau.dataset.m)
+    suivant = voisine ? dans(voisine).reduce((meilleur, c) => (
+      !meilleur || Math.abs(Number(c.dataset.m) - m) < Math.abs(Number(meilleur.dataset.m) - m) ? c : meilleur), null) : null
+  }
+  if (!suivant) return
+  e.preventDefault()
+  suivant.focus()
+}
+
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
-  placement = null, choisi = null, ligneJournee = null, onCreneau, onCocher, onOuvrir,
+  placement = null, choisi = null, ligneJournee = null, creneauxLibres = false, onCreneau, onCocher, onOuvrir,
 }) {
   const plusieurs = jours.length > 1
   const heures = []
   for (let h = debut; h < fin; h += 1) heures.push(h)
-  const props = { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir, plusieurs }
+  const heuresParJour = Object.fromEntries(jours.map((j) => [j.jour, heuresOffertes(j, debut, fin, pas, creneauxLibres)]))
+  // l'arrêt de Tab : le dernier créneau focalisé s'il existe encore, sinon le premier créneau offert
+  const [dernier, setDernier] = useState(null)
+  const premier = jours.map((j) => ({ jour: j.jour, m: heuresParJour[j.jour][0] })).find((c) => c.m !== undefined) ?? { jour: null, m: null }
+  const arret = dernier && heuresParJour[dernier.jour]?.includes(dernier.m) ? dernier : premier
+  const props = {
+    aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir, plusieurs,
+    heuresParJour, arret, onArret: setDernier,
+  }
   return (
     <div className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}
-      style={plusieurs ? { gridTemplateColumns: colonnesSemaine(jours) } : undefined}>
+      style={plusieurs ? { gridTemplateColumns: colonnesSemaine(jours) } : undefined} onKeyDown={surTouche}>
       {plusieurs ? (
         <div className="semaine-tete">
           <div />
@@ -271,7 +331,10 @@ export default function GrilleAgenda({
       <div className="agenda-heures" aria-hidden="true">
         {heures.map((h) => <div key={h}>{`${deux(h)}:00`}</div>)}
       </div>
-      {jours.map((j) => <Colonne key={j.jour} jour={j} nomJour={nomsJours[j.jour] ?? j.jour} props={props} />)}
+      {/* R2-112 — la bulle d'un rendez-vous des colonnes de droite s'ouvre vers la gauche : jamais coupée par l'écran */}
+      {jours.map((j, rang) => (
+        <Colonne key={j.jour} jour={j} nomJour={nomsJours[j.jour] ?? j.jour} props={props} versGauche={rang >= jours.length / 2} />
+      ))}
     </div>
   )
 }

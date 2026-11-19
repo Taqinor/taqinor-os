@@ -76,17 +76,18 @@ function MesProjets({ groupes, ouvertAuDepart, ...props }) {
 
 /**
  * `aPlacer` : `agenda.json` → `a_placer` ; `mesProjets` : → `mes_projets` ; `choisie` : l'id de la
- * tâche choisie (ou nul) ; `aide` : la phrase du pied (Jour : glisser sur un créneau) ; `action` : un bouton
+ * tâche choisie (ou nul) ; `aide` : la phrase du pied au bureau (Jour : glisser sur un créneau), `aideTactile` : la même sur iPhone (toucher) ; `action` : un bouton
  * au bas du volet (Semaine au bureau : « Planifier ma semaine », maquette agenda-semaine.html `.ag-aside-action`).
  */
 export default function VoletAPlacer({
   aPlacer = [], mesProjets = [], choisie = null, aujourdhui, onChoisir, projetsOuverts = false,
   consigne = (titre) => `Touche un créneau pour ${titre}`,
-  aide = 'Glisse une tâche sur un créneau pour lui donner une heure.', action = null,
+  aide = 'Glisse une tâche sur un créneau pour lui donner une heure.', aideTactile = 'Touche une tâche, puis un créneau.',
+  action = null, sansHeure = [],
 }) {
   const { jour, revoir } = grouper(aPlacer, aujourdhui)
   const total = aPlacer.length + mesProjets.reduce((n, g) => n + g.items.length, 0)
-  const tous = [...aPlacer, ...mesProjets.flatMap((g) => g.items)]
+  const tous = [...sansHeure, ...aPlacer, ...mesProjets.flatMap((g) => g.items)]
   const choisi = tous.find((it) => it.id === choisie) ?? null
   const props = { choisie, detail: true, onChoisir }
   return (
@@ -103,10 +104,19 @@ export default function VoletAPlacer({
         </div>
       ) : null}
       {total === 0 ? <p className="ag-av-vide">Tout est placé</p> : null}
+      {/* R2-110 — au bureau, les tâches SANS HEURE d'un autre jour que le jour courant vivent ici (la liste « Sans heure »
+          de la vue Jour s'efface) ; le jour courant les a déjà dans « Aujourd'hui » */}
+      {sansHeure.length ? <div className="ag-bureau-seul"><Groupe titre="Sans heure" items={sansHeure} {...props} /></div> : null}
       <Groupe titre="Aujourd'hui" items={jour} {...props} />
       <Groupe titre="À revoir" items={revoir} {...props} />
       <MesProjets groupes={mesProjets} ouvertAuDepart={projetsOuverts} {...props} />
-      {total > 0 ? <p className="ag-aside-pied">{aide}</p> : null}
+      {/* R2-105 — l'aide de bureau parle de glisser ; sur iPhone on touche : la phrase suit l'appareil */}
+      {total > 0 ? (
+        <p className="ag-aside-pied">
+          <span className="bureau-seul">{aide}</span>
+          <span className="mobile-seul">{aideTactile}</span>
+        </p>
+      ) : null}
       {action ? <div className="ag-aside-action">{action}</div> : null}
     </aside>
   )

@@ -74,8 +74,27 @@ describe('TCH104 — vue Jour', () => {
     expect(within(grille(container)).queryByRole('checkbox', { name: /Réunion banque/ })).toBeNull()
     fireEvent.click(externe)
     expect(externe).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText("Réunion banque · 11:00–12:00 · Microsoft 365 · Ouvrir dans ton agenda d'origine"))
-      .toBeInTheDocument()
+    // R2-112 — aucune phrase qui ressemble à un lien sans en être un : l'agenda ne sert pas d'adresse, la phrase est retirée
+    expect(screen.getByText('Réunion banque · 11:00–12:00 · Microsoft 365')).toBeInTheDocument()
+    expect(screen.queryByText(/Ouvrir dans ton agenda/)).toBeNull()
+  })
+
+  it('R2-112 — l\'agenda fournit une adresse : « Ouvrir dans ton agenda d\'origine » est un VRAI lien (sûr, nouvel onglet)', async () => {
+    const d = agenda()
+    d.jours[0].externes[0].url = 'https://outlook.office365.com/owa/?itemid=abc'
+    d.jours[0].externes.push({ cle: '2-b', agenda_id: 2, agenda: 'Microsoft 365', titre: 'Appel piégé',
+      debut: '2026-11-17T15:00:00+01:00', fin: '2026-11-17T16:00:00+01:00', journee_entiere: false, url: 'javascript:alert(1)' })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter()
+    fireEvent.click(await screen.findByRole('button', { name: 'Réunion banque · 11:00–12:00 · Microsoft 365' }))
+    const lien = screen.getByRole('link', { name: "Ouvrir dans ton agenda d'origine" })
+    expect(lien).toHaveAttribute('href', 'https://outlook.office365.com/owa/?itemid=abc')
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    // une adresse qui n'est pas http(s) n'est jamais un lien
+    fireEvent.click(screen.getByRole('button', { name: 'Appel piégé · 15:00–16:00 · Microsoft 365' }))
+    expect(screen.getByText('Appel piégé · 15:00–16:00 · Microsoft 365')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: "Ouvrir dans ton agenda d'origine" })).toBeNull()
   })
 
   it('un créneau vide ouvre la saisie à son heure', async () => {
@@ -145,14 +164,14 @@ describe('TCH104 — vues et navigation', () => {
     const { container } = monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
     // mar. 17 du contrat : Timbres (15 min) + Devis Settat (60 min) ; capacité servie `capacite.minutes` = 240
-    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"] .ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
-  it('F2 acceptation — Semaine sur iPhone : un jour passé dit « {n} faites » (maquette agenda-semaine.html, `ag-sj passe`)', async () => {
+  it('F2 acceptation + R2-102 — Semaine sur iPhone : un jour passé dit « {n} faites » = les tâches FINIES ce jour-là, servies par `faites_nb` (maquette agenda-semaine.html, `ag-sj passe`)', async () => {
     const d = agenda()
     const base = d.jours[0].sans_heure[0]
     d.jours.unshift({
-      ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
+      ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [], faites_nb: 4,
       sans_heure: [
         { ...base, id: 901, titre: 'Faite lundi', statut: 'fait', jour_prevu: '2026-11-16' },
         { ...base, id: 902, titre: 'Encore une faite', statut: 'fait', jour_prevu: '2026-11-16' },
@@ -162,7 +181,19 @@ describe('TCH104 — vues et navigation', () => {
     lireAgenda.mockResolvedValue({ data: d })
     const { container } = monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj.passe')).not.toBeNull())
-    expect(container.querySelector('.ag-sem .ag-sj.passe .ag-sj-tete')).toHaveTextContent(/^2 faites$/)
+    // 2 lignes prévues ce jour-là sont faites, mais 4 tâches y ont été FINIES : le nombre est celui du serveur (règle C-12)
+    expect(container.querySelector('.ag-sem .ag-sj.passe .ag-sj-tete')).toHaveTextContent(/^4 faites$/)
+  })
+
+  it('R2-102 — un jour passé sans `faites_nb` servi ne devine rien : « Passé » seul', async () => {
+    const d = agenda()
+    d.jours.unshift({ ...d.jours[0], jour: '2026-11-16', toute_la_journee: [], echeances: [], externes: [], blocs: [],
+      sans_heure: [{ ...d.jours[0].sans_heure[0], id: 901, statut: 'fait' }] })
+    delete d.jours[0].faites_nb
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj.passe')).not.toBeNull())
+    expect(container.querySelector('.ag-sem .ag-sj.passe .ag-sj-tete')).toHaveTextContent(/^Passé$/)
   })
 
   it('F2 acceptation (P139.1) — sans capacité servie, l\'en-tête ne dit que le nombre (jamais une capacité devinée)', async () => {
@@ -200,7 +231,7 @@ describe('TCH104 — vues et navigation', () => {
     expect(lignes[0].querySelector('.h')).toHaveTextContent('')
     expect(lignes[0].querySelector('svg')).not.toBeNull()
     expect(lignes[1].querySelector('.t')).toHaveTextContent('Devis Settat')
-    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(mardi.querySelector('.ag-sj-tete')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
   it('Passe visuelle n° 59 — Semaine sur iPhone : un jour passé tient une ligne (ses faites), un jour chargé trois, le reste en « +N »', async () => {
@@ -220,12 +251,34 @@ describe('TCH104 — vues et navigation', () => {
     expect(lundi.querySelectorAll('.ag-sj-l')).toHaveLength(1)
     expect(lundi.querySelector('.ag-sj-l .t')).toHaveTextContent('Faite A')
     expect(lundi.querySelector('.ag-sj-l .plus')).toHaveTextContent('+2')
-    // mar. 17 : visite + Devis Settat + Timbres + 2 = 5 lignes → 3 montrées, « +2 » sur la dernière
+    // mar. 17 : visite + Devis Settat + Réunion banque (R2-100) + Timbres + 2 = 6 lignes → 3 montrées, « +3 » sur la dernière
     const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
     const lignes = mardi.querySelectorAll('.ag-sj-l')
     expect(lignes).toHaveLength(3)
-    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+2')
+    expect(lignes[2].querySelector('.plus')).toHaveTextContent('+3')
     expect(lignes[0].querySelector('.plus')).toBeNull()
+  })
+
+  it('R2-100 — Semaine sur iPhone : le rendez-vous de l\'agenda externe est dans son jour (heure + titre), et son temps est retranché', async () => {
+    const d = agenda()
+    d.jours.push({
+      ...d.jours[0], jour: '2026-11-18', toute_la_journee: [], sans_heure: [], blocs: [], echeances: [],
+      externes: [{ cle: '2-b', agenda_id: 2, agenda: 'Microsoft 365', titre: 'Rendez-vous banque',
+        debut: '2026-11-18T14:30:00+01:00', fin: '2026-11-18T16:00:00+01:00', journee_entiere: false }],
+      rendez_vous_minutes: 90,
+    })
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(container.querySelector('.ag-sem .ag-sj[aria-current="date"]')).not.toBeNull())
+    const mercredi = [...container.querySelectorAll('.ag-sem .ag-sj')].find((b) => b.textContent.startsWith('mer.18'))
+    const rdv = mercredi.querySelector('.ag-sj-l.ext')
+    expect(rdv.querySelector('.h')).toHaveTextContent('14:30')
+    expect(rdv.querySelector('.t')).toHaveTextContent('Rendez-vous banque')
+    // 240 min de capacité − 90 min de rendez-vous servis = 2 h 30 de temps libre
+    expect(mercredi.querySelector('.ag-sj-tete')).toHaveTextContent('0 tâche · 0 min pour 2 h 30')
+    // et le rendez-vous de mardi (11:00) est dans sa ligne, avant les tâches sans heure
+    const mardi = container.querySelector('.ag-sem .ag-sj[aria-current="date"]')
+    expect(mardi.querySelector('.ag-sj-l.ext .t')).toHaveTextContent('Réunion banque')
   })
 
   const semaineAvecRepos = () => {
@@ -247,7 +300,19 @@ describe('TCH104 — vues et navigation', () => {
     // une cellule par jour sous chaque tête, gouttière comprise : sam./dim. restent dans leur colonne
     expect(journee.children).toHaveLength(8)
     expect(grille(container).style.gridTemplateColumns)
-      .toBe('68px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+      .toBe('92px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px 64px')
+  })
+
+  it('R2-108 — Semaine au bureau : un week-end qui porte une tâche garde une colonne entière (étroit seulement s\'il est vide)', async () => {
+    const d = semaineAvecRepos()
+    const samedi = d.jours.find((j) => j.jour === '2026-11-21')
+    samedi.sans_heure = [{ ...d.jours[0].sans_heure[0], id: 601, titre: 'Mise en service', jour_prevu: '2026-11-21' }]
+    samedi.blocs = [{ ...d.jours[0].blocs[0], id: 602, titre: 'Réceptionner les panneaux', jour_prevu: '2026-11-21', heure_debut: '09:00' }]
+    lireAgenda.mockResolvedValue({ data: d })
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    expect(grille(container).style.gridTemplateColumns)
+      .toBe('92px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 64px')
   })
 
   it('Passe visuelle n° 7 — Semaine au bureau : bloc d\'une heure marqué `h1`, chevauchement en cascade (le premier garde sa largeur)', async () => {
@@ -291,7 +356,34 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelector('.ag-nav b')).toHaveTextContent(/^Novembre 2026$/)
     const tete = container.querySelector('.ag-jour-tete')
     expect(tete.querySelector('b')).toHaveTextContent('Mardi 17 novembre')
-    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 4 h')
+    expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
+  })
+
+  it('R2-109 — Mois : les jours non travaillés sont teintés sur TOUTES les semaines, même ceux que la lecture ne sert pas', async () => {
+    const d = agenda()
+    const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], ouvre: false, ferie: false }
+    d.jours.push({ ...vide, jour: '2026-11-21' }, { ...vide, jour: '2026-11-22' }) // seul ce week-end est servi
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?vue=mois')
+    const cellule = async (nom) => (await screen.findByRole('gridcell', { name: new RegExp(`^${nom}`) }))
+    expect(await cellule('Samedi 28 novembre')).toHaveClass('repos')
+    expect(await cellule('Dimanche 29 novembre')).toHaveClass('repos')
+    expect(await cellule('Samedi 7 novembre')).toHaveClass('repos')
+    expect(await cellule('Mercredi 25 novembre')).not.toHaveClass('repos')
+  })
+
+  it('R2-109 — Mois au bureau : les titres des tâches dans la case du jour (3 au plus, puis « +n »), les points restent pour l\'iPhone', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours[0].sans_heure.push({ ...base, id: 801, titre: 'Quatrième' }, { ...base, id: 802, titre: 'Cinquième' })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?vue=mois')
+    const mardi = await screen.findByRole('gridcell', { name: /^Mardi 17 novembre/ })
+    const titres = mardi.querySelector('.ag-mj-titres')
+    expect(titres.querySelectorAll('.t')).toHaveLength(3)
+    expect(titres.querySelector('.plus')).toHaveTextContent('+2') // 5 tâches ce jour-là (bloc, sans heure, échéance) : 3 montrées
+    expect(titres.textContent).toContain('Devis Settat')
+    expect(mardi.querySelector('.pts')).not.toBeNull() // les points de l'iPhone sont toujours là
   })
 
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {
@@ -301,6 +393,88 @@ describe('TCH104 — vues et navigation', () => {
     expect(within(mardi).getByRole('button', { name: 'Timbres' })).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Mercredi 18 novembre' })).getByText('Rien ce jour-là'))
       .toBeInTheDocument()
+  })
+})
+
+describe('R2-107 — la grille : un seul arrêt de Tab, des flèches, aucun créneau sous un bloc', () => {
+  const tabulables = (container) => [...container.querySelectorAll('.grille-agenda .ag-creneau-vide')].filter((b) => b.tabIndex === 0)
+
+  it('vue Jour : UN créneau dans l\'ordre de Tab ; ↓ ↑ passent de créneau en créneau et le suivent', async () => {
+    const { container } = monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    expect(tabulables(container)).toHaveLength(1)
+    const premier = tabulables(container)[0]
+    expect(premier).toHaveAccessibleName('Ajouter à 07:00')
+    act(() => premier.focus())
+    fireEvent.keyDown(premier, { key: 'ArrowDown' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 07:30')
+    await waitFor(() => expect(tabulables(container)).toHaveLength(1))
+    expect(tabulables(container)[0]).toBe(document.activeElement) // l'arrêt de Tab suit le focus
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowUp' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 07:00')
+  })
+
+  it('vue Semaine : ← → passent d\'un jour à l\'autre à la même heure', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await screen.findByRole('button', { name: 'Ajouter à 09:00 · mar. 17' })
+    const mardi = screen.getByRole('button', { name: 'Ajouter à 09:00 · mar. 17' })
+    act(() => mardi.focus())
+    fireEvent.keyDown(mardi, { key: 'ArrowRight' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 09:00 · mer. 18')
+    fireEvent.keyDown(document.activeElement, { key: 'ArrowLeft' })
+    expect(document.activeElement).toHaveAccessibleName('Ajouter à 09:00 · mar. 17')
+    expect(tabulables(container)).toHaveLength(1)
+  })
+
+  it('aucun créneau sous un bloc : ni sous Devis Settat (10:00-11:00), ni sous la réunion (11:00-12:00)', async () => {
+    monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    for (const heure of ['10:00', '10:30', '11:00', '11:30']) {
+      expect(screen.queryByRole('button', { name: `Ajouter à ${heure}` }), heure).toBeNull()
+    }
+    expect(screen.getByRole('button', { name: 'Ajouter à 09:30' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ajouter à 12:00' })).toBeInTheDocument()
+  })
+})
+
+describe('R2-110 — vue Jour au bureau : un en-tête court, la grille tôt', () => {
+  it('Vues et navigation sont UNE barre (une ligne au bureau) ; la bande des 7 jours et « Sans heure » ont leur classe de bureau', async () => {
+    const { container } = monter()
+    await screen.findByRole('button', { name: /Devis Settat/ })
+    const barre = container.querySelector('.ag-barre-haute')
+    expect(barre).toContainElement(container.querySelector('.ag-vues'))
+    expect(barre).toContainElement(container.querySelector('.ag-nav'))
+    expect(container.querySelector('.bande-jours')).toHaveClass('ag-bande-jours')
+    expect(container.querySelector('section[aria-label="Sans heure"]')).toHaveClass('ag-sans-heure')
+  })
+
+  it('un autre jour que le jour courant : ses tâches sans heure sont dans « À placer », groupe « Sans heure »', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours.push({ ...d.jours[0], jour: '2026-11-18', toute_la_journee: [], blocs: [], echeances: [], externes: [],
+      sans_heure: [{ ...base, id: 701, titre: 'Relire le bail', jour_prevu: '2026-11-18' }] })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?jour=2026-11-18')
+    const volet = await screen.findByRole('complementary', { name: 'À placer' })
+    const groupe = within(volet).getByRole('group', { name: 'Sans heure (1)' })
+    expect(within(groupe).getByRole('button', { name: /Relire le bail/ })).toBeInTheDocument()
+  })
+
+  it("le jour courant n'ajoute pas ce groupe : ses tâches sans heure sont déjà dans « Aujourd'hui »", async () => {
+    monter()
+    const volet = await screen.findByRole('complementary', { name: 'À placer' })
+    expect(within(volet).queryByRole('group', { name: /^Sans heure/ })).toBeNull()
+  })
+})
+
+describe('R2-101 — À venir ne montre pas deux fois la même tâche', () => {
+  it('le jour de son échéance, une tâche est une puce « · échéance » et rien d\'autre', async () => {
+    monter('/taches/agenda?vue=a-venir')
+    const mardi = await screen.findByRole('region', { name: 'Mardi 17 novembre' })
+    expect(within(mardi).getAllByText(/Dossier subvention/)).toHaveLength(1)
+    expect(within(mardi).getByText('Dossier subvention · échéance')).toBeInTheDocument()
+    // les tâches du jour restent des lignes
+    expect(within(mardi).getByRole('button', { name: 'Timbres' })).toBeInTheDocument()
   })
 })
 

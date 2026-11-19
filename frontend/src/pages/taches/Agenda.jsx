@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { CalendarCheck, ChevronLeft, ChevronRight, MapPin } from 'lucide-react'
+import { CalendarCheck, CalendarClock, ChevronLeft, ChevronRight, MapPin, X } from 'lucide-react'
 
-import { lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache } from '../../api/tachesApi'
+import { annulerGeste, lireAgenda, listerAgendasExternes, modifierTache, planifierTache, rouvrirTache, terminerTache, trancherTache } from '../../api/tachesApi'
 import { BandeauPasAJour } from '../../features/taches/aujourdhui/Sections'
 import PlanifierSemaine, { resume as resumeJour } from '../../features/taches/agenda/PlanifierSemaine'
 import VueMois from '../../features/taches/agenda/VueMois'
@@ -82,6 +82,16 @@ function pas(vue, jour, sens) {
   if (vue === 'semaine') return decaler(jour, 7 * sens)
   if (vue === 'mois') return decalerMois(jour, sens)
   return decaler(jour, JOURS_A_VENIR * sens)
+}
+
+/** R2-103 — la semaine que « Planifier ma semaine » ouvre quand l'adresse ne dit pas de jour : à partir du jeudi 15 h
+ *  (et le week-end) on planifie la semaine SUIVANTE — celle qui finit n'a plus rien à planifier — sinon la semaine en cours. */
+const HEURE_BASCULE_PLAN = 15
+function jourDePlanification(aujourdhui, horloge) {
+  const jourSemaine = (new Date(versUtc(aujourdhui)).getUTCDay() + 6) % 7 // lundi = 0
+  const heures = horloge instanceof Date ? horloge.getHours() : 0
+  const finDeSemaine = jourSemaine >= 4 || (jourSemaine === 3 && heures >= HEURE_BASCULE_PLAN)
+  return finDeSemaine ? decaler(lundiDe(aujourdhui), 7) : aujourdhui
 }
 
 function titrePeriode(vue, jour, { du, au }) {
@@ -198,7 +208,7 @@ function Navigation({ vue, titre, onPas, onAujourdhui }) {
 
 function BandeJours({ dates, parJour, jour, aujourdhui, onChoisir }) {
   return (
-    <div className="bande-jours chiffres" role="tablist" aria-label="Jours de la semaine">
+    <div className="bande-jours ag-bande-jours chiffres" role="tablist" aria-label="Jours de la semaine">
       {dates.map((iso) => {
         const d = parJour[iso]
         const repos = d && (!d.ouvre || d.ferie)
@@ -271,8 +281,8 @@ function EtatDuJour({ jour }) {
 }
 
 function ListeDuJour({ jour, aujourdhui, gestes }) {
-  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? []),
-    ...(jour.echeances ?? []).filter((t) => !(jour.blocs ?? []).some((b) => b.id === t.id))]
+  // R2-101 — le jour d'une échéance, la tâche est la puce « · échéance » de « Toute la journée » : jamais une ligne de plus
+  const taches = [...(jour.blocs ?? []), ...(jour.sans_heure ?? [])]
   const vus = new Set()
   const uniques = taches.filter((t) => (vus.has(t.id) ? false : vus.add(t.id)))
   const externes = (jour.externes ?? []).filter((e) => !e.journee_entiere)
@@ -295,10 +305,11 @@ function ListeDuJour({ jour, aujourdhui, gestes }) {
   )
 }
 
-function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, onChoisir }) {
+function VueJour({ jour, dates, parJour, aujourdhui, maintenant, gestes, placement, choisi, volet, consigne = null, onChoisir }) {
   return (
     <div className="ag-corps">
       <div className="ag-principal">
+        {consigne}
         <VueJourGrille jour={jour} dates={dates} parJour={parJour} aujourdhui={aujourdhui} maintenant={maintenant}
           gestes={gestes} placement={placement} choisi={choisi} onChoisir={onChoisir} />
       </div>
@@ -314,7 +325,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
       <ToutesLaJournee jour={jour} />
       <EtatDuJour jour={jour} />
       {jour.sans_heure?.length ? (
-        <section className="section" aria-label="Sans heure">
+        <section className="section ag-sans-heure" aria-label="Sans heure">
           <div className="liste" role="list">
             {jour.sans_heure.map((t) => (
               <LigneTache key={`tache:${t.id}`} item={t} aujourdhui={aujourdhui}
@@ -324,7 +335,7 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
         </section>
       ) : null}
       <GrilleAgenda
-        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi}
+        jours={[jour]} aujourdhui={aujourdhui} maintenant={maintenant} placement={placement} choisi={choisi} creneauxLibres
         onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
       />
     </>
@@ -335,11 +346,13 @@ function VueJourGrille({ jour, dates, parJour, aujourdhui, maintenant, gestes, p
  *  (textes.md §2.8, maquette agenda-semaine.html) par la même règle que Planifier ma semaine — capacité lue dans
  *  `agenda/` (`capacite.minutes`), jamais devinée ; un jour passé dit ce qui y a été fait, « {n} faites » (maquette
  *  agenda-semaine.html, `ag-sj passe`) ; un jour non travaillé garde son libellé. */
-function teteJour(j, aujourdhui, capacite, taches) {
+function teteJour(j, aujourdhui, capacite) {
   if (j.ferie) return 'Férié'
   if (!j.ouvre) return 'Jour non travaillé'
   if (j.jour >= aujourdhui) return resumeJour(j, aujourdhui, capacite).texte
-  const faites = taches.filter((t) => t.statut === 'fait').length
+  // R2-102 (règle C-12) — « faites » = les tâches FINIES ce jour-là (`faites_nb` servi, comme Mon rythme) ; non servi : « Passé »
+  const faites = j.faites_nb
+  if (!Number.isInteger(faites)) return 'Passé'
   return `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
 }
 
@@ -351,6 +364,16 @@ function LignesDuJour({ lignes, max }) {
   const reste = lignes.length - montrees.length
   return montrees.map((t, rang) => {
     const plus = reste > 0 && rang === montrees.length - 1 ? <span className="plus">{`+${reste}`}</span> : null
+    if (t.externe) { // R2-100 — un rendez-vous de l'agenda externe : heure + titre, lecture seule
+      return (
+        <span key={`ext:${t.cle}`} className="ag-sj-l ext">
+          <span className="h">{t.heure}</span>
+          <CalendarClock className="i i-16" aria-hidden="true" />
+          <span className="t">{t.titre}</span>
+          {plus}
+        </span>
+      )
+    }
     if (t.erp) {
       return (
         <span key={`erp:${t.famille}:${t.id}`} className="ag-sj-l erp">
@@ -372,6 +395,24 @@ function LignesDuJour({ lignes, max }) {
   })
 }
 
+/** R2-100 — les lignes d'un jour à venir : l'ERP (Toute la journée), les rendez-vous de l'agenda externe (journée
+ *  entière d'abord), puis blocs et rendez-vous à l'heure, puis les tâches sans heure. */
+function lignesSemaine(j) {
+  const externes = j.externes ?? []
+  const heureDe = (iso) => String(iso ?? '').slice(11, 16)
+  const aLHeure = [
+    ...(j.blocs ?? []).map((t) => ({ ...t, heure: t.heure_debut ? t.heure_debut.slice(0, 5) : '' })),
+    ...externes.filter((e) => !e.journee_entiere)
+      .map((e) => ({ externe: true, cle: e.cle, titre: e.titre, heure: heureDe(e.debut) })),
+  ].sort((a, b) => (a.heure < b.heure ? -1 : a.heure > b.heure ? 1 : 0))
+  return [
+    ...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })),
+    ...externes.filter((e) => e.journee_entiere).map((e) => ({ externe: true, cle: e.cle, titre: e.titre, heure: '' })),
+    ...aLHeure,
+    ...(j.sans_heure ?? []),
+  ]
+}
+
 function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
   return (
     <div className="ag-sem chiffres mobile-seul">
@@ -386,12 +427,12 @@ function SemaineListe({ jours, aujourdhui, capacite, onChoisir }) {
             </span>
             <span className="ag-sj-corps">
               <span className="ag-sj-tete">
-                {teteJour(j, aujourdhui, capacite, taches)}
+                {teteJour(j, aujourdhui, capacite)}
               </span>
               {/* un jour passé dit ce qui y a été fait (« {n} faites ») : ses lignes sont ses faites */}
               {j.jour < aujourdhui
                 ? <LignesDuJour lignes={taches.filter((t) => t.statut === 'fait')} max={1} />
-                : <LignesDuJour lignes={[...(j.toute_la_journee ?? []).map((e) => ({ ...e, erp: true })), ...taches]} max={3} />}
+                : <LignesDuJour lignes={lignesSemaine(j)} max={3} />}
             </span>
           </button>
         )
@@ -425,7 +466,7 @@ function VueSemaine({ jours, aujourdhui, maintenant, gestes, placement, capacite
       <div className="ag-corps bureau-seul">
         <div className="ag-principal">
           <GrilleAgenda
-            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms}
+            jours={jours} aujourdhui={aujourdhui} maintenant={maintenant} pas={60} nomsJours={noms} creneauxLibres
             ligneJournee={<LigneJourneeSemaine jours={jours} />}
             placement={placement} onCreneau={gestes.ajouter} onCocher={gestes.cocher} onOuvrir={gestes.ouvrir}
           />
@@ -527,6 +568,7 @@ function useGestes(setDonnees) {
 
 // --- TCH105 — Placer à une heure (et TCH106 : sur un jour) ------------------------------------
 
+const MOTIF_A_TRANCHER = 'reportee_3_fois'
 const PAS_DUREE = 15
 const DUREE_MIN = 15
 const DUREE_MAX = 960
@@ -538,30 +580,53 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
   const [posees, setPosees] = useState({})
   const annulerPose = useRef(null)
 
-  /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable. */
+  /** Pose `item` sur `jour` (à `heureDebut`, ou sans heure) : optimiste, réconciliée, annulable.
+   *  R2-106 — une tâche « À revoir » (reportée 3 fois) ne sort d'À revoir que par `trancher/` : la poser sur un jour EST
+   *  la décision (`choix: 'jour'`), puis, si un créneau est choisi, l'heure par `planifier/`. */
   const poser = useCallback(async (item, jour, heureDebut = null) => {
     let precedent = null
+    const aTrancher = item.motif === MOTIF_A_TRANCHER
+    const posable = aTrancher ? { ...item, motif: null } : item
     setChoisie(null)
     setErreur('')
-    setDonnees((d) => { precedent = d; return deplacerVers(d, item, jour, heureDebut) })
+    setDonnees((d) => { precedent = d; return deplacerVers(d, posable, jour, heureDebut) })
     const corps = { jour_prevu: jour, heure_debut: heureDebut, moment: '', quelque_jour: false }
     if (item.lock_version != null) corps.lock_version = item.lock_version
+    const gestes = []
     let reponse
     try {
-      reponse = await planifierTache(item.id, corps)
+      if (aTrancher) {
+        reponse = await trancherTache(item.id, { choix: 'jour', jour })
+        if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+        if (heureDebut) {
+          const version = reponse?.data?.tache?.lock_version
+          const suite = { jour_prevu: jour, heure_debut: heureDebut, moment: '', quelque_jour: false }
+          if (version != null) suite.lock_version = version
+          reponse = await planifierTache(item.id, suite)
+          if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+        }
+      } else {
+        reponse = await planifierTache(item.id, corps)
+        if (reponse?.data?.geste_id) gestes.push(reponse.data.geste_id)
+      }
     } catch (err) {
       setDonnees(precedent)
       setErreur(frenchError(err, "La tâche n'a pas pu être placée."))
+      // la décision déjà prise (R2-106) est défaite : la tâche ne reste pas à moitié placée côté serveur
+      if (gestes.length) {
+        annulerGeste(gestes[0]).catch((echec) => setErreur(frenchError(echec, "La tâche n'a pas pu être placée, et sa décision n'a pas pu être défaite. Relis l'agenda.")))
+      }
       return
     }
     reconcilier(setDonnees, reponse?.data?.tache)
-    const placee = { ...item, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
+    const placee = { ...posable, ...(reponse?.data?.tache ?? {}), jour_prevu: jour, heure_debut: heureDebut }
     if (heureDebut) setPosee(placee)
     else setPosees((p) => ({ ...p, [jour]: placee }))
-    const gesteId = reponse?.data?.geste_id
     const annuler = async () => {
-      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend
-      const retour = gesteId ? await annulerEtRecaler(gesteId, [item.id]) : null
+      // « Annuler » change la version de la tâche côté serveur : la ligne remise garde celle que le serveur rend ;
+      // deux gestes (décision + heure) se défont le dernier d'abord
+      let retour = null
+      for (const geste of [...gestes].reverse()) retour = await annulerEtRecaler(geste, [item.id])
       setDonnees(precedent)
       if (retour?.taches?.[item.id]) reconcilier(setDonnees, retour.taches[item.id])
       setPosee(null)
@@ -608,6 +673,13 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     return () => window.removeEventListener('keydown', surTouche)
   }, [posee, changerDuree])
 
+  /** R2-105 — « Déplacer » : la tâche qu'on vient de poser redevient la tâche choisie, un autre créneau la reprend. */
+  const deplacer = useCallback(() => {
+    if (!posee) return
+    setChoisie(posee.id)
+    setPosee(null)
+  }, [posee])
+
   const annulerLaPose = useCallback(() => {
     const annuler = annulerPose.current
     annulerPose.current = null
@@ -615,10 +687,10 @@ function usePlacement(setDonnees, setErreur, aujourdhui) {
     annuler?.().catch((err) => setErreur(frenchError(err, "L'annulation a échoué. Réessayez.")))
   }, [setErreur])
 
-  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose }
+  return { choisie, setChoisie, posee, setPosee, posees, poser, changerDuree, annulerLaPose, deplacer }
 }
 
-function DureePosee({ posee, onDuree, onAnnuler }) {
+function DureePosee({ posee, onDuree, onAnnuler, onDeplacer }) {
   const actuelle = posee.estimation_minutes || 30
   return (
     <div className="ag-duree" role="group" aria-label={`Durée de ${posee.titre}`}>
@@ -627,6 +699,7 @@ function DureePosee({ posee, onDuree, onAnnuler }) {
           <b>{`Placée à ${posee.heure_debut}`}</b>
           <small>{posee.titre}</small>
         </div>
+        <button type="button" className="bouton lien" onClick={onDeplacer}>Déplacer</button>
         <button type="button" className="bouton lien" onClick={onAnnuler}>Annuler</button>
       </div>
       <div className="segmente" role="radiogroup" aria-label="Durée">
@@ -649,9 +722,12 @@ function DureePosee({ posee, onDuree, onAnnuler }) {
 export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null }) {
   const [params, setParams] = useSearchParams()
   const vue = VUES.some(([cle]) => cle === params.get('vue')) ? params.get('vue') : 'jour'
-  const jour = estIso(params.get('jour')) ? params.get('jour') : aujourdhui
-  const projet = params.get('projet')
+  const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   const planifier = params.get('placer') === '1'
+  // R2-103 — Planifier ma semaine, sans jour dans l'adresse : la semaine à planifier (suivante dès le jeudi 15 h)
+  const jourDefaut = planifier ? jourDePlanification(aujourdhui, horloge) : aujourdhui
+  const jour = estIso(params.get('jour')) ? params.get('jour') : jourDefaut
+  const projet = params.get('projet')
   const vueLue = planifier ? 'semaine' : vue
   const periode = useMemo(() => periodeDe(vueLue, jour, aujourdhui), [vueLue, jour, aujourdhui])
   const [donnees, setDonnees] = useState(null)
@@ -662,7 +738,6 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   const derniere = useRef(0)
   const gestes = useGestes(setDonnees)
   const placement = usePlacement(setDonnees, setErreurGeste, aujourdhui)
-  const horloge = useMemo(() => maintenant ?? new Date(), [maintenant])
   const navigate = useNavigate()
   // Mes agendas (§2.20) : vivent dans Réglages → Mon iPhone, étape « calendrier » (`?etape=calendrier`) ; lus une fois
   const [agendas, setAgendas] = useState(null)
@@ -728,15 +803,38 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       gestes.basculer(item, item.statut !== 'fait').catch((err) => setErreurGeste(frenchError(err)))
     },
   }
+  // R2-105 — sur iPhone le volet « À placer » est SOUS la grille : une tâche choisie, la vue remonte sur la grille, près de
+  // la ligne « maintenant » (sinon en haut de la grille) — jamais de défilement manuel pour trouver où la poser.
+  const lu = donnees != null
+  useEffect(() => {
+    if (placement.choisie == null || vue !== 'jour' || planifier || !lu) return
+    if (window.matchMedia?.('(min-width: 1024px)').matches) return // au bureau le volet est à côté de la grille
+    const grille = document.querySelector('.tch .grille-agenda')
+    const cible = grille?.querySelector('.maintenant') ?? grille
+    const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    cible?.scrollIntoView?.({ block: cible === grille ? 'start' : 'center', behavior: reduit ? 'auto' : 'smooth' })
+  }, [placement.choisie, vue, planifier, lu])
   const choisirJour = (iso) => changer({ vue: 'jour', jour: iso })
   const planifierSemaine = () => changer({ placer: '1' })
   const tousAPlacer = [...(donnees?.a_placer ?? []), ...(donnees?.mes_projets ?? []).flatMap((g) => g.items)]
-  const choisie = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
+  // R2-105 — la tâche choisie peut aussi être un bloc déjà posé (« Déplacer ») : on la cherche dans les jours aussi
+  const dansLeVolet = tousAPlacer.find((it) => it.id === placement.choisie) ?? null
+  const choisie = dansLeVolet ?? (placement.choisie == null ? null
+    : jours.flatMap((j) => [...(j.blocs ?? []), ...(j.sans_heure ?? [])]).find((it) => it.id === placement.choisie) ?? null)
+  const consigneDeplacement = choisie && !dansLeVolet && vue === 'jour' ? (
+    <div className="ag-consigne" role="status">
+      <span>{`Touche un créneau pour déplacer ${choisie.titre}`}</span>
+      <button type="button" className="bouton" aria-label="Annuler le déplacement" onClick={() => placement.setChoisie(null)}>
+        <X className="i" aria-hidden="true" />
+      </button>
+    </div>
+  ) : null
   const placementGrille = choisie ? { onPoser: (j, h) => placement.poser(choisie, j, h) } : null
   const volet = (
     <VoletAPlacer
       aPlacer={donnees?.a_placer ?? []} mesProjets={donnees?.mes_projets ?? []} aujourdhui={aujourdhui}
       choisie={placement.choisie} onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
+      sansHeure={vue === 'jour' && jour !== aujourdhui ? (parJour[jour]?.sans_heure ?? []) : []}
     />
   )
 
@@ -751,7 +849,8 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   )
 
   if (planifier) {
-    const terminer = () => changer({ placer: null, vue: 'semaine' })
+    const terminer = () => changer({ placer: null, vue: 'semaine', jour: jour === aujourdhui ? null : jour })
+    const changerSemaine = (sens) => changer({ jour: pas('semaine', jour, sens) })
     return (
       // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : la semaine est dite par le sous-titre, sans
       // navigation qui la répète ni barre « Ajouter une tâche » ; Terminer rejoint la ligne du titre (agenda.css).
@@ -766,7 +865,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             onChoisir={(item) => placement.setChoisie(item ? item.id : null)}
             onPoser={(item, iso) => placement.poser(item, iso, null)}
             onOuvrirJour={(iso) => changer({ placer: null, vue: 'jour', jour: iso })}
-            onTerminer={terminer}
+            onTerminer={terminer} onSemaine={changerSemaine}
           />
         ) : (
           // relecture adverse F4 n° 7 — rien de lu (hors ligne sans cache, erreur) : le mode garde sa sortie, au même endroit
@@ -782,17 +881,21 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
 
   return (
     <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
-      actionsEcran={[{ libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
+      actionsEcran={[{ libelle: 'Planifier ma semaine', onSelect: planifierSemaine },
+        { libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
       contexteSaisie={vue === 'jour' ? { jour_prevu: jour } : null}>
-      <div className="ag-vues">
-        <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
+      {/* R2-110 — les vues et la navigation sont UNE barre : une seule ligne au bureau, la grille remonte */}
+      <div className="ag-barre-haute">
+        <div className="ag-vues">
+          <SegmenteVues vue={vue} onVue={(cle) => changer({ vue: cle })} />
+        </div>
+        <Navigation
+          vue={vue} titre={titrePeriode(vue, jour, periode)}
+          onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
+          onAujourdhui={() => changer({ jour: null })}
+        />
       </div>
-      <Navigation
-        vue={vue} titre={titrePeriode(vue, jour, periode)}
-        onPas={(sens) => changer({ jour: pas(vue, jour, sens) })}
-        onAujourdhui={() => changer({ jour: null })}
-      />
       {etats}
       {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
         ? <InvitationAgendas onOuvrir={ouvrirMesAgendas} /> : null}
@@ -800,11 +903,12 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       {donnees && vue === 'jour' ? (
         <VueJour jour={parJour[jour] ?? jourVide(jour)} dates={joursEntre(lundiDe(jour), decaler(lundiDe(jour), 6))}
           parJour={parJour} aujourdhui={aujourdhui} maintenant={horloge} gestes={gestesEcran}
-          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet}
+          placement={placementGrille} choisi={placement.posee?.id ?? null} volet={volet} consigne={consigneDeplacement}
           onChoisir={(iso) => changer({ jour: iso })} />
       ) : null}
       {donnees && vue === 'jour' && placement.posee ? (
-        <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose} />
+        <DureePosee posee={placement.posee} onDuree={placement.changerDuree} onAnnuler={placement.annulerLaPose}
+          onDeplacer={placement.deplacer} />
       ) : null}
       {donnees && vue === 'semaine' ? (
         <>
