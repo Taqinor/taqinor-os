@@ -5,11 +5,19 @@ dossier, plus bas, est pour celles et ceux qui construisent ou déploient le mod
 
 ## 1. Ouvrir Tâches
 
-Dans l'ERP, touchez **Apps** (en bas à gauche), puis la tuile **Tâches**. Vous arrivez sur **Aujourd'hui**. En bas, quatre
-onglets : **Aujourd'hui · À trier · Projets · Agenda**. Pour que l'ERP s'ouvre directement ici : touchez **⋯** (en haut à
-droite), puis **En faire mon accueil**.
+Ouvrez l'ERP et connectez-vous (identifiant et mot de passe). Vous arrivez sur **Mes applications** : une grille de
+tuiles (au tout premier passage, un message « Bienvenue chez Taqinor » s'affiche d'abord : touchez **Plus tard**).
+Faites défiler jusqu'à la tuile **Tâches** (4e rangée) et touchez-la. Vous arrivez sur **Aujourd'hui**. En bas, cinq
+boutons : **Apps · Aujourd'hui · À trier · Projets · Agenda**.
 
-Sur ordinateur, la tuile est dans le menu Applications (⊞), en haut de l'écran.
+- **Revenir à Mes applications** : **Apps**, en bas à gauche de Tâches.
+- **Revenir à Tâches depuis une autre application de l'ERP** : touchez **☰** (en haut à gauche), puis **Toutes les
+  apps**, puis la tuile **Tâches**.
+- **Que l'icône de l'ERP sur votre iPhone ouvre directement Aujourd'hui** : dans Tâches, touchez **⋯** (en haut à droite),
+  puis **En faire mon accueil** (le message dit « L'icône ouvrira Aujourd'hui »). Dans le navigateur, l'ERP s'ouvre
+  toujours sur **Mes applications**.
+
+Sur ordinateur, le bouton **Toutes les apps** (⊞, en haut de l'écran ; ou en bas à gauche du menu) ouvre la même grille.
 
 ## 2. Noter une tâche (trente secondes)
 
@@ -17,11 +25,12 @@ Sur ordinateur, la tuile est dans le menu Applications (⊞), en haut de l'écra
 2. Écrivez comme vous parlez : *Appeler le fournisseur demain 10h*. Sous le champ, l'écran montre ce qu'il a compris :
    **ven. 20 nov.** et **10:00**. Une croix sur chaque mot compris permet de le retirer.
 3. Touchez **Ajouter**. Le champ se vide, vous pouvez noter la suivante sans le rouvrir.
-4. Après chaque ajout, un message en bas de l'écran propose **Annuler**.
+4. Après chaque ajout, un message (**Ajoutée**) propose **Annuler**. Si une tâche du même titre existe déjà, l'écran
+   le dit (**Déjà dans ta liste**) et propose **Ajouter quand même**.
 
 Pour ranger la tâche dans un projet, écrivez **#** puis le début de son nom (*#Salon*) : l'écran vous propose les projets.
 Notée depuis Aujourd'hui, la tâche est pour aujourd'hui (la puce **aujourd'hui** est posée sous le champ). Notée de
-l'extérieur (touches **c** puis **t**, Siri), elle attend dans **À trier**.
+l'extérieur (par Siri, par exemple), elle attend dans **À trier**.
 
 ## 3. Coller vos listes (le plus rapide)
 
@@ -34,28 +43,31 @@ liste). **Coller encore** ajoute un autre texte.
 
 ## 4. Vos projets
 
-Onglet **Projets** : vos projets sont rangés par priorité (Haute, Moyenne, Basse). **Nouveau projet** en crée un ; toucher
-un projet l'ouvre, avec ses tâches en **Liste**, en **Tableau** ou en **Chronologie**.
+Onglet **Projets** : vos projets sont rangés par priorité (**Haute**, **Moyenne**, **Basse** ; un projet dont vous n'avez
+pas choisi la priorité attend dans **Aucune**, marqué **À planifier**). **Nouveau projet** en crée un : donnez-lui un nom,
+puis l'écran **Planifier le projet** propose deux pas (**Ce sera fini quand…**, l'échéance et la priorité ; puis les
+**Premières actions**, une par ligne). **Passer** saute ce rituel, **Terminer** enregistre tout. Toucher un projet
+l'ouvre, avec ses tâches en **Liste**, en **Tableau** ou en **Chronologie**.
 
 ## 5. Votre journée
 
-- **Cocher** : touchez le rond à gauche de la tâche.
+- **Cocher** : touchez le rond à gauche de la tâche (ou balayez la ligne vers la droite).
 - **Reporter** : glissez la ligne vers la gauche ; elle part à demain (**Reportée à ven. 20**, avec **Annuler**).
 - **Toutes les autres actions** : gardez le doigt sur la tâche. Une feuille s'ouvre : **Reporter à ven. 20**, **Choisir un
   jour**, **Plus tard**, **Changer de projet…**, **Essentielle**, **En attente de…**, **Priorité**, **Supprimer**.
 - **Ouvrir la tâche** : touchez son titre ; la fiche propose **Fait** et **Reporter à …**.
 - Le chiffre sous le titre (**0 faite** au départ) compte ce que vous avez fait aujourd'hui : touchez-le pour le détail
   et le lien **Mon rythme**.
-- L'après-midi ou le soir, une carte peut vous proposer d'**Alléger ma journée** ou de **Faire le bilan** ; **Pas
-  maintenant** la met de côté.
+- Le soir, une carte (**Ta journée se termine.**) propose de **Faire le bilan**. Quand la journée déborde, une autre
+  propose d'**Alléger ma journée**, avec **Pas maintenant** pour la mettre de côté. Les deux sont aussi dans le menu **⋯**.
 - Retrouver une tâche : la loupe, en haut. Deux boutons y répondent aux questions courantes : **Ajoutées récemment** et
   **Faites cette semaine**.
 
 ## 6. L'Agenda
 
 Onglet **Agenda** : **Jour · Semaine · Mois · À venir**. Les tâches qui n'ont pas d'heure attendent dans **À placer** ;
-dans **Planifier ma semaine** (vue Semaine, ou au bout de **Revue de la semaine**, dans le menu ⋯) vous touchez une tâche
-puis le jour où elle va.
+dans **Planifier ma semaine** vous touchez une tâche puis le jour où elle va. Sur iPhone, **Planifier ma semaine** est dans
+le menu **⋯** de l'Agenda ; sur ordinateur, c'est aussi un bouton de la vue **Semaine**.
 
 ## 7. Votre rythme
 
