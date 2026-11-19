@@ -1,4 +1,83 @@
+# Tâches — pour commencer (cinq minutes, sur votre iPhone)
+
+Cette page est pour vous. Elle dit quoi toucher, dans l'ordre, avec les mots écrits à l'écran. Tout le reste du
+dossier, plus bas, est pour celles et ceux qui construisent ou déploient le module : vous n'avez pas à le lire.
+
+## 1. Ouvrir Tâches
+
+Dans l'ERP, touchez **Apps** (en bas à gauche), puis la tuile **Tâches**. Vous arrivez sur **Aujourd'hui**. En bas, quatre
+onglets : **Aujourd'hui · À trier · Projets · Agenda**. Pour que l'ERP s'ouvre directement ici : touchez **⋯** (en haut à
+droite), puis **En faire mon accueil**.
+
+Sur ordinateur, la tuile est dans le menu Applications (⊞), en haut de l'écran.
+
+## 2. Noter une tâche (trente secondes)
+
+1. Touchez le **+** jaune, en bas à droite (il s'appelle « Ajouter une tâche »).
+2. Écrivez comme vous parlez : *Appeler le fournisseur demain 10h*. Sous le champ, l'écran montre ce qu'il a compris :
+   **ven. 20 nov.** et **10:00**. Une croix sur chaque mot compris permet de le retirer.
+3. Touchez **Ajouter**. Le champ se vide, vous pouvez noter la suivante sans le rouvrir.
+4. Après chaque ajout, un message en bas de l'écran propose **Annuler**.
+
+Pour ranger la tâche dans un projet, écrivez **#** puis le début de son nom (*#Salon*) : l'écran vous propose les projets.
+Notée depuis Aujourd'hui, la tâche est pour aujourd'hui (la puce **aujourd'hui** est posée sous le champ). Notée de
+l'extérieur (touches **c** puis **t**, Siri), elle attend dans **À trier**.
+
+## 3. Coller vos listes (le plus rapide)
+
+Sur la journée vide, touchez **Coller mes listes** (le même bouton est sur **Projets** tant que vous n'avez aucun projet),
+ou collez directement dans le champ du **+**. La première ligne est proposée comme **projet**, les lignes suivantes sont
+ses tâches (**En faire une tâche** si ce n'était pas un projet) ; une ligne qui finit par « : » ouvre un autre projet.
+L'aperçu montre le rangement : **Nouveau projet : …** ou **Projet : …** pour chaque groupe, avec **Changer** pour en
+choisir un autre (ou **Sans projet**). Quand c'est bon, touchez **Créer 5 tâches** (le nombre est celui de votre
+liste). **Coller encore** ajoute un autre texte.
+
+## 4. Vos projets
+
+Onglet **Projets** : vos projets sont rangés par priorité (Haute, Moyenne, Basse). **Nouveau projet** en crée un ; toucher
+un projet l'ouvre, avec ses tâches en **Liste**, en **Tableau** ou en **Chronologie**.
+
+## 5. Votre journée
+
+- **Cocher** : touchez le rond à gauche de la tâche.
+- **Reporter** : glissez la ligne vers la gauche ; elle part à demain (**Reportée à ven. 20**, avec **Annuler**).
+- **Toutes les autres actions** : gardez le doigt sur la tâche. Une feuille s'ouvre : **Reporter à ven. 20**, **Choisir un
+  jour**, **Plus tard**, **Changer de projet…**, **Essentielle**, **En attente de…**, **Priorité**, **Supprimer**.
+- **Ouvrir la tâche** : touchez son titre ; la fiche propose **Fait** et **Reporter à …**.
+- Le chiffre sous le titre (**0 faite** au départ) compte ce que vous avez fait aujourd'hui : touchez-le pour le détail
+  et le lien **Mon rythme**.
+- L'après-midi ou le soir, une carte peut vous proposer d'**Alléger ma journée** ou de **Faire le bilan** ; **Pas
+  maintenant** la met de côté.
+- Retrouver une tâche : la loupe, en haut. Deux boutons y répondent aux questions courantes : **Ajoutées récemment** et
+  **Faites cette semaine**.
+
+## 6. L'Agenda
+
+Onglet **Agenda** : **Jour · Semaine · Mois · À venir**. Les tâches qui n'ont pas d'heure attendent dans **À placer** ;
+dans **Planifier ma semaine** (vue Semaine, ou au bout de **Revue de la semaine**, dans le menu ⋯) vous touchez une tâche
+puis le jour où elle va.
+
+## 7. Votre rythme
+
+⋯ puis **Mon rythme** : l'objectif du jour (5 au départ, tant que l'application ne vous connaît pas), **Moins** et **Plus**
+pour le changer, et trois modes : **En faire plus**, **Garder ce rythme**, **Sans objectif**.
+
+## 8. L'iPhone
+
+⋯ puis **Réglages** puis **Mon iPhone** : six étapes, à faire une fois, la première est **Mettre Tâches sur l'écran
+d'accueil**. Les notifications se règlent dans **Réglages** puis **Notifications**.
+
+## Un doute, un défaut ?
+
+Le bouton **Copilote** (l'étoile à côté de la loupe) ouvre l'assistant de l'ERP, qui sait planifier, prioriser et ranger
+vos tâches. Un mot qui vous gêne, un geste qui ne fait pas ce que vous attendez : dites-le tel quel, avec l'écran
+concerné.
+
+---
+
 # Tâches et agenda personnels + Copilote — dossier de la fonctionnalité
+
+*(La suite de cette page est le dossier technique : pour qui construit, relit ou déploie le module.)*
 
 ## Ce que c'est (en 8 lignes)
 
@@ -226,8 +305,8 @@ Vous aviez demandé de ne poser aucune question. Voici les choix qui touchent ce
 - **C-22 — Une seule tuile « Demain »** (plus de « Reporter à {jour} » le même jour), comme Things. Vous pouvez inverser.
 - **C-23 — L'appui long sur iPhone ouvre une feuille du bas** titrée de la tâche (rangées de 48 px), plus un menu de
   bureau. Vous pouvez inverser.
-- **C-24 — Au premier jour, on lit « 1 faite », jamais « 0 sur 5 »** : le chiffre d'objectif vient quand il dit
-  quelque chose de vous. Vous pouvez inverser.
+- **C-24 — Au premier jour, le haut d'Aujourd'hui lit « 1 faite »** (ce que vous avez fait), pas « 1 sur 5 » : le chiffre
+  d'objectif vient quand il dit quelque chose de vous. Vous pouvez inverser.
 
 **Autres choix, encore vrais**
 
@@ -249,7 +328,7 @@ Vous aviez demandé de ne poser aucune question. Voici les choix qui touchent ce
 
 Le détail et les raisons sont dans `docs/claude-memory/taches-decisions-fondateur.md`.
 
-## Écarts d'apparence connus avec les maquettes — à toi de trancher
+## Écarts d'apparence connus avec les maquettes — à vous de trancher
 
 Une passe complète a comparé chaque écran aux maquettes (65 écarts relevés, corrigés pour la plupart) ; les tours du
 19/11 en ont encore réglé : Projets en liste et projet côte à côte au bureau, deux tâches à la même heure côte à côte
