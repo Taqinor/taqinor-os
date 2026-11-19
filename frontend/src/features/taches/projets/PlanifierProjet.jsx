@@ -189,12 +189,12 @@ function Plus({ etat, maj, apercu, onApercu, erreurs, occupe }) {
 }
 
 function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe, onAjouter, aujourdhui }) {
-  const [nouvelle, setNouvelle] = useState('')
+  // le champ « Nouvelle action » vit dans la saisie du rituel (`etat.nouvelle`) : Terminer, Précédent et le brouillon le
+  // retrouvent, une frappe laissée sans Entrée ne se perd jamais
+  const nouvelle = etat.nouvelle
   const ajouter = (e) => {
     e.preventDefault()
-    if (!nouvelle.trim()) return
-    onAjouter(nouvelle.trim())
-    setNouvelle('')
+    onAjouter()
   }
   const ouvrirCopilote = () => window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {
     detail: { ecran: window.location.pathname, question: QUESTION_COPILOTE, envoyer: true, projet_id: projet.id },
@@ -229,7 +229,7 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe, onAjout
         <Erreur id="pp-actions-err" texte={erreurs.actions} />
         <form className="ep-ajout-action" onSubmit={ajouter} noValidate>
           <label className="sr" htmlFor="pp-nouvelle">Nouvelle action</label>
-          <input id="pp-nouvelle" className="champ" value={nouvelle} onChange={(e) => setNouvelle(e.target.value)} />
+          <input id="pp-nouvelle" className="champ" value={nouvelle} onChange={(e) => maj({ nouvelle: e.target.value })} />
           <button type="submit" className="bouton second" disabled={!nouvelle.trim()}>Ajouter</button>
         </form>
         {projet.confidentiel ? null : (
@@ -243,7 +243,7 @@ function PasDeux({ etat, maj, erreurs, projet, apercu, onApercu, occupe, onAjout
   )
 }
 
-const VIDE = { pas: 1, priorite: 2, objectif: '', echeance: '', actions: [], texte: '', risque: '' }
+const VIDE = { pas: 1, priorite: 2, objectif: '', echeance: '', actions: [], nouvelle: '', texte: '', risque: '' }
 
 export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhui = aujourdhuiIso() }) {
   const cle = CLE_BROUILLON(projet.id)
@@ -284,11 +284,14 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
   }, [cle])
 
   /** R4-27 — l'action part TOUT DE SUITE avec la phrase tapée ; sa lecture (jour lu, titre sans le jour) la remplace
-   *  au retour, sur la valeur COURANTE (jamais une copie d'avant la lecture). */
-  const ajouterAction = (texte) => {
+   *  au retour, sur la valeur COURANTE (jamais une copie d'avant la lecture). Sans argument : le texte COURANT du
+   *  champ « Nouvelle action » (Entrée, « Ajouter », et tout bouton qui quitte l'étape : une frappe ne se perd jamais). */
+  const ajouterAction = () => {
+    const texte = etatRef.current.nouvelle.trim()
+    if (!texte) return
     numero.current += 1
     const cleAction = `a${numero.current}`
-    poser((e) => ({ ...e, actions: [...e.actions, { titre: texte, quand: '', cle: cleAction }] }))
+    poser((e) => ({ ...e, actions: [...e.actions, { titre: texte, quand: '', cle: cleAction }], nouvelle: '' }))
     const lecture = lireAction(texte, aujourdhui).then((lue) => {
       if (lue) poser((e) => ({ ...e, actions: e.actions.map((a) => (a.cle === cleAction && a.titre === texte ? { ...a, ...lue } : a)) }))
     })
@@ -340,6 +343,7 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
     setOccupe(true)
     setErreurs({})
     try {
+      ajouterAction() // le texte resté dans « Nouvelle action » est une action, comme si Entrée l'avait prise
       // R4-27 — une action dont la lecture est encore en vol : on l'attend (jamais « … demain » dans un titre)
       await Promise.all([...lectures.current])
       const saisi = etatRef.current
@@ -398,7 +402,7 @@ export default function PlanifierProjet({ projet, onTermine, onPasser, aujourdhu
           onAjouter={ajouterAction} aujourdhui={aujourdhui} />}
       {/* R3-128 — au pas 1 le pied suit le contenu (jamais collé au-dessus des trois priorités) ; au pas 2, long, il reste en bas */}
       <div className={etat.pas === 1 ? 'carte-actions ep-planifier-pied pas-un' : 'carte-actions ep-planifier-pied'}>
-        {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => maj({ pas: 1 })}>Précédent</button> : null}
+        {etat.pas === 2 ? <button type="button" className="bouton second" onClick={() => { ajouterAction(); maj({ pas: 1 }) }}>Précédent</button> : null}
         {etat.pas === 1
           ? <button type="button" className="bouton plein" onClick={() => maj({ pas: 2 })}>Suivant</button>
           : <button type="button" className="bouton plein" disabled={occupe} onClick={terminer}>Terminer</button>}
