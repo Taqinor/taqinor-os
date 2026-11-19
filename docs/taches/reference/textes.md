@@ -229,7 +229,8 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
 | Titre d'un projet · « Fini quand… » | le nom se touche pour le renommer (Entrée ou la sortie enregistre, Échap annule ; refus sous le champ) · « Fini quand… » se corrige sur place (vide : « Ce sera fini quand… ») · toasts « Projet renommé » · « Couleur changée » · « Échéance changée » · « Échéance retirée » · « Objectif enregistré » (tous avec Annuler) |
-| ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
+| Ordre des tâches d'une étape (R2-063) | glisser la poignée (souris : au survol ; Tableau : la poignée de la carte) · ⋯ → **Réorganiser** : bandeau « Réorganiser · OK », ▲ « Monter « {titre} » » / ▼ « Descendre « {titre} » » (éteints en tête et en queue) · clavier : Alt+↑/↓ sur une ligne, `j`/`k` pour parcourir ; toast « Ordre changé · Annuler » ; annonce « {titre} : position {n} sur {m} » |
+| ⋯ d'un projet | Renommer · Couleur… · Échéance… · Planifier le projet · Voir dans l'agenda · Avancement par semaine · Réorganiser (vue Liste) · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
 | Projet vide | « Planifier le projet » · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |

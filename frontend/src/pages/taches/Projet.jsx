@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Diamond, TriangleAlert } from 'lucide-react'
 import {
   annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
-  rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
+  reordonnerTache, rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
 import CoquilleTaches, { EVENEMENT_SAISIR } from '../../features/taches/coquille/CoquilleTaches'
@@ -23,7 +23,8 @@ import Tableau from '../../features/taches/ui/Tableau'
 import { CODES_VUES, compteursApresDeplacement, compteursApresStatut, nomsDesEtapes } from '../../features/taches/lib/projets'
 import ChargementTardif from '../../features/taches/ui/ChargementTardif'
 import { useActionsLigne } from '../../features/taches/ui/ActionsLigne'
-import { annoncer, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { annoncer, annulerToast, proposerAnnuler } from '../../features/taches/lib/gestes'
+import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { accord, aujourdhuiIso } from '../../features/taches/lib/textes'
 
@@ -63,6 +64,40 @@ const sansTache = (vue, id) => ({
   sections: (vue.sections ?? []).map((s) => ({ ...s, taches: (s.taches ?? []).filter((t) => t.id !== id) })),
   sans_section: (vue.sans_section ?? []).filter((t) => t.id !== id),
 })
+
+/** Les tâches ouvertes d'une étape (`null` : « Sans étape »). */
+const listeDe = (vue, sectionId) => (sectionId == null
+  ? (vue.sans_section ?? [])
+  : ((vue.sections ?? []).find((s) => s.id === sectionId)?.taches ?? []))
+
+const avecListe = (vue, sectionId, taches) => (sectionId == null
+  ? { ...vue, sans_section: taches }
+  : { ...vue, sections: (vue.sections ?? []).map((s) => (s.id === sectionId ? { ...s, taches } : s)) })
+
+/**
+ * R2-063 — place la tâche `id` à la position `vers` de SON étape (retirée puis insérée : `arrayMove`). Rend la vue
+ * suivante, les deux voisines que le serveur attend (`avant_id` la précède, `apres_id` la suit) et les voisines d'AVANT
+ * (de quoi la remettre à sa place), ou `null` si rien ne bouge.
+ */
+function deplacerDans(vue, id, vers) {
+  const place = placeDe(vue, id)
+  if (!place) return null
+  const liste = [...listeDe(vue, place.sectionId)]
+  const cible = Math.max(0, Math.min(liste.length - 1, vers))
+  if (cible === place.rang) return null
+  const anciennes = { avant: liste[place.rang - 1]?.id ?? null, apres: liste[place.rang + 1]?.id ?? null }
+  const [item] = liste.splice(place.rang, 1)
+  liste.splice(cible, 0, item)
+  return {
+    vue: avecListe(vue, place.sectionId, liste),
+    avant: liste[cible - 1]?.id ?? null,
+    apres: liste[cible + 1]?.id ?? null,
+    anciennes,
+    de: place.rang,
+    vers: cible,
+    total: liste.length,
+  }
+}
 
 function remettreTache(vue, place) {
   if (!place) return vue
@@ -407,6 +442,50 @@ export default function Projet() {
     }
   }
 
+  // R2-063 — l'ORDRE des tâches d'une étape : il décide ce qui remonte dans Proposé. `{ sens: ±1 }` (▲▼, Alt+↑/↓) ou
+  // `{ vers }` (glissé) ; l'écran suit tout de suite, le serveur confirme (`reordonner/`, liste « projet » : aucun
+  // verrou ne bouge), « Annuler » remet les voisines d'avant, un refus remet l'ordre d'avant et le DIT.
+  const [reorganiser, setReorganiser] = useState(false)
+  const reordonner = async (item, { sens = 0, vers = null }) => {
+    const avant = vue
+    const place = placeDe(avant, item.id)
+    if (!place) return
+    const suite = deplacerDans(avant, item.id, vers ?? place.rang + sens)
+    if (!suite) return
+    setVue(suite.vue)
+    const position = `${item.titre} : position ${suite.vers + 1} sur ${suite.total}`
+    try {
+      await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.avant, apres_id: suite.apres })
+      proposerAnnuler({
+        message: 'Ordre changé',
+        annonce: position,
+        onAnnuler: async () => {
+          await reordonnerTache(item.id, { liste: 'projet', avant_id: suite.anciennes.avant, apres_id: suite.anciennes.apres })
+          setVue((v) => (v ? (deplacerDans(v, item.id, suite.de)?.vue ?? v) : v))
+        },
+      })
+    } catch (err) {
+      setVue(avant)
+      setErreur(frenchError(err, 'L\'ordre n\'a pas été changé. Réessaie.'))
+    }
+  }
+
+  // Clavier des listes (spec-7 §5) : j/k, Espace, Alt+↑/↓ … ; jamais une touche seule qui fait disparaître une ligne (R2-036)
+  const racine = useClavierListe((action, { cle }) => {
+    if (action === 'annuler') { annulerToast(); return }
+    const id = cle?.startsWith('tache:') ? Number(cle.slice(6)) : null
+    const place = id && vue ? placeDe(vue, id) : null
+    if (!place) return
+    const tache = place.tache
+    if (action === 'monter') reordonner(tache, { sens: -1 })
+    else if (action === 'descendre') reordonner(tache, { sens: 1 })
+    else if (action === 'terminer') terminer(tache, tache.statut !== 'fait').catch((err) => { if (err?.response) annoncer(frenchError(err)) })
+    else if (action === 'essentiel') actions.essentiel(tache)
+    else if (action === 'quand') actions.surAction('choisir_jour', tache)
+    else if (action === 'deplacer') actions.surAction('deplacer', tache, { clavier: true })
+    else if (['renommer', 'heure'].includes(action)) ouvrirFiche(tache.id)
+  }, { actif: Boolean(vue) && !planifier && !dialogue && !actions.feuille && !actions.selecteurProjet })
+
   const poserPriorite = async (projet, valeur) => {
     if (valeur === projet.priorite) return
     setVue((v) => ({ ...v, projet: { ...v.projet, priorite: valeur } }))
@@ -521,6 +600,7 @@ export default function Projet() {
     { libelle: 'Planifier le projet', onSelect: () => setParams((p) => { const s = new URLSearchParams(p); s.set('planifier', '1'); return s }) },
     { libelle: "Voir dans l'agenda", onSelect: () => navigate(`/taches/agenda?projet=${projet.id}`) },
     { libelle: 'Avancement par semaine', onSelect: () => setDialogue('burnup') },
+    ...(vueCode === 'liste' ? [{ libelle: 'Réorganiser', onSelect: () => setReorganiser((v) => !v) }] : []),
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
     { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
@@ -564,6 +644,7 @@ export default function Projet() {
               vue={vue}
               aujourdhui={aujourdhui}
               onDeplacer={deplacerVersEtape}
+              onReordonner={reordonner}
               onTerminer={terminer}
               onOuvrir={(t) => ouvrirFiche(t.id)}
               onAction={actions.surAction}
@@ -572,8 +653,17 @@ export default function Projet() {
             />
           ) : null}
           {vueCode === 'chronologie' ? <VueChronologie vue={vue} aujourdhui={aujourdhui} /> : null}
+          {vueCode === 'liste' && reorganiser ? (
+            <div className="mode-ecran" role="status">
+              <span>Réorganiser</span>
+              <button type="button" className="bouton lien" onClick={() => setReorganiser(false)}>OK</button>
+            </div>
+          ) : null}
           {vueCode === 'liste' ? (
             <VueListe
+              racine={racine}
+              reorganiser={reorganiser}
+              onReordonner={reordonner}
               vue={vue}
               aujourdhui={aujourdhui}
               onTerminer={terminer}

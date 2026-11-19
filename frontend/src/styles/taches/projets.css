@@ -119,6 +119,23 @@
   .tch .ep-ajouter:hover, .tch .ep-retour:hover { background: var(--tch-survol); }
 }
 
+/* R2-063 — l'ordre des tâches d'une étape : une poignée dans la gouttière (au survol sur bureau ; sous « Réorganiser »
+   partout), ▲▼ sous « Réorganiser » (classes `reorg-controles` de coeur.css) */
+.tch .ep-rang { position: relative; display: flex; align-items: stretch; }
+.tch .ep-rang-ligne { flex: 1; min-width: 0; }
+.tch .ep-rang.saisi { opacity: 0.6; }
+.tch .ep-poignee-ordre { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--tch-gouttiere); min-height: 0; padding: 0;
+  align-items: center; justify-content: center; color: var(--tch-texte-doux); touch-action: none; cursor: grab; }
+.tch .ep-poignee-ordre::after { content: ""; position: absolute; inset: 0 -6px 0 0; }
+.tch .ep-rang.reorg { padding-left: 12px; }
+.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; width: 28px; }
+.tch .ep-rang.reorg .reorg-controles .bouton-icone:disabled { opacity: 0.35; }
+@media (hover: hover) {
+  .tch .ep-poignee-ordre { display: flex; opacity: 0; }
+  .tch .ep-rang:hover .ep-poignee-ordre, .tch .ep-rang:focus-within .ep-poignee-ordre, .tch .ep-poignee-ordre:focus-visible { opacity: 1; }
+  .tch .ep-rang.reorg .ep-poignee-ordre { opacity: 1; }
+}
+
 /* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
 .tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
 .tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

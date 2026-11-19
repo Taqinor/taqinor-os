@@ -29,6 +29,7 @@ vi.mock('../../api/tachesApi', async (original) => ({
   lireTache: vi.fn(),
   listerProjets: vi.fn(),
   reordonnerProjet: vi.fn(),
+  reordonnerTache: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -386,6 +387,107 @@ describe('R2-061 — Un projet : renommer, couleur, échéance, « Fini quand…
     await user.tab()
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { objectif: 'les 5 devis sont signés', lock_version: 4 })
     expect(await screen.findByText('Fini quand : les 5 devis sont signés')).toBeInTheDocument()
+  })
+})
+
+describe('R2-063 — Un projet : l\'ordre des tâches d\'une étape (liste et tableau)', () => {
+  // trois tâches dans « Études » : A (20), B (21), C (22)
+  const vueTrois = () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    const base = vue.sections[0].taches[0]
+    vue.sections[0].taches = [
+      { ...base, id: 20, titre: 'Devis Settat' },
+      { ...base, id: 21, titre: 'Préparer le matériel' },
+      { ...base, id: 22, titre: 'Appeler le client' },
+    ]
+    return vue
+  }
+  const ordre = () => [...screen.getByRole('region', { name: 'Études' }).querySelectorAll('.ligne-corps-bouton')].map((b) => b.textContent)
+  const reorganiser = async (user) => {
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Réorganiser' }))
+  }
+  beforeEach(() => {
+    api.lireVueProjet.mockResolvedValue({ data: vueTrois() })
+    api.reordonnerTache.mockResolvedValue({ data: {} })
+  })
+
+  it('⋯ → Réorganiser : « Descendre » change l\'ordre TOUT DE SUITE et écrit avec les deux voisines', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    await user.click(screen.getByRole('button', { name: 'Descendre « Devis Settat »' }))
+    expect(ordre()).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
+    expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 })
+    expect(api.lireVueProjet).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Ordre changé')
+  })
+
+  it('« Monter » de la première et « Descendre » de la dernière sont éteints', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    expect(screen.getByRole('button', { name: 'Monter « Devis Settat »' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Descendre « Appeler le client »' })).toBeDisabled()
+  })
+
+  it('Annuler remet les voisines d\'avant ; un refus du serveur remet l\'ordre et le dit', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await reorganiser(user)
+    await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
+    expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
+    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 20, apres_id: 21 })
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client']))
+    expect(api.reordonnerTache).toHaveBeenLastCalledWith(22, { liste: 'projet', avant_id: 21, apres_id: null })
+
+    api.reordonnerTache.mockRejectedValueOnce({ response: { status: 500, data: {} } })
+    await user.click(screen.getByRole('button', { name: 'Monter « Appeler le client »' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(ordre()).toEqual(['Devis Settat', 'Préparer le matériel', 'Appeler le client'])
+  })
+
+  it('Alt+↓ sur une ligne la descend (clavier, sans mode) ; j puis j parcourt les lignes (R2-036)', async () => {
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByRole('region', { name: 'Études' })
+    await user.keyboard('j')
+    expect(document.activeElement).toHaveTextContent('Devis Settat')
+    await user.keyboard('j')
+    expect(document.activeElement).toHaveTextContent('Préparer le matériel')
+    await user.keyboard('{Alt>}{ArrowDown}{/Alt}')
+    expect(ordre()).toEqual(['Devis Settat', 'Appeler le client', 'Préparer le matériel'])
+    expect(api.reordonnerTache).toHaveBeenCalledWith(21, { liste: 'projet', avant_id: 22, apres_id: null })
+  })
+
+  describe('Tableau', () => {
+    let remettreRectangles = () => {}
+    beforeEach(() => { remettreRectangles = poserRectangles() })
+    afterEach(() => { remettreRectangles() })
+    const touche = async (cible, code) => {
+      await act(async () => {
+        fireEvent.keyDown(cible, { code, key: code === 'Space' ? ' ' : code })
+        await new Promise((fin) => { setTimeout(fin, 15) })
+      })
+    }
+
+    it('au clavier, ↓ sur la poignée d\'une carte la descend DANS sa colonne : l\'ordre est écrit', async () => {
+      monter('/taches/projets/3?vue=tableau')
+      await screen.findByRole('region', { name: 'Études' })
+      const poignee = screen.getByRole('button', { name: 'Déplacer « Devis Settat »' })
+      poignee.focus()
+      await touche(poignee, 'Space')
+      await touche(document, 'ArrowDown')
+      await touche(document, 'Space')
+      await waitFor(() => expect(api.reordonnerTache).toHaveBeenCalledWith(20, { liste: 'projet', avant_id: 21, apres_id: 22 }))
+      expect(api.modifierTache).not.toHaveBeenCalled() // la carte n'a pas changé d'étape
+      const cartes = [...screen.getByRole('region', { name: 'Études' }).querySelectorAll('.ep-carte .ligne-corps-bouton')].map((b) => b.textContent)
+      expect(cartes).toEqual(['Préparer le matériel', 'Devis Settat', 'Appeler le client'])
+    })
   })
 })
 
