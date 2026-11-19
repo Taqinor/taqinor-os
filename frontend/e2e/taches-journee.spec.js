@@ -26,6 +26,25 @@ async function journeeDeQuatre(page, { gardees = false } = {}) {
   return { projet, titres, taches, base: await etatJournee(page) }
 }
 
+test.describe('Tâches — la journée au bureau (R2-023)', () => {
+  for (const [largeur, hauteur, projets] of [[1280, 720, false], [1440, 900, true], [1920, 1080, true]]) {
+    test(`${largeur} × ${hauteur} : la liste du jour garde au moins 480 px, rien ne déborde`, async ({ page }) => {
+      await page.setViewportSize({ width: largeur, height: hauteur })
+      await journeeDeQuatre(page, { gardees: true })
+      await attendreAujourdhui(page)
+      await expect(section(page, 'Prévu')).toBeVisible()
+      const liste = await page.locator('.tch-bureau-liste').boundingBox()
+      expect(liste.width, 'largeur de la liste du jour').toBeGreaterThanOrEqual(480)
+      await expect(page.locator('.tch-bureau-agenda')).toBeVisible()
+      // « Mes projets » (un projet existe : `journeeDeQuatre` le crée) se replie sous 1360 px, il reste dans le menu de gauche
+      if (projets) await expect(page.locator('.tch-bureau-projets')).toBeVisible()
+      else await expect(page.locator('.tch-bureau-projets')).toBeHidden()
+      const deborde = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      expect(deborde, 'aucun défilement horizontal').toBeLessThanOrEqual(0)
+    })
+  }
+})
+
 test.describe('Tâches — la journée', () => {
   test('Garder ce qui est proposé : tout passe dans Prévu, le focus y va, la progression ne bouge pas', async ({ page }) => {
     const { taches, base } = await journeeDeQuatre(page)

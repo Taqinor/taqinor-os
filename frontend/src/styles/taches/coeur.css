@@ -188,18 +188,35 @@
    Maquette docs/taches/maquettes/ecran-aujourdhui-matin.html (`.col-agenda`, liste de projets comptés) ; l'ERP fournit
    déjà barre latérale et en-tête, la page n'ajoute que ses deux colonnes. Sous 1024 px : rien (la liste seule). */
 .tch .tch-bureau { display: block; }
+/* R2-023 — la LISTE du jour n'est jamais écrasée (1280 × 720 la ramenait à 308 px, 52 px à 1024) : elle garde au moins
+   480 px, l'Agenda se resserre de 380 à 320 px, et ce qui ne tient plus se replie, dans cet ordre — « Mes projets »
+   d'abord (déjà dans le menu de gauche), puis l'Agenda du jour (l'écran Agenda est à un toucher). Seuils comptés
+   sur la largeur de la page À CÔTÉ de la barre latérale de l'ERP (272 px + 2 × 16 px de marge) : barre repliée, la
+   liste n'en a que plus de place.
+     · ≥ 1360 px : Mes projets 216 · liste ≥ 480 · Agenda 320–380 (216 + 480 + 320 + 2 × 20 = 1056 px de page) ;
+     · 1124 – 1359 px : liste ≥ 480 · Agenda 320–380 (480 + 320 + 20 = 820) ;
+     · 1024 – 1123 px : la liste seule. */
 @media (min-width: 1024px) {
   .tch[data-ecran="aujourdhui"] .tch-page { max-width: 1320px; }
-  .tch .tch-bureau { display: grid; grid-template-columns: 216px minmax(0, 1fr) 380px; column-gap: 20px; align-items: start; }
+  .tch .tch-bureau { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 20px; align-items: start; }
+  .tch .tch-bureau-projets, .tch .tch-bureau-agenda { display: none; }
   /* chaque colonne garde SA piste : sans projet (premier usage, ou liste des projets pas encore lue) « Mes projets »
      n'est pas rendue, et la liste glissait dans la piste de 216 px, l'agenda au milieu (état vide illisible au bureau) */
-  .tch .tch-bureau-projets { grid-column: 1; grid-row: 1; }
-  .tch .tch-bureau-liste { grid-column: 2; grid-row: 1; min-width: 0; }
-  .tch .tch-bureau-agenda { grid-column: 3; grid-row: 1; }
+  .tch .tch-bureau-liste { grid-column: 1; grid-row: 1; min-width: 0; }
   .tch .tch-bureau-projets, .tch .tch-bureau-agenda {
     position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: none;
   }
   .tch .tch-bureau-agenda { padding: 4px 4px 16px 0; }
+}
+@media (min-width: 1124px) {
+  .tch .tch-bureau { grid-template-columns: minmax(480px, 1fr) minmax(320px, 380px); }
+  .tch .tch-bureau-agenda { display: block; grid-column: 2; grid-row: 1; }
+}
+@media (min-width: 1360px) {
+  .tch .tch-bureau { grid-template-columns: 216px minmax(480px, 1fr) minmax(320px, 380px); }
+  .tch .tch-bureau-projets { display: block; grid-column: 1; grid-row: 1; }
+  .tch .tch-bureau-liste { grid-column: 2; }
+  .tch .tch-bureau-agenda { grid-column: 3; }
 }
 .tch .tch-bureau-projets .nav-titre { margin: 8px 12px 4px; font-size: 0.8125rem; font-weight: 650; color: var(--tch-texte-doux); }
 .tch .tch-bureau-projets .nav-item {
