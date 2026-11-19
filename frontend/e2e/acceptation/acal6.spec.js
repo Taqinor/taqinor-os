@@ -217,12 +217,23 @@ etape('PA2.3-ACAL355-production-par-pan', ['ACAL355'], async ({ page, context, s
   expect(Math.abs(prorataB - prodB), `la part au prorata de B (${prorataB.toFixed(0)}) diffère de SA production (${prodB}) : le test discrimine`).toBeGreaterThan(50)
   const stocke = (await lireLayout(page.request, cal.id)).roof_layout
 
-  // When : rouvrir, retoucher A (pan actif : pente ~30°), B jamais visité, « Enregistrer ».
-  bouton = await ouvrirAtelier(page, cal.id)
+  // When : rouvrir, retoucher A (sa pente : 30° par l'onglet Pente, section « zones » sur z1 seul), B jamais visité,
+  // « Enregistrer ». Les puces « ~30° » du constructeur ne s'affichent pas pour un pan EN PENTE rouvert (run
+  // 44628892881 : `#rp9-pitched-controls` hidden sur tous les instantanés) : l'hydratation pose `roofType = a.roofType`
+  // (roof-tool-pro11.ts l.2053) sans basculer le bloc, et `setRoofType` sort tôt quand le type ne change pas (l.2235).
+  bouton = await ouvrirAtelier(page, cal.id, 'pente')
   expect((await lireLayout(page.request, cal.id)).roof_layout, 'ouvrir ne réécrit aucun document stocké').toEqual(stocke)
-  const puce = page.locator('#rp9-pitched-controls button[data-pitch="30"]')
-  await expect(puce, 'puce de pente du pan actif A').toBeVisible(T)
-  await puce.click()
+  await expect(page.getByTestId('cal-pente')).toBeVisible({ timeout: 60_000 })
+  await page.getByTestId('cal-pente-pan').selectOption('z1')
+  await page.getByTestId('cal-pente-mode-degres').click()
+  await page.locator('#cal-pente-degres').fill('30')
+  const sectionA = page.waitForResponse((x) => new URL(x.url()).pathname.endsWith(`/calepinages/${cal.id}/layout/section/`)
+    && x.request().method() === 'POST', T)
+  await page.getByTestId('cal-pente-enregistrer').click()
+  const rsA = await sectionA
+  expect(rsA.status(), `retouche de A (section zones) → ${(await rsA.text()).slice(0, 300)}`).toBe(200)
+  expect(rsA.request().postDataJSON().zone_id, 'la retouche ne vise que A').toBe('z1')
+  await expect(page.getByTestId('cal-pente-message')).toContainText('Pente enregistrée sur le pan')
   const doc1 = await enregistrer(page, cal.id, bouton)
   console.log(`[ACAL355] A ${JSON.stringify(pan(doc1, 'z1')?.result)} B ${JSON.stringify(pan(doc1, 'z2')?.result)} total ${doc1?.result?.annualKwh}`)
   expect(pan(doc1, 'z1')?.pitchDeg, 'la retouche de A est enregistrée (30°)').toBe(30)
@@ -422,9 +433,37 @@ etape('PA2.5-ACAL356-ACAL367-ecart-simulation', ['ACAL356', 'ACAL367'], async ({
   }
 })
 
+/** Désigne le module PV du calepinage comme l'onglet « Matériel électrique » (`enregistrer_entree`,
+ *  `module_produit`) : sans lui, `bloc_pose` n'a pas de puissance crête et la simulation refuse
+ *  (MOTIF_SANS_PAN_EQUIPE). Module = un produit RÉEL du catalogue de la société (`produits_modules_qs`) dont la
+ *  fiche porte tous les champs que le chaînage exige (`chaines.CHAMPS_MODULE` : Vmp, Voc, Isc, Imp, Pmax). */
+async function designerModule(id) {
+  const r = await py(`from apps.calepinage.models import Calepinage
+from apps.calepinage.services.chaines import CHAMPS_MODULE
+from apps.calepinage.services.electrique import enregistrer_entree
+from apps.stock.selectors_fiche_technique import produits_modules_qs, specs_for_produit
+c = Calepinage.objects.get(pk=${Number(id)})
+choix = None
+for p in produits_modules_qs(c.company):
+    s = specs_for_produit(p) or {}
+    if all(s.get(cle) not in (None, '') for cle, _ in CHAMPS_MODULE):
+        choix = (p.pk, p.nom, s.get('pmax_wc'))
+        break
+if choix:
+    enregistrer_entree(c, {'module_produit': choix[0]}, user=U.objects.get(username='demo_admin'))
+sortie({'produit': choix and choix[0], 'nom': choix and choix[1], 'pmax_wc': choix and choix[2]})`)
+  if (!r?.produit) {
+    throw new Error('NON JOUABLE sur ce runner — aucun module PV du catalogue de la société ne porte une fiche complète '
+      + '(Vmp, Voc, Isc, Imp, Pmax) : impossible de désigner le module que la simulation exige.')
+  }
+  console.log(`[PA2.5] module désigné : #${r.produit} ${r.nom} (${r.pmax_wc} Wc)`)
+  return r
+}
+
 async function ecartSimulation({ page, context, suivi }) {
   await carteRefusee(context, suivi)
   const cal = await calepinageAvec('ACAL367 sim', toitPlat())
+  await designerModule(cal.id)
   let bouton = await ouvrirAtelier(page, cal.id)
   const s0 = (await enregistrer(page, cal.id, bouton))?.result?.annualKwh
   const sim0 = await simulationServeur(cal.id)
