@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, X } from 'lucide-react'
 
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
@@ -48,17 +48,25 @@ export function noteDeLigne(ligne) {
   return ''
 }
 
-/** Les puces lues d'une ligne (`jetons[].libelle` servis par le serveur), comme l'aperçu les montre. */
-export function PucesLues({ jetons }) {
+/** Les puces lues d'une ligne (`jetons[].libelle` servis par le serveur), comme l'aperçu les montre. R2-005 — avec
+ *  `onRetirer`, chaque puce a son « × » (« Retirer {libellé} ») : même effet que dans la saisie d'une phrase. */
+export function PucesLues({ jetons, onRetirer }) {
   if (!jetons || jetons.length === 0) return null
   return (
     <div className="puces">
-      {jetons.map((j) => <span key={`${j.type}:${j.debut}`} className="puce lue chiffres">{j.libelle}</span>)}
+      {jetons.map((j) => (onRetirer ? (
+        <span key={`${j.type}:${j.debut}`} className="puce lue" data-jeton={j.type}>
+          <span className="chiffres">{j.libelle}</span>
+          <button type="button" className="retirer" aria-label={`Retirer ${j.libelle}`} onClick={() => onRetirer(j)}>
+            <X aria-hidden="true" />
+          </button>
+        </span>
+      ) : <span key={`${j.type}:${j.debut}`} className="puce lue chiffres">{j.libelle}</span>))}
     </div>
   )
 }
 
-const cleNom = (nom) => String(nom ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[\s_-]+/g, '')
+const cleNom = (nom) => String(nom ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s_-]+/g, '')
 
 /** Le projet qu'une ligne REÇOIT de son titre de groupe (aucun `#projet` à elle) : `{ cle, nom?, id?, nouveau }`. */
 function projetHerite(ligne) {
@@ -98,7 +106,7 @@ export function groupesDuCollage(apercu, collage, projets = []) {
   return groupes
 }
 
-function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
+function LigneApercu({ ligne, coche, titre, onCocher, onTitre, onRelire, onRetirer }) {
   const note = noteDeLigne(ligne)
   const alertes = (ligne.alertes ?? []).map(phraseAlerte).filter(Boolean)
   // R2-004 — la puce du projet lu sur la ligne se voit, projet existant OU nouveau
@@ -113,10 +121,12 @@ function LigneApercu({ ligne, coche, titre, onCocher, onTitre }) {
           aria-label={`Titre : ${ligne.titre}`}
           value={titre}
           onChange={(e) => onTitre(e.target.value)}
+          // R2-005 — à la sortie du champ, un titre corrigé est relu (« … mardi » devient la puce « mar. »)
+          onBlur={onRelire}
         />
         {note ? <p className="apercu-note">{note}</p> : null}
         {alertes.map((phrase) => <p key={phrase} className="apercu-note">{phrase}</p>)}
-        <PucesLues jetons={jetons} />
+        <PucesLues jetons={jetons} onRetirer={onRetirer} />
       </div>
     </div>
   )
@@ -204,7 +214,8 @@ function LigneTitreEnTache({ cle, nom, modifs, onCocher, onTitre }) {
 }
 
 export default function ApercuListe({
-  apercu, modifs, priorites = {}, projets = [], onCocher, onTitre, onEnTache, onSousTaches, onPriorite, nbCreer, nbProjets,
+  apercu, modifs, priorites = {}, projets = [], onCocher, onTitre, onRelire, onRetirer, onEnTache, onSousTaches, onPriorite,
+  nbCreer, nbProjets,
 }) {
   const lignes = apercu?.lignes ?? []
   const communs = apercu?.projets_communs ?? []
@@ -235,6 +246,8 @@ export default function ApercuListe({
                 titre={modifs.titres[ligne.index] ?? ligne.titre}
                 onCocher={() => onCocher(ligne.index, !(modifs.cochees[ligne.index] ?? ligne.cochee !== false))}
                 onTitre={(valeur) => onTitre(ligne.index, valeur)}
+                onRelire={onRelire ? () => onRelire(ligne.index) : undefined}
+                onRetirer={onRetirer ? (jeton) => onRetirer(ligne.index, jeton) : undefined}
               />
               {points.length > 0 && !sousTaches ? (
                 <PointsDeListe
@@ -254,6 +267,8 @@ export default function ApercuListe({
                       titre={modifs.titres[p.index] ?? p.titre}
                       onCocher={() => onCocher(p.index, !(modifs.cochees[p.index] ?? p.cochee !== false))}
                       onTitre={(valeur) => onTitre(p.index, valeur)}
+                      onRelire={onRelire ? () => onRelire(p.index) : undefined}
+                      onRetirer={onRetirer ? (jeton) => onRetirer(p.index, jeton) : undefined}
                     />
                   ))}
                   <button type="button" className="bouton discret" aria-pressed onClick={() => onSousTaches(ligne.index)}>

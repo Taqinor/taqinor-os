@@ -113,7 +113,7 @@ function PuceJeton({ jeton, onIgnorer }) {
    même règle que le serveur, `analyseur.resoudre_projet`), flèches + Entrée ou le doigt ; le choix insère
    `#Nom_Avec_Soulignés` (lu par la grammaire : `_` = espace). Échap ferme la liste, pas la feuille. */
 
-const sansAccents = (texte) => String(texte ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const sansAccents = (texte) => String(texte ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 const cle = (texte) => sansAccents(texte).replace(/[\s_-]+/g, '')
 const MAX_PROPOSES = 6
 const OUVERTS = new Set(['actif', 'en_pause'])

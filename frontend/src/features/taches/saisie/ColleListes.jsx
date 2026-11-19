@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 
+import { saisieRapide } from '../../../api/tachesApi'
+import { frenchError } from '../../../lib/frenchError'
 import { construireLigne } from '../horsligne/captureQueue'
 import { accord } from '../lib/textes'
 import ApercuListe, { groupesDuCollage } from '../ui/ApercuListe'
@@ -21,6 +23,28 @@ const SANS_PROJETS = []
 // elle est relue d'ici par FeuilleSaisie.
 // eslint-disable-next-line react-refresh/only-export-components -- ré-export du helper pur de la file (D-ENF22)
 export { construireLigne }
+
+const aSonProjet = (ligne) => (ligne.jetons ?? []).some((j) => j.type === 'projet')
+
+/**
+ * R2-005 — une ligne relue par le serveur remplace titre, puces, alertes et champs lus ; le projet qu'elle RECEVAIT
+ * de son titre de groupe (aucun `#projet` à elle) est gardé, comme le × d'une puce le fait côté serveur.
+ */
+function fusionner(ligne, lue) {
+  const herite = aSonProjet(ligne) || aSonProjet(lue) ? {} : Object.fromEntries(
+    ['projet_id', 'nouveau_projet', 'section_id'].filter((c) => ligne.champs?.[c] != null).map((c) => [c, ligne.champs[c]]))
+  const { texte, ignorer, ...reste } = lue
+  return {
+    ...ligne, titre: reste.titre, jetons: reste.jetons ?? [], alertes: reste.alertes ?? [],
+    champs: { ...(reste.champs ?? {}), ...herite }, erreurs: reste.erreurs, texte, ignorer,
+    cochee: reste.erreurs ? false : ligne.cochee,
+  }
+}
+
+/** Le texte d'une ligne de l'aperçu (le serveur ne le sert pas) : son titre, puis la source de chacun de ses jetons. */
+function texteDeLigne(ligne) {
+  return [ligne.titre, ...(ligne.jetons ?? []).map((j) => j.source)].filter(Boolean).join(' ')
+}
 
 const estCochee = (ligne, modifs) => modifs.cochees[ligne.index] ?? ligne.cochee !== false
 
@@ -69,7 +93,7 @@ export function lignesACreer(apercu, modifs, { cid, priorites, projets = [] }) {
 function compterProjets(aEnvoyer) {
   const cles = new Set()
   aEnvoyer.forEach((l) => {
-    if (l.nouveau_projet?.nom) cles.add(`n:${l.nouveau_projet.nom.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()}`)
+    if (l.nouveau_projet?.nom) cles.add(`n:${l.nouveau_projet.nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()}`)
     else if (l.projet_id != null) cles.add(`p:${l.projet_id}`)
   })
   return cles.size
@@ -80,15 +104,52 @@ export default function ColleListes({
 }) {
   const [modifs, setModifs] = useState(MODIFS_VIDES)
   const maj = (cle, index, valeur) => setModifs((m) => ({ ...m, [cle]: { ...m[cle], [index]: valeur } }))
+  // R2-005 — les lignes relues par le serveur après une correction (titre ou puce retirée), par index
+  const [relues, setRelues] = useState({})
+  const [erreurRelecture, setErreurRelecture] = useState('')
+  const vu = useMemo(() => (Object.keys(relues).length === 0 ? apercu
+    : { ...apercu, lignes: (apercu?.lignes ?? []).map((l) => (relues[l.index] ? fusionner(l, relues[l.index]) : l)) }),
+  [apercu, relues])
 
-  const aEnvoyer = useMemo(() => lignesACreer(apercu, modifs, { cid, priorites, projets }), [apercu, modifs, cid, priorites, projets])
+  /** Relit UNE ligne : `texte` sans les jetons de `ignorer` ; le titre tapé est remplacé par le titre relu. */
+  const relire = (index, texte, ignorer = []) => {
+    saisieRapide({ texte, ignorer, apercu: true }, { cle: null })
+      .then(({ data }) => {
+        const lue = data?.lignes?.[0]
+        if (!lue) return
+        setRelues((r) => ({ ...r, [index]: { ...lue, texte, ignorer } }))
+        setModifs((m) => {
+          const titres = { ...m.titres }
+          delete titres[index]
+          return { ...m, titres }
+        })
+      })
+      // sans relecture (réseau, refus), le titre tapé reste tel quel et part ainsi : rien n'est perdu, l'échec est dit
+      .catch((err) => setErreurRelecture(frenchError(err)))
+    setErreurRelecture('')
+  }
+  const surRelire = (index) => {
+    const tape = modifs.titres[index]
+    const ligne = vu?.lignes?.find((l) => l.index === index)
+    if (tape === undefined || !ligne || tape.trim() === '' || tape === ligne.titre) return
+    relire(index, tape)
+  }
+  const surRetirer = (index, jeton) => {
+    const ligne = vu?.lignes?.find((l) => l.index === index)
+    if (!ligne) return
+    const deja = relues[index]
+    const texte = deja?.texte ?? texteDeLigne({ ...ligne, titre: modifs.titres[index] ?? ligne.titre })
+    relire(index, texte, [...(deja?.ignorer ?? []), { type: jeton.type, source: jeton.source }])
+  }
+
+  const aEnvoyer = useMemo(() => lignesACreer(vu, modifs, { cid, priorites, projets }), [vu, modifs, cid, priorites, projets])
   const nbProjets = compterProjets(aEnvoyer)
   const vide = aEnvoyer.length === 0
 
   return (
     <div className="colle-listes">
       <ApercuListe
-        apercu={apercu}
+        apercu={vu}
         modifs={modifs}
         priorites={priorites}
         projets={projets}
@@ -96,11 +157,13 @@ export default function ColleListes({
         nbProjets={nbProjets}
         onCocher={(index, valeur) => maj('cochees', index, valeur)}
         onTitre={(index, valeur) => maj('titres', index, valeur)}
+        onRelire={surRelire}
+        onRetirer={surRetirer}
         onEnTache={(collage) => maj('enTache', collage, !modifs.enTache[collage])}
         onSousTaches={(index) => maj('sousTaches', index, !modifs.sousTaches[index])}
         onPriorite={onPriorite}
       />
-      {erreur ? <p className="erreur-champ" role="alert">{erreur}</p> : null}
+      {erreur || erreurRelecture ? <p className="erreur-champ" role="alert">{erreur || erreurRelecture}</p> : null}
       <div className="feuille-pied">
         <button type="button" className="bouton second" onClick={onCollerEncore}>Coller encore</button>
         <button

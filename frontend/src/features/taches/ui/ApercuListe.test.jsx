@@ -1,9 +1,14 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import ColleListes, { lignesACreer } from '../saisie/ColleListes'
+
+const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn() }))
+vi.mock('../../../api/tachesApi', async (importOriginal) => ({ ...(await importOriginal()), saisieRapide: mocks.saisieRapide }))
+// par défaut, une relecture ne lit rien (le titre tapé reste) ; R2-005 pose sa réponse
+beforeEach(() => { mocks.saisieRapide.mockReset(); mocks.saisieRapide.mockResolvedValue({ data: { lignes: [] } }) })
 
 /* TCH83 — Aperçu d'une liste collée (SCENARIO.md, lun. 2 nov. : « Salon Solaire Expo » et
    « Recrutement technicien », 3 lignes chacune = 6 tâches, 2 nouveaux projets). Le modèle de
@@ -189,7 +194,7 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
       expect(pompage.getByRole('textbox', { name: 'Titre : devis variateur' })).toBeInTheDocument()
       // la ligne qui nomme son propre projet reste dans le groupe où elle est écrite, avec sa puce
       expect(pompage.getByRole('textbox', { name: 'Titre : stand' })).toBeInTheDocument()
-      expect(pompage.getByText('Nouveau projet : Salon')).toHaveClass('puce')
+      expect(pompage.getByText('Nouveau projet : Salon').closest('.puce')).not.toBeNull()
       expect(screen.getByRole('button', { name: 'Priorité du projet Villa Benjelloun : moyenne' })).toBeInTheDocument()
       expect(screen.getByText('6 tâches · 4 projets')).toBeInTheDocument()
     })
@@ -209,6 +214,42 @@ describe('TCH83 — aperçu d\'une liste collée', () => {
       expect(lignes[0].nouveau_projet.nom).toBe('Villa Benjelloun')
       expect(lignes[5].projet_id).toBe(7)
       expect(lignes[6].nouveau_projet.nom).toBe('Salon')
+    })
+  })
+
+  describe('R2-005 — un titre corrigé est relu ; chaque puce se retire', () => {
+    const jour = { type: 'jour', source: 'mardi', debut: 9, fin: 14, libelle: 'mar. 24 nov.', valeur: '2026-11-24' }
+    const relue = (titre, jetons, champs) => ({ data: { projets_communs: [], projets_nouveaux: [], lignes: [{ ...modele, index: 0, collage: 0, titre, jetons, alertes: [], champs }] } })
+
+    it('à la sortie du champ, la ligne est relue : « … mardi » devient la puce « mar. 24 nov. », le projet du groupe reste', async () => {
+      mocks.saisieRapide.mockResolvedValue(relue('Relancer', [jour], { priorite: 0, jour_prevu: '2026-11-24' }))
+      const user = userEvent.setup()
+      const { onCreer } = monter()
+      const champ = screen.getByRole('textbox', { name: 'Titre : Réserver le stand' })
+      await user.clear(champ)
+      await user.type(champ, 'Relancer mardi')
+      await user.tab()
+      expect(mocks.saisieRapide).toHaveBeenCalledWith({ texte: 'Relancer mardi', ignorer: [], apercu: true }, { cle: null })
+      expect(await screen.findByText('mar. 24 nov.')).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: 'Titre : Relancer' })).toHaveValue('Relancer')
+      await user.click(screen.getByRole('button', { name: 'Créer 6 tâches' }))
+      expect(onCreer.mock.calls[0][0][0]).toMatchObject({
+        titre: 'Relancer', jour_prevu: '2026-11-24', nouveau_projet: { nom: 'Salon Solaire Expo', priorite: 2 },
+      })
+    })
+
+    it('le × d\'une puce relit la ligne SANS elle : le mot revient dans le titre, le jour part', async () => {
+      const user = userEvent.setup()
+      const { onCreer } = monter({ ...APERCU, lignes: [{ ...ligne(0, 0, 'Relancer'), jetons: [jour], champs: { ...ligne(0, 0, '').champs, jour_prevu: '2026-11-24' } }] })
+      mocks.saisieRapide.mockResolvedValue(relue('Relancer mardi', [], { priorite: 0 }))
+      await user.click(screen.getByRole('button', { name: 'Retirer mar. 24 nov.' }))
+      expect(mocks.saisieRapide).toHaveBeenCalledWith(
+        { texte: 'Relancer mardi', ignorer: [{ type: 'jour', source: 'mardi' }], apercu: true }, { cle: null })
+      expect(await screen.findByRole('textbox', { name: 'Titre : Relancer mardi' })).toBeInTheDocument()
+      expect(screen.queryByText('mar. 24 nov.')).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'Créer 1 tâche' }))
+      expect(onCreer.mock.calls[0][0][0].jour_prevu).toBeUndefined()
+      expect(onCreer.mock.calls[0][0][0].nouveau_projet.nom).toBe('Salon Solaire Expo')
     })
   })
 
