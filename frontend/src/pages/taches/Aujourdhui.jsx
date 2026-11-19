@@ -46,6 +46,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    ========================================================================== */
 
 const DELAI_SQUELETTE_MS = 1000
+const CONSTAT_REPORTEES = 'C7' // moteur/gabarits.py : « {n} tâches reportées {reports} fois ou plus. » · « Les revoir maintenant ? »
 const MAX_ESSENTIELLES = 3 // regles.md §4.1 « 3 au plus » (même plafond que `ui/Etoile`)
 /** R2-012 — la 4e étoile est refusée À L'ÉCRAN (un toast), pas seulement au lecteur d'écran. */
 const refuserEssentielle = () => proposerAnnuler({ message: "3 essentielles au plus — retire une étoile d'abord" })
@@ -389,6 +390,7 @@ export default function Aujourdhui() {
   const [conflit, setConflit] = useState(null)
   const [invite, setInvite] = useState(false)
   const [focusPrevu, setFocusPrevu] = useState(0)
+  const [deplierARevoir, setDeplierARevoir] = useState(0)
   const bureau = useBureau()
   const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
@@ -646,6 +648,8 @@ export default function Aujourdhui() {
     try {
       const { data } = await client.repondreProposition(proposition.id, { reponse })
       setDonnees((d) => ({ ...d, carte_du_moment: null, objectif: data.rythme?.objectif ?? d.objectif }))
+      // R2-014b — « Les revoir maintenant ? » Oui : la section « À revoir » se déplie et vient à l'écran
+      if (proposition.cle === CONSTAT_REPORTEES && reponse === 'oui') setDeplierARevoir((v) => v + 1)
       if (proposition.type === 'retour' && reponse === 'remettre_dans_propose') {
         const n = proposition.donnees?.taches ?? 0
         proposerAnnuler({
@@ -945,7 +949,7 @@ export default function Aujourdhui() {
           donnees={donnees}
           contexte={contexte}
           geste={geste}
-          repliees={<Replies donnees={donnees} contexte={contexte} geste={geste} revoir={revoir} enLigne={enLigne} />}
+          repliees={<Replies donnees={donnees} contexte={contexte} geste={geste} revoir={revoir} enLigne={enLigne} deplierARevoir={deplierARevoir} />}
           propose={(
             <Propose
               donnees={donnees}

@@ -740,6 +740,35 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
   })
 })
 
+describe('R2-014b — « Oui » de la carte « tâches reportées » (constat C7) mène à « À revoir »', () => {
+  it('Oui : « À revoir » se déplie (aria-expanded) et vient à l\'écran', async () => {
+    const d = donnees()
+    // la carte elle-même (son type, sa question) est rendue par ui/CarteDuMoment (lane L3) : ici, le chemin de la RÉPONSE
+    d.carte_du_moment = {
+      type: 'rythme',
+      proposition: {
+        id: 55, type: 'constat', cle: 'C7', texte: '1 tâche reportée 3 fois ou plus. Les revoir maintenant ?', donnees: { n: 1 },
+        boutons: [{ reponse: 'oui', libelle: 'Oui' }, { reponse: 'pas_maintenant', libelle: 'Pas maintenant' }], expire_le: null,
+      },
+      donnees: {},
+    }
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'proposition_repondue') } })
+    const defiler = vi.fn()
+    Element.prototype.scrollIntoView = defiler
+    monter()
+    await screen.findByText('Devis Settat')
+    const aRevoir = screen.getByRole('button', { name: /^À revoir/ })
+    expect(aRevoir).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/rythme/propositions/55/repondre/', { reponse: 'oui' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^À revoir/ })).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getByText('Site web')).toBeInTheDocument()
+    expect(defiler).toHaveBeenCalled()
+    delete Element.prototype.scrollIntoView
+  })
+})
+
 describe('F2 acceptation (S5) — un refus 409 nommé (textes.md §2.16) se VOIT, pas seulement au lecteur d\'écran', () => {
   it('carte du moment : 409 `proposition_expiree` → la carte part et « Cette proposition a expiré. » s\'affiche', async () => {
     servir(donnees())

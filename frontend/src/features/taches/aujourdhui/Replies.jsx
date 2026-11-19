@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
@@ -99,16 +99,28 @@ function ActionsARevoir({ item, geste, revoir, minimum }) {
   )
 }
 
-/** Un en-tête replié (« À revoir 2 ») : un bouton qui déplie ses lignes. */
-function Replie({ titre, compte = null, indice = '', onOuvrir = null, children }) {
+/**
+ * Un en-tête replié (« À revoir 2 ») : un bouton qui déplie ses lignes. `deplier` (un compteur) le déplie de
+ * l'extérieur et le fait défiler à l'écran — R2-014b : « Oui » de la carte « tâches reportées » mène ici.
+ */
+function Replie({ titre, compte = null, indice = '', onOuvrir = null, deplier = 0, children }) {
   const [ouvert, setOuvert] = useState(false)
+  const [deplie, setDeplie] = useState(deplier)
+  const entete = useRef(null)
+  if (deplier !== deplie) { // demande reçue pendant le rendu : l'état suit, jamais dans un effet
+    setDeplie(deplier)
+    if (deplier) setOuvert(true)
+  }
+  useEffect(() => {
+    if (deplier) entete.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [deplier])
   const basculer = () => {
     if (!ouvert && onOuvrir) onOuvrir()
     setOuvert((v) => !v)
   }
   return (
     <>
-      <button type="button" className="replie" aria-expanded={ouvert} onClick={basculer}>
+      <button ref={entete} type="button" className="replie" aria-expanded={ouvert} onClick={basculer}>
         <span>{titre}</span>
         {compte === null ? null : <span className="compte chiffres">{compte}</span>}
         {indice ? <span className="indice">{indice}</span> : null}
@@ -119,7 +131,7 @@ function Replie({ titre, compte = null, indice = '', onOuvrir = null, children }
   )
 }
 
-export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
+export default function Replies({ donnees, contexte, geste, revoir, enLigne, deplierARevoir = 0 }) {
   const aDecider = donnees.a_decider ?? []
   const enAttente = donnees.en_attente ?? []
   const faites = donnees.faites ?? []
@@ -139,7 +151,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
   return (
     <div className="replies">
       {aDecider.length > 0 ? (
-        <Replie titre="À revoir" compte={aDecider.length}>
+        <Replie titre="À revoir" compte={aDecider.length} deplier={deplierARevoir}>
           {aDecider.some(estTache) ? (
             <div className="propose-actions">
               <button type="button" className="bouton second" data-necessite-reseau="" aria-disabled={!enLigne || undefined} onClick={revoir.toutEnReserve}>
