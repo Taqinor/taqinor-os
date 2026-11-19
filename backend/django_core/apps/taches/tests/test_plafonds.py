@@ -296,7 +296,9 @@ URL_PRIORITES = '/api/django/taches/journee/priorites/'
 URL_POINT = '/api/django/taches/journee/point/'
 #: route : (plafond à 09:00, plafond à 15:00).
 PLAFONDS_FIGES = {
-    URL_PRIORITES: (22, 22),   # TCH161 « Aide-moi à prioriser » ; cible api.md §10 : 20 (+1 : objectif du jour unique)
+    # TCH161 « Aide-moi à prioriser » ; cible api.md §10 : 20 (+1 : objectif du jour unique ; +1 R3-006 : l'historique
+    # de la capacité, pour dire le débordement — les agendas externes viennent du cache)
+    URL_PRIORITES: (23, 23),
     URL_POINT: (26, 24),       # TCH161 « Où j'en suis ? » ; cible api.md §10 : 18
     URL_BADGE: (14, 14),       # la pastille (porte `a_trier`)
     URL_TUILE: (15, 15),       # TCH97, jeton tuile, authentification comprise ; cible 10 (+1 : objectif du jour unique)

@@ -1176,6 +1176,34 @@ class PrioritesTests(_Base):
         self.assertEqual(reponse.status_code, 200, reponse.content[:300])
         return reponse.json()
 
+    def test_une_journee_qui_deborde_sert_les_gardees_a_alleger(self):
+        """R3-006 — objectif 9, 1 faite, 10 gardées pour 8 h 45 sur une capacité de 4 h (défaut, aucun rendez-vous).
+        Calcul à la main : minutes restantes = 9 × 50 + 75 = 525 ; débordement = 525 − 240 = 285 (4 h 45). La carte ne
+        pousse pas à en ajouter : les lignes sont les 10 GARDÉES (jamais la candidate), `geste_propose` « alleger » ;
+        `faites` 1 ≠ objectif 9 (garder_n 0 n'est pas « objectif atteint »). « Où j'en suis ? » dit le même temps."""
+        from apps.taches.views import journee as vues
+        fabriques.reglages(self.u, palier=9, palier_source='dit')
+        gardees = [self.tache(jour_prevu=J, estimation_minutes=50) for _ in range(9)]
+        gardees.append(self.tache(jour_prevu=J, estimation_minutes=75))
+        candidate = self.tache()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9), estimation_minutes=30)
+        rendu = self.get()
+        self.assertEqual((rendu['faites'], rendu['objectif']['nb'], rendu['minutes_restantes'],
+                          rendu['deborde_minutes'], rendu['geste_propose']), (1, 9, 525, 285, 'alleger'))
+        ids = [ligne_['item']['id'] for ligne_ in rendu['lignes']]
+        self.assertEqual(sorted(ids), sorted(t.pk for t in gardees))
+        self.assertNotIn(candidate.pk, ids)
+        self.assertTrue(all(ligne_['item']['raison'] is None for ligne_ in rendu['lignes']))
+        point = vues.point(self.u, maintenant_a(15))
+        self.assertEqual((point['faites'], point['minutes_restantes'], point['deborde_minutes']), (1, 525, 285))
+        self.assertEqual(point['progression']['disponible_minutes'], 240)
+
+    def test_sans_debordement_rien_ne_change(self):
+        self.scenario()
+        rendu = self.get()
+        self.assertEqual((rendu['deborde_minutes'], rendu['geste_propose']), (0, None))
+        self.assertIn(self.premiere.pk, [ligne_['item']['id'] for ligne_ in rendu['lignes']])
+
     def test_forme_de_l_echantillon(self):
         self.scenario()
         modele, rendu = exemple('priorites'), self.get()

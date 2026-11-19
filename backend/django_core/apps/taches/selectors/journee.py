@@ -510,6 +510,21 @@ def essentiel_servi(journee):
     return sum(1 for cle in cles if journee.items[cle].statut == StatutTache.FAIT), len(cles)
 
 
+def minutes_restantes(journee):
+    """Σ estimations des tâches OUVERTES (`a_faire`) d'Essentiel et de Prévu, hors Ce soir — la règle de
+    `minutes_prevues` sans les faites : ce qui reste à faire aujourd'hui (R3-006)."""
+    return sum(i.estimation_minutes or 0 for i in journee.items.values()
+               if _prevue_au_jour(i, journee.jour) and i.statut == StatutTache.A_FAIRE)
+
+
+def debordement(journee, disponible_minutes):
+    """`(minutes_restantes, deborde_minutes)` : `deborde` = max(0, restantes − disponible), le temps disponible étant
+    celui de la PROGRESSION (capacité − rendez-vous, invariant 35) — « Aide-moi à prioriser » et « Où j'en suis ? »
+    le servent (R3-006)."""
+    restantes = minutes_restantes(journee)
+    return restantes, max(0, restantes - disponible_minutes)
+
+
 def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
     ouverts gardés ; essentiel = `essentiel_servi` ; `plan_tenues`/`plan_lignes` (servis pour la nuit, plus

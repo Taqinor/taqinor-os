@@ -1137,6 +1137,13 @@ Jeu de §3.4 (N = 5) : R1, R2, A1, V1, M2, D3, A2, S1, V2, M3, D4, A3, S2, V3…
 **`plus_tard`** = le prochain jour travaillé APRÈS J dans la même semaine (lundi-dimanche), sinon le premier jour
 travaillé de la semaine suivante. Mar. 17/11 (18 férié) → jeu. 19 ; ven. 20 → lun. 23 ; jeu. 19 → ven. 20.
 
+**Le temps de la journée (R3-006).** `priorites/` et `point/` servent `faites` (= `progression.faites`),
+`minutes_restantes` (estimations des tâches OUVERTES d'Essentiel et de Prévu, hors Ce soir :
+`selectors.journee.minutes_restantes`) et `deborde_minutes` = max(0, restantes − `disponible_minutes`). Quand la
+journée DÉBORDE, « Aide-moi à prioriser » ne pousse plus à en ajouter : ses `lignes` sont les GARDÉES ouvertes
+(Essentiel, Prévu, Ce soir, dans l'ordre de la journée), sans raison, et `geste_propose` = `alleger` (« Alléger ma
+journée »). `garder_n` = 0 ne veut jamais dire « objectif atteint » : seul `faites` ≥ `objectif.nb` le dit.
+
 **`journee/point/`** : `objectif`, `progression` (avec `disponible_minutes`) ; `essentiel_restant` = essentielles
 ouvertes ; `prochaine` = la première ligne ouverte de Prévu hors essentielles, blocs encore à venir d'abord (heure ≥
 maintenant), sinon Ce soir, sinon `null` ; `restes_nb` = gardées ouvertes ; `rendez_vous_restants` = rendez-vous
