@@ -71,12 +71,40 @@ class PrefiltreTests(_Base):
         prerequis = self.tache()
         bloquee = self.tache(jour_prevu=J, bloquee_par=prerequis)
         reserve = self.tache(quelque_jour=True)
-        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        # en pause depuis HIER : rien de ce projet n'est plus dans la journée, même prévu aujourd'hui (C-5)
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(jours(-1), 18))
         dans_la_pause = self.tache(projet=en_pause, jour_prevu=J)
         ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
         self.assertIn(parent.pk, ids)
         for absente in (enfant, bloquee, reserve, dans_la_pause):
             self.assertNotIn(absente.pk, ids, absente.titre)
+
+    def test_pause_du_jour_garde_ce_qui_est_pose_ce_jour(self):
+        """R2-031 (choix C-5) — mis en pause aujourd'hui à 15:00 : la tâche posée aujourd'hui à 16:00 reste
+        dans la journée (Prévu) ; ses tâches sans jour, en réserve ou prévues un autre jour n'y sont pas ;
+        le lendemain, plus rien du projet."""
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(J, 15))
+        a_16h = self.tache(projet=en_pause, jour_prevu=J, heure_debut=datetime.time(16, 0))
+        sans_jour = self.tache(projet=en_pause)
+        demain = self.tache(projet=en_pause, jour_prevu=jours(1))
+        reservee = self.tache(projet=en_pause, quelque_jour=True)
+        ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))
+        self.assertIn(a_16h.pk, ids)
+        for absente in (sans_jour, demain, reservee):
+            self.assertNotIn(absente.pk, ids, absente.titre)
+        self.assertEqual(self.section_de(self.journee(), a_16h), S.JOURNEE)
+        self.assertNotIn(demain.pk, set(sel.taches_de_la_journee(self.u, jours(1)).values_list('pk', flat=True)))
+
+    def test_pause_du_jour_absente_de_propose(self):
+        """R2-031 — la pause retire toujours de Proposé : une tâche sans jour du projet en pause n'est jamais
+        proposée, celle posée aujourd'hui est dans Prévu (gardée), pas dans Proposé."""
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(J, 15))
+        posee = self.tache(projet=en_pause, jour_prevu=J)
+        sans_jour = self.tache(projet=en_pause)
+        journee = self.journee()
+        self.assertEqual(self.section_de(journee, posee), S.JOURNEE)
+        self.assertIsNone(self.section_de(journee, sans_jour))
+        self.assertNotIn(('tache', sans_jour.pk), journee.items)
 
     def test_prerequis_clos_ne_bloque_plus(self):
         prerequis = self.tache(statut=StatutTache.FAIT, fait_le=a(jours(-2)))
@@ -1433,7 +1461,8 @@ class ChiffresDuJourTests(_Base):
         self.assertEqual(self.nuit()[3:], (0, 3))
 
     def test_1_ouverte_d_un_projet_en_pause_reste_absente(self):
-        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE)
+        # mis en pause AVANT ce jour (R2-031, choix C-5 : seule la pause du jour même garde ce qui y était posé)
+        en_pause = fabriques.projet(self.u, statut=StatutProjet.EN_PAUSE, statut_depuis=a(jours(-1), 18))
         ouverte = self.tache(projet=en_pause, jour_prevu=J)
         faite = self.tache(projet=en_pause, jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
         ids = set(sel.taches_de_la_journee(self.u, J).values_list('pk', flat=True))

@@ -60,10 +60,15 @@ describe('TCH80 — contenu du bilan', () => {
     expect(within(f).getByText('Dossier subvention')).toBeInTheDocument()
     expect(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' })).toBeInTheDocument()
     const reste = f.querySelector('[data-ligne="tache:42"]')
-    expect(within(reste).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Reporter à jeu. 19', 'Choisir un jour', 'En réserve', 'Abandonner',
+    // R2-030 — le rond à gauche, UNE action visible (le choix d'emblée) et « ⋯ » pour les autres
+    expect(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).not.toBeChecked()
+    expect(within(reste).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
+      'Reporter à jeu. 19', 'Autres choix pour « Timbres »',
     ])
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
+    expect(within(within(reste).getByRole('group', { name: 'Autres choix pour « Timbres »' })).getAllByRole('button').map((b) => b.textContent))
+      .toEqual(['Choisir un jour', 'En réserve', 'Abandonner'])
   })
 
   it('une tâche reportée 3 fois est marquée « À revoir » et reste en place sans choix', async () => {
@@ -74,7 +79,8 @@ describe('TCH80 — contenu du bilan', () => {
     const ligne = tranche.closest('[data-ligne]')
     expect(ligne).toHaveTextContent('À revoir : reportée 3 fois')
     expect(f).toHaveTextContent('Sans choix, elle reste à sa place.')
-    expect(within(ligne).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(ligne).queryByRole('button', { name: 'Reporter à jeu. 19' })).toBeNull()
+    expect(within(ligne).getByRole('button', { name: 'Que faire ?' })).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
     await waitFor(() => expect(cloturer()).toBeTruthy())
     expect(cloturer()[1].choix.find((c) => c.id === 50)).toBeUndefined()
@@ -132,9 +138,14 @@ describe('TCH80 — Valider', () => {
     monter()
     const f = await feuille()
     await within(f).findByText('Appeler Lydec')
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:42"]')).getByRole('button', { name: 'En réserve' }))
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:44"]')).getByRole('button', { name: 'Abandonner' }))
-    await userEvent.click(within(f.querySelector('[data-ligne="tache:43"]')).getByRole('button', { name: 'Choisir un jour' }))
+    const autre = async (id, titre, libelle) => {
+      const ligne = f.querySelector(`[data-ligne="tache:${id}"]`)
+      await userEvent.click(within(ligne).getByRole('button', { name: `Autres choix pour « ${titre} »` }))
+      await userEvent.click(within(ligne).getByRole('button', { name: libelle }))
+    }
+    await autre(42, 'Timbres', 'En réserve')
+    await autre(44, 'Relire le contrat', 'Abandonner')
+    await autre(43, 'Appeler Lydec', 'Choisir un jour')
     fireEvent.change(within(f).getByLabelText('Choisir un jour'), { target: { value: '2026-11-23' } })
     await userEvent.click(within(f).getByRole('button', { name: /Un mot sur ta journée/ }))
     await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Bonne journée')
@@ -148,6 +159,26 @@ describe('TCH80 — Valider', () => {
     })
   })
 
+  it('R2-030 — cocher le rond d\u2019un reste : terminer/ part, ses choix disparaissent, Valider ne le renvoie plus', async () => {
+    servir()
+    monter()
+    const f = await feuille()
+    const reste = await waitFor(() => {
+      const ligne = f.querySelector('[data-ligne="tache:42"]')
+      expect(ligne).not.toBeNull()
+      return ligne
+    })
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
+    await userEvent.click(within(reste).getByRole('button', { name: 'En réserve' }))
+    await userEvent.click(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+    await waitFor(() => expect(api.post.mock.calls.map(([url]) => url)).toContain('/taches/taches/42/terminer/'))
+    expect(within(reste).getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' })).toBeChecked()
+    expect(within(reste).queryByRole('group', { name: 'Que faire de cette tâche ?' })).toBeNull()
+    await userEvent.click(within(f).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(cloturer()).toBeTruthy())
+    expect(cloturer()[1].choix.find((c) => c.id === 42)).toBeUndefined()
+  })
+
   it('« Tout reporter » remet tous les choix sur le prochain jour travaillé', async () => {
     servir()
     monter()
@@ -159,8 +190,10 @@ describe('TCH80 — Valider', () => {
       expect(ligne).not.toBeNull()
       return ligne
     })
+    await userEvent.click(within(reste).getByRole('button', { name: 'Autres choix pour « Timbres »' }))
     await userEvent.click(within(reste).getByRole('button', { name: 'Abandonner' }))
-    expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(reste).getByRole('button', { name: 'Abandonner' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(reste).queryByRole('button', { name: 'Reporter à jeu. 19' })).toBeNull()
     await userEvent.click(within(f).getByRole('button', { name: 'Tout reporter à jeu. 19' }))
     expect(within(reste).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveAttribute('aria-pressed', 'true')
   })

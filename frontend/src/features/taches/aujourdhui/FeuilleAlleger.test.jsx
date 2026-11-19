@@ -92,10 +92,12 @@ describe('TCH79 — feuille « Alléger ma journée »', () => {
     await screen.findByText('Devis Settat')
     await ouvrirMenu('Alléger ma journée')
     const feuille = await screen.findByRole('dialog', { name: 'Alléger ma journée' })
-    expect(feuille).toHaveTextContent("Coche ce que tu gardes aujourd'hui. Le reste retourne à ses projets, sans compter de report ; Proposé revient demain. Les tâches à échéance aujourd'hui restent.")
+    // R2-026 — l'aide tient en une ligne ; rien coché : « Tout renvoyer aux projets », jamais un « Garder ces 0 » mort
+    expect(feuille).toHaveTextContent('Coche ce que tu gardes ; le reste retourne à ses projets, sans report.')
     const cases = within(feuille).getAllByRole('checkbox')
     expect(cases.map((c) => c.getAttribute('aria-checked'))).toEqual(cases.map(() => 'false'))
-    expect(within(feuille).getByRole('button', { name: 'Garder ces 0' })).toHaveAttribute('aria-disabled', 'true')
+    expect(within(feuille).getByRole('button', { name: 'Tout renvoyer aux projets' })).not.toHaveAttribute('aria-disabled')
+    expect(within(feuille).queryByRole('button', { name: 'Garder ces 0' })).toBeNull()
     await userEvent.click(within(feuille).getByRole('checkbox', { name: /Timbres/ }))
     await userEvent.click(within(feuille).getByRole('button', { name: 'Garder celle-ci' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
@@ -128,8 +130,38 @@ describe('TCH79 — feuille « Alléger ma journée »', () => {
     act(() => { window.dispatchEvent(new Event('offline')) })
     const feuille = screen.getByRole('dialog', { name: 'Alléger ma journée' })
     expect(within(feuille).getByRole('checkbox', { name: /Timbres/ })).toBeDisabled()
-    await userEvent.click(within(feuille).getByRole('button', { name: 'Garder ces 0' }))
+    await userEvent.click(within(feuille).getByRole('button', { name: 'Tout renvoyer aux projets' }))
     expect(api.post).not.toHaveBeenCalledWith('/taches/journee/alleger/', expect.anything(), expect.anything())
+  })
+
+  it('R2-026 — rien coché : « Tout renvoyer aux projets » renvoie tout (garder vide)', async () => {
+    servir(unJour())
+    monter()
+    await screen.findByText('Devis Settat')
+    await ouvrirMenu('Alléger ma journée')
+    const feuille = await screen.findByRole('dialog', { name: 'Alléger ma journée' })
+    await userEvent.click(within(feuille).getByRole('button', { name: 'Tout renvoyer aux projets' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/taches/journee/alleger/', { jour: '2026-11-17', garder: [] }, expect.anything(),
+    ))
+  })
+
+  it('R2-026 — rien à alléger (bilan fait, ou aucune tâche que la feuille peut renvoyer) : l’entrée n’est pas offerte', async () => {
+    const bilanFait = unJour()
+    bilanFait.plan = { ...bilanFait.plan, cloture_le: '2026-11-17T19:00:00+01:00' }
+    servir(bilanFait)
+    const { unmount } = monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    expect((await screen.findAllByRole('menuitem')).map((n) => n.textContent)).not.toContain('Alléger ma journée')
+    unmount()
+    const rien = unJour()
+    for (const cle of ['essentiel', 'journee', 'ce_soir']) rien[cle] = rien[cle].filter((it) => it.type !== 'tache')
+    servir(rien)
+    monter()
+    await screen.findByText('Rappeler Benali')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    expect((await screen.findAllByRole('menuitem')).map((n) => n.textContent)).not.toContain('Alléger ma journée')
   })
 })
 

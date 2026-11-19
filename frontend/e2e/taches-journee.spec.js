@@ -26,6 +26,25 @@ async function journeeDeQuatre(page, { gardees = false } = {}) {
   return { projet, titres, taches, base: await etatJournee(page) }
 }
 
+test.describe('Tâches — la journée au bureau (R2-023)', () => {
+  for (const [largeur, hauteur, projets] of [[1280, 720, false], [1440, 900, true], [1920, 1080, true]]) {
+    test(`${largeur} × ${hauteur} : la liste du jour garde au moins 480 px, rien ne déborde`, async ({ page }) => {
+      await page.setViewportSize({ width: largeur, height: hauteur })
+      await journeeDeQuatre(page, { gardees: true })
+      await attendreAujourdhui(page)
+      await expect(section(page, 'Prévu')).toBeVisible()
+      const liste = await page.locator('.tch-bureau-liste').boundingBox()
+      expect(liste.width, 'largeur de la liste du jour').toBeGreaterThanOrEqual(480)
+      await expect(page.locator('.tch-bureau-agenda')).toBeVisible()
+      // « Mes projets » (un projet existe : `journeeDeQuatre` le crée) se replie sous 1360 px, il reste dans le menu de gauche
+      if (projets) await expect(page.locator('.tch-bureau-projets')).toBeVisible()
+      else await expect(page.locator('.tch-bureau-projets')).toBeHidden()
+      const deborde = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+      expect(deborde, 'aucun défilement horizontal').toBeLessThanOrEqual(0)
+    })
+  }
+})
+
 test.describe('Tâches — la journée', () => {
   test('Garder ce qui est proposé : tout passe dans Prévu, le focus y va, la progression ne bouge pas', async ({ page }) => {
     const { taches, base } = await journeeDeQuatre(page)
@@ -59,7 +78,7 @@ test.describe('Tâches — la journée', () => {
     }
   })
 
-  test('★★★ : trois essentielles au plus, la 4e est refusée à voix haute', async ({ page }) => {
+  test('★★★ : trois essentielles au plus, la 4e est refusée à l’écran (R2-012)', async ({ page }) => {
     const { titres, base } = await journeeDeQuatre(page, { gardees: true })
     await attendreAujourdhui(page)
     await expect(section(page, 'Prévu')).toBeVisible()
@@ -71,9 +90,9 @@ test.describe('Tâches — la journée', () => {
     // la progression lit « essentiel 0 sur 3 » (rien de fait par ce test)
     await expect(progression(page, base, ', essentiel 0 sur 3')).toBeVisible()
 
-    // la 4e ★ : refusée, la ligne reste dans Prévu et la région `role=status` le dit
+    // la 4e ★ : refusée, la ligne reste dans Prévu et un toast le dit (lu aussi par la région `role=status`)
     await section(page, 'Prévu').getByRole('checkbox', { name: `Essentielle : ${titres[3]}` }).click()
-    await expect(annonce(page)).toContainText('3 au plus.')
+    await expect(toast(page)).toContainText("3 essentielles au plus — retire une étoile d'abord")
     await expect(section(page, 'Prévu').getByText(titres[3], { exact: true })).toBeVisible()
     await expect(section(page, 'Essentiel').getByText(titres[3], { exact: true })).toHaveCount(0)
   })
@@ -100,6 +119,33 @@ test.describe('Tâches — la journée', () => {
     await expect(caseA).not.toBeChecked()
     await expect(progression(page, base, ', essentiel 0 sur 2')).toBeVisible()
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut).toBe('a_faire')
+  })
+
+  test('R2-011 — serveur ralenti à 2 s : cocher, Annuler et reporter répondent au doigt, pas au serveur', async ({ page }) => {
+    const { titres, taches, base } = await journeeDeQuatre(page, { gardees: true })
+    const lent = (route) => setTimeout(() => route.continue(), 2000)
+    await page.route(/\/taches\/taches\/\d+\/(terminer|planifier)\/$/, lent)
+    await page.route(/\/taches\/gestes\/\d+\/annuler\/$/, lent)
+    await attendreAujourdhui(page)
+    await expect(section(page, 'Prévu')).toBeVisible()
+    const rapide = { timeout: 600 } // bien avant les 2 s du serveur
+
+    const caseA = ligne(page, taches[0].id).getByRole('checkbox', { name: `Marquer « ${titres[0]} » comme faite` })
+    await caseA.click()
+    await expect(caseA).toBeChecked(rapide)
+    await expect(progression(page, { ...base, faites: base.faites + 1 })).toBeVisible(rapide)
+    await expect(toast(page)).toContainText('Faite', rapide)
+    await toast(page).getByRole('button', { name: 'Annuler' }).click()
+    await expect(caseA).not.toBeChecked(rapide)
+    await expect(progression(page, base)).toBeVisible(rapide)
+    // le serveur finit par suivre : la tâche est rouverte (terminer puis annuler, dans l'ordre)
+    await expect.poll(async () => (await lireTache(page, taches[0].id)).statut, { timeout: 15000 }).toBe('a_faire')
+
+    const cible = ligne(page, taches[3].id)
+    await ouvrirActions(page, cible, titres[3])
+    await page.getByRole('menuitem', { name: /^Reporter à / }).click()
+    await expect(cible).toContainText('→', rapide)
+    await expect(toast(page)).toContainText('Reportée à', rapide)
   })
 
   test('Reporter : la ligne dit où elle va, le serveur la prévoit plus tard, Annuler la rend', async ({ page }) => {
@@ -131,9 +177,9 @@ test.describe('Tâches — la journée', () => {
     await page.getByRole('menuitem', { name: 'Alléger ma journée' }).click()
     const feuille = page.getByRole('dialog', { name: 'Alléger ma journée' })
     await expect(feuille).toBeVisible()
-    // rien n'est coché d'avance : le bouton ne propose rien tant qu'on n'a rien gardé
+    // rien n'est coché d'avance : rien coché, le bouton renvoie tout (R2-026, jamais un « Garder ces 0 » mort)
     for (const titre of titres) await expect(feuille.getByRole('checkbox', { name: `Sélectionner : ${titre}` })).not.toBeChecked()
-    await expect(feuille.getByRole('button', { name: 'Garder ces 0' })).toBeVisible()
+    await expect(feuille.getByRole('button', { name: 'Tout renvoyer aux projets' })).toBeVisible()
 
     await feuille.getByRole('checkbox', { name: `Sélectionner : ${titres[1]}` }).click()
     await feuille.getByRole('button', { name: 'Garder celle-ci' }).click()

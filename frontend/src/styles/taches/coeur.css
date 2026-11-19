@@ -17,6 +17,8 @@
 .tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .vide-plein .bouton.plein { height: 50px; padding: 0 26px; font-size: 1rem; }
 .tch .vide-plein .bouton.discret { margin-top: 6px; }
+/* R2-033 — « ou touche + pour une tâche » : sous « Coller mes listes », l'autre chemin dit en une ligne */
+.tch .vide-plein .vide-aide.vide-plus { margin: 8px 0 4px; font-size: 0.875rem; }
 .tch .vide-picto.grand { width: 88px; height: 88px; }
 .tch .vide-picto.grand svg { width: 40px; height: 40px; }
 @media (min-width: 768px) { .tch .vide-plein { min-height: 640px; } }
@@ -29,6 +31,9 @@
 
 /* « Prévu » : rendez-vous externe en lecture seule, ligne repliable des activités ERP, bande « Toute la journée » */
 .tch .ligne.lecture-seule { cursor: default; }
+/* R2-008b — ajout hors ligne pas encore envoyé : grisé, rond en pointillés (il n'existe pas encore côté serveur) */
+.tch .ligne.en-file .titre { color: var(--tch-texte-doux); }
+.tch .ligne.en-file .case.vide { border-radius: 999px; outline: 1.5px dashed var(--tch-texte-doux); outline-offset: -11px; }
 .tch button.ligne.ligne-repli { width: 100%; text-align: left; align-items: center; }
 .tch button.bande-journee { text-align: left; min-height: var(--tch-cible); }
 
@@ -71,6 +76,21 @@
 .tch .revoir-actions .champ-date { height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
   box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
 .tch .replies .propose-actions { padding-top: 4px; }
+/* R2-021 — la raison d'une ligne d'À revoir, sous elle, alignée sur le titre */
+.tch .revoir-raison { margin: -6px 0 0; padding: 0 var(--tch-gouttiere) 6px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px);
+  font-size: var(--tch-meta); color: var(--tch-texte-doux); background: var(--tch-surface); }
+/* Demande L3 — la ligne qu'on vient de reporter montre sa pastille « → ven. 20 », puis s'efface en fondu et se replie
+   (elle n'est plus de la journée) ; « Annuler » retire la pastille : la ligne revient. Mouvement réduit : la ligne
+   reste, pastille comprise. */
+@media (prefers-reduced-motion: no-preference) {
+  .tch[data-ecran="aujourdhui"] .ligne-cadre:has(> .ligne.estampillee) {
+    overflow: hidden; animation: tch-reportee-part 450ms ease-in 1.4s forwards;
+  }
+}
+@keyframes tch-reportee-part {
+  from { opacity: 1; max-height: 160px; }
+  to { opacity: 0; max-height: 0; visibility: hidden; }
+}
 .tch .replies .ligne-repli { align-items: center; }
 .tch .replies .ligne-repli .ligne-fin { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-texte-doux); }
 
@@ -91,6 +111,9 @@
 .tch .reste-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .tch .reste-choix .puce { height: 34px; }
 .tch .reste-choix .puce.choisi { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+/* R2-030 — « ⋯ » à côté du choix retenu ; une tâche cochée dans le bilan est barrée, comme dans la liste */
+.tch .reste-choix .puce.plus { min-width: 44px; padding: 0 10px; justify-content: center; color: var(--tch-texte-doux); }
+.tch .reste.faite .titre { text-decoration: line-through; color: var(--tch-texte-doux); }
 .tch .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .tch .restes-tete .fiche-label { margin: 0; }
 .tch .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
@@ -137,6 +160,8 @@
 .tch .suite-projets { margin-top: 4px; }
 .tch .groupe-projet { margin-top: 14px; font-weight: 600; color: var(--tch-texte); }
 .tch .groupe-projet [data-p] { display: inline-flex; align-items: center; gap: 8px; }
+/* R2-020 — sous le titre d'un projet, ses lignes ne répètent pas son nom */
+.tch .suite-projets .ligne .meta [data-p] { display: none; }
 @media (min-width: 768px) { .tch .propose-actions { padding-inline: 24px; } }
 .tch .demo-balayage b { position: absolute; right: 0; top: 0; bottom: 0; width: 92px; display: grid; place-items: center;
   font-size: 0.75rem; font-weight: 650; color: var(--tch-accent-texte); }
@@ -188,18 +213,35 @@
    Maquette docs/taches/maquettes/ecran-aujourdhui-matin.html (`.col-agenda`, liste de projets comptés) ; l'ERP fournit
    déjà barre latérale et en-tête, la page n'ajoute que ses deux colonnes. Sous 1024 px : rien (la liste seule). */
 .tch .tch-bureau { display: block; }
+/* R2-023 — la LISTE du jour n'est jamais écrasée (1280 × 720 la ramenait à 308 px, 52 px à 1024) : elle garde au moins
+   480 px, l'Agenda se resserre de 380 à 320 px, et ce qui ne tient plus se replie, dans cet ordre — « Mes projets »
+   d'abord (déjà dans le menu de gauche), puis l'Agenda du jour (l'écran Agenda est à un toucher). Seuils comptés
+   sur la largeur de la page À CÔTÉ de la barre latérale de l'ERP (272 px + 2 × 16 px de marge) : barre repliée, la
+   liste n'en a que plus de place.
+     · ≥ 1360 px : Mes projets 216 · liste ≥ 480 · Agenda 320–380 (216 + 480 + 320 + 2 × 20 = 1056 px de page) ;
+     · 1124 – 1359 px : liste ≥ 480 · Agenda 320–380 (480 + 320 + 20 = 820) ;
+     · 1024 – 1123 px : la liste seule. */
 @media (min-width: 1024px) {
   .tch[data-ecran="aujourdhui"] .tch-page { max-width: 1320px; }
-  .tch .tch-bureau { display: grid; grid-template-columns: 216px minmax(0, 1fr) 380px; column-gap: 20px; align-items: start; }
+  .tch .tch-bureau { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 20px; align-items: start; }
+  .tch .tch-bureau-projets, .tch .tch-bureau-agenda { display: none; }
   /* chaque colonne garde SA piste : sans projet (premier usage, ou liste des projets pas encore lue) « Mes projets »
      n'est pas rendue, et la liste glissait dans la piste de 216 px, l'agenda au milieu (état vide illisible au bureau) */
-  .tch .tch-bureau-projets { grid-column: 1; grid-row: 1; }
-  .tch .tch-bureau-liste { grid-column: 2; grid-row: 1; min-width: 0; }
-  .tch .tch-bureau-agenda { grid-column: 3; grid-row: 1; }
+  .tch .tch-bureau-liste { grid-column: 1; grid-row: 1; min-width: 0; }
   .tch .tch-bureau-projets, .tch .tch-bureau-agenda {
     position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; scrollbar-width: none;
   }
   .tch .tch-bureau-agenda { padding: 4px 4px 16px 0; }
+}
+@media (min-width: 1124px) {
+  .tch .tch-bureau { grid-template-columns: minmax(480px, 1fr) minmax(320px, 380px); }
+  .tch .tch-bureau-agenda { display: block; grid-column: 2; grid-row: 1; }
+}
+@media (min-width: 1360px) {
+  .tch .tch-bureau { grid-template-columns: 216px minmax(480px, 1fr) minmax(320px, 380px); }
+  .tch .tch-bureau-projets { display: block; grid-column: 1; grid-row: 1; }
+  .tch .tch-bureau-liste { grid-column: 2; }
+  .tch .tch-bureau-agenda { grid-column: 3; }
 }
 .tch .tch-bureau-projets .nav-titre { margin: 8px 12px 4px; font-size: 0.8125rem; font-weight: 650; color: var(--tch-texte-doux); }
 .tch .tch-bureau-projets .nav-item {

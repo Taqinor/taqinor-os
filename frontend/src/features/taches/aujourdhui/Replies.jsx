@@ -1,10 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { annulerEtRecaler, versionDe } from '../lib/versions'
-import { accord, jourNomme } from '../lib/textes'
+import { jourCourt, jourNomme } from '../lib/textes'
 import { Ligne } from './Sections'
 import { Ailleurs } from './LignesErp'
 
@@ -13,7 +13,7 @@ import { Ailleurs } from './LignesErp'
      · « À revoir (n) » : reportées 3 fois, retards de plus de 7 jours, activités ERP en retard ; un lot
        « Tout en réserve » ; par tâche : Aujourd'hui · Choisir un jour · En réserve · Abandonner
        (+ Découper si reportée 3 fois) → `taches/{id}/trancher/` ; jamais bloquant ;
-     · « En attente (n) » · « {b} en attente d'une autre tâche » ; « Faites (n) » ;
+     · « En attente (n) » · « Bloquées {b} » (R2-027) ; « Faites (n) » ;
      · « Ailleurs dans l'ERP », lu à l'ouverture seulement.
    Un en-tête vide est absent. Tout geste est optimiste, grisé hors ligne, défait par « Annuler ».
    Maquettes : ecran-aujourdhui-matin.html (« À revoir 2 », « En attente 1 »), composants-4.html.
@@ -21,6 +21,21 @@ import { Ailleurs } from './LignesErp'
    ========================================================================== */
 
 const cleDe = (item) => `${item.type}:${item.id}`
+
+/**
+ * R2-021 — POURQUOI la ligne est à revoir, en clair sous elle : l'explication servie (« reportée 3 fois », « en
+ * retard depuis lun. 9 »…), sinon le motif.
+ */
+function raisonARevoir(item, aujourdhui) {
+  if (item.explication) return item.explication
+  if (item.motif === 'reportee_3_fois') return `reportée ${item.reports ?? 3} fois`
+  if (item.motif === 'retard_ancien') {
+    const depuis = item.jour_prevu ?? item.echeance
+    return depuis ? `en retard depuis ${jourCourt(depuis, aujourdhui)}` : 'en retard depuis plus de 7 jours'
+  }
+  if (item.motif === 'activite_passee') return 'activité passée'
+  return ''
+}
 
 /** « tâche » : seules les tâches se tranchent ; une activité ERP en retard se coche ou s'ouvre. */
 const estTache = (item) => item.type === 'tache'
@@ -89,7 +104,7 @@ function ActionsARevoir({ item, geste, revoir, minimum }) {
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'un_jour')}>En réserve</button>
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'abandonner')}>Abandonner</button>
       {item.motif === 'reportee_3_fois' ? (
-        <button type="button" className="puce" onClick={() => geste.ouvrir(item)}>Découper</button>
+        <button type="button" className="puce" onClick={() => (geste.decouper ?? geste.ouvrir)(item)}>Découper</button>
       ) : null}
       {calendrier ? (
         <input type="date" className="champ-date" aria-label={`Jour pour « ${item.titre} »`} min={minimum}
@@ -99,16 +114,28 @@ function ActionsARevoir({ item, geste, revoir, minimum }) {
   )
 }
 
-/** Un en-tête replié (« À revoir 2 ») : un bouton qui déplie ses lignes. */
-function Replie({ titre, compte = null, indice = '', onOuvrir = null, children }) {
+/**
+ * Un en-tête replié (« À revoir 2 ») : un bouton qui déplie ses lignes. `deplier` (un compteur) le déplie de
+ * l'extérieur et le fait défiler à l'écran — R2-014b : « Oui » de la carte « tâches reportées » mène ici.
+ */
+function Replie({ titre, compte = null, indice = '', onOuvrir = null, deplier = 0, children }) {
   const [ouvert, setOuvert] = useState(false)
+  const [deplie, setDeplie] = useState(deplier)
+  const entete = useRef(null)
+  if (deplier !== deplie) { // demande reçue pendant le rendu : l'état suit, jamais dans un effet
+    setDeplie(deplier)
+    if (deplier) setOuvert(true)
+  }
+  useEffect(() => {
+    if (deplier) entete.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+  }, [deplier])
   const basculer = () => {
     if (!ouvert && onOuvrir) onOuvrir()
     setOuvert((v) => !v)
   }
   return (
     <>
-      <button type="button" className="replie" aria-expanded={ouvert} onClick={basculer}>
+      <button ref={entete} type="button" className="replie" aria-expanded={ouvert} onClick={basculer}>
         <span>{titre}</span>
         {compte === null ? null : <span className="compte chiffres">{compte}</span>}
         {indice ? <span className="indice">{indice}</span> : null}
@@ -119,16 +146,19 @@ function Replie({ titre, compte = null, indice = '', onOuvrir = null, children }
   )
 }
 
-export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
+export default function Replies({ donnees, contexte, geste, revoir, enLigne, deplierARevoir = 0 }) {
   const aDecider = donnees.a_decider ?? []
   const enAttente = donnees.en_attente ?? []
   const faites = donnees.faites ?? []
-  const bloquees = donnees.a_trier?.bloquees ?? 0
+  const bloquees = donnees.a_trier?.bloquees ?? 0 // R2-027 : « En attente 1 · Bloquées 2 », jamais « en attente » deux fois
   const lignes = (items, avecActions = false) => (
     <div className="liste" role="list">
       {items.map((item) => (
         <div key={cleDe(item)}>
           <Ligne item={item} contexte={contexte} geste={geste} />
+          {avecActions && raisonARevoir(item, donnees.jour) ? (
+            <p className="revoir-raison">{raisonARevoir(item, donnees.jour)}</p>
+          ) : null}
           {avecActions && estTache(item) ? (
             <ActionsARevoir item={item} geste={geste} revoir={revoir} minimum={donnees.jour} />
           ) : null}
@@ -139,7 +169,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
   return (
     <div className="replies">
       {aDecider.length > 0 ? (
-        <Replie titre="À revoir" compte={aDecider.length}>
+        <Replie titre="À revoir" compte={aDecider.length} deplier={deplierARevoir}>
           {aDecider.some(estTache) ? (
             <div className="propose-actions">
               <button type="button" className="bouton second" data-necessite-reseau="" aria-disabled={!enLigne || undefined} onClick={revoir.toutEnReserve}>
@@ -158,7 +188,7 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne }) {
         <Replie
           titre="En attente"
           compte={enAttente.length}
-          indice={bloquees > 0 ? `· ${accord(bloquees, 'en attente', 'en attente')} d'une autre tâche` : ''}
+          indice={bloquees > 0 ? `· Bloquées ${bloquees}` : ''}
         >
           {lignes(enAttente)}
         </Replie>

@@ -137,8 +137,12 @@ export default function ColonneBureau({ jour, maintenant = '', glisse = null, on
   )
 }
 
-/** « Mes projets » : les projets actifs ou en pause, leur nombre de tâches ouvertes (lu du serveur), un lien chacun. */
-export function ColonneProjets() {
+/**
+ * « Mes projets » : les projets actifs ou en pause, leur nombre de tâches ouvertes (lu du serveur), un lien chacun.
+ * R2-029 — `ecarts` ({ projet_id: ±n }) : les gestes de la page depuis cette lecture (« Déplacer… », et son Annuler)
+ * — le compte suit sans relire la liste.
+ */
+export function ColonneProjets({ ecarts = {} }) {
   const [projets, setProjets] = useState(null)
   const [echec, setEchec] = useState('')
 
@@ -159,7 +163,9 @@ export function ColonneProjets() {
         <Link key={projet.id} className="nav-item" data-p={projet.couleur} to={`/taches/projets/${projet.id}`}>
           <i className="point" aria-hidden="true" />
           <span>{projet.nom}</span>
-          <span className="compte chiffres">{projet.compteurs?.ouvertes ?? ''}</span>
+          <span className="compte chiffres">
+            {typeof projet.compteurs?.ouvertes === 'number' ? Math.max(0, projet.compteurs.ouvertes + (ecarts[projet.id] ?? 0)) : ''}
+          </span>
         </Link>
       ))}
     </nav>

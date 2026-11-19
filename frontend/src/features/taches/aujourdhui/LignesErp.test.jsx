@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import { reinitialiserGestes } from '../lib/gestes'
+import { fermerToast, reinitialiserGestes } from '../lib/gestes'
 
 vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -67,16 +67,19 @@ describe('TCH81 — activités ERP', () => {
     expect(within(ligne).queryByRole('checkbox')).toBeNull()
   })
 
-  it('une activité qui peut se clore a sa case : close dans l\'ERP, sans Annuler', async () => {
+  it('une activité qui peut se clore a sa case : « Close dans l\'ERP · Annuler », close au départ du toast (R2-010)', async () => {
     const d = journee()
     d.journee.find((i) => i.type === 'activite').peut_cloturer = true
     servir({ aujourdhui: d })
     monter()
     await screen.findByText('Rappeler Benali')
     fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Rappeler Benali » comme faite' }))
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Close dans l'ERP")
+    expect(within(toast).getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalledWith('/records/activities/101/done/', {})
+    act(() => { fermerToast() }) // le toast part (échéance, ×) : la clôture part alors
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/records/activities/101/done/', {}))
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Close dans l'ERP")
-    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
   })
 })
 

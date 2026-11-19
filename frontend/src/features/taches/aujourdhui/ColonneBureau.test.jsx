@@ -264,6 +264,27 @@ describe('TCH152 — la page Aujourd\'hui, au bureau et sur iPhone', () => {
     expect(api.post.mock.calls.some(([url]) => url.includes('/planifier/'))).toBe(false)
   })
 
+  it('R2-029 — « Déplacer… » vers Ventes : le compte de Ventes dans « Mes projets » passe de 8 à 9 sans relire ; Annuler le rend', async () => {
+    window.matchMedia = media(true)
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/taches/lot/'
+      ? { data: { geste_id: 95, appliquees: [42], refusees: [] } }
+      : url === '/taches/gestes/95/annuler/' ? { data: { restaurees: [{ objet: 'tache', id: 42 }], conflits: [], deja: false } } : { data: {} }))
+    monterPage()
+    const nav = await screen.findByRole('navigation', { name: 'Mes projets' })
+    const ventes = () => within(nav).getByRole('link', { name: /Ventes/ })
+    await waitFor(() => expect(ventes()).toHaveTextContent('8'))
+    const lectures = api.get.mock.calls.filter(([url]) => url === '/taches/projets/').length
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Déplacer/ }))
+    const feuille = await screen.findByRole('dialog', { name: 'Déplacer vers…' })
+    await userEvent.click(await within(feuille).findByRole('option', { name: /Ventes/ }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/lot/', expect.objectContaining({ ids: [42], action: 'deplacer' }), expect.anything()))
+    expect(ventes()).toHaveTextContent('9')
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(ventes()).toHaveTextContent('8'))
+    expect(api.get.mock.calls.filter(([url]) => url === '/taches/projets/').length).toBe(lectures + 1) // la feuille lit la liste ; « Mes projets » ne se relit pas
+  })
+
   it('une activité ERP ne se glisse pas, une tâche faite non plus', async () => {
     window.matchMedia = media(true)
     const donnees = exemple('aujourdhui')

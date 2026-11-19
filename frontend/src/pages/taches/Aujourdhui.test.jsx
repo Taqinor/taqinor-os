@@ -1,13 +1,13 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { memoryStore } from '../../lib/offlineOutbox'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { reinitialiserGestes } from '../../features/taches/lib/gestes'
-import { creerFile, definirCompteFile, remplacerFile } from '../../features/taches/horsligne/captureQueue'
+import { creerFile, definirCompteFile, enfilerAjout, remplacerFile } from '../../features/taches/horsligne/captureQueue'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), put: vi.fn(), delete: vi.fn() },
@@ -56,7 +56,7 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
     expect(reperes[0]).toBe('Essentiel')
     expect(reperes.slice(1, 3).every((t) => t.endsWith('Toute la journée'))).toBe(true)
     expect(reperes.slice(3)).toEqual([
-      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', "En attente1· 1 en attente d'une autre tâche", 'Faites1', "Ailleurs dans l'ERP",
+      'Prévu', 'Ce soir', "Proposé pour aujourd'hui", 'À revoir1', 'En attente1· Bloquées 1', 'Faites1', "Ailleurs dans l'ERP",
     ])
   })
 
@@ -204,6 +204,56 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       expect(api.post).not.toHaveBeenCalled()
     })
 
+    it('R2-008b — une tâche ajoutée hors ligne apparaît tout de suite, grisée « En attente d’envoi » (lue dans la file)', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      fixerEnLigne(false)
+      definirCompteFile(42, 7)
+      // l'ancienne forme (lignes lues) et la nouvelle (la phrase, analysée au rejeu — R2-008a) se lisent toutes deux
+      await act(async () => {
+        // posées directement dans le magasin (sans prévenir l'écran), puis un ajout par la voie normale, qui prévient
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { texte: 'Test ce soir' }, userId: 42, companyId: 7 }, { queuedAt: new Date().toISOString() })
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { texte: 'Pas à moi' }, userId: 99, companyId: 7 }, { queuedAt: new Date().toISOString() })
+        await enfilerAjout([{ titre: 'Appeler le notaire', client_id: 'c-1' }], file)
+      })
+      const bloc = await screen.findByRole('region', { name: 'En attente d’envoi' })
+      await waitFor(() => expect(within(bloc).getByText('Test ce soir')).toBeInTheDocument())
+      expect(within(bloc).getByText('Appeler le notaire')).toBeInTheDocument()
+      expect(within(bloc).queryByText('Pas à moi')).toBeNull() // une op d'un autre compte n'est jamais montrée
+      expect(bloc.querySelectorAll('[data-en-file]')).toHaveLength(2)
+      expect(within(bloc).queryByRole('checkbox')).toBeNull()
+    })
+
+    it('R2-008b — la phrase mise en file par la saisie (pli L1 : `corps.phrase.textes`) apparaît telle quelle', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      fixerEnLigne(false)
+      definirCompteFile(42, 7)
+      await act(async () => {
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { phrase: { textes: ['Rappeler la banque ce soir'], cid: 'c-9' } }, userId: 42, companyId: 7 },
+          { queuedAt: new Date().toISOString() })
+        await enfilerAjout([{ titre: 'Appeler le notaire', client_id: 'c-1' }], file)
+      })
+      const bloc = await screen.findByRole('region', { name: 'En attente d’envoi' })
+      await waitFor(() => expect(within(bloc).getByText('Rappeler la banque ce soir')).toBeInTheDocument())
+    })
+
+    it('R2-008b — décocher hors ligne : « Décocher attend le réseau » se VOIT, rien ne part, la case reste cochée', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      api.post.mockClear()
+      fixerEnLigne(false)
+      await userEvent.click(screen.getByRole('button', { name: /^Faites/ }))
+      const caseFaite = screen.getByRole('checkbox', { name: 'Marquer « Dossier subvention » comme faite' })
+      await userEvent.click(caseFaite)
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Décocher attend le réseau')
+      expect(caseFaite).toBeChecked()
+      expect(api.post).not.toHaveBeenCalled()
+    })
+
     it('un brouillon de saisie gardé : la carte « Ta saisie de tout à l\'heure t\'attend. » ; Reprendre ouvre la saisie', async () => {
       window.localStorage.setItem('taches:brouillon:7:42', JSON.stringify({ texte: 'Appeler le notaire', quand: null }))
       servir(donnees())
@@ -290,6 +340,44 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
+  describe('R2-033 — « Coller mes listes » lit le presse-papiers', () => {
+    const vide = () => Object.assign(donnees(), {
+      essentiel: [], obligations: [], rendez_vous: [], journee: [], ce_soir: [], a_decider: [], en_attente: [], faites: [],
+      a_trier: { boite_reception: 0, bloquees: 0, suggestions: 0, a_convertir: 0 },
+      propose: { replie: false, pour_objectif: [], reste_nb: 0, charge: null, suite_par_projet: null },
+    })
+    const presse = (lire) => Object.defineProperty(window.navigator, 'clipboard', { value: { readText: lire }, configurable: true })
+    // la saisie ouverte garde son brouillon (localStorage) : il prendrait la place de la carte du moment ensuite
+    afterEach(() => { delete window.navigator.clipboard; window.localStorage.clear() })
+
+    it('trois lignes copiées : la saisie s’ouvre AVEC elles (l’aperçu des listes), sans message', async () => {
+      presse(vi.fn().mockResolvedValue('Salon\n- Stand\n- Kakémonos'))
+      servir(vide())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monter()
+      expect(await screen.findByText('ou touche + pour une tâche')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
+      await waitFor(() => expect(ouverture).toHaveBeenCalledTimes(1))
+      expect(ouverture.mock.calls[0][0].detail).toEqual({ coller: true, texte: 'Salon\n- Stand\n- Kakémonos' })
+      expect(screen.queryByText('Appuie longuement dans le champ puis Coller')).toBeNull()
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+
+    it('lecture refusée : la saisie s’ouvre et le geste est dit « Appuie longuement dans le champ puis Coller »', async () => {
+      presse(vi.fn().mockRejectedValue(Object.assign(new Error('refus'), { name: 'NotAllowedError' })))
+      servir(vide())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monter()
+      await userEvent.click(await screen.findByRole('button', { name: 'Coller mes listes' }))
+      await waitFor(() => expect(ouverture).toHaveBeenCalledTimes(1))
+      expect(ouverture.mock.calls[0][0].detail).toEqual({ coller: true })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Appuie longuement dans le champ puis Coller')
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+  })
+
   it('rien de gardé, des tâches à trier : la phrase et Trier', async () => {
     const d = donnees()
     Object.assign(d, {
@@ -316,7 +404,7 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
-  it('Raccord F2 — ⋯ → En attente de… pose l\'attente sans ouvrir la fiche ; la ligne quitte la journée, Annuler la remet', async () => {
+  it('Raccord F2 + R2-013 — ⋯ → En attente de… : la ligne passe dans « En attente » (2), Annuler la remet dans Prévu', async () => {
     servir(donnees())
     api.post.mockImplementation((url) => Promise.resolve({ data: url.endsWith('/attendre/') ? { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 88 } : {} }))
     monter()
@@ -327,11 +415,19 @@ describe('TCH76 — gestes optimistes', () => {
     await userEvent.type(within(feuille).getByLabelText('De qui ou de quoi ?'), 'Lydec')
     await userEvent.click(within(feuille).getByRole('button', { name: 'En attente' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/attendre/', { en_attente_de: 'Lydec' }))
-    expect(screen.queryByText('Timbres')).toBeNull()
+    const prevu = () => [...document.querySelectorAll('.section')].find((s) => s.textContent.startsWith('Prévu'))
+    expect(prevu().querySelector('[data-ligne="tache:42"]')).toBeNull()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('En attente de : Lydec')
+    // R2-013 — la ligne PASSE dans « En attente » (compteur compris), sans relire la journée
+    const enAttente = screen.getByRole('button', { name: /^En attente/ })
+    expect(within(enAttente).getByText('2')).toBeInTheDocument()
+    await userEvent.click(enAttente)
+    expect(within(document.querySelector('.replies')).getByText('Timbres')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/88/annuler/', {}))
-    expect(await screen.findByText('Timbres')).toBeInTheDocument()
+    await waitFor(() => expect(prevu().querySelector('[data-ligne="tache:42"]')).not.toBeNull())
+    expect(within(screen.getByRole('button', { name: /^En attente/ })).getByText('1')).toBeInTheDocument()
+    expect(document.querySelector('.replies [data-ligne="tache:42"]')).toBeNull()
     // la journée n'est jamais relue ; seule la tâche remise l'est (sa version change à l'annulation, F4 revue #7)
     expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
   })
@@ -384,17 +480,252 @@ describe('TCH76 — gestes optimistes', () => {
     expect(api.get).toHaveBeenCalledTimes(1)
   })
 
-  it('une activité ERP cochée close dans l\'ERP, sans Annuler', async () => {
-    const d = donnees()
-    d.journee.find((i) => i.type === 'activite').peut_cloturer = true
-    servir(d)
-    api.post.mockResolvedValue({ data: {} })
-    monter()
-    await screen.findByText('Devis Settat')
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Rappeler Benali » comme faite' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/records/activities/101/done/', {}))
-    expect(await screen.findByText("Close dans l'ERP")).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+  describe('R2-012 — la 4e étoile est refusée À L\'ÉCRAN, avant toute requête (étoile et menu)', () => {
+    const PHRASE = "3 essentielles au plus — retire une étoile d'abord"
+    const troisEtoiles = () => {
+      const d = donnees()
+      const autre = (id, titre) => ({ ...d.essentiel[0], id, titre, heure_debut: null })
+      d.essentiel = [...d.essentiel, autre(301, 'Deuxième'), autre(302, 'Troisième')]
+      return d
+    }
+    const appelsEtoile = () => api.post.mock.calls.filter(([url]) => url === '/taches/journee/essentiel/')
+
+    it('l\'étoile vide d\'une ligne de Prévu : toast visible, aucune requête', async () => {
+      servir(troisEtoiles())
+      monter()
+      await screen.findByText('Timbres')
+      await userEvent.click(screen.getByRole('checkbox', { name: 'Essentielle : Timbres' }))
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(PHRASE)
+      expect(appelsEtoile()).toHaveLength(0)
+    })
+
+    it('le menu ⋯ > Essentielle : même refus, aucune requête', async () => {
+      servir(troisEtoiles())
+      monter()
+      await screen.findByText('Timbres')
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Essentielle' }))
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent(PHRASE)
+      expect(appelsEtoile()).toHaveLength(0)
+    })
+  })
+
+  describe('R2-011 — cocher, Annuler et reporter n\'attendent PAS le serveur (réponse retenue 2 s)', () => {
+    const CASE = 'Marquer « Timbres » comme faite'
+    const ecrite = (gesteId, extra = {}) => {
+      const e = exempleContrat('taches', 'tache_ecrite')
+      return { data: { ...e, tache: { ...e.tache, id: 42, statut: 'fait', lock_version: 2 }, geste_id: gesteId, progression: null, ...extra } }
+    }
+    /** `api.post` dont la réponse à `url` attend 2 s (minuteur factice) ; les autres répondent tout de suite. */
+    function retarder(suffixe, reponse) {
+      api.post.mockImplementation((url) => (url.endsWith(suffixe)
+        ? new Promise((resolu, rejete) => setTimeout(() => (reponse instanceof Error ? rejete(reponse) : resolu(reponse)), 2000))
+        : Promise.resolve(url.endsWith('/annuler/') ? { data: { restaurees: [{ objet: 'tache', id: 42 }], conflits: [], deja: false } } : { data: {} })))
+    }
+    async function monterLent({ figer = true } = {}) {
+      servir(donnees())
+      api.get.mockImplementation((url) => (url === '/taches/aujourdhui/' ? Promise.resolve({ data: donnees() })
+        : url === '/taches/taches/42/' ? Promise.resolve({ data: { ...exempleContrat('taches', 'tache_ecrite').tache, id: 42, lock_version: 3 } })
+          : Promise.reject(new Error(`appel inattendu : GET ${url}`))))
+      monter()
+      await screen.findByText('Devis Settat')
+      if (figer) vi.useFakeTimers()
+    }
+    const attendre = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+    const ligneTimbres = (container) => container.querySelector('[data-ligne="tache:42"]')
+
+    it('cocher : barré, « 2 sur 5 » et le toast « Faite » AVANT la réponse ; la réponse ne change rien de visible', async () => {
+      retarder('/terminer/', ecrite(80))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(ligneTimbres(document).querySelector('.ligne.faite')).not.toBeNull() // barrée
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Faite')
+      await attendre(2100)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+    })
+
+    it('Annuler AVANT la réponse : la ligne et « 1 sur 5 » reviennent tout de suite, puis le geste rendu est annulé', async () => {
+      retarder('/terminer/', ecrite(81))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(api.post).not.toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
+      await attendre(2100)
+      expect(api.post).toHaveBeenCalledWith('/taches/gestes/81/annuler/', {})
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+    })
+
+    it('le serveur refuse : la case et le compteur reviennent, et le refus s\'affiche', async () => {
+      retarder('/terminer/', Object.assign(new Error('400'), { response: { status: 400, data: { detail: 'Tâche verrouillée.' } } }))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      await attendre(2100)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Tâche verrouillée.')
+    })
+
+    it('double toucher : décocher ferme le toast « Faite » et les deux écritures partent dans l\'ordre', async () => {
+      retarder('/terminer/', ecrite(82))
+      await monterLent()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(50)
+      expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      await attendre(2100)
+      const ecritures = api.post.mock.calls.map(([url]) => url).filter((url) => /\/42\/(terminer|rouvrir)\/$/.test(url))
+      expect(ecritures).toEqual(['/taches/taches/42/terminer/', '/taches/taches/42/rouvrir/'])
+      expect(ligneTimbres(document)).not.toBeNull()
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+    })
+
+    it('reporter : « → jeu. 19 » et le toast AU RELÂCHER, avant la réponse ; un refus les retire et le dit', async () => {
+      retarder('/planifier/', Object.assign(new Error('500'), { response: { status: 500, data: { detail: 'Le serveur ne répond pas.' } } }))
+      await monterLent({ figer: false })
+      await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+      const reporter = await screen.findByRole('menuitem', { name: /^Reporter à/ })
+      vi.useFakeTimers()
+      fireEvent.click(reporter)
+      await attendre(50)
+      expect(ligneTimbres(document)).toHaveTextContent('→ jeu. 19')
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
+      await attendre(2100)
+      expect(ligneTimbres(document)).not.toHaveTextContent('→ jeu. 19')
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Le serveur ne répond pas.')
+    })
+  })
+
+  describe('R2-010 — activité ERP cochée : envoi DIFFÉRÉ jusqu\'au départ du toast (choix C-9)', () => {
+    const CASE = 'Marquer « Rappeler Benali » comme faite'
+    const CLOSE = '/records/activities/101/done/'
+    const appelsClose = () => api.post.mock.calls.filter(([url]) => url === CLOSE)
+    async function monterActivite() {
+      const d = donnees()
+      d.journee.find((i) => i.type === 'activite').peut_cloturer = true
+      servir(d)
+      api.post.mockResolvedValue({ data: {} })
+      const rendu = monter()
+      await screen.findByText('Devis Settat')
+      vi.useFakeTimers()
+      return rendu
+    }
+    const attendre = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms) })
+
+    it('cocher : la ligne passe cochée et le compteur +1 TOUT DE SUITE ; « Close dans l\'ERP · Annuler » ; rien ne part encore', async () => {
+      await monterActivite()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      const toast = screen.getByRole('group', { name: 'Geste effectué' })
+      expect(toast).toHaveTextContent("Close dans l'ERP")
+      expect(within(toast).getByRole('button', { name: 'Annuler' })).toBeInTheDocument()
+      expect(appelsClose()).toHaveLength(0)
+    })
+
+    it('Annuler : la ligne et le compteur reviennent, et RIEN ne part vers l\'ERP (même après le délai du toast)', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+      await attendre(0)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      await attendre(20000)
+      expect(appelsClose()).toHaveLength(0)
+    })
+
+    it('sans Annuler : l\'activité est close à la disparition du toast (8 s), une seule fois, compteur juste sans relire', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(7900)
+      expect(appelsClose()).toHaveLength(0)
+      await attendre(200)
+      expect(appelsClose()).toEqual([[CLOSE, {}]])
+      await attendre(10000)
+      expect(appelsClose()).toHaveLength(1)
+      expect(screen.getByRole('checkbox', { name: CASE })).toBeChecked()
+      expect(screen.getByRole('button', { name: /^2 sur 5 faites/ })).toBeInTheDocument()
+      expect(api.get.mock.calls.filter(([url]) => url === '/taches/aujourdhui/')).toHaveLength(1)
+    })
+
+    it('un autre geste remplace le toast : l\'activité part à ce moment-là (le toast a disparu)', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Marquer « Timbres » comme faite' }))
+      await attendre(0)
+      expect(appelsClose()).toHaveLength(1)
+    })
+
+    it('l\'ERP refuse : la ligne et le compteur reviennent, et le refus s\'affiche', async () => {
+      await monterActivite()
+      api.post.mockImplementation((url) => (url === CLOSE
+        ? Promise.reject(Object.assign(new Error('403'), { response: { status: 403, data: { detail: 'Action refusée.' } } }))
+        : Promise.resolve({ data: {} })))
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(8100)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(screen.getByRole('button', { name: /^1 sur 5 faites/ })).toBeInTheDocument()
+      expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Pas close dans l'ERP : Action refusée.")
+    })
+
+    it('l\'onglet se ferme (`pagehide`) avant la fin du toast : la clôture part quand même, par un envoi qui survit à la page', async () => {
+      const envoi = vi.fn(() => Promise.resolve({ ok: true, status: 200 }))
+      vi.stubGlobal('fetch', envoi)
+      try {
+        await monterActivite()
+        fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+        await attendre(0)
+        act(() => { window.dispatchEvent(new Event('pagehide')) })
+        await attendre(0)
+        expect(envoi).toHaveBeenCalledTimes(1)
+        const [url, options] = envoi.mock.calls[0]
+        expect(url).toMatch(/\/api\/django\/records\/activities\/101\/done\/$/)
+        expect(options).toMatchObject({ method: 'POST', keepalive: true, credentials: 'include' })
+        // le toast est parti avec l'envoi : plus d'« Annuler » trompeur, et rien ne repart à son échéance
+        expect(screen.queryByRole('button', { name: 'Annuler' })).toBeNull()
+        await attendre(10000)
+        expect(envoi).toHaveBeenCalledTimes(1)
+        expect(appelsClose()).toHaveLength(0)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('quitter l\'écran avant la fin du toast : la clôture part au démontage', async () => {
+      const { unmount } = await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      unmount()
+      await attendre(0)
+      expect(appelsClose()).toHaveLength(1)
+    })
+
+    it('décocher pendant le toast vaut Annuler : rien ne part', async () => {
+      await monterActivite()
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(0)
+      fireEvent.click(screen.getByRole('checkbox', { name: CASE }))
+      await attendre(10000)
+      expect(screen.getByRole('checkbox', { name: CASE })).not.toBeChecked()
+      expect(appelsClose()).toHaveLength(0)
+    })
   })
 })
 
@@ -447,11 +778,9 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     expect(container.querySelectorAll('[data-ligne="tache:12"]')).toHaveLength(2)
   })
 
-  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; Annuler remet l\'état d\'avant', async () => {
+  it('n° 2 — ôter la ★ de la ligne barrée d\'Essentiel : elle quitte Essentiel SANS entrer dans Prévu, Faites perd sa ★ ; R2-027 : aucun toast', async () => {
     servir(journeeEssentielleFaite())
-    api.post.mockImplementation((url) => Promise.resolve(
-      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : url === '/taches/gestes/91/annuler/' ? annulation(12) : { data: {} },
-    ))
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/journee/essentiel/' ? ecrite(12, 6, 91) : { data: {} }))
     const { container } = monter()
     await screen.findByText('Devis Settat')
     await ouvrirFaites()
@@ -463,19 +792,13 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
     expect(faite).not.toBeNull()
     expect(within(faite).queryByRole('img', { name: 'Essentielle' })).toBeNull()
-    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/91/annuler/', {}))
-    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(1))
-    expect(within(zones(container).essentiel).getByRole('checkbox', { name: 'Essentielle : Dossier subvention' })).toBeChecked()
-    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
-    expect(within(zones(container).faites.querySelector('[data-ligne="tache:12"]')).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
+    // R2-027 — l'étoile vide suffit : pas de toast (retoucher l'étoile la remet)
+    expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
   })
 
-  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; Annuler la rend à Faites seule', async () => {
+  it('n° 2 — remettre la ★ à une faite depuis Faites : elle apparaît AUSSI dans Essentiel, comme la relecture la servira ; R2-027 : aucun toast', async () => {
     servir(donnees())
-    api.post.mockImplementation((url) => Promise.resolve(
-      url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : url === '/taches/gestes/92/annuler/' ? annulation(12) : { data: {} },
-    ))
+    api.post.mockImplementation((url) => Promise.resolve(url === '/taches/journee/essentiel/' ? ecrite(12, 6, 92) : { data: {} }))
     const { container } = monter()
     await screen.findByText('Devis Settat')
     await ouvrirFaites()
@@ -487,13 +810,121 @@ describe('Relecture adverse F4 — une essentielle faite est servie dans Essenti
     const faite = zones(container).faites.querySelector('[data-ligne="tache:12"]')
     expect(faite).not.toBeNull()
     expect(within(faite).getByRole('img', { name: 'Essentielle' })).toBeInTheDocument()
-    await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }))
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/gestes/92/annuler/', {}))
-    await waitFor(() => expect(lignesDe(zones(container).essentiel, 12)).toBe(0))
-    expect(lignesDe(zones(container).prevu, 12)).toBe(0)
-    const rendue = zones(container).faites.querySelector('[data-ligne="tache:12"]')
-    expect(rendue).not.toBeNull()
-    expect(within(rendue).queryByRole('img', { name: 'Essentielle' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
+  })
+})
+
+describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et se lit en une phrase', () => {
+  it('R2-019 — reporter une ★ : « essentiel 0/2 » devient « essentiel 0/1 » tout de suite', async () => {
+    const d = donnees()
+    d.essentiel = [...d.essentiel, { ...d.essentiel[0], id: 23, titre: 'Payer la CNSS', heure_debut: null }]
+    d.progression = { ...d.progression, essentiel_prevues: 2 }
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 73, progression: null } })
+    monter()
+    await screen.findByText('Devis Settat')
+    expect(screen.getByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Payer la CNSS »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Reporter à/ }))
+    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 1\./ })).toBeInTheDocument()
+    // Annuler : elle revient dans la journée affichée
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(await screen.findByRole('button', { name: /^1 sur 5 faites, essentiel 0 sur 2\./ })).toBeInTheDocument()
+  })
+
+  it('R2-035 — au toucher : « 1 faite sur 5 visées · 4 tâches gardées », sans « (accepté) »', async () => {
+    servir(donnees())
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /Détail de la journée$/ }))
+    const detail = screen.getByRole('group', { name: 'Détail de la journée' })
+    expect(detail).toHaveTextContent('1 faite sur 5 visées · 4 tâches gardées')
+    expect(detail).not.toHaveTextContent('accepté')
+    expect(detail).not.toHaveTextContent('Objectif du jour')
+  })
+})
+
+describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `section`, `focus`)', () => {
+  /** L'adresse de l'écran : la coquille ouvre la fiche selon `?tache=…&section=…&focus=…`. */
+  function Adresse() {
+    const { search } = useLocation()
+    return <output data-testid="adresse">{search}</output>
+  }
+  const monterAvecAdresse = () => render(
+    <MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /><Adresse /></MemoryRouter>,
+  )
+  const adresse = () => new URLSearchParams(screen.getByTestId('adresse').textContent)
+
+  it('R2-021 — À revoir dit la raison sous chaque ligne ; « Découper » ouvre la fiche sur sa section Découper', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /^À revoir/ }))
+    const zone = document.querySelector('.replies')
+    expect(within(zone).getByText('reportée 3 fois')).toBeInTheDocument()
+    await userEvent.click(within(zone).getByRole('button', { name: 'Découper' }))
+    await waitFor(() => expect(adresse().get('tache')).toBe('50'))
+    expect(adresse().get('section')).toBe('decouper')
+  })
+
+  it('R2-021 — sans explication servie, la raison vient du motif (« en retard depuis … »)', async () => {
+    const d = donnees()
+    d.a_decider = [{ ...d.a_decider[0], explication: '', motif: 'retard_ancien', jour_prevu: '2026-11-09', reports: 0 }]
+    servir(d)
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /^À revoir/ }))
+    expect(within(document.querySelector('.replies')).getByText(/^en retard depuis /)).toBeInTheDocument()
+  })
+
+  it('R2-025 — `e` ouvre la fiche curseur dans le TITRE', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Timbres')
+    const focaliser = () => act(() => { document.querySelector('[data-ligne="tache:42"] .ligne-corps-bouton').focus() })
+    focaliser()
+    await userEvent.keyboard('e')
+    await waitFor(() => expect(adresse().get('focus')).toBe('titre'))
+    expect(adresse().get('tache')).toBe('42')
+  })
+
+  it('R2-025 — `h` ouvre la fiche sur le champ HEURE', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Timbres')
+    act(() => { document.querySelector('[data-ligne="tache:42"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('h')
+    await waitFor(() => expect(adresse().get('focus')).toBe('heure'))
+    expect(adresse().get('tache')).toBe('42')
+  })
+})
+
+describe('R2-014b —« Oui » de la carte « tâches reportées » (constat C7) mène à « À revoir »', () => {
+  it('Oui : « À revoir » se déplie (aria-expanded) et vient à l\'écran', async () => {
+    const d = donnees()
+    // la carte elle-même (son type, sa question) est rendue par ui/CarteDuMoment (lane L3) : ici, le chemin de la RÉPONSE
+    d.carte_du_moment = {
+      type: 'rythme',
+      proposition: {
+        id: 55, type: 'constat', cle: 'C7', texte: '1 tâche reportée 3 fois ou plus. Les revoir maintenant ?', donnees: { n: 1 },
+        boutons: [{ reponse: 'oui', libelle: 'Oui' }, { reponse: 'pas_maintenant', libelle: 'Pas maintenant' }], expire_le: null,
+      },
+      donnees: {},
+    }
+    servir(d)
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'proposition_repondue') } })
+    const defiler = vi.fn()
+    Element.prototype.scrollIntoView = defiler
+    monter()
+    await screen.findByText('Devis Settat')
+    const aRevoir = screen.getByRole('button', { name: /^À revoir/ })
+    expect(aRevoir).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(screen.getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/rythme/propositions/55/repondre/', { reponse: 'oui' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^À revoir/ })).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getByText('Site web')).toBeInTheDocument()
+    expect(defiler).toHaveBeenCalled()
+    delete Element.prototype.scrollIntoView
   })
 })
 
@@ -538,12 +969,28 @@ describe('F2 acceptation (P144.3) — clavier : une feuille ouverte par une touc
     focaliser(42)
     await userEvent.keyboard('d')
     const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
-    expect(within(feuille).getByLabelText('Jour')).toHaveValue('2026-11-19')
-    expect(within(feuille).getByRole('button', { name: 'Reporter à jeu. 19' })).toHaveFocus()
+    // R2-022 — le sélecteur « Quand » du module ; la tuile « Reporter à jeu. 19 » a le focus : Entrée reporte
+    expect(within(feuille).getByRole('radio', { name: 'Reporter à jeu. 19' })).toHaveFocus()
     await userEvent.keyboard('{Enter}')
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', { jour_prevu: '2026-11-19', lock_version: expect.anything() }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-19', lock_version: expect.anything() })))
     expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Reportée à jeu. 19')
+  })
+
+  it('R2-022 — « Choisir un jour » : les tuiles du sélecteur Quand ; « Demain » en UN toucher', async () => {
+    servir(donnees())
+    api.post.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), geste_id: 74, progression: null } })
+    monter()
+    await screen.findByText('Timbres')
+    await userEvent.click(screen.getByRole('button', { name: 'Actions pour « Timbres »' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Choisir un jour' }))
+    const feuille = await screen.findByRole('dialog', { name: 'Choisir un jour' })
+    const tuiles = within(feuille).getAllByRole('radio').map((t) => t.querySelector('b').textContent)
+    expect(tuiles).toEqual(["Aujourd'hui", 'Demain', 'Ce soir', 'Reporter à jeu. 19', 'Choisir un jour', 'En réserve', 'Sans jour'])
+    await userEvent.click(within(feuille).getByRole('radio', { name: /^Demain/ }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/planifier/', expect.objectContaining({ jour_prevu: '2026-11-18' })))
+    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    expect(document.querySelector('[data-ligne="tache:42"]')).toHaveTextContent('→ mer. 18')
   })
 
   it('`m` ouvre « Déplacer vers… » sur un AUTRE projet que le sien ; Entrée déplace', async () => {

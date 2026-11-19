@@ -312,9 +312,10 @@ etape('P137.6', ['TCH137', 'TCH58', 'TCH79', 'TCH78', 'TCH77'], async (f) => {
   const p = await ouvrir(f, { instant })
   await aujourdhui(p)
   await capturer(p, 'aujourdhui-15h')
-  // Oracle : « 3 sur 5 · essentiel 1/2 », « Objectif couvert par ce que tu as gardé. »
+  // Oracle : « 3 sur 5 · essentiel 1/2 » ; objectif couvert → Proposé tient en une ligne (R2-020)
   await expect(progression(p)).toContainText('3 sur 5 · essentiel 1/2')
-  await expect(sectionPropose(p)).toContainText('Objectif couvert par ce que tu as gardé.')
+  await expect(sectionPropose(p)).toContainText('Voir les tâches de mes projets')
+  await expect(sectionPropose(p)).not.toContainText('Objectif couvert')
   // À 15:00 le scénario n'a qu'UNE tâche allégeable (le contrat ; le stand, dû aujourd'hui, reste par règle,
   // regles.md §4.5) : pour jouer « Alléger en gardant 1 », on en pose une seconde par un vrai geste d'écran — la
   // feuille de saisie d'un projet du scénario, une tâche pour aujourd'hui.
