@@ -1348,11 +1348,11 @@ body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toa
 .tch .quand-tuile[aria-checked="true"]:not(:focus-visible),
 .tch .segmente button[aria-checked="true"]:not(:focus-visible) { box-shadow: none; }
 .tch .quand-tuile[aria-checked="true"] b { color: var(--tch-accent); }
-/* R2-018b — méta sur la ligne du titre quand elle est courte (`LigneTache` pose `meta-en-ligne`, R2-018 L3) : le titre
+/* R2-018b — méta sur la ligne du titre quand elle est courte (`LigneTache` pose `meta-courte` sur `.ligne-corps`, R2-018 L3) : le titre
    et sa méta partagent une ligne ; trop longs, la méta repasse dessous d'elle-même (retour à la ligne du flex). */
-.tch .ligne.meta-en-ligne .ligne-corps { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
-.tch .ligne.meta-en-ligne .ligne-corps-bouton { width: auto; flex: 0 1 auto; min-width: 0; }
-.tch .ligne.meta-en-ligne .meta { margin-top: 0; }
+.tch .ligne-corps.meta-courte { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; }
+.tch .ligne-corps.meta-courte .ligne-corps-bouton { width: auto; flex: 0 1 auto; min-width: 0; }
+.tch .ligne-corps.meta-courte .meta { margin-top: 0; }
 
 /* R2-094 — au clavier, c'est la LIGNE qui est encadrée (anneau arrondi dedans, fond de survol), plus un rectangle
    collé aux lettres du titre qui mordait sur l'heure. Anneau intérieur : le cadre de balayage (`overflow: hidden`)
