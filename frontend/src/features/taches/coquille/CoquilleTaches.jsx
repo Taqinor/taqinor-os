@@ -67,7 +67,9 @@ const TOUCHES = [
 
 function AideTouches() {
   return (
-    <dl className="touches">
+    // focus initial sur la liste : au bureau, la poignée (premier focalisable de la feuille) est masquée et ne prend
+    // pas le focus — sans lui, Échap (écouté par la feuille) ne fermait pas l'aide
+    <dl className="touches" tabIndex={-1} data-focus-initial>
       {TOUCHES.map(([touche, effet]) => (
         <div key={touche} className="touches-ligne">
           <dt><kbd>{touche}</kbd></dt>
