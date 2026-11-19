@@ -86,3 +86,16 @@ Demandes de L6 :
   appareil, il ne vaut ici qu'après un passage dans Réglages.
 - R2-092 : encore 6 à 7 tailles de texte sur Aujourd'hui (agenda, cartes, bandeaux), pas 4.
 - Hors module : squelette générique de l'ERP au chargement à froid (Suspense du routeur, `module.config.jsx`).
+
+## Après le pli de L7 (`43d3cc588`)
+- (→ L2 `aujourdhui/ColonneBureau`) passer `creneauxLibres` à `GrilleAgenda` (aucun créneau sous un bloc) et adapter
+  `ColonneBureau.test.jsx` (« Ajouter à 10:00 » tombe sous un bloc du jeu d'essai).
+- `ui/LigneTache.test.jsx` : snapshot « Passe visuelle n° 46 » dépend de la DATE DU JOUR (« échéance jeu. 19 ») :
+  horloge à figer dans le test.
+- `e2e/acceptation/tch.spec.js` P139.7 clique « Placer à 10:00 » : ce créneau est absent s'il est sous un bloc.
+- R2-103 : « venant de la Revue » → semaine suivante non géré à part (`Revue.jsx` ne passe aucun `jour`).
+- R2-105 : toucher un bloc DÉJÀ posé ouvre la fiche ; « Déplacer » n'existe qu'après la pose.
+- Références à reporter (`api.md` annexe A `agenda.json` + `rendez_vous_minutes`, `faites_nb` ; `textes.md` §2.8 ;
+  `regles.md` : règle « faites » C-12, pause C-5).
+- À rejouer sans interception après le pli : `rendez_vous_minutes`, `faites_nb` ; projet en pause + tâche à 16:00.
+- Specs `e2e/taches-agenda.spec.js` jamais jouées (CI).
