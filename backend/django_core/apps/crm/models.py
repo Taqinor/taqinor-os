@@ -305,6 +305,7 @@ class Lead(LeadPompageMixin, VerrouOptimisteMixin, RechercheFTSMixin, SoftDelete
         DOUBLON = 'doublon', 'Doublon'
         TEST = 'test', 'Fiche de test'
         ARCHIVE_ODOO = 'archive_odoo', 'Contact Odoo froid archivé'
+        LISTE_FROIDE_SANS_REPONSE = 'liste_froide_sans_reponse', 'Liste froide : deux appels sans réponse'
 
     class TypeInstallation(models.TextChoices):
         RESIDENTIEL = 'residentiel', 'Résidentiel'
