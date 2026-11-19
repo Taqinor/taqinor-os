@@ -1,0 +1,35 @@
+{
+  "sha": "c1eb7c16018325e09a9e6a394bfd23c44603edde",
+  "date": "2026-11-19",
+  "groupe": "AERR",
+  "verdict": "PASS",
+  "couvre": [
+    "AERR169"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PF12.1-AERR169-une-lecture",
+      "taches": [
+        "AERR169"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "corps": "PASS",
+      "trace": "docs/qa-explorer/captures/2026-11-19/ACCEPTATION-AERR-PF12.1-AERR169-une-lecture.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
