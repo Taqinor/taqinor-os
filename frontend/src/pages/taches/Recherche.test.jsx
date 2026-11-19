@@ -444,7 +444,7 @@ describe('TCH87 — Supprimées récemment', () => {
     expect(lignes.every((l) => l.matches('.ligne.es-supprimee') && l.firstElementChild.matches('.case'))).toBe(true)
     const metas = lignes.map((l) => [...l.querySelector('.meta').children].map((e) => e.textContent))
     // supprimees.json : le projet le 15/11 à 10:00, « Timbres » (sans projet) le 16/11 à 11:00 — jour servi, heure du Maroc
-    expect(metas).toEqual([['Restaurer', 'dim. 15/11'], ['Restaurer', 'Sans projet', 'lun. 16/11'], ['Restaurer', 'Ventes', 'lun. 16/11']])
+    expect(metas).toEqual([['Restaurer', 'dim. 15 nov.'], ['Restaurer', 'Sans projet', 'lun. 16 nov.'], ['Restaurer', 'Ventes', 'lun. 16 nov.']])
     expect(lignes[1].querySelector('.meta > button')).toHaveClass('es-action')
     // Derniers gestes : l'heure du geste (le jour même) ou son jour, le message, puis « Annuler » en lien
     const geste = within(screen.getByRole('region', { name: 'Derniers gestes' })).getAllByRole('listitem')[0]

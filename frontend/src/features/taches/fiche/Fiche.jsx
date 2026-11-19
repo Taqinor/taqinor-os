@@ -48,6 +48,8 @@ const CHAMP_DE_ERREUR = {
   jour_prevu: 'quand', heure_debut: 'quand', moment: 'quand', quelque_jour: 'quand',
   echeance: 'echeance', echeance_heure: 'echeance', titre: 'titre', notes: 'notes', priorite: 'priorite',
   projet_id: 'projet', essentielle: 'essentielle', essentielles: 'essentielle', libelle: 'checklist', etiquettes: 'etiquettes',
+  // R4 couture — le refus d'un rappel (jour hors bornes, heure illisible, plafond de 5 par tâche…) se dit sous le champ du rappel
+  jour: 'rappel', heure: 'rappel', ancre: 'rappel', decalage_jours: 'rappel', rappel: 'rappel',
 }
 const PRIORITES = [['Haute', 3], ['Moyenne', 2], ['Basse', 1]] // ordre de textes.md §2.3 / §2.6 : Haute · Moyenne · Basse
 

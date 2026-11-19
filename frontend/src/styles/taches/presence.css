@@ -45,7 +45,7 @@
 /* TCH103 — carte « Tâches · Aujourd'hui » du cockpit (port de ecrans-projets.css, maquette cockpit-carte.html). */
 .tch .ep-carte-cockpit { margin-top: 14px; border-radius: var(--tch-rayon-carte); background: var(--tch-surface); box-shadow: var(--shadow-xs), 0 0 0 1px var(--tch-trait); overflow: hidden; }
 .tch .ep-cc-tete { padding: 14px 16px 4px; }
-.tch .ep-cc-titre b { display: block; font-size: 1rem; font-weight: 650; }
+.tch .ep-cc-titre b { display: block; font-size: 1rem; font-weight: 600; }
 .tch .ep-cc-compte { display: flex; align-items: center; gap: 10px; margin-top: 4px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 .tch .ep-cc-compte .fort { color: var(--tch-texte); font-weight: 600; }
 .tch .ep-carte-cockpit .ligne { background: transparent; margin: 0; border-radius: 0; padding-left: calc(16px - (var(--tch-cible) - var(--tch-case)) / 2); padding-right: 16px; }

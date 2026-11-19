@@ -229,7 +229,7 @@ export function Squelette() {
     </div>
   )
   return (
-    <div className="squelette" role="status" aria-label="Chargement">
+    <div className="squelette-liste" role="status" aria-label="Chargement">
       <div className="progression">
         <span className="segments" aria-hidden="true"><i /><i /><i /><i /><i /></span>
         <span className="os" style={{ width: 120, height: 12 }} />

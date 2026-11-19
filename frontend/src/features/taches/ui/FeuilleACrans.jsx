@@ -332,7 +332,7 @@ function useTirerPourFermer(feuille, voile, actif, fermerSansPerte, setCran) {
       const loin = g.dy > g.hauteur * SEUIL_TIRE_FRACTION
       const jet = vitesse > SEUIL_TIRE_VITESSE && g.dy > SEUIL_TIRE_JET_MIN_PX
       if (e.type === 'touchend' && (loin || jet)) {
-        // fermée là où le doigt l'a laissée : la copie de sortie part de cette position (translate s'ajoute au transform)
+        // fermée là où le doigt l'a laissée : l'animation de sortie part de cette position (translate s'ajoute au transform)
         racine.classList.remove('tiree')
         fermerSansPerte()
         return

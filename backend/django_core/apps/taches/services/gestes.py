@@ -189,23 +189,71 @@ def enregistrer_geste(user, type, message, operations):
 TYPES_TITRE_PREMIERE = frozenset({'terminaison', 'reouverture'})
 
 
+def _ids_touches(geste, objet):
+    """Les ids DISTINCTS d'`objet` que les opérations d'un geste touchent."""
+    return {op.get('id') for op in geste.operations if op.get('objet') == objet and op.get('id') is not None}
+
+
+def _nom_garde_par_la_suppression(geste):
+    """Le nom qu'une SUPPRESSION DURE d'étiquette a gardé dans son opération (la ligne n'existe plus en base)."""
+    for op in geste.operations:
+        if op.get('objet') == 'etiquette' and op.get('op') == 'suppression_dure':
+            nom = (op.get('valeurs') or {}).get('nom')
+            if isinstance(nom, str) and nom:
+                return nom
+    return None
+
+
 def titres_des_gestes(user, gestes):
-    """`{geste.pk: titre}` — le titre (lu MAINTENANT, supprimée comprise) de la tâche qu'un geste a touchée, pour
-    « 09:12 Faite · Appeler le fournisseur » (R2-125). Un geste qui touche une SEULE tâche en a un ; un geste qui en
-    touche plusieurs (lot, report en masse, plan du jour) n'en a pas — son message dit déjà le compte —, sauf une
-    terminaison ou une réouverture (la première tâche). Société ET propriétaire, comme toute lecture ; une seule
-    requête, quel que soit le nombre de gestes."""
-    visees = {}
+    """`{geste.pk: titre}` — ce que le geste a touché, lu MAINTENANT (supprimée comprise), pour
+    « 09:12 Faite · Appeler le fournisseur » (R2-125) et « 09:15 Projet terminé · Salon Solaire » (R4 couture).
+    - un geste qui touche UN projet le nomme (renommé, couleur, priorité, pause, terminé, supprimé : les tâches qu'il
+      déplace ne sont que sa suite) ; une revue sans autre écriture nomme le projet de la revue ;
+    - sinon un geste qui touche UNE SEULE tâche en a le titre ; un geste qui en touche plusieurs (lot, report en
+      masse, plan du jour) n'en a pas — son message dit déjà le compte —, sauf une terminaison ou une réouverture
+      (la première tâche) ;
+    - sinon un geste qui touche UNE étiquette en dit le nom (une étiquette supprimée garde le sien dans l'opération).
+    Société ET propriétaire, comme toute lecture ; UNE lecture groupée par type d'objet (jamais une requête par
+    ligne, et aucune pour un type que nul geste ne vise)."""
+    taches, projets, revues, etiquettes, noms = {}, {}, {}, {}, {}
     for geste in gestes:
+        ids_projet = _ids_touches(geste, 'projet')
+        if len(ids_projet) == 1:
+            projets[geste.pk] = next(iter(ids_projet))
+            continue
         ids = [op.get('id') for op in geste.operations if op.get('objet') == 'tache' and op.get('id') is not None]
         if ids and (len(set(ids)) == 1 or geste.type in TYPES_TITRE_PREMIERE):
-            visees[geste.pk] = ids[0]
-    visees.update(_taches_des_etoiles([g for g in gestes if g.type == 'essentiel' and g.pk not in visees]))
+            taches[geste.pk] = ids[0]
+            continue
+        ids_revue = _ids_touches(geste, 'revue_projet')
+        if len(ids_revue) == 1:
+            revues[geste.pk] = next(iter(ids_revue))
+            continue
+        ids_etiquette = _ids_touches(geste, 'etiquette')
+        if len(ids_etiquette) == 1:
+            garde = _nom_garde_par_la_suppression(geste)
+            if garde is not None:
+                noms[geste.pk] = garde
+            else:
+                etiquettes[geste.pk] = next(iter(ids_etiquette))
+    taches.update(_taches_des_etoiles([g for g in gestes if g.type == 'essentiel' and g.pk not in taches]))
+    rendu = dict(noms)
+    rendu.update(_titres_lus(taches, Tache.all_objects.filter(company_id=user.company_id, proprietaire=user), 'titre'))
+    rendu.update(_titres_lus(projets, Projet.all_objects.filter(company_id=user.company_id, proprietaire=user), 'nom'))
+    rendu.update(_titres_lus(revues, RevueProjet.objects.filter(company_id=user.company_id, proprietaire=user),
+                             'projet__nom'))
+    rendu.update(_titres_lus(etiquettes, Etiquette.objects.filter(company_id=user.company_id, proprietaire=user),
+                             'nom'))
+    return rendu
+
+
+def _titres_lus(visees, lignes, champ):
+    """`{geste.pk: valeur de `champ`}` en UNE requête sur `lignes` (déjà bornées à la société et au propriétaire) ;
+    aucune requête quand aucun geste ne vise ce type."""
     if not visees:
         return {}
-    titres = dict(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=set(visees.values()))
-                  .values_list('pk', 'titre'))
-    return {geste: titres[tache] for geste, tache in visees.items() if tache in titres}
+    lus = dict(lignes.filter(pk__in=set(visees.values())).values_list('pk', champ))
+    return {geste: lus[cible] for geste, cible in visees.items() if cible in lus}
 
 
 def _taches_des_etoiles(gestes):

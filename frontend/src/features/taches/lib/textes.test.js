@@ -21,8 +21,8 @@ const DIX_DATES = [
   ['2026-11-30', 'lun. 30'], // 13 jours : dans la fenêtre
   ['2026-12-01', 'mar. 1 déc.'], // 14 jours : au-delà
   ['2026-12-25', 'ven. 25 déc.'],
-  ['2026-11-16', 'lun. 16/11'], // hier : passé
-  ['2026-11-12', 'jeu. 12/11'],
+  ['2026-11-16', 'lun. 16 nov.'], // hier : passé, la même forme que « mar. 1 déc. »
+  ['2026-11-12', 'jeu. 12 nov.'],
   ['2027-01-04', '04/01/2027'], // autre année
 ]
 

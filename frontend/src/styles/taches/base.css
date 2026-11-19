@@ -650,13 +650,6 @@
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; padding-top: 0;
 }
 .tch .tch-page .moment.revelation .moment-texte b { font-size: 0.9375rem; font-weight: 500; line-height: 1.4; }
-.tch .tch-page .moment.revelation .moment-texte .demo-balayage { grid-column: 1 / -1; grid-row: 2; }
-/* demande L2 (R3-085) — la démo du balayage est une miniature sous la phrase, pas une ligne de tâche de plus : 28 px,
-   texte de méta, 280 px au plus, « Reporter » resserré */
-.tch .tch-page .moment.revelation .demo-balayage { height: 28px; max-width: 280px; margin-top: 6px; border-radius: 8px; }
-.tch .tch-page .moment.revelation .demo-balayage span { width: calc(100% - 76px); padding: 0 8px; gap: 6px; font-size: var(--tch-taille-meta); }
-.tch .tch-page .moment.revelation .demo-balayage span i { width: 12px; height: 12px; }
-.tch .tch-page .moment.revelation .demo-balayage b { width: 76px; font-size: var(--tch-taille-meta); }
 .tch .tch-page .moment.revelation .carte-actions { grid-column: 2; grid-row: 1; margin: 0; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
 .tch .tch-page :is(.carte.rythme, .moment.revelation) .carte-actions .bouton {

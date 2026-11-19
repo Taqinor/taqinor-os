@@ -490,3 +490,77 @@ class TitresDesGestesTests(TestCase):
         gestes = [self._geste('terminaison', 'Faite', fabriques.tache(self.u1)) for _ in range(4)]
         with self.assertNumQueries(1):
             titres_des_gestes(self.u1, gestes)
+
+    # --- R4 couture : un geste sur un PROJET ou une ÉTIQUETTE nomme ce qui a changé -------------------------------
+
+    def _geste_projet(self, projet, champ, avant, type_='modification', message='Projet modifié'):
+        return enregistrer_geste(self.u1, type_, message, [op_champ('projet', projet, champ, avant)])
+
+    def test_un_geste_sur_un_projet_dit_son_nom_renomme_couleur_priorite(self):
+        projet = fabriques.projet(self.u1, nom='Ancien nom', priorite=0)
+        projet.nom, projet.couleur, projet.priorite = 'Salon Solaire', 'ciel', 2
+        projet.save(update_fields=['nom', 'couleur', 'priorite'])
+        renomme = self._geste_projet(projet, 'nom', 'Ancien nom')
+        recolore = self._geste_projet(projet, 'couleur', 'terre')
+        priorise = self._geste_projet(projet, 'priorite', 0)
+        self.assertEqual(titres_des_gestes(self.u1, [renomme, recolore, priorise]),
+                         {renomme.pk: 'Salon Solaire', recolore.pk: 'Salon Solaire', priorise.pk: 'Salon Solaire'})
+
+    def test_une_pause_de_revue_et_une_revue_sans_autre_ecriture_nomment_le_projet(self):
+        from apps.taches.services.projets import decider_revue
+        en_pause = fabriques.projet(self.u1, nom='Salon Solaire')
+        gardee = fabriques.projet(self.u1, nom='Site web')
+        semaine = timezone.localdate()
+        _revue, _projet, geste_pause = decider_revue(self.u1, en_pause.pk, {'semaine': semaine, 'decision': 'pause'})
+        _revue, _projet, geste_garde = decider_revue(self.u1, gardee.pk, {'semaine': semaine, 'decision': 'garder'})
+        self.assertEqual(titres_des_gestes(self.u1, [geste_pause, geste_garde]),
+                         {geste_pause.pk: 'Salon Solaire', geste_garde.pk: 'Site web'})
+
+    def test_terminer_ou_supprimer_un_projet_nomme_le_projet_pas_sa_premiere_tache(self):
+        from apps.taches.services.projets import supprimer_projet, terminer_projet
+        a_terminer = fabriques.projet(self.u1, nom='Étude Benali')
+        fabriques.tache(self.u1, projet=a_terminer, titre='Appeler le notaire')
+        fabriques.tache(self.u1, projet=a_terminer, titre='Relancer Settat')
+        a_supprimer = fabriques.projet(self.u1, nom='Vieux projet')
+        fabriques.tache(self.u1, projet=a_supprimer, titre='Une seule tâche')
+        termine = terminer_projet(self.u1, a_terminer.pk, issue='atteint', taches_ouvertes='boite').geste
+        supprime = supprimer_projet(self.u1, a_supprimer.pk).geste
+        self.assertEqual(titres_des_gestes(self.u1, [termine, supprime]),
+                         {termine.pk: 'Étude Benali', supprime.pk: 'Vieux projet'})
+
+    def test_un_geste_d_etiquette_dit_son_nom_meme_apres_sa_suppression(self):
+        from apps.taches.services.etiquettes import creer_etiquette, modifier_etiquette, supprimer_etiquette
+        etiquette, cree = creer_etiquette(self.u1, nom='magasin')
+        _etiquette, renomme = modifier_etiquette(self.u1, etiquette.pk, {'nom': 'courses'})
+        self.assertEqual(titres_des_gestes(self.u1, [cree, renomme]), {cree.pk: 'courses', renomme.pk: 'courses'})
+        supprime = supprimer_etiquette(self.u1, etiquette.pk)
+        self.assertEqual(titres_des_gestes(self.u1, [supprime]), {supprime.pk: 'courses'})
+
+    def test_jamais_le_nom_d_un_projet_ni_d_une_etiquette_d_un_autre_compte(self):
+        from apps.taches.models.taches import Etiquette
+        chez_lui = fabriques.projet(self.ailleurs, nom='Secret')
+        etiquette = Etiquette.objects.create(company=self.b, proprietaire=self.ailleurs, nom='secrete')
+        sur_projet = enregistrer_geste(self.u1, 'modification', 'Projet modifié', [op_creation('projet', chez_lui)])
+        sur_etiquette = enregistrer_geste(self.u1, 'creation', 'Étiquette créée', [op_creation('etiquette', etiquette)])
+        self.assertEqual(titres_des_gestes(self.u1, [sur_projet, sur_etiquette]), {})
+
+    def test_une_lecture_groupee_par_type_jamais_par_ligne(self):
+        from apps.taches.services.etiquettes import creer_etiquette, modifier_etiquette
+        projet = fabriques.projet(self.u1, nom='Salon Solaire')
+        etiquette, _cree = creer_etiquette(self.u1, nom='magasin')
+        _etiquette, renomme = modifier_etiquette(self.u1, etiquette.pk, {'nom': 'courses'})
+        gestes = [self._geste_projet(projet, 'nom', 'Avant') for _ in range(3)] + [renomme]
+        with self.assertNumQueries(2):  # un seul SELECT pour les trois gestes de projet, un pour l'étiquette
+            titres_des_gestes(self.u1, gestes)
+
+    def test_la_route_sert_le_nom_du_projet_a_l_ecran_et_jamais_a_l_assistant(self):
+        from apps.taches.services.projets import decider_revue
+        projet = fabriques.projet(self.u1, nom='Salon Solaire')
+        _revue, _projet, geste = decider_revue(self.u1, projet.pk, {'semaine': timezone.localdate(),
+                                                                    'decision': 'pause'})
+        api = APIClient()
+        api.force_authenticate(self.u1)
+        ecran = api.get('/api/django/taches/gestes/').json()['results']
+        self.assertEqual([(g['id'], g['titre']) for g in ecran], [(geste.pk, 'Salon Solaire')])
+        assistant = api.get('/api/django/taches/gestes/', HTTP_X_TAQINOR_ASSISTANT='1').json()['results']
+        self.assertEqual([(g['id'], g['titre']) for g in assistant], [(geste.pk, None)])

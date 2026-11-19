@@ -5,15 +5,13 @@ import { duree as dureeTexte } from '../lib/textes'
 /* ============================================================================
    TCH105 — le volet « À placer ({n}) » de l'Agenda : trois groupes « Aujourd'hui ({n}) » ·
    « À revoir ({n}) » · « Mes projets ({n}) » (replié, puis « ● {projet} ({n}) »), chaque tâche
-   avec sa durée (« 30 min », « 1 h »). Toucher une tâche la CHOISIT (une seule à la fois,
+   avec sa durée (« 30 min », « 1 h ») quand elle en a une : une tâche sans durée n'en affiche aucune (jamais de durée inventée). Toucher une tâche la CHOISIT (une seule à la fois,
    `aria-pressed`) : la page rend alors les créneaux « Placer à {HH:MM} » ; la glisser sur un
    créneau la pose aussi. Vide : « Tout est placé ». Maquettes : agenda-placer-heure.html,
    agenda-placer-heure-duree.html, agenda-jour.html (aside « À placer ») ; textes.md §2.8.
    Le volet ne parle jamais au serveur : `onChoisir(item | null)`.
    `aRevoir(item)` : reportée (motif posé) ou prévue avant aujourd'hui.
    ========================================================================== */
-
-const DUREE_AFFICHEE = 30
 
 function grouper(aPlacer, aujourdhui) {
   const aRevoir = (it) => Boolean(it.motif) || (it.jour_prevu && it.jour_prevu < aujourdhui)
@@ -46,7 +44,7 @@ function LignePlacer({ item, choisie, detail, onChoisir, onGlisser, apresChoix }
         {item.titre}
         {detail && item.explication ? <small>{item.explication}</small> : null}
       </span>
-      <span className="d chiffres">{dureeTexte(item.estimation_minutes || DUREE_AFFICHEE)}</span>
+      {dureeTexte(item.estimation_minutes) ? <span className="d chiffres">{dureeTexte(item.estimation_minutes)}</span> : null}
     </button>
   )
 }

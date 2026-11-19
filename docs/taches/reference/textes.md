@@ -18,8 +18,8 @@ référence données/API.
 - **Accord** : 0 et 1 au singulier (« 1 faite », « 0 tâche »), ≥ 2 au pluriel ; chaque gabarit existe en singulier
   et pluriel quand un nombre précède un nom.
 - **Jours** : `{jour}` = « aujourd'hui », « demain », sinon « {abr}. {jj} » dans les 13 jours (« jeu. 19 »), au-delà
-  « {abr}. {jj} {mois abr} » (« mar. 1 déc. »), autre année « {jj}/{mm}/{aaaa} » ; passé : « {abr}. {jj}/{mm} » (« jeu.
-  12/11 »). Abréviations : lun., mar., mer., jeu., ven., sam., dim. ; janv., févr., mars, avr., mai, juin, juil., août,
+  « {abr}. {jj} {mois abr} » (« mar. 1 déc. »), autre année « {jj}/{mm}/{aaaa} » ; passé : « {abr}. {jj} {mois abr} » (« jeu.
+  12 nov. », la même forme que les dates lointaines : une seule façon d'écrire une date). Abréviations : lun., mar., mer., jeu., ven., sam., dim. ; janv., févr., mars, avr., mai, juin, juil., août,
   sept., oct., nov., déc. Le premier du mois : « 1 déc. » à l'écran, « 1er décembre » dans une phrase lue.
   **Échéance et jalon d'un PROJET** (liste, en-tête, revue, chronologie) : toujours avec le mois, « {abr}. {jj} {mois
   abr} » même dans les 13 jours (« ven. 4 déc. ») ; l'année seulement au-delà de 12 mois (« ven. 15 janv. 2028 ») ;
@@ -204,7 +204,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Aide repliée | « Confier à quelqu'un : crée une activité dans l'ERP, sur la fiche concernée. » |
 | Sélecteur Quand (la feuille s'appelle « Quand ? », R3-067) | Aujourd'hui · Demain · Ce soir · Reporter à {jour} (une seule tuile « Demain » quand le prochain jour travaillé EST demain) · Calendrier… (le champ date garde son nom « Choisir un jour ») · Plus tard · Sans jour |
 | Heure | « Heure » ; à l'agenda, bloc sans durée : « durée non estimée » |
-| Rappel | « Le jour même » / « La veille » / « Choisir » + heure ; ancré (R2-046) : sur le jour prévu « Le jour prévu à {HH:MM} » (décalage 0) ou « {n} jour(s) avant le jour prévu à {HH:MM} » ; sur l'échéance « Le jour même à {HH:MM} » (décalage 0) ou « {n} jour(s) avant l'échéance à {HH:MM} » — jamais « 0 jour avant » ; tâche sans jour ni échéance (R4-24) : ni « Le jour même » ni « La veille », « Cette tâche n'a pas de jour : choisis la date du rappel. » [Poser le jour] (ouvre « Quand je la fais ») + le champ « Jour du rappel » ; « Poser le rappel » sans jour : « Choisis le jour du rappel. » sous le champ, rien n'est envoyé |
+| Rappel | « Le jour même » / « La veille » / « Choisir » + heure ; ancré (R2-046) : sur le jour prévu « Le jour prévu à {HH:MM} » (décalage 0) ou « {n} jour(s) avant le jour prévu à {HH:MM} » ; sur l'échéance « Le jour même à {HH:MM} » (décalage 0) ou « {n} jour(s) avant l'échéance à {HH:MM} » — jamais « 0 jour avant » ; tâche sans jour ni échéance (R4-24) : ni « Le jour même » ni « La veille », « Cette tâche n'a pas de jour : choisis la date du rappel. » [Poser le jour] (ouvre « Quand je la fais ») + le champ « Jour du rappel » ; « Poser le rappel » sans jour : « Choisis le jour du rappel. » sous le champ, rien n'est envoyé ; un refus du serveur (jour hors bornes, heure illisible, plafond de rappels, tâche close) se dit en alerte sous l'heure du rappel, sans toast (R4 couture : `poserRappel` porte `erreurSousLeChamp`) |
 | Question du premier rappel (A17-T4) | « Montrer le titre sur l'écran verrouillé ? » [Oui] [Non] ; sous la question : « Sans réponse, l'écran verrouillé n'affiche que des nombres. » |
 | Répéter (`libelle_regle`) | « chaque jour » · « tous les {n} jours » · « chaque jour travaillé » · « chaque lundi » · « chaque lundi et jeudi » · « toutes les {n} semaines le lundi » · « chaque mois le {j} » · « chaque fin de mois » · « chaque premier vendredi du mois » · « chaque dernier vendredi du mois » · « tous les {n} mois » · « chaque année le {jj/mm} » ; suffixe « après fait » ; « jusqu'au {jj/mm/aaaa} » |
 | Actions de répétition | Sauter cette fois · Arrêter de répéter · Appliquer à celle-ci aussi |

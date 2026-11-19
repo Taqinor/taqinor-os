@@ -520,7 +520,13 @@ etape('P139.1', ['TCH139', 'TCH59', 'TCH104'], async (f) => {
   const jeudi = p.locator('.ag-sj').filter({ has: p.locator('.ag-sj-date b', { hasText: /^26$/ }) })
   await expect(jeudi).toBeVisible()
   await capturer(p, 'agenda-semaine')
-  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h sur 4 h » (vague 3 : « sur », plus « pour »)
+  // Oracle : Agenda Semaine → jeu. 26 « 2 tâches · 2 h sur 4 h » (vague 3 : « sur », plus « pour »).
+  // Compte À LA MAIN selon la règle serveur unique (R4-01, `moteur/classement.py::compte_dans_la_charge`) : sont comptées
+  // les tâches À FAIRE (ni faites, ni « Ce soir », ni en attente), prévues ce jour-là (ou à échéance ce jour-là sans être
+  // prévues un jour d'avant encore à venir). Le 26 au matin du 24 : « Réceptionner les 16 panneaux » (60 min, prévue 26 à
+  // 09:00) + « Préparer le matériel du stand » (60 min, prévue 26 à 14:00) = 2 tâches · 120 min ; « Valider le plan de
+  // calepinage » (échéance 26, prévue 25) pèse le 25, pas le 26 ; « Rédiger la fiche de poste » n'est reportée au 26 qu'à
+  // 14:10 (geste non semé à 09:41). Disponible : aucun rendez-vous le 26 (agenda.ics : 24 et 25 seulement) → 4 h.
   await expect(jeudi).toContainText('2 tâches · 2 h sur 4 h')
 })
 
@@ -534,7 +540,8 @@ etape('P139.2', ['TCH139', 'TCH106'], async (f) => {
   const jours = p.getByRole('list', { name: 'Jours de la semaine' })
   await jours.getByRole('button', { name: new RegExp(`^jeu\\.? 26 · .* · placer ${echapper(T.demo)}$`) }).click()
   await expect(toast(p)).toContainText('Placée')
-  // Oracle : « 3 · 4 h sur 4 h » (textes.md §2.8 : « {n} tâches · {h} sur {cap} »)
+  // Oracle : « 3 · 4 h sur 4 h » (textes.md §2.8 : « {n} tâches · {h} sur {cap} ») : les 2 tâches du 26 (120 min) +
+  // « Préparer la démo onduleur hybride » (120 min) placée ce jour-là = 3 tâches · 240 min sur 240 min disponibles.
   await expect(jours.getByRole('button', { name: /^jeu\.? 26 · / })).toHaveAccessibleName(/^jeu\.? 26 · 3 tâches · 4 h sur 4 h/)
   expect((await tacheNommee(p, T.demo)).jour_prevu).toBe('2026-11-26')
 })
@@ -604,7 +611,7 @@ etape('P139.5', ['TCH139', 'TCH122', 'TCH121', 'TCH104'], async (f) => {
   expect(journee.progression.disponible_minutes).toBe(journee.progression.capacite_minutes - 30)
   await aujourdhui(p)
   await progression(p).click()
-  // R3-020 (M6) : « Temps : {prévu} prévues pour {disponible} disponibles » — le disponible porte déjà les 30 min de
+  // R3-020 (M6), R4-01 : « Reste : {h} pour {disponible} disponibles » (ce qui RESTE à faire) — le disponible porte déjà les 30 min de
   // rendez-vous (« Temps libre : 3 h 30 (4 h moins 30 min de rendez-vous) » n'est plus écrit)
   await expect(p.getByRole('group', { name: 'Détail de la journée' })).toContainText('pour 3 h 30 disponibles')
 })

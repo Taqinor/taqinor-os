@@ -141,6 +141,10 @@ etape('P142.2', ['TCH142', 'TCH102', 'TCH123'], async (f) => {
   await capturer(p, 'fiche-lead-saisie-liee')
   await champSaisie(p).fill('Envoyer la proposition au lead')
   await saisie(p).getByRole('button', { name: 'Ajouter', exact: true }).click()
+  // R4-22 : une phrase ajoutée laisse la feuille ouverte (chaîne) ; Échap la ferme
+  await expect(champSaisie(p)).toHaveValue('')
+  await p.keyboard.press('Escape')
+  await expect(saisie(p)).toHaveCount(0)
   await expect(p.getByTestId('tch-ici-nb')).toHaveText('2', { timeout: 30_000 })
   const titres = (await tachesLiees(p, 'crm.lead', lead)).map((t) => t.titre).sort()
   expect(titres, 'la nouvelle tâche est liée au lead').toEqual(['Envoyer la proposition au lead', 'Rappeler le lead de démonstration'])
@@ -163,6 +167,9 @@ etape('P142.3', ['TCH142', 'TCH102', 'TCH123'], async (f) => {
   await capturer(p, 'fiche-lead-c-t', { vues: ['bureau'] })
   await champSaisie(p).fill('Préparer la visite du lead')
   await saisie(p).getByRole('button', { name: 'Ajouter', exact: true }).click()
+  await expect(champSaisie(p)).toHaveValue('') // R4-22 : la feuille reste ouverte après une phrase ajoutée
+  await p.keyboard.press('Escape')
+  await expect(saisie(p)).toHaveCount(0)
   await expect.poll(async () => (await tachesLiees(p, 'crm.lead', lead)).map((t) => t.titre), { timeout: 30_000 })
     .toEqual(['Préparer la visite du lead'])
 })

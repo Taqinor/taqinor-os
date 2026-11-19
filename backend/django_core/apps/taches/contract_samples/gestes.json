@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/taches/gestes/",
-  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes ». Source : docs/taches/reference/api.md annexe A (`gestes.json`), recopié mot pour mot. R2-125 : `titre` = le titre de la tâche touchée (une seule tâche, ou une terminaison / réouverture), nul sinon et toujours nul sous l'en-tête assistant.",
+  "pourquoi": "TCH2/TCH3 (PACT10) — échantillon posé SEUL, avant sa vue : « GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes ». Source : docs/taches/reference/api.md annexe A (`gestes.json`), recopié mot pour mot. R2-125 : `titre` = le titre de la tâche touchée (une seule tâche, ou une terminaison / réouverture) ; R4 couture : le nom du projet ou de l'étiquette qu'un geste touche (un projet prime sur ses tâches), nul sinon et toujours nul sous l'en-tête assistant.",
   "exemple": {
     "results": [
       {
