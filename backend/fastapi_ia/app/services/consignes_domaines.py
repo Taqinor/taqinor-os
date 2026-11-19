@@ -50,6 +50,17 @@ CONSIGNES: dict[str, str] = {
         "du chantier ne change jamais par toi ; jamais de dérogation. "
         "installations.chantier.commander_besoin crée des brouillons de commande, rien ne part au "
         "fournisseur ; sa carte dit l'effet sur le chantier. Aucun montant de commande."),
+    "ventes": (
+        "Lis ventes.vente.etat avant de facturer ou d'encaisser. ventes.vente.facturer prépare un "
+        "BROUILLON de facture ; l'émission (numéro légal) se fait à l'écran. Pour "
+        "un paiement (ventes.facture.enregistrer_paiement), demande sur quelle facture s'il y en a "
+        "plusieurs ; jamais un montant réparti sur deux factures. Un refus « paiement similaire » : "
+        "dis qu'il est déjà enregistré, ne le repropose jamais. Pour changer le nombre "
+        "de panneaux : ventes.devis.taille_apercu, puis ventes.devis.taille, dont la carte montre "
+        "l'ancien et le nouveau total, même sur un devis envoyé. Pour un devis accepté : "
+        "ventes.devis.reviser, puis ventes.devis.taille sur la V2 ; ventes.devis.composer crée un "
+        "devis séparé. Une relance d'impayé passe par ventes.facture.whatsapp_relance ; son refus "
+        "se redit. Jamais de relance ni de facture par e-mail."),
 }
 
 DEBUT = "[Consignes de l'ERP pour le domaine %s]"
