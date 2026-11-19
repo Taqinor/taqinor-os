@@ -296,6 +296,14 @@ describe('F2 acceptation — un 409 NOMMÉ est dit par l\'écran, jamais par le 
     expect(toastError).not.toHaveBeenCalled()
   })
 
+  it('409 `effacement_occupe` sur toutEffacer : aucun toast global (la phrase est dite sous le champ « Confirmation »)', async () => {
+    api.post.mockImplementation(pont(409, erreurs.effacement_occupe))
+    const err = await client.toutEffacer({ confirmation: 'EFFACER' }).catch((e) => e)
+    expect(client.classerErreur(err).code).toBe('effacement_occupe')
+    expect(err.response.data.detail).toBe(erreurs.effacement_occupe.detail)
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
   it('409 sans code : le toast de l\'ERP reste (une seule fois), l\'erreur est rejetée', async () => {
     api.patch.mockImplementation(pont(409, { detail: 'Conflit.' }))
     const err = await client.modifierTache(20, { titre: 'x', lock_version: 4 }).catch((e) => e)
