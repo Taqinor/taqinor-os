@@ -134,7 +134,8 @@ describe('TCH82 — feuille de saisie', () => {
     await user.type(champ(), 'Appeler Karim')
     await user.click(screen.getByRole('button', { name: 'Ajouter' }))
     expect(champ()).toHaveValue('')
-    expect(champ()).toHaveFocus()
+    // le focus revient au champ après le rendu qui suit le toucher : on l'attend (sous charge, jsdom le rend un tour plus tard)
+    await waitFor(() => expect(champ()).toHaveFocus())
     await user.keyboard('Relancer Salma')
     expect(champ()).toHaveValue('Relancer Salma')
     // au clavier (Tab jusqu'au bouton, Entrée) : le focus revient aussi au champ
@@ -144,7 +145,7 @@ describe('TCH82 — feuille de saisie', () => {
     expect(ajouter).toHaveFocus()
     await user.keyboard('{Enter}')
     expect(champ()).toHaveValue('')
-    expect(champ()).toHaveFocus()
+    await waitFor(() => expect(champ()).toHaveFocus())
   })
 
   it('le brouillon est effacé AVANT l\'événement « tâches créées » : l\'écran qui le relit n\'affiche pas la carte « Brouillon »', async () => {
