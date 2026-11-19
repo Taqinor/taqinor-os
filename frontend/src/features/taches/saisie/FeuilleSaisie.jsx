@@ -593,12 +593,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
 
   /** Fige, vide l'écran TOUT DE SUITE (une phrase : la chaîne reste ouverte ; une liste : la feuille se ferme), envoie. */
   const lancer = (gel, liste) => {
-    // R3-046 — annoncé AVANT tout : l'écran montre la ligne « envoi… » à l'instant du toucher
+    // le brouillon part avec la phrase, AVANT tout : l'écran qui le relit (carte « Ta saisie t'attend ») le fait à la
+    // fermeture de la feuille, juste dessous — effacé après, il y lisait encore la liste créée (R4-25 : un faux
+    // « Reprendre » qui rouvrait une saisie vide)
+    ecrireBrouillon(cle, null)
+    // R3-046 — annoncé AVANT l'envoi : l'écran montre la ligne « envoi… » à l'instant du toucher
     annoncerEnvoi({ etat: 'part', envoi: gel.cid, lignes: lignesAnnoncees(gel) })
     rafale.current.enVol += 1
     if (liste) { remettreAZero(); onFermer?.() } else enchainer()
-    // le brouillon part avec la phrase : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas la revoir
-    ecrireBrouillon(cle, null)
     // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
     envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
       .finally(terminerEnvoi)

@@ -310,6 +310,23 @@ describe('TCH82 — feuille de saisie', () => {
     expect(lireBrouillon(7, 42)).toBeNull()
   })
 
+  it('R4-25 — « Créer N tâches » : le brouillon est DÉJÀ effacé quand la feuille se ferme — l\'écran qui le relit à la fermeture ne montre pas de faux « Reprendre »', async () => {
+    const liste = {
+      projets_communs: [],
+      lignes: ['lait', 'pain'].map((titre, index) => ({ ...apercu.lignes[0], index, collage: 0, titre, jetons: [], champs: {} })),
+      projets_nouveaux: [],
+    }
+    mocks.saisieRapide.mockImplementation((corps) => Promise.resolve({ data: corps.apercu ? liste : creation }))
+    const user = userEvent.setup()
+    const vusALaFermeture = []
+    monter({ onFermer: vi.fn(() => vusALaFermeture.push(lireBrouillon(7, 42))) })
+    fireEvent.change(champ(), { target: { value: 'Divers\nlait\npain' } })
+    expect(await screen.findByText('Aperçu de ta liste', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(lireBrouillon(7, 42)).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Créer 2 tâches' }))
+    expect(vusALaFermeture).toEqual([null])
+  })
+
   it('passe visuelle n° 33 — une liste COLLÉE (même ouverte par « Coller mes listes ») : l\'aperçu seul, le champ replié ; « Coller encore » le rouvre', async () => {
     const liste = {
       projets_communs: [{ collage: 0, id: null, nom: 'Courses', nouveau: true, priorite: 2, source: 'premiere_ligne' }],
