@@ -52,6 +52,19 @@ describe('TCH106 — PlanifierSemaine', () => {
     expect(screen.getByText('● Équipe (1)')).toBeInTheDocument()
   })
 
+  it('R3-122 — sept colonnes sur UNE rangée : un week-end vide est étroit (72 px), un week-end qui porte une tâche garde une colonne entière', () => {
+    const colonne = (conteneur) => conteneur.querySelector('.ag-jours').style.getPropertyValue('--ag-jours-colonnes')
+    const ouvre = 'minmax(0, 1fr)'
+    const etroit = 'minmax(72px, 0.6fr)'
+    const vide = monter()
+    expect(colonne(vide.container)).toBe([ouvre, ouvre, ouvre, ouvre, ouvre, etroit, etroit].join(' '))
+    vide.unmount()
+    const jours = septJours()
+    jours[5] = { ...jours[5], sans_heure: [{ ...agenda().jours[0].sans_heure[0], id: 701, titre: 'Mise en service', jour_prevu: '2026-11-21' }] }
+    const charge = monter({ jours })
+    expect(colonne(charge.container)).toBe([ouvre, ouvre, ouvre, ouvre, ouvre, ouvre, etroit].join(' '))
+  })
+
   it('R2-102 — un jour passé dit les tâches FINIES ce jour-là (`faites_nb` servi), pas celles qui y étaient prévues', () => {
     const jours = septJours()
     jours[0] = { ...jours[0], faites_nb: 3 }
@@ -189,7 +202,7 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     monterLe('/taches/agenda?vue=semaine&placer=1', '2026-11-20', new Date(2026, 10, 20, 10, 0))
     await waitFor(() => expect(lireAgenda).toHaveBeenCalled())
     expect(appel()).toEqual({ du: '2026-11-23', au: '2026-11-29', vue: 'semaine' })
-    expect(await screen.findByText('23 – 29 novembre')).toBeInTheDocument()
+    expect(await screen.findByText('23 – 29 nov.')).toBeInTheDocument()
     // les sept jours sont à venir : aucun « passé », tous posables
     expect(await screen.findByRole('button', { name: /^lun\. 23 · / })).toBeEnabled()
     expect(screen.queryByText(/passé/)).toBeNull()
@@ -238,6 +251,41 @@ describe('TCH106 — Planifier ma semaine dans l\'Agenda (`?placer=1`)', () => {
     expect(container.querySelector('.ag-nav')).toBeNull()
     expect(container.querySelector('.saisie-bureau')).toBeNull()
     expect(container.querySelector('.ag-planifier-tete')).toContainElement(screen.getByRole('button', { name: 'Terminer' }))
+  })
+
+  it('R3-123 — la semaine est dite UNE fois, « ‹ 16 – 22 nov. › » sur une rangée, et pas de sur-titre qui la répète', async () => {
+    const { container } = monter()
+    expect(await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })).toBeInTheDocument()
+    const nav = container.querySelector('.ag-plan-nav')
+    expect([...nav.children].map((e) => e.getAttribute('aria-label') ?? e.textContent))
+      .toEqual(['Semaine précédente', '16 – 22 nov.', 'Semaine suivante'])
+    expect(screen.queryByText('16 – 22 novembre')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    expect(await screen.findByText('23 – 29 nov.')).toBeInTheDocument()
+    // une semaine à cheval sur deux mois dit les deux
+    fireEvent.click(screen.getByRole('button', { name: 'Semaine suivante' }))
+    expect(await screen.findByText('30 nov. – 6 déc.')).toBeInTheDocument()
+  })
+
+  it('R3-123 — iPhone : Planifier ma semaine est un écran ENFANT de l\'Agenda (« ‹ Agenda » remplace ☰) ; au bureau rien de tel', async () => {
+    const matchMedia = window.matchMedia
+    window.matchMedia = (requete) => ({
+      matches: requete.includes('max-width: 767px'), media: requete, addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {},
+    })
+    try {
+      const { container, unmount } = monter()
+      await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })
+      const retour = container.querySelector('.entete-retour')
+      expect(retour).toHaveTextContent('Agenda')
+      fireEvent.click(retour)
+      expect(await screen.findByRole('heading', { level: 1, name: 'Agenda' })).toBeInTheDocument()
+      expect(screen.getByTestId('adresse').textContent).not.toContain('placer=')
+      unmount()
+    } finally { window.matchMedia = matchMedia }
+    const bureau = monter()
+    await screen.findByRole('button', { name: /^mar\. 17 · 2 tâches/ })
+    expect(bureau.container.querySelector('.entete-retour')).toBeNull()
   })
 
   it('R2-106 — poser sur un jour une tâche « À revoir » (reportée 3 fois) la DÉCIDE : `trancher/` avec le jour, jamais `planifier/`', async () => {

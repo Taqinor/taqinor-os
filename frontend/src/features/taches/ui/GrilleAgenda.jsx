@@ -71,39 +71,39 @@ function disposer(liste) {
   })
 }
 
-/** Passe visuelle n° 7 — dans la Semaine (`cascade`), les colonnes sont étroites : deux blocs qui se chevauchent ne se
- *  partagent plus la largeur (le premier, réduit à une pilule, perdait son titre) ; le second se pose en cascade sur
- *  le premier, décalé de 10 % (maquette agenda-semaine.html `.ag-semcol .bloc.g2`). Le Jour garde les deux moitiés. */
-function position(ev, debutGrille, finGrille, cascade = false) {
+/** R3-120 — Jour ET Semaine : deux blocs qui se chevauchent se rangent côte à côte en deux voies ÉGALES (comme Apple
+ *  Calendrier et Notion Calendar) et ne se recouvrent jamais. La cascade décalée de 10 % de la passe visuelle n° 7
+ *  recouvrait le titre du premier bloc ; la Semaine garantit désormais des colonnes de jour d'au moins 120 px
+ *  (`colonnesSemaine`), assez pour deux voies lisibles. */
+function position(ev, debutGrille, finGrille) {
   const debut = Math.max(ev.debut, debutGrille * 60)
   const fin = Math.min(ev.fin, finGrille * 60)
   const style = {
     top: `calc(var(--tch-heure-h) * ${(debut - debutGrille * 60) / 60} + 1px)`,
     height: `calc(var(--tch-heure-h) * ${Math.max(fin - debut, 15) / 60} - 2px)`,
   }
-  if (ev.voies >= 2 && cascade) {
-    if (ev.voie > 0) style.left = '10%'
-  } else if (ev.voies >= 2) {
+  if (ev.voies >= 2) {
     if (ev.voie === 0) style.right = 'calc(50% + 1px)'
     else style.left = 'calc(50% + 1px)'
   }
   return style
 }
 
-/** Classes de hauteur et de cascade d'un bloc : `court` (≤ 30 min), `h1` (≤ 1 h), `g2` (second d'un chevauchement). */
-const classesBloc = (ev, cascade) => [
+/** Classes d'un bloc : `court` (≤ 30 min), `h1` (≤ 1 h), `en-voies` (il partage sa colonne avec un autre bloc). */
+const classesBloc = (ev) => [
   ev.fin - ev.debut <= COURT ? 'court' : (ev.fin - ev.debut <= 60 ? 'h1' : ''),
-  cascade && ev.voies >= 2 && ev.voie > 0 ? 'g2' : '',
+  ev.voies >= 2 ? 'en-voies' : '',
 ]
 
-function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
+function BlocTache({ ev, style, choisi, onCocher, onOuvrir }) {
   const { item } = ev
   const fait = item.statut === 'fait'
   const plage = ev.sansDuree
     ? `${heure(item.heure_debut)} · durée non estimée`
     : `${enHeure(ev.debut)} – ${enHeure(ev.fin)}`
-  const classes = ['bloc', ...classesBloc(ev, cascade), fait ? 'fait-bloc' : '', choisi ? 'choisi' : '']
-    .filter(Boolean).join(' ')
+  const plus = ev.voie === VOIES_VISIBLES - 1 && ev.caches > 0
+  const classes = ['bloc', ...classesBloc(ev), fait ? 'fait-bloc' : '', choisi ? 'choisi' : '',
+    item.essentielle ? 'essentielle' : '', plus ? 'a-plus' : ''].filter(Boolean).join(' ')
   return (
     <div className={classes} data-p={item.projet?.couleur || undefined} style={style} data-bloc={item.id}>
       <button
@@ -121,7 +121,7 @@ function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
         <small className="chiffres">{plage}</small>
       </button>
       {item.essentielle ? <Star className="i i-14 etoile" role="img" aria-label="Essentielle" /> : null}
-      {ev.voie === VOIES_VISIBLES - 1 && ev.caches > 0 ? <span className="ag-plus chiffres">+{ev.caches}</span> : null}
+      {plus ? <span className="ag-plus chiffres">+{ev.caches}</span> : null}
     </div>
   )
 }
@@ -129,11 +129,11 @@ function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
 /** R2-112 — l'adresse d'un rendez-vous (si l'agenda en sert une) ne devient un lien que si elle est http(s). */
 const adresseSure = (url) => (/^https?:\/\//i.test(String(url ?? '')) ? url : null)
 
-function BlocExterne({ ev, style, cascade, ouvert, versGauche, onBasculer }) {
+function BlocExterne({ ev, style, ouvert, versGauche, onBasculer }) {
   const { item } = ev
   const plage = `${enHeure(ev.debut)}–${enHeure(ev.fin)}`
   const adresse = adresseSure(item.url)
-  const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev, cascade)].filter(Boolean).join(' ')
+  const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev)].filter(Boolean).join(' ')
   return (
     <>
       <button
@@ -174,8 +174,17 @@ function heuresOffertes(jour, debut, fin, pas, libres) {
   return heures
 }
 
-function Creneaux({ jour, debut, heures, pas, plusieurs, placement, arret, onArret, onCreneau }) {
+/** R3-120 — un glisser qui passe sur un créneau le surligne SANS état React (aucun rendu pendant un glisser : le
+ *  navigateur annule un glisser dont la page se redessine à son début) ; l'attribut part à la sortie ou au dépôt. */
+const survolerCreneau = (e, oui) => {
+  if (oui) e.currentTarget.dataset.survol = 'oui'
+  else delete e.currentTarget.dataset.survol
+}
+
+function Creneaux({ jour, debut, heures, pas, plusieurs, placement, onDepot, arret, onArret, onCreneau }) {
   const verbe = placement ? 'Placer' : 'Ajouter'
+  // `onDepot(jour, 'HH:MM')` : la page sait quelle tâche on glisse ; le dépôt marche sans que la tâche soit « choisie »
+  const deposer = onDepot ?? placement?.onPoser
   return heures.map((m) => {
     const h = enHeure(m)
     const libelle = `${verbe} à ${h}`
@@ -193,8 +202,10 @@ function Creneaux({ jour, debut, heures, pas, plusieurs, placement, arret, onArr
         aria-label={plusieurs ? `${libelle} · ${plusieurs}` : libelle}
         onFocus={() => onArret({ jour: jour.jour, m })}
         onClick={() => (placement ? placement.onPoser(jour.jour, h) : onCreneau?.(jour.jour, h))}
-        onDragOver={placement ? (e) => e.preventDefault() : undefined}
-        onDrop={placement ? (e) => { e.preventDefault(); placement.onPoser(jour.jour, h) } : undefined}
+        onDragOver={deposer ? (e) => e.preventDefault() : undefined}
+        onDragEnter={deposer ? (e) => survolerCreneau(e, true) : undefined}
+        onDragLeave={deposer ? (e) => survolerCreneau(e, false) : undefined}
+        onDrop={deposer ? (e) => { e.preventDefault(); survolerCreneau(e, false); deposer(jour.jour, h) } : undefined}
       >
         <span>{libelle}</span>
       </button>
@@ -214,7 +225,7 @@ function Maintenant({ maintenant, debut, fin }) {
 }
 
 function Colonne({ jour, nomJour, props, versGauche = false }) {
-  const { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir } = props
+  const { aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir } = props
   const heures = props.heuresParJour[jour.jour]
   const [ouvert, setOuvert] = useState(null)
   const repos = !jour.ouvre || jour.ferie
@@ -226,21 +237,20 @@ function Colonne({ jour, nomJour, props, versGauche = false }) {
     >
       <Creneaux
         jour={jour} debut={debut} heures={heures} pas={pas} plusieurs={props.plusieurs ? nomJour : ''}
-        placement={placement} arret={props.arret} onArret={props.onArret} onCreneau={onCreneau}
+        placement={placement} onDepot={onDepot} arret={props.arret} onArret={props.onArret} onCreneau={onCreneau}
       />
       {disposer(evenements(jour)).filter((ev) => ev.voie < VOIES_VISIBLES).map((ev) => {
-        const cascade = Boolean(props.plusieurs)
-        const style = position(ev, debut, fin, cascade)
+        const style = position(ev, debut, fin)
         if (ev.type === 'externe') {
           return (
             <BlocExterne
-              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle} versGauche={versGauche}
+              key={ev.cle} ev={ev} style={style} ouvert={ouvert === ev.cle} versGauche={versGauche}
               onBasculer={() => setOuvert((actuel) => (actuel === ev.cle ? null : ev.cle))}
             />
           )
         }
         return (
-          <BlocTache key={ev.cle} ev={ev} style={style} cascade={cascade} choisi={choisi === ev.item.id}
+          <BlocTache key={ev.cle} ev={ev} style={style} choisi={choisi === ev.item.id}
             onCocher={onCocher} onOuvrir={onOuvrir} />
         )
       })}
@@ -255,16 +265,25 @@ function TeteJour({ nom }) {
   return reste.length ? <>{abr} <b>{reste.join(' ')}</b></> : <b>{abr}</b>
 }
 
-/** Passe visuelle n° 36 — colonnes de la Semaine (maquette agenda-semaine.html `.ag-semgrille`) : gouttière des heures
- *  (R2-111 : 92 px, « Toute la journée » y tient sur une ligne), jours travaillés larges, jours non travaillés VIDES de
- *  64 px (R2-108 : un week-end qui porte des tâches garde une colonne entière) ; la rangée « Toute la journée » suit les mêmes. */
+/** R3-121 — l'en-tête d'un jour PASSÉ dit ce qui y a été fait : « {n} faites », le nombre servi (`faites_nb`, la même
+ *  somme que Mon rythme) ; jamais deviné, jamais dans une colonne étroite (jour non travaillé vide). */
+function faitesDuJour(jour, aujourdhui, etroit) {
+  if (etroit || jour.jour >= aujourdhui || !Number.isInteger(jour.faites_nb)) return ''
+  return `${jour.faites_nb} ${jour.faites_nb >= 2 ? 'faites' : 'faite'}`
+}
+
+/** R3-120 (passe visuelle n° 36 reprise) — colonnes de la Semaine : gouttière des heures de 56 px, chaque jour travaillé
+ *  d'AU MOINS 120 px (un titre lisible, deux voies côte à côte), un jour non travaillé étroit (56 px, à demi-part)
+ *  seulement s'il est VIDE — un week-end qui porte une tâche, un rendez-vous ou une échéance garde une colonne entière
+ *  (R2-108). La rangée « Toute la journée » suit les mêmes colonnes (`subgrid`). */
 const jourEtroit = (j) => j.ouvre === false
-  && !['blocs', 'sans_heure', 'toute_la_journee', 'externes'].some((cle) => j[cle]?.length)
-const colonnesSemaine = (jours) => ['92px', ...jours.map((j) => (jourEtroit(j) ? '64px' : 'minmax(0, 1fr)'))].join(' ')
+  && !['blocs', 'sans_heure', 'echeances', 'toute_la_journee', 'externes'].some((cle) => j[cle]?.length)
+const colonnesSemaine = (jours) => ['56px', ...jours.map((j) => (jourEtroit(j) ? 'minmax(56px, 0.5fr)' : 'minmax(120px, 1fr)'))].join(' ')
 
 /**
  * `jours` : les jours d'`agenda.json` ; `nomsJours` : `{iso: « mar. 17 »}` (tête de la Semaine) ;
  * `placement` : `{ onPoser(jour, 'HH:MM') }` pendant « Placer à une heure » (TCH105), sinon nul ;
+ * `onDepot(jour, 'HH:MM')` : le dépôt d'une tâche glissée depuis « À placer » (R3-120), accepté sans état « placement » ;
  * `ligneJournee` : la rangée « Toute la journée » de la Semaine, posée sous la tête des jours, dans la grille ;
  * `creneauxLibres` : n'offrir aucun créneau sous un bloc ou un rendez-vous (R2-107 ; l'Agenda le demande).
  */
@@ -295,7 +314,7 @@ function surTouche(e) {
 
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
-  placement = null, choisi = null, ligneJournee = null, creneauxLibres = false, onCreneau, onCocher, onOuvrir,
+  placement = null, onDepot = undefined, choisi = null, ligneJournee = null, creneauxLibres = false, onCreneau, onCocher, onOuvrir,
 }) {
   const plusieurs = jours.length > 1
   const heures = []
@@ -306,7 +325,7 @@ export default function GrilleAgenda({
   const premier = jours.map((j) => ({ jour: j.jour, m: heuresParJour[j.jour][0] })).find((c) => c.m !== undefined) ?? { jour: null, m: null }
   const arret = dernier && heuresParJour[dernier.jour]?.includes(dernier.m) ? dernier : premier
   const props = {
-    aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir, plusieurs,
+    aujourdhui, maintenant, debut, fin, pas, placement, onDepot, choisi, onCreneau, onCocher, onOuvrir, plusieurs,
     heuresParJour, arret, onArret: setDernier,
   }
   return (
@@ -315,16 +334,20 @@ export default function GrilleAgenda({
       {plusieurs ? (
         <div className="semaine-tete">
           <div />
-          {jours.map((j) => (
-            <div
-              key={j.jour}
-              className={!j.ouvre || j.ferie ? 'repos' : undefined}
-              aria-current={j.jour === aujourdhui ? 'date' : undefined}
-            >
-              <TeteJour nom={nomsJours[j.jour] ?? j.jour} />
-              {j.ferie ? <small className="ag-ferie">Férié</small> : null}
-            </div>
-          ))}
+          {jours.map((j) => {
+            const faites = faitesDuJour(j, aujourdhui, jourEtroit(j))
+            return (
+              <div
+                key={j.jour}
+                className={!j.ouvre || j.ferie ? 'repos' : undefined}
+                aria-current={j.jour === aujourdhui ? 'date' : undefined}
+              >
+                <TeteJour nom={nomsJours[j.jour] ?? j.jour} />
+                {j.ferie ? <small className="ag-ferie">Férié</small> : null}
+                {faites ? <small className="ag-faites chiffres">{faites}</small> : null}
+              </div>
+            )
+          })}
         </div>
       ) : null}
       {plusieurs ? ligneJournee : null}

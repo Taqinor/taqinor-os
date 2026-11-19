@@ -90,7 +90,7 @@ function CartesDuJour({ jour }) {
   )
 }
 
-function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvrirJour, refBouton }) {
+function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onDeposer, onOuvrirJour, refBouton }) {
   const { passe, repos, texte, base, trop, charge } = resume(jour, aujourdhui, capacite)
   const nom = nomJour(jour.jour)
   const classes = ['ag-pj', passe ? 'passe' : '', repos ? 'repos' : '', jour.jour === aujourdhui ? 'auj' : '',
@@ -106,7 +106,13 @@ function LigneJour({ jour, aujourdhui, capacite, choisie, posee, onPoser, onOuvr
         aria-current={jour.jour === aujourdhui ? 'date' : undefined}
         onClick={poser}
         onDragOver={(e) => { if (!passe) e.preventDefault() }}
-        onDrop={(e) => { e.preventDefault(); if (!passe && choisie) onPoser(choisie, jour.jour) }}
+        // R3-120 — le dépôt d'une tâche GLISSÉE (la page la retient sans la « choisir ») ; sinon la tâche choisie
+        onDrop={(e) => {
+          e.preventDefault()
+          if (passe) return
+          if (onDeposer) onDeposer(jour.jour)
+          else if (choisie) onPoser(choisie, jour.jour)
+        }}
       >
         {/* Le nom accessible est porté par `.sr` ; le texte visible est masqué au lecteur d'écran : le nom
             ne peut donc pas contredire ce qui se voit (axe `label-content-name-mismatch`). */}
@@ -153,7 +159,7 @@ function useFlechesJours(actif, boutons) {
  */
 export default function PlanifierSemaine({
   jours, aujourdhui, capacite = null, aPlacer = [], mesProjets = [], choisie = null, posees = {},
-  onChoisir, onPoser, onOuvrirJour, onTerminer, onSemaine = null,
+  onChoisir, onPoser, onOuvrirJour, onTerminer, onSemaine = null, semaine = '', onGlisser = undefined, onDeposer = undefined,
 }) {
   const boutons = useRef([])
   useFlechesJours(Boolean(choisie), boutons)
@@ -170,6 +176,10 @@ export default function PlanifierSemaine({
     const reduit = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     cible?.scrollIntoView?.({ block: 'start', behavior: reduit ? 'auto' : 'smooth' })
   }, [choisie])
+  // R3-122 — au bureau les sept jours tiennent sur UNE rangée : un jour non travaillé VIDE est étroit (72 px), un week-end
+  // qui porte des tâches (ou une tâche qu'on y pose) garde une colonne entière (agenda.css lit `--ag-jours-colonnes`)
+  const etroit = (j) => (!j.ouvre || j.ferie) && !posees[j.jour] && ![...(j.blocs ?? []), ...(j.sans_heure ?? [])].length
+  const colonnes = jours.map((j) => (etroit(j) ? 'minmax(72px, 0.6fr)' : 'minmax(0, 1fr)')).join(' ')
   return (
     <div className="ag-planifier" ref={racine}>
       <div className="ag-planifier-tete">
@@ -179,29 +189,31 @@ export default function PlanifierSemaine({
         <button type="button" className="bouton plein ag-terminer" onClick={onTerminer}>Terminer</button>
       </div>
       {onSemaine ? (
-        // R2-103 — de semaine en semaine sans quitter le mode (la semaine elle-même est dite par le sous-titre)
+        // R2-103 — de semaine en semaine sans quitter le mode ; R3-123 — « ‹ 16 – 22 nov. › » sur UNE rangée : la semaine
+        // est dite ici, entre les flèches, et nulle part ailleurs
         <div className="ag-plan-nav">
           <button type="button" className="bouton-icone" aria-label="Semaine précédente" onClick={() => onSemaine(-1)}>
             <ChevronLeft className="i" aria-hidden="true" />
           </button>
+          {semaine ? <b className="ag-plan-semaine chiffres">{semaine}</b> : null}
           <button type="button" className="bouton-icone" aria-label="Semaine suivante" onClick={() => onSemaine(1)}>
             <ChevronRight className="i" aria-hidden="true" />
           </button>
         </div>
       ) : null}
       <div className="ag-corps">
-        <div className="ag-jours chiffres" role="list" aria-label="Jours de la semaine">
+        <div className="ag-jours chiffres" role="list" aria-label="Jours de la semaine" style={{ '--ag-jours-colonnes': colonnes }}>
           {jours.map((j, rang) => (
             <LigneJour
               key={j.jour} jour={j} aujourdhui={aujourdhui} capacite={capacite} choisie={choisie} posee={posees[j.jour] ?? null}
-              onPoser={onPoser} onOuvrirJour={onOuvrirJour}
+              onPoser={onPoser} onDeposer={onDeposer} onOuvrirJour={onOuvrirJour}
               refBouton={(el) => { boutons.current[rang] = el }}
             />
           ))}
         </div>
         <VoletAPlacer
           aPlacer={aPlacer} mesProjets={mesProjets} aujourdhui={aujourdhui} choisie={choisie?.id ?? null}
-          onChoisir={onChoisir} projetsOuverts
+          onChoisir={onChoisir} onGlisser={onGlisser} projetsOuverts
           consigne={(titre) => `Touche un jour pour placer ${titre}`}
           aide="Glisse une tâche sur un jour · ou Entrée puis ← →" aideTactile="Touche une tâche, puis un jour."
         />
