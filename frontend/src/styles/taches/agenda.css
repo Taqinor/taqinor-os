@@ -311,10 +311,20 @@
 /* R3-120 — Semaine : la grille garde TOUTE la largeur ; « À placer (n) » est un bouton (panneau à la demande) sous
    1600 px, un volet fixe de 280 px au-delà. Le panneau recouvre la droite de la grille ; il se referme quand on choisit
    une tâche ou qu'on la glisse dans la grille (Agenda.jsx `VueSemaine`). */
-.tch .ag-volet-bouton { display: none; flex: none; height: 44px; }
+.tch .ag-volet-bouton, .tch .ag-planifier-bouton { display: none; flex: none; height: 44px; }
 .tch .ag-aside-fermer { display: none; margin-left: auto; }
 @media (min-width: 768px) {
-  .tch .ag-volet-bouton { display: inline-flex; margin: 2px var(--tch-gouttiere) 0 0; }
+  .tch .ag-volet-bouton, .tch .ag-planifier-bouton { display: inline-flex; margin: 2px 0 0; }
+  .tch .ag-barre-haute > .ag-planifier-bouton { margin-right: var(--tch-gouttiere); padding: 0 8px; color: var(--tch-accent); font-weight: 600; }
+  /* la barre de la Semaine porte deux boutons de plus : les vues se resserrent (300 px) et le titre de la période ne se coupe pas ;
+     si l'écran est vraiment étroit la barre passe à la ligne au lieu de déborder */
+  .tch .ag-barre-haute { flex-wrap: wrap; row-gap: 0; }
+  .tch .ag-barre-haute:has(.ag-volet-bouton) .ag-vues .segmente { width: 300px; }
+  .tch .ag-barre-haute .ag-nav { flex: 1 1 260px; min-width: 0; }
+  .tch .ag-barre-haute .ag-nav b { white-space: nowrap; font-size: 0.9375rem; }
+  .tch .ag-barre-haute > .ag-volet-bouton { padding: 0 12px; }
+  .tch .ag-barre-haute > .ag-volet-bouton { margin-right: 8px; }
+  .tch .ag-barre-haute > .ag-volet-bouton:last-child { margin-right: var(--tch-gouttiere); }
   .tch .ag-corps.ag-corps-semaine { position: relative; display: block; }
   .tch .ag-corps-semaine .ag-aside { display: none; }
   .tch .ag-corps-semaine[data-volet="ouvert"] .ag-aside {
@@ -331,7 +341,7 @@
     display: block; position: sticky; top: 16px; right: auto; width: auto; max-height: none; overflow: visible;
     margin-top: 12px; background: var(--tch-panneau); box-shadow: none;
   }
-  .tch .ag-volet-bouton, .tch .ag-corps-semaine .ag-aside-fermer { display: none; }
+  .tch .ag-volet-bouton, .tch .ag-planifier-bouton, .tch .ag-corps-semaine .ag-aside-fermer { display: none; }
   .tch .ag-corps-semaine .ag-principal { overflow-x: visible; }
 }
 .tch .ag-aside { margin-top: 12px; padding-bottom: 8px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }

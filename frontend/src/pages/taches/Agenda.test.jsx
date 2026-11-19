@@ -418,6 +418,15 @@ describe('TCH104 — vues et navigation', () => {
     expect(container.querySelectorAll('.semaine-tete .ag-faites')).toHaveLength(1)
   })
 
+  it('R3-120 — Semaine au bureau : « Planifier ma semaine » reste dans la barre du haut quand le panneau « À placer » est replié', async () => {
+    const { container } = monter('/taches/agenda?vue=semaine')
+    await waitFor(() => expect(grille(container)).not.toBeNull())
+    const barre = container.querySelector('.ag-barre-haute')
+    fireEvent.click(within(barre).getByRole('button', { name: 'Planifier ma semaine' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Planifier ma semaine' })).toBeInTheDocument()
+    expect(screen.getByTestId('adresse').textContent).toContain('placer=1')
+  })
+
   it('R3-131 — Semaine : l\'heure courante est écrite UNE fois, dans la gouttière des heures (le Jour garde la sienne)', async () => {
     const { container } = monter('/taches/agenda?vue=semaine')
     await waitFor(() => expect(grille(container)).not.toBeNull())

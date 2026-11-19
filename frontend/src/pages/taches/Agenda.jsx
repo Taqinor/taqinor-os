@@ -1001,6 +1001,10 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
             {`À placer (${tousAPlacer.length})`}
           </button>
         ) : null}
+        {/* R3-120 — le panneau « À placer » est replié : « Planifier ma semaine » (l'action de la Semaine) reste à portée, dans la barre */}
+        {vue === 'semaine' && donnees ? (
+          <button type="button" className="bouton discret ag-planifier-bouton" onClick={planifierSemaine}>Planifier ma semaine</button>
+        ) : null}
       </div>
       {etats}
       {agendas && agendas.length === 0 && (vue === 'jour' || vue === 'semaine')
