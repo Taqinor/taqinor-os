@@ -9,7 +9,7 @@ import { creerFile, definirCompteFile, remplacerFile } from '../horsligne/captur
 import { reinitialiserGestes } from '../lib/gestes'
 import { aujourdhuiIso } from '../lib/textes'
 import { SaisieBureau, ZoneAnnonces } from '../coquille/CoquilleTaches'
-import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, lireBrouillon, messageChamps } from './FeuilleSaisie'
+import FeuilleSaisie, { cleBrouillon, EVENEMENT_CREEES, EVENEMENT_ENVOI, lireBrouillon, messageChamps } from './FeuilleSaisie'
 import ChampSaisie, { morceauxSurlignes, phraseAlerte } from '../ui/ChampSaisie'
 
 const mocks = vi.hoisted(() => ({ saisieRapide: vi.fn(), annulerGeste: vi.fn(), listerTousLesProjets: vi.fn() }))
@@ -474,6 +474,25 @@ describe('TCH82 — feuille de saisie', () => {
       expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Partira dès le retour du réseau')
     })
 
+    it('R3-046 — sans réseau : l\'envoi annoncé `part` finit par `en_file` (la ligne « En attente d\'envoi » prend le relais)', async () => {
+      const annonces = []
+      const ecouter = (e) => annonces.push(e.detail)
+      window.addEventListener(EVENEMENT_ENVOI, ecouter)
+      try {
+        const user = userEvent.setup()
+        act(() => {
+          Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
+          window.dispatchEvent(new Event('offline'))
+        })
+        monter()
+        await user.type(champ(), 'Rappeler Salma{Enter}')
+        await waitFor(() => expect(annonces.map((a) => a.etat)).toEqual(['part', 'en_file']))
+        expect(annonces[1].envoi).toBe(annonces[0].envoi)
+      } finally {
+        window.removeEventListener(EVENEMENT_ENVOI, ecouter)
+      }
+    })
+
     it('la mise en file efface le brouillon avant de fermer la feuille (et avant tout rejeu qui émet l\'événement)', async () => {
       const user = userEvent.setup()
       const vusALaFermeture = []
@@ -595,6 +614,64 @@ describe('TCH82 — feuille de saisie', () => {
       await waitFor(() => expect(champ()).toHaveFocus())
       await user.keyboard('{Enter}')
       expect(champ()).toHaveValue('Test deux')
+    })
+
+    describe('R3-046 — l\'envoi est ANNONCÉ (`taqinor:taches:envoi`) ; une rafale = un seul toast', () => {
+      let annonces
+      let creationsAuDepart
+      const ecouter = (e) => { annonces.push(e.detail); if (e.detail.etat === 'part') creationsAuDepart.push(creations().length) }
+      beforeEach(() => { annonces = []; creationsAuDepart = []; window.addEventListener(EVENEMENT_ENVOI, ecouter) })
+      afterEach(() => { window.removeEventListener(EVENEMENT_ENVOI, ecouter) })
+
+      it('au toucher, AVANT tout envoi : `part` avec la ligne (client_id, titre, jour) ; au retour : `creees`', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Test un{Enter}')
+        expect(annonces[0]).toEqual({
+          etat: 'part', envoi: expect.any(String), lignes: [{ client_id: expect.stringMatching(/:0$/), titre: 'Test un', jour: null }],
+        })
+        expect(creationsAuDepart).toEqual([0]) // annoncée avant la création
+        const { envoi } = annonces[0]
+        expect(annonces[0].lignes[0].client_id).toBe(`${envoi}:0`)
+        await waitFor(() => expect(attentes).toHaveLength(1))
+        // l'identifiant d'envoi est la clé d'idempotence de la création : la même phrase, partout
+        expect(mocks.saisieRapide.mock.calls.find(([c]) => c.apercu === false)[1].cle).toBe(envoi)
+        expect(attentes[0].corps.lignes[0].client_id).toBe(`${envoi}:0`)
+        await act(async () => { attentes[0].resoudre({ data: creation }) })
+        await waitFor(() => expect(annonces).toHaveLength(2))
+        expect(annonces[1]).toEqual({ etat: 'creees', envoi, creees: creation.creees })
+      })
+
+      it('un échec : `echec` pour cet envoi (la ligne provisoire s\'efface, la phrase revient)', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Test un{Enter}')
+        await waitFor(() => expect(attentes).toHaveLength(1))
+        await act(async () => { attentes[0].rejeter(erreurHttp(erreurs.par_ligne)) })
+        await waitFor(() => expect(annonces.map((a) => a.etat)).toEqual(['part', 'echec']))
+        expect(annonces[1]).toEqual({ etat: 'echec', envoi: annonces[0].envoi })
+      })
+
+      it('trois phrases en rafale : trois `part` tout de suite, puis UN toast « 3 tâches ajoutées » dont « Annuler » défait les trois', async () => {
+        const attentes = enVol()
+        const user = userEvent.setup()
+        monter()
+        await user.type(champ(), 'Une{Enter}Deux{Enter}Trois{Enter}')
+        expect(annonces.map((a) => [a.etat, a.lignes[0].titre])).toEqual([['part', 'Une'], ['part', 'Deux'], ['part', 'Trois']])
+        expect(new Set(annonces.map((a) => a.envoi)).size).toBe(3)
+        for (let i = 0; i < 3; i += 1) {
+          await waitFor(() => expect(attentes).toHaveLength(i + 1))
+          await act(async () => { attentes[i].resoudre({ data: { ...creation, geste_id: 70 + i } }) })
+          // pas de toast tant que la rafale n'est pas finie
+          if (i < 2) expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
+        }
+        const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+        expect(toast).toHaveTextContent('3 tâches ajoutées')
+        await user.click(within(toast).getByRole('button', { name: 'Annuler' }))
+        await waitFor(() => expect(mocks.annulerGeste.mock.calls.map(([g]) => g)).toEqual([70, 71, 72]))
+      })
     })
 
     it('un échec quand le champ est resté vide : la phrase revient dans le champ, l\'erreur dessous', async () => {

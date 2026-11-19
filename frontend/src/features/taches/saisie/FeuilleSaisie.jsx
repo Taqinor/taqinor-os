@@ -38,6 +38,19 @@ export const PREFIXE_BROUILLON = 'taches:brouillon:'
 export const EVENEMENT_DECONNEXION = 'taqinor:auth-logout'
 /** Annoncé après une création réussie : les listes ouvertes se rafraîchissent d'elles-mêmes. */
 export const EVENEMENT_CREEES = 'taqinor:taches:creees'
+/**
+ * R3-046 — INTERFACE (figée pour l'écran Aujourd'hui, R3-030) : chaque envoi de la saisie est annoncé sur `window`
+ * par `taqinor:taches:envoi`, `detail` =
+ *   · `{ etat: 'part', envoi, lignes: [{ client_id, titre, jour }] }` — AU TOUCHER (« Ajouter », Entrée, « Créer N
+ *     tâches »), avant tout appel réseau ; `envoi` = la clé d'idempotence de la création (`client_id` = `{envoi}:{n}`),
+ *     `jour` = 'AAAA-MM-JJ' ou `null`. Le titre est celui de l'aperçu lu ; sans aperçu encore revenu, la phrase tapée.
+ *   · `{ etat: 'creees', envoi, creees: [ITEM…] }` — le serveur a créé (émis juste avant `taqinor:taches:creees`) ;
+ *   · `{ etat: 'echec', envoi }` — rien de créé (la phrase est rendue au champ ou par « Reprendre ») ;
+ *   · `{ etat: 'en_file', envoi }` — hors ligne : mis en file (les lignes « En attente d'envoi » de la file prennent le
+ *     relais). Un envoi finit TOUJOURS par l'un de ces trois.
+ */
+export const EVENEMENT_ENVOI = 'taqinor:taches:envoi'
+const annoncerEnvoi = (detail) => window.dispatchEvent(new CustomEvent(EVENEMENT_ENVOI, { detail }))
 const EVENEMENT_SAISIR = 'taqinor:taches:saisir'
 const DELAI_APERCU_MS = 300
 
@@ -260,6 +273,8 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
   useEffect(() => { montee.current = true; return () => { montee.current = false } }, [])
   /** Les envois en vol, enchaînés : les tâches arrivent dans l'ordre tapé. */
   const envois = useRef(Promise.resolve())
+  /** R3-046 — la rafale en cours : envois pas encore revenus, et ce qui a été créé (un seul toast à la fin). */
+  const rafale = useRef({ enVol: 0, envois: 0, n: 0, gestes: [], message: '' })
   /** Phrases mises de côté par « Reprendre » : chacune revient dans le champ quand la précédente est partie. */
   const suivantes = useRef([])
   const corps = useRef(null)
@@ -429,11 +444,14 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     requestAnimationFrame(() => corps.current?.querySelector('.saisie-champ')?.focus())
   }
   const echouer = (gel, message) => {
+    annoncerEnvoi({ etat: 'echec', envoi: gel.cid })
     const libre = !actuel.current.texte.trim() && actuel.current.collages.length === 0
     if (!montee.current) ecrireBrouillon(cle, { texte: [...gel.collages, gel.texte].filter((t) => t.trim()).join('\n\n'), quand: gel.quand })
     else if (libre) { restaurer(gel); setErreur(message) }
     // feuille ouverte et phrase rendue au champ : l'erreur SOUS le champ suffit ; sinon le toast le dit
     if (montee.current && libre && actuel.current.ouverte) return
+    // R3-046 — ce toast-là (« Reprendre ») n'est jamais recouvert par celui de la fin de la rafale
+    rafale.current.echecDit = true
     proposerAnnuler({
       message: `Pas ajoutée : ${message}`,
       libelle: 'Reprendre',
@@ -460,8 +478,33 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
       echouer(gel, frenchError(err))
       return
     }
+    annoncerEnvoi({ etat: 'en_file', envoi: gel.cid })
     if (montee.current && actuel.current.ouverte && !actuel.current.texte.trim()) onFermer?.()
     proposerAnnuler({ message: TOAST_EN_FILE, annonce: ANNONCE_EN_FILE })
+  }
+
+  /** Les lignes à créer que l'aperçu `donnees` donne pour ce gel (cochées, ou forcées par « Ajouter quand même » /
+   *  « Mettre le reste en note »). */
+  const lignesLues = (gel, donnees) => {
+    // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
+    const depart = gel.quand != null && gel.quand === gel.quandDepart
+    // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
+    const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
+    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
+    return (donnees?.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
+      const base = construireLigne(l, {
+        cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
+      })
+      return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
+    })
+  }
+  /** R3-046 — les lignes annoncées au toucher : les lignes prêtes (liste), celles de l'aperçu frais, sinon la phrase
+   *  tapée (une ligne provisoire, que le retour du serveur remplace). */
+  const lignesAnnoncees = (gel) => {
+    const lignes = gel.lignes ?? (gel.frais ? lignesLues(gel, gel.frais) : [])
+    if (lignes.length > 0) return lignes.map((l) => ({ client_id: l.client_id, titre: l.titre, jour: l.jour_prevu ?? null }))
+    const titre = [...gel.collages, gel.texte].map((t) => t.trim()).filter(Boolean).join(' ')
+    return [{ client_id: `${gel.cid}:0`, titre, jour: gel.quand?.quelque_jour ? null : gel.quand?.jour_prevu ?? null }]
   }
 
   /** Les lignes du gel : déjà prêtes (liste), lues dans l'aperçu frais, ou demandées au serveur maintenant. */
@@ -476,17 +519,7 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
         return sansReseau(err) ? { horsLigne: true } : { erreur: phraseErreur(err) }
       }
     }
-    // R2-002 — le Quand de DÉPART (jour de l'écran) cède à une date lue dans la phrase ; un Quand choisi à la main, non
-    const depart = gel.quand != null && gel.quand === gel.quandDepart
-    // R2-007 — « Mettre le reste en note » : la ligne au titre trop long part quand même, coupée
-    const coupee = (l) => gel.resteEnNote && (l.titre?.length ?? 0) > TITRE_MAX && Object.keys(l.erreurs ?? {}).every((c) => c === 'titre')
-    const forcee = (l) => gel.memeSiDouble && Boolean(raisonDouble(l))
-    const lignes = (donnees.lignes ?? []).filter((l) => l.cochee !== false || coupee(l) || forcee(l)).map((l) => {
-      const base = construireLigne(l, {
-        cid: gel.cid, quand: depart ? null : gel.quand, quandDefaut: depart ? gel.quand : null, priorites: gel.priorites,
-      })
-      return coupee(l) ? { ...base, ...couperTitre(l.titre) } : base
-    })
+    const lignes = lignesLues(gel, donnees)
     if (lignes.length > 0) return { lignes }
     // rien à créer : le message du serveur pour la ligne (« trop long », « titre vide »), « Déjà dans ta liste » pour
     // une phrase déjà là, sinon le générique
@@ -510,21 +543,47 @@ export default function FeuilleSaisie({ ouverte, onFermer, lienParDefaut = null,
     }
     const n = data?.creees?.length ?? lignes.length
     const geste = data?.geste_id
+    annoncerEnvoi({ etat: 'creees', envoi: gel.cid, creees: data?.creees ?? [] })
     window.dispatchEvent(new CustomEvent(EVENEMENT_CREEES, { detail: { creees: data?.creees ?? [] } }))
     const aujourdhui = gel.depuisAujourdhui && n === 1 && lignes[0]?.jour_prevu === aujourdhuiIso()
+    // R3-046 — le toast attend la fin de la rafale (`terminerEnvoi`) : un seul pour cinq phrases, pas cinq « Ajoutée »
+    const r = rafale.current
+    r.envois += 1
+    r.n += n
+    if (geste) r.gestes.push(geste)
+    r.message = n > 1 ? `${n} tâches créées` : aujourdhui ? TOAST_AJOUTEE_AUJOURDHUI : 'Ajoutée'
+  }
+
+  /** R3-046 — un envoi est revenu ; le dernier de la rafale dit ce qui a été créé, en UN toast (« 5 tâches ajoutées »),
+   *  dont « Annuler » défait tous les gestes de la rafale. */
+  const terminerEnvoi = () => {
+    const r = rafale.current
+    r.enVol -= 1
+    if (r.enVol > 0) return
+    if (r.envois === 0 || r.echecDit) {
+      rafale.current = { enVol: 0, envois: 0, n: 0, gestes: [], message: '' }
+      return
+    }
+    const gestes = [...r.gestes]
+    const message = r.envois > 1 ? `${r.n} tâches ajoutées` : r.message
+    rafale.current = { enVol: 0, envois: 0, n: 0, gestes: [], message: '' }
     proposerAnnuler({
-      message: n > 1 ? `${n} tâches créées` : aujourdhui ? TOAST_AJOUTEE_AUJOURDHUI : 'Ajoutée',
-      onAnnuler: geste ? () => annulerGeste(geste) : undefined,
+      message,
+      onAnnuler: gestes.length > 0 ? () => Promise.all(gestes.map((g) => annulerGeste(g))) : undefined,
     })
   }
 
   /** Fige, vide l'écran TOUT DE SUITE (une phrase : la chaîne reste ouverte ; une liste : la feuille se ferme), envoie. */
   const lancer = (gel, liste) => {
+    // R3-046 — annoncé AVANT tout : l'écran montre la ligne « envoi… » à l'instant du toucher
+    annoncerEnvoi({ etat: 'part', envoi: gel.cid, lignes: lignesAnnoncees(gel) })
+    rafale.current.enVol += 1
     if (liste) { remettreAZero(); onFermer?.() } else enchainer()
     // le brouillon part avec la phrase : l'écran qui le relit (carte « Ta saisie t'attend ») ne doit pas la revoir
     ecrireBrouillon(cle, null)
     // un envoi qui casse ne bloque jamais les suivants : son échec est DIT, la phrase rendue
     envois.current = envois.current.then(() => envoyerEnFond(gel)).catch((err) => echouer(gel, frenchError(err)))
+      .finally(terminerEnvoi)
   }
   const geler = (extra = {}) => ({
     texte, collages, ignorer, quand, quandDepart, priorites, contexte, cid, frais, depuisAujourdhui: surAujourdhui(), ...extra,
