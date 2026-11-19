@@ -1002,7 +1002,12 @@ ADMIN_PERMISSIONS = [
 ]
 
 # Commercial responsable : CRM/Ventes/SAV complets, peut réassigner leads/
-# devis/tickets dans l'équipe ; voit son sous-arbre ; pas de prix d'achat.
+# devis/tickets dans l'équipe ; pas de prix d'achat.
+# Fondateur 19/11/2026 — il voit TOUS les enregistrements de la société
+# (leads sans responsable et leads de la direction compris) : AUCUN
+# marqueur ``records_scope_*`` ici. Un chef d'équipe qui ne doit voir que
+# les siens porte le rôle « Commercial » (``records_scope_soi`` : lui-même
+# + son sous-arbre).
 # QG4 — porte `stock_creer` : la création de produits est réservée aux rôles
 # Directeur + Commercial responsable (décision Reda).
 COMMERCIAL_RESP_PERMISSIONS = [
@@ -1049,7 +1054,6 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
     'ux_corbeille_consulter', 'ux_corbeille_restaurer',
     'ux_edition_masse_executer',
-    SCOPE_SUBTREE,
     # ASEC9 / D-ASEC-1 — encaisse par défaut (décochable dans la grille).
     'encaisser',
     # ASEC10 / D-ASEC-4 — ``users_gerer`` est désormais APPLIQUÉ côté serveur

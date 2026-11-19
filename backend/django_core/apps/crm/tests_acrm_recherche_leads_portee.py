@@ -19,7 +19,7 @@ from authentication.models import Company
 from apps.crm.models import Lead
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
-    COMMERCIAL_RESP_PERMISSIONS, DIRECTEUR_PERMISSIONS)
+    COMMERCIAL_RESP_PERMISSIONS, DIRECTEUR_PERMISSIONS, SCOPE_SUBTREE)
 
 User = get_user_model()
 URL = '/api/django/visites/leads-recherche/'
@@ -30,9 +30,11 @@ class RechercheLeadsPorteeTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM30 Solaire', slug='acrm30-recherche')
+        # 19/11/2026 — « Commercial responsable » voit tout ; portée sous-arbre posée ici exprès.
         resp = Role.objects.create(
             company=self.company, nom='Commercial responsable',
-            permissions=list(COMMERCIAL_RESP_PERMISSIONS), est_systeme=True)
+            permissions=[*COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE],
+            est_systeme=True)
         directeur = Role.objects.create(
             company=self.company, nom='Directeur',
             permissions=list(DIRECTEUR_PERMISSIONS), est_systeme=True)
