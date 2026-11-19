@@ -49,3 +49,29 @@ VenteEtatAssistantResponse = _ser('VenteEtatAssistantResponse', {
         'facturer', 'emettre_brouillon', 'encaisser', 'reviser', 'rien']),
     'lien': s.CharField(),
 })
+
+#: VAD2 — ``GET ventes/assistant/impayes/`` (``assistant_impayes.json``).
+ImpayesAssistantResponse = _ser('ImpayesAssistantResponse', {
+    'total_du': _MONTANT,
+    'nb_factures': s.IntegerField(),
+    'tranches': _ser('ImpayesAssistantTranches', {
+        cle: _MONTANT for cle in ('b0_30', 'b31_60', 'b61_90', 'b90_plus')}),
+    'limite': s.IntegerField(),
+    'lignes': s.ListField(child=_ser('ImpayesAssistantLigne', {
+        'facture_id': s.IntegerField(),
+        'reference': s.CharField(),
+        'client_id': s.IntegerField(allow_null=True),
+        'client_nom': s.CharField(allow_blank=True),
+        'montant_du': _MONTANT,
+        'jours_retard': s.IntegerField(),
+        'niveau': s.CharField(allow_null=True),
+        'promesse': _ser('ImpayesAssistantPromesse', {
+            'statut': s.CharField(), 'date_promise': s.DateField()},
+            allow_null=True),
+        'contestee': s.BooleanField(),
+        'a_faire': s.ChoiceField(choices=[
+            'relancer', 'attendre_promesse', 'traiter_contestation', 'rien']),
+        'lien': s.CharField(),
+    })),
+    'lien': s.CharField(),
+})

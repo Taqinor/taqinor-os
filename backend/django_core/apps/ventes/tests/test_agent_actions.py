@@ -718,6 +718,26 @@ class _BaseVenteAssistant(TestCase):
             username='vad_autre', password='x', role_legacy='responsable',
             company=self.autre)
 
+    def _facture(self, rang, *, ht='1000', statut=Facture.Statut.EMISE,
+                 retard_jours=10, **extra):
+        """Une facture de ``self.devis`` (TTC = HT × 1,2), échue de
+        ``retard_jours`` jours."""
+        from datetime import timedelta
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku=f'VAD-{rang}',
+            prix_vente=Decimal(ht), quantite_stock=10)
+        facture = Facture.objects.create(
+            company=self.company, reference=f'FAC-{MONTH}-{self.company.id}{rang}',
+            client=self.client_, devis=self.devis, statut=statut,
+            taux_tva=Decimal('20.00'), created_by=self.user,
+            date_echeance=timezone.localdate() - timedelta(days=retard_jours),
+            **extra)
+        LigneFacture.objects.create(
+            facture=facture, produit=produit, designation='Panneau',
+            quantite=Decimal('1'), prix_unitaire=Decimal(ht),
+            remise=Decimal('0'), taux_tva=Decimal('20.00'))
+        return facture
+
 
 class VenteEtatAssistantTest(_BaseVenteAssistant):
     """VAD1 — ``GET devis/<pk>/vente-assistant/`` : forme du contrat
@@ -755,3 +775,70 @@ class VenteEtatAssistantTest(_BaseVenteAssistant):
              VENTE_ETAT.carte, VENTE_ETAT.objets),
             (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'vente_etat',
              {'id': 'devis'}))
+
+
+class ImpayesAssistantTest(_BaseVenteAssistant):
+    """VAD2 — ``GET ventes/assistant/impayes/`` : forme du contrat
+    ``assistant_impayes.json``, contestée comptée, plus en retard d'abord,
+    portée société, jamais de téléphone."""
+
+    URL = '/api/django/ventes/assistant/impayes/'
+
+    def test_forme_totaux_ordre_et_a_faire(self):
+        recente = self._facture('01', ht='1000', retard_jours=5)
+        ancienne = self._facture('02', ht='2000', retard_jours=40)
+        contestee = self._facture('03', ht='500', retard_jours=70,
+                                  contestee_le=timezone.localdate())
+        self._facture('04', ht='9000', statut=Facture.Statut.BROUILLON)
+        resp = auth(self.user).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data),
+                         set(_exemple_contrat('assistant_impayes.json')))
+        self.assertEqual(resp.data['nb_factures'], 3)
+        self.assertEqual(resp.data['total_du'], '4200.00')
+        self.assertEqual(resp.data['tranches'], {
+            'b0_30': '1200.00', 'b31_60': '2400.00', 'b61_90': '600.00',
+            'b90_plus': '0.00'})
+        ids = [li['facture_id'] for li in resp.data['lignes']]
+        self.assertEqual(ids, [contestee.pk, ancienne.pk, recente.pk])
+        ligne = resp.data['lignes'][0]
+        exemple = _exemple_contrat('assistant_impayes.json')['lignes'][0]
+        self.assertEqual(set(ligne), set(exemple))
+        self.assertEqual((ligne['contestee'], ligne['a_faire']),
+                         (True, 'traiter_contestation'))
+        self.assertEqual(resp.data['lignes'][1]['a_faire'], 'relancer')
+        self.assertEqual(ligne['lien'], f'/ventes/factures?facture={contestee.pk}')
+        self.assertNotIn(self.TEL, str(resp.data))
+
+    def test_filtres_limite_et_parametre_inconnu_400(self):
+        self._facture('05', retard_jours=3)
+        self._facture('06', retard_jours=8)
+        resp = auth(self.user).get(self.URL, {'limite': 1, 'q': 'lahlou'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['nb_factures'], len(resp.data['lignes'])),
+                         (2, 1))
+        vide = auth(self.user).get(self.URL, {'q': 'zzz'})
+        self.assertEqual(vide.data['lignes'], [])
+        self.assertEqual(vide.data['total_du'], '0.00')
+        for params, champ in (({'inconnu': 1}, 'inconnu'), ({'limite': 99}, 'limite'),
+                              ({'mes_relances': 'peut-etre'}, 'mes_relances'),
+                              ({'client': 'x'}, 'client')):
+            with self.subTest(params=params):
+                refus = auth(self.user).get(self.URL, params)
+                self.assertEqual(refus.status_code, 400)
+                self.assertIn(champ, str(refus.data))
+
+    def test_autre_societe_ne_voit_rien(self):
+        self._facture('07', retard_jours=12)
+        resp = auth(self._hors_societe()).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual((resp.data['nb_factures'], resp.data['lignes']), (0, []))
+
+    def test_action_lecture_lot_copilote_carte_liste_impayes(self):
+        from apps.agent.registry import LOT_COPILOTE
+        from apps.ventes.agent_actions import IMPAYES_LISTER
+        self.assertEqual(
+            (IMPAYES_LISTER.lot, IMPAYES_LISTER.risk,
+             IMPAYES_LISTER.required_permission, IMPAYES_LISTER.carte),
+            (LOT_COPILOTE, RISK_INTERNAL, 'ventes_voir', 'liste_impayes'))
+        self.assertNotIn('telephone', str(IMPAYES_LISTER.inputs))

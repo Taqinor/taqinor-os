@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 
 from .. import selectors_assistant as SA
 from ..domain import resolution_catalogue as rc
-from ..gardes_lecture import LectureVentes
+from ..gardes_lecture import LectureFactures, LectureVentes
 from . import openapi_assistant as DA
 from . import openapi_docs as D
 
@@ -194,6 +194,93 @@ class CatalogueAssistantView(APIView):
         return rc.resoudre_batterie(company, entrees, kwh=taille,
                                     haute_tension='haute tension' in
                                     rc._sans_accents(lus['q']))
+
+
+# ── Les listes de facturation de l'assistant (VAD2, VAD3) ───────────────────
+
+def _q_param():
+    return OpenApiParameter('q', {'type': 'string', 'maxLength': Q_MAX},
+                            OpenApiParameter.QUERY, required=False)
+
+
+def _parametres_liste(*extra):
+    return [_q_param(),
+            OpenApiParameter('client', {'type': 'integer', 'minimum': 1},
+                             OpenApiParameter.QUERY, required=False,
+                             description='Identifiant du client.'),
+            *extra,
+            OpenApiParameter('limite', {'type': 'integer', 'minimum': 1,
+                                        'maximum': LIMITE_MAX},
+                             OpenApiParameter.QUERY, required=False)]
+
+
+PARAMETRES_IMPAYES = _parametres_liste(OpenApiParameter(
+    'mes_relances', {'type': 'boolean'}, OpenApiParameter.QUERY,
+    required=False, description='Seulement les clients dont je suis le '
+                                'responsable de relance.'))
+BOOLEENS = {'true': True, '1': True, 'false': False, '0': False}
+
+
+def _lire_liste(request, parametres, statuts=()):
+    """Paramètres d'une liste de l'assistant (``q``, ``client``, ``limite``,
+    ``mes_relances``, ``statut``) ; 400 nommant chaque paramètre fautif."""
+    params = request.query_params
+    erreurs = {}
+    _non_declares(params, frozenset(p.name for p in parametres) | {'format'},
+                  erreurs)
+    lus = {'q': _texte_q(params, erreurs), 'limite': _limite(params, erreurs),
+           'client': None, 'mes_relances': False, 'statut': ''}
+    brut = params.get('client')
+    if brut is not None:
+        if not brut.isdigit() or int(brut) < 1:
+            erreurs['client'] = ['Identifiant de client entier positif attendu.']
+        else:
+            lus['client'] = int(brut)
+    brut = params.get('mes_relances')
+    if brut is not None:
+        if brut not in BOOLEENS:
+            erreurs['mes_relances'] = ['Booléen attendu (true ou false).']
+        else:
+            lus['mes_relances'] = BOOLEENS[brut]
+    brut = params.get('statut')
+    if brut is not None:
+        if brut not in statuts:
+            erreurs['statut'] = ['Valeur « %s » invalide : attendu %s.'
+                                 % (brut, ', '.join(statuts))]
+        else:
+            lus['statut'] = brut
+    if erreurs:
+        raise ValidationError(erreurs)
+    return lus
+
+
+class ImpayesAssistantView(APIView):
+    """VAD2 — « qui me doit de l'argent ? » (contrat ``assistant_impayes.json``,
+    action ``ventes.impayes.lister``) : calcul de
+    ``apps.facturation.recouvrement.impayes_assistant`` (mêmes exigibles,
+    niveaux et promesses que la liste des relances), portée de l'utilisateur.
+    Jamais le téléphone ni l'e-mail du client."""
+
+    permission_classes = [LectureFactures]
+    http_method_names = ['get', 'head', 'options']
+
+    @extend_schema(parameters=PARAMETRES_IMPAYES,
+                   responses={200: DA.ImpayesAssistantResponse,
+                              400: D.ErreurDetail})
+    def get(self, request):
+        from apps.facturation.recouvrement import impayes_assistant
+        lus = _lire_liste(request, PARAMETRES_IMPAYES)
+        lu = impayes_assistant(
+            request.user, q=lus['q'], client_id=lus['client'],
+            mes_relances=lus['mes_relances'], limite=lus['limite'])
+        return Response({
+            'total_du': lu['total_du'],
+            'nb_factures': lu['nb_factures'],
+            'tranches': lu['tranches'],
+            'limite': lu['limite'],
+            'lignes': lu['lignes'],
+            'lien': '/ventes/relances',
+        })
 
 
 class DevisAssistantActionsMixin:

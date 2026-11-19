@@ -422,7 +422,16 @@ class ParametrageRelanceClientViewSet(viewsets.ModelViewSet):
 
 
 def _facture_due_rows(user):
-    """Factures ouvertes (dues) de la société, non exclues.
+    """Factures ouvertes RELANÇABLES de la portée (:func:`factures_dues_qs`
+    filtré par :func:`facture_relancable` — AUD131, même prédicat que la vue
+    `relancer` et que le beat)."""
+    return [f for f in factures_dues_qs(user) if facture_relancable(f)[0]]
+
+
+def factures_dues_qs(user):
+    """Factures ouvertes (dues) de la société, non exclues des relances, dans la
+    portée de ``user`` — contestées comprises (copilote vague 2 : « qui me doit
+    de l'argent ? » les compte ; la relance, elle, les écarte).
 
     AUD158 — LE PRÉFETCH DIT EXACTEMENT CE QUE ``montant_du`` LIT. La propriété
     touche ``lignes``, ``paiements``, ``affectations_paiement``, ``avoirs``,
@@ -455,9 +464,7 @@ def _facture_due_rows(user):
         exclu_relances=False)
     # Portée de visibilité (Feature F) : relances/balance restreintes aux
     # factures créées par soi / l'équipe pour un rôle restreint. 'all' → inchangé.
-    qs = scope_queryset(qs, user, ['created_by'])
-    # AUD131 — même prédicat que la vue `relancer` et que le beat.
-    return [f for f in qs if facture_relancable(f)[0]]
+    return scope_queryset(qs, user, ['created_by'])
 
 
 @extend_schema(
@@ -547,6 +554,102 @@ def relances_list(request):
         r['promesse'] is not None and r['promesse']['statut'] == 'rompue',
         r['jours_retard']), reverse=True)
     return Response(rows)
+
+
+# ── Copilote vague 2 (VAD2) — « qui me doit de l'argent ? » ─────────────────
+#: Les quatre tranches d'âge (mêmes bornes que la balance âgée).
+TRANCHES_AGE = (('b0_30', 30), ('b31_60', 60), ('b61_90', 90),
+                ('b90_plus', None))
+
+
+def _tranche_age(jours_retard):
+    return next(cle for cle, borne in TRANCHES_AGE
+                if borne is None or jours_retard <= borne)
+
+
+def _a_faire_impaye(facture, jours_retard, promesse, aujourdhui):
+    """Ensemble FERMÉ : traiter_contestation | attendre_promesse | relancer |
+    rien (une facture non échue n'appelle aucun geste)."""
+    if getattr(facture, 'contestee_le', None):
+        return 'traiter_contestation'
+    if (promesse is not None and promesse.statut == PromessePaiement.Statut.EN_COURS
+            and promesse.date_promise >= aujourdhui):
+        return 'attendre_promesse'
+    return 'relancer' if jours_retard > 0 else 'rien'
+
+
+def _ligne_impaye(facture, du, jours_retard, levels, aujourdhui):
+    """Une ligne de ``assistant_impayes.json`` : jamais le téléphone, l'e-mail,
+    la note de recouvrement ni le score de crédit."""
+    promesses = getattr(facture, 'promesses_actives', None)
+    promesse = promesses[0] if promesses else None
+    niveau = _current_level(jours_retard, levels)
+    return {
+        'facture_id': facture.id,
+        'reference': facture.reference,
+        'client_id': facture.client_id,
+        'client_nom': (f"{facture.client.nom} {facture.client.prenom or ''}".strip()
+                       if facture.client_id else ''),
+        'montant_du': _s(du),
+        'jours_retard': jours_retard,
+        'niveau': niveau['nom'] if niveau else None,
+        'promesse': ({'statut': promesse.statut,
+                      'date_promise': promesse.date_promise.isoformat()}
+                     if promesse else None),
+        'contestee': bool(getattr(facture, 'contestee_le', None)),
+        'a_faire': _a_faire_impaye(facture, jours_retard, promesse, aujourdhui),
+        'lien': f'/ventes/factures?facture={facture.id}',
+    }
+
+
+def _retenue_par_filtres(facture, q, client_id, responsables, user):
+    """Les filtres facultatifs de la lecture : client, « mes relances »,
+    texte (référence ou nom du client, sans casse)."""
+    if client_id is not None and facture.client_id != client_id:
+        return False
+    if responsables is not None and responsables.get(facture.client_id) != user.id:
+        return False
+    if not q:
+        return True
+    client = facture.client if facture.client_id else None
+    texte = ' '.join([facture.reference or '', getattr(client, 'nom', '') or '',
+                      getattr(client, 'prenom', '') or '']).lower()
+    return q.lower() in texte
+
+
+def impayes_assistant(user, *, q='', client_id=None, mes_relances=False,
+                      limite=10, aujourdhui=None):
+    """Ce que doivent les clients de la portée de ``user`` (contrat
+    ``ventes/contract_samples/assistant_impayes.json``) : total EXIGIBLE,
+    nombre de factures et quatre tranches d'âge sur TOUTES les factures
+    retenues (contestées comprises), ``lignes`` = les ``limite`` plus en
+    retard d'abord. Mêmes calculs que la liste des relances (exigible, niveau,
+    promesse). Lecture pure."""
+    from django.utils import timezone
+    aujourdhui = aujourdhui or timezone.localdate()
+    company = user.company if user.company_id else None
+    levels = _levels(company)
+    responsables = ({p.client_id: p.responsable_id
+                     for p in ParametrageRelanceClient.objects.filter(
+                         company_id=user.company_id)}
+                    if mes_relances else None)
+    retenues, tranches = [], {cle: Decimal('0') for cle, _b in TRANCHES_AGE}
+    for f in factures_dues_qs(user):
+        du = montant_exigible(f) or Decimal('0')
+        if du <= 0 or not _retenue_par_filtres(f, q, client_id, responsables, user):
+            continue
+        jr = f.jours_retard
+        tranches[_tranche_age(jr)] += du
+        retenues.append((f, du, jr))
+    retenues.sort(key=lambda r: (r[2], r[1]), reverse=True)
+    return {
+        'total_du': _s(sum((du for _f, du, _j in retenues), Decimal('0'))),
+        'nb_factures': len(retenues),
+        'tranches': {cle: _s(v) for cle, v in tranches.items()},
+        'limite': limite,
+        'lignes': [_ligne_impaye(f, du, jr, levels, aujourdhui)
+                   for f, du, jr in retenues[:limite]],
+    }
 
 
 @extend_schema(responses=SH.BalanceAgeeResponse)

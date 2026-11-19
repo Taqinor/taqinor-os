@@ -775,11 +775,49 @@ VENTE_ETAT = AgentAction(
 )
 
 
+def _entrees_liste(**extra):
+    """Entrées d'une liste de facturation de l'assistant (q, client, limite)."""
+    return {'type': 'object', 'properties': {
+        'q': {'type': 'string', 'description': (
+            'Référence de facture ou nom du client.')},
+        'client': _entier('Identifiant du client.'),
+        **extra,
+        'limite': _entier('Lignes rendues (1 à 25, défaut 10).'),
+    }, 'additionalProperties': False}
+
+
+# VAD2 — « qui me doit de l'argent ? » (``GET ventes/assistant/impayes/``,
+# garde ``LectureFactures`` = ``ventes_voir``, contrat ``assistant_impayes.json``).
+IMPAYES_LISTER = AgentAction(
+    key='ventes.impayes.lister',
+    label='Lister ce que les clients doivent',
+    description=(
+        "Sert à : dire qui doit de l'argent : total exigible, nombre de "
+        "factures, tranches d'âge et les factures les plus en retard (montant "
+        "dû, jours, niveau de relance, promesse, contestée). Ne pas utiliser "
+        "pour : relancer un client ni enregistrer un paiement. Exemple : "
+        "« qui me doit de l'argent ? » → aucune entrée ; « et Lahlou ? » → "
+        "q=Lahlou. Résultat : total, tranches et lignes avec a_faire et "
+        "lien ; jamais de téléphone ; rien n'est écrit."
+    ),
+    endpoint='/api/django/ventes/assistant/impayes/',
+    method='GET',
+    inputs=_entrees_liste(mes_relances={
+        'type': 'boolean',
+        'description': 'Seulement mes clients en relance.'}),
+    required_permission='ventes_voir',
+    risk=RISK_INTERNAL,
+    carte='liste_impayes',
+    lot=LOT_COPILOTE,
+    objets={'client': 'client'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
-                           VENTE_ETAT)
+                           VENTE_ETAT, IMPAYES_LISTER)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
