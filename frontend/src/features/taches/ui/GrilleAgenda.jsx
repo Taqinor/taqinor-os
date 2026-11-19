@@ -298,7 +298,8 @@ function TeteJour({ nom }) {
 /** R3-121 — l'en-tête d'un jour PASSÉ dit ce qui y a été fait : « {n} faites », le nombre servi (`faites_nb`, la même
  *  somme que Mon rythme) ; jamais deviné, jamais dans une colonne étroite (jour non travaillé vide). */
 function faitesDuJour(jour, aujourdhui, etroit) {
-  if (etroit || jour.jour >= aujourdhui || !Number.isInteger(jour.faites_nb)) return ''
+  // R4-40 — « 0 faite » ne dit rien (et répété sur chaque jour passé vide, il alourdit la rangée) : seulement un compte > 0
+  if (etroit || jour.jour >= aujourdhui || !Number.isInteger(jour.faites_nb) || jour.faites_nb < 1) return ''
   return `${jour.faites_nb} ${jour.faites_nb >= 2 ? 'faites' : 'faite'}`
 }
 
@@ -343,11 +344,40 @@ function surTouche(e) {
   suivant.focus()
 }
 
+/** Défile le cadre de `delta` px (instantané). À part : le lint des hooks refuse qu'un hook modifie un nœud lu de son argument. */
+function decaler(cadre, delta) { cadre.scrollTop += delta }
+
+/** R4-40 — au bureau, la grille s'ouvre PRÈS DE MAINTENANT : la page défile (une fois, au montage) pour que la ligne
+ *  « maintenant » tombe à 40 % de la hauteur visible, si elle n'était pas déjà confortablement en vue. Sur 720 px de haut
+ *  la grille ne montrait que 07:00-10:00 : l'après-midi demandait de défiler à chaque ouverture. Ni sur iPhone (la page y
+ *  porte sa propre barre), ni une semaine sans « aujourd'hui » (pas de ligne). Le défilement est instantané. */
+function useOuvrirPresDeMaintenant(racine) {
+  useLayoutEffect(() => {
+    const grille = racine.current
+    const ligne = grille?.querySelector('.maintenant')
+    if (!ligne || !window.matchMedia?.('(min-width: 769px)').matches) return
+    let defilant = grille.parentElement
+    while (defilant && !(defilant.scrollHeight > defilant.clientHeight && /auto|scroll/.test(getComputedStyle(defilant).overflowY))) {
+      defilant = defilant.parentElement
+    }
+    if (!defilant) return
+    const cadre = defilant.getBoundingClientRect()
+    const r = ligne.getBoundingClientRect()
+    const enteteGrille = grille.querySelector('.semaine-tete')?.firstElementChild?.getBoundingClientRect().height ?? 0
+    const haut = cadre.top + enteteGrille + 24
+    const bas = cadre.bottom - 96
+    if (r.top >= haut && r.top <= bas) return // déjà en vue : on ne bouge rien
+    decaler(defilant, r.top - (cadre.top + (cadre.height - enteteGrille) * 0.4 + enteteGrille))
+  }, [racine])
+}
+
 export default function GrilleAgenda({
   jours, aujourdhui, maintenant = null, debut = 7, fin = 21, pas = 30, nomsJours = {},
   placement = null, onDepot = undefined, choisi = null, ligneJournee = null, creneauxLibres = false, onCreneau, onCocher, onOuvrir,
   onDeplacer = undefined,
 }) {
+  const racine = useRef(null)
+  useOuvrirPresDeMaintenant(racine)
   const plusieurs = jours.length > 1
   const heures = []
   for (let h = debut; h < fin; h += 1) heures.push(h)
@@ -361,7 +391,7 @@ export default function GrilleAgenda({
     heuresParJour, arret, onArret: setDernier,
   }
   return (
-    <div className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}
+    <div ref={racine} className={plusieurs ? 'semaine grille-agenda chiffres' : 'agenda grille-agenda chiffres'}
       style={plusieurs ? { gridTemplateColumns: colonnesSemaine(jours) } : undefined} onKeyDown={surTouche}>
       {plusieurs ? (
         <div className="semaine-tete">
@@ -371,7 +401,7 @@ export default function GrilleAgenda({
             return (
               <div
                 key={j.jour}
-                className={!j.ouvre || j.ferie ? 'repos' : undefined}
+                className={[!j.ouvre || j.ferie ? 'repos' : '', jourEtroit(j) ? 'etroit' : ''].filter(Boolean).join(' ') || undefined}
                 aria-current={j.jour === aujourdhui ? 'date' : undefined}
               >
                 <TeteJour nom={nomsJours[j.jour] ?? j.jour} />

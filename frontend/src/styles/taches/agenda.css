@@ -126,8 +126,19 @@
   position: absolute; right: 8px; transform: translateY(-50%); padding: 0 3px; border-radius: 4px; background: var(--tch-surface);
   font-size: var(--tch-taille-meta); font-weight: 700; color: var(--tch-accent); z-index: calc(var(--z-base) + 2);
 }
-.tch .semaine-tete .repos { flex-direction: column; align-items: center; gap: 0; padding-top: 4px; line-height: 1.1; }
-.tch .semaine-tete .repos b { font-size: var(--tch-taille-texte); }
+/* R4-40 — UN dessin d'en-tête de jour : « lun. 16 » sur une ligne, le compte (s'il y en a) dessous. Seule une colonne ÉTROITE
+   (week-end vide, 56 px) empile le nom et le numéro ; un week-end de pleine largeur est dessiné comme les autres jours. */
+.tch .semaine-tete .etroit { flex-direction: column; align-items: center; gap: 0; padding-top: 4px; line-height: 1.1; }
+.tch .semaine-tete .etroit b { font-size: var(--tch-taille-texte); }
+/* R4-40 — les en-têtes de jours restent EN VUE au défilement de la page (Notion Calendar, Apple Calendrier) : à 18:26 on sait
+   encore quelle colonne est quel jour. Fond de surface pour que les blocs passent dessous sans transparaître ; rang par jeton
+   (au-dessus des blocs et de l'heure courante, sous le panneau « À placer » et les bulles). */
+.tch .semaine .semaine-tete > div { position: sticky; top: 0; z-index: calc(var(--z-base) + 4); background: var(--tch-surface); }
+/* Chromium colle sous le REMBOURRAGE du scrolleur : celui de l'ERP (`.layout-content`, 2 rem, deploy/02-coquille.css) laissait
+   l'en-tête à 32 px sous le bord du cadre, la grille défilant dans l'interstice. On le rejoint (iPhone : rembourrage nul, 0). */
+@media (min-width: 769px) {
+  .tch .semaine .semaine-tete > div { top: -2rem; }
+}
 .tch .ag-ferie { display: block; font-size: var(--tch-taille-meta); font-weight: 400; color: var(--tch-texte-doux); }
 
 /* Grille : créneaux vides (« Ajouter à 09:00 »), blocs à case, rendez-vous externes */
@@ -319,6 +330,19 @@
   .tch .ag-barre-haute { flex-wrap: wrap; row-gap: 0; }
   .tch .ag-barre-haute:has(.ag-volet-bouton) .ag-vues .segmente { width: 300px; }
   .tch .ag-barre-haute .ag-nav { flex: 1 1 260px; min-width: 0; }
+  /* R4-40 — dès 1 280 px la barre de la Semaine tient sur UNE rangée (vues, période, « À placer », « Planifier ma semaine ») :
+     « Planifier ma semaine » ne passe plus seul sur une 2e rangée de 70 px au-dessus de la grille. */
+  @media (min-width: 1280px) {
+    .tch .ag-barre-haute { flex-wrap: nowrap; }
+    .tch .ag-barre-haute:has(.ag-volet-bouton) .ag-vues .segmente { width: 260px; }
+    .tch .ag-barre-haute .ag-nav { flex: 1 1 200px; }
+    .tch .ag-barre-haute > .ag-planifier-bouton { white-space: nowrap; }
+  }
+  /* R4-40 — sur un écran de 800 px de haut ou moins, la ligne « Ajouter une tâche » (74 px) cède sa place à la grille de
+     l'Agenda : la touche `n` et le + restent. */
+  @media (max-height: 800px) {
+    .tch[data-ecran="agenda"] .tch-page > .saisie-bureau { display: none; }
+  }
   .tch .ag-barre-haute .ag-nav b { white-space: nowrap; font-size: var(--tch-taille-texte); }
   .tch .ag-barre-haute > .ag-volet-bouton { padding: 0 12px; }
   .tch .ag-barre-haute > .ag-volet-bouton { margin-right: 8px; }
@@ -340,6 +364,13 @@
     margin-top: 12px; background: var(--tch-panneau); box-shadow: none;
   }
   .tch .ag-volet-bouton, .tch .ag-planifier-bouton, .tch .ag-corps-semaine .ag-aside-fermer { display: none; }
+  .tch .ag-corps-semaine .ag-principal { overflow-x: visible; }
+}
+/* R4-40 — `position: sticky` (en-têtes de jours) suit le défilement de la PAGE : `.ag-principal` ne doit donc pas devenir un
+   cadre de défilement. Dès 1 280 px la grille (colonnes de 120 px au moins) tient dans la largeur : plus de défilement
+   horizontal à garder, l'en-tête colle. En deçà, la grille peut dépasser et défile dans son cadre (l'en-tête y reste en
+   haut de la grille, sans coller à la page). */
+@media (min-width: 1280px) {
   .tch .ag-corps-semaine .ag-principal { overflow-x: visible; }
 }
 .tch .ag-aside { margin-top: 12px; padding-bottom: 8px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
