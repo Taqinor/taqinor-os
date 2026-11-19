@@ -290,6 +290,44 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     window.removeEventListener('taqinor:taches:saisir', ouverture)
   })
 
+  describe('R2-033 — « Coller mes listes » lit le presse-papiers', () => {
+    const vide = () => Object.assign(donnees(), {
+      essentiel: [], obligations: [], rendez_vous: [], journee: [], ce_soir: [], a_decider: [], en_attente: [], faites: [],
+      a_trier: { boite_reception: 0, bloquees: 0, suggestions: 0, a_convertir: 0 },
+      propose: { replie: false, pour_objectif: [], reste_nb: 0, charge: null, suite_par_projet: null },
+    })
+    const presse = (lire) => Object.defineProperty(window.navigator, 'clipboard', { value: { readText: lire }, configurable: true })
+    // la saisie ouverte garde son brouillon (localStorage) : il prendrait la place de la carte du moment ensuite
+    afterEach(() => { delete window.navigator.clipboard; window.localStorage.clear() })
+
+    it('trois lignes copiées : la saisie s’ouvre AVEC elles (l’aperçu des listes), sans message', async () => {
+      presse(vi.fn().mockResolvedValue('Salon\n- Stand\n- Kakémonos'))
+      servir(vide())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monter()
+      expect(await screen.findByText('ou touche + pour une tâche')).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Coller mes listes' }))
+      await waitFor(() => expect(ouverture).toHaveBeenCalledTimes(1))
+      expect(ouverture.mock.calls[0][0].detail).toEqual({ coller: true, texte: 'Salon\n- Stand\n- Kakémonos' })
+      expect(screen.queryByText('Appuie longuement dans le champ puis Coller')).toBeNull()
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+
+    it('lecture refusée : la saisie s’ouvre et le geste est dit « Appuie longuement dans le champ puis Coller »', async () => {
+      presse(vi.fn().mockRejectedValue(Object.assign(new Error('refus'), { name: 'NotAllowedError' })))
+      servir(vide())
+      const ouverture = vi.fn()
+      window.addEventListener('taqinor:taches:saisir', ouverture)
+      monter()
+      await userEvent.click(await screen.findByRole('button', { name: 'Coller mes listes' }))
+      await waitFor(() => expect(ouverture).toHaveBeenCalledTimes(1))
+      expect(ouverture.mock.calls[0][0].detail).toEqual({ coller: true })
+      expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('Appuie longuement dans le champ puis Coller')
+      window.removeEventListener('taqinor:taches:saisir', ouverture)
+    })
+  })
+
   it('rien de gardé, des tâches à trier : la phrase et Trier', async () => {
     const d = donnees()
     Object.assign(d, {

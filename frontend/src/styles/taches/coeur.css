@@ -17,6 +17,8 @@
 .tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
 .tch .vide-plein .bouton.plein { height: 50px; padding: 0 26px; font-size: 1rem; }
 .tch .vide-plein .bouton.discret { margin-top: 6px; }
+/* R2-033 — « ou touche + pour une tâche » : sous « Coller mes listes », l'autre chemin dit en une ligne */
+.tch .vide-plein .vide-aide.vide-plus { margin: 8px 0 4px; font-size: 0.875rem; }
 .tch .vide-picto.grand { width: 88px; height: 88px; }
 .tch .vide-picto.grand svg { width: 40px; height: 40px; }
 @media (min-width: 768px) { .tch .vide-plein { min-height: 640px; } }

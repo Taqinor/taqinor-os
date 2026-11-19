@@ -970,7 +970,7 @@ export default function Aujourdhui() {
       {donnees && journeeVide(donnees) ? (
         <EtatVide
           donnees={donnees}
-          onColler={() => ouvrirSaisie({ coller: true })}
+          onColler={(lu) => ouvrirSaisie({ coller: true, ...lu })}
           onDicter={() => ouvrirSaisie({ dicter: true })}
           onTrier={() => navigate('/taches/a-trier')}
         />
