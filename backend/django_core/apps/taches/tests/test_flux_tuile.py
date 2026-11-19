@@ -134,7 +134,10 @@ class _Monde(TestCase):
         cls.reglages = fabriques.reglages(cls.moi)
         p = fabriques.projet(cls.moi, nom='Projet-Z ventes')
         confidentiel = fabriques.projet(cls.moi, nom='Projet-Z Canari-7Q9', confidentiel=True)
-        pause = fabriques.projet(cls.moi, nom='Projet-Z pause', statut=StatutProjet.EN_PAUSE)
+        # Mis en pause la VEILLE : sous C-5 (R2-031) une pause du jour même garderait « Pause-Z » dans la journée.
+        veille = timezone.make_aware(datetime.datetime.combine(cls.jour - datetime.timedelta(days=1),
+                                                               datetime.time(18)))
+        pause = fabriques.projet(cls.moi, nom='Projet-Z pause', statut=StatutProjet.EN_PAUSE, statut_depuis=veille)
         t = fabriques.tache
         cls.heure = t(cls.moi, projet=p, jour_prevu=cls.jour, heure_debut=datetime.time(10, 0), titre='Devis Settat',
                       estimation_minutes=45, priorite=2, echeance=cls.jour + datetime.timedelta(days=2),
