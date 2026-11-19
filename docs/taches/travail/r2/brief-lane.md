@@ -140,3 +140,22 @@ Fautes qui ont rougi la CI de la vague précédente — ne les refais pas :
    sinon la garde de placement des tests échoue).
 7. **Une frappe ne se perd JAMAIS** : toute écriture dans un champ contrôlé part de la valeur COURANTE (mise à jour
    fonctionnelle), jamais d'une valeur capturée avant un `await` ; le test tape la suite sans attendre.
+
+---
+
+## Vague 4 — les corrections « avant le merge » du tour 3 (identifiants `R4-NN`)
+
+Tout ce qui précède reste vrai (section « Vague 3 » comprise : les sept fautes de CI), avec ces changements :
+- Ta liste est dans `…\r2\vague4.md` : ta lane, ses fichiers (tu ne touches QUE ceux-là) et ses corrections. Pour
+  chacune, lis le constat d'origine dans le rapport cité (`…\r2\tour3\T3-F.md`, `T3-S.md`, `T3-B1.md`, `T3-B2.md`) :
+  gestes exacts, captures (`…\scratchpad\r2\T3-*\`), mesures, piste de correction.
+- Base : `git fetch origin dev-taches-r2 && git checkout -B lane/r4-<ta lane> origin/dev-taches-r2` ; vérifie
+  `git merge-base --is-ancestor c285e13b0 HEAD`.
+- C'est la DERNIÈRE vague avant de rendre le module au fondateur : chaque correction est prouvée sur l'écran réel
+  (iPhone 390×844 tactile ET bureau 1440×900, clair et sombre quand la couleur est en jeu), et tu rejoues, après ta
+  dernière correction, les écrans de ta lane en entier pour vérifier que tu n'as rien cassé (régression = pire que le
+  défaut). Une correction que tu ne peux pas finir proprement : ne la bâcle pas, dis-le.
+- La pile sert le serveur de `dev-taches-r2` à la tête `4422ae885` (pas TES changements serveur) ; l'horloge du
+  serveur est l'heure réelle : pour voir une carte liée à l'heure (matin, 15 h, soir), avance les préférences d'heure du
+  compte (Réglages › Notifications) ou réécris la réponse avec `page.route`, et dis lequel des deux tu as fait.
+- Références (`docs/taches/reference/*.md`) et README : à jour dans le même commit que ce que tu changes.
