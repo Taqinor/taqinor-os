@@ -704,6 +704,7 @@ export default function Projet() {
     // R2-093 — « ‹ Projets » est celui de la coquille, au-dessus du titre (un seul retour, jamais deux). Au bureau, la
     // liste des projets est à l'écran (maître-détail) : aucun retour à y proposer, et la loupe et le Copilote restent.
     <CoquilleTaches ecran="projet" titre={titre} actionsEcran={actionsEcran}
+      largeur={vueCode === 'tableau' || vueCode === 'chronologie' ? 'pleine' : null}
       retour={maitreDetail ? null : { libelle: 'Projets', vers: '/taches/projets' }}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
       {maitreDetail ? <AsideProjets ouvertId={id} /> : null}

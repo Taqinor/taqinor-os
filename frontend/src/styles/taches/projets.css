@@ -3,7 +3,7 @@
    de l'ERP ou --tch-* uniquement, :hover sous @media (hover: hover), aucun position: fixed ni z-index en dur. */
 
 /* ── Liste Projets (TCH88) ───────────────────────────────────────────────── */
-.tch .ep-constat { margin: 4px var(--tch-gouttiere) 8px; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-constat { margin: 4px var(--tch-gouttiere) 8px; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 /* Passe visuelle n° 39 — la ligne de projets-liste.html : point · nom sur une ligne · « 12 sur 18 · échéance … »,
    barre fine dessous, puce de priorité sur la 1re ligne À DROITE (le bouton « Actions » est posé en absolu par base.css,
    la ligne ne lui réserve plus de marge). */
@@ -31,10 +31,10 @@
 .tch .ep-prio {
   position: relative; display: inline-flex; align-items: center; gap: 5px; height: 28px; min-height: 0; padding: 0 10px 0 9px;
   border-radius: var(--tch-rayon-puce); background: var(--tch-panneau); color: var(--tch-texte);
-  font-size: 0.8125rem; font-weight: 600; white-space: nowrap;
+  font-size: var(--tch-taille-meta); font-weight: 600; white-space: nowrap;
 }
 .tch .ep-prio::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--tch-cible)); height: var(--tch-cible); transform: translate(-50%, -50%); }
-.tch .ep-prio.moyenne, .tch .ep-prio.basse, .tch .ep-prio.aucune { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .ep-prio.moyenne, .tch .ep-prio.basse, .tch .ep-prio.aucune { color: var(--tch-texte-doux); font-weight: 400; }
 .tch .ep-prio .barres { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
 .tch .ep-prio .barres i { display: block; width: 3px; border-radius: 1px; background: currentColor; }
 .tch .ep-prio .barres i:nth-child(1) { height: 5px; }
@@ -44,28 +44,28 @@
 @media (hover: hover) {
   .tch .ep-prio:hover { background: var(--tch-survol); }
 }
-.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-surveiller); font-weight: 500; }
+.tch .ep-sante { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-surveiller); font-weight: 400; }
 .tch .ep-aplanifier { font-size: var(--tch-chiffre); font-weight: 600; line-height: 1.375rem; padding: 0 9px; border-radius: var(--tch-rayon-puce);
   color: var(--tch-accent); background: var(--tch-accent-doux); }
 /* R3-129 — les groupes de priorité de la liste (Haute · Moyenne · Basse · Aucune) */
 .tch .ep-groupe-prio { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 0; padding: 0 var(--tch-gouttiere) 2px;
-  font-size: var(--tch-meta); font-weight: 650; line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
-.tch .ep-groupe-prio .compte { font-weight: 500; }
+  font-size: var(--tch-meta); font-weight: 600; line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
+.tch .ep-groupe-prio .compte { font-weight: 400; }
 .tch .ep-nouveau {
   display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 48px;
-  margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: 1rem; font-weight: 600; color: var(--tch-accent);
+  margin: 12px var(--tch-gouttiere) 0; padding: 0 12px; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-accent);
   border-radius: var(--tch-rayon-champ);
 }
 @media (hover: hover) {
   .tch .ep-nouveau:hover { background: var(--tch-survol); }
 }
 .tch .ep-vide { margin: 24px var(--tch-gouttiere); text-align: center; }
-.tch .ep-vide p { margin: 0 0 12px; font-size: 1.0625rem; font-weight: 600; }
+.tch .ep-vide p { margin: 0 0 12px; font-size: var(--tch-taille-tache); font-weight: 600; }
 .tch .ep-formulaire { padding: 4px 0 12px; display: flex; flex-direction: column; gap: 10px; }
-.tch .ep-etiquette { font-size: 0.875rem; font-weight: 600; }
-.tch .ep-erreur { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-alerte); }
+.tch .ep-etiquette { font-size: var(--tch-taille-meta); font-weight: 600; }
+.tch .ep-erreur { margin: 0; font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-alerte); }
 .tch .ep-modeles-lien { align-self: flex-start; }
-.tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: 0.875rem; color: var(--tch-alerte); }
+.tch .ep-alerte-ligne { margin: 8px var(--tch-gouttiere); font-size: var(--tch-taille-meta); color: var(--tch-alerte); }
 
 /* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -78,16 +78,16 @@
 .tch .entete-titre .ep-titre-nom::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
 .tch .entete-titre .ep-titre-champ { width: calc(100% - 24px); max-width: 100%; min-height: 0; padding: 2px 8px; font: inherit; color: inherit;
   border: 0; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
-.tch .entete-titre .ep-titre-erreur { display: block; margin-top: 4px; font-family: var(--tch-font-texte); font-size: 0.875rem; line-height: 1.35; font-weight: 600; letter-spacing: 0; }
+.tch .entete-titre .ep-titre-erreur { display: block; margin-top: 4px; font-family: var(--tch-font-texte); font-size: var(--tch-taille-meta); line-height: 1.35; font-weight: 600; letter-spacing: 0; }
 /* « Fini quand… » : le texte est un bouton discret (toucher = corriger) */
 .tch .ep-objectif { display: block; width: 100%; min-height: var(--tch-cible); padding: 0; text-align: left; font: inherit; color: var(--tch-texte); }
 .tch .ep-objectif.vide { color: var(--tch-accent); font-weight: 600; }
 /* « Couleur » : dix pastilles, le nom dessous */
 .tch .ep-couleurs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px 4px; }
 .tch .ep-couleur { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: var(--tch-cible); padding: 6px 0; border-radius: var(--tch-rayon-champ);
-  font-size: 0.75rem; color: var(--tch-texte-doux); }
+  font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 .tch .ep-couleur .point { display: grid; place-items: center; width: 32px; height: 32px; color: var(--tch-accent-texte); }
-.tch .ep-couleur[aria-checked="true"] { color: var(--tch-texte); font-weight: 600; background: var(--tch-selection); }
+.tch .ep-couleur[aria-checked="true"] { color: var(--tch-texte); font-weight: 600; background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait); }
 @media (hover: hover) {
   .tch .ep-couleur:hover { background: var(--tch-survol); }
 }
@@ -98,38 +98,38 @@
 .tch .ep-ligne-info .alerte { color: var(--tch-alerte); font-weight: 600; }
 .tch .ep-ligne-info .ep-entre { padding: 0; margin-left: auto; }
 .tch .ep-retour-liste { position: relative; display: inline-flex; align-items: center; gap: 2px; margin-left: -6px; padding: 0 6px 0 0;
-  font-size: 0.9375rem; font-weight: 500; color: var(--tch-accent); }
+  font-size: var(--tch-taille-texte); font-weight: 400; color: var(--tch-accent); }
 .tch .ep-retour-liste::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
 .tch .ep-avance { display: inline-flex; align-items: center; gap: 8px; }
 .tch .ep-barre-avance { display: block; width: 96px; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
 .tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
 .tch .ep-avance-texte { font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap; }
-.tch .ep-avance-texte b { color: var(--tch-texte); font-weight: 650; }
-.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; color: var(--tch-texte); font-weight: 500; }
+.tch .ep-avance-texte b { color: var(--tch-texte); font-weight: 600; }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; color: var(--tch-texte); font-weight: 400; }
 .tch .ep-jalon-texte { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tch .ep-losange { flex: none; color: var(--tch-point); fill: var(--tch-point); }
 .tch .ep-ligne-suite { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; }
 .tch .ep-ligne-suite .ep-details { flex: none; width: auto; margin-left: auto; }
 /* Santé : une ligne sans fond, le détail au toucher */
 .tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; flex: 1 1 220px; min-width: 0; min-height: var(--tch-cible); margin: 0; text-align: left;
-  font-size: 0.9375rem; color: var(--tch-texte); }
+  font-size: var(--tch-taille-texte); color: var(--tch-texte); }
 .tch .ep-sante-ligne > svg:first-child { flex: none; color: var(--tch-surveiller); }
 .tch .ep-sante-ligne span { text-wrap: balance; }
 .tch .ep-sante-ligne .chev { flex: none; color: var(--tch-texte-doux); }
-.tch .ep-sante-detail { margin: -6px 0 0; font-size: 0.875rem; line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .ep-sante-detail { margin: -6px 0 0; font-size: var(--tch-taille-meta); line-height: 1.45; color: var(--tch-texte-doux); }
 /* Détails repliés : « Fini quand… » seul */
-.tch .ep-details { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tch-cible); text-align: left; font-size: 0.9375rem; color: var(--tch-texte); }
+.tch .ep-details { display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--tch-cible); text-align: left; font-size: var(--tch-taille-texte); color: var(--tch-texte); }
 .tch .ep-details-texte { flex: 1; }
-.tch .ep-details-texte b { font-weight: 500; }
+.tch .ep-details-texte b { font-weight: 400; }
 .tch .ep-details svg { color: var(--tch-texte-doux); }
-.tch .ep-details-corps { display: flex; flex-direction: column; gap: 4px; font-size: 0.9375rem; }
+.tch .ep-details-corps { display: flex; flex-direction: column; gap: 4px; font-size: var(--tch-taille-texte); }
 .tch .ep-details-corps p { margin: 0; }
 .tch .ep-etape { margin-top: 8px; }
 .tch .ep-faites { display: flex; align-items: center; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-weight: 600; }
 /* R3-127 — « + Ajouter une tâche » d'une étape est un geste DISCRET : gris et normal (il était bleu et gras sous CHAQUE étape,
    plus lourd que les tâches) ; avec la souris il n'apparaît qu'au survol de l'étape (ou au focus), sauf dans une étape vide
    où il est la seule invite ; au doigt il reste visible */
-.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-size: 0.9375rem; font-weight: 500; }
+.tch .ep-ajouter { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); padding: 0 var(--tch-gouttiere); color: var(--tch-texte-doux); font-size: var(--tch-taille-texte); font-weight: 400; }
 @media (hover: hover) and (min-width: 768px) {
   .tch .ep-etape:not(.etape-vide) .ep-ajouter { opacity: 0; }
   .tch .ep-etape:hover .ep-ajouter, .tch .ep-etape:focus-within .ep-ajouter, .tch .ep-ajouter:focus-visible { opacity: 1; }
@@ -163,33 +163,33 @@
 
 /* R2-071 — projet vide : l'invite */
 .tch .ep-vide-projet { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 12px var(--tch-gouttiere) 0; }
-.tch .ep-vide-invite { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); font-size: 1.0625rem; font-weight: 600; color: var(--tch-accent); }
+.tch .ep-vide-invite { display: flex; align-items: center; gap: 8px; min-height: var(--tch-cible); font-size: var(--tch-taille-tache); font-weight: 600; color: var(--tch-accent); }
 
 /* ── Planifier le projet (TCH91) ─────────────────────────────────────────── */
 .tch .ep-planifier { padding: 4px var(--tch-gouttiere) 16px; display: flex; flex-direction: column; gap: 16px; }
 .tch .ep-planifier-tete { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.tch .ep-titre { margin: 0; font-size: 1.25rem; font-weight: 650; }
-.tch .ep-sous { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-titre { margin: 0; font-size: var(--tch-taille-tache); font-weight: 600; }
+.tch .ep-sous { margin: 2px 0 0; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 .tch .ep-groupe { display: flex; flex-direction: column; gap: 8px; }
 .tch .ep-choix { display: flex; flex-direction: column; gap: 6px; }
 .tch .ep-choix-ligne { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 56px; padding: 8px 14px; text-align: left;
   border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); }
-.tch .ep-choix-ligne span { font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ep-choix-ligne span { font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 /* R3-128 (R3-092) — UN seul dessin de « sélectionné » : la lavande, le texte d'accent et le filet d'accent ; plus un bloc
    bleu plein pour une seule ligne (la priorité choisie criait plus fort que « Terminer ») */
-.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-selection); color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
+.tch .ep-choix-ligne[aria-checked="true"] { background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait); }
 .tch .ep-choix-ligne[aria-checked="true"] span { color: inherit; opacity: 0.85; }
 /* priorités : trois colonnes, jamais trois lignes pleine largeur */
 .tch .ep-planifier .ep-choix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .tch .ep-planifier .ep-choix-ligne { align-items: center; text-align: center; min-height: 64px; padding: 8px 6px; }
-.tch .ep-planifier .ep-choix-ligne span { font-size: 0.75rem; text-wrap: balance; }
+.tch .ep-planifier .ep-choix-ligne span { font-size: var(--tch-taille-meta); text-wrap: balance; }
 /* barre d'étapes du rituel (deux segments) */
 .tch .ep-pas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; list-style: none; margin: 0; padding: 0; }
 .tch .ep-pas li i { display: block; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); }
 .tch .ep-pas li.fait i { background: var(--tch-accent); }
 .tch .ep-action { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
 .tch .ep-action-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.tch .ep-action-titre { font-size: 1rem; font-weight: 600; min-width: 0; }
+.tch .ep-action-titre { font-size: var(--tch-taille-texte); font-weight: 600; min-width: 0; }
 .tch .ep-action-retirer { position: relative; flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; color: var(--tch-texte-doux); min-height: 0; }
 .tch .ep-action-retirer::after { content: ""; position: absolute; left: 50%; top: 50%; width: var(--tch-cible); height: var(--tch-cible); transform: translate(-50%, -50%); }
 @media (hover: hover) {
@@ -201,7 +201,7 @@
 .tch .ep-plus > summary svg { color: var(--tch-texte-doux); }
 .tch .ep-plus[open] > summary svg { transform: rotate(180deg); }
 .tch .ep-zone { height: auto; padding-top: 10px; padding-bottom: 10px; resize: vertical; }
-.tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: 0.9375rem; }
+.tch .ep-apercu, .tch .ep-jalons ul { margin: 4px 0 0; padding-left: 20px; font-size: var(--tch-taille-texte); }
 /* « Suivant » / « Terminer » fixe en bas de l'écran (collant au défilement), au-dessus de la barre d'onglets.
    Couture r2 — `bottom: 0` aussi sur iPhone : le scrolleur de l'ERP s'arrête déjà AU-DESSUS de la barre d'onglets et
    réserve sa hauteur en bas (`.layout-content`) ; ajouter `--tch-onglets-h` la comptait deux fois et le pied, remonté de
@@ -210,26 +210,26 @@
 /* R3-128 — pas 1 : trois priorités et un bouton, tout tient : le pied suit le contenu, il ne le recouvre jamais */
 .tch .ep-planifier-pied.pas-un { position: static; }
 /* ── Archive et dialogues (TCH92) ────────────────────────────────────────── */
-.tch .ep-dialogue-texte { margin: 0; font-size: 1.0625rem; font-weight: 600; }
-.tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .ep-dialogue-texte { margin: 0; font-size: var(--tch-taille-tache); font-weight: 600; }
+.tch .ep-dialogue-sous { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--tch-taille-texte); color: var(--tch-texte-doux); }
 .tch .ep-dialogue-pied { margin-top: 8px; justify-content: flex-end; }
 .tch .ep-resume { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
 .tch .ep-apercu-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.tch .ep-apercu-liste li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: 0.9375rem; }
+.tch .ep-apercu-liste li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; font-size: var(--tch-taille-texte); }
 .tch .ep-apercu-liste li .chiffres { display: inline-flex; align-items: center; gap: 6px; color: var(--tch-texte-doux); }
 .tch .ep-apercu-liste li b { color: var(--tch-texte); }
 .tch .ep-recherche { margin: 4px var(--tch-gouttiere) 8px; }
 .tch .ep-archive-ligne .meta .issue { font-weight: 600; }
-.tch .ep-bilan { margin: 4px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-bilan { margin: 4px 0 0; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 /* ── Revue de la semaine (TCH93) ─────────────────────────────────────────── */
 .tch .ep-carte-revue { margin: 8px var(--tch-gouttiere) 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px;
   border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
 .tch .ep-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tch .ep-carte-tete .ep-titre { display: flex; align-items: center; gap: 8px; }
 /* « 1/3 » d'une carte de revue (≠ `.ep-rang`, la ligne réordonnable d'une vue Liste) */
-.tch .ep-rang-revue { color: var(--tch-texte-doux); font-size: 0.875rem; }
-.tch .ep-revue-ligne { margin: 0; font-size: 0.9375rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: 0.9375rem; font-weight: 600; }
+.tch .ep-rang-revue { color: var(--tch-texte-doux); font-size: var(--tch-taille-meta); }
+.tch .ep-revue-ligne { margin: 0; font-size: var(--tch-taille-texte); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tch .ep-case { display: flex; align-items: center; gap: 10px; min-height: var(--tch-cible); font-size: var(--tch-taille-texte); font-weight: 600; }
 .tch .ep-case input { width: 22px; height: 22px; accent-color: var(--tch-accent); }
 .tch .ep-revue-boutons { flex-wrap: wrap; }
 .tch .ep-revue-fin { margin: 24px var(--tch-gouttiere); display: flex; justify-content: center; }
@@ -242,12 +242,12 @@
 .tch .ep-carte-revue .ep-revue-boutons { justify-content: space-between; align-items: center; }
 .tch .ep-resume-revue { list-style: none; margin: 8px var(--tch-gouttiere) 0; padding: 0; }
 .tch .ep-resume-revue li { display: flex; align-items: center; gap: 10px; min-height: 48px; }
-.tch .ep-resume-revue .nom { flex: 1; min-width: 0; font-size: 1rem; font-weight: 600; }
+.tch .ep-resume-revue .nom { flex: 1; min-width: 0; font-size: var(--tch-taille-texte); font-weight: 600; }
 .tch .ep-resume-revue .decision { font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 /* Passe visuelle n° 45 — la carte de revue-semaine.html (`.ep-carte-projet`) : fond de page cerné d'un filet, nom en
    1.0625rem (plus le titre de page), méta séparée par « · », « Projet de la semaine » à l'étoile */
 .tch .ep-carte-revue { border-radius: 18px; background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); padding: 14px 14px 12px; gap: 10px; }
-.tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: 1.0625rem; font-weight: 650; line-height: 1.35; }
+.tch .ep-carte-revue .ep-carte-tete .ep-titre { font-family: inherit; font-size: var(--tch-taille-tache); font-weight: 600; line-height: 1.35; }
 .tch .ep-carte-revue .ep-carte-tete .point { width: 10px; height: 10px; }
 .tch .ep-carte-revue .ep-rang-revue { font-size: var(--tch-chiffre); font-weight: 600; }
 .tch .ep-carte-revue .meta { margin-top: -6px; column-gap: 8px; }
@@ -266,34 +266,34 @@
 /* ── Un projet, vues Tableau et Chronologie, burn-up (TCH90) ─────────────── */
 .tch .ep-entre { display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--tch-gouttiere) 4px; }
 .tch .ep-vue-puce { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 10px; border-radius: 999px;
-  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: 0.8125rem; font-weight: 600; }
+  background: var(--tch-accent-doux); color: var(--tch-accent); font-size: var(--tch-taille-meta); font-weight: 600; }
 .tch .ep-vue-puce::after { content: ""; position: absolute; inset: -8px -4px; }
-.tch .ep-vue-puce svg { width: 14px; height: 14px; stroke-width: 2.25; }
+.tch .ep-vue-puce svg { width: 14px; height: 14px; stroke-width: var(--tch-trait-icone); }
 .tch .ep-vues { display: none; }
 @media (min-width: 768px) {
   .tch .ep-vues { display: inline-grid; grid-template-columns: repeat(3, auto); gap: 2px; padding: 2px; border-radius: 10px; background: var(--tch-panneau); }
-  .tch .ep-vues button { position: relative; height: 32px; padding: 0 12px; border-radius: 8px; font-size: 0.8125rem; font-weight: 500; color: var(--tch-texte-doux); }
+  .tch .ep-vues button { position: relative; height: 32px; padding: 0 12px; border-radius: 8px; font-size: var(--tch-taille-meta); font-weight: 400; color: var(--tch-texte-doux); }
   .tch .ep-vues button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
-  .tch .ep-vues button[aria-checked="true"] { background: var(--tch-segment-actif); color: var(--tch-texte); font-weight: 600; box-shadow: var(--shadow-xs); }
+  .tch .ep-vues button[aria-checked="true"] { background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); font-weight: 600; box-shadow: var(--tch-choisi-trait); }
 }
 .tch .ep-onglets-etapes { display: flex; align-items: center; gap: 5px; padding: 14px 12px 2px var(--tch-gouttiere); overflow: hidden; }
 .tch .ep-onglets-etapes button { position: relative; flex: none; display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 10px;
-  border-radius: 999px; font-size: 0.875rem; font-weight: 500; color: var(--tch-texte-doux); box-shadow: inset 0 0 0 1px var(--tch-trait); }
+  border-radius: 999px; font-size: var(--tch-taille-meta); font-weight: 400; color: var(--tch-texte-doux); box-shadow: inset 0 0 0 1px var(--tch-trait); }
 .tch .ep-onglets-etapes button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
-.tch .ep-onglets-etapes button[aria-selected="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; font-weight: 600; }
-.tch .ep-onglets-compte { margin-left: auto; font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux); white-space: nowrap; }
+.tch .ep-onglets-etapes button[aria-selected="true"] { background: var(--tch-choisi-fond); color: var(--tch-choisi-texte); box-shadow: var(--tch-choisi-trait); font-weight: 600; }
+.tch .ep-onglets-compte { margin-left: auto; font-size: var(--tch-chiffre); font-weight: 400; color: var(--tch-texte-doux); white-space: nowrap; }
 .tch .ep-tableau { display: flex; gap: 12px; padding: 10px var(--tch-gouttiere) 0; align-items: flex-start; }
 .tch .ep-col { flex: none; width: 100%; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); padding: 6px; }
 .tch .ep-col.sur { box-shadow: inset 0 0 0 2px var(--tch-accent); }
 .tch .ep-col-tete { display: none; align-items: baseline; justify-content: space-between; padding: 8px 10px; }
-.tch .ep-col-tete b { font-size: var(--tch-section); font-weight: 650; }
-.tch .ep-col-tete span { font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux); }
-.tch .ep-col .ligne { margin: 0; border-radius: 12px; background: var(--tch-surface); padding-right: 8px; }
-.tch .ep-col .titre { font-size: 1rem; line-height: 1.375rem; }
+.tch .ep-col-tete b { font-size: var(--tch-section); font-weight: 600; }
+.tch .ep-col-tete span { font-size: var(--tch-chiffre); font-weight: 400; color: var(--tch-texte-doux); }
+.tch .ep-col .ligne { margin: 0; border-radius: var(--tch-bouton-rayon); background: var(--tch-surface); padding-right: 8px; }
+.tch .ep-col .titre { font-size: var(--tch-taille-texte); line-height: 1.375rem; }
 .tch .ep-col .meta > span { white-space: normal; }
 /* R3-126 — la méta d'une carte du Tableau se lit EN LIGNE (« aujourd'hui · échéance demain · 2 h »), pas une info par ligne */
 .tch .ep-col .meta { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; }
-.tch .ep-carte { display: flex; align-items: stretch; margin: 0 0 6px; border-radius: 12px; background: var(--tch-surface); }
+.tch .ep-carte { display: flex; align-items: stretch; margin: 0 0 6px; border-radius: var(--tch-bouton-rayon); background: var(--tch-surface); }
 /* couture r2 — une carte du Tableau est UNE surface (la poignée y compris) ; l'heure, le drapeau et l'étoile passent sous
    le titre : à 280 px, sur la ligne du titre, ils ne laissaient que 50 px au titre (« Réceptionnei 09:00 ») */
 .tch .ep-col .ep-carte .ligne { background: transparent; grid-template-columns: var(--tch-cible) minmax(0, 1fr); }
@@ -322,9 +322,8 @@
 }
 @media (min-width: 768px) {
   .tch .ep-onglets-etapes { display: none; }
-  /* R2-064 — le Tableau (et la Chronologie) sortent de la colonne de lecture de 760 px : sinon 2,5 colonnes et la dernière
-     (« Pose ») inatteignable. La page s'élargit ; au-delà, le Tableau DÉFILE à l'horizontale au lieu de couper. */
-  .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) { max-width: 1320px; }
+  /* R2-064 — le Tableau (et la Chronologie) sortent de la colonne de lecture : la page est pleine largeur (`largeur="pleine"`,
+     posée par Projet.jsx) ; au-delà, le Tableau DÉFILE à l'horizontale au lieu de couper. */
   /* couture r2 — le Tableau qui déborde le DIT : barre de défilement visible, colonnes qui s'arrêtent sur leur bord */
   .tch .ep-tableau {
     padding: 8px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain;
@@ -356,13 +355,13 @@
 .tch .ep-f-item.etape::before { border-radius: 4px; top: 4px; left: -21px; width: 8px; height: calc(100% - 22px); min-height: 16px; background: var(--tch-point); box-shadow: none; }
 .tch .ep-f-item.etape.faite::before { background: var(--tch-piste); }
 .tch .ep-f-item.jalon::before { content: none; }
-.tch .ep-f-item.jalon .ep-f-glyphe { position: absolute; left: -26px; top: 2px; width: 18px; height: 18px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
+.tch .ep-f-item.jalon .ep-f-glyphe { position: absolute; left: -26px; top: 2px; width: 18px; height: 18px; color: var(--tch-point); fill: var(--tch-point); stroke-width: var(--tch-trait-icone); }
 .tch .ep-f-item.auj::before { background: var(--tch-accent); box-shadow: 0 0 0 4px var(--tch-accent-doux); }
 .tch .ep-f-item.fin::before { background: var(--tch-texte); box-shadow: none; border-radius: 3px; }
 .tch .ep-f-date { font-size: var(--tch-chiffre); font-weight: 600; color: var(--tch-texte-doux); }
 .tch .ep-f-item.auj .ep-f-date { color: var(--tch-accent); }
-.tch .ep-f-titre { font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 500; margin-top: 1px; }
-.tch .ep-f-item.etape .ep-f-titre { font-weight: 650; }
+.tch .ep-f-titre { font-size: var(--tch-tache); line-height: var(--tch-tache-lh); font-weight: 400; margin-top: 1px; }
+.tch .ep-f-item.etape .ep-f-titre { font-weight: 600; }
 /* R3-130 — ce qui est en retard (étape, jalon, échéance, tâche datée avant aujourd'hui) s'écrit en couleur d'alerte */
 .tch .ep-f-item.retard .ep-f-date, .tch .ep-f-taches li.retard .chiffres { color: var(--tch-alerte); }
 .tch .ep-f-detail { font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); margin-top: 1px; }
@@ -370,30 +369,30 @@
 .tch .ep-f-taches { list-style: none; margin: 4px 0 0; padding: 0; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
 .tch .ep-f-taches li { display: flex; gap: 8px; }
 .tch .ep-f-taches .chiffres { flex: none; font-weight: 600; color: var(--tch-texte); }
-.tch .ep-sans-dates { margin: 6px var(--tch-gouttiere) 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-sans-dates { margin: 6px var(--tch-gouttiere) 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 .tch .ep-sans-dates b { color: var(--tch-texte); font-weight: 600; }
 /* Chronologie : bureau, UNE piste, les étapes bout à bout, le jalon au-dessus (pas un Gantt) */
 .tch .ep-frise-h { display: none; }
 @media (min-width: 768px) {
   .tch .ep-frise { display: none; }
   .tch .ep-frise-h { display: block; margin: 8px 24px 0; }
-  .tch .ep-fh-axe { position: relative; height: 22px; margin-top: 24px; font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
+  .tch .ep-fh-axe { position: relative; height: 22px; margin-top: 24px; font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux); }
   .tch .ep-fh-axe span { position: absolute; top: 0; white-space: nowrap; }
   .tch .ep-fh-axe span:last-child { transform: translateX(-100%); }
   .tch .ep-fh-zone { position: relative; padding: 40px 0 14px; box-shadow: inset 0 1px 0 var(--tch-trait); }
   .tch .ep-fh-jalons { position: relative; height: 30px; }
-  .tch .ep-fh-losange { position: absolute; top: 4px; left: clamp(10px, var(--x), calc(100% - 10px)); width: 20px; height: 20px; margin-left: -10px; color: var(--tch-point); fill: var(--tch-point); stroke-width: 1.5; }
-  .tch .ep-fh-etiquette { position: absolute; top: 5px; transform: translateX(calc(-100% - 14px)); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+  .tch .ep-fh-losange { position: absolute; top: 4px; left: clamp(10px, var(--x), calc(100% - 10px)); width: 20px; height: 20px; margin-left: -10px; color: var(--tch-point); fill: var(--tch-point); stroke-width: var(--tch-trait-icone); }
+  .tch .ep-fh-etiquette { position: absolute; top: 5px; transform: translateX(calc(-100% - 14px)); font-size: var(--tch-taille-meta); font-weight: 600; white-space: nowrap; }
   .tch .ep-fh-rang { position: relative; height: 44px; }
   .tch .ep-fh-barre { position: absolute; top: 0; height: 44px; display: flex; align-items: center; padding: 0 10px 0 12px; border-radius: 8px; overflow: hidden; white-space: nowrap;
-    background: var(--tch-bloc-fond); color: var(--tch-bloc-texte); box-shadow: inset 3px 0 0 var(--tch-point); font-size: 0.9375rem; font-weight: 600; }
+    background: var(--tch-bloc-fond); color: var(--tch-bloc-texte); box-shadow: inset 3px 0 0 var(--tch-point); font-size: var(--tch-taille-texte); font-weight: 600; }
   .tch .ep-fh-barre.faite { background: transparent; color: var(--tch-texte-doux); box-shadow: inset 3px 0 0 var(--tch-point), inset 0 0 0 1px var(--tch-trait); }
   .tch .ep-fh-sous-rang { position: relative; height: 26px; }
-  .tch .ep-fh-sous { position: absolute; top: 6px; padding-left: 12px; font-size: 0.8125rem; color: var(--tch-texte-doux); white-space: nowrap; }
+  .tch .ep-fh-sous { position: absolute; top: 6px; padding-left: 12px; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); white-space: nowrap; }
   .tch .ep-fh-trait { position: absolute; top: 30px; bottom: 40px; width: 2px; margin-left: -1px; z-index: var(--z-base); }
   .tch .ep-fh-trait.auj { background: var(--tch-accent); }
   .tch .ep-fh-trait.fin { background: var(--tch-texte); }
-  .tch .ep-fh-trait span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-size: 0.75rem; font-weight: 700; }
+  .tch .ep-fh-trait span { position: absolute; top: -24px; left: 50%; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; white-space: nowrap; font-size: var(--tch-taille-meta); font-weight: 700; }
   .tch .ep-fh-trait.auj span { background: var(--tch-accent); color: var(--tch-accent-texte); }
   .tch .ep-fh-trait.fin span { background: var(--tch-texte); color: var(--tch-surface); }
   /* R2-066 / R3-130 — un point par jour de tâche, POSÉ SUR la barre de son étape (centré sur la ligne de son nom) ; pastilles bornées au cadre.
@@ -404,7 +403,7 @@
     background: var(--tch-surface); box-shadow: inset 0 0 0 2.5px var(--tch-point), 0 0 0 2px var(--tch-bloc-fond); }
   .tch .ep-fh-point[data-n] { background: var(--tch-point); }
   .tch .ep-fh-point.retard { box-shadow: inset 0 0 0 2.5px var(--tch-alerte), 0 0 0 2px var(--tch-bloc-fond); }
-  .tch .ep-fh-nom-point { position: absolute; top: 50%; transform: translate(16px, -50%); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; }
+  .tch .ep-fh-nom-point { position: absolute; top: 50%; transform: translate(16px, -50%); font-size: var(--tch-taille-texte); font-weight: 600; white-space: nowrap; }
   .tch .ep-fh-nom-point.a-gauche { transform: translate(-16px, -50%); }
   .tch .ep-fh-nom-point.retard { color: var(--tch-alerte); }
   .tch .ep-fh-barre.retard { box-shadow: inset 3px 0 0 var(--tch-alerte); }
@@ -422,26 +421,26 @@
 .tch .ep-burnup .courbe-total { fill: none; stroke: var(--tch-texte-doux); stroke-width: 2; }
 .tch .ep-burnup .courbe-faites { fill: none; stroke: var(--tch-point); stroke-width: 2.5; }
 .tch .ep-burnup-liste { list-style: none; margin: 0; padding: 0; }
-.tch .ep-burnup-liste li { display: flex; justify-content: space-between; gap: 12px; min-height: 40px; align-items: center; font-size: 0.9375rem; }
-.tch .ep-burnup-legende { margin: 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .ep-burnup-liste li { display: flex; justify-content: space-between; gap: 12px; min-height: 40px; align-items: center; font-size: var(--tch-taille-texte); }
+.tch .ep-burnup-legende { margin: 0; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 
 /* ── Modèles de projet, Dupliquer, Enregistrer comme modèle (TCH157) ─────── */
 .tch .es-action { position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px;
   border-radius: var(--tch-rayon-puce); background: var(--tch-accent-doux); color: var(--tch-accent);
-  font-size: 0.8125rem; font-weight: 650; white-space: nowrap; }
+  font-size: var(--tch-taille-meta); font-weight: 600; white-space: nowrap; }
 .tch .es-action::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, var(--tch-cible)); height: var(--tch-cible); transform: translate(-50%, -50%); }
 .tch .es-action.danger { background: transparent; color: var(--tch-alerte); }
 .tch .ep-modele-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-.tch .ep-modele-origine { margin: 2px 0 0; font-size: 0.875rem; color: var(--tch-texte-doux); }
+.tch .ep-modele-origine { margin: 2px 0 0; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 .tch .es-etapes-modele { margin-top: 10px; }
-.tch .es-etape-modele { display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: 0.9375rem; box-shadow: inset 0 -1px 0 var(--tch-trait); }
+.tch .es-etape-modele { display: flex; justify-content: space-between; align-items: center; min-height: 40px; font-size: var(--tch-taille-texte); box-shadow: inset 0 -1px 0 var(--tch-trait); }
 .tch .es-etape-modele:last-child { box-shadow: none; }
 .tch .es-etape-modele span:last-child { color: var(--tch-texte-doux); }
 .tch .es-resume { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; padding: 12px 14px; border-radius: var(--tch-rayon-champ);
-  background: var(--tch-accent-doux); font-size: 0.9375rem; font-weight: 600; }
+  background: var(--tch-accent-doux); font-size: var(--tch-taille-texte); font-weight: 600; }
 .tch .es-resume svg { color: var(--tch-accent); }
-.tch .es-aide { margin: 2px 0 0; font-size: 0.8125rem; line-height: 1.45; color: var(--tch-texte-doux); }
-.tch .ep-reglage { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tch-cible); font-size: 1rem; }
+.tch .es-aide { margin: 2px 0 0; font-size: var(--tch-taille-meta); line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .ep-reglage { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tch-cible); font-size: var(--tch-taille-texte); }
 
 /* ── R2-067 — Projets au bureau (≥ 1024 px) : maître-détail ───────────────────────────────────────────────────────────
    La liste des projets à gauche (colonne `.ep-md-liste`, enfant de la page), le projet choisi à droite : le projet ouvert
@@ -450,17 +449,17 @@
    Tout reste sous `.tch` : rien ne regarde la coque de l'ERP. */
 @media (min-width: 1024px) {
   .tch { --ep-md-liste: 320px; }
-  .tch .tch-page:has(> .ep-md-liste) { position: relative; max-width: 1200px; padding-left: calc(var(--ep-md-liste) + 16px); }
-  /* le Tableau et la Chronologie gardent toute la largeur utile (et défilent au-delà : R2-064) */
-  .tch[data-ecran="projet"] .tch-page:has(> .ep-md-liste):has(.ep-vue-tableau, .ep-frise-h) { max-width: 1760px; }
+  /* R3-082 — la page garde la largeur de base.css (1 320 px) : l'en-tête et ses actions (loupe · Copilote · ⋯) sont au même pixel que
+     sur les autres écrans ; seul le contenu est décalé par le retrait de la colonne (avant : `max-width: 1200px`, ⋯ à 1398 au lieu de 1518 à 1920) */
+  .tch .tch-page:has(> .ep-md-liste) { position: relative; padding-left: calc(var(--ep-md-liste) + 16px); }
   /* R3-126 — … et ils n'ont plus la liste des projets à leur gauche (320 px rendus : 2,5 colonnes visibles et pas de barre de
      défilement) : « ‹ Projets », dans la ligne de l'en-tête, y ramène */
-  .tch[data-ecran="projet"] .tch-page:has(> .ep-md-liste):has(.ep-vue-tableau, .ep-frise-h) { padding-left: 16px; }
-  .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) > .ep-md-liste { display: none; }
+  .tch[data-ecran="projet"][data-largeur="pleine"] .tch-page:has(> .ep-md-liste) { padding-left: 16px; }
+  .tch[data-ecran="projet"][data-largeur="pleine"] .tch-page > .ep-md-liste { display: none; }
   .tch .ep-md-liste { position: absolute; left: 0; top: 0; bottom: 0; width: var(--ep-md-liste); box-shadow: inset -1px 0 0 var(--tch-trait); }
   .tch .ep-md-defile { position: sticky; top: 0; max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; padding: 20px 0 24px; }
   .tch .ep-md-tete { display: flex; align-items: center; justify-content: space-between; min-height: var(--tch-cible); padding: 0 8px 0 24px; }
-  .tch .ep-md-titre { font-size: var(--tch-section); font-weight: 650; color: var(--tch-texte-doux); }
+  .tch .ep-md-titre { font-size: var(--tch-section); font-weight: 600; color: var(--tch-texte-doux); }
   /* la puce de priorité se lit et se change dans le projet ouvert : la colonne garde la place du nom */
   .tch .ep-md-liste .ligne.projet .ep-prio { display: none; }
   .tch .ep-md-liste .ligne.projet { padding-right: 16px; }

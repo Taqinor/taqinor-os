@@ -950,7 +950,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
       // Passe visuelle n° 37 — un MODE (agenda-semaine-planifier.html) : sans barre « Ajouter une tâche » ; Terminer rejoint
       // la ligne du titre (agenda.css). R3-123 — la semaine est dite UNE fois, entre les flèches « ‹ 16 – 22 nov. › » ;
       // sur iPhone le mode est un écran ENFANT de l'Agenda : « ‹ Agenda » remplace ☰ (au bureau le sur-titre est libre).
-      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine"
+      <CoquilleTaches ecran="agenda" titre="Planifier ma semaine" largeur="pleine"
         retour={mobile ? { libelle: 'Agenda', vers: '/taches/agenda' } : null} saisieBureau={false}>
         {etats}
         {/* Passe visuelle n° 6 — rien de lu : aucun jour ni compte (« 0 tâche », « Tout est placé » seraient faux) */}
@@ -981,7 +981,7 @@ export default function Agenda({ aujourdhui = aujourdhuiIso(), maintenant = null
   }
 
   return (
-    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)}
+    <CoquilleTaches ecran="agenda" titre="Agenda" sousTitre={jourLong(aujourdhui)} largeur="pleine"
       actionsEcran={[{ libelle: 'Planifier ma semaine', onSelect: planifierSemaine },
         { libelle: 'Mes agendas', onSelect: ouvrirMesAgendas }]}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit}
