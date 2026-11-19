@@ -94,12 +94,19 @@ class CasDuTableau(unittest.TestCase):
         s = sante.echeance_menacee(ouvertes + faites_8, projet(echeance=ech), J, trav, rythme=True)
         self.assertEqual((s.code, s.donnees['signal']), ('echeance_menacee', 'd'))
         self.assertEqual((s.donnees['besoin'], s.donnees['reste']), (30, 15))
-        self.assertIn('il faudrait 30 jours travaillés ; il en reste 15.', s.phrase)
-        self.assertIn('(8 faites en 20 jours travaillés)', s.phrase)
+        # R2-034 — la conséquence d'abord, chaque chiffre calculé (rythme F28/J28, ouvertes, échéance)
+        self.assertEqual(s.phrase, 'À ce rythme, pas prêt pour le mar. 8 déc. : il faudrait 30 jours travaillés, '
+                                   'il en reste 15 (8 faites en 20 jours travaillés ces 4 dernières semaines).')
+        self.assertEqual(s.donnees['echeance'], '2026-12-08')
         faites_4 = [faite(d) for d in (2, 3, 4, 5)]
         self.assertIsNone(sante.echeance_menacee(ouvertes + faites_4, projet(echeance=ech), J, trav, rythme=True))
         # rythme éteint : signal (d) absent même avec F28 = 8
         self.assertIsNone(sante.echeance_menacee(ouvertes + faites_8, projet(echeance=ech), J, trav))
+        # échéance proche : le jour se dit comme partout (« jeu. 26 », « demain »)
+        proche = sante.echeance_menacee(ouvertes + faites_8, projet(echeance=date(2026, 11, 26)), J, trav, rythme=True)
+        self.assertTrue(proche.phrase.startswith('À ce rythme, pas prêt pour le jeu. 26 : '), proche.phrase)
+        demain = sante.echeance_menacee(ouvertes + faites_8, projet(echeance=date(2026, 11, 18)), J, trav, rythme=True)
+        self.assertTrue(demain.phrase.startswith('À ce rythme, pas prêt pour demain : '), demain.phrase)
 
     def test_08_retour_de_conge(self):
         trav = jours_travailles(feries={date(2026, 11, 6)}, conges=[(date(2026, 11, 2), date(2026, 11, 13))])

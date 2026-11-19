@@ -257,7 +257,7 @@ Santé (`sante[].phrase`) :
 | `echeance_menacee` (a) | « Échéance dépassée le {jj/mm}. » |
 | `echeance_menacee` (b) | « {k} tâches sont prévues après l'échéance. » |
 | `echeance_menacee` (c) | « L'étape « {etape} » finit après l'échéance. » |
-| `echeance_menacee` (d) | « Au rythme des 4 dernières semaines ({f28} faites en {j28} jours travaillés), il faudrait {besoin} jours travaillés ; il en reste {reste}. » |
+| `echeance_menacee` (d) | « À ce rythme, pas prêt pour le {jour} : il faudrait {besoin} jours travaillés, il en reste {reste} ({f28} faites en {j28} jours travaillés ces 4 dernières semaines). » — `{jour}` = l'échéance du projet au format §0 (« jeu. 26 », « mar. 8 déc. ») ; « pour aujourd'hui », « pour demain » sans « le » (R2-034) ; `donnees.echeance` (ISO) servie pour la santé courte |
 | `a_l_arret` | « Rien de fait depuis {jours} jours travaillés. » |
 | `neglige` | « « {projet} » ({priorite}) n'a rien vu avancer en 14 jours ; « {autre} » ({priorite_autre}) : {d} faite(s). » |
 | `sans_prochaine_action` | « Rien à faire maintenant : tout est en réserve. » · « Tout attend quelqu'un ou une autre tâche. » · « Rien à faire maintenant : ajoute la prochaine tâche. » |
@@ -649,7 +649,8 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 « Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
 · essentiel {e} sur {je} · {pt} des {pl} gardées. {Jour non travaillé} : {n}. » — parties sans objet omises (`libre` :
 sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
-(`courante` faux dans les données du gabarit) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
+(`courante` faux dans les données du gabarit : `selectors/projets.py::bilan_de_semaine` le pose quand le lundi lu
+n'est pas celui de la semaine du jour) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
 précédente). » (R2-034 ; avant : « Du lun. 16 au ven. 20 : 4 tâches en 1 jour (précédente : 9). ») Semaine courte (`semaine_courte`) : « Semaine
 courte, on reprend lundi. » à la place. UN constat au plus en dessous. Bouton final « Planifier ma semaine ».
 
