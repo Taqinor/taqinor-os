@@ -17,7 +17,9 @@ la couture MINCE entre la demande et le constructeur existant :
 3. le MARQUEUR ``etude_params['composition_imposee']`` (propriétaire
    ``etude_schema.COMPOSITION_IMPOSEE``) dit aux chemins qui recomposent qu'ils
    ne doivent pas défaire l'imposition ; :func:`effacer_marqueur` est appelé
-   par les gestes commerciaux explicites (appliquer / régénérer une taille).
+   par les gestes commerciaux explicites (appliquer / régénérer une taille) ;
+   la taille changée EN PLACE par l'assistant le met à jour
+   (:func:`marqueur_retaille`, ``domain/taille_assistant``).
 
 Les alertes (règle du 17/11 : toute entrée SUPPOSÉE est annoncée avec le champ
 du lead) partent dans ``journal_auto['alertes']``. Aucun statut touché
@@ -153,6 +155,67 @@ def cles_tailles_servies(devis):
 def poser_marqueur(devis, contenu):
     from apps.ventes.domain.etude_schema import COMPOSITION_IMPOSEE, ecrire
     ecrire(devis, proprietaire=COMPOSITION_IMPOSEE, **{CLE_MARQUEUR: contenu})
+
+
+# ── La taille d'un devis composé sur demande, changée en place ──────────────
+def imposes_de_retaille(devis, nb_panneaux):
+    """La demande qui recompose ce devis marqué à ``nb_panneaux`` : les
+    produits du MARQUEUR désignés par leur id (forme id du mode imposé),
+    jamais re-résolus par taille — l'onduleur et la batterie vendus restent
+    ceux-là. ``None`` quand le marqueur ne nomme pas son panneau (marqueur
+    incomplet : la recomposition en place est impossible)."""
+    produits = (marqueur(devis) or {}).get('produits') or {}
+    if not produits.get('panneau'):
+        return None
+    imposes = {'nb_panneaux': int(nb_panneaux),
+               'panneau_produit_id': produits['panneau']}
+    for cle, champ in (('onduleur', 'onduleur_produit_id'),
+                       ('batterie', 'batterie_produit_id')):
+        if produits.get(cle):
+            imposes[champ] = produits[cle]
+    return imposes
+
+
+def composition_conforme_au_marqueur(devis):
+    """Les lignes du devis portent-elles ENCORE les produits du marqueur ?
+    Panneaux d'un seul produit (celui du marqueur), onduleur et batterie
+    imposés présents et seuls de leur classe. Faux dès qu'un humain a changé
+    un de ces produits à l'écran : la machine ne devine pas."""
+    from apps.ventes.domain.catalogue import (
+        _is_battery, _is_hybrid_inverter, _is_offgrid_inverter, _is_panel,
+        _is_reseau_inverter)
+    from apps.ventes.domain.lignes import _classe_ligne, _lignes_produit
+
+    produits = (marqueur(devis) or {}).get('produits') or {}
+    lignes = _lignes_produit(devis)
+
+    def _ids(*predicats):
+        return {li.produit_id for li in lignes
+                if any(_classe_ligne(li, p) for p in predicats)}
+
+    attendus = [((_is_panel,), produits.get('panneau')),
+                ((_is_battery,), produits.get('batterie')),
+                ((_is_reseau_inverter, _is_hybrid_inverter,
+                  _is_offgrid_inverter), produits.get('onduleur'))]
+    return bool(produits.get('panneau')) and all(
+        _ids(*predicats) == {produit_id}
+        for predicats, produit_id in attendus if produit_id)
+
+
+def marqueur_retaille(devis, imposition, *, modules=None):
+    """Le marqueur APRÈS une taille changée en place : la demande porte le
+    nouveau compte, les produits restent ceux du marqueur (``batterie_nombre``
+    suit ``modules`` s'il est donné), ``par`` / ``le`` disent qui et quand."""
+    ancien = marqueur(devis) or {}
+    produits = dict(ancien.get('produits') or {})
+    if modules and produits.get('batterie'):
+        produits['batterie_nombre'] = int(modules)
+    return {**ancien,
+            'demande': {**(ancien.get('demande') or {}),
+                        'nb_panneaux': int(imposition.nb_panneaux)},
+            'produits': produits,
+            'par': imposition.marqueur.get('par'),
+            'le': imposition.marqueur.get('le')}
 
 
 # ── Les lignes TTC (carte ``devis_cree`` + ``lignes-assistant``) ─────────────
