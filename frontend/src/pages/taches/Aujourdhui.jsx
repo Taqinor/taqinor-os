@@ -454,10 +454,18 @@ export default function Aujourdhui() {
   const { userId, societe } = useCompteTaches()
   // la carte « Ta saisie de tout à l'heure t'attend. » [Reprendre] lit le brouillon de la feuille de saisie
   const [brouillon, setBrouillon] = useState(() => lireBrouillon(societe, userId))
+  // R3-022 — pas de « Reprendre » sur une saisie OUVERTE (le brouillon y est déjà, sous les yeux) : la coquille ouvre
+  // toute saisie par `EVENEMENT_SAISIR` et prévient à sa fermeture par `EVENEMENT_SAISIE_FERMEE`
+  const [saisieOuverte, setSaisieOuverte] = useState(false)
   useEffect(() => {
-    const relire = () => setBrouillon(lireBrouillon(societe, userId))
+    const ouverte = () => setSaisieOuverte(true)
+    const relire = () => { setSaisieOuverte(false); setBrouillon(lireBrouillon(societe, userId)) }
+    window.addEventListener(EVENEMENT_SAISIR, ouverte)
     window.addEventListener(EVENEMENT_SAISIE_FERMEE, relire)
-    return () => window.removeEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+    return () => {
+      window.removeEventListener(EVENEMENT_SAISIR, ouverte)
+      window.removeEventListener(EVENEMENT_SAISIE_FERMEE, relire)
+    }
   }, [societe, userId])
   const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout, userId)
   const [estampilles, setEstampilles] = useState({})
@@ -1073,7 +1081,7 @@ export default function Aujourdhui() {
           bilanFait={Boolean(donnees.plan?.cloture_le)}
           onNaviguer={navigate}
           onCopilote={geste.copilote}
-          brouillon={brouillon ? (
+          brouillon={brouillon && !saisieOuverte ? (
             <div className="carte" role="region" aria-label="Brouillon">
               <p className="carte-texte">Ta saisie de tout à l&apos;heure t&apos;attend.</p>
               <div className="carte-actions">

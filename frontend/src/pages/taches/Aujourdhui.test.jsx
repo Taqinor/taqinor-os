@@ -286,7 +286,12 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       await userEvent.click(within(carte).getByRole('button', { name: 'Reprendre' }))
       expect(ouverture).toHaveBeenCalledTimes(1)
       expect(await screen.findByRole('textbox', { name: 'Ajouter une tâche' })).toHaveValue('Appeler le notaire')
+      // R3-022 — la saisie ouverte porte déjà le brouillon : plus de « Reprendre » par-dessus
+      expect(screen.queryByRole('region', { name: 'Brouillon' })).toBeNull()
       window.removeEventListener('taqinor:taches:saisir', ouverture)
+      // à la fermeture (brouillon gardé), la carte revient
+      act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:saisie-fermee')) })
+      expect(await screen.findByRole('region', { name: 'Brouillon' })).toBeInTheDocument()
     })
 
     it('une création ailleurs (`taqinor:taches:creees`) relit la journée une fois', async () => {

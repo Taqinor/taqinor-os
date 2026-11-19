@@ -318,3 +318,37 @@ describe('TCH77 — la ligne de progression', () => {
     expect(onRythme).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('R3-022 — au plus UNE carte de conseil par jour (astuce ou révélation), ni maintenant ni au rechargement', () => {
+  const revelation = () => ({ type: 'revelation', proposition: { ...proposition(), type: 'revelation', cle: 'mon_iphone', texte: 'Mets tes tâches sur ton iPhone.', boutons: [] } })
+
+  it('OK sur l\'astuce du balayage : la révélation servie ne prend PAS sa place, même rechargée', async () => {
+    appareil(true)
+    const jour = '2032-05-04'
+    const poignees = { onRepondre: vi.fn(), onNaviguer: vi.fn(), onCopilote: vi.fn() }
+    const { rerender, unmount } = render(<CarteDuMoment jour={jour} carte={revelation()} {...poignees} />)
+    expect(screen.getByText(/Balaie une ligne/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    rerender(<CarteDuMoment jour={jour} carte={revelation()} {...poignees} />)
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+    unmount()
+    render(<CarteDuMoment jour={jour} carte={revelation()} {...poignees} />) // « rechargement »
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+    // le lendemain, la carte de conseil revient (une par jour)
+    render(<CarteDuMoment jour="2032-05-05" carte={revelation()} {...poignees} />)
+    expect(screen.getAllByRole('region', { name: 'Astuce' })).toHaveLength(1)
+  })
+
+  it('OK sur une révélation : aucune astuce ni autre révélation ce jour-là', async () => {
+    appareil(true)
+    const jour = '2032-06-01'
+    const poignees = { onRepondre: vi.fn(), onNaviguer: vi.fn(), onCopilote: vi.fn() }
+    // toutes les astuces du doigt déjà vues : la révélation est la carte de conseil du jour
+    window.localStorage.setItem('taches:astuces', JSON.stringify({ vues: ['balayage', 'appui_long', 'diese'], jour: '2032-05-31' }))
+    const { rerender } = render(<CarteDuMoment jour={jour} carte={revelation()} {...poignees} />)
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(poignees.onRepondre).toHaveBeenCalledWith(expect.objectContaining({ cle: 'mon_iphone' }), 'ok')
+    rerender(<CarteDuMoment jour={jour} carte={{ ...revelation(), proposition: { ...revelation().proposition, cle: 'revue', id: 99 } }} {...poignees} />)
+    expect(screen.queryByRole('region', { name: 'Astuce' })).toBeNull()
+  })
+})
