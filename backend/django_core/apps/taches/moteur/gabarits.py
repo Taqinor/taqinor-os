@@ -438,10 +438,13 @@ def _jour_court(d):
 
 
 def _debut_revue(v):
-    phrase = 'Du {debut} au {fin} : {faites} tâche{faites?|s} en {jours} jour{jours?|s}'
+    """« Cette semaine : 4 faites (9 la précédente). » (R2-034) ; une revue demandée pour une AUTRE semaine
+    (`courante` faux) garde ses dates : « Du lun. 9 au ven. 13 : 4 faites (9 la précédente). »"""
+    tete = 'Cette semaine' if v.get('courante', True) else 'Du {debut} au {fin}'
+    phrase = tete + ' : {faites} faite{faites?|s}'
     v = dict(v, debut=_jour_court(v['debut']), fin=_jour_court(v['fin']))
     if v.get('prec') is not None:
-        phrase += ' (précédente : {prec})'
+        phrase += ' ({prec} la précédente)'
     return _rendre(phrase, v) + '.'
 
 

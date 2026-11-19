@@ -500,33 +500,42 @@ class ConstatsTests(Tableau):
 
 
 class RevueTests(Tableau):
+    """R2-034 — la tête de la Revue se lit d'un coup d'œil : « Cette semaine : 18 faites (15 la précédente). » (plus
+    « 4 tâches en 1 jour (précédente : 9) »)."""
     BASE = {'debut': date(2026, 11, 16), 'fin': date(2026, 11, 20), 'faites': 18, 'jours': 5, 'prec': 15,
             'oa': 3, 'e': 4, 'je': 5, 'pt': 14, 'pl': 18, 'non_travailles': 0, 'mode': 'pousser'}
 
     def test_complete(self):
         self.verifier([('revue', 'entete', self.BASE, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours (précédente : 15). '
+                        'Cette semaine : 18 faites (15 la précédente). '
                         'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5 · 14 des 18 gardées.')])
 
     def test_sans_semaine_precedente(self):
         d = dict(self.BASE, prec=None)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours. '
+                        'Cette semaine : 18 faites. '
                         'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5 · 14 des 18 gardées.')])
 
     def test_libre_sans_objectif_atteint(self):
         d = dict(self.BASE, mode='libre', oa=None)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 18 tâches en 5 jours (précédente : 15). '
+                        'Cette semaine : 18 faites (15 la précédente). '
                         'essentiel 4 sur 5 · 14 des 18 gardées.')])
 
     def test_parties_sans_objet_omises_et_accords(self):
         d = dict(self.BASE, faites=1, jours=1, oa=1, je=0, pl=0, prec=None, non_travailles=1)
         self.verifier([('revue', 'entete', d, 0,
-                        'Du lun. 16 au ven. 20 : 1 tâche en 1 jour. '
+                        'Cette semaine : 1 faite. '
                         'Objectif atteint 1 jour sur 1. Jour non travaillé : 1.')])
         d = dict(d, non_travailles=2)
         self.assertTrue(texte('revue', 'entete', d).endswith('Jours non travaillés : 2.'))
+
+    def test_semaine_deja_passee_garde_ses_dates(self):
+        """Une revue demandée pour une AUTRE semaine (`courante` faux) ne se dit jamais « cette semaine »."""
+        d = dict(self.BASE, courante=False)
+        self.verifier([('revue', 'entete', d, 0,
+                        'Du lun. 16 au ven. 20 : 18 faites (15 la précédente). '
+                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5 · 14 des 18 gardées.')])
 
     def test_semaine_courte(self):
         d = dict(self.BASE, semaine_courte=True)

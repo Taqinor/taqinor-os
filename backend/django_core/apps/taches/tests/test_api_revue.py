@@ -169,7 +169,7 @@ class BilanDeSemaineTests(_Base):
         self.assertFalse(corps['semaine_courte'])
         self.assertEqual(set(corps['bilan_semaine']), {'texte', 'donnees'})
         self.assertEqual(corps['bilan_semaine']['donnees'], {'faites': 26, 'jours': 5, 'prec': 8})
-        self.assertIn('26 tâches en 5 jours (précédente : 8)', corps['bilan_semaine']['texte'])
+        self.assertIn('26 faites (8 la précédente)', corps['bilan_semaine']['texte'])
 
     def test_sans_semaine_precedente_pas_de_parenthese(self):
         lundi = _lundi() - datetime.timedelta(days=7)
@@ -235,7 +235,7 @@ class ObjectifAtteintDeLaSemaineTests(_Base):
         self.assertEqual(list(PlanJour.objects.filter(proprietaire=self.u1).order_by('jour')
                               .values_list('statut_jour', 'compte_rythme', 'objectif_du_jour')),
                          [('evalue', 6, 5)] * 4)
-        self.assertIn('24 tâches en 4 jours. Objectif atteint 4 jours sur 4.', self.texte())
+        self.assertIn('24 faites. Objectif atteint 4 jours sur 4.', self.texte())
 
     def test_jours_non_travailles_seulement_parmi_ses_jours_travailles(self):
         from apps.taches.services.journee import clore_jour_precedent

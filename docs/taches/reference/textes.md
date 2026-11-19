@@ -640,9 +640,11 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 
 ### 4.6 Revue de la semaine (en tête)
 
-« Du {lun.} au {ven.} : {faites} tâches en {jours} jours (précédente : {prec}). Objectif atteint {oa} jours sur {jours}
+« Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
 · essentiel {e} sur {je} · {pt} des {pl} gardées. {Jour non travaillé} : {n}. » — parties sans objet omises (`libre` :
-sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Semaine courte (`semaine_courte`) : « Semaine
+sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
+(`courante` faux dans les données du gabarit) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
+précédente). » (R2-034 ; avant : « Du lun. 16 au ven. 20 : 4 tâches en 1 jour (précédente : 9). ») Semaine courte (`semaine_courte`) : « Semaine
 courte, on reprend lundi. » à la place. UN constat au plus en dessous. Bouton final « Planifier ma semaine ».
 
 ## 5. Le Copilote
