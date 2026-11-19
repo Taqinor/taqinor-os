@@ -1034,6 +1034,32 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     expect(screen.queryByRole('dialog', { name: 'Alléger ma journée' })).toBeNull()
   })
 
+  it('R3-030 — une saisie qui PART : ses lignes du jour sont là tout de suite, grisées « envoi… » ; le retour les remplace ; un échec les retire', async () => {
+    const d = donnees()
+    servir(d)
+    const { container } = monter()
+    await screen.findByText('Devis Settat')
+    const envoi = (detail) => act(() => { window.dispatchEvent(new CustomEvent('taqinor:taches:envoi', { detail })) })
+    envoi({ etat: 'part', envoi: 'k1', lignes: [
+      { client_id: 'k1:0', titre: 'Appeler la banque', jour: d.jour },
+      { client_id: 'k1:1', titre: 'Relancer Lydec', jour: d.jour },
+      { client_id: 'k1:2', titre: 'Pour demain', jour: '2026-11-18' },
+    ] })
+    const zone = screen.getByRole('region', { name: 'Envoi en cours' })
+    expect(within(zone).getAllByRole('listitem').map((l) => l.querySelector('.titre').textContent)).toEqual(['Appeler la banque', 'Relancer Lydec'])
+    expect(zone).toHaveTextContent('envoi…')
+    expect(within(zone).queryByRole('checkbox')).toBeNull()
+    const creee = { ...d.journee[0], id: 901, titre: 'Appeler la banque', jour_prevu: d.jour, lock_version: 0 }
+    envoi({ etat: 'creees', envoi: 'k1', creees: [creee] })
+    expect(screen.queryByRole('region', { name: 'Envoi en cours' })).toBeNull()
+    expect(container.querySelector('[data-ligne="tache:901"]')).toHaveTextContent('Appeler la banque')
+    envoi({ etat: 'part', envoi: 'k2', lignes: [{ client_id: 'k2:0', titre: 'Refusée', jour: d.jour }] })
+    expect(screen.getByRole('region', { name: 'Envoi en cours' })).toHaveTextContent('Refusée')
+    envoi({ etat: 'echec', envoi: 'k2' })
+    expect(screen.queryByRole('region', { name: 'Envoi en cours' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull() // aucun toast ici : la saisie dit le sien
+  })
+
   it('R3-028 — Entrée sur une activité ERP SANS adresse le dit aussi (jamais rien sans un mot)', async () => {
     const d = donnees()
     d.journee = d.journee.map((it) => (it.type === 'activite' ? { ...it, lien: null } : it))

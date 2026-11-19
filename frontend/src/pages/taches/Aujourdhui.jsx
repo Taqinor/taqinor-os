@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR, SaisieBureau } from '../../features/taches/coquille/CoquilleTaches'
-import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
+import { EVENEMENT_ENVOI, lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
@@ -403,19 +403,58 @@ function useAjoutsEnFile() {
   return ajouts
 }
 
-/** « En attente d'envoi » : les ajouts hors ligne, grisés, sans case ni geste (ils n'existent pas encore). */
-function AjoutsEnFile({ ajouts }) {
+/**
+ * R3-030 — les tâches qui PARTENT de la saisie (événement `taqinor:taches:envoi` de la feuille, R3-046) : prévues
+ * aujourd'hui, elles sont à l'écran dès le toucher, grisées « envoi… », même sur un réseau lent ; au retour du serveur
+ * (`creees`), la vraie ligne prend leur place sans attendre la relecture ; `echec` ou `en_file` les retire (la phrase
+ * revient à la saisie, ou la file « En attente d'envoi » prend le relais). Aucun toast ici : la saisie dit le sien.
+ */
+function useEnvois(jour, setDonnees) {
+  const [envois, setEnvois] = useState({}) // clé d'envoi → lignes annoncées (celles d'aujourd'hui)
+  useEffect(() => {
+    const surEnvoi = (e) => {
+      const detail = e?.detail ?? {}
+      if (!detail.envoi) return
+      if (detail.etat === 'part') {
+        const lignes = (detail.lignes ?? []).filter((l) => l?.jour && l.jour === jour)
+        if (lignes.length > 0) setEnvois((v) => ({ ...v, [detail.envoi]: lignes }))
+        return
+      }
+      setEnvois((v) => { const suite = { ...v }; delete suite[detail.envoi]; return suite })
+      if (detail.etat !== 'creees') return
+      const nouvelles = (detail.creees ?? []).filter((it) => it?.type === 'tache' && it.jour_prevu === jour)
+      if (nouvelles.length === 0) return
+      setDonnees((d) => {
+        if (!d) return d
+        const absentes = nouvelles.filter((it) => !chercher(d, cleDe(it)))
+        if (absentes.length === 0) return d
+        const soir = absentes.filter((it) => it.moment === 'soir')
+        const jourItems = absentes.filter((it) => it.moment !== 'soir')
+        return { ...d, journee: [...(d.journee ?? []), ...jourItems], ce_soir: [...(d.ce_soir ?? []), ...soir] }
+      })
+    }
+    window.addEventListener(EVENEMENT_ENVOI, surEnvoi)
+    return () => window.removeEventListener(EVENEMENT_ENVOI, surEnvoi)
+  }, [jour, setDonnees])
+  return useMemo(() => Object.entries(envois).flatMap(([envoi, lignes]) => lignes.map((l, rang) => ({
+    cle: l.client_id ?? `${envoi}:${rang}`, titre: l.titre,
+  }))), [envois])
+}
+
+/** « En attente d'envoi » : les ajouts hors ligne, grisés, sans case ni geste (ils n'existent pas encore) ; R3-030 : la
+ *  même ligne pour un envoi en cours (« envoi… »). */
+function AjoutsEnFile({ ajouts, titre = 'En attente d’envoi', meta = TOAST_EN_FILE, attribut = 'data-en-file' }) {
   if (ajouts.length === 0) return null
   return (
-    <section className="section en-file" role="region" aria-label="En attente d’envoi">
-      <h2 className="section-titre"><span>En attente d&apos;envoi</span></h2>
+    <section className="section en-file" role="region" aria-label={titre}>
+      <h2 className="section-titre"><span>{titre}</span></h2>
       <div className="liste" role="list">
         {ajouts.map((ajout) => (
-          <div key={ajout.cle} className="ligne lecture-seule en-file" role="listitem" data-en-file="">
+          <div key={ajout.cle} className="ligne lecture-seule en-file" role="listitem" {...{ [attribut]: '' }}>
             <span className="case vide" aria-hidden="true" />
             <div className="ligne-corps">
               <div className="titre">{ajout.titre}</div>
-              <div className="meta"><span>{TOAST_EN_FILE}</span></div>
+              <div className="meta"><span>{meta}</span></div>
             </div>
             <div className="ligne-fin" />
           </div>
@@ -463,6 +502,7 @@ export default function Aujourdhui() {
   const [deplierARevoir, setDeplierARevoir] = useState(0)
   const bureau = useBureau()
   const ajoutsEnFile = useAjoutsEnFile()
+  const enEnvoi = useEnvois(donnees?.jour ?? null, setDonnees)
   const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
   const garde = useCallback(() => {
@@ -1087,6 +1127,7 @@ export default function Aujourdhui() {
       <SaisieBureau onClick={() => ouvrirSaisie({})} />
       {bandeau}
       <AjoutsEnFile ajouts={ajoutsEnFile} />
+      <AjoutsEnFile ajouts={enEnvoi} titre="Envoi en cours" meta="envoi…" attribut="data-envoi" />
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment
           carte={donnees.carte_du_moment}
