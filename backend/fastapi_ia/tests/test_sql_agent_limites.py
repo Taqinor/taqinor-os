@@ -786,6 +786,27 @@ class ChargeurNatifFnd4Tests(unittest.TestCase):
         self.assertNotIn(ch.ENTETE_INDEX, systeme)
 
 
+class MetriqueNatifFnd9Tests(unittest.TestCase):
+    """Vague 2 (FND9) — `metrique_gouvernee` est donné au moteur natif (non
+    différé), sortie étiquetée non fiable, lecture tierce (A5) ; absent sans
+    catalogue de métriques."""
+
+    def test_outil_natif_etiquete_et_marque_le_tour(self):
+        from app.services import action_tools as at, metriques_gouvernees as mg, relais_copilote as relais
+        ctx = at.ActionContext(company_id=7, role="admin", permissions=[], token="jwt")
+        metriques = [{"cle": "ca_ht", "libelle": "CA HT", "description": "", "unite": "MAD"}]
+        with mock.patch.object(mg, "catalogue_metriques", return_value=metriques), \
+                mock.patch.object(mg, "lire_valeur", return_value={"ok": True, "cle": "ca_ht", "valeur": 12}):
+            outil, = relais._outil_metrique(ctx, False)
+            sortie = outil.executer({"cle": "ca_ht"})
+        self.assertEqual((outil.nom, outil.differe), ("metrique_gouvernee", False))
+        self.assertIn("ca_ht", outil.description)
+        self.assertEqual(json.loads(sortie)["fiabilite"], "non_fiable")
+        self.assertTrue(at.contenu_tiers_du_tour(ctx))
+        with mock.patch.object(mg, "catalogue_metriques", return_value=[]):
+            self.assertEqual(relais._outil_metrique(ctx, False), [])
+
+
 class JeuxDesMoteursFnd6Tests(unittest.TestCase):
     """Vague 2 (FND6) — Groq copilote allumé = noyau seul ; copilote éteint,
     la règle d'avant ; le repli recalcule son jeu ; LangChain ne reçoit

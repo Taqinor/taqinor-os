@@ -697,6 +697,24 @@ def _outils_fixes(lecture, schema, collecteur: list) -> list:
     ]
 
 
+def _outil_metrique(ctx, allow_price: bool) -> list:
+    """Vague 2 (FND9) — `metrique_gouvernee` au moteur natif aussi (il n'était
+    donné qu'à LangChain : sous le natif, tout chiffre de CA passait par du SQL
+    ad hoc). Même outil, mêmes règles (catalogue `pour-agent`, filtre marge),
+    sortie étiquetée NON FIABLE et lecture tierce (A5) ; non différé."""
+    from app.services.metriques_gouvernees import outil_metrique_gouvernee
+    from app.services.moteur_natif import OutilNatif
+    from app.services.sql_agent_service import _etiqueter_outils
+
+    metrique = outil_metrique_gouvernee(ctx, allow_price)
+    if metrique is None:
+        return []
+    marquer_lectures_tierces(_etiqueter_outils([metrique]), ctx)
+    return [OutilNatif("metrique_gouvernee", metrique.description, {
+        "type": "object", "properties": {"cle": {"type": "string"}}, "required": ["cle"]},
+        lambda a: metrique.invoke({"cle": str((a or {}).get("cle") or "")}))]
+
+
 def _tracer(outil, appeles: list):
     """L'outil, dont chaque appel est NOTÉ dans `appeles` (SQL et signalement
     compris) : un tour qui a appelé un outil n'est jamais rejoué ailleurs."""
@@ -723,7 +741,7 @@ def _preparer(service, question: str, company_id: int, ctx,
     marquer_lectures_tierces([lecture, schema], ctx)  # A5
     outils, domaines = chargeur.differer(
         [_outil_action(ctx, a, collecteur) for a in catalogue], catalogue)
-    outils += _outils_fixes(lecture, schema, collecteur)
+    outils += _outils_fixes(lecture, schema, collecteur) + _outil_metrique(ctx, droits[0])
     outils += [chargeur.outil_charger(domaines)] if domaines else []
     appeles: list = []
     contenu, present = svc._contenu_systeme(
