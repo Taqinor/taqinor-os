@@ -338,6 +338,27 @@ def _rangees_argent(argent, fmt_mad, L, d):
     return rangees
 
 
+def _rangee_duree_batterie(argent, fmt, L):
+    """Niveau 13 (fondateur 19/11/2026) — « Durée de vie de la batterie :
+    8 000 cycles publiés, environ 289 cycles par an — aucun remplacement sur
+    25 ans », chaque nombre LU sur ``argent.batterie_duree`` (servi par
+    ``economie_ci_options.flux_option_avec`` quand les cycles ont fixé
+    l'année) ; un remplacement dans l'horizon garde sa ligne « Remplacement
+    batterie en année N » et celle-ci perd sa fin. Sans la clé : rien."""
+    duree = argent.get("batterie_duree") if isinstance(argent, dict) else None
+    duree = duree if isinstance(duree, dict) else {}
+    cycles, par_an = _num(duree.get("cycles_publies")), _num(duree.get("cycles_par_an"))
+    if not cycles or not par_an:
+        return []
+    valeur = L("ci_h_duree_batterie_cycles", "{cycles} cycles publiés, environ "
+               "{par_an} cycles par an", cycles=fmt(cycles), par_an=fmt(par_an))
+    horizon = _num(duree.get("horizon_ans"))
+    if duree.get("annee_remplacement") is None and horizon:
+        valeur += L("ci_h_duree_batterie_aucun", " — aucun remplacement sur {n} ans",
+                    n=_decimal_txt(horizon))
+    return [(L("ci_h_duree_batterie", "Durée de vie de la batterie"), valeur)]
+
+
 def _rangees_estimation(synthese, L):
     """AMOT91 — la base de production (« 30° d'inclinaison, plein sud — à
     confirmer au calepinage », ou le calepinage retenu) et la règle de
@@ -457,7 +478,7 @@ def rangees_hypotheses(d, synthese, fmt, fmt_mad, L, *, compact=False,
     argent = argent if isinstance(argent, dict) else {}
     _cle, flux = flux_principal(argent)
     rangees = _rangees_flux(flux, fmt, L, d, compact) + _rangees_argent(
-        argent, fmt_mad, L, d)
+        argent, fmt_mad, L, d) + _rangee_duree_batterie(argent, fmt, L)
     if om and argent:
         rangees += _rangee_om(argent, fmt_mad, L)
     return rangees + _rangees_estimation(synthese, L)

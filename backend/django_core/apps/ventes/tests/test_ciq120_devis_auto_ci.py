@@ -624,6 +624,59 @@ class OptionBatterieCITests(_Base):
                          servi if servi and servi > 0 else None)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
 
+    def test_niveau_13_cycles_publies_niveau_12_garde_l_annee_11(self):
+        """Décision fondateur du 19/11/2026 (« cycles publiés, usage réel ») —
+        fiche Dyness à 8 000 cycles et 10 ans de garantie : un devis au niveau
+        12 (envoyé) garde son remplacement en année 11 ; au niveau 13 l'année
+        est ⌊8 000 ÷ cycles par an de SON bilan⌋ + 1, aucun remplacement au-delà
+        de 25 ans, et la durée de vie est imprimée dans « Bases du calcul »."""
+        from functools import partial
+
+        from apps.ventes.economie_ci_options import cycles_par_an_du_bilan
+        from apps.ventes.quote_engine.ci import blocs as ci_blocs
+        from apps.ventes.quote_engine.ci.synthese import _argent_option_avec
+        from apps.ventes.quote_engine.industriel.finance import rangees_hypotheses
+        from apps.ventes.quote_engine.residential.theme import fmt
+        ids = [self.b5.id, self.b10.id, self.b16.id]
+        Produit.objects.filter(pk__in=ids).update(garantie_mois=120)
+        FicheTechnique.objects.filter(produit_id__in=ids).update(bat_cycles_publies=8000)
+        options = {}
+        for niveau in (12, 13):
+            devis = self._auto(self._boulangerie())
+            Devis.objects.filter(pk=devis.pk).update(regles_calcul=niveau)
+            devis.refresh_from_db()
+            with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+                etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+            devis.refresh_from_db()
+            self.assertEqual(devis.regles_calcul, niveau)
+            options[niveau] = devis.etude_params['etude_ci']['option_avec']
+            self.assertIsNotNone(options[niveau]['economie_flux'], niveau)
+
+        def annees_batterie(option):
+            return [r['annee'] for r in option['economie_flux']['remplacements']
+                    if r['composant'] == 'batterie']
+        self.assertEqual(annees_batterie(options[12]), [11])
+        self.assertNotIn('batterie_duree', options[12]['economie_flux'])
+        par_an = cycles_par_an_du_bilan(options[13]['bilan'])
+        self.assertTrue(par_an and par_an > 0)
+        annee = int(8000 // par_an) + 1
+        dans = annee <= 25
+        self.assertEqual(options[13]['economie_flux']['batterie_duree'], {
+            'cycles_publies': 8000, 'cycles_par_an': int(round(par_an)),
+            'annee_remplacement': annee if dans else None, 'horizon_ans': 25})
+        self.assertEqual(annees_batterie(options[13]), [annee] if dans else [])
+        # Imprimé (« Bases du calcul » : les rangées de la page finance et de la
+        # page 3 commerciale), chaque nombre lu sur ``batterie_duree``.
+        argent, _motif = _argent_option_avec(options[13], 'industriel')
+        rangees = dict((libelle, valeur) for libelle, valeur in rangees_hypotheses(
+            {}, {'argent': argent}, fmt, fmt, partial(ci_blocs.libelle, {})) if libelle)
+        attendu = '%s cycles publiés, environ %s cycles par an' % (fmt(8000), fmt(round(par_an)))
+        self.assertEqual(rangees['Durée de vie de la batterie'],
+                         attendu if dans else attendu + ' — aucun remplacement sur 25 ans')
+        argent_12, _motif = _argent_option_avec(options[12], 'industriel')
+        self.assertNotIn('Durée de vie de la batterie', dict(rangees_hypotheses(
+            {}, {'argent': argent_12}, fmt, fmt, partial(ci_blocs.libelle, {}))))
+
     def test_d4_banque_recommandee_gardee_quand_le_vendeur_en_chiffre_moins(self):
         """D4 (fondateur 17/11/2026) — la banque composée à la création reste
         connue du devis (``banque_recommandee``) ; une ligne batterie baissée

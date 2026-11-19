@@ -588,11 +588,12 @@ def _libelle_base(ligne):
 def _lignes_bases(d, o, fmt, fmt_mad, L):
     """``(hypothèses générales, remplacements)`` d'une option — les lignes de
     ``finance._hypotheses`` ; les remplacements sont celles qui disparaissent
-    quand on retire ``argent.remplacements``."""
+    quand on retire ``argent.remplacements`` et ``argent.batterie_duree``
+    (niveau 13 : la durée de vie de la batterie, sous le nom de SON option)."""
     from . import finance as F
     flux = F.flux_principal(o["argent"])[1]
     toutes = F._hypotheses(o["argent"], flux, fmt, fmt_mad, L, d)
-    generales = F._hypotheses(dict(o["argent"], remplacements=[]), flux,
+    generales = F._hypotheses(dict(o["argent"], remplacements=[], batterie_duree=None), flux,
                               fmt, fmt_mad, L, d)
     return generales, [li for li in toutes if li not in generales]
 
