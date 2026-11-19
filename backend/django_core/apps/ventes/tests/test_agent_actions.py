@@ -920,3 +920,26 @@ class CycleDevisAssistantTest(_BaseVenteAssistant):
         refus = auth(self.user).post(url, {}, format='json')
         self.assertEqual(refus.status_code, 409, refus.data)
         self.assertIn('réviser', refus.data['detail'])
+
+    def test_refuser_motif_de_la_liste_lead_perdu_requis_accepte_409(self):
+        from apps.crm.models import MotifPerte
+        from apps.ventes.agent_actions import REFUSER_DEVIS
+        self._ecriture_copilote(REFUSER_DEVIS, 'ventes_valider')
+        self.assertIn('marquer_lead_perdu', REFUSER_DEVIS.inputs['required'])
+        self.assertNotIn('date', REFUSER_DEVIS.inputs['properties'])
+        MotifPerte.objects.create(company=self.company, nom='Prix')
+        url = REFUSER_DEVIS.endpoint.format(id=self.devis.pk)
+        inconnu = auth(self.user).post(url, {
+            'motif': 'Météo', 'marquer_lead_perdu': False}, format='json')
+        self.assertEqual(inconnu.status_code, 409, inconnu.data)
+        resp = auth(self.user).post(url, {
+            'motif': 'prix', 'note': 'trop cher', 'marquer_lead_perdu': False},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.devis.refresh_from_db()
+        self.assertEqual((self.devis.statut, self.devis.motif_refus),
+                         (Devis.Statut.REFUSE, 'Prix'))
+        Devis.objects.filter(pk=self.devis.pk).update(statut=Devis.Statut.ACCEPTE)
+        accepte = auth(self.user).post(url, {
+            'motif': 'Prix', 'marquer_lead_perdu': False}, format='json')
+        self.assertEqual(accepte.status_code, 409, accepte.data)

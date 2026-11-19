@@ -874,12 +874,49 @@ PROLONGER_DEVIS = AgentAction(
 )
 
 
+# VAD5 — le client refuse le devis (route existante ``POST devis/{id}/refuser/``,
+# garde ``HasPermissionOrLegacy('ventes_valider')``). ``marquer_lead_perdu`` est
+# REQUIS : l'assistant l'a demandé, il ne le suppose jamais ; pas de ``date``
+# (le serveur pose aujourd'hui). Un accepté ne se refuse pas (dés-acceptation =
+# geste d'écran, 409).
+REFUSER_DEVIS = AgentAction(
+    key='ventes.devis.refuser',
+    label='Marquer le devis refusé par le client (lead perdu si demandé)',
+    description=(
+        "Sert à : marquer refusé un devis brouillon ou envoyé que le client a "
+        "décliné, avec le motif de la liste de la société (crm.motifs_perte."
+        "lister) ; demande TOUJOURS s'il faut aussi marquer le lead perdu. Ne "
+        "pas utiliser pour : un devis accepté (la dés-acceptation se fait à "
+        "l'écran) ni une version remplacée. Exemple : « Benali ne veut plus, "
+        "trop cher » → id, motif=Prix, marquer_lead_perdu=true si confirmé. "
+        "Résultat : devis refusé ; une V2 refusée réactive la V1."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/refuser/',
+    method='POST',
+    inputs={'type': 'object', 'properties': {
+        'id': _entier('Identifiant du devis.'),
+        'motif': {'type': 'string', 'title': 'Motif',
+                  'description': 'Nom EXACT d\'un motif de perte de la société.'},
+        'note': {'type': 'string', 'maxLength': 255, 'title': 'Note interne',
+                 'description': 'Note interne au chatter du devis (facultative).'},
+        'marquer_lead_perdu': {'type': 'boolean', 'title': 'Lead perdu',
+                               'description': 'Demandé à l\'utilisateur, jamais supposé.'},
+    }, 'required': ['id', 'motif', 'marquer_lead_perdu'],
+        'additionalProperties': False},
+    required_permission=_PERM_VALIDER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Marquer ce devis refusé par le client.',
+    lot=LOT_COPILOTE,
+    objets={'id': 'devis'},
+)
+
+
 # AIC99 — lot « copilote » (copilote allumé seulement), hors ``VENTES_ACTIONS``.
 VENTES_ACTIONS_COPILOTE = (EXPLIQUER_DEVIS, ENVOYER_EMAIL_DEVIS,
                            CHERCHER_CATALOGUE, COMPOSER_DEVIS, LIGNES_DEVIS,
                            # Copilote vague 2 (lane VAD).
                            VENTE_ETAT, IMPAYES_LISTER, FACTURE_CHERCHER,
-                           PROLONGER_DEVIS)
+                           PROLONGER_DEVIS, REFUSER_DEVIS)
 
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
