@@ -236,6 +236,27 @@ describe('TCH109 — Mon iPhone', () => {
     expect(screen.getByText("Une tâche confidentielle n'y apparaît jamais par son titre.")).toBeInTheDocument()
   })
 
+  it('R2-126 — « Mettre Tâches sur l\'écran d\'accueil » est la première chose de l\'écran, nommée, avec ses marches', async () => {
+    const { container } = monter()
+    const bloc = await screen.findByRole('region', { name: "Mettre Tâches sur l'écran d'accueil" })
+    expect(within(bloc).getByRole('heading', { name: /Mettre Tâches sur l'écran d'accueil/ })).toHaveTextContent('À faire')
+    const marches = within(bloc).getAllByRole('listitem').map((li) => li.textContent)
+    expect(marches[0]).toMatch(/^Dans Safari, touche le bouton Partager/)
+    expect(marches[1]).toMatch(/« Sur l'écran d'accueil »/)
+    // il précède les cinq étapes (qui restent cinq) dans l'écran
+    expect(bloc.compareDocumentPosition(container.querySelector('ol.ep-etapes')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(container.querySelectorAll('ol.ep-etapes > li')).toHaveLength(5)
+  })
+
+  it('R2-126 — ouvert depuis son icône (mode autonome), l\'étape est « Fait » et ses marches disparaissent', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true })
+    monter()
+    const bloc = await screen.findByRole('region', { name: "Mettre Tâches sur l'écran d'accueil" })
+    expect(within(bloc).getByRole('heading')).toHaveTextContent('Fait')
+    expect(within(bloc).queryByRole('listitem')).toBeNull()
+    delete window.matchMedia
+  })
+
   it('un échec de lecture des jetons dit « Pas à jour » et garde l\'écran', async () => {
     listerJetons.mockRejectedValue(new Error('Network Error'))
     monter()

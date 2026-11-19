@@ -822,9 +822,14 @@ Jamais utilisé »). Régénérer : « Régénérer ? L'ancien cesse de marcher 
 affiché : colle-le maintenant. » Perdu : « Perdu ? Régénère-le. » La carte « Mon iPhone » d'Aujourd'hui y mène, 3 jours
 au plus.
 
+**Avant les étapes (R2-126) — « Mettre Tâches sur l'écran d'accueil ».** Un bloc nommé, au-dessus des cinq étapes, « Fait »
+quand l'ERP est ouvert depuis son icône (mode autonome), sinon « À faire » : 1. Dans Safari, touche le bouton Partager.
+2. Touche « Sur l'écran d'accueil », puis « Ajouter ». 3. Ouvre ensuite l'ERP depuis son icône, pas depuis Safari. —
+« Il faut iOS 16.4 ou plus récent pour les notifications. » Il ne compte pas dans « {k} sur 5 ».
+
 **Étape 1 — Recevoir les notifications.**
-1. Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari. Pas d'icône ? Dans Safari, touche le bouton
-   Partager, puis « Sur l'écran d'accueil ». Il faut iOS 16.4 ou plus récent.
+1. Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari (pas d'icône : « Mettre Tâches sur l'écran
+   d'accueil », plus haut).
 2. Touche « Autoriser les notifications », puis « Autoriser » quand l'iPhone le demande.
 3. « Montrer le titre sur l'écran verrouillé ? » [Oui] [Non] — sans réponse, seulement des nombres.
 4. Touche « Envoyer un test » : une notification « Test des notifications » doit arriver.

@@ -53,6 +53,12 @@ async function copier(texte) {
   }
 }
 
+/** Vrai quand l'ERP tourne depuis son icône de l'écran d'accueil (mode autonome, Safari ou autre navigateur). */
+function installee() {
+  const autonome = typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)')?.matches
+  return Boolean(autonome || window.navigator.standalone === true)
+}
+
 function permissionNotifications() {
   if (!pushSupported()) return 'unsupported'
   return window.Notification.permission
@@ -117,6 +123,31 @@ function Etape({ numero, titre, fait, ouverte, onBasculer, children }) {
   )
 }
 
+/* ── Avant les étapes : mettre l'ERP sur l'écran d'accueil (R2-126) ──────────────────────────── */
+
+/** Les notifications et l'icône d'accueil exigent que l'ERP soit sur l'écran d'accueil : c'est la première chose
+ *  de l'écran, nommée, avec « Fait » quand on l'ouvre déjà depuis son icône (R2-126, S1 n°14). */
+function MettreSurAccueil({ fait }) {
+  return (
+    <section className="section ep-installer" aria-label="Mettre Tâches sur l'écran d'accueil">
+      <h2 className="section-titre">
+        <span>Mettre Tâches sur l'écran d'accueil</span>
+        <span className="compte">{fait ? 'Fait' : 'À faire'}</span>
+      </h2>
+      {fait ? <p className="rassure">Tu l'ouvres depuis son icône.</p> : (
+        <>
+          <ol className="list-decimal">
+            <li>Dans Safari, touche le bouton Partager.</li>
+            <li>{"Touche « Sur l'écran d'accueil », puis « Ajouter »."}</li>
+            <li>Ouvre ensuite l'ERP depuis son icône, pas depuis Safari.</li>
+          </ol>
+          <p className="rassure">Il faut iOS 16.4 ou plus récent pour les notifications.</p>
+        </>
+      )}
+    </section>
+  )
+}
+
 /* ── Étape 1 : notifications ─────────────────────────────────────────────────────────────────── */
 
 function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onReglage, erreur }) {
@@ -126,7 +157,7 @@ function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onRegla
   return (
     <>
       <ol className="list-decimal">
-        <li>Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari. Pas d'icône ? Dans Safari, touche le bouton Partager, puis « Sur l'écran d'accueil ». Il faut iOS 16.4 ou plus récent.</li>
+        <li>{"Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari (pas d'icône : « Mettre Tâches sur l'écran d'accueil », plus haut)."}</li>
         <li>Touche « Autoriser les notifications », puis « Autoriser » quand l'iPhone le demande.</li>
         <li>{"« Montrer le titre sur l'écran verrouillé ? » · sans réponse, seulement des nombres."}</li>
         <li>Touche « Envoyer un test » : une notification « Test des notifications » doit arriver.</li>
@@ -394,6 +425,7 @@ export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDeman
 
   return (
     <div>
+      <MettreSurAccueil fait={installee()} />
       <p className="ep-intro">Cinq étapes, à faire une fois. Chacune se replie quand elle est faite.</p>
       <div className="ep-progres-etapes chiffres">
         <span>{`${nombre} sur 5`}</span>
