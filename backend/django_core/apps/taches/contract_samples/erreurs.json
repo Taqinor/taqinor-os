@@ -183,6 +183,10 @@
     "deja_lie": {
       "detail": "Cette activité a déjà sa tâche.",
       "code": "deja_lie"
+    },
+    "effacement_occupe": {
+      "detail": "Rien n'a été effacé : tes données étaient en cours d'utilisation. Réessaie dans un instant.",
+      "code": "effacement_occupe"
     }
   }
 }

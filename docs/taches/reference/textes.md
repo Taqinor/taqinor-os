@@ -449,7 +449,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `valeur` (préférences) | heures « Heure attendue (HH:MM). » · `capacite_jour_min` « Entre 30 et 720 minutes. » · `conges` « La date de fin précède la date de début. » · `jours_travailles` « Garde au moins un jour travaillé. » · `note_libre` « 200 caractères au plus. » / « 10 phrases au plus. » · `revue_semaine` « Choisis un jour, Auto ou Éteinte. » |
 | `cle` | « Clé inconnue. » |
 | réglage hors liste blanche | « Non modifiable ici. » |
-| `confirmation` | « Tape EFFACER pour confirmer. » |
+| `confirmation` | « Tape EFFACER pour confirmer. » ; 409 `effacement_occupe` (sous le champ, rien d'effacé) : « Rien n'a été effacé : tes données étaient en cours d'utilisation. Réessaie dans un instant. » |
 | `url` (agenda externe) | « Ce n'est pas une adresse : colle le lien de ton agenda. » · « L'adresse doit commencer par https. » · « Adresse injoignable : vérifie le lien. » |
 | 409 `deja_lie` | « Cette activité a déjà sa tâche. » |
 | 409 `autre_compte` | « Une action d'un autre compte a été retirée de la file. » |
