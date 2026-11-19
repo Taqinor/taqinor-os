@@ -183,16 +183,17 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Bouton principal | **Fait** (faite : « Rouvrir ») |
 | Ouverte par un rappel (en tête) | Encore 10 min · Encore 1 h · Demain 9 h |
 | En-tête | × · un seul titre (celui de la tâche) · ☆ / ★ Essentielle · ⋯ (Abandonner · Supprimer — les mêmes gestes que dans Plus) |
-| Champs visibles | en puces, un toucher ouvre le champ sous la puce : Quand je la fais · Échéance · Projet · Priorité (une puce sans valeur reste vide ; une erreur se lit sous le champ) ; puis Notes et Check-list (« Ajouter un point », compte « {faits}/{n} ») en blocs titrés |
+| Champs visibles | en puces, un toucher ouvre le champ sous la puce : Quand je la fais · Échéance · Projet · Priorité (une puce sans valeur reste vide ; une erreur se lit sous le champ) ; puis Notes (invite « Ajouter une note… », R2-045) et Check-list (« Ajouter un point », compte « {faits}/{n} ») en blocs titrés |
+| Échéance (champ, R2-042) | raccourcis « Choisir l'échéance » : Demain · Vendredi (le prochain) · Fin de mois · Aucune (seulement si une échéance est posée), puis le champ date « Choisir un jour » (écrit à la sortie ou à Entrée, une date entière seulement) ; date partielle ou format refusé par le serveur : « Date incomplète. » sous le champ |
 | Plus | replié, avec l'indice « Répéter, durée, étiquettes, en attente de… » : Heure · Rappel · Répéter · Étiquettes · Durée · En attente de… · Jalon · Lié à · Confidentielle · Découper · Sous-tâches |
 | En attente de… | « Quelqu'un ou quelque chose » (champ « De qui ou de quoi ? ») · « Une autre tâche » |
-| Pied | Reporter à {jour} · **✓ Fait** (vert) ; Abandonner · Supprimer sont dans Plus et dans le ⋯ de l'en-tête ; Supprimer demande « Supprimer « {titre} » ? » [Supprimer « {titre} »] |
+| Pied | Reporter à {jour} · **✓ Fait** (vert) ; Abandonner · Supprimer sont dans Plus et dans le ⋯ de l'en-tête ; Supprimer demande « Supprimer « {titre} » ? » [Supprimer « {titre} »] [Annuler], avec ses sous-tâches : « 1 sous-tâche sera supprimée aussi. » / « {n} sous-tâches seront supprimées aussi. » |
 | Priorité (champ) | Haute · Moyenne · Basse (même ordre partout) |
 | Découper | champ « Découper » (une sous-tâche par ligne) |
 | Aide repliée | « Confier à quelqu'un : crée une activité dans l'ERP, sur la fiche concernée. » |
 | Sélecteur Quand | Aujourd'hui · Demain · Ce soir · Reporter à {jour} · Choisir un jour · En réserve · Sans jour |
 | Heure | « Heure » ; à l'agenda, bloc sans durée : « durée non estimée » |
-| Rappel | « Le jour même » / « La veille » / « Choisir » + heure ; ancré : « {n} jour(s) avant l'échéance à {HH:MM} » |
+| Rappel | « Le jour même » / « La veille » / « Choisir » + heure ; ancré (R2-046) : sur le jour prévu « Le jour prévu à {HH:MM} » (décalage 0) ou « {n} jour(s) avant le jour prévu à {HH:MM} » ; sur l'échéance « Le jour même à {HH:MM} » (décalage 0) ou « {n} jour(s) avant l'échéance à {HH:MM} » — jamais « 0 jour avant » |
 | Question du premier rappel (A17-T4) | « Montrer le titre sur l'écran verrouillé ? » [Oui] [Non] ; sous la question : « Sans réponse, l'écran verrouillé n'affiche que des nombres. » |
 | Répéter (`libelle_regle`) | « chaque jour » · « tous les {n} jours » · « chaque jour travaillé » · « chaque lundi » · « chaque lundi et jeudi » · « toutes les {n} semaines le lundi » · « chaque mois le {j} » · « chaque fin de mois » · « chaque premier vendredi du mois » · « chaque dernier vendredi du mois » · « tous les {n} mois » · « chaque année le {jj/mm} » ; suffixe « après fait » ; « jusqu'au {jj/mm/aaaa} » |
 | Actions de répétition | Sauter cette fois · Arrêter de répéter · Appliquer à celle-ci aussi |
@@ -283,14 +284,21 @@ nombre « À placer · {n} » dans les deux) ; en vue Semaine il ajoute l'aide �
 → créneau ; ERP « Ouvrir dans le Calendrier » ; jour « Jour non travaillé » / « Férié » ; vide « Rien ce jour-là » ;
 créneau vide « Ajouter à {HH:MM} » ; erreur « 42 jours au plus. » ; rendez-vous externes (ESSENTIEL) : blocs en
 lecture seule, puce « {libellé de l'agenda} », journée entière dans « Toute la journée », toucher → « {titre} · {HH:MM}–
-{HH:MM} · {libellé} · Ouvrir dans ton agenda d'origine » ; ⋯ → « Mes agendas » (§2.20) ; échec : bandeau §2.20 ;
+{HH:MM} · {libellé} · Ouvrir dans ton agenda d'origine » (ce lien seulement quand l'agenda sert une adresse http(s),
+R2-112) ; ⋯ → « Planifier ma semaine » · « Mes agendas » (§2.20) ; échec : bandeau §2.20 ;
 aucun agenda : « Ajoute ton agenda pour voir tes rendez-vous ici. » [Mes agendas]. Lecture en échec : bandeau
 « Pas à jour · {HH:MM} » [Réessayer] (§2.2) ; au premier échec, rien n'étant encore lu, « Pas à jour » seul, sans grille.
 Volet « À placer » : trois groupes « Aujourd'hui ({n}) » · « À revoir ({n}) » · « Mes projets ({n}) » (puis « ● {projet} ({n})
-», chaque tâche avec sa durée « 30 min », « 1 h ») ; aides « Touche un créneau pour {titre} » (Jour) et « Glisse une
-tâche sur un créneau pour lui donner une heure. » ; Planifier ma semaine : « Touche un jour pour placer {titre} »,
-« Glisse une tâche sur un jour · ou Entrée puis ← → », en-tête de jour « {n} tâches · {h} pour {cap} », « passé · {n}
-faites », « non travaillé », bouton **Terminer** ; ligne d'une tâche prévue « prévue {jour} », « ce soir ».
+», chaque tâche avec sa durée « 30 min », « 1 h ») — au bureau, en tête, « Sans heure ({n}) » (les tâches sans heure d'un
+autre jour que le jour courant, R2-110) ; aides « Touche un créneau pour {titre} » (Jour) et, au pied, « Glisse une
+tâche sur un créneau pour lui donner une heure. » au bureau, « Touche une tâche, puis un créneau. » sur iPhone (R2-105) ;
+Planifier ma semaine : « Touche un jour pour placer {titre} », au pied « Glisse une tâche sur un jour · ou Entrée puis
+← → » au bureau, « Touche une tâche, puis un jour. » sur iPhone ; flèches « Semaine précédente » / « Semaine suivante »
+(R2-103) ; en-tête de jour « {n} tâches · {h} pour {cap} » où {cap} = la capacité du jour moins ses rendez-vous
+(`rendez_vous_minutes`, R2-100 ; omis si `agenda/` ne sert pas la capacité) et, au-delà, « {n} tâches · {h} pour {cap}
+· {durée} de trop » (R2-114, « 3 h 30 de trop ») ; jour passé « passé · {n} faite(s) » = les tâches FINIES ce jour-là
+(`faites_nb`, règle C-12 — « passé » seul s'il n'est pas servi) ; « non travaillé » · « Férié » ; bouton **Terminer** ;
+ligne d'une tâche prévue « prévue {jour} », « ce soir ».
 
 ### 2.9 Bilan du soir (et d'hier jusqu'à midi)
 

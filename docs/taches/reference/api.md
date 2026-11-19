@@ -1494,7 +1494,11 @@ ces N » → `journee/planifier/` avec les `garder_n` premières. **`journee/poi
 `prochain_jour_ouvre`, `jour`, `un_jour`, `abandonner` ; `le_reste` = « Tout reporter ») → `journee_cloturee.json`.
 **`agenda/`** `?du=2026-11-16&au=2026-11-22&vue=semaine&projet=3` → `agenda.json` ; 400 `{"au":["42 jours au plus."]}` ;
 `mes_projets` en `vue=jour` et `vue=semaine` (le même volet « À placer », maquettes `agenda-jour` et `agenda-semaine` ; vide en `mois` et `a-venir`) ; `toute_la_journee` = les `obligations` du jour SANS la famille `touches` (la ligne « Suivi des relances » est une ligne de Prévu, textes.md §2 ; la bande ne porte que ce qui a une date sans heure) ; poser une tâche sur un jour = `taches/{id}/planifier/` ; `externes` =
-RENDEZ_VOUS du jour. **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
+RENDEZ_VOUS du jour ; chaque jour porte aussi `rendez_vous_minutes` (R2-100 : la durée UNIE de ses rendez-vous horodatés,
+bornée aux heures de travail de la société, journée entière = 0 — invariant 35, `minutes_de_rendez_vous` ; le front la
+retranche de `capacite.minutes` pour « {h} pour {cap} ») et `faites_nb` (R2-102, règle C-12 : `compte_du_jour` des
+tâches finies CE jour local, prévues ce jour-là ou non, + activités ERP closes par lui ; 0 pour un jour à venir) ; une
+tâche ouverte d'un projet en pause prévue AUJOURD'HUI reste dans le jour (R2-031b, choix C-5). **`recherche/`** `?q=devis&limite=25` → `recherche.json` ; 400 `{"q":["Requis."]}`.
 
 **`projets/`** POST `{"nom":"Chantier X","priorite":2,"couleur":"vert","icone":"","objectif":"","domaine":""}` ; doublon
 → 400 `{"nom":["Un projet « Chantier X » existe déjà."]}`. **PATCH** `{"nom":"Ventes","objectif":"","icone":"","couleur":"vert","priorite":3,"statut":"en_pause","date_debut":null,"echeance":"2026-12-15","domaine":"","confidentiel":false,"affichage":{"vue":"tableau","tri":"manuel","groupe":"section","montrer_faites":false},"risque":"","lock_version":4}`
@@ -1564,13 +1568,17 @@ L'export dans `frontend/src/test/fixtures/contractSamples.js` suit le plan (`doc
 | `/taches/projets` · `/taches/projets/:id` | Projets · Un projet | `vue`, `planifier=1`, `tache` |
 | `/taches/projets/archive` · `/taches/projets/modeles` | Archive · Modèles | — |
 | `/taches/agenda` | Agenda | `vue=jour\|semaine\|mois\|a-venir`, `jour`, `projet`, `placer=1` (volet À placer ouvert, fin de Revue) |
-| `/taches/revue` · `/taches/rythme` · `/taches/recherche` · `/taches/supprimees` | Revue · Mon rythme · Recherche (`q`) · Supprimées | — |
+| `/taches/revue` · `/taches/rythme` · `/taches/recherche` · `/taches/supprimees` | Revue · Mon rythme · Recherche (`q`, `periode=faites_semaine` : « Faites cette semaine », R2-124) · Supprimées | — |
 | `/taches/reglages[/:rubrique]` | Réglages | `notifications`, `iphone`, `vie-privee`, `suggestions`, `donnees`, `avance` |
 
 Notifications (A15, spec-7 r3 §2) : `plan_matin`, `relance` → `/taches/aujourdhui` sans paramètre · `bilan_soir` →
 `/taches/aujourdhui?ouvrir=bilan` · `revue_semaine` → `/taches/revue` · rappel → `/taches/aujourdhui?tache=<id>`
 (« Encore 10 min · 1 h · Demain 9 h ») · test → `/taches/reglages/iphone`. Touches : `g j` = ALLER à
 `/taches/aujourdhui` (`shortcut:'j'` du module) ; `c t` = événement `taqinor:taches:saisir` (feuille de saisie).
+Événements entre écrans (`features/taches/lib/fiche.js`) : `taqinor:taches:creees` (émis par la feuille de saisie) et,
+R2-040, `taqinor:taches:ecrite` (`detail = { tache }`, la tâche rendue par le serveur ou `null`) émis par la fiche
+après chaque écriture réussie (champs, check-list, rappel, sous-tâche, suppression, Annuler) et à sa fermeture ;
+`useApresCreation` écoute les deux : Aujourd'hui, l'Agenda, Projet et À trier se relisent.
 Copilote : les quatre demandes prêtes appellent DIRECTEMENT les routes du §8 et rendent leur carte sans modèle de
 langage (A18-M3) ; sans clé d'IA, elles restent. Navigation et `appSku` : selon l'activation (`donnees.md` inv. 28).
 
@@ -1832,7 +1840,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`gestes.json`** — GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes
 ```json
-{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","titre":"Appeler le fournisseur","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
+{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","titre":"Appeler le fournisseur","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true},{"id":76,"type":"rythme","message":"Garder ce rythme : environ 5 tâches par jour (4 à 6).","titre":null,"created_at":"2026-11-17T09:12:00+01:00","annule_le":null,"annulable":true}]}
 ```
 
 **`item.json`** — forme ITEM · consommateurs : toutes les listes
@@ -1994,7 +2002,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`rythme.json`** — GET rythme/ (et réponses de rythme/, preferences/) · consommateurs : Mon rythme, carte `rythme`
 ```json
-{"mode":"pousser","comprendre_mon_rythme":true,"objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"trace":"5 faites ou plus 7 jours sur 10","bloc":{"jours":7,"tenus":5,"sur":10},"tenir":null,"proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Monter à 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"serie":[{"jour":"2026-11-16","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5}],"constats":[{"id":44,"type":"constat","cle":"C3","texte":"Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.","donnees":{"jour":4,"m1":3.1,"m2":5.2},"boutons":[{"reponse":"oui","libelle":"Oui"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"}],"repere":{"p60":5.5,"jours":9},"preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],"geste_id":91}
+{"mode":"pousser","comprendre_mon_rythme":true,"objectif":{"nb":5,"source":"accepte","mode":"pousser","zone":null},"trace":"5 faites ou plus 7 jours sur 10","bloc":{"jours":7,"tenus":5,"sur":10},"tenir":null,"proposition":{"id":41,"type":"proposition_palier","cle":"monter","texte":"Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?","donnees":{"N":5,"N1":6,"tenus":7},"boutons":[{"reponse":"oui","libelle":"Monter à 6"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"},"serie":[{"jour":"2026-11-03","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5},{"jour":"2026-11-04","statut_jour":"evalue","faites":6,"objectif":5,"essentiel_faites":0,"essentiel_prevues":0,"plan_tenues":0,"plan_lignes":0},{"jour":"2026-11-05","statut_jour":"evalue","faites":4,"objectif":5,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":2,"plan_lignes":4},{"jour":"2026-11-06","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":3,"plan_lignes":3},{"jour":"2026-11-09","statut_jour":"evalue","faites":7,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":5,"plan_lignes":6},{"jour":"2026-11-10","statut_jour":"sans_donnees","faites":0,"objectif":null,"essentiel_faites":0,"essentiel_prevues":0,"plan_tenues":0,"plan_lignes":0},{"jour":"2026-11-11","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":0,"essentiel_prevues":0,"plan_tenues":0,"plan_lignes":0},{"jour":"2026-11-12","statut_jour":"evalue","faites":3,"objectif":5,"essentiel_faites":0,"essentiel_prevues":1,"plan_tenues":1,"plan_lignes":3},{"jour":"2026-11-13","statut_jour":"evalue","faites":6,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":4},{"jour":"2026-11-16","statut_jour":"evalue","faites":5,"objectif":5,"essentiel_faites":1,"essentiel_prevues":1,"plan_tenues":4,"plan_lignes":5}],"constats":[{"id":44,"type":"constat","cle":"C3","texte":"Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.","donnees":{"jour":4,"m1":3.1,"m2":5.2},"boutons":[{"reponse":"oui","libelle":"Oui"},{"reponse":"pas_maintenant","libelle":"Pas maintenant"}],"expire_le":"2026-11-24"}],"repere":{"p60":5.5,"jours":9},"preferences":[{"cle":"heure_limite","valeur":"19:00","source":"copilote","dite_le":"2026-11-17T09:00:00+01:00"}],"jours_travailles":"1111100","geste_id":91}
 ```
 
 **`saisie_apercu.json`** — POST saisie-rapide/ apercu:true · consommateurs : Saisie, collage, carte `capture_apercu`, « Range ma liste »
