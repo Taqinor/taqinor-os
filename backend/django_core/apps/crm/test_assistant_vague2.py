@@ -219,3 +219,36 @@ class DossierDuLeadTest(TestCase):
             'exemple_dossier']['dossier']
         self.assertEqual(set(dossier['factures']), set(modele['factures']))
         self.assertEqual(set(dossier['devis']), set(modele['devis']))
+
+
+class ControleSuiviAssistantTest(TestCase):
+    """BRF4 — ``crm.controle_suivi.lire`` enveloppe la route existante."""
+
+    def setUp(self):
+        from apps.crm.agent_actions import register_crm_actions
+        register_crm_actions()
+
+    def test_action_declaree_lecture_du_lot_copilote(self):
+        from apps.agent.registry import LOT_COPILOTE, RISK_INTERNAL, all_actions
+        action = {a.key: a for a in all_actions()}['crm.controle_suivi.lire']
+        self.assertEqual(action.lot, LOT_COPILOTE)
+        self.assertEqual(action.risk, RISK_INTERNAL)
+        self.assertEqual(action.method, 'GET')
+        self.assertLessEqual(len(action.description), 600)
+        for section in ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                        'Résultat :'):
+            self.assertIn(section, action.description)
+        self.assertIn('aucun score', action.description)
+        self.assertIn('aucun classement', action.description)
+
+    def test_la_route_repond_a_un_role_quelconque(self):
+        from apps.crm.agent_actions import CONTROLE_SUIVI
+        company = Company.objects.create(nom='BRF4 Co', slug='brf4-co')
+        role = Role.objects.create(
+            company=company, nom='Terrain', permissions=['visites_voir'])
+        user = User.objects.create_user(
+            username='brf4_ter', password='x', role=role, company=company)
+        reponse = _api(user).get(CONTROLE_SUIVI.endpoint)
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        modele = _echantillon('controle_suivi.json')['exemple']
+        self.assertEqual(set(reponse.data), set(modele))

@@ -709,6 +709,36 @@ MOTIFS_PERTE = AgentAction(
 )
 
 
+#: ``?jours=`` du contrôle du suivi (les seules périodes servies par la route).
+_PERIODES_CONTROLE = [7, 14, 30]
+
+CONTROLE_SUIVI = AgentAction(
+    key='crm.controle_suivi.lire',
+    label='Contrôle du suivi',
+    description=(
+        "Sert à : savoir si le suivi des leads est fait à temps (retards, "
+        "touches sautées, premier contact, résultats), sur 7, 14 ou 30 jours. "
+        "Ne pas utiliser pour : noter ou classer des personnes (aucun score, "
+        "aucun classement) ni relancer (crm.leads.a_relancer). "
+        "Exemple : « Le suivi est-il à jour cette semaine ? » (jours=7). "
+        "Résultat : {verdict, jours[], exceptions, par_type[], "
+        "premier_contact, resultats} ; faits et compteurs, sans note."
+    ),
+    endpoint='/api/django/crm/relance-etapes/controle/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'jours': {'type': 'integer', 'enum': _PERIODES_CONTROLE,
+                      'description': 'Période en jours (14 par défaut).'},
+        },
+    },
+    required_permission=None,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+
 def _entrees_message_manuel():
     from apps.crm.views_assistant import CLES_MESSAGE_MANUEL
 
@@ -977,6 +1007,7 @@ _ACTIONS = (
     MESSAGE_VISITE,
     MESSAGE_MANUEL,
     MOTIFS_PERTE,
+    CONTROLE_SUIVI,
 )
 
 
