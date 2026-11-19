@@ -18,7 +18,9 @@ from __future__ import annotations
 
 from core.champs_stricts import QUANTITE_MAX
 
-from apps.agent.registry import AgentAction, RISK_OUTWARD, register, _REGISTRY
+from apps.agent.registry import (
+    AgentAction, LOT_COPILOTE, RISK_INTERNAL, RISK_OUTWARD, register, _REGISTRY,
+)
 
 
 #: REP1 (copilote vague 2, B-1) — valeurs EXACTES de
@@ -148,7 +150,48 @@ BROUILLON_COMMANDE_FOURNISSEUR = AgentAction(
 )
 
 
-_ACTIONS = (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR)
+# STK3 (copilote vague 2) — lecture COMPACTE des niveaux de stock. Route
+# ``GET stock/assistant/niveaux/`` (``NiveauxStockAssistantView``, garde
+# ``LectureDuModule`` de la liste produits : un code du module Stock). Des
+# quantités seulement : jamais un prix, un montant d'achat ni une valeur de
+# stock, pour aucun compte (la lecture côté vente, ``ventes.catalogue.chercher``,
+# ne rend au contraire aucune quantité).
+NIVEAUX_STOCK = AgentAction(
+    key='stock.produit.niveau',
+    label='Lire les niveaux de stock (quantités, aucun prix)',
+    description=(
+        "Sert à : dire combien d'un produit est disponible (ce qu'on peut "
+        "promettre : stock moins réservé aux chantiers et quarantaine), réservé "
+        "ou en commande, et ce qui est sous son seuil d'alerte. Ne pas utiliser "
+        "pour : un prix, une valeur de stock ni poser un mouvement. Exemple : "
+        "« combien de panneaux 710 W ? » → q=710 ; « que faut-il "
+        "réapprovisionner ? » → sous_seuil=true. Résultat : par produit stock, "
+        "reserve, disponible, en_commande, sous_seuil, quantite_suggeree ; "
+        "dire « disponible », jamais le stock brut."
+    ),
+    endpoint='/api/django/stock/assistant/niveaux/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'q': {'type': 'string', 'maxLength': 100,
+                  'description': 'Nom, marque ou référence du produit.'},
+            'categorie': {'type': 'integer', 'description': 'Catégorie de produits (id).'},
+            'sous_seuil': {'type': 'boolean',
+                           'description': "Seulement ce qui est sous le seuil d'alerte."},
+            'limite': {'type': 'integer', 'minimum': 1, 'maximum': 25,
+                       'description': 'Lignes rendues (10 par défaut).'},
+        },
+        'additionalProperties': False,
+    },
+    required_permission='stock_voir',
+    risk=RISK_INTERNAL,
+    carte='niveau_stock',
+    lot=LOT_COPILOTE,
+)
+
+
+_ACTIONS = (AJUSTER_STOCK, BROUILLON_COMMANDE_FOURNISSEUR, NIVEAUX_STOCK)
 
 
 def register_stock_actions() -> None:
