@@ -1120,7 +1120,9 @@ export default function Aujourdhui() {
     onAction: (code) => (code === 'planifier' ? setFeuille({ type: 'jour_lot' }) : modes.lot(code)),
     onFermer: modes.quitterSelection,
   } : null
-  const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
+  // R4-09 — hors ligne, la coquille dit déjà « Hors ligne · dernière synchro à … » : un seul message, jamais aussi
+  // « Pas à jour · Réessayer » (réessayer sans réseau ne peut rien) ; le bandeau revient pour un échec EN ligne
+  const bandeau = erreur && enLigne ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
   const contenu = (
     <>

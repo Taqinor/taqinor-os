@@ -173,6 +173,25 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
     await waitFor(() => expect(screen.getAllByRole('status').some((n) => n.textContent.includes('Possible une fois connecté'))).toBe(true))
   })
 
+  it('R4-09 — hors ligne, UN seul message : « Hors ligne · dernière synchro » dit tout, jamais aussi « Pas à jour · Réessayer » ; en ligne, l\'échec revient le dire', async () => {
+    servir(donnees())
+    monter()
+    await screen.findByText('Devis Settat')
+    fixerEnLigne(false)
+    servir(() => Promise.reject(echecReseau()))
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    // une lecture partie juste avant la coupure échoue : l'écran ne redit pas « Pas à jour » à côté de « Hors ligne »
+    fixerEnLigne(true)
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(await screen.findByText(/^Pas à jour · /)).toBeInTheDocument() // en ligne : le bandeau dit l'échec
+    fixerEnLigne(false)
+    await waitFor(() => expect(screen.queryByText(/Pas à jour/)).toBeNull())
+    expect(screen.getByText(/Hors ligne · dernière synchro à 09:12/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Réessayer' })).toBeNull()
+    expect(screen.getByText('Devis Settat')).toBeInTheDocument() // la liste reste
+  })
+
   describe('Raccord F2 — file hors ligne et cache du jour (TCH100)', () => {
     const store = { getState: () => ({ auth: { user: { id: 42, active_company_id: 7 } } }) }
     const monterConnecte = () => render(
