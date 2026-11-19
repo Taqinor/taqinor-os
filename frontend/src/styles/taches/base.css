@@ -27,7 +27,10 @@
 /* …et la journée vide n'a pas de + : « Coller mes listes » est son seul bouton plein */
 .tch[data-ecran="aujourdhui"]:has(.vide-plein) > .fab { display: none; }
 @media (min-width: 768px) {
-  .tch .tch-page { padding: 20px 16px 56px; }
+  /* R2-085 — une seule grille au bureau : la page part toujours du bord gauche du contenu (le titre est au même x
+     d'un écran à l'autre, qu'il fasse 720 px ou, pour Aujourd'hui et l'Agenda, 1 320 px) ; la droite reste libre pour
+     le panneau (fiche, agenda). La hauteur de l'en-tête est fixe : le sur-titre garde sa ligne même vide. */
+  .tch .tch-page { max-width: 720px; margin-inline: 0; padding: 20px 16px 56px; }
   .tch .entete { padding-inline: 24px; }
 }
 
