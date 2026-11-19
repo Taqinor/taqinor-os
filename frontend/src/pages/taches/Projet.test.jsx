@@ -98,6 +98,20 @@ describe('TCH89 — Un projet : en-tête', () => {
     expect(screen.getByText(longue)).toBeInTheDocument()
   })
 
+  it("R2-034 — échéance servie : la santé courte dit la conséquence « À ce rythme, pas prêt pour le jeu. 26 »", async () => {
+    const vue = exempleContrat('taches', 'projet_vue')
+    const longue = 'À ce rythme, pas prêt pour le jeu. 26 : il faudrait 10 jours travaillés, il en reste 8 (12 faites en 20 jours travaillés ces 4 dernières semaines).'
+    vue.projet.sante = [{ code: 'echeance_menacee', phrase: longue, donnees: { besoin: 10, reste: 8, f28: 12, j28: 20, signal: 'd', echeance: '2026-11-26' } }]
+    api.lireVueProjet.mockResolvedValue({ data: vue })
+    const { unmount } = monter()
+    expect(await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour le jeu. 26' })).toBeInTheDocument()
+    unmount()
+    vue.projet.sante[0].donnees.echeance = '2026-11-18'
+    api.lireVueProjet.mockResolvedValue({ data: structuredClone(vue) })
+    monter()
+    expect(await screen.findByRole('button', { name: 'À ce rythme, pas prêt pour demain' })).toBeInTheDocument()
+  })
+
   it('pas de signal de santé : aucune ligne de santé', async () => {
     const vue = exempleContrat('taches', 'projet_vue')
     vue.projet.sante = []
