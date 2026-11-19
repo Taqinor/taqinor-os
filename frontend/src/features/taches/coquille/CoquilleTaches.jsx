@@ -307,6 +307,8 @@ export default function CoquilleTaches({
   // R2-088 — « Messages sans délai » vaut dès l'ouverture de Tâches, pas seulement après un passage dans Réglages :
   // la coquille lit les réglages à son montage. Échec (hors ligne, serveur absent) : le réglage déjà appliqué reste.
   useEffect(() => {
+    // hors ligne, pas d'appel : il échouerait et l'ERP en ferait un toast « Connexion perdue » de plus
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined
     let actif = true
     lireReglages()
       .then((reponse) => { if (actif) configurerGestes({ sansDelai: Boolean(reponse?.data?.messages_sans_delai) }) })

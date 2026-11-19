@@ -1053,6 +1053,9 @@
 /* R2-090 — hors ligne, UN signal : la ligne « Hors ligne · dernière synchro à {HH:MM} » de la coquille. Le bandeau
    orange de l'ERP (OfflineBanner, seul bandeau `role=status` en `bg-warning` de la coque) ne s'empile plus dessus. */
 .layout:has(> .layout-main > .layout-content > .route-fade > .tch) > .layout-main > [role="status"].bg-warning { display: none; }
+/* …ni les toasts de l'ERP : chaque requête du module qui échoue hors ligne en posait un (« Connexion perdue… »),
+   mesuré : quatre empilés sur la barre d'onglets et le +. Seulement tant que la page de Tâches est hors ligne. */
+body:has(.layout-content > .route-fade > .tch[data-hors-ligne]) [data-sonner-toaster] { display: none; }
 /* R2-081 — UNE surface jusqu'en bas de l'écran : le scrolleur de l'ERP prend la surface du module (sur iPhone, plus de
    cassure grise sous une page courte ; au bureau, plus de « carte » blanche à angles vifs posée sur le gris : le
    contenu est sur le fond, comme Things). */
