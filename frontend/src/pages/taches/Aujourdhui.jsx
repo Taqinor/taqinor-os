@@ -56,6 +56,10 @@ const MEDIA_BUREAU = '(min-width: 1024px)'
 const cleDe = (item) => `${item.type}:${item.id}`
 const heureDe = (iso) => String(iso ?? '').slice(11, 16)
 
+/** R3-028 — les touches qui ne valent que pour une TÂCHE (`clavierListe`) : sur une activité ERP, l'écran le dit. */
+const TOUCHES_DE_TACHE = new Set(['quand', 'renommer', 'heure', 'deplacer', 'selectionner', 'essentiel'])
+const PHRASE_ACTIVITE_ERP = "Une activité ERP s'ouvre dans l'ERP"
+
 /** R3-024 — les champs d'une TACHE écrite par la fiche qu'une ligne de la journée reprend telle quelle. */
 const CHAMPS_FICHE = ['titre', 'jour_prevu', 'moment', 'heure_debut', 'quelque_jour', 'estimation_minutes', 'echeance', 'lock_version']
 
@@ -823,11 +827,21 @@ export default function Aujourdhui() {
     actionsPropres,
   })
 
+  /** R3-028 — une touche de tâche (`d`, `e`, `h`, `m`, `x`, Entrée sans adresse) sur une activité ERP : le dire, avec le
+   *  chemin vers l'ERP quand l'activité en a un — jamais un geste qui ne fait rien sans un mot. */
+  const direActiviteErp = useCallback((item) => {
+    const url = item.lien?.url
+    proposerAnnuler({
+      message: PHRASE_ACTIVITE_ERP,
+      ...(url ? { libelle: 'Ouvrir', apres: null, onAnnuler: () => navigate(url) } : {}),
+    })
+  }, [navigate])
+
   const geste = useMemo(() => ({
     terminer,
     reporter,
     choisirJour: (item) => setFeuille({ type: 'jour', item }),
-    ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : null) : ouvrirFiche(item.id)),
+    ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : direActiviteErp(item)) : ouvrirFiche(item.id)),
     decouper: (item) => ouvrirFiche(item.id, { section: 'decouper' }), // R2-021 : la fiche s'ouvre SUR « Découper »
     action: actions.surAction,
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
@@ -846,7 +860,7 @@ export default function Aujourdhui() {
     refusEssentiel: refuserEssentielle,
     annoncer,
     naviguer: (url) => navigate(url),
-  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction])
+  }), [terminer, reporter, basculerEssentiel, garder, enLigne, navigate, ouvrirFiche, setParams, modes.deplacer, modes.selectionner, actions.surAction, direActiviteErp])
 
   const glissable = useMemo(() => (bureau ? { onDebut: setGlisse, onFin: () => setGlisse(null) } : null), [bureau])
   // La ligne glissée peut quitter le DOM en cours de route (elle prend son heure et change de place) : `dragend` ne
@@ -897,6 +911,7 @@ export default function Aujourdhui() {
         document.querySelector(`[data-ligne="${cle}"] .ligne-corps-bouton`)?.focus()
       }))
     }
+    else if (item.type === 'activite' && TOUCHES_DE_TACHE.has(action)) direActiviteErp(item)
     else if (action === 'quand' && item.type === 'tache') setFeuille({ type: 'jour', item, clavier: true })
     else if (action === 'selectionner' && item.type === 'tache') modes.selectionner(item)
     else if (action === 'monter') modes.deplacer(item, -1)

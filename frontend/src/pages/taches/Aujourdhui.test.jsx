@@ -918,6 +918,33 @@ describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `sect
     await waitFor(() => expect(adresse().get('focus')).toBe('heure'))
     expect(adresse().get('tache')).toBe('42')
   })
+
+  it('R3-028 — `d` (ou `e`, `h`) sur une activité ERP le DIT : « Une activité ERP s\'ouvre dans l\'ERP · Ouvrir »', async () => {
+    function Chemin() { const { pathname, search } = useLocation(); return <output data-testid="chemin">{pathname + search}</output> }
+    servir(donnees())
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /><Chemin /></MemoryRouter>)
+    await screen.findByText('Rappeler Benali')
+    act(() => { document.querySelector('[data-ligne="activite:101"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('d')
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
+    expect(screen.queryByRole('dialog', { name: 'Choisir un jour' })).toBeNull()
+    await userEvent.click(within(toast).getByRole('button', { name: 'Ouvrir' }))
+    await waitFor(() => expect(screen.getByTestId('chemin')).toHaveTextContent('/crm/leads?lead=1637'))
+  })
+
+  it('R3-028 — Entrée sur une activité ERP SANS adresse le dit aussi (jamais rien sans un mot)', async () => {
+    const d = donnees()
+    d.journee = d.journee.map((it) => (it.type === 'activite' ? { ...it, lien: null } : it))
+    servir(d)
+    monter()
+    await screen.findByText('Rappeler Benali')
+    act(() => { document.querySelector('[data-ligne="activite:101"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('{Enter}')
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(toast).toHaveTextContent("Une activité ERP s'ouvre dans l'ERP")
+    expect(within(toast).queryByRole('button', { name: 'Ouvrir' })).toBeNull()
+  })
 })
 
 describe('R2-014b —« Oui » de la carte « tâches reportées » (constat C7) mène à « À revoir »', () => {
