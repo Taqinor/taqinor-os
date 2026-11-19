@@ -35,7 +35,8 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    chaque jour sur son iPhone. Il lit `GET aujourdhui/` (contract_samples/aujourdhui.json) et
    rend les sections dans l'ordre vertical de regles.md §4.1 (features/taches/aujourdhui/Sections).
    Règles tenues ici, une fois pour toutes :
-     · squelette seulement après 1 s sans réponse, jamais sur une liste déjà affichée ;
+     · R3-025 — la dernière journée connue du compte (cache du jour) s'affiche au montage, puis se relit en silence ;
+       squelette seulement après 300 ms sans réponse ET sans journée connue, jamais sur une liste déjà affichée ;
      · un rafraîchissement en échec GARDE la liste : bandeau « Pas à jour · HH:MM » [Réessayer] ;
      · relecture au retour du focus ; hors ligne, la lecture reste affichée et les gestes sont
        grisés (« Possible une fois connecté ») ;
@@ -46,7 +47,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
    Maquettes : ecran-aujourdhui-*.html, etat-chargement.html, etat-pas-a-jour.html.
    ========================================================================== */
 
-const DELAI_SQUELETTE_MS = 1000
+const DELAI_SQUELETTE_MS = 300 // R3-025 (R2-089) : le même délai que les autres écrans, et seulement sans journée connue
 const CONSTAT_REPORTEES = 'C7' // moteur/gabarits.py : « {n} tâches reportées {reports} fois ou plus. » · « Les revoir maintenant ? »
 const MAX_ESSENTIELLES = 3 // regles.md §4.1 « 3 au plus » (même plafond que `ui/Etoile`)
 /** R2-012 — la 4e étoile est refusée À L'ÉCRAN (un toast), pas seulement au lecteur d'écran. */
@@ -95,20 +96,25 @@ function heureLocale(iso) {
  * s'ouvre sur ce cache (« Hors ligne · dernière synchro à {HH:MM} ») au lieu d'un écran vide.
  */
 function useAujourdhui(tout, userId) {
-  const [donnees, setDonnees] = useState(null)
+  // R3-025 — revenir sur Aujourd'hui montre AUSSITÔT la dernière journée connue du compte (le cache du jour), puis la
+  // relit en silence : jamais un écran blanc entre deux onglets ; le squelette ne vient qu'au tout premier chargement
+  const [cache] = useState(() => (userId === null ? null : lireJournee(userId, aujourdhuiIso())))
+  const initiale = cache?.donnees ?? null
+  const [donnees, setDonnees] = useState(initiale)
   const [erreur, setErreur] = useState(false)
-  const [derniere, setDerniere] = useState('')
+  const [derniere, setDerniere] = useState(() => (initiale ? heureLocale(cache.ecrit_a) : ''))
   const [squelette, setSquelette] = useState(false)
   const enLigne = useEnLigne()
   const vivant = useRef(true)
-  const presentes = useRef(false)
+  const presentes = useRef(Boolean(initiale))
   const vuFait = useRef(false)
   const synchro = useRef(null)
 
   const charger = useCallback(async () => {
     const minuteur = presentes.current ? null : setTimeout(() => setSquelette(true), DELAI_SQUELETTE_MS)
     try {
-      const { data } = await client.lireAujourdhui(tout ? { tout: 1 } : undefined)
+      // l'échec se DIT à l'écran (bandeau « Pas à jour · Réessayer », liste gardée) : le toast de l'ERP ne le redit pas
+      const { data } = await client.lireAujourdhui(tout ? { tout: 1 } : undefined, { suppressErrorToast: true })
       if (!vivant.current) return
       presentes.current = true
       synchro.current = new Date()

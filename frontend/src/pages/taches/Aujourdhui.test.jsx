@@ -124,13 +124,14 @@ describe('TCH76 — ordre vertical et contenu des sections', () => {
 })
 
 describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
-  it('affiche le squelette seulement après 1 s, jamais avant', async () => {
+  it('R3-025 — affiche le squelette seulement après 300 ms, jamais avant', async () => {
     vi.useFakeTimers()
     let finir
     servir(() => new Promise((resolu) => { finir = () => resolu({ data: donnees() }) }))
     monter()
+    await act(async () => { await vi.advanceTimersByTimeAsync(290) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
-    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10) })
     expect(screen.getByRole('status', { name: 'Chargement' })).toBeInTheDocument()
     await act(async () => { finir(); await vi.advanceTimersByTimeAsync(0) })
     expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
@@ -202,6 +203,26 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       const [, report] = await file.pending()
       expect(report.payload.corps).toMatchObject({ jour_prevu: donnees().prochain_jour_ouvre, lock_version: expect.any(Number) })
       expect(api.post).not.toHaveBeenCalled()
+    })
+
+    it('R3-025 — revenir sur Aujourd\'hui : la dernière journée connue est là AU MONTAGE (aucun squelette), puis se relit en silence', async () => {
+      const { ecrireJournee } = await import('../../features/taches/horsligne/cacheJournee')
+      const { aujourdhuiIso } = await import('../../features/taches/lib/textes')
+      ecrireJournee(42, aujourdhuiIso(), donnees(), new Date())
+      let lacher
+      const porte = new Promise((r) => { lacher = r })
+      const relue = donnees()
+      relue.essentiel = [{ ...relue.essentiel[0], titre: 'Devis Settat (relu)' }]
+      servir(() => porte.then(() => ({ data: relue })))
+      monterConnecte()
+      // la lecture est encore retenue : la liste du cache est déjà là, sans squelette
+      expect(screen.getByText('Devis Settat')).toBeInTheDocument()
+      expect(screen.queryByRole('status', { name: 'Chargement' })).toBeNull()
+      // (« vu » part d'abord) : la relecture part ensuite, sans toast de l'ERP si elle échoue — le bandeau le dira
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/taches/aujourdhui/', expect.objectContaining({ suppressErrorToast: true })))
+      expect(screen.getByText('Devis Settat')).toBeInTheDocument()
+      await act(async () => { lacher() })
+      expect(await screen.findByText('Devis Settat (relu)')).toBeInTheDocument()
     })
 
     it('R2-008b — une tâche ajoutée hors ligne apparaît tout de suite, grisée « En attente d’envoi » (lue dans la file)', async () => {

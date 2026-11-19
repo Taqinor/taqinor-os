@@ -224,6 +224,13 @@ describe('TCH42 — conventions', () => {
     await client.lireVueProjet(3, { vue: 'tableau' })
     expect(api.get).toHaveBeenLastCalledWith('/taches/projets/3/vue/', { params: { vue: 'tableau' } })
   })
+
+  it('R3-025 — `lireAujourdhui(params, { suppressErrorToast })` : l\'écran qui dit l\'échec tait le toast de l\'ERP', async () => {
+    await client.lireAujourdhui(undefined, { suppressErrorToast: true })
+    expect(api.get).toHaveBeenLastCalledWith('/taches/aujourdhui/', { params: undefined, suppressErrorToast: true })
+    await client.lireAujourdhui({ tout: 1 }, {})
+    expect(api.get).toHaveBeenLastCalledWith('/taches/aujourdhui/', { params: { tout: 1 } })
+  })
 })
 
 describe('TCH42 — codes 409 distingués (erreurs.json)', () => {

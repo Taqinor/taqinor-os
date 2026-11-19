@@ -112,6 +112,11 @@ export const ENTETE_CARTE_ASSISTANT = 'X-Taqinor-Carte-Assistant'
  *  global (voir `appeler`). */
 const sousLeChamp = (options) => (options?.erreurSousLeChamp ? { erreurSousLeChamp: true } : undefined)
 
+/** R3-025 — `{ suppressErrorToast: true }` d'un appelant qui DIT déjà l'échec d'une lecture à l'écran (Aujourd'hui :
+ *  le bandeau « Pas à jour · Réessayer », la liste gardée) : le toast global de l'ERP ne le redit pas. Une lecture
+ *  seulement ; une écriture garde le pont (ou `erreurSousLeChamp` pour un refus au champ). */
+const silencieux = (options) => (options?.suppressErrorToast ? { suppressErrorToast: true } : {})
+
 const avecCle = (options = {}) => {
   const { cle, carteAssistant } = options ?? {}
   const headers = {}
@@ -172,7 +177,7 @@ export const estAutreCompte = (err) => classerErreur(err).code === 'autre_compte
 
 // ── 3.1 Journée, rituels, agenda ──────────────────────────────────────────────
 
-export const lireAujourdhui = (params) => api.get('/taches/aujourdhui/', { params })
+export const lireAujourdhui = (params, options) => api.get('/taches/aujourdhui/', { params, ...silencieux(options) })
 export const lireAilleurs = () => api.get('/taches/aujourdhui/ailleurs/')
 export const lireBadge = () => api.get('/taches/badge/')
 export const marquerVu = (corps) => api.post('/taches/vu/', corps ?? {})
