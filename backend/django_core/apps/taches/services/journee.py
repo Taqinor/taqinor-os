@@ -18,8 +18,8 @@ from django.http import Http404
 from django.utils import timezone
 
 from apps.taches.choix import (
-    CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, StatutSuggestion,
-    StatutTache, TypeIncitationEcran)
+    CanalIncitation, CarteDuMoment, ClePreference, Decision, MotifRevoir, SectionJournee, SourceObjectif,
+    StatutSuggestion, StatutTache, TypeIncitationEcran)
 from apps.taches.models.erp import SuggestionTache
 from apps.taches.models.journee import PlanJour
 from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
@@ -282,21 +282,43 @@ def _carte_garder(ctx, propose):
     return _carte(CarteDuMoment.GARDER, donnees={'n': len(propose.pour_objectif), 'objectif': ctx.objectif['nb']})
 
 
+def _soir(ctx):
+    """L'heure du bilan du soir de `ctx` (préférence dite, sinon 18:00) : à partir d'elle, le bilan gagne (R4-02)."""
+    return _heure_pref(ctx.preferences, ClePreference.HEURE_SOIR, HEURE_SOIR_DEFAUT)
+
+
+def _a_alleger(ctx):
+    """Une tâche que « Alléger ma journée » peut renvoyer à son projet (`_a_renvoyer` : ouverte, prévue aujourd'hui,
+    sans échéance ≤ aujourd'hui), parmi les gardées ouvertes servies."""
+    jour = ctx.jour
+    return any(cle[0] == TACHE and (item := ctx.journee.items[cle]).jour_prevu == jour
+               and (item.echeance is None or item.echeance > jour) for cle in sel.gardes_ouverts(ctx.journee))
+
+
 def _carte_alleger(ctx, propose):
+    """R4-04 (regles.md §4.10) — « Alléger » seulement quand il a un sens : entre la relance et l'heure du bilan, jamais
+    sans objectif DIT (le premier jour ou l'objectif par défaut : on ne lit pas « 0 sur 5 »), jamais après le bilan ni
+    une journée déjà allégée, jamais sans rien à alléger ; et la journée est en retard (moins de la moitié de l'objectif
+    faite, le seuil de la dérive, §7) ou trop pleine (LA charge du jour déborde, R4-01)."""
     relance = _heure_pref(ctx.preferences, ClePreference.RELANCE_JOUR, HEURE_RELANCE_DEFAUT)
     nb = ctx.objectif['nb']
-    if nb is None or ctx.maintenant.time() < relance:
+    if nb is None or ctx.objectif['source'] == SourceObjectif.DEFAUT:
         return None
-    if ctx.plan is not None and ctx.plan.allege_le is not None:
+    if not relance <= ctx.maintenant.time() < _soir(ctx):
         return None
-    if _gardees_ouvertes(ctx) < 1 or 2 * ctx.compte >= nb:
+    plan = ctx.plan
+    if plan is not None and (plan.allege_le is not None or plan.cloture_le is not None):
         return None
-    return _carte(CarteDuMoment.ALLEGER, donnees={'faites': ctx.compte, 'prevues': progression(ctx)['prevues']})
+    if not _a_alleger(ctx):
+        return None
+    prog = progression(ctx)
+    if 2 * ctx.compte >= nb and prog['charge']['deborde_minutes'] == 0:
+        return None
+    return _carte(CarteDuMoment.ALLEGER, donnees={'faites': ctx.compte, 'prevues': prog['prevues']})
 
 
 def _carte_faire_bilan(ctx, propose):
-    soir = _heure_pref(ctx.preferences, ClePreference.HEURE_SOIR, HEURE_SOIR_DEFAUT)
-    if ctx.maintenant.time() < soir:
+    if ctx.maintenant.time() < _soir(ctx):
         return None
     plan = ctx.plan
     if plan is not None and plan.cloture_le is not None:
@@ -331,8 +353,9 @@ def _carte_revelation(ctx, propose):
     return _carte(CarteDuMoment.REVELATION, proposition_=forme_proposition(ouvertes[-1], assistant=ctx.assistant))
 
 
-#: Ordre de `CarteDuMoment` (regles.md §4.10).
-TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_garder, _carte_alleger, _carte_faire_bilan,
+#: Ordre de `CarteDuMoment` (regles.md §4.10) — R4-02 : à partir de l'heure du soir, le bilan passe AVANT « Garder » et
+#: « Alléger » (le jour en retard est celui où il sert le plus).
+TESTS_CARTES = (_carte_retour, _carte_bilan_hier, _carte_faire_bilan, _carte_garder, _carte_alleger,
                 _carte_rythme, _carte_pause, _carte_revelation)
 
 

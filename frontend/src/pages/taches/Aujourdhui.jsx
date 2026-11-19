@@ -1106,6 +1106,10 @@ export default function Aujourdhui() {
     enLigne,
     peutAlleger: Boolean(donnees) && !donnees.plan?.cloture_le && candidatesAlleger(donnees).length > 0,
     onAlleger: () => ouvrirFeuille('alleger'),
+    // R4-02 — « Faire le bilan » est toujours à portée dans ⋯ tant que la journée n'est pas close (un jour en retard,
+    // la carte n'est plus le seul chemin)
+    peutBilan: Boolean(donnees) && !donnees.plan?.cloture_le,
+    onBilan: () => ouvrirFeuille('bilan', { jour: null }),
     onReorganiser: () => modes.setReorganiser((v) => !v),
     onSelectionner: modes.basculerSelection,
   })

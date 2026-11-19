@@ -50,16 +50,37 @@ beforeEach(() => {
 })
 
 describe('TCH79 — menu ⋯ d\'Aujourd\'hui', () => {
-  it('propose les quatre actions de l\'écran puis celles de la coquille', async () => {
+  it('propose les actions de l\'écran puis celles de la coquille ; R4-02 : « Faire le bilan » tant que la journée n\'est pas close', async () => {
     servir(unJour())
     monter()
     await screen.findByText('Devis Settat')
     await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
     const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
     expect(noms).toEqual([
-      'Alléger ma journée', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
+      'Alléger ma journée', 'Faire le bilan', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
       'Revue de la semaine', 'Mon rythme', 'Supprimées', 'Réglages',
     ])
+  })
+
+  it('R4-02 — « ⋯ › Faire le bilan » ouvre le bilan du soir ; la journée close, il n\'est plus proposé', async () => {
+    servir(unJour())
+    api.get.mockImplementation((url) => Promise.resolve({
+      data: String(url).includes('journee/cloture/') ? contrat('journee_cloture') : unJour(),
+    }))
+    const { unmount } = monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Faire le bilan' }))
+    expect(await screen.findByRole('dialog', { name: 'Bilan du soir' })).toBeInTheDocument()
+    unmount()
+    const close = unJour()
+    close.plan = { ...close.plan, cloture_le: '2026-11-17T18:40:00+01:00' }
+    servir(close)
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
+    expect(noms).not.toContain('Faire le bilan')
   })
 
   it('« En faire mon accueil » poste la route d\'Aujourd\'hui sur auth/mobile-home-route/', async () => {

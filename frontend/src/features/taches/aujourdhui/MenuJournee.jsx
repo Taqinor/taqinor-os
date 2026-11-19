@@ -39,11 +39,16 @@ async function faireMonAccueil() {
  * grisés (« Possible une fois connecté »), Réorganiser et Sélectionner restent possibles à vide.
  * R2-026 — « Alléger ma journée » n'est offert que s'il y a de quoi alléger (`peutAlleger` : bilan pas fait, une tâche
  * ouverte au moins que la feuille peut renvoyer).
+ * R4-02 — « Faire le bilan » tant que la journée n'est pas close (`peutBilan`) : un jour en retard, le soir, il reste à
+ * portée même si la carte du moment dit autre chose.
  */
-export function actionsJournee({ enLigne, peutAlleger = true, onAlleger, onReorganiser, onSelectionner }) {
+export function actionsJournee({
+  enLigne, peutAlleger = true, onAlleger, peutBilan = false, onBilan, onReorganiser, onSelectionner,
+}) {
   const garde = (action) => () => (enLigne ? action() : annoncer(PHRASE_HORS_LIGNE))
   return [
     ...(peutAlleger ? [{ libelle: 'Alléger ma journée', onSelect: garde(onAlleger) }] : []),
+    ...(peutBilan && onBilan ? [{ libelle: 'Faire le bilan', onSelect: garde(onBilan) }] : []),
     { libelle: 'Réorganiser', onSelect: onReorganiser },
     { libelle: 'Sélectionner', onSelect: onSelectionner },
     { libelle: 'En faire mon accueil', onSelect: garde(faireMonAccueil) },

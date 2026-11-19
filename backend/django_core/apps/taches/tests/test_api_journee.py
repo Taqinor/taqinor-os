@@ -565,10 +565,73 @@ class CarteDuMomentTests(_Base):
         self.assertIsNone(self.carte(12, 5))
 
     def test_alleger_l_apres_midi(self):
+        fabriques.reglages(self.u, palier=5, palier_source='accepte')
         self.tache(jour_prevu=J)
         fabriques.plan(self.u, J, planifie_le=a(J, 8))
         self.assertEqual(self.carte(15, 30), {'type': 'alleger', 'proposition': None,
                                               'donnees': {'faites': 0, 'prevues': 1}})
+
+    # --- R4-02 / R4-04 : la carte du moment selon l'heure (regles.md §4.10), horloge figée ----------------------------
+
+    def journee_en_retard(self):
+        """Objectif DIT 5, plan gardé à 8 h, 1 faite, 3 prévues ouvertes aujourd'hui (rien qui déborde : 0 min)."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        for _ in range(3):
+            self.tache(jour_prevu=J)
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+
+    def test_le_matin_pas_d_alleger(self):
+        self.journee_en_retard()
+        self.assertIsNone(self.carte(9, 12))
+
+    def test_a_15_h_alleger(self):
+        self.journee_en_retard()
+        self.assertEqual(self.carte(15, 0)['type'], 'alleger')
+
+    def test_le_soir_en_retard_le_bilan_gagne(self):
+        """R4-02 — 18:30, 1 faite sur 5 : « Faire le bilan », jamais « Alléger » (qui n'avait pas de fin)."""
+        self.journee_en_retard()
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+
+    def test_le_soir_le_bilan_passe_avant_garder(self):
+        """R4-02 — rien gardé, une faite, une candidate à proposer : à 18:30 le bilan, pas « Garder ces N »."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        self.tache()
+        self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        self.assertEqual(self.carte(10, 0)['type'], 'garder')
+        self.assertEqual(self.carte(18, 30)['type'], 'faire_bilan')
+
+    def test_premier_jour_jamais_alleger(self):
+        """R4-04 — compte neuf (objectif par défaut, jamais dit) : une tâche à 17 h ne fait pas lire « 0 sur 5 ·
+        Alléger »."""
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.tache(jour_prevu=J, estimation_minutes=600)  # même une journée qui déborde
+        self.assertIsNone(self.carte(17, 0))
+
+    def test_apres_le_bilan_plus_d_alleger(self):
+        """R4-04 — « Bilan enregistré » (`cloture_le`) : ni Alléger, ni Faire le bilan, rechargé ou non."""
+        self.journee_en_retard()
+        from apps.taches.models.journee import PlanJour
+        PlanJour.objects.filter(proprietaire=self.u, jour=J).update(cloture_le=a(J, 16, 30))
+        self.assertIsNone(self.carte(17, 0))
+        self.assertIsNone(self.carte(18, 30))
+
+    def test_rien_a_alleger_pas_de_carte(self):
+        """R4-04 — la seule tâche ouverte est due aujourd'hui (Alléger la garderait) : rien à alléger, pas de carte."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        self.tache(jour_prevu=J, echeance=J)
+        self.assertIsNone(self.carte(15, 30))
+
+    def test_une_journee_qui_deborde_s_allege_meme_a_moitie_faite(self):
+        """R4-04 — 3 faites sur 5 (plus de la moitié) mais 6 h restent pour 4 h : la charge déborde, « Alléger »."""
+        fabriques.reglages(self.u, palier=5, palier_source='dit')
+        fabriques.plan(self.u, J, planifie_le=a(J, 8))
+        for _ in range(3):
+            self.tache(jour_prevu=J, statut=StatutTache.FAIT, fait_le=a(J, 9))
+        self.tache(jour_prevu=J, estimation_minutes=360)
+        self.assertEqual(self.carte(15, 30)['type'], 'alleger')
 
     def test_revelation_en_dernier_rendue_par_ses_textes(self):
         from apps.taches.models.rythme import IncitationCoach

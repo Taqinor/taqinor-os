@@ -668,15 +668,24 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 |---|---|---|
 | `retour` | carte `retour` du jour non répondue (§4.8) | PROPOSITION |
 | `bilan_hier` | avant 12:00, hier a des restes et le `cloture_le` d'hier est nul | `{"jour"}` |
+| `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite — R4-02 : il passe AVANT `garder` et `alleger` (le soir d'un jour en retard est celui où il sert le plus) | `{}` |
 | `garder` | rien n'est encore gardé (`planifie_le` nul) et `pour_objectif` non vide | `{"n","objectif"}` |
-| `alleger` | à partir de `relance_jour`, `allege_le` nul, ≥ 1 gardée ouverte et `faites` < objectif / 2 (le seuil de la dérive, §7) | `{"faites","prevues"}` |
-| `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite | `{}` |
+| `alleger` | R4-04 — entre `relance_jour` et `heure_soir` (jamais le soir : le bilan prend la place) ; objectif DIT (`nb` non nul et `source` ≠ `defaut` : jamais le premier jour ni sur l'objectif par défaut, on ne lit pas « 0 sur 5 ») ; ni `allege_le` ni `cloture_le` (jamais après « Bilan enregistré ») ; au moins une tâche qu'Alléger peut renvoyer (gardée ouverte prévue aujourd'hui sans échéance ≤ aujourd'hui, §4.5) ; et la journée est en retard (`faites` < objectif / 2, le seuil de la dérive, §7) OU trop pleine (`progression.charge.deborde_minutes` > 0, §4.9) | `{"faites","prevues"}` |
 | `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, ou un `constat` qui pose une QUESTION — jamais C5) et aucun conseil répondu aujourd'hui | PROPOSITION |
 | `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) et aucun conseil répondu aujourd'hui | PROPOSITION |
 | `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres ; aucun conseil répondu aujourd'hui | PROPOSITION |
 
-**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `garder`, `alleger`,
-`faire_bilan`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
+**Une réponse tient la journée (R4-03).** Une carte à réponse servie (`retour`, `rythme`, `pause`, `revelation`) est
+répondue au serveur (`repondu_le`) : elle ne revient ni au rechargement ni sur un autre appareil. Une carte liée à
+l'heure écartée à l'écran (« Pas maintenant » d'`alleger`, « Passer » de `bilan_hier`) n'écrit rien au serveur : elle
+est retenue SUR L'APPAREIL, par compte et par jour (`features/taches/lib/stockage`, clé `taches:cartes-ecartees:<compte>`,
+une seule journée gardée, vidée à la déconnexion) — elle ne revient pas ce jour-là, rechargement et réouverture de
+l'appli compris ; le lendemain elle peut revenir. Après « Bilan enregistré » ni `alleger` ni `faire_bilan` ne sont
+montrés, même par une lecture d'avant. Le chiffre d'`alleger` est lu sur la progression VIVANTE de la page (R4-05).
+Le menu ⋯ d'Aujourd'hui propose toujours « Faire le bilan » tant que la journée n'est pas close (R4-02).
+
+**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `faire_bilan`, `garder`,
+`alleger`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
 les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
 (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
 plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne` ;
