@@ -1093,7 +1093,7 @@ class TailleAssistantTest(_BaseVenteAssistant):
         from apps.agent.registry import LOT_COPILOTE
         from apps.ventes.agent_actions import TAILLE_APERCU, TAILLE_DEVIS
         self.assertEqual((TAILLE_APERCU.risk, TAILLE_APERCU.required_permission,
-                          TAILLE_APERCU.lot), (RISK_INTERNAL, 'ventes_voir', LOT_COPILOTE))
+                          TAILLE_APERCU.lot), (RISK_INTERNAL, 'ventes_modifier', LOT_COPILOTE))
         self.assertEqual((TAILLE_DEVIS.risk, TAILLE_DEVIS.required_permission,
                           TAILLE_DEVIS.lot, TAILLE_DEVIS.objets),
                          (RISK_OUTWARD, 'ventes_modifier', LOT_COPILOTE, {'id': 'devis'}))
@@ -1261,9 +1261,10 @@ class PermissionsVenteAssistantTest(_BaseVenteAssistant):
     la route disent la même chose."""
 
     LECTURES = {'ventes.vente.etat', 'ventes.impayes.lister',
-                'ventes.facture.chercher', 'ventes.devis.taille_apercu'}
+                'ventes.facture.chercher'}
     ECRITURES = {'ventes.devis.prolonger', 'ventes.devis.refuser',
                  'ventes.devis.reviser', 'ventes.devis.taille',
+                 'ventes.devis.taille_apercu',
                  'ventes.facture.whatsapp_relance', 'ventes.vente.facturer'}
 
     def _compte(self, nom, permissions):

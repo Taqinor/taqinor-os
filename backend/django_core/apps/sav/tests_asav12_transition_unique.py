@@ -289,6 +289,18 @@ class TransitionAssistantTests(TestCase):
         self.assertEqual(r.data['statut'], Ticket.Statut.PLANIFIE)
         self.assertEqual(sum(1 for m in mail.outbox if 'sav5-client@example.invalid' in m.to), 1)
 
+    def test_client_oppose_jamais_prevenu_et_geste_permis(self):
+        """Revue 2B — un client qui s'est opposé (STOP) ne reçoit RIEN : la
+        transition se fait (même hors fenêtre : rien ne part), sans e-mail."""
+        self._notifier(True)
+        t = self._ticket()
+        with patch('apps.crm.selectors.porte_une_opposition', return_value=True), \
+                patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):
+            r = self._poster(t, {'vers': 'planifier'})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['statut'], Ticket.Statut.PLANIFIE)
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_reglage_eteint_aucune_fenetre_a_respecter(self):
         t = self._ticket()
         with patch('apps.crm.selectors.hors_heures_ouvrees', return_value=True):

@@ -120,10 +120,11 @@ FIGEE = {
     # Copilote vague 2 (VAD1) — l'état compact de la vente lu par
     # l'assistant : LECTURE du module (code ``ventes_voir``).
     'vente_assistant': LECTURE,
-    # Copilote vague 2 (VAD7, D-W2-Q1) — l'aperçu de la taille (LECTURE, rien
-    # n'est écrit) et la taille changée en place (écriture : palier + grille
-    # « Modifier », comme les autres écritures du devis).
-    'assistant_taille_apercu': LECTURE,
+    # Copilote vague 2 (VAD7, D-W2-Q1) — l'aperçu de la taille (rien n'est
+    # écrit, mais il joue le chemin de l'écriture : même garde) et la taille
+    # changée en place (palier + grille « Modifier », comme les autres
+    # écritures du devis).
+    'assistant_taille_apercu': (RESP, 'DroitDeLaGrille_ventes_modifier'),
     'assistant_taille': (RESP, 'DroitDeLaGrille_ventes_modifier'),
 }
 

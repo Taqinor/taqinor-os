@@ -212,7 +212,7 @@ def _garde_de_la_transition(user, ticket, geste, cible):
                      f'(statuts permis : {permis}). Écran SAV : {lien}.',
                      'transition_interdite')
     societe = user.company
-    if (lectures.notification_client_prevue(societe, cible)
+    if (lectures.notification_client_prevue(societe, cible, ticket)
             and lectures.hors_fenetre_d_envoi(societe)):
         raise _refus(
             "Cette transition préviendrait automatiquement le client (notification SAV "

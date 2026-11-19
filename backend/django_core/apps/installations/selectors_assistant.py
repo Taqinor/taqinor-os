@@ -414,3 +414,16 @@ def brief_chantiers(user, aujourdhui):
         'poses_semaine': {'total': semaine['total'], 'lignes': semaine['lignes']},
         'lien': LIEN_LISTE,
     }
+
+
+# ── Suggestion de créneau : portée de l'utilisateur ─────────────────────────
+
+def suggerer_creneau_visible(user, *, chantier_id, **criteres):
+    """``selectors.suggerer_creneau`` pour un chantier que ``user`` peut voir.
+    Un chantier hors de sa portée répond comme un chantier inconnu (aucune
+    proposition, aucun indice d'existence, aucun planning d'une autre équipe)."""
+    from . import selectors
+
+    if not selectors.chantiers_visibles(user).filter(pk=chantier_id).exists():
+        return {'chantier_id': chantier_id, 'propositions': []}
+    return selectors.suggerer_creneau(user.company, chantier_id=chantier_id, **criteres)

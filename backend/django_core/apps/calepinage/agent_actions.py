@@ -210,7 +210,7 @@ PUBLIER_APERCU = AgentAction(
     method='GET',
     inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.')},
                    ('id',)),
-    required_permission=VOIR,
+    required_permission=GERER,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
 )
@@ -219,7 +219,8 @@ MONTANT = {'type': 'string', 'pattern': r'^\d+\.\d{2}$'}
 
 PUBLIER_DEVIS = AgentAction(
     key='calepinage.publier_devis',
-    label='Mettre le devis à jour depuis la conception (ancien → nouveau total TTC)',
+    label=('Mettre le devis à jour depuis la conception — un devis déjà envoyé au '
+           'client est corrigé en place (ancien → nouveau total TTC)'),
     description=(
         "Sert à : publier la conception du calepinage au devis — générer le "
         "devis BROUILLON s'il n'y en a pas, sinon resynchroniser le devis lié, "
@@ -228,7 +229,7 @@ PUBLIER_DEVIS = AgentAction(
         "utiliser pour : un devis accepté, refusé ou expiré (refusé : il se "
         "révise), ni lever un verdict électrique bloquant (dérogation humaine "
         "à l'écran). Exemple : après calepinage.publier_apercu (ancien "
-        "84500.00, nouveau 86900.00) → id=12, ancien_total_ttc=\"84500.00\", "
+        "84500.00, nouveau 86900.00, devis 45) → id=12, devis=45, ancien_total_ttc=\"84500.00\", "
         "nouveau_total_ttc=\"86900.00\" (sans ancien_total_ttc quand l'aperçu "
         "le dit null). Résultat : le devis généré ou resynchronisé ; 409 "
         "apercu_perime si les totaux ont bougé : relis l'aperçu et refais "
@@ -241,6 +242,10 @@ PUBLIER_DEVIS = AgentAction(
                                  description="Recopié de l'aperçu ; absent sans devis lié."),
         'nouveau_total_ttc': dict(MONTANT, title='Nouveau total TTC (MAD)',
                                   description="Recopié de l'aperçu."),
+        'devis': dict(ENTIER, title='Devis mis à jour',
+                      description="Identifiant du devis lié, recopié de l'aperçu (devis.id) ; "
+                                  "absent quand l'aperçu dit devis null. Obligatoire si ce "
+                                  "devis est déjà envoyé."),
     }, ('id', 'nouveau_total_ttc')),
     required_permission=GERER,
     risk=RISK_OUTWARD,
@@ -249,7 +254,7 @@ PUBLIER_DEVIS = AgentAction(
         "totaux affichés (un devis envoyé est corrigé en place). Aucun PDF, "
         "aucun envoi au client."),
     lot=LOT_COPILOTE,
-    objets={'id': 'calepinage'},
+    objets={'id': 'calepinage', 'devis': 'devis'},
 )
 
 RETENIR = AgentAction(

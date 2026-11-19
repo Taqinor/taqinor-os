@@ -182,7 +182,7 @@ def _publication(fonction, calepinage, user, **kwargs):
     'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json')})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, aperçu de calepinage.publier_devis)
 @action(detail=True, methods=['get'], url_path='publier-devis/apercu',
-        permission_classes=[PeutVoirCalepinage])
+        permission_classes=[PeutGererCalepinage])
 def publier_devis_apercu(self, request, pk=None):
     """CALA7 — l'aperçu (ancien → nouveau total TTC) de la publication au
     devis, calculé par le MÊME service dans une transaction annulée."""
@@ -192,15 +192,16 @@ def publier_devis_apercu(self, request, pk=None):
 
 
 #: CALA7 — ce que le corps de ``publier-devis`` accepte, et rien d'autre.
-CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc')
-CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc et nouveau_total_ttc sont acceptés ; '
+CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc', 'devis')
+CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acceptés ; '
                     'TVA, remise et dérogation se règlent à l\'écran.')
 
 
 @extend_schema(
     request=inline_serializer('CalepinageAssistantPublierCorps', {
         'ancien_total_ttc': drf_serializers.CharField(allow_null=True),
-        'nouveau_total_ttc': drf_serializers.CharField()}),
+        'nouveau_total_ttc': drf_serializers.CharField(),
+        'devis': drf_serializers.IntegerField(required=False, allow_null=True, min_value=1)}),
     responses={200: forme_du_contrat('CalepinageAssistantPublierDevis',
                                      'calepinage_assistant_publier_devis.json')})
 # headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.publier_devis)
@@ -219,9 +220,13 @@ def publier_devis(self, request, pk=None):
         return refus('Recopiez nouveau_total_ttc et ancien_total_ttc (absent ou '
                      'null sans devis lié) de l\'aperçu confirmé.',
                      'nouveau_total_ttc', 'totaux_manquants')
+    devis_vu = corps.get('devis')
+    if devis_vu is not None and (isinstance(devis_vu, bool) or not isinstance(devis_vu, int)):
+        return refus('devis : l\'identifiant du devis lié, recopié de l\'aperçu.',
+                     'devis', 'devis_invalide')
     return _publication(publier, self.get_object(), user=request.user,
                         ancien_vu=corps.get('ancien_total_ttc'),
-                        nouveau_vu=corps.get('nouveau_total_ttc'))
+                        nouveau_vu=corps.get('nouveau_total_ttc'), devis_vu=devis_vu)
 
 
 @extend_schema(

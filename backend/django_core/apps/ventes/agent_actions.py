@@ -959,7 +959,8 @@ def _entrees_taille(*, avec_totaux):
 
 
 # VAD7 (D-W2-Q1) — l'APERÇU de la taille (``GET devis/{id}/assistant-taille/
-# apercu/``, garde ``LectureVentes``) : aucune écriture ; ses deux totaux sont
+# apercu/``, MÊME garde que la taille : il joue le chemin de l'écriture, verrous
+# et études compris, dans une transaction annulée) : aucune écriture ; ses deux totaux sont
 # ceux que la proposition ``ventes.devis.taille`` montre et recopie.
 TAILLE_APERCU = AgentAction(
     key='ventes.devis.taille_apercu',
@@ -976,7 +977,7 @@ TAILLE_APERCU = AgentAction(
     endpoint='/api/django/ventes/devis/{id}/assistant-taille/apercu/',
     method='GET',
     inputs=_entrees_taille(avec_totaux=False),
-    required_permission='ventes_voir',
+    required_permission=_PERM_MODIFIER,
     risk=RISK_INTERNAL,
     lot=LOT_COPILOTE,
     objets={'id': 'devis'},

@@ -567,7 +567,23 @@ def _apercu_perime(nouveau):
         'nouveau_total_ttc', 'apercu_perime')
 
 
-def publier(calepinage, *, user, ancien_vu, nouveau_vu):
+def _exiger_devis_nomme(lie, devis_vu):
+    """Revue 2B — la confirmation NOMME le devis qu'elle corrige : ``devis_vu``
+    (recopié de l'aperçu) doit être le devis lié ; il est obligatoire quand ce
+    devis est déjà chez le client."""
+    lie_id = lie.pk if lie is not None else None
+    if devis_vu is not None and devis_vu != lie_id:
+        raise RefusAssistant(
+            "Ce n'est pas le devis lié à ce calepinage : relisez l'aperçu et "
+            'recopiez son champ devis.', 'devis', 'devis_autre')
+    if devis_vu is None and lie is not None and lie.statut == 'envoye':
+        raise RefusAssistant(
+            f'Le devis {lie.reference} est déjà chez le client : relisez '
+            "l'aperçu et recopiez son champ devis, pour que la confirmation le "
+            'nomme.', 'devis', 'devis_a_nommer')
+
+
+def publier(calepinage, *, user, ancien_vu, nouveau_vu, devis_vu=None):
     """CALA7 — PUBLIE la conception au devis (contrat
     ``calepinage_assistant_publier_devis.json``) aux seuls chiffres VUS.
 
@@ -582,6 +598,7 @@ def publier(calepinage, *, user, ancien_vu, nouveau_vu):
     from .devis import _poser_affiche
 
     lie = _refuser_avant_publication(calepinage)
+    _exiger_devis_nomme(lie, devis_vu)
     with transaction.atomic():
         ancien = _total_ttc(lie)
         geste, devis, details = _publier(_sans_affiche(calepinage), user)

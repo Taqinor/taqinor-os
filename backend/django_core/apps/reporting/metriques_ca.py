@@ -147,18 +147,19 @@ def _somme(factures, valeur):
 
 
 def ca_ht(company, user=None, *, period=None, filters=None):
-    """Somme des HT nets d'avoirs (ASOC73) de la population."""
-    return _somme(_factures(company, period, filters), ht_net)
+    """Somme des HT nets d'avoirs (ASOC73) de la population — bornée à la
+    portée du rôle de ``user`` quand il est fourni (comme signé et encaissé)."""
+    return _somme(_factures(company, period, filters, user), ht_net)
 
 
 def ca_ttc(company, user=None, *, period=None, filters=None):
-    """Somme des TTC nets d'avoirs (ASOC73) de la population."""
-    return _somme(_factures(company, period, filters), ttc_net)
+    """Somme des TTC nets d'avoirs (ASOC73) de la population (même portée)."""
+    return _somme(_factures(company, period, filters, user), ttc_net)
 
 
 def panier_moyen(company, user=None, *, period=None, filters=None):
     """CA TTC ÷ nombre de factures ; ``None`` sur une population vide."""
-    factures = _factures(company, period, filters)
+    factures = _factures(company, period, filters, user)
     if not factures:
         return None
     return _somme(factures, ttc_net) / len(factures)

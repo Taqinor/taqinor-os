@@ -43,7 +43,7 @@
     "code": "devis_fige"
   },
   "exemple_400_champ_refuse": {
-    "detail": "Champ refusé : derogation_electrique. Seuls ancien_total_ttc et nouveau_total_ttc sont acceptés ; TVA, remise et dérogation se règlent à l'écran.",
+    "detail": "Champ refusé : derogation_electrique. Seuls ancien_total_ttc, nouveau_total_ttc et devis sont acceptés ; TVA, remise et dérogation se règlent à l'écran.",
     "field": "derogation_electrique",
     "code": "champ_refuse"
   }

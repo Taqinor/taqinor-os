@@ -140,6 +140,25 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(a.inputs['required'], [])
         self.assertEqual(a.required_permission, 'installation_voir')
 
+    def test_suggerer_creneau_borne_a_la_portee(self):
+        """Revue 2B — un chantier hors de la portée de l'utilisateur répond
+        comme un chantier inconnu : aucune proposition, le calcul n'est pas
+        lancé (ni indice d'existence, ni planning d'une autre équipe)."""
+        from unittest import mock
+
+        from apps.installations import selectors, selectors_assistant
+        from apps.installations.models import Installation
+
+        utilisateur = mock.Mock()
+        with mock.patch.object(selectors, 'chantiers_visibles',
+                               return_value=Installation.objects.none()), \
+                mock.patch.object(selectors, 'suggerer_creneau') as calcul:
+            rendu = selectors_assistant.suggerer_creneau_visible(
+                utilisateur, chantier_id=41, type_intervention='pose',
+                duree_jours=1, date_cible=None)
+        self.assertEqual(rendu, {'chantier_id': 41, 'propositions': []})
+        calcul.assert_not_called()
+
     def test_suggerer_creneau_est_une_lecture(self):
         """CHTA4 — POST qui ne fait que lire (XFSM2, « NE MUTE RIEN ») :
         ``lecture=True``, jamais une proposition ; code de lecture du module

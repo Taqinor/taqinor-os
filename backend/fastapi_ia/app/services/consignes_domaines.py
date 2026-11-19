@@ -71,7 +71,7 @@ CONSIGNES: dict[str, str] = {
         "jamais visible du client. Aucun coût ni prix de pièce."),
     "stock": (
         "stock.produit.niveau rend des quantités : pour ce qui peut sortir, dis « disponible » "
-        "(stock moins réservé), jamais le stock brut à sa place ; réservé, en commande et "
+        "(stock moins réservé et quarantaine), jamais le stock brut à sa place ; réservé, en commande et "
         "quarantaine se citent à part. Aucun prix ni valeur de stock : cette lecture n'en rend "
         "pas, n'en cite aucun. stock.mouvement.create : entrée ou sortie seulement, quantité "
         "entière, à confirmer ; jamais un ajustement, qui se fait à l'écran du stock. "

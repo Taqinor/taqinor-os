@@ -439,6 +439,14 @@ class MoteurResultatView(APIView):
         company = getattr(request.user, 'company', None)
         job = BackgroundJob.objects.filter(
             pk=job_id, company=company, kind=KIND_CALEPINAGE).first()
+        if job is not None and job.user_id != request.user.pk:
+            # Revue 2B — un calcul lancé par un autre : lu seulement dans la
+            # portée du rôle (sinon introuvable, comme un identifiant absent).
+            from core.scoping import visible_user_ids
+
+            visibles = visible_user_ids(request.user)
+            if visibles is not None and job.user_id not in visibles:
+                job = None
         if job is None:
             return Response({'detail': 'Calcul de calepinage introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)

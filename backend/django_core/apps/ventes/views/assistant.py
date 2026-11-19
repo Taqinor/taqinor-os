@@ -447,7 +447,8 @@ class DevisAssistantActionsMixin:
                               400: D.ErreurDetail, 404: D.ErreurDetail,
                               409: DA.ErreurTailleAssistant})
     @action(detail=True, methods=['get'], url_path='assistant-taille/apercu',
-            permission_classes=[LectureVentes])
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('ventes_modifier')])
     def assistant_taille_apercu(self, request, pk=None):
         """VAD7 — l'APERÇU de « mets-lui N panneaux » (contrat
         ``assistant_devis_taille_apercu.json``) : le chemin de l'écriture joué

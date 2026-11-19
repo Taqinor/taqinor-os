@@ -443,17 +443,19 @@ def statuts_suivants_permis(ticket):
 
 # ── Transitions : le client sera-t-il prévenu ? ─────────────────────────────
 
-def notification_client_prevue(company, statut_cible):
+def notification_client_prevue(company, statut_cible, ticket=None):
     """Vrai quand passer un ticket à ``statut_cible`` PRÉVIENT le client : la
     société a allumé ``notifications_client_sav`` (éteint par défaut) ET le
     statut a un gabarit (``notifications_client.STATUT_TO_CLE`` : nouveau,
     planifié, résolu — jamais en cours ni clôturé). C'est la règle de
-    ``services.appliquer_transition_ticket``, lue au même endroit."""
+    ``services.appliquer_transition_ticket``, lue au même endroit. Un client
+    qui s'est opposé (``ticket`` fourni) n'est jamais prévenu."""
     from .models import SavSlaSettings
-    from .notifications_client import STATUT_TO_CLE
+    from .notifications_client import STATUT_TO_CLE, client_oppose
 
     return (statut_cible in STATUT_TO_CLE
-            and bool(SavSlaSettings.get(company).notifications_client_sav))
+            and bool(SavSlaSettings.get(company).notifications_client_sav)
+            and not (ticket is not None and client_oppose(ticket)))
 
 
 def hors_fenetre_d_envoi(company, instant=None):

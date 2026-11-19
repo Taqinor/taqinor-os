@@ -690,6 +690,27 @@ class PublierDevisTest(BaseAssistantCalepinage):
         self.cal.refresh_from_db()
         self.assertIsNone(self.cal.devis_id)
 
+    def test_devis_envoye_exige_d_etre_nomme(self):
+        """Revue 2B — la confirmation d'une correction d'un devis ENVOYÉ nomme
+        ce devis : sans ``devis`` recopié de l'aperçu, ou avec un autre, 409."""
+        from unittest import mock
+
+        from apps.calepinage.services import assistant as service
+
+        devis = self._lier('envoye')
+        with mock.patch.object(service, '_refuser_avant_publication', return_value=devis), \
+                mock.patch.object(service, '_publier') as ecriture:
+            sans = self._poster({'ancien_total_ttc': '84500.00',
+                                 'nouveau_total_ttc': '86900.00'})
+            autre = self._poster({'ancien_total_ttc': '84500.00',
+                                  'nouveau_total_ttc': '86900.00', 'devis': devis.pk + 1})
+        self.assertEqual((sans.status_code, sans.data['code']), (409, 'devis_a_nommer'))
+        self.assertIn(devis.reference, sans.data['detail'])
+        self.assertEqual((autre.status_code, autre.data['code']), (409, 'devis_autre'))
+        ecriture.assert_not_called()
+        self.assertEqual(self._poster({'nouveau_total_ttc': '86900.00',
+                                       'devis': 'x'}).status_code, 400)
+
     def test_apercu_perime_n_ecrit_rien(self):
         """Le recalcul ne rend pas les totaux vus : la transaction est annulée."""
         from unittest import mock
@@ -702,7 +723,7 @@ class PublierDevisTest(BaseAssistantCalepinage):
                                   return_value=('resynchronise', devis, {})), \
                 mock.patch.object(service, '_total_ttc', side_effect=['84500.00', '87300.00']):
             reponse = self._poster({'ancien_total_ttc': '84500.00',
-                                    'nouveau_total_ttc': '86900.00'})
+                                    'nouveau_total_ttc': '86900.00', 'devis': devis.pk})
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['code'], 'apercu_perime')
         self.assertIn('87', reponse.data['detail'])
@@ -713,9 +734,11 @@ class PublierDevisTest(BaseAssistantCalepinage):
         self.assertEqual((PUBLIER_APERCU.method, PUBLIER_APERCU.risk), ('GET', RISK_INTERNAL))
         self.assertEqual(PUBLIER_DEVIS.risk, 'outward')
         self.assertEqual(PUBLIER_DEVIS.required_permission, 'calepinage_gerer')
+        self.assertEqual(PUBLIER_APERCU.required_permission, 'calepinage_gerer')
         self.assertEqual(set(PUBLIER_DEVIS.inputs['properties']),
-                         {'id', 'ancien_total_ttc', 'nouveau_total_ttc'})
-        self.assertEqual(PUBLIER_DEVIS.objets, {'id': 'calepinage'})
+                         {'id', 'ancien_total_ttc', 'nouveau_total_ttc', 'devis'})
+        self.assertEqual(PUBLIER_DEVIS.objets, {'id': 'calepinage', 'devis': 'devis'})
+        self.assertIn('déjà envoyé au client', PUBLIER_DEVIS.label)
 
 
 class RetenirTest(BaseAssistantCalepinage):
