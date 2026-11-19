@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/ventes/devis/auto/",
-  "pourquoi": "COP2-V (PACT10, 18/11/2026) — « prépare-lui un devis : 10 panneaux, onduleur triphasé de 10 kW, batterie de 5 kWh » : le devis automatique ne savait pas IMPOSER un onduleur ni une batterie, et sa réponse ne disait pas ce qu'il avait composé (l'assistant affichait seulement « Référence : DEV-… »). Deux ajouts. (1) Composition imposée, résidentiel seulement : `nb_panneaux` (obligatoire dès qu'un champ imposé est présent), `panneau_produit_id`, `onduleur_produit_id` OU `onduleur_kw` + `onduleur_phase`, `batterie_produit_id` OU `batterie_kwh` ; `target_kwc` et `scenario=les_deux` sont refusés dans ce mode ; une batterie demandée force le scénario « avec » et un onduleur hybride. Chaque élément se résout sur UN produit du catalogue (société + globaux, non archivés, avec prix) ; zéro ou plusieurs candidats → 409 `choix` qui les nomme, le serveur ne choisit jamais en silence. (2) La réponse — imposée ou non, rejeu d'idempotence compris — porte `composition` (les lignes du devis créé, prix TTC), `devis_id` (alias de `id`), `lead_id` et `alertes`. C'est la donnée de la carte `devis_cree` de l'assistant : référence, lignes, total, « Ouvrir le devis », PDF par `/proposal` seulement. Sans consommation sur le lead, économies et retour sont `null` (jamais inventés). Aucun prix d'achat, aucune marge, nulle part.",
+  "pourquoi": "COP2-V (PACT10, 18/11/2026) — « prépare-lui un devis : 10 panneaux, onduleur triphasé de 10 kW, batterie de 5 kWh » : le devis automatique ne savait pas IMPOSER un onduleur ni une batterie, et sa réponse ne disait pas ce qu'il avait composé (l'assistant affichait seulement « Référence : DEV-… »). Deux ajouts. (1) Composition imposée, résidentiel seulement : `nb_panneaux` (obligatoire dès qu'un champ imposé est présent), `panneau_produit_id`, `onduleur_produit_id` OU `onduleur_kw` + `onduleur_phase`, `batterie_produit_id` OU `batterie_kwh` ; `target_kwc` et `scenario=les_deux` sont refusés dans ce mode ; une batterie demandée force le scénario « avec » et un onduleur hybride. Chaque élément se résout sur UN produit du catalogue (société + globaux, non archivés, avec prix) ; zéro ou plusieurs candidats → 409 `choix` qui les nomme, le serveur ne choisit jamais en silence. (2) La réponse — imposée ou non, rejeu d'idempotence compris — porte `composition` (les lignes du devis créé, prix TTC), `devis_id` (alias de `id`), `lead_id` et `alertes`. C'est la donnée de la carte `devis_cree` de l'assistant : référence, lignes, total, « Ouvrir le devis », PDF par `/proposal` seulement. Sans consommation sur le lead, économies et retour sont `null` (jamais inventés). Aucun prix d'achat, aucune marge, nulle part. Forme COMPLÈTE de la vue (garde check_api_shapes : union de ses retours) : `total_ttc` est un NOMBRE JSON (forme historique de la bannière ALEA51, inchangée) ; `proposal_token` / `proposal_path` existent pour la bannière, la carte de l'assistant ne les rend jamais ; `detail`, `field` et `choix` ne sont portés QUE par un refus (409, voir `exemple_409_choix`) — `null` ici.",
   "corps_impose": {
     "lead": 1637,
     "nb_panneaux": 10,
@@ -16,7 +16,18 @@
     "statut": "brouillon",
     "kwc": 7.1,
     "nb_lignes": 11,
-    "total_ttc": "73000.00",
+    "proposal_token": "jeton-de-partage-opaque",
+    "proposal_path": "/proposal/jeton-de-partage-opaque",
+    "total_ttc": 73000.0,
+    "economie_an_1_ht": null,
+    "retour_ans": null,
+    "economie_an_1_ht_avec": null,
+    "retour_ans_avec": null,
+    "kwc_avec": null,
+    "postes_apres_visite": [],
+    "detail": null,
+    "field": null,
+    "choix": null,
     "composition": [
       {
         "designation": "Onduleur hybride Deye 10kW Triphasé",
