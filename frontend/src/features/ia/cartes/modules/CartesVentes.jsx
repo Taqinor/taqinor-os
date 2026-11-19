@@ -1,4 +1,5 @@
 import { formatDate } from '../../../../lib/format'
+import { cheminDeLEcran } from '../ecrans'
 import {
   BoutonLien, Geste, Ligne, Rangee, SurTotal, Titre, Vide, libelle, montant, NATURES_FACTURE, STATUTS_FACTURE,
 } from './partsGestion'
@@ -139,7 +140,7 @@ function CarteFactureBrouillon({ carte }) {
         <Ligne nom="Reste à facturer TTC" valeur={montant(v.reste_a_facturer_ttc)} />
         <Ligne nom="Reste à payer TTC" valeur={montant(v.reste_a_payer_ttc)} />
       </dl>
-      <BoutonLien lien={d.lien} texte="Ouvrir la facture pour l’émettre" />
+      <BoutonLien lien={d.lien ?? cheminDeLEcran('facture', f.id)} texte="Ouvrir la facture pour l’émettre" />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { configureStore } from '@reduxjs/toolkit'
 import { exempleContrat } from '../../../../test/fixtures/contractSamples'
 import iaReducer from '../../store/iaSlice'
 import { CONTRATS_CARTES, VARIANTES_CARTES } from '../contrats'
+import { cheminDeLEcran } from '../ecrans'
 import { COMPOSANTS } from '../registre'
 
 /* Nouveau fichier car : composant neuf, aucun module de test existant. Chaque carte
@@ -66,9 +67,13 @@ describe('carte facture_brouillon', () => {
     expect(screen.queryByText(/FAC-/)).not.toBeInTheDocument()
   })
 
-  it('le bouton vers l’écran des factures vient du champ lien, validé ; sans lien, aucun bouton', () => {
-    monter('facture_brouillon', { ...brouillon(), lien: '/ventes/factures?facture=126' })
+  it('le bouton ouvre la facture préparée : son chemin vient de la table des écrans et de son identifiant', () => {
+    monter('facture_brouillon', brouillon())
     expect(screen.getByRole('button', { name: /pour l’émettre/ })).toBeInTheDocument()
+    expect(cheminDeLEcran('facture', brouillon().facture.id)).toBe('/ventes/factures?facture=126')
+    expect(cheminDeLEcran('facture', 0)).toBeNull()
+    expect(cheminDeLEcran('facture', '126')).toBeNull()
+    expect(cheminDeLEcran('inconnu', 3)).toBeNull()
   })
 
   it('un lien hors de la table des écrans ne donne aucun bouton', () => {
