@@ -220,8 +220,9 @@ class Devis(VerrouOptimisteMixin, RechercheFTSMixin, models.Model):
     # curseur de stockage) ; niveau 6 (0145, arrondi moitié vers le haut de
     # l'argent affiché, D-ENF-ARRONDI-PDF) ; niveau 7 (0146, écarts AMOT du
     # 31/10) ; 8 (0147, AGNR54) ; 9 (0148, AMOT116) ; 10 (0149, ADVS5/ADVS6,
-    # répartition unique des options) ; … 13 (0158, cycles batterie C&I 19/11).
-    regles_calcul = models.PositiveSmallIntegerField(default=13)
+    # répartition unique des options) ; … 13 (0158, cycles batterie C&I 19/11) ;
+    # 14 (0159, sensibilités C&I des deux options, D-SENS-1).
+    regles_calcul = models.PositiveSmallIntegerField(default=14)
     version = models.PositiveIntegerField(default=1)
     version_parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,
