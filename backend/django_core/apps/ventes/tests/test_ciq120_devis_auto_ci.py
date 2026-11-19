@@ -1820,7 +1820,7 @@ class RecomposerBatteriesTests(_Base):
         etude = Devis.objects.get(pk=devis.pk).etude_params['etude_ci']
         self.assertNotIn('depart_une_batterie', etude)
         self.assertEqual(etude['depart_une_batterie_refus']['code'], 'lignes_modifiees')
-        self.assertIn('Batteries au départ', etude['depart_une_batterie_refus']['message'])
+        self.assertIn('Recomposer l’option avec batterie', etude['depart_une_batterie_refus']['message'])
 
     def test_phrase_une_batterie_imprimee_page_2_avec_ses_ancres(self):
         """Le PDF LIT le bloc : la phrase est sous les totaux « Option 2 »,

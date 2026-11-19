@@ -29,7 +29,7 @@
   },
   "etude_ci_depart_une_batterie_refus": {
     "code": "lignes_modifiees",
-    "message": "Phrase « démarrer avec une seule batterie » non imprimée : les lignes de l'option « avec batterie » ne sont plus celles du calculateur (prix, quantité ou article retouché, ou catalogue changé depuis). Choisissez à nouveau le nombre de « Batteries au départ » pour recomposer l’option, ou décochez la case."
+    "message": "Phrase « démarrer avec une seule batterie » non imprimée : les lignes de l'option « avec batterie » ne sont plus celles du calculateur (prix, quantité ou article retouché, ou catalogue changé depuis). Cliquez « Recomposer l’option avec batterie » pour la remettre au calcul, ou décochez la case."
   },
   "regles_sorties": {
     "nb_batteries": "toujours 1 — le système de départ",
