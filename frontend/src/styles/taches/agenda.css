@@ -172,6 +172,23 @@
 .tch .ag-mj.hors b { font-weight: 400; }
 .tch .ag-mj.auj b { color: var(--tch-accent); box-shadow: inset 0 0 0 1.5px var(--tch-accent); font-weight: 700; }
 .tch .ag-mj.choisi b { background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 700; box-shadow: none; }
+/* R2-109 — Mois au bureau (≥ 1024 px) : la case dit les titres de ses tâches (3 au plus, puis « +n ») ; sur iPhone, les points */
+.tch .ag-mj-titres { display: none; }
+@media (min-width: 1024px) {
+  .tch .ag-mj {
+    height: auto; min-height: 104px; align-items: stretch; gap: 3px; padding: 4px 6px 6px; border-radius: 10px;
+    box-shadow: inset 0 0 0 0.5px var(--tch-trait);
+  }
+  .tch .ag-mj b { align-self: flex-start; width: 28px; height: 28px; font-size: 0.875rem; }
+  .tch .ag-mj .pts:not(.ferie) { display: none; }
+  .tch .ag-mj .pts.ferie { align-self: flex-start; }
+  .tch .ag-mj-titres { display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; }
+  .tch .ag-mj-titres > span { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 0.75rem; line-height: 1rem; }
+  .tch .ag-mj-titres .point { flex: none; }
+  .tch .ag-mj-titres .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tch .ag-mj-titres .faite .t { color: var(--tch-texte-doux); text-decoration: line-through; }
+  .tch .ag-mj-titres .plus { font-style: normal; font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
+}
 .tch .ag-jour-tete {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 12px var(--tch-gouttiere) 0;
   box-shadow: inset 0 1px 0 var(--tch-trait); margin-top: 8px;
@@ -313,11 +330,18 @@
    (docs/taches/maquettes/agenda-semaine-planifier.html, ecrans-agenda.css .ag-pcols / .ag-carte) ; iPhone : sept lignes. */
 .tch .ag-pj-cartes { display: none; }
 @media (min-width: 1024px) {
-  /* Passe visuelle n° 38 — colonnes de jours lisibles : la page de l'Agenda s'élargit au bureau (comme Aujourd'hui),
-     jours travaillés larges, non travaillés de 64 px ; en-tête de colonne = nom, barre de charge, puis le compte. */
-  .tch .ag-planifier .ag-jours { display: flex; flex-direction: row; align-items: stretch; gap: 8px; padding: 14px 0 24px; min-height: 420px; }
-  .tch .ag-planifier .ag-pj-place { flex: 1 1 0; min-width: 0; display: flex; }
-  .tch .ag-planifier .ag-pj-place.repos { flex: 0 0 64px; }
+  /* Passe visuelle n° 38 — colonnes de jours lisibles : la page de l'Agenda s'élargit au bureau (comme Aujourd'hui) ;
+     en-tête de colonne = nom, barre de charge, puis le compte.
+     R2-108 — CINQ colonnes de jours ouvrés d'au moins 160 px (panneau « À placer » de 296 px, UNE gouttière de 8 px) ; les
+     jours non travaillés passent sur une 2e rangée, une carte de la largeur d'une colonne : courte quand le jour est
+     vide, aussi haute que son contenu quand il est chargé (plus de week-end écrasé à 64 px avec ses cartes qui débordent). */
+  .tch .ag-planifier .ag-corps { grid-template-columns: minmax(0, 1fr) 296px; gap: 8px; }
+  .tch .ag-planifier .ag-jours {
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-auto-rows: auto; align-items: stretch; gap: 8px;
+    padding: 14px 0 24px;
+  }
+  .tch .ag-planifier .ag-pj-place { grid-column: auto; min-width: 0; min-height: 420px; display: flex; }
+  .tch .ag-planifier .ag-pj-place.repos { min-height: 0; }
   .tch .ag-planifier .ag-pj, .tch .ag-planifier .ag-pj-place.repos .ag-pj {
     display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 100%;
     padding: 10px 8px 8px; border-radius: 14px; background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait);
@@ -326,9 +350,8 @@
   .tch .ag-planifier .ag-pj .ag-charge { order: 2; align-self: stretch; width: auto; margin: 2px 4px 0; }
   .tch .ag-planifier .ag-pj .n { order: 3; padding: 0 4px 4px; font-size: 0.75rem; text-align: left; }
   .tch .ag-planifier .ag-pj-cartes { order: 4; }
-  .tch .ag-planifier .ag-pj.repos { align-items: center; background: var(--ag-repos); box-shadow: none; }
-  .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; text-align: center; }
-  .tch .ag-planifier .ag-pj.repos .n { text-align: center; }
+  .tch .ag-planifier .ag-pj.repos { background: var(--ag-repos); box-shadow: none; }
+  .tch .ag-planifier .ag-pj.repos .j { color: var(--tch-texte-doux); font-weight: 500; }
   .tch .ag-planifier .ag-pj.nouveau { background: var(--ag-cible); box-shadow: inset 0 0 0 2px var(--tch-accent); }
   .tch .ag-planifier .ag-pj-ajout { display: none; }
   .tch .ag-pj-cartes { display: flex; flex-direction: column; gap: 6px; }
@@ -336,10 +359,12 @@
     display: flex; flex-direction: column; gap: 2px; padding: 7px 10px 8px; border-radius: 10px;
     background: var(--tch-panneau); font-size: 0.8125rem; line-height: 1.125rem; text-align: left;
   }
+  .tch .ag-carte { min-width: 0; overflow: hidden; }
+  .tch .ag-carte .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .tch .ag-carte .h { font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
   .tch .ag-carte .m { display: flex; align-items: flex-start; gap: 6px; font-size: 0.75rem; color: var(--tch-texte-doux); min-width: 0; }
   .tch .ag-carte .m .point { flex: none; margin-top: 5px; }
-  .tch .ag-carte .m span { overflow: hidden; text-overflow: ellipsis; }
+  .tch .ag-carte .m span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .tch .ag-carte.faite { background: transparent; box-shadow: inset 0 0 0 1px var(--tch-trait); }
   .tch .ag-carte.faite .t { color: var(--tch-texte-doux); text-decoration: line-through; }
 }

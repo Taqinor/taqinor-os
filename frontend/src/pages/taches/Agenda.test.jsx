@@ -328,6 +328,33 @@ describe('TCH104 — vues et navigation', () => {
     expect(tete.querySelector('.ag-jour-charge')).toHaveTextContent('2 tâches · 1 h 15 pour 3 h')
   })
 
+  it('R2-109 — Mois : les jours non travaillés sont teintés sur TOUTES les semaines, même ceux que la lecture ne sert pas', async () => {
+    const d = agenda()
+    const vide = { toute_la_journee: [], sans_heure: [], blocs: [], echeances: [], externes: [], ouvre: false, ferie: false }
+    d.jours.push({ ...vide, jour: '2026-11-21' }, { ...vide, jour: '2026-11-22' }) // seul ce week-end est servi
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?vue=mois')
+    const cellule = async (nom) => (await screen.findByRole('gridcell', { name: new RegExp(`^${nom}`) }))
+    expect(await cellule('Samedi 28 novembre')).toHaveClass('repos')
+    expect(await cellule('Dimanche 29 novembre')).toHaveClass('repos')
+    expect(await cellule('Samedi 7 novembre')).toHaveClass('repos')
+    expect(await cellule('Mercredi 25 novembre')).not.toHaveClass('repos')
+  })
+
+  it('R2-109 — Mois au bureau : les titres des tâches dans la case du jour (3 au plus, puis « +n »), les points restent pour l\'iPhone', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours[0].sans_heure.push({ ...base, id: 801, titre: 'Quatrième' }, { ...base, id: 802, titre: 'Cinquième' })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?vue=mois')
+    const mardi = await screen.findByRole('gridcell', { name: /^Mardi 17 novembre/ })
+    const titres = mardi.querySelector('.ag-mj-titres')
+    expect(titres.querySelectorAll('.t')).toHaveLength(3)
+    expect(titres.querySelector('.plus')).toHaveTextContent('+2') // 5 tâches ce jour-là (bloc, sans heure, échéance) : 3 montrées
+    expect(titres.textContent).toContain('Devis Settat')
+    expect(mardi.querySelector('.pts')).not.toBeNull() // les points de l'iPhone sont toujours là
+  })
+
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {
     monter('/taches/agenda?vue=a-venir')
     await waitFor(() => expect(dernierAppel()).toEqual({ du: '2026-11-17', au: '2026-11-30' }))
