@@ -79,10 +79,10 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
       { jour: '2026-11-17', mode: 'express', lignes: [{ type: 'tache', id: 41 }], essentielles: [], triage: [] },
       expect.anything(),
     ))
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('1 gardée')
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("1 prévue aujourd'hui")
   })
 
-  it('« Garder ces 3 » garde tout, annonce « 3 gardées », invite « Touche ★ » et met le focus sur Prévu', async () => {
+  it('« Garder ces 3 » garde tout, annonce « 3 prévues aujourd’hui » (R4-07), invite « Touche ★ » et met le focus sur Prévu', async () => {
     servir(journee())
     monter()
     await screen.findByText('Déclaration TVA')
@@ -91,7 +91,7 @@ describe('TCH78 — Proposé pour aujourd\'hui', () => {
       const corps = api.post.mock.calls.find((c) => c[0] === '/taches/journee/planifier/')[1]
       expect(corps.lignes).toEqual([{ type: 'tache', id: 21 }, { type: 'tache', id: 41 }, { type: 'tache', id: 30 }])
     })
-    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent('3 gardées')
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("3 prévues aujourd'hui")
     const prevu = screen.getByText('Touche ★ pour ton essentiel').closest('section')
     expect(prevu.querySelector('.section-titre')).toHaveTextContent('Prévu')
     await waitFor(() => expect(document.activeElement).toBe(prevu))

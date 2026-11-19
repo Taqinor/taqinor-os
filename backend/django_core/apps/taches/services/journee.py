@@ -739,7 +739,9 @@ def planifier_express(user, jour, maintenant, *, lignes, essentielles=(), mode=M
                                   + [(ACTIVITE, pk) for pk in ids_activites]
                                   + [(TACHE, pk) for pk in essentielles]))
         _lignes_du_plan(user, plan, cles, set(essentielles), ops)
-        geste = enregistrer_geste(user, 'plan_du_jour', f'{len(lignes)} gardées', ops)
+        # R4-07 (M6) — « gardées » n'est plus un mot de l'écran : ce qu'on garde est PRÉVU aujourd'hui (accordé)
+        n = len(lignes)
+        geste = enregistrer_geste(user, 'plan_du_jour', f"{n} {'prévues' if n >= 2 else 'prévue'} aujourd'hui", ops)
     return {'aujourdhui': aujourdhui(user, jour, maintenant, assistant=assistant), 'renvoyees': [],
             'geste_id': geste.pk}
 

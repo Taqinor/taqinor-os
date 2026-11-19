@@ -435,7 +435,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | Placer à une heure (Agenda) | « Placée à {HH:MM} · Annuler » |
 | Placer sur un jour (Planifier ma semaine) | « Placée {jour} · Annuler » |
 | Mettre à aujourd'hui | « Mise à aujourd'hui · Annuler » |
-| Garder ces N | « {n} gardées · Annuler » |
+| Garder ces N | « {n} prévues aujourd'hui · Annuler » (« Prévue aujourd'hui » : 1 prévue aujourd'hui ; R4-07) |
 | Essentiel | « Essentielle · Annuler » ; 4e : « 3 au plus. » |
 | Déplacer | « Déplacée dans « {projet} » · Annuler » |
 | Plus tard | « Plus tard · Annuler » ; lot « {n} pour plus tard · Annuler » |
@@ -536,7 +536,7 @@ Toute révélation se ferme par « OK ».
 |---|---|
 | Cocher / décocher | « Fait : {titre} » · « Rouverte : {titre} » |
 | Reporter · Choisir un jour | « Reportée à {jour} » · « Prévue {jour} » |
-| Garder ces N | « {n} gardées » (puis le focus va sur Prévu) |
+| Garder ces N | « {n} prévues aujourd'hui » (R4-07 ; puis le focus va sur Prévu) |
 | ★ | « Essentielle : {titre} » · « Plus essentielle : {titre} » |
 | Alléger | « {n} retournées aux projets » |
 | Annuler | « Annulé » (seulement après le bouton « Annuler » : « Reprendre » n'annonce rien, la phrase revient au champ qui prend le focus) |
@@ -602,7 +602,7 @@ notifié.
 
 | Type · cas | 0 | 1 | 2 | Avec titres |
 |---|---|---|---|---|
-| matin · `pousser`, gardées ≥ 1 | « Ta journée : {prevues} prévues · objectif {objectif}. » | « Bonjour. {prevues} tâches gardées ; objectif du jour : {objectif}. » | « Plan du jour : choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
+| matin · `pousser`, gardées ≥ 1 | « Ta journée : {prevues} prévues · objectif {objectif}. » | « Bonjour. {prevues} tâches prévues ; objectif du jour : {objectif}. » | « Plan du jour : choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
 | matin · `pousser`, rien de gardé, proposées ≥ 1 | « {proposees} proposées pour ton objectif de {objectif}. » | « Bonjour. Proposé pour aujourd'hui : {proposees} tâches ; objectif {objectif}. » | « Plan du jour : garde tes tâches et choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
 | matin · `tenir` | « Ta journée : {prevues} prévues · ton rythme {bas} à {haut}. » | « Bonjour. {prevues} tâches t'attendent ; ton rythme : {bas} à {haut}. » | « Plan du jour : choisis ton essentiel (rythme {bas} à {haut}). » | idem |
 | matin · `libre` | « Ta journée : {prevues} prévues. » | « Bonjour. {prevues} tâches t'attendent. » | « Plan du jour : choisis ton essentiel. » | idem |
@@ -618,7 +618,7 @@ notifié.
 | rappel | « Une tâche à {heure}. » ({n} > 1 : « {n} tâches à {heure}. ») | « Rappel de {heure} : {n} tâche. » | « C'est l'heure : {n} tâche à {heure}. » | « « {titre} » · {heure} » |
 | test | « Les notifications de Tâches arrivent bien sur cet appareil. » | (une seule formulation) | — | — |
 
-Accords : « 1 prévue », « 1 tâche gardée », « 1 tâche t'attend », « 1 tâche a son échéance » / « 2 tâches ont leur
+Accords : « 1 prévue », « 1 tâche prévue », « 1 tâche t'attend », « 1 tâche a son échéance » / « 2 tâches ont leur
 échéance ». Une pause est annoncée dans l'app (carte), jamais par un push.
 
 ## 4. Phrases du rythme et des constats
@@ -635,7 +635,7 @@ Phrases SERVIES (`message` du geste, Copilote, API). L'écran Mon rythme, lui, d
 | « Plus » / « Moins » | « Objectif du jour : {nb} (un de plus), dès aujourd'hui. » · « … (un de moins), dès aujourd'hui. » |
 | En faire plus | « En faire plus : objectif du jour {nb}. Je te proposerai d'aller plus loin quand tu le tiens. » |
 | Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire (5 à 13 jours évalués, R sur le pas réel) : « … à confirmer sur 14 jours travaillés. » ; moins de 5 jours (R3-004) : « Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant. » |
-| Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés. » |
+| Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues restent affichés. » |
 | Comprendre mon rythme éteint | « C'est éteint : plus rien n'est calculé ni gardé sur ton rythme. » |
 
 ### 4.2 Cartes à réponse (`PROPOSITION.texte` et boutons)
@@ -674,7 +674,7 @@ C-14) : plus de seconde ligne « {pt} des {pl} gardées » (`bilan.texte_gardees
 
 | # | Phrase | Question de l'action |
 |---|---|---|
-| C1 | liste de Mon rythme : « Tu finis plus souvent ton essentiel quand il est placé avant midi. » ; au toucher : « Fini : {p1} % de tes gardées du matin, {p2} % de celles d'après 16 h ({n1} et {n2} lignes). » | « Mettre l'essentiel le matin ? » |
+| C1 | liste de Mon rythme : « Tu finis plus souvent ton essentiel quand il est placé avant midi. » ; au toucher : « Fini : {p1} % de tes tâches prévues le matin, {p2} % de celles d'après 16 h ({n1} et {n2} lignes). » | « Mettre l'essentiel le matin ? » |
 | C2 | « Essentiel fait {a} fois sur {na} quand il est en tête de ta journée, {b} sur {nb} sinon. » | « Le mettre en tête par défaut ? » |
 | C3 | « {Jour} : {m1} tâches en moyenne, {m2} les autres jours. » | « En faire un jour court (un de moins) ? » |
 | C4 | « Tu gardes {p} tâches, tu en finis {f} (au milieu de tes {n} dernières journées). » | « Te proposer {f1} à garder ? » |
@@ -772,12 +772,12 @@ du réseau. Ajouter, cocher et reporter marchent hors ligne. »
 | Bouton | **Garder ces {garder_n}** (n = 1 : « Garder celle-ci ») |
 | Repli | après les {garder_n} premières : « Voir les {n} suivantes » |
 | Vide | « Rien à prioriser : tout est gardé ou fait. » |
-| Toasts | « Essentielle · Annuler » · « Mise à aujourd'hui · Annuler » · « Prévue {jour} · Annuler » · « {n} gardées · Annuler » |
+| Toasts | « Essentielle · Annuler » · « Mise à aujourd'hui · Annuler » · « Prévue {jour} · Annuler » · « {n} prévues aujourd'hui · Annuler » |
 
 ### 5.4 Carte « Où tu en es » (`point`, « Où j'en suis ? »)
 
 « {faites} sur {objectif} » (`libre` : « {faites} faites ») · « Essentiel restant : {titres} » (aucun : « Essentiel fait »
-ou rien) · « Prochaine : {titre} [· {HH:MM}] » · « Encore {restes_nb} gardée(s) » · « Rendez-vous restants : {HH:MM}
+ou rien) · « Prochaine : {titre} [· {HH:MM}] » · « Encore {restes_nb} prévue(s) aujourd'hui » (R4-07) · « Rendez-vous restants : {HH:MM}
 {titre}… » · « Reste : {durée} pour {disponible} disponibles » (sans temps disponible servi : « Reste : {durée} » ; rien quand il ne reste aucune minute prévue ; R3-023) ; boutons [Ouvrir Aujourd'hui] et le geste de la carte du moment (« Garder
 ces {n} », « Alléger ma journée » ou « Faire le bilan »).
 

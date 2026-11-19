@@ -180,7 +180,7 @@ function BoutonGarder({ lignes, jour, geste }) {
   return (
     <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null}
       onClick={() => geste.lancer(() => client.garderJournee({ jour, mode: 'express', lignes: lignesDe(lignes), essentielles: [], triage: [] }),
-        accord(n, 'gardée'))}>
+        accord(n, "prévue aujourd'hui", "prévues aujourd'hui"))}>
       {n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci'}
     </button>
   )

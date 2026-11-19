@@ -802,7 +802,8 @@ export default function Aujourdhui() {
       setInvite(true)
       setFocusPrevu((v) => v + 1)
       proposerAnnuler({
-        message: `${accord(items.length, 'gardée')}`,
+        // R4-07 (M6) — « gardées » n'est plus écrit : ce qu'on a gardé est PRÉVU aujourd'hui
+        message: accord(items.length, "prévue aujourd'hui", "prévues aujourd'hui"),
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
       })
     } catch (err) {

@@ -30,7 +30,7 @@ beforeEach(() => {
 })
 
 describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
-  it('plan_propose : « Garder ces 2 » poste le mode express puis dit « 2 gardées » avec Annuler', async () => {
+  it('plan_propose : « Garder ces 2 » poste le mode express puis dit « 2 prévues aujourd\'hui » avec Annuler', async () => {
     const donnees = contrat('journee_proposition')
     monter('plan_propose', donnees)
     const carte = screen.getByRole('group', { name: "Proposé pour aujourd'hui" })
@@ -44,7 +44,7 @@ describe('TCH117 — cartes Tâches du Copilote (1/2)', () => {
     expect(corps).toMatchObject({
       jour: '2026-11-17', mode: 'express', lignes: [{ type: 'tache', id: 21 }, { type: 'tache', id: 30 }],
     })
-    expect(await within(carte).findByText(/2 gardées/)).toBeInTheDocument()
+    expect(await within(carte).findByText(/2 prévues aujourd'hui/)).toBeInTheDocument() // R4-07 : plus de « gardées »
     await userEvent.click(within(carte).getByRole('button', { name: 'Annuler' }))
     await waitFor(() => expect(api.post).toHaveBeenLastCalledWith('/taches/gestes/5/annuler/', {}))
   })
