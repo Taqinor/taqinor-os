@@ -58,6 +58,26 @@ const DESTINATIONS = [
   ['Réglages', '/taches/reglages'],
 ]
 
+/** R2-087 — l'aide des touches de Tâches (`?`), mot pour mot textes.md §2.1 « Aide des touches ». */
+const TOUCHES = [
+  ['c t', 'Créer une tâche'], ['g j', "Aujourd'hui"], ['n', 'Ajouter ici'], ['/', 'Chercher'], ['Espace', 'Fait'],
+  ['e', 'Renommer'], ['d', 'Quand'], ['m', 'Déplacer'], ['x', 'Sélectionner'], ['h', 'Heure'], ['*', 'Essentiel'],
+  ['Alt+↑/↓', 'Réorganiser'], ['Maj+↓', '+15 min'], ['Ctrl/⌘ Z', 'Annuler (hors champ)'],
+]
+
+function AideTouches() {
+  return (
+    <dl className="touches">
+      {TOUCHES.map(([touche, effet]) => (
+        <div key={touche} className="touches-ligne">
+          <dt><kbd>{touche}</kbd></dt>
+          <dd>{effet}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /** R2-084 — les écrans dont la liste reçoit le bouton flottant « Ajouter une tâche ». */
 const ECRANS_AVEC_FAB = new Set(['aujourdhui', 'a-trier', 'projets', 'projet', 'agenda'])
 
@@ -238,6 +258,7 @@ export default function CoquilleTaches({
   const versionFile = useVersionFile()
   const [file, setFile] = useState({ enAttente: 0, conflits: [] })
   const [saisieOuverte, setSaisieOuverte] = useState(false)
+  const [aideTouches, setAideTouches] = useState(false)
   const tacheId = params.get('tache')
   // R2-084 — le + n'apparaît que là où l'on ajoute des tâches à une liste ; jamais dans un parcours (Planifier le
   // projet, Planifier ma semaine, Revue) ni dans Réglages, Recherche, Mon rythme, Supprimées (journée vide : base.css)
@@ -306,6 +327,25 @@ export default function CoquilleTaches({
     document.addEventListener('keydown', surTouche)
     return () => document.removeEventListener('keydown', surTouche)
   }, [demanderSaisie])
+
+  // R2-087 — dans Tâches, `?` montre les touches DU MODULE (pas l'aide générale de l'ERP) et `/` va à la Recherche
+  // (sur la Recherche : dans son champ). Écouté sur `document`, donc AVANT l'écouteur de l'ERP (posé sur `window`),
+  // qui ne reçoit plus la touche. Jamais dans un champ ni sous une boîte ouverte ; aucune des deux n'écrit rien.
+  useEffect(() => {
+    const surTouche = (e) => {
+      if ((e.key !== '?' && e.key !== '/') || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return
+      if (e.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === '?') { setAideTouches(true); return }
+      const champ = document.querySelector('.tch input[type="search"]')
+      if (champ) champ.focus()
+      else navigate('/taches/recherche')
+    }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [navigate])
 
   const synchro = derniereSynchro ?? (userId === null ? null : lireDerniereSynchro(userId))
   const premierConflit = file.conflits[0]
@@ -392,6 +432,9 @@ export default function CoquilleTaches({
       {tacheId ? <Fiche id={tacheId} onFermer={fermerFiche} /> : null}
       <FeuilleSaisie ouverte={saisieOuverte} onFermer={fermerSaisie} />
       {feuille ? <FeuilleACrans {...feuille} /> : null}
+      <FeuilleACrans ouverte={aideTouches} onFermer={() => setAideTouches(false)} titre="Touches de Tâches" cranInitial="85">
+        <AideTouches />
+      </FeuilleACrans>
       <ZoneAnnonces />
       {selecteurProjet ? (
         <FeuilleACrans

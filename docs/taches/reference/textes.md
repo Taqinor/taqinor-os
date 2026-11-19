@@ -98,7 +98,7 @@ référence données/API.
 | Bouton flottant (seul bouton plein) | Ajouter |
 | Bouton global | Copilote |
 | Palette | Créer une tâche · Chercher « {q} » dans mes tâches · Copilote : Planifie ma journée · Aide-moi à prioriser · Range ma liste · Où j'en suis ? · Nouveau projet · Faire le bilan · Aujourd'hui · À trier · Projets · Agenda · Supprimer « {titre} » · Abandonner « {titre} » |
-| Aide des touches (`?`) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
+| Aide des touches (`?`, feuille « Touches de Tâches » ; dans Tâches, `?` n'ouvre plus l'aide générale de l'ERP, `/` va à la Recherche) | `c t` Créer une tâche · `g j` Aujourd'hui · `n` Ajouter ici · `/` Chercher · Espace Fait · `e` Renommer · `d` Quand · `m` Déplacer · `x` Sélectionner · `h` Heure · `*` Essentiel · `Alt+↑/↓` Réorganiser · `Maj+↓` +15 min · Ctrl/⌘ Z Annuler (hors champ) |
 | Raccourci de manifeste (AVANCÉ) | Tâches |
 | Carte cockpit | « Tâches · Aujourd'hui » · « {faites} sur {objectif} » · 3 lignes cochables · Ouvrir ; vide : « Rien de gardé » |
 

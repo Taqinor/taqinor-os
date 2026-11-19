@@ -161,6 +161,26 @@ describe('TCH43 — routes du module', () => {
     expect(coquille.querySelector('.saisie-bureau')).not.toBeNull()
   })
 
+  it('R2-087 — « ? » montre les touches de Tâches ; « / » va à la Recherche', async () => {
+    const aideErp = vi.fn()
+    window.addEventListener('keydown', aideErp) // l'aide générale de l'ERP écoute sur `window`
+    try {
+      const { router } = monter('/taches/a-trier')
+      await screen.findByRole('heading', { level: 1, name: 'À trier' }, { timeout: 5000 })
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true, cancelable: true })) })
+      const aide = screen.getByRole('dialog', { name: 'Touches de Tâches' })
+      expect(within(aide).getByText('Ajouter ici')).toBeInTheDocument()
+      expect(within(aide).getByText('Annuler (hors champ)')).toBeInTheDocument()
+      expect(aideErp).not.toHaveBeenCalled()
+      await act(async () => { aide.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+      expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()
+      await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })) })
+      expect(router.state.location.pathname).toBe('/taches/recherche')
+    } finally {
+      window.removeEventListener('keydown', aideErp)
+    }
+  })
+
   it('/taches mène à /taches/aujourdhui', async () => {
     const { router } = monter('/taches')
     expect(await screen.findByRole('heading', { level: 1, name: "Aujourd'hui" })).toBeInTheDocument()

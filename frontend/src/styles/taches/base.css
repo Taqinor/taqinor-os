@@ -1291,6 +1291,14 @@
   background: var(--tch-surface-haute); color: var(--tch-texte); font-size: 1rem; box-shadow: inset 0 0 0 1px var(--tch-trait); border: 0; }
 .tch .champ::placeholder { color: var(--tch-texte-doux); }
 .tch .champ:focus-visible { box-shadow: inset 0 0 0 2px var(--tch-accent); }
+/* R2-087 — feuille « Touches de Tâches » (`?`) */
+.tch .touches { margin: 0 0 8px; }
+.tch .touches-ligne { display: grid; grid-template-columns: 104px 1fr; align-items: center; min-height: 40px;
+  box-shadow: inset 0 -1px 0 var(--tch-trait); font-size: 0.9375rem; }
+.tch .touches-ligne:last-child { box-shadow: none; }
+.tch .touches dt, .tch .touches dd { margin: 0; }
+.tch .touches kbd { font: inherit; font-size: 0.8125rem; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+  background: var(--tch-panneau); color: var(--tch-texte); white-space: nowrap; }
 /* Bandeau de conflit (A16-N8) */
 .tch .conflit { margin: 10px var(--tch-gouttiere) 16px; padding: 12px 12px 10px 14px; border-radius: var(--tch-rayon-champ);
   background: var(--tch-accent-doux); }
