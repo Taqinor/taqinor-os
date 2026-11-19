@@ -1,0 +1,22 @@
+{
+  "endpoint": "GET /api/django/agent/ouvrir/",
+  "pourquoi": "Copilote vague 2 (A0, 19/11/2026) — réponse de l'action `erp.ouvrir` (lecture seule, lot `copilote`, noyau), rendue par la carte `lien_ecran` : un bouton « Ouvrir » vers un écran de l'ERP. Paramètres : `ecran` (clé de la table `assistant_ecrans.json`, obligatoire), `id` (entier > 0, obligatoire pour un écran à objet, ignoré sinon), `onglet` (liste `onglets_calepinage` ; ignoré sur un écran sans onglets). `chemin` est construit par le SERVEUR depuis la table, jamais depuis une chaîne du modèle ; `libelle` = le libellé de l'objet (résolveur de `GET agent/libelles/`) ou, sans objet, le titre de l'écran ; `titre` = le texte du bouton. Écran inconnu, `id` non entier, onglet hors liste : 400 nommé. Écran à objet sans `id` : 404 nommé. Objet inconnu, d'une autre société, hors portée de l'utilisateur ou dont le module n'a pas encore son résolveur : 404 « introuvable » (jamais un indice d'existence). Compte portail : 403.",
+  "exemple": {
+    "ecran": "lead",
+    "chemin": "/crm/leads/1489",
+    "libelle": "Aziz Benali — Casablanca",
+    "titre": "Ouvrir la fiche du lead"
+  },
+  "exemple_sans_objet": {
+    "ecran": "relances_crm",
+    "chemin": "/crm/relances",
+    "libelle": "Ouvrir les relances",
+    "titre": "Ouvrir les relances"
+  },
+  "exemple_introuvable": {
+    "detail": "Écran ou objet introuvable."
+  },
+  "exemple_erreur_parametre": {
+    "detail": "ecran : écran inconnu."
+  }
+}

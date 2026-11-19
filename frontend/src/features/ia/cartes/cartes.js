@@ -26,15 +26,8 @@ export const ETATS = Object.freeze({
 /** Phrase d'une confirmation au résultat incertain (COP-A3 côté relais). */
 export const MESSAGE_INCERTAIN = 'Résultat incertain : vérifie si l’action a été faite avant de la redemander.'
 
-/** Cartes de résultat que l'écran sait rendre (miroir de `CARTES`, registre
- *  Django). Toute autre valeur — ou `null` — tombe sur la carte générique. */
-export const CARTES_CONNUES = Object.freeze([
-  'liste_leads', 'file_touches', 'matin', 'fiche_lead', 'touche', 'suite_touche',
-  'wa_message', 'wa_devis', 'document', 'devis_cree', 'visite', 'diagnostic',
-  // Tâches (TCH118) : rendues DIRECTEMENT par `features/taches/cartes/CartesTaches`.
-  'ma_journee', 'plan_propose', 'liste_taches', 'tache', 'capture_apercu', 'rythme',
-  'plan_projet', 'projet', 'revue_semaine', 'priorites', 'point',
-])
+// Vague 2 (FND10) — `CARTES_CONNUES` vit dans `./registre.js`, DÉRIVÉE des
+// composants enregistrés (elle ne peut plus diverger d'eux).
 
 /** Au-delà, une carte (touche, aperçu de devis) est RELUE avant d'ouvrir WhatsApp. */
 export const AGE_MAX_CARTE_MS = 3 * 60 * 1000

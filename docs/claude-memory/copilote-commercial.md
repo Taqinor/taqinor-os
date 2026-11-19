@@ -85,5 +85,40 @@ dans la même session. Dossier : `docs/assistant-copilote.md`. Tâches : groupe 
   lignes ne grossissent pas), `except` large muet, duplicata ≥ 6 lignes entre le tiroir et la page, test qui lit un
   source, `toLocaleString` hors `lib/format`, échantillon de contrat incomplet, instantané OpenAPI, empreinte CODEMAP.
   Les donner dans la consigne de chaque lane.
-- Décisions de Reda encore attendues : connexion WhatsApp officielle, plafond de dépense par jour, mémoire de
-  préférences de l'assistant, prix d'achat dans les réponses internes.
+
+## Décisions de Reda (19/11/2026, question interactive) — ne jamais re-demander
+- **Devis déjà envoyé = modifiable par l'assistant APRÈS confirmation** qui montre l'ancien et le nouveau total
+  (nombre de panneaux, calepinage republié). Ce n'était PAS l'option recommandée (« il donne le lien ») : ne pas la
+  réintroduire. Mécanique retenue : aperçu à blanc côté serveur, confirmation qui porte les deux totaux, refus si le
+  devis a changé entre-temps.
+- **Factures : brouillon seulement** — l'émission (numéro légal) reste un geste à l'écran.
+- **Estimation du nombre de panneaux avant tout dessin : oui**, depuis une visite validée ou un tracé existant
+  (« estimation ») ET depuis des dimensions dictées (« dicté ») ; jamais mise au devis.
+- **Plafond de dépense par jour : aucun** (`ASSISTANT_PLAFOND_JOUR_USD` reste vide). Pas l'option recommandée (5 $) :
+  ne pas poser de plafond par défaut.
+- **Mémoire de préférences : oui** — seulement ce que l'utilisateur demande de retenir, visible, supprimable, sans
+  donnée de client.
+- **Prix d'achat, marge, valeur du stock : oui dans les réponses internes** aux seuls comptes qui ont déjà le droit
+  « voir les prix d'achat » ; jamais dans un texte destiné à un client.
+- **WhatsApp : d'abord coller le message ou joindre une capture** ; la connexion officielle (coexistence, ≈ 50 € par
+  mois) se décide après une à deux semaines d'usage réel. Rien à construire côté réception pour l'instant.
+
+## Vague 2A (19/11/2026) — fondation de « l'assistant de tout l'ERP » : ce qui gouverne la suite
+- Demande de Reda (19/11) : « much broader… visites, chantier, and most importantly calepinage… act like my assistant
+  and use the ERP to the most », enquête L3 module par module. Plan complet : `docs/assistant-copilote.md` §13.
+- **Les outils se chargent par domaine** (moteur natif seulement) : un noyau fixe (`registry.NOYAU`), le reste différé et
+  chargé par `outils_charger`. Prouvé avec une vraie clé ; le résultat du chargeur ne contient QUE des références (du
+  texte mêlé = refus du fournisseur). Un outil du lot `copilote` né après la vague 1 n'est jamais servi à LangChain ni à
+  Groq : une lane n'a rien à déclarer pour cela.
+- **Ce qui reste un geste humain passe par `erp.ouvrir`** (lien d'écran construit par le serveur) : dessin, photos,
+  signatures, dérogations.
+- **Défauts de l'assistant d'avant, corrigés ici** : quatre outils écrivaient sans confirmation (mouvement de stock —
+  dont l'« ajustement » qui FIXAIT le stock —, commande fournisseur, ticket SAV, commande du besoin d'un chantier),
+  trois déclaraient un droit que la route n'utilise pas, « générer la facture » émettait un numéro légal sur-le-champ,
+  une visite planifiée par l'assistant n'avait aucun technicien, l'outil de recherche dans les documents rendait leur
+  texte à tout rôle (dormant : réglage éteint).
+- **Leçon de run** : dans la merge queue (seul gate complet des branches `claude/*`), trois allers-retours pour des
+  tests jamais joués. Avant d'y entrer : jouer en local, en un seul processus (`scripts/test-backend.ps1 -RestoreDb
+  -Parallel 1 -Modules …`), les modules de test neufs ; les tests sans base se jouent dans le conteneur par
+  `manage.py shell` + `unittest`. Les registres de routes à tenir quand on ajoute une route à ventes : marqueur
+  `# api-only`, `NB_ACTIONS`, golden du `DevisViewSet`, garde de portée.

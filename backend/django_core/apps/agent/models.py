@@ -61,6 +61,17 @@ class AgentActionLog(models.Model):
     undone_at = models.DateTimeField('Annulée le', null=True, blank=True)
     undo_detail = models.TextField('Détail annulation', blank=True, default='')
 
+    class Origine(models.TextChoices):
+        CONFIRMEE = 'confirmee', 'Confirmée par l\'utilisateur'
+        INTERNE = 'interne', 'Écriture interne de l\'assistant'
+
+    # Copilote vague 2 (FND7) — d'où vient le journal : une action confirmée
+    # par le doigt de l'utilisateur (défaut, comportement d'avant) ou une
+    # écriture INTERNE faite sans carte pendant un tour (ids, nombres et dates
+    # seulement dans ``inputs_json`` — jamais de texte libre).
+    origine = models.CharField(
+        'Origine', max_length=10, choices=Origine.choices, default=Origine.CONFIRMEE)
+
     class Meta:
         ordering = ['-confirmed_at']
         verbose_name = 'Action IA confirmée'

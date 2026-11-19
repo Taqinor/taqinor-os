@@ -941,8 +941,8 @@ class MoteurNatifCop6Tests(unittest.TestCase):
             outils["report_gap"].executer({"intention": "manque", "resume": "x"})
             return _rendu_natif(outils=["crm_lead_list", "sql_db_query", "report_gap"])
         sortie, ecrit, llm = self._servir("natif", _CAT_COPILOTE, executer)
-        self.assertEqual(vu["noms"], ["crm_lead_list", "ventes_devis_proposal_pdf",
-                                      "sql_db_query", "sql_db_schema", "report_gap"])
+        self.assertEqual(vu["noms"], ["crm_lead_list", "ventes_devis_proposal_pdf", "sql_db_query",
+                                      "sql_db_schema", "report_gap", "outils_charger"])  # vague 2 : chargeur
         self.assertEqual(vu["conversation"], "7:1")
         self.assertTrue(all("cache_control" not in b for b in vu["systeme"]))
         self.assertIn(prompt_copilote.CONSIGNES_COMMERCIALES, vu["systeme"][0]["text"])

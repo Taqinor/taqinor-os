@@ -58,6 +58,18 @@ CARTES = frozenset({
     'revue_semaine',  # revue des projets : GET taches/revue/projets/
     'priorites',      # « Aide-moi à prioriser » : GET taches/journee/priorites/
     'point',          # « Où j'en suis ? » : GET taches/journee/point/
+    # Copilote vague 2 — UN vocabulaire (plan R4 §C.0-a), réservé dès la
+    # fondation : une carte sans composant à l'écran tombe sur la carte
+    # générique. Échantillon de chaque carte : `cartes_donnees` du contrat.
+    'lien_ecran',     # bouton « Ouvrir » : GET agent/ouvrir/ (erp.ouvrir)
+    'fiche_calepinage', 'liste_calepinages', 'contenance',        # calepinage
+    'liste_visites', 'fiche_visite', 'charge_equipe',              # visites
+    'liste_chantiers', 'fiche_chantier',                           # chantiers
+    'vente_etat', 'liste_impayes', 'liste_factures', 'facture_brouillon',  # ventes
+    'niveau_stock',                                                # stock
+    'parc_client', 'liste_tickets', 'fiche_ticket',                # sav
+    'chiffres_ca',                                                 # reporting
+    'plan', 'preference', 'liste_devis', 'bcf', 'comparaison_variantes',  # 2C
 })
 
 # Lot de déploiement d'une action (interrupteur ``ASSISTANT_COPILOTE`` lu par
@@ -73,7 +85,48 @@ LOTS = frozenset({LOT_COPILOTE, LOT_HERITE})
 # Types d'objets métier qu'une entrée d'action peut désigner (champ ``objets``),
 # résolus en libellés par ``GET /api/django/agent/libelles/`` (contrat
 # ``contract_samples/assistant_libelles.json``).
-OBJETS = frozenset({'lead', 'devis', 'touche', 'facture', 'client'})
+OBJETS = frozenset({'lead', 'devis', 'touche', 'facture', 'client',
+                    # Copilote vague 2 (plan R4 §A.3-2) : résolus par le
+                    # `selectors_libelles.py` de l'app propriétaire.
+                    'calepinage', 'variante', 'visite', 'chantier',
+                    'intervention', 'ticket', 'equipement', 'produit', 'bcf',
+                    'fournisseur', 'utilisateur'})
+
+# Copilote vague 2 (FND2) — le NOYAU : actions JAMAIS différées par le moteur
+# natif (dans le préfixe du modèle à chaque tour, sans chargement). Une liste,
+# ici seulement (les fichiers des apps n'ont rien à déclarer) ; les autres
+# actions du catalogue se chargent par domaine (`outils_charger`). Exposé dans
+# `as_dict()['noyau']`. Une clé du noyau n'est jamais du lot `herite`.
+NOYAU = frozenset({
+    'crm.lead.chercher', 'crm.lead.resume', 'crm.digest_matin',
+    'crm.leads.a_relancer', 'erp.ouvrir',
+})
+
+# Copilote vague 2 (FND6) — les actions du lot `copilote` qui existaient AVANT
+# la vague 2 : les seules du lot que le moteur LangChain (et donc le repli)
+# reçoit encore. Toute action NOUVELLE du lot `copilote` hors du noyau est
+# `natif_seul` (échec fermé : une lane qui l'oublie ne gonfle jamais le
+# catalogue LangChain, ~72 → ~125 outils à chaque requête).
+CLES_COPILOTE_VAGUE1 = frozenset({
+    'crm.lead.chercher', 'crm.suivi.preparer_touche', 'crm.suivi.proposer_reponse',
+    'crm.lead.qualifier', 'crm.lead.journaliser', 'crm.visite.planifier',
+    'crm.visite.message', 'crm.lead.message_manuel', 'crm.lead.creer',
+    'crm.lead.perdu', 'crm.lead.archiver', 'crm.lead.restaurer',
+    'crm.lead.reaffecter', 'crm.lead.etiqueter',
+    'ventes.devis.expliquer', 'ventes.devis.envoyer_email',
+    'ventes.catalogue.chercher', 'ventes.devis.composer', 'ventes.devis.lignes',
+    'reporting.assistant.diagnostic',
+    'taches.journee.lire', 'taches.journee.point', 'taches.journee.prioriser',
+    'taches.liste.ranger', 'taches.plan.proposer', 'taches.preference.noter',
+    'taches.profil.lire', 'taches.projet.creer', 'taches.projet.lire',
+    'taches.projet.planifier_apercu', 'taches.rappel.poser', 'taches.revue.semaine',
+    'taches.rythme.regler', 'taches.tache.chercher', 'taches.tache.creer',
+    'taches.tache.modifier', 'taches.tache.planifier',
+    'taches.tache.proposer_changement', 'taches.tache.terminer',
+    # Remplace `stock.produit.delete` (description fausse) copilote allumé :
+    # même outil, déjà servi à LangChain avant la vague 2.
+    'stock.produit.supprimer',
+})
 
 
 @dataclass(frozen=True)
@@ -100,6 +153,14 @@ class AgentAction:
         :data:`OBJETS`) : quelles entrées désignent un objet métier. Le relais
         s'en sert pour NOMMER l'objet dans l'aperçu d'une proposition
         (« Accepter un devis — DEV-202611-0045, Benali » au lieu de « id=45 »).
+      * ``lecture`` — vrai pour un POST qui ne fait QUE lire (calcul, aperçu,
+        préparation sans trace) : il ne compte pas dans le plafond des
+        écritures silencieuses d'un tour et n'est pas journalisé. Un POST qui
+        écrit une trace (chatter, note) n'est PAS une lecture.
+
+    Dérivés (``as_dict``, jamais déclarés par une app) : ``noyau`` (clé de
+    :data:`NOYAU`) et ``natif_seul`` (action du lot ``copilote`` née après la
+    vague 1 et hors du noyau : servie au seul moteur natif).
     """
 
     key: str
@@ -114,6 +175,7 @@ class AgentAction:
     carte: Optional[str] = None
     lot: Optional[str] = None
     objets: Dict[str, str] = field(default_factory=dict)
+    lecture: bool = False
 
     def __post_init__(self) -> None:
         if self.risk not in RISK_CHOICES:
@@ -155,6 +217,10 @@ class AgentAction:
             'carte': self.carte,
             'lot': self.lot,
             'objets': dict(self.objets),
+            'lecture': bool(self.lecture),
+            'noyau': self.key in NOYAU,
+            'natif_seul': (self.lot == LOT_COPILOTE and self.key not in NOYAU
+                           and self.key not in CLES_COPILOTE_VAGUE1),
         }
 
 
@@ -336,6 +402,51 @@ def for_user(user) -> List[AgentAction]:
     ]
 
 
+def _action_ouvrir() -> AgentAction:
+    """Copilote vague 2 (FND2) — ``erp.ouvrir`` : le geste qui reste humain
+    (dessin, photos, signature, envoi) se fait sur l'écran ; l'action rend un
+    BOUTON (carte ``lien_ecran``), jamais un chemin écrit par le modèle — la
+    vue le construit depuis ``contract_samples/assistant_ecrans.json``. Lecture,
+    noyau (jamais différée), lot ``copilote``. Revue 2A : l'énumération ne
+    porte que les écrans OFFERTS (``ecrans.cles_offertes`` : objet résoluble,
+    sinon 404 garanti) et ``onglet`` n'existe que si le calepinage est offert."""
+    from . import ecrans
+
+    offerts = ecrans.cles_offertes()
+    proprietes = {
+        'ecran': {'type': 'string', 'enum': offerts},
+        'id': {'type': 'integer', 'minimum': 1, 'description': (
+            "Identifiant de l'objet, obligatoire pour un écran à objet.")},
+    }
+    if 'calepinage' in offerts:
+        proprietes['onglet'] = {'type': 'string', 'enum': ecrans.onglets_calepinage(),
+                                'description': 'Onglet du calepinage seulement.'}
+    return AgentAction(
+        key='erp.ouvrir',
+        label="Ouvrir un écran de l'ERP",
+        description=(
+            "Sert à : donner à l'utilisateur un bouton qui ouvre l'écran où "
+            "faire un geste qui reste humain (dessiner, prendre des photos, "
+            "signer, envoyer) ou voir une fiche en entier. Ne pas utiliser "
+            "pour : lire une donnée (utilise l'outil de lecture du domaine). "
+            "Exemple : « ouvre la fiche du lead 1489 » → ecran=lead, id=1489. "
+            "Résultat : un bouton « Ouvrir » ; n'écrit rien."
+        ),
+        endpoint='/api/django/agent/ouvrir/',
+        method='GET',
+        inputs={
+            'type': 'object',
+            'properties': proprietes,
+            'required': ['ecran'],
+            'additionalProperties': False,
+        },
+        required_permission=None,
+        risk=RISK_INTERNAL,
+        carte='lien_ecran',
+        lot=LOT_COPILOTE,
+    )
+
+
 def _register_builtin_actions() -> None:
     """Enregistre le catalogue d'actions livré par défaut.
 
@@ -412,8 +523,14 @@ def _register_builtin_actions() -> None:
                 },
                 'required': ['q'],
             },
-            required_permission=None,
+            # Copilote vague 2 (FND11, D-W2-5) — l'outil rend le TEXTE des
+            # documents (OCR) : verrouillé aux administrateurs copilote allumé
+            # (critère d'administrateur `roles_gerer`). Dormant aujourd'hui (rend
+            # vide) : son retrait des comptes copilote éteint est LA seule
+            # exception nommée à « éteint = identique ».
+            required_permission='roles_gerer',
             risk=RISK_INTERNAL,
+            lot=LOT_COPILOTE,
         ),
         AgentAction(
             key='crm.lead.list',
@@ -517,7 +634,39 @@ def _register_builtin_actions() -> None:
             required_permission='stock_supprimer',
             risk=RISK_IRREVERSIBLE,
             confirm_summary='Suppression irréversible du produit.',
+            # Vague 2 (FND2) — description FAUSSE (la route archive un produit
+            # référencé et refuse un stock non nul) : gardée telle quelle
+            # copilote éteint (« éteint = identique »), remplacée copilote
+            # allumé par `stock.produit.supprimer`.
+            lot=LOT_HERITE,
         ),
+        AgentAction(
+            key='stock.produit.supprimer',
+            label='Supprimer ou archiver un produit',
+            description=(
+                "Sert à : retirer un produit du catalogue à la demande "
+                "explicite de l'utilisateur. Le serveur le SUPPRIME s'il n'est "
+                "référencé nulle part ; sinon il l'ARCHIVE (historique gardé : "
+                "mouvements, lignes de commande, réservations) et le dit. "
+                "Refusé (409) tant que son stock n'est pas à zéro. Ne pas "
+                "utiliser pour : corriger une fiche (prix, nom). Exemple : "
+                "« supprime le produit 12 » → id=12. Résultat : supprimé, ou "
+                "archivé avec la raison."
+            ),
+            endpoint='/api/django/stock/produits/{id}/',
+            method='DELETE',
+            inputs={
+                'type': 'object',
+                'properties': {'id': {'type': 'integer'}},
+                'required': ['id'],
+            },
+            required_permission='stock_supprimer',
+            risk=RISK_IRREVERSIBLE,
+            confirm_summary='Supprimer le produit (ou l\'archiver s\'il est référencé).',
+            lot=LOT_COPILOTE,
+            objets={'id': 'produit'},
+        ),
+        _action_ouvrir(),
     ]
     for action in builtins:
         if action.key not in _REGISTRY:

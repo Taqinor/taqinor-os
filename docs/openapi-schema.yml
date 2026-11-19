@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5172, operations: 8004, components: 4124}
+counts: {paths: 5174, operations: 8006, components: 4126}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -452,6 +452,7 @@ operations:
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
 - post /api/django/agent/logs/{id}/annuler/ -> django_agent_logs_annuler_create
+- get /api/django/agent/ouvrir/ -> django_agent_ouvrir_retrieve
 - get /api/django/audit/analytics/ -> django_audit_analytics_retrieve
 - get /api/django/audit/entries/ -> django_audit_entries_list
 - get /api/django/audit/entries/{id}/ -> django_audit_entries_retrieve
@@ -4495,6 +4496,7 @@ operations:
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
 - post /api/v1/agent/logs/{id}/annuler/ -> v1_agent_logs_annuler_create
+- get /api/v1/agent/ouvrir/ -> v1_agent_ouvrir_retrieve
 - get /api/v1/audit/analytics/ -> v1_audit_analytics_retrieve
 - get /api/v1/audit/entries/ -> v1_audit_entries_list
 - get /api/v1/audit/entries/{id}/ -> v1_audit_entries_retrieve
@@ -8117,7 +8119,8 @@ query_params:
   get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/django/agent/evenements/export/: depuis jusqu_a
   get /api/django/agent/evenements/stats/: semaines
-  get /api/django/agent/libelles/: client devis facture lead touche
+  get /api/django/agent/libelles/: bcf calepinage chantier client devis equipement facture fournisseur intervention lead produit ticket touche utilisateur variante visite
+  get /api/django/agent/ouvrir/: ecran id onglet
   get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
@@ -8940,7 +8943,8 @@ query_params:
   get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
   get /api/v1/agent/evenements/export/: depuis jusqu_a
   get /api/v1/agent/evenements/stats/: semaines
-  get /api/v1/agent/libelles/: client devis facture lead touche
+  get /api/v1/agent/libelles/: bcf calepinage chantier client devis equipement facture fournisseur intervention lead produit ticket touche utilisateur variante visite
+  get /api/v1/agent/ouvrir/: ecran id onglet
   get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
@@ -9936,6 +9940,7 @@ components:
 - AssistantEvenementsExport
 - AssistantEvenementsPage
 - AssistantLibelles
+- AssistantOuvrir
 - AssistantStats
 - AssumptionNode
 - AssumptionNodeRequest
@@ -10359,6 +10364,7 @@ components:
 - ConfigImportRequestRequest
 - ConfigImportResultat
 - ConfigPackage
+- ConfirmationActionOrigineEnum
 - ConfirmationActionRequest
 - ConfirmerRdvRequeteRequest
 - ConsentRecord

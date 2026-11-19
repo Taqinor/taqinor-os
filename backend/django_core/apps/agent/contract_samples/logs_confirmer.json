@@ -35,7 +35,29 @@
     "executed_at": "2026-09-06T10:00:00Z",
     "object_repr": "Client Confirmé",
     "undone_at": null,
-    "is_undoable": true
+    "is_undoable": true,
+    "origine": "confirmee"
+  },
+  "origine": "Copilote vague 2 (A0, 19/11/2026) — `origine` dit d'où vient le journal : `confirmee` (défaut, ancien comportement : une action outward/irreversible confirmée par le doigt de l'utilisateur) ou `interne` (une écriture INTERNE faite sans carte par l'assistant pendant un tour — note, préparation, calcul ; le relais la journalise après sa réussite). `interne` n'est accepté que pour une action `internal` du catalogue de l'appelant (403 sinon ; valeur hors liste : 400) ; ses `inputs` ne portent QUE des identifiants, nombres, booléens, dates et heures (aucun texte libre : ni note, ni message — `action_tools._sans_texte`). Jamais une action `taches.*` (espace privé). Une écriture interne n'est jamais annulable (`is_undoable` faux).",
+  "exemple_interne": {
+    "id": 502,
+    "action_key": "crm.lead.note",
+    "risk_level": "internal",
+    "user": "reda",
+    "confirmed_at": "2026-11-19T10:00:00Z",
+    "executed_at": "2026-11-19T10:00:00Z",
+    "object_repr": "",
+    "undone_at": null,
+    "is_undoable": false,
+    "origine": "interne"
+  },
+  "exemple_corps_interne": {
+    "action_key": "crm.lead.note",
+    "risk_level": "internal",
+    "origine": "interne",
+    "inputs": {"id": 1489},
+    "object_id": 9921,
+    "preuve": "<HMAC-SHA256 du message canonique, même règle que `preuve`>"
   },
   "exemple_erreur_champs_manquants": {
     "detail": "action_key et risk_level (valide) sont requis."

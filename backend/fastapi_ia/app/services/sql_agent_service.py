@@ -1104,13 +1104,14 @@ def _references_secret_column(sql: str) -> bool:
     return _references_forbidden_column(sql, allow_price=True)
 
 
-# ALEC16 (C-ALEC-014, APFS4) — prefixe de table -> prefixes de code du module
-# (au moins un exige), et tables a proprietaire refusees a une portee restreinte.
+# ALEC16 (C-ALEC-014, APFS4) — prefixe de table -> prefixes de code du module (au moins un exige) ;
+# tables a proprietaire refusees a une portee restreinte. FND12 : comptes, roles, reglages = droit d'admin.
 _MODULE_DES_TABLES = (
     ("ventes_", ("ventes_", "encaisser")), ("crm_", ("crm_",)),
-    ("installations_", ("installation_", "intervention_")),
-    ("sav_", ("sav_",)), ("stock_", ("stock_",)),
+    ("installations_", ("installation_", "intervention_")), ("parametres_", ("parametres_modifier",)),
+    ("sav_", ("sav_",)), ("stock_", ("stock_",)), ("roles_", ("roles_gerer",)),
     ("adsengine_", ("adsengine_",)),  # ALEC46 : miroirs publicitaires
+    ("authentication_", ("users_gerer", "roles_gerer", "parametres_modifier")),
 )
 _TABLES_A_PROPRIETAIRE = frozenset({
     "ventes_devis", "ventes_facture", "ventes_boncommande", "crm_client",
@@ -1641,6 +1642,7 @@ class SQLAgentService:
         from app.services import relais_copilote as relais
         if relais.question_trop_longue_pour(provider or SQL_AGENT_PROVIDER, question):  # F4 — repli Groq
             return relais.reponse_question_longue(provider or SQL_AGENT_PROVIDER)
+        relais.catalogue_pour_repli(action_ctx, provider, contexte)  # FND6 — jeu du REPLI (sans effet sinon)
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges, COP-B1).
         # A5 (revue F3 #3) — un echange marque relu au modele marque ce tour.
@@ -1895,7 +1897,7 @@ class SQLAgentService:
             if images:  # F5 — moteur natif seulement, jamais ignorees en silence
                 return await asyncio.to_thread(relais.tour_avec_images, self, question, company_id or 0,
                                                user_id or 0, action_ctx, contexte, catalogue, images)
-            copilote = prompt_copilote.copilote_allume(catalogue)
+            copilote = prompt_copilote.copilote_allume(getattr(action_ctx, "catalogue_complet", None) or catalogue)
             # COP-B6 — moteur natif si reglage `natif` + claude + copilote ;
             # None = tour servi par LangChain (eteint, ou panne journalisee).
             # AIC90 (D-COP-1) — budget du jour atteint : tout le tour part sur le
