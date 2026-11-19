@@ -10,6 +10,14 @@
 .tch .ligne.projet .ligne-fin { height: var(--tch-tache-lh); align-items: center; }
 /* `.tch .ligne-fin button { position: relative }` (base.css) remettait le bouton « Actions » dans le flux : 52 px vides */
 .tch .ligne.projet .ligne-fin .ligne-actions { position: absolute; }
+/* R2-060 — sur écran tactile (aucun survol), le ⋯ d'un projet est TOUJOURS visible, posé APRÈS la puce de priorité
+   (dans le flux : plus de recouvrement) ; « Mettre en haut » n'existe que dans ce menu. */
+@media (hover: none) {
+  .tch .ligne.projet .ligne-fin .ligne-actions {
+    position: relative; right: auto; top: auto; flex: none; margin-right: -10px;
+    opacity: 1; pointer-events: auto; background: none;
+  }
+}
 .tch .ligne.projet .barre-avance { max-width: 120px; margin-top: 7px; }
 .tch .ligne.projet .meta { column-gap: 8px; }
 .tch .ligne.projet .meta > span + span::before { content: "·"; margin: 0 8px 0 0; color: var(--tch-texte-doux); }

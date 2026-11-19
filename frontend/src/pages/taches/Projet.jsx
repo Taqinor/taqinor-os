@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronRight, Diamond, TriangleAlert } from 'lucide-react'
 import {
-  annulerGeste, classerErreur, modifierProjet, modifierTache, restaurerProjet, rouvrirProjet,
+  annulerGeste, classerErreur, listerProjets, modifierProjet, modifierTache, reordonnerProjet, restaurerProjet, rouvrirProjet,
   rouvrirTache, terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
 import { frenchError } from '../../lib/frenchError'
 import BarreRetourProjets from '../../features/taches/ui/BarreRetourProjets'
@@ -311,6 +311,20 @@ export default function Projet() {
     }
   }
 
+  // R2-060 — « Mettre en haut » : le projet passe devant le premier projet actif (même geste que la liste Projets)
+  const mettreEnHaut = async () => {
+    const projet = vue.projet
+    try {
+      const { data } = await listerProjets({ statut: 'actif' })
+      const premier = (Array.isArray(data) ? data : (data?.results ?? []))[0]
+      if (!premier || premier.id === projet.id) { annoncer(`« ${projet.nom} » est déjà en haut`); return }
+      await reordonnerProjet(projet.id, { avant_id: premier.id })
+      annoncer(`« ${projet.nom} » en haut`)
+    } catch (err) {
+      setErreur(frenchError(err, "L'ordre n'a pas été changé. Réessaie."))
+    }
+  }
+
   const fermerPlanification = () => setParams((p) => { const s = new URLSearchParams(p); s.delete('planifier'); return s }, { replace: true })
   const planifie = async () => {
     fermerPlanification()
@@ -382,7 +396,7 @@ export default function Projet() {
     { libelle: 'Décaler les dates…', onSelect: () => setDialogue('decaler') },
     { libelle: 'Dupliquer', onSelect: () => setDialogue('dupliquer') },
     { libelle: 'Modèle…', onSelect: () => setDialogue('modele') },
-    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
+    ...(projet.statut === 'actif' ? [{ libelle: 'Mettre en haut', onSelect: mettreEnHaut }, { libelle: 'Mettre en pause', onSelect: mettreEnPause }] : []),
     { libelle: 'Terminer le projet…', onSelect: () => setDialogue('terminer') },
     { libelle: 'Supprimer le projet…', onSelect: () => setDialogue('supprimer') },
   ] : []

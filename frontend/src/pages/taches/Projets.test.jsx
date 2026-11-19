@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -165,6 +165,41 @@ describe('TCH88 — Projets : gestes sur place', () => {
     await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
     await user.click(await screen.findByRole('menuitem', { name: 'Trier par priorité' }))
     expect(api.trierProjetsParPriorite).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('R2-060 — Projets : « Mettre en haut » atteignable au doigt', () => {
+  it('l\'appui long (500 ms, doigt immobile) sur une ligne ouvre le menu ⋯ ; Mettre en haut y est', async () => {
+    api.reordonnerProjet.mockResolvedValue({ data: {} })
+    const liste = projets()
+    liste.results = [liste.results[0], { ...liste.results[0], id: 8, nom: 'Site web' }]
+    api.listerProjets.mockImplementation(async (params) => (params?.statut === 'en_pause' ? vide : { data: liste }))
+    monter()
+    const titre = await screen.findByRole('button', { name: 'Site web' })
+    const ligne = titre.closest('.ligne')
+    vi.useFakeTimers()
+    fireEvent.pointerDown(ligne, { pointerType: 'touch', clientX: 20, clientY: 20 })
+    act(() => { vi.advanceTimersByTime(520) })
+    vi.useRealTimers()
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Mettre en haut' })).toBeInTheDocument()
+    // l'appui long ne doit pas ouvrir le projet au relâchement
+    fireEvent.pointerUp(ligne, { pointerType: 'touch' })
+    fireEvent.click(titre)
+    expect(screen.queryByTestId('lieu')).toBeNull()
+    await userEvent.setup().click(within(menu).getByRole('menuitem', { name: 'Mettre en haut' }))
+    expect(api.reordonnerProjet).toHaveBeenCalledWith(8, { avant_id: 3 })
+  })
+
+  it('un appui court ou un doigt qui bouge n\'ouvre pas le menu', async () => {
+    monter()
+    const ligne = (await screen.findByRole('button', { name: 'Ventes' })).closest('.ligne')
+    vi.useFakeTimers()
+    fireEvent.pointerDown(ligne, { pointerType: 'touch', clientX: 20, clientY: 20 })
+    fireEvent.pointerMove(ligne, { pointerType: 'touch', clientX: 20, clientY: 60 })
+    act(() => { vi.advanceTimersByTime(700) })
+    vi.useRealTimers()
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })
 

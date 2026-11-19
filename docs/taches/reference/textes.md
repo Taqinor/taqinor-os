@@ -219,7 +219,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 |---|---|
 | Titre · bouton | Projets · **Nouveau projet** |
 | Ligne | puce de priorité (« Haute », « Moyenne », « Basse », « — »), touchable · « ● {nom} » · « {faites} sur {total} » · « à surveiller » · « À planifier » · « Projet de la semaine » |
-| Appui long | Mettre en haut · Mettre en pause · Supprimer |
+| Appui long · ⋯ de la ligne (toujours visible sur iPhone, après la puce de priorité) | Mettre en haut · Mettre en pause · Supprimer |
 | Constat (AVANCÉ) | « {actifs} projets actifs, {k} ont avancé ces 7 jours » |
 | Replis | « En pause ({n}) » · « En réserve ({n}) » |
 | ⋯ | Trier par priorité · Archive · Modèles |
@@ -228,7 +228,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | En-tête d'un projet | point de couleur + « {nom} » ; puce de priorité · « échéance {jour} » ; barre ; « {faites} sur {total} » · « Prochain jalon : {titre} · {jour} » ; santé courte si signal (une ligne, la phrase entière au toucher) ; repli « Fini quand… » : « Fini quand : {objectif} » · « dernière faite le {jj/mm} » |
 | Vues | Liste · Tableau · Chronologie (« Sans date » ; « {faites} sur {total} faites » ; « Échéance du projet » ; « Jalon » ; dates en surtitre) — la dernière vue est gardée |
 | Étapes | « Sans étape » · « Faites ({n}) » · « Ajouter une tâche » |
-| ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
+| ⋯ d'un projet | Planifier le projet · Voir dans l'agenda · Avancement par semaine · Décaler les dates… · Dupliquer · Modèle… · Mettre en haut · Mettre en pause · Terminer le projet… · Archiver · Supprimer le projet… |
 | Santé courte (en-tête, une ligne) | « À ce rythme : {besoin} jours travaillés, il en reste {reste} » (signal (d) d'`echeance_menacee` ; les autres signaux : leur phrase) ; jalon : « {jalon} · {jour} » ; étape : « {faites} sur {total} » |
 | Projet vide | « Planifier le projet » · Passer |
 | Burn-up | « reconstruit depuis les dates actuelles » |

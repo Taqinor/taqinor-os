@@ -27,6 +27,8 @@ vi.mock('../../api/tachesApi', async (original) => ({
   supprimerProjet: vi.fn(),
   creerProjet: vi.fn(),
   lireTache: vi.fn(),
+  listerProjets: vi.fn(),
+  reordonnerProjet: vi.fn(),
 }))
 
 const api = await import('../../api/tachesApi')
@@ -245,6 +247,31 @@ describe('TCH89 — Un projet : priorité', () => {
     expect(api.modifierProjet).toHaveBeenCalledWith(3, { statut: 'en_pause', lock_version: 4 })
     expect(await screen.findByText('En pause')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Geste effectué' })).toHaveTextContent('« Ventes » en pause')
+  })
+})
+
+describe('R2-060 — Un projet : « Mettre en haut » dans le ⋯ de l\'écran', () => {
+  it('⋯ → Mettre en haut place le projet avant le premier projet actif', async () => {
+    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 7, nom: 'Chantier' }, { id: 3, nom: 'Ventes' }], next: null } })
+    api.reordonnerProjet.mockResolvedValue({ data: {} })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
+    await waitFor(() => expect(api.reordonnerProjet).toHaveBeenCalledWith(3, { avant_id: 7 }))
+    expect(api.listerProjets).toHaveBeenCalledWith({ statut: 'actif' })
+  })
+
+  it('déjà premier : rien n\'est écrit', async () => {
+    api.listerProjets.mockResolvedValue({ data: { results: [{ id: 3, nom: 'Ventes' }], next: null } })
+    monter()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    await screen.findByText('12 sur 20')
+    await user.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Mettre en haut' }))
+    await waitFor(() => expect(api.listerProjets).toHaveBeenCalled())
+    expect(api.reordonnerProjet).not.toHaveBeenCalled()
   })
 })
 
