@@ -296,10 +296,13 @@ class TestDeuxOptionsPoidsEgal(SimpleTestCase):
         sans = _page_finance(d)
         self.assertNotIn("<polyline", sans)
         self.assertIn('class="i2-tbl i2-fx i2d-fx"', sans)   # le tableau reste
-        # Troncature des conditions (``equip.document_adaptatif``) : la courbe
-        # et les bases cèdent d'un coup — aucune courbe compacte ne revient.
+        # Une AUTRE page force le retrait d'un coup de la courbe et des bases
+        # (troncature des conditions, ``equip.document_adaptatif``) : la page
+        # finance garde sa courbe compacte, sans les bases.
         d["_sans_graphiques"] = frozenset({"courbe_cumul", "hypotheses"})
-        self.assertNotIn("<svg", _page_finance(d))
+        tronquee = _page_finance(d)
+        self.assertIn('data-graphique="courbe_compacte"', tronquee)
+        self.assertNotIn('data-graphique="hypotheses"', tronquee)
 
     def test_arabe_aucun_mot_dans_le_dessin(self):
         d = self._donnees()
