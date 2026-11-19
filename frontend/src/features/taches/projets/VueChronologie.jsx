@@ -26,7 +26,43 @@ function EtiquetteDate({ element, aujourdhui }) {
   return jourProjet(element.date, aujourdhui) // passe visuelle n° 40 : jalon et échéance, la date d'un projet
 }
 
-function FriseVerticale({ elements, aujourdhui }) {
+const jourDe = (t) => {
+  const j = t.echeance ?? t.jour_prevu
+  return typeof j === 'string' && j ? j.slice(0, 10) : null
+}
+
+/**
+ * R2-066 — les tâches OUVERTES et DATÉES de chaque étape (clé `e{id}`, « sans » pour « Sans étape »), triées par jour ;
+ * un jalon est déjà dessiné comme jalon : il n'est pas répété ici.
+ */
+function tachesDatees(vue) {
+  const groupe = (taches) => (taches ?? [])
+    .filter((t) => !t.jalon && t.statut !== 'fait' && jourDe(t))
+    .map((t) => ({ id: t.id, titre: t.titre, jour: jourDe(t) }))
+    .sort((a, b) => (a.jour < b.jour ? -1 : a.jour > b.jour ? 1 : 0))
+  const parEtape = { sans: groupe(vue.sans_section) }
+  for (const s of vue.sections ?? []) parEtape[`e${s.id}`] = groupe(s.taches)
+  return parEtape
+}
+
+/** Les points d'une piste : un par JOUR (plusieurs tâches le même jour = un seul point qui les nomme toutes). */
+function pointsDe(taches) {
+  const parJour = new Map()
+  for (const t of taches) parJour.set(t.jour, [...(parJour.get(t.jour) ?? []), t.titre])
+  return [...parJour].map(([jour, titres]) => ({ jour, titres }))
+}
+
+function ListeTaches({ taches, aujourdhui }) {
+  if (taches.length === 0) return null
+  return (
+    <ul className="ep-f-taches">
+      {taches.map((t) => <li key={t.id}><span className="chiffres">{jourProjet(t.jour, aujourdhui)}</span>{t.titre}</li>)}
+    </ul>
+  )
+}
+
+function FriseVerticale({ elements, taches, aujourdhui }) {
+  const sans = taches.sans
   return (
     <div className="ep-frise" role="list" aria-label="Chronologie du projet jusqu'à l'échéance">
       {elements.map((e) => (
@@ -35,23 +71,51 @@ function FriseVerticale({ elements, aujourdhui }) {
           <div className="ep-f-date"><EtiquetteDate element={e} aujourdhui={aujourdhui} /></div>
           {e.nom ? <div className="ep-f-titre">{e.nom}</div> : null}
           {e.detail ? <div className="ep-f-detail">{e.detail}</div> : null}
+          {e.type === 'etape' ? <ListeTaches taches={taches[e.id] ?? []} aujourdhui={aujourdhui} /> : null}
         </div>
+      ))}
+      {sans.length > 0 ? (
+        <div className="ep-f-item etape" role="listitem">
+          <div className="ep-f-date">{jourProjet(sans[0].jour, aujourdhui)}</div>
+          <div className="ep-f-titre">Sans étape</div>
+          <ListeTaches taches={sans} aujourdhui={aujourdhui} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** « bord-g » / « bord-d » : une pastille collée à un bord de l'axe se pose du côté intérieur, jamais hors du cadre. */
+const bordDe = (pourcent) => (pourcent < 12 ? ' bord-g' : pourcent > 88 ? ' bord-d' : '')
+
+function Points({ points, pct, style, aujourdhui }) {
+  return (
+    <div className="ep-fh-points">
+      {points.map((p) => (
+        <span key={p.jour} className="ep-fh-point" role="img" style={style(pct(p.jour))} data-n={p.titres.length > 1 ? p.titres.length : undefined}
+          aria-label={`${p.titres.join(', ')} · ${jourProjet(p.jour, aujourdhui)}`} title={p.titres.join(', ')} />
       ))}
     </div>
   )
 }
 
-function FriseHorizontale({ elements, aujourdhui }) {
+function FriseHorizontale({ elements, taches, aujourdhui }) {
+  const joursTaches = Object.values(taches).flatMap((l) => l.map((t) => t.jour))
   const dates = elements.filter((e) => e.type !== 'auj').flatMap((e) => (e.type === 'etape' ? [e.debut, e.fin] : [e.date])).filter(Boolean)
-  const toutes = [...dates, aujourdhui].sort()
+  const toutes = [...dates, ...joursTaches, aujourdhui].sort()
   const debut = toutes[0]
   const fin = toutes[toutes.length - 1]
   const etendue = Math.max(1, ecartJours(fin, debut) ?? 1)
   const pct = (jour) => Math.min(100, Math.max(0, ((ecartJours(jour, debut) ?? 0) / etendue) * 100))
   const style = (gauche, largeur) => ({ left: `${gauche.toFixed(2)}%`, ...(largeur === undefined ? {} : { width: `${largeur.toFixed(2)}%` }) })
-  const etapes = elements.filter((e) => e.type === 'etape' && (e.debut || e.fin))
+  const etapesDatees = elements.filter((e) => e.type === 'etape' && (e.debut || e.fin))
+  // une étape sans date : une rangée à son nom si une de ses tâches est datée, sinon la bande « Sans date »
+  const etapesLibres = elements.filter((e) => e.type === 'etape' && !e.debut && !e.fin)
+  const libresAvecPoints = etapesLibres.filter((e) => (taches[e.id] ?? []).length > 0)
+  const libresSansRien = etapesLibres.filter((e) => (taches[e.id] ?? []).length === 0)
   const jalons = elements.filter((e) => e.type === 'jalon')
   const echeance = elements.find((e) => e.type === 'fin')
+  const pctAuj = pct(aujourdhui)
   return (
     <div className="ep-frise-h" role="group" aria-label="Chronologie : étapes et jalons jusqu'à l'échéance">
       <div className="ep-fh-axe chiffres" aria-hidden="true">
@@ -63,11 +127,11 @@ function FriseHorizontale({ elements, aujourdhui }) {
           {jalons.map((j) => (
             <span key={j.id}>
               <Diamond className="i ep-fh-losange" style={style(pct(j.date))} aria-hidden="true" />
-              <span className="ep-fh-etiquette" style={style(pct(j.date))}>{`${j.nom} · ${jourProjet(j.date, aujourdhui)}`}</span>
+              <span className={`ep-fh-etiquette${pct(j.date) < 25 ? ' bord-g' : ''}`} style={style(pct(j.date))}>{`${j.nom} · ${jourProjet(j.date, aujourdhui)}`}</span>
             </span>
           ))}
         </div>
-        {etapes.map((e) => {
+        {etapesDatees.map((e) => {
           const de = e.debut ?? e.fin
           const a = e.fin ?? e.debut
           return (
@@ -75,25 +139,44 @@ function FriseHorizontale({ elements, aujourdhui }) {
               <div className="ep-fh-rang">
                 <div className={`ep-fh-barre${e.faite ? ' faite' : ''}`} style={style(pct(de), Math.max(4, pct(a) - pct(de)))}>{e.nom}</div>
               </div>
+              {(taches[e.id] ?? []).length > 0 ? <Points points={pointsDe(taches[e.id])} pct={pct} style={style} aujourdhui={aujourdhui} /> : null}
               {e.detail ? <div className="ep-fh-sous-rang"><span className="ep-fh-sous chiffres" style={style(pct(de))}>{e.detail}</span></div> : null}
             </div>
           )
         })}
-        <div className="ep-fh-trait auj" style={style(pct(aujourdhui))}><span>{`Aujourd'hui · ${jourNomme(aujourdhui, aujourdhui)}`}</span></div>
+        {libresAvecPoints.map((e) => (
+          <div key={e.id} className="ep-fh-libre">
+            <span className="ep-fh-nom">{e.nom}</span>
+            <Points points={pointsDe(taches[e.id])} pct={pct} style={style} aujourdhui={aujourdhui} />
+          </div>
+        ))}
+        {taches.sans.length > 0 ? (
+          <div className="ep-fh-libre">
+            <span className="ep-fh-nom">Sans étape</span>
+            <Points points={pointsDe(taches.sans)} pct={pct} style={style} aujourdhui={aujourdhui} />
+          </div>
+        ) : null}
+        <div className={`ep-fh-trait auj${bordDe(pctAuj)}`} style={style(pctAuj)}><span>{`Aujourd'hui · ${jourNomme(aujourdhui, aujourdhui)}`}</span></div>
         {echeance ? (
-          <div className="ep-fh-trait fin" style={style(pct(echeance.date))}><span>{`Échéance · ${jourProjet(echeance.date, aujourdhui)}`}</span></div>
+          <div className={`ep-fh-trait fin${bordDe(pct(echeance.date))}`} style={style(pct(echeance.date))}><span>{`Échéance · ${jourProjet(echeance.date, aujourdhui)}`}</span></div>
         ) : null}
       </div>
+      {libresSansRien.length > 0 ? (
+        <div className="ep-sans-dates" style={{ margin: '16px 0 0' }}>
+          <b>Sans date :</b>{` ${libresSansRien.map((e) => `${e.nom}${e.detail ? ` · ${e.detail}` : ''}`).join(' · ')}`}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export default function VueChronologie({ vue, aujourdhui }) {
   const { elements, sansDate } = useMemo(() => elementsChronologie(vue, aujourdhui), [vue, aujourdhui])
+  const taches = useMemo(() => tachesDatees(vue), [vue])
   return (
-    <div className="ep-vue-chronologie">
-      <FriseVerticale elements={elements} aujourdhui={aujourdhui} />
-      <FriseHorizontale elements={elements} aujourdhui={aujourdhui} />
+    <div className="ep-vue-chronologie" data-p={vue.projet?.couleur}>
+      <FriseVerticale elements={elements} taches={taches} aujourdhui={aujourdhui} />
+      <FriseHorizontale elements={elements} taches={taches} aujourdhui={aujourdhui} />
       {sansDate.length > 0 ? (
         <div className="ep-sans-dates"><b>Sans date :</b>{` ${sansDate.map((t) => t.titre).join(', ')}`}</div>
       ) : null}
