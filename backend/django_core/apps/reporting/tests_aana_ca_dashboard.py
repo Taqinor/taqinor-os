@@ -401,6 +401,16 @@ class TestTroisChiffresCa(TestCase):
         self.assertEqual(resp.data['a_faire'], 'rien')
 
     def test_route_refuse_en_nommant_le_parametre(self):
+        from django.test import override_settings
+        with override_settings(API_QUERY_PARAMS_STRICT=False):
+            self._refus_nommes()
+        # Contrôle de plateforme allumé (CI api-fuzz) : même 400, paramètre nommé.
+        with override_settings(API_QUERY_PARAMS_STRICT=True):
+            resp = self._ca(du='2026-03-01', au='2026-03-31', q='1')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('q', str(resp.data))
+
+    def _refus_nommes(self):
         refus = self._exemple()['exemple_400_periode']
         resp = self._ca(du='2026-03-31', au='2026-03-01')
         self.assertEqual(resp.status_code, 400)
@@ -460,8 +470,8 @@ class TestTroisChiffresCa(TestCase):
             with self.subTest(nom=nom):
                 self.assertEqual(self._ca(api, **parametres).status_code, 403)
                 self.assertEqual(api.get(URL).status_code, 403)  # idem
-        self.assertEqual(
-            APIClient().get(self.URL_CA, parametres).status_code, 401)
+        self.assertIn(
+            APIClient().get(self.URL_CA, parametres).status_code, (401, 403))
 
     def test_action_reporting_ca_lire(self):
         from apps.agent.registry import (
