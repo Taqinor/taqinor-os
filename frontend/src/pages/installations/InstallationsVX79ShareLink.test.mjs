@@ -17,8 +17,8 @@ test('VX79 : ?id=<pk> ouvre le chantier ciblé (état dérivé, patron ?lead=)',
   assert.match(SRC, /useSearchParams/)
   // Logique PARTAGÉE : hooks/useDeepLinkId.js (ENF19), consommée par cet écran.
   assert.match(HOOK, /const wantedId = searchParams\.get\('id'\)/)
-  assert.match(HOOK, /const deepItem = useMemo\(/)
-  assert.match(SRC, /useDeepLinkId\(searchParams, setSearchParams, items\)/)
+  assert.match(HOOK, /const dansListe = useMemo\(/)
+  assert.match(SRC, /useDeepLinkId\(\s*searchParams, setSearchParams, items,/)
   // Le panneau s'ouvre sur la sélection OU le chantier du lien profond.
   assert.match(SRC, /const detailItem = selected \?\? deepItem/)
   assert.match(SRC, /<InstallationDetail installation=\{detailItem\}/)
@@ -38,7 +38,7 @@ test('VX79 : « Copier le lien » pointe vers l\'URL INTERNE /chantiers?id=<pk>'
 })
 
 test('VX79 : ?id=<pk> introuvable → EmptyState inline (pas de page blanche)', () => {
-  assert.match(SRC, /const deepMissing = !!wantedId && !loading && !deepItem/)
+  assert.match(SRC, /const deepMissing = !!wantedId && !loading && !deepLoading && !deepItem/)
   const block = SRC.slice(
     SRC.indexOf('{deepMissing && ('),
     SRC.indexOf('{deepMissing && (') + 400)
