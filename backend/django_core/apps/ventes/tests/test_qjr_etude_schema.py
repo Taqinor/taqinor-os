@@ -161,6 +161,23 @@ class EntreesDuMoteurTests(SimpleTestCase):
             with self.subTest(cle=cle):
                 self.assertNotIn(cle, du_moteur)
 
+    def test_devis_final_case_d_ecran_hors_moteur(self):
+        """Fondateur 19/11/2026 — « Devis final » : booléen d'écran, admis
+        par le schéma, qui ne relance aucune étude ; le builder le lit."""
+        from types import SimpleNamespace
+
+        from apps.ventes.quote_engine.builder import _devis_final_enregistre
+        self.assertEqual(S.valider({'devis_final': True}), [])
+        self.assertEqual(S.valider({'devis_final': None}), [])
+        self.assertTrue(S.valider({'devis_final': 'oui'}))
+        self.assertNotIn('devis_final', S.entrees_du_moteur())
+        lu = lambda etude: _devis_final_enregistre(  # noqa: E731
+            SimpleNamespace(etude_params=etude))
+        self.assertTrue(lu({'devis_final': True}))
+        for etude in (None, {}, {'devis_final': False},
+                      {'devis_final': 'oui'}, []):
+            self.assertFalse(lu(etude), etude)
+
     def test_aucune_DERIVEE_n_est_une_entree_du_moteur(self):
         """Une sortie du moteur ne peut pas être ce qui le fait tourner."""
         for cle in S.entrees_du_moteur():

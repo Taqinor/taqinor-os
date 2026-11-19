@@ -112,6 +112,13 @@ SCHEMA = {
                      '`utils/options.py` en tirent les lignes de l’option '
                      'vendue.', moteur=True),
     'recommended_option': _cle((str,), ECRAN, ENTREE),
+    'devis_final': _cle((bool,), ECRAN, ENTREE,
+                        'Fondateur 19/11/2026 — case « Devis final » (visite '
+                        'faite), tout marché : `true` ou clé absente. Lue par '
+                        '`quote_engine/builder.py` (`_devis_final_enregistre`) : '
+                        'le document ne dit plus « préliminaire » / « à '
+                        'confirmer par la visite » (résidentiel : paiement + '
+                        'RIB). Ne nourrit aucun calcul.'),
     'gamme': _cle((str, dict), ECRAN, ENTREE),
     'mode_installation': _cle((str,), ECRAN, ENTREE),
     'tension_raccordement': _cle((str,), ECRAN, ENTREE),

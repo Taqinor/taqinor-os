@@ -1,0 +1,27 @@
+{
+  "endpoint": "PATCH /api/django/ventes/devis/<id>/etude-params/",
+  "forme_serveur": "partielle",
+  "pourquoi": "Fondateur 19/11/2026 — « where is final quote button, as said the visit was done for this guy so i should not show him that this is a prelimanary quote » puis « add the final quote button for every kind of quote ». CONTRAT D'ABORD (PACT10). La case « Devis final » (panneau devis du lead, tout marché) est l'entrée ÉCRAN `etude_params.devis_final` (clé de TÊTE, booléen ; absente = non), posée par le PATCH FUSIONNANT `etude-params` : `{devis_final: true}` pour cocher, `{devis_final: null}` pour décocher (une valeur `null` retire la clé). Elle ne nourrit aucun calcul (aucune étude relancée, aucun total, aucun statut — règle #4) : le moteur de devis la LIT (`quote_engine/builder.py::_devis_final_enregistre`, `data['devis_final']` = option de rendu `devis_final` OU case enregistrée), donc tout rendu du devis la suit sans option à repasser — aperçu, PDF téléchargé, pièce jointe du mail, PDF public, page client. Sans la case : rendu d'hier, octet pour octet.",
+  "corps": {
+    "devis_final": true
+  },
+  "corps_regles": {
+    "devis_final": "`true` pour cocher ; `null` pour décocher (la clé est retirée) ; toute autre valeur qu'un booléen ⇒ 400"
+  },
+  "exemple": {
+    "etude_params": {
+      "devis_final": true
+    },
+    "updated_at": "2026-11-19T21:30:00+00:00"
+  },
+  "refus": {
+    "400": "{detail} — valeur non booléenne",
+    "409": "{detail} — devis non modifiable (geste ETUDE, `domain/modifiabilite`), message français affiché sous la case"
+  },
+  "regles_sorties": {
+    "commercial_industriel": "le document ne dit plus « Devis préliminaire — les prix pourront être ajustés après la visite technique » (couvertures, une-page, hypothèse `visite`) ; « Prochaines étapes » commence à « Validation de l'offre définitive » (plus d'étape « Visite technique de votre site ») ; la ligne « À chiffrer après la visite technique (hors total) : … » RESTE quand des postes sont hors total (ils ne sont pas dans le total) ; `synthese_ci.devis_final: true` (clé ADDITIVE, absente sinon) : la page client n'affiche ni son bandeau préliminaire ni l'étape « Visite technique »",
+    "agricole": "`synthese_agricole.devis_final: true` (clé ADDITIVE, absente sinon) ; `a_confirmer_par_visite: []` ; `etapes_suivantes` sans l'étape `visite_point_eau` ; une valeur sans provenance lisible est imprimée seule, plus jamais suivie de « à confirmer par la visite »",
+    "residentiel": "effet de l'option de rendu `devis_final` d'hier : modalités de paiement + RIB en page 3 du Premium"
+  },
+  "interdit": "aucun chiffre calculé, modifié ou masqué par cette case ; aucun statut écrit ; un devis déjà envoyé garde le document que le client a reçu tant que la case n'est pas enregistrée dessus"
+}

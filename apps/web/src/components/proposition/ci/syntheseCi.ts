@@ -90,6 +90,8 @@ export interface SyntheseCi {
   segment: string | null;
   /** `estimation_sous_reserve_visite` | `offre_ferme`. */
   statutEtude: string | null;
+  /** Devis final (visite faite) : `synthese_ci.devis_final === true` ; clé absente = préliminaire. */
+  devisFinal: boolean;
   aConfirmer: Array<{ cle: string; libelle: string }>;
   /** CPRW13 — postes « à chiffrer après la visite » restés hors total (`synthese_ci.postes_hors_total`), jamais un prix. */
   postesHorsTotal: Array<{ role: string | null; designation: string; catalogue: boolean }>;
@@ -414,6 +416,7 @@ export function syntheseCi(
     version: nombreServi(brut.version),
     segment: texteServi(brut.segment),
     statutEtude: texteServi(brut.statut_etude),
+    devisFinal: brut.devis_final === true,
     aConfirmer,
     postesHorsTotal,
     systeme: sys
@@ -560,7 +563,7 @@ export const CI_DEVIS_PRELIMINAIRE: TextesCi = {
 
 /** CPRW3 — texte du bandeau préliminaire : celui servi (hypothèse `visite`), sinon celui du PDF ; `null` hors C&I. */
 export function bandeauPreliminaireCi(ci: SyntheseCi | null): TextesCi | null {
-  if (!ci) return null;
+  if (!ci || ci.devisFinal) return null;
   return ci.hypotheses.find((h) => h.cle === 'visite')?.textes ?? CI_DEVIS_PRELIMINAIRE;
 }
 

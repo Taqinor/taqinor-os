@@ -977,6 +977,10 @@ def synthese_ci(data):
         "provenance": _bloc_provenance(entrees),
         "systeme": _systeme(data, etude_option, option),
     }
+    if data.get("devis_final") is True:
+        # Fondateur 19/11/2026 — « Devis final » : clé ADDITIVE, absente
+        # sinon ; la page client n'affiche plus son bandeau préliminaire.
+        synthese["devis_final"] = True
     etude_coherente = _etude_decrit_kwc(etude_option,
                                         synthese["systeme"]["kwc"])
     if synthese["systeme"]["production_kwh_an"] is None:

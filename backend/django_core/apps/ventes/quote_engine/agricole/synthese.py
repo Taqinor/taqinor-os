@@ -657,6 +657,21 @@ def debit_declare_sans_courbe(data):
 
 # ── la fonction publique ────────────────────────────────────────────────────
 
+def _devis_final(synthese, data):
+    """Fondateur 19/11/2026 — « Devis final » (visite faite,
+    ``data['devis_final']``) : plus rien « à confirmer par la visite », plus
+    d'étape « Visite du point d'eau », clé ADDITIVE ``devis_final`` (lue par
+    le PDF et la page client). Sans la case : synthèse inchangée."""
+    if data.get("devis_final") is not True:
+        return synthese
+    synthese["devis_final"] = True
+    synthese["a_confirmer_par_visite"] = []
+    synthese["etapes_suivantes"] = [
+        e for e in synthese.get("etapes_suivantes") or []
+        if (e or {}).get("cle") != "visite_point_eau"]
+    return synthese
+
+
 def synthese_agricole(data):
     """La synthèse agricole d'un devis : dict → dict, PURE.
 
@@ -791,4 +806,4 @@ def synthese_agricole(data):
 
     omissions.extend(dict(o) for o in OMISSIONS_DE_PRINCIPE)
     synthese["omissions"] = omissions
-    return synthese
+    return _devis_final(synthese, data)

@@ -55,6 +55,8 @@ export interface SyntheseAgricole {
     estimation: boolean;
   } | null;
   provenance: SyntheseProvenance[];
+  /** Devis final (visite faite) : `synthese_agricole.devis_final === true` ; clé absente = pas final. */
+  devisFinal: boolean;
   /** Entrées du point d'eau NON mesurées (D-AGR-4) — clés machine. */
   aConfirmerParVisite: string[];
   pompe: {
@@ -189,6 +191,7 @@ export function syntheseAgricole(
         }
       : null,
     provenance: lireProvenance(brut.provenance),
+    devisFinal: brut.devis_final === true,
     aConfirmerParVisite: Array.isArray(brut.a_confirmer_par_visite)
       ? brut.a_confirmer_par_visite.filter((x): x is string => typeof x === 'string')
       : [],

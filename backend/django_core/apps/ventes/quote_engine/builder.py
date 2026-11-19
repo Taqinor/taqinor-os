@@ -478,6 +478,16 @@ def cgv_ci_du_devis(devis, tva_note="", langue=None):
     return puces or None
 
 
+def _devis_final_enregistre(devis):
+    """Fondateur 19/11/2026 (« where is final quote button, the visit was
+    done for this guy ») — la case « Devis final » ENREGISTRÉE sur le devis
+    (``etude_params.devis_final is True``, contrat ``devis_final.json``) :
+    tout rendu de ce devis est final (PDF, pièce jointe, page client), sans
+    option de rendu à repasser. Absente ⇒ rendu d'hier, octet pour octet."""
+    etude = getattr(devis, "etude_params", None)
+    return isinstance(etude, dict) and etude.get("devis_final") is True
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from apps.ventes.domain.regles_calcul import (
@@ -1805,7 +1815,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "nb_options": nb_options,
         "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
-        "devis_final": opts['devis_final'],
+        "devis_final": opts['devis_final'] or _devis_final_enregistre(devis),
         "include_etude": include_etude,
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas
