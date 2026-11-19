@@ -275,7 +275,10 @@ describe('R3-063 (choix C-23) — l\'appui long au doigt ouvre une feuille du ba
       'Reporter à lun. 23', 'Choisir un jour', 'Plus tard', 'Changer de projet…', 'Plus essentielle', 'En attente de…', 'Priorité', 'Supprimer',
     ])
     expect(ligne).toHaveClass('en-actions')
-    fireEvent.click(within(feuille).getByRole('button', { name: 'Choisir un jour' }))
+    // un NOUVEAU toucher (le doigt qui a ouvert la feuille a été levé) : pointerdown puis click
+    const choisir = within(feuille).getByRole('button', { name: 'Choisir un jour' })
+    poser(choisir, 'pointerdown', 200, 300)
+    fireEvent.click(choisir)
     // la feuille se ferme d'abord (son entrée d'historique retirée), PUIS le geste ouvre la sienne
     await waitFor(() => expect(onAction).toHaveBeenCalledWith('choisir_jour', expect.objectContaining({ id: 20 })))
     expect(screen.queryByRole('dialog', { name: 'Devis Settat' })).toBeNull()
@@ -292,6 +295,46 @@ describe('R3-063 (choix C-23) — l\'appui long au doigt ouvre une feuille du ba
     expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
     expect(screen.queryByRole('menu')).toBeNull()
   })
+
+  /* R4-21 — le relâcher du doigt qui a OUVERT la feuille ne déclenche rien : le navigateur envoie, dans un ordre qui
+     varie (Chromium : pointerup, touchend, puis un click sur ce qui est passé sous le doigt ; Safari : parfois aucun
+     click), un click sur « Choisir un jour », « Priorité » ou le voile. Seul un NOUVEAU toucher agit. */
+  const ordres = {
+    'pointerup, touchend, click': (ligne, cible) => {
+      poser(ligne, 'pointerup', 200)
+      fireEvent.touchEnd(ligne)
+      fireEvent.click(cible)
+    },
+    'click avant pointerup': (ligne, cible) => {
+      fireEvent.click(cible)
+      poser(ligne, 'pointerup', 200)
+    },
+    'click seul (sans pointerup)': (ligne, cible) => { fireEvent.click(cible) },
+  }
+  for (const [ordre, relacher] of Object.entries(ordres)) {
+    for (const nom of ['Choisir un jour', 'Priorité', 'voile']) {
+      it(`R4-21 — relâcher (${ordre}) sur « ${nom} » : rien ne part, la feuille reste ouverte ; un nouveau toucher agit`, async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
+        const onAction = vi.fn()
+        const { container } = render(
+          <div className="tch"><div role="list"><LigneTache item={item()} aujourdhui={AUJOURDHUI} onAction={onAction} onReporter={() => {}} reporterLibelle="lun. 23" /></div></div>,
+        )
+        const ligne = container.querySelector('.ligne')
+        await appuiLong(ligne)
+        const feuille = screen.getByRole('dialog', { name: 'Devis Settat' })
+        const cible = nom === 'voile' ? container.querySelector('.voile') : within(feuille).getByRole('button', { name: nom })
+        await act(async () => { relacher(ligne, cible) })
+        expect(onAction).not.toHaveBeenCalled()
+        expect(screen.getByRole('dialog', { name: 'Devis Settat' })).toBeInTheDocument()
+        // un vrai toucher ensuite : le geste part
+        const priorite = within(feuille).getByRole('button', { name: 'Priorité' })
+        poser(priorite, 'pointerdown', 200, 400)
+        fireEvent.click(priorite)
+        await waitFor(() => expect(onAction).toHaveBeenCalledWith('priorite', expect.objectContaining({ id: 20 })))
+        expect(onAction).toHaveBeenCalledTimes(1)
+      })
+    }
+  }
 })
 
 describe('R2-016 — balayer vers la droite coche (le plafond du glissement ne bloque plus le seuil)', () => {
