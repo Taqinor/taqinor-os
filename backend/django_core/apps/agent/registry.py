@@ -100,6 +100,9 @@ OBJETS = frozenset({'lead', 'devis', 'touche', 'facture', 'client',
 NOYAU = frozenset({
     'crm.lead.chercher', 'crm.lead.resume', 'crm.digest_matin',
     'crm.leads.a_relancer', 'erp.ouvrir',
+    # 19/11/2026 — désigner une personne par son NOM (lead, dossiers, visite,
+    # chantier) : les consignes fixes la citent, elle n'attend aucun domaine.
+    'crm.collegues.lister',
 })
 
 # Copilote vague 2 (FND6) — les actions du lot `copilote` qui existaient AVANT
