@@ -15,6 +15,7 @@ import {
   isNewlyAssigned,
 } from '../../features/installations/statuses'
 import importApi from '../../api/importApi'
+import installationsApi from '../../api/installationsApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
 import { useCanListAssignableUsers, useHasPermission } from '../../hooks/useHasPermission'
@@ -372,10 +373,19 @@ export default function InstallationsPage() {
   // chantier ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet).
   // Fermer retire le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des
   // chantiers chargés est signalé par un EmptyState inline (jamais page blanche).
-  const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
+  // La liste est « lue » une fois qu'un chargement a eu lieu ET s'est terminé : avant, `items` est vide
+  // sans rien dire (premier rendu) et l'objet ne doit pas être réclamé par son id pour rien.
+  const [chargementVu, setChargementVu] = useState(false)
+  if (loading && !chargementVu) setChargementVu(true)
+  const listeLue = chargementVu && !loading
+  // Un chantier hors de la liste chargée (filtre « Mes chantiers », accès par l'assistant) est lu par son id.
+  const { wantedId, deepItem, deepLoading, clearDeepLink } = useDeepLinkId(
+    searchParams, setSearchParams, items,
+    { fetchById: (id) => installationsApi.getInstallation(id), pret: listeLue },
+  )
   // VX79 — id demandé mais introuvable (une fois le chargement terminé) : on
   // affiche un EmptyState inline plutôt qu'un panneau vide ou une page blanche.
-  const deepMissing = !!wantedId && !loading && !deepItem
+  const deepMissing = !!wantedId && !loading && !deepLoading && !deepItem
 
   const onOpen = (it) => setSelected(it)
   const onClose = () => { setSelected(null); clearDeepLink() }

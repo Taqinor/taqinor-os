@@ -1634,8 +1634,17 @@ export default function TicketsPage() {
   // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
   // le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des tickets
   // chargés est signalé par un EmptyState inline (jamais une page blanche).
-  const { wantedId, deepItem: deepTicket, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
-  const deepMissing = !!wantedId && !loading && !error && !deepTicket
+  // La liste est « lue » une fois qu'un chargement a eu lieu ET s'est terminé : avant, `items` est vide
+  // sans rien dire (premier rendu) et l'objet ne doit pas être réclamé par son id pour rien.
+  const [chargementVu, setChargementVu] = useState(false)
+  if (loading && !chargementVu) setChargementVu(true)
+  const listeLue = chargementVu && !loading
+  // Un ticket hors de la liste chargée (accès par l'assistant, portée de la fiche plus large) est lu par son id.
+  const { wantedId, deepItem: deepTicket, deepLoading, clearDeepLink } = useDeepLinkId(
+    searchParams, setSearchParams, items,
+    { fetchById: (id) => savApi.getTicket(id), pret: listeLue },
+  )
+  const deepMissing = !!wantedId && !loading && !deepLoading && !deepTicket
 
   // Panneau ouvert : sélection manuelle OU ticket ciblé par le lien profond.
   const detailTicket = selected ?? deepTicket
