@@ -155,5 +155,6 @@ def creer_lead_pour_assistant(request, donnees, *, note='',
     serializer.is_valid(raise_exception=True)
     lead = creer_lead_saisi(serializer, user)
     if note:
-        activity.log_note(lead, user, note)
+        from .cadence_reperes import PREFIXE_NOTE_DEMANDE_CLIENT
+        activity.log_note(lead, user, PREFIXE_NOTE_DEMANDE_CLIENT + note)
     return lead

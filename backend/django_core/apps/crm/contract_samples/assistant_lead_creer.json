@@ -16,7 +16,7 @@
       {
         "type": "note",
         "champ": "",
-        "texte": "Demande du client : 10 panneaux, onduleur triphasé 10 kW, batterie 5 kWh.",
+        "texte": "Demande du client (saisie à la création) : 10 panneaux, onduleur triphasé 10 kW, batterie 5 kWh.",
         "le": "2026-11-18T22:40:00+00:00"
       }
     ],
