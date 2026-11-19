@@ -32,7 +32,8 @@ from ..services.assistant import (
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['resume', 'du_lead', 'preparer', 'publier_devis_apercu', 'publier_devis']
+__all__ = ['resume', 'du_lead', 'preparer', 'publier_devis_apercu', 'publier_devis',
+           'a_traiter']
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
@@ -223,6 +224,31 @@ def publier_devis(self, request, pk=None):
                         nouveau_vu=corps.get('nouveau_total_ttc'))
 
 
+@extend_schema(
+    parameters=[OpenApiParameter(
+        'limite', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+        description='Nombre de lignes, de 1 à 20 (10 par défaut).')],
+    responses={200: forme_du_contrat('CalepinageAssistantATraiter',
+                                     'calepinage_assistant_a_traiter.json')})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.a_traiter)
+@action(detail=False, methods=['get'], url_path='a-traiter',
+        permission_classes=[PeutVoirCalepinage])
+def a_traiter(self, request):
+    """CALA9 — la file « calepinages à traiter » de l'appelant."""
+    from ..selectors import calepinages_a_traiter
+    from ..services.assistant import LIMITE_DEFAUT, LIMITE_MAX
+
+    brut = request.query_params.get('limite')
+    limite = LIMITE_DEFAUT
+    if brut is not None:
+        brut = str(brut).strip()
+        if not (brut.isascii() and brut.isdigit() and 1 <= int(brut) <= LIMITE_MAX):
+            return refus(f'limite : un entier entre 1 et {LIMITE_MAX}.', 'limite',
+                         'limite_invalide')
+        limite = int(brut)
+    return Response(calepinages_a_traiter(request.user, limite=limite))
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.resume = resume
@@ -230,3 +256,4 @@ CalepinageViewSet.du_lead = du_lead
 CalepinageViewSet.preparer = preparer
 CalepinageViewSet.publier_devis_apercu = publier_devis_apercu
 CalepinageViewSet.publier_devis = publier_devis
+CalepinageViewSet.a_traiter = a_traiter

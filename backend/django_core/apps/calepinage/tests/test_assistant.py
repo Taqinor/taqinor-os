@@ -497,3 +497,52 @@ class RetenirTest(BaseAssistantCalepinage):
         self.assertIn(reponse.status_code, (400, 409), reponse.data)
         self.variante.refresh_from_db()
         self.assertFalse(self.variante.retenue)
+
+
+class ATraiterTest(BaseAssistantCalepinage):
+    """CALA9 — ``GET calepinages/a-traiter/`` et ``selectors.calepinages_a_traiter``."""
+
+    def test_forme_et_signaux_fermes(self):
+        from apps.calepinage.services.assistant import A_FAIRE, SIGNAUX
+
+        reponse = self.api.get(url_assistant('a-traiter/'))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        attendu = echantillon('calepinage_assistant_a_traiter.json')
+        self.assertEqual(set(reponse.data), set(attendu))
+        self.assertEqual(reponse.data['limite'], 10)
+        lignes = reponse.data['lignes']
+        self.assertEqual([ligne['calepinage'] for ligne in lignes], [self.cal.pk])
+        self.assertEqual(set(lignes[0]), set(attendu['lignes'][0]))
+        self.assertIn('sans_pose', lignes[0]['signaux'])
+        self.assertTrue(set(lignes[0]['signaux']) <= set(SIGNAUX))
+        self.assertIn(lignes[0]['a_faire'], A_FAIRE)
+        self.assertTrue(lignes[0]['evalue'])
+
+    def test_limite_bornee(self):
+        for valeur in ('0', '21', 'x', '-1'):
+            with self.subTest(limite=valeur):
+                reponse = self.api.get(url_assistant('a-traiter/'), {'limite': valeur})
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertEqual(reponse.data['code'], 'limite_invalide')
+
+    def test_couteux_bornes_aux_premiers_candidats(self):
+        from apps.calepinage.services import assistant as service
+
+        for rang in range(service.COUTEUX_MAX + 2):
+            Calepinage.objects.create(company=self.company, titre=f'Toit {rang}',
+                                      responsable=self.user, cree_par=self.user)
+        sortie = service.file_a_traiter(self.user, limite=20)
+        evalues = [ligne['evalue'] for ligne in sortie['lignes']]
+        self.assertEqual(evalues.count(True), service.COUTEUX_MAX)
+        self.assertEqual(sortie['total'], len(sortie['lignes']))
+
+    def test_portee_societe_et_vue_restreinte(self):
+        self.assertEqual(self.api_autre.get(url_assistant('a-traiter/')).data['lignes'], [])
+        self.restreindre()
+        self.assertEqual(self.api_u.get(url_assistant('a-traiter/')).data['lignes'], [])
+
+    def test_le_selecteur_public_rend_la_meme_forme(self):
+        from apps.calepinage.selectors import calepinages_a_traiter
+
+        self.assertEqual(set(calepinages_a_traiter(self.user, limite=5)),
+                         {'total', 'limite', 'lignes'})

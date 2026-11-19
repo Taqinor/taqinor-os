@@ -607,3 +607,95 @@ def publier(calepinage, *, user, ancien_vu, nouveau_vu):
                        'manquantes': list(electrique.get('manquantes') or ())},
         'lien': _lien_publication(calepinage, devis),
     }
+
+
+# ── CALA9 — la file « calepinages à traiter » (et le bloc du matin) ────────
+
+#: Fenêtre de la file : calepinages OUVERTS modifiés depuis N jours.
+FENETRE_JOURS = 30
+#: Au plus N calepinages évalués (les plus récents) — borne le coût.
+CANDIDATS_MAX = 30
+#: Les signaux COÛTEUX (simulation, électrique) ne sont évalués que pour les
+#: N premiers candidats (les plus récents) ; au-delà ``evalue: false`` et ils
+#: sont ABSENTS (jamais devinés).
+COUTEUX_MAX = 5
+LIMITE_DEFAUT, LIMITE_MAX = 10, 20
+
+
+def _signaux_economiques(calepinage):
+    """``(signaux, a_retenir)`` — visite, pose, devis, approbation : chacun
+    par SON lecteur unique (les mêmes blocs que le résumé)."""
+    from .. import selectors
+    from .mesures import mesures_du_document
+
+    _visite, signaux = _bloc_visite(calepinage)
+    document = calepinage.roof_layout if isinstance(calepinage.roof_layout, dict) else {}
+    if not (document and mesures_du_document(document).get('modules')):
+        signaux = signaux + ['sans_pose']
+    _devis, s_devis = _bloc_devis(calepinage, None)
+    _approbation, s_approbation = _bloc_approbation(calepinage)
+    lignes = list(selectors.variantes(calepinage).values_list('retenue', flat=True))
+    return signaux + s_devis + s_approbation, bool(lignes) and not any(lignes)
+
+
+def _signaux_couteux(calepinage):
+    """Simulation (résultat servi) et verdict électrique — recalculés."""
+    from .. import selectors
+
+    resultat = selectors.resultat_servi(calepinage) or {}
+    _simulation, _production, _pertes, s_simulation = _bloc_production(resultat)
+    _electrique, s_electrique = _bloc_electrique(calepinage)
+    return s_simulation + s_electrique
+
+
+def _ligne_a_traiter(calepinage, *, evaluer):
+    """Une ligne de la file (forme d'une ligne de
+    ``calepinage_assistant_a_traiter.json``), ou None s'il n'y a rien à faire."""
+    from .presentation import reference_calepinage
+
+    signaux, a_retenir = _signaux_economiques(calepinage)
+    if evaluer:
+        signaux = signaux + _signaux_couteux(calepinage)
+    signaux = sorted(set(signaux), key=SIGNAUX.index)
+    a_faire = premier_blocage(signaux, a_retenir=a_retenir)
+    if a_faire == 'rien':
+        return None
+    modifie = getattr(calepinage, 'updated_at', None)
+    return {
+        'calepinage': calepinage.pk,
+        'reference': reference_calepinage(calepinage),
+        'lead': calepinage.lead_id,
+        'modifie_le': modifie.isoformat() if modifie is not None else None,
+        'signaux': signaux,
+        'a_faire': a_faire,
+        'lien': lien_du_geste(calepinage.pk, a_faire),
+        'evalue': bool(evaluer),
+    }
+
+
+def file_a_traiter(user, *, limite=LIMITE_DEFAUT, maintenant=None):
+    """CALA9 — les calepinages OUVERTS de la vue de ``user``, modifiés depuis
+    :data:`FENETRE_JOURS` jours, plus récents d'abord, qui appellent un geste
+    (contrat ``calepinage_assistant_a_traiter.json``). ``total`` compte les
+    lignes à traiter parmi les :data:`CANDIDATS_MAX` plus récents ; les
+    signaux coûteux ne sont évalués que pour les :data:`COUTEUX_MAX` premiers.
+    Aucun score, aucun classement de personnes, aucun prix."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .. import selectors
+
+    limite = max(1, min(int(limite), LIMITE_MAX))
+    depuis = (maintenant or timezone.now()) - timedelta(days=FENETRE_JOURS)
+    candidats = (selectors.calepinages_visibles(user)
+                 .filter(updated_at__gte=depuis)
+                 .order_by('-updated_at', '-id')[:CANDIDATS_MAX])
+    lignes, evalues = [], 0
+    for calepinage in candidats:
+        evaluer = evalues < COUTEUX_MAX
+        evalues += int(evaluer)
+        ligne = _ligne_a_traiter(calepinage, evaluer=evaluer)
+        if ligne is not None:
+            lignes.append(ligne)
+    return {'total': len(lignes), 'limite': limite, 'lignes': lignes[:limite]}

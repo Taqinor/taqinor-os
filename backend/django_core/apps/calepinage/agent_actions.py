@@ -283,8 +283,31 @@ RETENIR = AgentAction(
     objets={'id': 'calepinage', 'variante_id': 'variante'},
 )
 
+A_TRAITER = AgentAction(
+    key='calepinage.a_traiter',
+    label='Calepinages à traiter',
+    description=(
+        "Sert à : lister les calepinages ouverts de l'utilisateur modifiés "
+        "depuis 30 jours qui attendent un geste (visite à reprendre, toit à "
+        "dessiner, simulation à lancer, verdict électrique à corriger, "
+        "approbation, devis à publier). Ne pas utiliser pour : un lead précis "
+        "(calepinage.du_lead). Exemple : « quels calepinages dois-je "
+        "traiter ? » → limite=10. Résultat : des lignes avec leurs signaux, "
+        "« a_faire » et « lien » ; « evalue: false » = simulation et verdict "
+        "électrique non évalués pour cette ligne (ne les devine pas). Aucun "
+        "classement de personnes."),
+    endpoint=BASE + 'a-traiter/',
+    method='GET',
+    inputs=_schema({'limite': {'type': 'integer', 'minimum': 1, 'maximum': 20,
+                               'description': 'Nombre de lignes (10 par défaut).'}}),
+    required_permission=VOIR,
+    risk=RISK_INTERNAL,
+    carte='liste_calepinages',
+    lot=LOT_COPILOTE,
+)
+
 ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER,
-           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS, RETENIR)
+           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS, RETENIR, A_TRAITER)
 
 
 def register_actions() -> None:

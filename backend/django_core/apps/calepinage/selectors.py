@@ -1258,3 +1258,14 @@ def resultat_servi(calepinage, *, variante=None):
             'motif': str(refus),
             'avertissements': [str(refus)],
         }
+
+
+def calepinages_a_traiter(user, *, limite=10):
+    """CALA9 (copilote vague 2) — la file « calepinages à traiter » de
+    ``user`` : ``{total, limite, lignes}``, forme du contrat
+    ``calepinage_assistant_a_traiter.json``. Public : lu par la route
+    ``a-traiter/`` et par crm (point du matin). Lecture pure, bornée par
+    ``calepinages_visibles`` ; détail dans ``services.assistant.file_a_traiter``."""
+    from .services.assistant import file_a_traiter
+
+    return file_a_traiter(user, limite=limite)
