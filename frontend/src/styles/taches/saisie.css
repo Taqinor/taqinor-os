@@ -393,16 +393,19 @@
 }
 /* R3-065 — au bureau large, à la souris : les gestes d'À trier n'occupent plus une colonne fixe de 280 px (titres sur 2
    lignes, « Projet… » tronqué à 1920) ; le titre prend toute la largeur, les gestes apparaissent au survol ou au focus
-   de la ligne (comme ⋯ sur les autres lignes), posés à droite sur le fond de la ligne. Au toucher, rien ne change. */
+   de la ligne (comme ⋯ sur les autres lignes), posés à droite sur le fond de la ligne. Au toucher, rien ne change.
+   Couture L7 — invisibles au repos mais JAMAIS traversés par le pointeur : avec `pointer-events: none`, le bouton étiré
+   du titre (`.ligne-corps-bouton::after`) recevait le clic posé sur « Aujourd'hui » (CI 1280 × 720 : « intercepts
+   pointer events ») ; la souris qui arrive sur un geste survole d'abord la ligne, il est donc visible au clic. */
 @media (min-width: 1024px) and (hover: hover) {
   .tch .ligne.tri .ligne-corps { display: block; }
   .tch .ligne.tri .tri-gestes {
     position: absolute; right: 8px; top: 50%; translate: 0 -50%; width: auto; margin: 0; padding: 0 6px 0 24px;
     border-radius: 10px; background: var(--tch-survol); box-shadow: -12px 0 12px -6px var(--tch-survol);
-    opacity: 0; pointer-events: none;
+    opacity: 0;
   }
   .tch .ligne.tri:hover .tri-gestes, .tch .ligne.tri:focus-within .tri-gestes,
-  .tch .ligne.tri .tri-gestes:has([data-state="open"]) { opacity: 1; pointer-events: auto; }
+  .tch .ligne.tri .tri-gestes:has([data-state="open"]) { opacity: 1; }
   .tch .ligne.tri:focus-within:not(:hover) .tri-gestes { background: var(--tch-surface); box-shadow: -12px 0 12px -6px var(--tch-surface); }
 }
 
