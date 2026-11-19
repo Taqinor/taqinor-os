@@ -133,16 +133,16 @@ def _barre(plan):
             'plan_lignes': plan.plan_prevues}
 
 
-def _serie(user, plans, jour):
+def _serie(user, plans, jour, prefs):
     """Les 10 derniers jours TRAVAILLÉS (R2-120, regles.md §6.2) : une entrée par jour travaillé (calendrier de
     la société ∩ ses jours dits − ses congés), du premier jour lu à la veille. Un jour évalué porte ses
     nombres ; un jour travaillé que la nuit n'a pas évalué (aucune ligne, ou ligne sans statut) est servi
     `sans_donnees`, barre vide : jamais un jour absent, jamais un nombre inventé. Un jour que sa ligne dit
-    férié (`non_ouvre`) ou en congé n'a pas de barre."""
+    férié (`non_ouvre`) ou en congé n'a pas de barre. `prefs` : les préférences déjà lues par `forme_rythme`."""
     if not plans:
         return []
     par_jour = {p.jour: p for p in plans}
-    travailles = set(jours_travailles_de(user, min(par_jour), jour - datetime.timedelta(days=1)))
+    travailles = set(jours_travailles_de(user, min(par_jour), jour - datetime.timedelta(days=1), prefs=prefs))
     barres = {}
     for date in travailles | {p.jour for p in plans if p.statut_jour in STATUTS_TRAVAILLES}:
         plan = par_jour.get(date)
@@ -185,9 +185,9 @@ def _repere(etat, comprendre):
     return None if p60 is None else {'p60': p60, 'jours': moteur.REPERE_JOURS}
 
 
-def _preferences(user):
+def _preferences(dites):
     return [{'cle': p.cle, 'valeur': p.valeur, 'source': p.source,
-             'dite_le': _HORODATAGE.to_representation(p.dite_le)} for p in preferences_de(user)]
+             'dite_le': _HORODATAGE.to_representation(p.dite_le)} for p in dites]
 
 
 def _cartes(user, jour, assistant):
@@ -203,8 +203,12 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
     plans = plans_du_rythme(user, jour)
     etat = etat_rythme(reglages, plans, jour)
     nb, source, zone = moteur.objectif_affiche(etat)
+    # Les préférences dites sont lues UNE fois (servies dans `preferences`) : la série (jours dits, congés) et
+    # `jours_travailles` (R2-120/R2-123) les reprennent sans relire la base (test_plafonds.test_rythme).
+    dites = preferences_de(user)
+    prefs = {p.cle: p.valeur for p in dites}
     # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, ni série ni trace (donc `trace` nulle).
-    serie = _serie(user, plans, jour) if reglages.comprendre_mon_rythme else []
+    serie = _serie(user, plans, jour, prefs) if reglages.comprendre_mon_rythme else []
     proposition, constats = _cartes(user, jour, assistant)
     return {
         'mode': etat.mode,
@@ -217,7 +221,7 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
         'serie': serie,
         'constats': constats,
         'repere': _repere(etat, reglages.comprendre_mon_rythme),
-        'preferences': _preferences(user),
-        'jours_travailles': masque_travaille(user),
+        'preferences': _preferences(dites),
+        'jours_travailles': masque_travaille(user, prefs),
         'geste_id': geste_id,
     }

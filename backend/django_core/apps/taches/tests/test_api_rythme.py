@@ -152,7 +152,9 @@ class RythmeLectureTests(BaseRythme):
             ('13', 'sans_donnees', 0), ('16', 'sans_donnees', 0)])
         vide = corps['serie'][4]
         self.assertEqual((vide['objectif'], vide['essentiel_faites'], vide['plan_lignes']), (None, 0, 0))
-        self.assertEqual(corps['trace'], '5 faites ou plus 5 jours sur 10')
+        # La trace compte, sur les 10 barres ci-dessus, les jours à 5 faites ou plus : 03 (6), 04 (5), 05 (5),
+        # 11 (5) = 4 ; 06 (4) et 12 (4) sont sous 5, les 4 jours sans données valent 0. Sur 10 = les 10 barres.
+        self.assertEqual(corps['trace'], '5 faites ou plus 4 jours sur 10')
 
     def test_la_serie_ne_remonte_pas_avant_le_premier_jour_evalue(self):
         """Un compte récent n'a pas de barres vides pour les jours d'avant son premier jour lu."""
@@ -213,7 +215,10 @@ class RythmeLectureTests(BaseRythme):
         attendu = exemple_de('proposition')
         self.assertEqual(corps['proposition']['texte'], attendu['texte'])
         self.assertEqual(corps['proposition']['boutons'], attendu['boutons'])
-        self.assertEqual(corps['constats'][0]['texte'], exemple_de('rythme')['constats'][0]['texte'])
+        # R2-014 (textes.md §4.4) : le texte SERVI d'une carte de constat est sa phrase suivie de sa question
+        # (C3 : « En faire un jour court (un de moins) ? ») ; l'échantillon porte la phrase seule.
+        self.assertEqual(corps['constats'][0]['texte'],
+                         f"{exemple_de('rythme')['constats'][0]['texte']} En faire un jour court (un de moins) ?")
 
     def test_tenir_rend_la_zone(self):
         self.reglages(mode=ModeRythme.TENIR, tenir_reference=5, tenir_fixee_le=J - datetime.timedelta(days=3))

@@ -44,11 +44,14 @@ def preference_de(user, cle, *, verrou=False):
     return qs.first()
 
 
-def masque_travaille(user):
+def masque_travaille(user, prefs=None):
     """Les jours de la semaine RÉELLEMENT travaillés de `user`, lun→dim (`'1111100'`) : les jours qu'il a dits
     (`jours_travailles`, tous par défaut) ∩ les jours ouvrés du calendrier de sa société (R2-123). Les congés
-    et les fériés sont des jours isolés : ils ne changent pas la semaine type."""
-    dit = _preferences(user, ClePreference.JOURS_TRAVAILLES).get(ClePreference.JOURS_TRAVAILLES)
+    et les fériés sont des jours isolés : ils ne changent pas la semaine type. `prefs` (`{clé: valeur}`) : les
+    préférences que l'appelant a DÉJÀ lues — une seule requête alors (le calendrier de la société)."""
+    if prefs is None:
+        prefs = _preferences(user, ClePreference.JOURS_TRAVAILLES)
+    dit = prefs.get(ClePreference.JOURS_TRAVAILLES)
     if not (isinstance(dit, str) and len(dit) == 7):
         dit = TOUS_LES_JOURS
     ouvres = _load_working_days(user.company) if getattr(user, 'company_id', None) is not None else 0
