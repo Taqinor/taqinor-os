@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { ZoneAnnonces } from '../coquille/CoquilleTaches'
-import { EVENEMENT_CREEES, EVENEMENT_ECRITE, useApresCreation } from '../lib/fiche'
+import { MemoryRouter, useLocation } from 'react-router-dom'
+import { EVENEMENT_CREEES, EVENEMENT_ECRITE, useApresCreation, useOuvrirFiche } from '../lib/fiche'
 import { reinitialiserGestes } from '../lib/gestes'
 import Fiche from './Fiche'
 
@@ -234,6 +235,37 @@ describe('TCH84 — fiche d\'une tâche', () => {
     monter()
     await screen.findByRole('textbox', { name: 'Titre' })
     expect(screen.queryByRole('button', { name: 'Encore 10 min' })).toBeNull()
+  })
+
+  it('R2-021b — `section="decouper"` : « Plus » est déplié et le curseur est dans « Découper »', async () => {
+    monter({ section: 'decouper' })
+    const champ = await screen.findByRole('textbox', { name: 'Découper' })
+    await waitFor(() => expect(champ).toHaveFocus())
+    expect(screen.getByRole('button', { name: 'Plus' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('R2-025b — `focus="titre"` met le curseur dans le titre ; `focus="heure"` ouvre Quand sur le champ Heure', async () => {
+    const { unmount } = monter({ focus: 'titre' })
+    const titre = await screen.findByRole('textbox', { name: 'Titre' })
+    await waitFor(() => expect(titre).toHaveFocus())
+    unmount()
+    monter({ focus: 'heure' })
+    await screen.findByRole('textbox', { name: 'Titre' })
+    await waitFor(() => expect(screen.getByLabelText('Heure')).toHaveFocus())
+    expect(screen.getByRole('button', { name: /Quand je la fais/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('R2-021b/025b — `useOuvrirFiche()(id, { section, focus })` pose `?tache=…&section=…` ou `&focus=…`', () => {
+    let ouvrir
+    let lieu
+    function Ecran() { ouvrir = useOuvrirFiche(); lieu = useLocation(); return null }
+    render(<MemoryRouter initialEntries={['/taches/aujourdhui']}><Ecran /></MemoryRouter>)
+    act(() => { ouvrir(12, { section: 'decouper' }) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=12&section=decouper')
+    act(() => { ouvrir(13, { focus: 'heure' }) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=13&focus=heure')
+    act(() => { ouvrir(14) })
+    expect(new URLSearchParams(lieu.search).toString()).toBe('tache=14')
   })
 
   it('R2-042 — taper une échéance : rien ne part pendant la frappe, la date entière part à la sortie du champ', async () => {

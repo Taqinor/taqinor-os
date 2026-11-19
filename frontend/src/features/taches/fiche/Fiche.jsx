@@ -244,7 +244,7 @@ function RappelOuvert({ rappel, onRepeter }) {
   )
 }
 
-export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
+export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso(), section, focus }) {
   const [tache, setTache] = useState(null)
   const [chargement, setChargement] = useState(true)
   const [echec, setEchec] = useState('')
@@ -276,6 +276,31 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   useEffect(() => { courant.current = id; charger() }, [id, charger])
   // R2-040 — la fiche fermée (croix, Échap, retour arrière), l'écran se relit une dernière fois
   useEffect(() => () => signalerEcrite(), [])
+
+  // R2-021b / R2-025b — ouverte pour un geste précis (`useOuvrirFiche()(id, { section, focus })`, lu dans l'adresse
+  // ou passé en prop) : « Découper » déplie « Plus » et y met le curseur ; `titre` le met dans le titre ; `heure`
+  // ouvre Quand sur le champ Heure. Une seule fois par tâche, dès qu'elle est lue.
+  const racineFiche = useRef(null)
+  const curseurPose = useRef(null) // l'identifiant dont la demande a déjà été servie
+  const [demande, setDemande] = useState(null) // { pour: id, cible: 'decouper' | 'titre' | 'heure' | null }
+  if (tache && String(tache.id) === String(id) && demande?.pour !== id) {
+    const adresse = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+    const voulue = section ?? adresse?.get('section')
+    const curseur = focus ?? adresse?.get('focus')
+    const cible = voulue === 'decouper' ? 'decouper' : ['titre', 'heure'].includes(curseur) ? curseur : null
+    setDemande({ pour: id, cible })
+    if (cible === 'decouper') setPlusOuvert(true)
+    if (cible === 'heure') setOuvert('quand')
+  }
+  useEffect(() => {
+    if (!demande?.cible || curseurPose.current === demande.pour) return
+    const cibles = { decouper: 'input[aria-label="Découper"]', titre: '.fiche-titre-champ', heure: 'input[aria-label="Heure"]' }
+    const champ = racineFiche.current?.querySelector(cibles[demande.cible])
+    if (!champ) return
+    curseurPose.current = demande.pour
+    champ.focus()
+    champ.scrollIntoView?.({ block: 'center' })
+  })
 
   const erreur = useCallback((champ, message) => setErreurs((e) => ({ ...e, [champ]: message })), [])
 
@@ -394,7 +419,7 @@ export default function Fiche({ id, onFermer, aujourdhui = aujourdhuiIso() }) {
   }
 
   return (
-    <div data-fiche={id} className="fiche">
+    <div ref={racineFiche} data-fiche={id} className="fiche">
       {/* R2-050 — la ligne de la tâche ouverte est surlignée dans la liste restée visible (ecran-fiche.html
           « ligne selectionnee ») ; règle limitée à `.tch`, l'identifiant passé par Number (jamais du texte libre) */}
       {Number.isFinite(Number(id)) ? (

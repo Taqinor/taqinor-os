@@ -22,16 +22,26 @@ export function signalerEcrite(tache = null) {
   window.dispatchEvent(new CustomEvent(EVENEMENT_ECRITE, { detail: { tache } }))
 }
 
-/** `(id) => void` : ouvre la fiche de la tâche `id` sur l'écran courant. */
+/** Ce que la fiche ouvre d'elle-même (R2-021b/025b) : `section` (`decouper` : « Plus » déplié, curseur dans
+ *  « Découper ») et `focus` (`titre` : curseur dans le titre ; `heure` : Quand ouvert sur le champ Heure). */
+export const SECTIONS_FICHE = ['decouper']
+export const FOCUS_FICHE = ['titre', 'heure']
+
+/** `(id, { section, focus } = {}) => void` : ouvre la fiche de la tâche `id` sur l'écran courant ; `section` et
+ *  `focus` (valeurs ci-dessus, toute autre est ignorée) vont dans l'adresse : `?tache=12&section=decouper`. */
 export function useOuvrirFiche() {
   const [params, setParams] = useSearchParams()
   const { state } = useLocation()
   const dejaOuverte = params.has('tache')
   const marquee = Boolean(state?.[MARQUE_FICHE])
-  return useCallback((id) => {
+  return useCallback((id, { section, focus } = {}) => {
     setParams((actuels) => {
       const suite = new URLSearchParams(actuels)
       suite.set('tache', String(id))
+      if (SECTIONS_FICHE.includes(section)) suite.set('section', section)
+      else suite.delete('section')
+      if (FOCUS_FICHE.includes(focus)) suite.set('focus', focus)
+      else suite.delete('focus')
       return suite
     // R2-050 — une fiche déjà ouverte (panneau du bureau) CHANGE de tâche en place : l'entrée est remplacée et garde sa
     // marque, sinon la fermeture (retour arrière) rouvrirait la tâche précédente au lieu de rendre la liste
