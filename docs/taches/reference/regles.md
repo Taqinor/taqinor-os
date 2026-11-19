@@ -767,8 +767,9 @@ mot « ratée ». Les **paliers** ne lisent que « jours à N ou plus » (le com
 ### 6.7 Bascules (`basculer(etat, mode, jour)`)
 
 POUSSER → TENIR : R des 14 derniers jours évalués (rythme réel). TENIR → POUSSER : palier = `arrondir(R)`, plancher
-1. → LIBRE : objectif nul. LIBRE → POUSSER : journée type des 10 derniers jours évalués (≤ 42 j), sinon démarrage à
-froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les
+1. → LIBRE : objectif nul, le palier est GARDÉ. LIBRE → POUSSER : on rend le dernier palier (celui d'avant « Sans
+objectif », R2-122, choix C-7) ; sans palier encore, journée type des 10 derniers jours évalués (≤ 42 j), sinon
+démarrage à froid. Toute bascule remet blocs, refus et essai à zéro, abandonne la proposition en attente ; `meilleur_tenu` et les
 échecs sont gardés.
 
 ### 6.8 Ce qui fait faire plus au quotidien (A2.4 — à rendre visible)
@@ -1029,7 +1030,7 @@ ESSENTIEL (A18-M4) : jusqu'à 3 adresses ICS par utilisateur (Microsoft 365, Goo
 affichées en lecture seule, retranchées du temps disponible.
 
 **Ajout** (`POST agendas-externes/`) : `webcal://` est réécrit en `https://` (même hôte, même chemin : l'iPhone donne
-ses liens publics ainsi, IR22) ; tout autre schéma → 400 `{"url":["Adresse https publique attendue."]}` ; 4e adresse →
+ses liens publics ainsi, IR22) ; tout autre schéma → 400 `{"url":["L'adresse doit commencer par https."]}` ; pas une adresse → `{"url":["Ce n'est pas une adresse : colle le lien de ton agenda."]}` ; hôte introuvable ou interne → `{"url":["Adresse injoignable : vérifie le lien."]}` (R2-127) ; 4e adresse →
 `{"url":["3 agendas au plus."]}` ; adresse déjà là → `{"url":["Cet agenda est déjà ajouté."]}` ; `hote` posé ; l'hôte est
 validé par `apps/publicapi/validators.py` ; lecture immédiate, `dernier_etat` rendu.
 

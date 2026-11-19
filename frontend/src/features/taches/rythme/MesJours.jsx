@@ -34,7 +34,7 @@ function ErreurChamp({ id, texte }) {
   return texte ? <p id={id} className="es-erreur" role="alert">{texte}</p> : null
 }
 
-function Pastilles({ nom, actives, onBasculer, desactive }) {
+function Pastilles({ nom, actives, onBasculer, desactives = new Set() }) {
   return (
     <div className="ep-jours" role="group" aria-label={nom}>
       {JOURS.map((jour, rang) => (
@@ -43,7 +43,7 @@ function Pastilles({ nom, actives, onBasculer, desactive }) {
           type="button"
           className="puce ep-jour-puce"
           aria-pressed={actives.has(rang)}
-          disabled={desactive}
+          disabled={desactives.has(rang)}
           onClick={() => onBasculer(rang)}
         >
           {jour}
@@ -53,14 +53,19 @@ function Pastilles({ nom, actives, onBasculer, desactive }) {
   )
 }
 
-function JoursTravailles({ preferences, onPoser }) {
+/** « Mes jours » allume les jours RÉELLEMENT travaillés (`joursTravailles`, servi par `rythme/` : les jours dits ∩
+ *  le calendrier de la société, R2-123). Un jour dit travaillé mais éteint par la société n'est pas modifiable ici :
+ *  il est grisé et nommé. Sans la valeur servie (réponse d'une autre route), les jours dits. */
+function JoursTravailles({ preferences, joursTravailles, onPoser }) {
   const [erreur, setErreur] = useState('')
-  const masque = valeurDe(preferences, 'jours_travailles') ?? TOUS_LES_JOURS
-  const actifs = new Set([...masque].flatMap((c, i) => (c === '1' ? [i] : [])))
+  const dit = valeurDe(preferences, 'jours_travailles') ?? TOUS_LES_JOURS
+  const effectif = joursTravailles ?? dit
+  const actifs = new Set([...effectif].flatMap((c, i) => (c === '1' ? [i] : [])))
+  const societe = new Set(JOURS.flatMap((_, i) => (dit[i] === '1' && effectif[i] !== '1' ? [i] : [])))
 
   const basculer = async (rang) => {
-    const suite = JOURS.map((_, i) => ((i === rang ? !actifs.has(i) : actifs.has(i)) ? '1' : '0')).join('')
-    if (!suite.includes('1')) { setErreur(UN_JOUR_AU_MOINS); return }
+    const suite = JOURS.map((_, i) => ((i === rang ? !actifs.has(i) : dit[i] === '1') ? '1' : '0')).join('')
+    if (!JOURS.some((_, i) => (i === rang ? !actifs.has(i) : actifs.has(i)))) { setErreur(UN_JOUR_AU_MOINS); return }
     setErreur('')
     try { await onPoser('jours_travailles', suite) } catch (err) { setErreur(messageDe(err)) }
   }
@@ -68,7 +73,10 @@ function JoursTravailles({ preferences, onPoser }) {
   return (
     <div className="ep-groupe">
       <h3 className="ep-groupe-titre">Jours travaillés</h3>
-      <Pastilles nom="Jours travaillés" actives={actifs} onBasculer={basculer} />
+      <Pastilles nom="Jours travaillés" actives={actifs} onBasculer={basculer} desactives={societe} />
+      {societe.size > 0 ? (
+        <p className="ep-source">{`${[...societe].map((i) => JOURS[i]).join(', ')} : non travaillé${societe.size > 1 ? 's' : ''} dans ta société.`}</p>
+      ) : null}
       <ErreurChamp id="err-jours-travailles" texte={erreur} />
     </div>
   )
@@ -176,10 +184,10 @@ function TempsDisponible({ preferences, onPoser }) {
 }
 
 /** Les quatre réglages de « Mes jours » ; `preferences` = le tableau du RYTHME. */
-export default function MesJours({ preferences, onPoser, aujourdhui = aujourdhuiIso() }) {
+export default function MesJours({ preferences, joursTravailles, onPoser, aujourdhui = aujourdhuiIso() }) {
   return (
     <div className="ep-mes-jours">
-      <JoursTravailles preferences={preferences} onPoser={onPoser} />
+      <JoursTravailles preferences={preferences} joursTravailles={joursTravailles} onPoser={onPoser} />
       <JoursCourts preferences={preferences} onPoser={onPoser} />
       <Conges preferences={preferences} onPoser={onPoser} aujourdhui={aujourdhui} />
       <TempsDisponible key={String(valeurDe(preferences, 'capacite_jour_min') ?? '')} preferences={preferences} onPoser={onPoser} />

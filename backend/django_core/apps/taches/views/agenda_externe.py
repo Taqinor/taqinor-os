@@ -5,6 +5,7 @@ Le schéma OpenAPI de chaque route est celui de son échantillon de `contract_sa
 ne sert que `hote`. Toute écriture efface l'index en cache des agendas du compte.
 """
 import datetime
+from urllib.parse import urlsplit
 
 from django.db import IntegrityError, transaction
 from django.db.models import Max
@@ -25,7 +26,11 @@ from apps.taches.views.presence import HorsAssistant
 from core.idempotency import IdempotentCreateMixin
 
 AGENDA_EXTERNE = forme_echantillon('agenda_externe')
-MESSAGE_URL = 'Adresse https publique attendue.'
+#: Trois refus, trois phrases (R2-127, F2 n°18) : ce n'est pas une adresse · il faut https · le serveur ne peut
+#: pas l'atteindre (hôte introuvable, ou adresse interne).
+MESSAGE_PAS_UNE_ADRESSE = "Ce n'est pas une adresse : colle le lien de ton agenda."
+MESSAGE_HTTPS = "L'adresse doit commencer par https."
+MESSAGE_INJOIGNABLE = 'Adresse injoignable : vérifie le lien.'
 MESSAGE_PLAFOND = '3 agendas au plus.'
 MESSAGE_DOUBLON = 'Cet agenda est déjà ajouté.'
 PAS_RANG = 1024
@@ -81,9 +86,18 @@ def _url_acceptee(user, brute):
     """L'URL normalisée (`webcal://` → `https://`) ; 400 au champ `url` sinon."""
     url = lecteur.normaliser_url(brute)
     try:
+        morceaux = urlsplit(url)
+        hote = morceaux.hostname
+    except ValueError:
+        raise ValidationError({'url': [MESSAGE_PAS_UNE_ADRESSE]})
+    if not morceaux.scheme or not hote:
+        raise ValidationError({'url': [MESSAGE_PAS_UNE_ADRESSE]})
+    if morceaux.scheme.lower() != lecteur.SCHEMA:
+        raise ValidationError({'url': [MESSAGE_HTTPS]})
+    try:
         lecteur.verifier_adresse(url)
     except UnsafeWebhookURL:
-        raise ValidationError({'url': [MESSAGE_URL]})
+        raise ValidationError({'url': [MESSAGE_INJOIGNABLE]})
     if agendas_de(user).filter(url=url).exists():
         raise ValidationError({'url': [MESSAGE_DOUBLON]})
     if agendas_de(user).count() >= lecteur.AGENDAS_MAX:

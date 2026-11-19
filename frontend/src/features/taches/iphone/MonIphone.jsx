@@ -53,6 +53,12 @@ async function copier(texte) {
   }
 }
 
+/** Vrai quand l'ERP tourne depuis son icône de l'écran d'accueil (mode autonome, Safari ou autre navigateur). */
+function installee() {
+  const autonome = typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)')?.matches
+  return Boolean(autonome || window.navigator.standalone === true)
+}
+
 function permissionNotifications() {
   if (!pushSupported()) return 'unsupported'
   return window.Notification.permission
@@ -84,7 +90,7 @@ function BlocJeton({ usage, jeton, revele, copie, libelleCreer, libelleCopie, va
         {jeton ? <button type="button" className="bouton second" onClick={() => onRevoquer(jeton)}>Révoquer</button> : null}
       </div>
       {jeton ? <p className="rassure">{`${dernierUsage(jeton)} · ${jeton.prefixe}…`}</p> : null}
-      {jeton && !revele ? <p className="rassure">{`${PERDU} Pour couper l'accès : « Révoquer » ; il cesse de marcher tout de suite.`}</p> : null}
+      {jeton && !revele ? <p className="rassure">{`${PERDU} Pour couper l'accès : «\u00A0Révoquer\u00A0» ; il cesse de marcher tout de suite.`}</p> : null}
       {copie ? <p className="rassure" role="status">{COPIE_FAITE}</p> : null}
       {echecCopie ? <p className="es-erreur" role="alert">Copie impossible : sélectionne le jeton et copie-le à la main.</p> : null}
       {confirme ? (
@@ -117,6 +123,33 @@ function Etape({ numero, titre, fait, ouverte, onBasculer, children }) {
   )
 }
 
+/* ── Avant les étapes : mettre l'ERP sur l'écran d'accueil (R2-126) ──────────────────────────── */
+
+/** Les notifications et l'icône d'accueil exigent que l'ERP soit sur l'écran d'accueil : c'est la première chose
+ *  de l'écran, nommée, avec « Fait » quand on l'ouvre déjà depuis son icône (R2-126, S1 n°14). */
+function MettreSurAccueil({ fait }) {
+  return (
+    <section className="section ep-installer" aria-label="Mettre Tâches sur l'écran d'accueil">
+      <h2 className="section-titre">
+        <span>Mettre Tâches sur l'écran d'accueil</span>
+        <span className="compte">{fait ? 'Fait' : 'À faire'}</span>
+      </h2>
+      <div className="ep-etape-ouverte">
+      {fait ? <p className="rassure">Tu l'ouvres depuis son icône.</p> : (
+        <>
+          <ol className="list-decimal">
+            <li>Dans Safari, touche le bouton Partager.</li>
+            <li>{"Touche «\u00A0Sur l'écran d'accueil\u00A0», puis «\u00A0Ajouter\u00A0»."}</li>
+            <li>Ouvre ensuite l'ERP depuis son icône, pas depuis Safari.</li>
+          </ol>
+          <p className="rassure">Il faut iOS 16.4 ou plus récent pour les notifications.</p>
+        </>
+      )}
+      </div>
+    </section>
+  )
+}
+
 /* ── Étape 1 : notifications ─────────────────────────────────────────────────────────────────── */
 
 function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onReglage, erreur }) {
@@ -126,16 +159,22 @@ function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onRegla
   return (
     <>
       <ol className="list-decimal">
-        <li>Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari. Pas d'icône ? Dans Safari, touche le bouton Partager, puis « Sur l'écran d'accueil ». Il faut iOS 16.4 ou plus récent.</li>
-        <li>Touche « Autoriser les notifications », puis « Autoriser » quand l'iPhone le demande.</li>
-        <li>{"« Montrer le titre sur l'écran verrouillé ? » · sans réponse, seulement des nombres."}</li>
-        <li>Touche « Envoyer un test » : une notification « Test des notifications » doit arriver.</li>
+        <li>{"Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari (pas d'icône : «\u00A0Mettre Tâches sur l'écran d'accueil\u00A0», plus haut)."}</li>
+        <li>Touche «&nbsp;Autoriser les notifications&nbsp;», puis «&nbsp;Autoriser&nbsp;» quand l'iPhone le demande.</li>
+        <li>{"«\u00A0Montrer le titre sur l'écran verrouillé ?\u00A0» · sans réponse, seulement des nombres."}</li>
+        <li>Touche «&nbsp;Envoyer un test&nbsp;» : une notification «&nbsp;Test des notifications&nbsp;» doit arriver.</li>
       </ol>
       <p className="ep-phrase" role="status">{PHRASES_PUSH[etat]}</p>
       <div className="ep-jeton-actions">
         <button type="button" className="bouton plein" onClick={onAutoriser}>Autoriser les notifications</button>
+      </div>
+      {/* R2-130 : « Oui / Non » répond à une question, écrite juste au-dessus (plus à côté d'« Autoriser ») */}
+      <p className="ep-phrase" id="question-titres">Montrer le titre sur l'écran verrouillé ?</p>
+      <div className="ep-jeton-actions" role="group" aria-labelledby="question-titres">
         <button type="button" className="bouton second" onClick={() => choisir(true)} aria-pressed={choix === true}>Oui</button>
         <button type="button" className="bouton second" onClick={() => choisir(false)} aria-pressed={choix === false}>Non</button>
+      </div>
+      <div className="ep-jeton-actions">
         <button type="button" className="bouton second" onClick={onTest}>Envoyer un test</button>
       </div>
       {erreur.titres_notifications ? <p className="es-erreur" role="alert">{erreur.titres_notifications}</p> : null}
@@ -147,11 +186,11 @@ function EtapeNotifications({ etat, onAutoriser, onTest, test, reglages, onRegla
 /* ── Étape 3 : Siri ──────────────────────────────────────────────────────────────────────────── */
 
 const RECETTE_SIRI = [
-  'Ouvre l\'app Raccourcis, touche « + », nomme le raccourci « Nouvelle tâche ».',
-  'Ajoute l\'action « Dicter du texte ».',
-  'Ajoute l\'action « Obtenir le contenu de l\'URL » ; colle l\'adresse (« Copier l\'adresse » ici) ; « Afficher plus » : Méthode « POST » ; En-têtes : ajoute « Authorization » et colle « Bearer » suivi de ton jeton (« Copier mon jeton » ici) ; Corps de la requête « JSON » : un champ texte « titre » = « Texte dicté ».',
-  'Ajoute l\'action « Afficher le résultat ». Touche OK.',
-  'Essaie : « Dis Siri, nouvelle tâche », puis « appeler le fournisseur demain 10 h ».',
+  'Ouvre l\'app Raccourcis, touche «\u00A0+\u00A0», nomme le raccourci «\u00A0Nouvelle tâche\u00A0».',
+  'Ajoute l\'action «\u00A0Dicter du texte\u00A0».',
+  'Ajoute l\'action «\u00A0Obtenir le contenu de l\'URL\u00A0» ; colle l\'adresse («\u00A0Copier l\'adresse\u00A0» ici) ; «\u00A0Afficher plus\u00A0» : Méthode «\u00A0POST\u00A0» ; En-têtes : ajoute «\u00A0Authorization\u00A0» et colle «\u00A0Bearer\u00A0» suivi de ton jeton («\u00A0Copier mon jeton\u00A0» ici) ; Corps de la requête «\u00A0JSON\u00A0» : un champ texte «\u00A0titre\u00A0» = «\u00A0Texte dicté\u00A0».',
+  'Ajoute l\'action «\u00A0Afficher le résultat\u00A0». Touche OK.',
+  'Essaie : «\u00A0Dis Siri, nouvelle tâche\u00A0», puis «\u00A0appeler le fournisseur demain 10 h\u00A0».',
 ]
 
 function RecetteSiri({ adresse }) {
@@ -164,7 +203,7 @@ function RecetteSiri({ adresse }) {
       {copiee ? <p className="rassure" role="status">Adresse copiée.</p> : null}
       <p className="rassure">Les noms des actions peuvent différer légèrement selon la version d'iOS.</p>
       <p className="rassure">Sans réseau, la dictée est perdue.</p>
-      <p className="rassure">Pour ranger dans un projet, commence par « projet » et son nom : « projet Maison acheter du lait ».</p>
+      <p className="rassure">Pour ranger dans un projet, commence par «&nbsp;projet&nbsp;» et son nom : «&nbsp;projet Maison acheter du lait&nbsp;».</p>
     </>
   )
 }
@@ -176,7 +215,7 @@ function EtapeSiri({ urlRaccourci, bloc }) {
     <>
       {urlRaccourci ? (
         <>
-          <p className="ep-phrase">Touche « Installer le raccourci » : l'app Raccourcis s'ouvre. Touche « Ajouter le raccourci » ; quand il demande ton jeton, reviens ici, touche « Copier mon jeton » et colle-le.</p>
+          <p className="ep-phrase">Touche «&nbsp;Installer le raccourci&nbsp;» : l'app Raccourcis s'ouvre. Touche «&nbsp;Ajouter le raccourci&nbsp;» ; quand il demande ton jeton, reviens ici, touche «&nbsp;Copier mon jeton&nbsp;» et colle-le.</p>
           <a className="bouton plein ep-large" href={urlRaccourci} target="_blank" rel="noopener noreferrer">Installer le raccourci</a>
           <p className="rassure">Le raccourci ne contient jamais ton jeton : il te le demande à l'installation.</p>
           <button type="button" className="ep-alamain" aria-expanded={main} onClick={() => setMain(!main)}>
@@ -195,12 +234,12 @@ function EtapeSiri({ urlRaccourci, bloc }) {
 function EtapeCalendrier({ bloc, revele }) {
   return (
     <>
-      <p className="ep-phrase">{"D'abord, dans l'autre sens (le plus utile) : « Mes agendas » — ajoute l'adresse de ton agenda Microsoft 365, Google ou iCloud (3 au plus). Ensuite :"}</p>
+      <p className="ep-phrase">{"D'abord, dans l'autre sens (le plus utile) : «\u00A0Mes agendas\u00A0» — ajoute l'adresse de ton agenda Microsoft 365, Google ou iCloud (3 au plus). Ensuite :"}</p>
       <Agendas />
       <ol className="list-decimal">
-        <li>Touche « Créer le lien du calendrier », puis « S'abonner » : l'iPhone propose de s'abonner ; accepte.</li>
-        <li>Si rien ne s'ouvre : « Copier le lien », puis Réglages de l'iPhone → Calendrier (ou Apps → Calendrier) → Comptes → Ajouter un compte → Autre → « Ajouter un calendrier avec abonnement », colle, Suivant, Enregistrer. Les noms exacts peuvent varier selon la version d'iOS.</li>
-        <li>Sur l'écran d'accueil : appui long → « + » → Calendrier → Ajouter.</li>
+        <li>Touche «&nbsp;Créer le lien du calendrier&nbsp;», puis «&nbsp;S'abonner&nbsp;» : l'iPhone propose de s'abonner ; accepte.</li>
+        <li>Si rien ne s'ouvre : «&nbsp;Copier le lien&nbsp;», puis Réglages de l'iPhone → Calendrier (ou Apps → Calendrier) → Comptes → Ajouter un compte → Autre → «&nbsp;Ajouter un calendrier avec abonnement&nbsp;», colle, Suivant, Enregistrer. Les noms exacts peuvent varier selon la version d'iOS.</li>
+        <li>Sur l'écran d'accueil : appui long → «&nbsp;+&nbsp;» → Calendrier → Ajouter.</li>
       </ol>
       {bloc}
       {revele ? <a className="bouton plein ep-large" href={revele.webcal}>{"S'abonner"}</a> : null}
@@ -231,10 +270,10 @@ function EtapeTuile({ bloc }) {
     <>
       <ol className="list-decimal">
         <li>App Store → Scriptable (gratuite).</li>
-        <li>Ici : « Créer le jeton de la tuile », puis « Copier le script ».</li>
-        <li>Dans Scriptable : « + », colle, nomme le script « Tâches ».</li>
-        <li>Touche ▶ ; colle ton jeton quand il est demandé (« Copier mon jeton » ici).</li>
-        <li>Écran d'accueil → appui long → « + » → Scriptable → grande taille → Ajouter ; touche la tuile en mode modification → Script : « Tâches ».</li>
+        <li>Ici : «&nbsp;Créer le jeton de la tuile&nbsp;», puis «&nbsp;Copier le script&nbsp;».</li>
+        <li>Dans Scriptable : «&nbsp;+&nbsp;», colle, nomme le script «&nbsp;Tâches&nbsp;».</li>
+        <li>Touche ▶ ; colle ton jeton quand il est demandé («&nbsp;Copier mon jeton&nbsp;» ici).</li>
+        <li>Écran d'accueil → appui long → «&nbsp;+&nbsp;» → Scriptable → grande taille → Ajouter ; touche la tuile en mode modification → Script : «&nbsp;Tâches&nbsp;».</li>
       </ol>
       {bloc}
       <CopierLeScript />
@@ -355,7 +394,7 @@ export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDeman
     setTest(null)
     try {
       await testerNotification()
-      setTest({ ok: true, texte: 'Une notification « Test des notifications » doit arriver.' })
+      setTest({ ok: true, texte: 'Une notification «\u00A0Test des notifications\u00A0» doit arriver.' })
     } catch (err) { setTest({ ok: false, texte: messageDe(err, 'detail') }) }
   }
   const faireAccueil = async () => {
@@ -394,6 +433,7 @@ export default function MonIphone({ reglages, onReglage, erreur = {}, etapeDeman
 
   return (
     <div>
+      <MettreSurAccueil fait={installee()} />
       <p className="ep-intro">Cinq étapes, à faire une fois. Chacune se replie quand elle est faite.</p>
       <div className="ep-progres-etapes chiffres">
         <span>{`${nombre} sur 5`}</span>

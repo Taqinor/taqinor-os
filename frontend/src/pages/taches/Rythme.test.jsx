@@ -63,8 +63,27 @@ describe('TCH107 — Mon rythme', () => {
     expect(screen.getByText('Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'En faire un jour court (un de moins) ?' })).toBeInTheDocument()
     expect(screen.getByText('Repère : 6 de tes journées sur 10 sont à 5,5 tâches ou moins (sur 9 jours).')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : 5\./ })).toBeInTheDocument()
-    expect(screen.getByText('5 faites ou plus 7 jours sur 10')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : mar\. 3 : 5, mer\. 4 : 6,/ })).toBeInTheDocument()
+    expect(screen.getByText(/5 faites ou plus 7 jours sur 10/)).toBeInTheDocument()
+  })
+
+  it('R2-120 — dix barres, un jour sans données est une barre vide nommée, jamais un jour absent', async () => {
+    const { container } = monter()
+    await screen.findByText('Objectif du jour : 5 (accepté)')
+    expect(screen.getByRole('heading', { name: /Les 10 derniers jours travaillés/ })).toHaveTextContent('46 faites')
+    const barres = container.querySelectorAll('.ep-graph-zone .ep-b')
+    expect(barres).toHaveLength(10)
+    const vides = [...barres].filter((b) => b.hasAttribute('data-vide'))
+    expect(vides.map((b) => b.getAttribute('data-jour'))).toEqual(['2026-11-10'])
+    expect(screen.getByRole('img')).toHaveAccessibleName(/mar\. 10 : sans données/)
+    expect(screen.getByText(/Sans données : mar\. 10/)).toBeInTheDocument()
+  })
+
+  it("R2-120 — l'axe écrit « lun. 9 », « mar. 10 » : plus de lettre ambiguë (m = mardi ou mercredi)", async () => {
+    const { container } = monter()
+    await screen.findByText('Objectif du jour : 5 (accepté)')
+    const axe = [...container.querySelectorAll('.ep-graph-axe .ep-b small')].map((n) => n.textContent)
+    expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'lun.16'])
   })
 
   it('passe visuelle n° 44 — pas de section « Objectif du jour » en plus : Moins · Plus · Choisir sous la ligne de l\'objectif', async () => {
@@ -87,6 +106,44 @@ describe('TCH107 — Mon rythme', () => {
     expect(poserMode).toHaveBeenCalledWith({ mode: 'tenir' })
     expect(await screen.findByText('Ton rythme : environ 5 tâches (4 à 6)')).toBeInTheDocument()
     expect(within(await screen.findByRole('group', { name: 'Geste effectué' })).getByText(/Garder ce rythme : environ 5 tâches par jour \(4 à 6\)/)).toBeInTheDocument()
+  })
+
+  it('R2-131 — sans objectif, « 1 faite aujourd\'hui » au singulier (0 aussi), « 3 faites » au pluriel', async () => {
+    const libre = { ...rythme(), mode: 'libre', objectif: { nb: null, source: 'libre', mode: 'libre', zone: null } }
+    lireRythme.mockImplementation(() => reponse(libre))
+    for (const [faites, attendu] of [[1, "1 faite aujourd'hui"], [0, "0 faite aujourd'hui"], [3, "3 faites aujourd'hui"]]) {
+      const progression = { ...journee().progression, faites }
+      lireAujourdhui.mockImplementation(() => reponse({ ...journee(), progression }))
+      const { unmount } = monter()
+      expect(await screen.findByText(/faites? aujourd'hui/)).toBeInTheDocument()
+      expect(document.querySelector('.ep-jour-chiffre')).toHaveTextContent(attendu)
+      unmount()
+    }
+  })
+
+  it('R2-121 — « Garder ce rythme » tant que R n\'est pas fixée le dit : provisoire, à confirmer sur 14 jours (page et toast)', async () => {
+    const provisoire = {
+      ...rythme(), mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] }, geste_id: 92,
+      tenir: { reference: 6, provisoire: true, fixee_le: null, silence_jusquau: null },
+    }
+    poserMode.mockResolvedValue({ data: provisoire })
+    monter()
+    await userEvent.click(await screen.findByRole('radio', { name: /Garder ce rythme/ }))
+    expect(await screen.findByText('Ton rythme : environ 6 tâches (5 à 7)')).toBeInTheDocument()
+    expect(screen.getByText('Provisoire : à confirmer sur 14 jours travaillés.')).toBeInTheDocument()
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(within(toast).getByText(/Garder ce rythme : environ 6 tâches par jour \(5 à 7\)\..*À confirmer sur 14 jours travaillés\./)).toBeInTheDocument()
+  })
+
+  it('R2-121 — une fois R fixée, plus aucune mention provisoire', async () => {
+    const fixee = {
+      ...rythme(), mode: 'tenir', objectif: { nb: 6, source: 'calcule', mode: 'tenir', zone: [5, 7] },
+      tenir: { reference: 6, provisoire: false, fixee_le: '2026-11-10', silence_jusquau: null },
+    }
+    lireRythme.mockImplementation(() => reponse(fixee))
+    monter()
+    expect(await screen.findByText('Ton rythme : environ 6 tâches (5 à 7)')).toBeInTheDocument()
+    expect(screen.queryByText(/Provisoire/)).toBeNull()
   })
 
   it('« Monter à 6 » répond oui, adopte le RYTHME rendu et propose Annuler', async () => {
@@ -138,8 +195,28 @@ describe('TCH107 — Mon rythme', () => {
     monter()
     await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
     const travailles = screen.getByRole('group', { name: 'Jours travaillés' })
-    await userEvent.click(within(travailles).getByRole('button', { name: 'dimanche' }))
-    expect(poserPreference).toHaveBeenCalledWith({ cle: 'jours_travailles', valeur: '1111110' })
+    await userEvent.click(within(travailles).getByRole('button', { name: 'mercredi' }))
+    // les autres jours gardent ce que Reda a DIT (ici rien : tous) ; seul mercredi s'éteint
+    expect(poserPreference).toHaveBeenCalledWith({ cle: 'jours_travailles', valeur: '1101111' })
+  })
+
+  it('R2-123 — « Mes jours » allume les jours RÉELLEMENT travaillés (lun.-ven.), samedi et dimanche éteints et grisés, dits', async () => {
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
+    const travailles = screen.getByRole('group', { name: 'Jours travaillés' })
+    const allumes = within(travailles).getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true')
+    expect(allumes.map((b) => b.textContent)).toEqual(['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'])
+    expect(within(travailles).getByRole('button', { name: 'samedi' })).toBeDisabled()
+    expect(screen.getByText('samedi, dimanche : non travaillés dans ta société.')).toBeInTheDocument()
+  })
+
+  it('R2-123 — le dernier jour travaillé est gardé : éteindre le seul jour allumé est refusé sans appel', async () => {
+    lireRythme.mockImplementation(() => reponse({ ...rythme(), jours_travailles: '0010000', preferences: [{ cle: 'jours_travailles', valeur: '0010000', source: 'ecran', dite_le: '2026-11-17T09:00:00+01:00' }] }))
+    monter()
+    await userEvent.click(await screen.findByRole('button', { name: /Mes jours/ }))
+    await userEvent.click(within(screen.getByRole('group', { name: 'Jours travaillés' })).getByRole('button', { name: 'mercredi' }))
+    expect(await screen.findByText('Garde au moins un jour travaillé.')).toBeInTheDocument()
+    expect(poserPreference).not.toHaveBeenCalled()
   })
 
   it('Mes jours : l\'erreur du serveur s\'affiche sous le temps disponible, la saisie reste', async () => {
@@ -183,14 +260,22 @@ describe('TCH107 — Mon rythme', () => {
     expect(ouvert.mock.calls[0][0].detail.question).toBe('Parler de mon rythme')
   })
 
-  it('avant 10 jours : la phrase d\'attente remplace le graphique', async () => {
-    const neuf = { ...rythme(), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
+  it('avant 10 jours : la phrase d\'attente dit le compte ; sans jour évalué il n\'y a pas de graphique', async () => {
+    const neuf = { ...rythme(), serie: [], objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
     lireRythme.mockImplementation(() => reponse(neuf))
     monter()
-    expect(await screen.findByText("1 jour sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
+    expect(await screen.findByText("0 jour sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
     expect(screen.getByText('Objectif du jour : 5 (valeur par défaut, pas encore calculée sur toi)')).toBeInTheDocument()
     expect(screen.getByText("Rien de remarqué pour l'instant.")).toBeInTheDocument()
     expect(screen.queryByRole('img')).toBeNull()
+  })
+
+  it('R2-122 — le graphique ne dépend jamais de la source de l\'objectif : il suit les jours lus', async () => {
+    const neuf = { ...rythme(), serie: rythme().serie.slice(0, 3), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null } }
+    lireRythme.mockImplementation(() => reponse(neuf))
+    monter()
+    expect(await screen.findByText("3 jours sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : mar\. 3 : 5, mer\. 4 : 6, jeu\. 5 : 4\./ })).toBeInTheDocument()
   })
 
   it('un échec de lecture dit « Pas à jour » et Réessayer relit', async () => {

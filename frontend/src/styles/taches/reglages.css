@@ -17,16 +17,17 @@
 .tch .ep-graph { margin: 4px var(--tch-gouttiere) 0; }
 .tch .ep-graph-zone { position: relative; height: 132px; display: flex; align-items: flex-end; padding-right: 44px; }
 .tch .ep-graph-sem { display: flex; justify-content: space-around; align-items: flex-end; height: 100%; flex: 1; }
-.tch .ep-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; width: 24px; }
+.tch .ep-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; flex: 1 1 0; min-width: 0; }
 .tch .ep-b i { display: block; width: 8px; border-radius: 4px 4px 2px 2px; background: var(--tch-piste); height: calc(var(--n) * 14px); }
 .tch .ep-b.tenu i { background: var(--tch-fait); }
+.tch .ep-b[data-vide] i { height: 10px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); opacity: 0.7; }
 .tch .ep-b small { position: relative; margin-bottom: 4px; padding: 0 3px; border-radius: 4px; background: var(--tch-surface); font-size: 0.75rem; font-weight: 600; color: var(--tch-texte-doux); }
 .tch .ep-graph-objectif { position: absolute; left: 0; right: 44px; bottom: calc(var(--obj) * 14px); border-top: 1.5px dashed var(--tch-texte); }
 .tch .ep-graph-objectif span { position: absolute; right: -44px; top: -9px; width: 40px; text-align: right; font-size: 0.75rem; font-weight: 600; }
 .tch .ep-graph-axe { display: flex; padding: 6px 44px 0 0; }
 .tch .ep-graph-axe .ep-graph-sem { align-items: flex-start; height: auto; }
 .tch .ep-graph-axe .ep-b { height: auto; }
-.tch .ep-graph-axe .ep-b small { margin: 0; background: none; font-weight: 500; line-height: 1.25; text-align: center; }
+.tch .ep-graph-axe .ep-b small { margin: 0; white-space: nowrap; font-size: 0.6875rem; background: none; font-weight: 500; line-height: 1.25; text-align: center; }
 .tch .ep-graph-axe .ep-b small b { display: block; font-weight: 600; color: var(--tch-texte); }
 .tch .ep-graph-legende { margin: 10px var(--tch-gouttiere) 0; font-size: 0.8125rem; color: var(--tch-texte-doux); }
 .tch .ep-remarque { list-style: none; margin: 4px 0 0; padding: 0; }
@@ -45,7 +46,8 @@
 .tch .ep-groupe-titre { margin: 0 0 6px; font-size: 0.9375rem; font-weight: 600; }
 .tch .ep-jours { display: flex; flex-wrap: wrap; gap: 6px; }
 .tch .ep-jour-puce { min-height: 44px; }
-.tch .ep-jour-puce[aria-pressed="true"] { background: var(--tch-accent-doux); color: var(--tch-accent); font-weight: 600; }
+.tch .ep-jour-puce[aria-pressed="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); font-weight: 600; }
+.tch .ep-jour-puce:disabled { opacity: 0.5; }
 .tch .ep-conges { list-style: none; margin: 0 0 8px; padding: 0; }
 .tch .ep-conges li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; font-size: 0.9375rem; }
 .tch .ep-champs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -92,7 +94,9 @@
 .tch .es-action-ligne { display: flex; align-items: center; gap: 12px; width: calc(100% - 2 * var(--tch-gouttiere)); min-height: 52px;
   margin: 0 var(--tch-gouttiere); font-size: 1.0625rem; font-weight: 600; color: var(--tch-accent); text-align: left; }
 .tch .es-action-ligne.danger { color: var(--tch-alerte); }
-.tch .es-loin { margin-top: 64px; }
+.tch .es-groupe-actions { margin: 6px var(--tch-gouttiere) 0; border-radius: var(--tch-rayon-bloc); background: var(--tch-surface); box-shadow: inset 0 0 0 1px var(--tch-trait); overflow: hidden; }
+.tch .es-groupe-actions .es-action-ligne { width: 100%; margin: 0; padding: 0 14px; }
+.tch .es-groupe-actions .es-action-ligne + .es-action-ligne { box-shadow: inset 0 1px 0 var(--tch-trait); } /* R2-130 : deux rangées d une même liste */
 .tch .es-dialogue-titre { margin: 4px 0 0; font-size: 1.25rem; line-height: 1.3; font-weight: 650; }
 .tch .es-dialogue-texte { margin: 10px 0 0; font-size: 1rem; line-height: 1.5; }
 .tch .es-dialogue-texte b { font-weight: 650; }
@@ -105,7 +109,7 @@
 .tch .es-agenda { padding: 10px 0; box-shadow: inset 0 -1px 0 var(--tch-trait); }
 .tch .es-agenda:last-child { box-shadow: none; }
 .tch .es-agenda-ligne { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
-.tch .es-agenda-ligne .txt { flex: 1; min-width: 0; }
+.tch .es-agenda-ligne .txt { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; } /* R2-127 : le nom prend toute la largeur, les actions passent dessous */
 .tch .es-agenda-etat { margin: 2px 0 0; font-size: var(--tch-meta); line-height: var(--tch-meta-lh); color: var(--tch-texte-doux); }
 .tch .es-agenda-etat.refus { color: var(--tch-alerte); }
 .tch .es-agenda-ajout { display: grid; gap: 8px; margin: 14px var(--tch-gouttiere) 0; }
@@ -117,7 +121,6 @@
 @media (max-width: 767px) {
   .tch .es-reglages-grille.es-ouverte > .es-rubriques { display: none; }
 }
-.tch .es-barre-sous-page { margin-top: -4px; }
 .tch .es-panneau > .es-panneau-titre { margin-top: 10px; margin-bottom: 8px; }
 @media (min-width: 768px) {
   .tch .es-rubrique { width: calc(100% - 16px); margin: 0 8px; padding: 10px 16px; min-height: 60px; border-radius: 10px; }
@@ -129,5 +132,16 @@
   .tch .es-reglages-grille { display: grid; grid-template-columns: minmax(240px, 1fr) 2fr; column-gap: 32px; align-items: start; }
 }
 @media (hover: hover) {
-  .tch .es-rubrique:hover { background: var(--tch-selection); }
+  .tch .es-rubrique:not([aria-current="page"]):hover { background: var(--tch-survol); } /* R2-128 : le survol n'est plus dessiné comme la sélection */
 }
+
+/* R2-125 — « Reportée à jeu. 19 · Appeler le fournisseur » : la tâche touchée, en gris sous le verbe */
+.tch .es-geste .titre-geste { color: var(--tch-texte-doux); overflow-wrap: anywhere; }
+
+/* R2-129 — Recherche : la croix est la nôtre (celle du navigateur est masquée), les résultats gardent leur écart sous les filtres */
+.tch .es-recherche .valeur::-webkit-search-cancel-button, .tch .es-recherche .valeur::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+.tch .es-recherche .es-effacer { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-right: -2px; border-radius: 999px; color: var(--tch-texte-doux); }
+@media (hover: hover) { .tch .es-recherche .es-effacer:hover { color: var(--tch-texte); } }
+.tch .es-resultats > .section:first-child { margin-top: 18px; }
+.tch .es-approche { margin: 14px var(--tch-gouttiere) 0; }
+.tch .ep-groupe > .ep-source { margin: 8px 0 0; font-size: 0.875rem; }

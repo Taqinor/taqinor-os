@@ -8,7 +8,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { useGeste } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
+import { ABR_JOURS, accord, aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
 import MesJours from '../../features/taches/rythme/MesJours'
 import InterrupteurRythme from '../../features/taches/ui/InterrupteurRythme'
 
@@ -47,7 +47,9 @@ const QUESTIONS = {
 const COMPRENDRE = "Allumé : l'ERP calcule ton rythme et tes habitudes à partir de tes tâches. Éteint : plus rien n'est calculé ni gardé."
 const COMPRENDRE_ETEINT = "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."
 const JOURS_VOULUS = 10
-const LETTRES = ['d', 'l', 'm', 'm', 'j', 'v', 's']
+/** Jours évalués qu'il faut pour FIXER la référence de « Garder ce rythme » (regles.md §6.6, `JOURS_REFERENCE`). */
+const JOURS_REFERENCE = 14
+const A_CONFIRMER = `à confirmer sur ${JOURS_REFERENCE} jours travaillés.`
 const OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 
 const messageErreur = (err, champ) => {
@@ -60,7 +62,7 @@ const entier = (n) => String(n).replace('.', ',')
 function phraseObjectif(objectif) {
   if (objectif.mode === 'libre' || objectif.nb == null) return 'Sans objectif'
   if (objectif.mode === 'tenir' && Array.isArray(objectif.zone)) {
-    return `Ton rythme : environ ${objectif.nb} tâches (${objectif.zone[0]} à ${objectif.zone[1]})`
+    return `Ton rythme : environ ${accord(objectif.nb, 'tâche')} (${objectif.zone[0]} à ${objectif.zone[1]})`
   }
   return `Objectif du jour : ${objectif.nb} (${SOURCES[objectif.source] ?? ''})`.replace(/ \(\)$/, '')
 }
@@ -76,8 +78,9 @@ function confirmation(rythme, geste) {
   }
   if (rythme.mode === 'tenir') {
     const [bas, haut] = objectif.zone ?? [objectif.nb, objectif.nb]
-    return `Garder ce rythme : environ ${objectif.nb} tâches par jour (${bas} à ${haut}). `
-      + 'Je ne te pousse plus ; je te préviens seulement si tu t\'en éloignes.'
+    const provisoire = rythme.tenir?.provisoire ? ` À${A_CONFIRMER.slice(1)}` : ''
+    return `Garder ce rythme : environ ${accord(objectif.nb, 'tâche')} par jour (${bas} à ${haut}). `
+      + `Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes.${provisoire}`
   }
   return `En faire plus : objectif du jour ${objectif.nb}. Je te proposerai d'aller plus loin quand tu le tiens.`
 }
@@ -111,7 +114,7 @@ function Aujourdhui({ rythme, progression }) {
       <div className="ep-jour-ligne">
         <span className="ep-jour-chiffre chiffres">
           {objectif.nb == null
-            ? <>{jour.faites} <small>faites aujourd'hui</small></>
+            ? <>{jour.faites} <small>{`${jour.faites >= 2 ? 'faites' : 'faite'} aujourd'hui`}</small></>
             : <>{jour.faites} <small>{`sur ${objectif.nb} aujourd'hui`}</small></>}
         </span>
         {jour.essentiel_prevues > 0 ? (
@@ -201,14 +204,24 @@ function ChangerObjectif({ onChanger }) {
   )
 }
 
+/** « lun. 9 » : le jour de la semaine ÉCRIT (une lettre confond mardi et mercredi) et le quantième. */
+const nomDuJour = (iso) => {
+  const date = new Date(`${iso}T12:00:00Z`)
+  return `${ABR_JOURS[date.getUTCDay()]} ${date.getUTCDate()}`
+}
+
 function Graphique({ rythme, aujourdhui }) {
   const { serie, objectif, trace } = rythme
   const evalues = serie.filter((s) => s.statut_jour === 'evalue')
   const total = evalues.reduce((somme, s) => somme + s.faites, 0)
   const ferie = serie.filter((s) => s.statut_jour === 'non_ouvre' || s.statut_jour === 'conge')
   const barres = serie.filter((s) => s.statut_jour === 'evalue' || s.statut_jour === 'sans_donnees')
-  const lecture = `Tâches faites, jour par jour travaillé : ${barres.map((s) => s.faites).join(', ')}.`
+  const vide = (s) => s.statut_jour === 'sans_donnees'
+  const lecture = `Tâches faites, jour par jour travaillé : ${barres
+    .map((s) => `${nomDuJour(s.jour)} : ${vide(s) ? 'sans données' : s.faites}`).join(', ')}.`
+  const sansDonnees = barres.filter(vide).map((s) => nomDuJour(s.jour))
   const reste = ferie.map((s) => `${jourNomme(s.jour, aujourdhui)} : ${s.statut_jour === 'conge' ? 'congé' : 'férié'}`)
+  if (sansDonnees.length > 0) reste.push(`Sans données : ${sansDonnees.join(', ')}`)
   return (
     <section className="section">
       <h2 className="section-titre">
@@ -222,8 +235,14 @@ function Graphique({ rythme, aujourdhui }) {
           ) : null}
           <div className="ep-graph-sem">
             {barres.map((s) => (
-              <div key={s.jour} className={`ep-b${s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`} style={{ '--n': s.faites }}>
-                <small className="chiffres">{s.faites}</small><i />
+              <div
+                key={s.jour}
+                data-jour={s.jour}
+                data-vide={vide(s) ? '' : undefined}
+                className={`ep-b${s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`}
+                style={{ '--n': s.faites }}
+              >
+                <small className="chiffres">{vide(s) ? '–' : s.faites}</small><i />
               </div>
             ))}
           </div>
@@ -234,7 +253,7 @@ function Graphique({ rythme, aujourdhui }) {
               const date = new Date(`${s.jour}T12:00:00Z`)
               return (
                 <div key={s.jour} className="ep-b">
-                  <small>{LETTRES[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
+                  <small>{ABR_JOURS[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
                 </div>
               )
             })}
@@ -333,6 +352,9 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
       <div>
         <Aujourdhui rythme={rythme} progression={progression} />
         <p className="ep-source"><b>{phraseObjectif(rythme.objectif)}</b></p>
+        {rythme.mode === 'tenir' && rythme.tenir?.provisoire ? (
+          <p className="ep-source">{`Provisoire : ${A_CONFIRMER}`}</p>
+        ) : null}
         {rythme.mode === 'pousser' ? <ChangerObjectif onChanger={actions.changerObjectif} /> : null}
         {avantDixJours ? (
           <div className="es-attente-rythme">
@@ -340,7 +362,7 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
           </div>
         ) : null}
         <Proposition proposition={rythme.proposition} onRepondre={actions.repondre} erreur={erreurs.proposition} />
-        {avantDixJours ? null : <Graphique rythme={rythme} aujourdhui={aujourdhui} />}
+        {evalues > 0 ? <Graphique rythme={rythme} aujourdhui={aujourdhui} /> : null}
         {rythme.repere ? (
           <p className="ep-source">
             {`Repère : 6 de tes journées sur 10 sont à ${entier(rythme.repere.p60)} tâches ou moins (sur ${rythme.repere.jours} jours).`}
@@ -351,7 +373,7 @@ function Corps({ rythme, progression, aujourdhui, erreurs, actions }) {
         <Constats constats={rythme.constats} onRepondre={actions.repondre} />
         <Modes mode={rythme.mode} onChoisir={actions.changerMode} />
         <Replie titre="Mes jours">
-          <MesJours preferences={rythme.preferences} onPoser={actions.poserPreference} aujourdhui={aujourdhui} />
+          <MesJours preferences={rythme.preferences} joursTravailles={rythme.jours_travailles} onPoser={actions.poserPreference} aujourdhui={aujourdhui} />
         </Replie>
         <Replie titre="Comprendre mon rythme">
           <Comprendre allume={rythme.comprendre_mon_rythme} onBasculer={actions.comprendre} erreur={erreurs.comprendre} />

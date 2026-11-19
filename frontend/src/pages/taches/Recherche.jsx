@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { ChevronDown, CircleX, Search } from 'lucide-react'
 
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { frenchError } from '../../lib/frenchError'
@@ -8,6 +8,7 @@ import {
   annulerGeste, classerErreur, creerVue, listerToutesLesEtiquettes, listerTousLesProjets, listerVues, rouvrirTache,
   terminerTache, listerTaches, rechercher, listerToutesLesTaches } from '../../api/tachesApi'
 import { proposerAnnuler } from '../../features/taches/lib/gestes'
+import { useClavierListe } from '../../features/taches/lib/clavierListe'
 import { annulerEtRecaler, versionDe } from '../../features/taches/lib/versions'
 import { aujourdhuiIso } from '../../features/taches/lib/textes'
 import LigneTache from '../../features/taches/ui/LigneTache'
@@ -18,7 +19,7 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
 /* ============================================================================
    TCH87 — Recherche (`/taches/recherche?q=`) : un champ « Chercher dans mes tâches », deux groupes
    « Ouvertes ({n}) » puis « Faites ({n}) ». Filtres visibles : Faites aussi · Projet ▾ · Priorité haute ;
-   repliés : Aujourd'hui · À revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance ·
+   repliés : Aujourd'hui · À revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance ·
    Étiquette ▾, le tri, « Enregistrer cette vue » (« Nom de la vue ») et les vues déjà enregistrées (TCH166 : un
    appui les rouvre, mêmes filtres). Vide : « Rien pour « {q} » ».
    D'OÙ VIENNENT LES LIGNES : sans filtre côté serveur, `recherche/` (projets + tâches par mots) ; dès que
@@ -29,9 +30,10 @@ import { ajouterJours } from '../../features/taches/ui/SelecteurQuand'
    ========================================================================== */
 
 const DELAI_MS = 300
+const REPRISE_FOCUS_MS = 1500
 const TRIS = [['manuel', 'Manuel'], ['priorite', 'Priorité'], ['echeance', 'Échéance'], ['jour', 'Jour'], ['creation', 'Création']]
 const PUCES_JOUR = [
-  ['aujourdhui', "Aujourd'hui"], ['a_revoir', 'À revoir'], ['sept_jours', '7 jours'], ['sans_date', 'Sans date'],
+  ['aujourdhui', "Aujourd'hui"], ['a_revoir', 'À revoir'], ['sept_jours', '7 prochains jours'], ['sans_date', 'Sans date'],
   ['en_attente', 'En attente'], ['avec_echeance', 'Avec échéance'],
 ]
 
@@ -98,6 +100,35 @@ function correspond(tache, puce, aujourdhui) {
   }
 }
 
+/* Recherche tolérante (R2-129) : sans accents ni majuscules, et UNE faute de frappe au plus par mot (lettre oubliée,
+   en trop, changée ou deux lettres échangées). Elle ne sert que quand la recherche du serveur ne trouve RIEN ; un mot de
+   moins de 4 lettres n'est jamais deviné. */
+const MOT_TOLERE_MIN = 4
+const sansAccents = (texte) => String(texte ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const motsDe = (texte) => sansAccents(texte).split(/[^a-z0-9]+/).filter(Boolean)
+
+/** Vrai si `a` et `b` diffèrent d'une faute au plus. */
+function uneFauteAuPlus(a, b) {
+  if (a === b) return true
+  const [court, long] = a.length <= b.length ? [a, b] : [b, a]
+  if (long.length - court.length > 1) return false
+  let i = 0
+  while (i < court.length && court[i] === long[i]) i += 1
+  if (long.length === court.length) {
+    return court.slice(i + 1) === long.slice(i + 1)
+      || (court[i] === long[i + 1] && court[i + 1] === long[i] && court.slice(i + 2) === long.slice(i + 2))
+  }
+  return court.slice(i) === long.slice(i + 1)
+}
+
+/** La tâche contient-elle chaque mot cherché, à une faute près ? (titre et nom du projet) */
+function correspondDePres(tache, mots) {
+  const lus = motsDe(`${tache.titre} ${tache.projet?.nom ?? ''}`)
+  const plein = sansAccents(`${tache.titre} ${tache.projet?.nom ?? ''}`)
+  return motsDe(mots).every((mot) => plein.includes(mot) || (mot.length >= MOT_TOLERE_MIN && lus.some((lu) => (
+    uneFauteAuPlus(mot, lu) || uneFauteAuPlus(mot, lu.slice(0, mot.length)) || uneFauteAuPlus(mot, lu.slice(0, mot.length + 1))))))
+}
+
 const NUL_DERNIER = (a, b) => (a == null) - (b == null)
 const TRI = {
   manuel: () => 0,
@@ -141,6 +172,21 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   const [vues, setVues] = useState([])
   const [nomVue, setNomVue] = useState('')
   const [erreurVue, setErreurVue] = useState('')
+  const [prochesLues, setProches] = useState(null) // { pour: les mots, lignes: [...] } — [] : rien de proche non plus
+  const champ = useRef(null)
+
+  // Le curseur est dans le champ à l'ouverture : on tape directement (R2-129)
+  // après le focus que l'ERP pose sur la zone de contenu à chaque navigation (RouteFocus, un effet parent qui passe APRÈS celui-ci)
+  const poserChamp = useCallback((el) => { champ.current = el; if (el) { el.focus(); requestAnimationFrame(() => { if (document.activeElement !== el) el.focus() }) } }, [])
+  // L'ERP déplace aussi le focus sur la zone de contenu après la navigation, et encore quand ses textes finissent de
+  // charger (chargement direct de l'adresse) : dans la seconde et demie qui suit l'ouverture, ce déplacement rend le
+  // curseur au champ ; passé ce délai, ou dès que l'utilisateur a mis le focus ailleurs, on ne touche plus à rien.
+  useEffect(() => {
+    const ouverture = Date.now()
+    const reprendre = (e) => { if (e.target?.id === 'contenu' && Date.now() - ouverture < REPRISE_FOCUS_MS) champ.current?.focus() }
+    document.addEventListener('focusin', reprendre)
+    return () => document.removeEventListener('focusin', reprendre)
+  }, [])
 
   // la saisie reste TELLE QUE TAPÉE ; l'adresse (`?q=`) la suit après une courte pause
   useEffect(() => {
@@ -185,6 +231,19 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       .catch((err) => { if (courant) setErreur(frenchError(err)) })
     return () => { courant = false }
   }, [mots, serveur, faites, haute, reserve, projetId, etiquetteId, periode, triServi])
+
+  // Rien trouvé par les mots seuls : une seconde lecture, tolérante aux accents et à une faute de frappe
+  const aucunResultat = lu && !serveur && mots.length > 0 && resultat.taches.length === 0 && resultat.projets.length === 0
+  const cherchePres = aucunResultat && mots.length >= MOT_TOLERE_MIN
+  useEffect(() => {
+    if (!cherchePres) return undefined
+    let courant = true
+    listerToutesLesTaches({ inclure_faites: true })
+      .then((toutes) => { if (courant) setProches({ pour: mots, lignes: toutes.filter((t) => correspondDePres(t, mots)) }) })
+      .catch(() => { if (courant) setProches({ pour: mots, lignes: [] }) })
+    return () => { courant = false }
+  }, [cherchePres, mots])
+  const proches = cherchePres && prochesLues?.pour === mots ? prochesLues.lignes : null
 
   const chargerProjets = useCallback(() => {
     if (projets.length === 0) listerTousLesProjets().then(setProjets).catch((err) => setErreur(frenchError(err)))
@@ -234,9 +293,11 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   }
 
   const actif = serveur || Boolean(mots)
-  const lignes = useMemo(() => (actif ? resultat.taches : [])
+  const approches = cherchePres && proches !== null && proches.length > 0
+  const source = approches ? proches : resultat.taches
+  const lignes = useMemo(() => (actif ? source : [])
     .filter((t) => puces.every((p) => correspond(t, p, aujourdhui)))
-    .sort(TRI[tri]), [actif, resultat.taches, puces, tri, aujourdhui])
+    .sort(TRI[tri]), [actif, source, puces, tri, aujourdhui])
   const ouvertes = lignes.filter(ouverte)
   const faitesLignes = lignes.filter((t) => !ouverte(t))
   const projetsTrouves = serveur || !actif ? [] : resultat.projets
@@ -274,9 +335,18 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
   })
   const action = actions.surAction
 
+  // Clavier des résultats (R2-036, choix C-10) : j/k de ligne en ligne, Espace coche, e/h ouvre la fiche ; jamais une
+  // touche seule qui fait disparaître une ligne. Muet dans le champ de recherche et sous un dialogue.
+  const racine = useClavierListe((touche, { cle }) => {
+    const item = cle ? lignes.find((t) => `${t.type}:${t.id}` === cle) : null
+    if (!item) return
+    if (touche === 'terminer') terminer(item, ouverte(item)).catch((err) => setErreur(frenchError(err)))
+    else if (touche === 'renommer' || touche === 'heure') ouvrirFiche(item)
+  }, { actif: !actions.feuille && !actions.selecteurProjet && !selecteur })
+
   const basculerPuce = (cle) => setPuces((l) => (l.includes(cle) ? l.filter((c) => c !== cle) : [...l, cle]))
   const projetChoisi = projets.find((p) => p.id === projetId)
-  const rien = actif && lu && lignes.length === 0 && projetsTrouves.length === 0
+  const rien = actif && lu && lignes.length === 0 && projetsTrouves.length === 0 && !(cherchePres && proches === null)
 
   return (
     <CoquilleTaches
@@ -295,6 +365,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
         <label className="es-champ">
           <Search className="i" aria-hidden="true" />
           <input
+            ref={poserChamp}
             type="search"
             className="valeur"
             aria-label="Chercher dans mes tâches"
@@ -303,6 +374,11 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
             value={saisie}
             onChange={(e) => setSaisie(e.target.value)}
           />
+          {saisie ? (
+            <button type="button" className="es-effacer" aria-label="Effacer la recherche" onClick={() => { setSaisie(''); champ.current?.focus() }}>
+              <CircleX className="i i-16" aria-hidden="true" />
+            </button>
+          ) : null}
         </label>
       </div>
 
@@ -315,7 +391,7 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
           aria-pressed={projetId != null}
           onClick={() => { chargerProjets(); if (projetId != null) setProjetId(null); else setSelecteur(true) }}
         >
-          {projetId != null ? `Projet : ${projetChoisi?.nom ?? '…'} ×` : 'Projet ▾'}
+          {projetId != null ? `Projet : ${projetChoisi?.nom ?? '…'} ×` : <>Projet<ChevronDown className="i i-16" aria-hidden="true" /></>}
         </button>
         <button type="button" className="puce" role="checkbox" aria-checked={haute} onClick={() => setHaute((v) => !v)}>Priorité haute</button>
         <button type="button" className="puce vide" aria-expanded={replie} onClick={() => setReplie((v) => !v)}>Plus de filtres</button>
@@ -379,11 +455,15 @@ export default function Recherche({ aujourdhui = aujourdhuiIso() }) {
       ) : null}
 
       {/* passe visuelle n° 46 (recherche.html) : le mot cherché surligné, la méta de statut de chaque résultat */}
-      <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
-      <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      {approches ? <p className="es-sous es-approche" role="status">{`Rien de tel pour « ${mots} » : voici ce qui s'en approche.`}</p> : null}
+      <div ref={racine} className="es-resultats">
+        <Groupe titre="Ouvertes" lignes={ouvertes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+        <Groupe titre="Faites" lignes={faitesLignes} aujourdhui={aujourdhui} surligne={approches ? '' : mots} onOuvrir={ouvrirFiche} onTerminer={terminer} onAction={action} />
+      </div>
 
       {rien ? (
         <div className="vide-etat">
+          <span className="vide-picto"><Search className="i" aria-hidden="true" /></span>
           <p className="vide-phrase">{mots ? `Rien pour « ${mots} »` : 'Rien pour ces filtres'}</p>
         </div>
       ) : null}

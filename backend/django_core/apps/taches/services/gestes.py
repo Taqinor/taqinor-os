@@ -184,6 +184,29 @@ def enregistrer_geste(user, type, message, operations):
         message=str(message or '')[:200], operations=list(operations or []))
 
 
+#: Types de geste dont le titre de la tâche se lit même quand l'opération touche une tâche de plus (terminer une
+#: routine ouvre la suivante) : la première tâche touchée est celle qu'on a cochée ou rouverte.
+TYPES_TITRE_PREMIERE = frozenset({'terminaison', 'reouverture'})
+
+
+def titres_des_gestes(user, gestes):
+    """`{geste.pk: titre}` — le titre (lu MAINTENANT, supprimée comprise) de la tâche qu'un geste a touchée, pour
+    « 09:12 Faite · Appeler le fournisseur » (R2-125). Un geste qui touche une SEULE tâche en a un ; un geste qui en
+    touche plusieurs (lot, report en masse, plan du jour) n'en a pas — son message dit déjà le compte —, sauf une
+    terminaison ou une réouverture (la première tâche). Société ET propriétaire, comme toute lecture ; une seule
+    requête, quel que soit le nombre de gestes."""
+    visees = {}
+    for geste in gestes:
+        ids = [op.get('id') for op in geste.operations if op.get('objet') == 'tache' and op.get('id') is not None]
+        if ids and (len(set(ids)) == 1 or geste.type in TYPES_TITRE_PREMIERE):
+            visees[geste.pk] = ids[0]
+    if not visees:
+        return {}
+    titres = dict(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=set(visees.values()))
+                  .values_list('pk', 'titre'))
+    return {geste: titres[tache] for geste, tache in visees.items() if tache in titres}
+
+
 # --- Retrouver un objet du compte ---------------------------------------------------------
 
 def _lignes_du_compte(objet, user, *, morts=False):

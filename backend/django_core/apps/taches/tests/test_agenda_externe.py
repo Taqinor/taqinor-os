@@ -325,6 +325,39 @@ class EcheanceAbsolueTests(SimpleTestCase):
         self.assertEqual(self.etats, [(1, Etat.DELAI)])
 
 
+class MessagesDAjoutTests(SimpleTestCase):
+    """R2-127 sans base : la garde d'AJOUT refuse AVANT toute lecture en base, avec le message du vrai motif."""
+
+    def refus(self, brute, *, leve=None):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.taches.views import agenda_externe as vue
+        with mock.patch.object(lecteur, 'verifier_adresse', side_effect=leve):
+            with self.assertRaises(ValidationError) as contexte:
+                vue._url_acceptee(object(), brute)
+        return [str(m) for m in contexte.exception.detail['url']]
+
+    def test_ce_n_est_pas_une_adresse(self):
+        for brute in ('mon agenda du bureau', '', 'agenda.example/a.ics', 'https://'):
+            with self.subTest(brute=brute):
+                self.assertEqual(self.refus(brute), ["Ce n'est pas une adresse : colle le lien de ton agenda."])
+
+    def test_il_faut_https(self):
+        for brute in ('http://agenda.example/a.ics', 'ftp://agenda.example/a.ics'):
+            with self.subTest(brute=brute):
+                self.assertEqual(self.refus(brute), ["L'adresse doit commencer par https."])
+
+    def test_webcal_est_lu_comme_https(self):
+        self.assertEqual(self.refus('webcal://agenda.example/a.ics', leve=UnsafeWebhookURL('interne')),
+                         ['Adresse injoignable : vérifie le lien.'])
+
+    def test_hote_introuvable_ou_interne_est_injoignable(self):
+        for motif in ("L'hôte du webhook est introuvable (DNS).", "L'URL du webhook pointe vers une adresse interne interdite."):
+            with self.subTest(motif=motif):
+                self.assertEqual(self.refus('https://agenda.example/a.ics', leve=UnsafeWebhookURL(motif)),
+                                 ['Adresse injoignable : vérifie le lien.'])
+
+
 class RoutesAgendasExternesTests(TestCase):
     """Les 5 routes `agendas-externes/` : ≤ 3 par compte, URL jamais rendue, état lisible."""
 
@@ -376,7 +409,17 @@ class RoutesAgendasExternesTests(TestCase):
     def test_adresse_non_publique_400(self):
         self.verifier.side_effect = UnsafeWebhookURL('interne')
         self.assertEqual(champs(self.ajouter('https://intranet.local/a.ics', statut=400).json()),
-                         {'url': ['Adresse https publique attendue.']})
+                         {'url': ['Adresse injoignable : vérifie le lien.']})
+
+    def test_r2_127_trois_refus_trois_messages(self):
+        """F2 n°18 : « pas une adresse », « il faut https », « injoignable » ne se disent plus d'une seule phrase."""
+        self.assertEqual(champs(self.ajouter('mon agenda du bureau', statut=400).json()),
+                         {'url': ["Ce n'est pas une adresse : colle le lien de ton agenda."]})
+        self.assertEqual(champs(self.ajouter('http://agenda.example/a.ics', statut=400).json()),
+                         {'url': ["L'adresse doit commencer par https."]})
+        self.verifier.side_effect = UnsafeWebhookURL("L'hôte du webhook est introuvable (DNS).")
+        self.assertEqual(champs(self.ajouter('https://agenda-introuvable.example/a.ics', statut=400).json()),
+                         {'url': ['Adresse injoignable : vérifie le lien.']})
 
     def test_liste(self):
         fabriques.agenda_externe(self.u, libelle='Bureau')

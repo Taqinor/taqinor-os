@@ -335,8 +335,8 @@ compter de report ; Proposé revient demain. Les tâches à échéance aujourd'h
 ### 2.12 Recherche
 
 Champ « Chercher dans mes tâches » ; résultats en deux groupes « Ouvertes ({n}) » puis « Faites ({n}) » ; visibles « Faites aussi · Projet ▾ · Priorité haute » ; repliés « Aujourd'hui · À
-revoir · 7 jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
-(« Nom de la vue ») ; vide « Rien pour « {q} » » ; hors ligne : la dernière liste. Bouton des repliés « Plus de
+revoir · 7 prochains jours · Sans date · En attente · En réserve · Avec échéance · Étiquette ▾ », tri, « Enregistrer cette vue »
+(« Nom de la vue ») ; vide « Rien pour « {q} » » (picto loupe au-dessus) ; si les mots seuls ne trouvent rien, une seconde lecture tolère les accents et UNE faute de frappe (mots de 4 lettres au moins) : « Rien de tel pour « {q} » : voici ce qui s'en approche. » (R2-129) ; le curseur est dans le champ à l'ouverture, une croix « Effacer la recherche » à nous, `j`/`k` sur les résultats (R2-036) ; hors ligne : la dernière liste. Bouton des repliés « Plus de
 filtres » ; filtres sans mot et rien trouvé : « Rien pour ces filtres » ; le filtre « Étiquette » n'apparaît que si des
 étiquettes sont servies. Chaque résultat porte son statut en tête de méta : son jour, sinon « En réserve » ou
 « À trier » (ni jour, ni réserve, ni projet), puis « Suggéré par l'ERP » ; les mots cherchés sont en gras dans le
@@ -347,7 +347,7 @@ titre (casse et accents ignorés). La loupe est dans le champ.
 « Supprimées récemment » — « Supprimées depuis moins de 30 jours. » — un projet = une ligne « « {projet} » et ses {n}
 tâches » · Restaurer ; une tâche = une ligne : Restaurer · {projet ou « Sans projet »} · {jour de suppression} ; vide
 « Rien de supprimé » ; « Derniers gestes » (7 jours), une rangée par geste : heure le jour même (sinon le jour),
-`GesteAnnulable.message` + « Annuler » (ou « Déjà annulé »). Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
+`GesteAnnulable.message` · {titre de la tâche touchée, servi à part par `gestes/` (`titre`, nul pour un geste de plusieurs tâches ou sous l'en-tête assistant)} + « Annuler » (ou « Déjà annulé ») : « 09:12 Faite · Appeler le fournisseur » ; un squelette tient la place pendant la lecture. Nom repris : « Un projet actif porte déjà ce nom. » Tâche restaurée sans son projet : toast «
 Restaurée dans À trier · Annuler ».
 
 Messages servis par le serveur (`GesteAnnulable.message`, raccord F2 : posés par les lanes, validés et inscrits ici ;
@@ -450,7 +450,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | `cle` | « Clé inconnue. » |
 | réglage hors liste blanche | « Non modifiable ici. » |
 | `confirmation` | « Tape EFFACER pour confirmer. » |
-| `url` (agenda externe) | « Adresse https publique attendue. » |
+| `url` (agenda externe) | « Ce n'est pas une adresse : colle le lien de ton agenda. » · « L'adresse doit commencer par https. » · « Adresse injoignable : vérifie le lien. » |
 | 409 `deja_lie` | « Cette activité a déjà sa tâche. » |
 | 409 `autre_compte` | « Une action d'un autre compte a été retirée de la file. » |
 | 409 `conflit_version` | bandeau de conflit §2.2 |
@@ -516,7 +516,7 @@ Noms accessibles : case « Marquer « {titre} » comme faite » ; étoile « Ess
 | Ligne d'un agenda | « {libellé} · {hôte} » · état (ci-dessous) · Rafraîchir · Retirer · interrupteur « Afficher » |
 | Limite (dite une fois) | « Les rendez-vous qui se répètent n'apparaissent qu'à leur première date pour l'instant. » |
 | Retirer | « Retirer « {libellé} » ? Ses rendez-vous disparaissent de Tâches ; ton agenda n'est pas touché. » [Retirer] [Fermer] |
-| Plafond | 400 `url` : « 3 agendas au plus. » · doublon : « Cet agenda est déjà ajouté. » · schéma : « Adresse https publique attendue. » |
+| Plafond | 400 `url` : « 3 agendas au plus. » · doublon : « Cet agenda est déjà ajouté. » · schéma : « L'adresse doit commencer par https. » · pas une adresse : « Ce n'est pas une adresse : colle le lien de ton agenda. » · injoignable : « Adresse injoignable : vérifie le lien. » |
 | Vie privée (sous le champ) | « Cette adresse vaut une clé : l'ERP la garde sans jamais l'afficher en entier. » |
 
 États (`EtatAgendaExterne`), montrés sur la ligne de l'agenda et en bandeau de l'Agenda :
@@ -835,9 +835,14 @@ Jamais utilisé »). Régénérer : « Régénérer ? L'ancien cesse de marcher 
 affiché : colle-le maintenant. » Perdu : « Perdu ? Régénère-le. » La carte « Mon iPhone » d'Aujourd'hui y mène, 3 jours
 au plus.
 
+**Avant les étapes (R2-126) — « Mettre Tâches sur l'écran d'accueil ».** Un bloc nommé, au-dessus des cinq étapes, « Fait »
+quand l'ERP est ouvert depuis son icône (mode autonome), sinon « À faire » : 1. Dans Safari, touche le bouton Partager.
+2. Touche « Sur l'écran d'accueil », puis « Ajouter ». 3. Ouvre ensuite l'ERP depuis son icône, pas depuis Safari. —
+« Il faut iOS 16.4 ou plus récent pour les notifications. » Il ne compte pas dans « {k} sur 5 ».
+
 **Étape 1 — Recevoir les notifications.**
-1. Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari. Pas d'icône ? Dans Safari, touche le bouton
-   Partager, puis « Sur l'écran d'accueil ». Il faut iOS 16.4 ou plus récent.
+1. Ouvre l'ERP depuis son icône sur l'écran d'accueil, pas depuis Safari (pas d'icône : « Mettre Tâches sur l'écran
+   d'accueil », plus haut).
 2. Touche « Autoriser les notifications », puis « Autoriser » quand l'iPhone le demande.
 3. « Montrer le titre sur l'écran verrouillé ? » [Oui] [Non] — sans réponse, seulement des nombres.
 4. Touche « Envoyer un test » : une notification « Test des notifications » doit arriver.

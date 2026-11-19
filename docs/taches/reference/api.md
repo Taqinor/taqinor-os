@@ -1499,7 +1499,7 @@ administrateur."]}`), `erp_dans_journee`, `comprendre_mon_rythme`, `pauses_solli
 **`jetons/`** POST `{"usage":"flux","libelle":""}` → 201 `jeton.json` (clair rendu une seule fois).
 **`agendas-externes/`** POST `{"url":"https://outlook.office365.com/owa/calendar/abc/reachcalendar.ics","libelle":"Microsoft 365"}`
 (une adresse `webcal://` est réécrite en `https://`) → 201 `agenda_externe.json` (lecture immédiate ; corps ≤ 2 Mo, délai 10 s, cache 15 minutes) ; PATCH `{"libelle":"Bureau","actif":false,"rang":2048}` ; POST
-`…/{id}/rafraichir/` (ignore le cache). 400 `{"url":["Adresse https publique attendue."]}`, `{"url":["3 agendas au plus."]}`,
+`…/{id}/rafraichir/` (ignore le cache). 400 `{"url":["Ce n'est pas une adresse : colle le lien de ton agenda."]}` (pas une adresse), `{"url":["L'adresse doit commencer par https."]}` (http, ftp…), `{"url":["Adresse injoignable : vérifie le lien."]}` (hôte introuvable ou interne), `{"url":["3 agendas au plus."]}`,
 `{"url":["Cet agenda est déjà ajouté."]}` ; l'hôte est validé par `apps/publicapi/validators.py` à l'ajout puis
 revérifié à chaque lecture (`donnees.md` inv. 33). **`tout-effacer/`** `{"confirmation":"EFFACER"}` (400
 `{"confirmation":["Tape EFFACER pour confirmer."]}`) → `tout_effacer.json` ; efface aussi les notifications
@@ -1798,7 +1798,7 @@ heure ; Planifier ma semaine ; `lier-activite/`, `supprimees/` ; jeton : sociét
 
 **`gestes.json`** — GET gestes/ (non paginé, ≤ 200) · consommateurs : Derniers gestes
 ```json
-{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
+{"results":[{"id":77,"type":"planification","message":"Reportée à jeu. 19","titre":"Appeler le fournisseur","created_at":"2026-11-17T09:20:00+01:00","annule_le":null,"annulable":true}]}
 ```
 
 **`item.json`** — forme ITEM · consommateurs : toutes les listes
