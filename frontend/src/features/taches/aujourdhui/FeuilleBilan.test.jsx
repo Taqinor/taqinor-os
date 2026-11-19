@@ -296,4 +296,16 @@ describe('R3-020 / R3-021 / L4 — le bilan ne redit pas « gardées », dit une
     expect(cloturer()[1].reflexion).toBe('Bonne journée, le devis Settat est parti')
     expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
   })
+
+  it('couture L7 — un mot gardé en brouillon est effacé à la déconnexion (poste partagé)', async () => {
+    servir()
+    const premier = monterConnecte()
+    const f = await feuille()
+    await userEvent.click(await within(f).findByRole('button', { name: /Un mot sur ta journée/ }))
+    await userEvent.type(within(f).getByRole('textbox', { name: 'Un mot sur ta journée' }), 'Note privée')
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toHaveLength(1)
+    premier.unmount()
+    window.dispatchEvent(new Event('taqinor:auth-logout'))
+    expect(Object.keys(window.localStorage).filter((cle) => cle.startsWith('taches:bilan-mot:'))).toEqual([])
+  })
 })

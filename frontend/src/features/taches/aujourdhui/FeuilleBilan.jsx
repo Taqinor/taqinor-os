@@ -8,6 +8,7 @@ import CaseRonde from '../ui/CaseRonde'
 import { annoncer } from '../lib/gestes'
 import { accord, jourLong, jourNomme } from '../lib/textes'
 import { useCompteTaches } from '../lib/enLigne'
+import { ecrireTexte, lireTexte, viderALaDeconnexion } from '../lib/stockage'
 
 /* ============================================================================
    TCH80 — Feuille « Bilan du soir » (textes.md §2.9, regles.md §4.6), ouverte par la carte
@@ -27,25 +28,13 @@ import { useCompteTaches } from '../lib/enLigne'
 const REPORTER = 'prochain_jour_ouvre'
 const LIMITE_MOT = 280
 
-/** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu). */
-const cleBrouillonMot = (userId, jourBilan) => (userId != null && jourBilan ? `taches:bilan-mot:${userId}:${jourBilan}` : null)
-function lireMot(cle) {
-  if (!cle) return ''
-  try {
-    return window.localStorage.getItem(cle) ?? ''
-  } catch {
-    return '' // stockage indisponible (navigation privée) : le mot vit le temps de la feuille, rien d'autre
-  }
-}
-function garderMot(cle, texte) {
-  if (!cle) return
-  try {
-    if (texte) window.localStorage.setItem(cle, texte)
-    else window.localStorage.removeItem(cle)
-  } catch {
-    // stockage indisponible : rien n'est gardé au-delà de la feuille ouverte, la frappe reste à l'écran
-  }
-}
+/** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu), gardé
+ *  par `lib/stockage` (stockage indisponible : le mot vit le temps de la feuille) et vidé à la déconnexion. */
+const PREFIXE_MOT = 'taches:bilan-mot:'
+const cleBrouillonMot = (userId, jourBilan) => (userId != null && jourBilan ? `${PREFIXE_MOT}${userId}:${jourBilan}` : null)
+const lireMot = lireTexte
+const garderMot = ecrireTexte
+viderALaDeconnexion(PREFIXE_MOT)
 
 function useCloture(jour, aujourdhui) {
   const [etat, setEtat] = useState({ chargement: true, erreur: '', donnees: null })

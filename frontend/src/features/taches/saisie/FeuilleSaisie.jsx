@@ -14,6 +14,7 @@ import ChampSaisie, { jetonProjet, jetonProjetExistant } from '../ui/ChampSaisie
 import FeuilleACrans from '../ui/FeuilleACrans'
 import SelecteurProjet from '../ui/SelecteurProjet'
 import SelecteurQuand from '../ui/SelecteurQuand'
+import { ecrireTexte, lireTexte, viderPrefixe } from '../lib/stockage'
 import ColleListes, { construireLigne } from './ColleListes'
 
 /* ============================================================================
@@ -60,41 +61,20 @@ export const cleBrouillon = (societe, compte) => `${PREFIXE_BROUILLON}${societe 
 /** Le brouillon `{ texte, quand, collages?, courant? }` de ce compte, ou `null` (stockage absent, illisible, vide). */
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé, relu par TCH77/TCH91 et testé directement (D-ENF22)
 export function lireBrouillon(societe, compte) {
+  // stockage bloqué (`lib/stockage` rend '') ou JSON abîmé : pas de brouillon, la saisie reste possible
+  const brut = lireTexte(cleBrouillon(societe, compte))
+  let lu = null
   try {
-    const brut = window.localStorage.getItem(cleBrouillon(societe, compte))
-    const lu = brut ? JSON.parse(brut) : null
-    return lu && typeof lu.texte === 'string' && lu.texte.trim() ? lu : null
+    lu = brut ? JSON.parse(brut) : null
   } catch {
-    // stockage bloqué (navigation privée) ou JSON abîmé : pas de brouillon, la saisie reste possible
     return null
   }
+  return lu && typeof lu.texte === 'string' && lu.texte.trim() ? lu : null
 }
 
-function ecrireBrouillon(cle, brouillon) {
-  try {
-    if (brouillon) window.localStorage.setItem(cle, JSON.stringify(brouillon))
-    else window.localStorage.removeItem(cle)
-  } catch {
-    // le brouillon est un confort : s'il ne s'écrit pas, la saisie continue sans lui
-    return false
-  }
-  return true
-}
-
-function viderBrouillons() {
-  try {
-    const cles = []
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const cle = window.localStorage.key(i)
-      if (cle?.startsWith(PREFIXE_BROUILLON)) cles.push(cle)
-    }
-    cles.forEach((cle) => window.localStorage.removeItem(cle))
-  } catch {
-    // stockage bloqué : rien à vider
-    return false
-  }
-  return true
-}
+/** Le brouillon est un confort : s'il ne s'écrit pas (`false`), la saisie continue sans lui. */
+const ecrireBrouillon = (cle, brouillon) => ecrireTexte(cle, brouillon ? JSON.stringify(brouillon) : '')
+const viderBrouillons = () => viderPrefixe(PREFIXE_BROUILLON)
 
 /** Compte connecté, lu sans exiger un Provider (la coquille se monte aussi sans store dans les tests). */
 function useCompte() {
