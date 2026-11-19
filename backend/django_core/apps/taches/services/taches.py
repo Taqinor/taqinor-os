@@ -37,6 +37,7 @@ from apps.taches.selectors.base import (
     sections_de, taches_de,
 )
 from apps.taches.selectors.base import normalise_sql
+from apps.taches.selectors.journee import ROUTINE, faites_de_la_semaine
 from apps.taches.selectors.liens import cible_visible, libelle_de_cible
 from apps.taches.serializers.formes import charger_items
 from apps.taches.services.creation import creer_taches
@@ -147,9 +148,20 @@ def _filtrer_periode(qs, periode, aujourdhui):
     if periode == 'retard':
         return qs.filter(Q(jour_prevu__lt=aujourdhui) | Q(echeance__lt=aujourdhui))
     if periode == FAITES_SEMAINE:
+        # R3-003 : la liste ne porte que ce que `total` compte (`compte_du_jour` : une routine vaut 0)
         lundi = aujourdhui - datetime.timedelta(days=aujourdhui.weekday())
-        return qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
+        return (qs.filter(fait_le__gte=timezone.make_aware(datetime.datetime.combine(lundi, datetime.time.min)))
+                .exclude(ROUTINE))
     return qs
+
+
+def entete_de_liste(user, params, *, aujourdhui=None):
+    """Les clés que `GET taches/` ajoute à sa page : pour `periode=faites_semaine` seulement, `total` (LA somme des
+    faites de la semaine, celle de la Revue et de l'Agenda) et `activites_closes` `[{jour, titre}]` (comptées dans
+    `total`, absentes de `results`) — R3-003, choix C-16 ; `{}` sinon (aucune requête)."""
+    if _choix(params, 'periode', PERIODES) != FAITES_SEMAINE:
+        return {}
+    return faites_de_la_semaine(user, aujourdhui or timezone.localdate())
 
 
 def _filtrer_lien(qs, params):

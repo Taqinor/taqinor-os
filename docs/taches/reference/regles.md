@@ -727,8 +727,16 @@ activités ERP closes par lui ce jour (moins celles qu'une tâche porte, déjà 
 ### 6.2 La journée évaluée (`statut_jour(ouvre, conge, compte, plan, app)`)
 
 Écran Mon rythme (rév. 3.1) : la série montrée (`RYTHME.serie`) est la fenêtre de la proposition, les 10 derniers
-jours TRAVAILLÉS ; un jour férié ou en congé n'y a pas de barre (il est nommé sous la trace) ; un jour `sans_donnees`
-a une barre vide.
+jours TRAVAILLÉS ; un jour férié ou en congé n'y a pas de barre d'objectif (il est nommé sous la trace) ; un jour
+`sans_donnees` a une barre vide. R3-003 (choix C-21) : un jour NON travaillé (`non_ouvre`, `conge`) de la même fenêtre
+où il a fait au moins une chose est servi à sa date avec `hors_objectif: true` (barre grise, le compte de la nuit),
+jamais dans la trace, un bloc ni l'objectif — le calendrier de la société fait foi (§0).
+
+**Faites d'une période (R3-003, choix C-16).** UNE définition : `selectors.journee.faites_par_jour(du, au, J)` —
+chaque jour vaut `compte_du_jour` (§6.1), la période = la somme de ses jours, du premier jour à aujourd'hui compris,
+week-end compris. La tête de la Revue (« Cette semaine : N faites (P la précédente) »), « Faites cette semaine » de la
+Recherche (`total`) et l'Agenda (`faites_nb`) la lisent ; rien d'autre ne recompte. « Objectif atteint X jours sur
+N » n'est plus dans la Revue (Mon rythme garde « 5 faites ou plus X jours sur 10 »).
 
 `conge` · `non_ouvre` (non travaillé pour lui) · `sans_donnees` (travaillé, 0 compté, aucun plan validé, app non
 ouverte) · `evalue`. Seul `evalue` entre dans un bloc, une référence ou un constat. Un samedi travaillé va dans les

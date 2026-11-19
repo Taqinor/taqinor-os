@@ -172,9 +172,17 @@ class RevueProjetsTests(_Base):
 
 
 class BilanDeSemaineTests(_Base):
+    """R3-003 (choix C-16) : `faites` = les tâches réellement faites chaque jour (`faites_par_jour`, la somme de
+    l'Agenda et de la Recherche), plus le seul compte que la nuit a gardé : chaque jour du test porte donc ses VRAIES
+    faites et son `PlanJour` évalué (le compte de la nuit, le même nombre)."""
+
     def _semaine(self, lundi, comptes, statut='evalue'):
         for rang, compte in enumerate(comptes):
-            fabriques.plan(self.u1, lundi + datetime.timedelta(days=rang), statut_jour=statut, compte_rythme=compte)
+            jour = lundi + datetime.timedelta(days=rang)
+            fabriques.plan(self.u1, jour, statut_jour=statut, compte_rythme=compte)
+            fait_le = timezone.make_aware(datetime.datetime.combine(jour, datetime.time(11, 0)))
+            for _ in range(compte):
+                fabriques.tache(self.u1, statut='fait', fait_le=fait_le)
 
     def test_bilan_de_la_semaine_et_de_la_precedente(self):
         fabriques.projet(self.u1)
@@ -210,13 +218,36 @@ class BilanDeSemaineTests(_Base):
     def test_le_bilan_ne_lit_que_les_jours_du_compte(self):
         lundi = _lundi() - datetime.timedelta(days=7)
         fabriques.plan(self.voisin, lundi, statut_jour='evalue', compte_rythme=9)
+        fait_le = timezone.make_aware(datetime.datetime.combine(lundi, datetime.time(11, 0)))
+        fabriques.tache(self.voisin, statut='fait', fait_le=fait_le)
+        fabriques.tache(self.ailleurs, statut='fait', fait_le=fait_le)
         self.assertIsNone(self._cartes(f'?semaine={lundi.isoformat()}')['bilan_semaine'])
+
+    def test_le_week_end_et_aujourd_hui_comptent(self):
+        """R3-003 (choix C-16) — calcul à la main, semaine du lun. 16/11/2026 lue le jeudi 19 à 15 h, sans aucun jour
+        jugé par la nuit : 2 faites lundi + 1 mardi + 1 aujourd'hui = 4 ; la semaine d'avant : 2 le mardi 10 + 3 le
+        SAMEDI 14 (week-end compris) = 5 ; jours = 3 (lun., mar., jeu.).
+        « Cette semaine : 4 faites (5 la précédente). »"""
+        from apps.taches.selectors.projets import bilan_de_semaine
+        from testkit.time import frozen
+
+        def faites(jour, n):
+            for _ in range(n):
+                fabriques.tache(self.u1, statut='fait', fait_le=timezone.make_aware(
+                    datetime.datetime.combine(jour, datetime.time(11, 0))))
+        for jour, n in (((2026, 11, 16), 2), ((2026, 11, 17), 1), ((2026, 11, 19), 1), ((2026, 11, 14), 3),
+                        ((2026, 11, 10), 2)):
+            faites(datetime.date(*jour), n)
+        with frozen('2026-11-19 15:00:00'):
+            _courte, bilan = bilan_de_semaine(self.u1, datetime.date(2026, 11, 16), 'pousser')
+        self.assertEqual(bilan['donnees'], {'faites': 4, 'jours': 3, 'prec': 5})
+        self.assertEqual(bilan['texte'], 'Cette semaine : 4 faites (5 la précédente).')
 
 
 class ObjectifAtteintDeLaSemaineTests(_Base):
-    """Revue F2 tour 2 #4 : « Objectif atteint X jours sur N » compte les jours où le compte a atteint
-    l'objectif du jour (le « objectif atteint » du bilan du soir), sur les jours jugés ; « Jours non
-    travaillés » ne compte que des jours qu'il travaille d'habitude. Semaine du lun. 9/11/2026."""
+    """R3-003 (choix C-16) : « Objectif atteint X jours sur N » a QUITTÉ la tête de la Revue (Mon rythme garde « 5
+    faites ou plus X jours sur 10 ») ; la nuit pose toujours l'objectif de chaque jour jugé (revue F2 tour 2 #4) ;
+    « Jours non travaillés » ne compte que des jours qu'il travaille d'habitude. Semaine du lun. 9/11/2026."""
 
     LUNDI = datetime.date(2026, 11, 9)
 
@@ -230,11 +261,14 @@ class ObjectifAtteintDeLaSemaineTests(_Base):
         from apps.taches.selectors.projets import bilan_de_semaine
         return bilan_de_semaine(self.u1, self.LUNDI, 'pousser')[1]['texte']
 
-    def test_objectif_atteint_meme_sans_l_essentiel(self):
+    def test_ni_objectif_atteint_ni_gardees_l_essentiel_reste(self):
         fabriques.plan(self.u1, self.jour(0), statut_jour='evalue', compte_rythme=3, objectif_du_jour=3,
-                       essentiels_choisis=1, essentiels_faits=0)
+                       essentiels_choisis=1, essentiels_faits=0, plan_prevues=4, plan_faites=3)
         fabriques.plan(self.u1, self.jour(1), statut_jour='evalue', compte_rythme=2, objectif_du_jour=5)
-        self.assertIn('Objectif atteint 1 jour sur 2', self.texte())
+        texte = self.texte()
+        self.assertNotIn('Objectif atteint', texte)
+        self.assertNotIn('gardée', texte)
+        self.assertTrue(texte.endswith('Essentiel 0 sur 1.'), texte)
 
     def test_la_nuit_pose_l_objectif_de_chaque_jour_juge(self):
         from apps.taches.models.journee import PlanJour
@@ -251,7 +285,7 @@ class ObjectifAtteintDeLaSemaineTests(_Base):
         self.assertEqual(list(PlanJour.objects.filter(proprietaire=self.u1).order_by('jour')
                               .values_list('statut_jour', 'compte_rythme', 'objectif_du_jour')),
                          [('evalue', 6, 5)] * 4)
-        self.assertIn('24 faites. Objectif atteint 4 jours sur 4.', self.texte())
+        self.assertTrue(self.texte().endswith(': 24 faites.'), self.texte())
 
     def test_jours_non_travailles_seulement_parmi_ses_jours_travailles(self):
         from apps.taches.services.journee import clore_jour_precedent
@@ -275,8 +309,10 @@ class ObjectifAtteintDeLaSemaineTests(_Base):
         """V2-C (R2-034) — « Cette semaine : … » ne se dit que de la semaine EN COURS ; une revue d'une semaine passée
         garde ses dates (« Du lun. 9 au ven. 13 : … »), sinon elle se présenterait comme celle de maintenant."""
         from apps.taches.selectors.projets import bilan_de_semaine
-        fabriques.plan(self.u1, self.jour(0), statut_jour='evalue', compte_rythme=3, objectif_du_jour=3)
-        fabriques.plan(self.u1, self.jour(1), statut_jour='evalue', compte_rythme=2, objectif_du_jour=5)
+        for n, compte in ((0, 3), (1, 2)):
+            fabriques.plan(self.u1, self.jour(n), statut_jour='evalue', compte_rythme=compte, objectif_du_jour=3)
+            for _ in range(compte):
+                fabriques.tache(self.u1, statut='fait', fait_le=self.instant(self.jour(n)))
         en_cours = bilan_de_semaine(self.u1, self.LUNDI, 'pousser', aujourdhui=self.jour(4))[1]['texte']
         self.assertTrue(en_cours.startswith('Cette semaine : 5 faites.'), en_cours)
         passee = bilan_de_semaine(self.u1, self.LUNDI, 'pousser', aujourdhui=self.jour(9))[1]['texte']

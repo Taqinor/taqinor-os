@@ -75,10 +75,27 @@ class SerieDesJoursTravaillesTests(SimpleTestCase):
         self.assertEqual([(b['jour'][-2:], b['statut_jour']) for b in serie],
                          [('12', 'sans_donnees'), ('13', 'evalue'), ('16', 'sans_donnees')])
 
-    def test_un_jour_ferie_ou_en_conge_n_a_pas_de_barre(self):
-        serie = self.serie([self.ligne(12), self.ligne(13, statut=StatutJour.NON_OUVRE),
-                            self.ligne(16, statut=StatutJour.CONGE)])
+    def test_un_jour_ferie_ou_en_conge_sans_faite_n_a_pas_de_barre(self):
+        serie = self.serie([self.ligne(12), self.ligne(13, statut=StatutJour.NON_OUVRE, faites=0),
+                            self.ligne(16, statut=StatutJour.CONGE, faites=0)])
         self.assertEqual([b['jour'][-2:] for b in serie], ['12'])
+        self.assertEqual([b['hors_objectif'] for b in serie], [False])
+
+    def test_un_jour_non_travaille_ou_il_a_travaille_est_servi_hors_objectif(self):
+        """R3-003 (choix C-21) — un férié (13), un congé (16) ou un samedi (14) où il a fait quelque chose est servi
+        à sa date, `hors_objectif`, sans objectif ; un jour non travaillé AVANT la fenêtre des 10 jours ne l'est pas ;
+        les 10 jours travaillés restent 10."""
+        lun_a_ven = [datetime.date(2026, 11, n) for n in (3, 4, 5, 6, 9, 10, 11, 12, 16)]
+        plans = [self.ligne(1, statut=StatutJour.NON_OUVRE, faites=2), self.ligne(3), self.ligne(12),
+                 self.ligne(13, statut=StatutJour.NON_OUVRE, faites=4),
+                 self.ligne(14, statut=StatutJour.NON_OUVRE, faites=3),
+                 self.ligne(15, statut=StatutJour.NON_OUVRE, faites=0),
+                 self.ligne(16, statut=StatutJour.CONGE, faites=1)]
+        serie = self.serie(plans, travailles=lun_a_ven)
+        hors = [(b['jour'][-2:], b['faites'], b['objectif']) for b in serie if b['hors_objectif']]
+        self.assertEqual(hors, [('13', 4, None), ('14', 3, None), ('16', 1, None)])
+        self.assertEqual(len([b for b in serie if not b['hors_objectif']]), 8)  # 03..12 : 8 jours travaillés lus
+        self.assertEqual([b['jour'] for b in serie], sorted(b['jour'] for b in serie))
 
     def test_sans_aucune_ligne_pas_de_serie(self):
         self.assertEqual(self.serie([]), [])

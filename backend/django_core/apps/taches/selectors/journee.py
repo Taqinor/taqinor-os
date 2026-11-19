@@ -414,6 +414,60 @@ def activites_closes_du_jour(user, jour):
     return list(activites_closes_par(user, debut, fin).exclude(pk__in=portees).values_list('pk', flat=True))
 
 
+#: Une tâche ROUTINE (`_routine` : quotidienne, hebdo… d'intervalle 1) : `compte_du_jour` la compte 0.
+ROUTINE = Q(recurrence__isnull=False, recurrence__frequence__in=FREQUENCES_ROUTINE, recurrence__intervalle=1)
+
+
+def _faites_de_la_periode(user, du, au, J):
+    """`({jour: [ItemPur]}, [(jour, titre)])` des faites de [du, min(au, J)] : les tâches PASSÉES à `fait` ce jour
+    local, et les activités ERP closes par lui moins celles qui portent une tâche (comptées déjà :
+    `activites_closes_du_jour`). Une lecture de tâches et une d'activités pour toute la période."""
+    dernier = min(au, J)
+    if dernier < du or getattr(user, 'company_id', None) is None or getattr(user, 'pk', None) is None:
+        return {}, []
+    from apps.records.selectors import activites_closes_par
+    debut, _ = bornes_du_jour(du)
+    _, fin = bornes_du_jour(dernier)
+    taches = (taches_de(user).filter(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
+              .select_related('recurrence'))
+    par_jour = {}
+    for tache in taches:
+        par_jour.setdefault(timezone.localtime(tache.fait_le).date(), []).append(classement.ItemPur(
+            id=tache.pk, statut=tache.statut, parent_id=tache.parent_id, routine=_routine(tache),
+            estimation_minutes=tache.estimation_minutes))
+    portees = (Tache.all_objects.filter(company_id=user.company_id, activite_origine_id__isnull=False)
+               .values('activite_origine_id'))
+    closes = (activites_closes_par(user, debut, fin).exclude(pk__in=portees)
+              .order_by('-done_at', '-pk').values_list('done_at', 'summary'))
+    return par_jour, [(timezone.localtime(fait_a).date(), titre or '') for fait_a, titre in closes]
+
+
+def faites_par_jour(user, du, au, J):
+    """{jour: nombre de « faites » ce jour-là} pour les jours de [du, au] jusqu'à aujourd'hui `J` (R2-102, C-12 ;
+    R3-003, C-16) : LA définition des faites d'une période — la somme de ses jours. Chaque jour vaut `compte_du_jour`
+    (sous-tâche et routine = 0, plafond des micro-tâches, activités ERP closes) : le MÊME nombre que la PROGRESSION
+    du jour, l'Agenda (`faites_nb`), la tête de la Revue et « Faites cette semaine » de la Recherche. Deux requêtes
+    pour toute la période (jamais une par jour) ; aucune pour une période à venir."""
+    return _comptes_par_jour(*_faites_de_la_periode(user, du, au, J))
+
+
+def _comptes_par_jour(par_jour, closes):
+    activites = {}
+    for jour, titre in closes:
+        activites.setdefault(jour, []).append(titre)
+    return {jour: compte_du_jour(par_jour.get(jour, []), activites.get(jour, []))[0]
+            for jour in sorted({*par_jour, *activites})}
+
+
+def faites_de_la_semaine(user, J):
+    """`{total, activites_closes}` de la semaine de `J`, du lundi à aujourd'hui (week-end compris) : `total` =
+    Σ `faites_par_jour` (la somme de la Revue et de l'Agenda) ; `activites_closes` = `[{jour, titre}]` des activités
+    ERP closes comptées dans `total`, la plus récente d'abord (R3-003). Deux requêtes."""
+    par_jour, closes = _faites_de_la_periode(user, lundi_de(J), J, J)
+    return {'total': sum(_comptes_par_jour(par_jour, closes).values()),
+            'activites_closes': [{'jour': jour.isoformat(), 'titre': titre} for jour, titre in closes]}
+
+
 def compte_faites(user, jour, closes=None):
     """(`compte`, `detail`) de `compte_du_jour` : tâches faites ce jour et activités ERP closes par
     lui ce jour (regles.md §6.1). `closes` : `activites_closes_du_jour` déjà lu par l'appelant (il

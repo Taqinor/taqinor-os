@@ -514,25 +514,24 @@ class RevueTests(Tableau):
     def test_complete(self):
         self.verifier([('revue', 'entete', self.BASE, 0,
                         'Cette semaine : 18 faites (15 la précédente). '
-                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5.')])
+                        'Essentiel 4 sur 5.')])
 
     def test_sans_semaine_precedente(self):
         d = dict(self.BASE, prec=None)
         self.verifier([('revue', 'entete', d, 0,
                         'Cette semaine : 18 faites. '
-                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5.')])
+                        'Essentiel 4 sur 5.')])
 
     def test_libre_sans_objectif_atteint(self):
         d = dict(self.BASE, mode='libre', oa=None)
         self.verifier([('revue', 'entete', d, 0,
                         'Cette semaine : 18 faites (15 la précédente). '
-                        'essentiel 4 sur 5.')])
+                        'Essentiel 4 sur 5.')])
 
     def test_parties_sans_objet_omises_et_accords(self):
         d = dict(self.BASE, faites=1, jours=1, oa=1, je=0, pl=0, prec=None, non_travailles=1)
         self.verifier([('revue', 'entete', d, 0,
-                        'Cette semaine : 1 faite. '
-                        'Objectif atteint 1 jour sur 1. Jour non travaillé : 1.')])
+                        'Cette semaine : 1 faite. Jour non travaillé : 1.')])
         d = dict(d, non_travailles=2)
         self.assertTrue(texte('revue', 'entete', d).endswith('Jours non travaillés : 2.'))
 
@@ -541,7 +540,13 @@ class RevueTests(Tableau):
         d = dict(self.BASE, courante=False)
         self.verifier([('revue', 'entete', d, 0,
                         'Du lun. 16 au ven. 20 : 18 faites (15 la précédente). '
-                        'Objectif atteint 3 jours sur 5 · essentiel 4 sur 5.')])
+                        'Essentiel 4 sur 5.')])
+
+    def test_jamais_objectif_atteint_ni_gardees(self):
+        """R3-001, R3-003 (choix C-14, C-16) — la tête de la Revue ne dit ni « Objectif atteint X jours sur N » ni
+        « x des y gardées », quels que soient les nombres passés."""
+        rendu = texte('revue', 'entete', dict(self.BASE, oa=0, jours=1, pt=20, pl=24))
+        self.assertEqual(rendu, 'Cette semaine : 18 faites (15 la précédente). Essentiel 4 sur 5.')
 
     def test_semaine_courte(self):
         d = dict(self.BASE, semaine_courte=True)

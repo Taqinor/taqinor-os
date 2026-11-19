@@ -9,7 +9,6 @@ import datetime
 
 from django.db.models import Exists, OuterRef, Q
 from django.http import Http404
-from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework.exceptions import ValidationError
@@ -17,11 +16,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.notifications.calendar_utils import jours_ouvres_entre
-from apps.records.selectors import activites_closes_par
 from apps.taches.choix import FamilleObligation, SectionJournee, StatutProjet, StatutTache
-from apps.taches.models.taches import Tache
 from apps.taches.moteur import classement
-from apps.taches.moteur.rythme import compte_du_jour
 from apps.taches.selectors import journee as sel
 from apps.taches.selectors.base import jours_travailles_de, projets_de, taches_de
 from apps.taches.serializers import journee as formes_journee
@@ -152,31 +148,9 @@ def _travailles_de(user, autour, J, du, au):
     return jours_travailles_de(user, du, au)
 
 
-def faites_par_jour(user, du, au, J):
-    """{jour: nombre de « faites » ce jour-là} pour les jours de [du, au] jusqu'à aujourd'hui `J` (R2-102, règle C-12) :
-    les tâches PASSÉES à `fait` ce jour local — prévues ce jour-là ou non —, plus les activités ERP qu'il a closes,
-    comptées par `compte_du_jour` (sous-tâche et routine = 0, plafond des micro-tâches) : le MÊME nombre que Mon rythme
-    et la Revue. Une lecture de tâches et une d'activités pour toute la période (jamais une par jour)."""
-    dernier = min(au, J)
-    if dernier < du:
-        return {}
-    debut, _ = sel.bornes_du_jour(du)
-    _, fin = sel.bornes_du_jour(dernier)
-    taches = (taches_de(user).filter(statut=StatutTache.FAIT, fait_le__gte=debut, fait_le__lt=fin)
-              .select_related('recurrence'))
-    par_jour, activites = {}, {}
-    for tache in taches:
-        par_jour.setdefault(timezone.localtime(tache.fait_le).date(), []).append(classement.ItemPur(
-            id=tache.pk, statut=tache.statut, parent_id=tache.parent_id, routine=sel._routine(tache),
-            estimation_minutes=tache.estimation_minutes))
-    # activités de l'ERP closes par lui, moins celles qui portent une tâche (comptées déjà : `activites_closes_du_jour`)
-    portees = Tache.all_objects.filter(company_id=user.company_id, activite_origine_id__isnull=False)
-    portees = portees.values('activite_origine_id')
-    closes = activites_closes_par(user, debut, fin).exclude(pk__in=portees).values_list('pk', 'done_at')
-    for pk, fait_a in closes:
-        activites.setdefault(timezone.localtime(fait_a).date(), []).append(pk)
-    return {jour: compte_du_jour(par_jour.get(jour, []), activites.get(jour, []))[0]
-            for jour in sorted({*par_jour, *activites})}
+#: R3-003 (choix C-16) : « faites d'une période » vit dans `selectors.journee` (la Revue, la Recherche et Mon rythme
+#: la lisent aussi) ; l'Agenda l'importe, il ne recompte rien.
+faites_par_jour = sel.faites_par_jour
 
 
 def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=False):

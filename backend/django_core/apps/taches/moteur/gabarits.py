@@ -443,14 +443,11 @@ def _debut_revue(v):
 
 
 def _chiffres_revue(v):
-    parties = []
-    if v.get('mode') != 'libre' and v.get('oa') is not None:
-        parties.append(_rendre('Objectif atteint {oa} jour{oa?|s} sur {jours}', v))
-    if v.get('je'):
-        parties.append(_rendre('essentiel {e} sur {je}', v))
-    if not parties:
+    """« Essentiel {e} sur {je}. » ; rien sans essentiel choisi. R3-003 (choix C-16) : « Objectif atteint X jours
+    sur N » quitte la tête (illisible un jeudi, « 0 sur 1 ») — Mon rythme garde « 5 faites ou plus X jours sur 10 »."""
+    if not v.get('je'):
         return ''
-    return ' · '.join(parties) + '.'
+    return _rendre('Essentiel {e} sur {je}.', v)
 
 
 def _revue(cle, v, var, nom_pour):

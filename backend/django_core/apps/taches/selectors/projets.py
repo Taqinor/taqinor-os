@@ -26,7 +26,7 @@ from apps.taches.moteur.decalage import nb_figees
 from apps.taches.moteur.gabarits import texte as gabarit_texte
 from apps.taches.moteur.rythme import semaine_courte
 from apps.taches.selectors.base import _du_compte, jours_travailles_de, projets_de, sections_de, taches_de
-from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, objectif_atteint, taches_de_la_journee
+from apps.taches.selectors.journee import JOURS_APRES, JOURS_AVANT, faites_par_jour, taches_de_la_journee
 
 OUVERTS = (StatutTache.A_FAIRE, StatutTache.EN_ATTENTE)
 CLOS = (StatutTache.FAIT, StatutTache.ANNULE)
@@ -439,20 +439,6 @@ def _jours_evalues(plans):
     return [p for p in plans if p.statut_jour == StatutJour.EVALUE]
 
 
-def _faites_et_jours(plans):
-    evalues = _jours_evalues(plans)
-    return sum(p.compte_rythme for p in evalues), len(evalues)
-
-
-def _jours_objectif_atteint(evalues):
-    """X de « Objectif atteint X jours sur N » : jours jugés où le compte a atteint l'objectif du jour
-    (`objectif_atteint`, la définition du bilan du soir du même jour ; la nuit pose l'objectif de chaque
-    jour jugé) ; `None` si aucun jour jugé n'avait d'objectif (`libre`). Revue F2 tour 2 #4."""
-    verdicts = [objectif_atteint(p.compte_rythme, p.objectif_du_jour) for p in evalues]
-    verdicts = [v for v in verdicts if v is not None]
-    return sum(1 for v in verdicts if v) if verdicts else None
-
-
 def _jours_de_semaine_travailles(user, lundi):
     """Jours de la semaine (0 = lundi … 6 = dimanche) qu'il travaille d'HABITUDE : ceux où tombe au moins
     un de ses jours travaillés (`jours_travailles_de`, la source de toute l'app) dans les semaines autour
@@ -473,27 +459,32 @@ def _non_travailles(user, lundi, semaine):
 
 
 def bilan_de_semaine(user, lundi, mode, *, aujourdhui=None):
-    """`(semaine_courte, bilan)` de la semaine de `lundi`, lus dans les `PlanJour` clos (jamais un titre).
-    `bilan` = `{texte, donnees:{faites, jours, prec}}` ou `None` (semaine courte, ou aucun jour évalué).
-    La tête dit « Cette semaine » seulement si `lundi` est celui de la semaine d'`aujourdhui` (défaut : le jour
-    local) ; une semaine passée garde ses dates « Du lun. 9 au ven. 13 »."""
-    plans = list(PlanJour.objects.filter(
-        company_id=user.company_id, proprietaire=user,
-        jour__range=(lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6))))
+    """`(semaine_courte, bilan)` de la semaine de `lundi` (jamais un titre). `bilan` = `{texte, donnees:{faites,
+    jours, prec}}` ou `None` (semaine courte, ou rien de fait ni de jugé). R3-003 (choix C-16) : `faites` = LA somme
+    `faites_par_jour` du lundi à aujourd'hui, week-end et aujourd'hui compris — celle de l'Agenda et de « Faites
+    cette semaine » —, `prec` la même sur la semaine d'avant (`None` sans faite ni jour jugé), `jours` = jours où il a
+    fait au moins une chose ; l'essentiel et la semaine courte viennent des `PlanJour` clos. Plus d'« Objectif
+    atteint X jours sur N » ni de « gardées ». La tête dit « Cette semaine » seulement si `lundi` est celui de la
+    semaine d'`aujourdhui` (défaut : le jour local) ; une semaine passée garde ses dates « Du lun. 9 au ven. 13 »."""
+    aujourdhui = aujourdhui or timezone.localdate()
+    precedent, dimanche = lundi - datetime.timedelta(days=7), lundi + datetime.timedelta(days=6)
+    plans = list(PlanJour.objects.filter(company_id=user.company_id, proprietaire=user,
+                                         jour__range=(precedent, dimanche)))
     semaine = _semaine_de_plans(plans, lundi)
     if semaine_courte([p.statut_jour for p in semaine]):
         return True, None
-    faites, jours = _faites_et_jours(semaine)
-    if jours == 0:
-        return False, None
-    prec_faites, prec_jours = _faites_et_jours(_semaine_de_plans(plans, lundi - datetime.timedelta(days=7)))
-    prec = prec_faites if prec_jours else None
+    par_jour = faites_par_jour(user, precedent, dimanche, aujourdhui)
+    cette_semaine = [n for jour, n in par_jour.items() if jour >= lundi]
+    faites, jours = sum(cette_semaine), sum(1 for n in cette_semaine if n > 0)
     evalues = _jours_evalues(semaine)
+    if faites == 0 and not evalues:
+        return False, None
+    prec = sum(n for jour, n in par_jour.items() if jour < lundi)
+    if prec == 0 and not _jours_evalues(_semaine_de_plans(plans, precedent)):
+        prec = None
     texte = gabarit_texte('revue', 'entete', {
         'debut': lundi, 'fin': lundi + datetime.timedelta(days=4), 'faites': faites, 'jours': jours,
-        'prec': prec, 'oa': _jours_objectif_atteint(evalues), 'mode': mode,
-        'courante': lundi == lundi_de(aujourdhui or timezone.localdate()),
+        'prec': prec, 'mode': mode, 'courante': lundi == lundi_de(aujourdhui),
         'e': sum(p.essentiels_faits for p in evalues), 'je': sum(p.essentiels_choisis for p in evalues),
-        'pt': sum(p.plan_faites for p in evalues), 'pl': sum(p.plan_prevues for p in evalues),
         'non_travailles': _non_travailles(user, lundi, semaine)})
     return False, {'texte': texte, 'donnees': {'faites': faites, 'jours': jours, 'prec': prec}}

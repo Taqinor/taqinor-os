@@ -41,14 +41,15 @@ from apps.taches.services.planification import planifier
 from apps.taches.services.rappels import poser_rappel, repeter_rappel, retirer_rappel
 from apps.taches.services.taches import (
     ajouter_element, apercu_changement, attendre_tache, avertissement_hors_fenetre, avertissements_du_jour,
-    LIMITE_RECHERCHE_MAX, derniers_gestes, gestes_confidentiels, liste_taches, lot_taches, modifier_element,
+    LIMITE_RECHERCHE_MAX, derniers_gestes, entete_de_liste, gestes_confidentiels, liste_taches, lot_taches,
+    modifier_element,
     modifier_regle, modifier_tache,
     rappel_a_la_creation, recevoir_tache, rechercher, reordonner_element, reordonner_tache, restaurer_tache,
     retirer_element, reverifier_lien, rouvrir_tache, sauter_occurrence, supprimees_recentes, supprimer_tache,
     tache_du_compte, terminer_tache, trancher_tache,
 )
 from apps.taches.views.base import (
-    ERREUR_CODE, PAGINATION, PARSEURS, PERMISSIONS, carte_assistant, est_assistant, forme_echantillon, page_de,
+    ERREUR_CODE, PAGINATION, PARSEURS, PERMISSIONS, carte_assistant, est_assistant, forme_echantillon,
     parametre, reponses,
 )
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
@@ -131,6 +132,19 @@ class RechercheVue(APIView):
         return Response(reponse_recherche(projets, taches, assistant=assistant))
 
 
+#: La page de `GET taches/` (StandardPagination) ; `total` et `activites_closes` n'y sont QUE pour
+#: `periode=faites_semaine` (R3-003, `faites_semaine.json`) : déclarés, non requis.
+PAGE_ITEMS = inline_serializer('TachesPageItems', {
+    'count': serializers.IntegerField(),
+    'next': serializers.CharField(allow_null=True),
+    'previous': serializers.CharField(allow_null=True),
+    'results': serializers.ListField(child=ItemSerializer()),
+    'total': serializers.IntegerField(required=False),
+    'activites_closes': serializers.ListField(required=False, child=inline_serializer('TachesActiviteClose', {
+        'jour': serializers.DateField(), 'titre': serializers.CharField(allow_blank=True)})),
+})
+
+
 class TachesVue(IdempotentCreateMixin, APIView):
     """GET taches/ (listes paginées) · POST taches/ (une LIGNE)."""
 
@@ -138,7 +152,7 @@ class TachesVue(IdempotentCreateMixin, APIView):
     parser_classes = PARSEURS
     schema = mots_operation(get='list')  # sinon même operationId que GET taches/{id}/
 
-    @extend_schema(parameters=FILTRES_LISTE, responses=reponses(page_de('Items', ItemSerializer()), erreurs=(400,)))
+    @extend_schema(parameters=FILTRES_LISTE, responses=reponses(PAGE_ITEMS, erreurs=(400,)))
     def get(self, request):
         assistant = est_assistant(request)
         paginateur = StandardPagination()
@@ -146,7 +160,9 @@ class TachesVue(IdempotentCreateMixin, APIView):
             charger_items(liste_taches(request.user, request.query_params, assistant=assistant)),
             request, view=self)
         donnees = ItemSerializer(page, many=True, context=contexte(assistant=assistant)).data
-        return paginateur.get_paginated_response(donnees)
+        reponse = paginateur.get_paginated_response(donnees)
+        reponse.data.update(entete_de_liste(request.user, request.query_params))
+        return reponse
 
     @extend_schema(request=inline_serializer('TachesCorpsTache', dict(CHAMPS_CREATION)),
                    responses=reponses(TacheEcriteSerializer, statut=201, erreurs=(400,), conflit=ERREUR_CODE))

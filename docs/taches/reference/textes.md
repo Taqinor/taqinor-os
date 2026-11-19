@@ -661,9 +661,11 @@ Carte §4.2 ; « Les remettre dans Proposé » → toast « {n} remises dans Pro
 
 ### 4.6 Revue de la semaine (en tête)
 
-« Cette semaine : {faites} faites ({prec} la précédente). Objectif atteint {oa} jours sur {jours}
-· essentiel {e} sur {je}. {Jour non travaillé} : {n}. » (R3-001 : sans « {pt} des {pl} gardées ») — parties sans objet omises (`libre` :
-sans « Objectif atteint » ; pas de semaine précédente : sans parenthèse). Une revue demandée pour une AUTRE semaine
+« Cette semaine : {faites} faites ({prec} la précédente). Essentiel {e} sur {je}. {Jour non travaillé} : {n}. » —
+parties sans objet omises (sans essentiel choisi : sans « Essentiel… » ; pas de semaine précédente : sans parenthèse).
+R3-001 / R3-003 (choix C-14, C-16) : ni « Objectif atteint {oa} jours sur {jours} » ni « {pt} des {pl} gardées » ;
+`{faites}` = toutes les faites du lundi à maintenant, week-end et aujourd'hui compris (la somme de l'Agenda et de
+« Faites cette semaine »). Une revue demandée pour une AUTRE semaine
 (`courante` faux dans les données du gabarit : `selectors/projets.py::bilan_de_semaine` le pose quand le lundi lu
 n'est pas celui de la semaine du jour) garde ses dates : « Du {lun.} au {ven.} : {faites} faites ({prec} la
 précédente). » (R2-034 ; avant : « Du lun. 16 au ven. 20 : 4 tâches en 1 jour (précédente : 9). ») Semaine courte (`semaine_courte`) : « Semaine
