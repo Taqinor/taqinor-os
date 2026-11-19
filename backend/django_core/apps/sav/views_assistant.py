@@ -9,15 +9,19 @@ Fichier à part : ``views.py`` dépasse 2 000 lignes et ne grossit plus.
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import serializers
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
+from core.conflit_etat import ConflitEtat
+from core.parseurs import PARSEURS_JSON
 
-from . import selectors_assistant as lectures
+from . import machine_etats, selectors_assistant as lectures, services as sav_services
 from .models import Ticket
 from .query_params import ENTIER_ID, choix_param, entier_param, valeur_param
+from .serializers import TicketSerializer
 
 #: Longueur maximale du texte cherché (nom, téléphone, numéro de série).
 Q_MAX = 100
@@ -142,3 +146,102 @@ def ticket_fiche(request, pk):
         'a_faire': lectures.a_faire_du_ticket(ticket),
         'lien': lectures.LIEN_TICKET.format(ticket.pk),
     })
+
+
+# ── Transitions de statut (SAV5) ────────────────────────────────────────────
+
+class _TransitionRequete(serializers.Serializer):
+    vers = serializers.ChoiceField(choices=lectures.GESTES_TRANSITION)
+
+
+class _ResoudreRequete(serializers.Serializer):
+    canal_resolution = serializers.ChoiceField(
+        choices=Ticket.CanalResolution.values, required=False)
+
+
+def _refus(detail, code):
+    """409 dont le ``detail`` français nomme l'écran où faire le geste."""
+    return ConflitEtat({'detail': detail, 'code': code})
+
+
+def _refus_du_service(exc, lien):
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    message = str(detail.get('statut') or detail.get('detail') or 'Transition refusée.')
+    code = detail.get('code') or 'transition_refusee'
+    suite = (" Facturez le ticket dans l'écran SAV ; la clôture sans facture y "
+             'est réservée à un responsable.'
+             if code == 'ticket_non_facture' else '')
+    return _refus(f"{message}{suite} Écran SAV : {lien}.", code)
+
+
+def _garde_de_la_transition(user, ticket, geste, cible):
+    """Lève 409 si l'assistant ne doit pas faire cette transition : ticket
+    annulé, saut hors du graphe de ``machine_etats``, ou client prévenu
+    automatiquement HORS de la fenêtre d'envoi des messages."""
+    lien = lectures.LIEN_TICKET.format(ticket.pk)
+    if ticket.annule:
+        raise _refus("Ticket annulé : réactivez-le dans l'écran SAV (" + lien
+                     + ') avant de le faire avancer.', 'ticket_annule')
+    if cible == ticket.statut:
+        return
+    if not machine_etats.transition_permise(ticket.statut, cible):
+        permis = ', '.join(lectures.statuts_suivants_permis(ticket)) or 'aucun'
+        raise _refus(f"« {geste} » est impossible depuis « {ticket.get_statut_display()} » "
+                     f'(statuts permis : {permis}). Écran SAV : {lien}.',
+                     'transition_interdite')
+    societe = user.company
+    if (lectures.notification_client_prevue(societe, cible)
+            and lectures.hors_fenetre_d_envoi(societe)):
+        raise _refus(
+            "Cette transition préviendrait automatiquement le client (notification SAV "
+            "allumée) et nous sommes hors de la fenêtre d'envoi des messages (8 h 30 "
+            f"par défaut, jours ouvrés) : faites-la à l'ouverture, ou dans l'écran SAV ({lien}).",
+            'hors_fenetre_envoi')
+
+
+def _changer_statut(request, pk, geste, canal_resolution=None):
+    """Applique le geste par LE service des écrans (graphe, garde de clôture,
+    SLA, chatter, notification) ; réponse = celle des routes existantes."""
+    ticket = lectures.ticket_pour_fiche(request.user, pk)
+    if ticket is None:
+        raise NotFound('Ticket introuvable.')
+    cible = lectures.STATUT_DU_GESTE[geste]
+    _garde_de_la_transition(request.user, ticket, geste, cible)
+    if canal_resolution:
+        ticket.canal_resolution = canal_resolution
+    try:
+        sav_services.appliquer_transition_ticket(
+            ticket, cible, request.user, request=request)
+    except sav_services.TransitionTicketRefusee as exc:
+        raise _refus_du_service(exc, lectures.LIEN_TICKET.format(ticket.pk))
+    return Response(TicketSerializer(ticket, context={'request': request}).data)
+
+
+@extend_schema(request=_TransitionRequete, responses=TicketSerializer)
+@api_view(['POST'])
+@parser_classes(PARSEURS_JSON)
+@permission_classes([HasPermissionOrLegacy('sav_gerer')])
+def ticket_transition(request, pk):
+    """SAV5 — ``POST /api/django/sav/assistant/tickets/<pk>/transition/`` :
+    planifier, démarrer, clôturer ou rouvrir un ticket. Jamais la clôture sans
+    facture (``sans_facture`` n'existe pas ici : un ticket facturable non
+    facturé répond 409). Même service et même réponse que les routes de
+    l'écran ; hors fenêtre d'envoi, une transition qui préviendrait le client
+    est refusée."""
+    corps = _TransitionRequete(data=request.data)
+    corps.is_valid(raise_exception=True)
+    return _changer_statut(request, pk, corps.validated_data['vers'])
+
+
+@extend_schema(request=_ResoudreRequete, responses=TicketSerializer)
+@api_view(['POST'])
+@parser_classes(PARSEURS_JSON)
+@permission_classes([HasPermissionOrLegacy('sav_gerer')])
+def ticket_resoudre(request, pk):
+    """SAV5 — ``POST /api/django/sav/assistant/tickets/<pk>/resoudre/`` :
+    résout un ticket (``canal_resolution`` facultatif) ; mêmes gardes que
+    ``ticket_transition`` (le client est prévenu à la résolution)."""
+    corps = _ResoudreRequete(data=request.data)
+    corps.is_valid(raise_exception=True)
+    return _changer_statut(request, pk, 'resoudre',
+                           corps.validated_data.get('canal_resolution'))

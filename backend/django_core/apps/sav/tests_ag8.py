@@ -453,3 +453,47 @@ class SavTicketFicheAssistantTest(TestCase):
         Ticket.objects.filter(pk=self.ticket.pk).update(annule=True)
         r = self._get()
         self.assertEqual((r.data['statuts_suivants'], r.data['a_faire']), ([], 'rien'))
+
+
+class SavTransitionActionsTest(TestCase):
+    """SAV5 — les deux actions de transition : à confirmer, leur libellé dit
+    quand le client est prévenu, et aucune entrée ne lève un garde-fou."""
+
+    def test_transition_et_resoudre_declarees_a_confirmer(self):
+        from apps.agent.registry import LOT_COPILOTE, RISK_OUTWARD
+        for cle in ('sav.ticket.transition', 'sav.ticket.resoudre'):
+            a = _by_key(cle)
+            self.assertEqual((a.risk, a.lot, a.method), (RISK_OUTWARD, LOT_COPILOTE, 'POST'), cle)
+            self.assertEqual(a.objets, {'id': 'ticket'}, cle)
+            self.assertEqual(a.required_permission, 'sav_gerer', cle)
+            self.assertIn('prévenu', a.label, cle)
+            self.assertLessEqual(len(a.label), 90, cle)
+            self.assertLessEqual(len(a.description), 600, cle)
+            self.assertTrue(a.description.startswith('Sert à'), cle)
+            self.assertIn('Ne pas utiliser pour', a.description, cle)
+            interdits = {'sans_facture', 'motif', 'visible_client', 'company', 'forcer'}
+            self.assertFalse(interdits & set(a.inputs['properties']), cle)
+
+    def test_gestes_derives_de_la_machine_d_etats(self):
+        from apps.sav import machine_etats
+        from apps.sav.models import Ticket
+        from apps.sav.selectors_assistant import GESTES_TRANSITION, STATUT_DU_GESTE
+        a = _by_key('sav.ticket.transition')
+        self.assertEqual(a.inputs['properties']['vers']['enum'], list(GESTES_TRANSITION))
+        self.assertNotIn('resoudre', GESTES_TRANSITION)
+        cibles = set().union(*machine_etats._transitions().values())
+        self.assertLessEqual(set(STATUT_DU_GESTE.values()), cibles)
+        self.assertEqual(
+            _by_key('sav.ticket.resoudre').inputs['properties']['canal_resolution']['enum'],
+            list(Ticket.CanalResolution.values))
+
+    def test_clause_de_notification_lue_du_service(self):
+        """Les statuts qui préviennent le client sont ceux de la notification
+        du service : nouveau (réouverture), planifié, résolu."""
+        from apps.sav.models import Ticket
+        from apps.sav.notifications_client import STATUT_TO_CLE
+        from apps.sav.selectors_assistant import STATUT_DU_GESTE
+        previennent = {g for g, s in STATUT_DU_GESTE.items() if s in STATUT_TO_CLE}
+        self.assertEqual(previennent, {'planifier', 'reouvrir', 'resoudre'})
+        self.assertNotIn(Ticket.Statut.CLOTURE, STATUT_TO_CLE)
+        self.assertNotIn(Ticket.Statut.EN_COURS, STATUT_TO_CLE)

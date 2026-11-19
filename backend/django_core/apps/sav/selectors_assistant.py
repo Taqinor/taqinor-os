@@ -230,12 +230,20 @@ LIMITE_TICKETS_MAX = 25
 SCAN_RETARD_MAX = 500
 LIEN_FILE_SAV = '/sav/action-requise'
 
-#: Le geste que fait avancer chaque statut cible (jamais déduit du seul
-#: statut courant : ``a_faire_du_ticket`` le lit de la machine d'états).
-_GESTE_DU_STATUT_CIBLE = {
-    Ticket.Statut.PLANIFIE: 'planifier', Ticket.Statut.EN_COURS: 'demarrer',
-    Ticket.Statut.RESOLU: 'resoudre', Ticket.Statut.CLOTURE: 'cloturer',
+#: Les gestes de l'assistant sur le statut d'un ticket et le statut qu'ils
+#: visent. Seule table de ce vocabulaire : les gestes OFFERTS (``reouvrir``
+#: compris), le « à faire » d'une ligne et la transition servie en dérivent ;
+#: ce que le graphe PERMET reste dit par ``machine_etats``.
+STATUT_DU_GESTE = {
+    'planifier': Ticket.Statut.PLANIFIE, 'demarrer': Ticket.Statut.EN_COURS,
+    'resoudre': Ticket.Statut.RESOLU, 'cloturer': Ticket.Statut.CLOTURE,
+    'reouvrir': Ticket.Statut.NOUVEAU,
 }
+#: Gestes de ``sav.ticket.transition`` (``resoudre`` a sa propre action).
+GESTES_TRANSITION = tuple(g for g in STATUT_DU_GESTE if g != 'resoudre')
+#: Geste « à faire » d'un statut cible : une réouverture n'en est jamais un.
+_GESTE_DU_STATUT_CIBLE = {
+    statut: geste for geste, statut in STATUT_DU_GESTE.items() if geste != 'reouvrir'}
 
 
 def a_faire_du_ticket(ticket):
@@ -431,3 +439,26 @@ def statuts_suivants_permis(ticket):
     if ticket.annule:
         return []
     return [s.value for s in machine_etats.statuts_suivants(ticket)]
+
+
+# ── Transitions : le client sera-t-il prévenu ? ─────────────────────────────
+
+def notification_client_prevue(company, statut_cible):
+    """Vrai quand passer un ticket à ``statut_cible`` PRÉVIENT le client : la
+    société a allumé ``notifications_client_sav`` (éteint par défaut) ET le
+    statut a un gabarit (``notifications_client.STATUT_TO_CLE`` : nouveau,
+    planifié, résolu — jamais en cours ni clôturé). C'est la règle de
+    ``services.appliquer_transition_ticket``, lue au même endroit."""
+    from .models import SavSlaSettings
+    from .notifications_client import STATUT_TO_CLE
+
+    return (statut_cible in STATUT_TO_CLE
+            and bool(SavSlaSettings.get(company).notifications_client_sav))
+
+
+def hors_fenetre_d_envoi(company, instant=None):
+    """Vrai hors de la fenêtre d'envoi des messages de la société (à partir de
+    8 h 30, jours ouvrés, fériés exclus) — la règle du CRM, lue par son sélecteur."""
+    from apps.crm.selectors import hors_heures_ouvrees
+
+    return hors_heures_ouvrees(company, instant)
