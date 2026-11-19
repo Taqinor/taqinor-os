@@ -85,14 +85,78 @@ describe('TCH77 — chaque type de carte du moment', () => {
     expect(screen.getByRole('button', { name: 'Garder celle-ci' })).toBeInTheDocument()
   })
 
-  it('`alleger` : « 1 sur 5 à 15 h », Alléger ma journée, et « Pas maintenant » écarte la carte sans rien écrire', async () => {
+  it('`alleger` : « 1 faite sur 5 à 15 h », Alléger ma journée, et « Pas maintenant » écarte la carte sans rien écrire', async () => {
     const { onAlleger, onRepondre } = monter({ carte: { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } } })
-    expect(screen.getByText('1 sur 5 à 15 h')).toBeInTheDocument()
+    expect(screen.getByText('1 faite sur 5 à 15 h')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Alléger ma journée' }))
     expect(onAlleger).toHaveBeenCalledTimes(1)
     await userEvent.click(screen.getByRole('button', { name: 'Pas maintenant' }))
-    expect(screen.queryByText('1 sur 5 à 15 h')).toBeNull()
+    expect(screen.queryByText('1 faite sur 5 à 15 h')).toBeNull()
     expect(onRepondre).not.toHaveBeenCalled()
+  })
+
+  it('R4-03 — « Pas maintenant » TIENT la journée : rechargée (nouveau montage), la carte ne revient pas ; le lendemain elle peut revenir ; un autre compte du même appareil n\'hérite de rien ; la déconnexion vide', async () => {
+    const alleger = { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } }
+    const jour = '2033-04-05'
+    const premier = monter({ carte: alleger, jour, compte: 7 })
+    await userEvent.click(screen.getByRole('button', { name: 'Pas maintenant' }))
+    premier.unmount()
+    // RECHARGEMENT de la page (l'appli rouverte sur iPhone) : le module repart de zéro, rien n'est en mémoire
+    vi.resetModules()
+    const { default: Recharge } = await import('./CarteDuMoment')
+    const recharge = render(<Recharge carte={alleger} jour={jour} compte={7} maintenant="2026-11-17T15:00:00+01:00" objectif={5} avecAstuce={false} />)
+    expect(screen.queryByRole('region', { name: 'Alléger ma journée' })).toBeNull()
+    recharge.unmount()
+    // le même jour, un autre compte sur le même appareil voit SA carte
+    const autre = monter({ carte: alleger, jour, compte: 8 })
+    expect(screen.getByRole('region', { name: 'Alléger ma journée' })).toBeInTheDocument()
+    autre.unmount()
+    // le lendemain, la carte peut revenir
+    const lendemain = monter({ carte: alleger, jour: '2033-04-06', compte: 7 })
+    expect(screen.getByRole('region', { name: 'Alléger ma journée' })).toBeInTheDocument()
+    lendemain.unmount()
+    // « Passer » du bilan d'hier tient de même
+    const hier = { type: 'bilan_hier', proposition: null, donnees: { jour: '2033-04-04' } }
+    const b = monter({ carte: hier, jour, compte: 7 })
+    await userEvent.click(screen.getByRole('button', { name: 'Passer' }))
+    b.unmount()
+    monter({ carte: hier, jour, compte: 7 })
+    expect(screen.queryByRole('region', { name: "Bilan d'hier" })).toBeNull()
+    // la déconnexion vide ce que l'appareil retenait
+    window.dispatchEvent(new Event('taqinor:auth-logout'))
+    document.body.innerHTML = ''
+    monter({ carte: alleger, jour, compte: 7 })
+    expect(screen.getByRole('region', { name: 'Alléger ma journée' })).toBeInTheDocument()
+  })
+
+  it('R4-05 — le chiffre d\'« Alléger » suit l\'en-tête : il lit le compte VIVANT (`faites`), jamais celui figé de la carte ; la charge qui déborde se dit', () => {
+    const carte = { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 5 } }
+    const { rerender } = render(<CarteDuMoment carte={carte} jour="2033-05-01" maintenant="2026-11-17T17:00:00+01:00" objectif={5} faites={1} avecAstuce={false} />)
+    expect(screen.getByText('1 faite sur 5 à 17 h')).toBeInTheDocument()
+    // trois coches plus tard : l'en-tête dit 3 sur 5, la carte aussi (la lecture servie n'a pas changé)
+    rerender(<CarteDuMoment carte={carte} jour="2033-05-01" maintenant="2026-11-17T17:00:00+01:00" objectif={5} faites={3} avecAstuce={false}
+      charge={{ taches: 2, restantes_minutes: 270, sans_duree: 0, capacite_minutes: 240, rendez_vous_minutes: 0, disponible_minutes: 240, deborde_minutes: 30 }} />)
+    expect(screen.getByText('3 faites sur 5 à 17 h · 30 min de trop')).toBeInTheDocument()
+  })
+
+  it('R4-04 — après « Bilan enregistré », ni « Alléger » ni « Faire le bilan », même si une lecture d\'avant les servait', () => {
+    const { container, unmount } = monter({ carte: { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } }, bilanFait: true })
+    expect(container).toBeEmptyDOMElement()
+    unmount()
+    const soir = monter({ carte: { type: 'faire_bilan', proposition: null, donnees: {} }, bilanFait: true })
+    expect(soir.container).toBeEmptyDOMElement()
+  })
+
+  it('R4-06 — un seul dessin : Alléger, Bilan d\'hier et Faire le bilan sont la rangée compacte (`.carte.compacte`) du conseil', () => {
+    for (const carte of [
+      { type: 'alleger', proposition: null, donnees: { faites: 1, prevues: 4 } },
+      { type: 'bilan_hier', proposition: null, donnees: { jour: '2026-11-16' } },
+      { type: 'faire_bilan', proposition: null, donnees: {} },
+    ]) {
+      const { container, unmount } = monter({ carte })
+      expect(container.querySelector('[role="region"]')).toHaveClass('carte', 'compacte')
+      unmount()
+    }
   })
 
   it('`faire_bilan` : « Ta journée se termine. » et Faire le bilan', async () => {

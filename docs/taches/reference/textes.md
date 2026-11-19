@@ -510,7 +510,7 @@ répondu, écarté ou suivi, aucun autre ne s'affiche jusqu'au lendemain, même 
 | brouillon (navigateur) | « Ta saisie de tout à l'heure t'attend. » [Reprendre] |
 | `bilan_hier` | « Le bilan d'hier n'est pas fait : il reste possible jusqu'à midi. » [Faire le bilan d'hier] [Passer] |
 | `garder` | « {n} tâches proposées » · « pour atteindre {objectif} » [Garder ces {n}] ({n} = 1 : « 1 tâche proposée » [Garder celle-ci]) |
-| `alleger` | « {faites} sur {objectif} à {heure} » [Alléger ma journée] [Pas maintenant] |
+| `alleger` | « {faites} faite(s) sur {objectif} à {heure} » + « · {x} de trop » quand la charge du jour déborde (R4-05 : le compte VIVANT de la page) [Alléger ma journée] [Pas maintenant] ; rangée compacte (R4-06) ; « Pas maintenant » tient la journée sur l'appareil (R4-03) |
 | `faire_bilan` | « Ta journée se termine. » [Faire le bilan] |
 | `rythme` | la PROPOSITION (§4.2) |
 | `pause` | la carte `pause` (§4.2) |

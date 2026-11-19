@@ -1144,6 +1144,9 @@ export default function Aujourdhui() {
           jour={donnees.jour}
           maintenant={donnees.maintenant}
           objectif={donnees.objectif?.nb}
+          faites={donnees.progression?.faites}
+          charge={donnees.progression?.charge}
+          compte={userId}
           enLigne={enLigne}
           onRepondre={repondre}
           onGarder={() => garder(donnees.propose?.pour_objectif ?? [])}
@@ -1153,7 +1156,8 @@ export default function Aujourdhui() {
           onNaviguer={navigate}
           onCopilote={geste.copilote}
           brouillon={brouillon && !saisieOuverte ? (
-            <div className="carte" role="region" aria-label="Brouillon">
+            // R4-06 — le dessin unique des cartes du moment (rangée compacte)
+            <div className="carte compacte" role="region" aria-label="Brouillon">
               <p className="carte-texte">Ta saisie de tout à l&apos;heure t&apos;attend.</p>
               <div className="carte-actions">
                 <button type="button" className="bouton second" onClick={() => ouvrirSaisie({})}>Reprendre</button>

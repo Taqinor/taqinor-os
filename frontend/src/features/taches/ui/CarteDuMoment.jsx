@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Hand, Lightbulb } from 'lucide-react'
-import { heureDite } from '../lib/textes'
+import { duree, heureDite } from '../lib/textes'
+import { lireTexte, ecrireTexte, viderALaDeconnexion } from '../lib/stockage'
 
 /* ============================================================================
    TCH77 — LA carte du moment : UNE seule, en haut d'Aujourd'hui, sous la progression.
@@ -11,7 +12,12 @@ import { heureDite } from '../lib/textes'
    Les cartes à réponse (`retour`, `rythme`, `pause`, `revelation`) rendent le TEXTE et les
    BOUTONS de la PROPOSITION telle quelle et répondent par `onRepondre(proposition, reponse)`
    (→ `rythme/propositions/{id}/repondre/`). Carte écartée (« Passer », « Pas maintenant ») :
-   rien n'est écrit, elle ne revient pas ce jour-là.
+   rien n'est écrit au serveur ; R4-03 — elle ne revient pas ce jour-là, rechargement et réouverture de l'appli compris
+   (retenue sur l'appareil, par compte et par jour : `lib/stockage`, vidée à la déconnexion).
+   R4-05 — « Alléger » lit le compte VIVANT de la page (`faites`, la progression que suit chaque geste) et la charge
+   servie (`charge.deborde_minutes`) : jamais un chiffre figé qui contredit l'en-tête.
+   R4-06 — un seul dessin : chaque carte est une rangée compacte (`.carte.compacte`, comme le conseil), la phrase puis
+   ses réponses en texte d'accent.
    Maquettes : ecran-aujourdhui-matin.html, ecran-aujourdhui-retour.html, ecran-aujourdhui-15h.html,
    etat-astuce.html. Textes : reference/textes.md §2.17, §2.18, §4.2.
    ========================================================================== */
@@ -40,7 +46,25 @@ const REVELATIONS = {
 }
 
 const CLE_STOCKAGE = 'taches:astuces'
-const ecartees = new Set()
+/** R4-03 — les cartes écartées du jour, sur l'appareil : `{ jour, types }` sous une clé PAR COMPTE (un poste partagé ne
+ *  prête jamais ses réponses à un autre compte), une seule journée gardée (la suivante remplace), vidée à la déconnexion. */
+const PREFIXE_ECARTEES = 'taches:cartes-ecartees:'
+const cleEcartees = (compte) => `${PREFIXE_ECARTEES}${compte ?? 'anonyme'}`
+
+function lireEcartees(compte, jour) {
+  try {
+    const brut = JSON.parse(lireTexte(cleEcartees(compte)) || 'null')
+    return new Set(brut?.jour === jour && Array.isArray(brut.types) ? brut.types : [])
+  } catch {
+    return new Set() // illisible : traité comme rien d'écarté (la carte revient, rien ne casse)
+  }
+}
+
+function ecarterCarte(compte, jour, type) {
+  viderALaDeconnexion(PREFIXE_ECARTEES)
+  const types = [...lireEcartees(compte, jour), type]
+  return ecrireTexte(cleEcartees(compte), JSON.stringify({ jour, types: [...new Set(types)] }))
+}
 
 function lireAstuces() {
   try {
@@ -124,9 +148,11 @@ function CarteGarder({ donnees, onGarder, desactive }) {
   )
 }
 
+/** R4-06 — LE dessin d'une carte liée à l'heure (Alléger, Bilan d'hier, Faire le bilan ; « Reprendre » d'Aujourd'hui
+ *  le reprend) : la rangée compacte de la carte de conseil. */
 function CarteSimple({ etiquette, texte, actions }) {
   return (
-    <div className="carte" role="region" aria-label={etiquette}>
+    <div className="carte compacte" role="region" aria-label={etiquette}>
       <p className="carte-texte">{texte}</p>
       <div className="carte-actions">
         {actions.map(({ libelle, onClick, principal, desactive }) => (
@@ -187,11 +213,23 @@ function CarteAstuce({ astuce, onOk }) {
   )
 }
 
+/** R4-05 — « 1 faite sur 5 à 15 h » sur le compte VIVANT de la page ; la charge du jour quand elle déborde (« · 2 h de
+ *  trop ») ; sans objectif chiffré, jamais « 0 sur 5 » (le serveur ne sert alors pas la carte, R4-04). */
+function texteAlleger({ faites, objectif, maintenant, charge }) {
+  const fait = `${faites} ${faites >= 2 ? 'faites' : 'faite'}`
+  const compte = objectif ? `${fait} sur ${objectif}` : fait
+  const trop = charge?.deborde_minutes > 0 ? ` · ${duree(charge.deborde_minutes)} de trop` : ''
+  return `${compte} à ${heureDite(String(maintenant).slice(11, 16))}${trop}`
+}
+
 export default function CarteDuMoment({
   carte = null,
   jour = '',
   maintenant = '',
   objectif = 0,
+  faites = null,
+  charge = null,
+  compte = null,
   enLigne = true,
   avecAstuce = true,
   bilanFait = false,
@@ -204,11 +242,21 @@ export default function CarteDuMoment({
   onCopilote,
 }) {
   const [, relire] = useState(0)
+  // repli quand l'appareil refuse de garder quoi que ce soit (navigation privée stricte) : écartée pour cet écran
+  const [ecarteesIci, setEcarteesIci] = useState(() => new Set())
   const desactive = !enLigne
   // R2-014 — UNE carte au plus par matin : dès qu'une carte est répondue, écartée ou agie, la journée est « prise » et
   // aucune astuce ne vient prendre sa place (ni maintenant, ni au rechargement : `taches:astuces`)
   const prise = (rappel) => (...args) => { noterAstuce(null, jour); return rappel?.(...args) }
-  const ecarter = (cle) => { ecartees.add(`${cle}:${jour}`); noterAstuce(null, jour); relire((v) => v + 1) }
+  // R4-03 — « Pas maintenant » / « Passer » TIENNENT la journée : gardés sur l'appareil, par compte et par jour
+  const ecartees = lireEcartees(compte, jour)
+  const ecartee = (cle) => ecartees.has(cle) || ecarteesIci.has(`${cle}:${jour}`)
+  const ecarter = (cle) => {
+    ecarterCarte(compte, jour, cle)
+    setEcarteesIci((s) => new Set(s).add(`${cle}:${jour}`))
+    noterAstuce(null, jour)
+    relire((v) => v + 1)
+  }
   const repondre = (proposition) => prise((reponse) => onRepondre(proposition, reponse))
   const type = carte?.type
   const constatApresBilan = bilanFait && carte?.proposition?.type === 'constat' // la carte « 57 % » ne remonte pas après le bilan
@@ -218,7 +266,7 @@ export default function CarteDuMoment({
   }
   if (brouillon) return brouillon
   if (constatApresBilan) return null
-  if (type === 'bilan_hier' && !ecartees.has(`bilan_hier:${jour}`)) {
+  if (type === 'bilan_hier' && !ecartee('bilan_hier')) {
     return (
       <CarteSimple
         etiquette="Bilan d'hier"
@@ -231,12 +279,13 @@ export default function CarteDuMoment({
     )
   }
   if (type === 'garder') return <CarteGarder donnees={carte.donnees ?? {}} onGarder={prise(onGarder)} desactive={desactive} />
-  if (type === 'alleger' && !ecartees.has(`alleger:${jour}`)) {
-    const { faites = 0 } = carte.donnees ?? {}
+  // R4-04 — après « Bilan enregistré », plus jamais « Alléger » (même si une lecture d'avant le servait encore)
+  if (type === 'alleger' && !ecartee('alleger') && !bilanFait) {
+    const servies = Number(carte.donnees?.faites) || 0
     return (
       <CarteSimple
         etiquette="Alléger ma journée"
-        texte={`${faites} sur ${objectif} à ${heureDite(String(maintenant).slice(11, 16))}`}
+        texte={texteAlleger({ faites: Number.isFinite(faites) ? faites : servies, objectif, maintenant, charge })}
         actions={[
           { libelle: 'Alléger ma journée', principal: true, onClick: prise(onAlleger), desactive },
           { libelle: 'Pas maintenant', onClick: () => ecarter('alleger') },
@@ -244,7 +293,7 @@ export default function CarteDuMoment({
       />
     )
   }
-  if (type === 'faire_bilan') {
+  if (type === 'faire_bilan' && !bilanFait) {
     return (
       <CarteSimple
         etiquette="Bilan du soir"

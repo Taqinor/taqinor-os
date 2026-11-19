@@ -59,6 +59,37 @@
   .tch .carte-actions.pile .bouton { width: auto; }
 }
 
+/* R4-06 — UN dessin de carte du moment : Alléger, Bilan d'hier, Faire le bilan et « Reprendre » prennent la rangée
+   compacte de la carte de conseil (`.carte.rythme`, base.css R3-085) — la phrase (15 px) puis ses réponses en texte
+   d'accent, 32 px dessinés (28 sur iPhone), 44 px de cible par `::after`. Elles gardaient l'ancienne carte haute (texte
+   16 px, deux boutons de 44 sur leur rangée, 111 pt) et poussaient la première tâche à y = 310 sur iPhone. (`.tch-page`
+   en tête : passe devant les règles hautes plus haut dans ce fichier.) */
+.tch .tch-page .carte.compacte {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px;
+  padding: 10px 12px 10px 16px; min-height: 48px;
+}
+.tch .tch-page .carte.compacte .carte-texte {
+  flex: 1 1 200px; min-width: 0; margin: 0; font-size: 0.9375rem; line-height: 1.4; font-weight: 500;
+}
+.tch .tch-page .carte.compacte .carte-actions { flex: none; flex-wrap: nowrap; gap: 4px; }
+.tch .tch-page .carte.compacte .carte-actions .bouton {
+  position: relative; height: 32px; min-height: 0; padding: 0 8px; background: transparent; box-shadow: none;
+  color: var(--tch-accent);
+}
+.tch .tch-page .carte.compacte .carte-actions .bouton.discret { color: var(--tch-texte-doux); font-weight: 500; }
+.tch .tch-page .carte.compacte .carte-actions .bouton[aria-disabled="true"] { opacity: 0.5; }
+.tch .tch-page .carte.compacte .carte-actions .bouton::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; transform: translate(-50%, -50%);
+}
+@media (hover: hover) {
+  .tch .tch-page .carte.compacte .carte-actions .bouton:hover { background: var(--tch-survol); }
+}
+@media screen and (max-width: 768px) {
+  .tch .tch-page .carte.compacte { margin-top: 8px; padding: 8px 10px 8px 14px; row-gap: 0; }
+  .tch .tch-page .carte.compacte .carte-actions .bouton { height: 28px; }
+  .tch .tch-page .carte.compacte + div > .section:first-child { margin-top: 12px; }
+}
+
 /* Astuce de geste et révélations : une carte « moment » à icône. Son dessin (une rangée de 48 à 56 pt) vit dans base.css
    (R3-085, L5) ; ici, seulement l'icône et la démo du balayage. */
 .tch .revelation .bandeau-icone { flex: none; width: 36px; height: 36px; background: var(--tch-surface); color: var(--tch-accent); }
