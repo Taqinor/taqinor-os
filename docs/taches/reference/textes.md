@@ -48,7 +48,7 @@ référence données/API.
 | Prochaine action | la première tâche à faire d'un projet, dans son ordre | — | `prochaine_action` (`RaisonPropose`) |
 | Rendez-vous · Mes agendas | événement d'un agenda externe, lecture seule · les adresses d'agendas ajoutées (3 au plus) | — | RENDEZ_VOUS, `AgendaExterne` |
 | Tes priorités · Reporter à {jour} | carte « Aide-moi à prioriser » · le prochain jour travaillé de la semaine | — | carte `priorites`, `plus_tard` |
-| Temps disponible · Libre | minutes de travail du jour moins ses rendez-vous ; dit « … prévues pour … disponibles » (Aujourd'hui) et « Libre · 4 h » (jour sans tâche de Planifier ma semaine) ; « Temps libre » n'est plus écrit (R3-006, R3-134) | — | `disponible_minutes` |
+| Temps disponible · Libre | minutes de travail du jour moins ses rendez-vous ; dit « Reste : … pour … disponibles · … de trop » (Aujourd'hui et « Où j'en suis ? », R4-01 : ce qui RESTE à faire, la même charge partout) et « Libre · 4 h » (jour sans tâche de Planifier ma semaine) ; « Temps libre » n'est plus écrit (R3-006, R3-134) | — | `charge.disponible_minutes` |
 | Plus tard | gardée sans jour | un jour, plus tard, peut-être | `quelque_jour` |
 | En attente de… | quelqu'un, quelque chose ou une tâche (puce « attend : Visite ») | après, bloquée | `en_attente` / `bloquee_par` |
 | Projet · Étape · Jalon | résultat · partie d'un projet · tâche-repère | section, phase | `Projet`, `Section`, `jalon` |
@@ -91,7 +91,7 @@ référence données/API.
 | Nom de l'app | Tâches |
 | Onglets (`nav.items`, dernière vague) | Aujourd'hui · À trier · Projets · Agenda |
 | Pastille d'À trier | `{boite_reception}` (masquée à 0) |
-| ⋯ d'Aujourd'hui | Alléger ma journée · Réorganiser · Sélectionner · En faire mon accueil |
+| ⋯ d'Aujourd'hui | Alléger ma journée · Faire le bilan (tant que la journée n'est pas close, R4-02) · Réorganiser · Sélectionner · En faire mon accueil |
 | ⋯ (suite, tous les écrans) | Revue de la semaine · Mon rythme · Supprimées (R2-125) · Réglages |
 | Loupe | Chercher dans mes tâches |
 | Rangée du haut sur iPhone (barre de l'ERP masquée dans Tâches) | ☰ « Ouvrir le menu » (le tiroir de l'ERP) · cloche « Notifications : {n} » (« 99+ » au-delà de 99 ; sans compte : « Notifications » ; celle de l'ERP) ; au défilement, le titre de la page en compact |
@@ -112,9 +112,9 @@ référence données/API.
 | Progression (`pousser`) | « {faites} sur {objectif} · essentiel {ef}/{ep} » ; sans essentiel : « {faites} sur {objectif} » ; tant que l'objectif est la valeur par défaut (rien de calculé ni de choisi) : « {faites} faites » (« 1 faite », jamais « 0 sur 5 », R3-029) ; jour de retour : « Reprise » (« Reprise · objectif {objectif} » seulement si l'objectif est chiffré). Tous les chiffres sont ceux de la `progression` servie (R3-020) |
 | Progression (`tenir`) | « {faites} sur {objectif} · ton rythme : {bas} à {haut} » (`OBJECTIF.zone`) |
 | Progression (`libre`) | « {faites} faites » (« 1 faite ») |
-| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} » (objectif non chiffré : « {faites} faite(s) » ; plus de « visées » ni de seconde donnée « gardées », R3-020) · si l'objectif est la valeur par défaut : « Objectif : valeur par défaut, pas encore calculée sur toi » (R2-035) · « Temps : {charge} » (ci-dessous) · « Mon rythme › » ; « Temps libre : … » n'est plus écrit |
+| Au toucher (vers Mon rythme) | « {faites} faite(s) sur {objectif} » (objectif non chiffré : « {faites} faite(s) » ; plus de « visées » ni de seconde donnée « gardées », R3-020) · si l'objectif est la valeur par défaut : « Objectif : valeur par défaut, pas encore calculée sur toi » (R2-035) · « Reste : {charge} » (ci-dessous) · « Mon rythme › » ; « Temps libre : … » n'est plus écrit |
 | Sources de l'objectif | seule `defaut` est dite : « valeur par défaut, pas encore calculée sur toi » (Aujourd'hui : « Objectif : … » ; Mon rythme : « Objectif du jour : {objectif} (valeur par défaut, pas encore calculée sur toi) ») ; `calcule`, `accepte`, `dit` ne s'écrivent plus (R3-089 : « (accepté) », « (ta journée type) », « (ton choix) » étaient du vocabulaire du système) |
-| Charge | « Temps : {h} prévues » · « Temps : {h} prévues pour {disponible} disponibles » (quand le temps disponible est servi) · suffixes « · {n} sans durée » et, quand la charge dépasse le disponible, « · {x} de trop » (« Temps : 4 h 30 prévues pour 4 h disponibles · 30 min de trop ») ; aucune ligne sans minute prévue ni tâche sans durée · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
+| Charge | R4-01 — lue dans `progression.charge` (ce qui RESTE, la même charge que l'Agenda et le Copilote) : « Reste : {h} » · « Reste : {h} pour {disponible} disponibles » · suffixes « · {n} sans durée » et, quand ce qui reste dépasse le disponible, « · {x} de trop » (« Reste : 4 h 30 pour 4 h disponibles · 30 min de trop ») ; aucune ligne sans minute restante ni tâche sans durée · à côté de Garder, en surcharge : « {h} pour {disponible} de libre » · « Durée totale inconnue : la plupart des tâches n'ont pas de durée. » |
 | Source du temps disponible | n'est plus écrite à l'écran (`disponible_minutes` est servi seul) |
 | Titres de sections | Essentiel · Toute la journée · Prévu · Ce soir · Proposé pour aujourd'hui · À revoir · En attente · Faites · Ailleurs dans l'ERP |
 | En-têtes repliés | « À revoir ({n}) » · « En attente ({n}) » + « · {b} en attente d'une autre tâche » · « Faites ({n}) » |
@@ -133,12 +133,12 @@ référence données/API.
 | Copilote de section | Proposé : « Planifier avec le Copilote » · À revoir : « Revoir avec le Copilote » |
 | Brouillon gardé (navigateur) | carte « Ta saisie de tout à l'heure t'attend. » [Reprendre] (masquée tant que la saisie est ouverte, R3-022) |
 | Ailleurs dans l'ERP (déplié) | une ligne par famille SERVIE et non nulle, « {famille} {n} › » : « Chantiers » · « Tickets » · « Demandes d'achat à commander » · « Leads chauds » · « Rappels » · « Devis expirant » · « Relances » · « Mentions » ; famille absente de la réponse ou à 0 : pas de ligne ; toutes à 0 : « Rien à signaler. » |
-| Modes Réorganiser · Sélectionner | bandeau « Réorganiser » / « Sélectionner » + « OK » (sortie du mode) ; lot : « Quand » · « Terminer » ; un déplacement que le serveur refuse (Alt+↑/↓, ▲ ▼) remet la ligne à sa place et dit « Impossible de déplacer cette tâche ici. » (R3-026) |
+| Modes Réorganiser · Sélectionner | bandeau « Réorganiser » / « Sélectionner » + « OK » (sortie du mode) ; lot : « Quand » · « Terminer » ; un déplacement que le serveur refuse (Alt+↑/↓, ▲ ▼) remet la ligne à sa place et dit « Impossible de déplacer cette tâche ici. » (R3-026) ; une ligne À HEURE ne se déplace pas au rang (le serveur la range par son heure) : rien ne part, toast « Rangée par son heure : change l'heure pour la déplacer. » ; une ligne sans heure n'a pour voisines que les lignes sans heure (R4-10) |
 | En faire mon accueil | toast « L'icône ouvrira Aujourd'hui » |
 | Actions d'une ligne (menu ⋯ et appui long, tous les écrans) | Reporter à {jour} · Choisir un jour · Plus tard · Changer de projet… · Essentielle / Plus essentielle · En attente de… · Priorité · Supprimer ; activité ERP : Lier une tâche |
 | Appui long au doigt (iPhone, R3-063) | une feuille du bas titrée du nom de la tâche, avec les MÊMES actions que le menu ⋯ ; au bureau le menu ⋯ ne change pas |
 | Report depuis une ligne d'Aujourd'hui (R3-021) | la ligne reste à sa place avec la pastille « → ven. 20 » (« → Sans jour ») ; si son échéance EST aujourd'hui, elle reste dans la journée et le toast le dit : « Prévue {jour} — l'échéance reste aujourd'hui » avec le bouton « Repousser l'échéance » à la place d'« Annuler » (il met l'échéance au jour choisi) ; sans jour (« Plus tard », « Sans jour ») : « {geste} — l'échéance reste aujourd'hui · Annuler » |
-| Touche de tâche sur une activité ERP (R3-028) | `d`, `e`, `h`, `m`, `x`, `*` : toast « Une activité ERP s'ouvre dans l'ERP » (+ « Ouvrir » quand l'activité a une adresse) |
+| Touche de tâche sur une activité ERP (R3-028) | `d`, `e`, `h`, `m`, `x`, `*` : toast « Une activité ERP s'ouvre dans l'ERP » · « Ouvrir » (l'adresse de l'activité, sinon « Mes activités » de l'ERP, R4-10) |
 | Feuilles de ces actions | « Changer de projet » (sélecteur de projet ; R2-063 : « Déplacer » se lisait « dans le temps ») · « En attente de… » : champ « De qui ou de quoi ? » [En attente] · « Priorité » : Haute · Moyenne · Basse · Aucune · « Supprimer » : « Supprimer « {titre} » ? » [Supprimer] |
 
 États :
@@ -311,9 +311,10 @@ tâche sur un créneau pour lui donner une heure. » au bureau, « Touche une t�
 Planifier ma semaine : « Touche un jour pour placer {titre} », au pied « Glisse une tâche sur un jour · ou Entrée puis
 ← → » au bureau, « Touche une tâche, puis un jour. » sur iPhone ; flèches « Semaine précédente » / « Semaine suivante »
 (R2-103) ; la semaine est dite UNE fois, entre les flèches « ‹ 16 – 22 nov. › » ; sur iPhone le mode est un écran ENFANT
-de l'Agenda (« ‹ Agenda » remplace ☰, R3-123) ; en-tête de jour « {n} tâches · {h} sur {cap} » (« sur », R3-134) où {cap} = la
-capacité du jour moins ses rendez-vous (`rendez_vous_minutes`, R2-100 ; omis si `agenda/` ne sert pas la capacité) et,
-au-delà, « {n} tâches · {h} sur {cap} · {durée} de trop » (R2-114, « 3 h 30 de trop ») ; un jour sans tâche à faire dit
+de l'Agenda (« ‹ Agenda » remplace ☰, R3-123) ; en-tête de jour « {n} tâches · {h} sur {cap} » (« sur », R3-134) lu dans
+LA charge servie du jour (`jours[].charge`, R4-01 : {n} et {h} = ce qui RESTE à faire, {cap} = la capacité moins les
+rendez-vous ; « · {k} sans durée » quand des tâches n'en ont pas — jamais une durée inventée) et, au-delà,
+« {n} tâches · {h} sur {cap} · {durée} de trop » (R2-114, « 3 h 30 de trop ») ; un jour sans tâche à faire dit
 « Libre · {cap} » (jamais « 0 tâche · 0 min … ») ; le rendez-vous qui réduit la capacité est écrit sous le jour :
 « Rendez-vous : 1 h 30 » ; jour passé « passé · {n} faite(s) » = les tâches FINIES ce jour-là
 (`faites_nb`, règle C-12 — « passé » seul s'il n'est pas servi) ; « non travaillé » · « Férié » ; bouton **Terminer** ;
@@ -436,7 +437,7 @@ les agendas sont dans Mon iPhone depuis A18-M4, IT21).
 | Placer à une heure (Agenda) | « Placée à {HH:MM} · Annuler » |
 | Placer sur un jour (Planifier ma semaine) | « Placée {jour} · Annuler » |
 | Mettre à aujourd'hui | « Mise à aujourd'hui · Annuler » |
-| Garder ces N | « {n} gardées · Annuler » |
+| Garder ces N | « {n} prévues aujourd'hui · Annuler » (« Prévue aujourd'hui » : 1 prévue aujourd'hui ; R4-07) |
 | Essentiel | « Essentielle · Annuler » ; 4e : « 3 au plus. » |
 | Déplacer | « Déplacée dans « {projet} » · Annuler » |
 | Plus tard | « Plus tard · Annuler » ; lot « {n} pour plus tard · Annuler » |
@@ -509,9 +510,9 @@ répondu, écarté ou suivi, aucun autre ne s'affiche jusqu'au lendemain, même 
 |---|---|
 | `retour` | §4.2 |
 | brouillon (navigateur) | « Ta saisie de tout à l'heure t'attend. » [Reprendre] |
-| `bilan_hier` | « Le bilan d'hier n'est pas fait : il reste possible jusqu'à midi. » [Faire le bilan d'hier] [Passer] |
+| `bilan_hier` | « Bilan d'hier pas fait : possible jusqu'à midi. » [Faire le bilan d'hier] [Passer] |
 | `garder` | « {n} tâches proposées » · « pour atteindre {objectif} » [Garder ces {n}] ({n} = 1 : « 1 tâche proposée » [Garder celle-ci]) |
-| `alleger` | « {faites} sur {objectif} à {heure} » [Alléger ma journée] [Pas maintenant] |
+| `alleger` | « {faites} faite(s) sur {objectif} à {heure} » + « · {x} de trop » quand la charge du jour déborde (R4-05 : le compte VIVANT de la page) [Alléger ma journée] [Pas maintenant] ; rangée compacte (R4-06) ; « Pas maintenant » tient la journée sur l'appareil (R4-03) |
 | `faire_bilan` | « Ta journée se termine. » [Faire le bilan] |
 | `rythme` | la PROPOSITION (§4.2) |
 | `pause` | la carte `pause` (§4.2) |
@@ -537,7 +538,7 @@ Toute révélation se ferme par « OK ».
 |---|---|
 | Cocher / décocher | « Fait : {titre} » · « Rouverte : {titre} » |
 | Reporter · Choisir un jour | « Reportée à {jour} » · « Prévue {jour} » |
-| Garder ces N | « {n} gardées » (puis le focus va sur Prévu) |
+| Garder ces N | « {n} prévues aujourd'hui » (R4-07 ; puis le focus va sur Prévu) |
 | ★ | « Essentielle : {titre} » · « Plus essentielle : {titre} » |
 | Alléger | « {n} retournées aux projets » |
 | Annuler | « Annulé » (seulement après le bouton « Annuler » : « Reprendre » n'annonce rien, la phrase revient au champ qui prend le focus) |
@@ -603,7 +604,7 @@ notifié.
 
 | Type · cas | 0 | 1 | 2 | Avec titres |
 |---|---|---|---|---|
-| matin · `pousser`, gardées ≥ 1 | « Ta journée : {prevues} prévues · objectif {objectif}. » | « Bonjour. {prevues} tâches gardées ; objectif du jour : {objectif}. » | « Plan du jour : choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
+| matin · `pousser`, gardées ≥ 1 | « Ta journée : {prevues} prévues · objectif {objectif}. » | « Bonjour. {prevues} tâches prévues ; objectif du jour : {objectif}. » | « Plan du jour : choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
 | matin · `pousser`, rien de gardé, proposées ≥ 1 | « {proposees} proposées pour ton objectif de {objectif}. » | « Bonjour. Proposé pour aujourd'hui : {proposees} tâches ; objectif {objectif}. » | « Plan du jour : garde tes tâches et choisis ton essentiel (objectif {objectif}). » | + « En tête : « {titre} ». » |
 | matin · `tenir` | « Ta journée : {prevues} prévues · ton rythme {bas} à {haut}. » | « Bonjour. {prevues} tâches t'attendent ; ton rythme : {bas} à {haut}. » | « Plan du jour : choisis ton essentiel (rythme {bas} à {haut}). » | idem |
 | matin · `libre` | « Ta journée : {prevues} prévues. » | « Bonjour. {prevues} tâches t'attendent. » | « Plan du jour : choisis ton essentiel. » | idem |
@@ -619,7 +620,7 @@ notifié.
 | rappel | « Une tâche à {heure}. » ({n} > 1 : « {n} tâches à {heure}. ») | « Rappel de {heure} : {n} tâche. » | « C'est l'heure : {n} tâche à {heure}. » | « « {titre} » · {heure} » |
 | test | « Les notifications de Tâches arrivent bien sur cet appareil. » | (une seule formulation) | — | — |
 
-Accords : « 1 prévue », « 1 tâche gardée », « 1 tâche t'attend », « 1 tâche a son échéance » / « 2 tâches ont leur
+Accords : « 1 prévue », « 1 tâche prévue », « 1 tâche t'attend », « 1 tâche a son échéance » / « 2 tâches ont leur
 échéance ». Une pause est annoncée dans l'app (carte), jamais par un push.
 
 ## 4. Phrases du rythme et des constats
@@ -636,7 +637,7 @@ Phrases SERVIES (`message` du geste, Copilote, API). L'écran Mon rythme, lui, d
 | « Plus » / « Moins » | « Objectif du jour : {nb} (un de plus), dès aujourd'hui. » · « … (un de moins), dès aujourd'hui. » |
 | En faire plus | « En faire plus : objectif du jour {nb}. Je te proposerai d'aller plus loin quand tu le tiens. » |
 | Garder ce rythme | « Garder ce rythme : environ {R} tâches par jour ({bas} à {haut}). Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes. » ; provisoire (5 à 13 jours évalués, R sur le pas réel) : « … à confirmer sur 14 jours travaillés. » ; moins de 5 jours (R3-004) : « Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant. » |
-| Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés. » |
+| Sans objectif | « Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues restent affichés. » |
 | Comprendre mon rythme éteint | « C'est éteint : plus rien n'est calculé ni gardé sur ton rythme. » |
 
 ### 4.2 Cartes à réponse (`PROPOSITION.texte` et boutons)
@@ -675,7 +676,7 @@ C-14) : plus de seconde ligne « {pt} des {pl} gardées » (`bilan.texte_gardees
 
 | # | Phrase | Question de l'action |
 |---|---|---|
-| C1 | liste de Mon rythme : « Tu finis plus souvent ton essentiel quand il est placé avant midi. » ; au toucher : « Fini : {p1} % de tes gardées du matin, {p2} % de celles d'après 16 h ({n1} et {n2} lignes). » | « Mettre l'essentiel le matin ? » |
+| C1 | liste de Mon rythme : « Tu finis plus souvent ton essentiel quand il est placé avant midi. » ; au toucher : « Fini : {p1} % de tes tâches prévues le matin, {p2} % de celles d'après 16 h ({n1} et {n2} lignes). » | « Mettre l'essentiel le matin ? » |
 | C2 | « Essentiel fait {a} fois sur {na} quand il est en tête de ta journée, {b} sur {nb} sinon. » | « Le mettre en tête par défaut ? » |
 | C3 | « {Jour} : {m1} tâches en moyenne, {m2} les autres jours. » | « En faire un jour court (un de moins) ? » |
 | C4 | « Tu gardes {p} tâches, tu en finis {f} (au milieu de tes {n} dernières journées). » | « Te proposer {f1} à garder ? » |
@@ -773,12 +774,12 @@ du réseau. Ajouter, cocher et reporter marchent hors ligne. »
 | Bouton | **Garder ces {garder_n}** (n = 1 : « Garder celle-ci ») |
 | Repli | après les {garder_n} premières : « Voir les {n} suivantes » |
 | Vide | « Rien à prioriser : tout est gardé ou fait. » |
-| Toasts | « Essentielle · Annuler » · « Mise à aujourd'hui · Annuler » · « Prévue {jour} · Annuler » · « {n} gardées · Annuler » |
+| Toasts | « Essentielle · Annuler » · « Mise à aujourd'hui · Annuler » · « Prévue {jour} · Annuler » · « {n} prévues aujourd'hui · Annuler » |
 
 ### 5.4 Carte « Où tu en es » (`point`, « Où j'en suis ? »)
 
 « {faites} sur {objectif} » (`libre` : « {faites} faites ») · « Essentiel restant : {titres} » (aucun : « Essentiel fait »
-ou rien) · « Prochaine : {titre} [· {HH:MM}] » · « Encore {restes_nb} gardée(s) » · « Rendez-vous restants : {HH:MM}
+ou rien) · « Prochaine : {titre} [· {HH:MM}] » · « Encore {restes_nb} prévue(s) aujourd'hui » (R4-07) · « Rendez-vous restants : {HH:MM}
 {titre}… » · « Reste : {durée} pour {disponible} disponibles » (sans temps disponible servi : « Reste : {durée} » ; rien quand il ne reste aucune minute prévue ; R3-023) ; boutons [Ouvrir Aujourd'hui] et le geste de la carte du moment (« Garder
 ces {n} », « Alléger ma journée » ou « Faire le bilan »).
 

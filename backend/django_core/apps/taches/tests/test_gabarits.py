@@ -63,8 +63,8 @@ class NotificationsMatinTests(Tableau):
         self.verifier([
             ('notification', 'matin.pousser_gardees', d3, 0, 'Ta journée : 3 prévues · objectif 5.'),
             ('notification', 'matin.pousser_gardees', d1, 0, 'Ta journée : 1 prévue · objectif 5.'),
-            ('notification', 'matin.pousser_gardees', d3, 1, 'Bonjour. 3 tâches gardées ; objectif du jour : 5.'),
-            ('notification', 'matin.pousser_gardees', d1, 1, 'Bonjour. 1 tâche gardée ; objectif du jour : 5.'),
+            ('notification', 'matin.pousser_gardees', d3, 1, 'Bonjour. 3 tâches prévues ; objectif du jour : 5.'),
+            ('notification', 'matin.pousser_gardees', d1, 1, 'Bonjour. 1 tâche prévue ; objectif du jour : 5.'),
             ('notification', 'matin.pousser_gardees', d3, 2, 'Plan du jour : choisis ton essentiel (objectif 5).'),
         ])
 
@@ -106,7 +106,7 @@ class NotificationsMatinTests(Tableau):
         d = {'prevues': 3, 'objectif': 5, 'avec_titres': True, 'titre': 'Appeler Karim'}
         for var, base in enumerate((
                 'Ta journée : 3 prévues · objectif 5.',
-                'Bonjour. 3 tâches gardées ; objectif du jour : 5.',
+                'Bonjour. 3 tâches prévues ; objectif du jour : 5.',
                 'Plan du jour : choisis ton essentiel (objectif 5).')):
             with self.subTest(variante=var):
                 self.assertEqual(texte('notification', 'matin.pousser_gardees', d, var, nom_pour),
@@ -304,7 +304,7 @@ class ConfirmationsEtCartesTests(Tableau):
             ('confirmation', 'garder_ce_rythme.palier', {'R': 6, 'bas': 5, 'haut': 7}, 0,
              "Pas encore assez de jours pour mesurer ton rythme : je garde 6 pour l'instant."),
             ('confirmation', 'sans_objectif', {}, 0,
-             'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés.'),
+             'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues restent affichés.'),
             ('confirmation', 'comprendre_eteint', {}, 0,
              "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."),
         ])
@@ -447,7 +447,7 @@ class ConstatsTests(Tableau):
             ('constat', 'C1', {}, 0, "Tu finis plus souvent ton essentiel quand il est placé avant midi. "
                                      "Mettre l'essentiel le matin ?"),
             ('constat', 'C1.detail', {'p1': 70, 'p2': 40, 'n1': 31, 'n2': 33}, 0,
-             "Fini : 70 % de tes gardées du matin, 40 % de celles d'après 16 h (31 et 33 lignes)."),
+             "Fini : 70 % de tes tâches prévues le matin, 40 % de celles d'après 16 h (31 et 33 lignes)."),
             ('constat', 'C1.question', {}, 0, "Mettre l'essentiel le matin ?"),
         ])
 

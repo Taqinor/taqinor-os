@@ -141,7 +141,7 @@ _ECHEANCE = "{n} tâche{n?|s} {n?a son|ont leur} échéance aujourd'hui."
 _NOTIFICATIONS = {
     'matin.pousser_gardees': (
         'Ta journée : {prevues} prévue{prevues?|s} · objectif {objectif}.',
-        'Bonjour. {prevues} tâche{prevues?|s} gardée{prevues?|s} ; objectif du jour : {objectif}.',
+        'Bonjour. {prevues} tâche{prevues?|s} prévue{prevues?|s} ; objectif du jour : {objectif}.',
         'Plan du jour : choisis ton essentiel (objectif {objectif}).'),
     'matin.pousser_proposees': (
         '{proposees} proposée{proposees?|s} pour ton objectif de {objectif}.',
@@ -343,7 +343,8 @@ _CONFIRMATIONS = {
                                    'À confirmer sur {fenetre_derive} jours travaillés.',
     # R3-004 (choix C-15) : moins de 5 jours évalués, le rythme ne se mesure pas encore — dit franchement
     'garder_ce_rythme.palier': "Pas encore assez de jours pour mesurer ton rythme : je garde {R} pour l'instant.",
-    'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées '
+    # R4-07 (M6) : « gardées » n'est plus un mot de l'écran
+    'sans_objectif': 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes tâches prévues '
                      'restent affichés.',
     'comprendre_eteint': "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme.",
 }
@@ -392,7 +393,7 @@ def _bilan(cle, v, var, nom_pour):
 
 _CONSTATS = {
     'C1': 'Tu finis plus souvent ton essentiel quand il est placé avant midi.',
-    'C1.detail': 'Fini : {p1} % de tes gardées du matin, {p2} % de celles d\'après {apres_h} h '
+    'C1.detail': 'Fini : {p1} % de tes tâches prévues le matin, {p2} % de celles d\'après {apres_h} h '
                  '({n1} et {n2} ligne{n2?|s}).',
     'C1.question': "Mettre l'essentiel le matin ?",
     'C2': 'Essentiel fait {a} fois sur {na} quand il est en tête de ta journée, {b} sur {nb} sinon.',

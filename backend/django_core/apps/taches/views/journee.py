@@ -236,8 +236,9 @@ def priorites(user, jour, *, assistant=False):
     # (l'historique de la capacité ; les agendas externes sont lus du cache, 0 requête à chaud)
     capacite, _source = sel.capacite_du_jour(user, jour, reglages, preferences, journee.travailles)
     rendez_vous, _agendas = sel.rendez_vous_pour(user, jour, jour)
-    disponible = classement.temps_disponible(capacite, sel.minutes_de_rendez_vous(user, jour, rendez_vous))
-    restantes, deborde = sel.debordement(journee, disponible)
+    # R4-01 : LA charge du jour, celle de la PROGRESSION d'`aujourdhui/` (même fonction, mêmes entrées)
+    charge = sel.charge_du_jour(journee, jour, capacite, sel.minutes_de_rendez_vous(user, jour, rendez_vous))
+    deborde = charge['deborde_minutes']
     if deborde > 0:
         # la journée déborde : on n'en propose pas plus — les GARDÉES ouvertes, dans l'ordre de la journée, à alléger
         cles, raisons = [cle for cle in sel.gardes_ouverts(journee) if cle[0] == services.TACHE], {}
@@ -250,7 +251,7 @@ def priorites(user, jour, *, assistant=False):
     return {
         'jour': jour.isoformat(), 'objectif': dict(objectif), 'garder_n': classees.garder_n,
         'plus_tard': classees.plus_tard.isoformat() if classees.plus_tard else None,
-        'faites': compte, 'minutes_restantes': restantes, 'deborde_minutes': deborde,
+        'faites': compte, 'charge': charge,
         'geste_propose': GESTE_ALLEGER if deborde > 0 else None,
         'lignes': lignes, 'tronque': tronque,
     }
@@ -310,13 +311,13 @@ def point(user, heure, *, assistant=False):
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=ctx.obligations.peut_cloturer,
                                  agendas=ctx.agendas)
     prochaine = _prochaine(journee, heure)
-    restantes, deborde = sel.debordement(journee, classement.temps_disponible(ctx.capacite[0], ctx.rendez_vous_minutes))
     return {
         'jour': ctx.jour.isoformat(),
         'maintenant': heure.replace(microsecond=0).isoformat(),
         'objectif': dict(ctx.objectif),
+        # R4-01 : la charge du jour est `progression.charge` (la même que la page), jamais recalculée à côté
         'progression': services.progression(ctx),
-        'faites': ctx.compte, 'minutes_restantes': restantes, 'deborde_minutes': deborde,
+        'faites': ctx.compte,
         'essentiel_restant': rendu.items(_ouvertes(journee, SectionJournee.ESSENTIEL)),
         'prochaine': rendu.items([prochaine])[0] if prochaine is not None else None,
         'restes_nb': len(sel.gardes_ouverts(journee)),

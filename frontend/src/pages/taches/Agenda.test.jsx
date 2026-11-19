@@ -291,6 +291,8 @@ describe('TCH104 — vues et navigation', () => {
       externes: [{ cle: '2-b', agenda_id: 2, agenda: 'Microsoft 365', titre: 'Rendez-vous banque',
         debut: '2026-11-18T14:30:00+01:00', fin: '2026-11-18T16:00:00+01:00', journee_entiere: false }],
       rendez_vous_minutes: 90,
+      // R4-01 — la charge servie de ce jour : rien à faire, 240 − 90 min de rendez-vous de disponible
+      charge: { taches: 0, restantes_minutes: 0, sans_duree: 0, capacite_minutes: 240, rendez_vous_minutes: 90, disponible_minutes: 150, deborde_minutes: 0 },
     })
     lireAgenda.mockResolvedValue({ data: d })
     const { container } = monter('/taches/agenda?vue=semaine')

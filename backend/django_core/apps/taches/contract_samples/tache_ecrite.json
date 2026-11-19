@@ -169,8 +169,15 @@
       "essentiel_prevues": 1,
       "plan_tenues": 1,
       "plan_lignes": 4,
-      "minutes_prevues": 75,
-      "sans_estimation": 1,
+      "charge": {
+        "taches": 3,
+        "restantes_minutes": 75,
+        "sans_duree": 1,
+        "capacite_minutes": 240,
+        "rendez_vous_minutes": 60,
+        "disponible_minutes": 180,
+        "deborde_minutes": 0
+      },
       "capacite_minutes": 240,
       "capacite_source": "defaut",
       "rendez_vous_minutes": 60,

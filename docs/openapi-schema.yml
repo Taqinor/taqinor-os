@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 5230, operations: 8062, components: 4013}
+counts: {paths: 5230, operations: 8062, components: 4021}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -13202,6 +13202,7 @@ components:
 - TachesActiviteClose
 - TachesAffichage
 - TachesAvertissement
+- TachesCharge
 - TachesCompteChecklist
 - TachesCompteSousTaches
 - TachesComptesProjet
@@ -13252,6 +13253,7 @@ components:
 - TachesEchAgendaExterne
 - TachesEchAgenda_Capacite
 - TachesEchAgenda_Jours_Element
+- TachesEchAgenda_Jours_Element_Charge
 - TachesEchAgenda_Jours_Element_Externes_Element
 - TachesEchAgenda_Jours_Element_TouteLaJournee_Element
 - TachesEchAgenda_MesProjets_Element
@@ -13268,6 +13270,7 @@ components:
 - TachesEchAujourdhui_Obligations_Element
 - TachesEchAujourdhui_Plan
 - TachesEchAujourdhui_Progression
+- TachesEchAujourdhui_Progression_Charge
 - TachesEchAujourdhui_Progression_Detail
 - TachesEchAujourdhui_Propose
 - TachesEchAujourdhui_Propose_Charge
@@ -13287,6 +13290,7 @@ components:
 - TachesEchGesteAnnuler
 - TachesEchGesteAnnuler_Conflits_Element
 - TachesEchGesteAnnuler_Progression
+- TachesEchGesteAnnuler_Progression_Charge
 - TachesEchGesteAnnuler_Progression_Detail
 - TachesEchGesteAnnuler_Restaurees_Element
 - TachesEchGestes
@@ -13310,6 +13314,7 @@ components:
 - TachesEchJourneeEcrite_Aujourdhui_Obligations_Element
 - TachesEchJourneeEcrite_Aujourdhui_Plan
 - TachesEchJourneeEcrite_Aujourdhui_Progression
+- TachesEchJourneeEcrite_Aujourdhui_Progression_Charge
 - TachesEchJourneeEcrite_Aujourdhui_Progression_Detail
 - TachesEchJourneeEcrite_Aujourdhui_Propose
 - TachesEchJourneeEcrite_Aujourdhui_Propose_Charge
@@ -13325,6 +13330,7 @@ components:
 - TachesEchJourneeProposition_SuiteParProjet_Element_Projet
 - TachesEchLierActivite
 - TachesEchLierActivite_Progression
+- TachesEchLierActivite_Progression_Charge
 - TachesEchLierActivite_Progression_Detail
 - TachesEchLot
 - TachesEchLot_Refusees_Element
@@ -13351,8 +13357,10 @@ components:
 - TachesEchPoint_CarteDuMoment
 - TachesEchPoint_Objectif
 - TachesEchPoint_Progression
+- TachesEchPoint_Progression_Charge
 - TachesEchPoint_Progression_Detail
 - TachesEchPriorites
+- TachesEchPriorites_Charge
 - TachesEchPriorites_Lignes_Element
 - TachesEchPriorites_Objectif
 - TachesEchProjetEcrit

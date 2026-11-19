@@ -493,12 +493,15 @@ def _prevue_au_jour(item, J):
     return (item.type == TACHE and classement.gardee_aujourdhui(item, J) and item.moment != Moment.SOIR)
 
 
-def _minutes_prevues(journee):
+def minutes_prevues_du_jour(journee):
+    """Σ estimations des tâches (ouvertes ET faites aujourd'hui) d'Essentiel et de Prévu, hors Ce soir : le
+    `PlanJour.minutes_prevues` qu'écrit la nuit (statistique du rythme). Jamais montré : la charge du jour à l'écran est
+    `charge_du_jour` (R4-01)."""
     taches = [i for i in journee.items.values() if _prevue_au_jour(i, journee.jour)
               and (i.statut == StatutTache.A_FAIRE
                    or journee.placements.get((TACHE, i.id), classement.Placement('')).section
                    == SectionJournee.FAITES)]
-    return sum(i.estimation_minutes or 0 for i in taches), sum(1 for i in taches if i.estimation_minutes is None)
+    return sum(i.estimation_minutes or 0 for i in taches)
 
 
 def essentiel_servi(journee):
@@ -510,29 +513,22 @@ def essentiel_servi(journee):
     return sum(1 for cle in cles if journee.items[cle].statut == StatutTache.FAIT), len(cles)
 
 
-def minutes_restantes(journee):
-    """Σ estimations des tâches OUVERTES (`a_faire`) d'Essentiel et de Prévu, hors Ce soir — la règle de
-    `minutes_prevues` sans les faites : ce qui reste à faire aujourd'hui (R3-006)."""
-    return sum(i.estimation_minutes or 0 for i in journee.items.values()
-               if _prevue_au_jour(i, journee.jour) and i.statut == StatutTache.A_FAIRE)
-
-
-def debordement(journee, disponible_minutes):
-    """`(minutes_restantes, deborde_minutes)` : `deborde` = max(0, restantes − disponible), le temps disponible étant
-    celui de la PROGRESSION (capacité − rendez-vous, invariant 35) — « Aide-moi à prioriser » et « Où j'en suis ? »
-    le servent (R3-006)."""
-    restantes = minutes_restantes(journee)
-    return restantes, max(0, restantes - disponible_minutes)
+def charge_du_jour(journee, jour, capacite_minutes, rendez_vous_minutes, items=None):
+    """R4-01 (M1) — LA charge du jour `jour` (forme CHARGE : `classement.charge_du_jour`), lue des éléments DÉJÀ chargés
+    de la journée (`items` : ceux d'une période de l'agenda) : aucune requête. Seule source de « … de trop » : la
+    PROGRESSION d'`aujourdhui/` et de toute écriture, chaque jour d'`agenda/` (donc Planifier ma semaine), `priorites/`
+    et `point/` (le Copilote) la servent ; aucun écran ne recalcule."""
+    elements = journee.items.values() if items is None else items
+    return classement.charge_du_jour(elements, jour, journee.jour, capacite_minutes, rendez_vous_minutes)
 
 
 def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minutes=0, reprise=False, closes=()):
     """Forme PROGRESSION (api.md §1) : `faites` = `compte_du_jour` ; `prevues` = faites + éléments
     ouverts gardés ; essentiel = `essentiel_servi` ; `plan_tenues`/`plan_lignes` (servis pour la nuit, plus
     jamais montrés) sur les lignes `prevue_au_plan` (`ligne_faite`, `closes` = les activités ERP closes du jour,
-    lues pour `faites`)."""
+    lues pour `faites`) ; `charge` = `charge_du_jour` (R4-01 : le temps du jour, ce qui RESTE contre le disponible)."""
     essentiel_faites, essentiel_prevues = essentiel_servi(journee)
     au_plan = [ligne for ligne in journee.lignes if ligne_gardee(ligne)]
-    minutes, sans = _minutes_prevues(journee)
     capacite_minutes, capacite_source = capacite
     activites = [cle for cle in journee.sections.get(SectionJournee.JOURNEE, ()) if cle[0] == ACTIVITE]
     closes = frozenset(closes)
@@ -540,7 +536,8 @@ def progression_du_jour(journee, *, faites, detail, capacite, rendez_vous_minute
         'faites': faites, 'detail': dict(detail), 'prevues': faites + len(gardes_ouverts(journee)),
         'essentiel_faites': essentiel_faites, 'essentiel_prevues': essentiel_prevues,
         'plan_tenues': sum(1 for ligne in au_plan if ligne_faite(journee, ligne, closes)),
-        'plan_lignes': len(au_plan), 'minutes_prevues': minutes, 'sans_estimation': sans,
+        'plan_lignes': len(au_plan),
+        'charge': charge_du_jour(journee, journee.jour, capacite_minutes, rendez_vous_minutes),
         'capacite_minutes': capacite_minutes, 'capacite_source': capacite_source,
         'rendez_vous_minutes': rendez_vous_minutes,
         'disponible_minutes': classement.temps_disponible(capacite_minutes, rendez_vous_minutes),

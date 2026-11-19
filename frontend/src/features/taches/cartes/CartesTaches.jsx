@@ -10,6 +10,7 @@ import { PucesLues, noteDeLigne } from '../ui/ApercuListe'
 import { phraseAlerte } from '../ui/ChampSaisie'
 import { lignesACreer } from '../saisie/ColleListes'
 import { accord, duree, heure, jourCourt, jourNomme } from '../lib/textes'
+import { tempsTexte } from '../aujourdhui/Progression'
 
 /* ============================================================================
    TCH117 + TCH165 — Les cartes « Tâches » du Copilote, rendues DIRECTEMENT (sans passer par
@@ -179,7 +180,7 @@ function BoutonGarder({ lignes, jour, geste }) {
   return (
     <button type="button" className="bouton second" disabled={geste.occupe || geste.fait !== null}
       onClick={() => geste.lancer(() => client.garderJournee({ jour, mode: 'express', lignes: lignesDe(lignes), essentielles: [], triage: [] }),
-        accord(n, 'gardée'))}>
+        accord(n, "prévue aujourd'hui", "prévues aujourd'hui"))}>
       {n >= 2 ? `Garder ces ${n}` : 'Garder celle-ci'}
     </button>
   )
@@ -775,7 +776,7 @@ function CarteDebordement({ donnees }) {
   const lignes = donnees.lignes ?? []
   return (
     <div role="group" aria-label="Tes priorités">
-      <Tete titre={`Ta journée déborde de ${duree(donnees.deborde_minutes)}`} />
+      <Tete titre={`Ta journée déborde de ${duree(donnees.charge?.deborde_minutes)}`} />
       <div className="liste" role="list">
         {lignes.map((l) => (
           <LigneCarte key={cleItem(l.item)} item={l.item} rang={l.rang}
@@ -818,7 +819,8 @@ function CartePriorites({ donnees }) {
   const geste = useGeste(null, { principal: true })
   const [toutes, setToutes] = useState(false)
   const lignes = donnees.lignes ?? []
-  if (donnees.geste_propose === 'alleger' && donnees.deborde_minutes > 0 && lignes.length > 0) return <CarteDebordement donnees={donnees} />
+  // R4-01 — LA charge du jour (`charge`, la même que la page Aujourd'hui) : un seul verdict « trop plein » partout
+  if (donnees.geste_propose === 'alleger' && donnees.charge?.deborde_minutes > 0 && lignes.length > 0) return <CarteDebordement donnees={donnees} />
   if (lignes.length === 0) {
     return <div role="group" aria-label="Tes priorités"><Tete titre="Tes priorités" /><p className="section-sous">Rien à prioriser : tout est gardé ou fait.</p></div>
   }
@@ -854,13 +856,13 @@ function lignesDuPoint(d) {
   if (essentiel.length > 0) lignes.push(`Essentiel restant : ${essentiel.map((t) => t.titre).join(', ')}`)
   else if (p.essentiel_prevues > 0) lignes.push('Essentiel fait')
   if (d.prochaine) lignes.push(`Prochaine : ${d.prochaine.titre}${d.prochaine.heure_debut ? ` · ${heure(d.prochaine.heure_debut)}` : ''}`)
-  if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, 'gardée')}`)
+  // R4-07 (M6) — plus de « gardées » : ce qui reste prévu aujourd'hui
+  if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, "prévue aujourd'hui", "prévues aujourd'hui")}`)
   const rdv = d.rendez_vous_restants ?? []
   if (rdv.length > 0) lignes.push(`Rendez-vous restants : ${rdv.map((r) => `${heure(r.debut?.slice(11, 16))} ${r.titre}`).join(' · ')}`)
-  // R3-023 — le temps contre ce qui RESTE à faire (`minutes_restantes`, servi), jamais un « Temps libre » qui l'ignore
-  const reste = Number(d.minutes_restantes) || 0
-  if (reste > 0 && p.disponible_minutes > 0) lignes.push(`Reste : ${duree(reste)} pour ${duree(p.disponible_minutes)} disponibles`)
-  else if (reste > 0) lignes.push(`Reste : ${duree(reste)}`)
+  // R4-01 — LA phrase du temps d'Aujourd'hui, sur LA charge servie (`progression.charge`) : mêmes mots, même chiffre
+  const temps = tempsTexte(p.charge)
+  if (temps) lignes.push(temps)
   return lignes
 }
 

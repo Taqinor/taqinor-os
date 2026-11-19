@@ -471,6 +471,53 @@ class SchemaTests(SimpleTestCase):
         self.assertTrue(champs['properties'])
         self.assertNotIn('required', champs)
 
+    def _json_schema(self, noeud):
+        """Le schéma OpenAPI 3.0 d'un nœud en JSON Schema : `$ref` résolus, `nullable` → `anyOf` avec `null`."""
+        if isinstance(noeud, list):
+            return [self._json_schema(n) for n in noeud]
+        if not isinstance(noeud, dict):
+            return noeud
+        if '$ref' in noeud:
+            cible = self._json_schema(self.schema['components']['schemas'][noeud['$ref'].rsplit('/', 1)[-1]])
+            return {'anyOf': [cible, {'type': 'null'}]} if noeud.get('nullable') else cible
+        sortie = {cle: self._json_schema(v) for cle, v in noeud.items() if cle not in ('nullable', 'readOnly')}
+        if noeud.get('nullable'):
+            return {'anyOf': [sortie, {'type': 'null'}]}
+        return sortie
+
+    def test_chaque_carte_du_moment_servie_est_valide(self):
+        """R4-08 (api-fuzz, shard 6, « Response violates schema » sur `POST journee/planifier/`) — CHAQUE type de
+        carte du moment, dans la forme exacte que le serveur sert (`services.journee._carte`), est valide sous le schéma
+        publié d'`aujourdhui/`, de `journee/planifier/` (journee_ecrite), de `journee/point/` et de `vu/` : une carte
+        liée à l'heure n'a pas de proposition (`null`), une révélation peut ne plus en avoir, et une proposition
+        répondue ou sans fin n'a ni boutons ni `expire_le`."""
+        import jsonschema
+
+        from apps.taches.choix import CarteDuMoment
+        from apps.taches.services.journee import _carte
+        from apps.taches.views.base import exemple_de
+        proposition = exemple_de('aujourdhui')['carte_du_moment']['proposition']
+        sans_fin = {**proposition, 'expire_le': None, 'boutons': []}
+        donnees = {CarteDuMoment.BILAN_HIER: {'jour': '2026-11-16'}, CarteDuMoment.GARDER: {'n': 3, 'objectif': 5},
+                   CarteDuMoment.ALLEGER: {'faites': 1, 'prevues': 4}}
+        cartes = [None]
+        for type_ in CarteDuMoment:
+            cartes.append(_carte(type_, donnees=donnees.get(type_)))
+            cartes.append(_carte(type_, proposition_=proposition))
+            cartes.append(_carte(type_, proposition_=sans_fin))
+        composants = self.schema['components']['schemas']
+        for composant, chemin in (('TachesEchAujourdhui', ('carte_du_moment',)),
+                                  ('TachesEchJourneeEcrite', ('aujourdhui', 'carte_du_moment')),
+                                  ('TachesEchPoint', ('carte_du_moment',)), ('TachesEchVu', ('carte_du_moment',))):
+            noeud = self._json_schema(composants[composant])
+            for cle in chemin:
+                noeud = noeud['properties'][cle]
+                noeud = next((b for b in noeud.get('anyOf', ()) if b.get('type') != 'null'), noeud) \
+                    if cle != chemin[-1] else noeud
+            for carte in cartes:
+                with self.subTest(composant=composant, carte=carte):
+                    jsonschema.validate(json.loads(json.dumps(carte)), noeud)
+
     def test_le_rejeu_d_une_creation_est_documente_200(self):
         self.assertEqual({'200', '201'} & set(self._operation('POST', 'taches/')['responses']), {'200', '201'})
 

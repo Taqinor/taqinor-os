@@ -161,6 +161,9 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     du_jour, de_periode = taches_journee_et_periode(user, J, du, au, projet_id)
     journee = sel.lire_journee(user, J, reglages=reglages, travailles=sel.travailles_autour(user, J),
                                taches=du_jour, focus=focus)
+    # R4-01 : la charge d'aujourd'hui se lit sur les éléments de LA journée (le préfiltre d'`aujourdhui/`), avant que
+    # la période ne s'y ajoute ; les autres jours, sur les tâches de la période
+    items_du_jour = list(journee.items.values())
     cles = _ajouter_periode(journee, de_periode, focus)
     travailles = _travailles_de(user, journee.travailles, J, du, au)
     ouvres = set(jours_ouvres_entre(user.company, du, au))
@@ -172,6 +175,8 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
     rendu = formes_journee.Rendu(journee, assistant=assistant, peut_cloturer=obligations.peut_cloturer,
                                  agendas=agendas)
     faites = faites_par_jour(user, du, au, J)
+    minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)
+    items_periode = [journee.items[cle] for cle in cles]
     jours = []
     for n in range((au - du).days + 1):
         jour = du + datetime.timedelta(days=n)
@@ -184,10 +189,13 @@ def lire_agenda(user, du, au, vue, maintenant_, *, projet_id=None, assistant=Fal
         entree['rendez_vous_minutes'] = sel.minutes_de_rendez_vous(user, jour, externes)
         # R2-102 — « faites » = finies CE jour-là (règle C-12), le nombre de Mon rythme ; 0 pour un jour à venir
         entree['faites_nb'] = faites.get(jour, 0)
+        # R4-01 — LA charge du jour (`selectors.journee.charge_du_jour`, celle d'Aujourd'hui et du Copilote) : ce qui
+        # reste à faire contre la capacité moins les rendez-vous de CE jour ; nulle pour un jour passé (ses faites)
+        entree['charge'] = None if jour < J else sel.charge_du_jour(
+            journee, jour, minutes, entree['rendez_vous_minutes'], items=items_du_jour if jour == J else items_periode)
         jours.append(entree)
     # Le volet « À placer » est le même en vue Jour et Semaine (maquettes, SCENARIO §4) : Mes projets y est servi.
     volet = vue in (VUE_JOUR, VUE_SEMAINE)
-    minutes, source = sel.capacite_du_jour(user, J, reglages, sel.preferences_de(user), journee.travailles)
     return {
         'du': du.isoformat(), 'au': au.isoformat(), 'jours': jours,
         'a_placer': rendu.items(a_placer(journee, projet_id)),

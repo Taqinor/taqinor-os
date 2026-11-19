@@ -72,7 +72,8 @@ test.describe('Tâches — la journée', () => {
     await boutonGarder(page, base.lignes).click()
 
     // « Garder » : toast, invite ★, focus sur Prévu (critère 8 de spec-7 « Accessibilité »)
-    await expect(toast(page)).toContainText(base.lignes >= 2 ? `${base.lignes} gardées` : 'gardée')
+    // R4-07 : « gardées » n'est plus écrit — ce qu'on garde est prévu aujourd'hui
+    await expect(toast(page)).toContainText(base.lignes >= 2 ? `${base.lignes} prévues aujourd'hui` : "1 prévue aujourd'hui")
     await expect(section(page, 'Prévu')).toBeVisible()
     await expect(section(page, 'Prévu')).toBeFocused()
     await expect(page.getByText('Touche ★ pour ton essentiel')).toBeVisible()

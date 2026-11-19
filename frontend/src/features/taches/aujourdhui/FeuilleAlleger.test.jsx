@@ -50,16 +50,37 @@ beforeEach(() => {
 })
 
 describe('TCH79 — menu ⋯ d\'Aujourd\'hui', () => {
-  it('propose les quatre actions de l\'écran puis celles de la coquille', async () => {
+  it('propose les actions de l\'écran puis celles de la coquille ; R4-02 : « Faire le bilan » tant que la journée n\'est pas close', async () => {
     servir(unJour())
     monter()
     await screen.findByText('Devis Settat')
     await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
     const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
     expect(noms).toEqual([
-      'Alléger ma journée', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
+      'Alléger ma journée', 'Faire le bilan', 'Réorganiser', 'Sélectionner', 'En faire mon accueil',
       'Revue de la semaine', 'Mon rythme', 'Supprimées', 'Réglages',
     ])
+  })
+
+  it('R4-02 — « ⋯ › Faire le bilan » ouvre le bilan du soir ; la journée close, il n\'est plus proposé', async () => {
+    servir(unJour())
+    api.get.mockImplementation((url) => Promise.resolve({
+      data: String(url).includes('journee/cloture/') ? contrat('journee_cloture') : unJour(),
+    }))
+    const { unmount } = monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Faire le bilan' }))
+    expect(await screen.findByRole('dialog', { name: 'Bilan du soir' })).toBeInTheDocument()
+    unmount()
+    const close = unJour()
+    close.plan = { ...close.plan, cloture_le: '2026-11-17T18:40:00+01:00' }
+    servir(close)
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: "Plus d'actions" }))
+    const noms = (await screen.findAllByRole('menuitem')).map((n) => n.textContent)
+    expect(noms).not.toContain('Faire le bilan')
   })
 
   it('« En faire mon accueil » poste la route d\'Aujourd\'hui sur auth/mobile-home-route/', async () => {
@@ -212,6 +233,30 @@ describe('TCH79 — Réorganiser et Sélectionner', () => {
     const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
     expect(titres.indexOf('Appeler Lydec')).toBeGreaterThanOrEqual(0)
     expect(titres.indexOf('Appeler Lydec')).toBeLessThan(titres.indexOf('Timbres'))
+  })
+
+  it('R4-10 (R3-007/R3-026) — une ligne À HEURE ne bouge pas au rang (le serveur la range par son heure) : l\'écran le DIT et rien ne part ; une ligne sans heure ne prend jamais une ligne à heure pour voisine', async () => {
+    const d = deuxTaches()
+    d.journee = [
+      { ...d.journee[0], id: 45, titre: 'Rendez-vous chantier', heure_debut: '09:00' },
+      { ...d.journee[0], id: 42, titre: 'Timbres', heure_debut: null },
+      { ...d.journee[1], heure_debut: null },
+    ]
+    servir(d)
+    monter()
+    await screen.findByText('Timbres')
+    await ouvrirMenu('Réorganiser')
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre « Rendez-vous chantier »' }))
+    expect(await screen.findByRole('group', { name: 'Geste effectué' })).toHaveTextContent("Rangée par son heure : change l'heure pour la déplacer.")
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/45/reordonner/', expect.anything(), expect.anything())
+    // « Timbres » (sans heure) monte : elle est déjà la première SANS heure — rien ne part, rien ne saute
+    await userEvent.click(screen.getByRole('button', { name: 'Monter « Timbres »' }))
+    expect(api.post).not.toHaveBeenCalledWith('/taches/taches/42/reordonner/', expect.anything(), expect.anything())
+    const titres = [...document.querySelectorAll('[data-ligne^="tache:4"] .titre')].map((n) => n.textContent)
+    expect(titres).toEqual(['Rendez-vous chantier', 'Timbres', 'Appeler Lydec'])
+    // et descend sous « Appeler Lydec », seule voisine sans heure
+    await userEvent.click(screen.getByRole('button', { name: 'Descendre « Timbres »' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/taches/taches/42/reordonner/', { liste: 'jour', avant_id: 43, apres_id: null }, { erreurSousLeChamp: true }))
   })
 
   it('Sélectionner : on coche deux tâches, « 2 sélectionnées », Terminer poste lot/', async () => {

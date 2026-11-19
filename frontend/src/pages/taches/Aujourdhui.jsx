@@ -59,6 +59,7 @@ const heureDe = (iso) => String(iso ?? '').slice(11, 16)
 /** R3-028 — les touches qui ne valent que pour une TÂCHE (`clavierListe`) : sur une activité ERP, l'écran le dit. */
 const TOUCHES_DE_TACHE = new Set(['quand', 'renommer', 'heure', 'deplacer', 'selectionner', 'essentiel'])
 const PHRASE_ACTIVITE_ERP = "Une activité ERP s'ouvre dans l'ERP"
+const ADRESSE_ACTIVITES = '/activites'
 
 /** R3-024 — les champs d'une TACHE écrite par la fiche qu'une ligne de la journée reprend telle quelle. */
 const CHAMPS_FICHE = ['titre', 'jour_prevu', 'moment', 'heure_debut', 'quelque_jour', 'estimation_minutes', 'echeance', 'lock_version']
@@ -802,7 +803,8 @@ export default function Aujourdhui() {
       setInvite(true)
       setFocusPrevu((v) => v + 1)
       proposerAnnuler({
-        message: `${accord(items.length, 'gardée')}`,
+        // R4-07 (M6) — « gardées » n'est plus écrit : ce qu'on a gardé est PRÉVU aujourd'hui
+        message: accord(items.length, "prévue aujourd'hui", "prévues aujourd'hui"),
         onAnnuler: async () => { await client.annulerGeste(data.geste_id); await charger() },
       })
     } catch (err) {
@@ -899,11 +901,10 @@ export default function Aujourdhui() {
   /** R3-028 — une touche de tâche (`d`, `e`, `h`, `m`, `x`, Entrée sans adresse) sur une activité ERP : le dire, avec le
    *  chemin vers l'ERP quand l'activité en a un — jamais un geste qui ne fait rien sans un mot. */
   const direActiviteErp = useCallback((item) => {
-    const url = item.lien?.url
-    proposerAnnuler({
-      message: PHRASE_ACTIVITE_ERP,
-      ...(url ? { libelle: 'Ouvrir', apres: null, onAnnuler: () => navigate(url) } : {}),
-    })
+    // R4-10 (R3-028) — la phrase MÈNE toujours à l'ERP : l'adresse de l'activité quand elle en a une, sinon « Mes
+    // activités » de l'ERP (le même repli que « Ailleurs dans l'ERP » et À trier)
+    const url = item.lien?.url || ADRESSE_ACTIVITES
+    proposerAnnuler({ message: PHRASE_ACTIVITE_ERP, libelle: 'Ouvrir', apres: null, onAnnuler: () => navigate(url) })
   }, [navigate])
 
   const geste = useMemo(() => ({
@@ -1106,6 +1107,10 @@ export default function Aujourdhui() {
     enLigne,
     peutAlleger: Boolean(donnees) && !donnees.plan?.cloture_le && candidatesAlleger(donnees).length > 0,
     onAlleger: () => ouvrirFeuille('alleger'),
+    // R4-02 — « Faire le bilan » est toujours à portée dans ⋯ tant que la journée n'est pas close (un jour en retard,
+    // la carte n'est plus le seul chemin)
+    peutBilan: Boolean(donnees) && !donnees.plan?.cloture_le,
+    onBilan: () => ouvrirFeuille('bilan', { jour: null }),
     onReorganiser: () => modes.setReorganiser((v) => !v),
     onSelectionner: modes.basculerSelection,
   })
@@ -1115,7 +1120,9 @@ export default function Aujourdhui() {
     onAction: (code) => (code === 'planifier' ? setFeuille({ type: 'jour_lot' }) : modes.lot(code)),
     onFermer: modes.quitterSelection,
   } : null
-  const bandeau = erreur ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
+  // R4-09 — hors ligne, la coquille dit déjà « Hors ligne · dernière synchro à … » : un seul message, jamais aussi
+  // « Pas à jour · Réessayer » (réessayer sans réseau ne peut rien) ; le bandeau revient pour un échec EN ligne
+  const bandeau = erreur && enLigne ? <BandeauPasAJour derniere={derniere} onReessayer={charger} /> : null
 
   const contenu = (
     <>
@@ -1140,6 +1147,10 @@ export default function Aujourdhui() {
           jour={donnees.jour}
           maintenant={donnees.maintenant}
           objectif={donnees.objectif?.nb}
+          faites={donnees.progression?.faites}
+          charge={donnees.progression?.charge}
+          compte={userId}
+          conseilDonne={Boolean(donnees.conseil_donne)}
           enLigne={enLigne}
           onRepondre={repondre}
           onGarder={() => garder(donnees.propose?.pour_objectif ?? [])}
@@ -1149,7 +1160,8 @@ export default function Aujourdhui() {
           onNaviguer={navigate}
           onCopilote={geste.copilote}
           brouillon={brouillon && !saisieOuverte ? (
-            <div className="carte" role="region" aria-label="Brouillon">
+            // R4-06 — le dessin unique des cartes du moment (rangée compacte)
+            <div className="carte compacte" role="region" aria-label="Brouillon">
               <p className="carte-texte">Ta saisie de tout à l&apos;heure t&apos;attend.</p>
               <div className="carte-actions">
                 <button type="button" className="bouton second" onClick={() => ouvrirSaisie({})}>Reprendre</button>

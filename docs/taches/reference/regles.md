@@ -446,7 +446,8 @@ sans motif d'À revoir (§4.2) ; `exclure` retirés.
    (`{"code","texte"}`, textes §2.2 de `textes.md`) ; `reste_nb` = tour non pris ; `suite_par_projet` (`?tout=1`, « Voir
    toutes les tâches de mes projets ») = toutes les tâches ouvertes non gardées des projets actifs et des sans-projet
    triées, groupées par projet (ordre du tour), dans l'ordre du projet, prévues plus tard comprises (leur jour dit).
-5. **Charge** (montrée à côté de « Garder ces N », jamais un filtre) : `minutes_estimees` (gardées + proposées),
+5. **Charge** (montrée à côté de « Garder ces N », jamais un filtre) : `minutes_estimees` (la charge du jour, §4.9 —
+   les gardées qui y pèsent, R4-01 — plus les proposées),
    `sans_estimation`, `surcharge` = minutes > `disponible_minutes` (§3.6), `non_calculable` = plus de la moitié sans durée.
 6. **Planifier ma semaine** : `agenda/?vue=semaine` → `mes_projets` = le tour complet (étape 3, sans N), groupé par
    projet ; toucher une tâche puis un jour = `planifier(jour_prevu=jour)`. Sans jour dans l'adresse, le mode s'ouvre
@@ -622,8 +623,19 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
 
 ### 4.9 Capacité, progression, pastille
 
-- **Capacité** : §3.6. `minutes_prevues` = Σ estimations des tâches (ouvertes et faites aujourd'hui) d'Essentiel et
-  de Prévu.
+- **Capacité** : §3.6. `PlanJour.minutes_prevues` (statistique de la nuit, jamais montrée) = Σ estimations des tâches
+  (ouvertes et faites aujourd'hui) d'Essentiel et de Prévu.
+- **La charge d'un jour (R4-01, M1 « un chiffre, une source »)** : UNE fonction, `selectors.journee.charge_du_jour`
+  (règle pure `moteur.classement.compte_dans_la_charge`), dit pour un jour D (aujourd'hui = J) : les tâches qui pèsent
+  sur D — à faire (ni faites : une faite ne compte plus ; ni en attente de quelqu'un), dans le préfiltre, ni plus tard,
+  ni Ce soir (hors des heures de travail), ni reportées 3 fois (À revoir), prévues D, ou à échéance D sans être prévues
+  un jour d'avant encore à venir (aujourd'hui : exactement Essentiel et Prévu ouverts, hors Ce soir) ;
+  `restantes_minutes` = Σ de leurs durées DITES ; `sans_duree` = celles sans durée (comptées 0, dites « N sans durée »,
+  jamais une durée inventée) ; `disponible_minutes` = capacité − rendez-vous de D (invariant 35) ; `deborde_minutes` =
+  max(0, restantes − disponible). Servie par `progression.charge` (Aujourd'hui, toute écriture, « Où j'en suis ? »),
+  `priorites.charge` (« Aide-moi à prioriser ») et `agenda/` `jours[].charge` (Jour, Semaine, Mois, Planifier ma
+  semaine) ; « Alléger » la lit (§4.10). Aucun écran ne recompte : un geste de l'Agenda (poser, cocher, durée) fait
+  suivre la charge servie de l'écart du jour, jusqu'à la relecture.
 - **`progression.faites` = `compte_du_jour`** (§6.1, invariant 13). `prevues` = `faites` + éléments ouverts gardés
   d'Essentiel, Prévu, Ce soir. **Essentiel** (R3-001, choix C-14) : `essentiel_faites`/`essentiel_prevues` = les ★
   de la section Essentiel SERVIE (ouvertes, ou faites aujourd'hui), comptées une fois (`selectors.journee.
@@ -639,10 +651,10 @@ La pastille ne change qu'à l'ouverture ou au push suivant (limite dite).
   faites ne sont plus montrées (R3-001, R3-020 : une seule source par chiffre, celle de `progression`). Tant que l'objectif
   est la valeur par défaut (`source = defaut`, rien de calculé ni de choisi) l'écran dit « {faites} faites », comme en mode
   libre, jamais « 0 sur 5 » (R3-029, choix C-24).
-- **Temps de la journée (R3-020)** : l'écran le dit en UNE phrase lue dans `progression` : « Temps : {minutes_prevues}
-  prévues pour {disponible_minutes} disponibles », « · {sans_estimation} sans durée », « · {minutes_prevues −
-  disponible_minutes} de trop » quand les minutes prévues dépassent le temps disponible ; « Durée totale inconnue » quand
-  plus de la moitié des tâches prévues n'a pas de durée (`sans_estimation` × 2 > `prevues`).
+- **Temps de la journée (R3-020, R4-01)** : l'écran le dit en UNE phrase lue dans `progression.charge` : « Reste :
+  {restantes_minutes} pour {disponible_minutes} disponibles », « · {sans_duree} sans durée », « · {deborde_minutes} de
+  trop » quand ce qui reste dépasse le temps disponible ; « Durée totale inconnue » quand plus de la moitié des tâches
+  qui restent n'a pas de durée (`sans_duree` × 2 > `taches`). « Où j'en suis ? » dit la même phrase.
 - **Pastille (UNE définition, invariant 11)** : `n` = éléments OUVERTS et GARDÉS d'Essentiel + Prévu + Ce soir
   (tâches ET activités ERP), plafonné à 99 ; JAMAIS Proposé (A16-N5) ; peut valoir 0 (→ `clearAppBadge`). Ni À revoir,
   En attente, À trier, ni obligations. Calculée par `compter_journee` pour `badge/`, `aujourdhui/` et `notify(badge=n)`.
@@ -656,19 +668,29 @@ saisie gardé) juste après `retour`, et l'astuce de geste avant la révélation
 |---|---|---|
 | `retour` | carte `retour` du jour non répondue (§4.8) | PROPOSITION |
 | `bilan_hier` | avant 12:00, hier a des restes et le `cloture_le` d'hier est nul | `{"jour"}` |
+| `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite — R4-02 : il passe AVANT `garder` et `alleger` (le soir d'un jour en retard est celui où il sert le plus) | `{}` |
 | `garder` | rien n'est encore gardé (`planifie_le` nul) et `pour_objectif` non vide | `{"n","objectif"}` |
-| `alleger` | à partir de `relance_jour`, `allege_le` nul, ≥ 1 gardée ouverte et `faites` < objectif / 2 (le seuil de la dérive, §7) | `{"faites","prevues"}` |
-| `faire_bilan` | à partir de `heure_soir`, `cloture_le` nul, plan validé ou ≥ 1 faite | `{}` |
+| `alleger` | R4-04 — entre `relance_jour` et `heure_soir` (jamais le soir : le bilan prend la place) ; objectif DIT (`nb` non nul et `source` ≠ `defaut` : jamais le premier jour ni sur l'objectif par défaut, on ne lit pas « 0 sur 5 ») ; ni `allege_le` ni `cloture_le` (jamais après « Bilan enregistré ») ; au moins une tâche qu'Alléger peut renvoyer (gardée ouverte prévue aujourd'hui sans échéance ≤ aujourd'hui, §4.5) ; et la journée est en retard (`faites` < objectif / 2, le seuil de la dérive, §7) OU trop pleine (`progression.charge.deborde_minutes` > 0, §4.9) | `{"faites","prevues"}` |
 | `rythme` | une PROPOSITION ouverte (`proposition_palier`, `derive_tenir`, `garde_taille`, ou un `constat` qui pose une QUESTION — jamais C5) et aucun conseil répondu aujourd'hui | PROPOSITION |
 | `pause` | une carte `pause` non répondue (type de sollicitation mis en pause) et aucun conseil répondu aujourd'hui | PROPOSITION |
 | `revelation` | une révélation du jour (I14) ; `mon_iphone` : `expire_le` = J+3 (A17-T3), placée en dernier, ne bloque pas les autres ; aucun conseil répondu aujourd'hui | PROPOSITION |
 
-**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `garder`, `alleger`,
-`faire_bilan`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
+**Une réponse tient la journée (R4-03).** Une carte à réponse servie (`retour`, `rythme`, `pause`, `revelation`) est
+répondue au serveur (`repondu_le`) : elle ne revient ni au rechargement ni sur un autre appareil. Une carte liée à
+l'heure écartée à l'écran (« Pas maintenant » d'`alleger`, « Passer » de `bilan_hier`) n'écrit rien au serveur : elle
+est retenue SUR L'APPAREIL, par compte et par jour (`features/taches/lib/stockage`, clé `taches:cartes-ecartees:<compte>`,
+une seule journée gardée, vidée à la déconnexion) — elle ne revient pas ce jour-là, rechargement et réouverture de
+l'appli compris ; le lendemain elle peut revenir. Après « Bilan enregistré » ni `alleger` ni `faire_bilan` ne sont
+montrés, même par une lecture d'avant. Le chiffre d'`alleger` est lu sur la progression VIVANTE de la page (R4-05).
+Le menu ⋯ d'Aujourd'hui propose toujours « Faire le bilan » tant que la journée n'est pas close (R4-02).
+
+**Règle du matin (R3-005, choix C-17).** Les cartes liées à l'heure (`retour`, `bilan_hier`, `faire_bilan`, `garder`,
+`alleger`) gardent l'ordre ci-dessus. Les cartes **de conseil** (`rythme`, `pause`, `revelation`, et côté écran
 les astuces de geste) : **au plus UNE par jour** — dès qu'une incitation d'écran de ces types
 (`proposition_palier`, `derive_tenir`, `garde_taille`, `constat`, `pause`, `revelation`) a `repondu_le` aujourd'hui,
-plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne` ;
-l'écran note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
+plus aucune jusqu'au lendemain, ni au rechargement ni sur un autre appareil (`services.journee._conseil_deja_donne`,
+servi à l'écran par `aujourdhui.conseil_donne` : vrai, l'appareil ne montre pas son astuce locale, R4-10 ; l'écran
+note sa propre astuce par `noterAstuce(null, jour)`). Priorité entre elles : rythme avec question, pause,
 astuce, révélation. **Une statistique sans geste n'apparaît jamais le matin** : C5 (et tout constat sans question)
 vit dans Mon rythme (« Ce que j'ai remarqué ») et, une fois, au bilan du soir (§6.9) ; un constat AVEC question (C7
 « Les revoir maintenant ? ») peut être le conseil du jour. Même règle pour `rythme` de `journee/proposition/`.
@@ -1151,10 +1173,9 @@ Jeu de §3.4 (N = 5) : R1, R2, A1, V1, M2, D3, A2, S1, V2, M3, D4, A3, S2, V3…
 **`plus_tard`** = le prochain jour travaillé APRÈS J dans la même semaine (lundi-dimanche), sinon le premier jour
 travaillé de la semaine suivante. Mar. 17/11 (18 férié) → jeu. 19 ; ven. 20 → lun. 23 ; jeu. 19 → ven. 20.
 
-**Le temps de la journée (R3-006).** `priorites/` et `point/` servent `faites` (= `progression.faites`),
-`minutes_restantes` (estimations des tâches OUVERTES d'Essentiel et de Prévu, hors Ce soir :
-`selectors.journee.minutes_restantes`) et `deborde_minutes` = max(0, restantes − `disponible_minutes`). Quand la
-journée DÉBORDE, « Aide-moi à prioriser » ne pousse plus à en ajouter : ses `lignes` sont les GARDÉES ouvertes
+**Le temps de la journée (R3-006, R4-01).** `priorites/` sert `faites` (= `progression.faites`) et `charge` ; `point/`
+lit `progression.charge` : LA charge du jour (§4.9), la même que la page, jamais recalculée à côté. Quand la
+journée DÉBORDE (`charge.deborde_minutes` > 0), « Aide-moi à prioriser » ne pousse plus à en ajouter : ses `lignes` sont les GARDÉES ouvertes
 (Essentiel, Prévu, Ce soir, dans l'ordre de la journée), sans raison, et `geste_propose` = `alleger` (« Alléger ma
 journée »). `garder_n` = 0 ne veut jamais dire « objectif atteint » : seul `faites` ≥ `objectif.nb` le dit.
 

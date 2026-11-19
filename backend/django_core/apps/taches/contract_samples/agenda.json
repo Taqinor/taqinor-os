@@ -166,7 +166,16 @@
           }
         ],
         "rendez_vous_minutes": 60,
-        "faites_nb": 1
+        "faites_nb": 1,
+        "charge": {
+          "taches": 2,
+          "restantes_minutes": 75,
+          "sans_duree": 0,
+          "capacite_minutes": 240,
+          "rendez_vous_minutes": 60,
+          "disponible_minutes": 180,
+          "deborde_minutes": 0
+        }
       }
     ],
     "a_placer": [
@@ -280,5 +289,8 @@
       "minutes": 240,
       "source": "defaut"
     }
-  }
+  },
+  "nuls": [
+    "jours.charge"
+  ]
 }

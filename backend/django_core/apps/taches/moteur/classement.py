@@ -386,9 +386,43 @@ def _suite_par_projet(candidates, pris):
     return files_par_projet(i for i in candidates if i.id not in pris)
 
 
-def _charge(gardees, proposees, disponible_minutes):
-    """Charge montrée à côté de « Garder ces N » (jamais un filtre, IR24)."""
-    taches = list(gardees) + list(proposees)
+def compte_dans_la_charge(item, jour, J):
+    """R4-01 (M1, « un chiffre, une source ») — LA règle d'une tâche qui pèse sur la charge du jour `jour`
+    (aujourd'hui = `J`) : à faire (`a_faire` : ni faite — une faite ne compte plus —, ni en attente de quelqu'un),
+    dans le préfiltre (`dans_prefiltre` : ni sous-tâche, ni bloquée, rangée), ni « plus tard », ni « Ce soir » (hors
+    des heures de travail), ni « reportée 3 fois » (À revoir, elle n'est pas dans la liste du jour) ; prévue ce
+    jour-là, ou à échéance ce jour-là sans être prévue un jour d'avant encore à venir (elle pèse une fois).
+    Aujourd'hui, c'est exactement Essentiel et Prévu ouverts, hors Ce soir."""
+    if item.type != TACHE or item.statut != StatutTache.A_FAIRE or item.quelque_jour or not dans_prefiltre(item):
+        return False
+    if item.moment == Moment.SOIR or reportee_3_fois(item, J):
+        return False
+    if item.jour_prevu == jour:
+        return True
+    return item.echeance == jour and not (item.jour_prevu is not None and J <= item.jour_prevu < jour)
+
+
+def charge_du_jour(items, jour, J, capacite_minutes, rendez_vous_minutes):
+    """R4-01 — LA charge d'un jour (forme CHARGE, api.md §1), seule source de « … de trop » partout (Aujourd'hui,
+    Agenda, Planifier ma semaine, Copilote) : `restantes_minutes` = Σ durées DITES des tâches qui comptent
+    (`compte_dans_la_charge`) ; `sans_duree` = celles qui n'en ont pas (comptées 0, jamais une durée inventée) ;
+    `disponible_minutes` = capacité − rendez-vous (invariant 35) ;
+    `deborde_minutes` = max(0, restantes − disponible)."""
+    taches = [item for item in items if compte_dans_la_charge(item, jour, J)]
+    restantes = sum(item.estimation_minutes or 0 for item in taches)
+    disponible = temps_disponible(capacite_minutes, rendez_vous_minutes)
+    return {
+        'taches': len(taches), 'restantes_minutes': restantes,
+        'sans_duree': sum(1 for item in taches if item.estimation_minutes is None),
+        'capacite_minutes': capacite_minutes, 'rendez_vous_minutes': rendez_vous_minutes,
+        'disponible_minutes': disponible, 'deborde_minutes': max(0, restantes - disponible),
+    }
+
+
+def _charge(gardees, proposees, disponible_minutes, J):
+    """Charge montrée à côté de « Garder ces N » (jamais un filtre, IR24) : la charge du jour
+    (`compte_dans_la_charge`, R4-01 — la même base que partout) plus les proposées."""
+    taches = [t for t in gardees if compte_dans_la_charge(t, J, J)] + list(proposees)
     minutes = sum(t.estimation_minutes or 0 for t in taches)
     sans = sum(1 for t in taches if t.estimation_minutes is None)
     return {
@@ -417,7 +451,7 @@ def proposer_plan(items, J, travailles, objectif, faites, gardees_ouvertes,
     gardees = taches_gardees(items, J, plan, travailles)
     if plan is not None and plan.allege_le is not None:
         return PlanPropose(suite_par_projet=_suite_par_projet(candidates, set()),
-                           charge=_charge(gardees, (), disponible_minutes), replie=True)
+                           charge=_charge(gardees, (), disponible_minutes, J), replie=True)
     presse, inclus, tour = _tete_et_tour(candidates, J, travailles, inclure)
     reste = max(0, places(objectif, faites, gardees_ouvertes) - len(presse) - len(inclus))
     pour_objectif = presse + inclus + tour[:reste]
@@ -425,7 +459,7 @@ def proposer_plan(items, J, travailles, objectif, faites, gardees_ouvertes,
         pour_objectif=pour_objectif,
         reste_nb=len(tour) - len(tour[:reste]),
         suite_par_projet=_suite_par_projet(candidates, {i.id for i, _ in pour_objectif}),
-        charge=_charge(gardees, (i for i, _ in pour_objectif), disponible_minutes),
+        charge=_charge(gardees, (i for i, _ in pour_objectif), disponible_minutes, J),
     )
 
 
