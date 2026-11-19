@@ -191,8 +191,69 @@ PREPARER = AgentAction(
     objets={'lead': 'lead'},
 )
 
+PUBLIER_APERCU = AgentAction(
+    key='calepinage.publier_apercu',
+    label='Aperçu : publier la conception au devis',
+    description=(
+        "Sert à : savoir, SANS rien écrire, ce que changerait la publication "
+        "de la conception au devis : génération du brouillon ou "
+        "resynchronisation du devis lié (même ENVOYÉ), ancien et nouveau "
+        "total TTC, kWc avant / après. Ne pas utiliser pour : publier (c'est "
+        "calepinage.publier_devis, qui exige les deux totaux lus ici). "
+        "Exemple : « mets le devis à jour avec le calepinage 12 » → id=12, "
+        "puis propose calepinage.publier_devis avec ces totaux. Résultat : "
+        "geste, devis lié, corrige_apres_envoi, ancien_total_ttc, "
+        "nouveau_total_ttc, a_faire (publier | rien). Un devis figé ou un "
+        "verdict électrique bloquant est refusé ici (409 nommé) : dis-le et "
+        "donne le lien."),
+    endpoint=BASE + '{id}/publier-devis/apercu/',
+    method='GET',
+    inputs=_schema({'id': dict(ENTIER, description='Identifiant du calepinage.')},
+                   ('id',)),
+    required_permission=VOIR,
+    risk=RISK_INTERNAL,
+    lot=LOT_COPILOTE,
+)
+
+MONTANT = {'type': 'string', 'pattern': r'^\d+\.\d{2}$'}
+
+PUBLIER_DEVIS = AgentAction(
+    key='calepinage.publier_devis',
+    label='Mettre le devis à jour depuis la conception (ancien → nouveau total TTC)',
+    description=(
+        "Sert à : publier la conception du calepinage au devis — générer le "
+        "devis BROUILLON s'il n'y en a pas, sinon resynchroniser le devis lié, "
+        "y compris un devis déjà ENVOYÉ (corrigé en place, tracé « corrigé "
+        "après envoi »). Aucun PDF, aucun statut, aucune TVA ni remise. Ne pas "
+        "utiliser pour : un devis accepté, refusé ou expiré (refusé : il se "
+        "révise), ni lever un verdict électrique bloquant (dérogation humaine "
+        "à l'écran). Exemple : après calepinage.publier_apercu (ancien "
+        "84500.00, nouveau 86900.00) → id=12, ancien_total_ttc=\"84500.00\", "
+        "nouveau_total_ttc=\"86900.00\" (sans ancien_total_ttc quand l'aperçu "
+        "le dit null). Résultat : le devis généré ou resynchronisé ; 409 "
+        "apercu_perime si les totaux ont bougé : relis l'aperçu et refais "
+        "confirmer."),
+    endpoint=BASE + '{id}/publier-devis/',
+    method='POST',
+    inputs=_schema({
+        'id': dict(ENTIER, description='Identifiant du calepinage.'),
+        'ancien_total_ttc': dict(MONTANT, title='Ancien total TTC (MAD)',
+                                 description="Recopié de l'aperçu ; absent sans devis lié."),
+        'nouveau_total_ttc': dict(MONTANT, title='Nouveau total TTC (MAD)',
+                                  description="Recopié de l'aperçu."),
+    }, ('id', 'nouveau_total_ttc')),
+    required_permission=GERER,
+    risk=RISK_OUTWARD,
+    confirm_summary=(
+        "Mettre le devis à jour depuis la conception de ce calepinage, aux "
+        "totaux affichés (un devis envoyé est corrigé en place). Aucun PDF, "
+        "aucun envoi au client."),
+    lot=LOT_COPILOTE,
+    objets={'id': 'calepinage'},
+)
+
 ACTIONS = (DU_LEAD, RESUME, VARIANTES_COMPARER, SIMULATION_SUIVRE, SIMULER,
-           PREPARER)
+           PREPARER, PUBLIER_APERCU, PUBLIER_DEVIS)
 
 
 def register_actions() -> None:

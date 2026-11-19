@@ -398,3 +398,81 @@ class PreparerTest(BaseAssistantCalepinage):
         if reponse.status_code == 409:
             self.assertEqual(reponse.data['code'], 'calepinage_hors_vue')
             self.assertNotIn('calepinage', reponse.data)
+
+
+class PublierDevisTest(BaseAssistantCalepinage):
+    """CALA7 — aperçu puis publication ; envoyé permis APRÈS confirmation des
+    deux totaux (D-W2-Q1), figé refusé, jamais un champ de plus."""
+
+    def _lier(self, statut):
+        from apps.ventes.models import Devis
+
+        devis = Devis.objects.create(company=self.company, lead=self.lead,
+                                     client=self.client_a, statut=statut,
+                                     reference=f'DEV-CALA7-{statut}')
+        Calepinage.objects.filter(pk=self.cal.pk).update(devis=devis)
+        return devis
+
+    def _poster(self, corps):
+        return self.api.post(url_assistant('publier-devis/', self.cal.pk), corps,
+                             format='json')
+
+    def test_aucun_autre_champ_que_les_deux_totaux(self):
+        reponse = self._poster({'nouveau_total_ttc': '86900.00',
+                                'derogation_electrique': {'motif': 'x'}})
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual((reponse.data['field'], reponse.data['code']),
+                         ('derogation_electrique', 'champ_refuse'))
+        self.assertEqual(set(reponse.data), set(echantillon(
+            'calepinage_assistant_publier_devis.json', 'exemple_400_champ_refuse')))
+        for corps in ({}, {'nouveau_total_ttc': 86900}, {'taux_tva': 10}):
+            with self.subTest(corps=corps):
+                self.assertEqual(self._poster(corps).status_code, 400)
+
+    def test_devis_fige_refuse_aux_deux_temps(self):
+        devis = self._lier('accepte')
+        apercu = self.api.get(url_assistant('publier-devis/apercu/', self.cal.pk))
+        self.assertEqual(apercu.status_code, 409, apercu.data)
+        self.assertEqual(apercu.data['code'], 'devis_fige')
+        reponse = self._poster({'ancien_total_ttc': '0.00', 'nouveau_total_ttc': '0.00'})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'devis_fige')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+
+    def test_sans_conception_l_apercu_n_ecrit_rien(self):
+        from apps.ventes.models import Devis
+
+        avant = Devis.objects.filter(company=self.company).count()
+        reponse = self.api.get(url_assistant('publier-devis/apercu/', self.cal.pk))
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), avant)
+        self.cal.refresh_from_db()
+        self.assertIsNone(self.cal.devis_id)
+
+    def test_apercu_perime_n_ecrit_rien(self):
+        """Le recalcul ne rend pas les totaux vus : la transaction est annulée."""
+        from unittest import mock
+
+        from apps.calepinage.services import assistant as service
+
+        devis = self._lier('envoye')
+        with mock.patch.object(service, '_refuser_avant_publication', return_value=devis), \
+                mock.patch.object(service, '_publier',
+                                  return_value=('resynchronise', devis, {})), \
+                mock.patch.object(service, '_total_ttc', side_effect=['84500.00', '87300.00']):
+            reponse = self._poster({'ancien_total_ttc': '84500.00',
+                                    'nouveau_total_ttc': '86900.00'})
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['code'], 'apercu_perime')
+        self.assertIn('87', reponse.data['detail'])
+
+    def test_actions_du_flux_en_deux_temps(self):
+        from apps.calepinage.agent_actions import PUBLIER_APERCU, PUBLIER_DEVIS
+
+        self.assertEqual((PUBLIER_APERCU.method, PUBLIER_APERCU.risk), ('GET', RISK_INTERNAL))
+        self.assertEqual(PUBLIER_DEVIS.risk, 'outward')
+        self.assertEqual(PUBLIER_DEVIS.required_permission, 'calepinage_gerer')
+        self.assertEqual(set(PUBLIER_DEVIS.inputs['properties']),
+                         {'id', 'ancien_total_ttc', 'nouveau_total_ttc'})
+        self.assertEqual(PUBLIER_DEVIS.objets, {'id': 'calepinage'})

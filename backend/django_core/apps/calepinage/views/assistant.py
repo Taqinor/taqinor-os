@@ -32,7 +32,7 @@ from ..services.assistant import (
 )
 from .calepinages import CalepinageViewSet
 
-__all__ = ['resume', 'du_lead', 'preparer']
+__all__ = ['resume', 'du_lead', 'preparer', 'publier_devis_apercu', 'publier_devis']
 
 
 def refus(detail, champ, code, statut=status.HTTP_400_BAD_REQUEST):
@@ -161,8 +161,72 @@ def preparer(self, request):
                                      else status.HTTP_200_OK))
 
 
+def _publication(fonction, calepinage, user, **kwargs):
+    """Rend la réponse d'un des deux temps de la publication, refus compris :
+    les refus du pont devis (``DevisRefuse``) gardent la charge ventes et le
+    statut d'état de ``generer-devis`` / ``sync-devis`` (mêmes fonctions)."""
+    from ..services.devis import DevisRefuse
+    from .calepinages import _refus_devis, _statut_refus_devis
+
+    try:
+        return Response(fonction(calepinage, user=user, **kwargs))
+    except RefusAssistant as refuse_metier:
+        return Response(refuse_metier.corps(), status=refuse_metier.statut)
+    except DevisRefuse as refuse_devis:
+        return Response(_refus_devis(refuse_devis),
+                        status=_statut_refus_devis(refuse_devis))
+
+
+@extend_schema(responses={200: forme_du_contrat(
+    'CalepinageAssistantPublierApercu', 'calepinage_assistant_publier_apercu.json')})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, aperçu de calepinage.publier_devis)
+@action(detail=True, methods=['get'], url_path='publier-devis/apercu',
+        permission_classes=[PeutVoirCalepinage])
+def publier_devis_apercu(self, request, pk=None):
+    """CALA7 — l'aperçu (ancien → nouveau total TTC) de la publication au
+    devis, calculé par le MÊME service dans une transaction annulée."""
+    from ..services.assistant import apercu_publication
+
+    return _publication(apercu_publication, self.get_object(), user=request.user)
+
+
+#: CALA7 — ce que le corps de ``publier-devis`` accepte, et rien d'autre.
+CHAMPS_PUBLIER = ('ancien_total_ttc', 'nouveau_total_ttc')
+CONSIGNE_PUBLIER = ('Seuls ancien_total_ttc et nouveau_total_ttc sont acceptés ; '
+                    'TVA, remise et dérogation se règlent à l\'écran.')
+
+
+@extend_schema(
+    request=inline_serializer('CalepinageAssistantPublierCorps', {
+        'ancien_total_ttc': drf_serializers.CharField(allow_null=True),
+        'nouveau_total_ttc': drf_serializers.CharField()}),
+    responses={200: forme_du_contrat('CalepinageAssistantPublierDevis',
+                                     'calepinage_assistant_publier_devis.json')})
+# headless: servie au relais de l'assistant (apps.calepinage.agent_actions, calepinage.publier_devis)
+@action(detail=True, methods=['post'], url_path='publier-devis',
+        permission_classes=[PeutGererCalepinage])
+def publier_devis(self, request, pk=None):
+    """CALA7 — publie la conception au devis (génère le brouillon ou
+    resynchronise le devis lié, envoyé compris) aux SEULS totaux confirmés."""
+    from ..services.assistant import publier
+
+    corps, refuse = corps_borne(request, CHAMPS_PUBLIER, CONSIGNE_PUBLIER)
+    if refuse is not None:
+        return refuse
+    if not isinstance(corps.get('nouveau_total_ttc'), str) or not isinstance(
+            corps.get('ancien_total_ttc'), (str, type(None))):
+        return refus('Recopiez nouveau_total_ttc et ancien_total_ttc (absent ou '
+                     'null sans devis lié) de l\'aperçu confirmé.',
+                     'nouveau_total_ttc', 'totaux_manquants')
+    return _publication(publier, self.get_object(), user=request.user,
+                        ancien_vu=corps.get('ancien_total_ttc'),
+                        nouveau_vu=corps.get('nouveau_total_ttc'))
+
+
 # Le nom d'attribut est EXACTEMENT celui de la fonction : DRF mappe par
 # ``__name__`` (piège CALX7).
 CalepinageViewSet.resume = resume
 CalepinageViewSet.du_lead = du_lead
 CalepinageViewSet.preparer = preparer
+CalepinageViewSet.publier_devis_apercu = publier_devis_apercu
+CalepinageViewSet.publier_devis = publier_devis

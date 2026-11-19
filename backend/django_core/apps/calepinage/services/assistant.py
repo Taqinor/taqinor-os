@@ -408,3 +408,202 @@ def preparer(user, lead_id):
         'cree': cree,
         'reprise_visite': reprise,
     }, cree
+
+
+# ── CALA7 — publier la conception au devis (aperçu, puis publication) ──────
+#
+# Décision fondateur D-W2-Q1 (19/11/2026) : l'assistant PEUT corriger un devis
+# déjà ENVOYÉ, seulement après une confirmation qui montre l'ANCIEN et le
+# NOUVEAU total. D'où deux temps : l'APERÇU (GET, calculé par le MÊME service
+# que la publication dans une transaction ANNULÉE) puis la PUBLICATION (POST
+# qui porte les deux totaux vus ; 409 ``apercu_perime`` s'ils ne sont plus
+# ceux que le serveur recalcule — et alors rien n'est écrit). Les statuts
+# FIGÉS (accepté, refusé, expiré, remplacé) refusent. Aucun PDF (règle #4),
+# aucun statut de devis écrit, jamais de TVA, de remise ni de dérogation.
+
+
+class _Annuler(Exception):
+    """Sentinelle : annule la transaction de l'aperçu (rien n'est écrit)."""
+
+
+def _montant(valeur):
+    """Un total en texte décimal à deux chiffres (``"84500.00"``), ou None."""
+    from decimal import Decimal, InvalidOperation
+
+    if valeur is None:
+        return None
+    try:
+        return str(Decimal(str(valeur)).quantize(Decimal('0.01')))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _total_ttc(devis):
+    """Le total TTC RELU en base (jamais l'instance de l'appelant)."""
+    from apps.ventes.selectors import get_devis_by_pk
+
+    frais = get_devis_by_pk(devis.pk) if devis is not None else None
+    return _montant(frais.total_ttc) if frais is not None else None
+
+
+def _kwc_du_document(document):
+    from .mesures import mesures_du_document
+
+    if not isinstance(document, dict) or not document:
+        return None
+    return mesures_du_document(document).get('kwc')
+
+
+def _refuser_avant_publication(calepinage):
+    """Les refus qui sortent AVANT tout calcul : devis lié figé, verdict
+    électrique bloquant (la dérogation est humaine, D-ACAL-9)."""
+    from .archivage import MESSAGE_ARCHIVE, est_archive
+    from .devis import _devis_lie_actif
+    from .electrique import verdict_de_conception
+    from .verrou import est_verrouille
+
+    if est_archive(calepinage):
+        raise RefusAssistant(MESSAGE_ARCHIVE, 'calepinage', 'calepinage_archive')
+    lie = _devis_lie_actif(calepinage)
+    if lie is not None and est_verrouille(calepinage, devis=lie):
+        raise RefusAssistant(
+            f'Devis {lie.reference} {lie.get_statut_display().lower()} : il ne '
+            'se corrige plus. Révisez-le (V2 brouillon) puis publiez la '
+            'conception sur la V2.', 'devis', 'devis_fige')
+    verdict = verdict_de_conception(calepinage)
+    if verdict.get('verdict') == 'bloquant':
+        motifs = ' ; '.join(_texte(b.get('libelle'))
+                            for b in (verdict.get('bloquants') or ())[:MAX_BLOQUANTS])
+        raise RefusAssistant(
+            f'Verdict électrique bloquant ({motifs}) : un approbateur doit '
+            'corriger ou déroger à l\'écran, onglet « Verdict électrique » du '
+            'calepinage.', 'electrique', 'verdict_bloquant')
+    return lie
+
+
+def _sans_affiche(calepinage):
+    """Une COPIE relue du calepinage, affiche retirée EN MÉMOIRE : la copie des
+    octets de l'affiche vers la clé du devis est un effet HORS base qu'aucune
+    annulation ne défait (elle se fait après validation, :func:`publier`)."""
+    from ..models import Calepinage
+
+    copie = Calepinage.objects.select_related('company', 'devis').get(pk=calepinage.pk)
+    copie.roof_image = ''
+    return copie
+
+
+def _publier(calepinage, user):
+    """``(geste, devis, details)`` — génère le brouillon (aucun devis lié) ou
+    resynchronise le devis lié, par les services EXISTANTS du pont devis,
+    sans TVA, remise ni dérogation. ``DevisRefuse`` remonte tel quel."""
+    from apps.ventes.selectors import get_devis_by_pk
+
+    from .devis import _devis_lie_actif, generer_devis, resynchroniser_devis
+
+    lie = _devis_lie_actif(calepinage)
+    if lie is None:
+        journal = {}
+        devis, cree = generer_devis(calepinage, user=user, journal=journal)
+        return 'genere', devis, {
+            'deduplique': not cree, 'inchange': False,
+            'avertissements': list(journal.get('avertissements') or ()),
+            'marques_manquantes': list(journal.get('marques_manquantes') or ()),
+            'electrique': journal.get('electrique') or {}}
+    resultat = resynchroniser_devis(calepinage, user=user)
+    return 'resynchronise', get_devis_by_pk(lie.pk), {
+        'deduplique': False, 'inchange': bool(resultat.get('inchange')),
+        'avertissements': list(resultat.get('avertissements') or ()),
+        'marques_manquantes': list(resultat.get('marques_manquantes') or ()),
+        'electrique': resultat.get('electrique') or {}}
+
+
+def _lien_publication(calepinage, devis):
+    from apps.agent.ecrans import chemin
+
+    return (chemin('devis', devis.pk) if devis is not None
+            else chemin('calepinage', calepinage.pk))
+
+
+def apercu_publication(calepinage, *, user):
+    """CALA7 — l'APERÇU de la publication, sans aucune écriture (contrat
+    ``calepinage_assistant_publier_apercu.json``) : le MÊME service que la
+    publication, dans une transaction ANNULÉE, affiche retirée."""
+    from django.db import transaction
+
+    from .presentation import reference_calepinage
+
+    lie = _refuser_avant_publication(calepinage)
+    calcul = {}
+    try:
+        with transaction.atomic():
+            geste, devis, details = _publier(_sans_affiche(calepinage), user)
+            calcul.update(nouveau=_total_ttc(devis), inchange=details['inchange'])
+            raise _Annuler
+    except _Annuler:
+        pass
+    ancien = _total_ttc(lie)
+    inchange = lie is not None and calcul['inchange'] and calcul['nouveau'] == ancien
+    return {
+        'calepinage': calepinage.pk,
+        'reference': reference_calepinage(calepinage),
+        'geste': 'resynchroniser' if lie is not None else 'generer',
+        'devis': ({'id': lie.pk, 'reference': lie.reference, 'statut': lie.statut}
+                  if lie is not None else None),
+        'corrige_apres_envoi': lie is not None and lie.statut == 'envoye',
+        'kwc_avant': _kwc_du_document(getattr(lie, 'roof_layout', None)),
+        'kwc_apres': _kwc_du_document(calepinage.roof_layout),
+        'ancien_total_ttc': ancien,
+        'nouveau_total_ttc': calcul['nouveau'],
+        'a_faire': 'rien' if inchange else 'publier',
+        'lien': _lien_publication(calepinage, lie),
+    }
+
+
+def _apercu_perime(nouveau):
+    texte = (nouveau or '').replace('.', ',')
+    return RefusAssistant(
+        f"Les totaux ont changé depuis l'aperçu (nouveau total {texte} MAD "
+        'TTC) : relisez l\'aperçu et faites confirmer les nouveaux chiffres.',
+        'nouveau_total_ttc', 'apercu_perime')
+
+
+def publier(calepinage, *, user, ancien_vu, nouveau_vu):
+    """CALA7 — PUBLIE la conception au devis (contrat
+    ``calepinage_assistant_publier_devis.json``) aux seuls chiffres VUS.
+
+    ``ancien_vu`` / ``nouveau_vu`` : les totaux TTC de l'aperçu confirmé
+    (texte décimal ; ``ancien_vu`` None sans devis lié). Recalculés ici, dans
+    la transaction de la publication : s'ils diffèrent, tout est annulé et
+    :class:`RefusAssistant` ``apercu_perime`` (409) est levé. L'affiche n'est
+    copiée qu'APRÈS validation.
+    """
+    from django.db import transaction
+
+    from .devis import _poser_affiche
+
+    lie = _refuser_avant_publication(calepinage)
+    with transaction.atomic():
+        ancien = _total_ttc(lie)
+        geste, devis, details = _publier(_sans_affiche(calepinage), user)
+        nouveau = _total_ttc(devis)
+        if (ancien, nouveau) != (_montant(ancien_vu), _montant(nouveau_vu)):
+            raise _apercu_perime(nouveau)
+    if geste == 'genere' or not details['inchange']:
+        _poser_affiche(calepinage, devis)
+    electrique = details['electrique']
+    return {
+        'geste': geste,
+        'devis': devis.pk,
+        'reference': devis.reference,
+        'statut': devis.statut,
+        'corrige_apres_envoi': devis.statut == 'envoye',
+        'deduplique': details['deduplique'],
+        'inchange': details['inchange'],
+        'ancien_total_ttc': ancien,
+        'nouveau_total_ttc': nouveau,
+        'avertissements': [_texte(a) for a in details['avertissements']],
+        'marques_manquantes': list(details['marques_manquantes']),
+        'electrique': {'verdict': electrique.get('verdict'),
+                       'manquantes': list(electrique.get('manquantes') or ())},
+        'lien': _lien_publication(calepinage, devis),
+    }
