@@ -450,7 +450,8 @@ export function DialogueEnregistrerModele({ projet, onFait, onFermer }) {
  */
 export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhuiIso(), onFait, onFermer }) {
   const modele = source.type === 'modele'
-  const [nom, setNom] = useState('')
+  // R2-065 — le nom est prérempli (« {nom} (copie) » pour un double) : un seul « Créer » qui écrit
+  const [nom, setNom] = useState(modele ? source.nom : `${source.nom} (copie)`)
   const [date, setDate] = useState(aujourdhui)
   const [apercu, setApercu] = useState(null)
   const [erreur, setErreur] = useState('')
@@ -485,8 +486,12 @@ export function DialogueUtiliser({ source, etapes = null, aujourdhui = aujourdhu
   }
 
   const aJour = apercu && apercu.pour.nom === nom.trim() && apercu.pour.date === date
+  // l'aperçu (rien n'est écrit) est lu dès l'OUVERTURE, puis à chaque changement de date ou de nom posé
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- lecture à l'ouverture, une fois (D-ENF22)
+  useEffect(() => { lireApercu(nom, date) }, [])
   const creer = async () => {
-    if (!aJour) { await lireApercu(nom, date); return } // l'aperçu d'abord : rien n'est écrit avant de l'avoir vu
+    // UN seul « Créer » qui écrit : l'aperçu est déjà à l'écran ; un nom refusé (déjà pris) s'affiche sous le champ
+    rang.current += 1 // un aperçu encore en route ne doit plus rien afficher
     setOccupe(true)
     try {
       const { data } = await appeler(nom.trim(), date, true)

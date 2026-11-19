@@ -244,6 +244,7 @@ moyenne », « prévue aujourd'hui », « prévue ce soir », « prévue {jour p
 | Terminer | « Atteint ou abandonné ? » [Atteint] [Abandonné] · « Bilan (facultatif) » · « Ses {n} tâches encore ouvertes : » [Les remettre dans À trier] [Les abandonner] [Les déplacer vers…] · **Terminer** |
 | Supprimer | « Supprimer « {nom} » et ses {n} tâches ? Ils restent 30 jours dans Supprimées récemment. » [Supprimer] [Fermer] |
 | Modèles | « Enregistrer comme modèle » · « Inclure les notes » · « Date de lancement » · « {n} tâches, première le {jour} » · Créer ; vide « Aucun modèle » |
+| Dupliquer · Utiliser ce modèle (R2-065) | nom prérempli (« {nom} (copie) » ; le nom du modèle), l'aperçu « {n} tâches, première le {jour} » lu dès l'ouverture, UN seul **Créer** qui écrit |
 | Dupliquer · Enregistrer comme modèle (sous l'aperçu, seulement si n > 0) | « {n} tâche confidentielle non reprise » / « {n} tâches confidentielles non reprises » |
 | Archive | « Chercher un projet archivé » · Rouvrir ; vide « Aucun projet archivé » |
 
