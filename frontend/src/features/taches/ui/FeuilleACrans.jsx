@@ -66,9 +66,14 @@ const HORS_PIEGE = '[role="dialog"], [role="alertdialog"], [role="menu"], [role=
 /** R2-049 — le dernier geste était-il au clavier ? (lu à l'ouverture d'une feuille) Au doigt ou à la souris, le focus
  *  rendu à la fermeture ne dessine pas d'anneau épais sur le bouton touché (« ⋯ » après Alléger). */
 let derniereModalite = 'pointeur'
+/** R3-066 — l'élément qui avait le focus AVANT le dernier déplacement : un champ `autoFocus` de la feuille prend le focus
+ *  avant que la feuille ne lise son ouvreur (React le pose au montage) ; l'ouvreur est alors celui d'avant. */
+let focusCourant = null
+let focusPrecedent = null
 if (typeof document !== 'undefined') {
   document.addEventListener('keydown', () => { derniereModalite = 'clavier' }, true)
   document.addEventListener('pointerdown', () => { derniereModalite = 'pointeur' }, true)
+  document.addEventListener('focusin', (e) => { focusPrecedent = focusCourant; focusCourant = e.target }, true)
 }
 
 /** R2-050 — seuil du panneau à droite (bureau large) : en dessous, la variante `panneau` reste un dialogue/feuille. */
@@ -315,13 +320,17 @@ export default function FeuilleACrans({
 
   useEffect(() => {
     if (!ouverte) return undefined
-    origine.current = document.activeElement
     const racine = feuille.current
+    // R3-066 — un champ `autoFocus` de la feuille (Renommer, Nouveau projet) a déjà le curseur : on le lui laisse (la
+    // poignée le lui reprenait), et l'ouvreur est l'élément focalisé juste avant lui
+    const ici = document.activeElement
+    const champDejaPris = Boolean(racine && ici && ici !== racine && racine.contains(ici))
+    origine.current = champDejaPris ? (focusPrecedent && !racine.contains(focusPrecedent) ? focusPrecedent : null) : ici
     // R2-050 — le panneau ne vole pas le focus à la LIGNE qui l'a ouvert (`j`/`k` puis Entrée continuent dans la
     // liste) ; ouvert d'ailleurs (un menu, le bilan), il le prend comme une feuille. Fermé, il ne rend le focus que
     // s'il l'avait (ou si plus rien ne l'a) : on ne ramène jamais la personne en arrière dans la liste.
     laisserFocus.current = seulPanneau.current && Boolean(origine.current?.closest?.('[data-ligne]'))
-    if (!laisserFocus.current) focusInitial(racine)
+    if (!laisserFocus.current && !champDejaPris) focusInitial(racine)
     const parClavier = derniereModalite === 'clavier'
     return () => {
       const ici = document.activeElement

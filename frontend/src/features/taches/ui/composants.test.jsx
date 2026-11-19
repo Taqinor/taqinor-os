@@ -110,6 +110,26 @@ describe('TCH45 — FeuilleACrans', () => {
     vi.unstubAllGlobals()
   })
 
+  it('R3-066 — un champ `autoFocus` (Renommer, Nouveau projet) GARDE le curseur ; fermée, le focus revient à l\'ouvreur', () => {
+    const page = (ouverte) => (
+      <div className="tch">
+        <button type="button">Renommer le projet</button>
+        {ouverte ? (
+          <FeuilleACrans ouverte titre="Renommer" onFermer={() => {}}>
+            <input aria-label="Nom" autoFocus defaultValue="Site web" />
+          </FeuilleACrans>
+        ) : null}
+      </div>
+    )
+    const { rerender } = render(page(false))
+    const ouvreur = screen.getByRole('button', { name: 'Renommer le projet' })
+    act(() => { ouvreur.focus() })
+    rerender(page(true))
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveFocus() // pas la poignée « Agrandir la feuille »
+    rerender(page(false))
+    expect(ouvreur).toHaveFocus()
+  })
+
   it('peut s\'ouvrir directement à 85 %', () => {
     feuille({ cranInitial: '85' })
     expect(screen.getByRole('dialog')).toHaveClass('cran-85')
