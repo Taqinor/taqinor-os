@@ -162,6 +162,32 @@ describe('TCH43 — routes du module', () => {
     expect(coquille.querySelector('.saisie-bureau')).not.toBeNull()
   })
 
+  it.each([
+    '/taches/projets/modeles', '/taches/projets/archive', '/taches/revue', '/taches/reglages', '/taches/rythme',
+    '/taches/supprimees',
+  ])('R3-087 — %s : pas de « Ajouter une tâche » en tête (la touche n reste)', async (url) => {
+    const { container } = monter(url)
+    await screen.findByRole('heading', { level: 1 }, { timeout: 5000 })
+    expect(container.querySelector('.tch .saisie-bureau'), url).toBeNull()
+  })
+
+  it.each(['/taches/a-trier', '/taches/agenda'])('R3-087 — %s : on y range des tâches, la ligne « Ajouter une tâche » reste', async (url) => {
+    const { container } = monter(url)
+    await screen.findByRole('heading', { level: 1 }, { timeout: 5000 })
+    expect(container.querySelector('.tch .saisie-bureau'), url).not.toBeNull()
+  })
+
+  it('R3-082 — `largeur="pleine"` pose `data-largeur` sur la coquille ; sans elle, rien', () => {
+    const router = createMemoryRouter([
+      { path: '/a', element: <CoquilleTaches ecran="agenda" titre="Agenda" largeur="pleine"><p>grille</p></CoquilleTaches> },
+      { path: '/b', element: <CoquilleTaches ecran="rythme" titre="Mon rythme"><p>colonne</p></CoquilleTaches> },
+    ], { initialEntries: ['/a'] })
+    const { container } = render(<RouterProvider router={router} />)
+    expect(container.querySelector('.tch')).toHaveAttribute('data-largeur', 'pleine')
+    act(() => { router.navigate('/b') })
+    expect(container.querySelector('.tch')).not.toHaveAttribute('data-largeur')
+  })
+
   it('R2-087 — « ? » montre les touches de Tâches ; « / » va à la Recherche', async () => {
     const aideErp = vi.fn()
     window.addEventListener('keydown', aideErp) // l'aide générale de l'ERP écoute sur `window`
@@ -177,6 +203,12 @@ describe('TCH43 — routes du module', () => {
       expect(within(aide).queryByText('Essentiel')).toBeNull()
       expect(within(aide).queryByText('Annuler (hors champ)')).toBeNull()
       expect(within(aide).queryByText(/\+15 min/)).toBeNull()
+      // R3-095 — les touches les plus utilisées en TÊTE : j/k, Entrée, Échap ; « Réorganiser » (Alt+↑/↓) n'est plus promis
+      expect([...aide.querySelectorAll('dt')].slice(0, 3).map((dt) => dt.textContent)).toEqual(['j / k', 'Entrée', 'Échap'])
+      expect(within(aide).getByText('Ligne suivante / précédente')).toBeInTheDocument()
+      expect(within(aide).getByText('Ouvrir')).toBeInTheDocument()
+      expect(within(aide).getByText('Fermer')).toBeInTheDocument()
+      expect(within(aide).queryByText('Réorganiser')).toBeNull()
       expect(aideErp).not.toHaveBeenCalled()
       await act(async () => { aide.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
       expect(screen.queryByRole('dialog', { name: 'Touches de Tâches' })).toBeNull()

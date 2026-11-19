@@ -28,22 +28,9 @@ const MODES = [
   ['tenir', 'Garder ce rythme', "Je ne te pousse plus ; je te préviens si tu t'en éloignes."],
   ['libre', 'Sans objectif', 'Pas de nombre visé ; tes faites restent affichées.'],
 ]
-const SOURCES = {
-  defaut: 'valeur par défaut, pas encore calculée sur toi',
-  calcule: 'ta journée type',
-  accepte: 'accepté',
-  dit: 'ton choix',
-}
-/** La question que pose chaque constat (textes.md §4.4) ; C5 est une information. */
-const QUESTIONS = {
-  C1: "Mettre l'essentiel le matin ?",
-  C2: 'Le mettre en tête par défaut ?',
-  C3: 'En faire un jour court (un de moins) ?',
-  C4: 'Te proposer {f1} à garder ?',
-  C6: "Corriger leur durée à l'avenir ?",
-  C7: 'Les revoir maintenant ?',
-  C8: 'Mettre une de ses tâches dans Proposé demain ?',
-}
+/** R3-089 (M6) — la source de l'objectif n'est dite que lorsqu'elle compte pour Reda : la valeur par défaut, pas encore
+ *  calculée sur lui. « (accepté) », « (ta journée type) », « (ton choix) » étaient du vocabulaire du système. */
+const SOURCE_DITE = { defaut: 'valeur par défaut, pas encore calculée sur toi' }
 const COMPRENDRE = "Allumé : l'ERP calcule ton rythme et tes habitudes à partir de tes tâches. Éteint : plus rien n'est calculé ni gardé."
 const COMPRENDRE_ETEINT = "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."
 const JOURS_VOULUS = 10
@@ -64,25 +51,21 @@ function phraseObjectif(objectif) {
   if (objectif.mode === 'tenir' && Array.isArray(objectif.zone)) {
     return `Ton rythme : environ ${accord(objectif.nb, 'tâche')} (${objectif.zone[0]} à ${objectif.zone[1]})`
   }
-  return `Objectif du jour : ${objectif.nb} (${SOURCES[objectif.source] ?? ''})`.replace(/ \(\)$/, '')
+  const source = SOURCE_DITE[objectif.source]
+  return source ? `Objectif du jour : ${objectif.nb} (${source})` : `Objectif du jour : ${objectif.nb}`
 }
 
-/** La phrase de confirmation d'un changement de mode ou d'objectif (textes.md §4.1). */
-function confirmation(rythme, geste) {
+/** R3-089 — le toast d'un changement de mode ou d'objectif tient en une ligne (« Objectif : 6 · Annuler », « Garder ce
+ *  rythme : 4 à 5 · Annuler ») ; ce que le mode fait est écrit dans la PAGE, sous chaque mode (`MODES`), et le
+ *  « provisoire » de Garder ce rythme sous l'objectif — plus jamais un toast de sept lignes. */
+function confirmation(rythme) {
   const { objectif } = rythme
-  if (geste === 'plus') return `Objectif du jour : ${objectif.nb} (un de plus), dès aujourd'hui.`
-  if (geste === 'moins') return `Objectif du jour : ${objectif.nb} (un de moins), dès aujourd'hui.`
-  if (geste === 'nombre') return `Objectif du jour : ${objectif.nb}, dès aujourd'hui.`
-  if (rythme.mode === 'libre') {
-    return 'Sans objectif : plus de nombre visé. Tes faites, ton essentiel et tes gardées restent affichés.'
-  }
+  if (rythme.mode === 'libre' || objectif.nb == null) return 'Sans objectif'
   if (rythme.mode === 'tenir') {
     const [bas, haut] = objectif.zone ?? [objectif.nb, objectif.nb]
-    const provisoire = rythme.tenir?.provisoire ? ` À${A_CONFIRMER.slice(1)}` : ''
-    return `Garder ce rythme : environ ${accord(objectif.nb, 'tâche')} par jour (${bas} à ${haut}). `
-      + `Je ne te pousse plus ; je te préviens seulement si tu t'en éloignes.${provisoire}`
+    return `Garder ce rythme : ${bas} à ${haut}`
   }
-  return `En faire plus : objectif du jour ${objectif.nb}. Je te proposerai d'aller plus loin quand tu le tiens.`
+  return `Objectif : ${objectif.nb}`
 }
 
 function BandeauPasAJour({ onReessayer }) {
@@ -271,26 +254,26 @@ function Constats({ constats, onRepondre }) {
       <h2 className="section-titre"><span>Ce que j'ai remarqué</span></h2>
       {constats.length === 0 ? <p className="ep-source">Rien de remarqué pour l'instant.</p> : (
         <ul className="ep-remarque">
-          {constats.map((constat) => {
-            const question = QUESTIONS[constat.cle]
-            const bouton = (constat.boutons ?? []).find((b) => b.reponse === 'oui') ?? (constat.boutons ?? [])[0]
-            return (
-              <li key={constat.id}>
-                <span aria-hidden="true" />
-                <span>
-                  {constat.texte}
-                  {bouton ? (
-                    <>
-                      <br />
-                      <button type="button" className="action-lien" onClick={() => onRepondre(constat, bouton.reponse)}>
-                        {question && bouton.reponse === 'oui' ? question.replace('{f1}', constat.donnees?.f1 ?? '') : bouton.libelle}
+          {/* R3-088 — le texte servi porte déjà sa question (« … Les revoir maintenant ? », gabarits `_constat`) : on le rend
+              tel quel, puis TOUS les boutons servis (« Oui · Pas maintenant »), comme la carte du moment. La question
+              n'est plus écrite une seconde fois sur un bouton unique. */}
+          {constats.map((constat) => (
+            <li key={constat.id}>
+              <span aria-hidden="true" />
+              <span>
+                {constat.texte}
+                {(constat.boutons ?? []).length > 0 ? (
+                  <span className="ep-remarque-reponses">
+                    {constat.boutons.map((bouton) => (
+                      <button key={bouton.reponse} type="button" className="action-lien" onClick={() => onRepondre(constat, bouton.reponse)}>
+                        {bouton.libelle}
                       </button>
-                    </>
-                  ) : null}
-                </span>
-              </li>
-            )
-          })}
+                    ))}
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          ))}
         </ul>
       )}
     </section>

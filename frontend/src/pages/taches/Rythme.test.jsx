@@ -46,7 +46,7 @@ describe('TCH107 — Mon rythme', () => {
   it('sans la progression du jour (lecture en échec), la ligne « aujourd\'hui » manque et tout le reste s\'affiche', async () => {
     lireAujourdhui.mockRejectedValue(new Error('Network Error'))
     monter()
-    expect(await screen.findByText('Objectif du jour : 5 (accepté)')).toBeInTheDocument()
+    expect(await screen.findByText('Objectif du jour : 5')).toBeInTheDocument()
     expect(screen.queryByText("sur 5 aujourd'hui")).toBeNull()
   })
 
@@ -56,12 +56,12 @@ describe('TCH107 — Mon rythme', () => {
     const ligne = await screen.findByText("sur 5 aujourd'hui")
     expect(ligne.parentElement).toHaveTextContent("1 sur 5 aujourd'hui")
     expect(screen.getByText('essentiel 0/1')).toBeInTheDocument()
-    expect(screen.getByText('Objectif du jour : 5 (accepté)')).toBeInTheDocument()
+    expect(screen.getByText('Objectif du jour : 5')).toBeInTheDocument()
     expect(screen.getByText('Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Monter à 6' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Pas maintenant' })).toBeInTheDocument()
+    const carte = screen.getByText('Ces 10 jours travaillés, tu as fait au moins 5 tâches 7 fois. On passe à 6 ?').closest('.carte')
+    expect(within(carte).getByRole('button', { name: 'Monter à 6' })).toBeInTheDocument()
+    expect(within(carte).getByRole('button', { name: 'Pas maintenant' })).toBeInTheDocument()
     expect(screen.getByText('Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'En faire un jour court (un de moins) ?' })).toBeInTheDocument()
     expect(screen.getByText('Repère : 6 de tes journées sur 10 sont à 5,5 tâches ou moins (sur 9 jours).')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : mar\. 3 : 5, mer\. 4 : 6,/ })).toBeInTheDocument()
     expect(screen.getByText(/5 faites ou plus 7 jours sur 10/)).toBeInTheDocument()
@@ -69,7 +69,7 @@ describe('TCH107 — Mon rythme', () => {
 
   it('R2-120 — dix barres, un jour sans données est une barre vide nommée, jamais un jour absent', async () => {
     const { container } = monter()
-    await screen.findByText('Objectif du jour : 5 (accepté)')
+    await screen.findByText('Objectif du jour : 5')
     expect(screen.getByRole('heading', { name: /Les 10 derniers jours travaillés/ })).toHaveTextContent('46 faites')
     const barres = container.querySelectorAll('.ep-graph-zone .ep-b')
     expect(barres).toHaveLength(10)
@@ -81,14 +81,14 @@ describe('TCH107 — Mon rythme', () => {
 
   it("R2-120 — l'axe écrit « lun. 9 », « mar. 10 » : plus de lettre ambiguë (m = mardi ou mercredi)", async () => {
     const { container } = monter()
-    await screen.findByText('Objectif du jour : 5 (accepté)')
+    await screen.findByText('Objectif du jour : 5')
     const axe = [...container.querySelectorAll('.ep-graph-axe .ep-b small')].map((n) => n.textContent)
     expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'lun.16'])
   })
 
   it('passe visuelle n° 44 — pas de section « Objectif du jour » en plus : Moins · Plus · Choisir sous la ligne de l\'objectif', async () => {
     monter()
-    const ligne = (await screen.findByText('Objectif du jour : 5 (accepté)')).closest('p')
+    const ligne = (await screen.findByText('Objectif du jour : 5')).closest('p')
     expect(screen.queryByRole('heading', { name: 'Objectif du jour' })).toBeNull()
     const groupe = screen.getByRole('group', { name: "Changer d'objectif" })
     expect(within(groupe).getAllByRole('button').map((b) => b.textContent)).toEqual(['Moins', 'Plus', 'Choisir un nombre (1 à 12)'])
@@ -105,7 +105,22 @@ describe('TCH107 — Mon rythme', () => {
     await userEvent.click(within(groupe).getByRole('radio', { name: /Garder ce rythme/ }))
     expect(poserMode).toHaveBeenCalledWith({ mode: 'tenir' })
     expect(await screen.findByText('Ton rythme : environ 5 tâches (4 à 6)')).toBeInTheDocument()
-    expect(within(await screen.findByRole('group', { name: 'Geste effectué' })).getByText(/Garder ce rythme : environ 5 tâches par jour \(4 à 6\)/)).toBeInTheDocument()
+    // R3-089 — le toast tient en une ligne ; ce que fait le mode est écrit dans la page, sous le mode
+    const toast = await screen.findByRole('group', { name: 'Geste effectué' })
+    expect(within(toast).getByText('Garder ce rythme : 4 à 6')).toBeInTheDocument()
+    expect(within(groupe).getByRole('radio', { name: /Je ne te pousse plus ; je te préviens si tu t'en éloignes\./ })).toBeChecked()
+  })
+
+  it("R3-089 — « Objectif du jour : 5 » : la source n'est dite que si c'est la valeur par défaut", async () => {
+    for (const [source, attendu] of [
+      ['accepte', 'Objectif du jour : 5'], ['calcule', 'Objectif du jour : 5'], ['dit', 'Objectif du jour : 5'],
+      ['defaut', 'Objectif du jour : 5 (valeur par défaut, pas encore calculée sur toi)'],
+    ]) {
+      lireRythme.mockImplementation(() => reponse({ ...rythme(), objectif: { nb: 5, source, mode: 'pousser', zone: null } }))
+      const { unmount } = monter()
+      expect((await screen.findByText(/^Objectif du jour : 5/)).textContent, source).toBe(attendu)
+      unmount()
+    }
   })
 
   it('R2-131 — sans objectif, « 1 faite aujourd\'hui » au singulier (0 aussi), « 3 faites » au pluriel', async () => {
@@ -132,7 +147,7 @@ describe('TCH107 — Mon rythme', () => {
     expect(await screen.findByText('Ton rythme : environ 6 tâches (5 à 7)')).toBeInTheDocument()
     expect(screen.getByText('Provisoire : à confirmer sur 14 jours travaillés.')).toBeInTheDocument()
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
-    expect(within(toast).getByText(/Garder ce rythme : environ 6 tâches par jour \(5 à 7\)\..*À confirmer sur 14 jours travaillés\./)).toBeInTheDocument()
+    expect(within(toast).getByText('Garder ce rythme : 5 à 7')).toBeInTheDocument()
   })
 
   it('R2-121 — une fois R fixée, plus aucune mention provisoire', async () => {
@@ -153,7 +168,7 @@ describe('TCH107 — Mon rythme', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Monter à 6' }))
     expect(repondreProposition).toHaveBeenCalledWith(41, { reponse: 'oui' })
     const toast = await screen.findByRole('group', { name: 'Geste effectué' })
-    expect(within(toast).getByText("Objectif du jour : 5, dès aujourd'hui.")).toBeInTheDocument()
+    expect(within(toast).getByText('Objectif : 5')).toBeInTheDocument()
     await userEvent.click(within(toast).getByRole('button', { name: 'Annuler' }))
     expect(annulerGeste).toHaveBeenCalledWith(91)
     await waitFor(() => expect(lireRythme).toHaveBeenCalledTimes(2))
@@ -164,16 +179,32 @@ describe('TCH107 — Mon rythme', () => {
       response: { status: 409, data: { detail: 'x', code: 'proposition_expiree' } },
     }))
     monter()
-    await userEvent.click(await screen.findByRole('button', { name: 'Pas maintenant' }))
+    const carte = (await screen.findByText(/On passe à 6 \?$/)).closest('.carte')
+    await userEvent.click(within(carte).getByRole('button', { name: 'Pas maintenant' }))
     expect(repondreProposition).toHaveBeenCalledWith(41, { reponse: 'pas_maintenant' })
     expect(await screen.findByRole('alert')).toHaveTextContent('Cette proposition a expiré.')
     expect(screen.queryByRole('group', { name: 'Geste effectué' })).toBeNull()
   })
 
-  it('un constat se répond par sa question', async () => {
+  it('R3-088 — un constat : sa question écrite UNE fois (dans le texte servi), puis TOUS ses boutons « Oui · Pas maintenant »', async () => {
+    // le serveur sert la phrase SUIVIE de sa question (gabarits `_constat`)
+    const avecQuestion = rythme()
+    avecQuestion.constats[0].texte = 'Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours. En faire un jour court (un de moins) ?'
+    lireRythme.mockImplementation(() => reponse(avecQuestion))
     repondreProposition.mockResolvedValue({ data: exempleContrat('taches', 'proposition_repondue') })
     monter()
-    await userEvent.click(await screen.findByRole('button', { name: 'En faire un jour court (un de moins) ?' }))
+    const section = (await screen.findByRole('heading', { name: "Ce que j'ai remarqué" })).closest('section')
+    expect(within(section).getAllByText(/En faire un jour court \(un de moins\) \?/)).toHaveLength(1)
+    expect(within(section).getAllByRole('button').map((b) => b.textContent)).toEqual(['Oui', 'Pas maintenant'])
+    await userEvent.click(within(section).getByRole('button', { name: 'Pas maintenant' }))
+    expect(repondreProposition).toHaveBeenCalledWith(44, { reponse: 'pas_maintenant' })
+  })
+
+  it('R3-088 — « Oui » sur un constat répond oui', async () => {
+    repondreProposition.mockResolvedValue({ data: exempleContrat('taches', 'proposition_repondue') })
+    monter()
+    const section = (await screen.findByRole('heading', { name: "Ce que j'ai remarqué" })).closest('section')
+    await userEvent.click(within(section).getByRole('button', { name: 'Oui' }))
     expect(repondreProposition).toHaveBeenCalledWith(44, { reponse: 'oui' })
   })
 
@@ -182,7 +213,7 @@ describe('TCH107 — Mon rythme', () => {
     monter()
     await userEvent.click(await screen.findByRole('button', { name: 'Plus' }))
     expect(poserMode).toHaveBeenCalledWith({ mode: 'pousser', sens: 'plus' })
-    expect((await screen.findAllByText("Objectif du jour : 6 (un de plus), dès aujourd'hui.")).length).toBeGreaterThan(0)
+    expect(within(await screen.findByRole('group', { name: 'Geste effectué' })).getByText('Objectif : 6')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Choisir un nombre (1 à 12)' }))
     await userEvent.type(screen.getByRole('textbox', { name: 'Objectif du jour' }), '13')
     await userEvent.click(screen.getByRole('button', { name: 'OK' }))
@@ -283,7 +314,7 @@ describe('TCH107 — Mon rythme', () => {
     monter()
     expect(await screen.findByText('Pas à jour')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
-    expect(await screen.findByText('Objectif du jour : 5 (accepté)')).toBeInTheDocument()
+    expect(await screen.findByText('Objectif du jour : 5')).toBeInTheDocument()
     expect(screen.queryByText('Pas à jour')).toBeNull()
   })
 })
