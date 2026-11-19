@@ -13,15 +13,36 @@ from __future__ import annotations
 
 from apps.agent.registry import AgentAction, RISK_INTERNAL, _REGISTRY, register
 
+# REP7 (copilote vague 2) — l'outil promettait « cette semaine » sans aucune
+# date : la route (``MetricsDashboardView``, garde
+# ``HasPermissionOrLegacy('adsengine_view')``) rend alors TOUT l'historique.
+# Elle borne dépense / CPL / fréquence par ``?debut=&fin=`` (AAAA-MM-JJ,
+# PUB40) : les deux bornes sont REQUISES, le modèle les calcule depuis la date
+# du jour. Le coût par signature reste GLOBAL (jamais fenêtré par la route).
 DEPENSE_SEMAINE = AgentAction(
     key='adsengine.spend.week',
-    label='Dépense publicitaire de la semaine',
+    label='Dépense publicitaire sur une période',
     description=(
-        "Combien a-t-on dépensé en publicité cette semaine ? Renvoie les KPIs "
-        "du tableau de bord pub (dépense, leads, conversations)."),
+        "Sert à : dire combien la publicité a coûté entre deux dates "
+        "(dépense, coût par lead, fréquence, dans la devise du compte). Ne "
+        "pas utiliser pour : classer les annonces (adsengine.ads.top) ni un "
+        "coût par signature de la période (il est donné pour tout "
+        "l'historique). Exemple : « combien a-t-on dépensé cette semaine ? » "
+        "→ debut = lundi de cette semaine, fin = aujourd'hui. Résultat : "
+        "spend, cpl, frequency et currency sur la période ; "
+        "cost_per_signature et signatures sur tout l'historique."),
     endpoint='/api/django/adsengine/metrics/dashboard/',
     method='GET',
-    inputs={'type': 'object', 'properties': {}},
+    inputs={
+        'type': 'object',
+        'properties': {
+            'debut': {'type': 'string', 'format': 'date',
+                      'description': 'Premier jour inclus (AAAA-MM-JJ).'},
+            'fin': {'type': 'string', 'format': 'date',
+                    'description': 'Dernier jour inclus (AAAA-MM-JJ).'},
+        },
+        'required': ['debut', 'fin'],
+    },
     required_permission='adsengine_view',
     risk=RISK_INTERNAL,
 )
