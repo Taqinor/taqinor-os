@@ -1,5 +1,6 @@
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 
+import { ContexteRepli } from '../ui/ChargementTardif'
 import SqueletteListe from '../ui/SqueletteListe'
 import { prechargerEcrans } from './precharger'
 
@@ -15,7 +16,9 @@ import { prechargerEcrans } from './precharger'
 /** Le repli d'un écran en chargement : la coquille du module, à la même place que la vraie (rangée du haut sur iPhone,
  *  sur-titre, grand titre au même pixel), puis le squelette. `titre` absent (la page d'un projet : son nom n'est pas
  *  encore connu) : une barre à la place du titre. */
-function ChargementEcran({ ecran, titre = null, pleine = false }) {
+function ChargementEcran({ ecran, titre = null, pleine = false, onAffiche = null }) {
+  // R4-VERIF-4 — dit à l'écran qui suivra que ce squelette-ci a tenu la place : le sien le reprend sans trou
+  useEffect(() => { onAffiche?.() }, [onAffiche])
   return (
     <div className="tch tch-chargement" data-ecran={ecran} data-largeur={pleine ? 'pleine' : undefined} aria-busy="true">
       <div className="tch-page">
@@ -36,5 +39,11 @@ function ChargementEcran({ ecran, titre = null, pleine = false }) {
 /** La frontière de chargement d'un écran, DANS le module ; son montage lance le préchargement des autres. */
 export default function Frontiere({ ecran, titre, pleine, children }) {
   useEffect(() => { prechargerEcrans() }, [])
-  return <Suspense fallback={<ChargementEcran ecran={ecran} titre={titre} pleine={pleine} />}>{children}</Suspense>
+  const [repli, setRepli] = useState(false)
+  const [signaler] = useState(() => () => setRepli(true))
+  return (
+    <ContexteRepli.Provider value={repli}>
+      <Suspense fallback={<ChargementEcran ecran={ecran} titre={titre} pleine={pleine} onAffiche={signaler} />}>{children}</Suspense>
+    </ContexteRepli.Provider>
+  )
 }

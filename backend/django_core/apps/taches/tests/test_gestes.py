@@ -420,6 +420,22 @@ class TitresDesGestesTests(TestCase):
         faite = self._geste('terminaison', 'Faite', premiere, seconde)
         self.assertEqual(titres_des_gestes(self.u1, [lot, faite]), {faite.pk: 'Routine'})
 
+    def test_un_collage_range_dans_un_projet_existant_nomme_ce_projet_en_une_seule_lecture(self):
+        projet = fabriques.projet(self.u1, nom='Pompage Douar Ouled Saleh')
+        autre = fabriques.projet(self.u1, nom='Salon')
+        deux = [fabriques.tache(self.u1, projet=projet) for _ in range(2)]
+        melange = [fabriques.tache(self.u1, projet=projet), fabriques.tache(self.u1, projet=autre)]
+        sans = [fabriques.tache(self.u1), fabriques.tache(self.u1)]
+        lot = self._geste('creation', '2 tâches créées', *deux)
+        pas_meme_projet = self._geste('creation', '2 tâches créées', *melange)
+        sans_projet = self._geste('creation', '2 tâches créées', *sans)
+        # des tâches REPORTÉES (champ, pas création) ne sont pas un collage : pas de nom
+        reportees = enregistrer_geste(self.u1, 'creation', '2 tâches créées',
+                                      [op_creation('tache', deux[0]), op_champ('tache', deux[1], 'titre', 'Avant')])
+        with self.assertNumQueries(2):  # les tâches créées, puis les noms de projet : jamais une requête par ligne
+            rendu = titres_des_gestes(self.u1, [lot, pas_meme_projet, sans_projet, reportees])
+        self.assertEqual(rendu, {lot.pk: 'Pompage Douar Ouled Saleh'})
+
     def test_un_geste_sans_tache_n_a_pas_de_titre(self):
         geste = enregistrer_geste(self.u1, 'rythme', 'Garder ce rythme', [])
         self.assertEqual(titres_des_gestes(self.u1, [geste]), {})

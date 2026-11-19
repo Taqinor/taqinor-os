@@ -215,7 +215,7 @@ def titres_des_gestes(user, gestes):
     - sinon un geste qui touche UNE étiquette en dit le nom (une étiquette supprimée garde le sien dans l'opération).
     Société ET propriétaire, comme toute lecture ; UNE lecture groupée par type d'objet (jamais une requête par
     ligne, et aucune pour un type que nul geste ne vise)."""
-    taches, projets, revues, etiquettes, noms = {}, {}, {}, {}, {}
+    taches, projets, revues, etiquettes, noms, lots = {}, {}, {}, {}, {}, {}
     for geste in gestes:
         ids_projet = _ids_touches(geste, 'projet')
         if len(ids_projet) == 1:
@@ -224,6 +224,10 @@ def titres_des_gestes(user, gestes):
         ids = [op.get('id') for op in geste.operations if op.get('objet') == 'tache' and op.get('id') is not None]
         if ids and (len(set(ids)) == 1 or geste.type in TYPES_TITRE_PREMIERE):
             taches[geste.pk] = ids[0]
+            continue
+        creees = _taches_creees_en_lot(geste)
+        if creees:
+            lots[geste.pk] = creees
             continue
         ids_revue = _ids_touches(geste, 'revue_projet')
         if len(ids_revue) == 1:
@@ -237,6 +241,7 @@ def titres_des_gestes(user, gestes):
             else:
                 etiquettes[geste.pk] = next(iter(ids_etiquette))
     taches.update(_taches_des_etoiles([g for g in gestes if g.type == 'essentiel' and g.pk not in taches]))
+    projets.update(_projets_des_lots(user, lots))
     rendu = dict(noms)
     rendu.update(_titres_lus(taches, Tache.all_objects.filter(company_id=user.company_id, proprietaire=user), 'titre'))
     rendu.update(_titres_lus(projets, Projet.all_objects.filter(company_id=user.company_id, proprietaire=user), 'nom'))
@@ -244,6 +249,34 @@ def titres_des_gestes(user, gestes):
                              'projet__nom'))
     rendu.update(_titres_lus(etiquettes, Etiquette.objects.filter(company_id=user.company_id, proprietaire=user),
                              'nom'))
+    return rendu
+
+
+def _taches_creees_en_lot(geste):
+    """Les ids des tâches qu'un collage / une saisie en lot (geste `creation`) a CRÉÉES, quand il n'a fait que créer
+    (au moins deux) ; `[]` sinon. Le geste ne porte pas le projet d'un projet EXISTANT : on le lit sur les tâches."""
+    if geste.type != 'creation':
+        return []
+    ops = [op for op in geste.operations if op.get('objet') == 'tache']
+    if any(op.get('op') != 'creation' or op.get('id') is None for op in ops):
+        return []
+    ids = list(dict.fromkeys(op['id'] for op in ops))
+    return ids if len(ids) > 1 else []
+
+
+def _projets_des_lots(user, lots):
+    """`{geste.pk: id du projet}` des gestes en lot dont TOUTES les tâches créées sont dans le MÊME projet (« 2 tâches
+    créées · Pompage Douar Ouled Saleh ») : UNE lecture groupée des tâches, aucune requête quand aucun lot."""
+    if not lots:
+        return {}
+    ids = {tache for creees in lots.values() for tache in creees}
+    projet_de = dict(Tache.all_objects.filter(company_id=user.company_id, proprietaire=user, pk__in=ids)
+                     .values_list('pk', 'projet_id'))
+    rendu = {}
+    for geste, creees in lots.items():
+        projets = {projet_de.get(tache) for tache in creees}  # une tâche introuvable ou sans projet donne None
+        if len(projets) == 1 and None not in projets:
+            rendu[geste] = next(iter(projets))
     return rendu
 
 

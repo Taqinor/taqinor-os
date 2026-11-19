@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 import SqueletteListe, { LigneOs } from './SqueletteListe'
 
@@ -13,16 +13,29 @@ import SqueletteListe, { LigneOs } from './SqueletteListe'
 
 const DELAI_MS = 300
 
+/** R4-VERIF-4 — posé par la frontière d'un écran (`ecrans/Frontiere.jsx`) : `true` dès que son repli (la
+ *  coquille et ce même squelette) s'est affiché. L'écran qui prend la suite montre alors SON squelette à l'instant, au
+ *  premier passage seulement : sans cela, le repli partait, l'écran montait à vide 300 ms, puis le squelette revenait. */
+// eslint-disable-next-line react-refresh/only-export-components -- contexte co-localisé avec son seul lecteur, lu par Frontiere (D-ENF22)
+export const ContexteRepli = createContext(false)
+
 /** Re-export : les lignes d'Aujourd'hui et de Proposé la lisent d'ici depuis toujours. */
 export { LigneOs }
 
 export default function ChargementTardif({ actif = true }) {
+  // le repli a-t-il tenu la place jusqu'ici ? (vrai au premier passage seulement : dès que l'écran a eu sa réponse, plus jamais)
+  const [suitLeRepli, setSuitLeRepli] = useState(useContext(ContexteRepli))
+  const [etaitActif, setEtaitActif] = useState(actif)
+  if (etaitActif !== actif) {
+    setEtaitActif(actif)
+    if (!actif) setSuitLeRepli(false)
+  }
   const [visible, setVisible] = useState(false)
   useEffect(() => {
-    if (!actif) return undefined
+    if (!actif || suitLeRepli) return undefined
     const minuteur = setTimeout(() => setVisible(true), DELAI_MS)
     return () => { clearTimeout(minuteur); setVisible(false) }
-  }, [actif])
-  if (!actif || !visible) return null
+  }, [actif, suitLeRepli])
+  if (!actif || !(suitLeRepli || visible)) return null
   return <SqueletteListe />
 }

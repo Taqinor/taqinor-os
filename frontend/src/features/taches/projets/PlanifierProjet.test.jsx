@@ -208,6 +208,37 @@ describe('R4-27 — « Premières actions » : les dates lues comme dans la sais
     })))
   })
 
+  it('R4-VERIF — une action tapée SANS Entrée est prise par « Terminer » : même lecture (« lundi » devient sa date), dans le corps envoyé', async () => {
+    api.saisieRapide.mockImplementation(lecture({ lundi: '2026-11-23' }))
+    const creees = [
+      { ...reponseContrat('taches', 'planification').data.creees[0], id: 70, titre: 'Commander les panneaux', lock_version: 1 },
+      { ...reponseContrat('taches', 'planification').data.creees[0], id: 71, titre: 'Brancher le compteur', lock_version: 1 },
+    ]
+    api.planifierProjet.mockResolvedValue({ data: { ...reponseContrat('taches', 'planification').data, creees } })
+    api.planifierTache.mockResolvedValue({ data: { ...exempleContrat('taches', 'tache_ecrite'), tache: { ...creees[1], jour_prevu: '2026-11-23', lock_version: 2 } } })
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await ajouter(user, 'Commander les panneaux')
+    await user.type(screen.getByLabelText('Nouvelle action'), 'Brancher le compteur lundi')
+    await user.click(screen.getByRole('button', { name: 'Terminer' }))
+    await vi.waitFor(() => expect(api.planifierProjet).toHaveBeenCalledWith(3, expect.objectContaining({
+      actions: [{ titre: 'Commander les panneaux', quand: '' }, { titre: 'Brancher le compteur', quand: '' }],
+    })))
+    expect(api.planifierTache).toHaveBeenCalledWith(71, expect.objectContaining({ jour_prevu: '2026-11-23' }))
+  })
+
+  it('R4-VERIF — « Précédent » garde aussi le texte resté dans le champ : il devient une action, rien ne se perd', async () => {
+    monter()
+    const user = utilisateur()
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    await user.type(screen.getByLabelText('Nouvelle action'), 'Appeler le loueur')
+    await user.click(screen.getByRole('button', { name: 'Précédent' }))
+    await user.click(screen.getByRole('button', { name: 'Suivant' }))
+    expect(screen.getByRole('radiogroup', { name: 'Quand : Appeler le loueur' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Nouvelle action')).toHaveValue('')
+  })
+
   it("choisir un autre « Quand » retire le jour lu ; hors ligne, l'action garde son texte (rien n'est perdu)", async () => {
     api.saisieRapide.mockImplementationOnce(lecture({ samedi: '2026-11-21' }))
     api.saisieRapide.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
