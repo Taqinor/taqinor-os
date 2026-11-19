@@ -17,6 +17,45 @@ const monter = (cle, donnees) => {
   return render(<Provider store={magasin}><MemoryRouter><Carte carte={{ donnees }} /></MemoryRouter></Provider>)
 }
 
+describe('carte liste_tickets', () => {
+  it('exemple : retard de service dit, garantie, geste, liens', () => {
+    monter('liste_tickets', ex('liste_tickets'))
+    expect(screen.getByText('Tickets (2)')).toBeInTheDocument()
+    expect(screen.getByText(/SAV-2026-11-0031 — Nadia Chraibi/)).toBeInTheDocument()
+    expect(screen.getAllByText(/En retard sur l’échéance de service/)).toHaveLength(1)
+    expect(screen.getByText(/À faire : Planifier l’intervention/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Ouvrir le ticket' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Tickets à traiter' })).toBeInTheDocument()
+  })
+
+  it('liste vide : un message', () => {
+    monter('liste_tickets', ex('liste_tickets', 'exemple_vide'))
+    expect(screen.getByText(/Aucun ticket ne correspond/)).toBeInTheDocument()
+  })
+})
+
+describe('carte fiche_ticket', () => {
+  it('exemple : la description du client et les activités sont CITÉES en texte brut', () => {
+    monter('fiche_ticket', ex('fiche_ticket'))
+    expect(screen.getByText(/SAV-2026-11-0031 — Nouveau/)).toBeInTheDocument()
+    const citations = document.querySelectorAll('blockquote')
+    expect(citations).toHaveLength(2)
+    expect(citations[0]).toHaveTextContent(/erreur F13/)
+    expect(screen.getByText(/Échéance .* — en retard/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir le ticket' })).toBeInTheDocument()
+  })
+
+  it('un texte tiers n’est jamais du HTML et il est coupé poliment', () => {
+    const donnees = { ...ex('fiche_ticket'), description: `<img src=x onerror=alert(1)> ${'a'.repeat(900)}` }
+    const { container } = monter('fiche_ticket', donnees)
+    expect(container.querySelector('img')).toBeNull()
+    const citation = container.querySelector('blockquote')
+    expect(citation.textContent).toContain('<img src=x')
+    expect(citation.textContent.endsWith('… »')).toBe(true)
+    expect(citation.textContent.length).toBeLessThan(400)
+  })
+})
+
 describe('carte parc_client', () => {
   it('exemple : équipements avec garantie, ticket ouvert, téléphone, liens', () => {
     monter('parc_client', ex('parc_client'))
