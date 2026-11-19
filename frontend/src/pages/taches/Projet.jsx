@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Diamond, Plus, TriangleAlert } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, Diamond, Plus, TriangleAlert } from 'lucide-react'
 import { annulerGeste, classerErreur, listerTousLesProjets, modifierProjet, modifierTache } from '../../api/tachesApi'
 import { reordonnerProjet, restaurerProjet, rouvrirProjet, reordonnerTache, rouvrirTache } from '../../api/tachesApi'
 import { terminerTache, listerToutesLesTaches, lireVueProjet } from '../../api/tachesApi'
@@ -204,7 +204,7 @@ function ChampNom({ nom, erreur, onEnregistrer, onAbandonner }) {
   )
 }
 
-function Entete({ vue, aujourdhui, onPriorite, onObjectif }) {
+function Entete({ vue, aujourdhui, onPriorite, onObjectif, selecteur = null, versLaListe = null }) {
   const [details, setDetails] = useState(false)
   const [detailSante, setDetailSante] = useState(false)
   const { projet, avancement, prochain_jalon: jalon } = vue
@@ -213,42 +213,49 @@ function Entete({ vue, aujourdhui, onPriorite, onObjectif }) {
   const sante = santeCourte(signal, aujourdhui)
   const jalonJour = jalon ? (jalon.jour_prevu ?? jalon.echeance) : null
   const ech = projet.echeance ? echeanceProjet(projet.echeance, aujourdhui) : null
-  // Passe visuelle n° 43 — l'en-tête de projet-liste.html : priorité · échéance ; barre, « 12 sur 18 » et le jalon
-  // dessous ; la santé en UNE ligne (le détail au toucher) ; « Fini quand… » replié.
+  // Passe visuelle n° 43 — l'en-tête de projet-liste.html ; R3-126 — UNE ligne : priorité · échéance · barre et « 12 sur 18 » ·
+  // prochain jalon · les vues (à droite) ; puis UNE ligne : la santé (le détail au toucher) · « Fini quand… » replié. Sept
+  // étages avant, deux maintenant : le Tableau commence sous la saisie, pas sous la ligne de flottaison.
   return (
     <div className="ep-tete" data-p={projet.couleur}>
       <div className="ep-ligne-info">
+        {versLaListe ? (
+          <button type="button" className="ep-retour-liste" onClick={versLaListe}>
+            <ChevronLeft className="i i-16" aria-hidden="true" />Projets
+          </button>
+        ) : null}
         <PuchePriorite projet={projet} onChoisir={onPriorite} />
         {ech ? <span className={`chiffres ${ech.ton === 'alerte' ? 'alerte' : 'fort'}`}>{ech.texte}</span> : null}
+        <span className="ep-avance">
+          <span className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></span>
+          <span className="chiffres ep-avance-texte"><b>{texte}</b></span>
+        </span>
+        {jalon ? (
+          <span className="ep-jalon-proche">
+            <Diamond className="i i-14 ep-losange" aria-hidden="true" />
+            <span className="ep-jalon-texte">{`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}</span>
+          </span>
+        ) : null}
+        {selecteur}
       </div>
-      <div className="ep-avance">
-        <div className="ep-barre-avance" role="img" aria-label={texte}><i style={{ '--avance': part.toFixed(3) }} /></div>
-        <div className="ep-avance-texte">
-          <span className="chiffres"><b>{texte}</b></span>
-          {jalon ? (
-            <span className="ep-jalon-proche">
-              <Diamond className="i i-14 ep-losange" aria-hidden="true" />
-              {`Prochain jalon : ${jalon.titre}${jalonJour ? ` · ${jourProjet(jalonJour, aujourdhui)}` : ''}`}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      {sante && sante !== signal.phrase ? (
-        <button type="button" className="ep-sante-ligne" aria-expanded={detailSante} onClick={() => setDetailSante((o) => !o)}>
-          <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
-          <ChevronRight className="i i-14 chev" aria-hidden="true" />
+      <div className="ep-ligne-suite">
+        {sante && sante !== signal.phrase ? (
+          <button type="button" className="ep-sante-ligne" aria-expanded={detailSante} onClick={() => setDetailSante((o) => !o)}>
+            <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
+            <ChevronRight className="i i-14 chev" aria-hidden="true" />
+          </button>
+        ) : null}
+        {sante && sante === signal.phrase ? (
+          <p className="ep-sante-ligne">
+            <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
+          </p>
+        ) : null}
+        <button type="button" className="ep-details" aria-expanded={details} onClick={() => setDetails((o) => !o)}>
+          <span className="ep-details-texte"><b>Fini quand…</b></span>
+          <ChevronDown className="i i-16" aria-hidden="true" />
         </button>
-      ) : null}
+      </div>
       {sante && sante !== signal.phrase && detailSante ? <p className="ep-sante-detail">{signal.phrase}</p> : null}
-      {sante && sante === signal.phrase ? (
-        <p className="ep-sante-ligne">
-          <TriangleAlert className="i i-14" aria-hidden="true" /><span>{sante}</span>
-        </p>
-      ) : null}
-      <button type="button" className="ep-details" aria-expanded={details} onClick={() => setDetails((o) => !o)}>
-        <span className="ep-details-texte"><b>Fini quand…</b></span>
-        <ChevronDown className="i i-16" aria-hidden="true" />
-      </button>
       {details ? (
         <div className="ep-details-corps">
           <Objectif objectif={projet.objectif} onEnregistrer={onObjectif} />
@@ -621,6 +628,9 @@ export default function Projet() {
   // R2-067 — au bureau (≥ 1024 px) la liste des projets est à gauche et ce projet à droite ; la liste et le projet ouvert
   // se tiennent à jour (nom, couleur, priorité, statut, avancement) sans relecture
   const maitreDetail = useMaitreDetail()
+  // R3-126 — le Tableau et la Chronologie prennent TOUTE la largeur : la liste des projets est masquée (projets.css) et
+  // « ‹ Projets » (dans la ligne de l'en-tête ; la loupe et le Copilote restent) y ramène ; la Liste garde le maître-détail
+  const pleineLargeur = maitreDetail && (vueCode === 'tableau' || vueCode === 'chronologie')
   const champsAuxListes = projet && vue.avancement ? {
     id: projet.id, nom: projet.nom, couleur: projet.couleur, priorite: projet.priorite, echeance: projet.echeance, statut: projet.statut,
     lock_version: projet.lock_version, compteurs: { faites: vue.avancement.faites, ouvertes: vue.avancement.total - vue.avancement.faites },
@@ -676,10 +686,6 @@ export default function Projet() {
       retour={maitreDetail ? null : { libelle: 'Projets', vers: '/taches/projets' }}
       feuille={actions.feuille} selecteurProjet={actions.selecteurProjet} conflit={actions.conflit} contexteSaisie={contexteSaisie}>
       {maitreDetail ? <AsideProjets ouvertId={id} /> : null}
-      {/* Passe visuelle n° 43 — la vue (puce sur iPhone, segmenté au bureau) à droite de la rangée */}
-      <div className="ep-barre-projet">
-        {vue && !planifier ? <SelecteurVue vue={vueCode} onChoisir={choisirVue} /> : null}
-      </div>
       {erreur ? <p className="ep-alerte-ligne" role="alert">{erreur}</p> : null}
       {introuvable ? <p className="ep-alerte-ligne" role="alert">Ce projet n'existe plus.</p> : null}
       <ChargementTardif actif={!vue && !erreur && !introuvable} />
@@ -689,7 +695,10 @@ export default function Projet() {
       {vue && !planifier ? (
         <>
           {projet.statut === 'en_pause' ? <p className="ep-constat">En pause</p> : null}
-          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} onObjectif={changerObjectif} />
+          {/* R3-126 — la vue (puce sur iPhone, segmenté au bureau) est à droite de la ligne de l'en-tête du projet */}
+          <Entete vue={vue} aujourdhui={aujourdhui} onPriorite={poserPriorite} onObjectif={changerObjectif}
+            selecteur={<SelecteurVue vue={vueCode} onChoisir={choisirVue} />}
+            versLaListe={pleineLargeur ? () => navigate('/taches/projets') : null} />
           {vueCode === 'tableau' ? (
             <Tableau
               vue={vue}

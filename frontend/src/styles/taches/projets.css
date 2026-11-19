@@ -66,9 +66,7 @@
 /* ── Un projet, vue Liste (TCH89) ────────────────────────────────────────── */
 .tch .ep-tete { padding: 4px var(--tch-gouttiere) 12px; display: flex; flex-direction: column; gap: 10px; }
 /* Passe visuelle n° 43 — en-tête de projet-liste.html (ecrans-projets.css « En-tête d'un projet ») */
-/* R2-093 : « ‹ Projets » est celui de la coquille ; il ne reste ici que le sélecteur de vue, à droite */
-.tch .ep-barre-projet { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-right: var(--tch-gouttiere); }
-.tch .ep-barre-projet > .ep-entre { padding: 0; }
+/* R2-093 : « ‹ Projets » est celui de la coquille (iPhone) ; R3-126 : le sélecteur de vue est dans la ligne de l'en-tête (`.ep-ligne-info`) */
 /* le point se pose dans la ligne du titre (inline) : sur iPhone, le nom passe dessous au lieu d'être repoussé de 22 px */
 .tch .entete-titre .ep-projet-nom > .point { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: 0.18em; }
 /* R2-061 — le nom du projet se renomme au toucher (le bouton reprend la typographie du titre) */
@@ -89,18 +87,27 @@
 @media (hover: hover) {
   .tch .ep-couleur:hover { background: var(--tch-survol); }
 }
-.tch .ep-ligne-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
+/* R3-126 — l'en-tête d'un projet tient sur DEUX lignes : (1) priorité · échéance · barre et « 12 sur 18 » · prochain jalon · les
+   vues à droite ; (2) la santé · « Fini quand… ». Sur iPhone, la 1re ligne passe à la ligne au lieu de se serrer. */
+.tch .ep-ligne-info { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
 .tch .ep-ligne-info .fort { color: var(--tch-texte); font-weight: 600; }
 .tch .ep-ligne-info .alerte { color: var(--tch-alerte); font-weight: 600; }
-.tch .ep-avance { display: flex; flex-direction: column; gap: 8px; }
-.tch .ep-barre-avance { height: 4px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
+.tch .ep-ligne-info .ep-entre { padding: 0; margin-left: auto; }
+.tch .ep-retour-liste { position: relative; display: inline-flex; align-items: center; gap: 2px; margin-left: -6px; padding: 0 6px 0 0;
+  font-size: 0.9375rem; font-weight: 500; color: var(--tch-accent); }
+.tch .ep-retour-liste::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--tch-cible); transform: translateY(-50%); }
+.tch .ep-avance { display: inline-flex; align-items: center; gap: 8px; }
+.tch .ep-barre-avance { display: block; width: 96px; height: 4px; border-radius: 999px; background: var(--tch-segment-vide); overflow: hidden; }
 .tch .ep-barre-avance i { display: block; height: 100%; border-radius: 999px; background: var(--tch-point); width: calc(var(--avance) * 100%); }
-.tch .ep-avance-texte { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; font-size: var(--tch-meta); color: var(--tch-texte-doux); }
+.tch .ep-avance-texte { font-size: var(--tch-meta); color: var(--tch-texte-doux); white-space: nowrap; }
 .tch .ep-avance-texte b { color: var(--tch-texte); font-weight: 650; }
-.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; color: var(--tch-texte); font-weight: 500; }
-.tch .ep-losange { color: var(--tch-point); fill: var(--tch-point); }
+.tch .ep-jalon-proche { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 0; color: var(--tch-texte); font-weight: 500; }
+.tch .ep-jalon-texte { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tch .ep-losange { flex: none; color: var(--tch-point); fill: var(--tch-point); }
+.tch .ep-ligne-suite { display: flex; align-items: center; flex-wrap: wrap; gap: 0 16px; }
+.tch .ep-ligne-suite .ep-details { flex: none; width: auto; margin-left: auto; }
 /* Santé : une ligne sans fond, le détail au toucher */
-.tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; width: 100%; min-height: var(--tch-cible); margin: 0; text-align: left;
+.tch .ep-sante-ligne { display: flex; align-items: center; gap: 7px; flex: 1 1 220px; min-width: 0; min-height: var(--tch-cible); margin: 0; text-align: left;
   font-size: 0.9375rem; color: var(--tch-texte); }
 .tch .ep-sante-ligne > svg:first-child { flex: none; color: var(--tch-surveiller); }
 .tch .ep-sante-ligne span { text-wrap: balance; }
@@ -255,7 +262,7 @@
 .tch .ep-onglets-etapes button[aria-selected="true"] { background: var(--tch-accent); color: var(--tch-accent-texte); box-shadow: none; font-weight: 600; }
 .tch .ep-onglets-compte { margin-left: auto; font-size: var(--tch-chiffre); font-weight: 500; color: var(--tch-texte-doux); white-space: nowrap; }
 .tch .ep-tableau { display: flex; gap: 12px; padding: 10px var(--tch-gouttiere) 0; align-items: flex-start; }
-.tch .ep-col { flex: none; width: calc(100% - 48px); border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); padding: 6px; }
+.tch .ep-col { flex: none; width: 100%; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); padding: 6px; }
 .tch .ep-col.sur { box-shadow: inset 0 0 0 2px var(--tch-accent); }
 .tch .ep-col-tete { display: none; align-items: baseline; justify-content: space-between; padding: 8px 10px; }
 .tch .ep-col-tete b { font-size: var(--tch-section); font-weight: 650; }
@@ -263,6 +270,8 @@
 .tch .ep-col .ligne { margin: 0; border-radius: 12px; background: var(--tch-surface); padding-right: 8px; }
 .tch .ep-col .titre { font-size: 1rem; line-height: 1.375rem; }
 .tch .ep-col .meta > span { white-space: normal; }
+/* R3-126 — la méta d'une carte du Tableau se lit EN LIGNE (« aujourd'hui · échéance demain · 2 h »), pas une info par ligne */
+.tch .ep-col .meta { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; }
 .tch .ep-carte { display: flex; align-items: stretch; margin: 0 0 6px; border-radius: 12px; background: var(--tch-surface); }
 /* couture r2 — une carte du Tableau est UNE surface (la poignée y compris) ; l'heure, le drapeau et l'étoile passent sous
    le titre : à 280 px, sur la ligne du titre, ils ne laissaient que 50 px au titre (« Réceptionnei 09:00 ») */
@@ -271,6 +280,17 @@
 .tch .ep-col .ligne-fin:empty { display: none; }
 .tch .ep-col .titre { overflow-wrap: anywhere; }
 .tch .ep-carte > .ep-poignee { height: auto; min-height: var(--tch-cible); }
+/* R3-126 — avec la souris la poignée ne mange plus 44 px de la carte : elle se pose en bas à droite et se montre au survol
+   (ou au focus) ; au doigt, elle reste à sa place dans la carte */
+@media (hover: hover) and (min-width: 768px) {
+  .tch .ep-carte { position: relative; }
+  .tch .ep-carte > .ep-poignee {
+    position: absolute; right: 2px; bottom: 2px; width: 28px; height: 28px; min-height: 0; border-radius: 8px; opacity: 0;
+    background: var(--tch-surface);
+  }
+  .tch .ep-carte > .ep-poignee::after { content: ""; position: absolute; inset: -8px; }
+  .tch .ep-carte:hover > .ep-poignee, .tch .ep-carte:focus-within > .ep-poignee, .tch .ep-carte > .ep-poignee:focus-visible { opacity: 1; }
+}
 .tch .ep-carte.saisie { opacity: 0.6; }
 .tch .ep-carte > .liste { flex: 1; min-width: 0; }
 .tch .ep-poignee { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--tch-cible); height: var(--tch-cible);
@@ -286,11 +306,13 @@
   .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) { max-width: 1320px; }
   /* couture r2 — le Tableau qui déborde le DIT : barre de défilement visible, colonnes qui s'arrêtent sur leur bord */
   .tch .ep-tableau {
-    padding: 16px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain;
+    padding: 8px 24px 12px; overflow-x: auto; overscroll-behavior-x: contain;
     scrollbar-width: thin; scrollbar-color: var(--tch-texte-doux) transparent;
     scroll-snap-type: x proximity; scroll-padding-inline: 24px;
   }
-  .tch .ep-col { flex: 0 0 280px; min-width: 0; scroll-snap-align: start; }
+  /* R3-126 — les colonnes se partagent la largeur (220 à 300 px) : QUATRE étapes tiennent à 1280 et 1440 px, sans défilement ;
+     au-delà, le Tableau défile (la barre le dit) */
+  .tch .ep-col { flex: 1 0 220px; max-width: 300px; min-width: 0; scroll-snap-align: start; }
   /* … et son bord droit s'estompe tant qu'il reste des colonnes à droite (défilement lu par le navigateur ; sans
      `animation-timeline`, ou sans débordement, aucun fondu : la barre fine suffit) */
   @supports (animation-timeline: scroll()) {
@@ -400,6 +422,10 @@
   .tch .tch-page:has(> .ep-md-liste) { position: relative; max-width: 1200px; padding-left: calc(var(--ep-md-liste) + 16px); }
   /* le Tableau et la Chronologie gardent toute la largeur utile (et défilent au-delà : R2-064) */
   .tch[data-ecran="projet"] .tch-page:has(> .ep-md-liste):has(.ep-vue-tableau, .ep-frise-h) { max-width: 1760px; }
+  /* R3-126 — … et ils n'ont plus la liste des projets à leur gauche (320 px rendus : 2,5 colonnes visibles et pas de barre de
+     défilement) : « ‹ Projets », dans la ligne de l'en-tête, y ramène */
+  .tch[data-ecran="projet"] .tch-page:has(> .ep-md-liste):has(.ep-vue-tableau, .ep-frise-h) { padding-left: 16px; }
+  .tch[data-ecran="projet"] .tch-page:has(.ep-vue-tableau, .ep-frise-h) > .ep-md-liste { display: none; }
   .tch .ep-md-liste { position: absolute; left: 0; top: 0; bottom: 0; width: var(--ep-md-liste); box-shadow: inset -1px 0 0 var(--tch-trait); }
   .tch .ep-md-defile { position: sticky; top: 0; max-height: calc(100vh - 64px); overflow-y: auto; overscroll-behavior: contain; padding: 20px 0 24px; }
   .tch .ep-md-tete { display: flex; align-items: center; justify-content: space-between; min-height: var(--tch-cible); padding: 0 8px 0 24px; }

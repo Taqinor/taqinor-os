@@ -922,6 +922,36 @@ describe('R2-067 — Projets au bureau (≥ 1024 px) : la liste à gauche, le pr
     expect(await screen.findByRole('dialog', { name: 'Nouveau projet' })).toBeInTheDocument()
   })
 
+  it('R3-126 — l\'en-tête du projet tient sur DEUX lignes : priorité · barre · jalon · vues, puis santé · « Fini quand… »', async () => {
+    const { container } = monterBureau()
+    await screen.findAllByText('12 sur 20')
+    const tete = container.querySelector('.ep-tete')
+    expect([...tete.children].filter((e) => !e.matches('.ep-sante-detail')).map((e) => e.className)).toEqual(['ep-ligne-info', 'ep-ligne-suite'])
+    const premiere = tete.querySelector('.ep-ligne-info')
+    expect(premiere.querySelector('.ep-prio')).not.toBeNull()
+    expect(premiere.querySelector('.ep-barre-avance')).not.toBeNull()
+    expect(premiere.querySelector('.ep-avance-texte')).toHaveTextContent('12 sur 20')
+    expect(premiere.querySelector('.ep-vues')).not.toBeNull() // le sélecteur de vue est dans la ligne, plus au-dessus
+    const seconde = tete.querySelector('.ep-ligne-suite')
+    expect(within(seconde).getByRole('button', { name: /Fini quand/ })).toBeInTheDocument()
+    expect(container.querySelector('.ep-barre-projet')).toBeNull()
+  })
+
+  it('R3-126 — Tableau et Chronologie prennent toute la largeur : « ‹ Projets » (dans l\'en-tête) ramène à la liste, la Liste n\'en a pas', async () => {
+    const { unmount } = monterBureau('/taches/projets/3?vue=tableau')
+    await screen.findAllByText('12 sur 20')
+    const retour = await screen.findByRole('button', { name: 'Projets' })
+    expect(retour.closest('.ep-ligne-info')).not.toBeNull()
+    // la loupe et le Copilote restent (la coquille n'est pas en mode « écran enfant »)
+    expect(screen.getByRole('button', { name: 'Chercher dans mes tâches' })).toBeInTheDocument()
+    await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(retour)
+    expect(await screen.findByText('Liste des projets')).toBeInTheDocument()
+    unmount()
+    monterBureau('/taches/projets/3?vue=liste')
+    await screen.findAllByText('12 sur 20')
+    expect(screen.queryByRole('button', { name: 'Projets' })).toBeNull()
+  })
+
   it('< 1024 px : aucune colonne (la liste, puis le projet)', async () => {
     window.matchMedia = media(false)
     monterBureau()
