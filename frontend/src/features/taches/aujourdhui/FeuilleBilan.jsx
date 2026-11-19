@@ -7,12 +7,13 @@ import AnneauProgression from '../ui/AnneauProgression'
 import CaseRonde from '../ui/CaseRonde'
 import { annoncer } from '../lib/gestes'
 import { accord, jourLong, jourNomme } from '../lib/textes'
+import { useCompteTaches } from '../lib/enLigne'
 
 /* ============================================================================
    TCH80 — Feuille « Bilan du soir » (textes.md §2.9, regles.md §4.6), ouverte par la carte
    « Faire le bilan », le menu, ou `?ouvrir=bilan` (notification du soir). Le lendemain jusqu'à
    midi, c'est le « Bilan d'hier ». Contenu lu dans `journee/cloture/` (journee_cloture.json) :
-     · « {faites} sur {objectif} » (+ essentiel), les segments, « {pt} des {pl} gardées » ;
+     · « {faites} sur {objectif} » (+ essentiel), les segments (R3-020 : plus de second chiffre « gardées ») ;
      · Faites ; Reste : par tâche Reporter à {jour} · Choisir un jour · En réserve · Abandonner
        (Reporter est le choix d'emblée), « Tout reporter à {jour} » les remet toutes sur le prochain
        jour travaillé ; une tâche reportée 3 fois est marquée « À revoir : reportée 3 fois » et,
@@ -25,6 +26,26 @@ import { accord, jourLong, jourNomme } from '../lib/textes'
 
 const REPORTER = 'prochain_jour_ouvre'
 const LIMITE_MOT = 280
+
+/** Le brouillon du « mot » d'un bilan : une clé par compte et par jour de bilan (rien sans compte connu). */
+const cleBrouillonMot = (userId, jourBilan) => (userId != null && jourBilan ? `taches:bilan-mot:${userId}:${jourBilan}` : null)
+function lireMot(cle) {
+  if (!cle) return ''
+  try {
+    return window.localStorage.getItem(cle) ?? ''
+  } catch {
+    return '' // stockage indisponible (navigation privée) : le mot vit le temps de la feuille, rien d'autre
+  }
+}
+function garderMot(cle, texte) {
+  if (!cle) return
+  try {
+    if (texte) window.localStorage.setItem(cle, texte)
+    else window.localStorage.removeItem(cle)
+  } catch {
+    // stockage indisponible : rien n'est gardé au-delà de la feuille ouverte, la frappe reste à l'écran
+  }
+}
 
 function useCloture(jour, aujourdhui) {
   const [etat, setEtat] = useState({ chargement: true, erreur: '', donnees: null })
@@ -111,7 +132,7 @@ function ChoixReste({ titre, choix, jourReport, onChoisir, minimum }) {
  * R2-030 — une tâche du Reste a son ROND à gauche, comme partout (maquette ecran-bilan.html) : cocher la marque faite
  * (`terminer/`, défaite en décochant) ; faite, ses choix disparaissent et le bilan ne la renvoie plus.
  */
-function Reste({ item, choix, onChoisir, jourReport, minimum, aTrancher, faite, onTerminer, enLigne }) {
+function Reste({ item, choix, onChoisir, jourReport, minimum, aTrancher, faite, onTerminer, enLigne, jourBilan }) {
   return (
     <div className={faite ? 'reste faite' : 'reste'} role="listitem" data-ligne={`${item.type}:${item.id}`}>
       <CaseRonde coche={faite} titre={item.titre} desactivee={!enLigne} onBasculer={(suivant) => onTerminer(item, suivant)} />
@@ -119,6 +140,8 @@ function Reste({ item, choix, onChoisir, jourReport, minimum, aTrancher, faite, 
         <div className="titre">{item.titre}</div>
         <div className="meta">
           {aTrancher && !faite ? <span>À revoir : reportée 3 fois</span> : null}
+          {/* R3-021 (C-13) — son échéance est ce jour-là : reportée, elle n'en change pas (le dire, jamais la déplacer en silence) */}
+          {!faite && item.echeance && item.echeance === jourBilan ? <span className="alerte">échéance aujourd'hui</span> : null}
           {item.moment === 'soir' ? <span>Ce soir</span> : null}
           {item.projet ? <span data-p={item.projet.couleur}><i className="point" /><span className="projet-nom">{item.projet.nom}</span></span> : null}
         </div>
@@ -161,7 +184,6 @@ function Corps({ donnees, choix, enLigne, aujourdhui, fixer, constat, repondreCo
           {detail.length > 0 ? <span className="bilan-essentiel">{` · ${detail.join(' · ')}`}</span> : null}
         </div>
         <AnneauProgression grand faites={bilan.faites} objectif={bilan.objectif} />
-        {bilan.texte_gardees ? <div className="bilan-second chiffres">{bilan.texte_gardees}</div> : null}
       </div>
       {lecture ? <p className="carte-source">Le bilan d&apos;hier n&apos;est plus modifiable après midi.</p> : null}
 
@@ -192,12 +214,12 @@ function Corps({ donnees, choix, enLigne, aujourdhui, fixer, constat, repondreCo
           <div role="list">
             {restes.map((item) => (
               <Reste key={`${item.type}:${item.id}`} item={item} jourReport={jourReport} minimum={aujourdhui}
-                choix={choix[item.id] ?? { choix: REPORTER }} onChoisir={(c) => fixer(item.id, c)}
+                choix={choix[item.id] ?? { choix: REPORTER }} onChoisir={(c) => fixer(item.id, c)} jourBilan={donnees.jour}
                 faite={faites.has(item.id)} onTerminer={terminer} enLigne={enLigne && !lecture} />
             ))}
             {aTrancher.map((item) => (
               <Reste key={`${item.type}:${item.id}`} item={item} aTrancher jourReport={jourReport} minimum={aujourdhui}
-                choix={choix[item.id] ?? { choix: null }} onChoisir={(c) => fixer(item.id, c)}
+                choix={choix[item.id] ?? { choix: null }} onChoisir={(c) => fixer(item.id, c)} jourBilan={donnees.jour}
                 faite={faites.has(item.id)} onTerminer={terminer} enLigne={enLigne && !lecture} />
             ))}
           </div>
@@ -239,8 +261,13 @@ function Corps({ donnees, choix, enLigne, aujourdhui, fixer, constat, repondreCo
 export default function FeuilleBilan({ jour = null, aujourdhui, maintenant = '', enLigne = true, onValide, onPasser }) {
   const { chargement, erreur, donnees, recharger } = useCloture(jour, aujourdhui)
   const [choix, setChoix] = useState({})
-  const [mot, setMot] = useState('')
-  const [motOuvert, setMotOuvert] = useState(false)
+  // L4 → L2 — « Un mot sur ta journée » ne se perd jamais : chaque frappe est gardée sur l'appareil (par compte et par
+  // jour de bilan) ; fermer la feuille sans valider puis la rouvrir le même soir le retrouve ; « Valider » l'efface
+  const { userId } = useCompteTaches()
+  const cleMot = cleBrouillonMot(userId, jour || aujourdhui)
+  const [mot, setMotEtat] = useState(() => lireMot(cleMot))
+  const setMot = (texte) => { setMotEtat(texte); garderMot(cleMot, texte) }
+  const [motOuvert, setMotOuvert] = useState(() => Boolean(lireMot(cleMot)))
   const [constatRepondu, setConstatRepondu] = useState(false)
   const [envoi, setEnvoi] = useState(false)
   const [erreurEnvoi, setErreurEnvoi] = useState('')
@@ -300,6 +327,7 @@ export default function FeuilleBilan({ jour = null, aujourdhui, maintenant = '',
     }
     try {
       const { data } = await client.cloturerJournee(corps)
+      garderMot(cleMot, '') // enregistré avec le bilan : le brouillon n'a plus lieu d'être
       onValide(data)
     } catch (err) {
       setErreurEnvoi(frenchError(err))

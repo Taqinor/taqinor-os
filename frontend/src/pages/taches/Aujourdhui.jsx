@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import CoquilleTaches, { EVENEMENT_SAISIE_FERMEE, EVENEMENT_SAISIR, SaisieBureau } from '../../features/taches/coquille/CoquilleTaches'
-import { lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
+import { EVENEMENT_ENVOI, lireBrouillon } from '../../features/taches/saisie/FeuilleSaisie'
 import { useApresCreation, useOuvrirFiche } from '../../features/taches/lib/fiche'
 import Sections, {
   BandeauPasAJour, EtatVide, PHRASE_HORS_LIGNE, Squelette,
@@ -10,7 +10,7 @@ import { FeuilleLier, useLierActivite } from '../../features/taches/aujourdhui/L
 import Replies, { useARevoir } from '../../features/taches/aujourdhui/Replies'
 import FeuilleBilan from '../../features/taches/aujourdhui/FeuilleBilan'
 import FeuilleAlleger, { candidatesAlleger } from '../../features/taches/aujourdhui/FeuilleAlleger'
-import { actionsJournee, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
+import { actionsJournee, progressionApres, useModesJournee } from '../../features/taches/aujourdhui/MenuJournee'
 import ColonneBureau, { ColonneProjets } from '../../features/taches/aujourdhui/ColonneBureau'
 import Propose from '../../features/taches/aujourdhui/Propose'
 import Progression from '../../features/taches/aujourdhui/Progression'
@@ -270,20 +270,6 @@ function messageQuand(quand, aujourdhui, reporterA) {
   return `Prévue ${jourCourt(quand.jour_prevu, aujourdhui)}`
 }
 
-/**
- * Le compteur suit un geste (± 1 faite) sans attendre le serveur ; la réponse le recale ensuite quand elle en porte
- * un (`progression` d'une TACHE_ECRITE). Une ligne du plan compte aussi dans « gardées tenues ».
- */
-function avancer(progression, item, delta) {
-  if (!progression || typeof progression.faites !== 'number') return progression
-  const borne = (n) => Math.max(0, n)
-  const suite = { ...progression, faites: borne(progression.faites + delta) }
-  if (item.prevue_au_plan && typeof progression.plan_tenues === 'number') suite.plan_tenues = borne(progression.plan_tenues + delta)
-  if (item.type === 'activite' && typeof progression.activites_closes === 'number') {
-    suite.activites_closes = borne(progression.activites_closes + delta)
-  }
-  return suite
-}
 
 /** L'adresse de clôture d'une activité ERP (`recordsApi.markActivityDone`), écrite en entier pour l'envoi qui survit à la page. */
 const adresseClore = (id) => `${originFrom(import.meta.env.VITE_API_URL)}/api/django/records/activities/${id}/done/`
@@ -318,7 +304,7 @@ function useClotureDifferee({ patcher, setDonnees }) {
 
   const marquer = useCallback((item, fait) => {
     patcher(cleDe(item), (it) => ({ ...it, statut: fait ? 'fait' : 'a_faire' }))
-    setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, item, fait ? 1 : -1) } : d))
+    setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, item, { fait }) } : d))
   }, [patcher, setDonnees])
 
   const envoyer = useCallback((cle, enPartant = false) => {
@@ -417,19 +403,58 @@ function useAjoutsEnFile() {
   return ajouts
 }
 
-/** « En attente d'envoi » : les ajouts hors ligne, grisés, sans case ni geste (ils n'existent pas encore). */
-function AjoutsEnFile({ ajouts }) {
+/**
+ * R3-030 — les tâches qui PARTENT de la saisie (événement `taqinor:taches:envoi` de la feuille, R3-046) : prévues
+ * aujourd'hui, elles sont à l'écran dès le toucher, grisées « envoi… », même sur un réseau lent ; au retour du serveur
+ * (`creees`), la vraie ligne prend leur place sans attendre la relecture ; `echec` ou `en_file` les retire (la phrase
+ * revient à la saisie, ou la file « En attente d'envoi » prend le relais). Aucun toast ici : la saisie dit le sien.
+ */
+function useEnvois(jour, setDonnees) {
+  const [envois, setEnvois] = useState({}) // clé d'envoi → lignes annoncées (celles d'aujourd'hui)
+  useEffect(() => {
+    const surEnvoi = (e) => {
+      const detail = e?.detail ?? {}
+      if (!detail.envoi) return
+      if (detail.etat === 'part') {
+        const lignes = (detail.lignes ?? []).filter((l) => l?.jour && l.jour === jour)
+        if (lignes.length > 0) setEnvois((v) => ({ ...v, [detail.envoi]: lignes }))
+        return
+      }
+      setEnvois((v) => { const suite = { ...v }; delete suite[detail.envoi]; return suite })
+      if (detail.etat !== 'creees') return
+      const nouvelles = (detail.creees ?? []).filter((it) => it?.type === 'tache' && it.jour_prevu === jour)
+      if (nouvelles.length === 0) return
+      setDonnees((d) => {
+        if (!d) return d
+        const absentes = nouvelles.filter((it) => !chercher(d, cleDe(it)))
+        if (absentes.length === 0) return d
+        const soir = absentes.filter((it) => it.moment === 'soir')
+        const jourItems = absentes.filter((it) => it.moment !== 'soir')
+        return { ...d, journee: [...(d.journee ?? []), ...jourItems], ce_soir: [...(d.ce_soir ?? []), ...soir] }
+      })
+    }
+    window.addEventListener(EVENEMENT_ENVOI, surEnvoi)
+    return () => window.removeEventListener(EVENEMENT_ENVOI, surEnvoi)
+  }, [jour, setDonnees])
+  return useMemo(() => Object.entries(envois).flatMap(([envoi, lignes]) => lignes.map((l, rang) => ({
+    cle: l.client_id ?? `${envoi}:${rang}`, titre: l.titre,
+  }))), [envois])
+}
+
+/** « En attente d'envoi » : les ajouts hors ligne, grisés, sans case ni geste (ils n'existent pas encore) ; R3-030 : la
+ *  même ligne pour un envoi en cours (« envoi… »). */
+function AjoutsEnFile({ ajouts, titre = 'En attente d’envoi', meta = TOAST_EN_FILE, attribut = 'data-en-file' }) {
   if (ajouts.length === 0) return null
   return (
-    <section className="section en-file" role="region" aria-label="En attente d’envoi">
-      <h2 className="section-titre"><span>En attente d&apos;envoi</span></h2>
+    <section className="section en-file" role="region" aria-label={titre}>
+      <h2 className="section-titre"><span>{titre}</span></h2>
       <div className="liste" role="list">
         {ajouts.map((ajout) => (
-          <div key={ajout.cle} className="ligne lecture-seule en-file" role="listitem" data-en-file="">
+          <div key={ajout.cle} className="ligne lecture-seule en-file" role="listitem" {...{ [attribut]: '' }}>
             <span className="case vide" aria-hidden="true" />
             <div className="ligne-corps">
               <div className="titre">{ajout.titre}</div>
-              <div className="meta"><span>{TOAST_EN_FILE}</span></div>
+              <div className="meta"><span>{meta}</span></div>
             </div>
             <div className="ligne-fin" />
           </div>
@@ -469,6 +494,7 @@ export default function Aujourdhui() {
   }, [societe, userId])
   const { donnees, setDonnees, erreur, derniere, squelette, enLigne, charger } = useAujourdhui(tout, userId)
   const [estampilles, setEstampilles] = useState({})
+  const [restes, setRestes] = useState(() => new Set()) // R3-021 : lignes reportées que leur échéance garde ici
   const [feuille, setFeuille] = useState(null)
   const [conflit, setConflit] = useState(null)
   const [invite, setInvite] = useState(false)
@@ -476,6 +502,7 @@ export default function Aujourdhui() {
   const [deplierARevoir, setDeplierARevoir] = useState(0)
   const bureau = useBureau()
   const ajoutsEnFile = useAjoutsEnFile()
+  const enEnvoi = useEnvois(donnees?.jour ?? null, setDonnees)
   const [glisse, setGlisse] = useState(null) // la ligne qu'on glisse vers une heure de l'Agenda (bureau seulement)
 
   const garde = useCallback(() => {
@@ -484,6 +511,9 @@ export default function Aujourdhui() {
     throw new Error(PHRASE_HORS_LIGNE)
   }, [enLigne])
 
+  // la journée À JOUR (un « Annuler » rappelle le `maj` d'avant le geste : sa journée à lui serait périmée)
+  const donneesCourantes = useRef(donnees)
+  useEffect(() => { donneesCourantes.current = donnees }, [donnees])
   const patcher = useCallback((cle, fn) => {
     setDonnees((d) => (d ? mapItems(d, (it) => (cleDe(it) === cle ? fn(it) : it)) : d))
   }, [setDonnees])
@@ -533,7 +563,7 @@ export default function Aujourdhui() {
     const geste = { annule: false, rang: (rangGeste.current += 1) }
     const marquer = (fait) => {
       patcher(cle, (it) => ({ ...it, statut: fait ? 'fait' : 'a_faire' }))
-      setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, item, fait ? 1 : -1) } : d))
+      setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, item, { fait }) } : d))
     }
     marquer(suivant)
     const envoi = enchainer(cle, () => (suivant ? client.terminerTache(item.id) : client.rouvrirTache(item.id)))
@@ -586,15 +616,38 @@ export default function Aujourdhui() {
     const cle = cleDe(item)
     const champs = typeof quand === 'string' ? { jour_prevu: quand } : { ...QUAND_VIDE, ...quand }
     const jour = champs.jour_prevu ?? null
-    const estampille = !jour ? '→ Sans jour' : jour !== donnees?.jour ? `→ ${jourNomme(jour, donnees?.jour)}` : ''
+    const aujourdhui = donnees?.jour
+    const part = jour !== aujourdhui // un autre jour, ou sans jour
+    // R3-021 (C-13) — une tâche dont l'échéance EST aujourd'hui reste dans la journée (le serveur l'y garde : avertissement
+    // `echeance_aujourdhui`) : la ligne ne s'efface pas, elle le DIT ; une échéance passée, elle, ne la garde pas (`===`)
+    const reste = part && item.type === 'tache' && Boolean(aujourdhui) && item.echeance === aujourdhui
+    const vers = !jour ? '→ Sans jour' : part ? `→ ${jourNomme(jour, aujourdhui)}` : ''
+    // la pastille dit OÙ (« → ven. 20 ») ; « échéance aujourd'hui » est déjà écrit sous le titre (méta de la ligne) : une
+    // pastille plus longue mangeait le titre au bureau
+    const estampille = vers
     const avant = Object.fromEntries(Object.keys(champs).map((k) => [k, item[k] ?? QUAND_VIDE[k] ?? null]))
+    const quitte = part && !reste // une ★ ouverte qui quitte Essentiel : « essentiel f/p » suit (R3-020)
     const poser = () => {
       if (estampille) setEstampilles((e) => ({ ...e, [cle]: estampille }))
+      if (reste) setRestes((r) => new Set(r).add(cle))
       patcher(cle, (it) => ({ ...it, ...champs }))
+      if (quitte) setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, item, { quitte: true }) } : d))
     }
     const oter = () => {
       setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([k]) => k !== cle)))
+      setRestes((r) => { const suite = new Set(r); suite.delete(cle); return suite })
       patcher(cle, (it) => ({ ...it, ...avant }))
+      if (quitte) setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, item, { quitte: false }) } : d))
+    }
+    // « Repousser l'échéance » : l'échéance passe au jour choisi (PATCH `echeance`) ; la tâche quitte alors la journée
+    const repousser = async () => {
+      const courant = chercher(donneesCourantes.current, cle) ?? item
+      const { data } = await client.modifierTache(item.id, { echeance: jour, lock_version: courant.lock_version })
+      setRestes((r) => { const suite = new Set(r); suite.delete(cle); return suite })
+      setEstampilles((e) => ({ ...e, [cle]: vers }))
+      patcher(cle, (it) => ({ ...it, echeance: jour, lock_version: data?.tache?.lock_version ?? it.lock_version }))
+      if (data?.progression) poserProgression(data.progression)
+      else setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, courant, { quitte: true }) } : d))
     }
     if (!enLigne) {
       // hors ligne (TCH100) : reporter / choisir un jour part dans la file, avec le `lock_version` du cache
@@ -614,8 +667,14 @@ export default function Aujourdhui() {
       const geste = { annule: false }
       poser()
       const envoi = enchainer(cle, () => client.planifierTache(item.id, { ...champs, lock_version: version }))
-      const toast = proposerAnnuler({
-        message,
+      const toast = reste && jour ? proposerAnnuler({
+        // R3-021 — le geste dit ce qui se passe : prévue ce jour-là, mais l'échéance la garde aujourd'hui
+        message: `Prévue ${jourCourt(jour, aujourdhui)} — l'échéance reste aujourd'hui`,
+        libelle: "Repousser l'échéance",
+        apres: null,
+        onAnnuler: () => enchainer(cle, repousser),
+      }) : proposerAnnuler({
+        message: reste ? `${message} — l'échéance reste aujourd'hui` : message,
         onAnnuler: async () => {
           geste.annule = true
           oter()
@@ -651,7 +710,7 @@ export default function Aujourdhui() {
       })
     }
     ecrire(lockVersion)
-  }, [enLigne, donnees, patcher, poserProgression, enchainer, toastCourant])
+  }, [enLigne, donnees, patcher, poserProgression, enchainer, toastCourant, setDonnees])
 
   const reporter = useCallback((item) => {
     const jour = donnees?.prochain_jour_ouvre
@@ -692,9 +751,6 @@ export default function Aujourdhui() {
    */
   const placesAvantAttente = useRef(new Map())
   const [ecartsProjets, setEcartsProjets] = useState({})
-  // la journée À JOUR (un « Annuler » rappelle le `maj` d'avant le geste : sa journée à lui serait périmée)
-  const donneesCourantes = useRef(donnees)
-  useEffect(() => { donneesCourantes.current = donnees }, [donnees])
   const majLigne = useCallback((id, champs) => {
     const cle = `tache:${id}`
     // R2-029 — une tâche ouverte change de projet (« Changer de projet… », ou son Annuler) : « Mes projets » (bureau) suit
@@ -782,6 +838,7 @@ export default function Aujourdhui() {
       const { data } = await client.alleger({ jour: donnees.jour, garder: ids })
       setDonnees(data.aujourdhui)
       setFeuille(null)
+      setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.delete('ouvrir'); return suite }, { replace: true })
       const n = data.renvoyees?.length ?? 0
       proposerAnnuler({
         message: `${n} ${n >= 2 ? 'retournées' : 'retournée'} aux projets`,
@@ -790,7 +847,7 @@ export default function Aujourdhui() {
     } catch (err) {
       annoncer(frenchError(err))
     }
-  }, [garde, donnees, setDonnees, charger])
+  }, [garde, donnees, setDonnees, charger, setParams])
 
   const modes = useModesJournee({ donnees, setDonnees, garde, setEstampilles })
   const revoir = useARevoir({ donnees, setDonnees, garde, charger })
@@ -806,7 +863,7 @@ export default function Aujourdhui() {
     const avant = cle && donnees ? chercher(donnees, cle) : null
     if (avant && ecrite.statut === 'fait' && avant.statut !== 'fait') {
       patcher(cle, (it) => ({ ...it, statut: 'fait', lock_version: ecrite.lock_version ?? it.lock_version }))
-      setDonnees((d) => (d ? { ...d, progression: avancer(d.progression, avant, 1) } : d))
+      setDonnees((d) => (d ? { ...d, progression: progressionApres(d.progression, avant, { fait: true }) } : d))
       return
     }
     // R3-024 — une écriture de la fiche (Quand, heure, titre…) se pose SUR PLACE, à l'instant (la ligne et le bloc de
@@ -896,6 +953,7 @@ export default function Aujourdhui() {
   const contexte = useMemo(() => ({
     donnees,
     estampilles,
+    restes,
     nbEssentielles: donnees?.essentiel?.length ?? 0,
     gardee: Boolean(donnees?.plan?.planifie_le),
     invite,
@@ -903,7 +961,7 @@ export default function Aujourdhui() {
     reorganiser: modes.reorganiser,
     selection: modes.selection,
     glissable,
-  }), [donnees, estampilles, invite, focusPrevu, modes.reorganiser, modes.selection, glissable])
+  }), [donnees, estampilles, restes, invite, focusPrevu, modes.reorganiser, modes.selection, glissable])
 
   // Clavier (spec-7 §5) : j/k, Espace, * … ; jamais une touche seule qui fait disparaître une ligne
   const racine = useClavierListe((action, { cle }) => {
@@ -974,7 +1032,7 @@ export default function Aujourdhui() {
   } else if (feuille?.type === 'jour') {
     laFeuille = {
       ouverte: true,
-      titre: 'Choisir un jour',
+      titre: 'Quand ?', // L4 (R3-067) : le même titre que la feuille « Quand » d'une ligne
       onFermer: () => setFeuille(null),
       children: (
         <ChoisirJour
@@ -992,13 +1050,17 @@ export default function Aujourdhui() {
         />
       ),
     }
-  } else if (feuille?.type === 'alleger' && donnees) {
+  } else if ((feuille?.type === 'alleger' || (!feuille && params.get('ouvrir') === 'alleger')) && donnees) {
+    // R3-023 — `?ouvrir=alleger` : « Alléger ma journée » de la carte du Copilote (journée qui déborde) ouvre la feuille
     laFeuille = {
       ouverte: true,
       titre: 'Alléger ma journée',
       cranInitial: '85',
       variante: 'panneau', // ≥ 1024 px : panneau fixe à droite, non modal ; en dessous, la feuille (R2-050)
-      onFermer: () => setFeuille(null),
+      onFermer: () => {
+        setFeuille(null)
+        setParams((actuels) => { const suite = new URLSearchParams(actuels); suite.delete('ouvrir'); return suite }, { replace: true })
+      },
       children: <FeuilleAlleger donnees={donnees} enLigne={enLigne} onGarder={alleger} />,
     }
   } else if (feuille?.type === 'lier') {
@@ -1017,7 +1079,7 @@ export default function Aujourdhui() {
   } else if (feuille?.type === 'jour_lot') {
     laFeuille = {
       ouverte: true,
-      titre: 'Quand',
+      titre: 'Quand ?',
       onFermer: () => setFeuille(null),
       children: (
         <ChoisirJour
@@ -1067,6 +1129,7 @@ export default function Aujourdhui() {
       <SaisieBureau onClick={() => ouvrirSaisie({})} />
       {bandeau}
       <AjoutsEnFile ajouts={ajoutsEnFile} />
+      <AjoutsEnFile ajouts={enEnvoi} titre="Envoi en cours" meta="envoi…" attribut="data-envoi" />
       {donnees && !journeeVide(donnees) ? (
         <CarteDuMoment
           carte={donnees.carte_du_moment}

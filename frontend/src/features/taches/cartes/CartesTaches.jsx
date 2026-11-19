@@ -743,10 +743,50 @@ function CarteRythme({ donnees }) {
 
 // ── priorites ─────────────────────────────────────────────────────────────────
 
+/** R3-023 — `garder_n === 0` veut dire « rien à ajouter », pas « objectif atteint » : seul `faites` ≥ l'objectif
+ *  l'est ; sinon l'objectif est COUVERT par ce qui est déjà gardé (« 1 sur 9 faites »). */
 function sousTitrePriorites(d) {
   if (d.objectif?.mode === LIBRE || !d.objectif?.nb) return "Dans l'ordre où l'ERP les prendrait"
-  if (d.garder_n === 0) return 'Objectif atteint : le reste peut attendre.'
+  if (d.garder_n === 0) {
+    const faites = Number(d.faites) || 0
+    if (faites >= d.objectif.nb) return 'Objectif atteint : le reste peut attendre.'
+    return `Ton objectif est couvert par tes tâches du jour (${faites} sur ${d.objectif.nb} faites)`
+  }
   return `${d.garder_n} pour atteindre ton objectif de ${d.objectif.nb}`
+}
+
+/** R3-023 — la journée déborde (`priorites/` sert alors les GARDÉES ouvertes, `geste_propose: "alleger"`) : rien
+ *  à ajouter, chaque ligne se reporte, et « Alléger ma journée » ouvre la feuille d'Aujourd'hui. */
+function ReporterPriorite({ item, jour, plusTard }) {
+  const geste = useGeste()
+  if (!plusTard) return null
+  return (
+    <div className="actions-priorite">
+      <button type="button" className="bouton lien" disabled={geste.occupe}
+        onClick={() => geste.lancer(() => client.planifierTache(item.id, { jour_prevu: plusTard, lock_version: item.lock_version }), `Reportée à ${jourNomme(plusTard, jour)}`)}>
+        {`Reporter à ${jourNomme(plusTard, jour)}`}
+      </button>
+      <Retour geste={geste} />
+    </div>
+  )
+}
+
+function CarteDebordement({ donnees }) {
+  const lignes = donnees.lignes ?? []
+  return (
+    <div role="group" aria-label="Tes priorités">
+      <Tete titre={`Ta journée déborde de ${duree(donnees.deborde_minutes)}`} />
+      <div className="liste" role="list">
+        {lignes.map((l) => (
+          <LigneCarte key={cleItem(l.item)} item={l.item} rang={l.rang}
+            bas={<ReporterPriorite item={l.item} jour={donnees.jour} plusTard={donnees.plus_tard} />} />
+        ))}
+      </div>
+      <div className="propose-actions ep-carte-ia-pied">
+        <Link className="bouton second" to="/taches/aujourdhui?ouvrir=alleger">Alléger ma journée</Link>
+      </div>
+    </div>
+  )
 }
 
 function GestesPriorite({ item, jour, plusTard }) {
@@ -778,6 +818,7 @@ function CartePriorites({ donnees }) {
   const geste = useGeste(null, { principal: true })
   const [toutes, setToutes] = useState(false)
   const lignes = donnees.lignes ?? []
+  if (donnees.geste_propose === 'alleger' && donnees.deborde_minutes > 0 && lignes.length > 0) return <CarteDebordement donnees={donnees} />
   if (lignes.length === 0) {
     return <div role="group" aria-label="Tes priorités"><Tete titre="Tes priorités" /><p className="section-sous">Rien à prioriser : tout est gardé ou fait.</p></div>
   }
@@ -816,7 +857,10 @@ function lignesDuPoint(d) {
   if (d.restes_nb > 0) lignes.push(`Encore ${accord(d.restes_nb, 'gardée')}`)
   const rdv = d.rendez_vous_restants ?? []
   if (rdv.length > 0) lignes.push(`Rendez-vous restants : ${rdv.map((r) => `${heure(r.debut?.slice(11, 16))} ${r.titre}`).join(' · ')}`)
-  if (p.disponible_minutes > 0) lignes.push(`Temps libre : ${duree(p.disponible_minutes)}`)
+  // R3-023 — le temps contre ce qui RESTE à faire (`minutes_restantes`, servi), jamais un « Temps libre » qui l'ignore
+  const reste = Number(d.minutes_restantes) || 0
+  if (reste > 0 && p.disponible_minutes > 0) lignes.push(`Reste : ${duree(reste)} pour ${duree(p.disponible_minutes)} disponibles`)
+  else if (reste > 0) lignes.push(`Reste : ${duree(reste)}`)
   return lignes
 }
 
@@ -838,7 +882,7 @@ function attendLeDoigt(cle, d) {
   if (!d) return false
   if (d.proposition?.geste === 'ecrire') return true
   if (cle === 'plan_propose') return (d.proposition ?? []).length > 0
-  if (cle === 'priorites') return (d.garder_n ?? 0) > 0 && (d.lignes ?? []).length > 0
+  if (cle === 'priorites') return ((d.garder_n ?? 0) > 0 || d.geste_propose === 'alleger') && (d.lignes ?? []).length > 0
   if (cle === 'capture_apercu') return (d.lignes ?? []).length > 0
   if (cle === 'plan_projet') return projetPlanifiable(d.projet)
   if (cle === 'tache') return Boolean(d.proposition && ECHOS[d.proposition.geste])

@@ -10,8 +10,14 @@
 import { test, expect } from '@playwright/test'
 import {
   API, annonce, attendreAujourdhui, boutonGarder, creerProjet, creerTaches, etatJournee, garderParApi, jourServeur, ligne, lireTache, ouvrirActions,
-  progression, reinitialiser, section, titreUnique, toast,
+  reinitialiser, section, titreUnique, toast,
 } from './taches-aides'
+
+/** Le bouton de progression (R3-020) : son nom lu = son texte visible « {faites} sur {objectif}{ · essentiel f/p} »,
+ *  puis « . Détail de la journée » (axe 4.14 label-content-name-mismatch). */
+const progression = (page, { faites, objectif }, suite = '') => page.getByRole('button', {
+  name: new RegExp(`^${faites} sur ${objectif}${suite.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\. Détail de la journée$`),
+})
 
 /** Un projet actif de 4 tâches. `gardees` = déjà prévues aujourd'hui (elles sont dans Prévu d'emblée) ; sinon sans
  *  jour : Proposé en montre autant que `objectif − faites` (le compte `demo_admin` a déjà des activités ERP closes
@@ -92,7 +98,7 @@ test.describe('Tâches — la journée', () => {
       await expect(section(page, 'Essentiel').getByText(titre, { exact: true })).toBeVisible()
     }
     // la progression lit « essentiel 0 sur 3 » (rien de fait par ce test)
-    await expect(progression(page, base, ', essentiel 0 sur 3')).toBeVisible()
+    await expect(progression(page, base, ' · essentiel 0/3')).toBeVisible()
 
     // la 4e ★ : refusée, la ligne reste dans Prévu et un toast le dit (lu aussi par la région `role=status`)
     await section(page, 'Prévu').getByRole('checkbox', { name: `Essentielle : ${titres[3]}` }).click()
@@ -107,21 +113,21 @@ test.describe('Tâches — la journée', () => {
     await expect(section(page, 'Prévu')).toBeVisible()
     await section(page, 'Prévu').getByRole('checkbox', { name: `Essentielle : ${titres[0]}` }).click()
     await section(page, 'Prévu').getByRole('checkbox', { name: `Essentielle : ${titres[1]}` }).click()
-    await expect(progression(page, base, ', essentiel 0 sur 2')).toBeVisible()
+    await expect(progression(page, base, ' · essentiel 0/2')).toBeVisible()
 
     const caseA = ligne(page, taches[0].id).getByRole('checkbox', { name: `Marquer « ${titres[0]} » comme faite` })
     await caseA.click()
     await expect(caseA).toBeChecked()
     // critère (1) : le lecteur d'écran entend « Fait : <titre> » ; la progression gagne 1, essentiel 1 sur 2
     await expect(annonce(page)).toContainText(`Fait : ${titres[0]}`)
-    await expect(progression(page, { ...base, faites: base.faites + 1 }, ', essentiel 1 sur 2')).toBeVisible()
+    await expect(progression(page, { ...base, faites: base.faites + 1 }, ' · essentiel 1/2')).toBeVisible()
     await expect(toast(page)).toContainText('Faite')
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut).toBe('fait')
 
     // Annuler : la case revient, la progression aussi, le serveur rouvre la tâche
     await toast(page).getByRole('button', { name: 'Annuler' }).click()
     await expect(caseA).not.toBeChecked()
-    await expect(progression(page, base, ', essentiel 0 sur 2')).toBeVisible()
+    await expect(progression(page, base, ' · essentiel 0/2')).toBeVisible()
     await expect.poll(async () => (await lireTache(page, taches[0].id)).statut).toBe('a_faire')
   })
 

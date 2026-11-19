@@ -54,6 +54,8 @@ export function Ligne({ item, contexte, geste, extra = {}, reorg = false }) {
       {...extra}
     />
   )
+  // R3-021 — reportée mais gardée par son échéance du jour : la ligne reste (sa pastille le dit), jamais le fondu de départ
+  if (contexte.restes?.has(cle)) return <div className="ligne-reste" role="presentation">{ligne}</div>
   if (!reorganiser || !reorg || item.type !== 'tache') return ligne
   return (
     <div className="ligne-reorg" role="presentation">

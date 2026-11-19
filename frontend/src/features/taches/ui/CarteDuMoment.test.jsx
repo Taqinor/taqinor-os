@@ -305,15 +305,16 @@ describe('TCH77 — la ligne de progression', () => {
     expect(screen.getByRole('button')).toHaveTextContent('Reprise · objectif 5')
   })
 
-  it('au toucher : une phrase (faites, visées, gardées), temps, temps libre, puis Mon rythme', async () => {
+  it('au toucher (R3-020) : « 1 faite sur 5 », le temps contre le disponible, puis Mon rythme', async () => {
     const onRythme = vi.fn()
     render(<MemoryRouter><Progression donnees={aujourdhui()} onRythme={onRythme} /></MemoryRouter>)
     await userEvent.click(screen.getByRole('button', { name: /Détail de la journée/ }))
     const detail = screen.getByRole('group', { name: 'Détail de la journée' })
-    expect(detail).toHaveTextContent('1 faite sur 5 visées · 4 tâches gardées')
+    expect(detail).toHaveTextContent('1 faite sur 5')
     expect(detail).not.toHaveTextContent('accepté')
-    expect(detail).toHaveTextContent('Temps : 1 h 15 prévues + 1 sans durée')
-    expect(detail).toHaveTextContent('Temps libre : 3 h (4 h moins 1 h de rendez-vous)')
+    expect(detail).not.toHaveTextContent('gardée')
+    expect(detail).toHaveTextContent('Temps : 1 h 15 prévues pour 3 h disponibles · 1 sans durée')
+    expect(detail).not.toHaveTextContent('Temps libre')
     await userEvent.click(screen.getByRole('button', { name: /Mon rythme/ }))
     expect(onRythme).toHaveBeenCalledTimes(1)
   })

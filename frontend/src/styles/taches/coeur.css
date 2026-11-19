@@ -13,12 +13,12 @@
 /* Écran vide : une phrase, un geste (au pouce, en bas de la zone libre) */
 .tch .vide-plein { display: flex; flex-direction: column; justify-content: center; min-height: calc(100vh - 47px - 116px - 86px); padding-bottom: 24px; }
 .tch .vide-plein .vide-phrase, .tch .vide-plein .vide-aide { text-wrap: balance; }
-.tch .vide-plein .vide-phrase { font-size: 1.1875rem; line-height: 1.4; font-weight: 600; max-width: 22ch; margin-bottom: 8px; }
-.tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: 0.9375rem; line-height: 1.45; color: var(--tch-texte-doux); }
-.tch .vide-plein .bouton.plein { height: 50px; padding: 0 26px; font-size: 1rem; }
+.tch .vide-plein .vide-phrase { font-size: var(--tch-taille-tache); line-height: 1.4; font-weight: 600; max-width: 22ch; margin-bottom: 8px; }
+.tch .vide-plein .vide-aide { margin: 0 0 24px; max-width: 30ch; font-size: var(--tch-taille-texte); line-height: 1.45; color: var(--tch-texte-doux); }
+.tch .vide-plein .bouton.plein { height: var(--tch-bouton-h); padding: 0 26px; font-size: var(--tch-taille-tache); }
 .tch .vide-plein .bouton.discret { margin-top: 6px; }
 /* R2-033 — « ou touche + pour une tâche » : sous « Coller mes listes », l'autre chemin dit en une ligne */
-.tch .vide-plein .vide-aide.vide-plus { margin: 8px 0 4px; font-size: 0.875rem; }
+.tch .vide-plein .vide-aide.vide-plus { margin: 8px 0 4px; font-size: var(--tch-taille-texte); }
 .tch .vide-picto.grand { width: 88px; height: 88px; }
 .tch .vide-picto.grand svg { width: 40px; height: 40px; }
 @media (min-width: 768px) { .tch .vide-plein { min-height: 640px; } }
@@ -40,19 +40,18 @@
 /* Feuilles d'Aujourd'hui (Choisir un jour, Supprimer) : un champ, un bouton large au pouce */
 .tch .choisir-jour { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 20px; }
 .tch .choisir-jour .champ-date { height: 48px; padding: 0 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
-.tch .choisir-jour .bouton.large { width: 100%; height: 50px; font-size: 1rem; }
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: var(--tch-taille-tache); color: var(--tch-texte); }
+.tch .choisir-jour .bouton.large { width: 100%; height: 50px; font-size: var(--tch-taille-tache); }
 .tch .choisir-jour .carte-texte { margin: 0; }
 
 /* ── TCH77 · Progression (détail au toucher) et carte du moment ───────────────────────────────── */
 .tch .progression-faits { margin: 2px var(--tch-gouttiere) 0; padding: 12px 14px 4px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
-.tch .progression-faits p { margin: 0 0 6px; font-size: 0.9375rem; line-height: 1.4; }
+.tch .progression-faits p { margin: 0 0 6px; font-size: var(--tch-taille-texte); line-height: 1.4; }
 .tch .progression-faits .bouton.lien { height: 44px; margin-left: -10px; font-weight: 600; color: var(--tch-accent); }
 .tch .carte.retour { padding: 18px 16px 16px; }
-.tch .carte.retour .carte-texte { font-size: 1.0625rem; line-height: 1.4; font-weight: 600; margin-bottom: 4px; }
+.tch .carte.retour .carte-texte { font-size: var(--tch-taille-tache); line-height: 1.4; font-weight: 600; margin-bottom: 4px; }
 .tch .carte-actions.pile { flex-direction: column; align-items: stretch; gap: 6px; }
 .tch .carte-actions.pile .bouton { width: 100%; }
-.tch .carte.rythme .carte-texte { font-size: 1.0625rem; line-height: 1.4; }
 .tch .carte .carte-actions { flex-wrap: wrap; }
 .tch .carte .carte-actions .bouton { min-height: 44px; }
 @media (min-width: 768px) {
@@ -60,21 +59,17 @@
   .tch .carte-actions.pile .bouton { width: auto; }
 }
 
-/* Astuce de geste et révélations : une carte « moment » à icône, OK au pouce */
-.tch .moment.revelation { align-items: flex-start; padding: 14px 10px 10px 14px; }
+/* Astuce de geste et révélations : une carte « moment » à icône. Son dessin (une rangée de 48 à 56 pt) vit dans base.css
+   (R3-085, L5) ; ici, seulement l'icône et la démo du balayage. */
 .tch .revelation .bandeau-icone { flex: none; width: 36px; height: 36px; background: var(--tch-surface); color: var(--tch-accent); }
-.tch .revelation .moment-texte { padding-top: 2px; }
-.tch .revelation .moment-texte b { font-weight: 500; font-size: 0.9375rem; line-height: 1.4; }
-.tch .revelation .carte-actions { margin-top: 8px; margin-left: -4px; }
-.tch .revelation .carte-actions .bouton { height: 44px; padding: 0 14px; background: var(--tch-surface); }
 .tch .demo-balayage { position: relative; height: 36px; margin-top: 10px; border-radius: 10px; overflow: hidden; background: var(--tch-accent); }
 .tch .demo-balayage span { position: absolute; inset: 0 auto 0 0; width: calc(100% - 92px); display: flex; align-items: center; gap: 8px;
-  padding: 0 10px; white-space: nowrap; overflow: hidden; background: var(--tch-surface); color: var(--tch-texte); font-size: 0.875rem; font-weight: 400; }
+  padding: 0 10px; white-space: nowrap; overflow: hidden; background: var(--tch-surface); color: var(--tch-texte); font-size: var(--tch-taille-texte); font-weight: 400; }
 .tch .demo-balayage span i { width: 14px; height: 14px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px var(--tch-texte-doux); flex: none; }
 /* ── TCH81 · Repliés : actions d'une ligne d'À revoir, lignes « Ailleurs dans l'ERP » ──────────── */
 .tch .revoir-actions { margin-top: 0; padding: 0 var(--tch-gouttiere) 12px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px); background: var(--tch-surface); }
 .tch .revoir-actions .champ-date { height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: var(--tch-taille-tache); color: var(--tch-texte); }
 .tch .replies .propose-actions { padding-top: 4px; }
 /* R2-021 — la raison d'une ligne d'À revoir, sous elle, alignée sur le titre */
 .tch .revoir-raison { margin: -6px 0 0; padding: 0 var(--tch-gouttiere) 6px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px);
@@ -87,6 +82,11 @@
     overflow: hidden; animation: tch-reportee-part 450ms ease-in 1.4s forwards;
   }
 }
+/* R3-021 — reportée, mais son échéance d'aujourd'hui la garde dans la journée : elle ne part pas, sa pastille le dit */
+.tch .ligne-reste { display: contents; }
+@media (prefers-reduced-motion: no-preference) {
+  .tch[data-ecran="aujourdhui"] .ligne-reste .ligne-cadre:has(> .ligne.estampillee) { animation: none; overflow: visible; }
+}
 @keyframes tch-reportee-part {
   from { opacity: 1; max-height: 160px; }
   to { opacity: 0; max-height: 0; visibility: hidden; }
@@ -96,17 +96,17 @@
 
 /* ── TCH80 · Bilan du soir (port de ecrans-coeur.css « Bilan du soir » + tour 2) ──────────────── */
 .tch .bilan-tete { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 14px; row-gap: 4px; margin-top: 16px; }
-.tch .bilan-tete .bilan-compte { grid-column: 1 / -1; font-size: 1.375rem; font-weight: 700; line-height: 1.2; }
-.tch .bilan-essentiel { font-size: 1rem; font-weight: 500; color: var(--tch-texte-doux); }
-.tch .bilan-second { font-size: 0.9375rem; color: var(--tch-texte-doux); }
+.tch .bilan-tete .bilan-compte { grid-column: 1 / -1; font-size: var(--tch-taille-titre); font-weight: 700; line-height: 1.2; }
+.tch .bilan-essentiel { font-size: var(--tch-taille-tache); font-weight: 500; color: var(--tch-texte-doux); }
+.tch .bilan-second { font-size: var(--tch-taille-texte); color: var(--tch-texte-doux); }
 .tch .bilan-section { margin-top: 22px; }
 .tch .bilan-section .fiche-label { margin-bottom: 0; }
 .tch .fiche-label { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 4px;
-  font-size: 0.9375rem; font-weight: 650; color: var(--tch-texte-doux); }
+  font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-texte-doux); }
 .tch .fiche-label .compte { font-size: var(--tch-chiffre); font-weight: 500; }
 .tch .reste { display: grid; grid-template-columns: 44px 1fr; column-gap: 0; padding: 8px 0; margin-left: -11px; }
 .tch .reste .case { margin-block: calc((var(--tch-tache-lh) - var(--tch-cible)) / 2); }
-.tch .reste .titre { font-size: 1rem; line-height: 1.375rem; }
+.tch .reste .titre { font-size: var(--tch-taille-tache); line-height: 1.375rem; }
 .tch .reste .meta { margin-top: 1px; }
 .tch .reste-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .tch .reste-choix .puce { height: 34px; }
@@ -116,40 +116,40 @@
 .tch .reste.faite .titre { text-decoration: line-through; color: var(--tch-texte-doux); }
 .tch .restes-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .tch .restes-tete .fiche-label { margin: 0; }
-.tch .bouton.petit { height: 36px; padding: 0 14px; font-size: 0.875rem; position: relative; }
+.tch .bouton.petit { height: 36px; padding: 0 14px; font-size: var(--tch-taille-texte); position: relative; }
 .tch .bouton.petit::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
-.tch .lien-bloc { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: 0.875rem; font-weight: 600; color: var(--tch-accent); text-align: left; }
+.tch .lien-bloc { display: flex; align-items: center; gap: 6px; min-height: 44px; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-accent); text-align: left; }
 .tch .constat { display: flex; gap: 12px; margin-top: 22px; padding: 14px 14px 6px; border-radius: var(--tch-rayon-carte); background: var(--tch-panneau); }
 .tch .constat .bandeau-icone { width: 32px; height: 32px; color: var(--tch-accent); }
-.tch .constat p { margin: 4px 0 0; font-size: 0.9375rem; line-height: 1.45; }
+.tch .constat p { margin: 4px 0 0; font-size: var(--tch-taille-texte); line-height: 1.45; }
 .dark .tch .constat { background: color-mix(in oklch, var(--muted) 88%, var(--foreground)); }
 .tch .un-mot { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; margin-top: 10px;
-  font-size: 1rem; color: var(--tch-texte-doux); text-align: left; box-shadow: inset 0 1px 0 var(--tch-trait); }
+  font-size: var(--tch-taille-tache); color: var(--tch-texte-doux); text-align: left; box-shadow: inset 0 1px 0 var(--tch-trait); }
 .tch .un-mot svg:last-child { margin-left: auto; }
 .tch .champ-mot { width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
-  box-shadow: inset 0 0 0 1px var(--tch-trait); font: inherit; font-size: 1rem; color: var(--tch-texte); resize: vertical; }
-.tch .erreur-champ { margin: 8px 0 0; font-size: 0.875rem; line-height: 1.4; font-weight: 600; color: var(--tch-alerte); } /* etat-erreur-champ.html (.es-erreur) ; une seule définition */
+  box-shadow: inset 0 0 0 1px var(--tch-trait); font: inherit; font-size: var(--tch-taille-tache); color: var(--tch-texte); resize: vertical; }
+.tch .erreur-champ { margin: 8px 0 0; font-size: var(--tch-taille-texte); line-height: 1.4; font-weight: 600; color: var(--tch-alerte); } /* etat-erreur-champ.html (.es-erreur) ; une seule définition */
 .tch .bilan .feuille-pied .bouton.discret { flex: none; min-width: 72px; }
 .tch .bilan .vide-phrase { margin: 22px 0 0; max-width: none; text-align: center; }
 
 /* ── TCH79 · Menu ⋯ : modes Réorganiser / Sélectionner, feuille « Alléger ma journée » ────────── */
 .tch .mode-ecran { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin: 8px var(--tch-gouttiere) 0;
-  padding: 0 4px 0 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: 0.9375rem; font-weight: 600; }
-.tch .mode-ecran .bouton.lien { min-height: 44px; font-weight: 650; color: var(--tch-accent); }
+  padding: 0 4px 0 14px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau); font-size: var(--tch-taille-texte); font-weight: 600; }
+.tch .mode-ecran .bouton.lien { min-height: 44px; font-weight: 600; color: var(--tch-accent); }
 .tch .ligne-reorg { display: flex; align-items: stretch; background: var(--tch-surface); }
 .tch .ligne-reorg > .ligne-cadre { flex: 1; min-width: 0; }
 .tch .reorg-controles { display: flex; flex-direction: column; justify-content: center; flex: none; padding-right: 4px; }
 .tch .reorg-controles .bouton-icone { width: var(--tch-cible); height: var(--tch-cible); color: var(--tch-texte-doux); }
-.tch .alleger .carte-source { margin: 4px 0 8px; font-size: 0.875rem; line-height: 1.4; }
+.tch .alleger .carte-source { margin: 4px 0 8px; font-size: var(--tch-taille-texte); line-height: 1.4; }
 .tch .ligne-courte { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; min-height: 44px; margin-left: -11px; }
 .tch .ligne-courte .case { margin: 0; }
 /* Passe visuelle n° 55 — Faites du bilan : la case cochée est en lecture seule, mais d'un vert plein (ecran-bilan.html),
    jamais l'atténuation à 45 % d'une case grisée */
 .tch .bilan-faites .case:disabled .rond { opacity: 1; }
-.tch .ligne-courte .texte { font-size: 1rem; line-height: 1.375rem; }
+.tch .ligne-courte .texte { font-size: var(--tch-taille-tache); line-height: 1.375rem; }
 .tch .feuille-pied { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; margin: 12px calc(-1 * var(--tch-gouttiere)) 0;
   padding: 12px var(--tch-gouttiere) 16px; background: var(--tch-surface-haute); box-shadow: inset 0 1px 0 var(--tch-trait); }
-.tch .feuille-pied .bouton { height: 50px; font-size: 1rem; }
+.tch .feuille-pied .bouton { height: 50px; font-size: var(--tch-taille-tache); }
 .tch .feuille-pied .bouton.large { flex: 1; }
 
 /* ── TCH78 · Proposé pour aujourd'hui ─────────────────────────────────────────────────────────── */
@@ -164,7 +164,7 @@
 .tch .suite-projets .ligne .meta [data-p] { display: none; }
 @media (min-width: 768px) { .tch .propose-actions { padding-inline: 24px; } }
 .tch .demo-balayage b { position: absolute; right: 0; top: 0; bottom: 0; width: 92px; display: grid; place-items: center;
-  font-size: 0.75rem; font-weight: 650; color: var(--tch-accent-texte); }
+  font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-accent-texte); }
 
 /* ── F3 · Cartes du Copilote (maquette docs/taches/maquettes/copilote.html ; classes `.ep-carte-ia*` de
    ecrans-projets.css, variante du panneau `.ep-ia` fondue : les cartes ne vivent que dans le panneau).
@@ -173,10 +173,10 @@
 .tch .ep-carte-ia { margin-top: 12px; border-radius: var(--tch-rayon-carte); background: transparent;
   box-shadow: inset 0 0 0 1px var(--tch-trait); overflow: hidden; }
 .tch .ep-carte-ia-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 12px 14px 4px; font-size: 0.9375rem; font-weight: 600; color: var(--tch-texte); }
+  padding: 12px 14px 4px; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-texte); }
 .tch .ep-carte-ia-tete .seg-tete { margin: 0; font: inherit; color: inherit; }
-.tch .ep-carte-ia-tete .chiffres { font-size: 0.8125rem; font-weight: 500; color: var(--tch-texte-doux); white-space: nowrap; }
-.tch .ep-carte-ia-etape { margin: 0; padding: 10px 14px 0; font-size: 0.875rem; font-weight: 600; color: var(--tch-texte-doux); }
+.tch .ep-carte-ia-tete .chiffres { font-size: var(--tch-taille-meta); font-weight: 500; color: var(--tch-texte-doux); white-space: nowrap; }
+.tch .ep-carte-ia-etape { margin: 0; padding: 10px 14px 0; font-size: var(--tch-taille-texte); font-weight: 600; color: var(--tch-texte-doux); }
 .tch .ep-carte-ia .ligne { background: transparent; margin: 0; border-radius: 0; padding-block: 8px; min-height: 0; }
 /* Acceptation F3, ERR 1 — une ligne de carte SANS case (priorités, liste, capture, étapes…) : la grille de
    `.tch .ligne` (case · corps · fin) posait le corps dans la colonne de 44 px de la case, et le titre
@@ -198,16 +198,16 @@
    `.ep-demandes` d'ecrans-projets.css) : puces teintées de 36 px, cible tactile de 44 px, l'envoyée cernée d'accent. */
 .tch .ep-demandes { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
 .tch .ep-demandes button { position: relative; display: inline-flex; align-items: center; height: 36px; padding: 0 14px;
-  border-radius: 999px; background: var(--tch-panneau); font-size: 0.875rem; font-weight: 600; }
+  border-radius: 999px; background: var(--tch-panneau); font-size: var(--tch-taille-texte); font-weight: 600; }
 .tch .ep-demandes button::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .tch .ep-demandes button.envoyee { background: var(--tch-accent-doux); box-shadow: inset 0 0 0 1.5px var(--tch-accent); }
 .tch .ep-demandes button:disabled { cursor: default; }
 /* Passe visuelle n° 50 — les tours du même panneau (`.ep-bulle-moi`, `.ep-bulle-ia`) : la question dans une bulle
    d'accent à droite, la réponse en texte simple, la carte dessous en pleine largeur (l'écart vient de la pile du fil). */
 .tch .ep-bulle-moi { margin: 0 0 0 auto; width: fit-content; max-width: 80%; padding: 9px 14px; border-radius: 18px 18px 6px 18px;
-  background: var(--tch-accent); color: var(--tch-accent-texte); font-size: 0.9375rem; line-height: 1.4;
+  background: var(--tch-accent); color: var(--tch-accent-texte); font-size: var(--tch-taille-texte); line-height: 1.4;
   white-space: pre-wrap; overflow-wrap: anywhere; }
-.tch .ep-bulle-ia { margin: 0; font-size: 0.9375rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tch .ep-bulle-ia { margin: 0; font-size: var(--tch-taille-texte); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ── TCH152 · Aujourd'hui au bureau (≥ 1024 px) : « Mes projets » · la liste · l'Agenda du jour ────────────────
    Maquette docs/taches/maquettes/ecran-aujourdhui-matin.html (`.col-agenda`, liste de projets comptés) ; l'ERP fournit
@@ -243,10 +243,10 @@
   .tch .tch-bureau-liste { grid-column: 2; }
   .tch .tch-bureau-agenda { grid-column: 3; }
 }
-.tch .tch-bureau-projets .nav-titre { margin: 8px 12px 4px; font-size: 0.8125rem; font-weight: 650; color: var(--tch-texte-doux); }
+.tch .tch-bureau-projets .nav-titre { margin: 8px 12px 4px; font-size: var(--tch-taille-meta); font-weight: 600; color: var(--tch-texte-doux); }
 .tch .tch-bureau-projets .nav-item {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 10px;
-  font-size: 0.9375rem; font-weight: 500; color: var(--tch-texte); text-align: left; white-space: nowrap;
+  font-size: var(--tch-taille-texte); font-weight: 500; color: var(--tch-texte); text-align: left; white-space: nowrap;
 }
 .tch .tch-bureau-projets .nav-item > span:not(.compte) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tch .tch-bureau-projets .nav-item .compte { margin-left: auto; font-size: var(--tch-chiffre); color: var(--tch-texte-doux); }
@@ -266,9 +266,9 @@
   .tch .tch-bureau-projets .nav-titre { margin-bottom: 0; }
   .tch .tch-bureau-liste > .progression { margin-top: 0; } /* les 2 px de base.css décalaient la tête de la liste */
 }
-.tch .tch-bureau-agenda .agenda-libre { margin: 14px 0 0 56px; font-size: 0.8125rem; color: var(--tch-texte-doux); }
+.tch .tch-bureau-agenda .agenda-libre { margin: 14px 0 0 56px; font-size: var(--tch-taille-meta); color: var(--tch-texte-doux); }
 .tch .tch-bureau-agenda .agenda-journee .bloc.erp { display: block; text-decoration: none; }
 /* R3-024 — l'agenda n'a pas pu être lu : la phrase et « Réessayer » sur une ligne, jamais l'invite à glisser */
 .tch .tch-bureau-agenda .agenda-echec { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; margin: 8px 0 4px;
-  font-size: 0.875rem; color: var(--tch-texte-doux); }
+  font-size: var(--tch-taille-texte); color: var(--tch-texte-doux); }
 .tch .tch-bureau-agenda .agenda-echec .bouton.lien { min-height: 44px; font-weight: 600; color: var(--tch-accent); }

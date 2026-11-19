@@ -50,6 +50,29 @@ export function actionsJournee({ enLigne, peutAlleger = true, onAlleger, onReorg
   ]
 }
 
+/**
+ * R3-020 (M1) — LA progression dans l'instant d'un geste, avant que la réponse du serveur ne la remplace (la
+ * `progression` d'une TACHE_ECRITE) ; même règle que le serveur (`selectors/journee.py`) : « essentiel » = les ★ de la
+ * section Essentiel servie, ouvertes ou faites aujourd'hui. `fait` (vrai/faux) : cochée / décochée ; `quitte`
+ * (vrai/faux) : une ★ OUVERTE quitte la journée (reportée sans échéance aujourd'hui) / y revient (Annuler).
+ */
+export function progressionApres(progression, item, { fait, quitte } = {}) {
+  if (!progression || typeof progression.faites !== 'number' || !item) return progression
+  const borne = (n) => Math.max(0, n)
+  const suite = { ...progression }
+  const etoile = item.type === 'tache' && Boolean(item.essentielle)
+  const ajouter = (cle, delta) => { if (typeof suite[cle] === 'number') suite[cle] = borne(suite[cle] + delta) }
+  if (fait !== undefined) {
+    const delta = fait ? 1 : -1
+    suite.faites = borne(suite.faites + delta)
+    if (etoile) ajouter('essentiel_faites', delta)
+    if (item.prevue_au_plan) ajouter('plan_tenues', delta)
+    if (item.type === 'activite') ajouter('activites_closes', delta)
+  }
+  if (quitte !== undefined && etoile && item.statut !== 'fait') ajouter('essentiel_prevues', quitte ? -1 : 1)
+  return suite
+}
+
 /** R3-026 — une ligne qui se réordonne : une tâche OUVERTE (une faite, servie aussi dans Essentiel, n'est la voisine de
  *  personne : le serveur ne l'ordonne pas). */
 const ordonnable = (item) => item.type === 'tache' && item.statut !== 'fait'
@@ -122,16 +145,25 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
     try {
       const { data } = await client.traiterLot({ ids, action: code, ...(valeurs ? { valeurs } : {}) })
       const appliquees = new Set(data.appliquees ?? [])
+      // R3-020 — `lot/` ne rend pas de progression : chaque tâche appliquée la fait suivre (même règle que le serveur),
+      // et la relecture suivante la recale
+      const touchees = TOUTES_LES_LISTES.flatMap((cle) => donnees[cle] ?? [])
+        .filter((it, i, liste) => it.type === 'tache' && appliquees.has(it.id) && liste.findIndex((x) => x.type === 'tache' && x.id === it.id) === i)
+      const ouvertes = touchees.filter((it) => it.statut !== 'fait')
+      // une ★ ouverte reportée hors d'aujourd'hui quitte Essentiel, sauf si son échéance l'y garde (C-13)
+      const partantes = code === 'planifier' && valeurs?.jour_prevu && valeurs.jour_prevu !== donnees.jour
+        ? ouvertes.filter((it) => it.echeance !== donnees.jour) : []
+      const suivre = (d, liste, changement) => ({ ...d, progression: liste.reduce((p, it) => progressionApres(p, it, changement), d.progression) })
       let joursAvant = {}
       if (code === 'terminer') {
-        setDonnees((d) => mapChamps(d, appliquees, { statut: 'fait' }))
+        setDonnees((d) => suivre(mapChamps(d, appliquees, { statut: 'fait' }), ouvertes, { fait: true }))
       } else if (code === 'planifier' && valeurs?.jour_prevu) {
         const estampille = `→ ${jourNomme(valeurs.jour_prevu, donnees.jour)}`
         setEstampilles((e) => ({ ...e, ...Object.fromEntries([...appliquees].map((id) => [`tache:${id}`, estampille])) }))
         // leur nouveau jour : elles ne comptent plus dans la journée affichée (R2-019)
         joursAvant = Object.fromEntries(TOUTES_LES_LISTES.flatMap((cle) => donnees[cle] ?? [])
           .filter((it) => it.type === 'tache' && appliquees.has(it.id)).map((it) => [it.id, it.jour_prevu ?? null]))
-        setDonnees((d) => mapChamps(d, appliquees, { jour_prevu: valeurs.jour_prevu }))
+        setDonnees((d) => suivre(mapChamps(d, appliquees, { jour_prevu: valeurs.jour_prevu }), partantes, { quitte: true }))
       }
       quitterSelection()
       proposerAnnuler({
@@ -140,10 +172,10 @@ export function useModesJournee({ donnees, setDonnees, garde, setEstampilles }) 
           // « Annuler » change la version de chaque tâche remise : on garde celle que le serveur rend
           const retour = await annulerEtRecaler(data.geste_id, [...appliquees])
           const versions = Object.fromEntries(Object.entries(retour.taches).map(([id, t]) => [id, t.lock_version]))
-          if (code === 'terminer') setDonnees((d) => mapChamps(d, appliquees, { statut: 'a_faire' }, versions))
+          if (code === 'terminer') setDonnees((d) => suivre(mapChamps(d, appliquees, { statut: 'a_faire' }, versions), ouvertes, { fait: false }))
           else {
             setEstampilles((e) => Object.fromEntries(Object.entries(e).filter(([cle]) => !appliquees.has(Number(cle.slice(6))))))
-            setDonnees((d) => mapChamps(d, appliquees, (it) => ({ jour_prevu: joursAvant[it.id] ?? it.jour_prevu }), versions))
+            setDonnees((d) => suivre(mapChamps(d, appliquees, (it) => ({ jour_prevu: joursAvant[it.id] ?? it.jour_prevu }), versions), partantes, { quitte: false }))
           }
         },
       })
