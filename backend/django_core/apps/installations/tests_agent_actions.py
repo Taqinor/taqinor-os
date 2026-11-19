@@ -38,6 +38,10 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertEqual(a.required_permission, 'intervention_gerer')
         self.assertEqual(a.risk, 'outward')
         self.assertTrue(a.confirm_summary)
+        # Objets nommés : le relais n'affiche que le LABEL en 1re ligne de
+        # l'aperçu (confirm_summary écarté) — il dit dans la journée de qui.
+        self.assertIn('journée du technicien désigné', a.label)
+        self.assertLessEqual(len(a.label), 90)
         # Le relais n'applique pas un ``default`` : type REQUIS, valeur unique
         # exacte du modèle (Intervention.Type.CONTROLE).
         from apps.installations.models import Intervention
@@ -75,6 +79,10 @@ class InstallationsAgentActionsTest(TestCase):
         self.assertIn('BROUILLONS', a.confirm_summary)
         self.assertIn('Matériel commandé', a.confirm_summary)
         self.assertIn('Matériel commandé', a.description)
+        # Le LABEL seul (1re ligne de l'aperçu nommé) dit les deux effets.
+        self.assertIn('BROUILLONS', a.label)
+        self.assertIn('Matériel commandé', a.label)
+        self.assertLessEqual(len(a.label), 90)
         # Le <id> chantier est un input requis consommé par le gabarit de chemin.
         self.assertIn('id', a.inputs['properties'])
         self.assertIn('id', a.inputs['required'])

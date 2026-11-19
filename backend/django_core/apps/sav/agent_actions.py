@@ -36,7 +36,7 @@ _PRIORITE = {'type': 'string', 'title': 'Priorité',
 
 OUVRIR_TICKET_SAV = AgentAction(
     key='sav.ticket.create',
-    label='Ouvrir un ticket SAV',
+    label="Ouvrir un ticket SAV (le client n'est pas prévenu)",
     description=(
         "Sert à : ouvrir, après confirmation, un ticket SAV (panne, "
         "réclamation) pour un client OU pour un équipement du parc (client "
@@ -86,7 +86,7 @@ OUVRIR_TICKET_SAV = AgentAction(
 
 METTRE_A_JOUR_TICKET = AgentAction(
     key='sav.ticket.update',
-    label='Mettre à jour un ticket SAV',
+    label='Changer la priorité ou la description du ticket SAV (statut inchangé)',
     description=(
         "Sert à : changer, après confirmation, la priorité ou la description "
         "d'un ticket SAV existant. Ne pas utiliser pour : changer le statut "

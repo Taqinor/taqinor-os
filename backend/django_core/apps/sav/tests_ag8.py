@@ -70,6 +70,8 @@ class SavAgentActionsCatalogueTest(TestCase):
             a = _by_key(key)
             self.assertEqual(a.risk, RISK_OUTWARD, key)
             self.assertTrue(a.confirm_summary, key)
+            # Objet nommé : seul le LABEL est montré en 1re ligne de l'aperçu.
+            self.assertLessEqual(len(a.label), 90, key)
             self.assertEqual(a.inputs['properties']['priorite']['enum'],
                              list(Ticket.Priorite.values), key)
             self.assertLessEqual(len(a.description), 600, key)
@@ -77,6 +79,8 @@ class SavAgentActionsCatalogueTest(TestCase):
         self.assertEqual(
             _by_key('sav.ticket.create').inputs['properties']['type']['enum'],
             list(Ticket.Type.values))
+        self.assertIn("client n'est pas prévenu", _by_key('sav.ticket.create').label)
+        self.assertIn('statut inchangé', _by_key('sav.ticket.update').label)
 
 
 class SavAgentActionsPermissionTest(TestCase):

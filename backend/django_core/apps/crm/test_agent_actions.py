@@ -1486,12 +1486,12 @@ class CrmAssistantVisiteEtWhatsappTest(_CopiloteBase):
         self.assertEqual(
             (MESSAGE_VISITE.risk, MESSAGE_VISITE.carte, MESSAGE_VISITE.lot),
             ('internal', 'wa_message', LOT_COPILOTE))
-        # REP8 — sans assigné la visite n'est dans la journée de personne :
-        # ``commercial`` est requis ; la description ne promet plus une
-        # notification inconditionnelle.
+        # REP8 — sans assigné la visite n'est dans la journée de personne ; le
+        # LABEL (1re ligne de l'aperçu nommé) dit dans la journée de qui.
         self.assertEqual(PLANIFIER_VISITE.inputs['required'],
                          ['id', 'date_prevue', 'commercial'])
         self.assertNotIn('technicien est notifié', PLANIFIER_VISITE.description)
+        self.assertIn('journée de la personne désignée', PLANIFIER_VISITE.label)
 
     def test_motifs_perte_lecture_lot_copilote_garde_de_la_route(self):
         """REP8 — ``crm.motifs_perte.lister`` : route EXISTANTE, lecture du
