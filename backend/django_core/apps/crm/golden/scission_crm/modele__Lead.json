@@ -704,6 +704,10 @@
      [
       "archive_odoo",
       "Contact Odoo froid archivé"
+     ],
+     [
+      "liste_froide_sans_reponse",
+      "Liste froide : deux appels sans réponse"
      ]
     ],
     "max_length": 30,

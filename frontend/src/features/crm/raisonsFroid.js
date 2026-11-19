@@ -16,6 +16,7 @@ export const RAISONS_FROID = [
   ['doublon', 'Doublon'],
   ['test', 'Fiche de test'],
   ['archive_odoo', 'Contact Odoo froid archivé'],
+  ['liste_froide_sans_reponse', 'Liste froide : deux appels sans réponse'],
 ]
 
 /* Le refus serveur d'un changement d'étape, depuis le CORPS de la réponse : 409
