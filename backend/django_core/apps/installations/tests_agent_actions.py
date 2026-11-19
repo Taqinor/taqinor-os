@@ -52,6 +52,12 @@ class InstallationsAgentActionsTest(TestCase):
         # Vrai : sans technicien, personne n'est notifié.
         self.assertIn('sans technicien', a.description)
         self.assertLessEqual(len(a.description), 600)
+        # Servie à TOUS (hors lot) : ne cite aucun outil du lot copilote, que
+        # le compte peut ne pas avoir.
+        du_lot = {x.key for x in all_actions() if x.lot == 'copilote'}
+        for action in INSTALLATIONS_ACTIONS:
+            self.assertFalse([k for k in du_lot if k in action.description],
+                             action.key)
 
     def test_commander_besoin_metadata(self):
         a = self._by_key('installations.chantier.commander_besoin')
