@@ -138,10 +138,10 @@ describe('TCH82 — feuille de saisie', () => {
     await user.keyboard('Relancer Salma')
     expect(champ()).toHaveValue('Relancer Salma')
     // au clavier (Tab jusqu'au bouton, Entrée) : le focus revient aussi au champ
-    await user.tab()
-    await user.tab()
-    await user.tab()
-    expect(screen.getByRole('button', { name: 'Ajouter' })).toHaveFocus()
+    // R4-20 — la poignée « Agrandir la feuille » est un arrêt de Tab de plus : on tabule jusqu'au bouton, sans compter
+    const ajouter = screen.getByRole('button', { name: 'Ajouter' })
+    for (let essai = 0; essai < 8 && document.activeElement !== ajouter; essai += 1) await user.tab()
+    expect(ajouter).toHaveFocus()
     await user.keyboard('{Enter}')
     expect(champ()).toHaveValue('')
     expect(champ()).toHaveFocus()
