@@ -617,7 +617,11 @@ export default function Projet() {
         <ChampNom nom={projet.nom} erreur={erreurNom} onEnregistrer={renommer} onAbandonner={fermerRenommage} />
       ) : (
         <button type="button" className="ep-titre-nom" aria-label={`Renommer « ${projet.nom} »`}
-          onClick={() => { setErreurNom(''); setRenommage(true) }}>{projet.nom}</button>
+          onClick={() => {
+            // doigt : la feuille (champ pleine largeur, clavier géré) ; souris : le titre lui-même devient le champ
+            if (window.matchMedia?.('(hover: none)')?.matches) setDialogue('renommer')
+            else { setErreurNom(''); setRenommage(true) }
+          }}>{projet.nom}</button>
       )}
     </span>
   ) : 'Projet'

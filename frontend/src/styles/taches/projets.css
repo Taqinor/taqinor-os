@@ -129,10 +129,14 @@
 .tch .ep-rang-ligne { flex: 1; min-width: 0; }
 .tch .ep-rang.saisi { opacity: 0.6; }
 .tch .ep-poignee-ordre { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: var(--tch-gouttiere); min-height: 0; padding: 0;
-  align-items: center; justify-content: center; color: var(--tch-texte-doux); touch-action: none; cursor: grab; }
+  align-items: center; justify-content: center; color: var(--tch-texte-doux); touch-action: none; cursor: grab;
+  z-index: calc(var(--z-base) + 3); /* au-dessus de la zone cliquable étirée du titre (`.ligne-corps-bouton::after`) */ }
 .tch .ep-poignee-ordre::after { content: ""; position: absolute; inset: 0 -6px 0 0; }
-.tch .ep-rang.reorg { padding-left: 12px; }
-.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; width: 28px; }
+/* sous « Réorganiser » : la poignée passe à DROITE, après ▲▼ (au bord gauche d'un iPhone, le geste « retour » du système la prendrait) */
+.tch .ep-rang.reorg .ep-rang-ligne { order: 1; }
+.tch .ep-rang.reorg .reorg-controles { order: 2; }
+.tch .ep-rang.reorg .ep-poignee-ordre { display: flex; position: relative; left: auto; top: auto; bottom: auto; order: 3; flex: none; width: 36px; }
+.tch .ep-rang.reorg .ep-poignee-ordre::after { inset: 0; }
 .tch .ep-rang.reorg .reorg-controles .bouton-icone:disabled { opacity: 0.35; }
 @media (hover: hover) {
   .tch .ep-poignee-ordre { display: flex; opacity: 0; }
