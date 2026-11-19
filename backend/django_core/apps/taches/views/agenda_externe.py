@@ -22,12 +22,11 @@ from rest_framework.views import APIView
 from apps.publicapi.validators import UnsafeWebhookURL
 from apps.taches import agenda_externe as lecteur
 from apps.taches.models.agenda import AgendaExterne
-from apps.taches.entrees import MotifPublie
+from apps.taches.entrees import MotifPublie, refus_etat
 from apps.taches.views.base import PARSEURS, PERMISSIONS, forme_echantillon, reponses
 from apps.taches.views.journee import maintenant, par_compte
 from apps.taches.views.presence import HorsAssistant
 from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict
-from core.conflit_etat import ConflitEtat
 from core.idempotency import IdempotentCreateMixin
 
 AGENDA_EXTERNE = forme_echantillon('agenda_externe')
@@ -129,11 +128,11 @@ def _url_acceptee(user, brute):
     try:
         lecteur.verifier_adresse(url)
     except UnsafeWebhookURL:
-        raise ConflitEtat({'url': [MESSAGE_INJOIGNABLE]})
+        raise refus_etat({'url': [MESSAGE_INJOIGNABLE]})
     if agendas_de(user).filter(url=url).exists():
-        raise ConflitEtat({'url': [MESSAGE_DOUBLON]})
+        raise refus_etat({'url': [MESSAGE_DOUBLON]})
     if agendas_de(user).count() >= lecteur.AGENDAS_MAX:
-        raise ConflitEtat({'url': [MESSAGE_PLAFOND]})
+        raise refus_etat({'url': [MESSAGE_PLAFOND]})
     return url
 
 
@@ -146,7 +145,7 @@ def ajouter(user, donnees):
             agenda = AgendaExterne.objects.create(company_id=user.company_id, proprietaire=user, url=url,
                                                   libelle=donnees.get('libelle', ''), rang=dernier + PAS_RANG)
     except IntegrityError:
-        raise ConflitEtat({'url': [MESSAGE_DOUBLON]})
+        raise refus_etat({'url': [MESSAGE_DOUBLON]})
     lecteur.oublier_index(user)
     return lire_maintenant(agenda)
 
@@ -167,7 +166,7 @@ class AgendasExternesVue(IdempotentCreateMixin, APIView):
     def get(self, request):
         return Response({'results': [forme(a) for a in agendas_de(request.user).order_by('rang', 'pk')]})
 
-    @extend_schema(request=AgendaCorps, responses=reponses(AGENDA_EXTERNE, statut=201, erreurs=(400,)))
+    @extend_schema(request=AgendaCorps, responses=reponses(AGENDA_EXTERNE, statut=201, erreurs=(400, 409)))
     def post(self, request):
         return self._avec_idempotence(request, lambda: self._ajouter(request), suffixe=par_compte(request))
 
