@@ -579,6 +579,38 @@ class CollageTests(unittest.TestCase):
         self.assertEqual(apercu['projets_communs'], [])
         self.assertEqual(len(apercu['projets_nouveaux']), 7)
 
+    def test_r3_043_un_titre_de_groupe_retrouve_le_projet_qui_commence_ainsi(self):
+        # « Recrutement » colle sous « Recrutement technicien » (et pas « Nouveau projet : Recrutement » à côté)
+        texte = (Path(__file__).parent / 'donnees' / 'liste30.txt').read_text(encoding='utf-8')
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),
+                             ProjetConnu(32, 'Administratif', 'actif', 4))
+        apercu = coller(texte, projets=projets)
+        par_titre = {ligne['titre']: ligne['champs'] for ligne in apercu['lignes']}
+        self.assertEqual(par_titre["publier l'annonce technicien"].get('projet_id'), 31)
+        cnss = next(champs for titre, champs in par_titre.items() if titre.startswith('payer la CNSS'))
+        self.assertEqual(cnss.get('projet_id'), 32)
+        noms_nouveaux = [p['nom'] for p in apercu['projets_nouveaux']]
+        self.assertNotIn('Recrutement', noms_nouveaux)
+        self.assertNotIn('Admin', noms_nouveaux)
+        self.assertEqual(len(noms_nouveaux), 5)
+
+    def test_r3_043_la_premiere_ligne_retrouve_aussi_le_projet_par_son_debut(self):
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),)
+        apercu = coller('Recrutement\npublier l’annonce\nappeler les candidats', projets=projets)
+        self.assertEqual([(c['id'], c['nouveau']) for c in apercu['projets_communs']], [(31, False)])
+        self.assertEqual(apercu['projets_nouveaux'], [])
+
+    def test_r3_043_un_debut_partage_par_deux_projets_ne_rattache_a_aucun(self):
+        # la règle de R2-003 : le préfixe d'UN SEUL projet ouvert ; à deux, le groupe reste un nouveau projet
+        projets = PROJETS + (ProjetConnu(31, 'Recrutement technicien', 'actif', 3),
+                             ProjetConnu(33, 'Recrutement commercial', 'actif', 5))
+        apercu = coller('Recrutement :\npublier l’annonce\nappeler les candidats', projets=projets)
+        self.assertEqual({ligne['champs'].get('nouveau_projet', {}).get('nom') for ligne in apercu['lignes']},
+                         {'Recrutement'})
+        # un projet archivé n'est jamais pris par son début
+        archive = coller('Vieux :\nranger\ntrier', projets=PROJETS + (ProjetConnu(9, 'Vieux dossiers', 'archive', 1),))
+        self.assertEqual(archive['lignes'][0]['champs'].get('nouveau_projet'), {'nom': 'Vieux', 'priorite': 2})
+
     def test_r2_004_un_titre_sans_deux_points_suivi_de_lignes_a_tiret(self):
         apercu = coller('Villa\n- poser les rails\n- câbler\nHôtel Atlas\n- relancer\n- visiter')
         self.assertEqual(self._projets_par_ligne(apercu), [
