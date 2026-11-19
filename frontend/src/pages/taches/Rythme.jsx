@@ -8,7 +8,7 @@ import { EVENEMENT_OUVRIR } from '../../features/ia/copilotMessages'
 import { frenchError } from '../../lib/frenchError'
 import CoquilleTaches from '../../features/taches/coquille/CoquilleTaches'
 import { useGeste } from '../../features/taches/lib/gestes'
-import { aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
+import { ABR_JOURS, aujourdhuiIso, jourNomme } from '../../features/taches/lib/textes'
 import MesJours from '../../features/taches/rythme/MesJours'
 import InterrupteurRythme from '../../features/taches/ui/InterrupteurRythme'
 
@@ -47,7 +47,6 @@ const QUESTIONS = {
 const COMPRENDRE = "Allumé : l'ERP calcule ton rythme et tes habitudes à partir de tes tâches. Éteint : plus rien n'est calculé ni gardé."
 const COMPRENDRE_ETEINT = "C'est éteint : plus rien n'est calculé ni gardé sur ton rythme."
 const JOURS_VOULUS = 10
-const LETTRES = ['d', 'l', 'm', 'm', 'j', 'v', 's']
 const OBJECTIF_INVALIDE = 'Entre 1 et 12.'
 
 const messageErreur = (err, champ) => {
@@ -201,14 +200,24 @@ function ChangerObjectif({ onChanger }) {
   )
 }
 
+/** « lun. 9 » : le jour de la semaine ÉCRIT (une lettre confond mardi et mercredi) et le quantième. */
+const nomDuJour = (iso) => {
+  const date = new Date(`${iso}T12:00:00Z`)
+  return `${ABR_JOURS[date.getUTCDay()]} ${date.getUTCDate()}`
+}
+
 function Graphique({ rythme, aujourdhui }) {
   const { serie, objectif, trace } = rythme
   const evalues = serie.filter((s) => s.statut_jour === 'evalue')
   const total = evalues.reduce((somme, s) => somme + s.faites, 0)
   const ferie = serie.filter((s) => s.statut_jour === 'non_ouvre' || s.statut_jour === 'conge')
   const barres = serie.filter((s) => s.statut_jour === 'evalue' || s.statut_jour === 'sans_donnees')
-  const lecture = `Tâches faites, jour par jour travaillé : ${barres.map((s) => s.faites).join(', ')}.`
+  const vide = (s) => s.statut_jour === 'sans_donnees'
+  const lecture = `Tâches faites, jour par jour travaillé : ${barres
+    .map((s) => `${nomDuJour(s.jour)} : ${vide(s) ? 'sans données' : s.faites}`).join(', ')}.`
+  const sansDonnees = barres.filter(vide).map((s) => nomDuJour(s.jour))
   const reste = ferie.map((s) => `${jourNomme(s.jour, aujourdhui)} : ${s.statut_jour === 'conge' ? 'congé' : 'férié'}`)
+  if (sansDonnees.length > 0) reste.push(`Sans données : ${sansDonnees.join(', ')}`)
   return (
     <section className="section">
       <h2 className="section-titre">
@@ -222,8 +231,14 @@ function Graphique({ rythme, aujourdhui }) {
           ) : null}
           <div className="ep-graph-sem">
             {barres.map((s) => (
-              <div key={s.jour} className={`ep-b${s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`} style={{ '--n': s.faites }}>
-                <small className="chiffres">{s.faites}</small><i />
+              <div
+                key={s.jour}
+                data-jour={s.jour}
+                data-vide={vide(s) ? '' : undefined}
+                className={`ep-b${s.objectif != null && s.faites >= s.objectif ? ' tenu' : ''}`}
+                style={{ '--n': s.faites }}
+              >
+                <small className="chiffres">{vide(s) ? '–' : s.faites}</small><i />
               </div>
             ))}
           </div>
@@ -234,7 +249,7 @@ function Graphique({ rythme, aujourdhui }) {
               const date = new Date(`${s.jour}T12:00:00Z`)
               return (
                 <div key={s.jour} className="ep-b">
-                  <small>{LETTRES[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
+                  <small>{ABR_JOURS[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
                 </div>
               )
             })}

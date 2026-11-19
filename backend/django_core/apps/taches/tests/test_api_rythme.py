@@ -5,16 +5,17 @@ Base requise (`TestCase`) : joué par la CI. Jour injecté (`services.rythme.auj
 d'horloge vivante. Chaque test relit l'état STOCKÉ (réglages, plan du jour, cartes, préférences).
 """
 import datetime
+from types import SimpleNamespace
 from unittest import mock
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.taches.choix import (
     CanalIncitation, ModeRythme, SourceObjectif, StatutJour, StatutTache, TypeIncitationEcran,
 )
-from apps.taches.models.rythme import IncitationCoach, ReglagesRythme
+from apps.taches.models.rythme import IncitationCoach, Preference, ReglagesRythme
 from apps.taches.models.taches import RegleRecurrence
 from apps.taches.services.gestes import annuler_geste
 from apps.taches.tests import fabriques
@@ -37,6 +38,50 @@ def carte(compte, type_, cle, donnees, **champs):
     return IncitationCoach.objects.create(
         company=compte.company, proprietaire=compte, type=type_, cle=cle,
         canal=CanalIncitation.ECRAN, donnees=donnees, **champs)
+
+
+class SerieDesJoursTravaillesTests(SimpleTestCase):
+    """R2-120 sans base : `serializers.rythme._serie` sur des lignes en mémoire (calendrier remplacé)."""
+
+    LUN_A_VEN = [datetime.date(2026, 11, n) for n in (2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 16)]
+
+    def ligne(self, jour, statut=StatutJour.EVALUE, faites=4):
+        return SimpleNamespace(jour=datetime.date(2026, 11, jour), statut_jour=statut, compte_rythme=faites,
+                               objectif_du_jour=5, essentiels_faits=0, essentiels_choisis=0, plan_faites=0,
+                               plan_prevues=0)
+
+    def serie(self, plans, travailles=None):
+        from apps.taches.serializers import rythme as forme
+        jours = set(travailles or self.LUN_A_VEN)
+
+        def calendrier(_user, du, au):
+            return {jour for jour in jours if du <= jour <= au}
+
+        with mock.patch.object(forme, 'jours_travailles_de', side_effect=calendrier):
+            return forme._serie(object(), plans, J)
+
+    def test_les_jours_travailles_sans_ligne_sont_sans_donnees_et_la_serie_en_garde_dix(self):
+        plans = [self.ligne(3, faites=6), self.ligne(5), self.ligne(6), self.ligne(11, faites=5)]
+        serie = self.serie(plans)
+        self.assertEqual(len(serie), 10)
+        self.assertEqual([b['jour'][-2:] for b in serie], ['03', '04', '05', '06', '09', '10', '11', '12', '13', '16'])
+        self.assertEqual([b['statut_jour'] for b in serie],
+                         ['evalue', 'sans_donnees', 'evalue', 'evalue', 'sans_donnees', 'sans_donnees', 'evalue',
+                          'sans_donnees', 'sans_donnees', 'sans_donnees'])
+        self.assertEqual([b['faites'] for b in serie], [6, 0, 4, 4, 0, 0, 5, 0, 0, 0])
+
+    def test_une_ligne_sans_statut_sur_un_jour_travaille_est_sans_donnees(self):
+        serie = self.serie([self.ligne(12, statut='', faites=0), self.ligne(13)])
+        self.assertEqual([(b['jour'][-2:], b['statut_jour']) for b in serie],
+                         [('12', 'sans_donnees'), ('13', 'evalue'), ('16', 'sans_donnees')])
+
+    def test_un_jour_ferie_ou_en_conge_n_a_pas_de_barre(self):
+        serie = self.serie([self.ligne(12), self.ligne(13, statut=StatutJour.NON_OUVRE),
+                            self.ligne(16, statut=StatutJour.CONGE)])
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12'])
+
+    def test_sans_aucune_ligne_pas_de_serie(self):
+        self.assertEqual(self.serie([]), [])
 
 
 class BaseRythme(TestCase):
@@ -90,6 +135,43 @@ class RythmeLectureTests(BaseRythme):
         # Bloc ouvert à J−8 : [4,5,5,5,6,6,7,8], 7 jours à 5 ou plus.
         self.assertEqual(corps['bloc'], {'jours': 8, 'tenus': 7, 'sur': 10})
         self.assertIsNone(corps['geste_id'])
+
+    def test_la_serie_sert_les_dix_jours_travailles_dont_ceux_sans_donnees(self):
+        """R2-120 : 10 barres, un jour travaillé sans ligne est servi `sans_donnees` (jamais absent) ; un samedi ou
+        un dimanche n'a pas de barre. J = mardi 17/11 ; lignes aux 03, 04, 05, 06, 11 et 12/11 (+ week-ends)."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE, bloc_debut=J - datetime.timedelta(days=14))
+        for jour, faites in ((3, 6), (4, 5), (5, 5), (6, 4), (11, 5), (12, 4)):
+            fabriques.plan(self.u1, datetime.date(2026, 11, jour), statut_jour=StatutJour.EVALUE,
+                           compte_rythme=faites, objectif_du_jour=5)
+        for jour in (7, 8, 14):  # samedi, dimanche, samedi : posés `non_ouvre` par la nuit
+            fabriques.plan(self.u1, datetime.date(2026, 11, jour), statut_jour=StatutJour.NON_OUVRE)
+        corps = self.api.get(URL).json()
+        self.assertEqual([(b['jour'][-2:], b['statut_jour'], b['faites']) for b in corps['serie']], [
+            ('03', 'evalue', 6), ('04', 'evalue', 5), ('05', 'evalue', 5), ('06', 'evalue', 4),
+            ('09', 'sans_donnees', 0), ('10', 'sans_donnees', 0), ('11', 'evalue', 5), ('12', 'evalue', 4),
+            ('13', 'sans_donnees', 0), ('16', 'sans_donnees', 0)])
+        vide = corps['serie'][4]
+        self.assertEqual((vide['objectif'], vide['essentiel_faites'], vide['plan_lignes']), (None, 0, 0))
+        self.assertEqual(corps['trace'], '5 faites ou plus 5 jours sur 10')
+
+    def test_la_serie_ne_remonte_pas_avant_le_premier_jour_evalue(self):
+        """Un compte récent n'a pas de barres vides pour les jours d'avant son premier jour lu."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE)
+        fabriques.plan(self.u1, datetime.date(2026, 11, 12), statut_jour=StatutJour.EVALUE,
+                       compte_rythme=4, objectif_du_jour=5)
+        serie = self.api.get(URL).json()['serie']
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12', '13', '16'])
+        self.assertEqual([b['statut_jour'] for b in serie], ['evalue', 'sans_donnees', 'sans_donnees'])
+
+    def test_un_jour_de_conge_dit_n_a_pas_de_barre_vide(self):
+        """Un jour en congé (préférence) n'est pas un jour travaillé : pas de barre synthétisée."""
+        self.reglages(palier=5, palier_source=SourceObjectif.ACCEPTE)
+        fabriques.plan(self.u1, datetime.date(2026, 11, 12), statut_jour=StatutJour.EVALUE,
+                       compte_rythme=4, objectif_du_jour=5)
+        Preference.objects.create(company=self.a, proprietaire=self.u1, cle='conges',
+                                  valeur=[{'du': '2026-11-13', 'au': '2026-11-13'}])
+        serie = self.api.get(URL).json()['serie']
+        self.assertEqual([b['jour'][-2:] for b in serie], ['12', '16'])
 
     def test_moins_de_9_jours_repere_nul(self):
         self.reglages()

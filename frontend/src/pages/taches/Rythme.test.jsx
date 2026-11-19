@@ -63,8 +63,27 @@ describe('TCH107 — Mon rythme', () => {
     expect(screen.getByText('Vendredi : 3,1 tâches en moyenne, 5,2 les autres jours.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'En faire un jour court (un de moins) ?' })).toBeInTheDocument()
     expect(screen.getByText('Repère : 6 de tes journées sur 10 sont à 5,5 tâches ou moins (sur 9 jours).')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : 5\./ })).toBeInTheDocument()
-    expect(screen.getByText('5 faites ou plus 7 jours sur 10')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Tâches faites, jour par jour travaillé : mar\. 3 : 5, mer\. 4 : 6,/ })).toBeInTheDocument()
+    expect(screen.getByText(/5 faites ou plus 7 jours sur 10/)).toBeInTheDocument()
+  })
+
+  it('R2-120 — dix barres, un jour sans données est une barre vide nommée, jamais un jour absent', async () => {
+    const { container } = monter()
+    await screen.findByText('Objectif du jour : 5 (accepté)')
+    expect(screen.getByRole('heading', { name: /Les 10 derniers jours travaillés/ })).toHaveTextContent('46 faites')
+    const barres = container.querySelectorAll('.ep-graph-zone .ep-b')
+    expect(barres).toHaveLength(10)
+    const vides = [...barres].filter((b) => b.hasAttribute('data-vide'))
+    expect(vides.map((b) => b.getAttribute('data-jour'))).toEqual(['2026-11-10'])
+    expect(screen.getByRole('img')).toHaveAccessibleName(/mar\. 10 : sans données/)
+    expect(screen.getByText(/Sans données : mar\. 10/)).toBeInTheDocument()
+  })
+
+  it("R2-120 — l'axe écrit « lun. 9 », « mar. 10 » : plus de lettre ambiguë (m = mardi ou mercredi)", async () => {
+    const { container } = monter()
+    await screen.findByText('Objectif du jour : 5 (accepté)')
+    const axe = [...container.querySelectorAll('.ep-graph-axe .ep-b small')].map((n) => n.textContent)
+    expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'lun.16'])
   })
 
   it('passe visuelle n° 44 — pas de section « Objectif du jour » en plus : Moins · Plus · Choisir sous la ligne de l\'objectif', async () => {
@@ -184,7 +203,7 @@ describe('TCH107 — Mon rythme', () => {
   })
 
   it('avant 10 jours : la phrase d\'attente remplace le graphique', async () => {
-    const neuf = { ...rythme(), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
+    const neuf = { ...rythme(), serie: rythme().serie.slice(0, 1), objectif: { nb: 5, source: 'defaut', mode: 'pousser', zone: null }, proposition: null, constats: [] }
     lireRythme.mockImplementation(() => reponse(neuf))
     monter()
     expect(await screen.findByText("1 jour sur 10 : il m'en faut 10 pour comprendre ton rythme.")).toBeInTheDocument()

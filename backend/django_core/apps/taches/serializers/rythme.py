@@ -17,7 +17,7 @@ from apps.taches.choix import ModeRythme, StatutJour, TypeIncitationEcran
 from apps.taches.confidentialite import nom_pour
 from apps.taches.moteur import rythme as moteur
 from apps.taches.moteur.gabarits import boutons, texte
-from apps.taches.selectors.base import projets_de
+from apps.taches.selectors.base import jours_travailles_de, projets_de
 from apps.taches.selectors.rythme import constats_ouverts, plans_du_rythme, preferences_de, proposition_ouverte
 from apps.taches.serializers.formes import PROPOSITION, PropositionSerializer, contexte
 from apps.taches.services import revelations
@@ -118,12 +118,38 @@ def forme_proposition(carte, *, assistant=False, projets=None):
 
 # --- RYTHME ---------------------------------------------------------------------------------
 
-def _serie(plans):
-    travailles = [p for p in plans if p.statut_jour in STATUTS_TRAVAILLES][-SERIE_JOURS:]
-    return [{'jour': _date(p.jour), 'statut_jour': p.statut_jour, 'faites': p.compte_rythme,
-             'objectif': p.objectif_du_jour, 'essentiel_faites': p.essentiels_faits,
-             'essentiel_prevues': p.essentiels_choisis, 'plan_tenues': p.plan_faites,
-             'plan_lignes': p.plan_prevues} for p in travailles]
+def _sans_donnees(jour):
+    """Un jour travaillé que la nuit n'a pas évalué : une barre VIDE (`faites` 0, aucun objectif)."""
+    return {'jour': _date(jour), 'statut_jour': StatutJour.SANS_DONNEES, 'faites': 0, 'objectif': None,
+            'essentiel_faites': 0, 'essentiel_prevues': 0, 'plan_tenues': 0, 'plan_lignes': 0}
+
+
+def _barre(plan):
+    return {'jour': _date(plan.jour), 'statut_jour': plan.statut_jour, 'faites': plan.compte_rythme,
+            'objectif': plan.objectif_du_jour, 'essentiel_faites': plan.essentiels_faits,
+            'essentiel_prevues': plan.essentiels_choisis, 'plan_tenues': plan.plan_faites,
+            'plan_lignes': plan.plan_prevues}
+
+
+def _serie(user, plans, jour):
+    """Les 10 derniers jours TRAVAILLÉS (R2-120, regles.md §6.2) : une entrée par jour travaillé (calendrier de
+    la société ∩ ses jours dits − ses congés), du premier jour lu à la veille. Un jour évalué porte ses
+    nombres ; un jour travaillé que la nuit n'a pas évalué (aucune ligne, ou ligne sans statut) est servi
+    `sans_donnees`, barre vide : jamais un jour absent, jamais un nombre inventé. Un jour que sa ligne dit
+    férié (`non_ouvre`) ou en congé n'a pas de barre."""
+    if not plans:
+        return []
+    par_jour = {p.jour: p for p in plans}
+    travailles = set(jours_travailles_de(user, min(par_jour), jour - datetime.timedelta(days=1)))
+    barres = {}
+    for date in travailles | {p.jour for p in plans if p.statut_jour in STATUTS_TRAVAILLES}:
+        plan = par_jour.get(date)
+        if plan is None or not plan.statut_jour:
+            if date in travailles:
+                barres[date] = _sans_donnees(date)
+        elif plan.statut_jour in STATUTS_TRAVAILLES:
+            barres[date] = _barre(plan)
+    return [barres[date] for date in sorted(barres)][-SERIE_JOURS:]
 
 
 def _trace(nb, serie):
@@ -176,7 +202,7 @@ def forme_rythme(user, reglages, jour, *, assistant=False, geste_id=None):
     etat = etat_rythme(reglages, plans, jour)
     nb, source, zone = moteur.objectif_affiche(etat)
     # Revue F2 tour 2 #6 : « Comprendre mon rythme » coupé, ni série ni trace (donc `trace` nulle).
-    serie = _serie(plans) if reglages.comprendre_mon_rythme else []
+    serie = _serie(user, plans, jour) if reglages.comprendre_mon_rythme else []
     proposition, constats = _cartes(user, jour, assistant)
     return {
         'mode': etat.mode,
