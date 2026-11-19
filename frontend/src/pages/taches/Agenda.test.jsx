@@ -74,8 +74,27 @@ describe('TCH104 — vue Jour', () => {
     expect(within(grille(container)).queryByRole('checkbox', { name: /Réunion banque/ })).toBeNull()
     fireEvent.click(externe)
     expect(externe).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText("Réunion banque · 11:00–12:00 · Microsoft 365 · Ouvrir dans ton agenda d'origine"))
-      .toBeInTheDocument()
+    // R2-112 — aucune phrase qui ressemble à un lien sans en être un : l'agenda ne sert pas d'adresse, la phrase est retirée
+    expect(screen.getByText('Réunion banque · 11:00–12:00 · Microsoft 365')).toBeInTheDocument()
+    expect(screen.queryByText(/Ouvrir dans ton agenda/)).toBeNull()
+  })
+
+  it('R2-112 — l\'agenda fournit une adresse : « Ouvrir dans ton agenda d\'origine » est un VRAI lien (sûr, nouvel onglet)', async () => {
+    const d = agenda()
+    d.jours[0].externes[0].url = 'https://outlook.office365.com/owa/?itemid=abc'
+    d.jours[0].externes.push({ cle: '2-b', agenda_id: 2, agenda: 'Microsoft 365', titre: 'Appel piégé',
+      debut: '2026-11-17T15:00:00+01:00', fin: '2026-11-17T16:00:00+01:00', journee_entiere: false, url: 'javascript:alert(1)' })
+    lireAgenda.mockResolvedValue({ data: d })
+    monter()
+    fireEvent.click(await screen.findByRole('button', { name: 'Réunion banque · 11:00–12:00 · Microsoft 365' }))
+    const lien = screen.getByRole('link', { name: "Ouvrir dans ton agenda d'origine" })
+    expect(lien).toHaveAttribute('href', 'https://outlook.office365.com/owa/?itemid=abc')
+    expect(lien).toHaveAttribute('target', '_blank')
+    expect(lien).toHaveAttribute('rel', expect.stringContaining('noopener'))
+    // une adresse qui n'est pas http(s) n'est jamais un lien
+    fireEvent.click(screen.getByRole('button', { name: 'Appel piégé · 15:00–16:00 · Microsoft 365' }))
+    expect(screen.getByText('Appel piégé · 15:00–16:00 · Microsoft 365')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: "Ouvrir dans ton agenda d'origine" })).toBeNull()
   })
 
   it('un créneau vide ouvre la saisie à son heure', async () => {

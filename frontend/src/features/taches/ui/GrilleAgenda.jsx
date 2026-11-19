@@ -126,9 +126,13 @@ function BlocTache({ ev, style, cascade, choisi, onCocher, onOuvrir }) {
   )
 }
 
-function BlocExterne({ ev, style, cascade, ouvert, onBasculer }) {
+/** R2-112 — l'adresse d'un rendez-vous (si l'agenda en sert une) ne devient un lien que si elle est http(s). */
+const adresseSure = (url) => (/^https?:\/\//i.test(String(url ?? '')) ? url : null)
+
+function BlocExterne({ ev, style, cascade, ouvert, versGauche, onBasculer }) {
   const { item } = ev
   const plage = `${enHeure(ev.debut)}–${enHeure(ev.fin)}`
+  const adresse = adresseSure(item.url)
   const classes = ['bloc', 'erp', 'ag-externe', ...classesBloc(ev, cascade)].filter(Boolean).join(' ')
   return (
     <>
@@ -145,8 +149,14 @@ function BlocExterne({ ev, style, cascade, ouvert, onBasculer }) {
         <span className="ag-agenda">{item.agenda}</span>
       </button>
       {ouvert ? (
-        <p className="ag-bulle" role="status" style={{ top: style.top }}>
-          {`${item.titre} · ${plage} · ${item.agenda} · Ouvrir dans ton agenda d'origine`}
+        <p className={versGauche ? 'ag-bulle vers-gauche' : 'ag-bulle'} role="status" style={{ top: style.top }}>
+          {`${item.titre} · ${plage} · ${item.agenda}`}
+          {adresse ? (
+            <>
+              {' · '}
+              <a href={adresse} target="_blank" rel="noopener noreferrer">Ouvrir dans ton agenda d&apos;origine</a>
+            </>
+          ) : null}
         </p>
       ) : null}
     </>
@@ -203,7 +213,7 @@ function Maintenant({ maintenant, debut, fin }) {
   )
 }
 
-function Colonne({ jour, nomJour, props }) {
+function Colonne({ jour, nomJour, props, versGauche = false }) {
   const { aujourdhui, maintenant, debut, fin, pas, placement, choisi, onCreneau, onCocher, onOuvrir } = props
   const heures = props.heuresParJour[jour.jour]
   const [ouvert, setOuvert] = useState(null)
@@ -224,7 +234,7 @@ function Colonne({ jour, nomJour, props }) {
         if (ev.type === 'externe') {
           return (
             <BlocExterne
-              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle}
+              key={ev.cle} ev={ev} style={style} cascade={cascade} ouvert={ouvert === ev.cle} versGauche={versGauche}
               onBasculer={() => setOuvert((actuel) => (actuel === ev.cle ? null : ev.cle))}
             />
           )
@@ -321,7 +331,10 @@ export default function GrilleAgenda({
       <div className="agenda-heures" aria-hidden="true">
         {heures.map((h) => <div key={h}>{`${deux(h)}:00`}</div>)}
       </div>
-      {jours.map((j) => <Colonne key={j.jour} jour={j} nomJour={nomsJours[j.jour] ?? j.jour} props={props} />)}
+      {/* R2-112 — la bulle d'un rendez-vous des colonnes de droite s'ouvre vers la gauche : jamais coupée par l'écran */}
+      {jours.map((j, rang) => (
+        <Colonne key={j.jour} jour={j} nomJour={nomsJours[j.jour] ?? j.jour} props={props} versGauche={rang >= jours.length / 2} />
+      ))}
     </div>
   )
 }
