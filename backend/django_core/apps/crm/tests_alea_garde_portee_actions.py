@@ -36,7 +36,7 @@ from apps.crm.clients_views import ClientViewSet
 from apps.crm.views import LeadViewSet
 from apps.roles.models import Role
 from apps.roles.permissions_registre import (
-    COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS,
+    COMMERCIAL_PERMISSIONS, COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE,
 )
 from authentication.models import Company
 
@@ -174,9 +174,10 @@ class GardePorteeActionsTests(TestCase):
         role_com = Role.objects.create(
             company=self.company, nom='Commercial',
             permissions=list(COMMERCIAL_PERMISSIONS))
+        # 19/11/2026 — « Commercial responsable » voit tout ; portée sous-arbre posée ici exprès.
         role_resp = Role.objects.create(
             company=self.company, nom='Commercial responsable',
-            permissions=list(COMMERCIAL_RESP_PERMISSIONS))
+            permissions=[*COMMERCIAL_RESP_PERMISSIONS, SCOPE_SUBTREE])
         # Utilisateur de portée ``team`` (sans superviseur → soi seul).
         self.commercial = User.objects.create_user(
             username='alea25-com', password='x', company=self.company,
