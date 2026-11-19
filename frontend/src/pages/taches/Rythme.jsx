@@ -246,7 +246,11 @@ function Graphique({ rythme, aujourdhui }) {
               const date = new Date(`${s.jour}T12:00:00Z`)
               return (
                 <div key={s.jour} className="ep-b" data-hors-objectif={hors(s) ? '' : undefined}>
-                  <small>{ABR_JOURS[date.getUTCDay()]}<b className="chiffres">{date.getUTCDate()}</b></small>
+                  {/* un jour hors objectif n'écrit rien sous sa colonne étroite (la légende et la lecture le nomment) ; le
+                      jour écrit sans point (« mar »), pour que 14 colonnes tiennent sur iPhone sans se toucher */}
+                  {hors(s) ? <small>{' '}<b>{' '}</b></small> : (
+                    <small>{ABR_JOURS[date.getUTCDay()].replace('.', '')}<b className="chiffres">{date.getUTCDate()}</b></small>
+                  )}
                 </div>
               )
             })}

@@ -97,7 +97,8 @@ describe('TCH107 — Mon rythme', () => {
     const { container } = monter()
     await screen.findByText('Objectif du jour : 5')
     const axe = [...container.querySelectorAll('.ep-graph-axe .ep-b small')].map((n) => n.textContent)
-    expect(axe).toEqual(['mar.3', 'mer.4', 'jeu.5', 'ven.6', 'lun.9', 'mar.10', 'mer.11', 'jeu.12', 'ven.13', 'sam.14', 'lun.16'])
+    // R3-003 \u2014 le jour \u00E9crit sans point (14 colonnes tiennent sur iPhone) ; un jour hors objectif n'\u00E9crit rien sous sa barre
+    expect(axe).toEqual(['mar3', 'mer4', 'jeu5', 'ven6', 'lun9', 'mar10', 'mer11', 'jeu12', 'ven13', '\u00A0\u00A0', 'lun16'])
   })
 
   it('R3-004 — « Garder ce rythme » sous 5 jours évalués dit qu\'il garde le palier ; dès 5, « Provisoire »', async () => {
