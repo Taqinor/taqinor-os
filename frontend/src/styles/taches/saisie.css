@@ -18,6 +18,8 @@
    prend toute la largeur (autant de colonnes que de choix) et garde chaque libellé sur une ligne */
 .tch .feuille .segmente { margin-inline: 0; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .tch .feuille .segmente button { min-width: 0; padding-inline: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* « Quelqu'un ou quelque chose » ne tient pas sur une demi-largeur d'iPhone : il se replie plutôt que d'être coupé */
+.tch .fiche-bloc[aria-label="En attente de"] .segmente button { height: auto; min-height: 40px; padding-block: 6px; white-space: normal; line-height: 1.2; }
 /* R2-051 — « Nouveau projet : {nom} » : une puce comme les autres (fond et bord neutres + point), même sans couleur
    de projet (un projet nouveau n'en a pas encore : `--tch-point` / `--tch-bloc-fond` y étaient vides) */
 .tch .feuille-saisie .puce.nouveau {
