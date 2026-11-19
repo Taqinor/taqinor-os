@@ -251,6 +251,9 @@
 .tch .ag-mj-ech { font-size: var(--tch-taille-meta); line-height: 1rem; font-weight: 400; color: var(--tch-texte-doux); }
 .tch .ag-mj .pts em { font-style: normal; font-size: var(--tch-taille-meta); line-height: 8px; font-weight: 600; color: var(--tch-texte-doux); }
 .tch .ag-mj .pts.ferie { height: 12px; font-size: var(--tch-taille-meta); line-height: 12px; font-weight: 400; color: var(--tch-texte-doux); }
+/* couture L7 — titres, « +n », « · échéance » et « Férié » d'une case du Mois sont DESSINÉS (`data-texte`, VueMois.jsx) :
+   le seul texte de la case est son numéro, un mot de son nom lu (axe-core 4.14, label-content-name-mismatch) */
+.tch .ag-mj [data-texte]::before { content: attr(data-texte); }
 .tch .ag-mj.repos { background: var(--ag-repos); }
 .tch .ag-mj.repos b, .tch .ag-mj.hors b { color: var(--tch-texte-doux); }
 .tch .ag-mj.hors b { font-weight: 400; }

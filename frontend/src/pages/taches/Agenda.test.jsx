@@ -547,9 +547,21 @@ describe('TCH104 — vues et navigation', () => {
     const mardi = await screen.findByRole('gridcell', { name: /^Mardi 17 novembre/ })
     const titres = mardi.querySelector('.ag-mj-titres')
     expect(titres.querySelectorAll('.t')).toHaveLength(3)
-    expect(titres.querySelector('.plus')).toHaveTextContent('+1') // 4 tâches PRÉVUES ce jour-là (bloc, trois sans heure) : 3 montrées
-    expect(titres.textContent).toContain('Devis Settat')
+    expect(titres.querySelector('.plus')).toHaveAttribute('data-texte', '+1') // 4 tâches PRÉVUES ce jour-là (bloc, trois sans heure) : 3 montrées
+    expect(titres.querySelector('.t')).toHaveAttribute('data-texte', 'Devis Settat')
     expect(mardi.querySelector('.pts')).not.toBeNull() // les points de l'iPhone sont toujours là
+  })
+
+  it('couture L7 — Mois : le seul TEXTE d\'une case est son numéro (axe 4.14 « label-content-name-mismatch ») ; titres, « +n » et « · échéance » sont dessinés', async () => {
+    const d = agenda()
+    const base = d.jours[0].sans_heure[0]
+    d.jours[0].sans_heure.push({ ...base, id: 801, titre: 'Quatrième' }, { ...base, id: 802, titre: 'Cinquième' })
+    d.jours[0].echeances = [{ ...base, id: 91, titre: 'Payer A' }]
+    lireAgenda.mockResolvedValue({ data: d })
+    monter('/taches/agenda?vue=mois')
+    const mardi = await screen.findByRole('gridcell', { name: /^Mardi 17 novembre/ })
+    // le nom lu (« Mardi 17 novembre · … ») contient le seul texte visible, « 17 » : la case se nomme à la voix
+    expect(mardi.textContent.trim()).toBe('17')
   })
 
   it('R3-124 — Mois : une échéance est une MARQUE « · échéance », jamais un titre de plus (la tâche est écrite à son jour prévu)', async () => {
@@ -562,13 +574,13 @@ describe('TCH104 — vues et navigation', () => {
     // jeudi 19 : rien de prévu, une échéance → pas un titre, la marque seule ; l'iPhone : un anneau, pas un point de tâche
     const jeudi = await screen.findByRole('gridcell', { name: 'Jeudi 19 novembre · échéance' })
     expect(jeudi.querySelector('.ag-mj-titres .t')).toBeNull()
-    expect(jeudi.querySelector('.ag-mj-ech')).toHaveTextContent('· échéance')
+    expect(jeudi.querySelector('.ag-mj-ech')).toHaveAttribute('data-texte', '· échéance')
     expect(jeudi.querySelectorAll('.pts i:not(.ech)')).toHaveLength(0)
     expect(jeudi.querySelector('.pts i.ech')).not.toBeNull()
     // mardi 17 : « Dossier subvention » (échéance) n'est PAS un des titres ; sa marque suit les deux tâches prévues
     const mardi = screen.getByRole('gridcell', { name: /^Mardi 17 novembre/ })
-    expect([...mardi.querySelectorAll('.ag-mj-titres .t')].map((e) => e.textContent)).toEqual(['Devis Settat', 'Timbres'])
-    expect(mardi.querySelector('.ag-mj-ech')).toHaveTextContent('· échéance')
+    expect([...mardi.querySelectorAll('.ag-mj-titres .t')].map((e) => e.getAttribute('data-texte'))).toEqual(['Devis Settat', 'Timbres'])
+    expect(mardi.querySelector('.ag-mj-ech')).toHaveAttribute('data-texte', '· échéance')
   })
 
   it('R3-124 — Mois : une échéance dont la tâche est déjà prévue ce jour-là n\'est pas marquée deux fois ; plusieurs se comptent', async () => {
@@ -579,7 +591,7 @@ describe('TCH104 — vues et navigation', () => {
     monter('/taches/agenda?vue=mois')
     const mardi = await screen.findByRole('gridcell', { name: /^Mardi 17 novembre/ })
     expect(mardi).toHaveAccessibleName('Mardi 17 novembre · 2 tâches · 2 échéances')
-    expect(mardi.querySelector('.ag-mj-ech')).toHaveTextContent('· 2 échéances')
+    expect(mardi.querySelector('.ag-mj-ech')).toHaveAttribute('data-texte', '· 2 échéances')
   })
 
   it('À venir : quatorze jours depuis aujourd\'hui, un jour vide le dit', async () => {
