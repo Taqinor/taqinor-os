@@ -184,12 +184,36 @@ class SqlAgentLimitesTests(unittest.TestCase):
         self._patch_redis(_FakeRedis())
         self._patch_catalogue("herite")
         client = self._client(106)
-        for longueur in (2001, 3000, 7000):
+        for longueur in (2001, 3000, 6000):
             with self.subTest(longueur=longueur):
                 corps = {"question": "x" * longueur}
                 r = client.post("/sql-agent/query", json=corps)
                 self.assertEqual(r.status_code, 422)
                 self.assertEqual(r.json(), TestClient(avant).post("/q", json=corps).json())
+        # Revue S3 — au-delà de 6 000 : le plafond dur du schéma (422 pydantic standard).
+        r = client.post("/sql-agent/query", json={"question": "x" * 7000})
+        self.assertEqual((r.status_code, r.json()["detail"][0]["ctx"]), (422, {"max_length": 6000}))
+
+    def test_borne_de_l_appelant_apres_le_limiteur(self):
+        """Revue S3 — la lecture du catalogue (question > 2 000) ne part
+        qu'après le limiteur : une rafale ne fait pas une lecture Django par
+        requête, et une question au-delà de 6 000 n'en fait aucune."""
+        from app.services import action_tools as _at
+        self._patch_llm()
+        self._patch_redis(_FakeRedis())
+        self._patch_catalogue("herite")
+        lectures = []
+        appel = _at._django_call
+        with mock.patch.object(_at, "_django_call", lambda ctx, path, *a, **k: (
+                lectures.append(path), appel(ctx, path, *a, **k))[1]):
+            client = self._client(108)
+            r = client.post("/sql-agent/query", json={"question": "x" * 7000})
+            self.assertEqual(r.status_code, 422)
+            self.assertNotIn(_at._CATALOGUE_PATH, lectures)
+            codes = [client.post("/sql-agent/query", json={"question": "x" * 2500}).status_code
+                     for _ in range(_ep.SQL_AGENT_RATE_LIMIT_MAX + 5)]
+        self.assertEqual(set(codes[_ep.SQL_AGENT_RATE_LIMIT_MAX:]), {429})
+        self.assertEqual(lectures.count(_at._CATALOGUE_PATH), _ep.SQL_AGENT_RATE_LIMIT_MAX)
 
     def test_question_copilote_allume_6000(self):
         """F4 — copilote ALLUMÉ et claude : 6 000 caractères acceptés (message
