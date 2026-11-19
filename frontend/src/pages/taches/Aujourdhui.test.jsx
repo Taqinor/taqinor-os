@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReactReduxContext } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { memoryStore } from '../../lib/offlineOutbox'
@@ -223,6 +223,21 @@ describe('TCH76 — états : chargement, erreur, hors ligne, vide', () => {
       expect(within(bloc).queryByText('Pas à moi')).toBeNull() // une op d'un autre compte n'est jamais montrée
       expect(bloc.querySelectorAll('[data-en-file]')).toHaveLength(2)
       expect(within(bloc).queryByRole('checkbox')).toBeNull()
+    })
+
+    it('R2-008b — la phrase mise en file par la saisie (pli L1 : `corps.phrase.textes`) apparaît telle quelle', async () => {
+      servir(donnees())
+      monterConnecte()
+      await screen.findByText('Devis Settat')
+      fixerEnLigne(false)
+      definirCompteFile(42, 7)
+      await act(async () => {
+        await file.enqueue('ajouter', { type: 'ajouter', corps: { phrase: { textes: ['Rappeler la banque ce soir'], cid: 'c-9' } }, userId: 42, companyId: 7 },
+          { queuedAt: new Date().toISOString() })
+        await enfilerAjout([{ titre: 'Appeler le notaire', client_id: 'c-1' }], file)
+      })
+      const bloc = await screen.findByRole('region', { name: 'En attente d’envoi' })
+      await waitFor(() => expect(within(bloc).getByText('Rappeler la banque ce soir')).toBeInTheDocument())
     })
 
     it('R2-008b — décocher hors ligne : « Décocher attend le réseau » se VOIT, rien ne part, la case reste cochée', async () => {
@@ -826,6 +841,61 @@ describe('R2-019 / R2-035 — la progression compte ce que l\'écran montre, et 
     expect(detail).toHaveTextContent('1 faite sur 5 visées · 4 tâches gardées')
     expect(detail).not.toHaveTextContent('accepté')
     expect(detail).not.toHaveTextContent('Objectif du jour')
+  })
+})
+
+describe('R2-021 / R2-025 — la fiche s\u2019ouvre sur sa cible (pli L4 : `section`, `focus`)', () => {
+  /** L'adresse de l'écran : la coquille ouvre la fiche selon `?tache=…&section=…&focus=…`. */
+  function Adresse() {
+    const { search } = useLocation()
+    return <output data-testid="adresse">{search}</output>
+  }
+  const monterAvecAdresse = () => render(
+    <MemoryRouter initialEntries={['/taches/aujourdhui']}><Aujourdhui /><Adresse /></MemoryRouter>,
+  )
+  const adresse = () => new URLSearchParams(screen.getByTestId('adresse').textContent)
+
+  it('R2-021 — À revoir dit la raison sous chaque ligne ; « Découper » ouvre la fiche sur sa section Découper', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /^À revoir/ }))
+    const zone = document.querySelector('.replies')
+    expect(within(zone).getByText('reportée 3 fois')).toBeInTheDocument()
+    await userEvent.click(within(zone).getByRole('button', { name: 'Découper' }))
+    await waitFor(() => expect(adresse().get('tache')).toBe('50'))
+    expect(adresse().get('section')).toBe('decouper')
+  })
+
+  it('R2-021 — sans explication servie, la raison vient du motif (« en retard depuis … »)', async () => {
+    const d = donnees()
+    d.a_decider = [{ ...d.a_decider[0], explication: '', motif: 'retard_ancien', jour_prevu: '2026-11-09', reports: 0 }]
+    servir(d)
+    monter()
+    await screen.findByText('Devis Settat')
+    await userEvent.click(screen.getByRole('button', { name: /^À revoir/ }))
+    expect(within(document.querySelector('.replies')).getByText(/^en retard depuis /)).toBeInTheDocument()
+  })
+
+  it('R2-025 — `e` ouvre la fiche curseur dans le TITRE', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Timbres')
+    const focaliser = () => act(() => { document.querySelector('[data-ligne="tache:42"] .ligne-corps-bouton').focus() })
+    focaliser()
+    await userEvent.keyboard('e')
+    await waitFor(() => expect(adresse().get('focus')).toBe('titre'))
+    expect(adresse().get('tache')).toBe('42')
+  })
+
+  it('R2-025 — `h` ouvre la fiche sur le champ HEURE', async () => {
+    servir(donnees())
+    monterAvecAdresse()
+    await screen.findByText('Timbres')
+    act(() => { document.querySelector('[data-ligne="tache:42"] .ligne-corps-bouton').focus() })
+    await userEvent.keyboard('h')
+    await waitFor(() => expect(adresse().get('focus')).toBe('heure'))
+    expect(adresse().get('tache')).toBe('42')
   })
 })
 

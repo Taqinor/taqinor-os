@@ -4,7 +4,7 @@ import * as client from '../../../api/tachesApi'
 import { frenchError } from '../../../lib/frenchError'
 import { annoncer, proposerAnnuler } from '../lib/gestes'
 import { annulerEtRecaler, versionDe } from '../lib/versions'
-import { jourNomme } from '../lib/textes'
+import { jourCourt, jourNomme } from '../lib/textes'
 import { Ligne } from './Sections'
 import { Ailleurs } from './LignesErp'
 
@@ -21,6 +21,21 @@ import { Ailleurs } from './LignesErp'
    ========================================================================== */
 
 const cleDe = (item) => `${item.type}:${item.id}`
+
+/**
+ * R2-021 — POURQUOI la ligne est à revoir, en clair sous elle : l'explication servie (« reportée 3 fois », « en
+ * retard depuis lun. 9 »…), sinon le motif.
+ */
+function raisonARevoir(item, aujourdhui) {
+  if (item.explication) return item.explication
+  if (item.motif === 'reportee_3_fois') return `reportée ${item.reports ?? 3} fois`
+  if (item.motif === 'retard_ancien') {
+    const depuis = item.jour_prevu ?? item.echeance
+    return depuis ? `en retard depuis ${jourCourt(depuis, aujourdhui)}` : 'en retard depuis plus de 7 jours'
+  }
+  if (item.motif === 'activite_passee') return 'activité passée'
+  return ''
+}
 
 /** « tâche » : seules les tâches se tranchent ; une activité ERP en retard se coche ou s'ouvre. */
 const estTache = (item) => item.type === 'tache'
@@ -89,7 +104,7 @@ function ActionsARevoir({ item, geste, revoir, minimum }) {
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'un_jour')}>En réserve</button>
       <button type="button" className="puce" onClick={() => revoir.trancher(item, 'abandonner')}>Abandonner</button>
       {item.motif === 'reportee_3_fois' ? (
-        <button type="button" className="puce" onClick={() => geste.ouvrir(item)}>Découper</button>
+        <button type="button" className="puce" onClick={() => (geste.decouper ?? geste.ouvrir)(item)}>Découper</button>
       ) : null}
       {calendrier ? (
         <input type="date" className="champ-date" aria-label={`Jour pour « ${item.titre} »`} min={minimum}
@@ -141,6 +156,9 @@ export default function Replies({ donnees, contexte, geste, revoir, enLigne, dep
       {items.map((item) => (
         <div key={cleDe(item)}>
           <Ligne item={item} contexte={contexte} geste={geste} />
+          {avecActions && raisonARevoir(item, donnees.jour) ? (
+            <p className="revoir-raison">{raisonARevoir(item, donnees.jour)}</p>
+          ) : null}
           {avecActions && estTache(item) ? (
             <ActionsARevoir item={item} geste={geste} revoir={revoir} minimum={donnees.jour} />
           ) : null}

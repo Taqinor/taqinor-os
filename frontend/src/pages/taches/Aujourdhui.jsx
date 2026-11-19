@@ -378,6 +378,8 @@ function useClotureDifferee({ patcher, setDonnees }) {
 /** Les titres d'un ajout en file : la phrase tapée (R2-008a, analysée au rejeu) ou, forme d'avant, ses lignes lues. */
 function titresEnFile(op) {
   const corps = op.payload?.corps ?? {}
+  const textes = corps.phrase?.textes
+  if (Array.isArray(textes) && textes.length > 0) return textes.map((t) => String(t).trim()).filter(Boolean)
   if (typeof corps.texte === 'string' && corps.texte.trim()) return [corps.texte.trim()]
   return (corps.lignes ?? []).map((ligne) => ligne?.titre).filter(Boolean)
 }
@@ -801,6 +803,7 @@ export default function Aujourdhui() {
     reporter,
     choisirJour: (item) => setFeuille({ type: 'jour', item }),
     ouvrir: (item) => (item.type === 'activite' ? (item.lien?.url ? navigate(item.lien.url) : null) : ouvrirFiche(item.id)),
+    decouper: (item) => ouvrirFiche(item.id, { section: 'decouper' }), // R2-021 : la fiche s'ouvre SUR « Découper »
     action: actions.surAction,
     essentiel: (item, suivant) => { setInvite(false); return basculerEssentiel(item, suivant) },
     deplacer: modes.deplacer,
@@ -866,7 +869,9 @@ export default function Aujourdhui() {
     else if (action === 'monter') modes.deplacer(item, -1)
     else if (action === 'descendre') modes.deplacer(item, 1)
     else if (action === 'deplacer' && item.type === 'tache') actions.surAction('deplacer', item, { clavier: true })
-    else if (item.type === 'tache' && ['renommer', 'heure'].includes(action)) ouvrirFiche(item.id)
+    // R2-025 — `e` met le curseur dans le titre, `h` ouvre le champ heure (la fiche s'ouvre sur sa cible)
+    else if (item.type === 'tache' && action === 'renommer') ouvrirFiche(item.id, { focus: 'titre' })
+    else if (item.type === 'tache' && action === 'heure') ouvrirFiche(item.id, { focus: 'heure' })
   }, { actif: !feuille && !actions.feuille && !actions.selecteurProjet })
 
   const ouvrirSaisie = useCallback((detail) => {
@@ -897,6 +902,7 @@ export default function Aujourdhui() {
       ouverte: true,
       titre: feuille?.jour && feuille.jour !== donnees.jour ? "Bilan d'hier" : 'Bilan du soir',
       cranInitial: '85',
+      variante: 'panneau', // ≥ 1024 px : panneau fixe à droite, non modal ; en dessous, la feuille (R2-050)
       onFermer: fermerBilan,
       children: (
         <FeuilleBilan
@@ -935,6 +941,7 @@ export default function Aujourdhui() {
       ouverte: true,
       titre: 'Alléger ma journée',
       cranInitial: '85',
+      variante: 'panneau', // ≥ 1024 px : panneau fixe à droite, non modal ; en dessous, la feuille (R2-050)
       onFermer: () => setFeuille(null),
       children: <FeuilleAlleger donnees={donnees} enLigne={enLigne} onGarder={alleger} />,
     }
@@ -1015,6 +1022,7 @@ export default function Aujourdhui() {
           onGarder={() => garder(donnees.propose?.pour_objectif ?? [])}
           onAlleger={() => ouvrirFeuille('alleger')}
           onBilan={(jourBilan) => ouvrirFeuille('bilan', { jour: jourBilan })}
+          bilanFait={Boolean(donnees.plan?.cloture_le)}
           onNaviguer={navigate}
           onCopilote={geste.copilote}
           brouillon={brouillon ? (

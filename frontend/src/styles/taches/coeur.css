@@ -76,6 +76,21 @@
 .tch .revoir-actions .champ-date { height: 44px; padding: 0 10px; border-radius: var(--tch-rayon-champ); background: var(--tch-panneau);
   box-shadow: inset 0 0 0 1px var(--tch-trait); font-size: 1rem; color: var(--tch-texte); }
 .tch .replies .propose-actions { padding-top: 4px; }
+/* R2-021 — la raison d'une ligne d'À revoir, sous elle, alignée sur le titre */
+.tch .revoir-raison { margin: -6px 0 0; padding: 0 var(--tch-gouttiere) 6px calc(var(--tch-gouttiere) + var(--tch-cible) - 4px);
+  font-size: var(--tch-meta); color: var(--tch-texte-doux); background: var(--tch-surface); }
+/* Demande L3 — la ligne qu'on vient de reporter montre sa pastille « → ven. 20 », puis s'efface en fondu et se replie
+   (elle n'est plus de la journée) ; « Annuler » retire la pastille : la ligne revient. Mouvement réduit : la ligne
+   reste, pastille comprise. */
+@media (prefers-reduced-motion: no-preference) {
+  .tch[data-ecran="aujourdhui"] .ligne-cadre:has(> .ligne.estampillee) {
+    overflow: hidden; animation: tch-reportee-part 450ms ease-in 1.4s forwards;
+  }
+}
+@keyframes tch-reportee-part {
+  from { opacity: 1; max-height: 160px; }
+  to { opacity: 0; max-height: 0; visibility: hidden; }
+}
 .tch .replies .ligne-repli { align-items: center; }
 .tch .replies .ligne-repli .ligne-fin { display: inline-flex; align-items: center; gap: 4px; color: var(--tch-texte-doux); }
 
