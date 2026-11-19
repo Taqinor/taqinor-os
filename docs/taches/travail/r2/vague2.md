@@ -149,3 +149,19 @@ Demandes de L2 :
 - `.ep-rang` défini deux fois dans `projets.css` (poignée et rang de la revue).
 - iPhone : la barre compacte collante (L6) laisse transparaître le texte qui défile dessous.
 - Fiche ouverte à côté du maître-détail à 1280 px : le panneau se superpose à la droite du projet (non capturé).
+
+## Après le pli de V2-B (`a13abc602`)
+- Toast global en doublon du message sous le champ (nom de projet refusé, agenda externe en erreur, 400 de validation
+  de la saisie) : se règle dans `frontend/src/api/tachesApi.js` — `avecCle()` ne transmet que des en-têtes et
+  `modifierProjet(id, corps)` n'accepte pas d'options ; laisser passer `suppressErrorToast` quand l'appelant affiche
+  l'erreur sous le champ (appelants : `projets/Dialogues.jsx`, `pages/taches/Projet.jsx`, `FeuilleSaisie`,
+  `reglages/…` agenda externe), ou traiter les 400 « champ » comme `appeler()` traite déjà les 409.
+- `e` et `h` ouvrent la fiche mais le focus resterait sur la ligne (vu AVANT le pli de L2 : à rejouer) ; Alt+↑/↓ et
+  Maj+↓ ne font rien sur Aujourd'hui (`lib/clavierListe.js`) alors que la feuille « Touches de Tâches » les annonce ?
+  → vérifier l'aide `?` contre ce qui marche vraiment, touche par touche.
+- Saisie : une phrase identique à une tâche ouverte existante est marquée doublon (`cochee: False`) et affiche
+  « Aucune ligne lisible. » (trompeur) : dire « Déjà dans ta liste » avec « Ajouter quand même ».
+- `n` pressé sur un projet avant que la vue soit chargée : puce « Projet » vide (la tâche part bien dans le projet).
+- Le brouillon garde le « Quand » d'Aujourd'hui quand on rouvre la saisie depuis un autre écran.
+- Fiche bureau, section Répéter : une case isolée et « après fait » mal alignés.
+- iPhone réel : toast en haut avec clavier ouvert (`visualViewport` iOS) non vérifiable ici.
